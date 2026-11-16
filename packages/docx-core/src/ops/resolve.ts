@@ -46,10 +46,17 @@ import {
   acceptCopyOriginAncestor,
   rejectCopyOriginAncestorsInNodes,
 } from "./copyOriginAncestors";
+import { keptDeletionBoundaryPaths } from "./deletionBoundaries";
 import { combineEdits, type DocumentEdit } from "./edits";
 import { structurallyEqual } from "./equality";
 import { canonicalDeferredGroups, deferredGroupKey } from "./identity";
-import { IDENTITY_SPACES, identityKeysIn, idKey, slotKey } from "./ids";
+import {
+  IDENTITY_SPACES,
+  identityKeysIn,
+  idKey,
+  reservedIdentityKeysIn,
+  slotKey,
+} from "./ids";
 import { joinParagraphSeam } from "./inline";
 import { seamHandsOver, withJoinAtLeast } from "./keptJoins";
 import {
@@ -164,6 +171,7 @@ const runParagraphIntoTable = (
 };
 
 const NO_COMMENT_RANGES: ReadonlySet<number> = new Set();
+const NO_BOUNDARY_PATHS: ReadonlySet<string> = new Set();
 
 /** Whether a decision removes the content of a tracked change of this kind. */
 const removesContent = (
@@ -351,7 +359,7 @@ type Emptied = { has: (node: InlineNode) => boolean };
 const NOTHING_EMPTIED: Emptied = { has: () => false };
 
 type Resolution = {
-  ids: Set<number>;
+  ids: ReadonlySet<number> & { add: (id: number) => void };
   decision: RevisionDecision;
   /** The containers this resolution has emptied so far. */
   emptied: WeakSet<InlineNode>;
@@ -361,6 +369,8 @@ type Resolution = {
   cutEdges: WeakMap<InlineNode, CutEdges>;
   /** Comment ranges with a start and an end in the paragraphs resolved. */
   pairedComments: ReadonlySet<number>;
+  /** Source occurrences retained by the current paragraph's accepted deletions. */
+  keptDeletionPaths: ReadonlySet<string>;
   /** Boundaries this resolution kept from removed content. */
   relocated: RelocatedBoundaries;
   /**
@@ -370,6 +380,21 @@ type Resolution = {
    */
   outstanding: RetainedIdentity[];
 };
+
+const createResolution = (
+  ids: Set<number>,
+  decision: RevisionDecision,
+): Resolution => ({
+  ids,
+  decision,
+  emptied: new WeakSet(),
+  acceptedClosed: { first: new WeakSet(), last: new WeakSet() },
+  cutEdges: new WeakMap(),
+  pairedComments: NO_COMMENT_RANGES,
+  keptDeletionPaths: NO_BOUNDARY_PATHS,
+  relocated: noRelocatedBoundaries(),
+  outstanding: [],
+});
 
 const resolveRun = (run: Run, { ids, decision }: Resolution): Run => {
   const changes = run.propertyChanges ?? [];
@@ -1563,10 +1588,17 @@ const cutReach = ({
   return reach;
 };
 
-const resolveList = (
-  nodes: readonly InlineNode[],
-  resolution: Resolution,
-): ResolvedList => {
+type ResolveListOptions = {
+  nodes: readonly InlineNode[];
+  resolution: Resolution;
+  path: readonly number[];
+};
+
+const resolveList = ({
+  nodes,
+  resolution,
+  path,
+}: ResolveListOptions): ResolvedList => {
   const out: SourceOccurrence[] = [];
   const seams: number[] = [];
   const plainSeams = new Set<number>();
@@ -1801,8 +1833,8 @@ const resolveList = (
         const kept = removedContentBoundaries({
           nodes: removalContent,
           rejecting: resolution.decision === REVISION_DECISIONS.REJECT,
-          // A deletion of a range removes every comment anchor it holds, as
-          // deleting the range directly does.
+          // Endpoints follow keptPaths; a range deletion removes an enclosed
+          // comment reference as deleting that range directly does.
           pairedComments:
             node.type === "deletion" && node.resolutionJoins !== undefined
               ? NO_COMMENT_RANGES
@@ -1810,6 +1842,8 @@ const resolveList = (
           relocated: resolution.relocated,
           revisionDate: node.info.date ?? "",
           leavesPending: (revisionId) => !resolution.ids.has(revisionId),
+          keptPaths: resolution.keptDeletionPaths,
+          path: [...path, index],
         });
         appendUnowned(kept);
         // Kept boundaries float at the seam until the pieces either side are
@@ -1863,7 +1897,11 @@ const resolveList = (
             piece: "after",
           });
       }
-      const resolved = resolveList(node.content, resolution);
+      const resolved = resolveList({
+        nodes: node.content,
+        resolution,
+        path: [...path, index],
+      });
       const content =
         isAddedRevision(node) &&
         resolution.decision === REVISION_DECISIONS.ACCEPT
@@ -1944,7 +1982,9 @@ const resolveList = (
     }
     const children = childNodes(node);
     const inner =
-      children === undefined ? undefined : resolveList(children, resolution);
+      children === undefined
+        ? undefined
+        : resolveList({ nodes: children, resolution, path: [...path, index] });
     for (const handoff of inner?.enclosing ?? []) {
       if (handoff.levels > 1) {
         enclosing.push({
@@ -3496,17 +3536,11 @@ export const planRevisionResolution = ({
       receiverEffects: [],
     });
   }
-  const resolution: Resolution = {
-    ids,
-    decision: op.decision,
-    emptied: new WeakSet(),
-    acceptedClosed: { first: new WeakSet(), last: new WeakSet() },
-    cutEdges: new WeakMap(),
-    pairedComments: new Set(),
-    relocated: noRelocatedBoundaries(),
-    outstanding: [],
-  };
-  const noteReferences = removedNoteReferences(document, op, ids);
+  let resolution = createResolution(ids, op.decision);
+  const rejectedNoteReferences =
+    op.decision === REVISION_DECISIONS.REJECT
+      ? removedNoteReferences(document, op, ids)
+      : [];
   const paragraphs = storyParagraphs(storyBody(document, op.story));
   const reachable = new Set([
     ...paragraphs.flatMap(({ paragraph }) => [...reachableIds(paragraph)]),
@@ -3566,35 +3600,118 @@ export const planRevisionResolution = ({
   const emptiedEnds: EmptiedEndsById = new Map();
   const resolvedContents = new Map<string, readonly InlineNode[]>();
   const resolvedCutEdges = new Map<string, CutEdges>();
-  const preparedContents = paragraphs.map(({ paragraph }) => ({
-    paragraph,
-    content: prepareDeferredRemovals(paragraph.content, resolution),
-  }));
-  resolution.pairedComments = pairedCommentRanges(
-    preparedContents.flatMap(({ content }) => content),
-  );
-  const removedCommentIds = removedCommentRangeIds(
-    preparedContents.flatMap(({ content }) => content),
-    resolution,
-  );
+  const prepareContents = () =>
+    paragraphs.map(({ paragraph }) => ({
+      paragraph,
+      content: prepareDeferredRemovals(paragraph.content, resolution),
+    }));
+  let preparedContents = prepareContents();
   const resolvedChanged = new Set<string>();
-  for (const { paragraph, content: source } of preparedContents) {
-    const paraId = paragraph.paraId ?? "";
-    // A replacement's paragraph break can stand between a removed prefix and
-    // the piece that takes its identities: they arrive here.
-    const handed = restoreOutstandingIdentities(source, resolution);
-    const prepared =
-      handed === source ? source : prepareDeferredRemovals(handed, resolution);
-    const resolved = resolveList(prepared, resolution);
-    resolvedContents.set(
-      idKey(paraId),
-      withoutCommentAnchors(resolved.nodes, removedCommentIds),
+  type SelectionClosure =
+    | { type: "initial" }
+    | { type: "replaying"; domain: ReadonlySet<string>; remaining: number };
+  let closure: SelectionClosure = { type: "initial" };
+  for (;;) {
+    const selectedBefore = ids.size;
+    const keptDeletionPaths =
+      op.decision === REVISION_DECISIONS.ACCEPT
+        ? keptDeletionBoundaryPaths({
+            body: storyBody(document, op.story),
+            removes: ({ ancestors }) =>
+              ancestors.some(
+                (ancestor) =>
+                  isTrackedWrapper(ancestor) &&
+                  ids.has(ancestor.info.id) &&
+                  removesContent(ancestor, op.decision),
+              ),
+          })
+        : new Map<Paragraph, Set<string>>();
+    resolution.pairedComments = pairedCommentRanges(
+      preparedContents.flatMap(({ content }) => content),
     );
-    if (resolved.edges !== undefined)
-      resolvedCutEdges.set(idKey(paraId), resolved.edges);
-    if (resolved.changed || prepared !== paragraph.content)
-      resolvedChanged.add(idKey(paraId));
+    // Acceptance removes selected occurrences through the boundary plan. An ID
+    // can also name a standing pair, which an unrelated removed pair cannot erase.
+    const removedCommentIds =
+      op.decision === REVISION_DECISIONS.REJECT
+        ? removedCommentRangeIds(
+            preparedContents.flatMap(({ content }) => content),
+            resolution,
+          )
+        : NO_COMMENT_RANGES;
+    for (const { paragraph, content: source } of preparedContents) {
+      const paraId = paragraph.paraId ?? "";
+      // A replacement's paragraph break can stand between a removed prefix and
+      // the piece that takes its identities: they arrive here.
+      const handed = restoreOutstandingIdentities(source, resolution);
+      const prepared =
+        handed === source
+          ? source
+          : prepareDeferredRemovals(handed, resolution);
+      resolution.keptDeletionPaths =
+        keptDeletionPaths.get(paragraph) ?? NO_BOUNDARY_PATHS;
+      const resolved = resolveList({ nodes: prepared, resolution, path: [] });
+      resolvedContents.set(
+        idKey(paraId),
+        withoutCommentAnchors(resolved.nodes, removedCommentIds),
+      );
+      if (resolved.edges !== undefined)
+        resolvedCutEdges.set(idKey(paraId), resolved.edges);
+      if (resolved.changed || prepared !== paragraph.content)
+        resolvedChanged.add(idKey(paraId));
+    }
+    if (op.decision === REVISION_DECISIONS.REJECT) break;
+    if (ids.size < selectedBefore)
+      panic("Revision selection is monotone across identity handoffs.");
+    if (ids.size === selectedBefore) break;
+    // The same handoff owner discovered more selected source identities.
+    // Discard this whole pass, including boundary decisions made before that
+    // handoff, and publish only a pass whose selection is already closed.
+    switch (closure.type) {
+      case "initial": {
+        const domain = new Set([
+          ...present,
+          ...reservedIdentityKeysIn(storyBody(document, op.story)),
+        ]);
+        closure = {
+          type: "replaying",
+          domain,
+          remaining: domain.size - selectedBefore,
+        };
+        break;
+      }
+      case "replaying":
+        closure = {
+          type: "replaying",
+          domain: closure.domain,
+          remaining: closure.remaining - 1,
+        };
+        break;
+      default: {
+        const exhaustive: never = closure;
+        return exhaustive;
+      }
+    }
+    // Every expanding pass selects at least one member of this finite source
+    // domain. No identity is minted here, so at most domain.size - initialSize
+    // expansions precede the final stable pass.
+    const { domain, remaining } = closure;
+    if (
+      remaining <= 0 ||
+      [...ids].some(
+        (id) => !domain.has(slotKey({ space: IDENTITY_SPACES.REVISION, id })),
+      )
+    )
+      panic("Revision selection exceeded its finite source identity domain.");
+    resolution = createResolution(ids, op.decision);
+    resolvedContents.clear();
+    resolvedCutEdges.clear();
+    resolvedChanged.clear();
+    preparedContents = prepareContents();
   }
+  const noteReferences =
+    op.decision === REVISION_DECISIONS.ACCEPT
+      ? removedNoteReferences(document, op, ids)
+      : rejectedNoteReferences;
   // Boundaries kept from removed content can leave a range ending before it starts.
   const normalizedRangeContents = wellFormedRanges({
     contents: resolvedContents,
@@ -3794,7 +3911,10 @@ export const planRevisionResolution = ({
   }
   const rows = resolveTableRows({
     document: staged.value.document,
-    op,
+    op:
+      op.decision === REVISION_DECISIONS.ACCEPT
+        ? { ...op, revisionIds: [...ids] }
+        : op,
     applyOps,
   });
   if (rows.isErr()) return Result.err(rows.error);
