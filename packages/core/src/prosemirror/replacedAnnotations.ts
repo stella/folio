@@ -12,10 +12,14 @@
  * hyperlink simply stops being a link. Zero-width anchors fare worse still: a
  * plain replace deletes them outright.
  *
- * Text replacement preserves a comment's aligned coverage. Unchanged text
+ * The alignment helper preserves a comment's coverage. Unchanged text
  * keeps its ranges; inserted text takes the comments of the replaced aligned
- * span. A range with no remaining content becomes a point at the replacement
- * start. The applier decides alignment once for direct and tracked edits.
+ * span. It can propose a point at the replacement start for an emptied range;
+ * downstream ranged-comment exhaustion may retire that comment. The applier
+ * decides alignment once for direct and tracked edits.
+ * Canonical replacements accept only coverage the source anchors already
+ * express. Pure deletion follows ranged-comment exhaustion; unproven point
+ * transitions refuse before mutation.
  *
  * - `comment` mark: carried over its aligned replacement span.
  * - `hyperlink` mark: the replacement carries the first link the span held, so
@@ -54,10 +58,12 @@
  * - every other mark: formatting, and left to boundary inheritance, which
  *   already gives the replacement the formatting of the text it replaces.
  *
- * Removing the owning block removes its comment. Replacing its last covered
- * text within a surviving block retains a point rather than dropping it.
+ * Removing the owning block removes its comment. Point anchors proposed by
+ * the alignment helper do not override ranged-comment retirement; the
+ * canonical guard refuses point transitions whose outcome is not proven.
  */
 
+import { panic } from "better-result";
 import {
   Fragment,
   Mark,
@@ -68,7 +74,10 @@ import type { Transaction } from "prosemirror-state";
 
 import { isCommentExhausted } from "@stll/docx-core/ops";
 
-import { isCommentAnchorCarrier } from "../ai-edits/comment-lifecycle";
+import {
+  commentAnchorIdsForNode,
+  isCommentAnchorCarrier,
+} from "../ai-edits/comment-lifecycle";
 import {
   expectParagraphAttrs,
   expectTableCellAttrs,
@@ -333,11 +342,16 @@ const lendsMarks = (node: PMNode, content: ReplacedContent): boolean => {
   }
 };
 
-type SurveyOptions = { from: number; to: number; content: ReplacedContent };
+type SurveyOptions = {
+  from: number;
+  to: number;
+  content: ReplacedContent;
+  containers: "preserve" | "descend";
+};
 
 const surveyAnnotations = (
   doc: PMNode,
-  { from, to, content }: SurveyOptions,
+  { from, to, content, containers }: SurveyOptions,
 ): ReplacedAnnotations => {
   if (to <= from) {
     return NOTHING_REPLACED;
@@ -362,7 +376,9 @@ const surveyAnnotations = (
       position < from ||
       position + node.nodeSize > to
     ) {
-      return false;
+      return (
+        containers === "descend" && !node.isLeaf && lendsMarks(node, content)
+      );
     }
     (opensRange(node, placement) ? leading : trailing).push(node);
     return false;
@@ -381,7 +397,12 @@ export const surveyReplacedAnnotations = (
   from: number,
   to: number,
 ): ReplacedAnnotations =>
-  surveyAnnotations(doc, { from, to, content: "asWritten" });
+  surveyAnnotations(doc, {
+    from,
+    to,
+    content: "asWritten",
+    containers: "preserve",
+  });
 
 /**
  * {@link surveyReplacedAnnotations} over the span as it reads once accepted:
@@ -393,7 +414,152 @@ export const surveyAcceptedReplacedAnnotations = (
   from: number,
   to: number,
 ): ReplacedAnnotations =>
-  surveyAnnotations(doc, { from, to, content: "asAccepted" });
+  surveyAnnotations(doc, {
+    from,
+    to,
+    content: "asAccepted",
+    containers: "preserve",
+  });
+
+type ReplacementCommentAlignmentOptions = {
+  doc: PMNode;
+  source: { from: number; to: number };
+  retiredCommentIds?: ReadonlySet<number> | undefined;
+  changes: readonly {
+    from: number;
+    to: number;
+    text: string;
+    markers: "retained" | "selected";
+  }[];
+};
+
+/**
+ * Whether source boundaries already express the replacement's aligned ranges.
+ * A changed stretch lends every comment it touches to its replacement. A
+ * comment that closes before the insertion needs an anchor transition the kernel
+ * cannot represent yet. Pure deletions within surviving source content follow
+ * the ranged-comment exhaustion owner; other collapses need a point policy.
+ * Decide over the whole replacement, before any of its fragments are applied.
+ */
+export const preservesReplacementCommentAlignment = ({
+  doc,
+  source,
+  changes,
+  retiredCommentIds,
+}: ReplacementCommentAlignmentOptions): boolean => {
+  let previousEnd = source.from;
+  for (const change of changes) {
+    if (
+      change.from < previousEnd ||
+      change.to < change.from ||
+      change.to > source.to
+    )
+      panic(
+        "Replacement changes must be ordered inside their source coverage.",
+      );
+    previousEnd = change.to;
+  }
+  const collapsing: Mark[] = [];
+  const continued: Mark[] = [];
+  for (const change of changes) {
+    const annotations = surveyAnnotations(doc, {
+      from: change.from,
+      to: change.to,
+      content: "asAccepted",
+      containers: "descend",
+    });
+    const comments = annotations.carried.filter(
+      (mark) =>
+        mark.type.name === "comment" &&
+        !retiredCommentIds?.has(mark.attrs["commentId"]),
+    );
+    if (comments.some((mark) => mark.attrs["point"] === true)) return false;
+    if (change.markers === "selected" && comments.length > 0) return false;
+    let internalCarrier = false;
+    doc.nodesBetween(change.from, change.to, (node, position) => {
+      if (
+        isCommentAnchorCarrier(node) &&
+        change.from < position &&
+        position < change.to
+      ) {
+        const ids = commentAnchorIdsForNode(node);
+        if (ids.length === 0 || ids.some((id) => !retiredCommentIds?.has(id)))
+          internalCarrier = true;
+      }
+      return !node.isLeaf && lendsMarks(node, "asAccepted");
+    });
+    if (internalCarrier) return false;
+    if (change.text === "") {
+      for (const mark of comments)
+        if (!mark.isInSet(collapsing)) collapsing.push(mark);
+      continue;
+    }
+    let endingMarks: readonly Mark[] = [];
+    doc.nodesBetween(change.from, change.to, (node) => {
+      if (!node.isInline) return true;
+      if (!node.isLeaf) return lendsMarks(node, "asAccepted");
+      if (!isZeroWidthAnchor(node) && lendsMarks(node, "asAccepted"))
+        endingMarks = node.marks;
+      return false;
+    });
+    if (!comments.every((mark) => mark.isInSet(endingMarks))) return false;
+    for (const mark of comments)
+      if (!mark.isInSet(continued)) continued.push(mark);
+  }
+  const candidates = collapsing.filter((mark) => !mark.isInSet(continued));
+  if (candidates.length === 0) return true;
+  const retained: Mark[] = [];
+  let sourceContentSurvives = false;
+  let changeIndex = 0;
+  doc.descendants((node, position) => {
+    if (!node.isInline) return true;
+    if (!node.isLeaf) return lendsMarks(node, "asAccepted");
+    if (isZeroWidthAnchor(node) || !lendsMarks(node, "asAccepted"))
+      return false;
+    const from = position;
+    const to = position + node.nodeSize;
+    const sourceFrom = Math.max(source.from, from);
+    const sourceTo = Math.min(source.to, to);
+    while ((changes[changeIndex]?.to ?? Infinity) <= from) changeIndex++;
+    let removed = 0;
+    let sourceRemoved = 0;
+    for (let index = changeIndex; index < changes.length; index++) {
+      const change = changes[index];
+      if (change === undefined || change.from >= to) break;
+      removed += Math.max(
+        0,
+        Math.min(to, change.to) - Math.max(from, change.from),
+      );
+      sourceRemoved += Math.max(
+        0,
+        Math.min(sourceTo, change.to) - Math.max(sourceFrom, change.from),
+      );
+    }
+    if (sourceFrom < sourceTo && sourceRemoved < sourceTo - sourceFrom)
+      sourceContentSurvives = true;
+    if (removed < to - from)
+      for (const mark of candidates)
+        if (mark.isInSet(node.marks) && !mark.isInSet(retained))
+          retained.push(mark);
+    return false;
+  });
+  const deletesOnly = changes.every(({ text }) => text === "");
+  return candidates.every((mark) => {
+    const survivingNonCarrierContent = mark.isInSet(retained);
+    // Candidates are non-point marks. The whole-document scan proves each
+    // range's remaining coverage, including coverage outside the edited source.
+    return (
+      survivingNonCarrierContent ||
+      (deletesOnly &&
+        sourceContentSurvives &&
+        isCommentExhausted({
+          type: "coverage",
+          anchorKind: "range",
+          survivingNonCarrierContent,
+        }))
+    );
+  });
+};
 
 /**
  * Whether the span already contributed this mark, or one the mark would evict.

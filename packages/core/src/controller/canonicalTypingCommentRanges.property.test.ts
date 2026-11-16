@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { afterEach, expect, setSystemTime, test } from "bun:test";
 import fc from "fast-check";
 import { EditorState, TextSelection } from "prosemirror-state";
 
@@ -6,90 +6,140 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
-import { getTrackedChangeStatsFromDoc } from "../ai-edits/read";
+import { FolioDocxReviewer } from "../ai-edits/headless";
+import {
+  getCommentAnchorsFromDoc,
+  getTrackedChangeStatsFromDoc,
+} from "../ai-edits/read";
 import {
   createCanonicalSession,
   publishCanonicalProjection,
 } from "../canonical/canonicalSession";
+import { serializeCanonicalSave } from "../docx/canonicalSave";
+import {
+  type CommentMarkerSlot,
+  visitCommentMarkers,
+} from "../docx/commentAnchorIndex";
+import { parseDocx } from "../docx/parser";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Comment, Document, ParagraphContent } from "../types/document";
+import { readModel } from "../types/documentModel";
 
-// Projection fixtures edited at fixed positions; none followed the caret after replacement.
+afterEach(() => setSystemTime());
+
+const run = (text: string): ParagraphContent => ({
+  type: "run",
+  content: [{ type: "text", text }],
+});
+type SourceOptions = {
+  references: number;
+  selection: "coveredText" | "wholeParagraph";
+};
+const sourceDocument = ({ references, selection }: SourceOptions) => {
+  const atoms = Array.from(
+    { length: references },
+    (_, id) => ({ type: "commentReference", id }) satisfies ParagraphContent,
+  );
+  return {
+    package: {
+      document: {
+        comments: Array.from(
+          { length: Math.max(1, references) },
+          (_, id) =>
+            ({
+              id,
+              anchorKind: "range",
+              author: "Reviewer",
+              content: [
+                {
+                  type: "paragraph",
+                  paraId: (0x20000000 + id).toString(16),
+                  content: [run("Comment")],
+                },
+              ],
+            }) satisfies Comment,
+        ),
+        content: [
+          {
+            type: "paragraph",
+            paraId: "12345678",
+            content: [
+              ...(selection === "coveredText"
+                ? [run("Prefix"), ...atoms.slice(1), run(" ")]
+                : []),
+              { type: "commentRangeStart", id: 0 },
+              run("Commented"),
+              { type: "commentRangeEnd", id: 0 },
+              ...(selection === "coveredText" ? atoms.slice(0, 1) : atoms),
+              run(" tail"),
+            ],
+          },
+        ],
+      },
+    },
+  } satisfies Document;
+};
+
+const savedView = async (buffer: ArrayBuffer) => {
+  const document = await parseDocx(buffer, {
+    preloadFonts: false,
+    detectVariables: false,
+  });
+  const reviewer = await FolioDocxReviewer.fromBuffer(buffer.slice(0));
+  const markers: CommentMarkerSlot["item"][] = [];
+  visitCommentMarkers(document.package.document.content, ({ item }) =>
+    markers.push(item),
+  );
+  return {
+    definitions: document.package.document.comments,
+    comments: reviewer.getComments(),
+    anchors: getCommentAnchorsFromDoc(toProseDoc(document)),
+    markers,
+    text: toProseDoc(document).textContent,
+  };
+};
+
+// A fully covered text span has retained marker edges and proven range inheritance.
 test(
   "successive typing follows the replacement caret across comment boundaries",
-  () => {
-    assertProperty(
-      fc.property(
+  async () => {
+    await assertProperty(
+      fc.asyncProperty(
         fc.constantFrom("x", "é", "👍🏽"),
         fc.integer({ min: 0, max: 3 }),
-        (first, references) => {
-          const coveredText = new Map<string, string>();
+        async (first, references) => {
+          const acceptedViews = new Map<
+            string,
+            Awaited<ReturnType<typeof savedView>>
+          >();
           for (const type of ["editing", "suggesting"] as const) {
-            const atoms = Array.from(
-              { length: references },
-              (_, id) =>
-                ({
-                  type: "commentReference",
-                  id,
-                }) satisfies ParagraphContent,
-            );
-            const source = {
-              package: {
-                document: {
-                  comments: Array.from(
-                    { length: Math.max(1, references) },
-                    (_, id) =>
-                      ({
-                        id,
-                        anchorKind: "range",
-                        author: "Reviewer",
-                        content: [
-                          {
-                            type: "paragraph",
-                            paraId: (0x20000000 + id).toString(16),
-                            content: [
-                              {
-                                type: "run",
-                                content: [{ type: "text", text: "Comment" }],
-                              },
-                            ],
-                          },
-                        ],
-                      }) satisfies Comment,
-                  ),
-                  content: [
-                    {
-                      type: "paragraph",
-                      paraId: "12345678",
-                      content: [
-                        { type: "commentRangeStart", id: 0 },
-                        {
-                          type: "run",
-                          content: [{ type: "text", text: "Commented" }],
-                        },
-                        { type: "commentRangeEnd", id: 0 },
-                        ...atoms,
-                        {
-                          type: "run",
-                          content: [{ type: "text", text: " tail" }],
-                        },
-                      ],
-                    },
-                  ],
-                },
-              },
-            } satisfies Document;
-            const created = createCanonicalSession(source);
-            expect(created.isErr() ? created.error : undefined).toBeUndefined();
-            const session = created.unwrap();
+            const source = sourceDocument({
+              references,
+              selection: "coveredText",
+            });
+            const session = createCanonicalSession(source).unwrap();
             session.setMode(
               type === "editing" ? { type } : { type, author: "Reviewer" },
             );
             let state = EditorState.create({ doc: session.projection.doc });
+            let covered: { from: number; to: number } | undefined;
+            state.doc.descendants((node, position) => {
+              if (node.isText && node.text === "Commented")
+                covered = { from: position, to: position + node.nodeSize };
+            });
+            if (covered === undefined)
+              throw new Error("Missing covered source text");
             state = state.apply(
               state.tr.setSelection(
-                TextSelection.create(state.doc, 1, state.doc.content.size - 1),
+                TextSelection.create(state.doc, covered.from, covered.to),
               ),
+            );
+            const initial = await savedView(
+              (
+                await serializeCanonicalSave({
+                  snapshot: session.captureSaveSnapshot(),
+                })
+              ).buffer,
             );
             const typed = [first, "y", "z"];
             for (const text of typed) {
@@ -118,6 +168,31 @@ test(
               toProseDoc(session.document),
             );
             if (revisionIds.length > 0) {
+              const rejected = createCanonicalSession(
+                readModel(session.document),
+              ).unwrap();
+              const rejectedState = EditorState.create({
+                doc: rejected.projection.doc,
+              });
+              publishCanonicalProjection({
+                session: rejected,
+                state: rejectedState,
+                commit: rejected
+                  .prepareResolve(rejectedState, {
+                    revisionIds,
+                    resolution: "reject",
+                  })
+                  .unwrap(),
+              }).unwrap();
+              expect(
+                await savedView(
+                  (
+                    await serializeCanonicalSave({
+                      snapshot: rejected.captureSaveSnapshot(),
+                    })
+                  ).buffer,
+                ),
+              ).toEqual(initial);
               const prepared = session.prepareResolve(state, {
                 revisionIds,
                 resolution: "accept",
@@ -125,37 +200,41 @@ test(
               expect(
                 prepared.isErr() ? prepared.error : undefined,
               ).toBeUndefined();
-              const published = publishCanonicalProjection({
+              state = publishCanonicalProjection({
                 session,
                 state,
                 commit: prepared.unwrap(),
-              });
-              expect(
-                published.isErr() ? published.error : undefined,
-              ).toBeUndefined();
-              state = published.unwrap().state;
+              }).unwrap().state;
             }
-            // Comment references retain their anchor but contribute no authored text.
-            const projected = toProseDoc(session.document);
-            expect(projected.textContent).toBe(typed.join(""));
-            const covered: string[] = [];
-            projected.descendants((node) => {
-              if (
-                node.isText &&
-                node.marks.some(
-                  (mark) =>
-                    mark.type.name === "comment" &&
-                    mark.attrs["commentId"] === 0,
-                )
-              )
-                covered.push(node.text ?? "");
-            });
-            coveredText.set(type, covered.join(""));
+            expect(state.doc.textContent).toBe(`Prefix ${typed.join("")} tail`);
+            const accepted = await savedView(
+              (
+                await serializeCanonicalSave({
+                  snapshot: session.captureSaveSnapshot(),
+                })
+              ).buffer,
+            );
+            expect(accepted.definitions).toEqual(initial.definitions);
+            expect(accepted.markers).toEqual(initial.markers);
+            expect(
+              accepted.comments.map(({ id, text, anchoredText }) => ({
+                id,
+                text,
+                anchoredText,
+              })),
+            ).toEqual(
+              initial.comments.map(({ id, text, anchoredText }) => ({
+                id,
+                text,
+                anchoredText: id === 0 ? typed.join("") : anchoredText,
+              })),
+            );
+            acceptedViews.set(type, accepted);
           }
-          // Typing over the whole commented paragraph replaces what the
-          // comment covered; accepted, the suggestion reads as the edit does.
-          expect(coveredText.get("editing")).toBe("");
-          expect(coveredText.get("suggesting")).toBe("");
+          expect([...acceptedViews.keys()]).toEqual(["editing", "suggesting"]);
+          expect(acceptedViews.get("editing")).toEqual(
+            acceptedViews.get("suggesting"),
+          );
         },
       ),
       {
@@ -167,3 +246,67 @@ test(
   },
   propertyTestTimeout(30_000),
 );
+
+// The old fixture checked only empty covered text; direct and accepted edits
+// actually disagreed on whether its collapsed ranged-comment definition survived.
+for (const references of [0, 1, 2, 3])
+  for (const type of ["editing", "suggesting"] as const) {
+    test(`${type}, ${references} references: replacing the whole mixed-coverage paragraph refuses atomically`, async () => {
+      setSystemTime(new Date("2026-01-02T03:04:05Z"));
+      const source = sourceDocument({
+        references,
+        selection: "wholeParagraph",
+      });
+      const session = createCanonicalSession(source).unwrap();
+      session.setMode(
+        type === "editing" ? { type } : { type, author: "Reviewer" },
+      );
+      let state = EditorState.create({ doc: session.projection.doc });
+      state = state.apply(
+        state.tr.setSelection(
+          TextSelection.create(state.doc, 1, state.doc.content.size - 1),
+        ),
+      );
+      const before = session.document;
+      const snapshot = session.captureSaveSnapshot();
+      const saved = await serializeCanonicalSave({ snapshot });
+      const history = { undo: session.canUndo, redo: session.canRedo };
+      const version = session.version;
+      let commits = 0;
+      session.onCommitted(() => commits++);
+      const result = session.prepareReplace(state, {
+        from: state.selection.from,
+        to: state.selection.to,
+        text: "x",
+        semantic: "typing",
+      });
+      expect(result.isErr()).toBe(true);
+      if (result.isErr())
+        expect(result.error.ground).toEqual({
+          gap: "comment-replacement-alignment",
+        });
+      expect(session.document).toBe(before);
+      expect(session.version).toBe(version);
+      expect({ undo: session.canUndo, redo: session.canRedo }).toEqual(history);
+      expect(commits).toBe(0);
+      expect(session.captureSaveSnapshot()).toEqual(snapshot);
+      expect(
+        new Uint8Array(
+          (
+            await serializeCanonicalSave({
+              snapshot: session.captureSaveSnapshot(),
+            })
+          ).buffer,
+        ),
+      ).toEqual(new Uint8Array(saved.buffer));
+      expect(await savedView(saved.buffer)).toEqual(
+        await savedView(
+          (
+            await serializeCanonicalSave({
+              snapshot: session.captureSaveSnapshot(),
+            })
+          ).buffer,
+        ),
+      );
+    });
+  }

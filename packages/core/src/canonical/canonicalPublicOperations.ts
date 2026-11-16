@@ -134,6 +134,7 @@ import {
   tableAttrsToFormatting,
 } from "../prosemirror/conversion/fromProseDoc";
 import { maxAnnotationIdInDoc } from "../prosemirror/plugins/revisionIds";
+import { preservesReplacementCommentAlignment } from "../prosemirror/replacedAnnotations";
 import { createStyleResolver } from "../prosemirror/styles/styleResolver";
 import {
   insertedColumnWidth,
@@ -3222,13 +3223,47 @@ export class CanonicalPublicOperations {
         }
         if (pending) changes.push(pending);
       }
-      for (const change of changes.toReversed()) {
+      const replacementChanges = [];
+      for (const change of changes) {
         const gap = resolveCleanTextRange({
           cleanBlock: clean,
           startOffset: change.start,
           endOffset: change.end,
         });
         if (!gap) return refusal("unsupportedBlock");
+        // Keep trailing references and struck text outside the replacement.
+        const lastCharacter =
+          change.end > change.start ? clean.offsets[change.end - 1] : undefined;
+        replacementChanges.push({
+          ...change,
+          from: gap.from,
+          to:
+            lastCharacter === undefined
+              ? gap.to
+              : Math.max(gap.from, Math.min(gap.to, lastCharacter + 1)),
+          markers: "retained" as const,
+        });
+      }
+      if (
+        !preservesReplacementCommentAlignment({
+          doc: state.doc,
+          source: {
+            from: paragraph.start,
+            to: paragraph.start + paragraph.node.content.size,
+          },
+          changes: replacementChanges,
+        })
+      )
+        return Result.err(
+          new CanonicalPublicOperationResolutionError({
+            reason: "unsupportedBlock",
+            gap: CANONICAL_GAP.commentReplacementAlignment,
+            message:
+              "Canonical replacement cannot preserve the aligned comment ranges.",
+          }),
+        );
+      for (const change of replacementChanges.toReversed()) {
+        const gap = { from: change.from, to: change.to };
         if (change.text.length > 0 && gap.from < gap.to) {
           let first: readonly Mark[] | null = null;
           let uniform = true;
@@ -3254,25 +3289,16 @@ export class CanonicalPublicOperations {
               code: "uniformReplacementFormatting",
             });
         }
-        // A replaced range ends just after its last character, before what
-        // the clean text skips there (a comment's reference mark, struck
-        // text), since the new text follows the struck words.
-        const lastCharacter =
-          change.end > change.start ? clean.offsets[change.end - 1] : undefined;
-        const changeEnd =
-          lastCharacter === undefined
-            ? gap.to
-            : Math.max(gap.from, Math.min(gap.to, lastCharacter + 1));
         // A replaced range takes the editor's selection rule: its edges stay
         // inside the markers beside them, so replacing exactly the words a
         // comment covers keeps the comment on the new text, pending and
         // accepted. An insertion at a point takes the caret's gap.
         const edges =
-          gap.from < changeEnd
-            ? projection.value.rangeEdgesAt(gap.from, changeEnd)
+          gap.from < gap.to
+            ? ({ start: "afterMarkers", end: "beforeMarkers" } as const)
             : undefined;
         const changeFrom = projection.value.addressAt(gap.from, edges?.start);
-        const changeTo = projection.value.addressAt(changeEnd, edges?.end);
+        const changeTo = projection.value.addressAt(gap.to, edges?.end);
         if (changeFrom.isErr() || changeTo.isErr())
           return refusal("unsupportedBlock");
         intents.push({

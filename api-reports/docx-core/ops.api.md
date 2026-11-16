@@ -1142,6 +1142,9 @@ export type PlanTrackedReplaceOptions = PlanTrackedDeletionOptions & {
 export const planWellFormedRanges: (occurrences: readonly BoundaryOccurrence[]) => WellFormedRangePlan;
 
 // @public
+export const planWholeParagraphReplacement: (input: WholeParagraphReplacementOptions) => Result<WholeParagraphReplacementPlan | null, DocumentOpRefusal>;
+
+// @public
 export const PROPERTY_REVIEW_POLICIES: Readonly<{
     readonly APPEND: "append";
 }>;

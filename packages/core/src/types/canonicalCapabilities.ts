@@ -19,6 +19,7 @@ export const CANONICAL_GAP = {
   aiSnapshots: "pm-ai-snapshots",
   publicComments: "publicOps.comments",
   publicUnsupportedInline: "publicOps.unsupportedInline",
+  commentReplacementAlignment: "comment-replacement-alignment",
   publicTableStructure: "publicOps.tableStructure",
   publicHeadlessSession: "publicOps.headlessSession",
 } as const;
@@ -226,6 +227,12 @@ export const CANONICAL_CAPABILITIES: {
     readonly adapters: readonly ["react", "vue"];
     readonly summary: "Canonical whole-table signature suggestions need direct acceptance semantics; direct signature and ordinary table placement compile.";
   };
+  readonly "comment-replacement-alignment": {
+    readonly owner: "controller";
+    readonly kind: "refusal";
+    readonly adapters: readonly ["react", "vue"];
+    readonly summary: "Replacements refuse when preserving aligned comments needs anchor transitions or an unproven collapsed-range policy.";
+  };
   readonly "publicOps.headlessSession": {
     readonly owner: "document-operations";
     readonly defaultSessionMutation: "pm-headless-reviewer";
@@ -370,6 +377,13 @@ export const CANONICAL_CAPABILITIES: {
     adapters: ["react", "vue"],
     summary:
       "Canonical whole-table signature suggestions need direct acceptance semantics; direct signature and ordinary table placement compile.",
+  },
+  [CANONICAL_GAP.commentReplacementAlignment]: {
+    owner: "controller",
+    kind: "refusal",
+    adapters: ["react", "vue"],
+    summary:
+      "Replacements refuse when preserving aligned comments needs anchor transitions or an unproven collapsed-range policy.",
   },
   [CANONICAL_GAP.publicHeadlessSession]: {
     owner: "document-operations",

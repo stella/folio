@@ -47,6 +47,7 @@ import {
   type OpStory,
   packageParagraphIds,
   paragraphIdsIn,
+  planWholeParagraphReplacement,
   sameStory,
   suggestedCommentIds,
   suggestionRevisionInfos,
@@ -100,6 +101,7 @@ import {
   toProseDoc,
 } from "../prosemirror/conversion/toProseDoc";
 import { heldUnreferencedNotes as notesHeldWithoutReference } from "../prosemirror/noteReferenceReview";
+import { preservesReplacementCommentAlignment } from "../prosemirror/replacedAnnotations";
 import { runFormattingPatchFromMarks } from "../prosemirror/runFormattingFromMarks";
 import {
   CANONICAL_GAP,
@@ -2393,7 +2395,15 @@ class CanonicalSession {
     const checked = this.checkState(state, projection);
     if (checked.isErr()) return checked;
     if (!Number.isFinite(time)) return refuse("The input time is invalid.");
-    if (from > to || hasIllegalXmlCharacters(text) || /[\t\r\n]/u.test(text)) {
+    if (
+      !Number.isSafeInteger(from) ||
+      !Number.isSafeInteger(to) ||
+      from < 0 ||
+      to > projection.doc.content.size ||
+      from > to ||
+      hasIllegalXmlCharacters(text) ||
+      /[\t\r\n]/u.test(text)
+    ) {
       return refuse("Canonical input accepts a well-formed text replacement.");
     }
     if (from === to && text.length === 0)
@@ -2409,9 +2419,15 @@ class CanonicalSession {
         );
       // Typing over selected cells clears each of them and writes the text
       // into the first, as the editor does.
+      const ranges = canonicalCellSelectionRanges(state.selection);
+      const firstRange = ranges.at(0);
+      const lastRange = ranges.at(-1);
+      if (firstRange === undefined || lastRange === undefined)
+        return refuse("The selected cells contain no editable text.");
       const intents: EditorIntent[] = [];
+      const commentChanges = [];
       let first = true;
-      for (const range of canonicalCellSelectionRanges(state.selection)) {
+      for (const range of ranges) {
         const edges = projection.rangeEdgesAt(range.from, range.to);
         const cellFrom = projection.inputAddressAt(range.from, edges.start);
         if (cellFrom.isErr()) return cellFrom;
@@ -2423,8 +2439,29 @@ class CanonicalSession {
           to: cellTo.value,
           text: first ? text : "",
         });
+        commentChanges.push({
+          from: range.from,
+          to: range.to,
+          text: first ? text : "",
+          markers:
+            edges.start === "beforeMarkers" || edges.end === "afterMarkers"
+              ? ("selected" as const)
+              : ("retained" as const),
+        });
         first = false;
       }
+      if (
+        text !== "" &&
+        !preservesReplacementCommentAlignment({
+          doc: state.doc,
+          source: { from: firstRange.from, to: lastRange.to },
+          changes: commentChanges,
+        })
+      )
+        return refuseUnder(
+          { gap: CANONICAL_GAP.commentReplacementAlignment },
+          "Canonical replacement cannot preserve the aligned comment ranges.",
+        );
       return this.prepareIntents(state, { intents, semantic });
     }
     const range = canonicalSelectionRange(state);
@@ -2448,6 +2485,36 @@ class CanonicalSession {
         ? Result.ok(editCaret)
         : projection.inputAddressAt(inputTo, edges.end);
     if (end.isErr()) return end;
+    if (inputFrom < inputTo && text !== "") {
+      const retirement = planWholeParagraphReplacement({
+        document: this.currentDocument,
+        from: start.value,
+        to: end.value,
+      });
+      if (retirement.isErr()) return refuse(retirement.error.message);
+      if (
+        !preservesReplacementCommentAlignment({
+          doc: state.doc,
+          retiredCommentIds: retirement.value?.commentIds,
+          source: { from: inputFrom, to: inputTo },
+          changes: [
+            {
+              from: inputFrom,
+              to: inputTo,
+              text,
+              markers:
+                edges.start === "beforeMarkers" || edges.end === "afterMarkers"
+                  ? "selected"
+                  : "retained",
+            },
+          ],
+        })
+      )
+        return refuseUnder(
+          { gap: CANONICAL_GAP.commentReplacementAlignment },
+          "Canonical replacement cannot preserve the aligned comment ranges.",
+        );
+    }
     const preSelection = projection.selectionAt(state);
     if (preSelection.isErr()) return preSelection;
     // Just inside a content control's edge, the editor position, not the

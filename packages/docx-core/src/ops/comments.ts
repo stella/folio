@@ -31,6 +31,7 @@ import {
 import {
   asParagraphContent,
   childNodes,
+  type CommentAnchorCarrier,
   compareGaps,
   defaultInsertionGap,
   type Gap,
@@ -476,12 +477,13 @@ const storyCoverageNodes = (
   return out;
 };
 
-/** Source anchor presence also sees records inside atomic field results. */
-const sourceCommentAnchorIds = (document: Document): Set<number> => {
-  const ids = new Set<number>();
+/** Source occurrences, including atomic field results and reused record objects. */
+export const sourceCommentAnchorsIn = (
+  document: Document,
+): readonly CommentAnchorCarrier[] => {
+  const anchors: CommentAnchorCarrier[] = [];
   const visit = (node: InlineNode): void => {
-    const id = anchorId(node);
-    if (id !== undefined) ids.add(id);
+    if (isCommentAnchor(node)) anchors.push(node);
     for (const child of nestedRecords(node) ?? []) visit(child);
     if (node.type === "shape" && node.shape.textBody !== undefined)
       for (const entry of storyCoverageNodes(node.shape.textBody))
@@ -490,8 +492,12 @@ const sourceCommentAnchorIds = (document: Document): Set<number> => {
   for (const story of documentStories(document))
     for (const { node } of storyCoverageNodes(storyBody(document, story)))
       visit(node);
-  return ids;
+  return anchors;
 };
+
+/** Source anchor presence also sees records inside atomic field results. */
+const sourceCommentAnchorIds = (document: Document): Set<number> =>
+  new Set(sourceCommentAnchorsIn(document).map(({ id }) => id));
 
 /** Range coverage in source order; comment anchors and range boundaries are only carriers. */
 const coveredCommentIds = (document: Document): Set<number> => {
