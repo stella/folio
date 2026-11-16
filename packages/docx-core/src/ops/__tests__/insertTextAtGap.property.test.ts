@@ -1,3 +1,4 @@
+import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
@@ -334,9 +335,8 @@ describe("typing at a gap", () => {
           fc.nat(),
           (texts, leafIndex, interiorOffset) => {
             const index = leafIndex % texts.length;
-            const text = texts[index];
-            if (text === undefined)
-              throw new Error("The selected text leaf exists.");
+            const text =
+              texts[index] ?? panic("The selected text leaf exists.");
             const cut = 1 + (interiorOffset % (text.length - 1));
             const offset =
               texts
@@ -355,7 +355,7 @@ describe("typing at a gap", () => {
               { offset, zeroWidthBefore: 0 },
               "inherit",
             );
-            if (typeof applied === "string") throw new Error(applied);
+            if (typeof applied === "string") panic(applied);
             expect(paragraphOf(applied.document, story)).toStrictEqual([
               {
                 type: "run",
