@@ -11,6 +11,12 @@
       "path": "25:4:3:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:6:5:5:5:6:7:5:6:5:5:7:5:5:5:5:5:5:5:6",
       "note": "A suggested removal of the last paragraph joins it with the one before when accepted: the same text, the later paragraph's id.",
       "date": "2026-11-15"
+    },
+    {
+      "seed": -529709820,
+      "path": "28:0:0:0:0:0:0:2:1:1:1:1:1:1:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:3:2:2:0:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:2:2",
+      "note": "A suggested paragraph inserted after the body paragraph before a terminal table retains the source mark so rejection restores the original container.",
+      "date": "2026-11-16"
     }
   ]
 }

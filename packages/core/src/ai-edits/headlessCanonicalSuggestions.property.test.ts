@@ -273,6 +273,61 @@ describe("a canonical reviewer's pending suggestions", () => {
     ).toBe("suggested");
   });
 
+  test("a suggestion after the body paragraph before a terminal table saves and restages", async () => {
+    const document = {
+      package: {
+        document: {
+          content: [
+            { type: "paragraph", paraId: "00000001", content: [] },
+            {
+              type: "table",
+              columnWidths: [2400, 2400],
+              rows: [
+                {
+                  type: "tableRow",
+                  preservedAttributes: [{ name: "rsidTr", value: "00ABCDEF" }],
+                  cells: [
+                    {
+                      type: "tableCell",
+                      content: [
+                        { type: "paragraph", paraId: "00000002", content: [] },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    } satisfies Document;
+    const buffer = await ingested(await createDocx(document));
+    // The literal draw wraps over the two actual saved blocks and targets the body.
+    const draw = {
+      kind: "insertAfterBlock",
+      block: 2,
+      word: 0,
+      text: "revised",
+    } as const satisfies OperationDraw;
+    const reviewer = await open(buffer);
+    const operation = operationFor(reviewer, draw);
+    expect(operation?.type).toBe("insertAfterBlock");
+    if (operation?.type !== "insertAfterBlock")
+      throw new TypeError("The real draw resolves its insertion");
+    expect(operation.blockId).toBe("00000001");
+    const before = reviewer.toDocument();
+    const applied = apply(reviewer, operation, "suggested");
+    expect(applied.applied).toHaveLength(1);
+    expect(applied.undoHandle).not.toBeNull();
+    if (applied.undoHandle === null)
+      throw new TypeError("The actual insertion has its undo handle");
+    expect(reviewer.undoDocumentOperations(applied.undoHandle)).toMatchObject({
+      status: "undone",
+    });
+    expect(reviewer.toDocument()).toStrictEqual(before);
+    expect(await suggestionLaws(buffer, draw)).toBe("suggested");
+  });
+
   test(
     "generated suggestions save, restage, reject and accept as the laws say",
     async () => {
