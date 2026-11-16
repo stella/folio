@@ -4068,18 +4068,24 @@ const precededByParagraph = (at: ResolvedPos, paragraphTypeName: string) =>
  * emptied. Of a run of removals that is the leftmost, the one a run keeps
  * when nothing precedes it.
  *
- * Returns whether the document changed.
+ * Returns restored paragraphs and the deletions whose final joins they undo.
  */
+type RestoredDirectFinalDeletion = {
+  paragraph: PMNode;
+  identity: PMNode;
+  deletionIds: string[];
+};
+
 const withSettledDirectFinalDeletions = (
   tr: Transaction,
   deletions: readonly DirectFinalDeletion[],
-): boolean => {
+): Map<string, PMNode> => {
   const edits: (
     | { kind: "emptied"; at: number }
-    | { kind: "restored"; at: number; paragraph: PMNode }
+    | { kind: "restored"; at: number; paragraph: PMNode; identity: PMNode }
   )[] = [];
   /** Per container end, the paragraph to end it with again: the last one removed. */
-  const restored = new Map<number, PMNode>();
+  const restored = new Map<number, RestoredDirectFinalDeletion>();
   for (const deletion of deletions) {
     const mapped = tr.mapping
       .slice(deletion.mappedFrom)
@@ -4098,13 +4104,18 @@ const withSettledDirectFinalDeletions = (
       containerEndsAt($end, deletion.paragraph.type.name) &&
       $end.nodeBefore?.type.spec["tableRole"] === "table"
     ) {
-      restored.set(at, deletion.paragraph);
+      const deletionIds = restored.get(at)?.deletionIds ?? [];
+      deletionIds.push(deletion.operationId);
+      restored.set(at, {
+        paragraph: deletion.paragraph,
+        identity: deletion.identity,
+        deletionIds,
+      });
     }
   }
-  for (const [at, paragraph] of restored) {
-    edits.push({ kind: "restored", at, paragraph });
+  for (const [at, { paragraph, identity }] of restored) {
+    edits.push({ kind: "restored", at, paragraph, identity });
   }
-  let changed = false;
   for (const edit of edits.toSorted((left, right) => right.at - left.at)) {
     if (edit.kind === "restored") {
       const { paragraph } = edit;
@@ -4112,7 +4123,7 @@ const withSettledDirectFinalDeletions = (
         edit.at,
         paragraph.type.create(paragraph.attrs, null, paragraph.marks),
       );
-      changed = true;
+      tr = withIdentityOf({ tr, position: edit.at, source: edit.identity });
       continue;
     }
     const node = tr.doc.nodeAt(edit.at);
@@ -4125,9 +4136,11 @@ const withSettledDirectFinalDeletions = (
       continue;
     }
     tr.delete(edit.at, edit.at + node.nodeSize);
-    changed = true;
   }
-  return changed;
+  const identities = new Map<string, PMNode>();
+  for (const { deletionIds, identity } of restored.values())
+    for (const id of deletionIds) identities.set(id, identity);
+  return identities;
 };
 
 type PendingJoin = { source: number; end: PendingJoinEnd };
@@ -8214,7 +8227,12 @@ const applyFolioAIEditOperationsInternal = ({
     });
   }
 
-  if (withSettledDirectFinalDeletions(tr, directFinalDeletions)) {
+  const stepsBeforeFinalDeletions = tr.steps.length;
+  const restoredFinalDeletions = withSettledDirectFinalDeletions(
+    tr,
+    directFinalDeletions,
+  );
+  if (tr.steps.length > stepsBeforeFinalDeletions) {
     markStructuralChange(tr);
   }
   removeRowsWithoutCellsAfterBatch(tr, emptiedRows);
@@ -8425,6 +8443,9 @@ const applyFolioAIEditOperationsInternal = ({
         (typeof directJoinIdentities)[number]
       >();
       for (const pending of directJoinIdentities) {
+        // Restoring the original tail after a table undoes every final join
+        // in that removed run; its predecessor keeps its own mark and id.
+        if (restoredFinalDeletions.has(pending.operationId)) continue;
         const mapped = tr.mapping
           .slice(pending.mappedFrom)
           .mapResult(pending.position, 1);
@@ -8461,8 +8482,11 @@ const applyFolioAIEditOperationsInternal = ({
         }
         return !node.isTextblock;
       });
-      for (const [position, pending] of transfers) {
-        const receipt = applied.find(({ id }) => id === pending.operationId);
+      const settledIdentities = new Map(restoredFinalDeletions);
+      for (const pending of transfers.values())
+        settledIdentities.set(pending.operationId, pending.source);
+      for (const [operationId, source] of settledIdentities) {
+        const receipt = applied.find(({ id }) => id === operationId);
         if (!receipt) panic("A deferred direct join lost its applied receipt.");
         // A later insertion can leave the former predecessor standing apart.
         const outcome = receipt.paragraphIdentity;
@@ -8475,12 +8499,13 @@ const applyFolioAIEditOperationsInternal = ({
             blockId: outcome.blockId,
           };
         if (outcome === undefined) {
-          const blockId: unknown = pending.source.attrs["paraId"];
+          const blockId: unknown = source.attrs["paraId"];
           if (typeof blockId === "string")
             receipt.paragraphIdentity = { type: "retained", blockId };
         }
-        tr = withIdentityOf({ tr, position, source: pending.source });
       }
+      for (const [position, pending] of transfers)
+        tr = withIdentityOf({ tr, position, source: pending.source });
     }
     if (tr.docChanged) view.dispatch(tr);
   }
