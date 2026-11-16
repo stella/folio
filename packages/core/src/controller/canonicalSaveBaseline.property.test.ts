@@ -322,7 +322,8 @@ test("a text edit after a structural save takes the text patch again", async () 
   ]);
 });
 
-test("a save baseline releases the one before it", async () => {
+/** Leave save snapshots and serializer/parse frames outside the GC observer. */
+const produceSaveBaselines = async () => {
   const session = createCanonicalSession(
     await parseDocx(await sourcePackage(), { preloadFonts: false }),
   ).unwrap();
@@ -348,15 +349,28 @@ test("a save baseline releases the one before it", async () => {
   for (let round = 0; round < 4; round++)
     // oxlint-disable-next-line no-await-in-loop -- each save rebases the next
     baselines.push(await saveOnce(round));
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  Bun.gc(true);
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  Bun.gc(true);
-  // Only the latest baseline is still held.
-  expect(baselines.map((baseline) => baseline.deref() !== undefined)).toEqual([
-    false,
-    false,
-    false,
-    true,
-  ]);
+  return { session, baselines };
+};
+
+test("a save baseline releases the one before it", async () => {
+  const { session, baselines } = await produceSaveBaselines();
+  const expected = [false, false, false, true];
+  const deadline = performance.now() + 1000;
+  let retained: boolean[];
+  do {
+    // WeakRef reads keep targets alive for the current job. Observe only after
+    // another task and full collection; never repeat the save producer.
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    Bun.gc(true);
+    retained = baselines.map((baseline) => baseline.deref() !== undefined);
+  } while (
+    retained.some((alive, index) => alive !== expected[index]) &&
+    performance.now() < deadline
+  );
+  // Only the latest baseline is still held, within the bounded GC deadline.
+  expect(retained).toEqual(expected);
+  // Keep the real owner live through collection, not a temporary local buffer.
+  expect(session.captureSaveSnapshot().saveBaseline?.buffer).toBe(
+    baselines.at(-1)?.deref(),
+  );
 });
