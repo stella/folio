@@ -35,6 +35,8 @@ import { FolioAIEditOperation } from '@stll/folio-core/ai-edits';
 import { FolioAIEditSnapshot } from '@stll/folio-core/ai-edits';
 import { FolioAnonymizationMatch } from '@stll/folio-core/controller/anonymizationHighlights';
 import { FolioAnonymizationTerm } from '@stll/folio-core/controller/anonymizationHighlights';
+import { FolioAutocompleteApi } from '@stll/folio-core/controller/autocompleteSuggestion';
+import { FolioAutocompleteState } from '@stll/folio-core/controller/autocompleteSuggestion';
 import { FolioCommentAnchor } from '@stll/folio-core/ai-edits';
 import { FolioDocumentNavigationTarget } from '@stll/folio-core/ai-edits';
 import { FolioDocumentOperationBatch } from '@stll/folio-core/server';
@@ -196,6 +198,7 @@ export type DocxEditorRef = {
     getPageText: (page: number) => string | null;
     getTargetPage: (target: FolioDocumentNavigationTarget, snapshot?: FolioAIEditSnapshot) => number | null;
     getPositionPage: (position: TextPosition) => number | null;
+    autocomplete: FolioAutocompleteApi;
     getAnonymizationMatches: () => readonly FolioAnonymizationMatch[];
     getBlockRect: (blockId: string) => BlockRect | null;
     getBlockRects: (blockIds: readonly string[]) => ReadonlyMap<string, BlockRect>;
