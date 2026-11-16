@@ -2263,8 +2263,10 @@ const resolveList = ({
     const rightPiece = out[recorded]?.node;
     // A recorded source cut already meeting its matching pieces rejoins
     // them here. A marker-only piece is an authored record, not a boundary
-    // kept outside those records by an earlier rejection.
+    // kept outside those records by an earlier rejection. Explicit kept
+    // provenance still owns its boundaries, even beside matching pieces.
     if (
+      !exactKept.has(recorded) &&
       leftPiece !== undefined &&
       rightPiece !== undefined &&
       alikeDepth(leftPiece, rightPiece) >= depth
