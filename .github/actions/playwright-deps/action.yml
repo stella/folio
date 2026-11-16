@@ -61,30 +61,34 @@ runs:
         archives="$HOME/.cache/playwright-apt"
         mkdir -p "$archives/partial"
         # apt installs from the cached packages and keeps what it downloads
-        # beside them for the cache to save. A retry waits for the lock a
-        # stopped attempt held instead of failing on it.
-        printf 'Dir::Cache::Archives "%s";\nDPkg::Lock::Timeout "60";\n' "$archives" |
+        # beside them for the cache to save. Bound both connection and stalled
+        # data waits so APT can try the runner's existing HTTPS mirror fallback.
+        printf 'Dir::Cache::Archives "%s";\nDPkg::Lock::Timeout "60";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\nAcquire::Retries "1";\n' "$archives" |
           sudo tee /etc/apt/apt.conf.d/99playwright-archives >/dev/null
 
     # The only step that downloads browsers. A cold install finishes in a few
     # minutes, so an attempt that runs past ATTEMPT_SECONDS is stalled: it is
-    # stopped and the download is tried once more. A second failure fails the
-    # step instead of holding the job until its own limit.
+    # stopped and setup fails. Only a completed failure is tried once more;
+    # sudo may have moved APT descendants outside the install's process group,
+    # so a timed-out attempt must not overlap a second package installer.
     - name: Install Playwright browsers
       shell: bash
       env:
         BROWSERS: ${{ inputs.browsers }}
         RUNNER_OS_NAME: ${{ runner.os }}
         ATTEMPT_SECONDS: "480"
+        KILL_GRACE_SECONDS: "10"
       run: |
         flags=()
         if [ "$RUNNER_OS_NAME" = "Linux" ]; then
           flags=(--with-deps)
         fi
 
-        # Each attempt runs in its own process group, so the limit also stops
-        # the download and package processes the install started.
+        # Stop the owned process group on timeout. This cannot guarantee that
+        # privileged processes in a separate sudo PTY session have stopped.
         attempt() {
+          local attempt_state
+          attempt_state=$(mktemp -d) || return
           set -m
           # shellcheck disable=SC2086 # one browser name per word
           bunx playwright install "${flags[@]}" $BROWSERS &
@@ -95,9 +99,12 @@ runs:
             sleep "$ATTEMPT_SECONDS" &
             timer=$!
             wait "$timer"
+            # Once expiry starts, installer exit must not cancel escalation.
+            trap '' TERM
+            touch "$attempt_state/timed-out"
             echo "::warning::Playwright install ran past ${ATTEMPT_SECONDS}s; stopping it"
             kill -TERM -- "-$install" 2>/dev/null || true
-            sleep 10 &
+            sleep "$KILL_GRACE_SECONDS" &
             timer=$!
             wait "$timer"
             kill -KILL -- "-$install" 2>/dev/null || true
@@ -107,10 +114,21 @@ runs:
           wait "$install" || status=$?
           kill "$watchdog" 2>/dev/null || true
           wait "$watchdog" 2>/dev/null || true
+          if [ -f "$attempt_state/timed-out" ]; then
+            status=124
+          fi
+          rm -r "$attempt_state"
           return "$status"
         }
 
-        if ! attempt; then
+        if attempt; then
+          :
+        else
+          status=$?
+          if [ "$status" -eq 124 ]; then
+            echo "::error::Playwright install timed out; refusing to start another package installer"
+            exit "$status"
+          fi
           echo "::warning::Playwright install failed; trying the download once more"
           attempt
         fi
