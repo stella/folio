@@ -1407,7 +1407,7 @@ const blockInsertionPlace = (
   if (table === null && side === "before") {
     // Put before a paragraph, a block lands before the blocks right before
     // it that accepting removes whole, at the start of its gap, as the
-    // default engine puts it: accepted, both sides of those blocks are one
+    // legacy engine puts it: accepted, both sides of those blocks are one
     // place, and a block put after one of them follows this one there.
     const gap = insertionGap(projection.doc, paragraph.start - 1, "before");
     if (gap < paragraph.start - 1) {
@@ -1662,7 +1662,7 @@ const goesWholeOnAcceptance = (paragraph: PMNode): boolean =>
 /**
  * Where an insertion beside `paragraph` goes, read as the joined paragraph a
  * pending join makes of it in the document the batch read
- * (`pendingJoinParagraphs`, which the default engine places by too): after
+ * (`pendingJoinParagraphs`, which the legacy engine places by too): after
  * the join's last paragraph, or before its first, copying the properties of
  * the paragraph the join leaves, which the joined paragraph has. The batch's
  * other operations do not move it: a split of the paragraph the join leaves
@@ -1703,7 +1703,7 @@ const besidePendingJoin = ({
 };
 
 /**
- * One new paragraph beside the anchor, as the default engine writes it: the
+ * One new paragraph beside the anchor, as the legacy engine writes it: the
  * anchor's stated paragraph properties unless `inheritFormatting` is false,
  * with the operation's own on top, holding the text as one plain run.
  */
@@ -1744,7 +1744,7 @@ const resolveBlockInsertion = ({
       "unsupportedBlock",
       "Canonical block insertion requires plain text.",
     );
-  // Each line its own paragraph, blank lines dropped, as the default engine
+  // Each line its own paragraph, blank lines dropped, as the legacy engine
   // splits them; inline, line breaks stay in the one paragraph. A tab is a
   // tab element either way.
   const split =
@@ -1872,7 +1872,7 @@ const resolveBlockInsertion = ({
   ];
   const { position } = place;
   // A comment covers the inserted text, so an insertion with no text has
-  // nothing for it to cover, as the default engine finds.
+  // nothing for it to cover, as the legacy engine finds.
   if (
     operation.comment !== undefined &&
     texts.every((line) => line.length === 0)
@@ -2440,7 +2440,7 @@ type InsertionIntentsAsItRunsOptions = {
  * A block insertion's intents with the properties it copies read from
  * `document`, the batch as it stands when the insertion runs: an edit of
  * the copied paragraph the batch order runs first is in the copy, as the
- * default engine copies it, and a paragraph the batch joined away is copied
+ * legacy engine copies it, and a paragraph the batch joined away is copied
  * as the paragraph that now holds it.
  */
 const insertionIntentsAsItRuns = ({
@@ -2855,7 +2855,7 @@ type ResolveTableInsertionOptions = {
 };
 
 /**
- * A table beside the anchor, built as the default engine builds it (from the
+ * A table beside the anchor, built as the legacy engine builds it (from the
  * cell texts, `buildTableNode`, or the parties, `buildSignatureTableNode`)
  * and placed where it places it. Beside a paragraph it goes as a paragraph
  * beside the anchor does (`besidePendingJoin`), or beside the paragraph as
@@ -2888,7 +2888,7 @@ const resolveTableInsertion = ({
     if (operation.parties.length === 0)
       return skipAlike("emptyOperation", "A signature table needs a party.");
     // A comment across the whole table would cross its cells, as the
-    // default engine finds.
+    // legacy engine finds.
     if (operation.comment !== undefined)
       return skipAlike(
         "unsupportedBlock",
@@ -2977,7 +2977,7 @@ const resolveTableInsertion = ({
         PENDING_JOIN_INSERTION_REFUSAL.reason,
         PENDING_JOIN_INSERTION_REFUSAL.message,
       );
-    // Beside the outermost table, touching it, as the default engine puts
+    // Beside the outermost table, touching it, as the legacy engine puts
     // it: addressed by a paragraph of that table's own.
     const outerTable = projection.doc.nodeAt(outer.before);
     const blockId =
@@ -3178,7 +3178,7 @@ const holdsOmittedSlot = (
 /**
  * Whether a column inserted at the grid index runs through a cell spanning
  * both its sides, so that the cell would widen; a slot a row omits grows
- * instead, as the default engine grows it.
+ * instead, as the legacy engine grows it.
  */
 const columnInsertionWidensCell = (table: PMNode, columnIndex: number) => {
   const map = TableMap.get(table);
@@ -3259,9 +3259,9 @@ type ResolveTableStructureOptions = {
   tracked: boolean;
   /** Resolve another paragraph the operation names, in the same story. */
   paragraphOf: (blockId: string) => ProjectedParagraph | undefined;
-  /** The default engine skips an operation whose block is in no table alike. */
+  /** The legacy engine skips an operation whose block is in no table alike. */
   notInTable: () => Result<never, CanonicalPublicOperationResolutionError>;
-  /** A skip the default engine gives alike: no capability is missing. */
+  /** A skip the legacy engine gives alike: no capability is missing. */
   skipAlike: (
     reason: FolioAIEditSkipReason,
     message: string,
@@ -3280,7 +3280,7 @@ type ResolveTableStructureOptions = {
  * A table, row or column change, addressed through the paragraph the
  * operation names, as the table edit the editor's own command lowers to. The
  * table it acts on is the innermost one holding that paragraph, as in the
- * default engine. A new row is the row the default engine builds
+ * legacy engine. A new row is the row the legacy engine builds
  * (`applyTableRowInsertion`, from the row beside it and the cell texts),
  * read off the table it leaves; the engine records it, tracked or not.
  */
@@ -3496,7 +3496,7 @@ const resolveTableStructure = ({
           story,
           blockId,
           column: insertion.columnIndex,
-          // The neighbour's width, as the default engine gives it; a table
+          // The neighbour's width, as the legacy engine gives it; a table
           // that states no grid keeps none, whatever the width.
           width: insertedColumnWidth(row.table, insertion.columnIndex) ?? 1,
           // The columns of one operation share the table's one grid change.
@@ -3681,7 +3681,7 @@ const resolveTableStructure = ({
 };
 
 /**
- * The operations a canonical suggestion can carry: the default engine's;
+ * The operations a canonical suggestion can carry: the legacy engine's;
  * splits and merges, which the canonical session records as tracked paragraph
  * marks stamped with the suggestion; and comments, which it holds as proposed
  * by the suggestion until it is accepted or rejected.
@@ -4129,7 +4129,7 @@ class CanonicalPublicOperationResolutionError extends CanonicalPublicOperationRe
   detail: string | undefined;
   /**
    * The capability the refusal waits for, when it is not the compiler's
-   * inline one; `null` for an operation the default engine skips alike, such
+   * inline one; `null` for an operation the legacy engine skips alike, such
    * as a row operation whose block is in no table.
    */
   gap?: CanonicalGap | null;
@@ -4454,7 +4454,7 @@ const NO_BESIDE_DELETIONS: BesideDeletions = {
 
 /**
  * The stated numbering a request names, minting its new list once for the
- * operation, as the default engine allocates one instance per operation.
+ * operation, as the legacy engine allocates one instance per operation.
  */
 const statedNumbering = (
   numbering: FolioAIListNumbering | undefined,
@@ -5020,7 +5020,7 @@ export class CanonicalPublicOperations {
         skip(operation.id, "unsupportedMode");
         continue;
       }
-      // The same reference check the default engine runs, in the same
+      // The same reference check the legacy engine runs, in the same
       // place: before the operation compiles.
       const referenceSet = references();
       // Kept references stand as they are spelled: a heading the document
@@ -5148,7 +5148,7 @@ export class CanonicalPublicOperations {
       admit(candidate);
     }
     // A move id names one relocation, a move only when it reaches exactly one
-    // source and one destination, as the default engine pairs them; an
+    // source and one destination, as the legacy engine pairs them; an
     // unpaired id records a plain insertion or deletion and is reported.
     const moveSides = new Map<string, { from: number; to: number }>();
     for (const { operation } of resolved) {
@@ -5595,7 +5595,7 @@ export class CanonicalPublicOperations {
             });
           }
           // A tracked edit's comment covers what the edit changed, from its
-          // first revision to its last, as the default engine anchors it.
+          // first revision to its last, as the legacy engine anchors it.
           const changed =
             batch.mode === "direct"
               ? undefined
@@ -7006,7 +7006,7 @@ export class CanonicalPublicOperations {
       noteReferences,
     });
     // A replacement that names a style the paragraph does not have restyles
-    // it, as the default engine does, even when its words stay the same.
+    // it, as the legacy engine does, even when its words stay the same.
     const restyles =
       operation.type === "replaceBlock" &&
       operation.styleId !== undefined &&
@@ -7835,7 +7835,7 @@ export class CanonicalPublicOperations {
       // The separator goes in at the first paragraph's end, before the join.
       // Where only paragraphs pending deletion follow, or ones the batch
       // deletes and places nothing beside, accepting leaves no words after it
-      // to separate, as the default engine reads it.
+      // to separate, as the legacy engine reads it.
       const vanishing = new Set(
         [...besideDeletions.deleted].filter(
           (id) =>
@@ -7884,7 +7884,7 @@ export class CanonicalPublicOperations {
     ) {
       if (tracked && !suggested && end > start) deletionSpans = [range];
       intents.push(intent);
-      // Each half's properties, as the default engine sets them once the
+      // Each half's properties, as the legacy engine sets them once the
       // split is made: the first half keeps the paragraph's identity, the
       // second takes the new one.
       for (const [half, properties] of [

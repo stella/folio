@@ -18,6 +18,7 @@ import {
 import type { DocxCompatibility } from "@stll/folio-core/docx/compatibility";
 import { DocumentLoaderManager } from "@stll/folio-core/managers/DocumentLoaderManager";
 import type { DocumentLoadState } from "@stll/folio-core/managers/DocumentLoaderManager";
+import type { EditorSession } from "@stll/folio-core/types/canonicalCapabilities";
 import type { Document } from "@stll/folio-core/types/document";
 import type { ReadonlyDocument } from "@stll/folio-core/types/documentModel";
 import { getDocumentLoadSource } from "@stll/folio-core/utils/documentLoaderBehavior";
@@ -38,7 +39,7 @@ type UseDocumentLoaderParams = {
   initialDocument: Document | null | undefined;
   /** Password for Agile-encrypted .docx files (Office 2010+). */
   password?: string | undefined;
-  experimentalSession?: "canonical";
+  experimentalSession?: EditorSession;
   /** History instance — used to reset/push document state. */
   history: UseHistoryReturn<ReadonlyDocument | null>;
   /** Called when an unrecoverable parse error occurs. */

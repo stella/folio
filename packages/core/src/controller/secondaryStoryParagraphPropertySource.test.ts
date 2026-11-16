@@ -267,6 +267,7 @@ describe("secondary-story paragraph property ownership", () => {
         },
       };
       const manager = createHeaderFooterEditorManager({
+        getExperimentalSession: () => "legacy",
         createView: createTestEditorView,
         getDocument: () => document,
         readCanonicalDocument: () => null,
@@ -321,6 +322,7 @@ describe("secondary-story paragraph property ownership", () => {
         },
       };
       const manager = createHeaderFooterEditorManager({
+        getExperimentalSession: () => "legacy",
         createView: createTestEditorView,
         getDocument: () => document,
         readCanonicalDocument: () => null,
@@ -380,6 +382,7 @@ describe("secondary-story paragraph property ownership", () => {
         },
       };
       const manager = createNoteEditorManager({
+        getExperimentalSession: () => "legacy",
         createView: createTestEditorView,
         getDocument: () => document,
         readCanonicalDocument: () => null,
@@ -431,6 +434,7 @@ describe("secondary-story paragraph property ownership", () => {
         },
       };
       const manager = createNoteEditorManager({
+        getExperimentalSession: () => "legacy",
         createView: createTestEditorView,
         getDocument: () => document,
         readCanonicalDocument: () => null,
