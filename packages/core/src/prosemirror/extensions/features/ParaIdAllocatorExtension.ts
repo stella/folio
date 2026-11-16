@@ -141,6 +141,25 @@ type ParagraphOccurrence = {
 const isUsableParaId = (value: unknown): value is string =>
   typeof value === "string" && value.length > 0 && value !== "00000000";
 
+/** Omitted grid cells render absent positions and own no package paragraphs. */
+const isOmittedGridCell = (node: PMNode): boolean =>
+  (node.type.spec.tableRole === "cell" ||
+    node.type.spec.tableRole === "header_cell") &&
+  (node.attrs["_omittedGridSlot"] === "before" ||
+    node.attrs["_omittedGridSlot"] === "after");
+
+const visitAuthoredParagraphs = (
+  doc: PMNode,
+  visit: (node: PMNode, pos: number) => void,
+): void => {
+  doc.descendants((node, pos) => {
+    if (isOmittedGridCell(node)) return false;
+    if (node.type.name !== "paragraph") return true;
+    visit(node, pos);
+    return false;
+  });
+};
+
 const collectParagraphPropertySourceSeed = (
   doc: PMNode,
 ): ParagraphPropertySourceSeed => {
@@ -149,15 +168,11 @@ const collectParagraphPropertySourceSeed = (
     return { contract: null, tokens: new Set() };
   }
   const counts = new Map<string, number>();
-  doc.descendants((node) => {
-    if (node.type.name !== "paragraph") {
-      return true;
-    }
+  visitAuthoredParagraphs(doc, (node) => {
     const token = getProseParagraphPropertySourceToken(node);
     if (paragraphPropertySourceTokenMatchesContract(token, contract)) {
       counts.set(token, (counts.get(token) ?? 0) + 1);
     }
-    return false;
   });
   return {
     contract,
@@ -187,10 +202,7 @@ export const mapParagraphKeepers = (
   sourceSeed: ParagraphPropertySourceSeed,
 ): MappedParagraphKeepers => {
   const paragraphs: { pos: number; id: unknown; token: unknown }[] = [];
-  oldDoc.descendants((node, pos) => {
-    if (node.type.name !== "paragraph") {
-      return true;
-    }
+  visitAuthoredParagraphs(oldDoc, (node, pos) => {
     const id = node.attrs["paraId"];
     const token = getProseParagraphPropertySourceToken(node);
     if (
@@ -199,7 +211,6 @@ export const mapParagraphKeepers = (
     ) {
       paragraphs.push({ pos, id, token });
     }
-    return false;
   });
 
   // Every candidate goes through the batch at once: its owner position, and
@@ -259,10 +270,7 @@ const collectParagraphCensus = (
     getProseDocumentParagraphPropertySourceContract(doc) ===
       sourceSeed.contract;
 
-  doc.descendants((node, pos) => {
-    if (node.type.name !== "paragraph") {
-      return true;
-    }
+  visitAuthoredParagraphs(doc, (node, pos) => {
     const occurrence = { pos, attrs: node.attrs };
     census.paragraphs.set(pos, occurrence);
     const id = node.attrs["paraId"];
@@ -295,7 +303,6 @@ const collectParagraphCensus = (
         }
       }
     }
-    return false;
   });
   return census;
 };
@@ -429,16 +436,12 @@ const collectParagraphPropertySourceUpdates = (
 const planLoadParaIds = (doc: PMNode): (string | null)[] => {
   const paragraphs: PMNode[] = [];
   const taken = new Set<string>();
-  doc.descendants((node) => {
-    if (node.type.name !== "paragraph") {
-      return true;
-    }
+  visitAuthoredParagraphs(doc, (node) => {
     paragraphs.push(node);
     const id = node.attrs["paraId"];
     if (isUsableParaId(id)) {
       taken.add(id);
     }
-    return false;
   });
 
   const kept = new Set<string>();
@@ -489,6 +492,10 @@ export const ensureParaIdsInDoc = (doc: PMNode): PMNode => {
     let changed = false;
     const children: PMNode[] = [];
     parent.forEach((child) => {
+      if (isOmittedGridCell(child)) {
+        children.push(child);
+        return;
+      }
       let next = child;
       if (child.type.name === "paragraph") {
         const minted = plan[ordinal];
@@ -533,10 +540,7 @@ export const ensureParaIdsInState = (state: EditorState): EditorState => {
   const tr = state.tr;
   let ordinal = 0;
   // Markup-only steps keep every position, so the old doc's positions hold.
-  state.doc.descendants((node, pos) => {
-    if (node.type.name !== "paragraph") {
-      return true;
-    }
+  visitAuthoredParagraphs(state.doc, (node, pos) => {
     const minted = plan[ordinal];
     ordinal += 1;
     if (minted !== null && minted !== undefined) {
@@ -547,7 +551,6 @@ export const ensureParaIdsInState = (state: EditorState): EditorState => {
         transaction: tr,
       });
     }
-    return false;
   });
   ignoreTrackedChanges(tr);
   tr.setMeta(paraIdAllocatorKey, "allocated");

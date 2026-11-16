@@ -7,7 +7,6 @@
 
 import { describe, expect, test } from "bun:test";
 import { EditorState, TextSelection } from "prosemirror-state";
-import type { Command } from "prosemirror-state";
 
 import {
   createCanonicalSession,
@@ -92,18 +91,20 @@ const documentOf = (rows: readonly TableRow[]): Document => ({
   },
 });
 
-const fillCell = (
-  singletonManager.requireCommand("setCellFillColor" as never) as (
-    color: string,
-  ) => Command
-)("FFCC00");
+const fillCell = singletonManager.requireCommand("setCellFillColor")("FFCC00");
 
 /** Every cell's first text position, so each cell in turn holds the caret. */
 const cellCarets = (state: EditorState) => {
-  const carets: number[] = [];
+  const carets: { at: number; type: "authored" | "omitted" }[] = [];
   state.doc.descendants((node, position) => {
     if (node.type.name === "tableCell" || node.type.name === "tableHeader") {
-      carets.push(position + 2);
+      carets.push({
+        at: position + 2,
+        type:
+          node.attrs["_omittedGridSlot"] == null
+            ? ("authored" as const)
+            : ("omitted" as const),
+      });
       return false;
     }
     return true;
@@ -113,44 +114,111 @@ const cellCarets = (state: EditorState) => {
 
 describe("a canonical edit inside an irregular table", () => {
   for (const [name, rows] of Object.entries(TABLES))
-    test(`${name} publishes through the editor's table repair`, async () => {
-      const source = await parseDocx(
-        (
-          await prepareCanonicalDocxInput(await createDocx(documentOf(rows)))
-        ).unwrap(),
-        { preloadFonts: false, detectVariables: false },
-      );
-      const session = createCanonicalSession(source).unwrap();
-      let state = EditorState.create({
-        schema,
-        doc: session.projection.doc,
-        plugins: [...singletonManager.getPlugins()],
-      });
-      const carets = cellCarets(state);
-      expect(carets.length).toBeGreaterThan(0);
-      for (const caret of carets) {
-        const placed = state.apply(
-          state.tr.setSelection(TextSelection.create(state.doc, caret)),
+    for (const mode of ["direct", "suggesting"] as const)
+      test(`${name} publishes through the editor's table repair (${mode})`, async () => {
+        const source = await parseDocx(
+          (
+            await prepareCanonicalDocxInput(await createDocx(documentOf(rows)))
+          ).unwrap(),
+          { preloadFonts: false, detectVariables: false },
         );
-        const intents = getCanonicalCommandIntents(fillCell, placed);
-        expect(intents).toBeDefined();
-        if (intents === undefined) return;
-        const commit = prepareCanonicalCommands(session, placed, intents);
-        expect(commit.isErr() ? commit.error.message : "prepared").toBe(
-          "prepared",
-        );
-        if (commit.isErr()) return;
-        const published = publishCanonicalProjection({
-          state: placed,
-          commit: commit.value,
-          session,
+        const session = createCanonicalSession(source).unwrap();
+        if (mode === "suggesting")
+          session.setMode({ type: "suggesting", author: "Reviewer" });
+        let state = EditorState.create({
+          schema,
+          doc: session.projection.doc,
+          plugins: [...singletonManager.getPlugins()],
         });
-        expect(published.isErr() ? published.error.message : "published").toBe(
-          "published",
-        );
-        if (published.isErr()) return;
-        state = published.value.state;
-        expect(state.doc.eq(session.projection.doc)).toBe(true);
-      }
-    });
+        const carets = cellCarets(state);
+        expect(carets.length).toBeGreaterThan(0);
+        for (const caret of carets) {
+          const placed = state.apply(
+            state.tr.setSelection(TextSelection.create(state.doc, caret.at)),
+          );
+          const intents = getCanonicalCommandIntents(fillCell, placed);
+          expect(intents).toBeDefined();
+          if (intents === undefined) return;
+          const before = session.document;
+          const version = session.version;
+          const canUndo = session.canUndo;
+          const commit = prepareCanonicalCommands(session, placed, intents);
+          if (caret.type === "omitted") {
+            expect(commit.isErr()).toBe(true);
+            expect(session.document).toBe(before);
+            expect(session.version).toBe(version);
+            expect(session.canUndo).toBe(canUndo);
+            expect(placed.doc.eq(session.projection.doc)).toBe(true);
+            state = placed;
+            continue;
+          }
+          expect(commit.isErr() ? commit.error.message : "prepared").toBe(
+            "prepared",
+          );
+          if (commit.isErr()) return;
+          const published = publishCanonicalProjection({
+            state: placed,
+            commit: commit.value,
+            session,
+          });
+          expect(
+            published.isErr() ? published.error.message : "published",
+          ).toBe("published");
+          if (published.isErr()) return;
+          state = published.value.state;
+          expect(state.doc.eq(session.projection.doc)).toBe(true);
+          const edited = session.document;
+          const after = state.doc;
+          const tokens = (doc: typeof state.doc) => {
+            const owners: { id: unknown; token: unknown }[] = [];
+            doc.descendants((node) => {
+              if (
+                node.type.name === "tableCell" &&
+                node.attrs["_omittedGridSlot"] != null
+              ) {
+                node.descendants((child) => {
+                  if (child.type.name === "paragraph") {
+                    expect(child.attrs["paraId"]).toBeNull();
+                    expect(child.attrs["_docxParagraphSourceToken"]).toBeNull();
+                  }
+                });
+                return false;
+              }
+              if (node.type.name === "paragraph")
+                owners.push({
+                  id: node.attrs["paraId"],
+                  token: node.attrs["_docxParagraphSourceToken"],
+                });
+              return true;
+            });
+            for (const { id, token } of owners) {
+              expect(typeof id).toBe("string");
+              expect(typeof token).toBe("string");
+            }
+            expect(new Set(owners.map(({ id }) => id)).size).toBe(
+              owners.length,
+            );
+            expect(new Set(owners.map(({ token }) => token)).size).toBe(
+              owners.length,
+            );
+            return owners;
+          };
+          expect(tokens(after)).toEqual(tokens(placed.doc));
+          const undone = publishCanonicalProjection({
+            state,
+            commit: session.prepareUndo(state).unwrap(),
+            session,
+          }).unwrap();
+          expect(session.document).toStrictEqual(before);
+          expect(undone.state.doc.eq(placed.doc)).toBe(true);
+          const redone = publishCanonicalProjection({
+            state: undone.state,
+            commit: session.prepareRedo(undone.state).unwrap(),
+            session,
+          }).unwrap();
+          expect(session.document).toStrictEqual(edited);
+          expect(redone.state.doc.eq(after)).toBe(true);
+          state = redone.state;
+        }
+      });
 });
