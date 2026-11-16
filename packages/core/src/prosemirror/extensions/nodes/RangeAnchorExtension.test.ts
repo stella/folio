@@ -56,8 +56,10 @@ const integrityPlugin = (): Plugin => {
 
 const anchor = (): PMNode =>
   schema.node(RANGE_ANCHOR_NODE_NAME, {
-    start: { type: "commentRangeStart", id: COMMENT_ID },
-    end: { type: "commentRangeEnd", id: COMMENT_ID },
+    markers: [
+      { type: "commentRangeStart", id: COMMENT_ID },
+      { type: "commentRangeEnd", id: COMMENT_ID },
+    ],
   });
 
 const reference = (): PMNode =>
@@ -145,36 +147,42 @@ describe("a point comment under the caret", () => {
 describe("RangeAnchorExtension DOM boundary", () => {
   test("accepts a complete paired marker value", () => {
     const attrs = {
-      start: { type: "commentRangeStart", id: COMMENT_ID },
-      end: { type: "commentRangeEnd", id: COMMENT_ID },
+      markers: [
+        { type: "commentRangeStart", id: COMMENT_ID },
+        { type: "commentRangeEnd", id: COMMENT_ID },
+      ],
     };
     expect(parseRangeAnchor(JSON.stringify(attrs))).toEqual(attrs);
   });
 
   test("does not trust copy ownership from external marker HTML", () => {
     const attrs = {
-      start: {
-        type: "moveToRangeStart",
-        id: 19,
-        name: "move",
-        author: "Reviewer",
-        copyOriginAncestors: [0],
-      },
-      end: {
-        type: "moveToRangeEnd",
-        id: 19,
-        copyOriginAncestors: [0],
-      },
+      markers: [
+        {
+          type: "moveToRangeStart",
+          id: 19,
+          name: "move",
+          author: "Reviewer",
+          copyOriginAncestors: [0],
+        },
+        {
+          type: "moveToRangeEnd",
+          id: 19,
+          copyOriginAncestors: [0],
+        },
+      ],
     };
 
     expect(parseRangeAnchor(JSON.stringify(attrs))).toEqual({
-      start: {
-        type: "moveToRangeStart",
-        id: 19,
-        name: "move",
-        author: "Reviewer",
-      },
-      end: { type: "moveToRangeEnd", id: 19 },
+      markers: [
+        {
+          type: "moveToRangeStart",
+          id: 19,
+          name: "move",
+          author: "Reviewer",
+        },
+        { type: "moveToRangeEnd", id: 19 },
+      ],
     });
   });
 
@@ -187,14 +195,18 @@ describe("RangeAnchorExtension DOM boundary", () => {
   test.each([
     null,
     "not JSON",
-    JSON.stringify({ start: {}, end: {} }),
+    JSON.stringify({ markers: [{}, {}] }),
     JSON.stringify({
-      start: { type: "commentRangeStart", id: COMMENT_ID },
-      end: { type: "commentRangeEnd", id: COMMENT_ID + 1 },
+      markers: [
+        { type: "commentRangeStart", id: COMMENT_ID },
+        { type: "commentRangeEnd", id: COMMENT_ID + 1 },
+      ],
     }),
     JSON.stringify({
-      start: { type: "moveFromRangeStart", id: COMMENT_ID },
-      end: { type: "moveFromRangeEnd", id: COMMENT_ID },
+      markers: [
+        { type: "moveFromRangeStart", id: COMMENT_ID },
+        { type: "moveFromRangeEnd", id: COMMENT_ID },
+      ],
     }),
   ])("rejects an invalid marker value", (value) => {
     expect(parseRangeAnchor(value)).toBe(false);

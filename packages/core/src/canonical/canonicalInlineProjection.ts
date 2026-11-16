@@ -376,7 +376,7 @@ export const canonicalNativeCells = (
           }
           cells.push({
             type: "zeroWidth",
-            sources: [attrs.value.start, attrs.value.end],
+            sources: attrs.value.markers,
             from,
             to,
             node,

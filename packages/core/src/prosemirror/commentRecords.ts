@@ -447,12 +447,6 @@ const anchoredCommentId = (node: PMNode): number | undefined => {
     const attrs = readCommentRangeBoundaryAttrs(node);
     return attrs.ok ? attrs.value.marker.id : undefined;
   }
-  if (node.type.name === RANGE_ANCHOR_NODE_NAME) {
-    const attrs = readRangeAnchorAttrs(node);
-    return attrs.ok && attrs.value.start.type === "commentRangeStart"
-      ? attrs.value.start.id
-      : undefined;
-  }
   return undefined;
 };
 
@@ -465,7 +459,10 @@ export function removeCommentAnchors(
   ids: ReadonlySet<number>,
 ): void {
   const marks: { from: number; to: number; mark: Mark }[] = [];
-  const nodes: { from: number; to: number }[] = [];
+  const nodes: (
+    | { type: "delete"; from: number; to: number }
+    | { type: "replace"; from: number; to: number; replacement: PMNode }
+  )[] = [];
   transaction.doc.descendants((node, position) => {
     for (const mark of node.marks) {
       const commentId: unknown = mark.attrs["commentId"];
@@ -477,9 +474,35 @@ export function removeCommentAnchors(
         marks.push({ from: position, to: position + node.nodeSize, mark });
       }
     }
+    if (node.type.name === RANGE_ANCHOR_NODE_NAME) {
+      const attrs = readRangeAnchorAttrs(node);
+      if (!attrs.ok) return false;
+      const markers = attrs.value.markers.filter(
+        (marker) =>
+          (marker.type !== "commentRangeStart" &&
+            marker.type !== "commentRangeEnd") ||
+          !ids.has(marker.id),
+      );
+      if (markers.length !== attrs.value.markers.length)
+        nodes.push(
+          markers.length === 0
+            ? { type: "delete", from: position, to: position + node.nodeSize }
+            : {
+                type: "replace",
+                from: position,
+                to: position + node.nodeSize,
+                replacement: node.type.create({ markers }, null, node.marks),
+              },
+        );
+      return false;
+    }
     const anchored = anchoredCommentId(node);
     if (anchored !== undefined && ids.has(anchored)) {
-      nodes.push({ from: position, to: position + node.nodeSize });
+      nodes.push({
+        type: "delete",
+        from: position,
+        to: position + node.nodeSize,
+      });
       return false;
     }
     return true;
@@ -488,8 +511,19 @@ export function removeCommentAnchors(
     transaction.removeMark(from, to, mark);
   }
   // Last first, so the earlier positions stay valid.
-  for (const { from, to } of nodes.toReversed()) {
-    transaction.delete(from, to);
+  for (const node of nodes.toReversed()) {
+    switch (node.type) {
+      case "delete":
+        transaction.delete(node.from, node.to);
+        break;
+      case "replace":
+        transaction.replaceWith(node.from, node.to, node.replacement);
+        break;
+      default: {
+        const exhaustive: never = node;
+        panic(`Unknown comment anchor change: ${exhaustive}`);
+      }
+    }
   }
 }
 
@@ -519,6 +553,12 @@ export function commentIdsNamedIn(doc: PMNode): Set<number> {
       const commentId: unknown = mark.attrs["commentId"];
       if (mark.type.name === "comment" && typeof commentId === "number")
         ids.add(commentId);
+    }
+    if (node.type.name === RANGE_ANCHOR_NODE_NAME) {
+      const attrs = readRangeAnchorAttrs(node);
+      if (attrs.ok)
+        for (const marker of attrs.value.markers)
+          if (marker.type === "commentRangeStart") ids.add(marker.id);
     }
     const anchored = anchoredCommentId(node);
     if (anchored !== undefined) ids.add(anchored);

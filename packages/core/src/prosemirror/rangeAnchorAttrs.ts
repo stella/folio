@@ -3,7 +3,11 @@ import type { Node as PMNode } from "prosemirror-model";
 
 import type { ProseMirrorAttrIssue, ReadProseMirrorAttrsResult } from "./attrs";
 import { isDisplacedByCustomXml } from "./bookmarkBoundaryAttrs";
-import { RANGE_END_FOR_START, type RangeAnchorAttrs } from "./emptyRangeAnchor";
+import {
+  RANGE_END_FOR_START,
+  type RangeAnchorAttrs,
+  type RangeMarker,
+} from "./emptyRangeAnchor";
 
 const attrsCache = new WeakMap<PMNode, RangeAnchorAttrs>();
 
@@ -16,7 +20,7 @@ const isMarkerId = (value: unknown): value is number =>
 const isRangeStartType = (
   value: unknown,
 ): value is keyof typeof RANGE_END_FOR_START =>
-  typeof value === "string" && value in RANGE_END_FOR_START;
+  typeof value === "string" && Object.hasOwn(RANGE_END_FOR_START, value);
 
 const validateRangeMarkerAttrs = (
   marker: Record<string, unknown>,
@@ -78,47 +82,89 @@ const validateMoveRangeStartAttrs = (
   }
 };
 
-/** The two marker values, checked for every field the DOCX serializer reads. */
+/** An ordered, nonempty balanced sequence from one zero-width source cluster. */
 export const readRangeAnchorValues = (
-  start: unknown,
-  end: unknown,
+  markers: unknown,
 ): ReadProseMirrorAttrsResult<RangeAnchorAttrs> => {
   const issues: ProseMirrorAttrIssue[] = [];
-  if (!isRecord(start) || !isRangeStartType(start["type"])) {
-    issues.push({
-      path: "rangeAnchor.attrs.start",
-      message: `Expected one of ${Object.keys(RANGE_END_FOR_START).join(", ")}.`,
-    });
-    return { ok: false, issues };
+  if (!Array.isArray(markers) || markers.length < 2) {
+    return {
+      ok: false,
+      issues: [
+        {
+          path: "rangeAnchor.attrs.markers",
+          message: "Expected a nonempty range-marker sequence.",
+        },
+      ],
+    };
   }
-  const expectedEndType = RANGE_END_FOR_START[start["type"]];
-  if (!isRecord(end) || end["type"] !== expectedEndType) {
-    issues.push({
-      path: "rangeAnchor.attrs.end",
-      message: `Expected ${expectedEndType}.`,
-    });
-  }
-  validateRangeMarkerAttrs(start, "rangeAnchor.attrs.start", issues);
-  if (isRecord(end)) {
-    validateRangeMarkerAttrs(end, "rangeAnchor.attrs.end", issues);
-    if (end["id"] !== start["id"]) {
-      issues.push({
-        path: "rangeAnchor.attrs.end.id",
-        message: "Expected the id its start carries.",
-      });
+  const validMarkers = markers.filter(
+    (marker, index): marker is RangeMarker => {
+      const path = `rangeAnchor.attrs.markers[${index}]`;
+      if (
+        !isRecord(marker) ||
+        !(
+          isRangeStartType(marker["type"]) ||
+          marker["type"] === "commentRangeEnd" ||
+          marker["type"] === "moveFromRangeEnd" ||
+          marker["type"] === "moveToRangeEnd"
+        )
+      ) {
+        issues.push({ path, message: "Expected a range marker." });
+        return false;
+      }
+      const before = issues.length;
+      validateRangeMarkerAttrs(marker, path, issues);
+      if (
+        marker["type"] === "moveFromRangeStart" ||
+        marker["type"] === "moveToRangeStart"
+      )
+        validateMoveRangeStartAttrs(marker, path, issues);
+      return issues.length === before;
+    },
+  );
+  if (validMarkers.length !== markers.length) return { ok: false, issues };
+  const open = new Map<string, number>();
+  for (const [index, marker] of validMarkers.entries()) {
+    const path = `rangeAnchor.attrs.markers[${index}]`;
+    if (
+      marker.type === "commentRangeStart" ||
+      marker.type === "moveFromRangeStart" ||
+      marker.type === "moveToRangeStart"
+    ) {
+      const key = `${RANGE_END_FOR_START[marker.type]}:${marker.id}`;
+      open.set(key, (open.get(key) ?? 0) + 1);
+    } else {
+      const key = `${marker.type}:${marker.id}`;
+      const count = open.get(key) ?? 0;
+      if (count === 0)
+        issues.push({ path, message: "Expected a preceding matching start." });
+      else if (count === 1) open.delete(key);
+      else open.set(key, count - 1);
     }
   }
-  if (start["type"] !== "commentRangeStart") {
-    validateMoveRangeStartAttrs(start, "rangeAnchor.attrs.start", issues);
-  }
-
-  if (issues.length > 0) {
-    return { ok: false, issues };
-  }
-  // SAFETY: the checks above are exactly the discriminator, the pairing and the
-  // required fields that tell `RangeAnchorAttrs`'s branches apart; nothing in
-  // an untyped attrs bag can carry that narrowing for us.
-  return { ok: true, value: { start, end } as RangeAnchorAttrs };
+  if (open.size > 0)
+    issues.push({
+      path: "rangeAnchor.attrs.markers",
+      message: "Expected every start to have a matching end.",
+    });
+  // Copied move boundaries resolve independently; their existing atom owns one
+  // pair. Only comment points may share an indivisible interleaved cluster.
+  if (
+    markers.length !== 2 &&
+    validMarkers.some(
+      (marker) =>
+        marker.type !== "commentRangeStart" &&
+        marker.type !== "commentRangeEnd",
+    )
+  )
+    issues.push({
+      path: "rangeAnchor.attrs.markers",
+      message: "Expected a single move pair or a comment-only cluster.",
+    });
+  return issues.length > 0
+    ? { ok: false, issues }
+    : { ok: true, value: { markers: validMarkers } };
 };
 
 /**
@@ -128,7 +174,7 @@ export const readRangeAnchorValues = (
 export const readRangeAnchorAttrs = (
   node: PMNode,
 ): ReadProseMirrorAttrsResult<RangeAnchorAttrs> => {
-  const result = readRangeAnchorValues(node.attrs["start"], node.attrs["end"]);
+  const result = readRangeAnchorValues(node.attrs["markers"]);
   if (node.type.name === "rangeAnchor") {
     return result;
   }

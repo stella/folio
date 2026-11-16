@@ -611,8 +611,10 @@ for (const mode of ["editing", "suggesting"] as const) {
     const driver = createCanonicalEditorHarness(source, mode);
     try {
       const anchor = driver.state.schema.node("rangeAnchor", {
-        start: { type: "commentRangeStart", id: 7 },
-        end: { type: "commentRangeEnd", id: 7 },
+        markers: [
+          { type: "commentRangeStart", id: 7 },
+          { type: "commentRangeEnd", id: 7 },
+        ],
       });
       const paragraph = driver.state.schema.node("paragraph", null, anchor);
       const before = driver.snapshot();

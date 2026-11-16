@@ -100,9 +100,10 @@ export function seedCommentAllocator(
       }
       if (node.type.name === "rangeAnchor") {
         const attrs = readRangeAnchorAttrs(node);
-        if (attrs.ok && attrs.value.start.type === "commentRangeStart") {
-          allocator.seedAbove(attrs.value.start.id);
-        }
+        if (attrs.ok)
+          for (const marker of attrs.value.markers)
+            if (marker.type === "commentRangeStart")
+              allocator.seedAbove(marker.id);
       }
       if (isCommentRangeBoundaryNode(node)) {
         allocator.seedAbove(expectCommentRangeBoundaryAttrs(node).marker.id);
