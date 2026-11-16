@@ -30,7 +30,10 @@ const source = (text = "Dear reader, hello."): Document => ({
   },
 });
 
-const mount = (session: "canonical" | "prosemirror", initial = source()) => {
+const mount = (
+  session: "default" | "canonical" | "prosemirror",
+  initial = source(),
+) => {
   const releaseDom = acquireHarnessDom();
   const host = document.createElement("div");
   document.body.append(host);
@@ -51,15 +54,17 @@ const mount = (session: "canonical" | "prosemirror", initial = source()) => {
     getStyles: () => null,
     getExtensionManager: () => undefined,
     getExternalPlugins: () =>
-      session === "canonical"
+      session !== "prosemirror"
         ? []
         : [history(), createSuggestionModePlugin(false)],
     getCollaboration: () => undefined,
     getCollaborationModules: () => null,
     getPrecomputedInitialState: () => null,
     getReadOnly: () => state.readOnly,
-    getExperimentalSession: () =>
-      session === "canonical" ? "canonical" : undefined,
+    getExperimentalSession: () => {
+      if (session === "default") return undefined;
+      return session === "canonical" ? "canonical" : "legacy";
+    },
     getEditingMode: () => (state.suggesting ? "suggesting" : "editing"),
     getSuggestionAuthor: () => "Reviewer",
     onTransaction: (update) => {
@@ -94,7 +99,7 @@ const mount = (session: "canonical" | "prosemirror", initial = source()) => {
   };
 };
 
-test.each(["canonical", "prosemirror"] as const)(
+test.each(["default", "canonical", "prosemirror"] as const)(
   "%s validates explicit anchors without replacing an active request",
   (session) => {
     const mounted = mount(session);
@@ -124,7 +129,7 @@ test.each(["canonical", "prosemirror"] as const)(
   },
 );
 
-test.each(["canonical", "prosemirror"] as const)(
+test.each(["default", "canonical", "prosemirror"] as const)(
   "%s word acceptance preserves remaining ghost and isolates each undo step",
   (session) => {
     const mounted = mount(session);
@@ -138,7 +143,7 @@ test.each(["canonical", "prosemirror"] as const)(
       editor.autocomplete.finish("request");
       expect(editor.getCanonicalCommittedVersion()).toBe(initialVersion);
       expect(editor.hasCanonicalPendingChanges()).toBe(
-        session === "canonical" ? false : null,
+        session !== "prosemirror" ? false : null,
       );
       expect(editor.canUndo()).toBe(false);
       expect(editor.autocomplete.accept("word")).toBe(true);
@@ -200,7 +205,7 @@ test("canonical suggesting acceptance remains tracked and read-only acceptance c
   }
 });
 
-test.each(["canonical", "prosemirror"] as const)(
+test.each(["default", "canonical", "prosemirror"] as const)(
   "%s replaces documents and destroys views without retaining a stale stream",
   (session) => {
     const mounted = mount(session);
@@ -257,7 +262,7 @@ test("canonical anchors retain exact paragraph identity when accepting actual ty
   }
 });
 
-test.each(["canonical", "prosemirror"] as const)(
+test.each(["default", "canonical", "prosemirror"] as const)(
   "%s typing consumes only its exact marker gap and follows the producer caret",
   (session) => {
     for (const ghostGap of [0, 1, 2])
@@ -297,7 +302,7 @@ test.each(["canonical", "prosemirror"] as const)(
           if (position === null) panic("Expected represented marker gap");
           const typeAt = (at: number, text: string) => {
             editor.setSelection(at);
-            if (session === "canonical")
+            if (session !== "prosemirror")
               return editor.replaceCanonicalStoryText({
                 view: mounted.view,
                 story: "main",

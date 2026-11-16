@@ -3,7 +3,7 @@
  * listed with its suggestion and left out of the save; the host's
  * pending-suggestion export carries it into a fresh session; rejecting
  * removes it and accepting keeps it. An edit's attached comment covers the
- * text the edit changed, as in the default engine.
+ * text the edit changed, as in the legacy engine.
  */
 
 import { panic } from "better-result";
