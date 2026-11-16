@@ -1562,20 +1562,6 @@ function convertParagraph(
     styleResolver,
     paragraphMarkFormatting: inheritableParagraphRunFormatting,
   });
-  if (extraRunFormatting !== undefined || paragraph.content.length > 0) {
-    // The paragraph-mark font paints an empty paragraph's glyph. Once the
-    // paragraph has body content, its default is the body-run cascade instead.
-    // Otherwise the save leg mistakes the document-default font for a direct
-    // override of the paragraph-mark font.
-    if (extraRunFormatting !== undefined) {
-      attrs._tableRunFormatting = extraRunFormatting;
-    }
-    if (defaultRunFormatting) {
-      attrs.defaultTextFormatting = defaultRunFormatting;
-    } else {
-      delete attrs.defaultTextFormatting;
-    }
-  }
   const getInheritedRunFormatting = (
     formatting: DeepReadonly<TextFormatting> | undefined,
     fieldType?: string,
@@ -1891,6 +1877,20 @@ function convertParagraph(
     }
   }
 
+  if (extraRunFormatting !== undefined || inlineNodes.length > 0) {
+    // The paragraph-mark font paints an empty paragraph's glyph. Only emitted
+    // content selects body-run defaults: empty source wrappers emit nothing.
+    // Otherwise the save leg mistakes the document-default font for a direct
+    // override of the paragraph-mark font.
+    if (extraRunFormatting !== undefined) {
+      attrs._tableRunFormatting = extraRunFormatting;
+    }
+    if (defaultRunFormatting) {
+      attrs.defaultTextFormatting = defaultRunFormatting;
+    } else {
+      delete attrs.defaultTextFormatting;
+    }
+  }
   if (bookmarksArr) {
     attrs.bookmarks = bookmarksArr;
   }
@@ -2442,9 +2442,7 @@ function paragraphFormattingToAttrs(
       formatting,
       styleResolver,
       tableParagraphOverlay,
-      includeParagraphMarkRunProperties:
-        tableOfContentsLevel === undefined &&
-        (styleId === undefined || paragraph.content.length === 0),
+      includeParagraphMarkRunProperties: tableOfContentsLevel === undefined,
     });
     stylePpr = cascade.stylePpr;
     Object.assign(attrs, cascade.attrs);
