@@ -1,8 +1,21 @@
+import { panic } from "better-result";
 import { expect, setDefaultTimeout, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 import { scanTestTimeout } from "../test/scan-timeout";
+import {
+  aggregateWorkflowDurations,
+  type CheckRun,
+  committedWorkflows as workflowsByFile,
+  fetchWorkflowRuns,
+  limitsUnderMeasuredDurations,
+  minimumMinutes,
+  p95,
+  parseWorkflowRuns,
+  readWorkflowDurations,
+  WORKFLOW_DURATIONS_FILE,
+} from "./workflow-durations";
 
 setDefaultTimeout(scanTestTimeout(30_000));
 
@@ -51,17 +64,7 @@ const jobsWithoutTimeouts = (
   });
 };
 
-const committedWorkflows = (): [string, unknown][] =>
-  [
-    ...new Bun.Glob(".github/workflows/*.{yml,yaml}").scanSync({
-      cwd: REPO_ROOT,
-    }),
-  ]
-    .toSorted()
-    .map((file) => [
-      file,
-      Bun.YAML.parse(readFileSync(path.join(REPO_ROOT, file), "utf8")),
-    ]);
+const committedWorkflows = (): [string, unknown][] => [...workflowsByFile()];
 
 const existsInRepo = (callee: string) =>
   existsSync(path.join(REPO_ROOT, callee));
@@ -130,5 +133,541 @@ test("reusable calls are accepted only for a present or pinned callee", () => {
         existsInRepo,
       ),
     ).toHaveLength(1);
+  }
+});
+
+// A limit a healthy run can reach fails unrelated changes with every check
+// passing. Each declared limit keeps a fifth of itself free over the measured
+// 95th percentile of its job or step (scripts/workflow-durations.json, rewritten
+// by .github/workflows/test-timing-refresh.yml).
+const REPLAY_STEP = "Run only standing browser input regressions";
+
+test("every limit keeps a fifth free over its measured p95", () => {
+  const durations = readWorkflowDurations();
+  expect(limitsUnderMeasuredDurations(workflowsByFile(), durations)).toEqual(
+    [],
+  );
+  const pinned =
+    durations[".github/workflows/ci.yml"]?.["browser-input-pinned"];
+  expect(pinned?.job?.samples).toBeGreaterThan(0);
+  expect(pinned?.steps?.[REPLAY_STEP]?.samples).toBeGreaterThan(0);
+});
+
+test("a job or step limit under its measured p95 share is reported", () => {
+  const file = ".github/workflows/ci.yml";
+  const durations = readWorkflowDurations();
+  const jobs = durations[file];
+  const stepP95 =
+    jobs?.["browser-input-pinned"]?.steps?.[REPLAY_STEP]?.p95Seconds;
+  const jobP95 = jobs?.["packaged-consumer"]?.job?.p95Seconds;
+  if (stepP95 === undefined || jobP95 === undefined)
+    throw new Error(
+      `${WORKFLOW_DURATIONS_FILE} lacks the measured ci.yml entries`,
+    );
+  const broken = structuredClone(workflowsByFile().get(file));
+  const brokenJobs = isRecord(broken) ? broken["jobs"] : undefined;
+  const pinned = isRecord(brokenJobs)
+    ? brokenJobs["browser-input-pinned"]
+    : undefined;
+  const consumer = isRecord(brokenJobs)
+    ? brokenJobs["packaged-consumer"]
+    : undefined;
+  const steps = isRecord(pinned) ? pinned["steps"] : undefined;
+  const replay = Array.isArray(steps)
+    ? steps.find((step) => isRecord(step) && step["name"] === REPLAY_STEP)
+    : undefined;
+  if (!isRecord(replay) || !isRecord(consumer))
+    throw new Error("ci.yml lacks the pinned replay step or packaged-consumer");
+  const stepMinutes = minimumMinutes(stepP95) - 1;
+  const jobMinutes = minimumMinutes(jobP95) - 1;
+  replay["timeout-minutes"] = stepMinutes;
+  consumer["timeout-minutes"] = jobMinutes;
+  expect(
+    limitsUnderMeasuredDurations(new Map([[file, broken]]), durations),
+  ).toEqual([
+    `${file}: browser-input-pinned step "${REPLAY_STEP}" allows ${stepMinutes} min, but its measured p95 of ${stepP95} s needs at least ${stepMinutes + 1} min`,
+    `${file}: packaged-consumer allows ${jobMinutes} min, but its measured p95 of ${jobP95} s needs at least ${jobMinutes + 1} min`,
+  ]);
+});
+
+test("a step limit needs a literal name to be measured by", () => {
+  const workflow = {
+    jobs: {
+      run: {
+        "timeout-minutes": 5,
+        steps: [
+          { name: "Named", run: "true", "timeout-minutes": 2 },
+          { run: "true", "timeout-minutes": 2 },
+          {
+            name: "Shard ${{ matrix.shard }}",
+            run: "true",
+            "timeout-minutes": 2,
+          },
+        ],
+      },
+    },
+  };
+  expect(
+    limitsUnderMeasuredDurations(new Map([["fixture", workflow]]), {}),
+  ).toEqual([
+    "fixture: run step 2 declares timeout-minutes without a literal name to measure it by",
+    "fixture: run step 3 declares timeout-minutes without a literal name to measure it by",
+  ]);
+});
+
+test("the rule takes the nearest-rank p95 and whole minutes", () => {
+  expect(p95(Array.from({ length: 20 }, (_, index) => index + 1))).toBe(19);
+  expect(p95(Array.from({ length: 100 }, (_, index) => 100 - index))).toBe(95);
+  expect(p95([7])).toBe(7);
+  expect(minimumMinutes(240)).toBe(5);
+  expect(minimumMinutes(241)).toBe(6);
+});
+
+const at = (seconds: number) =>
+  new Date(Date.UTC(2026, 0, 1, 0, 0, seconds)).toISOString();
+
+type CheckRunOptions = {
+  name: string;
+  seconds: number;
+  conclusion?: string;
+  steps?: CheckRun["steps"];
+};
+const checkRun = ({
+  name,
+  seconds,
+  conclusion = "SUCCESS",
+  steps = [],
+}: CheckRunOptions): CheckRun => ({
+  id: `${name}-${seconds}`,
+  name,
+  conclusion,
+  startedAt: at(0),
+  completedAt: at(seconds),
+  steps,
+});
+
+type StepOptions = Pick<CheckRunOptions, "name" | "seconds" | "conclusion">;
+const step = ({ name, seconds, conclusion = "SUCCESS" }: StepOptions) => ({
+  name,
+  conclusion,
+  startedAt: at(0),
+  completedAt: at(seconds),
+});
+
+const HISTORICAL_SHA = "c6d66dfa2a5ad1f96a21b819fe456fecdd3d6f6d";
+const source = {
+  repository: "stella/folio",
+  sha: HISTORICAL_SHA,
+  path: ".github/workflows/caller.yml",
+};
+const runFile = {
+  repositoryName: source.repository,
+  repositoryFileUrl: `https://github.com/${source.repository}/blob/${source.sha}/${source.path}`,
+  path: source.path,
+};
+
+test("durations are credited to the job that declares them", () => {
+  const workflows = new Map<string, unknown>([
+    [
+      ".github/workflows/caller.yml",
+      {
+        jobs: {
+          // A matrix job named without its values gets them in parentheses.
+          matrix: {
+            name: "Matrix",
+            strategy: { matrix: { shard: [1, 2] } },
+            "timeout-minutes": 10,
+            steps: [{ name: "Work", run: "true", "timeout-minutes": 2 }],
+          },
+          templated: {
+            name: "Pack ${{ matrix.pkg }}",
+            strategy: { matrix: { pkg: ["a", "b"] } },
+            "timeout-minutes": 10,
+          },
+          call: { name: "Report", uses: "./.github/workflows/callee.yml" },
+          // Same displayed name twice: not credited to either.
+          twin: { name: "Twin", "timeout-minutes": 5 },
+          twin2: { name: "Twin", "timeout-minutes": 5 },
+        },
+      },
+    ],
+    [
+      ".github/workflows/callee.yml",
+      { jobs: { file: { name: "File issues", "timeout-minutes": 5 } } },
+    ],
+  ]);
+  const runs = [
+    {
+      source,
+      workflows,
+      checkRuns: [
+        checkRun({
+          name: "Matrix (1)",
+          seconds: 100,
+          conclusion: "SUCCESS",
+          steps: [step({ name: "Work", seconds: 60 })],
+        }),
+        // A failed job is no duration, but its successful step still is.
+        checkRun({
+          name: "Matrix (2)",
+          seconds: 590,
+          conclusion: "FAILURE",
+          steps: [step({ name: "Work", seconds: 80 })],
+        }),
+        // A step that ran to its limit is no duration even when reported
+        // successful, as continue-on-error reports it.
+        checkRun({
+          name: "Matrix",
+          seconds: 200,
+          conclusion: "SUCCESS",
+          steps: [step({ name: "Work", seconds: 120 })],
+        }),
+        checkRun({ name: "Pack a", seconds: 30 }),
+        checkRun({ name: "Pack b", seconds: 50 }),
+        checkRun({ name: "Pack c", seconds: 40, conclusion: "SKIPPED" }),
+        checkRun({ name: "Report / File issues", seconds: 20 }),
+        checkRun({ name: "Twin", seconds: 10 }),
+        checkRun({ name: "cla", seconds: 3 }),
+      ],
+    },
+  ];
+  expect(aggregateWorkflowDurations(runs)).toEqual({
+    ".github/workflows/callee.yml": {
+      file: { job: { p95Seconds: 20, samples: 1 } },
+    },
+    ".github/workflows/caller.yml": {
+      matrix: {
+        job: { p95Seconds: 200, samples: 2 },
+        steps: { Work: { p95Seconds: 80, samples: 2 } },
+      },
+      templated: { job: { p95Seconds: 50, samples: 2 } },
+    },
+  });
+});
+
+test("only completed runs are read, and a truncated page is refused", () => {
+  const node = (status: string, total: number) => ({
+    runs: {
+      nodes: [
+        {
+          file: runFile,
+          checkSuite: {
+            status,
+            checkRuns: {
+              totalCount: total,
+              nodes: [
+                {
+                  id: "CR_1",
+                  name: "Job",
+                  conclusion: "SUCCESS",
+                  startedAt: at(0),
+                  completedAt: at(5),
+                },
+              ],
+            },
+          },
+        },
+      ],
+    },
+  });
+  expect(parseWorkflowRuns(node("IN_PROGRESS", 1))).toEqual([]);
+  expect(parseWorkflowRuns(node("COMPLETED", 1))).toEqual([
+    {
+      source,
+      checkRuns: [
+        {
+          id: "CR_1",
+          name: "Job",
+          conclusion: "SUCCESS",
+          startedAt: at(0),
+          completedAt: at(5),
+          steps: [],
+        },
+      ],
+    },
+  ]);
+  expect(() => parseWorkflowRuns(node("COMPLETED", 2))).toThrow(
+    "raise the page size",
+  );
+});
+
+test("the timing refresh rewrites the measured durations", () => {
+  const refresh = readFileSync(
+    path.join(REPO_ROOT, ".github/workflows/test-timing-refresh.yml"),
+    "utf8",
+  );
+  expect(refresh).toContain(
+    `bun scripts/workflow-durations.ts \\\n            --repository "$GITHUB_REPOSITORY" \\\n            --output ${WORKFLOW_DURATIONS_FILE}`,
+  );
+  expect(refresh).toContain(`--workflow-durations ${WORKFLOW_DURATIONS_FILE}`);
+});
+
+test("timed names cannot select a duplicate sibling, including untimed ones", () => {
+  for (const sibling of [{ "timeout-minutes": 2 }, {}]) {
+    const workflows = new Map([
+      [
+        source.path,
+        {
+          jobs: {
+            run: {
+              "timeout-minutes": 10,
+              steps: [
+                { name: "Work", "timeout-minutes": 2 },
+                { name: "Work", ...sibling },
+              ],
+            },
+          },
+        },
+      ],
+    ]);
+    expect(limitsUnderMeasuredDurations(workflows, {})).toEqual([
+      `${source.path}: run repeats timed step name "Work"`,
+    ]);
+    expect(
+      aggregateWorkflowDurations([
+        {
+          source,
+          workflows,
+          checkRuns: [
+            checkRun({
+              name: "run",
+              seconds: 100,
+              steps: [step({ name: "Work", seconds: 1 })],
+            }),
+          ],
+        },
+      ]),
+    ).toEqual({
+      [source.path]: { run: { job: { p95Seconds: 100, samples: 1 } } },
+    });
+  }
+});
+
+test("completed runs require an immutable matching executed-file reference", () => {
+  for (const file of [
+    null,
+    {
+      ...runFile,
+      repositoryFileUrl: runFile.repositoryFileUrl.replace(
+        HISTORICAL_SHA,
+        "main",
+      ),
+    },
+    { ...runFile, path: ".github/workflows/other.yml" },
+    { ...runFile, repositoryName: "other/repository" },
+    { ...runFile, path: "../caller.yml" },
+  ])
+    expect(() =>
+      parseWorkflowRuns({
+        runs: {
+          nodes: [
+            {
+              file,
+              checkSuite: {
+                status: "COMPLETED",
+                checkRuns: { nodes: [] },
+              },
+            },
+          ],
+        },
+      }),
+    ).toThrow("immutable executed workflow");
+});
+
+type FixtureTransportOptions = {
+  files: ReadonlyMap<string, unknown>;
+  runFiles?: readonly (typeof runFile)[];
+};
+
+/** GitHub-shaped transport: every workflow and check step crosses its parser. */
+const fixtureTransport = ({
+  files,
+  runFiles = [runFile, runFile],
+}: FixtureTransportOptions) => {
+  const requestedFiles: string[] = [];
+  const check = checkRun({ name: "Caller / Job", seconds: 125 });
+  const fetchJson: Parameters<
+    typeof fetchWorkflowRuns
+  >[0]["fetchJson"] = async (url, body) => {
+    if (body === undefined) {
+      expect(url).toContain("/actions/workflows?");
+      return {
+        total_count: 1,
+        workflows: [{ path: source.path, node_id: "W_1" }],
+      };
+    }
+    const request: unknown = JSON.parse(body);
+    if (
+      !isRecord(request) ||
+      typeof request["query"] !== "string" ||
+      !isRecord(request["variables"])
+    )
+      panic("Malformed fixture request");
+    const query = request["query"];
+    const variables = request["variables"];
+    if (query.includes("... on Workflow"))
+      return {
+        data: {
+          w0: {
+            runs: {
+              nodes: runFiles.map((file) => ({
+                file,
+                checkSuite: {
+                  status: "COMPLETED",
+                  checkRuns: { totalCount: 1, nodes: [check] },
+                },
+              })),
+            },
+          },
+        },
+      };
+    if (query.includes("... on Blob")) {
+      const entries = Object.entries(variables).filter(([name]) =>
+        name.startsWith("f"),
+      );
+      return {
+        data: {
+          repository: Object.fromEntries(
+            entries.map(([alias, expression]) => {
+              if (typeof expression !== "string")
+                panic("Missing file expression");
+              requestedFiles.push(expression);
+              const definition = files.get(expression);
+              return [
+                alias,
+                definition === undefined
+                  ? null
+                  : { text: JSON.stringify(definition) },
+              ];
+            }),
+          ),
+        },
+      };
+    }
+    expect(query).toContain("... on CheckRun");
+    return {
+      data: {
+        nodes: [
+          {
+            id: check.id,
+            steps: {
+              totalCount: 1,
+              nodes: [step({ name: "Work", seconds: 125 })],
+            },
+          },
+        ],
+      },
+    };
+  };
+  return { fetchJson, requestedFiles };
+};
+
+const CALLER = {
+  jobs: { call: { name: "Caller", uses: "./.github/workflows/callee.yml" } },
+};
+const callee = (minutes: number) => ({
+  jobs: {
+    run: {
+      name: "Job",
+      "timeout-minutes": minutes,
+      steps: [{ name: "Work", "timeout-minutes": minutes }],
+    },
+  },
+});
+
+test("historical caller and callee limits censor samples even after current limits rise", async () => {
+  const nextSha = "8a823eda2b7f60a0b55f59e88f406a70f7a749fa";
+  const nextFile = {
+    ...runFile,
+    repositoryFileUrl: runFile.repositoryFileUrl.replace(
+      HISTORICAL_SHA,
+      nextSha,
+    ),
+  };
+  const oldCallee = ".github/workflows/callee.yml";
+  const transport = fixtureTransport({
+    runFiles: [runFile, runFile, nextFile],
+    files: new Map([
+      [`${HISTORICAL_SHA}:${source.path}`, CALLER],
+      [`${HISTORICAL_SHA}:${oldCallee}`, callee(2)],
+      [`${nextSha}:${source.path}`, CALLER],
+      [`${nextSha}:${oldCallee}`, callee(10)],
+    ]),
+  });
+  const current = new Map(
+    Object.entries({
+      [source.path]: CALLER,
+      [oldCallee]: callee(30),
+    }),
+  );
+  const runs = await fetchWorkflowRuns({
+    repository: source.repository,
+    workflows: current,
+    fetchJson: transport.fetchJson,
+  });
+  // 125s exceeded the old two-minute cap; only the newer run is eligible.
+  // A newly raised current cap must never turn the two censored runs healthy.
+  expect(aggregateWorkflowDurations(runs)).toEqual({
+    [oldCallee]: {
+      run: {
+        job: { p95Seconds: 125, samples: 1 },
+        steps: { Work: { p95Seconds: 125, samples: 1 } },
+      },
+    },
+  });
+  expect(transport.requestedFiles.toSorted()).toEqual(
+    [
+      `${HISTORICAL_SHA}:${source.path}`,
+      `${HISTORICAL_SHA}:${oldCallee}`,
+      `${nextSha}:${source.path}`,
+      `${nextSha}:${oldCallee}`,
+    ].toSorted(),
+  );
+});
+
+test("missing historical definitions and recursive caller cycles fail refresh explicitly", async () => {
+  for (const files of [
+    {},
+    { [`${HISTORICAL_SHA}:${source.path}`]: CALLER },
+    {
+      [`${HISTORICAL_SHA}:${source.path}`]: CALLER,
+      [`${HISTORICAL_SHA}:.github/workflows/callee.yml`]: {
+        jobs: { cycle: { uses: `./${source.path}` } },
+      },
+    },
+  ]) {
+    const transport = fixtureTransport({
+      files: new Map(Object.entries(files)),
+    });
+    await expect(
+      fetchWorkflowRuns({
+        repository: source.repository,
+        workflows: new Map([[source.path, CALLER]]),
+        fetchJson: transport.fetchJson,
+      }),
+    ).rejects.toThrow(/Missing historical workflow|cycle/u);
+  }
+});
+
+test("missing requested check-run steps fail refresh rather than reduce the sample", async () => {
+  for (const nodes of [[], [null], [{ id: "Caller / Job-125" }]]) {
+    const transport = fixtureTransport({
+      files: new Map([
+        [`${HISTORICAL_SHA}:${source.path}`, CALLER],
+        [`${HISTORICAL_SHA}:.github/workflows/callee.yml`, callee(10)],
+      ]),
+    });
+    await expect(
+      fetchWorkflowRuns({
+        repository: source.repository,
+        workflows: new Map([[source.path, CALLER]]),
+        fetchJson: async (url, body) => {
+          const response = await transport.fetchJson(url, body);
+          return body?.includes("... on CheckRun")
+            ? { data: { nodes } }
+            : response;
+        },
+      }),
+    ).rejects.toThrow(/requested check run|steps nodes/u);
   }
 });
