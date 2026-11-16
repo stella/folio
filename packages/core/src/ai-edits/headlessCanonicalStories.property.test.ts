@@ -53,6 +53,15 @@ const open = (buffer: ArrayBuffer): Promise<Reviewer> =>
 const storyTexts = (reviewer: Reviewer) =>
   reviewer.listStories().map((story) => reviewer.readStory(story.handle));
 
+const storyChanges = (reviewer: Reviewer) =>
+  reviewer
+    .listStories()
+    .flatMap(
+      ({ handle }) =>
+        reviewer.readReviewedStory({ story: handle, view: "current-markup" })
+          ?.changes ?? [],
+    );
+
 const reads = (reviewer: Reviewer) => ({
   stories: storyTexts(reviewer),
   notes: reviewer.getNotesAsText(),
@@ -90,8 +99,12 @@ type StoryOutcome =
 /** Every story once every change is rejected, or `null` when that refuses. */
 const rejected = (reviewer: Reviewer) => {
   try {
-    const { skipped } = reviewer.rejectAll();
-    return skipped.length > 0 ? null : storyTexts(reviewer);
+    const changes = storyChanges(reviewer).length;
+    const { resolved, skipped } = reviewer.rejectAll();
+    if (skipped.length > 0) return null;
+    expect(resolved).toBe(changes);
+    expect(storyChanges(reviewer)).toEqual([]);
+    return storyTexts(reviewer);
   } catch (error) {
     if (CanonicalSessionError.is(error)) return null;
     throw error;
@@ -149,10 +162,16 @@ const storyLaws = async (
   const accepted = tracked.fork();
   const directAccepted = saved.fork();
   try {
+    const acceptedChanges = storyChanges(accepted).length;
+    const directChanges = storyChanges(directAccepted).length;
     const acceptedResult = accepted.acceptAll();
     const directResult = directAccepted.acceptAll();
     if (acceptedResult.skipped.length > 0 || directResult.skipped.length > 0)
       return "resolutionRefused";
+    expect(acceptedResult.resolved).toBe(acceptedChanges);
+    expect(directResult.resolved).toBe(directChanges);
+    expect(storyChanges(accepted)).toEqual([]);
+    expect(storyChanges(directAccepted)).toEqual([]);
   } catch (error) {
     if (CanonicalSessionError.is(error)) return "resolutionRefused";
     throw error;

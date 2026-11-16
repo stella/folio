@@ -334,10 +334,12 @@ export type FolioDocxReviewerOptions = {
    * tracked changes and the save run on it as the canonical editor runs
    * them, and resolved views are read from a second session resolved to
    * the view; suggested batches stage on it and its suggestions resolve
-   * through its suggestion intent. Table geometry staging and comparison
-   * are not on the session yet: they throw a `CanonicalSessionError` whose
-   * ground is the `publicOps.headlessSession` gap, and never fall back to
-   * the legacy engine.
+   * through its suggestion intent. Secondary-story suggestion resolution,
+   * final section property resolution, table geometry staging and comparison
+   * throw a `CanonicalSessionError` under `publicOps.headlessSession`.
+   * Resolving one story to a view also refuses while it holds staged
+   * suggestions. Locks that prevent a complete view refuse rather than
+   * returning a partial view. These paths never fall back to the legacy engine.
    */
   session?: HeadlessReviewerSession;
 };
@@ -2473,7 +2475,10 @@ export class FolioDocxReviewer {
     return nextRevisionId;
   }
 
-  /** Read one story through an immutable reviewed-view projection. */
+  /**
+   * Read one story through an immutable reviewed-view projection. A canonical
+   * resolved view refuses when locks leave ordinary revisions pending.
+   */
   readReviewedStory(
     options: FolioReadReviewedStoryOptions = {},
   ): FolioReviewedStory | null {
@@ -2495,7 +2500,8 @@ export class FolioDocxReviewer {
   /**
    * Resolve one editable story to its original or final state. A canonical
    * target story holding staged suggestions refuses; resolve those through
-   * the suggestion methods first.
+   * the suggestion methods first. A lock that prevents any target change
+   * from resolving refuses before mutation.
    */
   resolveReviewedStory({
     story = MAIN_STORY,

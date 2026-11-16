@@ -1,0 +1,10 @@
+{
+  "generated story edits undo, save and reject as the laws say": [
+    {
+      "seed": 1033063841,
+      "path": "6:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:3:3:3:3",
+      "note": "Accepting deletion of the first footnote paragraph resolves its inline deletion and mark without restoring removed words around the automatic note marker.",
+      "date": "2026-11-16"
+    }
+  ]
+}
