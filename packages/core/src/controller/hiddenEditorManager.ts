@@ -156,6 +156,7 @@ import {
   NO_ANONYMIZATION_TERMS,
 } from "./anonymizationHighlights";
 import {
+  type AutocompleteEdit,
   canTriggerAutocomplete,
   classifyAutocompleteEdit,
   createAutocompleteSuggestion,
@@ -1074,12 +1075,14 @@ export const createHiddenEditorManager = (
       return published;
     }
     if (editorSession.type === "refused") return false;
+    const previous = view.state.doc;
     const transaction = closeHistory(view.state.tr).insertText(text, at);
     view.dispatch(
       transaction.setSelection(
         TextSelection.create(transaction.doc, at + text.length),
       ),
     );
+    if (!view || view.state.doc.eq(previous)) return false;
     view.dispatch(closeHistory(view.state.tr));
     return true;
   };
@@ -1106,7 +1109,10 @@ export const createHiddenEditorManager = (
     clear: () => autocomplete.clear(),
     accept: (scope = "all") => acceptAutocomplete(scope),
     get: () => autocomplete.get(),
-    canTrigger: () => view !== null && canTriggerAutocomplete(view.state).ok,
+    canTrigger: () =>
+      view !== null &&
+      caretTextPosition() !== null &&
+      canTriggerAutocomplete(view.state).ok,
     editorAnchor: autocompleteEditorAnchor,
     subscribe: (listener) => autocomplete.subscribe(listener),
   };
@@ -1682,15 +1688,22 @@ export const createHiddenEditorManager = (
           );
           return;
         }
-        if (editorSession.type !== "canonical" && transaction.docChanged)
-          autocomplete.noteEdit(legacyAutocompleteEdit(transaction));
-        view.updateState(applied.state);
-
-        const docChanged = applied.transactions.some(
+        const documentEdits = applied.transactions.filter(
           (appliedTransaction) =>
             appliedTransaction.docChanged &&
             !isCommentRecordsSync(appliedTransaction),
         );
+        let autocompleteEdit: AutocompleteEdit | undefined;
+        if (editorSession.type !== "canonical" && documentEdits.length > 0) {
+          const only = documentEdits.at(0);
+          autocompleteEdit =
+            documentEdits.length === 1 && only === transaction
+              ? legacyAutocompleteEdit(transaction)
+              : { type: "other" };
+        }
+        view.updateState(applied.state);
+
+        const docChanged = documentEdits.length > 0;
         const selectionChanged = applied.transactions.some(
           (appliedTransaction) =>
             appliedTransaction.selectionSet ||
@@ -1721,6 +1734,14 @@ export const createHiddenEditorManager = (
             ),
           );
         }
+        // Notify after the dispatch's host bookkeeping: a synchronous listener
+        // may accept again, publishing another transaction of its own.
+        if (autocompleteEdit !== undefined)
+          autocomplete.noteEdit(
+            view?.state === applied.state
+              ? autocompleteEdit
+              : { type: "other" },
+          );
       },
       // Intercept key events before ProseMirror processes them
       handleKeyDown: (pmView: EditorView, event: KeyboardEvent): boolean => {

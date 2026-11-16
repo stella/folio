@@ -1852,6 +1852,21 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     const autocompleteSuggestionRef =
       useRef<FolioAutocompleteState>(IDLE_AUTOCOMPLETE);
     const onAutocompleteChangeRef = useRef(onAutocompleteChange);
+    const lastAutocompleteNotificationRef =
+      useRef<FolioAutocompleteState>(IDLE_AUTOCOMPLETE);
+    const notifyAutocompleteChange = useCallback(
+      (state: FolioAutocompleteState) => {
+        const notify = onAutocompleteChangeRef.current;
+        if (
+          notify === undefined ||
+          state === lastAutocompleteNotificationRef.current
+        )
+          return;
+        lastAutocompleteNotificationRef.current = state;
+        notify(state);
+      },
+      [],
+    );
     useLayoutEffect(() => {
       onAutocompleteChangeRef.current = onAutocompleteChange;
     });
@@ -5944,7 +5959,9 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     const handleEditorViewReady = useCallback(
       (view: EditorView) => {
         onEditorViewReadyRef.current?.(view);
-        autocompleteSuggestionRef.current = folioEditor.autocomplete.get();
+        const suggestion = folioEditor.autocomplete.get();
+        autocompleteSuggestionRef.current = suggestion;
+        notifyAutocompleteChange(suggestion);
         updateAutocompleteOverlay();
         directivesRef.current =
           templateDirectivesKey.getState(view.state)?.ranges ?? [];
@@ -6056,6 +6073,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         document,
         folioEditor,
         updateAutocompleteOverlay,
+        notifyAutocompleteChange,
         readOnly,
         refreshBodyImeCaretAnchor,
         markupView,
@@ -6148,16 +6166,25 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       updateAutocompleteOverlay();
     }, [updateAutocompleteOverlay]);
 
-    // Follow the editor's suggestion: tell the host and repaint the ghost.
-    useEffect(
-      () =>
-        hiddenPMRef.current?.autocomplete.subscribe((state) => {
-          autocompleteSuggestionRef.current = state;
-          onAutocompleteChangeRef.current?.(state);
-          updateAutocompleteOverlay();
-        }),
-      [updateAutocompleteOverlay],
-    );
+    // Follow the stable manager, replaying any suggestion started before binding.
+    useEffect(() => {
+      const owner = hiddenPMRef.current?.autocomplete;
+      if (owner === undefined) return;
+      const changed = (state: FolioAutocompleteState) => {
+        autocompleteSuggestionRef.current = state;
+        notifyAutocompleteChange(state);
+        updateAutocompleteOverlay();
+      };
+      const off = owner.subscribe(changed);
+      changed(owner.get());
+      return off;
+    }, [notifyAutocompleteChange, updateAutocompleteOverlay]);
+    useEffect(() => {
+      if (onAutocompleteChange !== undefined)
+        notifyAutocompleteChange(
+          hiddenPMRef.current?.autocomplete.get() ?? IDLE_AUTOCOMPLETE,
+        );
+    }, [onAutocompleteChange, notifyAutocompleteChange]);
 
     // Re-layout when a face loads that the committed layout measured without:
     // a `unicode-range` subset fetched once painted text first needed it, or

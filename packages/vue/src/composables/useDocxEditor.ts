@@ -1135,7 +1135,6 @@ export function useDocxEditor(
   const offAutocomplete = manager.api.autocomplete.subscribe((state) =>
     options.onAutocompleteChange?.(state),
   );
-  onScopeDispose(offAutocomplete);
 
   const publishRemoteSelections = (): void => {
     const awareness = yjsCollaboration()?.awareness;
@@ -1854,7 +1853,10 @@ export function useDocxEditor(
     isReady.value = false;
   }
 
-  onScopeDispose(destroy);
+  onScopeDispose(() => {
+    destroy();
+    offAutocomplete();
+  });
 
   return {
     setEmbeddedFontFamilies: (

@@ -11,6 +11,7 @@
  * of the person's dismisses it.
  */
 
+import { isHistoryTransaction } from "prosemirror-history";
 import type { EditorState, Transaction } from "prosemirror-state";
 import { ReplaceStep } from "prosemirror-transform";
 
@@ -80,6 +81,12 @@ export const classifyAutocompleteEdit = (
 export const legacyAutocompleteEdit = (
   transaction: Transaction,
 ): AutocompleteEdit => {
+  if (
+    isHistoryTransaction(transaction) ||
+    transaction.getMeta("uiEvent") !== undefined ||
+    transaction.getMeta("paste") === true
+  )
+    return { type: "other" };
   const [step, ...rest] = transaction.steps;
   if (
     !(step instanceof ReplaceStep) ||
@@ -252,10 +259,9 @@ const AUTOCOMPLETE_DEAD_ZONE_NODES: ReadonlySet<string> = new Set([
   "imageBlock",
 ]);
 
-// Letters, numbers, and a small set of in-word connectors. The
-// regex uses Unicode property escapes so accented Czech/German/
-// Polish letters count as word chars and don't trip the gate.
-const WORD_CONTINUATION_CHAR = /[\p{L}\p{N}_'-]/u;
+// Composed and decomposed spellings share word-continuation behavior;
+// the preceding Unicode code point may itself be a combining mark.
+const WORD_CONTINUATION_CHAR = /[\p{L}\p{N}\p{M}_'-]/u;
 
 /**
  * Decide whether autocomplete should fire at the current cursor.
@@ -292,13 +298,14 @@ export const canTriggerAutocomplete = (
   const parentOffset = $cursor.parentOffset;
   if (parentOffset > 0) {
     const before = $cursor.parent.textBetween(
-      parentOffset - 1,
+      Math.max(0, parentOffset - 2),
       parentOffset,
       "\n",
       "\n",
     );
-    if (before.length > 0 && WORD_CONTINUATION_CHAR.test(before)) {
-      return { ok: false, reason: "midword", detail: before };
+    const character = [...before].at(-1);
+    if (character !== undefined && WORD_CONTINUATION_CHAR.test(character)) {
+      return { ok: false, reason: "midword", detail: character };
     }
   }
   return { ok: true };

@@ -514,3 +514,81 @@ test("autocomplete subscriptions and host callbacks survive deferred view readin
     container.remove();
   }
 });
+
+const createReadyAutocompleteProbe = (start: "shown" | "idle") => {
+  let editor: PagedEditorRef | null = null;
+  const states: FolioAutocompleteState[] = [];
+  return {
+    states,
+    current: () => editor,
+    ref: (current: PagedEditorRef | null) => {
+      editor = current;
+      current?.ensureView({ focus: false });
+    },
+    ready: (view: unknown) => {
+      if (view === null || start === "idle") return;
+      const api =
+        editor?.getEditor()?.autocomplete ??
+        panic("Expected editor in ready callback");
+      api.start({ requestId: "ready" });
+      api.append("ready", " next");
+      api.finish("ready");
+    },
+    changed: (state: FolioAutocompleteState) => states.push(state),
+  };
+};
+
+for (const initial of ["shown", "idle"] as const)
+  test(`React replays ${initial} ready state without duplicate idle notifications`, async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const probe = createReadyAutocompleteProbe(initial);
+    const model = createEmptyDocument({ initialText: "Body" });
+    const render = async (zoom: number) => {
+      await act(async () =>
+        root.render(
+          <IntlProvider
+            locale="en"
+            timeZone="UTC"
+            messages={getFolioMessages("en")}
+          >
+            <PagedEditor
+              ref={probe.ref}
+              accessibleName="Document editor"
+              document={model}
+              documentIdentity="ready-autocomplete"
+              documentIO={createDocumentIO(new ArrayBuffer(0))}
+              markupView="all-markup"
+              onEditorViewReady={probe.ready}
+              onAutocompleteChange={probe.changed}
+              zoom={zoom}
+            />
+          </IntlProvider>,
+        ),
+      );
+    };
+    try {
+      await render(1);
+      expect(probe.states.map((state) => state.status)).toEqual(
+        initial === "shown" ? ["shown"] : [],
+      );
+      if (initial === "shown")
+        expect(probe.states.at(0)).toMatchObject({ text: " next" });
+      await render(1.1);
+      expect(probe.states.map((state) => state.status)).toEqual(
+        initial === "shown" ? ["shown"] : [],
+      );
+      await act(async () => probe.current()?.getEditor()?.autocomplete.clear());
+      expect(probe.states.map((state) => state.status)).toEqual(
+        initial === "shown" ? ["shown", "idle"] : [],
+      );
+      await render(1);
+      expect(probe.states.map((state) => state.status)).toEqual(
+        initial === "shown" ? ["shown", "idle"] : [],
+      );
+    } finally {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+  });

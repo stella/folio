@@ -360,3 +360,13 @@ describe("canTriggerAutocomplete", () => {
     });
   });
 });
+
+test.each(["café", "cafe\u0301", "a\u1ab0", "a\u{1d165}", "\u{2000b}"])(
+  "word continuation includes the final Unicode code point in %s",
+  (text) => {
+    const check = canTriggerAutocomplete(
+      mkState(blockDoc("paragraph", text), endOfText(text)),
+    );
+    expect(check).toMatchObject({ ok: false, reason: "midword" });
+  },
+);
