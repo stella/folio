@@ -101,6 +101,7 @@ test.each([true, false])(
             messages={getFolioMessages("en")}
           >
             <DocxEditor
+              experimentalSession="legacy"
               accessibleName="Document editor"
               ref={editor}
               {...props}
