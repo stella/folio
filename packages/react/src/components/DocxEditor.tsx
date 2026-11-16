@@ -3894,6 +3894,11 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             // deleted, or that deletion accepted) is one the repack must be told
             // about, or it refuses the smaller package.
             const repackFull = async (): Promise<ArrayBuffer> => {
+              if (!baselineBuffer) {
+                const { createDocx } =
+                  await import("@stll/folio-core/docx/rezip");
+                return createDocx(repackSourceDoc);
+              }
               const repackDocx = await loadRepackDocx();
               const repack = () => repackDocx(repackSourceDoc);
               return editorState

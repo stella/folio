@@ -20,6 +20,7 @@ import { parseDocx } from "@stll/folio-core/docx/parser";
 import { createDocx, validateDocx } from "@stll/folio-core/docx/rezip";
 import type { SaveDiagnostic } from "@stll/folio-core/docx/saveDiagnostics";
 import { getFolioMessages } from "@stll/folio-core/i18n/messages";
+import { toProseDoc } from "@stll/folio-core/prosemirror/conversion/toProseDoc";
 import {
   clearTrackedChanges,
   getChangedParagraphIds,
@@ -1451,3 +1452,44 @@ test.each(CANONICAL_SAVE_SEEDS)(
   // Each generated history saves and reparses several committed versions.
   propertyTestTimeout(30_000),
 );
+
+test("a fresh default-session model saves without a source package", async () => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const editor = createRef<DocxEditorRef>();
+  const model = createEmptyDocument({ initialText: "Fresh" });
+  try {
+    await act(async () =>
+      root.render(
+        <IntlProvider
+          locale="en"
+          timeZone="UTC"
+          messages={getFolioMessages("en")}
+        >
+          <DocxEditor
+            ref={editor}
+            accessibleName="Document editor"
+            document={model}
+            showToolbar={false}
+          />
+        </IntlProvider>,
+      ),
+    );
+    const adapter = editor.current ?? panic("Expected React editor");
+    await act(async () => adapter.ensureEditorView({ focus: false }));
+    const view =
+      adapter.getEditor()?.getView() ?? panic("Expected editable view");
+    await act(async () => view.dispatch(view.state.tr.insertText("!", 2)));
+    let saved: ArrayBuffer | null = null;
+    await act(async () => {
+      saved = await adapter.save();
+    });
+    if (!saved) panic("Expected a saved package from the fresh model");
+    const reopened = await parseDocx(saved, { preloadFonts: false });
+    expect(toProseDoc(reopened).textContent).toBe("F!resh");
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});
