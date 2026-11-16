@@ -99,7 +99,7 @@ type CanonicalCapability = {
 } & (
   | {
       owner: "document-operations";
-      defaultSessionMutation:
+      legacySessionMutation:
         "pm-public-operations" | "pm-headless-reviewer" | "canonical";
     }
   | { owner: "controller" | "adapters" | "prosemirror" | "ai-edits" }
@@ -137,7 +137,7 @@ export const CANONICAL_CAPABILITIES: {
     readonly owner: "adapters";
     readonly kind: "routing";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Default sessions retain comment model edits; canonical comments use semantic operations.";
+    readonly summary: "Legacy sessions retain comment model edits; canonical comments use semantic operations.";
   };
   readonly "direct-model-edits": {
     readonly owner: "adapters";
@@ -149,7 +149,7 @@ export const CANONICAL_CAPABILITIES: {
     readonly owner: "controller";
     readonly kind: "routing";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "The shared controller journals section properties; default sessions keep model changes.";
+    readonly summary: "The shared controller journals section properties; legacy sessions keep model changes.";
   };
   readonly "watermark-model-edits": {
     readonly owner: "adapters";
@@ -201,21 +201,21 @@ export const CANONICAL_CAPABILITIES: {
   };
   readonly "pm-document-operations": {
     readonly owner: "document-operations";
-    readonly defaultSessionMutation: "pm-public-operations";
+    readonly legacySessionMutation: "pm-public-operations";
     readonly kind: "mutation-source";
     readonly adapters: readonly ["react", "vue"];
     readonly summary: "Public document operations still execute against a held PM view.";
   };
   readonly "publicOps.comments": {
     readonly owner: "document-operations";
-    readonly defaultSessionMutation: "pm-public-operations";
+    readonly legacySessionMutation: "pm-public-operations";
     readonly kind: "routing";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Canonical public comments compile to semantic operations; default sessions retain PM comments.";
+    readonly summary: "Canonical public comments compile to semantic operations; legacy sessions retain PM comments.";
   };
   readonly "publicOps.unsupportedInline": {
     readonly owner: "document-operations";
-    readonly defaultSessionMutation: "pm-public-operations";
+    readonly legacySessionMutation: "pm-public-operations";
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
     readonly summary: "Unsupported public payloads refuse with a typed compiler capability gap.";
@@ -228,7 +228,7 @@ export const CANONICAL_CAPABILITIES: {
   };
   readonly "publicOps.headlessSession": {
     readonly owner: "document-operations";
-    readonly defaultSessionMutation: "pm-headless-reviewer";
+    readonly legacySessionMutation: "pm-headless-reviewer";
     readonly kind: "mutation-source";
     readonly adapters: readonly ["react", "vue"];
     readonly summary: "A canonical reviewer stages comparison resources, sections, table properties and inline atoms; secondary-story suggestion resolution, story-view resolution beside staged suggestions and comparison inline-provenance matching refuse.";
@@ -273,7 +273,7 @@ export const CANONICAL_CAPABILITIES: {
     kind: "routing",
     adapters: ["react", "vue"],
     summary:
-      "Default sessions retain comment model edits; canonical comments use semantic operations.",
+      "Legacy sessions retain comment model edits; canonical comments use semantic operations.",
   },
   [CANONICAL_GAP.modelEdits]: {
     owner: "adapters",
@@ -287,7 +287,7 @@ export const CANONICAL_CAPABILITIES: {
     kind: "routing",
     adapters: ["react", "vue"],
     summary:
-      "The shared controller journals section properties; default sessions keep model changes.",
+      "The shared controller journals section properties; legacy sessions keep model changes.",
   },
   [CANONICAL_GAP.watermark]: {
     owner: "adapters",
@@ -342,22 +342,22 @@ export const CANONICAL_CAPABILITIES: {
   },
   [CANONICAL_GAP.documentOperations]: {
     owner: "document-operations",
-    defaultSessionMutation: "pm-public-operations",
+    legacySessionMutation: "pm-public-operations",
     kind: "mutation-source",
     adapters: ["react", "vue"],
     summary: "Public document operations still execute against a held PM view.",
   },
   [CANONICAL_GAP.publicComments]: {
     owner: "document-operations",
-    defaultSessionMutation: "pm-public-operations",
+    legacySessionMutation: "pm-public-operations",
     kind: "routing",
     adapters: ["react", "vue"],
     summary:
-      "Canonical public comments compile to semantic operations; default sessions retain PM comments.",
+      "Canonical public comments compile to semantic operations; legacy sessions retain PM comments.",
   },
   [CANONICAL_GAP.publicUnsupportedInline]: {
     owner: "document-operations",
-    defaultSessionMutation: "pm-public-operations",
+    legacySessionMutation: "pm-public-operations",
     kind: "refusal",
     adapters: ["react", "vue"],
     summary:
@@ -372,7 +372,7 @@ export const CANONICAL_CAPABILITIES: {
   },
   [CANONICAL_GAP.publicHeadlessSession]: {
     owner: "document-operations",
-    defaultSessionMutation: "pm-headless-reviewer",
+    legacySessionMutation: "pm-headless-reviewer",
     kind: "mutation-source",
     adapters: ["react", "vue"],
     summary:
@@ -387,18 +387,25 @@ export const CANONICAL_CAPABILITIES: {
 } as const satisfies Record<CanonicalGap, CanonicalCapability>;
 
 /**
+ * The engine an editor edits with. The canonical session is the default;
+ * `"legacy"` opts out to the ProseMirror-owned engine.
+ */
+export type EditorSession = "canonical" | "legacy";
+
+/**
+ * Whether an editor runs the canonical session: every editor does unless its
+ * host selected `"legacy"`. This is the one place the default is decided.
  * The gap argument is a typed tag counted by the source guard, not a runtime policy.
  * Retire a gap by removing its sites and ledger entry.
  */
 export const usesCanonicalSession = (
-  session: "canonical" | undefined,
+  session: EditorSession | undefined,
   _gap: CanonicalGap,
-): boolean => session === "canonical";
+): boolean => session !== "legacy";
 
 /**
- * The engine a headless reviewer holds its document in. The editors say
- * `experimentalSession: "canonical"` and leave legacy unnamed; a reviewer
- * names both, so a host can pin either one.
+ * The engine a headless reviewer holds its document in. Its default is
+ * independent of the editors; a host can pin either engine.
  */
 export type HeadlessReviewerSession = "legacy" | "canonical";
 
@@ -412,10 +419,7 @@ export const DEFAULT_HEADLESS_REVIEWER_SESSION = "legacy";
 export const headlessReviewerUsesCanonicalSession = (
   session: HeadlessReviewerSession = DEFAULT_HEADLESS_REVIEWER_SESSION,
 ): boolean =>
-  usesCanonicalSession(
-    session === "canonical" ? session : undefined,
-    CANONICAL_GAP.publicHeadlessSession,
-  );
+  usesCanonicalSession(session, CANONICAL_GAP.publicHeadlessSession);
 
 export const canonicalRefusalMessage = (
   gap: CanonicalGap,

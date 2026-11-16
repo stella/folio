@@ -76,8 +76,8 @@ const createHostMutationObserver = () => {
   };
 };
 
-for (const experimentalSession of [undefined, "canonical"] as const) {
-  test(`document history shortcuts ${experimentalSession === "canonical" ? "leave canonical history to the editor" : "remain enabled by default"}`, async () => {
+for (const experimentalSession of [undefined, "legacy", "canonical"] as const) {
+  test(`document history shortcuts in ${experimentalSession ?? "default"} ${experimentalSession === "legacy" ? "remain enabled in the legacy session" : "leave canonical history to the editor"}`, async () => {
     const container = document.createElement("div");
     document.body.append(container);
     const root = createRoot(container);
@@ -93,7 +93,9 @@ for (const experimentalSession of [undefined, "canonical"] as const) {
             <DocxEditor
               accessibleName="Document editor"
               document={initialDocument}
-              {...(experimentalSession ? { experimentalSession } : {})}
+              {...(experimentalSession === undefined
+                ? {}
+                : { experimentalSession })}
               showToolbar={false}
             />
           </IntlProvider>,
@@ -111,9 +113,7 @@ for (const experimentalSession of [undefined, "canonical"] as const) {
         await act(async () => {
           document.dispatchEvent(event);
         });
-        expect(event.defaultPrevented).toBe(
-          experimentalSession !== "canonical",
-        );
+        expect(event.defaultPrevented).toBe(experimentalSession === "legacy");
       }
     } finally {
       await act(async () => root.unmount());
@@ -1486,7 +1486,7 @@ const createSaveNotifications = () => {
   };
 };
 
-for (const session of [undefined, "canonical"] as const)
+for (const session of [undefined, "legacy", "canonical"] as const)
   test.each(SERIALIZATION_PATH_CASES)(
     `React ${session ?? "default"} $kind reports the returned write path through save`,
     async (scenario) => {
@@ -1529,7 +1529,7 @@ for (const session of [undefined, "canonical"] as const)
         const api = adapter.getEditor() ?? panic("Expected controller");
         const view = api.getView() ?? panic("Expected editable body");
         await act(async () => {
-          if (session === "canonical")
+          if (session !== "legacy")
             expect(
               api.applyCanonicalOperations([
                 {
@@ -1558,7 +1558,7 @@ for (const session of [undefined, "canonical"] as const)
         expect(paths).toEqual([scenario.expectedPath]);
         expect(declines).toEqual(scenario.expectedDeclines);
         expect(diagnostics).toEqual(
-          session === "canonical" && scenario.kind === "declined"
+          session !== "legacy" && scenario.kind === "declined"
             ? [CANONICAL_SAVE_FALLBACK_DIAGNOSTIC]
             : [],
         );
@@ -1578,54 +1578,74 @@ for (const session of [undefined, "canonical"] as const)
     },
   );
 
-test("a fresh default-session model saves without a source package", async () => {
-  const container = document.createElement("div");
-  document.body.append(container);
-  const root = createRoot(container);
-  const editor = createRef<DocxEditorRef>();
-  const model = createEmptyDocument({ initialText: "Fresh" });
-  try {
-    await act(async () =>
-      root.render(
-        <IntlProvider
-          locale="en"
-          timeZone="UTC"
-          messages={getFolioMessages("en")}
-        >
-          <DocxEditor
-            ref={editor}
-            accessibleName="Document editor"
-            document={model}
-            showToolbar={false}
-          />
-        </IntlProvider>,
-      ),
-    );
-    const adapter = editor.current ?? panic("Expected React editor");
-    await act(async () => adapter.ensureEditorView({ focus: false }));
-    const view =
-      adapter.getEditor()?.getView() ?? panic("Expected editable view");
-    await act(async () => view.dispatch(view.state.tr.insertText("!", 2)));
-    let saved: ArrayBuffer | null = null;
-    await act(async () => {
-      saved = await adapter.save();
-    });
-    if (!saved) panic("Expected a saved package from the fresh model");
-    const reopened = await parseDocx(saved, { preloadFonts: false });
-    expect(toProseDoc(reopened).textContent).toBe("F!resh");
-  } finally {
-    await act(async () => root.unmount());
-    container.remove();
-  }
-});
+for (const session of [undefined, "legacy", "canonical"] as const)
+  test(`a fresh ${session ?? "default"} model saves without a source package`, async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const editor = createRef<DocxEditorRef>();
+    const model = createEmptyDocument({ initialText: "Fresh" });
+    try {
+      await act(async () =>
+        root.render(
+          <IntlProvider
+            locale="en"
+            timeZone="UTC"
+            messages={getFolioMessages("en")}
+          >
+            <DocxEditor
+              ref={editor}
+              accessibleName="Document editor"
+              document={model}
+              {...(session === undefined
+                ? {}
+                : { experimentalSession: session })}
+              showToolbar={false}
+            />
+          </IntlProvider>,
+        ),
+      );
+      const adapter = editor.current ?? panic("Expected React editor");
+      await act(async () => adapter.ensureEditorView({ focus: false }));
+      const view =
+        adapter.getEditor()?.getView() ?? panic("Expected editable view");
+      await act(async () => {
+        if (session === "legacy")
+          view.dispatch(view.state.tr.insertText("!", 2));
+        else {
+          view.dispatch(
+            view.state.tr.setSelection(TextSelection.create(view.state.doc, 2)),
+          );
+          view.dom.dispatchEvent(
+            new InputEvent("beforeinput", {
+              bubbles: true,
+              cancelable: true,
+              inputType: "insertText",
+              data: "!",
+            }),
+          );
+        }
+      });
+      let saved: ArrayBuffer | null = null;
+      await act(async () => {
+        saved = await adapter.save();
+      });
+      if (!saved) panic("Expected a saved package from the fresh model");
+      const reopened = await parseDocx(saved, { preloadFonts: false });
+      expect(toProseDoc(reopened).textContent).toBe("F!resh");
+    } finally {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+  });
 
-for (const session of [undefined, "canonical"] as const)
+for (const session of [undefined, "legacy", "canonical"] as const)
   for (const callback of [
     "onSerializationPath",
     "onSelectiveDecline",
     "onDiagnostic",
   ] as const)
-    for (const diagnosticStage of session === undefined &&
+    for (const diagnosticStage of session === "legacy" &&
     callback === "onDiagnostic"
       ? (["selective", "tripwire"] as const)
       : (["selective"] as const))
@@ -1643,7 +1663,7 @@ for (const session of [undefined, "canonical"] as const)
             ? serializationTripwireDiagnosticSource
             : serializationDiagnosticSource;
         const diagnosticModel =
-          session === undefined && callback === "onDiagnostic"
+          session === "legacy" && callback === "onDiagnostic"
             ? await diagnosticSource()
             : null;
         const normalFlags = diagnosticModel ? undefined : scenario.flags;
@@ -1690,7 +1710,7 @@ for (const session of [undefined, "canonical"] as const)
           const api = adapter.getEditor() ?? panic("Expected controller");
           const view = api.getView() ?? panic("Expected body view");
           await act(async () => {
-            if (session === "canonical")
+            if (session !== "legacy")
               expect(
                 api.applyCanonicalOperations([
                   {
@@ -1740,7 +1760,7 @@ const tripwireFeatureFlags = {
   selectiveSaveTripwire: true,
 };
 
-for (const session of [undefined, "canonical"] as const)
+for (const session of [undefined, "legacy", "canonical"] as const)
   test(`React ${session ?? "default"} host tripwire exceptions propagate after save acknowledgement`, async () => {
     const container = document.createElement("div");
     document.body.append(container);
@@ -1779,7 +1799,7 @@ for (const session of [undefined, "canonical"] as const)
       const api = adapter.getEditor() ?? panic("Expected controller");
       const view = api.getView() ?? panic("Expected body view");
       await act(async () => {
-        if (session === "canonical")
+        if (session !== "legacy")
           expect(
             api.applyCanonicalOperations([
               {
