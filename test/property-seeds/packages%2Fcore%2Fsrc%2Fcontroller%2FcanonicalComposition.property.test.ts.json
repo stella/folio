@@ -52,5 +52,13 @@
       "note": "Saved document equality excludes independently generated package modification timestamps.",
       "date": "2026-10-09"
     }
+  ],
+  "measured deletions and refusals preserve separate gestures after missing-end recovery": [
+    {
+      "seed": 713252384,
+      "path": "0",
+      "note": "Measured word and line deletion after composition recovery is a separate undo gesture; missing ranges and cut remain explicit refusals.",
+      "date": "2026-11-16"
+    }
   ]
 }
