@@ -32,6 +32,7 @@ import type {
   DocumentBody,
   Paragraph,
   PositionedBookmarkMarker,
+  Run,
 } from "../model/document";
 import {
   copyOriginAncestorsOf,
@@ -45,6 +46,7 @@ import {
   type InlineNode,
   isCommentAnchor,
   isEmptyRecord,
+  leafSpans,
   rebuildNode,
   sameOwnFields,
 } from "./leaves";
@@ -185,7 +187,8 @@ export const noRelocatedBoundaries = (): RelocatedBoundaries => ({
  * pending: rejecting the content around it says nothing about the deletion,
  * so accepting it later removes them, as deleting them directly does, and
  * rejecting it keeps them. A deletion holding no such boundary goes with the
- * content.
+ * content. An automatic note mark is source-owned content too: its formatted
+ * run survives removal, inside every revision this resolution leaves pending.
  */
 export const removedContentBoundaries = ({
   nodes,
@@ -196,6 +199,7 @@ export const removedContentBoundaries = ({
   leavesPending = () => false,
   keptPaths,
   path,
+  keepAutomaticMark = () => [],
 }: {
   nodes: readonly InlineNode[];
   rejecting: boolean;
@@ -208,6 +212,8 @@ export const removedContentBoundaries = ({
   /** Occurrences an accepted deletion must keep to retain balanced ranges. */
   keptPaths: ReadonlySet<string>;
   path: readonly number[];
+  /** The resolver retains a note's owned mark, with its run properties resolved. */
+  keepAutomaticMark?: (run: Run) => readonly InlineNode[];
 }): InlineNode[] =>
   nodes.flatMap((node, index): InlineNode[] => {
     const sourcePath = [...path, index];
@@ -219,6 +225,10 @@ export const removedContentBoundaries = ({
       return [node];
     }
     if (isCommentAnchor(node)) return pairedComments.has(node.id) ? [node] : [];
+    if (node.type === "run") {
+      const marks = keepAutomaticMark(node);
+      if (marks.length > 0) return [...marks];
+    }
     const inner = removedContentBoundaries({
       nodes: childNodes(node) ?? [],
       rejecting,
@@ -228,6 +238,7 @@ export const removedContentBoundaries = ({
       leavesPending,
       keptPaths,
       path: sourcePath,
+      keepAutomaticMark,
     });
     // A direct deletion around a kept endpoint retains the source records
     // holding it. Acceptance preserves that same ancestry; rejection still
@@ -235,18 +246,21 @@ export const removedContentBoundaries = ({
     if (!rejecting && inner.length > 0 && !isTrackedWrapper(node))
       return [rebuildNode(node, inner)];
     if (
-      rejecting &&
-      node.type === "deletion" &&
+      isTrackedWrapper(node) &&
       inner.length > 0 &&
-      leavesPending(node.info.id)
+      leavesPending(node.info.id) &&
+      ((rejecting && node.type === "deletion") ||
+        leafSpans(inner).some(({ node: leaf }) => leaf.type === "noteMarker"))
     ) {
-      const { resolutionJoins: _joins, ...deletion } = node;
       const content = inner.map((kept) =>
         isTrackedRunContent(kept)
           ? kept
-          : panic("A kept boundary is tracked run content."),
+          : panic("A retained boundary or note mark is tracked run content."),
       );
-      return [{ ...deletion, content }];
+      if (leafSpans(inner).some(({ node: leaf }) => leaf.type === "noteMarker"))
+        return [{ ...node, content }];
+      const { resolutionJoins: _joins, ...pending } = node;
+      return [{ ...pending, content }];
     }
     return inner;
   });

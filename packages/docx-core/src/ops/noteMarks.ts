@@ -1,4 +1,6 @@
 /** Automatic note marks are owned model records, derived at the operations boundary. */
+import { panic } from "better-result";
+
 import type {
   BlockContent,
   Document,
@@ -16,6 +18,16 @@ export type NoteReferenceSpan = {
   node: Extract<InlineNode, { type: "footnoteRef" | "endnoteRef" }>;
   ancestors: readonly InlineNode[];
 };
+
+/** The automatic marks alone, in their source runs and run properties. */
+export const automaticNoteMarkRuns = (nodes: readonly InlineNode[]): Run[] =>
+  leafSpans(nodes).flatMap(({ node, ancestors }) => {
+    if (node.type !== "noteMarker") return [];
+    const run =
+      ancestors.findLast((ancestor) => ancestor.type === "run") ??
+      panic("An automatic note mark belongs to a source run.");
+    return [{ ...run, content: [node] }];
+  });
 
 /**
  * Every footnote and endnote reference in `nodes`, with the records holding
