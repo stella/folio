@@ -11,7 +11,7 @@
  * key lays out on its own whatever the machine's speed.
  *
  * A table the edit did not reach keeps its measure too, whether the pass
- * hands it out again or moves it. In the default engine a settled edit builds
+ * hands it out again or moves it. In the legacy engine a settled edit builds
  * the document again, with new styles, so the next pass measures every table
  * once: a table is measured at most once per such build.
  */
@@ -108,7 +108,7 @@ const HOSTS = [
   { name: "react", origin: PLAYGROUND_HOSTS.react },
   { name: "vue", origin: PLAYGROUND_HOSTS.vue },
 ] as const;
-const ENGINES = ["default", "canonical"] as const;
+const ENGINES = ["legacy", "canonical"] as const;
 const MODES = ["editing", "suggesting"] as const;
 
 test.use({ viewport: { width: 1280, height: 900 } });
@@ -204,7 +204,7 @@ for (const [name, markdown] of Object.entries(DOCUMENTS)) {
             file: "typing-measure.docx",
             mode,
           });
-          if (engine === "canonical") query.set("session", "canonical");
+          query.set("session", engine);
           // The spec needs the editor and its document, not every resource
           // the page loads: it waits for those below.
           await page.goto(`${host.origin}/?${query.toString()}`, {
@@ -288,7 +288,7 @@ for (const [name, markdown] of Object.entries(DOCUMENTS)) {
           for (const pass of passes)
             expect(pass).toBeLessThanOrEqual(MEASURED_PARAGRAPHS_PER_LAYOUT);
           // A canonical session builds no document between keys, so no
-          // table is measured again. The default engine measures each table
+          // table is measured again. The legacy engine measures each table
           // at most once per build: those in the window, and the one that may
           // land just before it.
           expect(measuredTables).toBeLessThanOrEqual(
