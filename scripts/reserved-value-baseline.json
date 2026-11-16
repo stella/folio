@@ -25,7 +25,6 @@
   "packages/core/src/prosemirror/extensions/nodes/PageBreakRunExtension.ts": 1,
   "packages/core/src/prosemirror/extensions/nodes/TabExtension.ts": 1,
   "packages/core/src/prosemirror/runFormattingFromMarks.ts": 5,
-  "packages/core/src/prosemirror/runStyleFormatting.ts": 1,
   "packages/core/src/prosemirror/selectionState.ts": 1,
   "packages/core/src/utils/formatToStyle.ts": 4,
   "packages/core/src/utils/headerFooter.ts": 2,

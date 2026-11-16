@@ -160,7 +160,6 @@ const readCallers = (document: ReadonlyDocument, engine: StyleEngine) => {
           styleId: styleId ?? undefined,
           styleResolver: engine,
           tableRunFormatting: { italic: true },
-          paragraphMarkFormatting: { bold: true },
         }).inheritedFormatting,
         defaults: resolveParagraphDefaultTextFormatting(
           styleId ?? undefined,
