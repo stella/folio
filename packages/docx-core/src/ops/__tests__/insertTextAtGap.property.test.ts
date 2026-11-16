@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
 import {
+  assertProperty,
   propertyConfig,
   propertyTestTimeout,
 } from "../../../../../test/property-testing";
@@ -320,6 +321,69 @@ const lands = (misplaced = false) =>
   });
 
 describe("typing at a gap", () => {
+  test(
+    "an interior insertion changes only the original text leaf",
+    () => {
+      assertProperty(
+        fc.property(
+          fc.array(fc.string({ minLength: 2, maxLength: 12 }), {
+            minLength: 1,
+            maxLength: 5,
+          }),
+          fc.nat(),
+          fc.nat(),
+          (texts, leafIndex, interiorOffset) => {
+            const index = leafIndex % texts.length;
+            const text = texts[index];
+            if (text === undefined)
+              throw new Error("The selected text leaf exists.");
+            const cut = 1 + (interiorOffset % (text.length - 1));
+            const offset =
+              texts
+                .slice(0, index)
+                .reduce((total, value) => total + value.length, 0) + cut;
+            const content: ParagraphContent[] = [
+              {
+                type: "run",
+                content: texts.map((value) => ({ type: "text", text: value })),
+              },
+            ];
+            const { document, story } = placeOf(content);
+            const applied = typeAt(
+              document,
+              story,
+              { offset, zeroWidthBefore: 0 },
+              "inherit",
+            );
+            if (typeof applied === "string") throw new Error(applied);
+            expect(paragraphOf(applied.document, story)).toStrictEqual([
+              {
+                type: "run",
+                content: texts.map((value, at) => ({
+                  type: "text",
+                  text:
+                    at === index
+                      ? value.slice(0, cut) + TYPED + value.slice(cut)
+                      : value,
+                })),
+              },
+            ]);
+            const restored = applyDocumentOps(
+              applied.document,
+              JSON.parse(JSON.stringify(applied.inverse)),
+            ).unwrap();
+            expect(restored.document).toStrictEqual(document);
+          },
+        ),
+        {
+          id: "interior typing preserves original text leaf boundaries",
+          numRuns: 200,
+        },
+      );
+    },
+    propertyTestTimeout(30_000),
+  );
+
   test(
     "lands exactly at the gap, in the run beside it, whatever leaves are there",
     () => {

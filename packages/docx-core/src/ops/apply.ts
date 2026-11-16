@@ -814,12 +814,12 @@ const insertText = (document: Document, op: InsertTextOp): Applied => {
   }
   const { location, gap } = located.value;
   const { offset } = gap;
-  const content = insertTextInContent(
-    location.paragraph.content,
+  const content = insertTextInContent({
+    items: location.paragraph.content,
     gap,
-    op.text,
-    op.runProps,
-  );
+    text: op.text,
+    runProps: op.runProps,
+  });
   if (content === undefined) {
     return refuse(
       op,
