@@ -10,8 +10,8 @@
 import type { EditorState } from "prosemirror-state";
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 
-import type { TextPosition } from "@stll/docx-core/ops";
 import type { FolioAutocompleteState } from "@stll/folio-core/controller/autocompleteSuggestion";
+import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
 import type { LayoutSelectionGate } from "@stll/folio-core/paged-layout/LayoutSelectionGate";
 import { createRenderedDomContext } from "@stll/folio-core/render-dom/RenderedDomContext";
 
@@ -33,7 +33,7 @@ const props = defineProps<{
   syncCoordinator: LayoutSelectionGate;
   /** The editor's suggestion. */
   suggestion: FolioAutocompleteState;
-  editorPositionAt: (position: TextPosition) => number | null;
+  editorPositionAt: FolioEditor["editorPositionAt"];
 }>();
 
 const projection = ref<AutocompleteProjection | null>(null);
