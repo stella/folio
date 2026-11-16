@@ -637,13 +637,15 @@ export const createEditorIntentIdAllocator = ({
             demand = (op.bottom - op.top + 1) * 2;
             break;
           case DOCUMENT_OP_TYPES.SPLIT_CELL:
-            // A cell for each column of the span in each row a vertical
-            // merge reaches, which is at most every row.
+            // A cell for each column of the span, and a merge change, in
+            // each row a vertical merge reaches, which is at most every row.
             demand =
-              (located.value.table.rows
+              ((located.value.table.rows
                 .at(located.value.rowIndex)
                 ?.cells.at(located.value.cellIndex)?.formatting?.gridSpan ??
-                1) * located.value.table.rows.length;
+                1) +
+                1) *
+              located.value.table.rows.length;
             break;
           case DOCUMENT_OP_TYPES.SET_TABLE_GRID:
             demand = 2;
