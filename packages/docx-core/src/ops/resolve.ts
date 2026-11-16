@@ -1185,6 +1185,16 @@ const carryResolutionState = (
 };
 
 type SourceOwnerSide = "before" | "after";
+
+/** A recorded join on one side identifies the surviving piece of this cut. */
+const oneSidedKeptPiece = (
+  joins: TrackedWrapper["resolutionJoins"],
+): SourceOwnerSide | undefined => {
+  if (joins === undefined) return undefined;
+  if (joins.before === 0 && joins.after > 0) return "after";
+  if (joins.after === 0 && joins.before > 0) return "before";
+  return undefined;
+};
 type SourceOwnerRoute = { owner: SourceOwner; depth: number };
 type SourceOwnerRoutes = Record<SourceOwnerSide, SourceOwnerRoute | undefined>;
 type SourceOwnerState =
@@ -1864,6 +1874,10 @@ const resolveList = ({
             after: sourceOwners.at(index + 1),
             spanning: trackedWithin(node.content),
             keptFrom: node.info.date ?? "",
+            // Accepting content beside this removed piece can leave its
+            // recorded container join on one side only. The other side's
+            // authored record is not part of that cut container.
+            piece: oneSidedKeptPiece(node.resolutionJoins),
           });
         if (node.resolutionJoins === undefined) seams.push(out.length);
         else if ((node.resolutionJoins.plainSides?.length ?? 0) > 0)
