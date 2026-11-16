@@ -304,3 +304,94 @@ for (const kind of kinds)
         },
       );
     });
+
+for (const kind of kinds) {
+  test(`${kind}: a pending insertion keeps its produced seam metadata when an enclosing deletion is accepted`, () => {
+    const story = { kind, id: 2 };
+    const sourceMark = {
+      ...markerRun(kind),
+      content: [{ type: "noteMarker", kind }],
+    } satisfies Run;
+    const document = documentOf(story, [
+      sourceMark,
+      { type: "run", content: [{ type: "text", text: "AB" }] },
+    ]);
+    const inserted = applied(document, [
+      {
+        type: DOCUMENT_OP_TYPES.INSERT_TEXT,
+        at: { story, blockId: NOTE_ID, offset: 1 },
+        text: "Inserted words.",
+        runProps: "inherit",
+        revision: { id: 10, author: "Writer", date: DATE },
+      },
+    ]);
+    const first = storyBody(inserted.document, story).content.at(0);
+    if (first?.type !== "paragraph")
+      throw new Error("Missing insertion paragraph");
+    const pending = first.content.find((node) => node.type === "insertion");
+    if (pending?.type !== "insertion")
+      throw new Error("Insertion producer returned no revision");
+    expect(pending.resolutionJoins?.remove).toBeGreaterThan(0);
+    // The imported source mark stands inside the producer's pending seam.
+    const pendingWithMark = {
+      ...pending,
+      content: [sourceMark, ...pending.content],
+    };
+    const enclosed = applied(inserted.document, [
+      {
+        type: DOCUMENT_OP_TYPES.REPLACE_INLINE,
+        story,
+        blockId: NOTE_ID,
+        expected: first.content,
+        content: [
+          {
+            type: "deletion",
+            info: { id: 20, author: "Reviewer", date: DATE },
+            content: [pendingWithMark],
+          },
+        ],
+      },
+    ]);
+    const partial = applied(enclosed.document, [
+      {
+        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+        story,
+        revisionIds: [20],
+        decision: "accept",
+      },
+    ]);
+    const after = storyBody(partial.document, story).content.at(0);
+    if (after?.type !== "paragraph")
+      throw new Error("Missing resolved paragraph");
+    const retained = after.content.find((node) => node.type === "insertion");
+    expect(retained).toEqual({
+      ...pendingWithMark,
+      content: automaticNoteMarkRuns(pendingWithMark.content),
+    });
+    for (const decision of decisions) {
+      const sequential = applied(partial.document, [
+        {
+          type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+          story,
+          revisionIds: [10],
+          decision,
+        },
+      ]);
+      const together = applied(enclosed.document, [
+        {
+          type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+          story,
+          revisionIds: [10],
+          decision,
+        },
+        {
+          type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+          story,
+          revisionIds: [20],
+          decision: "accept",
+        },
+      ]);
+      expect(sequential.document).toEqual(together.document);
+    }
+  });
+}

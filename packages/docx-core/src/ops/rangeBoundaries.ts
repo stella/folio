@@ -252,12 +252,14 @@ export const removedContentBoundaries = ({
       ((rejecting && node.type === "deletion") ||
         leafSpans(inner).some(({ node: leaf }) => leaf.type === "noteMarker"))
     ) {
-      const { resolutionJoins: _joins, ...pending } = node;
       const content = inner.map((kept) =>
         isTrackedRunContent(kept)
           ? kept
           : panic("A retained boundary or note mark is tracked run content."),
       );
+      if (leafSpans(inner).some(({ node: leaf }) => leaf.type === "noteMarker"))
+        return [{ ...node, content }];
+      const { resolutionJoins: _joins, ...pending } = node;
       return [{ ...pending, content }];
     }
     return inner;
