@@ -328,11 +328,18 @@ const withoutNextRevisionId = (outcome: MatchOutcome) => {
 };
 
 /** A saved document with every change accepted, then with every change rejected. */
-const resolvedViews = async (buffer: ArrayBuffer) => {
-  const accepting = await FolioDocxReviewer.fromBuffer(buffer.slice(0));
-  accepting.acceptAll();
-  const rejecting = await FolioDocxReviewer.fromBuffer(buffer.slice(0));
-  rejecting.rejectAll();
+const resolvedViews = async (
+  buffer: ArrayBuffer,
+  session: HeadlessReviewerSession,
+) => {
+  const accepting = await FolioDocxReviewer.fromBuffer(buffer.slice(0), {
+    session,
+  });
+  expect(accepting.acceptAll().skipped).toEqual([]);
+  const rejecting = await FolioDocxReviewer.fromBuffer(buffer.slice(0), {
+    session,
+  });
+  expect(rejecting.rejectAll().skipped).toEqual([]);
   return [accepting.snapshot(), rejecting.snapshot()] as const;
 };
 
@@ -368,8 +375,8 @@ const expectAgreement = async (
       legacy.outcome.nextRevisionId,
     );
   const [legacyViews, canonicalViews] = [
-    await resolvedViews(legacy.buffer),
-    await resolvedViews(canonical.buffer),
+    await resolvedViews(legacy.buffer, "legacy"),
+    await resolvedViews(canonical.buffer, "canonical"),
   ];
   for (const [index, legacyView] of legacyViews.entries()) {
     const canonicalView = canonicalViews[index];

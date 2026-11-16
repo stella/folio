@@ -349,7 +349,7 @@ export type FolioDocxReviewerOptions = {
    * them, and resolved views are read from a second session resolved to
    * the view; suggested batches stage on it and its suggestions resolve
    * through its suggestion intent. Secondary-story suggestion resolution and
-   * comparison inline-atom matching throw a `CanonicalSessionError` under
+   * comparison inline-provenance matching throw a `CanonicalSessionError` under
    * `publicOps.headlessSession`.
    * Resolving one story to a view also refuses while it holds staged
    * suggestions. Locks that prevent a complete view refuse rather than
