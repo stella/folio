@@ -1,4 +1,5 @@
 /** Forward effects are checked against logical slots and content, independently of inverse snapshots. */
+import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
@@ -1014,12 +1015,20 @@ describe("independent table forward oracles", () => {
       };
       const soleDocument = documentOf(sole);
       soleDocument.package.document.content.push(second);
-      if (kind !== "revision")
+      if (kind === "revision") {
+        const deleted = applied(soleDocument, deletion);
+        expect(deleted.document.package.document.content).toStrictEqual(
+          soleDocument.package.document.content.filter(
+            (block) => block !== sole,
+          ),
+        );
+      } else {
         refused(
           soleDocument,
           deletion,
           DOCUMENT_OP_REFUSAL_REASONS.DEPENDENT_RECORDS,
         );
+      }
       removed.formatting = { gridSpan: 2 };
       table.columnWidths = [900, 900, 900];
       const narrowed = applied(document, {
@@ -1043,7 +1052,7 @@ describe("independent table forward oracles", () => {
     const first = top.content.at(0);
     const last = bottom.content.at(0);
     if (first?.type !== "paragraph" || last?.type !== "paragraph")
-      throw new Error("Fixture paragraph missing.");
+      panic("Expected fixture paragraphs");
     // One bookmark inside a cell, one running down the removed column.
     first.content.unshift(
       { type: "bookmarkStart", id: 7, name: "_Inside" },
