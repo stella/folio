@@ -1,18 +1,213 @@
+import { panic } from "better-result";
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
+import { EditorState } from "prosemirror-state";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
+import {
+  getCommentAnchorsFromDoc,
+  getTrackedChangesFromDoc,
+} from "../ai-edits/read";
+import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
 import {
   canonicalCommentBody,
   compileCanonicalComments,
 } from "../canonical/canonicalComments";
+import { CanonicalPublicOperations } from "../canonical/canonicalPublicOperations";
+import {
+  type CanonicalCommit,
+  createCanonicalSession,
+  publishCanonicalProjection,
+} from "../canonical/canonicalSession";
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioDocumentOperation,
 } from "../document-operations";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
+import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
 import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
+import type { Document, InlineSdt, Run } from "../types/document";
+
+test("DOCX-produced nested control comments are guarded without refusing exact covered words", async () => {
+  const text = (value: string) =>
+    ({ type: "run", content: [{ type: "text", text: value }] }) satisfies Run;
+  const control = (id: number, content: InlineSdt["content"]) =>
+    ({
+      type: "inlineSdt",
+      properties: { sdtType: "richText", id },
+      content,
+    }) satisfies InlineSdt;
+  for (const nesting of [1, 2]) {
+    const inner = control(9, [
+      text("Before "),
+      { type: "commentRangeStart", id: 0 },
+      text("time"),
+      { type: "commentRangeEnd", id: 0 },
+      { type: "commentReference", id: 0 },
+      text(" after"),
+    ]);
+    const source = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              paraId: "12345678",
+              content: [
+                text("Outside "),
+                nesting === 1 ? inner : control(10, [inner]),
+                text(" outside."),
+              ],
+            },
+          ],
+          comments: [
+            {
+              id: 0,
+              author: "Reviewer",
+              content: [
+                {
+                  type: "paragraph",
+                  paraId: "23456789",
+                  content: [text("Note")],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    } satisfies Document;
+    // A real DOCX source keeps its markers inside the control. Creating a new
+    // semantic comment splits that control and does not exercise this shape.
+    const parsed = await parseDocx(await createDocx(source), {
+      preloadFonts: false,
+    });
+    for (const mode of ["editing", "suggesting"] as const) {
+      for (const placement of ["inside", "crossing", "covered"] as const) {
+        const session = createCanonicalSession(parsed).unwrap();
+        session.setMode(
+          mode === "editing"
+            ? { type: "editing" }
+            : { type: "suggesting", author: "Reviewer" },
+        );
+        let state = EditorState.create({ doc: session.projection.doc });
+        const publish = (commit: CanonicalCommit) => {
+          state = publishCanonicalProjection({
+            state,
+            commit,
+            session,
+          }).unwrap().state;
+        };
+        const controls: { from: number; to: number }[] = [];
+        let covered: { from: number; to: number } | undefined;
+        state.doc.descendants((node, position) => {
+          if (node.type.name === "sdt")
+            controls.push({
+              from: position + 1,
+              to: position + node.nodeSize - 1,
+            });
+          if (node.isText && node.text === "time")
+            covered = { from: position, to: position + node.nodeSize };
+        });
+        const inside = controls.at(-1);
+        const paragraph = session.projection.firstParagraph;
+        if (
+          inside === undefined ||
+          covered === undefined ||
+          paragraph === undefined
+        )
+          return panic("Produced control source is missing");
+        expect(
+          getCommentAnchorsFromDoc(state.doc).map(({ quote }) => quote),
+        ).toEqual(["time"]);
+        const range = (() => {
+          switch (placement) {
+            case "inside":
+              return { from: inside.from + 2, to: inside.to - 2 };
+            case "crossing":
+              return {
+                from: paragraph.start,
+                to: paragraph.start + paragraph.node.content.size,
+              };
+            case "covered":
+              return covered;
+            default: {
+              const unhandled: never = placement;
+              return panic(String(unhandled));
+            }
+          }
+        })();
+        const before = session.document;
+        const snapshot = session.captureSaveSnapshot();
+        let committed = 0;
+        session.onCommitted(() => committed++);
+        const result = session.prepareReplace(state, {
+          ...range,
+          text: "schedule",
+        });
+        if (placement !== "covered") {
+          expect(result.isErr()).toBe(true);
+          if (result.isErr())
+            expect(result.error.ground).toEqual({
+              gap: "comment-replacement-alignment",
+            });
+          expect(session.document).toBe(before);
+          expect(session.version).toBe(0);
+          expect(session.canUndo).toBe(false);
+          expect(committed).toBe(0);
+          expect(session.captureSaveSnapshot()).toEqual(snapshot);
+          const executor = new CanonicalPublicOperations({
+            session,
+            getState: () => state,
+            publish: (commit) => {
+              publish(commit);
+              return true;
+            },
+          });
+          const applied = executor.apply({
+            snapshot: createFolioAIEditSnapshot(state.doc),
+            batch: {
+              version: 1,
+              mode: mode === "editing" ? "direct" : "tracked-changes",
+              operations: [
+                {
+                  id: "replace",
+                  type: "replaceBlock",
+                  blockId: "12345678",
+                  text: "New agreement.",
+                },
+              ],
+            },
+          });
+          expect(applied.applied).toEqual([]);
+          expect(applied.skipped).toMatchObject([
+            { canonicalRefusal: { gap: "comment-replacement-alignment" } },
+          ]);
+          expect(session.document).toBe(before);
+          expect(session.version).toBe(0);
+          expect(committed).toBe(0);
+          continue;
+        }
+        expect(result.isOk()).toBe(true);
+        publish(result.unwrap());
+        if (mode === "suggesting")
+          publish(
+            session
+              .prepareResolve(state, {
+                revisionIds: getTrackedChangesFromDoc(state.doc).map(
+                  ({ id }) => id,
+                ),
+                resolution: "accept",
+              })
+              .unwrap(),
+          );
+        expect(
+          getCommentAnchorsFromDoc(state.doc).map(({ quote }) => quote),
+        ).toEqual(["schedule"]);
+      }
+    }
+  }
+});
 
 const SOURCE = "The Supplier delivers the goods on time and in good order.";
 const REPLACEMENT =

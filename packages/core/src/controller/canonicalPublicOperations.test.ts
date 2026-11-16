@@ -9,6 +9,7 @@ import {
 setDefaultTimeout(propertyTestTimeout(30_000));
 import { panic } from "better-result";
 import { EditorState } from "prosemirror-state";
+import { CellSelection } from "prosemirror-tables";
 
 import { withoutPendingSuggestions } from "@stll/docx-core/ops";
 
@@ -38,6 +39,7 @@ import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
 import { toFlowBlocks } from "../layout-bridge/convert/toFlowBlocks";
 import type { FlowBlock } from "../layout-engine/types";
+import { fromMarkdown } from "../markdown/fromMarkdown";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document } from "../types/document";
 
@@ -89,6 +91,67 @@ const setup = (source: string | Document = "alpha beta") => {
 };
 
 describe("canonical public operation batches", () => {
+  test("cell replacement preflight covers every sorted cell independently of selection direction", () => {
+    const source = fromMarkdown("| A | B |\n|---|---|\n| C | D |");
+    const table = source.package.document.content.at(0);
+    if (table?.type !== "table") return panic("Produced table is missing");
+    let id = 1;
+    for (const row of table.rows)
+      for (const cell of row.cells)
+        for (const block of cell.content)
+          if (block.type === "paragraph")
+            block.paraId = (id++).toString(16).padStart(8, "0");
+    for (const direction of ["forward", "reverse"] as const) {
+      const editor = setup(source);
+      expect(
+        editor.apply([
+          {
+            id: "comment",
+            type: "commentOnBlock",
+            blockId: "00000001",
+            quote: "A",
+            comment: { text: "Note" },
+          },
+        ]).applied,
+      ).toHaveLength(1);
+      const positions = new Map<string, number>();
+      editor.state().doc.descendants((node, position) => {
+        if (node.type.name === "tableCell" || node.type.name === "tableHeader")
+          positions.set(node.textContent, position);
+      });
+      const start = positions.get("A");
+      const end = positions.get("D");
+      if (start === undefined || end === undefined)
+        return panic("Produced cell is missing");
+      const selection = CellSelection.create(
+        editor.state().doc,
+        direction === "forward" ? start : end,
+        direction === "forward" ? end : start,
+      );
+      const state = editor
+        .state()
+        .apply(editor.state().tr.setSelection(selection));
+      const before = editor.session.document;
+      const version = editor.session.version;
+      let committed = 0;
+      editor.session.onCommitted(() => committed++);
+      const result = editor.session.prepareReplace(state, {
+        from: selection.from,
+        to: selection.to,
+        text: "replacement",
+      });
+      expect(result.isErr()).toBe(true);
+      if (result.isErr())
+        expect(result.error.ground).toEqual({
+          gap: "comment-replacement-alignment",
+        });
+      expect(editor.session.document).toBe(before);
+      expect(editor.session.version).toBe(version);
+      expect(editor.session.canUndo).toBe(true);
+      expect(committed).toBe(0);
+    }
+  });
+
   test("comment alignment inside an inline control refuses at the same owner", () => {
     const source = "The Supplier delivers on time.";
     const editor = setup({

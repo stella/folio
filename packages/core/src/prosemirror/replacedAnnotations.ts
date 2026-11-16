@@ -58,6 +58,7 @@
  * text within a surviving block retains a point rather than dropping it.
  */
 
+import { panic } from "better-result";
 import {
   Fragment,
   Mark,
@@ -333,11 +334,16 @@ const lendsMarks = (node: PMNode, content: ReplacedContent): boolean => {
   }
 };
 
-type SurveyOptions = { from: number; to: number; content: ReplacedContent };
+type SurveyOptions = {
+  from: number;
+  to: number;
+  content: ReplacedContent;
+  containers: "preserve" | "descend";
+};
 
 const surveyAnnotations = (
   doc: PMNode,
-  { from, to, content }: SurveyOptions,
+  { from, to, content, containers }: SurveyOptions,
 ): ReplacedAnnotations => {
   if (to <= from) {
     return NOTHING_REPLACED;
@@ -362,7 +368,9 @@ const surveyAnnotations = (
       position < from ||
       position + node.nodeSize > to
     ) {
-      return false;
+      return (
+        containers === "descend" && !node.isLeaf && lendsMarks(node, content)
+      );
     }
     (opensRange(node, placement) ? leading : trailing).push(node);
     return false;
@@ -381,7 +389,12 @@ export const surveyReplacedAnnotations = (
   from: number,
   to: number,
 ): ReplacedAnnotations =>
-  surveyAnnotations(doc, { from, to, content: "asWritten" });
+  surveyAnnotations(doc, {
+    from,
+    to,
+    content: "asWritten",
+    containers: "preserve",
+  });
 
 /**
  * {@link surveyReplacedAnnotations} over the span as it reads once accepted:
@@ -393,7 +406,12 @@ export const surveyAcceptedReplacedAnnotations = (
   from: number,
   to: number,
 ): ReplacedAnnotations =>
-  surveyAnnotations(doc, { from, to, content: "asAccepted" });
+  surveyAnnotations(doc, {
+    from,
+    to,
+    content: "asAccepted",
+    containers: "preserve",
+  });
 
 type ReplacementCommentAlignmentOptions = {
   doc: PMNode;
@@ -418,14 +436,27 @@ export const preservesReplacementCommentAlignment = ({
   source,
   changes,
 }: ReplacementCommentAlignmentOptions): boolean => {
+  let previousEnd = source.from;
+  for (const change of changes) {
+    if (
+      change.from < previousEnd ||
+      change.to < change.from ||
+      change.to > source.to
+    )
+      panic(
+        "Replacement changes must be ordered inside their source coverage.",
+      );
+    previousEnd = change.to;
+  }
   const collapsing: Mark[] = [];
   const continued: Mark[] = [];
   for (const change of changes) {
-    const annotations = surveyAcceptedReplacedAnnotations(
-      doc,
-      change.from,
-      change.to,
-    );
+    const annotations = surveyAnnotations(doc, {
+      from: change.from,
+      to: change.to,
+      content: "asAccepted",
+      containers: "descend",
+    });
     const comments = annotations.carried.filter(
       (mark) => mark.type.name === "comment",
     );
@@ -439,7 +470,7 @@ export const preservesReplacementCommentAlignment = ({
         position < change.to
       )
         internalCarrier = true;
-      return !node.isInline;
+      return !node.isLeaf && lendsMarks(node, "asAccepted");
     });
     if (internalCarrier) return false;
     if (change.text === "") {
@@ -450,6 +481,7 @@ export const preservesReplacementCommentAlignment = ({
     let endingMarks: readonly Mark[] = [];
     doc.nodesBetween(change.from, change.to, (node) => {
       if (!node.isInline) return true;
+      if (!node.isLeaf) return lendsMarks(node, "asAccepted");
       if (!isZeroWidthAnchor(node) && lendsMarks(node, "asAccepted"))
         endingMarks = node.marks;
       return false;
@@ -464,6 +496,7 @@ export const preservesReplacementCommentAlignment = ({
   let changeIndex = 0;
   doc.nodesBetween(source.from, source.to, (node, position) => {
     if (!node.isInline) return true;
+    if (!node.isLeaf) return lendsMarks(node, "asAccepted");
     if (isZeroWidthAnchor(node) || !lendsMarks(node, "asAccepted"))
       return false;
     const from = Math.max(source.from, position);

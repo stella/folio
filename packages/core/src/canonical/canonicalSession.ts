@@ -2418,9 +2418,15 @@ class CanonicalSession {
         );
       // Typing over selected cells clears each of them and writes the text
       // into the first, as the editor does.
+      const ranges = canonicalCellSelectionRanges(state.selection);
+      const firstRange = ranges.at(0);
+      const lastRange = ranges.at(-1);
+      if (firstRange === undefined || lastRange === undefined)
+        return refuse("The selected cells contain no editable text.");
       const intents: EditorIntent[] = [];
+      const commentChanges = [];
       let first = true;
-      for (const range of canonicalCellSelectionRanges(state.selection)) {
+      for (const range of ranges) {
         const edges = projection.rangeEdgesAt(range.from, range.to);
         const cellFrom = projection.inputAddressAt(range.from, edges.start);
         if (cellFrom.isErr()) return cellFrom;
@@ -2432,28 +2438,23 @@ class CanonicalSession {
           to: cellTo.value,
           text: first ? text : "",
         });
+        commentChanges.push({
+          from: range.from,
+          to: range.to,
+          text: first ? text : "",
+          markers:
+            edges.start === "beforeMarkers" || edges.end === "afterMarkers"
+              ? ("selected" as const)
+              : ("retained" as const),
+        });
         first = false;
       }
       if (
         text !== "" &&
         !preservesReplacementCommentAlignment({
           doc: state.doc,
-          source: { from, to },
-          changes: canonicalCellSelectionRanges(state.selection).map(
-            (cell, index) => {
-              const edges = projection.rangeEdgesAt(cell.from, cell.to);
-              return {
-                from: cell.from,
-                to: cell.to,
-                text: index === 0 ? text : "",
-                markers:
-                  edges.start === "beforeMarkers" ||
-                  edges.end === "afterMarkers"
-                    ? ("selected" as const)
-                    : ("retained" as const),
-              };
-            },
-          ),
+          source: { from: firstRange.from, to: lastRange.to },
+          changes: commentChanges,
         })
       )
         return refuseUnder(
