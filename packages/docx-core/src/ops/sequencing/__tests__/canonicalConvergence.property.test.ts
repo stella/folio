@@ -26,6 +26,7 @@ import {
   leasedIdCensus,
   trimIdLease,
 } from "../../idLease";
+import { IDENTITY_SPACES, identityKeysIn, slotKey } from "../../ids";
 import {
   type DeleteRangeOp,
   DOCUMENT_OP_SCHEMA_VERSION,
@@ -88,6 +89,8 @@ type Peer = {
   client: ReturnType<typeof createClient>;
   /** The same owner receiving each drained authoritative revision separately. */
   observer: ReturnType<typeof createClient>;
+  /** Delivered acknowledgements hide public pending entries before their broadcasts. */
+  acknowledged: Set<string>;
   /** The inverse of this peer's last edit, as applying it returned. */
   undo: readonly DocumentOp[] | undefined;
 };
@@ -236,13 +239,6 @@ const cutsRecordsExactly = (op: DocumentOp): boolean =>
   op.type === DOCUMENT_OP_TYPES.SPLIT_INLINE ||
   (op.type === DOCUMENT_OP_TYPES.JOIN_INLINE && op.ifAlike !== true);
 
-const REVISION_RECORDS = new Set([
-  "insertion",
-  "deletion",
-  "moveFrom",
-  "moveTo",
-]);
-
 /**
  * What a value depends on, anywhere in it: the paragraphs it names
  * (positions, block ids, created paragraphs and the blocks an effect records) and the tracked
@@ -250,21 +246,13 @@ const REVISION_RECORDS = new Set([
  * Undefined names none.
  */
 const dependenciesIn = (value: unknown): string[] => {
-  const ids = new Set<string>();
+  const ids = new Set(identityKeysIn(value));
   const visit = (node: unknown): void => {
     if (Array.isArray(node)) {
       for (const child of node) visit(child);
       return;
     }
     if (typeof node !== "object" || node === null) return;
-    const type: unknown = Reflect.get(node, "type");
-    const id: unknown = Reflect.get(node, "id");
-    if (
-      typeof type === "string" &&
-      REVISION_RECORDS.has(type) &&
-      typeof id === "number"
-    )
-      ids.add(`revision ${String(id)}`);
     for (const [key, child] of Object.entries(node)) {
       if (
         (/blockId$/iu.test(key) || key === "paraId") &&
@@ -277,14 +265,19 @@ const dependenciesIn = (value: unknown): string[] => {
       } else if (key === "revisionIds" && Array.isArray(child)) {
         for (const revision of child)
           if (typeof revision === "number")
-            ids.add(`revision ${String(revision)}`);
+            ids.add(slotKey({ space: IDENTITY_SPACES.REVISION, id: revision }));
       } else if (
         key === "revision" &&
         typeof child === "object" &&
         child !== null &&
         typeof Reflect.get(child, "id") === "number"
       ) {
-        ids.add(`revision ${String(Reflect.get(child, "id"))}`);
+        ids.add(
+          slotKey({
+            space: IDENTITY_SPACES.REVISION,
+            id: Reflect.get(child, "id"),
+          }),
+        );
       } else {
         visit(child);
       }
@@ -670,6 +663,7 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
       },
       client: createClient(base),
       observer: createClient(base),
+      acknowledged: new Set(),
       undo: undefined,
     };
   });
@@ -930,7 +924,10 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
 
   // A broadcast may release several buffered revisions. The observer uses
   // the actual client owner one revision at a time to retain each notice's
-  // cause and its pending prefix, without reconstructing rebase semantics.
+  // cause and its full unreplayed prefix, without reconstructing rebase semantics.
+  // Defer acknowledgements on this observer: public pending hides acknowledged
+  // entries, but their inverses still take part until the authoritative broadcast.
+  // Track delivered acknowledgements only to compare the public pending view.
   const observeAnswer = (peer: Peer, event: Delivery): void => {
     const observe = (answer: Delivery): void => {
       const noticed = peer.observer.notices.length;
@@ -947,7 +944,7 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
         }
         case "result":
           if (answer.result.type === "ack")
-            peer.observer.receiveAck(answer.result);
+            peer.acknowledged.add(answer.result.opId);
           else peer.observer.receiveReject(answer.result);
           break;
         default: {
@@ -973,7 +970,9 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
     expect(
       equalForStaleness(peer.observer.document, peer.client.document),
     ).toBe(true);
-    expect(peer.observer.pending).toEqual(peer.client.pending);
+    expect(
+      peer.observer.pending.filter(({ opId }) => !peer.acknowledged.has(opId)),
+    ).toEqual(peer.client.pending);
     const facts = (client: ReturnType<typeof createClient>) =>
       client.notices.map(({ reason, ...notice }) => ({
         ...notice,
@@ -1911,6 +1910,78 @@ const PINNED: readonly Scenario[] = [
 ];
 
 describe("canonical sequencing", () => {
+  test("dependency facts bind produced source revisions to their decisions", () => {
+    const stamp = { id: 7, author: "Reviewer", date: "2026-01-01T00:00:00Z" };
+    const produced = applyBatch(canonicalBase(), [
+      {
+        type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
+        at: { story: "main", blockId: "10000000", offset: 0 },
+        slice: {
+          openStart: 0,
+          openEnd: 0,
+          content: [{ type: "run", content: [{ type: "text", text: "x" }] }],
+        },
+        revision: stamp,
+        newIds: { revision: [], control: [] },
+      },
+    ]).unwrap();
+    const decision = {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: "main",
+      revisionIds: [stamp.id],
+      decision: "reject",
+    } as const satisfies DocumentOp;
+    expect(dependenciesIn(produced.document)).toContain("revision:7");
+    expect(dependenciesIn(decision)).toEqual(["revision:7"]);
+  });
+
+  test(
+    "acknowledged structural edits remain dependencies until their broadcasts",
+    async () => {
+      const scenario = [
+        4,
+        [
+          {
+            type: "edit",
+            peer: 1,
+            seed: { kind: "deleteTable", a: 0, b: 1, suggest: false },
+          },
+          { type: "undo", peer: 0 },
+          {
+            type: "edit",
+            peer: 1,
+            seed: { kind: "type", a: 0, b: 0, suggest: false },
+          },
+          {
+            type: "edit",
+            peer: 1,
+            seed: { kind: "type", a: 0, b: 0, suggest: false },
+          },
+          { type: "deliver", seed: 0 },
+          {
+            type: "edit",
+            peer: 1,
+            seed: { kind: "type", a: 1, b: 0, suggest: false },
+          },
+          { type: "undo", peer: 0 },
+          {
+            type: "edit",
+            peer: 0,
+            seed: { kind: "type", a: 67877, b: 0, suggest: false },
+          },
+        ],
+      ] as const satisfies Scenario;
+      const outcome = simulate(...scenario);
+      expect(outcome.dropped).toEqual(["edit-11", "edit-12", "edit-13"]);
+      expect(outcome.independentDrops).toEqual([]);
+      await fc.assert(
+        convergence(noCounts(), fc.constant(scenario)),
+        propertyConfig({ numRuns: 1 }),
+      );
+    },
+    propertyTestTimeout(30_000),
+  );
+
   test(
     "a source-seam undo retains its scoped refusal beside tracked typing",
     async () => {
