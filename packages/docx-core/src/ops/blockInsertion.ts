@@ -133,8 +133,8 @@ export const insertBlocks = ({
   // insertion after it took over (rejecting the mark keeps this paragraph)
   // goes in before that break: the new last paragraph takes the inserted
   // mark, so the break stays right before the tracked paragraphs, and the
-  // anchor's mark is its own again. Concurrent insertions after one
-  // paragraph then leave the same document in either order.
+  // anchor's mark is its own again. The former mark's formatting snapshot
+  // remains valid only when the direct paragraph has the anchor's formatting.
   const takenOver = location.paragraph.pPrMark;
   const lastNew = canonicalBlocks.at(-1);
   const movesMark =
@@ -144,6 +144,15 @@ export const insertBlocks = ({
     takenOver?.survivor === "first" &&
     lastNew !== undefined &&
     lastNew.pPrMark === undefined;
+  if (
+    movesMark &&
+    !sameFormatting(location.paragraph.formatting, lastNew?.formatting)
+  ) {
+    return refuse(
+      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+      "Moving an inserted paragraph mark to differently formatted content needs the former mark's formatting snapshot.",
+    );
+  }
   const directReplacement = () => {
     if (!movesMark || following?.type !== "paragraph" || lastNew === undefined)
       return replacement(canonicalBlocks);
