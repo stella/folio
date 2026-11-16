@@ -197,12 +197,40 @@ const asRangeBoundary = (value: unknown): RangeBoundary | undefined => {
     : undefined;
 };
 
-const boundariesBelow = (value: unknown): RangeBoundary[] => {
+const boundariesBelow = (
+  value: unknown,
+  removedAddedAncestors = 0,
+): RangeBoundary[] => {
   const boundary = asRangeBoundary(value);
-  if (boundary !== undefined) return [boundary];
-  if (Array.isArray(value)) return value.flatMap(boundariesBelow);
-  if (typeof value === "object" && value !== null)
-    return Object.values(value).flatMap(boundariesBelow);
+  if (boundary !== undefined) {
+    const origins: unknown =
+      typeof value === "object" && value !== null
+        ? Reflect.get(value, "copyOriginAncestors")
+        : undefined;
+    // An ordinal names an added source ancestor. Removing its owner removes
+    // the copy even when the story has no other boundary of that same side.
+    return Array.isArray(origins) &&
+      origins.some(
+        (ordinal) =>
+          typeof ordinal === "number" && ordinal < removedAddedAncestors,
+      )
+      ? []
+      : [boundary];
+  }
+  if (Array.isArray(value))
+    return value.flatMap((child) =>
+      boundariesBelow(child, removedAddedAncestors),
+    );
+  if (typeof value === "object" && value !== null) {
+    const type: unknown = Reflect.get(value, "type");
+    const depth =
+      removedAddedAncestors > 0 && (type === "insertion" || type === "moveTo")
+        ? removedAddedAncestors + 1
+        : removedAddedAncestors;
+    return Object.values(value).flatMap((child) =>
+      boundariesBelow(child, depth),
+    );
+  }
   return [];
 };
 
@@ -240,7 +268,7 @@ const boundariesKeptByRejecting = (
       typeof id === "number" &&
       ids.has(id)
     ) {
-      const inside = boundariesBelow(Reflect.get(value, "content"));
+      const inside = boundariesBelow(Reflect.get(value, "content"), 1);
       const whole = new Set(
         inside
           .filter(({ type: kind }) => kind === "commentRangeStart")
@@ -1058,6 +1086,92 @@ const rejectedInAnyOrderLaw = (tally: Tally) =>
   );
 
 describe("tracked operations and their resolution", () => {
+  test("the rejection oracle follows copied whole-range ownership when only its partner stands outside", () => {
+    const original = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              paraId: "00000001",
+              content: [
+                {
+                  type: "moveToRangeStart",
+                  id: 18,
+                  name: "move18",
+                  author: "A",
+                },
+              ],
+            },
+          ],
+        },
+      },
+    } satisfies Document;
+    const op = {
+      type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
+      at: { story: OP_STORIES.MAIN, blockId: "00000001", offset: 0 },
+      slice: {
+        openStart: 0,
+        openEnd: 0,
+        content: [
+          { type: "moveToRangeEnd", id: 18 },
+          {
+            type: "hyperlink",
+            rId: "rId9",
+            href: "https://example.org",
+            children: [
+              {
+                type: "inlineWrapper",
+                kind: "bidi",
+                control: "embedding",
+                content: [
+                  {
+                    type: "moveToRangeStart",
+                    id: 18,
+                    name: "move18",
+                    author: "A",
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      revision: { id: 1, author: "C", date: "2026-03-04T05:00:00Z" },
+      newIds: { revision: [303648, 303649], control: [293648, 293649] },
+    } satisfies ReturnType<typeof trackedOpFor>;
+    const tracked = applyDocumentOp(original, op);
+    if (tracked.isErr()) throw tracked.error;
+    const insertion = tracked.value.document.package.document.content.at(0);
+    if (insertion?.type !== "paragraph")
+      panic("The insertion stays in its paragraph.");
+    const copied = leafSpans(insertion.content).flatMap(({ node }) =>
+      node.type === "moveToRangeStart" || node.type === "moveToRangeEnd"
+        ? [node.copyOriginAncestors]
+        : [],
+    );
+    expect(copied).toEqual([[0], [0], undefined]);
+    expect(
+      boundariesKeptByRejecting(
+        tracked.value.document,
+        new Set(tracked.value.revisions),
+      ),
+    ).toEqual([]);
+    const rejected = applyDocumentOp(
+      tracked.value.document,
+      resolveOp(tracked.value.revisions, REVISION_DECISIONS.REJECT),
+    );
+    if (rejected.isErr()) throw rejected.error;
+    expect(rejected.value.document).toStrictEqual(original);
+    expectRejectedTo({
+      rejected: rejected.value.document,
+      tracked: tracked.value.document,
+      ids: tracked.value.revisions,
+      expected: original,
+      projection: "π",
+    });
+  });
+
   test("L3: copied bookmark boundaries keep their source position across rejection order", () => {
     const source = normalizeForOps({
       package: {
