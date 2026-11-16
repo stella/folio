@@ -3986,16 +3986,14 @@ function extractParagraphContent(
       return;
     }
 
-    // A range that spans no content: its two markers go back adjacent, at the
+    // Ranges that span no content retain every marker in source order at the
     // anchor's own position. They are cloned because the attrs hold them for as
     // long as the editor state does, and the rebuilt document must not share a
     // record with it.
     if (node.type.name === RANGE_ANCHOR_NODE_NAME) {
-      const { start, end } = expectRangeAnchorAttrs(node);
-      if (
-        linkMark &&
-        (!isHyperlinkContent(start) || !isHyperlinkContent(end))
-      ) {
+      const { markers } = expectRangeAnchorAttrs(node);
+      const copies = markers.map((marker) => ({ ...marker }));
+      if (linkMark && !markers.every(isHyperlinkContent)) {
         panic(
           "A linked range anchor must contain boundaries its hyperlink admits.",
         );
@@ -4007,14 +4005,11 @@ function extractParagraphContent(
       if (tracked) {
         establishTrackedBoundaryOwner(node, "indexed-hyperlink");
         if (currentTrackedChange?.type === "hyperlink") {
-          currentTrackedChange.hyperlink.children.push(
-            { ...start },
-            { ...end },
-          );
+          currentTrackedChange.hyperlink.children.push(...copies);
         } else if (currentTrackedChange) {
-          currentTrackedChange.wrapper.content.push({ ...start }, { ...end });
+          currentTrackedChange.wrapper.content.push(...copies);
         } else {
-          content.push({ ...start }, { ...end });
+          content.push(...copies);
         }
       } else if (linkMark) {
         currentTrackedChange = undefined;
@@ -4024,11 +4019,11 @@ function extractParagraphContent(
           currentHyperlink = createIndexedHyperlink(linkMark);
           currentHyperlinkKey = linkKey;
         }
-        currentHyperlink.children.push({ ...start }, { ...end });
+        currentHyperlink.children.push(...copies);
       } else {
         flushCurrentInline();
         currentTrackedChange = undefined;
-        content.push({ ...start }, { ...end });
+        content.push(...copies);
       }
       return;
     }

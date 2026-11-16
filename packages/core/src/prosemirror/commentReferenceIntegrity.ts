@@ -90,13 +90,14 @@ const surveyCommentReferences = (doc: PMNode): CommentReferenceSurvey => {
     // surviving extent that keeps the reference.
     if (node.type.name === RANGE_ANCHOR_NODE_NAME) {
       const attrs = readRangeAnchorAttrs(node);
-      if (attrs.ok && attrs.value.start.type === "commentRangeStart") {
-        const { id } = attrs.value.start;
-        markEnds.set(
-          id,
-          Math.max(markEnds.get(id) ?? 0, position + node.nodeSize),
-        );
-      }
+      if (attrs.ok)
+        for (const marker of attrs.value.markers) {
+          if (marker.type !== "commentRangeStart") continue;
+          markEnds.set(
+            marker.id,
+            Math.max(markEnds.get(marker.id) ?? 0, position + node.nodeSize),
+          );
+        }
       return false;
     }
     if (isCommentRangeBoundaryNode(node)) {

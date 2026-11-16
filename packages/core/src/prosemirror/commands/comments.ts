@@ -43,10 +43,9 @@ import {
   expectTrackedChangeMarkAttrs,
 } from "../attrs";
 import {
-  isCommentRangeBoundaryNode,
-  readCommentRangeBoundaryAttrs,
-} from "../commentRangeBoundaryAttrs";
-import { retireThreadsResolvedAway } from "../commentRecords";
+  removeCommentAnchors,
+  retireThreadsResolvedAway,
+} from "../commentRecords";
 import {
   addedBreakCarrierBefore,
   finalParagraphsOf,
@@ -90,7 +89,6 @@ import {
 import { getDocumentNumbering } from "../plugins/documentNumbering";
 import { getDocumentStyleResolver } from "../plugins/documentStyleState";
 import { resolvedPreservedXmlAttrs } from "../preservedXmlReview";
-import { readRangeAnchorAttrs } from "../rangeAnchorAttrs";
 import { setParagraphAttrsWithRebasedRunFormatting } from "../rebaseParagraphRunFormatting";
 import { rejoinRunsAt } from "../rejoinRunCarriers";
 import { resolvedCommentPoints } from "../replacedAnnotations";
@@ -1049,38 +1047,7 @@ function resolveChangeUnguarded(
       // converted to a point. Point-authored comments never enter `points`.
       if (points.size > 0) {
         const doomed = new Set(points.keys());
-        const carriers: { position: number; size: number }[] = [];
-        tr.doc.descendants((node, position) => {
-          if (
-            node.type.name === "commentReference" &&
-            doomed.has(node.attrs["commentId"])
-          ) {
-            carriers.push({ position, size: node.nodeSize });
-            return false;
-          }
-          if (isCommentRangeBoundaryNode(node)) {
-            const attrs = readCommentRangeBoundaryAttrs(node);
-            if (attrs.ok && doomed.has(attrs.value.marker.id)) {
-              carriers.push({ position, size: node.nodeSize });
-              return false;
-            }
-            return true;
-          }
-          if (node.type.name !== "rangeAnchor") return true;
-          const attrs = readRangeAnchorAttrs(node);
-          if (
-            attrs.ok &&
-            attrs.value.start.type === "commentRangeStart" &&
-            doomed.has(attrs.value.start.id)
-          ) {
-            carriers.push({ position, size: node.nodeSize });
-            return false;
-          }
-          return true;
-        });
-        for (const carrier of carriers.toReversed()) {
-          tr.delete(carrier.position, carrier.position + carrier.size);
-        }
+        removeCommentAnchors(tr, doomed);
       }
       normalizeKeptRangeBoundaries(tr, keptBoundaries);
       finishResolution(state, tr);

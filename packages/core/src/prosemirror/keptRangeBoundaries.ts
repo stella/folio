@@ -116,8 +116,7 @@ const BOUNDARY_ITEMS: Record<
   ],
   // A point range holds its start and its end in one node.
   [RANGE_ANCHOR_NODE_NAME]: (node) => {
-    const { start, end } = expectRangeAnchorAttrs(node);
-    return [start, end];
+    return [...expectRangeAnchorAttrs(node).markers];
   },
   [COMMENT_RANGE_BOUNDARY_NODE_NAME]: (node) => [
     expectCommentRangeBoundaryAttrs(node).marker,

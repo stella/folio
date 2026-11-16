@@ -137,8 +137,10 @@ const isCarried = (mark: Mark): boolean =>
 /** One typed anchor for a comment authored as a point. */
 export const commentPoint = (schema: Schema, id: number): PMNode =>
   schema.node(RANGE_ANCHOR_NODE_NAME, {
-    start: { type: "commentRangeStart", id },
-    end: { type: "commentRangeEnd", id },
+    markers: [
+      { type: "commentRangeStart", id },
+      { type: "commentRangeEnd", id },
+    ],
   });
 
 type ResolvedCommentPointsOptions = {
@@ -215,8 +217,9 @@ export const createResolvedCommentPointCollector = ({
     }
     if (node.type.name === RANGE_ANCHOR_NODE_NAME) {
       const attrs = readRangeAnchorAttrs(node);
-      if (attrs.ok && attrs.value.start.type === "commentRangeStart")
-        retained.add(attrs.value.start.id);
+      if (attrs.ok)
+        for (const marker of attrs.value.markers)
+          if (marker.type === "commentRangeStart") retained.add(marker.id);
     }
     if (!node.isInline || isCommentAnchorCarrier(node)) return true;
     const removedWithStructure = removedStructures.some(

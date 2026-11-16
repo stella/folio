@@ -1,26 +1,57 @@
 import { describe, expect, test } from "bun:test";
 
-import { readRangeAnchorAttrs } from "./rangeAnchorAttrs";
+import {
+  readRangeAnchorAttrs,
+  readRangeAnchorValues,
+} from "./rangeAnchorAttrs";
 import { schema } from "./schema";
 
 describe("range anchor attrs", () => {
+  test.each(
+    [
+      [],
+      [{ type: "commentRangeStart", id: 1 }],
+      [
+        { type: "commentRangeEnd", id: 1 },
+        { type: "commentRangeStart", id: 1 },
+      ],
+      [
+        { type: "commentRangeStart", id: 1 },
+        { type: "commentRangeEnd", id: 2 },
+      ],
+      [
+        { type: "commentRangeStart", id: 1 },
+        { type: "moveToRangeStart", id: 2, author: "Reviewer", name: "Move" },
+        { type: "commentRangeEnd", id: 1 },
+        { type: "moveToRangeEnd", id: 2 },
+      ],
+    ].map((markers) => ({ markers })),
+  )(
+    "rejects an empty, unbalanced or unsupported mixed cluster",
+    ({ markers }) => {
+      expect(readRangeAnchorValues(markers).ok).toBe(false);
+    },
+  );
+
   test("rejects malformed fields before the DOCX serializer can consume them", () => {
     const node = schema.node("rangeAnchor", {
-      start: {
-        type: "moveFromRangeStart",
-        id: -1,
-        name: "",
-        author: "",
-        date: null,
-        displacedByCustomXml: "middle",
-        colFirst: -2,
-        colLast: null,
-      },
-      end: {
-        type: "moveFromRangeEnd",
-        id: -1,
-        displacedByCustomXml: "middle",
-      },
+      markers: [
+        {
+          type: "moveFromRangeStart",
+          id: -1,
+          name: "",
+          author: "",
+          date: null,
+          displacedByCustomXml: "middle",
+          colFirst: -2,
+          colLast: null,
+        },
+        {
+          type: "moveFromRangeEnd",
+          id: -1,
+          displacedByCustomXml: "middle",
+        },
+      ],
     });
 
     const result = readRangeAnchorAttrs(node);
@@ -31,14 +62,14 @@ describe("range anchor attrs", () => {
     }
     expect(result.issues.map(({ path }) => path)).toEqual(
       expect.arrayContaining([
-        "rangeAnchor.attrs.start.id",
-        "rangeAnchor.attrs.start.name",
-        "rangeAnchor.attrs.start.author",
-        "rangeAnchor.attrs.start.date",
-        "rangeAnchor.attrs.start.displacedByCustomXml",
-        "rangeAnchor.attrs.start.colFirst",
-        "rangeAnchor.attrs.start.colLast",
-        "rangeAnchor.attrs.end.displacedByCustomXml",
+        "rangeAnchor.attrs.markers[0].id",
+        "rangeAnchor.attrs.markers[0].name",
+        "rangeAnchor.attrs.markers[0].author",
+        "rangeAnchor.attrs.markers[0].date",
+        "rangeAnchor.attrs.markers[0].displacedByCustomXml",
+        "rangeAnchor.attrs.markers[0].colFirst",
+        "rangeAnchor.attrs.markers[0].colLast",
+        "rangeAnchor.attrs.markers[1].displacedByCustomXml",
       ]),
     );
   });
@@ -59,10 +90,10 @@ describe("range anchor attrs", () => {
       id: 4,
       displacedByCustomXml: "prev" as const,
     };
-    const node = schema.node("rangeAnchor", { start, end });
+    const node = schema.node("rangeAnchor", { markers: [start, end] });
 
     const result = readRangeAnchorAttrs(node);
 
-    expect(result).toEqual({ ok: true, value: { start, end } });
+    expect(result).toEqual({ ok: true, value: { markers: [start, end] } });
   });
 });

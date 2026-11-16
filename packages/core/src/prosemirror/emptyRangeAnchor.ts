@@ -12,7 +12,7 @@
  * whose range spans nothing loses its `w:name` the same way, and with it the
  * only thing binding the move's source to its destination.
  *
- * The pair is one thing rather than two, so it is one node. Two adjacent
+ * A pair, or an interleaved cluster of comment pairs, is one node. Two adjacent
  * boundary nodes, which is what the bookmark precedent would suggest, would
  * leave a position between them for a caret to sit in; typing there would turn
  * a point comment into a range the reviewer never drew.
@@ -53,13 +53,13 @@ export const RANGE_END_FOR_START: {
 } as const satisfies Record<RangeStartType, RangeEndType>;
 
 /**
- * The `rangeAnchor` node's attributes: a start and the end that closes it,
- * with nothing between them.
+ * One typed start and the corresponding end, before source occurrences are
+ * grouped into an ordered point cluster.
  *
  * Distributing over the start types pairs each start with exactly its own end,
  * so a comment start holding a move end is not a value this type has.
  */
-export type RangeAnchorAttrs = {
+export type RangeAnchorPair = {
   [Start in RangeStartType]: {
     start: Extract<ParagraphContent, { type: Start }>;
     end: Extract<
@@ -68,6 +68,11 @@ export type RangeAnchorAttrs = {
     >;
   };
 }[RangeStartType];
+
+export type RangeMarker = RangeAnchorPair["start" | "end"];
+
+/** One indivisible point; markers retain their authored order. */
+export type RangeAnchorAttrs = { markers: readonly RangeMarker[] };
 
 const RANGE_MARKER_TYPES: ReadonlySet<string> = new Set<string>([
   ...Object.keys(RANGE_END_FOR_START),
@@ -108,15 +113,17 @@ const NO_EMPTY_RANGES: EmptyRangePlan = {
  *
  * The window a pair may close within is a maximal run of range markers and
  * nothing else, which is what "spans no content" means once the transparent
- * wrappers are lifted. Nesting inside such a run is not meaningful — neither
- * order covers anything — so the pairs are taken nearest first and each anchor
- * stays at its own start's index. A start whose end is outside the run is a
- * range over content and keeps the mark path; so does an end with no start.
+ * wrappers are lifted. Overlapping comment pairs share an atom in source
+ * order; an independent adjacent pair stays at its own start's index. A start
+ * whose end is outside the run keeps the mark path, as does an unpaired end.
  */
 export const planEmptyRanges = (
   content: readonly ParagraphContent[],
+  ownership?: readonly unknown[],
 ): EmptyRangePlan => {
-  const anchorAt = new Map<number, RangeAnchorAttrs>();
+  if (ownership !== undefined && ownership.length !== content.length)
+    panic("A point-range plan must name every source container occurrence.");
+  const pairs = new Map<number, RangeAnchorPair>();
   const closedAt = new Set<number>();
 
   let index = 0;
@@ -134,12 +141,77 @@ export const planEmptyRanges = (
       }
       runEnd += 1;
     }
-    pairWithinRun({ content, from: index, to: runEnd, anchorAt, closedAt });
+    pairWithinRun({
+      content,
+      from: index,
+      to: runEnd,
+      anchorAt: pairs,
+      closedAt,
+    });
     index = runEnd;
   }
 
-  if (anchorAt.size === 0) {
+  if (pairs.size === 0) {
     return NO_EMPTY_RANGES;
+  }
+  const anchorAt = new Map<number, RangeAnchorAttrs>();
+  // Merge overlapping comment pairs only when every occurrence belongs to the
+  // same source container. Separate adjacent points remain separate atoms.
+  const endAt = new Map<number, number>();
+  const pending = new Map<number, { starts: number[]; next: number }>();
+  for (let position = 0; position < content.length; position += 1) {
+    const marker = content[position];
+    if (marker?.type === "commentRangeStart" && pairs.has(position)) {
+      const queue = pending.get(marker.id) ?? { starts: [], next: 0 };
+      queue.starts.push(position);
+      pending.set(marker.id, queue);
+    } else if (marker?.type === "commentRangeEnd" && closedAt.has(position)) {
+      const queue = pending.get(marker.id);
+      const start = queue?.starts.at(queue.next);
+      if (start !== undefined && queue !== undefined) {
+        queue.next += 1;
+        endAt.set(start, position);
+      }
+    }
+  }
+  let coveredThrough = -1;
+  for (const [start, pair] of pairs) {
+    if (start <= coveredThrough) continue;
+    let end = endAt.get(start);
+    if (end === undefined || pair.start.type !== "commentRangeStart") {
+      anchorAt.set(start, { markers: [pair.start, pair.end] });
+      continue;
+    }
+    const markers: RangeMarker[] = [];
+    const componentPairs = [start];
+    let complete = true;
+    for (let position = start; position <= end; position += 1) {
+      const marker = content[position];
+      const closesAt = endAt.get(position);
+      if (closesAt !== undefined) end = Math.max(end, closesAt);
+      if (position !== start && pairs.has(position))
+        componentPairs.push(position);
+      if (
+        (marker?.type !== "commentRangeStart" &&
+          marker?.type !== "commentRangeEnd") ||
+        !closedAt.has(position) ||
+        (ownership !== undefined && ownership[position] !== ownership[start])
+      ) {
+        complete = false;
+        continue;
+      }
+      markers.push(marker);
+    }
+    coveredThrough = end;
+    if (!complete) {
+      for (const position of componentPairs) {
+        const original =
+          pairs.get(position) ?? panic("Missing collapsed range pair.");
+        anchorAt.set(position, { markers: [original.start, original.end] });
+      }
+      continue;
+    }
+    anchorAt.set(start, { markers });
   }
   return { anchorAt, closedAt };
 };
@@ -148,7 +220,7 @@ export const planEmptyRanges = (
  * The two markers as one anchor, or `null` when the closer does not close this
  * start.
  *
- * The branches restate no pairing: `RangeAnchorAttrs` is derived from
+ * The branches restate no pairing: `RangeAnchorPair` is derived from
  * {@link RANGE_END_FOR_START}, so a branch that named the wrong end would not
  * be assignable, and a start type the model gains fails the exhaustiveness
  * check below.
@@ -156,7 +228,7 @@ export const planEmptyRanges = (
 const pairedAnchor = (
   opener: Extract<ParagraphContent, { type: RangeStartType }>,
   closer: ParagraphContent,
-): RangeAnchorAttrs | null => {
+): RangeAnchorPair | null => {
   switch (opener.type) {
     case "commentRangeStart":
       return closer.type === "commentRangeEnd" && closer.id === opener.id
@@ -181,7 +253,7 @@ type PairWithinRunOptions = {
   content: readonly ParagraphContent[];
   from: number;
   to: number;
-  anchorAt: Map<number, RangeAnchorAttrs>;
+  anchorAt: Map<number, RangeAnchorPair>;
   closedAt: Set<number>;
 };
 

@@ -1610,7 +1610,10 @@ function convertParagraph(
   visitInlineContentSlots(paragraph, ({ item }) => {
     if (item.type === "inlineSdt") paragraphContainsInlineSdt = true;
   });
-  const emptyRanges = planEmptyRanges(stacked.map((item) => item.content));
+  const emptyRanges = planEmptyRanges(
+    stacked.map((item) => item.content),
+    stacked.map(({ stack }) => stack),
+  );
   for (const [index, { content, stack }] of stacked.entries()) {
     wrapperStack = stack;
     const anchored = emptyRanges.anchorAt.get(index);
@@ -2038,7 +2041,10 @@ function convertTrackedChange(
   }
   const preserveBoundaryOccurrences =
     options.preserveSdtBoundaryOccurrences ?? containsInlineSdt;
-  const emptyRanges = planEmptyRanges(stacked.map(({ content }) => content));
+  const emptyRanges = planEmptyRanges(
+    stacked.map(({ content }) => content),
+    stacked.map(({ stack }) => stack),
+  );
   for (const [index, { content: item, stack }] of stacked.entries()) {
     if (!isTrackedChangeWrapperChild(item)) {
       continue;
@@ -3928,7 +3934,10 @@ function convertInlineSdt(
   // A wrapper inside the control is lifted here rather than out of it: a
   // wrapper lifted out of the control takes the control's content with it.
   const stacked = withInlineWrapperStacks(sdt.content, wrappedBy);
-  const emptyRanges = planEmptyRanges(stacked.map(({ content }) => content));
+  const emptyRanges = planEmptyRanges(
+    stacked.map(({ content }) => content),
+    stacked.map(({ stack }) => stack),
+  );
   for (const [index, { content, stack }] of stacked.entries()) {
     if (!isInlineSdtContent(content)) {
       continue;

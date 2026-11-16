@@ -5,6 +5,8 @@ import * as Y from "yjs";
 import { readParagraphAttrs } from "../../prosemirror/attrs";
 import { fromProseDoc } from "../../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
+import type { RangeAnchorPair } from "../../prosemirror/emptyRangeAnchor";
+import { expectRangeAnchorAttrs } from "../../prosemirror/rangeAnchorAttrs";
 import { schema } from "../../prosemirror/schema";
 import {
   applyAttrSchemaMigrations,
@@ -58,6 +60,100 @@ const storedAttributes = (element: Y.XmlElement): StoredAttributeWriter =>
   // round-trips a boolean or a record unchanged; only the declaration narrows
   // it to `string`.
   element as unknown as StoredAttributeWriter;
+
+describe("version-14 point anchor snapshots", () => {
+  const pair = {
+    start: { type: "commentRangeStart", id: 7 },
+    end: { type: "commentRangeEnd", id: 7 },
+  } as const satisfies RangeAnchorPair;
+
+  const legacySnapshot = () => {
+    const ydoc = new Y.Doc();
+    const fragment = ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME);
+    const paragraph = new Y.XmlElement("paragraph");
+    const anchor = new Y.XmlElement("rangeAnchor");
+    fragment.insert(0, [paragraph]);
+    paragraph.insert(0, [anchor]);
+    storedAttributes(anchor).setAttribute("start", pair.start);
+    storedAttributes(anchor).setAttribute("end", pair.end);
+    ydoc.getMap(METADATA_MAP_NAME).set(ATTR_SCHEMA_VERSION_KEY, 14);
+    return { ydoc, fragment, paragraph, anchor };
+  };
+
+  test("migrates the original ordered pair before PM builds it and is byte-idempotent", () => {
+    const { ydoc } = legacySnapshot();
+    const update = Y.encodeStateAsUpdate(ydoc);
+    const before = update.slice();
+    const migrated = migrateFolioYjsSnapshot(update).unwrap();
+    expect(migrated.fromVersion).toBe(14);
+    expect(migrated.toVersion).toBe(15);
+    expect(migrated.paragraphsRewritten).toBe(1);
+    expect(update).toEqual(before);
+    const reloaded = new Y.Doc();
+    Y.applyUpdate(reloaded, migrated.update);
+    const fragment = reloaded.getXmlFragment(
+      FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME,
+    );
+    const pm = initProseMirrorDoc(fragment, schema).doc;
+    const anchor = pm.child(0).child(0);
+    expect(expectRangeAnchorAttrs(anchor)).toEqual({
+      markers: [pair.start, pair.end],
+    });
+    expect(Object.hasOwn(anchor.attrs, "start")).toBe(false);
+    expect(
+      schema.nodeFromJSON(JSON.parse(JSON.stringify(pm.toJSON()))).eq(pm),
+    ).toBe(true);
+    const source = createEmptyDocument();
+    const restored = fromProseDoc(pm, source, {
+      stylesheetSource: { type: "package" },
+    });
+    const paragraph = restored.package.document.content.at(0);
+    expect(paragraph?.type === "paragraph" ? paragraph.content : null).toEqual([
+      pair.start,
+      pair.end,
+      { type: "commentReference", id: 7 },
+    ]);
+    const again = migrateFolioYjsSnapshot(migrated.update).unwrap();
+    expect(again.fromVersion).toBe(15);
+    expect(again.paragraphsRewritten).toBe(0);
+    expect(again.update).toBe(migrated.update);
+    expect(Y.encodeStateAsUpdate(ydoc)).toEqual(update);
+    reloaded.destroy();
+    ydoc.destroy();
+  });
+
+  test("refuses a malformed later pair before rewriting any earlier pair", () => {
+    const { ydoc, fragment, paragraph } = legacySnapshot();
+    const invalid = new Y.XmlElement("rangeAnchor");
+    paragraph.insert(1, [invalid]);
+    storedAttributes(invalid).setAttribute("start", pair.start);
+    storedAttributes(invalid).setAttribute("end", { ...pair.end, id: 8 });
+    const update = Y.encodeStateAsUpdate(ydoc);
+    let transactions = 0;
+    ydoc.on("afterTransaction", () => {
+      transactions += 1;
+    });
+    expect(() => applyAttrSchemaMigrations(ydoc, fragment, 14)).toThrow(
+      "invalid point-range marker pair",
+    );
+    expect(transactions).toBe(0);
+    expect(Y.encodeStateAsUpdate(ydoc)).toEqual(update);
+    const refused = migrateFolioYjsSnapshot(update);
+    expect(refused.isErr()).toBe(true);
+    if (refused.isErr()) {
+      expect(refused.error.code).toBe("unsupported_version");
+      expect(refused.error.message).toContain(
+        "invalid point-range marker pair",
+      );
+      expect(refused.error.cause).toMatchObject({
+        _tag: "FolioYjsRangeAnchorSchemaError",
+        schemaVersion: 14,
+      });
+    }
+    expect(Y.encodeStateAsUpdate(ydoc)).toEqual(update);
+    ydoc.destroy();
+  });
+});
 
 /**
  * A version-1 snapshot holding one field, with the flags a version-1 build

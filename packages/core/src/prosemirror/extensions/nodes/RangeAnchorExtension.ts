@@ -39,8 +39,7 @@ export const RangeAnchorExtension: (
     // beside the anchor leaves the range exactly as wide as it was.
     selectable: false,
     attrs: {
-      start: {},
-      end: {},
+      markers: {},
     },
     parseDOM: [
       {
@@ -62,11 +61,8 @@ export const RangeAnchorExtension: (
             options.getInternalClipboardToken?.(),
           )
             ? parsed
-            : {
-                start: withoutUntrustedCopyOrigin(parsed.start),
-                end: withoutUntrustedCopyOrigin(parsed.end),
-              };
-          const result = readRangeAnchorValues(markers.start, markers.end);
+            : { markers: parsed.markers.map(withoutUntrustedCopyOrigin) };
+          const result = readRangeAnchorValues(markers.markers);
           return result.ok ? result.value : false;
         },
       },
@@ -78,10 +74,7 @@ export const RangeAnchorExtension: (
       if (attrs.ok) {
         const markers =
           internalClipboardToken === undefined
-            ? {
-                start: withoutUntrustedCopyOrigin(attrs.value.start),
-                end: withoutUntrustedCopyOrigin(attrs.value.end),
-              }
+            ? { markers: attrs.value.markers.map(withoutUntrustedCopyOrigin) }
             : attrs.value;
         serializedMarkers = JSON.stringify(markers);
       }
@@ -109,16 +102,13 @@ export const RangeAnchorExtension: (
  * `JSON.parse` throws on malformed input reaching the schema from a paste, and
  * a parser branch that refuses the node is the boundary this belongs at.
  */
-const parseMarkers = (raw: string): { start: unknown; end: unknown } | null => {
+const parseMarkers = (raw: string) => {
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== "object" || parsed === null) {
+    if (typeof parsed !== "object" || parsed === null || !("markers" in parsed))
       return null;
-    }
-    if (!("start" in parsed) || !("end" in parsed)) {
-      return null;
-    }
-    return { start: parsed.start, end: parsed.end };
+    const result = readRangeAnchorValues(parsed.markers);
+    return result.ok ? result.value : null;
   } catch {
     return null;
   }

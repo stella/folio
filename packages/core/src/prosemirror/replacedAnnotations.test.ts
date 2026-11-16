@@ -225,8 +225,9 @@ test.each([
       state.doc.descendants((node) => {
         if (node.type.name !== "rangeAnchor") return;
         const attrs = readRangeAnchorAttrs(node);
-        if (attrs.ok && attrs.value.start.type === "commentRangeStart")
-          points.push(attrs.value.start.id);
+        if (attrs.ok)
+          for (const marker of attrs.value.markers)
+            if (marker.type === "commentRangeStart") points.push(marker.id);
       });
       expect(points).toEqual([]);
       expect(state.doc.textContent).toBe("Prefix");

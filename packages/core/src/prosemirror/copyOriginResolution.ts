@@ -125,6 +125,29 @@ const withCopyOriginAncestors = ({
   );
 };
 
+/** Move atoms still own exactly one pair; comment clusters have no copy origin. */
+const movePairOf = (node: PMNode) => {
+  const { markers } = expectRangeAnchorAttrs(node);
+  if (
+    markers.every(
+      (marker) =>
+        marker.type === "commentRangeStart" ||
+        marker.type === "commentRangeEnd",
+    )
+  )
+    return null;
+  const start = markers.at(0);
+  const end = markers.at(1);
+  if (
+    markers.length === 2 &&
+    ((start?.type === "moveFromRangeStart" &&
+      end?.type === "moveFromRangeEnd") ||
+      (start?.type === "moveToRangeStart" && end?.type === "moveToRangeEnd"))
+  )
+    return { start, end };
+  return panic("A move range atom must own one matching pair.");
+};
+
 type WithRangeAnchorCopyOriginsOptions = {
   node: PMNode;
   startOrigins: CopyOriginAncestorList | undefined;
@@ -136,15 +159,16 @@ const withRangeAnchorCopyOrigins = ({
   startOrigins,
   endOrigins,
 }: WithRangeAnchorCopyOriginsOptions): PMNode => {
-  const { start, end } = expectRangeAnchorAttrs(node);
-  if (start.type === "commentRangeStart" || end.type === "commentRangeEnd") {
-    return node;
-  }
+  const pair = movePairOf(node);
+  if (pair === null) return node;
+  const { start, end } = pair;
   return node.type.create(
     {
       ...node.attrs,
-      start: markerWithCopyOrigin(start, startOrigins),
-      end: markerWithCopyOrigin(end, endOrigins),
+      markers: [
+        markerWithCopyOrigin(start, startOrigins),
+        markerWithCopyOrigin(end, endOrigins),
+      ],
     },
     node.content,
     node.marks,
@@ -240,10 +264,9 @@ export const copyOriginBoundaryAfterResolution = (
   selection: RevisionSelection,
 ): PMNode | null => {
   if (node.type.name === "rangeAnchor") {
-    const { start, end } = expectRangeAnchorAttrs(node);
-    if (start.type === "commentRangeStart" || end.type === "commentRangeEnd") {
-      return node;
-    }
+    const pair = movePairOf(node);
+    if (pair === null) return node;
+    const { start, end } = pair;
     const path = trackedRevisionPathForBoundary(node);
     const startResult = copyOriginAfterResolution({
       origins: start.copyOriginAncestors,
@@ -308,10 +331,9 @@ export const copyOriginBoundaryAfterRemovingAddedAncestors = (
   node: PMNode,
 ): PMNode | null => {
   if (node.type.name === "rangeAnchor") {
-    const { start, end } = expectRangeAnchorAttrs(node);
-    if (start.type === "commentRangeStart" || end.type === "commentRangeEnd") {
-      return node;
-    }
+    const pair = movePairOf(node);
+    if (pair === null) return node;
+    const { start, end } = pair;
     const addedAncestors =
       trackedRevisionPathForBoundary(node).filter(isAddedLayer).length;
     const remove = (origins: CopyOriginAncestorList | undefined) => {
@@ -397,8 +419,7 @@ export const copyOriginBoundaryAttrsAfterResolution = ({
     ) {
       return {
         ...baseAttrs,
-        start: resolved.attrs["start"],
-        end: resolved.attrs["end"],
+        markers: expectRangeAnchorAttrs(resolved).markers,
       };
     }
     if (

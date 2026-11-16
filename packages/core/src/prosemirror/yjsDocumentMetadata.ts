@@ -19,7 +19,9 @@ import {
   getProseDocumentParagraphPropertySourceContract,
   PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
 } from "../docx/paragraphPropertySource";
+import type { RangeAnchorAttrs } from "./emptyRangeAnchor";
 import { isNoteReferenceOccurrenceId } from "./noteReferenceOccurrenceId";
+import { readRangeAnchorValues } from "./rangeAnchorAttrs";
 import { mintSectionProperties, parseSectionBreakType } from "./sectionCarrier";
 
 const FolioYjsAttrSchemaVersionErrorBase: TaggedErrorClass<"FolioYjsAttrSchemaVersionError"> =
@@ -698,7 +700,7 @@ const renamePageBreakRunOwnerMarkAttr: AttrSchemaMigrationStep = (fragment) => {
 
 /** Every attr-schema version this build reads, oldest first, with no gaps. */
 const FOLIO_YJS_ATTR_SCHEMA_VERSIONS = [
-  0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
+  0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
 ] as const;
 
 /** An attr-schema version this build can read. */
@@ -733,7 +735,8 @@ const ATTR_SCHEMA_MIGRATIONS = {
   12: stampMarkerOnly,
   // Hyperlink bookmark targets are additive; absent targets stay absent.
   13: stampMarkerOnly,
-  14: "current",
+  14: orderRangeAnchorMarkers,
+  15: "current",
 } as const satisfies Record<
   FolioYjsAttrSchemaVersion,
   AttrSchemaMigrationStep | "current"
@@ -751,8 +754,56 @@ type CurrentAttrSchemaVersion = {
  * The attr-schema version this build writes. Derived against the migration map
  * so the constant and the map cannot disagree.
  */
-export const FOLIO_YJS_ATTR_SCHEMA_VERSION: 14 =
-  14 satisfies CurrentAttrSchemaVersion;
+export const FOLIO_YJS_ATTR_SCHEMA_VERSION: 15 =
+  15 satisfies CurrentAttrSchemaVersion;
+
+const ORDERED_RANGE_ANCHOR_SCHEMA_VERSION =
+  15 satisfies FolioYjsAttrSchemaVersion;
+
+const FolioYjsRangeAnchorSchemaErrorBase: TaggedErrorClass<"FolioYjsRangeAnchorSchemaError"> =
+  TaggedError("FolioYjsRangeAnchorSchemaError");
+
+/** A stored point anchor must retain a valid, ordered source-marker pair. */
+export class FolioYjsRangeAnchorSchemaError extends FolioYjsRangeAnchorSchemaErrorBase<{
+  message: string;
+  schemaVersion: FolioYjsAttrSchemaVersion;
+}> {}
+
+/** Validate every old pair before any migration is allowed to mutate the fragment. */
+const legacyRangeAnchors = (
+  fragment: Y.XmlFragment,
+  schemaVersion: FolioYjsAttrSchemaVersion,
+) => {
+  const changes: { node: Y.XmlElement; attrs: RangeAnchorAttrs }[] = [];
+  const visit = (node: Y.XmlElement | Y.XmlFragment): void => {
+    if ("nodeName" in node && node.nodeName === "rangeAnchor") {
+      const attrs: Record<string, unknown> = node.getAttributes();
+      const markers = readRangeAnchorValues([attrs["start"], attrs["end"]]);
+      if (!markers.ok)
+        throw new FolioYjsRangeAnchorSchemaError({
+          schemaVersion,
+          message: `Yjs schema ${schemaVersion} has an invalid point-range marker pair. Rebuild the collaboration state from the saved DOCX.`,
+        });
+      changes.push({ node, attrs: markers.value });
+    }
+    for (const child of node.toArray())
+      if (typeof child !== "string" && !isXmlText(child) && "toArray" in child)
+        visit(child);
+  };
+  visit(fragment);
+  return changes;
+};
+
+/** Version 14 atoms each held one pair; the same ordered pair is a sequence in 15. */
+function orderRangeAnchorMarkers(fragment: Y.XmlFragment): number {
+  const changes = legacyRangeAnchors(fragment, 14);
+  for (const { node, attrs } of changes) {
+    setJsonAttribute(node, "markers", attrs.markers);
+    node.removeAttribute("start");
+    node.removeAttribute("end");
+  }
+  return changes.length;
+}
 
 const STATED_NUMBERING_SOURCE_SCHEMA_VERSION =
   13 satisfies FolioYjsAttrSchemaVersion;
@@ -887,6 +938,8 @@ export const applyAttrSchemaMigrations = (
 ): number => {
   requireNoteOccurrenceAttribution(fragment, fromVersion);
   requireStatedNumberingSources(fragment, fromVersion);
+  if (fromVersion < ORDERED_RANGE_ANCHOR_SCHEMA_VERSION)
+    legacyRangeAnchors(fragment, fromVersion);
   if (fromVersion === FOLIO_YJS_ATTR_SCHEMA_VERSION) {
     return 0;
   }
