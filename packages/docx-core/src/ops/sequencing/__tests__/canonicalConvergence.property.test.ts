@@ -245,7 +245,7 @@ const REVISION_RECORDS = new Set([
 
 /**
  * What a value depends on, anywhere in it: the paragraphs it names
- * (positions, block ids, the blocks an effect records) and the tracked
+ * (positions, block ids, created paragraphs and the blocks an effect records) and the tracked
  * changes it names or holds (a decision's revisions, a stamp, a wrapper).
  * Undefined names none.
  */
@@ -266,7 +266,10 @@ const dependenciesIn = (value: unknown): string[] => {
     )
       ids.add(`revision ${String(id)}`);
     for (const [key, child] of Object.entries(node)) {
-      if (/blockId$/iu.test(key) && typeof child === "string") {
+      if (
+        (/blockId$/iu.test(key) || key === "paraId") &&
+        typeof child === "string"
+      ) {
         ids.add(child.toUpperCase());
       } else if (key === "blockIds" && Array.isArray(child)) {
         for (const block of child)
@@ -1845,6 +1848,52 @@ const bufferedSectionConflicts = [
   ],
 ] satisfies Scenario;
 
+/** Typing into a pending paragraph depends on the operation that created it. */
+const typingInRefusedParagraph = [
+  4,
+  [
+    {
+      type: "edit",
+      peer: 0,
+      seed: { kind: "erase", a: 70203, b: 0, suggest: false },
+    },
+    {
+      type: "edit",
+      peer: 2,
+      seed: { kind: "insertParagraph", a: 13659, b: 0, suggest: false },
+    },
+    {
+      type: "edit",
+      peer: 2,
+      seed: { kind: "type", a: 81800, b: 0, suggest: false },
+    },
+    { type: "deliver", seed: 0 },
+    { type: "deliver", seed: 0 },
+    { type: "deliver", seed: 0 },
+    {
+      type: "edit",
+      peer: 0,
+      seed: { kind: "type", a: 0, b: 0, suggest: false },
+    },
+    {
+      type: "edit",
+      peer: 0,
+      seed: { kind: "type", a: 0, b: 0, suggest: false },
+    },
+    { type: "submit", peer: 0 },
+    {
+      type: "edit",
+      peer: 0,
+      seed: { kind: "type", a: 0, b: 0, suggest: false },
+    },
+    {
+      type: "edit",
+      peer: 0,
+      seed: { kind: "type", a: 0, b: 0, suggest: false },
+    },
+  ],
+] satisfies Scenario;
+
 /** The pinned scenarios, which the fixed coverage sample starts with. */
 const PINNED: readonly Scenario[] = [
   concurrentRows,
@@ -1862,6 +1911,23 @@ const PINNED: readonly Scenario[] = [
 ];
 
 describe("canonical sequencing", () => {
+  test.each([3, typingInRefusedParagraph[1].length])(
+    "typing in a refused paragraph is a dependent drop (%i steps)",
+    async (length) => {
+      const scenario = [
+        typingInRefusedParagraph[0],
+        typingInRefusedParagraph[1].slice(0, length),
+      ] satisfies Scenario;
+      const outcome = simulate(...scenario);
+      expect(outcome.dropped).toEqual(["edit-11", "edit-12"]);
+      expect(outcome.independentDrops).toEqual([]);
+      await assertProperty(convergence(noCounts(), fc.constant(scenario)), {
+        numRuns: 1,
+        id: "canonical sequencing created paragraph dependencies",
+      });
+    },
+  );
+
   test.each([
     {
       name: "header relationships",
