@@ -389,7 +389,10 @@ type ContentAgreeingIdsOptions<Block extends FolioContentBlockIdentity> = {
  * read as no id at all. An id is a hint for pairing, never proof: a join
  * leaves the surviving paragraph mark's id on a paragraph that holds other
  * words. Unique exact counterparts for both texts override a conflicting
- * shared id; otherwise the wording must be alike by the gap-pairing measure.
+ * shared id. One exact counterpart also suffices when its unique stable id
+ * is absent on the opposite side: deleting or inserting a tail can retire or
+ * introduce that mark without a competing edit owning it. Otherwise the
+ * wording must be alike by the gap-pairing measure.
  * Repeated or structurally incompatible text supplies no exact evidence.
  * Blocks outside the paragraph family, and a pair the work budget can no
  * longer measure without exact contradictory evidence, keep the id's word.
@@ -406,6 +409,8 @@ const withContentAgreeingIds = <Block extends FolioContentBlockIdentity>({
     | {
         base: ReadonlyMap<string, PreparedAlignmentBlock<Block> | null>;
         revised: ReadonlyMap<string, PreparedAlignmentBlock<Block> | null>;
+        baseIds: ReadonlySet<string>;
+        revisedIds: ReadonlySet<string>;
       }
     | undefined;
   for (const [id, baseBlock] of baseById) {
@@ -435,29 +440,43 @@ const withContentAgreeingIds = <Block extends FolioContentBlockIdentity>({
         from: 0,
         to: prepared.revised.length,
       }),
+      baseIds: new Set(prepared.base.map(({ block }) => block.id)),
+      revisedIds: new Set(prepared.revised.map(({ block }) => block.id)),
     };
     const baseCounterpart = exact.base.get(revised.text);
     const revisedCounterpart = exact.revised.get(base.text);
-    if (
-      exact.base.get(base.text) === baseBlock &&
-      exact.revised.get(revised.text) === revisedBlock &&
+    const baseCounterpartCanPair =
       baseCounterpart != null &&
+      blocksCanPair({
+        base: baseCounterpart.pairingFacts,
+        revised: revisedBlock.pairingFacts,
+        stableIdMismatch: "pair",
+        structuralScope,
+      });
+    const revisedCounterpartCanPair =
       revisedCounterpart != null &&
       blocksCanPair({
         base: baseBlock.pairingFacts,
         revised: revisedCounterpart.pairingFacts,
         stableIdMismatch: "pair",
         structuralScope,
-      }) &&
-      blocksCanPair({
-        base: baseCounterpart.pairingFacts,
-        revised: revisedBlock.pairingFacts,
-        stableIdMismatch: "pair",
-        structuralScope,
-      })
+      });
+    if (
+      exact.base.get(base.text) === baseBlock &&
+      exact.revised.get(revised.text) === revisedBlock &&
+      ((baseCounterpartCanPair && revisedCounterpartCanPair) ||
+        (baseCounterpartCanPair &&
+          revisedCounterpart === undefined &&
+          baseById.get(baseCounterpart.pairingFacts.id) === baseCounterpart &&
+          !exact.revisedIds.has(baseCounterpart.pairingFacts.id)) ||
+        (revisedCounterpartCanPair &&
+          baseCounterpart === undefined &&
+          revisedById.get(revisedCounterpart.pairingFacts.id) ===
+            revisedCounterpart &&
+          !exact.baseIds.has(revisedCounterpart.pairingFacts.id)))
     ) {
-      // Both unique texts stand elsewhere on the opposite side: their shared
-      // mark id contradicts exact content evidence, even when wording is alike.
+      // Exact text contradicts the shared mark id, including a unilateral
+      // counterpart whose former/new mark cannot own another edit.
       untrusted.add(id);
       continue;
     }

@@ -977,6 +977,62 @@ describe("compareDocx", () => {
     ).toEqual([]);
   });
 
+  test("deleting the tail and inserting elsewhere reports only the two scripted changes", async () => {
+    // Seed -978410416, path 2:4:4:4:4:4:4:4:4:4:4:4:4:4:4.
+    // The retained terminal mark belongs to the deleted paragraph, while the
+    // preceding paragraph's text survives under that id through save/reload.
+    const base = SYNTHETIC_BASE;
+    const baseBlocks = await blocksOf(base);
+    const script = [
+      { type: "deleteParagraph", blockIndex: 6 },
+      { type: "insertParagraphAfter", blockIndex: 0, text: "AAA AAa aAA" },
+    ] as const satisfies EditScript;
+    expect(baseBlocks).toHaveLength(7);
+    const scripted = await applyEditScript(base, script);
+    if (scripted.isErr()) throw scripted.error;
+    expect(scripted.value.applied).toEqual(script);
+    expect(scripted.value.unresolved).toEqual([]);
+    const target = scripted.value.buffer;
+    const targetBlocks = await blocksOf(target);
+    expect(targetBlocks.at(-1)).toMatchObject({
+      id: baseBlocks.at(-1)?.id,
+      text: baseBlocks.at(-2)?.text,
+    });
+    expect(targetBlocks.map(({ id }) => id)).not.toContain(
+      baseBlocks.at(-2)?.id,
+    );
+
+    const compared = await compareOrThrow(base, target);
+    expect(kindsOf(compared.changes).toSorted()).toEqual(["delete", "insert"]);
+    expect(
+      compared.changes.find(({ kind }) => kind === "delete"),
+    ).toMatchObject({
+      before: baseBlocks.at(-1)?.text,
+    });
+    expect(compared.changes.length).toBe(
+      await touchedBlockBudget({
+        base,
+        applied: scripted.value.applied,
+        baseBlocks,
+      }),
+    );
+    expect(await projectView(compared.buffer, "original")).toEqual(
+      await projectView(base, "final"),
+    );
+    expect(await projectView(compared.buffer, "final")).toEqual(
+      await projectView(target, "final"),
+    );
+
+    const inverse = await compareOrThrow(target, base);
+    expect(kindsOf(inverse.changes).toSorted()).toEqual(["delete", "insert"]);
+    expect(await projectView(inverse.buffer, "original")).toEqual(
+      await projectView(target, "final"),
+    );
+    expect(await projectView(inverse.buffer, "final")).toEqual(
+      await projectView(base, "final"),
+    );
+  });
+
   test("two relocations that cross are not fused into a rewrite", async () => {
     // The counterexample the change-count property found at PROPERTY_TEST_SEED=9.
     // Each relocation swaps a paragraph with its neighbour, so each contributes
