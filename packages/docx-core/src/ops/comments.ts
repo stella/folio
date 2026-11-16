@@ -41,6 +41,7 @@ import {
   type LeafSpan,
   leafSpans,
   mergeAlike,
+  nestedRecords,
   rebuildNode,
 } from "./leaves";
 import { cloneModel } from "./modelClone";
@@ -475,6 +476,23 @@ const storyCoverageNodes = (
   return out;
 };
 
+/** Source anchor presence also sees records inside atomic field results. */
+const sourceCommentAnchorIds = (document: Document): Set<number> => {
+  const ids = new Set<number>();
+  const visit = (node: InlineNode): void => {
+    const id = anchorId(node);
+    if (id !== undefined) ids.add(id);
+    for (const child of nestedRecords(node) ?? []) visit(child);
+    if (node.type === "shape" && node.shape.textBody !== undefined)
+      for (const entry of storyCoverageNodes(node.shape.textBody))
+        visit(entry.node);
+  };
+  for (const story of documentStories(document))
+    for (const { node } of storyCoverageNodes(storyBody(document, story)))
+      visit(node);
+  return ids;
+};
+
 /** Range coverage in source order; comment anchors and range boundaries are only carriers. */
 const coveredCommentIds = (document: Document): Set<number> => {
   const covered = new Set<number>();
@@ -530,7 +548,7 @@ export const isCommentExhausted = (input: CommentExhaustionInput): boolean => {
   );
   if (comment === undefined || comment.parentId !== undefined) return false;
   if (comment.anchorKind === "point")
-    return !anchorsIn(document).some(({ node }) => anchorId(node) === id);
+    return !sourceCommentAnchorIds(document).has(id);
   return isCommentExhausted({
     type: "coverage",
     anchorKind: comment.anchorKind,
@@ -593,9 +611,7 @@ export const withoutCommentThreads = (
 export const orphanRootCommentIds = (document: Document): Set<number> => {
   const comments = document.package.document.comments ?? [];
   const ids = new Set(comments.map(({ id }) => id));
-  const anchored = new Set(
-    anchorsIn(document).map(({ node }) => anchorId(node)),
-  );
+  const anchored = sourceCommentAnchorIds(document);
   return new Set(
     comments
       .filter(
