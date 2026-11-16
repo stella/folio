@@ -7,7 +7,9 @@
  * directly or as a tracked change, on a body paragraph or one in a table
  * cell, then saves and reopens: every paragraph's formatting, and the
  * formatting each tracked property change records, reads the same in the
- * live model and in the reopened one.
+ * live model and in the reopened one. A case may follow the operation with a
+ * direct property edit of the same paragraph, which a property change the
+ * operation left pending then records as the paragraph's current properties.
  */
 
 import { describe, expect, mock, test } from "bun:test";
@@ -137,6 +139,8 @@ type Draw = {
   mode: "direct" | "tracked-changes";
   first: FolioAIBlockParagraphProperties;
   second: FolioAIBlockParagraphProperties;
+  /** A direct property edit of the same paragraph that follows, if any. */
+  afterwards: FolioAIBlockParagraphProperties | null;
 };
 
 const drawArbitrary: fc.Arbitrary<Draw> = fc.record({
@@ -145,6 +149,7 @@ const drawArbitrary: fc.Arbitrary<Draw> = fc.record({
   mode: fc.constantFrom("direct", "tracked-changes"),
   first: propertiesArbitrary,
   second: propertiesArbitrary,
+  afterwards: fc.option(propertiesArbitrary, { nil: null }),
 });
 
 const operationOf = (draw: Draw, blockId: string): FolioDocumentOperation => {
@@ -220,16 +225,35 @@ const liveAndReopened = async (buffer: ArrayBuffer, draw: Draw) => {
     .blocks.find((candidate) => candidate.text === draw.target);
   if (block === undefined) throw new Error(`no block reads ${draw.target}`);
   // A refusal comes back as a skipped operation; anything thrown fails the law.
-  const applied =
+  const applies = (
+    operation: FolioDocumentOperation,
+    mode: Draw["mode"],
+  ): boolean =>
     live.applyDocumentOperations(
       {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        operations: [operationOf(draw, block.id)],
-        mode: draw.mode,
+        operations: [operation],
+        mode,
       },
       { undefinedReferences: "refuse" },
     ).applied.length === 1;
-  if (!applied) return null;
+  if (!applies(operationOf(draw, block.id), draw.mode)) return null;
+  // The paragraph the operation left under the id, edited directly; whether
+  // it applies or is refused, the law reads the document it leaves.
+  const { afterwards } = draw;
+  if (
+    afterwards !== null &&
+    live.snapshot().blocks.some((candidate) => candidate.id === block.id)
+  )
+    applies(
+      {
+        id: "afterwards",
+        type: "setBlockParagraphProperties",
+        blockId: block.id,
+        properties: afterwards,
+      },
+      "direct",
+    );
   const reopened = await open(await live.toBuffer());
   return {
     live: paragraphsOf(live.toDocument()),
@@ -254,6 +278,17 @@ const SPACED_MERGE: Draw = {
   mode: "tracked-changes",
   first: { spacing: { spaceBefore: 120, spaceAfter: 120 } },
   second: {},
+  afterwards: null,
+};
+
+/** A direct edit of a paragraph whose tracked property change is pending. */
+const DIRECT_AFTER_TRACKED: Draw = {
+  kind: "set",
+  target: "Second paragraph",
+  mode: "tracked-changes",
+  first: { alignment: "center" },
+  second: {},
+  afterwards: { spacing: { spaceBefore: 240 } },
 };
 
 describe("paragraph properties an operation sets", () => {
@@ -288,7 +323,7 @@ describe("paragraph properties an operation sets", () => {
       await assertProperty(law(buffer, { applied: 0 }), {
         id: "paragraph properties read the same live and reopened",
         numRuns: RUNS,
-        examples: [[SPACED_MERGE]],
+        examples: [[SPACED_MERGE], [DIRECT_AFTER_TRACKED]],
       });
       // Most draws of a fixed sample reach the law: the reviewer applies them.
       const tally = { applied: 0 };

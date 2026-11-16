@@ -54,6 +54,7 @@ export {
 export { mapTocBookmarkPosition } from "./tocIntent";
 export { packageResourcesOpOf } from "./packageResources";
 export { combineEdits } from "./edits";
+export { reviewFieldsOf } from "./review";
 export {
   paragraphPropertySnapshotToken,
   registerParagraphPropertySnapshot,

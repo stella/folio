@@ -143,6 +143,8 @@ import { paragraphLength } from "./offsets";
 import { applyPackageResourcesOp } from "./packageResources";
 import { findStoryParagraph } from "./paragraphLocator";
 import {
+  authoredParagraphFormatting,
+  changesRecordingAuthored,
   getParagraphPropertySnapshot,
   registerParagraphPropertySnapshot,
   transferParagraphPropertySnapshot,
@@ -1626,9 +1628,35 @@ const setParagraphProps = (
     ),
   });
   if (revision !== undefined) {
+    // The change records what the paragraph now states as its current
+    // properties, as a reopened file reads them.
     next.propertyChanges = [
-      foldedParagraphPropertyChange({ paragraph, formatting, stamp: revision }),
+      foldedParagraphPropertyChange({
+        paragraph,
+        formatting: authoredParagraphFormatting(next),
+        stamp: revision,
+      }),
     ];
+    return editOne(
+      {
+        document,
+        op,
+        story: op.story,
+        at: located.value,
+        paragraph: next,
+        newIds: undefined,
+      },
+      (result) => Result.ok([reviewRestoring(op.story, result, paragraph)]),
+    );
+  }
+  // Edited directly, the paragraph keeps its pending property changes, each
+  // now recording what the paragraph states; undoing restores them as they
+  // were.
+  if (paragraph.propertyChanges !== undefined) {
+    next.propertyChanges = changesRecordingAuthored(
+      paragraph.propertyChanges,
+      next,
+    );
     return editOne(
       {
         document,

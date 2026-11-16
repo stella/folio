@@ -1219,6 +1219,9 @@ export type RestoreStoryPartsOp = {
 };
 
 // @public
+export const reviewFieldsOf: (paragraph: ParagraphReviewFields) => ParagraphReviewFields;
+
+// @public
 export const REVISION_DECISIONS: Readonly<{
     readonly ACCEPT: "accept";
     readonly REJECT: "reject";

@@ -215,7 +215,7 @@ const INVERSE_KINDS = {
   splitInline: ["joinInline", "restoreStoryParts"],
   joinInline: ["splitInline", "restoreStoryParts"],
   setRunProps: ["setRunProps"],
-  setParagraphProps: ["setParagraphProps"],
+  setParagraphProps: ["setParagraphProps", "setParagraphReview"],
   splitBlock: [
     "joinBlocks",
     "replaceInline",
