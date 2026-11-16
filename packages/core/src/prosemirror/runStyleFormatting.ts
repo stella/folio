@@ -127,7 +127,7 @@ type ParagraphBodyRunFormatting = {
   defaultToggleCascade: StyleToggleCascade;
 };
 
-/** Resolve the table, paragraph, and character style cascade before paragraph-mark properties. */
+/** Resolve the table, paragraph and character style cascade for body runs. */
 export const resolveParagraphBodyRunFormatting = ({
   styleId,
   styleResolver,
@@ -194,13 +194,19 @@ export const resolveParagraphBodyRunFormatting = ({
   };
 };
 
+// Keep the private readonly brand behind named types in emitted declarations.
+type ParagraphInheritedRunFormatting = ParagraphBodyRunFormatting & {
+  inheritedFormatting: ReadonlyTextFormatting | undefined;
+  inheritedToggleCascade: StyleToggleCascade;
+};
+
 /**
  * The formatting a paragraph's runs inherit, with the toggles of the style
  * cascade resolved as they stand: what a run that states nothing shows.
  */
 export const resolveParagraphInheritedRunFormatting = (
   options: ResolveParagraphBodyRunFormattingOptions,
-) => {
+): ParagraphInheritedRunFormatting => {
   const body = resolveParagraphBodyRunFormatting(options);
   const inheritedToggleCascade = cascadeStyleTextFormatting(
     [{ cascade: body.defaultToggleCascade, type: "carried" }],
