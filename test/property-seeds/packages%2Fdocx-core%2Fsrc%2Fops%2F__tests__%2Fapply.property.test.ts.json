@@ -86,6 +86,12 @@
   ],
   "an operation's inverse restores the document exactly": [
     {
+      "seed": 466191735,
+      "path": "3697:0:0:0:0:0:0:0:0:4:3:3:3:3:3:3:4:4:4:4:4:4:4:4:4:5:4:9:9:9:9:9:9:9:9:9:1:1:6:6:6:6:6:6:6:6:6:7:6:6:26:26:26:26:26:26:26:26:26:26:26:26:26:26:26:26:26:26:26:26:30:30",
+      "date": "2026-11-17",
+      "note": "#2858: undo an inserted move-range start paired with an existing end across a table exactly."
+    },
+    {
       "seed": 684444476,
       "path": "3419:4:3:3:3:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:34:34:34:39:39:39:39:39:39:39:39:39:39:39:39:39:39:39:39:39:39:39",
       "note": "A split between alike authored runs needs content restoration after its inverse seam merge",
