@@ -1728,3 +1728,76 @@ for (const session of [undefined, "canonical"] as const)
           container.remove();
         }
       });
+
+const failHostTripwire = () => panic("Host tripwire failed");
+const tripwireFeatureFlags = {
+  selectiveSave: true,
+  selectiveSaveTripwire: true,
+};
+
+for (const session of [undefined, "canonical"] as const)
+  test(`React ${session ?? "default"} host tripwire exceptions propagate after save acknowledgement`, async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const editor = createRef<DocxEditorRef>();
+    const notifications = createSaveNotifications();
+    const bytes = await createDocx(serializationPathSource());
+    const paths: FolioDocxSerializationPath[] = [];
+    try {
+      await act(async () =>
+        root.render(
+          <IntlProvider
+            locale="en"
+            timeZone="UTC"
+            messages={getFolioMessages("en")}
+          >
+            <DocxEditor
+              ref={editor}
+              accessibleName="Document editor"
+              documentBuffer={bytes}
+              {...(session === undefined
+                ? {}
+                : { experimentalSession: session })}
+              featureFlags={tripwireFeatureFlags}
+              onSelectiveSaveTripwire={failHostTripwire}
+              onError={notifications.onError}
+              onSave={notifications.onSave}
+              showToolbar={false}
+            />
+          </IntlProvider>,
+        ),
+      );
+      const adapter = editor.current ?? panic("Expected React editor");
+      await act(async () => adapter.loadDocumentBuffer(bytes));
+      await act(async () => adapter.ensureEditorView({ focus: false }));
+      const api = adapter.getEditor() ?? panic("Expected controller");
+      const view = api.getView() ?? panic("Expected body view");
+      await act(async () => {
+        if (session === "canonical")
+          expect(
+            api.applyCanonicalOperations([
+              {
+                type: DOCUMENT_OP_TYPES.INSERT_TEXT,
+                at: { story: "main", blockId: "12345678", offset: 1 },
+                text: "x",
+                runProps: "inherit",
+              },
+            ]),
+          ).toBe(true);
+        else view.dispatch(view.state.tr.insertText("x", 2));
+      });
+      await act(async () => {
+        await expect(
+          adapter.save({ onSerializationPath: (path) => paths.push(path) }),
+        ).rejects.toThrow("Host tripwire failed");
+      });
+      expect(paths).toEqual(["selective"]);
+      expect(notifications.errors).toEqual([]);
+      expect(notifications.saved).toEqual([]);
+      expect(adapter.hasPendingChanges()).toBe(false);
+    } finally {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+  });

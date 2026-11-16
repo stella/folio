@@ -1305,6 +1305,8 @@ export function useDocxEditor(
   const documentIO = {
     getDocx: async (serializationOptions) => {
       const result = await serializeCurrentDocx(serializationOptions);
+      if (result?.tripwireResult)
+        onSelectiveSaveTripwire?.(result.tripwireResult);
       return result?.buffer ?? null;
     },
     loadDocument,
@@ -1554,6 +1556,7 @@ export function useDocxEditor(
     document: Document;
     version?: number;
     path: FolioDocxSerializationPath;
+    tripwireResult: TripwireResult | null;
   };
 
   async function serializeCurrentDocx(
@@ -1576,8 +1579,6 @@ export function useDocxEditor(
           if (!serializationOptions?.onDiagnostic)
             onError?.(canonicalSaveDiagnosticError(diagnostic));
         }
-        if (result.tripwireResult)
-          onSelectiveSaveTripwire?.(result.tripwireResult);
         return result;
       }
       if (isCanonicalSession()) return null;
@@ -1681,6 +1682,7 @@ export function useDocxEditor(
         }
       }
 
+      let tripwireResult: TripwireResult | null = null;
       if (
         flags.selectiveSaveTripwire &&
         fullBuffer &&
@@ -1690,8 +1692,9 @@ export function useDocxEditor(
         try {
           const { compareSelectiveVsFull } =
             await import("@stll/folio-core/docx/selectiveSaveTripwire");
-          onSelectiveSaveTripwire(
-            await compareSelectiveVsFull(selectiveBuffer, fullBuffer),
+          tripwireResult = await compareSelectiveVsFull(
+            selectiveBuffer,
+            fullBuffer,
           );
         } catch {
           // Comparison failures must never poison the save path.
@@ -1701,7 +1704,7 @@ export function useDocxEditor(
       for (const diagnostic of fullDiagnostics)
         serializationOptions?.onDiagnostic?.(diagnostic);
       serializationOptions?.onSerializationPath?.(path);
-      return { buffer, path, document: updatedDoc };
+      return { buffer, path, document: updatedDoc, tripwireResult };
     } catch (error) {
       onError?.(error instanceof Error ? error : new Error(String(error)));
       return null;
@@ -1746,6 +1749,9 @@ export function useDocxEditor(
       isDirty.value = false;
     }
 
+    // The observational host callback can throw to fail a harness, after the
+    // saved snapshot is acknowledged and outside serializer error handling.
+    if (result.tripwireResult) onSelectiveSaveTripwire?.(result.tripwireResult);
     return new Blob([result.buffer], {
       type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     });

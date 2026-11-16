@@ -1350,3 +1350,75 @@ for (const session of [undefined, "canonical"] as const)
           pages.remove();
         }
       });
+
+for (const session of [undefined, "canonical"] as const)
+  for (const operation of ["save", "getDocx"] as const)
+    test(`Vue ${session ?? "default"} host tripwire exceptions propagate after ${operation}`, async () => {
+      const container = document.createElement("div");
+      const hidden = document.createElement("div");
+      const pages = document.createElement("div");
+      document.body.append(container, hidden, pages);
+      const errors: Error[] = [];
+      let comparisons = 0;
+      const paths: FolioDocxSerializationPath[] = [];
+      const holder: { adapter: ReturnType<typeof useDocxEditor> | null } = {
+        adapter: null,
+      };
+      const app = createApp(
+        defineComponent({
+          setup() {
+            holder.adapter = useDocxEditor({
+              hiddenContainer: shallowRef(hidden),
+              pagesContainer: shallowRef(pages),
+              ...(session === undefined
+                ? {}
+                : { experimentalSession: session }),
+              featureFlags: {
+                selectiveSave: true,
+                selectiveSaveTripwire: true,
+              },
+              onError: (error) => errors.push(error),
+              onSelectiveSaveTripwire: () => {
+                comparisons += 1;
+                panic("Host tripwire failed");
+              },
+            });
+            return () => h("div");
+          },
+        }),
+      );
+      app.mount(container);
+      try {
+        const adapter = holder.adapter ?? panic("Expected Vue editor");
+        await adapter.loadBuffer(await createDocx(serializationPathSource()));
+        const view = adapter.editorView.value ?? panic("Expected body view");
+        if (session === "canonical") {
+          expect(
+            adapter.editor.applyCanonicalOperations([
+              {
+                type: DOCUMENT_OP_TYPES.INSERT_TEXT,
+                at: { story: "main", blockId: "12345678", offset: 1 },
+                text: "x",
+                runProps: "inherit",
+              },
+            ]),
+          ).toBe(true);
+        } else view.dispatch(view.state.tr.insertText("x", 2));
+        await expect(
+          operation === "save"
+            ? adapter.save({ onSerializationPath: (path) => paths.push(path) })
+            : adapter.editor.getDocx({
+                onSerializationPath: (path) => paths.push(path),
+              }),
+        ).rejects.toThrow("Host tripwire failed");
+        expect(comparisons).toBe(1);
+        expect(paths).toEqual(["selective"]);
+        expect(errors).toEqual([]);
+        expect(adapter.isDirty.value).toBe(operation === "getDocx");
+      } finally {
+        app.unmount();
+        container.remove();
+        hidden.remove();
+        pages.remove();
+      }
+    });
