@@ -182,6 +182,24 @@ export const runExtendedChecks = async ({
           panic("Refusal invariant does not match its runner");
         declaredRefusals.push(outcome.value.refusal);
         break;
+      case "budget-stopped":
+        // No verdict: an operation invariant that stopped is never a pass.
+        failures.push(...outcome.value.failures);
+        if (isZeroFailure({ invariant })) {
+          failures.push(
+            failureFromAssertion(
+              invariant,
+              "the invariant time budget stopped it before an operation invariant verdict",
+            ),
+          );
+        }
+        failures.push(
+          failureFromAssertion(
+            BUDGET_INVARIANT,
+            `${invariant} stopped at its per-file time budget after ${outcome.value.checked}`,
+          ),
+        );
+        break;
       default: {
         const unexpected: never = outcome.value;
         panic(`Unknown invariant outcome: ${unexpected}`);
@@ -190,7 +208,10 @@ export const runExtendedChecks = async ({
     for (const [stage, ms] of Object.entries(outcome.value.timings)) {
       timings[`${invariant}.${stage}`] = ms;
     }
-    if (elapsedMs > invariantBudgetMs) {
+    if (
+      elapsedMs > invariantBudgetMs &&
+      outcome.value.status !== "budget-stopped"
+    ) {
       // The stage ran to completion, only slowly. That is a timing finding and
       // nothing more: the loop continues, so this file's later invariants are
       // still measured and its gating findings still count. Only the file
