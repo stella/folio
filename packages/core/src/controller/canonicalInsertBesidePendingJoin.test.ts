@@ -517,7 +517,7 @@ describe("a block after a paragraph that joins one the batch splits, in the cano
 });
 
 describe("a table beside another, in the canonical session", () => {
-  test("waits for table structure descriptors and changes nothing", async () => {
+  test("goes between the paragraph and the table, touching it", async () => {
     const joined = await fixture("a tracked merge");
     const editor = await open(joined.bytes);
     const [alpha] = editor.blocks();
@@ -526,13 +526,9 @@ describe("a table beside another, in the canonical session", () => {
     expect(editor.apply([table], "direct").skipped).toEqual([]);
     const before = editor.blocks();
     const result = editor.apply([table], "direct");
-    expect(result.skipped.map(({ reason }) => reason)).toEqual([
-      "unsupportedBlock",
-    ]);
-    expect(result.issues.at(0)?.canonicalRefusal).toEqual({
-      gap: "publicOps.tableStructure",
-    });
-    expect(editor.blocks()).toEqual(before);
+    expect(result.skipped).toEqual([]);
+    expect(result.issues).toEqual([]);
+    expect(editor.blocks()).not.toEqual(before);
   });
 });
 

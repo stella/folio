@@ -1,5 +1,10 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
+import fc from "fast-check";
 
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import type {
   BlockContent,
   Document,
@@ -10,6 +15,8 @@ import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { contractViolation } from "../contract";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import { DOCUMENT_OP_TYPES, type DocumentOp, OP_STORIES } from "../types";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const paragraph = (paraId: string, text = "kept"): Paragraph => ({
   type: "paragraph",
@@ -52,6 +59,116 @@ const refused = (document: Document, op: DocumentOp, reason: string) => {
 };
 
 describe("whole table operations", () => {
+  test("tables placed beside tables preserve topology, review outcomes and wire history", () => {
+    assertProperty(
+      fc.property(
+        fc.constantFrom("beforeTable", "afterTable"),
+        fc.constantFrom("start", "end", "touching"),
+        fc.boolean(),
+        fc.integer({ min: 1, max: 3 }),
+        (type, position, nested, rowCount) => {
+          const target = table("00000010");
+          const carrier = paragraph("00000001");
+          const adjacent = table("00000020");
+          let siblings: BlockContent[];
+          if (position === "start") siblings = [target, carrier];
+          else if (position === "end") siblings = [carrier, target];
+          else siblings = [carrier, adjacent, target, table("00000030")];
+          // A cell ends in a paragraph; a document body may end in a table.
+          if (nested && position !== "start")
+            siblings.push(paragraph("00000040"));
+          const baseline = documentOf(
+            nested
+              ? [
+                  paragraph("00000002"),
+                  {
+                    type: "table",
+                    rows: [
+                      {
+                        type: "tableRow",
+                        cells: [{ type: "tableCell", content: siblings }],
+                      },
+                    ],
+                  },
+                ]
+              : siblings,
+          );
+          const inserted: Table = {
+            type: "table",
+            formatting: { layout: "fixed", justification: "center" },
+            columnWidths: [1200],
+            rows: Array.from({ length: rowCount }, (_, index) => ({
+              type: "tableRow",
+              cells: [
+                {
+                  type: "tableCell",
+                  content: [paragraph(`0000010${index}`, `Inserted ${index}`)],
+                },
+              ],
+            })),
+          };
+          const expected = structuredClone(baseline);
+          const outer = expected.package.document.content.at(1);
+          const expectedSiblings =
+            nested && outer?.type === "table"
+              ? outer.rows.at(0)?.cells.at(0)?.content
+              : expected.package.document.content;
+          if (!expectedSiblings)
+            throw new Error("The target block list exists.");
+          const targetIndex = siblings.indexOf(target);
+          expectedSiblings.splice(
+            targetIndex + (type === "afterTable" ? 1 : 0),
+            0,
+            inserted,
+          );
+          const operation = {
+            type: DOCUMENT_OP_TYPES.INSERT_TABLE,
+            story: OP_STORIES.MAIN,
+            at: { type, blockId: "00000010" },
+            table: inserted,
+          } as const satisfies DocumentOp;
+          const direct = applied(
+            baseline,
+            JSON.parse(JSON.stringify(operation)),
+          );
+          expect(direct.document).toStrictEqual(expected);
+          const tracked = applied(baseline, {
+            ...operation,
+            revision: { id: 300, author: "Reviewer" },
+            newIds: {
+              revision: Array.from({ length: 32 }, (_, index) => 301 + index),
+            },
+          });
+          for (const decision of ["accept", "reject"] as const) {
+            const resolved = applied(tracked.document, {
+              type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+              story: OP_STORIES.MAIN,
+              revisionIds: tracked.revisions ?? [],
+              decision,
+            });
+            expect(resolved.document).toStrictEqual(
+              decision === "accept" ? expected : baseline,
+            );
+            const undone = applyDocumentOps(
+              resolved.document,
+              JSON.parse(JSON.stringify(resolved.inverse)),
+            ).unwrap();
+            expect(undone.document).toStrictEqual(tracked.document);
+            const redone = applyDocumentOps(
+              undone.document,
+              JSON.parse(JSON.stringify(undone.inverse)),
+            ).unwrap();
+            expect(redone.document).toStrictEqual(resolved.document);
+          }
+        },
+      ),
+      {
+        id: "tables placed beside tables preserve topology, review outcomes and wire history",
+        numRuns: 60,
+      },
+    );
+  });
+
   test("insertion and deletion retain outside paragraph identities and exact inverses", () => {
     const anchor = paragraph("00000001");
     const document = documentOf([anchor]);

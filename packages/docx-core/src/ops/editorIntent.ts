@@ -132,6 +132,7 @@ import {
   SPLIT_HALVES,
   type SplitHalf,
   type TableEditOp,
+  type TableInsertionPoint,
   type TableIntentOperation,
   type TextPosition,
 } from "./types";
@@ -168,30 +169,41 @@ export type TableRowIntentOperation =
  */
 export type TableBlockIntentOperation =
   | Omit<DeleteTableOp, "revision" | "newIds" | "expected">
-  | {
+  | ({
       type: typeof DOCUMENT_OP_TYPES.INSERT_TABLE;
       story: OpStory;
       blockId: string;
       table: Table;
       /**
-       * Where the table goes against the anchor paragraph: after it (the
+       * Where the table goes against the anchor: after it (the
        * default, as from a caret), or before it, as from a selection of the
        * whole story, which the editor fills at the story's start.
        */
       side?: "after" | "before";
-      /**
-       * An empty paragraph ahead of the table as well, as the editor writes
-       * a table it inserts after another, so the two never touch.
-       */
-      separated?: boolean;
-      /**
-       * The empty paragraph after the table: written, as the editor gives
-       * the caret a place after a table it inserts (the default), or left
-       * out, for a table that goes between blocks already standing on both
-       * sides of it.
-       */
-      paragraphAfter?: "empty" | "none";
-    };
+    } & (
+      | {
+          /** Existing callers default to a paragraph anchor. */
+          anchor?: "paragraph";
+          /**
+           * An empty paragraph ahead of the table as well, as the editor writes
+           * a table it inserts after another, so the two never touch.
+           */
+          separated?: boolean;
+          /**
+           * The empty paragraph after the table: written, as the editor gives
+           * the caret a place after a table it inserts (the default), or left
+           * out, for a table that goes between blocks already standing on both
+           * sides of it.
+           */
+          paragraphAfter?: "empty" | "none";
+        }
+      | {
+          /** Beside the innermost table holding blockId, without added paragraphs. */
+          anchor: "table";
+          separated?: never;
+          paragraphAfter?: never;
+        }
+    ));
 
 /** Positions use canonical physical offsets, including retained deleted content. */
 export type EditorIntent =
@@ -2478,8 +2490,12 @@ export const compileEditorIntent = (
     case "tableBlock": {
       if (intent.operation.type === DOCUMENT_OP_TYPES.INSERT_TABLE) {
         const { story, blockId, table } = intent.operation;
-        const separated = intent.operation.separated === true;
-        const trailing = intent.operation.paragraphAfter !== "none";
+        let separated = false;
+        let trailing = false;
+        if (intent.operation.anchor !== "table") {
+          separated = intent.operation.separated === true;
+          trailing = intent.operation.paragraphAfter !== "none";
+        }
         const fresh = freshParagraphIds({
           document,
           reserved: mode.reservedBlockIds,
@@ -2530,12 +2546,17 @@ export const compileEditorIntent = (
                   ...tracked,
                 },
               ];
+        let at: TableInsertionPoint;
+        if (intent.operation.anchor === "table")
+          at = { type: before ? "beforeTable" : "afterTable", blockId };
+        else
+          at = before
+            ? { type: "before", blockId: paragraphId ?? blockId }
+            : { type: "after", blockId };
         sequence.push({
           type: DOCUMENT_OP_TYPES.INSERT_TABLE,
           story,
-          at: before
-            ? { type: "before", blockId: paragraphId ?? blockId }
-            : { type: "after", blockId },
+          at,
           table: { ...table, rows },
           ...tracked,
         });
