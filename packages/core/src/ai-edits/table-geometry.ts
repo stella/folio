@@ -608,10 +608,9 @@ const patchTo = <Formatting extends object>({
   return patch;
 };
 
-export type TableGeometryOperation =
-  SetTablePropsOp | SetRowPropsOp | SetCellPropsOp;
+type TableGeometryOperation = SetTablePropsOp | SetRowPropsOp | SetCellPropsOp;
 
-export type MatchTableGeometryOperationsResult =
+type MatchTableGeometryOperationsResult =
   | {
       status: "matched";
       operations: readonly TableGeometryOperation[];

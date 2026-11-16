@@ -500,7 +500,7 @@ export const stageSectionBoundaryProperties = ({
   };
 };
 
-export type StageSectionBoundaryOperationsResult =
+type StageSectionBoundaryOperationsResult =
   | {
       status: "matched";
       operations: readonly SetSectionEndpointOp[];
