@@ -982,6 +982,9 @@ export const orderAddressingBeforeRemoval: <T, Block>(ordered: readonly T[], acc
 export const orderBatchOperations: <T>(operations: readonly T[], addressOf: (operation: T) => BatchOrderAddress) => T[];
 
 // @public
+export const orphanRootCommentIds: (document: Document_2) => Set<number>;
+
+// @public
 export const packageParagraphIds: (pkg: DocxPackage) => string[];
 
 // @public (undocumented)

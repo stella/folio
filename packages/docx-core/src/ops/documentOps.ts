@@ -285,6 +285,7 @@ export {
   commentDocumentIssue,
   freshCommentId,
   isCommentExhausted,
+  orphanRootCommentIds,
   survivingComments,
   withoutCommentThreads,
   type CommentExhaustionInput,
