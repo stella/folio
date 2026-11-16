@@ -2259,6 +2259,17 @@ const resolveList = ({
   // so rejecting first and joining later places them as the other order.
   for (const [recorded, depth] of [...exactSeams]) {
     if (floating.has(recorded)) continue;
+    const leftPiece = out[recorded - 1]?.node;
+    const rightPiece = out[recorded]?.node;
+    // A recorded source cut already meeting its matching pieces rejoins
+    // them here. A marker-only piece is an authored record, not a boundary
+    // kept outside those records by an earlier rejection.
+    if (
+      leftPiece !== undefined &&
+      rightPiece !== undefined &&
+      alikeDepth(leftPiece, rightPiece) >= depth
+    )
+      continue;
     const standingAt = (from: number, step: 1 | -1): number => {
       let count = 0;
       while (isStandingBoundary(out[from + step * count]?.node)) count += 1;
