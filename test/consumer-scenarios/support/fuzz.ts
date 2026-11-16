@@ -30,6 +30,7 @@ import {
 } from "@stll/folio-agents";
 import {
   FOLIO_DOCUMENT_OPERATION_TYPES,
+  type FolioDocumentOperationResult,
   type FolioDocumentStoryHandle,
 } from "@stll/folio-core/server";
 
@@ -96,6 +97,10 @@ import {
   captureResolution,
 } from "./oracle.ts";
 import {
+  createParagraphIdentityRemapping,
+  mapParagraphBlockIds,
+} from "./paragraph-identity.ts";
+import {
   isPublicCorpusFixture,
   loadPublicCorpusFixture,
   type PublicCorpusFixture,
@@ -134,6 +139,7 @@ export type Flow = {
   planned: FlowStep | undefined;
   /** Ids of the fixture's blocks that every run of the flow opens with (`stableFixtureIds`). */
   fixtureIds: ReadonlySet<string>;
+  paragraphIdentities: ReturnType<typeof createParagraphIdentityRemapping>;
   swarm: string[] | undefined;
   weights: FeatureCoverage | undefined;
   operationHits: Record<string, number> | undefined;
@@ -202,7 +208,11 @@ const randomOperations = (
   const used =
     pinned === undefined
       ? drawn
-      : (fromPositions(pinned, blocks) as Operation[]);
+      : (fromPositions({
+          operations: pinned,
+          blocks,
+          identities: flow.paragraphIdentities,
+        }) as Operation[]);
   if (!swarmIncludesBatch(flow.swarm, used)) {
     throw new TypeError("flow file: pinned operation is disabled by its swarm");
   }
@@ -219,42 +229,40 @@ const randomOperations = (
 
 // A block a flow inserted gets a new id on every run, so a pinned operation
 // names it by its position in the story's blocks when the step drew, `@<n>`.
-// A fixture block keeps its id (`stableFixtureIds`), which survives steps
-// before it going away.
+// A fixture block starts with a stable id; direct join receipts explicitly
+// remap one that a preceding step retired. Deliberately stale model mistakes
+// do not pass through this pinned-flow reference resolution.
 const POSITION = /^@(\d+)$/u;
-
-const mapBlockIds = (value: unknown, map: (id: string) => string): unknown => {
-  if (Array.isArray(value)) return value.map((item) => mapBlockIds(item, map));
-  if (typeof value !== "object" || value === null) return value;
-  return Object.fromEntries(
-    Object.entries(value).map(([key, item]) => [
-      key,
-      key === "blockId" && typeof item === "string"
-        ? map(item)
-        : mapBlockIds(item, map),
-    ]),
-  );
-};
 
 const toPositions = (
   operations: readonly Operation[],
   blocks: readonly Block[],
   fixtureIds: ReadonlySet<string>,
 ): unknown =>
-  mapBlockIds(operations, (id) => {
+  mapParagraphBlockIds(operations, (id) => {
     if (fixtureIds.has(id)) return id;
     const index = blocks.findIndex((block) => block.id === id);
     return index === -1 ? id : `@${index}`;
   });
 
-const fromPositions = (
-  operations: readonly unknown[],
-  blocks: readonly Block[],
-): unknown =>
-  mapBlockIds(operations, (id) => {
+type FromPositionsOptions = {
+  operations: readonly unknown[];
+  blocks: readonly Block[];
+  identities: ReturnType<typeof createParagraphIdentityRemapping>;
+};
+const fromPositions = ({
+  operations,
+  blocks,
+  identities,
+}: FromPositionsOptions): unknown => {
+  const liveIds = new Set(blocks.map((block) => block.id));
+  return mapParagraphBlockIds(operations, (id) => {
     const index = POSITION.exec(id)?.[1];
-    return index === undefined ? id : (blocks[Number(index)]?.id ?? id);
+    return index === undefined
+      ? identities.resolve(id, liveIds)
+      : (blocks[Number(index)]?.id ?? id);
   });
+};
 
 /** Every block id of every story the reviewer opened with. */
 const blockIdsOf = (reviewer: Reviewer): Set<string> =>
@@ -309,15 +317,28 @@ const tool = (flow: Flow, name: string, args: unknown) => {
     throw new TypeError(
       `Unknown flow operation types: ${JSON.stringify(requestedTypes)}`,
     );
+  const bridge = createReviewerBridge(flow.reviewer, { mode: flow.mode });
+  const apply = bridge.applyDocumentOperations.bind(bridge);
+  // The tool summary deliberately keeps only applied operation IDs. Observe
+  // the public bridge's typed result before that summary, without changing it
+  // or replacing the bridge's operation-session identity.
+  bridge.applyDocumentOperations = (batch) => {
+    const result = apply(batch);
+    flow.paragraphIdentities.record({
+      applied: result.applied,
+      mode: batch.mode ?? flow.mode,
+    });
+    return result;
+  };
   return executeFolioToolCallUntyped(
     name,
     args,
-    createReviewerBridge(flow.reviewer, { mode: flow.mode }),
+    bridge,
     operationTypes === undefined ? {} : { suggestChanges: { operationTypes } },
   );
 };
 
-type Receipt = { applied: readonly { id: string }[] };
+type Receipt = Pick<FolioDocumentOperationResult, "applied">;
 
 const isOperation = (value: unknown): value is Operation =>
   typeof value === "object" &&
@@ -457,6 +478,10 @@ const coreBatchStep = async (
     outcome,
     `step ${flow.log.length - 1}`,
   );
+  flow.paragraphIdentities.record({
+    applied: result.applied,
+    mode: flow.mode,
+  });
   return outcome.applied.length;
 };
 
@@ -934,7 +959,7 @@ export const unstableFixtureRefs = async (
   const stable = await stableFixtureIds(flow.fixture, await loadFixture(flow));
   const refs = new Set<string>();
   for (const { operations } of flow.steps) {
-    mapBlockIds(operations ?? [], (id) => {
+    mapParagraphBlockIds(operations ?? [], (id) => {
       if (!POSITION.test(id) && !stable.has(id)) refs.add(id);
       return id;
     });
@@ -974,6 +999,7 @@ const execute = async (plan: Plan, options: RunOptions): Promise<FlowRun> => {
     planned: undefined,
     // Read from a reviewer of its own, so the flow's never serves an extra read.
     fixtureIds: await stableFixtureIds(fixture, bytes),
+    paragraphIdentities: createParagraphIdentityRemapping(),
     swarm: plan.swarm,
     weights,
     operationHits:
