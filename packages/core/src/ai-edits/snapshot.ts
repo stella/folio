@@ -848,6 +848,10 @@ const createFolioAIEditSnapshotInternal = (
 
   let blockIndex = 0;
   let blankIndex = 0;
+  // Read-only diagnostics are numbered among emitted carriers, independently
+  // of editable content and zero-width markers that can normalize on save.
+  // These snapshot-local ordinals are not editable paragraph anchors.
+  let diagnosticIndex = 0;
   doc.descendants((node, pos, _parent, index) => {
     while (pos >= (path.at(-1)?.end ?? Number.POSITIVE_INFINITY)) {
       path.pop();
@@ -865,7 +869,7 @@ const createFolioAIEditSnapshotInternal = (
           ? preserved.children
           : undefined;
       if (Array.isArray(preservedChildren)) {
-        for (const [carrierIndex, child] of preservedChildren.entries()) {
+        for (const child of preservedChildren) {
           if (
             child === null ||
             typeof child !== "object" ||
@@ -883,7 +887,7 @@ const createFolioAIEditSnapshotInternal = (
           }
           draftBlocks.push({
             block: {
-              id: `opaque-${String(pos)}-${String(carrierIndex)}`,
+              id: `opaque-${String(diagnosticIndex++)}`,
               kind: "diagnostic",
               text: diagnostic.text,
               diagnostic: {
@@ -903,7 +907,7 @@ const createFolioAIEditSnapshotInternal = (
             typeof readerText === "string" ? readerText : undefined,
           );
           if (diagnostic !== undefined) {
-            const id = `opaque-${String(pos)}`;
+            const id = `opaque-${String(diagnosticIndex++)}`;
             draftBlocks.push({
               block: {
                 id,
