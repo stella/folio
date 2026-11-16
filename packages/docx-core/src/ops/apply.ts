@@ -43,8 +43,8 @@ import { setContentControl } from "./contentControls";
  *
  * | operation           | inverse                                                   |
  * | ------------------- | --------------------------------------------------------- |
- * | `insertText`        | `deleteRange` (its `join` merges a run the text cut)      |
- * | `insertContent`     | `deleteRange` (its `join` merges the records the cut left) |
+ * | `insertText`        | `deleteRange`, or `replaceInline` for source-cut provenance |
+ * | `insertContent`     | `deleteRange`, or `replaceInline` for inserted range boundaries |
  * | `deleteRange`       | `insertContent`, or `replaceInline` for noninsertable source |
  * | `splitInline`       | `joinInline`                                              |
  * | `joinInline`        | `splitInline`                                             |
@@ -789,6 +789,11 @@ const inserted = (options: InsertedOptions): Applied => {
           ),
         );
       }
+      // Range boundaries belong to this insertion. Ordinary deletion keeps
+      // endpoints of balanced ranges, including a pair this insertion just
+      // completed; undo must restore the source, even if it was unpaired.
+      if (rangeBoundariesIn(inverse.removed.content).length > 0)
+        return Result.ok([contentRestoring(story, result, location.paragraph)]);
       const deletion: DeleteRangeOp = {
         type: DOCUMENT_OP_TYPES.DELETE_RANGE,
         from: positionAt(story, result, start),
