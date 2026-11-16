@@ -1185,6 +1185,16 @@ const carryResolutionState = (
 };
 
 type SourceOwnerSide = "before" | "after";
+
+/** A recorded join on one side identifies the surviving piece of this cut. */
+const oneSidedKeptPiece = (
+  joins: TrackedWrapper["resolutionJoins"],
+): SourceOwnerSide | undefined => {
+  if (joins === undefined) return undefined;
+  if (joins.before === 0 && joins.after > 0) return "after";
+  if (joins.after === 0 && joins.before > 0) return "before";
+  return undefined;
+};
 type SourceOwnerRoute = { owner: SourceOwner; depth: number };
 type SourceOwnerRoutes = Record<SourceOwnerSide, SourceOwnerRoute | undefined>;
 type SourceOwnerState =
@@ -1856,7 +1866,8 @@ const resolveList = ({
           kept.length > 0 &&
           resolution.decision === REVISION_DECISIONS.REJECT &&
           (node.resolutionJoins?.remove ?? 0) > 0
-        )
+        ) {
+          const piece = oneSidedKeptPiece(node.resolutionJoins);
           floating.set(out.length, {
             count: kept.length,
             depth: node.resolutionJoins?.remove ?? 0,
@@ -1864,7 +1875,12 @@ const resolveList = ({
             after: sourceOwners.at(index + 1),
             spanning: trackedWithin(node.content),
             keptFrom: node.info.date ?? "",
+            // Accepting content beside this removed piece can leave its
+            // recorded container join on one side only. The other side's
+            // authored record is not part of that cut container.
+            ...(piece === undefined ? {} : { piece }),
           });
+        }
         if (node.resolutionJoins === undefined) seams.push(out.length);
         else if ((node.resolutionJoins.plainSides?.length ?? 0) > 0)
           plainSeams.add(out.length);
@@ -2259,6 +2275,19 @@ const resolveList = ({
   // so rejecting first and joining later places them as the other order.
   for (const [recorded, depth] of [...exactSeams]) {
     if (floating.has(recorded)) continue;
+    const leftPiece = out[recorded - 1]?.node;
+    const rightPiece = out[recorded]?.node;
+    // A recorded source cut already meeting its matching pieces rejoins
+    // them here. A marker-only piece is an authored record, not a boundary
+    // kept outside those records by an earlier rejection. Explicit kept
+    // provenance still owns its boundaries, even beside matching pieces.
+    if (
+      !exactKept.has(recorded) &&
+      leftPiece !== undefined &&
+      rightPiece !== undefined &&
+      alikeDepth(leftPiece, rightPiece) >= depth
+    )
+      continue;
     const standingAt = (from: number, step: 1 | -1): number => {
       let count = 0;
       while (isStandingBoundary(out[from + step * count]?.node)) count += 1;
