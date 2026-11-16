@@ -488,6 +488,8 @@ export type ParsedComparison = {
   baseBuffer: ArrayBuffer;
   baseCarriedRevisions: boolean;
   reviewer: FolioDocxReviewer;
+  /** The target side, which the inline matchers read the target story from. */
+  targetReviewer: FolioDocxReviewer;
   revisionStamp: FolioRevisionStamp;
   packageDate: Date;
   pairs: readonly ComparedStoryPair[];
@@ -790,6 +792,7 @@ export const parseComparison = async (
     baseBuffer: base,
     baseCarriedRevisions: baseProjection.revisions.present,
     reviewer,
+    targetReviewer,
     revisionStamp: {
       date: options.timestamp,
       idSeed: revisionIdSeedAbove(baseProjection.revisions.ids),
@@ -1014,6 +1017,7 @@ const resolveTableTemplates = (
 export const applyComparison = (
   {
     reviewer,
+    targetReviewer,
     revisionStamp,
     granularity,
     revisionFormat,
@@ -1237,6 +1241,8 @@ export const applyComparison = (
     }
     const atoms = comparisonAccess.matchInlineAtoms({
       story: pair.baseStory,
+      targetReviewer,
+      targetStory: pair.targetStory,
       targetSnapshot: pair.targetSnapshot,
       noteReferenceLabels: noteReferenceLabelsOf(pair),
       baseNotes,
@@ -1296,6 +1302,8 @@ export const applyComparison = (
 
     const provenance = comparisonAccess.matchInlineProvenance({
       story: pair.baseStory,
+      targetReviewer,
+      targetStory: pair.targetStory,
       targetSnapshot: pair.targetSnapshot,
       revisionStamp: { date: revisionStamp.date, idSeed },
       originalRevisionIdSeed: revisionStamp.idSeed,
