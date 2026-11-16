@@ -126,7 +126,6 @@ const RoomEditor = ({
           ref={editorRef}
           accessibleName="Document editor"
           documentBuffer={bytes}
-          experimentalSession="canonical"
           author={demo.collaboration.user?.name ?? "Folio User"}
           collaboration={demo.collaboration}
           showToolbar={true}
