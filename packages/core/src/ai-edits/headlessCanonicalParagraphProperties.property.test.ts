@@ -25,6 +25,7 @@ import * as patchAsRead from "../canonical/paragraphPatchAsRead";
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioDocumentOperation,
+  parseFolioDocumentOperationBatch,
 } from "../document-operations";
 import type {
   BlockContent,
@@ -92,27 +93,33 @@ const propertiesArbitrary: fc.Arbitrary<FolioAIBlockParagraphProperties> = fc
   .record(
     {
       spacing: fc.option(
-        fc.record(
-          {
-            spaceBefore: twips,
-            spaceAfter: twips,
-            lineSpacing: fc.integer({ min: 120, max: 720 }),
-            lineSpacingRule: fc.constantFrom("auto", "exact", "atLeast"),
-          },
-          { requiredKeys: [] },
-        ),
+        fc
+          .record(
+            {
+              spaceBefore: twips,
+              spaceAfter: twips,
+              lineSpacing: fc.integer({ min: 120, max: 720 }),
+              lineSpacingRule: fc.constantFrom("auto", "exact", "atLeast"),
+            },
+            { requiredKeys: [] },
+          )
+          // A present spacing cluster must state at least one property.
+          .filter((spacing) => Object.keys(spacing).length > 0),
         { nil: null },
       ),
       indentation: fc.option(
-        fc.record(
-          {
-            indentLeft: twips,
-            indentRight: twips,
-            indentFirstLine: fc.integer({ min: -720, max: 720 }),
-            hangingIndent: fc.boolean(),
-          },
-          { requiredKeys: [] },
-        ),
+        fc
+          .record(
+            {
+              indentLeft: twips,
+              indentRight: twips,
+              indentFirstLine: fc.integer({ min: -720, max: 720 }),
+              hangingIndent: fc.boolean(),
+            },
+            { requiredKeys: [] },
+          )
+          // A present indentation cluster must state at least one property.
+          .filter((indentation) => Object.keys(indentation).length > 0),
         { nil: null },
       ),
       alignment: fc.option(fc.constantFrom("start", "center", "end", "both"), {
@@ -250,6 +257,30 @@ const SPACED_MERGE: Draw = {
 };
 
 describe("paragraph properties an operation sets", () => {
+  test(
+    "only draws requests accepted by the operation schema",
+    () => {
+      assertProperty(
+        fc.property(drawArbitrary, (draw) => {
+          // Splitting validates both property draws, even when the save law's
+          // operation only uses the first one.
+          expect(() =>
+            parseFolioDocumentOperationBatch({
+              version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+              operations: [operationOf({ ...draw, kind: "split" }, "00000001")],
+              mode: draw.mode,
+            }),
+          ).not.toThrow();
+        }),
+        {
+          id: "generated paragraph properties satisfy the operation schema",
+          numRuns: RUNS,
+        },
+      );
+    },
+    propertyTestTimeout(10_000),
+  );
+
   test(
     "read the same live and after save and reopen",
     async () => {
