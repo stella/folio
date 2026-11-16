@@ -1,12 +1,20 @@
 import { describe, expect, test } from "bun:test";
+import fc from "fast-check";
 
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import type {
   Document,
   Paragraph,
   ParagraphContent,
 } from "../../model/document";
+import { validateDocumentModel } from "../../validate/docx";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { deleteBetween } from "../inline";
+import { leafPlaces } from "../leaves";
+import { rangeBoundaryDefinitions } from "../rangeBoundaries";
 import { DOCUMENT_OP_TYPES, OP_STORIES } from "../types";
 
 const run = (text: string): ParagraphContent => ({
@@ -30,18 +38,28 @@ const position = (blockId: string, offset: number) => ({
   offset,
 });
 
-/** A comment or move-to range's two ends, as the range's family spells them. */
+type RangeDefinitions = ReturnType<typeof rangeBoundaryDefinitions>;
+type BalancedFamily = Exclude<
+  RangeDefinitions[keyof RangeDefinitions]["family"],
+  "bookmark"
+>;
+
+/** Every family whose unmatched endpoints make the document invalid. */
 const FAMILIES = {
   comment: {
     start: { type: "commentRangeStart", id: 1 },
     end: { type: "commentRangeEnd", id: 1 },
   },
-  "move-to": {
+  moveFrom: {
+    start: { type: "moveFromRangeStart", id: 1, name: "_Move1", author: "A" },
+    end: { type: "moveFromRangeEnd", id: 1 },
+  },
+  moveTo: {
     start: { type: "moveToRangeStart", id: 1, name: "_Move1", author: "A" },
     end: { type: "moveToRangeEnd", id: 1 },
   },
 } as const satisfies Record<
-  string,
+  BalancedFamily,
   { start: ParagraphContent; end: ParagraphContent }
 >;
 
@@ -58,6 +76,35 @@ const deleteIn = (
   });
   if (applied.isErr()) throw new Error(applied.error.message);
   return applied.value;
+};
+
+const nestedBoundary = (
+  node: ParagraphContent,
+  depth: number,
+  id: number,
+): ParagraphContent => {
+  let nested = node;
+  for (let level = 0; level < depth; level++)
+    nested = {
+      type: "inlineSdt",
+      properties: { sdtType: "richText", id: id + level, tag: "range-owner" },
+      content: [
+        {
+          type: "hyperlink",
+          rId: "rId9",
+          href: "https://example.org",
+          children: [
+            {
+              type: "inlineWrapper",
+              kind: "bidi",
+              control: "embedding",
+              content: [nested],
+            },
+          ],
+        },
+      ],
+    };
+  return nested;
 };
 
 const contentOf = (document: Document, index: number): ParagraphContent[] => {
@@ -77,6 +124,295 @@ const undone = (applied: ReturnType<typeof deleteIn>): Document => {
 
 describe("a direct deletion keeps comment and move ranges well formed", () => {
   for (const [family, { start, end }] of Object.entries(FAMILIES)) {
+    test(`all ordered ${family} pair cuts retain precisely the partially covered pair`, () => {
+      const document = documentOf(
+        paragraph("00000001", [
+          run("a"),
+          nestedBoundary(start, 1, 10),
+          run("b"),
+          nestedBoundary(end, 1, 20),
+          run("c"),
+          nestedBoundary(structuredClone(start), 1, 30),
+          run("d"),
+          nestedBoundary(end, 1, 40),
+          run("e"),
+        ]),
+      );
+      const source = document.package.document.content.at(0);
+      if (source?.type !== "paragraph")
+        throw new Error("The fixture has its paragraph.");
+      const leaves = leafPlaces(source.content);
+      const last = leaves.at(-1);
+      if (!last) throw new Error("The fixture has leaves.");
+      const gaps = [...leaves.map(({ before }) => before), last.after];
+      const exercised = new Set<string>();
+      for (const [first, from] of gaps.entries())
+        for (const [final, to] of gaps.entries()) {
+          if (from.offset >= to.offset || first >= final) continue;
+          const covered = [1, 3, 5, 7].map(
+            (index) => first <= index && index < final,
+          );
+          exercised.add(covered.map(Number).join(""));
+          const expected = [
+            [covered.at(0), covered.at(1)],
+            [covered.at(2), covered.at(3)],
+          ].flatMap(([a, b]) => (a && b ? [] : [start.type, end.type]));
+          const direct = applyDocumentOp(document, {
+            type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+            from: {
+              ...position("00000001", from.offset),
+              zeroWidthBefore: from.zeroWidthBefore,
+            },
+            to: {
+              ...position("00000001", to.offset),
+              zeroWidthBefore: to.zeroWidthBefore,
+            },
+          });
+          if (direct.isErr()) throw direct.error;
+          const block = direct.value.document.package.document.content.at(0);
+          if (block?.type !== "paragraph")
+            throw new Error("The deletion keeps its paragraph.");
+          expect(
+            leafPlaces(block.content).flatMap(({ node }) =>
+              node.type === start.type || node.type === end.type
+                ? [node.type]
+                : [],
+            ),
+          ).toEqual(expected);
+          const tracked = applyDocumentOp(document, {
+            type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+            from: {
+              ...position("00000001", from.offset),
+              zeroWidthBefore: from.zeroWidthBefore,
+            },
+            to: {
+              ...position("00000001", to.offset),
+              zeroWidthBefore: to.zeroWidthBefore,
+            },
+            revision: { id: 500, author: "Reviewer" },
+            newIds: {
+              control: Array.from({ length: 40 }, (_, index) => 1000 + index),
+              revision: Array.from({ length: 40 }, (_, index) => 2000 + index),
+            },
+          });
+          if (tracked.isErr()) throw tracked.error;
+          const accepted = applyDocumentOp(tracked.value.document, {
+            type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+            story: OP_STORIES.MAIN,
+            revisionIds: tracked.value.revisions,
+            decision: "accept",
+          });
+          if (accepted.isErr()) throw accepted.error;
+          expect(accepted.value.document).toStrictEqual(direct.value.document);
+          expect(undone(direct.value)).toStrictEqual(document);
+        }
+      expect([...exercised].sort()).toEqual(
+        [
+          "0000",
+          "1000",
+          "0100",
+          "0010",
+          "0001",
+          "1100",
+          "0110",
+          "0011",
+          "1110",
+          "0111",
+          "1111",
+        ].sort(),
+      );
+    });
+
+    test(`a ${family} deletion removes a complete pair beside another pair's covered endpoint`, () => {
+      const document = documentOf(
+        paragraph("00000001", [
+          run("a"),
+          start,
+          run("b"),
+          end,
+          run("c"),
+          structuredClone(start),
+          run("dX"),
+          end,
+          run("e"),
+        ]),
+      );
+      if (family === "comment")
+        document.package.document.comments = [
+          { id: 1, author: "A", content: [paragraph("7FFFFFF0", [])] },
+        ];
+      expect(validateDocumentModel(document).valid).toBe(true);
+      const result = deleteIn(document, "00000001", 0, 4);
+      expect(contentOf(result.document, 0)).toEqual([
+        start,
+        run("X"),
+        end,
+        run("e"),
+      ]);
+      expect(undone(result)).toStrictEqual(document);
+    });
+
+    test(
+      `a ${family} deletion retains source ancestry through acceptance, rejection and JSON inverses`,
+      async () => {
+        await assertProperty(
+          fc.property(
+            fc.constantFrom("start", "end", "whole"),
+            // Bare comment anchors cannot be wrapped; records holding them can.
+            fc.integer({ min: family === "comment" ? 1 : 0, max: 3 }),
+            (cut, depth) => {
+              const document = documentOf(
+                paragraph("00000001", [
+                  run("ab"),
+                  nestedBoundary(start, depth, 10),
+                  run("cd"),
+                  nestedBoundary(end, depth, 20),
+                  run("ef"),
+                ]),
+              );
+              const from = cut === "end" ? 3 : 1;
+              const to = cut === "start" ? 3 : 5;
+              const direct = deleteIn(document, "00000001", from, to);
+              const tracked = applyDocumentOp(document, {
+                type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+                from: position("00000001", from),
+                to: position("00000001", to),
+                revision: {
+                  id: 500,
+                  author: "Reviewer",
+                  date: "2026-11-16T12:00:00Z",
+                },
+                newIds: {
+                  control: Array.from(
+                    { length: 40 },
+                    (_, index) => 1000 + index,
+                  ),
+                  revision: Array.from(
+                    { length: 40 },
+                    (_, index) => 2000 + index,
+                  ),
+                },
+              });
+              if (tracked.isErr()) throw tracked.error;
+              for (const decision of ["accept", "reject"] as const) {
+                const resolved = applyDocumentOp(tracked.value.document, {
+                  type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+                  story: OP_STORIES.MAIN,
+                  revisionIds: tracked.value.revisions,
+                  decision,
+                });
+                if (resolved.isErr()) throw resolved.error;
+                expect(resolved.value.document).toStrictEqual(
+                  decision === "accept" ? direct.document : document,
+                );
+                expect(undone(resolved.value)).toStrictEqual(
+                  tracked.value.document,
+                );
+              }
+              expect(undone(direct)).toStrictEqual(document);
+            },
+          ),
+          {
+            id: `balanced ${family} deletion source ownership`,
+            numRuns: 30,
+            examples: [
+              ["start", 3],
+              ["end", 3],
+              ["whole", 3],
+            ],
+          },
+        );
+      },
+      propertyTestTimeout(30_000),
+    );
+
+    test(`a ${family} deletion distinguishes repeated immutable endpoint occurrences`, () => {
+      const document = documentOf(
+        paragraph("00000001", [
+          run("a"),
+          start,
+          run("b"),
+          end,
+          run("c"),
+          structuredClone(start),
+          run("d"),
+          end,
+          run("e"),
+        ]),
+      );
+      const result = deleteIn(document, "00000001", 0, 3);
+      expect(contentOf(result.document, 0)).toEqual([
+        start,
+        run("d"),
+        end,
+        run("e"),
+      ]);
+      expect(undone(result)).toStrictEqual(document);
+
+      const ambiguous = documentOf(
+        paragraph("00000001", [
+          run("a"),
+          start,
+          run("b"),
+          structuredClone(start),
+          run("c"),
+          end,
+          run("d"),
+          end,
+          run("e"),
+        ]),
+      );
+      const balancedSubset = deleteIn(ambiguous, "00000001", 1, 4);
+      expect(contentOf(balancedSubset.document, 0)).toEqual([
+        run("a"),
+        start,
+        end,
+        run("e"),
+      ]);
+      expect(undone(balancedSubset)).toStrictEqual(ambiguous);
+
+      const nested = documentOf(
+        paragraph("00000001", [
+          run("a"),
+          nestedBoundary(start, 1, 10),
+          run("b"),
+          nestedBoundary(end, 1, 20),
+          run("c"),
+          nestedBoundary(structuredClone(start), 1, 30),
+          run("d"),
+          nestedBoundary(end, 1, 40),
+          run("e"),
+        ]),
+      );
+      const direct = deleteIn(nested, "00000001", 0, 3);
+      const tracked = applyDocumentOp(nested, {
+        type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+        from: position("00000001", 0),
+        to: position("00000001", 3),
+        revision: { id: 500, author: "Reviewer", date: "2026-11-16T12:00:00Z" },
+        newIds: { control: [1000, 1001, 1002], revision: [2000, 2001, 2002] },
+      });
+      if (tracked.isErr()) throw tracked.error;
+      const accepted = applyDocumentOp(tracked.value.document, {
+        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+        story: OP_STORIES.MAIN,
+        revisionIds: tracked.value.revisions,
+        decision: "accept",
+      });
+      if (accepted.isErr()) throw accepted.error;
+      expect(accepted.value.document).toStrictEqual(direct.document);
+      expect(undone(accepted.value)).toStrictEqual(tracked.value.document);
+      expect(undone(direct)).toStrictEqual(nested);
+      const rejected = applyDocumentOp(tracked.value.document, {
+        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+        story: OP_STORIES.MAIN,
+        revisionIds: tracked.value.revisions,
+        decision: "reject",
+      });
+      if (rejected.isErr()) throw rejected.error;
+      expect(rejected.value.document).toStrictEqual(nested);
+    });
+
     test(`a ${family} range's end inside the deletion stays at its edge`, () => {
       // "ab" [start] "cd" [end] "ef": delete "d", the end and "e".
       const document = documentOf(

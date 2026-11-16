@@ -2,10 +2,9 @@
  * A tracked deletion of a range takes in a record it covers whole with the
  * comment anchors the record holds, at any depth.
  *
- * Deleting a range directly removes the comment anchors inside it, so
- * accepting the tracked deletion removes every anchor it holds too, those of
- * comment ranges that continue past it included. A planned deletion still
- * leaves a bare anchor standing and deletes around it.
+ * Direct deletion and acceptance keep an endpoint whose paired endpoint lies
+ * outside the deletion, even when a removed record holds it. A planned
+ * deletion leaves a bare anchor standing and deletes around it.
  */
 import { describe, expect, test } from "bun:test";
 
@@ -145,10 +144,10 @@ describe("a tracked deletion over a record holding a comment anchor", () => {
     });
     if (accepted.isErr()) throw accepted.error;
 
-    // Deleting the range directly removes the control and the end with it.
+    // The range starts outside the deletion's gap, so its end stays too.
     const deleted = applyDocumentOp(document, directDeletion(0, 3));
     if (deleted.isErr()) throw deleted.error;
-    expect(commentEnds(deleted.value.document)).toEqual([1]);
+    expect(commentEnds(deleted.value.document)).toEqual([1, 24]);
     expect(accepted.value.document.package.document.content).toEqual(
       deleted.value.document.package.document.content,
     );

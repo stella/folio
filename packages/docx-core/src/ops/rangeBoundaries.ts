@@ -9,8 +9,8 @@
  * its end closes on its start: every range stays well-formed.
  *
  * Accepting a change removes what a direct deletion made earlier would: it
- * keeps the anchors of comment ranges that continue past the removed content
- * and nothing else, so accepting a tracked deletion equals deleting directly.
+ * keeps the endpoints of balanced comment and move ranges that continue past
+ * the removed content, so accepting a tracked deletion equals deleting directly.
  *
  * A comment whose whole range was removed is the comment owner's to retire
  * (see `isCommentExhausted`); its boundaries go with it.
@@ -49,6 +49,7 @@ import {
   sameOwnFields,
 } from "./leaves";
 import { isHyperlinkChild } from "./offsets";
+import { isTrackedWrapper } from "./review";
 
 const BOUNDARY_SIDES: {
   readonly bookmarkStart: {
@@ -176,8 +177,8 @@ export const noRelocatedBoundaries = (): RelocatedBoundaries => ({
 /**
  * The range boundaries removed content leaves where it was, in document
  * order. Rejecting keeps every one and records it in `relocated`, for
- * {@link wellFormedRanges}; accepting keeps the anchors of
- * `pairedComments`, as a direct deletion does.
+ * {@link wellFormedRanges}; accepting keeps the source occurrences selected
+ * by the balanced-range deletion plan, in their original containing records.
  *
  * A pending deletion nested in rejected content that this resolution does not
  * resolve (`leavesPending`) keeps the boundaries it holds inside it, still
@@ -193,6 +194,8 @@ export const removedContentBoundaries = ({
   relocated,
   revisionDate = "",
   leavesPending = () => false,
+  keptPaths,
+  path,
 }: {
   nodes: readonly InlineNode[];
   rejecting: boolean;
@@ -202,8 +205,14 @@ export const removedContentBoundaries = ({
   revisionDate?: string;
   /** Whether the resolution leaves the revision with this id pending. */
   leavesPending?: (revisionId: number) => boolean;
+  /** Occurrences an accepted deletion must keep to retain balanced ranges. */
+  keptPaths: ReadonlySet<string>;
+  path: readonly number[];
 }): InlineNode[] =>
-  nodes.flatMap((node): InlineNode[] => {
+  nodes.flatMap((node, index): InlineNode[] => {
+    const sourcePath = [...path, index];
+    if (!rejecting && isBoundary(node))
+      return keptPaths.has(sourcePath.join(".")) ? [node] : [];
     if (isBoundary(node) && rejecting) {
       relocated.ranges.add(rangeKey(node));
       relocated.nodes.set(node, revisionDate);
@@ -217,7 +226,14 @@ export const removedContentBoundaries = ({
       relocated,
       revisionDate,
       leavesPending,
+      keptPaths,
+      path: sourcePath,
     });
+    // A direct deletion around a kept endpoint retains the source records
+    // holding it. Acceptance preserves that same ancestry; rejection still
+    // floats boundaries through its explicit source-owner joins below.
+    if (!rejecting && inner.length > 0 && !isTrackedWrapper(node))
+      return [rebuildNode(node, inner)];
     if (
       rejecting &&
       node.type === "deletion" &&
