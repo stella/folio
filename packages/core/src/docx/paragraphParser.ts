@@ -742,7 +742,12 @@ const linkedRevisionContent = (
   let linked: Hyperlink["children"][number][] = [];
   const flushLinked = (): void => {
     if (linked.length === 0) return;
-    content.push(linkOver(linked));
+    // Reattaching the link completes this ownership boundary. Restore any
+    // lifted ancestors now, before a surrounding revision consumes them.
+    const restored = sinkLiftedLink(linkOver(linked));
+    if (!isTrackedChangeWrapperChild(restored))
+      return panic("A restored hyperlink must remain tracked inline content");
+    content.push(restored);
     linked = [];
   };
   for (const item of wrapped) {
@@ -2431,8 +2436,24 @@ const joinSplitRevisionPieces = (
     const first = contents[index];
     if (first === undefined) continue;
     const split = splitPieces.get(first);
-    if (split?.piece !== 0 || !isSplittable(first)) {
+    if (
+      split?.piece !== 0 ||
+      !isSplittable(first) ||
+      (split.pieces === 1 && first.type === "inlineWrapper")
+    ) {
       out.push(first);
+      continue;
+    }
+    if (split.pieces === 1 && first.type !== "inlineWrapper") {
+      // Nothing to join, but an enclosing link may not be attached yet.
+      // Keep the ownership tag through nested revision reconstruction.
+      const { resolutionJoins: _pieceJoins, ...owner } = first;
+      const whole = {
+        ...owner,
+        ...(split.joins === undefined ? {} : { resolutionJoins: split.joins }),
+      };
+      splitPieces.set(whole, split);
+      out.push(whole);
       continue;
     }
     const pieces = contents.slice(index, index + split.pieces);
