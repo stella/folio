@@ -42,6 +42,7 @@ import type { CanonicalSectionPropertiesResult } from "../types/canonicalSection
 import type { Comment } from "../types/content";
 import type { Document, SectionProperties } from "../types/document";
 import { readModel, type ReadonlyDocument } from "../types/documentModel";
+import type { FolioDocxSerializationPath } from "../types/docxSerialization";
 import {
   type AnonymizationHighlightsView,
   NO_ANONYMIZATION_HIGHLIGHTS,
@@ -102,7 +103,7 @@ type CanonicalStoryTextOptions = {
 /** The package a canonical save wrote, and whether it patched its baseline. */
 export type CanonicalSavedPackage = {
   buffer: ArrayBuffer;
-  path: "selective" | "full-repack";
+  path: FolioDocxSerializationPath;
 };
 
 export type HiddenEditorApi = {

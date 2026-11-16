@@ -32,12 +32,6 @@ import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import * as conversion from "../prosemirror/conversion/toProseDoc";
-import {
-  clearTrackedChanges,
-  createParagraphChangeTrackerPlugin,
-  hasUntrackedChanges,
-  paragraphChangeTrackerKey,
-} from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import { schema } from "../prosemirror/schema";
 import { FOLIO_DOCX_SERIALIZATION_MODE } from "../types/docxSerialization";
 
@@ -790,18 +784,14 @@ describe("canonical session", () => {
     accept(stateFor(session), restored);
     expect(session.projectStory(footer).isOk()).toBe(true);
   });
-  test("package-only canonical commits require full save until the saved tracker clears", () => {
+  test("package-only canonical commits report changed save structure since the session opened", () => {
     const session = createCanonicalSession(seed("Body")).unwrap();
-    let state = EditorState.create({
-      schema,
-      doc: session.projection.doc,
-      plugins: [createParagraphChangeTrackerPlugin()],
-    });
+    let state = stateFor(session);
     const text = session
       .prepareReplace(state, { from: 1, to: 1, text: "Text" })
       .unwrap();
     state = accept(state, text);
-    expect(hasUntrackedChanges(state)).toBe(false);
+    expect(session.captureSaveSnapshot().structure).toBe("stable");
     const properties = session
       .prepareOperations(state, [
         {
@@ -813,18 +803,17 @@ describe("canonical session", () => {
       .unwrap();
     expect(properties.transaction.docChanged).toBe(false);
     state = accept(state, properties);
-    expect(hasUntrackedChanges(state)).toBe(true);
-    state = state.apply(clearTrackedChanges(state));
-    expect(hasUntrackedChanges(state)).toBe(false);
+    expect(session.captureSaveSnapshot().structure).toBe("changed");
+    // The save base is the opened package, so undo keeps the structural save.
     state = accept(state, session.prepareUndo(state).unwrap());
-    expect(hasUntrackedChanges(state)).toBe(true);
+    expect(session.captureSaveSnapshot().structure).toBe("changed");
   });
   test.each([
-    [OP_STORIES.MAIN, false],
-    [{ kind: "header", rId: "rIdHeader1" }, true],
+    [OP_STORIES.MAIN],
+    [{ kind: "header", rId: "rIdHeader1" }],
   ] as const)(
-    "block insertion in %s tracks the operation's story",
-    (story, packageChange) => {
+    "block insertion in %s changes the save structure and undoes exactly",
+    (story) => {
       const source = seed("Body");
       source.package.headers = new Map([
         [
@@ -852,10 +841,9 @@ describe("canonical session", () => {
           },
         ])
         .unwrap();
-      expect(commit.transaction.getMeta(paragraphChangeTrackerKey)).toBe(
-        packageChange ? "package-change" : undefined,
-      );
+      expect(session.captureSaveSnapshot().structure).toBe("stable");
       const inserted = accept(state, commit);
+      expect(session.captureSaveSnapshot().structure).toBe("changed");
       accept(inserted, session.prepareUndo(inserted).unwrap());
       expect(session.document).toStrictEqual(original);
     },

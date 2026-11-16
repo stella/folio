@@ -15,7 +15,14 @@ describe("isEditorMessage", () => {
         requestId: 3,
         bytes: new Uint8Array([1]),
         fileVersion: "load-1",
-        strategy: { type: "full-repack", reason: "structuralChange" },
+        strategy: {
+          type: "full-repack",
+          decline: {
+            scope: "part",
+            part: "word/document.xml",
+            reason: "structuralRangeSplit",
+          },
+        },
       }),
     ).toBe(true);
   });
@@ -27,7 +34,7 @@ describe("isEditorMessage", () => {
         requestId: 3,
         bytes: [1],
         fileVersion: "load-1",
-        strategy: { type: "selective-first" },
+        strategy: { type: "selective" },
       }),
     ).toBe(false);
     expect(
@@ -36,7 +43,14 @@ describe("isEditorMessage", () => {
         requestId: 3,
         bytes: new Uint8Array([1]),
         fileVersion: "load-1",
-        strategy: { type: "full-repack", reason: "because" },
+        strategy: {
+          type: "full-repack",
+          decline: {
+            scope: "part",
+            part: "word/document.xml",
+            reason: "because",
+          },
+        },
       }),
     ).toBe(false);
     expect(isEditorMessage({ type: "modeChanged", mode: "drafting" })).toBe(
@@ -47,9 +61,16 @@ describe("isEditorMessage", () => {
 
 describe("saveStrategyFlag", () => {
   test("maps the editor's strategy to folio save's", () => {
-    expect(saveStrategyFlag({ type: "selective-first" })).toBe("selective");
+    expect(saveStrategyFlag({ type: "selective" })).toBe("selective");
     expect(
-      saveStrategyFlag({ type: "full-repack", reason: "untrackedChange" }),
+      saveStrategyFlag({
+        type: "full-repack",
+        decline: {
+          scope: "part",
+          part: "word/document.xml",
+          reason: "structuralRangeSplit",
+        },
+      }),
     ).toBe("full-repack");
   });
 });

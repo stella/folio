@@ -45,9 +45,11 @@ import { DOCUMENT_CHANGE_NOTIFY_DELAY_MS } from "@stll/folio-core/controller/doc
 import {
   createFolioEditor,
   FOLIO_DOCX_SERIALIZATION_MODE,
+  type FolioDocxSerializationPath,
   type FolioEditor,
   type FolioEditorDocumentIO,
   type FolioGetDocxOptions,
+  type FolioSaveOptions,
 } from "@stll/folio-core/controller/folioEditor";
 import { createFolioEditorEmitter } from "@stll/folio-core/controller/folioEditorEvents";
 import {
@@ -90,7 +92,7 @@ import {
 } from "@stll/folio-core/controller/noteEditorManager";
 import type { PageRendererName } from "@stll/folio-core/display-list/editor/pageRenderer";
 import {
-  CanonicalSaveDiagnosticError,
+  canonicalSaveDiagnosticError,
   serializeCanonicalSave,
 } from "@stll/folio-core/docx/canonicalSave";
 import {
@@ -562,7 +564,7 @@ export type UseDocxEditorReturn = {
   /** Load an already-parsed `Document` directly. */
   loadDocument: (doc: Document) => void;
   /** Serialize the current document to a DOCX blob. */
-  save: (options?: { selective?: boolean }) => Promise<Blob | null>;
+  save: (options?: FolioSaveOptions) => Promise<Blob | null>;
   /**
    * Build a copy of the current document, in time proportional to its size.
    * For a host that owns the result; derived state reads `modelDocument`.
@@ -1550,7 +1552,7 @@ export function useDocxEditor(
     buffer: ArrayBuffer;
     document: Document;
     version?: number;
-    path?: "selective" | "full-repack";
+    path: FolioDocxSerializationPath;
   };
 
   async function serializeCurrentDocx(
@@ -1571,129 +1573,142 @@ export function useDocxEditor(
         });
         for (const diagnostic of result.diagnostics) {
           if (!serializationOptions?.onDiagnostic)
-            onError?.(
-              new CanonicalSaveDiagnosticError({
-                gap: CANONICAL_GAP.save,
-                diagnostic,
-                message: `Canonical save used a fidelity fallback: ${diagnostic.type} (${diagnostic.part}).`,
-              }),
-            );
+            onError?.(canonicalSaveDiagnosticError(diagnostic));
         }
         if (result.tripwireResult)
           onSelectiveSaveTripwire?.(result.tripwireResult);
         return result;
       }
+      if (isCanonicalSession()) return null;
+      // Legacy write-back can still owe the notes a restore or a deletion.
+      if (docChangeTimer !== null) flushDocumentChangeNotification();
+      const base = noteEditorManager.snapshotDocument(
+        headerFooterManager.snapshotDocument(currentDocument),
+      );
+
+      // Snapshot the editor state once, before any awaited dynamic imports, so
+      // the document we serialize and the selective-save change signals are all
+      // read from the same snapshot. A later `view.state` read could pick up an
+      // edit that landed mid-save and diff against the wrong baseline.
+      const state = view.state;
+      // canonical-gap: pm-save-projection
+      const projected = fromProseDoc(state.doc, readModel(base), {
+        stylesheetSource: { type: "package" },
+      });
+      const updatedDoc = withoutUnreferencedNotes(
+        comments
+          ? withHostCommentThreads(projected, comments(), {
+              anchoredInEditor: commentIdsNamedIn(state.doc),
+            })
+          : projected,
+        heldNotes,
+      );
+
+      const { resolveSelectiveSaveFlags } =
+        await import("@stll/folio-core/docx/selectiveSaveFlags");
+      const flags = resolveSelectiveSaveFlags(toValue(featureFlags));
+
+      // A note goes with its reference: one nothing refers to any more is not saved.
+      const baselineBuffer = updatedDoc.originalBuffer ?? null;
+
+      // The tripwire observes the selective path independently of the user-visible
+      // save mode. Only `useSelectiveForSave` is allowed to pick the returned bytes.
+      const useSelectiveForSave =
+        flags.selectiveSave &&
+        serializationOptions?.mode !== FOLIO_DOCX_SERIALIZATION_MODE.full;
+      const shouldAttemptSelective =
+        useSelectiveForSave || flags.selectiveSaveTripwire;
+
+      const { repackDocx, createDocx } =
+        await import("@stll/folio-core/docx/rezip");
+
+      let selectiveBuffer: ArrayBuffer | null = null;
+      if (shouldAttemptSelective && baselineBuffer) {
+        const { attemptSelectiveSave } =
+          await import("@stll/folio-core/docx/selectiveSave");
+        selectiveBuffer = await attemptSelectiveSave(
+          updatedDoc,
+          baselineBuffer,
+          {
+            changedParaIds: getChangedParagraphIds(state),
+            structuralChange: hasStructuralChanges(state),
+            hasUntrackedChanges: hasUntrackedChanges(state),
+            maxBytes: flags.selectiveSaveMaxBytes,
+            onSelectiveDecline: serializationOptions?.onSelectiveDecline,
+            onDiagnostic: serializationOptions?.onDiagnostic,
+          },
+        );
+      }
+
+      let buffer: ArrayBuffer | null = useSelectiveForSave
+        ? selectiveBuffer
+        : null;
+      let fullBuffer: ArrayBuffer | null = null;
+      let path: FolioDocxSerializationPath = "selective";
+
+      // A section the editor removed on purpose (its ending paragraph deleted,
+      // or that deletion accepted) is one the repack must be told about, or it
+      // refuses the smaller package.
+      const repackFull = () =>
+        repackWithEditorSectionRemovals({
+          state,
+          document: updatedDoc,
+          repack: () =>
+            repackDocx(updatedDoc, {
+              onDiagnostic: serializationOptions?.onDiagnostic,
+            }),
+        });
+
+      if (!buffer) {
+        // No original buffer means a from-scratch document — build one via createDocx.
+        fullBuffer = baselineBuffer
+          ? await repackFull()
+          : await createDocx(updatedDoc, {
+              onDiagnostic: serializationOptions?.onDiagnostic,
+            });
+        buffer = fullBuffer;
+        path = "full-repack";
+      } else if (flags.selectiveSaveTripwire) {
+        try {
+          fullBuffer = await repackFull();
+        } catch {
+          // Tripwire-only full repack failures must never poison a successful
+          // selective save.
+        }
+      }
+
+      if (
+        flags.selectiveSaveTripwire &&
+        fullBuffer &&
+        onSelectiveSaveTripwire
+      ) {
+        // The comparison itself never blocks the save path.
+        try {
+          const { compareSelectiveVsFull } =
+            await import("@stll/folio-core/docx/selectiveSaveTripwire");
+          onSelectiveSaveTripwire(
+            await compareSelectiveVsFull(selectiveBuffer, fullBuffer),
+          );
+        } catch {
+          // Comparison failures must never poison the save path.
+        }
+      }
+
+      serializationOptions?.onSerializationPath?.(path);
+      return { buffer, path, document: updatedDoc };
     } catch (error) {
       onError?.(error instanceof Error ? error : new Error(String(error)));
       return null;
     }
-    if (isCanonicalSession()) return null;
-    // Legacy write-back can still owe the notes a restore or a deletion.
-    if (docChangeTimer !== null) flushDocumentChangeNotification();
-    const base = noteEditorManager.snapshotDocument(
-      headerFooterManager.snapshotDocument(currentDocument),
-    );
-
-    // Snapshot the editor state once, before any awaited dynamic imports, so
-    // the document we serialize and the selective-save change signals are all
-    // read from the same snapshot. A later `view.state` read could pick up an
-    // edit that landed mid-save and diff against the wrong baseline.
-    const state = view.state;
-    // canonical-gap: pm-save-projection
-    const projected = fromProseDoc(state.doc, readModel(base), {
-      stylesheetSource: { type: "package" },
-    });
-    const updatedDoc = withoutUnreferencedNotes(
-      comments
-        ? withHostCommentThreads(projected, comments(), {
-            anchoredInEditor: commentIdsNamedIn(state.doc),
-          })
-        : projected,
-      heldNotes,
-    );
-
-    const { resolveSelectiveSaveFlags } =
-      await import("@stll/folio-core/docx/selectiveSaveFlags");
-    const flags = resolveSelectiveSaveFlags(toValue(featureFlags));
-
-    // A note goes with its reference: one nothing refers to any more is not saved.
-    const baselineBuffer = updatedDoc.originalBuffer ?? null;
-
-    // The tripwire observes the selective path independently of the user-visible
-    // save mode. Only `useSelectiveForSave` is allowed to pick the returned bytes.
-    const useSelectiveForSave =
-      flags.selectiveSave &&
-      serializationOptions?.mode !== FOLIO_DOCX_SERIALIZATION_MODE.full;
-    const shouldAttemptSelective =
-      useSelectiveForSave || flags.selectiveSaveTripwire;
-
-    const { repackDocx, createDocx } =
-      await import("@stll/folio-core/docx/rezip");
-
-    let selectiveBuffer: ArrayBuffer | null = null;
-    if (shouldAttemptSelective && baselineBuffer) {
-      const { attemptSelectiveSave } =
-        await import("@stll/folio-core/docx/selectiveSave");
-      selectiveBuffer = await attemptSelectiveSave(updatedDoc, baselineBuffer, {
-        changedParaIds: getChangedParagraphIds(state),
-        structuralChange: hasStructuralChanges(state),
-        hasUntrackedChanges: hasUntrackedChanges(state),
-        maxBytes: flags.selectiveSaveMaxBytes,
-      });
-    }
-
-    let buffer: ArrayBuffer | null = useSelectiveForSave
-      ? selectiveBuffer
-      : null;
-    let fullBuffer: ArrayBuffer | null = null;
-
-    // A section the editor removed on purpose (its ending paragraph deleted,
-    // or that deletion accepted) is one the repack must be told about, or it
-    // refuses the smaller package.
-    const repackFull = () =>
-      repackWithEditorSectionRemovals({
-        state,
-        document: updatedDoc,
-        repack: () => repackDocx(updatedDoc),
-      });
-
-    if (!buffer) {
-      // No original buffer means a from-scratch document — build one via createDocx.
-      fullBuffer = baselineBuffer
-        ? await repackFull()
-        : await createDocx(updatedDoc);
-      buffer = fullBuffer;
-    } else if (flags.selectiveSaveTripwire) {
-      try {
-        fullBuffer = await repackFull();
-      } catch {
-        // Tripwire-only full repack failures must never poison a successful
-        // selective save.
-      }
-    }
-
-    if (flags.selectiveSaveTripwire && fullBuffer && onSelectiveSaveTripwire) {
-      // The comparison itself never blocks the save path.
-      try {
-        const { compareSelectiveVsFull } =
-          await import("@stll/folio-core/docx/selectiveSaveTripwire");
-        onSelectiveSaveTripwire(
-          await compareSelectiveVsFull(selectiveBuffer, fullBuffer),
-        );
-      } catch {
-        // Comparison failures must never poison the save path.
-      }
-    }
-
-    return { buffer, document: updatedDoc };
   }
 
-  async function save(saveOptions?: {
-    selective?: boolean;
-  }): Promise<Blob | null> {
+  async function save(saveOptions?: FolioSaveOptions): Promise<Blob | null> {
     const savedView = editorView.value;
     const savedState = savedView?.state;
     const result = await serializeCurrentDocx({
+      onDiagnostic: saveOptions?.onDiagnostic,
+      onSelectiveDecline: saveOptions?.onSelectiveDecline,
+      onSerializationPath: saveOptions?.onSerializationPath,
       mode:
         saveOptions?.selective === false
           ? FOLIO_DOCX_SERIALIZATION_MODE.full
@@ -1715,7 +1730,7 @@ export function useDocxEditor(
         manager.api.isCanonicalSaveCurrent(result.version))
     ) {
       // The saved package becomes the canonical session's save baseline.
-      if (result.version !== undefined && result.path !== undefined)
+      if (result.version !== undefined)
         manager.api.markCanonicalSaved(result.version, {
           buffer: result.buffer,
           path: result.path,

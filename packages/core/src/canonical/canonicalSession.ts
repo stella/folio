@@ -99,7 +99,6 @@ import {
   ProjectionBlockCache,
   toProseDoc,
 } from "../prosemirror/conversion/toProseDoc";
-import { markPackageChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import { heldUnreferencedNotes as notesHeldWithoutReference } from "../prosemirror/noteReferenceReview";
 import { runFormattingPatchFromMarks } from "../prosemirror/runFormattingFromMarks";
 import {
@@ -3718,7 +3717,6 @@ class CanonicalSession {
       origin,
       version: this.version + 1,
     });
-    if (ops.some(operationChangesPackage)) markPackageChange(transaction);
     transaction.setMeta("addToHistory", false);
     const baseVersion = this.version;
     const baseBoundary = this.groupingBoundary;

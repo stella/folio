@@ -45,7 +45,9 @@ export {
 } from "@stll/docx-core/ops";
 export type {
   FolioDocxSerializationMode,
+  FolioDocxSerializationPath,
   FolioGetDocxOptions,
+  FolioSaveOptions,
 } from "../types/docxSerialization";
 
 /**

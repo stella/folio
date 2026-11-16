@@ -15,6 +15,7 @@
     "@stll/folio-core": "workspace:*",
     "@stll/folio-react": "workspace:*",
     "@stll/utf8-boundaries": "workspace:*",
+    "better-result": "3.0.1",
     "prosemirror-state": "^1.4.4",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
