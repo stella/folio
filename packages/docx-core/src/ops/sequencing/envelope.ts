@@ -400,7 +400,7 @@ const packageResources = object({
 });
 const sectionMap = nullable(mapEntries(headerFooterType, headerFooter));
 const partMap = nullable(mapEntries(nonemptyString, headerFooter));
-const storyParts: Validator = object({
+const storyPartsFields = {
   undefinedFields: optional(
     array(
       object({
@@ -428,12 +428,18 @@ const storyParts: Validator = object({
       }),
     ),
   ),
+  sectionView: optional(sectionViewState),
   headers: optional(partMap),
   footers: optional(partMap),
   footnotes: optional(nullable(array(note))),
   endnotes: optional(nullable(array(note))),
   settings: optional(nullable(documentSettings)),
-} satisfies Record<keyof StoryParts, Validator>);
+} satisfies Record<keyof StoryParts, Validator>;
+const storyPartsRecord = object(storyPartsFields);
+const storyParts: Validator = (value) =>
+  storyPartsRecord(value) &&
+  isRecord(value) &&
+  !(value["sections"] !== undefined && value["sectionView"] !== undefined);
 
 const commentAnchor: Validator = (value) =>
   object({ kind: literal("range"), from: position, to: position })(value) ||

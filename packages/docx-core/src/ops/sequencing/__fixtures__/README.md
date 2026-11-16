@@ -1,7 +1,11 @@
 # Sequencing wire fixtures
 
-`batches-v13.json` and `ops/__tests__/__fixtures__/ops-v13.json` pin the
-current schema: version 13 records a direct deletion's kept note mark as its
+`batches-v14.json` and `ops/__tests__/__fixtures__/ops-v14.json` pin the
+current schema: version 14 adds complete section-view snapshots to story lifecycle
+inverses when section presence or count changes. Older schemas are refused.
+
+`batches-v13.json` and `ops/__tests__/__fixtures__/ops-v13.json` pin
+version 13, which records a direct deletion's kept note mark as its
 effect, and its envelopes are otherwise those of version 12.
 
 `batches-v12.json` and `ops/__tests__/__fixtures__/ops-v12.json` pin
