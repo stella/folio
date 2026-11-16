@@ -1991,9 +1991,10 @@ describe("canonical sequencing", () => {
           },
         ],
       ] as const satisfies Scenario;
-      await fc.assert(convergence(noCounts(), fc.constant(scenario)), {
-        numRuns: 1,
-      });
+      await fc.assert(
+        convergence(noCounts(), fc.constant(scenario)),
+        propertyConfig({ numRuns: 1 }),
+      );
     },
     propertyTestTimeout(30_000),
   );
