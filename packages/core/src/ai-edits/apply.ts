@@ -10307,7 +10307,12 @@ const resolveOperationTarget = ({
       ? besideTable(tableBoundary[side], side)
       : beside(side);
     if (
-      joinStopsAtTableAfter({ doc, paragraphPos: placed.at, noteReferences })
+      joinStopsAtTableAfter({
+        doc,
+        paragraphPos: placed.at,
+        noteReferences,
+        insertedBlock: "paragraph",
+      })
     ) {
       return { type: "skip", ...PENDING_JOIN_INSERTION_REFUSAL };
     }
@@ -10346,7 +10351,14 @@ const resolveOperationTarget = ({
     const placed = tableBoundary
       ? besideTable(tableBoundary[position], position)
       : beside(position);
-    if (joinStopsAtTableAfter({ doc, paragraphPos: placed.at, noteReferences }))
+    if (
+      joinStopsAtTableAfter({
+        doc,
+        paragraphPos: placed.at,
+        noteReferences,
+        insertedBlock: "table",
+      })
+    )
       return { type: "skip", ...PENDING_JOIN_INSERTION_REFUSAL };
     return {
       type: "resolved",
@@ -10609,7 +10621,14 @@ const resolveOperationTarget = ({
     const placed = tableBoundary
       ? besideTable(tableBoundary[side], side)
       : beside(side);
-    if (joinStopsAtTableAfter({ doc, paragraphPos: placed.at, noteReferences }))
+    if (
+      joinStopsAtTableAfter({
+        doc,
+        paragraphPos: placed.at,
+        noteReferences,
+        insertedBlock: "table",
+      })
+    )
       return { type: "skip", ...PENDING_JOIN_INSERTION_REFUSAL };
     return {
       type: "resolved",

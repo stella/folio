@@ -12,7 +12,7 @@ import { endOfParagraphWithItsTextBoxes } from "../prosemirror/anchoredTextBoxes
 import { paragraphJoinAfter } from "../prosemirror/commands/paragraphBookmarkJoin";
 import { isBlockBoundaryNode } from "../prosemirror/keptRangeBoundaries";
 import { paragraphLeftAfter } from "../prosemirror/paragraphPropertyCarry";
-import { runInCellPending } from "../prosemirror/tableRunIn";
+import { paragraphGoes, runInCellPending } from "../prosemirror/tableRunIn";
 import { isZeroWidthAnchor } from "../prosemirror/zeroWidthAnchors";
 import { buildCleanBlockText } from "./clean-text";
 import type { NoteReferenceLabels } from "./note-references";
@@ -274,20 +274,32 @@ export const holdsOnlyDeletedContent = (paragraph: PMNode): boolean => {
   return whollyDeleted;
 };
 
+type PendingJoinInsertionOptions = PendingJoinBoundsOptions & {
+  insertedBlock: "paragraph" | "table";
+};
 /**
  * Whether the join a pending mark deletion makes stops at a table after the
  * paragraph, so a block placed there would run into it.
  */
 export const joinStopsAtTableAfter = (
-  options: PendingJoinBoundsOptions,
+  options: PendingJoinInsertionOptions,
 ): boolean => {
   if (!joinRunsWordsInto(options)) return false;
   const $place = options.doc.resolve(options.paragraphPos);
+  const before = $place.nodeBefore;
+  // A deleted paragraph stood at the end of this join: accepting its
+  // removal keeps the incoming paragraph's break, so its words stop here.
+  // An inserted paragraph instead extends the join past that stopping mark.
+  if (
+    options.insertedBlock === "table" &&
+    before !== null &&
+    paragraphGoes(before, "accept")
+  )
+    return false;
   for (let index = $place.index(); index < $place.parent.childCount; index++) {
     const next = $place.parent.child(index);
     if (next.type.name === "paragraph") return false;
     if (next.type.spec["tableRole"] === "table") {
-      const before = $place.nodeBefore;
       return (
         !runInCellPending(next) ||
         (before !== null && holdsOnlyDeletedContent(before))

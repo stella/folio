@@ -844,6 +844,7 @@ const resolveTableInsertion = ({
   if (outer !== null) {
     if (
       joinStopsAtTableAfter({
+        insertedBlock: "table",
         doc: projection.doc,
         paragraphPos: outer[side],
         noteReferences,
@@ -898,6 +899,7 @@ const resolveTableInsertion = ({
     side === "after" ? place.start - 1 + place.node.nodeSize : place.start - 1;
   if (
     joinStopsAtTableAfter({
+      insertedBlock: "table",
       doc: projection.doc,
       paragraphPos: gap,
       noteReferences,
@@ -2878,6 +2880,7 @@ export class CanonicalPublicOperations {
           : placed.place.start - 1;
       if (
         joinStopsAtTableAfter({
+          insertedBlock: "paragraph",
           doc: projection.value.doc,
           paragraphPos: gap,
           noteReferences,

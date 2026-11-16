@@ -145,6 +145,17 @@ const MORE_BODIES = {
 const deletedBreak = (id: string, text: string) =>
   `<w:p w14:paraId="${id}"><w:pPr><w:rPr><w:del w:id="90" w:author="Reviewer" w:date="2026-01-01T00:00:00Z"/></w:rPr></w:pPr><w:r><w:t xml:space="preserve">${text}</w:t></w:r></w:p>`;
 
+type RemovedJoinParagraphOptions = {
+  properties?: string;
+  keptContent?: string;
+};
+/** A paragraph a pending join reaches, with its words and mark deleted. */
+const removedJoinParagraph = ({
+  properties = "",
+  keptContent = "",
+}: RemovedJoinParagraphOptions = {}) =>
+  `<w:p w14:paraId="70000009"><w:pPr>${properties}<w:rPr><w:del w:id="91" w:author="Reviewer" w:date="2026-01-01T00:00:00Z"/></w:rPr></w:pPr><w:del w:id="92" w:author="Reviewer" w:date="2026-01-01T00:00:00Z"><w:r><w:delText>Gone</w:delText></w:r></w:del>${keptContent}</w:p>`;
+
 /** Bodies tables are inserted into, beside paragraphs and tables. */
 const PLACEMENT_BODIES = {
   "a deleted break before a table": {
@@ -224,9 +235,48 @@ const REVIEW_BODIES = {
   },
 } as const;
 
+const PENDING_BOUNDARY_BODIES = {
+  "a pending join into a deleted paragraph before a table": {
+    xml: [
+      deletedBreak("70000008", "Kept"),
+      removedJoinParagraph(),
+      table([cell("70000010", "A1") + cell("70000011", "B1")], 2),
+      paragraph("10000002", "After"),
+    ],
+    anchors: ["70000008", "70000009", "70000010", "70000011", "10000002"],
+  },
+  "a pending join into a paragraph retaining a range before a table": {
+    xml: [
+      deletedBreak("70000008", "Kept"),
+      removedJoinParagraph({
+        keptContent:
+          '<w:bookmarkStart w:id="73" w:name="Retained"/><w:bookmarkEnd w:id="73"/>',
+      }),
+      table([cell("70000010", "A1") + cell("70000011", "B1")], 2),
+      paragraph("10000002", "After"),
+    ],
+    anchors: ["70000008", "70000009", "70000010", "70000011", "10000002"],
+  },
+  "a pending join into a paragraph retaining a section before a table": {
+    xml: [
+      deletedBreak("70000008", "Kept"),
+      removedJoinParagraph({
+        properties: '<w:sectPr><w:pgSz w:w="12240" w:h="15840"/></w:sectPr>',
+      }),
+      table([cell("70000010", "A1") + cell("70000011", "B1")], 2),
+      paragraph("10000002", "After"),
+    ],
+    anchors: ["70000008", "70000009", "70000010", "70000011", "10000002"],
+  },
+} as const;
+
 type ReviewBody = keyof typeof REVIEW_BODIES;
 
-const PACKAGE_BODIES = { ...ALL_BODIES, ...REVIEW_BODIES };
+const PACKAGE_BODIES = {
+  ...ALL_BODIES,
+  ...REVIEW_BODIES,
+  ...PENDING_BOUNDARY_BODIES,
+};
 
 const packageOf = async (body: keyof typeof PACKAGE_BODIES) => {
   const zip = await ZipArchive.read(await createEmptyDocx());
@@ -731,6 +781,10 @@ describe("table structure operations in the canonical session", () => {
       new Set(Object.keys(TABLE_INSERTION_MODES)),
     );
     const cases = [
+      {
+        body: "a pending join into a deleted paragraph before a table",
+        anchor: "70000010",
+      },
       { body: "a table starting the body", anchor: "60000101" },
       { body: "a table at the body's end", anchor: "60000103" },
       { body: "two tables touching", anchor: "60000104" },
@@ -829,6 +883,43 @@ describe("table structure operations in the canonical session", () => {
             canonical.skipped,
             `${operationType} ${mode} ${target.side} ${target.anchor}`,
           ).toEqual([gap ? "unsupportedBlock" : reason]);
+          expect(canonical.refusals).toEqual(
+            gap ? [{ gap: "publicOps.tableStructure" }] : [],
+          );
+        }
+      }
+    }
+  });
+
+  test("a retained range or section does not bypass the pending-join placement refusal", async () => {
+    for (const body of [
+      "a pending join into a paragraph retaining a range before a table",
+      "a pending join into a paragraph retaining a section before a table",
+    ] as const) {
+      const source = await packageOf(body);
+      for (const mode of ["direct", "tracked-changes", "suggested"] as const) {
+        for (const operationType of TABLE_INSERTION_TYPES) {
+          const operation = INSERTIONS[`${operationType} before`]("70000010");
+          const reason = isFolioDocumentOperationModeSupported(
+            operationType,
+            mode,
+          )
+            ? "pendingParagraphMarkDeletion"
+            : "unsupportedMode";
+          const legacy = await viaDefaultEngine({ source, operation, mode });
+          const canonical = await viaCanonicalEngine({
+            source,
+            operation,
+            mode,
+          });
+          expect(legacy.skipped, `${body} ${operationType} ${mode}`).toEqual([
+            reason,
+          ]);
+          const gap =
+            operationType === "insertSignatureTable" && mode === "suggested";
+          expect(canonical.skipped, `${body} ${operationType} ${mode}`).toEqual(
+            [gap ? "unsupportedBlock" : reason],
+          );
           expect(canonical.refusals).toEqual(
             gap ? [{ gap: "publicOps.tableStructure" }] : [],
           );
