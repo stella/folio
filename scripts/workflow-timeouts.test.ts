@@ -12,6 +12,7 @@ import {
   limitsUnderMeasuredDurations,
   minimumMinutes,
   p95,
+  parseWorkflowDurations,
   parseWorkflowRuns,
   readWorkflowDurations,
   WORKFLOW_DURATIONS_FILE,
@@ -285,7 +286,7 @@ test("durations are credited to the job that declares them", () => {
             "timeout-minutes": 10,
           },
           call: { name: "Report", uses: "./.github/workflows/callee.yml" },
-          // Same displayed name twice: not credited to either.
+          // An unmatched declared name does not affect other measurements.
           twin: { name: "Twin", "timeout-minutes": 5 },
           twin2: { name: "Twin", "timeout-minutes": 5 },
         },
@@ -326,7 +327,6 @@ test("durations are credited to the job that declares them", () => {
         checkRun({ name: "Pack b", seconds: 50 }),
         checkRun({ name: "Pack c", seconds: 40, conclusion: "SKIPPED" }),
         checkRun({ name: "Report / File issues", seconds: 20 }),
-        checkRun({ name: "Twin", seconds: 10 }),
         checkRun({ name: "cla", seconds: 3 }),
       ],
     },
@@ -670,4 +670,48 @@ test("missing requested check-run steps fail refresh rather than reduce the samp
       }),
     ).rejects.toThrow(/requested check run|steps nodes/u);
   }
+});
+
+test("ambiguous timed job names fail attribution instead of losing samples", () => {
+  const workflows = new Map([
+    [
+      source.path,
+      {
+        jobs: {
+          first: { name: "Twin", "timeout-minutes": 5 },
+          second: { name: "Twin", "timeout-minutes": 10 },
+        },
+      },
+    ],
+  ]);
+  expect(() =>
+    aggregateWorkflowDurations([
+      {
+        source,
+        workflows,
+        checkRuns: [checkRun({ name: "Twin", seconds: 100 })],
+      },
+    ]),
+  ).toThrow("Ambiguous workflow job name");
+});
+
+test("duration snapshots require finite nonnegative percentiles and positive integer sample counts", () => {
+  for (const measurement of [
+    { p95Seconds: -1, samples: 1 },
+    JSON.parse('{"p95Seconds":1e999,"samples":1}'),
+    { p95Seconds: 10, samples: 0 },
+    { p95Seconds: 10, samples: -1 },
+    { p95Seconds: 10, samples: 0.5 },
+  ])
+    for (const durations of [
+      { job: measurement },
+      { steps: { Work: measurement } },
+    ])
+      expect(() =>
+        parseWorkflowDurations({ [source.path]: { run: durations } }),
+      ).toThrow("malformed");
+  const valid = {
+    [source.path]: { run: { job: { p95Seconds: 0, samples: 1 } } },
+  };
+  expect(parseWorkflowDurations(valid)).toEqual(valid);
 });

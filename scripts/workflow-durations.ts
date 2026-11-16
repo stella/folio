@@ -172,8 +172,9 @@ export const jobForCheckRun = (file: string, workflows: Workflows) => {
   );
   return (name: string): JobTarget | undefined => {
     const matches = patterns.filter(({ pattern }) => pattern.test(name));
-    // An ambiguous name is not measured rather than credited to a guess.
-    return matches.length === 1 ? matches[0]?.target : undefined;
+    if (matches.length > 1)
+      return panic(`Ambiguous workflow job name "${name}" in ${file}.`);
+    return matches.at(0)?.target;
   };
 };
 
@@ -334,12 +335,13 @@ export const committedWorkflows = (root = REPO_ROOT): Map<string, unknown> =>
 const isMeasured = (value: unknown): value is Measured =>
   isRecord(value) &&
   typeof value["p95Seconds"] === "number" &&
-  typeof value["samples"] === "number";
+  Number.isFinite(value["p95Seconds"]) &&
+  value["p95Seconds"] >= 0 &&
+  typeof value["samples"] === "number" &&
+  Number.isInteger(value["samples"]) &&
+  value["samples"] > 0;
 
-export const readWorkflowDurations = (root = REPO_ROOT): WorkflowDurations => {
-  const parsed: unknown = JSON.parse(
-    readFileSync(path.join(root, WORKFLOW_DURATIONS_FILE), "utf8"),
-  );
+export const parseWorkflowDurations = (parsed: unknown): WorkflowDurations => {
   if (!isRecord(parsed)) panic(`${WORKFLOW_DURATIONS_FILE} is not an object`);
   const result: WorkflowDurations = {};
   for (const [file, jobs] of Object.entries(parsed)) {
@@ -368,6 +370,11 @@ export const readWorkflowDurations = (root = REPO_ROOT): WorkflowDurations => {
   }
   return result;
 };
+
+export const readWorkflowDurations = (root = REPO_ROOT): WorkflowDurations =>
+  parseWorkflowDurations(
+    JSON.parse(readFileSync(path.join(root, WORKFLOW_DURATIONS_FILE), "utf8")),
+  );
 
 // ---------------------------------------------------------------------------
 // Refresh: GraphQL requests sent one at a time. Job durations come from each
