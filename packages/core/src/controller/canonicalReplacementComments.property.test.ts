@@ -22,12 +22,190 @@ import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioDocumentOperation,
 } from "../document-operations";
+import { serializeCanonicalSave } from "../docx/canonicalSave";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
+import {
+  type CommentMarkerSlot,
+  visitCommentMarkers,
+} from "../docx/commentAnchorIndex";
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
 import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import type { Document, InlineSdt, Run } from "../types/document";
+import { readModel } from "../types/documentModel";
+
+test("compiler-created boundary points survive native replacement or refuse unchanged", async () => {
+  setSystemTime(new Date("2026-01-02T03:04:05Z"));
+  const sourceText = "alpha beta";
+  const markerFacts = (document: Document) => {
+    const markers: CommentMarkerSlot["item"][] = [];
+    visitCommentMarkers(document.package.document.content, ({ item }) =>
+      markers.push(item),
+    );
+    return markers;
+  };
+  for (const representation of ["point", "range"] as const)
+    for (const offset of [0, sourceText.length])
+      for (const mode of ["editing", "suggesting"] as const)
+        for (const scope of ["whole", "boundary", "carrier"] as const) {
+          const source = fromMarkdown(sourceText);
+          const paragraph = source.package.document.content.at(0);
+          if (paragraph?.type !== "paragraph")
+            return panic("Produced paragraph is missing");
+          paragraph.paraId = "12345678";
+          const at = {
+            story: "main" as const,
+            blockId: paragraph.paraId,
+            offset,
+          };
+          const created = compileCanonicalComments({
+            document: source,
+            command: {
+              type: "create",
+              comment: {
+                id: 0,
+                author: "Reviewer",
+                content: canonicalCommentBody(source, "Point"),
+              },
+              anchor:
+                representation === "point"
+                  ? { kind: "point", at }
+                  : { kind: "range", from: at, to: at },
+            },
+          }).unwrap();
+          const session = createCanonicalSession(created.document).unwrap();
+          session.setMode(
+            mode === "editing"
+              ? { type: "editing" }
+              : { type: "suggesting", author: "Reviewer" },
+          );
+          let state = EditorState.create({ doc: session.projection.doc });
+          const publish = (commit: CanonicalCommit) => {
+            state = publishCanonicalProjection({
+              state,
+              commit,
+              session,
+            }).unwrap().state;
+          };
+          const block = session.projection.firstParagraph;
+          const carriers: { from: number; to: number }[] = [];
+          let textStart: number | undefined;
+          state.doc.descendants((node, position) => {
+            if (
+              node.type.name === "rangeAnchor" ||
+              node.type.name === "commentReference"
+            )
+              carriers.push({ from: position, to: position + node.nodeSize });
+            if (node.isText && node.text === sourceText) textStart = position;
+          });
+          const carrier = carriers.at(0);
+          if (
+            block === undefined ||
+            carrier === undefined ||
+            textStart === undefined
+          )
+            return panic("Produced point source is missing");
+          const range = (() => {
+            switch (scope) {
+              case "whole":
+                return {
+                  from: block.start,
+                  to: block.start + block.node.content.size,
+                };
+              case "boundary":
+                return offset === 0
+                  ? {
+                      from: block.start,
+                      to: textStart + sourceText.indexOf(" "),
+                    }
+                  : {
+                      from: textStart + sourceText.indexOf(" ") + 1,
+                      to: block.start + block.node.content.size,
+                    };
+              case "carrier":
+                return carrier;
+              default: {
+                const unhandled: never = scope;
+                return panic(String(unhandled));
+              }
+            }
+          })();
+          const before = session.document;
+          const anchors = getCommentAnchorsFromDoc(state.doc);
+          const markers = markerFacts(created.document);
+          const snapshot = session.captureSaveSnapshot();
+          const saved = await serializeCanonicalSave({ snapshot });
+          let committed = 0;
+          session.onCommitted(() => committed++);
+          expect(
+            before.package.document.comments?.map(({ id, anchorKind }) => ({
+              id,
+              anchorKind,
+            })),
+          ).toEqual([{ id: 0, anchorKind: "point" }]);
+          const prepared = session.prepareReplace(state, {
+            ...range,
+            text: "new",
+          });
+          if (prepared.isErr()) {
+            expect(prepared.error.ground).toEqual({
+              gap: "comment-replacement-alignment",
+            });
+            expect(session.document).toBe(before);
+            expect(session.version).toBe(0);
+            expect(session.canUndo).toBe(false);
+            expect(committed).toBe(0);
+            expect(session.captureSaveSnapshot()).toEqual(snapshot);
+            expect(
+              new Uint8Array(
+                (
+                  await serializeCanonicalSave({
+                    snapshot: session.captureSaveSnapshot(),
+                  })
+                ).buffer,
+              ),
+            ).toEqual(new Uint8Array(saved.buffer));
+            continue;
+          }
+          publish(prepared.value);
+          if (mode === "suggesting")
+            publish(
+              session
+                .prepareResolve(state, {
+                  revisionIds: getTrackedChangesFromDoc(state.doc).map(
+                    ({ id }) => id,
+                  ),
+                  resolution: "accept",
+                })
+                .unwrap(),
+            );
+          expect(session.document.package.document.comments).toEqual(
+            before.package.document.comments,
+          );
+          expect(markerFacts(readModel(session.document))).toEqual(markers);
+          expect(getCommentAnchorsFromDoc(state.doc)).toEqual(anchors);
+          const reopened = createCanonicalSession(
+            await parseDocx(
+              (
+                await serializeCanonicalSave({
+                  snapshot: session.captureSaveSnapshot(),
+                })
+              ).buffer,
+              { preloadFonts: false },
+            ),
+          ).unwrap();
+          expect(
+            reopened.document.package.document.comments?.map(
+              ({ id, anchorKind }) => ({ id, anchorKind }),
+            ),
+          ).toEqual([{ id: 0, anchorKind: "point" }]);
+          expect(markerFacts(readModel(reopened.document))).toEqual(markers);
+          expect(getCommentAnchorsFromDoc(reopened.projection.doc)).toEqual(
+            anchors,
+          );
+        }
+});
 
 test("DOCX-produced nested control comments are guarded without refusing exact covered words", async () => {
   const text = (value: string) =>
