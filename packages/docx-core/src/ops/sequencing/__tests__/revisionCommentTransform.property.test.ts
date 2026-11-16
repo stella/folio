@@ -48,7 +48,7 @@ const commentDecision = ({
       // The control below verifies its actual anchor and revision allocation.
       a: placement === "insideRevision" ? 44 : offset,
       b: span,
-      focus: placement === "independent",
+      ...(placement === "independent" ? { focus: true } : {}),
       suggest: false,
     },
     20,
