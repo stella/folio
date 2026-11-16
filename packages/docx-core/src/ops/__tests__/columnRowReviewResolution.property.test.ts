@@ -224,7 +224,7 @@ test.each(cases)(
       ),
       {
         numRuns: 12,
-        id: `${rowKind} row / ${columnKind} column ${rowDecision}/${columnDecision} resolution order`,
+        id: "row and column review decisions resolve in either order",
       },
     );
   },
