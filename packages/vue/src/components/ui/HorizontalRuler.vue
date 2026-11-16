@@ -332,9 +332,14 @@ const ticks = computed(() => {
 const tabStopPositions = computed(() => {
   if (!props.tabStops?.length) return [];
   return props.tabStops.map((ts) => {
-    // Our `TabStop` model carries the twip offset in `position`.
+    // Tabs are relative to the text area; the ruler is relative to the page.
+    // Removal still receives the raw text-area offset, as in React.
     const pos = ts.position;
-    return { px: tw2px(pos), twips: pos, label: formatValue(pos) };
+    return {
+      px: tw2px(leftMarginTwips.value + pos),
+      twips: pos,
+      label: formatValue(pos),
+    };
   });
 });
 
