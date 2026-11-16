@@ -1125,11 +1125,12 @@ const trackedChangeSegments = (
   const info = serializeTrackedChangeAttributes(change.info);
   // This is the only revision-wrapping boundary. A change holding a link is
   // written as one element per stretch, the revision inside the link; its
-  // joins describe the whole change, so they travel as split pieces the
-  // reader puts back together rather than on any one piece.
+  // joins describe the whole change, so they travel as pieces the reader
+  // puts back together rather than on any one piece. A single lifted piece
+  // also records ownership, so enclosing links can be restored below it.
   const joins = change.resolutionJoins;
   const pieces = wrappedPieceCount(segments);
-  if (pieces > 1) {
+  if (pieces > 1 || segments.some((part) => part.type === "hyperlink")) {
     let piece = 0;
     return wrapTrackedInlineSegments(segments, (xml) => {
       const split = serializeSplitResolutionPiece(
@@ -1212,15 +1213,16 @@ const walkTrackedInlineContent = (
         break;
       case "inlineWrapper": {
         const inner = walkTrackedInlineContent(item.content, spelling);
-        // A wrapper split around a lifted link marks its pieces as a split
-        // change does, so a reader rebuilds the one wrapper and the changes
-        // inside it can be rebuilt in turn.
+        // Every lifted wrapper records its ownership, including a single
+        // linked stretch: lifting still reversed their ancestry. A reader
+        // restores the link below the wrapper before joining its pieces.
         const pieces = wrappedPieceCount(inner);
         let piece = 0;
         segments.push(
           ...wrapTrackedInlineSegments(inner, (xml) => {
             const markup = serializeInlineWrapperMarkup(item, xml);
-            if (pieces === 1) return markup;
+            if (pieces === 1 && inner.every((part) => part.type === "plain"))
+              return markup;
             const split = serializeSplitResolutionPiece({ piece, pieces });
             piece += 1;
             return markup.replace(/^<([^\s>/]+)/u, `<$1${split}`);
