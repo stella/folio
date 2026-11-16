@@ -22,12 +22,15 @@ import fc from "fast-check";
 import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
-  propertyConfig,
+  assertProperty,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
-import { findParagraphOffsets } from "../docx/selectiveXmlPatch";
+import {
+  type ParagraphOffsets,
+  scanParagraphs,
+} from "../docx/selectiveXmlPatch";
 import type {
   Comment,
   Document,
@@ -294,7 +297,7 @@ describe("an edit leaves every comment and bookmark range balanced and anchored"
   test(
     "over generated documents and operations",
     async () => {
-      await fc.assert(
+      await assertProperty(
         fc.asyncProperty(generatedCase, async (raw) => {
           const generated = toCase(raw);
           const source = await createDocx(buildDocument(generated));
@@ -306,11 +309,15 @@ describe("an edit leaves every comment and bookmark range balanced and anchored"
           if (!target) {
             return;
           }
-          reviewer.applyOperations([operationFor(generated.edit, target.id)], {
-            undefinedReferences: "refuse",
-            mode: generated.edit.mode,
-          });
+          const receipt = reviewer.applyOperations(
+            [operationFor(generated.edit, target.id)],
+            {
+              undefinedReferences: "refuse",
+              mode: generated.edit.mode,
+            },
+          );
 
+          expect(receipt.applied).toHaveLength(1);
           const saved = await reviewer.toBuffer();
           const zip = await ZipArchive.read(saved);
           const xml = (await zip.entry("word/document.xml")?.text()) ?? "";
@@ -320,14 +327,54 @@ describe("an edit leaves every comment and bookmark range balanced and anchored"
           const commentSpans = assertBalancedRanges(xml, "commentRange");
           assertBalancedRanges(xml, "bookmark");
 
-          const survivingParagraphs = new Map(
-            Array.from({ length: PARAGRAPH_COUNT }, (_, index) => index)
-              .map(
-                (index) =>
-                  [index, findParagraphOffsets(xml, paraId(index))] as const,
-              )
-              .filter(([, offsets]) => offsets !== null),
+          // Paragraph ids belong to the surviving boundary: deleting the last
+          // block can transfer its id onto the preceding block. Follow source
+          // content in document order instead of treating ids as provenance.
+          const owners: (number | null)[] = Array.from(
+            { length: PARAGRAPH_COUNT },
+            (_, index) => index,
           );
+          switch (generated.edit.kind) {
+            case "deleteBlock":
+              if (generated.edit.mode === "direct")
+                owners.splice(generated.edit.blockIndex, 1);
+              break;
+            case "insertAfterBlock":
+              owners.splice(generated.edit.blockIndex + 1, 0, null);
+              break;
+            case "replaceInBlock":
+              break;
+            default: {
+              const unhandled: never = generated.edit.kind;
+              throw new Error(`Unhandled edit ${String(unhandled)}`);
+            }
+          }
+          const paragraphs = scanParagraphs(xml);
+          expect(paragraphs).toHaveLength(owners.length);
+          const survivingParagraphs = new Map<number, ParagraphOffsets>();
+          for (const [position, owner] of owners.entries()) {
+            const offsets = paragraphs.at(position);
+            expect(offsets).toBeDefined();
+            if (offsets === undefined)
+              throw new Error("Missing saved paragraph");
+            const paragraph = xml.slice(offsets.start, offsets.end);
+            const authoredText = [
+              ...paragraph.matchAll(
+                /<w:(?:t|delText)(?:\s[^>]*)?>([^<]*)<\/w:(?:t|delText)>/gu,
+              ),
+            ]
+              .map(([, text]) => text ?? "")
+              .join("");
+            let expectedText =
+              owner === null ? "An inserted paragraph." : paragraphText(owner);
+            if (
+              generated.edit.kind === "replaceInBlock" &&
+              owner === generated.edit.blockIndex
+            )
+              expectedText = "Superseded wording throughout.";
+            expect(authoredText).toContain(expectedText);
+            if (owner !== null) survivingParagraphs.set(owner, offsets);
+          }
 
           // A link survives a replacement of the text it wrapped, and still
           // wraps it: the mark is non-inclusive like `comment`, and was lost the
@@ -436,7 +483,7 @@ describe("an edit leaves every comment and bookmark range balanced and anchored"
             }).toEqual({ id, opensInTime: true, closesInTime: true });
           }
         }),
-        propertyConfig({ numRuns: 40 }),
+        { numRuns: 40, id: "over generated documents and operations" },
       );
     },
     propertyTestTimeout(180_000),
