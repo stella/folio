@@ -87,6 +87,17 @@ it: typing, inline content insertions and inline record splits and joins in
 the anchor paragraph pass a concurrent insertion before or after it, direct
 or tracked, and the insertion passes them.
 
+Concurrent direct and tracked paragraph insertions after the same anchor
+refuse with `unsupportedPair`. A tracked insertion may move the anchor's
+former mark and allocate its formatting snapshot; neither insertion's
+payload carries that context, so transferring the inserted mark could lose
+the direct paragraph's formatting when the tracked insertion is rejected.
+A sequential direct insertion after a pending first-survivor paragraph mark
+also refuses before mutation, even when the paragraphs currently have equal
+formatting: that formatting may have changed since the mark's snapshot was
+recorded. Insertions before an anchor, at independent anchors, or of the same
+kind retain their existing ordering.
+
 ## Inline insertions
 
 Typing, an inserted atom and the inverse of a deletion that cut no record

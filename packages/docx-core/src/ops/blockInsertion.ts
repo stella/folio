@@ -129,6 +129,21 @@ export const insertBlocks = ({
     delete canonical.formatting;
     return canonical;
   });
+  // A direct paragraph after this pending break would be joined into its
+  // anchor when the mark is rejected. Moving the break instead needs the
+  // former mark's formatting snapshot and revision ids, which this direct
+  // insertion does not carry.
+  if (
+    op.revision === undefined &&
+    op.at.type === "after" &&
+    following?.type === "paragraph" &&
+    location.paragraph.pPrMark?.survivor === "first"
+  ) {
+    return refuse(
+      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+      "Insertion after a pending paragraph mark needs its former formatting snapshot and revision ids.",
+    );
+  }
   // Validate incoming identities and model records before creating any review records.
   const direct = applyOps(document, [replacement(canonicalBlocks)]);
   if (direct.isErr())

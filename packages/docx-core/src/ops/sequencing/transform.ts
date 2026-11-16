@@ -393,6 +393,19 @@ const transformRestoredOp = ({
   ) {
     if (op.at.type !== over.at.type || op.at.blockId !== over.at.blockId)
       return refusal(op, over, "Overlapping block insertion identities.");
+    // A tracked insertion can move the anchor's former mark and allocate
+    // its formatting snapshot. The payloads carry neither that snapshot
+    // nor the anchor's formatting, so a concurrent direct insertion cannot
+    // safely transfer the inserted mark in either sequence order.
+    if (
+      op.at.type === "after" &&
+      (op.revision === undefined) !== (over.revision === undefined)
+    )
+      return refusal(
+        op,
+        over,
+        "Concurrent direct and tracked insertions after one paragraph need its former mark's formatting snapshot.",
+      );
     if ((order === "before") === (op.at.type === "after"))
       return Result.ok([op]);
     const anchor =
