@@ -599,7 +599,11 @@ const patchTo = <Formatting extends object>({
   const patch: FormattingPatch<Formatting> = {};
   for (const key in { ...live, ...target }) {
     if (fixed.includes(key)) continue;
-    Reflect.set(patch, key, target?.[key] ?? null);
+    Reflect.set(
+      patch,
+      key,
+      target === undefined ? null : (Reflect.get(target, key) ?? null),
+    );
   }
   return patch;
 };

@@ -2120,12 +2120,6 @@ export class FolioDocxReviewer {
       );
   }
 
-  /** Refuse what a canonical reviewer cannot do on its session yet. */
-  private requireLegacyEngine(action: string): void {
-    if (this.engine.type === "canonical")
-      throw canonicalReviewerRefusal(action);
-  }
-
   /**
    * The model the readers read: the parsed package on the legacy engine, the
    * session's document, as it is after every commit, on the canonical one.
