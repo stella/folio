@@ -530,3 +530,113 @@ test("rejecting a break into an anchor that kept its identity folds the emptied 
   ]);
   expect(undo(rejected)).toEqual(document);
 });
+
+const followingTableCases = [
+  {
+    name: "terminal table",
+    after: [inCell([makeParagraph("00000003", "cell")])],
+    markOwner: "anchor",
+  },
+  {
+    name: "table with no run-in receiver",
+    after: [
+      inCell([
+        {
+          type: "blockSdt",
+          properties: {},
+          content: [makeParagraph("00000003", "controlled")],
+        },
+        makeParagraph("00000004", "cell end"),
+      ]),
+      makeParagraph("00000005", "story end"),
+    ],
+    markOwner: "anchor",
+  },
+  {
+    name: "table with a run-in receiver and final paragraph",
+    after: [
+      inCell([makeParagraph("00000003", "cell")]),
+      makeParagraph("00000005", "story end"),
+    ],
+    markOwner: "inserted",
+  },
+  {
+    name: "following paragraph",
+    after: [makeParagraph("00000005", "story end")],
+    markOwner: "inserted",
+  },
+] as const satisfies readonly {
+  name: string;
+  after: readonly BlockContent[];
+  markOwner: "anchor" | "inserted";
+}[];
+
+for (const { name, after, markOwner } of followingTableCases)
+  for (const suggestion of ["ordinary", "suggested"] as const)
+    for (const count of [1, 2])
+      test(`${suggestion} insertion before ${name}, ${count} paragraphs, owns a resolvable source break`, () => {
+        const anchor = {
+          ...makeParagraph("00000001", "kept"),
+          formatting: { alignment: "center" },
+        } satisfies Paragraph;
+        const document = documentOf([anchor, ...structuredClone(after)]);
+        const blocks = Array.from(
+          { length: count },
+          (_, index) =>
+            ({
+              ...makeParagraph(
+                (16 + index).toString(16).padStart(8, "0"),
+                `new ${index}`,
+              ),
+              formatting: { alignment: "right" },
+            }) satisfies Paragraph,
+        );
+        const op = {
+          ...insertion(blocks),
+          at: { type: "after", blockId: "00000001" },
+          revision: {
+            ...stamp,
+            ...(suggestion === "suggested" ? { suggestionId: "proposal" } : {}),
+          },
+        } satisfies InsertBlocksOp;
+        const applied = apply(document, op);
+        const [first, inserted] = applied.document.package.document.content;
+        expect(first?.type === "paragraph" && first.pPrMark?.survivor).toBe(
+          markOwner === "anchor" ? "first" : undefined,
+        );
+        expect(first?.type === "paragraph" && first.pPrMark?.kind).toBe(
+          markOwner === "anchor" ? "ins" : undefined,
+        );
+        expect(inserted?.type === "paragraph" && inserted.pPrMark?.kind).toBe(
+          markOwner === "anchor" && count === 1 ? undefined : "ins",
+        );
+        expect(undo(applied)).toStrictEqual(document);
+        expect(
+          applyDocumentOps(
+            applied.document,
+            JSON.parse(JSON.stringify(applied.inverse)),
+          ).unwrap().document,
+        ).toStrictEqual(document);
+        const direct = apply(document, { ...op, revision: undefined });
+        for (const decision of Object.values(REVISION_DECISIONS)) {
+          const expected =
+            decision === REVISION_DECISIONS.REJECT ? document : direct.document;
+          const resolved = resolve(applied, decision);
+          expect(resolved.document).toStrictEqual(expected);
+          expect(undo(resolved)).toStrictEqual(applied.document);
+          for (const ids of [
+            applied.revisions,
+            applied.revisions.toReversed(),
+          ]) {
+            let current = applied.document;
+            for (const id of ids)
+              current = apply(current, {
+                type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+                story: OP_STORIES.MAIN,
+                revisionIds: [id],
+                decision,
+              }).document;
+            expect(current).toStrictEqual(expected);
+          }
+        }
+      });

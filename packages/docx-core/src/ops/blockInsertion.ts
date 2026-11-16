@@ -6,6 +6,7 @@ import {
   finalizeParagraphFormatting,
   type Paragraph,
 } from "../model/document";
+import { markBeforeTableResolves } from "./blockDeletion";
 import {
   blockListAt,
   endsItsContainer,
@@ -18,7 +19,6 @@ import { freshenIdentities } from "./identity";
 import { identityKeysIn, idKey, packageIdentityKeys } from "./ids";
 import { asMoveHalf } from "./moves";
 import { paragraphLength } from "./offsets";
-import { isBlockBoundary } from "./rangeBoundaries";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import type { ApplyOps } from "./resolve";
 import { stampInfo, WRAP_KINDS, wrapTracked } from "./review";
@@ -46,7 +46,8 @@ export const insertBlocks = ({
 }: BlockInsertionOptions): Result<DocumentEdit, DocumentOpRefusal> => {
   const refuse = (reason: DocumentOpRefusal["reason"], message: string) =>
     Result.err(new DocumentOpRefusal({ reason, message, opType: op.type }));
-  if (op.blocks.length === 0) {
+  const firstInserted = op.blocks.at(0);
+  if (firstInserted === undefined) {
     return refuse(
       DOCUMENT_OP_REFUSAL_REASONS.EMPTY_BLOCK_LIST,
       "No paragraphs to insert.",
@@ -77,9 +78,8 @@ export const insertBlocks = ({
     );
   }
   // Use the following paragraph as the unchanged boundary whenever possible.
-  const following = blockListAt(body.content, location.list)[
-    location.index + 1
-  ];
+  const list = blockListAt(body.content, location.list);
+  const following = list[location.index + 1];
   const before = op.at.type === "before" || following?.type === "paragraph";
   const anchor =
     op.at.type === "after" && following?.type === "paragraph"
@@ -90,8 +90,9 @@ export const insertBlocks = ({
   // new paragraph holds the mark the anchor had, with the anchor's paragraph
   // properties as its prior ones. Rejecting removes the new text and the
   // anchor's mark, which leaves the anchor as it was; accepting leaves both.
-  // Before a table the new paragraph's own mark can be the inserted one, as
-  // the default editor records it, since resolving it runs into the table.
+  // Before a table the new paragraph's own mark can be inserted only when
+  // the shared resolution owner admits it. Otherwise keep the source mark
+  // on the new last paragraph, so rejecting joins back into the anchor.
   // At the end of the list, before a range boundary between blocks that no
   // resolution may carry content across, or before any other block, such as
   // a content control, there is no mark after the new paragraph's for it to
@@ -99,9 +100,12 @@ export const insertBlocks = ({
   const takesOverMark =
     op.revision !== undefined &&
     !before &&
-    (following === undefined ||
-      isBlockBoundary(following) ||
-      following.type !== "table");
+    (following?.type !== "table" ||
+      !markBeforeTableResolves({
+        blocks: list,
+        paragraph: firstInserted,
+        table: following,
+      }));
   if (
     takesOverMark &&
     (location.paragraph.pPrMark !== undefined ||
