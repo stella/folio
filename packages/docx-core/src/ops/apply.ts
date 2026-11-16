@@ -814,14 +814,14 @@ const insertText = (document: Document, op: InsertTextOp): Applied => {
   if (located.isErr()) {
     return Result.err(located.error);
   }
-  const { location } = located.value;
-  const { offset } = op.at;
-  const content = insertTextInContent(
-    location.paragraph.content,
-    offset,
-    op.text,
-    op.runProps,
-  );
+  const { location, gap } = located.value;
+  const { offset } = gap;
+  const content = insertTextInContent({
+    items: location.paragraph.content,
+    gap,
+    text: op.text,
+    runProps: op.runProps,
+  });
   if (content === undefined) {
     return refuse(
       op,
@@ -829,11 +829,8 @@ const insertText = (document: Document, op: InsertTextOp): Applied => {
       `${offset} in ${op.at.blockId} is inside tracked-removed content.`,
     );
   }
-  // Every zero-width leaf at the offset precedes the first inserted character.
-  const start = {
-    offset,
-    zeroWidthBefore: zeroWidthLeavesAt(content, offset).length,
-  };
+  // The text went in at the gap: the zero-width leaves it names precede it.
+  const start = gap;
   const end = { offset: offset + op.text.length, zeroWidthBefore: 0 };
   return inserted({
     document,

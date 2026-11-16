@@ -98,6 +98,13 @@ earlier, so typing at one point keeps the sequence order whichever peer
 applies first. A gap whose count one side leaves absent and the other names
 as nonzero cannot be compared and refuses with `unsupportedPair`.
 
+`insertText` puts its text exactly at its gap: after the zero-width leaves
+`zeroWidthBefore` counts and before the rest, in the run holding the leaf
+before the gap, else the one holding the leaf after it, of whatever kind
+either leaf is, so a note's own mark or a cached page break never decides
+the run by its width alone. A point at its offset whose gap both sides
+count moves by the same rule: past the text when it lies after the gap.
+
 A range that starts at the insertion point moves past the inserted content
 and a range that ends there stays before it: the inserted runs carry the
 formatting they were typed with, so a concurrent format or deletion never

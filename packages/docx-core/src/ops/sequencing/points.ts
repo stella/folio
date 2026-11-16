@@ -110,6 +110,23 @@ export const mapPoint = (
 ): TextPosition | undefined => {
   if (over.type === DOCUMENT_OP_TYPES.INSERT_TEXT) {
     if (!sameParagraph(point, over.at)) return point;
+    // Text goes in exactly at its gap: a point at that offset after the
+    // gap's zero-width leaves follows the text, before the leaves still
+    // after it there.
+    if (
+      point.offset === over.at.offset &&
+      point.zeroWidthBefore !== undefined &&
+      over.at.zeroWidthBefore !== undefined
+    ) {
+      const past = point.zeroWidthBefore - over.at.zeroWidthBefore;
+      return past > 0 || (past === 0 && order === "after")
+        ? {
+            ...point,
+            offset: point.offset + over.text.length,
+            zeroWidthBefore: past,
+          }
+        : point;
+    }
     const shift =
       point.offset > over.at.offset ||
       (point.offset === over.at.offset && order === "after");

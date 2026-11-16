@@ -1709,11 +1709,20 @@ const resolveList = (
         const removedOwner =
           sourceOwners.at(index) ??
           panic("A removed source occurrence has an owner.");
-        const removedDepth = node.resolutionJoins?.remove ?? 0;
+        const joins = node.resolutionJoins;
+        const removedDepth = joins?.remove ?? 0;
+        // A one-sided prefix or suffix still belongs to the piece its join
+        // names, even when removing it joins no records across its place.
+        let beforeDepth = removedDepth;
+        let afterDepth = removedDepth;
+        if (removedDepth === 0) {
+          beforeDepth = joins?.after === 0 ? joins.before : 0;
+          afterDepth = joins?.before === 0 ? joins.after : 0;
+        }
         if (
           resolution.decision === REVISION_DECISIONS.REJECT &&
           isAddedRevision(node) &&
-          removedDepth > 0
+          (beforeDepth > 0 || afterDepth > 0)
         ) {
           const before =
             index === 0
@@ -1726,13 +1735,13 @@ const resolveList = (
             adjacent: { before, after },
             routes: {
               before:
-                before === undefined
+                before === undefined || beforeDepth === 0
                   ? undefined
-                  : { owner: before, depth: removedDepth },
+                  : { owner: before, depth: beforeDepth },
               after:
-                after === undefined
+                after === undefined || afterDepth === 0
                   ? undefined
-                  : { owner: after, depth: removedDepth },
+                  : { owner: after, depth: afterDepth },
             },
           };
         }
@@ -2286,10 +2295,14 @@ const resolveList = (
         if (depth === undefined) return undefined;
         const near = occurrence?.source;
         if (near === undefined) return depth;
+        const opposite = (
+          side === "before" ? afterOccurrence : beforeOccurrence
+        )?.source;
+        // A standing boundary is a source leaf, not a container the cut split.
         const far =
-          kept.piece === side
+          kept.piece === side || isStandingBoundary(opposite)
             ? undefined
-            : (side === "before" ? afterOccurrence : beforeOccurrence)?.source;
+            : opposite;
         const nearChain = edgeChain(near, side === "before" ? "end" : "start");
         const farChain =
           far === undefined

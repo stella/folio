@@ -373,8 +373,11 @@ export type DocumentOpType =
  * `runProps` is either {@link INHERIT_RUN_PROPS} or the exact property set the
  * text carries. When the set differs from the run at the position, the text
  * becomes a run of its own and that run is split around it; `newIds` names
- * the ids of the second half when the run carries some. The run decides where
- * the text goes, so `at.zeroWidthBefore` is not read.
+ * the ids of the second half when the run carries some. The text goes in
+ * exactly at the gap `at` names: after the zero-width leaves
+ * `at.zeroWidthBefore` counts (all of them when it is absent) and before the
+ * rest. It joins the run holding the leaf before that gap, else the one
+ * holding the leaf after it, whatever kind of leaf either is.
  *
  * With `revision`, the text is a tracked insertion: it is wrapped in an
  * `Insertion` carrying the stamp, cutting the records around it down to a
