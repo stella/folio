@@ -26,7 +26,7 @@ import {
   type DocumentOp,
   type TextPosition,
 } from "../types";
-import { sameParagraph } from "./points";
+import { isInlineInsertion, sameParagraph } from "./points";
 
 /** The kinds of concurrent pair whose two orders record different cuts. */
 export const TRACKED_ORDER_PAIRS: Readonly<{
@@ -132,12 +132,18 @@ const overlappingDeletions = (left: DocumentOp, right: DocumentOp): boolean =>
 
 /**
  * The kind of order-dependent tracked pair two concurrent operations form,
- * or undefined when they commute. Symmetric: either may be the tracked one.
+ * or undefined when they are outside this policy. Scoped source restorations
+ * keep their exclusive edit contract. Symmetric: either may be the tracked one.
  */
 export const trackedOrderPair = (
   op: DocumentOp,
   over: DocumentOp,
 ): TrackedOrderPair | undefined => {
+  if (
+    (op.type === DOCUMENT_OP_TYPES.INSERT_CONTENT && !isInlineInsertion(op)) ||
+    (over.type === DOCUMENT_OP_TYPES.INSERT_CONTENT && !isInlineInsertion(over))
+  )
+    return undefined;
   if (overlappingDeletions(op, over))
     return TRACKED_ORDER_PAIRS.OVERLAPPING_DELETIONS;
   const opEdges = trackedEdges(op);

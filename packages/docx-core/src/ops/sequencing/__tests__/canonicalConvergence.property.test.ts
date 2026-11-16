@@ -1911,6 +1911,94 @@ const PINNED: readonly Scenario[] = [
 ];
 
 describe("canonical sequencing", () => {
+  test(
+    "a source-seam undo retains its scoped refusal beside tracked typing",
+    async () => {
+      // The original saved flow is retained because its old generator path no longer replays.
+      const scenario = [
+        3,
+        [
+          {
+            type: "edit",
+            peer: 0,
+            seed: {
+              kind: "erase",
+              a: 0,
+              b: 45299,
+              suggest: false,
+              focus: true,
+            },
+          },
+          {
+            type: "undo",
+            peer: 0,
+          },
+          {
+            type: "edit",
+            peer: 1,
+            seed: {
+              kind: "type",
+              a: 3,
+              b: 0,
+              suggest: true,
+              focus: true,
+            },
+          },
+          {
+            type: "edit",
+            peer: 0,
+            seed: {
+              kind: "type",
+              a: 0,
+              b: 0,
+              suggest: false,
+              focus: true,
+            },
+          },
+          {
+            type: "deliver",
+            seed: 0,
+          },
+          {
+            type: "submit",
+            peer: 0,
+          },
+          {
+            type: "undo",
+            peer: 0,
+          },
+          {
+            type: "edit",
+            peer: 0,
+            seed: {
+              kind: "type",
+              a: 0,
+              b: 0,
+              suggest: false,
+              focus: true,
+            },
+          },
+          {
+            type: "edit",
+            peer: 0,
+            seed: {
+              kind: "type",
+              a: 0,
+              b: 0,
+              suggest: false,
+              focus: true,
+            },
+          },
+        ],
+      ] as const satisfies Scenario;
+      await fc.assert(
+        convergence(noCounts(), fc.constant(scenario)),
+        propertyConfig({ numRuns: 1 }),
+      );
+    },
+    propertyTestTimeout(30_000),
+  );
+
   test.each([3, typingInRefusedParagraph[1].length])(
     "typing in a refused paragraph is a dependent drop (%i steps)",
     async (length) => {
