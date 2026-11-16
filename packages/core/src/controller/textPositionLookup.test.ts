@@ -1,13 +1,20 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
+import fc from "fast-check";
 
 import { OP_STORIES, type TextPosition } from "@stll/docx-core/ops";
 
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { createCanonicalSession } from "../canonical/canonicalSession";
 import { fromMarkdown } from "../markdown/fromMarkdown";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { schema } from "../prosemirror/schema";
 import { findParagraphByParaId } from "../prosemirror/utils/findParagraphByParaId";
+import type { Document, ParagraphContent } from "../types/document";
 import { readModel } from "../types/documentModel";
+import { legacyTextAddressAt } from "./legacyTextAddress";
 import { legacyEditorPositionAt } from "./textPositionLookup";
 
 /** A document from Markdown whose paragraphs carry ids, as a parsed DOCX's do. */
@@ -107,4 +114,88 @@ describe("legacyEditorPositionAt", () => {
       }),
     ).toBe(3);
   });
+});
+
+setDefaultTimeout(propertyTestTimeout(30_000));
+
+test("legacy text addresses round-trip actual source marker gaps and inline carriers", () => {
+  const text = fc
+    .array(fc.constantFrom("a", "b", "c"), { minLength: 1, maxLength: 5 })
+    .map((chars) => chars.join(""));
+  assertProperty(
+    fc.property(text, text, (left, right) => {
+      for (const nested of [false, true])
+        for (const tab of [false, true]) {
+          const content: ParagraphContent[] = [
+            {
+              type: "run",
+              content: [
+                ...(tab ? [{ type: "tab" } as const] : []),
+                { type: "text", text: left },
+              ],
+            },
+            { type: "bookmarkStart", id: 1, name: "_Ref" },
+            { type: "bookmarkEnd", id: 1 },
+            { type: "run", content: [{ type: "text", text: right }] },
+          ];
+          const source = {
+            package: {
+              document: {
+                content: [
+                  {
+                    type: "paragraph",
+                    paraId: "ABCDEF12",
+                    content: nested
+                      ? [
+                          {
+                            type: "inlineSdt",
+                            properties: { sdtType: "richText", id: 7 },
+                            content,
+                          },
+                        ]
+                      : content,
+                  },
+                ],
+              },
+            },
+          } satisfies Document;
+          const doc = toProseDoc(source);
+          const seam = left.length + Number(tab);
+          for (let offset = 0; offset <= seam + right.length; offset += 1) {
+            for (const zeroWidthBefore of offset === seam
+              ? [0, 1, 2]
+              : [undefined]) {
+              const at = {
+                story: OP_STORIES.MAIN,
+                blockId: "ABCDEF12",
+                offset,
+                ...(zeroWidthBefore === undefined ? {} : { zeroWidthBefore }),
+              };
+              const position = legacyEditorPositionAt(doc, at);
+              expect(position).not.toBeNull();
+              if (position !== null)
+                expect(legacyTextAddressAt(doc, position)).toEqual(at);
+            }
+          }
+          const afterMarkers = {
+            story: OP_STORIES.MAIN,
+            blockId: "ABCDEF12",
+            offset: seam,
+          };
+          expect(legacyEditorPositionAt(doc, afterMarkers)).toBe(
+            legacyEditorPositionAt(doc, {
+              ...afterMarkers,
+              zeroWidthBefore: 2,
+            }),
+          );
+          expect(
+            legacyEditorPositionAt(doc, {
+              ...afterMarkers,
+              zeroWidthBefore: 3,
+            }),
+          ).toBeNull();
+        }
+    }),
+    { numRuns: 20, id: "legacy-text-address-marker-gaps" },
+  );
 });
