@@ -4,7 +4,7 @@
  * Copying a document or converting one from the editor state costs time in
  * proportion to the document, so a host that derives toolbar, ruler or panel
  * state from a freshly built document pays it on every key. Once the edits
- * settle, the default session converts the editor state into the model once,
+ * settle, the legacy session converts the editor state into the model once,
  * and either session copies the model once for the host's change
  * notification, which never hands out the model itself.
  *
@@ -47,7 +47,7 @@ const HOSTS: readonly AdapterFixture[] = [
   { name: "react", baseUrl: PLAYGROUND_HOSTS.react },
   { name: "vue", baseUrl: PLAYGROUND_HOSTS.vue },
 ];
-const ENGINES = ["default", "canonical"] as const;
+const ENGINES = ["legacy", "canonical"] as const;
 
 test.use({ viewport: { width: 1500, height: 900 } });
 
@@ -95,8 +95,9 @@ for (const host of HOSTS) {
         route.fulfill({ body: Buffer.from(bytes) }),
       );
       await recordBuildsAndKeys(page);
-      const session = engine === "canonical" ? "&session=canonical" : "";
-      await page.goto(`${host.baseUrl}/?file=document-builds.docx${session}`);
+      await page.goto(
+        `${host.baseUrl}/?file=document-builds.docx&session=${engine}`,
+      );
       await page.evaluate(() => document.fonts.ready);
       await ensureLiveView(page);
       await waitForPanels(page, "comment-and-changes");

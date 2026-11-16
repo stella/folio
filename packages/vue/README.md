@@ -20,5 +20,10 @@ the same runtime. The command above includes the complete editor peer closure.
 Import `DocxEditor` from `@stll/folio-vue` and load
 `@stll/folio-vue/editor.css` once in your application.
 
+The editor edits through the canonical session, and refuses an edit it cannot
+make yet with a notice. Set `experimentalSession="legacy"` (on `DocxEditor`, or
+the `experimentalSession` option of `useDocxEditor`) to select the previous
+ProseMirror-owned engine.
+
 Keyboard shortcuts default to the editor root. Set `keyboardShortcuts="document"`
 only when this editor should own shortcuts across the host page.

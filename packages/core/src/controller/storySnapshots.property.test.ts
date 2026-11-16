@@ -1,5 +1,5 @@
 /**
- * A story editor's snapshot of the default session's model is built over the
+ * A story editor's snapshot of the legacy session's model is built over the
  * model: what no edit touched is the model's own, so the snapshot is handed
  * out read-only and a writer copies it first. Each test deep-freezes a model,
  * edits its stories, takes the snapshot, and checks that taking it wrote
@@ -89,6 +89,7 @@ const snapshotAfterEdits = (
     readCanonicalDocument: () => null,
     getStyles: () => readModel(model).package.styles,
     getTheme: () => null,
+    getExperimentalSession: () => "legacy" as const,
   };
   let edited = 0;
   const picked = (index: number) => edits.at(index % edits.length) ?? false;
@@ -142,7 +143,7 @@ const expectSnapshotContract = (
   return frozen.edited;
 };
 
-describe("a story snapshot in the default session", () => {
+describe("a story snapshot in the legacy session", () => {
   test.each([
     ["notes", "notes"],
     ["parts", "header-footer"],
