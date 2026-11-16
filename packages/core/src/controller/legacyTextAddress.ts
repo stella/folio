@@ -2,7 +2,10 @@ import type { Node as PMNode } from "prosemirror-model";
 
 import { OP_STORIES, type TextPosition } from "@stll/docx-core/ops";
 
-import { legacyLeafUnits } from "./textPositionLookup";
+import {
+  legacyLeafUnits,
+  legacyParagraphPositionAt,
+} from "./textPositionLookup";
 
 /**
  * The body text position an editor position names in a document that is not
@@ -49,10 +52,17 @@ export const legacyTextAddressAt = (
     logical += units;
     return false;
   });
-  return {
+  const address = {
     story: OP_STORIES.MAIN,
     blockId: paraId,
     offset,
     ...(hasMarkers ? { zeroWidthBefore } : {}),
   };
+  return legacyParagraphPositionAt({
+    paragraph,
+    contentStart: resolved.start(depth),
+    position: address,
+  }) === position
+    ? address
+    : null;
 };

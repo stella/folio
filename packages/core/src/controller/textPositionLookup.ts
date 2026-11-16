@@ -28,55 +28,87 @@ export const legacyLeafUnits = (node: PMNode): number => {
  * projection: the paragraph whose `paraId` is the position's block id, at the
  * position's offset counted in the engine's logical units (see `legacyLeafUnits`),
  * so zero-width anchors before the point do not move it. Null for another
- * story, an unknown paragraph, or an offset past the paragraph's end.
+ * story, an unknown paragraph, an offset past its end, or an ambiguous control edge.
  */
 export const legacyEditorPositionAt = (
   doc: PMNode,
   position: TextPosition,
 ): number | null => {
   if (position.story !== OP_STORIES.MAIN) return null;
-  if (!Number.isInteger(position.offset) || position.offset < 0) return null;
   const paragraph = findParagraphByParaId(doc, position.blockId);
-  if (paragraph === null) return null;
+  return paragraph === null
+    ? null
+    : legacyParagraphPositionAt({
+        paragraph: paragraph.node,
+        contentStart: paragraph.from + 1,
+        position,
+      });
+};
+
+type LegacyParagraphPositionOptions = {
+  paragraph: PMNode;
+  contentStart: number;
+  position: TextPosition;
+};
+
+/** Resolve within an already located paragraph, without rescanning the document. */
+export const legacyParagraphPositionAt = ({
+  paragraph,
+  contentStart,
+  position,
+}: LegacyParagraphPositionOptions): number | null => {
+  if (!Number.isInteger(position.offset) || position.offset < 0) return null;
   const ordinal = position.zeroWidthBefore;
   if (ordinal !== undefined && (!Number.isInteger(ordinal) || ordinal < 0))
     return null;
-  const contentStart = paragraph.from + 1;
   let logical = 0;
   let passedMarkers = 0;
-  let found: number | null =
-    position.offset === 0 && (ordinal === undefined || ordinal === 0)
-      ? contentStart
-      : null;
-  paragraph.node.descendants((node, offset) => {
-    if (!node.isLeaf) return true;
-    const units = legacyLeafUnits(node);
-    if (units === 0) {
-      if (
-        logical === position.offset &&
-        (ordinal === undefined || ordinal === passedMarkers)
-      )
-        found = contentStart + offset;
-      passedMarkers += 1;
-      if (
-        logical === position.offset &&
-        (ordinal === undefined || ordinal === passedMarkers)
-      )
-        found = contentStart + offset + node.nodeSize;
-      return false;
-    }
-    if (logical <= position.offset && position.offset <= logical + units) {
-      const atStart = position.offset === logical;
-      const candidateOrdinal = atStart ? passedMarkers : 0;
-      if (ordinal === undefined || ordinal === candidateOrdinal) {
-        let relative = position.offset - logical;
-        if (!node.isText) relative = atStart ? 0 : node.nodeSize;
-        found = contentStart + offset + relative;
+  let candidateOrdinal = -1;
+  const candidates = new Set<number>();
+  const record = (at: number) => {
+    if (logical !== position.offset) return;
+    if (ordinal !== undefined && passedMarkers !== ordinal) return;
+    // An unspecified marker gap retains the historical after-markers affinity.
+    if (passedMarkers < candidateOrdinal) return;
+    if (passedMarkers > candidateOrdinal) candidates.clear();
+    candidateOrdinal = passedMarkers;
+    candidates.add(at);
+  };
+  const visit = (parent: PMNode, start: number) => {
+    record(start);
+    parent.forEach((node, offset) => {
+      const at = start + offset;
+      record(at);
+      if (!node.isLeaf) {
+        visit(node, at + 1);
+      } else {
+        const units = legacyLeafUnits(node);
+        if (
+          node.isText &&
+          logical < position.offset &&
+          position.offset < logical + units
+        ) {
+          const before = logical;
+          logical = position.offset;
+          passedMarkers = 0;
+          record(at + position.offset - before);
+          logical = before;
+        }
+        if (units === 0) passedMarkers += 1;
+        else {
+          logical += units;
+          passedMarkers = 0;
+        }
       }
-    }
-    logical += units;
-    passedMarkers = 0;
-    return false;
-  });
-  return found;
+      record(at + node.nodeSize);
+    });
+    record(start + parent.content.size);
+  };
+  visit(paragraph, contentStart);
+  // Container edges can share the same logical offset and marker ordinal.
+  // TextPosition cannot distinguish them; refusing avoids inserting into the
+  // wrong control. Supporting them requires an explicit address contract.
+  return candidates.size === 1
+    ? (candidates.values().next().value ?? null)
+    : null;
 };

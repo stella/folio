@@ -172,7 +172,9 @@ test("legacy text addresses round-trip actual source marker gaps and inline carr
                 ...(zeroWidthBefore === undefined ? {} : { zeroWidthBefore }),
               };
               const position = legacyEditorPositionAt(doc, at);
-              expect(position).not.toBeNull();
+              if (nested && (offset === 0 || offset === seam + right.length))
+                expect(position).toBeNull();
+              else expect(position).not.toBeNull();
               if (position !== null)
                 expect(legacyTextAddressAt(doc, position)).toEqual(at);
             }
@@ -198,4 +200,81 @@ test("legacy text addresses round-trip actual source marker gaps and inline carr
     }),
     { numRuns: 20, id: "legacy-text-address-marker-gaps" },
   );
+});
+
+test("actual inline control caret positions map exactly or refuse an ambiguous address", () => {
+  let nextControlId = 1;
+  const control = (content: ParagraphContent[]) =>
+    ({
+      type: "inlineSdt",
+      properties: { sdtType: "richText", id: nextControlId++ },
+      content,
+    }) as const satisfies ParagraphContent;
+  const text = (value: string) =>
+    ({
+      type: "run",
+      content: [{ type: "text", text: value }],
+    }) as const satisfies ParagraphContent;
+  for (const content of [
+    [control([text("inside")]), text("outside")],
+    [text("before"), control([control([text("inside")])]), text("after")],
+    [text("before"), control([]), text("after")],
+    [
+      control([
+        { type: "bookmarkStart", id: 1, name: "ref" },
+        text("inside"),
+        { type: "bookmarkEnd", id: 1 },
+      ]),
+      text("after"),
+    ],
+  ]) {
+    const doc = toProseDoc({
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              paraId: "ABCDEF12",
+              content,
+            },
+          ],
+        },
+      },
+    });
+    let refused = 0;
+    let represented = 0;
+    for (let at = 1; at < doc.content.size; at += 1) {
+      const address = legacyTextAddressAt(doc, at);
+      if (address === null) refused += 1;
+      else {
+        represented += 1;
+        expect(legacyEditorPositionAt(doc, address)).toBe(at);
+      }
+    }
+    expect(refused).toBeGreaterThan(0);
+    expect(represented).toBeGreaterThan(0);
+  }
+  const doc = toProseDoc({
+    package: {
+      document: {
+        content: [
+          {
+            type: "paragraph",
+            paraId: "ABCDEF12",
+            content: [control([text("inside")]), text("outside")],
+          },
+        ],
+      },
+    },
+  });
+  // Both the control's inner end and the following outer text share offset six.
+  expect(legacyTextAddressAt(doc, 8)).toBeNull();
+  expect(legacyTextAddressAt(doc, 9)).toBeNull();
+  expect(
+    legacyEditorPositionAt(doc, {
+      story: OP_STORIES.MAIN,
+      blockId: "ABCDEF12",
+      offset: 6,
+    }),
+  ).toBeNull();
 });
