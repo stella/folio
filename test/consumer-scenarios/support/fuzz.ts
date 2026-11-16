@@ -71,6 +71,7 @@ import {
   assertReadersAgree,
   assertReopenedShows,
   assertStoryInventory,
+  holdsPendingSuggestions,
   saveAndReopen,
   visibleState,
 } from "./invariants.ts";
@@ -709,7 +710,7 @@ export const SECOND_REVIEWER = "Second Reviewer";
  * save, reopen and read alike.
  */
 const saveOptions = (flow: Flow) =>
-  flow.mode === "suggested" && flow.reviewer.getChanges().length > 0
+  flow.mode === "suggested" && holdsPendingSuggestions(flow.reviewer)
     ? { compare: false }
     : {};
 

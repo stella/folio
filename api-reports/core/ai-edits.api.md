@@ -907,6 +907,7 @@ export type FolioPendingSuggestionRecord = {
 export class FolioPendingSuggestionRegistry {
     // (undocumented)
     clear(): void;
+    clone(): FolioPendingSuggestionRegistry;
     // (undocumented)
     exportPendingSuggestions(input: ExportPendingSuggestionsOptions): FolioPendingSuggestionRecord[];
     // (undocumented)

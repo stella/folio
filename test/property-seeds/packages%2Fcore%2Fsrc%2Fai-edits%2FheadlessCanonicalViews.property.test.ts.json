@@ -1,0 +1,22 @@
+{
+  "generated documents read their resolved views as the legacy reviewer does": [
+    {
+      "seed": -671094358,
+      "path": "4:1:1:1:1:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5",
+      "note": "A footnote whose only reference is an inserted one inside a hyperlink: the original view no longer holds the note, which the legacy reviewer still reads.",
+      "date": "2026-11-14"
+    },
+    {
+      "seed": 1967522861,
+      "path": "9:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
+      "note": "A footnote no reference reaches: both views keep it, as resolving the document does.",
+      "date": "2026-11-14"
+    },
+    {
+      "seed": -258767538,
+      "path": "5:0:0:0:0:0:1:0:0:0:0:4:5:3:3:4:4:4:4:4:4:4:4:4:5:4:4:4:4:5:6:5:5:7:7:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6",
+      "note": "Text a rejected inserted mark joins into a heading whose mark carries run properties keeps its own run formatting.",
+      "date": "2026-11-15"
+    }
+  ]
+}
