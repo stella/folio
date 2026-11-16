@@ -1,8 +1,7 @@
 /**
- * A paragraph id is a hint for pairing, never proof. Comparing a story with
- * itself after its paragraph ids were shuffled among paragraphs that share no
- * wording pairs every paragraph with its own copy, as if the ids were not
- * there: an id is trusted only where the content agrees with it.
+ * A paragraph id is a hint for pairing. Unique exact counterparts override
+ * contradictory ids even when paragraphs share most wording; ambiguous or
+ * structurally incompatible text keeps the existing fuzzy matching policy.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -15,6 +14,7 @@ import {
 } from "../../../../test/property-testing";
 import {
   alignFolioContentBlocks,
+  createFolioContentAlignmentWorkSession,
   type FolioContentAlignedBlockEvent,
 } from "./content-alignment";
 import type { FolioContentBlockIdentity } from "./content-types";
@@ -87,6 +87,18 @@ const law = (kind: string) =>
     );
   });
 
+/** Every paragraph keeps enough shared wording to satisfy the fuzzy pairing threshold. */
+const similarBlocksOf = (story: Story, kind: string) => {
+  const prepared = blocksOf(story, kind);
+  const shared = "The parties shall observe all obligations in this agreement";
+  const prefix = (block: FolioContentBlockIdentity) =>
+    Object.assign({}, block, { text: `${shared} ${block.text}` });
+  return {
+    base: prepared.base.map(prefix),
+    revised: prepared.revised.map(prefix),
+  };
+};
+
 describe("a paragraph id the content does not agree with", () => {
   test(
     "pairs a story with itself as if the ids were not there",
@@ -98,6 +110,102 @@ describe("a paragraph id the content does not agree with", () => {
     },
     propertyTestTimeout(60_000),
   );
+
+  test(
+    "unique exact counterparts outweigh rebound ids despite similar wording",
+    () => {
+      assertProperty(
+        fc.property(storyArbitrary, (story) => {
+          for (const kind of ["paragraph", "heading", "listItem"]) {
+            const { base, revised } = similarBlocksOf(story, kind);
+            for (const exhausted of [false, true]) {
+              const events = alignFolioContentBlocks(base, revised, {
+                workSession: exhausted
+                  ? createFolioContentAlignmentWorkSession({
+                      lcsCells: 0,
+                      structuralTokenLookups: 0,
+                    })
+                  : createFolioContentAlignmentWorkSession(),
+              });
+              expect(eventsRead(events)).toEqual(
+                base.map(({ text }) => ({ pair: [text, text] })),
+              );
+            }
+          }
+        }),
+        {
+          id: "unique exact paragraph counterparts outweigh rebound stable ids",
+          numRuns: 150,
+          examples: [[{ lengths: [2, 3, 4], order: [2, 1, 0] }]],
+        },
+      );
+    },
+    propertyTestTimeout(60_000),
+  );
+
+  test("one-sided, duplicate or cross-container text does not release similar stable ids", () => {
+    const text = (word: string) =>
+      `The parties shall observe all obligations in this agreement ${word}`;
+    const paragraph = (
+      id: string,
+      word: string,
+    ): FolioContentBlockIdentity => ({
+      id,
+      kind: "paragraph",
+      text: text(word),
+    });
+    const cases = [
+      {
+        base: [paragraph("A1000001", "alpha"), paragraph("A1000002", "gamma")],
+        revised: [
+          paragraph("A1000001", "beta"),
+          paragraph("A1000002", "alpha"),
+        ],
+      },
+      {
+        base: [
+          paragraph("A1000001", "alpha"),
+          paragraph("A1000002", "beta"),
+          paragraph("A1000003", "alpha"),
+        ],
+        revised: [
+          paragraph("A1000001", "beta"),
+          paragraph("A1000002", "alpha"),
+        ],
+      },
+      {
+        base: [paragraph("A1000001", "alpha"), paragraph("A1000002", "beta")],
+        revised: [
+          paragraph("A1000001", "beta"),
+          paragraph("A1000002", "alpha"),
+          paragraph("A1000003", "beta"),
+        ],
+      },
+      {
+        base: [
+          paragraph("A1000001", "alpha"),
+          Object.assign(paragraph("A1000002", "beta"), {
+            containerPath: [{ kind: "control", id: "container-one" }],
+          }),
+        ],
+        revised: [
+          paragraph("A1000001", "beta"),
+          Object.assign(paragraph("A1000002", "alpha"), {
+            containerPath: [{ kind: "control", id: "container-one" }],
+          }),
+        ],
+      },
+    ];
+    for (const { base, revised } of cases) {
+      const pairs = alignFolioContentBlocks(base, revised).flatMap((event) =>
+        event.type === "pair"
+          ? [[event.baseBlock.id, event.revisedBlock.id]]
+          : [],
+      );
+      expect(pairs).toContainEqual(["A1000001", "A1000001"]);
+      expect(pairs).toContainEqual(["A1000002", "A1000002"]);
+    }
+  });
 
   test(
     "the law catches an id trusted without its content",

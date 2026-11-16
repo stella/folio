@@ -347,29 +347,67 @@ const prepareAlignmentBlocks = <Block extends FolioContentBlockIdentity>({
   return { base: prepare(baseBlocks), revised: prepare(revisedBlocks) };
 };
 
+type UniqueTextBlocksOptions<Block extends FolioContentBlockIdentity> = {
+  blocks: readonly PreparedAlignmentBlock<Block>[];
+  from: number;
+  to: number;
+};
+
+const uniqueBlocksByText = <Block extends FolioContentBlockIdentity>({
+  blocks,
+  from,
+  to,
+}: UniqueTextBlocksOptions<Block>): ReadonlyMap<
+  string,
+  PreparedAlignmentBlock<Block> | null
+> => {
+  const blocksByText = new Map<string, PreparedAlignmentBlock<Block> | null>();
+  for (let index = from; index < to; index++) {
+    const block = blocks[index];
+    if (!block) {
+      continue;
+    }
+    const text = block.block.text;
+    if (!NON_WHITESPACE.test(text)) {
+      continue;
+    }
+    blocksByText.set(text, blocksByText.has(text) ? null : block);
+  }
+  return blocksByText;
+};
+
+type ContentAgreeingIdsOptions<Block extends FolioContentBlockIdentity> = {
+  prepared: {
+    base: readonly PreparedAlignmentBlock<Block>[];
+    revised: readonly PreparedAlignmentBlock<Block>[];
+  };
+  workSession: FolioContentAlignmentWorkSession;
+  structuralScope: BlockAlignmentStructuralScope;
+};
 /**
  * The prepared blocks with each stable id the content does not agree with
  * read as no id at all. An id is a hint for pairing, never proof: a join
  * leaves the surviving paragraph mark's id on a paragraph that holds other
- * words, so two paragraphs one id names pair by it only when their wording
- * is alike by the measure a gap pairs blocks with. Otherwise both are left
- * to the content alignment, as paragraphs without an id are. Blocks outside
- * the paragraph family, and a pair the work budget can no longer measure,
- * keep the id's word.
+ * words. Unique exact counterparts for both texts override a conflicting
+ * shared id; otherwise the wording must be alike by the gap-pairing measure.
+ * Repeated or structurally incompatible text supplies no exact evidence.
+ * Blocks outside the paragraph family, and a pair the work budget can no
+ * longer measure without exact contradictory evidence, keep the id's word.
  */
-const withContentAgreeingIds = <Block extends FolioContentBlockIdentity>(
-  prepared: {
-    base: readonly PreparedAlignmentBlock<Block>[];
-    revised: readonly PreparedAlignmentBlock<Block>[];
-  },
-  workSession: FolioContentAlignmentWorkSession,
-): {
-  base: readonly PreparedAlignmentBlock<Block>[];
-  revised: readonly PreparedAlignmentBlock<Block>[];
-} => {
+const withContentAgreeingIds = <Block extends FolioContentBlockIdentity>({
+  prepared,
+  workSession,
+  structuralScope,
+}: ContentAgreeingIdsOptions<Block>) => {
   const baseById = uniqueStableBlocks(prepared.base);
   const revisedById = uniqueStableBlocks(prepared.revised);
   const untrusted = new Set<string>();
+  let exact:
+    | {
+        base: ReadonlyMap<string, PreparedAlignmentBlock<Block> | null>;
+        revised: ReadonlyMap<string, PreparedAlignmentBlock<Block> | null>;
+      }
+    | undefined;
   for (const [id, baseBlock] of baseById) {
     const revisedBlock = revisedById.get(id);
     if (
@@ -386,6 +424,43 @@ const withContentAgreeingIds = <Block extends FolioContentBlockIdentity>(
       !Object.hasOwn(PARAGRAPH_MARK_KIND_FAMILY, revised.kind)
     )
       continue;
+    exact ??= {
+      base: uniqueBlocksByText({
+        blocks: prepared.base,
+        from: 0,
+        to: prepared.base.length,
+      }),
+      revised: uniqueBlocksByText({
+        blocks: prepared.revised,
+        from: 0,
+        to: prepared.revised.length,
+      }),
+    };
+    const baseCounterpart = exact.base.get(revised.text);
+    const revisedCounterpart = exact.revised.get(base.text);
+    if (
+      exact.base.get(base.text) === baseBlock &&
+      exact.revised.get(revised.text) === revisedBlock &&
+      baseCounterpart != null &&
+      revisedCounterpart != null &&
+      blocksCanPair({
+        base: baseBlock.pairingFacts,
+        revised: revisedCounterpart.pairingFacts,
+        stableIdMismatch: "pair",
+        structuralScope,
+      }) &&
+      blocksCanPair({
+        base: baseCounterpart.pairingFacts,
+        revised: revisedBlock.pairingFacts,
+        stableIdMismatch: "pair",
+        structuralScope,
+      })
+    ) {
+      // Both unique texts stand elsewhere on the opposite side: their shared
+      // mark id contradicts exact content evidence, even when wording is alike.
+      untrusted.add(id);
+      continue;
+    }
     const similarity = gapBlockSimilarity(
       gapBlockTokens(base.text),
       gapBlockTokens(revised.text),
@@ -629,30 +704,16 @@ const pairByUniqueExactText = <Block extends FolioContentBlockIdentity>({
   revisedTo,
   canPair,
 }: PairByUniqueExactTextOptions<Block>): FolioContentBlockPair[] => {
-  const uniqueBlocks = (
-    blocks: readonly PreparedAlignmentBlock<Block>[],
-    from: number,
-    to: number,
-  ): ReadonlyMap<string, PreparedAlignmentBlock<Block> | null> => {
-    const blocksByText = new Map<
-      string,
-      PreparedAlignmentBlock<Block> | null
-    >();
-    for (let index = from; index < to; index++) {
-      const block = blocks[index];
-      if (!block) {
-        continue;
-      }
-      const text = block.block.text;
-      if (!NON_WHITESPACE.test(text)) {
-        continue;
-      }
-      blocksByText.set(text, blocksByText.has(text) ? null : block);
-    }
-    return blocksByText;
-  };
-  const baseBlocksByText = uniqueBlocks(base, baseFrom, baseTo);
-  const revisedBlocksByText = uniqueBlocks(revised, revisedFrom, revisedTo);
+  const baseBlocksByText = uniqueBlocksByText({
+    blocks: base,
+    from: baseFrom,
+    to: baseTo,
+  });
+  const revisedBlocksByText = uniqueBlocksByText({
+    blocks: revised,
+    from: revisedFrom,
+    to: revisedTo,
+  });
   const candidates: FolioContentBlockPair[] = [];
   for (const [text, baseBlock] of baseBlocksByText) {
     const revisedBlock = revisedBlocksByText.get(text);
@@ -1079,14 +1140,15 @@ const alignFolioContentBlocksInScope = <
   const idStability = options.idStability ?? folioContentIdStability;
   const workSession =
     options.workSession ?? createFolioContentAlignmentWorkSession();
-  const prepared = withContentAgreeingIds(
-    prepareAlignmentBlocks({
+  const prepared = withContentAgreeingIds({
+    prepared: prepareAlignmentBlocks({
       baseBlocks,
       revisedBlocks,
       idStability,
     }),
     workSession,
-  );
+    structuralScope: options.structuralScope,
+  });
   const canPair = (
     baseBlock: PreparedAlignmentBlock<Block>,
     revisedBlock: PreparedAlignmentBlock<Block>,
