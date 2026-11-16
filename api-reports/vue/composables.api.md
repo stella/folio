@@ -31,6 +31,7 @@ import { FlowBlock } from '@stll/folio-core/layout-engine/types';
 import { FolioAnonymizationTerm } from '@stll/folio-core/controller/anonymizationHighlights';
 import { FolioAutocompleteState } from '@stll/folio-core/types/autocomplete';
 import { FolioEditor } from '@stll/folio-core/controller/folioEditor';
+import { FolioSaveOptions } from '@stll/folio-core/controller/folioEditor';
 import { FolioSelectiveSaveFlags } from '@stll/folio-core/docx/selectiveSaveFlags';
 import { getSelectionRuns } from '@stll/folio-core/managers/ClipboardManager';
 import { HeaderFooterPartKind } from '@stll/folio-core/controller/headerFooterEditorManager';
@@ -201,9 +202,7 @@ export type UseDocxEditorReturn = {
     syncCoordinator: LayoutSelectionGate;
     loadBuffer: (buffer: DocxInput) => Promise<void>;
     loadDocument: (doc: Document_2) => void;
-    save: (options?: {
-        selective?: boolean;
-    }) => Promise<Blob | null>;
+    save: (options?: FolioSaveOptions) => Promise<Blob | null>;
     getDocument: () => Document_2 | null;
     readDocument: () => ReadonlyDocument | null;
     setDocument: (doc: Document_2) => void;
