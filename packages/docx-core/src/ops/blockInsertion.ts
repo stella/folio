@@ -129,49 +129,23 @@ export const insertBlocks = ({
     delete canonical.formatting;
     return canonical;
   });
-  // A direct insertion after a paragraph whose inserted mark a tracked
-  // insertion after it took over (rejecting the mark keeps this paragraph)
-  // goes in before that break: the new last paragraph takes the inserted
-  // mark, so the break stays right before the tracked paragraphs, and the
-  // anchor's mark is its own again. The former mark's formatting snapshot
-  // remains valid only when the direct paragraph has the anchor's formatting.
-  const takenOver = location.paragraph.pPrMark;
-  const lastNew = canonicalBlocks.at(-1);
-  const movesMark =
+  // A direct paragraph after this pending break would be joined into its
+  // anchor when the mark is rejected. Moving the break instead needs the
+  // former mark's formatting snapshot and revision ids, which this direct
+  // insertion does not carry.
+  if (
     op.revision === undefined &&
     op.at.type === "after" &&
     following?.type === "paragraph" &&
-    takenOver?.survivor === "first" &&
-    lastNew !== undefined &&
-    lastNew.pPrMark === undefined;
-  if (
-    movesMark &&
-    !sameFormatting(location.paragraph.formatting, lastNew?.formatting)
+    location.paragraph.pPrMark?.survivor === "first"
   ) {
     return refuse(
       DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      "Moving an inserted paragraph mark to differently formatted content needs the former mark's formatting snapshot.",
+      "Insertion after a pending paragraph mark needs its former formatting snapshot and revision ids.",
     );
   }
-  const directReplacement = () => {
-    if (!movesMark || following?.type !== "paragraph" || lastNew === undefined)
-      return replacement(canonicalBlocks);
-    const freed = { ...location.paragraph };
-    delete freed.pPrMark;
-    return {
-      type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
-      story: op.story,
-      expected: [location.paragraph, following],
-      blocks: [
-        freed,
-        ...canonicalBlocks.slice(0, -1),
-        { ...lastNew, pPrMark: takenOver },
-        following,
-      ],
-    };
-  };
   // Validate incoming identities and model records before creating any review records.
-  const direct = applyOps(document, [directReplacement()]);
+  const direct = applyOps(document, [replacement(canonicalBlocks)]);
   if (direct.isErr())
     return Result.err(
       new DocumentOpRefusal({
@@ -200,7 +174,7 @@ export const insertBlocks = ({
   const touched = {
     // The anchor's mark becomes the inserted one when it takes over.
     modified:
-      (takesOverMark || movesMark) && location.paragraph.paraId !== undefined
+      takesOverMark && location.paragraph.paraId !== undefined
         ? [location.paragraph.paraId]
         : [],
     inserted: op.blocks.flatMap(({ paraId }) =>

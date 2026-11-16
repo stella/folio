@@ -1,6 +1,11 @@
 import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
+import fc from "fast-check";
 
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../../test/property-testing";
 import type { Document, Paragraph } from "../../../model/document";
 import { applyDocumentOps } from "../../apply";
 import { equalForStaleness } from "../../equality";
@@ -103,6 +108,22 @@ const inOrder = ({ first, second, order }: InOrderOptions): Document => {
   if (after.isErr()) throw after.error;
   return after.value.document;
 };
+
+const formattingArbitrary = fc.record(
+  {
+    keepNext: fc.boolean(),
+    indentLeft: fc.integer({ min: 0, max: 1440 }),
+  },
+  { requiredKeys: [] },
+);
+
+const formattingHistory = fc.record({
+  anchorFormatting: formattingArbitrary,
+  currentFormatting: formattingArbitrary,
+  directFormatting: formattingArbitrary,
+  insertedFormatting: formattingArbitrary,
+  count: fc.integer({ min: 1, max: 3 }),
+});
 
 describe("paragraph insertions sharing an anchor", () => {
   test.each([1, 2])(
@@ -259,36 +280,99 @@ describe("paragraph insertions sharing an anchor", () => {
     },
   );
 
-  test.each([REVISION_DECISIONS.ACCEPT, REVISION_DECISIONS.REJECT])(
-    "a same-format sequential insertion retains its direct formatting after %s",
-    (decision) => {
-      const formatting = { keepNext: true } as const;
-      const formattedBase = {
-        package: {
-          document: {
-            content: [
-              paragraph("10000004", "Before"),
-              { ...paragraph(ANCHOR, "Anchor"), formatting },
+  test(
+    "sequential insertions after a pending mark refuse without changing any formatting history",
+    () => {
+      assertProperty(
+        fc.property(formattingHistory, (history) => {
+          const formattedBase = {
+            package: {
+              document: {
+                content: [
+                  paragraph("10000004", "Before"),
+                  {
+                    ...paragraph(ANCHOR, "Anchor"),
+                    formatting: history.anchorFormatting,
+                  },
+                ],
+              },
+            },
+          } satisfies Document;
+          const marked = applyDocumentOps(formattedBase, [
+            {
+              ...trackedOp,
+              blocks: Array.from({ length: history.count }, (_, index) => ({
+                ...paragraph(formatParaId(index + 1), "Tracked"),
+                formatting: history.insertedFormatting,
+              })),
+            },
+          ]);
+          if (marked.isErr()) throw marked.error;
+          const changed = applyDocumentOps(marked.value.document, [
+            {
+              type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
+              story: OP_STORIES.MAIN,
+              blockId: ANCHOR,
+              patch: { keepNext: false, ...history.currentFormatting },
+            },
+          ]);
+          if (changed.isErr()) throw changed.error;
+          const before = structuredClone(changed.value.document);
+          const inserted = applyDocumentOps(changed.value.document, [
+            {
+              ...directOp,
+              blocks: [
+                {
+                  ...paragraph("00001001", "Direct"),
+                  formatting: history.directFormatting,
+                },
+              ],
+            },
+          ]);
+          expect(inserted.isErr()).toBe(true);
+          if (inserted.isErr())
+            expect(inserted.error.reason).toBe(
+              DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+            );
+          expect(changed.value.document).toStrictEqual(before);
+        }),
+        {
+          id: "pending paragraph mark insertion preserves formatting history",
+          numRuns: 80,
+          examples: [
+            [
+              {
+                anchorFormatting: {},
+                currentFormatting: { keepNext: true },
+                directFormatting: { keepNext: true },
+                insertedFormatting: {},
+                count: 1,
+              },
             ],
-          },
+          ],
         },
-      } satisfies Document;
-      const formattedDirect = {
-        ...directOp,
-        blocks: [{ ...paragraph("00001001", "Direct"), formatting }],
-      } as const satisfies DocumentOp;
-      const marked = applyDocumentOps(formattedBase, tracked.ops);
+      );
+    },
+    propertyTestTimeout(30_000),
+  );
+
+  test.each([REVISION_DECISIONS.ACCEPT, REVISION_DECISIONS.REJECT])(
+    "an accepted direct insertion before the pending mark keeps its paragraph and formatting after %s",
+    (decision) => {
+      const marked = applyDocumentOps(base, tracked.ops);
       if (marked.isErr()) throw marked.error;
+      const directParagraph = {
+        ...paragraph("00001001", "Direct"),
+        formatting: { keepNext: true },
+      } satisfies Paragraph;
       const inserted = applyDocumentOps(marked.value.document, [
-        formattedDirect,
+        {
+          ...directOp,
+          at: { type: "before", blockId: ANCHOR },
+          blocks: [directParagraph],
+        },
       ]);
       if (inserted.isErr()) throw inserted.error;
-      const undone = applyDocumentOps(
-        inserted.value.document,
-        inserted.value.inverse,
-      );
-      if (undone.isErr()) throw undone.error;
-      expect(undone.value.document).toStrictEqual(marked.value.document);
       const resolved = applyDocumentOps(inserted.value.document, [
         {
           type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
@@ -298,22 +382,21 @@ describe("paragraph insertions sharing an anchor", () => {
         },
       ]);
       if (resolved.isErr()) throw resolved.error;
-      const expected = applyDocumentOps(formattedBase, [
-        formattedDirect,
-        ...(decision === REVISION_DECISIONS.ACCEPT
-          ? [
-              {
-                ...directOp,
-                at: { type: "after", blockId: "00001001" },
-                blocks: trackedOp.blocks,
-              } as const satisfies DocumentOp,
-            ]
-          : []),
-      ]);
-      if (expected.isErr()) throw expected.error;
-      expect(
-        equalForStaleness(resolved.value.document, expected.value.document),
-      ).toBe(true);
+      const expected = {
+        package: {
+          document: {
+            content: [
+              paragraph("10000004", "Before"),
+              directParagraph,
+              paragraph(ANCHOR, "Anchor"),
+              ...(decision === REVISION_DECISIONS.ACCEPT
+                ? trackedOp.blocks
+                : []),
+            ],
+          },
+        },
+      } satisfies Document;
+      expect(equalForStaleness(resolved.value.document, expected)).toBe(true);
     },
   );
 });
