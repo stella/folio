@@ -1,3 +1,5 @@
+import { panic } from "better-result";
+
 import type { FolioDocumentOperationResult } from "@stll/folio-core/server";
 
 import type { Mode } from "./operations.ts";
@@ -35,7 +37,7 @@ export const createParagraphIdentityRemapping = () => {
       const seen = new Set<string>();
       while (!liveIds.has(id)) {
         if (seen.has(id))
-          throw new Error("Paragraph receipts contain a retirement cycle.");
+          panic("Paragraph receipts contain a retirement cycle.");
         seen.add(id);
         const survivor = joined.get(id);
         if (survivor === undefined) return id;

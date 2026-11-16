@@ -338,7 +338,12 @@ const tool = (flow: Flow, name: string, args: unknown) => {
   );
 };
 
-type Receipt = Pick<FolioDocumentOperationResult, "applied">;
+type Receipt = {
+  applied: readonly Pick<
+    FolioDocumentOperationResult["applied"][number],
+    "id"
+  >[];
+};
 
 const isOperation = (value: unknown): value is Operation =>
   typeof value === "object" &&
