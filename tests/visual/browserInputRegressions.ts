@@ -1539,7 +1539,31 @@ const CANONICAL_WORD_DELETION_TRACES = (
   };
 });
 
+/** The table was deleted before this drag; the trace has no next edit. */
+export const BROWSER_DELETED_TABLE_SEED_431 = {
+  seed: 431,
+  path: "9:0:2:2:4:4",
+  fingerprint: "8362dd2e6c195bc2",
+  preconditionAt: 2,
+  trace: {
+    shape: "tables",
+    actions: [
+      { kind: "selectAll" },
+      { kind: "backspace" },
+      { kind: "dragCellDelete" },
+      { kind: "typing", text: "alpha" },
+    ],
+  },
+} satisfies {
+  seed: number;
+  path: string;
+  fingerprint: string;
+  preconditionAt: number;
+  trace: BrowserInputTrace;
+};
+
 export const BROWSER_INPUT_REGRESSIONS = [
+  BROWSER_DELETED_TABLE_SEED_431,
   ...BROWSER_INVISIBLE_MARKER_TRACES,
   ...BROWSER_MODIFIED_BACKSPACE_TRACES,
   ...CANONICAL_WORD_DELETION_TRACES,

@@ -874,6 +874,36 @@ test.describe("pinned browser input", () => {
         const replay = async () => {
           const source = await shapeArrayBuffer(trace.shape);
           const baseline = project(await FolioDocxReviewer.fromBuffer(source));
+          if ("preconditionAt" in regression) {
+            await load({
+              page,
+              bytes: source,
+              baseline,
+              suggesting: false,
+              authority: "prosemirror",
+            });
+            expect(await selectTarget(page, "table")).toBe(true);
+            for (const [index, action] of trace.actions.entries()) {
+              const before = await liveBlocks(page);
+              const outcome = await drive(page, action).then(
+                () => ({ status: "applied" }) as const,
+                (error: unknown) => ({ status: "refused", error }) as const,
+              );
+              if (index !== regression.preconditionAt) {
+                expect(outcome.status).toBe("applied");
+                continue;
+              }
+              expect(outcome.status).toBe("refused");
+              if (outcome.status !== "refused")
+                throw new TypeError("A missing table cannot be dragged");
+              expect(fc.PreconditionFailure.isFailure(outcome.error)).toBe(
+                true,
+              );
+              expect(await liveBlocks(page)).toEqual(before);
+              return;
+            }
+            throw new TypeError("The trace did not reach its precondition");
+          }
           if ("authority" in regression) {
             await checkCanonicalTrace({ page, source, baseline, trace });
             if ("comparesWithDefaultEditor" in regression)
@@ -990,43 +1020,6 @@ for (const [shape, target] of paintedDrags) {
     });
   }
 }
-
-test(
-  "table drags whose target was deleted are trace precondition failures",
-  { tag: PINNED_BROWSER_INPUT_TAG },
-  async ({ page }) => {
-    const source = await shapeArrayBuffer("tables");
-    const baseline = project(await FolioDocxReviewer.fromBuffer(source));
-    await load({
-      page,
-      bytes: source,
-      baseline,
-      suggesting: false,
-      authority: "prosemirror",
-    });
-    expect(await selectTarget(page, "table")).toBe(true);
-    // The saved seed 431 removes its table before attempting another drag.
-    await drive(page, { kind: "selectAll" });
-    await drive(page, { kind: "backspace" });
-    expect(await selectTarget(page, "table")).toBe(false);
-    const before = await liveBlocks(page);
-    const actions = [
-      { kind: "selectionDrag", target: "table" },
-      { kind: "dragCellDelete" },
-    ] as const satisfies readonly BrowserInputAction[];
-    for (const action of actions) {
-      const outcome = await drive(page, action).then(
-        () => ({ status: "applied" }) as const,
-        (error: unknown) => ({ status: "refused", error }) as const,
-      );
-      expect(outcome.status).toBe("refused");
-      if (outcome.status !== "refused")
-        throw new TypeError("A missing table cannot be dragged");
-      expect(fc.isPreconditionFailure(outcome.error)).toBe(true);
-      expect(await liveBlocks(page)).toEqual(before);
-    }
-  },
-);
 
 const config = parseBrowserInputTraceConfig(
   process.env,
