@@ -5,11 +5,9 @@
  * The extension imports this module to type and check its side.
  */
 
-import type {
-  FolioEditorDocument,
-  FolioEditorRepackReason,
-  FolioEditorSaveStrategy,
-} from "./host";
+import type { SelectiveSaveDeclineReason } from "@stll/folio-core/types/selectiveSaveDecline";
+
+import type { FolioEditorDocument, FolioEditorSaveStrategy } from "./host";
 import type { FolioEditingMode } from "./modes";
 import { isEditingMode } from "./modes";
 
@@ -71,22 +69,77 @@ const isEditorDocument = (value: unknown): value is FolioEditorDocument =>
   isString(value["fileVersion"]) &&
   isString(value["fileName"]);
 
-const REPACK_REASONS = {
-  structuralChange: true,
-  untrackedChange: true,
-  noBodyView: true,
-} as const satisfies Record<FolioEditorRepackReason, true>;
+const DECLINE_REASONS = {
+  structuralUnreadableBody: true,
+  structuralParagraphIds: true,
+  structuralBodyBlock: true,
+  structuralDependentContent: true,
+  structuralBarrierChanged: true,
+  structuralReorder: true,
+  structuralFragment: true,
+  structuralRangeSplit: true,
+  structuralSpliceRefused: true,
+  untrackedChanges: true,
+  tooLarge: true,
+  unmaterializedBodyResource: true,
+  unmaterializedStoryResource: true,
+  unmaterializedHeaderFooter: true,
+  pictureWatermark: true,
+  orphanCommentRanges: true,
+  unsynthesizedReplyRanges: true,
+  invalidModel: true,
+  unmaterializedHyperlink: true,
+  unsafePackagePath: true,
+  missingDocumentPart: true,
+  addedNumbering: true,
+  unroutedParagraphs: true,
+  paragraphPatch: true,
+  commentsExtended: true,
+  numberingPart: true,
+  styleMaterialization: true,
+  strictConformance: true,
+  packageError: true,
+} as const satisfies Record<SelectiveSaveDeclineReason, true>;
 
 const isSaveStrategy = (value: unknown): value is FolioEditorSaveStrategy => {
   if (!isRecord(value)) return false;
   switch (value["type"]) {
-    case "selective-first":
+    case "selective":
       return true;
-    case "full-repack":
-      return (
-        isString(value["reason"]) &&
-        Object.hasOwn(REPACK_REASONS, value["reason"])
-      );
+    case "full-repack": {
+      const decline = value["decline"];
+      if (decline === undefined) return true;
+      if (
+        !isRecord(decline) ||
+        !isString(decline["reason"]) ||
+        !Object.hasOwn(DECLINE_REASONS, decline["reason"])
+      )
+        return false;
+      switch (decline["scope"]) {
+        case "package":
+          return (
+            decline["part"] === undefined && decline["story"] === undefined
+          );
+        case "part":
+          return (
+            isString(decline["part"]) &&
+            decline["part"].length > 0 &&
+            decline["story"] === undefined
+          );
+        case "story": {
+          const story = decline["story"];
+          return (
+            decline["part"] === undefined &&
+            isRecord(story) &&
+            (story["kind"] === "header" || story["kind"] === "footer") &&
+            isString(story["rId"]) &&
+            story["rId"].length > 0
+          );
+        }
+        default:
+          return false;
+      }
+    }
     default:
       return false;
   }

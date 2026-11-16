@@ -98,10 +98,6 @@ import type { HistoryShortcutOwner } from "../prosemirror/extensions/core/Histor
 import type { ExtensionManager } from "../prosemirror/extensions/ExtensionManager";
 import { ensureBaseDirectionInState } from "../prosemirror/extensions/features/AutoBidiDetectionExtension";
 import {
-  createParagraphChangeTrackerPlugin,
-  markPackageChange,
-} from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
-import {
   ensureParaIdsInDoc,
   ensureParaIdsInState,
 } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
@@ -899,9 +895,6 @@ export const createHiddenEditorManager = (
       doc: session.projection.doc,
       plugins: [
         createDocumentNumberingPlugin(document.package.numbering),
-        // The VS Code host still reports its save strategy from this tracker;
-        // pending changes come from the session's own history.
-        createParagraphChangeTrackerPlugin(),
         createNativeSelectionRefreshPlugin(),
         createNativeNavigationPlugin(),
         createDocumentStyleContextPlugin(
@@ -2134,7 +2127,6 @@ export const createHiddenEditorManager = (
         return false;
       }
     }
-    markPackageChange(bodyTransaction);
     bodyTransaction.setMeta("addToHistory", false);
     const bodyStaged = Result.try(() =>
       view?.state.applyTransaction(bodyTransaction),

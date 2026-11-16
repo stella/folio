@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
+import type { SelectiveSaveDecline } from "@stll/folio-core/types/selectiveSaveDecline";
+
 import { isEditorMessage, isHostMessage } from "./protocol";
 import type { EditorMessage, HostMessage } from "./protocol";
 
@@ -39,7 +41,14 @@ const EDITOR_MESSAGES = {
     requestId: 7,
     bytes: new Uint8Array([0x50, 0x4b]),
     fileVersion: "1727344000000",
-    strategy: { type: "full-repack", reason: "structuralChange" },
+    strategy: {
+      type: "full-repack",
+      decline: {
+        scope: "part",
+        part: "word/document.xml",
+        reason: "structuralRangeSplit",
+      },
+    },
   },
   serializeFailed: { type: "serializeFailed", requestId: 7, message: "Failed" },
   error: { type: "error", message: "Font failed to load" },
@@ -79,7 +88,16 @@ describe("isEditorMessage", () => {
     expect(
       isEditorMessage({
         ...EDITOR_MESSAGES.serialized,
-        strategy: { type: "selective-first" },
+        strategy: { type: "selective" },
+      }),
+    ).toBe(true);
+  });
+
+  test("a full write without a selective attempt has no invented decline", () => {
+    expect(
+      isEditorMessage({
+        ...EDITOR_MESSAGES.serialized,
+        strategy: { type: "full-repack" },
       }),
     ).toBe(true);
   });
@@ -90,14 +108,76 @@ describe("isEditorMessage", () => {
       { type: "dirty", dirty: "yes" },
       { type: "modeChanged", mode: "edit" },
       { ...EDITOR_MESSAGES.serialized, bytes: new ArrayBuffer(2) },
-      { ...EDITOR_MESSAGES.serialized, strategy: { type: "full-repack" } },
+      { ...EDITOR_MESSAGES.serialized, strategy: { type: "selective-first" } },
       {
         ...EDITOR_MESSAGES.serialized,
-        strategy: { type: "full-repack", reason: "hunch" },
+        strategy: {
+          type: "full-repack",
+          decline: {
+            scope: "part",
+            part: "word/document.xml",
+            reason: "hunch",
+          },
+        },
+      },
+      {
+        ...EDITOR_MESSAGES.serialized,
+        strategy: { type: "full-repack", decline: null },
       },
       { type: "serializeFailed", requestId: 7 },
     ]) {
       expect(isEditorMessage(message)).toBe(false);
     }
   });
+});
+
+test("selective refusal scope validates only its own payload", () => {
+  for (const decline of [
+    { scope: "package", reason: "tooLarge" },
+    {
+      scope: "part",
+      part: "word/document.xml",
+      reason: "structuralRangeSplit",
+    },
+    {
+      scope: "story",
+      story: { kind: "header", rId: "rId44" },
+      reason: "unmaterializedStoryResource",
+    },
+  ] as const satisfies readonly SelectiveSaveDecline[])
+    expect(
+      isEditorMessage({
+        ...EDITOR_MESSAGES.serialized,
+        strategy: { type: "full-repack", decline },
+      }),
+    ).toBe(true);
+  for (const decline of [
+    { scope: "package", part: "word/document.xml", reason: "tooLarge" },
+    { scope: "part", reason: "paragraphPatch" },
+    { scope: "part", part: "", reason: "paragraphPatch" },
+    { scope: "part", part: 44, reason: "paragraphPatch" },
+    {
+      scope: "story",
+      story: { kind: "main", rId: "rId44" },
+      reason: "unmaterializedStoryResource",
+    },
+    {
+      scope: "story",
+      story: { kind: "footer" },
+      reason: "unmaterializedStoryResource",
+    },
+    {
+      scope: "story",
+      story: { kind: "footer", rId: "rId44" },
+      part: "word/footer1.xml",
+      reason: "unmaterializedStoryResource",
+    },
+    { scope: "unknown", reason: "tooLarge" },
+  ])
+    expect(
+      isEditorMessage({
+        ...EDITOR_MESSAGES.serialized,
+        strategy: { type: "full-repack", decline },
+      }),
+    ).toBe(false);
 });

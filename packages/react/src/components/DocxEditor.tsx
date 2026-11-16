@@ -71,7 +71,9 @@ import { isCanonicalRoomCollaboration } from "@stll/folio-core/controller/canoni
 import { DOCUMENT_CHANGE_NOTIFY_DELAY_MS } from "@stll/folio-core/controller/documentChangeNotification";
 import {
   FOLIO_DOCX_SERIALIZATION_MODE,
+  type FolioDocxSerializationPath,
   type FolioGetDocxOptions,
+  type FolioSaveOptions,
 } from "@stll/folio-core/controller/folioEditor";
 import {
   delegateAutocomplete,
@@ -80,7 +82,7 @@ import {
 import { CanonicalSessionRefusalError } from "@stll/folio-core/controller/hiddenEditorManager";
 import type { NoteStoryKey } from "@stll/folio-core/controller/noteEditorManager";
 import {
-  CanonicalSaveDiagnosticError,
+  canonicalSaveDiagnosticError,
   serializeCanonicalSave,
 } from "@stll/folio-core/docx/canonicalSave";
 import {
@@ -90,6 +92,7 @@ import {
 import { withHostCommentThreads } from "@stll/folio-core/docx/hostCommentThreads";
 import { normalizeBaseDirection } from "@stll/folio-core/docx/normalizeBaseDirection";
 import { getCachedNumberingMap } from "@stll/folio-core/docx/numberingParser";
+import type { SaveDiagnostic } from "@stll/folio-core/docx/saveDiagnostics";
 import { findPageNumberAtEditorPosition } from "@stll/folio-core/layout-engine/pmPageIndex";
 import type { Layout } from "@stll/folio-core/layout-engine/types";
 import {
@@ -3815,13 +3818,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             });
             for (const diagnostic of result.diagnostics) {
               if (!options?.onDiagnostic)
-                onError?.(
-                  new CanonicalSaveDiagnosticError({
-                    gap: CANONICAL_GAP.save,
-                    diagnostic,
-                    message: `Canonical save used a fidelity fallback: ${diagnostic.type} (${diagnostic.part}).`,
-                  }),
-                );
+                onError?.(canonicalSaveDiagnosticError(diagnostic));
             }
             tripwireResult = result.tripwireResult;
             // The saved package becomes the session's save baseline: later
@@ -3834,9 +3831,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
               editor.isCanonicalSaveCurrent(snapshot.version)
             ) {
               editor.markCanonicalSaved(snapshot.version, result);
-              // The VS Code host still reads its save strategy from this
-              // tracker.
-              view.dispatch(clearTrackedChanges(view.state));
             }
             savedBuffer = result.buffer;
           } else {
@@ -3879,6 +3873,8 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                   structuralChange: hasStructuralChanges(editorState),
                   hasUntrackedChanges: hasUntrackedChanges(editorState),
                   maxBytes: flags.selectiveSaveMaxBytes,
+                  onSelectiveDecline: options?.onSelectiveDecline,
+                  onDiagnostic: options?.onDiagnostic,
                 },
               );
             }
@@ -3887,15 +3883,29 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
               ? selectiveBuffer
               : null;
             let fullBuffer: ArrayBuffer | null = null;
+            let path: FolioDocxSerializationPath = "selective";
             const repackSourceDoc = baselineBuffer
               ? { ...doc, originalBuffer: baselineBuffer }
               : doc;
             // A section the editor removed on purpose (its ending paragraph
             // deleted, or that deletion accepted) is one the repack must be told
             // about, or it refuses the smaller package.
+            const fullDiagnostics: SaveDiagnostic[] = [];
+            const collectFullDiagnostic = (diagnostic: SaveDiagnostic) =>
+              fullDiagnostics.push(diagnostic);
             const repackFull = async (): Promise<ArrayBuffer> => {
+              if (!baselineBuffer) {
+                const { createDocx } =
+                  await import("@stll/folio-core/docx/rezip");
+                return createDocx(repackSourceDoc, {
+                  onDiagnostic: collectFullDiagnostic,
+                });
+              }
               const repackDocx = await loadRepackDocx();
-              const repack = () => repackDocx(repackSourceDoc);
+              const repack = () =>
+                repackDocx(repackSourceDoc, {
+                  onDiagnostic: collectFullDiagnostic,
+                });
               return editorState
                 ? repackWithEditorSectionRemovals({
                     state: editorState,
@@ -3908,6 +3918,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             if (!buffer) {
               fullBuffer = await repackFull();
               buffer = fullBuffer;
+              path = "full-repack";
             } else if (flags.selectiveSaveTripwire) {
               try {
                 fullBuffer = await repackFull();
@@ -3937,6 +3948,9 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
               }
             }
 
+            for (const diagnostic of fullDiagnostics)
+              options?.onDiagnostic?.(diagnostic);
+            options?.onSerializationPath?.(path);
             // Clear change tracker after successful save
             if (
               view &&
@@ -3976,11 +3990,12 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
     // Host-facing save keeps callback and dirty-state policy outside the
     // framework-neutral controller's side-effect-free serialization method.
     const handleSave = useCallback(
-      async (options?: {
-        selective?: boolean;
-      }): Promise<ArrayBuffer | null> => {
+      async (options?: FolioSaveOptions): Promise<ArrayBuffer | null> => {
         const editor = pagedEditorRef.current?.getEditor();
         const serializationOptions = {
+          onDiagnostic: options?.onDiagnostic,
+          onSelectiveDecline: options?.onSelectiveDecline,
+          onSerializationPath: options?.onSerializationPath,
           mode:
             options?.selective === false
               ? FOLIO_DOCX_SERIALIZATION_MODE.full

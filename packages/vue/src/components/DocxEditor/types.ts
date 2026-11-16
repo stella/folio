@@ -39,6 +39,7 @@ import type {
 import type { CanonicalRoomCollaboration } from "@stll/folio-core/controller/canonicalRoomEditor";
 import type {
   FolioEditor,
+  FolioSaveOptions,
   TextPosition,
 } from "@stll/folio-core/controller/folioEditor";
 import type { PageRendererName } from "@stll/folio-core/display-list/editor/pageRenderer";
@@ -517,7 +518,7 @@ export type DocxEditorRef = {
   /** The headless editor controller (Seam 6), or null before the editor mounts. */
   getEditor: () => FolioEditor | null;
   /** Save the document to buffer. Pass { selective: false } to force full repack. */
-  save: (options?: { selective?: boolean }) => Promise<ArrayBuffer | null>;
+  save: (options?: FolioSaveOptions) => Promise<ArrayBuffer | null>;
   /** Set zoom level */
   setZoom: (zoom: number) => void;
   /** Get current zoom level */

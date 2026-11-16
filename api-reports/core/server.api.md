@@ -7,6 +7,7 @@
 import { Hyperlink } from '@stll/docx-core/model';
 import * as import__stll_docx_core_model from '@stll/docx-core/model';
 import { Node as Node_2 } from 'prosemirror-model';
+import { OpStory } from '@stll/docx-core/ops';
 import { Paragraph } from '@stll/docx-core/model';
 import { ParagraphContent } from '@stll/docx-core/model';
 import { ParagraphFormatting } from '@stll/docx-core/model';

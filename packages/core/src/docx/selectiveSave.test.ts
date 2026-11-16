@@ -9,6 +9,7 @@ import { describe, expect, test } from "bun:test";
 
 import { ZipArchive } from "@stll/docx-core/zip";
 
+import type { SelectiveSaveAttempt } from "../layout-engine/layoutInstrumentation";
 import type { Paragraph, Run } from "../types/document";
 import { parseDocx } from "./parser";
 import { repackDocx } from "./rezip";
@@ -436,7 +437,7 @@ describe("attemptSelectiveSave", () => {
   test("tells the instrumentation hook whether each attempt wrote the package", async () => {
     const buffer = await loadFixture("example-with-image.docx");
     const doc = await parseDocx(buffer, { preloadFonts: false });
-    const attempts: { written: boolean; structural: boolean }[] = [];
+    const attempts: SelectiveSaveAttempt[] = [];
     const previous = globalThis.__folioLayoutInstrumentation;
     globalThis.__folioLayoutInstrumentation = {
       onSelectiveSaveAttempt: (attempt) => attempts.push(attempt),
@@ -454,9 +455,13 @@ describe("attemptSelectiveSave", () => {
       });
       expect([refused === null, written === null]).toEqual([true, false]);
       expect(attempts).toEqual([
-        { written: false, structural: false },
+        {
+          written: false,
+          structural: false,
+          decline: { scope: "package", reason: "untrackedChanges" },
+        },
         { written: true, structural: false },
-      ]);
+      ] as const satisfies readonly SelectiveSaveAttempt[]);
     } finally {
       globalThis.__folioLayoutInstrumentation = previous;
     }
