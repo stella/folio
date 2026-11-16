@@ -25,7 +25,10 @@ import { idKey, isParaId, packageParagraphIds, paragraphIdsIn } from "./ids";
 import { applyFormattingPatch } from "./patch";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { stampInfo } from "./review";
-import { hasTableCellDependencies } from "./tableEditDependencies";
+import {
+  reachesPastRemovedCell,
+  strandsABookmark,
+} from "./tableEditDependencies";
 import { type TableGrid, tableGrid } from "./tableGrid";
 import {
   locateTableRow,
@@ -465,18 +468,24 @@ const hasReview = (table: Table) =>
       ),
   );
 
-/** A review other than a pending cell deletion. */
-const hasReviewBesidesCellDeletions = (table: Table) =>
+/**
+ * A review a column edit cannot join. A row's own suggested insertion or
+ * deletion keeps its mark while the column gains or loses that row's cell;
+ * another suggested column deletion may join pending cell deletions.
+ */
+const hasReviewBlockingColumns = (table: Table, suggestedDeletion: boolean) =>
   table.formatting?.gridChange !== undefined ||
   table.propertyChanges !== undefined ||
   table.rows.some(
     (row) =>
-      row.structuralChange !== undefined ||
       row.propertyChanges !== undefined ||
       row.cells.some(
         (cell) =>
           (cell.structuralChange !== undefined &&
-            cell.structuralChange.type !== "tableCellDeletion") ||
+            !(
+              suggestedDeletion &&
+              cell.structuralChange.type === "tableCellDeletion"
+            )) ||
           cell.propertyChanges !== undefined,
       ),
   );
@@ -552,13 +561,35 @@ const columnEdit = ({
   // Another suggested column deletion may join pending ones: each keeps its
   // own cells and grid entry until it is resolved.
   const suggestedDeletion = !insert && op.revision !== undefined;
-  if (
-    suggestedDeletion ? hasReviewBesidesCellDeletions(table) : hasReview(table)
-  )
+  if (hasReviewBlockingColumns(table, suggestedDeletion))
     return refuse({
       op,
       reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
       message: "Resolve table reviews before changing its columns.",
+    });
+  // The cells the column removes, now or when its suggestion is accepted,
+  // take their bookmarks, content controls and own review records with them.
+  const removedCells = insert
+    ? []
+    : grid.rows.flatMap((entries) =>
+        entries
+          .filter(
+            (entry) =>
+              entry.start <= op.column &&
+              op.column < entry.end &&
+              entry.end - entry.start === 1,
+          )
+          .map((entry) => entry.cell),
+      );
+  if (
+    removedCells.some(reachesPastRemovedCell) ||
+    strandsABookmark(removedCells)
+  )
+    return refuse({
+      op,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.DEPENDENT_RECORDS,
+      message:
+        "Resolve comments, moves and bookmarks reaching past the column before removing it.",
     });
   const boundaryRows = grid.rows.filter((cells, row) => {
     const before = table.rows[row]?.formatting?.gridBefore ?? 0;
@@ -689,16 +720,6 @@ const columnEdit = ({
         continue;
       }
       if (!insert && hit) {
-        if (
-          entry.end - entry.start === 1 &&
-          hasTableCellDependencies(entry.cell)
-        )
-          return refuse({
-            op,
-            reason: DOCUMENT_OP_REFUSAL_REASONS.DEPENDENT_RECORDS,
-            message:
-              "Resolve dependent anchors and review records before removing this cell.",
-          });
         if (
           trackedDeletion &&
           entry.cell.structuralChange?.type === "tableCellDeletion"
@@ -1405,7 +1426,8 @@ export const applyTableEdit = (
     op.column === 0 &&
     grid.value.width === 1
   ) {
-    if (table.rows.some((row) => row.cells.some(hasTableCellDependencies)))
+    const cells = table.rows.flatMap((row) => row.cells);
+    if (cells.some(reachesPastRemovedCell) || strandsABookmark(cells))
       return refuse({
         op,
         reason: DOCUMENT_OP_REFUSAL_REASONS.DEPENDENT_RECORDS,
