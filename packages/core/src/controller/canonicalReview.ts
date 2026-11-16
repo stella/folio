@@ -18,7 +18,7 @@ type ResolveCanonicalReviewRangeOptions = {
   resolution: "accept" | "reject";
 };
 
-/** Null delegates to the default session's ProseMirror review commands. */
+/** Null delegates to the legacy session's ProseMirror review commands. */
 export const resolveCanonicalReviewRange = ({
   editor,
   from,

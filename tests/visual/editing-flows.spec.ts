@@ -32,7 +32,7 @@ const MOD = isMac ? "Meta" : "Control";
 async function mountFixture(
   page: Page,
   fixture: string,
-  session?: "legacy" | "canonical",
+  session: "legacy" | "canonical" = "legacy",
 ): Promise<void> {
   const engine = session === undefined ? "" : `session=${session}&`;
   await page.goto(`/?${engine}file=${encodeURIComponent(fixture)}`);
