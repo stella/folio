@@ -234,11 +234,12 @@ const rejoinedOverFormat = ({
 };
 
 /**
- * A revision decision over a concurrent direct positional edit: it decides
- * the same revisions after the edit, unless the edit cut a revision record
- * in two and gave its second half a new id, or is a tracked edit, whose
- * records may continue a decided revision: one order decides those and the
- * other does not, so the decision is refused. Undefined for every other pair.
+ * A revision decision over a concurrent direct positional edit, including a
+ * comment anchor: it decides the same revisions after the edit, unless the
+ * edit cut a revision record in two and gave its second half a new id, or is
+ * a tracked edit whose records may continue a decided revision: one order
+ * decides those and the other does not, so the decision is refused.
+ * Undefined for every other pair.
  */
 const decisionOverEdit = (
   op: DocumentOp,
@@ -254,6 +255,9 @@ const decisionOverEdit = (
       break;
     case DOCUMENT_OP_TYPES.INSERT_CONTENT:
       if (!isInlineInsertion(over)) return undefined;
+      break;
+    case DOCUMENT_OP_TYPES.CREATE_COMMENT:
+      if (!isAnchoredComment(over)) return undefined;
       break;
     default:
       return undefined;
