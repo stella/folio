@@ -115,6 +115,41 @@ for (const adapter of adapters) {
       await expect(editor).toHaveText("Header");
     });
 
+    test("keyboard indentation keeps focus, saves both steps, and undoes each edit", async ({
+      page,
+    }) => {
+      await open(page, adapter.port);
+      const indent = ruler(page).getByRole("slider", {
+        name: "Left indent",
+        exact: true,
+      });
+      await expect(indent).toHaveAttribute("aria-valuenow", "0");
+      await indent.focus();
+      await page.keyboard.press("ArrowRight");
+      await expect(indent).toBeFocused();
+      await expect(indent).toHaveAttribute("aria-valuenow", "180");
+      await expect.poll(() => savedIndent(page, "left")).toBe(180);
+      await expect(indent).toBeFocused();
+      // Use the actual focused element again; locator.press would refocus it
+      // and hide a command-routing focus regression.
+      await page.keyboard.press("ArrowRight");
+      await expect(indent).toBeFocused();
+      await expect(indent).toHaveAttribute("aria-valuenow", "360");
+      await expect.poll(() => savedIndent(page, "left")).toBe(360);
+      expect(
+        await page.evaluate(() =>
+          globalThis.__folioCanonical?.executeNamedCommand("undo", []),
+        ),
+      ).toBe(true);
+      await expect.poll(() => savedIndent(page, "left")).toBe(180);
+      expect(
+        await page.evaluate(() =>
+          globalThis.__folioCanonical?.executeNamedCommand("undo", []),
+        ),
+      ).toBe(true);
+      await expect.poll(() => savedIndent(page, "left")).toBe(0);
+    });
+
     test("dragging the left indent indents the paragraph", async ({ page }) => {
       await open(page, adapter.port);
       await drag(
@@ -153,7 +188,7 @@ for (const adapter of adapters) {
           .poll(async () => {
             const [rulerBox, tabBox, leftIndentBox] = await Promise.all([
               ruler(page)
-                .getByRole("slider", { name: "Horizontal ruler", exact: true })
+                .getByRole("group", { name: "Horizontal ruler", exact: true })
                 .boundingBox(),
               tab.boundingBox(),
               ruler(page)

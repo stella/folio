@@ -8,15 +8,23 @@
     ref="rulerRef"
     class="docx-horizontal-ruler"
     :style="containerStyle"
-    role="slider"
+    role="group"
     :aria-label="t('ruler.horizontal')"
-    :aria-valuemin="0"
-    :aria-valuemax="pageWidthTwips"
   >
     <!-- Margin zones (drag to adjust margin) -->
     <div
       class="docx-horizontal-ruler__margin"
       :style="leftMarginStyle"
+      v-bind="controls.leftMargin.attributes"
+      :aria-label="
+        controls.leftMargin.attributes.role
+          ? `${t('dialogs.pageSetup.margins')}: ${t('dialogs.pageSetup.left')}`
+          : undefined
+      "
+      :aria-orientation="
+        controls.leftMargin.attributes.role ? 'horizontal' : undefined
+      "
+      @keydown="controls.leftMargin.onKeyDown"
       @mousedown.prevent.stop="
         editable ? startDrag('leftMargin', $event) : null
       "
@@ -24,6 +32,16 @@
     <div
       class="docx-horizontal-ruler__margin"
       :style="rightMarginStyle"
+      v-bind="controls.rightMargin.attributes"
+      :aria-label="
+        controls.rightMargin.attributes.role
+          ? `${t('dialogs.pageSetup.margins')}: ${t('dialogs.pageSetup.right')}`
+          : undefined
+      "
+      :aria-orientation="
+        controls.rightMargin.attributes.role ? 'horizontal' : undefined
+      "
+      @keydown="controls.rightMargin.onKeyDown"
       @mousedown.prevent.stop="
         editable ? startDrag('rightMargin', $event) : null
       "
@@ -50,7 +68,6 @@
     <div
       v-if="showFirstLineIndent"
       class="docx-ruler-indent"
-      :aria-label="t('ruler.firstLineIndent')"
       :style="
         indentContainerStyle(
           'down',
@@ -62,6 +79,16 @@
         editable ? startDrag('firstLineIndent', $event) : null
       "
       @mouseenter="hovered = 'firstLineIndent'"
+      v-bind="controls.firstLineIndent.attributes"
+      :aria-label="
+        controls.firstLineIndent.attributes.role
+          ? t('ruler.firstLineIndent')
+          : undefined
+      "
+      :aria-orientation="
+        controls.firstLineIndent.attributes.role ? 'horizontal' : undefined
+      "
+      @keydown="controls.firstLineIndent.onKeyDown"
       @mouseleave="hovered = null"
     >
       <div :style="triangleStyle('down', triColor('firstLineIndent'))" />
@@ -71,12 +98,19 @@
     <div
       v-if="editable"
       class="docx-ruler-indent"
-      :aria-label="t('ruler.leftIndent')"
       :style="
         indentContainerStyle('up', leftIndentPosPx, dragging === 'leftIndent')
       "
       @mousedown.prevent.stop="startDrag('leftIndent', $event)"
       @mouseenter="hovered = 'leftIndent'"
+      v-bind="controls.leftIndent.attributes"
+      :aria-label="
+        controls.leftIndent.attributes.role ? t('ruler.leftIndent') : undefined
+      "
+      :aria-orientation="
+        controls.leftIndent.attributes.role ? 'horizontal' : undefined
+      "
+      @keydown="controls.leftIndent.onKeyDown"
       @mouseleave="hovered = null"
     >
       <div :style="triangleStyle('up', triColor('leftIndent'))" />
@@ -86,7 +120,6 @@
     <div
       v-if="editable"
       class="docx-ruler-indent"
-      :aria-label="t('ruler.rightIndent')"
       :style="
         indentContainerStyle(
           'down',
@@ -96,6 +129,16 @@
       "
       @mousedown.prevent.stop="startDrag('rightIndent', $event)"
       @mouseenter="hovered = 'rightIndent'"
+      v-bind="controls.rightIndent.attributes"
+      :aria-label="
+        controls.rightIndent.attributes.role
+          ? t('ruler.rightIndent')
+          : undefined
+      "
+      :aria-orientation="
+        controls.rightIndent.attributes.role ? 'horizontal' : undefined
+      "
+      @keydown="controls.rightIndent.onKeyDown"
       @mouseleave="hovered = null"
     >
       <div :style="triangleStyle('down', triColor('rightIndent'))" />
@@ -132,6 +175,11 @@ import type {
   TabStop,
 } from "@stll/folio-core/types/document";
 import type { DeepReadonly } from "@stll/folio-core/types/documentModel";
+import {
+  clampRulerValue,
+  createRulerControl,
+  getHorizontalRulerBounds,
+} from "@stll/folio-core/utils/rulerControl";
 import { pixelsToTwips, twipsToPixels } from "@stll/folio-core/utils/units";
 
 import { useTranslation } from "../../i18n";
@@ -215,9 +263,6 @@ const leftMarginTwips = computed(
 const rightMarginTwips = computed(
   () => props.sectionProps?.marginRight ?? DEFAULT_MARGIN_TWIPS,
 );
-const contentTwips = computed(
-  () => pageWidthTwips.value - leftMarginTwips.value - rightMarginTwips.value,
-);
 
 const pageWidthPx = computed(() => tw2px(pageWidthTwips.value));
 const leftMarginPx = computed(() => tw2px(leftMarginTwips.value));
@@ -268,6 +313,59 @@ const rightMarginStyle = computed<CSSProperties>(() => ({
   borderLeft: "1px solid var(--doc-shadow-subtle)",
   cursor: props.editable ? "ew-resize" : "default",
   zIndex: 1,
+}));
+
+const bounds = computed(() =>
+  getHorizontalRulerBounds({
+    pageWidth: pageWidthTwips.value,
+    leftMargin: leftMarginTwips.value,
+    rightMargin: rightMarginTwips.value,
+    leftIndent: props.indentLeft,
+    rightIndent: props.indentRight,
+  }),
+);
+
+const controls = computed(() => ({
+  leftMargin: createRulerControl({
+    value: leftMarginTwips.value,
+    ...bounds.value.leftMargin,
+    unit: props.unit,
+    onChange: props.editable
+      ? (value) => emitChange("leftMargin", value)
+      : undefined,
+  }),
+  rightMargin: createRulerControl({
+    value: rightMarginTwips.value,
+    ...bounds.value.rightMargin,
+    unit: props.unit,
+    onChange: props.editable
+      ? (value) => emitChange("rightMargin", value)
+      : undefined,
+  }),
+  firstLineIndent: createRulerControl({
+    value: props.hangingIndent ? -props.firstLineIndent : props.firstLineIndent,
+    ...bounds.value.firstLineIndent,
+    unit: props.unit,
+    onChange: props.editable
+      ? (value) => emitChange("firstLineIndent", value)
+      : undefined,
+  }),
+  leftIndent: createRulerControl({
+    value: props.indentLeft,
+    ...bounds.value.leftIndent,
+    unit: props.unit,
+    onChange: props.editable
+      ? (value) => emitChange("leftIndent", value)
+      : undefined,
+  }),
+  rightIndent: createRulerControl({
+    value: props.indentRight,
+    ...bounds.value.rightIndent,
+    unit: props.unit,
+    onChange: props.editable
+      ? (value) => emitChange("rightIndent", value)
+      : undefined,
+  }),
 }));
 
 // Mirror generateTicks() in React HorizontalRuler.tsx:549.
@@ -433,32 +531,24 @@ function handleUp(_e: MouseEvent) {
 
 function computeNewValue(marker: MarkerType, positionTwips: number): number {
   if (marker === "leftMargin") {
-    const max = pageWidthTwips.value - rightMarginTwips.value - 720;
-    return Math.round(Math.max(0, Math.min(positionTwips, max)));
+    return clampRulerValue(positionTwips, bounds.value.leftMargin);
   }
   if (marker === "rightMargin") {
     const fromRight = pageWidthTwips.value - positionTwips;
-    const max = pageWidthTwips.value - leftMarginTwips.value - 720;
-    return Math.round(Math.max(0, Math.min(fromRight, max)));
+    return clampRulerValue(fromRight, bounds.value.rightMargin);
   }
   if (marker === "firstLineIndent") {
     const base = leftMarginTwips.value + props.indentLeft;
     const indentFromBase = positionTwips - base;
-    const max = contentTwips.value - props.indentLeft - props.indentRight - 720;
-    return Math.round(
-      Math.max(-props.indentLeft, Math.min(indentFromBase, max)),
-    );
+    return clampRulerValue(indentFromBase, bounds.value.firstLineIndent);
   }
   if (marker === "leftIndent") {
     const indentFromMargin = positionTwips - leftMarginTwips.value;
-    const max = contentTwips.value - props.indentRight - 720;
-    return Math.round(Math.max(0, Math.min(indentFromMargin, max)));
+    return clampRulerValue(indentFromMargin, bounds.value.leftIndent);
   }
-  // rightIndent
   const rightEdge = pageWidthTwips.value - rightMarginTwips.value;
   const indentFromRight = rightEdge - positionTwips;
-  const max = contentTwips.value - props.indentLeft - 720;
-  return Math.round(Math.max(0, Math.min(indentFromRight, max)));
+  return clampRulerValue(indentFromRight, bounds.value.rightIndent);
 }
 
 function emitChange(marker: MarkerType, value: number) {
