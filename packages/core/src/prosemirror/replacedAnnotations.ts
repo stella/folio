@@ -395,6 +395,98 @@ export const surveyAcceptedReplacedAnnotations = (
 ): ReplacedAnnotations =>
   surveyAnnotations(doc, { from, to, content: "asAccepted" });
 
+type ReplacementCommentAlignmentOptions = {
+  doc: PMNode;
+  source: { from: number; to: number };
+  changes: readonly {
+    from: number;
+    to: number;
+    text: string;
+    markers: "retained" | "selected";
+  }[];
+};
+
+/**
+ * Whether source boundaries already express the replacement's aligned ranges.
+ * A changed stretch lends every comment it touches to its replacement. A
+ * comment that closes before the insertion needs an anchor transition the kernel
+ * cannot represent yet. A collapsed range also needs a defined point policy.
+ * Decide over the whole replacement, before any of its fragments are applied.
+ */
+export const preservesReplacementCommentAlignment = ({
+  doc,
+  source,
+  changes,
+}: ReplacementCommentAlignmentOptions): boolean => {
+  const collapsing: Mark[] = [];
+  const continued: Mark[] = [];
+  for (const change of changes) {
+    const annotations = surveyAcceptedReplacedAnnotations(
+      doc,
+      change.from,
+      change.to,
+    );
+    const comments = annotations.carried.filter(
+      (mark) => mark.type.name === "comment",
+    );
+    if (comments.some((mark) => mark.attrs["point"] === true)) return false;
+    if (change.markers === "selected" && comments.length > 0) return false;
+    let internalCarrier = false;
+    doc.nodesBetween(change.from, change.to, (node, position) => {
+      if (
+        isCommentAnchorCarrier(node) &&
+        change.from < position &&
+        position < change.to
+      )
+        internalCarrier = true;
+      return !node.isInline;
+    });
+    if (internalCarrier) return false;
+    if (change.text === "") {
+      for (const mark of comments)
+        if (!mark.isInSet(collapsing)) collapsing.push(mark);
+      continue;
+    }
+    let endingMarks: readonly Mark[] = [];
+    doc.nodesBetween(change.from, change.to, (node) => {
+      if (!node.isInline) return true;
+      if (!isZeroWidthAnchor(node) && lendsMarks(node, "asAccepted"))
+        endingMarks = node.marks;
+      return false;
+    });
+    if (!comments.every((mark) => mark.isInSet(endingMarks))) return false;
+    for (const mark of comments)
+      if (!mark.isInSet(continued)) continued.push(mark);
+  }
+  const candidates = collapsing.filter((mark) => !mark.isInSet(continued));
+  if (candidates.length === 0) return true;
+  const retained: Mark[] = [];
+  let changeIndex = 0;
+  doc.nodesBetween(source.from, source.to, (node, position) => {
+    if (!node.isInline) return true;
+    if (isZeroWidthAnchor(node) || !lendsMarks(node, "asAccepted"))
+      return false;
+    const from = Math.max(source.from, position);
+    const to = Math.min(source.to, position + node.nodeSize);
+    while ((changes[changeIndex]?.to ?? Infinity) <= from) changeIndex++;
+    let removed = 0;
+    for (let index = changeIndex; index < changes.length; index++) {
+      const change = changes[index];
+      if (change === undefined || change.from >= to) break;
+      removed += Math.max(
+        0,
+        Math.min(to, change.to) - Math.max(from, change.from),
+      );
+    }
+    if (removed < to - from)
+      for (const mark of candidates)
+        if (mark.isInSet(node.marks) && !mark.isInSet(retained))
+          retained.push(mark);
+    return false;
+  });
+  return candidates.every((mark) => mark.isInSet(retained));
+};
+
 /**
  * Whether the span already contributed this mark, or one the mark would evict.
  * Comments do not exclude each other, so every comment is collected; a
