@@ -805,11 +805,16 @@ const resolveTableInsertion = ({
       : { columnWidths: [...attrs.columnWidths] }),
     rows: standaloneTableRowsFromProseMirror(node),
   };
-  const inserted = (
-    place: ProjectedParagraph,
-    placeSide: "before" | "after",
-    paragraphAfter: "empty" | "none",
-  ) => {
+  type InsertedOptions = {
+    place: ProjectedParagraph;
+    side: "before" | "after";
+    paragraphAfter: "empty" | "none";
+  };
+  const inserted = ({
+    place,
+    side: placeSide,
+    paragraphAfter,
+  }: InsertedOptions) => {
     const position =
       placeSide === "after"
         ? place.start + place.node.content.size
@@ -821,6 +826,7 @@ const resolveTableInsertion = ({
         story,
         blockId: place.blockId,
         table,
+        anchor: "paragraph",
         side: placeSide,
         paragraphAfter,
       },
@@ -866,7 +872,7 @@ const resolveTableInsertion = ({
         blockId,
         table,
         side,
-        besideTable: true,
+        anchor: "table",
       },
     };
     return Result.ok({
@@ -902,11 +908,11 @@ const resolveTableInsertion = ({
       PENDING_JOIN_INSERTION_REFUSAL.message,
     );
   // After a container's last paragraph the container still ends with one.
-  return inserted(
+  return inserted({
     place,
     side,
-    side === "after" && neighbour === null ? "empty" : "none",
-  );
+    paragraphAfter: side === "after" && neighbour === null ? "empty" : "none",
+  });
 };
 
 /** A paragraph of the table's own that addresses a table edit, by its id. */
