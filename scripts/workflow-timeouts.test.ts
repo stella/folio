@@ -423,7 +423,7 @@ test("timed names cannot select a duplicate sibling, including untimed ones", ()
     expect(limitsUnderMeasuredDurations(workflows, {})).toEqual([
       `${source.path}: run repeats timed step name "Work"`,
     ]);
-    expect(
+    expect(() =>
       aggregateWorkflowDurations([
         {
           source,
@@ -437,9 +437,7 @@ test("timed names cannot select a duplicate sibling, including untimed ones", ()
           ],
         },
       ]),
-    ).toEqual({
-      [source.path]: { run: { job: { p95Seconds: 100, samples: 1 } } },
-    });
+    ).toThrow("Historical workflow limits are ambiguous");
   }
 });
 

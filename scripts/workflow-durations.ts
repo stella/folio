@@ -203,12 +203,15 @@ const keyOf = ({ workflow, job }: JobTarget) => `${workflow}\n${job}`;
 /** Each job's declared minutes and its steps' (by name), keyed by keyOf. */
 const limitsByJob = (workflows: Workflows) => {
   const byJob = new Map<string, Map<string | undefined, number>>();
-  for (const [file, workflow] of workflows)
-    for (const { job, minutes, step } of declaredLimits(file, workflow)
-      .limits) {
+  for (const [file, workflow] of workflows) {
+    const { limits, problems } = declaredLimits(file, workflow);
+    if (problems.length > 0)
+      panic(`Historical workflow limits are ambiguous: ${problems.join("; ")}`);
+    for (const { job, minutes, step } of limits) {
       const key = keyOf({ workflow: file, job });
       byJob.set(key, (byJob.get(key) ?? new Map()).set(step, minutes));
     }
+  }
   return byJob;
 };
 
