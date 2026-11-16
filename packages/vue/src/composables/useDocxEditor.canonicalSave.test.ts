@@ -55,6 +55,7 @@ import {
   SERIALIZATION_PATH_CASES,
   serializationDiagnosticSource,
   serializationPathSource,
+  serializationTripwireDiagnosticSource,
 } from "../../../../test/serializationPaths";
 import { saveDocumentForHost } from "./useDocxEditorRefApi";
 
@@ -1237,86 +1238,115 @@ for (const session of [undefined, "canonical"] as const)
     "onSelectiveDecline",
     "onDiagnostic",
   ] as const)
-    test(`Vue ${session ?? "default"} ${callback} failure leaves the edited snapshot unsaved`, async () => {
-      const container = document.createElement("div");
-      const hidden = document.createElement("div");
-      const pages = document.createElement("div");
-      document.body.append(container, hidden, pages);
-      const errors: Error[] = [];
-      let saves = 0;
-      let clears = 0;
-      const holder: { adapter: ReturnType<typeof useDocxEditor> | null } = {
-        adapter: null,
-      };
-      const scenario =
-        SERIALIZATION_PATH_CASES.find((item) => item.kind === "declined") ??
-        panic("Missing refusal case");
-      const diagnosticModel =
-        session === undefined && callback === "onDiagnostic"
-          ? await serializationDiagnosticSource()
-          : null;
-      const app = createApp(
-        defineComponent({
-          setup() {
-            holder.adapter = useDocxEditor({
-              hiddenContainer: shallowRef(hidden),
-              pagesContainer: shallowRef(pages),
-              ...(session === undefined
-                ? {}
-                : { experimentalSession: session }),
-              featureFlags: diagnosticModel ? undefined : scenario.flags,
-              onError: (error) => errors.push(error),
-            });
-            return () => h("div");
-          },
-        }),
-      );
-      app.mount(container);
-      try {
-        const adapter = holder.adapter ?? panic("Expected Vue editor");
-        if (diagnosticModel) adapter.loadDocument(diagnosticModel);
-        else
-          await adapter.loadBuffer(await createDocx(serializationPathSource()));
-        const view = adapter.editorView.value ?? panic("Expected body view");
-        if (session === "canonical")
+    for (const diagnosticStage of session === undefined &&
+    callback === "onDiagnostic"
+      ? (["selective", "tripwire"] as const)
+      : (["selective"] as const))
+      test(`Vue ${session ?? "default"} ${callback} ${diagnosticStage} failure leaves the edited snapshot unsaved`, async () => {
+        const container = document.createElement("div");
+        const hidden = document.createElement("div");
+        const pages = document.createElement("div");
+        document.body.append(container, hidden, pages);
+        const errors: Error[] = [];
+        let saves = 0;
+        let clears = 0;
+        const holder: { adapter: ReturnType<typeof useDocxEditor> | null } = {
+          adapter: null,
+        };
+        const scenario =
+          SERIALIZATION_PATH_CASES.find((item) => item.kind === "declined") ??
+          panic("Missing refusal case");
+        const diagnosticSource =
+          diagnosticStage === "tripwire"
+            ? serializationTripwireDiagnosticSource
+            : serializationDiagnosticSource;
+        const diagnosticModel =
+          session === undefined && callback === "onDiagnostic"
+            ? await diagnosticSource()
+            : null;
+        const normalFlags = diagnosticModel ? undefined : scenario.flags;
+        const featureFlags =
+          diagnosticStage === "tripwire"
+            ? (SERIALIZATION_PATH_CASES.find(
+                (item) => item.kind === "selective with tripwire",
+              )?.flags ?? panic("Missing tripwire case"))
+            : normalFlags;
+        const app = createApp(
+          defineComponent({
+            setup() {
+              holder.adapter = useDocxEditor({
+                hiddenContainer: shallowRef(hidden),
+                pagesContainer: shallowRef(pages),
+                ...(session === undefined
+                  ? {}
+                  : { experimentalSession: session }),
+                featureFlags,
+                onError: (error) => errors.push(error),
+              });
+              return () => h("div");
+            },
+          }),
+        );
+        app.mount(container);
+        let callbackCount = 0;
+        const declines: SelectiveSaveDecline[] = [];
+        try {
+          const adapter = holder.adapter ?? panic("Expected Vue editor");
+          if (diagnosticModel) adapter.loadDocument(diagnosticModel);
+          else
+            await adapter.loadBuffer(
+              await createDocx(serializationPathSource()),
+            );
+          const view = adapter.editorView.value ?? panic("Expected body view");
+          if (session === "canonical")
+            expect(
+              adapter.editor.applyCanonicalOperations([
+                {
+                  type: DOCUMENT_OP_TYPES.INSERT_TEXT,
+                  at: { story: "main", blockId: "12345678", offset: 1 },
+                  text: "x",
+                  runProps: "inherit",
+                },
+              ]),
+            ).toBe(true);
+          else view.dispatch(view.state.tr.insertText("x", 2));
+          expect(adapter.isDirty.value).toBe(true);
           expect(
-            adapter.editor.applyCanonicalOperations([
+            await saveDocumentForHost(
               {
-                type: DOCUMENT_OP_TYPES.INSERT_TEXT,
-                at: { story: "main", blockId: "12345678", offset: 1 },
-                text: "x",
-                runProps: "inherit",
+                saveDocument: adapter.save,
+                clearCommentsDirty: () => {
+                  clears += 1;
+                },
+                onSave: () => {
+                  saves += 1;
+                },
               },
-            ]),
-          ).toBe(true);
-        else view.dispatch(view.state.tr.insertText("x", 2));
-        expect(adapter.isDirty.value).toBe(true);
-        expect(
-          await saveDocumentForHost(
-            {
-              saveDocument: adapter.save,
-              clearCommentsDirty: () => {
-                clears += 1;
+              {
+                onDiagnostic: () => {},
+                onSelectiveDecline: (decline) => declines.push(decline),
+                [callback]: () => {
+                  callbackCount += 1;
+                  if (diagnosticStage === "tripwire" && callbackCount === 1)
+                    return;
+                  panic("Host save callback failed");
+                },
               },
-              onSave: () => {
-                saves += 1;
-              },
-            },
-            {
-              onDiagnostic: () => {},
-              [callback]: () => panic("Host save callback failed"),
-            },
-          ),
-        ).toBeNull();
-        expect(errors).toHaveLength(1);
-        expect(errors.at(0)?.message).toBe("Host save callback failed");
-        expect(saves).toBe(0);
-        expect(clears).toBe(0);
-        expect(adapter.isDirty.value).toBe(true);
-      } finally {
-        app.unmount();
-        container.remove();
-        hidden.remove();
-        pages.remove();
-      }
-    });
+            ),
+          ).toBeNull();
+          if (diagnosticStage === "tripwire") {
+            expect(callbackCount).toBe(2);
+            expect(declines).toEqual([]);
+          }
+          expect(errors).toHaveLength(1);
+          expect(errors.at(0)?.message).toBe("Host save callback failed");
+          expect(saves).toBe(0);
+          expect(clears).toBe(0);
+          expect(adapter.isDirty.value).toBe(true);
+        } finally {
+          app.unmount();
+          container.remove();
+          hidden.remove();
+          pages.remove();
+        }
+      });

@@ -103,6 +103,7 @@ import {
 import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
 import { withHostCommentThreads } from "@stll/folio-core/docx/hostCommentThreads";
 import { parseDocx } from "@stll/folio-core/docx/parser";
+import type { SaveDiagnostic } from "@stll/folio-core/docx/saveDiagnostics";
 import type { FolioSelectiveSaveFlags } from "@stll/folio-core/docx/selectiveSaveFlags";
 import type { TripwireResult } from "@stll/folio-core/docx/selectiveSaveTripwire";
 import { getFootnoteText } from "@stll/folio-core/docx/storyPlainText";
@@ -1649,13 +1650,16 @@ export function useDocxEditor(
       // A section the editor removed on purpose (its ending paragraph deleted,
       // or that deletion accepted) is one the repack must be told about, or it
       // refuses the smaller package.
+      const fullDiagnostics: SaveDiagnostic[] = [];
+      const collectFullDiagnostic = (diagnostic: SaveDiagnostic) =>
+        fullDiagnostics.push(diagnostic);
       const repackFull = () =>
         repackWithEditorSectionRemovals({
           state,
           document: updatedDoc,
           repack: () =>
             repackDocx(updatedDoc, {
-              onDiagnostic: serializationOptions?.onDiagnostic,
+              onDiagnostic: collectFullDiagnostic,
             }),
         });
 
@@ -1664,7 +1668,7 @@ export function useDocxEditor(
         fullBuffer = baselineBuffer
           ? await repackFull()
           : await createDocx(updatedDoc, {
-              onDiagnostic: serializationOptions?.onDiagnostic,
+              onDiagnostic: collectFullDiagnostic,
             });
         buffer = fullBuffer;
         path = "full-repack";
@@ -1694,6 +1698,8 @@ export function useDocxEditor(
         }
       }
 
+      for (const diagnostic of fullDiagnostics)
+        serializationOptions?.onDiagnostic?.(diagnostic);
       serializationOptions?.onSerializationPath?.(path);
       return { buffer, path, document: updatedDoc };
     } catch (error) {

@@ -1,3 +1,5 @@
+import { panic } from "better-result";
+
 import { ZipArchive } from "@stll/docx-core/zip";
 
 import { parseDocx } from "../packages/core/src/docx/parser";
@@ -145,4 +147,35 @@ export const serializationDiagnosticSource = async (): Promise<Document> => {
     styles: [{ type: "paragraph", styleId: "Added", name: "Added" }],
   };
   return document;
+};
+
+/** A parsed header whose stale source evidence is diagnosed by either writer. */
+export const serializationTripwireDiagnosticSource = async (
+  provenance: "matched" | "stale" = "stale",
+): Promise<Document> => {
+  const document = await serializationDiagnosticSource();
+  const zip = await ZipArchive.read(
+    document.originalBuffer ?? panic("Expected source package"),
+  );
+  const word = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+  zip.set(
+    "word/_rels/document.xml.rels",
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId44" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/></Relationships>',
+  );
+  zip.set(
+    "word/header1.xml",
+    `<w:hdr xmlns:w="${word}"><w:p><w:r><w:t>Header</w:t></w:r></w:p></w:hdr>`,
+  );
+  zip.set(
+    "word/document.xml",
+    `<w:document xmlns:w="${word}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:body><w:p w14:paraId="12345678"><w:r><w:t>Body</w:t></w:r></w:p><w:sectPr><w:headerReference w:type="default" r:id="rId44"/></w:sectPr></w:body></w:document>`,
+  );
+  const parsed = await parseDocx((await zip.generate()).slice().buffer, {
+    preloadFonts: false,
+  });
+  const header = parsed.package.headers?.get("rId44");
+  if (!header) panic("Expected parsed header");
+  if (provenance === "stale")
+    header.verbatimFingerprint = "stale-source-fingerprint";
+  return parsed;
 };

@@ -92,6 +92,7 @@ import {
 import { withHostCommentThreads } from "@stll/folio-core/docx/hostCommentThreads";
 import { normalizeBaseDirection } from "@stll/folio-core/docx/normalizeBaseDirection";
 import { getCachedNumberingMap } from "@stll/folio-core/docx/numberingParser";
+import type { SaveDiagnostic } from "@stll/folio-core/docx/saveDiagnostics";
 import { findPageNumberAtEditorPosition } from "@stll/folio-core/layout-engine/pmPageIndex";
 import type { Layout } from "@stll/folio-core/layout-engine/types";
 import {
@@ -3889,18 +3890,21 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             // A section the editor removed on purpose (its ending paragraph
             // deleted, or that deletion accepted) is one the repack must be told
             // about, or it refuses the smaller package.
+            const fullDiagnostics: SaveDiagnostic[] = [];
+            const collectFullDiagnostic = (diagnostic: SaveDiagnostic) =>
+              fullDiagnostics.push(diagnostic);
             const repackFull = async (): Promise<ArrayBuffer> => {
               if (!baselineBuffer) {
                 const { createDocx } =
                   await import("@stll/folio-core/docx/rezip");
                 return createDocx(repackSourceDoc, {
-                  onDiagnostic: options?.onDiagnostic,
+                  onDiagnostic: collectFullDiagnostic,
                 });
               }
               const repackDocx = await loadRepackDocx();
               const repack = () =>
                 repackDocx(repackSourceDoc, {
-                  onDiagnostic: options?.onDiagnostic,
+                  onDiagnostic: collectFullDiagnostic,
                 });
               return editorState
                 ? repackWithEditorSectionRemovals({
@@ -3944,6 +3948,8 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
               }
             }
 
+            for (const diagnostic of fullDiagnostics)
+              options?.onDiagnostic?.(diagnostic);
             options?.onSerializationPath?.(path);
             // Clear change tracker after successful save
             if (

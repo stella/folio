@@ -6,13 +6,14 @@ import { ZipArchive } from "@stll/docx-core/zip";
 import {
   serializationDiagnosticSource,
   serializationPathSource,
+  serializationTripwireDiagnosticSource,
 } from "../../../../test/serializationPaths";
 import type { LayoutInstrumentation } from "../layout-engine/layoutInstrumentation";
 import type { HeaderFooter, Paragraph } from "../types/document";
 import type { SelectiveSaveDecline } from "../types/selectiveSaveDecline";
 import { parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
-import { createDocx } from "./rezip";
+import { createDocx, repackDocx } from "./rezip";
 import type { SaveDiagnostic } from "./saveDiagnostics";
 import { attemptSelectiveSave } from "./selectiveSave";
 
@@ -264,3 +265,37 @@ test("a host diagnostic exception cannot become a package fallback", async () =>
   ).rejects.toThrow("Host diagnostic failed");
   expect(declines).toEqual([]);
 });
+
+test.each(["matched", "stale"] as const)(
+  "a %s header source succeeds selectively before the full probe",
+  async (provenance) => {
+    const document = await serializationTripwireDiagnosticSource(provenance);
+    const bytes = document.originalBuffer ?? panic("Expected source package");
+    const selectiveDiagnostics: SaveDiagnostic[] = [];
+    const fullDiagnostics: SaveDiagnostic[] = [];
+    const declines: SelectiveSaveDecline[] = [];
+    expect(
+      await attemptSelectiveSave(document, bytes, {
+        changedParaIds: new Set(),
+        structuralChange: false,
+        hasUntrackedChanges: false,
+        onDiagnostic: (diagnostic) => selectiveDiagnostics.push(diagnostic),
+        onSelectiveDecline: (decline) => declines.push(decline),
+      }),
+    ).not.toBeNull();
+    expect(
+      (
+        await repackDocx(document, {
+          onDiagnostic: (diagnostic) => fullDiagnostics.push(diagnostic),
+        })
+      ).byteLength,
+    ).toBeGreaterThan(0);
+    expect(declines).toEqual([]);
+    expect(selectiveDiagnostics).toEqual(
+      provenance === "matched"
+        ? []
+        : [{ type: "sourceReplayMismatch", part: "word/header1.xml" }],
+    );
+    expect(fullDiagnostics).toEqual(selectiveDiagnostics);
+  },
+);
