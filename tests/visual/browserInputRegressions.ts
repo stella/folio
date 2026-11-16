@@ -1401,12 +1401,12 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_0F194A9C3F728F97 = {
   },
 } satisfies CanonicalRegression;
 
-/** A default-editor finding of #2596 (mixed-lists), replayed in the canonical session. */
-export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_4CFD6DADC63EEB36 = {
+/** The generic-HTML variant retained independently of the recorded Google Docs paste. */
+export const CANONICAL_MIXED_LIST_GENERIC_HTML_VARIANT = {
   authority: "canonical",
   seed: 1794465004,
   path: "10",
-  fingerprint: "canonical-4cfd6dadc63eeb36",
+  fingerprint: "canonical-mixed-list-generic-html-variant",
   trace: {
     shape: "mixed-lists",
     actions: [
@@ -1415,6 +1415,485 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_4CFD6DADC63EEB36 = {
       { kind: "pasteHtml", ...BROWSER_PASTE_PAYLOADS.pasteHtml },
       { kind: "pasteTable", ...BROWSER_PASTE_PAYLOADS.pasteTable },
       { kind: "pasteTable", ...BROWSER_PASTE_PAYLOADS.pasteTable },
+    ],
+  },
+} satisfies CanonicalRegression;
+
+/** Exact saved #2300 trace: seed 29, path 1; payloads stay as recorded. */
+export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_4C859FEE8C19BFB9 = {
+  authority: "canonical",
+  seed: 29,
+  path: "1",
+  fingerprint: "canonical-4c859fee8c19bfb9",
+  trace: {
+    shape: "single-decimal-list",
+    actions: [
+      {
+        kind: "historyBurst",
+        keys: ["redo", "undo"],
+      },
+      {
+        kind: "selectionDrag",
+        target: "list",
+      },
+      {
+        kind: "pasteTable",
+        plain: "Left\tRight",
+        html: "<table><tbody><tr><td>Left</td><td>Right</td></tr></tbody></table>",
+      },
+      {
+        kind: "delete",
+      },
+      {
+        kind: "redo",
+      },
+      {
+        kind: "pasteHtml",
+        plain: "First bold\nSecond",
+        html: "<p>First <strong>bold</strong></p><p>Second</p>",
+      },
+    ],
+  },
+} satisfies CanonicalRegression;
+
+/** Exact saved #2300 trace: seed 431, path 9; payloads stay as recorded. */
+export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_E548E128F503AAE1 = {
+  authority: "canonical",
+  seed: 431,
+  path: "9",
+  fingerprint: "canonical-e548e128f503aae1",
+  trace: {
+    shape: "single-decimal-list",
+    actions: [
+      {
+        kind: "selectionDrag",
+        target: "list",
+      },
+      {
+        kind: "pasteListHtml",
+        plain: "Alpha\nNested\nOmega",
+        html: "<ul><li>Alpha<ul><li>Nested</li></ul></li><li>Omega</li></ul>",
+      },
+      {
+        kind: "imeReplacement",
+        updates: ["buyer", "buyer shall"],
+        completion: "cancel",
+      },
+      {
+        kind: "pasteTable",
+        plain: "Left\tRight",
+        html: "<table><tbody><tr><td>Left</td><td>Right</td></tr></tbody></table>",
+      },
+      {
+        kind: "pasteListHtml",
+        plain: "Alpha\nNested\nOmega",
+        html: "<ul><li>Alpha<ul><li>Nested</li></ul></li><li>Omega</li></ul>",
+      },
+      {
+        kind: "redo",
+      },
+    ],
+  },
+} satisfies CanonicalRegression;
+
+/** Exact saved #2300 trace: seed 1794206220, path 0; payloads stay as recorded. */
+export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_7452DA3E69BEBC60 = {
+  authority: "canonical",
+  seed: 1794206220,
+  path: "0",
+  fingerprint: "canonical-7452da3e69bebc60",
+  trace: {
+    shape: "rtl-cjk",
+    actions: [
+      {
+        kind: "pasteMultiBlock",
+        plain: "Title\nBody",
+        html: "<p>Title</p><p>Body</p>",
+      },
+      {
+        kind: "redo",
+      },
+      {
+        kind: "selectAll",
+      },
+      {
+        kind: "historyBurst",
+        keys: ["redo", "undo", "redo", "redo"],
+      },
+      {
+        kind: "imeReplacement",
+        updates: ["é shall café", "café 👩🏽‍⚖️ 👩🏽‍⚖️", "invoice", "buyer"],
+        completion: "cancel",
+      },
+      {
+        kind: "imeReplacement",
+        updates: ["invoice invoice", "東京 مرحبا buyer"],
+        completion: "commit",
+      },
+    ],
+  },
+} satisfies CanonicalRegression;
+
+/** Exact saved #2300 trace: seed 1794292116, path 8; payloads stay as recorded. */
+export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_85546B817397E3F7 = {
+  authority: "canonical",
+  seed: 1794292116,
+  path: "8",
+  fingerprint: "canonical-85546b817397e3f7",
+  trace: {
+    shape: "invisible-markers",
+    actions: [
+      {
+        kind: "pasteWordHtml",
+        plain: "Opening\nClosing",
+        html: '<html xmlns:o="urn:schemas-microsoft-com:office:office"><body><!--StartFragment--><p class="MsoNormal" style="margin:0;font-size:11pt">Opening<o:p></o:p></p><p class="MsoNormal" style="margin-top:0">Closing<o:p>&nbsp;</o:p></p><!--EndFragment--></body></html>',
+      },
+      {
+        kind: "selectAll",
+      },
+      {
+        kind: "pastePlain",
+        plain: "invoice 👩🏽‍⚖️",
+        html: "",
+      },
+      {
+        kind: "backspace",
+      },
+    ],
+  },
+} satisfies CanonicalRegression;
+
+/** Exact saved #2300 trace: seed 1794378562, path 6; payloads stay as recorded. */
+export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_ECA480EB2F57240C = {
+  authority: "canonical",
+  seed: 1794378562,
+  path: "6",
+  fingerprint: "canonical-eca480eb2f57240c",
+  trace: {
+    shape: "rtl-cjk",
+    actions: [
+      {
+        kind: "pasteMultiBlock",
+        plain: "Title\nBody",
+        html: "<p>Title</p><p>Body</p>",
+      },
+      {
+        kind: "pasteMultiBlock",
+        plain: "Title\nBody",
+        html: "<p>Title</p><p>Body</p>",
+      },
+      {
+        kind: "pasteHtml",
+        plain: "First bold\nSecond",
+        html: '<meta charset="utf-8"><b id="docs-internal-guid-folio"><p dir="ltr" style="line-height:1.15;margin:0"><span style="font-size:11pt;font-weight:700;white-space:pre-wrap">First bold</span></p><p><span style="white-space:pre-wrap">Second</span></p></b>',
+      },
+      {
+        kind: "pastePlain",
+        plain: "東京 shall buyer 👩🏽‍⚖️",
+        html: "",
+      },
+      {
+        kind: "backspace",
+      },
+    ],
+  },
+} satisfies CanonicalRegression;
+
+/** Exact saved #2300 trace: seed 1794551355, path 12; payloads stay as recorded. */
+export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_DAD129C5D08899AF = {
+  authority: "canonical",
+  seed: 1794551355,
+  path: "12",
+  fingerprint: "canonical-dad129c5d08899af",
+  trace: {
+    shape: "rtl-cjk",
+    actions: [
+      {
+        kind: "undo",
+      },
+      {
+        kind: "pasteHtml",
+        plain: "First bold\nSecond",
+        html: "<p>First <strong>bold</strong></p><p>Second</p>",
+      },
+      {
+        kind: "typing",
+        text: "مرحبا é valid",
+      },
+      {
+        kind: "selectionDrag",
+        target: "paragraphs",
+      },
+      {
+        kind: "pasteHtml",
+        plain: "First bold\nSecond",
+        html: '<meta charset="utf-8"><b id="docs-internal-guid-folio"><p dir="ltr" style="line-height:1.15;margin:0"><span style="font-size:11pt;font-weight:700;white-space:pre-wrap">First bold</span></p><p><span style="white-space:pre-wrap">Second</span></p></b>',
+      },
+      {
+        kind: "typing",
+        text: "東京 alpha valid",
+      },
+    ],
+  },
+} satisfies CanonicalRegression;
+
+/** Exact saved #2300 trace: seed 83, path 9:4:2:2:2; payloads stay as recorded. */
+export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_F004C1C39C848FBC = {
+  authority: "canonical",
+  seed: 83,
+  path: "9:4:2:2:2",
+  fingerprint: "canonical-f004c1c39c848fbc",
+  trace: {
+    shape: "notes",
+    actions: [
+      {
+        kind: "pasteMultiBlock",
+        plain: "Title\nBody",
+        html: "<p>Title</p><p>Body</p>",
+      },
+      {
+        kind: "selectionDrag",
+        target: "paragraphs",
+      },
+      {
+        kind: "imeReplacement",
+        updates: ["alpha"],
+        completion: "commit",
+      },
+    ],
+  },
+} satisfies CanonicalRegression;
+
+/** Exact saved #2300 trace: seed 1794637615, path 0:0:2; payloads stay as recorded. */
+export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_A870AB307548FC1D = {
+  authority: "canonical",
+  seed: 1794637615,
+  path: "0:0:2",
+  fingerprint: "canonical-a870ab307548fc1d",
+  trace: {
+    shape: "tables",
+    actions: [
+      {
+        kind: "selectionDrag",
+        target: "table",
+      },
+      {
+        kind: "pasteHtml",
+        plain: "First bold\nSecond",
+        html: "<p>First <strong>bold</strong></p><p>Second</p>",
+      },
+      {
+        kind: "backspace",
+      },
+      {
+        kind: "redo",
+      },
+    ],
+  },
+} satisfies CanonicalRegression;
+
+/** Exact saved #2300 trace: seed 1794724016, path 6; payloads stay as recorded. */
+export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_83A762D815C32FC7 = {
+  authority: "canonical",
+  seed: 1794724016,
+  path: "6",
+  fingerprint: "canonical-83a762d815c32fc7",
+  trace: {
+    shape: "notes",
+    actions: [
+      {
+        kind: "pasteTable",
+        plain: "Left\tRight",
+        html: "<table><tbody><tr><td>Left</td><td>Right</td></tr></tbody></table>",
+      },
+      {
+        kind: "imeReplacement",
+        updates: ["shall", "valid", "shall shall"],
+        completion: "cancel",
+      },
+      {
+        kind: "typing",
+        text: "👩🏽‍⚖️ 東京",
+      },
+      {
+        kind: "selectAll",
+      },
+      {
+        kind: "pasteHtml",
+        plain: "First bold\nSecond",
+        html: "<p>First <strong>bold</strong></p><p>Second</p>",
+      },
+      {
+        kind: "enter",
+      },
+    ],
+  },
+} satisfies CanonicalRegression;
+
+/** Exact saved #2300 trace: seed 1794724016, path 6:5; payloads stay as recorded. */
+export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_E92BCE340D8EB32B = {
+  authority: "canonical",
+  seed: 1794724016,
+  path: "6:5",
+  fingerprint: "canonical-e92bce340d8eb32b",
+  trace: {
+    shape: "notes",
+    actions: [
+      {
+        kind: "pasteTable",
+        plain: "Left\tRight",
+        html: "<table><tbody><tr><td>Left</td><td>Right</td></tr></tbody></table>",
+      },
+      {
+        kind: "selectAll",
+      },
+      {
+        kind: "pasteHtml",
+        plain: "First bold\nSecond",
+        html: "<p>First <strong>bold</strong></p><p>Second</p>",
+      },
+      {
+        kind: "enter",
+      },
+    ],
+  },
+} satisfies CanonicalRegression;
+
+/** Exact saved #2302 trace: seed 1793914965, path 7; payloads stay as recorded. */
+export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_DA47B019908DFA2E = {
+  authority: "canonical",
+  seed: 1793914965,
+  path: "7",
+  fingerprint: "canonical-da47b019908dfa2e",
+  trace: {
+    shape: "single-bullet-list",
+    actions: [
+      {
+        kind: "delete",
+      },
+      {
+        kind: "redo",
+      },
+      {
+        kind: "imeReplacement",
+        updates: ["shall café", "مرحبا"],
+        completion: "commit",
+      },
+      {
+        kind: "delete",
+      },
+      {
+        kind: "pasteListHtml",
+        plain: "Alpha\nNested\nOmega",
+        html: "<ul><li>Alpha<ul><li>Nested</li></ul></li><li>Omega</li></ul>",
+      },
+      {
+        kind: "pasteHtml",
+        plain: "First bold\nSecond",
+        html: '<meta charset="utf-8"><b id="docs-internal-guid-folio"><p dir="ltr" style="line-height:1.15;margin:0"><span style="font-size:11pt;font-weight:700;white-space:pre-wrap">First bold</span></p><p><span style="white-space:pre-wrap">Second</span></p></b>',
+      },
+    ],
+  },
+} satisfies CanonicalRegression;
+
+/** Exact saved #2302 trace: seed 1794471204, path 14; payloads stay as recorded. */
+export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_CA0B65D37F32ED0A = {
+  authority: "canonical",
+  seed: 1794471204,
+  path: "14",
+  fingerprint: "canonical-ca0b65d37f32ed0a",
+  trace: {
+    shape: "image",
+    actions: [
+      {
+        kind: "selectAll",
+      },
+      {
+        kind: "imeReplacement",
+        updates: ["مرحبا 東京 alpha", "東京 valid valid", "buyer shall buyer"],
+        completion: "cancel",
+      },
+      {
+        kind: "backspace",
+      },
+      {
+        kind: "pasteHtml",
+        plain: "First bold\nSecond",
+        html: "<p>First <strong>bold</strong></p><p>Second</p>",
+      },
+    ],
+  },
+} satisfies CanonicalRegression;
+
+/** Exact saved #2302 trace: seed 1794637615, path 0; payloads stay as recorded. */
+export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_4AB7DCA19B12D16D = {
+  authority: "canonical",
+  seed: 1794637615,
+  path: "0",
+  fingerprint: "canonical-4ab7dca19b12d16d",
+  trace: {
+    shape: "comments",
+    actions: [
+      {
+        kind: "selectAll",
+      },
+      {
+        kind: "pastePlain",
+        plain: "shall 👩🏽‍⚖️ é 👩🏽‍⚖️",
+        html: "",
+      },
+      {
+        kind: "pasteTable",
+        plain: "Left\tRight",
+        html: "<table><tbody><tr><td>Left</td><td>Right</td></tr></tbody></table>",
+      },
+      {
+        kind: "pasteHtml",
+        plain: "First bold\nSecond",
+        html: '<meta charset="utf-8"><b id="docs-internal-guid-folio"><p dir="ltr" style="line-height:1.15;margin:0"><span style="font-size:11pt;font-weight:700;white-space:pre-wrap">First bold</span></p><p><span style="white-space:pre-wrap">Second</span></p></b>',
+      },
+      {
+        kind: "pasteTable",
+        plain: "Left\tRight",
+        html: "<table><tbody><tr><td>Left</td><td>Right</td></tr></tbody></table>",
+      },
+    ],
+  },
+} satisfies CanonicalRegression;
+
+/** Exact saved #2596 trace: seed 1794465004, path 10; payloads stay as recorded. */
+export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_4CFD6DADC63EEB36 = {
+  authority: "canonical",
+  seed: 1794465004,
+  path: "10",
+  fingerprint: "canonical-4cfd6dadc63eeb36",
+  trace: {
+    shape: "mixed-lists",
+    actions: [
+      {
+        kind: "selectionDrag",
+        target: "list",
+      },
+      {
+        kind: "pasteWordHtml",
+        plain: "Opening\nClosing",
+        html: '<html xmlns:o="urn:schemas-microsoft-com:office:office"><body><!--StartFragment--><p class="MsoNormal" style="margin:0;font-size:11pt">Opening<o:p></o:p></p><p class="MsoNormal" style="margin-top:0">Closing<o:p>&nbsp;</o:p></p><!--EndFragment--></body></html>',
+      },
+      {
+        kind: "pasteHtml",
+        plain: "First bold\nSecond",
+        html: '<meta charset="utf-8"><b id="docs-internal-guid-folio"><p dir="ltr" style="line-height:1.15;margin:0"><span style="font-size:11pt;font-weight:700;white-space:pre-wrap">First bold</span></p><p><span style="white-space:pre-wrap">Second</span></p></b>',
+      },
+      {
+        kind: "pasteTable",
+        plain: "Left\tRight",
+        html: "<table><tbody><tr><td>Left</td><td>Right</td></tr></tbody></table>",
+      },
+      {
+        kind: "pasteTable",
+        plain: "Left\tRight",
+        html: "<table><tbody><tr><td>Left</td><td>Right</td></tr></tbody></table>",
+      },
     ],
   },
 } satisfies CanonicalRegression;
@@ -1520,13 +1999,12 @@ const CANONICAL_WORD_DELETION_TRACES = (
 ).map((entry, index) => {
   const [shape, keys] = entry;
   const designedDifference = entry.length === 3 ? entry[2] : undefined;
-  return {
+  const regression = {
     authority: "canonical",
     seed: 0,
     path: `word-deletion-${shape}-${String(index)}`,
     fingerprint: "canonical-word-deletion",
     comparesWithDefaultEditor: true,
-    ...(designedDifference === undefined ? {} : { designedDifference }),
     trace: { shape, actions: [{ kind: "keys", keys: [...keys] }] },
   } satisfies {
     authority: "canonical";
@@ -1537,6 +2015,9 @@ const CANONICAL_WORD_DELETION_TRACES = (
     designedDifference?: CanonicalDesignedDifference;
     trace: BrowserInputTrace;
   };
+  return designedDifference === undefined
+    ? regression
+    : Object.assign(regression, { designedDifference });
 });
 
 /** The table was deleted before this drag; the trace has no next edit. */
@@ -1628,5 +2109,19 @@ export const BROWSER_INPUT_REGRESSIONS = [
   CANONICAL_REPLAY_OF_DEFAULT_FINDING_5736502082EB3A9B,
   CANONICAL_REPLAY_OF_DEFAULT_FINDING_B3A7D52FAF40115D,
   CANONICAL_REPLAY_OF_DEFAULT_FINDING_0F194A9C3F728F97,
+  CANONICAL_REPLAY_OF_DEFAULT_FINDING_4C859FEE8C19BFB9,
+  CANONICAL_REPLAY_OF_DEFAULT_FINDING_E548E128F503AAE1,
+  CANONICAL_REPLAY_OF_DEFAULT_FINDING_7452DA3E69BEBC60,
+  CANONICAL_REPLAY_OF_DEFAULT_FINDING_85546B817397E3F7,
+  CANONICAL_REPLAY_OF_DEFAULT_FINDING_ECA480EB2F57240C,
+  CANONICAL_REPLAY_OF_DEFAULT_FINDING_DAD129C5D08899AF,
+  CANONICAL_REPLAY_OF_DEFAULT_FINDING_F004C1C39C848FBC,
+  CANONICAL_REPLAY_OF_DEFAULT_FINDING_A870AB307548FC1D,
+  CANONICAL_REPLAY_OF_DEFAULT_FINDING_83A762D815C32FC7,
+  CANONICAL_REPLAY_OF_DEFAULT_FINDING_E92BCE340D8EB32B,
+  CANONICAL_REPLAY_OF_DEFAULT_FINDING_DA47B019908DFA2E,
+  CANONICAL_REPLAY_OF_DEFAULT_FINDING_CA0B65D37F32ED0A,
+  CANONICAL_REPLAY_OF_DEFAULT_FINDING_4AB7DCA19B12D16D,
+  CANONICAL_MIXED_LIST_GENERIC_HTML_VARIANT,
   CANONICAL_REPLAY_OF_DEFAULT_FINDING_4CFD6DADC63EEB36,
 ];
