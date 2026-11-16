@@ -73,7 +73,11 @@ import {
   getDocumentSourceBaseline,
 } from "../docx/headerFooterVerbatim";
 import { ListNormalizationCache } from "../docx/listModelNormalization";
-import { cloneDocumentWithParagraphPropertySources } from "../docx/paragraphPropertySource";
+import {
+  cloneDocumentWithParagraphPropertySources,
+  getProseParagraphPropertySourceToken,
+  markParagraphPropertySourceTransfers,
+} from "../docx/paragraphPropertySource";
 import { visitInlineContentSlots } from "../docx/paragraphTraversal";
 import { isCellMergeContinuation } from "../docx/tableParser";
 import { calculateRowSpans } from "../docx/verticalMergeProjection";
@@ -3603,6 +3607,24 @@ class CanonicalSession {
     const transaction = state.tr;
     const before = state.doc;
     const after = projected.value.doc;
+    const retainedTokens = new Set<string>();
+    const retainPropertyOwner = (node: PMNode): boolean => {
+      if (node.type.name !== "paragraph") return true;
+      const id = node.attrs["paraId"];
+      const token = getProseParagraphPropertySourceToken(node);
+      const owner =
+        typeof id === "string" ? previous.value.paragraph(id) : undefined;
+      if (
+        typeof token === "string" &&
+        owner !== undefined &&
+        getProseParagraphPropertySourceToken(owner.node) === token
+      )
+        retainedTokens.add(token);
+      return false;
+    };
+    const retainPropertyOwnersIn = (node: PMNode): void => {
+      if (retainPropertyOwner(node)) node.descendants(retainPropertyOwner);
+    };
     let prefix = 0;
     let from = 0;
     while (
@@ -3630,13 +3652,25 @@ class CanonicalSession {
       for (let index = prefix; index < newEnd; index += 1)
         replacement.push(after.child(index));
       transaction.replaceWith(from, to, Fragment.fromArray(replacement));
+      replacement.forEach(retainPropertyOwnersIn);
     }
-    if (!transaction.doc.eq(projected.value.doc))
+    if (!transaction.doc.eq(projected.value.doc)) {
       transaction.replaceWith(
         0,
         transaction.doc.content.size,
         projected.value.doc.content,
       );
+      after.forEach(retainPropertyOwnersIn);
+    }
+    // Replacing a projected block does not replace the existing owners of
+    // its paragraphs. New paragraphs and copies claim no previous token.
+    markParagraphPropertySourceTransfers(
+      transaction,
+      [...retainedTokens].map((selectedToken) => ({
+        displacedToken: null,
+        selectedToken,
+      })),
+    );
     // The document node's own attributes hold what the last section starts with.
     for (const [name, value] of Object.entries(projected.value.doc.attrs)) {
       if (transaction.doc.attrs[name] !== value) {

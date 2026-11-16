@@ -668,3 +668,56 @@ describe("ParaIdAllocatorExtension", () => {
     expect(collectSourceTokens(next)).toEqual([sourceToken(1)]);
   });
 });
+
+test("only authored empty table cells acquire paragraph ids at load and after edits", () => {
+  const tableSchema = new Schema({
+    nodes: schema.spec.nodes.append({
+      table: { group: "block", content: "tableRow+", tableRole: "table" },
+      tableRow: { content: "tableCell+", tableRole: "row" },
+      tableCell: {
+        content: "paragraph+",
+        tableRole: "cell",
+        attrs: { _omittedGridSlot: { default: null } },
+      },
+    }),
+    marks: schema.spec.marks,
+  });
+  const original = tableSchema.node("doc", null, [
+    tableSchema.node("table", null, [
+      tableSchema.node(
+        "tableRow",
+        null,
+        [null, "before", "after", false].map((slot) =>
+          tableSchema.node("tableCell", { _omittedGridSlot: slot }, [
+            tableSchema.node("paragraph"),
+          ]),
+        ),
+      ),
+    ]),
+  ]);
+  const assertOwned = (doc: typeof original) => {
+    const row = doc.firstChild?.firstChild;
+    expect(row?.childCount).toBe(4);
+    const ids: unknown[] = [];
+    row?.forEach((cell, _offset, index) => {
+      const paragraph = cell.firstChild;
+      expect(paragraph?.attrs[PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR]).toBeNull();
+      if (index === 1 || index === 2)
+        expect(paragraph?.attrs["paraId"]).toBeNull();
+      else {
+        expect(typeof paragraph?.attrs["paraId"]).toBe("string");
+        ids.push(paragraph?.attrs["paraId"]);
+      }
+    });
+    expect(new Set(ids).size).toBe(2);
+  };
+  assertOwned(ensureParaIdsInDoc(original));
+  const tablePlugin = ParaIdAllocatorExtension()
+    .onSchemaReady({ schema: tableSchema })
+    .plugins?.at(0);
+  expect(tablePlugin).toBeDefined();
+  if (!tablePlugin) return;
+  const state = EditorState.create({ doc: original, plugins: [tablePlugin] });
+  assertOwned(ensureParaIdsInState(state).doc);
+  assertOwned(state.applyTransaction(state.tr.insertText("x", 4)).state.doc);
+});
