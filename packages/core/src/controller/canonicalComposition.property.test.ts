@@ -41,6 +41,7 @@ import { createCanonicalComposition } from "./canonicalComposition";
 import {
   CANONICAL_COMPOSITION_INPUT_TYPES,
   createCanonicalInputBoundary,
+  WORD_AND_LINE_DELETIONS,
 } from "./canonicalInput";
 
 setDefaultTimeout(propertyTestTimeout(60_000));
@@ -520,58 +521,74 @@ test("ordinary deletion recovers a missing native compositionend as a new gestur
   }
 });
 
-test("word, line and cut deletion remain explicit refusals after missing-end recovery", () => {
+test("measured deletions and refusals preserve separate gestures after missing-end recovery", () => {
   jest.useFakeTimers();
   try {
     assertProperty(
       fc.property(fc.constantFrom("契約", "😀", "مرحبا", "é"), (text) => {
-        for (const inputType of [
-          "deleteWordBackward",
-          "deleteWordForward",
-          "deleteSoftLineBackward",
-          "deleteSoftLineForward",
-          "deleteByCut",
-        ]) {
-          const rig = createLateFinalRig();
-          try {
-            const original = rig.session.document;
-            rig.view.dom.dispatchEvent(
-              new Event("compositionstart", { bubbles: true }),
-            );
-            rig.view.dispatch(
-              rig.view.state.tr
-                .insertText(text, 1, 6)
-                .setMeta("composition", 1),
-            );
-            const deletion = nativeDeletion({
-              view: rig.view,
-              inputType,
-              type: "selected",
-              from: 1,
-              to: 1 + text.length,
-            });
-            rig.view.dom.dispatchEvent(deletion);
-            jest.advanceTimersByTime(26);
-            expect(deletion.defaultPrevented).toBe(true);
-            expect(rig.view.composing).toBe(false);
-            expect(rig.boundary.isComposing).toBe(false);
-            expect(rig.view.state.doc.textContent).toBe(text);
-            expect(rig.refusals.map(({ message }) => message)).toEqual([
-              `Input ${inputType} is unavailable in this session.`,
-            ]);
-            rig.history("undo");
-            expect(rig.session.document).toEqual(original);
-            expect(rig.session.canUndo).toBe(false);
-            rig.history("redo");
-            expect(rig.view.state.doc.textContent).toBe(text);
-          } finally {
-            rig.destroy();
+        for (const inputType of [...WORD_AND_LINE_DELETIONS, "deleteByCut"]) {
+          for (const target of ["selected", "withoutTarget"] as const) {
+            const rig = createLateFinalRig();
+            try {
+              const original = rig.session.document;
+              rig.view.dom.dispatchEvent(
+                new Event("compositionstart", { bubbles: true }),
+              );
+              rig.view.dispatch(
+                rig.view.state.tr
+                  .insertText(text, 1, 6)
+                  .setMeta("composition", 1),
+              );
+              const deletion = nativeDeletion(
+                target === "withoutTarget"
+                  ? { view: rig.view, inputType, type: target }
+                  : {
+                      view: rig.view,
+                      inputType,
+                      type: target,
+                      from: 1,
+                      to: 1 + text.length,
+                    },
+              );
+              rig.view.dom.dispatchEvent(deletion);
+              jest.advanceTimersByTime(26);
+              expect(deletion.defaultPrevented).toBe(true);
+              expect(rig.view.composing).toBe(false);
+              expect(rig.boundary.isComposing).toBe(false);
+              const applied =
+                inputType !== "deleteByCut" && target === "selected";
+              expect(rig.view.state.doc.textContent).toBe(applied ? "" : text);
+              expect(rig.refusals.map(({ message }) => message)).toEqual(
+                applied
+                  ? []
+                  : [
+                      inputType === "deleteByCut"
+                        ? `Input ${inputType} is unavailable in this session.`
+                        : "The browser named no range for this deletion.",
+                    ],
+              );
+              if (applied) {
+                rig.history("undo");
+                expect(rig.view.state.doc.textContent).toBe(text);
+              }
+              rig.history("undo");
+              expect(rig.session.document).toEqual(original);
+              expect(rig.session.canUndo).toBe(false);
+              rig.history("redo");
+              expect(rig.view.state.doc.textContent).toBe(text);
+              if (applied) {
+                rig.history("redo");
+                expect(rig.view.state.doc.textContent).toBe("");
+              }
+            } finally {
+              rig.destroy();
+            }
           }
         }
       }),
       {
         numRuns: 10,
-        id: "word, line and cut deletion remain explicit refusals after missing-end recovery",
+        id: "measured deletions and refusals preserve separate gestures after missing-end recovery",
       },
     );
   } finally {

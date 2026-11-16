@@ -18,7 +18,7 @@ import type { CanonicalRefusalGround } from "../types/canonicalCapabilities";
 import { createCanonicalComposition } from "./canonicalComposition";
 
 /** Deletions whose extent the browser measures: by word or by line. */
-const WORD_AND_LINE_DELETIONS: ReadonlySet<string> = new Set([
+export const WORD_AND_LINE_DELETIONS: ReadonlySet<string> = new Set([
   "deleteWordBackward",
   "deleteWordForward",
   "deleteSoftLineBackward",
