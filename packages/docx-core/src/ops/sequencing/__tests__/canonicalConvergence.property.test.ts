@@ -1912,6 +1912,48 @@ const PINNED: readonly Scenario[] = [
 
 describe("canonical sequencing", () => {
   test(
+    "a restored revision end preserves concurrent typing outside the revision",
+    async () => {
+      // Original saved flow -1867636773: exercise the real compiler, wire and optimistic clients.
+      const scenario = [
+        3,
+        [
+          {
+            type: "edit",
+            peer: 1,
+            seed: { kind: "type", a: 21, b: 36297, suggest: true, focus: true },
+          },
+          { type: "deliver", seed: 0 },
+          { type: "submit", peer: 0 },
+          { type: "deliver", seed: 0 },
+          { type: "deliver", seed: 0 },
+          {
+            type: "edit",
+            peer: 1,
+            seed: { kind: "erase", a: 24, b: 0, suggest: false, focus: true },
+          },
+          { type: "undo", peer: 1 },
+          {
+            type: "edit",
+            peer: 2,
+            seed: { kind: "type", a: 4, b: 0, suggest: false, focus: true },
+          },
+          {
+            type: "edit",
+            peer: 0,
+            seed: { kind: "type", a: 0, b: 0, suggest: false, focus: true },
+          },
+        ],
+      ] as const satisfies Scenario;
+      await fc.assert(
+        convergence(noCounts(), fc.constant(scenario)),
+        propertyConfig({ numRuns: 1 }),
+      );
+    },
+    propertyTestTimeout(30_000),
+  );
+
+  test(
     "a source-seam undo retains its scoped refusal beside tracked typing",
     async () => {
       // The original saved flow is retained because its old generator path no longer replays.
