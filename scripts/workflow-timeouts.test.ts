@@ -402,6 +402,38 @@ test("the timing refresh rewrites the measured durations", () => {
   expect(refresh).toContain(`--workflow-durations ${WORKFLOW_DURATIONS_FILE}`);
 });
 
+const NIGHTLY_SETUP_REPORT_MINUTES = 7;
+
+test("the nightly job covers every sequential phase cap plus setup and reporting", () => {
+  const workflow = workflowsByFile().get(
+    ".github/workflows/nightly-browser-input-fuzzer.yml",
+  );
+  const jobs = isRecord(workflow) ? workflow["jobs"] : undefined;
+  const job = isRecord(jobs) ? jobs["browser-input-fuzzer"] : undefined;
+  if (!isRecord(job) || !Array.isArray(job["steps"]))
+    panic("The nightly browser job must declare its sequential steps.");
+  const jobMinutes = job["timeout-minutes"];
+  if (typeof jobMinutes !== "number")
+    panic("The nightly browser job requires a numeric timeout.");
+  const phases = job["steps"].flatMap((definition) => {
+    if (
+      !isRecord(definition) ||
+      typeof definition["timeout-minutes"] !== "number"
+    )
+      return [];
+    const name = definition["name"];
+    if (typeof name !== "string")
+      panic("Every timed nightly phase must have a name.");
+    return [{ name, minutes: definition["timeout-minutes"] }];
+  });
+  expect(phases.length).toBeGreaterThan(0);
+  const phaseMinutes = phases.reduce((sum, phase) => sum + phase.minutes, 0);
+  expect(
+    jobMinutes,
+    phases.map(({ name, minutes }) => `${name}: ${minutes} min`).join("; "),
+  ).toBeGreaterThanOrEqual(phaseMinutes + NIGHTLY_SETUP_REPORT_MINUTES);
+});
+
 test("timed names cannot select a duplicate sibling, including untimed ones", () => {
   for (const sibling of [{ "timeout-minutes": 2 }, {}]) {
     const workflows = new Map([
