@@ -1592,6 +1592,119 @@ const concurrentNotes: Scenario = [
   ],
 ];
 
+/** A point comment refuses pending typing, but not a decision of another paragraph's revision. */
+const decisionAfterCommentRefusesTyping = [
+  3,
+  [
+    {
+      type: "edit",
+      peer: 2,
+      seed: {
+        kind: "insertTable",
+        a: 0,
+        b: 0,
+        suggest: false,
+      },
+    },
+    {
+      type: "submit",
+      peer: 2,
+    },
+    {
+      type: "edit",
+      peer: 0,
+      seed: {
+        kind: "deleteNote",
+        a: 0,
+        b: 0,
+        suggest: false,
+      },
+    },
+    {
+      type: "deliver",
+      seed: 0,
+    },
+    {
+      type: "edit",
+      peer: 0,
+      seed: {
+        kind: "type",
+        a: 57922,
+        b: 0,
+        suggest: false,
+      },
+    },
+    {
+      type: "deliver",
+      seed: 0,
+    },
+    {
+      type: "deliver",
+      seed: 0,
+    },
+    {
+      type: "deliver",
+      seed: 0,
+    },
+    {
+      type: "edit",
+      peer: 2,
+      seed: {
+        kind: "type",
+        a: 0,
+        b: 0,
+        suggest: false,
+      },
+    },
+    {
+      type: "submit",
+      peer: 0,
+    },
+    {
+      type: "undo",
+      peer: 0,
+    },
+    {
+      type: "edit",
+      peer: 1,
+      seed: {
+        kind: "pointComment",
+        a: 16393,
+        b: 0,
+        suggest: false,
+      },
+    },
+    {
+      type: "deliver",
+      seed: 36547,
+    },
+    {
+      type: "edit",
+      peer: 0,
+      seed: {
+        kind: "decide",
+        a: 61359,
+        b: 47534,
+        suggest: true,
+      },
+    },
+    {
+      type: "deliver",
+      seed: 13466,
+    },
+    {
+      type: "edit",
+      peer: 1,
+      seed: {
+        kind: "reply",
+        a: 62177,
+        b: 97872,
+        suggest: false,
+      },
+    },
+  ],
+] satisfies Scenario;
+
 /** The pinned scenarios, which the fixed coverage sample starts with. */
 const PINNED: readonly Scenario[] = [
   concurrentRows,
@@ -1609,6 +1722,19 @@ const PINNED: readonly Scenario[] = [
 ];
 
 describe("canonical sequencing", () => {
+  test("a comment dropping pending typing keeps an independent revision decision", async () => {
+    const outcome = simulate(...decisionAfterCommentRefusesTyping);
+    expect(outcome.independentDrops).toEqual([]);
+    expect(outcome.dropped).toEqual(["edit-12", "edit-14"]);
+    expect(outcome.sequenced).toContain("edit-16");
+    expect(outcome.diverged).toEqual([]);
+    const authority = await bytes(outcome.authority);
+    for (const document of outcome.documents) {
+      expect(equalForStaleness(document, outcome.authority)).toBe(true);
+      expect(await bytes(document)).toEqual(authority);
+    }
+  });
+
   test("notes added concurrently take the same places in the note list in either order", () => {
     const outcome = simulate(...concurrentNotes);
     expect(outcome.diverged).toEqual([]);
