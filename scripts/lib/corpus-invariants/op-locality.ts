@@ -218,7 +218,10 @@ const withoutRestoredRecords = (
       if (parts.settings !== undefined) delete out.package.settings;
     },
   } satisfies Record<
-    keyof Omit<StoryParts, "body" | "sections" | "undefinedFields">,
+    keyof Omit<
+      StoryParts,
+      "body" | "sections" | "sectionView" | "undefinedFields"
+    >,
     () => void
   >;
   for (const strip of Object.values(stripPackage)) strip();
@@ -235,6 +238,7 @@ const withoutRestoredRecords = (
     sectionIndex += 1;
   }
   if (restoredSections.has(sectionIndex)) delete body.finalSectionProperties;
+  // A complete section view owns derived metadata, not the canonical endpoints above.
   // Section content and mounted story maps are derived mirrors, not independent ownership.
   delete body.sections;
   return out;
@@ -604,7 +608,9 @@ const storyOwnership = ({
   if (op.type !== DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS) return "none";
   if (story === OP_STORIES.MAIN) {
     if (op.parts.body?.content !== undefined) return "content";
-    return op.parts.sections !== undefined ? "fields" : "none";
+    return op.parts.sections !== undefined || op.parts.sectionView !== undefined
+      ? "fields"
+      : "none";
   }
   switch (story.kind) {
     case "header":
@@ -805,7 +811,11 @@ export const serializedLocalityFailures = ({
       ownedRelationshipTypes.add(RELATIONSHIP_TYPES.numbering);
     }
     if (op.type === DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS) {
-      if (op.parts.body !== undefined || op.parts.sections !== undefined)
+      if (
+        op.parts.body !== undefined ||
+        op.parts.sections !== undefined ||
+        op.parts.sectionView !== undefined
+      )
         ownedPaths.add(documentPart);
       const restoredRelationships = {
         headers: RELATIONSHIP_TYPES.header,
@@ -814,7 +824,10 @@ export const serializedLocalityFailures = ({
         endnotes: RELATIONSHIP_TYPES.endnotes,
         settings: RELATIONSHIP_TYPES.settings,
       } satisfies Record<
-        keyof Omit<StoryParts, "body" | "sections" | "undefinedFields">,
+        keyof Omit<
+          StoryParts,
+          "body" | "sections" | "sectionView" | "undefinedFields"
+        >,
         string
       >;
       for (const [key, relationshipType] of Object.entries(
