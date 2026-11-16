@@ -77,12 +77,12 @@ import {
 } from "./inline-atom-alignment";
 
 /** One story of a document model. */
-export type InlineAtomStory = {
+type InlineAtomStory = {
   document: ReadonlyDocument;
   story: OpStory;
 };
 
-export type MatchInlineAtomsOnModelOptions = InlineAtomStory & {
+type MatchInlineAtomsOnModelOptions = InlineAtomStory & {
   /**
    * The revised story, accepted, and the snapshot the comparison planned
    * against, whose block ids name the revised blocks a change describes.
@@ -103,7 +103,7 @@ export type MatchInlineAtomsOnModelOptions = InlineAtomStory & {
   baseNotes?: ReadonlySet<string>;
 };
 
-export type MatchInlineAtomsOnModelResult =
+type MatchInlineAtomsOnModelResult =
   | {
       status: "matched";
       /** Applies as one batch, in order, to `document`. */
