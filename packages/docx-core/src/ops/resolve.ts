@@ -1866,7 +1866,8 @@ const resolveList = ({
           kept.length > 0 &&
           resolution.decision === REVISION_DECISIONS.REJECT &&
           (node.resolutionJoins?.remove ?? 0) > 0
-        )
+        ) {
+          const piece = oneSidedKeptPiece(node.resolutionJoins);
           floating.set(out.length, {
             count: kept.length,
             depth: node.resolutionJoins?.remove ?? 0,
@@ -1877,8 +1878,9 @@ const resolveList = ({
             // Accepting content beside this removed piece can leave its
             // recorded container join on one side only. The other side's
             // authored record is not part of that cut container.
-            piece: oneSidedKeptPiece(node.resolutionJoins),
+            ...(piece === undefined ? {} : { piece }),
           });
+        }
         if (node.resolutionJoins === undefined) seams.push(out.length);
         else if ((node.resolutionJoins.plainSides?.length ?? 0) > 0)
           plainSeams.add(out.length);
