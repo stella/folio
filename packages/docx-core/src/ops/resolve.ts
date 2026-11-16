@@ -3911,7 +3911,10 @@ export const planRevisionResolution = ({
   }
   const rows = resolveTableRows({
     document: staged.value.document,
-    op: { ...op, revisionIds: [...ids] },
+    op:
+      op.decision === REVISION_DECISIONS.ACCEPT
+        ? { ...op, revisionIds: [...ids] }
+        : op,
     applyOps,
   });
   if (rows.isErr()) return Result.err(rows.error);
