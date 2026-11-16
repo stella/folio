@@ -58,7 +58,10 @@ export async function openEditor(
   adapter: AdapterFixture,
   fixture = DEFAULT_FIXTURE,
 ): Promise<void> {
-  await openEditorAt(page, `${adapter.baseUrl}/?file=${fixture}`);
+  await openEditorAt(
+    page,
+    `${adapter.baseUrl}/?session=legacy&file=${fixture}`,
+  );
 }
 
 /** {@link openEditor} on the canonical session, named in the URL. */

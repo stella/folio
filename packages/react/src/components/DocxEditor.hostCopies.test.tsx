@@ -36,7 +36,7 @@ afterAll(() => {
   GlobalRegistrator.unregister();
 });
 
-const SESSIONS = ["default", "canonical"] as const;
+const SESSIONS = ["legacy", "canonical"] as const;
 type Session = (typeof SESSIONS)[number];
 
 /** Whether `value` is a whole document, not some of its content. */
@@ -130,9 +130,7 @@ const mountEditor = async (
           ref={editor}
           accessibleName="Document editor"
           documentBuffer={bytes}
-          {...(session === "canonical"
-            ? { experimentalSession: "canonical" as const }
-            : {})}
+          experimentalSession={session}
           showToolbar={false}
           {...(options.showRuler ? { showRuler: true } : {})}
           onChange={onChange}
@@ -270,9 +268,9 @@ test.each(SESSIONS)(
   },
 );
 
-test("a margin drag in the default session copies the document once, when the drag settles", async () => {
+test("a margin drag in the legacy session copies the document once, when the drag settles", async () => {
   const mounted = await mountEditor(
-    "default",
+    "legacy",
     createEmptyDocument({ initialText: "Start" }),
     { showRuler: true },
   );
@@ -314,8 +312,8 @@ test("a margin drag in the default session copies the document once, when the dr
   }
 });
 
-test("the notes getDocument hands the host in the default session are the host's own", async () => {
-  const mounted = await mountEditor("default", documentWithFootnote());
+test("the notes getDocument hands the host in the legacy session are the host's own", async () => {
+  const mounted = await mountEditor("legacy", documentWithFootnote());
   try {
     const handed =
       mounted.ref().getDocument() ?? panic("Expected the editor's document");
@@ -331,9 +329,9 @@ test("the notes getDocument hands the host in the default session are the host's
   }
 });
 
-test("the controller's getDocument in the default session is read-only: a host writes its own copy, and the editor's document and its undo stay", async () => {
+test("the controller's getDocument in the legacy session is read-only: a host writes its own copy, and the editor's document and its undo stay", async () => {
   const mounted = await mountEditor(
-    "default",
+    "legacy",
     createEmptyDocument({ initialText: "Start" }),
   );
   try {
@@ -391,8 +389,8 @@ const countCopyOwnerCopies = () => {
   };
 };
 
-test("getDocument in the default session takes one copy, and shares no object with the editor's document or an earlier call's", async () => {
-  const mounted = await mountEditor("default", documentWithFootnote());
+test("getDocument in the legacy session takes one copy, and shares no object with the editor's document or an earlier call's", async () => {
+  const mounted = await mountEditor("legacy", documentWithFootnote());
   const counter = countCopyOwnerCopies();
   try {
     const view =

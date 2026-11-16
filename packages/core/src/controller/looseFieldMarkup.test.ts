@@ -87,7 +87,7 @@ const editAt = (doc: EditorState["doc"]) => {
 
 describe("field markup with no assembled field", () => {
   for (const [shape, body] of Object.entries(SHAPES)) {
-    test(`${shape} keeps its bytes through an edit in the default editor`, async () => {
+    test(`${shape} keeps its bytes through an edit in the legacy editor`, async () => {
       const bytes = await sourceBytes(body);
       const base = await parseShapeDocument(bytes);
       const state = createHarnessState(base, "editing");

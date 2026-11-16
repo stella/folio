@@ -117,7 +117,7 @@ test.each([
     }
   },
 );
-test.each(["canonical", "default"] as const)(
+test.each([undefined, "canonical", "legacy"] as const)(
   "%s history keys have one editor owner and no document-level owner",
   async (session) => {
     const container = document.createElement("div");
@@ -133,9 +133,7 @@ test.each(["canonical", "default"] as const)(
           holder.editor = useDocxEditor({
             hiddenContainer: shallowRef(hidden),
             pagesContainer: shallowRef(pages),
-            ...(session === "canonical"
-              ? { experimentalSession: "canonical" as const }
-              : {}),
+            ...(session === undefined ? {} : { experimentalSession: session }),
           });
           useKeyboardShortcuts({
             showFindReplace: shallowRef(false),
@@ -167,7 +165,7 @@ test.each(["canonical", "default"] as const)(
             ),
           ),
         );
-        if (session === "canonical") {
+        if (session !== "legacy") {
           view.dom.dispatchEvent(
             new InputEvent("beforeinput", {
               bubbles: true,
@@ -1136,7 +1134,7 @@ test.each(CANONICAL_SAVE_SEEDS)(
   },
 );
 
-for (const session of [undefined, "canonical"] as const)
+for (const session of [undefined, "legacy", "canonical"] as const)
   test.each(SERIALIZATION_PATH_CASES)(
     `Vue ${session ?? "default"} $kind reports the returned write path through save`,
     async (scenario) => {
@@ -1175,7 +1173,7 @@ for (const session of [undefined, "canonical"] as const)
         else adapter.loadDocument(model);
         const view =
           adapter.editorView.value ?? panic("Expected Vue body view");
-        if (session === "canonical")
+        if (session !== "legacy")
           expect(
             adapter.editor.applyCanonicalOperations([
               {
@@ -1209,7 +1207,7 @@ for (const session of [undefined, "canonical"] as const)
         expect(paths).toEqual([scenario.expectedPath]);
         expect(declines).toEqual(scenario.expectedDeclines);
         expect(diagnostics).toEqual(
-          session === "canonical" && scenario.kind === "declined"
+          session !== "legacy" && scenario.kind === "declined"
             ? [CANONICAL_SAVE_FALLBACK_DIAGNOSTIC]
             : [],
         );
@@ -1232,13 +1230,13 @@ for (const session of [undefined, "canonical"] as const)
     },
   );
 
-for (const session of [undefined, "canonical"] as const)
+for (const session of [undefined, "legacy", "canonical"] as const)
   for (const callback of [
     "onSerializationPath",
     "onSelectiveDecline",
     "onDiagnostic",
   ] as const)
-    for (const diagnosticStage of session === undefined &&
+    for (const diagnosticStage of session === "legacy" &&
     callback === "onDiagnostic"
       ? (["selective", "tripwire"] as const)
       : (["selective"] as const))
@@ -1261,7 +1259,7 @@ for (const session of [undefined, "canonical"] as const)
             ? serializationTripwireDiagnosticSource
             : serializationDiagnosticSource;
         const diagnosticModel =
-          session === undefined && callback === "onDiagnostic"
+          session === "legacy" && callback === "onDiagnostic"
             ? await diagnosticSource()
             : null;
         const normalFlags = diagnosticModel ? undefined : scenario.flags;
@@ -1298,7 +1296,7 @@ for (const session of [undefined, "canonical"] as const)
               await createDocx(serializationPathSource()),
             );
           const view = adapter.editorView.value ?? panic("Expected body view");
-          if (session === "canonical")
+          if (session !== "legacy")
             expect(
               adapter.editor.applyCanonicalOperations([
                 {
@@ -1351,7 +1349,7 @@ for (const session of [undefined, "canonical"] as const)
         }
       });
 
-for (const session of [undefined, "canonical"] as const)
+for (const session of [undefined, "legacy", "canonical"] as const)
   for (const operation of ["save", "getDocx"] as const)
     test(`Vue ${session ?? "default"} host tripwire exceptions propagate after ${operation}`, async () => {
       const container = document.createElement("div");
@@ -1392,7 +1390,7 @@ for (const session of [undefined, "canonical"] as const)
         const adapter = holder.adapter ?? panic("Expected Vue editor");
         await adapter.loadBuffer(await createDocx(serializationPathSource()));
         const view = adapter.editorView.value ?? panic("Expected body view");
-        if (session === "canonical") {
+        if (session !== "legacy") {
           expect(
             adapter.editor.applyCanonicalOperations([
               {

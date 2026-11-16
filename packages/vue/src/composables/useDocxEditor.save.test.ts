@@ -37,6 +37,7 @@ test.each(["settled", "overlapping"])(
       defineComponent({
         setup() {
           holder.editor = useDocxEditor({
+            experimentalSession: "legacy",
             hiddenContainer: shallowRef(hidden),
             pagesContainer: shallowRef(pages),
             onError: (error) => errors.push(error),
@@ -115,7 +116,7 @@ test.each(["settled", "overlapping"])(
   },
 );
 
-test.each(["canonical", "prosemirror"] as const)(
+test.each([undefined, "canonical", "legacy"] as const)(
   "%s autocomplete callbacks bind before readiness and report teardown",
   async (session) => {
     const container = document.createElement("div");
@@ -133,9 +134,7 @@ test.each(["canonical", "prosemirror"] as const)(
           holder.adapter = useDocxEditor({
             hiddenContainer: shallowRef(hidden),
             pagesContainer: shallowRef(pages),
-            ...(session === "canonical"
-              ? { experimentalSession: session }
-              : {}),
+            ...(session === undefined ? {} : { experimentalSession: session }),
             onAutocompleteChange: (state) =>
               calls.push(
                 `${label}:${state.status === "idle" ? "idle" : state.text}`,
