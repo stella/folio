@@ -4,7 +4,10 @@ import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { plannedTestFiles, type TestTimings } from "./ci-test-shard-plan";
-import { fullSuiteTimingSets } from "./ci-test-timing-artifact";
+import {
+  fullSuiteTimingSets,
+  readFileTimings,
+} from "./ci-test-timing-artifact";
 import { propertyFiles } from "./property-areas";
 import { WORKFLOW_DURATIONS_FILE } from "./workflow-durations";
 
@@ -211,28 +214,15 @@ const readPropertyTimingArtifact = (value: unknown): TimingArtifact => {
     value === null ||
     !("runId" in value) ||
     typeof value.runId !== "string" ||
-    !("timings" in value) ||
-    typeof value.timings !== "object" ||
-    value.timings === null ||
-    Array.isArray(value.timings)
+    !("timings" in value)
   )
     return panic(
       "Property timing artifact requires a run id and file measurements",
     );
-  const timings: TestTimings = {};
-  for (const [file, duration] of Object.entries(value.timings)) {
-    if (
-      typeof duration !== "number" ||
-      !Number.isFinite(duration) ||
-      duration < 1
-    )
-      return panic(
-        "Property file timings must be positive finite milliseconds",
-        { file },
-      );
-    timings[file] = duration;
-  }
-  return { runId: value.runId, timings };
+  return {
+    runId: value.runId,
+    timings: readFileTimings(value.timings, value.runId),
+  };
 };
 
 // The `--graphql-request` flag naming each source's local file.

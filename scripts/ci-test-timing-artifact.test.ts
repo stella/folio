@@ -167,6 +167,20 @@ test("invalid shard facts and malformed measurements do not masquerade as old pr
   ).toThrow("Unsupported full-suite timing artifact version");
 });
 
+test("malformed count-less JSON is not mistaken for a legacy timing artifact", () => {
+  expect(() =>
+    fullSuiteTimingSets([{ runId: RUN_ID, artifact: { runId: RUN_ID } }]),
+  ).toThrow("missing file measurements");
+  expect(() =>
+    fullSuiteTimingSets([
+      {
+        runId: RUN_ID,
+        artifact: { runId: RUN_ID, timings: { "sample.test.ts": -1 } },
+      },
+    ]),
+  ).toThrow("positive finite milliseconds");
+});
+
 test("legacy provenance is reported, never treated as a complete run", () => {
   const legacy = {
     runId: OTHER_RUN,

@@ -58,6 +58,29 @@ export const createFullSuiteTimingArtifact = ({
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
+/** Both timing producers report positive millisecond measurements keyed by file. */
+export const readFileTimings = (
+  source: unknown,
+  runId: string,
+): TestTimings => {
+  if (!isRecord(source))
+    return panic("Timing artifact is missing file measurements", { runId });
+  const timings: TestTimings = {};
+  for (const [file, duration] of Object.entries(source)) {
+    if (
+      typeof duration !== "number" ||
+      !Number.isFinite(duration) ||
+      duration < 1
+    )
+      return panic("File timings must be positive finite milliseconds", {
+        runId,
+        file,
+      });
+    timings[file] = duration;
+  }
+  return timings;
+};
+
 type ParsedArtifact =
   | { type: "legacy"; runId: string }
   | {
@@ -77,8 +100,10 @@ const parseArtifact = (value: unknown): ParsedArtifact => {
     value["shard"] === undefined &&
     value["shards"] === undefined &&
     value["origin"] === undefined
-  )
+  ) {
+    readFileTimings(value["timings"], value["runId"]);
     return { type: "legacy", runId: value["runId"] };
+  }
   if (value["version"] !== 1)
     return panic("Unsupported full-suite timing artifact version");
   const origin = value["origin"];
@@ -95,22 +120,7 @@ const parseArtifact = (value: unknown): ParsedArtifact => {
   if (typeof shard !== "number" || typeof shards !== "number")
     return panic("Full-suite timings are missing their executed shard facts");
   assertShard(shard, shards);
-  const source = value["timings"];
-  if (!isRecord(source))
-    return panic("Full-suite timings are missing file measurements");
-  const timings: TestTimings = {};
-  for (const [file, duration] of Object.entries(source)) {
-    if (
-      typeof duration !== "number" ||
-      !Number.isFinite(duration) ||
-      duration < 1
-    )
-      return panic(
-        "Full-suite file timings must be positive finite milliseconds",
-        { runId, file },
-      );
-    timings[file] = duration;
-  }
+  const timings = readFileTimings(value["timings"], runId);
   return { type: "proven", runId, shard, shards, timings };
 };
 
