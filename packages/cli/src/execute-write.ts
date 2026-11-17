@@ -42,6 +42,7 @@ import {
   recoverStages,
 } from "./journal";
 import { diffPackages, nextRevisionIdSeed } from "./package-parts";
+import { nothingToRewrite, runPackageRewrite } from "./package-rewrite";
 import type { FolioFileToolSpec, ResolveChangeAction } from "./registry";
 import { checkInScope, type WriteScope } from "./roots";
 import {
@@ -83,7 +84,8 @@ export type WriteOptions = {
 };
 
 /** How a transaction's bytes were produced. */
-export type SaveStrategy = "selective" | "full-repack" | "redline";
+export type SaveStrategy =
+  "selective" | "full-repack" | "redline" | "part-rewrite";
 
 export const TX_ID_PATTERN: RegExp = /^[\w.-]{1,128}$/u;
 
@@ -440,6 +442,25 @@ const writeRedline = async ({
   });
 };
 
+const rewritePackage = async ({
+  tool,
+  source,
+  args,
+}: MutateOptions): Promise<Result<Mutation, FolioCliError>> => {
+  if (tool.type !== "packageRewrite")
+    return panic("rewritePackage needs a packageRewrite tool");
+  const outcome = await runPackageRewrite(tool.rewrite, source.bytes, args);
+  if (outcome.isErr()) return Result.err(outcome.error);
+  const bytes = await outcome.value.bytes();
+  if (bytes === null) return Result.err(nothingToRewrite(tool.name));
+  return Result.ok({
+    bytes,
+    saveStrategy: "part-rewrite",
+    result: { report: outcome.value.report, parts: outcome.value.parts },
+    receipts: [],
+  });
+};
+
 const mutate = (
   options: MutateOptions,
 ): Promise<Result<Mutation, FolioCliError>> => {
@@ -450,6 +471,8 @@ const mutate = (
       return resolveChanges(options);
     case "compare":
       return writeRedline(options);
+    case "packageRewrite":
+      return rewritePackage(options);
     case "agentRead":
       return panic("A read tool reached the write executor", {
         tool: options.tool.name,
