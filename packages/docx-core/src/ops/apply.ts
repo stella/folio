@@ -219,6 +219,7 @@ import {
   type SplitHalf,
   type SplitInlineOp,
   type SplitParagraphFields,
+  type StoryParts,
   type TextPosition,
   type TouchedBlocks,
 } from "./types";
@@ -2939,14 +2940,22 @@ const withoutOrphanedNotes = (before: Document, after: Document): Document => {
   };
 };
 
-const dispatchCore = (document: Document, op: DocumentOp): Applied => {
+type OperationExecutionPurpose = "apply" | "inspect-inverse";
+type DispatchOptions = {
+  document: Document;
+  op: DocumentOp;
+  purpose: OperationExecutionPurpose;
+};
+const dispatchCore = ({ document, op, purpose }: DispatchOptions): Applied => {
+  const applyOps = (current: Document, ops: readonly DocumentOp[]) =>
+    applyDocumentOpsForPurpose({ document: current, ops, purpose });
   switch (op.type) {
     case DOCUMENT_OP_TYPES.CREATE_COMMENT:
     case DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT:
     case DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION:
     case DOCUMENT_OP_TYPES.DELETE_COMMENT:
     case DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE:
-      return applyCommentOp(document, op, applyDocumentOps);
+      return applyCommentOp(document, op, applyOps);
     case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
     case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
     case DOCUMENT_OP_TYPES.SET_SECTION_PROPS:
@@ -2956,9 +2965,9 @@ const dispatchCore = (document: Document, op: DocumentOp): Applied => {
     case DOCUMENT_OP_TYPES.REMOVE_NOTE:
       return editNote(document, op);
     case DOCUMENT_OP_TYPES.DELETE_BLOCKS:
-      return deleteBlocks({ document, op, applyOps: applyDocumentOps });
+      return deleteBlocks({ document, op, applyOps });
     case DOCUMENT_OP_TYPES.INSERT_BLOCKS:
-      return insertBlocks({ document, op, applyOps: applyDocumentOps });
+      return insertBlocks({ document, op, applyOps });
     case DOCUMENT_OP_TYPES.INSERT_TEXT:
       return insertText(document, op);
     case DOCUMENT_OP_TYPES.INSERT_CONTENT:
@@ -2984,7 +2993,7 @@ const dispatchCore = (document: Document, op: DocumentOp): Applied => {
     case DOCUMENT_OP_TYPES.REPLACE_INLINE:
       return replaceInline(document, op);
     case DOCUMENT_OP_TYPES.RESOLVE_REVISION:
-      return resolveRevision(document, op, applyDocumentOps);
+      return resolveRevision(document, op, applyOps);
     case DOCUMENT_OP_TYPES.SET_REVISION_INFO:
       return setRevisionInfo(document, op);
     case DOCUMENT_OP_TYPES.INSERT_TABLE:
@@ -3025,8 +3034,8 @@ const dispatchCore = (document: Document, op: DocumentOp): Applied => {
  * Keeping this in dispatch makes the lifecycle edit part of the operation's
  * result, so its inverse and touched-story contract include the removed body.
  */
-const dispatch = (document: Document, op: DocumentOp): Applied => {
-  const applied = dispatchCore(document, op);
+const dispatch = ({ document, op, purpose }: DispatchOptions): Applied => {
+  const applied = dispatchCore({ document, op, purpose });
   if (applied.isErr()) return applied;
   if (
     op.type === DOCUMENT_OP_TYPES.ADD_NOTE ||
@@ -3034,15 +3043,56 @@ const dispatch = (document: Document, op: DocumentOp): Applied => {
     op.type === DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS
   )
     return applied;
-  const inverseCleanup = withoutOrphanedNotes(applied.value.document, document);
-  if ("revision" in op && op.revision !== undefined) {
-    if (inverseCleanup === document) return applied;
-    return storyLifecycleEdit(document, applied.value.document, op, true);
+  const cleaned =
+    "revision" in op && op.revision !== undefined
+      ? applied.value.document
+      : withoutOrphanedNotes(document, applied.value.document);
+  let edit = applied.value;
+  if (cleaned !== edit.document) {
+    const cleanup = storyLifecycleEdit(edit.document, cleaned, op, true);
+    if (cleanup.isErr()) return cleanup;
+    edit = combineEdits(document, [edit, cleanup.value]);
   }
-  const cleaned = withoutOrphanedNotes(document, applied.value.document);
-  if (cleaned === applied.value.document && inverseCleanup === document)
-    return applied;
-  return storyLifecycleEdit(document, cleaned, op, true);
+  // Inspection applies ordinary validation and cleanup, but never inspects
+  // the inverse it just generated (reference swaps would otherwise recurse).
+  if (purpose === "inspect-inverse") return Result.ok(edit);
+  const inverseCleanup = withoutOrphanedNotes(applied.value.document, document);
+  if (inverseCleanup === document) return Result.ok(edit);
+
+  // Adding the first reference to an authored orphan note must not let the
+  // ordinary inverse delete its pre-existing declaration. Replay only this
+  // uncommon case, retaining every inverse owned by the primary edit.
+  const undone = applyDocumentOpsForPurpose({
+    document: edit.document,
+    ops: edit.inverse,
+    purpose: "inspect-inverse",
+  });
+  if (undone.isErr())
+    return panic(
+      "The primary edit's inverse must apply before note repair.",
+      undone.error,
+    );
+  const owned: Pick<StoryParts, "footnotes" | "endnotes"> = {};
+  for (const key of ["footnotes", "endnotes"] as const) {
+    const field = { [key]: null };
+    const actual = captureStoryParts(undone.value.document, field);
+    if (structurallyEqual(actual, captureStoryParts(document, field))) continue;
+    if (!structurallyEqual(actual, captureStoryParts(inverseCleanup, field)))
+      return panic("Note repair may only restore inverse-pruned declarations.");
+    owned[key] = null;
+  }
+  if (Object.keys(owned).length === 0) return Result.ok(edit);
+  return Result.ok({
+    ...edit,
+    inverse: [
+      ...edit.inverse,
+      {
+        type: DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS,
+        expected: cloneModel(captureStoryParts(undone.value.document, owned)),
+        parts: cloneModel(captureStoryParts(document, owned)),
+      },
+    ],
+  });
 };
 
 /** The stamp of a tracked operation; `undefined` for a direct one. */
@@ -3143,11 +3193,16 @@ const preserveParagraphPropertySnapshots = (options: {
     transferParagraphPropertySnapshot({ source, target });
 };
 
-/** Apply one operation to a document that meets the seed contract. */
-export const applyDocumentOp = (
-  document: Document,
-  input: DocumentOp,
-): Result<AppliedDocumentOp, DocumentOpRefusal> => {
+type ApplyDocumentOpOptions = {
+  document: Document;
+  input: DocumentOp;
+  purpose: OperationExecutionPurpose;
+};
+const applyDocumentOpForPurpose = ({
+  document,
+  input,
+  purpose,
+}: ApplyDocumentOpOptions): Result<AppliedDocumentOp, DocumentOpRefusal> => {
   const restored = restoreDocumentOp(input);
   if (restored.isErr()) return restored;
   const op = restored.value;
@@ -3197,7 +3252,7 @@ export const applyDocumentOp = (
   if (badStamp !== undefined) {
     return Result.err(badStamp);
   }
-  const applied = dispatch(document, op);
+  const applied = dispatch({ document, op, purpose });
   if (applied.isErr()) {
     return Result.err(applied.error);
   }
@@ -3276,6 +3331,13 @@ export const applyDocumentOp = (
   });
 };
 
+/** Apply one operation to a document that meets the seed contract. */
+export const applyDocumentOp = (
+  document: Document,
+  input: DocumentOp,
+): Result<AppliedDocumentOp, DocumentOpRefusal> =>
+  applyDocumentOpForPurpose({ document, input, purpose: "apply" });
+
 /** Apply a journal envelope only when its schema matches this reader. */
 export const applyDocumentOpEnvelope = (
   document: Document,
@@ -3327,20 +3389,25 @@ export const inverseMeetingDocument = (
   return rebased;
 };
 
-/**
- * Apply operations in order, atomically: the first refusal is returned and
- * the document is unchanged. The inverse undoes the whole list, and
- * `revisions` lists each operation's in turn.
- */
-export const applyDocumentOps = (
-  document: Document,
-  ops: readonly DocumentOp[],
-): Result<AppliedDocumentOp, DocumentOpRefusal> => {
+type ApplyDocumentOpsOptions = {
+  document: Document;
+  ops: readonly DocumentOp[];
+  purpose: OperationExecutionPurpose;
+};
+const applyDocumentOpsForPurpose = ({
+  document,
+  ops,
+  purpose,
+}: ApplyDocumentOpsOptions): Result<AppliedDocumentOp, DocumentOpRefusal> => {
   let current = document;
   const edits: DocumentEdit[] = [];
   const revisions: number[] = [];
   for (const op of ops) {
-    const applied = applyDocumentOp(current, op);
+    const applied = applyDocumentOpForPurpose({
+      document: current,
+      input: op,
+      purpose,
+    });
     if (applied.isErr()) {
       return applied;
     }
@@ -3350,3 +3417,14 @@ export const applyDocumentOps = (
   }
   return Result.ok({ ...combineEdits(document, edits), revisions });
 };
+
+/**
+ * Apply operations in order, atomically: the first refusal is returned and
+ * the document is unchanged. The inverse undoes the whole list, and
+ * `revisions` lists each operation's in turn.
+ */
+export const applyDocumentOps = (
+  document: Document,
+  ops: readonly DocumentOp[],
+): Result<AppliedDocumentOp, DocumentOpRefusal> =>
+  applyDocumentOpsForPurpose({ document, ops, purpose: "apply" });
