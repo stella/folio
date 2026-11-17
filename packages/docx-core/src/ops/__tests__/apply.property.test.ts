@@ -185,6 +185,28 @@ const expectEveryKindApplied = (tally: Tally): void => {
  * content that the plain-run seam merge would otherwise coalesce. Note
  * lifecycle composition also restores owned bodies and exhausted threads.
  */
+const NOTE_LIFECYCLE_INVERSE_KINDS = {
+  [DOCUMENT_OP_TYPES.REMOVE_NOTE]: [
+    DOCUMENT_OP_TYPES.INSERT_CONTENT,
+    DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE,
+  ],
+  [DOCUMENT_OP_TYPES.DELETE_BLOCKS]: [
+    DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS,
+    DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE,
+  ],
+  [DOCUMENT_OP_TYPES.INSERT_BLOCKS]: [
+    DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS,
+    DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE,
+  ],
+  [DOCUMENT_OP_TYPES.INSERT_CONTENT]: [DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE],
+  [DOCUMENT_OP_TYPES.DELETE_RANGE]: [DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE],
+  [DOCUMENT_OP_TYPES.REPLACE_INLINE]: [DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE],
+  [DOCUMENT_OP_TYPES.RESOLVE_REVISION]: [
+    DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS,
+    DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE,
+  ],
+} as const satisfies Record<string, readonly DocumentOpType[]>;
+
 const INVERSE_KINDS = {
   setPackageResources: ["setPackageResources"],
   createComment: ["restoreCommentState"],
@@ -195,7 +217,7 @@ const INVERSE_KINDS = {
   createHeaderFooter: ["restoreStoryParts"],
   removeHeaderFooter: ["restoreStoryParts"],
   addNote: ["restoreStoryParts"],
-  removeNote: ["restoreStoryParts", "insertContent", "restoreCommentState"],
+  removeNote: ["restoreStoryParts", ...NOTE_LIFECYCLE_INVERSE_KINDS.removeNote],
   setSectionProps: ["restoreStoryParts"],
   restoreStoryParts: ["restoreStoryParts"],
   deleteBlocks: [
@@ -203,10 +225,9 @@ const INVERSE_KINDS = {
     "replaceBlocks",
     "replaceInline",
     "setParagraphReview",
-    "restoreStoryParts",
-    "restoreCommentState",
+    ...NOTE_LIFECYCLE_INVERSE_KINDS.deleteBlocks,
   ],
-  insertBlocks: ["replaceBlocks", "restoreStoryParts", "restoreCommentState"],
+  insertBlocks: ["replaceBlocks", ...NOTE_LIFECYCLE_INVERSE_KINDS.insertBlocks],
   insertTable: ["setContainerBlocks"],
   deleteTable: ["setContainerBlocks", "replaceInline", "setParagraphReview"],
   setContainerBlocks: ["setContainerBlocks"],
@@ -218,13 +239,13 @@ const INVERSE_KINDS = {
     "deleteRange",
     "replaceInline",
     "restoreStoryParts",
-    "restoreCommentState",
+    ...NOTE_LIFECYCLE_INVERSE_KINDS.insertContent,
   ],
   deleteRange: [
     "insertContent",
     "replaceInline",
     "restoreStoryParts",
-    "restoreCommentState",
+    ...NOTE_LIFECYCLE_INVERSE_KINDS.deleteRange,
   ],
   splitInline: ["joinInline", "restoreStoryParts"],
   joinInline: ["splitInline", "restoreStoryParts"],
@@ -244,14 +265,17 @@ const INVERSE_KINDS = {
   ],
   replaceBlocks: ["replaceBlocks", "restoreStoryParts"],
   setParagraphReview: ["setParagraphReview"],
-  replaceInline: ["replaceInline", "restoreStoryParts", "restoreCommentState"],
+  replaceInline: [
+    "replaceInline",
+    "restoreStoryParts",
+    ...NOTE_LIFECYCLE_INVERSE_KINDS.replaceInline,
+  ],
   resolveRevision: [
     "replaceInline",
     "setParagraphReview",
     "joinBlocks",
     "replaceBlocks",
-    "restoreStoryParts",
-    "restoreCommentState",
+    ...NOTE_LIFECYCLE_INVERSE_KINDS.resolveRevision,
   ],
   createNumberingInstance: ["deleteNumberingInstance"],
   deleteNumberingInstance: ["createNumberingInstance"],
@@ -259,10 +283,19 @@ const INVERSE_KINDS = {
 } as const satisfies Record<DocumentOpType, readonly DocumentOpType[]>;
 
 test("note lifecycle inverse kinds are exercised by actual direct and tracked producers", () => {
+  const declaredAdditions = new Set(
+    Object.entries(NOTE_LIFECYCLE_INVERSE_KINDS).flatMap(([type, kinds]) =>
+      kinds.map((kind) => `${type}:${kind}`),
+    ),
+  );
+  const exercised = new Set<string>();
   const check = (document: Document, op: DocumentOp) => {
     const edit = applyDocumentOp(document, op).unwrap();
     const kinds: readonly DocumentOpType[] = INVERSE_KINDS[op.type];
-    for (const inverse of edit.inverse) expect(kinds).toContain(inverse.type);
+    for (const inverse of edit.inverse) {
+      expect(kinds).toContain(inverse.type);
+      exercised.add(`${op.type}:${inverse.type}`);
+    }
     expectRestores(edit, document);
     return edit.document;
   };
@@ -338,6 +371,9 @@ test("note lifecycle inverse kinds are exercised by actual direct and tracked pr
       content,
     });
   }
+  expect(
+    [...exercised].filter((pair) => declaredAdditions.has(pair)).sort(),
+  ).toEqual([...declaredAdditions].sort());
 });
 
 const paragraphsById = (document: Document): Map<string, Paragraph> =>
