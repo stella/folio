@@ -217,15 +217,23 @@ when there is nothing to remove.
 
 ```sh
 folio render contract.docx -o contract.pdf
+folio render contract.docx -o front.pdf --pages 1-3
+folio render contract.docx -o shots/page-{page}.png --pages 1-3
 folio render contract.docx -o page-3.png --page 3
 folio serve contract.docx
 ```
 
 `folio render` lays the document out with folio's own layout engine and
-paints it with folio's painters, with no word processor involved: `.pdf` from
-the PDF backend (every page, or `--page n`), `.html` from the DOM backend,
-and `.png` by screenshotting that page in headless Chromium (page 1 unless
-`--page`, `--scale` pixels per CSS pixel, default 2). Text is measured and
+paints it with folio's painters: `.pdf` from the PDF backend, `.html` from
+the DOM backend, and `.png` by screenshotting that backend's pages in
+headless Chromium (`--scale` pixels per CSS pixel, default 2). The `-o`
+extension picks the format, or `--format pdf|png|html` names it.
+`--pages` takes page numbers and ranges (`1-3,5`, one-based); `--page n` is
+`--pages n`. A PDF or HTML file holds every page asked for (all by
+default). A PNG is one page (page 1 by default), and when `-o` contains
+`{page}` each page asked for (all by default) goes to its own file, so a
+script can look at the front matter, the first-page and running headers
+and footers, and the numbering page by page. Text is measured and
 painted with the metric-compatible faces of `@stll/folio-fonts`, which the CLI
 installs. PNG needs `playwright-core` and its Chromium, which the CLI does not
 install:
@@ -235,7 +243,8 @@ npm install playwright-core && npx playwright-core install chromium
 ```
 
 `-o` refuses an existing file unless `--overwrite`; the document is never
-changed.
+changed. There is no rasteriser without Chromium: without it, render a PDF
+or HTML.
 
 `folio serve` prints a URL and serves a read-only preview of the document on
 `127.0.0.1` until interrupted. The page re-renders when the file's version
