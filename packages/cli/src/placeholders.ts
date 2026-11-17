@@ -19,6 +19,7 @@ import {
   type FolioDocumentStoryHandle,
   type FolioDocxReviewer,
 } from "@stll/folio-core/server";
+import { sliceText } from "@stll/folio-core/utils/sliceText";
 
 import { cliError, FOLIO_CLI_ERROR_CODES, type FolioCliError } from "./errors";
 
@@ -153,9 +154,13 @@ const optionsFrom = (
 };
 
 const contextOf = (text: string, start: number, end: number): string => {
-  const before = text.slice(Math.max(0, start - CONTEXT_CHARACTERS), start);
-  const after = text.slice(end, end + CONTEXT_CHARACTERS);
-  return `${start > CONTEXT_CHARACTERS ? "…" : ""}${before}${text.slice(start, end)}${after}${end + CONTEXT_CHARACTERS < text.length ? "…" : ""}`;
+  const context = sliceText({
+    text,
+    units: "codeUnits",
+    start: Math.max(0, start - CONTEXT_CHARACTERS),
+    end: end + CONTEXT_CHARACTERS,
+  });
+  return `${start > CONTEXT_CHARACTERS ? "…" : ""}${context}${end + CONTEXT_CHARACTERS < text.length ? "…" : ""}`;
 };
 
 type BlockLocation = Pick<Placeholder, "story" | "blockId">;
