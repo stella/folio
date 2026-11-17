@@ -81,6 +81,7 @@ import {
   lockedControlViolationOfTransform,
 } from "../lockedControls";
 import { resolveStateStory } from "../markupViewProjection";
+import { paragraphMarkContainerEnd } from "../paragraphMarkContainer";
 import { joinAtParagraphMark } from "../paragraphMarkJoin";
 import {
   carryParagraphProperties,
@@ -852,14 +853,16 @@ function resolveChangeUnguarded(
           holdsContent: paragraphContentOf(paragraph),
           markWasAdded: op.markWasAdded,
           // Before a standing block, the container's actual final child must
-          // remain a paragraph. At its end, removal makes the preceding child
-          // final; only a content control may end with a table.
+          // remain a paragraph. Only a logical story ending may retire over
+          // a preceding paragraph; cells retain their terminator, and a
+          // transparent wrapper's end alone is no container ending.
           containerStillEndsWithParagraph:
             follows !== "nothing"
               ? resolved.parent.lastChild?.type.name === "paragraph"
-              : preceding?.type.name === "paragraph" ||
-                (preceding !== undefined &&
-                  resolved.parent.type.name === "blockSdt"),
+              : paragraphMarkContainerEnd({
+                  at: resolved,
+                  ending: "paragraph",
+                }) === "story-end" && preceding?.type.name === "paragraph",
           followingTableCanReceiveRunIn:
             follows === "table" &&
             boundaries.length === 0 &&

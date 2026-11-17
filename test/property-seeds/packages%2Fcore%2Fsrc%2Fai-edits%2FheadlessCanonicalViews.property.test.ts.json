@@ -29,6 +29,12 @@
       "path": "15:0:0:1:0:0:0:1:0:1:0:0:0:0:0:0:0:0:0:0:3:3:3:4:3:3:3:3:3:9:7:7:8:7:7:7:7:7:7",
       "note": "Accepting a moved paragraph containing a complex field refreshes the empty survivor body defaults without borrowing its mark-only font size",
       "date": "2026-11-17"
+    },
+    {
+      "seed": -220431785,
+      "path": "6:0:0:0:0:0:0:0:0:4:3:3:3:3:4:3:3:3:3:3:3:3:3:4:3:3:3:3:3:3:6:6:6:6:6:6:6:6",
+      "note": "Rejecting empty added paragraphs inside an interior content control retains the logical-container paragraph owner",
+      "date": "2026-11-17"
     }
   ]
 }
