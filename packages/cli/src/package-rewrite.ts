@@ -18,7 +18,7 @@ type PackageRewrite = (
 ) => Result<unknown, FolioCliError>;
 
 /** Every package rewrite, by the name a registry entry gives it. */
-export const PACKAGE_REWRITES = {
+const PACKAGE_REWRITES = {
   sanitize: sanitizePackage,
 } as const satisfies Record<string, PackageRewrite>;
 

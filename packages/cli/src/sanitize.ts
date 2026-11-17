@@ -29,7 +29,11 @@ import {
   type XmlElement,
 } from "./ooxml-package";
 
-export const SANITIZE_TARGETS = ["comments", "rsids", "properties"] as const;
+export const SANITIZE_TARGETS: readonly ["comments", "rsids", "properties"] = [
+  "comments",
+  "rsids",
+  "properties",
+] as const;
 
 export type SanitizeTarget = (typeof SANITIZE_TARGETS)[number];
 

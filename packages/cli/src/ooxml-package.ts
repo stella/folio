@@ -45,8 +45,26 @@ const TRANSITIONAL_RELATIONSHIP_PREFIX =
 const STRICT_RELATIONSHIP_PREFIX =
   "http://purl.oclc.org/ooxml/officeDocument/relationships/";
 
+type RelationshipName =
+  | "officeDocument"
+  | "header"
+  | "footer"
+  | "footnotes"
+  | "endnotes"
+  | "styles"
+  | "numbering"
+  | "settings"
+  | "comments"
+  | "extendedProperties"
+  | "coreProperties"
+  | "strictCoreProperties"
+  | "commentsExtended"
+  | "commentsIds"
+  | "commentsExtensible"
+  | "people";
+
 /** Relationship types by their Transitional spelling; Strict ones are read as these. */
-export const RELATIONSHIP_TYPES = {
+export const RELATIONSHIP_TYPES: Readonly<Record<RelationshipName, string>> = {
   officeDocument: `${TRANSITIONAL_RELATIONSHIP_PREFIX}officeDocument`,
   header: `${TRANSITIONAL_RELATIONSHIP_PREFIX}header`,
   footer: `${TRANSITIONAL_RELATIONSHIP_PREFIX}footer`,
@@ -68,7 +86,7 @@ export const RELATIONSHIP_TYPES = {
   commentsExtensible:
     "http://schemas.microsoft.com/office/2018/08/relationships/commentsExtensible",
   people: "http://schemas.microsoft.com/office/2011/relationships/people",
-} as const;
+};
 
 const normalizeRelationshipType = (type: string): string =>
   type.startsWith(STRICT_RELATIONSHIP_PREFIX)
@@ -190,19 +208,6 @@ export const removeElements = (
   }
   if (removed > 0) node.elements = kept;
   return removed;
-};
-
-/** The prefix a part binds to one of `namespaces` on its root, for elements it adds. */
-export const prefixFor = (
-  root: XmlElement,
-  namespaces: ReadonlySet<string>,
-): string | undefined => {
-  for (const [attribute, value] of Object.entries(root.attributes ?? {})) {
-    if (typeof value !== "string" || !namespaces.has(value)) continue;
-    if (attribute === "xmlns") return "";
-    if (attribute.startsWith("xmlns:")) return attribute.slice("xmlns:".length);
-  }
-  return undefined;
 };
 
 const relationshipsPartFor = (part: string): string =>
