@@ -253,6 +253,7 @@ import {
   isHiddenTableRow,
 } from "./snapshot";
 import {
+  isInsertedPPrMark,
   isPlainDeletedPPrMark,
   snapshotBatchClaim,
   type SnapshotBatchOperation,
@@ -3016,13 +3017,6 @@ const insertBlocksInsideComments = ({
   }
   return next;
 };
-
-/** A paragraph mark that is a pending insertion (not a relocation's end). */
-const isInsertedPPrMark = (value: unknown): boolean =>
-  typeof value === "object" &&
-  value !== null &&
-  "kind" in value &&
-  value.kind === "ins";
 
 const isSuggestedParagraphInsert = (paragraph: PMNode): boolean =>
   typeof paragraph.attrs["_suggestedInsert"] === "object" &&

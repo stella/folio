@@ -2,4 +2,4 @@
 "@stll/folio-core": patch
 ---
 
-Share snapshot batch claim facts between public operation planners.
+Use shared snapshot claims and execution scheduling for canonical operation batches.

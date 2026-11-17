@@ -36,6 +36,13 @@ export type SnapshotBatchOperation =
       axis: "row" | "column" | "cell";
     };
 
+/** A paragraph mark that is a pending insertion (not a relocation's end). */
+export const isInsertedPPrMark = (value: unknown): boolean =>
+  typeof value === "object" &&
+  value !== null &&
+  "kind" in value &&
+  value.kind === "ins";
+
 /** A paragraph mark that is a plain pending deletion (not a relocation's source). */
 export const isPlainDeletedPPrMark = (value: unknown): boolean =>
   typeof value === "object" &&
@@ -184,7 +191,7 @@ export const snapshotBatchClaim = ({
   item,
   doc,
   producesTrackedChanges,
-}: SnapshotBatchClaimOptions): BatchClaim => {
+}: SnapshotBatchClaimOptions): Exclude<BatchClaim, { type: "unclaimed" }> => {
   switch (item.type) {
     case "text":
     case "annotation":

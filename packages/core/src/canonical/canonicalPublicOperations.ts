@@ -43,6 +43,7 @@ import {
   buildTableNode,
   SUGGESTED_SUPPORTED_OPERATION_TYPES,
 } from "../ai-edits/apply";
+import { BatchClaims } from "../ai-edits/batch-claims";
 import {
   splitsGraphemeCluster,
   splitsSurrogatePair,
@@ -71,6 +72,7 @@ import {
   pendingJoinParagraphs,
   pendingMarkEditOf,
   pendingMarkEditRefusal,
+  pendingParagraphPropertiesRefusal,
 } from "../ai-edits/pendingJoin";
 import {
   collectNoteReferenceLabels,
@@ -152,6 +154,11 @@ import type {
 } from "../types/document";
 import { readModel } from "../types/documentModel";
 import {
+  type CanonicalBatchPlan,
+  canonicalBatchPlan,
+  orderCanonicalBatch,
+} from "./canonicalBatchPlanning";
+import {
   canonicalCommentBody,
   compileCanonicalComments,
 } from "./canonicalComments";
@@ -228,7 +235,7 @@ type CommentOperation = {
   ]: "comment" extends keyof Operation ? Operation : never;
 }[FolioDocumentOperation["type"]];
 
-type ResolvedOperation = {
+type PreparedOperation = {
   intents: readonly EditorIntent[];
   normalizations: readonly FolioAIEditNormalization[];
   from: number;
@@ -275,7 +282,7 @@ const resolveComment = ({ operation, from, to }: ResolveCommentOptions) => {
       operation,
       comment: { text: operation.comment.text, from, to },
     } as const satisfies Pick<
-      Extract<ResolvedOperation, { type: "commented" }>,
+      Extract<PreparedOperation, { type: "commented" }>,
       "type" | "operation" | "comment"
     >;
   }
@@ -455,14 +462,6 @@ const isBlockInsertion = (
   operation.type === "insertBeforeBlock";
 
 type TableInsertion = TableInsertionOperation;
-
-/** An operation that puts a new block, a paragraph or a table, beside a paragraph. */
-const placesBlock = (
-  operation: FolioDocumentOperation,
-): operation is BlockInsertion | TableInsertion =>
-  isBlockInsertion(operation) ||
-  operation.type === "insertTable" ||
-  operation.type === "insertSignatureTable";
 
 type ProjectedParagraph = NonNullable<
   ReturnType<CanonicalProjection["paragraph"]>
@@ -1436,47 +1435,6 @@ const CANONICAL_SUGGESTED_OPERATION_TYPES: ReadonlySet<
   "commentOnBlock",
 ]);
 
-/**
- * Whether one of two resolved operations inserts beside the paragraph the
- * other deletes by identity: they touch only at that paragraph's edge, and
- * both apply, as in the default engine. A deletion of a paragraph that ends
- * its container still refuses the insertion beside it.
- */
-const besideItsDeletion = (
-  left: Pick<ResolvedOperation, "operation" | "removesParagraphBeforeBlock">,
-  right: Pick<ResolvedOperation, "operation" | "removesParagraphBeforeBlock">,
-): boolean => {
-  const pair = (
-    { operation: insertion }: typeof left,
-    { operation: deletion, removesParagraphBeforeBlock }: typeof left,
-  ) =>
-    (insertion.type === "insertAfterBlock" ||
-      insertion.type === "insertBeforeBlock") &&
-    deletion.type === "deleteBlock" &&
-    removesParagraphBeforeBlock === true &&
-    insertion.blockId === deletion.blockId;
-  return pair(left, right) || pair(right, left);
-};
-
-/**
- * Whether one of two resolved operations inserts a block right before or
- * right after the paragraph the other splits: the split claims that
- * paragraph whole, and the insertion touches only its edge. Both apply, as
- * in the default engine: the insertion goes in first, beside the paragraph
- * it read, and the split then divides that paragraph by its identity.
- */
-const besideItsSplit = (
-  left: Pick<ResolvedOperation, "operation" | "from" | "to">,
-  right: Pick<ResolvedOperation, "operation" | "from" | "to">,
-): boolean => {
-  const pair = (insertion: typeof left, split: typeof left) =>
-    placesBlock(insertion.operation) &&
-    insertion.from === insertion.to &&
-    split.operation.type === "splitBlock" &&
-    (insertion.from === split.from || insertion.from === split.to);
-  return pair(left, right) || pair(right, left);
-};
-
 /** A block operation without the move it names: a plain insertion or deletion. */
 const withoutMove = (
   operation: FolioDocumentOperation,
@@ -1649,6 +1607,42 @@ class CanonicalPublicOperationResolutionError extends CanonicalPublicOperationRe
   gap?: CanonicalGap | null;
 }> {}
 
+type BatchPropertyRefusalOptions = {
+  document: Document;
+  story: OpStory;
+  operation: FolioDocumentOperation;
+};
+
+/** Recheck the native property boundary after earlier operations of this batch. */
+const batchPropertyRefusal = ({
+  document,
+  story,
+  operation,
+}: BatchPropertyRefusalOptions) => {
+  switch (operation.type) {
+    case "setBlockParagraphProperties":
+      break;
+    case "replaceBlock":
+      if (operation.styleId === undefined) return undefined;
+      break;
+    default:
+      return undefined;
+  }
+  const body = findStoryBody(document, story);
+  const paragraph =
+    body === undefined
+      ? undefined
+      : storyParagraphs(body).find(
+          (entry) => entry.paragraph.paraId === operation.blockId,
+        )?.paragraph;
+  if (
+    operation.type === "replaceBlock" &&
+    operation.styleId === (paragraph?.formatting?.styleId ?? null)
+  )
+    return undefined;
+  return pendingParagraphPropertiesRefusal(paragraph?.pPrMark);
+};
+
 type ResolveCanonicalPublicOperationOptions = {
   operation: FolioDocumentOperation;
   options: CanonicalPublicOperationOptions;
@@ -1776,7 +1770,7 @@ export class CanonicalPublicOperations {
     const skipped: FolioAIEditSkippedOperation[] = [];
     const normalizations: FolioAIEditNormalization[] = [];
     const refusals = new Map<string, CanonicalPublicOperationRefusal>();
-    const resolved: ResolvedOperation[] = [];
+    const resolved: (PreparedOperation & { plan: CanonicalBatchPlan })[] = [];
     // Read once, at the first operation that reaches the check: a batch the
     // session refuses as a whole reads no document.
     let definedReferences:
@@ -1880,20 +1874,32 @@ export class CanonicalPublicOperations {
         ),
       ),
     };
-    const overlapsResolved = (candidate: ResolvedOperation) =>
-      resolved.some(
-        (earlier) =>
-          earlier !== candidate &&
-          !besideItsDeletion(earlier, candidate) &&
-          !besideItsSplit(earlier, candidate) &&
-          ((candidate.from < earlier.to && candidate.to > earlier.from) ||
-            (earlier.from === earlier.to &&
-              candidate.from <= earlier.from &&
-              candidate.to >= earlier.from) ||
-            (candidate.from === candidate.to &&
-              candidate.from >= earlier.from &&
-              candidate.from <= earlier.to)),
-      );
+    const inputIndices = new Map(
+      batch.operations.map(({ id }, index) => [id, index]),
+    );
+    const planned = (item: PreparedOperation) => {
+      if (projected.isErr())
+        return panic("A resolved batch lost its read projection");
+      const inputIndex =
+        inputIndices.get(item.operation.id) ??
+        panic("A resolved operation lost its input position");
+      return {
+        ...item,
+        plan: canonicalBatchPlan({
+          ...item,
+          projection: projected.value,
+          tracked: batch.mode !== "direct",
+          inputIndex,
+        }),
+      };
+    };
+    let claims = new BatchClaims();
+    const overlapsResolved = (candidate: ReturnType<typeof planned>) =>
+      claims.conflictOf(candidate.plan.claim) !== null;
+    const admit = (candidate: ReturnType<typeof planned>) => {
+      claims.add(candidate.operation.id, candidate.plan.claim);
+      resolved.push(candidate);
+    };
     for (const operation of batch.operations) {
       if (!state || projected.isErr() || session.isComposing) {
         skip(operation.id, "documentNotEditable");
@@ -1959,11 +1965,12 @@ export class CanonicalPublicOperations {
         refuseResolution(operation.id, compiled.error);
         continue;
       }
-      if (overlapsResolved(compiled.value)) {
+      const candidate = planned(compiled.value);
+      if (overlapsResolved(candidate)) {
         skip(operation.id, "overlappingOperation");
         continue;
       }
-      resolved.push(compiled.value);
+      admit(candidate);
     }
     // An operation resolved beside a deleted paragraph that ends its run
     // counts on its other half; where that half did not resolve, it resolves
@@ -1986,6 +1993,11 @@ export class CanonicalPublicOperations {
       );
       if (partnered) continue;
       resolved.splice(resolved.indexOf(item), 1);
+      // Conditional resolution may retire an accepted claim; rebuild only at
+      // this boundary, so its old target cannot reject the independent retry.
+      claims = new BatchClaims();
+      for (const earlier of resolved)
+        claims.add(earlier.operation.id, earlier.plan.claim);
       const alone = this.resolve({
         operation,
         options,
@@ -2004,11 +2016,12 @@ export class CanonicalPublicOperations {
         refuseResolution(operation.id, alone.error);
         continue;
       }
-      if (overlapsResolved(alone.value)) {
+      const candidate = planned(alone.value);
+      if (overlapsResolved(candidate)) {
         skip(operation.id, "overlappingOperation");
         continue;
       }
-      resolved.push(alone.value);
+      admit(candidate);
     }
     // A move id names one relocation, a move only when it reaches exactly one
     // source and one destination, as the default engine pairs them; an
@@ -2073,13 +2086,10 @@ export class CanonicalPublicOperations {
     }
     if (!state || projected.isErr() || session.isComposing)
       return result([], null);
-    // Descending read positions keep independent snapshot coordinates valid;
-    // at one position an insertion goes first, beside a paragraph the batch
-    // then deletes.
-    resolved.sort(
-      (left, right) =>
-        right.from - left.from || left.to - left.from - (right.to - right.from),
-    );
+    const executionOrder = orderCanonicalBatch({
+      items: resolved,
+      doc: projected.value.doc,
+    });
     let document = readModel(session.document);
     const ops: DocumentOp[] = [];
     const appliedById = new Map<
@@ -2090,12 +2100,27 @@ export class CanonicalPublicOperations {
       reservedBlockIds: session.reservedBlockIds,
     });
     const date = options.revisionStamp?.date ?? new Date().toISOString();
-    for (const resolvedOperation of resolved) {
+    for (const resolvedOperation of executionOrder) {
       const {
         operation,
         intents,
         normalizations: adjustments,
       } = resolvedOperation;
+      const livePropertyRefusal = batchPropertyRefusal({
+        document,
+        story,
+        operation,
+      });
+      if (livePropertyRefusal !== undefined) {
+        if (livePropertyRefusal.canonicalRefusal !== undefined)
+          refusals.set(operation.id, livePropertyRefusal.canonicalRefusal);
+        skip(
+          operation.id,
+          livePropertyRefusal.reason,
+          livePropertyRefusal.message,
+        );
+        continue;
+      }
       // A suggested operation's records are one suggestion: its own id, or the
       // one it names.
       const suggestionId =
@@ -2549,10 +2574,10 @@ export class CanonicalPublicOperations {
       return refusal("unsupportedBlock");
     const tracking = (
       resolved: Omit<
-        Extract<ResolvedOperation, { type: "plain" }>,
+        Extract<PreparedOperation, { type: "plain" }>,
         "type" | "operation"
       >,
-    ): Result<ResolvedOperation, CanonicalPublicOperationResolutionError> =>
+    ): Result<PreparedOperation, CanonicalPublicOperationResolutionError> =>
       Result.ok(
         operation.comment === undefined
           ? { type: "plain", operation, ...resolved }
@@ -3365,23 +3390,21 @@ export class CanonicalPublicOperations {
           }),
         );
     } else intents.push(intent);
-    const structural =
-      operation.type === "splitBlock" ||
-      operation.type === "mergeBlockWithNext";
     const nextParagraph =
       operation.type === "mergeBlockWithNext" &&
       intent.type === "joinParagraphs"
         ? projection.value.paragraph(intent.nextBlockId)
         : undefined;
     let claimedTo = range.to;
-    if (structural) claimedTo = paragraph.start + paragraph.node.content.size;
+    if (operation.type === "mergeBlockWithNext")
+      claimedTo = paragraph.start + paragraph.node.content.size;
     if (nextParagraph)
       claimedTo = nextParagraph.start + nextParagraph.node.content.size;
     return Result.ok({
       ...resolvedComment,
       intents,
       normalizations,
-      from: structural ? paragraph.start : range.from,
+      from: range.from,
       to: claimedTo,
     });
   }
