@@ -15,6 +15,7 @@ import {
 } from "../../../../test/property-testing";
 import {
   alignFolioContentBlocks,
+  alignFolioContentStructure,
   createFolioContentAlignmentWorkSession,
   type FolioContentAlignedBlockEvent,
 } from "./content-alignment";
@@ -234,6 +235,216 @@ test("a stronger candidate keeps the edit that owns its id beyond the current ga
         : [],
     );
     expect(pairs).toContainEqual([source.id, source.id]);
+  }
+});
+
+test("continuity with no retired candidates preserves the later gap allowance", () => {
+  const block = ({ id, text }: { id: string; text: string }) =>
+    ({
+      id,
+      text,
+      kind: "paragraph",
+      idStability: "positional",
+    }) as const;
+  const base = [
+    block({ id: "10000000", text: "Earlier original wording" }),
+    block({ id: "10000001", text: "An exact separator" }),
+    block({ id: "10000002", text: "Unrelated inserted text" }),
+    block({ id: "10000003", text: "Original surviving paragraph" }),
+  ];
+  const revised = [
+    {
+      ...block({ id: "10000000", text: "Earlier edited wording" }),
+      idStability: "stable" as const,
+    },
+    block({ id: "10000001", text: "An exact separator" }),
+    block({ id: "10000004", text: "Edited surviving paragraph" }),
+  ];
+  for (const [before, after] of [
+    [base, revised],
+    [revised, base],
+  ]) {
+    if (before === undefined || after === undefined) panic("Both sides exist");
+    const pairs = alignFolioContentBlocks(before, after, {
+      workSession: createFolioContentAlignmentWorkSession({ lcsCells: 3 }),
+    }).flatMap((event) =>
+      event.type === "pair"
+        ? [[event.baseBlock.id, event.revisedBlock.id]]
+        : [],
+    );
+    expect(pairs).toContainEqual(
+      before === base ? ["10000003", "10000004"] : ["10000004", "10000003"],
+    );
+  }
+});
+
+test("incompatible retired candidates cannot consume a later gap's token allowance", () => {
+  const source = {
+    id: "10000001",
+    kind: "paragraph",
+    text: "red alpha",
+    idStability: "positional",
+  } as const;
+  const anchor = {
+    ...source,
+    id: "10000003",
+    text: "Exact separator",
+    idStability: "stable",
+  } as const;
+  for (const irrelevant of [
+    { ...source, id: "10000002", kind: "figure", text: "blue beta" },
+    {
+      ...source,
+      id: "10000002",
+      text: "blue beta",
+      containerPath: [{ kind: "control", id: "other" }],
+    },
+  ] as const satisfies readonly FolioContentBlockIdentity[]) {
+    const base = [
+      source,
+      irrelevant,
+      anchor,
+      { ...source, id: "10000004", text: "remote unrelated" },
+      { ...source, id: "10000005", text: "original paragraph" },
+    ];
+    const revised = [
+      { ...source, text: "green gamma", idStability: "stable" as const },
+      anchor,
+      { ...source, id: "10000006", text: "edited paragraph" },
+    ];
+    for (const [before, after] of [
+      [base, revised],
+      [revised, base],
+    ]) {
+      if (before === undefined || after === undefined)
+        panic("Both sides exist");
+      const pairs = alignFolioContentBlocks(before, after, {
+        workSession: createFolioContentAlignmentWorkSession({
+          lcsCells: 100,
+          structuralTokenLookups: 4,
+        }),
+      }).flatMap((event) =>
+        event.type === "pair"
+          ? [[event.baseBlock.id, event.revisedBlock.id]]
+          : [],
+      );
+      expect(pairs).toContainEqual(
+        before === base ? ["10000005", "10000006"] : ["10000006", "10000005"],
+      );
+    }
+  }
+});
+
+test("rounded similarity ties retain mixed identity regardless of candidate order and label", () => {
+  const targetWords = Array.from(
+    { length: 32 },
+    (_, index) => `target${index}`,
+  );
+  const source = {
+    id: "10000000",
+    kind: "paragraph",
+    idStability: "positional",
+    text: [
+      ...targetWords.slice(0, 20),
+      ...Array.from({ length: 9 }, (_, index) => `source${index}`),
+    ].join(" "),
+  } as const;
+  const candidate = {
+    ...source,
+    id: "10000001",
+    displayLabel: "1.",
+    text: [
+      ...targetWords.slice(0, 21),
+      ...Array.from({ length: 11 }, (_, index) => `candidate${index}`),
+    ].join(" "),
+  };
+  const target = {
+    ...source,
+    idStability: "stable",
+    text: targetWords.join(" "),
+    displayLabel: "1.",
+  } as const;
+  for (const base of [
+    [source, candidate],
+    [candidate, source],
+  ]) {
+    for (const [before, after] of [
+      [base, [target]],
+      [[target], base],
+    ]) {
+      if (before === undefined || after === undefined)
+        panic("Both sides exist");
+      const pairs = alignFolioContentBlocks(before, after).flatMap((event) =>
+        event.type === "pair"
+          ? [[event.baseBlock.id, event.revisedBlock.id]]
+          : [],
+      );
+      expect(pairs).toContainEqual([source.id, target.id]);
+    }
+  }
+});
+
+test("retired identity evidence uses the complete document across structural partitions", () => {
+  const table = (cellIndex: number, rowIndex = 0, tableIndex = 0) => ({
+    outerTableIndex: tableIndex,
+    tableIndex,
+    rowIndex,
+    cellIndex,
+    gridColumnIndex: cellIndex,
+    columnSpan: 1,
+    rowSpan: 1,
+    paragraphIndex: 0,
+  });
+  const competitor = {
+    id: "10000000",
+    kind: "paragraph",
+    text: "original paragraph",
+    idStability: "positional",
+    table: table(0),
+  } as const;
+  const source = {
+    ...competitor,
+    id: "10000001",
+    text: "different extended wording paragraph",
+  };
+  const anchor = {
+    ...competitor,
+    id: "10000002",
+    text: "Exact cell separator",
+  };
+  for (const elsewhere of [table(1), table(0, 1), table(0, 0, 1), undefined]) {
+    const other = {
+      ...competitor,
+      id: "10000003",
+      text: "Exact distant separator",
+      table: elsewhere,
+    };
+    const base = [competitor, source, anchor, other];
+    const revised = [
+      { ...source, text: "edited paragraph", idStability: "stable" as const },
+      { ...anchor, idStability: "stable" as const },
+      { ...other, idStability: "stable" as const },
+      {
+        ...competitor,
+        table: elsewhere,
+        text: "New distant content",
+        idStability: "stable" as const,
+      },
+    ];
+    for (const [before, after] of [
+      [base, revised],
+      [revised, base],
+    ]) {
+      if (before === undefined || after === undefined)
+        panic("Both sides exist");
+      const pairs = alignFolioContentStructure({
+        baseBlocks: before,
+        revisedBlocks: after,
+      }).flatMap((step) =>
+        step.type === "pair" ? [[step.baseBlock.id, step.revisedBlock.id]] : [],
+      );
+      expect(pairs).toContainEqual([source.id, source.id]);
+    }
   }
 });
 

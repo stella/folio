@@ -618,7 +618,6 @@ type StrongerRetiredCounterpartOptions<
   source: PreparedAlignmentBlock<Block>;
   target: PreparedAlignmentBlock<Block>;
   candidates: readonly PreparedAlignmentBlock<Block>[];
-  oppositeIds: ReadonlySet<string>;
   canPair: (candidate: PreparedAlignmentBlock<Block>) => boolean;
   tokens: (text: string) => GapBlockTokens;
   workSession: FolioContentAlignmentWorkSession;
@@ -631,15 +630,17 @@ const hasStrongerRetiredCounterpart = <
   source,
   target,
   candidates,
-  oppositeIds,
   canPair,
   tokens,
   workSession,
 }: StrongerRetiredCounterpartOptions<Block>): boolean => {
-  if (source.block.text === target.block.text) return false;
+  if (candidates.length === 0 || source.block.text === target.block.text)
+    return false;
   // Token accounting alone does not bound scans of empty or incompatible blocks.
   if (!claimFolioContentAlignmentCells(1, candidates.length, workSession))
     return false;
+  const compatibleCandidates = candidates.filter(canPair);
+  if (compatibleCandidates.length === 0) return false;
   const targetTokens = tokens(target.block.text);
   const original = gapBlockSimilarity(
     tokens(source.block.text),
@@ -647,15 +648,10 @@ const hasStrongerRetiredCounterpart = <
     workSession,
   );
   if (original.status === "budget-exceeded") return false;
-  let best = original.value;
+  const originalScore = gapSimilarityScore(original.value);
+  let best = originalScore;
   let strongest = 0;
-  for (const candidate of candidates) {
-    if (
-      candidate === source ||
-      oppositeIds.has(candidate.block.id) ||
-      !canPair(candidate)
-    )
-      continue;
+  for (const candidate of compatibleCandidates) {
     const candidateTokens = tokens(candidate.block.text);
     // The empty-paragraph fill score is eligibility, not competing wording evidence.
     if (candidateTokens.total === 0 || targetTokens.total === 0) continue;
@@ -666,15 +662,16 @@ const hasStrongerRetiredCounterpart = <
     );
     // Partial evidence cannot establish that the strongest counterpart is unique.
     if (measured.status === "budget-exceeded") return false;
+    const score = gapSimilarityScore(measured.value);
     if (
       measured.value < GAP_PAIR_SIMILARITY_THRESHOLD ||
-      measured.value <= original.value
+      score <= originalScore
     )
       continue;
-    if (measured.value > best) {
-      best = measured.value;
+    if (score > best) {
+      best = score;
       strongest = 1;
-    } else if (measured.value === best) {
+    } else if (score === best) {
       strongest += 1;
     }
   }
@@ -761,8 +758,14 @@ const pairByResidualIdContinuity = <Block extends FolioContentBlockIdentity>({
     tokenProfiles.set(text, profile);
     return profile;
   };
-  const baseGap = baseBlocks.slice(baseFrom, baseTo);
-  const revisedGap = revisedBlocks.slice(revisedFrom, revisedTo);
+  // Filter once per gap: repeated continuity probes must neither rescan owned
+  // IDs without a bound nor spend the similarity allowance on those IDs.
+  const baseGap = baseBlocks
+    .slice(baseFrom, baseTo)
+    .filter(({ block }) => !revisedIds.has(block.id));
+  const revisedGap = revisedBlocks
+    .slice(revisedFrom, revisedTo)
+    .filter(({ block }) => !baseIds.has(block.id));
   const candidates: FolioContentBlockPair[] = [];
   for (const [id, baseBlock] of baseBlocksById) {
     const revisedBlock = revisedBlocksById.get(id);
@@ -782,7 +785,6 @@ const pairByResidualIdContinuity = <Block extends FolioContentBlockIdentity>({
         source: baseBlock,
         target: revisedBlock,
         candidates: baseGap,
-        oppositeIds: revisedIds,
         canPair: (candidate) => canPair(candidate, revisedBlock),
         tokens,
         workSession,
@@ -791,7 +793,6 @@ const pairByResidualIdContinuity = <Block extends FolioContentBlockIdentity>({
         source: revisedBlock,
         target: baseBlock,
         candidates: revisedGap,
-        oppositeIds: baseIds,
         canPair: (candidate) => canPair(baseBlock, candidate),
         tokens,
         workSession,
@@ -1064,6 +1065,8 @@ const GAP_PAIR_SIMILARITY_THRESHOLD = 0.5;
  * smallest similarity step.
  */
 const GAP_PAIR_SIMILARITY_SCALE = 1_000;
+const gapSimilarityScore = (value: number): number =>
+  Math.round(value * GAP_PAIR_SIMILARITY_SCALE);
 
 type GapBlockTokens = { counts: ReadonlyMap<string, number>; total: number };
 
@@ -1185,8 +1188,7 @@ const pairGapBySimilarity = <Block extends FolioContentBlockIdentity>({
           baseBlock.block.displayLabel !== undefined &&
           baseBlock.block.displayLabel === revisedBlock.block.displayLabel;
         similarity[baseOffset * revisedCount + revisedOffset] =
-          Math.round(measured.value * GAP_PAIR_SIMILARITY_SCALE) *
-            similarityStep +
+          gapSimilarityScore(measured.value) * similarityStep +
           (sameLabel ? 1 : 0);
         candidateBase.add(baseOffset);
         candidateRevised.add(revisedOffset);
@@ -1248,10 +1250,30 @@ export type AlignFolioContentBlocksOptions<
   idStability?: ((block: Block) => FolioContentIdStability) | undefined;
 };
 
+type ContentIdentityOwnership = {
+  baseIds: ReadonlySet<string>;
+  revisedIds: ReadonlySet<string>;
+};
+
+type ContentIdentityOwnershipOptions<Block extends FolioContentBlockIdentity> =
+  {
+    baseBlocks: readonly Block[];
+    revisedBlocks: readonly Block[];
+  };
+
+const contentIdentityOwnership = <Block extends FolioContentBlockIdentity>({
+  baseBlocks,
+  revisedBlocks,
+}: ContentIdentityOwnershipOptions<Block>): ContentIdentityOwnership => ({
+  baseIds: new Set(baseBlocks.map(({ id }) => id)),
+  revisedIds: new Set(revisedBlocks.map(({ id }) => id)),
+});
+
 type AlignFolioContentBlocksInScopeOptions<
   Block extends FolioContentBlockIdentity,
 > = AlignFolioContentBlocksOptions<Block> & {
   structuralScope: BlockAlignmentStructuralScope;
+  identityOwnership: ContentIdentityOwnership;
 };
 
 const alignFolioContentBlocksInScope = <
@@ -1313,8 +1335,7 @@ const alignFolioContentBlocksInScope = <
       left.baseIndex - right.baseIndex ||
       left.revisedIndex - right.revisedIndex,
   );
-  const baseIds = new Set(baseBlocks.map(({ id }) => id));
-  const revisedIds = new Set(revisedBlocks.map(({ id }) => id));
+  const { baseIds, revisedIds } = options.identityOwnership;
   const continuityAnchors = pairsInAnchorGaps({
     baseLength: prepared.base.length,
     revisedLength: prepared.revised.length,
@@ -1513,6 +1534,7 @@ export const alignFolioContentBlocks = <
   alignFolioContentBlocksInScope(baseBlocks, revisedBlocks, {
     ...options,
     structuralScope: "document",
+    identityOwnership: contentIdentityOwnership({ baseBlocks, revisedBlocks }),
   });
 
 export type FolioContentAlignmentStep<
@@ -2706,11 +2728,13 @@ type AlignRowCellsOptions<Block extends FolioContentBlockIdentity> = {
   baseColumnKeys?: ReadonlyMap<number, number> | undefined;
   revisedColumnKeys?: ReadonlyMap<number, number> | undefined;
   cellRuns: ReadonlyMap<Block, number>;
+  identityOwnership: ContentIdentityOwnership;
 };
 
 const alignRowCells = <Block extends FolioContentBlockIdentity>({
   baseRow,
   revisedRow,
+  identityOwnership,
   workSession,
   moveScopeContext,
   stableIdMismatch,
@@ -2768,6 +2792,7 @@ const alignRowCells = <Block extends FolioContentBlockIdentity>({
         ...alignCellRun({
           baseBlocks: baseRuns.get(run) ?? [],
           revisedBlocks: revisedRuns.get(run) ?? [],
+          identityOwnership,
           workSession,
           moveScopeContext,
           stableIdMismatch,
@@ -2786,11 +2811,13 @@ type AlignCellRunOptions<Block extends FolioContentBlockIdentity> = {
   moveScopeContext: MoveScopeContext;
   stableIdMismatch: "pair" | "separate";
   idStability?: ((block: Block) => FolioContentIdStability) | undefined;
+  identityOwnership: ContentIdentityOwnership;
 };
 
 const alignCellRun = <Block extends FolioContentBlockIdentity>({
   baseBlocks,
   revisedBlocks,
+  identityOwnership,
   workSession,
   moveScopeContext,
   stableIdMismatch,
@@ -2801,6 +2828,7 @@ const alignCellRun = <Block extends FolioContentBlockIdentity>({
     idStability,
     stableIdMismatch,
     structuralScope: "pairedTableCell",
+    identityOwnership,
   }).flatMap((event): FolioContentAlignedBlockEvent<Block>[] => {
     if (
       event.type === "pair" &&
@@ -2914,10 +2942,12 @@ type AlignTableRowsOptions<Block extends FolioContentBlockIdentity> = {
   baseColumnKeys?: ReadonlyMap<number, number> | undefined;
   revisedColumnKeys?: ReadonlyMap<number, number> | undefined;
   cellRuns: ReadonlyMap<Block, number>;
+  identityOwnership: ContentIdentityOwnership;
 };
 
 const alignTableRows = <Block extends FolioContentBlockIdentity>({
   rows,
+  identityOwnership,
   workSession,
   moveScopeContext,
   stableIdMismatch,
@@ -2950,6 +2980,7 @@ const alignTableRows = <Block extends FolioContentBlockIdentity>({
           ...alignRowCells({
             baseRow: alignment.baseRow,
             revisedRow: alignment.revisedRow,
+            identityOwnership,
             workSession,
             moveScopeContext,
             stableIdMismatch,
@@ -3016,11 +3047,13 @@ type BuildTablePlanOptions<Block extends FolioContentBlockIdentity> = {
   stableIdMismatch: "pair" | "separate";
   idStability?: ((block: Block) => FolioContentIdStability) | undefined;
   cellRuns: ReadonlyMap<Block, number>;
+  identityOwnership: ContentIdentityOwnership;
 };
 
 const buildTablePlan = <Block extends FolioContentBlockIdentity>({
   baseBlocks,
   revisedBlocks,
+  identityOwnership,
   workSession,
   moveScopeContext,
   stableIdMismatch,
@@ -3049,6 +3082,7 @@ const buildTablePlan = <Block extends FolioContentBlockIdentity>({
       ...(columns?.steps ?? []),
       ...alignTableRows({
         rows,
+        identityOwnership,
         workSession,
         moveScopeContext,
         stableIdMismatch,
@@ -3068,11 +3102,13 @@ type BuildTableSegmentPlanOptions<Block extends FolioContentBlockIdentity> = {
   moveScopeContext: MoveScopeContext;
   stableIdMismatch: "pair" | "separate";
   idStability?: ((block: Block) => FolioContentIdStability) | undefined;
+  identityOwnership: ContentIdentityOwnership;
 };
 
 const buildTableSegmentPlan = <Block extends FolioContentBlockIdentity>({
   baseBlocks,
   revisedBlocks,
+  identityOwnership,
   workSession,
   moveScopeContext,
   stableIdMismatch,
@@ -3106,6 +3142,7 @@ const buildTableSegmentPlan = <Block extends FolioContentBlockIdentity>({
         const table = buildTablePlan({
           baseBlocks: alignment.base,
           revisedBlocks: alignment.revised,
+          identityOwnership,
           workSession,
           moveScopeContext,
           stableIdMismatch,
@@ -3895,6 +3932,10 @@ export const alignFolioContentStructure = <
   stableIdMismatch = "separate",
   idStability,
 }: AlignFolioContentStructureOptions<Block>): FolioContentAlignmentStep<Block>[] => {
+  const identityOwnership = contentIdentityOwnership({
+    baseBlocks,
+    revisedBlocks,
+  });
   const canReplaceWholeTable = wholeTableReplacement === "allow";
   const resolveIdStability = idStability ?? folioContentIdStability;
   const moveScopeContext: MoveScopeContext = {
@@ -3912,11 +3953,17 @@ export const alignFolioContentStructure = <
       if (baseSegment.kind !== "table") {
         steps.push(
           ...scopedAlignmentSteps(
-            alignFolioContentBlocks(baseSegment.blocks, revisedSegment.blocks, {
-              workSession,
-              stableIdMismatch,
-              idStability: resolveIdStability,
-            }),
+            alignFolioContentBlocksInScope(
+              baseSegment.blocks,
+              revisedSegment.blocks,
+              {
+                identityOwnership,
+                structuralScope: "document",
+                workSession,
+                stableIdMismatch,
+                idStability: resolveIdStability,
+              },
+            ),
             moveScopeContext,
             () => BODY_MOVE_BUCKET,
           ),
@@ -3929,6 +3976,7 @@ export const alignFolioContentStructure = <
       const table = buildTableSegmentPlan({
         baseBlocks: baseSegment.blocks,
         revisedBlocks: revisedSegment.blocks,
+        identityOwnership,
         workSession,
         moveScopeContext,
         stableIdMismatch,
