@@ -2,35 +2,34 @@ import { panic } from "better-result";
 import { expect, test } from "bun:test";
 import fc from "fast-check";
 
+import { FolioDocxReviewer } from "../../packages/core/src/ai-edits/headless";
+import { prepareCanonicalDocxInput } from "../../packages/core/src/docx/canonicalSessionInput";
+import { parseDocx } from "../../packages/core/src/docx/parser";
+import { createDocx } from "../../packages/core/src/docx/rezip";
+import { toProseDoc } from "../../packages/core/src/prosemirror/conversion/toProseDoc";
+import { paragraphContentOf } from "../../packages/core/src/prosemirror/zeroWidthAnchors";
 import type {
   BlockContent,
   Document,
   ParagraphContent,
-} from "@stll/docx-core/model";
-import {
-  applyDocumentOps,
-  DOCUMENT_OP_TYPES,
-  OP_STORIES,
-} from "@stll/docx-core/ops";
-
-import {
-  assertProperty,
-  propertyTestTimeout,
-} from "../../../../test/property-testing";
-import { storyParagraphs } from "../../../docx-core/src/ops/blocks";
-import { normalizeForOps } from "../../../docx-core/src/ops/contract";
-import { leafSpans } from "../../../docx-core/src/ops/leaves";
+} from "../../packages/docx-core/src/model/document";
+import { applyDocumentOps } from "../../packages/docx-core/src/ops/apply";
+import { storyParagraphs } from "../../packages/docx-core/src/ops/blocks";
+import { normalizeForOps } from "../../packages/docx-core/src/ops/contract";
+import { leafSpans } from "../../packages/docx-core/src/ops/leaves";
 import {
   paragraphHoldsContent,
   paragraphHoldsContentOnceAccepted,
   paragraphLength,
-} from "../../../docx-core/src/ops/offsets";
-import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
-import { parseDocx } from "../docx/parser";
-import { createDocx } from "../docx/rezip";
-import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import { paragraphContentOf } from "../prosemirror/zeroWidthAnchors";
-import { FolioDocxReviewer } from "./headless";
+} from "../../packages/docx-core/src/ops/offsets";
+import {
+  DOCUMENT_OP_TYPES,
+  OP_STORIES,
+} from "../../packages/docx-core/src/ops/types";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../test/property-testing";
 
 const XML = '<w:proofErr w:type="spellStart"/>';
 const MARKS = ["ins", "del", "moveFrom", "moveTo"] as const;
