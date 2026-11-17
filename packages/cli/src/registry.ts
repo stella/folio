@@ -306,6 +306,50 @@ const SANITIZE_TOOL = {
   ],
 } as const satisfies FolioFileToolSpec;
 
+const LANGUAGE_TAG_DESCRIPTION = "A BCP 47 language tag such as cs-CZ.";
+
+const PROOFING_LANGUAGE_TOOL = {
+  type: "packageRewrite",
+  name: "proofing_language",
+  rewrite: "proofingLanguage",
+  description:
+    "Report the proofing languages (`w:lang` val, eastAsia, bidi, and settings `w:themeFontLang`) each part " +
+    "states, and with `set` write a language: into the `w:docDefaults` run properties, the default paragraph " +
+    "style, every `w:lang` a style states, and `w:themeFontLang`. With `runs`, every `w:lang` a run or " +
+    "paragraph mark states in the body, headers, footers, and notes is set too. Without a destination, " +
+    "reports what it would change and writes nothing.",
+  argsSchema: {
+    type: "object",
+    properties: {
+      set: {
+        type: "string",
+        description: `The language for \`w:lang\` val. ${LANGUAGE_TAG_DESCRIPTION}`,
+      },
+      eastAsia: {
+        type: "string",
+        description: `The language for \`w:lang\` eastAsia. ${LANGUAGE_TAG_DESCRIPTION}`,
+      },
+      bidi: {
+        type: "string",
+        description: `The language for \`w:lang\` bidi. ${LANGUAGE_TAG_DESCRIPTION}`,
+      },
+      runs: {
+        type: "boolean",
+        description:
+          "Also set every `w:lang` a run or paragraph mark states in the stories.",
+      },
+    },
+    required: [],
+    additionalProperties: false,
+  },
+  commands: [
+    {
+      name: "lang",
+      summary: "Report or set the proofing language",
+    },
+  ],
+} as const satisfies FolioFileToolSpec;
+
 export const FOLIO_FILE_TOOLS: readonly FolioFileToolSpec[] = [
   agentRead({
     agentTool: FOLIO_AGENT_TOOL_NAMES.readDocument,
@@ -395,6 +439,7 @@ export const FOLIO_FILE_TOOLS: readonly FolioFileToolSpec[] = [
   RESOLVE_CHANGES_TOOL,
   COMPARE_TOOL,
   SANITIZE_TOOL,
+  PROOFING_LANGUAGE_TOOL,
 ];
 
 const toolsByName = new Map(FOLIO_FILE_TOOLS.map((tool) => [tool.name, tool]));

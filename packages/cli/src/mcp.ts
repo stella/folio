@@ -319,6 +319,11 @@ const LAZY_SUMMARIES: Readonly<
     summary: "Diff two .docx files, or write their redline to a destination.",
     domain: "compare",
   },
+  proofing_language: {
+    summary:
+      "Report the proofing languages; with `set`, write one into the defaults, styles and settings.",
+    domain: "package",
+  },
   sanitize_document: {
     summary:
       "Remove comments, rsids, and identifying properties; without a destination, report them.",
