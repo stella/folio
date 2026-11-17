@@ -1,0 +1,21 @@
+name: CLA Request
+
+# Unprivileged half of the CLA check: no secrets and a read-only token, so it
+# is safe on fork pull requests. Its completion triggers the CLA Assistant
+# workflow (`workflow_run`), which runs default-branch code, resolves the pull
+# request and reports the CLA check on its head. Never name this job `cla`: a
+# job of that name would report a check that verifies nothing.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions: {}
+
+jobs:
+  request:
+    name: CLA request
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - run: echo "The CLA Assistant workflow verifies this head."
