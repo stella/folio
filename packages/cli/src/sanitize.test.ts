@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 
+import { ZipArchive } from "@stll/docx-core/zip";
 import { FolioDocxReviewer } from "@stll/folio-core/server";
 
 import { makeTempDir } from "./__tests__/fixtures";
@@ -172,6 +173,27 @@ describe("sanitize rewrite", () => {
     expect(texts.get("docProps/core.xml")).toContain("Agreement");
     expect(texts.get("docProps/core.xml")).not.toContain("Partner A");
     expect(texts.get("docProps/app.xml")).not.toContain("Example Firm");
+  });
+
+  test("finds core properties related with the Strict relationship type", async () => {
+    const zip = await ZipArchive.read(await buildPackage(REUSED));
+    const rels = (await zip.entry("_rels/.rels")?.text()) ?? "";
+    zip.set(
+      "_rels/.rels",
+      rels.replace(
+        "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties",
+        "http://purl.oclc.org/ooxml/officeDocument/relationships/metadata/core-properties",
+      ),
+    );
+    const { report } = await sanitize(await zip.generate(), {
+      remove: ["properties"],
+    });
+    expect(report.properties?.map(({ property }) => property)).toEqual([
+      "creator",
+      "lastModifiedBy",
+      "company",
+      "manager",
+    ]);
   });
 
   test("is idempotent: a sanitized package has nothing left to remove", async () => {

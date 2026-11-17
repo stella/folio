@@ -57,7 +57,6 @@ type RelationshipName =
   | "comments"
   | "extendedProperties"
   | "coreProperties"
-  | "strictCoreProperties"
   | "commentsExtended"
   | "commentsIds"
   | "commentsExtensible"
@@ -77,8 +76,6 @@ export const RELATIONSHIP_TYPES: Readonly<Record<RelationshipName, string>> = {
   extendedProperties: `${TRANSITIONAL_RELATIONSHIP_PREFIX}extended-properties`,
   coreProperties:
     "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties",
-  strictCoreProperties:
-    "http://purl.oclc.org/ooxml/officeDocument/relationships/metadata/core-properties",
   commentsExtended:
     "http://schemas.microsoft.com/office/2011/relationships/commentsExtended",
   commentsIds:
@@ -88,10 +85,15 @@ export const RELATIONSHIP_TYPES: Readonly<Record<RelationshipName, string>> = {
   people: "http://schemas.microsoft.com/office/2011/relationships/people",
 };
 
-const normalizeRelationshipType = (type: string): string =>
-  type.startsWith(STRICT_RELATIONSHIP_PREFIX)
+/** Core properties are an OPC relationship; a Strict producer may spell it in the Strict namespace. */
+const STRICT_CORE_PROPERTIES = `${STRICT_RELATIONSHIP_PREFIX}metadata/core-properties`;
+
+const normalizeRelationshipType = (type: string): string => {
+  if (type === STRICT_CORE_PROPERTIES) return RELATIONSHIP_TYPES.coreProperties;
+  return type.startsWith(STRICT_RELATIONSHIP_PREFIX)
     ? `${TRANSITIONAL_RELATIONSHIP_PREFIX}${type.slice(STRICT_RELATIONSHIP_PREFIX.length)}`
     : type;
+};
 
 /** One relationship of a part, with its internal target resolved to a part name. */
 export type PackageRelationship = {

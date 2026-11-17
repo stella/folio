@@ -111,7 +111,6 @@ const PROPERTY_SPECS_BY_RELATIONSHIP: ReadonlyMap<
   readonly PropertySpec[]
 > = new Map([
   [RELATIONSHIP_TYPES.coreProperties, CORE_PROPERTY_SPECS],
-  [RELATIONSHIP_TYPES.strictCoreProperties, CORE_PROPERTY_SPECS],
   [RELATIONSHIP_TYPES.extendedProperties, EXTENDED_PROPERTY_SPECS],
 ]);
 
