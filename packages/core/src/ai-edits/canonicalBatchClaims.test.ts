@@ -343,6 +343,106 @@ for (const mode of ["direct", "tracked-changes"] as const)
 
 for (const mode of ["direct", "tracked-changes"] as const)
   for (const reverse of [false, true])
+    test(`${mode}: column batches preserve the deletion target and account for the tracked-review boundary (${reverse})`, async () => {
+      const bytes = (
+        await ensureParaIds(
+          new Uint8Array(await createDocx(fromMarkdown(tableSource))),
+        )
+      ).docx.slice().buffer;
+      const presentations: ReturnType<typeof presentationOf>[] = [];
+      for (const session of ["legacy", "canonical"] as const) {
+        const reviewer = await FolioDocxReviewer.fromBuffer(bytes, { session });
+        const before = reviewer.toDocument();
+        const cellBlockId =
+          reviewer.snapshot().blocks.find((block) => block.text === "B1")?.id ??
+          panic("A fixture cell is missing");
+        const operations = [
+          {
+            id: "insert",
+            type: "insertTableColumn",
+            blockId: cellBlockId,
+            position: "before",
+            cellTexts: ["New", "X1", "X2", "X3"],
+          },
+          { id: "delete", type: "deleteTableColumn", blockId: cellBlockId },
+        ] as const satisfies readonly FolioDocumentOperation[];
+        const result = reviewer.applyDocumentOperations(
+          {
+            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+            mode,
+            operations: reverse ? operations.toReversed() : [...operations],
+          },
+          { undefinedReferences: "refuse" },
+        );
+        const refusedPendingColumn =
+          session === "canonical" && mode === "tracked-changes";
+        expect(
+          result.skipped.map(({ id, reason, canonicalRefusal }) => ({
+            id,
+            reason,
+            canonicalRefusal,
+          })),
+        ).toEqual(
+          refusedPendingColumn
+            ? [
+                {
+                  id: "delete",
+                  reason: "unsupportedBlock",
+                  canonicalRefusal: { gap: "publicOps.unsupportedInline" },
+                },
+              ]
+            : [],
+        );
+        expect(result.applied.map(({ id }) => id).toSorted()).toEqual(
+          refusedPendingColumn ? ["insert"] : ["delete", "insert"],
+        );
+        const undo = result.undoHandle ?? panic("An admitted batch needs undo");
+        const pending = await reviewer.toBuffer();
+        expect(reviewer.undoDocumentOperations(undo).status).toBe("undone");
+        expect(reviewer.toDocument()).toEqual(before);
+        const final = await FolioDocxReviewer.fromBuffer(pending, { session });
+        if (mode === "tracked-changes")
+          expect(final.acceptAll().skipped).toEqual([]);
+        expect(final.getContent().map(({ text }) => text)).toEqual(
+          refusedPendingColumn
+            ? [
+                "Lead paragraph.",
+                "Left",
+                "New",
+                "Right",
+                "A1",
+                "X1",
+                "B1",
+                "A2",
+                "X2",
+                "B2",
+                "A3",
+                "X3",
+                "B3",
+                "Tail paragraph.",
+              ]
+            : [
+                "Lead paragraph.",
+                "Left",
+                "New",
+                "A1",
+                "X1",
+                "A2",
+                "X2",
+                "A3",
+                "X3",
+                "Tail paragraph.",
+              ],
+        );
+        presentations.push(presentationOf(final.state.doc));
+      }
+      // The tracked refusal is an existing kernel capability boundary, not
+      // an equivalent result: only the implemented direct path claims parity.
+      if (mode === "direct") expect(presentations[1]).toEqual(presentations[0]);
+    });
+
+for (const mode of ["direct", "tracked-changes"] as const)
+  for (const reverse of [false, true])
     for (const structural of ["replace", "merge"] as const)
       test(`${mode}: ${structural} preserves paragraph-property owners (${reverse})`, async () => {
         const bytes = await paragraphsDocx([
@@ -496,3 +596,91 @@ test("canonical column review refusal preserves the already-pending table atomic
   expect(reviewer.undoDocumentOperations(undo).status).toBe("undone");
   expect(reviewer.toDocument()).toEqual(original);
 });
+
+for (const columns of [1, 2])
+  for (const reverse of [false, true])
+    test(`direct column mapping counts only successful insertions (${columns} source columns, reverse=${reverse})`, async () => {
+      const markdown =
+        columns === 1
+          ? "Lead paragraph.\n\n| Right |\n| --- |\n| B1 |\n| B2 |\n| B3 |\n\nTail paragraph."
+          : tableSource;
+      const bytes = (
+        await ensureParaIds(
+          new Uint8Array(await createDocx(fromMarkdown(markdown))),
+        )
+      ).docx.slice().buffer;
+      const presentations: ReturnType<typeof presentationOf>[] = [];
+      for (const session of ["legacy", "canonical"] as const) {
+        const reviewer = await FolioDocxReviewer.fromBuffer(bytes, { session });
+        const before = reviewer.toDocument();
+        const cellBlockId =
+          reviewer.snapshot().blocks.find((block) => block.text === "B1")?.id ??
+          panic("A fixture cell is missing");
+        const operations = [
+          {
+            id: "first",
+            type: "insertTableColumn",
+            blockId: cellBlockId,
+            position: "before",
+            cellTexts: ["First", "F1", "F2", "F3"],
+          },
+          {
+            id: "overflow",
+            type: "insertTableColumn",
+            blockId: cellBlockId,
+            position: "before",
+            cellTexts: ["Overflow", "O1", "O2", "O3", "O4"],
+          },
+          {
+            id: "second",
+            type: "insertTableColumn",
+            blockId: cellBlockId,
+            position: "before",
+            cellTexts: ["Second", "S1", "S2", "S3"],
+          },
+          { id: "delete", type: "deleteTableColumn", blockId: cellBlockId },
+        ] as const satisfies readonly FolioDocumentOperation[];
+        const result = reviewer.applyDocumentOperations(
+          {
+            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+            mode: "direct",
+            operations: reverse ? operations.toReversed() : [...operations],
+          },
+          { undefinedReferences: "refuse" },
+        );
+        expect(result.applied.map(({ id }) => id).toSorted()).toEqual([
+          "delete",
+          "first",
+          "second",
+        ]);
+        expect(
+          result.skipped.map(({ id, reason }) => ({ id, reason })),
+        ).toEqual([{ id: "overflow", reason: "payloadDoesNotFit" }]);
+        const undo = result.undoHandle ?? panic("An admitted batch needs undo");
+        const pending = await reviewer.toBuffer();
+        expect(reviewer.undoDocumentOperations(undo).status).toBe("undone");
+        expect(reviewer.toDocument()).toEqual(before);
+        const final = await FolioDocxReviewer.fromBuffer(pending, { session });
+        const inserted = reverse
+          ? ["Second", "First", "S1", "F1", "S2", "F2", "S3", "F3"]
+          : ["First", "Second", "F1", "S1", "F2", "S2", "F3", "S3"];
+        const expected =
+          columns === 1
+            ? ["Lead paragraph.", ...inserted, "Tail paragraph."]
+            : [
+                "Lead paragraph.",
+                "Left",
+                ...inserted.slice(0, 2),
+                "A1",
+                ...inserted.slice(2, 4),
+                "A2",
+                ...inserted.slice(4, 6),
+                "A3",
+                ...inserted.slice(6),
+                "Tail paragraph.",
+              ];
+        expect(final.getContent().map(({ text }) => text)).toEqual(expected);
+        presentations.push(presentationOf(final.state.doc));
+      }
+      expect(presentations[1]).toEqual(presentations[0]);
+    });

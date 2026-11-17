@@ -86,6 +86,7 @@ import {
   findTableColumnInsertion,
   findTableRowInsertion,
   getInsertedPhysicalColumnRows,
+  getTableColumnCoordinateKey,
   splitCellParagraphTexts,
 } from "../ai-edits/table-row-column-mutations";
 import {
@@ -1643,6 +1644,47 @@ const batchPropertyRefusal = ({
   return pendingParagraphPropertiesRefusal(paragraph?.pPrMark);
 };
 
+type MapColumnDeletionIntentsOptions = {
+  intents: readonly EditorIntent[];
+  columnIndex: number;
+  inserted: number;
+};
+
+/** The native column applier uses the same successful same-gap insertion count. */
+const mapColumnDeletionIntents = ({
+  intents,
+  columnIndex,
+  inserted,
+}: MapColumnDeletionIntentsOptions): readonly EditorIntent[] => {
+  if (inserted === 0) return intents;
+  return intents.map((intent): EditorIntent => {
+    if (
+      intent.type === "table" &&
+      intent.operation.type === DOCUMENT_OP_TYPES.DELETE_COLUMN
+    )
+      return {
+        type: "table",
+        operation: { ...intent.operation, column: columnIndex + inserted },
+      };
+    // A source table with one column no longer disappears after the batch
+    // inserts beside that column: remove the original column, keeping the new.
+    if (
+      intent.type === "tableBlock" &&
+      intent.operation.type === DOCUMENT_OP_TYPES.DELETE_TABLE
+    )
+      return {
+        type: "table",
+        operation: {
+          type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
+          story: intent.operation.story,
+          blockId: intent.operation.blockId,
+          column: columnIndex + inserted,
+        },
+      };
+    return intent;
+  });
+};
+
 type ResolveCanonicalPublicOperationOptions = {
   operation: FolioDocumentOperation;
   options: CanonicalPublicOperationOptions;
@@ -2100,6 +2142,7 @@ export class CanonicalPublicOperations {
       reservedBlockIds: session.reservedBlockIds,
     });
     const date = options.revisionStamp?.date ?? new Date().toISOString();
+    const insertedColumnCounts = new Map<string, number>();
     for (const resolvedOperation of executionOrder) {
       const {
         operation,
@@ -2129,9 +2172,20 @@ export class CanonicalPublicOperations {
               ? operation.suggestionId
               : undefined) ?? operation.id)
           : undefined;
+      const column = resolvedOperation.plan.address;
+      const mappedIntents =
+        column.type === "column" && operation.type === "deleteTableColumn"
+          ? mapColumnDeletionIntents({
+              intents,
+              columnIndex: column.columnIndex,
+              inserted:
+                insertedColumnCounts.get(getTableColumnCoordinateKey(column)) ??
+                0,
+            })
+          : intents;
       const compiled = compilePublicIntents({
         document,
-        intents,
+        intents: mappedIntents,
         allocate,
         reservedBlockIds: session.reservedBlockIds,
         idLease: session.idLease,
@@ -2340,6 +2394,10 @@ export class CanonicalPublicOperations {
         continue;
       }
       normalizations.push(...adjustments);
+      if (column.type === "column" && column.insertion) {
+        const key = getTableColumnCoordinateKey(column);
+        insertedColumnCounts.set(key, (insertedColumnCounts.get(key) ?? 0) + 1);
+      }
       document = nextDocument;
       ops.push(...operationOps);
       nextRevisionId = Math.max(
