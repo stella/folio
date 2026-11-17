@@ -128,6 +128,19 @@ export const insertBlocks = ({
         storyBody(document, op.story).content,
         located.value.list,
       );
+      // Independent review can carry an earlier first-source mark across
+      // intervening blocks. Insertion cannot record that conditional ownership.
+      for (let index = 0; index < located.value.index; index += 1) {
+        const previous = list[index];
+        if (
+          previous?.type === "paragraph" &&
+          previous.pPrMark?.survivor === "first"
+        )
+          return refuse(
+            DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+            "Tracked table-side insertion cannot cross an earlier pending first-paragraph owner.",
+          );
+      }
       const following = list.at(located.value.index);
       if (!list.some((block) => block.type === "paragraph"))
         return refuse(

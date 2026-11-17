@@ -17,6 +17,10 @@ receiver with a paragraph terminator, or a section-free pending-review table.
 Section, ambiguous-structure, terminal, opaque and standing-range boundaries
 that cannot prove reversible review refuse before publication. Direct insertion
 and the existing paragraph-relative variants retain their behavior.
+Tracked table-side insertion also refuses an earlier explicit first-paragraph
+source owner in its containing block list, including across pending tables.
+Independent review cannot safely encode that conditional mark ownership.
+Owners in ancestor or sibling block lists do not trigger this boundary.
 
 Empty replacements need a surviving local insertion boundary and preserve cell
 terminators and section endpoints. They refuse an explicitly owned empty

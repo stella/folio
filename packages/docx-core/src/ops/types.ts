@@ -667,6 +667,8 @@ export type BlockInsertionPoint =
 /**
  * Insert paragraphs beside an existing paragraph or table, with pre-minted ids.
  * A table is addressed by a paragraph of its own, as in TableInsertionPoint.
+ * Tracked table-side insertion refuses an earlier pending first-paragraph
+ * source owner in the same containing block list.
  * Section-bearing paragraphs are refused. With `revision`, each inserted
  * paragraph receives an inserted mark and its content an insertion wrapper.
  * A tracked insertion after a paragraph no paragraph follows marks the
