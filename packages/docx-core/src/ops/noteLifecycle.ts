@@ -2,7 +2,8 @@ import { Result } from "better-result";
 
 import type { Document } from "../model/document";
 import { isCommentExhausted } from "./comments";
-import { combineEdits } from "./edits";
+import { combineEdits, type DocumentEdit } from "./edits";
+import type { DocumentOpRefusal } from "./refusal";
 import type { ApplyOps } from "./resolve";
 import { storyLifecycleEdit } from "./storyLifecycle";
 import { DOCUMENT_OP_TYPES, type DocumentOp } from "./types";
@@ -21,7 +22,7 @@ export const replaceNoteParts = ({
   parts,
   op,
   applyOps,
-}: ReplaceNotePartsOptions) => {
+}: ReplaceNotePartsOptions): Result<DocumentEdit, DocumentOpRefusal> => {
   const packageParts = { ...document.package };
   for (const key of NOTE_PART_KEYS) {
     if (Object.hasOwn(parts, key)) Reflect.set(packageParts, key, parts[key]);

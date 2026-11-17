@@ -348,7 +348,7 @@ test("note lifecycle inverse kinds are exercised by actual direct and tracked pr
           },
         ],
       },
-    ] as const;
+    ] satisfies Paragraph["content"];
     check(document, {
       type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
       at,
