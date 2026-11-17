@@ -347,9 +347,8 @@ export type FolioDocxReviewerOptions = {
    * tracked changes and the save run on it as the canonical editor runs
    * them, and resolved views are read from a second session resolved to
    * the view; suggested batches stage on it and its suggestions resolve
-   * through its suggestion intent. Secondary-story suggestion resolution and
-   * comparison inline-atom matching throw a `CanonicalSessionError` under
-   * `publicOps.headlessSession`.
+   * through its suggestion intent across all stories. Comparison inline-atom
+   * matching throws a `CanonicalSessionError` under `publicOps.headlessSession`.
    * Resolving one story to a view also refuses while it holds staged
    * suggestions. Locks that prevent a complete view refuse rather than
    * returning a partial view. These paths never fall back to the legacy engine.
@@ -2189,66 +2188,107 @@ export class FolioDocxReviewer {
     );
   }
 
-  /** Every change of the headers, footers and notes, as resolution operations. */
+  /** Classify every story before a held fragment keeps its whole proposal pending. */
   private storyResolutions(resolution: "accept" | "reject"): {
     ops: DocumentOp[];
     count: number;
     skipped: FolioReviewResolutionSkip[];
     stagedIds: number[];
+    heldSuggestionIds: Set<string>;
   } {
+    const heldSuggestions = new Map<string, LockedControlViolation>();
+    const stories = this.listStoryHandlesInternal()
+      // Notes resolve before body references can remove their stories.
+      .toSorted(
+        (left, right) =>
+          Number(left.type === "main") - Number(right.type === "main"),
+      )
+      .flatMap((handle) => {
+        const state = this.getEditableStoryState(handle);
+        if (!state) return [];
+        const story = canonicalOpStory(handle);
+        const changes = getTrackedChangesFromDoc(state.doc)
+          // Bulk acceptance leaves pending proposals staged.
+          .filter(
+            ({ id }) =>
+              resolution === "reject" ||
+              suggestionIdOfRevision(state, id) === null,
+          )
+          .map(({ id }) => ({
+            id,
+            suggestionId: suggestionIdOfRevision(state, id),
+            groupIds: getTrackedChangeGroupIdsFromDoc(state.doc, id),
+          }));
+        const locks = canonicalRevisionLocks({
+          document: this.baseDocument,
+          story,
+          groups: changes.map(({ groupIds }) => groupIds),
+          decision: resolution,
+        });
+        const held = new Map(
+          locks.held.flatMap(({ ids, violation }) =>
+            ids.map((id) => [id, violation] as const),
+          ),
+        );
+        for (const { id, suggestionId } of changes) {
+          const violation = held.get(id);
+          if (suggestionId !== null && violation !== undefined)
+            heldSuggestions.set(suggestionId, violation);
+        }
+        return [
+          {
+            story,
+            changes: changes.map(({ id, suggestionId, groupIds }) => ({
+              id,
+              suggestionId,
+              groupIds,
+              violation: held.get(id),
+            })),
+          },
+        ];
+      });
     const ops: DocumentOp[] = [];
     const skipped: FolioReviewResolutionSkip[] = [];
     const stagedIds: number[] = [];
     let count = 0;
-    for (const handle of this.listStoryHandlesInternal()) {
-      if (handle.type === "main") continue;
-      const state = this.getEditableStoryState(handle);
-      if (!state) continue;
-      const { doc } = state;
-      if (resolution === "reject" && getSuggestions(state).length > 0)
-        throw canonicalReviewerRefusal(
-          "reject a suggestion in headers, footers or notes",
-        );
-      // Accepting every change leaves pending suggestions staged.
-      const changes = getTrackedChangesFromDoc(doc).filter(
-        ({ id }) => suggestionIdOfRevision(state, id) === null,
-      );
-      if (changes.length === 0) continue;
-      const story = canonicalOpStory(handle);
-      const locks = canonicalRevisionLocks({
-        document: this.baseDocument,
-        story,
-        groups: changes.map(({ id }) =>
-          getTrackedChangeGroupIdsFromDoc(doc, id),
-        ),
-        decision: resolution,
-      });
-      const held = new Map(
-        locks.held.flatMap(({ ids, violation }) =>
-          ids.map((id) => [id, violation] as const),
-        ),
-      );
-      for (const { id } of changes) {
-        const violation = held.get(id);
-        if (violation === undefined) stagedIds.push(id);
-        else
+    for (const { story, changes } of stories) {
+      const revisionIds = new Set<number>();
+      for (const change of changes) {
+        const violation =
+          change.violation ??
+          (change.suggestionId === null
+            ? undefined
+            : heldSuggestions.get(change.suggestionId));
+        if (violation !== undefined) {
           skipped.push({
-            id,
+            id: change.id,
             reason: CONTENT_CONTROL_LOCK,
-            message: lockedControlMessage(violation),
+            message:
+              change.violation === undefined
+                ? `Another change in this proposal is held: ${lockedControlMessage(violation)}`
+                : lockedControlMessage(violation),
           });
+          continue;
+        }
+        count++;
+        stagedIds.push(change.id);
+        for (const id of change.groupIds) revisionIds.add(id);
       }
-      const unlocked = changes.filter(({ id }) => !held.has(id));
-      count += unlocked.length;
-      if (unlocked.length > 0)
+      if (revisionIds.size > 0)
         ops.push({
           type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
           story,
-          revisionIds: locks.unlocked.flat(),
+          revisionIds: [...revisionIds],
           decision: resolution,
         });
     }
-    return { ops, count, skipped, stagedIds };
+    return {
+      ops,
+      count,
+      skipped,
+      stagedIds,
+      heldSuggestionIds: new Set(heldSuggestions.keys()),
+    };
   }
 
   /** A story's snapshot as the compiler resolves operations against it. */
@@ -3782,8 +3822,7 @@ export class FolioDocxReviewer {
   /**
    * One pending suggestion through the session's suggestion intent: rejected
    * with the comments it proposes, or adopted as ordinary tracked changes by
-   * `author`. The session resolves suggestions in the body; one staged in a
-   * header, footer or note refuses.
+   * `author`. All stories belonging to the proposal publish together.
    */
   private resolveSuggestionOnSession(
     session: CanonicalSession,
@@ -3791,25 +3830,7 @@ export class FolioDocxReviewer {
     resolution: "accept" | "reject",
     author: string,
   ): boolean {
-    for (const handle of this.listStoryHandlesInternal()) {
-      if (handle.type === "main") continue;
-      const state = this.getEditableStoryState(handle);
-      if (
-        state &&
-        getSuggestions(state).some(
-          (entry) => entry.suggestionId === suggestionId,
-        )
-      )
-        throw canonicalReviewerRefusal(
-          `${resolution} a suggestion in headers, footers or notes`,
-        );
-    }
-    if (
-      !getSuggestions(this.state).some(
-        (entry) => entry.suggestionId === suggestionId,
-      )
-    )
-      return false;
+    if (!this.activeSuggestionIds().has(suggestionId)) return false;
     return this.resolveOnSession(
       session.prepareSuggestion(this.state, {
         suggestionId,
@@ -3821,7 +3842,7 @@ export class FolioDocxReviewer {
   }
 
   /**
-   * Every ordinary change of the body in one session commit. A change a
+   * Every reviewable change in the package in one session commit. A change a
    * content control's lock holds stays pending as it is and is listed in
    * `skipped`, as on the legacy engine.
    */
@@ -3829,75 +3850,50 @@ export class FolioDocxReviewer {
     session: CanonicalSession,
     resolution: "accept" | "reject",
   ): FolioReviewResolution {
-    // Rejecting every change rejects every pending suggestion first, each
-    // with the comments it proposes; accepting leaves them staged.
+    // Rejections include proposals in the same commit as ordinary changes;
+    // acceptance leaves proposals staged.
     const stories = this.storyResolutions(resolution);
-    let rejectedSuggested = 0;
-    if (resolution === "reject")
-      for (const { suggestionId } of getSuggestions(this.state)) {
-        const before = getTrackedChangesFromDoc(this.state.doc).length;
-        this.resolveSuggestionOnSession(
-          session,
-          suggestionId,
-          "reject",
-          this.author,
-        );
-        rejectedSuggested +=
-          before - getTrackedChangesFromDoc(this.state.doc).length;
-      }
-    const before = this.state;
-    const changes = getTrackedChangesFromDoc(before.doc).filter(
-      ({ id }) => suggestionIdOfRevision(before, id) === null,
-    );
-    const locks = canonicalRevisionLocks({
-      document: this.baseDocument,
-      story: OP_STORIES.MAIN,
-      groups: changes.map(({ id }) =>
-        getTrackedChangeGroupIdsFromDoc(before.doc, id),
-      ),
-      decision: resolution,
-    });
-    const held = new Map(
-      locks.held.flatMap(({ ids, violation }) =>
-        ids.map((id) => [id, violation] as const),
-      ),
-    );
     const skipped = [...stories.skipped];
-    for (const { id } of changes) {
-      const violation = held.get(id);
-      if (violation !== undefined)
-        skipped.push({
-          id,
-          reason: CONTENT_CONTROL_LOCK,
-          message: lockedControlMessage(violation),
-        });
-    }
-    const unlocked = changes.filter(({ id }) => !held.has(id));
     const sectionIds = (
       this.currentFinalSectionProperties()?.propertyChanges ?? []
     ).map(({ info }) => info.id);
     const section = this.finalSectionOperation((current) =>
       resolveFinalSectionChanges(current, resolution),
     );
+    const proposedComments =
+      resolution === "reject"
+        ? (this.baseDocument.package.document.comments ?? []).filter(
+            ({ suggestionId }) =>
+              suggestionId !== undefined &&
+              !stories.heldSuggestionIds.has(suggestionId),
+          )
+        : [];
     // Headers, footers and notes resolve in the same commit as the body.
-    if (unlocked.length === 0 && stories.count === 0 && section === null)
-      return { resolved: rejectedSuggested, skipped };
+    if (
+      stories.count === 0 &&
+      proposedComments.length === 0 &&
+      section === null
+    )
+      return { resolved: 0, skipped };
     const outcome = this.resolveOnSession(
-      session.prepareResolve(before, {
-        revisionIds: locks.unlocked.flat(),
+      session.prepareResolve(this.state, {
+        revisionIds: [],
         resolution,
-        before: [...stories.ops, ...(section ? [section] : [])],
+        before: [
+          ...proposedComments.map(({ id }) => ({
+            type: DOCUMENT_OP_TYPES.DELETE_COMMENT,
+            id,
+            scope: "thread" as const,
+          })),
+          ...stories.ops,
+          ...(section ? [section] : []),
+        ],
       }),
     );
     if (!outcome.resolved) {
-      if (outcome.reason === "noChange")
-        return { resolved: rejectedSuggested, skipped };
+      if (outcome.reason === "noChange") return { resolved: 0, skipped };
       skipped.push(
-        ...[
-          ...unlocked.map(({ id }) => id),
-          ...stories.stagedIds,
-          ...sectionIds,
-        ].map(
+        ...[...stories.stagedIds, ...sectionIds].map(
           (id) =>
             ({
               id,
@@ -3906,24 +3902,9 @@ export class FolioDocxReviewer {
             }) as const,
         ),
       );
-      return { resolved: rejectedSuggested, skipped };
+      return { resolved: 0, skipped };
     }
-    const additionalHeld = new Set(outcome.lockHeld);
-    for (const { id } of unlocked)
-      if (additionalHeld.has(id))
-        skipped.push({
-          id,
-          reason: CONTENT_CONTROL_LOCK,
-          message: `Resolving change ${String(id)} changes a locked content control.`,
-        });
-    return {
-      resolved:
-        rejectedSuggested +
-        unlocked.filter(({ id }) => !additionalHeld.has(id)).length +
-        stories.count +
-        sectionIds.length,
-      skipped,
-    };
+    return { resolved: stories.count + sectionIds.length, skipped };
   }
 
   private resolveAll(mode: "accept" | "reject"): FolioReviewResolution {
