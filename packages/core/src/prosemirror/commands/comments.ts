@@ -821,10 +821,12 @@ function resolveChangeUnguarded(
         const nextNode =
           nextPos < tr.doc.content.size ? tr.doc.nodeAt(nextPos) : null;
         const joinable = nextNode?.type.name === paragraph.type.name;
-        let follows: "paragraph" | "table" | "nothing" = "nothing";
+        let follows: "paragraph" | "table" | "block" | "nothing" = "nothing";
         if (joinable) follows = "paragraph";
         else if (nextNode?.type.spec["tableRole"] === "table")
           follows = "table";
+        else if (nextNode !== null && nextNode.type.name !== "textBox")
+          follows = "block";
         const resolved = tr.doc.resolve(mappedPos);
         const sectionProperties =
           expectParagraphAttrs(paragraph)._sectionProperties;
@@ -849,12 +851,15 @@ function resolveChangeUnguarded(
           follows,
           holdsContent: paragraphContentOf(paragraph),
           markWasAdded: op.markWasAdded,
-          // Removing this final paragraph leaves the block before it last.
-          // Only a content control may end with a table.
+          // Before a standing block, the container's actual final child must
+          // remain a paragraph. At its end, removal makes the preceding child
+          // final; only a content control may end with a table.
           containerStillEndsWithParagraph:
-            preceding?.type.name === "paragraph" ||
-            (preceding !== undefined &&
-              resolved.parent.type.name === "blockSdt"),
+            follows !== "nothing"
+              ? resolved.parent.lastChild?.type.name === "paragraph"
+              : preceding?.type.name === "paragraph" ||
+                (preceding !== undefined &&
+                  resolved.parent.type.name === "blockSdt"),
           followingTableCanReceiveRunIn:
             follows === "table" &&
             boundaries.length === 0 &&
@@ -887,8 +892,8 @@ function resolveChangeUnguarded(
           continue;
         }
         if (!joinable) {
-          // Nothing to join with: the next sibling is a table, or the paragraph
-          // ends its container — a body, a cell, a header, a note or a text box
+          // Nothing to join with: the next sibling is a table or opaque block,
+          // or the paragraph ends its container — a body, cell, header, note or text box
           // each end with one, and the position then lands on a boundary where
           // `join` would merge the containers and silently lose rows.
           //

@@ -3277,8 +3277,17 @@ const joinOps = (
     paragraph.content.length > 0 &&
     ranInto.has(idKey(runInReceiver.paraId ?? ""));
   const tableOutcome = continuesRunIn ? "run-in" : outcome.kind;
+  // An added endpoint may retire under the preceding mark, including when
+  // that mark already states the same section. Explicit replacement owns the
+  // endpoint removal; structural table inverses must preserve every section.
+  const precedingKeepsSection =
+    outcome.sectionDestination === "preceding" ||
+    (added &&
+      paragraph.sectionProperties !== undefined &&
+      precedingSectionOwner(previous, paragraph) === "same");
   if (
     (tableOutcome === "remove" || tableOutcome === "run-in") &&
+    !(tableOutcome === "remove" && precedingKeepsSection) &&
     blocks.length > 1 &&
     (next?.type === "table" || followsBlock)
   ) {
@@ -3374,10 +3383,7 @@ const joinOps = (
       const replacementBlocks = removal.blocks;
       const preceding = replacementBlocks[location.index - 1];
       const receiverEffects: ResolutionReceiverEffect[] = [...removal.effects];
-      if (
-        outcome.sectionDestination === "preceding" &&
-        preceding?.type === "paragraph"
-      ) {
+      if (precedingKeepsSection && preceding?.type === "paragraph") {
         const survivor = {
           ...preceding,
           sectionProperties: paragraph.sectionProperties,

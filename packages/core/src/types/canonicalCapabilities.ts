@@ -238,7 +238,7 @@ export const CANONICAL_CAPABILITIES: {
     readonly defaultSessionMutation: "pm-headless-reviewer";
     readonly kind: "mutation-source";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "A canonical headless reviewer edits, resolves, undoes and saves the body; other stories, suggestions and comment edits refuse.";
+    readonly summary: "A canonical reviewer edits every story; secondary-story suggestion resolution, story-view resolution beside staged suggestions, final section property resolution, table geometry and comparison refuse.";
   };
   readonly "pm-ai-snapshots": {
     readonly owner: "ai-edits";
@@ -391,7 +391,7 @@ export const CANONICAL_CAPABILITIES: {
     kind: "mutation-source",
     adapters: ["react", "vue"],
     summary:
-      "A canonical headless reviewer edits, resolves, undoes and saves the body; other stories, suggestions and comment edits refuse.",
+      "A canonical reviewer edits every story; secondary-story suggestion resolution, story-view resolution beside staged suggestions, final section property resolution, table geometry and comparison refuse.",
   },
   [CANONICAL_GAP.aiSnapshots]: {
     owner: "ai-edits",

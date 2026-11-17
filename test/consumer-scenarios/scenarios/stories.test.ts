@@ -17,7 +17,10 @@ import type { FolioDocumentStoryHandle } from "@stll/folio-core/server";
 import type { StepKind } from "../support/coverage.ts";
 import { openReviewer, storiesDocument } from "../support/documents.ts";
 import { SECOND_REVIEWER } from "../support/fuzz.ts";
-import { assertHealthy } from "../support/invariants.ts";
+import {
+  assertHealthy,
+  holdsPendingSuggestions,
+} from "../support/invariants.ts";
 import {
   coreBatch,
   GENERATORS,
@@ -94,7 +97,7 @@ const assertStoriesHealthy = async (
   const { reopened } = await assertHealthy(
     reviewer,
     context,
-    suggested && reviewer.getChanges().length > 0 ? { compare: false } : {},
+    suggested && holdsPendingSuggestions(reviewer) ? { compare: false } : {},
   );
   if (!suggested) {
     assert.deepEqual(
@@ -346,7 +349,7 @@ describe("a document carried across sessions", () => {
         const { bytes } = await assertHealthy(
           reviewer,
           `${mode} before ${step}`,
-          mode === "suggested" && reviewer.getChanges().length > 0
+          mode === "suggested" && holdsPendingSuggestions(reviewer)
             ? { compare: false }
             : {},
         );

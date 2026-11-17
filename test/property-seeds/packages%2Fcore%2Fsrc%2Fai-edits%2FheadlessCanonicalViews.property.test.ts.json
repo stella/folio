@@ -1,0 +1,40 @@
+{
+  "generated documents read their resolved views as the legacy reviewer does": [
+    {
+      "seed": -671094358,
+      "path": "4:1:1:1:1:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5",
+      "note": "A footnote whose only reference is an inserted one inside a hyperlink: the original view no longer holds the note, which the legacy reviewer still reads.",
+      "date": "2026-11-14"
+    },
+    {
+      "seed": 1967522861,
+      "path": "9:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
+      "note": "A footnote no reference reaches: both views keep it, as resolving the document does.",
+      "date": "2026-11-14"
+    },
+    {
+      "seed": -258767538,
+      "path": "5:0:0:0:0:0:1:0:0:0:0:4:5:3:3:4:4:4:4:4:4:4:4:4:5:4:4:4:4:5:6:5:5:7:7:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6",
+      "note": "Text a rejected inserted mark joins into a heading whose mark carries run properties keeps its own run formatting.",
+      "date": "2026-11-15"
+    },
+    {
+      "seed": 627797610,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:1:1:1:1:1:2:1:1:1:1:3:2:2:2:2:2:2:2:2",
+      "note": "An inserted empty paragraph after a section break and before preserved altChunk keeps the kernel opaque-follower paragraph-mark outcome in both readers",
+      "date": "2026-11-17"
+    },
+    {
+      "seed": -223542520,
+      "path": "15:0:0:1:0:0:0:1:0:1:0:0:0:0:0:0:0:0:0:0:3:3:3:4:3:3:3:3:3:9:7:7:8:7:7:7:7:7:7",
+      "note": "Accepting a moved paragraph containing a complex field refreshes the empty survivor body defaults without borrowing its mark-only font size",
+      "date": "2026-11-17"
+    },
+    {
+      "seed": -220431785,
+      "path": "6:0:0:0:0:0:0:0:0:4:3:3:3:3:4:3:3:3:3:3:3:3:3:4:3:3:3:3:3:3:6:6:6:6:6:6:6:6",
+      "note": "Rejecting empty added paragraphs inside an interior content control retains the logical-container paragraph owner",
+      "date": "2026-11-17"
+    }
+  ]
+}
