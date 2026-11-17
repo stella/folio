@@ -574,6 +574,24 @@ const takesNewIds = (op: DocumentOp): boolean =>
   ((op.newIds.revision?.length ?? 0) > 0 ||
     (op.newIds.control?.length ?? 0) > 0);
 
+type PlannedParagraphJoin = Omit<
+  JoinBlocksOp,
+  "revision" | "newIds" | "survivor"
+> & { revision?: never; newIds?: never; survivor?: never };
+type TrackedParagraphJoinKind = "tracked-mark" | "cancelled-added-mark";
+type TrackedParagraphJoinResult = Result<
+  TrackedParagraphJoinKind,
+  DocumentOpRefusal
+>;
+type TrackedPlan = {
+  append: (
+    input: Exclude<PlannedReviewOp, JoinBlocksOp>,
+  ) => Result<void, DocumentOpRefusal>;
+  join: (input: PlannedParagraphJoin) => TrackedParagraphJoinResult;
+  document: () => Document;
+  ops: DocumentOp[];
+};
+
 /** Shared allocation and simulation for all pieces of one planned edit. */
 export const createTrackedPlan = ({
   document,
@@ -581,11 +599,7 @@ export const createTrackedPlan = ({
   newIds,
   countEveryPiece = false,
   deletionRevision,
-}: TrackedPlanOptions): {
-  append: (input: PlannedReviewOp) => Result<void, DocumentOpRefusal>;
-  document: () => Document;
-  ops: DocumentOp[];
-} => {
+}: TrackedPlanOptions): TrackedPlan => {
   const used = usedIds(document, IDENTITY_SPACES.REVISION);
   const pool = [...new Set(newIds?.revision ?? [])].filter(
     (id) => !used.has(id) && id !== revision.id,
@@ -667,47 +681,49 @@ export const createTrackedPlan = ({
     );
     return Result.ok(undefined);
   };
-  return { append, document: (): Document => current, ops };
+  const getDocument = () => current;
+  return {
+    append,
+    join: (join) =>
+      appendTrackedParagraphJoin({ append, getDocument, join, revision }),
+    document: getDocument,
+    ops,
+  };
 };
 
-type TrackedPlan = ReturnType<typeof createTrackedPlan>;
-
-type TrackedParagraphJoinKind = "tracked-mark" | "cancelled-added-mark";
-
 type AppendTrackedParagraphJoinOptions = {
-  plan: TrackedPlan;
-  join: Omit<JoinBlocksOp, "revision" | "newIds">;
+  append: (input: PlannedReviewOp) => Result<void, DocumentOpRefusal>;
+  getDocument: () => Document;
+  join: PlannedParagraphJoin;
   revision: RevisionStamp;
 };
 
 /** Cancel an own added mark physically, leaving property changes to its planner. */
-export const appendTrackedParagraphJoin = ({
-  plan,
+const appendTrackedParagraphJoin = ({
+  append,
+  getDocument,
   join,
   revision,
-}: AppendTrackedParagraphJoinOptions): Result<
-  TrackedParagraphJoinKind,
-  DocumentOpRefusal
-> => {
-  const body = storyBody(plan.document(), join.story);
+}: AppendTrackedParagraphJoinOptions): TrackedParagraphJoinResult => {
+  const body = storyBody(getDocument(), join.story);
   const leading = findStoryParagraph(body, idKey(join.blockId))?.paragraph;
   const mark = leading?.pPrMark;
   const cancelsAddedMark =
     (mark?.kind === "ins" || mark?.kind === "moveTo") &&
     mark.info.author === revision.author;
   const before = findStoryParagraph(body, idKey(join.nextBlockId))?.paragraph;
-  const joined = plan.append(cancelsAddedMark ? join : { ...join, revision });
+  const joined = append(cancelsAddedMark ? join : { ...join, revision });
   if (joined.isErr()) return Result.err(joined.error);
   if (!cancelsAddedMark) return Result.ok("tracked-mark");
   const after = findStoryParagraph(
-    storyBody(plan.document(), join.story),
+    storyBody(getDocument(), join.story),
     idKey(join.nextBlockId),
   )?.paragraph;
   if (!before || !after) panic("An own-mark join lost its trailing paragraph.");
   // A physical join takes the leading properties. Restore the survivor's
   // original properties before the planner records its desired properties
   // as a suggestion; otherwise reject would retain the cancelled mark's style.
-  const restored = plan.append({
+  const restored = append({
     type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
     story: join.story,
     blockId: join.nextBlockId,
@@ -966,7 +982,7 @@ export const appendTrackedDeletion = ({
       nextBlockId: next.paraId ?? "",
       sectionBoundary: SECTION_BOUNDARY_POLICIES.REMOVE,
     } satisfies JoinBlocksOp;
-    const appended = appendTrackedParagraphJoin({ plan, join, revision });
+    const appended = plan.join(join);
     if (appended.isErr()) return Result.err(appended.error);
     const directBody = storyBody(direct, from.story);
     const directLeading = storyParagraphs(directBody).find(

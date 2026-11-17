@@ -85,7 +85,6 @@ import { findStoryParagraph } from "./paragraphLocator";
 import { applyFormattingPatch } from "./patch";
 import {
   appendTrackedDeletion,
-  appendTrackedParagraphJoin,
   createTrackedPlan,
   filterNewIds,
   leavesKeptByDirectDeletion,
@@ -3424,9 +3423,6 @@ export const compileEditorIntent = (
         blockId: intent.blockId,
         nextBlockId: intent.nextBlockId,
         sectionBoundary: SECTION_BOUNDARY_POLICIES.REMOVE,
-        ...(mode.type === "editing" && intent.survivor !== undefined
-          ? { survivor: intent.survivor }
-          : {}),
       } as const;
       if (mode.type === "suggesting") {
         const plan = createTrackedPlan({
@@ -3434,11 +3430,7 @@ export const compileEditorIntent = (
           revision: mode.revision,
           newIds: mode.newIds,
         });
-        const joined = appendTrackedParagraphJoin({
-          plan,
-          join,
-          revision: mode.revision,
-        });
+        const joined = plan.join(join);
         if (joined.isErr()) return Result.err(joined.error);
         cancelledAddedMark = joined.value === "cancelled-added-mark";
         const alignment = joinParagraphPropertyAlignment({
@@ -3453,7 +3445,14 @@ export const compileEditorIntent = (
         }
         ops = plan.ops;
       } else {
-        ops = [join];
+        ops = [
+          {
+            ...join,
+            ...(intent.survivor === undefined
+              ? {}
+              : { survivor: intent.survivor }),
+          },
+        ];
       }
       let offset = 0;
       if (
