@@ -186,10 +186,94 @@ const pendingSource = (container: Container) => {
   return { initial, pending, tableId: prepared.selection.blockId };
 };
 
+type SourceOwnerCaseOptions = {
+  container: Container;
+  side: (typeof SIDES)[number];
+  intervening: number;
+  texts: readonly string[];
+};
+const assertSourceOwnerRefusal = ({
+  container,
+  side,
+  intervening,
+  texts,
+}: SourceOwnerCaseOptions) => {
+  const { initial, pending, tableId } = pendingSource(container);
+  let before = pending.document;
+  for (let index = 0; index < intervening; index += 1) {
+    const prepared = compile(
+      before,
+      {
+        type: "tableBlock",
+        operation: {
+          type: DOCUMENT_OP_TYPES.INSERT_TABLE,
+          story: OP_STORIES.MAIN,
+          anchor: "table",
+          blockId: tableId,
+          side: "before",
+          table: table("30000011"),
+        },
+      },
+      40 + index * 20,
+    );
+    before = applyDocumentOps(before, prepared.ops).unwrap().document;
+  }
+  const original = structuredClone(before);
+  const intent = {
+    type: "insertParagraphs",
+    story: OP_STORIES.MAIN,
+    at: { type: side, blockId: tableId },
+    paragraphs: texts.map((text) => ({
+      type: "paragraph",
+      formatting: { alignment: "right" },
+      content: paragraph("00000000", text).content,
+    })),
+  } as const satisfies EditorIntent;
+  const refused = applyDocumentOps(before, compile(before, intent, 100).ops);
+  expect(refused.isErr()).toBe(true);
+  if (refused.isOk())
+    panic(
+      "The prior first-source owner must prevent tracked table-side insertion.",
+    );
+  expect(refused.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE);
+  expect(refused.error.message).toContain(
+    "earlier pending first-paragraph owner",
+  );
+  expect(before).toStrictEqual(original);
+  const direct = applyDocumentOps(before, compile(before, intent).ops).unwrap();
+  exactUndoRedo(before, direct);
+  if (intervening === 0) {
+    const rejected = applyDocumentOp(before, {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds: pending.revisions,
+      decision: REVISION_DECISIONS.REJECT,
+    }).unwrap();
+    expect(rejected.document).toStrictEqual(initial);
+    exactUndoRedo(before, rejected);
+  }
+};
+
+const sourceOwnerCases = CONTAINERS.flatMap((container) =>
+  SIDES.flatMap((side) =>
+    INTERVENING_TABLES.map((intervening) => ({
+      container,
+      side,
+      intervening,
+      texts: [""],
+    })),
+  ),
+);
+test.each(sourceOwnerCases)(
+  "declared source-owner boundary $container/$side/$intervening refuses with exact direct undo",
+  (entry) => {
+    assertSourceOwnerRefusal(entry);
+  },
+);
+
 test(
   "new tracked table-side insertions refuse prior source owners across pending tables in their containing list",
   () => {
-    const exercised = new Set<string>();
     assertProperty(
       fc.property(
         fc.constantFrom(...CONTAINERS),
@@ -199,98 +283,13 @@ test(
           minLength: 1,
           maxLength: 2,
         }),
-        (container, side, intervening, texts) => {
-          exercised.add(`${container}/${side}/${intervening}`);
-          const { initial, pending, tableId } = pendingSource(container);
-          let before = pending.document;
-          for (let index = 0; index < intervening; index += 1) {
-            const prepared = compile(
-              before,
-              {
-                type: "tableBlock",
-                operation: {
-                  type: DOCUMENT_OP_TYPES.INSERT_TABLE,
-                  story: OP_STORIES.MAIN,
-                  anchor: "table",
-                  blockId: tableId,
-                  side: "before",
-                  table: table("30000011"),
-                },
-              },
-              40 + index * 20,
-            );
-            before = applyDocumentOps(before, prepared.ops).unwrap().document;
-          }
-          const original = structuredClone(before);
-          const intent = {
-            type: "insertParagraphs",
-            story: OP_STORIES.MAIN,
-            at: { type: side, blockId: tableId },
-            paragraphs: texts.map((text) => ({
-              type: "paragraph",
-              formatting: { alignment: "right" },
-              content: paragraph("00000000", text).content,
-            })),
-          } as const satisfies EditorIntent;
-          const refused = applyDocumentOps(
-            before,
-            compile(before, intent, 100).ops,
-          );
-          expect(refused.isErr()).toBe(true);
-          if (refused.isOk())
-            panic(
-              "The prior first-source owner must prevent tracked table-side insertion.",
-            );
-          expect(refused.error.reason).toBe(
-            DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-          );
-          expect(refused.error.message).toContain(
-            "earlier pending first-paragraph owner",
-          );
-          expect(before).toStrictEqual(original);
-          const direct = applyDocumentOps(
-            before,
-            compile(before, intent).ops,
-          ).unwrap();
-          exactUndoRedo(before, direct);
-          if (intervening === 0) {
-            const rejected = applyDocumentOp(before, {
-              type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
-              story: OP_STORIES.MAIN,
-              revisionIds: pending.revisions,
-              decision: REVISION_DECISIONS.REJECT,
-            }).unwrap();
-            expect(rejected.document).toStrictEqual(initial);
-            exactUndoRedo(before, rejected);
-          }
-        },
+        (container, side, intervening, texts) =>
+          assertSourceOwnerRefusal({ container, side, intervening, texts }),
       ),
       {
         id: "new tracked table-side insertions refuse prior source owners across pending tables in their containing list",
         numRuns: 24,
-        examples: CONTAINERS.flatMap((container) =>
-          SIDES.flatMap((side) =>
-            INTERVENING_TABLES.map(
-              (intervening) =>
-                [container, side, intervening, [""]] satisfies [
-                  Container,
-                  typeof side,
-                  number,
-                  string[],
-                ],
-            ),
-          ),
-        ),
       },
-    );
-    expect([...exercised].sort()).toEqual(
-      CONTAINERS.flatMap((container) =>
-        SIDES.flatMap((side) =>
-          INTERVENING_TABLES.map(
-            (intervening) => `${container}/${side}/${intervening}`,
-          ),
-        ),
-      ).sort(),
     );
   },
   propertyTestTimeout(30_000),
