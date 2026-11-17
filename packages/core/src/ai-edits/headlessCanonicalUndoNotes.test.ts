@@ -14,6 +14,7 @@
 
 import { describe, expect, mock, test } from "bun:test";
 import fc from "fast-check";
+import { EditorState } from "prosemirror-state";
 
 import * as documentOps from "@stll/docx-core/ops";
 
@@ -23,15 +24,20 @@ import {
 } from "../../../../test/generators/reviewerOperationDraws";
 import {
   assertProperty,
-  propertyConfig,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
+import {
+  createCanonicalSession,
+  publishCanonicalProjection,
+} from "../canonical/canonicalSession";
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioDocumentOperation,
 } from "../document-operations";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
+import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
+import { schema } from "../prosemirror/schema";
 import type { BlockContent, Document } from "../types/document";
 import { FolioDocxReviewer } from "./headless";
 
@@ -366,6 +372,73 @@ const undoLaw = fc.asyncProperty(drawArbitrary, async (draw) => {
   expect(reads(reviewer)).toEqual(before);
 });
 
+/** ADD_NOTE owns a body snapshot after the preceding deletion changes list counters. */
+const nativeNoteBatchUndoLaw = async (kind: "footnote" | "endnote") => {
+  const parsed = await parseDocx(await packaged(documentOf(REPLAYED)), {
+    preloadFonts: false,
+  });
+  const session = createCanonicalSession(parsed).unwrap();
+  let state = EditorState.create({ schema, doc: session.projection.doc });
+  const before = structuredClone(session.document);
+  const beforeProjection = state.doc.toJSON();
+  const commit = session
+    .prepareOperations(state, [
+      {
+        type: documentOps.DOCUMENT_OP_TYPES.DELETE_BLOCKS,
+        story: documentOps.OP_STORIES.MAIN,
+        blockIds: ["00000002"],
+      },
+      {
+        type: documentOps.DOCUMENT_OP_TYPES.ADD_NOTE,
+        at: {
+          story: documentOps.OP_STORIES.MAIN,
+          blockId: "00000003",
+          offset: 0,
+        },
+        note: {
+          type: kind,
+          id: 3,
+          content: [
+            {
+              type: "paragraph",
+              paraId: "7FFFFFF2",
+              content: [
+                { type: "run", content: [{ type: "text", text: "New note" }] },
+              ],
+            },
+          ],
+        },
+      },
+    ])
+    .unwrap();
+  let bodyRestores = 0;
+  const unsubscribe = session.onCommitted(({ inverse }) => {
+    bodyRestores += inverse.filter(
+      (op) =>
+        op.type === documentOps.DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS &&
+        op.parts.body?.content !== undefined,
+    ).length;
+  });
+  const published = publishCanonicalProjection({ session, state, commit });
+  unsubscribe();
+  state = published.unwrap().state;
+  expect(bodyRestores).toBeGreaterThan(0);
+  const after = structuredClone(session.document);
+  state = publishCanonicalProjection({
+    session,
+    state,
+    commit: session.prepareUndo(state).unwrap(),
+  }).unwrap().state;
+  expect(structuredClone(session.document)).toStrictEqual(before);
+  expect(state.doc.toJSON()).toEqual(beforeProjection);
+  publishCanonicalProjection({
+    session,
+    state,
+    commit: session.prepareRedo(state).unwrap(),
+  }).unwrap();
+  expect(structuredClone(session.document)).toStrictEqual(after);
+};
+
 describe("undo of any public operation on a paragraph holding a note reference", () => {
   test(
     "gives back the document and every read",
@@ -380,28 +453,37 @@ describe("undo of any public operation on a paragraph holding a note reference",
   );
 
   test(
-    "the law catches a restore that expects the parts before list rendering",
+    "a native note lifecycle batch undoes after list rendering",
+    async () => {
+      for (const kind of ["footnote", "endnote"] as const)
+        await nativeNoteBatchUndoLaw(kind);
+    },
+    propertyTestTimeout(60_000),
+  );
+
+  test(
+    "the native batch law catches a restore that expects the parts before list rendering",
     async () => {
       // The test-only break: the session keeps each restore's expectation
       // as its operation recorded it, before list rendering ran.
       const original = { ...documentOps };
+      let rebases = 0;
       mock.module("@stll/docx-core/ops", () => ({
         ...original,
         inverseMeetingDocument: (
           _document: Parameters<typeof original.inverseMeetingDocument>[0],
           inverse: Parameters<typeof original.inverseMeetingDocument>[1],
-        ) => inverse,
+        ) => {
+          rebases++;
+          return inverse;
+        },
       }));
       try {
-        const result = await fc.check(
-          undoLaw,
-          propertyConfig({
-            numRuns: 1,
-            examples: [[REPLAYED]],
-            reporter: () => undefined,
-          }),
-        );
-        expect(result.failed).toBe(true);
+        for (const kind of ["footnote", "endnote"] as const)
+          await expect(nativeNoteBatchUndoLaw(kind)).rejects.toThrow(
+            "Story lifecycle inverse is stale",
+          );
+        expect(rebases).toBeGreaterThan(0);
       } finally {
         mock.module("@stll/docx-core/ops", () => original);
       }

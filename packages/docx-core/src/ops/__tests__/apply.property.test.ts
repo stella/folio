@@ -2760,16 +2760,43 @@ describe("document operations", () => {
         for (const inverse of applied.value.inverse) {
           expect(allowed).toContain(inverse.type);
         }
+        // Note cleanup composes with the primary inverse: one delta can undo
+        // removed bodies, another can preserve prior orphan declarations.
+        let noteLifecycle = 0;
+        const primaryInverse = applied.value.inverse.filter((inverse) => {
+          if (inverse.type !== DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS)
+            return true;
+          const fields = Object.keys(inverse.parts).filter(
+            (key) => key !== "undefinedFields",
+          );
+          if (!fields.every((key) => key === "footnotes" || key === "endnotes"))
+            return true;
+          expect(
+            Object.keys(inverse.expected)
+              .filter((key) => key !== "undefinedFields")
+              .sort(),
+          ).toEqual(fields.toSorted());
+          for (const capture of [inverse.parts, inverse.expected])
+            for (const presence of capture.undefinedFields ?? []) {
+              expect(presence.target).toBe("package");
+              expect(presence.keys.every((key) => fields.includes(key))).toBe(
+                true,
+              );
+            }
+          noteLifecycle++;
+          return false;
+        });
+        expect(noteLifecycle).toBeLessThanOrEqual(2);
         if (
           op.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK ||
           op.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS
         ) {
           // One structural inverse, at most one review restoration, and at most
           // one content restoration per original paragraph; no duplicate targets.
-          const restoring = applied.value.inverse.filter(
+          const restoring = primaryInverse.filter(
             (inverse) => inverse.type === DOCUMENT_OP_TYPES.REPLACE_INLINE,
           );
-          const review = applied.value.inverse.filter(
+          const review = primaryInverse.filter(
             (inverse) =>
               inverse.type === DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
           );
@@ -2780,11 +2807,11 @@ describe("document operations", () => {
             op.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK ? 1 : 2,
           );
           expect(review.length).toBeLessThanOrEqual(1);
-          expect(
-            applied.value.inverse.length - restoring.length - review.length,
-          ).toBe(1);
+          expect(primaryInverse.length - restoring.length - review.length).toBe(
+            1,
+          );
         } else if (op.type !== DOCUMENT_OP_TYPES.SET_RUN_PROPS) {
-          expect(applied.value.inverse.length).toBeLessThanOrEqual(1);
+          expect(primaryInverse.length).toBeLessThanOrEqual(1);
         }
         expectRestores(applied.value, original);
       });
