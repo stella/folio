@@ -27,6 +27,11 @@
       "seed": 752725439,
       "note": "A recreated relocation displaced a persisted exact anchor and split neighbouring edits into deletion/insertion changes. Found on upstream-complex-styles.docx; pinned by seed alone since the key covers every fixture.",
       "date": "2026-09-30"
+    },
+    {
+      "seed": -202495219,
+      "note": "#2865: deleting a tail and editing the preceding paragraph must not bind its persisted minted mark to the deleted wording. Seed only because this property key covers every fixture.",
+      "date": "2026-11-17"
     }
   ]
 }
