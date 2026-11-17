@@ -1249,21 +1249,6 @@ const paragraphPlainText = (paragraph: Comment["content"][number]): string => {
   return parts.join("");
 };
 
-/**
- * Headless `.docx` reviewer. Parse a buffer, read blocks, apply
- * `FolioAIEditOperation`s against the document model, and write the reviewed
- * `.docx` back out — no editor instance, no DOM.
- *
- * @example
- * ```ts
- * const reviewer = await FolioDocxReviewer.fromBuffer(buffer, { author: "AI" });
- * const { blocks } = reviewer.snapshot();
- * reviewer.applyOperations([
- *   { id: "1", type: "replaceInBlock", blockId: blocks[0].id, find: "$50k", replace: "$500k" },
- * ], { undefinedReferences: "refuse" });
- * const reviewed = await reviewer.toBuffer();
- * ```
- */
 type ReviewLockFact = {
   id: number;
   suggestionId: string | null;
@@ -1339,6 +1324,22 @@ const lockHeldChanges = (
   }
   return held;
 };
+
+/**
+ * Headless `.docx` reviewer. Parse a buffer, read blocks, apply
+ * `FolioAIEditOperation`s against the document model, and write the reviewed
+ * `.docx` back out — no editor instance, no DOM.
+ *
+ * @example
+ * ```ts
+ * const reviewer = await FolioDocxReviewer.fromBuffer(buffer, { author: "AI" });
+ * const { blocks } = reviewer.snapshot();
+ * reviewer.applyOperations([
+ *   { id: "1", type: "replaceInBlock", blockId: blocks[0].id, find: "$50k", replace: "$500k" },
+ * ], { undefinedReferences: "refuse" });
+ * const reviewed = await reviewer.toBuffer();
+ * ```
+ */
 
 export class FolioDocxReviewer {
   /** Default author for tracked changes and comments. */
