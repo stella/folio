@@ -2,35 +2,37 @@ import { panic } from "better-result";
 import { expect, test } from "bun:test";
 import fc from "fast-check";
 
+import { FolioDocxReviewer } from "../../packages/core/src/ai-edits/headless";
+import { prepareCanonicalDocxInput } from "../../packages/core/src/docx/canonicalSessionInput";
+import { parseDocx } from "../../packages/core/src/docx/parser";
+import { createDocx } from "../../packages/core/src/docx/rezip";
 import type {
   BlockContent,
   Document,
   ParagraphContent,
-} from "@stll/docx-core/model";
-
-import { withCoherentSyntheticReviewComments } from "../../../../test/generators/coherentReviewerComments";
-import {
-  bodyReviewerDocumentArbitrary,
-  reviewerDocumentArbitrary,
-} from "../../../../test/generators/reviewerDocumentArbitraries";
-import {
-  assertProperty,
-  propertyTestTimeout,
-} from "../../../../test/property-testing";
-import { reviewDocumentArbitrary } from "../../../docx-core/src/ops/__tests__/documentArbitraries";
-import { storyParagraphs } from "../../../docx-core/src/ops/blocks";
+} from "../../packages/docx-core/src/model/document";
+import { reviewDocumentArbitrary } from "../../packages/docx-core/src/ops/__tests__/documentArbitraries";
+import { storyParagraphs } from "../../packages/docx-core/src/ops/blocks";
 import {
   commentAnchorsIn,
   commentDocumentIssue,
-} from "../../../docx-core/src/ops/comments";
-import { contractViolation } from "../../../docx-core/src/ops/contract";
-import { packageIdentityKeys } from "../../../docx-core/src/ops/ids";
-import { isCommentAnchor, leafSpans } from "../../../docx-core/src/ops/leaves";
-import { paragraphLogicalText } from "../../../docx-core/src/ops/offsets";
-import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
-import { parseDocx } from "../docx/parser";
-import { createDocx } from "../docx/rezip";
-import { FolioDocxReviewer } from "./headless";
+} from "../../packages/docx-core/src/ops/comments";
+import { contractViolation } from "../../packages/docx-core/src/ops/contract";
+import { packageIdentityKeys } from "../../packages/docx-core/src/ops/ids";
+import {
+  isCommentAnchor,
+  leafSpans,
+} from "../../packages/docx-core/src/ops/leaves";
+import { paragraphLogicalText } from "../../packages/docx-core/src/ops/offsets";
+import { withCoherentSyntheticReviewComments } from "../../test/generators/coherentReviewerComments";
+import {
+  bodyReviewerDocumentArbitrary,
+  reviewerDocumentArbitrary,
+} from "../../test/generators/reviewerDocumentArbitraries";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../test/property-testing";
 
 const paragraph = (content: ParagraphContent[]) => ({
   type: "paragraph" as const,
