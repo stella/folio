@@ -122,7 +122,7 @@ const envelopeProperties = (
       description:
         access === "write"
           ? "Write the result to this .docx instead of changing `path` in place. It must not start with a dot or sit inside .folio."
-          : "Write the redline to this .docx. Without it, only the differences are returned.",
+          : "Write the result (a redline, or the rewritten package) to this .docx. Without it, nothing is written: only the differences or the report are returned.",
     },
     overwrite: {
       type: "boolean",
@@ -318,6 +318,11 @@ const LAZY_SUMMARIES: Readonly<
   compare_documents: {
     summary: "Diff two .docx files, or write their redline to a destination.",
     domain: "compare",
+  },
+  sanitize_document: {
+    summary:
+      "Remove comments, rsids, and identifying properties; without a destination, report them.",
+    domain: "package",
   },
 };
 

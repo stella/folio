@@ -109,7 +109,7 @@ Every change commits, so there is no separate save:
   properties changed) the command refuses with `repack_required` rather than
   silently rewriting the whole package; `--allow-repack` permits it. The
   receipt reports `saveStrategy` (`selective`, `full-repack` with a
-  `repackReason`, or `redline`) and `changedParts`. The promise is part
+  `repackReason`, `redline`, or `part-rewrite`) and `changedParts`. The promise is part
   content, not identical ZIP bytes.
 - **Write lease.** A write holds `.<name>.docx.folio-lock` beside the file
   (pid, host, expiry, and a random token), created complete or not at all.
@@ -182,6 +182,36 @@ held open across the whole transaction. `folio render` re-checks its output
 directory, temporary file, and destination the same way before its rename.
 The tool caller cannot exploit this; it matters only against another local
 actor with write access to the directory.
+
+## Preparing a template
+
+| Command    | Tool                | Does                                                        |
+| ---------- | ------------------- | ----------------------------------------------------------- |
+| `sanitize` | `sanitize_document` | Removes comments, revision save ids, identifying properties |
+
+```sh
+folio sanitize old-agreement.docx                       # report only
+folio sanitize old-agreement.docx -o template.docx --remove comments --remove rsids --remove properties --expect-version 3c1d…
+```
+
+`sanitize` strips what a reused document carries about its past. `--remove`
+names what goes (default `comments` and `rsids`):
+
+- `comments`: the comments part and its companions (`commentsExtended`,
+  `commentsIds`, `commentsExtensible`), every `w:commentRangeStart`,
+  `w:commentRangeEnd`, and `w:commentReference` in the body, headers,
+  footers, and notes, and the `people.xml` entries that no remaining
+  revision names (the part itself when none is left);
+- `rsids`: every `w:rsid*` attribute, each style's `w:rsid`, and the
+  `w:rsids` table in settings;
+- `properties`: the `creator` and `lastModifiedBy` core properties and the
+  `Company` and `Manager` extended properties.
+
+Without `--in-place` or `-o` it writes nothing and reports what it would
+remove: comment counts and authors, rsid counts, each property with its
+value, and the parts that would change. A write rewrites only those parts
+(`saveStrategy: "part-rewrite"`) and is refused with `operation_rejected`
+when there is nothing to remove.
 
 ## Rendering and preview
 
@@ -298,8 +328,8 @@ A model is sent the tool list on every turn, so the server lists only the
 frequent tools, with compact schemas: `read_document`, `find_text`,
 `read_comments`, `read_changes`, `suggest_changes`, and `add_comment`. The
 rest (`get_document_outline`, `read_section`, `list_stories`, `read_story`,
-`reply_comment`, `resolve_comment`, `resolve_changes`, and
-`compare_documents`) are reached through `list_capabilities`,
+`reply_comment`, `resolve_comment`, `resolve_changes`,
+`compare_documents`, and `sanitize_document`) are reached through `list_capabilities`,
 `describe_capability` (a tool's parameter outline, short guidance and an
 example, listed tools included; `detail: "full"` for its full input schema),
 and `invoke_capability` (`{ capability, input, validate_only }`).

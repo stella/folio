@@ -15,6 +15,8 @@ import {
 } from "@stll/folio-agents/types";
 
 import { withBatchOperations } from "./batch-operations";
+import type { PackageRewriteName } from "./package-rewrite";
+import { DEFAULT_SANITIZE_TARGETS, SANITIZE_TARGETS } from "./sanitize";
 
 export type JsonObjectSchema = {
   readonly type: "object";
@@ -55,7 +57,8 @@ type FolioToolSpecBase = {
  * How a tool runs. `agentRead` and `agentWrite` run a `@stll/folio-agents`
  * tool against one file (a write commits a transaction); `resolveChanges`
  * accepts or rejects tracked changes; `compare` diffs two files and, given a
- * destination, writes a redline.
+ * destination, writes a redline; `packageRewrite` rewrites package parts
+ * directly and, without a destination, reports what it would change.
  */
 export type FolioFileToolSpec =
   | (FolioToolSpecBase & {
@@ -69,7 +72,11 @@ export type FolioFileToolSpec =
       readonly editMode: "tracked-or-direct" | "fixed";
     })
   | (FolioToolSpecBase & { readonly type: "resolveChanges" })
-  | (FolioToolSpecBase & { readonly type: "compare" });
+  | (FolioToolSpecBase & { readonly type: "compare" })
+  | (FolioToolSpecBase & {
+      readonly type: "packageRewrite";
+      readonly rewrite: PackageRewriteName;
+    });
 
 /** Whether a tool call may write, which decides its envelope and flags. */
 export type FolioToolAccess = "read" | "write" | "readOrWrite";
@@ -82,6 +89,7 @@ export const toolAccess = (tool: FolioFileToolSpec): FolioToolAccess => {
     case "resolveChanges":
       return "write";
     case "compare":
+    case "packageRewrite":
       return "readOrWrite";
     default: {
       const unreachable: never = tool;
@@ -266,6 +274,38 @@ const COMPARE_TOOL = {
   ],
 } as const satisfies FolioFileToolSpec;
 
+const SANITIZE_TOOL = {
+  type: "packageRewrite",
+  name: "sanitize_document",
+  rewrite: "sanitize",
+  description:
+    "Remove what a document carries about its past before it is reused. `comments`: every comment with its " +
+    "parts (comments, commentsExtended, commentsIds, commentsExtensible), its anchors and references in every " +
+    "story, and the people.xml entries no remaining revision names. `rsids`: every `w:rsid*` attribute, style " +
+    "`w:rsid`, and the settings `w:rsids` table. `properties`: the creator and lastModifiedBy core properties " +
+    "and the Company and Manager extended properties. Without a destination, reports what it would remove " +
+    "and writes nothing.",
+  argsSchema: {
+    type: "object",
+    properties: {
+      remove: {
+        type: "array",
+        items: { type: "string", enum: SANITIZE_TARGETS },
+        minItems: 1,
+        description: `What to remove (default: ${DEFAULT_SANITIZE_TARGETS.join(", ")}).`,
+      },
+    },
+    required: [],
+    additionalProperties: false,
+  },
+  commands: [
+    {
+      name: "sanitize",
+      summary: "Remove comments, rsids, and identifying properties",
+    },
+  ],
+} as const satisfies FolioFileToolSpec;
+
 export const FOLIO_FILE_TOOLS: readonly FolioFileToolSpec[] = [
   agentRead({
     agentTool: FOLIO_AGENT_TOOL_NAMES.readDocument,
@@ -354,6 +394,7 @@ export const FOLIO_FILE_TOOLS: readonly FolioFileToolSpec[] = [
   }),
   RESOLVE_CHANGES_TOOL,
   COMPARE_TOOL,
+  SANITIZE_TOOL,
 ];
 
 const toolsByName = new Map(FOLIO_FILE_TOOLS.map((tool) => [tool.name, tool]));
