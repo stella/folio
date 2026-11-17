@@ -34,6 +34,7 @@ import {
   type RestoreStoryPartsOp,
   type SetSectionPropsOp,
   type StoryParts,
+  type TouchedBlocks,
 } from "./types";
 
 type LifecycleOp =
@@ -434,6 +435,26 @@ const changedParagraphs = (before: Document, after: Document) => {
   return { oldParagraphs, newParagraphs };
 };
 
+type StoryLifecycleTouchedOptions = { before: Document; after: Document };
+/** Net paragraph ownership, excluding records an intermediate edit restored. */
+export const storyLifecycleTouched = ({
+  before,
+  after,
+}: StoryLifecycleTouchedOptions): TouchedBlocks => {
+  const { oldParagraphs, newParagraphs } = changedParagraphs(before, after);
+  const oldIds = new Set(oldParagraphs.keys());
+  const newIds = new Set(newParagraphs.keys());
+  return {
+    // A paragraph is touched when its record is replaced, even by an equal
+    // one: callers keep every untouched record and reuse no replaced one.
+    modified: [...newIds].filter(
+      (id) => oldIds.has(id) && oldParagraphs.get(id) !== newParagraphs.get(id),
+    ),
+    inserted: [...newIds].filter((id) => !oldIds.has(id)),
+    removed: [...oldIds].filter((id) => !newIds.has(id)),
+  };
+};
+
 export const storyLifecycleEdit = (
   before: Document,
   after: Document,
@@ -451,9 +472,6 @@ export const storyLifecycleEdit = (
     );
   const prior = changedParts(before, after, semantic);
   const next = captureStoryParts(after, prior);
-  const { oldParagraphs, newParagraphs } = changedParagraphs(before, after);
-  const oldIds = new Set(oldParagraphs.keys());
-  const newIds = new Set(newParagraphs.keys());
   return Result.ok({
     document: after,
     inverse: [
@@ -463,16 +481,7 @@ export const storyLifecycleEdit = (
         parts: cloneModel(prior),
       },
     ],
-    touched: {
-      // A paragraph is touched when its record is replaced, even by an equal
-      // one: callers keep every untouched record and reuse no replaced one.
-      modified: [...newIds].filter(
-        (id) =>
-          oldIds.has(id) && oldParagraphs.get(id) !== newParagraphs.get(id),
-      ),
-      inserted: [...newIds].filter((id) => !oldIds.has(id)),
-      removed: [...oldIds].filter((id) => !newIds.has(id)),
-    },
+    touched: storyLifecycleTouched({ before, after }),
   });
 };
 

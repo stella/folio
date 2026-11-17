@@ -104,6 +104,7 @@ import {
 import { runsMergeable } from "./runMerge";
 import { identitySlots, withInlineIdentity } from "./slots";
 import { documentStories } from "./stories";
+import { storyLifecycleTouched } from "./storyLifecycle";
 import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
@@ -3976,48 +3977,46 @@ export const planRevisionResolution = ({
   }
   // Notes whose last reference went are removed first: a comment anchored in
   // one of them is then exhausted too and retires below.
-  if (noteReferences.length > 0) {
-    const orphaned = noteReferences.filter(
-      (reference) => !hasNoteReference(current, reference),
+  const orphaned = noteReferences.filter(
+    (reference) => !hasNoteReference(current, reference),
+  );
+  if (orphaned.length > 0) {
+    const footnotes = new Set(
+      orphaned.filter(({ kind }) => kind === "footnote").map(({ id }) => id),
     );
-    if (orphaned.length > 0) {
-      const footnotes = new Set(
-        orphaned.filter(({ kind }) => kind === "footnote").map(({ id }) => id),
+    const endnotes = new Set(
+      orphaned.filter(({ kind }) => kind === "endnote").map(({ id }) => id),
+    );
+    const packageParts = { ...current.package };
+    const removesAddedFootnote = orphaned.some(
+      ({ kind, added }) => kind === "footnote" && added,
+    );
+    const removesAddedEndnote = orphaned.some(
+      ({ kind, added }) => kind === "endnote" && added,
+    );
+    if (footnotes.size > 0 && packageParts.footnotes !== undefined) {
+      packageParts.footnotes = packageParts.footnotes.filter(
+        ({ id }) => !footnotes.has(id),
       );
-      const endnotes = new Set(
-        orphaned.filter(({ kind }) => kind === "endnote").map(({ id }) => id),
-      );
-      const packageParts = { ...current.package };
-      const removesAddedFootnote = orphaned.some(
-        ({ kind, added }) => kind === "footnote" && added,
-      );
-      const removesAddedEndnote = orphaned.some(
-        ({ kind, added }) => kind === "endnote" && added,
-      );
-      if (footnotes.size > 0 && packageParts.footnotes !== undefined) {
-        packageParts.footnotes = packageParts.footnotes.filter(
-          ({ id }) => !footnotes.has(id),
-        );
-        if (packageParts.footnotes.length === 0 && removesAddedFootnote)
-          delete packageParts.footnotes;
-      }
-      if (endnotes.size > 0 && packageParts.endnotes !== undefined) {
-        packageParts.endnotes = packageParts.endnotes.filter(
-          ({ id }) => !endnotes.has(id),
-        );
-        if (packageParts.endnotes.length === 0 && removesAddedEndnote)
-          delete packageParts.endnotes;
-      }
-      const removed = replaceNoteParts({
-        document: current,
-        parts: packageParts,
-        op,
-        applyOps,
-      });
-      if (removed.isErr()) return Result.err(removed.error);
-      edits.push(removed.value);
-      current = removed.value.document;
+      if (packageParts.footnotes.length === 0 && removesAddedFootnote)
+        delete packageParts.footnotes;
     }
+    if (endnotes.size > 0 && packageParts.endnotes !== undefined) {
+      packageParts.endnotes = packageParts.endnotes.filter(
+        ({ id }) => !endnotes.has(id),
+      );
+      if (packageParts.endnotes.length === 0 && removesAddedEndnote)
+        delete packageParts.endnotes;
+    }
+    const removed = replaceNoteParts({
+      document: current,
+      parts: packageParts,
+      op,
+      applyOps,
+    });
+    if (removed.isErr()) return Result.err(removed.error);
+    edits.push(removed.value);
+    current = removed.value.document;
   }
   const exhausted = (document.package.document.comments ?? []).filter(
     ({ id, parentId }) =>
@@ -4033,7 +4032,10 @@ export const planRevisionResolution = ({
     edits.push(retired.value);
     current = retired.value.document;
   }
-  return Result.ok({ edit: combineEdits(document, edits), receiverEffects });
+  const edit = combineEdits(document, edits);
+  if (orphaned.length > 0)
+    edit.touched = storyLifecycleTouched({ before: document, after: current });
+  return Result.ok({ edit, receiverEffects });
 };
 
 export const resolveRevision = (
