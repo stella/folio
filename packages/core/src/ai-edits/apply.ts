@@ -253,7 +253,11 @@ import {
   isHiddenTableRow,
 } from "./snapshot";
 import {
-  isEmptyTableCell,
+  isPlainDeletedPPrMark,
+  snapshotBatchClaim,
+  type SnapshotBatchOperation,
+} from "./snapshotBatchFacts";
+import {
   mergeTableRectangle,
   mergeTrackedVerticalTableCells,
   splitTableRectangle,
@@ -2212,207 +2216,61 @@ type BatchClaimOptions = {
   producesTrackedChanges: boolean;
 };
 
-/** The cells a column deletion removes: every cell standing in that column alone. */
-const deletedColumnCellRanges = (
-  doc: PMNode,
-  { tablePosition, columnIndex }: TableColumnDeletion,
-): { from: number; to: number }[] => {
-  const table = doc.nodeAt(tablePosition);
-  if (!table || table.type.spec["tableRole"] !== "table") {
-    return [];
-  }
-  const map = TableMap.get(table);
-  const tableStart = tablePosition + 1;
-  const ranges: { from: number; to: number }[] = [];
-  const seen = new Set<number>();
-  for (let row = 0; row < map.height; row++) {
-    const relative = map.map[row * map.width + columnIndex];
-    if (relative === undefined || seen.has(relative)) {
-      continue;
-    }
-    seen.add(relative);
-    const rectangle = map.findCell(relative);
-    const cell = table.nodeAt(relative);
-    if (
-      !cell ||
-      rectangle.left !== columnIndex ||
-      rectangle.right !== columnIndex + 1
-    ) {
-      continue;
-    }
-    ranges.push({
-      from: tableStart + relative,
-      to: tableStart + relative + cell.nodeSize,
-    });
-  }
-  return ranges;
-};
-
-type DeletedRowAffectedRangesOptions = {
-  doc: PMNode;
-  deletion: TableRowDeletion;
-  row: PMNode;
-};
-
-/** A row deletion also changes cells whose vertical merge began above it. */
-const deletedRowAffectedRanges = ({
-  doc,
-  deletion,
-  row,
-}: DeletedRowAffectedRangesOptions): { from: number; to: number }[] => {
-  const ranges = [
-    { from: deletion.rowPosition, to: deletion.rowPosition + row.nodeSize },
-  ];
-  const table = doc.nodeAt(deletion.tablePosition);
-  if (table?.type.spec["tableRole"] !== "table") {
-    return panic("A resolved row deletion lost its table", {
-      position: deletion.tablePosition,
-    });
-  }
-  const map = TableMap.get(table);
-  const seen = new Set<number>();
-  for (let column = 0; column < map.width; column++) {
-    const relative = map.map[deletion.rowIndex * map.width + column];
-    if (relative === undefined || seen.has(relative)) continue;
-    seen.add(relative);
-    const position = deletion.tableStart + relative;
-    if (position >= deletion.rowPosition) continue;
-    const cell = table.nodeAt(relative);
-    if (cell) ranges.push({ from: position, to: position + cell.nodeSize });
-  }
-  return ranges;
-};
-
-/**
- * The blank cells a merge folds into the first cell of its rectangle. Only a
- * blank cell can fold away tracked, so an edit that fills one decides whether
- * the merge applies in one mode and not the other; see `batch-claims.ts`. A
- * cell with content folds directly and is refused tracked whatever the batch
- * does inside it.
- */
-const foldedBlankCellRanges = (
-  doc: PMNode,
-  { tablePosition, rectangle }: TableCellMerge,
-): { from: number; to: number }[] => {
-  const table = doc.nodeAt(tablePosition);
-  if (table?.type.spec["tableRole"] !== "table") {
-    return panic("A resolved cell merge lost its table", {
-      position: tablePosition,
-    });
-  }
-  const map = TableMap.get(table);
-  const tableStart = tablePosition + 1;
-  const kept = map.map[rectangle.top * map.width + rectangle.left];
-  return map.cellsInRect(rectangle).flatMap((relative) => {
-    const cell = relative === kept ? null : table.nodeAt(relative);
-    return cell && isEmptyTableCell(cell)
-      ? [
-          {
-            from: tableStart + relative,
-            to: tableStart + relative + cell.nodeSize,
-          },
-        ]
-      : [];
-  });
-};
-
-/**
- * The paragraphs before `paragraph`, which ends its container, nearest first,
- * up to the container's start or another block, past those that go whole, as
- * `finalParagraphPredecessor` looks past them. See the `deleteBlock` claim's
- * `paragraphsBefore`.
- */
-const paragraphsBeforeFinal = (
-  $paragraph: ResolvedPos,
-  paragraph: PMNode,
-): { block: number; keepsBreak: boolean }[] => {
-  const paragraphs: { block: number; keepsBreak: boolean }[] = [];
-  let position = $paragraph.pos;
-  for (let index = $paragraph.index() - 1; index >= 0; index--) {
-    const node = $paragraph.parent.child(index);
-    position -= node.nodeSize;
-    if (node.type !== paragraph.type) break;
-    const mark: unknown = node.attrs["pPrMark"];
-    if (isPlainDeletedPPrMark(mark) && holdsOnlyDeletedContent(node)) continue;
-    paragraphs.push({ block: position, keepsBreak: mark == null });
-  }
-  return paragraphs;
-};
-
 /** What `item` claims of the document its batch resolved against; see `batch-claims.ts`. */
 const batchClaimOf = ({
   item,
   doc,
   producesTrackedChanges,
 }: BatchClaimOptions): BatchClaim => {
+  const claim = (operation: SnapshotBatchOperation) =>
+    snapshotBatchClaim({ item: operation, doc, producesTrackedChanges });
   const block = item.blockFrom;
   switch (item.operation.type) {
     case "replaceInBlock":
     case "replaceRange":
-      return { type: "text", block, from: item.from, to: item.to };
+      return claim({ type: "text", block, from: item.from, to: item.to });
     case "formatRange":
     case "commentOnRange":
     case "commentOnBlock":
-      return { type: "annotation", block, from: item.from, to: item.to };
+      return claim({ type: "annotation", block, from: item.from, to: item.to });
     case "splitBlock":
-      return { type: "split", block, from: item.from, to: item.to };
+      return claim({ type: "split", block, from: item.from, to: item.to });
     case "replaceBlock":
-      return item.replaceBlockImpact === "style"
-        ? { type: "paragraphProperties", block }
-        : { type: "rewriteBlock", block };
+      return claim(
+        item.replaceBlockImpact === "style"
+          ? { type: "paragraphProperties", block }
+          : { type: "rewriteBlock", block },
+      );
     case "setBlockParagraphProperties":
-      return { type: "paragraphProperties", block };
+      return claim({ type: "paragraphProperties", block });
     case "mergeBlockWithNext":
-      return {
+      return claim({
         type: "merge",
         block,
         next: item.blockTo,
         joinsNow: !producesTrackedChanges,
         setsProperties: item.operation.mergedParagraphProperties !== undefined,
-      };
-    case "deleteBlock": {
-      // The same test the deletion itself makes: see its case in the applier.
-      const at = doc.resolve(block);
-      const endsItsContainer = paragraphEndsItsContainer(
-        at,
-        item.blockNode.type.name,
-      );
-      const keepsParagraph = producesTrackedChanges
-        ? endsItsContainer
-        : endsItsContainer &&
-          at.nodeBefore?.type.name !== item.blockNode.type.name;
-      return {
+      });
+    case "deleteBlock":
+      return claim({
         type: "deleteBlock",
         block,
         end: item.blockTo,
-        keepsParagraph,
-        endsContainer: endsItsContainer,
-        paragraphsBefore:
-          producesTrackedChanges && endsItsContainer
-            ? paragraphsBeforeFinal(at, item.blockNode)
-            : [],
-      };
-    }
+        node: item.blockNode,
+      });
     case "insertAfterBlock":
     case "insertBeforeBlock":
     case "insertSignatureTable":
     case "insertTable":
-      return { type: "insertion", at: item.from };
+      return claim({ type: "insertion", at: item.from });
     case "deleteTable": {
       const deleted = item.deletedTable;
       return deleted
-        ? {
-            type: "tableRemoval",
-            table: deleted.position,
-            wholeTable: true,
-            axis: "table",
-            ranges: [
-              {
-                from: deleted.position,
-                to: deleted.position + deleted.node.nodeSize,
-              },
-            ],
-          }
+        ? claim({
+            type: "deleteTable",
+            position: deleted.position,
+            node: deleted.node,
+          })
         : { type: "unclaimed" };
     }
     case "deleteTableRow": {
@@ -2420,33 +2278,13 @@ const batchClaimOf = ({
       const row = deletion ? doc.nodeAt(deletion.rowPosition) : null;
       const table = deletion ? doc.nodeAt(deletion.tablePosition) : null;
       return deletion && row && table?.type.spec["tableRole"] === "table"
-        ? {
-            type: "tableRemoval",
-            table: deletion.tablePosition,
-            wholeTable: table.childCount === 1,
-            axis: "row",
-            ranges:
-              table.childCount === 1
-                ? [
-                    {
-                      from: deletion.tablePosition,
-                      to: deletion.tablePosition + table.nodeSize,
-                    },
-                  ]
-                : deletedRowAffectedRanges({ doc, deletion, row }),
-          }
+        ? claim({ type: "deleteTableRow", deletion, row, table })
         : { type: "unclaimed" };
     }
     case "deleteTableColumn": {
       const deletion = item.tableColumnDeletion;
       return deletion
-        ? {
-            type: "tableRemoval",
-            table: deletion.tablePosition,
-            wholeTable: false,
-            axis: "column",
-            ranges: deletedColumnCellRanges(doc, deletion),
-          }
+        ? claim({ type: "deleteTableColumn", deletion })
         : { type: "unclaimed" };
     }
     case "insertTableRow":
@@ -2460,15 +2298,7 @@ const batchClaimOf = ({
       if (target.type === "none") {
         return { type: "unclaimed" };
       }
-      return {
-        type: "tableStructure",
-        table: target.tablePosition,
-        axis,
-        folded:
-          target.type === "mergeCells"
-            ? foldedBlankCellRanges(doc, target)
-            : [],
-      };
+      return claim({ type: "tableStructure", target, axis });
     }
   }
 };
@@ -3517,13 +3347,6 @@ const followedOnlyByDeletedParagraphs = (
   }
   return deletes;
 };
-
-/** A paragraph mark that is a plain pending deletion (not a relocation's source). */
-const isPlainDeletedPPrMark = (value: unknown): boolean =>
-  typeof value === "object" &&
-  value !== null &&
-  "kind" in value &&
-  value.kind === "del";
 
 /** An emptied paragraph still carries deleted content, rather than being an original blank. */
 const hasDeletedContent = (paragraph: PMNode): boolean => {
