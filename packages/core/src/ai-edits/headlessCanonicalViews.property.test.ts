@@ -21,6 +21,7 @@ import { describe, expect, spyOn, test } from "bun:test";
 import fc from "fast-check";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { isDeepStrictEqual } from "node:util";
 
 import {
   applyDocumentOps,
@@ -36,6 +37,7 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
+import { rejectedParagraphFillerIdentities } from "../../../../test/support/rejectedParagraphFillers";
 import { CanonicalSessionError } from "../canonical/canonicalSession";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { parseDocx } from "../docx/parser";
@@ -235,9 +237,12 @@ const viewLaws = async (
         const knownBoundary =
           refusal.reason === DOCUMENT_OP_REFUSAL_REASONS.CONTAINER_FINAL_MARK ||
           (refusal.reason === DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE &&
-            /^A range boundary stands between [0-9A-Fa-f]{8} and the next block\.$/u.test(
+            (/^A range boundary stands between [0-9A-Fa-f]{8} and the next block\.$/u.test(
               refusal.message,
-            ));
+            ) ||
+              /^Resolving the mark of [0-9A-Fa-f]{8} would leave its container without a final paragraph\.$/u.test(
+                refusal.message,
+              )));
         return knownBoundary &&
           refusal.opType === DOCUMENT_OP_TYPES.RESOLVE_REVISION
           ? [refusal.message]
@@ -250,7 +255,30 @@ const viewLaws = async (
     expect(canonical.toDocument()).toEqual(before);
     return;
   }
-  expect(read).toEqual(await expectedViews(buffer));
+  const expected = await expectedViews(buffer);
+  const fillerIds = new Map(
+    isDeepStrictEqual(read, expected)
+      ? []
+      : rejectedParagraphFillerIdentities({
+          source: before,
+          actual: canonical.toResolvedDocument("reject"),
+          expected: (await open(buffer, "legacy")).toResolvedDocument("reject"),
+        }).map(({ actualId, expectedId }) => [actualId, expectedId]),
+  );
+  expect(
+    read.map((entry) =>
+      entry.view !== "original"
+        ? entry
+        : Object.assign({}, entry, {
+            blocks:
+              entry.blocks?.map((block) =>
+                Object.assign({}, block, {
+                  id: fillerIds.get(block.id) ?? block.id,
+                }),
+              ) ?? null,
+          }),
+    ),
+  ).toEqual(expected);
   // Reading a view resolves nothing in the reviewer itself.
   expect(canonical.toDocument()).toEqual(before);
 
@@ -417,6 +445,69 @@ for (const kind of ["ins", "del"] as const)
         read.mockRestore();
       }
     });
+
+test.each(["ins", "del"] as const)(
+  "a native final-table boundary independently explains the %s view refusal",
+  async (kind) => {
+    const buffer = await ingested(
+      await createDocx({
+        package: {
+          document: {
+            content: [
+              {
+                type: "paragraph",
+                paraId: "00000001",
+                content: [],
+                pPrMark: { kind, info: { id: 1, author: "Reviewer" } },
+              },
+              {
+                type: "table",
+                rows: [
+                  {
+                    type: "tableRow",
+                    cells: [
+                      {
+                        type: "tableCell",
+                        content: [
+                          {
+                            type: "paragraph",
+                            paraId: "00000002",
+                            content: [],
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      }),
+    );
+    const reviewer = await open(buffer, "canonical");
+    const before = reviewer.toDocument();
+    const native = applyDocumentOps(before, [
+      {
+        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+        story: OP_STORIES.MAIN,
+        revisionIds: [1],
+        decision: kind === "ins" ? "reject" : "accept",
+      },
+    ]);
+    expect(native.isErr()).toBe(true);
+    if (native.isOk())
+      return panic("The final table cannot end the resolved container.");
+    expect(native.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE);
+    expect(native.error.opType).toBe(DOCUMENT_OP_TYPES.RESOLVE_REVISION);
+    expect(native.error.message).toBe(
+      "Resolving the mark of 00000001 would leave its container without a final paragraph.",
+    );
+    await expect(viewLaws(buffer)).rejects.toThrow(native.error.message);
+    await viewLaws(buffer, "known-input-boundaries");
+    expect(reviewer.toDocument()).toEqual(before);
+  },
+);
 
 test.each(["ins", "del"] as const)(
   "a resolved %s paragraph before an atomic block preserves its section and source markup",

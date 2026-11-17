@@ -30,7 +30,6 @@ import {
   isBlockBoundaryNode,
   paragraphRemainsOf,
 } from "../prosemirror/keptRangeBoundaries";
-import { paragraphMarkContainerEnd } from "../prosemirror/paragraphMarkContainer";
 import { joinedParagraphAttrs } from "../prosemirror/paragraphMarkJoin";
 import { rebaseParagraphRunContent } from "../prosemirror/rebaseParagraphRuns";
 import { createResolvedCommentPointCollector } from "../prosemirror/replacedAnnotations";
@@ -233,7 +232,6 @@ const resolveProperties = ({
 };
 
 type StructuralContext = {
-  readonly sourceDoc: PMNode;
   mode: RevisionResolutionMode;
   styleResolver: RunStyleResolver | null;
   deleted: { from: number; to: number }[];
@@ -490,11 +488,13 @@ const resolveStructure = ({
   let pendingBookmarks: PMNode[] = [];
   let following: "paragraph" | "table" | "block" | "nothing" = "nothing";
   const precedingParagraphs: boolean[] = [];
+  // Only a content control may end with a table, so any block before will do.
+  const endsWithAnyBlock = node.type.name === "blockSdt";
   let endsWell = false;
   for (const { node: child } of entries) {
     precedingParagraphs.push(endsWell);
     if (child !== null && !isBlockBoundaryNode(child)) {
-      endsWell = child.type.name === "paragraph";
+      endsWell = endsWithAnyBlock || child.type.name === "paragraph";
     }
   }
   const flush = (): void => {
@@ -699,11 +699,7 @@ const resolveStructure = ({
       containerStillEndsWithParagraph =
         node.lastChild?.type.name === "paragraph";
     } else if (follows === "nothing") {
-      containerStillEndsWithParagraph =
-        paragraphMarkContainerEnd({
-          at: context.sourceDoc.resolve(entry.position),
-          ending: "parent",
-        }) === "story-end" && precedingParagraphs[index] === true;
+      containerStillEndsWithParagraph = precedingParagraphs[index] === true;
     }
     const outcome = paragraphMarkOutcome({
       follows,
@@ -1079,7 +1075,6 @@ const resolveStoryRevisions = ({
     ? resolveCommentReferences(inlineResolved, doc)
     : null;
   const context: StructuralContext = {
-    sourceDoc: comments?.doc ?? inlineResolved,
     mode,
     styleResolver,
     steps: [],
