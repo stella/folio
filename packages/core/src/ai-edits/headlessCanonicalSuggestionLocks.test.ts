@@ -37,6 +37,7 @@ beforeEach(() => setSystemTime(new Date("2026-01-02T03:04:05Z")));
 afterEach(() => setSystemTime());
 
 const PROPOSAL = "mixed-lock-proposal";
+const CONTROL_PREFIX = "Before ";
 const STORIES = [
   {
     story: OP_STORIES.MAIN,
@@ -83,7 +84,7 @@ const content = (
     type: "paragraph",
     paraId: held,
     content: [
-      { type: "run", content: [{ type: "text", text: "Before " }] },
+      { type: "run", content: [{ type: "text", text: CONTROL_PREFIX }] },
       {
         type: "inlineSdt",
         properties: {
@@ -168,7 +169,7 @@ const proposed = async (entry: (typeof STORIES)[number]) => {
       at: {
         story: entry.story,
         blockId,
-        offset: blockId === entry.held ? 8 : 1,
+        offset: blockId === entry.held ? CONTROL_PREFIX.length + 1 : 1,
       },
       text: " proposed",
       runProps: {},
@@ -424,7 +425,7 @@ for (const engine of ["canonical", "legacy"] as const)
                 suggestionId: PROPOSAL,
                 type: "splitBlock",
                 blockId: entry.held,
-                offset: 9,
+                offset: CONTROL_PREFIX.length + 2,
               }
             : {
                 id: "held-delete",
@@ -630,7 +631,7 @@ for (const ordinary of ["present", "absent"] as const)
         suggestionId: PROPOSAL,
         type: "splitBlock",
         blockId: STORIES[0].held,
-        offset: 2,
+        offset: CONTROL_PREFIX.length + 2,
       });
       apply(STORIES[1], "suggested", {
         id: "free-proposal",
@@ -676,6 +677,11 @@ for (const ordinary of ["present", "absent"] as const)
           revision: { idSeed: 9000, date: "2026-01-02T03:04:05Z" },
         }),
       ).toBe(true);
+      const heldSource = owner.document;
+      expect(reviewer.rejectSuggestion(PROPOSAL)).toBe(false);
+      expect(owner.document).toBe(heldSource);
+      expect(reviewer.exportPendingSuggestions()).toEqual(records);
+      expect(reviewer.getComments()).toEqual(comments);
       const staged = cloneDocumentWithParagraphPropertySources(owner.document);
       const committed: canonicalSession.CanonicalCommittedBatch[] = [];
       const unsubscribe = owner.onCommitted((batch) => {
