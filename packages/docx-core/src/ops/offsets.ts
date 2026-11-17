@@ -190,6 +190,7 @@ const isRangeBoundaryItem = (
   isRangeBoundary(item);
 
 type ParagraphRetentionFacts = {
+  /** Retained payload units, distinct from logical offsets: opaque XML counts even without visible text. */
   width: number;
   zeroWidthItems: ZeroWidthItem[];
 };
@@ -225,7 +226,10 @@ const collectParagraphRetentionFacts = (
       collectParagraphRetentionFacts(childrenOf(item), facts, onceAccepted);
       continue;
     }
-    facts.width += inlineWidth(item);
+    // Opaque paragraph children, like their run-level twin, carry source
+    // payload even when their logical width is zero. A removed revision
+    // collects into a discarded width, so its opaque content still leaves.
+    facts.width += item.type === "preservedInline" ? 1 : inlineWidth(item);
   }
 };
 
