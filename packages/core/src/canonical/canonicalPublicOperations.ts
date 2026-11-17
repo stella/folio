@@ -25,8 +25,13 @@ import {
   documentStories,
   type EditorIntent,
   findStoryBody,
+  formatParaId,
   freshCommentId,
+  type IdBlock,
   type IdLease,
+  introducedIds,
+  type LeasedId,
+  leasedIdCensus,
   type NewListInstance,
   type OpStory,
   paragraphLength,
@@ -136,6 +141,7 @@ import {
   standaloneTableRowsFromProseMirror,
   tableAttrsToFormatting,
 } from "../prosemirror/conversion/fromProseDoc";
+import { insertionGap } from "../prosemirror/insertionGaps";
 import { maxAnnotationIdInDoc } from "../prosemirror/plugins/revisionIds";
 import { preservesReplacementCommentAlignment } from "../prosemirror/replacedAnnotations";
 import { createStyleResolver } from "../prosemirror/styles/styleResolver";
@@ -464,6 +470,13 @@ const isBlockInsertion = (
 
 type TableInsertion = TableInsertionOperation;
 
+const placesBlock = (
+  operation: FolioDocumentOperation,
+): operation is BlockInsertion | TableInsertion =>
+  isBlockInsertion(operation) ||
+  operation.type === "insertTable" ||
+  operation.type === "insertSignatureTable";
+
 type ProjectedParagraph = NonNullable<
   ReturnType<CanonicalProjection["paragraph"]>
 >;
@@ -739,6 +752,229 @@ const resolveBlockInsertion = ({
     },
     ...resolved,
   });
+};
+
+type InsertionAnchor =
+  | { type: "paragraph"; at: BlockInsertionPoint }
+  | { type: "table"; at: BlockInsertionPoint };
+
+type InsertionGapOptions = {
+  operation: FolioDocumentOperation;
+  intents: readonly EditorIntent[];
+  projection: CanonicalProjection;
+};
+
+/** The physical anchor and accepted source gap, before this batch inserts. */
+const canonicalInsertionGap = ({
+  operation,
+  intents,
+  projection,
+}: InsertionGapOptions) => {
+  const intent = intents.at(0);
+  let anchor: InsertionAnchor;
+  if (intent?.type === "insertParagraphs") {
+    switch (intent.at.type) {
+      case "before":
+      case "after":
+        anchor = { type: "paragraph", at: intent.at };
+        break;
+      case "beforeTable":
+      case "afterTable":
+        anchor = {
+          type: "table",
+          at: {
+            type: intent.at.type === "beforeTable" ? "before" : "after",
+            blockId: intent.at.blockId,
+          },
+        };
+        break;
+      default: {
+        const unreachable: never = intent.at;
+        return unreachable;
+      }
+    }
+  } else if (
+    intent?.type === "tableBlock" &&
+    intent.operation.type === DOCUMENT_OP_TYPES.INSERT_TABLE
+  )
+    anchor = {
+      type: intent.operation.anchor,
+      at: { type: intent.operation.side, blockId: intent.operation.blockId },
+    };
+  else return undefined;
+  const paragraph = projection.paragraph(anchor.at.blockId);
+  if (paragraph === undefined)
+    panic("A resolved insertion lost its source anchor.");
+  const outer =
+    anchor.type === "table"
+      ? findOutermostTableBoundary(projection.doc, paragraph.start - 1)
+      : null;
+  if (anchor.type === "table" && outer === null)
+    panic("A resolved table insertion lost its source table.");
+  const boundary =
+    outer === null
+      ? paragraph.start -
+        1 +
+        (anchor.at.type === "after" ? paragraph.node.nodeSize : 0)
+      : outer[anchor.at.type];
+  if (!placesBlock(operation)) return undefined;
+  const source = projection.paragraph(operation.blockId);
+  if (source === undefined)
+    panic("A resolved insertion lost its requested source block.");
+  const sourceTable = findOutermostTableBoundary(
+    projection.doc,
+    source.start - 1,
+  );
+  let requestedSide =
+    operation.type === "insertBeforeBlock" ? "before" : "after";
+  if (!isBlockInsertion(operation))
+    requestedSide = operation.position ?? "after";
+  return {
+    anchor,
+    boundary,
+    // Lowering an insertion after a table to before its next paragraph
+    // changes its physical anchor, not its accepted source gap.
+    gap:
+      sourceTable === null
+        ? insertionGap(projection.doc, boundary, anchor.at.type)
+        : insertionGap(
+            projection.doc,
+            sourceTable[requestedSide],
+            requestedSide,
+          ),
+  };
+};
+
+type PlaceInsertionIntentsOptions = {
+  intents: readonly EditorIntent[];
+  anchor: InsertionAnchor;
+  placement: "first" | "following";
+};
+
+/** Placement changes; authored formatting, lists and operation ownership stay put. */
+const placeInsertionIntents = ({
+  intents,
+  anchor,
+  placement,
+}: PlaceInsertionIntentsOptions): readonly EditorIntent[] =>
+  intents.map((intent) => {
+    if (intent.type === "insertParagraphs") {
+      return {
+        ...intent,
+        at:
+          anchor.type === "paragraph"
+            ? anchor.at
+            : {
+                type:
+                  anchor.at.type === "before" ? "beforeTable" : "afterTable",
+                blockId: anchor.at.blockId,
+              },
+      };
+    }
+    if (
+      intent.type !== "tableBlock" ||
+      intent.operation.type !== DOCUMENT_OP_TYPES.INSERT_TABLE
+    )
+      return intent;
+    const { operation } = intent;
+    if (anchor.type === "table")
+      return {
+        type: "tableBlock",
+        operation: {
+          type: operation.type,
+          story: operation.story,
+          table: operation.table,
+          blockId: anchor.at.blockId,
+          anchor: "table",
+          side: anchor.at.type,
+        },
+      };
+    return {
+      type: "tableBlock",
+      operation: {
+        type: operation.type,
+        story: operation.story,
+        table: operation.table,
+        blockId: anchor.at.blockId,
+        anchor: "paragraph",
+        side: anchor.at.type,
+        ...(operation.anchor === "paragraph" &&
+        operation.separated !== undefined
+          ? { separated: operation.separated }
+          : {}),
+        paragraphAfter:
+          placement === "first" && operation.anchor === "paragraph"
+            ? (operation.paragraphAfter ?? "empty")
+            : "none",
+      },
+    };
+  });
+
+type DroppedInsertionCarrierOptions = {
+  admitted: readonly EditorIntent[];
+  replayed: readonly EditorIntent[];
+  ops: readonly DocumentOp[];
+};
+
+/** The table compiler emits its leading/trailing carriers before its table. */
+const droppedInsertionCarrier = ({
+  admitted,
+  replayed,
+  ops,
+}: DroppedInsertionCarrierOptions) => {
+  const before = admitted.at(0),
+    after = replayed.at(0);
+  if (
+    before?.type !== "tableBlock" ||
+    before.operation.type !== DOCUMENT_OP_TYPES.INSERT_TABLE ||
+    before.operation.anchor !== "paragraph" ||
+    before.operation.paragraphAfter === "none" ||
+    after?.type !== "tableBlock" ||
+    after.operation.type !== DOCUMENT_OP_TYPES.INSERT_TABLE ||
+    after.operation.anchor !== "paragraph" ||
+    after.operation.paragraphAfter !== "none"
+  )
+    return undefined;
+  const insertion = ops.find(
+    (op) => op.type === DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+  );
+  const carrier = insertion?.blocks.at(-1);
+  if (carrier?.type !== "paragraph" || carrier.paraId === undefined)
+    panic("A compiled table lost its trailing carrier allocation.");
+  return carrier.paraId;
+};
+
+type MemberIdLeaseOptions = {
+  lease: IdLease;
+  siblings: readonly (readonly LeasedId[])[];
+};
+
+/** A replay cannot spend identities admitted to another operation. */
+const insertionMemberIdLease = ({
+  lease,
+  siblings,
+}: MemberIdLeaseOptions): IdLease => {
+  const blocks: IdBlock[] = [];
+  for (const block of lease.blocks) {
+    const excluded = siblings
+      .flatMap((ids) =>
+        ids
+          .filter(
+            ({ kind, id }) =>
+              kind === block.kind && id >= block.start && id < block.end,
+          )
+          .map(({ id }) => id),
+      )
+      .toSorted((left, right) => left - right);
+    let start = block.start;
+    for (const id of excluded) {
+      if (start < id) blocks.push({ kind: block.kind, start, end: id });
+      start = id + 1;
+    }
+    if (start < block.end)
+      blocks.push({ kind: block.kind, start, end: block.end });
+  }
+  return { blocks };
 };
 
 const LINE_BREAK_PATTERN = /\r\n|\r|\n/u;
@@ -1511,6 +1747,9 @@ type CompilePublicIntentsOptions = {
    * come from the allocator's leased ones rather than one contiguous range.
    */
   idLease: IdLease | undefined;
+  allocations?: readonly ReturnType<
+    ReturnType<typeof createEditorIntentIdAllocator>
+  >[];
 };
 
 const compilePublicIntents = ({
@@ -1524,14 +1763,23 @@ const compilePublicIntents = ({
   allocate,
   reservedBlockIds,
   idLease,
+  allocations: admittedAllocations,
 }: CompilePublicIntentsOptions) => {
   const ops: DocumentOp[] = [];
   const revisions: number[] = [];
   // A split's new half takes the id allocated here, not the one it resolved
   // with: a later intent naming that half names the allocated one.
   const allocated = new Map<string, string>();
-  for (const sourceIntent of intents) {
-    const ids = allocate(document, sourceIntent, idLease);
+  const allocations: ReturnType<
+    ReturnType<typeof createEditorIntentIdAllocator>
+  >[] = [];
+  for (const [intentIndex, sourceIntent] of intents.entries()) {
+    const ids =
+      admittedAllocations === undefined
+        ? allocate(document, sourceIntent, idLease)
+        : admittedAllocations.at(intentIndex);
+    if (ids === undefined) panic("An admitted intent lost its allocation.");
+    allocations.push(ids);
     const leased = idLease === undefined ? {} : { idLease };
     let intent: EditorIntent = sourceIntent;
     if (sourceIntent.type === "splitParagraph") {
@@ -1591,7 +1839,7 @@ const compilePublicIntents = ({
     for (const id of applied.value.revisions)
       nextRevisionId = Math.max(nextRevisionId, id + 1);
   }
-  return Result.ok({ document, ops, revisions, nextRevisionId });
+  return Result.ok({ document, ops, revisions, nextRevisionId, allocations });
 };
 
 const CanonicalPublicOperationResolutionErrorBase: TaggedErrorClass<"CanonicalPublicOperationResolutionError"> =
@@ -2142,28 +2390,69 @@ export class CanonicalPublicOperations {
       reservedBlockIds: session.reservedBlockIds,
     });
     const date = options.revisionStamp?.date ?? new Date().toISOString();
+    type AdmittedOperation = (typeof resolved)[number];
     const insertedColumnCounts = new Map<string, number>();
-    for (const resolvedOperation of executionOrder) {
-      const {
-        operation,
-        intents,
-        normalizations: adjustments,
-      } = resolvedOperation;
+    const recordColumnInsertion = (
+      member: AdmittedOperation,
+      counts: Map<string, number>,
+    ) => {
+      const column = member.plan.address;
+      if (column.type !== "column" || !column.insertion) return;
+      const key = getTableColumnCoordinateKey(column);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    };
+    type PrepareOperationOptions = {
+      document: Document;
+      resolvedOperation: AdmittedOperation;
+      columnInsertions: ReadonlyMap<string, number>;
+      nextRevisionId: number;
+      idLease?: IdLease;
+      allocations?: CompilePublicIntentsOptions["allocations"];
+      reservedBlockIds?: ReadonlySet<string>;
+      commentAllocation?: {
+        id: number;
+        content: ReturnType<typeof canonicalCommentBody>;
+      };
+    };
+    type DeclinedOperationOptions = {
+      reason: FolioAIEditSkipReason;
+      message?: string;
+      refusal?: CanonicalPublicOperationRefusal;
+    };
+    const declined = ({
+      reason,
+      message,
+      refusal,
+    }: DeclinedOperationOptions) => ({
+      type: "declined" as const,
+      reason,
+      message,
+      refusal,
+    });
+    // Preparation owns no session state: even comments and lock refusals are
+    // facts until the batch chooses this attempt.
+    const prepareOperation = ({
+      document: sourceDocument,
+      resolvedOperation,
+      columnInsertions,
+      nextRevisionId: firstRevisionId,
+      idLease = session.idLease,
+      allocations,
+      reservedBlockIds = session.reservedBlockIds,
+      commentAllocation: admittedComment,
+    }: PrepareOperationOptions) => {
+      const { operation, intents } = resolvedOperation;
       const livePropertyRefusal = batchPropertyRefusal({
-        document,
+        document: sourceDocument,
         story,
         operation,
       });
-      if (livePropertyRefusal !== undefined) {
-        if (livePropertyRefusal.canonicalRefusal !== undefined)
-          refusals.set(operation.id, livePropertyRefusal.canonicalRefusal);
-        skip(
-          operation.id,
-          livePropertyRefusal.reason,
-          livePropertyRefusal.message,
-        );
-        continue;
-      }
+      if (livePropertyRefusal !== undefined)
+        return declined({
+          reason: livePropertyRefusal.reason,
+          message: livePropertyRefusal.message,
+          refusal: livePropertyRefusal.canonicalRefusal,
+        });
       // A suggested operation's records are one suggestion: its own id, or the
       // one it names.
       const suggestionId =
@@ -2179,38 +2468,42 @@ export class CanonicalPublicOperations {
               intents,
               columnIndex: column.columnIndex,
               inserted:
-                insertedColumnCounts.get(getTableColumnCoordinateKey(column)) ??
-                0,
+                columnInsertions.get(getTableColumnCoordinateKey(column)) ?? 0,
             })
           : intents;
       const compiled = compilePublicIntents({
-        document,
+        document: sourceDocument,
         intents: mappedIntents,
         allocate,
-        reservedBlockIds: session.reservedBlockIds,
-        idLease: session.idLease,
-        nextRevisionId,
+        reservedBlockIds,
+        idLease: idLease,
+        nextRevisionId: firstRevisionId,
         mode: batch.mode === "direct" ? "direct" : "tracked-changes",
         suggestionId,
         author: options.author ?? "AI",
         date,
+        ...(allocations === undefined ? {} : { allocations }),
       });
       if (compiled.isErr()) {
-        refusals.set(operation.id, {
-          gap: CANONICAL_GAP.publicUnsupportedInline,
+        return declined({
+          reason: "unsupportedBlock",
+          message: compiled.error.message,
+          refusal: { gap: CANONICAL_GAP.publicUnsupportedInline },
         });
-        skip(operation.id, "unsupportedBlock", compiled.error.message);
-        continue;
       }
       let nextDocument = compiled.value.document;
       const operationOps = [...compiled.value.ops];
       let commentId: number | undefined;
+      let commentAllocation: PrepareOperationOptions["commentAllocation"];
       switch (resolvedOperation.type) {
         case "plain":
           break;
         case "commented": {
           const { comment } = resolvedOperation;
-          const id = freshCommentId(nextDocument, session.idLease);
+          const id =
+            admittedComment === undefined
+              ? freshCommentId(nextDocument, idLease)
+              : Result.ok(admittedComment.id);
           // A suggested operation's comment is proposed with it: pending,
           // never saved, accepted and rejected with the suggestion.
           const proposedBy = suggestionId === undefined ? {} : { suggestionId };
@@ -2225,7 +2518,7 @@ export class CanonicalPublicOperations {
                 : storyParagraphs(body).map(({ paragraph }) => paragraph);
             };
             const known = new Set(
-              paragraphsIn(document).flatMap(({ paraId }) =>
+              paragraphsIn(sourceDocument).flatMap(({ paraId }) =>
                 paraId === undefined ? [] : [paraId],
               ),
             );
@@ -2234,6 +2527,9 @@ export class CanonicalPublicOperations {
             );
             const firstAdded = added.at(0);
             const lastAdded = added.at(-1);
+            const commentContent =
+              admittedComment?.content ??
+              canonicalCommentBody(nextDocument, comment.text, idLease);
             const commented =
               id.isErr() ||
               firstAdded?.paraId === undefined ||
@@ -2241,7 +2537,7 @@ export class CanonicalPublicOperations {
                 ? undefined
                 : compileCanonicalComments({
                     document: nextDocument,
-                    idLease: session.idLease,
+                    idLease: idLease,
                     command: {
                       type: "create",
                       comment: {
@@ -2249,11 +2545,7 @@ export class CanonicalPublicOperations {
                         author: options.author ?? "AI",
                         date,
                         done: false,
-                        content: canonicalCommentBody(
-                          nextDocument,
-                          comment.text,
-                          session.idLease,
-                        ),
+                        content: commentContent,
                         ...proposedBy,
                       },
                       anchor: {
@@ -2272,21 +2564,19 @@ export class CanonicalPublicOperations {
                     },
                   });
             if (commented === undefined || commented.isErr() || id.isErr()) {
-              refusals.set(operation.id, {
-                gap: CANONICAL_GAP.publicComments,
+              return declined({
+                reason: "unsupportedBlock",
+                message:
+                  commented?.isErr() === true
+                    ? commented.error.message
+                    : "The inserted paragraphs cannot carry the comment.",
+                refusal: { gap: CANONICAL_GAP.publicComments },
               });
-              skip(
-                operation.id,
-                "unsupportedBlock",
-                commented?.isErr() === true
-                  ? commented.error.message
-                  : "The inserted paragraphs cannot carry the comment.",
-              );
-              continue;
             }
             nextDocument = commented.value.document;
             operationOps.push(...commented.value.ops);
             commentId = id.value;
+            commentAllocation = { id: id.value, content: commentContent };
             break;
           }
           // The anchor paragraph at any depth: in a table cell or a content
@@ -2299,18 +2589,16 @@ export class CanonicalPublicOperations {
                   ({ paragraph }) => paragraph.paraId === comment.from.blockId,
                 )?.paragraph;
           };
-          const before = anchorIn(document);
+          const before = anchorIn(sourceDocument);
           const after = anchorIn(nextDocument);
           if (id.isErr() || before === undefined || after === undefined) {
-            refusals.set(operation.id, { gap: CANONICAL_GAP.publicComments });
-            skip(
-              operation.id,
-              "unsupportedBlock",
-              id.isErr()
+            return declined({
+              reason: "unsupportedBlock",
+              message: id.isErr()
                 ? id.error.message
                 : "The comment anchor no longer exists.",
-            );
-            continue;
+              refusal: { gap: CANONICAL_GAP.publicComments },
+            });
           }
           // A tracked edit's comment covers what the edit changed, from its
           // first revision to its last, as the default engine anchors it.
@@ -2340,9 +2628,12 @@ export class CanonicalPublicOperations {
                   blockId: comment.from.blockId,
                   offset: changed.to,
                 };
+          const commentContent =
+            admittedComment?.content ??
+            canonicalCommentBody(nextDocument, comment.text, idLease);
           const commented = compileCanonicalComments({
             document: nextDocument,
-            idLease: session.idLease,
+            idLease: idLease,
             command: {
               type: "create",
               comment: {
@@ -2350,11 +2641,7 @@ export class CanonicalPublicOperations {
                 author: options.author ?? "AI",
                 date,
                 done: false,
-                content: canonicalCommentBody(
-                  nextDocument,
-                  comment.text,
-                  session.idLease,
-                ),
+                content: commentContent,
                 ...proposedBy,
               },
               anchor:
@@ -2364,13 +2651,16 @@ export class CanonicalPublicOperations {
             },
           });
           if (commented.isErr()) {
-            refusals.set(operation.id, { gap: CANONICAL_GAP.publicComments });
-            skip(operation.id, "unsupportedBlock", commented.error.message);
-            continue;
+            return declined({
+              reason: "unsupportedBlock",
+              message: commented.error.message,
+              refusal: { gap: CANONICAL_GAP.publicComments },
+            });
           }
           nextDocument = commented.value.document;
           operationOps.push(...commented.value.ops);
           commentId = id.value;
+          commentAllocation = { id: id.value, content: commentContent };
           break;
         }
         default: {
@@ -2379,32 +2669,54 @@ export class CanonicalPublicOperations {
         }
       }
       if (operationOps.length === 0) {
-        skip(operation.id, "noopOperation");
-        continue;
+        return declined({ reason: "noopOperation" });
       }
       // An operation a content-control lock refuses is skipped on its own,
       // as the document's rule; the rest of the batch still applies.
-      const locked = lockViolationBetween(document, nextDocument);
+      const locked = lockViolationBetween(sourceDocument, nextDocument);
       if (locked !== null) {
-        skip(
-          operation.id,
-          CONTENT_CONTROL_LOCK,
-          `Refused: ${lockedControlMessage(locked)}`,
-        );
-        continue;
+        return declined({
+          reason: CONTENT_CONTROL_LOCK,
+          message: `Refused: ${lockedControlMessage(locked)}`,
+        });
       }
+      return {
+        type: "prepared" as const,
+        document: nextDocument,
+        ops: operationOps,
+        nextRevisionId: Math.max(
+          compiled.value.nextRevisionId,
+          (commentId ?? -1) + 1,
+        ),
+        revisionIds: compiled.value.revisions,
+        commentId,
+        suggestionId,
+        allocations: compiled.value.allocations,
+        commentAllocation,
+      };
+    };
+    type OperationAttempt = ReturnType<typeof prepareOperation>;
+    const commitOperation = (
+      resolvedOperation: AdmittedOperation,
+      prepared: OperationAttempt,
+    ) => {
+      const {
+        operation,
+        intents,
+        normalizations: adjustments,
+      } = resolvedOperation;
+      if (prepared.type === "declined") {
+        if (prepared.refusal !== undefined)
+          refusals.set(operation.id, prepared.refusal);
+        skip(operation.id, prepared.reason, prepared.message);
+        return;
+      }
+      const { commentId, suggestionId, revisionIds } = prepared;
       normalizations.push(...adjustments);
-      if (column.type === "column" && column.insertion) {
-        const key = getTableColumnCoordinateKey(column);
-        insertedColumnCounts.set(key, (insertedColumnCounts.get(key) ?? 0) + 1);
-      }
-      document = nextDocument;
-      ops.push(...operationOps);
-      nextRevisionId = Math.max(
-        compiled.value.nextRevisionId,
-        (commentId ?? -1) + 1,
-      );
-      const revisionIds = compiled.value.revisions;
+      recordColumnInsertion(resolvedOperation, insertedColumnCounts);
+      document = prepared.document;
+      ops.push(...prepared.ops);
+      nextRevisionId = Math.max(nextRevisionId, prepared.nextRevisionId);
       const revisionId = revisionIds.at(0);
       const joined =
         batch.mode === "direct"
@@ -2417,6 +2729,233 @@ export class CanonicalPublicOperations {
         ...(revisionId === undefined ? {} : { revisionId, revisionIds }),
         ...(suggestionId === undefined ? {} : { suggestionId }),
       });
+    };
+    const inputOrder = new Map(
+      batch.operations.map(({ id }, index) => [id, index]),
+    );
+    const orderOf = ({ operation }: AdmittedOperation) => {
+      const order = inputOrder.get(operation.id);
+      if (order === undefined)
+        panic("A resolved insertion lost its batch order.");
+      return order;
+    };
+    const gaps = new Map<number, AdmittedOperation[]>();
+    for (const member of executionOrder) {
+      if (!placesBlock(member.operation)) continue;
+      const place = canonicalInsertionGap({
+        operation: member.operation,
+        intents: member.intents,
+        projection: projected.value,
+      });
+      if (place === undefined)
+        panic("A resolved block insertion lost its placement.");
+      const members = gaps.get(place.gap) ?? [];
+      members.push(member);
+      gaps.set(place.gap, members);
+    }
+    const indices = new Map(
+      executionOrder.map((member, index) => [member, index] as const),
+    );
+    const intervals: { first: number; last: number }[] = [];
+    const groupOf = new Map<AdmittedOperation, readonly AdmittedOperation[]>();
+    for (const members of gaps.values()) {
+      if (members.length < 2) continue;
+      const first = members.at(0),
+        last = members.at(-1);
+      const from = first === undefined ? undefined : indices.get(first);
+      const to = last === undefined ? undefined : indices.get(last);
+      if (from === undefined || to === undefined)
+        panic("An insertion group lost its execution interval.");
+      intervals.push({ first: from, last: to });
+      for (const member of members) groupOf.set(member, members);
+    }
+    const merged: typeof intervals = [];
+    for (const interval of intervals.toSorted(
+      (left, right) => left.first - right.first,
+    )) {
+      const previous = merged.at(-1);
+      if (previous !== undefined && interval.first <= previous.last)
+        previous.last = Math.max(previous.last, interval.last);
+      else merged.push({ ...interval });
+    }
+    const windows = new Map<AdmittedOperation, readonly AdmittedOperation[]>();
+    for (const interval of merged) {
+      const first = executionOrder.at(interval.first);
+      if (first === undefined)
+        panic("An insertion admission window lost its first operation.");
+      windows.set(
+        first,
+        executionOrder.slice(interval.first, interval.last + 1),
+      );
+    }
+    const completed = new Set<string>();
+    for (const resolvedOperation of executionOrder) {
+      if (completed.has(resolvedOperation.operation.id)) continue;
+      const window = windows.get(resolvedOperation);
+      // The ordinary one-operation path performs no admission replay or census.
+      if (window === undefined) {
+        commitOperation(
+          resolvedOperation,
+          prepareOperation({
+            document,
+            resolvedOperation,
+            nextRevisionId,
+            columnInsertions: insertedColumnCounts,
+          }),
+        );
+        continue;
+      }
+      type AdmittedMember = {
+        resolvedOperation: AdmittedOperation;
+        firstRevisionId: number;
+        ids: ReturnType<typeof introducedIds>;
+        ops: readonly DocumentOp[];
+        allocations: NonNullable<CompilePublicIntentsOptions["allocations"]>;
+        commentAllocation: PrepareOperationOptions["commentAllocation"];
+      };
+      const admitted: AdmittedMember[] = [];
+      const declinedMembers: {
+        resolvedOperation: AdmittedOperation;
+        prepared: OperationAttempt;
+      }[] = [];
+      const admissionColumns = new Map(insertedColumnCounts);
+      let admissionDocument = document;
+      let admissionRevisionId = nextRevisionId;
+      for (const member of window) {
+        completed.add(member.operation.id);
+        const prepared = prepareOperation({
+          document: admissionDocument,
+          columnInsertions: admissionColumns,
+          resolvedOperation: member,
+          nextRevisionId: admissionRevisionId,
+        });
+        if (prepared.type === "declined") {
+          declinedMembers.push({ resolvedOperation: member, prepared });
+          continue;
+        }
+        recordColumnInsertion(member, admissionColumns);
+        admitted.push({
+          resolvedOperation: member,
+          firstRevisionId: admissionRevisionId,
+          allocations: prepared.allocations,
+          ops: prepared.ops,
+          commentAllocation: prepared.commentAllocation,
+          ids: introducedIds(
+            leasedIdCensus(admissionDocument),
+            leasedIdCensus(prepared.document),
+          ),
+        });
+        admissionDocument = prepared.document;
+        admissionRevisionId = prepared.nextRevisionId;
+      }
+      const admissionOf = new Map(
+        admitted.map((member) => [member.resolvedOperation, member] as const),
+      );
+      const ordered: {
+        member: AdmittedMember;
+        operation: AdmittedOperation;
+      }[] = [];
+      const scheduled = new Set<AdmittedOperation>();
+      for (const member of admitted) {
+        if (scheduled.has(member.resolvedOperation)) continue;
+        const group = groupOf.get(member.resolvedOperation);
+        const partners =
+          group === undefined
+            ? []
+            : group.flatMap((sourceMember) => {
+                const admission = admissionOf.get(sourceMember);
+                return admission === undefined ? [] : [admission];
+              });
+        const first = partners.at(0);
+        if (first === undefined || partners.length === 1) {
+          scheduled.add(member.resolvedOperation);
+          ordered.push({ member, operation: member.resolvedOperation });
+          continue;
+        }
+        const firstPlace = canonicalInsertionGap({
+          operation: first.resolvedOperation.operation,
+          intents: first.resolvedOperation.intents,
+          projection: projected.value,
+        });
+        if (firstPlace === undefined)
+          panic("An admitted insertion lost its source placement.");
+        const anchor = firstPlace.anchor;
+        const placed = partners.toSorted(
+          (left, right) =>
+            (orderOf(left.resolvedOperation) -
+              orderOf(right.resolvedOperation)) *
+            (anchor.at.type === "before" ? 1 : -1),
+        );
+        for (const [index, partner] of placed.entries()) {
+          scheduled.add(partner.resolvedOperation);
+          ordered.push({
+            member: partner,
+            operation: {
+              ...partner.resolvedOperation,
+              intents: placeInsertionIntents({
+                intents: partner.resolvedOperation.intents,
+                anchor,
+                placement: index === 0 ? "first" : "following",
+              }),
+            },
+          });
+        }
+      }
+      const replayColumns = new Map(insertedColumnCounts);
+      let replayDocument = document;
+      const replayed: {
+        resolvedOperation: AdmittedOperation;
+        prepared: OperationAttempt;
+      }[] = [];
+      for (const { member, operation: replayOperation } of ordered) {
+        const idLease =
+          session.idLease === undefined
+            ? undefined
+            : insertionMemberIdLease({
+                lease: session.idLease,
+                siblings: admitted
+                  .filter((other) => other !== member)
+                  .map(({ ids }) => ids),
+              });
+        const reservedBlockIds = new Set(session.reservedBlockIds);
+        for (const other of admitted) {
+          if (other === member) continue;
+          for (const { kind, id } of other.ids) {
+            if (kind === "paragraph") reservedBlockIds.add(formatParaId(id));
+          }
+        }
+        const droppedCarrier = droppedInsertionCarrier({
+          admitted: member.resolvedOperation.intents,
+          replayed: replayOperation.intents,
+          ops: member.ops,
+        });
+        if (droppedCarrier !== undefined) reservedBlockIds.add(droppedCarrier);
+        const prepared = prepareOperation({
+          document: replayDocument,
+          columnInsertions: replayColumns,
+          resolvedOperation: replayOperation,
+          nextRevisionId: member.firstRevisionId,
+          reservedBlockIds,
+          allocations: member.allocations,
+          ...(member.commentAllocation === undefined
+            ? {}
+            : { commentAllocation: member.commentAllocation }),
+          ...(idLease === undefined ? {} : { idLease }),
+        });
+        if (prepared.type === "declined")
+          panic(`Admitted insertion failed when ordered: ${prepared.message}`);
+        recordColumnInsertion(replayOperation, replayColumns);
+        replayDocument = prepared.document;
+        replayed.push({ resolvedOperation: replayOperation, prepared });
+      }
+      for (const declinedMember of declinedMembers)
+        commitOperation(
+          declinedMember.resolvedOperation,
+          declinedMember.prepared,
+        );
+      for (const replay of replayed)
+        commitOperation(replay.resolvedOperation, replay.prepared);
+      nextRevisionId = Math.max(nextRevisionId, admissionRevisionId);
     }
     // A move half that did not apply leaves the other a plain insertion or
     // deletion, reported unpaired: the batch applies again without the move.
