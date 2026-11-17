@@ -1931,6 +1931,8 @@ const splitBlock = (document: Document, op: SplitBlockOp): Applied => {
     paraId: op.newBlockId,
     content: [],
   };
+  if (finalizeParagraphFormatting(made.formatting) === undefined)
+    delete made.formatting;
   // The paragraph's own fields stay with the half keeping its id; the mark, the
   // section break and the pending property changes end the second half.
   let first: Paragraph;
