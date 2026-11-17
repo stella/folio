@@ -107,6 +107,8 @@ const argsFor = (
       return {};
     case "proofing_language":
       return { set: "cs-CZ" };
+    case "placeholders":
+      return { fill: { client: "Acme Ltd" } };
     default:
       throw new Error(`No write fixture for registered tool ${name}`);
   }
