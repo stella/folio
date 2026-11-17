@@ -103,6 +103,8 @@ const argsFor = (
       return { action: "accept", all: true };
     case "compare_documents":
       return { revisedPath };
+    case "sanitize_document":
+      return {};
     default:
       throw new Error(`No write fixture for registered tool ${name}`);
   }
@@ -352,7 +354,7 @@ describe("lease token output canary", () => {
     await removeHeldLease(file);
 
     // Independently exercise each registered MCP write tool through the MCP
-    // protocol. This includes the compare tool's destination write variant.
+    // protocol, including the destination writes of read-or-write tools.
     const [serverTransport, clientTransport] =
       InMemoryTransport.createLinkedPair();
     const server = createFolioMcpServer({
@@ -371,8 +373,11 @@ describe("lease token output canary", () => {
         "invoke_capability",
       );
       for (const tool of writeTools) {
-        const target =
-          tool.type === "compare" ? path.join(dir, "mcp-redline.docx") : file;
+        // A tool that only reads without a destination writes to one here.
+        const writesElsewhere = toolAccess(tool) === "readOrWrite";
+        const target = writesElsewhere
+          ? path.join(dir, `mcp-${tool.name}.docx`)
+          : file;
         await writeHeldLease(target, canary);
         const result = await client.callTool({
           name: tool.name,
@@ -380,7 +385,7 @@ describe("lease token output canary", () => {
             path: file,
             fileVersion: currentVersion,
             ...argsFor(tool.name, revised),
-            ...(tool.type === "compare" && { destination: target }),
+            ...(writesElsewhere && { destination: target }),
           },
         });
         const output = JSON.stringify(result);
