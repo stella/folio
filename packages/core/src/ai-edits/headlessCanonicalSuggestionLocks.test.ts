@@ -4,6 +4,7 @@ import { EditorState } from "prosemirror-state";
 
 import {
   applyDocumentOp,
+  applyDocumentOps,
   findStoryBody,
   normalizeForOps,
   OP_STORIES,
@@ -14,6 +15,7 @@ import {
 import * as canonicalSession from "../canonical/canonicalSession";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
+import { cloneDocumentWithParagraphPropertySources } from "../docx/paragraphPropertySource";
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
@@ -21,7 +23,7 @@ import { schema } from "../prosemirror/schema";
 import { CANONICAL_RULE } from "../types/canonicalCapabilities";
 import type { Paragraph } from "../types/document";
 import { readModel } from "../types/documentModel";
-import { FolioDocxReviewer } from "./headless";
+import { FolioDocxReviewer, getFolioDocxComparisonAccess } from "./headless";
 
 const PROPOSAL = "mixed-lock-proposal";
 const STORIES = [
@@ -429,3 +431,163 @@ for (const [index, entry] of STORIES.entries())
         comments.map(({ text, anchoredText }) => ({ text, anchoredText })),
       );
     });
+
+for (const ordinary of ["present", "absent"] as const)
+  test(`bulk rejection resolves a free final section beside a held cross-story proposal, ordinary change ${ordinary}`, async () => {
+    const create = canonicalSession.createCanonicalSession;
+    let owner: canonicalSession.CanonicalSession | undefined;
+    const factory = spyOn(
+      canonicalSession,
+      "createCanonicalSession",
+    ).mockImplementation((...args) => {
+      const result = create(...args);
+      if (result.isOk()) owner ??= result.value;
+      return result;
+    });
+    try {
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await fixture("sdtLocked"),
+        { session: "canonical" },
+      );
+      if (!owner) panic("A canonical reviewer must own its source session.");
+      const apply = (
+        story: (typeof STORIES)[number],
+        mode: "suggested" | "tracked-changes",
+        operation: Parameters<
+          typeof reviewer.applyDocumentOperationsToStory
+        >[0]["batch"]["operations"][number],
+      ) => {
+        const result = reviewer.applyDocumentOperationsToStory({
+          story: story.handle,
+          batch: {
+            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+            mode,
+            operations: [operation],
+          },
+          undefinedReferences: "refuse",
+        });
+        expect(result.skipped).toEqual([]);
+        expect(result.applied).toHaveLength(1);
+      };
+      apply(STORIES[0], "suggested", {
+        id: "held-split",
+        suggestionId: PROPOSAL,
+        type: "splitBlock",
+        blockId: STORIES[0].held,
+        offset: 2,
+      });
+      apply(STORIES[1], "suggested", {
+        id: "free-proposal",
+        suggestionId: PROPOSAL,
+        type: "insertAfterBlock",
+        blockId: STORIES[1].free,
+        text: "Free proposal.",
+        comment: { text: "Keep this proposal comment." },
+      });
+      const records = reviewer.exportPendingSuggestions();
+      expect(records).toHaveLength(2);
+      const proposedIds = publicChanges(reviewer)
+        .map(({ id }) => id)
+        .toSorted((left, right) => left - right);
+      expect(proposedIds.length).toBeGreaterThan(1);
+      const proposalText = publicStoryText(reviewer);
+      const comments = reviewer.getComments();
+      if (ordinary === "present")
+        apply(STORIES[4], "tracked-changes", {
+          id: "ordinary-free",
+          type: "insertAfterBlock",
+          blockId: STORIES[4].free,
+          text: "Ordinary free change.",
+        });
+      const ordinaryIds = publicChanges(reviewer)
+        .filter(({ id }) => !proposedIds.includes(id))
+        .map(({ id }) => id);
+      expect(ordinaryIds.length > 0).toBe(ordinary === "present");
+      const access = getFolioDocxComparisonAccess(reviewer);
+      const previous =
+        access.finalSectionProperties() ??
+        panic("The parsed package has its final section.");
+      const target = {
+        ...previous,
+        pageWidth: 15840,
+        pageHeight: 12240,
+        orientation: "landscape",
+      } as const;
+      expect(
+        access.stageFinalSectionProperties({
+          previous,
+          target,
+          revision: { idSeed: 9000, date: "2026-01-02T03:04:05Z" },
+        }),
+      ).toBe(true);
+      const staged = cloneDocumentWithParagraphPropertySources(owner.document);
+      const committed: canonicalSession.CanonicalCommittedBatch[] = [];
+      const unsubscribe = owner.onCommitted((batch) => {
+        committed.push(batch);
+      });
+      const prepare = spyOn(owner, "prepareResolve");
+      const result = reviewer.rejectAll();
+      expect(prepare).toHaveBeenCalledTimes(1);
+      expect(committed).toHaveLength(1);
+      unsubscribe();
+      expect(result.resolved).toBe(ordinaryIds.length + 1);
+      expect(
+        result.skipped
+          .map(({ id }) => id)
+          .toSorted((left, right) => left - right),
+      ).toEqual(proposedIds);
+      expect(
+        result.skipped.every(({ reason }) => reason === "contentControlLock"),
+      ).toBe(true);
+      expect(access.finalSectionProperties()).toStrictEqual(previous);
+      expect(publicStoryText(reviewer)).toEqual(proposalText);
+      expect(reviewer.getComments()).toEqual(comments);
+      expect(reviewer.exportPendingSuggestions()).toEqual(records);
+      expect(
+        publicChanges(reviewer)
+          .map(({ id }) => id)
+          .toSorted((left, right) => left - right),
+      ).toEqual(proposedIds);
+      const resolution =
+        committed.at(0) ?? panic("Bulk rejection commits once.");
+      const resolved = cloneDocumentWithParagraphPropertySources(
+        owner.document,
+      );
+      expect(
+        applyDocumentOps(resolved, resolution.inverse).unwrap().document,
+      ).toStrictEqual(staged);
+      expect(
+        applyDocumentOps(
+          resolved,
+          JSON.parse(JSON.stringify(resolution.inverse)),
+        ).unwrap().document,
+      ).toStrictEqual(staged);
+      expect(
+        applyDocumentOps(
+          staged,
+          JSON.parse(JSON.stringify(resolution.ops)),
+        ).unwrap().document,
+      ).toStrictEqual(resolved);
+      const reopened = await FolioDocxReviewer.fromBuffer(
+        await reviewer.toBuffer(),
+        { session: "canonical" },
+      );
+      expect(
+        getFolioDocxComparisonAccess(reopened).finalSectionProperties(),
+      ).toStrictEqual(previous);
+      expect(
+        reopened.loadPendingSuggestions(records).map(({ status }) => status),
+      ).toEqual(["restaged", "restaged"]);
+      expect(publicStoryText(reopened)).toEqual(proposalText);
+      expect(reopened.exportPendingSuggestions()).toEqual(records);
+      expect(
+        reopened
+          .getComments()
+          .map(({ text, anchoredText }) => ({ text, anchoredText })),
+      ).toEqual(
+        comments.map(({ text, anchoredText }) => ({ text, anchoredText })),
+      );
+    } finally {
+      factory.mockRestore();
+    }
+  });
