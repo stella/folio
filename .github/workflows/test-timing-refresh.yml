@@ -37,7 +37,8 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
-      # The full suite's timings come from five successful full runs; the
+      # Full-suite timings use up to five successful runs whose artifacts prove
+      # their complete planned shard set; the
       # extended property timings from the last five extended runs on main;
       # job and step durations from each workflow's recent runs.
       - name: Download the recent timing sets
@@ -61,13 +62,13 @@ jobs:
             while IFS=$'\t' read -r run_id artifact_id; do
               mkdir -p "${directory}/${run_id}"
               gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip" > "${RUNNER_TEMP}/${artifact_id}.zip"
-              unzip -q "${RUNNER_TEMP}/${artifact_id}.zip" -d "${directory}/${run_id}"
+              unzip -q "${RUNNER_TEMP}/${artifact_id}.zip" -d "${directory}/${run_id}/${artifact_id}"
             done < "$manifest"
             local inputs_file="$RUNNER_TEMP/${source}-timing-inputs.txt"
             find "$directory" -name '*-timings-*.json' -type f | sort > "$inputs_file"
             local inputs
             mapfile -t inputs < "$inputs_file"
-            bun scripts/aggregate-ci-test-timings.ts --source "$source" --output "$output" "${inputs[@]}"
+            bun scripts/aggregate-ci-test-timings.ts --source "$source" --output "$output" --artifact-root "$directory" "${inputs[@]}"
           }
           refresh tests scripts/ci-test-timings.json
           refresh properties scripts/property-test-timings.json
