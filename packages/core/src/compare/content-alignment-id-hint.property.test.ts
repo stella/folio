@@ -4,6 +4,7 @@
  * structurally incompatible text keeps the existing fuzzy matching policy.
  */
 
+import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
@@ -185,7 +186,7 @@ test("mixed identity continuity survives ambiguous, out-of-scope or unmeasured a
       [[target], base],
     ]) {
       if (before === undefined || after === undefined)
-        throw new Error("Both alignment sides exist");
+        panic("Both alignment sides exist");
       const pairs = alignFolioContentBlocks(before, after, {
         workSession: createFolioContentAlignmentWorkSession(budget),
       }).flatMap((event) =>
@@ -226,7 +227,7 @@ test("a stronger candidate keeps the edit that owns its id beyond the current ga
     [revised, base],
   ]) {
     if (before === undefined || after === undefined)
-      throw new Error("Both alignment sides exist");
+      panic("Both alignment sides exist");
     const pairs = alignFolioContentBlocks(before, after).flatMap((event) =>
       event.type === "pair"
         ? [[event.baseBlock.id, event.revisedBlock.id]]
