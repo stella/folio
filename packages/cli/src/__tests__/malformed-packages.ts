@@ -305,4 +305,5 @@ export const TOOL_ARGUMENTS: Readonly<Record<string, Record<string, unknown>>> =
     resolve_changes: { all: true },
     sanitize_document: {},
     proofing_language: {},
+    placeholders: {},
   };

@@ -142,7 +142,7 @@ const envelopeProperties = (
         "Idempotency key: repeating a committed call returns its original result.",
     },
   });
-  if (access === "write") {
+  if (access === "write" || tool.type === "documentPass") {
     Object.assign(properties, {
       allowRepack: {
         type: "boolean",
@@ -151,7 +151,10 @@ const envelopeProperties = (
       },
     });
   }
-  if (tool.type === "agentWrite" && tool.editMode === "tracked-or-direct") {
+  if (
+    (tool.type === "agentWrite" || tool.type === "documentPass") &&
+    tool.editMode === "tracked-or-direct"
+  ) {
     Object.assign(properties, {
       mode: {
         type: "string",
@@ -322,6 +325,11 @@ const LAZY_SUMMARIES: Readonly<
   proofing_language: {
     summary:
       "Report the proofing languages; with `set`, write one into the defaults, styles and settings.",
+    domain: "package",
+  },
+  placeholders: {
+    summary:
+      "List placeholders left in every story; with `fill` and a destination, replace them.",
     domain: "package",
   },
   sanitize_document: {

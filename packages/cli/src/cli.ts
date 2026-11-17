@@ -182,7 +182,8 @@ const writeFlagsFor = ({
   tool,
 }: FolioResolvedCommand): readonly CommonFlag[] => {
   if (toolAccess(tool) === "read") return [];
-  return tool.type === "agentWrite" && tool.editMode === "tracked-or-direct"
+  return (tool.type === "agentWrite" || tool.type === "documentPass") &&
+    tool.editMode === "tracked-or-direct"
     ? [...WRITE_FLAGS, DIRECT_FLAG]
     : WRITE_FLAGS;
 };
@@ -234,10 +235,22 @@ const usageLine = ({ command }: FolioResolvedCommand): string =>
     "[flags]",
   ].join(" ");
 
+/** Commands that are not registry tools, with their summaries. */
+const OTHER_COMMANDS: readonly (readonly [string, string])[] = [
+  ["save", "Commit a package an editor serialized (not an MCP tool)"],
+  ["render", "Render pages to PDF, PNG, or HTML"],
+  ["serve", "Serve a read-only live preview on 127.0.0.1"],
+  ["mcp", "Serve these tools over MCP on stdio"],
+];
+
 const rootHelp = (): string => {
-  const commands = listCommands().map(
-    ({ command }) => `  ${command.name.padEnd(12)}${command.summary}`,
-  );
+  const rows = [
+    ...listCommands().map(
+      ({ command }) => [command.name, command.summary] as const,
+    ),
+    ...OTHER_COMMANDS,
+  ];
+  const width = Math.max(...rows.map(([name]) => name.length)) + 2;
   const exitCodes = exitCodeEntries().map(
     ({ code, meaning }) => `  ${String(code).padEnd(4)}${meaning}`,
   );
@@ -247,11 +260,7 @@ const rootHelp = (): string => {
     "Usage: folio <command> <file> [flags]",
     "",
     "Commands:",
-    ...commands,
-    `  ${"save".padEnd(12)}Commit a package an editor serialized (not an MCP tool)`,
-    `  ${"render".padEnd(12)}Render pages to PDF, PNG, or HTML`,
-    `  ${"serve".padEnd(12)}Serve a read-only live preview on 127.0.0.1`,
-    `  ${"mcp".padEnd(12)}Serve these tools over MCP on stdio`,
+    ...rows.map(([name, summary]) => `  ${name.padEnd(width)}${summary}`),
     "",
     "Every command prints { ok, data } or { ok, error: { code, message, hint } }.",
     "A change is written only with --in-place or -o <path>, as tracked changes unless --direct.",
@@ -374,6 +383,20 @@ const buildArguments = async ({
   for (const flag of generatedFlags(resolved)) {
     const raw = flagValue(values[flag.flag]);
     if (raw === undefined) continue;
+    if (
+      flag.valueType === "json" &&
+      typeof raw === "string" &&
+      (raw.startsWith("@") || raw === "-")
+    ) {
+      // A JSON flag reads a file or stdin the way --input does.
+      const read = await readInputSource({
+        source: raw,
+        readStdin: io.readStdin,
+      });
+      if (read.isErr()) return Result.err(read.error);
+      args[flag.property] = read.value;
+      continue;
+    }
     const coerced = coerceFlag({ flag, raw });
     if (coerced.isErr()) return Result.err(coerced.error);
     args[flag.property] = coerced.value;
@@ -570,7 +593,26 @@ const runCommand = async (
     return emit({ io, format, tool: resolved.tool.name, result: built });
   }
   const result = await execute({ resolved, values, built: built.value, io });
-  return emit({ io, format, tool: resolved.tool.name, result });
+  const exitCode = emit({ io, format, tool: resolved.tool.name, result });
+  return exitCode === EXIT_CODES.ok &&
+    resolved.command.exitWhenUnresolved === true &&
+    result.isOk() &&
+    unresolvedCount(result.value) > 0
+    ? EXIT_CODES.unresolved
+    : exitCode;
+};
+
+/** The `unresolved` count a read's or a receipt's `result` carries; 0 when none. */
+const unresolvedCount = (data: unknown): number => {
+  if (typeof data !== "object" || data === null || !("result" in data))
+    return 0;
+  const { result } = data;
+  return typeof result === "object" &&
+    result !== null &&
+    "unresolved" in result &&
+    typeof result.unresolved === "number"
+    ? result.unresolved
+    : 0;
 };
 
 const MCP_HELP = [

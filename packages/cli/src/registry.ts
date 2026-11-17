@@ -15,7 +15,9 @@ import {
 } from "@stll/folio-agents/types";
 
 import { withBatchOperations } from "./batch-operations";
+import type { DocumentPassName } from "./document-pass";
 import type { PackageRewriteName } from "./package-rewrite";
+import { DEFAULT_PLACEHOLDER_PATTERNS } from "./placeholders";
 import { DEFAULT_SANITIZE_TARGETS, SANITIZE_TARGETS } from "./sanitize";
 
 export type JsonObjectSchema = {
@@ -43,6 +45,11 @@ export type FolioCommandSpec = {
   readonly flagNames?: Readonly<Record<string, string>>;
   /** A bare JSON array passed to `--input` fills this property. */
   readonly inputArrayProperty?: string;
+  /**
+   * The command exits with `EXIT_CODES.unresolved` when its result counts
+   * `unresolved` items, so a script can gate on it.
+   */
+  readonly exitWhenUnresolved?: true;
 };
 
 type FolioToolSpecBase = {
@@ -58,7 +65,9 @@ type FolioToolSpecBase = {
  * tool against one file (a write commits a transaction); `resolveChanges`
  * accepts or rejects tracked changes; `compare` diffs two files and, given a
  * destination, writes a redline; `packageRewrite` rewrites package parts
- * directly and, without a destination, reports what it would change.
+ * directly and, without a destination, reports what it would change;
+ * `documentPass` inspects the opened document and, given a destination,
+ * changes it through the reviewer.
  */
 export type FolioFileToolSpec =
   | (FolioToolSpecBase & {
@@ -76,6 +85,12 @@ export type FolioFileToolSpec =
   | (FolioToolSpecBase & {
       readonly type: "packageRewrite";
       readonly rewrite: PackageRewriteName;
+    })
+  | (FolioToolSpecBase & {
+      readonly type: "documentPass";
+      readonly pass: DocumentPassName;
+      /** Whether the caller may choose direct edits over tracked changes. */
+      readonly editMode: "tracked-or-direct" | "fixed";
     });
 
 /** Whether a tool call may write, which decides its envelope and flags. */
@@ -90,6 +105,7 @@ export const toolAccess = (tool: FolioFileToolSpec): FolioToolAccess => {
       return "write";
     case "compare":
     case "packageRewrite":
+    case "documentPass":
       return "readOrWrite";
     default: {
       const unreachable: never = tool;
@@ -350,6 +366,45 @@ const PROOFING_LANGUAGE_TOOL = {
   ],
 } as const satisfies FolioFileToolSpec;
 
+const PLACEHOLDERS_TOOL = {
+  type: "documentPass",
+  name: "placeholders",
+  pass: "placeholders",
+  editMode: "tracked-or-direct",
+  description:
+    "List the placeholders a draft still carries, in the body, headers, footers, and notes, with block ids and " +
+    "context; with `fill` and a destination, replace them, as tracked changes unless direct edits are asked " +
+    "for. A pattern's `name` group names the field that fills it (`{{party}}` takes `party`); a value keyed by " +
+    "a placeholder's exact text (`[•]`) fills it too. The result counts what stays `unresolved`.",
+  argsSchema: {
+    type: "object",
+    properties: {
+      fill: {
+        type: "object",
+        additionalProperties: { type: "string" },
+        description:
+          "Values by field name or by exact placeholder text. Without a destination, shows what would fill each.",
+      },
+      patterns: {
+        type: "array",
+        items: { type: "string" },
+        minItems: 1,
+        description: `Regular expressions that replace the defaults (${DEFAULT_PLACEHOLDER_PATTERNS.join(" ")}).`,
+      },
+    },
+    required: [],
+    additionalProperties: false,
+  },
+  commands: [
+    {
+      name: "placeholders",
+      summary: "List unresolved placeholders, or fill them",
+      flagNames: { patterns: "pattern" },
+      exitWhenUnresolved: true,
+    },
+  ],
+} as const satisfies FolioFileToolSpec;
+
 export const FOLIO_FILE_TOOLS: readonly FolioFileToolSpec[] = [
   agentRead({
     agentTool: FOLIO_AGENT_TOOL_NAMES.readDocument,
@@ -440,6 +495,7 @@ export const FOLIO_FILE_TOOLS: readonly FolioFileToolSpec[] = [
   COMPARE_TOOL,
   SANITIZE_TOOL,
   PROOFING_LANGUAGE_TOOL,
+  PLACEHOLDERS_TOOL,
 ];
 
 const toolsByName = new Map(FOLIO_FILE_TOOLS.map((tool) => [tool.name, tool]));

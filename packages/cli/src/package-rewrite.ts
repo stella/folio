@@ -54,7 +54,7 @@ export const runPackageRewrite = async (
   });
 };
 
-/** The refusal a write gets when the rewrite found nothing to change. */
+/** The refusal a write gets when the rewrite or pass found nothing to change. */
 export const nothingToRewrite = (tool: string): FolioCliError =>
   cliError({
     code: FOLIO_CLI_ERROR_CODES.operationRejected,

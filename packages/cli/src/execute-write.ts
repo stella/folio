@@ -32,6 +32,7 @@ import {
   readDocumentFile,
   sameFile,
 } from "./document";
+import { applyDocumentPass } from "./document-pass";
 import { acquireLeaseForWrite, type FlushOutcome } from "./editor-lease";
 import { cliError, FOLIO_CLI_ERROR_CODES, type FolioCliError } from "./errors";
 import { blockIdSources, type FileToolCall } from "./execute-read";
@@ -461,6 +462,36 @@ const rewritePackage = async ({
   });
 };
 
+const runDocumentPass = async ({
+  tool,
+  source,
+  args,
+  options,
+}: MutateOptions): Promise<Result<Mutation, FolioCliError>> => {
+  if (tool.type !== "documentPass")
+    return panic("runDocumentPass needs a documentPass tool");
+  const opened = await openReviewer(source, options.author);
+  if (opened.isErr()) return Result.err(opened.error);
+  const { reviewer } = opened.value;
+  const idSeed = await nextRevisionIdSeed(source.bytes);
+  if (idSeed.isErr()) return Result.err(idSeed.error);
+  const outcome = applyDocumentPass(tool.pass, reviewer, args, {
+    mode:
+      tool.editMode === "tracked-or-direct" ? options.mode : "tracked-changes",
+    date: options.date,
+    idSeed: idSeed.value,
+  });
+  if (outcome.isErr()) return Result.err(outcome.error);
+  if (!outcome.value.changed) return Result.err(nothingToRewrite(tool.name));
+  const saved = await saveReviewer(reviewer, options.repack);
+  if (saved.isErr()) return Result.err(saved.error);
+  return Result.ok({
+    ...saved.value,
+    result: outcome.value.result,
+    receipts: [],
+  });
+};
+
 const mutate = (
   options: MutateOptions,
 ): Promise<Result<Mutation, FolioCliError>> => {
@@ -473,6 +504,8 @@ const mutate = (
       return writeRedline(options);
     case "packageRewrite":
       return rewritePackage(options);
+    case "documentPass":
+      return runDocumentPass(options);
     case "agentRead":
       return panic("A read tool reached the write executor", {
         tool: options.tool.name,
