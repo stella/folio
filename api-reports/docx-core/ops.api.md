@@ -157,6 +157,9 @@ export type BoundaryOccurrence = {
 export const captureDocumentOp: (op: DocumentOp) => DocumentOp;
 
 // @public
+export const captureStoryParts: (document: Document_2, owned: StoryParts) => StoryParts;
+
+// @public
 export type ClientDocumentChange = {
     type: "rebased";
     batch: SequencedBatch;
@@ -1499,6 +1502,20 @@ export const storyBody: (document: Document_2, story: OpStory) => DocumentBody;
 
 // @public
 export const storyParagraphs: (body: DocumentBody) => ParagraphLocation[];
+
+// @public
+export type StoryParts = StoryPartFields & ({
+    sectionView?: never;
+    sections?: readonly {
+        index: number;
+        properties?: Section["properties"];
+        headers?: readonly (readonly [HeaderFooterType, HeaderFooter])[] | null;
+        footers?: readonly (readonly [HeaderFooterType, HeaderFooter])[] | null;
+    }[];
+} | {
+    sectionView: SectionViewState;
+    sections?: never;
+});
 
 // @public
 export const suggestedCommentIds: (document: Document_2, suggestionId?: string) => number[];

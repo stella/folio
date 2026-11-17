@@ -13,7 +13,7 @@ export {
   withParagraphCopies,
   withParagraphRenderings,
 } from "./paragraphCopies";
-export { sectionPropertiesAt } from "./storyLifecycle";
+export { captureStoryParts, sectionPropertiesAt } from "./storyLifecycle";
 export {
   storyBody,
   findStoryBody,
@@ -208,6 +208,7 @@ export {
   type RemoveNoteOp,
   type SetSectionPropsOp,
   type RestoreStoryPartsOp,
+  type StoryParts,
   type BlockInsertionPoint,
   type TableInsertionPoint,
   type CreateNumberingInstanceOp,

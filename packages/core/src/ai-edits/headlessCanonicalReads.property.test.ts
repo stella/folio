@@ -37,10 +37,7 @@ import {
   headerFooterToProseDoc,
   toProseDoc,
 } from "../prosemirror/conversion/toProseDoc";
-import {
-  CANONICAL_GAP,
-  type HeadlessReviewerSession,
-} from "../types/canonicalCapabilities";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import type {
   BlockContent,
   Document,
@@ -544,46 +541,25 @@ describe("headless reviewer reads agree on both engines", () => {
   );
 });
 
-describe("a canonical reviewer refuses what is not on the session yet", () => {
-  const refusal = {
-    _tag: "CanonicalSessionError",
-    reason: "refused",
-    ground: { gap: CANONICAL_GAP.publicHeadlessSession },
-  };
-
-  const expectRefusal = (action: () => unknown) => {
-    let thrown: unknown;
-    try {
-      action();
-    } catch (error) {
-      thrown = error;
-    }
-    expect(CanonicalSessionError.is(thrown)).toBe(true);
-    expect(thrown).toMatchObject(refusal);
-  };
-
-  test("table geometry staging and comparison throw the typed refusal", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(
-      readFixture("upstream-styled-content.docx"),
-      { session: "canonical" },
-    );
-    const before = reads(reviewer);
-    expectRefusal(() =>
-      reviewer.matchStoryTableGeometry({
-        targetTables: new Map(),
-        pairings: [],
-        revisionStamp: { date: "2026-01-02T03:04:05Z", idSeed: 1 },
-      }),
-    );
-    expectRefusal(() => getFolioDocxComparisonAccess(reviewer));
-    // An unknown undo handle is rejected, as on the legacy engine.
-    expect(
-      reviewer.undoDocumentOperations({
-        type: "documentOperationUndo",
-        id: "undo",
-      }),
-    ).toMatchObject({ status: "rejected", reason: "unknownHandle" });
-    // A refusal changes nothing a read sees.
-    expect(reads(reviewer)).toEqual(before);
-  });
+test("canonical comparison no-ops and unknown undo handles preserve every read", async () => {
+  const reviewer = await FolioDocxReviewer.fromBuffer(
+    readFixture("upstream-styled-content.docx"),
+    { session: "canonical" },
+  );
+  const before = reads(reviewer);
+  expect(
+    reviewer.matchStoryTableGeometry({
+      targetTables: new Map(),
+      pairings: [],
+      revisionStamp: { date: "2026-01-02T03:04:05Z", idSeed: 1 },
+    }),
+  ).toBe(1);
+  expect(getFolioDocxComparisonAccess(reviewer)).toBeDefined();
+  expect(
+    reviewer.undoDocumentOperations({
+      type: "documentOperationUndo",
+      id: "undo",
+    }),
+  ).toMatchObject({ status: "rejected", reason: "unknownHandle" });
+  expect(reads(reviewer)).toEqual(before);
 });
