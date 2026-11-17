@@ -51,7 +51,6 @@
     "vscode-previous-types": "npm:@types/vscode@1.85.0"
   },
   "overrides": {
-    "@napi-rs/wasm-runtime": "1.1.6",
     "fast-uri": "3.1.9",
     "follow-redirects": "1.16.3",
     "markdown-it": "14.3.3",

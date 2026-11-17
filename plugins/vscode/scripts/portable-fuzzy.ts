@@ -20,12 +20,13 @@ export const fuzzyFromDisk: Plugin = {
       async ({ path: file }) => {
         if (file !== fuzzyEntry) return;
         const source = await readFile(file, "utf8");
-        const fetchSource = "await fetch(__wasmUrl).then(async (res) => {";
-        const poolSource = "asyncWorkPoolSize: 4";
-        const bytesSource = "const bytes = await res.arrayBuffer();";
+        const fetchSource = "await globalThis.fetch(__wasmUrl)";
+        const poolSource = "const __asyncWorkPoolSize = 4;";
+        const reuseSource =
+          "reuseWorker: { size: __asyncWorkPoolSize + __workerPoolSize }";
         if (
-          ![fetchSource, poolSource, bytesSource].every((expected) =>
-            source.includes(expected),
+          ![fetchSource, poolSource, reuseSource].every(
+            (expected) => source.split(expected).length === 2,
           )
         ) {
           throw new Error(
@@ -36,14 +37,11 @@ export const fuzzyFromDisk: Plugin = {
           contents: source
             .replace(
               fetchSource,
-              'await import("node:fs/promises").then(async (fs) => {',
-            )
-            .replace(
-              bytesSource,
-              "const bytes = await fs.readFile(new URL(__wasmUrl));",
+              'new Response(await (await import("node:fs/promises")).readFile(new URL(__wasmUrl)))',
             )
             // The CLI uses synchronous distance calls; it needs no browser workers.
-            .replace(poolSource, "asyncWorkPoolSize: 0"),
+            .replace(poolSource, "const __asyncWorkPoolSize = 0;")
+            .replace(reuseSource, "reuseWorker: false"),
           loader: "js",
         };
       },
