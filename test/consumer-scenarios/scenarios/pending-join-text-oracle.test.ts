@@ -473,3 +473,153 @@ test("removing a relocated comment's remaining accepted quote retires its pendin
     /outlived/u,
   );
 });
+
+const applyUnmodelledStructural = async (
+  reviewer: Reviewer,
+  operation: Operation,
+) => {
+  const pre = await capture(reviewer, "tracked-changes");
+  const receipt = reviewer.applyDocumentOperations(
+    JSON.parse(
+      JSON.stringify({
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "tracked-changes",
+        operations: [operation],
+      }),
+    ),
+    { undefinedReferences: "refuse" },
+  );
+  assert.equal(receipt.applied.length, 1, JSON.stringify(receipt));
+  assert.deepEqual(receipt.skipped, []);
+  const model = modelOf(pre.rows, pre.liveRows, pre.joinSources);
+  model.mode = pre.mode;
+  expectOperation(model, operation);
+  assert.equal(model.unmodelled.length, 1);
+  assert.match(
+    model.unmodelled.at(0) ?? "",
+    new RegExp(`^${operation.type}:`, "u"),
+  );
+  assert.equal(
+    [...model.pendingJoins.values()].filter(
+      ({ destinationPrediction }) => destinationPrediction.type === "unknown",
+    ).length,
+    1,
+  );
+  await assertRequestedOutcome(
+    reviewer,
+    pre,
+    { applied: [operation] },
+    operation.id,
+  );
+  return { pre, model, after: await capture(reviewer, "tracked-changes") };
+};
+
+for (const kind of [
+  "splitBlock",
+  "mergeBlockWithNext",
+  "replaceBlock",
+] as const)
+  test(`an applied unmodelled ${kind} expires only its joined destination prediction`, async () => {
+    const { reviewer, second } = await pending();
+    await applyChecked(reviewer, {
+      id: "comment-before-structure",
+      type: "commentOnRange",
+      range: rangeOf(reviewer, second.id, 6, 11),
+      comment: { text: "Keep the structurally moved comment." },
+    });
+    const operations = {
+      splitBlock: {
+        id: "split",
+        type: "splitBlock",
+        blockId: second.id,
+        offset: 6,
+      },
+      mergeBlockWithNext: {
+        id: "merge-next",
+        type: "mergeBlockWithNext",
+        blockId: second.id,
+        separator: " ",
+      },
+      replaceBlock: {
+        id: "rewrite",
+        type: "replaceBlock",
+        blockId: second.id,
+        text: "x",
+      },
+    } as const satisfies Record<typeof kind, Operation>;
+    const result = await applyUnmodelledStructural(reviewer, operations[kind]);
+    const before = result.pre.comments.at(0);
+    const after = result.after.comments.at(0);
+    assert.ok(before && after);
+    assert.equal(after.id, before.id);
+    assert.ok(
+      after.blockId !== before.blockId || after.anchor !== before.anchor,
+      "The actual producer changes the previously predicted owner or quote",
+    );
+    assert.equal(
+      compareComments(
+        result.model,
+        result.pre.comments,
+        [],
+        result.after.rows,
+        result.pre.liveComments,
+        "tracked-changes",
+      ).length,
+      1,
+      "Unmodelled structure cannot excuse losing the comment",
+    );
+  });
+
+test("an unmodelled effect in one join cannot weaken another join's owner and quote proof", async () => {
+  const reviewer = await openReviewer(
+    await packDocument(
+      fromMarkdown("left one\n\nright one\n\nleft two\n\nright two"),
+    ),
+  );
+  const [a, b, c, d] = rowsOf(reviewer);
+  assert.ok(a && b && c && d);
+  await applyChecked(reviewer, {
+    id: "join-one",
+    type: "mergeBlockWithNext",
+    blockId: a.id,
+    separator: " ",
+  });
+  await applyChecked(reviewer, {
+    id: "join-two",
+    type: "mergeBlockWithNext",
+    blockId: c.id,
+    separator: " ",
+  });
+  await applyChecked(reviewer, {
+    id: "comment-two",
+    type: "commentOnRange",
+    range: rangeOf(reviewer, d.id, 0, 5),
+    comment: { text: "Keep the untouched second join." },
+  });
+  const result = await applyUnmodelledStructural(reviewer, {
+    id: "rewrite-one",
+    type: "replaceBlock",
+    blockId: b.id,
+    text: "x",
+  });
+  const comment = result.after.comments.at(0);
+  assert.ok(comment);
+  assert.equal(comment.blockId, d.id);
+  assert.equal(comment.anchor, "right");
+  for (const changed of [
+    { ...comment, anchor: "drift" },
+    { ...comment, blockId: b.id },
+  ])
+    assert.equal(
+      compareComments(
+        result.model,
+        result.pre.comments,
+        [changed],
+        result.after.rows,
+        result.pre.liveComments,
+        "tracked-changes",
+      ).length,
+      1,
+      "The unrelated join retains its exact owner/quote checks",
+    );
+});

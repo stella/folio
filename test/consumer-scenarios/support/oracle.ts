@@ -51,9 +51,11 @@ import {
 } from "./operations.ts";
 import {
   applyTableOperation,
+  captureSourceOwners,
   compareTableGeometry,
   modelFromRows,
   removeTextBoxTables,
+  sourceOperationFootprint,
   type TableModel,
   UnsupportedTableExpectation,
 } from "./table-oracle.ts";
@@ -602,6 +604,7 @@ export const rowsOf = (reviewer: Reviewer, story: Story = MAIN): Row[] => {
       }
     }
   }
+  captureSourceOwners({ document: reviewer.toDocument(), rows });
   return rows;
 };
 
@@ -941,7 +944,16 @@ type ModelRow = {
 export type Model = {
   rows: ModelRow[];
   /** Live source paragraphs whose pending marks run into an accepted row. */
-  pendingJoins: Map<ModelRow, { sources: readonly Row[]; destination: Row }>;
+  pendingJoins: Map<
+    ModelRow,
+    {
+      sources: readonly Row[];
+      destination: Row;
+      /** Source coordinates remain known when an applied effect defeats destination prediction. */
+      destinationPrediction:
+        { type: "exact" } | { type: "unknown"; operationType: string };
+    }
+  >;
   /** Outside text carried to a new destination by an earlier table removal. */
   preservedJoinPrefixes: Map<ModelRow, TextEdit>;
   mode: Mode;
@@ -952,6 +964,8 @@ export type Model = {
   numberingFacts?: NumberingFacts;
   /** Text of the live blocks an operation can name, before the batch. */
   liveTextById: ReadonlyMap<string, string>;
+  /** Live rows retain the capture's source ancestry facts for applied-effect footprints. */
+  sourceRows: readonly Row[];
   /** Live blocks explicitly deleted by applied operations, including pending joins. */
   deletedBlockIds: Set<string>;
   /**
@@ -1205,6 +1219,7 @@ export const modelOf = (
       ),
     ),
     liveTextById: new Map(live.map(({ id, text }) => [id, text])),
+    sourceRows: live,
     deletedBlockIds: new Set(),
     removedNoteStories: new Set(),
     uncertainNoteStories: new Set(),
@@ -1242,6 +1257,7 @@ export const modelOf = (
           model.pendingJoins.set(survivor, {
             sources: joiningSources,
             destination: row,
+            destinationPrediction: { type: "exact" },
           });
         }
       }
@@ -1343,7 +1359,15 @@ const paragraphTextProjection = (model: Model, blockId: unknown) => {
       return [];
     let offset = 0;
     for (const piece of pieces) {
-      if (piece.id === blockId) return [{ row, text: piece.text, offset }];
+      if (piece.id === blockId)
+        return [
+          {
+            row,
+            text: piece.text,
+            offset,
+            destinationPrediction: ownership.destinationPrediction,
+          },
+        ];
       offset += piece.text.length;
     }
     return [];
@@ -1355,6 +1379,7 @@ const paragraphTextProjection = (model: Model, blockId: unknown) => {
         row: found.row,
         text: found.text,
         offset: found.offset,
+        destinationPrediction: found.destinationPrediction,
       } as const)
     : ({ type: "unresolved" } as const);
 };
@@ -2907,8 +2932,48 @@ export const EXPECTATIONS = {
 export const OPERATION_TYPES: readonly string[] =
   FOLIO_DOCUMENT_OPERATION_TYPES;
 
+type ExpireJoinedDestinationPredictionOptions = {
+  model: Model;
+  operationType: string;
+  footprint: ReturnType<typeof sourceOperationFootprint> | undefined;
+};
+/** An unmodelled applied effect cannot prove its joined paragraph's final owner or quote. */
+const expireJoinedDestinationPrediction = ({
+  model,
+  operationType,
+  footprint,
+}: ExpireJoinedDestinationPredictionOptions) => {
+  if (model.pendingJoins.size === 0) return;
+  assert.ok(
+    footprint,
+    "A joined destination effect must retain its pre-operation footprint",
+  );
+  if (footprint.type === "unsupported")
+    return assert.fail(
+      `Cannot prove an applied ${operationType} footprint: ${footprint.reason}`,
+    );
+  for (const ownership of model.pendingJoins.values())
+    if (
+      [...ownership.sources, ownership.destination].some(({ id }) =>
+        footprint.ids.has(id),
+      )
+    )
+      ownership.destinationPrediction = { type: "unknown", operationType };
+};
+
 /** Apply one applied operation's expectation to `model`. */
 export const expectOperation = (model: Model, operation: Operation): void => {
+  const footprint =
+    model.pendingJoins.size === 0
+      ? undefined
+      : sourceOperationFootprint({
+          rows: model.sourceRows,
+          operation,
+          requiredParagraphIds: [...model.pendingJoins.values()].flatMap(
+            ({ sources, destination }) =>
+              [...sources, destination].map(({ id }) => id),
+          ),
+        });
   if (
     operation.type === "deleteBlock" &&
     typeof operation["blockId"] === "string"
@@ -2944,6 +3009,11 @@ export const expectOperation = (model: Model, operation: Operation): void => {
     );
   }
   if (expectation === null) {
+    expireJoinedDestinationPrediction({
+      model,
+      operationType: operation.type,
+      footprint,
+    });
     model.unmodelled.push(`${operation.type}: no block-text expectation yet`);
     return;
   }
@@ -2951,6 +3021,11 @@ export const expectOperation = (model: Model, operation: Operation): void => {
     expectation(model, operation);
   } catch (error) {
     if (error instanceof Unmodelled) {
+      expireJoinedDestinationPrediction({
+        model,
+        operationType: operation.type,
+        footprint,
+      });
       model.unmodelled.push(`${operation.type}: ${error.message}`);
       return;
     }
@@ -3315,7 +3390,10 @@ const anchorDisposition = (
       : "kept";
   }
   const view = paragraphTextProjection(model, entry.blockId);
-  const mapped = view.type === "pending-join" ? view : undefined;
+  const mapped =
+    view.type === "pending-join" && view.destinationPrediction.type === "exact"
+      ? view
+      : undefined;
   const located = mapped?.row ?? row;
   // An unproven join keeps the existing preservation check; it does not excuse loss.
   if (!located?.pre || located.removed || entry.anchor === "") return "kept";
@@ -3360,6 +3438,7 @@ const expectedKeptAnchor = (
   const view = paragraphTextProjection(model, entry.blockId);
   if (
     view.type === "pending-join" &&
+    view.destinationPrediction.type === "exact" &&
     view.row.pre &&
     !view.row.removed &&
     view.row.splits.length === 0 &&
@@ -3495,12 +3574,14 @@ export const compareComments = (
     const view = paragraphTextProjection(model, located.blockId);
     const anchor = expectedKeptAnchor(
       model,
-      view.type === "pending-join"
+      view.type === "pending-join" &&
+        view.destinationPrediction.type === "exact"
         ? { ...comment, blockId: located.blockId }
         : comment,
     );
     const owner =
-      view.type === "pending-join"
+      view.type === "pending-join" &&
+      view.destinationPrediction.type === "exact"
         ? (view.row.pre?.id ??
           assert.fail("A proven pending join must have an accepted owner"))
         : undefined;
@@ -3573,6 +3654,7 @@ export const compareComments = (
       survivor &&
       (survivor.blockId === located.blockId ||
         (view.type === "pending-join" &&
+          view.destinationPrediction.type === "exact" &&
           survivor.blockId === view.row.pre?.id) ||
         survivor.blockId === null ||
         !survivingBlockIds.has(survivor.blockId))
