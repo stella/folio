@@ -16,10 +16,20 @@
  * removes only what a resolved change takes away.
  */
 
-import { describe, expect, test } from "bun:test";
+import { panic } from "better-result";
+import { describe, expect, spyOn, test } from "bun:test";
 import fc from "fast-check";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
+
+import {
+  applyDocumentOps,
+  DOCUMENT_OP_REFUSAL_REASONS,
+  DOCUMENT_OP_TYPES,
+  documentStories,
+  leasedIdCensus,
+  OP_STORIES,
+} from "@stll/docx-core/ops";
 
 import { reviewerDocumentArbitrary } from "../../../../test/generators/reviewerDocumentArbitraries";
 import {
@@ -28,10 +38,16 @@ import {
 } from "../../../../test/property-testing";
 import { CanonicalSessionError } from "../canonical/canonicalSession";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
+import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
 import { paragraph, run } from "../docx/server/build";
 import { fromMarkdown } from "../markdown/fromMarkdown";
-import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import { ProseMirrorDocumentValidationError } from "../prosemirror/validation";
+import {
+  CANONICAL_GAP,
+  type HeadlessReviewerSession,
+} from "../types/canonicalCapabilities";
 import type {
   Document,
   Hyperlink,
@@ -144,23 +160,95 @@ const expectedViews = async (buffer: ArrayBuffer) => {
   return expected;
 };
 
-type ViewOutcome = "read" | "sessionRefused" | "resolutionRefused";
-
-const viewLaws = async (buffer: ArrayBuffer): Promise<ViewOutcome> => {
+const viewLaws = async (
+  buffer: ArrayBuffer,
+  unsupported: "fail" | "known-input-boundaries" = "fail",
+): Promise<void> => {
   let canonical: FolioDocxReviewer;
   try {
     canonical = await open(buffer, "canonical");
   } catch (error) {
-    if (CanonicalSessionError.is(error)) return "sessionRefused";
-    throw error;
+    if (
+      unsupported !== "known-input-boundaries" ||
+      !CanonicalSessionError.is(error)
+    )
+      throw error;
+    // Generated wrappers can repeat bookmark endpoints. Require the shared
+    // source converter to independently diagnose that malformed input; an
+    // otherwise valid document's session refusal must fail this law.
+    const parsed = await parseDocx(buffer, {
+      detectVariables: false,
+      preloadFonts: false,
+    });
+    let invalid: unknown;
+    try {
+      toProseDoc(parsed);
+    } catch (cause) {
+      invalid = cause;
+    }
+    if (!(invalid instanceof ProseMirrorDocumentValidationError)) throw error;
+    expect(invalid.issues.length).toBeGreaterThan(0);
+    for (const issue of invalid.issues)
+      expect(issue.message).toMatch(
+        /^Bookmark .+ has more than one (?:start|end) boundary \(paragraph .+\)\.$/u,
+      );
+    expect(error.message).toBe(
+      `Canonical projection failed: ${invalid.message}`,
+    );
+    expect(error.reason).toBe("refused");
+    expect(error.ground).toEqual({ gap: CANONICAL_GAP.dispatch });
+    return;
   }
   const before = canonical.toDocument();
   let read: ReturnType<typeof views>;
   try {
     read = views(canonical);
   } catch (error) {
-    if (CanonicalSessionError.is(error)) return "resolutionRefused";
-    throw error;
+    // Generated input may place a reviewed paragraph before its container's
+    // final table or a standing range boundary. Verify the exact native
+    // refusal independently; an arbitrary session refusal must fail this law.
+    // Fixed supported regressions use the default strict policy.
+    if (
+      unsupported !== "known-input-boundaries" ||
+      !CanonicalSessionError.is(error)
+    )
+      throw error;
+    const revisionIds = [...leasedIdCensus(before).revision];
+    const stories = documentStories(before);
+    const order = [
+      ...stories.filter((story) => story !== OP_STORIES.MAIN),
+      OP_STORIES.MAIN,
+    ];
+    const nativeRefusals = (["accept", "reject"] as const).flatMap(
+      (decision) => {
+        const resolved = applyDocumentOps(
+          before,
+          order.map((story) => ({
+            type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+            story,
+            revisionIds,
+            decision,
+          })),
+        );
+        if (resolved.isOk()) return [];
+        const refusal = resolved.error;
+        const knownBoundary =
+          refusal.reason === DOCUMENT_OP_REFUSAL_REASONS.CONTAINER_FINAL_MARK ||
+          (refusal.reason === DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE &&
+            /^A range boundary stands between [0-9A-Fa-f]{8} and the next block\.$/u.test(
+              refusal.message,
+            ));
+        return knownBoundary &&
+          refusal.opType === DOCUMENT_OP_TYPES.RESOLVE_REVISION
+          ? [refusal.message]
+          : [];
+      },
+    );
+    expect(nativeRefusals).toContain(error.message);
+    expect(error.reason).toBe("refused");
+    expect(error.ground).toEqual({ gap: CANONICAL_GAP.dispatch });
+    expect(canonical.toDocument()).toEqual(before);
+    return;
   }
   expect(read).toEqual(await expectedViews(buffer));
   // Reading a view resolves nothing in the reviewer itself.
@@ -184,7 +272,6 @@ const viewLaws = async (buffer: ArrayBuffer): Promise<ViewOutcome> => {
         ?.changes,
     ).toEqual([]);
   }
-  return "read";
 };
 
 const packaged = async (document: Document): Promise<ArrayBuffer | null> => {
@@ -195,11 +282,38 @@ const packaged = async (document: Document): Promise<ArrayBuffer | null> => {
   }
 };
 
+// These malformed corpus documents fail session construction. Every other
+// corpus document and every generated supported document must actually read.
+const IMPORT_REFUSALS = new Map([
+  [
+    "duplicate-imported-revision.docx",
+    {
+      reason: "refused",
+      ground: { gap: CANONICAL_GAP.dispatch },
+      message: "2 records in the package carry revision:83.",
+    },
+  ],
+  [
+    "sdt-self-closing.docx",
+    {
+      reason: "refused",
+      ground: { gap: CANONICAL_GAP.storyContentProjection },
+      message: "The projection changed paragraph structure.",
+    },
+  ],
+]);
+
 describe("a canonical reviewer's resolved views", () => {
   test.each(FIXTURE_FILES)(
     "%s reads its resolved views as the legacy reviewer does",
     async (filename) => {
-      await viewLaws(await ingested(readFixture(filename)));
+      const buffer = await ingested(readFixture(filename));
+      const refused = IMPORT_REFUSALS.get(filename);
+      if (refused !== undefined) {
+        await expect(open(buffer, "canonical")).rejects.toMatchObject(refused);
+        return;
+      }
+      await viewLaws(buffer);
     },
     propertyTestTimeout(30_000),
   );
@@ -210,7 +324,7 @@ describe("a canonical reviewer's resolved views", () => {
       await assertProperty(
         fc.asyncProperty(reviewerDocumentArbitrary, async (document) => {
           const buffer = await packaged(document);
-          if (buffer !== null) await viewLaws(buffer);
+          if (buffer !== null) await viewLaws(buffer, "known-input-boundaries");
         }),
         {
           id: "generated documents read their resolved views as the legacy reviewer does",
@@ -221,6 +335,88 @@ describe("a canonical reviewer's resolved views", () => {
     propertyTestTimeout(120_000),
   );
 });
+
+test("a typed refusal for a supported view fails the generated parity law", async () => {
+  const buffer = await ingested(
+    await createDocx(fromMarkdown("Supported source.")),
+  );
+  const read = spyOn(FolioDocxReviewer.prototype, "readReviewedStory");
+  try {
+    read.mockImplementation(() => {
+      throw new CanonicalSessionError({
+        reason: "refused",
+        ground: { gap: CANONICAL_GAP.dispatch },
+        message: "Unexpected supported-view refusal",
+      });
+    });
+    await expect(viewLaws(buffer, "known-input-boundaries")).rejects.toThrow();
+  } finally {
+    read.mockRestore();
+  }
+});
+
+for (const kind of ["ins", "del"] as const)
+  for (const boundary of [
+    { type: "bookmarkStart", id: 90, name: "_GoBack" },
+    { type: "bookmarkEnd", id: 90 },
+  ] as const)
+    test(`a native ${boundary.type} boundary independently explains the ${kind} view refusal`, async () => {
+      const buffer = await ingested(
+        await createDocx({
+          package: {
+            document: {
+              content: [
+                {
+                  type: "paragraph",
+                  paraId: "00000001",
+                  content: [],
+                  pPrMark: { kind, info: { id: 1, author: "Reviewer" } },
+                },
+                boundary,
+              ],
+            },
+          },
+        }),
+      );
+      const reviewer = await open(buffer, "canonical");
+      const before = reviewer.toDocument();
+      const decision = kind === "ins" ? "reject" : "accept";
+      const native = applyDocumentOps(before, [
+        {
+          type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+          story: OP_STORIES.MAIN,
+          revisionIds: [1],
+          decision,
+        },
+      ]);
+      expect(native.isErr()).toBe(true);
+      if (native.isOk())
+        return panic("Expected the native range-boundary refusal");
+      expect(native.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE);
+      expect(native.error.opType).toBe(DOCUMENT_OP_TYPES.RESOLVE_REVISION);
+      expect(native.error.message).toBe(
+        "A range boundary stands between 00000001 and the next block.",
+      );
+      await expect(viewLaws(buffer)).rejects.toThrow(native.error.message);
+      await viewLaws(buffer, "known-input-boundaries");
+      expect(reviewer.toDocument()).toEqual(before);
+
+      const read = spyOn(FolioDocxReviewer.prototype, "readReviewedStory");
+      try {
+        read.mockImplementation(() => {
+          throw new CanonicalSessionError({
+            reason: "refused",
+            ground: { gap: CANONICAL_GAP.dispatch },
+            message: "Unexpected refusal on a known-boundary input",
+          });
+        });
+        await expect(
+          viewLaws(buffer, "known-input-boundaries"),
+        ).rejects.toThrow();
+      } finally {
+        read.mockRestore();
+      }
+    });
 
 test.each(["ins", "del"] as const)(
   "a resolved %s paragraph before an atomic block preserves its section and source markup",

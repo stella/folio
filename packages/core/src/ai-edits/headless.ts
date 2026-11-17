@@ -23,6 +23,7 @@ import {
   freshCommentId,
   OP_STORIES,
   type OpStory,
+  pendingSuggestionIdsIn,
   reconcileDocumentPartRelationships,
   withoutPendingSuggestions,
 } from "@stll/docx-core/ops";
@@ -4214,6 +4215,10 @@ export class FolioDocxReviewer {
         ground: { rule: CANONICAL_RULE.contentControlLock },
         message: `A locked content control prevents the ${view} view.`,
       });
+    if (pendingSuggestionIdsIn(copy.baseDocument).size > 0)
+      throw canonicalReviewerRefusal(
+        `read the ${view} view while suggestions remain pending`,
+      );
     return copy;
   }
 
