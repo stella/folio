@@ -28,6 +28,36 @@ import {
 } from "../types";
 import { isInlineInsertion, sameParagraph } from "./points";
 
+/**
+ * A direct erasure can remove an earlier newly tracked fragment, shifting
+ * the supplied ids onto different source content when the tracked deletion
+ * replays. The ordered id pool carries no source-to-fragment mapping, so a
+ * pending decision cannot safely follow that replay. A nonempty revision
+ * pool witnesses the allocation risk, even when some supplied ids go unused.
+ */
+export const fragmentedDeletionOverlap = (
+  op: DocumentOp,
+  over: DocumentOp,
+): boolean => {
+  if (
+    op.type !== DOCUMENT_OP_TYPES.DELETE_RANGE ||
+    over.type !== DOCUMENT_OP_TYPES.DELETE_RANGE
+  )
+    return false;
+  const tracked = op.revision === undefined ? over : op;
+  const direct = op.revision === undefined ? op : over;
+  return (
+    tracked.revision !== undefined &&
+    direct.revision === undefined &&
+    (tracked.newIds?.revision?.length ?? 0) > 0 &&
+    sameParagraph(tracked.from, tracked.to) &&
+    sameParagraph(tracked.from, direct.from) &&
+    sameParagraph(tracked.from, direct.to) &&
+    Math.max(tracked.from.offset, direct.from.offset) <
+      Math.min(tracked.to.offset, direct.to.offset)
+  );
+};
+
 /** The kinds of concurrent pair whose two orders record different cuts. */
 export const TRACKED_ORDER_PAIRS: Readonly<{
   /** A cut at a tracked change's edge or inside its range. */
@@ -144,6 +174,7 @@ export const trackedOrderPair = (
     (over.type === DOCUMENT_OP_TYPES.INSERT_CONTENT && !isInlineInsertion(over))
   )
     return undefined;
+  if (fragmentedDeletionOverlap(op, over)) return undefined;
   if (overlappingDeletions(op, over))
     return TRACKED_ORDER_PAIRS.OVERLAPPING_DELETIONS;
   const opEdges = trackedEdges(op);
