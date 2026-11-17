@@ -26,6 +26,7 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
 import { assertExactModel } from "../../../../../test/exactModel";
+import { noteCommentDocument } from "../../../../../test/generators/noteCommentDocument";
 import { checkCoverageSample } from "../../../../../test/property-coverage";
 import {
   assertProperty,
@@ -178,10 +179,11 @@ const expectEveryKindApplied = (tally: Tally): void => {
 
 /**
  * What each operation's inverse is made of: the table in `apply.ts`. Every
- * inverse is one operation, except a run patch's, which restores one stretch
+ * primary inverse is one operation, except a run patch's, which restores one stretch
  * of prior values per operation, and a split's or join's, which may give the
  * paragraph keeping its id its own review fields back and restore authored
- * content that the plain-run seam merge would otherwise coalesce.
+ * content that the plain-run seam merge would otherwise coalesce. Note
+ * lifecycle composition also restores owned bodies and exhausted threads.
  */
 const INVERSE_KINDS = {
   setPackageResources: ["setPackageResources"],
@@ -193,7 +195,7 @@ const INVERSE_KINDS = {
   createHeaderFooter: ["restoreStoryParts"],
   removeHeaderFooter: ["restoreStoryParts"],
   addNote: ["restoreStoryParts"],
-  removeNote: ["restoreStoryParts"],
+  removeNote: ["restoreStoryParts", "insertContent", "restoreCommentState"],
   setSectionProps: ["restoreStoryParts"],
   restoreStoryParts: ["restoreStoryParts"],
   deleteBlocks: [
@@ -201,8 +203,10 @@ const INVERSE_KINDS = {
     "replaceBlocks",
     "replaceInline",
     "setParagraphReview",
+    "restoreStoryParts",
+    "restoreCommentState",
   ],
-  insertBlocks: ["replaceBlocks"],
+  insertBlocks: ["replaceBlocks", "restoreStoryParts", "restoreCommentState"],
   insertTable: ["setContainerBlocks"],
   deleteTable: ["setContainerBlocks", "replaceInline", "setParagraphReview"],
   setContainerBlocks: ["setContainerBlocks"],
@@ -210,8 +214,18 @@ const INVERSE_KINDS = {
   deleteRow: ["setTableRows", "replaceInline", "setParagraphReview"],
   setTableRows: ["setTableRows"],
   insertText: ["deleteRange", "replaceInline", "restoreStoryParts"],
-  insertContent: ["deleteRange", "replaceInline", "restoreStoryParts"],
-  deleteRange: ["insertContent", "replaceInline", "restoreStoryParts"],
+  insertContent: [
+    "deleteRange",
+    "replaceInline",
+    "restoreStoryParts",
+    "restoreCommentState",
+  ],
+  deleteRange: [
+    "insertContent",
+    "replaceInline",
+    "restoreStoryParts",
+    "restoreCommentState",
+  ],
   splitInline: ["joinInline", "restoreStoryParts"],
   joinInline: ["splitInline", "restoreStoryParts"],
   setRunProps: ["setRunProps"],
@@ -230,17 +244,101 @@ const INVERSE_KINDS = {
   ],
   replaceBlocks: ["replaceBlocks", "restoreStoryParts"],
   setParagraphReview: ["setParagraphReview"],
-  replaceInline: ["replaceInline", "restoreStoryParts"],
+  replaceInline: ["replaceInline", "restoreStoryParts", "restoreCommentState"],
   resolveRevision: [
     "replaceInline",
     "setParagraphReview",
     "joinBlocks",
     "replaceBlocks",
+    "restoreStoryParts",
+    "restoreCommentState",
   ],
   createNumberingInstance: ["deleteNumberingInstance"],
   deleteNumberingInstance: ["createNumberingInstance"],
   setSectionEndpoint: ["setSectionEndpoint"],
 } as const satisfies Record<DocumentOpType, readonly DocumentOpType[]>;
+
+test("note lifecycle inverse kinds are exercised by actual direct and tracked producers", () => {
+  const check = (document: Document, op: DocumentOp) => {
+    const edit = applyDocumentOp(document, op).unwrap();
+    const kinds: readonly DocumentOpType[] = INVERSE_KINDS[op.type];
+    for (const inverse of edit.inverse) expect(kinds).toContain(inverse.type);
+    expectRestores(edit, document);
+    return edit.document;
+  };
+  for (const kind of ["footnote", "endnote"] as const) {
+    const { document, otherKind } = noteCommentDocument({
+      kind,
+      anchor: "point",
+      text: "notes",
+      depth: 2,
+      references: "sole",
+    });
+    const at = {
+      story: OP_STORIES.MAIN,
+      blockId: "10000001",
+      offset: 5,
+    } as const;
+    const deletion = {
+      type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+      from: at,
+      to: { ...at, offset: 6 },
+    } as const;
+    check(document, deletion);
+    check(document, {
+      type: DOCUMENT_OP_TYPES.REMOVE_NOTE,
+      at,
+      story: { kind, id: 1 },
+    });
+    check(document, {
+      type: DOCUMENT_OP_TYPES.DELETE_BLOCKS,
+      story: OP_STORIES.MAIN,
+      blockIds: [at.blockId],
+    });
+    const pending = check(document, {
+      ...deletion,
+      revision: { id: 41, author: "Reviewer", date: "2026-11-17T00:00:00Z" },
+    });
+    check(pending, {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds: [41],
+      decision: "accept",
+    });
+    const content = [
+      {
+        type: "run",
+        content: [
+          {
+            type: otherKind === "footnote" ? "footnoteRef" : "endnoteRef",
+            id: 3,
+          },
+        ],
+      },
+    ] as const;
+    check(document, {
+      type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
+      at,
+      slice: { content, openStart: 0, openEnd: 0 },
+    });
+    check(document, {
+      type: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+      story: OP_STORIES.MAIN,
+      at: { type: "after", blockId: at.blockId },
+      blocks: [{ type: "paragraph", paraId: "40000001", content }],
+    });
+    const block = document.package.document.content.at(0);
+    if (block?.type !== "paragraph")
+      panic("The source note has a paragraph host.");
+    check(document, {
+      type: DOCUMENT_OP_TYPES.REPLACE_INLINE,
+      story: OP_STORIES.MAIN,
+      blockId: at.blockId,
+      expected: block.content,
+      content,
+    });
+  }
+});
 
 const paragraphsById = (document: Document): Map<string, Paragraph> =>
   new Map(

@@ -72,6 +72,7 @@ import {
   sameOwnFields,
   withFieldResult,
 } from "./leaves";
+import { replaceNoteParts } from "./noteLifecycle";
 import { automaticNoteMarkRuns, noteReferenceSpans } from "./noteMarks";
 import {
   paragraphHoldsContent,
@@ -103,7 +104,6 @@ import {
 import { runsMergeable } from "./runMerge";
 import { identitySlots, withInlineIdentity } from "./slots";
 import { documentStories } from "./stories";
-import { storyLifecycleEdit } from "./storyLifecycle";
 import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
@@ -3976,7 +3976,6 @@ export const planRevisionResolution = ({
   }
   // Notes whose last reference went are removed first: a comment anchored in
   // one of them is then exhausted too and retires below.
-  let notesRemoved = false;
   if (noteReferences.length > 0) {
     const orphaned = noteReferences.filter(
       (reference) => !hasNoteReference(current, reference),
@@ -4009,8 +4008,15 @@ export const planRevisionResolution = ({
         if (packageParts.endnotes.length === 0 && removesAddedEndnote)
           delete packageParts.endnotes;
       }
-      current = { ...current, package: packageParts };
-      notesRemoved = true;
+      const removed = replaceNoteParts({
+        document: current,
+        parts: packageParts,
+        op,
+        applyOps,
+      });
+      if (removed.isErr()) return Result.err(removed.error);
+      edits.push(removed.value);
+      current = removed.value.document;
     }
   }
   const exhausted = (document.package.document.comments ?? []).filter(
@@ -4027,13 +4033,6 @@ export const planRevisionResolution = ({
     edits.push(retired.value);
     current = retired.value.document;
   }
-  // A removed note changes story parts; one lifecycle edit captures them and
-  // the retired comments together.
-  if (notesRemoved)
-    return storyLifecycleEdit(document, current, op, true).map((edit) => ({
-      edit,
-      receiverEffects,
-    }));
   return Result.ok({ edit: combineEdits(document, edits), receiverEffects });
 };
 

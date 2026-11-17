@@ -138,6 +138,7 @@ import {
   zeroWidthLeavesAt,
 } from "./leaves";
 import { cloneModel } from "./modelClone";
+import { replaceNoteParts } from "./noteLifecycle";
 import {
   automaticNoteMarkRuns,
   noteContentWithAutomaticMark,
@@ -162,7 +163,7 @@ import {
   DocumentOpRefusal,
   type DocumentOpRefusalReason,
 } from "./refusal";
-import { resolveRevision } from "./resolve";
+import { type ApplyOps, resolveRevision } from "./resolve";
 import {
   foldedParagraphPropertyChange,
   isRemovedRevisionNode,
@@ -2725,10 +2726,12 @@ const withNoteById = <Note extends { id: number }>(
   return list;
 };
 
-const editNote = (
-  document: Document,
-  op: AddNoteOp | RemoveNoteOp,
-): Applied => {
+type EditNoteOptions = {
+  document: Document;
+  op: AddNoteOp | RemoveNoteOp;
+  applyOps: ApplyOps;
+};
+const editNote = ({ document, op, applyOps }: EditNoteOptions): Applied => {
   const kind =
     op.type === DOCUMENT_OP_TYPES.ADD_NOTE ? op.note.type : op.story.kind;
   const id = op.type === DOCUMENT_OP_TYPES.ADD_NOTE ? op.note.id : op.story.id;
@@ -2907,7 +2910,13 @@ const editNote = (
               ) ?? [],
           },
         };
-  return storyLifecycleEdit(document, next, op);
+  const cleanup = replaceNoteParts({
+    document: removed.value.document,
+    parts: next.package,
+    op,
+    applyOps,
+  });
+  return cleanup.map((edit) => combineEdits(document, [removed.value, edit]));
 };
 
 /** Direct text edits own the lifecycle of note bodies whose last reference they remove. */
@@ -2963,7 +2972,7 @@ const dispatchCore = ({ document, op, purpose }: DispatchOptions): Applied => {
       return applyStoryLifecycle(document, op);
     case DOCUMENT_OP_TYPES.ADD_NOTE:
     case DOCUMENT_OP_TYPES.REMOVE_NOTE:
-      return editNote(document, op);
+      return editNote({ document, op, applyOps });
     case DOCUMENT_OP_TYPES.DELETE_BLOCKS:
       return deleteBlocks({ document, op, applyOps });
     case DOCUMENT_OP_TYPES.INSERT_BLOCKS:
@@ -3049,7 +3058,13 @@ const dispatch = ({ document, op, purpose }: DispatchOptions): Applied => {
       : withoutOrphanedNotes(document, applied.value.document);
   let edit = applied.value;
   if (cleaned !== edit.document) {
-    const cleanup = storyLifecycleEdit(edit.document, cleaned, op, true);
+    const cleanup = replaceNoteParts({
+      document: edit.document,
+      parts: cleaned.package,
+      op,
+      applyOps: (current, ops) =>
+        applyDocumentOpsForPurpose({ document: current, ops, purpose }),
+    });
     if (cleanup.isErr()) return cleanup;
     edit = combineEdits(document, [edit, cleanup.value]);
   }
@@ -3072,26 +3087,67 @@ const dispatch = ({ document, op, purpose }: DispatchOptions): Applied => {
       "The primary edit's inverse must apply before note repair.",
       undone.error,
     );
-  const owned: Pick<StoryParts, "footnotes" | "endnotes"> = {};
+  const owned = {
+    footnotes: null,
+    endnotes: null,
+    body: { comments: null },
+  } as const satisfies StoryParts;
+  const original = captureStoryParts(document, owned);
+  const relationships = [...(document.package.relationships ?? [])];
+  const matchesSource = (candidate: Document) =>
+    structurallyEqual(captureStoryParts(candidate, owned), original) &&
+    Object.hasOwn(candidate.package, "relationships") ===
+      Object.hasOwn(document.package, "relationships") &&
+    (candidate.package.relationships === undefined) ===
+      (document.package.relationships === undefined) &&
+    structurallyEqual(
+      [...(candidate.package.relationships ?? [])],
+      relationships,
+    );
+  if (matchesSource(undone.value.document)) return Result.ok(edit);
+  const pruning = replaceNoteParts({
+    document,
+    parts: inverseCleanup.package,
+    op,
+    applyOps: (current, ops) =>
+      applyDocumentOpsForPurpose({
+        document: current,
+        ops,
+        purpose: "inspect-inverse",
+      }),
+  });
+  if (pruning.isErr())
+    return panic(
+      "Source note pruning must apply before inverse repair.",
+      pruning.error,
+    );
   for (const key of ["footnotes", "endnotes"] as const) {
     const field = { [key]: null };
-    const actual = captureStoryParts(undone.value.document, field);
-    if (structurallyEqual(actual, captureStoryParts(document, field))) continue;
-    if (!structurallyEqual(actual, captureStoryParts(inverseCleanup, field)))
+    if (
+      !structurallyEqual(
+        captureStoryParts(undone.value.document, field),
+        captureStoryParts(pruning.value.document, field),
+      )
+    )
       return panic("Note repair may only restore inverse-pruned declarations.");
-    owned[key] = null;
   }
-  if (Object.keys(owned).length === 0) return Result.ok(edit);
+  const repaired = applyDocumentOpsForPurpose({
+    document: undone.value.document,
+    ops: pruning.value.inverse,
+    purpose: "inspect-inverse",
+  });
+  if (repaired.isErr())
+    return panic(
+      "The source note repair must meet the primary inverse.",
+      repaired.error,
+    );
+  if (!matchesSource(repaired.value.document))
+    return panic(
+      "Note repair must restore its source declarations and comment state.",
+    );
   return Result.ok({
     ...edit,
-    inverse: [
-      ...edit.inverse,
-      {
-        type: DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS,
-        expected: cloneModel(captureStoryParts(undone.value.document, owned)),
-        parts: cloneModel(captureStoryParts(document, owned)),
-      },
-    ],
+    inverse: [...edit.inverse, ...pruning.value.inverse],
   });
 };
 
