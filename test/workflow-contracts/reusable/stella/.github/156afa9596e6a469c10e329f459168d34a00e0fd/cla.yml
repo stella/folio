@@ -1,10 +1,12 @@
 name: CLA Assistant (Reusable)
 
-# SECURITY INVARIANT — DO NOT BREAK.
-# pull_request_target executes trusted base-repository workflow code with secrets.
+# SECURITY INVARIANT: DO NOT BREAK.
+# Callers run this from `workflow_run`, `issue_comment`, `merge_group` or
+# `workflow_dispatch`: trusted default-branch workflow code with secrets.
 # Never check out PR head code, build or install it, or interpolate PR data into
 # executable code. This workflow is limited to API calls in pinned actions;
-# head SHAs are data for the Checks API, never executable input.
+# the triggering run's payload (head SHA, branch, repository) is untrusted data
+# for API queries and the Checks API, never executable input.
 
 on:
   workflow_call:
@@ -19,6 +21,11 @@ on:
         required: false
         type: string
         default: "dependabot[bot],renovate[bot],github-actions[bot],stella-provenance-updater[bot]"
+      check-name:
+        description: "Name of the check that reports the verdict on the pull request head; match the repository's required status check"
+        required: false
+        type: string
+        default: "cla"
     secrets:
       CLA_APP_PRIVATE_KEY:
         required: true
@@ -27,27 +34,61 @@ permissions:
   contents: read
   checks: write # Reports cla on the verified PR or merge-group SHA.
   issues: write # Maintains the signing prompt for unsigned contributors.
-  pull-requests: read
+  pull-requests: read # Resolves the pull requests of a triggering run.
 
 jobs:
   cla:
-    if: (github.event_name != 'pull_request_target' || github.event.action != 'closed') && (github.event_name != 'issue_comment' || (github.event.issue.pull_request && (github.event.comment.body == 'recheck' || github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA')))
+    if: (github.event_name != 'workflow_run' || github.event.workflow_run.event == 'pull_request') && (github.event_name != 'issue_comment' || (github.event.issue.pull_request && (github.event.comment.body == 'recheck' || github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA')))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Select signature credentials
-        id: credentials
+      # A pull_request run from a fork reports no pull requests on its
+      # workflow_run payload, so the pull requests are resolved from the head
+      # repository, branch and SHA. Zero matches means the head moved on and
+      # its own run verifies it; several matches are all verified.
+      - name: Resolve pull requests
+        id: pulls
+        if: github.event_name == 'workflow_run'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         with:
           script: |
             const { owner, repo } = context.repo;
-            if (context.eventName !== "pull_request_target") {
+            const run = context.payload.workflow_run;
+            const headRepository = run?.head_repository;
+            if (run?.event !== "pull_request" || typeof run.head_sha !== "string" || !/^[0-9a-f]{40}$/u.test(run.head_sha) ||
+                typeof run.head_branch !== "string" || !run.head_branch ||
+                typeof headRepository?.full_name !== "string" || typeof headRepository.owner?.login !== "string") {
+              throw new Error("CLA_INVALID_TRIGGERING_RUN");
+            }
+            const pulls = await github.paginate("GET /repos/{owner}/{repo}/pulls", {
+              owner, repo, state: "open", head: `${headRepository.owner.login}:${run.head_branch}`, per_page: 100,
+            });
+            const numbers = pulls.filter((pull) => pull.head?.sha === run.head_sha &&
+              pull.head.repo?.full_name?.toLowerCase() === headRepository.full_name.toLowerCase() &&
+              pull.base?.repo?.full_name?.toLowerCase() === `${owner}/${repo}`.toLowerCase())
+              .map((pull) => pull.number);
+            if (numbers.some((number) => !Number.isSafeInteger(number) || number <= 0)) throw new Error("CLA_INVALID_PULL_NUMBER");
+            if (!numbers.length) core.notice("No open pull request has this head any more; its newer head is verified by its own run.");
+            core.setOutput("numbers", JSON.stringify(numbers));
+
+      - name: Select signature credentials
+        id: credentials
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        env:
+          PULL_NUMBERS: ${{ steps.pulls.outputs.numbers }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            if (context.eventName !== "workflow_run") {
               core.setOutput("store_required", "true");
               return;
             }
-            const pulls = [(await github.request("GET /repos/{owner}/{repo}/pulls/{pull_number}", {
-              owner, repo, pull_number: context.payload.pull_request.number,
-            })).data];
+            const pulls = [];
+            for (const pull_number of JSON.parse(process.env.PULL_NUMBERS)) {
+              pulls.push((await github.request("GET /repos/{owner}/{repo}/pulls/{pull_number}", {
+                owner, repo, pull_number,
+              })).data);
+            }
             const candidates = pulls.filter((pull) => pull.state === "open" &&
               pull.base.repo.full_name === `${owner}/${repo}`);
             let storeRequired = false;
@@ -89,6 +130,8 @@ jobs:
         env:
           CLA_STORE_TOKEN: ${{ steps.store-token.outputs.token }}
           CLA_ALLOWLIST: ${{ inputs.allowlist }}
+          CLA_CHECK_NAME: ${{ inputs.check-name }}
+          PULL_NUMBERS: ${{ steps.pulls.outputs.numbers }}
         with:
           github-token: ${{ github.token }}
           script: |
@@ -100,6 +143,7 @@ jobs:
               const expression = pattern.split("*").map((part) => part.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")).join(".*");
               return new RegExp(`^${expression}$`, "u").test(login.toLowerCase());
             });
+            const CHECK_NAME = process.env.CLA_CHECK_NAME || "cla";
             const STORE = { owner: "stella", repo: "cla", path: "signatures/cla.json" };
             const BRANCH = "cla-signatures";
             const MAX_WRITE_ATTEMPTS = 3;
@@ -202,7 +246,7 @@ jobs:
               });
               return membership?.state === "active" && (membership.role === "member" || membership.role === "admin");
             };
-            const startCheck = async (sha, name = "cla") => {
+            const startCheck = async (sha, name = CHECK_NAME) => {
               if (!validSha(sha)) fail("CLA_INVALID_HEAD");
               const { data } = await request("POST /repos/{owner}/{repo}/check-runs", {
                 name, head_sha: sha, status: "in_progress",
@@ -329,7 +373,7 @@ jobs:
             const finishVerification = async (id, unsigned, unlinked) => {
               const failed = unsigned.length > 0 || unlinked.length > 0;
               const title = unlinked.length ? "CLA_UNLINKED_AUTHOR" : unsigned.length ? "CLA_UNSIGNED" : "CLA_VERIFIED";
-              // Existing callers can require the reusable cla job as well as the SHA check.
+              // The run fails too, so a failing verdict is visible in the run list.
               if (failed) core.setFailed(title);
               const details = [];
               if (unlinked.length) details.push(`Commit authors have no linked GitHub account: ${unlinked.join(", ")}. Link the author identity to a GitHub account before verification.`);
@@ -433,9 +477,12 @@ jobs:
             };
             try {
               switch (context.eventName) {
-                case "pull_request_target":
-                  await verifyNumber(context.payload.pull_request.number);
+                case "workflow_run": {
+                  const numbers = JSON.parse(process.env.PULL_NUMBERS || "null");
+                  if (!Array.isArray(numbers)) fail("CLA_INVALID_RESOLVED_PULLS");
+                  for (const number of numbers) await verifyNumber(number);
                   break;
+                }
                 case "issue_comment":
                   if (!context.payload.issue.pull_request) break;
                   await verifyNumber(context.payload.issue.number);
