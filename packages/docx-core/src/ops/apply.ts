@@ -2576,15 +2576,19 @@ const setParagraphReview = (
   if (structurallyEqual(next, paragraph)) {
     return unchanged(document);
   }
-  if (
-    review.pPrMark !== undefined &&
-    !structurallyEqual(review.pPrMark, paragraph.pPrMark) &&
+  type TerminalMarkTransitionOptions = {
+    from: Paragraph["pPrMark"];
+    to: Paragraph["pPrMark"];
+  };
+  const refusesMarkTransition = ({ from, to }: TerminalMarkTransitionOptions) =>
+    to !== undefined &&
+    !structurallyEqual(to, from) &&
     endsItsContainer(storyBody(document, op.story), located.value) &&
     !(
       located.value.list.some((step) => step.kind === "tableCell") &&
-      (review.pPrMark.kind === "ins" || review.pPrMark.kind === "del")
-    )
-  ) {
+      (to.kind === "ins" || to.kind === "del")
+    );
+  if (refusesMarkTransition({ from: paragraph.pPrMark, to: review.pPrMark })) {
     return refuse(
       op,
       DOCUMENT_OP_REFUSAL_REASONS.CONTAINER_FINAL_MARK,
@@ -2617,7 +2621,19 @@ const setParagraphReview = (
     );
   return Result.ok({
     document: replaced.value,
-    inverse: [reviewRestoring(op.story, next, paragraph)],
+    inverse: [
+      // Imported terminal marks may be resolved even when a new mark could
+      // not be set there. Restore that exact source snapshot, with a whole
+      // paragraph stale check, rather than replaying a prohibited new set.
+      refusesMarkTransition({ from: next.pPrMark, to: paragraph.pPrMark })
+        ? {
+            type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+            story: op.story,
+            expected: [next],
+            blocks: [paragraph],
+          }
+        : reviewRestoring(op.story, next, paragraph),
+    ],
     touched: touchedBetween([paragraph], [next]),
   });
 };
