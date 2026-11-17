@@ -186,18 +186,20 @@ actor with write access to the directory.
 
 ## Preparing a document
 
-| Command        | Tool                | Does                                                        |
-| -------------- | ------------------- | ----------------------------------------------------------- |
-| `sanitize`     | `sanitize_document` | Removes comments, revision save ids, identifying properties |
-| `lang`         | `proofing_language` | Reports or sets the proofing language                       |
-| `placeholders` | `placeholders`      | Lists placeholders left in every story, or fills them       |
+| Command             | Tool                | Does                                                        |
+| ------------------- | ------------------- | ----------------------------------------------------------- |
+| `sanitize`          | `sanitize_document` | Removes comments, revision save ids, identifying properties |
+| `lang`              | `proofing_language` | Reports or sets the proofing language                       |
+| `placeholders`      | `placeholders`      | Lists placeholders left in every story, or fills them       |
+| `literal-numbering` | `numbering`         | Writes list numbers as literal text                         |
+| `apply-numbering`   | `numbering`         | Puts paragraphs into a numbering instance                   |
 
 Without `--in-place` or `-o` these commands write nothing and report what a
 write would change. A write commits like any other change and is refused
-with `operation_rejected` when there is nothing to change. `sanitize` and
-`lang` rewrite package parts directly: the report names the parts a write
-would touch, and the write rewrites only those (`saveStrategy:
-"part-rewrite"`).
+with `operation_rejected` when there is nothing to change. `sanitize`,
+`lang`, and the numbering commands rewrite package parts directly: the
+report names the parts a write would touch, and the write rewrites only
+those (`saveStrategy: "part-rewrite"`).
 
 ```sh
 folio sanitize old-agreement.docx                       # report only
@@ -254,6 +256,31 @@ differently formatted runs keeps that formatting, and a value that would
 itself match a pattern is refused. The command exits with 11 while any
 placeholder is left unfilled (`result.unresolved`), so a script can gate a
 document on it.
+
+```sh
+folio literal-numbering filing.docx --labels continuous --format "[{n}.]"   # report
+folio literal-numbering filing.docx --labels continuous --format "[{n}.]" -o filing-final.docx --expect-version 9f2c…
+folio apply-numbering draft.docx --num-id 3 --block-id 1A2B3C4D --strip '\[\d+\.\]\t' --in-place --expect-version 51ab…
+```
+
+`literal-numbering` makes numbering stable for documents whose
+cross-references must not move when a consumer restarts or recounts a
+list. It writes each numbered paragraph's label as text at its start and
+removes the paragraph's list membership: its `w:numPr` goes, and numbering
+its style supplies is switched off with `numId` 0. The level's indentation,
+tab stops, and label run properties become the paragraph's direct
+formatting, and its `w:suff` separator (tab, space, or nothing) follows the
+label, so the paragraph lays out as before. `--labels displayed` (default)
+writes the label the document shows; `--labels continuous` counts each
+level 1, 2, 3 across the whole body, ignoring restarts and section breaks.
+`--format` shapes the label from `{label}`, `{n}` (the level's count), and
+`{path}` (`1.2.3`). Bullets are left alone; `--num-ids` and `--block-id`
+narrow the paragraphs. `apply-numbering` does the reverse: it puts the
+`--block-id` paragraphs into instance `--num-id` at `--level` (default 0)
+and removes a leading label that `--strip` matches. Paragraphs without a
+`w14:paraId` get one written, as with any change. Levels a style-linked
+abstract definition (`w:numStyleLink`) holds are not resolved: their
+paragraphs get the label but keep only their own indentation.
 
 ## Rendering and preview
 
@@ -381,8 +408,8 @@ frequent tools, with compact schemas: `read_document`, `find_text`,
 `read_comments`, `read_changes`, `suggest_changes`, and `add_comment`. The
 rest (`get_document_outline`, `read_section`, `list_stories`, `read_story`,
 `reply_comment`, `resolve_comment`, `resolve_changes`,
-`compare_documents`, `sanitize_document`, `proofing_language`, and
-`placeholders`) are reached through `list_capabilities`,
+`compare_documents`, `sanitize_document`, `proofing_language`,
+`placeholders`, and `numbering`) are reached through `list_capabilities`,
 `describe_capability` (a tool's parameter outline, short guidance and an
 example, listed tools included; `detail: "full"` for its full input schema),
 and `invoke_capability` (`{ capability, input, validate_only }`).
