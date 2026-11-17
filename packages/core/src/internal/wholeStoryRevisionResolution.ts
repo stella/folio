@@ -654,11 +654,12 @@ const resolveStructure = ({
       // is the chain's last one: its identity, properties, mark and section
       // endpoint survive whether this one still has words or not. Its runs
       // are re-read in the survivor's style when the chain is assembled.
-      const joinedAttrs = joinedParagraphAttrs(
+      const joinedAttrs = joinedParagraphAttrs({
         paragraph,
-        chain.node,
-        bookmarks.size,
-      );
+        next: chain.node,
+        between: bookmarks.size,
+        styleResolver: context.styleResolver,
+      });
       if (joinedAttrs !== chain.node.attrs) {
         chain.node = rebuild(chain.node, { attrs: joinedAttrs });
       }

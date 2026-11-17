@@ -33,7 +33,6 @@ import { paragraph, run } from "../docx/server/build";
 import { fromMarkdown } from "../markdown/fromMarkdown";
 import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import type {
-  BlockContent,
   Document,
   Hyperlink,
   InlineSdt,
@@ -116,96 +115,18 @@ const referencedNotes = (
 };
 
 /**
- * LEGACY_JOINED_TEXT_TAKES_MARK_RUN_PROPERTIES, which goes with the legacy
- * reviewer: a view that resolves a paragraph's mark (an inserted one in the
- * original view, a deleted one in the final view) joins its text into the
- * next paragraph whose mark stays. A mark's run properties format the mark
- * alone, so the joined text keeps its own run formatting and otherwise takes
- * the surviving paragraph's style; the legacy reviewer gives it the surviving
- * mark's run properties. For a surviving paragraph whose mark carries run
- * properties, the canonical preview runs are expected.
- */
-const joinTargetsWithMarkRunProperties = (
-  content: readonly BlockContent[],
-  view: FolioResolvedReviewedView,
-): Set<string> => {
-  const resolved = view === "original" ? "ins" : "del";
-  const targets = new Set<string>();
-  const joins = (block: BlockContent | undefined): boolean =>
-    block?.type === "paragraph" && block.pPrMark?.kind === resolved;
-  content.forEach((block, index) => {
-    if (!joins(block)) return;
-    let next = index + 1;
-    while (joins(content[next])) next += 1;
-    const target = content[next];
-    if (
-      target?.type === "paragraph" &&
-      target.formatting?.runProperties !== undefined &&
-      target.paraId !== undefined
-    )
-      targets.add(target.paraId);
-  });
-  return targets;
-};
-
-const storyContent = (
-  document: Document,
-  handle: ReturnType<typeof views>[number]["handle"],
-): readonly BlockContent[] => {
-  const pkg = document.package;
-  switch (handle.type) {
-    case "main":
-      return pkg.document.content;
-    case "header":
-      return pkg.headers?.get(handle.relationshipId)?.content ?? [];
-    case "footer":
-      return pkg.footers?.get(handle.relationshipId)?.content ?? [];
-    case "footnote":
-      return (
-        pkg.footnotes?.find(({ id }) => id === handle.noteId)?.content ?? []
-      );
-    case "endnote":
-      return (
-        pkg.endnotes?.find(({ id }) => id === handle.noteId)?.content ?? []
-      );
-  }
-};
-
-/**
  * The legacy reviewer's views, less each note the view takes every reference
  * away from: the legacy reviewer reads a note's own state whether or not
  * anything still refers to it, while resolving the document removes it.
  */
-const expectedViews = async (
-  buffer: ArrayBuffer,
-  canonical: ReturnType<typeof views>,
-) => {
+const expectedViews = async (buffer: ArrayBuffer) => {
   const legacy = await open(buffer, "legacy");
-  const source = legacy.toDocument();
   const referenced = referencedNotes(legacy.toDocument().package);
   const reached: Record<FolioResolvedReviewedView, Set<string>> = {
     original: referencedNotes(legacy.toResolvedDocument("reject").package),
     final: referencedNotes(legacy.toResolvedDocument("accept").package),
   };
   const expected = views(legacy);
-  for (const read of expected) {
-    const targets = joinTargetsWithMarkRunProperties(
-      storyContent(source, read.handle),
-      read.view,
-    );
-    if (targets.size === 0 || read.blocks === null) continue;
-    const counterpart = canonical.find(
-      ({ handle, view }) =>
-        view === read.view &&
-        JSON.stringify(handle) === JSON.stringify(read.handle),
-    );
-    for (const block of read.blocks) {
-      if (!targets.has(block.id)) continue;
-      const own = counterpart?.blocks?.find(({ id }) => id === block.id);
-      if (own !== undefined && "previewRuns" in own && "previewRuns" in block)
-        Object.assign(block, { previewRuns: own.previewRuns });
-    }
-  }
   for (const read of expected)
     if (
       (read.handle.type === "footnote" || read.handle.type === "endnote") &&
@@ -241,7 +162,7 @@ const viewLaws = async (buffer: ArrayBuffer): Promise<ViewOutcome> => {
     if (CanonicalSessionError.is(error)) return "resolutionRefused";
     throw error;
   }
-  expect(read).toEqual(await expectedViews(buffer, read));
+  expect(read).toEqual(await expectedViews(buffer));
   // Reading a view resolves nothing in the reviewer itself.
   expect(canonical.toDocument()).toEqual(before);
 
@@ -489,52 +410,121 @@ describe("a note in a canonical reviewer's resolved views", () => {
 });
 
 describe("text a resolved paragraph mark joins into another paragraph", () => {
-  test("keeps its own run formatting, not the surviving mark's", async () => {
-    const inserted = (id: number) => ({
-      kind: "ins" as const,
-      info: { id, author: "A" },
-    });
-    const document = fromMarkdown("x");
-    document.package.document.content = [
-      { type: "paragraph", content: [], pPrMark: inserted(1) },
-      {
-        type: "paragraph",
-        content: [run("a")],
-        pPrMark: inserted(2),
-      },
-      {
-        type: "paragraph",
-        content: [],
-        // The mark alone is 8 pt; the joined text is not.
-        formatting: { styleId: "Heading1", runProperties: { fontSize: 16 } },
-      },
-      // The same style with no mark formatting: the size its text takes.
-      {
-        type: "paragraph",
-        content: [run("b")],
-        formatting: { styleId: "Heading1" },
-      },
-    ];
-    const reviewer = await open(
-      await ingested(await createDocx(document)),
-      "canonical",
-    );
-    const original = reviewer.readReviewedStory({
-      story: { type: "main" },
-      view: "original",
-    });
-    const sizeOf = (text: string) => {
-      const block = original?.snapshot.blocks.find(
-        (candidate) =>
-          "previewRuns" in candidate &&
-          candidate.previewRuns?.[0]?.text === text,
-      );
-      return block !== undefined && "previewRuns" in block
-        ? block.previewRuns?.[0]?.fontSizePt
-        : undefined;
-    };
-    expect(sizeOf("b")).toBeDefined();
-    expect(sizeOf("b")).not.toBe(8);
-    expect(sizeOf("a")).toBe(sizeOf("b"));
-  });
+  test.each(["ins", "del", "moveFrom", "moveTo"] as const)(
+    "%s keeps run and field formatting separate from the surviving mark",
+    async (kind) => {
+      for (const wrapper of ["run", "field"] as const)
+        for (const styled of [false, true])
+          for (const direct of [false, true]) {
+            const document = fromMarkdown("x");
+            document.package.styles = {
+              docDefaults: { rPr: { fontSize: 22 } },
+              styles: [
+                { type: "paragraph", styleId: "Normal", default: true },
+                {
+                  type: "paragraph",
+                  styleId: "Source",
+                  basedOn: "Normal",
+                  rPr: { fontSize: 20 },
+                },
+                {
+                  type: "paragraph",
+                  styleId: "Target",
+                  basedOn: "Normal",
+                  rPr: { fontSize: 28 },
+                },
+              ],
+            };
+            const mark = (id: number) => ({
+              kind,
+              info: { id, author: "Reviewer" },
+            });
+            const text = {
+              ...run("a"),
+              ...(direct ? { formatting: { fontSize: 30 } } : {}),
+            };
+            const payload =
+              wrapper === "run"
+                ? text
+                : ({
+                    type: "complexField",
+                    instruction: "DATE",
+                    fieldType: "DATE",
+                    fieldCode: [
+                      {
+                        type: "run",
+                        content: [{ type: "instrText", text: " DATE " }],
+                      },
+                    ],
+                    fieldResult: [text],
+                  } satisfies ParagraphContent);
+            const targetStyle = styled ? "Target" : "Normal";
+            document.package.document.content = [
+              { type: "paragraph", content: [], pPrMark: mark(1) },
+              {
+                type: "paragraph",
+                content: [payload],
+                formatting: { styleId: "Source" },
+                pPrMark: mark(2),
+              },
+              // The empty mark's caret glyph is8pt; incoming body runs are not.
+              {
+                type: "paragraph",
+                content: [],
+                formatting: {
+                  styleId: targetStyle,
+                  runProperties: { fontSize: 16 },
+                },
+              },
+              {
+                type: "paragraph",
+                content: [run("b")],
+                formatting: { styleId: targetStyle },
+              },
+            ];
+            const buffer = await ingested(await createDocx(document));
+            const view =
+              kind === "ins" || kind === "moveTo" ? "original" : "final";
+            for (const session of ["legacy", "canonical"] as const) {
+              const reviewer = await open(buffer, session);
+              const before = reviewer.toDocument();
+              const read = reviewer.readReviewedStory({
+                story: { type: "main" },
+                view,
+              });
+              const sizeOf = (wantedText: string) => {
+                const block = read?.snapshot.blocks.find(
+                  (candidate) =>
+                    "previewRuns" in candidate &&
+                    candidate.previewRuns?.at(0)?.text === wantedText,
+                );
+                return block !== undefined && "previewRuns" in block
+                  ? block.previewRuns?.at(0)?.fontSizePt
+                  : undefined;
+              };
+              expect(sizeOf("b")).toBe(styled ? 14 : 11);
+              expect(sizeOf("a")).toBe(direct ? 15 : sizeOf("b"));
+              expect(reviewer.toDocument()).toEqual(before);
+              const resolved = reviewer.toResolvedDocument(
+                view === "final" ? "accept" : "reject",
+              );
+              const surviving = resolved.package.document.content.at(0);
+              expect(
+                surviving?.type === "paragraph"
+                  ? surviving.formatting?.runProperties?.fontSize
+                  : "missing",
+              ).toBe(16);
+              const reopened = await open(
+                await createDocx({ package: resolved.package }),
+                session,
+              );
+              expect(
+                reopened.readReviewedStory({ story: { type: "main" }, view })
+                  ?.snapshot.blocks,
+              ).toEqual(read?.snapshot.blocks);
+            }
+          }
+    },
+    propertyTestTimeout(30_000),
+  );
 });
