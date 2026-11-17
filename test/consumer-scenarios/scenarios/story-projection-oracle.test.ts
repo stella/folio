@@ -179,7 +179,10 @@ test("the global lifetime backstop rejects a reference resolution that did not h
   const { pre, batch } = await appendTrackedNote(context);
   const accept = FolioDocxReviewer.prototype.acceptAll;
   try {
-    FolioDocxReviewer.prototype.acceptAll = () => 0;
+    FolioDocxReviewer.prototype.acceptAll = () => ({
+      resolved: 0,
+      skipped: [],
+    });
     await assert.rejects(
       assertRequestedOutcome(
         reviewer,
