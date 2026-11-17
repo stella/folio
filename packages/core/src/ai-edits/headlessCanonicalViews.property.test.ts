@@ -301,6 +301,80 @@ describe("a canonical reviewer's resolved views", () => {
   );
 });
 
+test.each(["ins", "del"] as const)(
+  "a resolved %s paragraph before an atomic block preserves its section and source markup",
+  async (kind) => {
+    const document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              paraId: "00000001",
+              content: [],
+              sectionProperties: { pageWidth: 11906 },
+            },
+            {
+              type: "paragraph",
+              paraId: "00000002",
+              content: [],
+              pPrMark: { kind, info: { id: 1, author: "Reviewer" } },
+            },
+            { type: "preservedBlock", xml: "<w:altChunk/>" },
+          ],
+          finalSectionProperties: { pageWidth: 12240, pageHeight: 15840 },
+        },
+      },
+    } satisfies Document;
+    const buffer = await ingested(await createDocx(document));
+    await viewLaws(buffer);
+    for (const session of ["legacy", "canonical"] as const)
+      for (const view of FOLIO_RESOLVED_REVIEWED_VIEWS) {
+        const reviewer = await open(buffer, session);
+        const before = reviewer.toDocument();
+        const atomic = before.package.document.content.at(2);
+        expect(atomic?.type).toBe("preservedBlock");
+        const resolved = reviewer.toResolvedDocument(
+          view === "final" ? "accept" : "reject",
+        );
+        const assertSourceStructure = (read: Document) => {
+          const blocks = read.package.document.content;
+          expect(blocks.map(({ type }) => type)).toEqual([
+            "paragraph",
+            "paragraph",
+            "preservedBlock",
+          ]);
+          expect(blocks.at(0)).toMatchObject({
+            type: "paragraph",
+            paraId: "00000001",
+            content: [],
+            sectionProperties: { pageWidth: 11906 },
+          });
+          expect(blocks.at(1)).toMatchObject({
+            type: "paragraph",
+            paraId: "00000002",
+            content: [],
+          });
+          const target = blocks.at(1);
+          expect(
+            target?.type === "paragraph" ? target.pPrMark : "missing",
+          ).toBeUndefined();
+          expect(blocks.at(2)).toEqual(atomic);
+          expect(read.package.document.finalSectionProperties).toMatchObject({
+            pageWidth: 12240,
+            pageHeight: 15840,
+          });
+        };
+        assertSourceStructure(resolved);
+        expect(reviewer.toDocument()).toEqual(before);
+        // Force semantic serialization, rather than replay the source ZIP.
+        const saved = await createDocx({ package: resolved.package });
+        assertSourceStructure((await open(saved, session)).toDocument());
+      }
+  },
+  propertyTestTimeout(30_000),
+);
+
 const NOTE_ID = 37;
 const NOTE = { type: "footnote", noteId: NOTE_ID } as const;
 const REFERENCE: Run = {
