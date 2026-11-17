@@ -672,6 +672,59 @@ export const createTrackedPlan = ({
 
 type TrackedPlan = ReturnType<typeof createTrackedPlan>;
 
+type TrackedParagraphJoinKind = "tracked-mark" | "cancelled-added-mark";
+
+type AppendTrackedParagraphJoinOptions = {
+  plan: TrackedPlan;
+  join: Omit<JoinBlocksOp, "revision" | "newIds">;
+  revision: RevisionStamp;
+};
+
+/** Cancel an own added mark physically, leaving property changes to its planner. */
+export const appendTrackedParagraphJoin = ({
+  plan,
+  join,
+  revision,
+}: AppendTrackedParagraphJoinOptions): Result<
+  TrackedParagraphJoinKind,
+  DocumentOpRefusal
+> => {
+  const body = storyBody(plan.document(), join.story);
+  const leading = findStoryParagraph(body, idKey(join.blockId))?.paragraph;
+  const mark = leading?.pPrMark;
+  const cancelsAddedMark =
+    (mark?.kind === "ins" || mark?.kind === "moveTo") &&
+    mark.info.author === revision.author;
+  const before = findStoryParagraph(body, idKey(join.nextBlockId))?.paragraph;
+  const joined = plan.append(cancelsAddedMark ? join : { ...join, revision });
+  if (joined.isErr()) return Result.err(joined.error);
+  if (!cancelsAddedMark) return Result.ok("tracked-mark");
+  const after = findStoryParagraph(
+    storyBody(plan.document(), join.story),
+    idKey(join.nextBlockId),
+  )?.paragraph;
+  if (!before || !after) panic("An own-mark join lost its trailing paragraph.");
+  // A physical join takes the leading properties. Restore the survivor's
+  // original properties before the planner records its desired properties
+  // as a suggestion; otherwise reject would retain the cancelled mark's style.
+  const restored = plan.append({
+    type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
+    story: join.story,
+    blockId: join.nextBlockId,
+    patch: Object.fromEntries([
+      ...Object.keys(after.formatting ?? {}).map((key) => [key, null]),
+      ...Object.entries(before.formatting ?? {}),
+    ]),
+    whenEmpty:
+      before.formatting === undefined
+        ? EMPTY_PROPERTY_SETS.OMIT
+        : EMPTY_PROPERTY_SETS.KEEP,
+  });
+  return restored.isErr()
+    ? Result.err(restored.error)
+    : Result.ok("cancelled-added-mark");
+};
+
 /** A text range crosses containers without removing their geometry or boundary marks. */
 export const selectedParagraphRuns = (
   document: Document,
@@ -898,9 +951,6 @@ export const appendTrackedDeletion = ({
       );
     const mark = currentLeading.paragraph.pPrMark;
     if (mark?.kind === "del" || mark?.kind === "moveFrom") continue;
-    const ownAddedMark =
-      (mark?.kind === "ins" || mark?.kind === "moveTo") &&
-      mark.info.author === revision.author;
     const next = blockListAt(currentBody.content, currentLeading.list).at(
       currentLeading.index + 1,
     );
@@ -916,8 +966,8 @@ export const appendTrackedDeletion = ({
       nextBlockId: next.paraId ?? "",
       sectionBoundary: SECTION_BOUNDARY_POLICIES.REMOVE,
     } satisfies JoinBlocksOp;
-    const appended = plan.append(ownAddedMark ? join : { ...join, revision });
-    if (appended.isErr()) return appended;
+    const appended = appendTrackedParagraphJoin({ plan, join, revision });
+    if (appended.isErr()) return Result.err(appended.error);
     const directBody = storyBody(direct, from.story);
     const directLeading = storyParagraphs(directBody).find(
       ({ paragraph }) =>
