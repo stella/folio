@@ -16,6 +16,8 @@ import { hasIllegalXmlCharacters } from "../serialize/xmlEscape";
 import { deleteBlocks } from "./blockDeletion";
 import { insertBlocks } from "./blockInsertion";
 import {
+  blockListAt,
+  blockListEndsInParagraph,
   captureSectionView,
   endsItsContainer,
   type ParagraphLocation,
@@ -54,7 +56,7 @@ import { setContentControl } from "./contentControls";
  * | `joinBlocks`        | `splitBlock` with the retired paragraph's fields, then  |
  * |                     | authored content and the survivor's review fields         |
  * | `insertBlocks`      | an anchored `replaceBlocks`                              |
- * | `replaceBlocks`     | `replaceBlocks`                                           |
+ * | `replaceBlocks`     | `replaceBlocks`, or `insertBlocks` for an empty replacement |
  * | `setParagraphReview`| `setParagraphReview`                                      |
  * | `replaceInline`     | `replaceInline`                                           |
  * | `resolveRevision`   | the inverses of the operations it expands to              |
@@ -190,6 +192,7 @@ import {
 } from "./storyLifecycle";
 import { tableEditBoundaryRefusal } from "./tableEditBoundary";
 import { applyTableEdit } from "./tableEdits";
+import { blockInsertionPointAt } from "./tableLocation";
 import { applyRowOp } from "./tableRows";
 import { applyTableOp } from "./tables";
 import { stampedTableRevisionIds } from "./tableTracking";
@@ -221,6 +224,7 @@ import {
   type SplitInlineOp,
   type SplitParagraphFields,
   type StoryParts,
+  type TableInsertionPoint,
   type TextPosition,
   type TouchedBlocks,
 } from "./types";
@@ -2399,7 +2403,7 @@ const sameSectionBreaks = (
 
 const replaceBlocks = (document: Document, op: ReplaceBlocksOp): Applied => {
   const [firstExpected] = op.expected;
-  if (firstExpected === undefined || op.blocks.length === 0) {
+  if (firstExpected === undefined) {
     return refuse(
       op,
       DOCUMENT_OP_REFUSAL_REASONS.EMPTY_BLOCK_LIST,
@@ -2515,6 +2519,45 @@ const replaceBlocks = (document: Document, op: ReplaceBlocksOp): Applied => {
       "A replacement carries a revision or content-control id already used in the package.",
     );
   }
+  let inverseAt: TableInsertionPoint | undefined;
+  if (op.blocks.length === 0) {
+    // The inverse uses ordinary insertion, whose canonicalization removes empty
+    // formatting fields. Refuse captures whose field ownership it cannot restore.
+    if (
+      before.some(
+        (paragraph) =>
+          Object.hasOwn(paragraph, "formatting") &&
+          finalizeParagraphFormatting(paragraph.formatting) === undefined,
+      )
+    )
+      return refuse(
+        op,
+        DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+        "An empty replacement cannot restore an owned empty paragraph-formatting field through insertion.",
+      );
+    const originalList = blockListAt(
+      storyBody(document, op.story).content,
+      start.list,
+    );
+    const removalList = [...originalList];
+    removalList.splice(start.index, before.length);
+    inverseAt = blockInsertionPointAt({
+      blocks: removalList,
+      index: start.index,
+    });
+    if (before.some(({ sectionProperties }) => sectionProperties !== undefined))
+      return refuse(
+        op,
+        DOCUMENT_OP_REFUSAL_REASONS.SECTION_BOUNDARY,
+        "An empty replacement cannot remove a section endpoint.",
+      );
+    if (inverseAt === undefined)
+      return refuse(
+        op,
+        DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+        "An empty replacement needs a surviving paragraph or table boundary.",
+      );
+  }
   const replaced = replaceParagraphs({
     document,
     story: op.story,
@@ -2529,6 +2572,41 @@ const replaceBlocks = (document: Document, op: ReplaceBlocksOp): Applied => {
     return Result.err(
       refusal(op, replaced.error.reason, replaced.error.message),
     );
+  if (op.blocks.length === 0) {
+    const cellStep = start.list.findLastIndex(
+      (step) => step.kind === "tableCell",
+    );
+    if (
+      cellStep >= 0 &&
+      !blockListEndsInParagraph(
+        blockListAt(
+          storyBody(replaced.value, op.story).content,
+          start.list.slice(0, cellStep + 1),
+        ),
+      )
+    )
+      return refuse(
+        op,
+        DOCUMENT_OP_REFUSAL_REASONS.CONTAINER_FINAL_MARK,
+        "An empty replacement must leave its cell ending with a paragraph.",
+      );
+    if (inverseAt === undefined)
+      return panic(
+        "A validated empty replacement lost its insertion boundary.",
+      );
+    return Result.ok({
+      document: replaced.value,
+      inverse: [
+        {
+          type: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+          story: op.story,
+          at: inverseAt,
+          blocks: before,
+        },
+      ],
+      touched: touchedBetween(before, []),
+    });
+  }
   return Result.ok({
     document: replaced.value,
     inverse: [

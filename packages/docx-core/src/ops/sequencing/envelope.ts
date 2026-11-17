@@ -1,4 +1,9 @@
-import { Result, TaggedError, type TaggedErrorClass } from "better-result";
+import {
+  panic,
+  Result,
+  TaggedError,
+  type TaggedErrorClass,
+} from "better-result";
 
 import { encodeUtf8 } from "@stll/utf8-boundaries";
 
@@ -11,6 +16,7 @@ import {
   type DeleteRowOp,
   type DeleteTableOp,
   DOCUMENT_OP_SCHEMA_VERSION,
+  DOCUMENT_OP_TYPES,
   type DocumentOp,
   type DocumentOpType,
   type InsertRowOp,
@@ -323,11 +329,27 @@ export const SEQUENCED_EFFECT_TYPES: Readonly<
   restoreCommentState: "touchedBlocks",
 });
 
-/** The effect type a sequenced operation of this kind must record. */
+/** The effect a validated operation must record, including its boundary variant. */
 export const sequencedEffectType = (
-  type: DocumentOpType,
-): SequencedOpEffect["type"] | undefined =>
-  Object.entries(SEQUENCED_EFFECT_TYPES).find(([kind]) => kind === type)?.[1];
+  op: DocumentOp,
+): SequencedOpEffect["type"] => {
+  if (op.type === DOCUMENT_OP_TYPES.INSERT_BLOCKS) {
+    switch (op.at.type) {
+      case "before":
+      case "after":
+        return NO_SEQUENCED_EFFECT;
+      case "beforeTable":
+      case "afterTable":
+        return "touchedBlocks";
+      default: {
+        const unreachable: never = op.at;
+        void unreachable;
+        return panic("Unknown block insertion boundary.");
+      }
+    }
+  }
+  return SEQUENCED_EFFECT_TYPES[op.type];
+};
 
 type CommonOperationFields = Pick<DocumentOp, "undefinedFields">;
 type OperationFields<Type extends DocumentOpType> = {
@@ -365,7 +387,6 @@ const idSet = object({
 const newIds = optional(idSet);
 const half = optional(literal("first", "second"));
 const whenEmpty = optional(literal("omit", "keep"));
-const blockAnchor = object({ type: literal("before", "after"), blockId });
 /** A table goes beside a paragraph, or beside the table holding one. */
 const tableAnchor = object({
   type: literal("before", "after", "beforeTable", "afterTable"),
@@ -555,7 +576,7 @@ const operationFields = {
   insertBlocks: {
     type: literal("insertBlocks"),
     story: isOpStory,
-    at: blockAnchor,
+    at: tableAnchor,
     blocks: array(paragraph),
     newIds,
     revision,
@@ -1053,9 +1074,7 @@ const decodeDocumentBatch = (
       !effects.every((effect: unknown, index: number) => {
         if (!isRecord(effect)) return false;
         const op = value.ops.at(index);
-        return (
-          op !== undefined && effect["type"] === sequencedEffectType(op.type)
-        );
+        return op !== undefined && effect["type"] === sequencedEffectType(op);
       })
     ) {
       return Result.err(

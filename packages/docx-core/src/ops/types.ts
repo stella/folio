@@ -11,8 +11,8 @@
  *
  * Every operation's inverse is an operation of the same schema, addressed the
  * same way. Supported text and review operations rebase their inverses over
- * concurrent edits; table operations require exclusive editing and are refused
- * by the sequenced batch decoder. An inverse states what it expects to find (the slice it
+ * concurrent edits; table operations decode as block-scoped edits, with
+ * conflicting structural edits of the same table refused during transformation. An inverse states what it expects to find (the slice it
  * removes, the values a patch replaced, the fields of a paragraph it merges
  * away) and is refused as stale when that has changed.
  *
@@ -94,6 +94,9 @@ type SectionViewChange = {
 /**
  * The operation schema this module reads and writes.
  *
+ * Version 15 adds paragraph insertion beside tables and exact empty block
+ * replacements. Older envelopes receive an unsupportedSchema refusal; old
+ * operation payloads retain their meaning, with no automatic schema rewrite.
  * Version 14 restores section-view topology in story lifecycle inverses.
  * Older envelopes receive an unsupportedSchema refusal.
  * Version 12 adds `setContentControl`, which sets a block-level content
@@ -122,7 +125,7 @@ type SectionViewChange = {
  * and paragraph operations, and the review operations `setParagraphReview`,
  * `replaceInline` and `resolveRevision`.
  */
-export const DOCUMENT_OP_SCHEMA_VERSION = 14;
+export const DOCUMENT_OP_SCHEMA_VERSION = 15;
 
 /**
  * The main story has a fixed address; other editable parts use their stable
@@ -662,7 +665,8 @@ export type BlockInsertionPoint =
   { type: "before"; blockId: string } | { type: "after"; blockId: string };
 
 /**
- * Insert paragraphs beside an existing paragraph, with pre-minted ids.
+ * Insert paragraphs beside an existing paragraph or table, with pre-minted ids.
+ * A table is addressed by a paragraph of its own, as in TableInsertionPoint.
  * Section-bearing paragraphs are refused. With `revision`, each inserted
  * paragraph receives an inserted mark and its content an insertion wrapper.
  * A tracked insertion after a paragraph no paragraph follows marks the
@@ -675,7 +679,7 @@ export type BlockInsertionPoint =
 export type InsertBlocksOp = {
   type: typeof DOCUMENT_OP_TYPES.INSERT_BLOCKS;
   story: OpStory;
-  at: BlockInsertionPoint;
+  at: TableInsertionPoint;
   blocks: readonly Paragraph[];
   revision?: RevisionStamp;
   /** With `revision`, the insertion is the destination of a move: `w:moveTo`. */
@@ -707,7 +711,9 @@ export type DeleteBlocksOp = {
 };
 
 /**
- * Replace a run of adjacent paragraphs with other paragraphs.
+ * Replace a run of adjacent paragraphs with other paragraphs, or remove it.
+ * An empty replacement must preserve the containing story/cell invariants;
+ * its inverse inserts the exact captured paragraphs at the surviving boundary.
  *
  * `expected` is the paragraphs as they stand: they are found by `paraId` and
  * compared structurally (without the fields a relayout recomputes), so a

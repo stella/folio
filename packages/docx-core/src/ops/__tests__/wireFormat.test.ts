@@ -16,6 +16,7 @@
  * `bun packages/docx-core/src/ops/__tests__/wireFixtures.ts` generates the current fixture.
  */
 
+import { panic } from "better-result";
 import { expect, test } from "bun:test";
 
 import type { Document, Paragraph } from "../../model/document";
@@ -28,7 +29,12 @@ import {
   type DocumentOpEnvelope,
   toOpEnvelope,
 } from "../types";
-import { envelopes, lifecycleWireCases, wireFixturePath } from "./wireFixtures";
+import {
+  envelopes,
+  lifecycleWireCases,
+  tableBoundaryWireCases,
+  wireFixturePath,
+} from "./wireFixtures";
 
 /** Paragraph reviews have one OOXML record; run-property review arrays have a separate contract. */
 const expectParagraphReviewCardinality = (value: unknown): void => {
@@ -329,4 +335,52 @@ test("clipboard package resources remain pinned in the schema-10 wire contract",
     ],
   });
   expect(() => envelopes()).not.toThrow();
+});
+
+test("schema15 table boundaries and empty replacements roundtrip while schema14 envelopes remain refused", async () => {
+  const cases = tableBoundaryWireCases();
+  expect(cases).toHaveLength(4);
+  const first =
+    cases.at(0) ?? panic("The boundary fixture needs its first real producer.");
+  const seen = new Set<string>();
+  for (const { before, op, edit } of cases) {
+    seen.add(
+      `${op.at.type}:${op.revision === undefined ? "direct" : "tracked"}`,
+    );
+    let document = edit.document;
+    const redo: DocumentOp[] = [];
+    for (const envelope of JSON.parse(
+      JSON.stringify(edit.inverse.map(toOpEnvelope)),
+    )) {
+      const restored = applyDocumentOpEnvelope(document, envelope).unwrap();
+      document = restored.document;
+      redo.unshift(...restored.inverse);
+    }
+    expect(document).toStrictEqual(before);
+    for (const envelope of JSON.parse(JSON.stringify(redo.map(toOpEnvelope))))
+      document = applyDocumentOpEnvelope(document, envelope).unwrap().document;
+    expect(document).toStrictEqual(edit.document);
+    for (const schema of [14, DOCUMENT_OP_SCHEMA_VERSION + 1]) {
+      const refused = applyDocumentOpEnvelope(before, { schema, op });
+      expect(refused.isErr()).toBe(true);
+      if (refused.isErr())
+        expect(refused.error.reason).toBe("unsupportedSchema");
+    }
+  }
+  expect([...seen].toSorted()).toEqual([
+    "afterTable:direct",
+    "afterTable:tracked",
+    "beforeTable:direct",
+    "beforeTable:tracked",
+  ]);
+  const historical: unknown = await Bun.file(
+    new URL("./__fixtures__/ops-v14.json", import.meta.url),
+  ).json();
+  if (!Array.isArray(historical))
+    panic("The historical schema14 fixture must be an array.");
+  for (const envelope of historical) {
+    const refused = applyDocumentOpEnvelope(first.before, envelope);
+    expect(refused.isErr()).toBe(true);
+    if (refused.isErr()) expect(refused.error.reason).toBe("unsupportedSchema");
+  }
 });

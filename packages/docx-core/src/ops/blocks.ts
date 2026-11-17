@@ -190,6 +190,16 @@ export const blockListAt = (
   return current;
 };
 
+/** The paragraph terminator of a block list, through transparent block wrappers. */
+export const blockListEndsInParagraph = (
+  blocks: readonly BlockContent[],
+): boolean => {
+  const last = blocks.at(-1);
+  if (last?.type === "blockSdt" || last?.type === "blockCustomXml")
+    return blockListEndsInParagraph(last.content);
+  return last?.type === "paragraph";
+};
+
 /**
  * Whether a block is the last one of its story body or table cell. A block
  * content control or custom XML wrapper is a step in the block list, not a
@@ -631,8 +641,8 @@ export const sectionsInStep = (body: DocumentBody): boolean => {
 type ReplaceParagraphsOptions = {
   document: Document;
   story: OpStory;
-  /** The first paragraph replaced; the rest follow it in the same block list. */
-  at: ParagraphLocation;
+  /** The splice boundary; every replaced paragraph follows it in this list. */
+  at: Pick<ParagraphLocation, "list" | "index">;
   count: number;
   replacement: readonly Paragraph[];
   /** Exact inverse metadata; section content is rebuilt from the restored blocks. */

@@ -10,6 +10,7 @@ import type {
 import { hasIllegalXmlCharacters } from "../serialize/xmlEscape";
 import {
   blockListAt,
+  blockListEndsInParagraph,
   endsItsContainer,
   type ParagraphLocation,
   sameBlockList,
@@ -61,13 +62,6 @@ const refuse = ({ op, reason, message }: RefusalOptions) =>
 const paragraphsIn = (blocks: readonly BlockContent[]): Paragraph[] =>
   storyParagraphs({ content: [...blocks] }).map(({ paragraph }) => paragraph);
 
-const endsInParagraph = (blocks: readonly BlockContent[]): boolean => {
-  const last = blocks.at(-1);
-  if (last?.type === "blockSdt" || last?.type === "blockCustomXml")
-    return endsInParagraph(last.content);
-  return last?.type === "paragraph";
-};
-
 /** Tables and cells must have usable content and end in a paragraph. */
 const validStructure = (blocks: readonly BlockContent[]): boolean =>
   blocks.every((block) => {
@@ -80,7 +74,8 @@ const validStructure = (blocks: readonly BlockContent[]): boolean =>
               row.cells.length > 0 &&
               row.cells.every(
                 (cell) =>
-                  endsInParagraph(cell.content) && validStructure(cell.content),
+                  blockListEndsInParagraph(cell.content) &&
+                  validStructure(cell.content),
               ),
           )
         );
@@ -149,8 +144,8 @@ const commitBlocks = ({
     // A container that ends in a paragraph keeps it; one a file ends with a
     // table, as a body may, is left no worse.
     (endsItsContainer(body, { list: anchor.list, index: before.length - 1 }) &&
-      endsInParagraph(before) &&
-      !endsInParagraph(blocks))
+      blockListEndsInParagraph(before) &&
+      !blockListEndsInParagraph(blocks))
   ) {
     return refuse({
       op,

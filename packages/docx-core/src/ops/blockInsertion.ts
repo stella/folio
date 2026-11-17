@@ -6,23 +6,34 @@ import {
   finalizeParagraphFormatting,
   type Paragraph,
 } from "../model/document";
-import { markBeforeTableResolves } from "./blockDeletion";
+import {
+  markBeforeTableResolves,
+  paragraphTableRunInBoundary,
+} from "./blockDeletion";
 import {
   blockListAt,
+  blockListEndsInParagraph,
   endsItsContainer,
+  replaceParagraphs,
   storyBody,
   storyParagraphs,
 } from "./blocks";
+import { validateOpsDocument } from "./contract";
 import type { DocumentEdit } from "./edits";
 import { structurallyEqual } from "./equality";
 import { freshenIdentities } from "./identity";
-import { identityKeysIn, idKey, packageIdentityKeys } from "./ids";
+import { identityKeysIn, idKey, isParaId, packageIdentityKeys } from "./ids";
 import { asMoveHalf } from "./moves";
 import { paragraphLength } from "./offsets";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import type { ApplyOps } from "./resolve";
 import { stampInfo, WRAP_KINDS, wrapTracked } from "./review";
-import { DOCUMENT_OP_TYPES, type InsertBlocksOp } from "./types";
+import { locateBlockInsertion } from "./tableLocation";
+import {
+  DOCUMENT_OP_TYPES,
+  type InsertBlocksOp,
+  type RevisionStamp,
+} from "./types";
 
 const sameFormatting = (
   left: Paragraph["formatting"],
@@ -32,6 +43,41 @@ const sameFormatting = (
     finalizeParagraphFormatting(left) ?? {},
     finalizeParagraphFormatting(right) ?? {},
   );
+
+type InsertedContentOptions = {
+  paragraph: Paragraph;
+  revision: RevisionStamp;
+  move: InsertBlocksOp["move"];
+};
+const insertedContent = ({
+  paragraph,
+  revision,
+  move,
+}: InsertedContentOptions): Result<Paragraph["content"], DocumentOpRefusal> => {
+  const wrapped = wrapTracked({
+    items: paragraph.content,
+    from: { offset: 0, zeroWidthBefore: 0 },
+    to: {
+      offset: paragraphLength(paragraph),
+      zeroWidthBefore: Number.MAX_SAFE_INTEGER,
+    },
+    kind: WRAP_KINDS.INSERTION,
+    stamp: revision,
+  });
+  if (wrapped.kind === "refused")
+    return Result.err(
+      new DocumentOpRefusal({
+        opType: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+        reason: wrapped.reason,
+        message: "The inserted content cannot be tracked.",
+      }),
+    );
+  const content =
+    wrapped.kind === "wrapped" ? wrapped.content : paragraph.content;
+  return Result.ok(
+    move === true ? asMoveHalf(content, revision.id, "to") : content,
+  );
+};
 
 type BlockInsertionOptions = {
   document: Document;
@@ -53,10 +99,140 @@ export const insertBlocks = ({
       "No paragraphs to insert.",
     );
   }
+  if (op.at.type === "beforeTable" || op.at.type === "afterTable") {
+    if (
+      op.blocks.some(({ sectionProperties }) => sectionProperties !== undefined)
+    )
+      return refuse(
+        DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+        "Inserting section breaks requires section operations.",
+      );
+    if (
+      op.blocks.some(({ paraId }) => paraId === undefined || !isParaId(paraId))
+    )
+      return refuse(
+        DOCUMENT_OP_REFUSAL_REASONS.INVALID_BLOCK_ID,
+        "Every inserted paragraph needs a usable id.",
+      );
+    const located = locateBlockInsertion(document, op);
+    if (located.isErr()) return located;
+    let paragraphs = op.blocks.map((paragraph) => {
+      if (finalizeParagraphFormatting(paragraph.formatting) !== undefined)
+        return paragraph;
+      const canonical = { ...paragraph };
+      delete canonical.formatting;
+      return canonical;
+    });
+    if (op.revision !== undefined) {
+      const list = blockListAt(
+        storyBody(document, op.story).content,
+        located.value.list,
+      );
+      const following = list.at(located.value.index);
+      if (!list.some((block) => block.type === "paragraph"))
+        return refuse(
+          DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+          "Tracked table-side insertion needs a surviving paragraph for its review inverse.",
+        );
+      if (following?.type === "table") {
+        const boundary = paragraphTableRunInBoundary(firstInserted, following);
+        if (boundary.type === "blocked" && boundary.reason !== "review")
+          return refuse(
+            DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+            `Tracked table-side insertion cannot resolve a ${boundary.reason} boundary.`,
+          );
+        if (boundary.type === "receiver" && !blockListEndsInParagraph(list))
+          return refuse(
+            DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+            "Tracked table-side insertion needs a paragraph terminator after its table receiver.",
+          );
+      } else if (following?.type !== "paragraph")
+        return refuse(
+          DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+          "Tracked table-side insertion needs a following paragraph or a proven table boundary.",
+        );
+      if (identityKeysIn(op.blocks).length > 0)
+        return refuse(
+          DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+          "Tracked insertion of identified review or content-control records is unsupported.",
+        );
+      const tracked: Paragraph[] = [];
+      for (const paragraph of paragraphs) {
+        const content = insertedContent({
+          paragraph,
+          revision: op.revision,
+          move: op.move,
+        });
+        if (content.isErr()) return content;
+        tracked.push({
+          ...paragraph,
+          content: content.value,
+          pPrMark: {
+            kind: op.move === true ? "moveTo" : "ins",
+            info: stampInfo(op.revision),
+          },
+        });
+      }
+      const fresh = freshenIdentities({
+        before: [],
+        after: tracked,
+        newIds: op.newIds ?? {},
+        usedElsewhere: () => new Set(packageIdentityKeys(document.package)),
+      });
+      switch (fresh.kind) {
+        case "fresh":
+          paragraphs = fresh.paragraphs;
+          break;
+        case "needsIds":
+          return refuse(
+            DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
+            "Inserted paragraph review records need more revision ids.",
+          );
+        case "invalidId":
+          return refuse(
+            DOCUMENT_OP_REFUSAL_REASONS.INVALID_NEW_ID,
+            "An inserted review record has an invalid revision id.",
+          );
+        default: {
+          const unreachable: never = fresh;
+          return unreachable;
+        }
+      }
+    }
+    const inserted = replaceParagraphs({
+      document,
+      story: op.story,
+      at: located.value,
+      count: 0,
+      replacement: paragraphs,
+    });
+    if (inserted.isErr())
+      return refuse(inserted.error.reason, inserted.error.message);
+    const valid = validateOpsDocument(inserted.value);
+    if (valid.isErr()) return refuse(valid.error.reason, valid.error.message);
+    return Result.ok({
+      document: inserted.value,
+      inverse: [
+        {
+          type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+          story: op.story,
+          expected: paragraphs,
+          blocks: [],
+        },
+      ],
+      touched: {
+        modified: [],
+        inserted: paragraphs.flatMap(({ paraId }) =>
+          paraId === undefined ? [] : [paraId],
+        ),
+        removed: [],
+      },
+    });
+  }
   if (op.at.type !== "before" && op.at.type !== "after") {
     return refuse(
       DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
-      "Insert before or after a paragraph.",
+      "Insert before or after a paragraph or table.",
     );
   }
   const body = storyBody(document, op.story);
@@ -103,8 +279,7 @@ export const insertBlocks = ({
     (following?.type !== "table" ||
       !markBeforeTableResolves({
         blocks: list,
-        paragraph: firstInserted,
-        table: following,
+        boundary: paragraphTableRunInBoundary(firstInserted, following),
       }));
   if (
     takesOverMark &&
@@ -198,25 +373,13 @@ export const insertBlocks = ({
   const markKind = op.move === true ? "moveTo" : "ins";
   const blocks: Paragraph[] = [];
   for (const [index, paragraph] of canonicalBlocks.entries()) {
-    const wrapped = wrapTracked({
-      items: paragraph.content,
-      from: { offset: 0, zeroWidthBefore: 0 },
-      to: {
-        offset: paragraphLength(paragraph),
-        zeroWidthBefore: Number.MAX_SAFE_INTEGER,
-      },
-      kind: WRAP_KINDS.INSERTION,
-      stamp: op.revision,
+    const wrapped = insertedContent({
+      paragraph,
+      revision: op.revision,
+      move: op.move,
     });
-    if (wrapped.kind === "refused") {
-      return refuse(wrapped.reason, "The inserted content cannot be tracked.");
-    }
-    const wrappedContent =
-      wrapped.kind === "wrapped" ? wrapped.content : paragraph.content;
-    const content =
-      op.move === true
-        ? asMoveHalf(wrappedContent, revision.id, "to")
-        : wrappedContent;
+    if (wrapped.isErr()) return wrapped;
+    const content = wrapped.value;
     if (!takesOverMark || index < canonicalBlocks.length - 1) {
       blocks.push({
         ...paragraph,
