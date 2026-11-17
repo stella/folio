@@ -796,12 +796,12 @@ const canonicalInsertionGap = ({
   } else if (
     intent?.type === "tableBlock" &&
     intent.operation.type === DOCUMENT_OP_TYPES.INSERT_TABLE
-  )
-    anchor = {
-      type: intent.operation.anchor,
-      at: { type: intent.operation.side, blockId: intent.operation.blockId },
-    };
-  else return undefined;
+  ) {
+    const { anchor: type, side, blockId } = intent.operation;
+    if (type === undefined || side === undefined)
+      panic("A resolved table insertion needs an explicit anchor and side.");
+    anchor = { type, at: { type: side, blockId } };
+  } else return undefined;
   const paragraph = projection.paragraph(anchor.at.blockId);
   if (paragraph === undefined)
     panic("A resolved insertion lost its source anchor.");
@@ -825,10 +825,10 @@ const canonicalInsertionGap = ({
     projection.doc,
     source.start - 1,
   );
-  let requestedSide =
-    operation.type === "insertBeforeBlock" ? "before" : "after";
-  if (!isBlockInsertion(operation))
-    requestedSide = operation.position ?? "after";
+  const blockSide = operation.type === "insertBeforeBlock" ? "before" : "after";
+  const requestedSide = isBlockInsertion(operation)
+    ? blockSide
+    : (operation.position ?? "after");
   return {
     anchor,
     boundary,
@@ -2416,8 +2416,8 @@ export class CanonicalPublicOperations {
     };
     type DeclinedOperationOptions = {
       reason: FolioAIEditSkipReason;
-      message?: string;
-      refusal?: CanonicalPublicOperationRefusal;
+      message?: string | undefined;
+      refusal?: CanonicalPublicOperationRefusal | undefined;
     };
     const declined = ({
       reason,
