@@ -10,6 +10,7 @@ import { Result } from "better-result";
 
 import { cliError, FOLIO_CLI_ERROR_CODES, type FolioCliError } from "./errors";
 import { type OoxmlPackage, openOoxmlPackage } from "./ooxml-package";
+import { setProofingLanguage } from "./proofing-language";
 import { sanitizePackage } from "./sanitize";
 
 type PackageRewrite = (
@@ -20,6 +21,7 @@ type PackageRewrite = (
 /** Every package rewrite, by the name a registry entry gives it. */
 const PACKAGE_REWRITES = {
   sanitize: sanitizePackage,
+  proofingLanguage: setProofingLanguage,
 } as const satisfies Record<string, PackageRewrite>;
 
 export type PackageRewriteName = keyof typeof PACKAGE_REWRITES;

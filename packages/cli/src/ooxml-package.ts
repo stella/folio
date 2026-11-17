@@ -212,6 +212,85 @@ export const removeElements = (
   return removed;
 };
 
+/**
+ * A new WordprocessingML element under `parent`, spelled with the prefix
+ * `parent` uses and carrying its namespace scope, so later lookups by
+ * namespace URI find it. It is not attached; see {@link insertChildInOrder}.
+ */
+export const createWElement = (
+  parent: XmlElement,
+  localName: string,
+  attributes: Readonly<Record<string, string>> = {},
+): XmlElement => {
+  const prefix = prefixOf(parent.name ?? "");
+  const qualify = (name: string): string =>
+    prefix === "" ? name : `${prefix}:${name}`;
+  const element: XmlElement = {
+    type: "element",
+    name: qualify(localName),
+    attributes: Object.fromEntries(
+      Object.entries(attributes).map(([name, value]) => [qualify(name), value]),
+    ),
+  };
+  for (const property of ["namespaceUri", "namespaceScope"] as const) {
+    Object.defineProperty(element, property, {
+      value: parent[property],
+      enumerable: false,
+    });
+  }
+  return element;
+};
+
+/**
+ * Attach `child` to `parent` where the schema's sequence `order` (local
+ * names) puts it: before the first sibling the order places after it.
+ * Siblings the order does not name are stepped over.
+ */
+export const insertChildInOrder = (
+  parent: XmlElement,
+  child: XmlElement,
+  order: readonly string[],
+): void => {
+  const rank = order.indexOf(localNameOf(child.name ?? ""));
+  const siblings = parent.elements ?? [];
+  const before = siblings.findIndex((sibling) => {
+    if (sibling.type !== "element" || sibling.namespaceUri === undefined)
+      return false;
+    if (!WORDPROCESSINGML.has(sibling.namespaceUri)) return false;
+    const siblingRank = order.indexOf(localNameOf(sibling.name ?? ""));
+    return siblingRank > rank;
+  });
+  if (before === -1) siblings.push(child);
+  else siblings.splice(before, 0, child);
+  parent.elements = siblings;
+};
+
+/** The first WordprocessingML child `localName` of `parent`, created in order when missing. */
+export const ensureWChild = (
+  parent: XmlElement,
+  localName: string,
+  order: readonly string[],
+): XmlElement => {
+  const existing = childElements(parent).find((child) => isW(child, localName));
+  if (existing !== undefined) return existing;
+  const created = createWElement(parent, localName);
+  insertChildInOrder(parent, created, order);
+  return created;
+};
+
+/** Set a WordprocessingML attribute, keeping the spelling it already has. */
+export const setWAttribute = (
+  element: XmlElement,
+  localName: string,
+  value: string,
+): void => {
+  const prefix = prefixOf(element.name ?? "");
+  const name =
+    wAttributeName(element, localName) ??
+    (prefix === "" ? localName : `${prefix}:${localName}`);
+  element.attributes = { ...element.attributes, [name]: value };
+};
+
 const relationshipsPartFor = (part: string): string =>
   part === ""
     ? PACKAGE_RELATIONSHIPS_PART

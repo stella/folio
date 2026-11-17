@@ -188,6 +188,13 @@ actor with write access to the directory.
 | Command    | Tool                | Does                                                        |
 | ---------- | ------------------- | ----------------------------------------------------------- |
 | `sanitize` | `sanitize_document` | Removes comments, revision save ids, identifying properties |
+| `lang`     | `proofing_language` | Reports or sets the proofing language                       |
+
+These commands rewrite package parts directly. Without `--in-place` or `-o`
+they write nothing and report what a write would change, with the parts it
+would touch. A write rewrites only those parts (`saveStrategy:
+"part-rewrite"`), commits like any other change, and is refused with
+`operation_rejected` when there is nothing to change.
 
 ```sh
 folio sanitize old-agreement.docx                       # report only
@@ -207,11 +214,23 @@ names what goes (default `comments` and `rsids`):
 - `properties`: the `creator` and `lastModifiedBy` core properties and the
   `Company` and `Manager` extended properties.
 
-Without `--in-place` or `-o` it writes nothing and reports what it would
-remove: comment counts and authors, rsid counts, each property with its
-value, and the parts that would change. A write rewrites only those parts
-(`saveStrategy: "part-rewrite"`) and is refused with `operation_rejected`
-when there is nothing to remove.
+The report lists comment counts and authors, rsid counts, and each
+property with its value.
+
+```sh
+folio lang contract.docx                                  # languages per part
+folio lang contract.docx --set cs-CZ --runs --in-place --expect-version 9f2c…
+```
+
+`lang` reports the languages every part states: each `w:lang` `val`,
+`eastAsia`, and `bidi` with how often it occurs, per part, and the settings
+`w:themeFontLang`. `--set <tag>` (and `--east-asia`, `--bidi`) writes a
+BCP 47 language tag into the `w:docDefaults` run properties, the default
+paragraph style, every `w:lang` a style already states, and
+`w:themeFontLang`, creating each element in schema order when it is
+missing; attributes not given keep their values. `--runs` also sets every
+`w:lang` a run or paragraph mark states in the body, headers, footers, and
+notes; runs that state none inherit the defaults.
 
 ## Rendering and preview
 
@@ -338,7 +357,7 @@ frequent tools, with compact schemas: `read_document`, `find_text`,
 `read_comments`, `read_changes`, `suggest_changes`, and `add_comment`. The
 rest (`get_document_outline`, `read_section`, `list_stories`, `read_story`,
 `reply_comment`, `resolve_comment`, `resolve_changes`,
-`compare_documents`, and `sanitize_document`) are reached through `list_capabilities`,
+`compare_documents`, `sanitize_document`, and `proofing_language`) are reached through `list_capabilities`,
 `describe_capability` (a tool's parameter outline, short guidance and an
 example, listed tools included; `detail: "full"` for its full input schema),
 and `invoke_capability` (`{ capability, input, validate_only }`).
