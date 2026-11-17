@@ -105,6 +105,8 @@ const argsFor = (
       return { revisedPath };
     case "sanitize_document":
       return {};
+    case "proofing_language":
+      return { set: "cs-CZ" };
     default:
       throw new Error(`No write fixture for registered tool ${name}`);
   }
