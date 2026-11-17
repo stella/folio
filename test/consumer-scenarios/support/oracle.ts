@@ -895,8 +895,8 @@ type ModelRow = {
   removed: boolean;
   /**
    * The block ends in a paragraph mark pending deletion: a reader lists it
-   * and the block after it apart, accepting joins them. What an operation
-   * on either does after the join is not modelled yet.
+   * and the block after it apart, accepting joins them. Text operations use
+   * verified slices of the joined text; structural operations stay unmodelled.
    */
   pendingJoin?: boolean;
   /**
@@ -1313,6 +1313,100 @@ const target = (
     );
   }
   return row;
+};
+
+/** A live paragraph's proven slice of the accepted pre-state. */
+const paragraphTextProjection = (model: Model, blockId: unknown) => {
+  const original = model.rows.find(
+    (candidate) => candidate.pre?.id === blockId,
+  );
+  if (original?.pendingJoin !== true)
+    return original === undefined
+      ? ({ type: "unresolved" } as const)
+      : ({
+          type: "ordinary",
+          row: original,
+          text: original.pre?.text ?? original.text,
+          offset: 0,
+        } as const);
+  const candidates = [...model.pendingJoins].flatMap(([row, ownership]) => {
+    const pieces = [...ownership.sources, ownership.destination];
+    if (!pieces.some(({ id }) => id === blockId)) return [];
+    const ids = new Set(pieces.map(({ id }) => id));
+    if (
+      ids.size !== pieces.length ||
+      row.pre?.text !== pieces.map(({ text }) => text).join("") ||
+      !pieces.every((piece) =>
+        sameParagraphContainer(piece, ownership.destination),
+      )
+    )
+      return [];
+    let offset = 0;
+    for (const piece of pieces) {
+      if (piece.id === blockId) return [{ row, text: piece.text, offset }];
+      offset += piece.text.length;
+    }
+    return [];
+  });
+  const found = candidates.at(0);
+  return candidates.length === 1 && found !== undefined
+    ? ({
+        type: "pending-join",
+        row: found.row,
+        text: found.text,
+        offset: found.offset,
+      } as const)
+    : ({ type: "unresolved" } as const);
+};
+
+/** Text operations keep live coordinates; structural targets retain their existing guard. */
+const textTarget = (model: Model, blockId: unknown) => {
+  const view = paragraphTextProjection(model, blockId);
+  switch (view.type) {
+    case "ordinary":
+      target(model, blockId);
+      return view;
+    case "pending-join":
+      assert.ok(
+        !view.row.removed &&
+          !(typeof blockId === "string" && model.deletedBlockIds.has(blockId)),
+        `applied an operation on block ${String(blockId)}, which an earlier one of the batch removed`,
+      );
+      return view;
+    case "unresolved": {
+      const row = model.rows.find((candidate) => candidate.pre?.id === blockId);
+      if (row?.pendingJoin !== true) target(model, blockId);
+      throw new Unmodelled(
+        `block ${String(blockId)} has a pending join with no exact live-to-accepted text projection`,
+      );
+    }
+    default: {
+      const unhandled: never = view;
+      return assert.fail(
+        `Unknown text projection ${JSON.stringify(unhandled)}`,
+      );
+    }
+  }
+};
+
+type ProjectedTextRangeOptions = {
+  model: Model;
+  blockId: unknown;
+  start: number;
+  end: number;
+};
+const projectedTextRange = ({
+  model,
+  blockId,
+  start,
+  end,
+}: ProjectedTextRangeOptions) => {
+  const view = textTarget(model, blockId);
+  assert.ok(
+    start >= 0 && start <= end && end <= view.text.length,
+    "An applied range must fit its live paragraph",
+  );
+  return { row: view.row, start: view.offset + start, end: view.offset + end };
 };
 
 const sameParagraphContainer = (left: Row, right: Row): boolean => {
@@ -2462,40 +2556,47 @@ const rangeOf = (
  */
 export const EXPECTATIONS = {
   replaceInBlock: (model, operation) => {
-    const row = target(model, operation["blockId"]);
+    const view = textTarget(model, operation["blockId"]);
     const find = String(operation["find"]);
-    const text = row.pre?.text ?? row.text;
-    const start = text.indexOf(find);
-    if (start === -1)
-      throw new Error(`applied, but "${find}" is not in "${text}"`);
-    row.edits.push({
+    const start = view.text.indexOf(find);
+    assert.notEqual(
       start,
-      end: start + find.length,
+      -1,
+      `applied, but "${find}" is not in "${view.text}"`,
+    );
+    view.row.edits.push({
+      start: view.offset + start,
+      end: view.offset + start + find.length,
       replace: String(operation["replace"]),
     });
     addComment(model, operation);
   },
   replaceRange: (model, operation) => {
     const { blockId, start, end } = rangeOf(operation);
-    target(model, blockId).edits.push({
-      start,
-      end,
+    const range = projectedTextRange({ model, blockId, start, end });
+    range.row.edits.push({
+      start: range.start,
+      end: range.end,
       replace: String(operation["replace"]),
     });
     addComment(model, operation);
   },
   formatRange: (model, operation) => {
     const { blockId, start, end } = rangeOf(operation);
-    const row = target(model, blockId);
+    const {
+      row,
+      start: mappedStart,
+      end: mappedEnd,
+    } = projectedTextRange({ model, blockId, start, end });
     const formatting = operation["formatting"] as Record<string, unknown>;
     for (const property of ["bold", "italic", "underline"] as const) {
       if (formatting[property] === true)
-        row.formats.push({ start, end, property });
+        row.formats.push({ start: mappedStart, end: mappedEnd, property });
     }
   },
   commentOnRange: (model, operation) => {
-    const { blockId, start, end } = rangeOf(operation);
-    const row = target(model, blockId);
+    const range = rangeOf(operation);
+    const { row, start, end } = projectedTextRange({ model, ...range });
     addComment(
       model,
       operation,
@@ -2507,17 +2608,21 @@ export const EXPECTATIONS = {
     );
   },
   commentOnBlock: (model, operation) => {
-    const row = target(model, operation["blockId"]);
+    const view = textTarget(model, operation["blockId"]);
+    const row = view.row;
     const quote = operation["quote"];
     const anchored = typeof quote === "string" ? quote : undefined;
-    const start = anchored === undefined ? 0 : row.text.indexOf(anchored);
-    const end = start + (anchored?.length ?? row.text.length);
+    const localStart = anchored === undefined ? 0 : view.text.indexOf(anchored);
+    const start = view.offset + localStart;
+    const end = start + (anchored?.length ?? view.text.length);
     addComment(
       model,
       operation,
       () =>
-        untouchedText(row) && !row.removed ? (anchored ?? row.text) : undefined,
-      () => start >= 0 && coveredRangeWasRemoved(row, start, end),
+        untouchedText(row) && !row.removed
+          ? (anchored ?? view.text)
+          : undefined,
+      () => localStart >= 0 && coveredRangeWasRemoved(row, start, end),
     );
   },
   insertAfterBlock: insertBlock("after"),
@@ -3162,6 +3267,28 @@ const quotedFromFirstBlock = (run: RemovedLiveRun, quote: string): boolean => {
   return start !== -1 && start < Math.max(run.firstLength, 1);
 };
 
+type QuotePlacementsOptions = {
+  text: string;
+  quote: string;
+  first: number;
+  limit: number;
+};
+const quotePlacements = ({
+  text,
+  quote,
+  first,
+  limit,
+}: QuotePlacementsOptions): number[] => {
+  const starts: number[] = [];
+  for (
+    let start = first;
+    start <= text.length - quote.length && start < limit;
+    start++
+  )
+    if (text.startsWith(quote, start)) starts.push(start);
+  return starts;
+};
+
 /**
  * Decide whether the model removed the anchor, accounting for repeated text.
  * `acceptedAnchor` is the comment's quote in the accepted document: a live
@@ -3187,44 +3314,84 @@ const anchorDisposition = (
       ? "removed"
       : "kept";
   }
-  // A pending join is already absent from the accepted pre-state; its live
-  // block has not been removed by this batch.
-  if (!row?.pre || row.removed || entry.anchor === "") return "kept";
-  const starts: number[] = [];
-  for (
-    let start = 0;
-    start <= row.pre.text.length - entry.anchor.length;
-    start += 1
-  ) {
-    if (row.pre.text.startsWith(entry.anchor, start)) starts.push(start);
-  }
+  const view = paragraphTextProjection(model, entry.blockId);
+  const mapped = view.type === "pending-join" ? view : undefined;
+  const located = mapped?.row ?? row;
+  // An unproven join keeps the existing preservation check; it does not excuse loss.
+  if (!located?.pre || located.removed || entry.anchor === "") return "kept";
+  const quote = mapped === undefined ? entry.anchor : acceptedAnchor;
+  if (quote === "") return "kept";
+  const first = mapped?.offset ?? 0;
+  const limit =
+    mapped === undefined
+      ? located.pre.text.length
+      : mapped.offset + mapped.text.length;
+  const starts = quotePlacements({
+    text: located.pre.text,
+    quote,
+    first,
+    limit,
+  });
   if (starts.length === 0) return "kept";
   const removed = [
-    ...row.edits
+    ...located.edits
       .filter(({ replace }) => replace.length === 0)
       .map(({ start, end }) => ({ start, end })),
-    ...row.splits.map(({ offset, consumed }) => ({
+    ...located.splits.map(({ offset, consumed }) => ({
       start: offset,
       end: offset + consumed,
     })),
   ];
   const removedPlacements = starts.map((start) =>
-    Array.from(
-      { length: entry.anchor.length },
-      (_, index) => start + index,
-    ).every((offset) =>
-      removed.some((cut) => cut.start <= offset && offset < cut.end),
+    Array.from({ length: quote.length }, (_, index) => start + index).every(
+      (offset) =>
+        removed.some((cut) => cut.start <= offset && offset < cut.end),
     ),
   );
   if (removedPlacements.every(Boolean)) return "removed";
   return removedPlacements.some(Boolean) ? "ambiguous" : "kept";
 };
 
-/** A full-block anchor has an exact replacement when one edit rewrites the block. */
+/** Preserve untouched joined quotes and predict a complete component/block rewrite. */
 const expectedKeptAnchor = (
   model: Model,
   entry: Comment,
 ): string | undefined => {
+  const view = paragraphTextProjection(model, entry.blockId);
+  if (
+    view.type === "pending-join" &&
+    view.row.pre &&
+    !view.row.removed &&
+    view.row.splits.length === 0 &&
+    view.row.mergeSeparator === undefined
+  ) {
+    const starts = quotePlacements({
+      text: view.row.pre.text,
+      quote: entry.anchor,
+      first: view.offset,
+      limit: view.offset + view.text.length,
+    });
+    if (
+      starts.length > 0 &&
+      starts.every((start) =>
+        view.row.edits.every(
+          (edit) =>
+            edit.end < start || edit.start > start + entry.anchor.length,
+        ),
+      )
+    )
+      return entry.anchor;
+    const edit = view.row.edits.at(0);
+    if (
+      entry.anchor === view.text &&
+      view.row.edits.length === 1 &&
+      edit?.start === view.offset &&
+      edit.end === view.offset + view.text.length &&
+      edit.replace !== "" &&
+      !edit.replace.includes("\n")
+    )
+      return edit.replace;
+  }
   const row = model.rows.find(
     (candidate) => candidate.pre?.id === entry.blockId,
   );
@@ -3285,7 +3452,7 @@ export const compareComments = (
 ): string[] => {
   const problems: string[] = [];
   const remaining = [...after];
-  const kept: Comment[] = [];
+  const kept: { entry: Comment; located: Comment }[] = [];
   const gone: { entry: Comment; located: Comment }[] = [];
   const storyBlockIds = new Set(
     model.rows.flatMap((row) => (row.pre === undefined ? [] : [row.pre.id])),
@@ -3320,14 +3487,28 @@ export const compareComments = (
     )
       disposition = "ambiguous";
     if (disposition === "removed") gone.push({ entry, located });
-    else if (disposition === "kept") kept.push(entry);
+    else if (disposition === "kept") kept.push({ entry, located });
   }
-  for (const comment of kept) {
-    const anchor = expectedKeptAnchor(model, comment);
+  for (const { entry: comment, located } of kept) {
+    // Locate by the live component, but predict the accepted quote rather
+    // than pending deleted words visible only in the live comment range.
+    const view = paragraphTextProjection(model, located.blockId);
+    const anchor = expectedKeptAnchor(
+      model,
+      view.type === "pending-join"
+        ? { ...comment, blockId: located.blockId }
+        : comment,
+    );
+    const owner =
+      view.type === "pending-join"
+        ? (view.row.pre?.id ??
+          assert.fail("A proven pending join must have an accepted owner"))
+        : undefined;
     const index = remaining.findIndex(
-      ({ id, text, anchor: actualAnchor }) =>
+      ({ id, text, blockId, anchor: actualAnchor }) =>
         id === comment.id &&
         text === comment.text &&
+        (owner === undefined || blockId === owner) &&
         (anchor === undefined ||
           (mode === "suggested"
             ? pendingAnchorMatches(actualAnchor, comment.anchor, anchor)
@@ -3379,16 +3560,20 @@ export const compareComments = (
   const survivingBlockIds = new Set(afterRows.map(({ id }) => id));
   for (const { entry, located } of gone) {
     const survivor = remaining.find(({ id }) => id === entry.id);
+    const view = paragraphTextProjection(model, located.blockId);
     // A block id locates the first paragraph containing an anchor; it does not
     // own the whole range. Splits and joins can move the surviving part of a
     // range to another paragraph before this batch deletes the old locator.
     // In that case the comment is still anchored and must survive. A thread
     // left on the deleted locator, moved to another block the batch also
     // deleted, or left in no block at all, is the orphan this check is meant
-    // to catch.
+    // to catch. A proven joined slice also identifies its accepted owner:
+    // retaining the removed quote there is not a move to a surviving range.
     if (
       survivor &&
       (survivor.blockId === located.blockId ||
+        (view.type === "pending-join" &&
+          survivor.blockId === view.row.pre?.id) ||
         survivor.blockId === null ||
         !survivingBlockIds.has(survivor.blockId))
     ) {
