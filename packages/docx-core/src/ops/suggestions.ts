@@ -122,7 +122,11 @@ export const suggestionRevisionInfos = (
       out.set(info.id, info as TrackedChangeInfo);
     for (const child of Object.values(record)) visit(child);
   };
-  visit(storyBody(document, story).content);
+  const body = storyBody(document, story);
+  visit(body.content);
+  for (const { info } of body.finalSectionProperties?.propertyChanges ?? [])
+    if (info.suggestionId === suggestionId && !out.has(info.id))
+      out.set(info.id, info);
   return [...out.values()];
 };
 
@@ -150,7 +154,11 @@ export const pendingSuggestionIdsIn = (document: Document): Set<string> => {
       out.add(info.suggestionId);
     for (const child of Object.values(record)) visit(child);
   };
-  for (const story of documentStories(document))
-    visit(storyBody(document, story).content);
+  for (const story of documentStories(document)) {
+    const body = storyBody(document, story);
+    visit(body.content);
+    for (const { info } of body.finalSectionProperties?.propertyChanges ?? [])
+      if (info.suggestionId !== undefined) out.add(info.suggestionId);
+  }
   return out;
 };

@@ -1,3 +1,4 @@
+import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
 
 import type {
@@ -7,8 +8,14 @@ import type {
   TableCell,
 } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
-import { withoutPendingSuggestions } from "../suggestions";
-import { DOCUMENT_OP_TYPES, OP_STORIES } from "../types";
+import { normalizeForOps } from "../contract";
+import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
+import {
+  pendingSuggestionIdsIn,
+  suggestionRevisionInfos,
+  withoutPendingSuggestions,
+} from "../suggestions";
+import { DOCUMENT_OP_TYPES, OP_STORIES, REVISION_DECISIONS } from "../types";
 
 const run = (text: string): ParagraphContent => ({
   type: "run",
@@ -182,5 +189,121 @@ describe("setting revision info", () => {
         infos: [{ ...adopted, id: 9 }],
       }).isErr(),
     ).toBe(true);
+  });
+});
+
+describe("final section suggestion boundaries", () => {
+  const sectionChange = (suggestionId?: string) => {
+    const source = normalizeForOps(
+      documentOf([
+        run("Standing"),
+        {
+          type: "insertion",
+          info: info(1, suggestionId),
+          content: [run(" added")],
+        },
+      ]),
+    );
+    return applyDocumentOp(source, {
+      type: DOCUMENT_OP_TYPES.SET_SECTION_PROPS,
+      sectionIndex: 0,
+      patch: {
+        pageWidth: 14400,
+        propertyChanges: [
+          {
+            type: "sectionPropertyChange",
+            info: info(100, suggestionId),
+            previousProperties: { pageWidth: 12240 },
+          },
+        ],
+      },
+    }).unwrap().document;
+  };
+
+  test("finds both source revisions of a proposal made by section operations", () => {
+    const document = sectionChange("proposal");
+    expect([...pendingSuggestionIdsIn(document)]).toEqual(["proposal"]);
+    expect(
+      suggestionRevisionInfos(document, OP_STORIES.MAIN, "proposal"),
+    ).toEqual([info(1, "proposal"), info(100, "proposal")]);
+    expect(suggestionRevisionInfos(document, OP_STORIES.MAIN, "other")).toEqual(
+      [],
+    );
+  });
+
+  test.each(Object.values(REVISION_DECISIONS))(
+    "%s refuses a final section revision before resolving any body revision",
+    (decision) => {
+      const document = sectionChange("proposal");
+      const before = structuredClone(document);
+      for (const revisionIds of [[100], [1, 100], [100, 1]]) {
+        const result = applyDocumentOp(document, {
+          type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+          story: OP_STORIES.MAIN,
+          revisionIds,
+          decision,
+        });
+        expect(result.isErr()).toBe(true);
+        if (result.isOk()) panic("Expected section review refusal");
+        expect(result.error.reason).toBe(
+          DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+        );
+        expect(document).toEqual(before);
+      }
+    },
+  );
+
+  test("a save refuses instead of leaving a pending section proposal in the file", () => {
+    const document = sectionChange("proposal");
+    const before = structuredClone(document);
+    const result = withoutPendingSuggestions(document);
+    expect(result.isErr()).toBe(true);
+    if (result.isOk()) panic("Expected section review refusal");
+    expect(result.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE);
+    expect(document).toEqual(before);
+  });
+
+  test.each(["source-only", "with-derived-view"])(
+    "adoption refuses atomically with %s",
+    (view) => {
+      const document = sectionChange("proposal");
+      if (view === "with-derived-view") {
+        const body = document.package.document;
+        if (body.finalSectionProperties === undefined)
+          panic("The producer writes section properties");
+        body.sections = [
+          { properties: body.finalSectionProperties, content: body.content },
+        ];
+      }
+      const before = structuredClone(document);
+      const result = applyDocumentOp(document, {
+        type: DOCUMENT_OP_TYPES.SET_REVISION_INFO,
+        story: OP_STORIES.MAIN,
+        infos: [info(1), info(100)],
+      });
+      expect(result.isErr()).toBe(true);
+      if (result.isOk()) panic("Expected section review refusal");
+      expect(result.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE);
+      expect(document).toEqual(before);
+    },
+  );
+
+  test("ordinary section changes remain saveable and do not block body-only review", () => {
+    const document = sectionChange();
+    expect([...pendingSuggestionIdsIn(document)]).toEqual([]);
+    expect(withoutPendingSuggestions(document).unwrap()).toBe(document);
+    const resolved = applyDocumentOp(document, {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds: [1],
+      decision: REVISION_DECISIONS.ACCEPT,
+    }).unwrap();
+    expect(contentOf(resolved.document)).toEqual([run("Standing added")]);
+    expect(resolved.document.package.document.finalSectionProperties).toEqual(
+      document.package.document.finalSectionProperties,
+    );
+    expect(
+      applyDocumentOps(resolved.document, resolved.inverse).unwrap().document,
+    ).toEqual(document);
   });
 });

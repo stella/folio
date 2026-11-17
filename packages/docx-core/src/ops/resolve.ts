@@ -3560,6 +3560,20 @@ export const planRevisionResolution = ({
       ),
     );
   }
+  const finalSectionRevision = storyBody(
+    document,
+    op.story,
+  ).finalSectionProperties?.propertyChanges?.find(({ info }) =>
+    op.revisionIds.includes(info.id),
+  );
+  if (finalSectionRevision !== undefined)
+    return Result.err(
+      refusal(
+        op,
+        DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+        `Final section revision ${String(finalSectionRevision.info.id)} requires section review.`,
+      ),
+    );
   const present = storyIdentityKeys(document, op.story);
   const ids = new Set(
     op.revisionIds.filter((id) =>
