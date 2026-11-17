@@ -11,6 +11,7 @@ import { panic, Result } from "better-result";
 import { ensureParaIds, FolioDocxReviewer } from "@stll/folio-core/server";
 
 import { cliError, FOLIO_CLI_ERROR_CODES, type FolioCliError } from "./errors";
+import { fillTemplate } from "./fill-template";
 import { rewriteNumbering } from "./numbering";
 import { type OoxmlPackage, openOoxmlPackage } from "./ooxml-package";
 import { setProofingLanguage } from "./proofing-language";
@@ -45,6 +46,7 @@ const PACKAGE_REWRITES = {
   sanitize: { type: "package", run: sanitizePackage },
   proofingLanguage: { type: "package", run: setProofingLanguage },
   numbering: { type: "withDocument", run: rewriteNumbering },
+  fillTemplate: { type: "withDocument", run: fillTemplate },
 } as const satisfies Record<string, PackageRewrite>;
 
 export type PackageRewriteName = keyof typeof PACKAGE_REWRITES;
