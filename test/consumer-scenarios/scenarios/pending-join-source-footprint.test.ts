@@ -14,12 +14,15 @@ import {
 } from "../support/oracle.ts";
 import { sourceOperationFootprint } from "../support/table-oracle.ts";
 
+type SourceBlock = Parameters<
+  typeof packDocument
+>[0]["package"]["document"]["content"][number];
 const p = (id: string) =>
   ({
     type: "paragraph",
     paraId: id,
     content: [{ type: "run", content: [{ type: "text", text: id }] }],
-  }) as const;
+  }) satisfies Extract<SourceBlock, { type: "paragraph" }>;
 const nested = {
   type: "table",
   columnWidths: [1000, 1000],
@@ -32,7 +35,7 @@ const nested = {
       ],
     },
   ],
-} as const;
+} satisfies Extract<SourceBlock, { type: "table" }>;
 const input = () =>
   packDocument({
     package: {
@@ -170,7 +173,6 @@ test("source cell footprints preserve nested ancestry and merged-span intersecti
   for (const { operation, ids } of cases) {
     const footprint = sourceOperationFootprint({ rows, operation });
     assert.equal(footprint.type, "known");
-    if (footprint.type !== "known") assert.fail(footprint.reason);
     assert.deepEqual([...footprint.ids].sort(), ids.sort());
   }
   const missing = sourceOperationFootprint({
@@ -380,7 +382,6 @@ test("a paragraph join footprint includes the next source component even outside
     operation: { type: "mergeBlockWithNext", blockId: outside.id },
   });
   assert.equal(footprint.type, "known");
-  if (footprint.type !== "known") assert.fail(footprint.reason);
   assert.deepEqual([...footprint.ids], [outside.id, source.id]);
   const model = modelOf(pre.rows, pre.liveRows, pre.joinSources);
   const ownership = [...model.pendingJoins.values()].at(0);
@@ -442,7 +443,6 @@ test("a row footprint includes a source cell whose vertical span starts above th
     operation: { type: "deleteTableRow", blockId: "20000005" },
   });
   assert.equal(footprint.type, "known");
-  if (footprint.type !== "known") assert.fail(footprint.reason);
   assert.ok(footprint.ids.has("20000001") && footprint.ids.has("20000002"));
   assert.ok(footprint.ids.has("20000005"));
   assert.equal(footprint.ids.has("20000003"), false);
@@ -503,7 +503,6 @@ for (const spec of [
         operation,
       });
       assert.equal(footprint.type, "known");
-      if (footprint.type !== "known") assert.fail(footprint.reason);
       assert.equal(footprint.ids.size, 0);
       const before = reviewer.toDocument();
       const result = reviewer.applyDocumentOperations(
