@@ -68,11 +68,13 @@ for (const [kind, follower] of Object.entries(followers))
                 opaque,
                 ...ending,
               ]);
-              // The shared kernel guard keeps inserted marks before opaque
-              // blocks. Only an accepted empty deletion can retire this
-              // paragraph, and only while another paragraph ends the body.
+              // Empty resolved-away marks may retire this paragraph only
+              // while another paragraph still ends the body.
               const removed =
-                mode === "accept" && mark === "del" && content === "" && tail;
+                ((mode === "accept" && mark === "del") ||
+                  (mode === "reject" && mark === "ins")) &&
+                content === "" &&
+                tail;
               const expected = schema.node("doc", null, [
                 first,
                 ...(removed
