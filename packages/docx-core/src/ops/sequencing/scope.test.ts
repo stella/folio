@@ -220,35 +220,38 @@ describe("block-scoped sequencing", () => {
   });
 });
 
-test("native table insertions through two cells of one table retain structural conflict ownership", () => {
-  const document = documentOf();
-  const compile = (blockId: string, start: number) => {
-    const intent = {
-      type: "tableBlock",
-      operation: {
-        type: DOCUMENT_OP_TYPES.INSERT_TABLE,
-        story: "main",
-        anchor: "table",
-        side: "before",
-        blockId,
-        table: { type: "table", rows: [row(["70000001"])] },
-      },
-    } as const satisfies EditorIntent;
-    const lease = {
-      blocks: [{ kind: "paragraph", start, end: start + 8 }],
-    } as const;
-    const ids = createEditorIntentIdAllocator()(document, intent, lease);
-    return compileEditorIntent(document, {
-      intent,
-      mode: { type: "editing", idLease: lease, newIds: ids.newIds },
-    }).unwrap().ops;
-  };
-  const first = batch("native-a", ...compile("00000011", 0x20000001));
-  const second = batch("native-b", ...compile("00000012", 0x30000001));
-  expect(pair(first, second).refused?.reason).toBe(
-    BATCH_REJECTION_REASONS.TABLE_REQUIRES_EXCLUSIVE_EDIT,
-  );
-  expect(pair(first, batch("unrelated", typing("00000001")))).toEqual({
-    commutes: true,
-  });
-});
+test.each(["before", "after"] as const)(
+  "native table insertions %s two cells of one table retain structural conflict ownership",
+  (side) => {
+    const document = documentOf();
+    const compile = (blockId: string, start: number) => {
+      const intent = {
+        type: "tableBlock",
+        operation: {
+          type: DOCUMENT_OP_TYPES.INSERT_TABLE,
+          story: "main",
+          anchor: "table",
+          side,
+          blockId,
+          table: { type: "table", rows: [row(["70000001"])] },
+        },
+      } as const satisfies EditorIntent;
+      const lease = {
+        blocks: [{ kind: "paragraph", start, end: start + 8 }],
+      } as const;
+      const ids = createEditorIntentIdAllocator()(document, intent, lease);
+      return compileEditorIntent(document, {
+        intent,
+        mode: { type: "editing", idLease: lease, newIds: ids.newIds },
+      }).unwrap().ops;
+    };
+    const first = batch("native-a", ...compile("00000011", 0x20000001));
+    const second = batch("native-b", ...compile("00000012", 0x30000001));
+    expect(pair(first, second).refused?.reason).toBe(
+      BATCH_REJECTION_REASONS.TABLE_REQUIRES_EXCLUSIVE_EDIT,
+    );
+    expect(pair(first, batch("unrelated", typing("00000001")))).toEqual({
+      commutes: true,
+    });
+  },
+);
