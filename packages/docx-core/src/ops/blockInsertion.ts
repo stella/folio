@@ -13,7 +13,7 @@ import {
 import {
   blockListAt,
   blockListEndsInParagraph,
-  endsItsContainer,
+  hasContainerFinalParagraphMark,
   replaceParagraphs,
   storyBody,
   storyParagraphs,
@@ -221,6 +221,20 @@ export const insertBlocks = ({
     });
     if (inserted.isErr())
       return refuse(inserted.error.reason, inserted.error.message);
+    const insertedBody = storyBody(inserted.value, op.story);
+    if (
+      paragraphs.some((paragraph, index) =>
+        hasContainerFinalParagraphMark(insertedBody, {
+          list: located.value.list,
+          index: located.value.index + index,
+          paragraph,
+        }),
+      )
+    )
+      return refuse(
+        DOCUMENT_OP_REFUSAL_REASONS.CONTAINER_FINAL_MARK,
+        "Insertion would leave a tracked mark on a container-final paragraph.",
+      );
     const valid = validateOpsDocument(inserted.value);
     if (valid.isErr()) return refuse(valid.error.reason, valid.error.message);
     return Result.ok({
@@ -354,8 +368,10 @@ export const insertBlocks = ({
   ).some(
     (at) =>
       insertedIds.has(idKey(at.paragraph.paraId ?? "")) &&
-      at.paragraph.pPrMark !== undefined &&
-      endsItsContainer(storyBody(direct.value.document, op.story), at),
+      hasContainerFinalParagraphMark(
+        storyBody(direct.value.document, op.story),
+        at,
+      ),
   );
   if (finalMarks) {
     return refuse(

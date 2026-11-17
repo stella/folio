@@ -225,6 +225,13 @@ export const endsItsContainer = (
   }
 };
 
+/** A mark ordinary paragraph insertion cannot place at its container's end. */
+export const hasContainerFinalParagraphMark = (
+  body: DocumentBody,
+  location: ParagraphLocation,
+): boolean =>
+  location.paragraph.pPrMark !== undefined && endsItsContainer(body, location);
+
 export const updateBlockList = (
   blocks: readonly BlockContent[],
   list: readonly BlockListStep[],

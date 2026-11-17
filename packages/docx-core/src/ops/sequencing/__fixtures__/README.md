@@ -23,9 +23,11 @@ Independent review cannot safely encode that conditional mark ownership.
 Owners in ancestor or sibling block lists do not trigger this boundary.
 
 Empty replacements need a surviving local insertion boundary and preserve cell
-terminators and section endpoints. They refuse an explicitly owned empty
-paragraph-formatting field, which ordinary insertion canonicalization could not
-restore exactly.
+terminators and section endpoints. They refuse captured container-final marks,
+which ordinary insertion cannot place, and explicitly owned empty paragraph
+formatting, which its canonicalization could not restore exactly. New table-side
+insertion uses the same final-mark admission rule as paragraph-side insertion;
+existing exact source-restoration and nonempty replacement paths are unchanged.
 
 `batches-v14.json` and `ops/__tests__/__fixtures__/ops-v14.json` pin version 14,
 which adds complete section-view snapshots to story lifecycle inverses when

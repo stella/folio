@@ -20,6 +20,7 @@ import {
   blockListEndsInParagraph,
   captureSectionView,
   endsItsContainer,
+  hasContainerFinalParagraphMark,
   type ParagraphLocation,
   replaceParagraphs,
   sameBlockList,
@@ -2521,6 +2522,16 @@ const replaceBlocks = (document: Document, op: ReplaceBlocksOp): Applied => {
   }
   let inverseAt: TableInsertionPoint | undefined;
   if (op.blocks.length === 0) {
+    const body = storyBody(document, op.story);
+    // The insertion inverse must be able to place every captured source mark.
+    if (
+      found.some((location) => hasContainerFinalParagraphMark(body, location))
+    )
+      return refuse(
+        op,
+        DOCUMENT_OP_REFUSAL_REASONS.CONTAINER_FINAL_MARK,
+        "An empty replacement cannot restore a captured container-final paragraph mark through insertion.",
+      );
     // The inverse uses ordinary insertion, whose canonicalization removes empty
     // formatting fields. Refuse captures whose field ownership it cannot restore.
     if (

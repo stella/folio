@@ -716,6 +716,8 @@ export type DeleteBlocksOp = {
  * Replace a run of adjacent paragraphs with other paragraphs, or remove it.
  * An empty replacement must preserve the containing story/cell invariants;
  * its inverse inserts the exact captured paragraphs at the surviving boundary.
+ * Container-final marks and owned empty formatting refuse when that insertion
+ * cannot restore the capture exactly.
  *
  * `expected` is the paragraphs as they stand: they are found by `paraId` and
  * compared structurally (without the fields a relayout recomputes), so a
