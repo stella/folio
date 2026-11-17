@@ -12,6 +12,7 @@ import {
 } from "@stll/docx-core/ops";
 
 import * as canonicalSession from "../canonical/canonicalSession";
+import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
@@ -61,14 +62,21 @@ const STORIES = [
   free: string;
 }[];
 
-const content = ({ held, free }: (typeof STORIES)[number]): Paragraph[] => [
+const content = (
+  { held, free }: (typeof STORIES)[number],
+  lock?: "sdtLocked",
+): Paragraph[] => [
   {
     type: "paragraph",
     paraId: held,
     content: [
       {
         type: "inlineSdt",
-        properties: { id: 9, sdtType: "richText" },
+        properties: {
+          id: 9,
+          sdtType: "richText",
+          ...(lock === undefined ? {} : { lock }),
+        },
         content: [{ type: "run", content: [{ type: "text", text: "Held" }] }],
       },
     ],
@@ -80,10 +88,10 @@ const content = ({ held, free }: (typeof STORIES)[number]): Paragraph[] => [
   },
 ];
 
-const fixture = async () => {
+const fixture = async (lock?: "sdtLocked") => {
   const document = fromMarkdown("Body.");
   document.package.document.content = [
-    ...content(STORIES[0]),
+    ...content(STORIES[0], lock),
     {
       type: "paragraph",
       paraId: "60000001",
@@ -105,20 +113,28 @@ const fixture = async () => {
   document.package.headers = new Map([
     [
       "rIdHeader",
-      { type: "header", hdrFtrType: "default", content: content(STORIES[1]) },
+      {
+        type: "header",
+        hdrFtrType: "default",
+        content: content(STORIES[1], lock),
+      },
     ],
   ]);
   document.package.footers = new Map([
     [
       "rIdFooter",
-      { type: "footer", hdrFtrType: "default", content: content(STORIES[2]) },
+      {
+        type: "footer",
+        hdrFtrType: "default",
+        content: content(STORIES[2], lock),
+      },
     ],
   ]);
   document.package.footnotes = [
-    { type: "footnote", id: 7, content: content(STORIES[3]) },
+    { type: "footnote", id: 7, content: content(STORIES[3], lock) },
   ];
   document.package.endnotes = [
-    { type: "endnote", id: 8, content: content(STORIES[4]) },
+    { type: "endnote", id: 8, content: content(STORIES[4], lock) },
   ];
   return (await prepareCanonicalDocxInput(await createDocx(document)))
     .unwrap()
@@ -240,7 +256,7 @@ for (const entry of STORIES) {
     }
   });
 
-  test(`${entry.handle.type}: bulk rejection retains comments of a partially held proposal`, async () => {
+  test(`${entry.handle.type}: bulk rejection retains every fragment and comment of a held proposal`, async () => {
     const { bytes, locked } = await proposed(entry);
     const create = canonicalSession.createCanonicalSession;
     let owner: canonicalSession.CanonicalSession | undefined;
@@ -279,16 +295,18 @@ for (const entry of STORIES) {
       );
       const result = reviewer.rejectAll();
       expect(result).toEqual({
-        resolved: 1,
-        skipped: [
-          { id: 1, reason: "contentControlLock", message: expect.any(String) },
-        ],
+        resolved: 0,
+        skipped: [1, 2].map((id) => ({
+          id,
+          reason: "contentControlLock",
+          message: expect.any(String),
+        })),
       });
       expect(
         reviewer
           .readReviewedStory({ story: entry.handle, view: "current-markup" })
           ?.changes.map(({ id }) => id),
-      ).toEqual([1]);
+      ).toEqual([1, 2]);
       expect(reviewer.getComments().map(({ text }) => text)).toEqual([
         "Keep while held.",
       ]);
@@ -305,3 +323,109 @@ for (const entry of STORIES) {
     }
   });
 }
+
+const publicChanges = (reviewer: FolioDocxReviewer) =>
+  STORIES.flatMap(
+    ({ handle }) =>
+      reviewer.readReviewedStory({ story: handle, view: "current-markup" })
+        ?.changes ?? [],
+  );
+const publicStoryText = (reviewer: FolioDocxReviewer) =>
+  STORIES.map(({ handle }) => reviewer.readStory(handle)?.text);
+
+for (const [index, entry] of STORIES.entries())
+  for (const placement of ["same", "other"] as const)
+    test(`${entry.handle.type} ${placement} story: a held public proposal survives bulk rejection and save/restage across stories`, async () => {
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await fixture("sdtLocked"),
+        { session: "canonical" },
+      );
+      const free =
+        STORIES.at(
+          placement === "same" ? index : (index + 1) % STORIES.length,
+        ) ?? panic("A free story must exist.");
+      const ordinary =
+        STORIES.at((index + 2) % STORIES.length) ??
+        panic("An ordinary story must exist.");
+      const apply = (
+        story: (typeof STORIES)[number],
+        mode: "suggested" | "tracked-changes",
+        operation: Parameters<
+          typeof reviewer.applyDocumentOperationsToStory
+        >[0]["batch"]["operations"][number],
+      ) => {
+        const result = reviewer.applyDocumentOperationsToStory({
+          story: story.handle,
+          batch: {
+            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+            mode,
+            operations: [operation],
+          },
+          undefinedReferences: "refuse",
+        });
+        expect(result.skipped).toEqual([]);
+        expect(result.applied).toHaveLength(1);
+      };
+      apply(entry, "suggested", {
+        id: "held-split",
+        suggestionId: PROPOSAL,
+        type: "splitBlock",
+        blockId: entry.held,
+        offset: 2,
+      });
+      apply(free, "suggested", {
+        id: "free-proposal",
+        suggestionId: PROPOSAL,
+        type: "insertAfterBlock",
+        blockId: free.free,
+        text: "Free proposal.",
+        comment: { text: "Keep this proposal comment." },
+      });
+      const records = reviewer.exportPendingSuggestions();
+      expect(records).toHaveLength(2);
+      const proposedIds = publicChanges(reviewer)
+        .map(({ id }) => id)
+        .toSorted((left, right) => left - right);
+      expect(proposedIds.length).toBeGreaterThan(1);
+      const before = publicStoryText(reviewer);
+      const comments = reviewer.getComments();
+      apply(ordinary, "tracked-changes", {
+        id: "ordinary-free",
+        type: "insertAfterBlock",
+        blockId: ordinary.free,
+        text: "Ordinary free change.",
+      });
+      const ordinaryIds = publicChanges(reviewer)
+        .filter(({ id }) => !proposedIds.includes(id))
+        .map(({ id }) => id);
+      expect(ordinaryIds.length).toBeGreaterThan(0);
+      const result = reviewer.rejectAll();
+      expect(result.resolved).toBe(ordinaryIds.length);
+      expect(
+        result.skipped
+          .map(({ id }) => id)
+          .toSorted((left, right) => left - right),
+      ).toEqual(proposedIds);
+      expect(
+        result.skipped.every(({ reason }) => reason === "contentControlLock"),
+      ).toBe(true);
+      expect(publicStoryText(reviewer)).toEqual(before);
+      expect(reviewer.getComments()).toEqual(comments);
+      expect(reviewer.exportPendingSuggestions()).toEqual(records);
+      const reopened = await FolioDocxReviewer.fromBuffer(
+        await reviewer.toBuffer(),
+        { session: "canonical" },
+      );
+      expect(
+        reopened.loadPendingSuggestions(records).map(({ status }) => status),
+      ).toEqual(["restaged", "restaged"]);
+      expect(publicStoryText(reopened)).toEqual(before);
+      expect(reopened.exportPendingSuggestions()).toEqual(records);
+      expect(
+        reopened
+          .getComments()
+          .map(({ text, anchoredText }) => ({ text, anchoredText })),
+      ).toEqual(
+        comments.map(({ text, anchoredText }) => ({ text, anchoredText })),
+      );
+    });
