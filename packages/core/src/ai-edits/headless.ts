@@ -259,6 +259,7 @@ import {
   getTrackedChangeStatsFromDoc,
 } from "./read";
 import { classifyResourceReference } from "./referenceClassification";
+import { classifyReviewLocks } from "./reviewLockClassification";
 import {
   collectNoteReferenceLabels,
   createFolioAIEditSnapshotWithStyleResolver,
@@ -2196,7 +2197,6 @@ export class FolioDocxReviewer {
     stagedIds: number[];
     heldSuggestionIds: Set<string>;
   } {
-    const heldSuggestions = new Map<string, LockedControlViolation>();
     const stories = this.listStoryHandlesInternal()
       // Notes resolve before body references can remove their stories.
       .toSorted(
@@ -2230,14 +2230,9 @@ export class FolioDocxReviewer {
             ids.map((id) => [id, violation] as const),
           ),
         );
-        for (const { id, suggestionId } of changes) {
-          const violation = held.get(id);
-          if (suggestionId !== null && violation !== undefined)
-            heldSuggestions.set(suggestionId, violation);
-        }
         return [
           {
-            story,
+            source: { story },
             changes: changes.map(({ id, suggestionId, groupIds }) => ({
               id,
               suggestionId,
@@ -2247,32 +2242,40 @@ export class FolioDocxReviewer {
           },
         ];
       });
+    const classified = classifyReviewLocks({
+      stories,
+      grouping: "whole-proposal",
+    });
     const ops: DocumentOp[] = [];
     const skipped: FolioReviewResolutionSkip[] = [];
     const stagedIds: number[] = [];
     let count = 0;
-    for (const { story, changes } of stories) {
+    for (const {
+      source: { story },
+      changes,
+    } of classified.stories) {
       const revisionIds = new Set<number>();
-      for (const change of changes) {
-        const violation =
-          change.violation ??
-          (change.suggestionId === null
-            ? undefined
-            : heldSuggestions.get(change.suggestionId));
-        if (violation !== undefined) {
-          skipped.push({
-            id: change.id,
-            reason: CONTENT_CONTROL_LOCK,
-            message:
-              change.violation === undefined
-                ? `Another change in this proposal is held: ${lockedControlMessage(violation)}`
-                : lockedControlMessage(violation),
-          });
-          continue;
+      for (const entry of changes) {
+        switch (entry.type) {
+          case "held":
+            skipped.push({
+              id: entry.change.id,
+              reason: CONTENT_CONTROL_LOCK,
+              message: entry.message,
+            });
+            break;
+          case "free":
+            count++;
+            stagedIds.push(entry.change.id);
+            for (const id of entry.change.groupIds) revisionIds.add(id);
+            break;
+          default: {
+            const unhandled: never = entry;
+            return panic("Unknown classified review lock", {
+              entry: unhandled,
+            });
+          }
         }
-        count++;
-        stagedIds.push(change.id);
-        for (const id of change.groupIds) revisionIds.add(id);
       }
       if (revisionIds.size > 0)
         ops.push({
@@ -2287,7 +2290,7 @@ export class FolioDocxReviewer {
       count,
       skipped,
       stagedIds,
-      heldSuggestionIds: new Set(heldSuggestions.keys()),
+      heldSuggestionIds: classified.heldSuggestionIds,
     };
   }
 
@@ -4088,12 +4091,45 @@ export class FolioDocxReviewer {
     }[] = [];
     const refreshes: ((activeSuggestionIds: ReadonlySet<string>) => void)[] =
       [];
-    for (const handle of this.listStoryHandlesInternal()) {
+    const stories = this.listStoryHandlesInternal().flatMap((handle) => {
       const state = this.getEditableStoryState(handle);
-      if (!state) {
-        continue;
-      }
+      if (!state) return [];
       const held = lockHeldChanges(state, mode);
+      return [
+        {
+          source: { handle, state },
+          changes: getTrackedChangesFromDoc(state.doc).map(({ id }) => ({
+            id,
+            suggestionId: suggestionIdOfRevision(state, id),
+            violation: held.get(id),
+          })),
+        },
+      ];
+    });
+    const classified = classifyReviewLocks({
+      stories,
+      grouping: mode === "reject" ? "whole-proposal" : "individual-change",
+    });
+    for (const {
+      source: { handle, state },
+      changes,
+    } of classified.stories) {
+      const held = new Map<number, LockedControlViolation>();
+      for (const entry of changes) {
+        switch (entry.type) {
+          case "held":
+            held.set(entry.change.id, entry.violation);
+            break;
+          case "free":
+            break;
+          default: {
+            const unhandled: never = entry;
+            return panic("Unknown classified review lock", {
+              entry: unhandled,
+            });
+          }
+        }
+      }
       if (held.size > 0) {
         count += this.resolveStoryAroundHeldChanges(
           handle,
