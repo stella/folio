@@ -21,6 +21,7 @@ import {
   createCanonicalSession,
   publishCanonicalProjection,
 } from "../canonical/canonicalSession";
+import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import { serializeCanonicalSave } from "../docx/canonicalSave";
 import { parseDocx } from "../docx/parser";
 import { schema } from "../prosemirror/schema";
@@ -658,6 +659,57 @@ describe("block-level public operations match the default engine", () => {
           ).toEqual(expected);
         });
       }
+});
+
+describe("deleting the final paragraph after a numbered insertion", () => {
+  for (const reload of ["live", "reopened"] as const)
+    test(`rejecting restores the original properties, ${reload}`, async () => {
+      const source = await packageOf(BODIES["ending the body"]);
+      const operations = [
+        {
+          id: "insert",
+          type: "insertAfterBlock",
+          blockId: "10000001",
+          text: "Added numbered paragraph",
+          numbering: { kind: "newList", format: "numbered" },
+        },
+        { id: "delete", type: "deleteBlock", blockId: "10000002" },
+      ] as const satisfies readonly FolioDocumentOperation[];
+      const run = async (mode: Mode) => {
+        const reviewer = await FolioDocxReviewer.fromBuffer(source.slice(0), {
+          session: "canonical",
+        });
+        // Separate public batches reproduce cancelling the earlier added mark.
+        for (const operation of operations) {
+          const result = reviewer.applyDocumentOperations(
+            {
+              version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+              mode,
+              operations: [operation],
+            },
+            { undefinedReferences: "refuse" },
+          );
+          expect(result.skipped).toEqual([]);
+        }
+        return reload === "live"
+          ? reviewer
+          : FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
+              session: "canonical",
+            });
+      };
+      const direct = await run("direct");
+      const rejected = await run("tracked-changes");
+      expect(rejected.getChanges().length).toBeGreaterThan(0);
+      rejected.rejectAll();
+      expect(await blocksOf(await rejected.toBuffer())).toEqual(
+        await blocksOf(source),
+      );
+      const accepted = await run("tracked-changes");
+      accepted.acceptAll();
+      expect(await blocksOf(await accepted.toBuffer())).toEqual(
+        await blocksOf(await direct.toBuffer()),
+      );
+    });
 });
 
 describe("a split's second half after an insertion in one batch", () => {

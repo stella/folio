@@ -3416,21 +3416,13 @@ export const compileEditorIntent = (
     case "joinParagraphs": {
       const at = { story: intent.story, blockId: intent.blockId, offset: 0 };
       const paragraph = paragraphAt(document, at);
-      const ownInsertedMark =
-        mode.type === "suggesting" &&
-        (paragraph?.pPrMark?.kind === "ins" ||
-          paragraph?.pPrMark?.kind === "moveTo") &&
-        paragraph.pPrMark.info.author === mode.revision.author;
+      let cancelledAddedMark = false;
       const join = {
         type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
         story: intent.story,
         blockId: intent.blockId,
         nextBlockId: intent.nextBlockId,
         sectionBoundary: SECTION_BOUNDARY_POLICIES.REMOVE,
-        ...(mode.type === "editing" && intent.survivor !== undefined
-          ? { survivor: intent.survivor }
-          : {}),
-        ...(ownInsertedMark ? {} : tracked),
       } as const;
       if (mode.type === "suggesting") {
         const plan = createTrackedPlan({
@@ -3438,38 +3430,9 @@ export const compileEditorIntent = (
           revision: mode.revision,
           newIds: mode.newIds,
         });
-        const joined = plan.append(join);
+        const joined = plan.join(join);
         if (joined.isErr()) return Result.err(joined.error);
-        if (ownInsertedMark) {
-          // Cancelling our inserted boundary is physical, but its formatting
-          // effect remains a suggestion on the original trailing paragraph.
-          const before = paragraphAt(document, {
-            story: intent.story,
-            blockId: intent.nextBlockId,
-            offset: 0,
-          });
-          const after = paragraphAt(plan.document(), {
-            story: intent.story,
-            blockId: intent.nextBlockId,
-            offset: 0,
-          });
-          if (!before || !after)
-            panic("An own-mark join lost its trailing paragraph.");
-          const restored = plan.append({
-            type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
-            story: intent.story,
-            blockId: intent.nextBlockId,
-            patch: Object.fromEntries([
-              ...Object.keys(after.formatting ?? {}).map((key) => [key, null]),
-              ...Object.entries(before.formatting ?? {}),
-            ]),
-            whenEmpty:
-              before.formatting === undefined
-                ? EMPTY_PROPERTY_SETS.OMIT
-                : EMPTY_PROPERTY_SETS.KEEP,
-          });
-          if (restored.isErr()) return Result.err(restored.error);
-        }
+        cancelledAddedMark = joined.value === "cancelled-added-mark";
         const alignment = joinParagraphPropertyAlignment({
           document,
           current: plan.document(),
@@ -3482,11 +3445,18 @@ export const compileEditorIntent = (
         }
         ops = plan.ops;
       } else {
-        ops = [join];
+        ops = [
+          {
+            ...join,
+            ...(intent.survivor === undefined
+              ? {}
+              : { survivor: intent.survivor }),
+          },
+        ];
       }
       let offset = 0;
       if (
-        (mode.type === "editing" || ownInsertedMark) &&
+        (mode.type === "editing" || cancelledAddedMark) &&
         paragraph !== undefined
       ) {
         offset = paragraphLength(paragraph);
