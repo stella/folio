@@ -2,8 +2,11 @@
  * The persisted form of operations in the current schema version.
  *
  * Journaled operations are read back years after they were written, so their
- * JSON is pinned: one envelope per operation kind and per inverse, produced
- * from a fixed document. A change to an operation's fields, or to a model
+ * JSON is pinned: one envelope per operation kind and inverse specimen,
+ * built from fixed documents. Producer decomposition may change while each
+ * existing operation keeps its meaning; preserve its historical specimen
+ * and prove both it and the current inverse against the actual producer.
+ * A change to an operation's fields, or to a model
  * record an operation embeds, shows up here as a diff of the fixture; it
  * needs a new schema version and a migration, not an updated released fixture.
  * The fixture for an unreleased schema records that cutover's final contract;
@@ -18,8 +21,14 @@ import { expect, test } from "bun:test";
 import type { Document, Paragraph } from "../../model/document";
 import { applyDocumentOpEnvelope } from "../apply";
 import { paragraphLogicalText } from "../offsets";
-import { DOCUMENT_OP_SCHEMA_VERSION, DOCUMENT_OP_TYPES } from "../types";
-import { envelopes, wireFixturePath } from "./wireFixtures";
+import {
+  DOCUMENT_OP_SCHEMA_VERSION,
+  DOCUMENT_OP_TYPES,
+  type DocumentOp,
+  type DocumentOpEnvelope,
+  toOpEnvelope,
+} from "../types";
+import { envelopes, lifecycleWireCases, wireFixturePath } from "./wireFixtures";
 
 /** Paragraph reviews have one OOXML record; run-property review arrays have a separate contract. */
 const expectParagraphReviewCardinality = (value: unknown): void => {
@@ -90,6 +99,38 @@ test("every operation kind and its inverse keep their persisted JSON", async () 
   expect(
     envelopes().every(({ schema }) => schema === DOCUMENT_OP_SCHEMA_VERSION),
   ).toBe(true);
+});
+
+test("the pinned note restore and current producer inverse both decode, undo and redo exactly", () => {
+  const cases = lifecycleWireCases().filter(
+    ({ op }) => op.type === DOCUMENT_OP_TYPES.REMOVE_NOTE,
+  );
+  expect(cases).toHaveLength(1);
+  for (const { before, edit, wireInverse } of cases) {
+    expect(edit.inverse.map(({ type }) => type)).not.toEqual(
+      wireInverse.map(({ type }) => type),
+    );
+    for (const inverse of [wireInverse, edit.inverse]) {
+      const wire: DocumentOpEnvelope[] = JSON.parse(
+        JSON.stringify(inverse.map(toOpEnvelope)),
+      );
+      let document = edit.document;
+      const redo: (readonly DocumentOp[])[] = [];
+      for (const envelope of wire) {
+        const applied = applyDocumentOpEnvelope(document, envelope).unwrap();
+        document = applied.document;
+        redo.unshift(applied.inverse);
+      }
+      expect(document).toStrictEqual(before);
+      const wireRedo: DocumentOpEnvelope[] = JSON.parse(
+        JSON.stringify(redo.flat().map(toOpEnvelope)),
+      );
+      for (const envelope of wireRedo)
+        document = applyDocumentOpEnvelope(document, envelope).unwrap()
+          .document;
+      expect(document).toStrictEqual(edit.document);
+    }
+  }
 });
 
 test("semantic table wire fixtures exercise geometry, ids, patches and tracked payloads", () => {
