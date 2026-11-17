@@ -615,27 +615,86 @@ const save = async (reviewer: Reviewer): Promise<Uint8Array> =>
  */
 type StoryPresence = "present" | "removed";
 
+type NoteLifetime =
+  | { type: "not-observed" }
+  | {
+      type: "note";
+      story: NoteStory;
+      accepted: StoryPresence;
+      rejected: StoryPresence;
+      commentIds: ReadonlySet<number>;
+    };
+
 type ResolvedState = {
   rows: Row[];
   story: StoryPresence;
   bytes: Uint8Array;
   comments: Comment[];
+  commentThreads: CommentThread[];
+  sourceCommentParents: CommentParent[];
+  commentParents: CommentParent[];
   links: LinkSnapshot;
 };
 
+type ResolutionScope =
+  { type: "document"; story: Story } | { type: "story"; story: Story };
+
+/** Instructions in a secondary story cannot resolve changes to its owner. */
+export const intentResolutionScope = (story: Story): ResolutionScope =>
+  story.type === "main"
+    ? { type: "document", story }
+    : { type: "story", story };
+
+type ResolvedStateOptions = {
+  bytes: Uint8Array;
+  resolution: "accept" | "reject";
+  scope: ResolutionScope;
+};
+
 /**
- * `bytes` opened, every change resolved one way, saved and reopened: the
- * blocks a reader is left with, whether the story is still there, and the
- * saved package.
+ * Resolve the explicitly named scope, then save and reopen its read story.
+ * A story projection keeps pending changes to references in other stories.
  */
-export const resolvedState = async (
-  bytes: Uint8Array,
-  resolution: "accept" | "reject",
-  story: Story = MAIN,
-): Promise<ResolvedState> => {
+export const resolvedState = async ({
+  bytes,
+  resolution,
+  scope,
+}: ResolvedStateOptions): Promise<ResolvedState> => {
   const reviewer = await openReviewer(bytes);
-  if (resolution === "accept") reviewer.acceptAll();
-  else reviewer.rejectAll();
+  const { story } = scope;
+  const observesNote = story.type === "footnote" || story.type === "endnote";
+  const sourceCommentParents = observesNote ? commentParentsOf(reviewer) : [];
+  switch (scope.type) {
+    case "document":
+      if (resolution === "accept") reviewer.acceptAll();
+      else reviewer.rejectAll();
+      break;
+    case "story": {
+      assert.equal(
+        reviewer.resolveReviewedStory({
+          story,
+          view: resolution === "accept" ? "final" : "original",
+        }),
+        true,
+        `The ${resolution} projection did not resolve ${JSON.stringify(story)}`,
+      );
+      const reviewed = reviewer.readReviewedStory({
+        story,
+        view: "current-markup",
+      });
+      assert.ok(reviewed, "A resolved intent story must remain readable");
+      assert.equal(
+        reviewed.changes.length,
+        0,
+        "A story projection left unresolved changes",
+      );
+      break;
+    }
+    default: {
+      const unhandled: never = scope;
+      assert.fail(`Unknown resolution scope ${JSON.stringify(unhandled)}`);
+    }
+  }
   const saved = await save(reviewer);
   const reopened = await openReviewer(saved);
   return {
@@ -643,9 +702,161 @@ export const resolvedState = async (
     story: reopened.readStory(story) === null ? "removed" : "present",
     bytes: saved,
     comments: commentsOf(reopened),
+    commentThreads: observesNote ? commentThreadsOf(reopened) : [],
+    sourceCommentParents,
+    commentParents: observesNote ? commentParentsOf(reopened) : [],
     links: captureLinks(reopened),
   };
 };
+
+type AssertNoteLifetimeOptions = {
+  before: NoteLifetime;
+  bytes: Uint8Array;
+  accepted: ResolvedState;
+  rejected: ResolvedState | undefined;
+};
+
+/** Note edits preserve reference fate, and every surviving global note keeps its content. */
+const assertNoteLifetime = async ({
+  before,
+  bytes,
+  accepted,
+  rejected,
+}: AssertNoteLifetimeOptions): Promise<void> => {
+  if (before.type === "not-observed") return;
+  const { story } = before;
+  const localRejected =
+    rejected ??
+    (await resolvedState({
+      bytes,
+      resolution: "reject",
+      scope: { type: "story", story },
+    }));
+  const decisions = [
+    { resolution: "accept", expected: before.accepted, local: accepted },
+    { resolution: "reject", expected: before.rejected, local: localRejected },
+  ] as const;
+  const noteCommentIds = new Set(before.commentIds);
+  for (const state of [accepted, localRejected]) {
+    const ids = new Set(state.rows.map(({ id }) => id));
+    for (const comment of state.comments)
+      if (comment.blockId !== null && ids.has(comment.blockId))
+        noteCommentIds.add(comment.id);
+  }
+  closeCommentReplies(noteCommentIds, accepted.sourceCommentParents);
+  closeCommentReplies(noteCommentIds, localRejected.sourceCommentParents);
+  for (const { resolution, expected, local } of decisions) {
+    const global = await resolvedState({
+      bytes,
+      resolution,
+      scope: { type: "document", story },
+    });
+    assert.equal(
+      global.story,
+      expected,
+      `A note-only edit changed its globally ${resolution}ed reference fate`,
+    );
+    const localIds = new Set(local.rows.map(({ id }) => id));
+    const localComments = local.commentThreads.filter(
+      ({ blockId }) => blockId !== null && localIds.has(blockId),
+    );
+    const globalIds = new Set(global.rows.map(({ id }) => id));
+    const globalComments = global.commentThreads.filter(
+      ({ id, blockId }) =>
+        noteCommentIds.has(id) || (blockId !== null && globalIds.has(blockId)),
+    );
+    if (global.story === "removed") {
+      assert.deepEqual(
+        global.rows,
+        [],
+        "A globally removed note retained blocks",
+      );
+      assert.deepEqual(
+        globalComments,
+        [],
+        "A globally removed note retained comments",
+      );
+      assert.deepEqual(
+        global.commentParents.filter(({ id }) => noteCommentIds.has(id)),
+        [],
+        "A globally removed note retained comment definitions or replies",
+      );
+      continue;
+    }
+    // Package-minted paragraph ids need not survive the two save projections.
+    const content = (rows: readonly Row[]) =>
+      rows.map(({ id: _id, ...row }) => row);
+    assert.deepEqual(
+      content(global.rows),
+      content(local.rows),
+      `Global ${resolution} changed surviving note content`,
+    );
+    const comments = (
+      state: ResolvedState,
+      entries: readonly CommentThread[],
+    ) => {
+      const positions = new Map(state.rows.map(({ id }, index) => [id, index]));
+      return entries.map(({ blockId, ...entry }) => {
+        const paragraph = blockId === null ? null : positions.get(blockId);
+        assert.notEqual(
+          paragraph,
+          undefined,
+          "A note comment has no containing paragraph",
+        );
+        return { ...entry, paragraph };
+      });
+    };
+    assert.deepEqual(
+      comments(global, globalComments),
+      comments(local, localComments),
+      `Global ${resolution} changed surviving note comments`,
+    );
+  }
+};
+
+type CommentParent = { id: number; parentId: number | null };
+
+const commentParentsOf = (reviewer: Reviewer): CommentParent[] =>
+  (reviewer.toDocument().package.document.comments ?? []).map(
+    ({ id, parentId }) => ({
+      id,
+      parentId: parentId ?? null,
+    }),
+  );
+
+/** Include replies even when a broken projection leaves them without a visible root. */
+const closeCommentReplies = (
+  ids: Set<number>,
+  parents: readonly CommentParent[],
+): void => {
+  const children = new Map<number, number[]>();
+  for (const { id, parentId } of parents) {
+    if (parentId === null) continue;
+    const siblings = children.get(parentId) ?? [];
+    siblings.push(id);
+    children.set(parentId, siblings);
+  }
+  const pending = [...ids];
+  for (let index = 0; index < pending.length; index += 1) {
+    const parent = pending[index];
+    if (parent === undefined) assert.fail("A queued comment parent must exist");
+    for (const child of children.get(parent) ?? []) {
+      if (ids.has(child)) continue;
+      ids.add(child);
+      pending.push(child);
+    }
+  }
+};
+
+type CommentThread = Comment & { replies: { id: number; text: string }[] };
+const commentThreadsOf = (reviewer: Reviewer): CommentThread[] =>
+  reviewer.getComments().map((comment) => ({
+    id: comment.id,
+    text: comment.text,
+    anchor: comment.anchoredText ?? "",
+    blockId: comment.blockId ?? null,
+    replies: comment.replies.map(({ id, text }) => ({ id, text })),
+  }));
 
 type Comment = {
   id: number;
@@ -3219,6 +3430,8 @@ const compareStyles = async (
  */
 export type Pre = {
   mode: Mode;
+  resolutionScope: ResolutionScope;
+  noteLifetime: NoteLifetime;
   live: string;
   rows: Row[];
   /** Whether the story of `rows` is in that state. */
@@ -3444,11 +3657,14 @@ export const capture = async (
   const reviewer = readOnce(editable);
   const live = liveState(reviewer, story);
   const liveComments = commentsOf(reviewer);
+  const resolutionScope = intentResolutionScope(story);
   const context = { story, step, targets: featureIndex(reviewer, story) };
   if (mode === "suggested") {
     const rows = rowsOf(reviewer, story);
     return {
       mode,
+      resolutionScope,
+      noteLifetime: { type: "not-observed" },
       live,
       rows,
       resolvedStory: "present",
@@ -3467,10 +3683,46 @@ export const capture = async (
     };
   }
   const bytes = await save(reviewer);
-  const accepted = await resolvedState(bytes, "accept", story);
+  const accepted = await resolvedState({
+    bytes,
+    resolution: "accept",
+    scope: resolutionScope,
+  });
   const liveRows = rowsOf(reviewer, story);
+  const liveIds = new Set(liveRows.map(({ id }) => id));
+  const noteCommentIds = new Set(
+    liveComments.flatMap(({ id, blockId }) =>
+      blockId !== null && liveIds.has(blockId) ? [id] : [],
+    ),
+  );
+  if (story.type === "footnote" || story.type === "endnote")
+    closeCommentReplies(noteCommentIds, commentParentsOf(reviewer));
+  const noteLifetime: NoteLifetime =
+    story.type === "footnote" || story.type === "endnote"
+      ? {
+          type: "note",
+          story,
+          accepted: (
+            await resolvedState({
+              bytes,
+              resolution: "accept",
+              scope: { type: "document", story },
+            })
+          ).story,
+          rejected: (
+            await resolvedState({
+              bytes,
+              resolution: "reject",
+              scope: { type: "document", story },
+            })
+          ).story,
+          commentIds: noteCommentIds,
+        }
+      : { type: "not-observed" };
   return {
     mode,
+    resolutionScope,
+    noteLifetime,
     live,
     rows: withLiveMintedIds(accepted.rows, liveRows),
     resolvedStory: accepted.story,
@@ -3485,7 +3737,15 @@ export const capture = async (
     links: accepted.links,
     liveComments,
     ...(mode === "tracked-changes"
-      ? { rejected: (await resolvedState(bytes, "reject", story)).rows }
+      ? {
+          rejected: (
+            await resolvedState({
+              bytes,
+              resolution: "reject",
+              scope: resolutionScope,
+            })
+          ).rows,
+        }
       : {}),
     ...context,
   };
@@ -3808,15 +4068,31 @@ export const assertRequestedOutcome = async (
     links = captureLinks(reviewer);
   } else {
     const saved = await save(reviewer);
-    const accepted = await resolvedState(saved, "accept", pre.story);
+    const accepted = await resolvedState({
+      bytes: saved,
+      resolution: "accept",
+      scope: pre.resolutionScope,
+    });
     ({ rows, comments, bytes, links } = accepted);
+    let rejected: ResolvedState | undefined;
     if (pre.rejected) {
+      rejected = await resolvedState({
+        bytes: saved,
+        resolution: "reject",
+        scope: pre.resolutionScope,
+      });
       assert.deepEqual(
-        project((await resolvedState(saved, "reject", pre.story)).rows),
+        project(rejected.rows),
         project(pre.rejected),
         `${context}: rejecting every change does not give the document before back`,
       );
     }
+    await assertNoteLifetime({
+      before: pre.noteLifetime,
+      bytes: saved,
+      accepted,
+      rejected,
+    });
   }
   const keptBlocks = keptBlockFormats.map(({ id, requested }) => {
     const row = rows.find((candidate) => candidate.id === id);
@@ -3916,7 +4192,13 @@ export const captureResolution = async (
   _mode: Mode,
   resolution: "accept" | "reject",
 ): Promise<Resolution> => ({
-  rows: (await resolvedState(await save(reviewer), resolution)).rows,
+  rows: (
+    await resolvedState({
+      bytes: await save(reviewer),
+      resolution,
+      scope: { type: "document", story: MAIN },
+    })
+  ).rows,
   boundaries: true,
 });
 
