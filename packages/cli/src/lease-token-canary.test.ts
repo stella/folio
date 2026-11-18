@@ -111,6 +111,8 @@ const argsFor = (
       return { fill: { client: "Acme Ltd" } };
     case "numbering":
       return {};
+    case "fill_template":
+      return { markdown: "Body." };
     default:
       throw new Error(`No write fixture for registered tool ${name}`);
   }

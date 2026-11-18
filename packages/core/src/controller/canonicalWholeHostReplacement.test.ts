@@ -249,7 +249,11 @@ for (const boundary of [
   "section-endpoint",
   "pending-host-mark",
 ] as const)
-  for (const mode of ["editing", "suggesting"] as const)
+  // Another author's pending break goes with its host in a direct edit, but
+  // a suggestion cannot retract it.
+  for (const mode of boundary === "pending-host-mark"
+    ? (["suggesting"] as const)
+    : (["editing", "suggesting"] as const))
     test(`${mode}/${boundary}: unproven comment-host ownership refuses with all state unchanged`, async () => {
       setSystemTime(new Date(DATE));
       let document = await fixture();
@@ -377,3 +381,57 @@ for (const boundary of [
       ).toEqual(new Uint8Array(saved.buffer));
       off();
     });
+
+test("editing: a host's pending words and break retire with it, and undo restores them", async () => {
+  setSystemTime(new Date(DATE));
+  const source = await fixture();
+  const first = source.package.document.content.at(0);
+  if (first?.type !== "paragraph" || first.paraId === undefined)
+    throw new TypeError("The fixture has its first host");
+  const info = { id: 501, author: "Drafter", date: DATE };
+  const document = applyDocumentOps(source, [
+    {
+      type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
+      story: OP_STORIES.MAIN,
+      blockId: first.paraId,
+      expected: reviewFieldsOf(first),
+      review: { ...reviewFieldsOf(first), pPrMark: { kind: "ins", info } },
+    },
+    {
+      type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
+      at: { story: OP_STORIES.MAIN, blockId: first.paraId, offset: 0 },
+      slice: {
+        openStart: 0,
+        openEnd: 0,
+        content: [{ type: "run", content: [{ type: "text", text: "New " }] }],
+      },
+      revision: { ...info, id: 502 },
+    },
+  ]).unwrap().document;
+  const session = createCanonicalSession(document).unwrap();
+  session.setMode({ type: "editing" });
+  const original = cloneDocumentWithParagraphPropertySources(session.document);
+  let state = EditorState.create({ doc: session.projection.doc });
+  expect(getTrackedChangeStatsFromDoc(state.doc).ids).toHaveLength(2);
+  state = state.apply(state.tr.setSelection(new AllSelection(state.doc)));
+  const commit = session
+    .prepareReplace(state, {
+      from: state.selection.from,
+      to: state.selection.to,
+      text: "xyz",
+      semantic: "typing",
+    })
+    .unwrap();
+  state = publishCanonicalProjection({ session, state, commit }).unwrap().state;
+  expect(state.doc.textContent).toBe("xyz");
+  expect(getTrackedChangeStatsFromDoc(state.doc).ids).toEqual([]);
+  expect(
+    session
+      .getCommittedComments()
+      .map(({ id }) => id)
+      .sort((a, b) => a - b),
+  ).toEqual([3, 20, 120]);
+  const undo = session.prepareUndo(state).unwrap();
+  publishCanonicalProjection({ session, state, commit: undo }).unwrap();
+  expect(session.document).toStrictEqual(original);
+});

@@ -1071,6 +1071,7 @@ export const paragraphMarkOutcome: (input: {
     needsFollowingCommentHost?: boolean;
     tableRemovalIsTrackable?: boolean;
     emptyInsertedTableBoundary?: "unavailable" | "pendingReview";
+    precededByBlock?: boolean;
     removedSectionProperties?: boolean;
     precedingSectionOwner?: "unavailable" | "available" | "same" | "occupied";
     followingHasSectionProperties?: boolean;
