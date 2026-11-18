@@ -16,7 +16,8 @@
  *   exception: a suggestion reads the document as it stands and goes right
  *   beside the paragraph it names, where a direct edit reads the paragraphs
  *   the pending join runs together as one and goes beside all of them, as
- *   both engines place them.
+ *   both engines place them. A paragraph named in a table cell has the new
+ *   one beside its outermost table, as both engines place it either way.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -122,13 +123,20 @@ const suggestionLaws = async (
   if (result.applied.length === 0) return "refusedOperation";
   const suggested = reads(reviewer);
   if (insertion !== null && besidePendingJoin) {
-    // As it stands: the new paragraph is right beside the one it names.
-    const ids = blockIds(reviewer);
+    // As it stands: the new paragraph is right beside the one it names, or,
+    // for one in a table cell, beside its outermost table.
+    const content = reviewer.getContent();
+    const ids = content.map(({ id }) => id);
     const known = new Set(idsBefore);
     const at = ids.indexOf(insertion.blockId);
     expect(at).toBeGreaterThanOrEqual(0);
-    const beside =
-      ids[insertion.type === "insertBeforeBlock" ? at - 1 : at + 1];
+    const table = content[at]?.table?.outerTableIndex;
+    const inTable = (index: number) =>
+      table !== undefined && content[index]?.table?.outerTableIndex === table;
+    const step = insertion.type === "insertBeforeBlock" ? -1 : 1;
+    let edge = at;
+    while (inTable(edge + step)) edge += step;
+    const beside = ids[edge + step];
     expect(beside !== undefined && !known.has(beside)).toBe(true);
   }
   const records = reviewer.exportPendingSuggestions();
