@@ -345,10 +345,14 @@ const resolvedViews = async (
 
 type AgreementCase = "unplanned" | "unchanged" | "restored" | "unalignable";
 
-/** Run both matchers on one pair and hold them to the same result. */
+/**
+ * Run both matchers on one pair and hold them to the same result; with
+ * `readsLikeTarget`, hold both accepted views to the revised document too.
+ */
 const expectAgreement = async (
   baseBody: Body,
   targetBody: Body,
+  readsLikeTarget = false,
 ): Promise<AgreementCase> => {
   const base = await ingested(await buildDocx(baseBody));
   const target = await ingested(await buildDocx(targetBody));
@@ -390,6 +394,19 @@ const expectAgreement = async (
         sourceDocumentOf(legacyView),
       ),
     ).toBe(true);
+  }
+  if (readsLikeTarget) {
+    const revised = (
+      await FolioDocxReviewer.fromBuffer(target.slice(0))
+    ).snapshot();
+    for (const accepted of [legacyViews[0], canonicalViews[0]]) {
+      expect(accepted.blocks.map(({ text }) => text)).toEqual(
+        revised.blocks.map(({ text }) => text),
+      );
+      expect(
+        sameInlineAtoms(sourceDocumentOf(accepted), sourceDocumentOf(revised)),
+      ).toBe(true);
+    }
   }
   switch (legacy.outcome.status) {
     case "matched":
@@ -559,6 +576,8 @@ const FIXED_PAIRS: readonly {
   base: Body;
   target: Body;
   expected?: AgreementCase;
+  /** Accepting every change gives the revised document. */
+  readsLikeTarget?: true;
 }[] = [
   {
     name: "a field replaces result text that ends before an empty field",
@@ -678,6 +697,45 @@ const FIXED_PAIRS: readonly {
     ],
   },
   {
+    name: "a restored picture goes before the result text a replaced field leaves",
+    readsLikeTarget: true,
+    base: [
+      [{ kind: "picture", picture: 0 }],
+      [
+        { kind: "picture", picture: 0 },
+        { kind: "field", form: "simple", instruction: " PAGE ", result: "12" },
+        { kind: "text", text: "Count: " },
+      ],
+    ],
+    target: [
+      [{ kind: "picture", picture: 0 }],
+      [{ kind: "picture", picture: 0 }],
+      [
+        { kind: "picture", picture: 0 },
+        { kind: "text", text: "12" },
+        { kind: "text", text: "Count: " },
+      ],
+    ],
+    expected: "restored",
+  },
+  {
+    name: "a restored picture goes before a field that replaces result text",
+    readsLikeTarget: true,
+    base: [[{ kind: "text", text: "12" }]],
+    target: [
+      [
+        { kind: "picture", picture: 1 },
+        {
+          kind: "field",
+          form: "simple",
+          instruction: " NUMWORDS ",
+          result: "12",
+        },
+      ],
+    ],
+    expected: "restored",
+  },
+  {
     name: "a field joins a merged paragraph",
     base: [
       [{ kind: "text", text: "Count: " }],
@@ -694,11 +752,11 @@ const FIXED_PAIRS: readonly {
 ];
 
 describe("matchInlineAtomsOnModel", () => {
-  for (const { name, base, target, expected } of FIXED_PAIRS)
+  for (const { name, base, target, expected, readsLikeTarget } of FIXED_PAIRS)
     test(
       `matches the editor-state matcher: ${name}`,
       async () => {
-        const agreed = await expectAgreement(base, target);
+        const agreed = await expectAgreement(base, target, readsLikeTarget);
         if (expected !== undefined) expect(agreed).toBe(expected);
       },
       propertyTestTimeout(30_000),

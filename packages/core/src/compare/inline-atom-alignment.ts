@@ -298,3 +298,30 @@ export type AtomActionDisposition = "inserted" | "retained";
 export const atomActionRangeCount = (
   replaces: AtomActionDisposition | null,
 ): number => (replaces === "retained" ? 2 : 1);
+
+/**
+ * Which of the actions at one point goes first. Each writes past what the
+ * earlier ones wrote there, so they run in the revised paragraph's order:
+ * an atom the revised paragraph holds at an offset stands before the text
+ * that starts there, which a replaced atom or a restored note reference
+ * writes.
+ */
+export const atomActionTieRank = (
+  kind:
+    "delete" | "insert" | "replace-text" | "replace-atom" | "note-reference",
+): number => {
+  switch (kind) {
+    case "delete":
+      return 0;
+    case "insert":
+    case "replace-text":
+      return 1;
+    case "replace-atom":
+    case "note-reference":
+      return 2;
+    default: {
+      const unreachable: never = kind;
+      return unreachable;
+    }
+  }
+};

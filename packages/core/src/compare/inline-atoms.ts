@@ -25,6 +25,7 @@ import { canonicalJson } from "../utils/canonicalJson";
 import {
   type AlignableAtom,
   atomActionRangeCount,
+  atomActionTieRank,
   fieldResultOwnershipOf,
   insertionAnchors,
   matchingAtoms,
@@ -898,7 +899,8 @@ export const matchInlineAtoms = ({
   const changedTargetBlockIds = new Set<string>();
   const ordered = actions.toSorted(
     (left, right) =>
-      right.from - left.from || (left.kind === "delete" ? -1 : 1),
+      right.from - left.from ||
+      atomActionTieRank(left.kind) - atomActionTieRank(right.kind),
   );
   for (const action of ordered) {
     if (action.kind === "insert") {
@@ -935,7 +937,7 @@ export const matchInlineAtoms = ({
           }),
         });
       }
-      const at = transaction.mapping.map(action.from, -1);
+      const at = transaction.mapping.map(action.from, 1);
       transaction.insert(
         at,
         action.node.mark(
@@ -998,7 +1000,7 @@ export const matchInlineAtoms = ({
           }),
         });
       }
-      const at = transaction.mapping.map(action.from, -1);
+      const at = transaction.mapping.map(action.from, 1);
       transaction.insert(
         at,
         state.schema.text(
