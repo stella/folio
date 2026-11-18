@@ -87,3 +87,79 @@ for (const removal of ["deletion", "moveFrom"] as const)
         },
       ]);
   });
+
+test("a kept move range start stands between pending deletion pieces nested in an insertion in any order", () => {
+  // The deletion sits inside another reviewer's insertion: the insertion's
+  // pieces join around the boundary, the deletion's stay apart.
+  const source: Document = {
+    package: {
+      document: {
+        content: [
+          {
+            type: "paragraph",
+            paraId: "00000001",
+            content: [
+              {
+                type: "insertion",
+                info: { id: 1, author: "A" },
+                content: [
+                  {
+                    type: "deletion",
+                    info: { id: 4, author: "B", date: "2026-01-02T03:04:05Z" },
+                    content: [
+                      { type: "run", content: [{ type: "text", text: "aa" }] },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    },
+  };
+  // The split comes first; the boundary is inserted at the end of the
+  // paragraph it leaves.
+  const split = apply(source, {
+    type: "splitBlock",
+    at: { story: OP_STORIES.MAIN, blockId: "00000001", offset: 1 },
+    newBlockId: "10000000",
+    newIds: NEW_IDS,
+    revision: { id: 3, author: "C", date: "2026-03-04T05:00:01Z" },
+  });
+  const tracked = apply(split, {
+    type: "insertContent",
+    at: { story: OP_STORIES.MAIN, blockId: "10000000", offset: 1 },
+    slice: {
+      content: [
+        { type: "moveToRangeStart", id: 1, name: "move1", author: "A" },
+      ],
+      openStart: 0,
+      openEnd: 0,
+    },
+    newIds: NEW_IDS,
+    revision: { id: 2, author: "C", date: "2026-03-04T05:00:02Z" },
+  });
+  const results = [
+    reject(reject(tracked, [2]), [3]),
+    reject(reject(tracked, [3]), [2]),
+    reject(tracked, [2, 3]),
+  ];
+  for (const rejected of results)
+    expect(rejected.package.document.content).toMatchObject([
+      {
+        type: "paragraph",
+        content: [
+          {
+            type: "insertion",
+            info: { id: 1 },
+            content: [
+              { type: "deletion", info: { id: 4 } },
+              { type: "moveToRangeStart", id: 1 },
+              { type: "deletion" },
+            ],
+          },
+        ],
+      },
+    ]);
+});

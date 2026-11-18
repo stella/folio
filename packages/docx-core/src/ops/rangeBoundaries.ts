@@ -705,27 +705,40 @@ export const withSeamBoundariesInside = ({
   const boundaries = [...left.slice(leftEnd), ...right.slice(0, rightStart)];
   const before = left.at(leftEnd - 1);
   const after = right.at(rightStart);
-  // Pieces still held in a pending deletion or move source stand only once
-  // it is rejected: the boundaries stand between them, as a seam inside the
-  // paragraph leaves them beside such a piece.
-  const heldInRemoval = (node: InlineNode): boolean =>
-    node.type === "deletion" || node.type === "moveFrom";
   if (
     boundaries.length === 0 ||
     before === undefined ||
     after === undefined ||
-    !sameOwnFields(before, after) ||
-    heldInRemoval(before) ||
-    heldInRemoval(after)
+    !sameOwnFields(before, after)
   )
     return { left, right };
-  const intoAfter = withBoundariesAtEdge(after, boundaries, depth, "start");
+  // Pieces still held in a pending deletion or move source stand only once
+  // it is rejected: the boundaries stand between them, as a seam inside the
+  // paragraph leaves them beside such a piece, at whatever depth it is.
+  const heldInRemoval = (node: InlineNode | undefined): boolean =>
+    node?.type === "deletion" || node?.type === "moveFrom";
+  let reach = 0;
+  let beforeLevel: InlineNode | undefined = before;
+  let afterLevel: InlineNode | undefined = after;
+  while (
+    reach < depth &&
+    beforeLevel !== undefined &&
+    afterLevel !== undefined &&
+    !heldInRemoval(beforeLevel) &&
+    !heldInRemoval(afterLevel)
+  ) {
+    reach += 1;
+    beforeLevel = childNodes(beforeLevel)?.at(-1);
+    afterLevel = childNodes(afterLevel)?.at(0);
+  }
+  if (reach === 0) return { left, right };
+  const intoAfter = withBoundariesAtEdge(after, boundaries, reach, "start");
   if (intoAfter !== undefined)
     return {
       left: left.slice(0, leftEnd),
       right: [intoAfter, ...right.slice(rightStart + 1)],
     };
-  const intoBefore = withBoundariesAtEdge(before, boundaries, depth, "end");
+  const intoBefore = withBoundariesAtEdge(before, boundaries, reach, "end");
   if (intoBefore === undefined) return { left, right };
   return {
     left: [...left.slice(0, leftEnd - 1), intoBefore],
