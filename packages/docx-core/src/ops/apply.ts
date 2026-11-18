@@ -168,7 +168,9 @@ import {
 } from "./refusal";
 import { type ApplyOps, resolveRevision } from "./resolve";
 import {
+  FOLD_INTO_OTHER_SUGGESTION_MESSAGE,
   foldedParagraphPropertyChange,
+  foldsIntoOtherSuggestion,
   isRemovedRevisionNode,
   namesMarkFormatting,
   paragraphPropertiesOf,
@@ -1684,6 +1686,12 @@ const setParagraphProps = (
     ),
   });
   if (revision !== undefined) {
+    if (foldsIntoOtherSuggestion(paragraph, revision))
+      return refuse(
+        op,
+        DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+        FOLD_INTO_OTHER_SUGGESTION_MESSAGE,
+      );
     // The change records what the paragraph now states as its current
     // properties, as a reopened file reads them.
     next.propertyChanges = [
@@ -1868,6 +1876,12 @@ const trackSplit = ({
     ...(madeSecond ? { survivor: "first" as const } : {}),
   };
   if (!sameParagraphProperties(made.formatting, paragraph.formatting)) {
+    if (madeSecond && foldsIntoOtherSuggestion(paragraph, stamp))
+      return refusal(
+        op,
+        DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+        FOLD_INTO_OTHER_SUGGESTION_MESSAGE,
+      );
     made.propertyChanges = [
       madeSecond
         ? foldedParagraphPropertyChange({
@@ -2116,6 +2130,12 @@ const trackJoin = ({
   // The editor intent compiler applies accepted-view group formatting.
   const formatting = joinedFormatting(leading, trailing);
   if (!sameParagraphProperties(formatting, trailing.formatting)) {
+    if (foldsIntoOtherSuggestion(trailing, stamp))
+      return refuse(
+        op,
+        DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+        FOLD_INTO_OTHER_SUGGESTION_MESSAGE,
+      );
     second = withParagraphFormatting(trailing, formatting);
     second.propertyChanges = [
       foldedParagraphPropertyChange({ paragraph: trailing, formatting, stamp }),

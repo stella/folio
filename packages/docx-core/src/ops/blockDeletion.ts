@@ -38,7 +38,9 @@ import {
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import type { ApplyOps } from "./resolve";
 import {
+  FOLD_INTO_OTHER_SUGGESTION_MESSAGE,
   foldedParagraphPropertyChange,
+  foldsIntoOtherSuggestion,
   isRemovedRevisionNode,
   paragraphPropertiesOf,
   reviewFieldsOf,
@@ -636,6 +638,11 @@ export const deleteBlocks = ({
         },
       };
     } else if (!sameParagraphProperties(next.formatting, survivor.formatting)) {
+      if (foldsIntoOtherSuggestion(paragraph, op.revision))
+        return refuse(
+          DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+          FOLD_INTO_OTHER_SUGGESTION_MESSAGE,
+        );
       const review = reviewFieldsOf(next);
       delete review.formatting;
       if (survivor.formatting !== undefined)
