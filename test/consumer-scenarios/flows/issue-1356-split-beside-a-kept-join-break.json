@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "title": "PINNED #1356, reported seed 156834779: a split of a joined paragraph keeps the properties of the break a deletion in its batch keeps",
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "trackedChanges",
+  "mode": "tracked-changes",
+  "seed": 156834779,
+  "steps": [
+    {
+      "action": "new reviewer",
+      "seed": 1
+    },
+    {
+      "action": "core batch",
+      "seed": 2,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "commentOnBlock",
+          "blockId": "7B806329",
+          "quote": "delivery",
+          "comment": {
+            "text": "Party agreement clause."
+          }
+        },
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "7B806329",
+          "separator": " "
+        }
+      ]
+    },
+    {
+      "action": "save and reopen",
+      "seed": 3
+    },
+    {
+      "action": "core batch",
+      "seed": 4,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "splitBlock",
+          "blockId": "7B806329",
+          "offset": 11
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "1BF99289"
+        }
+      ]
+    }
+  ],
+  "origin": "hand-shrunk from random flow seed 156834779"
+}
