@@ -65,6 +65,20 @@ const EXPIRING_IGNORES: readonly ExpiringIgnore[] = [
     },
     expires: "2026-12-01",
   },
+  {
+    // 2026-11-17: picomatch <=4.0.7 backtracks on single-branch repeated
+    // extglobs. 4.0.7 is the latest release and no patched version exists.
+    // It reaches the tree only through development and build tooling
+    // (vite and tsdown via tinyglobby, nuxt via @parcel/watcher, the Vue
+    // language tooling, dependency-cruiser, changesets and rollup plugins),
+    // all of them devDependencies. No published package depends on it, and
+    // folio never matches untrusted glob patterns.
+    advisory: "GHSA-fc5q-39xc-vjpf",
+    packageName: "picomatch",
+    vulnerableThrough: "4.0.7",
+    requiredBy: { type: "direct", parent: "@parcel/watcher" },
+    expires: "2026-12-17",
+  },
 ];
 
 const compareVersions = (left: string, right: string): number => {
