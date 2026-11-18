@@ -645,7 +645,7 @@ const compileTrackedLinkEdit = (
       );
       // The copy's own note references are copied with their notes below;
       // one inside a copied text box is not.
-      const references = new Set(noteReferencesIn(copy));
+      const references: ReadonlySet<object> = new Set(noteReferencesIn(copy));
       if (
         identityKeysIn(copy).length > 0 ||
         recordsIn(copy).some(
