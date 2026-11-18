@@ -3521,6 +3521,44 @@ const pendingAnchorMatches = (
     : containsInOrder(actual, old + replacement);
 };
 
+/**
+ * The id the words of `row`, a proven pending join's accepted owner, read
+ * under once accepted. Deleting the last paragraph of a story or cell keeps
+ * its mark (`deletionKeptBlock`): the paragraph before it runs into it, so
+ * when the batch removes every paragraph after `row` in its container, the
+ * words read under the id of that last one. Anything else after `row` (a
+ * block the batch adds, a table) keeps them under `row`'s own id.
+ */
+const acceptedOwnerId = (model: Model, row: ModelRow): string => {
+  const pre =
+    row.pre ?? assert.fail("A proven pending join must have an accepted owner");
+  if (row.after.length > 0) return pre.id;
+  let carrier: Row | undefined;
+  for (const later of model.rows.slice(model.rows.indexOf(row) + 1)) {
+    // A live-only row (a join's source, a paragraph pending deletion) is not
+    // in the accepted document the ids are read from.
+    if (later.outsidePreState === true) continue;
+    // A cell ends where the next one starts; in a story, a table stands
+    // between the words and that story's last paragraph.
+    if (
+      later.pre !== undefined &&
+      pre.table !== undefined &&
+      !sameParagraphContainer(pre, later.pre)
+    )
+      break;
+    if (
+      later.pre === undefined ||
+      !later.removed ||
+      later.before.length > 0 ||
+      later.after.length > 0 ||
+      !sameParagraphContainer(pre, later.pre)
+    )
+      return pre.id;
+    carrier = later.pre;
+  }
+  return carrier?.id ?? pre.id;
+};
+
 export const compareComments = (
   model: Model,
   before: readonly Comment[],
@@ -3599,8 +3637,7 @@ export const compareComments = (
     const owner =
       view.type === "pending-join" &&
       view.destinationPrediction.type === "exact"
-        ? (view.row.pre?.id ??
-          assert.fail("A proven pending join must have an accepted owner"))
+        ? acceptedOwnerId(model, view.row)
         : undefined;
     const index = remaining.findIndex(
       ({ id, text, blockId, anchor: actualAnchor }) =>
