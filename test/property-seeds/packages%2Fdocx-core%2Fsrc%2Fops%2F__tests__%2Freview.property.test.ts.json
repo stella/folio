@@ -392,6 +392,18 @@
       "path": "122:1:2:2:2:7:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:6:5:7:6:21:6:17:17:17:23:23:17:26:17:17:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:22:21:21:21:30:21:33:26:26:26:27:26:26:27:28:28:26:26:27:26:26:27:26:26:26:26:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28",
       "note": "A bookmark end kept from a link inserted at a split's seam stands between a pending move source's pieces in every rejection order.",
       "date": "2026-11-18"
+    },
+    {
+      "seed": -1582843602,
+      "path": "199:0:0:0:0:0:0:0:2:1:2:2:2:2:2:2:2:6:6:7:6:6:6:6:7:7:7:7:7:7:7:7:7:7:7:7:21:13:7:14:14:14:14:14:14:14:14:14:22:14:21:22:14:14:18:1:4:17:13:23:17:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10",
+      "note": "A rejected inserted paragraph holding only kept boundaries, with a preserved block before it, goes: the first paragraph after it takes them, as rejecting the original removes it.",
+      "date": "2026-11-18"
+    },
+    {
+      "seed": 895895213,
+      "path": "135:0:0:0:0:1:0:0:0:0:4:3:3:3:3:3:3:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:5:4:14:4:8:13:2:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11",
+      "note": "A rejected inserted paragraph at the story start holding only a kept comment start goes; the paragraph after the preserved block takes it.",
+      "date": "2026-11-18"
     }
   ],
   "L3: rejecting a run's revisions at once equals rejecting each operation's in any order": [
