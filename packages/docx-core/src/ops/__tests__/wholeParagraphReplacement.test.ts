@@ -177,3 +177,59 @@ test("source retirement cannot cross story or parent block-list ownership", () =
     DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
   );
 });
+
+const firstOf = (document: Document): Paragraph => {
+  const first = document.package.document.content.at(0);
+  if (first?.type !== "paragraph")
+    throw new TypeError("The fixture has its host");
+  return first;
+};
+
+test("pending insertions, words or break, retire with their host", () => {
+  const info = { id: 501, author: "Drafter" };
+  const inserted = {
+    type: "insertion",
+    info,
+    content: [{ type: "run", content: [{ type: "text", text: "New " }] }],
+  } satisfies ParagraphContent;
+  const document = documentOf([inserted, ...content]);
+  firstOf(document).pPrMark = { kind: "ins", info: { ...info, id: 503 } };
+  expect(validateOpsDocument(document).isOk()).toBe(true);
+  expect(plan(document)).toEqual({
+    blockIds: ["00000001"],
+    commentIds: new Set([7]),
+  });
+  const suggested = (suggestingAuthor: string) =>
+    planWholeParagraphReplacement({
+      document,
+      from: {
+        story: OP_STORIES.MAIN,
+        blockId: "00000001",
+        offset: 0,
+        zeroWidthBefore: 0,
+      },
+      to: {
+        story: OP_STORIES.MAIN,
+        blockId: "00000002",
+        offset: 0,
+        zeroWidthBefore: 0,
+      },
+      suggestingAuthor,
+    }).unwrap();
+  // A suggestion retracts its author's own insertions, not another's.
+  expect(suggested("Drafter")).toEqual(plan(document));
+  expect(suggested("Reviewer")).toBeNull();
+});
+
+test("pending removals in a host still refuse to certify retirement", () => {
+  const info = { id: 502, author: "Drafter" };
+  const removed = {
+    type: "deletion",
+    info,
+    content: [{ type: "run", content: [{ type: "deletedText", text: "Old" }] }],
+  } satisfies ParagraphContent;
+  expect(plan(documentOf([removed, ...content]))).toBeNull();
+  const document = documentOf();
+  firstOf(document).pPrMark = { kind: "del", info };
+  expect(plan(document)).toBeNull();
+});
