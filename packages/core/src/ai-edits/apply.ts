@@ -79,7 +79,11 @@ import { JOINED_RUNS_RESTYLED_META } from "../prosemirror/extensions/features/Jo
 import { markStructuralChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import { requestDeterministicParaIds } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import { TEXT_BOX_ANCHOR_NODE_NAME } from "../prosemirror/extensions/nodes/TextBoxAnchorExtension";
-import { insertionGap, InsertionGapOrder } from "../prosemirror/insertionGaps";
+import {
+  insertionGap,
+  insertionGapEnd,
+  InsertionGapOrder,
+} from "../prosemirror/insertionGaps";
 import {
   blockBoundariesOf,
   carriesCommentAnchor,
@@ -5783,12 +5787,19 @@ const applyFolioAIEditOperationsInternal = ({
       };
     }
     const hasDeletedSplit = tableAfterDeletedSplit.has(item.blockFrom);
+    let position = item.from;
+    if (hasDeletedSplit && item.operation.type === "deleteBlock") {
+      position = item.blockTo;
+    } else if (BLOCK_INSERTION_TYPES.has(item.operation.type)) {
+      // A block put in a gap with blocks accepting removes whole orders as
+      // at the gap's end, beside the block after them, as once they are
+      // removed: a property edit of that block runs where it would without
+      // them.
+      position = insertionGapEnd(view.state.doc, item.from);
+    }
     return {
       type: "content",
-      position:
-        hasDeletedSplit && item.operation.type === "deleteBlock"
-          ? item.blockTo
-          : item.from,
+      position,
       rank: contentRank(item.operation, { hasDeletedSplit }),
       inputIndex: item.originalIndex,
     };
