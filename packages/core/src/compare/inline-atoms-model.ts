@@ -1396,7 +1396,12 @@ export const matchInlineAtomsOnModel = ({
           resultText,
         })
       ) {
-        const to = liveBlock.offsets[atom.offset + resultText.length];
+        // The range ends just past its last character, before any zero-width
+        // atom (an empty field, a picture) that follows it.
+        const to = pastCharacter(
+          liveBlock,
+          atom.offset + resultText.length - 1,
+        );
         if (to === undefined) return { status: "unalignable" };
         const textDisposition = textRangeDisposition({
           paragraphs,

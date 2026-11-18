@@ -845,13 +845,15 @@ export const matchInlineAtoms = ({
           resultText,
         })
       ) {
-        const reviewedTo = live.offsets[atom.offset + resultText.length];
+        // The range ends just past its last character, before any zero-width
+        // atom (an empty field, a picture) that follows it.
+        const reviewedLast = live.offsets[atom.offset + resultText.length - 1];
         const to =
-          reviewedTo === undefined
+          reviewedLast === undefined
             ? null
             : mappedSourcePosition({
                 mapping: reviewed.mapping,
-                position: reviewedTo,
+                position: reviewedLast + 1,
               });
         if (to === null) return { status: "unalignable" };
         const textDisposition = textRangeDisposition({

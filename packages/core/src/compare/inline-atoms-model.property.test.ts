@@ -546,7 +546,58 @@ const agreementProperty = fc.asyncProperty(
   },
 );
 
-const FIXED_PAIRS: readonly { name: string; base: Body; target: Body }[] = [
+const EMPTY_PAGE: Segment = {
+  kind: "field",
+  form: "simple",
+  instruction: " PAGE ",
+  result: "",
+};
+const PAGE_ONE: Segment = { ...EMPTY_PAGE, result: "1" };
+
+const FIXED_PAIRS: readonly {
+  name: string;
+  base: Body;
+  target: Body;
+  expected?: AgreementCase;
+}[] = [
+  {
+    name: "a field replaces result text that ends before an empty field",
+    base: [[{ kind: "text", text: "1" }, EMPTY_PAGE]],
+    target: [[PAGE_ONE, EMPTY_PAGE]],
+    expected: "restored",
+  },
+  {
+    name: "a field replaces result text that an empty field follows mid-block",
+    base: [
+      [
+        { kind: "text", text: "1" },
+        EMPTY_PAGE,
+        { kind: "text", text: " today." },
+      ],
+    ],
+    target: [[PAGE_ONE, EMPTY_PAGE, { kind: "text", text: " today." }]],
+    expected: "restored",
+  },
+  {
+    name: "a field keeps its result where deleted text and an empty field follow it",
+    base: [
+      [
+        PAGE_ONE,
+        { kind: "text", text: "Count: " },
+        EMPTY_PAGE,
+        { kind: "picture", picture: 0 },
+        { kind: "picture", picture: 0 },
+      ],
+    ],
+    target: [
+      [
+        PAGE_ONE,
+        EMPTY_PAGE,
+        { kind: "picture", picture: 0 },
+        { kind: "picture", picture: 0 },
+      ],
+    ],
+  },
   {
     name: "a field replaces its materialized result",
     base: [[{ kind: "text", text: "Count: 12" }]],
@@ -643,11 +694,12 @@ const FIXED_PAIRS: readonly { name: string; base: Body; target: Body }[] = [
 ];
 
 describe("matchInlineAtomsOnModel", () => {
-  for (const { name, base, target } of FIXED_PAIRS)
+  for (const { name, base, target, expected } of FIXED_PAIRS)
     test(
       `matches the editor-state matcher: ${name}`,
       async () => {
-        await expectAgreement(base, target);
+        const agreed = await expectAgreement(base, target);
+        if (expected !== undefined) expect(agreed).toBe(expected);
       },
       propertyTestTimeout(30_000),
     );
