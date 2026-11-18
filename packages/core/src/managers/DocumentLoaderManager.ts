@@ -1,5 +1,5 @@
 import {
-  holdsUniqueParagraphIds,
+  holdsUniqueSeedIds,
   prepareCanonicalDocumentInput,
   prepareCanonicalDocxInput,
 } from "../docx/canonicalSessionInput";
@@ -105,7 +105,7 @@ export class DocumentLoaderManager {
    */
   loadParsedDocument(doc: Document): void {
     const generation = ++this.loadGeneration;
-    if (!this.opensCanonicalSession() || holdsUniqueParagraphIds(doc)) {
+    if (!this.opensCanonicalSession() || holdsUniqueSeedIds(doc)) {
       this.commitParsedDocument(doc, generation);
       return;
     }
