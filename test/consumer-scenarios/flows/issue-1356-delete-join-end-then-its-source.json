@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "title": "PINNED #1356, reported seed 1985075916: deleting a pending join's end and then its source, one at a time, leaves what deleting both at once does",
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "directNumbered",
+  "mode": "tracked-changes",
+  "seed": 1985075916,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 1849617222,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "3CEFFC83",
+          "separator": " "
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 4121195114,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "31617F9A"
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "3CEFFC83"
+        }
+      ]
+    }
+  ],
+  "weights": {
+    "version": 1,
+    "cells": {},
+    "operations": []
+  },
+  "origin": "shrunk from swap+dropOperation+swap of 8827c921f8417232; refused suggestion step dropped"
+}
