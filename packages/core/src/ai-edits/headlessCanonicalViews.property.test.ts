@@ -314,14 +314,6 @@ const packaged = async (document: Document): Promise<ArrayBuffer | null> => {
 // corpus document and every generated supported document must actually read.
 const IMPORT_REFUSALS = new Map([
   [
-    "duplicate-imported-revision.docx",
-    {
-      reason: "refused",
-      ground: { gap: CANONICAL_GAP.dispatch },
-      message: "2 records in the package carry revision:83.",
-    },
-  ],
-  [
     "sdt-self-closing.docx",
     {
       reason: "refused",
