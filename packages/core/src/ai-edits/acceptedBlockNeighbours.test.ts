@@ -423,6 +423,16 @@ describe("removing what ends a pending join", () => {
     ).toEqual(["Closing."]);
   });
 
+  test("lets that break go when a later batch deletes the joined words", async () => {
+    expect(
+      await replay(["Opening.", "Joined.", "Closing."].join("\n\n"), [
+        (id) => [joinInto(id("Opening."))],
+        (id) => [deleteBlock(id("Joined."), "joined")],
+        (id) => [deleteBlock(id("Opening."), "opening")],
+      ]),
+    ).toEqual(["Closing."]);
+  });
+
   const beforeTable = ["Opening.", "Joined.", TABLE, "Closing."].join("\n\n");
 
   test("keeps it before a table", async () => {
@@ -732,5 +742,52 @@ describe("a paragraph put before a block the batch restyles, past blocks accepti
     const plain = await inserted([]);
     expect(plain).toEqual({ kind: "paragraph", styleId: undefined });
     expect(await inserted(["Gone clause."])).toEqual(plain);
+  });
+});
+
+describe("a paragraph put right after words whose break a pending change deletes", () => {
+  // The words run, accepted, into the closing paragraph; a paragraph put
+  // after them takes that deleted break, and the words keep their own. The
+  // rest of the batch reads them so, as after that insertion alone.
+  const afterInsertion = async (together: boolean) => {
+    const { reviewer, id } = await withPendingDeletions(
+      ["- Opening clause.", "Middle clause.", "- Closing clause."].join("\n\n"),
+      ["Middle clause.", "Closing clause."],
+    );
+    const operations: FolioDocumentOperation[] = [
+      {
+        id: "insert",
+        type: "insertAfterBlock",
+        blockId: id("Opening clause."),
+        text: "Inserted clause.",
+        styleId: "Heading2",
+      },
+      {
+        id: "split",
+        type: "splitBlock",
+        blockId: id("Opening clause."),
+        offset: 8,
+      },
+    ];
+    const skipped = together
+      ? apply(reviewer, "tracked-changes", operations).skipped
+      : operations.flatMap(
+          (operation) =>
+            apply(reviewer, "tracked-changes", [operation]).skipped,
+        );
+    expect(skipped).toEqual([]);
+    return reviewer
+      .snapshot()
+      .blocks.map(({ text, kind, styleId }) => ({ text, kind, styleId }));
+  };
+
+  test("the rest of the batch reads the words with their own properties", async () => {
+    const alone = await afterInsertion(false);
+    expect(alone.find(({ text }) => text === "Opening ")).toEqual({
+      text: "Opening ",
+      kind: "listItem",
+      styleId: undefined,
+    });
+    expect(await afterInsertion(true)).toEqual(alone);
   });
 });

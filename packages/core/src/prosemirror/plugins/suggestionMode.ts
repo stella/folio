@@ -511,6 +511,97 @@ function markRangeAsInserted(
  * default paste + the `appendTransaction` catch-all marks a plain insertion
  * (eigenpal/docx-editor#784).
  */
+/**
+ * A paste at the end of the document's final paragraph that leaves a table
+ * last: the editor puts an empty paragraph after it, which ends the document
+ * now (see JoinedRunStyleExtension). The paragraph that ended it keeps its
+ * words, but its break is the paste's: rejecting the paste joins it into the
+ * new final paragraph, which records what it read as. Placed here so the
+ * appended paragraph is part of the tracked paste.
+ */
+function pasteEndsDocumentWithBlock(
+  view: Pick<EditorView, "dispatch" | "state">,
+  slice: Slice,
+  pluginState: SuggestionModeState,
+): boolean {
+  const { state } = view;
+  const { $from } = state.selection;
+  const insertionType = state.schema.marks["insertion"];
+  const deletionType = state.schema.marks["deletion"];
+  const paragraphType = state.schema.nodes["paragraph"];
+  if (
+    !insertionType ||
+    !deletionType ||
+    !paragraphType ||
+    $from.depth !== 1 ||
+    $from.parent.type !== paragraphType ||
+    $from.parent !== state.doc.lastChild ||
+    $from.parentOffset !== $from.parent.content.size ||
+    expectParagraphAttrs($from.parent).pPrMark != null
+  ) {
+    return false;
+  }
+  const tr = state.tr;
+  const firstStep = tr.steps.length;
+  tr.replaceSelection(slice);
+  const last = tr.doc.lastChild;
+  if (!last || last.type === paragraphType || last.isTextblock) {
+    return false;
+  }
+  const placed = tr.steps.slice(firstStep).flatMap((step, offset) => {
+    const later = new Mapping(tr.mapping.maps.slice(firstStep + offset + 1));
+    const ranges: { from: number; to: number }[] = [];
+    // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror StepMap.forEach
+    step.getMap().forEach((_oldFrom, _oldTo, newFrom, newTo) => {
+      // oxlint-disable-next-line unicorn/no-array-method-this-argument -- ProseMirror Mapping.map(pos, assoc)
+      ranges.push({ from: later.map(newFrom, -1), to: later.map(newTo, 1) });
+    });
+    return ranges;
+  });
+  if (placed.length === 0) {
+    return false;
+  }
+  const insertFrom = Math.min(...placed.map((range) => range.from));
+  const insertTo = Math.max(...placed.map((range) => range.to));
+  const final = paragraphType.createAndFill();
+  if (!final) {
+    return false;
+  }
+  // Where the direct paste leaves the caret; nothing below moves it.
+  const caret = tr.selection.head;
+  const finalPos = tr.doc.content.size;
+  tr.insert(finalPos, final);
+  tr.setMeta(SUGGESTION_META, true)
+    .setMeta("paste", true)
+    .setMeta("uiEvent", "paste");
+  const revision = makeMarkAttrs(pluginState);
+  enclosePastedRunRevisions({ tr, from: insertFrom, to: insertTo, revision });
+  markRangeAsInserted(
+    tr,
+    tr.doc,
+    insertFrom,
+    insertTo,
+    insertionType,
+    deletionType,
+    revision,
+  );
+  const info = {
+    id: revision.revisionId,
+    author: revision.author,
+    date: revision.date,
+  };
+  tr.setNodeAttribute($from.before(), "pPrMark", { kind: "ins", info });
+  recordReplacedParagraphProperties({
+    tr,
+    position: finalPos,
+    replaced: $from.parent,
+    revision: info,
+  });
+  tr.setSelection(Selection.near(tr.doc.resolve(caret), -1));
+  view.dispatch(tr.scrollIntoView());
+  return true;
+}
+
 export function handleSuggestionPaste(
   view: Pick<EditorView, "dispatch" | "state">,
   slice: Slice,
@@ -547,6 +638,9 @@ export function handleSuggestionPaste(
       }
     });
     deletedPrefix &&= !keptPrefix;
+    // Words only struck before the caret are placed by the branch below.
+    if (!deletedPrefix && pasteEndsDocumentWithBlock(view, slice, pluginState))
+      return true;
     if (
       !closedBlocks ||
       $from.parent.type.name !== "paragraph" ||
@@ -640,8 +734,13 @@ export function handleSuggestionPaste(
   // Fit open block clipboard edges against the same container boundaries as
   // direct select-all replacement. Fitting beside the struck final paragraph
   // instead can create an empty row at an open table edge.
+  // The fitted slice is the whole document the direct paste leaves, so where
+  // that paste leaves its caret is an offset into the slice.
+  let directCaret: number | null = null;
   if (selectsAll && (slice.openStart > 0 || slice.openEnd > 0)) {
-    slice = new Slice(view.state.tr.replaceSelection(slice).doc.content, 0, 0);
+    const direct = view.state.tr.replaceSelection(slice);
+    slice = new Slice(direct.doc.content, 0, 0);
+    directCaret = direct.selection.head;
   }
 
   // Select-all spans the block boundaries around the content; replace the text
@@ -877,6 +976,19 @@ export function handleSuggestionPaste(
   // slice was block content and `insertTo` lands at a block boundary.
   // A table placed before struck words leaves text after them: the caret goes
   // there, past the words, as the direct paste has none of them to pass.
+  // Blocks placed in front of the struck words leave the caret where the
+  // direct paste does: at the end of what it pasted, searching back into it,
+  // so a pasted table's last cell, not the struck words past it. A fitted
+  // paste over everything is the whole document the direct paste leaves.
+  if (tableFirst) {
+    const end =
+      directCaret !== null && insertFrom + directCaret <= insertTo
+        ? insertFrom + directCaret
+        : insertTo;
+    tr.setSelection(TextSelection.near(tr.doc.resolve(end), -1));
+    view.dispatch(tr.scrollIntoView());
+    return true;
+  }
   const caret = beforeStruck && !wholeBlocks ? tr.mapping.map(to) : insertTo;
   tr.setSelection(TextSelection.near(tr.doc.resolve(caret)));
 
@@ -2350,7 +2462,18 @@ export function createSuggestionModePlugin(
           }
           composing = true;
           compositionId = null;
-          const { from, to } = view.state.selection;
+          // Select-all spans the block boundaries around the content; the
+          // composition replaces the text span inside them, as typing does.
+          // Restoring the whole blocks would put them in front of the
+          // composed paragraph, which rejecting leaves behind empty.
+          const { selection } = view.state;
+          const { from, to } =
+            selection instanceof AllSelection
+              ? {
+                  from: Selection.atStart(view.state.doc).from,
+                  to: Selection.atEnd(view.state.doc).to,
+                }
+              : selection;
           compositionFrom = from;
           compositionStartDoc = view.state.doc;
           compositionForeignSize = 0;

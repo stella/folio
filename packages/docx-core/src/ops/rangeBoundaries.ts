@@ -501,9 +501,13 @@ type ParagraphBoundaryRemovalPlan =
 
 /**
  * `blocks` without the paragraph at `index`, which no paragraph follows to
- * join, and the paragraph before it holding what it leaves
- * ({@link paragraphRemains}) at its end. Blocked when it leaves anything and
- * no paragraph stands before it: the paragraph then stays.
+ * join, and the nearest paragraph that stays holding what it leaves
+ * ({@link paragraphRemains}): the one just before it, at its end, else the
+ * first paragraph after it in the same list, at its start, past any table
+ * or block between them. The boundaries then keep their order against the
+ * text, which they never marked inside the paragraph that goes. Blocked
+ * when it leaves anything and no other paragraph stands in the list: the
+ * paragraph then stays.
  */
 export const planParagraphBoundaryRemoval = ({
   blocks,
@@ -517,12 +521,30 @@ export const planParagraphBoundaryRemoval = ({
   if (carriers.length === 0)
     return { type: "removed", blocks: remaining, effects: [] };
   const host = remaining[index - 1];
-  if (host?.type !== "paragraph") return { type: "blocked" };
-  remaining[index - 1] = { ...host, content: [...host.content, ...carriers] };
+  if (host?.type === "paragraph") {
+    remaining[index - 1] = {
+      ...host,
+      content: [...host.content, ...carriers],
+    };
+    return {
+      type: "removed",
+      blocks: remaining,
+      effects: [{ type: "retained-range-boundaries", receiver: host }],
+    };
+  }
+  const following = remaining.findIndex(
+    (block, position) => position >= index && block.type === "paragraph",
+  );
+  const receiver = remaining[following];
+  if (receiver?.type !== "paragraph") return { type: "blocked" };
+  remaining[following] = {
+    ...receiver,
+    content: [...carriers, ...receiver.content],
+  };
   return {
     type: "removed",
     blocks: remaining,
-    effects: [{ type: "retained-range-boundaries", receiver: host }],
+    effects: [{ type: "retained-range-boundaries", receiver }],
   };
 };
 

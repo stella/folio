@@ -1014,6 +1014,47 @@ const validRetainedIdentities = (node: InlineNode): boolean => {
 const isStandingBoundary = (node: InlineNode | undefined): boolean =>
   node !== undefined && isKeptBoundaryCarrier(node);
 
+/**
+ * The content an acceptance leaves in a record that is no tracked change:
+ * when it took everything there but pending insertions, those insertions
+ * are marked so rejecting the last of them removes the record too, as
+ * accepting that content after rejecting them does.
+ */
+const withEmptiedHolder = (
+  node: InlineNode,
+  children: readonly InlineNode[],
+  nodes: InlineNode[],
+  resolution: Resolution,
+): InlineNode[] => {
+  const pendingInsertion = (child: InlineNode): boolean =>
+    isAddedRevision(child) &&
+    !resolution.ids.has(child.info.id) &&
+    child.resolutionJoins !== undefined;
+  if (
+    resolution.decision !== REVISION_DECISIONS.ACCEPT ||
+    isTrackedWrapper(node) ||
+    nodes.length === 0 ||
+    !nodes.every(pendingInsertion) ||
+    children.every(pendingInsertion)
+  )
+    return nodes;
+  return nodes.map((child) => {
+    if (
+      !isAddedRevision(child) ||
+      child.resolutionJoins === undefined ||
+      child.resolutionJoins.emptiedHolder === true
+    )
+      return child;
+    const marked = Object.assign({}, child, {
+      resolutionJoins: Object.assign({}, child.resolutionJoins, {
+        emptiedHolder: true as const,
+      }),
+    });
+    carryResolutionState(resolution, child, marked);
+    return marked;
+  });
+};
+
 /** What has become of a deferred seam's blocker. */
 type BlockerFate = "pending" | "accepted" | "removed";
 
@@ -1797,6 +1838,14 @@ const resolveList = ({
   const removalSeams = new Set<number>();
   /** Seams a kept revision's own joins recorded at its edges. */
   const keptJoinSeams = new Set<number>();
+  /** The date of the earliest kept revision whose join recorded each seam. */
+  const keptJoinDates = new Map<number, string>();
+  const recordKeptJoin = (seam: number, node: TrackedWrapper): void => {
+    keptJoinSeams.add(seam);
+    const date = node.info.date ?? "";
+    const known = keptJoinDates.get(seam);
+    if (known === undefined || date < known) keptJoinDates.set(seam, date);
+  };
   /**
    * Of those a rejected deletion or move source recorded, the seams with its
    * own content just before them (its join after) or just after them (its
@@ -2010,7 +2059,7 @@ const resolveList = ({
       else {
         recordSourceSeam(out.length, node.resolutionJoins.before);
         if (node.resolutionJoins.before > 0) {
-          keptJoinSeams.add(out.length);
+          recordKeptJoin(out.length, node);
           if (isRemovedRevisionNode(node)) ownContentAfter.add(out.length);
         }
         if (
@@ -2067,7 +2116,7 @@ const resolveList = ({
       else {
         recordSourceSeam(out.length, node.resolutionJoins.after);
         if (node.resolutionJoins.after > 0) {
-          keptJoinSeams.add(out.length);
+          recordKeptJoin(out.length, node);
           if (isRemovedRevisionNode(node)) ownContentBefore.add(out.length);
         }
         if (
@@ -2170,9 +2219,16 @@ const resolveList = ({
     // leaves no record with nothing. Kept, the record could not tell a later
     // resolution it was emptied rather than empty before, and would stay where
     // accepting the same changes at once folds it into an alike neighbour.
+    // So does a record a rejection empties of insertions an acceptance left
+    // as all it held: accepting that content last would have emptied it.
     if (
       (isTrackedWrapper(node) ||
-        resolution.decision === REVISION_DECISIONS.ACCEPT) &&
+        resolution.decision === REVISION_DECISIONS.ACCEPT ||
+        children.some(
+          (child) =>
+            isAddedRevision(child) &&
+            child.resolutionJoins?.emptiedHolder === true,
+        )) &&
       inner.nodes.length === 0 &&
       children.length > 0
     ) {
@@ -2188,7 +2244,12 @@ const resolveList = ({
         plainSeams.add(out.length);
       continue;
     }
-    let rebuilt = recut(rebuildNode(node, inner.nodes));
+    let rebuilt = recut(
+      rebuildNode(
+        node,
+        withEmptiedHolder(node, children, inner.nodes, resolution),
+      ),
+    );
     if (
       isTrackedWrapper(rebuilt) &&
       rebuilt.resolutionJoins?.retainedAfter !== undefined
@@ -2350,6 +2411,102 @@ const resolveList = ({
     else if (pendingRemoval(right)) acceptAsPlain(seam, "before");
     else if (seam > 0 && pendingRemoval(left)) acceptAsPlain(seam - 1, "after");
   }
+  // Below the records a seam joins, its pieces can still be held in pending
+  // deletions or move sources with boundaries kept standing between them:
+  // the pieces stand only once those are rejected, so the rest of the seam
+  // waits on them, as it does where such a change meets the seam itself.
+  // Dropped, rejecting them later would leave the pieces apart where
+  // rejecting everything at once joins them around the boundaries.
+  const deferNestedRemovalSeam = (
+    left: InlineNode,
+    right: InlineNode,
+    depth: number,
+  ): [InlineNode, InlineNode] => {
+    const leftChildren = childNodes(left);
+    const rightChildren = childNodes(right);
+    if (
+      depth <= 1 ||
+      leftChildren === undefined ||
+      rightChildren === undefined ||
+      !sameOwnFields(left, right)
+    )
+      return [left, right];
+    let leftEnd = leftChildren.length - 1;
+    while (leftEnd >= 0 && isStandingBoundary(leftChildren[leftEnd]))
+      leftEnd -= 1;
+    let rightStart = 0;
+    while (
+      rightStart < rightChildren.length &&
+      isStandingBoundary(rightChildren[rightStart])
+    )
+      rightStart += 1;
+    const leftHolder = leftChildren.at(leftEnd);
+    const rightHolder = rightChildren.at(rightStart);
+    if (leftHolder === undefined || rightHolder === undefined)
+      return [left, right];
+    const standing = leftEnd < leftChildren.length - 1 || rightStart > 0;
+    if (!standing) {
+      const inner = deferNestedRemovalSeam(leftHolder, rightHolder, depth - 1);
+      return [
+        inner[0] === leftHolder
+          ? left
+          : rebuildNode(left, [...leftChildren.slice(0, -1), inner[0]]),
+        inner[1] === rightHolder
+          ? right
+          : rebuildNode(right, [inner[1], ...rightChildren.slice(1)]),
+      ];
+    }
+    const pendingHolder = (
+      node: InlineNode,
+    ): node is Extract<InlineNode, { type: "deletion" | "moveFrom" }> =>
+      (node.type === "deletion" || node.type === "moveFrom") &&
+      !resolution.ids.has(node.info.id) &&
+      node.resolutionJoins !== undefined;
+    if (
+      !pendingHolder(leftHolder) ||
+      !pendingHolder(rightHolder) ||
+      !sameOwnFields(leftHolder, rightHolder)
+    )
+      return [left, right];
+    const leftPiece = leftHolder.content.at(-1);
+    const rightPiece = rightHolder.content.at(0);
+    if (
+      leftPiece === undefined ||
+      rightPiece === undefined ||
+      !sameOwnFields(leftPiece, rightPiece)
+    )
+      return [left, right];
+    const blockers = [leftHolder.info.id, rightHolder.info.id];
+    const withGroup = (
+      holder: Extract<InlineNode, { type: "deletion" | "moveFrom" }>,
+      edge: "start" | "end",
+    ): InlineNode => {
+      const joins =
+        holder.resolutionJoins ?? panic("A seam holder records its joins.");
+      const next = Object.assign({}, holder, {
+        resolutionJoins: Object.assign({}, joins, {
+          deferredRemove: canonicalDeferredGroups([
+            ...(joins.deferredRemove ?? []),
+            { depth: depth - 1, blockers, edge },
+          ]),
+        }),
+      });
+      carryResolutionState(resolution, holder, next);
+      return next;
+    };
+    return [
+      rebuildNode(left, [
+        ...leftChildren.slice(0, leftEnd),
+        withGroup(leftHolder, "end"),
+        ...leftChildren.slice(leftEnd + 1),
+      ]),
+      rebuildNode(right, [
+        ...rightChildren.slice(0, rightStart),
+        withGroup(rightHolder, "start"),
+        ...rightChildren.slice(rightStart + 1),
+      ]),
+    ];
+  };
   // A recorded seam a pending deletion or move source stands at, holding
   // the piece on its side, joins once that change's content is kept: the
   // change carries the seam on that side, as deep as it was recorded.
@@ -2727,11 +2884,42 @@ const resolveList = ({
         holdsPiece(rightStart, "start")
           ? rightStart
           : undefined;
+      // A kept revision's join belongs to the record that revision cut,
+      // counting that record's own tracked wrapper as its first level.
+      // Insertions made before the revision there are no changes made inside
+      // that record but pieces of it: rejecting them takes that wrapper away,
+      // so the seam they defer joins the pieces beyond them one level less
+      // deep, and not at all when that wrapper was all the revision cut.
+      const keptJoinFrom = removalSeams.has(recorded)
+        ? undefined
+        : keptJoinDates.get(recorded);
+      const earlier = (index: number): boolean => {
+        const node = out[index]?.node;
+        return (
+          keptJoinFrom !== undefined &&
+          node !== undefined &&
+          isTrackedWrapper(node) &&
+          (node.info.date ?? "") < keptJoinFrom
+        );
+      };
+      const piecesOnly =
+        leftHolder === undefined &&
+        rightHolder === undefined &&
+        Array.from(
+          { length: keptEnd - leftEnd },
+          (_, offset) => leftEnd + 1 + offset,
+        ).every(earlier) &&
+        Array.from(
+          { length: rightStart - seam },
+          (_, offset) => seam + offset,
+        ).every(earlier);
+      const deferredDepth = piecesOnly ? exactDepth - 1 : exactDepth;
       if (
         (leftEnd !== keptEnd ||
           rightStart !== seam ||
           leftHolder !== undefined ||
           rightHolder !== undefined) &&
+        deferredDepth > 0 &&
         leftEnd >= 0 &&
         rightStart < out.length
       ) {
@@ -2771,7 +2959,7 @@ const resolveList = ({
           let edge: { edge?: "start" | "end" } = {};
           if (index === leftHolder) edge = { edge: "end" };
           if (index === rightHolder) edge = { edge: "start" };
-          groups.push({ depth: exactDepth, blockers, ...keptFrom, ...edge });
+          groups.push({ depth: deferredDepth, blockers, ...keptFrom, ...edge });
           out[index] = occurrenceOf(
             Object.assign({}, node, {
               resolutionJoins: Object.assign({}, node.resolutionJoins, {
@@ -2819,7 +3007,12 @@ const resolveList = ({
       });
       if (folded.length === 1) met = folded;
       else {
-        const deferred = deferRunReviewSeam({ left, right, depth: exactDepth });
+        const held = deferNestedRemovalSeam(left, right, exactDepth);
+        const deferred = deferRunReviewSeam({
+          left: held[0],
+          right: held[1],
+          depth: exactDepth,
+        });
         const deferredLeft =
           deferred.at(0) ?? panic("A recorded seam retains its left node.");
         const deferredRight =

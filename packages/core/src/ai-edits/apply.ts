@@ -4054,6 +4054,25 @@ const endsPendingJoinAt = (
     return end?.kind === "paragraph" && end.position === position;
   });
 
+/**
+ * Where the pending join from before the batch whose source is the paragraph
+ * at `position` ends, when it ends at a paragraph: null otherwise.
+ */
+const pendingJoinEndOfSource = (
+  tr: Transaction,
+  joins: readonly PendingJoin[],
+  position: number,
+): number | null => {
+  for (const join of joins) {
+    if (join.end.kind !== "paragraph") continue;
+    const source = tr.mapping.mapResult(join.source, 1);
+    if (source.deleted || source.pos !== position) continue;
+    const end = tr.mapping.mapResult(join.end.position, 1);
+    return end.deleted ? null : end.pos;
+  }
+  return null;
+};
+
 /** A break a tracked `deleteBlock` kept because a pending join ends there. */
 type KeptJoinBreak = BatchParagraphPosition & {
   operationId: string;
@@ -4075,7 +4094,9 @@ type KeptJoinBreaksOptions = {
  * operation after it in the batch reads the joined paragraph where it stands,
  * as it does when the deletion is applied on its own. Where the batch also
  * deleted the words joined into it, nothing of the join is left, and the
- * break goes with the paragraph after all.
+ * break goes with the paragraph after all. A deletion of those words records
+ * the join's end here too, so the break goes as well when an earlier batch
+ * deleted the paragraph and kept it: one batch or two, the same is left.
  */
 const withKeptJoinBreaksSettled = ({
   tr,
@@ -4319,10 +4340,14 @@ const withRetiredFinalParagraphs = ({
  * the free one records the other's as `w:pPrChange` — what a rejection reads
  * to put the container's ending back the way it was.
  *
- * This runs once over the finished document rather than at each insertion:
- * which paragraph ends a container is only settled when the batch is, and an
- * insertion that looked final was undone by the next operation writing a table
- * after it.
+ * The rotation runs once over the finished document rather than at each
+ * insertion: which paragraph ends a container is only settled when the batch
+ * is, and an insertion that looked final was undone by the next operation
+ * writing a table after it. A deleted break an insertion supersedes is moved
+ * first (`withSupersededDeletedBreaksMoved`); that move is settled as soon as
+ * the insertion lands, and the batch makes it then too, so what later
+ * operations of the batch read beside the insertion is what they read after
+ * it alone.
  * A wholly inserted table from this batch can be crossed to reach the carrier;
  * its removal on reject exposes that same paragraph boundary again.
  *
@@ -4333,7 +4358,59 @@ const withRetiredFinalParagraphs = ({
  * paragraph's words run into the one after it, which ends with the free mark,
  * and neither break is left to resolve.
  */
-const withRotatedAddedFinalBreaks = ({
+const withRotatedAddedFinalBreaks = (
+  options: RotateAddedFinalBreaksOptions,
+): RotatedAddedFinalBreaks => {
+  const { tr, batchRevisionIds, author, date, initials } = options;
+  const moved = withSupersededDeletedBreaksMoved(options);
+  const nextRevisionId = moved.nextRevisionId;
+  const synthesizedRevisions: RotatedAddedFinalBreaks["synthesizedRevisions"] =
+    [...moved.synthesizedRevisions];
+  const paragraphTypeName =
+    tr.doc.type.schema.nodes["paragraph"]?.name ?? "paragraph";
+  const rotations = finalParagraphsOf(tr.doc, paragraphTypeName)
+    .flatMap(({ node, position }) => {
+      const mark: unknown = node.attrs["pPrMark"];
+      const revisionId = addedBreakRevisionId(mark);
+      return revisionId !== null && batchRevisionIds.has(revisionId)
+        ? [{ mark, node, ownerRevisionId: revisionId, position }]
+        : [];
+    })
+    // A cancelled break joins two paragraphs, which moves what follows them:
+    // the last container first keeps the others' positions valid.
+    .toSorted((left, right) => right.position - left.position);
+  return withFinalBreaksRotated({
+    tr,
+    rotations,
+    batchRevisionIds,
+    author,
+    date,
+    initials,
+    styleResolver: options.styleResolver,
+    nextRevisionId,
+    synthesizedRevisions,
+  });
+};
+
+type SupersededDeletedBreaksMoved = Pick<
+  RotatedAddedFinalBreaks,
+  "nextRevisionId" | "synthesizedRevisions"
+>;
+
+/**
+ * A later insertion may land between a deleted break and the paragraph it
+ * would join into. Move the old deletion to the new boundary so resolving
+ * either revision keeps the inserted paragraph separate.
+ *
+ * Unlike the rotation of a container's final break, this needs nothing the
+ * rest of the batch settles: a paragraph inserted right after one whose
+ * break a pending change deletes stands there whatever comes later. The
+ * batch therefore moves the deletion as soon as such a paragraph lands, so
+ * every later operation of the batch reads the boundary as it does after
+ * that insertion alone, and once more at the end; the move is idempotent,
+ * and a later insertion right after the moved break carries it on.
+ */
+const withSupersededDeletedBreaksMoved = ({
   tr,
   batchRevisionIds,
   revisionSeed,
@@ -4342,13 +4419,10 @@ const withRotatedAddedFinalBreaks = ({
   initials,
   styleResolver,
   numbering,
-}: RotateAddedFinalBreaksOptions): RotatedAddedFinalBreaks => {
+}: RotateAddedFinalBreaksOptions): SupersededDeletedBreaksMoved => {
   let nextRevisionId = revisionSeed;
   const synthesizedRevisions: RotatedAddedFinalBreaks["synthesizedRevisions"] =
     [];
-  // A later insertion may land between a deleted break and the paragraph it
-  // would join into. Move the old deletion to the new boundary so resolving
-  // either revision keeps the inserted paragraph separate.
   const supersededDeletedBreaks: {
     preceding: number;
     inserted: number;
@@ -4505,21 +4579,38 @@ const withRotatedAddedFinalBreaks = ({
       });
     }
   }
+  return { nextRevisionId, synthesizedRevisions };
+};
 
-  const paragraphTypeName =
-    tr.doc.type.schema.nodes["paragraph"]?.name ?? "paragraph";
-  const rotations = finalParagraphsOf(tr.doc, paragraphTypeName)
-    .flatMap(({ node, position }) => {
-      const mark: unknown = node.attrs["pPrMark"];
-      const revisionId = addedBreakRevisionId(mark);
-      return revisionId !== null && batchRevisionIds.has(revisionId)
-        ? [{ mark, node, ownerRevisionId: revisionId, position }]
-        : [];
-    })
-    // A cancelled break joins two paragraphs, which moves what follows them:
-    // the last container first keeps the others' positions valid.
-    .toSorted((left, right) => right.position - left.position);
+type FinalBreakRotation = {
+  mark: unknown;
+  node: PMNode;
+  ownerRevisionId: number;
+  position: number;
+};
 
+type FinalBreaksRotationOptions = Pick<
+  RotateAddedFinalBreaksOptions,
+  "tr" | "batchRevisionIds" | "author" | "date" | "initials" | "styleResolver"
+> & {
+  rotations: readonly FinalBreakRotation[];
+  nextRevisionId: number;
+  synthesizedRevisions: RotatedAddedFinalBreaks["synthesizedRevisions"];
+};
+
+/** The rotation of every final break `withRotatedAddedFinalBreaks` found. */
+const withFinalBreaksRotated = ({
+  tr,
+  rotations,
+  batchRevisionIds,
+  author,
+  date,
+  initials,
+  styleResolver,
+  nextRevisionId: revisionSeed,
+  synthesizedRevisions,
+}: FinalBreaksRotationOptions): RotatedAddedFinalBreaks => {
+  let nextRevisionId = revisionSeed;
   let next = tr;
   const retractedRevisionIds: number[] = [];
   // Attribute writes do not move anything, so the positions stay valid.
@@ -5934,7 +6025,36 @@ const applyFolioAIEditOperationsInternal = ({
   /** Paragraphs a retracted break of this batch joined, to the one it left. */
   const joinedInto = new Map<string, string>();
   const executionGroups = groupRuns(executionOrder);
+  /** Property revisions moving a superseded deleted break wrote, by owner. */
+  const movedBreakRevisions: RotatedAddedFinalBreaks["synthesizedRevisions"] =
+    [];
+  // Whether the last group put in a paragraph, which may supersede a break.
+  let landedParagraphs = false;
   for (const executionGroup of executionGroups) {
+    if (landedParagraphs) {
+      // Later operations read the boundary as after those insertions alone.
+      continueSharedRevisionIds();
+      const moved = withSupersededDeletedBreaksMoved({
+        tr,
+        batchRevisionIds: new Set(
+          applied.flatMap(({ revisionIds }) => revisionIds ?? []),
+        ),
+        revisionSeed,
+        author,
+        date,
+        initials,
+        styleResolver: styleResolver ?? null,
+        numbering,
+      });
+      revisionSeed = moved.nextRevisionId;
+      claimSharedRevisionIds(revisionSeed);
+      movedBreakRevisions.push(...moved.synthesizedRevisions);
+    }
+    landedParagraphs = executionGroup.some(
+      ({ operation }) =>
+        BLOCK_INSERTION_TYPES.has(operation.type) ||
+        operation.type === "splitBlock",
+    );
     // Recheck every insertion against the live anchor, including insertions
     // sharing a gap. Earlier edits can delete its text or its containing row.
     const insertionState = tr;
@@ -7256,6 +7376,22 @@ const applyFolioAIEditOperationsInternal = ({
               });
             }
           }
+          // The words of a pending join's source go: accepted, they are the
+          // joined paragraph, and nothing of it may be left. Where the
+          // paragraph the join runs into holds nothing that stays either (an
+          // earlier deletion kept its break), the break goes with them, as
+          // when one batch deletes both (`withKeptJoinBreaksSettled`).
+          const joinEnd = isPairedMove(item.operation.moveId)
+            ? null
+            : pendingJoinEndOfSource(tr, joinsBefore, markPosition);
+          if (joinEnd !== null) {
+            keptJoinBreaks.push({
+              operationId: item.operation.id,
+              position: joinEnd,
+              mappedFrom: tr.mapping.maps.length,
+              revisionExtras: trackedRevisionExtras,
+            });
+          }
         }
         if (commentMark) {
           tr = tr.addMark(item.from, item.to, commentMark);
@@ -8178,10 +8314,10 @@ const applyFolioAIEditOperationsInternal = ({
         receiptIndexByRevisionId.set(revisionId, receiptIndex);
       }
     }
-    for (const {
-      ownerRevisionId,
-      revisionId,
-    } of rotated.synthesizedRevisions) {
+    for (const { ownerRevisionId, revisionId } of [
+      ...movedBreakRevisions,
+      ...rotated.synthesizedRevisions,
+    ]) {
       const receiptIndex = receiptIndexByRevisionId.get(ownerRevisionId);
       const receipt =
         receiptIndex === undefined ? undefined : applied.at(receiptIndex);

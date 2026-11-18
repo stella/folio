@@ -38,8 +38,9 @@ export const CANONICAL_RULE: {
   /**
    * A suggested link change cannot leave a piece of a link holding only
    * bookmark or comment markers, nor copy content that names a record of its
-   * own (a note reference, preserved run markup, or a marker inside a copied
-   * text box). The same change made directly applies.
+   * own (preserved run markup, a marker inside a copied text box, or a note
+   * holding a tracked change, comment or bookmark). The same change made
+   * directly applies.
    */
   linkSuggestionShape: "linkSuggestionShape",
 } as const;

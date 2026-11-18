@@ -37,6 +37,7 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
+import { rejectedJoinSurvivorIdentities } from "../../../../test/support/rejectedJoinSurvivors";
 import { rejectedParagraphFillerIdentities } from "../../../../test/support/rejectedParagraphFillers";
 import { CanonicalSessionError } from "../canonical/canonicalSession";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
@@ -256,6 +257,25 @@ const viewLaws = async (
     return;
   }
   const expected = await expectedViews(buffer);
+  // The legacy reviewer keeps the wrong paragraph of a rejected join before a
+  // block the joined paragraph cannot run into; the view must keep the later
+  // one, whose mark stays.
+  const survivors = rejectedJoinSurvivorIdentities({
+    source: before,
+    actual: canonical.toResolvedDocument("reject"),
+    expected: (await open(buffer, "legacy")).toResolvedDocument("reject"),
+  });
+  for (const entry of expected) {
+    if (entry.view !== "original") continue;
+    for (const { expectedId, survivorId } of survivors) {
+      entry.blocks =
+        entry.blocks?.map((block) =>
+          block.id === expectedId ? { ...block, id: survivorId } : block,
+        ) ?? null;
+      entry.text =
+        entry.text?.replaceAll(`[${expectedId}]`, `[${survivorId}]`) ?? null;
+    }
+  }
   const fillerIds = new Map(
     isDeepStrictEqual(read, expected)
       ? []
@@ -313,14 +333,6 @@ const packaged = async (document: Document): Promise<ArrayBuffer | null> => {
 // These malformed corpus documents fail session construction. Every other
 // corpus document and every generated supported document must actually read.
 const IMPORT_REFUSALS = new Map([
-  [
-    "duplicate-imported-revision.docx",
-    {
-      reason: "refused",
-      ground: { gap: CANONICAL_GAP.dispatch },
-      message: "2 records in the package carry revision:83.",
-    },
-  ],
   [
     "sdt-self-closing.docx",
     {
