@@ -97,6 +97,4 @@ export type TrueTypeSubset = {
     readonly glyphIdMap: ReadonlyMap<number, number>;
 };
 
-// (No @packageDocumentation comment for this package)
-
 ```

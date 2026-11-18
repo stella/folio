@@ -23,8 +23,8 @@ import {
   type Node,
   ScriptTarget,
   type SourceFile,
-} from "tsrs/unstable/ast";
-import { API, type Checker } from "tsrs/unstable/async";
+} from "tsrs/ast";
+import { API, type Checker } from "tsrs/async";
 
 import { parseSourceModule } from "../scripts/lib/oxc-ast";
 

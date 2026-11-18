@@ -6,7 +6,7 @@ import {
   type Diagnostic,
   formatDiagnostics,
   type FormatDiagnosticsHost,
-} from "tsrs/unstable/async";
+} from "tsrs/async";
 
 // Module/type resolution diagnostics, including named/default export mismatches.
 // Other semantic errors in third-party types are outside this dependency gate.

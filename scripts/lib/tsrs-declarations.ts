@@ -2,9 +2,9 @@ import { createRequire } from "node:module";
 import path from "node:path";
 
 export type TsrsDeclarations = {
-  readonly generator: "tsgo";
+  readonly generator: "tsrs";
   readonly tsconfig: string;
-  readonly tsgo: { readonly path: string };
+  readonly tsrs: { readonly moduleUrl: string; readonly path: string };
 };
 
 /**
@@ -20,9 +20,10 @@ export type TsrsDeclarations = {
  * `test/`) would be written beside its source.
  */
 export const tsrsDeclarations = (tsconfig: string): TsrsDeclarations => ({
-  generator: "tsgo",
+  generator: "tsrs",
   tsconfig,
-  tsgo: {
+  tsrs: {
+    moduleUrl: import.meta.resolve("tsrs"),
     path: path.join(
       path.dirname(createRequire(import.meta.url).resolve("tsrs/package.json")),
       "bin",
