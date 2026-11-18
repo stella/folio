@@ -774,65 +774,22 @@ export const compileHyperlinkIntent = (
         { type: "run", content: [{ type: "text", text: intent.text }] },
       ]),
     ];
-    // A suggested link is a tracked paste of it over the selection.
-    if (mode.type === "suggesting")
-      return compileIntent(
-        document,
-        {
-          type: "replaceFragment",
-          from: intent.from,
-          to: intent.to,
-          paragraphs: [{ type: "paragraph", content }],
-          openStart: 1,
-          openEnd: 1,
-        },
-        mode,
-      );
-    const deletion = compileIntent(
+    // A link inserted over the selection is a paste of it there, made
+    // directly or suggested alike: the paragraph it lands in keeps the
+    // properties of the selection's first paragraph, as a paste's open
+    // start keeps them.
+    return compileIntent(
       document,
-      { type: "replaceText", from: intent.from, to: intent.to, text: "" },
-      mode,
-    );
-    if (deletion.isErr()) return deletion;
-    const applied = applyDocumentOps(document, deletion.value.ops);
-    if (applied.isErr()) return Result.err(applied.error);
-    const at = deletion.value.selection;
-    const target = selectedParagraphRuns(applied.value.document, at, at);
-    if (target.isErr()) return Result.err(target.error);
-    const paragraph = target.value.at(0)?.at(0)?.paragraph;
-    if (!paragraph) return refuse("Hyperlink insertion lost its paragraph.");
-    const gap = resolveGap({ paragraph, position: at, fallback: "insertion" });
-    if (typeof gap !== "object")
-      return refuse("Invalid hyperlink insertion gap.", gap);
-    const [before = [], after = []] = partitionContent(paragraph.content, [
-      gap,
-    ]);
-    const replacement = asParagraphContent(before).concat(
-      content,
-      asParagraphContent(after),
-    );
-    const freshened = freshenedParagraphs(
-      applied.value.document,
-      [{ paragraph, content: replacement }],
-      mode,
-    );
-    if (freshened.isErr()) return Result.err(freshened.error);
-    return Result.ok({
-      ops: deletion.value.ops.concat([
-        {
-          type: DOCUMENT_OP_TYPES.REPLACE_INLINE,
-          story: at.story,
-          blockId: at.blockId,
-          expected: paragraph.content,
-          content: freshened.value[0]?.content ?? replacement,
-        },
-      ]),
-      selection: {
-        ...at,
-        offset: at.offset + intent.text.length,
-        zeroWidthBefore: 0,
+      {
+        type: "replaceFragment",
+        from: intent.from,
+        to: intent.to,
+        paragraphs: [{ type: "paragraph", content }],
+        openStart: 1,
+        openEnd: 1,
       },
-    });
+      mode,
+    );
   }
   if (mode.type === "suggesting")
     return compileTrackedLinkEdit(document, {
