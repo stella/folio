@@ -3372,11 +3372,18 @@ const joinOps = (
     tableRemovalIsTrackable:
       next?.type !== "table" ||
       (tableBoundary !== undefined &&
-        markBeforeTableResolves({ blocks, boundary: tableBoundary })),
+        (markBeforeTableResolves({ blocks, boundary: tableBoundary }) ||
+          // A story another producer ended with a table already: resolving
+          // this mark leaves its end as it was, only the run-in crosses.
+          (!location.list.some((step) => step.kind === "tableCell") &&
+            location.index > 0 &&
+            blocks.at(-1)?.type === "table" &&
+            tableBoundary.type === "receiver"))),
     emptyInsertedTableBoundary:
       tableBoundary?.type === "blocked" && tableBoundary.reason === "review"
         ? "pendingReview"
         : "unavailable",
+    precededByBlock: location.index > 0,
     removedSectionProperties:
       added && paragraph.sectionProperties !== undefined,
     precedingSectionOwner: precedingSectionOwner(previous, paragraph),
