@@ -238,7 +238,7 @@ export const CANONICAL_CAPABILITIES: {
     readonly defaultSessionMutation: "pm-headless-reviewer";
     readonly kind: "mutation-source";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "A canonical reviewer stages comparison resources, sections and table properties; secondary-story suggestion resolution, story-view resolution beside staged suggestions and comparison inline-atom matching refuse.";
+    readonly summary: "A canonical reviewer stages comparison resources, sections, table properties and inline atoms; secondary-story suggestion resolution, story-view resolution beside staged suggestions and comparison inline-provenance matching refuse.";
   };
   readonly "pm-ai-snapshots": {
     readonly owner: "ai-edits";
@@ -391,7 +391,7 @@ export const CANONICAL_CAPABILITIES: {
     kind: "mutation-source",
     adapters: ["react", "vue"],
     summary:
-      "A canonical reviewer stages comparison resources, sections and table properties; secondary-story suggestion resolution, story-view resolution beside staged suggestions and comparison inline-atom matching refuse.",
+      "A canonical reviewer stages comparison resources, sections, table properties and inline atoms; secondary-story suggestion resolution, story-view resolution beside staged suggestions and comparison inline-provenance matching refuse.",
   },
   [CANONICAL_GAP.aiSnapshots]: {
     owner: "ai-edits",

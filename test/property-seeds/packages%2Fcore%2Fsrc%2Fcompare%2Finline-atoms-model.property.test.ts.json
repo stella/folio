@@ -1,0 +1,10 @@
+{
+  "model matcher agrees with the editor-state matcher": [
+    {
+      "seed": 560491989,
+      "path": "16:3:2:4:6:8:8:37",
+      "note": "Result text ending before an empty field: the replaced range must stop past its last character.",
+      "date": "2026-11-18"
+    }
+  ]
+}
