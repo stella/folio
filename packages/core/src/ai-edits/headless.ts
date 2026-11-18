@@ -193,6 +193,7 @@ import {
   getDocumentStyleResolver,
   withDocumentStyles,
 } from "../prosemirror/plugins/documentStyles";
+import { getFolioNodeRevisionCarriers } from "../prosemirror/revisionCarriers";
 import { schema, singletonManager } from "../prosemirror/schema";
 import { sectionPropertiesOf } from "../prosemirror/sectionCarrier";
 import { storyListNumbering } from "../prosemirror/storyListNumbering";
@@ -1253,6 +1254,8 @@ type ReviewLockFact = {
   id: number;
   suggestionId: string | null;
   violation: LockedControlViolation | undefined;
+  /** Other revision ids of its story that resolving this change takes with it. */
+  carries: ReadonlySet<number>;
 };
 
 type ClassifyReviewLocksOptions<Source, Change extends ReviewLockFact> = {
@@ -1260,19 +1263,19 @@ type ClassifyReviewLocksOptions<Source, Change extends ReviewLockFact> = {
   grouping: "whole-proposal" | "individual-change";
 };
 
-/** Source-specific probes supply facts; a held proposal stays whole across all stories. */
+type HeldReviewLock = { violation: LockedControlViolation; message: string };
+
+/**
+ * Source-specific probes supply facts; a held proposal stays whole across all
+ * stories, and a change whose resolution would carry a held change away (its
+ * removed content or block holds it) is held with it.
+ */
 const classifyReviewLocks = <Source, Change extends ReviewLockFact>({
   stories,
   grouping,
 }: ClassifyReviewLocksOptions<Source, Change>) => {
-  const heldSuggestions = new Map<string, LockedControlViolation>();
   switch (grouping) {
     case "whole-proposal":
-      for (const { changes } of stories)
-        for (const { suggestionId, violation } of changes)
-          if (suggestionId !== null && violation !== undefined)
-            heldSuggestions.set(suggestionId, violation);
-      break;
     case "individual-change":
       break;
     default: {
@@ -1280,29 +1283,176 @@ const classifyReviewLocks = <Source, Change extends ReviewLockFact>({
       return panic("Unknown review lock grouping", { grouping: unhandled });
     }
   }
+  const heldSuggestions = new Map<string, LockedControlViolation>();
+  const held = stories.map(() => new Map<Change, HeldReviewLock>());
+  const heldIds = stories.map(() => new Map<number, LockedControlViolation>());
+  const reasonFor = (
+    change: Change,
+    storyIndex: number,
+  ): HeldReviewLock | undefined => {
+    if (change.violation !== undefined)
+      return {
+        violation: change.violation,
+        message: lockedControlMessage(change.violation),
+      };
+    const proposal =
+      change.suggestionId === null
+        ? undefined
+        : heldSuggestions.get(change.suggestionId);
+    if (proposal !== undefined)
+      return {
+        violation: proposal,
+        message: `Another change in this proposal is held: ${lockedControlMessage(proposal)}`,
+      };
+    for (const id of change.carries) {
+      const carried = heldIds[storyIndex]?.get(id);
+      if (carried !== undefined)
+        return {
+          violation: carried,
+          message: `Resolving this change would take a held change with it: ${lockedControlMessage(carried)}`,
+        };
+    }
+    return undefined;
+  };
+  // Holding one change can hold its proposal and the changes that carry it.
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const [storyIndex, { changes }] of stories.entries()) {
+      const storyHeld =
+        held[storyIndex] ?? panic("Every story has its held changes");
+      for (const change of changes) {
+        if (storyHeld.has(change)) continue;
+        const reason = reasonFor(change, storyIndex);
+        if (reason === undefined) continue;
+        storyHeld.set(change, reason);
+        heldIds[storyIndex]?.set(change.id, reason.violation);
+        if (
+          grouping === "whole-proposal" &&
+          change.suggestionId !== null &&
+          !heldSuggestions.has(change.suggestionId)
+        )
+          heldSuggestions.set(change.suggestionId, reason.violation);
+        grew = true;
+      }
+    }
+  }
   return {
     heldSuggestionIds: new Set(heldSuggestions.keys()),
-    stories: stories.map(({ source, changes }) => ({
+    stories: stories.map(({ source, changes }, storyIndex) => ({
       source,
       changes: changes.map((change) => {
-        const violation =
-          change.violation ??
-          (change.suggestionId === null
-            ? undefined
-            : heldSuggestions.get(change.suggestionId));
-        if (violation === undefined) return { type: "free", change } as const;
-        return {
-          type: "held",
-          change,
-          violation,
-          message:
-            change.violation === undefined
-              ? `Another change in this proposal is held: ${lockedControlMessage(violation)}`
-              : lockedControlMessage(violation),
-        } as const;
+        const reason = held[storyIndex]?.get(change);
+        if (reason === undefined) return { type: "free", change } as const;
+        return { type: "held", change, ...reason } as const;
       }),
     })),
   };
+};
+
+const PARAGRAPH_MARK_REMOVED_BY = {
+  accept: "paragraphMarkDeleted",
+  reject: "paragraphMarkInserted",
+} as const;
+const RECORD_REMOVED_BY = { accept: "deletion", reject: "insertion" } as const;
+const ROW_REMOVED_BY = { accept: "trDel", reject: "trIns" } as const;
+const CELL_REMOVED_BY = { accept: "del", reject: "ins" } as const;
+
+const numericRevisionId = (value: unknown): number | undefined =>
+  typeof value === "object" &&
+  value !== null &&
+  "revisionId" in value &&
+  typeof value.revisionId === "number"
+    ? value.revisionId
+    : undefined;
+
+/**
+ * The revision ids each change's resolution takes with it: every record inside
+ * content it removes (the text it inserted, when rejecting; deleted, when
+ * accepting) or inside a paragraph, row or cell whose own carrier it removes.
+ */
+const revisionIdsCarriedByResolution = (
+  doc: PMNode,
+  mode: "accept" | "reject",
+): ReadonlyMap<number, ReadonlySet<number>> => {
+  const carried = new Map<number, Set<number>>();
+  const visit = (node: PMNode, pos: number): Set<number> => {
+    const ids = new Set<number>();
+    const removers = new Set<number>();
+    for (const mark of node.marks) {
+      const id = numericRevisionId(mark.attrs);
+      if (id !== undefined) {
+        ids.add(id);
+        if (mark.type.name === RECORD_REMOVED_BY[mode]) removers.add(id);
+      }
+      const ancestors: unknown = mark.attrs["_docxRevisionAncestors"];
+      if (!Array.isArray(ancestors)) continue;
+      for (const ancestor of ancestors as readonly unknown[]) {
+        const ancestorId = numericRevisionId(ancestor);
+        if (ancestorId === undefined) continue;
+        ids.add(ancestorId);
+        if (
+          typeof ancestor === "object" &&
+          ancestor !== null &&
+          "type" in ancestor &&
+          ancestor.type === RECORD_REMOVED_BY[mode]
+        )
+          removers.add(ancestorId);
+      }
+    }
+    for (const carrier of getFolioNodeRevisionCarriers(node, pos)) {
+      ids.add(carrier.id);
+      if (carrier.type === PARAGRAPH_MARK_REMOVED_BY[mode])
+        removers.add(carrier.id);
+    }
+    if (node.type.name === "tableRow")
+      for (const attr of ["trIns", "trDel"] as const) {
+        const id = numericRevisionId(node.attrs[attr]);
+        if (id === undefined) continue;
+        ids.add(id);
+        if (attr === ROW_REMOVED_BY[mode]) removers.add(id);
+      }
+    const cellMarker: unknown = node.attrs["cellMarker"];
+    if (
+      typeof cellMarker === "object" &&
+      cellMarker !== null &&
+      "info" in cellMarker &&
+      "kind" in cellMarker
+    ) {
+      const id = numericRevisionId(cellMarker.info);
+      if (id !== undefined) {
+        ids.add(id);
+        if (cellMarker.kind === CELL_REMOVED_BY[mode]) removers.add(id);
+      }
+    }
+    node.forEach((child, offset) => {
+      for (const id of visit(child, pos + 1 + offset)) ids.add(id);
+    });
+    for (const remover of removers) {
+      const set = carried.get(remover) ?? new Set<number>();
+      for (const id of ids) if (id !== remover) set.add(id);
+      carried.set(remover, set);
+    }
+    return ids;
+  };
+  doc.forEach((child, offset) => {
+    visit(child, offset);
+  });
+  return carried;
+};
+
+/** The ids a change's group carries: its other members and what each takes along. */
+const carriedByGroup = (
+  id: number,
+  groupIds: readonly number[],
+  carried: ReadonlyMap<number, ReadonlySet<number>>,
+): ReadonlySet<number> => {
+  const out = new Set<number>();
+  for (const member of [id, ...groupIds]) {
+    out.add(member);
+    for (const inner of carried.get(member) ?? []) out.add(inner);
+  }
+  out.delete(id);
+  return out;
 };
 
 /**
@@ -2286,6 +2436,7 @@ export class FolioDocxReviewer {
             ids.map((id) => [id, violation] as const),
           ),
         );
+        const carried = revisionIdsCarriedByResolution(state.doc, resolution);
         return [
           {
             source: { story },
@@ -2294,6 +2445,7 @@ export class FolioDocxReviewer {
               suggestionId,
               groupIds,
               violation: held.get(id),
+              carries: carriedByGroup(id, groupIds, carried),
             })),
           },
         ];
@@ -4151,6 +4303,7 @@ export class FolioDocxReviewer {
       const state = this.getEditableStoryState(handle);
       if (!state) return [];
       const held = lockHeldChanges(state, mode);
+      const carried = revisionIdsCarriedByResolution(state.doc, mode);
       return [
         {
           source: { handle, state },
@@ -4158,6 +4311,11 @@ export class FolioDocxReviewer {
             id,
             suggestionId: suggestionIdOfRevision(state, id),
             violation: held.get(id),
+            carries: carriedByGroup(
+              id,
+              getTrackedChangeGroupIdsFromDoc(state.doc, id),
+              carried,
+            ),
           })),
         },
       ];

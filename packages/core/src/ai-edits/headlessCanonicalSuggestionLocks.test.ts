@@ -753,3 +753,97 @@ for (const ordinary of ["present", "absent"] as const)
       factory.mockRestore();
     }
   });
+
+for (const engine of ["canonical", "legacy"] as const)
+  test(`${engine}: bulk rejection keeps an ordinary insertion that holds a fragment of a held proposal`, async () => {
+    const entry = STORIES[0];
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await fixture(engine === "canonical" ? "sdtLocked" : "contentLocked"),
+      { session: engine },
+    );
+    const apply = (
+      mode: "suggested" | "tracked-changes",
+      operation: Parameters<
+        typeof reviewer.applyDocumentOperationsToStory
+      >[0]["batch"]["operations"][number],
+    ) => {
+      const result = reviewer.applyDocumentOperationsToStory({
+        story: entry.handle,
+        batch: {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode,
+          operations: [operation],
+        },
+        undefinedReferences: "refuse",
+      });
+      expect(result.skipped).toEqual([]);
+      expect(result.applied).toHaveLength(1);
+    };
+    apply("tracked-changes", {
+      id: "ordinary",
+      type: "insertAfterBlock",
+      blockId: entry.free,
+      text: "Ordinary words stay.",
+    });
+    const ordinaryIds = publicChanges(reviewer).map(({ id }) => id);
+    const inserted =
+      reviewer
+        .getContent()
+        .find(({ text }) => text.includes("Ordinary words stay."))?.id ??
+      panic("The ordinary insertion needs its block.");
+    apply("suggested", {
+      id: "nested-proposal",
+      suggestionId: PROPOSAL,
+      type: "replaceInBlock",
+      blockId: inserted,
+      find: "words",
+      replace: "terms",
+    });
+    apply(
+      "suggested",
+      engine === "canonical"
+        ? {
+            id: "held-split",
+            suggestionId: PROPOSAL,
+            type: "splitBlock",
+            blockId: entry.held,
+            offset: CONTROL_PREFIX.length + 2,
+          }
+        : {
+            id: "held-delete",
+            suggestionId: PROPOSAL,
+            type: "deleteBlock",
+            blockId: entry.held,
+          },
+    );
+    const records = reviewer.exportPendingSuggestions();
+    // The ordinary paragraph's inserted mark holds the proposal's fragment.
+    const enclosing = publicChanges(reviewer)
+      .filter(
+        ({ type, blockId }) =>
+          type === "paragraphMarkInserted" && blockId === inserted,
+      )
+      .map(({ id }) => id);
+    expect(enclosing).toHaveLength(1);
+    expect(ordinaryIds).toEqual(expect.arrayContaining(enclosing));
+    const result = reviewer.rejectAll();
+    expect(result.skipped.map(({ id }) => id)).toEqual(
+      expect.arrayContaining(enclosing),
+    );
+    const fragmentLine = (text: string | undefined) =>
+      text?.split("\n").find((line) => line.startsWith(`[${inserted}]`));
+    expect(fragmentLine(reviewer.readStory(entry.handle)?.text)).toContain(
+      "terms",
+    );
+    expect(
+      reviewer
+        .getContent()
+        .find(({ id }) => id === "60000001")
+        ?.text.includes("terms"),
+    ).toBe(false);
+    // The proposal keeps every operation; the rejected ordinary text beside
+    // its fragment is what changed.
+    expect(
+      reviewer.exportPendingSuggestions().map(({ operation }) => operation.id),
+    ).toEqual(records.map(({ operation }) => operation.id));
+  });
