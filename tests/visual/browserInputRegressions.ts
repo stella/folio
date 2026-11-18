@@ -757,6 +757,40 @@ export const BROWSER_RTL_COMPOSITION_SEED_1793914965 = {
   trace: BrowserInputTrace;
 };
 
+/** A composition over everything replaces the text inside the document's edges. */
+export const BROWSER_COMPOSITION_OVER_EVERYTHING_TRACES = [
+  {
+    seed: 1794206220,
+    path: "0:2:1:1:1:1:1:1",
+    fingerprint: "0f194a9c3f728f97",
+    trace: {
+      shape: "rtl-cjk",
+      actions: [
+        { kind: "selectAll" },
+        { kind: "imeReplacement", updates: ["alpha"], completion: "commit" },
+      ],
+    },
+  },
+  {
+    seed: 1794471204,
+    path: "14:0:4:3:3",
+    fingerprint: "a18979eea69e8af9",
+    trace: {
+      shape: "tables",
+      actions: [
+        { kind: "selectAll" },
+        { kind: "imeReplacement", updates: ["alpha"], completion: "commit" },
+        { kind: "backspace" },
+      ],
+    },
+  },
+] satisfies readonly {
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+}[];
+
 export const BROWSER_PASTE_BEHIND_BOOKMARK_SEED_1793921366 = {
   seed: 1793921366,
   path: "11:4",
@@ -2113,6 +2147,7 @@ export const BROWSER_INPUT_REGRESSIONS = [
   BROWSER_CANCELLED_COMPOSITION_SEED_1793946574,
   BROWSER_PASTE_BEHIND_BOOKMARK_SEED_1793921366,
   BROWSER_RTL_COMPOSITION_SEED_1793914965,
+  ...BROWSER_COMPOSITION_OVER_EVERYTHING_TRACES,
   BROWSER_PASTE_AFTER_TABLE_SEED_29,
   BROWSER_PASTE_BEFORE_STRUCK_SEED_431,
   BROWSER_SECOND_CELL_PASTE_SEED_47,

@@ -2368,7 +2368,18 @@ export function createSuggestionModePlugin(
           }
           composing = true;
           compositionId = null;
-          const { from, to } = view.state.selection;
+          // Select-all spans the block boundaries around the content; the
+          // composition replaces the text span inside them, as typing does.
+          // Restoring the whole blocks would put them in front of the
+          // composed paragraph, which rejecting leaves behind empty.
+          const { selection } = view.state;
+          const { from, to } =
+            selection instanceof AllSelection
+              ? {
+                  from: Selection.atStart(view.state.doc).from,
+                  to: Selection.atEnd(view.state.doc).to,
+                }
+              : selection;
           compositionFrom = from;
           compositionStartDoc = view.state.doc;
           compositionForeignSize = 0;
