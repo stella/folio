@@ -253,6 +253,8 @@ const decisionOverEdit = (
     case DOCUMENT_OP_TYPES.SET_RUN_PROPS:
     case DOCUMENT_OP_TYPES.SPLIT_INLINE:
     case DOCUMENT_OP_TYPES.JOIN_INLINE:
+    case DOCUMENT_OP_TYPES.SPLIT_BLOCK:
+    case DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS:
       break;
     case DOCUMENT_OP_TYPES.INSERT_CONTENT:
       if (!isInlineInsertion(over)) return undefined;

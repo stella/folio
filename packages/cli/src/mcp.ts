@@ -332,6 +332,11 @@ const LAZY_SUMMARIES: Readonly<
       "List placeholders left in every story; with `fill` and a destination, replace them.",
     domain: "package",
   },
+  numbering: {
+    summary:
+      "Write list numbers as literal text (literal), or put paragraphs into a list (apply).",
+    domain: "package",
+  },
   sanitize_document: {
     summary:
       "Remove comments, rsids, and identifying properties; without a destination, report them.",

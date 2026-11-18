@@ -306,4 +306,5 @@ export const TOOL_ARGUMENTS: Readonly<Record<string, Record<string, unknown>>> =
     sanitize_document: {},
     proofing_language: {},
     placeholders: {},
+    numbering: {},
   };
