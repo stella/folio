@@ -65,7 +65,7 @@ import { holdsPendingSuggestions } from "./invariants.ts";
 import type { Finding } from "./known-issues.ts";
 import { comparableMarkdown } from "./markdown-comparison.ts";
 import type { Mode } from "./operations.ts";
-import { resolvedState, type Row } from "./oracle.ts";
+import { intentResolutionScope, resolvedState, type Row } from "./oracle.ts";
 import { createParagraphIdentityRemapping } from "./paragraph-identity.ts";
 import { createRandom, type Random } from "./random.ts";
 import { type Relation, RELATIONS } from "./relation-contract.ts";
@@ -212,7 +212,14 @@ const resolvedView = async (
   bytes: Uint8Array,
   resolution: "accept" | "reject",
   story: Story = MAIN,
-) => settledView(await resolvedState(bytes, resolution, story));
+) =>
+  settledView(
+    await resolvedState({
+      bytes,
+      resolution,
+      scope: { type: "document", story },
+    }),
+  );
 
 const rowsOf = (reviewer: Reviewer, story: Story = MAIN): Row[] =>
   blocksOfStory(reviewer, story) as unknown as Row[];
@@ -726,7 +733,13 @@ const outcomeView = async ({
     });
   const bytes = await save(reviewer);
   if (mode !== "direct")
-    return view(await resolvedState(bytes, "accept", story));
+    return view(
+      await resolvedState({
+        bytes,
+        resolution: "accept",
+        scope: intentResolutionScope(story),
+      }),
+    );
   const reopened = await openReviewer(bytes);
   return view({
     rows: rowsOf(reopened, story),
@@ -996,11 +1009,11 @@ const shadowProblems = async (
         // block than directly, so neither side's ids or block ids line up.
         // Which paragraphs share a list, and how it renders, is the outcome.
         const accepted = async (reviewer: Reviewer) => {
-          const state = await resolvedState(
-            await save(reviewer),
-            "accept",
-            story,
-          );
+          const state = await resolvedState({
+            bytes: await save(reviewer),
+            resolution: "accept",
+            scope: { type: "document", story },
+          });
           return withoutHeldComments(
             settledView({
               rows: nameStartedLists({

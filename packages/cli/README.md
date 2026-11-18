@@ -38,7 +38,8 @@ folio comments contract.docx --filter open --output text
 ```
 
 Each command's flags are generated from its tool's input schema: a property
-`matchCase` is `--match-case`; objects and arrays take JSON. `--input` passes
+`matchCase` is `--match-case`; objects and arrays take JSON, inline or as
+`@file.json`. `--input` passes
 the whole argument object as JSON (inline, `@args.json`, or `-` for stdin), and
 flags given with it override its fields. `folio <command> --help` lists them.
 
@@ -109,7 +110,7 @@ Every change commits, so there is no separate save:
   properties changed) the command refuses with `repack_required` rather than
   silently rewriting the whole package; `--allow-repack` permits it. The
   receipt reports `saveStrategy` (`selective`, `full-repack` with a
-  `repackReason`, or `redline`) and `changedParts`. The promise is part
+  `repackReason`, `redline`, or `part-rewrite`) and `changedParts`. The promise is part
   content, not identical ZIP bytes.
 - **Write lease.** A write holds `.<name>.docx.folio-lock` beside the file
   (pid, host, expiry, and a random token), created complete or not at all.
@@ -183,19 +184,98 @@ directory, temporary file, and destination the same way before its rename.
 The tool caller cannot exploit this; it matters only against another local
 actor with write access to the directory.
 
+## Preparing a document
+
+| Command        | Tool                | Does                                                        |
+| -------------- | ------------------- | ----------------------------------------------------------- |
+| `sanitize`     | `sanitize_document` | Removes comments, revision save ids, identifying properties |
+| `lang`         | `proofing_language` | Reports or sets the proofing language                       |
+| `placeholders` | `placeholders`      | Lists placeholders left in every story, or fills them       |
+
+Without `--in-place` or `-o` these commands write nothing and report what a
+write would change. A write commits like any other change and is refused
+with `operation_rejected` when there is nothing to change. `sanitize` and
+`lang` rewrite package parts directly: the report names the parts a write
+would touch, and the write rewrites only those (`saveStrategy:
+"part-rewrite"`).
+
+```sh
+folio sanitize old-agreement.docx                       # report only
+folio sanitize old-agreement.docx -o template.docx --remove comments --remove rsids --remove properties --expect-version 3c1d…
+```
+
+`sanitize` strips what a reused document carries about its past. `--remove`
+names what goes (default `comments` and `rsids`):
+
+- `comments`: the comments part and its companions (`commentsExtended`,
+  `commentsIds`, `commentsExtensible`), every `w:commentRangeStart`,
+  `w:commentRangeEnd`, and `w:commentReference` in the body, headers,
+  footers, and notes, and the `people.xml` entries that no remaining
+  revision names (the part itself when none is left);
+- `rsids`: every `w:rsid*` attribute, each style's `w:rsid`, and the
+  `w:rsids` table in settings;
+- `properties`: the `creator` and `lastModifiedBy` core properties and the
+  `Company` and `Manager` extended properties.
+
+The report lists comment counts and authors, rsid counts, and each
+property with its value.
+
+```sh
+folio lang contract.docx                                  # languages per part
+folio lang contract.docx --set cs-CZ --runs --in-place --expect-version 9f2c…
+```
+
+`lang` reports the languages every part states: each `w:lang` `val`,
+`eastAsia`, and `bidi` with how often it occurs, per part, and the settings
+`w:themeFontLang`. `--set <tag>` (and `--east-asia`, `--bidi`) writes a
+BCP 47 language tag into the `w:docDefaults` run properties, the default
+paragraph style, every `w:lang` a style already states, and
+`w:themeFontLang`, creating each element in schema order when it is
+missing; attributes not given keep their values. `--runs` also sets every
+`w:lang` a run or paragraph mark states in the body, headers, footers, and
+notes; runs that state none inherit the defaults.
+
+```sh
+folio placeholders draft.docx                             # exit 11 while any remain
+folio placeholders draft.docx --fill @fields.json -o filled.docx --expect-version 9f2c…
+```
+
+`placeholders` lists the placeholders left in the body, tables, headers,
+footers, and notes: each with its story, block id, offsets, and context. The
+default patterns are `[•]`, `[…]`, `[...]`, `{{name}}`, `[[name]]`, and
+`TODO`; `--pattern <regex>` (repeatable) replaces them. A pattern's `name`
+group, or its first group, names the field that fills it. `--fill` takes
+values by field name or by a placeholder's exact text
+(`{"party": "Acme Ltd", "[•]": "1 March 2027"}`); without a destination it
+shows which value would fill each placeholder, and with one it replaces
+them as tracked changes, or with `--direct` as direct edits. A fill
+replaces only the placeholder's own range, so a placeholder split across
+differently formatted runs keeps that formatting, and a value that would
+itself match a pattern is refused. The command exits with 11 while any
+placeholder is left unfilled (`result.unresolved`), so a script can gate a
+document on it.
+
 ## Rendering and preview
 
 ```sh
 folio render contract.docx -o contract.pdf
+folio render contract.docx -o front.pdf --pages 1-3
+folio render contract.docx -o shots/page-{page}.png --pages 1-3
 folio render contract.docx -o page-3.png --page 3
 folio serve contract.docx
 ```
 
 `folio render` lays the document out with folio's own layout engine and
-paints it with folio's painters, with no word processor involved: `.pdf` from
-the PDF backend (every page, or `--page n`), `.html` from the DOM backend,
-and `.png` by screenshotting that page in headless Chromium (page 1 unless
-`--page`, `--scale` pixels per CSS pixel, default 2). Text is measured and
+paints it with folio's painters: `.pdf` from the PDF backend, `.html` from
+the DOM backend, and `.png` by screenshotting that backend's pages in
+headless Chromium (`--scale` pixels per CSS pixel, default 2). The `-o`
+extension picks the format, or `--format pdf|png|html` names it.
+`--pages` takes page numbers and ranges (`1-3,5`, one-based); `--page n` is
+`--pages n`. A PDF or HTML file holds every page asked for (all by
+default). A PNG is one page (page 1 by default), and when `-o` contains
+`{page}` each page asked for (all by default) goes to its own file, so a
+script can look at the front matter, the first-page and running headers
+and footers, and the numbering page by page. Text is measured and
 painted with the metric-compatible faces of `@stll/folio-fonts`, which the CLI
 installs. PNG needs `playwright-core` and its Chromium, which the CLI does not
 install:
@@ -205,7 +285,8 @@ npm install playwright-core && npx playwright-core install chromium
 ```
 
 `-o` refuses an existing file unless `--overwrite`; the document is never
-changed.
+changed. There is no rasteriser without Chromium: without it, render a PDF
+or HTML.
 
 `folio serve` prints a URL and serves a read-only preview of the document on
 `127.0.0.1` until interrupted. The page re-renders when the file's version
@@ -237,6 +318,7 @@ on a terminal) prints a readable rendering, and failures as `error:` and
 | 6    | file, change, or comment not found                                         |
 | 8    | path outside the allowed roots, or unsafe to write through                 |
 | 10   | conflict with current state (stale version, lock held, destination exists) |
+| 11   | a check found unresolved items (placeholders left in the document)         |
 
 ## Versions and identifiers
 
@@ -298,8 +380,9 @@ A model is sent the tool list on every turn, so the server lists only the
 frequent tools, with compact schemas: `read_document`, `find_text`,
 `read_comments`, `read_changes`, `suggest_changes`, and `add_comment`. The
 rest (`get_document_outline`, `read_section`, `list_stories`, `read_story`,
-`reply_comment`, `resolve_comment`, `resolve_changes`, and
-`compare_documents`) are reached through `list_capabilities`,
+`reply_comment`, `resolve_comment`, `resolve_changes`,
+`compare_documents`, `sanitize_document`, `proofing_language`, and
+`placeholders`) are reached through `list_capabilities`,
 `describe_capability` (a tool's parameter outline, short guidance and an
 example, listed tools included; `detail: "full"` for its full input schema),
 and `invoke_capability` (`{ capability, input, validate_only }`).

@@ -378,6 +378,15 @@ const assertShape = (outer: TableShape, pageHeight: number): void => {
         margins,
       });
       const pageBottom = pageHeight - margins.bottom;
+      const fragments = tableFragments(layout);
+      const painters = [paintLegacy, paintDisplayList].map((paint) => ({
+        name: paint.name,
+        painted: paint(layout, block, measure),
+      }));
+      const fragmentCounts = new Map<number, number>();
+      for (const [, pageIndex] of fragments) {
+        fragmentCounts.set(pageIndex, (fragmentCounts.get(pageIndex) ?? 0) + 1);
+      }
 
       measure.rows.forEach((rowMeasure, rowIndex) => {
         const placed: PlacedParagraph[] = [];
@@ -398,7 +407,7 @@ const assertShape = (outer: TableShape, pageHeight: number): void => {
             );
           }
         });
-        const bands = tableFragments(layout).flatMap(([fragment]) => {
+        const bands = fragments.flatMap(([fragment]) => {
           const band = fragmentBand(fragment, rowIndex, rowMeasure.height);
           return band && fragment.y + fragment.height <= pageBottom + 0.01
             ? [band]
@@ -414,8 +423,7 @@ const assertShape = (outer: TableShape, pageHeight: number): void => {
           }
         }
 
-        for (const paint of [paintLegacy, paintDisplayList]) {
-          const painted = paint(layout, block, measure);
+        for (const { name, painted } of painters) {
           for (const paragraph of placed) {
             const firstLine = paragraph.lines[0];
             if (!firstLine) {
@@ -431,7 +439,7 @@ const assertShape = (outer: TableShape, pageHeight: number): void => {
             });
             if (!shown) {
               throw new Error(
-                `${paint.name}: ${paragraph.token} is painted on no page`,
+                `${name}: ${paragraph.token} is painted on no page`,
               );
             }
           }
@@ -439,20 +447,13 @@ const assertShape = (outer: TableShape, pageHeight: number): void => {
 
         // A clipped row builds no nested row its slice cannot show. The display list
         // reports a page's text, so it can only answer for a page it has alone.
-        const fragmentsOnPage = (pageIndex: number): number =>
-          tableFragments(layout).filter(([, index]) => index === pageIndex)
-            .length;
-        for (const paint of [paintLegacy, paintDisplayList]) {
-          for (const { fragment, pageIndex, text } of paint(
-            layout,
-            block,
-            measure,
-          )) {
+        for (const { name, painted } of painters) {
+          for (const { fragment, pageIndex, text } of painted) {
             const band = fragmentBand(fragment, rowIndex, rowMeasure.height);
             const clipped =
               fragment.topClip !== undefined ||
               fragment.bottomClip !== undefined;
-            if (!band || !clipped || fragmentsOnPage(pageIndex) !== 1) {
+            if (!band || !clipped || fragmentCounts.get(pageIndex) !== 1) {
               continue;
             }
             for (const paragraph of placed) {
@@ -461,7 +462,7 @@ const assertShape = (outer: TableShape, pageHeight: number): void => {
                 paragraph.rowTop >= band.bottom - 0.01;
               if (outsideBand && text.includes(paragraph.token)) {
                 throw new Error(
-                  `${paint.name}: ${paragraph.token} built on a page that cannot show it`,
+                  `${name}: ${paragraph.token} built on a page that cannot show it`,
                 );
               }
             }

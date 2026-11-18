@@ -29,6 +29,7 @@ import {
   type TestSuite,
   type TestTimings,
 } from "./ci-test-shard-plan";
+import { createFullSuiteTimingArtifact } from "./ci-test-timing-artifact";
 import { parseSourceModule, staticStringValue, walkAst } from "./lib/oxc-ast";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
@@ -654,7 +655,7 @@ if (import.meta.main) {
   if (depth === "full") {
     writeFileSync(
       path.join(resultsDirectory, `test-timings-${shard}.json`),
-      `${JSON.stringify({ runId: process.env["GITHUB_RUN_ID"] ?? "local", timings: recorded }, null, 2)}\n`,
+      `${JSON.stringify(createFullSuiteTimingArtifact({ runId: process.env["GITHUB_RUN_ID"], shard, shards: total, timings: recorded }), null, 2)}\n`,
     );
   }
   process.exit(exitCode);

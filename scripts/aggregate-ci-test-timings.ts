@@ -4,6 +4,10 @@ import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { plannedTestFiles, type TestTimings } from "./ci-test-shard-plan";
+import {
+  fullSuiteTimingSets,
+  readFileTimings,
+} from "./ci-test-timing-artifact";
 import { propertyFiles } from "./property-areas";
 import { WORKFLOW_DURATIONS_FILE } from "./workflow-durations";
 
@@ -27,8 +31,6 @@ export type TimingSource = {
   events: readonly string[];
   /** Artifacts named `<prefix>-<run id>-<shard>`. */
   prefix: string;
-  /** Whether a run's artifact count is a usable set. */
-  usable: (count: number) => boolean;
   /** Unmeasured files get the median (scheduling) or stay absent (planned from budgets). */
   fillUnmeasured: boolean;
   files: () => string[];
@@ -37,14 +39,13 @@ export type TimingSource = {
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 
 export const TIMING_SOURCES = {
-  // The full suite's four timing shards of a successful main or merge group run.
+  // Candidates from successful full runs; each envelope proves its own shard set.
   tests: {
     output: "scripts/ci-test-timings.json",
     workflow: "ci.yml",
     runs: "status=success",
     events: ["merge_group", "push"],
     prefix: "test-timings",
-    usable: (count) => count === 4,
     fillUnmeasured: true,
     files: () => plannedTestFiles(REPO_ROOT),
   },
@@ -57,7 +58,6 @@ export const TIMING_SOURCES = {
     runs: "status=completed&branch=main",
     events: ["workflow_dispatch"],
     prefix: "property-timings",
-    usable: (count) => count > 0,
     fillUnmeasured: false,
     files: () => propertyFiles().map(({ file }) => file),
   },
@@ -143,7 +143,7 @@ export const selectTimingArtifacts = async (
           artifact.name.startsWith(prefix) &&
           artifact.expired !== true,
       );
-      if (!source.usable(artifacts.length)) continue;
+      if (artifacts.length === 0) continue;
       selected.push(
         ...artifacts.map(({ id }) => ({ artifactId: id, runId: run.id })),
       );
@@ -206,6 +206,23 @@ export const aggregateTestTimings = (
     else if (fallback !== undefined) result[file] = fallback;
   }
   return `${JSON.stringify(result, null, 2)}\n`;
+};
+
+const readPropertyTimingArtifact = (value: unknown): TimingArtifact => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !("runId" in value) ||
+    typeof value.runId !== "string" ||
+    !("timings" in value)
+  )
+    return panic(
+      "Property timing artifact requires a run id and file measurements",
+    );
+  return {
+    runId: value.runId,
+    timings: readFileTimings(value.timings, value.runId),
+  };
 };
 
 // The `--graphql-request` flag naming each source's local file.
@@ -277,7 +294,7 @@ if (import.meta.main) {
     process.exit(0);
   }
   const output = valueFor("--output");
-  const valueFlags = new Set(["--output", "--source"]);
+  const valueFlags = new Set(["--output", "--source", "--artifact-root"]);
   const inputs = args.filter(
     (arg, index) =>
       !valueFlags.has(arg) &&
@@ -285,12 +302,51 @@ if (import.meta.main) {
   );
   if (!output || inputs.length === 0) {
     panic(
-      "Usage: bun scripts/aggregate-ci-test-timings.ts --output <file> [--source tests|properties] <artifacts...>",
+      "Usage: bun scripts/aggregate-ci-test-timings.ts --output <file> [--source tests|properties] [--artifact-root <directory>] <artifacts...>",
     );
   }
-  const artifacts = inputs.map(
-    (input) => JSON.parse(readFileSync(input, "utf8")) as TimingArtifact,
+  const inputsRead = inputs.map((input): unknown =>
+    JSON.parse(readFileSync(input, "utf8")),
   );
+  const artifacts = (() => {
+    if (sourceName === "properties")
+      return inputsRead.map(readPropertyTimingArtifact);
+    const root = valueFor("--artifact-root");
+    if (!root)
+      return panic(
+        "Full-suite timing inputs require their download manifest --artifact-root",
+      );
+    const proven = fullSuiteTimingSets(
+      inputsRead.map((artifact, index) => {
+        const input =
+          inputs.at(index) ?? panic("A timing artifact lost its input path");
+        const relative = path.relative(path.resolve(root), path.resolve(input));
+        if (
+          relative.startsWith(`..${path.sep}`) ||
+          relative === ".." ||
+          path.isAbsolute(relative)
+        )
+          return panic("A timing input is outside its download manifest root", {
+            input,
+          });
+        const runId =
+          relative.split(path.sep).at(0) ??
+          panic("A timing input lost its manifest run id");
+        return { runId, artifact };
+      }),
+    );
+    if (proven.legacyRuns.length > 0)
+      console.warn(
+        `Skipped timing runs without planned shard provenance: ${proven.legacyRuns.join(", ")}`,
+      );
+    if (proven.artifacts.length === 0) {
+      console.warn(
+        `No proven full-suite timing sets are available; keeping ${output}.`,
+      );
+      process.exit(0);
+    }
+    return proven.artifacts;
+  })();
   writeFileSync(
     output,
     aggregateTestTimings(artifacts, source.files(), {
