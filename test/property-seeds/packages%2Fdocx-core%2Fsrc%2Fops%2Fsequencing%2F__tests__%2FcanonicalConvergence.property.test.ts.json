@@ -30,5 +30,13 @@
       "note": "An interior direct erase removes the first newly tracked deletion fragment; refuse rather than reassign the pending review target",
       "date": "2026-11-17"
     }
+  ],
+  "canonical sequencing tracked pairs": [
+    {
+      "seed": 556988260,
+      "path": "16:15:26:6:5:8:12:15:16:14:16:15:14:16:14:15:17:20:2:11:12:13:12:16:13:14:14:14:15:151:7:7:9:14:3:3:3:3:3:13:12:12:12:12:12:12:12:12:12:12:12:12:12:13:19:15:15:15:15:20:17:15:14:14:14:15:15:15",
+      "note": "A batch's direct erase over a concurrent tracked deletion that supplies revision ids refuses by its own rule, beside the batch's tracked erase forming a declared pair of the same types",
+      "date": "2026-11-18"
+    }
   ]
 }
