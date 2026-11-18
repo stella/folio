@@ -77,11 +77,11 @@ const REMOVAL_CASES = {
     payload: "empty",
     expected: "none",
   },
-  "blocked-no-receiver": {
+  "following-receiver": {
     prefix: "none",
     context: "before-table",
     payload: "boundaries",
-    expected: "blocked",
+    expected: "following",
   },
   "blocked-table-predecessor": {
     prefix: "table",
@@ -177,6 +177,20 @@ test("paragraph removal plans declare exactly the retained-boundary receiver acr
             expect(plan.effects).toEqual([]);
             expect(plan.blocks.includes(host)).toBe(fixture.prefix === "host");
             for (const block of plan.blocks)
+              expect(blocks.includes(block)).toBe(true);
+            continue;
+          }
+          if (fixture.prefix !== "host") {
+            // No paragraph before it: the first one after it, past the
+            // table, takes them at its start.
+            expect(fixture.expected).toBe("following");
+            expect(plan.effects.at(0)?.receiver).toBe(finalParagraph);
+            expect(plan.effects).toHaveLength(1);
+            expect(plan.blocks.at(-1)).toEqual({
+              ...finalParagraph,
+              content: [...payload, ...finalParagraph.content],
+            });
+            for (const block of plan.blocks.slice(0, -1))
               expect(blocks.includes(block)).toBe(true);
             continue;
           }
