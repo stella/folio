@@ -1,0 +1,83 @@
+{
+  "version": 1,
+  "title": "PINNED #1356, reported seed 2145181863: a split after an insertion that supersedes a pending deleted break reads the words with their own properties",
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "directNumbered",
+  "mode": "tracked-changes",
+  "seed": 2145181863,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 753628129,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "31617F9A"
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 3784924085,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "5E88C024",
+          "text": "Period schedule invoice supplier buyer clause.",
+          "alignment": "right"
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 4224936164,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "@4"
+        }
+      ]
+    },
+    {
+      "action": "save and reopen",
+      "seed": 3401276903
+    },
+    {
+      "action": "story batch",
+      "seed": 937875420,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "5E88C024"
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 3209453312,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "3CEFFC83",
+          "text": "Written invoice invoice term.",
+          "styleId": "Heading2"
+        },
+        {
+          "type": "splitBlock",
+          "blockId": "3CEFFC83",
+          "offset": 15
+        }
+      ]
+    }
+  ],
+  "weights": {
+    "version": 1,
+    "cells": {},
+    "operations": []
+  },
+  "origin": "shrunk from collisions flow seed 2145181863"
+}
