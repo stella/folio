@@ -327,7 +327,7 @@ const preservedBodyFields = (
       )
       ?.at(1) ?? null,
 });
-const classBody = ({
+const renderClassBody = ({
   signature,
   state,
   note,
@@ -380,6 +380,76 @@ const classBody = ({
           "</details>",
         ]),
   ].join("\n");
+};
+
+/** GitHub refuses an issue body longer than this. */
+export const CLASS_BODY_LIMIT = 65_535;
+const ELLIPSIS = "…";
+const clip = (text: string, length: number): string =>
+  text.length > length ? `${text.slice(0, length)}${ELLIPSIS}` : text;
+/** Keep a row's first (shrunk) replay and its newest ones, with its evidence clipped. */
+const compactRow = (
+  row: SeedRow,
+  evidence: number,
+  replays: number,
+): SeedRow => ({
+  ...row,
+  replays:
+    row.replays.length <= replays
+      ? row.replays
+      : [...row.replays.slice(0, 1), ...row.replays.slice(1 - replays)],
+  evidence: clip(row.evidence, evidence),
+});
+const COMPACTION_STEPS = [
+  { evidence: 2_000, replays: 3 },
+  { evidence: 600, replays: 2 },
+  { evidence: 200, replays: 1 },
+] as const;
+
+/** The oldest row a newer row of its fingerprint covers, else the oldest row. */
+const droppableRow = (seeds: readonly SeedRow[]): number =>
+  Math.max(
+    seeds.findIndex(({ fingerprint }, index) =>
+      seeds.slice(index + 1).some((later) => later.fingerprint === fingerprint),
+    ),
+    0,
+  );
+
+/**
+ * A class body GitHub accepts. A long-lived class gathers rows until its body
+ * passes the limit and every later update fails, so rows are compacted first
+ * and then the oldest are dropped: first those whose fingerprint a newer row
+ * still lists, then the oldest of the rest. The signature list keeps every
+ * fingerprint's lane state either way.
+ */
+export const classBody = (options: ClassBodyOptions): string => {
+  let body = renderClassBody(options);
+  if (body.length <= CLASS_BODY_LIMIT) return body;
+  let seeds = options.state.seeds;
+  for (const step of COMPACTION_STEPS) {
+    seeds = options.state.seeds.map((row) =>
+      compactRow(row, step.evidence, step.replays),
+    );
+    body = renderClassBody({ ...options, state: { ...options.state, seeds } });
+    if (body.length <= CLASS_BODY_LIMIT) return body;
+  }
+  while (seeds.length > 1 && body.length > CLASS_BODY_LIMIT) {
+    seeds = seeds.toSpliced(droppableRow(seeds), 1);
+    body = renderClassBody({ ...options, state: { ...options.state, seeds } });
+  }
+  if (body.length <= CLASS_BODY_LIMIT || options.legacyReport === null)
+    return body;
+  return renderClassBody({
+    ...options,
+    state: { ...options.state, seeds },
+    legacyReport: clip(
+      options.legacyReport,
+      Math.max(
+        0,
+        options.legacyReport.length - (body.length - CLASS_BODY_LIMIT) - 1,
+      ),
+    ),
+  });
 };
 
 /** What a recurring class does with the issue it reports to. */
