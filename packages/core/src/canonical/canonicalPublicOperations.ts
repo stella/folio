@@ -17,18 +17,32 @@ import {
 } from "@stll/docx-core/model";
 import {
   applyDocumentOps,
+  type BatchBlockAccess,
+  type BatchOrderAddress,
   type BlockInsertionPoint,
   compileEditorIntent,
+  contentRank,
   createEditorIntentIdAllocator,
+  deletionRemovesBlock,
   DOCUMENT_OP_TYPES,
   type DocumentOp,
   documentStories,
   type EditorIntent,
+  type FinalBreakCandidate,
+  finalBreakCarrier,
   findStoryBody,
+  formatParaId,
   freshCommentId,
+  groupInsertionRuns,
+  type IdBlock,
   type IdLease,
+  introducedIds,
+  type LeasedId,
+  leasedIdCensus,
   type NewListInstance,
   type OpStory,
+  orderAddressingBeforeRemoval,
+  orderBatchOperations,
   paragraphLength,
   type ParagraphPropsPatch,
   pendingSuggestionIdsIn,
@@ -43,6 +57,7 @@ import {
   buildTableNode,
   SUGGESTED_SUPPORTED_OPERATION_TYPES,
 } from "../ai-edits/apply";
+import { BatchClaims } from "../ai-edits/batch-claims";
 import {
   splitsGraphemeCluster,
   splitsSurrogatePair,
@@ -51,7 +66,7 @@ import {
   buildCleanBlockText,
   resolveCleanTextRange,
 } from "../ai-edits/clean-text";
-import { directJoinSurvivor } from "../ai-edits/directJoin";
+import { directJoinSurvivor, directJoinTakes } from "../ai-edits/directJoin";
 import { stripInlineEmphasisMarkers } from "../ai-edits/inline-emphasis";
 import {
   createBatchListMinter,
@@ -71,12 +86,18 @@ import {
   pendingJoinParagraphs,
   pendingMarkEditOf,
   pendingMarkEditRefusal,
+  pendingParagraphPropertiesRefusal,
 } from "../ai-edits/pendingJoin";
 import {
   collectNoteReferenceLabels,
   hashFolioAIBlockContent,
   hashFolioAIBlockText,
 } from "../ai-edits/snapshot";
+import {
+  isInsertedPPrMark,
+  snapshotBatchClaim,
+  type SnapshotBatchOperation,
+} from "../ai-edits/snapshotBatchFacts";
 import type { TableRectangle } from "../ai-edits/table-mutation-plan";
 import {
   applyTableRowInsertion,
@@ -84,6 +105,7 @@ import {
   findTableColumnInsertion,
   findTableRowInsertion,
   getInsertedPhysicalColumnRows,
+  getTableColumnCoordinateKey,
   splitCellParagraphTexts,
 } from "../ai-edits/table-row-column-mutations";
 import {
@@ -129,10 +151,12 @@ import {
 } from "../document-operations";
 import { expectTableAttrs } from "../prosemirror/attrs";
 import { tableAnchor } from "../prosemirror/canonicalTableCommands";
+import { paragraphEndsItsContainer } from "../prosemirror/containerFinalParagraph";
 import {
   standaloneTableRowsFromProseMirror,
   tableAttrsToFormatting,
 } from "../prosemirror/conversion/fromProseDoc";
+import { insertionGap } from "../prosemirror/insertionGaps";
 import { maxAnnotationIdInDoc } from "../prosemirror/plugins/revisionIds";
 import { preservesReplacementCommentAlignment } from "../prosemirror/replacedAnnotations";
 import { createStyleResolver } from "../prosemirror/styles/styleResolver";
@@ -162,6 +186,379 @@ import {
   type CanonicalSession,
 } from "./canonicalSession";
 import { indentationAsRead, spacingSidesAsRead } from "./paragraphPatchAsRead";
+
+type CanonicalBatchPlan = {
+  claim: ReturnType<typeof snapshotBatchClaim>;
+  address: BatchOrderAddress;
+  block: number;
+  insertionRun: number | null;
+};
+
+type CanonicalBatchPlanningOptions = {
+  operation: FolioDocumentOperation;
+  intents: readonly EditorIntent[];
+  from: number;
+  to: number;
+  projection: CanonicalProjection;
+  tracked: boolean;
+  inputIndex: number;
+};
+
+const canonicalBatchPlan = ({
+  operation,
+  intents,
+  from,
+  to,
+  projection,
+  tracked,
+  inputIndex,
+}: CanonicalBatchPlanningOptions): CanonicalBatchPlan => {
+  const blockId =
+    operation.type === "replaceRange" ||
+    operation.type === "formatRange" ||
+    operation.type === "commentOnRange"
+      ? operation.range.blockId
+      : operation.blockId;
+  const paragraph =
+    projection.paragraph(blockId) ??
+    panic("A resolved batch operation lost its source paragraph", {
+      id: operation.id,
+    });
+  const doc = projection.doc;
+  const block = paragraph.start - 1;
+  const claim = (item: SnapshotBatchOperation) =>
+    snapshotBatchClaim({ item, doc, producesTrackedChanges: tracked });
+  const content = (
+    item: SnapshotBatchOperation,
+    position = from,
+  ): CanonicalBatchPlan => ({
+    claim: claim(item),
+    block,
+    address: { type: "content", position, rank: 1, inputIndex },
+    insertionRun: null,
+  });
+  /**
+   * The block gap an insertion at `from` lands in, as every other claim names
+   * block boundaries: past the paragraph's node, or before it, when `from` is
+   * a text position at its end or start.
+   */
+  const gapAt = (side: "before" | "after") => {
+    const $from = doc.resolve(from);
+    if (!$from.parent.isTextblock) return from;
+    return side === "after" ? $from.after() : $from.before();
+  };
+  const row = () =>
+    findEnclosingTableRow(doc, block) ??
+    panic("A resolved table operation lost its source row", {
+      id: operation.id,
+    });
+  const cell = () =>
+    findEnclosingTableCell(doc, block) ??
+    panic("A resolved cell operation lost its source cell", {
+      id: operation.id,
+    });
+  switch (operation.type) {
+    case "replaceInBlock":
+    case "replaceRange":
+      return content({ type: "text", block, from, to });
+    case "splitBlock":
+      return content({ type: "split", block, from, to });
+    case "formatRange":
+    case "commentOnRange":
+    case "commentOnBlock":
+      return {
+        claim: claim({ type: "annotation", block, from, to }),
+        block,
+        address: { type: "annotation", position: from, inputIndex },
+        insertionRun: null,
+      };
+    case "replaceBlock":
+      return content(
+        intents.some((intent) => intent.type === "replaceText")
+          ? { type: "rewriteBlock", block }
+          : { type: "paragraphProperties", block },
+      );
+    case "setBlockParagraphProperties":
+      return content({ type: "paragraphProperties", block });
+    case "mergeBlockWithNext": {
+      const join =
+        intents.find((intent) => intent.type === "joinParagraphs") ??
+        panic("A resolved merge lost its join intent");
+      const next =
+        projection.paragraph(join.nextBlockId) ??
+        panic("A resolved merge lost its second paragraph");
+      return content({
+        type: "merge",
+        block,
+        next: next.start - 1,
+        joinsNow: !tracked,
+        setsProperties: operation.mergedParagraphProperties !== undefined,
+      });
+    }
+    case "deleteBlock":
+      return content({
+        type: "deleteBlock",
+        block,
+        end: block + paragraph.node.nodeSize,
+        node: paragraph.node,
+      });
+    case "insertBeforeBlock":
+    case "insertAfterBlock": {
+      // It executes at its text position (the address) and claims the gap.
+      const plan = content({
+        type: "insertion",
+        at: gapAt(operation.type === "insertAfterBlock" ? "after" : "before"),
+      });
+      // Matching the native owner: redirected or commented insertions do not
+      // share a provisional insertion run with their neighbours.
+      const hasComment = operation.comment !== undefined;
+      const emptyPageBreak =
+        tracked && operation.pageBreakBefore === true && operation.text === "";
+      return {
+        ...plan,
+        insertionRun: hasComment || emptyPageBreak ? null : from,
+      };
+    }
+    case "insertTable":
+    case "insertSignatureTable":
+      return content({
+        type: "insertion",
+        at: gapAt(operation.position ?? "after"),
+      });
+    case "deleteTable": {
+      const target = row();
+      return content({
+        type: "deleteTable",
+        position: target.tablePosition,
+        node: target.table,
+      });
+    }
+    case "deleteTableRow": {
+      const target = row();
+      return content({
+        type: "deleteTableRow",
+        deletion: target,
+        row: target.table.child(target.rowIndex),
+        table: target.table,
+      });
+    }
+    case "deleteTableColumn": {
+      const target = row();
+      const column = cell().leftColumnIndex;
+      const plan = content({
+        type: "deleteTableColumn",
+        deletion: { tablePosition: target.tablePosition, columnIndex: column },
+      });
+      return {
+        ...plan,
+        address: {
+          type: "column",
+          tablePosition: target.tablePosition,
+          columnIndex: column,
+          insertion: false,
+          inputIndex,
+        },
+      };
+    }
+    case "insertTableColumn": {
+      const insertion =
+        findTableColumnInsertion({
+          doc,
+          blockFrom: block,
+          position: operation.position ?? "after",
+        }) ?? panic("A resolved column insertion lost its source gap");
+      const plan = content({
+        type: "tableStructure",
+        axis: "column",
+        target: {
+          type: "tableStructure",
+          tablePosition: insertion.tablePosition,
+        },
+      });
+      return {
+        ...plan,
+        address: {
+          type: "column",
+          tablePosition: insertion.tablePosition,
+          columnIndex: insertion.columnIndex,
+          insertion: true,
+          inputIndex,
+        },
+      };
+    }
+    case "insertTableRow":
+      return content({
+        type: "tableStructure",
+        axis: "row",
+        target: { type: "tableStructure", tablePosition: row().tablePosition },
+      });
+    case "mergeTableCells":
+    case "splitTableCell": {
+      const target = row();
+      const source = cell();
+      const merge = intents.find(
+        (intent) =>
+          intent.type === "table" &&
+          intent.operation.type === DOCUMENT_OP_TYPES.MERGE_CELLS,
+      );
+      const rectangleOfMerge = () => {
+        if (
+          merge?.type !== "table" ||
+          merge.operation.type !== DOCUMENT_OP_TYPES.MERGE_CELLS
+        )
+          return panic("A resolved cell merge lost its rectangle");
+        return merge.operation;
+      };
+      const rectangle =
+        operation.type === "mergeTableCells"
+          ? rectangleOfMerge()
+          : {
+              left: source.leftColumnIndex,
+              top: source.topRowIndex,
+              right: source.rightColumnIndex,
+              bottom: source.bottomRowIndex,
+            };
+      const plan = content({
+        type: "tableStructure",
+        axis: "cell",
+        target: {
+          type:
+            operation.type === "mergeTableCells" ? "mergeCells" : "splitCell",
+          tablePosition: target.tablePosition,
+          rectangle,
+        },
+      });
+      return {
+        ...plan,
+        address: {
+          type: "cell",
+          tablePosition: target.tablePosition,
+          bottom: rectangle.bottom,
+          right: rectangle.right,
+          inputIndex,
+        },
+      };
+    }
+    default: {
+      const unreachable: never = operation;
+      return unreachable;
+    }
+  }
+};
+
+type PlannedOperation = {
+  operation: FolioDocumentOperation;
+  plan: CanonicalBatchPlan;
+};
+
+type CanonicalBatchOrderOptions<T extends PlannedOperation> = {
+  items: readonly T[];
+  doc: PMNode;
+};
+
+const orderCanonicalBatch = <T extends PlannedOperation>({
+  items,
+  doc,
+}: CanonicalBatchOrderOptions<T>): T[] => {
+  const deleted = new Set(
+    items.flatMap(({ operation, plan }) =>
+      operation.type === "deleteBlock" ? [plan.block] : [],
+    ),
+  );
+  const joinedAway = new Set(
+    items.flatMap(({ plan }) =>
+      plan.claim.type === "merge" && plan.claim.joinsNow ? [plan.block] : [],
+    ),
+  );
+  const deletedSplits = new Set(
+    items.flatMap(({ operation, plan }) => {
+      if (
+        operation.type !== "deleteBlock" ||
+        !isInsertedPPrMark(doc.nodeAt(plan.block)?.attrs["pPrMark"])
+      )
+        return [];
+      const at = doc.resolve(plan.block);
+      const next = at.parent.maybeChild(at.index() + 1);
+      if (next?.type.name !== "paragraph") return [];
+      return items.some(
+        ({ operation: other, plan: otherPlan }) =>
+          other.type === "insertTable" &&
+          other.position !== "before" &&
+          otherPlan.block === plan.block &&
+          otherPlan.claim.type === "insertion" &&
+          otherPlan.claim.at ===
+            plan.block + (doc.nodeAt(plan.block)?.nodeSize ?? 0),
+      )
+        ? [plan.block]
+        : [];
+    }),
+  );
+  const address = ({ operation, plan }: T): BatchOrderAddress => {
+    if (plan.address.type !== "content") return plan.address;
+    const hasDeletedSplit = deletedSplits.has(plan.block);
+    return {
+      ...plan.address,
+      position:
+        hasDeletedSplit &&
+        operation.type === "deleteBlock" &&
+        plan.claim.type === "deleteBlock"
+          ? plan.claim.end
+          : plan.address.position,
+      rank: contentRank(operation, { hasDeletedSplit }),
+    };
+  };
+  const access = ({ operation, plan }: T): BatchBlockAccess<number> => {
+    const claim = plan.claim;
+    if (claim.type === "merge")
+      return {
+        addresses: [plan.block],
+        removes: claim.joinsNow
+          ? directJoinTakes(plan.block, claim.next)
+          : [claim.next],
+      };
+    if (operation.type === "deleteTable" || operation.type === "deleteTableRow")
+      return { addresses: [], removes: [plan.block] };
+    if (plan.address.type === "column" || plan.address.type === "cell")
+      return { addresses: [], removes: [] };
+    if (operation.type === "insertBeforeBlock" && joinedAway.has(plan.block))
+      return { addresses: [], removes: [] };
+    if (claim.type !== "deleteBlock")
+      return { addresses: [plan.block], removes: [] };
+    const at = doc.resolve(plan.block);
+    const paragraph =
+      doc.nodeAt(plan.block) ??
+      panic("A planned deletion lost its source paragraph");
+    const before: FinalBreakCandidate<number>[] = [];
+    let position = plan.block;
+    for (let index = at.index() - 1; index >= 0; index--) {
+      const previous = at.parent.child(index);
+      position -= previous.nodeSize;
+      if (previous.type !== paragraph.type) break;
+      before.push({ paragraph: position, deleted: deleted.has(position) });
+    }
+    const appended = items.some(
+      ({ operation: other, plan: otherPlan }) =>
+        otherPlan.block === plan.block &&
+        (other.type === "insertAfterBlock" ||
+          (other.type === "insertTable" && other.position !== "before")),
+    );
+    const removes = deletionRemovesBlock({
+      endsContainer:
+        !appended && paragraphEndsItsContainer(at, paragraph.type.name),
+      carrier: finalBreakCarrier(before).type,
+    });
+    return { addresses: [], removes: removes ? [plan.block] : [] };
+  };
+  const runs = groupInsertionRuns(
+    orderBatchOperations(items, address),
+    ({ plan }) => plan.insertionRun,
+    ({ operation }) => operation.type === "setBlockParagraphProperties",
+  );
+  return orderAddressingBeforeRemoval(runs, (run) => ({
+    addresses: run.flatMap((item) => access(item).addresses),
+    removes: run.flatMap((item) => access(item).removes),
+  })).flat();
+};
 
 type CanonicalPublicOperationRefusal = NonNullable<
   FolioAIEditSkippedOperation["canonicalRefusal"]
@@ -228,7 +625,7 @@ type CommentOperation = {
   ]: "comment" extends keyof Operation ? Operation : never;
 }[FolioDocumentOperation["type"]];
 
-type ResolvedOperation = {
+type PreparedOperation = {
   intents: readonly EditorIntent[];
   normalizations: readonly FolioAIEditNormalization[];
   from: number;
@@ -275,7 +672,7 @@ const resolveComment = ({ operation, from, to }: ResolveCommentOptions) => {
       operation,
       comment: { text: operation.comment.text, from, to },
     } as const satisfies Pick<
-      Extract<ResolvedOperation, { type: "commented" }>,
+      Extract<PreparedOperation, { type: "commented" }>,
       "type" | "operation" | "comment"
     >;
   }
@@ -456,7 +853,6 @@ const isBlockInsertion = (
 
 type TableInsertion = TableInsertionOperation;
 
-/** An operation that puts a new block, a paragraph or a table, beside a paragraph. */
 const placesBlock = (
   operation: FolioDocumentOperation,
 ): operation is BlockInsertion | TableInsertion =>
@@ -739,6 +1135,229 @@ const resolveBlockInsertion = ({
     },
     ...resolved,
   });
+};
+
+type InsertionAnchor =
+  | { type: "paragraph"; at: BlockInsertionPoint }
+  | { type: "table"; at: BlockInsertionPoint };
+
+type InsertionGapOptions = {
+  operation: FolioDocumentOperation;
+  intents: readonly EditorIntent[];
+  projection: CanonicalProjection;
+};
+
+/** The physical anchor and accepted source gap, before this batch inserts. */
+const canonicalInsertionGap = ({
+  operation,
+  intents,
+  projection,
+}: InsertionGapOptions) => {
+  const intent = intents.at(0);
+  let anchor: InsertionAnchor;
+  if (intent?.type === "insertParagraphs") {
+    switch (intent.at.type) {
+      case "before":
+      case "after":
+        anchor = { type: "paragraph", at: intent.at };
+        break;
+      case "beforeTable":
+      case "afterTable":
+        anchor = {
+          type: "table",
+          at: {
+            type: intent.at.type === "beforeTable" ? "before" : "after",
+            blockId: intent.at.blockId,
+          },
+        };
+        break;
+      default: {
+        const unreachable: never = intent.at;
+        return unreachable;
+      }
+    }
+  } else if (
+    intent?.type === "tableBlock" &&
+    intent.operation.type === DOCUMENT_OP_TYPES.INSERT_TABLE
+  ) {
+    const { anchor: type, side, blockId } = intent.operation;
+    if (type === undefined || side === undefined)
+      panic("A resolved table insertion needs an explicit anchor and side.");
+    anchor = { type, at: { type: side, blockId } };
+  } else return undefined;
+  const paragraph = projection.paragraph(anchor.at.blockId);
+  if (paragraph === undefined)
+    panic("A resolved insertion lost its source anchor.");
+  const outer =
+    anchor.type === "table"
+      ? findOutermostTableBoundary(projection.doc, paragraph.start - 1)
+      : null;
+  if (anchor.type === "table" && outer === null)
+    panic("A resolved table insertion lost its source table.");
+  const boundary =
+    outer === null
+      ? paragraph.start -
+        1 +
+        (anchor.at.type === "after" ? paragraph.node.nodeSize : 0)
+      : outer[anchor.at.type];
+  if (!placesBlock(operation)) return undefined;
+  const source = projection.paragraph(operation.blockId);
+  if (source === undefined)
+    panic("A resolved insertion lost its requested source block.");
+  const sourceTable = findOutermostTableBoundary(
+    projection.doc,
+    source.start - 1,
+  );
+  const blockSide = operation.type === "insertBeforeBlock" ? "before" : "after";
+  const requestedSide = isBlockInsertion(operation)
+    ? blockSide
+    : (operation.position ?? "after");
+  return {
+    anchor,
+    boundary,
+    // Lowering an insertion after a table to before its next paragraph
+    // changes its physical anchor, not its accepted source gap.
+    gap:
+      sourceTable === null
+        ? insertionGap(projection.doc, boundary, anchor.at.type)
+        : insertionGap(
+            projection.doc,
+            sourceTable[requestedSide],
+            requestedSide,
+          ),
+  };
+};
+
+type PlaceInsertionIntentsOptions = {
+  intents: readonly EditorIntent[];
+  anchor: InsertionAnchor;
+  placement: "first" | "following";
+};
+
+/** Placement changes; authored formatting, lists and operation ownership stay put. */
+const placeInsertionIntents = ({
+  intents,
+  anchor,
+  placement,
+}: PlaceInsertionIntentsOptions): readonly EditorIntent[] =>
+  intents.map((intent) => {
+    if (intent.type === "insertParagraphs") {
+      return {
+        ...intent,
+        at:
+          anchor.type === "paragraph"
+            ? anchor.at
+            : {
+                type:
+                  anchor.at.type === "before" ? "beforeTable" : "afterTable",
+                blockId: anchor.at.blockId,
+              },
+      };
+    }
+    if (
+      intent.type !== "tableBlock" ||
+      intent.operation.type !== DOCUMENT_OP_TYPES.INSERT_TABLE
+    )
+      return intent;
+    const { operation } = intent;
+    if (anchor.type === "table")
+      return {
+        type: "tableBlock",
+        operation: {
+          type: operation.type,
+          story: operation.story,
+          table: operation.table,
+          blockId: anchor.at.blockId,
+          anchor: "table",
+          side: anchor.at.type,
+        },
+      };
+    return {
+      type: "tableBlock",
+      operation: {
+        type: operation.type,
+        story: operation.story,
+        table: operation.table,
+        blockId: anchor.at.blockId,
+        anchor: "paragraph",
+        side: anchor.at.type,
+        ...(operation.anchor === "paragraph" &&
+        operation.separated !== undefined
+          ? { separated: operation.separated }
+          : {}),
+        paragraphAfter:
+          placement === "first" && operation.anchor === "paragraph"
+            ? (operation.paragraphAfter ?? "empty")
+            : "none",
+      },
+    };
+  });
+
+type DroppedInsertionCarrierOptions = {
+  admitted: readonly EditorIntent[];
+  replayed: readonly EditorIntent[];
+  ops: readonly DocumentOp[];
+};
+
+/** The table compiler emits its leading/trailing carriers before its table. */
+const droppedInsertionCarrier = ({
+  admitted,
+  replayed,
+  ops,
+}: DroppedInsertionCarrierOptions) => {
+  const before = admitted.at(0),
+    after = replayed.at(0);
+  if (
+    before?.type !== "tableBlock" ||
+    before.operation.type !== DOCUMENT_OP_TYPES.INSERT_TABLE ||
+    before.operation.anchor !== "paragraph" ||
+    before.operation.paragraphAfter === "none" ||
+    after?.type !== "tableBlock" ||
+    after.operation.type !== DOCUMENT_OP_TYPES.INSERT_TABLE ||
+    after.operation.anchor !== "paragraph" ||
+    after.operation.paragraphAfter !== "none"
+  )
+    return undefined;
+  const insertion = ops.find(
+    (op) => op.type === DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+  );
+  const carrier = insertion?.blocks.at(-1);
+  if (carrier?.type !== "paragraph" || carrier.paraId === undefined)
+    panic("A compiled table lost its trailing carrier allocation.");
+  return carrier.paraId;
+};
+
+type MemberIdLeaseOptions = {
+  lease: IdLease;
+  siblings: readonly (readonly LeasedId[])[];
+};
+
+/** A replay cannot spend identities admitted to another operation. */
+const insertionMemberIdLease = ({
+  lease,
+  siblings,
+}: MemberIdLeaseOptions): IdLease => {
+  const blocks: IdBlock[] = [];
+  for (const block of lease.blocks) {
+    const excluded = siblings
+      .flatMap((ids) =>
+        ids
+          .filter(
+            ({ kind, id }) =>
+              kind === block.kind && id >= block.start && id < block.end,
+          )
+          .map(({ id }) => id),
+      )
+      .toSorted((left, right) => left - right);
+    let start = block.start;
+    for (const id of excluded) {
+      if (start < id) blocks.push({ kind: block.kind, start, end: id });
+      start = id + 1;
+    }
+    if (start < block.end)
+      blocks.push({ kind: block.kind, start, end: block.end });
+  }
+  return { blocks };
 };
 
 const LINE_BREAK_PATTERN = /\r\n|\r|\n/u;
@@ -1436,47 +2055,6 @@ const CANONICAL_SUGGESTED_OPERATION_TYPES: ReadonlySet<
   "commentOnBlock",
 ]);
 
-/**
- * Whether one of two resolved operations inserts beside the paragraph the
- * other deletes by identity: they touch only at that paragraph's edge, and
- * both apply, as in the default engine. A deletion of a paragraph that ends
- * its container still refuses the insertion beside it.
- */
-const besideItsDeletion = (
-  left: Pick<ResolvedOperation, "operation" | "removesParagraphBeforeBlock">,
-  right: Pick<ResolvedOperation, "operation" | "removesParagraphBeforeBlock">,
-): boolean => {
-  const pair = (
-    { operation: insertion }: typeof left,
-    { operation: deletion, removesParagraphBeforeBlock }: typeof left,
-  ) =>
-    (insertion.type === "insertAfterBlock" ||
-      insertion.type === "insertBeforeBlock") &&
-    deletion.type === "deleteBlock" &&
-    removesParagraphBeforeBlock === true &&
-    insertion.blockId === deletion.blockId;
-  return pair(left, right) || pair(right, left);
-};
-
-/**
- * Whether one of two resolved operations inserts a block right before or
- * right after the paragraph the other splits: the split claims that
- * paragraph whole, and the insertion touches only its edge. Both apply, as
- * in the default engine: the insertion goes in first, beside the paragraph
- * it read, and the split then divides that paragraph by its identity.
- */
-const besideItsSplit = (
-  left: Pick<ResolvedOperation, "operation" | "from" | "to">,
-  right: Pick<ResolvedOperation, "operation" | "from" | "to">,
-): boolean => {
-  const pair = (insertion: typeof left, split: typeof left) =>
-    placesBlock(insertion.operation) &&
-    insertion.from === insertion.to &&
-    split.operation.type === "splitBlock" &&
-    (insertion.from === split.from || insertion.from === split.to);
-  return pair(left, right) || pair(right, left);
-};
-
 /** A block operation without the move it names: a plain insertion or deletion. */
 const withoutMove = (
   operation: FolioDocumentOperation,
@@ -1552,6 +2130,9 @@ type CompilePublicIntentsOptions = {
    * come from the allocator's leased ones rather than one contiguous range.
    */
   idLease: IdLease | undefined;
+  allocations?: readonly ReturnType<
+    ReturnType<typeof createEditorIntentIdAllocator>
+  >[];
 };
 
 const compilePublicIntents = ({
@@ -1565,14 +2146,23 @@ const compilePublicIntents = ({
   allocate,
   reservedBlockIds,
   idLease,
+  allocations: admittedAllocations,
 }: CompilePublicIntentsOptions) => {
   const ops: DocumentOp[] = [];
   const revisions: number[] = [];
   // A split's new half takes the id allocated here, not the one it resolved
   // with: a later intent naming that half names the allocated one.
   const allocated = new Map<string, string>();
-  for (const sourceIntent of intents) {
-    const ids = allocate(document, sourceIntent, idLease);
+  const allocations: ReturnType<
+    ReturnType<typeof createEditorIntentIdAllocator>
+  >[] = [];
+  for (const [intentIndex, sourceIntent] of intents.entries()) {
+    const ids =
+      admittedAllocations === undefined
+        ? allocate(document, sourceIntent, idLease)
+        : admittedAllocations.at(intentIndex);
+    if (ids === undefined) panic("An admitted intent lost its allocation.");
+    allocations.push(ids);
     const leased = idLease === undefined ? {} : { idLease };
     let intent: EditorIntent = sourceIntent;
     if (sourceIntent.type === "splitParagraph") {
@@ -1632,7 +2222,7 @@ const compilePublicIntents = ({
     for (const id of applied.value.revisions)
       nextRevisionId = Math.max(nextRevisionId, id + 1);
   }
-  return Result.ok({ document, ops, revisions, nextRevisionId });
+  return Result.ok({ document, ops, revisions, nextRevisionId, allocations });
 };
 
 const CanonicalPublicOperationResolutionErrorBase: TaggedErrorClass<"CanonicalPublicOperationResolutionError"> =
@@ -1648,6 +2238,92 @@ class CanonicalPublicOperationResolutionError extends CanonicalPublicOperationRe
    */
   gap?: CanonicalGap | null;
 }> {}
+
+type BatchPropertyRefusalOptions = {
+  document: Document;
+  story: OpStory;
+  operation: FolioDocumentOperation;
+};
+
+/** Recheck the native property boundary after earlier operations of this batch. */
+const batchPropertyRefusal = ({
+  document,
+  story,
+  operation,
+}: BatchPropertyRefusalOptions) => {
+  switch (operation.type) {
+    case "setBlockParagraphProperties":
+      break;
+    case "replaceBlock":
+      if (operation.styleId === undefined) return undefined;
+      break;
+    default:
+      return undefined;
+  }
+  const body = findStoryBody(document, story);
+  const paragraph =
+    body === undefined
+      ? undefined
+      : storyParagraphs(body).find(
+          (entry) => entry.paragraph.paraId === operation.blockId,
+        )?.paragraph;
+  if (
+    operation.type === "replaceBlock" &&
+    operation.styleId === (paragraph?.formatting?.styleId ?? null)
+  )
+    return undefined;
+  return pendingParagraphPropertiesRefusal(paragraph?.pPrMark);
+};
+
+type MapColumnDeletionIntentsOptions = {
+  intents: readonly EditorIntent[];
+  columnIndex: number;
+  /** Columns the batch inserted in the gap before the deleted one. */
+  inserted: number;
+  /** Columns the batch inserted in the gap after it. */
+  insertedAfter: number;
+};
+
+/**
+ * The native column applier uses the same successful same-gap insertion
+ * count; a column inserted on either side keeps a one-column table standing.
+ */
+const mapColumnDeletionIntents = ({
+  intents,
+  columnIndex,
+  inserted,
+  insertedAfter,
+}: MapColumnDeletionIntentsOptions): readonly EditorIntent[] => {
+  if (inserted === 0 && insertedAfter === 0) return intents;
+  return intents.map((intent): EditorIntent => {
+    if (
+      intent.type === "table" &&
+      intent.operation.type === DOCUMENT_OP_TYPES.DELETE_COLUMN
+    )
+      return inserted === 0
+        ? intent
+        : {
+            type: "table",
+            operation: { ...intent.operation, column: columnIndex + inserted },
+          };
+    // A source table with one column no longer disappears after the batch
+    // inserts beside that column: remove the original column, keeping the new.
+    if (
+      intent.type === "tableBlock" &&
+      intent.operation.type === DOCUMENT_OP_TYPES.DELETE_TABLE
+    )
+      return {
+        type: "table",
+        operation: {
+          type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
+          story: intent.operation.story,
+          blockId: intent.operation.blockId,
+          column: columnIndex + inserted,
+        },
+      };
+    return intent;
+  });
+};
 
 type ResolveCanonicalPublicOperationOptions = {
   operation: FolioDocumentOperation;
@@ -1776,7 +2452,7 @@ export class CanonicalPublicOperations {
     const skipped: FolioAIEditSkippedOperation[] = [];
     const normalizations: FolioAIEditNormalization[] = [];
     const refusals = new Map<string, CanonicalPublicOperationRefusal>();
-    const resolved: ResolvedOperation[] = [];
+    const resolved: (PreparedOperation & { plan: CanonicalBatchPlan })[] = [];
     // Read once, at the first operation that reaches the check: a batch the
     // session refuses as a whole reads no document.
     let definedReferences:
@@ -1880,20 +2556,32 @@ export class CanonicalPublicOperations {
         ),
       ),
     };
-    const overlapsResolved = (candidate: ResolvedOperation) =>
-      resolved.some(
-        (earlier) =>
-          earlier !== candidate &&
-          !besideItsDeletion(earlier, candidate) &&
-          !besideItsSplit(earlier, candidate) &&
-          ((candidate.from < earlier.to && candidate.to > earlier.from) ||
-            (earlier.from === earlier.to &&
-              candidate.from <= earlier.from &&
-              candidate.to >= earlier.from) ||
-            (candidate.from === candidate.to &&
-              candidate.from >= earlier.from &&
-              candidate.from <= earlier.to)),
-      );
+    const inputIndices = new Map(
+      batch.operations.map(({ id }, index) => [id, index]),
+    );
+    const planned = (item: PreparedOperation) => {
+      if (projected.isErr())
+        return panic("A resolved batch lost its read projection");
+      const inputIndex =
+        inputIndices.get(item.operation.id) ??
+        panic("A resolved operation lost its input position");
+      return {
+        ...item,
+        plan: canonicalBatchPlan({
+          ...item,
+          projection: projected.value,
+          tracked: batch.mode !== "direct",
+          inputIndex,
+        }),
+      };
+    };
+    let claims = new BatchClaims();
+    const overlapsResolved = (candidate: ReturnType<typeof planned>) =>
+      claims.conflictOf(candidate.plan.claim) !== null;
+    const admit = (candidate: ReturnType<typeof planned>) => {
+      claims.add(candidate.operation.id, candidate.plan.claim);
+      resolved.push(candidate);
+    };
     for (const operation of batch.operations) {
       if (!state || projected.isErr() || session.isComposing) {
         skip(operation.id, "documentNotEditable");
@@ -1959,11 +2647,12 @@ export class CanonicalPublicOperations {
         refuseResolution(operation.id, compiled.error);
         continue;
       }
-      if (overlapsResolved(compiled.value)) {
+      const candidate = planned(compiled.value);
+      if (overlapsResolved(candidate)) {
         skip(operation.id, "overlappingOperation");
         continue;
       }
-      resolved.push(compiled.value);
+      admit(candidate);
     }
     // An operation resolved beside a deleted paragraph that ends its run
     // counts on its other half; where that half did not resolve, it resolves
@@ -1986,6 +2675,11 @@ export class CanonicalPublicOperations {
       );
       if (partnered) continue;
       resolved.splice(resolved.indexOf(item), 1);
+      // Conditional resolution may retire an accepted claim; rebuild only at
+      // this boundary, so its old target cannot reject the independent retry.
+      claims = new BatchClaims();
+      for (const earlier of resolved)
+        claims.add(earlier.operation.id, earlier.plan.claim);
       const alone = this.resolve({
         operation,
         options,
@@ -2004,11 +2698,12 @@ export class CanonicalPublicOperations {
         refuseResolution(operation.id, alone.error);
         continue;
       }
-      if (overlapsResolved(alone.value)) {
+      const candidate = planned(alone.value);
+      if (overlapsResolved(candidate)) {
         skip(operation.id, "overlappingOperation");
         continue;
       }
-      resolved.push(alone.value);
+      admit(candidate);
     }
     // A move id names one relocation, a move only when it reaches exactly one
     // source and one destination, as the default engine pairs them; an
@@ -2073,13 +2768,10 @@ export class CanonicalPublicOperations {
     }
     if (!state || projected.isErr() || session.isComposing)
       return result([], null);
-    // Descending read positions keep independent snapshot coordinates valid;
-    // at one position an insertion goes first, beside a paragraph the batch
-    // then deletes.
-    resolved.sort(
-      (left, right) =>
-        right.from - left.from || left.to - left.from - (right.to - right.from),
-    );
+    const executionOrder = orderCanonicalBatch({
+      items: resolved,
+      doc: projected.value.doc,
+    });
     let document = readModel(session.document);
     const ops: DocumentOp[] = [];
     const appliedById = new Map<
@@ -2090,12 +2782,69 @@ export class CanonicalPublicOperations {
       reservedBlockIds: session.reservedBlockIds,
     });
     const date = options.revisionStamp?.date ?? new Date().toISOString();
-    for (const resolvedOperation of resolved) {
-      const {
+    type AdmittedOperation = (typeof resolved)[number];
+    const insertedColumnCounts = new Map<string, number>();
+    const recordColumnInsertion = (
+      member: AdmittedOperation,
+      counts: Map<string, number>,
+    ) => {
+      const column = member.plan.address;
+      if (column.type !== "column" || !column.insertion) return;
+      const key = getTableColumnCoordinateKey(column);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    };
+    type PrepareOperationOptions = {
+      document: Document;
+      resolvedOperation: AdmittedOperation;
+      columnInsertions: ReadonlyMap<string, number>;
+      nextRevisionId: number;
+      idLease?: IdLease;
+      allocations?: CompilePublicIntentsOptions["allocations"];
+      reservedBlockIds?: ReadonlySet<string>;
+      commentAllocation?: {
+        id: number;
+        content: ReturnType<typeof canonicalCommentBody>;
+      };
+    };
+    type DeclinedOperationOptions = {
+      reason: FolioAIEditSkipReason;
+      message?: string | undefined;
+      refusal?: CanonicalPublicOperationRefusal | undefined;
+    };
+    const declined = ({
+      reason,
+      message,
+      refusal,
+    }: DeclinedOperationOptions) => ({
+      type: "declined" as const,
+      reason,
+      message,
+      refusal,
+    });
+    // Preparation owns no session state: even comments and lock refusals are
+    // facts until the batch chooses this attempt.
+    const prepareOperation = ({
+      document: sourceDocument,
+      resolvedOperation,
+      columnInsertions,
+      nextRevisionId: firstRevisionId,
+      idLease = session.idLease,
+      allocations,
+      reservedBlockIds = session.reservedBlockIds,
+      commentAllocation: admittedComment,
+    }: PrepareOperationOptions) => {
+      const { operation, intents } = resolvedOperation;
+      const livePropertyRefusal = batchPropertyRefusal({
+        document: sourceDocument,
+        story,
         operation,
-        intents,
-        normalizations: adjustments,
-      } = resolvedOperation;
+      });
+      if (livePropertyRefusal !== undefined)
+        return declined({
+          reason: livePropertyRefusal.reason,
+          message: livePropertyRefusal.message,
+          refusal: livePropertyRefusal.canonicalRefusal,
+        });
       // A suggested operation's records are one suggestion: its own id, or the
       // one it names.
       const suggestionId =
@@ -2104,34 +2853,56 @@ export class CanonicalPublicOperations {
               ? operation.suggestionId
               : undefined) ?? operation.id)
           : undefined;
+      const column = resolvedOperation.plan.address;
+      const mappedIntents =
+        column.type === "column" && operation.type === "deleteTableColumn"
+          ? mapColumnDeletionIntents({
+              intents,
+              columnIndex: column.columnIndex,
+              inserted:
+                columnInsertions.get(getTableColumnCoordinateKey(column)) ?? 0,
+              insertedAfter:
+                columnInsertions.get(
+                  getTableColumnCoordinateKey({
+                    ...column,
+                    columnIndex: column.columnIndex + 1,
+                  }),
+                ) ?? 0,
+            })
+          : intents;
       const compiled = compilePublicIntents({
-        document,
-        intents,
+        document: sourceDocument,
+        intents: mappedIntents,
         allocate,
-        reservedBlockIds: session.reservedBlockIds,
-        idLease: session.idLease,
-        nextRevisionId,
+        reservedBlockIds,
+        idLease: idLease,
+        nextRevisionId: firstRevisionId,
         mode: batch.mode === "direct" ? "direct" : "tracked-changes",
         suggestionId,
         author: options.author ?? "AI",
         date,
+        ...(allocations === undefined ? {} : { allocations }),
       });
       if (compiled.isErr()) {
-        refusals.set(operation.id, {
-          gap: CANONICAL_GAP.publicUnsupportedInline,
+        return declined({
+          reason: "unsupportedBlock",
+          message: compiled.error.message,
+          refusal: { gap: CANONICAL_GAP.publicUnsupportedInline },
         });
-        skip(operation.id, "unsupportedBlock", compiled.error.message);
-        continue;
       }
       let nextDocument = compiled.value.document;
       const operationOps = [...compiled.value.ops];
       let commentId: number | undefined;
+      let commentAllocation: PrepareOperationOptions["commentAllocation"];
       switch (resolvedOperation.type) {
         case "plain":
           break;
         case "commented": {
           const { comment } = resolvedOperation;
-          const id = freshCommentId(nextDocument, session.idLease);
+          const id =
+            admittedComment === undefined
+              ? freshCommentId(nextDocument, idLease)
+              : Result.ok(admittedComment.id);
           // A suggested operation's comment is proposed with it: pending,
           // never saved, accepted and rejected with the suggestion.
           const proposedBy = suggestionId === undefined ? {} : { suggestionId };
@@ -2146,7 +2917,7 @@ export class CanonicalPublicOperations {
                 : storyParagraphs(body).map(({ paragraph }) => paragraph);
             };
             const known = new Set(
-              paragraphsIn(document).flatMap(({ paraId }) =>
+              paragraphsIn(sourceDocument).flatMap(({ paraId }) =>
                 paraId === undefined ? [] : [paraId],
               ),
             );
@@ -2155,6 +2926,9 @@ export class CanonicalPublicOperations {
             );
             const firstAdded = added.at(0);
             const lastAdded = added.at(-1);
+            const commentContent =
+              admittedComment?.content ??
+              canonicalCommentBody(nextDocument, comment.text, idLease);
             const commented =
               id.isErr() ||
               firstAdded?.paraId === undefined ||
@@ -2162,7 +2936,7 @@ export class CanonicalPublicOperations {
                 ? undefined
                 : compileCanonicalComments({
                     document: nextDocument,
-                    idLease: session.idLease,
+                    idLease: idLease,
                     command: {
                       type: "create",
                       comment: {
@@ -2170,11 +2944,7 @@ export class CanonicalPublicOperations {
                         author: options.author ?? "AI",
                         date,
                         done: false,
-                        content: canonicalCommentBody(
-                          nextDocument,
-                          comment.text,
-                          session.idLease,
-                        ),
+                        content: commentContent,
                         ...proposedBy,
                       },
                       anchor: {
@@ -2193,21 +2963,19 @@ export class CanonicalPublicOperations {
                     },
                   });
             if (commented === undefined || commented.isErr() || id.isErr()) {
-              refusals.set(operation.id, {
-                gap: CANONICAL_GAP.publicComments,
+              return declined({
+                reason: "unsupportedBlock",
+                message:
+                  commented?.isErr() === true
+                    ? commented.error.message
+                    : "The inserted paragraphs cannot carry the comment.",
+                refusal: { gap: CANONICAL_GAP.publicComments },
               });
-              skip(
-                operation.id,
-                "unsupportedBlock",
-                commented?.isErr() === true
-                  ? commented.error.message
-                  : "The inserted paragraphs cannot carry the comment.",
-              );
-              continue;
             }
             nextDocument = commented.value.document;
             operationOps.push(...commented.value.ops);
             commentId = id.value;
+            commentAllocation = { id: id.value, content: commentContent };
             break;
           }
           // The anchor paragraph at any depth: in a table cell or a content
@@ -2220,18 +2988,16 @@ export class CanonicalPublicOperations {
                   ({ paragraph }) => paragraph.paraId === comment.from.blockId,
                 )?.paragraph;
           };
-          const before = anchorIn(document);
+          const before = anchorIn(sourceDocument);
           const after = anchorIn(nextDocument);
           if (id.isErr() || before === undefined || after === undefined) {
-            refusals.set(operation.id, { gap: CANONICAL_GAP.publicComments });
-            skip(
-              operation.id,
-              "unsupportedBlock",
-              id.isErr()
+            return declined({
+              reason: "unsupportedBlock",
+              message: id.isErr()
                 ? id.error.message
                 : "The comment anchor no longer exists.",
-            );
-            continue;
+              refusal: { gap: CANONICAL_GAP.publicComments },
+            });
           }
           // A tracked edit's comment covers what the edit changed, from its
           // first revision to its last, as the default engine anchors it.
@@ -2261,9 +3027,12 @@ export class CanonicalPublicOperations {
                   blockId: comment.from.blockId,
                   offset: changed.to,
                 };
+          const commentContent =
+            admittedComment?.content ??
+            canonicalCommentBody(nextDocument, comment.text, idLease);
           const commented = compileCanonicalComments({
             document: nextDocument,
-            idLease: session.idLease,
+            idLease: idLease,
             command: {
               type: "create",
               comment: {
@@ -2271,11 +3040,7 @@ export class CanonicalPublicOperations {
                 author: options.author ?? "AI",
                 date,
                 done: false,
-                content: canonicalCommentBody(
-                  nextDocument,
-                  comment.text,
-                  session.idLease,
-                ),
+                content: commentContent,
                 ...proposedBy,
               },
               anchor:
@@ -2285,13 +3050,16 @@ export class CanonicalPublicOperations {
             },
           });
           if (commented.isErr()) {
-            refusals.set(operation.id, { gap: CANONICAL_GAP.publicComments });
-            skip(operation.id, "unsupportedBlock", commented.error.message);
-            continue;
+            return declined({
+              reason: "unsupportedBlock",
+              message: commented.error.message,
+              refusal: { gap: CANONICAL_GAP.publicComments },
+            });
           }
           nextDocument = commented.value.document;
           operationOps.push(...commented.value.ops);
           commentId = id.value;
+          commentAllocation = { id: id.value, content: commentContent };
           break;
         }
         default: {
@@ -2300,28 +3068,54 @@ export class CanonicalPublicOperations {
         }
       }
       if (operationOps.length === 0) {
-        skip(operation.id, "noopOperation");
-        continue;
+        return declined({ reason: "noopOperation" });
       }
       // An operation a content-control lock refuses is skipped on its own,
       // as the document's rule; the rest of the batch still applies.
-      const locked = lockViolationBetween(document, nextDocument);
+      const locked = lockViolationBetween(sourceDocument, nextDocument);
       if (locked !== null) {
-        skip(
-          operation.id,
-          CONTENT_CONTROL_LOCK,
-          `Refused: ${lockedControlMessage(locked)}`,
-        );
-        continue;
+        return declined({
+          reason: CONTENT_CONTROL_LOCK,
+          message: `Refused: ${lockedControlMessage(locked)}`,
+        });
       }
+      return {
+        type: "prepared" as const,
+        document: nextDocument,
+        ops: operationOps,
+        nextRevisionId: Math.max(
+          compiled.value.nextRevisionId,
+          (commentId ?? -1) + 1,
+        ),
+        revisionIds: compiled.value.revisions,
+        commentId,
+        suggestionId,
+        allocations: compiled.value.allocations,
+        commentAllocation,
+      };
+    };
+    type OperationAttempt = ReturnType<typeof prepareOperation>;
+    const commitOperation = (
+      resolvedOperation: AdmittedOperation,
+      prepared: OperationAttempt,
+    ) => {
+      const {
+        operation,
+        intents,
+        normalizations: adjustments,
+      } = resolvedOperation;
+      if (prepared.type === "declined") {
+        if (prepared.refusal !== undefined)
+          refusals.set(operation.id, prepared.refusal);
+        skip(operation.id, prepared.reason, prepared.message);
+        return;
+      }
+      const { commentId, suggestionId, revisionIds } = prepared;
       normalizations.push(...adjustments);
-      document = nextDocument;
-      ops.push(...operationOps);
-      nextRevisionId = Math.max(
-        compiled.value.nextRevisionId,
-        (commentId ?? -1) + 1,
-      );
-      const revisionIds = compiled.value.revisions;
+      recordColumnInsertion(resolvedOperation, insertedColumnCounts);
+      document = prepared.document;
+      ops.push(...prepared.ops);
+      nextRevisionId = Math.max(nextRevisionId, prepared.nextRevisionId);
       const revisionId = revisionIds.at(0);
       const joined =
         batch.mode === "direct"
@@ -2334,6 +3128,233 @@ export class CanonicalPublicOperations {
         ...(revisionId === undefined ? {} : { revisionId, revisionIds }),
         ...(suggestionId === undefined ? {} : { suggestionId }),
       });
+    };
+    const inputOrder = new Map(
+      batch.operations.map(({ id }, index) => [id, index]),
+    );
+    const orderOf = ({ operation }: AdmittedOperation) => {
+      const order = inputOrder.get(operation.id);
+      if (order === undefined)
+        panic("A resolved insertion lost its batch order.");
+      return order;
+    };
+    const gaps = new Map<number, AdmittedOperation[]>();
+    for (const member of executionOrder) {
+      if (!placesBlock(member.operation)) continue;
+      const place = canonicalInsertionGap({
+        operation: member.operation,
+        intents: member.intents,
+        projection: projected.value,
+      });
+      if (place === undefined)
+        panic("A resolved block insertion lost its placement.");
+      const members = gaps.get(place.gap) ?? [];
+      members.push(member);
+      gaps.set(place.gap, members);
+    }
+    const indices = new Map(
+      executionOrder.map((member, index) => [member, index] as const),
+    );
+    const intervals: { first: number; last: number }[] = [];
+    const groupOf = new Map<AdmittedOperation, readonly AdmittedOperation[]>();
+    for (const members of gaps.values()) {
+      if (members.length < 2) continue;
+      const first = members.at(0),
+        last = members.at(-1);
+      const from = first === undefined ? undefined : indices.get(first);
+      const to = last === undefined ? undefined : indices.get(last);
+      if (from === undefined || to === undefined)
+        panic("An insertion group lost its execution interval.");
+      intervals.push({ first: from, last: to });
+      for (const member of members) groupOf.set(member, members);
+    }
+    const merged: typeof intervals = [];
+    for (const interval of intervals.toSorted(
+      (left, right) => left.first - right.first,
+    )) {
+      const previous = merged.at(-1);
+      if (previous !== undefined && interval.first <= previous.last)
+        previous.last = Math.max(previous.last, interval.last);
+      else merged.push({ ...interval });
+    }
+    const windows = new Map<AdmittedOperation, readonly AdmittedOperation[]>();
+    for (const interval of merged) {
+      const first = executionOrder.at(interval.first);
+      if (first === undefined)
+        panic("An insertion admission window lost its first operation.");
+      windows.set(
+        first,
+        executionOrder.slice(interval.first, interval.last + 1),
+      );
+    }
+    const completed = new Set<string>();
+    for (const resolvedOperation of executionOrder) {
+      if (completed.has(resolvedOperation.operation.id)) continue;
+      const window = windows.get(resolvedOperation);
+      // The ordinary one-operation path performs no admission replay or census.
+      if (window === undefined) {
+        commitOperation(
+          resolvedOperation,
+          prepareOperation({
+            document,
+            resolvedOperation,
+            nextRevisionId,
+            columnInsertions: insertedColumnCounts,
+          }),
+        );
+        continue;
+      }
+      type AdmittedMember = {
+        resolvedOperation: AdmittedOperation;
+        firstRevisionId: number;
+        ids: ReturnType<typeof introducedIds>;
+        ops: readonly DocumentOp[];
+        allocations: NonNullable<CompilePublicIntentsOptions["allocations"]>;
+        commentAllocation: PrepareOperationOptions["commentAllocation"];
+      };
+      const admitted: AdmittedMember[] = [];
+      const declinedMembers: {
+        resolvedOperation: AdmittedOperation;
+        prepared: OperationAttempt;
+      }[] = [];
+      const admissionColumns = new Map(insertedColumnCounts);
+      let admissionDocument = document;
+      let admissionRevisionId = nextRevisionId;
+      for (const member of window) {
+        completed.add(member.operation.id);
+        const prepared = prepareOperation({
+          document: admissionDocument,
+          columnInsertions: admissionColumns,
+          resolvedOperation: member,
+          nextRevisionId: admissionRevisionId,
+        });
+        if (prepared.type === "declined") {
+          declinedMembers.push({ resolvedOperation: member, prepared });
+          continue;
+        }
+        recordColumnInsertion(member, admissionColumns);
+        admitted.push({
+          resolvedOperation: member,
+          firstRevisionId: admissionRevisionId,
+          allocations: prepared.allocations,
+          ops: prepared.ops,
+          commentAllocation: prepared.commentAllocation,
+          ids: introducedIds(
+            leasedIdCensus(admissionDocument),
+            leasedIdCensus(prepared.document),
+          ),
+        });
+        admissionDocument = prepared.document;
+        admissionRevisionId = prepared.nextRevisionId;
+      }
+      const admissionOf = new Map(
+        admitted.map((member) => [member.resolvedOperation, member] as const),
+      );
+      const ordered: {
+        member: AdmittedMember;
+        operation: AdmittedOperation;
+      }[] = [];
+      const scheduled = new Set<AdmittedOperation>();
+      for (const member of admitted) {
+        if (scheduled.has(member.resolvedOperation)) continue;
+        const group = groupOf.get(member.resolvedOperation);
+        const partners =
+          group === undefined
+            ? []
+            : group.flatMap((sourceMember) => {
+                const admission = admissionOf.get(sourceMember);
+                return admission === undefined ? [] : [admission];
+              });
+        const first = partners.at(0);
+        if (first === undefined || partners.length === 1) {
+          scheduled.add(member.resolvedOperation);
+          ordered.push({ member, operation: member.resolvedOperation });
+          continue;
+        }
+        const firstPlace = canonicalInsertionGap({
+          operation: first.resolvedOperation.operation,
+          intents: first.resolvedOperation.intents,
+          projection: projected.value,
+        });
+        if (firstPlace === undefined)
+          panic("An admitted insertion lost its source placement.");
+        const anchor = firstPlace.anchor;
+        const placed = partners.toSorted(
+          (left, right) =>
+            (orderOf(left.resolvedOperation) -
+              orderOf(right.resolvedOperation)) *
+            (anchor.at.type === "before" ? 1 : -1),
+        );
+        for (const [index, partner] of placed.entries()) {
+          scheduled.add(partner.resolvedOperation);
+          ordered.push({
+            member: partner,
+            operation: {
+              ...partner.resolvedOperation,
+              intents: placeInsertionIntents({
+                intents: partner.resolvedOperation.intents,
+                anchor,
+                placement: index === 0 ? "first" : "following",
+              }),
+            },
+          });
+        }
+      }
+      const replayColumns = new Map(insertedColumnCounts);
+      let replayDocument = document;
+      const replayed: {
+        resolvedOperation: AdmittedOperation;
+        prepared: OperationAttempt;
+      }[] = [];
+      for (const { member, operation: replayOperation } of ordered) {
+        const idLease =
+          session.idLease === undefined
+            ? undefined
+            : insertionMemberIdLease({
+                lease: session.idLease,
+                siblings: admitted
+                  .filter((other) => other !== member)
+                  .map(({ ids }) => ids),
+              });
+        const reservedBlockIds = new Set(session.reservedBlockIds);
+        for (const other of admitted) {
+          if (other === member) continue;
+          for (const { kind, id } of other.ids) {
+            if (kind === "paragraph") reservedBlockIds.add(formatParaId(id));
+          }
+        }
+        const droppedCarrier = droppedInsertionCarrier({
+          admitted: member.resolvedOperation.intents,
+          replayed: replayOperation.intents,
+          ops: member.ops,
+        });
+        if (droppedCarrier !== undefined) reservedBlockIds.add(droppedCarrier);
+        const prepared = prepareOperation({
+          document: replayDocument,
+          columnInsertions: replayColumns,
+          resolvedOperation: replayOperation,
+          nextRevisionId: member.firstRevisionId,
+          reservedBlockIds,
+          allocations: member.allocations,
+          ...(member.commentAllocation === undefined
+            ? {}
+            : { commentAllocation: member.commentAllocation }),
+          ...(idLease === undefined ? {} : { idLease }),
+        });
+        if (prepared.type === "declined")
+          panic(`Admitted insertion failed when ordered: ${prepared.message}`);
+        recordColumnInsertion(replayOperation, replayColumns);
+        replayDocument = prepared.document;
+        replayed.push({ resolvedOperation: replayOperation, prepared });
+      }
+      for (const declinedMember of declinedMembers)
+        commitOperation(
+          declinedMember.resolvedOperation,
+          declinedMember.prepared,
+        );
+      for (const replay of replayed)
+        commitOperation(replay.resolvedOperation, replay.prepared);
+      nextRevisionId = Math.max(nextRevisionId, admissionRevisionId);
     }
     // A move half that did not apply leaves the other a plain insertion or
     // deletion, reported unpaired: the batch applies again without the move.
@@ -2549,10 +3570,10 @@ export class CanonicalPublicOperations {
       return refusal("unsupportedBlock");
     const tracking = (
       resolved: Omit<
-        Extract<ResolvedOperation, { type: "plain" }>,
+        Extract<PreparedOperation, { type: "plain" }>,
         "type" | "operation"
       >,
-    ): Result<ResolvedOperation, CanonicalPublicOperationResolutionError> =>
+    ): Result<PreparedOperation, CanonicalPublicOperationResolutionError> =>
       Result.ok(
         operation.comment === undefined
           ? { type: "plain", operation, ...resolved }
@@ -3365,23 +4386,21 @@ export class CanonicalPublicOperations {
           }),
         );
     } else intents.push(intent);
-    const structural =
-      operation.type === "splitBlock" ||
-      operation.type === "mergeBlockWithNext";
     const nextParagraph =
       operation.type === "mergeBlockWithNext" &&
       intent.type === "joinParagraphs"
         ? projection.value.paragraph(intent.nextBlockId)
         : undefined;
     let claimedTo = range.to;
-    if (structural) claimedTo = paragraph.start + paragraph.node.content.size;
+    if (operation.type === "mergeBlockWithNext")
+      claimedTo = paragraph.start + paragraph.node.content.size;
     if (nextParagraph)
       claimedTo = nextParagraph.start + nextParagraph.node.content.size;
     return Result.ok({
       ...resolvedComment,
       intents,
       normalizations,
-      from: structural ? paragraph.start : range.from,
+      from: range.from,
       to: claimedTo,
     });
   }

@@ -59,11 +59,6 @@ updates:
           - version-update:semver-major
           - version-update:semver-minor
           - version-update:semver-patch
-      - dependency-name: tsdown
-        update-types:
-          - version-update:semver-major
-          - version-update:semver-minor
-          - version-update:semver-patch
       - dependency-name: "@typescript/native"
         update-types:
           - version-update:semver-major

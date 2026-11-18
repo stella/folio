@@ -167,17 +167,23 @@ const TRACKED_ORDER_KINDS = Object.values(trackedTransform.TRACKED_ORDER_PAIRS);
 /**
  * The declared tracked pairs a batch forms with the tail it was rebased
  * over, each compared in one coordinate space: the batch moved over the
- * tail batches sequenced before the one it meets.
+ * tail batches sequenced before the one it meets, in the document that one
+ * applied to, where a tracked edit may extend a change already there.
  */
 const declaredOver = (
   batch: DocumentBatch,
   tail: readonly SequencedBatch[],
+  history: readonly Document[],
 ): Set<trackedTransform.TrackedOrderPair> => {
   const kinds = new Set<trackedTransform.TrackedOrderPair>();
   for (const [index, remote] of tail.entries()) {
     const moved = transformBatch(batch, tail.slice(0, index));
     if (moved.isErr()) break;
-    for (const kind of trackedOrderPairs(moved.value.ops, remote.ops))
+    for (const kind of trackedOrderPairs(
+      moved.value.ops,
+      remote.ops,
+      history.at(remote.revision - 1),
+    ))
       kinds.add(kind);
   }
   return kinds;
@@ -322,11 +328,12 @@ const noTally = (): Tally => ({
 const trackedOrderPairs = (
   ops: readonly DocumentOp[],
   others: readonly DocumentOp[],
+  document?: Document,
 ): Set<trackedTransform.TrackedOrderPair> => {
   const kinds = new Set<trackedTransform.TrackedOrderPair>();
   for (const op of restoredOps(ops))
     for (const other of restoredOps(others)) {
-      const kind = trackedTransform.trackedOrderPair(op, other);
+      const kind = trackedTransform.trackedOrderPair(op, other, document);
       if (kind !== undefined) kinds.add(kind);
     }
   return kinds;
@@ -844,7 +851,7 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
         // Only a declared tracked pair may record other cuts, or leave
         // shared content to another deletion, in the other order; every
         // peer still reaches the authority's document by replay.
-        const declared = declaredOver(batch, tail);
+        const declared = declaredOver(batch, tail, history);
         if (declared.size === 0) outcome.diverged.push(batch.opId);
         for (const kind of declared) outcome.trackedOrder[kind] += 1;
       }
@@ -2030,6 +2037,72 @@ describe("canonical sequencing", () => {
         convergence(noCounts(), fc.constant(scenario)),
         propertyConfig({ numRuns: 1 }),
       );
+    },
+    propertyTestTimeout(30_000),
+  );
+
+  test(
+    "a paragraph split at a concurrent suggested insertion's point is accepted in either order",
+    async () => {
+      // Saved flow -706043845: the split is sequenced after the suggestion.
+      const splitLater = [
+        3,
+        [
+          {
+            type: "edit",
+            peer: 1,
+            seed: { kind: "type", a: 7, b: 0, suggest: true },
+          },
+          {
+            type: "edit",
+            peer: 0,
+            seed: { kind: "type", a: 0, b: 0, suggest: false },
+          },
+          { type: "deliver", seed: 0 },
+          { type: "deliver", seed: 0 },
+          {
+            type: "edit",
+            peer: 0,
+            seed: { kind: "join", a: 53294, b: 0, suggest: false },
+          },
+          { type: "deliver", seed: 0 },
+          {
+            type: "edit",
+            peer: 0,
+            seed: { kind: "split", a: 7, b: 0, suggest: false },
+          },
+          {
+            type: "edit",
+            peer: 0,
+            seed: { kind: "type", a: 0, b: 0, suggest: false },
+          },
+          { type: "submit", peer: 0 },
+        ],
+      ] as const satisfies Scenario;
+      // The split is sequenced first; the suggestion made before it arrives
+      // is rebased over it.
+      const splitFirst = [
+        3,
+        [
+          {
+            type: "edit",
+            peer: 0,
+            seed: { kind: "split", a: 7, b: 0, suggest: false },
+          },
+          {
+            type: "edit",
+            peer: 1,
+            seed: { kind: "type", a: 7, b: 0, suggest: true },
+          },
+          { type: "submit", peer: 0 },
+          { type: "submit", peer: 1 },
+        ],
+      ] as const satisfies Scenario;
+      for (const scenario of [splitLater, splitFirst])
+        await fc.assert(
+          convergence(noCounts(), fc.constant(scenario)),
+          propertyConfig({ numRuns: 1 }),
+        );
     },
     propertyTestTimeout(30_000),
   );

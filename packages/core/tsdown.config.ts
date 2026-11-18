@@ -78,7 +78,7 @@ export default defineConfig([
     ...shared,
     dts: {
       ...tsrsDeclarations("tsconfig.declarations.json"),
-      emitDtsOnly: true,
+      dtsOnly: true,
     },
     clean: false,
   },

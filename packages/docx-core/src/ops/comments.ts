@@ -44,6 +44,7 @@ import {
   mergeAlike,
   nestedRecords,
   rebuildNode,
+  spanningRecords,
 } from "./leaves";
 import { cloneModel } from "./modelClone";
 import { isRangeBoundary } from "./offsets";
@@ -65,6 +66,7 @@ import {
   type CommentState,
   type CreateCommentOp,
   DOCUMENT_OP_TYPES,
+  type InlineSlice,
   type NewIds,
   OP_STORIES,
   type OpStory,
@@ -199,6 +201,56 @@ type BlockCommentBoundary = Extract<
  * rather than at the start of the one after.
  */
 const trailingBoundaries = new WeakSet<StoryAnchorSpan>();
+
+/** Where a reply's marker goes: a gap, and the thread's marker beside it. */
+type ThreadGap = {
+  gap: Gap;
+  leaf: StoryAnchorSpan;
+  side: "after" | "before";
+};
+
+type SliceBesideMarkerOptions = {
+  document: Document;
+  at: TextPosition;
+  content: ParagraphContent[];
+  /** The thread's marker at the gap, as the document read before any insertion. */
+  leaf: LeafSpan;
+  side: "after" | "before";
+};
+
+/**
+ * A reply's marker as a slice that lands beside the thread's marker at the
+ * gap, inside the records holding that marker: a reply cuts no hyperlink,
+ * content control or wrapper its thread's marker stands in. Its open end on
+ * the marker's side continues every record holding the marker; the other
+ * continues those that run across the gap.
+ */
+const sliceBesideMarker = ({
+  document,
+  at,
+  content,
+  leaf,
+  side,
+}: SliceBesideMarkerOptions): InlineSlice => {
+  const paragraph = storyParagraphs(storyBody(document, at.story)).find(
+    ({ paragraph: candidate }) =>
+      idKey(candidate.paraId ?? "") === idKey(at.blockId),
+  )?.paragraph;
+  const gap = { offset: at.offset, zeroWidthBefore: at.zeroWidthBefore ?? 0 };
+  const across =
+    paragraph === undefined
+      ? 0
+      : spanningRecords(paragraph.content, [gap], 0, 1).length;
+  const holding = leaf.ancestors;
+  let nested: InlineNode[] = content;
+  for (const record of holding.toReversed())
+    nested = [rebuildNode(record, nested)];
+  return {
+    content: asParagraphContent(nested),
+    openStart: side === "after" ? holding.length : across,
+    openEnd: side === "after" ? across : holding.length,
+  };
+};
 
 type StoryAnchorWalk = {
   anchors: StoryAnchorSpan[];
@@ -1416,7 +1468,12 @@ const create = (
       DOCUMENT_OP_REFUSAL_REASONS.INVALID_BLOCK_ID,
     );
   let comment: Comment = cloneModel(op.comment);
-  let positions: { at: TextPosition; content: ParagraphContent[] }[] = [];
+  let positions: {
+    at: TextPosition;
+    content: ParagraphContent[];
+    /** The thread's marker a reply's goes beside, and on which side. */
+    beside?: { leaf: LeafSpan; side: "after" | "before" } | undefined;
+  }[] = [];
   let range: { from: TextPosition; to: TextPosition } | undefined;
   switch (op.anchor.kind) {
     case "reply": {
@@ -1488,8 +1545,9 @@ const create = (
       };
       // An owner's marker after a paragraph's text: the reply's goes at that
       // text's end, before the markers of the thread's later comments there.
-      const gapBeforeLaterThread = (span: StoryAnchorSpan): Gap => {
+      const gapBeforeLaterThread = (span: StoryAnchorSpan): ThreadGap => {
         let gap = span.before;
+        let leaf: StoryAnchorSpan = span;
         for (const previous of anchors
           .slice(0, anchors.indexOf(span))
           .toReversed()) {
@@ -1505,17 +1563,19 @@ const create = (
           )
             break;
           gap = previous.before;
+          leaf = previous;
         }
-        return gap;
+        return { gap, leaf, side: "before" };
       };
       // A reply's marker follows the owner's one and the markers of the
       // thread's comments that come before it, so concurrent replies land in
       // the same order whichever applies first. A reply's own markers stand
       // in paragraphs: beside an owner's marker between blocks, at the edge
       // of the text that marker is placed at.
-      const gapAfterThread = (span: StoryAnchorSpan): Gap => {
+      const gapAfterThread = (span: StoryAnchorSpan): ThreadGap => {
         if (trailingBoundaries.has(span)) return gapBeforeLaterThread(span);
         let gap = span.after;
+        let leaf: StoryAnchorSpan = span;
         for (const next of anchors.slice(anchors.indexOf(span) + 1)) {
           const id = anchorId(next.node);
           if (next.betweenBlocks === true) continue;
@@ -1529,12 +1589,13 @@ const create = (
           )
             break;
           gap = next.after;
+          leaf = next;
         }
-        return gap;
+        return { gap, leaf, side: "after" };
       };
       positions = parentAnchors.toReversed().map((span) => {
         const { story, blockId, node } = span;
-        const after = gapAfterThread(span);
+        const { gap: after, leaf, side } = gapAfterThread(span);
         switch (node.type) {
           case "commentRangeStart":
           case "commentRangeEnd":
@@ -1547,6 +1608,7 @@ const create = (
                 zeroWidthBefore: after.zeroWidthBefore,
               },
               content: [{ type: node.type, id: comment.id }],
+              beside: leaf.betweenBlocks === true ? undefined : { leaf, side },
             };
           default:
             return {
@@ -1683,12 +1745,15 @@ const create = (
       ? [...comments, comment]
       : comments.toSpliced(following, 0, comment),
   );
-  for (const { at, content } of positions) {
+  for (const { at, content, beside } of positions) {
     const inserted = applyOps(current, [
       {
         type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
         at,
-        slice: { content, openStart: 0, openEnd: 0 },
+        slice:
+          beside === undefined
+            ? { content, openStart: 0, openEnd: 0 }
+            : sliceBesideMarker({ document: current, at, content, ...beside }),
         newIds: remainingIds(current, op.newIds),
       },
     ]);

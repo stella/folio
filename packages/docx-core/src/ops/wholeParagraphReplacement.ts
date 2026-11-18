@@ -1,6 +1,6 @@
 import { panic, Result } from "better-result";
 
-import type { Document } from "../model/document";
+import type { Document, TrackedChangeInfo } from "../model/document";
 import { sourceCommentAnchorsIn } from "./comments";
 import { idKey } from "./ids";
 import {
@@ -20,6 +20,12 @@ type WholeParagraphReplacementOptions = {
   document: Document;
   from: TextPosition;
   to: TextPosition;
+  /**
+   * The author a suggesting replacement records, absent for a direct edit.
+   * A suggestion retracts only its author's pending insertions; a host with
+   * another author's stays with the ordinary range planner.
+   */
+  suggestingAuthor?: string | undefined;
 };
 
 type WholeParagraphReplacementPlan = {
@@ -30,13 +36,15 @@ type WholeParagraphReplacementPlan = {
 /**
  * Whole source hosts before a surviving paragraph can retire through range
  * deletion and joins. Their complete comment ownership needs no alignment
- * inside a surviving host. Partial first hosts, section endpoints and pending host
- * ownership stay with the ordinary range planner.
+ * inside a surviving host. Partial first hosts, section endpoints and pending
+ * removals, moves or property changes in a host stay with the ordinary range
+ * planner.
  */
 export const planWholeParagraphReplacement = ({
   document,
   from,
   to,
+  suggestingAuthor,
 }: WholeParagraphReplacementOptions): Result<
   WholeParagraphReplacementPlan | null,
   DocumentOpRefusal
@@ -60,6 +68,11 @@ export const planWholeParagraphReplacement = ({
     zeroWidthLeavesAt(first.paragraph.content, 0).length > 0
   )
     return Result.ok(null);
+  // A pending insertion, words or break, goes with its host: the direct edit
+  // removes it, and a suggestion retracts its author's own. Pending removals
+  // and moves outlive a direct edit, and an empty wrapper is a leaf of its own.
+  const retires = ({ author }: TrackedChangeInfo) =>
+    suggestingAuthor === undefined || author === suggestingAuthor;
   const blockIds: string[] = [];
   const starts = new Set<number>();
   const ends = new Set<number>();
@@ -68,13 +81,22 @@ export const planWholeParagraphReplacement = ({
     if (
       paragraph.paraId === undefined ||
       paragraph.sectionProperties !== undefined ||
-      paragraph.pPrMark !== undefined ||
+      (paragraph.pPrMark !== undefined &&
+        (paragraph.pPrMark.kind !== "ins" ||
+          !retires(paragraph.pPrMark.info))) ||
       (paragraph.propertyChanges?.length ?? 0) > 0
     )
       return Result.ok(null);
     blockIds.push(paragraph.paraId);
     for (const { node, ancestors } of leafSpans(paragraph.content)) {
-      if (isTrackedWrapper(node) || ancestors.some(isTrackedWrapper))
+      if (
+        isTrackedWrapper(node) ||
+        ancestors.some(
+          (ancestor) =>
+            isTrackedWrapper(ancestor) &&
+            (ancestor.type !== "insertion" || !retires(ancestor.info)),
+        )
+      )
         return Result.ok(null);
       // Atomic field results have source owners outside the addressable leaf walk.
       if (childNodes(node) === undefined && nestedRecords(node) !== undefined)

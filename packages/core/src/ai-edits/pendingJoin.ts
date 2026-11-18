@@ -335,6 +335,12 @@ export type PendingMarkEditOptions = {
   cleanText: string;
 };
 
+/** The shared property boundary, independent of the paragraph's representation. */
+export const pendingParagraphPropertiesRefusal = (
+  mark: unknown,
+): PendingRefusal | undefined =>
+  isDeletedPPrMark(mark) ? PENDING_PARAGRAPH_MARK_PROPERTY_REFUSAL : undefined;
+
 /**
  * The refusal an operation that places no block meets on a paragraph whose
  * mark is pending deletion, by the rules the default engine applies: its
@@ -348,11 +354,8 @@ export const pendingMarkEditRefusal = ({
   paragraph,
   cleanText,
 }: PendingMarkEditOptions): PendingRefusal | undefined => {
-  if (
-    edit === "paragraphProperties" &&
-    isDeletedPPrMark(paragraph.attrs["pPrMark"])
-  )
-    return PENDING_PARAGRAPH_MARK_PROPERTY_REFUSAL;
+  if (edit === "paragraphProperties")
+    return pendingParagraphPropertiesRefusal(paragraph.attrs["pPrMark"]);
   if (
     edit === "wholeText" &&
     isPendingDeletion(doc, paragraphPos, paragraph, cleanText)

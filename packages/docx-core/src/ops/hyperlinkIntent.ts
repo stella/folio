@@ -3,6 +3,8 @@ import { panic, Result } from "better-result";
 import { sanitizeExternalUrl } from "../markdown/href";
 import type {
   Document,
+  Endnote,
+  Footnote,
   Hyperlink,
   Paragraph,
   ParagraphContent,
@@ -15,6 +17,7 @@ import type { EditorIntentMode } from "./editorIntent";
 import { structurallyEqual } from "./equality";
 import { resolveGap } from "./gaps";
 import { freshenIdentities } from "./identity";
+import { takeParagraphIds } from "./idLease";
 import {
   countKeys,
   identityKeysIn,
@@ -29,6 +32,7 @@ import {
   leafSpans,
   partitionContent,
 } from "./leaves";
+import { cloneModel } from "./modelClone";
 import { isTrackedChild, paragraphLength, withChildren } from "./offsets";
 import { findStoryParagraph } from "./paragraphLocator";
 import { selectedParagraphRuns } from "./plan";
@@ -290,14 +294,149 @@ type CompileHyperlinkIntentOptions = {
   compileIntent: CompileIntent;
 };
 
-/** Run content that names a record of its own, which a copy would duplicate. */
-const IDENTIFIED_RUN_CONTENT: ReadonlySet<string> = new Set([
+/**
+ * Content that names a record of its own, which a copy would duplicate:
+ * preserved markup may name anything, and a marker inside a copied text box
+ * names its bookmark, comment, move or note. A drawing or shape is copied as
+ * a paste copies it: the writer renumbers drawing ids, and paragraphs inside
+ * it take fresh ids. A note reference in the copy's own runs names a copy of
+ * its note.
+ */
+const IDENTIFIED_CONTENT: ReadonlySet<string> = new Set([
   "footnoteRef",
   "endnoteRef",
-  "drawing",
-  "shape",
   "preservedXml",
+  "preservedInline",
+  "bookmarkStart",
+  "bookmarkEnd",
+  "commentRangeStart",
+  "commentRangeEnd",
+  "commentReference",
+  "moveFromRangeStart",
+  "moveFromRangeEnd",
+  "moveToRangeStart",
+  "moveToRangeEnd",
 ]);
+
+/** Every record in a value, nested ones included. */
+const recordsIn = (value: unknown): object[] => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    value instanceof ArrayBuffer ||
+    ArrayBuffer.isView(value)
+  )
+    return [];
+  if (Array.isArray(value)) return value.flatMap(recordsIn);
+  return [value, ...Object.values(value).flatMap(recordsIn)];
+};
+
+const namesRecord = (record: object): boolean =>
+  "type" in record &&
+  typeof record.type === "string" &&
+  IDENTIFIED_CONTENT.has(record.type);
+
+/** Every paragraph in a value, nested ones included. */
+const paragraphsIn = (value: unknown): Paragraph[] =>
+  recordsIn(value).filter(
+    (record): record is Paragraph =>
+      "type" in record && record.type === "paragraph",
+  );
+
+/** The paragraphs inside a copy's drawings and text boxes. */
+const nestedParagraphs = (copy: readonly ParagraphContent[]): Paragraph[] =>
+  paragraphsIn(copy);
+
+type NoteReference = Extract<
+  InlineNode,
+  { type: "footnoteRef" | "endnoteRef" }
+>;
+
+/** The note references in a copy's own runs, not in a text box inside it. */
+const noteReferencesIn = (copy: readonly ParagraphContent[]): NoteReference[] =>
+  leafSpans(copy).flatMap(({ node }) =>
+    node.type === "footnoteRef" || node.type === "endnoteRef" ? [node] : [],
+  );
+
+/**
+ * A copy of each referenced note under a new id, which the reference then
+ * names. A note holding a tracked change, a comment or a bookmark refuses:
+ * its copy would name those records a second time.
+ */
+const copiedNotes = (
+  document: Document,
+  references: readonly NoteReference[],
+): Result<(Footnote | Endnote)[], DocumentOpRefusal> => {
+  const copies: (Footnote | Endnote)[] = [];
+  const next = {
+    footnote:
+      Math.max(0, ...(document.package.footnotes ?? []).map(({ id }) => id)) +
+      1,
+    endnote:
+      Math.max(0, ...(document.package.endnotes ?? []).map(({ id }) => id)) + 1,
+  };
+  for (const reference of references) {
+    const kind = reference.type === "footnoteRef" ? "footnote" : "endnote";
+    const notes =
+      kind === "footnote"
+        ? document.package.footnotes
+        : document.package.endnotes;
+    const note = notes?.find(({ id }) => id === reference.id);
+    if (
+      note === undefined ||
+      identityKeysIn(note.content).length > 0 ||
+      recordsIn(note.content).some(namesRecord)
+    )
+      return refuse(
+        "A link suggestion cannot copy a note holding a tracked change, a comment or a bookmark.",
+        DOCUMENT_OP_REFUSAL_REASONS.UNRECORDABLE_LINK_SUGGESTION,
+      );
+    const id = next[kind];
+    next[kind] += 1;
+    reference.id = id;
+    copies.push({ ...cloneModel(note), id });
+  }
+  return Result.ok(copies);
+};
+
+/** The operation adding the copied notes to the package, in id order. */
+const withNotes = (
+  document: Document,
+  notes: readonly (Footnote | Endnote)[],
+): DocumentOp => {
+  const footnotes = notes.filter(
+    (note): note is Footnote => note.type === "footnote",
+  );
+  const endnotes = notes.filter(
+    (note): note is Endnote => note.type === "endnote",
+  );
+  const before = document.package;
+  return {
+    type: DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS,
+    expected: {
+      ...(footnotes.length === 0
+        ? {}
+        : { footnotes: before.footnotes ?? null }),
+      ...(endnotes.length === 0 ? {} : { endnotes: before.endnotes ?? null }),
+    },
+    parts: {
+      ...(footnotes.length === 0
+        ? {}
+        : {
+            footnotes: [...(before.footnotes ?? []), ...footnotes].toSorted(
+              (left, right) => left.id - right.id,
+            ),
+          }),
+      ...(endnotes.length === 0
+        ? {}
+        : {
+            endnotes: [...(before.endnotes ?? []), ...endnotes].toSorted(
+              (left, right) => left.id - right.id,
+            ),
+          }),
+    },
+  };
+};
 
 /**
  * The copy states a run's formatting as it now is; a pending formatting
@@ -499,26 +638,65 @@ const compileTrackedLinkEdit = (
         );
       const own = withoutTrackedWrappers(asParagraphContent(slice));
       const children = linkedChildren(own, intent);
-      const copy =
+      const copy = cloneModel(
         intent.type === "setHyperlink"
           ? wrapLinkedChildren(intent, children)
-          : children;
+          : children,
+      );
+      // The copy's own note references are copied with their notes below;
+      // one inside a copied text box is not.
+      const references: ReadonlySet<object> = new Set(noteReferencesIn(copy));
       if (
         identityKeysIn(copy).length > 0 ||
-        copy.some(({ type }) => type === "preservedInline") ||
-        leafSpans(copy).some(({ node }) =>
-          IDENTIFIED_RUN_CONTENT.has(node.type),
+        recordsIn(copy).some(
+          (record) => namesRecord(record) && !references.has(record),
         )
       )
         return refuse(
-          "A link suggestion cannot copy content that names a record of its own, such as a drawing or a note reference.",
+          "A link suggestion cannot copy content that names a record of its own, such as a comment or a bookmark inside a text box.",
           DOCUMENT_OP_REFUSAL_REASONS.UNRECORDABLE_LINK_SUGGESTION,
         );
       steps.push({ blockId, start: segment.start, end: segment.end, copy });
     }
   }
+  // A copied note reference names a copy of its note, as a paste's does:
+  // the struck original keeps its note, and whichever of the two the
+  // suggestion's resolution leaves without a reference goes with it.
+  const notes = copiedNotes(
+    document,
+    steps.flatMap(({ copy }) => noteReferencesIn(copy)),
+  );
+  if (notes.isErr()) return Result.err(notes.error);
+  // Paragraphs inside copied drawings, text boxes and notes take fresh ids.
+  const fresh = [
+    ...steps.flatMap(({ copy }) => nestedParagraphs(copy)),
+    ...notes.value.flatMap(({ content }) => paragraphsIn(content)),
+  ];
+  if (fresh.length > 0) {
+    const ids = takeParagraphIds({
+      document,
+      count: fresh.length,
+      reserved: mode.reservedBlockIds,
+      lease: mode.idLease,
+    });
+    if (ids === undefined)
+      return refuse(
+        "The paragraph identity space is exhausted.",
+        DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
+      );
+    for (const [index, paragraph] of fresh.entries())
+      paragraph.paraId =
+        ids[index] ?? panic("An id was taken for each copied paragraph.");
+  }
   const ops: DocumentOp[] = [];
   let current = document;
+  if (notes.value.length > 0) {
+    const added = withNotes(document, notes.value);
+    const applied = applyDocumentOps(document, [added]);
+    if (applied.isErr()) return Result.err(applied.error);
+    current = applied.value.document;
+    ops.push(added);
+  }
   let stepMode = mode;
   let previous: Document | undefined;
   // Last first, so the positions of the stretches before stay as they were.
@@ -774,65 +952,22 @@ export const compileHyperlinkIntent = (
         { type: "run", content: [{ type: "text", text: intent.text }] },
       ]),
     ];
-    // A suggested link is a tracked paste of it over the selection.
-    if (mode.type === "suggesting")
-      return compileIntent(
-        document,
-        {
-          type: "replaceFragment",
-          from: intent.from,
-          to: intent.to,
-          paragraphs: [{ type: "paragraph", content }],
-          openStart: 1,
-          openEnd: 1,
-        },
-        mode,
-      );
-    const deletion = compileIntent(
+    // A link inserted over the selection is a paste of it there, made
+    // directly or suggested alike: the paragraph it lands in keeps the
+    // properties of the selection's first paragraph, as a paste's open
+    // start keeps them.
+    return compileIntent(
       document,
-      { type: "replaceText", from: intent.from, to: intent.to, text: "" },
-      mode,
-    );
-    if (deletion.isErr()) return deletion;
-    const applied = applyDocumentOps(document, deletion.value.ops);
-    if (applied.isErr()) return Result.err(applied.error);
-    const at = deletion.value.selection;
-    const target = selectedParagraphRuns(applied.value.document, at, at);
-    if (target.isErr()) return Result.err(target.error);
-    const paragraph = target.value.at(0)?.at(0)?.paragraph;
-    if (!paragraph) return refuse("Hyperlink insertion lost its paragraph.");
-    const gap = resolveGap({ paragraph, position: at, fallback: "insertion" });
-    if (typeof gap !== "object")
-      return refuse("Invalid hyperlink insertion gap.", gap);
-    const [before = [], after = []] = partitionContent(paragraph.content, [
-      gap,
-    ]);
-    const replacement = asParagraphContent(before).concat(
-      content,
-      asParagraphContent(after),
-    );
-    const freshened = freshenedParagraphs(
-      applied.value.document,
-      [{ paragraph, content: replacement }],
-      mode,
-    );
-    if (freshened.isErr()) return Result.err(freshened.error);
-    return Result.ok({
-      ops: deletion.value.ops.concat([
-        {
-          type: DOCUMENT_OP_TYPES.REPLACE_INLINE,
-          story: at.story,
-          blockId: at.blockId,
-          expected: paragraph.content,
-          content: freshened.value[0]?.content ?? replacement,
-        },
-      ]),
-      selection: {
-        ...at,
-        offset: at.offset + intent.text.length,
-        zeroWidthBefore: 0,
+      {
+        type: "replaceFragment",
+        from: intent.from,
+        to: intent.to,
+        paragraphs: [{ type: "paragraph", content }],
+        openStart: 1,
+        openEnd: 1,
       },
-    });
+      mode,
+    );
   }
   if (mode.type === "suggesting")
     return compileTrackedLinkEdit(document, {

@@ -79,7 +79,11 @@ import { JOINED_RUNS_RESTYLED_META } from "../prosemirror/extensions/features/Jo
 import { markStructuralChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import { requestDeterministicParaIds } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import { TEXT_BOX_ANCHOR_NODE_NAME } from "../prosemirror/extensions/nodes/TextBoxAnchorExtension";
-import { insertionGap, InsertionGapOrder } from "../prosemirror/insertionGaps";
+import {
+  insertionGap,
+  insertionGapEnd,
+  InsertionGapOrder,
+} from "../prosemirror/insertionGaps";
 import {
   blockBoundariesOf,
   carriesCommentAnchor,
@@ -253,7 +257,12 @@ import {
   isHiddenTableRow,
 } from "./snapshot";
 import {
-  isEmptyTableCell,
+  isInsertedPPrMark,
+  isPlainDeletedPPrMark,
+  snapshotBatchClaim,
+  type SnapshotBatchOperation,
+} from "./snapshotBatchFacts";
+import {
   mergeTableRectangle,
   mergeTrackedVerticalTableCells,
   splitTableRectangle,
@@ -2212,207 +2221,61 @@ type BatchClaimOptions = {
   producesTrackedChanges: boolean;
 };
 
-/** The cells a column deletion removes: every cell standing in that column alone. */
-const deletedColumnCellRanges = (
-  doc: PMNode,
-  { tablePosition, columnIndex }: TableColumnDeletion,
-): { from: number; to: number }[] => {
-  const table = doc.nodeAt(tablePosition);
-  if (!table || table.type.spec["tableRole"] !== "table") {
-    return [];
-  }
-  const map = TableMap.get(table);
-  const tableStart = tablePosition + 1;
-  const ranges: { from: number; to: number }[] = [];
-  const seen = new Set<number>();
-  for (let row = 0; row < map.height; row++) {
-    const relative = map.map[row * map.width + columnIndex];
-    if (relative === undefined || seen.has(relative)) {
-      continue;
-    }
-    seen.add(relative);
-    const rectangle = map.findCell(relative);
-    const cell = table.nodeAt(relative);
-    if (
-      !cell ||
-      rectangle.left !== columnIndex ||
-      rectangle.right !== columnIndex + 1
-    ) {
-      continue;
-    }
-    ranges.push({
-      from: tableStart + relative,
-      to: tableStart + relative + cell.nodeSize,
-    });
-  }
-  return ranges;
-};
-
-type DeletedRowAffectedRangesOptions = {
-  doc: PMNode;
-  deletion: TableRowDeletion;
-  row: PMNode;
-};
-
-/** A row deletion also changes cells whose vertical merge began above it. */
-const deletedRowAffectedRanges = ({
-  doc,
-  deletion,
-  row,
-}: DeletedRowAffectedRangesOptions): { from: number; to: number }[] => {
-  const ranges = [
-    { from: deletion.rowPosition, to: deletion.rowPosition + row.nodeSize },
-  ];
-  const table = doc.nodeAt(deletion.tablePosition);
-  if (table?.type.spec["tableRole"] !== "table") {
-    return panic("A resolved row deletion lost its table", {
-      position: deletion.tablePosition,
-    });
-  }
-  const map = TableMap.get(table);
-  const seen = new Set<number>();
-  for (let column = 0; column < map.width; column++) {
-    const relative = map.map[deletion.rowIndex * map.width + column];
-    if (relative === undefined || seen.has(relative)) continue;
-    seen.add(relative);
-    const position = deletion.tableStart + relative;
-    if (position >= deletion.rowPosition) continue;
-    const cell = table.nodeAt(relative);
-    if (cell) ranges.push({ from: position, to: position + cell.nodeSize });
-  }
-  return ranges;
-};
-
-/**
- * The blank cells a merge folds into the first cell of its rectangle. Only a
- * blank cell can fold away tracked, so an edit that fills one decides whether
- * the merge applies in one mode and not the other; see `batch-claims.ts`. A
- * cell with content folds directly and is refused tracked whatever the batch
- * does inside it.
- */
-const foldedBlankCellRanges = (
-  doc: PMNode,
-  { tablePosition, rectangle }: TableCellMerge,
-): { from: number; to: number }[] => {
-  const table = doc.nodeAt(tablePosition);
-  if (table?.type.spec["tableRole"] !== "table") {
-    return panic("A resolved cell merge lost its table", {
-      position: tablePosition,
-    });
-  }
-  const map = TableMap.get(table);
-  const tableStart = tablePosition + 1;
-  const kept = map.map[rectangle.top * map.width + rectangle.left];
-  return map.cellsInRect(rectangle).flatMap((relative) => {
-    const cell = relative === kept ? null : table.nodeAt(relative);
-    return cell && isEmptyTableCell(cell)
-      ? [
-          {
-            from: tableStart + relative,
-            to: tableStart + relative + cell.nodeSize,
-          },
-        ]
-      : [];
-  });
-};
-
-/**
- * The paragraphs before `paragraph`, which ends its container, nearest first,
- * up to the container's start or another block, past those that go whole, as
- * `finalParagraphPredecessor` looks past them. See the `deleteBlock` claim's
- * `paragraphsBefore`.
- */
-const paragraphsBeforeFinal = (
-  $paragraph: ResolvedPos,
-  paragraph: PMNode,
-): { block: number; keepsBreak: boolean }[] => {
-  const paragraphs: { block: number; keepsBreak: boolean }[] = [];
-  let position = $paragraph.pos;
-  for (let index = $paragraph.index() - 1; index >= 0; index--) {
-    const node = $paragraph.parent.child(index);
-    position -= node.nodeSize;
-    if (node.type !== paragraph.type) break;
-    const mark: unknown = node.attrs["pPrMark"];
-    if (isPlainDeletedPPrMark(mark) && holdsOnlyDeletedContent(node)) continue;
-    paragraphs.push({ block: position, keepsBreak: mark == null });
-  }
-  return paragraphs;
-};
-
 /** What `item` claims of the document its batch resolved against; see `batch-claims.ts`. */
 const batchClaimOf = ({
   item,
   doc,
   producesTrackedChanges,
 }: BatchClaimOptions): BatchClaim => {
+  const claim = (operation: SnapshotBatchOperation) =>
+    snapshotBatchClaim({ item: operation, doc, producesTrackedChanges });
   const block = item.blockFrom;
   switch (item.operation.type) {
     case "replaceInBlock":
     case "replaceRange":
-      return { type: "text", block, from: item.from, to: item.to };
+      return claim({ type: "text", block, from: item.from, to: item.to });
     case "formatRange":
     case "commentOnRange":
     case "commentOnBlock":
-      return { type: "annotation", block, from: item.from, to: item.to };
+      return claim({ type: "annotation", block, from: item.from, to: item.to });
     case "splitBlock":
-      return { type: "split", block, from: item.from, to: item.to };
+      return claim({ type: "split", block, from: item.from, to: item.to });
     case "replaceBlock":
-      return item.replaceBlockImpact === "style"
-        ? { type: "paragraphProperties", block }
-        : { type: "rewriteBlock", block };
+      return claim(
+        item.replaceBlockImpact === "style"
+          ? { type: "paragraphProperties", block }
+          : { type: "rewriteBlock", block },
+      );
     case "setBlockParagraphProperties":
-      return { type: "paragraphProperties", block };
+      return claim({ type: "paragraphProperties", block });
     case "mergeBlockWithNext":
-      return {
+      return claim({
         type: "merge",
         block,
         next: item.blockTo,
         joinsNow: !producesTrackedChanges,
         setsProperties: item.operation.mergedParagraphProperties !== undefined,
-      };
-    case "deleteBlock": {
-      // The same test the deletion itself makes: see its case in the applier.
-      const at = doc.resolve(block);
-      const endsItsContainer = paragraphEndsItsContainer(
-        at,
-        item.blockNode.type.name,
-      );
-      const keepsParagraph = producesTrackedChanges
-        ? endsItsContainer
-        : endsItsContainer &&
-          at.nodeBefore?.type.name !== item.blockNode.type.name;
-      return {
+      });
+    case "deleteBlock":
+      return claim({
         type: "deleteBlock",
         block,
         end: item.blockTo,
-        keepsParagraph,
-        endsContainer: endsItsContainer,
-        paragraphsBefore:
-          producesTrackedChanges && endsItsContainer
-            ? paragraphsBeforeFinal(at, item.blockNode)
-            : [],
-      };
-    }
+        node: item.blockNode,
+      });
     case "insertAfterBlock":
     case "insertBeforeBlock":
     case "insertSignatureTable":
     case "insertTable":
-      return { type: "insertion", at: item.from };
+      return claim({ type: "insertion", at: item.from });
     case "deleteTable": {
       const deleted = item.deletedTable;
       return deleted
-        ? {
-            type: "tableRemoval",
-            table: deleted.position,
-            wholeTable: true,
-            axis: "table",
-            ranges: [
-              {
-                from: deleted.position,
-                to: deleted.position + deleted.node.nodeSize,
-              },
-            ],
-          }
+        ? claim({
+            type: "deleteTable",
+            position: deleted.position,
+            node: deleted.node,
+          })
         : { type: "unclaimed" };
     }
     case "deleteTableRow": {
@@ -2420,33 +2283,13 @@ const batchClaimOf = ({
       const row = deletion ? doc.nodeAt(deletion.rowPosition) : null;
       const table = deletion ? doc.nodeAt(deletion.tablePosition) : null;
       return deletion && row && table?.type.spec["tableRole"] === "table"
-        ? {
-            type: "tableRemoval",
-            table: deletion.tablePosition,
-            wholeTable: table.childCount === 1,
-            axis: "row",
-            ranges:
-              table.childCount === 1
-                ? [
-                    {
-                      from: deletion.tablePosition,
-                      to: deletion.tablePosition + table.nodeSize,
-                    },
-                  ]
-                : deletedRowAffectedRanges({ doc, deletion, row }),
-          }
+        ? claim({ type: "deleteTableRow", deletion, row, table })
         : { type: "unclaimed" };
     }
     case "deleteTableColumn": {
       const deletion = item.tableColumnDeletion;
       return deletion
-        ? {
-            type: "tableRemoval",
-            table: deletion.tablePosition,
-            wholeTable: false,
-            axis: "column",
-            ranges: deletedColumnCellRanges(doc, deletion),
-          }
+        ? claim({ type: "deleteTableColumn", deletion })
         : { type: "unclaimed" };
     }
     case "insertTableRow":
@@ -2460,15 +2303,7 @@ const batchClaimOf = ({
       if (target.type === "none") {
         return { type: "unclaimed" };
       }
-      return {
-        type: "tableStructure",
-        table: target.tablePosition,
-        axis,
-        folded:
-          target.type === "mergeCells"
-            ? foldedBlankCellRanges(doc, target)
-            : [],
-      };
+      return claim({ type: "tableStructure", target, axis });
     }
   }
 };
@@ -3187,13 +3022,6 @@ const insertBlocksInsideComments = ({
   return next;
 };
 
-/** A paragraph mark that is a pending insertion (not a relocation's end). */
-const isInsertedPPrMark = (value: unknown): boolean =>
-  typeof value === "object" &&
-  value !== null &&
-  "kind" in value &&
-  value.kind === "ins";
-
 const isSuggestedParagraphInsert = (paragraph: PMNode): boolean =>
   typeof paragraph.attrs["_suggestedInsert"] === "object" &&
   paragraph.attrs["_suggestedInsert"] !== null;
@@ -3517,13 +3345,6 @@ const followedOnlyByDeletedParagraphs = (
   }
   return deletes;
 };
-
-/** A paragraph mark that is a plain pending deletion (not a relocation's source). */
-const isPlainDeletedPPrMark = (value: unknown): boolean =>
-  typeof value === "object" &&
-  value !== null &&
-  "kind" in value &&
-  value.kind === "del";
 
 /** An emptied paragraph still carries deleted content, rather than being an original blank. */
 const hasDeletedContent = (paragraph: PMNode): boolean => {
@@ -4157,30 +3978,10 @@ const pendingJoinsOf = (doc: PMNode): PendingJoin[] => {
   return joins;
 };
 
-/** Whether every block between `from` and `to`, siblings, is a paragraph accepting removes whole. */
-const onlyRemovedParagraphsBetween = (
-  doc: PMNode,
-  from: number,
-  to: number,
-): boolean => {
-  const $from = doc.resolve(from);
-  if (doc.resolve(to).parent !== $from.parent) return false;
-  let at = from;
-  for (let index = $from.index(); at < to; index++) {
-    const block = $from.parent.maybeChild(index);
-    if (block?.type.name !== "paragraph" || !paragraphGoes(block, "accept"))
-      return false;
-    at += block.nodeSize;
-  }
-  return at === to;
-};
-
 type JoinsEndingWhereTheyDidOptions = {
   tr: Transaction;
   /** The pending joins before the batch (`pendingJoinsOf`). */
   joins: readonly PendingJoin[];
-  /** Revision ids of the breaks the batch's block deletions deleted. */
-  deletedBlockBreaks: ReadonlySet<number>;
 };
 
 /**
@@ -4194,22 +3995,21 @@ type JoinsEndingWhereTheyDidOptions = {
  *   break is the joined paragraph's break. Deleting the paragraph deletes its
  *   words; its break stays, or the joined words would run on into the block
  *   after it. Where the batch also deletes the words joined into it, nothing
- *   of the join is left and the break goes with them.
+ *   of the join is left and the break goes with them. The deletion keeps the
+ *   break as it runs (`endsPendingJoinAt`) and the batch settles it once it
+ *   has finished (`withKeptJoinBreaksSettled`).
  * - A table that stays stops a join run past paragraphs accepting removes,
  *   and the joined words keep their own paragraph (`joinEndsBeforeTable`).
  *   Removing that table keeps them there: the break of the paragraph they
- *   stand in stays, which is what accepting already did.
+ *   stand in stays, which is what accepting already did. This runs here.
  *
  * Neither changes what rejecting gives back. A break a merge deletes is a
- * join asked for, and goes. Returns the revision ids of the breaks the
- * batch's block deletions had deleted and keeps after all.
+ * join asked for, and goes.
  */
 const withJoinsEndingWhereTheyDid = ({
   tr,
   joins,
-  deletedBlockBreaks,
-}: JoinsEndingWhereTheyDidOptions): Set<number> => {
-  const kept = new Set<number>();
+}: JoinsEndingWhereTheyDidOptions): void => {
   for (const join of joins) {
     const source = tr.mapping.mapResult(join.source, 1);
     const end = tr.mapping.mapResult(join.end.position, 1);
@@ -4222,24 +4022,9 @@ const withJoinsEndingWhereTheyDid = ({
     ) {
       continue;
     }
-    const sourceEnd = source.pos + paragraph.nodeSize;
-    if (join.end.kind === "paragraph") {
-      const left = end.deleted ? null : tr.doc.nodeAt(end.pos);
-      const revisionId = addedOrDeletedBreakRevisionId(left?.attrs["pPrMark"]);
-      if (
-        left?.type.name !== "paragraph" ||
-        !isPlainDeletedPPrMark(left.attrs["pPrMark"]) ||
-        revisionId === null ||
-        !deletedBlockBreaks.has(revisionId) ||
-        !paragraphGoes(left, "accept") ||
-        !onlyRemovedParagraphsBetween(tr.doc, sourceEnd, end.pos)
-      ) {
-        continue;
-      }
-      tr.setNodeAttribute(end.pos, "pPrMark", null);
-      kept.add(revisionId);
-      continue;
-    }
+    // The paragraph a join runs into keeps its break as it is deleted:
+    // see `endsPendingJoinAt` and `withKeptJoinBreaksSettled`.
+    if (join.end.kind === "paragraph") continue;
     const table = end.deleted ? null : tr.doc.nodeAt(end.pos);
     const tableRemoved =
       table === null ||
@@ -4249,7 +4034,107 @@ const withJoinsEndingWhereTheyDid = ({
       tr.setNodeAttribute(source.pos, "pPrMark", null);
     }
   }
-  return kept;
+};
+
+/**
+ * Whether the paragraph at `position` is where a pending join from before the
+ * batch ends, with the joined words still in its source: its break is the
+ * joined paragraph's, which a deletion of the paragraph keeps.
+ */
+const endsPendingJoinAt = (
+  tr: Transaction,
+  joins: readonly PendingJoin[],
+  position: number,
+): boolean =>
+  joins.some((join) => {
+    if (join.end.kind !== "paragraph") return false;
+    const source = tr.mapping.mapResult(join.source, 1);
+    if (source.deleted) return false;
+    const end = pendingJoinEnd(tr.doc, source.pos);
+    return end?.kind === "paragraph" && end.position === position;
+  });
+
+/**
+ * Where the pending join from before the batch whose source is the paragraph
+ * at `position` ends, when it ends at a paragraph: null otherwise.
+ */
+const pendingJoinEndOfSource = (
+  tr: Transaction,
+  joins: readonly PendingJoin[],
+  position: number,
+): number | null => {
+  for (const join of joins) {
+    if (join.end.kind !== "paragraph") continue;
+    const source = tr.mapping.mapResult(join.source, 1);
+    if (source.deleted || source.pos !== position) continue;
+    const end = tr.mapping.mapResult(join.end.position, 1);
+    return end.deleted ? null : end.pos;
+  }
+  return null;
+};
+
+/** A break a tracked `deleteBlock` kept because a pending join ends there. */
+type KeptJoinBreak = BatchParagraphPosition & {
+  operationId: string;
+  revisionExtras: DeletedFinalParagraph["revisionExtras"];
+};
+
+type KeptJoinBreaksOptions = {
+  tr: Transaction;
+  kept: readonly KeptJoinBreak[];
+  appliedIds: ReadonlySet<string>;
+  revisionSeed: number;
+  author: string;
+  date: string;
+};
+
+/**
+ * Settle the breaks tracked deletions kept as a pending join's end, once the
+ * batch has finished. The deletion keeps the break as it runs, so every
+ * operation after it in the batch reads the joined paragraph where it stands,
+ * as it does when the deletion is applied on its own. Where the batch also
+ * deleted the words joined into it, nothing of the join is left, and the
+ * break goes with the paragraph after all. A deletion of those words records
+ * the join's end here too, so the break goes as well when an earlier batch
+ * deleted the paragraph and kept it: one batch or two, the same is left.
+ */
+const withKeptJoinBreaksSettled = ({
+  tr,
+  kept,
+  appliedIds,
+  revisionSeed,
+  author,
+  date,
+}: KeptJoinBreaksOptions): RetiredFinalParagraphs["addedRevisions"] => {
+  const addedRevisions: RetiredFinalParagraphs["addedRevisions"] = [];
+  const located = kept.filter(({ operationId }) => appliedIds.has(operationId));
+  if (located.length === 0) return addedRevisions;
+  const joinEnds = new Set(
+    pendingJoinsOf(tr.doc).flatMap(({ end }) =>
+      end.kind === "paragraph" ? [end.position] : [],
+    ),
+  );
+  let nextRevisionId = revisionSeed;
+  for (const { operationId, position, mappedFrom, revisionExtras } of located) {
+    const mapped = tr.mapping.slice(mappedFrom).mapResult(position, 1);
+    const paragraph = mapped.deleted ? null : tr.doc.nodeAt(mapped.pos);
+    if (
+      paragraph?.type.name !== "paragraph" ||
+      paragraph.attrs["pPrMark"] != null ||
+      joinEnds.has(mapped.pos) ||
+      !holdsOnlyDeletedContent(paragraph) ||
+      paragraphEndsItsContainer(tr.doc.resolve(mapped.pos), paragraph.type.name)
+    ) {
+      continue;
+    }
+    const revisionId = nextRevisionId++;
+    tr.setNodeAttribute(mapped.pos, "pPrMark", {
+      kind: "del",
+      info: { id: revisionId, author, date, ...revisionExtras },
+    });
+    addedRevisions.push({ operationId, revisionId });
+  }
+  return addedRevisions;
 };
 
 /**
@@ -4455,10 +4340,14 @@ const withRetiredFinalParagraphs = ({
  * the free one records the other's as `w:pPrChange` — what a rejection reads
  * to put the container's ending back the way it was.
  *
- * This runs once over the finished document rather than at each insertion:
- * which paragraph ends a container is only settled when the batch is, and an
- * insertion that looked final was undone by the next operation writing a table
- * after it.
+ * The rotation runs once over the finished document rather than at each
+ * insertion: which paragraph ends a container is only settled when the batch
+ * is, and an insertion that looked final was undone by the next operation
+ * writing a table after it. A deleted break an insertion supersedes is moved
+ * first (`withSupersededDeletedBreaksMoved`); that move is settled as soon as
+ * the insertion lands, and the batch makes it then too, so what later
+ * operations of the batch read beside the insertion is what they read after
+ * it alone.
  * A wholly inserted table from this batch can be crossed to reach the carrier;
  * its removal on reject exposes that same paragraph boundary again.
  *
@@ -4469,7 +4358,59 @@ const withRetiredFinalParagraphs = ({
  * paragraph's words run into the one after it, which ends with the free mark,
  * and neither break is left to resolve.
  */
-const withRotatedAddedFinalBreaks = ({
+const withRotatedAddedFinalBreaks = (
+  options: RotateAddedFinalBreaksOptions,
+): RotatedAddedFinalBreaks => {
+  const { tr, batchRevisionIds, author, date, initials } = options;
+  const moved = withSupersededDeletedBreaksMoved(options);
+  const nextRevisionId = moved.nextRevisionId;
+  const synthesizedRevisions: RotatedAddedFinalBreaks["synthesizedRevisions"] =
+    [...moved.synthesizedRevisions];
+  const paragraphTypeName =
+    tr.doc.type.schema.nodes["paragraph"]?.name ?? "paragraph";
+  const rotations = finalParagraphsOf(tr.doc, paragraphTypeName)
+    .flatMap(({ node, position }) => {
+      const mark: unknown = node.attrs["pPrMark"];
+      const revisionId = addedBreakRevisionId(mark);
+      return revisionId !== null && batchRevisionIds.has(revisionId)
+        ? [{ mark, node, ownerRevisionId: revisionId, position }]
+        : [];
+    })
+    // A cancelled break joins two paragraphs, which moves what follows them:
+    // the last container first keeps the others' positions valid.
+    .toSorted((left, right) => right.position - left.position);
+  return withFinalBreaksRotated({
+    tr,
+    rotations,
+    batchRevisionIds,
+    author,
+    date,
+    initials,
+    styleResolver: options.styleResolver,
+    nextRevisionId,
+    synthesizedRevisions,
+  });
+};
+
+type SupersededDeletedBreaksMoved = Pick<
+  RotatedAddedFinalBreaks,
+  "nextRevisionId" | "synthesizedRevisions"
+>;
+
+/**
+ * A later insertion may land between a deleted break and the paragraph it
+ * would join into. Move the old deletion to the new boundary so resolving
+ * either revision keeps the inserted paragraph separate.
+ *
+ * Unlike the rotation of a container's final break, this needs nothing the
+ * rest of the batch settles: a paragraph inserted right after one whose
+ * break a pending change deletes stands there whatever comes later. The
+ * batch therefore moves the deletion as soon as such a paragraph lands, so
+ * every later operation of the batch reads the boundary as it does after
+ * that insertion alone, and once more at the end; the move is idempotent,
+ * and a later insertion right after the moved break carries it on.
+ */
+const withSupersededDeletedBreaksMoved = ({
   tr,
   batchRevisionIds,
   revisionSeed,
@@ -4478,13 +4419,10 @@ const withRotatedAddedFinalBreaks = ({
   initials,
   styleResolver,
   numbering,
-}: RotateAddedFinalBreaksOptions): RotatedAddedFinalBreaks => {
+}: RotateAddedFinalBreaksOptions): SupersededDeletedBreaksMoved => {
   let nextRevisionId = revisionSeed;
   const synthesizedRevisions: RotatedAddedFinalBreaks["synthesizedRevisions"] =
     [];
-  // A later insertion may land between a deleted break and the paragraph it
-  // would join into. Move the old deletion to the new boundary so resolving
-  // either revision keeps the inserted paragraph separate.
   const supersededDeletedBreaks: {
     preceding: number;
     inserted: number;
@@ -4641,21 +4579,38 @@ const withRotatedAddedFinalBreaks = ({
       });
     }
   }
+  return { nextRevisionId, synthesizedRevisions };
+};
 
-  const paragraphTypeName =
-    tr.doc.type.schema.nodes["paragraph"]?.name ?? "paragraph";
-  const rotations = finalParagraphsOf(tr.doc, paragraphTypeName)
-    .flatMap(({ node, position }) => {
-      const mark: unknown = node.attrs["pPrMark"];
-      const revisionId = addedBreakRevisionId(mark);
-      return revisionId !== null && batchRevisionIds.has(revisionId)
-        ? [{ mark, node, ownerRevisionId: revisionId, position }]
-        : [];
-    })
-    // A cancelled break joins two paragraphs, which moves what follows them:
-    // the last container first keeps the others' positions valid.
-    .toSorted((left, right) => right.position - left.position);
+type FinalBreakRotation = {
+  mark: unknown;
+  node: PMNode;
+  ownerRevisionId: number;
+  position: number;
+};
 
+type FinalBreaksRotationOptions = Pick<
+  RotateAddedFinalBreaksOptions,
+  "tr" | "batchRevisionIds" | "author" | "date" | "initials" | "styleResolver"
+> & {
+  rotations: readonly FinalBreakRotation[];
+  nextRevisionId: number;
+  synthesizedRevisions: RotatedAddedFinalBreaks["synthesizedRevisions"];
+};
+
+/** The rotation of every final break `withRotatedAddedFinalBreaks` found. */
+const withFinalBreaksRotated = ({
+  tr,
+  rotations,
+  batchRevisionIds,
+  author,
+  date,
+  initials,
+  styleResolver,
+  nextRevisionId: revisionSeed,
+  synthesizedRevisions,
+}: FinalBreaksRotationOptions): RotatedAddedFinalBreaks => {
+  let nextRevisionId = revisionSeed;
   let next = tr;
   const retractedRevisionIds: number[] = [];
   // Attribute writes do not move anything, so the positions stay valid.
@@ -5795,8 +5750,8 @@ const applyFolioAIEditOperationsInternal = ({
   };
   /** The pending joins before the batch: see `withJoinsEndingWhereTheyDid`. */
   const joinsBefore = isSuggested ? [] : pendingJoinsOf(view.state.doc);
-  /** Revision ids of the breaks a tracked `deleteBlock` deleted. */
-  const deletedBlockBreaks = new Set<number>();
+  /** Breaks a tracked `deleteBlock` kept as a join's end: see `withKeptJoinBreaksSettled`. */
+  const keptJoinBreaks: KeptJoinBreak[] = [];
   /** Text boxes a tracked block deletion deletes, by anchor. */
   const deletedTextBoxAnchorIds = new Set<string>();
   /** Container-ending paragraphs a tracked `deleteBlock` emptied: see `withRetiredFinalParagraphs`. */
@@ -5923,12 +5878,19 @@ const applyFolioAIEditOperationsInternal = ({
       };
     }
     const hasDeletedSplit = tableAfterDeletedSplit.has(item.blockFrom);
+    let position = item.from;
+    if (hasDeletedSplit && item.operation.type === "deleteBlock") {
+      position = item.blockTo;
+    } else if (BLOCK_INSERTION_TYPES.has(item.operation.type)) {
+      // A block put in a gap with blocks accepting removes whole orders as
+      // at the gap's end, beside the block after them, as once they are
+      // removed: a property edit of that block runs where it would without
+      // them.
+      position = insertionGapEnd(view.state.doc, item.from);
+    }
     return {
       type: "content",
-      position:
-        hasDeletedSplit && item.operation.type === "deleteBlock"
-          ? item.blockTo
-          : item.from,
+      position,
       rank: contentRank(item.operation, { hasDeletedSplit }),
       inputIndex: item.originalIndex,
     };
@@ -6063,7 +6025,36 @@ const applyFolioAIEditOperationsInternal = ({
   /** Paragraphs a retracted break of this batch joined, to the one it left. */
   const joinedInto = new Map<string, string>();
   const executionGroups = groupRuns(executionOrder);
+  /** Property revisions moving a superseded deleted break wrote, by owner. */
+  const movedBreakRevisions: RotatedAddedFinalBreaks["synthesizedRevisions"] =
+    [];
+  // Whether the last group put in a paragraph, which may supersede a break.
+  let landedParagraphs = false;
   for (const executionGroup of executionGroups) {
+    if (landedParagraphs) {
+      // Later operations read the boundary as after those insertions alone.
+      continueSharedRevisionIds();
+      const moved = withSupersededDeletedBreaksMoved({
+        tr,
+        batchRevisionIds: new Set(
+          applied.flatMap(({ revisionIds }) => revisionIds ?? []),
+        ),
+        revisionSeed,
+        author,
+        date,
+        initials,
+        styleResolver: styleResolver ?? null,
+        numbering,
+      });
+      revisionSeed = moved.nextRevisionId;
+      claimSharedRevisionIds(revisionSeed);
+      movedBreakRevisions.push(...moved.synthesizedRevisions);
+    }
+    landedParagraphs = executionGroup.some(
+      ({ operation }) =>
+        BLOCK_INSERTION_TYPES.has(operation.type) ||
+        operation.type === "splitBlock",
+    );
     // Recheck every insertion against the live anchor, including insertions
     // sharing a gap. Earlier edits can delete its text or its containing row.
     const insertionState = tr;
@@ -7320,9 +7311,24 @@ const applyFolioAIEditOperationsInternal = ({
               });
               appliedRevisionIds = [...appliedRevisionIds, propertyRevisionId];
             }
+          } else if (
+            !endsItsContainer &&
+            deleted?.attrs["pPrMark"] == null &&
+            !isPairedMove(item.operation.moveId) &&
+            endsPendingJoinAt(tr, joinsBefore, markPosition)
+          ) {
+            // A pending join from before the batch runs into it: its break is
+            // the joined paragraph's and stays, so what the rest of the batch
+            // reads beside the joined words is what it reads after this
+            // deletion alone (`withJoinsEndingWhereTheyDid`).
+            keptJoinBreaks.push({
+              operationId: item.operation.id,
+              position: markPosition,
+              mappedFrom: tr.mapping.maps.length,
+              revisionExtras: trackedRevisionExtras,
+            });
           } else if (!endsItsContainer && deleted?.attrs["pPrMark"] == null) {
             const markRevisionId = operationRevisionSeed++;
-            deletedBlockBreaks.add(markRevisionId);
             tr = tr.setNodeAttribute(markPosition, "pPrMark", {
               kind: isPairedMove(item.operation.moveId) ? "moveFrom" : "del",
               info: {
@@ -7369,6 +7375,22 @@ const applyFolioAIEditOperationsInternal = ({
                 revisionExtras: trackedRevisionExtras,
               });
             }
+          }
+          // The words of a pending join's source go: accepted, they are the
+          // joined paragraph, and nothing of it may be left. Where the
+          // paragraph the join runs into holds nothing that stays either (an
+          // earlier deletion kept its break), the break goes with them, as
+          // when one batch deletes both (`withKeptJoinBreaksSettled`).
+          const joinEnd = isPairedMove(item.operation.moveId)
+            ? null
+            : pendingJoinEndOfSource(tr, joinsBefore, markPosition);
+          if (joinEnd !== null) {
+            keptJoinBreaks.push({
+              operationId: item.operation.id,
+              position: joinEnd,
+              mappedFrom: tr.mapping.maps.length,
+              revisionExtras: trackedRevisionExtras,
+            });
           }
         }
         if (commentMark) {
@@ -8270,6 +8292,16 @@ const applyFolioAIEditOperationsInternal = ({
       numbering,
     });
     revisionSeed = retired.nextRevisionId;
+    withJoinsEndingWhereTheyDid({ tr, joins: joinsBefore });
+    const settledJoinBreaks = withKeptJoinBreaksSettled({
+      tr,
+      kept: keptJoinBreaks,
+      appliedIds: new Set(applied.map(({ id }) => id)),
+      revisionSeed,
+      author,
+      date,
+    });
+    revisionSeed += settledJoinBreaks.length;
     for (const operationId of deferredNoopFinalDeletions) {
       if (retired.resolvedOperationIds.has(operationId)) continue;
       const receiptIndex = applied.findIndex(({ id }) => id === operationId);
@@ -8282,10 +8314,10 @@ const applyFolioAIEditOperationsInternal = ({
         receiptIndexByRevisionId.set(revisionId, receiptIndex);
       }
     }
-    for (const {
-      ownerRevisionId,
-      revisionId,
-    } of rotated.synthesizedRevisions) {
+    for (const { ownerRevisionId, revisionId } of [
+      ...movedBreakRevisions,
+      ...rotated.synthesizedRevisions,
+    ]) {
       const receiptIndex = receiptIndexByRevisionId.get(ownerRevisionId);
       const receipt =
         receiptIndex === undefined ? undefined : applied.at(receiptIndex);
@@ -8300,7 +8332,10 @@ const applyFolioAIEditOperationsInternal = ({
         revisionIds: [...receipt.revisionIds, revisionId],
       };
     }
-    for (const { operationId, revisionId } of retired.addedRevisions) {
+    for (const { operationId, revisionId } of [
+      ...retired.addedRevisions,
+      ...settledJoinBreaks,
+    ]) {
       const receiptIndex = applied.findIndex(({ id }) => id === operationId);
       const receipt = applied.at(receiptIndex);
       if (receiptIndex < 0 || !receipt) {
@@ -8316,15 +8351,9 @@ const applyFolioAIEditOperationsInternal = ({
         revisionIds,
       };
     }
-    const keptJoinBreaks = withJoinsEndingWhereTheyDid({
-      tr,
-      joins: joinsBefore,
-      deletedBlockBreaks,
-    });
     const retractedRevisionIds = new Set([
       ...rotated.retractedRevisionIds,
       ...retired.retractedRevisionIds,
-      ...keptJoinBreaks,
     ]);
     if (retractedRevisionIds.size > 0) {
       for (const [receiptIndex, receipt] of applied.entries()) {

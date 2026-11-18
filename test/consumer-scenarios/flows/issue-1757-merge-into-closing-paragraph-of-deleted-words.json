@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "title": "PINNED #1757, reported seed 1141252406: a merge into a closing paragraph whose words are pending deletions adds no separator",
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "notes",
+  "mode": "tracked-changes",
+  "seed": 1141252406,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 253651948,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "7B806329"
+        }
+      ]
+    },
+    {
+      "action": "reject one",
+      "seed": 4108607165
+    },
+    {
+      "action": "core batch",
+      "seed": 19276087,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "7735D914",
+          "separator": " "
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceRange",
+    "insertBeforeBlock",
+    "replaceBlock",
+    "deleteBlock",
+    "mergeBlockWithNext",
+    "commentOnBlock",
+    "insertTable",
+    "insertTableRow",
+    "deleteTableRow",
+    "deleteTable"
+  ],
+  "origin": "shrunk from reseed+insert of 761833ea16f2da2a"
+}

@@ -1,0 +1,5 @@
+{
+  "docx-core": { "declarationBytes": 2100 },
+  "core": { "declarationBytes": 258000, "declarationLines": 5400 },
+  "cli": { "declarationBytes": 9700, "declarationLines": 190 }
+}

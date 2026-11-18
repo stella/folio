@@ -125,7 +125,10 @@ is split around it: a format into two formats, a direct deletion into two
 deletions. A tracked deletion around the point, a tracked insertion inside a
 direct deletion, and a range with preconditions or joins reaching the point
 refuse. Insertion at the start of a paragraph a concurrent join appends
-refuses, as for text.
+refuses, as for text. A paragraph split at the insertion's point refuses,
+unless the insertion is tracked: that is a cut at a tracked change's edge
+(see below), and the one sequenced later goes after the other, as two
+insertions at one gap do.
 
 Each sequenced `insertContent` records whether it cut a record carrying an
 id (a revision or a content control) in two (`cutIdentified`). Two
@@ -171,7 +174,10 @@ lay against that edge in one order and moves the edge in the other, and one
 covering the change whole leaves the records around it cut in one order
 only. Two tracked deletions that overlap (nested, equal or crossing
 ranges) leave the shared content to the one sequenced first, under its
-author and id: the later one wraps only what is not deleted yet.
+author and id: the later one wraps only what is not deleted yet. A tracked
+edit that meets a change of its own kind, author and date already in the
+document extends that change, so a cut anywhere in the merged change is a
+cut at it.
 
 These pairs are accepted and rebased like any other pair (`trackedOrderPair`
 names their kinds). The authority's order decides the document, and every

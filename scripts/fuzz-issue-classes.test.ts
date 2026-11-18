@@ -9,6 +9,7 @@ import { assertProperty, propertyTestTimeout } from "../test/property-testing";
 import { failureClass, upgradeClassKey } from "./fuzz-failure-class";
 import { type Context, type Finding, RUN_TRIGGER } from "./fuzz-failure-issues";
 import {
+  CLASS_BODY_LIMIT,
   type ClosedIssue,
   type ClosedIssueDisposition,
   duplicateTarget,
@@ -810,6 +811,42 @@ describe("a class issue closed as a duplicate", () => {
       duplicateTarget(["This is not a duplicate of #5", "See #7"]),
     ).toBeNull();
     expect(duplicateTarget([])).toBeNull();
+  });
+});
+
+describe("a long-lived class", () => {
+  const longFinding = (seed: number): Finding => {
+    const found = finding(seed);
+    const flow = JSON.stringify({ seed, steps: "s".repeat(6_000) });
+    const repro = `bun scripts/consumer-scenarios.ts --seed ${String(seed)} --flow '${flow}'`;
+    found.record.marker = { ...found.record.marker, repro };
+    found.record.replays = [repro, `${repro} --again`];
+    found.record.error = `${found.record.error}\n${"e".repeat(4_000)}`;
+    return found;
+  };
+
+  test("keeps a body GitHub accepts and its newest rows as runs add seeds", async () => {
+    const fake = fakeStore();
+    for (let run = 1; run <= 30; run += 1) {
+      // oxlint-disable-next-line no-await-in-loop -- runs report one after the other
+      await report(fake, [longFinding(run)], {
+        ...context,
+        runUrl: `https://github.com/stella/folio/actions/runs/${String(run)}`,
+      });
+      const body = fake.issues.at(0)?.body ?? "";
+      expect(body.length).toBeLessThanOrEqual(CLASS_BODY_LIMIT);
+      expect(body).toContain(`--seed ${String(run)} `);
+    }
+    expect(fake.created).toEqual([1]);
+    const body = fake.issues.at(0)?.body ?? "";
+    expect(body).toContain("Seen in 30 distinct runs");
+    expect(body).not.toContain("--seed 1 ");
+    // A report of an already listed seed still finds the one open issue.
+    await report(fake, [longFinding(30)], {
+      ...context,
+      runUrl: "https://github.com/stella/folio/actions/runs/31",
+    });
+    expect(fake.created).toEqual([1]);
   });
 });
 

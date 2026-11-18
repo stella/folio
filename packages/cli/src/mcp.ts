@@ -337,6 +337,11 @@ const LAZY_SUMMARIES: Readonly<
       "Write list numbers as literal text (literal), or put paragraphs into a list (apply).",
     domain: "package",
   },
+  fill_template: {
+    summary:
+      "Build a document from a template and Markdown or block content, styled by a style map.",
+    domain: "package",
+  },
   sanitize_document: {
     summary:
       "Remove comments, rsids, and identifying properties; without a destination, report them.",

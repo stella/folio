@@ -24,6 +24,7 @@ import {
   flagsForSchema,
   type GeneratedFlag,
   readInputSource,
+  readTextFile,
 } from "./flags";
 import { serveFolioMcp } from "./mcp";
 import {
@@ -383,6 +384,17 @@ const buildArguments = async ({
   for (const flag of generatedFlags(resolved)) {
     const raw = flagValue(values[flag.flag]);
     if (raw === undefined) continue;
+    if (
+      typeof raw === "string" &&
+      raw.startsWith("@") &&
+      command.fileFlags?.includes(flag.property) === true
+    ) {
+      // A file flag reads its text from the file `@path` names.
+      const text = await readTextFile(raw.slice(1));
+      if (text.isErr()) return Result.err(text.error);
+      args[flag.property] = text.value;
+      continue;
+    }
     if (
       flag.valueType === "json" &&
       typeof raw === "string" &&

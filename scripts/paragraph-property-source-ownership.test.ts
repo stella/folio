@@ -13,14 +13,14 @@ import {
   isSpreadAssignment,
   type Node as CompilerNode,
   type SourceFile,
-} from "tsrs/unstable/ast";
+} from "tsrs/ast";
 import {
   API,
   type Checker,
   type Type,
   TypeFlags,
   type UnionOrIntersectionType,
-} from "tsrs/unstable/async";
+} from "tsrs/async";
 
 import {
   createLineIndex,

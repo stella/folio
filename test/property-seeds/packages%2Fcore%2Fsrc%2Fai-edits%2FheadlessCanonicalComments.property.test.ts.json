@@ -1,0 +1,10 @@
+{
+  "generated threads read as on the legacy reviewer": [
+    {
+      "seed": 1039621563,
+      "path": "2:0:0:0:0:0:4:5:5:5:5:5:5:5:5:5:5:5:5:5:4:4:4:4:4:4:4:4:4:4",
+      "note": "A reply to a comment whose collapsed range stands in a bidirectional wrapper keeps its markers inside the wrapper instead of cutting it.",
+      "date": "2026-11-18"
+    }
+  ]
+}

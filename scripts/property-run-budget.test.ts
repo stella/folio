@@ -10,9 +10,11 @@ import fc from "fast-check";
  */
 import { assertProperty, propertyTestTimeout } from "../test/property-testing";
 
-// These runs fail on purpose: no CI markers, failure records or report mode.
+// These runs fail on purpose: no CI markers, failure records, fuzz health
+// reports or report mode.
 const ENV_KEYS = [
   "CI",
+  "FOLIO_FUZZ_HEALTH",
   "PROPERTY_TEST_SEED",
   "PROPERTY_TEST_PATH",
   "FOLIO_PROPERTY_FAILURES_DIR",
