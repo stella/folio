@@ -490,6 +490,40 @@ export const BROWSER_DELETE_BESIDE_BOOKMARK_SEED_83 = {
   trace: BrowserInputTrace;
 };
 
+/** A composition over everything replaces the text inside the document's edges. */
+export const BROWSER_COMPOSITION_OVER_EVERYTHING_TRACES = [
+  {
+    seed: 1794206220,
+    path: "0:2:1:1:1:1:1:1",
+    fingerprint: "0f194a9c3f728f97",
+    trace: {
+      shape: "rtl-cjk",
+      actions: [
+        { kind: "selectAll" },
+        { kind: "imeReplacement", updates: ["alpha"], completion: "commit" },
+      ],
+    },
+  },
+  {
+    seed: 1794471204,
+    path: "14:0:4:3:3",
+    fingerprint: "a18979eea69e8af9",
+    trace: {
+      shape: "tables",
+      actions: [
+        { kind: "selectAll" },
+        { kind: "imeReplacement", updates: ["alpha"], completion: "commit" },
+        { kind: "backspace" },
+      ],
+    },
+  },
+] satisfies readonly {
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+}[];
+
 export const BROWSER_CANCELLED_COMPOSITION_SEED_431 = {
   seed: 431,
   path: "9:2:1:1:1:2:2",
@@ -2064,6 +2098,7 @@ export const BROWSER_INPUT_REGRESSIONS = [
   BROWSER_CANCELLED_COMPOSITION_SEED_1793897521,
   BROWSER_CANCELLED_COMPOSITION_SEED_131,
   BROWSER_DELETE_BESIDE_BOOKMARK_SEED_83,
+  ...BROWSER_COMPOSITION_OVER_EVERYTHING_TRACES,
   CANONICAL_INSERTION_SEED_557,
   CANONICAL_ACROSS_PARAGRAPHS_SEED_347,
   CANONICAL_DELETION_SEED_11,
