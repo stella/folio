@@ -16,6 +16,7 @@ import {
 
 import { withBatchOperations } from "./batch-operations";
 import type { DocumentPassName } from "./document-pass";
+import { CONTENT_CONSTRUCTS } from "./fill-template";
 import { LABEL_SOURCES, NUMBERING_ACTIONS } from "./numbering";
 import type { PackageRewriteName } from "./package-rewrite";
 import { DEFAULT_PLACEHOLDER_PATTERNS } from "./placeholders";
@@ -46,6 +47,8 @@ export type FolioCommandSpec = {
   readonly flagNames?: Readonly<Record<string, string>>;
   /** A bare JSON array passed to `--input` fills this property. */
   readonly inputArrayProperty?: string;
+  /** String properties whose flag reads a file's text when given `@path`. */
+  readonly fileFlags?: readonly string[];
   /**
    * The command exits with `EXIT_CODES.unresolved` when its result counts
    * `unresolved` items, so a script can gate on it.
@@ -483,6 +486,70 @@ const NUMBERING_TOOL = {
   ],
 } as const satisfies FolioFileToolSpec;
 
+const FILL_TEMPLATE_TOOL = {
+  type: "packageRewrite",
+  name: "fill_template",
+  rewrite: "fillTemplate",
+  description:
+    "Author a document from a template (`path`) and content, written to `destination` in one direct write. " +
+    "The template keeps its sections, headers, footers, styles, numbering, its body up to the first heading " +
+    "(or through the block `keepUntil` names by id or text), and from the block `keepFrom` names to the end " +
+    "(a signature block); the content replaces everything between. Content is `markdown` (headings, " +
+    "paragraphs with bold and italic, lists, blockquotes, tables) or `blocks` ({type: heading|paragraph|" +
+    "numberedParagraph|quote|bullet|numbered|table, text or runs [{text, bold?, italic?}], level?, style?, " +
+    "rows?}). `styles` maps h1-h6, paragraph, numberedParagraph (ordered items), list (bullets), quote and " +
+    "table to a template style id or {style?, numId?, level?}. `fields` fills {{name}} placeholders and " +
+    "`replaceText` replaces exact text, in the body, headers, footers and notes. Without a destination, " +
+    "reports what it would keep, remove and insert.",
+  argsSchema: {
+    type: "object",
+    properties: {
+      markdown: {
+        type: "string",
+        description: "The content as Markdown (the CLI flag reads @file.md).",
+      },
+      blocks: {
+        type: "array",
+        items: { type: "object" },
+        description: "The content as a block list.",
+      },
+      styles: {
+        type: "object",
+        description: `Style map: ${CONTENT_CONSTRUCTS.join(", ")} to a style id or {style?, numId?, level?}.`,
+      },
+      keepUntil: {
+        type: "string",
+        description:
+          "Keep the template body through this block (id or text); default: up to the first heading.",
+      },
+      keepFrom: {
+        type: "string",
+        description:
+          "Also keep the template body from this block (id or text) to the end.",
+      },
+      fields: {
+        type: "object",
+        additionalProperties: { type: "string" },
+        description: "Values for {{name}} placeholders, by name.",
+      },
+      replaceText: {
+        type: "object",
+        additionalProperties: { type: "string" },
+        description: "Exact text to replace, with its replacement.",
+      },
+    },
+    required: [],
+    additionalProperties: false,
+  },
+  commands: [
+    {
+      name: "fill",
+      summary: "Build a document from a template and content",
+      fileFlags: ["markdown"],
+    },
+  ],
+} as const satisfies FolioFileToolSpec;
+
 export const FOLIO_FILE_TOOLS: readonly FolioFileToolSpec[] = [
   agentRead({
     agentTool: FOLIO_AGENT_TOOL_NAMES.readDocument,
@@ -575,6 +642,7 @@ export const FOLIO_FILE_TOOLS: readonly FolioFileToolSpec[] = [
   PROOFING_LANGUAGE_TOOL,
   PLACEHOLDERS_TOOL,
   NUMBERING_TOOL,
+  FILL_TEMPLATE_TOOL,
 ];
 
 const toolsByName = new Map(FOLIO_FILE_TOOLS.map((tool) => [tool.name, tool]));

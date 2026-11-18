@@ -193,11 +193,12 @@ actor with write access to the directory.
 | `placeholders`      | `placeholders`      | Lists placeholders left in every story, or fills them       |
 | `literal-numbering` | `numbering`         | Writes list numbers as literal text                         |
 | `apply-numbering`   | `numbering`         | Puts paragraphs into a numbering instance                   |
+| `fill`              | `fill_template`     | Builds a document from a template and content               |
 
 Without `--in-place` or `-o` these commands write nothing and report what a
 write would change. A write commits like any other change and is refused
 with `operation_rejected` when there is nothing to change. `sanitize`,
-`lang`, and the numbering commands rewrite package parts directly: the
+`lang`, `fill`, and the numbering commands rewrite package parts directly: the
 report names the parts a write would touch, and the write rewrites only
 those (`saveStrategy: "part-rewrite"`).
 
@@ -281,6 +282,48 @@ and removes a leading label that `--strip` matches. Paragraphs without a
 `w14:paraId` get one written, as with any change. Levels a style-linked
 abstract definition (`w:numStyleLink`) holds are not resolved: their
 paragraphs get the label but keep only their own indentation.
+
+```sh
+folio fill template.docx --markdown @content.md --styles @styles.json --fields @fields.json \
+  --keep-from "Signed:" -o filing.docx --expect-version 9f2c…
+```
+
+`fill` authors a document from a template and structured content in one
+direct write (not tracked). The template keeps its sections, headers and
+footers (first-page variants included), styles, numbering, and the body
+blocks the caller keeps: everything before the first heading, or through
+the block `--keep-until` names by block id or text, plus everything from
+the block `--keep-from` names (a signature block, say). The content
+replaces the blocks between. A section break among them goes with them,
+and the report warns about it.
+
+The content is `--markdown` (`@file.md` reads a file): headings, paragraphs
+with bold and italic, ordered and bullet lists with nesting, blockquotes,
+and tables. Links keep only their text. It can also be `--blocks`, a JSON
+list of `{ "type": "heading" | "paragraph" | "numberedParagraph" | "quote" |
+"bullet" | "numbered" | "table", "text" | "runs", "level"?, "style"?,
+"rows"? }`, with runs as strings or `{ "text", "bold"?, "italic"? }`.
+`--styles` maps `h1` to `h6`, `paragraph`, `numberedParagraph` (ordered
+items), `list` (bullets), `quote`, and `table` to a style id the template
+defines, or to `{ "style"?, "numId"?, "level"? }`; a list item's nesting
+adds to `level`:
+
+```json
+{
+  "h2": "HeadingStyleA",
+  "h3": "HeadingStyleB",
+  "numberedParagraph": "BodyNumbered",
+  "quote": "Quote",
+  "list": { "style": "ListPara", "numId": 28 }
+}
+```
+
+A style or numbering instance the template does not define is refused.
+Without a mapping, headings take `Heading1` to `Heading6` and quotes take
+`Quote` when the template defines them. `--fields` fills `{{name}}`
+placeholders by name and `--replace-text` replaces exact text, in the
+body, headers, footers, and notes, across run boundaries; the report counts
+each and warns about one that filled nothing.
 
 ## Rendering and preview
 
@@ -409,7 +452,7 @@ frequent tools, with compact schemas: `read_document`, `find_text`,
 rest (`get_document_outline`, `read_section`, `list_stories`, `read_story`,
 `reply_comment`, `resolve_comment`, `resolve_changes`,
 `compare_documents`, `sanitize_document`, `proofing_language`,
-`placeholders`, and `numbering`) are reached through `list_capabilities`,
+`placeholders`, `numbering`, and `fill_template`) are reached through `list_capabilities`,
 `describe_capability` (a tool's parameter outline, short guidance and an
 example, listed tools included; `detail: "full"` for its full input schema),
 and `invoke_capability` (`{ capability, input, validate_only }`).
