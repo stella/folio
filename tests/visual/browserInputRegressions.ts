@@ -490,6 +490,26 @@ export const BROWSER_DELETE_BESIDE_BOOKMARK_SEED_83 = {
   trace: BrowserInputTrace;
 };
 
+/** A table pasted over everything leaves the caret in its last cell. */
+export const BROWSER_TABLE_PASTE_OVER_EVERYTHING_SEED_1794896995 = {
+  seed: 1794896995,
+  path: "1:5:3:2:2",
+  fingerprint: "8daa28ea1bbd2663",
+  trace: {
+    shape: "invisible-markers",
+    actions: [
+      { kind: "selectAll" },
+      { kind: "pasteTable", ...BROWSER_PASTE_PAYLOADS.pasteTable },
+      { kind: "typing", text: "alpha" },
+    ],
+  },
+} satisfies {
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
 export const BROWSER_CANCELLED_COMPOSITION_SEED_431 = {
   seed: 431,
   path: "9:2:1:1:1:2:2",
@@ -2064,6 +2084,7 @@ export const BROWSER_INPUT_REGRESSIONS = [
   BROWSER_CANCELLED_COMPOSITION_SEED_1793897521,
   BROWSER_CANCELLED_COMPOSITION_SEED_131,
   BROWSER_DELETE_BESIDE_BOOKMARK_SEED_83,
+  BROWSER_TABLE_PASTE_OVER_EVERYTHING_SEED_1794896995,
   CANONICAL_INSERTION_SEED_557,
   CANONICAL_ACROSS_PARAGRAPHS_SEED_347,
   CANONICAL_DELETION_SEED_11,
