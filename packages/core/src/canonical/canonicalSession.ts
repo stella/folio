@@ -33,6 +33,7 @@ import {
   DOCUMENT_OP_REFUSAL_REASONS,
   DOCUMENT_OP_TYPES,
   type DocumentOp,
+  documentStories,
   type EditorIntent,
   type EditorIntentMode,
   editorParagraphGroups,
@@ -3048,24 +3049,44 @@ class CanonicalSession {
       date: string;
     },
   ): Result<CanonicalCommit, CanonicalSessionError> {
-    const infos = suggestionRevisionInfos(
-      this.currentDocument,
-      OP_STORIES.MAIN,
-      suggestionId,
-    );
+    const revisions = documentStories(this.currentDocument)
+      .map((story) => ({
+        story,
+        infos: suggestionRevisionInfos(
+          this.currentDocument,
+          story,
+          suggestionId,
+        ),
+      }))
+      .filter(({ infos }) => infos.length > 0);
     const commentIds = suggestedCommentIds(this.currentDocument, suggestionId);
-    if (infos.length === 0 && commentIds.length === 0)
+    if (revisions.length === 0 && commentIds.length === 0)
       return noChange(`No pending suggestion ${suggestionId}.`);
     if (resolution === "reject")
       return this.prepareResolve(state, {
-        revisionIds: infos.map(({ id }) => id),
+        revisionIds: [],
         resolution: "reject",
         // The comments go first, while the text they cover is still there.
-        before: commentIds.map((id) => ({
-          type: DOCUMENT_OP_TYPES.DELETE_COMMENT,
-          id,
-          scope: "thread",
-        })),
+        before: [
+          ...commentIds.map((id) => ({
+            type: DOCUMENT_OP_TYPES.DELETE_COMMENT,
+            id,
+            scope: "thread" as const,
+          })),
+          // Resolve notes before body references can remove their stories.
+          ...revisions
+            .toSorted(
+              ({ story: left }, { story: right }) =>
+                Number(left === OP_STORIES.MAIN) -
+                Number(right === OP_STORIES.MAIN),
+            )
+            .map(({ story, infos }) => ({
+              type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+              story,
+              revisionIds: infos.map(({ id }) => id),
+              decision: "reject" as const,
+            })),
+        ],
       });
     const checked = this.checkState(state);
     if (checked.isErr()) return checked;
@@ -3073,10 +3094,10 @@ class CanonicalSession {
     if (selection.isErr()) return selection;
     const comments = this.currentDocument.package.document.comments ?? [];
     const ops: DocumentOp[] = [];
-    if (infos.length > 0)
+    for (const { story, infos } of revisions)
       ops.push({
         type: DOCUMENT_OP_TYPES.SET_REVISION_INFO,
-        story: OP_STORIES.MAIN,
+        story,
         infos: infos.map(({ id }) => ({ id, author, date })),
       });
     for (const comment of comments)

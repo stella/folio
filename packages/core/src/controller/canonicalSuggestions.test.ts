@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { EditorState } from "prosemirror-state";
 
+import { documentStories, suggestionRevisionInfos } from "@stll/docx-core/ops";
+
 import { createCanonicalSession } from "../canonical/canonicalSession";
 import { getSuggestions } from "../prosemirror/commands/comments";
 import { schema } from "../prosemirror/schema";
-import type { Document, ParagraphContent } from "../types/document";
+import type { Document, Paragraph, ParagraphContent } from "../types/document";
 
 const run = (text: string): ParagraphContent => ({
   type: "run",
@@ -167,3 +169,96 @@ describe("resolving a pending suggestion in the canonical session", () => {
     expect(infosOf(session)).toEqual([info(3)]);
   });
 });
+
+for (const resolution of ["accept", "reject"] as const)
+  test(`${resolution}: one proposal across all stories has one exact undo and redo`, () => {
+    const content = (id: number): Paragraph[] => [
+      {
+        type: "paragraph",
+        paraId: id.toString(16).padStart(8, "0"),
+        content: [
+          run("Before "),
+          {
+            type: "insertion",
+            info: info(id, "shared-proposal"),
+            content: [run("proposed")],
+          },
+        ],
+      },
+    ];
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            ...content(1),
+            {
+              type: "paragraph",
+              paraId: "00000006",
+              content: [
+                {
+                  type: "run",
+                  content: [
+                    { type: "footnoteRef", id: 7 },
+                    { type: "endnoteRef", id: 8 },
+                  ],
+                },
+              ],
+            },
+          ],
+          finalSectionProperties: {
+            headerReferences: [{ type: "default", rId: "rIdHeader" }],
+            footerReferences: [{ type: "default", rId: "rIdFooter" }],
+          },
+        },
+        headers: new Map([
+          [
+            "rIdHeader",
+            { type: "header", hdrFtrType: "default", content: content(2) },
+          ],
+        ]),
+        footers: new Map([
+          [
+            "rIdFooter",
+            { type: "footer", hdrFtrType: "default", content: content(3) },
+          ],
+        ]),
+        footnotes: [{ type: "footnote", id: 7, content: content(4) }],
+        endnotes: [{ type: "endnote", id: 8, content: content(5) }],
+      },
+    };
+    const session = createCanonicalSession(document).unwrap();
+    const before = session.document;
+    const projectionBefore = session.projection.doc.toJSON();
+    const stories = documentStories(before);
+    expect(stories).toHaveLength(5);
+    for (const story of stories)
+      expect(
+        suggestionRevisionInfos(before, story, "shared-proposal"),
+      ).toHaveLength(1);
+    const state = EditorState.create({ schema, doc: session.projection.doc });
+    const commit = session
+      .prepareSuggestion(state, {
+        suggestionId: "shared-proposal",
+        resolution,
+        author: "Adopter",
+        date: "2026-02-02T00:00:00Z",
+      })
+      .unwrap();
+    expect(commit.publish().isOk()).toBe(true);
+    const after = session.document;
+    const projectionAfter = session.projection.doc.toJSON();
+    for (const story of stories)
+      expect(suggestionRevisionInfos(after, story, "shared-proposal")).toEqual(
+        [],
+      );
+    const undo = session.prepareUndo(state.apply(commit.transaction)).unwrap();
+    expect(undo.publish().isOk()).toBe(true);
+    expect(session.document).toEqual(before);
+    expect(session.projection.doc.toJSON()).toEqual(projectionBefore);
+    const redo = session
+      .prepareRedo(state.apply(commit.transaction).apply(undo.transaction))
+      .unwrap();
+    expect(redo.publish().isOk()).toBe(true);
+    expect(session.document).toEqual(after);
+    expect(session.projection.doc.toJSON()).toEqual(projectionAfter);
+  });

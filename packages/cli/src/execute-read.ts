@@ -22,7 +22,9 @@ import {
   openReviewer,
   readDocumentFile,
 } from "./document";
+import { inspectDocument } from "./document-pass";
 import { cliError, FOLIO_CLI_ERROR_CODES, type FolioCliError } from "./errors";
+import { runPackageRewrite } from "./package-rewrite";
 import { type FolioFileToolSpec, MAX_READ_BLOCKS } from "./registry";
 
 /** One call against one file: the envelope plus the tool's own arguments. */
@@ -371,6 +373,63 @@ const tooLarge = (tool: string, limit: number): FolioCliError =>
 
 type AgentReadTool = Extract<FolioFileToolSpec, { type: "agentRead" }>;
 type CompareTool = Extract<FolioFileToolSpec, { type: "compare" }>;
+type PackageRewriteTool = Extract<
+  FolioFileToolSpec,
+  { type: "packageRewrite" }
+>;
+type DocumentPassTool = Extract<FolioFileToolSpec, { type: "documentPass" }>;
+
+/** A document pass's inspection, without a destination: nothing is written. */
+const inspectWithPass = async (
+  tool: DocumentPassTool,
+  call: FileToolCall,
+  bounds: FolioReadBounds,
+): Promise<Result<FileReadData, FolioCliError>> => {
+  const file = await readDocumentFile(call.path);
+  if (file.isErr()) return Result.err(file.error);
+  const version = checkExpectedVersion(file.value, call.fileVersion);
+  if (version.isErr()) return Result.err(version.error);
+  const opened = await openReviewer(file.value);
+  if (opened.isErr()) return Result.err(opened.error);
+  const result = inspectDocument(tool.pass, opened.value.reviewer, call.args);
+  if (result.isErr()) return Result.err(result.error);
+  const data = {
+    path: file.value.path,
+    fileVersion: file.value.fileVersion,
+    result: result.value,
+  };
+  return bounds.maxResponseBytes !== null &&
+    byteLength(data) > bounds.maxResponseBytes
+    ? Result.err(tooLarge(tool.name, bounds.maxResponseBytes))
+    : Result.ok(data);
+};
+
+/** A package rewrite as a dry run: its report and the parts it would change. */
+const reportPackageRewrite = async (
+  tool: PackageRewriteTool,
+  call: FileToolCall,
+  bounds: FolioReadBounds,
+): Promise<Result<FileReadData, FolioCliError>> => {
+  const file = await readDocumentFile(call.path);
+  if (file.isErr()) return Result.err(file.error);
+  const version = checkExpectedVersion(file.value, call.fileVersion);
+  if (version.isErr()) return Result.err(version.error);
+  const outcome = await runPackageRewrite(
+    tool.rewrite,
+    file.value.bytes,
+    call.args,
+  );
+  if (outcome.isErr()) return Result.err(outcome.error);
+  const data = {
+    path: file.value.path,
+    fileVersion: file.value.fileVersion,
+    result: { report: outcome.value.report, parts: outcome.value.parts },
+  };
+  return bounds.maxResponseBytes !== null &&
+    byteLength(data) > bounds.maxResponseBytes
+    ? Result.err(tooLarge(tool.name, bounds.maxResponseBytes))
+    : Result.ok(data);
+};
 
 /** Diff two files without writing: the structured diff plus a compact rendering. */
 const compareFiles = async (
@@ -461,7 +520,7 @@ const readWithAgentTool = async (
   return Result.ok(data);
 };
 
-/** Run one read tool, or a compare without a destination. Never writes. */
+/** Run one read tool, or a compare or package rewrite without a destination. Never writes. */
 export const executeReadTool = async (
   tool: FolioFileToolSpec,
   call: FileToolCall,
@@ -472,6 +531,10 @@ export const executeReadTool = async (
       return await readWithAgentTool(tool, call, bounds);
     case "compare":
       return await compareFiles(tool, call, bounds);
+    case "packageRewrite":
+      return await reportPackageRewrite(tool, call, bounds);
+    case "documentPass":
+      return await inspectWithPass(tool, call, bounds);
     case "agentWrite":
     case "resolveChanges":
       return panic("A write tool reached the read executor", {
