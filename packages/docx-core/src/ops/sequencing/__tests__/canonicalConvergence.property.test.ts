@@ -2035,6 +2035,72 @@ describe("canonical sequencing", () => {
   );
 
   test(
+    "a paragraph split at a concurrent suggested insertion's point is accepted in either order",
+    async () => {
+      // Saved flow -706043845: the split is sequenced after the suggestion.
+      const splitLater = [
+        3,
+        [
+          {
+            type: "edit",
+            peer: 1,
+            seed: { kind: "type", a: 7, b: 0, suggest: true },
+          },
+          {
+            type: "edit",
+            peer: 0,
+            seed: { kind: "type", a: 0, b: 0, suggest: false },
+          },
+          { type: "deliver", seed: 0 },
+          { type: "deliver", seed: 0 },
+          {
+            type: "edit",
+            peer: 0,
+            seed: { kind: "join", a: 53294, b: 0, suggest: false },
+          },
+          { type: "deliver", seed: 0 },
+          {
+            type: "edit",
+            peer: 0,
+            seed: { kind: "split", a: 7, b: 0, suggest: false },
+          },
+          {
+            type: "edit",
+            peer: 0,
+            seed: { kind: "type", a: 0, b: 0, suggest: false },
+          },
+          { type: "submit", peer: 0 },
+        ],
+      ] as const satisfies Scenario;
+      // The split is sequenced first; the suggestion made before it arrives
+      // is rebased over it.
+      const splitFirst = [
+        3,
+        [
+          {
+            type: "edit",
+            peer: 0,
+            seed: { kind: "split", a: 7, b: 0, suggest: false },
+          },
+          {
+            type: "edit",
+            peer: 1,
+            seed: { kind: "type", a: 7, b: 0, suggest: true },
+          },
+          { type: "submit", peer: 0 },
+          { type: "submit", peer: 1 },
+        ],
+      ] as const satisfies Scenario;
+      for (const scenario of [splitLater, splitFirst])
+        await fc.assert(
+          convergence(noCounts(), fc.constant(scenario)),
+          propertyConfig({ numRuns: 1 }),
+        );
+    },
+    propertyTestTimeout(30_000),
+  );
+
+  test(
     "a source-seam undo retains its scoped refusal beside tracked typing",
     async () => {
       // The original saved flow is retained because its old generator path no longer replays.
