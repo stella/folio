@@ -1,6 +1,12 @@
 {
   "a suggested link change resolves to the direct edit or the original, saved or not": [
     {
+      "seed": -1475266551,
+      "path": "102:2:1:4:6:6:9:10:0:6:6:6:6:6:6:6:6:6:7:6:6:7:6:6:6:7",
+      "note": "#2747: reopening a suggested link replacement retains the deleted wrapper's link ancestry before rejection joins adjacent wrappers.",
+      "date": "2026-11-16"
+    },
+    {
       "seed": -525169527,
       "path": "28:2:1:1:1:1:2:1:1:27:1:2",
       "note": "Setting a link on text inside a content control: the suggestion meets the typed refusal for copying text inside a container instead of changing nothing.",

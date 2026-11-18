@@ -7,7 +7,15 @@
  * direct edit once accepted and the document as it was once rejected.
  */
 
-import { describe, expect, setDefaultTimeout, test } from "bun:test";
+import {
+  afterAll,
+  beforeAll,
+  describe,
+  expect,
+  setDefaultTimeout,
+  setSystemTime,
+  test,
+} from "bun:test";
 import fc from "fast-check";
 import { EditorState } from "prosemirror-state";
 
@@ -21,12 +29,17 @@ import type { FolioDocumentOperation } from "../ai-edits";
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { getTrackedChangeStatsFromDoc } from "../ai-edits/read";
 import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
+import { TABLE_INSERTION_MODES } from "../ai-edits/tableInsertionModes";
 import { CanonicalPublicOperations } from "../canonical/canonicalPublicOperations";
 import {
   type CanonicalCommit,
   createCanonicalSession,
   publishCanonicalProjection,
 } from "../canonical/canonicalSession";
+import {
+  type FolioDocumentOperationMode,
+  isFolioDocumentOperationModeSupported,
+} from "../document-operations";
 import { serializeCanonicalSave } from "../docx/canonicalSave";
 import { parseDocx } from "../docx/parser";
 import { createEmptyDocx } from "../docx/rezip";
@@ -34,6 +47,10 @@ import { schema } from "../prosemirror/schema";
 import type { BlockContent, TableCell } from "../types/document";
 
 setDefaultTimeout(propertyTestTimeout(240_000));
+// Saves update core-property dates; a fixed clock makes exact ZIP equality
+// distinguish document mutation from the save's modification timestamp.
+beforeAll(() => setSystemTime(new Date("2026-01-01T12:00:00Z")));
+afterAll(() => setSystemTime());
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const W14 = "http://schemas.microsoft.com/office/word/2010/wordml";
@@ -124,7 +141,76 @@ const MORE_BODIES = {
   },
 } as const;
 
-const ALL_BODIES = { ...BODIES, ...MORE_BODIES };
+/** A paragraph whose break is pending deletion, before a table and before a paragraph. */
+const deletedBreak = (id: string, text: string) =>
+  `<w:p w14:paraId="${id}"><w:pPr><w:rPr><w:del w:id="90" w:author="Reviewer" w:date="2026-01-01T00:00:00Z"/></w:rPr></w:pPr><w:r><w:t xml:space="preserve">${text}</w:t></w:r></w:p>`;
+
+type RemovedJoinParagraphOptions = {
+  properties?: string;
+  keptContent?: string;
+};
+/** A paragraph a pending join reaches, with its words and mark deleted. */
+const removedJoinParagraph = ({
+  properties = "",
+  keptContent = "",
+}: RemovedJoinParagraphOptions = {}) =>
+  `<w:p w14:paraId="70000009"><w:pPr>${properties}<w:rPr><w:del w:id="91" w:author="Reviewer" w:date="2026-01-01T00:00:00Z"/></w:rPr></w:pPr><w:del w:id="92" w:author="Reviewer" w:date="2026-01-01T00:00:00Z"><w:r><w:delText>Gone</w:delText></w:r></w:del>${keptContent}</w:p>`;
+
+/** Bodies tables are inserted into, beside paragraphs and tables. */
+const PLACEMENT_BODIES = {
+  "a deleted break before a table": {
+    xml: [
+      deletedBreak("70000001", "Joined"),
+      table([cell("70000002", "A1") + cell("70000003", "B1")], 2),
+      paragraph("10000002", "After"),
+    ],
+    anchors: ["70000001", "70000002", "70000003", "10000002"],
+  },
+  "a deleted break before a paragraph": {
+    xml: [
+      paragraph("10000001", "Before"),
+      deletedBreak("70000004", "Joined"),
+      paragraph("70000005", "Next"),
+      table([cell("70000006", "A1")], 1),
+      paragraph("10000002", ""),
+    ],
+    anchors: ["10000001", "70000004", "70000005", "70000006"],
+  },
+  "a table starting the body": {
+    xml: [
+      table([cell("60000101", "A1") + cell("60000102", "B1")], 2),
+      paragraph("10000002", "After"),
+    ],
+    anchors: ["60000101", "60000102", "10000002"],
+  },
+  "a table at the body's end": {
+    xml: [paragraph("10000001", "Before"), table([cell("60000103", "A1")], 1)],
+    anchors: ["10000001", "60000103"],
+  },
+  "two tables touching": {
+    xml: [
+      paragraph("10000001", "Before"),
+      table([cell("60000104", "A1")], 1),
+      table([cell("60000105", "X1")], 1),
+      paragraph("10000002", "After"),
+    ],
+    anchors: ["60000104", "60000105"],
+  },
+  "a nested table": {
+    xml: [
+      table(
+        [
+          `<w:tc><w:tcPr><w:tcW w:w="2000" w:type="dxa"/></w:tcPr>${table([cell("60000106", "N1")], 1)}${paragraph("60000107", "Outer")}</w:tc>`,
+        ],
+        1,
+      ),
+      paragraph("10000002", "After"),
+    ],
+    anchors: ["60000106", "60000107", "10000002"],
+  },
+} as const;
+
+const ALL_BODIES = { ...BODIES, ...MORE_BODIES, ...PLACEMENT_BODIES };
 type Body = keyof typeof ALL_BODIES;
 
 /** Bodies the canonical session's own review also runs on. */
@@ -149,9 +235,48 @@ const REVIEW_BODIES = {
   },
 } as const;
 
+const PENDING_BOUNDARY_BODIES = {
+  "a pending join into a deleted paragraph before a table": {
+    xml: [
+      deletedBreak("70000008", "Kept"),
+      removedJoinParagraph(),
+      table([cell("70000010", "A1") + cell("70000011", "B1")], 2),
+      paragraph("10000002", "After"),
+    ],
+    anchors: ["70000008", "70000009", "70000010", "70000011", "10000002"],
+  },
+  "a pending join into a paragraph retaining a range before a table": {
+    xml: [
+      deletedBreak("70000008", "Kept"),
+      removedJoinParagraph({
+        keptContent:
+          '<w:bookmarkStart w:id="73" w:name="Retained"/><w:bookmarkEnd w:id="73"/>',
+      }),
+      table([cell("70000010", "A1") + cell("70000011", "B1")], 2),
+      paragraph("10000002", "After"),
+    ],
+    anchors: ["70000008", "70000009", "70000010", "70000011", "10000002"],
+  },
+  "a pending join into a paragraph retaining a section before a table": {
+    xml: [
+      deletedBreak("70000008", "Kept"),
+      removedJoinParagraph({
+        properties: '<w:sectPr><w:pgSz w:w="12240" w:h="15840"/></w:sectPr>',
+      }),
+      table([cell("70000010", "A1") + cell("70000011", "B1")], 2),
+      paragraph("10000002", "After"),
+    ],
+    anchors: ["70000008", "70000009", "70000010", "70000011", "10000002"],
+  },
+} as const;
+
 type ReviewBody = keyof typeof REVIEW_BODIES;
 
-const PACKAGE_BODIES = { ...ALL_BODIES, ...REVIEW_BODIES };
+const PACKAGE_BODIES = {
+  ...ALL_BODIES,
+  ...REVIEW_BODIES,
+  ...PENDING_BOUNDARY_BODIES,
+};
 
 const packageOf = async (body: keyof typeof PACKAGE_BODIES) => {
   const zip = await ZipArchive.read(await createEmptyDocx());
@@ -246,7 +371,7 @@ const CELL_OPERATIONS = {
   (blockId: string, last: string) => FolioDocumentOperation
 >;
 
-type Mode = "direct" | "tracked-changes";
+type Mode = FolioDocumentOperationMode;
 
 /**
  * A paragraph's words, those a pending change holds included: a pending
@@ -390,24 +515,52 @@ const reviewedInSession = async (bytes: ArrayBuffer) => {
   };
 };
 
-const viaDefaultEngine = async (
-  source: ArrayBuffer,
-  operation: FolioDocumentOperation,
-  mode: Mode,
-) => {
+type EngineRunOptions = {
+  source: ArrayBuffer;
+  operation: FolioDocumentOperation;
+  mode: Mode;
+  resolveSuggestion?: "accept" | "reject";
+};
+const viaDefaultEngine = async ({
+  source,
+  operation,
+  mode,
+  resolveSuggestion,
+}: EngineRunOptions) => {
   const reviewer = await FolioDocxReviewer.fromBuffer(source.slice(0));
-  const result = reviewer.applyOperations([operation], { mode });
+  const before = await reviewer.toBuffer();
+  const snapshot = reviewer.snapshot();
+  const result = reviewer.applyDocumentOperations(
+    { version: 1, mode, operations: [operation] },
+    { undefinedReferences: "refuse" },
+  );
+  if (resolveSuggestion !== undefined) {
+    for (const applied of result.applied) {
+      if (applied.suggestionId === undefined)
+        throw new Error("The signature insertion has a suggestion id.");
+      if (resolveSuggestion === "accept")
+        expect(reviewer.acceptSuggestion(applied.suggestionId)).toBe(true);
+      else expect(reviewer.rejectSuggestion(applied.suggestionId)).toBe(true);
+    }
+  }
+  const bytes = await reviewer.toBuffer();
+  if (result.applied.length === 0) {
+    expect(result.undoHandle).toBeNull();
+    expect(reviewer.snapshot()).toEqual(snapshot);
+    expect(new Uint8Array(bytes)).toEqual(new Uint8Array(before));
+  }
   return {
+    applied: result.applied,
     skipped: result.skipped.map(({ reason }) => reason),
-    bytes: await reviewer.toBuffer(),
+    bytes,
   };
 };
 
-const viaCanonicalEngine = async (
-  source: ArrayBuffer,
-  operation: FolioDocumentOperation,
-  mode: Mode,
-) => {
+const viaCanonicalEngine = async ({
+  source,
+  operation,
+  mode,
+}: EngineRunOptions) => {
   const document = await parseDocx(source.slice(0), {
     preloadFonts: false,
     detectVariables: false,
@@ -417,10 +570,18 @@ const viaCanonicalEngine = async (
     document.package.styles,
   ).unwrap();
   let state = EditorState.create({ schema, doc: session.projection.doc });
+  const before = await serializeCanonicalSave({
+    snapshot: session.captureSaveSnapshot(),
+  });
+  const documentBefore = structuredClone(session.document);
+  const documentReference = session.document;
+  const versionBefore = session.version;
+  let publications = 0;
   const executor = new CanonicalPublicOperations({
     session,
     getState: () => state,
     publish: (commit: CanonicalCommit) => {
+      publications++;
       const published = publishCanonicalProjection({ state, commit, session });
       if (published.isErr()) return false;
       state = published.value.state;
@@ -431,31 +592,122 @@ const viaCanonicalEngine = async (
     snapshot: createFolioAIEditSnapshot(state.doc),
     batch: { version: 1, mode, operations: [operation] },
   });
+  const saved = await serializeCanonicalSave({
+    snapshot: session.captureSaveSnapshot(),
+  });
+  if (result.applied.length === 0) {
+    expect(publications).toBe(0);
+    expect(result.undoHandle).toBeNull();
+    expect(session.canUndo).toBe(false);
+    expect(session.version).toBe(versionBefore);
+    expect(session.document).toBe(documentReference);
+    expect(structuredClone(session.document)).toEqual(documentBefore);
+    expect(new Uint8Array(saved.buffer)).toEqual(new Uint8Array(before.buffer));
+  }
   return {
+    applied: result.applied,
     skipped: result.skipped.map(({ reason }) => reason),
     refusals: result.issues.flatMap(({ canonicalRefusal }) =>
       canonicalRefusal === undefined ? [] : [canonicalRefusal],
     ),
-    bytes: (
-      await serializeCanonicalSave({ snapshot: session.captureSaveSnapshot() })
-    ).buffer,
+    bytes: saved.buffer,
   };
 };
+
+const INSERTIONS = {
+  "insertTable after": (blockId: string) => ({
+    id: "op",
+    type: "insertTable",
+    blockId,
+    position: "after",
+    rows: [
+      ["N1", "N2"],
+      ["N3", ""],
+    ],
+  }),
+  "insertTable before": (blockId: string) => ({
+    id: "op",
+    type: "insertTable",
+    blockId,
+    position: "before",
+    rows: [["N1"]],
+  }),
+  "insertSignatureTable after": (blockId: string) => ({
+    id: "op",
+    type: "insertSignatureTable",
+    blockId,
+    parties: [
+      { name: "Buyer", signatory: "A. Person", title: "Director" },
+      { name: "Seller" },
+    ],
+  }),
+  "insertSignatureTable before": (blockId: string) => ({
+    id: "op",
+    type: "insertSignatureTable",
+    blockId,
+    position: "before",
+    parties: [{ name: "Buyer" }],
+  }),
+} as const satisfies Record<
+  string,
+  (blockId: string, last: string) => FolioDocumentOperation
+>;
+
+const TABLE_INSERTION_TYPES = [
+  ...new Set(Object.values(INSERTIONS).map((build) => build("70000001").type)),
+];
 
 const caseArbitrary = (
   bodies: readonly Body[],
   operations: Readonly<
     Record<string, (blockId: string, last: string) => FolioDocumentOperation>
   >,
+  /** Paragraphs beside the table the operations may also name, where the body has them. */
+  besides: readonly string[] = [],
 ) =>
   fc.constantFrom(...bodies).chain((body) =>
     fc.record({
       body: fc.constant(body),
-      anchor: fc.constantFrom(...ALL_BODIES[body].anchors),
+      anchor: fc.constantFrom(
+        ...new Set<string>([
+          ...ALL_BODIES[body].anchors,
+          ...besides.filter((id) =>
+            ALL_BODIES[body].xml.some((xml) =>
+              xml.startsWith(`<w:p w14:paraId="${id}"`),
+            ),
+          ),
+        ]),
+      ),
       operation: fc.constantFrom(...Object.keys(operations)),
       mode: fc.constantFrom<Mode>("direct", "tracked-changes"),
     }),
   );
+
+/** Whether the paragraph `anchor` is the last block of the body. */
+const endsTheBody = (body: Body, anchor: string): boolean =>
+  ALL_BODIES[body].xml.at(-1)?.startsWith(`<w:p w14:paraId="${anchor}"`) ??
+  false;
+
+type Outcomes = Awaited<ReturnType<typeof outcomes>>;
+
+/**
+ * A table put after the body's last paragraph: a body that ended with a
+ * paragraph still ends with one, an empty paragraph after the table, where
+ * the default engine lets the table end the body. Nothing else differs.
+ */
+const closedOutcomes = (outcome: Outcomes): Outcomes => {
+  const closed = (blocks: Outcomes["pending"]): Outcomes["pending"] => {
+    const last = blocks.at(-1);
+    return last !== undefined && "rows" in last
+      ? [...blocks, { text: [""] }]
+      : blocks;
+  };
+  return {
+    pending: closed(outcome.pending),
+    accepted: closed(outcome.accepted),
+    rejected: closed(outcome.rejected),
+  };
+};
 
 /** The operation in both engines gives the same package, pending, accepted and rejected. */
 const sameAsDefaultEngine =
@@ -480,9 +732,20 @@ const sameAsDefaultEngine =
     const build = operations[operation];
     if (build === undefined) throw new Error(`No operation ${operation}.`);
     const op = build(anchor, last);
-    const legacy = await viaDefaultEngine(source, op, mode);
-    const canonical = await viaCanonicalEngine(source, op, mode);
+    const legacy = await viaDefaultEngine({
+      source,
+      operation: op,
+      mode: mode,
+    });
+    const canonical = await viaCanonicalEngine({
+      source,
+      operation: op,
+      mode: mode,
+    });
     expect(canonical.refusals).toEqual([]);
+    const closes = operation.endsWith(" after") && endsTheBody(body, anchor);
+    const asCanonicalCloses = (outcome: Outcomes) =>
+      closes ? closedOutcomes(outcome) : outcome;
     // A suggestion the default engine cannot record, such as a split or a
     // column through a merged cell: accepting it gives the direct edit,
     // rejecting it the document as it was.
@@ -491,21 +754,180 @@ const sameAsDefaultEngine =
       legacy.skipped.length > 0 &&
       canonical.skipped.length === 0
     ) {
-      const direct = await viaDefaultEngine(source, op, "direct");
+      const direct = await viaDefaultEngine({
+        source,
+        operation: op,
+        mode: "direct",
+      });
       expect(direct.skipped).toEqual([]);
+      // Every other change the body already held is resolved alike.
       const resolved = await outcomes(canonical.bytes);
-      expect(resolved.accepted).toEqual(await blocksOf(direct.bytes));
-      expect(resolved.rejected).toEqual(await blocksOf(source));
+      expect(resolved.accepted).toEqual(
+        asCanonicalCloses(await outcomes(direct.bytes)).accepted,
+      );
+      expect(resolved.rejected).toEqual((await outcomes(source)).rejected);
       return;
     }
     expect(canonical.skipped).toEqual(legacy.skipped);
     if (legacy.skipped.length > 0) return;
     expect(await outcomes(canonical.bytes)).toEqual(
-      await outcomes(legacy.bytes),
+      asCanonicalCloses(await outcomes(legacy.bytes)),
     );
   };
 
 describe("table structure operations in the canonical session", () => {
+  test("safe table placement honors published modes and the declared signature-suggestion gap", async () => {
+    expect(new Set(TABLE_INSERTION_TYPES)).toEqual(
+      new Set(Object.keys(TABLE_INSERTION_MODES)),
+    );
+    const cases = [
+      {
+        body: "a pending join into a deleted paragraph before a table",
+        anchor: "70000010",
+      },
+      { body: "a table starting the body", anchor: "60000101" },
+      { body: "a table at the body's end", anchor: "60000103" },
+      { body: "two tables touching", anchor: "60000104" },
+      { body: "a nested table", anchor: "60000106" },
+      { body: "a nested table", anchor: "60000107" },
+    ] as const;
+    for (const value of cases) {
+      const source = await packageOf(value.body);
+      const reviewer = await FolioDocxReviewer.fromBuffer(source.slice(0));
+      expect(reviewer.snapshot().anchors[value.anchor]).toBeDefined();
+      for (const mode of ["direct", "tracked-changes", "suggested"] as const) {
+        for (const type of TABLE_INSERTION_TYPES) {
+          for (const side of ["before", "after"] as const) {
+            const operation = INSERTIONS[`${type} ${side}`](value.anchor);
+            const run = { source, operation, mode };
+            const legacy = await viaDefaultEngine(run);
+            const canonical = await viaCanonicalEngine(run);
+            const supported = isFolioDocumentOperationModeSupported(type, mode);
+            expect(
+              legacy.skipped,
+              JSON.stringify({ ...value, type, mode, side }),
+            ).toEqual(supported ? [] : ["unsupportedMode"]);
+            expect(legacy.applied).toHaveLength(supported ? 1 : 0);
+            if (type === "insertSignatureTable" && mode === "suggested") {
+              expect(canonical.skipped).toEqual(["unsupportedBlock"]);
+              expect(canonical.applied).toEqual([]);
+              expect(canonical.refusals).toEqual([
+                { gap: "publicOps.tableStructure" },
+              ]);
+              expect(await outcomes(canonical.bytes)).toEqual(
+                await outcomes(source),
+              );
+              // Legacy whole-table suggestions commit directly when accepted;
+              // later rejectAll keeps that table. Canonical ordinary tracked
+              // adoption cannot represent this boundary yet.
+              for (const resolveSuggestion of ["accept", "reject"] as const) {
+                const resolvedLegacy = await viaDefaultEngine({
+                  ...run,
+                  resolveSuggestion,
+                });
+                const expected =
+                  resolveSuggestion === "accept"
+                    ? (await viaDefaultEngine({ ...run, mode: "direct" })).bytes
+                    : source;
+                expect(await outcomes(resolvedLegacy.bytes)).toEqual(
+                  await outcomes(expected),
+                );
+              }
+              continue;
+            }
+            expect(canonical.skipped).toEqual(legacy.skipped);
+            expect(canonical.applied).toHaveLength(supported ? 1 : 0);
+            expect(canonical.refusals).toEqual([]);
+            expect(await outcomes(canonical.bytes)).toEqual(
+              await outcomes(legacy.bytes),
+            );
+          }
+        }
+      }
+    }
+  });
+
+  test("table placement at a pending deleted break refuses before any mutation in every mode", async () => {
+    const source = await packageOf("a deleted break before a table");
+    for (const mode of ["direct", "tracked-changes", "suggested"] as const) {
+      for (const operationType of TABLE_INSERTION_TYPES) {
+        for (const target of [
+          { anchor: "70000001", side: "after" },
+          { anchor: "70000002", side: "before" },
+        ] as const) {
+          const build = INSERTIONS[`${operationType} ${target.side}`];
+          const operation = build(target.anchor);
+          const reason = isFolioDocumentOperationModeSupported(
+            operationType,
+            mode,
+          )
+            ? "pendingParagraphMarkDeletion"
+            : "unsupportedMode";
+          const legacy = await viaDefaultEngine({
+            source,
+            operation: operation,
+            mode: mode,
+          });
+          const canonical = await viaCanonicalEngine({
+            source,
+            operation: operation,
+            mode: mode,
+          });
+          expect(
+            legacy.skipped,
+            `${operationType} ${mode} ${target.side} ${target.anchor}`,
+          ).toEqual([reason]);
+          const gap =
+            operationType === "insertSignatureTable" && mode === "suggested";
+          expect(
+            canonical.skipped,
+            `${operationType} ${mode} ${target.side} ${target.anchor}`,
+          ).toEqual([gap ? "unsupportedBlock" : reason]);
+          expect(canonical.refusals).toEqual(
+            gap ? [{ gap: "publicOps.tableStructure" }] : [],
+          );
+        }
+      }
+    }
+  });
+
+  test("a retained range or section does not bypass the pending-join placement refusal", async () => {
+    for (const body of [
+      "a pending join into a paragraph retaining a range before a table",
+      "a pending join into a paragraph retaining a section before a table",
+    ] as const) {
+      const source = await packageOf(body);
+      for (const mode of ["direct", "tracked-changes", "suggested"] as const) {
+        for (const operationType of TABLE_INSERTION_TYPES) {
+          const operation = INSERTIONS[`${operationType} before`]("70000010");
+          const reason = isFolioDocumentOperationModeSupported(
+            operationType,
+            mode,
+          )
+            ? "pendingParagraphMarkDeletion"
+            : "unsupportedMode";
+          const legacy = await viaDefaultEngine({ source, operation, mode });
+          const canonical = await viaCanonicalEngine({
+            source,
+            operation,
+            mode,
+          });
+          expect(legacy.skipped, `${body} ${operationType} ${mode}`).toEqual([
+            reason,
+          ]);
+          const gap =
+            operationType === "insertSignatureTable" && mode === "suggested";
+          expect(canonical.skipped, `${body} ${operationType} ${mode}`).toEqual(
+            [gap ? "unsupportedBlock" : reason],
+          );
+          expect(canonical.refusals).toEqual(
+            gap ? [{ gap: "publicOps.tableStructure" }] : [],
+          );
+        }
+      }
+    }
+  });
+
   test("give the default engine's package, pending, accepted and rejected", async () => {
     await assertProperty(
       fc.asyncProperty(
@@ -522,7 +944,10 @@ describe("table structure operations in the canonical session", () => {
   test("cell merges, splits and column changes give the default engine's package", async () => {
     await assertProperty(
       fc.asyncProperty(
-        caseArbitrary(Object.keys(ALL_BODIES) as Body[], CELL_OPERATIONS),
+        caseArbitrary(
+          [...Object.keys(BODIES), ...Object.keys(MORE_BODIES)] as Body[],
+          CELL_OPERATIONS,
+        ),
         sameAsDefaultEngine(CELL_OPERATIONS),
       ),
       {
@@ -531,6 +956,50 @@ describe("table structure operations in the canonical session", () => {
       },
     );
   });
+
+  test("tables inserted beside paragraphs and tables give the default engine's package", async () => {
+    await assertProperty(
+      fc.asyncProperty(
+        caseArbitrary(
+          [
+            "a plain table",
+            "a vertical merge",
+            "a table ending the body",
+            ...(Object.keys(PLACEMENT_BODIES) as Body[]),
+          ],
+          INSERTIONS,
+          ["10000001", "10000002"],
+        ),
+        sameAsDefaultEngine(INSERTIONS),
+      ),
+      {
+        numRuns: 160,
+        id: "tables inserted beside paragraphs and tables in the canonical session give the default engine's package",
+      },
+    );
+  });
+
+  for (const mode of ["direct", "tracked-changes"] as const)
+    test(`a table after the body's last paragraph leaves the body ending with a paragraph (${mode})`, async () => {
+      const source = await packageOf("two tables touching");
+      const op = INSERTIONS["insertTable after"]("10000002");
+      const legacy = await outcomes(
+        (await viaDefaultEngine({ source, operation: op, mode: mode })).bytes,
+      );
+      const canonical = await viaCanonicalEngine({
+        source,
+        operation: op,
+        mode: mode,
+      });
+      expect(canonical.refusals).toEqual([]);
+      expect(canonical.skipped).toEqual([]);
+      const resolved = await outcomes(canonical.bytes);
+      expect(resolved.pending.at(-1)).toEqual({ text: [""] });
+      expect(resolved.accepted.at(-1)).toEqual({ text: [""] });
+      // Only the closing paragraph differs from the default engine's package.
+      expect(resolved).not.toEqual(legacy);
+      expect(resolved).toEqual(closedOutcomes(legacy));
+    });
 
   test("resolve in the canonical session as the default engine resolves them", async () => {
     await assertProperty(
@@ -549,12 +1018,16 @@ describe("table structure operations in the canonical session", () => {
         async ({ body, anchor, operation }) => {
           const source = await packageOf(body);
           const op = OPERATIONS[operation](anchor);
-          const legacy = await viaDefaultEngine(source, op, "tracked-changes");
-          const canonical = await viaCanonicalEngine(
+          const legacy = await viaDefaultEngine({
             source,
-            op,
-            "tracked-changes",
-          );
+            operation: op,
+            mode: "tracked-changes",
+          });
+          const canonical = await viaCanonicalEngine({
+            source,
+            operation: op,
+            mode: "tracked-changes",
+          });
           expect(canonical.refusals).toEqual([]);
           expect(canonical.skipped).toEqual(legacy.skipped);
           if (legacy.skipped.length > 0) return;

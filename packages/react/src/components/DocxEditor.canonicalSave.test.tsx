@@ -20,14 +20,13 @@ import { parseDocx } from "@stll/folio-core/docx/parser";
 import { createDocx, validateDocx } from "@stll/folio-core/docx/rezip";
 import type { SaveDiagnostic } from "@stll/folio-core/docx/saveDiagnostics";
 import { getFolioMessages } from "@stll/folio-core/i18n/messages";
-import {
-  clearTrackedChanges,
-  getChangedParagraphIds,
-  hasStructuralChanges,
-} from "@stll/folio-core/prosemirror/extensions/features/ParagraphChangeTrackerExtension";
+import { toProseDoc } from "@stll/folio-core/prosemirror/conversion/toProseDoc";
+import { paragraphChangeTrackerKey } from "@stll/folio-core/prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import type { CanonicalCommentResult } from "@stll/folio-core/types/canonicalComments";
 import type { Comment } from "@stll/folio-core/types/content";
 import type { Document } from "@stll/folio-core/types/document";
+import type { FolioDocxSerializationPath } from "@stll/folio-core/types/docxSerialization";
+import type { SelectiveSaveDecline } from "@stll/folio-core/types/selectiveSaveDecline";
 import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
 
 import { describePackageDifferences } from "../../../../scripts/lib/corpus-invariants/model-equality";
@@ -41,6 +40,12 @@ import {
 } from "../../../../test/canonicalSaveSequence";
 import { propertyTestTimeout } from "../../../../test/property-testing";
 import { reviewDifferences } from "../../../../test/reviewDifferences";
+import {
+  SERIALIZATION_PATH_CASES,
+  serializationDiagnosticSource,
+  serializationPathSource,
+  serializationTripwireDiagnosticSource,
+} from "../../../../test/serializationPaths";
 import { DocxEditor } from "./DocxEditor";
 import type { DocxEditorRef } from "./DocxEditor.props";
 import * as editorDialogs from "./DocxEditorDialogs";
@@ -1323,6 +1328,8 @@ test.each(CANONICAL_SAVE_SEEDS)(
         );
       }
       await act(async () => {
+        // A paragraph untouched since the last save keeps that save's bytes.
+        let previousSave: ArrayBuffer = bytes;
         for (const [index, operations] of canonicalSaveSequence(
           seed,
         ).entries()) {
@@ -1340,16 +1347,16 @@ test.each(CANONICAL_SAVE_SEEDS)(
             expect(api.redo()).toBe(true);
           });
           expect(adapter.getDocument()).toEqual(canonical);
-          await act(async () => {
-            view.dispatch(clearTrackedChanges(view.state));
-          });
-          expect(getChangedParagraphIds(view.state).size).toBe(0);
+          // The save reads the session's journal: the canonical view carries
+          // no paragraph change tracker.
+          expect(
+            paragraphChangeTrackerKey.getState(view.state),
+          ).toBeUndefined();
           const changedIds = new Set(
             api.captureCanonicalSave()?.changedBlockIds ??
               panic("Expected canonical save capture"),
           );
           expect(changedIds.has(untouchedId)).toBe(false);
-          expect(hasStructuralChanges(view.state)).toBe(false);
           let saved: ArrayBuffer | null = null;
           await act(async () => {
             saved = await adapter.save({ selective: index % 2 === 0 });
@@ -1363,10 +1370,10 @@ test.each(CANONICAL_SAVE_SEEDS)(
             messages: [],
             omitted: 0,
           });
-          for (const [paraId, originalXml] of baselineParagraphs) {
+          for (const paraId of baselineParagraphs.keys()) {
             if (!changedIds.has(paraId))
               expect(await canonicalSaveParagraphXml(saved, paraId)).toBe(
-                originalXml,
+                await canonicalSaveParagraphXml(previousSave, paraId),
               );
           }
           // Saving is not a history boundary: the same canonical journal remains reversible.
@@ -1388,6 +1395,19 @@ test.each(CANONICAL_SAVE_SEEDS)(
           for (const diagnostic of diagnostics) {
             expect(diagnostic).toEqual(CANONICAL_SAVE_FALLBACK_DIAGNOSTIC);
           }
+          // The host-facing save hands the same fallbacks to its caller
+          // instead of reporting them as errors.
+          const savedDiagnostics: SaveDiagnostic[] = [];
+          await act(async () => {
+            const savedWithDiagnostics = await adapter.save({
+              selective: index % 2 !== 0,
+              onDiagnostic: (diagnostic) => savedDiagnostics.push(diagnostic),
+            });
+            if (!savedWithDiagnostics)
+              panic("Expected canonical save with diagnostics");
+          });
+          expect(errors.length).toBe(errorsBeforeSerialization);
+          expect(savedDiagnostics).toEqual(diagnostics);
           if (!repeated) panic("Expected repeated canonical serialization");
           expect(
             describePackageDifferences(
@@ -1398,12 +1418,13 @@ test.each(CANONICAL_SAVE_SEEDS)(
               }),
             ),
           ).toEqual({ messages: [], omitted: 0 });
-          for (const [paraId, originalXml] of baselineParagraphs) {
+          for (const paraId of baselineParagraphs.keys()) {
             if (!changedIds.has(paraId))
               expect(await canonicalSaveParagraphXml(repeated, paraId)).toBe(
-                originalXml,
+                await canonicalSaveParagraphXml(saved, paraId),
               );
           }
+          previousSave = saved;
         }
       });
       await act(async () => {
@@ -1448,3 +1469,335 @@ test.each(CANONICAL_SAVE_SEEDS)(
   // Each generated history saves and reparses several committed versions.
   propertyTestTimeout(30_000),
 );
+
+const createSaveNotifications = () => {
+  const errors: Error[] = [];
+  const saved: ArrayBuffer[] = [];
+  return {
+    errors,
+    saved,
+    onError: (error: Error) => errors.push(error),
+    onSave: (buffer: ArrayBuffer) => saved.push(buffer),
+  };
+};
+
+for (const session of [undefined, "canonical"] as const)
+  test.each(SERIALIZATION_PATH_CASES)(
+    `React ${session ?? "default"} $kind reports the returned write path through save`,
+    async (scenario) => {
+      const container = document.createElement("div");
+      document.body.append(container);
+      const root = createRoot(container);
+      const editor = createRef<DocxEditorRef>();
+      const notifications = createSaveNotifications();
+      const model = serializationPathSource();
+      const bytes = await createDocx(model);
+      try {
+        await act(async () =>
+          root.render(
+            <IntlProvider
+              locale="en"
+              timeZone="UTC"
+              messages={getFolioMessages("en")}
+            >
+              <DocxEditor
+                ref={editor}
+                accessibleName="Document editor"
+                {...(scenario.source === "model"
+                  ? { document: model }
+                  : { documentBuffer: bytes })}
+                {...(session === undefined
+                  ? {}
+                  : { experimentalSession: session })}
+                featureFlags={scenario.flags}
+                onError={notifications.onError}
+                onSave={notifications.onSave}
+                showToolbar={false}
+              />
+            </IntlProvider>,
+          ),
+        );
+        const adapter = editor.current ?? panic("Expected React editor");
+        if (scenario.source === "package")
+          await act(async () => adapter.loadDocumentBuffer(bytes));
+        await act(async () => adapter.ensureEditorView({ focus: false }));
+        const api = adapter.getEditor() ?? panic("Expected controller");
+        const view = api.getView() ?? panic("Expected editable body");
+        await act(async () => {
+          if (session === "canonical")
+            expect(
+              api.applyCanonicalOperations([
+                {
+                  type: DOCUMENT_OP_TYPES.INSERT_TEXT,
+                  at: { story: "main", blockId: "12345678", offset: 1 },
+                  text: "x",
+                  runProps: "inherit",
+                },
+              ]),
+            ).toBe(true);
+          else view.dispatch(view.state.tr.insertText("x", 2));
+        });
+        const paths: FolioDocxSerializationPath[] = [];
+        const declines: SelectiveSaveDecline[] = [];
+        const diagnostics: SaveDiagnostic[] = [];
+        let saved: ArrayBuffer | null = null;
+        await act(async () => {
+          saved = await adapter.save({
+            selective: scenario.mode !== "full",
+            onSerializationPath: (path) => paths.push(path),
+            onSelectiveDecline: (decline) => declines.push(decline),
+            onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+          });
+        });
+        if (!saved) panic("Expected saved React package");
+        expect(paths).toEqual([scenario.expectedPath]);
+        expect(declines).toEqual(scenario.expectedDeclines);
+        expect(diagnostics).toEqual(
+          session === "canonical" && scenario.kind === "declined"
+            ? [CANONICAL_SAVE_FALLBACK_DIAGNOSTIC]
+            : [],
+        );
+        expect(notifications.errors).toEqual([]);
+        expect(notifications.saved).toEqual([saved]);
+        const reopened = await parseDocx(saved, { preloadFonts: false });
+        expect(reopened.package.document.content.at(0)).toMatchObject({
+          type: "paragraph",
+          content: [
+            { type: "run", content: [{ type: "text", text: "Bxody" }] },
+          ],
+        });
+      } finally {
+        await act(async () => root.unmount());
+        container.remove();
+      }
+    },
+  );
+
+test("a fresh default-session model saves without a source package", async () => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const editor = createRef<DocxEditorRef>();
+  const model = createEmptyDocument({ initialText: "Fresh" });
+  try {
+    await act(async () =>
+      root.render(
+        <IntlProvider
+          locale="en"
+          timeZone="UTC"
+          messages={getFolioMessages("en")}
+        >
+          <DocxEditor
+            ref={editor}
+            accessibleName="Document editor"
+            document={model}
+            showToolbar={false}
+          />
+        </IntlProvider>,
+      ),
+    );
+    const adapter = editor.current ?? panic("Expected React editor");
+    await act(async () => adapter.ensureEditorView({ focus: false }));
+    const view =
+      adapter.getEditor()?.getView() ?? panic("Expected editable view");
+    await act(async () => view.dispatch(view.state.tr.insertText("!", 2)));
+    let saved: ArrayBuffer | null = null;
+    await act(async () => {
+      saved = await adapter.save();
+    });
+    if (!saved) panic("Expected a saved package from the fresh model");
+    const reopened = await parseDocx(saved, { preloadFonts: false });
+    expect(toProseDoc(reopened).textContent).toBe("F!resh");
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});
+
+for (const session of [undefined, "canonical"] as const)
+  for (const callback of [
+    "onSerializationPath",
+    "onSelectiveDecline",
+    "onDiagnostic",
+  ] as const)
+    for (const diagnosticStage of session === undefined &&
+    callback === "onDiagnostic"
+      ? (["selective", "tripwire"] as const)
+      : (["selective"] as const))
+      test(`React ${session ?? "default"} ${callback} ${diagnosticStage} failure leaves the edited snapshot unsaved`, async () => {
+        const container = document.createElement("div");
+        document.body.append(container);
+        const root = createRoot(container);
+        const editor = createRef<DocxEditorRef>();
+        const notifications = createSaveNotifications();
+        const scenario =
+          SERIALIZATION_PATH_CASES.find((item) => item.kind === "declined") ??
+          panic("Missing refusal case");
+        const diagnosticSource =
+          diagnosticStage === "tripwire"
+            ? serializationTripwireDiagnosticSource
+            : serializationDiagnosticSource;
+        const diagnosticModel =
+          session === undefined && callback === "onDiagnostic"
+            ? await diagnosticSource()
+            : null;
+        const normalFlags = diagnosticModel ? undefined : scenario.flags;
+        const featureFlags =
+          diagnosticStage === "tripwire"
+            ? (SERIALIZATION_PATH_CASES.find(
+                (item) => item.kind === "selective with tripwire",
+              )?.flags ?? panic("Missing tripwire case"))
+            : normalFlags;
+        const bytes =
+          diagnosticModel?.originalBuffer ??
+          (await createDocx(serializationPathSource()));
+        let callbackCount = 0;
+        const declines: SelectiveSaveDecline[] = [];
+        try {
+          await act(async () =>
+            root.render(
+              <IntlProvider
+                locale="en"
+                timeZone="UTC"
+                messages={getFolioMessages("en")}
+              >
+                <DocxEditor
+                  ref={editor}
+                  accessibleName="Document editor"
+                  documentBuffer={bytes}
+                  {...(session === undefined
+                    ? {}
+                    : { experimentalSession: session })}
+                  featureFlags={featureFlags}
+                  onError={notifications.onError}
+                  onSave={notifications.onSave}
+                  showToolbar={false}
+                />
+              </IntlProvider>,
+            ),
+          );
+          const adapter = editor.current ?? panic("Expected React editor");
+          await act(async () => {
+            if (diagnosticModel) adapter.loadDocument(diagnosticModel);
+            else await adapter.loadDocumentBuffer(bytes);
+          });
+          await act(async () => adapter.ensureEditorView({ focus: false }));
+          const api = adapter.getEditor() ?? panic("Expected controller");
+          const view = api.getView() ?? panic("Expected body view");
+          await act(async () => {
+            if (session === "canonical")
+              expect(
+                api.applyCanonicalOperations([
+                  {
+                    type: DOCUMENT_OP_TYPES.INSERT_TEXT,
+                    at: { story: "main", blockId: "12345678", offset: 1 },
+                    text: "x",
+                    runProps: "inherit",
+                  },
+                ]),
+              ).toBe(true);
+            else view.dispatch(view.state.tr.insertText("x", 2));
+          });
+          expect(adapter.hasPendingChanges()).toBe(true);
+          await act(async () => {
+            expect(
+              await adapter.save({
+                onDiagnostic: () => {},
+                onSelectiveDecline: (decline) => declines.push(decline),
+                [callback]: () => {
+                  callbackCount += 1;
+                  if (diagnosticStage === "tripwire" && callbackCount === 1)
+                    return;
+                  panic("Host save callback failed");
+                },
+              }),
+            ).toBeNull();
+          });
+          if (diagnosticStage === "tripwire") {
+            expect(callbackCount).toBe(2);
+            expect(declines).toEqual([]);
+          }
+          expect(notifications.errors).toHaveLength(1);
+          expect(notifications.errors.at(0)?.message).toBe(
+            "Host save callback failed",
+          );
+          expect(notifications.saved).toEqual([]);
+          expect(adapter.hasPendingChanges()).toBe(true);
+        } finally {
+          await act(async () => root.unmount());
+          container.remove();
+        }
+      });
+
+const failHostTripwire = () => panic("Host tripwire failed");
+const tripwireFeatureFlags = {
+  selectiveSave: true,
+  selectiveSaveTripwire: true,
+};
+
+for (const session of [undefined, "canonical"] as const)
+  test(`React ${session ?? "default"} host tripwire exceptions propagate after save acknowledgement`, async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const editor = createRef<DocxEditorRef>();
+    const notifications = createSaveNotifications();
+    const bytes = await createDocx(serializationPathSource());
+    const paths: FolioDocxSerializationPath[] = [];
+    try {
+      await act(async () =>
+        root.render(
+          <IntlProvider
+            locale="en"
+            timeZone="UTC"
+            messages={getFolioMessages("en")}
+          >
+            <DocxEditor
+              ref={editor}
+              accessibleName="Document editor"
+              documentBuffer={bytes}
+              {...(session === undefined
+                ? {}
+                : { experimentalSession: session })}
+              featureFlags={tripwireFeatureFlags}
+              onSelectiveSaveTripwire={failHostTripwire}
+              onError={notifications.onError}
+              onSave={notifications.onSave}
+              showToolbar={false}
+            />
+          </IntlProvider>,
+        ),
+      );
+      const adapter = editor.current ?? panic("Expected React editor");
+      await act(async () => adapter.loadDocumentBuffer(bytes));
+      await act(async () => adapter.ensureEditorView({ focus: false }));
+      const api = adapter.getEditor() ?? panic("Expected controller");
+      const view = api.getView() ?? panic("Expected body view");
+      await act(async () => {
+        if (session === "canonical")
+          expect(
+            api.applyCanonicalOperations([
+              {
+                type: DOCUMENT_OP_TYPES.INSERT_TEXT,
+                at: { story: "main", blockId: "12345678", offset: 1 },
+                text: "x",
+                runProps: "inherit",
+              },
+            ]),
+          ).toBe(true);
+        else view.dispatch(view.state.tr.insertText("x", 2));
+      });
+      await act(async () => {
+        await expect(
+          adapter.save({ onSerializationPath: (path) => paths.push(path) }),
+        ).rejects.toThrow("Host tripwire failed");
+      });
+      expect(paths).toEqual(["selective"]);
+      expect(notifications.errors).toEqual([]);
+      expect(notifications.saved).toEqual([]);
+      expect(adapter.hasPendingChanges()).toBe(false);
+    } finally {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+  });

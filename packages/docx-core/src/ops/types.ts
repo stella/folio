@@ -1,5 +1,5 @@
 /**
- * Document operations, schema version 10: text, formatting and review edits on
+ * Document operations: text, formatting and review edits on
  * independently addressed document stories, direct or tracked.
  *
  * An operation names everything it needs. Positions are `(story, blockId,
@@ -41,6 +41,7 @@ import type {
   ParagraphMarkChange,
   ParagraphPropertyChange,
   RecordField,
+  SdtProperties,
   Section,
   SectionProperties,
   Table,
@@ -93,6 +94,10 @@ type SectionViewChange = {
 /**
  * The operation schema this module reads and writes.
  *
+ * Version 14 restores section-view topology in story lifecycle inverses.
+ * Older envelopes receive an unsupportedSchema refusal.
+ * Version 12 adds `setContentControl`, which sets a block-level content
+ * control's properties by its id.
  * Version 11 records, as a sequenced format's effect, the run a direct
  * format cut (`setRunProps` effect).
  * Version 9 adds exact, JSON-safe package resource replacement for clipboard imports.
@@ -117,7 +122,7 @@ type SectionViewChange = {
  * and paragraph operations, and the review operations `setParagraphReview`,
  * `replaceInline` and `resolveRevision`.
  */
-export const DOCUMENT_OP_SCHEMA_VERSION = 11;
+export const DOCUMENT_OP_SCHEMA_VERSION = 14;
 
 /**
  * The main story has a fixed address; other editable parts use their stable
@@ -307,6 +312,7 @@ export const DOCUMENT_OP_TYPES: Readonly<{
   readonly DELETE_NUMBERING_INSTANCE: "deleteNumberingInstance";
   readonly SET_SECTION_ENDPOINT: "setSectionEndpoint";
   readonly SET_PACKAGE_RESOURCES: "setPackageResources";
+  readonly SET_CONTENT_CONTROL: "setContentControl";
 }> = Object.freeze({
   CREATE_COMMENT: "createComment",
   UPDATE_COMMENT_CONTENT: "updateCommentContent",
@@ -354,6 +360,7 @@ export const DOCUMENT_OP_TYPES: Readonly<{
   DELETE_NUMBERING_INSTANCE: "deleteNumberingInstance",
   SET_SECTION_ENDPOINT: "setSectionEndpoint",
   SET_PACKAGE_RESOURCES: "setPackageResources",
+  SET_CONTENT_CONTROL: "setContentControl",
 } as const);
 
 /** One of {@link DOCUMENT_OP_TYPES}. */
@@ -366,8 +373,11 @@ export type DocumentOpType =
  * `runProps` is either {@link INHERIT_RUN_PROPS} or the exact property set the
  * text carries. When the set differs from the run at the position, the text
  * becomes a run of its own and that run is split around it; `newIds` names
- * the ids of the second half when the run carries some. The run decides where
- * the text goes, so `at.zeroWidthBefore` is not read.
+ * the ids of the second half when the run carries some. The text goes in
+ * exactly at the gap `at` names: after the zero-width leaves
+ * `at.zeroWidthBefore` counts (all of them when it is absent) and before the
+ * rest. It joins the run holding the leaf before that gap, else the one
+ * holding the leaf after it, whatever kind of leaf either is.
  *
  * With `revision`, the text is a tracked insertion: it is wrapped in an
  * `Insertion` carrying the stamp, cutting the records around it down to a
@@ -919,6 +929,25 @@ export type PackageResourceMapChange<Value> = {
   entries: readonly PackageResourceEntryChange<Value>[];
 };
 
+/**
+ * Set one content control's properties exactly: its value (`w:lastValue`,
+ * `w14:checked`, `w:fullDate`), placeholder state and binding. The control is
+ * addressed by its `w:sdtPr/w:id`, block-level or inline, in one story.
+ * `expected` is what its properties are now and `properties` what they become;
+ * the inverse swaps the two. The control's id and type do not change, and its
+ * content is edited by the text operations. `blockIds` names the paragraphs
+ * the control holds (block-level) or sits in (inline), in document order: the
+ * blocks a concurrent change conflicts with.
+ */
+export type SetContentControlOp = {
+  type: typeof DOCUMENT_OP_TYPES.SET_CONTENT_CONTROL;
+  story: OpStory;
+  controlId: number;
+  blockIds: readonly string[];
+  expected: SdtProperties;
+  properties: SdtProperties;
+};
+
 /** Replace merged definitions and change keyed package entries, refusing stale package data. */
 export type SetPackageResourcesOp = {
   type: typeof DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES;
@@ -945,15 +974,26 @@ export type SetSectionEndpointOp = {
 };
 
 /**
- * Insert a table before or after a paragraph. Tracking records each row,
- * cell content and cell-ending paragraph mark. At a container's end,
- * `terminal` moves the source content into a new preceding paragraph while
- * retaining the source id and fields on the untracked final paragraph.
+ * Where a table goes: beside a paragraph, or beside the innermost table
+ * holding the paragraph `blockId` names, in the block list holding that
+ * table, touching it, where no paragraph stands on that side to name.
+ */
+export type TableInsertionPoint =
+  | BlockInsertionPoint
+  | { type: "beforeTable"; blockId: string }
+  | { type: "afterTable"; blockId: string };
+
+/**
+ * Insert a table before or after a paragraph, or beside a table. Tracking
+ * records each row, cell content and cell-ending paragraph mark. At a
+ * container's end, `terminal` moves the source content into a new preceding
+ * paragraph while retaining the source id and fields on the untracked final
+ * paragraph.
  */
 export type InsertTableOp = {
   type: typeof DOCUMENT_OP_TYPES.INSERT_TABLE;
   story: OpStory;
-  at: BlockInsertionPoint;
+  at: TableInsertionPoint;
   table: Table;
   revision?: RevisionStamp;
   newIds?: NewIds;
@@ -1022,7 +1062,7 @@ export type SetSectionPropsOp = {
   patch: FormattingPatch<SectionProperties>;
 };
 /** JSON-safe lifecycle deltas: omitted fields are unowned, null restores absence. */
-export type StoryParts = {
+type StoryPartFields = {
   /** Owned fields whose source explicitly had an undefined own property. */
   undefinedFields?: readonly (
     | {
@@ -1033,7 +1073,7 @@ export type StoryParts = {
         target: "package";
         keys: readonly (keyof Omit<
           StoryParts,
-          "body" | "sections" | "undefinedFields"
+          "body" | "sections" | "sectionView" | "undefinedFields"
         >)[];
       }
     | {
@@ -1052,19 +1092,28 @@ export type StoryParts = {
       ? DocumentBody[Key]
       : Exclude<DocumentBody[Key], undefined> | null;
   };
-  /** Section contents remain derived from the body's content and are never duplicated. */
-  sections?: readonly {
-    index: number;
-    properties?: Section["properties"];
-    headers?: readonly (readonly [HeaderFooterType, HeaderFooter])[] | null;
-    footers?: readonly (readonly [HeaderFooterType, HeaderFooter])[] | null;
-  }[];
   headers?: readonly (readonly [string, HeaderFooter])[] | null;
   footers?: readonly (readonly [string, HeaderFooter])[] | null;
   footnotes?: readonly Footnote[] | null;
   endnotes?: readonly Endnote[] | null;
   settings?: DocumentSettings | null;
 };
+/** Section contents stay derived; a complete view and narrow metadata never overlap. */
+export type StoryParts = StoryPartFields &
+  (
+    | {
+        sectionView?: never;
+        sections?: readonly {
+          index: number;
+          properties?: Section["properties"];
+          headers?:
+            readonly (readonly [HeaderFooterType, HeaderFooter])[] | null;
+          footers?:
+            readonly (readonly [HeaderFooterType, HeaderFooter])[] | null;
+        }[];
+      }
+    | { sectionView: SectionViewState; sections?: never }
+  );
 /** Exact stale-checked lifecycle inverse; unrelated package parts stay untouched. */
 export type RestoreStoryPartsOp = {
   type: typeof DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS;
@@ -1274,6 +1323,7 @@ export type DocumentOp = (
   | DeleteNumberingInstanceOp
   | SetSectionEndpointOp
   | SetPackageResourcesOp
+  | SetContentControlOp
 ) & {
   /** Own undefined fields recorded by the operation capture boundary. */
   undefinedFields?: readonly (readonly string[])[];

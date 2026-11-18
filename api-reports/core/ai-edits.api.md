@@ -182,6 +182,7 @@ export type FolioAIEditAppliedOperation = {
     revisionId?: number;
     revisionIds?: readonly number[];
     suggestionId?: string;
+    paragraphIdentity?: FolioAIEditParagraphIdentity;
 };
 
 // @public
@@ -426,6 +427,16 @@ export type FolioAIEditOperation<Numbering = FolioAIListNumbering> = FolioAIEdit
     type: "splitTableCell";
     blockId: string;
 });
+
+// @public
+export type FolioAIEditParagraphIdentity = {
+    type: "joined";
+    blockId: string;
+    retiredBlockId: string;
+} | {
+    type: "retained";
+    blockId: string;
+};
 
 // @public (undocumented)
 export type FolioAIEditPrecondition = {
@@ -770,8 +781,8 @@ export type FolioDocumentOperationStory = "main" | {
 // @public (undocumented)
 export type FolioDocumentOperationType = FolioDocumentOperation["type"];
 
-// @public (undocumented)
-export type FolioDocumentOperationUndoFailureReason = "unknownHandle" | "notLatest" | "documentChanged";
+// @public
+export type FolioDocumentOperationUndoFailureReason = "unknownHandle" | "notLatest" | "documentChanged" | "storyUnavailable" | "inverseRefused" | "documentNotEditable";
 
 // @public
 export type FolioDocumentOperationUndoHandle = {
@@ -787,6 +798,7 @@ export type FolioDocumentOperationUndoResult = {
     status: "rejected";
     undoHandle: FolioDocumentOperationUndoHandle;
     reason: FolioDocumentOperationUndoFailureReason;
+    message?: string;
 };
 
 // @public (undocumented)
@@ -895,6 +907,7 @@ export type FolioPendingSuggestionRecord = {
 export class FolioPendingSuggestionRegistry {
     // (undocumented)
     clear(): void;
+    clone(): FolioPendingSuggestionRegistry;
     // (undocumented)
     exportPendingSuggestions(input: ExportPendingSuggestionsOptions): FolioPendingSuggestionRecord[];
     // (undocumented)

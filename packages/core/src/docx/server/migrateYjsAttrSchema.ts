@@ -7,6 +7,7 @@ import {
   type FolioYjsAttrSchemaVersion,
   FolioYjsNoteReferenceSchemaError,
   FolioYjsNumberingSourceSchemaError,
+  FolioYjsRangeAnchorSchemaError,
   readYjsAttrSchemaVersion,
 } from "../../prosemirror/yjsDocumentMetadata";
 import {
@@ -137,7 +138,8 @@ export const migrateFolioYjsSnapshot = (
         code: "unsupported_version",
         message:
           cause instanceof FolioYjsNoteReferenceSchemaError ||
-          cause instanceof FolioYjsNumberingSourceSchemaError
+          cause instanceof FolioYjsNumberingSourceSchemaError ||
+          cause instanceof FolioYjsRangeAnchorSchemaError
             ? cause.message
             : "Cannot migrate the collaboration attribute schema.",
       }),

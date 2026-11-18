@@ -634,6 +634,7 @@ test.each(["body", "cell"] as const)(
       {
         ...pending,
         info: { id: 7, author: "Reviewer", date: "2026-02-03T04:05:06Z" },
+        currentFormatting: { alignment: "center" },
       },
     ]);
     const rejected = apply(tracked.document, {

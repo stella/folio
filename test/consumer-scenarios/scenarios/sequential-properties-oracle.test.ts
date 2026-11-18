@@ -10,6 +10,7 @@ import {
 import { sequentialGroups } from "../support/batch-replay-order.ts";
 import { openReviewer, packDocument } from "../support/documents.ts";
 import { type Row, rowsOf } from "../support/oracle.ts";
+import { createParagraphIdentityRemapping } from "../support/paragraph-identity.ts";
 
 const paragraphRows = (count: number): Row[] =>
   Array.from({ length: count }, (_, index) => ({
@@ -316,6 +317,7 @@ test("a run deleted back to its container's start or a table settles on its firs
               context,
             );
             const sequential = await openReviewer(fixture);
+            const paragraphIdentities = createParagraphIdentityRemapping();
             for (const group of sequentialGroups({
               applied: operations,
               preRows,
@@ -329,11 +331,21 @@ test("a run deleted back to its container's start or a table settles on its firs
                       (candidate) => candidate.id === id,
                     );
                     assert.ok(operation, `${context}: ${id} is the batch's`);
-                    return operation;
+                    return {
+                      id: operation.id,
+                      type: operation.type,
+                      blockId: paragraphIdentities.resolve(
+                        operation.blockId,
+                        new Set(
+                          rowsOf(sequential).map(({ id: liveId }) => liveId),
+                        ),
+                      ),
+                    };
                   }),
                 },
                 { undefinedReferences: "refuse" },
               );
+              paragraphIdentities.record({ applied: result.applied, mode });
               assert.deepEqual(result.skipped, [], context);
             }
             const outcome = await acceptedView(batch);

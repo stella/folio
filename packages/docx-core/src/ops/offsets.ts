@@ -118,8 +118,8 @@ type RangeBoundaryType = {
 /**
  * The zero-width items a paragraph can hold, and whether each is content its
  * mark must not take away. None is. A range boundary is a position, not
- * content: a paragraph that goes leaves it where the paragraph was
- * (`paragraphRemains` in `rangeBoundaries.ts`), so it keeps no blank
+ * content: a paragraph that goes hands it to the nearest paragraph that
+ * stays (`paragraphRemains` in `rangeBoundaries.ts`), so it keeps no blank
  * paragraph standing. A comment reference remains one logical offset unit,
  * but moves as an anchor when its paragraph goes. A cached page break and a
  * note's own marker mark nothing a reader placed.
@@ -190,6 +190,7 @@ const isRangeBoundaryItem = (
   isRangeBoundary(item);
 
 type ParagraphRetentionFacts = {
+  /** Retained payload units, distinct from logical offsets: opaque XML counts even without visible text. */
   width: number;
   zeroWidthItems: ZeroWidthItem[];
 };
@@ -225,7 +226,10 @@ const collectParagraphRetentionFacts = (
       collectParagraphRetentionFacts(childrenOf(item), facts, onceAccepted);
       continue;
     }
-    facts.width += inlineWidth(item);
+    // Opaque paragraph children, like their run-level twin, carry source
+    // payload even when their logical width is zero. A removed revision
+    // collects into a discarded width, so its opaque content still leaves.
+    facts.width += item.type === "preservedInline" ? 1 : inlineWidth(item);
   }
 };
 

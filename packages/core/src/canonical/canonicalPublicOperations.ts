@@ -39,6 +39,7 @@ import {
 } from "@stll/docx-core/ops";
 
 import {
+  buildSignatureTableNode,
   buildTableNode,
   SUGGESTED_SUPPORTED_OPERATION_TYPES,
 } from "../ai-edits/apply";
@@ -50,16 +51,26 @@ import {
   buildCleanBlockText,
   resolveCleanTextRange,
 } from "../ai-edits/clean-text";
+import { directJoinSurvivor } from "../ai-edits/directJoin";
 import { stripInlineEmphasisMarkers } from "../ai-edits/inline-emphasis";
 import {
   createBatchListMinter,
   type MintedList,
 } from "../ai-edits/newListNumbering";
-import type { NoteReferenceLabels } from "../ai-edits/note-references";
+import {
+  cutsIntoNoteReference,
+  type NoteReferenceLabels,
+  noteReferenceSpansWithin,
+  segmentsAroundNoteReferences,
+} from "../ai-edits/note-references";
 import {
   isDeletedPPrMark,
   joinsIn,
+  joinStopsAtTableAfter,
+  PENDING_JOIN_INSERTION_REFUSAL,
   pendingJoinParagraphs,
+  pendingMarkEditOf,
+  pendingMarkEditRefusal,
 } from "../ai-edits/pendingJoin";
 import {
   collectNoteReferenceLabels,
@@ -81,9 +92,14 @@ import {
   findOutermostTableBoundary,
   tableRectangleCutsMergedCell,
 } from "../ai-edits/table-targets";
+import {
+  supportsTableInsertionMode,
+  type TableInsertionOperation,
+} from "../ai-edits/tableInsertionModes";
 import type {
   FolioAIBlockParagraphProperties,
   FolioAIEditNormalization,
+  FolioAIEditParagraphIdentity,
   FolioAIEditSkippedOperation,
   FolioAIEditSkipReason,
   FolioAIListKind,
@@ -118,8 +134,12 @@ import {
   tableAttrsToFormatting,
 } from "../prosemirror/conversion/fromProseDoc";
 import { maxAnnotationIdInDoc } from "../prosemirror/plugins/revisionIds";
+import { preservesReplacementCommentAlignment } from "../prosemirror/replacedAnnotations";
 import { createStyleResolver } from "../prosemirror/styles/styleResolver";
-import { insertedColumnWidth } from "../prosemirror/tableGridMutation";
+import {
+  insertedColumnWidth,
+  omittedSlotTakingColumn,
+} from "../prosemirror/tableGridMutation";
 import {
   CANONICAL_GAP,
   type CanonicalGap,
@@ -141,6 +161,7 @@ import {
   type CanonicalProjection,
   type CanonicalSession,
 } from "./canonicalSession";
+import { indentationAsRead, spacingSidesAsRead } from "./paragraphPatchAsRead";
 
 type CanonicalPublicOperationRefusal = NonNullable<
   FolioAIEditSkippedOperation["canonicalRefusal"]
@@ -161,7 +182,7 @@ export const CANONICAL_PUBLIC_OPERATION_DISPOSITIONS: {
   readonly commentOnBlock: "compile";
   readonly commentOnRange: "compile";
   readonly insertTable: "compile";
-  readonly insertSignatureTable: "publicOps.tableStructure";
+  readonly insertSignatureTable: "compile";
   readonly deleteTable: "compile";
   readonly insertTableRow: "compile";
   readonly deleteTableRow: "compile";
@@ -183,7 +204,7 @@ export const CANONICAL_PUBLIC_OPERATION_DISPOSITIONS: {
   commentOnBlock: "compile",
   commentOnRange: "compile",
   insertTable: "compile",
-  insertSignatureTable: CANONICAL_GAP.publicTableStructure,
+  insertSignatureTable: "compile",
   deleteTable: "compile",
   insertTableRow: "compile",
   deleteTableRow: "compile",
@@ -261,6 +282,35 @@ const resolveComment = ({ operation, from, to }: ResolveCommentOptions) => {
   return { type: "plain", operation } as const;
 };
 
+/**
+ * The two paragraphs a direct operation's intents join, if one paragraph's
+ * content ends up in another: a deletion that keeps the paragraph before it
+ * leaves nothing of the deleted paragraph there, and joins nothing.
+ */
+const joinedParagraphsOf = (
+  operationType: FolioDocumentOperation["type"],
+  intents: readonly EditorIntent[],
+): FolioAIEditParagraphIdentity | undefined => {
+  const join = intents.find(
+    (intent): intent is Extract<EditorIntent, { type: "joinParagraphs" }> =>
+      intent.type === "joinParagraphs",
+  );
+  if (join === undefined) return undefined;
+  if (operationType === "deleteBlock" && join.survivor === "first")
+    return undefined;
+  return join.survivor === "first"
+    ? {
+        type: "joined",
+        blockId: join.blockId,
+        retiredBlockId: join.nextBlockId,
+      }
+    : {
+        type: "joined",
+        blockId: join.nextBlockId,
+        retiredBlockId: join.blockId,
+      };
+};
+
 const SPACING_FIELDS = [
   "spaceBefore",
   "spaceAfter",
@@ -280,7 +330,9 @@ const INDENTATION_FIELDS = [
  * The stated paragraph properties an operation writes: each given property
  * as it says, a spacing or indentation object as the whole direct child, so
  * an attribute it leaves out is removed, and `null` clears a property back
- * to what the style gives.
+ * to what the style gives. The patch states the paragraph as the parser reads
+ * the saved file back: the spacing sides the paragraph states are marked
+ * explicit by the parser's own rule, and an indentation is held as read.
  */
 const statedParagraphPatch = (
   properties: FolioAIBlockParagraphProperties,
@@ -296,12 +348,17 @@ const statedParagraphPatch = (
   if (numbering !== undefined && numbering.kind !== "newList")
     patch["numPr"] = numbering.kind === "inherit" ? null : numbering;
   const { spacing, indentation } = properties;
-  if (spacing !== undefined)
+  if (spacing !== undefined) {
     for (const field of SPACING_FIELDS)
       patch[field] = spacing === null ? null : (spacing[field] ?? null);
-  if (indentation !== undefined)
+    patch["spacingExplicit"] =
+      spacing === null ? null : (spacingSidesAsRead(spacing) ?? null);
+  }
+  if (indentation !== undefined) {
+    const read = indentation === null ? null : indentationAsRead(indentation);
     for (const field of INDENTATION_FIELDS)
-      patch[field] = indentation === null ? null : (indentation[field] ?? null);
+      patch[field] = read === null ? null : (read[field] ?? null);
+  }
   // Every key is a ParagraphFormatting field set to its value or null.
   return patch as ParagraphPropsPatch;
 };
@@ -397,13 +454,15 @@ const isBlockInsertion = (
   operation.type === "insertAfterBlock" ||
   operation.type === "insertBeforeBlock";
 
-type TableInsertion = Extract<FolioDocumentOperation, { type: "insertTable" }>;
+type TableInsertion = TableInsertionOperation;
 
 /** An operation that puts a new block, a paragraph or a table, beside a paragraph. */
 const placesBlock = (
   operation: FolioDocumentOperation,
 ): operation is BlockInsertion | TableInsertion =>
-  isBlockInsertion(operation) || operation.type === "insertTable";
+  isBlockInsertion(operation) ||
+  operation.type === "insertTable" ||
+  operation.type === "insertSignatureTable";
 
 type ProjectedParagraph = NonNullable<
   ReturnType<CanonicalProjection["paragraph"]>
@@ -493,16 +552,17 @@ type BesidePendingJoinOptions = {
  * the paragraph the join leaves, which the joined paragraph has. The batch's
  * other operations do not move it: a split of the paragraph the join leaves
  * puts the block after both halves, as one put after that paragraph goes.
- * Undefined beside a paragraph whose own break is pending removal where no
- * join reads it: after it, when the join leaves no paragraph with words for
- * the block to follow; before it, when the paragraph goes whole.
+ * Beside a paragraph whose own break is pending removal where no join reads
+ * it (after it, when the join leaves no paragraph with words for the block to
+ * follow; before it, when the paragraph goes whole), the block goes beside
+ * the paragraph itself.
  */
 const besidePendingJoin = ({
   side,
   paragraph,
   projection,
   noteReferences,
-}: BesidePendingJoinOptions): BesidePendingJoin | undefined => {
+}: BesidePendingJoinOptions): BesidePendingJoin => {
   const options = {
     doc: projection.doc,
     paragraphPos: paragraph.start - 1,
@@ -511,11 +571,13 @@ const besidePendingJoin = ({
   const join = pendingJoinParagraphs(options);
   const breakGoes = isDeletedPPrMark(paragraph.node.attrs["pPrMark"]);
   const after = side === "after";
+  // Where no join reads the paragraph, the block goes beside the paragraph
+  // itself, as the default engine places it.
   if (
     breakGoes &&
     (after ? join.last === options.paragraphPos : !joinsIn(options))
   )
-    return undefined;
+    return besideAsItStands(paragraph);
   const at = (position: number) =>
     position === options.paragraphPos
       ? paragraph
@@ -691,19 +753,21 @@ type ResolveTableInsertionOptions = {
     reason: FolioAIEditSkipReason,
     message?: string,
   ) => Result<never, CanonicalPublicOperationResolutionError>;
-  tableGap: (
+  skipAlike: (
+    reason: FolioAIEditSkipReason,
     message: string,
   ) => Result<never, CanonicalPublicOperationResolutionError>;
 };
 
 /**
- * A table beside the anchor, built from the cell texts as the default engine
- * builds it (`buildTableNode`) and placed as a paragraph beside the anchor is
- * (`besidePendingJoin`): between the paragraph it goes beside and the one
- * next to it, and after a container's last paragraph with the empty
- * paragraph the container ends with. Beside a table, the anchor's own or a
- * neighbouring one, or any block other than a paragraph, it stays under the
- * table structure gap.
+ * A table beside the anchor, built as the default engine builds it (from the
+ * cell texts, `buildTableNode`, or the parties, `buildSignatureTableNode`)
+ * and placed where it places it. Beside a paragraph it goes as a paragraph
+ * beside the anchor does (`besidePendingJoin`), or beside the paragraph as
+ * it stands where no pending join reads that side: between the paragraph and
+ * the block next to it, and after a container's last paragraph with the
+ * empty paragraph the container ends with. From inside a table it goes
+ * beside the outermost one, touching it.
  */
 const resolveTableInsertion = ({
   operation,
@@ -712,31 +776,25 @@ const resolveTableInsertion = ({
   story,
   noteReferences,
   refusal,
-  tableGap,
+  skipAlike,
 }: ResolveTableInsertionOptions) => {
   const side = operation.position ?? "after";
-  if (findOutermostTableBoundary(projection.doc, paragraph.start - 1) !== null)
-    return tableGap("Canonical table insertion beside a table is unavailable.");
-  const placed = besidePendingJoin({
-    side,
-    paragraph,
-    projection,
-    noteReferences,
-  });
-  if (placed === undefined) return refusal("pendingDeletion");
-  const { place } = placed;
-  const $place = projection.doc.resolve(place.start - 1);
-  const neighbour = $place.parent.maybeChild(
-    $place.index() + (side === "after" ? 1 : -1),
-  );
-  if (neighbour !== null && neighbour.type.name !== "paragraph")
-    return tableGap(
-      "Canonical table insertion needs a paragraph or the container's edge beside it.",
-    );
-  const node = buildTableNode({
-    schema: projection.doc.type.schema,
-    rows: operation.rows,
-  });
+  const { schema } = projection.doc.type;
+  let node: PMNode | null;
+  if (operation.type === "insertTable")
+    node = buildTableNode({ schema, rows: operation.rows });
+  else {
+    if (operation.parties.length === 0)
+      return skipAlike("emptyOperation", "A signature table needs a party.");
+    // A comment across the whole table would cross its cells, as the
+    // default engine finds.
+    if (operation.comment !== undefined)
+      return skipAlike(
+        "unsupportedBlock",
+        "A signature table takes no comment.",
+      );
+    node = buildSignatureTableNode({ schema, parties: operation.parties });
+  }
   if (node === null) return refusal("unsupportedBlock");
   const attrs = expectTableAttrs(node);
   const formatting = tableAttrsToFormatting(attrs);
@@ -748,27 +806,115 @@ const resolveTableInsertion = ({
       : { columnWidths: [...attrs.columnWidths] }),
     rows: standaloneTableRowsFromProseMirror(node),
   };
-  const position =
-    side === "after" ? place.start + place.node.content.size : place.start;
-  const intent: EditorIntent = {
-    type: "tableBlock",
-    operation: {
-      type: DOCUMENT_OP_TYPES.INSERT_TABLE,
-      story,
-      blockId: place.blockId,
-      table,
-      side,
-      // After a container's last paragraph the container still ends with one.
-      paragraphAfter: side === "after" && neighbour === null ? "empty" : "none",
-    },
+  type InsertedOptions = {
+    place: ProjectedParagraph;
+    side: "before" | "after";
+    paragraphAfter: "empty" | "none";
   };
-  return Result.ok({
-    type: "plain" as const,
-    operation,
-    intents: [intent],
-    normalizations: [],
-    from: position,
-    to: position,
+  const inserted = ({
+    place,
+    side: placeSide,
+    paragraphAfter,
+  }: InsertedOptions) => {
+    const position =
+      placeSide === "after"
+        ? place.start + place.node.content.size
+        : place.start;
+    const intent: EditorIntent = {
+      type: "tableBlock",
+      operation: {
+        type: DOCUMENT_OP_TYPES.INSERT_TABLE,
+        story,
+        blockId: place.blockId,
+        table,
+        anchor: "paragraph",
+        side: placeSide,
+        paragraphAfter,
+      },
+    };
+    return Result.ok({
+      type: "plain" as const,
+      operation,
+      intents: [intent],
+      normalizations: [],
+      from: position,
+      to: position,
+    });
+  };
+  const outer = findOutermostTableBoundary(projection.doc, paragraph.start - 1);
+  if (outer !== null) {
+    if (
+      joinStopsAtTableAfter({
+        insertedBlock: "table",
+        doc: projection.doc,
+        paragraphPos: outer[side],
+        noteReferences,
+      })
+    )
+      return refusal(
+        PENDING_JOIN_INSERTION_REFUSAL.reason,
+        PENDING_JOIN_INSERTION_REFUSAL.message,
+      );
+    // Beside the outermost table, touching it, as the default engine puts
+    // it: addressed by a paragraph of that table's own.
+    const outerTable = projection.doc.nodeAt(outer.before);
+    const blockId =
+      outerTable === null
+        ? undefined
+        : tableBlockAddress(projection, {
+            table: outerTable,
+            tableStart: outer.before + 1,
+          });
+    if (blockId === undefined) return refusal("unsupportedBlock");
+    const intent: EditorIntent = {
+      type: "tableBlock",
+      operation: {
+        type: DOCUMENT_OP_TYPES.INSERT_TABLE,
+        story,
+        blockId,
+        table,
+        side,
+        anchor: "table",
+      },
+    };
+    return Result.ok({
+      type: "plain" as const,
+      operation,
+      intents: [intent],
+      normalizations: [],
+      from: outer[side],
+      to: outer[side],
+    });
+  }
+  const { place } = besidePendingJoin({
+    side,
+    paragraph,
+    projection,
+    noteReferences,
+  });
+  const $place = projection.doc.resolve(place.start - 1);
+  const neighbour = $place.parent.maybeChild(
+    $place.index() + (side === "after" ? 1 : -1),
+  );
+  const gap =
+    side === "after" ? place.start - 1 + place.node.nodeSize : place.start - 1;
+  if (
+    joinStopsAtTableAfter({
+      insertedBlock: "table",
+      doc: projection.doc,
+      paragraphPos: gap,
+      noteReferences,
+    })
+  )
+    return refusal(
+      PENDING_JOIN_INSERTION_REFUSAL.reason,
+      PENDING_JOIN_INSERTION_REFUSAL.message,
+    );
+  // After a container's last paragraph the container still ends with one.
+  return inserted({
+    place,
+    side,
+    paragraphAfter: side === "after" && neighbour === null ? "empty" : "none",
   });
 };
 
@@ -825,6 +971,25 @@ const holdsOmittedSlot = (
       const cell = offset === undefined ? null : table.nodeAt(offset);
       if (cell === null || cell.attrs["_omittedGridSlot"] != null) return true;
     }
+  return false;
+};
+
+/**
+ * Whether a column inserted at the grid index runs through a cell spanning
+ * both its sides, so that the cell would widen; a slot a row omits grows
+ * instead, as the default engine grows it.
+ */
+const columnInsertionWidensCell = (table: PMNode, columnIndex: number) => {
+  const map = TableMap.get(table);
+  if (columnIndex <= 0 || columnIndex >= map.width) return false;
+  for (let row = 0; row < map.height; row += 1) {
+    const index = row * map.width + columnIndex;
+    if (
+      omittedSlotTakingColumn(map, table, row, columnIndex) === null &&
+      map.map[index - 1] === map.map[index]
+    )
+      return true;
+  }
   return false;
 };
 
@@ -990,6 +1155,20 @@ const resolveTableStructure = ({
         left: cell.leftColumnIndex,
         right: cell.leftColumnIndex + 1,
       };
+      // A suggestion marks whole cells deleted; a cell spanning the column
+      // and another has no suggested form narrower than itself, in either
+      // engine.
+      if (
+        tracked &&
+        Array.from({ length: map.height }, (_, rowIndex) => {
+          const position = map.map[rowIndex * map.width + column.left];
+          return position === undefined ? null : row.table.nodeAt(position);
+        }).some((node) => Number(node?.attrs["colspan"] ?? 1) !== 1)
+      )
+        return skipAlike(
+          "unsupportedBlock",
+          "A suggested column deletion cannot narrow a cell that spans other columns.",
+        );
       // The table is addressed by a paragraph the deletion keeps, as the
       // editor's column deletion addresses it.
       const at = tableAnchor(
@@ -1038,6 +1217,17 @@ const resolveTableStructure = ({
         target: "column",
       });
       if (overflow !== null) return refusal("payloadDoesNotFit", overflow);
+      // A suggestion records new cells; a column through a cell spanning
+      // both its sides would widen that cell, which no suggestion records
+      // in either engine.
+      if (
+        tracked &&
+        columnInsertionWidensCell(row.table, insertion.columnIndex)
+      )
+        return skipAlike(
+          "unsupportedBlock",
+          "A suggested column cannot widen a cell that spans other columns.",
+        );
       const blockId = tableBlockAddress(projection, row);
       if (blockId === undefined) return refusal("unsupportedBlock");
       const intent: EditorIntent = {
@@ -1152,6 +1342,13 @@ const resolveTableStructure = ({
         return skipAlike(
           "noopOperation",
           "A one-row, one-column cell has nothing to split.",
+        );
+      // A suggested split gives a merge down its rows back; a cell spanning
+      // columns has no suggested split in either engine.
+      if (tracked && cell.rightColumnIndex - cell.leftColumnIndex !== 1)
+        return skipAlike(
+          "unsupportedBlock",
+          "A suggested split takes a cell merged down one column.",
         );
       // The cell is addressed by its own paragraph, the merge's first.
       return resolved(
@@ -2126,9 +2323,14 @@ export class CanonicalPublicOperations {
       );
       const revisionIds = compiled.value.revisions;
       const revisionId = revisionIds.at(0);
+      const joined =
+        batch.mode === "direct"
+          ? joinedParagraphsOf(operation.type, intents)
+          : undefined;
       appliedById.set(operation.id, {
         id: operation.id,
         ...(commentId === undefined ? {} : { commentId }),
+        ...(joined === undefined ? {} : { paragraphIdentity: joined }),
         ...(revisionId === undefined ? {} : { revisionId, revisionIds }),
         ...(suggestionId === undefined ? {} : { suggestionId }),
       });
@@ -2200,9 +2402,48 @@ export class CanonicalPublicOperations {
       }
       return result([], null);
     }
+    if (batch.mode === "direct") {
+      const finalBody = findStoryBody(prepared.value.document, story);
+      if (finalBody === undefined)
+        panic("A committed public operation lost its story.");
+      const finalIds = new Set(
+        storyParagraphs(finalBody).map(({ paragraph }) => paragraph.paraId),
+      );
+      for (const operation of batch.operations) {
+        const entry = appliedById.get(operation.id);
+        if (entry === undefined) continue;
+        const identity = entry.paragraphIdentity;
+        if (identity?.type === "joined") {
+          if (
+            finalIds.has(identity.retiredBlockId) &&
+            finalIds.has(identity.blockId)
+          )
+            entry.paragraphIdentity = {
+              type: "retained",
+              blockId: identity.blockId,
+            };
+          continue;
+        }
+        if (operation.type === "deleteBlock" && finalIds.has(operation.blockId))
+          entry.paragraphIdentity = {
+            type: "retained",
+            blockId: operation.blockId,
+          };
+      }
+    }
     const applied = batch.operations.flatMap(({ id }) => {
       const entry = appliedById.get(id);
-      return entry ? [batch.dryRun ? { id } : entry] : [];
+      if (entry === undefined) return [];
+      return [
+        batch.dryRun
+          ? {
+              id,
+              ...(entry.paragraphIdentity === undefined
+                ? {}
+                : { paragraphIdentity: entry.paragraphIdentity }),
+            }
+          : entry,
+      ];
     });
     if (batch.dryRun) return result(applied, null);
     if (!this.options.publish(prepared.value)) {
@@ -2245,14 +2486,21 @@ export class CanonicalPublicOperations {
       return {
         status: "rejected",
         undoHandle: handle,
-        reason: "documentChanged",
+        reason: "storyUnavailable",
       };
     const prepared = session.prepareUndo(state, entry.story);
-    if (prepared.isErr() || !this.options.publish(prepared.value))
+    if (prepared.isErr())
       return {
         status: "rejected",
         undoHandle: handle,
-        reason: "documentChanged",
+        reason: "inverseRefused",
+        message: prepared.error.message,
+      };
+    if (!this.options.publish(prepared.value))
+      return {
+        status: "rejected",
+        undoHandle: handle,
+        reason: "documentNotEditable",
       };
     this.handles.pop();
     // Undo advances the version while exposing the preceding unchanged journal group.
@@ -2353,8 +2601,10 @@ export class CanonicalPublicOperations {
     }
     let range: { from: number; to: number } | undefined;
     // Removed directly, a paragraph no paragraph follows loses its words and
-    // then joins the paragraph before it, which keeps its own identity and
-    // properties; with none before it, it only loses its words.
+    // then joins the paragraph before it, whose properties it keeps; the
+    // joined paragraph is the one whose mark remains, this one, as accepting
+    // the tracked deletion leaves it. With none before it, it only loses its
+    // words.
     if (!tracked) {
       const own = (
         from: number,
@@ -2380,13 +2630,16 @@ export class CanonicalPublicOperations {
       const cleared = own(paragraph.start, end);
       if (cleared.isErr()) return cleared;
       const intents: EditorIntent[] = [...cleared.value];
+      // The paragraph before it takes over: before a table or a content
+      // control the deleted paragraph's mark goes with it, and the one before
+      // it keeps its identity (`directJoinSurvivor`).
       if (previous !== undefined)
         intents.push({
           type: "joinParagraphs",
           story: projectionStory,
           blockId: previous.blockId,
           nextBlockId: paragraph.blockId,
-          survivor: "first",
+          survivor: directJoinSurvivor({ laterMarkRemains: after === null }),
         });
       if (intents.length === 0) return refusal("noopOperation");
       return Result.ok({
@@ -2439,14 +2692,6 @@ export class CanonicalPublicOperations {
           message: message ?? `The operation was refused: ${reason}.`,
         }),
       );
-    const tableGap = (message: string) =>
-      Result.err(
-        new CanonicalPublicOperationResolutionError({
-          reason: "unsupportedBlock",
-          message,
-          gap: CANONICAL_GAP.publicTableStructure,
-        }),
-      );
     const skipAlike = (reason: FolioAIEditSkipReason, message: string) =>
       Result.err(
         new CanonicalPublicOperationResolutionError({
@@ -2471,6 +2716,7 @@ export class CanonicalPublicOperations {
       case "insertAfterBlock":
       case "insertBeforeBlock":
       case "insertTable":
+      case "insertSignatureTable":
       case "deleteTable":
       case "insertTableRow":
       case "deleteTableRow":
@@ -2479,11 +2725,10 @@ export class CanonicalPublicOperations {
       case "mergeTableCells":
       case "splitTableCell":
         break;
-      default:
-        return refusal(
-          "unsupportedBlock",
-          `Canonical public operation ${operation.type} is unavailable.`,
-        );
+      default: {
+        const unreachable: never = operation;
+        return unreachable;
+      }
     }
     const blockId =
       operation.type === "replaceRange" ||
@@ -2504,20 +2749,66 @@ export class CanonicalPublicOperations {
             "The canonical session holds no address in this paragraph, such as one in a text box.",
           )
         : refusal("missingBlock");
-    // A block beside a paragraph whose break is pending removal is placed
-    // by the join it is part of (`besidePendingJoin`); any other operation
-    // on it waits for that change to be resolved.
     if (
-      (paragraph.source.pPrMark?.kind === "del" ||
-        paragraph.source.pPrMark?.kind === "moveFrom") &&
-      !placesBlock(operation)
+      (operation.type === "insertTable" ||
+        operation.type === "insertSignatureTable") &&
+      !supportsTableInsertionMode(
+        operation.type,
+        options.batch.mode ?? "tracked-changes",
+      )
     )
-      return refusal("pendingDeletion");
+      return refusal("unsupportedMode");
+    if (operation.type === "insertSignatureTable" && suggested)
+      return Result.err(
+        new CanonicalPublicOperationResolutionError({
+          reason: "unsupportedBlock",
+          message:
+            "Whole-table signature suggestions need direct acceptance semantics.",
+          gap: CANONICAL_GAP.publicTableStructure,
+        }),
+      );
     const noteReferences = collectNoteReferenceLabels(state.doc);
     const clean = buildCleanBlockText(paragraph.node, paragraph.start - 1, {
       fieldResults: "text",
       noteReferences,
     });
+    // A replacement that names a style the paragraph does not have restyles
+    // it, as the default engine does, even when its words stay the same.
+    const restyles =
+      operation.type === "replaceBlock" &&
+      operation.styleId !== undefined &&
+      operation.styleId !== (paragraph.source.formatting?.styleId ?? null);
+    // A paragraph whose break is pending removal takes the edits the default
+    // engine takes there, and refuses what it refuses, for the same reason
+    // (`pendingMarkEditRefusal`): a restyling replacement edits the
+    // paragraph's properties as well, after its words. A block beside it is
+    // placed by the join it is part of (`besidePendingJoin`).
+    const pendingRefusal = [
+      pendingMarkEditOf(operation.type),
+      ...(restyles ? (["paragraphProperties"] as const) : []),
+    ]
+      .map((edit) =>
+        pendingMarkEditRefusal({
+          edit,
+          doc: state.doc,
+          paragraphPos: paragraph.start - 1,
+          paragraph: paragraph.node,
+          cleanText: clean.text,
+        }),
+      )
+      .find((refused) => refused !== undefined);
+    if (pendingRefusal !== undefined)
+      return Result.err(
+        new CanonicalPublicOperationResolutionError({
+          reason: pendingRefusal.reason,
+          message:
+            pendingRefusal.message ??
+            `The operation was refused: ${pendingRefusal.reason}.`,
+          ...(pendingRefusal.canonicalRefusal === undefined
+            ? {}
+            : { gap: pendingRefusal.canonicalRefusal.gap }),
+        }),
+      );
     const hash = hashFolioAIBlockContent(clean.text);
     if (operation.precondition && hash !== operation.precondition.blockTextHash)
       return refusal("preconditionFailed");
@@ -2545,7 +2836,10 @@ export class CanonicalPublicOperations {
         notInTable,
         skipAlike,
       });
-    if (operation.type === "insertTable")
+    if (
+      operation.type === "insertTable" ||
+      operation.type === "insertSignatureTable"
+    )
       return resolveTableInsertion({
         operation,
         paragraph,
@@ -2553,7 +2847,7 @@ export class CanonicalPublicOperations {
         story,
         noteReferences,
         refusal,
-        tableGap,
+        skipAlike,
       });
     if (isBlockInsertion(operation)) {
       const besideDeletion =
@@ -2561,9 +2855,16 @@ export class CanonicalPublicOperations {
         operation.type === "insertBeforeBlock" &&
         !followed &&
         besideDeletions.deleted.has(blockId);
-      const insertion: BlockInsertion = besideDeletion
-        ? { ...operation, type: "insertAfterBlock" }
-        : operation;
+      // A container's final mark remains on a paragraph inserted before it.
+      // Before a table or control, its own mark goes: insert after it first
+      // so the block deletion has a following paragraph to receive its text.
+      const after = state.doc.resolve(
+        paragraph.start - 1 + paragraph.node.nodeSize,
+      ).nodeAfter;
+      const insertion: BlockInsertion =
+        besideDeletion && after !== null
+          ? { ...operation, type: "insertAfterBlock" }
+          : operation;
       const placed = suggested
         ? besideAsItStands(paragraph)
         : besidePendingJoin({
@@ -2572,7 +2873,24 @@ export class CanonicalPublicOperations {
             projection: projection.value,
             noteReferences,
           });
-      if (placed === undefined) return refusal("pendingDeletion");
+      // A block the join would run into the words before it, or into a
+      // table after it, waits for the join to be resolved.
+      const gap =
+        insertion.type === "insertAfterBlock"
+          ? placed.place.start - 1 + placed.place.node.nodeSize
+          : placed.place.start - 1;
+      if (
+        joinStopsAtTableAfter({
+          insertedBlock: "paragraph",
+          doc: projection.value.doc,
+          paragraphPos: gap,
+          noteReferences,
+        })
+      )
+        return refusal(
+          PENDING_JOIN_INSERTION_REFUSAL.reason,
+          PENDING_JOIN_INSERTION_REFUSAL.message,
+        );
       const inserted = resolveBlockInsertion({
         operation: insertion,
         paragraph: placed.place,
@@ -2686,21 +3004,34 @@ export class CanonicalPublicOperations {
       )
     )
       return refusal("splitsCharacter");
+    // A note reference is not text: a replacement rewrites the prose around
+    // the references its range holds, each kept in place, as the shared
+    // segmentation pairs them. A range that cuts a reference, an operation
+    // that does not replace text, and a replacement that drops, moves or
+    // invents a reference are refused.
+    const replacesText =
+      operation.type === "replaceInBlock" ||
+      operation.type === "replaceRange" ||
+      operation.type === "replaceBlock";
+    const references = noteReferenceSpansWithin(clean, start, end);
     if (
-      clean.structuralBoundaries.some(
-        (boundary) =>
-          boundary.type === "noteReference" &&
-          start < boundary.offset + boundary.length &&
-          end > boundary.offset,
-      )
+      cutsIntoNoteReference(clean, start, end) ||
+      (references.length > 0 && !replacesText)
     )
       return refusal("protectedReference");
+    const segments = segmentsAroundNoteReferences(
+      clean.text.slice(start, end),
+      text,
+      references,
+    );
+    if (segments === null) return refusal("protectedReference");
+    const prose = segments.replacement.join("");
     if (stripInlineEmphasisMarkers(text) !== text)
       return refusal(
         "unsupportedBlock",
         "Canonical public emphasis replacements are unavailable.",
       );
-    if (/\[\^(?:e)?\d+\]/u.test(text) || /[\t\r\n]/u.test(text))
+    if (/\[\^(?:e)?\d+\]/u.test(prose) || /[\t\r\n]/u.test(prose))
       return refusal(
         "unsupportedBlock",
         "Canonical public replacements require plain text.",
@@ -2730,12 +3061,10 @@ export class CanonicalPublicOperations {
         from: range.from,
         to: range.to,
       });
-    // A replacement that names a style the paragraph does not have restyles
-    // it, as the default engine does, even when its words stay the same.
     const restyle =
+      restyles &&
       operation.type === "replaceBlock" &&
-      operation.styleId !== undefined &&
-      operation.styleId !== (paragraph.source.formatting?.styleId ?? null)
+      operation.styleId !== undefined
         ? statedPropertiesIntents({
             story,
             blockId: paragraph.blockId,
@@ -2778,14 +3107,14 @@ export class CanonicalPublicOperations {
       case "mergeBlockWithNext": {
         const next = projection.value.nextParagraphInContainer(blockId);
         if (next === undefined) return refusal("missingBlock");
-        // The merged paragraph keeps the first one's identity, as the
-        // default engine's merge does.
+        // The merged paragraph is the one whose mark remains, the second,
+        // as accepting the tracked merge leaves it.
         intent = {
           type: "joinParagraphs",
           story,
           blockId,
           nextBlockId: next.blockId,
-          survivor: "first",
+          survivor: directJoinSurvivor(),
         };
         break;
       }
@@ -2861,39 +3190,80 @@ export class CanonicalPublicOperations {
     const intents: EditorIntent[] = [];
     const normalizations: FolioAIEditNormalization[] = [];
     if (intent.type === "replaceText") {
-      let offset = start;
-      let pending: { start: number; end: number; text: string } | null = null;
       const changes: { start: number; end: number; text: string }[] = [];
-      for (const segment of diff(clean.text.slice(start, end), text)) {
-        switch (segment.type) {
-          case "equal":
-            if (pending) changes.push(pending);
-            pending = null;
-            offset += segment.text.length;
-            break;
-          case "del":
-            pending ??= { start: offset, end: offset, text: "" };
-            offset += segment.text.length;
-            pending.end = offset;
-            break;
-          case "ins":
-            pending ??= { start: offset, end: offset, text: "" };
-            pending.text += segment.text;
-            break;
-          default: {
-            const unreachable: never = segment.type;
-            return panic(`Unknown replacement diff ${unreachable}`);
+      // Each piece of prose between kept references changes on its own, so
+      // no change reaches a reference.
+      for (const [index, piece] of segments.source.entries()) {
+        let offset = start + piece.offset;
+        let pending: { start: number; end: number; text: string } | null = null;
+        for (const segment of diff(
+          piece.text,
+          segments.replacement[index] ?? "",
+        )) {
+          switch (segment.type) {
+            case "equal":
+              if (pending) changes.push(pending);
+              pending = null;
+              offset += segment.text.length;
+              break;
+            case "del":
+              pending ??= { start: offset, end: offset, text: "" };
+              offset += segment.text.length;
+              pending.end = offset;
+              break;
+            case "ins":
+              pending ??= { start: offset, end: offset, text: "" };
+              pending.text += segment.text;
+              break;
+            default: {
+              const unreachable: never = segment.type;
+              return panic(`Unknown replacement diff ${unreachable}`);
+            }
           }
         }
+        if (pending) changes.push(pending);
       }
-      if (pending) changes.push(pending);
-      for (const change of changes.toReversed()) {
+      const replacementChanges = [];
+      for (const change of changes) {
         const gap = resolveCleanTextRange({
           cleanBlock: clean,
           startOffset: change.start,
           endOffset: change.end,
         });
         if (!gap) return refusal("unsupportedBlock");
+        // Keep trailing references and struck text outside the replacement.
+        const lastCharacter =
+          change.end > change.start ? clean.offsets[change.end - 1] : undefined;
+        replacementChanges.push({
+          ...change,
+          from: gap.from,
+          to:
+            lastCharacter === undefined
+              ? gap.to
+              : Math.max(gap.from, Math.min(gap.to, lastCharacter + 1)),
+          markers: "retained" as const,
+        });
+      }
+      if (
+        !preservesReplacementCommentAlignment({
+          doc: state.doc,
+          source: {
+            from: paragraph.start,
+            to: paragraph.start + paragraph.node.content.size,
+          },
+          changes: replacementChanges,
+        })
+      )
+        return Result.err(
+          new CanonicalPublicOperationResolutionError({
+            reason: "unsupportedBlock",
+            gap: CANONICAL_GAP.commentReplacementAlignment,
+            message:
+              "Canonical replacement cannot preserve the aligned comment ranges.",
+          }),
+        );
+      for (const change of replacementChanges.toReversed()) {
+        const gap = { from: change.from, to: change.to };
         if (change.text.length > 0 && gap.from < gap.to) {
           let first: readonly Mark[] | null = null;
           let uniform = true;
@@ -2919,25 +3289,16 @@ export class CanonicalPublicOperations {
               code: "uniformReplacementFormatting",
             });
         }
-        // A replaced range ends just after its last character, before what
-        // the clean text skips there (a comment's reference mark, struck
-        // text), since the new text follows the struck words.
-        const lastCharacter =
-          change.end > change.start ? clean.offsets[change.end - 1] : undefined;
-        const changeEnd =
-          lastCharacter === undefined
-            ? gap.to
-            : Math.max(gap.from, Math.min(gap.to, lastCharacter + 1));
         // A replaced range takes the editor's selection rule: its edges stay
         // inside the markers beside them, so replacing exactly the words a
         // comment covers keeps the comment on the new text, pending and
         // accepted. An insertion at a point takes the caret's gap.
         const edges =
-          gap.from < changeEnd
-            ? projection.value.rangeEdgesAt(gap.from, changeEnd)
+          gap.from < gap.to
+            ? ({ start: "afterMarkers", end: "beforeMarkers" } as const)
             : undefined;
         const changeFrom = projection.value.addressAt(gap.from, edges?.start);
-        const changeTo = projection.value.addressAt(changeEnd, edges?.end);
+        const changeTo = projection.value.addressAt(gap.to, edges?.end);
         if (changeFrom.isErr() || changeTo.isErr())
           return refusal("unsupportedBlock");
         intents.push({
@@ -2970,12 +3331,15 @@ export class CanonicalPublicOperations {
         });
       }
       intents.push(intent);
-      // The merged paragraph's properties: on the first paragraph a direct
-      // join keeps, on the second, whose mark a tracked join leaves.
+      // The merged paragraph's properties: on the paragraph the join leaves,
+      // the second, whose mark remains, unless a direct join keeps the first.
       intents.push(
         ...statedPropertiesIntents({
           story,
-          blockId: tracked ? intent.nextBlockId : intent.blockId,
+          blockId:
+            !tracked && intent.survivor === "first"
+              ? intent.blockId
+              : intent.nextBlockId,
           properties: operation.mergedParagraphProperties,
           mintList,
         }),

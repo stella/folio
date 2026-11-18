@@ -43,10 +43,9 @@ import {
   expectTrackedChangeMarkAttrs,
 } from "../attrs";
 import {
-  isCommentRangeBoundaryNode,
-  readCommentRangeBoundaryAttrs,
-} from "../commentRangeBoundaryAttrs";
-import { retireThreadsResolvedAway } from "../commentRecords";
+  removeCommentAnchors,
+  retireThreadsResolvedAway,
+} from "../commentRecords";
 import {
   addedBreakCarrierBefore,
   finalParagraphsOf,
@@ -90,7 +89,6 @@ import {
 import { getDocumentNumbering } from "../plugins/documentNumbering";
 import { getDocumentStyleResolver } from "../plugins/documentStyleState";
 import { resolvedPreservedXmlAttrs } from "../preservedXmlReview";
-import { readRangeAnchorAttrs } from "../rangeAnchorAttrs";
 import { setParagraphAttrsWithRebasedRunFormatting } from "../rebaseParagraphRunFormatting";
 import { rejoinRunsAt } from "../rejoinRunCarriers";
 import { resolvedCommentPoints } from "../replacedAnnotations";
@@ -99,10 +97,7 @@ import {
   nodePropertyRevisionSites,
 } from "../revisionCarriers";
 import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
-import {
-  rejectedRunFormatting,
-  restoreHistoricalRunFormatting,
-} from "../runPropertyChangeResolution";
+import { rejectedRunFormatting } from "../runPropertyChangeResolution";
 import { paragraphRunStyleContextAt } from "../runStyleFormatting";
 import type { TrackedRevisionAncestor } from "../schema/marks";
 import type { ParagraphPropertyChangeAttrs } from "../schema/nodes";
@@ -525,39 +520,6 @@ function resolveChangeUnguarded(
         if (resolvesNode) {
           resolvedBoundaries.push(rangeFrom, rangeTo);
         }
-        const restoredDeletion =
-          mode === "reject" &&
-          node.marks.find(
-            (mark) =>
-              mark.type === keepType &&
-              matchesRevision(mark) &&
-              expectTrackedChangeMarkAttrs(mark)._historicalFormatting &&
-              !expectTrackedChangeMarkAttrs(mark)._docxRevisionAncestors?.some(
-                (layer) =>
-                  (layer.type === "deletion" || layer.type === "moveFrom") &&
-                  revisionSet !== null &&
-                  !revisionSet.has(layer.revisionId),
-              ),
-          );
-        if (restoredDeletion && !removesNode) {
-          const nextMarks = restoreHistoricalRunFormatting({
-            node,
-            paragraphContext: paragraphRunStyleContextAt({
-              doc: tr.doc,
-              pos: rangeFrom,
-              styleResolver,
-            }),
-            styleResolver,
-          });
-          for (const mark of node.marks) {
-            if (RUN_FORMATTING_MARK_NAMES.has(mark.type.name))
-              tr.removeMark(rangeFrom, rangeTo, mark);
-          }
-          for (const mark of nextMarks) {
-            if (RUN_FORMATTING_MARK_NAMES.has(mark.type.name))
-              tr.addMark(rangeFrom, rangeTo, mark);
-          }
-        }
         if (runPropertyChangeMark) {
           resolveRunPropertyChange({
             tr,
@@ -859,10 +821,12 @@ function resolveChangeUnguarded(
         const nextNode =
           nextPos < tr.doc.content.size ? tr.doc.nodeAt(nextPos) : null;
         const joinable = nextNode?.type.name === paragraph.type.name;
-        let follows: "paragraph" | "table" | "nothing" = "nothing";
+        let follows: "paragraph" | "table" | "block" | "nothing" = "nothing";
         if (joinable) follows = "paragraph";
         else if (nextNode?.type.spec["tableRole"] === "table")
           follows = "table";
+        else if (nextNode !== null && nextNode.type.name !== "textBox")
+          follows = "block";
         const resolved = tr.doc.resolve(mappedPos);
         const sectionProperties =
           expectParagraphAttrs(paragraph)._sectionProperties;
@@ -887,12 +851,15 @@ function resolveChangeUnguarded(
           follows,
           holdsContent: paragraphContentOf(paragraph),
           markWasAdded: op.markWasAdded,
-          // Removing this final paragraph leaves the block before it last.
-          // Only a content control may end with a table.
+          // Before a standing block, the container's actual final child must
+          // remain a paragraph. At its end, removal makes the preceding child
+          // final; only a content control may end with a table.
           containerStillEndsWithParagraph:
-            preceding?.type.name === "paragraph" ||
-            (preceding !== undefined &&
-              resolved.parent.type.name === "blockSdt"),
+            follows !== "nothing"
+              ? resolved.parent.lastChild?.type.name === "paragraph"
+              : preceding?.type.name === "paragraph" ||
+                (preceding !== undefined &&
+                  resolved.parent.type.name === "blockSdt"),
           followingTableCanReceiveRunIn:
             follows === "table" &&
             boundaries.length === 0 &&
@@ -903,8 +870,7 @@ function resolveChangeUnguarded(
           needsFollowingCommentHost:
             follows === "table" &&
             preceding?.type.name !== "paragraph" &&
-            retainedBoundaries.blocks.length === 0 &&
-            retainedBoundaries.comments.length > 0,
+            retainedBoundaries.length > 0,
           removedSectionProperties:
             op.markWasAdded && sectionProperties != null,
           precedingSectionOwner,
@@ -926,8 +892,8 @@ function resolveChangeUnguarded(
           continue;
         }
         if (!joinable) {
-          // Nothing to join with: the next sibling is a table, or the paragraph
-          // ends its container — a body, a cell, a header, a note or a text box
+          // Nothing to join with: the next sibling is a table or opaque block,
+          // or the paragraph ends its container — a body, cell, header, note or text box
           // each end with one, and the position then lands on a boundary where
           // `join` would merge the containers and silently lose rows.
           //
@@ -952,19 +918,13 @@ function resolveChangeUnguarded(
           // paragraph-mark rule decides whether the preceding mark inherits
           // them, as it does for a join.
           //
-          // What the paragraph held that is no content stays where it was
-          // (the engine's `paragraphRemains`): before a table, bookmarks and
-          // moves stand in its place and comment anchors go to the paragraph
-          // before it; ending its container, where only a paragraph stands
-          // last, all of them go there. With no paragraph there to take
-          // them, the paragraph stays.
+          // What the paragraph held that is no content goes to the
+          // paragraph before it (the engine's `paragraphRemains`), as
+          // deleting it directly leaves it. With no paragraph there to take
+          // it, the paragraph stays.
           const remains =
             outcome.kind === "remove" ? paragraphRemainsOf(paragraph) : null;
-          const between = follows === "table" ? (remains?.blocks ?? []) : [];
-          const toPrevious =
-            follows === "table"
-              ? (remains?.comments ?? [])
-              : (remains?.inline ?? []);
+          const toPrevious = remains ?? [];
           if (
             remains !== null &&
             (toPrevious.length === 0 || preceding?.type.name === "paragraph")
@@ -980,7 +940,7 @@ function resolveChangeUnguarded(
               );
             }
             countRemovedSectionEndpoint(paragraph);
-            tr.replaceWith(mappedPos, mappedPos + paragraph.nodeSize, between);
+            tr.delete(mappedPos, mappedPos + paragraph.nodeSize);
             if (toPrevious.length > 0) tr.insert(mappedPos - 1, toPrevious);
             continue;
           }
@@ -1092,38 +1052,7 @@ function resolveChangeUnguarded(
       // converted to a point. Point-authored comments never enter `points`.
       if (points.size > 0) {
         const doomed = new Set(points.keys());
-        const carriers: { position: number; size: number }[] = [];
-        tr.doc.descendants((node, position) => {
-          if (
-            node.type.name === "commentReference" &&
-            doomed.has(node.attrs["commentId"])
-          ) {
-            carriers.push({ position, size: node.nodeSize });
-            return false;
-          }
-          if (isCommentRangeBoundaryNode(node)) {
-            const attrs = readCommentRangeBoundaryAttrs(node);
-            if (attrs.ok && doomed.has(attrs.value.marker.id)) {
-              carriers.push({ position, size: node.nodeSize });
-              return false;
-            }
-            return true;
-          }
-          if (node.type.name !== "rangeAnchor") return true;
-          const attrs = readRangeAnchorAttrs(node);
-          if (
-            attrs.ok &&
-            attrs.value.start.type === "commentRangeStart" &&
-            doomed.has(attrs.value.start.id)
-          ) {
-            carriers.push({ position, size: node.nodeSize });
-            return false;
-          }
-          return true;
-        });
-        for (const carrier of carriers.toReversed()) {
-          tr.delete(carrier.position, carrier.position + carrier.size);
-        }
+        removeCommentAnchors(tr, doomed);
       }
       normalizeKeptRangeBoundaries(tr, keptBoundaries);
       finishResolution(state, tr);

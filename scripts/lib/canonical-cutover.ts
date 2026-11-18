@@ -220,7 +220,8 @@ export const inspectCanonicalSources = (
         }
       }
       // Canonical persistence has one model-only owner. Consumers must capture
-      // its snapshot from the controller rather than assembling PM save signals.
+      // its snapshot from the controller, or from the session itself as the
+      // headless reviewer does, rather than assembling PM save signals.
       const saveSnapshots = new Set<string>();
       walkAst(program, (node) => {
         if (
@@ -231,7 +232,9 @@ export const inspectCanonicalSources = (
           const initializer = unwrapChain(node.init);
           if (
             initializer.type === "CallExpression" &&
-            /(?:\.|\?\.)captureCanonicalSave$/.test(text(initializer.callee))
+            /(?:\.|\?\.)(?:captureCanonicalSave|captureSaveSnapshot)$/.test(
+              text(initializer.callee),
+            )
           )
             saveSnapshots.add(node.id.name);
         }

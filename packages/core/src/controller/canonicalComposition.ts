@@ -15,11 +15,19 @@ import type { EditorView } from "prosemirror-view";
 
 import { splitsSurrogatePair } from "../ai-edits/character-boundaries";
 import { CanonicalSessionError } from "../canonical/canonicalSession";
-import { CANONICAL_GAP } from "../types/canonicalCapabilities";
+import {
+  CANONICAL_GAP,
+  type CanonicalRefusalGround,
+} from "../types/canonicalCapabilities";
 import {
   CANONICAL_COMPOSITION_FLUSH_DELAY_MS,
   setCanonicalInputTimer,
 } from "./canonicalInputTimer";
+
+/** A composition over content the session cannot project, restored. */
+const UNSUPPORTED_COMPOSITION: CanonicalRefusalGround = {
+  gap: CANONICAL_GAP.storyContentProjection,
+};
 
 type CompositionOptions = {
   begin: () => boolean;
@@ -31,7 +39,12 @@ type CompositionOptions = {
     semantic: "composition";
     compositionPhase?: "correction";
   }) => void;
-  refuse: (reason: string) => void;
+  refuse: (reason: string, ground?: CanonicalRefusalGround) => void;
+  /**
+   * The view shows provisional composition text, or the baseline again, that
+   * no commit published: it needs a layout pass but changes no document.
+   */
+  shown?: () => void;
 };
 
 type CompositionCompletionEvidence = "provisional" | "explicitFinal";
@@ -255,6 +268,10 @@ export const createCanonicalComposition = (
     if (timer !== undefined) clearTimeout(timer);
     timer = undefined;
   };
+  const show = (view: EditorView, shown: EditorState) => {
+    view.updateState(shown);
+    options.shown?.();
+  };
   const selectedText = (
     baseline: EditorState,
     proposed: Pick<EditorState, "doc">,
@@ -459,6 +476,7 @@ export const createCanonicalComposition = (
     if (!input) {
       options.refuse(
         "Composition changed unsupported content; the canonical document was restored.",
+        UNSUPPORTED_COMPOSITION,
       );
       return { type: "refused", text: committedText };
     }
@@ -711,11 +729,11 @@ export const createCanonicalComposition = (
         return true;
       }
       if (state.type === "refused") {
-        view.updateState(state.baseline);
+        show(view, state.baseline);
         return true;
       }
       if (restarted) {
-        view.updateState(state.baseline);
+        show(view, state.baseline);
         return true;
       }
       if (
@@ -728,7 +746,7 @@ export const createCanonicalComposition = (
       authorizedNativeState = null;
       const applied = applyNative(view, transaction);
       if (applied.isErr()) {
-        view.updateState(state.baseline);
+        show(view, state.baseline);
         state = {
           type: "refused",
           baseline: state.baseline,
@@ -741,7 +759,7 @@ export const createCanonicalComposition = (
       }
       // Validate the entire proposal against one plain replacement, including plugin output.
       if (!replacement(state.baseline, applied.value.state)) {
-        view.updateState(state.baseline);
+        show(view, state.baseline);
         state = {
           type: "refused",
           baseline: state.baseline,
@@ -751,11 +769,12 @@ export const createCanonicalComposition = (
         };
         options.refuse(
           "Composition changed unsupported content; the canonical document was restored.",
+          UNSUPPORTED_COMPOSITION,
         );
         return true;
       }
       acceptedUpdate = true;
-      view.updateState(applied.value.state);
+      show(view, applied.value.state);
       return true;
     },
   };

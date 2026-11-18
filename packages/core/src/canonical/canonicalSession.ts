@@ -33,6 +33,7 @@ import {
   DOCUMENT_OP_REFUSAL_REASONS,
   DOCUMENT_OP_TYPES,
   type DocumentOp,
+  documentStories,
   type EditorIntent,
   type EditorIntentMode,
   editorParagraphGroups,
@@ -41,11 +42,13 @@ import {
   freshLeasedIds,
   ID_LEASE_KINDS,
   type IdLease,
+  inverseMeetingDocument,
   normalizeForOps,
   OP_STORIES,
   type OpStory,
   packageParagraphIds,
   paragraphIdsIn,
+  planWholeParagraphReplacement,
   sameStory,
   suggestedCommentIds,
   suggestionRevisionInfos,
@@ -67,11 +70,23 @@ import {
   paragraphCommentMarkers,
   visitCommentMarkerItems,
 } from "../docx/commentAnchorIndex";
+import {
+  copyHeaderFooterBaselineHandles,
+  getDocumentSourceBaseline,
+} from "../docx/headerFooterVerbatim";
 import { ListNormalizationCache } from "../docx/listModelNormalization";
-import { cloneDocumentWithParagraphPropertySources } from "../docx/paragraphPropertySource";
+import {
+  cloneDocumentWithParagraphPropertySources,
+  getProseParagraphPropertySourceToken,
+  markParagraphPropertySourceTransfers,
+} from "../docx/paragraphPropertySource";
 import { visitInlineContentSlots } from "../docx/paragraphTraversal";
 import { isCellMergeContinuation } from "../docx/tableParser";
 import { calculateRowSpans } from "../docx/verticalMergeProjection";
+import {
+  type CanonicalTyping,
+  recordCanonicalTyping,
+} from "../internal/canonicalTyping";
 import {
   canonicalCellSelectionRanges,
   canonicalContentPosition,
@@ -86,8 +101,8 @@ import {
   ProjectionBlockCache,
   toProseDoc,
 } from "../prosemirror/conversion/toProseDoc";
-import { markPackageChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import { heldUnreferencedNotes as notesHeldWithoutReference } from "../prosemirror/noteReferenceReview";
+import { preservesReplacementCommentAlignment } from "../prosemirror/replacedAnnotations";
 import { runFormattingPatchFromMarks } from "../prosemirror/runFormattingFromMarks";
 import {
   CANONICAL_GAP,
@@ -104,6 +119,7 @@ import type {
   StyleDefinitions,
 } from "../types/document";
 import type { DeepReadonly, ReadonlyDocument } from "../types/documentModel";
+import { canonicalJson } from "../utils/canonicalJson";
 import { CanonicalIdLease } from "./canonicalIdLease";
 import {
   canonicalNativeCells,
@@ -122,6 +138,7 @@ import {
   type StoryProjectionFacts,
 } from "./canonicalProjectionBlocks";
 import { rebaseHistorySteps, remoteSelection } from "./canonicalRemoteHistory";
+import { canonicalRevisionLocks } from "./canonicalRevisionLocks";
 import {
   changedWindow,
   unsupportedEditReason,
@@ -158,6 +175,9 @@ const refuse = (message: string) =>
       reason: "refused",
     }),
   );
+/** A refusal under the gap or rule it belongs to. */
+const refuseUnder = (ground: CanonicalRefusalGround, message: string) =>
+  Result.err(new CanonicalSessionError({ ground, message, reason: "refused" }));
 /** A change a content control's lock forbids: the document's rule, not a gap. */
 const lockRefusal = (violation: LockedControlViolation) =>
   Result.err(
@@ -279,6 +299,8 @@ const operationChangesStructure = (op: DocumentOp): boolean => {
     case DOCUMENT_OP_TYPES.SET_TABLE_PROPS:
     // A row's or cell's own revision sits outside every paragraph too.
     case DOCUMENT_OP_TYPES.SET_REVISION_INFO:
+    // A block-level control's properties sit outside its paragraphs.
+    case DOCUMENT_OP_TYPES.SET_CONTENT_CONTROL:
       return true;
     case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
     case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
@@ -492,6 +514,16 @@ class CanonicalProjection {
   }
 
   /** The paragraph whose content holds `position`, its ends included. */
+  /** Whether `position` lies in a text box's content. */
+  private insideTextBox(position: number): boolean {
+    const resolved = this.doc.resolve(
+      Math.max(0, Math.min(position, this.doc.content.size)),
+    );
+    for (let depth = resolved.depth; depth > 0; depth -= 1)
+      if (resolved.node(depth).type.name === "textBox") return true;
+    return false;
+  }
+
   private paragraphAround(position: number): ParagraphAddress | undefined {
     // The last top-level node starting before the position.
     let low = 0;
@@ -535,7 +567,14 @@ class CanonicalProjection {
     position = canonicalContentPosition(this.doc, position);
     const paragraph = this.paragraphAround(position);
     if (paragraph === undefined)
-      return refuse("The input is outside a plain paragraph.");
+      return this.insideTextBox(position)
+        ? // A text box's paragraphs belong to its shape, not to the story:
+          // the same rule a public operation on one meets.
+          refuseUnder(
+            { gap: CANONICAL_GAP.publicUnsupportedInline },
+            "The canonical session holds no address in this paragraph, such as one in a text box.",
+          )
+        : refuse("The input is outside a plain paragraph.");
     const relative = position - paragraph.start;
     const offset = paragraph.boundaries.findIndex((gaps) =>
       gaps.some((gap) => gap.position === relative),
@@ -1625,6 +1664,30 @@ type PublishCanonicalProjectionOptions = {
   session: CanonicalSession;
 };
 
+/** A node's shape without its text, for a refusal that names a change. */
+const nodeShapeOf = (node: PMNode): string =>
+  JSON.stringify({
+    type: node.type.name,
+    attrs: node.attrs,
+    children: node.content.content.map((child) => ({
+      type: child.type.name,
+      marks: child.marks.map((mark) => mark.toJSON()),
+    })),
+  });
+
+/**
+ * Where an appended transaction moved the published document off the
+ * projection: the innermost node holding the first difference, by its type,
+ * attributes and children's marks, so the refusal carries no document text.
+ */
+const projectionChangeOf = (projected: PMNode, published: PMNode): string => {
+  const at = projected.content.findDiffStart(published.content);
+  if (at === null) return "a plugin appended a document change";
+  const expected = projected.resolve(Math.min(at, projected.content.size));
+  const actual = published.resolve(Math.min(at, published.content.size));
+  return `a plugin changed the ${expected.parent.type.name} in body block ${expected.index(0)} from ${nodeShapeOf(expected.parent)} to ${nodeShapeOf(actual.parent)}`;
+};
+
 /** The model publishes only after PM and every plugin accept its exact projection. */
 export const publishCanonicalProjection = ({
   state,
@@ -1652,8 +1715,11 @@ export const publishCanonicalProjection = ({
   });
   if (applied.isErr()) return applied;
   const staged = applied.value;
+  if (!staged.transactions.includes(commit.transaction))
+    return refuse(
+      "A plugin refused or changed the canonical projection: a plugin filtered the projection transaction.",
+    );
   if (
-    !staged.transactions.includes(commit.transaction) ||
     !staged.state.doc.eq(commit.projection.doc) ||
     staged.transactions.some(
       (transaction) =>
@@ -1661,13 +1727,16 @@ export const publishCanonicalProjection = ({
         !isCanonicalProjectionTransaction(transaction, session),
     )
   )
-    return refuse("A plugin refused or changed the canonical projection.");
+    return refuse(
+      `A plugin refused or changed the canonical projection: ${projectionChangeOf(commit.projection.doc, staged.state.doc)}.`,
+    );
   const published = commit.publish();
   if (published.isErr()) return published;
   return Result.ok(staged);
 };
 
 type StageOptions = {
+  typing?: CanonicalTyping;
   state: EditorState;
   ops: readonly DocumentOp[];
   selection: CanonicalSelection;
@@ -1764,14 +1833,65 @@ const storyProjectionKey = (story: CanonicalSecondaryStory): string => {
   }
 };
 
+type CanonicalSaveBaseline = {
+  version: number;
+  blockIds: readonly string[];
+  buffer: ArrayBuffer;
+  /** The saved package's buffer and source captures, without its model. */
+  document: Document;
+};
+type PendingSaveBaseline = {
+  version: number;
+  blockIds: readonly string[];
+  touched: Set<string>;
+  structure: CanonicalSaveSnapshot["structure"];
+};
+
+const sameStoryParts = (left: ReadonlyDocument, right: ReadonlyDocument) =>
+  (["headers", "footers"] as const).every(
+    (kind) =>
+      canonicalJson([...(left.package[kind]?.keys() ?? [])].toSorted()) ===
+      canonicalJson([...(right.package[kind]?.keys() ?? [])].toSorted()),
+  );
+
+/**
+ * What a save baseline keeps of the parsed saved package: its buffer, the
+ * capture of its body, and its headers and footers with their verbatim
+ * sources. The body content itself is not kept.
+ */
+const saveBaselineOf = (saved: Document, buffer: ArrayBuffer): Document => {
+  const baseline: Document = {
+    originalBuffer: buffer,
+    package: {
+      document: { ...saved.package.document, content: [] },
+      ...(saved.package.headers === undefined
+        ? {}
+        : { headers: saved.package.headers }),
+      ...(saved.package.footers === undefined
+        ? {}
+        : { footers: saved.package.footers }),
+    },
+  };
+  copyHeaderFooterBaselineHandles(baseline, saved);
+  return baseline;
+};
+
 /** Immutable model authority with a journal staged independently of the PM view. */
 class CanonicalSession {
   private currentDocument: Document;
   private currentProjection: CanonicalProjection;
   private readonly sourceBlockIds: ReadonlySet<string>;
   private currentVersion = 0;
-  private readonly saveTouched = new Set<string>();
+  private saveTouched = new Set<string>();
   private saveStructure: CanonicalSaveSnapshot["structure"] = "stable";
+  /**
+   * The package a save wrote, parsed, once it is the baseline later saves
+   * patch against: `saveTouched` and `saveStructure` then count from its
+   * version. Holding only the latest releases every earlier one.
+   */
+  private saveBaseline: CanonicalSaveBaseline | null = null;
+  /** A save whose package is being read to become the baseline. */
+  private pendingSaveBaseline: PendingSaveBaseline | null = null;
   private readonly allocateIntentIds = createEditorIntentIdAllocator();
   private mode: CanonicalSessionMode = { type: "editing" };
   private readonly allocatedBlockIds = new Set<string>();
@@ -2051,14 +2171,24 @@ class CanonicalSession {
     const retainedBlockIdKeys = new Set(
       [
         ...this.sourceBlockIds,
+        ...(this.saveBaseline?.blockIds ?? []),
         ...packageParagraphIds(this.currentDocument.package),
       ].map((blockId) => blockId.toUpperCase()),
     );
+    const document = withUneditedSourceRestored(
+      cloneDocumentWithParagraphPropertySources(this.currentDocument),
+      this.sourceRestores,
+    );
     return {
-      document: withUneditedSourceRestored(
-        cloneDocumentWithParagraphPropertySources(this.currentDocument),
-        this.sourceRestores,
-      ),
+      document,
+      ...(this.saveBaseline === null
+        ? {}
+        : {
+            saveBaseline: {
+              buffer: this.saveBaseline.buffer,
+              document: this.saveBaseline.document,
+            },
+          }),
       version: this.currentVersion,
       changedBlockIds: [...this.saveTouched].filter((blockId) =>
         retainedBlockIdKeys.has(blockId.toUpperCase()),
@@ -2066,6 +2196,59 @@ class CanonicalSession {
       structure: this.saveStructure,
       heldUnreferencedNotes: this.heldUnreferencedNotes,
     };
+  }
+
+  /**
+   * Start making the package saved at `version` the baseline later saves
+   * patch against. Edits from now on are counted from that version too, so
+   * {@link completeSaveBaseline} can swap the counts without losing one.
+   * Refused unless `version` is the current one.
+   */
+  beginSaveBaseline(version: number): boolean {
+    if (this.isComposing || version !== this.currentVersion) return false;
+    this.pendingSaveBaseline = {
+      version,
+      blockIds: packageParagraphIds(this.currentDocument.package),
+      touched: new Set(),
+      structure: "stable",
+    };
+    return true;
+  }
+
+  /**
+   * Make `saved`, the package written at `version` as parsed, the baseline:
+   * later saves patch it and count changes from that version, and an undo
+   * past it counts as a change like any other edit. Declined, keeping the
+   * previous baseline and its counts, when a later save started, or when
+   * `saved` does not hold the body paragraphs the session held at `version`
+   * in the same order, or the same headers and footers.
+   */
+  completeSaveBaseline(version: number, saved: Document): boolean {
+    const pending = this.pendingSaveBaseline;
+    if (pending?.version !== version) return false;
+    this.pendingSaveBaseline = null;
+    const blockIds = packageParagraphIds(saved.package);
+    const buffer = saved.originalBuffer;
+    if (
+      buffer === undefined ||
+      getDocumentSourceBaseline(saved).type !== "captured" ||
+      blockIds.length !== pending.blockIds.length ||
+      blockIds.some(
+        (blockId, index) =>
+          blockId.toUpperCase() !== pending.blockIds[index]?.toUpperCase(),
+      ) ||
+      !sameStoryParts(saved, this.currentDocument)
+    )
+      return false;
+    this.saveBaseline = {
+      version,
+      blockIds,
+      buffer,
+      document: saveBaselineOf(saved, buffer),
+    };
+    this.saveTouched = pending.touched;
+    this.saveStructure = pending.structure;
+    return true;
   }
 
   get projection(): CanonicalProjection {
@@ -2214,7 +2397,15 @@ class CanonicalSession {
     const checked = this.checkState(state, projection);
     if (checked.isErr()) return checked;
     if (!Number.isFinite(time)) return refuse("The input time is invalid.");
-    if (from > to || hasIllegalXmlCharacters(text) || /[\t\r\n]/u.test(text)) {
+    if (
+      !Number.isSafeInteger(from) ||
+      !Number.isSafeInteger(to) ||
+      from < 0 ||
+      to > projection.doc.content.size ||
+      from > to ||
+      hasIllegalXmlCharacters(text) ||
+      /[\t\r\n]/u.test(text)
+    ) {
       return refuse("Canonical input accepts a well-formed text replacement.");
     }
     if (from === to && text.length === 0)
@@ -2230,9 +2421,15 @@ class CanonicalSession {
         );
       // Typing over selected cells clears each of them and writes the text
       // into the first, as the editor does.
+      const ranges = canonicalCellSelectionRanges(state.selection);
+      const firstRange = ranges.at(0);
+      const lastRange = ranges.at(-1);
+      if (firstRange === undefined || lastRange === undefined)
+        return refuse("The selected cells contain no editable text.");
       const intents: EditorIntent[] = [];
+      const commentChanges = [];
       let first = true;
-      for (const range of canonicalCellSelectionRanges(state.selection)) {
+      for (const range of ranges) {
         const edges = projection.rangeEdgesAt(range.from, range.to);
         const cellFrom = projection.inputAddressAt(range.from, edges.start);
         if (cellFrom.isErr()) return cellFrom;
@@ -2244,8 +2441,29 @@ class CanonicalSession {
           to: cellTo.value,
           text: first ? text : "",
         });
+        commentChanges.push({
+          from: range.from,
+          to: range.to,
+          text: first ? text : "",
+          markers:
+            edges.start === "beforeMarkers" || edges.end === "afterMarkers"
+              ? ("selected" as const)
+              : ("retained" as const),
+        });
         first = false;
       }
+      if (
+        text !== "" &&
+        !preservesReplacementCommentAlignment({
+          doc: state.doc,
+          source: { from: firstRange.from, to: lastRange.to },
+          changes: commentChanges,
+        })
+      )
+        return refuseUnder(
+          { gap: CANONICAL_GAP.commentReplacementAlignment },
+          "Canonical replacement cannot preserve the aligned comment ranges.",
+        );
       return this.prepareIntents(state, { intents, semantic });
     }
     const range = canonicalSelectionRange(state);
@@ -2269,6 +2487,36 @@ class CanonicalSession {
         ? Result.ok(editCaret)
         : projection.inputAddressAt(inputTo, edges.end);
     if (end.isErr()) return end;
+    if (inputFrom < inputTo && text !== "") {
+      const retirement = planWholeParagraphReplacement({
+        document: this.currentDocument,
+        from: start.value,
+        to: end.value,
+      });
+      if (retirement.isErr()) return refuse(retirement.error.message);
+      if (
+        !preservesReplacementCommentAlignment({
+          doc: state.doc,
+          retiredCommentIds: retirement.value?.commentIds,
+          source: { from: inputFrom, to: inputTo },
+          changes: [
+            {
+              from: inputFrom,
+              to: inputTo,
+              text,
+              markers:
+                edges.start === "beforeMarkers" || edges.end === "afterMarkers"
+                  ? "selected"
+                  : "retained",
+            },
+          ],
+        })
+      )
+        return refuseUnder(
+          { gap: CANONICAL_GAP.commentReplacementAlignment },
+          "Canonical replacement cannot preserve the aligned comment ranges.",
+        );
+    }
     const preSelection = projection.selectionAt(state);
     if (preSelection.isErr()) return preSelection;
     // Just inside a content control's edge, the editor position, not the
@@ -2370,6 +2618,9 @@ class CanonicalSession {
       selection: postSelection,
       origin: "input",
       history: joins ? "joined" : "opened",
+      ...(semantic === "typing" && inputFrom === inputTo && text.length > 0
+        ? { typing: { at: start.value, after: caret, text } }
+        : {}),
       // The compiler's own application of exactly these ops, when it made one.
       ...(compiled.value.applied === undefined
         ? {}
@@ -2726,21 +2977,17 @@ class CanonicalSession {
     // hyperlink carries several ids, and resolving fewer leaves part pending.
     const changes = getTrackedChangeGroupsForIds(state.doc, revisionIds);
     // A change whose resolution breaks a lock stays pending; the rest resolve.
-    let firstHeld: LockedControlViolation | null = null;
-    const heldChanges = changes.filter((ids) => {
-      const alone = applyDocumentOps(this.currentDocument, resolve(ids));
-      if (alone.isErr()) return false;
-      const violation = lockViolationBetween(
-        this.currentDocument,
-        alone.value.document,
-      );
-      firstHeld ??= violation;
-      return violation !== null;
+    const locks = canonicalRevisionLocks({
+      document: this.currentDocument,
+      story: OP_STORIES.MAIN,
+      groups: changes,
+      decision: resolution,
     });
-    if (firstHeld !== null && heldChanges.length === changes.length)
-      return lockRefusal(firstHeld);
-    const lockHeld = heldChanges.flat();
-    const resolved = changes.filter((ids) => !heldChanges.includes(ids)).flat();
+    const firstHeld = locks.held.at(0);
+    if (firstHeld !== undefined && locks.held.length === changes.length)
+      return lockRefusal(firstHeld.violation);
+    const lockHeld = locks.held.flatMap(({ ids }) => ids);
+    const resolved = locks.unlocked.flat();
     const ops = [
       ...before,
       ...(resolved.length === 0 ? [] : resolve(resolved)),
@@ -2802,24 +3049,44 @@ class CanonicalSession {
       date: string;
     },
   ): Result<CanonicalCommit, CanonicalSessionError> {
-    const infos = suggestionRevisionInfos(
-      this.currentDocument,
-      OP_STORIES.MAIN,
-      suggestionId,
-    );
+    const revisions = documentStories(this.currentDocument)
+      .map((story) => ({
+        story,
+        infos: suggestionRevisionInfos(
+          this.currentDocument,
+          story,
+          suggestionId,
+        ),
+      }))
+      .filter(({ infos }) => infos.length > 0);
     const commentIds = suggestedCommentIds(this.currentDocument, suggestionId);
-    if (infos.length === 0 && commentIds.length === 0)
+    if (revisions.length === 0 && commentIds.length === 0)
       return noChange(`No pending suggestion ${suggestionId}.`);
     if (resolution === "reject")
       return this.prepareResolve(state, {
-        revisionIds: infos.map(({ id }) => id),
+        revisionIds: [],
         resolution: "reject",
         // The comments go first, while the text they cover is still there.
-        before: commentIds.map((id) => ({
-          type: DOCUMENT_OP_TYPES.DELETE_COMMENT,
-          id,
-          scope: "thread",
-        })),
+        before: [
+          ...commentIds.map((id) => ({
+            type: DOCUMENT_OP_TYPES.DELETE_COMMENT,
+            id,
+            scope: "thread" as const,
+          })),
+          // Resolve notes before body references can remove their stories.
+          ...revisions
+            .toSorted(
+              ({ story: left }, { story: right }) =>
+                Number(left === OP_STORIES.MAIN) -
+                Number(right === OP_STORIES.MAIN),
+            )
+            .map(({ story, infos }) => ({
+              type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+              story,
+              revisionIds: infos.map(({ id }) => id),
+              decision: "reject" as const,
+            })),
+        ],
       });
     const checked = this.checkState(state);
     if (checked.isErr()) return checked;
@@ -2827,10 +3094,10 @@ class CanonicalSession {
     if (selection.isErr()) return selection;
     const comments = this.currentDocument.package.document.comments ?? [];
     const ops: DocumentOp[] = [];
-    if (infos.length > 0)
+    for (const { story, infos } of revisions)
       ops.push({
         type: DOCUMENT_OP_TYPES.SET_REVISION_INFO,
-        story: OP_STORIES.MAIN,
+        story,
         infos: infos.map(({ id }) => ({ id, author, date })),
       });
     for (const comment of comments)
@@ -3310,6 +3577,7 @@ class CanonicalSession {
     story = OP_STORIES.MAIN,
     previousProjection,
     opId,
+    typing,
   }: StageOptions): Result<CanonicalCommit, CanonicalSessionError> {
     const previous =
       previousProjection === undefined
@@ -3342,7 +3610,12 @@ class CanonicalSession {
       this.caches.lists,
     );
     applied.value.document = normalized.document;
-    applied.value.inverse = normalized.inverse.concat(applied.value.inverse);
+    // Undo meets the normalized document: a restore of whole parts (notes
+    // an edit removed with their references) expects what it meets there.
+    applied.value.inverse = inverseMeetingDocument(
+      normalized.document,
+      normalized.inverse.concat(applied.value.inverse),
+    );
     // Judged on the result too: an edit may only introduce the ids its author leases.
     // Another actor's edit was judged against its own lease by the authority.
     const leaseJudgement =
@@ -3427,6 +3700,24 @@ class CanonicalSession {
     const transaction = state.tr;
     const before = state.doc;
     const after = projected.value.doc;
+    const retainedTokens = new Set<string>();
+    const retainPropertyOwner = (node: PMNode): boolean => {
+      if (node.type.name !== "paragraph") return true;
+      const id = node.attrs["paraId"];
+      const token = getProseParagraphPropertySourceToken(node);
+      const owner =
+        typeof id === "string" ? previous.value.paragraph(id) : undefined;
+      if (
+        typeof token === "string" &&
+        owner !== undefined &&
+        getProseParagraphPropertySourceToken(owner.node) === token
+      )
+        retainedTokens.add(token);
+      return false;
+    };
+    const retainPropertyOwnersIn = (node: PMNode): void => {
+      if (retainPropertyOwner(node)) node.descendants(retainPropertyOwner);
+    };
     let prefix = 0;
     let from = 0;
     while (
@@ -3454,13 +3745,25 @@ class CanonicalSession {
       for (let index = prefix; index < newEnd; index += 1)
         replacement.push(after.child(index));
       transaction.replaceWith(from, to, Fragment.fromArray(replacement));
+      replacement.forEach(retainPropertyOwnersIn);
     }
-    if (!transaction.doc.eq(projected.value.doc))
+    if (!transaction.doc.eq(projected.value.doc)) {
       transaction.replaceWith(
         0,
         transaction.doc.content.size,
         projected.value.doc.content,
       );
+      after.forEach(retainPropertyOwnersIn);
+    }
+    // Replacing a projected block does not replace the existing owners of
+    // its paragraphs. New paragraphs and copies claim no previous token.
+    markParagraphPropertySourceTransfers(
+      transaction,
+      [...retainedTokens].map((selectedToken) => ({
+        displacedToken: null,
+        selectedToken,
+      })),
+    );
     // The document node's own attributes hold what the last section starts with.
     for (const [name, value] of Object.entries(projected.value.doc.attrs)) {
       if (transaction.doc.attrs[name] !== value) {
@@ -3499,7 +3802,6 @@ class CanonicalSession {
       origin,
       version: this.version + 1,
     });
-    if (ops.some(operationChangesPackage)) markPackageChange(transaction);
     transaction.setMeta("addToHistory", false);
     const baseVersion = this.version;
     const baseBoundary = this.groupingBoundary;
@@ -3569,14 +3871,19 @@ class CanonicalSession {
         this.currentProjection = heldBody;
         if (leaseJudgement?.type === "allowed")
           this.leased?.commit(leaseJudgement.census, leaseJudgement.ids);
-        // Save changes are cumulative against originalBuffer, including undo/redo.
-        // They are published with the model, never with a staged projection.
+        // Save changes are cumulative against the save baseline, including
+        // undo/redo, and against a pending one from its version on. They are
+        // published with the model, never with a staged projection.
+        const pending = this.pendingSaveBaseline;
         for (const ids of [
           applied.value.touched.modified,
           applied.value.touched.inserted,
           applied.value.touched.removed,
         ]) {
-          for (const id of ids) this.saveTouched.add(id);
+          for (const id of ids) {
+            this.saveTouched.add(id);
+            pending?.touched.add(id);
+          }
         }
         // Comment operations touch only the comments part and keep the paragraph
         // splice path; every other operation that inserts or removes blocks, or
@@ -3590,8 +3897,10 @@ class CanonicalSession {
           (bodyOps.length > 0 &&
             (applied.value.touched.inserted.length > 0 ||
               applied.value.touched.removed.length > 0))
-        )
+        ) {
           this.saveStructure = "changed";
+          if (pending) pending.structure = "changed";
+        }
         this.currentVersion = baseVersion + 1;
         onPublish(applied.value.inverse, this.currentVersion, shown);
         const committed: CanonicalCommittedBatch = {
@@ -3601,6 +3910,7 @@ class CanonicalSession {
           version: this.currentVersion,
           origin,
         };
+        if (typing !== undefined) recordCanonicalTyping(committed, typing);
         for (const listener of this.committedListeners) listener(committed);
         return Result.ok(undefined);
       },
@@ -3798,5 +4108,40 @@ export const deletionRange = (
   );
   if (from === undefined || to === undefined)
     panic("Canonical deletion lost a grapheme boundary.");
+  return Result.ok({ from, to });
+};
+
+/**
+ * The deletion a browser measured (by word or by line) as the visible
+ * characters its range covers whole, in the caret's paragraph: from the first
+ * such character's start to the last one's end. Zero-width anchors at the
+ * range's edges stay, as they do beside a plain character deletion; an inline
+ * atom only partly covered stays; `null` when the range covers no visible
+ * character.
+ */
+export const measuredDeletionRange = (
+  state: EditorState,
+  measured: { from: number; to: number },
+): Result<{ from: number; to: number } | null, CanonicalSessionError> => {
+  const context = visibleDeletionContext(state);
+  if (context.isErr()) return context;
+  const { physicalStarts, physicalEnds } = context.value;
+  let from: number | undefined;
+  let to: number | undefined;
+  for (const [unit, start] of physicalStarts.entries()) {
+    const end = physicalEnds.at(unit);
+    if (end === undefined)
+      panic("Canonical deletion lost a visible character's end.");
+    if (start < measured.from || end > measured.to) continue;
+    from ??= start;
+    to = end;
+  }
+  if (from === undefined || to === undefined) return Result.ok(null);
+  let noteMarkers = 0;
+  state.doc.nodesBetween(from, to, (node) => {
+    if (node.type.name === "noteMarker") noteMarkers += 1;
+  });
+  if (noteMarkers > 0)
+    return refuse("Automatic note marks cannot be deleted as characters.");
   return Result.ok({ from, to });
 };

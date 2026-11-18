@@ -1,4 +1,4 @@
-import { Result } from "better-result";
+import { panic, Result } from "better-result";
 /**
  * `folio render` and `folio serve`: the document as its pages, from folio's
  * own layout and painters. Neither changes the document.
@@ -31,6 +31,7 @@ import {
   buildDisplayList,
   checkPages,
   displayListHtml,
+  RENDER_FORMATS,
   type RenderFormat,
   renderPdf,
   renderPng,
@@ -66,18 +67,40 @@ const formatFrom = (
       );
 };
 
+const isRenderFormat = (value: unknown): value is RenderFormat =>
+  RENDER_FORMATS.some((format) => format === value);
+
 /** The output format an extension names, or `null` for any other. */
 const renderFormatOf = (target: string): RenderFormat | null => {
-  switch (path.extname(target).toLowerCase()) {
-    case ".pdf":
-      return "pdf";
-    case ".png":
-      return "png";
-    case ".html":
-      return "html";
-    default:
-      return null;
+  const extension = path.extname(target).toLowerCase().slice(1);
+  return isRenderFormat(extension) ? extension : null;
+};
+
+/** The placeholder in `-o` that numbers one output file per page. */
+const PAGE_PLACEHOLDER = "{page}";
+
+/**
+ * One-based page numbers from a list of numbers and ranges (`1-3,5`), in
+ * the order given, each once.
+ */
+const pagesFrom = (spec: string): Result<readonly number[], FolioCliError> => {
+  const pages: number[] = [];
+  for (const part of spec.split(",")) {
+    const range = /^\s*(\d+)\s*(?:-\s*(\d+)\s*)?$/u.exec(part);
+    const first = Number(range?.[1]);
+    const last = range?.[2] === undefined ? first : Number(range[2]);
+    if (range === null || first < 1 || last < first) {
+      return Result.err(
+        usageError(
+          `--pages expects page numbers and ranges such as 1-3,5; got ${JSON.stringify(spec)}.`,
+        ),
+      );
+    }
+    for (let page = first; page <= last; page += 1) {
+      if (!pages.includes(page)) pages.push(page);
+    }
   }
+  return Result.ok(pages);
 };
 
 const positiveInteger = (
@@ -92,17 +115,19 @@ const positiveInteger = (
 };
 
 export const RENDER_HELP: string = [
-  "Usage: folio render <file> -o <out.pdf|out.png|out.html> [--page <n>]",
+  "Usage: folio render <file> -o <out.pdf|out.png|out.html> [--pages <list>] [--format <pdf|png|html>]",
   "",
-  "Render the document with folio's layout: a PDF of every page (or --page n), an HTML",
-  "document of its pages, or one page as a PNG (page 1 unless --page). PNG needs Chromium",
-  "through playwright-core. The document is never changed.",
+  "Render the document with folio's layout: a PDF of the pages, an HTML document of them, or",
+  "PNG images (page 1 unless --pages; one file per page when -o contains {page}). PNG needs",
+  "Chromium through playwright-core. The document is never changed.",
   "",
   "Flags:",
-  "  -o, --out <path>          Output file; its extension picks the format",
-  "  --page <n>                Only this page (1-based)",
+  "  -o, --out <path>          Output file; with {page}, one PNG per page (page-{page}.png)",
+  "  --format <pdf|png|html>   Output format (default: from the -o extension)",
+  "  --pages <list>            Only these pages: numbers and ranges, 1-based (1-3,5)",
+  "  --page <n>                Only this page (same as --pages n)",
   "  --scale <n>               PNG pixels per CSS pixel (default 2)",
-  "  --overwrite               Replace an existing output file",
+  "  --overwrite               Replace existing output files",
   "  --expect-version <sha>    Refuse unless the document has this fileVersion",
   "  --date <iso>              PDF creation date (default: now)",
   "  --output <json|text>      Envelope format",
@@ -111,6 +136,8 @@ export const RENDER_HELP: string = [
 
 const renderOptions = {
   out: { type: "string", short: "o" },
+  format: { type: "string" },
+  pages: { type: "string" },
   page: { type: "string" },
   scale: { type: "string" },
   overwrite: { type: "boolean" },
@@ -153,6 +180,8 @@ export const runRender = async (
 type RenderArguments = {
   values: {
     out?: string | undefined;
+    format?: string | undefined;
+    pages?: string | undefined;
     page?: string | undefined;
     scale?: string | undefined;
     overwrite?: boolean | undefined;
@@ -161,6 +190,46 @@ type RenderArguments = {
   };
   positionals: readonly string[];
 };
+
+/** The format `--format` names, or the one `-o`'s extension names; they must agree. */
+const outputFormatFrom = (
+  out: string,
+  format: string | undefined,
+): Result<RenderFormat, FolioCliError> => {
+  const named = renderFormatOf(out.replaceAll(PAGE_PLACEHOLDER, ""));
+  if (format === undefined) {
+    return named === null
+      ? Result.err(
+          usageError(
+            "-o must end in .pdf, .png, or .html, or --format must name the format.",
+          ),
+        )
+      : Result.ok(named);
+  }
+  if (!isRenderFormat(format)) {
+    return Result.err(
+      usageError(`--format must be ${RENDER_FORMATS.join(", ")}.`),
+    );
+  }
+  return named !== null && named !== format
+    ? Result.err(usageError(`-o ends in .${named} but --format is ${format}.`))
+    : Result.ok(format);
+};
+
+/** The pages asked for by --pages or --page; `undefined` for every page. */
+const selectedPages = (
+  values: RenderArguments["values"],
+): Result<readonly number[] | undefined, FolioCliError> => {
+  if (values.pages !== undefined && values.page !== undefined) {
+    return Result.err(usageError("Pass --pages or --page, not both."));
+  }
+  if (values.pages !== undefined) return pagesFrom(values.pages);
+  const page = positiveInteger(values.page, "--page");
+  if (page.isErr()) return Result.err(page.error);
+  return Result.ok(page.value === undefined ? undefined : [page.value]);
+};
+
+type RenderedFile = { page?: number; bytes: Uint8Array; target: string };
 
 const render = async ({
   values,
@@ -177,12 +246,27 @@ const render = async ({
       usageError("folio render needs -o <out.pdf|out.png|out.html>."),
     );
   }
-  const kind = renderFormatOf(values.out);
-  if (kind === null) {
-    return Result.err(usageError("-o must end in .pdf, .png, or .html."));
+  const out = values.out;
+  const kind = outputFormatFrom(out, values.format);
+  if (kind.isErr()) return Result.err(kind.error);
+  const perPage = out.includes(PAGE_PLACEHOLDER);
+  if (perPage && kind.value !== "png") {
+    return Result.err(
+      usageError(
+        `${PAGE_PLACEHOLDER} in -o numbers PNG files; a ${kind.value} holds every page.`,
+      ),
+    );
   }
-  const page = positiveInteger(values.page, "--page");
-  if (page.isErr()) return Result.err(page.error);
+  const pages = selectedPages(values);
+  if (pages.isErr()) return Result.err(pages.error);
+  if (kind.value === "png" && !perPage && (pages.value?.length ?? 1) > 1) {
+    return Result.err(
+      usageError(
+        `Several pages make several PNG files: put ${PAGE_PLACEHOLDER} in -o.`,
+        "For example -o page-{page}.png.",
+      ),
+    );
+  }
   const scale = positiveInteger(values.scale, "--scale");
   if (scale.isErr()) return Result.err(scale.error);
   const date = resolveTransactionDate(values.date);
@@ -193,56 +277,92 @@ const render = async ({
   const version = checkExpectedVersion(file.value, values["expect-version"]);
   if (version.isErr()) return Result.err(version.error);
 
-  const pages = page.value === undefined ? undefined : [page.value];
-  let output: Result<{ bytes: Uint8Array; pageCount: number }, FolioCliError>;
-  switch (kind) {
-    case "pdf":
-      output = await renderPdf({
+  let rendered: RenderedFile[];
+  let pageCount: number;
+  switch (kind.value) {
+    case "pdf": {
+      const pdf = await renderPdf({
         file: file.value,
-        pages,
+        pages: pages.value,
         timestamp: date.value,
       });
+      if (pdf.isErr()) return Result.err(pdf.error);
+      pageCount = pdf.value.pageCount;
+      rendered = [{ bytes: pdf.value.bytes, target: out }];
       break;
-    case "png":
-      output = await renderPng({
+    }
+    case "png": {
+      const png = await renderPng({
         file: file.value,
-        page: page.value ?? 1,
+        pages: perPage ? pages.value : (pages.value ?? [1]),
         scale: scale.value ?? 2,
       });
+      if (png.isErr()) return Result.err(png.error);
+      pageCount = png.value.length;
+      rendered = png.value.map(({ page, bytes }) => ({
+        page,
+        bytes,
+        target: out.replaceAll(PAGE_PLACEHOLDER, String(page)),
+      }));
       break;
+    }
     case "html": {
       const list = await buildDisplayList(file.value);
-      const selected = list.isOk() ? checkPages(list.value, pages) : list;
-      output = selected.isOk()
-        ? Result.ok({
-            bytes: encodeUtf8(
-              displayListHtml(selected.value, path.basename(file.value.path)),
-            ),
-            pageCount: selected.value.pages.length,
-          })
-        : Result.err(selected.error);
+      const selected = list.isOk() ? checkPages(list.value, pages.value) : list;
+      if (selected.isErr()) return Result.err(selected.error);
+      pageCount = selected.value.pages.length;
+      rendered = [
+        {
+          bytes: encodeUtf8(
+            displayListHtml(selected.value, path.basename(file.value.path)),
+          ),
+          target: out,
+        },
+      ];
       break;
     }
     default: {
-      const unreachable: never = kind;
-      return unreachable;
+      const unreachable: never = kind.value;
+      return panic("Unhandled render format", { unreachable });
     }
   }
-  if (output.isErr()) return Result.err(output.error);
-  const written = await writeOutputFile({
-    target: values.out,
-    bytes: output.value.bytes,
-    overwrite: values.overwrite === true,
-    input: file.value.identity,
-  });
-  if (written.isErr()) return Result.err(written.error);
+  const outputs: { page?: number; output: string; bytes: number }[] = [];
+  for (const { page, bytes, target } of rendered) {
+    const written = await writeOutputFile({
+      target,
+      bytes,
+      overwrite: values.overwrite === true,
+      input: file.value.identity,
+    });
+    if (written.isErr()) {
+      return Result.err(
+        outputs.length === 0
+          ? written.error
+          : cliError({
+              code: written.error.code,
+              message: written.error.message,
+              ...(written.error.hint !== undefined && {
+                hint: written.error.hint,
+              }),
+              details: { written: outputs },
+            }),
+      );
+    }
+    outputs.push({
+      ...(page !== undefined && { page }),
+      output: written.value,
+      bytes: bytes.byteLength,
+    });
+  }
+  const [first] = outputs;
   return Result.ok({
     path: file.value.path,
     fileVersion: file.value.fileVersion,
-    output: written.value,
-    format: kind,
-    pageCount: output.value.pageCount,
-    bytes: output.value.bytes.byteLength,
+    format: kind.value,
+    pageCount,
+    ...(perPage || first === undefined
+      ? { outputs }
+      : { output: first.output, bytes: first.bytes }),
   });
 };
 

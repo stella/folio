@@ -309,9 +309,11 @@
                 aria-hidden="true"
               >
                 <AnonymizationRectsOverlay
-                  :get-view="() => editorView"
+                  :get-highlights="readAnonymizationHighlights"
                   :get-pages-container="() => pagesRef"
                   :editor-state="editorState"
+                  :terms="props.anonymizationTerms"
+                  :on-matches-change="props.onAnonymizationMatchesChange"
                   :zoom="zoom"
                   :layout="layout"
                   :blocks="blocks"
@@ -347,6 +349,8 @@
                   :editor-state="editorState"
                   :zoom="zoom"
                   :sync-coordinator="syncCoordinator"
+                  :suggestion="autocompleteSuggestion"
+                  :editor-position-at="editor.editorPositionAt"
                 />
                 <DecorationLayer
                   :get-view="() => editorView"
@@ -445,6 +449,7 @@
               "
               :pages-container="pagesRef"
               :page-width-px="pageWidthPx"
+              :column-start="panelLayout.commentsColumnStart"
               :zoom="zoom"
               :active-item-id="activeSidebarItem"
               @close="dismissComments"
@@ -514,6 +519,7 @@
     <ContentControlWidgetsOverlay
       :event-root="readOnly ? null : pagesRef"
       :view="editorView"
+      @refused="showRefusalNotice"
     />
   </div>
 </template>
@@ -575,6 +581,7 @@ import { commentIdsNamedIn } from "@stll/folio-core/prosemirror/commentRecords";
 import { executeEditorCommand } from "@stll/folio-core/prosemirror/executeEditorCommand";
 import { getTableContext } from "@stll/folio-core/prosemirror/extensions/nodes/TableExtension";
 import { extractSelectionContext } from "@stll/folio-core/prosemirror/plugins/selectionTracker";
+import type { FolioAutocompleteState } from "@stll/folio-core/types/autocomplete";
 import {
   CANONICAL_GAP,
   type CanonicalGap,
@@ -932,6 +939,10 @@ useKeyboardShortcuts({
 const savedComments = () =>
   commentManagement.comments.value.map((comment) => toRaw(comment));
 
+const autocompleteSuggestion = shallowRef<FolioAutocompleteState>({
+  status: "idle",
+});
+
 const {
   editor,
   editorView,
@@ -965,6 +976,10 @@ const {
   reLayout,
   setEmbeddedFontFamilies,
 } = useDocxEditor({
+  onAutocompleteChange: (state) => {
+    autocompleteSuggestion.value = state;
+    props.onAutocompleteChange?.(state);
+  },
   // Read at save time; comment management is set up below.
   comments: () => savedComments(),
   hiddenContainer: hiddenPmRef,
@@ -987,10 +1002,9 @@ const {
   onCanonicalHistory: (effect) => props.onCanonicalHistory?.(effect),
   onCanonicalHistoryDrop: (drop) => props.onCanonicalHistoryDrop?.(drop),
   collaboration: () => props.collaboration,
-  // Anonymization highlights + template directives are driven by the overlay
-  // components below; these thread the plugin callbacks and the directive gate.
-  onAnonymizationMatchesChange: (matches) =>
-    props.onAnonymizationMatchesChange?.(matches),
+  // Template directives are driven by the overlay components below; this
+  // threads the directive gate. Highlights read the host's terms.
+  getAnonymizationTerms: () => props.anonymizationTerms,
   showTemplateDirectives: () => props.showTemplateDirectives,
   onSlashMenuChange: (state) => props.onSlashMenuChange?.(state),
   onSlashMenuKeyAction: (action) =>
@@ -1025,6 +1039,8 @@ const {
     ? (result) => props.onSelectiveSaveTripwire?.(result)
     : undefined,
 });
+
+const readAnonymizationHighlights = () => editor.getAnonymizationHighlights();
 
 /**
  * The current document for this component's own readers: never a host copy,
@@ -1669,8 +1685,8 @@ function handleInsertTOCAction(): void {
 // the horizontal + vertical rulers (showRuler); the page-setup dialog reuses
 // handlePageSetupApply. Margin / page-size writes mutate section properties
 // directly (no PM transaction), so they notify the host through `onChange` here;
-// indent / tab-stop edits dispatch PM commands and already notify via the
-// transaction pipeline.
+// indent / tab-stop edits run through the view's command owner and already
+// notify via the transaction pipeline.
 const {
   handlePageSetupApply,
   handleLeftMarginChange,
@@ -1682,7 +1698,7 @@ const {
   handleFirstLineIndentChange,
   handleTabStopRemove,
 } = usePageSetupControls({
-  editorView,
+  editorView: activeEditorView,
   getDocument,
   readOnly,
   stateTick,

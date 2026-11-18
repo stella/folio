@@ -39,13 +39,14 @@
  */
 
 import { panic } from "better-result";
-import { describe, expect, setDefaultTimeout, test } from "bun:test";
+import { describe, expect, mock, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
 import { assertExactModel } from "../../../../../test/exactModel";
 import { checkCoverageSample } from "../../../../../test/property-coverage";
 import {
   assertProperty,
+  propertyConfig,
   propertyTestTimeout,
 } from "../../../../../test/property-testing";
 import { projectReview } from "../../../../../test/reviewProjection";
@@ -66,6 +67,7 @@ import {
   paragraphIdsIn,
 } from "../ids";
 import { gapAfterInserted } from "../inline";
+import * as keptJoinsModule from "../keptJoins";
 import {
   childNodes,
   compareGaps,
@@ -83,6 +85,7 @@ import {
 } from "../rangeBoundaries";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import { planRevisionResolution } from "../resolve";
+import * as resolvedEdgesModule from "../resolvedEdges";
 import {
   isAddedRevision,
   isTrackedWrapper,
@@ -194,12 +197,40 @@ const asRangeBoundary = (value: unknown): RangeBoundary | undefined => {
     : undefined;
 };
 
-const boundariesBelow = (value: unknown): RangeBoundary[] => {
+const boundariesBelow = (
+  value: unknown,
+  removedAddedAncestors = 0,
+): RangeBoundary[] => {
   const boundary = asRangeBoundary(value);
-  if (boundary !== undefined) return [boundary];
-  if (Array.isArray(value)) return value.flatMap(boundariesBelow);
-  if (typeof value === "object" && value !== null)
-    return Object.values(value).flatMap(boundariesBelow);
+  if (boundary !== undefined) {
+    const origins: unknown =
+      typeof value === "object" && value !== null
+        ? Reflect.get(value, "copyOriginAncestors")
+        : undefined;
+    // An ordinal names an added source ancestor. Removing its owner removes
+    // the copy even when the story has no other boundary of that same side.
+    return Array.isArray(origins) &&
+      origins.some(
+        (ordinal) =>
+          typeof ordinal === "number" && ordinal < removedAddedAncestors,
+      )
+      ? []
+      : [boundary];
+  }
+  if (Array.isArray(value))
+    return value.flatMap((child) =>
+      boundariesBelow(child, removedAddedAncestors),
+    );
+  if (typeof value === "object" && value !== null) {
+    const type: unknown = Reflect.get(value, "type");
+    const depth =
+      removedAddedAncestors > 0 && (type === "insertion" || type === "moveTo")
+        ? removedAddedAncestors + 1
+        : removedAddedAncestors;
+    return Object.values(value).flatMap((child) =>
+      boundariesBelow(child, depth),
+    );
+  }
   return [];
 };
 
@@ -237,7 +268,7 @@ const boundariesKeptByRejecting = (
       typeof id === "number" &&
       ids.has(id)
     ) {
-      const inside = boundariesBelow(Reflect.get(value, "content"));
+      const inside = boundariesBelow(Reflect.get(value, "content"), 1);
       const whole = new Set(
         inside
           .filter(({ type: kind }) => kind === "commentRangeStart")
@@ -800,7 +831,347 @@ const TRACKING_REFUSALS: readonly string[] = [
 // The laws
 // ---------------------------------------------------------------------------
 
+/**
+ * The pinned counterexample of {@link twoBatchesLaw} where pieces of an
+ * inserted link are accepted before the insertion made inside the link.
+ */
+const JOIN_MEETS_PENDING_INSERTION = {
+  seed: 1693779915,
+  path: "746:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:12:15:1:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:5:6:8:9:10:10:10:10:12:14:17:16:16:20:24:34:36:38:41:41:41:41:41:41:71:71:71:79:7:7:69:61:61:10:51:50:52:53:51:51:51:51:51:51:51:51:51:51:51:51:51:51:51:57:55:50:50:15:14:16:14:14:16:14:14:14:18:16:14:14:14:18:18:18:18:18:18:18:18:20:26:24:25:19:22:22:22:27:27:30:22:24:22:22:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:26:27:14:14:15:24:24:24:24:24:24:4:4:19:19:19:20:20:17:18:17:22:17:30:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:21:20:20:21:8:11:14:14:16:16:16:16:17:16:16",
+};
+
+/**
+ * The pinned counterexample of {@link atOnceLaw} where a deletion's seam
+ * meets a pending insertion of new content with a piece of the record it cut
+ * beyond it.
+ */
+const REMOVAL_SEAM_BESIDE_NEW_CONTENT = {
+  seed: 2133206926,
+  path: "88:3:6:14:14:15:15:15:15:15:17:18:22:24:29:29:29:29:29:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:32:33:31:49:39:41:40:8:27:0:1:4:10:23:18:18:18:18:20:18:20:18:18:20:18:29:20:3:18:17:18:17:17:17:18:18:17:17:19:17:17:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:22:37:28:21:21:24:25:33:24:52:42:40:56:17:17:17:55:56:56:58:53:54:58:54:54:54:54:54:54:54:54:54:55:55:55:55:55:55:55:55:55:77:56:61:61:61:62:26:24:24:26:26:29:24:24:24:26:24:24:35:22:21:21:21:21:21:21:21:21:21:31:27:29:27:19:33:24:24:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:30:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29",
+};
+
+/**
+ * Resolving a run's revisions at once leaves the document resolving each
+ * operation's in turn does, and rejecting them gives the document back.
+ */
+const atOnceLaw = (tally: Tally) =>
+  fc.property(
+    reviewDocumentArbitrary,
+    fc.array(opSeedArbitrary, { minLength: 2, maxLength: 6 }),
+    (document, seeds: OpSeed[]) => {
+      let current = document;
+      const stamps: RevisionStamp[] = [];
+      const kinds: DocumentOpType[] = [];
+      let keptEarlier = false;
+      for (const [index, seed] of seeds.entries()) {
+        const op = trackedOpFor(current, seed, index);
+        const applied = applyDocumentOp(current, op);
+        if (applied.isErr()) continue;
+        const stamp = stampOf(op);
+        if (stamp === undefined) continue;
+        keptEarlier ||= keptEarlierChange(
+          current,
+          op,
+          new Set(stampedIds(current, stamps)),
+        );
+        kinds.push(kindOf(op));
+        stamps.push(stamp);
+        current = applied.value.document;
+      }
+      // An operation's revisions: every record carrying its stamp, pieces later
+      // operations cut from them included.
+      const perOp = stamps.map((stamp) => stampedIds(current, [stamp]));
+      const all = perOp.flat();
+      if (all.length === 0) return;
+      // A kind counts once its revisions reach the checks below.
+      for (const [index, ids] of perOp.entries())
+        if (ids.length > 0) count(tally, kinds[index] ?? "unknown");
+      // The run's own revisions: at once, and one operation's at a time.
+      const rejectedAtOnce = resolved(current, all, REVISION_DECISIONS.REJECT);
+      const rejectedInTurn = resolvedInTurn(
+        current,
+        perOp.toReversed(),
+        REVISION_DECISIONS.REJECT,
+      );
+      assertExactModel(
+        projected(rejectedAtOnce, "π′"),
+        projected(rejectedInTurn, "π′"),
+      );
+      expectSettledDeferredSeams(rejectedAtOnce);
+      expectSettledDeferredSeams(rejectedInTurn);
+      // A split at a paragraph's end is given back under the new paragraph's id.
+      if (!keptEarlier) {
+        expectRejectedTo({
+          rejected: rejectedAtOnce,
+          tracked: current,
+          ids: all,
+          expected: document,
+          projection: "π′",
+        });
+      }
+      // Every revision (A*, J*): the run's in turn first, or all at once.
+      const acceptedInTurn = resolvedInTurn(
+        current,
+        perOp,
+        REVISION_DECISIONS.ACCEPT,
+      );
+      const allAccepted = resolvedAll(current, REVISION_DECISIONS.ACCEPT);
+      const turnAccepted = resolvedAll(
+        acceptedInTurn,
+        REVISION_DECISIONS.ACCEPT,
+      );
+      expectSettledDeferredSeams(acceptedInTurn);
+      if (allAccepted !== undefined && turnAccepted !== undefined) {
+        count(tally, "A*");
+        expectSettledDeferredSeams(allAccepted);
+        expectSettledDeferredSeams(turnAccepted);
+        assertExactModel(
+          projected(allAccepted, "π′"),
+          projected(turnAccepted, "π′"),
+        );
+      }
+      const allRejected = resolvedAll(current, REVISION_DECISIONS.REJECT);
+      const originalRejected = resolvedAll(document, REVISION_DECISIONS.REJECT);
+      if (allRejected !== undefined && originalRejected !== undefined) {
+        count(tally, "J*");
+        expectSettledDeferredSeams(allRejected);
+        expectRejectedTo({
+          rejected: allRejected,
+          tracked: current,
+          ids: all,
+          expected: originalRejected,
+          projection: "π′",
+        });
+      }
+    },
+  );
+
+/**
+ * The pinned counterexample of {@link twoBatchesLaw} where a link is
+ * rejected while text inserted inside it is pending: the link's kept
+ * boundary goes into the piece the accepted text keeps, in any order.
+ */
+const KEPT_BOUNDARY_INTO_INSERTED_PIECE = {
+  seed: 1119828939,
+  path: "60:12:10:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:22:26:14:22:22:22:31:26:22:22:22:1:31:31:31:31:31:31:31:31:31:31:31:31:31:31:38:37:39:43:44:45:46:46:46:46:46:48:47:47:50:50:26:20:24:37:36:38:44:46:51:52:52:52:52:61:61:62:62:62:62:63:63:3:60:60:60:67:14:39:50:51:18:49:49:16:25:35:23:32:32:32:32:33:32:35:32:33:32:32:32:33:32:33:33:33:33:32:32:34:32:32:33:34:34:34:34:34:34:34:34:34:34:34:34:34:34:34:34:34:34:34:34:34:37:52:38:34:37:37:37:38:37:37:37:43:19:29:32:29:19:15:23:18:22:18:25:27:36:21:26:26:26:26:26:26:26:26:26:26:26:26:26:26:21:26:25:25:25:25:25:26:26:26:26:26:26:26:26:28:26",
+};
+
+/**
+ * Resolving a run's accepted and rejected revisions as two batches, in
+ * either order, leaves the document resolving each operation's in turn does.
+ */
+const twoBatchesLaw = (tally: Tally) =>
+  fc.property(
+    reviewDocumentArbitrary,
+    fc.array(opSeedArbitrary, { minLength: 2, maxLength: 6 }),
+    fc.array(fc.nat(), { minLength: 6, maxLength: 6 }),
+    fc.array(decisionArbitrary, { minLength: 6, maxLength: 6 }),
+    (document, seeds: OpSeed[], keys: number[], decisions) => {
+      let current = document;
+      const stamps: RevisionStamp[] = [];
+      const kinds: DocumentOpType[] = [];
+      for (const [index, seed] of seeds.entries()) {
+        const op = trackedOpFor(current, seed, index);
+        const applied = applyDocumentOp(current, op);
+        if (applied.isErr()) continue;
+        const stamp = stampOf(op);
+        if (stamp === undefined) continue;
+        kinds.push(kindOf(op));
+        stamps.push(stamp);
+        current = applied.value.document;
+      }
+      const perOp = stamps.map((stamp, index) => ({
+        ids: stampedIds(current, [stamp]),
+        decision: decisions[index] ?? REVISION_DECISIONS.ACCEPT,
+      }));
+      const idsDecided = (decision: RevisionDecision): number[] =>
+        perOp.flatMap((group) =>
+          group.decision === decision ? group.ids : [],
+        );
+      const accepted = idsDecided(REVISION_DECISIONS.ACCEPT);
+      const rejected = idsDecided(REVISION_DECISIONS.REJECT);
+      if (accepted.length + rejected.length === 0) return;
+      // A kind counts once its revisions reach the checks below.
+      for (const [index, { ids }] of perOp.entries())
+        if (ids.length > 0) count(tally, kinds[index] ?? "unknown");
+      if (accepted.length > 0 && rejected.length > 0) count(tally, "mixed");
+      // The operations' revisions in an order the keys draw, earlier
+      // operations' before later ones' as often as after.
+      const order = perOp
+        .map((group, index) => ({
+          group,
+          key: keys[index] ?? index,
+          index,
+        }))
+        .toSorted(
+          (left, right) => left.key - right.key || left.index - right.index,
+        )
+        .map(({ group }) => group);
+      let oneByOne = current;
+      for (const { ids, decision } of order) {
+        oneByOne = resolved(oneByOne, ids, decision);
+        expectSettledDeferredSeams(oneByOne);
+      }
+      const expected = projected(oneByOne, "π′");
+      const acceptedFirst = resolved(
+        resolved(current, accepted, REVISION_DECISIONS.ACCEPT),
+        rejected,
+        REVISION_DECISIONS.REJECT,
+      );
+      expectSettledDeferredSeams(acceptedFirst);
+      assertExactModel(projected(acceptedFirst, "π′"), expected);
+      const rejectedFirst = resolved(
+        resolved(current, rejected, REVISION_DECISIONS.REJECT),
+        accepted,
+        REVISION_DECISIONS.ACCEPT,
+      );
+      expectSettledDeferredSeams(rejectedFirst);
+      assertExactModel(projected(rejectedFirst, "π′"), expected);
+    },
+  );
+
+/**
+ * The pinned counterexample of {@link rejectedInAnyOrderLaw} where an
+ * insertion at a cut control's start is rejected with the insertion beside
+ * the control.
+ */
+const CUT_THROUGH_REMOVED_CHANGE = {
+  seed: -127943074,
+  path: "1262:8:7:10:13:15:15:15:19:17:1:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:19:5:3:3:3:3:3:5:3:3:5:5:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:7:8:3:3:3:10:3:14:14:14:15:17:15:14:14:14:14:15:15:15:15:14:14:14:14:14:14:14:14:14:15:15:15:15:15:15:15:15:15:15:15:15:15:15:15:16:16:16:16:16:16:16:16:16:16:16:16:16",
+};
+
+/**
+ * Rejecting the revisions of a run of operations at once leaves the document
+ * rejecting each operation's in an order the keys draw leaves.
+ */
+const rejectedInAnyOrderLaw = (tally: Tally) =>
+  fc.property(
+    reviewDocumentArbitrary,
+    fc.array(opSeedArbitrary, { minLength: 2, maxLength: 6 }),
+    fc.array(fc.nat(), { minLength: 6, maxLength: 6 }),
+    (document, seeds: OpSeed[], keys: number[]) => {
+      let current = document;
+      const stamps: RevisionStamp[] = [];
+      const kinds: DocumentOpType[] = [];
+      for (const [index, seed] of seeds.entries()) {
+        const op = trackedOpFor(current, seed, index);
+        const applied = applyDocumentOp(current, op);
+        if (applied.isErr()) continue;
+        const stamp = stampOf(op);
+        if (stamp === undefined) continue;
+        kinds.push(kindOf(op));
+        stamps.push(stamp);
+        current = applied.value.document;
+      }
+      const perOp = stamps.map((stamp) => stampedIds(current, [stamp]));
+      const all = perOp.flat();
+      if (all.length === 0) return;
+      // A kind counts once its revisions reach the check below.
+      for (const [index, ids] of perOp.entries())
+        if (ids.length > 0) count(tally, kinds[index] ?? "unknown");
+      // The operations' revisions in an order the keys draw, earlier
+      // operations' before later ones' as often as after.
+      const order = perOp
+        .map((ids, index) => ({ ids, key: keys[index] ?? index, index }))
+        .toSorted(
+          (left, right) => left.key - right.key || left.index - right.index,
+        )
+        .map(({ ids }) => ids);
+      const atOnce = resolved(current, all, REVISION_DECISIONS.REJECT);
+      const inOrder = resolvedInTurn(current, order, REVISION_DECISIONS.REJECT);
+      assertExactModel(projected(atOnce, "π′"), projected(inOrder, "π′"));
+      expectSettledDeferredSeams(atOnce);
+      expectSettledDeferredSeams(inOrder);
+    },
+  );
+
 describe("tracked operations and their resolution", () => {
+  test("the rejection oracle follows copied whole-range ownership when only its partner stands outside", () => {
+    const original = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              paraId: "00000001",
+              content: [
+                {
+                  type: "moveToRangeStart",
+                  id: 18,
+                  name: "move18",
+                  author: "A",
+                },
+              ],
+            },
+          ],
+        },
+      },
+    } satisfies Document;
+    const op = {
+      type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
+      at: { story: OP_STORIES.MAIN, blockId: "00000001", offset: 0 },
+      slice: {
+        openStart: 0,
+        openEnd: 0,
+        content: [
+          { type: "moveToRangeEnd", id: 18 },
+          {
+            type: "hyperlink",
+            rId: "rId9",
+            href: "https://example.org",
+            children: [
+              {
+                type: "inlineWrapper",
+                kind: "bidi",
+                control: "embedding",
+                content: [
+                  {
+                    type: "moveToRangeStart",
+                    id: 18,
+                    name: "move18",
+                    author: "A",
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      revision: { id: 1, author: "C", date: "2026-03-04T05:00:00Z" },
+      newIds: { revision: [303648, 303649], control: [293648, 293649] },
+    } satisfies ReturnType<typeof trackedOpFor>;
+    const tracked = applyDocumentOp(original, op);
+    if (tracked.isErr()) throw tracked.error;
+    const insertion = tracked.value.document.package.document.content.at(0);
+    if (insertion?.type !== "paragraph")
+      panic("The insertion stays in its paragraph.");
+    const copied = leafSpans(insertion.content).flatMap(({ node }) =>
+      node.type === "moveToRangeStart" || node.type === "moveToRangeEnd"
+        ? [node.copyOriginAncestors]
+        : [],
+    );
+    expect(copied).toEqual([[0], [0], undefined]);
+    expect(
+      boundariesKeptByRejecting(
+        tracked.value.document,
+        new Set(tracked.value.revisions),
+      ),
+    ).toEqual([]);
+    const rejected = applyDocumentOp(
+      tracked.value.document,
+      resolveOp(tracked.value.revisions, REVISION_DECISIONS.REJECT),
+    );
+    if (rejected.isErr()) throw rejected.error;
+    expect(rejected.value.document).toStrictEqual(original);
+    expectRejectedTo({
+      rejected: rejected.value.document,
+      tracked: tracked.value.document,
+      ids: tracked.value.revisions,
+      expected: original,
+      projection: "π",
+    });
+  });
+
   test("L3: copied bookmark boundaries keep their source position across rejection order", () => {
     const source = normalizeForOps({
       package: {
@@ -1161,166 +1532,24 @@ describe("tracked operations and their resolution", () => {
   });
 
   test("L3: resolving a run's revisions at once equals resolving each operation's in turn", () => {
-    const law = (tally: Tally) =>
-      fc.property(
-        reviewDocumentArbitrary,
-        fc.array(opSeedArbitrary, { minLength: 2, maxLength: 6 }),
-        (document, seeds: OpSeed[]) => {
-          let current = document;
-          const stamps: RevisionStamp[] = [];
-          const kinds: DocumentOpType[] = [];
-          let keptEarlier = false;
-          for (const [index, seed] of seeds.entries()) {
-            const op = trackedOpFor(current, seed, index);
-            const applied = applyDocumentOp(current, op);
-            if (applied.isErr()) continue;
-            const stamp = stampOf(op);
-            if (stamp === undefined) continue;
-            keptEarlier ||= keptEarlierChange(
-              current,
-              op,
-              new Set(stampedIds(current, stamps)),
-            );
-            kinds.push(kindOf(op));
-            stamps.push(stamp);
-            current = applied.value.document;
-          }
-          // An operation's revisions: every record carrying its stamp, pieces later
-          // operations cut from them included.
-          const perOp = stamps.map((stamp) => stampedIds(current, [stamp]));
-          const all = perOp.flat();
-          if (all.length === 0) return;
-          // A kind counts once its revisions reach the checks below.
-          for (const [index, ids] of perOp.entries())
-            if (ids.length > 0) count(tally, kinds[index] ?? "unknown");
-          // The run's own revisions: at once, and one operation's at a time.
-          const rejectedAtOnce = resolved(
-            current,
-            all,
-            REVISION_DECISIONS.REJECT,
-          );
-          const rejectedInTurn = resolvedInTurn(
-            current,
-            perOp.toReversed(),
-            REVISION_DECISIONS.REJECT,
-          );
-          assertExactModel(
-            projected(rejectedAtOnce, "π′"),
-            projected(rejectedInTurn, "π′"),
-          );
-          expectSettledDeferredSeams(rejectedAtOnce);
-          expectSettledDeferredSeams(rejectedInTurn);
-          // A split at a paragraph's end is given back under the new paragraph's id.
-          if (!keptEarlier) {
-            expectRejectedTo({
-              rejected: rejectedAtOnce,
-              tracked: current,
-              ids: all,
-              expected: document,
-              projection: "π′",
-            });
-          }
-          // Every revision (A*, J*): the run's in turn first, or all at once.
-          const acceptedInTurn = resolvedInTurn(
-            current,
-            perOp,
-            REVISION_DECISIONS.ACCEPT,
-          );
-          const allAccepted = resolvedAll(current, REVISION_DECISIONS.ACCEPT);
-          const turnAccepted = resolvedAll(
-            acceptedInTurn,
-            REVISION_DECISIONS.ACCEPT,
-          );
-          expectSettledDeferredSeams(acceptedInTurn);
-          if (allAccepted !== undefined && turnAccepted !== undefined) {
-            count(tally, "A*");
-            expectSettledDeferredSeams(allAccepted);
-            expectSettledDeferredSeams(turnAccepted);
-            assertExactModel(
-              projected(allAccepted, "π′"),
-              projected(turnAccepted, "π′"),
-            );
-          }
-          const allRejected = resolvedAll(current, REVISION_DECISIONS.REJECT);
-          const originalRejected = resolvedAll(
-            document,
-            REVISION_DECISIONS.REJECT,
-          );
-          if (allRejected !== undefined && originalRejected !== undefined) {
-            count(tally, "J*");
-            expectSettledDeferredSeams(allRejected);
-            expectRejectedTo({
-              rejected: allRejected,
-              tracked: current,
-              ids: all,
-              expected: originalRejected,
-              projection: "π′",
-            });
-          }
-        },
-      );
-    assertProperty(law(new Map()), {
+    assertProperty(atOnceLaw(new Map()), {
       numRuns: NUM_RUNS / 5,
       id: "L3: resolving a run's revisions at once equals resolving each operation's in turn",
     });
     const tally: Tally = new Map();
-    checkCoverageSample(law(tally), RUN_COVERAGE_RUNS, {
+    checkCoverageSample(atOnceLaw(tally), RUN_COVERAGE_RUNS, {
       map: ([document, seeds], index) => [document, runInTurn(seeds, index)],
     });
     expectEveryKindChecked(tally);
   });
 
   test("L3: rejecting a run's revisions at once equals rejecting each operation's in any order", () => {
-    const law = (tally: Tally) =>
-      fc.property(
-        reviewDocumentArbitrary,
-        fc.array(opSeedArbitrary, { minLength: 2, maxLength: 6 }),
-        fc.array(fc.nat(), { minLength: 6, maxLength: 6 }),
-        (document, seeds: OpSeed[], keys: number[]) => {
-          let current = document;
-          const stamps: RevisionStamp[] = [];
-          const kinds: DocumentOpType[] = [];
-          for (const [index, seed] of seeds.entries()) {
-            const op = trackedOpFor(current, seed, index);
-            const applied = applyDocumentOp(current, op);
-            if (applied.isErr()) continue;
-            const stamp = stampOf(op);
-            if (stamp === undefined) continue;
-            kinds.push(kindOf(op));
-            stamps.push(stamp);
-            current = applied.value.document;
-          }
-          const perOp = stamps.map((stamp) => stampedIds(current, [stamp]));
-          const all = perOp.flat();
-          if (all.length === 0) return;
-          // A kind counts once its revisions reach the check below.
-          for (const [index, ids] of perOp.entries())
-            if (ids.length > 0) count(tally, kinds[index] ?? "unknown");
-          // The operations' revisions in an order the keys draw, earlier
-          // operations' before later ones' as often as after.
-          const order = perOp
-            .map((ids, index) => ({ ids, key: keys[index] ?? index, index }))
-            .toSorted(
-              (left, right) => left.key - right.key || left.index - right.index,
-            )
-            .map(({ ids }) => ids);
-          const atOnce = resolved(current, all, REVISION_DECISIONS.REJECT);
-          const inOrder = resolvedInTurn(
-            current,
-            order,
-            REVISION_DECISIONS.REJECT,
-          );
-          assertExactModel(projected(atOnce, "π′"), projected(inOrder, "π′"));
-          expectSettledDeferredSeams(atOnce);
-          expectSettledDeferredSeams(inOrder);
-        },
-      );
-    assertProperty(law(new Map()), {
+    assertProperty(rejectedInAnyOrderLaw(new Map()), {
       numRuns: NUM_RUNS / 5,
       id: "L3: rejecting a run's revisions at once equals rejecting each operation's in any order",
     });
     const tally: Tally = new Map();
-    checkCoverageSample(law(tally), RUN_COVERAGE_RUNS, {
+    checkCoverageSample(rejectedInAnyOrderLaw(tally), RUN_COVERAGE_RUNS, {
       map: ([document, seeds, keys], index) => [
         document,
         runInTurn(seeds, index),
@@ -1330,87 +1559,45 @@ describe("tracked operations and their resolution", () => {
     expectEveryKindChecked(tally);
   });
 
+  test("L3: a cut read through a change the same rejection removes fails the pinned seed", () => {
+    // The test-only break: a cut's edge is read through a tracked change the
+    // resolution removes instead of past it, so rejecting an insertion at a
+    // control's start together with the insertion beside the control stops
+    // the join at the control, while rejecting them in turn goes on into it.
+    const original = { ...resolvedEdgesModule };
+    mock.module("../resolvedEdges", () => ({
+      ...original,
+      edgeChainPastRemoved: () => undefined,
+    }));
+    try {
+      const result = fc.check(
+        rejectedInAnyOrderLaw(new Map()),
+        // The break is a counterexample on purpose: report nothing.
+        propertyConfig({
+          ...CUT_THROUGH_REMOVED_CHANGE,
+          numRuns: 1,
+          endOnFailure: true,
+          reporter: () => undefined,
+        }),
+      );
+      expect(result.failed).toBe(true);
+    } finally {
+      mock.module("../resolvedEdges", () => original);
+    }
+  });
+
   test("L3: a run's accepted and rejected revisions resolved as two batches, in either order, equal resolving each operation's in any order", () => {
     // One decision per operation. resolveRevision takes one decision, so "at
     // once" is two resolutions: every accepted operation's revisions, then
     // every rejected one's, or the other way round. Both give, under π′,
     // what resolving one operation's revisions at a time does, in an order
     // the keys draw, each with its own decision.
-    const law = (tally: Tally) =>
-      fc.property(
-        reviewDocumentArbitrary,
-        fc.array(opSeedArbitrary, { minLength: 2, maxLength: 6 }),
-        fc.array(fc.nat(), { minLength: 6, maxLength: 6 }),
-        fc.array(decisionArbitrary, { minLength: 6, maxLength: 6 }),
-        (document, seeds: OpSeed[], keys: number[], decisions) => {
-          let current = document;
-          const stamps: RevisionStamp[] = [];
-          const kinds: DocumentOpType[] = [];
-          for (const [index, seed] of seeds.entries()) {
-            const op = trackedOpFor(current, seed, index);
-            const applied = applyDocumentOp(current, op);
-            if (applied.isErr()) continue;
-            const stamp = stampOf(op);
-            if (stamp === undefined) continue;
-            kinds.push(kindOf(op));
-            stamps.push(stamp);
-            current = applied.value.document;
-          }
-          const perOp = stamps.map((stamp, index) => ({
-            ids: stampedIds(current, [stamp]),
-            decision: decisions[index] ?? REVISION_DECISIONS.ACCEPT,
-          }));
-          const idsDecided = (decision: RevisionDecision): number[] =>
-            perOp.flatMap((group) =>
-              group.decision === decision ? group.ids : [],
-            );
-          const accepted = idsDecided(REVISION_DECISIONS.ACCEPT);
-          const rejected = idsDecided(REVISION_DECISIONS.REJECT);
-          if (accepted.length + rejected.length === 0) return;
-          // A kind counts once its revisions reach the checks below.
-          for (const [index, { ids }] of perOp.entries())
-            if (ids.length > 0) count(tally, kinds[index] ?? "unknown");
-          if (accepted.length > 0 && rejected.length > 0) count(tally, "mixed");
-          // The operations' revisions in an order the keys draw, earlier
-          // operations' before later ones' as often as after.
-          const order = perOp
-            .map((group, index) => ({
-              group,
-              key: keys[index] ?? index,
-              index,
-            }))
-            .toSorted(
-              (left, right) => left.key - right.key || left.index - right.index,
-            )
-            .map(({ group }) => group);
-          let oneByOne = current;
-          for (const { ids, decision } of order) {
-            oneByOne = resolved(oneByOne, ids, decision);
-            expectSettledDeferredSeams(oneByOne);
-          }
-          const expected = projected(oneByOne, "π′");
-          const acceptedFirst = resolved(
-            resolved(current, accepted, REVISION_DECISIONS.ACCEPT),
-            rejected,
-            REVISION_DECISIONS.REJECT,
-          );
-          expectSettledDeferredSeams(acceptedFirst);
-          assertExactModel(projected(acceptedFirst, "π′"), expected);
-          const rejectedFirst = resolved(
-            resolved(current, rejected, REVISION_DECISIONS.REJECT),
-            accepted,
-            REVISION_DECISIONS.ACCEPT,
-          );
-          expectSettledDeferredSeams(rejectedFirst);
-          assertExactModel(projected(rejectedFirst, "π′"), expected);
-        },
-      );
-    assertProperty(law(new Map()), {
+    assertProperty(twoBatchesLaw(new Map()), {
       numRuns: NUM_RUNS / 5,
       id: "L3: a run's accepted and rejected revisions resolved as two batches, in either order, equal resolving each operation's in any order",
     });
     const tally: Tally = new Map();
-    checkCoverageSample(law(tally), RUN_COVERAGE_RUNS, {
+    checkCoverageSample(twoBatchesLaw(tally), RUN_COVERAGE_RUNS, {
       // Decisions alternate, so every sampled run of two or more mixes them.
       map: ([document, seeds, keys, decisions], index) => [
         document,
@@ -1425,6 +1612,100 @@ describe("tracked operations and their resolution", () => {
     });
     expectEveryKindChecked(tally);
     expect((tally.get("mixed") ?? 0) > 0).toBe(true);
+  });
+
+  test("L3: a kept piece's join left on the piece fails the pinned two-batch seed", () => {
+    // The test-only break: a kept piece's join that meets a pending
+    // insertion made inside its record stays on the piece, so accepting the
+    // insertion afterwards leaves three links where accepting everything at
+    // once leaves one.
+    const original = { ...keptJoinsModule };
+    mock.module("../keptJoins", () => ({
+      ...original,
+      withJoinAtLeast: (node: Parameters<typeof original.withJoinAtLeast>[0]) =>
+        node,
+    }));
+    try {
+      const result = fc.check(
+        twoBatchesLaw(new Map()),
+        // The break is a counterexample on purpose: report nothing.
+        propertyConfig({
+          ...JOIN_MEETS_PENDING_INSERTION,
+          numRuns: 1,
+          endOnFailure: true,
+          reporter: () => undefined,
+        }),
+      );
+      expect(result.failed).toBe(true);
+    } finally {
+      mock.module("../keptJoins", () => original);
+    }
+  });
+
+  test("L3: a deletion's seam handed to new content beside it fails the pinned at-once seed", () => {
+    // The test-only break: a deletion's seam passes to the pending insertion
+    // of new content beside it though a piece of the record it cut stands
+    // beyond, so accepting the insertion afterwards joins its content with
+    // the piece, which accepting everything at once keeps apart.
+    const original = { ...keptJoinsModule };
+    mock.module("../keptJoins", () => ({
+      ...original,
+      seamHandsOver: () => true,
+    }));
+    try {
+      const result = fc.check(
+        atOnceLaw(new Map()),
+        // The break is a counterexample on purpose: report nothing.
+        propertyConfig({
+          ...REMOVAL_SEAM_BESIDE_NEW_CONTENT,
+          numRuns: 1,
+          endOnFailure: true,
+          reporter: () => undefined,
+        }),
+      );
+      expect(result.failed).toBe(true);
+    } finally {
+      mock.module("../keptJoins", () => original);
+    }
+  });
+
+  test("L3: a removal's kept boundaries left off a piece already joined as deep fail the pinned two-batch seed", () => {
+    // The test-only break: a pending insertion facing a removal's seam,
+    // whose join on that side is already as deep, takes nothing from it, so
+    // the boundary the removal kept stays out of the insertion's piece when
+    // the insertion is accepted afterwards.
+    const original = { ...keptJoinsModule };
+    mock.module("../keptJoins", () => ({
+      ...original,
+      withJoinAtLeast: (
+        ...[node, side, depth, kept]: Parameters<
+          typeof original.withJoinAtLeast
+        >
+      ) =>
+        original.withJoinAtLeast(
+          node,
+          side,
+          depth,
+          isTrackedWrapper(node) && (node.resolutionJoins?.[side] ?? 0) >= depth
+            ? undefined
+            : kept,
+        ),
+    }));
+    try {
+      const result = fc.check(
+        twoBatchesLaw(new Map()),
+        // The break is a counterexample on purpose: report nothing.
+        propertyConfig({
+          ...KEPT_BOUNDARY_INTO_INSERTED_PIECE,
+          numRuns: 1,
+          endOnFailure: true,
+          reporter: () => undefined,
+        }),
+      );
+      expect(result.failed).toBe(true);
+    } finally {
+      mock.module("../keptJoins", () => original);
+    }
   });
 
   test("L4: tracked operations and resolutions are undone exactly by their inverses", () => {

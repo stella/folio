@@ -61,10 +61,12 @@ import {
   projectMarkdownIdentities,
   projectSnapshotIdentities,
 } from "./identity.ts";
+import { holdsPendingSuggestions } from "./invariants.ts";
 import type { Finding } from "./known-issues.ts";
 import { comparableMarkdown } from "./markdown-comparison.ts";
 import type { Mode } from "./operations.ts";
-import { resolvedState, type Row } from "./oracle.ts";
+import { intentResolutionScope, resolvedState, type Row } from "./oracle.ts";
+import { createParagraphIdentityRemapping } from "./paragraph-identity.ts";
 import { createRandom, type Random } from "./random.ts";
 import { type Relation, RELATIONS } from "./relation-contract.ts";
 import { assertReviewRoundTrip } from "./review-comparison.ts";
@@ -210,7 +212,14 @@ const resolvedView = async (
   bytes: Uint8Array,
   resolution: "accept" | "reject",
   story: Story = MAIN,
-) => settledView(await resolvedState(bytes, resolution, story));
+) =>
+  settledView(
+    await resolvedState({
+      bytes,
+      resolution,
+      scope: { type: "document", story },
+    }),
+  );
 
 const rowsOf = (reviewer: Reviewer, story: Story = MAIN): Row[] =>
   blocksOfStory(reviewer, story) as unknown as Row[];
@@ -474,17 +483,31 @@ const rebase = (
  * `operation`, made against `preRows`, restated against `rows`: the same
  * block, the same words. Null when what it names is no longer there.
  */
-export const restate = (
-  operation: AnyOperation,
-  preRows: readonly Row[],
-  rows: readonly Row[],
-  textHashOf: (blockId: string) => string | undefined,
-): AnyOperation | null => {
-  const blockId = blockIdOf(operation);
-  const pre = preRows.find((row) => row.id === blockId);
+type RestateOptions = {
+  operation: AnyOperation;
+  preRows: readonly Row[];
+  rows: readonly Row[];
+  textHashOf: (blockId: string) => string | undefined;
+  paragraphIdentities?: ReturnType<typeof createParagraphIdentityRemapping>;
+};
+export const restate = ({
+  operation,
+  preRows,
+  rows,
+  textHashOf,
+  paragraphIdentities,
+}: RestateOptions): AnyOperation | null => {
+  const originalBlockId = blockIdOf(operation);
+  const blockId =
+    paragraphIdentities?.resolve(
+      originalBlockId,
+      new Set(rows.map(({ id }) => id)),
+    ) ?? originalBlockId;
+  const pre = preRows.find((row) => row.id === originalBlockId);
   const now = rows.find((row) => row.id === blockId);
   if (!pre || !now) return null;
   const restated: AnyOperation = { ...operation };
+  if (operation["blockId"] !== undefined) restated["blockId"] = blockId;
   const precondition = operation["precondition"] as
     { blockTextHash?: string } | undefined;
   if (precondition?.blockTextHash !== undefined) {
@@ -625,11 +648,24 @@ const startedListName = (ordinal: number): number => -(ordinal + 1);
  * list, and how it renders, is the outcome. An id a block from before the
  * edits still states as it did then is the document's own and stays.
  */
-const nameStartedLists = (
-  rows: readonly Row[],
-  preRows: readonly Row[],
-): Row[] => {
-  const before = new Map(preRows.map((row) => [row.id, listIdsOf(row)]));
+type NameStartedListsOptions = {
+  rows: readonly Row[];
+  preRows: readonly Row[];
+  paragraphIdentities: ReturnType<typeof createParagraphIdentityRemapping>;
+};
+const nameStartedLists = ({
+  rows,
+  preRows,
+  paragraphIdentities,
+}: NameStartedListsOptions): Row[] => {
+  const liveIds = new Set(rows.map(({ id }) => id));
+  const before = new Map<string, number[]>();
+  for (const row of preRows) {
+    const id = paragraphIdentities.resolve(row.id, liveIds);
+    const ids = before.get(id) ?? [];
+    ids.push(...listIdsOf(row));
+    before.set(id, ids);
+  }
   const kept = new Set(
     rows.flatMap((row) =>
       listIdsOf(row).filter((numId) => before.get(row.id)?.includes(numId)),
@@ -667,6 +703,7 @@ type OutcomeViewOptions = {
   story: Story;
   /** The rows before the batch, whose list ids stay the document's own. */
   preRows: readonly Row[];
+  paragraphIdentities: ReturnType<typeof createParagraphIdentityRemapping>;
 };
 
 /** What a batch left, as `batchSequential` compares it in `mode`: started lists by name. */
@@ -675,13 +712,18 @@ const outcomeView = async ({
   mode,
   story,
   preRows,
+  paragraphIdentities,
 }: OutcomeViewOptions) => {
   const view = (state: {
     rows: readonly Row[];
     comments: readonly Comment[];
   }) =>
     settledView({
-      rows: nameStartedLists(state.rows, preRows),
+      rows: nameStartedLists({
+        rows: state.rows,
+        preRows,
+        paragraphIdentities,
+      }),
       comments: state.comments,
     });
   if (mode === "suggested")
@@ -691,7 +733,13 @@ const outcomeView = async ({
     });
   const bytes = await save(reviewer);
   if (mode !== "direct")
-    return view(await resolvedState(bytes, "accept", story));
+    return view(
+      await resolvedState({
+        bytes,
+        resolution: "accept",
+        scope: intentResolutionScope(story),
+      }),
+    );
   const reopened = await openReviewer(bytes);
   return view({
     rows: rowsOf(reopened, story),
@@ -961,14 +1009,18 @@ const shadowProblems = async (
         // block than directly, so neither side's ids or block ids line up.
         // Which paragraphs share a list, and how it renders, is the outcome.
         const accepted = async (reviewer: Reviewer) => {
-          const state = await resolvedState(
-            await save(reviewer),
-            "accept",
-            story,
-          );
+          const state = await resolvedState({
+            bytes: await save(reviewer),
+            resolution: "accept",
+            scope: { type: "document", story },
+          });
           return withoutHeldComments(
             settledView({
-              rows: nameStartedLists(state.rows, []),
+              rows: nameStartedLists({
+                rows: state.rows,
+                preRows: [],
+                paragraphIdentities: createParagraphIdentityRemapping(),
+              }),
               comments: state.comments,
             }),
             shadows.heldComments,
@@ -1049,52 +1101,11 @@ const minimizeTrace = async (
 // ---------------------------------------------------------------------------
 
 /**
- * A live pre-batch copy, including pending suggestions that a DOCX save drops.
- * Applying a no-op transaction gives each copy its own editor and plugin
- * state. Mutable reviewer collections are copied too. The recorder's own
- * method wrappers are omitted, leaving the prototype's operation methods.
+ * A live pre-batch copy, including pending suggestions that a DOCX save
+ * drops: the reviewer's own fork, on either engine. The recorder's method
+ * wrappers stay with the recorded reviewer.
  */
-const cloneReviewer = (reviewer: Reviewer): Reviewer => {
-  // SAFETY: this test-only clone retains FolioDocxReviewer's prototype and
-  // every own field. Its EditorState copies have independent plugin state.
-  const copy = Object.create(Object.getPrototypeOf(reviewer)) as Reviewer;
-  for (const key of Reflect.ownKeys(reviewer)) {
-    if (
-      key === "applyDocumentOperations" ||
-      key === "applyDocumentOperationsToStory"
-    )
-      continue;
-    const descriptor = Object.getOwnPropertyDescriptor(reviewer, key);
-    if (!descriptor) continue;
-    const value = descriptor.value;
-    let cloned = value;
-    if (key === "state") {
-      cloned = value.apply(value.tr);
-    } else if (key === "secondaryStoryStates") {
-      cloned = new Map(
-        [...value].map(([storyKey, entry]) => [
-          storyKey,
-          {
-            ...entry,
-            state: entry.state.apply(entry.state.tr),
-            initialState: entry.initialState.apply(entry.initialState.tr),
-          },
-        ]),
-      );
-    } else if (value instanceof Map) {
-      cloned = new Map(value);
-    } else if (value instanceof Set) {
-      cloned = new Set(value);
-    } else if (Array.isArray(value)) {
-      cloned = [...value];
-    }
-    Object.defineProperty(copy, key, {
-      ...descriptor,
-      value: cloned,
-    });
-  }
-  return copy;
-};
+const cloneReviewer = (reviewer: Reviewer): Reviewer => reviewer.fork();
 
 type Recorded = { story: Story; batch: Batch; result: Result; pre: Reviewer };
 
@@ -1251,6 +1262,11 @@ export const startRelations = async ({
             batch: operations,
           });
     const again = applyToCopy(copy, structuredClone(batch));
+    const batchParagraphIdentities = createParagraphIdentityRemapping();
+    batchParagraphIdentities.record({
+      applied: again.applied,
+      mode: batchMode,
+    });
     const applied = operationsOf(batch).filter((operation) =>
       appliedIds(again).has(operation.id),
     );
@@ -1266,6 +1282,7 @@ export const startRelations = async ({
             mode: batchMode,
             story,
             preRows,
+            paragraphIdentities: batchParagraphIdentities,
           })
         : null;
 
@@ -1297,6 +1314,7 @@ export const startRelations = async ({
       return;
     }
     const oneByOne = cloneReviewer(pre);
+    const paragraphIdentities = createParagraphIdentityRemapping();
     const listsBefore = definedListIds(pre);
     const problems: string[] = [];
     for (const group of sequentialGroups({
@@ -1316,7 +1334,7 @@ export const startRelations = async ({
       const textHashOf = (blockId: string) =>
         snapshot.anchors[blockId]?.textHash;
       const restated = group.map((operation) =>
-        restate(operation, preRows, rows, textHashOf),
+        restate({ operation, preRows, rows, textHashOf, paragraphIdentities }),
       );
       if (restated.some((operation) => operation === null)) {
         skipped(
@@ -1347,6 +1365,7 @@ export const startRelations = async ({
         oneByOne,
         batchOf(batch, batchMode, restated as AnyOperation[]),
       );
+      paragraphIdentities.record({ applied: alone.applied, mode: batchMode });
       for (const { id, reason } of alone.skipped) {
         if (reason !== "noopOperation")
           problems.push(`${id} refused one at a time: ${reason}`);
@@ -1357,6 +1376,7 @@ export const startRelations = async ({
       mode: batchMode,
       story,
       preRows,
+      paragraphIdentities,
     });
     if (problems.length === 0) {
       problems.push(
@@ -1431,7 +1451,7 @@ export const startRelations = async ({
     afterStep: async (live, saved, context) => {
       const batches = recorded.splice(0);
       instrument(live);
-      const pending = mode === "suggested" && live.getChanges().length > 0;
+      const pending = mode === "suggested" && holdsPendingSuggestions(live);
       for (const entry of batches) {
         await replay(entry, context);
         await onCopies(entry, context);

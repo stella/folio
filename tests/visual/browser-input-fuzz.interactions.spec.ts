@@ -38,6 +38,7 @@ import type { BrowserDragTarget } from "./browserDragTarget";
 import { driveBrowserIme } from "./browserImeDriver";
 import {
   BROWSER_INPUT_REGRESSIONS,
+  type CanonicalDesignedDifference,
   PINNED_BROWSER_INPUT_TAG,
 } from "./browserInputRegressions";
 import {
@@ -53,6 +54,7 @@ import {
 import type {} from "./browserTestBridge";
 import { clipboardHtmlProjection } from "./clipboardHtmlProjection";
 import { PINNED_REPLAY_FONT_DELAYS_MS } from "./pinnedReplayRepeats";
+import { wordDeletions } from "./wordDeletion";
 
 declare global {
   var __folioPlayground:
@@ -420,8 +422,8 @@ const drive = async (
       await page.keyboard.press(`${MODIFIER}+x`);
       return;
     case "dragCellDelete":
-      if (!(await selectTarget(page, "table")))
-        throw new Error("table fixture has no draggable cells");
+      // An earlier edit can remove the table, as for any selection drag.
+      fc.pre(await selectTarget(page, "table"));
       await page.keyboard.press("Delete");
       return;
     case "undo":
@@ -734,13 +736,26 @@ const checkDefaultEditorTrace = async ({
   ).toEqual(baseline);
 };
 
-/** Both modes commit through the canonical session what the default editor commits. */
+/**
+ * Both modes commit through the canonical session what the default editor
+ * commits, but for a designed difference: there the named block commits what
+ * the platform convention gives, and suggesting records the one span it
+ * removed as deletions, beside the document's own changes.
+ */
 const checkCommittedAsDefaultEditor = async ({
   page,
   source,
   baseline,
   trace,
-}: CanonicalTraceOptions) => {
+  designedDifference,
+}: CanonicalTraceOptions & {
+  designedDifference: CanonicalDesignedDifference | undefined;
+}) => {
+  const typed = (changes: readonly { type: string; text: string }[]) =>
+    changes.map(({ type, text }) => ({ type, text }));
+  const sourceChanges = typed(
+    (await FolioDocxReviewer.fromBuffer(source)).getChanges(),
+  );
   for (const suggesting of [false, true]) {
     const canonical = await runMode({
       page,
@@ -760,9 +775,38 @@ const checkCommittedAsDefaultEditor = async ({
     });
     if (canonical.type !== "ready" || viaDefault.type !== "ready")
       throw new TypeError("Both editors must open the compared trace.");
-    expect(canonical.blocks).toEqual(viaDefault.blocks);
-    expect(canonical.changes.map(({ type, text }) => ({ type, text }))).toEqual(
-      viaDefault.changes.map(({ type, text }) => ({ type, text })),
+    if (designedDifference === undefined) {
+      expect(canonical.blocks).toEqual(viaDefault.blocks);
+      expect(typed(canonical.changes)).toEqual(typed(viaDefault.changes));
+      continue;
+    }
+    const { reason, block, text, caret, deletions } = designedDifference;
+    expect(baseline[block]?.text, reason).toBe(text);
+    const expected = wordDeletions(text, caret, deletions);
+    expect(canonical.blocks, reason).toEqual(
+      viaDefault.blocks.map((projection, index) =>
+        index === block ? { ...projection, text: expected.text } : projection,
+      ),
+    );
+    const added = typed(canonical.changes);
+    for (const change of sourceChanges) {
+      const at = added.findIndex(
+        ({ type, text: changed }) =>
+          type === change.type && changed === change.text,
+      );
+      expect(at, reason).toBeGreaterThanOrEqual(0);
+      added.splice(at, 1);
+    }
+    expect(
+      {
+        types: [...new Set(added.map(({ type }) => type))],
+        removed: added.map(({ text: changed }) => changed).join(""),
+      },
+      reason,
+    ).toEqual(
+      suggesting
+        ? { types: ["deletion"], removed: expected.removed }
+        : { types: [], removed: "" },
     );
   }
 };
@@ -830,6 +874,36 @@ test.describe("pinned browser input", () => {
         const replay = async () => {
           const source = await shapeArrayBuffer(trace.shape);
           const baseline = project(await FolioDocxReviewer.fromBuffer(source));
+          if ("preconditionAt" in regression) {
+            await load({
+              page,
+              bytes: source,
+              baseline,
+              suggesting: false,
+              authority: "prosemirror",
+            });
+            expect(await selectTarget(page, "table")).toBe(true);
+            for (const [index, action] of trace.actions.entries()) {
+              const before = await liveBlocks(page);
+              const outcome = await drive(page, action).then(
+                () => ({ status: "applied" }) as const,
+                (error: unknown) => ({ status: "refused", error }) as const,
+              );
+              if (index !== regression.preconditionAt) {
+                expect(outcome.status).toBe("applied");
+                continue;
+              }
+              expect(outcome.status).toBe("refused");
+              if (outcome.status !== "refused")
+                throw new TypeError("A missing table cannot be dragged");
+              expect(fc.PreconditionFailure.isFailure(outcome.error)).toBe(
+                true,
+              );
+              expect(await liveBlocks(page)).toEqual(before);
+              return;
+            }
+            throw new TypeError("The trace did not reach its precondition");
+          }
           if ("authority" in regression) {
             await checkCanonicalTrace({ page, source, baseline, trace });
             if ("comparesWithDefaultEditor" in regression)
@@ -838,6 +912,10 @@ test.describe("pinned browser input", () => {
                 source,
                 baseline,
                 trace,
+                designedDifference:
+                  "designedDifference" in regression
+                    ? regression.designedDifference
+                    : undefined,
               });
             return;
           }

@@ -10,7 +10,9 @@ import type { ZipArchive, ZipEntry } from "@stll/docx-core/zip";
  * Returns null on any failure, signaling the caller to fall back to full repack.
  */
 
+import { recordSelectiveSaveAttempt } from "../layout-engine/layoutInstrumentation";
 import type { Document } from "../types/document";
+import type { SelectiveSaveDecline } from "../types/selectiveSaveDecline";
 import { decodeText } from "../utils/textEncoding";
 import {
   type CommentExtendedInfo,
@@ -27,7 +29,7 @@ import { validateFolioDocumentModel } from "./modelValidation";
 import { parseNumbering } from "./numberingParser";
 import { normalizeImportedNumericIds } from "./numericIdNormalization";
 import { isUnsafePackagePath } from "./packageParts";
-import { RELATIONSHIP_TYPES } from "./relsParser";
+import { RELATIONSHIP_TYPES, resolveRelativePath } from "./relsParser";
 import {
   addCommentsExtendedOverride,
   addCommentsExtendedRelationship,
@@ -47,7 +49,7 @@ import {
   updateCoreProperties,
   withoutAttachedTemplate,
 } from "./rezip";
-import type { SaveDiagnosticOptions } from "./saveDiagnostics";
+import type { SaveDiagnostic, SaveDiagnosticOptions } from "./saveDiagnostics";
 import { DEFAULT_SELECTIVE_SAVE_MAX_BYTES } from "./selectiveSaveFlags";
 import {
   buildPatchedDocumentXml,
@@ -423,61 +425,155 @@ export async function attemptSelectiveSave(
   originalBuffer: ArrayBuffer,
   options: SelectiveSaveOptions,
 ): Promise<ArrayBuffer | null> {
+  const { onDiagnostic, onSelectiveDecline, ...writeOptions } = options;
+  const diagnostics: SaveDiagnostic[] = [];
+  const result = await writeChangedParts({
+    doc,
+    originalBuffer,
+    options: writeOptions,
+    collectDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+  });
+  recordSelectiveSaveAttempt(
+    result.type === "written"
+      ? { written: true, structural: options.structuralChange }
+      : {
+          written: false,
+          structural: options.structuralChange,
+          decline: result.decline,
+        },
+  );
+  // A host callback is outside package fallback handling: its exception must
+  // propagate rather than turn into a packageError and trigger another write.
+  for (const diagnostic of diagnostics) onDiagnostic?.(diagnostic);
+  switch (result.type) {
+    case "written":
+      return result.buffer;
+    case "declined":
+      onSelectiveDecline?.(result.decline);
+      return null;
+    default: {
+      const unreachable: never = result;
+      return unreachable;
+    }
+  }
+}
+
+type SelectiveWriteResult =
+  | { type: "written"; buffer: ArrayBuffer }
+  | { type: "declined"; decline: SelectiveSaveDecline };
+
+type WriteChangedPartsOptions = {
+  doc: Document;
+  originalBuffer: ArrayBuffer;
+  options: Omit<SelectiveSaveOptions, keyof SaveDiagnosticOptions>;
+  collectDiagnostic: NonNullable<SaveDiagnosticOptions["onDiagnostic"]>;
+};
+
+async function writeChangedParts({
+  doc,
+  originalBuffer,
+  options,
+  collectDiagnostic,
+}: WriteChangedPartsOptions): Promise<SelectiveWriteResult> {
+  const decline = (details: SelectiveSaveDecline): SelectiveWriteResult => ({
+    type: "declined",
+    decline: details,
+  });
   doc = withoutExhaustedComments(doc);
   const { changedParaIds, structuralChange, hasUntrackedChanges } = options;
   const maxBytes = options.maxBytes ?? DEFAULT_SELECTIVE_SAVE_MAX_BYTES;
 
   // Unresolved paragraph identities cannot be anchored in the source package.
   if (hasUntrackedChanges) {
-    return null;
+    return decline({ scope: "package", reason: "untrackedChanges" });
   }
   // Refuse very large inputs: the ZipArchive overhead on top of the original buffer
   // dominates memory cost, and full repack is the safer path at that scale.
   if (originalBuffer.byteLength > maxBytes) {
-    return null;
+    return decline({ scope: "package", reason: "tooLarge" });
   }
   // Check for new images/hyperlinks that need relationship management; a
   // header, footer, or note part mints them into its own rels, which only the
   // full repack path writes.
   const content = doc.package.document.content;
   if (hasUnmaterializedInlineResources(content)) {
-    return null;
+    return decline({
+      scope: "part",
+      part: "word/document.xml",
+      reason: "unmaterializedBodyResource",
+    });
   }
-  for (const part of [
-    ...(doc.package.headers?.values() ?? []),
-    ...(doc.package.footers?.values() ?? []),
-    ...(doc.package.footnotes ?? []),
-    ...(doc.package.endnotes ?? []),
-  ]) {
-    if (hasUnmaterializedInlineResources(part.content)) {
-      return null;
+  for (const { kind, parts, relationshipType } of [
+    {
+      kind: "header",
+      parts: doc.package.headers,
+      relationshipType: RELATIONSHIP_TYPES.header,
+    },
+    {
+      kind: "footer",
+      parts: doc.package.footers,
+      relationshipType: RELATIONSHIP_TYPES.footer,
+    },
+  ] as const) {
+    for (const [rId, part] of parts ?? []) {
+      if (!hasUnmaterializedInlineResources(part.content)) continue;
+      const relationship = doc.package.relationships?.get(rId);
+      if (
+        relationship?.type === relationshipType &&
+        relationship.targetMode !== "External" &&
+        relationship.target.length > 0
+      )
+        return decline({
+          scope: "part",
+          part: resolveRelativePath(
+            "word/_rels/document.xml.rels",
+            relationship.target,
+          ),
+          reason: "unmaterializedStoryResource",
+        });
+      return decline({
+        scope: "story",
+        story: { kind, rId },
+        reason: "unmaterializedStoryResource",
+      });
     }
+  }
+  for (const { notes, part } of [
+    { notes: doc.package.footnotes, part: "word/footnotes.xml" },
+    { notes: doc.package.endnotes, part: "word/endnotes.xml" },
+  ]) {
+    if (notes?.some((note) => hasUnmaterializedInlineResources(note.content)))
+      return decline({
+        scope: "part",
+        part,
+        reason: "unmaterializedStoryResource",
+      });
   }
   // A header/footer created in memory needs a new part + relationship +
   // [Content_Types] Override, which only the full repack path writes.
   if (hasUnmaterializedHeaderFooter(doc)) {
-    return null;
+    return decline({ scope: "package", reason: "unmaterializedHeaderFooter" });
   }
   // A picture watermark spanning multiple headers needs per-header image
   // relationship rebinding, which only the full repack path performs.
   if (hasModelDrivenPictureWatermark(doc)) {
-    return null;
+    return decline({ scope: "package", reason: "pictureWatermark" });
   }
   // Orphan comment markers can live in paragraphs outside `changedParaIds`,
   // or in note parts the splice never re-reads, so a cleanup here would not
   // ship through the selective overlay. Hand off to the full repack, which
   // sanitizes and re-serializes every part.
   if (withoutOrphanCommentRanges(doc) !== doc) {
-    return null;
+    return decline({ scope: "package", reason: "orphanCommentRanges" });
   }
   // A reply with no anchor of its own must get its parent's commentRange
   // markers, which means editing the parent's paragraph — not necessarily one of
   // `changedParaIds`. The full repack owns that synthesis, so hand off to it.
   if (hasUnsynthesizedReplyRanges(doc)) {
-    return null;
+    return decline({ scope: "package", reason: "unsynthesizedReplyRanges" });
   }
   if (!validateFolioDocumentModel(doc).valid) {
-    return null;
+    return decline({ scope: "package", reason: "invalidModel" });
   }
 
   const comments = doc.package.document.comments ?? [];
@@ -491,7 +587,8 @@ export async function attemptSelectiveSave(
 
   try {
     const zip = await readPackageForSave(originalBuffer);
-    if (await hasUnmaterializedHyperlinkBindings(doc, zip)) return null;
+    if (await hasUnmaterializedHyperlinkBindings(doc, zip))
+      return decline({ scope: "package", reason: "unmaterializedHyperlink" });
 
     // The selective path overlays a handful of parts on top of the ORIGINAL
     // zip and re-emits everything else verbatim, which is what the document's
@@ -501,7 +598,7 @@ export async function attemptSelectiveSave(
     // predicate, so neither can drift into passing what the other blocks.
     for (const path of zip.paths()) {
       if (isUnsafePackagePath(path)) {
-        return null;
+        return decline({ scope: "package", reason: "unsafePackagePath" });
       }
     }
 
@@ -546,7 +643,11 @@ export async function attemptSelectiveSave(
     if (changedParaIds.size > 0 || structuralChange) {
       const docXmlFile = zip.entry("word/document.xml");
       if (!docXmlFile) {
-        return null;
+        return decline({
+          scope: "part",
+          part: "word/document.xml",
+          reason: "missingDocumentPart",
+        });
       }
       const originalDocXml = await docXmlFile
         .bytes()
@@ -563,7 +664,7 @@ export async function attemptSelectiveSave(
         {
           xml: originalDocXml,
           bodyAuthority: options.bodyAuthority,
-          onDiagnostic: options.onDiagnostic,
+          onDiagnostic: collectDiagnostic,
         },
       );
       const serializedDocXml = serializedDocument.xml;
@@ -592,7 +693,12 @@ export async function attemptSelectiveSave(
           baselineNumbering,
           serializeNumberingXml(doc.package.numbering),
         );
-        if (added.abstractNums.size > 0 || added.nums.size > 0) return null;
+        if (added.abstractNums.size > 0 || added.nums.size > 0)
+          return decline({
+            scope: "part",
+            part: "word/numbering.xml",
+            reason: "addedNumbering",
+          });
       }
 
       const bodyChangedIds = new Set<string>();
@@ -616,24 +722,38 @@ export async function attemptSelectiveSave(
         // paragraph, falls back to full repack — matching the prior safety when
         // buildPatchedDocumentXml met a paraId it could not resolve.
         if (unrouted === null || unrouted.size > 0) {
-          return null;
+          return decline({ scope: "package", reason: "unroutedParagraphs" });
         }
       }
 
       if (bodyChangedIds.size > 0 || structuralChange) {
-        const patchedDocXml = structuralChange
-          ? buildStructuralDocumentPatch({
-              originalXml: originalDocXml,
-              serializedXml: serializedDocXml,
-              changedIds: bodyChangedIds,
-            })
-          : buildPatchedDocumentXml(
-              originalDocXml,
-              serializedDocument,
-              bodyChangedIds,
-            );
+        let patchedDocXml: string | null;
+        if (structuralChange) {
+          const structural = buildStructuralDocumentPatch({
+            originalXml: originalDocXml,
+            serializedXml: serializedDocXml,
+            changedIds: bodyChangedIds,
+          });
+          if (structural.type === "declined")
+            return decline({
+              scope: "part",
+              part: "word/document.xml",
+              reason: structural.reason,
+            });
+          patchedDocXml = structural.xml;
+        } else {
+          patchedDocXml = buildPatchedDocumentXml(
+            originalDocXml,
+            serializedDocument,
+            bodyChangedIds,
+          );
+        }
         if (!patchedDocXml) {
-          return null;
+          return decline({
+            scope: "part",
+            part: "word/document.xml",
+            reason: "paragraphPatch",
+          });
         }
         updates.set("word/document.xml", patchedDocXml);
       }
@@ -711,14 +831,22 @@ export async function attemptSelectiveSave(
       !commentsUnchanged &&
       !(await patchCommentsExtended(zip, commentPlan, updates))
     ) {
-      return null;
+      return decline({
+        scope: "part",
+        part: COMMENTS_EXTENDED_PART,
+        reason: "commentsExtended",
+      });
     }
 
     // Splice edited numbering definitions into word/numbering.xml. Numbering
     // carries no paraId, so this always runs and self-detects changes (like the
     // comments/header updates above); a no-op when numbering is unchanged.
     if (!(await patchNumberingPart(zip, doc, updates))) {
-      return null;
+      return decline({
+        scope: "part",
+        part: "word/numbering.xml",
+        reason: "numberingPart",
+      });
     }
 
     // Package resource operations may add or replace styles without touching
@@ -731,11 +859,15 @@ export async function attemptSelectiveSave(
         updates.set(styles.path, styles.xml);
         break;
       case "materialize":
-        options.onDiagnostic?.({
+        collectDiagnostic({
           type: "selectiveSaveRefused",
           part: "word/styles.xml",
         });
-        return null;
+        return decline({
+          scope: "part",
+          reason: "styleMaterialization",
+          part: "word/styles.xml",
+        });
       default: {
         const exhaustive: never = styles;
         return exhaustive;
@@ -745,7 +877,7 @@ export async function attemptSelectiveSave(
     // Serialize modified headers/footers
     for (const [path, xml] of await collectHeaderFooterUpdates(doc, {
       sourceZip: zip,
-      onDiagnostic: options.onDiagnostic,
+      onDiagnostic: collectDiagnostic,
     })) {
       updates.set(path, xml);
     }
@@ -786,14 +918,18 @@ export async function attemptSelectiveSave(
         detectDocxConformanceClass(sourceDocumentXml ?? null) ===
         DOCX_CONFORMANCE_CLASSES.STRICT
       ) {
-        return null;
+        return decline({
+          scope: "part",
+          part: "word/document.xml",
+          reason: "strictConformance",
+        });
       }
     }
 
     // Use the already-loaded zip to avoid a redundant decompression pass
-    return await applyUpdatesToZip(zip, updates);
+    return { type: "written", buffer: await applyUpdatesToZip(zip, updates) };
   } catch {
     // Any error — fall back to full repack
-    return null;
+    return decline({ scope: "package", reason: "packageError" });
   }
 }

@@ -1,4 +1,6 @@
 /** Automatic note marks are owned model records, derived at the operations boundary. */
+import { panic } from "better-result";
+
 import type {
   BlockContent,
   Document,
@@ -8,9 +10,45 @@ import type {
   Run,
 } from "../model/document";
 import { storyParagraphs, updateBlockList } from "./blocks";
-import { leafSpans } from "./leaves";
+import { type InlineNode, leafSpans, nestedRecords } from "./leaves";
 import { documentStories, sameStory, storyBody } from "./stories";
 import type { NoteStory } from "./types";
+
+export type NoteReferenceSpan = {
+  node: Extract<InlineNode, { type: "footnoteRef" | "endnoteRef" }>;
+  ancestors: readonly InlineNode[];
+};
+
+/** The automatic marks alone, in their source runs and run properties. */
+export const automaticNoteMarkRuns = (nodes: readonly InlineNode[]): Run[] =>
+  leafSpans(nodes).flatMap(({ node, ancestors }) => {
+    if (node.type !== "noteMarker") return [];
+    const run =
+      ancestors.findLast((ancestor) => ancestor.type === "run") ??
+      panic("An automatic note mark belongs to a source run.");
+    return [{ ...run, content: [node] }];
+  });
+
+/**
+ * Every footnote and endnote reference in `nodes`, with the records holding
+ * it, outermost first: the one reading of where a document references a
+ * note. A field is one unit of text, but its result is
+ * content a reader sees and can hold a reference, so the walk enters it
+ * ({@link nestedRecords}), nested fields included. A field's instruction
+ * is not content and holds none.
+ */
+export const noteReferenceSpans = (
+  nodes: readonly InlineNode[],
+  ancestors: readonly InlineNode[] = [],
+): NoteReferenceSpan[] =>
+  nodes.flatMap((node): NoteReferenceSpan[] => {
+    if (node.type === "footnoteRef" || node.type === "endnoteRef")
+      return [{ node, ancestors }];
+    const nested = nestedRecords(node);
+    return nested === undefined
+      ? []
+      : noteReferenceSpans(nested, [...ancestors, node]);
+  });
 
 type NoteMarkOptions = { note: Footnote | Endnote; customMark: boolean };
 export const noteContentWithAutomaticMark = ({
@@ -55,7 +93,7 @@ export const noteUsesCustomMark = (
 ): boolean =>
   documentStories(document).some((story) =>
     storyParagraphs(storyBody(document, story)).some(({ paragraph }) =>
-      leafSpans(paragraph.content).some(
+      noteReferenceSpans(paragraph.content).some(
         ({ node }) =>
           ((note.type === "footnote" && node.type === "footnoteRef") ||
             (note.type === "endnote" && node.type === "endnoteRef")) &&
@@ -68,7 +106,7 @@ export const noteUsesCustomMark = (
 /** The notes one paragraph references. */
 const paragraphNoteKeys = (paragraph: Paragraph): readonly string[] => {
   const keys: string[] = [];
-  for (const { node } of leafSpans(paragraph.content)) {
+  for (const { node } of noteReferenceSpans(paragraph.content)) {
     if (node.type === "footnoteRef") keys.push(`footnote:${String(node.id)}`);
     if (node.type === "endnoteRef") keys.push(`endnote:${String(node.id)}`);
   }

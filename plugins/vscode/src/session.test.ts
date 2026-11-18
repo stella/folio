@@ -25,10 +25,14 @@ const OPENED = bytesOf("PK opened");
 const EDITED = bytesOf("PK edited");
 const THEIRS = bytesOf("PK theirs");
 
-const SELECTIVE: FolioEditorSaveStrategy = { type: "selective-first" };
+const SELECTIVE: FolioEditorSaveStrategy = { type: "selective" };
 const REPACK: FolioEditorSaveStrategy = {
   type: "full-repack",
-  reason: "structuralChange",
+  decline: {
+    scope: "part",
+    part: "word/document.xml",
+    reason: "structuralRangeSplit",
+  },
 };
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));

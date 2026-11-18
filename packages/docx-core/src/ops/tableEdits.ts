@@ -6,8 +6,11 @@ import {
   MAX_REVISION_ID,
   type Table,
   type TableCell,
+  type TableCellFormatting,
+  type TableFormatting,
   type TableMeasurement,
   type TableRow,
+  type TableRowFormatting,
 } from "../model/document";
 import {
   storyBody,
@@ -22,7 +25,10 @@ import { idKey, isParaId, packageParagraphIds, paragraphIdsIn } from "./ids";
 import { applyFormattingPatch } from "./patch";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { stampInfo } from "./review";
-import { hasTableCellDependencies } from "./tableEditDependencies";
+import {
+  reachesPastRemovedCell,
+  strandsABookmark,
+} from "./tableEditDependencies";
 import { type TableGrid, tableGrid } from "./tableGrid";
 import {
   locateTableRow,
@@ -118,6 +124,174 @@ const freshCells = ({
   );
 };
 
+const PROPERTY_FIELDS = {
+  cell: [
+    "width",
+    "borders",
+    "margins",
+    "shading",
+    "verticalAlign",
+    "textDirection",
+    "fitText",
+    "noWrap",
+    "hideMark",
+    "conditionalFormat",
+  ] as const satisfies readonly (keyof TableCellFormatting)[],
+  row: [
+    "widthBefore",
+    "widthAfter",
+    "height",
+    "heightRule",
+    "header",
+    "cantSplit",
+    "justification",
+    "hidden",
+    "conditionalFormat",
+  ] as const satisfies readonly (keyof TableRowFormatting)[],
+  table: [
+    "width",
+    "justification",
+    "cellSpacing",
+    "indent",
+    "borders",
+    "cellMargins",
+    "layout",
+    "styleId",
+    "look",
+    "shading",
+    "overlap",
+    "floating",
+    "bidi",
+    "caption",
+    "description",
+    "rowBandSize",
+    "columnBandSize",
+  ] as const satisfies readonly (keyof TableFormatting)[],
+};
+
+type PropertyEdit = Extract<
+  TableEditOp,
+  {
+    type:
+      | typeof DOCUMENT_OP_TYPES.SET_CELL_PROPS
+      | typeof DOCUMENT_OP_TYPES.SET_ROW_PROPS
+      | typeof DOCUMENT_OP_TYPES.SET_TABLE_PROPS;
+  }
+>;
+
+const isPropertyEdit = (op: Op | TableIntentOperation): op is PropertyEdit => {
+  switch (op.type) {
+    case DOCUMENT_OP_TYPES.SET_CELL_PROPS:
+    case DOCUMENT_OP_TYPES.SET_ROW_PROPS:
+    case DOCUMENT_OP_TYPES.SET_TABLE_PROPS:
+      return true;
+    default:
+      return false;
+  }
+};
+
+/** Remove only the properties these operations can change; every other field remains evidence. */
+const structuralFormatting = (
+  formatting: object | undefined,
+  fields: readonly string[],
+) => {
+  const entries = Object.entries(formatting ?? {}).filter(
+    ([key]) => key !== "sourceXml" && !fields.includes(key),
+  );
+  return entries.length === 0 ? undefined : Object.fromEntries(entries);
+};
+
+type ReviewStructureOptions = {
+  formatting: object | undefined;
+  fields: readonly string[];
+  changes:
+    | readonly {
+        type: string;
+        info: unknown;
+        previousFormatting?: object;
+        currentFormatting?: object;
+      }[]
+    | undefined;
+};
+/** Property-only history may appear/disappear; recorded structural history may not change. */
+const reviewStructure = ({
+  formatting,
+  fields,
+  changes,
+}: ReviewStructureOptions) => {
+  const current = structuralFormatting(formatting, fields);
+  return (changes ?? []).flatMap(
+    ({ info: _info, previousFormatting, currentFormatting, ...review }) => {
+      const previous = structuralFormatting(previousFormatting, fields);
+      const recordedCurrent =
+        currentFormatting === undefined
+          ? current
+          : structuralFormatting(currentFormatting, fields);
+      if (
+        Object.keys(review).length === 1 &&
+        structurallyEqual(previous, current) &&
+        structurallyEqual(recordedCurrent, current)
+      )
+        return [];
+      return [
+        Object.assign({}, review, {
+          previousFormatting: previous,
+          currentFormatting: recordedCurrent,
+        }),
+      ];
+    },
+  );
+};
+
+const propertyEditStructure = ({
+  formatting: tableFormatting,
+  propertyChanges: tableChanges,
+  rows,
+  ...table
+}: Table) =>
+  Object.assign({}, table, {
+    formatting: structuralFormatting(tableFormatting, PROPERTY_FIELDS.table),
+    propertyChanges: reviewStructure({
+      formatting: tableFormatting,
+      fields: PROPERTY_FIELDS.table,
+      changes: tableChanges,
+    }),
+    rows: rows.map(
+      ({
+        formatting: rowFormatting,
+        propertyChanges: rowChanges,
+        cells,
+        ...row
+      }) =>
+        Object.assign({}, row, {
+          formatting: structuralFormatting(rowFormatting, PROPERTY_FIELDS.row),
+          propertyChanges: reviewStructure({
+            formatting: rowFormatting,
+            fields: PROPERTY_FIELDS.row,
+            changes: rowChanges,
+          }),
+          cells: cells.map(
+            ({
+              formatting: cellFormatting,
+              propertyChanges: cellChanges,
+              ...cell
+            }) =>
+              Object.assign({}, cell, {
+                formatting: structuralFormatting(
+                  cellFormatting,
+                  PROPERTY_FIELDS.cell,
+                ),
+                propertyChanges: reviewStructure({
+                  formatting: cellFormatting,
+                  fields: PROPERTY_FIELDS.cell,
+                  changes: cellChanges,
+                }),
+              }),
+          ),
+        }),
+    ),
+  });
+
 type CommitTableOptions = {
   document: Document;
   op: Op;
@@ -130,8 +304,22 @@ const commitTable = ({
   location,
   table,
 }: CommitTableOptions): Result<DocumentEdit, DocumentOpRefusal> => {
-  const checked = tableGrid(table, op.type);
-  if (checked.isErr()) return Result.err(checked.error);
+  const preservesStructure =
+    (isPropertyEdit(op) || op.type === DOCUMENT_OP_TYPES.SET_TABLE) &&
+    structurallyEqual(
+      propertyEditStructure(location.table),
+      propertyEditStructure(table),
+    );
+  if (isPropertyEdit(op)) {
+    if (!preservesStructure)
+      return mismatch(
+        op,
+        "A property edit must preserve table structure, content and identities.",
+      );
+  } else if (op.type !== DOCUMENT_OP_TYPES.SET_TABLE || !preservesStructure) {
+    const checked = tableGrid(table, op.type);
+    if (checked.isErr()) return Result.err(checked.error);
+  }
   if (
     table.rows.some((row) =>
       row.cells.some(
@@ -280,18 +468,24 @@ const hasReview = (table: Table) =>
       ),
   );
 
-/** A review other than a pending cell deletion. */
-const hasReviewBesidesCellDeletions = (table: Table) =>
+/**
+ * A review a column edit cannot join. A row's own suggested insertion or
+ * deletion keeps its mark while the column gains or loses that row's cell;
+ * another suggested column deletion may join pending cell deletions.
+ */
+const hasReviewBlockingColumns = (table: Table, suggestedDeletion: boolean) =>
   table.formatting?.gridChange !== undefined ||
   table.propertyChanges !== undefined ||
   table.rows.some(
     (row) =>
-      row.structuralChange !== undefined ||
       row.propertyChanges !== undefined ||
       row.cells.some(
         (cell) =>
           (cell.structuralChange !== undefined &&
-            cell.structuralChange.type !== "tableCellDeletion") ||
+            !(
+              suggestedDeletion &&
+              cell.structuralChange.type === "tableCellDeletion"
+            )) ||
           cell.propertyChanges !== undefined,
       ),
   );
@@ -367,13 +561,35 @@ const columnEdit = ({
   // Another suggested column deletion may join pending ones: each keeps its
   // own cells and grid entry until it is resolved.
   const suggestedDeletion = !insert && op.revision !== undefined;
-  if (
-    suggestedDeletion ? hasReviewBesidesCellDeletions(table) : hasReview(table)
-  )
+  if (hasReviewBlockingColumns(table, suggestedDeletion))
     return refuse({
       op,
       reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
       message: "Resolve table reviews before changing its columns.",
+    });
+  // The cells the column removes, now or when its suggestion is accepted,
+  // take their bookmarks, content controls and own review records with them.
+  const removedCells = insert
+    ? []
+    : grid.rows.flatMap((entries) =>
+        entries
+          .filter(
+            (entry) =>
+              entry.start <= op.column &&
+              op.column < entry.end &&
+              entry.end - entry.start === 1,
+          )
+          .map((entry) => entry.cell),
+      );
+  if (
+    removedCells.some(reachesPastRemovedCell) ||
+    strandsABookmark(removedCells)
+  )
+    return refuse({
+      op,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.DEPENDENT_RECORDS,
+      message:
+        "Resolve comments, moves and bookmarks reaching past the column before removing it.",
     });
   const boundaryRows = grid.rows.filter((cells, row) => {
     const before = table.rows[row]?.formatting?.gridBefore ?? 0;
@@ -390,13 +606,6 @@ const columnEdit = ({
       ? freshCells({ document, op, ids: op.newBlockIds, count: boundaryRows })
       : Result.ok(empty);
   if (fresh.isErr()) return Result.err(fresh.error);
-  if (op.revision !== undefined && table.columnWidths === undefined) {
-    return refuse({
-      op,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      message: "Tracked column edits require an explicit previous grid.",
-    });
-  }
   // A suggested deletion keeps the grid while it is pending: the deleted
   // cells stay in their columns, and accepting removes them with their grid
   // entries.
@@ -512,16 +721,6 @@ const columnEdit = ({
       }
       if (!insert && hit) {
         if (
-          entry.end - entry.start === 1 &&
-          hasTableCellDependencies(entry.cell)
-        )
-          return refuse({
-            op,
-            reason: DOCUMENT_OP_REFUSAL_REASONS.DEPENDENT_RECORDS,
-            message:
-              "Resolve dependent anchors and review records before removing this cell.",
-          });
-        if (
           trackedDeletion &&
           entry.cell.structuralChange?.type === "tableCellDeletion"
         )
@@ -615,9 +814,14 @@ const columnEdit = ({
   ) {
     next.formatting = {
       ...table.formatting,
+      // A grid the file states no widths for is recorded as its columns,
+      // each without a measure, as the file states them.
       gridChange: {
         id: gridStamp.id,
-        columnWidths: [...(table.columnWidths ?? [])],
+        columnWidths:
+          table.columnWidths === undefined
+            ? Array.from({ length: grid.width }, () => undefined)
+            : [...table.columnWidths],
       },
     };
     next.propertyChanges = [
@@ -903,7 +1107,10 @@ const split = ({
     count: group.length * (span - 1),
   });
   if (fresh.isErr()) return Result.err(fresh.error);
-  const stamps = stampsFor(op, group.length * span);
+  // A vertical merge records each row's leaving it as a cell merge change,
+  // which rejecting reverts to the merge state the cell had.
+  const vertical = group.length > 1;
+  const stamps = stampsFor(op, group.length * (span + (vertical ? 1 : 0)));
   if (stamps.isErr()) return Result.err(stamps.error);
   let stampIndex = 0;
   let freshIndex = 0;
@@ -934,6 +1141,19 @@ const split = ({
             : { previousFormatting: entry.cell.formatting }),
         },
       ];
+    const mergeStamp = vertical ? stamps.value[stampIndex++] : undefined;
+    const vMerge = entry.cell.formatting?.vMerge;
+    if (mergeStamp !== undefined)
+      original.structuralChange = {
+        type: "tableCellMerge",
+        info: stampInfo(mergeStamp),
+        ...(vMerge === undefined
+          ? {}
+          : {
+              verticalMergeOriginal:
+                vMerge === CELL_VERTICAL_MERGES.RESTART ? "rest" : "continue",
+            }),
+      };
     const replacement: TableCell[] = [original];
     for (let column = 1; column < span; column += 1) {
       const cell = fresh.value[freshIndex++];
@@ -959,6 +1179,7 @@ export const tableEditParagraphDemand = (
   location: TableRowLocation,
   op: TableIntentOperation,
 ): Result<number, DocumentOpRefusal> => {
+  if (isPropertyEdit(op)) return Result.ok(0);
   const table = location.table;
   const grid = tableGrid(table, op.type);
   if (grid.isErr()) return Result.err(grid.error);
@@ -1017,7 +1238,141 @@ export const tableEditParagraphDemand = (
   }
 };
 
-/** Grid topology is validated before and after every semantic table edit. */
+type PropertyEditOptions = {
+  op: PropertyEdit;
+  table: Table;
+  location: TableRowLocation;
+};
+const editProperties = ({
+  op,
+  table,
+  location,
+}: PropertyEditOptions): Result<Table, DocumentOpRefusal> => {
+  switch (op.type) {
+    case DOCUMENT_OP_TYPES.SET_TABLE_PROPS: {
+      if (
+        Object.keys(op.patch).some(
+          (key) => !PROPERTY_FIELDS.table.some((field) => field === key),
+        )
+      )
+        return mismatch(
+          op,
+          "Grid and source provenance require a grid operation.",
+        );
+      // One record per element: a further change keeps what the first recorded.
+      if ((table.propertyChanges?.length ?? 0) > 1)
+        return refuse({
+          op,
+          reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+          message: "Resolve the existing table property revision.",
+        });
+      const pending = table.propertyChanges?.at(0);
+      const next = { ...table };
+      const formatting = applyFormattingPatch(table.formatting, op.patch);
+      if (!patchChanges(table.formatting, op.patch)) return Result.ok(table);
+      if (formatting === undefined) delete next.formatting;
+      else next.formatting = authored(formatting);
+      if (op.revision !== undefined) {
+        // A pending change already holds the formatting before any of them.
+        const previousFormatting =
+          pending === undefined ? table.formatting : pending.previousFormatting;
+        next.propertyChanges = [
+          {
+            type: "tablePropertyChange",
+            info: stampInfo(op.revision),
+            ...(previousFormatting === undefined ? {} : { previousFormatting }),
+          },
+        ];
+      }
+      return Result.ok(next);
+    }
+    case DOCUMENT_OP_TYPES.SET_ROW_PROPS: {
+      if (
+        Object.keys(op.patch).some(
+          (key) => !PROPERTY_FIELDS.row.some((field) => field === key),
+        )
+      )
+        return mismatch(op, "Omitted grid slots require a topology operation.");
+      const row = table.rows[location.rowIndex];
+      if (!row) return mismatch(op, "The addressed row is absent.");
+      // One record per element: a further change keeps what the first recorded.
+      if ((row.propertyChanges?.length ?? 0) > 1)
+        return refuse({
+          op,
+          reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+          message: "Resolve the existing row property revision.",
+        });
+      const pending = row.propertyChanges?.at(0);
+      const next = { ...row };
+      const formatting = applyFormattingPatch(row.formatting, op.patch);
+      if (!patchChanges(row.formatting, op.patch)) return Result.ok(table);
+      if (formatting === undefined) delete next.formatting;
+      else next.formatting = authored(formatting);
+      if (op.revision !== undefined) {
+        // A pending change already holds the formatting before any of them.
+        const previousFormatting =
+          pending === undefined ? row.formatting : pending.previousFormatting;
+        next.propertyChanges = [
+          {
+            type: "tableRowPropertyChange",
+            info: stampInfo(op.revision),
+            ...(previousFormatting === undefined ? {} : { previousFormatting }),
+          },
+        ];
+      }
+      const rows = [...table.rows];
+      rows[location.rowIndex] = next;
+      return Result.ok({ ...table, rows });
+    }
+    case DOCUMENT_OP_TYPES.SET_CELL_PROPS: {
+      if (
+        Object.keys(op.patch).some(
+          (key) => !PROPERTY_FIELDS.cell.some((field) => field === key),
+        )
+      )
+        return mismatch(op, "Cell spans require a merge or split operation.");
+      const row = table.rows[location.rowIndex];
+      const cell = row?.cells[location.cellIndex];
+      if (!row || !cell) return mismatch(op, "The addressed cell is absent.");
+      // One record per element: a further change keeps what the first recorded.
+      if ((cell.propertyChanges?.length ?? 0) > 1)
+        return refuse({
+          op,
+          reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+          message: "Resolve the existing cell property revision.",
+        });
+      const pending = cell.propertyChanges?.at(0);
+      const next = { ...cell };
+      const formatting = applyFormattingPatch(cell.formatting, op.patch);
+      if (!patchChanges(cell.formatting, op.patch)) return Result.ok(table);
+      if (formatting === undefined) delete next.formatting;
+      else next.formatting = authored(formatting);
+      if (op.revision !== undefined) {
+        // A pending change already holds the formatting before any of them.
+        const previousFormatting =
+          pending === undefined ? cell.formatting : pending.previousFormatting;
+        next.propertyChanges = [
+          {
+            type: "tableCellPropertyChange",
+            info: stampInfo(op.revision),
+            ...(previousFormatting === undefined ? {} : { previousFormatting }),
+          },
+        ];
+      }
+      const rows = [...table.rows];
+      const cells = [...row.cells];
+      cells[location.cellIndex] = next;
+      rows[location.rowIndex] = { ...row, cells };
+      return Result.ok({ ...table, rows });
+    }
+    default: {
+      const exhaustive: never = op;
+      return exhaustive;
+    }
+  }
+};
+
+/** Structural edits validate their grid; property edits retain every structural fact. */
 export const applyTableEdit = (
   document: Document,
   op: Op,
@@ -1053,6 +1408,17 @@ export const applyTableEdit = (
       });
     }
   }
+  if (isPropertyEdit(op)) {
+    return editProperties({ op, table, location }).andThen((next) => {
+      if (structurallyEqual(table, next))
+        return Result.ok({
+          document,
+          inverse: [],
+          touched: { modified: [], inserted: [], removed: [] },
+        });
+      return commitTable({ document, op, location, table: next });
+    });
+  }
   const grid = tableGrid(table, op.type);
   if (grid.isErr()) return Result.err(grid.error);
   if (
@@ -1060,7 +1426,8 @@ export const applyTableEdit = (
     op.column === 0 &&
     grid.value.width === 1
   ) {
-    if (table.rows.some((row) => row.cells.some(hasTableCellDependencies)))
+    const cells = table.rows.flatMap((row) => row.cells);
+    if (cells.some(reachesPastRemovedCell) || strandsABookmark(cells))
       return refuse({
         op,
         reason: DOCUMENT_OP_REFUSAL_REASONS.DEPENDENT_RECORDS,
@@ -1148,142 +1515,6 @@ export const applyTableEdit = (
         ];
       }
       changed = Result.ok(next);
-      break;
-    }
-    case DOCUMENT_OP_TYPES.SET_TABLE_PROPS: {
-      if (
-        Object.keys(op.patch).some((key) =>
-          ["sourceXml", "gridSourceXml", "gridChange", "preserved"].includes(
-            key,
-          ),
-        )
-      )
-        return mismatch(
-          op,
-          "Grid and source provenance require a grid operation.",
-        );
-      // One record per element: a further change keeps what the first recorded.
-      if ((table.propertyChanges?.length ?? 0) > 1)
-        return refuse({
-          op,
-          reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
-          message: "Resolve the existing table property revision.",
-        });
-      const pending = table.propertyChanges?.at(0);
-      const next = { ...table };
-      const formatting = applyFormattingPatch(table.formatting, op.patch);
-      if (!patchChanges(table.formatting, op.patch))
-        return Result.ok({
-          document,
-          inverse: [],
-          touched: { modified: [], inserted: [], removed: [] },
-        });
-      if (formatting === undefined) delete next.formatting;
-      else next.formatting = authored(formatting);
-      if (op.revision !== undefined) {
-        // A pending change already holds the formatting before any of them.
-        const previousFormatting =
-          pending === undefined ? table.formatting : pending.previousFormatting;
-        next.propertyChanges = [
-          {
-            type: "tablePropertyChange",
-            info: stampInfo(op.revision),
-            ...(previousFormatting === undefined ? {} : { previousFormatting }),
-          },
-        ];
-      }
-      changed = Result.ok(next);
-      break;
-    }
-    case DOCUMENT_OP_TYPES.SET_ROW_PROPS: {
-      if (
-        Object.keys(op.patch).some((key) =>
-          ["sourceXml", "gridBefore", "gridAfter", "preserved"].includes(key),
-        )
-      )
-        return mismatch(op, "Omitted grid slots require a topology operation.");
-      const row = table.rows[location.rowIndex];
-      if (!row) return mismatch(op, "The addressed row is absent.");
-      // One record per element: a further change keeps what the first recorded.
-      if ((row.propertyChanges?.length ?? 0) > 1)
-        return refuse({
-          op,
-          reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
-          message: "Resolve the existing row property revision.",
-        });
-      const pending = row.propertyChanges?.at(0);
-      const next = { ...row };
-      const formatting = applyFormattingPatch(row.formatting, op.patch);
-      if (!patchChanges(row.formatting, op.patch))
-        return Result.ok({
-          document,
-          inverse: [],
-          touched: { modified: [], inserted: [], removed: [] },
-        });
-      if (formatting === undefined) delete next.formatting;
-      else next.formatting = authored(formatting);
-      if (op.revision !== undefined) {
-        // A pending change already holds the formatting before any of them.
-        const previousFormatting =
-          pending === undefined ? row.formatting : pending.previousFormatting;
-        next.propertyChanges = [
-          {
-            type: "tableRowPropertyChange",
-            info: stampInfo(op.revision),
-            ...(previousFormatting === undefined ? {} : { previousFormatting }),
-          },
-        ];
-      }
-      const rows = [...table.rows];
-      rows[location.rowIndex] = next;
-      changed = Result.ok({ ...table, rows });
-      break;
-    }
-    case DOCUMENT_OP_TYPES.SET_CELL_PROPS: {
-      if (
-        Object.keys(op.patch).some((key) =>
-          ["sourceXml", "gridSpan", "vMerge", "preserved"].includes(key),
-        )
-      )
-        return mismatch(op, "Cell spans require a merge or split operation.");
-      const row = table.rows[location.rowIndex];
-      const cell = row?.cells[location.cellIndex];
-      if (!row || !cell) return mismatch(op, "The addressed cell is absent.");
-      // One record per element: a further change keeps what the first recorded.
-      if ((cell.propertyChanges?.length ?? 0) > 1)
-        return refuse({
-          op,
-          reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
-          message: "Resolve the existing cell property revision.",
-        });
-      const pending = cell.propertyChanges?.at(0);
-      const next = { ...cell };
-      const formatting = applyFormattingPatch(cell.formatting, op.patch);
-      if (!patchChanges(cell.formatting, op.patch))
-        return Result.ok({
-          document,
-          inverse: [],
-          touched: { modified: [], inserted: [], removed: [] },
-        });
-      if (formatting === undefined) delete next.formatting;
-      else next.formatting = authored(formatting);
-      if (op.revision !== undefined) {
-        // A pending change already holds the formatting before any of them.
-        const previousFormatting =
-          pending === undefined ? cell.formatting : pending.previousFormatting;
-        next.propertyChanges = [
-          {
-            type: "tableCellPropertyChange",
-            info: stampInfo(op.revision),
-            ...(previousFormatting === undefined ? {} : { previousFormatting }),
-          },
-        ];
-      }
-      const rows = [...table.rows];
-      const cells = [...row.cells];
-      cells[location.cellIndex] = next;
-      rows[location.rowIndex] = { ...row, cells };
-      changed = Result.ok({ ...table, rows });
       break;
     }
     default: {

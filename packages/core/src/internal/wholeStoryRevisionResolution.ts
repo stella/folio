@@ -486,7 +486,7 @@ const resolveStructure = ({
   const reversed: PMNode[] = [];
   let chain: ParagraphChain | null = null;
   let pendingBookmarks: PMNode[] = [];
-  let followingContainerChild = false;
+  let following: "paragraph" | "table" | "block" | "nothing" = "nothing";
   const precedingParagraphs: boolean[] = [];
   // Only a content control may end with a table, so any block before will do.
   const endsWithAnyBlock = node.type.name === "blockSdt";
@@ -602,7 +602,10 @@ const resolveStructure = ({
       }
       flushBookmarks();
       reversed.push(paragraph);
-      followingContainerChild ||= paragraph.type.spec["tableRole"] === "table";
+      // Text boxes are siblings only in the editor: the file anchors them
+      // inside a paragraph. Other standing blocks stop a paragraph join.
+      if (paragraph.type.spec["tableRole"] === "table") following = "table";
+      else if (paragraph.type.name !== "textBox") following = "block";
       continue;
     }
     const marker = expectParagraphAttrs(paragraph).pPrMark;
@@ -651,11 +654,12 @@ const resolveStructure = ({
       // is the chain's last one: its identity, properties, mark and section
       // endpoint survive whether this one still has words or not. Its runs
       // are re-read in the survivor's style when the chain is assembled.
-      const joinedAttrs = joinedParagraphAttrs(
+      const joinedAttrs = joinedParagraphAttrs({
         paragraph,
-        chain.node,
-        bookmarks.size,
-      );
+        next: chain.node,
+        between: bookmarks.size,
+        styleResolver: context.styleResolver,
+      });
       if (joinedAttrs !== chain.node.attrs) {
         chain.node = rebuild(chain.node, { attrs: joinedAttrs });
       }
@@ -681,14 +685,17 @@ const resolveStructure = ({
       continue;
     }
     flushBookmarks();
-    let follows: "paragraph" | "table" | "nothing" = "nothing";
+    let follows: "paragraph" | "table" | "block" | "nothing" = "nothing";
     if (chain) follows = "paragraph";
-    else if (followingContainerChild) follows = "table";
+    else if (following === "block") follows = "block";
+    // A kept paragraph beyond an anchored text box cannot join through that
+    // editor sibling here; retain its existing nonjoining container policy.
+    else if (following !== "nothing") follows = "table";
     // With a table after it, the container must still end with a paragraph;
     // as the container's final paragraph, the block before it becomes last,
     // so it must be a paragraph (a cell or body never ends with a table).
     let containerStillEndsWithParagraph = true;
-    if (follows === "table") {
+    if (follows === "table" || follows === "block") {
       containerStillEndsWithParagraph =
         node.lastChild?.type.name === "paragraph";
     } else if (follows === "nothing") {
@@ -707,9 +714,8 @@ const resolveStructure = ({
       ),
       followingHasSectionProperties: chain !== null && ownsSection(chain.node),
     });
-    // A paragraph that goes leaves its range boundaries where it was; its
-    // comment anchors go to the paragraph before it, and with none there to
-    // take them it stays.
+    // A paragraph that goes leaves its range boundaries and comment anchors
+    // to the paragraph before it, and with none there to take them it stays.
     const removes =
       marker &&
       !paragraphContentOf(paragraph) &&
@@ -717,11 +723,9 @@ const resolveStructure = ({
       joins &&
       index + reversed.length + 1 > 1;
     const remains = removes ? paragraphRemainsOf(paragraph) : undefined;
-    // Before a table, bookmarks and moves stand in the paragraph's place; a
-    // container ends with a paragraph, so ending it every boundary goes back.
-    const between = follows === "table" ? (remains?.blocks ?? []) : [];
-    const toPrevious =
-      follows === "table" ? (remains?.comments ?? []) : (remains?.inline ?? []);
+    // Every boundary goes back to the paragraph before it, as deleting the
+    // paragraph directly leaves it.
+    const toPrevious = remains ?? [];
     const commentHost = entries[index - 1]?.node;
     if (
       remains !== undefined &&
@@ -757,10 +761,8 @@ const resolveStructure = ({
       context.replacements.push({
         from: entry.position,
         to: entry.position + entry.original.nodeSize,
-        slice: new Slice(Fragment.fromArray(between), 0, 0),
+        slice: Slice.empty,
       });
-      // The children are collected last to first.
-      for (const block of between.toReversed()) reversed.push(block);
       removedEndpoint(paragraph, context);
       continue;
     }
@@ -777,7 +779,7 @@ const resolveStructure = ({
       before,
       joinBoundaries: [],
     };
-    followingContainerChild = true;
+    following = "paragraph";
   }
   flushBookmarks();
   reversed.reverse();

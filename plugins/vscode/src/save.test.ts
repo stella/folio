@@ -18,7 +18,7 @@ const request = (overrides: Partial<CliSaveRequest> = {}): CliSaveRequest => ({
   bytes: new TextEncoder().encode("PK saved"),
   expectedVersion: VERSION,
   author: "Ada Lovelace",
-  strategy: { type: "selective-first" },
+  strategy: { type: "selective" },
   ...overrides,
 });
 
@@ -48,7 +48,14 @@ describe("saveArgs", () => {
     const args = saveArgs(
       request({
         leaseToken: "tok",
-        strategy: { type: "full-repack", reason: "noBodyView" },
+        strategy: {
+          type: "full-repack",
+          decline: {
+            scope: "part",
+            part: "word/document.xml",
+            reason: "structuralRangeSplit",
+          },
+        },
         destination: {
           path: "/work/Copy.docx",
           expectedVersion: "b".repeat(64),

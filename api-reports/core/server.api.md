@@ -7,6 +7,7 @@
 import { Hyperlink } from '@stll/docx-core/model';
 import * as import__stll_docx_core_model from '@stll/docx-core/model';
 import { Node as Node_2 } from 'prosemirror-model';
+import { OpStory } from '@stll/docx-core/ops';
 import { Paragraph } from '@stll/docx-core/model';
 import { ParagraphContent } from '@stll/docx-core/model';
 import { ParagraphFormatting } from '@stll/docx-core/model';
@@ -494,7 +495,7 @@ export const FOLIO_VERSION_COMPARISON_PRIVACY_TRANSFORMS: readonly ["remove-attr
 export const FOLIO_VERSION_COMPARISON_SCOPES: readonly ["text", "formatting", "metadata"];
 
 // @public
-export const FOLIO_YJS_ATTR_SCHEMA_VERSION: 14;
+export const FOLIO_YJS_ATTR_SCHEMA_VERSION: 15;
 
 // @public
 export const FOLIO_YJS_DOCX_MATERIALIZATION_ERROR_CODES: readonly ["empty_update", "invalid_update", "missing_document", "source_mismatch", "stale_attr_schema", "update_too_large"];
@@ -1080,8 +1081,8 @@ export type FolioDocumentOperationStory = "main" | {
 // @public (undocumented)
 export type FolioDocumentOperationType = FolioDocumentOperation["type"];
 
-// @public (undocumented)
-export type FolioDocumentOperationUndoFailureReason = "unknownHandle" | "notLatest" | "documentChanged";
+// @public
+export type FolioDocumentOperationUndoFailureReason = "unknownHandle" | "notLatest" | "documentChanged" | "storyUnavailable" | "inverseRefused" | "documentNotEditable";
 
 // @public
 export type FolioDocumentOperationUndoHandle = {
@@ -1097,6 +1098,7 @@ export type FolioDocumentOperationUndoResult = {
     status: "rejected";
     undoHandle: FolioDocumentOperationUndoHandle;
     reason: FolioDocumentOperationUndoFailureReason;
+    message?: string;
 };
 
 // @public (undocumented)
@@ -1297,6 +1299,7 @@ export class FolioDocxReviewer {
     applyOperations(operations: FolioAIEditOperation[], options: FolioApplyOperationsOptions): FolioAIEditApplyResult;
     readonly author: string;
     exportPendingSuggestions(): FolioPendingSuggestionRecord[];
+    fork(): FolioDocxReviewer;
     static fromBuffer(buffer: ArrayBuffer, options?: FolioDocxReviewerOptions): Promise<FolioDocxReviewer>;
     getChanges(filter?: FolioReviewChangeFilter): FolioReviewChange[];
     getComments(filter?: FolioReviewCommentFilter): FolioReviewComment[];

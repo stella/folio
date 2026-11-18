@@ -122,7 +122,7 @@ const envelopeProperties = (
       description:
         access === "write"
           ? "Write the result to this .docx instead of changing `path` in place. It must not start with a dot or sit inside .folio."
-          : "Write the redline to this .docx. Without it, only the differences are returned.",
+          : "Write the result (a redline, or the rewritten package) to this .docx. Without it, nothing is written: only the differences or the report are returned.",
     },
     overwrite: {
       type: "boolean",
@@ -142,7 +142,7 @@ const envelopeProperties = (
         "Idempotency key: repeating a committed call returns its original result.",
     },
   });
-  if (access === "write") {
+  if (access === "write" || tool.type === "documentPass") {
     Object.assign(properties, {
       allowRepack: {
         type: "boolean",
@@ -151,7 +151,10 @@ const envelopeProperties = (
       },
     });
   }
-  if (tool.type === "agentWrite" && tool.editMode === "tracked-or-direct") {
+  if (
+    (tool.type === "agentWrite" || tool.type === "documentPass") &&
+    tool.editMode === "tracked-or-direct"
+  ) {
     Object.assign(properties, {
       mode: {
         type: "string",
@@ -318,6 +321,21 @@ const LAZY_SUMMARIES: Readonly<
   compare_documents: {
     summary: "Diff two .docx files, or write their redline to a destination.",
     domain: "compare",
+  },
+  proofing_language: {
+    summary:
+      "Report the proofing languages; with `set`, write one into the defaults, styles and settings.",
+    domain: "package",
+  },
+  placeholders: {
+    summary:
+      "List placeholders left in every story; with `fill` and a destination, replace them.",
+    domain: "package",
+  },
+  sanitize_document: {
+    summary:
+      "Remove comments, rsids, and identifying properties; without a destination, report them.",
+    domain: "package",
   },
 };
 

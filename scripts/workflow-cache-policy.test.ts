@@ -570,13 +570,16 @@ const boundedInstallProblems = (action: unknown): string[] => {
   const [install] = installs;
   const env = install?.["env"];
   const seconds = isRecord(env) ? Number(env["ATTEMPT_SECONDS"]) : Number.NaN;
+  const grace = isRecord(env) ? Number(env["KILL_GRACE_SECONDS"]) : Number.NaN;
   const run = String(install?.["run"]);
   const problems: string[] = [];
   if (!Number.isInteger(seconds) || seconds <= 0)
     problems.push("the install step sets no ATTEMPT_SECONDS");
+  if (!Number.isInteger(grace) || grace <= 0)
+    problems.push("the install step sets no KILL_GRACE_SECONDS");
   if ((run.match(/^\s*attempt\s*$/gmu) ?? []).length !== 1)
     problems.push("the install retries other than exactly once");
-  if (!/^\s*if ! attempt; then$/mu.test(run))
+  if (!/^\s*if attempt; then$/mu.test(run))
     problems.push("the install does not start with one bounded attempt");
   if (!/kill -TERM -- "-\$install"/u.test(run))
     problems.push("the limit does not stop the attempt's process group");
@@ -595,7 +598,9 @@ const attemptMinutes = (action: unknown): number => {
       )
     : undefined;
   return isRecord(install) && isRecord(install["env"])
-    ? Number(install["env"]["ATTEMPT_SECONDS"]) / 60
+    ? (Number(install["env"]["ATTEMPT_SECONDS"]) +
+        Number(install["env"]["KILL_GRACE_SECONDS"])) /
+        60
     : Number.NaN;
 };
 

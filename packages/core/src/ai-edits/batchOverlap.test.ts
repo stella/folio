@@ -42,7 +42,6 @@ import { fromMarkdown } from "../markdown";
 import { resolveAllChangesInHeadlessState } from "../prosemirror/commands/comments";
 import { paragraphPropertiesSnapshot } from "../prosemirror/commands/propertyChangeScope";
 import { resolveStateStory } from "../prosemirror/markupViewProjection";
-import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import type { ParagraphFormatting } from "../types/document";
 import type { FolioDocxReviewer } from "./headless";
 import { createFolioAITextRangeHandle } from "./snapshot";
@@ -543,9 +542,7 @@ const batchAgainstOneAtATime = async ({
       const mark: unknown =
         anchor && batch.state.doc.nodeAt(anchor.from)?.attrs["pPrMark"];
       expect(mark).toMatchObject({ kind: "del" });
-      expect(skipped.canonicalRefusal).toEqual({
-        gap: CANONICAL_GAP.publicPendingParagraphMarkProperties,
-      });
+      expect(skipped.canonicalRefusal).toBeUndefined();
       expect(
         result.issues.find((issue) => issue.operationId === id),
       ).toMatchObject({
@@ -601,11 +598,28 @@ const batchAgainstOneAtATime = async ({
   }
 
   const oracle = await initializedSession();
+  // One at a time, a caller names a paragraph an earlier direct join retired
+  // by the id of the paragraph it joined into, as that join reported it.
+  const joinedInto = new Map<string, string>();
+  const standingId = (id: string): string => {
+    let current = id;
+    for (let step = 0; step < joinedInto.size; step++) {
+      const next = joinedInto.get(current);
+      if (next === undefined) break;
+      current = next;
+    }
+    return current;
+  };
   const materializeAll = (
     entries: readonly { operation: GeneratedOperation; index: number }[],
   ) =>
     entries.flatMap(({ operation, index }) => {
-      const materialized = materialize(oracle, blockIds, operation, index);
+      const materialized = materialize(
+        oracle,
+        blockIds.map(standingId),
+        operation,
+        index,
+      );
       if (materialized === null) {
         report(`op${String(index)} no longer resolves one at a time`);
         return [];
@@ -618,8 +632,14 @@ const batchAgainstOneAtATime = async ({
     }
     // An operation the ones before it already carried out has nothing left
     // to do; the documents are compared below either way.
-    for (const { id, reason } of oracle.apply(mode, operationsToApply)
-      .skipped) {
+    const alone = oracle.apply(mode, operationsToApply);
+    for (const { paragraphIdentity } of alone.applied)
+      if (paragraphIdentity?.type === "joined")
+        joinedInto.set(
+          paragraphIdentity.retiredBlockId,
+          paragraphIdentity.blockId,
+        );
+    for (const { id, reason } of alone.skipped) {
       if (reason !== "noopOperation") {
         report(`${id} skipped one at a time as ${reason}`);
       }
@@ -711,11 +731,24 @@ const batchAgainstOneAtATime = async ({
   // instead (that paragraph ends nothing), so once accepted the words of the
   // last paragraph the batch keeps end in the deleted one's paragraph, whose
   // mark is the one that stays: that paragraph goes by the deleted one's id.
+  // Applied directly, the deleted last paragraph joins the paragraph before
+  // it, the one whose mark stays being the deleted one's: the nearest
+  // paragraph the batch keeps goes by its id, unless a paragraph the batch
+  // inserts after that one ends the story instead.
   const lastIndex = BLOCK_COUNT - 1;
-  if (mode !== "direct" && deletes(lastIndex) && !rotatesFinalBreak) {
+  if (deletes(lastIndex) && !rotatesFinalBreak) {
     let kept = lastIndex - 1;
     while (kept >= 0 && deletes(kept)) kept--;
-    if (kept >= 0) named.add(kept);
+    const insertedAfterKept = applied.some(
+      ({ operation }) =>
+        (operation.kind === "insertAfterBlock" &&
+          operation.block >= kept &&
+          operation.block <= lastIndex) ||
+        (operation.kind === "insertBeforeBlock" &&
+          operation.block > kept &&
+          operation.block <= lastIndex),
+    );
+    if (kept >= 0 && (mode !== "direct" || !insertedAfterKept)) named.add(kept);
   }
   if (mode !== "direct") {
     const acceptedPreview = paragraphProjection(

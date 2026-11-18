@@ -1,6 +1,6 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 import { build } from "esbuild";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -34,7 +34,10 @@ test("the universal CLI backend loads from disk and computes Unicode distances i
       format: "esm",
       metafile: true,
       banner: {
-        js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);",
+        js: `import { createRequire } from 'node:module';
+          const require = createRequire(import.meta.url);
+          globalThis.fetch = () => { throw new Error("The CLI must read its wasm from disk"); };
+          globalThis.Worker = class { constructor() { throw new Error("Synchronous distances need no workers"); } };`,
       },
       plugins: [fuzzyFromDisk],
     });
@@ -47,6 +50,13 @@ test("the universal CLI backend loads from disk and computes Unicode distances i
     const child = expectExited(runChild(["node", outfile]));
     expect(child.exitCode).toBe(0);
     expect(JSON.parse(child.stdout)).toEqual([3, 2, 1, 1, 0]);
+    await writeFile(
+      path.join(directory, "fuzzy-search.wasm32-wasi.wasm"),
+      "<html>missing wasm</html>",
+    );
+    const corrupt = expectExited(runChild(["node", outfile]));
+    expect(corrupt.exitCode).not.toBe(0);
+    expect(corrupt.stderr).toContain("did not contain WebAssembly bytes");
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

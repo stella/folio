@@ -65,8 +65,10 @@ describe("comment ID allocation", () => {
         ]),
         schema.node("commentReference", { commentId: referenceId }),
         schema.node("rangeAnchor", {
-          start: { type: "commentRangeStart", id: rangeId },
-          end: { type: "commentRangeEnd", id: rangeId },
+          markers: [
+            { type: "commentRangeStart", id: rangeId },
+            { type: "commentRangeEnd", id: rangeId },
+          ],
         }),
       ]),
     ]);

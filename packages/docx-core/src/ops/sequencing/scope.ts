@@ -28,6 +28,7 @@ import {
 } from "./envelope";
 import { heldRevisionIds } from "./heldRevisions";
 import { isInlineInsertion } from "./points";
+import { transformRestorePair } from "./restoreTransform";
 
 type PartAccess = {
   part: ExclusivePart;
@@ -185,6 +186,9 @@ const footprintOf = (op: DocumentOp): OpFootprint => {
       );
     case DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW:
       return scoped([op.blockId], heldRevisions(op.review));
+    // A control's properties belong to the paragraphs it holds or sits in.
+    case DOCUMENT_OP_TYPES.SET_CONTENT_CONTROL:
+      return scoped(op.blockIds);
     case DOCUMENT_OP_TYPES.REPLACE_INLINE:
       return scoped([op.blockId], heldRevisions(op.content));
     case DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS:
@@ -446,11 +450,15 @@ export const transformByFootprint = ({
       BATCH_REJECTION_REASONS.TABLE_REQUIRES_EXCLUSIVE_EDIT,
       "A concurrent operation restructured the same table.",
     );
-  if (addressed.some((id) => changed.has(id)))
+  if (addressed.some((id) => changed.has(id))) {
+    // A restoration passes an edit of its paragraph outside what it changes.
+    const restored = transformRestorePair(op, over);
+    if (restored !== undefined) return restored;
     return refuse(
       BATCH_REJECTION_REASONS.BLOCK_CONFLICT,
       "A concurrent operation changed a paragraph this operation addresses.",
     );
+  }
   return Result.ok([op]);
 };
 
@@ -476,10 +484,16 @@ const tableParagraphIds = (
   document: Document,
   op: DocumentOp,
 ): readonly string[] => {
-  if (!("blockId" in op)) return [];
+  let targetId = "blockId" in op ? op.blockId : undefined;
+  if (
+    op.type === DOCUMENT_OP_TYPES.INSERT_TABLE &&
+    (op.at.type === "beforeTable" || op.at.type === "afterTable")
+  )
+    targetId = op.at.blockId;
+  if (targetId === undefined) return [];
   const locations = storyParagraphs(storyBody(document, operationStory(op)));
   const target = locations.find(
-    ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(op.blockId),
+    ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(targetId),
   );
   const step = target?.list.findLastIndex(({ kind }) => kind === "tableCell");
   if (target === undefined || step === undefined || step < 0) return [];

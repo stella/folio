@@ -292,6 +292,27 @@ const isNestedListSeparator = (
   return true;
 };
 
+type MarkdownExpectedView = BlockView & {
+  /** Source paragraphs occupying one Markdown table cell. */
+  cellParagraphs?: BlockView[];
+};
+
+const gfmCellText = (text: string, expected: MarkdownExpectedView): string => {
+  if (expected.cellParagraphs === undefined)
+    return expected.number === BULLET
+      ? text.trim().replace(/^-\s+/u, "")
+      : text.trim();
+  const lines = text.trim().split("\n");
+  let offset = 0;
+  for (const paragraph of expected.cellParagraphs) {
+    const line = lines.at(offset);
+    if (paragraph.number === BULLET && line !== undefined)
+      lines[offset] = line.replace(/^-\s+/u, "");
+    offset += paragraph.text.split("\n").length;
+  }
+  return lines.join("\n");
+};
+
 /**
  * `docxToMarkdown` → views, matched against the texts the content reader
  * reports (a Markdown line carries no block boundary of its own). Pipe-table
@@ -299,12 +320,12 @@ const isNestedListSeparator = (
  */
 export const markdownViews = (
   markdown: string,
-  expectedViews: readonly BlockView[],
+  expectedViews: readonly MarkdownExpectedView[],
 ): BlockView[] => {
   const views: BlockView[] = [];
   const tokens = marked.lexer(withoutNoteTrailer(markdown));
   let cursor = 0;
-  const nextExpected = (): BlockView => {
+  const nextExpected = (): MarkdownExpectedView => {
     const expected = expectedViews.at(cursor);
     if (!expected)
       throw new Error(
@@ -433,10 +454,7 @@ export const markdownViews = (
           const text = inlineText(cell.tokens);
           if (text.length === 0) continue;
           const expected = nextExpected();
-          const comparableText =
-            expected.number === BULLET
-              ? text.trim().replace(/^-\s+/u, "")
-              : text.trim();
+          const comparableText = gfmCellText(text, expected);
           views.push(view(comparableText, "paragraph", undefined, undefined));
         }
         return;
@@ -486,6 +504,53 @@ const markdownComparable = (block: BlockView, inTable: boolean): BlockView =>
         undefined,
       )
     : block;
+
+/** Markdown joins a cell's paragraphs with hard breaks; other readers keep them apart. */
+const markdownSourceViews = (
+  blocks: readonly ContentBlock[],
+  numberingFormats: ReadonlyMap<string, string>,
+) => {
+  const expected: MarkdownExpectedView[] = [];
+  let previous: ContentBlock["table"];
+  for (const block of blocks) {
+    const paragraph = contentView(block, numberingFormats);
+    if (
+      !isFolioAIContentBlock(paragraph) &&
+      !(paragraph.kind === "listItem" && paragraph.number !== undefined)
+    )
+      continue;
+    const table = block.table;
+    const last = expected.at(-1);
+    const comparable = markdownComparable(paragraph, table !== undefined);
+    if (
+      table !== undefined &&
+      previous !== undefined &&
+      table.tableIndex === previous.tableIndex &&
+      table.rowIndex === previous.rowIndex &&
+      table.cellIndex === previous.cellIndex &&
+      last?.cellParagraphs !== undefined
+    ) {
+      last.text += `\n${comparable.text}`;
+      last.cellParagraphs.push(paragraph);
+    } else {
+      expected.push(
+        table === undefined
+          ? paragraph
+          : {
+              ...comparable,
+              cellParagraphs: [paragraph],
+            },
+      );
+    }
+    previous = table;
+  }
+  return {
+    expected,
+    comparable: expected
+      .map(({ cellParagraphs: _source, ...block }) => block)
+      .filter(isFolioAIContentBlock),
+  };
+};
 
 type LabelFields = {
   displayLabel?: string;
@@ -593,6 +658,7 @@ export const readAll = async (bytes: Uint8Array): Promise<ReaderViews> => {
   // the document is still compared. Drop this once that finding is fixed.
   const boxed = featureIndex(acceptedReviewer).inTextBox;
   accepted = accepted.filter((block) => !boxed.has(block.id));
+  const markdownSource = markdownSourceViews(accepted, numberingFormats);
   return {
     getContent: contentViews,
     snapshot: snapshot.map((block) => contentView(block, numberingFormats)),
@@ -604,25 +670,12 @@ export const readAll = async (bytes: Uint8Array): Promise<ReaderViews> => {
         undefined,
       ),
     ),
-    getContentAsMarkdown: accepted
-      .filter(isFolioAIContentBlock)
-      .map((block) =>
-        markdownComparable(
-          contentView(block, numberingFormats),
-          block.table !== undefined,
-        ),
-      ),
+    getContentAsMarkdown: markdownSource.comparable,
     markdown: markdownViews(
       markdown,
       // Empty list markers are structure the exporter preserves. Account for
       // them before applying the same content filter as the source readers.
-      accepted
-        .map((block) => contentView(block, numberingFormats))
-        .filter(
-          (block) =>
-            isFolioAIContentBlock(block) ||
-            (block.kind === "listItem" && block.number !== undefined),
-        ),
+      markdownSource.expected,
     ).filter(isFolioAIContentBlock),
     rows,
     ids: content.map(({ id }) => id),

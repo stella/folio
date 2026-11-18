@@ -6,6 +6,7 @@ import type {
   Document,
   Paragraph,
 } from "../../../packages/docx-core/src/model/document";
+import { captureSectionViewState } from "../../../packages/docx-core/src/ops/blocks";
 import {
   applyDocumentOp,
   DOCUMENT_OP_TYPES,
@@ -345,6 +346,95 @@ test("body-field and section-field ownership cannot conceal paragraph edits in t
   }
 });
 
+test("complete section views own the document part while canonical endpoint fields stay protected", () => {
+  const before: Document = fixture();
+  const first = before.package.document.content.at(0);
+  if (first?.type !== "paragraph")
+    throw new Error("Missing main fixture paragraph");
+  first.sectionProperties = { pageWidth: 12000 };
+  before.package.document.finalSectionProperties = { pageWidth: 13000 };
+  before.package.document.sections = [
+    {
+      properties: first.sectionProperties,
+      content: before.package.document.content,
+    },
+  ];
+  const step = stepFor(
+    {
+      type: DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS,
+      expected: {
+        sectionView: captureSectionViewState(before.package.document),
+      },
+      parts: { sectionView: { type: "omitted" } },
+    },
+    before,
+  );
+  expect(localityStepFailures(step)).toEqual([]);
+  const control = parts();
+  const edited = new Map(control);
+  edited.set("custom/main.xml", bytes("restored section view"));
+  expect(
+    serializedLocalityStepFailures({
+      step,
+      control,
+      edited,
+      documentPart: "custom/main.xml",
+    }),
+  ).toEqual([]);
+  edited.set("stories/header3.xml", bytes("unowned header"));
+  expect(
+    serializedLocalityStepFailures({
+      step,
+      control,
+      edited,
+      documentPart: "custom/main.xml",
+    }),
+  ).toEqual([
+    "restoreStoryParts changed unrelated serialized part: stories/header3.xml",
+  ]);
+  for (const field of [
+    "paragraphEndpoint",
+    "finalEndpoint",
+    "paragraphContent",
+    "packageProperties",
+  ] as const) {
+    const changed = structuredClone(step.edit.document);
+    const target = changed.package.document.content.at(0);
+    if (target?.type !== "paragraph")
+      throw new Error("Missing main fixture paragraph");
+    switch (field) {
+      case "paragraphEndpoint":
+        target.sectionProperties = { pageWidth: 14000 };
+        break;
+      case "finalEndpoint":
+        changed.package.document.finalSectionProperties = { pageWidth: 14000 };
+        break;
+      case "paragraphContent":
+        target.content = [
+          { type: "run", content: [{ type: "text", text: "unowned" }] },
+        ];
+        break;
+      case "packageProperties":
+        changed.package.properties = { title: "unowned" };
+        break;
+    }
+    const failures = localityStepFailures({
+      ...step,
+      edit: {
+        ...step.edit,
+        document: changed,
+        touched: { modified: ["00000001"], inserted: [], removed: [] },
+      },
+    });
+    expect(failures).toContain(
+      "restoreStoryParts changed records outside its declared story and section fields",
+    );
+    expect(failures).not.toContain(
+      "restoreStoryParts declared a touched block outside its addressed story",
+    );
+  }
+});
+
 test("compound inverse diagnosis identifies the first failing reverse undo instead of later cascades", async () => {
   const first = stepFor(insert);
   const second = stepFor(
@@ -438,4 +528,107 @@ test("the first locality part is chosen across relationship, content type and by
   ).toEqual([
     "restoreStoryParts changed unrelated package content types: [Content_Types].xml",
   ]);
+});
+
+test("revision info written on a deleted row, a cell or a table changes only the paragraphs it declares", () => {
+  // The corpus shape of a tracked row deletion: the row's own deletion, a
+  // deletion around the text it held, and property changes on a cell and on
+  // the table, between untouched paragraphs.
+  const info = (id: number) => ({
+    id,
+    author: "Reviewer",
+    date: "2026-01-01T00:00:00Z",
+  });
+  const cell = (paraId: string) => ({
+    type: "tableCell" as const,
+    content: [paragraph(paraId)],
+  });
+  const deletedCell = (paraId: string, id: number) => ({
+    type: "tableCell" as const,
+    content: [
+      {
+        type: "paragraph" as const,
+        paraId,
+        content: [
+          {
+            type: "deletion" as const,
+            info: info(id),
+            content: [
+              {
+                type: "run" as const,
+                content: [{ type: "text" as const, text: "gone" }],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  });
+  const before = {
+    package: {
+      document: {
+        content: [
+          paragraph("00000001"),
+          {
+            type: "table",
+            propertyChanges: [
+              {
+                type: "tablePropertyChange",
+                info: info(7),
+                previousFormatting: {},
+              },
+            ],
+            rows: [
+              {
+                type: "tableRow",
+                cells: [
+                  {
+                    ...cell("00000002"),
+                    propertyChanges: [
+                      {
+                        type: "tableCellPropertyChange",
+                        info: info(8),
+                        previousFormatting: {},
+                      },
+                    ],
+                  },
+                  cell("00000003"),
+                ],
+              },
+              {
+                type: "tableRow",
+                structuralChange: { type: "tableRowDeletion", info: info(5) },
+                cells: [deletedCell("00000004", 6), deletedCell("00000005", 9)],
+              },
+              { type: "tableRow", cells: [cell("00000006")] },
+            ],
+          },
+          paragraph("00000007"),
+        ],
+      },
+    },
+  } satisfies Document;
+  const stepOf = (id: number) =>
+    stepFor(
+      {
+        type: DOCUMENT_OP_TYPES.SET_REVISION_INFO,
+        story: OP_STORIES.MAIN,
+        infos: [{ id, author: "Corpus adopter", date: "2026-02-02T00:00:00Z" }],
+      },
+      before,
+    );
+  for (const id of [5, 6, 7, 8, 9])
+    expect(localityStepFailures(stepOf(id))).toEqual([]);
+  // The check sees the row's own revision: the same edit reporting none of
+  // the row's paragraphs is a finding.
+  const rowDeletion = stepOf(5);
+  expect(
+    localityStepFailures({
+      ...rowDeletion,
+      edit: {
+        ...rowDeletion.edit,
+        touched: { modified: [], inserted: [], removed: [] },
+      },
+    }),
+  ).toContain("setRevisionInfo changed an untouched block or container");
 });

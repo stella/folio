@@ -13,6 +13,13 @@ import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
 import {
+  applyDocumentOps,
+  DOCUMENT_OP_TYPES,
+  OP_STORIES,
+  reviewFieldsOf,
+} from "@stll/docx-core/ops";
+
+import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
@@ -248,6 +255,113 @@ describe("list normalization of a parsed package", () => {
         {
           id: "list normalization keeps the parser's list renderings through containers",
           numRuns: 60,
+        },
+      );
+    },
+    propertyTestTimeout(30_000),
+  );
+});
+
+describe("derived list formatting inverses", () => {
+  test(
+    "restore review fields without authoring derived indentation",
+    () => {
+      assertProperty(
+        fc.property(
+          fc.integer({ min: 1, max: 2880 }),
+          fc.boolean(),
+          fc.option(fc.boolean(), { nil: undefined }),
+          fc.option(fc.record({ spaceBefore: fc.nat({ max: 720 }) }), {
+            nil: undefined,
+          }),
+          (indentLeft, styleNumbering, keepNext, currentFormatting) => {
+            const paragraph: Paragraph = {
+              type: "paragraph",
+              paraId: "00000001",
+              formatting: {
+                ...(styleNumbering
+                  ? { styleId: "ListStyle" }
+                  : {
+                      numPr: { kind: "reference" as const, numId: 1, ilvl: 0 },
+                    }),
+                ...(keepNext === undefined ? {} : { keepNext }),
+              },
+              propertyChanges: [
+                {
+                  type: "paragraphPropertyChange",
+                  info: { id: 1, author: "Reviewer" },
+                  previousFormatting: { alignment: "center" },
+                  ...(currentFormatting === undefined
+                    ? {}
+                    : { currentFormatting }),
+                },
+              ],
+              content: [],
+            };
+            const source: Document = {
+              package: {
+                document: { content: [paragraph] },
+                styles: {
+                  styles: [
+                    {
+                      styleId: "ListStyle",
+                      type: "paragraph",
+                      pPr: { numPr: { kind: "reference", numId: 1, ilvl: 0 } },
+                    },
+                  ],
+                },
+                numbering: {
+                  abstractNums: [
+                    {
+                      abstractNumId: 0,
+                      levels: [{ ...level(0), pPr: { indentLeft } }],
+                    },
+                  ],
+                  nums: [{ numId: 1, abstractNumId: 0 }],
+                },
+              },
+            };
+            const normalized = normalizeListModelRendering(source);
+            expect(normalized.inverse).toHaveLength(1);
+            const rendered = normalized.document.package.document.content.at(0);
+            expect(rendered?.type).toBe("paragraph");
+            if (rendered?.type !== "paragraph") return;
+            expect(rendered.formatting?.indentLeft).toBe(indentLeft);
+            expect(rendered.propertyChanges).toStrictEqual(
+              paragraph.propertyChanges,
+            );
+            // Serialized journal inverses must retain sparse records exactly too.
+            const undone = applyDocumentOps(
+              normalized.document,
+              JSON.parse(JSON.stringify(normalized.inverse)),
+            ).unwrap();
+            const restored = undone.document.package.document.content.at(0);
+            expect(restored?.type).toBe("paragraph");
+            if (restored?.type !== "paragraph") return;
+            expect(reviewFieldsOf(restored)).toStrictEqual(
+              reviewFieldsOf(paragraph),
+            );
+            const redone = applyDocumentOps(
+              undone.document,
+              undone.inverse,
+            ).unwrap();
+            expect(redone.document).toStrictEqual(normalized.document);
+            const edited = applyDocumentOps(normalized.document, [
+              {
+                type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
+                story: OP_STORIES.MAIN,
+                blockId: "00000001",
+                patch: { alignment: "right" },
+              },
+            ]).unwrap();
+            expect(
+              applyDocumentOps(edited.document, normalized.inverse).isErr(),
+            ).toBe(true);
+          },
+        ),
+        {
+          id: "derived list formatting inverses retain pending review snapshots",
+          numRuns: 100,
         },
       );
     },

@@ -26,6 +26,7 @@ import {
   handleSuggestionPaste,
   suggestionModeKey,
 } from "../plugins/suggestionMode";
+import { expectRangeAnchorAttrs } from "../rangeAnchorAttrs";
 import { schema } from "../schema";
 import { trackedRevisionPathOf } from "../trackedRevisionPath";
 import { fromProseDoc } from "./fromProseDoc";
@@ -214,8 +215,7 @@ test("empty move-range marker ownership survives DOCX and PM JSON round trips", 
   const pointOrigins: unknown[][] = [];
   projected.descendants((node) => {
     if (node.type.name !== "rangeAnchor") return;
-    const start: unknown = node.attrs["start"];
-    const end: unknown = node.attrs["end"];
+    const [start, end] = expectRangeAnchorAttrs(node).markers;
     if (
       typeof start === "object" &&
       start !== null &&
@@ -249,7 +249,9 @@ test("nested mixed revision marks expose nearest-first copy-owner depth", async 
   );
   const parsed = await parseDocx(
     (await zip.generate({ compression: "store" })).buffer,
-    { preloadFonts: false },
+    {
+      preloadFonts: false,
+    },
   );
   const projected = toProseDoc(parsed);
   const boundaryPaths: string[][] = [];
@@ -350,7 +352,7 @@ test("rejecting a named inner owner drops a multiply-owned copy", async () => {
   expect(output).not.toContain("copyOriginAncestors");
 });
 
-test("paragraph-boundary hoisting drops copied owners in both destinations", async () => {
+test("paragraph-boundary hoisting drops copied owners", async () => {
   const parsed = await parseDocx(await documentWithNestedCopiedBoundaries(), {
     preloadFonts: false,
   });
@@ -361,27 +363,36 @@ test("paragraph-boundary hoisting drops copied owners in both destinations", asy
       .filter((node) => node.attrs["type"] === "start")
       .map((node) => node.attrs["name"]);
 
-  expect(starts(remains.blocks)).toEqual(["original"]);
-  expect(starts(remains.inline)).toEqual(["original"]);
+  expect(starts(remains)).toEqual(["original"]);
   expect(
-    [...remains.blocks, ...remains.inline].every(
-      (node) => node.attrs["copyOriginAncestors"] == null,
-    ),
+    remains.every((node) => node.attrs["copyOriginAncestors"] == null),
   ).toBe(true);
 });
 
-test.each(["before-table", "terminal"] as const)(
-  "selective paragraph-mark removal drops copies hoisted %s",
-  async (destination) => {
-    const { output } = await resolvedDocument(
-      await documentWithParagraphMarkBoundary(destination),
-      rejectAIEditRevision(70),
-    );
+test("selective paragraph-mark removal drops copies hoisted to the paragraph before", async () => {
+  const { output } = await resolvedDocument(
+    await documentWithParagraphMarkBoundary("terminal"),
+    rejectAIEditRevision(70),
+  );
 
-    expect(output).not.toContain('w:name="copied"');
-    expect(output).toContain('w:name="original"');
-  },
-);
+  expect(output).not.toContain('w:name="copied"');
+  expect(output).toContain('w:name="original"');
+});
+
+test("selective paragraph-mark removal before a table runs the copies' owner into the first cell", async () => {
+  // No paragraph stands before it: the table's first cell takes what it
+  // held, the pending insertion that owns the copy included.
+  const { output } = await resolvedDocument(
+    await documentWithParagraphMarkBoundary("before-table"),
+    rejectAIEditRevision(70),
+  );
+
+  expect(output).toContain('w:name="copied"');
+  expect(output).toContain('w:name="original"');
+  expect(output.indexOf("<w:tc>")).toBeLessThan(
+    output.indexOf('w:name="original"'),
+  );
+});
 
 test("rejecting an empty copied move range keeps its standing counterpart", async () => {
   const { output } = await resolvedDocument(
@@ -421,15 +432,16 @@ test("accepting all changes removes empty move-range copy ownership", async () =
 test("paragraph-mark removal normalizes copied empty move boundaries", async () => {
   const parsed = await parseDocx(
     await documentWithParagraphMarkEmptyMoveRange(),
-    { preloadFonts: false },
+    {
+      preloadFonts: false,
+    },
   );
   const projected = toProseDoc(parsed);
   const sourceOrigins: unknown[][] = [];
   const removedNodes: string[] = [];
   projected.descendants((node) => {
     if (node.type.name !== "rangeAnchor") return;
-    const start: unknown = node.attrs["start"];
-    const end: unknown = node.attrs["end"];
+    const [start, end] = expectRangeAnchorAttrs(node).markers;
     if (
       typeof start === "object" &&
       start !== null &&
@@ -451,13 +463,11 @@ test("paragraph-mark removal normalizes copied empty move boundaries", async () 
   ]);
   expect(removedNodes).toEqual(["drop", "rangeAnchor"]);
   const remains = paragraphRemainsOf(projected.child(0));
-  for (const nodes of [remains.blocks, remains.inline]) {
-    const boundaries = nodes.flatMap(rangeBoundaryItemsOf);
-    expect(boundaries).toHaveLength(2);
-    expect(
-      boundaries.every((boundary) => !("copyOriginAncestors" in boundary)),
-    ).toBe(true);
-  }
+  const boundaries = remains.flatMap(rangeBoundaryItemsOf);
+  expect(boundaries).toHaveLength(2);
+  expect(
+    boundaries.every((boundary) => !("copyOriginAncestors" in boundary)),
+  ).toBe(true);
 });
 
 test("native suggestion paste cleanup keeps the standing bookmark end on rejection", () => {

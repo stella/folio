@@ -19,9 +19,8 @@ export const CANONICAL_GAP = {
   aiSnapshots: "pm-ai-snapshots",
   publicComments: "publicOps.comments",
   publicUnsupportedInline: "publicOps.unsupportedInline",
+  commentReplacementAlignment: "comment-replacement-alignment",
   publicTableStructure: "publicOps.tableStructure",
-  publicPendingParagraphMarkProperties:
-    "publicOps.pendingParagraphMarkProperties",
   publicHeadlessSession: "publicOps.headlessSession",
 } as const;
 
@@ -126,13 +125,13 @@ export const CANONICAL_CAPABILITIES: {
     readonly owner: "controller";
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Suggested row, column and table changes refuse content the tracked table records cannot express.";
+    readonly summary: "Suggested row, column and table changes refuse content the tracked table records cannot express; a pasted table refuses.";
   };
   readonly "story-content-projection": {
     readonly owner: "controller";
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Unsupported inline, field and review content cannot be projected after canonical edits.";
+    readonly summary: "Unsupported inline, field and review content cannot be projected after canonical edits; pasted embedded blocks, comment and note references, and compositions over such content refuse.";
   };
   readonly "comment-model-edits": {
     readonly owner: "adapters";
@@ -162,7 +161,7 @@ export const CANONICAL_CAPABILITIES: {
     readonly owner: "controller";
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Unclassified native and plugin mutations are refused at the projection boundary.";
+    readonly summary: "A host plugin or raw dispatch that changes the document is refused, naming the transaction's meta keys; hosts express edits as document operations (applyDocumentOperations).";
   };
   readonly "pm-save-projection": {
     readonly owner: "controller";
@@ -219,28 +218,27 @@ export const CANONICAL_CAPABILITIES: {
     readonly defaultSessionMutation: "pm-public-operations";
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Unsupported public payloads refuse with a typed compiler capability gap.";
+    readonly summary: "Unsupported public payloads refuse with a typed compiler capability gap, as does typing in a text box, whose paragraphs belong to its shape.";
   };
   readonly "publicOps.tableStructure": {
     readonly owner: "document-operations";
     readonly defaultSessionMutation: "pm-public-operations";
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Public signature tables and tables beside a table need canonical table descriptors.";
+    readonly summary: "Canonical whole-table signature suggestions need direct acceptance semantics; direct signature and ordinary table placement compile.";
   };
-  readonly "publicOps.pendingParagraphMarkProperties": {
-    readonly owner: "document-operations";
-    readonly defaultSessionMutation: "pm-public-operations";
+  readonly "comment-replacement-alignment": {
+    readonly owner: "controller";
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Separate paragraph property edits refuse while the paragraph mark is pending deletion; atomic merge properties remain supported.";
+    readonly summary: "Replacements refuse when preserving aligned comments needs anchor transitions or an unproven collapsed-range policy.";
   };
   readonly "publicOps.headlessSession": {
     readonly owner: "document-operations";
     readonly defaultSessionMutation: "pm-headless-reviewer";
     readonly kind: "mutation-source";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "A canonical headless reviewer edits, resolves and undoes in the body; other stories, suggestions, comment edits and save refuse.";
+    readonly summary: "A canonical reviewer stages comparison resources, sections and table properties; secondary-story suggestion resolution, story-view resolution beside staged suggestions and comparison inline-atom matching refuse.";
   };
   readonly "pm-ai-snapshots": {
     readonly owner: "ai-edits";
@@ -268,14 +266,14 @@ export const CANONICAL_CAPABILITIES: {
     kind: "refusal",
     adapters: ["react", "vue"],
     summary:
-      "Suggested row, column and table changes refuse content the tracked table records cannot express.",
+      "Suggested row, column and table changes refuse content the tracked table records cannot express; a pasted table refuses.",
   },
   [CANONICAL_GAP.storyContentProjection]: {
     owner: "controller",
     kind: "refusal",
     adapters: ["react", "vue"],
     summary:
-      "Unsupported inline, field and review content cannot be projected after canonical edits.",
+      "Unsupported inline, field and review content cannot be projected after canonical edits; pasted embedded blocks, comment and note references, and compositions over such content refuse.",
   },
   [CANONICAL_GAP.comments]: {
     owner: "adapters",
@@ -309,7 +307,7 @@ export const CANONICAL_CAPABILITIES: {
     kind: "refusal",
     adapters: ["react", "vue"],
     summary:
-      "Unclassified native and plugin mutations are refused at the projection boundary.",
+      "A host plugin or raw dispatch that changes the document is refused, naming the transaction's meta keys; hosts express edits as document operations (applyDocumentOperations).",
   },
   [CANONICAL_GAP.save]: {
     owner: "controller",
@@ -370,7 +368,7 @@ export const CANONICAL_CAPABILITIES: {
     kind: "refusal",
     adapters: ["react", "vue"],
     summary:
-      "Unsupported public payloads refuse with a typed compiler capability gap.",
+      "Unsupported public payloads refuse with a typed compiler capability gap, as does typing in a text box, whose paragraphs belong to its shape.",
   },
   [CANONICAL_GAP.publicTableStructure]: {
     owner: "document-operations",
@@ -378,15 +376,14 @@ export const CANONICAL_CAPABILITIES: {
     kind: "refusal",
     adapters: ["react", "vue"],
     summary:
-      "Public signature tables and tables beside a table need canonical table descriptors.",
+      "Canonical whole-table signature suggestions need direct acceptance semantics; direct signature and ordinary table placement compile.",
   },
-  [CANONICAL_GAP.publicPendingParagraphMarkProperties]: {
-    owner: "document-operations",
-    defaultSessionMutation: "pm-public-operations",
+  [CANONICAL_GAP.commentReplacementAlignment]: {
+    owner: "controller",
     kind: "refusal",
     adapters: ["react", "vue"],
     summary:
-      "Separate paragraph property edits refuse while the paragraph mark is pending deletion; atomic merge properties remain supported.",
+      "Replacements refuse when preserving aligned comments needs anchor transitions or an unproven collapsed-range policy.",
   },
   [CANONICAL_GAP.publicHeadlessSession]: {
     owner: "document-operations",
@@ -394,7 +391,7 @@ export const CANONICAL_CAPABILITIES: {
     kind: "mutation-source",
     adapters: ["react", "vue"],
     summary:
-      "A canonical headless reviewer edits, resolves and undoes in the body; other stories, suggestions, comment edits and save refuse.",
+      "A canonical reviewer stages comparison resources, sections and table properties; secondary-story suggestion resolution, story-view resolution beside staged suggestions and comparison inline-atom matching refuse.",
   },
   [CANONICAL_GAP.aiSnapshots]: {
     owner: "ai-edits",

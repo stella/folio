@@ -240,12 +240,56 @@ describe("a range that spans no content", () => {
 
     expect(plan.anchorAt.size).toBe(1);
     expect(plan.anchorAt.get(unmatchedStartCount - 1)).toEqual({
-      start: content[unmatchedStartCount - 1],
-      end: content[unmatchedStartCount],
+      markers: [content[unmatchedStartCount - 1], content[unmatchedStartCount]],
     });
     expect([...plan.closedAt]).toEqual([
       unmatchedStartCount - 1,
       unmatchedStartCount,
     ]);
+  });
+
+  test("interleaved point clusters retain source occurrences even when marker objects repeat", () => {
+    const [start, end] = EMPTY_RANGES.comment;
+    const markers = [start, start, end, end];
+    const plan = planEmptyRanges(markers);
+    expect(plan.anchorAt.size).toBe(1);
+    expect(plan.anchorAt.get(0)?.markers).toEqual(markers);
+    expect(plan.anchorAt.get(0)?.markers).toHaveLength(4);
+    expect([...plan.closedAt].sort((a, b) => a - b)).toEqual([0, 1, 2, 3]);
+  });
+
+  test("clusters never merge across an opaque carrier or distinct source containers", () => {
+    const start = { type: "commentRangeStart", id: 2 } as const;
+    const end = { type: "commentRangeEnd", id: 2 } as const;
+    const markers = [
+      EMPTY_RANGES.comment[0],
+      start,
+      EMPTY_RANGES.comment[1],
+      end,
+    ];
+    const owner = {};
+    const other = {};
+    expect(
+      planEmptyRanges(markers, [owner, owner, owner, owner]).anchorAt.size,
+    ).toBe(1);
+    expect(
+      planEmptyRanges(markers, [owner, other, owner, other]).anchorAt.size,
+    ).toBe(2);
+    const opaque = {
+      type: "preservedInline",
+      text: "",
+      xml: '<w:proofErr w:type="spellStart"/>',
+    } as const;
+    const divided = [
+      EMPTY_RANGES.comment[0],
+      EMPTY_RANGES.comment[1],
+      opaque,
+      start,
+      end,
+    ];
+    const plan = planEmptyRanges(divided);
+    expect(plan.anchorAt.size).toBe(2);
+    expect(plan.anchorAt.get(0)?.markers).toEqual(EMPTY_RANGES.comment);
+    expect(plan.anchorAt.get(3)?.markers).toEqual([start, end]);
   });
 });

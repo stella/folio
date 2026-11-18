@@ -26,7 +26,7 @@ test("canonical browser table paste declares exact refusal alternatives", () => 
     matchCanonicalRefusalRow({
       rows,
       refusal: {
-        gap: CANONICAL_GAP.dispatch,
+        gap: CANONICAL_GAP.trackedTableStructure,
         message:
           "Clipboard tables and embedded blocks require canonical table editing.",
       },
@@ -36,7 +36,7 @@ test("canonical browser table paste declares exact refusal alternatives", () => 
     matchCanonicalRefusalRow({
       rows,
       refusal: {
-        gap: CANONICAL_GAP.dispatch,
+        gap: CANONICAL_GAP.trackedTableStructure,
         message:
           "Clipboard tables and nested block containers require canonical table editing.",
       },

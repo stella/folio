@@ -1,6 +1,6 @@
 /** Moving one text position across one foreign operation. */
 import { paragraphIdsIn } from "../ids";
-import { leafSpans } from "../leaves";
+import { compareGaps, leafSpans } from "../leaves";
 import { contentWidth } from "../offsets";
 import {
   DOCUMENT_OP_TYPES,
@@ -110,6 +110,23 @@ export const mapPoint = (
 ): TextPosition | undefined => {
   if (over.type === DOCUMENT_OP_TYPES.INSERT_TEXT) {
     if (!sameParagraph(point, over.at)) return point;
+    // Text goes in exactly at its gap: a point at that offset after the
+    // gap's zero-width leaves follows the text, before the leaves still
+    // after it there.
+    if (
+      point.offset === over.at.offset &&
+      point.zeroWidthBefore !== undefined &&
+      over.at.zeroWidthBefore !== undefined
+    ) {
+      const past = point.zeroWidthBefore - over.at.zeroWidthBefore;
+      return past > 0 || (past === 0 && order === "after")
+        ? {
+            ...point,
+            offset: point.offset + over.text.length,
+            zeroWidthBefore: past,
+          }
+        : point;
+    }
     const shift =
       point.offset > over.at.offset ||
       (point.offset === over.at.offset && order === "after");
@@ -132,7 +149,21 @@ export const mapPoint = (
       point.offset - (over.to.offset - over.from.offset),
     );
     // A point the deletion closes up to its start lands after the zero-width
-    // leaves the range kept there.
+    // leaves the range kept there: a note's own mark inside it stays too.
+    if (
+      offset === over.from.offset &&
+      effect?.type === DOCUMENT_OP_TYPES.DELETE_RANGE &&
+      effect.keptMark !== undefined &&
+      compareGaps(
+        { offset: point.offset, zeroWidthBefore: point.zeroWidthBefore ?? 0 },
+        effect.keptMark,
+      ) > 0
+    )
+      return {
+        ...point,
+        offset,
+        zeroWidthBefore: (over.from.zeroWidthBefore ?? 0) + 1,
+      };
     return offset === over.from.offset &&
       point.zeroWidthBefore !== undefined &&
       over.from.zeroWidthBefore !== undefined

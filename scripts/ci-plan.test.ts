@@ -3,6 +3,7 @@
 // `ci.yml` maps each area to a `ci-plan` output and gates a job on it. An area
 // no job reads, an output no area feeds, or a job that runs without asking the
 // plan would each drift in silence, so all three are checked here.
+import { panic } from "better-result";
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import {
   mkdirSync,
@@ -848,12 +849,15 @@ describe("CI plan", () => {
           typeof step["run"] === "string" &&
           step["run"].includes("playwright test"),
       );
-      expect(isRecord(replays) ? replays["timeout-minutes"] : undefined).toBe(
-        10,
-      );
+      // Measured-duration and replay-capacity checks own the numeric budget.
+      const replayMinutes = isRecord(replays)
+        ? replays["timeout-minutes"]
+        : undefined;
+      if (typeof replayMinutes !== "number")
+        panic("Pinned browser replays require a numeric step timeout.");
       // A replay takes about 3.6 s in CI (69 replays in 4.1 minutes) and runs
       // once per font timing; at a 4 s ceiling, plus each timing's delay, each
-      // shard's share must stay within 80% of the step's 10 minutes, or the
+      // shard's share must stay within 80% of the declared step limit, or the
       // registry has outgrown its shards.
       const perShard = Math.ceil(
         BROWSER_INPUT_REGRESSIONS.length / shards.length,
@@ -869,7 +873,7 @@ describe("CI plan", () => {
         1000;
       expect(
         perShard * (4 * PINNED_REPLAY_FONT_DELAYS_MS.length + fontDelaySeconds),
-      ).toBeLessThanOrEqual(0.8 * 10 * 60);
+      ).toBeLessThanOrEqual(0.8 * replayMinutes * 60);
 
       const listing = expectExited(
         runChild(

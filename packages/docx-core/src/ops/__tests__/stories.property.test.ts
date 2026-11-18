@@ -498,7 +498,20 @@ describe("all-story operation laws", () => {
       );
       if (after?.type !== "paragraph")
         return panic("The edited note has a paragraph.");
-      expect(after.content.at(0)).toEqual(note.content.at(0));
+      expect(after.content).toEqual([
+        {
+          type: "run",
+          formatting: {
+            styleId:
+              kind === "footnote" ? "FootnoteReference" : "EndnoteReference",
+          },
+          content: [
+            { type: "noteMarker", kind },
+            { type: "text", text: "Z" },
+          ],
+        },
+        ...note.content.slice(1),
+      ]);
     }
   });
 

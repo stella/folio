@@ -1,5 +1,6 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import {
+  existsSync,
   linkSync,
   mkdirSync,
   mkdtempSync,
@@ -145,26 +146,65 @@ describe("scoped CI environments", () => {
     }
   });
 
-  test("source-consuming environments retain root dependencies used by shared test helpers", () => {
+  test("source-consuming environments retain root dependencies the specs and their helpers import", () => {
     const manifest = JSON.parse(
       readFileSync(path.join(root, "package.json"), "utf8"),
     );
     const rootDependencies = new Set(Object.keys(manifest.devDependencies));
     const imports = new Map<string, string>();
-    for (const file of new Bun.Glob("tests/**/*.{ts,tsx,mts,cts}").scanSync({
-      cwd: root,
-    })) {
+    // Every spec, and every repository helper a spec loads at run time
+    // through relative imports: a package one of those helpers imports must
+    // be installed wherever the specs load. Workspace sources declare their
+    // own dependencies.
+    const specs = [
+      ...new Bun.Glob("tests/**/*.{ts,tsx,mts,cts}").scanSync({ cwd: root }),
+    ];
+    const reached = new Set(specs);
+    const pending = [...specs];
+    const resolveHelper = (from: string, specifier: string) => {
+      const base = path.join(path.dirname(from), specifier);
+      const stem = base.replace(/\.[cm]?jsx?$/u, "");
+      return [
+        base,
+        ...[".ts", ".tsx", ".mts", ".cts"].flatMap((extension) => [
+          `${stem}${extension}`,
+          path.join(base, `index${extension}`),
+        ]),
+      ].find(
+        (candidate) =>
+          /\.[cm]?tsx?$/u.test(candidate) &&
+          existsSync(path.join(root, candidate)),
+      );
+    };
+    for (let file = pending.pop(); file !== undefined; file = pending.pop()) {
+      const isSpec = file.startsWith("tests/");
       const source = readFileSync(path.join(root, file), "utf8");
-      for (const { specifier: fileName } of moduleReferences(
+      for (const { specifier, typeOnly } of moduleReferences(
         parseSourceModule(file, source).program,
       )) {
-        const name = fileName.startsWith("@")
-          ? fileName.split("/").slice(0, 2).join("/")
-          : fileName.split("/").at(0);
+        if (specifier.startsWith(".")) {
+          if (typeOnly) continue;
+          const helper = resolveHelper(file, specifier);
+          if (
+            helper === undefined ||
+            helper.startsWith("..") ||
+            /^(?:packages|node_modules)\//u.test(helper) ||
+            reached.has(helper)
+          )
+            continue;
+          reached.add(helper);
+          pending.push(helper);
+          continue;
+        }
+        if (!isSpec && typeOnly) continue;
+        const name = specifier.startsWith("@")
+          ? specifier.split("/").slice(0, 2).join("/")
+          : specifier.split("/").at(0);
         if (name !== undefined && rootDependencies.has(name))
           imports.set(name, file);
       }
     }
+    expect(reached.has("test/property-testing.ts")).toBe(true);
     expect(imports.size).toBeGreaterThan(0);
     for (const [scope, profile] of Object.entries(INSTALL_SCOPES)) {
       if (profile.workspaces === "none") continue;

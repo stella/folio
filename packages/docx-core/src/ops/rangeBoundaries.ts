@@ -9,16 +9,20 @@
  * its end closes on its start: every range stays well-formed.
  *
  * Accepting a change removes what a direct deletion made earlier would: it
- * keeps the anchors of comment ranges that continue past the removed content
- * and nothing else, so accepting a tracked deletion equals deleting directly.
+ * keeps the endpoints of balanced comment and move ranges that continue past
+ * the removed content, so accepting a tracked deletion equals deleting directly.
  *
  * A comment whose whole range was removed is the comment owner's to retire
  * (see `isCommentExhausted`); its boundaries go with it.
  *
  * A paragraph that goes whole takes none of its boundaries with it
- * ({@link paragraphRemains}): bookmarks and move ranges stand between blocks
- * where it was, and comment anchors, which only a paragraph holds, go to the
- * nearest paragraph that stays.
+ * ({@link paragraphRemains}): its bookmarks, move ranges and comment anchors
+ * go to the nearest paragraph that stays, as deleting the paragraph directly
+ * leaves them. A paragraph after it joins them in at its start; with none,
+ * the paragraph before it takes them at its end, and with none there either,
+ * a table after it runs them into its first cell. No boundary is left
+ * standing between blocks, where no edit could say which paragraph it
+ * changed.
  */
 
 import { panic } from "better-result";
@@ -28,6 +32,7 @@ import type {
   DocumentBody,
   Paragraph,
   PositionedBookmarkMarker,
+  Run,
 } from "../model/document";
 import {
   copyOriginAncestorsOf,
@@ -41,10 +46,12 @@ import {
   type InlineNode,
   isCommentAnchor,
   isEmptyRecord,
+  leafSpans,
   rebuildNode,
   sameOwnFields,
 } from "./leaves";
 import { isHyperlinkChild } from "./offsets";
+import { isTrackedWrapper } from "./review";
 
 const BOUNDARY_SIDES: {
   readonly bookmarkStart: {
@@ -172,15 +179,16 @@ export const noRelocatedBoundaries = (): RelocatedBoundaries => ({
 /**
  * The range boundaries removed content leaves where it was, in document
  * order. Rejecting keeps every one and records it in `relocated`, for
- * {@link wellFormedRanges}; accepting keeps the anchors of
- * `pairedComments`, as a direct deletion does.
+ * {@link wellFormedRanges}; accepting keeps the source occurrences selected
+ * by the balanced-range deletion plan, in their original containing records.
  *
  * A pending deletion nested in rejected content that this resolution does not
  * resolve (`leavesPending`) keeps the boundaries it holds inside it, still
  * pending: rejecting the content around it says nothing about the deletion,
  * so accepting it later removes them, as deleting them directly does, and
  * rejecting it keeps them. A deletion holding no such boundary goes with the
- * content.
+ * content. An automatic note mark is source-owned content too: its formatted
+ * run survives removal, inside every revision this resolution leaves pending.
  */
 export const removedContentBoundaries = ({
   nodes,
@@ -189,6 +197,9 @@ export const removedContentBoundaries = ({
   relocated,
   revisionDate = "",
   leavesPending = () => false,
+  keptPaths,
+  path,
+  keepAutomaticMark = () => [],
 }: {
   nodes: readonly InlineNode[];
   rejecting: boolean;
@@ -198,14 +209,26 @@ export const removedContentBoundaries = ({
   revisionDate?: string;
   /** Whether the resolution leaves the revision with this id pending. */
   leavesPending?: (revisionId: number) => boolean;
+  /** Occurrences an accepted deletion must keep to retain balanced ranges. */
+  keptPaths: ReadonlySet<string>;
+  path: readonly number[];
+  /** The resolver retains a note's owned mark, with its run properties resolved. */
+  keepAutomaticMark?: (run: Run) => readonly InlineNode[];
 }): InlineNode[] =>
-  nodes.flatMap((node): InlineNode[] => {
+  nodes.flatMap((node, index): InlineNode[] => {
+    const sourcePath = [...path, index];
+    if (!rejecting && isBoundary(node))
+      return keptPaths.has(sourcePath.join(".")) ? [node] : [];
     if (isBoundary(node) && rejecting) {
       relocated.ranges.add(rangeKey(node));
       relocated.nodes.set(node, revisionDate);
       return [node];
     }
     if (isCommentAnchor(node)) return pairedComments.has(node.id) ? [node] : [];
+    if (node.type === "run") {
+      const marks = keepAutomaticMark(node);
+      if (marks.length > 0) return [...marks];
+    }
     const inner = removedContentBoundaries({
       nodes: childNodes(node) ?? [],
       rejecting,
@@ -213,20 +236,31 @@ export const removedContentBoundaries = ({
       relocated,
       revisionDate,
       leavesPending,
+      keptPaths,
+      path: sourcePath,
+      keepAutomaticMark,
     });
+    // A direct deletion around a kept endpoint retains the source records
+    // holding it. Acceptance preserves that same ancestry; rejection still
+    // floats boundaries through its explicit source-owner joins below.
+    if (!rejecting && inner.length > 0 && !isTrackedWrapper(node))
+      return [rebuildNode(node, inner)];
     if (
-      rejecting &&
-      node.type === "deletion" &&
+      isTrackedWrapper(node) &&
       inner.length > 0 &&
-      leavesPending(node.info.id)
+      leavesPending(node.info.id) &&
+      ((rejecting && node.type === "deletion") ||
+        leafSpans(inner).some(({ node: leaf }) => leaf.type === "noteMarker"))
     ) {
-      const { resolutionJoins: _joins, ...deletion } = node;
       const content = inner.map((kept) =>
         isTrackedRunContent(kept)
           ? kept
-          : panic("A kept boundary is tracked run content."),
+          : panic("A retained boundary or note mark is tracked run content."),
       );
-      return [{ ...deletion, content }];
+      if (leafSpans(inner).some(({ node: leaf }) => leaf.type === "noteMarker"))
+        return [{ ...node, content }];
+      const { resolutionJoins: _joins, ...pending } = node;
+      return [{ ...pending, content }];
     }
     return inner;
   });
@@ -438,39 +472,20 @@ export const insertsInvertedRange = ({
 };
 
 /**
- * What a paragraph that goes whole leaves where it was: every bookmark and
- * move range boundary it holds, at any depth, as blocks in its place, and its
- * comment anchors for the nearest paragraph that stays to take. When a
- * comment needs that host, every carrier travels there together in source
- * order. A comment with both anchors there becomes a point there, so the
- * comment and its anchor survive the paragraph.
+ * What a paragraph that goes whole leaves for the nearest paragraph that
+ * stays: every bookmark, move range boundary and comment anchor it holds, at
+ * any depth, in source order. They travel together, so every range keeps
+ * its order, and a comment with both anchors there becomes a point there,
+ * so the comment and its anchor survive the paragraph.
  */
 export const paragraphRemains = (
   content: readonly InlineNode[],
-): {
-  all: (Boundary | CommentAnchor)[];
-  blocks: BlockBoundary[];
-  comments: CommentAnchor[];
-  placement: "blocks" | "previous";
-} => {
-  const detached = rejectCopyOriginAncestorsInNodes(content, 0);
-  const carriers = paragraphBoundaryCarriersIn(detached);
-  const comments = carriers.filter(isCommentAnchor);
-  return {
-    all: carriers,
-    blocks: carriers.filter(
-      (carrier): carrier is BlockBoundary =>
-        isBoundary(carrier) && !isCommentAnchor(carrier),
-    ),
-    comments,
-    placement: comments.length > 0 ? "previous" : "blocks",
-  };
-};
+): (Boundary | CommentAnchor)[] =>
+  paragraphBoundaryCarriersIn(rejectCopyOriginAncestorsInNodes(content, 0));
 
 type ParagraphBoundaryRemovalOptions = {
   blocks: readonly BlockContent[];
   index: number;
-  place: "blocks" | "previous";
 };
 
 type ParagraphBoundaryRemovalPlan =
@@ -484,32 +499,26 @@ type ParagraphBoundaryRemovalPlan =
       }[];
     };
 
+/**
+ * `blocks` without the paragraph at `index`, which no paragraph follows to
+ * join, and the paragraph before it holding what it leaves
+ * ({@link paragraphRemains}) at its end. Blocked when it leaves anything and
+ * no paragraph stands before it: the paragraph then stays.
+ */
 export const planParagraphBoundaryRemoval = ({
   blocks,
   index,
-  place,
 }: ParagraphBoundaryRemovalOptions): ParagraphBoundaryRemovalPlan => {
   const paragraph = blocks[index];
   if (paragraph?.type !== "paragraph")
     return panic("Only a paragraph leaves its range boundaries.");
-  const {
-    all,
-    blocks: boundaries,
-    placement,
-  } = paragraphRemains(paragraph.content);
-  const destination = place === "previous" ? place : placement;
-  const between = destination === "blocks" ? boundaries : [];
-  const toPrevious = destination === "previous" ? all : [];
-  const remaining = [
-    ...blocks.slice(0, index),
-    ...between,
-    ...blocks.slice(index + 1),
-  ];
-  if (toPrevious.length === 0)
+  const carriers = paragraphRemains(paragraph.content);
+  const remaining = [...blocks.slice(0, index), ...blocks.slice(index + 1)];
+  if (carriers.length === 0)
     return { type: "removed", blocks: remaining, effects: [] };
   const host = remaining[index - 1];
   if (host?.type !== "paragraph") return { type: "blocked" };
-  remaining[index - 1] = { ...host, content: [...host.content, ...toPrevious] };
+  remaining[index - 1] = { ...host, content: [...host.content, ...carriers] };
   return {
     type: "removed",
     blocks: remaining,

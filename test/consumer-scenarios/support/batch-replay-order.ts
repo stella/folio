@@ -360,13 +360,27 @@ export const sequentialGroups = ({
     const index = preRows.findIndex((row) => row.id === id);
     const row = preRows.at(index);
     const next = preRows.at(index + 1);
-    return row !== undefined && sameContainerRows(row, next) ? [next.id] : [];
+    if (row === undefined || !sameContainerRows(row, next)) return [];
+    // Applied directly, the join retires one paragraph's id and rewrites the
+    // other; tracked, both stay until the merge is accepted.
+    return mode === "direct" ? [row.id, next.id] : [next.id];
   };
+  // A paragraph inserted before one a direct merge joins away goes into the
+  // gap the join keeps, after the join, as the engine runs it.
+  const directlyJoinedAway = new Set(
+    mode === "direct"
+      ? applied
+          .filter(({ type }) => type === "mergeBlockWithNext")
+          .map(blockIdOf)
+      : [],
+  );
   const reordered = orderAddressingBeforeRemoval(groups, (group) => ({
     addresses: group.flatMap((operation) =>
       operation.type === "deleteBlock" ||
       operation.type === "deleteTableRow" ||
-      operation.type === "deleteTable"
+      operation.type === "deleteTable" ||
+      (operation.type === "insertBeforeBlock" &&
+        directlyJoinedAway.has(blockIdOf(operation)))
         ? []
         : [blockIdOf(operation)],
     ),

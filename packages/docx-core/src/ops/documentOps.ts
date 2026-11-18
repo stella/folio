@@ -13,7 +13,7 @@ export {
   withParagraphCopies,
   withParagraphRenderings,
 } from "./paragraphCopies";
-export { sectionPropertiesAt } from "./storyLifecycle";
+export { captureStoryParts, sectionPropertiesAt } from "./storyLifecycle";
 export {
   storyBody,
   findStoryBody,
@@ -29,10 +29,10 @@ export {
  */
 
 export { storyParagraphs, withBodyContent } from "./blocks";
+export { blockControlHolding } from "./contentControls";
 export { paragraphMarkOutcome } from "./blockDeletion";
 export {
   type BoundaryOccurrence,
-  paragraphRemains,
   planWellFormedRanges,
   type WellFormedRangePlan,
 } from "./rangeBoundaries";
@@ -54,6 +54,7 @@ export {
 export { mapTocBookmarkPosition } from "./tocIntent";
 export { packageResourcesOpOf } from "./packageResources";
 export { combineEdits } from "./edits";
+export { reviewFieldsOf } from "./review";
 export {
   paragraphPropertySnapshotToken,
   registerParagraphPropertySnapshot,
@@ -62,6 +63,7 @@ export {
   applyDocumentOpEnvelope,
   applyDocumentOp,
   applyDocumentOps,
+  inverseMeetingDocument,
   type AppliedDocumentOp,
 } from "./apply";
 export {
@@ -206,7 +208,9 @@ export {
   type RemoveNoteOp,
   type SetSectionPropsOp,
   type RestoreStoryPartsOp,
+  type StoryParts,
   type BlockInsertionPoint,
+  type TableInsertionPoint,
   type CreateNumberingInstanceOp,
   type InsertBlocksOp,
   type DeleteBlocksOp,
@@ -246,6 +250,7 @@ export {
   type RevisionDecision,
   type RevisionStamp,
   type RunPropsPatch,
+  type SetContentControlOp,
   type SetParagraphPropsOp,
   type SetParagraphReviewOp,
   type SetRunPropsOp,
@@ -281,7 +286,10 @@ export {
   commentDocumentIssue,
   freshCommentId,
   isCommentExhausted,
+  orphanRootCommentIds,
   survivingComments,
   withoutCommentThreads,
   type CommentExhaustionInput,
 } from "./comments";
+
+export { planWholeParagraphReplacement } from "./wholeParagraphReplacement";

@@ -22,22 +22,6 @@ import { TaggedErrorClass } from 'better-result';
 import { TextPosition } from '@stll/docx-core/ops';
 import { Transaction } from 'prosemirror-state';
 
-// @public (undocumented)
-export type AcceptAutocompleteResult = {
-    accepted: false;
-} | {
-    accepted: true;
-    from: number;
-    to: number;
-    text: string;
-};
-
-// @public
-export const acceptAutocompleteSuggestion: (state: EditorState, dispatch?: (tr: Transaction) => void) => AcceptAutocompleteResult;
-
-// @public
-export const acceptAutocompleteWord: (state: EditorState, dispatch?: (tr: Transaction) => void) => AcceptAutocompleteResult;
-
 // @public
 export type AIBarStatus = "idle" | "generating" | "review-ready" | "applying" | "error";
 
@@ -136,33 +120,6 @@ export type AISuggestionSeverity = "typo" | "style" | "substantive";
 export type AISuggestionStatus = "pending" | "accepted" | "rejected" | "stale";
 
 // @public (undocumented)
-export const anonymizationDecorationsKey: Readonly<{
-    key: string;
-    createKey: () => PluginKey<AnonymizationDecorationState>;
-    owns: (plugin: Plugin_2<AnonymizationDecorationState>) => boolean;
-    get: (state: EditorState) => Plugin_2<AnonymizationDecorationState> | undefined;
-    getState: (state: EditorState) => AnonymizationDecorationState | undefined;
-}>;
-
-// @public (undocumented)
-export type AnonymizationMatch = {
-    from: number;
-    to: number;
-    label: string;
-    canonical: string;
-};
-
-// @public (undocumented)
-export type AnonymizationTerm = {
-    canonical: string;
-    label: string;
-    variants?: readonly string[];
-};
-
-// @public (undocumented)
-export const appendAutocompleteToken: (tr: Transaction, requestId: string, delta: string) => Transaction;
-
-// @public (undocumented)
 export const applyFolioAIEditOperations: (options: ApplyFolioAIEditOperationsOptions) => FolioAIEditApplyOutcome;
 
 // @public (undocumented)
@@ -198,57 +155,6 @@ export function applySuggestions(options: ApplyOptions): ApplyResult;
 // @public (undocumented)
 export const assertSupportedFolioDocumentOperationVersion: (value: unknown) => typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
 
-// @public (undocumented)
-export const autocompleteSuggestionKey: Readonly<{
-    key: string;
-    createKey: () => PluginKey<AutocompleteSuggestionPluginState>;
-    owns: (plugin: Plugin_2<AutocompleteSuggestionPluginState>) => boolean;
-    get: (state: EditorState) => Plugin_2<AutocompleteSuggestionPluginState> | undefined;
-    getState: (state: EditorState) => AutocompleteSuggestionPluginState | undefined;
-}>;
-
-// @public (undocumented)
-export const autocompleteSuggestionPlugin: (options?: AutocompleteSuggestionPluginOptions) => Plugin_2<AutocompleteSuggestionPluginState>;
-
-// @public (undocumented)
-export type AutocompleteSuggestionPluginOptions = {
-    renderInline?: boolean;
-    keymap?: boolean;
-};
-
-// @public (undocumented)
-export type AutocompleteSuggestionState = {
-    status: "idle";
-    anchor: null;
-    text: "";
-    requestId: null;
-} | {
-    status: "streaming" | "shown";
-    anchor: number;
-    text: string;
-    requestId: string;
-};
-
-// @public (undocumented)
-export type AutocompleteSuggestionStatus = "idle" | "streaming" | "shown";
-
-// @public (undocumented)
-export type AutocompleteTriggerCheck = {
-    ok: true;
-} | {
-    ok: false;
-    reason: AutocompleteTriggerSkipReason;
-    detail?: string;
-};
-
-// @public (undocumented)
-export type AutocompleteTriggerOptions = {
-    extraDeadZoneNodes?: readonly string[];
-};
-
-// @public (undocumented)
-export type AutocompleteTriggerSkipReason = "selection-non-empty" | "midword" | "deadzone" | "empty-doc";
-
 // @public
 export type BlockRect = {
     blockId: string;
@@ -264,9 +170,6 @@ export function buildEmbeddedFontFamilyMap(faces: readonly EmbeddedFont[]): Map<
 
 // @public
 export function buildPositionalText(doc: Node_2, from?: number, to?: number): PositionalText;
-
-// @public (undocumented)
-export const clearAutocompleteSuggestion: (tr: Transaction) => Transaction;
 
 // @public
 export const clearTemplateSlashMenu: (tr: Transaction) => Transaction;
@@ -590,9 +493,6 @@ export const currentFolioBlockId: (id: string) => string;
 // @public
 export const DEFAULT_AI_SUGGESTION_PRESETS: AISuggestionPreset[];
 
-// @public
-export const DEFAULT_AUTOCOMPLETE_DEAD_ZONE_NODES: readonly string[];
-
 // @public (undocumented)
 export const DEFAULT_OUTLINE_DEPTH = 2;
 
@@ -783,9 +683,6 @@ export type FinalParagraphMarkRevision = {
     kind: ParagraphMarkChangeKind;
 };
 
-// @public (undocumented)
-export const finishAutocompleteSuggestion: (tr: Transaction, requestId: string) => Transaction;
-
 // @public
 export const FOLIO_CONTENT_COMPARISON_LIMITS: Readonly<{
     readonly blocksPerSnapshot: 100000;
@@ -850,7 +747,7 @@ export const FOLIO_LINE_SPACING_RULE_VALUES: readonly import__stll_docx_core_mod
 export const FOLIO_PARAGRAPH_ALIGNMENT_VALUES: readonly import__stll_docx_core_model.ParagraphAlignment[];
 
 // @public
-export const FOLIO_YJS_ATTR_SCHEMA_VERSION: 14;
+export const FOLIO_YJS_ATTR_SCHEMA_VERSION: 15;
 
 // @public (undocumented)
 export type FolioAIBlock = FolioAIParagraphBlock | FolioAIDiagnosticBlock;
@@ -908,6 +805,7 @@ export type FolioAIEditAppliedOperation = {
     revisionId?: number;
     revisionIds?: readonly number[];
     suggestionId?: string;
+    paragraphIdentity?: FolioAIEditParagraphIdentity;
 };
 
 // @public
@@ -1153,6 +1051,16 @@ export type FolioAIEditOperation<Numbering = FolioAIListNumbering> = FolioAIEdit
     blockId: string;
 });
 
+// @public
+export type FolioAIEditParagraphIdentity = {
+    type: "joined";
+    blockId: string;
+    retiredBlockId: string;
+} | {
+    type: "retained";
+    blockId: string;
+};
+
 // @public (undocumented)
 export type FolioAIEditPrecondition = {
     blockTextHash: string;
@@ -1306,6 +1214,45 @@ export type FolioAISignatureParty = {
     name: string;
     signatory?: string;
     title?: string;
+};
+
+// @public
+export type FolioAnonymizationMatch = {
+    start: TextPosition;
+    end: TextPosition;
+    label: string;
+    canonical: string;
+};
+
+// @public
+export type FolioAnonymizationTerm = {
+    canonical: string;
+    label: string;
+    variants?: readonly string[];
+};
+
+// @public
+export type FolioAutocompleteApi = {
+    start: (options?: {
+        at?: TextPosition;
+        requestId?: string;
+    }) => string | null;
+    append: (requestId: string, delta: string) => boolean;
+    finish: (requestId: string) => boolean;
+    clear: () => void;
+    accept: (scope?: "all" | "word") => boolean;
+    get: () => FolioAutocompleteState;
+    canTrigger: () => boolean;
+};
+
+// @public
+export type FolioAutocompleteState = {
+    status: "idle";
+} | {
+    status: "streaming" | "shown";
+    requestId: string;
+    anchor: TextPosition;
+    text: string;
 };
 
 // @public
@@ -1680,8 +1627,8 @@ export type FolioDocumentOperationStory = "main" | {
 // @public (undocumented)
 export type FolioDocumentOperationType = FolioDocumentOperation["type"];
 
-// @public (undocumented)
-export type FolioDocumentOperationUndoFailureReason = "unknownHandle" | "notLatest" | "documentChanged";
+// @public
+export type FolioDocumentOperationUndoFailureReason = "unknownHandle" | "notLatest" | "documentChanged" | "storyUnavailable" | "inverseRefused" | "documentNotEditable";
 
 // @public
 export type FolioDocumentOperationUndoHandle = {
@@ -1697,6 +1644,7 @@ export type FolioDocumentOperationUndoResult = {
     status: "rejected";
     undoHandle: FolioDocumentOperationUndoHandle;
     reason: FolioDocumentOperationUndoFailureReason;
+    message?: string;
 };
 
 // @public (undocumented)
@@ -1731,12 +1679,6 @@ export class FolioYjsAttrSchemaVersionError extends FolioYjsAttrSchemaVersionErr
 
 // @public
 export function fromMarkdown(markdown: string): import__stll_docx_core_model.Document;
-
-// @public
-export const getAnonymizationMatches: (state: EditorState) => readonly AnonymizationMatch[];
-
-// @public (undocumented)
-export const getAutocompleteSuggestion: (state: EditorState) => AutocompleteSuggestionState;
 
 // @public
 export function getEmbeddedFontFaces(parts: EmbeddedFontParts, docNonce?: string): EmbeddedFont[];
@@ -1938,15 +1880,6 @@ export function setAISuggestionsMeta(suggestions: AISuggestion[]): {
 };
 
 // @public (undocumented)
-export const setAnonymizationTermsMeta: (terms: readonly AnonymizationTerm[]) => {
-    key: PluginKeyOwner<AnonymizationDecorationState>;
-    payload: {
-        type: typeof SET_META_3;
-        terms: readonly AnonymizationTerm[];
-    };
-};
-
-// @public (undocumented)
 export function setFocusedSuggestionMeta(focusedId: string | null): {
     key: PluginKeyOwner<AISuggestionDecorationState>;
     payload: {
@@ -1960,12 +1893,6 @@ export const setGoogleFontsEnabled: (enabled: boolean) => void;
 
 // @public
 export const setTemplatePreviewValues: (view: EditorView, preview: TemplatePreviewValues | null) => void;
-
-// @public
-export const shouldTriggerAutocomplete: (state: EditorState, options?: AutocompleteTriggerOptions) => AutocompleteTriggerCheck;
-
-// @public (undocumented)
-export const startAutocompleteSuggestion: (tr: Transaction, anchor: number, requestId: string) => Transaction;
 
 // @public (undocumented)
 export const STELLA_STYLE_SET_NAME = "Stella Style";

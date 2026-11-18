@@ -21,6 +21,7 @@ import type {
   Layout,
   Measure,
 } from "@stll/folio-core/layout-engine/types";
+import type { FolioAutocompleteState } from "@stll/folio-core/types/autocomplete";
 import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
 
 import {
@@ -453,3 +454,141 @@ test("deferred hidden view reuses the latest committed pre-view document seed", 
     container.remove();
   }
 });
+
+const createAutocompleteCallback =
+  (calls: string[], identity: string) => (state: FolioAutocompleteState) =>
+    calls.push(`${identity}:${state.status === "idle" ? "idle" : state.text}`);
+
+test("autocomplete subscriptions and host callbacks survive deferred view readiness and document replacement", async () => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const editor = createRef<PagedEditorRef>();
+  const calls: string[] = [];
+  const render = async (text: string | null, identity: string) => {
+    const onAutocompleteChange = createAutocompleteCallback(calls, identity);
+    await act(async () =>
+      root.render(
+        <IntlProvider
+          locale="en"
+          timeZone="UTC"
+          messages={getFolioMessages("en")}
+        >
+          <PagedEditor
+            ref={editor}
+            accessibleName="Document editor"
+            document={
+              text === null ? null : createEmptyDocument({ initialText: text })
+            }
+            documentIdentity={identity}
+            documentIO={createDocumentIO(new ArrayBuffer(0))}
+            markupView="all-markup"
+            experimentalSession="canonical"
+            onAutocompleteChange={onAutocompleteChange}
+          />
+        </IntlProvider>,
+      ),
+    );
+  };
+  try {
+    await render(null, "empty");
+    const controller =
+      editor.current?.getEditor() ??
+      panic("Expected controller before a document");
+    expect(controller.getView()).toBeNull();
+    for (const identity of ["first", "replacement"]) {
+      await render(identity, identity);
+      expect(editor.current?.getEditor()).toBe(controller);
+      await act(async () => editor.current?.ensureView({ focus: false }));
+      await act(async () => {
+        const request = controller.autocomplete.start({ requestId: identity });
+        expect(request).toBe(identity);
+        controller.autocomplete.append(identity, " next");
+      });
+      expect(calls.at(-1)).toBe(`${identity}: next`);
+    }
+    await act(async () => controller.autocomplete.clear());
+    expect(calls.at(-1)).toBe("replacement:idle");
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});
+
+const createReadyAutocompleteProbe = (start: "shown" | "idle") => {
+  let editor: PagedEditorRef | null = null;
+  const states: FolioAutocompleteState[] = [];
+  return {
+    states,
+    current: () => editor,
+    ref: (current: PagedEditorRef | null) => {
+      editor = current;
+      current?.ensureView({ focus: false });
+    },
+    ready: (view: unknown) => {
+      if (view === null || start === "idle") return;
+      const api =
+        editor?.getEditor()?.autocomplete ??
+        panic("Expected editor in ready callback");
+      api.start({ requestId: "ready" });
+      api.append("ready", " next");
+      api.finish("ready");
+    },
+    changed: (state: FolioAutocompleteState) => states.push(state),
+  };
+};
+
+for (const initial of ["shown", "idle"] as const)
+  test(`React replays ${initial} ready state without duplicate idle notifications`, async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const probe = createReadyAutocompleteProbe(initial);
+    const model = createEmptyDocument({ initialText: "Body" });
+    const render = async (zoom: number) => {
+      await act(async () =>
+        root.render(
+          <IntlProvider
+            locale="en"
+            timeZone="UTC"
+            messages={getFolioMessages("en")}
+          >
+            <PagedEditor
+              ref={probe.ref}
+              accessibleName="Document editor"
+              document={model}
+              documentIdentity="ready-autocomplete"
+              documentIO={createDocumentIO(new ArrayBuffer(0))}
+              markupView="all-markup"
+              onEditorViewReady={probe.ready}
+              onAutocompleteChange={probe.changed}
+              zoom={zoom}
+            />
+          </IntlProvider>,
+        ),
+      );
+    };
+    try {
+      await render(1);
+      expect(probe.states.map((state) => state.status)).toEqual(
+        initial === "shown" ? ["shown"] : [],
+      );
+      if (initial === "shown")
+        expect(probe.states.at(0)).toMatchObject({ text: " next" });
+      await render(1.1);
+      expect(probe.states.map((state) => state.status)).toEqual(
+        initial === "shown" ? ["shown"] : [],
+      );
+      await act(async () => probe.current()?.getEditor()?.autocomplete.clear());
+      expect(probe.states.map((state) => state.status)).toEqual(
+        initial === "shown" ? ["shown", "idle"] : [],
+      );
+      await render(1);
+      expect(probe.states.map((state) => state.status)).toEqual(
+        initial === "shown" ? ["shown", "idle"] : [],
+      );
+    } finally {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+  });

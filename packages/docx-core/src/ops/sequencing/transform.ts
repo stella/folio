@@ -32,6 +32,7 @@ import {
   sameParagraph,
 } from "./points";
 import { transformByFootprint } from "./scope";
+import { fragmentedDeletionOverlap } from "./trackedTransform";
 
 type TransformOptions = { order?: "before" | "after" };
 
@@ -70,6 +71,7 @@ export const operationStory = (op: DocumentOp): OpStory | undefined => {
     case DOCUMENT_OP_TYPES.SET_ROW_PROPS:
     case DOCUMENT_OP_TYPES.SET_TABLE_PROPS:
     case DOCUMENT_OP_TYPES.SET_TABLE:
+    case DOCUMENT_OP_TYPES.SET_CONTENT_CONTROL:
       return op.story;
     case DOCUMENT_OP_TYPES.CREATE_COMMENT:
       return isAnchoredComment(op) ? anchorPoints(op)[0]?.story : undefined;
@@ -161,9 +163,12 @@ const gapOf = ({ offset, zeroWidthBefore }: TextPosition): Gap => ({
 /**
  * A direct deletion over a concurrent direct format lying inside it: in the
  * other order the records the format cut (`cutRecords`) were whole, and the
- * deletion kept each that reaches past both of its ends one record. So the
- * deletion joins their pieces again at its point, that many levels below
- * the records still running across it. Undefined for every other pair.
+ * deletion kept each that keeps a leaf on both sides of the format one
+ * record: a leaf past the deletion's end, or the note's own mark, which the
+ * deletion keeps. So the deletion joins their pieces again where they meet,
+ * at its point or right after a kept mark that stood before the format, that
+ * many levels below the records still running across it. Undefined for
+ * every other pair.
  */
 const rejoinedOverFormat = ({
   op,
@@ -191,15 +196,92 @@ const rejoinedOverFormat = ({
     compareGaps(to, gapOf(over.to)) < 0
   )
     return undefined;
-  const depth = effect.cutRecords.filter(
-    (record) =>
-      compareGaps(record.from, from) < 0 && compareGaps(to, record.to) < 0,
-  ).length;
+  const formatFrom = gapOf(over.from);
+  const formatTo = gapOf(over.to);
+  let depth = 0;
+  // The pieces meet after the note's own mark when the mark the deletion
+  // keeps stood before the format: it ends the first piece.
+  let afterMark = false;
+  for (const { from: start, to: end, keptMark } of effect.cutRecords) {
+    const kept =
+      keptMark !== undefined &&
+      compareGaps(from, keptMark) <= 0 &&
+      compareGaps(keptMark, to) < 0
+        ? keptMark
+        : undefined;
+    const markFirst =
+      kept !== undefined &&
+      compareGaps(
+        { offset: kept.offset, zeroWidthBefore: kept.zeroWidthBefore + 1 },
+        formatFrom,
+      ) <= 0;
+    const markLast = kept !== undefined && compareGaps(formatTo, kept) <= 0;
+    if (
+      (compareGaps(start, from) < 0 || markFirst) &&
+      (compareGaps(to, end) < 0 || markLast)
+    ) {
+      depth += 1;
+      afterMark ||= markFirst;
+    }
+  }
   if (depth === 0) return undefined;
+  const at = afterMark
+    ? { ...op.from, zeroWidthBefore: from.zeroWidthBefore + 1 }
+    : op.from;
   return Result.ok([
     op,
-    { type: DOCUMENT_OP_TYPES.JOIN_INLINE, at: op.from, depth, ifAlike: true },
+    { type: DOCUMENT_OP_TYPES.JOIN_INLINE, at, depth, ifAlike: true },
   ]);
+};
+
+/**
+ * A revision decision over a concurrent direct positional edit, including a
+ * comment anchor: it decides the same revisions after the edit, unless the
+ * edit cut a revision record in two and gave its second half a new id, or is
+ * a tracked edit whose records may continue a decided revision: one order
+ * decides those and the other does not, so the decision is refused.
+ * Undefined for every other pair.
+ */
+const decisionOverEdit = (
+  op: DocumentOp,
+  over: DocumentOp,
+): Result<readonly DocumentOp[], BatchRejection> | undefined => {
+  if (op.type !== DOCUMENT_OP_TYPES.RESOLVE_REVISION) return undefined;
+  switch (over.type) {
+    case DOCUMENT_OP_TYPES.INSERT_TEXT:
+    case DOCUMENT_OP_TYPES.DELETE_RANGE:
+    case DOCUMENT_OP_TYPES.SET_RUN_PROPS:
+    case DOCUMENT_OP_TYPES.SPLIT_INLINE:
+    case DOCUMENT_OP_TYPES.JOIN_INLINE:
+      break;
+    case DOCUMENT_OP_TYPES.INSERT_CONTENT:
+      if (!isInlineInsertion(over)) return undefined;
+      break;
+    case DOCUMENT_OP_TYPES.CREATE_COMMENT:
+      if (!isAnchoredComment(over)) return undefined;
+      break;
+    default:
+      return undefined;
+  }
+  // A tracked edit records revisions of its own, which may continue a
+  // decided one: decided in one order and not in the other.
+  if ("revision" in over && over.revision !== undefined)
+    return refusal(
+      op,
+      over,
+      "A concurrent tracked edit may continue a revision this decision resolves.",
+    );
+  if (
+    "newIds" in over &&
+    over.newIds?.revision !== undefined &&
+    over.newIds.revision.length > 0
+  )
+    return refusal(
+      op,
+      over,
+      "A concurrent edit cut a revision record this decision resolves.",
+    );
+  return Result.ok([op]);
 };
 
 const transformRestoredOp = ({
@@ -220,6 +302,9 @@ const transformRestoredOp = ({
     );
   if (!sameStory(story, overStory)) return Result.ok([op]);
   if (independent(op, over)) return Result.ok([op]);
+  // A decision names its revisions, not positions.
+  const decided = decisionOverEdit(op, over);
+  if (decided !== undefined) return decided;
   // A range or point comment moves like text; text moves past its reference.
   if (isAnchoredComment(op))
     return moveCommentAnchor({ op, over, effect, order });
@@ -241,6 +326,12 @@ const transformRestoredOp = ({
   // A direct deletion over a direct format inside it.
   const rejoined = rejoinedOverFormat({ op, over, effect });
   if (rejoined !== undefined) return rejoined;
+  if (fragmentedDeletionOverlap(op, over))
+    return refusal(
+      op,
+      over,
+      "Overlapping a potentially fragmented tracked deletion requires source-bound revision identities.",
+    );
   // Inline insertions, and inline record splits and joins.
   const inline = transformInlinePair({ op, over, effect, order });
   if (inline !== undefined) return inline;
@@ -293,6 +384,13 @@ const transformRestoredOp = ({
         op.type === DOCUMENT_OP_TYPES.SET_RUN_PROPS))
   )
     return Result.ok([op]);
+  // Paragraphs inserted beside a paragraph name it by id: text typed in it
+  // moves neither the anchor nor any offset the insertion leaves.
+  if (
+    op.type === DOCUMENT_OP_TYPES.INSERT_BLOCKS &&
+    over.type === DOCUMENT_OP_TYPES.INSERT_TEXT
+  )
+    return Result.ok([op]);
   if (
     op.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS &&
     (over.type === DOCUMENT_OP_TYPES.INSERT_TEXT ||
@@ -306,6 +404,19 @@ const transformRestoredOp = ({
   ) {
     if (op.at.type !== over.at.type || op.at.blockId !== over.at.blockId)
       return refusal(op, over, "Overlapping block insertion identities.");
+    // A tracked insertion can move the anchor's former mark and allocate
+    // its formatting snapshot. The payloads carry neither that snapshot
+    // nor the anchor's formatting, so a concurrent direct insertion cannot
+    // safely transfer the inserted mark in either sequence order.
+    if (
+      op.at.type === "after" &&
+      (op.revision === undefined) !== (over.revision === undefined)
+    )
+      return refusal(
+        op,
+        over,
+        "Concurrent direct and tracked insertions after one paragraph need its former mark's formatting snapshot.",
+      );
     if ((order === "before") === (op.at.type === "after"))
       return Result.ok([op]);
     const anchor =

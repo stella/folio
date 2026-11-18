@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { createFolioAITextRangeHandle } from "@stll/folio-core/server";
+import {
+  createFolioAITextRangeHandle,
+  FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+} from "@stll/folio-core/server";
 
 import {
   mergedTableDocument,
@@ -260,5 +263,43 @@ test("an oracle gap is recorded and the steps after it are still checked", async
       ["oracle-gap", 1],
       ["oracle-gap", 2],
     ],
+  );
+});
+
+test("tracked corpus steps compare document rejections from saved and original bytes", async () => {
+  const original = await plainDocument();
+  const reviewer = await openReviewer(original);
+  const block = reviewer
+    .getContent()
+    .find(({ text }) => text.includes("Supplier"));
+  assert.ok(block);
+  const operation = {
+    type: "replaceInBlock",
+    blockId: block.id,
+    find: "Supplier",
+    replace: "Provider",
+  } as const;
+  const receipt = reviewer.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "tracked-changes",
+      operations: [{ id: "worker-tracked-probe", ...operation }],
+    },
+    { undefinedReferences: "refuse" },
+  );
+  assert.equal(receipt.applied.length, 1);
+  assert.equal(receipt.skipped.length, 0);
+  assert.deepEqual(
+    await runSteps(
+      original,
+      [
+        {
+          mode: "tracked-changes",
+          operation,
+        },
+      ],
+      null,
+    ),
+    [],
   );
 });

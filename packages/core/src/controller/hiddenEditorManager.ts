@@ -4,6 +4,7 @@ import {
   TaggedError,
   type TaggedErrorClass,
 } from "better-result";
+import { closeHistory } from "prosemirror-history";
 import {
   DOMParser as PMDOMParser,
   DOMSerializer,
@@ -19,9 +20,10 @@ import type {
 import {
   EditorState as PMEditorState,
   Plugin as PMPlugin,
+  TextSelection,
 } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
-import type { DirectEditorProps } from "prosemirror-view";
+import type { DirectEditorProps, MarkViewConstructor } from "prosemirror-view";
 import { EditorView } from "prosemirror-view";
 import type * as YProseMirror from "y-prosemirror";
 import type { Doc as YDoc, XmlFragment } from "yjs";
@@ -40,10 +42,12 @@ import type * as Yjs from "yjs";
 
 import {
   type CreateCommentOp,
+  documentStories,
   freshCommentId,
   OP_STORIES,
   type OpStory,
   sameStory,
+  type TextPosition,
 } from "@stll/docx-core/ops";
 
 import {
@@ -64,6 +68,12 @@ import {
   createCanonicalSession,
   publishCanonicalProjection,
 } from "../canonical/canonicalSession";
+import { parseDocx } from "../docx/parser";
+import {
+  type EditingFontContext,
+  editingFontContextOf,
+  editingFontFamily,
+} from "../layout-bridge/convert/editingFont";
 import {
   type HiddenEditorStateReason,
   recordHiddenEditorPhase,
@@ -88,10 +98,6 @@ import type { HistoryShortcutOwner } from "../prosemirror/extensions/core/Histor
 import type { ExtensionManager } from "../prosemirror/extensions/ExtensionManager";
 import { ensureBaseDirectionInState } from "../prosemirror/extensions/features/AutoBidiDetectionExtension";
 import {
-  createParagraphChangeTrackerPlugin,
-  markPackageChange,
-} from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
-import {
   ensureParaIdsInDoc,
   ensureParaIdsInState,
 } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
@@ -103,6 +109,7 @@ import { HyperlinkRemovalRefusal } from "../prosemirror/hyperlinkRemoval";
 import { REVISION_MARK_NAMES } from "../prosemirror/keptRangeBoundaries";
 import {
   adoptNativeSelection,
+  createNativeNavigationPlugin,
   createNativeSelectionRefreshPlugin,
   isCompositionKeyDown,
 } from "../prosemirror/nativeSelection";
@@ -138,8 +145,25 @@ import {
   type ReadonlyDocument,
 } from "../types/documentModel";
 import type { RemoteSelection } from "../types/remote-selection";
+import {
+  type AnonymizationStorySource,
+  createAnonymizationHighlights,
+  type FolioAnonymizationTerm,
+  NO_ANONYMIZATION_TERMS,
+} from "./anonymizationHighlights";
+import {
+  type AutocompleteEdit,
+  canTriggerAutocomplete,
+  classifyAutocompleteEdit,
+  createAutocompleteSuggestion,
+  legacyAutocompleteEdit,
+  nextAutocompleteWord,
+} from "./autocompleteSuggestion";
 import { prepareCanonicalPaste } from "./canonicalClipboard";
-import { createCanonicalInputBoundary } from "./canonicalInput";
+import {
+  createCanonicalInputBoundary,
+  unclassifiedMutationMessage,
+} from "./canonicalInput";
 import {
   type CanonicalRoomCollaboration,
   type CanonicalRoomEditor,
@@ -151,8 +175,14 @@ import {
   prepareCanonicalAutoformat,
   prepareCanonicalCommands,
 } from "./canonicalStructure";
-import { createHiddenEditorApi, type HiddenEditorApi } from "./hiddenEditorApi";
+import {
+  createHiddenEditorApi,
+  type HiddenEditorApi,
+  type HiddenEditorAutocomplete,
+} from "./hiddenEditorApi";
+import { legacyTextAddressAt } from "./legacyTextAddress";
 import { handleReadOnlySelectionKeyDown } from "./readOnlySelection";
+import { legacyEditorPositionAt } from "./textPositionLookup";
 
 const CanonicalSessionRefusalErrorBase: TaggedErrorClass<"CanonicalSessionRefusalError"> =
   TaggedError("CanonicalSessionRefusalError");
@@ -587,6 +617,8 @@ export type HiddenEditorManagerDeps = {
   getPrecomputedInitialState: () => EditorState | null | undefined;
   getReadOnly: () => boolean;
   getExperimentalSession?: () => "canonical" | undefined;
+  /** The terms the host wants highlighted; none when unset. */
+  getAnonymizationTerms?: () => readonly FolioAnonymizationTerm[];
   /**
    * Who answers the undo and redo keys in a canonical session; the editor's
    * when unset. With `"host"`, the keys change nothing in any story's view and
@@ -621,11 +653,19 @@ export type HiddenEditorManagerDeps = {
   getDocumentContext: () => ReadonlyDocument | null;
   onTransaction: (update: HiddenEditorTransactionUpdate) => void;
   /**
-   * A canonical composition ended. A layout pass reads the live view, so one
-   * that ran during the composition painted provisional text that only a new
-   * pass can replace, and a cancellation publishes no commit that would ask.
+   * A canonical composition changed what the view shows without a document
+   * change: its provisional text grew or shrank, or it ended. A layout pass
+   * reads the live view, so the painted text and caret follow the composition
+   * as it grows, and the pass after it ends replaces the provisional text.
+   * Nothing reaches the host's change callbacks, the history or a room until
+   * the composition commits.
    */
-  onCanonicalCompositionEnd: () => void;
+  onCanonicalCompositionLayout: () => void;
+  /**
+   * The embedded-font families the painter resolves runs with, so the view
+   * draws text with the faces painted text uses.
+   */
+  getEmbeddedFontFamilyMap: () => ReadonlyMap<string, string> | undefined;
   onSelectionChange: (state: EditorState) => void;
   onKeyDown: (view: EditorView, event: KeyboardEvent) => boolean;
   onCopy?: () => void;
@@ -680,6 +720,8 @@ export const createHiddenEditorClipboardHandlers = (
 export type HiddenEditorManager = {
   /** Whether the canonical owner still holds a provisional composition. */
   isCanonicalComposing: () => boolean;
+  /** Draw the view's text again with the painter's current font context. */
+  refreshFonts: () => void;
   /** Request the view (sets the requested flag, then attempts creation). */
   ensureView: () => void;
   /** Re-attempt a previously-requested-but-deferred creation (no-op otherwise). */
@@ -722,6 +764,24 @@ export const createHiddenEditorManager = (
     },
   };
   let view: EditorView | null = null;
+  /** The font context the view's font runs resolve with; see `refreshFonts`. */
+  let editingFonts: EditingFontContext = {};
+  const editingMarkViews = (
+    document: ReadonlyDocument | null,
+  ): Record<string, MarkViewConstructor> => {
+    editingFonts = editingFontContextOf(
+      document,
+      deps.getEmbeddedFontFamilyMap(),
+    );
+    return {
+      fontFamily: (mark, editorView) => {
+        const dom = editorView.dom.ownerDocument.createElement("span");
+        const fontFamily = editingFontFamily(mark, editingFonts);
+        if (fontFamily !== null) dom.style.fontFamily = fontFamily;
+        return { dom };
+      },
+    };
+  };
   let releaseCommandOwner: (() => void) | undefined;
   let editorSession: EditorSession = { type: "prosemirror" };
   let canonicalSessionEpoch = 0;
@@ -750,11 +810,17 @@ export const createHiddenEditorManager = (
   let canonicalSaved:
     { session: CanonicalSession; version: number } | undefined;
   let offHistoryDrop = (): void => {};
+  // The inline suggestion follows every committed edit of the session.
+  const autocomplete = createAutocompleteSuggestion();
+  let offAutocompleteEdits = (): void => {};
   const leaveRoom = (): void => {
     room?.leave();
     room = undefined;
   };
   const seedSession = (document: ReadonlyDocument | null): boolean => {
+    autocomplete.clear();
+    offAutocompleteEdits();
+    offAutocompleteEdits = () => {};
     leaveRoom();
     const canonicalRoom = deps.getCanonicalRoom?.();
     if (
@@ -803,6 +869,9 @@ export const createHiddenEditorManager = (
     offHistoryDrop = result.value.onHistoryDrop((drop) =>
       deps.onCanonicalHistoryDrop?.(drop),
     );
+    offAutocompleteEdits = result.value.onCommitted((batch) =>
+      autocomplete.noteEdit(classifyAutocompleteEdit(batch)),
+    );
     canonicalSessionEpoch += 1;
     modeOverride = null;
     syncCanonicalMode();
@@ -826,10 +895,8 @@ export const createHiddenEditorManager = (
       doc: session.projection.doc,
       plugins: [
         createDocumentNumberingPlugin(document.package.numbering),
-        // The VS Code host still reports its save strategy from this tracker;
-        // pending changes come from the session's own history.
-        createParagraphChangeTrackerPlugin(),
         createNativeSelectionRefreshPlugin(),
+        createNativeNavigationPlugin(),
         createDocumentStyleContextPlugin(
           deps.getStyles() ?? document.package.styles,
         ),
@@ -934,6 +1001,129 @@ export const createHiddenEditorManager = (
     deps.onSelectionChange(staged.state);
     deps.onCanonicalHistory?.(commit.history);
     return Result.ok(undefined);
+  };
+
+  const autocompletePositionAt = (position: TextPosition): number | null => {
+    if (!view || isDestroying) return null;
+    switch (editorSession.type) {
+      case "canonical":
+        return editorSession.session.projection
+          .positionAt(position)
+          .unwrapOr(null);
+      case "prosemirror":
+        return legacyEditorPositionAt(view.state.doc, position);
+      case "refused":
+        return null;
+      default: {
+        const unreachable: never = editorSession;
+        return unreachable;
+      }
+    }
+  };
+  /** Where the suggestion's anchor shows in the body's editor document. */
+  const autocompleteEditorAnchor = (): number | null => {
+    const current = autocomplete.get();
+    return current.status === "idle"
+      ? null
+      : autocompletePositionAt(current.anchor);
+  };
+  /** The caret as a body text position. */
+  const caretTextPosition = (): TextPosition | null => {
+    if (!view) return null;
+    const { head } = view.state.selection;
+    if (editorSession.type === "canonical")
+      return editorSession.session.projection.addressAt(head).unwrapOr(null);
+    return legacyTextAddressAt(view.state.doc, head);
+  };
+  /**
+   * Insert the suggestion, or its next word, at its anchor as the person's
+   * own typing would: one undo step of its own, tracked when suggesting. The
+   * committed insertion consumes the text it inserted from the suggestion.
+   */
+  const acceptAutocomplete = (scope: "all" | "word"): boolean => {
+    const current = autocomplete.get();
+    if (current.status === "idle" || current.text.length === 0) return false;
+    if (!view || deps.getReadOnly() || isDestroying) return false;
+    const at = autocompleteEditorAnchor();
+    if (at === null) return false;
+    const text =
+      scope === "word" ? nextAutocompleteWord(current.text) : current.text;
+    if (editorSession.type === "canonical") {
+      syncCanonicalMode();
+      const session = editorSession.session;
+      session.breakUndoGroup();
+      const prepared = session.prepareReplace(view.state, {
+        from: at,
+        to: at,
+        text,
+        semantic: "typing",
+      });
+      if (prepared.isErr()) {
+        if (prepared.error.reason !== "noChange")
+          refuse(prepared.error.message, prepared.error.ground);
+        return false;
+      }
+      const published = publishCommit(prepared.value);
+      session.breakUndoGroup();
+      return published;
+    }
+    if (editorSession.type === "refused") return false;
+    const previous = view.state.doc;
+    const transaction = closeHistory(view.state.tr).insertText(text, at);
+    view.dispatch(
+      transaction.setSelection(
+        TextSelection.create(transaction.doc, at + text.length),
+      ),
+    );
+    if (!view || view.state.doc.eq(previous)) return false;
+    view.dispatch(closeHistory(view.state.tr));
+    return true;
+  };
+  let autocompleteRequests = 0;
+  const autocompleteApi: HiddenEditorAutocomplete = {
+    start: (options) => {
+      const anchor = options?.at ?? caretTextPosition();
+      if (anchor === null || !view) return null;
+      const position = autocompletePositionAt(anchor);
+      if (position === null) return null;
+      const resolved =
+        editorSession.type === "canonical"
+          ? editorSession.session.projection.addressAt(position).unwrapOr(null)
+          : legacyTextAddressAt(view.state.doc, position);
+      if (resolved === null) return null;
+      autocompleteRequests += 1;
+      const requestId =
+        options?.requestId ?? `autocomplete-${String(autocompleteRequests)}`;
+      autocomplete.start(resolved, requestId);
+      return requestId;
+    },
+    append: (requestId, delta) => autocomplete.append(requestId, delta),
+    finish: (requestId) => autocomplete.finish(requestId),
+    clear: () => autocomplete.clear(),
+    accept: (scope = "all") => acceptAutocomplete(scope),
+    get: () => autocomplete.get(),
+    canTrigger: () =>
+      view !== null &&
+      caretTextPosition() !== null &&
+      canTriggerAutocomplete(view.state).ok,
+    editorAnchor: autocompleteEditorAnchor,
+    subscribe: (listener) => autocomplete.subscribe(listener),
+  };
+  /** Tab accepts, Mod-ArrowRight accepts a word, Escape dismisses. */
+  const handleAutocompleteKeyDown = (event: KeyboardEvent): boolean => {
+    if (autocomplete.get().status === "idle") return false;
+    const mod = event.metaKey || event.ctrlKey;
+    let handled = false;
+    if (event.key === "Tab" && !event.shiftKey && !mod && !event.altKey)
+      handled = acceptAutocomplete("all");
+    else if (event.key === "ArrowRight" && mod && !event.shiftKey)
+      handled = acceptAutocomplete("word");
+    else if (event.key === "Escape" && !mod && !event.shiftKey) {
+      autocomplete.clear();
+      handled = true;
+    }
+    if (handled) event.preventDefault();
+    return handled;
   };
   const editorOwnsHistoryShortcuts = (): boolean =>
     (deps.getHistoryShortcuts?.() ?? "editor") === "editor";
@@ -1249,6 +1439,10 @@ export const createHiddenEditorManager = (
     "command" | "structure"
   >;
   const canonicalInputLifecycle = {
+    compositionShown: () => {
+      if (editorSession.type === "canonical")
+        deps.onCanonicalCompositionLayout();
+    },
     breakUndoGroup: () => {
       if (editorSession.type === "canonical")
         editorSession.session.breakUndoGroup();
@@ -1266,7 +1460,7 @@ export const createHiddenEditorManager = (
     endComposition: () => {
       if (editorSession.type !== "canonical") return;
       editorSession.session.endComposition();
-      deps.onCanonicalCompositionEnd();
+      deps.onCanonicalCompositionLayout();
       room?.flush();
     },
   };
@@ -1423,6 +1617,9 @@ export const createHiddenEditorManager = (
     const editorProps: DirectEditorProps = {
       state: initialState,
       attributes: HIDDEN_EDITOR_ATTRIBUTES,
+      // Text the browser draws itself, such as an IME composition, takes the
+      // faces the painter draws the run with.
+      markViews: editingMarkViews(document),
       editable: () => !deps.getReadOnly() && editorSession.type !== "refused",
       dispatchTransaction: (transaction: Transaction) => {
         if (!view || isDestroying) {
@@ -1443,7 +1640,7 @@ export const createHiddenEditorManager = (
         if (editorSession.type === "canonical" && transaction.docChanged) {
           if (input.acceptComposition(view, transaction)) return;
           if (!input.commitNativeProposal(view, transaction)) {
-            input.refuseNativeMutation(view);
+            input.refuseNativeMutation(view, transaction);
           }
           // PM's DOM observer dirties the view before dispatching a native
           // proposal. Repaint from the committed state even on refusal.
@@ -1477,17 +1674,29 @@ export const createHiddenEditorManager = (
           !applied.state.doc.eq(view.state.doc)
         ) {
           refuse(
-            "A plugin attempted an unclassified canonical document mutation.",
+            unclassifiedMutationMessage(
+              applied.transactions,
+              "A plugin attempted an unclassified canonical document mutation.",
+            ),
           );
           return;
         }
-        view.updateState(applied.state);
-
-        const docChanged = applied.transactions.some(
+        const documentEdits = applied.transactions.filter(
           (appliedTransaction) =>
             appliedTransaction.docChanged &&
             !isCommentRecordsSync(appliedTransaction),
         );
+        let autocompleteEdit: AutocompleteEdit | undefined;
+        if (editorSession.type !== "canonical" && documentEdits.length > 0) {
+          const only = documentEdits.at(0);
+          autocompleteEdit =
+            documentEdits.length === 1 && only === transaction
+              ? legacyAutocompleteEdit(transaction)
+              : { type: "other" };
+        }
+        view.updateState(applied.state);
+
+        const docChanged = documentEdits.length > 0;
         const selectionChanged = applied.transactions.some(
           (appliedTransaction) =>
             appliedTransaction.selectionSet ||
@@ -1518,9 +1727,18 @@ export const createHiddenEditorManager = (
             ),
           );
         }
+        // Notify after the dispatch's host bookkeeping: a synchronous listener
+        // may accept again, publishing another transaction of its own.
+        if (autocompleteEdit !== undefined)
+          autocomplete.noteEdit(
+            view?.state === applied.state
+              ? autocompleteEdit
+              : { type: "other" },
+          );
       },
       // Intercept key events before ProseMirror processes them
       handleKeyDown: (pmView: EditorView, event: KeyboardEvent): boolean => {
+        if (handleAutocompleteKeyDown(event)) return true;
         if (deps.getReadOnly() && handleReadOnlySelectionKeyDown(pmView, event))
           return true;
 
@@ -1754,6 +1972,9 @@ export const createHiddenEditorManager = (
   const destroyView = (): void => {
     if (view && !isDestroying) {
       isDestroying = true;
+      autocomplete.clear();
+      offAutocompleteEdits();
+      offAutocompleteEdits = () => {};
 
       deps.onEditorViewDestroy();
       leaveRoom();
@@ -1906,7 +2127,6 @@ export const createHiddenEditorManager = (
         return false;
       }
     }
-    markPackageChange(bodyTransaction);
     bodyTransaction.setMeta("addToHistory", false);
     const bodyStaged = Result.try(() =>
       view?.state.applyTransaction(bodyTransaction),
@@ -2017,6 +2237,39 @@ export const createHiddenEditorManager = (
       CANONICAL_GAP.authorityRouting,
     );
 
+  // Highlights read the stories as the editor shows them: a canonical
+  // session's projection of each story, otherwise the body's editor document.
+  const anonymization = createAnonymizationHighlights();
+  const anonymizationSources = (): AnonymizationStorySource[] => {
+    if (editorSession.type === "canonical") {
+      const session = editorSession.session;
+      return documentStories(readModel(session.document)).flatMap((story) => {
+        const projected =
+          story === OP_STORIES.MAIN
+            ? session.projection
+            : session.projectStory(story).unwrapOr(null);
+        if (projected === null) return [];
+        return [
+          {
+            story,
+            doc: projected.doc,
+            addressAt: (position: number) =>
+              projected.addressAt(position).unwrapOr(null),
+          },
+        ];
+      });
+    }
+    if (!view) return [];
+    const doc = view.state.doc;
+    return [
+      {
+        story: OP_STORIES.MAIN,
+        doc,
+        addressAt: (position) => legacyTextAddressAt(doc, position),
+      },
+    ];
+  };
+
   const api = createHiddenEditorApi({
     getView: () => view,
     getDocumentContext: () =>
@@ -2033,9 +2286,20 @@ export const createHiddenEditorManager = (
       editorSession.type === "canonical" &&
       !editorSession.session.isComposing &&
       editorSession.session.version === version,
-    markCanonicalSaved: (version) => {
-      if (editorSession.type === "canonical")
-        canonicalSaved = { session: editorSession.session, version };
+    markCanonicalSaved: (version, saved) => {
+      if (editorSession.type !== "canonical") return;
+      const { session } = editorSession;
+      canonicalSaved = { session, version };
+      // A patched package becomes the baseline later saves patch, read from a
+      // copy: the host owns the saved bytes and may hand them on. A full
+      // repack, or a package that does not read back, keeps the previous
+      // baseline, whose untouched bytes the repack replayed.
+      if (saved?.path !== "selective" || !session.beginSaveBaseline(version))
+        return;
+      void parseDocx(saved.buffer.slice(0), { preloadFonts: false }).then(
+        (reopened) => session.completeSaveBaseline(version, reopened),
+        () => false,
+      );
     },
     // The session's journal is the one source: any committed version other
     // than the one last saved (or opened) is a pending change, in any story.
@@ -2055,6 +2319,12 @@ export const createHiddenEditorManager = (
       editorSession.type === "canonical"
         ? editorSession.session.document
         : null,
+    autocomplete: autocompleteApi,
+    getAnonymizationHighlights: () =>
+      anonymization.read(
+        deps.getAnonymizationTerms?.() ?? NO_ANONYMIZATION_TERMS,
+        anonymizationSources,
+      ),
     canonicalEditorPositionAt: (position) => {
       if (editorSession.type !== "canonical") return undefined;
       // Pending composition text is painted but not yet in the projection.
@@ -2406,5 +2676,14 @@ export const createHiddenEditorManager = (
         : null,
     isCanonicalComposing: () =>
       editorSession.type === "canonical" && editorSession.session.isComposing,
+    refreshFonts: () => {
+      const markViews = editingMarkViews(deps.getDocument());
+      // A redraw would replace the text a composition is drawing into; runs
+      // drawn after it ends take the new context.
+      if (!view || view.isDestroyed || view.composing) return;
+      // ProseMirror rebuilds its views only when the node views it is given
+      // change, and then redraws the runs whose constructor changed.
+      view.setProps({ nodeViews: {}, markViews });
+    },
   };
 };

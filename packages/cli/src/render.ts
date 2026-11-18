@@ -1,7 +1,7 @@
 /**
  * Render a document with folio's own layout and painters, headlessly: PDF
  * from the PDF backend, HTML from the DOM backend, and PNG by screenshotting
- * that HTML in Chromium. Every format paints the one display list built from
+ * that HTML's pages in Chromium. Every format paints the one display list built from
  * one layout, measured with the `@stll/folio-fonts` faces the CLI installs.
  *
  * PNG needs a browser. `playwright-core` is an optional peer dependency and
@@ -141,7 +141,7 @@ type ChromiumLike = {
       ) => Promise<void>;
       evaluate: (script: string) => Promise<unknown>;
       locator: (selector: string) => {
-        first: () => {
+        nth: (index: number) => {
           screenshot: (options: { type: "png" }) => Promise<Uint8Array>;
         };
       };
@@ -165,17 +165,28 @@ const rasterUnavailable = (detail: string): FolioCliError =>
     hint: "Install it next to the CLI (npm install playwright-core) and its browser (npx playwright-core install chromium), or render a PDF.",
   });
 
-type RenderPngOptions = { file: LoadedFile; page: number; scale: number };
+type RenderPngOptions = {
+  file: LoadedFile;
+  /** One-based page numbers; `undefined` renders every page. */
+  pages: readonly number[] | undefined;
+  scale: number;
+};
 
-/** One page as a PNG: the DOM backend's page, screenshotted in headless Chromium. */
+/** Each page, in the order asked, as one PNG. */
+export type RenderedPages = { page: number; bytes: Uint8Array }[];
+
+/** Pages as PNGs: the DOM backend's pages, screenshotted in one headless Chromium. */
 export const renderPng = async ({
   file,
-  page,
+  pages,
   scale,
-}: RenderPngOptions): Promise<Result<RenderedOutput, FolioCliError>> => {
+}: RenderPngOptions): Promise<Result<RenderedPages, FolioCliError>> => {
   const list = await buildDisplayList(file);
   if (list.isErr()) return Result.err(list.error);
-  const selected = checkPages(list.value, [page]);
+  const numbers =
+    pages ??
+    Array.from({ length: list.value.pages.length }, (_, index) => index + 1);
+  const selected = checkPages(list.value, numbers);
   if (selected.isErr()) return Result.err(selected.error);
 
   const imported = await Result.tryPromise(() => import("playwright-core"));
@@ -185,7 +196,7 @@ export const renderPng = async ({
   if (!hasChromium(module))
     return Result.err(rasterUnavailable("the package has no chromium"));
 
-  const shot = await Result.tryPromise({
+  const shots = await Result.tryPromise({
     try: async () => {
       const browser = await module.chromium.launch({ headless: true });
       try {
@@ -197,17 +208,22 @@ export const renderPng = async ({
           },
         );
         await tab.evaluate("document.fonts.ready");
-        return await tab
-          .locator(".layout-page")
-          .first()
-          .screenshot({ type: "png" });
+        const rendered: RenderedPages = [];
+        for (const [index, page] of numbers.entries()) {
+          rendered.push({
+            page,
+            bytes: await tab
+              .locator(".layout-page")
+              .nth(index)
+              .screenshot({ type: "png" }),
+          });
+        }
+        return rendered;
       } finally {
         await browser.close();
       }
     },
     catch: (error) => rasterUnavailable(describe(error)),
   });
-  return shot.isOk()
-    ? Result.ok({ bytes: shot.value, pageCount: 1 })
-    : Result.err(shot.error);
+  return shots.isOk() ? Result.ok(shots.value) : Result.err(shots.error);
 };

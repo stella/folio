@@ -28,6 +28,13 @@ lengths carries it as `moves`, so positions still follow it. `transformPosition`
 moves a position across sequenced batches by paragraph id and offset, so an
 editor maps its selection and history without its own coordinates.
 
+A pending batch that does not rebase over a sequenced one, or that the
+authority rejected, is dropped with a notice; the pending batches after it
+rebase as if it had never been made, over its inverse first, so only a batch
+that edits what the dropped one put there is dropped with it. When a
+sequenced batch cannot be carried past a kept pending one, the later pending
+batches cross that one's inverse, the sequenced batch and its rebased self.
+
 `transformBatch` refuses operation pairs whose effects cannot be mapped safely.
 An inverse keeps its staleness preconditions: an invalid undo must be dropped,
 never applied by removing those preconditions. Supported story addresses derive
@@ -54,7 +61,12 @@ The position transform rebases text insertions, inline content insertions,
 inline record splits and joins, direct deletions, run and paragraph
 formatting, paragraph splits and joins, anchored paragraph insertion and
 repeated revision decisions. Overlapping revision decisions with opposite
-outcomes reject. Text inherited at a paragraph's start takes the run after
+outcomes reject. A revision decision names its revisions, not positions: it
+passes a concurrent direct positional edit (typing, an inline insertion, a
+deletion, a format, an inline record split or join) unchanged, and is
+refused only when that edit cut a revision record in two and gave its
+second half a new id. A concurrent tracked edit refuses it, since its records
+may continue a decided revision. Text inherited at a paragraph's start takes the run after
 it, so a concurrent format from the start covers it in either order. A
 direct format lying inside a concurrent direct deletion cut records that the
 deletion, applied first, would have left whole: the sequenced format records
@@ -62,7 +74,29 @@ the records it cut at both of its ends, a run and the text it lay inside, by
 their gaps before it (`cutRecords` in its effect). The deletion rebased over
 the format joins the pieces of each that reaches past both of its ends again,
 with one seam join at its point that many levels deep, which is the depth
-the deletion merges at in the other order.
+the deletion merges at in the other order. A direct deletion keeps a note's
+own reference mark lying inside its range; the sequenced deletion records
+that (`keptMark` in its `deleteRange` effect), and a position it closes up to
+its start lands after the kept mark, as it does in the deleting order. A cut
+record holding that mark names it too (`keptMark` on the record): the mark
+keeps the record's piece on its side of the format, and when it stood before
+the format the pieces meet, and join, right after it.
+
+Anchored paragraph insertion names its anchor by id and moves no offset in
+it: typing, inline content insertions and inline record splits and joins in
+the anchor paragraph pass a concurrent insertion before or after it, direct
+or tracked, and the insertion passes them.
+
+Concurrent direct and tracked paragraph insertions after the same anchor
+refuse with `unsupportedPair`. A tracked insertion may move the anchor's
+former mark and allocate its formatting snapshot; neither insertion's
+payload carries that context, so transferring the inserted mark could lose
+the direct paragraph's formatting when the tracked insertion is rejected.
+A sequential direct insertion after a pending first-survivor paragraph mark
+also refuses before mutation, even when the paragraphs currently have equal
+formatting: that formatting may have changed since the mark's snapshot was
+recorded. Insertions before an anchor, at independent anchors, or of the same
+kind retain their existing ordering.
 
 ## Inline insertions
 
@@ -74,6 +108,13 @@ at the same gap the batch sequenced later goes after the one sequenced
 earlier, so typing at one point keeps the sequence order whichever peer
 applies first. A gap whose count one side leaves absent and the other names
 as nonzero cannot be compared and refuses with `unsupportedPair`.
+
+`insertText` puts its text exactly at its gap: after the zero-width leaves
+`zeroWidthBefore` counts and before the rest, in the run holding the leaf
+before the gap, else the one holding the leaf after it, of whatever kind
+either leaf is, so a note's own mark or a cached page break never decides
+the run by its width alone. A point at its offset whose gap both sides
+count moves by the same rule: past the text when it lies after the gap.
 
 A range that starts at the insertion point moves past the inserted content
 and a range that ends there stays before it: the inserted runs carry the
@@ -139,7 +180,17 @@ document as a `replaced` change, so its undo and redo history is dropped,
 and its positions move over the change's `moves`. They are the only pairs
 the transform accepts without commuting. Tracked changes apart from every
 concurrent cut commute, and so does a direct deletion strictly inside a
-tracked one.
+tracked one that supplies no additional revision ids.
+
+A direct deletion overlapping a tracked deletion with a nonempty revision
+id pool refuses in both orders. Removing an earlier newly tracked fragment
+can shift the remaining supplied ids onto different source content when
+the tracked deletion replays. The pool records allocation order, not each
+fragment's source identity: an optimistic review decision must not silently
+resolve a different fragment after replay. This conservative boundary also
+covers edge-reaching, equal and covering ranges; extra unused supplied ids
+still witness the risk. Disjoint and merely touching ranges are unchanged.
+Ranges crossing paragraphs already refuse as invalid sequencing operations.
 
 ## Block-scoped operations
 
@@ -153,14 +204,33 @@ writes; when it is sequenced, its effect records every paragraph it changed,
 inserted or removed (`touchedBlocks`), and for a table structure edit every
 paragraph of that table. A batch passes a concurrent block-scoped operation
 unchanged when it addresses none of those paragraphs, and is refused with
-`blockConflict` when it does. A table structure edit is refused with
+`blockConflict` when it does, with one exception: a paragraph restoration
+(`replaceInline`, and each anchor paragraph of `restoreCommentState`) and a
+positional edit of that paragraph (typing, an inline insertion, a split or
+join of inline records, a deletion or a format within it, or a new comment
+anchored in it) meet by the restoration's span (`restoreTransform.ts`). The
+span is the stretch between the longest common prefix and the longest common
+suffix of the content the restoration expects and the content it gives,
+compared leaf by leaf (a character of run text, or a whole leaf) with the records holding each leaf,
+their own fields and where they begin and end: a change of a record's own
+fields alone spans that record's leaves, and a change of record boundaries
+alone is an empty span at the boundary. An edit reaching into the span is
+refused with `blockConflict`; a comment's anchor reaches into it when one of
+its ends lies strictly inside it. Any other edit passes: rebased over the
+restoration, its positions after the span move by the width the span
+changes; the restoration rebased over the edit states the paragraph the
+edit leaves, before and after it, applying the edit to that paragraph alone,
+wherever the paragraph is (a table cell, a header or footer, a note). Both
+orders give the same paragraph by construction. A table structure edit is refused with
 `tableRequiresExclusiveEdit` only when the concurrent one restructured the
 same table; typing in that table's cells passes. Package parts
 (`EXCLUSIVE_PARTS`: numbering, styles, relationships, media, sections, headers
 and footers, notes, settings, revision metadata and comments) conflict when
 one operation writes a part both name, by entry where the operation names one
 (a numbering instance, a relationship id, a note, a comment): `partConflict`,
-with the part. A comment operation that may add or remove the comment part
+with the part. Notes added concurrently name different notes and pass: a
+new note takes its place in its note list before the first note of a
+greater id, so the list is the same whichever is added first. A comment operation that may add or remove the comment part
 relationships writes the whole relationships part. A revision decision reads
 the revisions it resolves, and a paragraph replacement, inline replacement,
 paragraph review or container replacement writes every revision its new
@@ -186,7 +256,8 @@ range: the apply contract makes a collapsed range a point comment, which the
 other order (a range comment whose text is then deleted) would not give. A
 reply, a deletion and a restoration find their anchors in the document they
 apply to; their effect records the paragraphs they changed, so a concurrent
-edit addressing one of those paragraphs refuses with `blockConflict`, and
+edit addressing one of those paragraphs refuses with `blockConflict` (a
+restoration meets a positional edit by its span instead, as above), and
 the comments they added or removed, replies of a deleted thread among them.
 
 Concurrent comment operations decide by the comments they use. Different

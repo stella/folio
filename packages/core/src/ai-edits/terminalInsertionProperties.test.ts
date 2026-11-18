@@ -71,8 +71,6 @@ for (const finalKind of ["paragraph", "heading"] as const) {
             mode: FolioDocumentOperationMode,
           ) => {
             const blocks = reviewer.getContent();
-            const anchor = blocks.at(1);
-            if (!anchor) panic("Generated fixture has no surviving anchor");
             const apply = (
               operations: FolioDocumentOperation[],
               revisionStamp: FolioRevisionStamp,
@@ -96,6 +94,10 @@ for (const finalKind of ["paragraph", "heading"] as const) {
               })),
               DELETION_STAMP,
             );
+            // The last survivor as it now stands: applied directly, it joined
+            // the deleted final paragraph and goes by that one's id.
+            const anchor = reviewer.getContent().at(1);
+            if (!anchor) panic("Generated fixture has no surviving anchor");
             apply(
               [
                 {

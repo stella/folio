@@ -16,15 +16,13 @@ import type { Transaction } from "prosemirror-state";
 
 import {
   type BoundaryOccurrence,
-  paragraphRemains,
   planWellFormedRanges,
   recordsCopyOrigin,
 } from "@stll/docx-core/ops";
 
-import type { CommentReference, ParagraphContent } from "../types/document";
+import type { ParagraphContent } from "../types/document";
 import { expectBookmarkBoundaryAttrs } from "./bookmarkBoundaryAttrs";
 import { expectCommentRangeBoundaryAttrs } from "./commentRangeBoundaryAttrs";
-import { expectCommentReferenceAttrs } from "./commentReferenceAttrs";
 import {
   copyOriginBoundaryAfterRemovingAddedAncestors,
   copyOriginBoundaryAfterResolution,
@@ -118,8 +116,7 @@ const BOUNDARY_ITEMS: Record<
   ],
   // A point range holds its start and its end in one node.
   [RANGE_ANCHOR_NODE_NAME]: (node) => {
-    const { start, end } = expectRangeAnchorAttrs(node);
-    return [start, end];
+    return [...expectRangeAnchorAttrs(node).markers];
   },
   [COMMENT_RANGE_BOUNDARY_NODE_NAME]: (node) => [
     expectCommentRangeBoundaryAttrs(node).marker,
@@ -332,18 +329,11 @@ export const inlineBoundariesOf = (
 };
 
 /**
- * What `paragraph` leaves where it was when it goes whole, by the engine's
- * own rule (`paragraphRemains`): before a table, its bookmark and move range
- * boundaries as block nodes in its place (`blocks`), unless a comment needs
- * the paragraph before it, which takes every carrier in source order
- * (`comments`); ending its
- * container, every node carrying a boundary (`inline`), for the paragraph
- * before it.
+ * What `paragraph` leaves when it goes whole, by the engine's own rule
+ * (`paragraphRemains`): every node carrying a boundary or a comment
+ * reference, in source order, for the nearest paragraph that stays.
  */
-export const paragraphRemainsOf = (
-  paragraph: PMNode,
-): { blocks: PMNode[]; comments: PMNode[]; inline: PMNode[] } => {
-  const items: (BoundaryItem | CommentReference)[] = [];
+export const paragraphRemainsOf = (paragraph: PMNode): PMNode[] => {
   const inline: PMNode[] = [];
   paragraph.descendants((node) => {
     const carried = rangeBoundaryItemsOf(node);
@@ -356,22 +346,9 @@ export const paragraphRemainsOf = (
       remains !== null
     )
       inline.push(remains);
-    if (remains !== null) items.push(...rangeBoundaryItemsOf(remains));
-    if (node.type.name === COMMENT_REFERENCE_NODE_NAME)
-      items.push({
-        type: "commentReference",
-        id: expectCommentReferenceAttrs(node).commentId,
-      });
     return true;
   });
-  const remains = paragraphRemains(items);
-  if (remains.placement === "previous")
-    return { blocks: [], comments: inline, inline };
-  const blocks = remains.blocks.flatMap((item) => {
-    const block = boundaryNode(item, paragraph.type.schema, false);
-    return block === undefined ? [] : [block];
-  });
-  return { blocks, comments: [], inline };
+  return inline;
 };
 
 /** The revision marks of `anchor`, with the other marks of `node`. */

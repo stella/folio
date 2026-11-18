@@ -496,13 +496,34 @@ for (const tableDeletion of ["deleteTable", "deleteTableRow"] as const) {
       expect(
         apply(reviewer, mode, { type: tableDeletion, blockId: cell.id }),
       ).toBe(true);
+      const joinedIds = new Map<string, string>();
       for (const prefix of ["Prices exclude", "Signed", "The Buyer"]) {
         const block = blocks.find(({ text }) => text.startsWith(prefix));
         if (!block)
           throw new Error("Missing terminal paragraph deletion target");
-        expect(
-          apply(reviewer, mode, { type: "deleteBlock", blockId: block.id }),
-        ).toBe(true);
+        const result = reviewer.applyDocumentOperations(
+          {
+            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+            mode,
+            operations: [
+              {
+                id: prefix,
+                type: "deleteBlock",
+                blockId: joinedIds.get(block.id) ?? block.id,
+              },
+            ],
+          },
+          { undefinedReferences: "refuse" },
+        );
+        expect(result.applied).toHaveLength(1);
+        expect(result.skipped).toEqual([]);
+        for (const { paragraphIdentity } of result.applied) {
+          if (paragraphIdentity?.type === "joined")
+            joinedIds.set(
+              paragraphIdentity.retiredBlockId,
+              paragraphIdentity.blockId,
+            );
+        }
       }
       return reviewer;
     };

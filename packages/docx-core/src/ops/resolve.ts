@@ -46,18 +46,25 @@ import {
   acceptCopyOriginAncestor,
   rejectCopyOriginAncestorsInNodes,
 } from "./copyOriginAncestors";
+import { keptDeletionBoundaryPaths } from "./deletionBoundaries";
 import { combineEdits, type DocumentEdit } from "./edits";
 import { structurallyEqual } from "./equality";
 import { canonicalDeferredGroups, deferredGroupKey } from "./identity";
-import { IDENTITY_SPACES, identityKeysIn, idKey, slotKey } from "./ids";
+import {
+  IDENTITY_SPACES,
+  identityKeysIn,
+  idKey,
+  reservedIdentityKeysIn,
+  slotKey,
+} from "./ids";
 import { joinParagraphSeam } from "./inline";
+import { seamHandsOver, withJoinAtLeast } from "./keptJoins";
 import {
   alikeDepth,
   asParagraphContent,
   childNodes,
   fieldResultOf,
   type InlineNode,
-  leafSpans,
   mergeAlike,
   mergeLists,
   ownRunPropertyChanges,
@@ -65,6 +72,8 @@ import {
   sameOwnFields,
   withFieldResult,
 } from "./leaves";
+import { replaceNoteParts } from "./noteLifecycle";
+import { automaticNoteMarkRuns, noteReferenceSpans } from "./noteMarks";
 import {
   paragraphHoldsContent,
   paragraphHoldsContentOnceAccepted,
@@ -83,6 +92,7 @@ import {
   withSeamBoundariesInside,
 } from "./rangeBoundaries";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
+import { edgeChain, edgeChainPastRemoved } from "./resolvedEdges";
 import { reachableRowIds, resolveTableRows } from "./resolveTableRows";
 import {
   isAddedRevision,
@@ -94,7 +104,7 @@ import {
 import { runsMergeable } from "./runMerge";
 import { identitySlots, withInlineIdentity } from "./slots";
 import { documentStories } from "./stories";
-import { storyLifecycleEdit } from "./storyLifecycle";
+import { storyLifecycleTouched } from "./storyLifecycle";
 import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
@@ -162,6 +172,7 @@ const runParagraphIntoTable = (
 };
 
 const NO_COMMENT_RANGES: ReadonlySet<number> = new Set();
+const NO_BOUNDARY_PATHS: ReadonlySet<string> = new Set();
 
 /** Whether a decision removes the content of a tracked change of this kind. */
 const removesContent = (
@@ -186,8 +197,7 @@ const removedNoteReferences = (
 ): NoteReference[] => {
   const references = new Map<string, NoteReference>();
   for (const { paragraph } of storyParagraphs(storyBody(document, op.story))) {
-    for (const { node, ancestors } of leafSpans(paragraph.content)) {
-      if (node.type !== "footnoteRef" && node.type !== "endnoteRef") continue;
+    for (const { node, ancestors } of noteReferenceSpans(paragraph.content)) {
       const revision = ancestors.find(
         (ancestor) =>
           isTrackedWrapper(ancestor) &&
@@ -212,9 +222,8 @@ const hasNoteReference = (
 ): boolean =>
   documentStories(document).some((story) =>
     storyParagraphs(storyBody(document, story)).some(({ paragraph }) =>
-      leafSpans(paragraph.content).some(
+      noteReferenceSpans(paragraph.content).some(
         ({ node }) =>
-          (node.type === "footnoteRef" || node.type === "endnoteRef") &&
           node.type ===
             (reference.kind === "footnote" ? "footnoteRef" : "endnoteRef") &&
           node.id === reference.id,
@@ -351,7 +360,7 @@ type Emptied = { has: (node: InlineNode) => boolean };
 const NOTHING_EMPTIED: Emptied = { has: () => false };
 
 type Resolution = {
-  ids: Set<number>;
+  ids: ReadonlySet<number> & { add: (id: number) => void };
   decision: RevisionDecision;
   /** The containers this resolution has emptied so far. */
   emptied: WeakSet<InlineNode>;
@@ -361,6 +370,8 @@ type Resolution = {
   cutEdges: WeakMap<InlineNode, CutEdges>;
   /** Comment ranges with a start and an end in the paragraphs resolved. */
   pairedComments: ReadonlySet<number>;
+  /** Source occurrences retained by the current paragraph's accepted deletions. */
+  keptDeletionPaths: ReadonlySet<string>;
   /** Boundaries this resolution kept from removed content. */
   relocated: RelocatedBoundaries;
   /**
@@ -370,6 +381,21 @@ type Resolution = {
    */
   outstanding: RetainedIdentity[];
 };
+
+const createResolution = (
+  ids: Set<number>,
+  decision: RevisionDecision,
+): Resolution => ({
+  ids,
+  decision,
+  emptied: new WeakSet(),
+  acceptedClosed: { first: new WeakSet(), last: new WeakSet() },
+  cutEdges: new WeakMap(),
+  pairedComments: NO_COMMENT_RANGES,
+  keptDeletionPaths: NO_BOUNDARY_PATHS,
+  relocated: noRelocatedBoundaries(),
+  outstanding: [],
+});
 
 const resolveRun = (run: Run, { ids, decision }: Resolution): Run => {
   const changes = run.propertyChanges ?? [];
@@ -833,6 +859,31 @@ const validEnclosingHandoffs = (handoffs: unknown): boolean =>
       );
     }));
 
+/** The count of kept boundaries `joins` records, spread into a record. */
+const keptCountOf = ({
+  keptCount,
+}: {
+  keptCount?: number;
+}): { count?: number } => (keptCount === undefined ? {} : { count: keptCount });
+
+/**
+ * A count of kept boundaries goes with the date they were kept from and
+ * names at least one of them.
+ */
+const validKeptCount = ({
+  keptFrom,
+  keptCount,
+}: {
+  keptFrom?: unknown;
+  keptCount?: unknown;
+}): boolean =>
+  keptCount === undefined ||
+  (keptFrom !== undefined &&
+    typeof keptCount === "number" &&
+    Number.isInteger(keptCount) &&
+    keptCount >= 1 &&
+    keptCount <= MAX_REVISION_ID);
+
 /** Journal-supplied provenance must name actual source slots at its recorded depth. */
 const validRetainedIdentities = (node: InlineNode): boolean => {
   if (!isTrackedWrapper(node) || node.resolutionJoins === undefined)
@@ -871,6 +922,7 @@ const validRetainedIdentities = (node: InlineNode): boolean => {
         !deferred.blockers.includes(node.info.id) ||
         (deferred.keptFrom !== undefined &&
           typeof deferred.keptFrom !== "string") ||
+        !validKeptCount(deferred) ||
         // An insertion holds a seam it stands in; a deletion or move source
         // holds one at the edge where its piece meets it.
         (isAddedRevision(node)
@@ -885,6 +937,7 @@ const validRetainedIdentities = (node: InlineNode): boolean => {
   }
   if (joins.keptFrom !== undefined && typeof joins.keptFrom !== "string")
     return false;
+  if (!validKeptCount(joins)) return false;
   if (!validEnclosingHandoffs(joins.retainedEnclosing)) return false;
   if (joins.retainedAfter === undefined) return true;
   if (!Array.isArray(joins.retainedAfter)) return false;
@@ -1006,8 +1059,12 @@ const settleDeferredRemovals = (
               joins.after = Math.max(joins.after, group.depth);
             else joins.remove = Math.max(joins.remove, group.depth);
             // The boundaries the seam kept float with its join, as of the
-            // revision they were kept from.
-            if (group.keptFrom !== undefined) joins.keptFrom = group.keptFrom;
+            // revision they were kept from, as many as it kept.
+            if (group.keptFrom !== undefined) {
+              joins.keptFrom = group.keptFrom;
+              if (group.keptCount === undefined) delete joins.keptCount;
+              else joins.keptCount = group.keptCount;
+            }
           } else remainingGroups.push({ ...group, blockers: remaining });
         }
         delete joins.deferredRemove;
@@ -1129,6 +1186,16 @@ const carryResolutionState = (
 };
 
 type SourceOwnerSide = "before" | "after";
+
+/** A recorded join on one side identifies the surviving piece of this cut. */
+const oneSidedKeptPiece = (
+  joins: TrackedWrapper["resolutionJoins"],
+): SourceOwnerSide | undefined => {
+  if (joins === undefined) return undefined;
+  if (joins.before === 0 && joins.after > 0) return "after";
+  if (joins.after === 0 && joins.before > 0) return "before";
+  return undefined;
+};
 type SourceOwnerRoute = { owner: SourceOwner; depth: number };
 type SourceOwnerRoutes = Record<SourceOwnerSide, SourceOwnerRoute | undefined>;
 type SourceOwnerState =
@@ -1370,18 +1437,6 @@ type CutReach = {
   after: number;
 };
 
-/** `node` and its last (`end`) or first (`start`) child, theirs, and so on. */
-const edgeChain = (node: InlineNode, edge: "start" | "end"): InlineNode[] => {
-  const chain: InlineNode[] = [];
-  let current: InlineNode | undefined = node;
-  while (current !== undefined) {
-    chain.push(current);
-    const children = childNodes(current);
-    current = edge === "start" ? children?.at(0) : children?.at(-1);
-  }
-  return chain;
-};
-
 /**
  * Two records meeting at a cut recorded `depth` levels deep, folded as
  * {@link foldAtSeam} folds an emptied piece into the piece across from it.
@@ -1438,7 +1493,9 @@ const foldAtCut = ({
  * only came
  * after the cut, or never held it, and is no level of it; nor is one that
  * also holds a piece of `spanning`, the content that made the cut, as a
- * deletion made over the cut does. So the reach is the same whichever
+ * deletion made over the cut does. Such a change this resolution removes
+ * with its content is read past: the record beside it inside the same
+ * container meets the cut once it is gone. So the reach is the same whichever
  * changes earlier resolutions removed and whichever later edits wrapped a
  * piece: a cut level the resolution resolves away leaves its content a level
  * up, and one whose content goes takes the position with it.
@@ -1458,6 +1515,32 @@ const cutReach = ({
 }): CutReach => {
   const reach: CutReach = { levels: depth, before: 0, after: 0 };
   const open = { before: true, after: true };
+  const chains = { before: [...before], after: [...after] };
+  /**
+   * Reads one side's edge past a tracked change there that no record across
+   * from it matches and this resolution removes with its content: the
+   * record it stood in front of is what then meets the cut. Whether
+   * resolved at once or before the cut's own change, the cut reaches the
+   * same records.
+   */
+  const pastRemoved = (side: "before" | "after", index: number): boolean => {
+    const node = chains[side][index];
+    if (
+      node === undefined ||
+      !isTrackedWrapper(node) ||
+      !resolution.ids.has(node.info.id) ||
+      !removesContent(node, resolution.decision)
+    )
+      return false;
+    const chain = edgeChainPastRemoved(
+      chains[side],
+      index,
+      side === "before" ? "end" : "start",
+    );
+    if (chain === undefined) return false;
+    chains[side] = chain;
+    return true;
+  };
   /** How a record on one side's edge counts once the resolution is done. */
   const pass = (
     side: "before" | "after",
@@ -1476,8 +1559,8 @@ const cutReach = ({
   let counted = 0;
   let staying = 0;
   while (counted < depth) {
-    const near = before[nearIndex];
-    const far = after[farIndex];
+    const near = chains.before[nearIndex];
+    const far = chains.after[farIndex];
     if (near === undefined || far === undefined) break;
     const piecesOfOne =
       isTrackedWrapper(near) && isTrackedWrapper(far)
@@ -1489,11 +1572,13 @@ const cutReach = ({
           childNodes(far) !== undefined &&
           sameOwnFields(near, far);
     if (!piecesOfOne && isTrackedWrapper(near)) {
+      if (pastRemoved("before", nearIndex)) continue;
       pass("before", near);
       nearIndex += 1;
       continue;
     }
     if (!piecesOfOne && isTrackedWrapper(far)) {
+      if (pastRemoved("after", farIndex)) continue;
       pass("after", far);
       farIndex += 1;
       continue;
@@ -1514,10 +1599,17 @@ const cutReach = ({
   return reach;
 };
 
-const resolveList = (
-  nodes: readonly InlineNode[],
-  resolution: Resolution,
-): ResolvedList => {
+type ResolveListOptions = {
+  nodes: readonly InlineNode[];
+  resolution: Resolution;
+  path: readonly number[];
+};
+
+const resolveList = ({
+  nodes,
+  resolution,
+  path,
+}: ResolveListOptions): ResolvedList => {
   const out: SourceOccurrence[] = [];
   const seams: number[] = [];
   const plainSeams = new Set<number>();
@@ -1610,6 +1702,10 @@ const resolveList = (
   };
   /** Seams a removed revision recorded between the source pieces around it. */
   const removalSeams = new Set<number>();
+  /** Seams a kept revision's own joins recorded at its edges. */
+  const keptJoinSeams = new Set<number>();
+  /** Those of them a removed insertion or move destination recorded. */
+  const addedRemovalSeams = new Set<number>();
   const recordSourceSeam = (index: number, depth: number): void => {
     recordExactSeam(index, depth);
     if (depth > 0)
@@ -1618,10 +1714,16 @@ const resolveList = (
   /** Seams beside an emptied container, where only its fold happens. */
   const folds: number[] = [];
   /**
-   * The revision date of boundaries an earlier rejection kept standing at a
-   * seam this resolution's removal joins, by the seam's position.
+   * Boundaries an earlier rejection kept standing at a seam this resolution
+   * joins, by the seam's position: the date of the revision they were kept
+   * from, how many of those standing there they are, and, where a kept
+   * revision's own join takes the seam, the side of it that revision's
+   * content is on, a piece of the record the rejection cut.
    */
-  const exactKeptFrom = new Map<number, string>();
+  const exactKept = new Map<
+    number,
+    { from: string; count?: number; piece?: "before" | "after" }
+  >();
   /** Boundaries kept from removed content just before a seam, and its depth. */
   const floating = new Map<
     number,
@@ -1634,6 +1736,11 @@ const resolveList = (
       spanning: readonly TrackedWrapper[];
       /** The date of the revision whose removed content they came from. */
       keptFrom?: string;
+      /**
+       * The side whose record is a piece of the record the removed content
+       * cut by its own join: it takes them across from any record.
+       */
+      piece?: "before" | "after";
     }
   >();
   let changed = false;
@@ -1645,11 +1752,20 @@ const resolveList = (
         const removedOwner =
           sourceOwners.at(index) ??
           panic("A removed source occurrence has an owner.");
-        const removedDepth = node.resolutionJoins?.remove ?? 0;
+        const joins = node.resolutionJoins;
+        const removedDepth = joins?.remove ?? 0;
+        // A one-sided prefix or suffix still belongs to the piece its join
+        // names, even when removing it joins no records across its place.
+        let beforeDepth = removedDepth;
+        let afterDepth = removedDepth;
+        if (removedDepth === 0) {
+          beforeDepth = joins?.after === 0 ? joins.before : 0;
+          afterDepth = joins?.before === 0 ? joins.after : 0;
+        }
         if (
           resolution.decision === REVISION_DECISIONS.REJECT &&
           isAddedRevision(node) &&
-          removedDepth > 0
+          (beforeDepth > 0 || afterDepth > 0)
         ) {
           const before =
             index === 0
@@ -1662,13 +1778,13 @@ const resolveList = (
             adjacent: { before, after },
             routes: {
               before:
-                before === undefined
+                before === undefined || beforeDepth === 0
                   ? undefined
-                  : { owner: before, depth: removedDepth },
+                  : { owner: before, depth: beforeDepth },
               after:
-                after === undefined
+                after === undefined || afterDepth === 0
                   ? undefined
-                  : { owner: after, depth: removedDepth },
+                  : { owner: after, depth: afterDepth },
             },
           };
         }
@@ -1728,8 +1844,8 @@ const resolveList = (
         const kept = removedContentBoundaries({
           nodes: removalContent,
           rejecting: resolution.decision === REVISION_DECISIONS.REJECT,
-          // A deletion of a range removes every comment anchor it holds, as
-          // deleting the range directly does.
+          // Endpoints follow keptPaths; a range deletion removes an enclosed
+          // comment reference as deleting that range directly does.
           pairedComments:
             node.type === "deletion" && node.resolutionJoins !== undefined
               ? NO_COMMENT_RANGES
@@ -1737,6 +1853,12 @@ const resolveList = (
           relocated: resolution.relocated,
           revisionDate: node.info.date ?? "",
           leavesPending: (revisionId) => !resolution.ids.has(revisionId),
+          keptPaths: resolution.keptDeletionPaths,
+          path: [...path, index],
+          keepAutomaticMark: (run) =>
+            automaticNoteMarkRuns([run]).map((mark) =>
+              resolveRun(mark, resolution),
+            ),
         });
         appendUnowned(kept);
         // Kept boundaries float at the seam until the pieces either side are
@@ -1745,7 +1867,8 @@ const resolveList = (
           kept.length > 0 &&
           resolution.decision === REVISION_DECISIONS.REJECT &&
           (node.resolutionJoins?.remove ?? 0) > 0
-        )
+        ) {
+          const piece = oneSidedKeptPiece(node.resolutionJoins);
           floating.set(out.length, {
             count: kept.length,
             depth: node.resolutionJoins?.remove ?? 0,
@@ -1753,7 +1876,12 @@ const resolveList = (
             after: sourceOwners.at(index + 1),
             spanning: trackedWithin(node.content),
             keptFrom: node.info.date ?? "",
+            // Accepting content beside this removed piece can leave its
+            // recorded container join on one side only. The other side's
+            // authored record is not part of that cut container.
+            ...(piece === undefined ? {} : { piece }),
           });
+        }
         if (node.resolutionJoins === undefined) seams.push(out.length);
         else if ((node.resolutionJoins.plainSides?.length ?? 0) > 0)
           plainSeams.add(out.length);
@@ -1763,9 +1891,14 @@ const resolveList = (
           const removalCut = cutLevelsOnceResolved(node, index);
           recordSourceSeam(out.length, removalCut);
           if (removalCut > 0) removalSeams.add(out.length);
+          if (removalCut > 0 && isAddedRevision(node))
+            addedRemovalSeams.add(out.length);
           const keptFrom = node.resolutionJoins.keptFrom;
           if (removalCut > 0 && keptFrom !== undefined)
-            exactKeptFrom.set(out.length, keptFrom);
+            exactKept.set(out.length, {
+              from: keptFrom,
+              ...keptCountOf(node.resolutionJoins),
+            });
         }
         continue;
       }
@@ -1774,13 +1907,22 @@ const resolveList = (
         plainSeams.add(out.length);
       else {
         recordSourceSeam(out.length, node.resolutionJoins.before);
+        if (node.resolutionJoins.before > 0) keptJoinSeams.add(out.length);
         if (
           node.resolutionJoins.before > 0 &&
           node.resolutionJoins.keptFrom !== undefined
         )
-          exactKeptFrom.set(out.length, node.resolutionJoins.keptFrom);
+          exactKept.set(out.length, {
+            from: node.resolutionJoins.keptFrom,
+            ...keptCountOf(node.resolutionJoins),
+            piece: "after",
+          });
       }
-      const resolved = resolveList(node.content, resolution);
+      const resolved = resolveList({
+        nodes: node.content,
+        resolution,
+        path: [...path, index],
+      });
       const content =
         isAddedRevision(node) &&
         resolution.decision === REVISION_DECISIONS.ACCEPT
@@ -1819,11 +1961,16 @@ const resolveList = (
         plainSeams.add(out.length);
       else {
         recordSourceSeam(out.length, node.resolutionJoins.after);
+        if (node.resolutionJoins.after > 0) keptJoinSeams.add(out.length);
         if (
           node.resolutionJoins.after > 0 &&
           node.resolutionJoins.keptFrom !== undefined
         )
-          exactKeptFrom.set(out.length, node.resolutionJoins.keptFrom);
+          exactKept.set(out.length, {
+            from: node.resolutionJoins.keptFrom,
+            ...keptCountOf(node.resolutionJoins),
+            piece: "before",
+          });
       }
       continue;
     }
@@ -1856,7 +2003,9 @@ const resolveList = (
     }
     const children = childNodes(node);
     const inner =
-      children === undefined ? undefined : resolveList(children, resolution);
+      children === undefined
+        ? undefined
+        : resolveList({ nodes: children, resolution, path: [...path, index] });
     for (const handoff of inner?.enclosing ?? []) {
       if (handoff.levels > 1) {
         enclosing.push({
@@ -2012,6 +2161,30 @@ const resolveList = (
   if (!changed) {
     return { nodes: out.map(({ node }) => node), changed };
   }
+  // A container this resolution rebuilt can meet the seam with an inner cut
+  // at its edge whose other piece lies beyond the seam: a removed insertion
+  // at that edge cut deeper than the seam does. Once the seam joins the
+  // container's level, that cut continues through it, as the seam deferred
+  // on a pending insertion there joins when the insertion is rejected later.
+  for (const seam of addedRemovalSeams) {
+    const depth = exactSeams.get(seam);
+    if (depth === undefined) continue;
+    const standing = floating.get(seam)?.count ?? 0;
+    const left = out.at(seam - standing - 1)?.node;
+    const right = out.at(seam)?.node;
+    const reach = Math.max(
+      depth,
+      seam - standing > 0 && left !== undefined
+        ? (resolution.cutEdges.get(left)?.last ?? 0)
+        : 0,
+      right === undefined ? 0 : (resolution.cutEdges.get(right)?.first ?? 0),
+    );
+    if (reach === depth) continue;
+    exactSeams.set(seam, reach);
+    sourceEdges.set(seam, Math.max(sourceEdges.get(seam) ?? 0, reach));
+    const kept = floating.get(seam);
+    if (kept !== undefined) floating.set(seam, { ...kept, depth: reach });
+  }
   const edges: CutEdges = {};
   const firstDepth = sourceEdges.get(0);
   const lastDepth = sourceEdges.get(out.length);
@@ -2103,13 +2276,32 @@ const resolveList = (
   // so rejecting first and joining later places them as the other order.
   for (const [recorded, depth] of [...exactSeams]) {
     if (floating.has(recorded)) continue;
+    const leftPiece = out[recorded - 1]?.node;
+    const rightPiece = out[recorded]?.node;
+    // A recorded source cut already meeting its matching pieces rejoins
+    // them here. A marker-only piece is an authored record, not a boundary
+    // kept outside those records by an earlier rejection. Explicit kept
+    // provenance still owns its boundaries, even beside matching pieces.
+    if (
+      !exactKept.has(recorded) &&
+      leftPiece !== undefined &&
+      rightPiece !== undefined &&
+      alikeDepth(leftPiece, rightPiece) >= depth
+    )
+      continue;
     const standingAt = (from: number, step: 1 | -1): number => {
       let count = 0;
       while (isStandingBoundary(out[from + step * count]?.node)) count += 1;
       return count;
     };
-    const after = standingAt(recorded, 1);
-    const before = after > 0 ? 0 : standingAt(recorded - 1, -1);
+    const kept = exactKept.get(recorded);
+    // Only those the rejection kept, nearest the seam: boundaries another
+    // removal kept beside them stand where they are, as resolving both at
+    // once leaves them.
+    const limit = kept?.count ?? Number.POSITIVE_INFINITY;
+    const after = Math.min(standingAt(recorded, 1), limit);
+    const before =
+      after > 0 ? 0 : Math.min(standingAt(recorded - 1, -1), limit);
     const seam = recorded + after;
     const count = after + before;
     const left = out[seam - count - 1];
@@ -2122,14 +2314,14 @@ const resolveList = (
     // a seam recorded beside it, as one a rejected deletion leaves, joins
     // with them rather than replacing what they float with.
     if (floating.has(seam)) continue;
-    const keptFrom = exactKeptFrom.get(recorded);
     floating.set(seam, {
       count,
       depth,
       before: left.owner,
       after: right.owner,
       spanning: [],
-      ...(keptFrom === undefined ? {} : { keptFrom }),
+      ...(kept === undefined ? {} : { keptFrom: kept.from }),
+      ...(kept?.piece === undefined ? {} : { piece: kept.piece }),
     });
   }
   const merges = new Set(seams);
@@ -2156,7 +2348,9 @@ const resolveList = (
       // the records either side as the list held them: a container this
       // resolution resolves away is a level no more, and a tracked change on
       // one side only was never one. A side with no source record is read
-      // against itself.
+      // against itself, as is a piece by its own join: what stands across
+      // from it is no piece of the record the removed content cut, and its
+      // join already says how deep in that record it was made.
       const ownerDepth = ({
         occurrence,
         source,
@@ -2175,8 +2369,14 @@ const resolveList = (
         if (depth === undefined) return undefined;
         const near = occurrence?.source;
         if (near === undefined) return depth;
-        const far = (side === "before" ? afterOccurrence : beforeOccurrence)
-          ?.source;
+        const opposite = (
+          side === "before" ? afterOccurrence : beforeOccurrence
+        )?.source;
+        // A standing boundary is a source leaf, not a container the cut split.
+        const far =
+          kept.piece === side || isStandingBoundary(opposite)
+            ? undefined
+            : opposite;
         const nearChain = edgeChain(near, side === "before" ? "end" : "start");
         const farChain =
           far === undefined
@@ -2204,7 +2404,10 @@ const resolveList = (
       // their source owners say. Two never do: a pending insertion made
       // after the revision they were kept from, which is no piece of what
       // it cut, and any record while the other side is a pending deletion or
-      // move source, whose piece stands only once that is rejected. Then the
+      // move source, whose piece stands only once that is rejected. Nor does
+      // a record across from such a later insertion, unless its own join
+      // makes it a piece of the record the removed content cut: whichever
+      // way the insertion is resolved, that piece takes them. Otherwise the
       // boundaries stand at the seam until its pieces meet.
       const heldInRemoval = (node: InlineNode | undefined): boolean =>
         node !== undefined &&
@@ -2217,13 +2420,14 @@ const resolveList = (
         !resolution.ids.has(node.info.id) &&
         kept.keptFrom !== undefined &&
         (node.info.date ?? "") > kept.keptFrom;
-      const piecesMeet =
+      const takes = (side: "before" | "after"): boolean =>
         !heldInRemoval(before) &&
         !heldInRemoval(after) &&
-        !laterInsertion(before) &&
-        !laterInsertion(after);
+        !laterInsertion(side === "before" ? before : after) &&
+        (kept.piece === side ||
+          !laterInsertion(side === "before" ? after : before));
       const intoAfter =
-        !piecesMeet || after === undefined || afterDepth === undefined
+        !takes("after") || after === undefined || afterDepth === undefined
           ? undefined
           : withBoundariesAtEdge(
               after,
@@ -2233,7 +2437,7 @@ const resolveList = (
               kept.keptFrom,
             );
       const intoBefore =
-        !piecesMeet ||
+        !takes("before") ||
         intoAfter !== undefined ||
         before === undefined ||
         beforeDepth === undefined
@@ -2320,6 +2524,53 @@ const resolveList = (
       while (leftEnd >= 0 && blocking(leftEnd)) leftEnd -= 1;
       let rightStart = seam;
       while (rightStart < out.length && blocking(rightStart)) rightStart += 1;
+      // A kept revision's join that meets a pending insertion made inside
+      // the record it cut is that insertion's join on the facing side too:
+      // accepting the insertion later joins its content with the piece, as
+      // accepting both at once does, and rejecting it joins the pieces beyond
+      // it, as the seam deferred below does. A removal's seam passes to a
+      // pending insertion facing it only where that insertion is a piece of
+      // the record the removed content cut (see {@link seamHandsOver}):
+      // boundaries it kept standing at the seam go with the join, which
+      // later places them inside the record, even to an insertion whose join
+      // there is already as deep, made inside that record.
+      const handedOver = new Set<number>();
+      const piecesBeyond = leftEnd >= 0 && rightStart < out.length;
+      const keptJoinHandsOver =
+        keptJoinSeams.has(recorded) && standingKept === 0;
+      if (keptJoinHandsOver || removalSeams.has(recorded)) {
+        const keptAt =
+          standingKept > 0 && kept?.keptFrom !== undefined
+            ? { from: kept.keptFrom, count: standingKept }
+            : undefined;
+        const facing = (index: number, side: "before" | "after"): void => {
+          const occurrence = out[index];
+          if (occurrence === undefined)
+            panic("A blocking insertion stands in the list.");
+          const facingJoin = isTrackedWrapper(occurrence.node)
+            ? (occurrence.node.resolutionJoins?.[side] ?? 0)
+            : 0;
+          if (
+            !seamHandsOver({
+              seam: keptJoinHandsOver ? "keptJoin" : "removal",
+              piecesBeyond,
+              facingJoin,
+            })
+          )
+            return;
+          const node = withJoinAtLeast(
+            occurrence.node,
+            side,
+            exactDepth,
+            keptAt,
+          );
+          if (node === occurrence.node) return;
+          out[index] = occurrenceOf(node, occurrence);
+          handedOver.add(index);
+        };
+        if (leftEnd !== keptEnd) facing(keptEnd, "after");
+        if (rightStart !== seam) facing(seam, "before");
+      }
       // A piece the seam joins can still be held in a pending deletion or
       // move source at its edge: it stands only once that is rejected, and
       // goes if it is accepted, so the seam waits on it too.
@@ -2386,7 +2637,7 @@ const resolveList = (
         });
         const keptFrom =
           standingKept > 0 && kept?.keptFrom !== undefined
-            ? { keptFrom: kept.keptFrom }
+            ? { keptFrom: kept.keptFrom, keptCount: standingKept }
             : {};
         for (const index of blockerIndices) {
           const occurrence = out[index];
@@ -2414,6 +2665,9 @@ const resolveList = (
         }
         continue;
       }
+      // With no piece beyond the pending insertions to defer on, nothing
+      // joins now: the insertion facing the kept piece holds its join.
+      if (handedOver.size > 0) continue;
     }
     // Later independent edits may make a recorded seam non-alike. Join
     // only the recorded depth and matching fields, preserving those edits.
@@ -2994,8 +3248,7 @@ const joinOps = (
     needsFollowingCommentHost:
       next?.type === "table" &&
       previous?.type !== "paragraph" &&
-      remains.blocks.length === 0 &&
-      remains.comments.length > 0,
+      remains.length > 0,
     tableRemovalIsTrackable:
       next?.type !== "table" ||
       markBeforeTableResolves({ blocks, paragraph, table: next }),
@@ -3024,8 +3277,17 @@ const joinOps = (
     paragraph.content.length > 0 &&
     ranInto.has(idKey(runInReceiver.paraId ?? ""));
   const tableOutcome = continuesRunIn ? "run-in" : outcome.kind;
+  // An added endpoint may retire under the preceding mark, including when
+  // that mark already states the same section. Explicit replacement owns the
+  // endpoint removal; structural table inverses must preserve every section.
+  const precedingKeepsSection =
+    outcome.sectionDestination === "preceding" ||
+    (added &&
+      paragraph.sectionProperties !== undefined &&
+      precedingSectionOwner(previous, paragraph) === "same");
   if (
     (tableOutcome === "remove" || tableOutcome === "run-in") &&
+    !(tableOutcome === "remove" && precedingKeepsSection) &&
     blocks.length > 1 &&
     (next?.type === "table" || followsBlock)
   ) {
@@ -3046,7 +3308,6 @@ const joinOps = (
       const removal = planParagraphBoundaryRemoval({
         blocks,
         index: location.index,
-        place: "blocks",
       });
       if (removal.type === "removed")
         return paragraphMarkPlan(
@@ -3117,16 +3378,12 @@ const joinOps = (
     const removal = planParagraphBoundaryRemoval({
       blocks,
       index: location.index,
-      place: "previous",
     });
     if (anchor !== undefined && removal.type === "removed") {
       const replacementBlocks = removal.blocks;
       const preceding = replacementBlocks[location.index - 1];
       const receiverEffects: ResolutionReceiverEffect[] = [...removal.effects];
-      if (
-        outcome.sectionDestination === "preceding" &&
-        preceding?.type === "paragraph"
-      ) {
+      if (precedingKeepsSection && preceding?.type === "paragraph") {
         const survivor = {
           ...preceding,
           sectionProperties: paragraph.sectionProperties,
@@ -3319,17 +3576,11 @@ export const planRevisionResolution = ({
       receiverEffects: [],
     });
   }
-  const resolution: Resolution = {
-    ids,
-    decision: op.decision,
-    emptied: new WeakSet(),
-    acceptedClosed: { first: new WeakSet(), last: new WeakSet() },
-    cutEdges: new WeakMap(),
-    pairedComments: new Set(),
-    relocated: noRelocatedBoundaries(),
-    outstanding: [],
-  };
-  const noteReferences = removedNoteReferences(document, op, ids);
+  let resolution = createResolution(ids, op.decision);
+  const rejectedNoteReferences =
+    op.decision === REVISION_DECISIONS.REJECT
+      ? removedNoteReferences(document, op, ids)
+      : [];
   const paragraphs = storyParagraphs(storyBody(document, op.story));
   const reachable = new Set([
     ...paragraphs.flatMap(({ paragraph }) => [...reachableIds(paragraph)]),
@@ -3389,35 +3640,118 @@ export const planRevisionResolution = ({
   const emptiedEnds: EmptiedEndsById = new Map();
   const resolvedContents = new Map<string, readonly InlineNode[]>();
   const resolvedCutEdges = new Map<string, CutEdges>();
-  const preparedContents = paragraphs.map(({ paragraph }) => ({
-    paragraph,
-    content: prepareDeferredRemovals(paragraph.content, resolution),
-  }));
-  resolution.pairedComments = pairedCommentRanges(
-    preparedContents.flatMap(({ content }) => content),
-  );
-  const removedCommentIds = removedCommentRangeIds(
-    preparedContents.flatMap(({ content }) => content),
-    resolution,
-  );
+  const prepareContents = () =>
+    paragraphs.map(({ paragraph }) => ({
+      paragraph,
+      content: prepareDeferredRemovals(paragraph.content, resolution),
+    }));
+  let preparedContents = prepareContents();
   const resolvedChanged = new Set<string>();
-  for (const { paragraph, content: source } of preparedContents) {
-    const paraId = paragraph.paraId ?? "";
-    // A replacement's paragraph break can stand between a removed prefix and
-    // the piece that takes its identities: they arrive here.
-    const handed = restoreOutstandingIdentities(source, resolution);
-    const prepared =
-      handed === source ? source : prepareDeferredRemovals(handed, resolution);
-    const resolved = resolveList(prepared, resolution);
-    resolvedContents.set(
-      idKey(paraId),
-      withoutCommentAnchors(resolved.nodes, removedCommentIds),
+  type SelectionClosure =
+    | { type: "initial" }
+    | { type: "replaying"; domain: ReadonlySet<string>; remaining: number };
+  let closure: SelectionClosure = { type: "initial" };
+  for (;;) {
+    const selectedBefore = ids.size;
+    const keptDeletionPaths =
+      op.decision === REVISION_DECISIONS.ACCEPT
+        ? keptDeletionBoundaryPaths({
+            body: storyBody(document, op.story),
+            removes: ({ ancestors }) =>
+              ancestors.some(
+                (ancestor) =>
+                  isTrackedWrapper(ancestor) &&
+                  ids.has(ancestor.info.id) &&
+                  removesContent(ancestor, op.decision),
+              ),
+          })
+        : new Map<Paragraph, Set<string>>();
+    resolution.pairedComments = pairedCommentRanges(
+      preparedContents.flatMap(({ content }) => content),
     );
-    if (resolved.edges !== undefined)
-      resolvedCutEdges.set(idKey(paraId), resolved.edges);
-    if (resolved.changed || prepared !== paragraph.content)
-      resolvedChanged.add(idKey(paraId));
+    // Acceptance removes selected occurrences through the boundary plan. An ID
+    // can also name a standing pair, which an unrelated removed pair cannot erase.
+    const removedCommentIds =
+      op.decision === REVISION_DECISIONS.REJECT
+        ? removedCommentRangeIds(
+            preparedContents.flatMap(({ content }) => content),
+            resolution,
+          )
+        : NO_COMMENT_RANGES;
+    for (const { paragraph, content: source } of preparedContents) {
+      const paraId = paragraph.paraId ?? "";
+      // A replacement's paragraph break can stand between a removed prefix and
+      // the piece that takes its identities: they arrive here.
+      const handed = restoreOutstandingIdentities(source, resolution);
+      const prepared =
+        handed === source
+          ? source
+          : prepareDeferredRemovals(handed, resolution);
+      resolution.keptDeletionPaths =
+        keptDeletionPaths.get(paragraph) ?? NO_BOUNDARY_PATHS;
+      const resolved = resolveList({ nodes: prepared, resolution, path: [] });
+      resolvedContents.set(
+        idKey(paraId),
+        withoutCommentAnchors(resolved.nodes, removedCommentIds),
+      );
+      if (resolved.edges !== undefined)
+        resolvedCutEdges.set(idKey(paraId), resolved.edges);
+      if (resolved.changed || prepared !== paragraph.content)
+        resolvedChanged.add(idKey(paraId));
+    }
+    if (op.decision === REVISION_DECISIONS.REJECT) break;
+    if (ids.size < selectedBefore)
+      panic("Revision selection is monotone across identity handoffs.");
+    if (ids.size === selectedBefore) break;
+    // The same handoff owner discovered more selected source identities.
+    // Discard this whole pass, including boundary decisions made before that
+    // handoff, and publish only a pass whose selection is already closed.
+    switch (closure.type) {
+      case "initial": {
+        const domain = new Set([
+          ...present,
+          ...reservedIdentityKeysIn(storyBody(document, op.story)),
+        ]);
+        closure = {
+          type: "replaying",
+          domain,
+          remaining: domain.size - selectedBefore,
+        };
+        break;
+      }
+      case "replaying":
+        closure = {
+          type: "replaying",
+          domain: closure.domain,
+          remaining: closure.remaining - 1,
+        };
+        break;
+      default: {
+        const exhaustive: never = closure;
+        return exhaustive;
+      }
+    }
+    // Every expanding pass selects at least one member of this finite source
+    // domain. No identity is minted here, so at most domain.size - initialSize
+    // expansions precede the final stable pass.
+    const { domain, remaining } = closure;
+    if (
+      remaining <= 0 ||
+      [...ids].some(
+        (id) => !domain.has(slotKey({ space: IDENTITY_SPACES.REVISION, id })),
+      )
+    )
+      panic("Revision selection exceeded its finite source identity domain.");
+    resolution = createResolution(ids, op.decision);
+    resolvedContents.clear();
+    resolvedCutEdges.clear();
+    resolvedChanged.clear();
+    preparedContents = prepareContents();
   }
+  const noteReferences =
+    op.decision === REVISION_DECISIONS.ACCEPT
+      ? removedNoteReferences(document, op, ids)
+      : rejectedNoteReferences;
   // Boundaries kept from removed content can leave a range ending before it starts.
   const normalizedRangeContents = wellFormedRanges({
     contents: resolvedContents,
@@ -3617,7 +3951,10 @@ export const planRevisionResolution = ({
   }
   const rows = resolveTableRows({
     document: staged.value.document,
-    op,
+    op:
+      op.decision === REVISION_DECISIONS.ACCEPT
+        ? { ...op, revisionIds: [...ids] }
+        : op,
     applyOps,
   });
   if (rows.isErr()) return Result.err(rows.error);
@@ -3646,42 +3983,46 @@ export const planRevisionResolution = ({
   }
   // Notes whose last reference went are removed first: a comment anchored in
   // one of them is then exhausted too and retires below.
-  let notesRemoved = false;
-  if (noteReferences.length > 0) {
-    const orphaned = noteReferences.filter(
-      (reference) => !hasNoteReference(current, reference),
+  const orphaned = noteReferences.filter(
+    (reference) => !hasNoteReference(current, reference),
+  );
+  if (orphaned.length > 0) {
+    const footnotes = new Set(
+      orphaned.filter(({ kind }) => kind === "footnote").map(({ id }) => id),
     );
-    if (orphaned.length > 0) {
-      const footnotes = new Set(
-        orphaned.filter(({ kind }) => kind === "footnote").map(({ id }) => id),
+    const endnotes = new Set(
+      orphaned.filter(({ kind }) => kind === "endnote").map(({ id }) => id),
+    );
+    const packageParts = { ...current.package };
+    const removesAddedFootnote = orphaned.some(
+      ({ kind, added }) => kind === "footnote" && added,
+    );
+    const removesAddedEndnote = orphaned.some(
+      ({ kind, added }) => kind === "endnote" && added,
+    );
+    if (footnotes.size > 0 && packageParts.footnotes !== undefined) {
+      packageParts.footnotes = packageParts.footnotes.filter(
+        ({ id }) => !footnotes.has(id),
       );
-      const endnotes = new Set(
-        orphaned.filter(({ kind }) => kind === "endnote").map(({ id }) => id),
-      );
-      const packageParts = { ...current.package };
-      const removesAddedFootnote = orphaned.some(
-        ({ kind, added }) => kind === "footnote" && added,
-      );
-      const removesAddedEndnote = orphaned.some(
-        ({ kind, added }) => kind === "endnote" && added,
-      );
-      if (footnotes.size > 0 && packageParts.footnotes !== undefined) {
-        packageParts.footnotes = packageParts.footnotes.filter(
-          ({ id }) => !footnotes.has(id),
-        );
-        if (packageParts.footnotes.length === 0 && removesAddedFootnote)
-          delete packageParts.footnotes;
-      }
-      if (endnotes.size > 0 && packageParts.endnotes !== undefined) {
-        packageParts.endnotes = packageParts.endnotes.filter(
-          ({ id }) => !endnotes.has(id),
-        );
-        if (packageParts.endnotes.length === 0 && removesAddedEndnote)
-          delete packageParts.endnotes;
-      }
-      current = { ...current, package: packageParts };
-      notesRemoved = true;
+      if (packageParts.footnotes.length === 0 && removesAddedFootnote)
+        delete packageParts.footnotes;
     }
+    if (endnotes.size > 0 && packageParts.endnotes !== undefined) {
+      packageParts.endnotes = packageParts.endnotes.filter(
+        ({ id }) => !endnotes.has(id),
+      );
+      if (packageParts.endnotes.length === 0 && removesAddedEndnote)
+        delete packageParts.endnotes;
+    }
+    const removed = replaceNoteParts({
+      document: current,
+      parts: packageParts,
+      op,
+      applyOps,
+    });
+    if (removed.isErr()) return Result.err(removed.error);
+    edits.push(removed.value);
+    current = removed.value.document;
   }
   const exhausted = (document.package.document.comments ?? []).filter(
     ({ id, parentId }) =>
@@ -3697,14 +4038,10 @@ export const planRevisionResolution = ({
     edits.push(retired.value);
     current = retired.value.document;
   }
-  // A removed note changes story parts; one lifecycle edit captures them and
-  // the retired comments together.
-  if (notesRemoved)
-    return storyLifecycleEdit(document, current, op, true).map((edit) => ({
-      edit,
-      receiverEffects,
-    }));
-  return Result.ok({ edit: combineEdits(document, edits), receiverEffects });
+  const edit = combineEdits(document, edits);
+  if (orphaned.length > 0)
+    edit.touched = storyLifecycleTouched({ before: document, after: current });
+  return Result.ok({ edit, receiverEffects });
 };
 
 export const resolveRevision = (

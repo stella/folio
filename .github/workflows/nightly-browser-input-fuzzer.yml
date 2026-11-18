@@ -12,7 +12,9 @@ jobs:
   browser-input-fuzzer:
     name: Browser input fuzzer (nightly seeds)
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    # Phase caps: canonical 10 + host 8 + browser 39 + interleaving 12 = 69 min.
+    # Add seven minutes for setup, artifact upload and reporting.
+    timeout-minutes: 76
     permissions:
       contents: read
     outputs:
@@ -26,7 +28,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@c6d66dfa2a5ad1f96a21b819fe456fecdd3d6f6d
+      - uses: stella/.github/actions/setup-bun-cached@28dce62a9e1916b19ce03c8c47a1c44e1a145fdf
         with:
           bun-version-file: "package.json"
 
@@ -36,6 +38,7 @@ jobs:
         uses: ./.github/actions/playwright-deps
 
       - name: Run canonical session property flows
+        timeout-minutes: 10
         id: canonical
         continue-on-error: true
         run: |
@@ -75,7 +78,7 @@ jobs:
       - name: Run nightly browser fuzzer
         if: always()
         id: fuzz
-        timeout-minutes: 35
+        timeout-minutes: 39
         continue-on-error: true
         run: |
           # A step killed by its timeout leaves its web server running.

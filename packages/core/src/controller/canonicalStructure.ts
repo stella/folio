@@ -54,6 +54,7 @@ import type {
 } from "../types/document";
 import { readModel } from "../types/documentModel";
 import { collectHeadings } from "../utils/headingCollector";
+import { prepareContentControlValue } from "./canonicalContentControlValue";
 
 const DEFAULT_TOC_PAGE_WIDTH_TWIPS = 12240;
 const DEFAULT_TOC_MARGIN_TWIPS = 1440;
@@ -330,22 +331,55 @@ const numberingIntent = (
   };
 };
 
+type TextReplacementCommand = Extract<
+  CanonicalCommandIntent,
+  { type: "replaceText" }
+>;
+
 /** Toolbar meanings enter the same operation journal as native input. */
 export const prepareCanonicalCommands = (
   session: CanonicalSession,
   state: EditorState,
   commands: readonly CanonicalCommandIntent[],
 ): Result<CanonicalCommit, CanonicalSessionError> => {
-  // A menu's text replacement is the session's own text input.
-  for (const command of commands) {
-    if (command.type !== "replaceText") continue;
-    if (commands.length !== 1)
+  // A text replacement is the session's own text input; several ranges,
+  // the last first, are one replacement.
+  const replacements = commands.filter(
+    (command): command is TextReplacementCommand =>
+      command.type === "replaceText",
+  );
+  if (replacements.length > 0) {
+    if (replacements.length !== commands.length)
       return refuse("A text replacement must be prepared on its own.");
-    return session.prepareReplace(state, {
-      from: command.from,
-      to: command.to,
-      text: command.text,
-    });
+    const [only] = replacements;
+    if (only !== undefined && replacements.length === 1)
+      return session.prepareReplace(state, {
+        from: only.from,
+        to: only.to,
+        text: only.text,
+      });
+    const intents: EditorIntent[] = [];
+    for (const replacement of replacements) {
+      // The replaced text's own edges, as a selection typed over names them.
+      const edges = session.projection.rangeEdgesAt(
+        replacement.from,
+        replacement.to,
+      );
+      const from = session.projection.inputAddressAt(
+        replacement.from,
+        edges.start,
+      );
+      if (from.isErr()) return from;
+      const to = session.projection.inputAddressAt(replacement.to, edges.end);
+      if (to.isErr()) return to;
+      intents.push({
+        type: "replaceText",
+        from: from.value,
+        to: to.value,
+        text: replacement.text,
+      });
+    }
+    return session.prepareIntents(state, { intents });
   }
   // A note reference or a table of contents goes at one caret; selected
   // cells have none.
@@ -360,6 +394,20 @@ export const prepareCanonicalCommands = (
   )
     return refuse(CELL_SELECTION_PLACEMENT_REFUSAL);
   const intents: EditorIntent[] = [];
+  const valueCommands = commands.filter(
+    (
+      command,
+    ): command is Extract<
+      CanonicalCommandIntent,
+      { type: "setContentControlValue" }
+    > => command.type === "setContentControlValue",
+  );
+  if (valueCommands.length > 0) {
+    const [valueCommand] = valueCommands;
+    if (valueCommand === undefined || commands.length !== 1)
+      return refuse("A content control's value must be set on its own.");
+    return prepareContentControlValue(session, state, valueCommand);
+  }
   const sectionCommands = commands.filter(
     (command) =>
       command.type === "setSectionBreak" ||
@@ -624,6 +672,8 @@ export const prepareCanonicalCommands = (
       case "insertNote":
       case "deleteNote":
         return panic("Note commands are prepared before editor intents.");
+      case "setContentControlValue":
+        return panic("Control values are prepared before editor intents.");
       case "replaceText":
         return panic("Text replacements are prepared before editor intents.");
       case "formatRun": {

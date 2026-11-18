@@ -139,6 +139,9 @@ const props = defineProps<{
   showResolved?: boolean;
   pagesContainer: HTMLElement | null;
   pageWidthPx: number;
+  /** Where the column starts in the scroll content, from the panel layout's
+   *  numbers; null until the layout knows its width. */
+  columnStart?: number | null;
   zoom?: number;
   /** Controlled expansion shared by card clicks and search navigation.
    *  Used by DocxEditor to auto-expand cards when the cursor
@@ -361,9 +364,9 @@ const minHeightPx = computed(() => {
   return max + 200; // headroom for the bottom card
 });
 
-// The page and sidebar share the pages viewport. Measure the painted page
-// edge so a reserved comments track, zoom, and horizontal scrolling all use
-// the same position that the user sees.
+// A column's start is computed from the panel layout (columnStart), so it
+// follows every change the page's placement follows; only a drawer, pinned
+// to the visible viewport, is measured.
 const measuredLeft = ref<number | null>(null);
 const initialDrawerBox: { top: number; width: number; height: number } = {
   top: 0,
@@ -373,6 +376,10 @@ const initialDrawerBox: { top: number; width: number; height: number } = {
 const drawerBox = ref(initialDrawerBox);
 
 function updatePanelGeometry() {
+  if (!isDrawer.value) {
+    measuredLeft.value = null;
+    return;
+  }
   const root = rootRef.value;
   const parent = root?.offsetParent;
   const scroll = findScrollParent(props.pagesContainer);
@@ -380,35 +387,17 @@ function updatePanelGeometry() {
 
   const parentRect = parent.getBoundingClientRect();
   const scrollRect = scroll.getBoundingClientRect();
-  if (isDrawer.value) {
-    const width = Math.max(
-      0,
-      Math.min(PANEL_METRICS.drawerWidth, scroll.clientWidth - 16),
-    );
-    drawerBox.value = {
-      top: scrollRect.top - parentRect.top,
-      width,
-      height: scroll.clientHeight,
-    };
-    measuredLeft.value =
-      scrollRect.left + scroll.clientWidth - parentRect.left - width;
-    return;
-  }
-
-  const page = props.pagesContainer?.querySelector<HTMLElement>(".layout-page");
-  if (!page) {
-    measuredLeft.value = null;
-    return;
-  }
-  const rawLeft =
-    page.getBoundingClientRect().right -
-    parentRect.left +
-    PANEL_METRICS.commentsGap;
-  const maxVisibleLeft = Math.max(
-    8,
-    parent.clientWidth - PANEL_METRICS.commentsWidth - 8,
+  const width = Math.max(
+    0,
+    Math.min(PANEL_METRICS.drawerWidth, scroll.clientWidth - 16),
   );
-  measuredLeft.value = Math.max(8, Math.min(rawLeft, maxVisibleLeft));
+  drawerBox.value = {
+    top: scrollRect.top - parentRect.top,
+    width,
+    height: scroll.clientHeight,
+  };
+  measuredLeft.value =
+    scrollRect.left + scroll.clientWidth - parentRect.left - width;
 }
 
 const drawerInnerStyle = computed<CSSProperties>(() => ({
@@ -450,13 +439,14 @@ const asideStyle = computed<CSSProperties>(() => {
   const hasPositions = drawer
     ? measuredLeft.value !== null
     : resolvedY.value.size > 0 || items.value.length === 0;
+  const left = drawer ? measuredLeft.value : (props.columnStart ?? null);
   return {
     position: "absolute",
     top: drawer ? drawerBox.value.top + "px" : "0",
     left:
-      measuredLeft.value === null
+      left === null
         ? `calc(50% + ${props.pageWidthPx / 2 + PANEL_METRICS.commentsGap}px)`
-        : measuredLeft.value + "px",
+        : left + "px",
     width:
       (drawer ? drawerBox.value.width : PANEL_METRICS.commentsWidth) + "px",
     paddingInline: drawer ? PANEL_METRICS.commentsGap + "px" : undefined,

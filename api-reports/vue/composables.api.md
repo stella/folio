@@ -4,7 +4,6 @@
 
 ```ts
 
-import { AnonymizationMatch } from '@stll/folio-core/prosemirror/plugins/anonymizationDecorations';
 import { App } from 'vue';
 import { CanonicalHistoryDrop } from '@stll/folio-core/canonical/canonicalSession';
 import { CanonicalHistoryEffect } from '@stll/folio-core/canonical/canonicalSession';
@@ -29,7 +28,10 @@ import { FindMatch } from '@stll/folio-core/utils/findReplace';
 import { FindOptions } from '@stll/folio-core/utils/findReplace';
 import { FindResult } from '@stll/folio-core/utils/findReplace';
 import { FlowBlock } from '@stll/folio-core/layout-engine/types';
+import { FolioAnonymizationTerm } from '@stll/folio-core/controller/anonymizationHighlights';
+import { FolioAutocompleteState } from '@stll/folio-core/types/autocomplete';
 import { FolioEditor } from '@stll/folio-core/controller/folioEditor';
+import { FolioSaveOptions } from '@stll/folio-core/controller/folioEditor';
 import { FolioSelectiveSaveFlags } from '@stll/folio-core/docx/selectiveSaveFlags';
 import { getSelectionRuns } from '@stll/folio-core/managers/ClipboardManager';
 import { HeaderFooterPartKind } from '@stll/folio-core/controller/headerFooterEditorManager';
@@ -161,10 +163,11 @@ export type UseDocxEditorOptions = {
     onCanonicalHistory?: (effect: CanonicalHistoryEffect) => void;
     onCanonicalHistoryDrop?: (drop: CanonicalHistoryDrop) => void;
     collaboration?: MaybeRefOrGetter<UseDocxEditorCollaboration | CanonicalRoomCollaboration | undefined>;
-    onAnonymizationMatchesChange?: (matches: readonly AnonymizationMatch[]) => void;
+    getAnonymizationTerms?: () => readonly FolioAnonymizationTerm[] | undefined;
     showTemplateDirectives?: MaybeRefOrGetter<boolean | undefined>;
     onSlashMenuChange?: (state: TemplateSlashMenuState) => void;
     onSlashMenuKeyAction?: (action: TemplateSlashMenuKeyAction) => boolean;
+    onAutocompleteChange?: (state: FolioAutocompleteState) => void;
     onChange?: (doc: Document_2) => void;
     onError?: (error: Error) => void;
     onSelectionUpdate?: (state: EditorState) => void;
@@ -199,9 +202,7 @@ export type UseDocxEditorReturn = {
     syncCoordinator: LayoutSelectionGate;
     loadBuffer: (buffer: DocxInput) => Promise<void>;
     loadDocument: (doc: Document_2) => void;
-    save: (options?: {
-        selective?: boolean;
-    }) => Promise<Blob | null>;
+    save: (options?: FolioSaveOptions) => Promise<Blob | null>;
     getDocument: () => Document_2 | null;
     readDocument: () => ReadonlyDocument | null;
     setDocument: (doc: Document_2) => void;

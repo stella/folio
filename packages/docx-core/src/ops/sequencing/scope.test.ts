@@ -3,6 +3,11 @@ import { describe, expect, test } from "bun:test";
 import type { Document, Paragraph, TableRow } from "../../model/document";
 import { envelopes } from "../__tests__/wireFixtures";
 import { applyDocumentOps } from "../apply";
+import {
+  compileEditorIntent,
+  createEditorIntentIdAllocator,
+} from "../editorIntent";
+import type { EditorIntent } from "../editorIntent";
 import { equalForStaleness } from "../equality";
 import {
   DOCUMENT_OP_SCHEMA_VERSION,
@@ -214,3 +219,39 @@ describe("block-scoped sequencing", () => {
     });
   });
 });
+
+test.each(["before", "after"] as const)(
+  "native table insertions %s two cells of one table retain structural conflict ownership",
+  (side) => {
+    const document = documentOf();
+    const compile = (blockId: string, start: number) => {
+      const intent = {
+        type: "tableBlock",
+        operation: {
+          type: DOCUMENT_OP_TYPES.INSERT_TABLE,
+          story: "main",
+          anchor: "table",
+          side,
+          blockId,
+          table: { type: "table", rows: [row(["70000001"])] },
+        },
+      } as const satisfies EditorIntent;
+      const lease = {
+        blocks: [{ kind: "paragraph", start, end: start + 8 }],
+      } as const;
+      const ids = createEditorIntentIdAllocator()(document, intent, lease);
+      return compileEditorIntent(document, {
+        intent,
+        mode: { type: "editing", idLease: lease, newIds: ids.newIds },
+      }).unwrap().ops;
+    };
+    const first = batch("native-a", ...compile("00000011", 0x20000001));
+    const second = batch("native-b", ...compile("00000012", 0x30000001));
+    expect(pair(first, second).refused?.reason).toBe(
+      BATCH_REJECTION_REASONS.TABLE_REQUIRES_EXCLUSIVE_EDIT,
+    );
+    expect(pair(first, batch("unrelated", typing("00000001")))).toEqual({
+      commutes: true,
+    });
+  },
+);

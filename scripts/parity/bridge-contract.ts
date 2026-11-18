@@ -39,6 +39,8 @@ export type FolioParityBridge = {
   boldFirstWord: () => boolean;
   /** Select the first word through the shared editor controller. */
   selectFirstWord: () => boolean;
+  /** Open the find panel with its replace row, through the public ref. */
+  openReplace: () => void;
   /** Count painted range-selection rectangles. */
   countSelectionRects: () => number;
   /** How many times the host's clipboard callback of this kind has fired. */
@@ -88,16 +90,25 @@ export type FolioParityBridge = {
   getSelectedText: () => string;
   /** Apply and undo one direct document-operation batch; true only when content restores. */
   applyAndUndoDocumentOperation: () => boolean;
-  /** Push an anonymization term matching the first word. Returns whether one was pushed. */
-  anonymizeFirstWord: () => boolean;
+  /**
+   * Set the `anonymizationTerms` prop to a term matching the first word of
+   * the first block with text. Returns the word, or null when there is none.
+   */
+  anonymizeFirstWord: () => string | null;
   /** Count painted anonymization highlight rects in the overlay. */
   countAnonymizationRects: () => number;
+  /** The occurrences `getAnonymizationMatches` reports, as `paraId:offset` starts. */
+  getAnonymizationMatchStarts: () => string[];
   /** Start a streaming autocomplete suggestion at the current selection. */
   startAutocomplete: (text: string) => boolean;
   /** Mark the active autocomplete suggestion as complete. */
   finishAutocomplete: () => boolean;
   /** Dismiss the active autocomplete suggestion. */
   clearAutocomplete: () => boolean;
+  /** The suggestion's remaining ghost text, or null when there is none. */
+  readAutocompleteText: () => string | null;
+  /** Accept the suggestion's next word; false when nothing was inserted. */
+  acceptAutocompleteWord: () => boolean;
   /** Serialize to DOCX and return the byte length (0 on failure). */
   save: () => Promise<number>;
   /** Open a DOCX package through the public ref, with the editor view ready. */

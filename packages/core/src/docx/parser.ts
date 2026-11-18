@@ -29,7 +29,7 @@ import {
   PARSE_WARNING_CODES,
   setDocumentBodyComments,
 } from "@stll/docx-core/model";
-import { isCommentExhausted } from "@stll/docx-core/ops";
+import { isCommentExhausted, orphanRootCommentIds } from "@stll/docx-core/ops";
 import { FOLIO_XML_RESOURCE_LIMITS } from "@stll/docx-core/xml/limits";
 
 import type {
@@ -887,8 +887,10 @@ export async function parseDocxWithPreviewBudget(
       ...(templateVariables !== undefined ? { templateVariables } : {}),
       ...(requiredFonts.length > 0 ? { requiredFonts } : {}),
     };
+    const orphanedComments = orphanRootCommentIds(document);
     for (const comment of document.package.document.comments ?? []) {
-      if (comment.parentId !== undefined) continue;
+      if (comment.parentId !== undefined || orphanedComments.has(comment.id))
+        continue;
       comment.anchorKind = "range";
       if (isCommentExhausted({ type: "document", document, id: comment.id }))
         comment.anchorKind = "point";

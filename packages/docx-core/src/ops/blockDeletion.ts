@@ -18,7 +18,12 @@ import { isCommentExhausted } from "./comments";
 import type { DocumentEdit } from "./edits";
 import { freshenIdentities } from "./identity";
 import { identityKeysIn, idKey, packageIdentityKeys } from "./ids";
-import { asParagraphContent, type InlineNode } from "./leaves";
+import {
+  asParagraphContent,
+  childNodes,
+  type InlineNode,
+  isCommentAnchor,
+} from "./leaves";
 import { asMoveHalf } from "./moves";
 import {
   isRangeBoundary,
@@ -34,6 +39,7 @@ import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import type { ApplyOps } from "./resolve";
 import {
   foldedParagraphPropertyChange,
+  isRemovedRevisionNode,
   paragraphPropertiesOf,
   reviewFieldsOf,
   sameParagraphProperties,
@@ -53,8 +59,10 @@ import {
  * One paragraph's content as its tracked deletion leaves it: every leaf
  * wrapped in a deletion stamped `stamp`, split around the range boundaries
  * directly in it ({@link withBoundariesOutsideDeletion}), with the boundaries
- * that stand outside. Deleting directly keeps exactly those, so accepting the
- * tracked deletion and deleting directly leave the same document.
+ * that stand outside, the bare comment range anchors the deletion leaves standing
+ * among them, in document order. Deleting directly keeps exactly those, so
+ * accepting the tracked deletion and deleting directly leave the same
+ * document.
  */
 const deletedContent = (
   paragraph: Paragraph,
@@ -72,21 +80,47 @@ const deletedContent = (
     },
     kind: WRAP_KINDS.DELETION,
     stamp,
+    commentAnchors: "stand",
   });
-  if (wrapped.kind !== "wrapped")
-    return wrapped.kind === "refused"
-      ? wrapped
-      : { kind: "unchanged", standing: [] };
+  if (wrapped.kind === "refused") return wrapped;
+  if (wrapped.kind === "unchanged")
+    return {
+      kind: "unchanged",
+      standing: standingIn(paragraph.content, new Set(), () => false),
+    };
+  const created = (node: InlineNode) =>
+    node.type === "deletion" && node.info.id === stamp.id;
   const { nodes, standing } = withBoundariesOutsideDeletion(
     wrapped.content,
-    (node) => node.type === "deletion" && node.info.id === stamp.id,
+    created,
   );
   return {
     kind: "deleted",
     content: asParagraphContent(nodes),
-    standing,
+    standing: standingIn(nodes, new Set(standing), created),
   };
 };
+
+/**
+ * The boundaries of `nodes` a deletion of their paragraph leaves standing,
+ * in document order: those split out of its records (`split`) and the bare
+ * comment range anchors it never took in. What a deletion stamped by the same
+ * revision (`created`) or an earlier one holds goes with it.
+ */
+const standingIn = (
+  nodes: readonly InlineNode[],
+  split: ReadonlySet<InlineNode>,
+  created: (node: InlineNode) => boolean,
+): InlineNode[] =>
+  nodes.flatMap((node): InlineNode[] => {
+    if (
+      split.has(node) ||
+      (isCommentAnchor(node) && node.type !== "commentReference")
+    )
+      return [node];
+    if (created(node) || isRemovedRevisionNode(node)) return [];
+    return standingIn(childNodes(node) ?? [], split, created);
+  });
 
 /** Only what a direct deletion leaves is read off its tracked form. */
 const DIRECT_DELETION_STAMP: RevisionStamp = {
@@ -285,17 +319,16 @@ export const paragraphMarkOutcome = ({
         ? { kind: "run-in", sectionDestination }
         : { kind: "keep", sectionDestination };
     case "block":
-      // An accepted deletion's paragraph goes once nothing is left in it,
-      // and what accepting will take from it still runs into the block, so
-      // resolving its content before or after its mark ends the same. What
-      // stays once accepted keeps the paragraph, without its mark.
+      // A resolved-away empty mark may go only while the container still
+      // ends with a paragraph. Rejecting an added mark keeps standing words;
+      // an accepted deletion may run its still-pending words into the block.
       if (removalWouldDropSection)
         return { kind: "keep", sectionDestination: "none" };
-      if (markWasAdded) return { kind: "keep", sectionDestination };
       if (!holdsContent)
         return containerStillEndsWithParagraph
           ? { kind: "remove", sectionDestination }
           : { kind: "keep", sectionDestination };
+      if (markWasAdded) return { kind: "keep", sectionDestination };
       return !holdsContentOnceAccepted && followingBlockCanReceiveRunIn
         ? { kind: "run-in", sectionDestination }
         : { kind: "keep", sectionDestination };

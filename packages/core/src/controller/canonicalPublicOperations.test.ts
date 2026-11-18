@@ -9,9 +9,14 @@ import {
 setDefaultTimeout(propertyTestTimeout(30_000));
 import { panic } from "better-result";
 import { EditorState } from "prosemirror-state";
+import { CellSelection } from "prosemirror-tables";
 
 import { withoutPendingSuggestions } from "@stll/docx-core/ops";
 
+import {
+  getCommentAnchorsFromDoc,
+  getTrackedChangesFromDoc,
+} from "../ai-edits/read";
 import {
   createFolioAIEditSnapshot,
   createFolioAITextRangeHandle,
@@ -34,6 +39,7 @@ import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
 import { toFlowBlocks } from "../layout-bridge/convert/toFlowBlocks";
 import type { FlowBlock } from "../layout-engine/types";
+import { fromMarkdown } from "../markdown/fromMarkdown";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document } from "../types/document";
 
@@ -85,6 +91,481 @@ const setup = (source: string | Document = "alpha beta") => {
 };
 
 describe("canonical public operation batches", () => {
+  test("cell replacement preflight covers every sorted cell independently of selection direction", () => {
+    const source = fromMarkdown("| A | B |\n|---|---|\n| C | D |");
+    const table = source.package.document.content.at(0);
+    if (table?.type !== "table") return panic("Produced table is missing");
+    let id = 1;
+    for (const row of table.rows)
+      for (const cell of row.cells)
+        for (const block of cell.content)
+          if (block.type === "paragraph")
+            block.paraId = (id++).toString(16).padStart(8, "0");
+    for (const direction of ["forward", "reverse"] as const) {
+      const editor = setup(source);
+      expect(
+        editor.apply([
+          {
+            id: "comment",
+            type: "commentOnBlock",
+            blockId: "00000001",
+            quote: "A",
+            comment: { text: "Note" },
+          },
+        ]).applied,
+      ).toHaveLength(1);
+      const positions = new Map<string, number>();
+      editor.state().doc.descendants((node, position) => {
+        if (node.type.name === "tableCell" || node.type.name === "tableHeader")
+          positions.set(node.textContent, position);
+      });
+      const start = positions.get("A");
+      const end = positions.get("D");
+      if (start === undefined || end === undefined)
+        return panic("Produced cell is missing");
+      const selection = CellSelection.create(
+        editor.state().doc,
+        direction === "forward" ? start : end,
+        direction === "forward" ? end : start,
+      );
+      const state = editor
+        .state()
+        .apply(editor.state().tr.setSelection(selection));
+      const before = editor.session.document;
+      const version = editor.session.version;
+      let committed = 0;
+      editor.session.onCommitted(() => committed++);
+      const result = editor.session.prepareReplace(state, {
+        from: selection.from,
+        to: selection.to,
+        text: "replacement",
+      });
+      expect(result.isErr()).toBe(true);
+      if (result.isErr())
+        expect(result.error.ground).toEqual({
+          gap: "comment-replacement-alignment",
+        });
+      expect(editor.session.document).toBe(before);
+      expect(editor.session.version).toBe(version);
+      expect(editor.session.canUndo).toBe(true);
+      expect(committed).toBe(0);
+    }
+  });
+
+  test("comment alignment inside an inline control refuses at the same owner", () => {
+    const source = "The Supplier delivers on time.";
+    const editor = setup({
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              paraId: "12345678",
+              content: [
+                {
+                  type: "inlineSdt",
+                  properties: { sdtType: "richText", id: 9 },
+                  content: [
+                    { type: "run", content: [{ type: "text", text: source }] },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    });
+    expect(
+      editor.apply([
+        {
+          id: "comment",
+          type: "commentOnBlock",
+          blockId: "12345678",
+          quote: "time",
+          comment: { text: "Note" },
+        },
+      ]).applied,
+    ).toHaveLength(1);
+    const before = editor.session.document;
+    const result = editor.apply(
+      [
+        {
+          id: "replace",
+          type: "replaceBlock",
+          blockId: "12345678",
+          text: "New agreement.",
+        },
+      ],
+      { mode: "tracked-changes" },
+    );
+    expect(result.applied).toEqual([]);
+    expect(result.skipped).toMatchObject([
+      {
+        reason: "unsupportedBlock",
+        canonicalRefusal: { gap: "comment-replacement-alignment" },
+      },
+    ]);
+    expect(editor.session.document).toBe(before);
+  });
+
+  test(
+    "generated source comment ranges retain aligned replacement coverage or refuse atomically",
+    () => {
+      assertProperty(
+        fc.property(
+          fc.integer({ min: 0, max: 19 }),
+          fc.integer({ min: 1, max: 20 }),
+          fc.constantFrom("direct", "tracked-changes", "suggested"),
+          (start, length, mode) => {
+            const source = "abcdefghijklmnopqrst";
+            const replacement = "replacement";
+            const editor = setup(source);
+            const quote = source.slice(start, start + length);
+            expect(
+              editor.apply([
+                {
+                  id: "comment",
+                  type: "commentOnBlock",
+                  blockId: "12345678",
+                  quote,
+                  comment: { text: "Note" },
+                },
+              ]).applied,
+            ).toHaveLength(1);
+            const before = editor.session.document;
+            const version = editor.session.version;
+            const result = editor.apply(
+              [
+                {
+                  id: "replace",
+                  type: "replaceBlock",
+                  blockId: "12345678",
+                  text: replacement,
+                },
+              ],
+              { mode },
+            );
+            if (result.applied.length === 0) {
+              expect(result.skipped).toMatchObject([
+                {
+                  reason: "unsupportedBlock",
+                  canonicalRefusal: { gap: "comment-replacement-alignment" },
+                },
+              ]);
+              expect(editor.session.document).toBe(before);
+              expect(editor.session.version).toBe(version);
+              return;
+            }
+            expect(result.skipped).toEqual([]);
+            if (mode === "suggested") {
+              const adopted = editor.session
+                .prepareSuggestion(editor.state(), {
+                  suggestionId: "replace",
+                  resolution: "accept",
+                  author: "Reviewer",
+                  date: "2026-01-02T03:04:05Z",
+                })
+                .unwrap();
+              expect(editor.publish(adopted)).toBe(true);
+            }
+            if (mode !== "direct") {
+              const accepted = editor.session
+                .prepareResolve(editor.state(), {
+                  revisionIds: getTrackedChangesFromDoc(editor.state().doc).map(
+                    ({ id }) => id,
+                  ),
+                  resolution: "accept",
+                })
+                .unwrap();
+              expect(editor.publish(accepted)).toBe(true);
+            }
+            expect(
+              getCommentAnchorsFromDoc(editor.state().doc).map(
+                ({ quote: anchoredQuote }) => anchoredQuote,
+              ),
+            ).toEqual([replacement]);
+          },
+        ),
+        {
+          id: "generated replacement comment alignment is preserved or refused",
+          seed: 1683001,
+          numRuns: 48,
+        },
+      );
+    },
+    propertyTestTimeout(30_000),
+  );
+
+  for (const mode of ["direct", "tracked-changes", "suggested"] as const) {
+    for (const text of [
+      "Invoice delivery payment agreement supplier buyer payment term.",
+      "",
+    ]) {
+      test(`${mode}/${text === "" ? "empty" : "nonempty"}: comment alignment refusal preserves the live document and journal`, () => {
+        const source =
+          "The Supplier delivers the goods on time and in good order.";
+        for (const type of [
+          "replaceBlock",
+          "replaceInBlock",
+          "replaceRange",
+        ] as const) {
+          const editor = setup(source);
+          const comment = (quote: string) =>
+            editor.apply([
+              {
+                id: quote,
+                type: "commentOnBlock",
+                blockId: "12345678",
+                quote,
+                comment: { text: quote },
+              },
+            ]);
+          expect(comment("time").applied).toHaveLength(1);
+          const firstComment = editor.session.document;
+          expect(comment("The").applied).toHaveLength(1);
+          const before = editor.session.document;
+          const version = editor.session.version;
+          const selection = editor.session.selection;
+          const save = editor.session.captureSaveSnapshot();
+          let committed = 0;
+          let dropped = 0;
+          editor.session.onCommitted(() => committed++);
+          editor.session.onHistoryDrop(() => dropped++);
+          const operation = (() => {
+            switch (type) {
+              case "replaceBlock":
+                return { id: "replace", type, blockId: "12345678", text };
+              case "replaceInBlock":
+                return {
+                  id: "replace",
+                  type,
+                  blockId: "12345678",
+                  find: source,
+                  replace: text,
+                };
+              case "replaceRange":
+                return {
+                  id: "replace",
+                  type,
+                  range: {
+                    type: "textRange" as const,
+                    story: "main" as const,
+                    blockId: "12345678",
+                    startOffset: 0,
+                    endOffset: source.length,
+                    selectedTextHash: hashFolioAIBlockText(source),
+                  },
+                  replace: text,
+                };
+              default: {
+                const unhandled: never = type;
+                return panic(`Unknown replacement type ${unhandled}`);
+              }
+            }
+          })();
+          const result = editor.apply([operation], { mode });
+          expect(result.applied).toEqual([]);
+          expect(result.undoHandle).toBeNull();
+          expect(result.skipped).toMatchObject([
+            {
+              reason: "unsupportedBlock",
+              canonicalRefusal: { gap: "comment-replacement-alignment" },
+            },
+          ]);
+          expect(editor.session.document).toBe(before);
+          expect(editor.session.version).toBe(version);
+          expect(editor.session.selection).toEqual(selection);
+          expect(editor.session.captureSaveSnapshot()).toEqual(save);
+          expect(editor.session.canUndo).toBe(true);
+          expect(editor.session.canRedo).toBe(false);
+          expect(committed).toBe(0);
+          expect(dropped).toBe(0);
+          expect(
+            editor.publish(editor.session.prepareUndo(editor.state()).unwrap()),
+          ).toBe(true);
+          expect(editor.session.document).toEqual(firstComment);
+        }
+      });
+    }
+  }
+
+  for (const mode of ["editing", "suggesting"] as const) {
+    test(`${mode}: exact covered-edge native replacement remains supported`, () => {
+      const editor = setup("The Supplier delivers on time.");
+      expect(
+        editor.apply([
+          {
+            id: "comment",
+            type: "commentOnBlock",
+            blockId: "12345678",
+            quote: "time",
+            comment: { text: "Note" },
+          },
+        ]).applied,
+      ).toHaveLength(1);
+      editor.session.setMode(
+        mode === "editing"
+          ? { type: "editing" }
+          : { type: "suggesting", author: "Reviewer" },
+      );
+      let from: number | undefined;
+      editor.state().doc.descendants((node, position) => {
+        if (node.isText && node.text === "time") from = position;
+      });
+      if (from === undefined) panic("Source commented text is missing");
+      const prepared = editor.session.prepareReplace(editor.state(), {
+        from,
+        to: from + 4,
+        text: "schedule",
+      });
+      expect(prepared.isOk()).toBe(true);
+      expect(editor.publish(prepared.unwrap())).toBe(true);
+      if (mode === "suggesting") {
+        const accepted = editor.session
+          .prepareResolve(editor.state(), {
+            revisionIds: getTrackedChangesFromDoc(editor.state().doc).map(
+              ({ id }) => id,
+            ),
+            resolution: "accept",
+          })
+          .unwrap();
+        expect(editor.publish(accepted)).toBe(true);
+      }
+      expect(
+        getCommentAnchorsFromDoc(editor.state().doc).map(({ quote }) => quote),
+      ).toEqual(["schedule"]);
+    });
+
+    test(`${mode}: native marker-inclusive whole-paragraph replacement refuses even uniform comments`, () => {
+      const source = "The Supplier delivers on time.";
+      const editor = setup(source);
+      expect(
+        editor.apply([
+          {
+            id: "comment",
+            type: "commentOnBlock",
+            blockId: "12345678",
+            quote: source,
+            comment: { text: "Note" },
+          },
+        ]).applied,
+      ).toHaveLength(1);
+      editor.session.setMode(
+        mode === "editing"
+          ? { type: "editing" }
+          : { type: "suggesting", author: "Reviewer" },
+      );
+      const before = editor.session.document;
+      const version = editor.session.version;
+      const paragraph =
+        editor.session.projection.firstParagraph ?? panic("Missing paragraph");
+      const result = editor.session.prepareReplace(editor.state(), {
+        from: paragraph.start,
+        to: paragraph.start + paragraph.node.content.size,
+        text: "New agreement.",
+      });
+      expect(result.isErr()).toBe(true);
+      if (result.isErr())
+        expect(result.error.ground).toEqual({
+          gap: "comment-replacement-alignment",
+        });
+      expect(editor.session.document).toBe(before);
+      expect(editor.session.version).toBe(version);
+    });
+
+    for (const action of ["insert", "delete"] as const) {
+      test(`${mode}: native ${action} retains its existing semantics beside comments`, () => {
+        const editor = setup(
+          "The Supplier delivers the goods on time and in good order.",
+        );
+        expect(
+          editor.apply([
+            {
+              id: "comment",
+              type: "commentOnBlock",
+              blockId: "12345678",
+              quote: "time",
+              comment: { text: "Note" },
+            },
+          ]).applied,
+        ).toHaveLength(1);
+        editor.session.setMode(
+          mode === "editing"
+            ? { type: "editing" }
+            : { type: "suggesting", author: "Reviewer" },
+        );
+        const before = editor.session.document;
+        const paragraph =
+          editor.session.projection.firstParagraph ??
+          panic("Missing paragraph");
+        const result = editor.session.prepareReplace(editor.state(), {
+          from: paragraph.start,
+          to:
+            action === "insert"
+              ? paragraph.start
+              : paragraph.start + paragraph.node.content.size,
+          text: action === "insert" ? "New " : "",
+        });
+        expect(result.isOk()).toBe(true);
+        expect(editor.publish(result.unwrap())).toBe(true);
+        expect(
+          editor.publish(editor.session.prepareUndo(editor.state()).unwrap()),
+        ).toBe(true);
+        expect(editor.session.document).toEqual(before);
+      });
+    }
+    test(`${mode}: native replacement alignment refuses before publishing or changing history`, () => {
+      const editor = setup(
+        "The Supplier delivers the goods on time and in good order.",
+      );
+      expect(
+        editor.apply([
+          {
+            id: "comment",
+            type: "commentOnBlock",
+            blockId: "12345678",
+            quote: "time",
+            comment: { text: "Note" },
+          },
+        ]).applied,
+      ).toHaveLength(1);
+      editor.session.setMode(
+        mode === "editing"
+          ? { type: "editing" }
+          : { type: "suggesting", author: "Reviewer" },
+      );
+      const before = editor.session.document;
+      const version = editor.session.version;
+      const save = editor.session.captureSaveSnapshot();
+      let committed = 0;
+      editor.session.onCommitted(() => committed++);
+      const paragraph =
+        editor.session.projection.firstParagraph ?? panic("Missing paragraph");
+      const result = editor.session.prepareReplace(editor.state(), {
+        from: paragraph.start,
+        to: paragraph.start + paragraph.node.content.size,
+        text: "Invoice delivery payment agreement supplier buyer payment term.",
+      });
+      expect(result.isErr()).toBe(true);
+      if (result.isErr())
+        expect(result.error.ground).toEqual({
+          gap: "comment-replacement-alignment",
+        });
+      expect(editor.session.document).toBe(before);
+      expect(editor.session.version).toBe(version);
+      expect(editor.session.captureSaveSnapshot()).toEqual(save);
+      expect(committed).toBe(0);
+      expect(editor.session.canUndo).toBe(true);
+      expect(editor.session.canRedo).toBe(false);
+      expect(
+        editor.publish(editor.session.prepareUndo(editor.state()).unwrap()),
+      ).toBe(true);
+      expect(editor.session.document.package.document.comments ?? []).toEqual(
+        [],
+      );
+    });
+  }
+
   test("merge with next refuses at table container boundaries", () => {
     const document = {
       package: {

@@ -64,18 +64,25 @@ import {
   resolvePassageRange,
 } from "@stll/folio-core/ai-edits/blockRange";
 import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEditorStory";
+import { NO_ANONYMIZATION_HIGHLIGHTS } from "@stll/folio-core/controller/anonymizationHighlights";
 import { afterCanonicalCompositionSettles } from "@stll/folio-core/controller/canonicalInputTimer";
 import { resolveCanonicalReviewRange } from "@stll/folio-core/controller/canonicalReview";
 import { isCanonicalRoomCollaboration } from "@stll/folio-core/controller/canonicalRoomEditor";
 import { DOCUMENT_CHANGE_NOTIFY_DELAY_MS } from "@stll/folio-core/controller/documentChangeNotification";
 import {
   FOLIO_DOCX_SERIALIZATION_MODE,
+  type FolioDocxSerializationPath,
   type FolioGetDocxOptions,
+  type FolioSaveOptions,
 } from "@stll/folio-core/controller/folioEditor";
+import {
+  delegateAutocomplete,
+  NO_AUTOCOMPLETE,
+} from "@stll/folio-core/controller/hiddenEditorApi";
 import { CanonicalSessionRefusalError } from "@stll/folio-core/controller/hiddenEditorManager";
 import type { NoteStoryKey } from "@stll/folio-core/controller/noteEditorManager";
 import {
-  CanonicalSaveDiagnosticError,
+  canonicalSaveDiagnosticError,
   serializeCanonicalSave,
 } from "@stll/folio-core/docx/canonicalSave";
 import {
@@ -85,6 +92,7 @@ import {
 import { withHostCommentThreads } from "@stll/folio-core/docx/hostCommentThreads";
 import { normalizeBaseDirection } from "@stll/folio-core/docx/normalizeBaseDirection";
 import { getCachedNumberingMap } from "@stll/folio-core/docx/numberingParser";
+import type { SaveDiagnostic } from "@stll/folio-core/docx/saveDiagnostics";
 import { findPageNumberAtEditorPosition } from "@stll/folio-core/layout-engine/pmPageIndex";
 import type { Layout } from "@stll/folio-core/layout-engine/types";
 import {
@@ -114,15 +122,11 @@ import {
   getTableContext,
   increaseIndent,
   increaseListLevel,
-  removeTabStop,
   restartNumbering,
   setAlignment,
   setFontFamily,
   setFontSize,
   setHighlight,
-  setIndentFirstLine,
-  setIndentLeft,
-  setIndentRight,
   setLineSpacing,
   setLtr,
   setNumberingValue,
@@ -179,6 +183,10 @@ import {
 } from "@stll/folio-core/prosemirror/commands/pastePlainText";
 import { replaceRangeText } from "@stll/folio-core/prosemirror/commands/replaceRangeText";
 import {
+  applyRulerParagraphEdit,
+  type RulerParagraphEdit,
+} from "@stll/folio-core/prosemirror/commands/rulerParagraph";
+import {
   clearPendingComment,
   commentIdsNamedIn,
   commentRecordsOf,
@@ -207,8 +215,6 @@ import { projectMarkupView } from "@stll/folio-core/prosemirror/markupViewProjec
 import { withoutUnreferencedNotes } from "@stll/folio-core/prosemirror/noteReferenceReview";
 import { createAICitationDecorationsPlugin } from "@stll/folio-core/prosemirror/plugins/aiCitationDecorations";
 import { createAISuggestionDecorationsPlugin } from "@stll/folio-core/prosemirror/plugins/aiSuggestionDecorations";
-import { createAnonymizationDecorationsPlugin } from "@stll/folio-core/prosemirror/plugins/anonymizationDecorations";
-import { autocompleteSuggestionPlugin } from "@stll/folio-core/prosemirror/plugins/autocompleteSuggestion";
 import {
   createSuggestionModePlugin,
   setSuggestionMode,
@@ -629,8 +635,10 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       onEditorViewReady,
       onCanonicalHistory,
       onCanonicalHistoryDrop,
+      anonymizationTerms,
       onAnonymizationMatchesChange,
       onAnonymizationTermClick,
+      onAutocompleteChange,
       selectedAnonymizationCanonical = null,
       anonymizationSelectionSeq,
       showTemplateDirectives = false,
@@ -944,31 +952,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       () => createAICitationDecorationsPlugin(),
       [],
     );
-    // Workspace anonymization-term highlights. Always installed;
-    // renders nothing until the host pushes a term list via
-    // `setAnonymizationTermsMeta`.
-    // Keep plugin identity stable while publishing host callbacks after commit.
-    const [anonymizationCallback] = useState(() =>
-      createCallbackSlot(onAnonymizationMatchesChange),
-    );
-    useLayoutEffect(() => {
-      anonymizationCallback.commit(onAnonymizationMatchesChange);
-    });
-    const [anonymizationDecorationsPlugin] = useState(() =>
-      createAnonymizationDecorationsPlugin({
-        onMatchesChange: anonymizationCallback.invoke,
-      }),
-    );
-    // Inline autocomplete. Always installed and idle by default;
-    // becomes active only when the host pushes a `start` meta via
-    // {@link startAutocompleteSuggestion}. The keymap option lets
-    // the plugin intercept Tab/⌘→/Esc; it sits early in the plugin
-    // array so it runs before list-indent Tab handlers in the
-    // extension chain.
-    const autocompletePlugin = useMemo(
-      () => autocompleteSuggestionPlugin({ keymap: true }),
-      [],
-    );
     // Template-directive widgets. Installed only for the template
     // editor (`showTemplateDirectives`); scans the doc for {{...}}
     // markers and exposes their ranges for the paged overlay.
@@ -1003,26 +986,22 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
     const [hostPlugins] = useState(() => plugins ?? []);
     const editorPlugins = useMemo(
       () => [
-        autocompletePlugin,
         ...hostPlugins,
         ...(yjsCollaboration?.plugins ?? []),
         suggestionPlugin,
         aiSuggestionPlugin,
         aiCitationPlugin,
-        anonymizationDecorationsPlugin,
         ...(showTemplateDirectives
           ? [templateDirectivesPlugin, templateSlashMenu]
           : []),
         templatePreviewPlugin,
       ],
       [
-        autocompletePlugin,
         hostPlugins,
         yjsCollaboration?.plugins,
         suggestionPlugin,
         aiSuggestionPlugin,
         aiCitationPlugin,
-        anonymizationDecorationsPlugin,
         showTemplateDirectives,
         templateDirectivesPlugin,
         templateSlashMenu,
@@ -2124,10 +2103,14 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         commentsRef,
       ],
     );
-    const getFindEditorState = useCallback(() => {
+    const getFindEditorView = useCallback(() => {
       pagedEditorRef.current?.ensureView({ focus: false });
-      return pagedEditorRef.current?.getView()?.state ?? null;
+      return pagedEditorRef.current?.getView() ?? null;
     }, []);
+    const getFindEditorState = useCallback(
+      () => getFindEditorView()?.state ?? null,
+      [getFindEditorView],
+    );
     const getFindBodyDoc = useCallback(
       () => getFindEditorState()?.doc,
       [getFindEditorState],
@@ -2141,7 +2124,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       if (readOnlyReason) onReadonlyEditAttempt?.(readOnlyReason);
     }, [readOnlyReason, onReadonlyEditAttempt]);
 
-    // Find/Replace handlers (depends on handleDocumentChange)
+    // Find/Replace handlers
     const {
       currentSearch: currentFindSearch,
       resetFindResult,
@@ -2157,8 +2140,8 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       documentState: history.state,
       getDocumentState: buildCurrentDocument,
       getEditorState: getFindEditorState,
+      getEditorView: getFindEditorView,
       containerRef,
-      handleDocumentChange,
       findReplace,
       selectMatch: selectFindMatch,
       getBodyDoc: getFindBodyDoc,
@@ -3790,42 +3773,29 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       (twips: number) => handlePageSetupApply({ marginBottom: twips }),
       [handlePageSetupApply],
     );
-    const handleIndentLeftChange = useCallback(
-      (twips: number) => {
+    const applyRulerEdit = useCallback(
+      (edit: RulerParagraphEdit) => {
         const view = getActiveEditorView();
         if (!view) return;
-        setIndentLeft(twips)(view.state, view.dispatch);
+        applyRulerParagraphEdit(view, edit);
       },
       [getActiveEditorView],
+    );
+    const handleIndentLeftChange = useCallback(
+      (twips: number) => applyRulerEdit({ type: "indentLeft", twips }),
+      [applyRulerEdit],
     );
     const handleIndentRightChange = useCallback(
-      (twips: number) => {
-        const view = getActiveEditorView();
-        if (!view) return;
-        setIndentRight(twips)(view.state, view.dispatch);
-      },
-      [getActiveEditorView],
+      (twips: number) => applyRulerEdit({ type: "indentRight", twips }),
+      [applyRulerEdit],
     );
     const handleFirstLineIndentChange = useCallback(
-      (twips: number) => {
-        const view = getActiveEditorView();
-        if (!view) return;
-        // Negative twips encode a hanging indent.
-        if (twips < 0) {
-          setIndentFirstLine(-twips, true)(view.state, view.dispatch);
-        } else {
-          setIndentFirstLine(twips, false)(view.state, view.dispatch);
-        }
-      },
-      [getActiveEditorView],
+      (twips: number) => applyRulerEdit({ type: "indentFirstLine", twips }),
+      [applyRulerEdit],
     );
     const handleTabStopRemove = useCallback(
-      (positionTwips: number) => {
-        const view = getActiveEditorView();
-        if (!view) return;
-        removeTabStop(positionTwips)(view.state, view.dispatch);
-      },
-      [getActiveEditorView],
+      (position: number) => applyRulerEdit({ type: "removeTabStop", position }),
+      [applyRulerEdit],
     );
 
     const serializeCurrentDocx = useCallback(
@@ -3848,17 +3818,11 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             });
             for (const diagnostic of result.diagnostics) {
               if (!options?.onDiagnostic)
-                onError?.(
-                  new CanonicalSaveDiagnosticError({
-                    gap: CANONICAL_GAP.save,
-                    diagnostic,
-                    message: `Canonical save used a fidelity fallback: ${diagnostic.type} (${diagnostic.part}).`,
-                  }),
-                );
+                onError?.(canonicalSaveDiagnosticError(diagnostic));
             }
             tripwireResult = result.tripwireResult;
-            // Keep the parsed baseline: canonical touched ids are cumulative
-            // against it. The session's journal records what was saved.
+            // The saved package becomes the session's save baseline: later
+            // saves patch it and count changes from this version.
             if (
               view &&
               pagedEditorRef.current?.getEditor() === editor &&
@@ -3866,10 +3830,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
               view.state.doc === editorState?.doc &&
               editor.isCanonicalSaveCurrent(snapshot.version)
             ) {
-              editor.markCanonicalSaved(snapshot.version);
-              // The VS Code host still reads its save strategy from this
-              // tracker.
-              view.dispatch(clearTrackedChanges(view.state));
+              editor.markCanonicalSaved(snapshot.version, result);
             }
             savedBuffer = result.buffer;
           } else {
@@ -3912,6 +3873,8 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                   structuralChange: hasStructuralChanges(editorState),
                   hasUntrackedChanges: hasUntrackedChanges(editorState),
                   maxBytes: flags.selectiveSaveMaxBytes,
+                  onSelectiveDecline: options?.onSelectiveDecline,
+                  onDiagnostic: options?.onDiagnostic,
                 },
               );
             }
@@ -3920,15 +3883,29 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
               ? selectiveBuffer
               : null;
             let fullBuffer: ArrayBuffer | null = null;
+            let path: FolioDocxSerializationPath = "selective";
             const repackSourceDoc = baselineBuffer
               ? { ...doc, originalBuffer: baselineBuffer }
               : doc;
             // A section the editor removed on purpose (its ending paragraph
             // deleted, or that deletion accepted) is one the repack must be told
             // about, or it refuses the smaller package.
+            const fullDiagnostics: SaveDiagnostic[] = [];
+            const collectFullDiagnostic = (diagnostic: SaveDiagnostic) =>
+              fullDiagnostics.push(diagnostic);
             const repackFull = async (): Promise<ArrayBuffer> => {
+              if (!baselineBuffer) {
+                const { createDocx } =
+                  await import("@stll/folio-core/docx/rezip");
+                return createDocx(repackSourceDoc, {
+                  onDiagnostic: collectFullDiagnostic,
+                });
+              }
               const repackDocx = await loadRepackDocx();
-              const repack = () => repackDocx(repackSourceDoc);
+              const repack = () =>
+                repackDocx(repackSourceDoc, {
+                  onDiagnostic: collectFullDiagnostic,
+                });
               return editorState
                 ? repackWithEditorSectionRemovals({
                     state: editorState,
@@ -3941,6 +3918,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             if (!buffer) {
               fullBuffer = await repackFull();
               buffer = fullBuffer;
+              path = "full-repack";
             } else if (flags.selectiveSaveTripwire) {
               try {
                 fullBuffer = await repackFull();
@@ -3970,6 +3948,9 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
               }
             }
 
+            for (const diagnostic of fullDiagnostics)
+              options?.onDiagnostic?.(diagnostic);
+            options?.onSerializationPath?.(path);
             // Clear change tracker after successful save
             if (
               view &&
@@ -4009,11 +3990,12 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
     // Host-facing save keeps callback and dirty-state policy outside the
     // framework-neutral controller's side-effect-free serialization method.
     const handleSave = useCallback(
-      async (options?: {
-        selective?: boolean;
-      }): Promise<ArrayBuffer | null> => {
+      async (options?: FolioSaveOptions): Promise<ArrayBuffer | null> => {
         const editor = pagedEditorRef.current?.getEditor();
         const serializationOptions = {
+          onDiagnostic: options?.onDiagnostic,
+          onSelectiveDecline: options?.onSelectiveDecline,
+          onSerializationPath: options?.onSerializationPath,
           mode:
             options?.selective === false
               ? FOLIO_DOCX_SERIALIZATION_MODE.full
@@ -4787,6 +4769,14 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         getPositionPage: (position) =>
           pagedEditorRef.current?.getEditor()?.getPositionPage(position) ??
           null,
+        autocomplete: delegateAutocomplete(
+          () =>
+            pagedEditorRef.current?.getEditor()?.autocomplete ??
+            NO_AUTOCOMPLETE,
+        ),
+        getAnonymizationMatches: () =>
+          pagedEditorRef.current?.getEditor()?.getAnonymizationHighlights()
+            .matches ?? NO_ANONYMIZATION_HIGHLIGHTS.matches,
         getBlockRect: (blockId) =>
           pagedEditorRef.current?.getBlockRect(blockId) ?? null,
         getBlockRects: (blockIds) =>
@@ -5704,7 +5694,8 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             pageWidth={
               commentsPageWidth ? Math.round(commentsPageWidth / 15) : 816
             }
-            editorContainerRef={scrollContainerRef}
+            columnStart={panelLayout.commentsColumnStart}
+            scrollContainer={scrollContainer}
             onCommentClick={handleCommentClick}
             onCommentResolve={handleCommentResolve}
             onCommentDelete={handleCommentDelete}
@@ -5737,6 +5728,8 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       isAddingComment,
       commentsSurface,
       dismissCommentsDrawer,
+      panelLayout.commentsColumnStart,
+      scrollContainer,
       visibleComments,
     ]);
     const getActiveHfView = useCallback(
@@ -6360,7 +6353,12 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                             onContextMenu={handleContextMenu}
                             pageEndGutter={panelLayout.commentsGutter}
                             anchorPositionMode="comments"
+                            anonymizationTerms={anonymizationTerms}
+                            onAnonymizationMatchesChange={
+                              onAnonymizationMatchesChange
+                            }
                             onAnonymizationTermClick={onAnonymizationTermClick}
+                            onAutocompleteChange={onAutocompleteChange}
                             selectedAnonymizationCanonical={
                               selectedAnonymizationCanonical
                             }

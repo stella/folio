@@ -771,7 +771,24 @@ export type FolioAIEditAppliedOperation = {
    * `rejectSuggestion` / `scrollToSuggestion` to resolve the whole suggestion.
    */
   suggestionId?: string;
+  /** The paragraph identity a direct operation leaves after the batch settles. */
+  paragraphIdentity?: FolioAIEditParagraphIdentity;
 };
+
+/** A direct operation's surviving paragraph, with a retired id only when one is gone. */
+export type FolioAIEditParagraphIdentity =
+  | {
+      type: "joined";
+      /** The paragraph that holds the joined text. */
+      blockId: string;
+      /** The paragraph whose mark the join removed; its id names no block. */
+      retiredBlockId: string;
+    }
+  | {
+      type: "retained";
+      /** A final paragraph's identity survives even when its former content is removed. */
+      blockId: string;
+    };
 
 export type FolioAIEditSkippedOperation = {
   id: string;

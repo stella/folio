@@ -24,6 +24,11 @@ import { useTranslations } from "use-intl";
 import type { SectionProperties } from "@stll/folio-core/types/document";
 import type { DeepReadonly } from "@stll/folio-core/types/documentModel";
 import {
+  clampRulerValue,
+  createRulerControl,
+  getVerticalRulerBounds,
+} from "@stll/folio-core/utils/rulerControl";
+import {
   formatPx,
   pixelsToTwips,
   twipsToPixels,
@@ -103,6 +108,27 @@ export function VerticalRuler({
   const topMarginTwips = sectionProps?.marginTop ?? DEFAULT_MARGIN_TWIPS;
   const bottomMarginTwips = sectionProps?.marginBottom ?? DEFAULT_MARGIN_TWIPS;
 
+  const bounds = getVerticalRulerBounds({
+    pageHeight: pageHeightTwips,
+    topMargin: topMarginTwips,
+    bottomMargin: bottomMarginTwips,
+  });
+
+  const controls = {
+    topMargin: createRulerControl({
+      value: topMarginTwips,
+      ...bounds.topMargin,
+      unit,
+      onChange: editable ? onTopMarginChange : undefined,
+    }),
+    bottomMargin: createRulerControl({
+      value: bottomMarginTwips,
+      ...bounds.bottomMargin,
+      unit,
+      onChange: editable ? onBottomMarginChange : undefined,
+    }),
+  };
+
   // Convert to pixels with zoom
   const pageHeightPx = twipsToPixels(pageHeightTwips) * zoom;
   const topMarginPx = twipsToPixels(topMarginTwips) * zoom;
@@ -117,7 +143,11 @@ export function VerticalRuler({
       zoom,
       pageHeightTwips,
       topMarginTwips,
-      bottomMarginTwips,
+      bounds: getVerticalRulerBounds({
+        pageHeight: pageHeightTwips,
+        topMargin: topMarginTwips,
+        bottomMargin: bottomMarginTwips,
+      }),
       onTopMarginChange,
       onBottomMarginChange,
     }),
@@ -157,14 +187,14 @@ export function VerticalRuler({
     const positionTwips = pixelsToTwips(y / params.zoom);
 
     if (params.dragging === "topMargin") {
-      const maxMargin = params.pageHeightTwips - params.bottomMarginTwips - 720;
-      const newMargin = Math.max(0, Math.min(positionTwips, maxMargin));
-      params.onTopMarginChange?.(Math.round(newMargin));
+      params.onTopMarginChange?.(
+        clampRulerValue(positionTwips, params.bounds.topMargin),
+      );
     } else if (params.dragging === "bottomMargin") {
       const fromBottom = params.pageHeightTwips - positionTwips;
-      const maxMargin = params.pageHeightTwips - params.topMarginTwips - 720;
-      const newMargin = Math.max(0, Math.min(fromBottom, maxMargin));
-      params.onBottomMarginChange?.(Math.round(newMargin));
+      params.onBottomMarginChange?.(
+        clampRulerValue(fromBottom, params.bounds.bottomMargin),
+      );
     }
   }, []);
 
@@ -208,9 +238,8 @@ export function VerticalRuler({
       ref={rulerRef}
       className={`docx-vertical-ruler ${className}`}
       style={rulerStyle}
-      role="slider"
+      role="group"
       aria-label={t("ruler.vertical")}
-      aria-orientation="vertical"
     >
       {/* Tick marks */}
       <div
@@ -231,6 +260,7 @@ export function VerticalRuler({
       {/* Top margin marker */}
       <VerticalMarginMarker
         type="topMargin"
+        control={controls.topMargin}
         position={topMarginPx}
         editable={editable}
         isDragging={dragging === "topMargin"}
@@ -242,6 +272,7 @@ export function VerticalRuler({
       {/* Bottom margin marker */}
       <VerticalMarginMarker
         type="bottomMargin"
+        control={controls.bottomMargin}
         position={pageHeightPx - bottomMarginPx}
         editable={editable}
         isDragging={dragging === "bottomMargin"}
@@ -304,6 +335,7 @@ type VerticalMarginMarkerProps = {
   isHovered: boolean;
   onDragStart: (event: React.MouseEvent, marker: MarkerType) => void;
   onHoverChange: (marker: MarkerType | null) => void;
+  control: ReturnType<typeof createRulerControl>;
 };
 
 function VerticalMarginMarker({
@@ -314,8 +346,11 @@ function VerticalMarginMarker({
   isHovered,
   onDragStart,
   onHoverChange,
+  control,
 }: VerticalMarginMarkerProps): React.ReactElement {
   const t = useTranslations("folio");
+  const label =
+    type === "topMargin" ? t("ruler.topMargin") : t("ruler.bottomMargin");
   const color = resolveMarkerColor(isDragging, isHovered);
   const handleMouseEnter = useCallback(
     () => onHoverChange(type),
@@ -360,12 +395,10 @@ function VerticalMarginMarker({
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onMouseDown={handleMouseDown}
-      role="slider"
-      aria-label={
-        type === "topMargin" ? t("ruler.topMargin") : t("ruler.bottomMargin")
-      }
-      aria-orientation="vertical"
-      tabIndex={editable ? 0 : -1}
+      {...control.attributes}
+      onKeyDown={control.onKeyDown}
+      aria-label={control.attributes.role ? label : undefined}
+      aria-orientation={control.attributes.role ? "vertical" : undefined}
     >
       <div style={triangleStyle} />
     </div>
