@@ -251,6 +251,7 @@ export const paragraphMarkOutcome = ({
   needsFollowingCommentHost = false,
   tableRemovalIsTrackable = true,
   emptyInsertedTableBoundary = "unavailable",
+  precededByBlock = false,
   removedSectionProperties = false,
   precedingSectionOwner = "unavailable",
   followingHasSectionProperties = false,
@@ -281,6 +282,8 @@ export const paragraphMarkOutcome = ({
   tableRemovalIsTrackable?: boolean;
   /** Only a pending-review boundary proved free of source section/structure blockers. */
   emptyInsertedTableBoundary?: "unavailable" | "pendingReview";
+  /** Whether a block stays before the paragraph to anchor what its removal leaves. */
+  precededByBlock?: boolean;
   removedSectionProperties?: boolean;
   precedingSectionOwner?: "unavailable" | "available" | "same" | "occupied";
   followingHasSectionProperties?: boolean;
@@ -312,6 +315,7 @@ export const paragraphMarkOutcome = ({
       // story ends, as it does before a table that can receive words.
       if (
         !tableRemovalIsTrackable &&
+        precededByBlock &&
         !markWasAdded &&
         !holdsContent &&
         !needsFollowingCommentHost
