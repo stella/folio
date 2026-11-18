@@ -258,6 +258,19 @@ test("ignores opaque images and compares visible link text", () => {
   assert.throws(() => markdownViews("#", []), /more text blocks/u);
 });
 
+test("reads a numbered heading with no words as its label alone", () => {
+  const expected = [
+    { text: "", kind: "heading", headingLevel: 1, number: "1." },
+    { text: "Agreement", kind: "heading", headingLevel: 1 },
+  ] as const;
+  assert.deepEqual(markdownViews("# 1.\n\n# Agreement", expected), expected);
+  // Words still differ from the label they would follow.
+  assert.notDeepEqual(
+    markdownViews("# 1. Terms\n\n# Agreement", expected),
+    expected,
+  );
+});
+
 test("keeps a numbered table cell label in the Markdown comparison", async () => {
   const bytes = await numberedTableDocument();
   const views = await readAll(bytes);

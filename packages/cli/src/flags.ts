@@ -146,6 +146,25 @@ export const coerceFlag = ({
   }
 };
 
+/** The text of a file a flag names, bounded like `--input`. */
+export const readTextFile = async (
+  inputPath: string,
+): Promise<Result<string, FolioCliError>> => {
+  const read = await Result.tryPromise({
+    try: () =>
+      readFile(inputPath).then((bytes) =>
+        decodeText(bytes, { ignoreBOM: true }),
+      ),
+    catch: () => usage(`Cannot read ${inputPath}.`),
+  });
+  if (read.isErr()) return read;
+  return encodeUtf8(read.value).byteLength > MAX_INPUT_BYTES
+    ? Result.err(
+        usage(`${inputPath} is over the ${MAX_INPUT_BYTES}-byte limit.`),
+      )
+    : read;
+};
+
 type ReadInputOptions = {
   source: string;
   readStdin: () => Promise<string>;

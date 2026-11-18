@@ -67,6 +67,7 @@ import {
   type AlignableAtom,
   type AtomActionDisposition,
   atomActionRangeCount,
+  atomActionTieRank,
   fieldResultOwnershipOf,
   insertionAnchors,
   matchingAtoms,
@@ -194,6 +195,15 @@ const leafWidthOf = (node: ReadonlyInline): LeafWidth => {
     default:
       return childNodesOf(node) === undefined ? "unit" : "zeroWidth";
   }
+};
+
+/** What content adds to its paragraph's offset space once it is inserted. */
+const offsetWidthOf = (node: ReadonlyInline): number => {
+  const children = childNodesOf(node);
+  if (children !== undefined && children.length > 0)
+    return children.reduce((width, child) => width + offsetWidthOf(child), 0);
+  if (leafWidthOf(node) === "zeroWidth") return 0;
+  return node.type === "text" ? node.text.length : 1;
 };
 
 /** Every leaf of a paragraph in document order, as `leafSpans` counts them. */
@@ -1629,7 +1639,12 @@ const writeActions = ({
     const newIds = freshIds(op);
     if (refusal !== undefined) return false;
     if (!emit(newIds === undefined ? op : { ...op, newIds })) return false;
-    if (recordsEdit) record(at, { offset: at.offset, deleted: 0, inserted: 1 });
+    if (recordsEdit)
+      record(at, {
+        offset: at.offset,
+        deleted: 0,
+        inserted: offsetWidthOf(inserted),
+      });
     return true;
   };
   /** Remove `[from, to)`: the comparison's own insertion goes, anything else is marked deleted. */
@@ -1674,7 +1689,8 @@ const writeActions = ({
   };
   const ordered = actions.toSorted(
     (left, right) =>
-      comparePoints(right.from, left.from) || (left.kind === "delete" ? -1 : 1),
+      comparePoints(right.from, left.from) ||
+      atomActionTieRank(left.kind) - atomActionTieRank(right.kind),
   );
   for (const action of ordered) {
     let written: boolean;
@@ -1701,7 +1717,7 @@ const writeActions = ({
               : action.atomDisposition,
           ) &&
           insert(
-            mapPoint(edits, action.from, -1),
+            mapPoint(edits, action.from, 1),
             action.kind === "replace-text"
               ? action.content
               : {
