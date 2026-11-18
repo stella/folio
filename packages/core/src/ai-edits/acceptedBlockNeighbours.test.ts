@@ -643,3 +643,39 @@ describe("blocks put on either side of blocks accepting removes whole", () => {
     expect(await replayReached("tracked-changes")).toEqual(direct);
   });
 });
+
+describe("a paragraph put before a block the batch restyles, past blocks accepting removes whole", () => {
+  // The batch orders the insertion as at the restyled block, as it does with
+  // nothing between them: the paragraph takes what the block had.
+  const inserted = async (pending: string[]) => {
+    const { reviewer, id } = await withPendingDeletions(
+      ["Opening clause.", "Gone clause.", "Closing clause."].join("\n\n"),
+      pending,
+    );
+    const result = apply(reviewer, "tracked-changes", [
+      {
+        id: "restyle",
+        type: "setBlockParagraphProperties",
+        blockId: id("Closing clause."),
+        properties: { styleId: "Heading2" },
+      },
+      {
+        id: "insert",
+        type: "insertBeforeBlock",
+        blockId: id("Closing clause."),
+        text: "Inserted clause.",
+      },
+    ]);
+    expect(result.skipped).toEqual([]);
+    const block = reviewer
+      .snapshot()
+      .blocks.find(({ text }) => text === "Inserted clause.");
+    return { kind: block?.kind, styleId: block?.styleId };
+  };
+
+  test("takes the same properties as with nothing between them", async () => {
+    const plain = await inserted([]);
+    expect(plain).toEqual({ kind: "paragraph", styleId: undefined });
+    expect(await inserted(["Gone clause."])).toEqual(plain);
+  });
+});
