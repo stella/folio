@@ -3543,11 +3543,17 @@ export const compareComments = (
     // A split can instead leave the live range start in pending deleted text
     // while its entire accepted coverage belongs to the new paragraph.
     const source = paragraphTextProjection(model, live?.blockId);
+    // A block an operation removed hands its words to the block it ran into,
+    // so its live quote is the one that moved with them.
+    const removedSource = model.rows.some(
+      (row) => row.pre?.id === live?.blockId && row.removed,
+    );
     const located =
       live &&
       live.blockId !== entry.blockId &&
-      source.type === "pending-join" &&
-      source.row.pre?.id === entry.blockId
+      ((source.type === "pending-join" &&
+        source.row.pre?.id === entry.blockId) ||
+        removedSource)
         ? live
         : entry;
     let disposition =
