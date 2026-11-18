@@ -24,11 +24,13 @@ import {
   markParagraphPropertySourceTransfers,
   PARAGRAPH_SOURCE_JOIN_RULES,
 } from "../docx/paragraphPropertySource";
+import { expectParagraphAttrs } from "./attrs";
 import { paragraphJoinAfter } from "./commands/paragraphBookmarkJoin";
 import { JOINED_RUNS_RESTYLED_META } from "./extensions/features/JoinedRunStyleExtension";
 import { rebaseParagraphRuns } from "./rebaseParagraphRunFormatting";
 import {
   paragraphRunStyleContext,
+  resolveParagraphInheritedRunFormatting,
   type RunStyleResolver,
 } from "./runStyleFormatting";
 import type { ParagraphAttrs, SuggestedStructuralMarker } from "./schema/nodes";
@@ -41,6 +43,7 @@ type JoinSides = {
   next: PMNode;
   /** Inline size placed between the two paragraphs' content (bookmarks). */
   between: number;
+  styleResolver: RunStyleResolver | null;
 };
 
 /**
@@ -164,7 +167,21 @@ const JOINED_PARAGRAPH_ATTRS = {
   widowControl: "next",
   contextualSpacing: "next",
   runInWithNext: "next",
-  defaultTextFormatting: "next",
+  defaultTextFormatting: ({ paragraph, next, between, styleResolver }) => {
+    if (next.content.size > 0 || paragraph.content.size + between === 0)
+      return next.attrs["defaultTextFormatting"];
+    // Empty paragraphs use the mark's font for their caret glyph. Once a
+    // join supplies emitted inline content (fields and atoms included), its
+    // body inherits the ordinary style cascade, as a reopen does.
+    const attrs = expectParagraphAttrs(next);
+    return (
+      resolveParagraphInheritedRunFormatting({
+        styleId: attrs.styleId,
+        tableRunFormatting: attrs._tableRunFormatting,
+        styleResolver,
+      }).inheritedFormatting ?? null
+    );
+  },
   _tableRunFormatting: "next",
   direction: "next",
   outlineLevel: "next",
@@ -239,17 +256,22 @@ export const JOINED_PARAGRAPH_ATTR_NAMES: readonly string[] = Object.keys(
   JOINED_PARAGRAPH_ATTRS,
 );
 
+type JoinedParagraphAttrsOptions = Omit<JoinSides, "between"> & {
+  between?: number;
+};
+
 /**
  * The attrs of the paragraph a join leaves, each by its rule in
  * `JOINED_PARAGRAPH_ATTRS`. `between` is the inline size the join places
  * between the two paragraphs' content.
  */
-export const joinedParagraphAttrs = (
-  paragraph: PMNode,
-  next: PMNode,
+export const joinedParagraphAttrs = ({
+  paragraph,
+  next,
   between = 0,
-): PMNode["attrs"] => {
-  const sides = { paragraph, next, between };
+  styleResolver,
+}: JoinedParagraphAttrsOptions): PMNode["attrs"] => {
+  const sides = { paragraph, next, between, styleResolver };
   const rules: Readonly<Record<string, JoinedAttrRule>> =
     JOINED_PARAGRAPH_ATTRS;
   const attrs: Record<string, unknown> = {};
@@ -298,11 +320,15 @@ export const joinAtParagraphMark = ({
     tr.setNodeMarkup(
       paragraphPos,
       undefined,
-      joinedParagraphAttrs(
+      joinedParagraphAttrs({
         paragraph,
         next,
-        join.inlineBookmarks.reduce((size, node) => size + node.nodeSize, 0),
-      ),
+        between: join.inlineBookmarks.reduce(
+          (size, node) => size + node.nodeSize,
+          0,
+        ),
+        styleResolver,
+      }),
     );
     markParagraphPropertySourceTransfers(tr, [
       {
@@ -312,7 +338,7 @@ export const joinAtParagraphMark = ({
     ]);
   } else {
     joinProseParagraphsWithRightPropertySource({
-      attrs: joinedParagraphAttrs(paragraph, next),
+      attrs: joinedParagraphAttrs({ paragraph, next, styleResolver }),
       pos: boundary,
       transaction: tr,
     });

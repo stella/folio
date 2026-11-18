@@ -113,7 +113,10 @@ const anchorPosition = (doc: PMNode, commentId: number): number => {
   doc.descendants((node, position) => {
     if (node.type.name !== "rangeAnchor") return true;
     const attrs = readRangeAnchorAttrs(node);
-    if (attrs.ok && attrs.value.start.id === commentId) {
+    if (
+      attrs.ok &&
+      attrs.value.markers.some((marker) => marker.id === commentId)
+    ) {
       found = position;
       return false;
     }
@@ -153,8 +156,10 @@ test.each(["accept", "reject"] as const)(
     for (const text of ["", "kept"]) {
       for (const precedingHost of [false, true]) {
         const comment = schema.node("rangeAnchor", {
-          start: { type: "commentRangeStart", id: 37 },
-          end: { type: "commentRangeEnd", id: 37 },
+          markers: [
+            { type: "commentRangeStart", id: 37 },
+            { type: "commentRangeEnd", id: 37 },
+          ],
         });
         const mark = (id: number) => ({
           pPrMark: {
@@ -198,7 +203,9 @@ test.each(["accept", "reject"] as const)(
           host?.children.some((child) => {
             if (child.type.name !== "rangeAnchor") return false;
             const attrs = readRangeAnchorAttrs(child);
-            return attrs.ok && attrs.value.start.id === 37;
+            return (
+              attrs.ok && attrs.value.markers.some((marker) => marker.id === 37)
+            );
           }),
         ).toBe(true);
       }
@@ -298,8 +305,10 @@ test("accepting an empty paragraph-mark deletion removes the paragraph before a 
 
 test("an unhosted point comment runs into the first cell and preserves transaction mapping and inversion", () => {
   const comment = schema.node("rangeAnchor", {
-    start: { type: "commentRangeStart", id: 19 },
-    end: { type: "commentRangeEnd", id: 19 },
+    markers: [
+      { type: "commentRangeStart", id: 19 },
+      { type: "commentRangeEnd", id: 19 },
+    ],
   });
   const cellParagraph = schema.node("paragraph", { paraId: "10000002" }, [
     schema.text("cell"),
@@ -347,8 +356,10 @@ test("an unhosted point comment runs into the first cell and preserves transacti
 
 test("whole-story acceptance matches accepting adjacent paragraph marks in turn", () => {
   const comment = schema.node("rangeAnchor", {
-    start: { type: "commentRangeStart", id: 29 },
-    end: { type: "commentRangeEnd", id: 29 },
+    markers: [
+      { type: "commentRangeStart", id: 29 },
+      { type: "commentRangeEnd", id: 29 },
+    ],
   });
   const cellParagraph = schema.node("paragraph", { paraId: "10000003" }, [
     schema.text("cell"),
@@ -519,8 +530,10 @@ test("reject removes orphan comment references before resolving paragraph marks"
   const liveComment = schema.node("paragraph", null, [
     schema.text("live", [schema.mark("comment", { commentId: liveCommentId })]),
     schema.node("rangeAnchor", {
-      start: { type: "commentRangeStart", id: liveCommentId },
-      end: { type: "commentRangeEnd", id: liveCommentId },
+      markers: [
+        { type: "commentRangeStart", id: liveCommentId },
+        { type: "commentRangeEnd", id: liveCommentId },
+      ],
     }),
     schema.node("commentReference", { commentId: liveCommentId }),
   ]);
@@ -565,7 +578,12 @@ test("reject removes orphan comment references before resolving paragraph marks"
       commentReferences.push(node.attrs["commentId"]);
     if (node.type.name === "rangeAnchor") {
       const attrs = readRangeAnchorAttrs(node);
-      if (attrs.ok) rangeAnchorIds.push(attrs.value.start.id);
+      if (attrs.ok)
+        rangeAnchorIds.push(
+          ...attrs.value.markers
+            .filter((marker) => marker.type === "commentRangeStart")
+            .map(({ id }) => id),
+        );
     }
     return true;
   });

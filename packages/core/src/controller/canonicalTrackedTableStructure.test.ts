@@ -1,5 +1,5 @@
 /**
- * Table and row operations on tables holding more than words, a nested
+ * Table, row and column operations on tables holding more than words, a nested
  * table, bookmarks, content controls and an earlier suggestion, give in the
  * canonical session the package the default engine gives: pending, every
  * change accepted, every change rejected, and resolved in the canonical
@@ -143,6 +143,18 @@ const OPERATIONS = {
     position: "after",
     cellTexts: ["New"],
   }),
+  deleteTableColumn: (blockId: string) => ({
+    id: "op",
+    type: "deleteTableColumn",
+    blockId,
+  }),
+  "insertTableColumn after": (blockId: string) => ({
+    id: "op",
+    type: "insertTableColumn",
+    blockId,
+    position: "after",
+    cellTexts: ["New"],
+  }),
 } as const satisfies Record<
   string,
   (blockId: string) => FolioDocumentOperation
@@ -150,7 +162,7 @@ const OPERATIONS = {
 
 const MODES: readonly Mode[] = ["direct", "tracked-changes"];
 
-describe("table and row operations on tables holding more than words", () => {
+describe("table, row and column operations on tables holding more than words", () => {
   test("give the default engine's package in the canonical session, pending, accepted, rejected and resolved there", async () => {
     const differences: string[] = [];
     for (const body of Object.keys(BODIES) as Body[]) {

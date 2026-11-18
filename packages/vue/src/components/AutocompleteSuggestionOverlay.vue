@@ -10,8 +10,9 @@
 import type { EditorState } from "prosemirror-state";
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 
+import type { FolioAutocompleteState } from "@stll/folio-core/controller/autocompleteSuggestion";
+import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
 import type { LayoutSelectionGate } from "@stll/folio-core/paged-layout/LayoutSelectionGate";
-import { getAutocompleteSuggestion } from "@stll/folio-core/prosemirror/plugins/autocompleteSuggestion";
 import { createRenderedDomContext } from "@stll/folio-core/render-dom/RenderedDomContext";
 
 import type { AutocompleteCaretRect } from "./AutocompleteCaretOverlay.types";
@@ -30,6 +31,9 @@ const props = defineProps<{
   editorState: EditorState | null;
   zoom: number;
   syncCoordinator: LayoutSelectionGate;
+  /** The editor's suggestion. */
+  suggestion: FolioAutocompleteState;
+  editorPositionAt: FolioEditor["editorPositionAt"];
 }>();
 
 const projection = ref<AutocompleteProjection | null>(null);
@@ -80,14 +84,22 @@ const syncProjection = (): void => {
     return;
   }
 
-  const suggestion = getAutocompleteSuggestion(state);
-  if (suggestion.status === "idle" || suggestion.text.length === 0) {
+  const suggestion = props.suggestion;
+  const anchor =
+    suggestion.status === "idle"
+      ? null
+      : props.editorPositionAt(suggestion.anchor);
+  if (
+    suggestion.status === "idle" ||
+    suggestion.text.length === 0 ||
+    anchor === null
+  ) {
     projection.value = null;
     return;
   }
 
   const context = createRenderedDomContext(pagesContainer, props.zoom);
-  const coordinates = context.getCoordinatesForPosition(suggestion.anchor);
+  const coordinates = context.getCoordinatesForPosition(anchor);
   if (!coordinates) {
     projection.value = null;
     return;
@@ -138,7 +150,7 @@ onBeforeUnmount(() => {
 });
 
 watch(
-  () => [props.editorState, props.zoom, renderEpoch.value],
+  () => [props.suggestion, props.editorState, props.zoom, renderEpoch.value],
   () => scheduleSync(),
 );
 </script>

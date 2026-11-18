@@ -1,5 +1,12 @@
 /** A small table-grid oracle built from the reader's pre-operation snapshot. */
 
+import {
+  documentStories,
+  storyBody,
+  storyParagraphs,
+} from "@stll/docx-core/ops";
+import type { FolioDocumentOperationType } from "@stll/folio-core/server";
+
 import type { Operation } from "./operations.ts";
 import type { Row } from "./oracle.ts";
 
@@ -244,6 +251,22 @@ const sorted = (table: Table): Cell[] =>
     (left, right) => left.row - right.row || left.column - right.column,
   );
 
+type MergeRectangleOptions = {
+  start: CellGeometry;
+  end: CellGeometry | undefined;
+  rowCount: unknown;
+};
+const mergeRectangle = ({ start, end, rowCount }: MergeRectangleOptions) => ({
+  top: end ? Math.min(start.row, end.row) : start.row,
+  left: end ? Math.min(start.column, end.column) : start.column,
+  bottom: end
+    ? Math.max(start.row + start.rowSpan, end.row + end.rowSpan)
+    : start.row + Number(rowCount),
+  right: end
+    ? Math.max(start.column + start.columnSpan, end.column + end.columnSpan)
+    : start.column + start.columnSpan,
+});
+
 const merge = (model: TableModel, operation: Operation): void => {
   const start = sourceOf(model, operation["blockId"]);
   const end =
@@ -252,22 +275,11 @@ const merge = (model: TableModel, operation: Operation): void => {
       : sourceOf(model, operation["endBlockId"]);
   if (end && end.table !== start.table)
     unsupported("the merge spans two tables");
-  const top = end ? Math.min(start.cell.row, end.cell.row) : start.cell.row;
-  const left = end
-    ? Math.min(start.cell.column, end.cell.column)
-    : start.cell.column;
-  const bottom = end
-    ? Math.max(
-        start.cell.row + start.cell.rowSpan,
-        end.cell.row + end.cell.rowSpan,
-      )
-    : start.cell.row + Number(operation["rowCount"]);
-  const right = end
-    ? Math.max(
-        start.cell.column + start.cell.columnSpan,
-        end.cell.column + end.cell.columnSpan,
-      )
-    : start.cell.column + start.cell.columnSpan;
+  const { top, left, bottom, right } = mergeRectangle({
+    start: start.cell,
+    end: end?.cell,
+    rowCount: operation["rowCount"],
+  });
   if (
     bottom > start.table.height ||
     right > start.table.width ||
@@ -640,4 +652,251 @@ export const compareTableGeometry = (
     }
   });
   return problems;
+};
+
+type SourceCellOwner = {
+  table: SourceTableOwner;
+  descendants: Set<string>;
+  geometry?: CellGeometry;
+};
+type SourceTableOwner = { cells: SourceCellOwner[] };
+type SourceParagraphOwner = {
+  ancestors: readonly SourceCellOwner[];
+  siblings: Map<number, SourceParagraphOwner>;
+  index: number;
+  id: string;
+};
+// Capture-only facts never enter snapshots or serialized flow fixtures.
+const SOURCE_OWNERS = new WeakMap<Row, SourceParagraphOwner>();
+
+type CaptureSourceOwnersOptions = {
+  document: Parameters<typeof documentStories>[0];
+  rows: readonly Row[];
+};
+/** Bind public live rows to the kernel's source block-list/cell paths, never inferred table ordinals. */
+export const captureSourceOwners = ({
+  document,
+  rows,
+}: CaptureSourceOwnersOptions): void => {
+  const paragraphs = new Map<string, SourceParagraphOwner>();
+  for (const story of documentStories(document)) {
+    const tables = new Map<string, SourceTableOwner>();
+    const cells = new Map<string, SourceCellOwner>();
+    const lists = new Map<string, Map<number, SourceParagraphOwner>>();
+    for (const { paragraph, list, index } of storyParagraphs(
+      storyBody(document, story),
+    )) {
+      if (paragraph.paraId === undefined) continue;
+      const ancestors: SourceCellOwner[] = [];
+      for (const [depth, step] of list.entries()) {
+        if (step.kind !== "tableCell") continue;
+        const tableKey = JSON.stringify([list.slice(0, depth), step.block]);
+        let table = tables.get(tableKey);
+        if (table === undefined) {
+          table = { cells: [] };
+          tables.set(tableKey, table);
+        }
+        const sourceCellKey = JSON.stringify([tableKey, step.row, step.cell]);
+        let cell = cells.get(sourceCellKey);
+        if (cell === undefined) {
+          cell = { table, descendants: new Set() };
+          cells.set(sourceCellKey, cell);
+          table.cells.push(cell);
+        }
+        cell.descendants.add(paragraph.paraId);
+        ancestors.push(cell);
+      }
+      const listKey = JSON.stringify(list);
+      let siblings = lists.get(listKey);
+      if (siblings === undefined) {
+        siblings = new Map();
+        lists.set(listKey, siblings);
+      }
+      const owner = { ancestors, siblings, index, id: paragraph.paraId };
+      siblings.set(index, owner);
+      paragraphs.set(paragraph.paraId, owner);
+    }
+  }
+  for (const row of rows) {
+    const owner = paragraphs.get(row.id);
+    if (owner === undefined) continue;
+    SOURCE_OWNERS.set(row, owner);
+    const cell = owner.ancestors.at(-1);
+    if (cell !== undefined && row.table !== undefined) {
+      const sourceGeometry = {
+        row: row.table.rowIndex,
+        column: row.table.gridColumnIndex,
+        rowSpan: row.table.rowSpan,
+        columnSpan: row.table.columnSpan,
+      };
+      if (
+        cell.geometry !== undefined &&
+        JSON.stringify(cell.geometry) !== JSON.stringify(sourceGeometry)
+      )
+        panic(`Source cell geometry disagrees at ${row.id}.`);
+      cell.geometry = sourceGeometry;
+    }
+  }
+};
+
+const FOOTPRINT_KINDS = {
+  replaceInBlock: "addressed",
+  replaceRange: "addressed",
+  formatRange: "addressed",
+  commentOnRange: "addressed",
+  commentOnBlock: "addressed",
+  insertAfterBlock: "addressed",
+  insertBeforeBlock: "addressed",
+  replaceBlock: "addressed",
+  deleteBlock: "addressed",
+  splitBlock: "addressed",
+  mergeBlockWithNext: "paragraph-join",
+  setBlockParagraphProperties: "addressed",
+  insertTable: "addressed",
+  insertSignatureTable: "addressed",
+  insertTableRow: "none",
+  insertTableColumn: "none",
+  deleteTable: "table",
+  deleteTableRow: "row",
+  deleteTableColumn: "column",
+  mergeTableCells: "merge-cells",
+  splitTableCell: "cell",
+} as const satisfies Record<FolioDocumentOperationType, string>;
+
+const isFootprintOperation = (
+  type: string,
+): type is keyof typeof FOOTPRINT_KINDS => Object.hasOwn(FOOTPRINT_KINDS, type);
+
+type SourceOperationFootprintOptions = {
+  rows: readonly Row[];
+  operation: Operation;
+  /** A destination proof cannot classify a source group whose ancestry was not captured. */
+  requiredParagraphIds?: readonly string[];
+};
+/** Source IDs whose destination/quote can change, including nested cell descendants. */
+export const sourceOperationFootprint = ({
+  rows,
+  operation,
+  requiredParagraphIds = [],
+}: SourceOperationFootprintOptions):
+  | { type: "known"; ids: ReadonlySet<string> }
+  | { type: "unsupported"; reason: string } => {
+  if (!isFootprintOperation(operation.type))
+    return {
+      type: "unsupported",
+      reason: `Unclassified operation ${operation.type}`,
+    };
+  const kind = FOOTPRINT_KINDS[operation.type];
+  const range = operation["range"];
+  const blockId =
+    typeof range === "object" && range !== null && "blockId" in range
+      ? range.blockId
+      : operation["blockId"];
+  const ids = new Set<string>();
+  if (typeof blockId === "string") ids.add(blockId);
+  if (kind === "none") return { type: "known", ids: new Set() };
+  if (kind === "addressed") return { type: "known", ids };
+  const rowsById = new Map(rows.map((row) => [row.id, row]));
+  if (rowsById.size !== rows.length)
+    return {
+      type: "unsupported",
+      reason: "Source rows repeat a paragraph identity",
+    };
+  for (const id of requiredParagraphIds) {
+    const row = rowsById.get(id);
+    if (row === undefined || !SOURCE_OWNERS.has(row))
+      return {
+        type: "unsupported",
+        reason: `No captured ancestry for joined paragraph ${id}`,
+      };
+  }
+  const anchor =
+    typeof blockId === "string" ? rowsById.get(blockId) : undefined;
+  const owner = anchor === undefined ? undefined : SOURCE_OWNERS.get(anchor);
+  if (owner === undefined)
+    return {
+      type: "unsupported",
+      reason: `No captured source ownership for ${String(blockId)}`,
+    };
+  if (kind === "paragraph-join") {
+    const next = owner.siblings.get(owner.index + 1);
+    if (next === undefined)
+      return {
+        type: "unsupported",
+        reason: `No adjacent source paragraph after ${owner.id}`,
+      };
+    ids.add(next.id);
+    return { type: "known", ids };
+  }
+  const cell = owner.ancestors.at(-1);
+  if (cell === undefined || cell.geometry === undefined)
+    return {
+      type: "unsupported",
+      reason: `No captured cell geometry for ${owner.id}`,
+    };
+  if (kind === "cell") return { type: "known", ids: cell.descendants };
+  if (kind === "table")
+    return {
+      type: "known",
+      ids: new Set(
+        cell.table.cells.flatMap((source) => [...source.descendants]),
+      ),
+    };
+  if (kind !== "row" && kind !== "column" && kind !== "merge-cells") {
+    const unhandled: never = kind;
+    return panic(`Unknown source footprint ${String(unhandled)}`);
+  }
+  let rectangle = {
+    top: cell.geometry.row,
+    bottom: cell.geometry.row + 1,
+    left: cell.geometry.column,
+    right: cell.geometry.column + 1,
+  };
+  if (kind === "merge-cells") {
+    const endId = operation["endBlockId"];
+    const endRow = typeof endId === "string" ? rowsById.get(endId) : undefined;
+    const endCell =
+      endRow === undefined
+        ? undefined
+        : SOURCE_OWNERS.get(endRow)?.ancestors.at(-1);
+    if (
+      endId !== undefined &&
+      (endCell === undefined ||
+        endCell.table !== cell.table ||
+        endCell.geometry === undefined)
+    )
+      return {
+        type: "unsupported",
+        reason: `No matching source end cell ${String(endId)}`,
+      };
+    rectangle = mergeRectangle({
+      start: cell.geometry,
+      end: endCell?.geometry,
+      rowCount: operation["rowCount"],
+    });
+  }
+  for (const candidate of cell.table.cells) {
+    if (candidate.geometry === undefined) {
+      if ([...candidate.descendants].some((id) => rowsById.has(id)))
+        return {
+          type: "unsupported",
+          reason: "A readable source cell has no direct geometry anchor",
+        };
+      continue;
+    }
+    const candidateGeometry = candidate.geometry;
+    const rowOverlap =
+      candidateGeometry.row < rectangle.bottom &&
+      candidateGeometry.row + candidateGeometry.rowSpan > rectangle.top;
+    const columnOverlap =
+      candidateGeometry.column < rectangle.right &&
+      candidateGeometry.column + candidateGeometry.columnSpan > rectangle.left;
+    if (
+      (kind === "row" && rowOverlap) ||
+      (kind === "column" && columnOverlap) ||
+      (kind === "merge-cells" && rowOverlap && columnOverlap)
+    )
+      for (const id of candidate.descendants) ids.add(id);
+  }
+  return { type: "known", ids };
 };

@@ -7,7 +7,9 @@
  * directly or as a tracked change, on a body paragraph or one in a table
  * cell, then saves and reopens: every paragraph's formatting, and the
  * formatting each tracked property change records, reads the same in the
- * live model and in the reopened one.
+ * live model and in the reopened one. A case may follow the operation with a
+ * direct property edit of the same paragraph, which a property change the
+ * operation left pending then records as the paragraph's current properties.
  */
 
 import { describe, expect, mock, test } from "bun:test";
@@ -25,6 +27,7 @@ import * as patchAsRead from "../canonical/paragraphPatchAsRead";
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioDocumentOperation,
+  parseFolioDocumentOperationBatch,
 } from "../document-operations";
 import type {
   BlockContent,
@@ -92,27 +95,33 @@ const propertiesArbitrary: fc.Arbitrary<FolioAIBlockParagraphProperties> = fc
   .record(
     {
       spacing: fc.option(
-        fc.record(
-          {
-            spaceBefore: twips,
-            spaceAfter: twips,
-            lineSpacing: fc.integer({ min: 120, max: 720 }),
-            lineSpacingRule: fc.constantFrom("auto", "exact", "atLeast"),
-          },
-          { requiredKeys: [] },
-        ),
+        fc
+          .record(
+            {
+              spaceBefore: twips,
+              spaceAfter: twips,
+              lineSpacing: fc.integer({ min: 120, max: 720 }),
+              lineSpacingRule: fc.constantFrom("auto", "exact", "atLeast"),
+            },
+            { requiredKeys: [] },
+          )
+          // A present spacing cluster must state at least one property.
+          .filter((spacing) => Object.keys(spacing).length > 0),
         { nil: null },
       ),
       indentation: fc.option(
-        fc.record(
-          {
-            indentLeft: twips,
-            indentRight: twips,
-            indentFirstLine: fc.integer({ min: -720, max: 720 }),
-            hangingIndent: fc.boolean(),
-          },
-          { requiredKeys: [] },
-        ),
+        fc
+          .record(
+            {
+              indentLeft: twips,
+              indentRight: twips,
+              indentFirstLine: fc.integer({ min: -720, max: 720 }),
+              hangingIndent: fc.boolean(),
+            },
+            { requiredKeys: [] },
+          )
+          // A present indentation cluster must state at least one property.
+          .filter((indentation) => Object.keys(indentation).length > 0),
         { nil: null },
       ),
       alignment: fc.option(fc.constantFrom("start", "center", "end", "both"), {
@@ -130,6 +139,8 @@ type Draw = {
   mode: "direct" | "tracked-changes";
   first: FolioAIBlockParagraphProperties;
   second: FolioAIBlockParagraphProperties;
+  /** A direct property edit of the same paragraph that follows, if any. */
+  afterwards: FolioAIBlockParagraphProperties | null;
 };
 
 const drawArbitrary: fc.Arbitrary<Draw> = fc.record({
@@ -138,6 +149,7 @@ const drawArbitrary: fc.Arbitrary<Draw> = fc.record({
   mode: fc.constantFrom("direct", "tracked-changes"),
   first: propertiesArbitrary,
   second: propertiesArbitrary,
+  afterwards: fc.option(propertiesArbitrary, { nil: null }),
 });
 
 const operationOf = (draw: Draw, blockId: string): FolioDocumentOperation => {
@@ -213,16 +225,35 @@ const liveAndReopened = async (buffer: ArrayBuffer, draw: Draw) => {
     .blocks.find((candidate) => candidate.text === draw.target);
   if (block === undefined) throw new Error(`no block reads ${draw.target}`);
   // A refusal comes back as a skipped operation; anything thrown fails the law.
-  const applied =
+  const applies = (
+    operation: FolioDocumentOperation,
+    mode: Draw["mode"],
+  ): boolean =>
     live.applyDocumentOperations(
       {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        operations: [operationOf(draw, block.id)],
-        mode: draw.mode,
+        operations: [operation],
+        mode,
       },
       { undefinedReferences: "refuse" },
     ).applied.length === 1;
-  if (!applied) return null;
+  if (!applies(operationOf(draw, block.id), draw.mode)) return null;
+  // The paragraph the operation left under the id, edited directly; whether
+  // it applies or is refused, the law reads the document it leaves.
+  const { afterwards } = draw;
+  if (
+    afterwards !== null &&
+    live.snapshot().blocks.some((candidate) => candidate.id === block.id)
+  )
+    applies(
+      {
+        id: "afterwards",
+        type: "setBlockParagraphProperties",
+        blockId: block.id,
+        properties: afterwards,
+      },
+      "direct",
+    );
   const reopened = await open(await live.toBuffer());
   return {
     live: paragraphsOf(live.toDocument()),
@@ -247,9 +278,44 @@ const SPACED_MERGE: Draw = {
   mode: "tracked-changes",
   first: { spacing: { spaceBefore: 120, spaceAfter: 120 } },
   second: {},
+  afterwards: null,
+};
+
+/** A direct edit of a paragraph whose tracked property change is pending. */
+const DIRECT_AFTER_TRACKED: Draw = {
+  kind: "set",
+  target: "Second paragraph",
+  mode: "tracked-changes",
+  first: { alignment: "center" },
+  second: {},
+  afterwards: { spacing: { spaceBefore: 240 } },
 };
 
 describe("paragraph properties an operation sets", () => {
+  test(
+    "only draws requests accepted by the operation schema",
+    () => {
+      assertProperty(
+        fc.property(drawArbitrary, (draw) => {
+          // Splitting validates both property draws, even when the save law's
+          // operation only uses the first one.
+          expect(() =>
+            parseFolioDocumentOperationBatch({
+              version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+              operations: [operationOf({ ...draw, kind: "split" }, "00000001")],
+              mode: draw.mode,
+            }),
+          ).not.toThrow();
+        }),
+        {
+          id: "generated paragraph properties satisfy the operation schema",
+          numRuns: RUNS,
+        },
+      );
+    },
+    propertyTestTimeout(10_000),
+  );
+
   test(
     "read the same live and after save and reopen",
     async () => {
@@ -257,7 +323,7 @@ describe("paragraph properties an operation sets", () => {
       await assertProperty(law(buffer, { applied: 0 }), {
         id: "paragraph properties read the same live and reopened",
         numRuns: RUNS,
-        examples: [[SPACED_MERGE]],
+        examples: [[SPACED_MERGE], [DIRECT_AFTER_TRACKED]],
       });
       // Most draws of a fixed sample reach the law: the reviewer applies them.
       const tally = { applied: 0 };

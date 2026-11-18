@@ -5,8 +5,11 @@ import { readdir, readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 
+import { ZipArchive } from "@stll/docx-core/zip";
+
 import {
   CONTRACT_PARAGRAPHS,
+  fourPageContract,
   makeTempDir,
   writeDocx,
 } from "./__tests__/fixtures";
@@ -143,4 +146,150 @@ describe("folio render", () => {
     },
     RENDER_TIMEOUT_MS,
   );
+
+  test(
+    "renders a page range, and refuses ranges and outputs it cannot write",
+    async () => {
+      file = await writeDocx(dir, "long.docx", fourPageContract());
+      const range = await render(
+        "-o",
+        path.join(dir, "range.pdf"),
+        "--pages",
+        "2-3",
+      );
+      expect(range.exit).toBe(0);
+      expect(dataOf(range.stdout)).toMatchObject({
+        format: "pdf",
+        pageCount: 2,
+      });
+
+      const html = await render(
+        "-o",
+        path.join(dir, "pages"),
+        "--format",
+        "html",
+        "--pages",
+        "1,3",
+      );
+      expect(html.exit).toBe(0);
+      expect(dataOf(html.stdout)).toMatchObject({
+        format: "html",
+        pageCount: 2,
+      });
+
+      const cases: string[][] = [
+        ["-o", path.join(dir, "x.pdf"), "--pages", "3-1"],
+        ["-o", path.join(dir, "x.pdf"), "--pages", "two"],
+        ["-o", path.join(dir, "x.pdf"), "--pages", "1", "--page", "1"],
+        ["-o", path.join(dir, "x.png"), "--pages", "1-2"],
+        ["-o", path.join(dir, "x-{page}.pdf")],
+        ["-o", path.join(dir, "x.pdf"), "--format", "png"],
+        ["-o", path.join(dir, "x"), "--format", "svg"],
+      ];
+      for (const args of cases) {
+        const result = await render(...args);
+        expect([args, envelopeOf(result.stdout)["error"]]).toEqual([
+          args,
+          expect.objectContaining({ code: "usage_error" }),
+        ]);
+      }
+    },
+    RENDER_TIMEOUT_MS,
+  );
+
+  test(
+    "shows the first-page header on page 1 and the default header after it",
+    async () => {
+      file = path.join(dir, "titled.docx");
+      await writeFile(file, await titledDocument());
+      const result = await render(
+        "-o",
+        path.join(dir, "titled.html"),
+        "--pages",
+        "1-2",
+      );
+      expect(result.exit).toBe(0);
+      const pages = (await readFile(path.join(dir, "titled.html"), "utf8"))
+        .split('class="layout-page"')
+        .slice(1);
+      expect(pages).toHaveLength(2);
+      expect(pages[0]).toContain("First page header");
+      expect(pages[0]).not.toContain("Running header");
+      expect(pages[1]).toContain("Running header");
+      expect(pages[1]).not.toContain("First page header");
+    },
+    RENDER_TIMEOUT_MS,
+  );
+
+  test.skipIf(!chromiumAvailable())(
+    "writes one PNG per page when -o carries {page}",
+    async () => {
+      file = await writeDocx(dir, "long.docx", fourPageContract());
+      const result = await render(
+        "-o",
+        path.join(dir, "shot-{page}.png"),
+        "--pages",
+        "1,3",
+        "--scale",
+        "1",
+      );
+      expect(result.exit).toBe(0);
+      expect(dataOf(result.stdout)).toMatchObject({
+        format: "png",
+        pageCount: 2,
+        outputs: [{ page: 1 }, { page: 3 }],
+      });
+      for (const page of [1, 3]) {
+        const png = await readFile(path.join(dir, `shot-${String(page)}.png`));
+        expect([...png.subarray(1, 4)]).toEqual([0x50, 0x4e, 0x47]);
+      }
+    },
+    RENDER_TIMEOUT_MS,
+  );
 });
+
+const W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const R_NS =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const RELS_NS = "http://schemas.openxmlformats.org/package/2006/relationships";
+const WML = "application/vnd.openxmlformats-officedocument.wordprocessingml";
+
+/** Two pages under a section with a distinct first-page header (`w:titlePg`). */
+const titledDocument = async (): Promise<Uint8Array> => {
+  const zip = new ZipArchive();
+  const header = (text: string): string =>
+    `<w:hdr xmlns:w="${W_NS}"><w:p><w:r><w:t>${text}</w:t></w:r></w:p></w:hdr>`;
+  zip.set(
+    "[Content_Types].xml",
+    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+      '<Default Extension="xml" ContentType="application/xml"/>' +
+      `<Override PartName="/word/document.xml" ContentType="${WML}.document.main+xml"/>` +
+      `<Override PartName="/word/first.xml" ContentType="${WML}.header+xml"/>` +
+      `<Override PartName="/word/default.xml" ContentType="${WML}.header+xml"/>` +
+      "</Types>",
+  );
+  zip.set(
+    "_rels/.rels",
+    `<Relationships xmlns="${RELS_NS}"><Relationship Id="rId1" Type="${R_NS}/officeDocument" Target="word/document.xml"/></Relationships>`,
+  );
+  zip.set(
+    "word/_rels/document.xml.rels",
+    `<Relationships xmlns="${RELS_NS}">` +
+      `<Relationship Id="rIdFirst" Type="${R_NS}/header" Target="first.xml"/>` +
+      `<Relationship Id="rIdDefault" Type="${R_NS}/header" Target="default.xml"/>` +
+      "</Relationships>",
+  );
+  zip.set("word/first.xml", header("First page header"));
+  zip.set("word/default.xml", header("Running header"));
+  zip.set(
+    "word/document.xml",
+    `<w:document xmlns:w="${W_NS}" xmlns:r="${R_NS}"><w:body>` +
+      "<w:p><w:r><w:t>Cover</w:t></w:r></w:p>" +
+      '<w:p><w:r><w:br w:type="page"/></w:r><w:r><w:t>Second page</w:t></w:r></w:p>' +
+      '<w:sectPr><w:headerReference w:type="first" r:id="rIdFirst"/><w:headerReference w:type="default" r:id="rIdDefault"/>' +
+      '<w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="708" w:footer="708" w:gutter="0"/><w:titlePg/></w:sectPr>' +
+      "</w:body></w:document>",
+  );
+  return await zip.generate({ compression: "store" });
+};

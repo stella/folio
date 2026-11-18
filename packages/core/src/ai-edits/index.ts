@@ -81,6 +81,7 @@ export type {
   FolioAIBlockTableLocation,
   FolioAIComment,
   FolioAIEditAppliedOperation,
+  FolioAIEditParagraphIdentity,
   FolioAIEditApplyMode,
   FolioAIEditApplyResult,
   FolioAIEditNormalization,

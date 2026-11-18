@@ -43,8 +43,8 @@ import { setContentControl } from "./contentControls";
  *
  * | operation           | inverse                                                   |
  * | ------------------- | --------------------------------------------------------- |
- * | `insertText`        | `deleteRange` (its `join` merges a run the text cut)      |
- * | `insertContent`     | `deleteRange` (its `join` merges the records the cut left) |
+ * | `insertText`        | `deleteRange`, or `replaceInline` for source-cut provenance |
+ * | `insertContent`     | `deleteRange`, or `replaceInline` for inserted range boundaries |
  * | `deleteRange`       | `insertContent`, or `replaceInline` for noninsertable source |
  * | `splitInline`       | `joinInline`                                              |
  * | `joinInline`        | `splitInline`                                             |
@@ -82,6 +82,7 @@ import {
   copyOriginBoundaryKeysInBlocks,
   hasValidCopyOriginAncestors,
 } from "./copyOriginAncestors";
+import { keptDeletionBoundaries } from "./deletionBoundaries";
 import { combineEdits, type DocumentEdit } from "./edits";
 import { equalForStaleness, structurallyEqual } from "./equality";
 import { resolveGap, type ZeroWidthDefault } from "./gaps";
@@ -137,12 +138,19 @@ import {
   zeroWidthLeavesAt,
 } from "./leaves";
 import { cloneModel } from "./modelClone";
-import { noteContentWithAutomaticMark, removedNoteStories } from "./noteMarks";
+import { replaceNoteParts } from "./noteLifecycle";
+import {
+  automaticNoteMarkRuns,
+  noteContentWithAutomaticMark,
+  removedNoteStories,
+} from "./noteMarks";
 import { applyNumberingSectionOp } from "./numberingSections";
 import { paragraphLength } from "./offsets";
 import { applyPackageResourcesOp } from "./packageResources";
 import { findStoryParagraph } from "./paragraphLocator";
 import {
+  authoredParagraphFormatting,
+  changesRecordingAuthored,
   getParagraphPropertySnapshot,
   registerParagraphPropertySnapshot,
   transferParagraphPropertySnapshot,
@@ -155,7 +163,7 @@ import {
   DocumentOpRefusal,
   type DocumentOpRefusalReason,
 } from "./refusal";
-import { resolveRevision } from "./resolve";
+import { type ApplyOps, resolveRevision } from "./resolve";
 import {
   foldedParagraphPropertyChange,
   isRemovedRevisionNode,
@@ -212,6 +220,7 @@ import {
   type SplitHalf,
   type SplitInlineOp,
   type SplitParagraphFields,
+  type StoryParts,
   type TextPosition,
   type TouchedBlocks,
 } from "./types";
@@ -782,6 +791,11 @@ const inserted = (options: InsertedOptions): Applied => {
           ),
         );
       }
+      // Range boundaries belong to this insertion. Ordinary deletion keeps
+      // endpoints of balanced ranges, including a pair this insertion just
+      // completed; undo must restore the source, even if it was unpaired.
+      if (rangeBoundariesIn(inverse.removed.content).length > 0)
+        return Result.ok([contentRestoring(story, result, location.paragraph)]);
       const deletion: DeleteRangeOp = {
         type: DOCUMENT_OP_TYPES.DELETE_RANGE,
         from: positionAt(story, result, start),
@@ -812,14 +826,14 @@ const insertText = (document: Document, op: InsertTextOp): Applied => {
   if (located.isErr()) {
     return Result.err(located.error);
   }
-  const { location } = located.value;
-  const { offset } = op.at;
-  const content = insertTextInContent(
-    location.paragraph.content,
-    offset,
-    op.text,
-    op.runProps,
-  );
+  const { location, gap } = located.value;
+  const { offset } = gap;
+  const content = insertTextInContent({
+    items: location.paragraph.content,
+    gap,
+    text: op.text,
+    runProps: op.runProps,
+  });
   if (content === undefined) {
     return refuse(
       op,
@@ -827,11 +841,8 @@ const insertText = (document: Document, op: InsertTextOp): Applied => {
       `${offset} in ${op.at.blockId} is inside tracked-removed content.`,
     );
   }
-  // Every zero-width leaf at the offset precedes the first inserted character.
-  const start = {
-    offset,
-    zeroWidthBefore: zeroWidthLeavesAt(content, offset).length,
-  };
+  // The text went in at the gap: the zero-width leaves it names precede it.
+  const start = gap;
   const end = { offset: offset + op.text.length, zeroWidthBefore: 0 };
   return inserted({
     document,
@@ -1021,6 +1032,32 @@ const automaticNoteMarkBetween = (
   );
 };
 
+/**
+ * `items` without the leaves between `from` and `to`, except the `kept` leaves
+ * inside that range, which stay where they are. Deletes right to left so each
+ * cut's gaps still name the original positions.
+ */
+const deletedAround = (
+  items: readonly ParagraphContent[],
+  from: Gap,
+  to: Gap,
+  kept: readonly { before: Gap; after: Gap }[],
+): ParagraphContent[] => {
+  const cuts: [Gap, Gap][] = [];
+  let start = from;
+  for (const leaf of kept) {
+    cuts.push([start, leaf.before]);
+    start = leaf.after;
+  }
+  cuts.push([start, to]);
+  let content = [...items];
+  for (const [cutFrom, cutTo] of cuts.toReversed()) {
+    if (compareGaps(cutFrom, cutTo) < 0)
+      content = deleteBetween(content, cutFrom, cutTo).content;
+  }
+  return content;
+};
+
 const deleteRange = (document: Document, op: DeleteRangeOp): Applied => {
   const join = op.join ?? 0;
   if (!isCount(join)) {
@@ -1069,6 +1106,18 @@ const deleteRange = (document: Document, op: DeleteRangeOp): Applied => {
     return unchanged(document);
   }
   const protectedMark = automaticNoteMarkBetween(story, paragraph, from, to);
+  // One end of a comment or move range the deletion covers, whose other end
+  // stands outside it, stays where it is: the range shrinks to the
+  // deletion's edge instead of losing an end.
+  const keptBoundaries =
+    op.revision === undefined && join === 0
+      ? keptDeletionBoundaries({
+          body: storyBody(document, story),
+          paragraph,
+          from,
+          to,
+        })
+      : [];
   let content = remaining;
   if (protectedMark !== undefined) {
     // A leaf counts when the range covers any part of it, including part of a text leaf.
@@ -1086,12 +1135,16 @@ const deleteRange = (document: Document, op: DeleteRangeOp): Applied => {
         "The range contains only the note story's automatic marker.",
       );
     }
-    const afterRemoved = deleteBetween(
-      paragraph.content,
-      protectedMark.after,
-      to,
-    ).content;
-    content = deleteBetween(afterRemoved, from, protectedMark.before).content;
+  }
+  const kept = [
+    ...keptBoundaries,
+    ...(protectedMark === undefined ? [] : [protectedMark]),
+  ].toSorted((left, right) => compareGaps(left.before, right.before));
+  if (kept.length > 0) {
+    content = deletedAround(paragraph.content, from, to, kept);
+    if (structurallyEqual(content, paragraph.content)) {
+      return unchanged(document);
+    }
   }
   if (op.revision !== undefined) {
     const wrapped = wrappedContent(op, {
@@ -1144,7 +1197,7 @@ const deleteRange = (document: Document, op: DeleteRangeOp): Applied => {
     },
     (result) => {
       if (
-        protectedMark !== undefined ||
+        kept.length > 0 ||
         cutHasResolutionProvenance({
           content: paragraph.content,
           gaps: [from, to],
@@ -1626,9 +1679,35 @@ const setParagraphProps = (
     ),
   });
   if (revision !== undefined) {
+    // The change records what the paragraph now states as its current
+    // properties, as a reopened file reads them.
     next.propertyChanges = [
-      foldedParagraphPropertyChange({ paragraph, formatting, stamp: revision }),
+      foldedParagraphPropertyChange({
+        paragraph,
+        formatting: authoredParagraphFormatting(next),
+        stamp: revision,
+      }),
     ];
+    return editOne(
+      {
+        document,
+        op,
+        story: op.story,
+        at: located.value,
+        paragraph: next,
+        newIds: undefined,
+      },
+      (result) => Result.ok([reviewRestoring(op.story, result, paragraph)]),
+    );
+  }
+  // Edited directly, the paragraph keeps its pending property changes, each
+  // now recording what the paragraph states; undoing restores them as they
+  // were.
+  if (paragraph.propertyChanges !== undefined) {
+    next.propertyChanges = changesRecordingAuthored(
+      paragraph.propertyChanges,
+      next,
+    );
     return editOne(
       {
         document,
@@ -1854,6 +1933,8 @@ const splitBlock = (document: Document, op: SplitBlockOp): Applied => {
     paraId: op.newBlockId,
     content: [],
   };
+  if (finalizeParagraphFormatting(made.formatting) === undefined)
+    delete made.formatting;
   // The paragraph's own fields stay with the half keeping its id; the mark, the
   // section break and the pending property changes end the second half.
   let first: Paragraph;
@@ -2495,15 +2576,19 @@ const setParagraphReview = (
   if (structurallyEqual(next, paragraph)) {
     return unchanged(document);
   }
-  if (
-    review.pPrMark !== undefined &&
-    !structurallyEqual(review.pPrMark, paragraph.pPrMark) &&
+  type TerminalMarkTransitionOptions = {
+    from: Paragraph["pPrMark"];
+    to: Paragraph["pPrMark"];
+  };
+  const refusesMarkTransition = ({ from, to }: TerminalMarkTransitionOptions) =>
+    to !== undefined &&
+    !structurallyEqual(to, from) &&
     endsItsContainer(storyBody(document, op.story), located.value) &&
     !(
       located.value.list.some((step) => step.kind === "tableCell") &&
-      (review.pPrMark.kind === "ins" || review.pPrMark.kind === "del")
-    )
-  ) {
+      (to.kind === "ins" || to.kind === "del")
+    );
+  if (refusesMarkTransition({ from: paragraph.pPrMark, to: review.pPrMark })) {
     return refuse(
       op,
       DOCUMENT_OP_REFUSAL_REASONS.CONTAINER_FINAL_MARK,
@@ -2536,7 +2621,19 @@ const setParagraphReview = (
     );
   return Result.ok({
     document: replaced.value,
-    inverse: [reviewRestoring(op.story, next, paragraph)],
+    inverse: [
+      // Imported terminal marks may be resolved even when a new mark could
+      // not be set there. Restore that exact source snapshot, with a whole
+      // paragraph stale check, rather than replaying a prohibited new set.
+      refusesMarkTransition({ from: next.pPrMark, to: paragraph.pPrMark })
+        ? {
+            type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+            story: op.story,
+            expected: [next],
+            blocks: [paragraph],
+          }
+        : reviewRestoring(op.story, next, paragraph),
+    ],
     touched: touchedBetween([paragraph], [next]),
   });
 };
@@ -2566,13 +2663,12 @@ const replaceInline = (document: Document, op: ReplaceInlineOp): Applied => {
       ({ node }) => node.type === "noteMarker" && node.kind === noteKind,
     )
   ) {
-    const carrier = paragraph.content.find((node) =>
-      leafSpans([node]).some(
-        ({ node: leaf }) =>
-          leaf.type === "noteMarker" && leaf.kind === noteKind,
+    const markers = automaticNoteMarkRuns(paragraph.content).filter((run) =>
+      run.content.some(
+        (node) => node.type === "noteMarker" && node.kind === noteKind,
       ),
     );
-    if (carrier !== undefined) content = [carrier, ...content];
+    content = [...markers, ...content];
   }
   if (holdsEmptyRecord(content)) {
     return refuse(
@@ -2634,10 +2730,26 @@ const replaceInline = (document: Document, op: ReplaceInlineOp): Applied => {
   });
 };
 
-const editNote = (
-  document: Document,
-  op: AddNoteOp | RemoveNoteOp,
-): Applied => {
+/**
+ * A note list with a new note before the first note of a greater id: notes
+ * added concurrently take the same places whichever is added first.
+ */
+const withNoteById = <Note extends { id: number }>(
+  notes: readonly Note[] | undefined,
+  note: Note,
+): Note[] => {
+  const list = [...(notes ?? [])];
+  const at = list.findIndex(({ id }) => id > note.id);
+  list.splice(at < 0 ? list.length : at, 0, note);
+  return list;
+};
+
+type EditNoteOptions = {
+  document: Document;
+  op: AddNoteOp | RemoveNoteOp;
+  applyOps: ApplyOps;
+};
+const editNote = ({ document, op, applyOps }: EditNoteOptions): Applied => {
   const kind =
     op.type === DOCUMENT_OP_TYPES.ADD_NOTE ? op.note.type : op.story.kind;
   const id = op.type === DOCUMENT_OP_TYPES.ADD_NOTE ? op.note.id : op.story.id;
@@ -2693,14 +2805,14 @@ const editNote = (
             ...document,
             package: {
               ...document.package,
-              footnotes: [...(document.package.footnotes ?? []), note],
+              footnotes: withNoteById(document.package.footnotes, note),
             },
           }
         : {
             ...document,
             package: {
               ...document.package,
-              endnotes: [...(document.package.endnotes ?? []), note],
+              endnotes: withNoteById(document.package.endnotes, note),
             },
           };
     const valid = validateOpsDocument(withNote);
@@ -2816,7 +2928,13 @@ const editNote = (
               ) ?? [],
           },
         };
-  return storyLifecycleEdit(document, next, op);
+  const cleanup = replaceNoteParts({
+    document: removed.value.document,
+    parts: next.package,
+    op,
+    applyOps,
+  });
+  return cleanup.map((edit) => combineEdits(document, [removed.value, edit]));
 };
 
 /** Direct text edits own the lifecycle of note bodies whose last reference they remove. */
@@ -2849,14 +2967,22 @@ const withoutOrphanedNotes = (before: Document, after: Document): Document => {
   };
 };
 
-const dispatchCore = (document: Document, op: DocumentOp): Applied => {
+type OperationExecutionPurpose = "apply" | "inspect-inverse";
+type DispatchOptions = {
+  document: Document;
+  op: DocumentOp;
+  purpose: OperationExecutionPurpose;
+};
+const dispatchCore = ({ document, op, purpose }: DispatchOptions): Applied => {
+  const applyOps = (current: Document, ops: readonly DocumentOp[]) =>
+    applyDocumentOpsForPurpose({ document: current, ops, purpose });
   switch (op.type) {
     case DOCUMENT_OP_TYPES.CREATE_COMMENT:
     case DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT:
     case DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION:
     case DOCUMENT_OP_TYPES.DELETE_COMMENT:
     case DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE:
-      return applyCommentOp(document, op, applyDocumentOps);
+      return applyCommentOp(document, op, applyOps);
     case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
     case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
     case DOCUMENT_OP_TYPES.SET_SECTION_PROPS:
@@ -2864,11 +2990,11 @@ const dispatchCore = (document: Document, op: DocumentOp): Applied => {
       return applyStoryLifecycle(document, op);
     case DOCUMENT_OP_TYPES.ADD_NOTE:
     case DOCUMENT_OP_TYPES.REMOVE_NOTE:
-      return editNote(document, op);
+      return editNote({ document, op, applyOps });
     case DOCUMENT_OP_TYPES.DELETE_BLOCKS:
-      return deleteBlocks({ document, op, applyOps: applyDocumentOps });
+      return deleteBlocks({ document, op, applyOps });
     case DOCUMENT_OP_TYPES.INSERT_BLOCKS:
-      return insertBlocks({ document, op, applyOps: applyDocumentOps });
+      return insertBlocks({ document, op, applyOps });
     case DOCUMENT_OP_TYPES.INSERT_TEXT:
       return insertText(document, op);
     case DOCUMENT_OP_TYPES.INSERT_CONTENT:
@@ -2894,7 +3020,7 @@ const dispatchCore = (document: Document, op: DocumentOp): Applied => {
     case DOCUMENT_OP_TYPES.REPLACE_INLINE:
       return replaceInline(document, op);
     case DOCUMENT_OP_TYPES.RESOLVE_REVISION:
-      return resolveRevision(document, op, applyDocumentOps);
+      return resolveRevision(document, op, applyOps);
     case DOCUMENT_OP_TYPES.SET_REVISION_INFO:
       return setRevisionInfo(document, op);
     case DOCUMENT_OP_TYPES.INSERT_TABLE:
@@ -2935,8 +3061,8 @@ const dispatchCore = (document: Document, op: DocumentOp): Applied => {
  * Keeping this in dispatch makes the lifecycle edit part of the operation's
  * result, so its inverse and touched-story contract include the removed body.
  */
-const dispatch = (document: Document, op: DocumentOp): Applied => {
-  const applied = dispatchCore(document, op);
+const dispatch = ({ document, op, purpose }: DispatchOptions): Applied => {
+  const applied = dispatchCore({ document, op, purpose });
   if (applied.isErr()) return applied;
   if (
     op.type === DOCUMENT_OP_TYPES.ADD_NOTE ||
@@ -2944,15 +3070,103 @@ const dispatch = (document: Document, op: DocumentOp): Applied => {
     op.type === DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS
   )
     return applied;
-  const inverseCleanup = withoutOrphanedNotes(applied.value.document, document);
-  if ("revision" in op && op.revision !== undefined) {
-    if (inverseCleanup === document) return applied;
-    return storyLifecycleEdit(document, applied.value.document, op, true);
+  const cleaned =
+    "revision" in op && op.revision !== undefined
+      ? applied.value.document
+      : withoutOrphanedNotes(document, applied.value.document);
+  let edit = applied.value;
+  if (cleaned !== edit.document) {
+    const cleanup = replaceNoteParts({
+      document: edit.document,
+      parts: cleaned.package,
+      op,
+      applyOps: (current, ops) =>
+        applyDocumentOpsForPurpose({ document: current, ops, purpose }),
+    });
+    if (cleanup.isErr()) return cleanup;
+    edit = combineEdits(document, [edit, cleanup.value]);
   }
-  const cleaned = withoutOrphanedNotes(document, applied.value.document);
-  if (cleaned === applied.value.document && inverseCleanup === document)
-    return applied;
-  return storyLifecycleEdit(document, cleaned, op, true);
+  // Inspection applies ordinary validation and cleanup, but never inspects
+  // the inverse it just generated (reference swaps would otherwise recurse).
+  if (purpose === "inspect-inverse") return Result.ok(edit);
+  const inverseCleanup = withoutOrphanedNotes(applied.value.document, document);
+  if (inverseCleanup === document) return Result.ok(edit);
+
+  // Adding the first reference to an authored orphan note must not let the
+  // ordinary inverse delete its pre-existing declaration. Replay only this
+  // uncommon case, retaining every inverse owned by the primary edit.
+  const undone = applyDocumentOpsForPurpose({
+    document: edit.document,
+    ops: edit.inverse,
+    purpose: "inspect-inverse",
+  });
+  if (undone.isErr())
+    return panic(
+      "The primary edit's inverse must apply before note repair.",
+      undone.error,
+    );
+  const owned = {
+    footnotes: null,
+    endnotes: null,
+    body: { comments: null },
+  } as const satisfies StoryParts;
+  const original = captureStoryParts(document, owned);
+  const relationships = [...(document.package.relationships ?? [])];
+  const matchesSource = (candidate: Document) =>
+    structurallyEqual(captureStoryParts(candidate, owned), original) &&
+    Object.hasOwn(candidate.package, "relationships") ===
+      Object.hasOwn(document.package, "relationships") &&
+    (candidate.package.relationships === undefined) ===
+      (document.package.relationships === undefined) &&
+    structurallyEqual(
+      [...(candidate.package.relationships ?? [])],
+      relationships,
+    );
+  if (matchesSource(undone.value.document)) return Result.ok(edit);
+  const pruning = replaceNoteParts({
+    document,
+    parts: inverseCleanup.package,
+    op,
+    applyOps: (current, ops) =>
+      applyDocumentOpsForPurpose({
+        document: current,
+        ops,
+        purpose: "inspect-inverse",
+      }),
+  });
+  if (pruning.isErr())
+    return panic(
+      "Source note pruning must apply before inverse repair.",
+      pruning.error,
+    );
+  for (const key of ["footnotes", "endnotes"] as const) {
+    const field = { [key]: null };
+    if (
+      !structurallyEqual(
+        captureStoryParts(undone.value.document, field),
+        captureStoryParts(pruning.value.document, field),
+      )
+    )
+      return panic("Note repair may only restore inverse-pruned declarations.");
+  }
+  const repaired = applyDocumentOpsForPurpose({
+    document: undone.value.document,
+    ops: pruning.value.inverse,
+    purpose: "inspect-inverse",
+  });
+  if (repaired.isErr())
+    return panic(
+      "The source note repair must meet the primary inverse.",
+      repaired.error,
+    );
+  if (!matchesSource(repaired.value.document))
+    return panic(
+      "Note repair must restore its source declarations and comment state.",
+    );
+  return Result.ok({
+    ...edit,
+    inverse: [...edit.inverse, ...pruning.value.inverse],
+  });
 };
 
 /** The stamp of a tracked operation; `undefined` for a direct one. */
@@ -3053,11 +3267,16 @@ const preserveParagraphPropertySnapshots = (options: {
     transferParagraphPropertySnapshot({ source, target });
 };
 
-/** Apply one operation to a document that meets the seed contract. */
-export const applyDocumentOp = (
-  document: Document,
-  input: DocumentOp,
-): Result<AppliedDocumentOp, DocumentOpRefusal> => {
+type ApplyDocumentOpOptions = {
+  document: Document;
+  input: DocumentOp;
+  purpose: OperationExecutionPurpose;
+};
+const applyDocumentOpForPurpose = ({
+  document,
+  input,
+  purpose,
+}: ApplyDocumentOpOptions): Result<AppliedDocumentOp, DocumentOpRefusal> => {
   const restored = restoreDocumentOp(input);
   if (restored.isErr()) return restored;
   const op = restored.value;
@@ -3107,7 +3326,7 @@ export const applyDocumentOp = (
   if (badStamp !== undefined) {
     return Result.err(badStamp);
   }
-  const applied = dispatch(document, op);
+  const applied = dispatch({ document, op, purpose });
   if (applied.isErr()) {
     return Result.err(applied.error);
   }
@@ -3186,6 +3405,13 @@ export const applyDocumentOp = (
   });
 };
 
+/** Apply one operation to a document that meets the seed contract. */
+export const applyDocumentOp = (
+  document: Document,
+  input: DocumentOp,
+): Result<AppliedDocumentOp, DocumentOpRefusal> =>
+  applyDocumentOpForPurpose({ document, input, purpose: "apply" });
+
 /** Apply a journal envelope only when its schema matches this reader. */
 export const applyDocumentOpEnvelope = (
   document: Document,
@@ -3237,20 +3463,25 @@ export const inverseMeetingDocument = (
   return rebased;
 };
 
-/**
- * Apply operations in order, atomically: the first refusal is returned and
- * the document is unchanged. The inverse undoes the whole list, and
- * `revisions` lists each operation's in turn.
- */
-export const applyDocumentOps = (
-  document: Document,
-  ops: readonly DocumentOp[],
-): Result<AppliedDocumentOp, DocumentOpRefusal> => {
+type ApplyDocumentOpsOptions = {
+  document: Document;
+  ops: readonly DocumentOp[];
+  purpose: OperationExecutionPurpose;
+};
+const applyDocumentOpsForPurpose = ({
+  document,
+  ops,
+  purpose,
+}: ApplyDocumentOpsOptions): Result<AppliedDocumentOp, DocumentOpRefusal> => {
   let current = document;
   const edits: DocumentEdit[] = [];
   const revisions: number[] = [];
   for (const op of ops) {
-    const applied = applyDocumentOp(current, op);
+    const applied = applyDocumentOpForPurpose({
+      document: current,
+      input: op,
+      purpose,
+    });
     if (applied.isErr()) {
       return applied;
     }
@@ -3260,3 +3491,14 @@ export const applyDocumentOps = (
   }
   return Result.ok({ ...combineEdits(document, edits), revisions });
 };
+
+/**
+ * Apply operations in order, atomically: the first refusal is returned and
+ * the document is unchanged. The inverse undoes the whole list, and
+ * `revisions` lists each operation's in turn.
+ */
+export const applyDocumentOps = (
+  document: Document,
+  ops: readonly DocumentOp[],
+): Result<AppliedDocumentOp, DocumentOpRefusal> =>
+  applyDocumentOpsForPurpose({ document, ops, purpose: "apply" });

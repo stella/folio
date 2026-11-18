@@ -11,6 +11,7 @@ import type { Document, ParagraphContent } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { IDENTITY_SPACES, identityKeysIn } from "../ids";
 import { childNodes, type InlineNode, rebuildNode } from "../leaves";
+import { paragraphLength } from "../offsets";
 import { rangeBoundariesIn } from "../rangeBoundaries";
 import { isTrackedWrapper } from "../review";
 import type { DocumentOp } from "../types";
@@ -358,184 +359,234 @@ test("batch rejection leaves a marker outside a foreign insertion when both sour
   });
 });
 
-test("directional source edges preserve separately floated bookmarks through interior rejections", () => {
-  assertProperty(
-    fc.property(
-      fc.integer({ min: 1, max: 3 }),
-      fc.constantFrom("a", "漢"),
-      (interiorInsertions, authoredText) => {
-        const firstLink = {
-          type: "hyperlink",
-          rId: "rId1",
-          href: "https://example.org/first",
-          children: [
+test.each([false, true])(
+  "directional source edges preserve separately floated bookmarks through interior rejections (mirrored: %s)",
+  (mirrored) => {
+    assertProperty(
+      fc.property(
+        fc.integer({ min: 1, max: 3 }),
+        fc.constantFrom("a", "漢"),
+        (interiorInsertions, authoredText) => {
+          const firstLink = {
+            type: "hyperlink",
+            rId: "rId1",
+            href: "https://example.org/first",
+            children: [
+              {
+                type: "run",
+                content: [
+                  { type: "tab" },
+                  { type: "tab" },
+                  { type: "text", text: authoredText },
+                ],
+              },
+              { type: "bookmarkEnd", id: 8 },
+            ],
+          } satisfies ParagraphContent;
+          const secondLink = {
+            type: "hyperlink",
+            rId: "rId2",
+            href: "https://example.org/second",
+            children: [{ type: "run", content: [{ type: "text", text: "z" }] }],
+          } satisfies ParagraphContent;
+          const source: Document = {
+            package: {
+              document: {
+                content: [
+                  {
+                    type: "paragraph",
+                    paraId: "00000001",
+                    content: mirrored
+                      ? [
+                          secondLink,
+                          {
+                            ...firstLink,
+                            children: [
+                              { type: "bookmarkStart", id: 8, name: "_Ref8" },
+                              {
+                                type: "run",
+                                content: [
+                                  { type: "text", text: authoredText },
+                                  { type: "tab" },
+                                  { type: "tab" },
+                                ],
+                              },
+                            ],
+                          },
+                        ]
+                      : [firstLink, secondLink],
+                  },
+                ],
+              },
+            },
+          };
+          const operations = [
             {
-              type: "run",
-              content: [
-                { type: "tab" },
-                { type: "tab" },
-                { type: "text", text: authoredText },
-              ],
+              type: "insertText",
+              at: { story: "main", blockId: "00000001", offset: 2 },
+              text: "xxxx",
+              runProps: {},
+              revision: { id: 10, author: "C", date: FIRST_DATE },
+              newIds: { revision: [100, 101, 102, 103] },
             },
-            { type: "bookmarkEnd", id: 8 },
-          ],
-        } satisfies ParagraphContent;
-        const secondLink = {
-          type: "hyperlink",
-          rId: "rId2",
-          href: "https://example.org/second",
-          children: [{ type: "run", content: [{ type: "text", text: "z" }] }],
-        } satisfies ParagraphContent;
-        const source: Document = {
-          package: {
-            document: {
-              content: [
-                {
-                  type: "paragraph",
-                  paraId: "00000001",
-                  content: [firstLink, secondLink],
-                },
-              ],
+            {
+              type: "insertContent",
+              at: { story: "main", blockId: "00000001", offset: 3 },
+              slice: {
+                content: [{ type: "bookmarkStart", id: 1, name: "_Ref1" }],
+                openStart: 0,
+                openEnd: 0,
+              },
+              revision: { id: 11, author: "C", date: SECOND_DATE },
+              newIds: { revision: [200, 201, 202, 203, 204, 205] },
             },
-          },
-        };
-        const operations = [
-          {
-            type: "insertText",
-            at: { story: "main", blockId: "00000001", offset: 2 },
-            text: "xxxx",
-            runProps: {},
-            revision: { id: 10, author: "C", date: FIRST_DATE },
-            newIds: { revision: [100, 101, 102, 103] },
-          },
-          {
-            type: "insertContent",
-            at: { story: "main", blockId: "00000001", offset: 3 },
-            slice: {
-              content: [{ type: "bookmarkStart", id: 1, name: "_Ref1" }],
-              openStart: 0,
-              openEnd: 0,
+            {
+              type: "insertContent",
+              at: { story: "main", blockId: "00000001", offset: 4 },
+              slice: {
+                content: [{ type: "bookmarkEnd", id: 1 }],
+                openStart: 0,
+                openEnd: 0,
+              },
+              revision: { id: 12, author: "C", date: THIRD_DATE },
+              newIds: { revision: [250, 251, 252, 253, 254, 255] },
             },
-            revision: { id: 11, author: "C", date: SECOND_DATE },
-            newIds: { revision: [200, 201, 202, 203, 204, 205] },
-          },
-          {
-            type: "insertContent",
-            at: { story: "main", blockId: "00000001", offset: 4 },
-            slice: {
-              content: [{ type: "bookmarkEnd", id: 1 }],
-              openStart: 0,
-              openEnd: 0,
-            },
-            revision: { id: 12, author: "C", date: THIRD_DATE },
-            newIds: { revision: [250, 251, 252, 253, 254, 255] },
-          },
-          ...Array.from({ length: interiorInsertions }, (_, index) => ({
-            type: "insertText" as const,
-            at: { story: "main" as const, blockId: "00000001", offset: 4 },
-            text: "x",
-            runProps: {},
-            revision: {
-              id: index + 13,
-              author: "C",
-              date: `2026-03-04T05:00:0${index + 3}Z`,
-            },
-            newIds: { revision: [300 + index * 10, 301 + index * 10] },
-          })),
-        ] satisfies DocumentOp[];
-        const applied = applyDocumentOps(source, operations);
-        if (applied.isErr()) throw applied.error;
-        const inverse: typeof applied.value.inverse = JSON.parse(
-          JSON.stringify(applied.value.inverse),
-        );
-        const restored = applyDocumentOps(applied.value.document, inverse);
-        if (restored.isErr()) throw restored.error;
-        expect(restored.value.document).toStrictEqual(source);
-
-        const groups = [FIRST_DATE, SECOND_DATE, THIRD_DATE].map((date) =>
-          idsForDate(applied.value.document, date),
-        );
-        for (let index = 0; index < interiorInsertions; index++)
-          groups.push(
-            idsForDate(
-              applied.value.document,
-              `2026-03-04T05:00:0${index + 3}Z`,
-            ),
+            ...Array.from({ length: interiorInsertions }, (_, index) => ({
+              type: "insertText" as const,
+              at: { story: "main" as const, blockId: "00000001", offset: 4 },
+              text: "x",
+              runProps: {},
+              revision: {
+                id: index + 13,
+                author: "C",
+                date: `2026-03-04T05:00:0${index + 3}Z`,
+              },
+              newIds: { revision: [300 + index * 10, 301 + index * 10] },
+            })),
+          ] satisfies DocumentOp[];
+          let length = paragraphLength(paragraphOf(source));
+          const directed = operations.map((operation) => {
+            if (!mirrored) return operation;
+            // Reflection swaps a gap after its zero-width leaves for the gap
+            // before them, and a source prefix for a source suffix.
+            const at = Object.assign({}, operation.at, {
+              offset: length - operation.at.offset,
+              zeroWidthBefore: 0,
+            });
+            if (operation.type === "insertText") {
+              length += operation.text.length;
+              return Object.assign({}, operation, { at });
+            }
+            return Object.assign({}, operation, {
+              at,
+              slice: Object.assign({}, operation.slice, {
+                content: operation.slice.content.map((marker) =>
+                  marker.type === "bookmarkStart"
+                    ? { type: "bookmarkEnd" as const, id: marker.id }
+                    : {
+                        type: "bookmarkStart" as const,
+                        id: marker.id,
+                        name: "_Ref1",
+                      },
+                ),
+              }),
+            });
+          }) satisfies DocumentOp[];
+          const applied = applyDocumentOps(source, directed);
+          if (applied.isErr()) throw applied.error;
+          const inverse: typeof applied.value.inverse = JSON.parse(
+            JSON.stringify(applied.value.inverse),
           );
-        for (const group of groups) expect(group.length).toBeGreaterThan(0);
-        const batch = reject(applied.value.document, groups.flat());
-        let reverse = applied.value.document;
-        for (const group of groups.toReversed())
-          reverse = reject(reverse, group);
-        const partial = reject(
-          applied.value.document,
-          groups.at(1) ?? panic("The bookmark-start group exists."),
-        );
-        const partialThenRest = reject(
-          partial,
-          groups.filter((_, index) => index !== 1).flat(),
-        );
-        const resolved = applyDocumentOp(applied.value.document, {
-          type: "resolveRevision",
-          story: "main",
-          revisionIds: groups.flat(),
-          decision: "reject",
-        });
-        if (resolved.isErr()) throw resolved.error;
-        const resolutionInverse: typeof resolved.value.inverse = JSON.parse(
-          JSON.stringify(resolved.value.inverse),
-        );
-        const resolutionRestored = applyDocumentOps(
-          resolved.value.document,
-          resolutionInverse,
-        );
-        if (resolutionRestored.isErr()) throw resolutionRestored.error;
-        expect(resolutionRestored.value.document).toStrictEqual(
-          applied.value.document,
-        );
-        expect(projectReview({ document: batch, projection: "π′" })).toEqual(
-          projectReview({ document: reverse, projection: "π′" }),
-        );
-        expect(projectReview({ document: batch, projection: "π′" })).toEqual(
-          projectReview({ document: partialThenRest, projection: "π′" }),
-        );
-        const endFirstThenRest = reject(
-          reject(
+          const restored = applyDocumentOps(applied.value.document, inverse);
+          if (restored.isErr()) throw restored.error;
+          expect(restored.value.document).toStrictEqual(source);
+
+          const groups = [FIRST_DATE, SECOND_DATE, THIRD_DATE].map((date) =>
+            idsForDate(applied.value.document, date),
+          );
+          for (let index = 0; index < interiorInsertions; index++)
+            groups.push(
+              idsForDate(
+                applied.value.document,
+                `2026-03-04T05:00:0${index + 3}Z`,
+              ),
+            );
+          for (const group of groups) expect(group.length).toBeGreaterThan(0);
+          const batch = reject(applied.value.document, groups.flat());
+          let reverse = applied.value.document;
+          for (const group of groups.toReversed())
+            reverse = reject(reverse, group);
+          const partial = reject(
             applied.value.document,
-            groups.at(2) ?? panic("The bookmark-end group exists."),
-          ),
-          groups.filter((_, index) => index !== 2).flat(),
-        );
-        expect(projectReview({ document: batch, projection: "π′" })).toEqual(
-          projectReview({ document: endFirstThenRest, projection: "π′" }),
-        );
-        const content = paragraphOf(batch).content;
-        const first = content.at(0);
-        const second = content.at(-1);
-        expect(first?.type).toBe("hyperlink");
-        expect(second).toStrictEqual(secondLink);
-        if (first?.type !== "hyperlink") return;
-        expect(first.children).toContainEqual({
-          type: "bookmarkStart",
-          id: 1,
-          name: "_Ref1",
-        });
-        expect(first.children).toContainEqual({
-          type: "bookmarkEnd",
-          id: 1,
-        });
-        expect(first.children).toContainEqual({
-          type: "bookmarkEnd",
-          id: 8,
-        });
+            groups.at(1) ?? panic("The bookmark-start group exists."),
+          );
+          const partialThenRest = reject(
+            partial,
+            groups.filter((_, index) => index !== 1).flat(),
+          );
+          const resolved = applyDocumentOp(applied.value.document, {
+            type: "resolveRevision",
+            story: "main",
+            revisionIds: groups.flat(),
+            decision: "reject",
+          });
+          if (resolved.isErr()) throw resolved.error;
+          const resolutionInverse: typeof resolved.value.inverse = JSON.parse(
+            JSON.stringify(resolved.value.inverse),
+          );
+          const resolutionRestored = applyDocumentOps(
+            resolved.value.document,
+            resolutionInverse,
+          );
+          if (resolutionRestored.isErr()) throw resolutionRestored.error;
+          expect(resolutionRestored.value.document).toStrictEqual(
+            applied.value.document,
+          );
+          expect(projectReview({ document: batch, projection: "π′" })).toEqual(
+            projectReview({ document: reverse, projection: "π′" }),
+          );
+          expect(projectReview({ document: batch, projection: "π′" })).toEqual(
+            projectReview({ document: partialThenRest, projection: "π′" }),
+          );
+          const endFirstThenRest = reject(
+            reject(
+              applied.value.document,
+              groups.at(2) ?? panic("The bookmark-end group exists."),
+            ),
+            groups.filter((_, index) => index !== 2).flat(),
+          );
+          expect(projectReview({ document: batch, projection: "π′" })).toEqual(
+            projectReview({ document: endFirstThenRest, projection: "π′" }),
+          );
+          const content = paragraphOf(batch).content;
+          const first = content.at(mirrored ? -1 : 0);
+          const second = content.at(mirrored ? 0 : -1);
+          expect(first?.type).toBe("hyperlink");
+          expect(second).toStrictEqual(secondLink);
+          if (first?.type !== "hyperlink") return;
+          expect(first.children).toContainEqual({
+            type: "bookmarkStart",
+            id: 1,
+            name: "_Ref1",
+          });
+          expect(first.children).toContainEqual({
+            type: "bookmarkEnd",
+            id: 1,
+          });
+          expect(first.children).toContainEqual(
+            mirrored
+              ? { type: "bookmarkStart", id: 8, name: "_Ref8" }
+              : { type: "bookmarkEnd", id: 8 },
+          );
+        },
+      ),
+      {
+        numRuns: 12,
+        id: "directional source edges preserve separately floated bookmarks through interior rejections",
       },
-    ),
-    {
-      numRuns: 12,
-      id: "directional source edges preserve separately floated bookmarks through interior rejections",
-    },
-  );
-});
+    );
+  },
+);
 
 test("batch rejection keeps an authored start before a foreign bidi comment carrier", () => {
   const foreign = {

@@ -191,8 +191,10 @@ const inertAtoms = {
     }),
   rangeAnchor: () =>
     schema.node("rangeAnchor", {
-      start: { type: "commentRangeStart", id: 7 },
-      end: { type: "commentRangeEnd", id: 7 },
+      markers: [
+        { type: "commentRangeStart", id: 7 },
+        { type: "commentRangeEnd", id: 7 },
+      ],
     }),
   renderedPageBreak: () => schema.node("renderedPageBreak"),
 } satisfies Record<CommentRangeInertAtom, () => PMNode>;

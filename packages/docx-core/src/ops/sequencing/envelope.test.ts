@@ -62,6 +62,18 @@ test("every operation kind is sendable and records a sequenced effect", () => {
     expect(sequencedEffectType(type)).toBeDefined();
 });
 
+test("story lifecycle wire ownership keeps complete views separate from indexed metadata", () => {
+  for (const field of ["expected", "parts"] as const) {
+    const overlapping = {
+      type: DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS,
+      expected: {},
+      parts: {},
+      [field]: { sectionView: { type: "omitted" }, sections: [{ index: 0 }] },
+    };
+    expect(validateDocumentBatch(withOp(overlapping)).isErr()).toBe(true);
+  }
+});
+
 test("batch wire fixtures pin every supported decoder kind and JSON roundtrip", async () => {
   const pinned: unknown = await Bun.file(
     path.join(
@@ -524,7 +536,10 @@ test("property-review and section-boundary payloads decode; undeclared fields re
 });
 
 test("older batch schemas and persisted batches are refused structurally", async () => {
-  for (const schema of [1, 2, 3, 4, 5, 6, 7, 8]) {
+  for (const schema of Array.from(
+    { length: DOCUMENT_OP_SCHEMA_VERSION - 1 },
+    (_, index) => index + 1,
+  )) {
     const source = { ...fixture, schema };
     const snapshot = structuredClone(source);
     const result = validateDocumentBatch(source);

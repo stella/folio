@@ -332,8 +332,9 @@ export const createCanonicalEditorHarness = (
         slice.content.descendants((node) => {
           if (
             (node.type.name === "rangeAnchor" &&
-              expectRangeAnchorAttrs(node).start.type ===
-                "commentRangeStart") ||
+              expectRangeAnchorAttrs(node).markers.some(
+                (marker) => marker.type === "commentRangeStart",
+              )) ||
             node.type.name === "commentReference" ||
             node.marks.some(
               ({ type }) =>

@@ -3,28 +3,32 @@ name: CLA Assistant
 on:
   issue_comment:
     types: [created]
-  pull_request_target: # zizmor: ignore[dangerous-triggers] delegates to pinned reusable CLA workflow; never check out PR code here
-    types: [opened, synchronize, reopened, closed]
+  # Pull requests: the unprivileged CLA Request workflow completes, then this
+  # default-branch workflow verifies the head it ran on.
+  workflow_run: # zizmor: ignore[dangerous-triggers] API-only; the triggering run is untrusted data and nothing from it executes
+    workflows: [CLA Request]
+    types: [completed]
 
-permissions:
-  actions: write
-  contents: read
-  issues: write
-  pull-requests: write
-  statuses: write
+permissions: {}
 
 jobs:
   cla:
+    # Serializes runs for one head or pull request; job level, so unrelated
+    # comments (skipped by `if`) never replace a pending check.
+    concurrency:
+      group: cla-${{ github.event.workflow_run.head_sha || github.event.issue.number || github.run_id }}
+      cancel-in-progress: false
     permissions:
       contents: read
-      checks: write
-      issues: write
-      pull-requests: read
+      checks: write # Reports the CLA check on the pull request head.
+      issues: write # Maintains the signing prompt.
+      pull-requests: read # Resolves the pull request of a triggering run.
     if: >-
       !github.event.repository.private
       && (
         (
-          github.event_name == 'pull_request_target'
+          github.event_name == 'workflow_run'
+          && github.event.workflow_run.event == 'pull_request'
         ) || (
           github.event_name == 'issue_comment'
           && github.event.issue.pull_request
@@ -34,10 +38,12 @@ jobs:
           )
         )
       )
-    uses: stella/.github/.github/workflows/cla.yml@c6d66dfa2a5ad1f96a21b819fe456fecdd3d6f6d
+    uses: stella/.github/.github/workflows/cla.yml@156afa9596e6a469c10e329f459168d34a00e0fd
     with:
       # Automation accounts cannot sign a CLA, so any app that opens PRs here
       # has to be listed or its every PR fails the check permanently.
       allowlist: dependabot[bot],renovate[bot],github-actions[bot],google-labs-jules[bot],stella-provenance-updater[bot],cursoragent
+      # The context the main ruleset requires on pull request heads.
+      check-name: cla
     secrets:
       CLA_APP_PRIVATE_KEY: ${{ secrets.CLA_APP_PRIVATE_KEY }}

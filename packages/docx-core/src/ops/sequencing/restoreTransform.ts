@@ -20,8 +20,15 @@ import type { Document, ParagraphContent } from "../../model/document";
 import { applyDocumentOps } from "../apply";
 import { storyBody, storyParagraphs } from "../blocks";
 import { structurallyEqual } from "../equality";
-import { idKey } from "../ids";
-import { compareGaps, type Gap, type InlineNode, leafSpans } from "../leaves";
+import { idKey, slotKey } from "../ids";
+import {
+  compareGaps,
+  type Gap,
+  type InlineNode,
+  leafSpans,
+  spanningRecords,
+} from "../leaves";
+import { identitySlots } from "../slots";
 import {
   type CommentAnchor,
   type CreateCommentOp,
@@ -171,16 +178,22 @@ const gapOf = ({ offset, zeroWidthBefore }: TextPosition): Gap => ({
   zeroWidthBefore: zeroWidthBefore ?? 0,
 });
 
+type RestoreMapping = { span: RestoredSpan; emptyGap: Gap | undefined };
+
 /**
- * A position of the expected content in the restored one: unchanged up to
- * the span's start, moved by the span's change of width from its end on, and
- * undefined strictly inside it.
+ * A position outside a restoration moves past its span. At an empty span,
+ * preserve the source gap's identified containers; refuse if neither edge does.
  */
 const pastSpan = (
   point: TextPosition,
-  span: RestoredSpan,
+  { span, emptyGap }: RestoreMapping,
 ): TextPosition | undefined => {
   const gap = gapOf(point);
+  if (
+    compareGaps(gap, span.from) === 0 &&
+    compareGaps(span.from, span.to) === 0
+  )
+    return emptyGap === undefined ? undefined : { ...point, ...emptyGap };
   if (compareGaps(gap, span.from) <= 0) return point;
   if (compareGaps(gap, span.to) < 0) return undefined;
   if (gap.offset === span.to.offset)
@@ -280,31 +293,32 @@ const editedParagraph = (edit: ParagraphEdit): TextPosition => {
 /** The edit's positions moved past the span; undefined when it reaches into it. */
 const editPast = (
   edit: ParagraphEdit,
-  span: RestoredSpan,
+  mapping: RestoreMapping,
 ): ParagraphEdit | undefined => {
+  const { span } = mapping;
   if (edit.type === DOCUMENT_OP_TYPES.CREATE_COMMENT) {
     // Each end of the anchor is a gap of its own: one before the span and
     // one after it leave the span inside the comment, unchanged.
     const { anchor } = edit;
     if (anchor.kind === "point") {
-      const at = pastSpan(anchor.at, span);
+      const at = pastSpan(anchor.at, mapping);
       return at === undefined
         ? undefined
         : { ...edit, anchor: { ...anchor, at } };
     }
-    const from = pastSpan(anchor.from, span);
-    const to = pastSpan(anchor.to, span);
+    const from = pastSpan(anchor.from, mapping);
+    const to = pastSpan(anchor.to, mapping);
     return from === undefined || to === undefined
       ? undefined
       : { ...edit, anchor: { ...anchor, from, to } };
   }
   if ("at" in edit) {
-    const at = pastSpan(edit.at, span);
+    const at = pastSpan(edit.at, mapping);
     return at === undefined ? undefined : { ...edit, at };
   }
   if (reaches(edit.from, edit.to, span)) return undefined;
-  const from = pastSpan(edit.from, span);
-  const to = pastSpan(edit.to, span);
+  const from = pastSpan(edit.from, mapping);
+  const to = pastSpan(edit.to, mapping);
   return from === undefined || to === undefined
     ? undefined
     : { ...edit, from, to };
@@ -316,6 +330,27 @@ type Rewrite = {
   blockId: string;
   expected: readonly ParagraphContent[];
   content: readonly ParagraphContent[];
+};
+
+/** The cut owner identifies every record that actually crosses a gap. */
+const identitiesAcross = (
+  content: readonly ParagraphContent[],
+  gap: Gap,
+): readonly string[] =>
+  spanningRecords(content, [gap], 0, 1).flatMap((record) =>
+    identitySlots(record).map(slotKey),
+  );
+
+/** Restoring content at an empty span must keep edits on the same side of an identified record. */
+const restorationMapping = ({ expected, content }: Rewrite): RestoreMapping => {
+  const span = restoredSpan(expected, content);
+  if (compareGaps(span.from, span.to) !== 0)
+    return { span, emptyGap: undefined };
+  const source = identitiesAcross(expected, span.from);
+  const emptyGap = [span.from, span.restoredTo].find((candidate) =>
+    structurallyEqual(source, identitiesAcross(content, candidate)),
+  );
+  return { span, emptyGap };
 };
 
 const rewriteOf = (op: DocumentOp, at: TextPosition): Rewrite | undefined => {
@@ -461,8 +496,7 @@ export const transformRestorePair = (
           }),
         )
       : undefined;
-  const span = restoredSpan(rewrite.expected, rewrite.content);
-  const moved = editPast(edit, span);
+  const moved = editPast(edit, restorationMapping(rewrite));
   if (moved === undefined) return spanConflict(op, over);
   // An edit rebased over a restoration moves past its span.
   if (opEdit !== undefined && overEdit === undefined) return Result.ok([moved]);

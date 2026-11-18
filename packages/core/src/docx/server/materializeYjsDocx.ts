@@ -8,6 +8,7 @@ import {
   applyAttrSchemaMigrations,
   FolioYjsNoteReferenceSchemaError,
   FolioYjsNumberingSourceSchemaError,
+  FolioYjsRangeAnchorSchemaError,
   readYjsAttrSchemaVersion,
   readYjsParagraphSourceContract,
   withParagraphSourceContract,
@@ -112,7 +113,8 @@ const readProseMirrorDocument = (yjsUpdate: Uint8Array) => {
       if (cause instanceof FolioYjsDocxMaterializationError) return cause;
       if (
         cause instanceof FolioYjsNoteReferenceSchemaError ||
-        cause instanceof FolioYjsNumberingSourceSchemaError
+        cause instanceof FolioYjsNumberingSourceSchemaError ||
+        cause instanceof FolioYjsRangeAnchorSchemaError
       )
         return new FolioYjsDocxMaterializationError({
           code: "stale_attr_schema",

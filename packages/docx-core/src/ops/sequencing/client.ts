@@ -4,6 +4,7 @@ import type { Document } from "../../model/document";
 import { storyParagraphs } from "../blocks";
 import { validateOpsDocument } from "../contract";
 import { equalForStaleness, structurallyEqual } from "../equality";
+import { IDENTITY_SPACES, packageIdentityKeys, slotKey } from "../ids";
 import { paragraphLength } from "../offsets";
 import { documentStories, findStoryBody } from "../stories";
 import {
@@ -277,8 +278,9 @@ export const createClient = (
    * `leading`. A batch that does not rebase is dropped (`forced` drops the
    * first one whatever it is, as a rejection does), and the batches after
    * it rebase as if it had never been made: over its inverse first. Only a
-   * batch that depends on it, editing what it put there, fails that and is
-   * dropped too. Returns the kept batches and `leading` carried past them.
+   * batch that depends on it, editing what it put there or deciding a
+   * revision it introduced, is dropped too. Returns the kept batches and
+   * `leading` carried past them.
    */
   const rebaseRun = ({
     run,
@@ -292,6 +294,7 @@ export const createClient = (
     forced?: BatchRejection;
   }): { kept: PendingEntry[]; leading: SequencedBatch[] } => {
     const kept: PendingEntry[] = [];
+    const droppedIdentities = new Set<string>();
     let cursor = original;
     let carried = [...leading];
     let fresh =
@@ -303,16 +306,40 @@ export const createClient = (
         return panic(
           "Pending batch must replay in its original coordinate space.",
         );
+      let refusal = index === 0 ? forced : undefined;
+      if (
+        refusal === undefined &&
+        entry.batch.ops.some(
+          (op) =>
+            op.type === DOCUMENT_OP_TYPES.RESOLVE_REVISION &&
+            op.revisionIds.some((id) =>
+              droppedIdentities.has(
+                slotKey({ space: IDENTITY_SPACES.REVISION, id }),
+              ),
+            ),
+        )
+      )
+        refusal = new BatchRejection({
+          reason: BATCH_REJECTION_REASONS.CONFLICT,
+          message:
+            "The decision names a revision created by a dropped pending batch.",
+        });
       const passed =
-        index === 0 && forced !== undefined
-          ? Result.err(forced)
-          : passOver(entry, carried, cursor, fresh);
+        refusal === undefined
+          ? passOver(entry, carried, cursor, fresh)
+          : Result.err(refusal);
       if (passed.isOk()) {
         kept.push({ ...entry, batch: passed.value.batch });
         carried = passed.value.leading;
         fresh = passed.value.fresh;
       } else {
         drop(entry, passed.error);
+        // Only identities this batch actually introduced are dependencies;
+        // unused allocation pools and preexisting revisions are not targets
+        // lost with it. Later dropped batches can introduce dependencies too.
+        const before = new Set(packageIdentityKeys(cursor.package));
+        for (const key of packageIdentityKeys(made.value.document.package))
+          if (!before.has(key)) droppedIdentities.add(key);
         const undone = applyBatch(made.value.document, entry.inverse);
         if (undone.isErr())
           return panic("Recorded inverse must apply after its batch.");

@@ -53,6 +53,7 @@ import {
   type CorpusInvariantInput,
   type CorpusInvariantOutcome,
   EXTENDED_CORPUS_INVARIANTS,
+  invariantBudgetClock,
   timeStage,
 } from "./contract";
 import { opErrorOutcome } from "./op-outcome";
@@ -218,7 +219,10 @@ const withoutRestoredRecords = (
       if (parts.settings !== undefined) delete out.package.settings;
     },
   } satisfies Record<
-    keyof Omit<StoryParts, "body" | "sections" | "undefinedFields">,
+    keyof Omit<
+      StoryParts,
+      "body" | "sections" | "sectionView" | "undefinedFields"
+    >,
     () => void
   >;
   for (const strip of Object.values(stripPackage)) strip();
@@ -235,6 +239,7 @@ const withoutRestoredRecords = (
     sectionIndex += 1;
   }
   if (restoredSections.has(sectionIndex)) delete body.finalSectionProperties;
+  // A complete section view owns derived metadata, not the canonical endpoints above.
   // Section content and mounted story maps are derived mirrors, not independent ownership.
   delete body.sections;
   return out;
@@ -604,7 +609,9 @@ const storyOwnership = ({
   if (op.type !== DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS) return "none";
   if (story === OP_STORIES.MAIN) {
     if (op.parts.body?.content !== undefined) return "content";
-    return op.parts.sections !== undefined ? "fields" : "none";
+    return op.parts.sections !== undefined || op.parts.sectionView !== undefined
+      ? "fields"
+      : "none";
   }
   switch (story.kind) {
     case "header":
@@ -805,7 +812,11 @@ export const serializedLocalityFailures = ({
       ownedRelationshipTypes.add(RELATIONSHIP_TYPES.numbering);
     }
     if (op.type === DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS) {
-      if (op.parts.body !== undefined || op.parts.sections !== undefined)
+      if (
+        op.parts.body !== undefined ||
+        op.parts.sections !== undefined ||
+        op.parts.sectionView !== undefined
+      )
         ownedPaths.add(documentPart);
       const restoredRelationships = {
         headers: RELATIONSHIP_TYPES.header,
@@ -814,7 +825,10 @@ export const serializedLocalityFailures = ({
         endnotes: RELATIONSHIP_TYPES.endnotes,
         settings: RELATIONSHIP_TYPES.settings,
       } satisfies Record<
-        keyof Omit<StoryParts, "body" | "sections" | "undefinedFields">,
+        keyof Omit<
+          StoryParts,
+          "body" | "sections" | "sectionView" | "undefinedFields"
+        >,
         string
       >;
       for (const [key, relationshipType] of Object.entries(
@@ -1018,6 +1032,7 @@ export const runOpLocalityInvariant = async (
   const outcome = await timeStage(timings, "sequences", () =>
     Result.tryPromise({
       try: async () => {
+        const clock = invariantBudgetClock(input.budgetMs);
         const document = await prepareOpDocument(input);
         const seed = seedFromBytes(input.bytes);
         const failures: string[] = [];
@@ -1025,7 +1040,12 @@ export const runOpLocalityInvariant = async (
         // name for it is not what a save writes.
         const { parts: control, documentPart } =
           await serializedOpPackage(document);
-        for (const salt of OP_SEQUENCE_SEEDS) {
+        const stopped = (sequences: number) => ({
+          failures: [...new Set(failures)],
+          stoppedAfter: `${sequences} of ${OP_SEQUENCE_SEEDS.length} sequences`,
+        });
+        for (const [sequenceIndex, salt] of OP_SEQUENCE_SEEDS.entries()) {
+          if (clock.spent()) return stopped(sequenceIndex);
           const sequence = generateOpSequence(document, seed ^ salt);
           failures.push(
             ...sequence.mutations.map(
@@ -1042,6 +1062,7 @@ export const runOpLocalityInvariant = async (
           });
           let classified = false;
           for (const step of sequence.steps) {
+            if (clock.spent()) return stopped(sequenceIndex);
             const modelFailures = localityStepFailures(step);
             if (compoundFailures.length === 0 && modelFailures.length === 0)
               continue;
@@ -1077,7 +1098,7 @@ export const runOpLocalityInvariant = async (
                 ),
               );
         }
-        return [...new Set(failures)];
+        return { failures: [...new Set(failures)], stoppedAfter: undefined };
       },
       catch: (cause: unknown) => cause,
     }),
@@ -1088,11 +1109,15 @@ export const runOpLocalityInvariant = async (
       error: outcome.error,
       timings,
     });
-  return {
-    status: "evaluated",
-    timings,
-    failures: outcome.value.map((message) =>
-      failureFromAssertion(INVARIANT, message),
-    ),
-  };
+  const failures = outcome.value.failures.map((message) =>
+    failureFromAssertion(INVARIANT, message),
+  );
+  return outcome.value.stoppedAfter === undefined
+    ? { status: "evaluated", timings, failures }
+    : {
+        status: "budget-stopped",
+        timings,
+        failures,
+        checked: outcome.value.stoppedAfter,
+      };
 };

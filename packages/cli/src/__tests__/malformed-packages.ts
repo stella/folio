@@ -303,4 +303,7 @@ export const TOOL_ARGUMENTS: Readonly<Record<string, Record<string, unknown>>> =
     reply_comment: { commentId: "0", text: "Because." },
     resolve_comment: { commentId: "0" },
     resolve_changes: { all: true },
+    sanitize_document: {},
+    proofing_language: {},
+    placeholders: {},
   };

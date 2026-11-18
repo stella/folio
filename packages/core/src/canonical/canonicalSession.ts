@@ -33,6 +33,7 @@ import {
   DOCUMENT_OP_REFUSAL_REASONS,
   DOCUMENT_OP_TYPES,
   type DocumentOp,
+  documentStories,
   type EditorIntent,
   type EditorIntentMode,
   editorParagraphGroups,
@@ -47,6 +48,7 @@ import {
   type OpStory,
   packageParagraphIds,
   paragraphIdsIn,
+  planWholeParagraphReplacement,
   sameStory,
   suggestedCommentIds,
   suggestionRevisionInfos,
@@ -73,10 +75,18 @@ import {
   getDocumentSourceBaseline,
 } from "../docx/headerFooterVerbatim";
 import { ListNormalizationCache } from "../docx/listModelNormalization";
-import { cloneDocumentWithParagraphPropertySources } from "../docx/paragraphPropertySource";
+import {
+  cloneDocumentWithParagraphPropertySources,
+  getProseParagraphPropertySourceToken,
+  markParagraphPropertySourceTransfers,
+} from "../docx/paragraphPropertySource";
 import { visitInlineContentSlots } from "../docx/paragraphTraversal";
 import { isCellMergeContinuation } from "../docx/tableParser";
 import { calculateRowSpans } from "../docx/verticalMergeProjection";
+import {
+  type CanonicalTyping,
+  recordCanonicalTyping,
+} from "../internal/canonicalTyping";
 import {
   canonicalCellSelectionRanges,
   canonicalContentPosition,
@@ -91,8 +101,8 @@ import {
   ProjectionBlockCache,
   toProseDoc,
 } from "../prosemirror/conversion/toProseDoc";
-import { markPackageChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import { heldUnreferencedNotes as notesHeldWithoutReference } from "../prosemirror/noteReferenceReview";
+import { preservesReplacementCommentAlignment } from "../prosemirror/replacedAnnotations";
 import { runFormattingPatchFromMarks } from "../prosemirror/runFormattingFromMarks";
 import {
   CANONICAL_GAP,
@@ -128,6 +138,7 @@ import {
   type StoryProjectionFacts,
 } from "./canonicalProjectionBlocks";
 import { rebaseHistorySteps, remoteSelection } from "./canonicalRemoteHistory";
+import { canonicalRevisionLocks } from "./canonicalRevisionLocks";
 import {
   changedWindow,
   unsupportedEditReason,
@@ -1725,6 +1736,7 @@ export const publishCanonicalProjection = ({
 };
 
 type StageOptions = {
+  typing?: CanonicalTyping;
   state: EditorState;
   ops: readonly DocumentOp[];
   selection: CanonicalSelection;
@@ -2385,7 +2397,15 @@ class CanonicalSession {
     const checked = this.checkState(state, projection);
     if (checked.isErr()) return checked;
     if (!Number.isFinite(time)) return refuse("The input time is invalid.");
-    if (from > to || hasIllegalXmlCharacters(text) || /[\t\r\n]/u.test(text)) {
+    if (
+      !Number.isSafeInteger(from) ||
+      !Number.isSafeInteger(to) ||
+      from < 0 ||
+      to > projection.doc.content.size ||
+      from > to ||
+      hasIllegalXmlCharacters(text) ||
+      /[\t\r\n]/u.test(text)
+    ) {
       return refuse("Canonical input accepts a well-formed text replacement.");
     }
     if (from === to && text.length === 0)
@@ -2401,9 +2421,15 @@ class CanonicalSession {
         );
       // Typing over selected cells clears each of them and writes the text
       // into the first, as the editor does.
+      const ranges = canonicalCellSelectionRanges(state.selection);
+      const firstRange = ranges.at(0);
+      const lastRange = ranges.at(-1);
+      if (firstRange === undefined || lastRange === undefined)
+        return refuse("The selected cells contain no editable text.");
       const intents: EditorIntent[] = [];
+      const commentChanges = [];
       let first = true;
-      for (const range of canonicalCellSelectionRanges(state.selection)) {
+      for (const range of ranges) {
         const edges = projection.rangeEdgesAt(range.from, range.to);
         const cellFrom = projection.inputAddressAt(range.from, edges.start);
         if (cellFrom.isErr()) return cellFrom;
@@ -2415,8 +2441,29 @@ class CanonicalSession {
           to: cellTo.value,
           text: first ? text : "",
         });
+        commentChanges.push({
+          from: range.from,
+          to: range.to,
+          text: first ? text : "",
+          markers:
+            edges.start === "beforeMarkers" || edges.end === "afterMarkers"
+              ? ("selected" as const)
+              : ("retained" as const),
+        });
         first = false;
       }
+      if (
+        text !== "" &&
+        !preservesReplacementCommentAlignment({
+          doc: state.doc,
+          source: { from: firstRange.from, to: lastRange.to },
+          changes: commentChanges,
+        })
+      )
+        return refuseUnder(
+          { gap: CANONICAL_GAP.commentReplacementAlignment },
+          "Canonical replacement cannot preserve the aligned comment ranges.",
+        );
       return this.prepareIntents(state, { intents, semantic });
     }
     const range = canonicalSelectionRange(state);
@@ -2440,6 +2487,36 @@ class CanonicalSession {
         ? Result.ok(editCaret)
         : projection.inputAddressAt(inputTo, edges.end);
     if (end.isErr()) return end;
+    if (inputFrom < inputTo && text !== "") {
+      const retirement = planWholeParagraphReplacement({
+        document: this.currentDocument,
+        from: start.value,
+        to: end.value,
+      });
+      if (retirement.isErr()) return refuse(retirement.error.message);
+      if (
+        !preservesReplacementCommentAlignment({
+          doc: state.doc,
+          retiredCommentIds: retirement.value?.commentIds,
+          source: { from: inputFrom, to: inputTo },
+          changes: [
+            {
+              from: inputFrom,
+              to: inputTo,
+              text,
+              markers:
+                edges.start === "beforeMarkers" || edges.end === "afterMarkers"
+                  ? "selected"
+                  : "retained",
+            },
+          ],
+        })
+      )
+        return refuseUnder(
+          { gap: CANONICAL_GAP.commentReplacementAlignment },
+          "Canonical replacement cannot preserve the aligned comment ranges.",
+        );
+    }
     const preSelection = projection.selectionAt(state);
     if (preSelection.isErr()) return preSelection;
     // Just inside a content control's edge, the editor position, not the
@@ -2541,6 +2618,9 @@ class CanonicalSession {
       selection: postSelection,
       origin: "input",
       history: joins ? "joined" : "opened",
+      ...(semantic === "typing" && inputFrom === inputTo && text.length > 0
+        ? { typing: { at: start.value, after: caret, text } }
+        : {}),
       // The compiler's own application of exactly these ops, when it made one.
       ...(compiled.value.applied === undefined
         ? {}
@@ -2897,21 +2977,17 @@ class CanonicalSession {
     // hyperlink carries several ids, and resolving fewer leaves part pending.
     const changes = getTrackedChangeGroupsForIds(state.doc, revisionIds);
     // A change whose resolution breaks a lock stays pending; the rest resolve.
-    let firstHeld: LockedControlViolation | null = null;
-    const heldChanges = changes.filter((ids) => {
-      const alone = applyDocumentOps(this.currentDocument, resolve(ids));
-      if (alone.isErr()) return false;
-      const violation = lockViolationBetween(
-        this.currentDocument,
-        alone.value.document,
-      );
-      firstHeld ??= violation;
-      return violation !== null;
+    const locks = canonicalRevisionLocks({
+      document: this.currentDocument,
+      story: OP_STORIES.MAIN,
+      groups: changes,
+      decision: resolution,
     });
-    if (firstHeld !== null && heldChanges.length === changes.length)
-      return lockRefusal(firstHeld);
-    const lockHeld = heldChanges.flat();
-    const resolved = changes.filter((ids) => !heldChanges.includes(ids)).flat();
+    const firstHeld = locks.held.at(0);
+    if (firstHeld !== undefined && locks.held.length === changes.length)
+      return lockRefusal(firstHeld.violation);
+    const lockHeld = locks.held.flatMap(({ ids }) => ids);
+    const resolved = locks.unlocked.flat();
     const ops = [
       ...before,
       ...(resolved.length === 0 ? [] : resolve(resolved)),
@@ -2973,24 +3049,44 @@ class CanonicalSession {
       date: string;
     },
   ): Result<CanonicalCommit, CanonicalSessionError> {
-    const infos = suggestionRevisionInfos(
-      this.currentDocument,
-      OP_STORIES.MAIN,
-      suggestionId,
-    );
+    const revisions = documentStories(this.currentDocument)
+      .map((story) => ({
+        story,
+        infos: suggestionRevisionInfos(
+          this.currentDocument,
+          story,
+          suggestionId,
+        ),
+      }))
+      .filter(({ infos }) => infos.length > 0);
     const commentIds = suggestedCommentIds(this.currentDocument, suggestionId);
-    if (infos.length === 0 && commentIds.length === 0)
+    if (revisions.length === 0 && commentIds.length === 0)
       return noChange(`No pending suggestion ${suggestionId}.`);
     if (resolution === "reject")
       return this.prepareResolve(state, {
-        revisionIds: infos.map(({ id }) => id),
+        revisionIds: [],
         resolution: "reject",
         // The comments go first, while the text they cover is still there.
-        before: commentIds.map((id) => ({
-          type: DOCUMENT_OP_TYPES.DELETE_COMMENT,
-          id,
-          scope: "thread",
-        })),
+        before: [
+          ...commentIds.map((id) => ({
+            type: DOCUMENT_OP_TYPES.DELETE_COMMENT,
+            id,
+            scope: "thread" as const,
+          })),
+          // Resolve notes before body references can remove their stories.
+          ...revisions
+            .toSorted(
+              ({ story: left }, { story: right }) =>
+                Number(left === OP_STORIES.MAIN) -
+                Number(right === OP_STORIES.MAIN),
+            )
+            .map(({ story, infos }) => ({
+              type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+              story,
+              revisionIds: infos.map(({ id }) => id),
+              decision: "reject" as const,
+            })),
+        ],
       });
     const checked = this.checkState(state);
     if (checked.isErr()) return checked;
@@ -2998,10 +3094,10 @@ class CanonicalSession {
     if (selection.isErr()) return selection;
     const comments = this.currentDocument.package.document.comments ?? [];
     const ops: DocumentOp[] = [];
-    if (infos.length > 0)
+    for (const { story, infos } of revisions)
       ops.push({
         type: DOCUMENT_OP_TYPES.SET_REVISION_INFO,
-        story: OP_STORIES.MAIN,
+        story,
         infos: infos.map(({ id }) => ({ id, author, date })),
       });
     for (const comment of comments)
@@ -3481,6 +3577,7 @@ class CanonicalSession {
     story = OP_STORIES.MAIN,
     previousProjection,
     opId,
+    typing,
   }: StageOptions): Result<CanonicalCommit, CanonicalSessionError> {
     const previous =
       previousProjection === undefined
@@ -3603,6 +3700,24 @@ class CanonicalSession {
     const transaction = state.tr;
     const before = state.doc;
     const after = projected.value.doc;
+    const retainedTokens = new Set<string>();
+    const retainPropertyOwner = (node: PMNode): boolean => {
+      if (node.type.name !== "paragraph") return true;
+      const id = node.attrs["paraId"];
+      const token = getProseParagraphPropertySourceToken(node);
+      const owner =
+        typeof id === "string" ? previous.value.paragraph(id) : undefined;
+      if (
+        typeof token === "string" &&
+        owner !== undefined &&
+        getProseParagraphPropertySourceToken(owner.node) === token
+      )
+        retainedTokens.add(token);
+      return false;
+    };
+    const retainPropertyOwnersIn = (node: PMNode): void => {
+      if (retainPropertyOwner(node)) node.descendants(retainPropertyOwner);
+    };
     let prefix = 0;
     let from = 0;
     while (
@@ -3630,13 +3745,25 @@ class CanonicalSession {
       for (let index = prefix; index < newEnd; index += 1)
         replacement.push(after.child(index));
       transaction.replaceWith(from, to, Fragment.fromArray(replacement));
+      replacement.forEach(retainPropertyOwnersIn);
     }
-    if (!transaction.doc.eq(projected.value.doc))
+    if (!transaction.doc.eq(projected.value.doc)) {
       transaction.replaceWith(
         0,
         transaction.doc.content.size,
         projected.value.doc.content,
       );
+      after.forEach(retainPropertyOwnersIn);
+    }
+    // Replacing a projected block does not replace the existing owners of
+    // its paragraphs. New paragraphs and copies claim no previous token.
+    markParagraphPropertySourceTransfers(
+      transaction,
+      [...retainedTokens].map((selectedToken) => ({
+        displacedToken: null,
+        selectedToken,
+      })),
+    );
     // The document node's own attributes hold what the last section starts with.
     for (const [name, value] of Object.entries(projected.value.doc.attrs)) {
       if (transaction.doc.attrs[name] !== value) {
@@ -3675,7 +3802,6 @@ class CanonicalSession {
       origin,
       version: this.version + 1,
     });
-    if (ops.some(operationChangesPackage)) markPackageChange(transaction);
     transaction.setMeta("addToHistory", false);
     const baseVersion = this.version;
     const baseBoundary = this.groupingBoundary;
@@ -3784,6 +3910,7 @@ class CanonicalSession {
           version: this.currentVersion,
           origin,
         };
+        if (typing !== undefined) recordCanonicalTyping(committed, typing);
         for (const listener of this.committedListeners) listener(committed);
         return Result.ok(undefined);
       },

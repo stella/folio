@@ -333,17 +333,11 @@ test.each([1, 2, 3, 4, 5, 6])(
         expect(tracked.getContent()).toEqual(
           (await reopen(tracked)).getContent(),
         );
-        // The direct merge keeps the first paragraph; the accepted one leaves
-        // the second, whose mark stays, reading as the direct merge does.
-        const [resolvedBlock, ...resolvedRest] = tracked.getContent();
-        const [directBlock, ...directRest] = direct.getContent();
+        // The direct merge and the accepted one both leave the second
+        // paragraph, whose mark stays, and read the same.
+        const [resolvedBlock] = tracked.getContent();
         expect(resolvedBlock?.id).toBe(second.id);
-        expect(directBlock?.id).toBe(first.id);
-        expect({ ...resolvedBlock, id: first.id }).toEqual({
-          ...directBlock,
-          id: first.id,
-        });
-        expect(resolvedRest).toEqual(directRest);
+        expect(tracked.getContent()).toEqual(direct.getContent());
       }
     }
   },

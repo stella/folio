@@ -1544,7 +1544,7 @@ export type Table = WritableRecord & {
 export type Comment = WritableRecord & {
   /** Comment ID (matches commentRangeStart/End) */
   id: number;
-  /** Whether the author selected content or placed a point annotation. */
+  /** Whether the author selected content or placed a point annotation; absent for an unanchored source definition. */
   anchorKind?: "point" | "range";
   /** Author name */
   author: string;

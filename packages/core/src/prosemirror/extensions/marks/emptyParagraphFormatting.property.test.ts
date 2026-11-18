@@ -159,7 +159,7 @@ test("empty paragraph formatting and explicit clearing survive typing, paste, sa
   }
 });
 
-test("clearing a loaded paragraph default emits a run cancellation without an empty-paragraph edit", async () => {
+test("clearing formatting beside a paragraph mark that states some keeps the paragraph's properties", async () => {
   const source = createEmptyDocument({ initialText: "x" });
   source.package.document.content = [
     {
@@ -178,9 +178,10 @@ test("clearing a loaded paragraph default emits a run cancellation without an em
     new Uint8Array(await createDocx(source)),
   );
   const view = new HeadlessEditorView(createHarnessState(base, "editing"));
+  // The mark's bold and italic format the mark alone: the run shows neither.
   const before = view.state.doc.firstChild?.firstChild;
-  expect(before?.marks.some(({ type }) => type.name === "bold")).toBe(true);
-  expect(before?.marks.some(({ type }) => type.name === "italic")).toBe(true);
+  expect(before?.marks.some(({ type }) => type.name === "bold")).toBe(false);
+  expect(before?.marks.some(({ type }) => type.name === "italic")).toBe(false);
   view.state = view.state.apply(
     view.state.tr.setSelection(TextSelection.create(view.state.doc, 1, 2)),
   );

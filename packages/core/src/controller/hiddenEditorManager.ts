@@ -4,6 +4,7 @@ import {
   TaggedError,
   type TaggedErrorClass,
 } from "better-result";
+import { closeHistory } from "prosemirror-history";
 import {
   DOMParser as PMDOMParser,
   DOMSerializer,
@@ -19,6 +20,7 @@ import type {
 import {
   EditorState as PMEditorState,
   Plugin as PMPlugin,
+  TextSelection,
 } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
 import type { DirectEditorProps, MarkViewConstructor } from "prosemirror-view";
@@ -45,6 +47,7 @@ import {
   OP_STORIES,
   type OpStory,
   sameStory,
+  type TextPosition,
 } from "@stll/docx-core/ops";
 
 import {
@@ -94,10 +97,6 @@ import { registerEditorCommandOwner } from "../prosemirror/executeEditorCommand"
 import type { HistoryShortcutOwner } from "../prosemirror/extensions/core/HistoryExtension";
 import type { ExtensionManager } from "../prosemirror/extensions/ExtensionManager";
 import { ensureBaseDirectionInState } from "../prosemirror/extensions/features/AutoBidiDetectionExtension";
-import {
-  createParagraphChangeTrackerPlugin,
-  markPackageChange,
-} from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import {
   ensureParaIdsInDoc,
   ensureParaIdsInState,
@@ -152,6 +151,14 @@ import {
   type FolioAnonymizationTerm,
   NO_ANONYMIZATION_TERMS,
 } from "./anonymizationHighlights";
+import {
+  type AutocompleteEdit,
+  canTriggerAutocomplete,
+  classifyAutocompleteEdit,
+  createAutocompleteSuggestion,
+  legacyAutocompleteEdit,
+  nextAutocompleteWord,
+} from "./autocompleteSuggestion";
 import { prepareCanonicalPaste } from "./canonicalClipboard";
 import {
   createCanonicalInputBoundary,
@@ -168,9 +175,14 @@ import {
   prepareCanonicalAutoformat,
   prepareCanonicalCommands,
 } from "./canonicalStructure";
-import { createHiddenEditorApi, type HiddenEditorApi } from "./hiddenEditorApi";
+import {
+  createHiddenEditorApi,
+  type HiddenEditorApi,
+  type HiddenEditorAutocomplete,
+} from "./hiddenEditorApi";
 import { legacyTextAddressAt } from "./legacyTextAddress";
 import { handleReadOnlySelectionKeyDown } from "./readOnlySelection";
+import { legacyEditorPositionAt } from "./textPositionLookup";
 
 const CanonicalSessionRefusalErrorBase: TaggedErrorClass<"CanonicalSessionRefusalError"> =
   TaggedError("CanonicalSessionRefusalError");
@@ -798,11 +810,17 @@ export const createHiddenEditorManager = (
   let canonicalSaved:
     { session: CanonicalSession; version: number } | undefined;
   let offHistoryDrop = (): void => {};
+  // The inline suggestion follows every committed edit of the session.
+  const autocomplete = createAutocompleteSuggestion();
+  let offAutocompleteEdits = (): void => {};
   const leaveRoom = (): void => {
     room?.leave();
     room = undefined;
   };
   const seedSession = (document: ReadonlyDocument | null): boolean => {
+    autocomplete.clear();
+    offAutocompleteEdits();
+    offAutocompleteEdits = () => {};
     leaveRoom();
     const canonicalRoom = deps.getCanonicalRoom?.();
     if (
@@ -851,6 +869,9 @@ export const createHiddenEditorManager = (
     offHistoryDrop = result.value.onHistoryDrop((drop) =>
       deps.onCanonicalHistoryDrop?.(drop),
     );
+    offAutocompleteEdits = result.value.onCommitted((batch) =>
+      autocomplete.noteEdit(classifyAutocompleteEdit(batch)),
+    );
     canonicalSessionEpoch += 1;
     modeOverride = null;
     syncCanonicalMode();
@@ -874,9 +895,6 @@ export const createHiddenEditorManager = (
       doc: session.projection.doc,
       plugins: [
         createDocumentNumberingPlugin(document.package.numbering),
-        // The VS Code host still reports its save strategy from this tracker;
-        // pending changes come from the session's own history.
-        createParagraphChangeTrackerPlugin(),
         createNativeSelectionRefreshPlugin(),
         createNativeNavigationPlugin(),
         createDocumentStyleContextPlugin(
@@ -983,6 +1001,129 @@ export const createHiddenEditorManager = (
     deps.onSelectionChange(staged.state);
     deps.onCanonicalHistory?.(commit.history);
     return Result.ok(undefined);
+  };
+
+  const autocompletePositionAt = (position: TextPosition): number | null => {
+    if (!view || isDestroying) return null;
+    switch (editorSession.type) {
+      case "canonical":
+        return editorSession.session.projection
+          .positionAt(position)
+          .unwrapOr(null);
+      case "prosemirror":
+        return legacyEditorPositionAt(view.state.doc, position);
+      case "refused":
+        return null;
+      default: {
+        const unreachable: never = editorSession;
+        return unreachable;
+      }
+    }
+  };
+  /** Where the suggestion's anchor shows in the body's editor document. */
+  const autocompleteEditorAnchor = (): number | null => {
+    const current = autocomplete.get();
+    return current.status === "idle"
+      ? null
+      : autocompletePositionAt(current.anchor);
+  };
+  /** The caret as a body text position. */
+  const caretTextPosition = (): TextPosition | null => {
+    if (!view) return null;
+    const { head } = view.state.selection;
+    if (editorSession.type === "canonical")
+      return editorSession.session.projection.addressAt(head).unwrapOr(null);
+    return legacyTextAddressAt(view.state.doc, head);
+  };
+  /**
+   * Insert the suggestion, or its next word, at its anchor as the person's
+   * own typing would: one undo step of its own, tracked when suggesting. The
+   * committed insertion consumes the text it inserted from the suggestion.
+   */
+  const acceptAutocomplete = (scope: "all" | "word"): boolean => {
+    const current = autocomplete.get();
+    if (current.status === "idle" || current.text.length === 0) return false;
+    if (!view || deps.getReadOnly() || isDestroying) return false;
+    const at = autocompleteEditorAnchor();
+    if (at === null) return false;
+    const text =
+      scope === "word" ? nextAutocompleteWord(current.text) : current.text;
+    if (editorSession.type === "canonical") {
+      syncCanonicalMode();
+      const session = editorSession.session;
+      session.breakUndoGroup();
+      const prepared = session.prepareReplace(view.state, {
+        from: at,
+        to: at,
+        text,
+        semantic: "typing",
+      });
+      if (prepared.isErr()) {
+        if (prepared.error.reason !== "noChange")
+          refuse(prepared.error.message, prepared.error.ground);
+        return false;
+      }
+      const published = publishCommit(prepared.value);
+      session.breakUndoGroup();
+      return published;
+    }
+    if (editorSession.type === "refused") return false;
+    const previous = view.state.doc;
+    const transaction = closeHistory(view.state.tr).insertText(text, at);
+    view.dispatch(
+      transaction.setSelection(
+        TextSelection.create(transaction.doc, at + text.length),
+      ),
+    );
+    if (!view || view.state.doc.eq(previous)) return false;
+    view.dispatch(closeHistory(view.state.tr));
+    return true;
+  };
+  let autocompleteRequests = 0;
+  const autocompleteApi: HiddenEditorAutocomplete = {
+    start: (options) => {
+      const anchor = options?.at ?? caretTextPosition();
+      if (anchor === null || !view) return null;
+      const position = autocompletePositionAt(anchor);
+      if (position === null) return null;
+      const resolved =
+        editorSession.type === "canonical"
+          ? editorSession.session.projection.addressAt(position).unwrapOr(null)
+          : legacyTextAddressAt(view.state.doc, position);
+      if (resolved === null) return null;
+      autocompleteRequests += 1;
+      const requestId =
+        options?.requestId ?? `autocomplete-${String(autocompleteRequests)}`;
+      autocomplete.start(resolved, requestId);
+      return requestId;
+    },
+    append: (requestId, delta) => autocomplete.append(requestId, delta),
+    finish: (requestId) => autocomplete.finish(requestId),
+    clear: () => autocomplete.clear(),
+    accept: (scope = "all") => acceptAutocomplete(scope),
+    get: () => autocomplete.get(),
+    canTrigger: () =>
+      view !== null &&
+      caretTextPosition() !== null &&
+      canTriggerAutocomplete(view.state).ok,
+    editorAnchor: autocompleteEditorAnchor,
+    subscribe: (listener) => autocomplete.subscribe(listener),
+  };
+  /** Tab accepts, Mod-ArrowRight accepts a word, Escape dismisses. */
+  const handleAutocompleteKeyDown = (event: KeyboardEvent): boolean => {
+    if (autocomplete.get().status === "idle") return false;
+    const mod = event.metaKey || event.ctrlKey;
+    let handled = false;
+    if (event.key === "Tab" && !event.shiftKey && !mod && !event.altKey)
+      handled = acceptAutocomplete("all");
+    else if (event.key === "ArrowRight" && mod && !event.shiftKey)
+      handled = acceptAutocomplete("word");
+    else if (event.key === "Escape" && !mod && !event.shiftKey) {
+      autocomplete.clear();
+      handled = true;
+    }
+    if (handled) event.preventDefault();
+    return handled;
   };
   const editorOwnsHistoryShortcuts = (): boolean =>
     (deps.getHistoryShortcuts?.() ?? "editor") === "editor";
@@ -1540,13 +1681,22 @@ export const createHiddenEditorManager = (
           );
           return;
         }
-        view.updateState(applied.state);
-
-        const docChanged = applied.transactions.some(
+        const documentEdits = applied.transactions.filter(
           (appliedTransaction) =>
             appliedTransaction.docChanged &&
             !isCommentRecordsSync(appliedTransaction),
         );
+        let autocompleteEdit: AutocompleteEdit | undefined;
+        if (editorSession.type !== "canonical" && documentEdits.length > 0) {
+          const only = documentEdits.at(0);
+          autocompleteEdit =
+            documentEdits.length === 1 && only === transaction
+              ? legacyAutocompleteEdit(transaction)
+              : { type: "other" };
+        }
+        view.updateState(applied.state);
+
+        const docChanged = documentEdits.length > 0;
         const selectionChanged = applied.transactions.some(
           (appliedTransaction) =>
             appliedTransaction.selectionSet ||
@@ -1577,9 +1727,18 @@ export const createHiddenEditorManager = (
             ),
           );
         }
+        // Notify after the dispatch's host bookkeeping: a synchronous listener
+        // may accept again, publishing another transaction of its own.
+        if (autocompleteEdit !== undefined)
+          autocomplete.noteEdit(
+            view?.state === applied.state
+              ? autocompleteEdit
+              : { type: "other" },
+          );
       },
       // Intercept key events before ProseMirror processes them
       handleKeyDown: (pmView: EditorView, event: KeyboardEvent): boolean => {
+        if (handleAutocompleteKeyDown(event)) return true;
         if (deps.getReadOnly() && handleReadOnlySelectionKeyDown(pmView, event))
           return true;
 
@@ -1813,6 +1972,9 @@ export const createHiddenEditorManager = (
   const destroyView = (): void => {
     if (view && !isDestroying) {
       isDestroying = true;
+      autocomplete.clear();
+      offAutocompleteEdits();
+      offAutocompleteEdits = () => {};
 
       deps.onEditorViewDestroy();
       leaveRoom();
@@ -1965,7 +2127,6 @@ export const createHiddenEditorManager = (
         return false;
       }
     }
-    markPackageChange(bodyTransaction);
     bodyTransaction.setMeta("addToHistory", false);
     const bodyStaged = Result.try(() =>
       view?.state.applyTransaction(bodyTransaction),
@@ -2158,6 +2319,7 @@ export const createHiddenEditorManager = (
       editorSession.type === "canonical"
         ? editorSession.session.document
         : null,
+    autocomplete: autocompleteApi,
     getAnonymizationHighlights: () =>
       anonymization.read(
         deps.getAnonymizationTerms?.() ?? NO_ANONYMIZATION_TERMS,

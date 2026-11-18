@@ -330,6 +330,16 @@ export class FolioPendingSuggestionRegistry {
     this.sourceFingerprints.clear();
   }
 
+  /** An independent registry holding the same records. */
+  clone(): FolioPendingSuggestionRegistry {
+    const copy = new FolioPendingSuggestionRegistry();
+    for (const [key, record] of this.records)
+      copy.records.set(key, structuredClone(record));
+    for (const [key, fingerprint] of this.sourceFingerprints)
+      copy.sourceFingerprints.set(key, fingerprint);
+    return copy;
+  }
+
   recordApplied({
     snapshot,
     story,

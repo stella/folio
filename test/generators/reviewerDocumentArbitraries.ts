@@ -3,7 +3,12 @@ import fc from "fast-check";
 
 import type { Document } from "../../packages/docx-core/src/model/document";
 import { reviewDocumentArbitrary } from "../../packages/docx-core/src/ops/__tests__/documentArbitraries";
+import { withCoherentSyntheticReviewComments } from "./coherentReviewerComments";
 import { packageDocumentArbitrary } from "./packageOperationArbitraries";
+
+const coherentReviewDocumentArbitrary = reviewDocumentArbitrary.map(
+  withCoherentSyntheticReviewComments,
+);
 
 /**
  * Every story a reviewer lists (headers, footers, notes, a comment thread,
@@ -12,7 +17,7 @@ import { packageDocumentArbitrary } from "./packageOperationArbitraries";
  */
 export const reviewerDocumentArbitrary: fc.Arbitrary<Document> = fc.oneof(
   packageDocumentArbitrary,
-  reviewDocumentArbitrary,
+  coherentReviewDocumentArbitrary,
 );
 
 /**
@@ -90,4 +95,4 @@ const withPairedMarkers = (document: Document): Document => {
  * and text boxes have their own story properties.
  */
 export const bodyReviewerDocumentArbitrary: fc.Arbitrary<Document> =
-  reviewDocumentArbitrary.map(withPairedMarkers);
+  coherentReviewDocumentArbitrary.map(withPairedMarkers);

@@ -8,7 +8,7 @@ import type { Document } from "../types/document";
 import { NO_ANONYMIZATION_HIGHLIGHTS } from "./anonymizationHighlights";
 import { createFolioEditor, type FolioEditorDocumentIO } from "./folioEditor";
 import { createFolioEditorEmitter } from "./folioEditorEvents";
-import type { HiddenEditorApi } from "./hiddenEditorApi";
+import { type HiddenEditorApi, NO_AUTOCOMPLETE } from "./hiddenEditorApi";
 import type { LayoutRunOptions } from "./layoutRunOptions";
 
 // Sentinels: opaque stand-ins for the heavy PM/layout objects. The controller
@@ -128,6 +128,7 @@ const createFakeApi = (): { api: HiddenEditorApi; calls: Call[] } => {
     scrollToSelection: record("scrollToSelection"),
     editorPositionAt: () => null,
     getAnonymizationHighlights: () => NO_ANONYMIZATION_HIGHLIGHTS,
+    autocomplete: NO_AUTOCOMPLETE,
   };
   return { api, calls };
 };
@@ -402,4 +403,24 @@ describe("createFolioEditor", () => {
     expect(at(3, "unknown")).toBeNull();
     expect(at(40)).toBeNull();
   });
+});
+
+test("autocomplete delegates only public methods across editor API replacement", () => {
+  let current: HiddenEditorApi | null = null;
+  const editor = createFolioEditor({
+    getEditorApi: () => current,
+    getLayout: () => null,
+    runLayout: () => {},
+    emitter: createFolioEditorEmitter(),
+  });
+  const autocomplete = editor.autocomplete;
+  expect(autocomplete.start()).toBeNull();
+  expect("subscribe" in autocomplete).toBe(false);
+  expect("editorAnchor" in autocomplete).toBe(false);
+  for (const requestId of ["first", "replacement"]) {
+    const { api } = createFakeApi();
+    api.autocomplete = { ...NO_AUTOCOMPLETE, start: () => requestId };
+    current = api;
+    expect(autocomplete.start()).toBe(requestId);
+  }
 });

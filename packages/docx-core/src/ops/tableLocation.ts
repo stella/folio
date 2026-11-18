@@ -14,22 +14,27 @@ import type {
   DeleteRowOp,
   DeleteTableOp,
   InsertRowOp,
+  InsertTableOp,
+  OpStory,
   SetTableOp,
   SetTableRowsOp,
   TableEditOp,
   TableIntentOperation,
 } from "./types";
 
-type TableTarget = Pick<
-  | DeleteRowOp
-  | DeleteTableOp
-  | InsertRowOp
-  | SetTableRowsOp
-  | TableEditOp
-  | TableIntentOperation
-  | SetTableOp,
-  "type" | "story" | "blockId"
->;
+type TableTarget =
+  | Pick<
+      | DeleteRowOp
+      | DeleteTableOp
+      | InsertRowOp
+      | SetTableRowsOp
+      | TableEditOp
+      | TableIntentOperation
+      | SetTableOp,
+      "type" | "story" | "blockId"
+    >
+  // A table inserted beside the table holding `blockId`.
+  | { type: InsertTableOp["type"]; story: OpStory; blockId: string };
 
 export type TableRowLocation = {
   list: ParagraphLocation["list"];

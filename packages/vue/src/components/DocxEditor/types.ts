@@ -32,9 +32,14 @@ import type {
   FolioAnonymizationMatch,
   FolioAnonymizationTerm,
 } from "@stll/folio-core/controller/anonymizationHighlights";
+import type {
+  FolioAutocompleteApi,
+  FolioAutocompleteState,
+} from "@stll/folio-core/controller/autocompleteSuggestion";
 import type { CanonicalRoomCollaboration } from "@stll/folio-core/controller/canonicalRoomEditor";
 import type {
   FolioEditor,
+  FolioSaveOptions,
   TextPosition,
 } from "@stll/folio-core/controller/folioEditor";
 import type { PageRendererName } from "@stll/folio-core/display-list/editor/pageRenderer";
@@ -373,6 +378,8 @@ export type DocxEditorProps = {
    * included. Pass a new array to change the terms.
    */
   anonymizationTerms?: readonly FolioAnonymizationTerm[] | undefined;
+  /** Called with the inline autocomplete suggestion each time it changes. */
+  onAutocompleteChange?: ((state: FolioAutocompleteState) => void) | undefined;
   /**
    * Fires with every occurrence, as text positions, each time the set of
    * occurrences changes (new terms, an edit, a load). An edit elsewhere in
@@ -511,7 +518,7 @@ export type DocxEditorRef = {
   /** The headless editor controller (Seam 6), or null before the editor mounts. */
   getEditor: () => FolioEditor | null;
   /** Save the document to buffer. Pass { selective: false } to force full repack. */
-  save: (options?: { selective?: boolean }) => Promise<ArrayBuffer | null>;
+  save: (options?: FolioSaveOptions) => Promise<ArrayBuffer | null>;
   /** Set zoom level */
   setZoom: (zoom: number) => void;
   /** Get current zoom level */
@@ -721,6 +728,15 @@ export type DocxEditorRef = {
    * body has that id.
    */
   getPositionPage: (position: TextPosition) => number | null;
+  /**
+   * The inline autocomplete suggestion: ghost text streamed in at a text
+   * position and shown beside the caret, in either session. It is view
+   * state: it never changes the document, its undo history or its pending
+   * changes, and it stays on its text when a peer edits. Typing its next
+   * characters consumes them; any other edit dismisses it. Tab accepts it,
+   * Mod-ArrowRight its next word, Escape dismisses it.
+   */
+  autocomplete: FolioAutocompleteApi;
   /** Every occurrence of the `anonymizationTerms`, as text positions. */
   getAnonymizationMatches: () => readonly FolioAnonymizationMatch[];
   /** Painted geometry for one block, relative to this editor's scroll root. */

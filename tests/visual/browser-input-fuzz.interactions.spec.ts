@@ -422,8 +422,8 @@ const drive = async (
       await page.keyboard.press(`${MODIFIER}+x`);
       return;
     case "dragCellDelete":
-      if (!(await selectTarget(page, "table")))
-        throw new Error("table fixture has no draggable cells");
+      // An earlier edit can remove the table, as for any selection drag.
+      fc.pre(await selectTarget(page, "table"));
       await page.keyboard.press("Delete");
       return;
     case "undo":
@@ -874,6 +874,36 @@ test.describe("pinned browser input", () => {
         const replay = async () => {
           const source = await shapeArrayBuffer(trace.shape);
           const baseline = project(await FolioDocxReviewer.fromBuffer(source));
+          if ("preconditionAt" in regression) {
+            await load({
+              page,
+              bytes: source,
+              baseline,
+              suggesting: false,
+              authority: "prosemirror",
+            });
+            expect(await selectTarget(page, "table")).toBe(true);
+            for (const [index, action] of trace.actions.entries()) {
+              const before = await liveBlocks(page);
+              const outcome = await drive(page, action).then(
+                () => ({ status: "applied" }) as const,
+                (error: unknown) => ({ status: "refused", error }) as const,
+              );
+              if (index !== regression.preconditionAt) {
+                expect(outcome.status).toBe("applied");
+                continue;
+              }
+              expect(outcome.status).toBe("refused");
+              if (outcome.status !== "refused")
+                throw new TypeError("A missing table cannot be dragged");
+              expect(fc.PreconditionFailure.isFailure(outcome.error)).toBe(
+                true,
+              );
+              expect(await liveBlocks(page)).toEqual(before);
+              return;
+            }
+            throw new TypeError("The trace did not reach its precondition");
+          }
           if ("authority" in regression) {
             await checkCanonicalTrace({ page, source, baseline, trace });
             if ("comparesWithDefaultEditor" in regression)

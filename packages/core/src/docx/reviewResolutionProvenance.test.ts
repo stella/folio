@@ -405,6 +405,41 @@ test("a cut record's identity handoff has its own private attribute", () => {
   ).toBeUndefined();
 });
 
+test("lifted ownership provenance accepts one piece and rejects nonpositive counts", () => {
+  for (const pieces of [1, 2, 3]) {
+    const source = {
+      piece: 0,
+      pieces,
+      joins: { before: 0, after: 0, remove: 0 },
+    };
+    const encoded = serializeSplitResolutionPiece(source);
+    expect(
+      parseSplitResolutionPiece(
+        element(
+          `<r xmlns:folio="${FOLIO_REVIEW_HISTORY_NAMESPACE}"${encoded}/>`,
+        ),
+      ),
+    ).toEqual(source);
+  }
+  for (const pieces of [0, -1]) {
+    const source = { piece: 0, pieces };
+    expect(() => serializeSplitResolutionPiece(source)).toThrow(
+      ReviewResolutionProvenanceError,
+    );
+    const encoded = JSON.stringify({ version: 1, value: source });
+    expect(
+      parseSplitResolutionPiece(
+        element(
+          `<r xmlns:folio="${FOLIO_REVIEW_HISTORY_NAMESPACE}" folio:splitResolutionJoins="${escapeXmlAttribute(encoded)}"/>`,
+        ),
+      ),
+    ).toBeUndefined();
+    expect(
+      reviewProvenanceIssue("splitResolutionJoins", encoded),
+    ).toBeDefined();
+  }
+});
+
 test("the paragraph a rejected mark keeps has its own private attribute", () => {
   const mark = {
     kind: "ins",
@@ -489,6 +524,28 @@ const reopened = (xml: string): Paragraph => {
   if (!paragraph) throw new TypeError("The paragraph disappeared.");
   return parseParagraph(paragraph, null, null, null);
 };
+
+test("single lifted pieces take joins only from their ownership provenance", () => {
+  const pieceJoins = { before: 9, after: 8, remove: 7 };
+  for (const joins of [undefined, { before: 0, after: 0, remove: 0 }]) {
+    const split = serializeSplitResolutionPiece(
+      joins === undefined
+        ? { piece: 0, pieces: 1 }
+        : { piece: 0, pieces: 1, joins },
+    );
+    const parsed = reopened(
+      `<w:p><w:hyperlink w:anchor="target"><w:ins w:id="7" w:author="Reviewer"${serializeResolutionJoins(pieceJoins)}${split}><w:r><w:t>linked</w:t></w:r></w:ins></w:hyperlink></w:p>`,
+    );
+    const change = parsed.content.at(0);
+    expect(change?.type).toBe("insertion");
+    expect(change?.type === "insertion" && change.resolutionJoins).toEqual(
+      joins,
+    );
+    expect(change?.type === "insertion" && change.content.at(0)?.type).toBe(
+      "hyperlink",
+    );
+  }
+});
 
 test("a change holding only a link keeps its joins through a save", () => {
   const paragraph = {
@@ -859,7 +916,7 @@ for (const provenance of ["none", "joins"] as const) {
     expect(serializeParagraph(reopened(xml))).toBe(xml);
     expectNoHyperlinkInsideRevision(xml);
     expect(xml).toContain("<w:hyperlink");
-    expect(xml).toContain('<w:dir w:val="rtl">');
+    expect(xml).toMatch(/<w:dir\b[^>]*\bw:val="rtl"/u);
     expect(xml).toContain("linked");
   });
 }

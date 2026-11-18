@@ -17,6 +17,7 @@ import type {
 import type { HeaderFooter } from "../types/document";
 import {
   FOLIO_DOCX_SERIALIZATION_MODE,
+  type FolioDocxSerializationPath,
   type FolioGetDocxOptions,
 } from "../types/docxSerialization";
 import { repackWithCanonicalStoryRemovals } from "./canonicalStoryRepack";
@@ -39,6 +40,16 @@ export class CanonicalSaveDiagnosticError extends CanonicalSaveDiagnosticErrorBa
   gap: typeof CANONICAL_GAP.save;
   diagnostic: SaveDiagnostic;
 }> {}
+
+/** The adapters' error channel for one fidelity fallback. */
+export const canonicalSaveDiagnosticError = (
+  diagnostic: SaveDiagnostic,
+): CanonicalSaveDiagnosticError =>
+  new CanonicalSaveDiagnosticError({
+    gap: CANONICAL_GAP.save,
+    diagnostic,
+    message: `Canonical save used a fidelity fallback: ${diagnostic.type} (${diagnostic.part}).`,
+  });
 
 const CanonicalSaveRepackRefusedErrorBase: TaggedErrorClass<"CanonicalSaveRepackRefusedError"> =
   TaggedError("CanonicalSaveRepackRefusedError");
@@ -115,7 +126,7 @@ export const serializeCanonicalSave = async ({
 }: SerializeCanonicalSaveOptions): Promise<{
   buffer: ArrayBuffer;
   /** Whether the buffer is the selective patch of the baseline or a repack. */
-  path: "selective" | "full-repack";
+  path: FolioDocxSerializationPath;
   document: Document;
   version: number;
   diagnostics: SaveDiagnostic[];
@@ -178,6 +189,7 @@ export const serializeCanonicalSave = async ({
       hasUntrackedChanges: false,
       maxBytes: flags.selectiveSaveMaxBytes,
       onDiagnostic,
+      onSelectiveDecline: options?.onSelectiveDecline,
     });
     if (useSelective && !selectiveBuffer)
       onDiagnostic({ type: "selectiveSaveRefused", part: "word/document.xml" });
@@ -245,9 +257,11 @@ export const serializeCanonicalSave = async ({
     if (compared.isOk()) tripwireResult = compared.value;
   }
   for (const diagnostic of diagnostics) options?.onDiagnostic?.(diagnostic);
+  const path = fullBuffer === buffer ? "full-repack" : "selective";
+  options?.onSerializationPath?.(path);
   return {
     buffer,
-    path: fullBuffer === buffer ? "full-repack" : "selective",
+    path,
     document,
     version: snapshot.version,
     diagnostics,

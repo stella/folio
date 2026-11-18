@@ -308,8 +308,17 @@ export const runSteps = async (
         }
       }
       if (mode === "tracked-changes") {
-        const rejected = await resolvedState(saved, "reject");
-        const before = await resolvedState(original, "reject");
+        const scope = { type: "document", story: { type: "main" } } as const;
+        const rejected = await resolvedState({
+          bytes: saved,
+          resolution: "reject",
+          scope,
+        });
+        const before = await resolvedState({
+          bytes: original,
+          resolution: "reject",
+          scope,
+        });
         if (
           JSON.stringify(
             rowsOf(await openReviewer(rejected.bytes)).map(({ text }) => text),

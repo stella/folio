@@ -60,6 +60,20 @@
       "path": "39:3",
       "note": "A suggested split of a cell spanning two columns is skipped alike in both engines; a direct split still applies.",
       "date": "2026-11-15"
+    },
+    {
+      "seed": -1052520713,
+      "path": "36:3",
+      "note": "Rejecting a suggested split of a vertical merge restores the merge, as the default engine's rejection does.",
+      "date": "2026-11-14"
+    }
+  ],
+  "tables inserted beside paragraphs and tables in the canonical session give the default engine's package": [
+    {
+      "seed": -2051936497,
+      "path": "74",
+      "note": "A tracked signature table beside a pending deleted paragraph break refuses its unsupported mode without moving the existing revision.",
+      "date": "2026-11-16"
     }
   ]
 }

@@ -176,6 +176,7 @@ export {
   type FolioAIBlockPreviewRun,
   type FolioAIComment,
   type FolioAIEditAppliedOperation,
+  type FolioAIEditParagraphIdentity,
   type FolioAIEditApplyMode,
   type FolioAIEditApplyResult,
   type FolioAIEditOperation,
@@ -236,26 +237,10 @@ export {
   type TemplateSlashMenuKeyAction,
   type TemplateSlashMenuState,
 } from "@stll/folio-core/prosemirror/plugins/templateSlashMenu";
-export {
-  acceptAutocompleteSuggestion,
-  acceptAutocompleteWord,
-  appendAutocompleteToken,
-  autocompleteSuggestionKey,
-  autocompleteSuggestionPlugin,
-  clearAutocompleteSuggestion,
-  DEFAULT_AUTOCOMPLETE_DEAD_ZONE_NODES,
-  finishAutocompleteSuggestion,
-  getAutocompleteSuggestion,
-  shouldTriggerAutocomplete,
-  startAutocompleteSuggestion,
-  type AcceptAutocompleteResult,
-  type AutocompleteSuggestionPluginOptions,
-  type AutocompleteSuggestionState,
-  type AutocompleteSuggestionStatus,
-  type AutocompleteTriggerCheck,
-  type AutocompleteTriggerOptions,
-  type AutocompleteTriggerSkipReason,
-} from "@stll/folio-core/prosemirror/plugins/autocompleteSuggestion";
+export type {
+  FolioAutocompleteApi,
+  FolioAutocompleteState,
+} from "@stll/folio-core/controller/autocompleteSuggestion";
 export {
   AutocompleteCaretOverlay,
   type AutocompleteCaretOverlayProps,

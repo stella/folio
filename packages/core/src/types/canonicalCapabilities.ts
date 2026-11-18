@@ -19,6 +19,7 @@ export const CANONICAL_GAP = {
   aiSnapshots: "pm-ai-snapshots",
   publicComments: "publicOps.comments",
   publicUnsupportedInline: "publicOps.unsupportedInline",
+  commentReplacementAlignment: "comment-replacement-alignment",
   publicTableStructure: "publicOps.tableStructure",
   publicHeadlessSession: "publicOps.headlessSession",
 } as const;
@@ -224,14 +225,20 @@ export const CANONICAL_CAPABILITIES: {
     readonly defaultSessionMutation: "pm-public-operations";
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Public signature tables and tables beside a table need canonical table descriptors.";
+    readonly summary: "Canonical whole-table signature suggestions need direct acceptance semantics; direct signature and ordinary table placement compile.";
+  };
+  readonly "comment-replacement-alignment": {
+    readonly owner: "controller";
+    readonly kind: "refusal";
+    readonly adapters: readonly ["react", "vue"];
+    readonly summary: "Replacements refuse when preserving aligned comments needs anchor transitions or an unproven collapsed-range policy.";
   };
   readonly "publicOps.headlessSession": {
     readonly owner: "document-operations";
     readonly defaultSessionMutation: "pm-headless-reviewer";
     readonly kind: "mutation-source";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "A canonical headless reviewer edits, resolves, undoes and saves the body; other stories, suggestions and comment edits refuse.";
+    readonly summary: "A canonical reviewer stages comparison resources, sections and table properties; secondary-story suggestion resolution, story-view resolution beside staged suggestions and comparison inline-atom matching refuse.";
   };
   readonly "pm-ai-snapshots": {
     readonly owner: "ai-edits";
@@ -369,7 +376,14 @@ export const CANONICAL_CAPABILITIES: {
     kind: "refusal",
     adapters: ["react", "vue"],
     summary:
-      "Public signature tables and tables beside a table need canonical table descriptors.",
+      "Canonical whole-table signature suggestions need direct acceptance semantics; direct signature and ordinary table placement compile.",
+  },
+  [CANONICAL_GAP.commentReplacementAlignment]: {
+    owner: "controller",
+    kind: "refusal",
+    adapters: ["react", "vue"],
+    summary:
+      "Replacements refuse when preserving aligned comments needs anchor transitions or an unproven collapsed-range policy.",
   },
   [CANONICAL_GAP.publicHeadlessSession]: {
     owner: "document-operations",
@@ -377,7 +391,7 @@ export const CANONICAL_CAPABILITIES: {
     kind: "mutation-source",
     adapters: ["react", "vue"],
     summary:
-      "A canonical headless reviewer edits, resolves, undoes and saves the body; other stories, suggestions and comment edits refuse.",
+      "A canonical reviewer stages comparison resources, sections and table properties; secondary-story suggestion resolution, story-view resolution beside staged suggestions and comparison inline-atom matching refuse.",
   },
   [CANONICAL_GAP.aiSnapshots]: {
     owner: "ai-edits",

@@ -742,7 +742,12 @@ const linkedRevisionContent = (
   let linked: Hyperlink["children"][number][] = [];
   const flushLinked = (): void => {
     if (linked.length === 0) return;
-    content.push(linkOver(linked));
+    // Reattaching the link completes this ownership boundary. Restore any
+    // lifted ancestors now, before a surrounding revision consumes them.
+    const restored = sinkLiftedLink(linkOver(linked));
+    if (!isTrackedChangeWrapperChild(restored))
+      return panic("A restored hyperlink must remain tracked inline content");
+    content.push(restored);
     linked = [];
   };
   for (const item of wrapped) {
@@ -1134,14 +1139,27 @@ const fieldTrackedChange =
 /**
  * What a `w:fldSimple` does with every child its content model declares.
  *
- * Two callers read this one map: {@link parseSimpleField}, and
- * {@link parseFieldInlineWrapper} for a transparent wrapper the field holds —
- * `CT_BdoContentRun` and its three siblings are the same `EG_PContent` the
- * field is, so the decision per child is the field's own.
+ * The field's typed content is narrower than EG_PContent. Transparent wrappers
+ * hold paragraph content instead and recurse through the paragraph dispatcher.
  */
 const SIMPLE_FIELD_CHILD_HANDLERS = {
   r: (child, { push, styles, theme, rels, media, previews, inScopeXmlns }) => {
-    push(parseRun(child, styles, theme, rels, media, inScopeXmlns, previews));
+    const run = parseRun(
+      child,
+      styles,
+      theme,
+      rels,
+      media,
+      inScopeXmlns,
+      previews,
+    );
+    // Unlike an inline wrapper, SimpleField cannot hold the point reference
+    // lifted from its run. Preserve that run instead of losing the reference.
+    if (getCommentReferenceId(child) !== null) {
+      push({ ...preserveInlineChild(child), text: getRunText(run) });
+      return;
+    }
+    push(run);
   },
   hyperlink: (
     child,
@@ -1205,35 +1223,29 @@ const SIMPLE_FIELD_CHILD_HANDLERS = {
 /**
  * A transparent wrapper a simple field holds, with the content the field holds.
  *
- * The mirror of `parseLinkedInlineWrapper`: the wrapper's declared children are
- * run-level content, the decision per child is the container's own map, and the
- * wrapper's properties bag is read by `inlineWrapperOf` rather than captured a
- * second time by the sink.
+ * Its model admits ordinary paragraph content, even when the field's own
+ * direct-child model does not. Use the paragraph dispatcher so run-owned point
+ * references and other admitted children keep their authored wrapper.
  */
 const parseFieldInlineWrapper = (
   element: InlineWrapperElement,
   node: XmlElement,
   context: SimpleFieldChildContext,
 ): InlineWrapper => {
-  const inScopeXmlns = mergeXmlnsDeclarations(context.inScopeXmlns, node);
-  const content: SimpleField["content"] = [];
-  const preserved = dispatchChildrenWithContext({
-    element: node,
-    container: "run-level-content",
-    capturePosition: () => content.length,
-    handlers: FIELD_INLINE_WRAPPER_HANDLERS,
-    context: {
-      ...context,
-      inScopeXmlns,
-      push: (child: SimpleField["content"][number]) => {
-        content.push(child);
-      },
-    },
-  });
   return inlineWrapperOf(
     element,
     node,
-    withPreservedChildren(content, preserved, preservedInlineCapture),
+    parseParagraphContents(
+      node,
+      context.styles,
+      context.theme,
+      null,
+      context.rels,
+      context.media,
+      context.previews,
+      "default",
+      context.inScopeXmlns,
+    ),
   );
 };
 
@@ -1385,19 +1397,6 @@ const CUSTOM_XML_PROPERTIES_OWNER = ownedElsewhere({
   child: "customXmlPr",
   reader: "inlineWrapperParser#inlineWrapperOf",
 });
-
-/** The field's own map over a transparent wrapper it holds; see `parseFieldInlineWrapper`. */
-const FIELD_INLINE_WRAPPER_HANDLERS = {
-  ...SIMPLE_FIELD_CHILD_HANDLERS,
-  customXmlPr: CUSTOM_XML_PROPERTIES_OWNER,
-  smartTagPr: SMART_TAG_PROPERTIES_OWNER,
-  // Not a child of any of the four wrappers; the declared set is shared
-  // with `w:p`, where the paragraph reads it off the element.
-  pPr: CAPTURE,
-} as const satisfies ChildHandlers<
-  "run-level-content",
-  SimpleFieldChildContext
->;
 
 /**
  * What one paragraph-content walk reads with and writes into.
@@ -2431,8 +2430,24 @@ const joinSplitRevisionPieces = (
     const first = contents[index];
     if (first === undefined) continue;
     const split = splitPieces.get(first);
-    if (split?.piece !== 0 || !isSplittable(first)) {
+    if (
+      split?.piece !== 0 ||
+      !isSplittable(first) ||
+      (split.pieces === 1 && first.type === "inlineWrapper")
+    ) {
       out.push(first);
+      continue;
+    }
+    if (split.pieces === 1 && first.type !== "inlineWrapper") {
+      // Nothing to join, but an enclosing link may not be attached yet.
+      // Keep the ownership tag through nested revision reconstruction.
+      const { resolutionJoins: _pieceJoins, ...owner } = first;
+      const whole = {
+        ...owner,
+        ...(split.joins === undefined ? {} : { resolutionJoins: split.joins }),
+      };
+      splitPieces.set(whole, split);
+      out.push(whole);
       continue;
     }
     const pieces = contents.slice(index, index + split.pieces);

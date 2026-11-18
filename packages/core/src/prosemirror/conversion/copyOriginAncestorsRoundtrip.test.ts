@@ -26,6 +26,7 @@ import {
   handleSuggestionPaste,
   suggestionModeKey,
 } from "../plugins/suggestionMode";
+import { expectRangeAnchorAttrs } from "../rangeAnchorAttrs";
 import { schema } from "../schema";
 import { trackedRevisionPathOf } from "../trackedRevisionPath";
 import { fromProseDoc } from "./fromProseDoc";
@@ -214,8 +215,7 @@ test("empty move-range marker ownership survives DOCX and PM JSON round trips", 
   const pointOrigins: unknown[][] = [];
   projected.descendants((node) => {
     if (node.type.name !== "rangeAnchor") return;
-    const start: unknown = node.attrs["start"];
-    const end: unknown = node.attrs["end"];
+    const [start, end] = expectRangeAnchorAttrs(node).markers;
     if (
       typeof start === "object" &&
       start !== null &&
@@ -249,7 +249,9 @@ test("nested mixed revision marks expose nearest-first copy-owner depth", async 
   );
   const parsed = await parseDocx(
     (await zip.generate({ compression: "store" })).buffer,
-    { preloadFonts: false },
+    {
+      preloadFonts: false,
+    },
   );
   const projected = toProseDoc(parsed);
   const boundaryPaths: string[][] = [];
@@ -430,15 +432,16 @@ test("accepting all changes removes empty move-range copy ownership", async () =
 test("paragraph-mark removal normalizes copied empty move boundaries", async () => {
   const parsed = await parseDocx(
     await documentWithParagraphMarkEmptyMoveRange(),
-    { preloadFonts: false },
+    {
+      preloadFonts: false,
+    },
   );
   const projected = toProseDoc(parsed);
   const sourceOrigins: unknown[][] = [];
   const removedNodes: string[] = [];
   projected.descendants((node) => {
     if (node.type.name !== "rangeAnchor") return;
-    const start: unknown = node.attrs["start"];
-    const end: unknown = node.attrs["end"];
+    const [start, end] = expectRangeAnchorAttrs(node).markers;
     if (
       typeof start === "object" &&
       start !== null &&

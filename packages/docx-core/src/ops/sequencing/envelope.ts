@@ -366,6 +366,11 @@ const newIds = optional(idSet);
 const half = optional(literal("first", "second"));
 const whenEmpty = optional(literal("omit", "keep"));
 const blockAnchor = object({ type: literal("before", "after"), blockId });
+/** A table goes beside a paragraph, or beside the table holding one. */
+const tableAnchor = object({
+  type: literal("before", "after", "beforeTable", "afterTable"),
+  blockId,
+});
 const runProps = properties(runPropertyFields);
 const runPatch = properties(runPropertyFields, true);
 const paragraphPatch = properties(paragraphPropertyFields, true);
@@ -400,7 +405,7 @@ const packageResources = object({
 });
 const sectionMap = nullable(mapEntries(headerFooterType, headerFooter));
 const partMap = nullable(mapEntries(nonemptyString, headerFooter));
-const storyParts: Validator = object({
+const storyPartsFields = {
   undefinedFields: optional(
     array(
       object({
@@ -428,12 +433,18 @@ const storyParts: Validator = object({
       }),
     ),
   ),
+  sectionView: optional(sectionViewState),
   headers: optional(partMap),
   footers: optional(partMap),
   footnotes: optional(nullable(array(note))),
   endnotes: optional(nullable(array(note))),
   settings: optional(nullable(documentSettings)),
-} satisfies Record<keyof StoryParts, Validator>);
+} satisfies Record<keyof StoryParts, Validator>;
+const storyPartsRecord = object(storyPartsFields);
+const storyParts: Validator = (value) =>
+  storyPartsRecord(value) &&
+  isRecord(value) &&
+  !(value["sections"] !== undefined && value["sectionView"] !== undefined);
 
 const commentAnchor: Validator = (value) =>
   object({ kind: literal("range"), from: position, to: position })(value) ||
@@ -614,7 +625,7 @@ const operationFields = {
   insertTable: {
     type: literal("insertTable"),
     story: isOpStory,
-    at: blockAnchor,
+    at: tableAnchor,
     table,
     revision,
     newIds,

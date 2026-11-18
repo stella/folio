@@ -22,8 +22,6 @@ import type { AnyExtension } from "./extensions/types";
 import { createPluginKeyOwner } from "./pluginKeyOwner";
 import { createAICitationDecorationsPlugin } from "./plugins/aiCitationDecorations";
 import { createAISuggestionDecorationsPlugin } from "./plugins/aiSuggestionDecorations";
-import { autocompleteSuggestionPlugin } from "./plugins/autocompleteSuggestion";
-import * as autocomplete from "./plugins/autocompleteSuggestion";
 import { createContentControlWidgetsPlugin } from "./plugins/contentControlWidgets";
 import { createDocumentNumberingPlugin } from "./plugins/documentNumbering";
 import {
@@ -85,7 +83,6 @@ const extensionPlugin = (extension: AnyExtension): Plugin => {
 const FACTORIES = {
   aiCitationDecorations: [createAICitationDecorationsPlugin],
   aiSuggestionDecorations: [createAISuggestionDecorationsPlugin],
-  autocompleteSuggestion: [() => autocompleteSuggestionPlugin()],
   contentControlWidgets: [() => createContentControlWidgetsPlugin()],
   documentNumbering: [() => createDocumentNumberingPlugin(null)],
   documentStyles: [
@@ -267,52 +264,6 @@ test("independent evaluations of a family reject duplicate plugins in one state"
   for (const owner of [firstOwner, secondOwner]) {
     expect(() => owner.get(state)).toThrow("Multiple plugins belong");
   }
-});
-
-test("autocomplete readers and commands survive actual repeated module evaluation", async () => {
-  const repeated: typeof import("./plugins/autocompleteSuggestion") =
-    await importRepeatedPlugin("autocompleteSuggestion");
-  expect(repeated.autocompleteSuggestionKey).not.toBe(
-    autocomplete.autocompleteSuggestionKey,
-  );
-  const firstPlugin = autocompleteSuggestionPlugin();
-  const secondPlugin = repeated.autocompleteSuggestionPlugin();
-  expect(firstPlugin.spec.key).not.toBe(secondPlugin.spec.key);
-  let first = EditorState.create({ schema, plugins: [firstPlugin] });
-  let second = EditorState.create({ schema, plugins: [secondPlugin] });
-  first = first.apply(
-    repeated.startAutocompleteSuggestion(first.tr, 1, "first"),
-  );
-  first = first.apply(
-    repeated.appendAutocompleteToken(first.tr, "first", "Alpha"),
-  );
-  first = first.apply(repeated.finishAutocompleteSuggestion(first.tr, "first"));
-  expect(repeated.getAutocompleteSuggestion(first)).toMatchObject({
-    status: "shown",
-    text: "Alpha",
-    requestId: "first",
-  });
-  expect(repeated.getAutocompleteSuggestion(second).status).toBe("idle");
-  second = second.apply(
-    autocomplete.startAutocompleteSuggestion(second.tr, 1, "second"),
-  );
-  second = second.apply(
-    autocomplete.appendAutocompleteToken(second.tr, "second", "Beta"),
-  );
-  second = second.apply(
-    autocomplete.finishAutocompleteSuggestion(second.tr, "second"),
-  );
-  expect(autocomplete.getAutocompleteSuggestion(second)).toMatchObject({
-    status: "shown",
-    text: "Beta",
-    requestId: "second",
-  });
-  first = first.apply(repeated.clearAutocompleteSuggestion(first.tr));
-  expect(repeated.getAutocompleteSuggestion(first).status).toBe("idle");
-  expect(autocomplete.getAutocompleteSuggestion(second)).toMatchObject({
-    status: "shown",
-    text: "Beta",
-  });
 });
 
 test("slash-menu readers and commands survive actual repeated module evaluation", async () => {

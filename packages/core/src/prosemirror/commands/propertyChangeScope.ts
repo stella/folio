@@ -40,6 +40,7 @@ import type {
   TableRowFormatting,
 } from "../../types/document";
 import type { DeepReadonly } from "../../types/documentModel";
+import { resolveShadingFill } from "../../utils/formatToStyle";
 import { expectParagraphAttrs } from "../attrs";
 import {
   hasListRendering,
@@ -566,6 +567,8 @@ export function tableCellRejectAttrPatch(
   previousFormatting: TableCellFormatting | undefined,
   liveOriginalFormatting: TableCellFormatting | null | undefined,
 ): AttrPatch {
+  const background =
+    resolveShadingFill(previousFormatting?.shading).replace(/^#/u, "") || null;
   const restoredOriginal: TableCellFormatting = { ...previousFormatting };
   delete restoredOriginal.gridSpan;
   delete restoredOriginal.vMerge;
@@ -585,7 +588,8 @@ export function tableCellRejectAttrPatch(
         }
       : null,
     verticalAlign: previousFormatting?.verticalAlign ?? null,
-    backgroundColor: previousFormatting?.shading?.fill?.rgb ?? null,
+    backgroundColor: background,
+    _resolvedBackgroundColor: background,
     textDirection: previousFormatting?.textDirection ?? null,
     noWrap: previousFormatting?.noWrap ?? null,
     borders: previousFormatting?.borders

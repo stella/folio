@@ -82,6 +82,22 @@ record holding that mark names it too (`keptMark` on the record): the mark
 keeps the record's piece on its side of the format, and when it stood before
 the format the pieces meet, and join, right after it.
 
+Anchored paragraph insertion names its anchor by id and moves no offset in
+it: typing, inline content insertions and inline record splits and joins in
+the anchor paragraph pass a concurrent insertion before or after it, direct
+or tracked, and the insertion passes them.
+
+Concurrent direct and tracked paragraph insertions after the same anchor
+refuse with `unsupportedPair`. A tracked insertion may move the anchor's
+former mark and allocate its formatting snapshot; neither insertion's
+payload carries that context, so transferring the inserted mark could lose
+the direct paragraph's formatting when the tracked insertion is rejected.
+A sequential direct insertion after a pending first-survivor paragraph mark
+also refuses before mutation, even when the paragraphs currently have equal
+formatting: that formatting may have changed since the mark's snapshot was
+recorded. Insertions before an anchor, at independent anchors, or of the same
+kind retain their existing ordering.
+
 ## Inline insertions
 
 Typing, an inserted atom and the inverse of a deletion that cut no record
@@ -92,6 +108,13 @@ at the same gap the batch sequenced later goes after the one sequenced
 earlier, so typing at one point keeps the sequence order whichever peer
 applies first. A gap whose count one side leaves absent and the other names
 as nonzero cannot be compared and refuses with `unsupportedPair`.
+
+`insertText` puts its text exactly at its gap: after the zero-width leaves
+`zeroWidthBefore` counts and before the rest, in the run holding the leaf
+before the gap, else the one holding the leaf after it, of whatever kind
+either leaf is, so a note's own mark or a cached page break never decides
+the run by its width alone. A point at its offset whose gap both sides
+count moves by the same rule: past the text when it lies after the gap.
 
 A range that starts at the insertion point moves past the inserted content
 and a range that ends there stays before it: the inserted runs carry the
@@ -157,7 +180,17 @@ document as a `replaced` change, so its undo and redo history is dropped,
 and its positions move over the change's `moves`. They are the only pairs
 the transform accepts without commuting. Tracked changes apart from every
 concurrent cut commute, and so does a direct deletion strictly inside a
-tracked one.
+tracked one that supplies no additional revision ids.
+
+A direct deletion overlapping a tracked deletion with a nonempty revision
+id pool refuses in both orders. Removing an earlier newly tracked fragment
+can shift the remaining supplied ids onto different source content when
+the tracked deletion replays. The pool records allocation order, not each
+fragment's source identity: an optimistic review decision must not silently
+resolve a different fragment after replay. This conservative boundary also
+covers edge-reaching, equal and covering ranges; extra unused supplied ids
+still witness the risk. Disjoint and merely touching ranges are unchanged.
+Ranges crossing paragraphs already refuse as invalid sequencing operations.
 
 ## Block-scoped operations
 
@@ -195,7 +228,9 @@ same table; typing in that table's cells passes. Package parts
 and footers, notes, settings, revision metadata and comments) conflict when
 one operation writes a part both name, by entry where the operation names one
 (a numbering instance, a relationship id, a note, a comment): `partConflict`,
-with the part. A comment operation that may add or remove the comment part
+with the part. Notes added concurrently name different notes and pass: a
+new note takes its place in its note list before the first note of a
+greater id, so the list is the same whichever is added first. A comment operation that may add or remove the comment part
 relationships writes the whole relationships part. A revision decision reads
 the revisions it resolves, and a paragraph replacement, inline replacement,
 paragraph review or container replacement writes every revision its new

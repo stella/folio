@@ -16,6 +16,7 @@ import {
 } from "../prosemirror/commands/comments";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import { expectRangeAnchorAttrs } from "../prosemirror/rangeAnchorAttrs";
 import { schema } from "../prosemirror/schema";
 import type { Run } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
@@ -401,7 +402,11 @@ test("comment point resolution has replayable maps and exact inverses", () => {
       const pointIds: number[] = [];
       transaction.doc.descendants((node) => {
         if (node.type.name === "rangeAnchor")
-          pointIds.push(node.attrs["start"].id);
+          pointIds.push(
+            ...expectRangeAnchorAttrs(node)
+              .markers.filter((marker) => marker.type === "commentRangeStart")
+              .map(({ id }) => id),
+          );
       });
       expect(pointIds).toEqual([]);
       expect(transaction.mapping.map(first.nodeSize + 1)).toBe(

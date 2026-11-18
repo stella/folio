@@ -42,8 +42,9 @@ export const commentAnchorIdsForNode = (node: PMNode): readonly number[] => {
     if (attrs.ok) ids.push(attrs.value.commentId);
   } else if (node.type.name === RANGE_ANCHOR_NODE_NAME) {
     const attrs = readRangeAnchorAttrs(node);
-    if (attrs.ok && attrs.value.start.type === "commentRangeStart")
-      ids.push(attrs.value.start.id);
+    if (attrs.ok)
+      for (const marker of attrs.value.markers)
+        if (marker.type === "commentRangeStart") ids.push(marker.id);
   } else if (node.type.name === COMMENT_RANGE_BOUNDARY_NODE_NAME) {
     ids.push(expectCommentRangeBoundaryAttrs(node).marker.id);
   }

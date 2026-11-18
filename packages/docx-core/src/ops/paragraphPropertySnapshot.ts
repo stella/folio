@@ -1,4 +1,9 @@
-import type { Paragraph, ParagraphFormatting } from "../model/document";
+import {
+  finalizeParagraphFormatting,
+  type Paragraph,
+  type ParagraphFormatting,
+  type ParagraphPropertyChange,
+} from "../model/document";
 import { structurallyEqual } from "./equality";
 
 const snapshots = new WeakMap<
@@ -62,4 +67,32 @@ export const getParagraphPropertySnapshot = (
     structurallyEqual(paragraph.formatting, registered.effective)
     ? registered.snapshot
     : paragraph.formatting;
+};
+
+/**
+ * The properties a paragraph states in its own `w:pPr`, as a reopened file
+ * reads them: never what it inherits or what list numbering projects onto it.
+ * A pending property change records these as the paragraph's current ones,
+ * whichever edit, tracked or direct, last gave the paragraph properties.
+ */
+export const authoredParagraphFormatting = (
+  paragraph: Paragraph,
+): ParagraphFormatting | undefined =>
+  finalizeParagraphFormatting(getParagraphPropertySnapshot(paragraph));
+
+/**
+ * `changes`, pending on `paragraph`, each recording what the paragraph now
+ * states as its current properties.
+ */
+export const changesRecordingAuthored = (
+  changes: readonly ParagraphPropertyChange[],
+  paragraph: Paragraph,
+): ParagraphPropertyChange[] => {
+  const authored = authoredParagraphFormatting(paragraph);
+  return changes.map((change) => {
+    const refreshed = { ...change };
+    if (authored === undefined) delete refreshed.currentFormatting;
+    else refreshed.currentFormatting = authored;
+    return refreshed;
+  });
 };

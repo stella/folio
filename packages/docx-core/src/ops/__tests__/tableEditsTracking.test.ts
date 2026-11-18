@@ -11,6 +11,7 @@ setDefaultTimeout(propertyTestTimeout(30_000));
 import type { Document, Paragraph, Table } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { contractViolation } from "../contract";
+import { allocateEditorIntentIds, compileEditorIntent } from "../editorIntent";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import { tableGrid } from "../tableGrid";
 import {
@@ -146,6 +147,21 @@ const resolved = (
     revisionIds,
     decision,
   });
+
+const appliedWithWireHistory = (document: Document, op: DocumentOp) => {
+  const result = applied(document, op);
+  const undone = applyDocumentOps(
+    result.document,
+    JSON.parse(JSON.stringify(result.inverse)),
+  ).unwrap();
+  exact(undone.document, document);
+  const redone = applyDocumentOps(
+    undone.document,
+    JSON.parse(JSON.stringify(undone.inverse)),
+  ).unwrap();
+  exact(redone.document, result.document);
+  return result;
+};
 
 const refused = (document: Document, op: DocumentOp, reason: string) => {
   const before = structuredClone(document);
@@ -416,6 +432,143 @@ describe("tracked table edits", () => {
         REVISION_DECISIONS.ACCEPT,
       ).document,
       direct.document,
+    );
+  });
+
+  test("tracked vertical splits resolve to the direct edit or original with wire undo and redo", () => {
+    const row = fc.record({
+      texts: fc.array(fc.string({ maxLength: 16 }), {
+        minLength: 1,
+        maxLength: 3,
+      }),
+      width: fc.integer({ min: 101, max: 5000 }),
+      noWrap: fc.boolean(),
+      verticalAlign: fc.constantFrom("top", "center", "bottom"),
+      bold: fc.boolean(),
+    });
+    assertProperty(
+      fc.property(
+        fc.array(row, { minLength: 2, maxLength: 5 }),
+        fc.integer({ min: 1, max: 3 }),
+        (rows, span) => {
+          const id = (value: number) =>
+            value.toString(16).toUpperCase().padStart(8, "0");
+          const baseline = documentOf({
+            type: "table",
+            formatting: { layout: "fixed", styleId: "base" },
+            columnWidths: Array.from({ length: span + 1 }, () => 700),
+            rows: rows.map((value, index) => ({
+              type: "tableRow",
+              formatting: { header: index === 0, cantSplit: index % 2 === 0 },
+              cells: [
+                {
+                  type: "tableCell",
+                  formatting: {
+                    vMerge: index === 0 ? "restart" : "continue",
+                    ...(span === 1 ? {} : { gridSpan: span }),
+                    width: { type: "dxa", value: value.width },
+                    noWrap: value.noWrap,
+                    verticalAlign: value.verticalAlign,
+                  },
+                  content: value.texts.map((text, offset) => ({
+                    type: "paragraph",
+                    paraId: id(0x1000 + index * 16 + offset),
+                    formatting: {
+                      alignment: index % 2 === 0 ? "left" : "right",
+                    },
+                    content:
+                      text === ""
+                        ? []
+                        : [
+                            {
+                              type: "run",
+                              formatting: { bold: value.bold },
+                              content: [{ type: "text", text }],
+                            },
+                          ],
+                  })),
+                },
+                {
+                  type: "tableCell",
+                  content: [paragraph(id(0x100f + index * 16), "beside")],
+                },
+              ],
+            })),
+          });
+          const intent = {
+            type: "table",
+            operation: {
+              type: DOCUMENT_OP_TYPES.SPLIT_CELL,
+              story: OP_STORIES.MAIN,
+              blockId: id(0x1000),
+            },
+          } as const;
+          // The public allocator must supply the extra merge records as well
+          // as each row's property record and any inserted column cells.
+          const allocation = allocateEditorIntentIds(baseline, intent);
+          const directPlan = compileEditorIntent(baseline, {
+            intent,
+            mode: { type: "editing", newIds: allocation.newIds },
+          }).unwrap();
+          const trackedPlan = compileEditorIntent(baseline, {
+            intent,
+            mode: {
+              type: "suggesting",
+              revision: revision(allocation.revisionId),
+              newIds: allocation.newIds,
+            },
+          }).unwrap();
+          const directOp = directPlan.ops.at(0);
+          const trackedOp = trackedPlan.ops.at(0);
+          if (!directOp || !trackedOp)
+            throw new Error("Both plans emit a split.");
+          const direct = appliedWithWireHistory(baseline, directOp);
+          const tracked = appliedWithWireHistory(baseline, trackedOp);
+          const revisions = tracked.revisions ?? [];
+          for (const decision of [
+            REVISION_DECISIONS.ACCEPT,
+            REVISION_DECISIONS.REJECT,
+          ]) {
+            const expected =
+              decision === REVISION_DECISIONS.ACCEPT
+                ? direct.document
+                : baseline;
+            const resolve = (
+              document: Document,
+              revisionIds: readonly number[],
+            ) =>
+              appliedWithWireHistory(document, {
+                type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+                story: OP_STORIES.MAIN,
+                revisionIds,
+                decision,
+              });
+            exact(resolve(tracked.document, revisions).document, expected);
+            // A pure vertical split supports resolving the owner's property
+            // record before the paired cellMerge records, as vertical merge does.
+            if (span !== 1) continue;
+            const propertyId = tableIn(tracked.document)
+              .rows.at(0)
+              ?.cells.at(0)
+              ?.propertyChanges?.at(0)?.info.id;
+            if (propertyId === undefined)
+              throw new Error("The owner has a property record.");
+            const partial = resolve(tracked.document, [propertyId]);
+            exact(
+              resolve(
+                partial.document,
+                revisions.filter((revisionId) => revisionId !== propertyId),
+              ).document,
+              expected,
+            );
+          }
+          expect(revisions).toHaveLength(rows.length * (span + 1));
+        },
+      ),
+      {
+        id: "tracked vertical splits resolve to the direct edit or original with wire undo and redo",
+        numRuns: 80,
+      },
     );
   });
 

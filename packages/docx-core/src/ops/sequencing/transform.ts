@@ -32,6 +32,7 @@ import {
   sameParagraph,
 } from "./points";
 import { transformByFootprint } from "./scope";
+import { fragmentedDeletionOverlap } from "./trackedTransform";
 
 type TransformOptions = { order?: "before" | "after" };
 
@@ -234,11 +235,12 @@ const rejoinedOverFormat = ({
 };
 
 /**
- * A revision decision over a concurrent direct positional edit: it decides
- * the same revisions after the edit, unless the edit cut a revision record
- * in two and gave its second half a new id, or is a tracked edit, whose
- * records may continue a decided revision: one order decides those and the
- * other does not, so the decision is refused. Undefined for every other pair.
+ * A revision decision over a concurrent direct positional edit, including a
+ * comment anchor: it decides the same revisions after the edit, unless the
+ * edit cut a revision record in two and gave its second half a new id, or is
+ * a tracked edit whose records may continue a decided revision: one order
+ * decides those and the other does not, so the decision is refused.
+ * Undefined for every other pair.
  */
 const decisionOverEdit = (
   op: DocumentOp,
@@ -254,6 +256,9 @@ const decisionOverEdit = (
       break;
     case DOCUMENT_OP_TYPES.INSERT_CONTENT:
       if (!isInlineInsertion(over)) return undefined;
+      break;
+    case DOCUMENT_OP_TYPES.CREATE_COMMENT:
+      if (!isAnchoredComment(over)) return undefined;
       break;
     default:
       return undefined;
@@ -321,6 +326,12 @@ const transformRestoredOp = ({
   // A direct deletion over a direct format inside it.
   const rejoined = rejoinedOverFormat({ op, over, effect });
   if (rejoined !== undefined) return rejoined;
+  if (fragmentedDeletionOverlap(op, over))
+    return refusal(
+      op,
+      over,
+      "Overlapping a potentially fragmented tracked deletion requires source-bound revision identities.",
+    );
   // Inline insertions, and inline record splits and joins.
   const inline = transformInlinePair({ op, over, effect, order });
   if (inline !== undefined) return inline;
@@ -373,6 +384,13 @@ const transformRestoredOp = ({
         op.type === DOCUMENT_OP_TYPES.SET_RUN_PROPS))
   )
     return Result.ok([op]);
+  // Paragraphs inserted beside a paragraph name it by id: text typed in it
+  // moves neither the anchor nor any offset the insertion leaves.
+  if (
+    op.type === DOCUMENT_OP_TYPES.INSERT_BLOCKS &&
+    over.type === DOCUMENT_OP_TYPES.INSERT_TEXT
+  )
+    return Result.ok([op]);
   if (
     op.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS &&
     (over.type === DOCUMENT_OP_TYPES.INSERT_TEXT ||
@@ -386,6 +404,19 @@ const transformRestoredOp = ({
   ) {
     if (op.at.type !== over.at.type || op.at.blockId !== over.at.blockId)
       return refusal(op, over, "Overlapping block insertion identities.");
+    // A tracked insertion can move the anchor's former mark and allocate
+    // its formatting snapshot. The payloads carry neither that snapshot
+    // nor the anchor's formatting, so a concurrent direct insertion cannot
+    // safely transfer the inserted mark in either sequence order.
+    if (
+      op.at.type === "after" &&
+      (op.revision === undefined) !== (over.revision === undefined)
+    )
+      return refusal(
+        op,
+        over,
+        "Concurrent direct and tracked insertions after one paragraph need its former mark's formatting snapshot.",
+      );
     if ((order === "before") === (op.at.type === "after"))
       return Result.ok([op]);
     const anchor =

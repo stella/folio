@@ -27,7 +27,10 @@ import { storyParagraphs } from "../blocks";
 import {
   commentAnchorsIn,
   freshParagraphAnchorFacts,
+  isCommentExhausted,
+  orphanRootCommentIds,
   type StoryAnchorSpan,
+  survivingComments,
 } from "../comments";
 import { type Gap, isCommentAnchor, leafSpans } from "../leaves";
 import { documentStories, storyBody } from "../stories";
@@ -331,4 +334,62 @@ describe("comment anchors read from kept paragraph facts", () => {
       { id: "comment anchor facts follow block edits", numRuns: 300 },
     );
   });
+});
+
+test("point comment presence includes source anchors inside atomic fields", () => {
+  for (const anchor of [
+    { type: "commentReference", id: 7 },
+    { type: "commentRangeStart", id: 7 },
+    { type: "commentRangeEnd", id: 7 },
+  ] as const) {
+    let content: ParagraphContent[] = [anchor];
+    for (let depth = 0; depth < 4; depth += 1) {
+      const document: Document = {
+        package: {
+          document: {
+            content: [{ type: "paragraph", paraId: "00000001", content }],
+            comments: [
+              { id: 7, author: "A", anchorKind: "point", content: [] },
+              { id: 8, author: "B", parentId: 7, content: [] },
+              { id: 9, author: "C", content: [] },
+            ],
+          },
+        },
+      };
+      expect(isCommentExhausted({ type: "document", document, id: 7 })).toBe(
+        false,
+      );
+      expect(orphanRootCommentIds(document)).toEqual(new Set([9]));
+      expect(survivingComments(document)).toEqual(
+        document.package.document.comments,
+      );
+      const removed: Document = {
+        package: {
+          document: {
+            ...document.package.document,
+            content: [{ type: "paragraph", paraId: "00000001", content: [] }],
+          },
+        },
+      };
+      expect(
+        isCommentExhausted({ type: "document", document: removed, id: 7 }),
+      ).toBe(true);
+      expect(survivingComments(removed).map(({ id }) => id)).toEqual([9]);
+      content = [
+        {
+          type: "simpleField",
+          instruction: " REF target ",
+          fieldType: "REF",
+          content: [
+            {
+              type: "inlineWrapper",
+              kind: "bidi",
+              control: "embedding",
+              content,
+            },
+          ],
+        },
+      ];
+    }
+  }
 });

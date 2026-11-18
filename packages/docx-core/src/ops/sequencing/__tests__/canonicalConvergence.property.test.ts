@@ -1,4 +1,4 @@
-import { Result } from "better-result";
+import { panic, Result } from "better-result";
 /**
  * Peers editing one room concurrently with every kind of canonical edit,
  * comment threads among them, through the real sequencer and optimistic
@@ -26,6 +26,7 @@ import {
   leasedIdCensus,
   trimIdLease,
 } from "../../idLease";
+import { IDENTITY_SPACES, identityKeysIn, slotKey } from "../../ids";
 import {
   type DeleteRangeOp,
   DOCUMENT_OP_SCHEMA_VERSION,
@@ -55,6 +56,7 @@ import {
 import * as heldRevisions from "../heldRevisions";
 import * as inlineTransform from "../inlineTransform";
 import { isInlineInsertion, sameParagraph } from "../points";
+import * as restoreTransform from "../restoreTransform";
 import { isBlockScoped } from "../scope";
 import { type BatchSubmission, createSequencer } from "../sequencer";
 import * as trackedTransform from "../trackedTransform";
@@ -85,6 +87,10 @@ type Step =
 type Peer = {
   author: EditAuthor;
   client: ReturnType<typeof createClient>;
+  /** The same owner receiving each drained authoritative revision separately. */
+  observer: ReturnType<typeof createClient>;
+  /** Delivered acknowledgements hide public pending entries before their broadcasts. */
+  acknowledged: Set<string>;
   /** The inverse of this peer's last edit, as applying it returned. */
   undo: readonly DocumentOp[] | undefined;
 };
@@ -233,37 +239,25 @@ const cutsRecordsExactly = (op: DocumentOp): boolean =>
   op.type === DOCUMENT_OP_TYPES.SPLIT_INLINE ||
   (op.type === DOCUMENT_OP_TYPES.JOIN_INLINE && op.ifAlike !== true);
 
-const REVISION_RECORDS = new Set([
-  "insertion",
-  "deletion",
-  "moveFrom",
-  "moveTo",
-]);
-
 /**
  * What a value depends on, anywhere in it: the paragraphs it names
- * (positions, block ids, the blocks an effect records) and the tracked
+ * (positions, block ids, created paragraphs and the blocks an effect records) and the tracked
  * changes it names or holds (a decision's revisions, a stamp, a wrapper).
  * Undefined names none.
  */
 const dependenciesIn = (value: unknown): string[] => {
-  const ids = new Set<string>();
+  const ids = new Set(identityKeysIn(value));
   const visit = (node: unknown): void => {
     if (Array.isArray(node)) {
       for (const child of node) visit(child);
       return;
     }
     if (typeof node !== "object" || node === null) return;
-    const type: unknown = Reflect.get(node, "type");
-    const id: unknown = Reflect.get(node, "id");
-    if (
-      typeof type === "string" &&
-      REVISION_RECORDS.has(type) &&
-      typeof id === "number"
-    )
-      ids.add(`revision ${String(id)}`);
     for (const [key, child] of Object.entries(node)) {
-      if (/blockId$/iu.test(key) && typeof child === "string") {
+      if (
+        (/blockId$/iu.test(key) || key === "paraId") &&
+        typeof child === "string"
+      ) {
         ids.add(child.toUpperCase());
       } else if (key === "blockIds" && Array.isArray(child)) {
         for (const block of child)
@@ -271,14 +265,19 @@ const dependenciesIn = (value: unknown): string[] => {
       } else if (key === "revisionIds" && Array.isArray(child)) {
         for (const revision of child)
           if (typeof revision === "number")
-            ids.add(`revision ${String(revision)}`);
+            ids.add(slotKey({ space: IDENTITY_SPACES.REVISION, id: revision }));
       } else if (
         key === "revision" &&
         typeof child === "object" &&
         child !== null &&
         typeof Reflect.get(child, "id") === "number"
       ) {
-        ids.add(`revision ${String(Reflect.get(child, "id"))}`);
+        ids.add(
+          slotKey({
+            space: IDENTITY_SPACES.REVISION,
+            id: Reflect.get(child, "id"),
+          }),
+        );
       } else {
         visit(child);
       }
@@ -546,16 +545,27 @@ const namesRestorePair = (reason: {
   );
 };
 
-/** A restoration and a positional edit of one of its paragraphs among two op lists. */
-const restorePairs = (
-  mine: readonly DocumentOp[],
-  theirs: readonly DocumentOp[],
-): string[] =>
+type RestorePairsOptions = {
+  mine: readonly DocumentOp[];
+  theirs: readonly DocumentOp[];
+  reason: Pick<envelope.BatchRejection, "opType" | "overType">;
+};
+
+/** The refused restoration/positional-edit pair among two operation lists. */
+const restorePairs = ({
+  mine,
+  theirs,
+  reason,
+}: RestorePairsOptions): string[] =>
   [
     ...mine.flatMap((op) => theirs.map((other) => [op, other] as const)),
     ...theirs.flatMap((op) => mine.map((other) => [op, other] as const)),
   ]
     .filter(([restoration, edit]) => {
+      const named =
+        (restoration.type === reason.opType && edit.type === reason.overType) ||
+        (restoration.type === reason.overType && edit.type === reason.opType);
+      if (!named) return false;
       const at = editedAt(edit);
       return (
         at !== undefined &&
@@ -652,6 +662,8 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
         allocate: createEditorIntentIdAllocator(),
       },
       client: createClient(base),
+      observer: createClient(base),
+      acknowledged: new Set(),
       undo: undefined,
     };
   });
@@ -700,6 +712,8 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
         `${ops.map(({ type }) => type).join(", ")} is not sendable: ${sent.error.message}`,
       );
     const queued = peer.client.enqueue(wire(batch));
+    const observed = peer.observer.enqueue(wire(batch));
+    expect(observed.isOk()).toBe(queued.isOk());
     // A stale undo is dropped here, never forced.
     if (queued.isErr()) {
       expect(queued.error.reason).toBe(
@@ -722,6 +736,7 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
   const submit = (index: number): void => {
     const peer = team.at(index);
     const batch = peer?.client.nextSubmission();
+    expect(peer?.observer.nextSubmission()).toEqual(batch);
     if (batch === undefined) return;
     const tail = sequencer.broadcasts.slice(batch.baseRev);
     const result = sequencer.submit(wire(batch));
@@ -740,10 +755,11 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
       const refusing = refusingOps(batch, tail);
       if (notBySpan(result.reason.message) && namesRestorePair(result.reason))
         outcome.restoreRefusals.push(
-          ...restorePairs(
-            restoredOps(opsAtRefusal(batch, tail)),
-            restoredOps(refusing),
-          ).map((pair) => `refused: ${pair}: ${result.reason.message}`),
+          ...restorePairs({
+            mine: restoredOps(opsAtRefusal(batch, tail)),
+            theirs: restoredOps(refusing),
+            reason: result.reason,
+          }).map((pair) => `refused: ${pair}: ${result.reason.message}`),
         );
       // No declared tracked pair is refused: the authority's order decides.
       // An inverse keeps its preconditions, which refuse by their own rule,
@@ -833,35 +849,32 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
       });
   };
 
-  const deliver = (seed: number): void => {
-    const event = delivery.splice(seed % delivery.length, 1).at(0);
-    const peer = event === undefined ? undefined : team.at(event.peer);
-    if (event === undefined || peer === undefined) return;
-    const before = peer.client.document;
-    const pending = peer.client.pending.flatMap(({ ops }) => ops);
-    const queued = peer.client.pending.map(({ opId, ops }) => ({
-      opId,
-      dependencies: dependenciesIn(ops),
-      positional: ops.every((op) => !isBlockScoped(op)),
-    }));
-    const noticed = peer.client.notices.length;
-    let changes: readonly ClientDocumentChange[];
-    if (event.type === "broadcast") {
-      const received = peer.client.receiveBroadcast(event.batch);
-      if (received.isErr()) throw received.error;
-      changes = received.value;
-    } else if (event.result.type === "ack") {
-      peer.client.receiveAck(event.result);
-      changes = [];
-    } else changes = peer.client.receiveReject(event.result);
+  type QueuedDependency = {
+    opId: string;
+    dependencies: string[];
+    positional: boolean;
+  };
+  type RecordDropsOptions = {
+    client: ReturnType<typeof createClient>;
+    event: Delivery;
+    noticed: number;
+    queued: QueuedDependency[];
+  };
+  const recordDrops = ({
+    client,
+    event,
+    noticed,
+    queued,
+  }: RecordDropsOptions): void => {
     if (event.type === "broadcast")
-      for (const notice of peer.client.notices.slice(noticed))
+      for (const notice of client.notices.slice(noticed))
         if (notBySpan(notice.reason.message) && namesRestorePair(notice.reason))
           outcome.restoreRefusals.push(
-            ...restorePairs(
-              restoredOps(notice.ops),
-              restoredOps(event.batch.ops),
-            ).map((pair) => `dropped: ${pair}: ${notice.reason.message}`),
+            ...restorePairs({
+              mine: restoredOps(notice.ops),
+              theirs: restoredOps(event.batch.ops),
+              reason: notice.reason,
+            }).map((pair) => `dropped: ${pair}: ${notice.reason.message}`),
           );
     // The first batch an answer drops failed against the remote or rejected
     // batch itself. A later one depends on what dropped it: it shares a
@@ -879,12 +892,10 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
       dependenciesIn(
         event.type === "broadcast"
           ? event.batch
-          : peer.client.notices.at(noticed)?.ops,
+          : client.notices.at(noticed)?.ops,
       ),
     );
-    for (const [index, notice] of peer.client.notices
-      .slice(noticed)
-      .entries()) {
+    for (const [index, notice] of client.notices.slice(noticed).entries()) {
       const touched = dependenciesIn(notice.ops);
       const ahead = queued.slice(
         0,
@@ -909,6 +920,83 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
         );
       for (const id of touched) cause.add(id);
     }
+  };
+
+  // A broadcast may release several buffered revisions. The observer uses
+  // the actual client owner one revision at a time to retain each notice's
+  // cause and its full unreplayed prefix, without reconstructing rebase semantics.
+  // Defer acknowledgements on this observer: public pending hides acknowledged
+  // entries, but their inverses still take part until the authoritative broadcast.
+  // Track delivered acknowledgements only to compare the public pending view.
+  const observeAnswer = (peer: Peer, event: Delivery): void => {
+    const observe = (answer: Delivery): void => {
+      const noticed = peer.observer.notices.length;
+      const queued = peer.observer.pending.map(({ opId, ops }) => ({
+        opId,
+        dependencies: dependenciesIn(ops),
+        positional: ops.every((op) => !isBlockScoped(op)),
+      }));
+      switch (answer.type) {
+        case "broadcast": {
+          const received = peer.observer.receiveBroadcast(wire(answer.batch));
+          if (received.isErr()) throw received.error;
+          break;
+        }
+        case "result":
+          if (answer.result.type === "ack")
+            peer.acknowledged.add(answer.result.opId);
+          else peer.observer.receiveReject(answer.result);
+          break;
+        default: {
+          const exhaustive: never = answer;
+          return exhaustive;
+        }
+      }
+      recordDrops({ client: peer.observer, event: answer, noticed, queued });
+    };
+    if (event.type === "broadcast") {
+      const from = peer.observer.headRev;
+      const to = peer.client.headRev;
+      for (let revision = from + 1; revision <= to; revision += 1) {
+        const batch = sequencer.broadcasts.at(revision - 1);
+        if (batch === undefined)
+          return panic(
+            "A drained revision must exist in the authoritative journal.",
+          );
+        observe({ peer: event.peer, type: "broadcast", batch });
+      }
+    } else observe(event);
+    expect(peer.observer.headRev).toBe(peer.client.headRev);
+    expect(
+      equalForStaleness(peer.observer.document, peer.client.document),
+    ).toBe(true);
+    expect(
+      peer.observer.pending.filter(({ opId }) => !peer.acknowledged.has(opId)),
+    ).toEqual(peer.client.pending);
+    const facts = (client: ReturnType<typeof createClient>) =>
+      client.notices.map(({ reason, ...notice }) => ({
+        ...notice,
+        reason: { ...reason, stack: undefined },
+      }));
+    expect(facts(peer.observer)).toEqual(facts(peer.client));
+  };
+
+  const deliver = (seed: number): void => {
+    const event = delivery.splice(seed % delivery.length, 1).at(0);
+    const peer = event === undefined ? undefined : team.at(event.peer);
+    if (event === undefined || peer === undefined) return;
+    const before = peer.client.document;
+    const pending = peer.client.pending.flatMap(({ ops }) => ops);
+    let changes: readonly ClientDocumentChange[];
+    if (event.type === "broadcast") {
+      const received = peer.client.receiveBroadcast(event.batch);
+      if (received.isErr()) throw received.error;
+      changes = received.value;
+    } else if (event.result.type === "ack") {
+      peer.client.receiveAck(event.result);
+      changes = [];
+    } else changes = peer.client.receiveReject(event.result);
+    observeAnswer(peer, event);
     // Every change takes the peer's document exactly where the client is:
     // a rebased one is never trusted short of it.
     let document = before;
@@ -1570,6 +1658,241 @@ const replacementAmongRevisions: Scenario = [
   ],
 ];
 
+/**
+ * Peer 0 deletes a note while peers 0 and 1 each add one, then peer 0
+ * types: the two new notes take their places in the note list by id, so
+ * the list is the same whichever was added first.
+ */
+const concurrentNotes: Scenario = [
+  3,
+  [
+    edit(0, { kind: "deleteNote", a: 0, b: 0 }),
+    edit(1, { kind: "note", a: 541, b: 0 }),
+    edit(0, { kind: "note", a: 0, b: 0 }),
+    { type: "deliver", seed: 0 },
+    { type: "deliver", seed: 0 },
+    edit(0, { kind: "type", a: 0, b: 0 }),
+    edit(0, { kind: "type", a: 0, b: 0 }),
+    { type: "submit", peer: 0 },
+    edit(0, { kind: "type", a: 0, b: 0 }),
+    edit(0, { kind: "type", a: 0, b: 0 }),
+    edit(0, { kind: "type", a: 0, b: 0 }),
+  ],
+];
+
+/** A point comment refuses pending typing, but not a decision of another paragraph's revision. */
+const decisionAfterCommentRefusesTyping = [
+  3,
+  [
+    {
+      type: "edit",
+      peer: 2,
+      seed: {
+        kind: "insertTable",
+        a: 0,
+        b: 0,
+        suggest: false,
+      },
+    },
+    {
+      type: "submit",
+      peer: 2,
+    },
+    {
+      type: "edit",
+      peer: 0,
+      seed: {
+        kind: "deleteNote",
+        a: 0,
+        b: 0,
+        suggest: false,
+      },
+    },
+    {
+      type: "deliver",
+      seed: 0,
+    },
+    {
+      type: "edit",
+      peer: 0,
+      seed: {
+        kind: "type",
+        a: 57922,
+        b: 0,
+        suggest: false,
+      },
+    },
+    {
+      type: "deliver",
+      seed: 0,
+    },
+    {
+      type: "deliver",
+      seed: 0,
+    },
+    {
+      type: "deliver",
+      seed: 0,
+    },
+    {
+      type: "edit",
+      peer: 2,
+      seed: {
+        kind: "type",
+        a: 0,
+        b: 0,
+        suggest: false,
+      },
+    },
+    {
+      type: "submit",
+      peer: 0,
+    },
+    {
+      type: "undo",
+      peer: 0,
+    },
+    {
+      type: "edit",
+      peer: 1,
+      seed: {
+        kind: "pointComment",
+        a: 16393,
+        b: 0,
+        suggest: false,
+      },
+    },
+    {
+      type: "deliver",
+      seed: 36547,
+    },
+    {
+      type: "edit",
+      peer: 0,
+      seed: {
+        kind: "decide",
+        a: 61359,
+        b: 47534,
+        suggest: true,
+      },
+    },
+    {
+      type: "deliver",
+      seed: 13466,
+    },
+    {
+      type: "edit",
+      peer: 1,
+      seed: {
+        kind: "reply",
+        a: 62177,
+        b: 97872,
+        suggest: false,
+      },
+    },
+  ],
+] satisfies Scenario;
+
+// Original saved case 822202994; each edit still comes from the canonical producer.
+const bufferedHeaderConflicts = [
+  3,
+  [
+    edit(0, { kind: "type", a: 0, b: 0 }),
+    edit(0, { kind: "join", a: 0, b: 0 }),
+    { type: "submit", peer: 0 },
+    edit(0, { kind: "type", a: 0, b: 0 }),
+    edit(1, { kind: "header", a: 0, b: 0 }),
+    edit(0, { kind: "pointComment", a: 1057, b: 0 }),
+    { type: "deliver", seed: 32426 },
+    { type: "submit", peer: 0 },
+    { type: "submit", peer: 0 },
+    { type: "submit", peer: 0 },
+  ],
+] satisfies Scenario;
+
+// Original saved case -1347331987; each edit still comes from the canonical producer.
+const commentUndoOverPasteSplit = [
+  4,
+  [
+    edit(1, { kind: "deleteParagraph", a: 0, b: 12 }),
+    edit(0, { kind: "type", a: 0, b: 0 }),
+    edit(1, { kind: "paste", a: 96092, b: 0 }),
+    edit(0, { kind: "comment", a: 63703, b: 0 }),
+    { type: "deliver", seed: 0 },
+    { type: "submit", peer: 0 },
+    { type: "deliver", seed: 0 },
+    edit(0, { kind: "join", a: 14, b: 0 }),
+    edit(1, { kind: "type", a: 0, b: 0 }),
+    { type: "deliver", seed: 0 },
+    { type: "undo", peer: 0 },
+    { type: "submit", peer: 0 },
+  ],
+] satisfies Scenario;
+
+// Original saved case -34335464; each edit still comes from the canonical producer.
+const bufferedSectionConflicts = [
+  4,
+  [
+    edit(0, { kind: "type", a: 0, b: 0 }),
+    edit(0, { kind: "join", a: 34699, b: 0 }),
+    edit(2, { kind: "type", a: 0, b: 0 }),
+    { type: "submit", peer: 0 },
+    { type: "submit", peer: 0 },
+    { type: "submit", peer: 0 },
+    edit(3, { kind: "type", a: 0, b: 0 }),
+    edit(2, { kind: "join", a: 0, b: 0 }),
+    { type: "submit", peer: 0 },
+    edit(0, { kind: "type", a: 43354, b: 0 }),
+    edit(1, { kind: "insertColumn", a: 0, b: 0 }),
+  ],
+] satisfies Scenario;
+
+/** Typing into a pending paragraph depends on the operation that created it. */
+const typingInRefusedParagraph = [
+  4,
+  [
+    {
+      type: "edit",
+      peer: 0,
+      seed: { kind: "erase", a: 70203, b: 0, suggest: false },
+    },
+    {
+      type: "edit",
+      peer: 2,
+      seed: { kind: "insertParagraph", a: 13659, b: 0, suggest: false },
+    },
+    {
+      type: "edit",
+      peer: 2,
+      seed: { kind: "type", a: 81800, b: 0, suggest: false },
+    },
+    { type: "deliver", seed: 0 },
+    { type: "deliver", seed: 0 },
+    { type: "deliver", seed: 0 },
+    {
+      type: "edit",
+      peer: 0,
+      seed: { kind: "type", a: 0, b: 0, suggest: false },
+    },
+    {
+      type: "edit",
+      peer: 0,
+      seed: { kind: "type", a: 0, b: 0, suggest: false },
+    },
+    { type: "submit", peer: 0 },
+    {
+      type: "edit",
+      peer: 0,
+      seed: { kind: "type", a: 0, b: 0, suggest: false },
+    },
+    {
+      type: "edit",
+      peer: 0,
+      seed: { kind: "type", a: 0, b: 0, suggest: false },
+    },
+  ],
+] satisfies Scenario;
+
 /** The pinned scenarios, which the fixed coverage sample starts with. */
 const PINNED: readonly Scenario[] = [
   concurrentRows,
@@ -1583,9 +1906,316 @@ const PINNED: readonly Scenario[] = [
   trackedPending,
   independentAfterDropped,
   formatInsideErase,
+  concurrentNotes,
 ];
 
 describe("canonical sequencing", () => {
+  test("dependency facts bind produced source revisions to their decisions", () => {
+    const stamp = { id: 7, author: "Reviewer", date: "2026-01-01T00:00:00Z" };
+    const produced = applyBatch(canonicalBase(), [
+      {
+        type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
+        at: { story: "main", blockId: "10000000", offset: 0 },
+        slice: {
+          openStart: 0,
+          openEnd: 0,
+          content: [{ type: "run", content: [{ type: "text", text: "x" }] }],
+        },
+        revision: stamp,
+        newIds: { revision: [], control: [] },
+      },
+    ]).unwrap();
+    const decision = {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: "main",
+      revisionIds: [stamp.id],
+      decision: "reject",
+    } as const satisfies DocumentOp;
+    expect(dependenciesIn(produced.document)).toContain("revision:7");
+    expect(dependenciesIn(decision)).toEqual(["revision:7"]);
+  });
+
+  test(
+    "acknowledged structural edits remain dependencies until their broadcasts",
+    async () => {
+      const scenario = [
+        4,
+        [
+          {
+            type: "edit",
+            peer: 1,
+            seed: { kind: "deleteTable", a: 0, b: 1, suggest: false },
+          },
+          { type: "undo", peer: 0 },
+          {
+            type: "edit",
+            peer: 1,
+            seed: { kind: "type", a: 0, b: 0, suggest: false },
+          },
+          {
+            type: "edit",
+            peer: 1,
+            seed: { kind: "type", a: 0, b: 0, suggest: false },
+          },
+          { type: "deliver", seed: 0 },
+          {
+            type: "edit",
+            peer: 1,
+            seed: { kind: "type", a: 1, b: 0, suggest: false },
+          },
+          { type: "undo", peer: 0 },
+          {
+            type: "edit",
+            peer: 0,
+            seed: { kind: "type", a: 67877, b: 0, suggest: false },
+          },
+        ],
+      ] as const satisfies Scenario;
+      const outcome = simulate(...scenario);
+      expect(outcome.dropped).toEqual(["edit-11", "edit-12", "edit-13"]);
+      expect(outcome.independentDrops).toEqual([]);
+      await fc.assert(
+        convergence(noCounts(), fc.constant(scenario)),
+        propertyConfig({ numRuns: 1 }),
+      );
+    },
+    propertyTestTimeout(30_000),
+  );
+
+  test(
+    "a restored revision end preserves concurrent typing outside the revision",
+    async () => {
+      // Original saved flow -1867636773: exercise the real compiler, wire and optimistic clients.
+      const scenario = [
+        3,
+        [
+          {
+            type: "edit",
+            peer: 1,
+            seed: { kind: "type", a: 21, b: 36297, suggest: true, focus: true },
+          },
+          { type: "deliver", seed: 0 },
+          { type: "submit", peer: 0 },
+          { type: "deliver", seed: 0 },
+          { type: "deliver", seed: 0 },
+          {
+            type: "edit",
+            peer: 1,
+            seed: { kind: "erase", a: 24, b: 0, suggest: false, focus: true },
+          },
+          { type: "undo", peer: 1 },
+          {
+            type: "edit",
+            peer: 2,
+            seed: { kind: "type", a: 4, b: 0, suggest: false, focus: true },
+          },
+          {
+            type: "edit",
+            peer: 0,
+            seed: { kind: "type", a: 0, b: 0, suggest: false, focus: true },
+          },
+        ],
+      ] as const satisfies Scenario;
+      await fc.assert(
+        convergence(noCounts(), fc.constant(scenario)),
+        propertyConfig({ numRuns: 1 }),
+      );
+    },
+    propertyTestTimeout(30_000),
+  );
+
+  test(
+    "a source-seam undo retains its scoped refusal beside tracked typing",
+    async () => {
+      // The original saved flow is retained because its old generator path no longer replays.
+      const scenario = [
+        3,
+        [
+          {
+            type: "edit",
+            peer: 0,
+            seed: {
+              kind: "erase",
+              a: 0,
+              b: 45299,
+              suggest: false,
+              focus: true,
+            },
+          },
+          {
+            type: "undo",
+            peer: 0,
+          },
+          {
+            type: "edit",
+            peer: 1,
+            seed: {
+              kind: "type",
+              a: 3,
+              b: 0,
+              suggest: true,
+              focus: true,
+            },
+          },
+          {
+            type: "edit",
+            peer: 0,
+            seed: {
+              kind: "type",
+              a: 0,
+              b: 0,
+              suggest: false,
+              focus: true,
+            },
+          },
+          {
+            type: "deliver",
+            seed: 0,
+          },
+          {
+            type: "submit",
+            peer: 0,
+          },
+          {
+            type: "undo",
+            peer: 0,
+          },
+          {
+            type: "edit",
+            peer: 0,
+            seed: {
+              kind: "type",
+              a: 0,
+              b: 0,
+              suggest: false,
+              focus: true,
+            },
+          },
+          {
+            type: "edit",
+            peer: 0,
+            seed: {
+              kind: "type",
+              a: 0,
+              b: 0,
+              suggest: false,
+              focus: true,
+            },
+          },
+        ],
+      ] as const satisfies Scenario;
+      await fc.assert(
+        convergence(noCounts(), fc.constant(scenario)),
+        propertyConfig({ numRuns: 1 }),
+      );
+    },
+    propertyTestTimeout(30_000),
+  );
+
+  test.each([3, typingInRefusedParagraph[1].length])(
+    "typing in a refused paragraph is a dependent drop (%i steps)",
+    async (length) => {
+      const scenario = [
+        typingInRefusedParagraph[0],
+        typingInRefusedParagraph[1].slice(0, length),
+      ] satisfies Scenario;
+      const outcome = simulate(...scenario);
+      expect(outcome.dropped).toEqual(["edit-11", "edit-12"]);
+      expect(outcome.independentDrops).toEqual([]);
+      await assertProperty(convergence(noCounts(), fc.constant(scenario)), {
+        numRuns: 1,
+        id: "canonical sequencing created paragraph dependencies",
+      });
+    },
+    propertyTestTimeout(60_000),
+  );
+
+  test.each([
+    {
+      name: "header relationships",
+      scenario: bufferedHeaderConflicts,
+      dropped: ["edit-11", "edit-14"],
+    },
+    {
+      name: "section metadata",
+      scenario: bufferedSectionConflicts,
+      dropped: ["edit-15", "edit-11"],
+    },
+    {
+      name: "paste paragraph split",
+      scenario: commentUndoOverPasteSplit,
+      dropped: ["edit-15"],
+    },
+  ])(
+    "buffered refusal attribution preserves the protocol for $name",
+    async ({ scenario, dropped }) => {
+      const outcome = simulate(...scenario);
+      expect(outcome.dropped).toEqual(dropped);
+      await assertProperty(convergence(noCounts(), fc.constant(scenario)), {
+        numRuns: 1,
+        id: "canonical sequencing refusal cause attribution",
+      });
+    },
+    propertyTestTimeout(60_000),
+  );
+
+  test("a refused inline restoration cannot hide behind a sibling paragraph split", () => {
+    const original = { ...restoreTransform };
+    mock.module("../restoreTransform", () => ({
+      ...original,
+      transformRestorePair: (
+        ...args: Parameters<typeof original.transformRestorePair>
+      ) => {
+        const [op, over] = args;
+        if (
+          op.type === DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE &&
+          over.type === DOCUMENT_OP_TYPES.INSERT_CONTENT
+        )
+          return Result.err(
+            new envelope.BatchRejection({
+              reason: BATCH_REJECTION_REASONS.BLOCK_CONFLICT,
+              message:
+                "A concurrent operation changed a paragraph this operation addresses.",
+              opType: op.type,
+              overType: over.type,
+            }),
+          );
+        return original.transformRestorePair(...args);
+      },
+    }));
+    try {
+      const outcome = simulate(...commentUndoOverPasteSplit);
+      expect(
+        outcome.restoreRefusals.some((pair) =>
+          pair.includes("restoreCommentState and insertContent"),
+        ),
+      ).toBe(true);
+    } finally {
+      mock.module("../restoreTransform", () => original);
+    }
+  });
+
+  test("a comment dropping pending typing keeps an independent revision decision", async () => {
+    const outcome = simulate(...decisionAfterCommentRefusesTyping);
+    expect(outcome.independentDrops).toEqual([]);
+    expect(outcome.dropped).toEqual(["edit-12", "edit-14"]);
+    expect(outcome.sequenced).toContain("edit-16");
+    expect(outcome.diverged).toEqual([]);
+    const authority = await bytes(outcome.authority);
+    for (const document of outcome.documents) {
+      expect(equalForStaleness(document, outcome.authority)).toBe(true);
+      expect(await bytes(document)).toEqual(authority);
+    }
+  });
+
+  test("notes added concurrently take the same places in the note list in either order", () => {
+    const outcome = simulate(...concurrentNotes);
+    expect(outcome.diverged).toEqual([]);
+    expect(outcome.proven).toBe(outcome.rebased);
+    for (const document of outcome.documents)
+      expect(equalForStaleness(document, outcome.authority)).toBe(true);
+  });
+
   test("a format inside a concurrent direct erase leaves one run in either order", () => {
     const outcome = simulate(...formatInsideErase);
     expect(outcome.rejected).toEqual([]);
@@ -1769,6 +2399,7 @@ describe("canonical sequencing", () => {
           }),
         );
         expect(result.failed).toBe(true);
+        expect(String(result.errorInstance)).toContain("dropped by");
       } finally {
         mock.module("../transform", () => original);
       }

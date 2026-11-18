@@ -484,10 +484,16 @@ const tableParagraphIds = (
   document: Document,
   op: DocumentOp,
 ): readonly string[] => {
-  if (!("blockId" in op)) return [];
+  let targetId = "blockId" in op ? op.blockId : undefined;
+  if (
+    op.type === DOCUMENT_OP_TYPES.INSERT_TABLE &&
+    (op.at.type === "beforeTable" || op.at.type === "afterTable")
+  )
+    targetId = op.at.blockId;
+  if (targetId === undefined) return [];
   const locations = storyParagraphs(storyBody(document, operationStory(op)));
   const target = locations.find(
-    ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(op.blockId),
+    ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(targetId),
   );
   const step = target?.list.findLastIndex(({ kind }) => kind === "tableCell");
   if (target === undefined || step === undefined || step < 0) return [];

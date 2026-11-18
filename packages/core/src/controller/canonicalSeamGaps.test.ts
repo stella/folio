@@ -5,7 +5,7 @@
  * editor places and a caret an edit returns then name the same gap, so
  * characters typed one after another stay together.
  */
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import { EditorState, TextSelection } from "prosemirror-state";
 
 import {
@@ -20,11 +20,14 @@ import {
   createCanonicalSession,
   publishCanonicalProjection,
 } from "../canonical/canonicalSession";
+import { serializeCanonicalSave } from "../docx/canonicalSave";
 import { parseDocx } from "../docx/parser";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import type { Document } from "../types/document";
 
 const SHAPES = ["comments", "invisible-markers"] as const;
+afterEach(() => setSystemTime());
 
 for (const id of SHAPES)
   test(`${id}: every insertion gap has an editor position, and it reads back as itself`, async () => {
@@ -55,8 +58,7 @@ for (const id of SHAPES)
     }
   });
 
-/** The text a comment covers once every change is accepted, and the paragraph's text. */
-const replaceAndAccept = (
+const replacementState = (
   mode: "editing" | "suggesting",
   select: (text: string) => { from: number; to: number },
 ) => {
@@ -104,6 +106,17 @@ const replaceAndAccept = (
   state = state.apply(
     state.tr.setSelection(TextSelection.create(state.doc, 1 + from, 1 + to)),
   );
+  return { session, state };
+};
+
+/** The text a comment covers once every change is accepted, and the paragraph's text. */
+const replaceAndAccept = (
+  mode: "editing" | "suggesting",
+  select: (text: string) => { from: number; to: number },
+) => {
+  const prepared = replacementState(mode, select);
+  const { session } = prepared;
+  let { state } = prepared;
   for (const text of ["x", "y"]) {
     const commit = session
       .prepareReplace(state, {
@@ -143,12 +156,46 @@ describe("which markers a replaced selection takes", () => {
       expect(result).toEqual({ covered: "xy", text: "Lead xy tail" });
     });
 
-    test(`${mode}: replacing a paragraph's whole text takes its markers, so the comment is emptied`, () => {
-      const result = replaceAndAccept(mode, (text) => ({
+    test(`${mode}: replacing a paragraph containing an internal comment refuses atomically`, async () => {
+      setSystemTime(new Date("2026-01-02T03:04:05Z"));
+      const { session, state } = replacementState(mode, (text) => ({
         from: 0,
         to: text.length,
       }));
-      expect(result).toEqual({ covered: "", text: "xy" });
+      const document = session.document;
+      const snapshot = session.captureSaveSnapshot();
+      const saved = await serializeCanonicalSave({ snapshot });
+      const version = session.version;
+      const history = { undo: session.canUndo, redo: session.canRedo };
+      let commits = 0;
+      session.onCommitted(() => commits++);
+      const result = session.prepareReplace(state, {
+        from: state.selection.from,
+        to: state.selection.to,
+        text: "x",
+        semantic: "typing",
+      });
+      // Empty covered text hid a disagreement: direct editing kept a collapsed
+      // definition, while accepting the suggestion removed it entirely.
+      expect(result.isErr()).toBe(true);
+      if (result.isErr())
+        expect(result.error.ground).toEqual({
+          gap: CANONICAL_GAP.commentReplacementAlignment,
+        });
+      expect(session.document).toBe(document);
+      expect(session.version).toBe(version);
+      expect({ undo: session.canUndo, redo: session.canRedo }).toEqual(history);
+      expect(commits).toBe(0);
+      expect(session.captureSaveSnapshot()).toEqual(snapshot);
+      expect(
+        new Uint8Array(
+          (
+            await serializeCanonicalSave({
+              snapshot: session.captureSaveSnapshot(),
+            })
+          ).buffer,
+        ),
+      ).toEqual(new Uint8Array(saved.buffer));
     });
   }
 });

@@ -118,6 +118,7 @@ describe("a tracked split of a paragraph a pending merge joins on", () => {
     const reviewer = await open();
     const item = reviewer.snapshot().blocks.at(0);
     if (!item) throw new Error("Missing fixture");
+    let currentBlockId = item.id;
     for (const operation of [
       {
         id: "merge",
@@ -134,9 +135,18 @@ describe("a tracked split of a paragraph a pending merge joins on", () => {
         ...(firstParagraphProperties && { firstParagraphProperties }),
       },
     ] satisfies FolioDocumentOperation[]) {
-      expect(reviewer.applyOperations([operation], { mode }).skipped).toEqual(
-        [],
+      const result = reviewer.applyOperations(
+        [{ ...operation, blockId: currentBlockId }],
+        { mode },
       );
+      expect(result.skipped).toEqual([]);
+      for (const { paragraphIdentity } of result.applied) {
+        if (
+          paragraphIdentity?.type === "joined" &&
+          paragraphIdentity.retiredBlockId === currentBlockId
+        )
+          currentBlockId = paragraphIdentity.blockId;
+      }
     }
     return reviewer;
   };

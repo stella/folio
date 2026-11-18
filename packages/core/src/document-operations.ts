@@ -26,6 +26,7 @@ import {
   findIntroducedModelErrors,
 } from "./ai-edits/result-validation";
 import type { FolioTableTemplates } from "./ai-edits/table-template";
+import { TABLE_INSERTION_MODES } from "./ai-edits/tableInsertionModes";
 import type {
   FolioAIBlockParagraphProperties,
   FolioAIEditAppliedOperation,
@@ -191,12 +192,6 @@ const DIRECT_AND_TRACKED_MODES = Object.freeze([
   "tracked-changes",
 ] as const satisfies readonly FolioDocumentOperationMode[]);
 const DIRECT_TRACKED_AND_SUGGESTED_MODES = FOLIO_DOCUMENT_OPERATION_MODES;
-// A whole inserted table has no OOXML tracked representation, so it supports
-// direct and suggested (accept applies it directly) but not tracked-changes.
-const DIRECT_AND_SUGGESTED_MODES = Object.freeze([
-  "direct",
-  "suggested",
-] as const satisfies readonly FolioDocumentOperationMode[]);
 
 export const FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE: Readonly<{
   readonly replaceInBlock: readonly ["direct", "tracked-changes", "suggested"];
@@ -248,10 +243,10 @@ export const FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE: Readonly<{
   splitBlock: DIRECT_AND_TRACKED_MODES,
   mergeBlockWithNext: DIRECT_AND_TRACKED_MODES,
   setBlockParagraphProperties: DIRECT_AND_TRACKED_MODES,
-  insertTable: DIRECT_AND_TRACKED_MODES,
+  insertTable: TABLE_INSERTION_MODES.insertTable,
   deleteTable: DIRECT_AND_TRACKED_MODES,
   commentOnBlock: DIRECT_AND_TRACKED_MODES,
-  insertSignatureTable: DIRECT_AND_SUGGESTED_MODES,
+  insertSignatureTable: TABLE_INSERTION_MODES.insertSignatureTable,
   insertTableRow: DIRECT_TRACKED_AND_SUGGESTED_MODES,
   deleteTableRow: DIRECT_TRACKED_AND_SUGGESTED_MODES,
   insertTableColumn: DIRECT_TRACKED_AND_SUGGESTED_MODES,
@@ -2391,9 +2386,42 @@ export const getFolioDocumentOperationReceiptsForStory = ({
     if (!appliedOperation) {
       return;
     }
-    const affected: FolioDocumentOperationAffectedTarget[] = [
-      getPrimaryAffectedTarget(operation, story),
-    ];
+    const { paragraphIdentity } = appliedOperation;
+    const affected: FolioDocumentOperationAffectedTarget[] = [];
+    if (paragraphIdentity === undefined)
+      affected.push(getPrimaryAffectedTarget(operation, story));
+    else {
+      switch (paragraphIdentity.type) {
+        case "joined":
+          affected.push(
+            {
+              type: "block",
+              story,
+              blockId: paragraphIdentity.blockId,
+              effect: "updated",
+            },
+            {
+              type: "block",
+              story,
+              blockId: paragraphIdentity.retiredBlockId,
+              effect: "deleted",
+            },
+          );
+          break;
+        case "retained":
+          affected.push({
+            type: "block",
+            story,
+            blockId: paragraphIdentity.blockId,
+            effect: "updated",
+          });
+          break;
+        default: {
+          const unreachable: never = paragraphIdentity;
+          return unreachable;
+        }
+      }
+    }
     if (appliedOperation.commentId !== undefined) {
       affected.push({ type: "comment", commentId: appliedOperation.commentId });
     }
@@ -2839,7 +2867,10 @@ export const applyFolioDocumentOperationsInPackage = ({
     return {
       version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
       status: "previewed",
-      applied: previewResult.applied.map(({ id }) => ({ id })),
+      applied: previewResult.applied.map(({ id, paragraphIdentity }) => ({
+        id,
+        ...(paragraphIdentity === undefined ? {} : { paragraphIdentity }),
+      })),
       skipped: previewResult.skipped,
       issues: getFolioDocumentOperationIssues(
         parsedBatch.operations,

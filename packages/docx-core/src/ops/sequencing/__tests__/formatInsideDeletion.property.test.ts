@@ -6,6 +6,7 @@ import {
   propertyTestTimeout,
 } from "../../../../../../test/property-testing";
 import type { Document, RunContent } from "../../../model/document";
+import { RUN_LEAF_SAMPLES, RUN_LEAVES } from "../../__tests__/runLeafSamples";
 import { equalForStaleness } from "../../equality";
 import { compareGaps, type Gap, leafSpans } from "../../leaves";
 import {
@@ -19,46 +20,6 @@ import {
 import { applyBatch } from "../applyBatch";
 import type { DocumentBatch, SequencedBatch } from "../envelope";
 import { transformBatch } from "../transform";
-
-/**
- * One leaf of every kind a run holds. The record is exhaustive, so a new
- * kind of run content fails to typecheck here until it has a sample.
- */
-const LEAVES: {
-  readonly [Kind in RunContent["type"]]: RunContent & { type: Kind };
-} = {
-  text: { type: "text", text: "x" },
-  tab: { type: "tab" },
-  break: { type: "break" },
-  symbol: { type: "symbol", font: "Symbol", char: "F020" },
-  footnoteRef: { type: "footnoteRef", id: 1 },
-  endnoteRef: { type: "endnoteRef", id: 1 },
-  noteMarker: { type: "noteMarker", kind: "footnote" },
-  fieldChar: { type: "fieldChar", charType: "begin" },
-  instrText: { type: "instrText", text: " PAGE " },
-  softHyphen: { type: "softHyphen" },
-  noBreakHyphen: { type: "noBreakHyphen" },
-  renderedPageBreak: { type: "renderedPageBreak" },
-  preservedXml: { type: "preservedXml", xml: "<w:ptab/>", text: "" },
-  drawing: {
-    type: "drawing",
-    image: {
-      type: "image",
-      size: { width: 10, height: 10 },
-      wrap: { type: "inline" },
-    },
-  },
-  shape: {
-    type: "shape",
-    shape: {
-      type: "shape",
-      shapeType: "rect",
-      size: { width: 10, height: 10 },
-    },
-  },
-};
-
-const SAMPLES: readonly RunContent[] = Object.values(LEAVES);
 
 const BLOCK = "00000001";
 
@@ -191,7 +152,7 @@ const leaves = fc.array(
       { type: "text", text: "ab" },
       { type: "text", text: "cde" },
     ),
-    fc.constantFrom(...SAMPLES),
+    fc.constantFrom(...RUN_LEAF_SAMPLES),
   ),
   { maxLength: 4 },
 );
@@ -236,7 +197,7 @@ const EXAMPLES: [Scenario][] = [
     {
       content: [
         { type: "text", text: "ab" },
-        LEAVES.tab,
+        RUN_LEAVES.tab,
         { type: "text", text: "cde" },
       ],
       deleteFrom: { offset: 1, zeroWidthBefore: 0 },
@@ -248,7 +209,7 @@ const EXAMPLES: [Scenario][] = [
   // A zero-width leaf after the deletion keeps the run one.
   [
     {
-      content: [{ type: "text", text: "cde" }, LEAVES.renderedPageBreak],
+      content: [{ type: "text", text: "cde" }, RUN_LEAVES.renderedPageBreak],
       deleteFrom: { offset: 1, zeroWidthBefore: 0 },
       formatFrom: { offset: 2, zeroWidthBefore: 0 },
       formatTo: { offset: 3, zeroWidthBefore: 0 },
@@ -259,9 +220,9 @@ const EXAMPLES: [Scenario][] = [
   [
     {
       content: [
-        LEAVES.noteMarker,
+        RUN_LEAVES.noteMarker,
         { type: "text", text: "fgh" },
-        LEAVES.footnoteRef,
+        RUN_LEAVES.footnoteRef,
         { type: "text", text: "ab" },
       ],
       deleteFrom: { offset: 0, zeroWidthBefore: 1 },
@@ -275,7 +236,7 @@ const EXAMPLES: [Scenario][] = [
     {
       content: [
         { type: "text", text: "fgh" },
-        LEAVES.noteMarker,
+        RUN_LEAVES.noteMarker,
         { type: "text", text: "ab" },
       ],
       deleteFrom: { offset: 0, zeroWidthBefore: 0 },
@@ -289,14 +250,14 @@ const EXAMPLES: [Scenario][] = [
   [
     {
       content: [
-        LEAVES.text,
+        RUN_LEAVES.text,
         { type: "text", text: "ab" },
         { type: "text", text: "ab" },
         { type: "text", text: "fgh" },
-        LEAVES.break,
-        LEAVES.endnoteRef,
-        LEAVES.noteMarker,
-        LEAVES.shape,
+        RUN_LEAVES.break,
+        RUN_LEAVES.endnoteRef,
+        RUN_LEAVES.noteMarker,
+        RUN_LEAVES.shape,
       ],
       deleteFrom: { offset: 1, zeroWidthBefore: 0 },
       formatFrom: { offset: 1, zeroWidthBefore: 0 },
@@ -309,7 +270,7 @@ const EXAMPLES: [Scenario][] = [
     {
       content: [
         { type: "text", text: "ab" },
-        LEAVES.noteMarker,
+        RUN_LEAVES.noteMarker,
         { type: "text", text: "cde" },
       ],
       deleteFrom: { offset: 1, zeroWidthBefore: 0 },
@@ -321,7 +282,7 @@ const EXAMPLES: [Scenario][] = [
   // A format and a deletion of all the text, a note's mark right after it.
   [
     {
-      content: [{ type: "text", text: "fgh" }, LEAVES.noteMarker],
+      content: [{ type: "text", text: "fgh" }, RUN_LEAVES.noteMarker],
       deleteFrom: { offset: 0, zeroWidthBefore: 0 },
       formatFrom: { offset: 0, zeroWidthBefore: 0 },
       formatTo: { offset: 3, zeroWidthBefore: 0 },
@@ -443,14 +404,9 @@ describe("a direct format inside a concurrent direct deletion", () => {
   test("typing after a deletion that keeps a note's mark lands after the mark in either order", () => {
     // The deletion of 0..5 keeps the note's mark at 3; the typing at 5 is
     // after it in the typing order, and must be after it in the other.
-    // TEMPORARY weaker check: this compares the order of the leaves, not
-    // the whole structure, because typing at a gap after a run of
-    // zero-width leaves alone still makes a run of its own in one order
-    // (the insertion does not yet honour zeroWidthBefore for its host run).
-    // The fix of that compares the whole documents here again.
     const content: RunContent[] = [
       { type: "text", text: "fgh" },
-      LEAVES.noteMarker,
+      RUN_LEAVES.noteMarker,
       { type: "text", text: "ab" },
     ];
     const leavesOf = (document: Document): string[] =>
@@ -473,17 +429,27 @@ describe("a direct format inside a concurrent direct deletion", () => {
       text: "XY",
       runProps: "inherit",
     });
+    const outcomes = [
+      inOrder(base, deletion, typing, undefined),
+      inOrder(base, typing, deletion, undefined),
+    ];
     expect(
-      [
-        inOrder(base, deletion, typing, undefined),
-        inOrder(base, typing, deletion, undefined),
-      ].map((outcome) =>
+      outcomes.map((outcome) =>
         "document" in outcome ? leavesOf(outcome.document) : outcome.refused,
       ),
     ).toEqual([
       ["noteMarker", "XY"],
       ["noteMarker", "XY"],
     ]);
+    // Both orders leave one document, runs and all.
+    const [deletionFirst, typingFirst] = outcomes;
+    expect(
+      deletionFirst !== undefined &&
+        typingFirst !== undefined &&
+        "document" in deletionFirst &&
+        "document" in typingFirst &&
+        equalForStaleness(deletionFirst.document, typingFirst.document),
+    ).toBe(true);
     // The typing rebased over the deletion names the gap after the mark;
     // the test-only break, a deletion recording no kept mark, names the
     // gap before it.

@@ -45,9 +45,11 @@ import { DOCUMENT_CHANGE_NOTIFY_DELAY_MS } from "@stll/folio-core/controller/doc
 import {
   createFolioEditor,
   FOLIO_DOCX_SERIALIZATION_MODE,
+  type FolioDocxSerializationPath,
   type FolioEditor,
   type FolioEditorDocumentIO,
   type FolioGetDocxOptions,
+  type FolioSaveOptions,
 } from "@stll/folio-core/controller/folioEditor";
 import { createFolioEditorEmitter } from "@stll/folio-core/controller/folioEditorEvents";
 import {
@@ -90,7 +92,7 @@ import {
 } from "@stll/folio-core/controller/noteEditorManager";
 import type { PageRendererName } from "@stll/folio-core/display-list/editor/pageRenderer";
 import {
-  CanonicalSaveDiagnosticError,
+  canonicalSaveDiagnosticError,
   serializeCanonicalSave,
 } from "@stll/folio-core/docx/canonicalSave";
 import {
@@ -101,6 +103,7 @@ import {
 import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
 import { withHostCommentThreads } from "@stll/folio-core/docx/hostCommentThreads";
 import { parseDocx } from "@stll/folio-core/docx/parser";
+import type { SaveDiagnostic } from "@stll/folio-core/docx/saveDiagnostics";
 import type { FolioSelectiveSaveFlags } from "@stll/folio-core/docx/selectiveSaveFlags";
 import type { TripwireResult } from "@stll/folio-core/docx/selectiveSaveTripwire";
 import { getFootnoteText } from "@stll/folio-core/docx/storyPlainText";
@@ -152,7 +155,6 @@ import {
   heldUnreferencedNotes,
   withoutUnreferencedNotes,
 } from "@stll/folio-core/prosemirror/noteReferenceReview";
-import { autocompleteSuggestionPlugin } from "@stll/folio-core/prosemirror/plugins/autocompleteSuggestion";
 import {
   createSuggestionModePlugin,
   setSuggestionMode,
@@ -168,6 +170,7 @@ import type {
   TemplateSlashMenuState,
 } from "@stll/folio-core/prosemirror/plugins/templateSlashMenu";
 import { templateSlashMenuPlugin } from "@stll/folio-core/prosemirror/plugins/templateSlashMenu";
+import type { FolioAutocompleteState } from "@stll/folio-core/types/autocomplete";
 import {
   CANONICAL_GAP,
   type CanonicalGap,
@@ -454,6 +457,8 @@ export type UseDocxEditorOptions = {
   onSlashMenuChange?: (state: TemplateSlashMenuState) => void;
   /** Resolves a navigation/commit key while the slash menu is open. */
   onSlashMenuKeyAction?: (action: TemplateSlashMenuKeyAction) => boolean;
+  /** Called after each change of the inline suggestion, including view teardown. */
+  onAutocompleteChange?: (state: FolioAutocompleteState) => void;
   /** Callback on document change (debounced PM → Document model conversion). */
   onChange?: (doc: Document) => void;
   /** Callback on parse / layout / lifecycle error. */
@@ -560,7 +565,7 @@ export type UseDocxEditorReturn = {
   /** Load an already-parsed `Document` directly. */
   loadDocument: (doc: Document) => void;
   /** Serialize the current document to a DOCX blob. */
-  save: (options?: { selective?: boolean }) => Promise<Blob | null>;
+  save: (options?: FolioSaveOptions) => Promise<Blob | null>;
   /**
    * Build a copy of the current document, in time proportional to its size.
    * For a host that owns the result; derived state reads `modelDocument`.
@@ -736,11 +741,6 @@ export function useDocxEditor(
   // manager installs it on every (re)created state.
   const suggestionPlugin = createSuggestionModePlugin(false);
   const notePlugins = [suggestionPlugin];
-  // Inline autocomplete is always installed and inert until a host dispatches
-  // start/token/finish metadata. Keep its keymap ahead of extension keymaps so
-  // Tab, Mod+ArrowRight, and Escape consume an active suggestion first.
-  const autocompletePlugin = autocompleteSuggestionPlugin({ keymap: true });
-
   // Template-directive scan + slash-menu trigger. Installed only when
   // `showTemplateDirectives` is on (see `buildExternalPlugins` /
   // `syncTemplatePlugins`). Preview plugin is inert until values are pushed.
@@ -760,7 +760,6 @@ export function useDocxEditor(
   // decorations. The template directive/slash-menu pair remains feature-gated.
   function buildExternalPlugins(): Plugin[] {
     return [
-      autocompletePlugin,
       suggestionPlugin,
       ...externalPlugins,
       ...(yjsCollaboration()?.plugins ?? []),
@@ -1136,6 +1135,10 @@ export function useDocxEditor(
     },
   });
 
+  const offAutocomplete = manager.api.autocomplete.subscribe((state) =>
+    options.onAutocompleteChange?.(state),
+  );
+
   const publishRemoteSelections = (): void => {
     const awareness = yjsCollaboration()?.awareness;
     const modules = collaborationModules.value;
@@ -1302,6 +1305,8 @@ export function useDocxEditor(
   const documentIO = {
     getDocx: async (serializationOptions) => {
       const result = await serializeCurrentDocx(serializationOptions);
+      if (result?.tripwireResult)
+        onSelectiveSaveTripwire?.(result.tripwireResult);
       return result?.buffer ?? null;
     },
     loadDocument,
@@ -1550,7 +1555,8 @@ export function useDocxEditor(
     buffer: ArrayBuffer;
     document: Document;
     version?: number;
-    path?: "selective" | "full-repack";
+    path: FolioDocxSerializationPath;
+    tripwireResult: TripwireResult | null;
   };
 
   async function serializeCurrentDocx(
@@ -1571,129 +1577,147 @@ export function useDocxEditor(
         });
         for (const diagnostic of result.diagnostics) {
           if (!serializationOptions?.onDiagnostic)
-            onError?.(
-              new CanonicalSaveDiagnosticError({
-                gap: CANONICAL_GAP.save,
-                diagnostic,
-                message: `Canonical save used a fidelity fallback: ${diagnostic.type} (${diagnostic.part}).`,
-              }),
-            );
+            onError?.(canonicalSaveDiagnosticError(diagnostic));
         }
-        if (result.tripwireResult)
-          onSelectiveSaveTripwire?.(result.tripwireResult);
         return result;
       }
+      if (isCanonicalSession()) return null;
+      // Legacy write-back can still owe the notes a restore or a deletion.
+      if (docChangeTimer !== null) flushDocumentChangeNotification();
+      const base = noteEditorManager.snapshotDocument(
+        headerFooterManager.snapshotDocument(currentDocument),
+      );
+
+      // Snapshot the editor state once, before any awaited dynamic imports, so
+      // the document we serialize and the selective-save change signals are all
+      // read from the same snapshot. A later `view.state` read could pick up an
+      // edit that landed mid-save and diff against the wrong baseline.
+      const state = view.state;
+      // canonical-gap: pm-save-projection
+      const projected = fromProseDoc(state.doc, readModel(base), {
+        stylesheetSource: { type: "package" },
+      });
+      const updatedDoc = withoutUnreferencedNotes(
+        comments
+          ? withHostCommentThreads(projected, comments(), {
+              anchoredInEditor: commentIdsNamedIn(state.doc),
+            })
+          : projected,
+        heldNotes,
+      );
+
+      const { resolveSelectiveSaveFlags } =
+        await import("@stll/folio-core/docx/selectiveSaveFlags");
+      const flags = resolveSelectiveSaveFlags(toValue(featureFlags));
+
+      // A note goes with its reference: one nothing refers to any more is not saved.
+      const baselineBuffer = updatedDoc.originalBuffer ?? null;
+
+      // The tripwire observes the selective path independently of the user-visible
+      // save mode. Only `useSelectiveForSave` is allowed to pick the returned bytes.
+      const useSelectiveForSave =
+        flags.selectiveSave &&
+        serializationOptions?.mode !== FOLIO_DOCX_SERIALIZATION_MODE.full;
+      const shouldAttemptSelective =
+        useSelectiveForSave || flags.selectiveSaveTripwire;
+
+      const { repackDocx, createDocx } =
+        await import("@stll/folio-core/docx/rezip");
+
+      let selectiveBuffer: ArrayBuffer | null = null;
+      if (shouldAttemptSelective && baselineBuffer) {
+        const { attemptSelectiveSave } =
+          await import("@stll/folio-core/docx/selectiveSave");
+        selectiveBuffer = await attemptSelectiveSave(
+          updatedDoc,
+          baselineBuffer,
+          {
+            changedParaIds: getChangedParagraphIds(state),
+            structuralChange: hasStructuralChanges(state),
+            hasUntrackedChanges: hasUntrackedChanges(state),
+            maxBytes: flags.selectiveSaveMaxBytes,
+            onSelectiveDecline: serializationOptions?.onSelectiveDecline,
+            onDiagnostic: serializationOptions?.onDiagnostic,
+          },
+        );
+      }
+
+      let buffer: ArrayBuffer | null = useSelectiveForSave
+        ? selectiveBuffer
+        : null;
+      let fullBuffer: ArrayBuffer | null = null;
+      let path: FolioDocxSerializationPath = "selective";
+
+      // A section the editor removed on purpose (its ending paragraph deleted,
+      // or that deletion accepted) is one the repack must be told about, or it
+      // refuses the smaller package.
+      const fullDiagnostics: SaveDiagnostic[] = [];
+      const collectFullDiagnostic = (diagnostic: SaveDiagnostic) =>
+        fullDiagnostics.push(diagnostic);
+      const repackFull = () =>
+        repackWithEditorSectionRemovals({
+          state,
+          document: updatedDoc,
+          repack: () =>
+            repackDocx(updatedDoc, {
+              onDiagnostic: collectFullDiagnostic,
+            }),
+        });
+
+      if (!buffer) {
+        // No original buffer means a from-scratch document — build one via createDocx.
+        fullBuffer = baselineBuffer
+          ? await repackFull()
+          : await createDocx(updatedDoc, {
+              onDiagnostic: collectFullDiagnostic,
+            });
+        buffer = fullBuffer;
+        path = "full-repack";
+      } else if (flags.selectiveSaveTripwire) {
+        try {
+          fullBuffer = await repackFull();
+        } catch {
+          // Tripwire-only full repack failures must never poison a successful
+          // selective save.
+        }
+      }
+
+      let tripwireResult: TripwireResult | null = null;
+      if (
+        flags.selectiveSaveTripwire &&
+        fullBuffer &&
+        onSelectiveSaveTripwire
+      ) {
+        // The comparison itself never blocks the save path.
+        try {
+          const { compareSelectiveVsFull } =
+            await import("@stll/folio-core/docx/selectiveSaveTripwire");
+          tripwireResult = await compareSelectiveVsFull(
+            selectiveBuffer,
+            fullBuffer,
+          );
+        } catch {
+          // Comparison failures must never poison the save path.
+        }
+      }
+
+      for (const diagnostic of fullDiagnostics)
+        serializationOptions?.onDiagnostic?.(diagnostic);
+      serializationOptions?.onSerializationPath?.(path);
+      return { buffer, path, document: updatedDoc, tripwireResult };
     } catch (error) {
       onError?.(error instanceof Error ? error : new Error(String(error)));
       return null;
     }
-    if (isCanonicalSession()) return null;
-    // Legacy write-back can still owe the notes a restore or a deletion.
-    if (docChangeTimer !== null) flushDocumentChangeNotification();
-    const base = noteEditorManager.snapshotDocument(
-      headerFooterManager.snapshotDocument(currentDocument),
-    );
-
-    // Snapshot the editor state once, before any awaited dynamic imports, so
-    // the document we serialize and the selective-save change signals are all
-    // read from the same snapshot. A later `view.state` read could pick up an
-    // edit that landed mid-save and diff against the wrong baseline.
-    const state = view.state;
-    // canonical-gap: pm-save-projection
-    const projected = fromProseDoc(state.doc, readModel(base), {
-      stylesheetSource: { type: "package" },
-    });
-    const updatedDoc = withoutUnreferencedNotes(
-      comments
-        ? withHostCommentThreads(projected, comments(), {
-            anchoredInEditor: commentIdsNamedIn(state.doc),
-          })
-        : projected,
-      heldNotes,
-    );
-
-    const { resolveSelectiveSaveFlags } =
-      await import("@stll/folio-core/docx/selectiveSaveFlags");
-    const flags = resolveSelectiveSaveFlags(toValue(featureFlags));
-
-    // A note goes with its reference: one nothing refers to any more is not saved.
-    const baselineBuffer = updatedDoc.originalBuffer ?? null;
-
-    // The tripwire observes the selective path independently of the user-visible
-    // save mode. Only `useSelectiveForSave` is allowed to pick the returned bytes.
-    const useSelectiveForSave =
-      flags.selectiveSave &&
-      serializationOptions?.mode !== FOLIO_DOCX_SERIALIZATION_MODE.full;
-    const shouldAttemptSelective =
-      useSelectiveForSave || flags.selectiveSaveTripwire;
-
-    const { repackDocx, createDocx } =
-      await import("@stll/folio-core/docx/rezip");
-
-    let selectiveBuffer: ArrayBuffer | null = null;
-    if (shouldAttemptSelective && baselineBuffer) {
-      const { attemptSelectiveSave } =
-        await import("@stll/folio-core/docx/selectiveSave");
-      selectiveBuffer = await attemptSelectiveSave(updatedDoc, baselineBuffer, {
-        changedParaIds: getChangedParagraphIds(state),
-        structuralChange: hasStructuralChanges(state),
-        hasUntrackedChanges: hasUntrackedChanges(state),
-        maxBytes: flags.selectiveSaveMaxBytes,
-      });
-    }
-
-    let buffer: ArrayBuffer | null = useSelectiveForSave
-      ? selectiveBuffer
-      : null;
-    let fullBuffer: ArrayBuffer | null = null;
-
-    // A section the editor removed on purpose (its ending paragraph deleted,
-    // or that deletion accepted) is one the repack must be told about, or it
-    // refuses the smaller package.
-    const repackFull = () =>
-      repackWithEditorSectionRemovals({
-        state,
-        document: updatedDoc,
-        repack: () => repackDocx(updatedDoc),
-      });
-
-    if (!buffer) {
-      // No original buffer means a from-scratch document — build one via createDocx.
-      fullBuffer = baselineBuffer
-        ? await repackFull()
-        : await createDocx(updatedDoc);
-      buffer = fullBuffer;
-    } else if (flags.selectiveSaveTripwire) {
-      try {
-        fullBuffer = await repackFull();
-      } catch {
-        // Tripwire-only full repack failures must never poison a successful
-        // selective save.
-      }
-    }
-
-    if (flags.selectiveSaveTripwire && fullBuffer && onSelectiveSaveTripwire) {
-      // The comparison itself never blocks the save path.
-      try {
-        const { compareSelectiveVsFull } =
-          await import("@stll/folio-core/docx/selectiveSaveTripwire");
-        onSelectiveSaveTripwire(
-          await compareSelectiveVsFull(selectiveBuffer, fullBuffer),
-        );
-      } catch {
-        // Comparison failures must never poison the save path.
-      }
-    }
-
-    return { buffer, document: updatedDoc };
   }
 
-  async function save(saveOptions?: {
-    selective?: boolean;
-  }): Promise<Blob | null> {
+  async function save(saveOptions?: FolioSaveOptions): Promise<Blob | null> {
     const savedView = editorView.value;
     const savedState = savedView?.state;
     const result = await serializeCurrentDocx({
+      onDiagnostic: saveOptions?.onDiagnostic,
+      onSelectiveDecline: saveOptions?.onSelectiveDecline,
+      onSerializationPath: saveOptions?.onSerializationPath,
       mode:
         saveOptions?.selective === false
           ? FOLIO_DOCX_SERIALIZATION_MODE.full
@@ -1715,7 +1739,7 @@ export function useDocxEditor(
         manager.api.isCanonicalSaveCurrent(result.version))
     ) {
       // The saved package becomes the canonical session's save baseline.
-      if (result.version !== undefined && result.path !== undefined)
+      if (result.version !== undefined)
         manager.api.markCanonicalSaved(result.version, {
           buffer: result.buffer,
           path: result.path,
@@ -1725,6 +1749,9 @@ export function useDocxEditor(
       isDirty.value = false;
     }
 
+    // The observational host callback can throw to fail a harness, after the
+    // saved snapshot is acknowledged and outside serializer error handling.
+    if (result.tripwireResult) onSelectiveSaveTripwire?.(result.tripwireResult);
     return new Blob([result.buffer], {
       type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     });
@@ -1853,7 +1880,10 @@ export function useDocxEditor(
     isReady.value = false;
   }
 
-  onScopeDispose(destroy);
+  onScopeDispose(() => {
+    destroy();
+    offAutocomplete();
+  });
 
   return {
     setEmbeddedFontFamilies: (

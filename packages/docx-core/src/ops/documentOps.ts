@@ -13,7 +13,7 @@ export {
   withParagraphCopies,
   withParagraphRenderings,
 } from "./paragraphCopies";
-export { sectionPropertiesAt } from "./storyLifecycle";
+export { captureStoryParts, sectionPropertiesAt } from "./storyLifecycle";
 export {
   storyBody,
   findStoryBody,
@@ -54,6 +54,7 @@ export {
 export { mapTocBookmarkPosition } from "./tocIntent";
 export { packageResourcesOpOf } from "./packageResources";
 export { combineEdits } from "./edits";
+export { reviewFieldsOf } from "./review";
 export {
   paragraphPropertySnapshotToken,
   registerParagraphPropertySnapshot,
@@ -207,7 +208,9 @@ export {
   type RemoveNoteOp,
   type SetSectionPropsOp,
   type RestoreStoryPartsOp,
+  type StoryParts,
   type BlockInsertionPoint,
+  type TableInsertionPoint,
   type CreateNumberingInstanceOp,
   type InsertBlocksOp,
   type DeleteBlocksOp,
@@ -283,7 +286,10 @@ export {
   commentDocumentIssue,
   freshCommentId,
   isCommentExhausted,
+  orphanRootCommentIds,
   survivingComments,
   withoutCommentThreads,
   type CommentExhaustionInput,
 } from "./comments";
+
+export { planWholeParagraphReplacement } from "./wholeParagraphReplacement";

@@ -319,17 +319,16 @@ export const paragraphMarkOutcome = ({
         ? { kind: "run-in", sectionDestination }
         : { kind: "keep", sectionDestination };
     case "block":
-      // An accepted deletion's paragraph goes once nothing is left in it,
-      // and what accepting will take from it still runs into the block, so
-      // resolving its content before or after its mark ends the same. What
-      // stays once accepted keeps the paragraph, without its mark.
+      // A resolved-away empty mark may go only while the container still
+      // ends with a paragraph. Rejecting an added mark keeps standing words;
+      // an accepted deletion may run its still-pending words into the block.
       if (removalWouldDropSection)
         return { kind: "keep", sectionDestination: "none" };
-      if (markWasAdded) return { kind: "keep", sectionDestination };
       if (!holdsContent)
         return containerStillEndsWithParagraph
           ? { kind: "remove", sectionDestination }
           : { kind: "keep", sectionDestination };
+      if (markWasAdded) return { kind: "keep", sectionDestination };
       return !holdsContentOnceAccepted && followingBlockCanReceiveRunIn
         ? { kind: "run-in", sectionDestination }
         : { kind: "keep", sectionDestination };

@@ -778,7 +778,7 @@ describe("measured test shard balancing", () => {
     ).toEqual([]);
   });
 
-  test("timing artifact discovery selects complete sets from eligible runs", async () => {
+  test("timing artifact discovery selects candidates from eligible runs", async () => {
     const fetchJson = async (url: string) => {
       if (url.includes("/workflows/")) {
         return {

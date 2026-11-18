@@ -349,6 +349,8 @@
                   :editor-state="editorState"
                   :zoom="zoom"
                   :sync-coordinator="syncCoordinator"
+                  :suggestion="autocompleteSuggestion"
+                  :editor-position-at="editor.editorPositionAt"
                 />
                 <DecorationLayer
                   :get-view="() => editorView"
@@ -579,6 +581,7 @@ import { commentIdsNamedIn } from "@stll/folio-core/prosemirror/commentRecords";
 import { executeEditorCommand } from "@stll/folio-core/prosemirror/executeEditorCommand";
 import { getTableContext } from "@stll/folio-core/prosemirror/extensions/nodes/TableExtension";
 import { extractSelectionContext } from "@stll/folio-core/prosemirror/plugins/selectionTracker";
+import type { FolioAutocompleteState } from "@stll/folio-core/types/autocomplete";
 import {
   CANONICAL_GAP,
   type CanonicalGap,
@@ -936,6 +939,10 @@ useKeyboardShortcuts({
 const savedComments = () =>
   commentManagement.comments.value.map((comment) => toRaw(comment));
 
+const autocompleteSuggestion = shallowRef<FolioAutocompleteState>({
+  status: "idle",
+});
+
 const {
   editor,
   editorView,
@@ -969,6 +976,10 @@ const {
   reLayout,
   setEmbeddedFontFamilies,
 } = useDocxEditor({
+  onAutocompleteChange: (state) => {
+    autocompleteSuggestion.value = state;
+    props.onAutocompleteChange?.(state);
+  },
   // Read at save time; comment management is set up below.
   comments: () => savedComments(),
   hiddenContainer: hiddenPmRef,
@@ -1674,8 +1685,8 @@ function handleInsertTOCAction(): void {
 // the horizontal + vertical rulers (showRuler); the page-setup dialog reuses
 // handlePageSetupApply. Margin / page-size writes mutate section properties
 // directly (no PM transaction), so they notify the host through `onChange` here;
-// indent / tab-stop edits dispatch PM commands and already notify via the
-// transaction pipeline.
+// indent / tab-stop edits run through the view's command owner and already
+// notify via the transaction pipeline.
 const {
   handlePageSetupApply,
   handleLeftMarginChange,
@@ -1687,7 +1698,7 @@ const {
   handleFirstLineIndentChange,
   handleTabStopRemove,
 } = usePageSetupControls({
-  editorView,
+  editorView: activeEditorView,
   getDocument,
   readOnly,
   stateTick,

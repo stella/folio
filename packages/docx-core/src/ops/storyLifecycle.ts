@@ -12,7 +12,13 @@ import type {
   Paragraph,
   SectionProperties,
 } from "../model/document";
-import { storyParagraphs, withBodyContent } from "./blocks";
+import {
+  captureSectionViewState,
+  restoreSectionViewState,
+  type SectionViewError,
+  storyParagraphs,
+  withBodyContent,
+} from "./blocks";
 import { contractViolation } from "./contract";
 import type { DocumentEdit } from "./edits";
 import { structurallyEqual } from "./equality";
@@ -28,6 +34,7 @@ import {
   type RestoreStoryPartsOp,
   type SetSectionPropsOp,
   type StoryParts,
+  type TouchedBlocks,
 } from "./types";
 
 type LifecycleOp =
@@ -61,7 +68,10 @@ export const captureStoryParts = (
   const body = document.package.document;
   const values = bodyValues(body);
   const pkg = document.package;
-  const parts: StoryParts = {};
+  const parts: StoryParts =
+    owned.sectionView === undefined
+      ? {}
+      : { sectionView: captureSectionViewState(body) };
   if (owned.body !== undefined) {
     const fields: NonNullable<StoryParts["body"]> = {};
     if (owned.body.content !== undefined) fields.content = values.content;
@@ -72,7 +82,7 @@ export const captureStoryParts = (
     if (owned.body.comments !== undefined) fields.comments = values.comments;
     parts.body = fields;
   }
-  if (owned.sections !== undefined)
+  if (owned.sections !== undefined && parts.sectionView === undefined)
     parts.sections = owned.sections.map(
       ({ index, properties, headers, footers }) => {
         const fields: NonNullable<StoryParts["sections"]>[number] = { index };
@@ -111,8 +121,12 @@ export const captureStoryParts = (
         key,
       ): key is keyof Omit<
         StoryParts,
-        "body" | "sections" | "undefinedFields"
-      > => key !== "body" && key !== "sections" && key !== "undefinedFields",
+        "body" | "sections" | "sectionView" | "undefinedFields"
+      > =>
+        key !== "body" &&
+        key !== "sections" &&
+        key !== "sectionView" &&
+        key !== "undefinedFields",
     )
     .filter(
       (key) => Object.hasOwn(pkg, key) && Reflect.get(pkg, key) === undefined,
@@ -162,7 +176,11 @@ const changedParts = (
   if (changed(oldBody.comments, newBody.comments))
     body.comments = oldBody.comments ?? null;
   const sections: NonNullable<StoryParts["sections"]>[number][] = [];
-  if (oldBody.sections !== newBody.sections)
+  const viewTopologyChanged =
+    Object.hasOwn(oldBody, "sections") !== Object.hasOwn(newBody, "sections") ||
+    (oldBody.sections === undefined) !== (newBody.sections === undefined) ||
+    oldBody.sections?.length !== newBody.sections?.length;
+  if (!viewTopologyChanged && oldBody.sections !== newBody.sections)
     for (const [index, section] of (oldBody.sections ?? []).entries()) {
       const next = newBody.sections?.at(index);
       if (section === next) continue;
@@ -175,9 +193,11 @@ const changedParts = (
         changes.footers = section.footers ? [...section.footers] : null;
       if (Object.keys(changes).length > 1) sections.push(changes);
     }
-  const parts: StoryParts = {};
+  const narrowSections = sections.length > 0 ? { sections } : {};
+  const parts: StoryParts = viewTopologyChanged
+    ? { sectionView: captureSectionViewState(oldBody) }
+    : narrowSections;
   if (Object.keys(body).length > 0) parts.body = body;
-  if (sections.length > 0) parts.sections = sections;
   if (before.package.headers !== after.package.headers)
     parts.headers = before.package.headers ? [...before.package.headers] : null;
   if (before.package.footers !== after.package.footers)
@@ -191,7 +211,10 @@ const changedParts = (
   return captureStoryParts(before, parts);
 };
 
-const restoreParts = (document: Document, parts: StoryParts): Document => {
+const restoreParts = (
+  document: Document,
+  parts: StoryParts,
+): Result<Document, SectionViewError> => {
   const pkg = { ...document.package };
   let body = document.package.document;
   if (parts.body !== undefined) {
@@ -298,6 +321,11 @@ const restoreParts = (document: Document, parts: StoryParts): Document => {
     }
     body = { ...body, sections };
   }
+  if (parts.sectionView !== undefined) {
+    const restored = restoreSectionViewState(body, parts.sectionView);
+    if (restored.isErr()) return restored;
+    body = restored.value;
+  }
   pkg.document = body;
   if (parts.footnotes !== undefined) {
     if (parts.footnotes === null) delete pkg.footnotes;
@@ -359,7 +387,7 @@ const restoreParts = (document: Document, parts: StoryParts): Document => {
       }
     }
   }
-  return { ...document, package: pkg };
+  return Result.ok({ ...document, package: pkg });
 };
 
 /** Traverse changed blocks only; shared records cannot add, remove or modify an ID. */
@@ -407,6 +435,26 @@ const changedParagraphs = (before: Document, after: Document) => {
   return { oldParagraphs, newParagraphs };
 };
 
+type StoryLifecycleTouchedOptions = { before: Document; after: Document };
+/** Net paragraph ownership, excluding records an intermediate edit restored. */
+export const storyLifecycleTouched = ({
+  before,
+  after,
+}: StoryLifecycleTouchedOptions): TouchedBlocks => {
+  const { oldParagraphs, newParagraphs } = changedParagraphs(before, after);
+  const oldIds = new Set(oldParagraphs.keys());
+  const newIds = new Set(newParagraphs.keys());
+  return {
+    // A paragraph is touched when its record is replaced, even by an equal
+    // one: callers keep every untouched record and reuse no replaced one.
+    modified: [...newIds].filter(
+      (id) => oldIds.has(id) && oldParagraphs.get(id) !== newParagraphs.get(id),
+    ),
+    inserted: [...newIds].filter((id) => !oldIds.has(id)),
+    removed: [...oldIds].filter((id) => !newIds.has(id)),
+  };
+};
+
 export const storyLifecycleEdit = (
   before: Document,
   after: Document,
@@ -424,9 +472,6 @@ export const storyLifecycleEdit = (
     );
   const prior = changedParts(before, after, semantic);
   const next = captureStoryParts(after, prior);
-  const { oldParagraphs, newParagraphs } = changedParagraphs(before, after);
-  const oldIds = new Set(oldParagraphs.keys());
-  const newIds = new Set(newParagraphs.keys());
   return Result.ok({
     document: after,
     inverse: [
@@ -436,16 +481,7 @@ export const storyLifecycleEdit = (
         parts: cloneModel(prior),
       },
     ],
-    touched: {
-      // A paragraph is touched when its record is replaced, even by an equal
-      // one: callers keep every untouched record and reuse no replaced one.
-      modified: [...newIds].filter(
-        (id) =>
-          oldIds.has(id) && oldParagraphs.get(id) !== newParagraphs.get(id),
-      ),
-      inserted: [...newIds].filter((id) => !oldIds.has(id)),
-      removed: [...oldIds].filter((id) => !newIds.has(id)),
-    },
+    touched: storyLifecycleTouched({ before, after }),
   });
 };
 
@@ -494,6 +530,8 @@ const withSectionProperties = (
 };
 
 const undefinedFieldsIssue = (parts: StoryParts): string | undefined => {
+  if (parts.sections !== undefined && parts.sectionView !== undefined)
+    return "Story lifecycle section ownership must be either narrow metadata or a complete view.";
   for (const fields of parts.undefinedFields ?? []) {
     switch (fields.target) {
       case "body":
@@ -540,7 +578,8 @@ export const applyStoryLifecycle = (
   op: LifecycleOp,
 ): Result<DocumentEdit, DocumentOpRefusal> => {
   if (op.type === DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS) {
-    const metadataIssue = undefinedFieldsIssue(op.parts);
+    const metadataIssue =
+      undefinedFieldsIssue(op.parts) ?? undefinedFieldsIssue(op.expected);
     if (metadataIssue) return refuse(op, metadataIssue);
     if (
       !structurallyEqual(captureStoryParts(document, op.expected), op.expected)
@@ -552,11 +591,16 @@ export const applyStoryLifecycle = (
           message: "Story lifecycle inverse is stale.",
         }),
       );
-    return storyLifecycleEdit(
-      document,
-      restoreParts(document, cloneModel(op.parts)),
-      op,
-    );
+    const restored = restoreParts(document, cloneModel(op.parts));
+    if (restored.isErr())
+      return Result.err(
+        new DocumentOpRefusal({
+          opType: op.type,
+          reason: restored.error.reason,
+          message: restored.error.message,
+        }),
+      );
+    return storyLifecycleEdit(document, restored.value, op);
   }
   const properties = sectionPropertiesAt(document, op.sectionIndex);
   if (!properties) return refuse(op, "The section does not exist.");

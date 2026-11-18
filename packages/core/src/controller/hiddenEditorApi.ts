@@ -30,6 +30,10 @@ import type {
 import { cloneDocumentWithParagraphPropertySources } from "../docx/documentClone";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import type {
+  FolioAutocompleteApi,
+  FolioAutocompleteState,
+} from "../types/autocomplete";
+import type {
   CanonicalCommentRequest,
   CanonicalCommentResult,
 } from "../types/canonicalComments";
@@ -38,12 +42,48 @@ import type { CanonicalSectionPropertiesResult } from "../types/canonicalSection
 import type { Comment } from "../types/content";
 import type { Document, SectionProperties } from "../types/document";
 import { readModel, type ReadonlyDocument } from "../types/documentModel";
+import type { FolioDocxSerializationPath } from "../types/docxSerialization";
 import {
   type AnonymizationHighlightsView,
   NO_ANONYMIZATION_HIGHLIGHTS,
 } from "./anonymizationHighlights";
+import { IDLE_AUTOCOMPLETE } from "./autocompleteSuggestion";
 import type { createCanonicalInputBoundary } from "./canonicalInput";
 import { legacyEditorPositionAt } from "./textPositionLookup";
+
+/** The inline suggestion, and what painting it needs. */
+export type HiddenEditorAutocomplete = FolioAutocompleteApi & {
+  /** Where the anchor shows in the body's editor document, if it does. */
+  editorAnchor: () => number | null;
+  /** Called after every change of the suggestion; returns the unsubscribe. */
+  subscribe: (listener: (state: FolioAutocompleteState) => void) => () => void;
+};
+
+/** No editor: nothing to suggest in. */
+export const NO_AUTOCOMPLETE: HiddenEditorAutocomplete = Object.freeze({
+  start: () => null,
+  append: () => false,
+  finish: () => false,
+  clear: () => {},
+  accept: () => false,
+  get: () => IDLE_AUTOCOMPLETE,
+  canTrigger: () => false,
+  editorAnchor: () => null,
+  subscribe: () => () => {},
+});
+
+/** An autocomplete that reads the one `current` gives on every call. */
+export const delegateAutocomplete = (
+  current: () => FolioAutocompleteApi,
+): FolioAutocompleteApi => ({
+  start: (options) => current().start(options),
+  append: (requestId, delta) => current().append(requestId, delta),
+  finish: (requestId) => current().finish(requestId),
+  clear: () => current().clear(),
+  accept: (scope) => current().accept(scope),
+  get: () => current().get(),
+  canTrigger: () => current().canTrigger(),
+});
 
 type CanonicalStoryHistoryOptions = {
   view: EditorView;
@@ -63,7 +103,7 @@ type CanonicalStoryTextOptions = {
 /** The package a canonical save wrote, and whether it patched its baseline. */
 export type CanonicalSavedPackage = {
   buffer: ArrayBuffer;
-  path: "selective" | "full-repack";
+  path: FolioDocxSerializationPath;
 };
 
 export type HiddenEditorApi = {
@@ -194,6 +234,8 @@ export type HiddenEditorApi = {
    * shows, read from the current text; nothing before the editor exists.
    */
   getAnonymizationHighlights: () => AnonymizationHighlightsView;
+  /** The inline autocomplete suggestion. */
+  autocomplete: HiddenEditorAutocomplete;
 };
 
 export type HiddenEditorApiDeps = {
@@ -210,6 +252,7 @@ export type HiddenEditorApiDeps = {
     position: TextPosition,
   ) => number | null | undefined;
   getAnonymizationHighlights?: () => AnonymizationHighlightsView;
+  autocomplete?: HiddenEditorAutocomplete;
   captureCanonicalSave?: HiddenEditorApi["captureCanonicalSave"];
   isCanonicalSaveCurrent?: HiddenEditorApi["isCanonicalSaveCurrent"];
   markCanonicalSaved?: HiddenEditorApi["markCanonicalSaved"];
@@ -342,6 +385,8 @@ export const createHiddenEditorApi = (
 
     getAnonymizationHighlights: () =>
       deps.getAnonymizationHighlights?.() ?? NO_ANONYMIZATION_HIGHLIGHTS,
+
+    autocomplete: deps.autocomplete ?? NO_AUTOCOMPLETE,
 
     getDocument: () => {
       const canonical = deps.getCanonicalDocument?.();

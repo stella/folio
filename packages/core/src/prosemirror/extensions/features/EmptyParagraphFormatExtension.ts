@@ -19,12 +19,14 @@
  * untouched so ordinary typed text stays mark-free and serializes cleanly.
  */
 
+import type { Node as PMNode } from "prosemirror-model";
 import { type EditorState, Plugin, type PluginKey } from "prosemirror-state";
 
 import type { TextFormatting } from "../../../types/document";
 import type { DeepReadonly } from "../../../types/documentModel";
 import { expectParagraphAttrs } from "../../attrs";
 import { createPluginKeyOwner } from "../../pluginKeyOwner";
+import { stripParagraphMarkOnlyFormatting } from "../../runStyleFormatting";
 import { createExtension } from "../create";
 import { textFormattingToMarks } from "../marks/markUtils";
 import type { Extension, ExtensionRuntime } from "../types";
@@ -54,6 +56,21 @@ function hasNonFontDefaults(dtf: DeepReadonly<TextFormatting>): boolean {
   );
 }
 
+/**
+ * What the paragraph mark itself states. Those properties format the mark
+ * alone, so the paragraph lends them to no run: text typed into the empty
+ * paragraph takes them as its own direct formatting, font and size included.
+ */
+function markStatedFormatting(
+  para: PMNode,
+): DeepReadonly<TextFormatting> | undefined {
+  const mark = expectParagraphAttrs(para)._originalFormatting?.runProperties;
+  if (!mark) return undefined;
+  const { styleId: _styleId, ...stated } =
+    stripParagraphMarkOnlyFormatting(mark) ?? {};
+  return Object.keys(stated).length > 0 ? stated : undefined;
+}
+
 function createEmptyParagraphFormatPlugin(): Plugin {
   return new Plugin({
     key: emptyParagraphFormatKey.createKey(),
@@ -80,13 +97,20 @@ function createEmptyParagraphFormatPlugin(): Plugin {
       }
 
       const dtf = expectParagraphAttrs(para).defaultTextFormatting;
-      if (!dtf || !hasNonFontDefaults(dtf)) {
+      const stated = markStatedFormatting(para);
+      if (!dtf || (!hasNonFontDefaults(dtf) && stated === undefined)) {
         return null;
       }
 
       // The document's own schema: it may be another instance than the runtime's.
       const { schema } = newState;
-      const marks = textFormattingToMarks(dtf, schema);
+      const marks =
+        stated === undefined
+          ? textFormattingToMarks(dtf, schema)
+          : textFormattingToMarks(dtf, schema, {
+              overrideFormatting: stated,
+              directFormatting: stated,
+            });
       if (dtf.styleId) {
         marks.push(schema.mark("characterStyle", { styleId: dtf.styleId }));
       }

@@ -35,6 +35,8 @@ import { FolioAIEditOperation } from '@stll/folio-core/ai-edits';
 import { FolioAIEditSnapshot } from '@stll/folio-core/ai-edits';
 import { FolioAnonymizationMatch } from '@stll/folio-core/controller/anonymizationHighlights';
 import { FolioAnonymizationTerm } from '@stll/folio-core/controller/anonymizationHighlights';
+import { FolioAutocompleteApi } from '@stll/folio-core/controller/autocompleteSuggestion';
+import { FolioAutocompleteState } from '@stll/folio-core/controller/autocompleteSuggestion';
 import { FolioCommentAnchor } from '@stll/folio-core/ai-edits';
 import { FolioDocumentNavigationTarget } from '@stll/folio-core/ai-edits';
 import { FolioDocumentOperationBatch } from '@stll/folio-core/server';
@@ -45,6 +47,7 @@ import { FolioEditor } from '@stll/folio-core/controller/folioEditor';
 import { FolioPendingSuggestionLoadResult } from '@stll/folio-core/ai-edits';
 import { FolioPendingSuggestionRecord } from '@stll/folio-core/ai-edits';
 import { FolioReviewChange } from '@stll/folio-core/ai-edits';
+import { FolioSaveOptions } from '@stll/folio-core/controller/folioEditor';
 import { FolioSelectiveSaveFlags } from '@stll/folio-core/docx/selectiveSaveFlags';
 import { FolioSuggestion } from '@stll/folio-core/prosemirror/commands/comments';
 import { FolioUndefinedReferencePolicy } from '@stll/folio-core/ai-edits';
@@ -141,9 +144,7 @@ export type DocxEditorRef = {
     hasPendingChanges: () => boolean;
     getEditorRef: () => PagedEditorRef | null;
     getEditor: () => FolioEditor | null;
-    save: (options?: {
-        selective?: boolean;
-    }) => Promise<ArrayBuffer | null>;
+    save: (options?: FolioSaveOptions) => Promise<ArrayBuffer | null>;
     setZoom: (zoom: number) => void;
     getZoom: () => number;
     focus: () => void;
@@ -196,6 +197,7 @@ export type DocxEditorRef = {
     getPageText: (page: number) => string | null;
     getTargetPage: (target: FolioDocumentNavigationTarget, snapshot?: FolioAIEditSnapshot) => number | null;
     getPositionPage: (position: TextPosition) => number | null;
+    autocomplete: FolioAutocompleteApi;
     getAnonymizationMatches: () => readonly FolioAnonymizationMatch[];
     getBlockRect: (blockId: string) => BlockRect | null;
     getBlockRects: (blockIds: readonly string[]) => ReadonlyMap<string, BlockRect>;

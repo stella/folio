@@ -18,6 +18,7 @@ export const EXIT_CODES = {
   notFound: 6,
   permissionDenied: 8,
   conflict: 10,
+  unresolved: 11,
 } as const;
 
 export type ExitCode = (typeof EXIT_CODES)[keyof typeof EXIT_CODES];
@@ -31,6 +32,8 @@ const EXIT_CODE_DESCRIPTIONS = {
     "path outside the allowed roots, or unsafe to write through",
   conflict:
     "conflict with current state (stale version, lock held, destination exists)",
+  unresolved:
+    "a check found unresolved items (placeholders left in the document)",
 } as const satisfies Record<keyof typeof EXIT_CODES, string>;
 
 /** Every exit code with its meaning, ordered numerically, for `--help`. */

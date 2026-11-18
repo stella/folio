@@ -479,13 +479,15 @@ export const paragraphMarkResolutionJoinAttributes = (
 };
 
 /**
- * One piece of a tracked change written as several elements: a revision that
+ * One piece of a tracked change written around a lifted hyperlink: a revision that
  * holds a hyperlink is written with the revision inside the link, so a
  * change spanning text and a link becomes one element per stretch. The first
  * piece carries the whole change's resolution joins; every piece says which
  * one it is, so a reader rebuilds the one change, and a change nested in it
  * can be rebuilt in turn. It is its own attribute: a reader that does not know
  * it drops the joins and keeps the revisions.
+ * A single piece records lifted ancestry even when no element was split.
+ * Older readers reject that positive-count extension and keep ordinary OOXML.
  */
 export type SplitResolutionPiece = {
   piece: number;
@@ -506,7 +508,7 @@ export const isSplitResolutionPiece = (
   Object.keys(value).every((key) => Object.hasOwn(SPLIT_PIECE_FIELDS, key)) &&
   natural(value["piece"]) &&
   natural(value["pieces"]) &&
-  value["pieces"] >= 2 &&
+  value["pieces"] >= 1 &&
   value["piece"] < value["pieces"] &&
   // Only the first piece carries joins, when the change has them.
   (!Object.hasOwn(value, "joins") ||

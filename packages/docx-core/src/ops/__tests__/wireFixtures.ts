@@ -8,7 +8,7 @@ import type {
   Table,
   TableRow,
 } from "../../model/document";
-import { applyDocumentOp } from "../apply";
+import { type AppliedDocumentOp, applyDocumentOp } from "../apply";
 import { captureSectionView, captureSectionViewState } from "../blocks";
 import { cloneModel } from "../modelClone";
 import { packageResourcesOpOf } from "../packageResources";
@@ -22,6 +22,7 @@ import {
   PROPERTY_REVIEW_POLICIES,
   REVISION_DECISIONS,
   SECTION_BOUNDARY_POLICIES,
+  type StoryParts,
   toOpEnvelope,
 } from "../types";
 
@@ -274,6 +275,78 @@ const OPS: readonly DocumentOp[] = [
     properties: { type: "present", value: { pageWidth: 12_240 } },
   },
 ];
+
+type LifecycleWireCase = {
+  op: DocumentOp;
+  before: Document;
+  edit: AppliedDocumentOp;
+  wireInverse: readonly DocumentOp[];
+};
+type NoteRemovalWireRestoreOptions = { before: Document; after: Document };
+/** The schema-14 specimen keeps its combined body/note shape independently of producer decomposition. */
+const noteRemovalWireRestore = ({
+  before,
+  after,
+}: NoteRemovalWireRestoreOptions) => {
+  const owned = {
+    body: { content: null },
+    footnotes: null,
+  } as const satisfies StoryParts;
+  return {
+    type: DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS,
+    expected: captureStoryParts(after, owned),
+    parts: captureStoryParts(before, owned),
+  } as const satisfies DocumentOp;
+};
+
+export const lifecycleWireCases = () => {
+  const lifecycleOps = [
+    {
+      type: DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER,
+      sectionIndex: 0,
+      story: { kind: "footer", rId: "rIdFooter" },
+      referenceType: "first",
+      content: [{ type: "paragraph", paraId: "000000A1", content: [] }],
+    },
+    {
+      type: DOCUMENT_OP_TYPES.SET_SECTION_PROPS,
+      sectionIndex: 0,
+      patch: { footnotePr: { numStart: 2 } },
+    },
+    {
+      type: DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER,
+      sectionIndex: 0,
+      story: { kind: "footer", rId: "rIdFooter" },
+      referenceType: "first",
+    },
+    {
+      type: DOCUMENT_OP_TYPES.ADD_NOTE,
+      at: at("00000002", 0),
+      note: {
+        type: "footnote",
+        id: 1,
+        content: [{ type: "paragraph", paraId: "000000A2", content: [] }],
+      },
+    },
+    {
+      type: DOCUMENT_OP_TYPES.REMOVE_NOTE,
+      at: at("00000002", 0),
+      story: { kind: "footnote", id: 1 },
+    },
+  ] as const satisfies readonly DocumentOp[];
+  let current: Document = { package: { document: { content: [second] } } };
+  const cases: LifecycleWireCase[] = [];
+  for (const op of lifecycleOps) {
+    const edit = applyDocumentOp(current, op).unwrap();
+    const wireInverse =
+      op.type === DOCUMENT_OP_TYPES.REMOVE_NOTE
+        ? [noteRemovalWireRestore({ before: current, after: edit.document })]
+        : edit.inverse;
+    cases.push({ op, before: current, edit, wireInverse });
+    current = edit.document;
+  }
+  return cases;
+};
 
 export const envelopes = (): DocumentOpEnvelope[] => {
   const out: DocumentOpEnvelope[] = [];
@@ -627,50 +700,9 @@ export const envelopes = (): DocumentOpEnvelope[] => {
   const patchEdit = applyDocumentOp(patchInput, presencePatch).unwrap();
   out.push(toOpEnvelope(presencePatch));
   for (const inverse of patchEdit.inverse) out.push(toOpEnvelope(inverse));
-  const lifecycleOps = [
-    {
-      type: DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER,
-      sectionIndex: 0,
-      story: { kind: "footer", rId: "rIdFooter" },
-      referenceType: "first",
-      content: [{ type: "paragraph", paraId: "000000A1", content: [] }],
-    },
-    {
-      type: DOCUMENT_OP_TYPES.SET_SECTION_PROPS,
-      sectionIndex: 0,
-      patch: { footnotePr: { numStart: 2 } },
-    },
-    {
-      type: DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER,
-      sectionIndex: 0,
-      story: { kind: "footer", rId: "rIdFooter" },
-      referenceType: "first",
-    },
-    {
-      type: DOCUMENT_OP_TYPES.ADD_NOTE,
-      at: at("00000002", 0),
-      note: {
-        type: "footnote",
-        id: 1,
-        content: [{ type: "paragraph", paraId: "000000A2", content: [] }],
-      },
-    },
-    {
-      type: DOCUMENT_OP_TYPES.REMOVE_NOTE,
-      at: at("00000002", 0),
-      story: { kind: "footnote", id: 1 },
-    },
-  ] as const satisfies readonly DocumentOp[];
-  let lifecycleDocument: Document = {
-    package: { document: { content: [second] } },
-  };
-  for (const op of lifecycleOps) {
-    const applied = applyDocumentOp(lifecycleDocument, op);
-    if (applied.isErr()) throw applied.error;
+  for (const { op, wireInverse } of lifecycleWireCases()) {
     out.push(toOpEnvelope(op));
-    for (const inverse of applied.value.inverse)
-      out.push(toOpEnvelope(inverse));
-    lifecycleDocument = applied.value.document;
+    for (const inverse of wireInverse) out.push(toOpEnvelope(inverse));
   }
   // Persist the producer's own-undefined lifecycle presence across every target.
   const undefinedLifecycle = {
@@ -712,6 +744,19 @@ export const envelopes = (): DocumentOpEnvelope[] => {
       parts: undefinedParts,
     }),
   );
+  for (const sectionView of [
+    { type: "omitted" },
+    { type: "undefined" },
+    captureSectionViewState(undefinedLifecycle.package.document),
+  ] as const) {
+    out.push(
+      toOpEnvelope({
+        type: DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS,
+        expected: { sectionView },
+        parts: { sectionView },
+      }),
+    );
+  }
   // Semantic table fixtures are independent: no earlier review or geometry constrains a later case.
   const editTable: Table = {
     type: "table",

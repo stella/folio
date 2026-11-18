@@ -32,6 +32,7 @@ import {
   storyBody,
   storyParagraphs,
 } from "./blocks";
+import { isCommentExhausted } from "./comments";
 import { packageIdOccupancy } from "./editorIntentCensus";
 import { combineEdits } from "./edits";
 import { structurallyEqual } from "./equality";
@@ -132,9 +133,11 @@ import {
   SPLIT_HALVES,
   type SplitHalf,
   type TableEditOp,
+  type TableInsertionPoint,
   type TableIntentOperation,
   type TextPosition,
 } from "./types";
+import { planWholeParagraphReplacement } from "./wholeParagraphReplacement";
 import { captureDocumentOp } from "./wire";
 
 type SplitParagraphIntent = {
@@ -168,30 +171,41 @@ export type TableRowIntentOperation =
  */
 export type TableBlockIntentOperation =
   | Omit<DeleteTableOp, "revision" | "newIds" | "expected">
-  | {
+  | ({
       type: typeof DOCUMENT_OP_TYPES.INSERT_TABLE;
       story: OpStory;
       blockId: string;
       table: Table;
       /**
-       * Where the table goes against the anchor paragraph: after it (the
+       * Where the table goes against the anchor: after it (the
        * default, as from a caret), or before it, as from a selection of the
        * whole story, which the editor fills at the story's start.
        */
       side?: "after" | "before";
-      /**
-       * An empty paragraph ahead of the table as well, as the editor writes
-       * a table it inserts after another, so the two never touch.
-       */
-      separated?: boolean;
-      /**
-       * The empty paragraph after the table: written, as the editor gives
-       * the caret a place after a table it inserts (the default), or left
-       * out, for a table that goes between blocks already standing on both
-       * sides of it.
-       */
-      paragraphAfter?: "empty" | "none";
-    };
+    } & (
+      | {
+          /** Existing callers default to a paragraph anchor. */
+          anchor?: "paragraph";
+          /**
+           * An empty paragraph ahead of the table as well, as the editor writes
+           * a table it inserts after another, so the two never touch.
+           */
+          separated?: boolean;
+          /**
+           * The empty paragraph after the table: written, as the editor gives
+           * the caret a place after a table it inserts (the default), or left
+           * out, for a table that goes between blocks already standing on both
+           * sides of it.
+           */
+          paragraphAfter?: "empty" | "none";
+        }
+      | {
+          /** Beside the innermost table holding blockId, without added paragraphs. */
+          anchor: "table";
+          separated?: never;
+          paragraphAfter?: never;
+        }
+    ));
 
 /** Positions use canonical physical offsets, including retained deleted content. */
 export type EditorIntent =
@@ -637,13 +651,15 @@ export const createEditorIntentIdAllocator = ({
             demand = (op.bottom - op.top + 1) * 2;
             break;
           case DOCUMENT_OP_TYPES.SPLIT_CELL:
-            // A cell for each column of the span in each row a vertical
-            // merge reaches, which is at most every row.
+            // A cell for each column of the span, and a merge change, in
+            // each row a vertical merge reaches, which is at most every row.
             demand =
-              (located.value.table.rows
+              ((located.value.table.rows
                 .at(located.value.rowIndex)
                 ?.cells.at(located.value.cellIndex)?.formatting?.gridSpan ??
-                1) * located.value.table.rows.length;
+                1) +
+                1) *
+              located.value.table.rows.length;
             break;
           case DOCUMENT_OP_TYPES.SET_TABLE_GRID:
             demand = 2;
@@ -2476,8 +2492,12 @@ export const compileEditorIntent = (
     case "tableBlock": {
       if (intent.operation.type === DOCUMENT_OP_TYPES.INSERT_TABLE) {
         const { story, blockId, table } = intent.operation;
-        const separated = intent.operation.separated === true;
-        const trailing = intent.operation.paragraphAfter !== "none";
+        let separated = false;
+        let trailing = false;
+        if (intent.operation.anchor !== "table") {
+          separated = intent.operation.separated === true;
+          trailing = intent.operation.paragraphAfter !== "none";
+        }
         const fresh = freshParagraphIds({
           document,
           reserved: mode.reservedBlockIds,
@@ -2528,12 +2548,17 @@ export const compileEditorIntent = (
                   ...tracked,
                 },
               ];
+        let at: TableInsertionPoint;
+        if (intent.operation.anchor === "table")
+          at = { type: before ? "beforeTable" : "afterTable", blockId };
+        else
+          at = before
+            ? { type: "before", blockId: paragraphId ?? blockId }
+            : { type: "after", blockId };
         sequence.push({
           type: DOCUMENT_OP_TYPES.INSERT_TABLE,
           story,
-          at: before
-            ? { type: "before", blockId: paragraphId ?? blockId }
-            : { type: "after", blockId },
+          at,
           table: { ...table, rows },
           ...tracked,
         });
@@ -3225,9 +3250,53 @@ export const compileEditorIntent = (
       if (deletes) {
         const deleted = applyDocumentOps(document, ops);
         if (deleted.isErr()) return Result.err(deleted.error);
+        let afterDeletion = deleted.value.document;
+        const retirement =
+          text === ""
+            ? Result.ok(null)
+            : planWholeParagraphReplacement({ document, from, to });
+        if (retirement.isErr()) return Result.err(retirement.error);
+        const ownership = retirement.value;
+        if (ownership !== null) {
+          const survivingIds = new Set(
+            storyParagraphs(storyBody(afterDeletion, from.story)).map(
+              ({ paragraph: survivor }) => idKey(survivor.paraId ?? ""),
+            ),
+          );
+          if (ownership.blockIds.some((id) => survivingIds.has(idKey(id))))
+            panic(
+              "Whole-host replacement must retire its selected source paragraphs.",
+            );
+          const expired = (document.package.document.comments ?? [])
+            .filter(
+              ({ id, parentId }) =>
+                parentId === undefined &&
+                ownership.commentIds.has(id) &&
+                !isCommentExhausted({ type: "document", document, id }) &&
+                isCommentExhausted({
+                  type: "document",
+                  document: afterDeletion,
+                  id,
+                }),
+            )
+            .map(
+              ({ id }) =>
+                ({
+                  type: DOCUMENT_OP_TYPES.DELETE_COMMENT,
+                  id,
+                  scope: "thread",
+                }) as const,
+            );
+          if (expired.length > 0) {
+            const cleaned = applyDocumentOps(afterDeletion, expired);
+            if (cleaned.isErr()) return Result.err(cleaned.error);
+            ops.push(...expired);
+            afterDeletion = cleaned.value.document;
+          }
+        }
         at = rangeEndAfterDeletion({
           before: document,
-          after: deleted.value.document,
+          after: afterDeletion,
           from,
           to,
         });
@@ -3347,21 +3416,13 @@ export const compileEditorIntent = (
     case "joinParagraphs": {
       const at = { story: intent.story, blockId: intent.blockId, offset: 0 };
       const paragraph = paragraphAt(document, at);
-      const ownInsertedMark =
-        mode.type === "suggesting" &&
-        (paragraph?.pPrMark?.kind === "ins" ||
-          paragraph?.pPrMark?.kind === "moveTo") &&
-        paragraph.pPrMark.info.author === mode.revision.author;
+      let cancelledAddedMark = false;
       const join = {
         type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
         story: intent.story,
         blockId: intent.blockId,
         nextBlockId: intent.nextBlockId,
         sectionBoundary: SECTION_BOUNDARY_POLICIES.REMOVE,
-        ...(mode.type === "editing" && intent.survivor !== undefined
-          ? { survivor: intent.survivor }
-          : {}),
-        ...(ownInsertedMark ? {} : tracked),
       } as const;
       if (mode.type === "suggesting") {
         const plan = createTrackedPlan({
@@ -3369,38 +3430,9 @@ export const compileEditorIntent = (
           revision: mode.revision,
           newIds: mode.newIds,
         });
-        const joined = plan.append(join);
+        const joined = plan.join(join);
         if (joined.isErr()) return Result.err(joined.error);
-        if (ownInsertedMark) {
-          // Cancelling our inserted boundary is physical, but its formatting
-          // effect remains a suggestion on the original trailing paragraph.
-          const before = paragraphAt(document, {
-            story: intent.story,
-            blockId: intent.nextBlockId,
-            offset: 0,
-          });
-          const after = paragraphAt(plan.document(), {
-            story: intent.story,
-            blockId: intent.nextBlockId,
-            offset: 0,
-          });
-          if (!before || !after)
-            panic("An own-mark join lost its trailing paragraph.");
-          const restored = plan.append({
-            type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
-            story: intent.story,
-            blockId: intent.nextBlockId,
-            patch: Object.fromEntries([
-              ...Object.keys(after.formatting ?? {}).map((key) => [key, null]),
-              ...Object.entries(before.formatting ?? {}),
-            ]),
-            whenEmpty:
-              before.formatting === undefined
-                ? EMPTY_PROPERTY_SETS.OMIT
-                : EMPTY_PROPERTY_SETS.KEEP,
-          });
-          if (restored.isErr()) return Result.err(restored.error);
-        }
+        cancelledAddedMark = joined.value === "cancelled-added-mark";
         const alignment = joinParagraphPropertyAlignment({
           document,
           current: plan.document(),
@@ -3413,11 +3445,18 @@ export const compileEditorIntent = (
         }
         ops = plan.ops;
       } else {
-        ops = [join];
+        ops = [
+          {
+            ...join,
+            ...(intent.survivor === undefined
+              ? {}
+              : { survivor: intent.survivor }),
+          },
+        ];
       }
       let offset = 0;
       if (
-        (mode.type === "editing" || ownInsertedMark) &&
+        (mode.type === "editing" || cancelledAddedMark) &&
         paragraph !== undefined
       ) {
         offset = paragraphLength(paragraph);

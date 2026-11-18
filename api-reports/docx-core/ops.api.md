@@ -157,6 +157,9 @@ export type BoundaryOccurrence = {
 export const captureDocumentOp: (op: DocumentOp) => DocumentOp;
 
 // @public
+export const captureStoryParts: (document: Document_2, owned: StoryParts) => StoryParts;
+
+// @public
 export type ClientDocumentChange = {
     type: "rebased";
     batch: SequencedBatch;
@@ -421,7 +424,7 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
 }>;
 
 // @public
-export const DOCUMENT_OP_SCHEMA_VERSION = 13;
+export const DOCUMENT_OP_SCHEMA_VERSION = 14;
 
 // @public
 export const DOCUMENT_OP_TYPES: Readonly<{
@@ -838,7 +841,7 @@ export type InsertRowOp = {
 export type InsertTableOp = {
     type: typeof DOCUMENT_OP_TYPES.INSERT_TABLE;
     story: OpStory;
-    at: BlockInsertionPoint;
+    at: TableInsertionPoint;
     table: Table;
     revision?: RevisionStamp;
     newIds?: NewIds;
@@ -980,6 +983,9 @@ export const orderAddressingBeforeRemoval: <T, Block>(ordered: readonly T[], acc
 
 // @public
 export const orderBatchOperations: <T>(operations: readonly T[], addressOf: (operation: T) => BatchOrderAddress) => T[];
+
+// @public
+export const orphanRootCommentIds: (document: Document_2) => Set<number>;
 
 // @public
 export const packageParagraphIds: (pkg: DocxPackage) => string[];
@@ -1139,6 +1145,9 @@ export type PlanTrackedReplaceOptions = PlanTrackedDeletionOptions & {
 export const planWellFormedRanges: (occurrences: readonly BoundaryOccurrence[]) => WellFormedRangePlan;
 
 // @public
+export const planWholeParagraphReplacement: (input: WholeParagraphReplacementOptions) => Result<WholeParagraphReplacementPlan | null, DocumentOpRefusal>;
+
+// @public
 export const PROPERTY_REVIEW_POLICIES: Readonly<{
     readonly APPEND: "append";
 }>;
@@ -1217,6 +1226,9 @@ export type RestoreStoryPartsOp = {
     expected: StoryParts;
     parts: StoryParts;
 };
+
+// @public
+export const reviewFieldsOf: (paragraph: ParagraphReviewFields) => ParagraphReviewFields;
 
 // @public
 export const REVISION_DECISIONS: Readonly<{
@@ -1492,6 +1504,20 @@ export const storyBody: (document: Document_2, story: OpStory) => DocumentBody;
 export const storyParagraphs: (body: DocumentBody) => ParagraphLocation[];
 
 // @public
+export type StoryParts = StoryPartFields & ({
+    sectionView?: never;
+    sections?: readonly {
+        index: number;
+        properties?: Section["properties"];
+        headers?: readonly (readonly [HeaderFooterType, HeaderFooter])[] | null;
+        footers?: readonly (readonly [HeaderFooterType, HeaderFooter])[] | null;
+    }[];
+} | {
+    sectionView: SectionViewState;
+    sections?: never;
+});
+
+// @public
 export const suggestedCommentIds: (document: Document_2, suggestionId?: string) => number[];
 
 // @public
@@ -1501,18 +1527,33 @@ export const suggestionRevisionInfos: (document: Document_2, story: OpStory, sug
 export const survivingComments: (document: Document_2, projectedRootIds?: ReadonlySet<number>) => Comment_2[];
 
 // @public
-export type TableBlockIntentOperation = Omit<DeleteTableOp, "revision" | "newIds" | "expected"> | {
+export type TableBlockIntentOperation = Omit<DeleteTableOp, "revision" | "newIds" | "expected"> | ({
     type: typeof DOCUMENT_OP_TYPES.INSERT_TABLE;
     story: OpStory;
     blockId: string;
     table: Table;
     side?: "after" | "before";
+} & ({
+    anchor?: "paragraph";
     separated?: boolean;
     paragraphAfter?: "empty" | "none";
-};
+} | {
+    anchor: "table";
+    separated?: never;
+    paragraphAfter?: never;
+}));
 
 // @public (undocumented)
 export type TableEditOp = InsertColumnOp | DeleteColumnOp | MergeCellsOp | SplitCellOp | SetTableGridOp | SetCellPropsOp | SetRowPropsOp | SetTablePropsOp;
+
+// @public
+export type TableInsertionPoint = BlockInsertionPoint | {
+    type: "beforeTable";
+    blockId: string;
+} | {
+    type: "afterTable";
+    blockId: string;
+};
 
 // @public
 export type TableIntentOperation = { [Kind in TableEditOp["type"]]: Omit<Extract<TableEditOp, {

@@ -800,17 +800,26 @@ export type LeafSpan = {
   after: Gap;
 };
 
-/** Every leaf of a list in document order: run text by text node, units, zero-width leaves. */
-export const leafSpans = (items: readonly InlineNode[]): LeafSpan[] => {
-  const out: LeafSpan[] = [];
+/**
+ * Visit every leaf of a list in document order with the child indices from
+ * the list down to it; the index list is the walk's own and changes after the
+ * visit returns.
+ */
+const walkLeaves = (
+  items: readonly InlineNode[],
+  visit: (span: LeafSpan, path: readonly number[]) => void,
+): void => {
   const cursor = startCursor();
+  const path: number[] = [];
   const walk = (
     list: readonly InlineNode[],
     ancestors: readonly InlineNode[],
   ): void => {
-    for (const node of list) {
+    for (const [index, node] of list.entries()) {
+      path.push(index);
       if (kindOf(node) === "branch") {
         walk(childNodes(node) ?? [], [...ancestors, node]);
+        path.pop();
         continue;
       }
       const before = {
@@ -818,18 +827,42 @@ export const leafSpans = (items: readonly InlineNode[]): LeafSpan[] => {
         zeroWidthBefore: cursor.zeroWidthSeen,
       };
       advance(node, cursor);
-      out.push({
-        node,
-        ancestors,
-        before,
-        after: {
-          offset: cursor.position,
-          zeroWidthBefore: cursor.zeroWidthSeen,
+      visit(
+        {
+          node,
+          ancestors,
+          before,
+          after: {
+            offset: cursor.position,
+            zeroWidthBefore: cursor.zeroWidthSeen,
+          },
         },
-      });
+        path,
+      );
+      path.pop();
     }
   };
   walk(items, []);
+};
+
+/** Every leaf of a list in document order: run text by text node, units, zero-width leaves. */
+export const leafSpans = (items: readonly InlineNode[]): LeafSpan[] => {
+  const out: LeafSpan[] = [];
+  walkLeaves(items, (span) => {
+    out.push(span);
+  });
+  return out;
+};
+
+/** A leaf span with the child indices from the list down to the leaf. */
+export type LeafPlace = LeafSpan & { path: readonly number[] };
+
+/** As {@link leafSpans}, each leaf with its path from the list. */
+export const leafPlaces = (items: readonly InlineNode[]): LeafPlace[] => {
+  const out: LeafPlace[] = [];
+  walkLeaves(items, (span, path) => {
+    out.push({ ...span, path: [...path] });
+  });
   return out;
 };
 

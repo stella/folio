@@ -5,6 +5,8 @@
  * asks for bytes back when it saves. The editor owns only the live document.
  */
 
+import type { SelectiveSaveDecline } from "@stll/folio-core/types/selectiveSaveDecline";
+
 import type { FolioEditingMode } from "./modes";
 
 /** A `.docx` file as the host read it. */
@@ -30,26 +32,10 @@ export type FolioEditorInit = {
   readonly locale: string;
 };
 
-/**
- * Why a save rewrote the whole package instead of patching the edited
- * paragraphs into the previous bytes: `structuralChange` (paragraphs added or
- * removed, or styles, headers, footers or section properties changed),
- * `untrackedChange` (an edit the change tracker cannot key to a paragraph), or
- * `noBodyView` (the body editor never started, so there was no change tracker
- * to patch from).
- */
-export type FolioEditorRepackReason =
-  "structuralChange" | "untrackedChange" | "noBodyView";
-
-/**
- * How a serialization wrote the package, as far as the editor can tell before
- * it runs. `selective-first` patched the edited paragraphs into the previous
- * bytes unless the patch declined, in which case it fell back to a full
- * repack; folio-react does not report which of the two happened.
- */
+/** How the serializer produced this package, with any actual selective refusal. */
 export type FolioEditorSaveStrategy =
-  | { readonly type: "selective-first" }
-  | { readonly type: "full-repack"; readonly reason: FolioEditorRepackReason };
+  | { readonly type: "selective" }
+  | { readonly type: "full-repack"; readonly decline?: SelectiveSaveDecline };
 
 export type FolioEditorSerialization = {
   readonly bytes: Uint8Array;

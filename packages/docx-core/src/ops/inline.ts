@@ -19,10 +19,13 @@ import type {
 import { structurallyEqual } from "./equality";
 import {
   asParagraphContent,
+  compareGaps,
   fieldResultOf,
   type Gap,
   type InlineNode,
   isParagraphContent,
+  type LeafPlace,
+  leafPlaces,
   mergeLists,
   partitionContent,
   runAndFieldGaps,
@@ -36,7 +39,6 @@ import {
   inlineWidth,
   isInlineContainer,
   isRemovedRevision,
-  runContentWidth,
   runWidth,
   withChildren,
 } from "./offsets";
@@ -337,102 +339,121 @@ export const joinParagraphSeam = (
 // Insert text
 // ---------------------------------------------------------------------------
 
-const splitRun = (
-  run: Run,
-  offset: number,
-): { left: Run | undefined; right: Run | undefined } => {
-  const left: RunContent[] = [];
-  const right: RunContent[] = [];
-  let position = 0;
-  for (const child of run.content) {
-    const width = runContentWidth(child);
-    const start = position;
-    position += width;
-    if (position <= offset) {
-      left.push(child);
-    } else if (start >= offset) {
-      right.push(child);
-    } else if (child.type === "text") {
-      left.push({ ...child, text: child.text.slice(0, offset - start) });
-      right.push({ ...child, text: child.text.slice(offset - start) });
-    }
-  }
-  return {
-    left: left.length === 0 ? undefined : withRunContent(run, left),
-    right: right.length === 0 ? undefined : withRunContent(run, right),
-  };
-};
-
-type RunHit = {
+/** The run inserted text joins, with its content split where the text goes. */
+type InsertionHost = {
   /** Child indices from the list down to the run. */
-  path: number[];
+  path: readonly number[];
   run: Run;
-  /** Units of the run before the hit unit. */
-  runOffset: number;
-  insideRemovedRevision: boolean;
+  seam: "withinText" | "betweenLeaves";
+  left: RunContent[];
+  right: RunContent[];
 };
 
-/** The run holding unit `unit`, or `undefined` when the unit is not run content. */
-const runAtUnit = (
-  items: readonly ParagraphContent[],
-  unit: number,
-  insideRemovedRevision: boolean,
-): RunHit | undefined => {
-  let position = 0;
-  for (const [index, item] of items.entries()) {
-    const width = inlineWidth(item);
-    const start = position;
-    position += width;
-    if (unit < start || unit >= position) {
-      continue;
-    }
-    if (item.type === "run") {
-      return {
-        path: [index],
-        run: item,
-        runOffset: unit - start,
-        insideRemovedRevision,
-      };
-    }
-    if (isInlineContainer(item)) {
-      const hit = runAtUnit(
-        childrenOf(item),
-        unit - start,
-        insideRemovedRevision || isRemovedRevision(item),
-      );
-      return hit === undefined
-        ? undefined
-        : { ...hit, path: [index, ...hit.path] };
-    }
+const insideRemovedRevision = (place: LeafPlace): boolean =>
+  place.ancestors.some(
+    (ancestor) => isParagraphContent(ancestor) && isRemovedRevision(ancestor),
+  );
+
+type HostOfOptions = {
+  place: LeafPlace;
+  seam: InsertionHost["seam"];
+  split: (
+    content: readonly RunContent[],
+    index: number,
+  ) => [RunContent[], RunContent[]];
+};
+/**
+ * The run holding a leaf, its content split by `split` at the leaf's index;
+ * `undefined` when the leaf is no run content or lies inside tracked-deleted
+ * or moved-away content.
+ */
+const hostOf = ({
+  place,
+  seam,
+  split,
+}: HostOfOptions): InsertionHost | undefined => {
+  const run = place.ancestors.at(-1);
+  const index = place.path.at(-1);
+  if (
+    run?.type !== "run" ||
+    index === undefined ||
+    insideRemovedRevision(place)
+  ) {
     return undefined;
   }
-  return undefined;
+  const [left, right] = split(run.content, index);
+  return { path: place.path.slice(0, -1), run, seam, left, right };
 };
 
-type InsertionHost = { path: number[]; run: Run; runOffset: number };
-
 /**
- * The run inserted text joins: the one holding the unit before the position,
- * else the one holding the unit after it, skipping runs inside tracked
- * deletions and moved-away content.
+ * The run inserted text at a gap joins: the one holding the leaf the gap
+ * follows, else the one holding the leaf after the gap, skipping runs inside
+ * tracked deletions and moved-away content. Every leaf counts, zero-width ones
+ * of each kind included, so text after a run that holds only a note's own mark
+ * joins that run, and text never moves to the other side of a zero-width leaf
+ * the gap names.
  */
 const insertionHost = (
-  items: readonly ParagraphContent[],
-  offset: number,
+  places: readonly LeafPlace[],
+  gap: Gap,
 ): InsertionHost | undefined => {
-  const before = offset > 0 ? runAtUnit(items, offset - 1, false) : undefined;
-  if (before !== undefined && !before.insideRemovedRevision) {
-    return {
-      path: before.path,
-      run: before.run,
-      runOffset: before.runOffset + 1,
-    };
+  const inside = places.find(
+    ({ node, before, after }) =>
+      node.type === "text" &&
+      before.offset < gap.offset &&
+      gap.offset < after.offset,
+  );
+  if (inside !== undefined) {
+    const cut = gap.offset - inside.before.offset;
+    return hostOf({
+      place: inside,
+      seam: "withinText",
+      split: (content, index) => {
+        const node = content[index];
+        if (node?.type !== "text") {
+          return panic("A text leaf is the run's text node at its index.");
+        }
+        return [
+          [
+            ...content.slice(0, index),
+            { ...node, text: node.text.slice(0, cut) },
+          ],
+          [
+            { ...node, text: node.text.slice(cut) },
+            ...content.slice(index + 1),
+          ],
+        ];
+      },
+    });
   }
-  const after = runAtUnit(items, offset, false);
-  if (after !== undefined && !after.insideRemovedRevision) {
-    return { path: after.path, run: after.run, runOffset: after.runOffset };
+  const before = places.find(({ after }) => compareGaps(after, gap) === 0);
+  const host =
+    before === undefined
+      ? undefined
+      : hostOf({
+          place: before,
+          seam: "betweenLeaves",
+          split: (content, index) => [
+            content.slice(0, index + 1),
+            content.slice(index + 1),
+          ],
+        });
+  if (host !== undefined) {
+    return host;
   }
-  return undefined;
+  const after = places.find(
+    ({ before: start }) => compareGaps(start, gap) === 0,
+  );
+  return after === undefined
+    ? undefined
+    : hostOf({
+        place: after,
+        seam: "betweenLeaves",
+        split: (content, index) => [
+          content.slice(0, index),
+          content.slice(index),
+        ],
+      });
 };
 
 /** Replace the child at `path` with `replacement`. */
@@ -461,104 +482,157 @@ const replaceAtPath = (
   return out;
 };
 
+type WithTextBetweenOptions = {
+  left: readonly RunContent[];
+  text: string;
+  right: readonly RunContent[];
+  seam: InsertionHost["seam"];
+};
 /**
- * The run with text added at a unit offset, joining the text node there when
- * one does. An empty text node is a zero-width child of its own and is left
- * as it is.
+ * Run content with text between two parts, joining the text node that ends
+ * the first or else the one that starts the second. An empty text node is a
+ * zero-width child of its own and is left as it is.
  */
-const runWithText = (run: Run, runOffset: number, text: string): Run => {
-  let position = 0;
-  let insertAt = 0;
-  for (const [index, child] of run.content.entries()) {
-    const width = runContentWidth(child);
-    if (
-      child.type === "text" &&
-      width > 0 &&
-      position <= runOffset &&
-      runOffset <= position + width
-    ) {
-      const cut = runOffset - position;
-      const content = [...run.content];
-      content[index] = {
-        ...child,
-        text: child.text.slice(0, cut) + text + child.text.slice(cut),
-      };
-      return withRunContent(run, content);
-    }
-    position += width;
-    if (position <= runOffset) {
-      insertAt = index + 1;
-    }
+const withTextBetween = ({
+  left,
+  text,
+  right,
+  seam,
+}: WithTextBetweenOptions): RunContent[] => {
+  const last = left.at(-1);
+  const first = right.at(0);
+  if (seam === "withinText") {
+    if (last?.type !== "text" || first?.type !== "text")
+      return panic("An interior text split has text on both sides.");
+    return [
+      ...left.slice(0, -1),
+      { ...last, text: last.text + text + first.text },
+      ...right.slice(1),
+    ];
   }
-  const content = [...run.content];
-  content.splice(insertAt, 0, { type: "text", text });
-  return withRunContent(run, content);
+  if (last?.type === "text" && last.text !== "") {
+    return [
+      ...left.slice(0, -1),
+      { ...last, text: last.text + text },
+      ...right,
+    ];
+  }
+  if (first?.type === "text" && first.text !== "") {
+    return [...left, { ...first, text: text + first.text }, ...right.slice(1)];
+  }
+  return [...left, { type: "text", text }, ...right];
 };
 
+type InsertRunAtGapOptions = {
+  items: readonly ParagraphContent[];
+  places: readonly LeafPlace[];
+  depth: number;
+  gap: Gap;
+  run: Run;
+};
 /**
- * Put a new run at a position that no run holds; `undefined` when the position
- * is inside tracked-deleted or moved-away content.
+ * Put a new run at a gap that no run borders; `undefined` when the gap is
+ * inside tracked-deleted or moved-away content. `places` are the leaves of
+ * `items`, their paths `depth` steps below the paragraph.
  */
-const insertRunAtSlot = (
-  items: readonly ParagraphContent[],
-  offset: number,
-  run: Run,
-): ParagraphContent[] | undefined => {
-  let position = 0;
-  let insertAt = 0;
-  for (const [index, item] of items.entries()) {
-    const width = inlineWidth(item);
-    const start = position;
-    position += width;
-    if (start < offset && offset < position && isInlineContainer(item)) {
-      if (isRemovedRevision(item)) {
-        return undefined;
-      }
-      const children = insertRunAtSlot(childrenOf(item), offset - start, run);
-      if (children === undefined) {
-        return undefined;
-      }
-      const out = [...items];
-      out[index] = withChildren(item, children);
-      return out;
-    }
-    if (position <= offset) {
-      insertAt = index + 1;
-    }
+const insertRunAtGap = ({
+  items,
+  places,
+  depth,
+  gap,
+  run,
+}: InsertRunAtGapOptions): ParagraphContent[] | undefined => {
+  // The first record holding a leaf past the gap: the run goes before it,
+  // or inside it when it holds a leaf before the gap too.
+  const next = places.find(({ after }) => compareGaps(after, gap) > 0);
+  const insertAt =
+    next === undefined
+      ? items.length
+      : (next.path[depth] ??
+        panic("A leaf lies below the list it is listed for."));
+  const around = places.some(
+    ({ path, before }) =>
+      path[depth] === insertAt && compareGaps(before, gap) < 0,
+  );
+  if (!around) {
+    const out = [...items];
+    out.splice(insertAt, 0, run);
+    return out;
+  }
+  const item = items[insertAt];
+  if (item === undefined || !isInlineContainer(item)) {
+    return panic("A gap with no run beside it lies inside no run.");
+  }
+  if (isRemovedRevision(item)) {
+    return undefined;
+  }
+  const children = insertRunAtGap({
+    items: childrenOf(item),
+    places: places.filter(({ path }) => path[depth] === insertAt),
+    depth: depth + 1,
+    gap,
+    run,
+  });
+  if (children === undefined) {
+    return undefined;
   }
   const out = [...items];
-  out.splice(insertAt, 0, run);
+  out[insertAt] = withChildren(item, children);
   return out;
 };
 
+type InsertTextInContentOptions = {
+  items: readonly ParagraphContent[];
+  gap: Gap;
+  text: string;
+  runProps: InsertedRunProps;
+};
+
 /**
- * Insert text at a position; `undefined` when the position is inside
- * tracked-deleted or moved-away content and no other run borders it.
+ * Insert text at a gap; `undefined` when the gap is inside tracked-deleted or
+ * moved-away content and no other run borders it.
  */
-export const insertTextInContent = (
-  items: readonly ParagraphContent[],
-  offset: number,
-  text: string,
-  runProps: InsertedRunProps,
-): ParagraphContent[] | undefined => {
-  const host = insertionHost(items, offset);
+export const insertTextInContent = ({
+  items,
+  gap,
+  text,
+  runProps,
+}: InsertTextInContentOptions): ParagraphContent[] | undefined => {
+  const places = leafPlaces(items);
+  const host = insertionHost(places, gap);
   const formatting = runProps === INHERIT_RUN_PROPS ? undefined : runProps;
   if (host === undefined) {
-    return insertRunAtSlot(items, offset, newTextRun(text, formatting));
+    return insertRunAtGap({
+      items,
+      places,
+      depth: 0,
+      gap,
+      run: newTextRun(text, formatting),
+    });
   }
   if (
     formatting === undefined ||
     sameRunFormatting(formatting, host.run.formatting)
   ) {
     return replaceAtPath(items, host.path, [
-      runWithText(host.run, host.runOffset, text),
+      withRunContent(
+        host.run,
+        withTextBetween({
+          left: host.left,
+          text,
+          right: host.right,
+          seam: host.seam,
+        }),
+      ),
     ]);
   }
-  const halves = splitRun(host.run, host.runOffset);
   const replacement: Run[] = [];
-  if (halves.left !== undefined) replacement.push(halves.left);
+  if (host.left.length > 0)
+    replacement.push(withRunContent(host.run, host.left));
   replacement.push(newTextRun(text, formatting));
-  if (halves.right !== undefined) replacement.push(halves.right);
+  if (host.right.length > 0) {
+    replacement.push(withRunContent(host.run, host.right));
+  }
   return replaceAtPath(items, host.path, replacement);
 };
 

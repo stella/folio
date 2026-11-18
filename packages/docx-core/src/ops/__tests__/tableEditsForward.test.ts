@@ -1,4 +1,5 @@
 /** Forward effects are checked against logical slots and content, independently of inverse snapshots. */
+import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
@@ -949,7 +950,7 @@ describe("independent table forward oracles", () => {
     );
   });
 
-  test("deletion refuses bookmark, comment and review dependencies but permits span narrowing", () => {
+  test("deletion refuses a bookmark or comment reaching past the column, takes the cell's own revisions, and permits span narrowing", () => {
     // Crossing anchors must use producer-shaped range ids; dropping one endpoint would otherwise pass grid/inverse checks.
     for (const kind of ["bookmark", "comment", "revision"] as const) {
       const removed = cell(0x100);
@@ -991,15 +992,22 @@ describe("independent table forward oracles", () => {
         rows: [{ type: "tableRow", cells: [removed, survivor] }],
       };
       const document = documentOf(table);
-      refused(
-        document,
-        {
-          ...address(id(0x100)),
-          type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
-          column: 0,
-        },
-        DOCUMENT_OP_REFUSAL_REASONS.DEPENDENT_RECORDS,
-      );
+      const deletion = {
+        ...address(id(0x100)),
+        type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
+        column: 0,
+      } as const;
+      if (kind === "revision")
+        // A revision wholly inside the removed cell goes with it.
+        expect(
+          tableOf(applied(document, deletion).document).rows.at(0)?.cells,
+        ).toStrictEqual([survivor]);
+      else
+        refused(
+          document,
+          deletion,
+          DOCUMENT_OP_REFUSAL_REASONS.DEPENDENT_RECORDS,
+        );
       const sole: Table = {
         type: "table",
         columnWidths: [900],
@@ -1007,15 +1015,20 @@ describe("independent table forward oracles", () => {
       };
       const soleDocument = documentOf(sole);
       soleDocument.package.document.content.push(second);
-      refused(
-        soleDocument,
-        {
-          ...address(id(0x100)),
-          type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
-          column: 0,
-        },
-        DOCUMENT_OP_REFUSAL_REASONS.DEPENDENT_RECORDS,
-      );
+      if (kind === "revision") {
+        const deleted = applied(soleDocument, deletion);
+        expect(deleted.document.package.document.content).toStrictEqual(
+          soleDocument.package.document.content.filter(
+            (block) => block !== sole,
+          ),
+        );
+      } else {
+        refused(
+          soleDocument,
+          deletion,
+          DOCUMENT_OP_REFUSAL_REASONS.DEPENDENT_RECORDS,
+        );
+      }
       removed.formatting = { gridSpan: 2 };
       table.columnWidths = [900, 900, 900];
       const narrowed = applied(document, {
@@ -1031,5 +1044,37 @@ describe("independent table forward oracles", () => {
           ?.gridSpan ?? 1,
       ).toBe(1);
     }
+  });
+
+  test("deletion takes bookmarks wholly inside the removed cells with them", () => {
+    const top = cell(0x100);
+    const bottom = cell(0x102);
+    const first = top.content.at(0);
+    const last = bottom.content.at(0);
+    if (first?.type !== "paragraph" || last?.type !== "paragraph")
+      panic("Expected fixture paragraphs");
+    // One bookmark inside a cell, one running down the removed column.
+    first.content.unshift(
+      { type: "bookmarkStart", id: 7, name: "_Inside" },
+      { type: "bookmarkEnd", id: 7 },
+      { type: "bookmarkStart", id: 8, name: "_Down" },
+    );
+    last.content.push({ type: "bookmarkEnd", id: 8 });
+    const table: Table = {
+      type: "table",
+      columnWidths: [900, 900],
+      rows: [
+        { type: "tableRow", cells: [top, cell(0x101)] },
+        { type: "tableRow", cells: [bottom, cell(0x103)] },
+      ],
+    };
+    const result = applied(documentOf(table), {
+      ...address(id(0x100)),
+      type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
+      column: 0,
+    });
+    expect(
+      tableOf(result.document).rows.map((row) => row.cells.length),
+    ).toStrictEqual([1, 1]);
   });
 });

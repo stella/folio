@@ -1,3 +1,5 @@
+import type { OpStory } from "@stll/docx-core/ops";
+
 /** Why the structural splice declined, so the save repacked the package. */
 export type StructuralSpliceDeclineReason =
   /** A body the splice cannot read, or one in Strict conformance. */
@@ -22,9 +24,35 @@ export type StructuralSpliceDeclineReason =
   | "structuralRangeSplit"
   /** The splices overlap, or would leave a comment range unbalanced. */
   | "structuralSpliceRefused";
-export type SelectiveSaveDeclineReason = StructuralSpliceDeclineReason;
-/** Which condition made the selective writer decline, in which part. */
-export type SelectiveSaveDecline = {
-  part: string;
-  reason: SelectiveSaveDeclineReason;
-};
+export type SelectiveSaveDeclineReason =
+  | StructuralSpliceDeclineReason
+  | "untrackedChanges"
+  | "tooLarge"
+  | "unmaterializedBodyResource"
+  | "unmaterializedStoryResource"
+  | "unmaterializedHeaderFooter"
+  | "pictureWatermark"
+  | "orphanCommentRanges"
+  | "unsynthesizedReplyRanges"
+  | "invalidModel"
+  | "unmaterializedHyperlink"
+  | "unsafePackagePath"
+  | "missingDocumentPart"
+  | "addedNumbering"
+  | "unroutedParagraphs"
+  | "paragraphPatch"
+  | "commentsExtended"
+  | "numberingPart"
+  | "styleMaterialization"
+  | "strictConformance"
+  | "packageError";
+/** The attempted selective write's refusal, without attributing package-wide failures to a part. */
+export type SelectiveSaveDecline = { reason: SelectiveSaveDeclineReason } & (
+  | { scope: "package"; part?: never; story?: never }
+  | { scope: "part"; part: string; story?: never }
+  | {
+      scope: "story";
+      story: Extract<OpStory, { kind: "header" | "footer" }>;
+      part?: never;
+    }
+);

@@ -358,7 +358,6 @@ function resolveEffectiveFormatting({
   });
   const paragraphFormatting = paragraphFormattingForRun({
     context,
-    directFormatting: authoredFormatting,
     marks,
   });
   const inheritedFormatting = resolveEffectiveRunStyleFormatting({
