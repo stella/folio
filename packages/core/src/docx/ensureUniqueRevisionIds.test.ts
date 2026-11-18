@@ -23,7 +23,11 @@ const deleted = (id: number, text: string) =>
 const paragraph = (paraId: string, content: string, mark?: string) =>
   `<w:p xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" w14:paraId="${paraId}">${mark === undefined ? "" : `<w:pPr><w:rPr>${mark}</w:rPr></w:pPr>`}${content}</w:p>`;
 
-const packageOf = async (body: string, header?: string) => {
+const packageOf = async (
+  body: string,
+  header?: string,
+  headerPath = "word/header1.xml",
+) => {
   const zip = await ZipArchive.read(await createEmptyDocx());
   zip.set(
     "word/document.xml",
@@ -31,7 +35,7 @@ const packageOf = async (body: string, header?: string) => {
   );
   if (header !== undefined)
     zip.set(
-      "word/header1.xml",
+      headerPath,
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:hdr xmlns:w="${W}">${header}</w:hdr>`,
     );
   return zip.generate({ compression: "store" });
@@ -68,6 +72,29 @@ describe("unique revision ids", () => {
     const { docx: normalized } = await ensureUniqueRevisionIds(docx);
     expect(await revisionIds(normalized)).toEqual([5]);
     expect(await revisionIds(normalized, "word/header1.xml")).toEqual([1]);
+  });
+
+  test("a part in a folder of its own reserves its ids", async () => {
+    const docx = await packageOf(
+      paragraph("10000001", `${inserted(5, "a")}${inserted(5, "b")}`),
+      paragraph("20000001", inserted(1, "h")),
+      "word/headers/header1.xml",
+    );
+    const { docx: normalized } = await ensureUniqueRevisionIds(docx);
+    expect(await revisionIds(normalized)).toEqual([5, 2]);
+    expect(await revisionIds(normalized, "word/headers/header1.xml")).toEqual([
+      1,
+    ]);
+  });
+
+  test("a part the scanner cannot read leaves the package as it is", async () => {
+    const docx = await packageOf(
+      paragraph("10000001", `${inserted(5, "a")}${inserted(5, "b")}`),
+      `<w:p>${inserted(1, "&nbsp;")}</w:p>`,
+    );
+    const result = await ensureUniqueRevisionIds(docx);
+    expect(result.reminted).toBe(0);
+    expect(result.docx).toBe(docx);
   });
 
   test("range markers sharing a record's id are left alone", async () => {
@@ -185,4 +212,18 @@ test("a model whose records share a revision id seeds a canonical session with i
       : [],
   );
   expect(new Set(ids).size).toBe(2);
+});
+
+test("a model holding one revision record in two places is not ready to seed", () => {
+  const document = fromMarkdown("Alpha.\n\nBravo.");
+  const shared = {
+    type: "insertion" as const,
+    info: { id: 7, author: "Reviewer", date: "2026-01-01T00:00:00Z" },
+    content: [
+      { type: "run" as const, content: [{ type: "text" as const, text: "x" }] },
+    ],
+  };
+  for (const block of document.package.document.content)
+    if (block.type === "paragraph") block.content = [shared];
+  expect(holdsUniqueSeedIds(document)).toBe(false);
 });

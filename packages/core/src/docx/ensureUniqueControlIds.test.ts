@@ -61,6 +61,34 @@ describe("unique content control ids", () => {
     expect(await controlIds(normalized, "word/header1.xml")).toEqual([1]);
   });
 
+  test("a control in a part in a folder of its own reserves its id", async () => {
+    const zip = await ZipArchive.read(
+      await packageOf(
+        `<w:p>${control(5, "a")}</w:p><w:p>${control(5, "b")}</w:p>`,
+      ),
+    );
+    zip.set(
+      "word/headers/header1.xml",
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:hdr xmlns:w="${W}"><w:p>${control(1, "h")}</w:p></w:hdr>`,
+    );
+    const docx = await zip.generate({ compression: "store" });
+    const { docx: normalized } = await ensureUniqueControlIds(docx);
+    expect(await controlIds(normalized)).toEqual([5, 2]);
+    expect(await controlIds(normalized, "word/headers/header1.xml")).toEqual([
+      1,
+    ]);
+  });
+
+  test("a part the scanner cannot read leaves the package as it is", async () => {
+    const docx = await packageOf(
+      `<w:p>${control(5, "a")}</w:p><w:p>${control(5, "b")}</w:p>`,
+      `<w:p>${control(1, "&nbsp;")}</w:p>`,
+    );
+    const result = await ensureUniqueControlIds(docx);
+    expect(result.reminted).toBe(0);
+    expect(result.docx).toBe(docx);
+  });
+
   test("alternate content restating a control keeps its id", async () => {
     const docx = await packageOf(
       `<w:p><mc:AlternateContent><mc:Choice Requires="w14">${control(5, "a")}</mc:Choice><mc:Fallback>${control(5, "a")}</mc:Fallback></mc:AlternateContent></w:p>`,

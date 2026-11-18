@@ -107,11 +107,19 @@ export const holdsUniqueParagraphIds = (document: Document): boolean => {
  */
 const holdsUniqueRevisionIds = (document: Document): boolean => {
   const seen = new Set<number>();
-  const visited = new Set<object>();
+  // Every occurrence counts, as the package census counts it: a record held
+  // in two places is two records. Only the section view, which restates the
+  // body's paragraphs, is left out, as the census leaves it out.
+  const open = new Set<object>();
   const visit = (value: unknown): boolean => {
-    if (typeof value !== "object" || value === null || visited.has(value))
+    if (typeof value !== "object" || value === null || open.has(value))
       return true;
-    visited.add(value);
+    open.add(value);
+    const unique = visitRecord(value);
+    open.delete(value);
+    return unique;
+  };
+  const visitRecord = (value: object): boolean => {
     if (value instanceof Map) return [...value.values()].every(visit);
     if (Array.isArray(value)) return value.every(visit);
     if (
@@ -128,7 +136,10 @@ const holdsUniqueRevisionIds = (document: Document): boolean => {
     }
     return Object.values(value).every(visit);
   };
-  return visit(document.package);
+  return visit({
+    ...document.package,
+    document: { ...document.package.document, sections: undefined },
+  });
 };
 
 /**

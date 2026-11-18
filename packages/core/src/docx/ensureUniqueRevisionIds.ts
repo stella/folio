@@ -31,8 +31,12 @@ import {
 const MC_NAMESPACE_URI =
   "http://schemas.openxmlformats.org/markup-compatibility/2006";
 const DIGITAL_SIGNATURE_PART_PREFIX = "_xmlsignatures/";
-/** The story parts: the body, headers, footers, notes and comments. */
-const STORY_PART_PATTERN = /^word\/[^/]+\.xml$/iu;
+/**
+ * The parts the loader can read records from: the body, headers, footers,
+ * notes and comments wherever their relationships place them under `word/`,
+ * and the styles and numbering their property changes live in.
+ */
+const STORY_PART_PATTERN = /^word\/.+\.xml$/iu;
 
 /** The elements that are revision records, each with an id of its own. */
 const REVISION_RECORDS: ReadonlySet<string> = new Set([
@@ -137,7 +141,9 @@ export const ensureUniqueRevisionIds = async (
     const xml = await zip.entry(path)?.text();
     if (xml === undefined) continue;
     const found = revisionIdsIn(xml);
-    if (found === undefined || found.length === 0) continue;
+    // A part the scanner cannot read may hold ids a new one would repeat.
+    if (found === undefined) return { docx, reminted: 0 };
+    if (found.length === 0) continue;
     texts.set(path, xml);
     ids.set(path, found);
     for (const { value } of found) taken.add(value);
