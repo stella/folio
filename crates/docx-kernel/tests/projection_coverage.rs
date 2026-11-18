@@ -2169,9 +2169,9 @@ impl Expected {
             );
         }
         let mut output = text(span.start.paragraph_ordinal, span.start.utf8, None);
-        for ordinal in span.start.paragraph_ordinal + 1..span.end.paragraph_ordinal {
+        for paragraph in &self.texts[span.start.paragraph_ordinal + 1..span.end.paragraph_ordinal] {
             output.push('\n');
-            output.push_str(&self.texts[ordinal]);
+            output.push_str(paragraph);
         }
         output.push('\n');
         output.push_str(&text(span.end.paragraph_ordinal, 0, Some(span.end.utf8)));
