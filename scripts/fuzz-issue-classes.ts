@@ -406,6 +406,15 @@ const COMPACTION_STEPS = [
   { evidence: 200, replays: 1 },
 ] as const;
 
+/** The oldest row a newer row of its fingerprint covers, else the oldest row. */
+const droppableRow = (seeds: readonly SeedRow[]): number =>
+  Math.max(
+    seeds.findIndex(({ fingerprint }, index) =>
+      seeds.slice(index + 1).some((later) => later.fingerprint === fingerprint),
+    ),
+    0,
+  );
+
 /**
  * A class body GitHub accepts. A long-lived class gathers rows until its body
  * passes the limit and every later update fails, so rows are compacted first
@@ -425,10 +434,7 @@ export const classBody = (options: ClassBodyOptions): string => {
     if (body.length <= CLASS_BODY_LIMIT) return body;
   }
   while (seeds.length > 1 && body.length > CLASS_BODY_LIMIT) {
-    const repeated = seeds.findIndex(({ fingerprint }, index) =>
-      seeds.slice(index + 1).some((later) => later.fingerprint === fingerprint),
-    );
-    seeds = seeds.toSpliced(Math.max(repeated, 0), 1);
+    seeds = seeds.toSpliced(droppableRow(seeds), 1);
     body = renderClassBody({ ...options, state: { ...options.state, seeds } });
   }
   if (body.length <= CLASS_BODY_LIMIT || options.legacyReport === null)
