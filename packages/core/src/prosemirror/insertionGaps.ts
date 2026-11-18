@@ -57,6 +57,24 @@ export const insertionGap = (
   return at;
 };
 
+/**
+ * Where the gap a block lands in at `boundary` ends: past the blocks right
+ * after it that accepting removes whole. Accepted, the gap is one place, so
+ * a batch orders what it puts or edits anywhere in it as at that place, as
+ * it does once those blocks are removed directly.
+ */
+export const insertionGapEnd = (doc: PMNode, boundary: number): number => {
+  let at = boundary;
+  for (
+    let block = doc.resolve(at).nodeAfter;
+    block !== null && !block.isInline && goesWhole(block);
+    block = doc.resolve(at).nodeAfter
+  ) {
+    at += block.nodeSize;
+  }
+  return at;
+};
+
 type Landed = {
   /** Where in the batch it was named: its input index. */
   order: number;
