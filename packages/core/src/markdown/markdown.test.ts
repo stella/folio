@@ -484,6 +484,22 @@ describe("toMarkdown — block structure", () => {
     ).toBe("# 1.  ");
   });
 
+  test("an empty heading keeps its visible list label", () => {
+    expect(
+      md([
+        para([], {
+          styleId: "Heading1",
+          listRendering: list(0, false, "1."),
+        }),
+        para([run("Scope")], { styleId: "Heading1" }),
+      ]),
+    ).toBe("# 1.\n\n# Scope");
+    // Without a label it carries no text block.
+    expect(md([para([], { styleId: "Heading1" }), para([run("Scope")])])).toBe(
+      "Scope",
+    );
+  });
+
   test("plain paragraphs join with a blank line", () => {
     expect(md([para([run("One")]), para([run("Two")])])).toBe("One\n\nTwo");
   });
