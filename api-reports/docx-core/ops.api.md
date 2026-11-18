@@ -424,7 +424,7 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
 }>;
 
 // @public
-export const DOCUMENT_OP_SCHEMA_VERSION = 14;
+export const DOCUMENT_OP_SCHEMA_VERSION = 15;
 
 // @public
 export const DOCUMENT_OP_TYPES: Readonly<{
@@ -534,7 +534,7 @@ export type EditorIntent = HyperlinkEditorIntent | GenerateTOCIntent | {
 } | {
     type: "insertParagraphs";
     story: OpStory;
-    at: BlockInsertionPoint;
+    at: TableInsertionPoint;
     paragraphs: readonly Paragraph[];
     move?: true;
     newList?: NewListInstance;
@@ -798,7 +798,7 @@ export type InlineSlice = {
 export type InsertBlocksOp = {
     type: typeof DOCUMENT_OP_TYPES.INSERT_BLOCKS;
     story: OpStory;
-    at: BlockInsertionPoint;
+    at: TableInsertionPoint;
     blocks: readonly Paragraph[];
     revision?: RevisionStamp;
     move?: true;
@@ -1070,6 +1070,7 @@ export const paragraphMarkOutcome: (input: {
     followingBlockCanReceiveRunIn?: boolean;
     needsFollowingCommentHost?: boolean;
     tableRemovalIsTrackable?: boolean;
+    emptyInsertedTableBoundary?: "unavailable" | "pendingReview";
     removedSectionProperties?: boolean;
     precedingSectionOwner?: "unavailable" | "available" | "same" | "occupied";
     followingHasSectionProperties?: boolean;

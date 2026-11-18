@@ -61,6 +61,16 @@ export const setRevisionInfo = (
       );
     wanted.set(info.id, info);
   }
+  const body = storyBody(document, op.story);
+  const finalSectionRevision =
+    body.finalSectionProperties?.propertyChanges?.find(({ info }) =>
+      wanted.has(info.id),
+    );
+  if (finalSectionRevision !== undefined)
+    return refuse(
+      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+      `Final section revision ${String(finalSectionRevision.info.id)} requires section review.`,
+    );
   const previous = new Map<number, TrackedChangeInfo>();
   let disagreeing: number | undefined;
   const modified = new Set<string>();
@@ -142,7 +152,6 @@ export const setRevisionInfo = (
     rebuilt.set(value, out);
     return out;
   };
-  const body = storyBody(document, op.story);
   const content = rebuild(body.content) as typeof body.content;
   const sections =
     body.sections === undefined

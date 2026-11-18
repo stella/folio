@@ -1,3 +1,4 @@
+import { panic } from "better-result";
 /** Pure wire-fixture construction, shared by snapshot tests and generation. */
 import path from "node:path";
 
@@ -10,6 +11,11 @@ import type {
 } from "../../model/document";
 import { type AppliedDocumentOp, applyDocumentOp } from "../apply";
 import { captureSectionView, captureSectionViewState } from "../blocks";
+import {
+  compileEditorIntent,
+  createEditorIntentIdAllocator,
+} from "../editorIntent";
+import type { EditorIntent } from "../editorIntent";
 import { cloneModel } from "../modelClone";
 import { packageResourcesOpOf } from "../packageResources";
 import { captureStoryParts } from "../storyLifecycle";
@@ -347,6 +353,77 @@ export const lifecycleWireCases = () => {
   }
   return cases;
 };
+
+/** Actual table-side compiler output and its exact empty-replacement inverse. */
+export const tableBoundaryWireCases = () =>
+  (["beforeTable", "afterTable"] as const).flatMap((side) =>
+    (["editing", "suggesting"] as const).map((mode) => {
+      const before = {
+        package: {
+          document: {
+            content: [
+              first,
+              {
+                type: "table",
+                rows: [
+                  {
+                    type: "tableRow",
+                    cells: [
+                      {
+                        type: "tableCell",
+                        content: [
+                          {
+                            type: "paragraph",
+                            paraId: "00000031",
+                            content: [],
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+              second,
+            ],
+          },
+        },
+      } satisfies Document;
+      const intent = {
+        type: "insertParagraphs",
+        story: OP_STORIES.MAIN,
+        at: { type: side, blockId: "00000031" },
+        paragraphs: [
+          {
+            type: "paragraph",
+            content: [
+              {
+                type: "run",
+                content: [{ type: "text", text: "Table-side paragraph" }],
+              },
+            ],
+          },
+        ],
+      } as const satisfies EditorIntent;
+      const ids = createEditorIntentIdAllocator()(before, intent);
+      const compiled = compileEditorIntent(before, {
+        intent,
+        mode:
+          mode === "editing"
+            ? { type: "editing", newIds: ids.newIds }
+            : { type: "suggesting", revision: stamp(1000), newIds: ids.newIds },
+      }).unwrap();
+      const op = compiled.ops.at(0);
+      if (
+        op?.type !== DOCUMENT_OP_TYPES.INSERT_BLOCKS ||
+        compiled.ops.length !== 1
+      )
+        panic(
+          "A table-side fixture must be one compiler-owned block insertion.",
+        );
+      const edit = applyDocumentOp(before, op).unwrap();
+      return { before, op, edit };
+    }),
+  );
 
 export const envelopes = (): DocumentOpEnvelope[] => {
   const out: DocumentOpEnvelope[] = [];
@@ -756,6 +833,10 @@ export const envelopes = (): DocumentOpEnvelope[] => {
         parts: { sectionView },
       }),
     );
+  }
+  for (const { op, edit } of tableBoundaryWireCases()) {
+    out.push(toOpEnvelope(op));
+    for (const inverse of edit.inverse) out.push(toOpEnvelope(inverse));
   }
   // Semantic table fixtures are independent: no earlier review or geometry constrains a later case.
   const editTable: Table = {

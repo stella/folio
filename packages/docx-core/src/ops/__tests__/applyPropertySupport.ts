@@ -76,6 +76,10 @@ export const NOTE_LIFECYCLE_INVERSE_KINDS = {
   ],
 } as const satisfies Record<string, readonly DocumentOpType[]>;
 
+export const EXACT_BLOCK_REMOVAL_INVERSE_KINDS = {
+  replaceBlocks: [DOCUMENT_OP_TYPES.INSERT_BLOCKS],
+} as const satisfies Record<string, readonly DocumentOpType[]>;
+
 export const INVERSE_KINDS = {
   setPackageResources: ["setPackageResources"],
   createComment: ["restoreCommentState"],
@@ -132,7 +136,11 @@ export const INVERSE_KINDS = {
     "setParagraphReview",
     "restoreStoryParts",
   ],
-  replaceBlocks: ["replaceBlocks", "restoreStoryParts"],
+  replaceBlocks: [
+    "replaceBlocks",
+    "restoreStoryParts",
+    ...EXACT_BLOCK_REMOVAL_INVERSE_KINDS.replaceBlocks,
+  ],
   setParagraphReview: ["setParagraphReview"],
   replaceInline: [
     "replaceInline",

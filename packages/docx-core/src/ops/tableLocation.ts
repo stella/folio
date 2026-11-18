@@ -1,7 +1,12 @@
 /** Shared addressing for row and whole-table operations. */
 import { panic, Result } from "better-result";
 
-import type { Document, Table, TableRow } from "../model/document";
+import type {
+  BlockContent,
+  Document,
+  Table,
+  TableRow,
+} from "../model/document";
 import {
   blockListAt,
   type ParagraphLocation,
@@ -13,12 +18,14 @@ import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import type {
   DeleteRowOp,
   DeleteTableOp,
+  InsertBlocksOp,
   InsertRowOp,
   InsertTableOp,
   OpStory,
   SetTableOp,
   SetTableRowsOp,
   TableEditOp,
+  TableInsertionPoint,
   TableIntentOperation,
 } from "./types";
 
@@ -34,7 +41,11 @@ type TableTarget =
       "type" | "story" | "blockId"
     >
   // A table inserted beside the table holding `blockId`.
-  | { type: InsertTableOp["type"]; story: OpStory; blockId: string };
+  | {
+      type: InsertTableOp["type"] | InsertBlocksOp["type"];
+      story: OpStory;
+      blockId: string;
+    };
 
 export type TableRowLocation = {
   list: ParagraphLocation["list"];
@@ -93,3 +104,80 @@ export const tableRowAnchor = (rows: readonly TableRow[]): string | undefined =>
   storyParagraphs({ content: [{ type: "table", rows: [...rows] }] }).find(
     ({ list }) => list.filter((step) => step.kind === "tableCell").length === 1,
   )?.paragraph.paraId;
+
+type LocateBlockInsertionOptions = Pick<
+  InsertBlocksOp,
+  "type" | "story" | "at"
+>;
+
+/** A paragraph or table side, in the block list containing that block. */
+export const locateBlockInsertion = (
+  document: Document,
+  op: LocateBlockInsertionOptions,
+): Result<Pick<ParagraphLocation, "list" | "index">, DocumentOpRefusal> => {
+  switch (op.at.type) {
+    case "before":
+    case "after": {
+      const paragraph = storyParagraphs(storyBody(document, op.story)).find(
+        ({ paragraph: item }) =>
+          idKey(item.paraId ?? "") === idKey(op.at.blockId),
+      );
+      if (paragraph === undefined)
+        return Result.err(
+          new DocumentOpRefusal({
+            opType: op.type,
+            reason: DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
+            message: "The insertion anchor does not exist.",
+          }),
+        );
+      return Result.ok({
+        list: paragraph.list,
+        index: paragraph.index + (op.at.type === "after" ? 1 : 0),
+      });
+    }
+    case "beforeTable":
+    case "afterTable": {
+      const table = locateTableRow(document, {
+        type: op.type,
+        story: op.story,
+        blockId: op.at.blockId,
+      });
+      if (table.isErr()) return table;
+      return Result.ok({
+        list: table.value.list,
+        index: table.value.index + (op.at.type === "afterTable" ? 1 : 0),
+      });
+    }
+    default: {
+      const unreachable: never = op.at;
+      return unreachable;
+    }
+  }
+};
+
+type BlockInsertionPointAtOptions = {
+  blocks: readonly BlockContent[];
+  index: number;
+};
+
+/** Restore a removed paragraph run beside its immediate surviving block. */
+export const blockInsertionPointAt = ({
+  blocks,
+  index,
+}: BlockInsertionPointAtOptions): TableInsertionPoint | undefined => {
+  const following = blocks.at(index);
+  if (following?.type === "paragraph" && following.paraId !== undefined)
+    return { type: "before", blockId: following.paraId };
+  if (following?.type === "table") {
+    const blockId = tableRowAnchor(following.rows);
+    if (blockId !== undefined) return { type: "beforeTable", blockId };
+  }
+  const previous = index > 0 ? blocks.at(index - 1) : undefined;
+  if (previous?.type === "paragraph" && previous.paraId !== undefined)
+    return { type: "after", blockId: previous.paraId };
+  if (previous?.type === "table") {
+    const blockId = tableRowAnchor(previous.rows);
+    if (blockId !== undefined) return { type: "afterTable", blockId };
+  }
+  return undefined;
+};

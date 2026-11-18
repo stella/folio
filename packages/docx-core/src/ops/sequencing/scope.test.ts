@@ -1,3 +1,4 @@
+import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
 
 import type { Document, Paragraph, TableRow } from "../../model/document";
@@ -108,7 +109,7 @@ describe("block-scoped sequencing", () => {
     const seen = new Set<string>();
     const insertions = new Set<boolean>();
     for (const { op } of envelopes()) {
-      const effect = sequencedEffectType(op.type);
+      const effect = sequencedEffectType(op);
       if (effect === undefined) continue;
       seen.add(op.type);
       // Content merged into the records at its point is block-scoped; an
@@ -255,3 +256,68 @@ test.each(["before", "after"] as const)(
     });
   },
 );
+
+for (const side of ["beforeTable", "afterTable"] as const)
+  for (const mode of ["editing", "suggesting"] as const)
+    test(`${mode} ${side}: table-side paragraph insertions share source-table conflict ownership`, () => {
+      const document = documentOf();
+      const compile = (blockId: string, start: number) => {
+        const intent = {
+          type: "insertParagraphs",
+          story: "main",
+          at: { type: side, blockId },
+          paragraphs: [
+            {
+              type: "paragraph",
+              content: [
+                { type: "run", content: [{ type: "text", text: "Added" }] },
+              ],
+            },
+          ],
+        } as const satisfies EditorIntent;
+        const lease = {
+          blocks: [
+            { kind: "paragraph", start, end: start + 8 },
+            { kind: "revision", start, end: start + 64 },
+            { kind: "control", start, end: start + 8 },
+          ],
+        } as const;
+        const ids = createEditorIntentIdAllocator()(document, intent, lease);
+        return compileEditorIntent(document, {
+          intent,
+          mode:
+            mode === "editing"
+              ? { type: "editing", idLease: lease, newIds: ids.newIds }
+              : {
+                  type: "suggesting",
+                  idLease: lease,
+                  newIds: ids.newIds,
+                  revision: {
+                    id: ids.revisionId,
+                    author: "Reviewer",
+                    date: "2026-01-02T03:04:05Z",
+                  },
+                },
+        }).unwrap().ops;
+      };
+      const first = batch("paragraph-a", ...compile("00000011", 0x20000001));
+      const second = batch("paragraph-b", ...compile("00000012", 0x30000001));
+      const effect = sequenced(document, first).effects?.at(0);
+      if (effect?.type !== "touchedBlocks")
+        panic("A table-side insertion needs its structural effect.");
+      expect(effect.tableBlockIds).toEqual([
+        "00000011",
+        "00000012",
+        "00000021",
+        "00000022",
+      ]);
+      expect(pair(first, second).refused?.reason).toBe(
+        BATCH_REJECTION_REASONS.TABLE_REQUIRES_EXCLUSIVE_EDIT,
+      );
+      expect(pair(first, batch("outside", typing("00000001")))).toEqual({
+        commutes: true,
+      });
+      expect(pair(batch("outside", typing("00000001")), first)).toEqual({
+        commutes: true,
+      });
+    });

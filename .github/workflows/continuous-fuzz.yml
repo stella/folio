@@ -168,13 +168,21 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
 
+  # The whole property suite at factor 4 needs well over an hour of test time,
+  # so one job always hit its step limit before the later packages ran. Each
+  # shard runs a fixed, measured share of every property file.
   property-fuzz:
     if: ${{ !inputs.long_flows && !inputs.public_corpus_flows }}
-    name: Property fuzz
+    name: Property fuzz (${{ matrix.shard }}/${{ strategy.job-total }})
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -194,9 +202,11 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p test-results
-          bun run test:property 2>&1 | tee test-results/property-fuzz.log
+          bun scripts/property-areas.ts --all --shard "${PROPERTY_SHARD}/${PROPERTY_SHARD_COUNT}" --fixed-shards 2>&1 | tee test-results/property-fuzz.log
         env:
           FOLIO_FUZZ_HEALTH: "1"
+          PROPERTY_SHARD: ${{ matrix.shard }}
+          PROPERTY_SHARD_COUNT: ${{ strategy.job-total }}
           PROPERTY_TEST_NUM_RUNS_FACTOR: ${{ github.event.inputs.factor || '4' }}
           PROPERTY_TEST_SEED_SALT: continuous-${{ github.run_id }}
 
@@ -216,7 +226,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: continuous-fuzz-property
+          name: continuous-fuzz-property-${{ matrix.shard }}
           path: test-results/property-fuzz.log
           retention-days: 14
           if-no-files-found: ignore
@@ -270,7 +280,8 @@ jobs:
           bun scripts/fuzz-failure-issues.ts
           --log fuzz-results/continuous-fuzz-consumer/continuous-fuzz.log
           --records fuzz-results/continuous-fuzz-consumer/fuzz-failures
-          --log fuzz-results/continuous-fuzz-property/property-fuzz.log
+          --artifact-root fuzz-results
+          --log-pattern 'continuous-fuzz-property-*/property-fuzz.log'
           --lane continuous-fuzz --result "${RESULT}" --trigger "${TRIGGER}"
           --source "continuous fuzz" --run-url "${RUN_URL}" --sha "${GITHUB_SHA}"
         env:

@@ -32,7 +32,7 @@ import {
   markBeforeTableResolves,
   paragraphBlockRunInTarget,
   paragraphMarkOutcome,
-  paragraphTableRunInTarget,
+  paragraphTableRunInBoundary,
   type TableRunInTarget,
 } from "./blockDeletion";
 import {
@@ -1028,6 +1028,8 @@ const settleDeferredRemovals = (
 ): readonly InlineNode[] => {
   let changed = false;
   const out: InlineNode[] = [];
+  /** Seams with kept boundaries whose every blocker is accepted, by key. */
+  const acceptedKept = new Map<string, DeferredRemovalGroup>();
   for (const node of nodes) {
     let next = node;
     if (
@@ -1048,6 +1050,12 @@ const settleDeferredRemovals = (
             remainingGroups.push(group);
             continue;
           }
+          if (
+            group.keptCount !== undefined &&
+            group.edge === undefined &&
+            fates.every((fate) => fate === "accepted")
+          )
+            acceptedKept.set(deferredGroupKey(group), group);
           if (fates.includes("accepted")) continue;
           const remaining = group.blockers.filter(
             (_, index) => fates[index] === "pending",
@@ -1083,7 +1091,84 @@ const settleDeferredRemovals = (
     changed ||= next !== node;
     out.push(next);
   }
+  for (const group of acceptedKept.values())
+    changed = placeAcceptedSeamKept(out, group) || changed;
   return changed ? out : nodes;
+};
+
+/**
+ * Boundaries a seam kept standing beside pending insertions made after the
+ * revision they were kept from, once every one of those insertions is
+ * accepted: they go into the piece of the cut record they touch, as
+ * rejecting that revision after accepting the insertions places them. They
+ * stand where they are when no such piece can hold them. `out` is changed
+ * in place; whether it changed.
+ */
+const placeAcceptedSeamKept = (
+  out: InlineNode[],
+  group: DeferredRemovalGroup,
+): boolean => {
+  const count = group.keptCount ?? 0;
+  const blocker = (node: InlineNode | undefined): boolean =>
+    node !== undefined &&
+    isTrackedWrapper(node) &&
+    group.blockers.includes(node.info.id);
+  const indices = out.flatMap((node, index) => (blocker(node) ? [index] : []));
+  const first = indices.at(0);
+  const last = indices.at(-1);
+  if (count === 0 || first === undefined || last === undefined) return false;
+  // The boundaries stand just after the blockers before the seam, or just
+  // before those after it.
+  const start = [last + 1, first - count, ...indices.map((index) => index + 1)]
+    .filter((index) => index >= 0 && index + count <= out.length)
+    .find(
+      (index) =>
+        out
+          .slice(index, index + count)
+          .every((node) => isStandingBoundary(node)) &&
+        (blocker(out.at(index - 1)) || blocker(out.at(index + count))),
+    );
+  if (start === undefined) return false;
+  const boundaries = out.slice(start, start + count);
+  // A piece still held in a pending removal, or content made after the
+  // revision they were kept from, is no piece that takes them.
+  const takes = (node: InlineNode | undefined): node is InlineNode =>
+    node !== undefined &&
+    !blocker(node) &&
+    !isStandingBoundary(node) &&
+    !(node.type === "deletion" || node.type === "moveFrom") &&
+    !(
+      isAddedRevision(node) &&
+      group.keptFrom !== undefined &&
+      (node.info.date ?? "") > group.keptFrom
+    );
+  const after = out.at(start + count);
+  const before = start > 0 ? out.at(start - 1) : undefined;
+  const intoAfter = takes(after)
+    ? withBoundariesAtEdge(
+        after,
+        boundaries,
+        group.depth,
+        "start",
+        group.keptFrom,
+      )
+    : undefined;
+  if (intoAfter !== undefined) {
+    out.splice(start, count + 1, intoAfter);
+    return true;
+  }
+  const intoBefore = takes(before)
+    ? withBoundariesAtEdge(
+        before,
+        boundaries,
+        group.depth,
+        "end",
+        group.keptFrom,
+      )
+    : undefined;
+  if (intoBefore === undefined) return false;
+  out.splice(start - 1, count + 1, intoBefore);
+  return true;
 };
 
 /** Update an explicit pending seam before removing any of its blocking revisions. */
@@ -3198,10 +3283,12 @@ const joinOps = (
   // A cell-ending mark describes the terminator, not a paragraph to retire.
   const cellFinal =
     containerFinal && location.list.some((step) => step.kind === "tableCell");
-  const tableTarget =
+  const tableBoundary =
     next?.type === "table"
-      ? paragraphTableRunInTarget(paragraph, next)
+      ? paragraphTableRunInBoundary(paragraph, next)
       : undefined;
+  const tableTarget =
+    tableBoundary?.type === "receiver" ? tableBoundary.target : undefined;
   const blockTarget =
     next !== undefined && followsBlock
       ? paragraphBlockRunInTarget(paragraph, next)
@@ -3251,7 +3338,12 @@ const joinOps = (
       remains.length > 0,
     tableRemovalIsTrackable:
       next?.type !== "table" ||
-      markBeforeTableResolves({ blocks, paragraph, table: next }),
+      (tableBoundary !== undefined &&
+        markBeforeTableResolves({ blocks, boundary: tableBoundary })),
+    emptyInsertedTableBoundary:
+      tableBoundary?.type === "blocked" && tableBoundary.reason === "review"
+        ? "pendingReview"
+        : "unavailable",
     removedSectionProperties:
       added && paragraph.sectionProperties !== undefined,
     precedingSectionOwner: precedingSectionOwner(previous, paragraph),
@@ -3481,6 +3573,60 @@ const acceptedClosedBoundary = ({
  * removing it exposes the seam rather than the piece. `undefined` when the
  * edge keeps a record down to its leaves.
  */
+/**
+ * How many of the `depth` levels a split cut, read down the records at its
+ * seam, are pieces of one tracked change on both sides that this resolution
+ * unwraps, keeping their content: an accepted insertion or move destination,
+ * a rejected deletion or move source.
+ */
+const unwrappedCutLevels = ({
+  left,
+  right,
+  depth,
+  resolution,
+  splitDate,
+}: {
+  left: readonly InlineNode[];
+  right: readonly InlineNode[];
+  depth: number;
+  resolution: Resolution;
+  /** The date of the split whose cut this reads, when it has one. */
+  splitDate: string | undefined;
+}): number => {
+  const unwraps = (node: InlineNode): node is TrackedWrapper =>
+    isTrackedWrapper(node) &&
+    resolution.ids.has(node.info.id) &&
+    !removesContent(node, resolution.decision);
+  // Content this resolution removes that was inserted after the split, or
+  // into the seam itself, is no piece the split left (see
+  // {@link removedClosedBoundary}).
+  const insideSeam = (node: InlineNode): boolean =>
+    isTrackedWrapper(node) &&
+    isAddedRevision(node) &&
+    resolution.ids.has(node.info.id) &&
+    removesContent(node, resolution.decision) &&
+    ((node.resolutionJoins?.remove ?? 0) > 0 ||
+      (splitDate !== undefined && (node.info.date ?? "") > splitDate));
+  const edgeOf = (
+    nodes: readonly InlineNode[] | undefined,
+    edge: "first" | "last",
+  ): InlineNode | undefined =>
+    (edge === "first" ? nodes : nodes?.toReversed())?.find(
+      (node) => !insideSeam(node),
+    );
+  let levels = 0;
+  let before = edgeOf(left, "last");
+  let after = edgeOf(right, "first");
+  for (let level = 0; level < depth; level += 1) {
+    if (before === undefined || after === undefined) break;
+    if (unwraps(before) && unwraps(after) && sameStamp(before, after))
+      levels += 1;
+    before = edgeOf(childNodes(before), "last");
+    after = edgeOf(childNodes(after), "first");
+  }
+  return levels;
+};
+
 const removedClosedBoundary = ({
   nodes,
   edge,
@@ -3560,6 +3706,20 @@ export const planRevisionResolution = ({
       ),
     );
   }
+  const finalSectionRevision = storyBody(
+    document,
+    op.story,
+  ).finalSectionProperties?.propertyChanges?.find(({ info }) =>
+    op.revisionIds.includes(info.id),
+  );
+  if (finalSectionRevision !== undefined)
+    return Result.err(
+      refusal(
+        op,
+        DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+        `Final section revision ${String(finalSectionRevision.info.id)} requires section review.`,
+      ),
+    );
   const present = storyIdentityKeys(document, op.story);
   const ids = new Set(
     op.revisionIds.filter((id) =>
@@ -3861,8 +4021,20 @@ export const planRevisionResolution = ({
           candidate.pPrMark.resolutionJoin ?? 0,
         );
     }
+    // A level of the cut held by pieces of one tracked change this
+    // resolution unwraps is a level no more: their content meets uncut.
+    const unwrapped =
+      next?.type === "paragraph"
+        ? unwrappedCutLevels({
+            left: paragraph.content,
+            right: next.content,
+            depth: mark.resolutionJoin,
+            resolution,
+            splitDate: mark.info.date,
+          })
+        : 0;
     let depth = Math.max(
-      mark.resolutionJoin,
+      mark.resolutionJoin - unwrapped,
       resolvedCutEdges.get(idKey(paragraph.paraId ?? ""))?.last ?? 0,
       leadingCut,
     );

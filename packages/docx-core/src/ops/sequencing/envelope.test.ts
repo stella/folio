@@ -19,6 +19,7 @@ import {
   baseFixtures,
   envelopeFixtures,
   sequencedFixture,
+  tableBoundarySequencedFixtures,
 } from "./__tests__/envelopeFixtures";
 import {
   BATCH_REJECTION_REASONS,
@@ -58,8 +59,14 @@ test("every operation kind is sendable and records a sequenced effect", () => {
   expect([...BATCH_WIRE_OP_TYPES].toSorted()).toEqual(
     Object.values(DOCUMENT_OP_TYPES).toSorted(),
   );
-  for (const type of Object.values(DOCUMENT_OP_TYPES))
-    expect(sequencedEffectType(type)).toBeDefined();
+  const exercised = new Set<DocumentOp["type"]>();
+  for (const { op } of envelopes()) {
+    expect(sequencedEffectType(op)).toBeDefined();
+    exercised.add(op.type);
+  }
+  expect([...exercised].toSorted()).toEqual(
+    Object.values(DOCUMENT_OP_TYPES).toSorted(),
+  );
 });
 
 test("story lifecycle wire ownership keeps complete views separate from indexed metadata", () => {
@@ -619,4 +626,19 @@ test("embedded records refuse undeclared fields, unknown kinds and malformed ids
     [{ type: "unknownBlock" }],
   ])
     expect(validateDocumentBatch(withOp(withCell(content))).isErr()).toBe(true);
+});
+
+test("table-side insertion effects are validated by boundary variant without rewriting schema14", () => {
+  expect(tableBoundarySequencedFixtures).toHaveLength(4);
+  for (const sample of tableBoundarySequencedFixtures) {
+    expect(validateSequencedBatch(sample).isOk()).toBe(true);
+    const mismatched = {
+      ...sample,
+      effects: sample.effects.map(() => ({ type: "none" })),
+    };
+    expect(validateSequencedBatch(mismatched).isErr()).toBe(true);
+    const old = validateSequencedBatch({ ...sample, schema: 14 });
+    expect(old.isErr()).toBe(true);
+    if (old.isErr()) expect(old.error.reason).toBe("unsupportedSchema");
+  }
 });

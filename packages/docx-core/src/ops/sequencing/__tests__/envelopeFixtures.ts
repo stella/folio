@@ -1,8 +1,12 @@
 import path from "node:path";
 
-import { envelopes } from "../../__tests__/wireFixtures";
+import {
+  envelopes,
+  tableBoundaryWireCases,
+} from "../../__tests__/wireFixtures";
 import { DOCUMENT_OP_SCHEMA_VERSION, OP_STORIES } from "../../types";
 import { captureDocumentOp } from "../../wire";
+import { applyBatch } from "../applyBatch";
 import {
   BATCH_WIRE_OP_TYPES,
   type DocumentBatch,
@@ -157,8 +161,22 @@ const wideOps = envelopes().flatMap(({ op }) => {
   return [op];
 });
 
+export const tableBoundarySequencedFixtures = tableBoundaryWireCases().map(
+  ({ before, op }, index) =>
+    ({
+      schema: DOCUMENT_OP_SCHEMA_VERSION,
+      opId: `01JTESTTABLEBOUNDARY${index.toString().padStart(6, "0")}`,
+      actor: "actor-1",
+      baseRev: 0,
+      revision: 1,
+      ops: [op],
+      effects: applyBatch(before, [op]).unwrap().effects,
+    }) satisfies SequencedBatch,
+);
+
 export const envelopeFixtures: readonly DocumentBatch[] = [
   ...baseFixtures,
+  ...tableBoundarySequencedFixtures,
   {
     schema: DOCUMENT_OP_SCHEMA_VERSION,
     opId: "01JTESTBATCH000000000000005",

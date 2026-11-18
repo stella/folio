@@ -1287,7 +1287,7 @@ export type FolioDocxPreparedXmlReplacement = {
     readonly encoding: "utf-8";
 };
 
-// @public (undocumented)
+// @public
 export class FolioDocxReviewer {
     acceptAll(): FolioReviewResolution;
     acceptChange(target: FolioReviewChange | number): boolean;

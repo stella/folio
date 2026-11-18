@@ -112,7 +112,6 @@ import { locateTableRow, tableRowAnchor } from "./tableLocation";
 import { rowsWithoutRow } from "./tableRowRemoval";
 import { compileGenerateTOCIntent, type GenerateTOCIntent } from "./tocIntent";
 import {
-  type BlockInsertionPoint,
   type DeleteRangeOp,
   type DeleteRowOp,
   type DeleteTableOp,
@@ -227,13 +226,13 @@ export type EditorIntent =
   | { type: "tableBlock"; operation: TableBlockIntentOperation }
   | {
       /**
-       * Whole paragraphs beside a paragraph, which keeps its identity: the
-       * compiler gives each a fresh id, and a suggestion records each as
-       * inserted.
+       * Whole paragraphs beside a paragraph or table: the compiler gives
+       * each a fresh id, and a suggestion records each as inserted. Table-side
+       * suggestions refuse boundaries without a reversible review plan.
        */
       type: "insertParagraphs";
       story: OpStory;
-      at: BlockInsertionPoint;
+      at: TableInsertionPoint;
       paragraphs: readonly Paragraph[];
       /** A suggestion records the paragraphs as a move's destination. */
       move?: true;

@@ -135,36 +135,41 @@ export type TableRunInTarget = {
   tables: readonly Table[];
 };
 
-/**
- * The paragraph that receives `paragraph`'s content when its mark runs into
- * the following `table`: the first paragraph of its first cell, through
- * nested tables, where no pending row or cell change stands in the way.
- */
-export const paragraphTableRunInTarget = (
+type TableRunInBoundary =
+  | { type: "receiver"; target: TableRunInTarget }
+  | { type: "blocked"; reason: "section" | "review" | "structure" };
+
+/** The first-cell path, including why it cannot receive paragraph content. */
+export const paragraphTableRunInBoundary = (
   paragraph: Paragraph,
   table: Table,
-): TableRunInTarget | undefined => {
-  if (paragraph.sectionProperties !== undefined) return undefined;
+): TableRunInBoundary => {
+  if (paragraph.sectionProperties !== undefined)
+    return { type: "blocked", reason: "section" };
   const tables: Table[] = [];
   let current = table;
+  let review: "clear" | "pending" = "clear";
   for (;;) {
-    const row = current.rows.at(0);
-    const cell = row?.cells.at(0);
-    if (!row || !cell) return undefined;
+    const row = current.rows.at(0),
+      cell = row?.cells.at(0);
+    if (row === undefined || cell === undefined)
+      return { type: "blocked", reason: "structure" };
     if (
       row.structuralChange?.type === "tableRowInsertion" ||
       row.structuralChange?.type === "tableRowDeletion" ||
       cell.structuralChange !== undefined
-    ) {
-      return undefined;
-    }
+    )
+      review = "pending";
     tables.push(current);
     const target = cell.content.at(0);
-    if (target?.type === "paragraph")
-      return target.sectionProperties === undefined
-        ? { receiver: target, tables }
-        : undefined;
-    if (target?.type !== "table") return undefined;
+    if (target?.type === "paragraph") {
+      if (target.sectionProperties !== undefined)
+        return { type: "blocked", reason: "section" };
+      if (review === "pending") return { type: "blocked", reason: "review" };
+      return { type: "receiver", target: { receiver: target, tables } };
+    }
+    if (target?.type !== "table")
+      return { type: "blocked", reason: "structure" };
     current = target;
   }
 };
@@ -177,15 +182,12 @@ export const paragraphTableRunInTarget = (
  */
 export const markBeforeTableResolves = ({
   blocks,
-  paragraph,
-  table,
+  boundary,
 }: {
   blocks: readonly BlockContent[];
-  paragraph: Paragraph;
-  table: Table;
+  boundary: TableRunInBoundary;
 }): boolean =>
-  blocks.at(-1)?.type === "paragraph" &&
-  paragraphTableRunInTarget(paragraph, table) !== undefined;
+  blocks.at(-1)?.type === "paragraph" && boundary.type === "receiver";
 
 /**
  * Whether `block`, following a paragraph, is a block that paragraph's mark
@@ -248,6 +250,7 @@ export const paragraphMarkOutcome = ({
   followingBlockCanReceiveRunIn = false,
   needsFollowingCommentHost = false,
   tableRemovalIsTrackable = true,
+  emptyInsertedTableBoundary = "unavailable",
   removedSectionProperties = false,
   precedingSectionOwner = "unavailable",
   followingHasSectionProperties = false,
@@ -276,6 +279,8 @@ export const paragraphMarkOutcome = ({
   followingBlockCanReceiveRunIn?: boolean;
   needsFollowingCommentHost?: boolean;
   tableRemovalIsTrackable?: boolean;
+  /** Only a pending-review boundary proved free of source section/structure blockers. */
+  emptyInsertedTableBoundary?: "unavailable" | "pendingReview";
   removedSectionProperties?: boolean;
   precedingSectionOwner?: "unavailable" | "available" | "same" | "occupied";
   followingHasSectionProperties?: boolean;
@@ -302,7 +307,16 @@ export const paragraphMarkOutcome = ({
     case "paragraph":
       return { kind: "join", sectionDestination };
     case "table":
-      if (!tableRemovalIsTrackable)
+      // A rejected insertion owns an empty paragraph, not a run-in source.
+      // Its mark can go without crossing the table when no comment host is
+      // retained; existing marks and content still require a trackable boundary.
+      if (
+        !tableRemovalIsTrackable &&
+        (emptyInsertedTableBoundary !== "pendingReview" ||
+          !markWasAdded ||
+          holdsContent ||
+          needsFollowingCommentHost)
+      )
         return {
           kind: "refuse",
           reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
@@ -404,8 +418,7 @@ export const deleteBlocks = ({
     following?.type === "table" &&
     markBeforeTableResolves({
       blocks: list,
-      paragraph: last.paragraph,
-      table: following,
+      boundary: paragraphTableRunInBoundary(last.paragraph, following),
     });
   const trackedBeforeBlock =
     op.revision !== undefined &&
