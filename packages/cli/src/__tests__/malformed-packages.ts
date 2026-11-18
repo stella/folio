@@ -307,4 +307,5 @@ export const TOOL_ARGUMENTS: Readonly<Record<string, Record<string, unknown>>> =
     proofing_language: {},
     placeholders: {},
     numbering: {},
+    fill_template: { markdown: "# Title" },
   };

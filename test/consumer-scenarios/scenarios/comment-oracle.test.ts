@@ -116,3 +116,35 @@ test("migrated comment ranges require a surviving destination over generated ids
     }
   }
 });
+
+test("a joined comment reads under the last paragraph once the batch deletes it", () => {
+  // Live, "Kept. " runs on into "Joined." through a pending paragraph-mark
+  // deletion; accepted, they are one paragraph, "joined".
+  const joined = row("joined", "Kept. Joined.");
+  const closing = row("closing", "Closing.");
+  const source = row("source", "Kept. ");
+  const live = [source, { ...joined, text: "Joined." }, closing];
+  const before = { id: 1, text: "review", anchor: "Kept.", blockId: joined.id };
+  const liveBefore = { ...before, blockId: source.id };
+  const compare = (deletesClosing: boolean, blockId: string) => {
+    const model = modelOf([joined, closing], live);
+    if (deletesClosing)
+      expectOperation(model, { type: "deleteBlock", blockId: closing.id });
+    return compareComments(
+      model,
+      [before],
+      [{ ...before, blockId }],
+      deletesClosing ? [{ ...joined, id: closing.id }] : [joined, closing],
+      [liveBefore],
+      "tracked-changes",
+    );
+  };
+
+  // Deleting a story's last paragraph keeps its mark: the joined words run
+  // into it and read under its id.
+  assert.deepEqual(compare(true, closing.id), []);
+  assert.match(compare(true, joined.id).join("\n"), /no comment/u);
+  // Otherwise they keep the id of the paragraph the join runs into.
+  assert.deepEqual(compare(false, joined.id), []);
+  assert.match(compare(false, closing.id).join("\n"), /no comment/u);
+});

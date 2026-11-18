@@ -356,6 +356,61 @@ describe("removing what ends a pending join", () => {
     ).toEqual(["Opening. ", "Closing."]);
   });
 
+  // The rest of a batch reads the joined paragraph where its deletion left
+  // it, as after that deletion alone: a list item the join runs into.
+  const beforeListItem = ["- Opening clause.", "- Joined.", "Closing."].join(
+    "\n\n",
+  );
+  const afterDeletion = async (
+    edit: (id: IdOf) => FolioDocumentOperation,
+    together: boolean,
+  ) => {
+    const reviewer = await open(beforeListItem);
+    const id: IdOf = (text) => idOf(reviewer, text);
+    const opening = id("Opening clause.");
+    const joinedId = id("Joined.");
+    expect(
+      apply(reviewer, "tracked-changes", [joinInto(opening)]).skipped,
+    ).toEqual([]);
+    const operations = [edit(() => opening), deleteBlock(joinedId)];
+    const skipped = together
+      ? apply(reviewer, "tracked-changes", operations).skipped
+      : [
+          ...apply(reviewer, "tracked-changes", [operations[1]!]).skipped,
+          ...apply(reviewer, "tracked-changes", [operations[0]!]).skipped,
+        ];
+    return {
+      skipped: skipped.map(({ reason }) => reason),
+      blocks: reviewer.snapshot().blocks.map(({ text, kind }) => ({
+        text,
+        kind,
+      })),
+    };
+  };
+
+  const editsOfTheSource: Record<string, (id: IdOf) => FolioDocumentOperation> =
+    {
+      "a split keeps the list item's properties": (id) => ({
+        id: "split",
+        type: "splitBlock",
+        blockId: id("Opening clause."),
+        offset: 8,
+      }),
+      "a merge meets the break the deletion kept": (id) => ({
+        ...joinInto(id("Opening clause.")),
+        id: "merge",
+        mergedParagraphProperties: { alignment: "center" },
+      }),
+    };
+
+  for (const [name, edit] of Object.entries(editsOfTheSource)) {
+    test(`reads it in the same batch as after the deletion alone (${name})`, async () => {
+      expect(await afterDeletion(edit, true)).toEqual(
+        await afterDeletion(edit, false),
+      );
+    });
+  }
+
   test("lets that break go with the words joined into it", async () => {
     expect(
       await replay(["Opening.", "Joined.", "Closing."].join("\n\n"), [
@@ -641,5 +696,41 @@ describe("blocks put on either side of blocks accepting removes whole", () => {
       "12 months",
     ]);
     expect(await replayReached("tracked-changes")).toEqual(direct);
+  });
+});
+
+describe("a paragraph put before a block the batch restyles, past blocks accepting removes whole", () => {
+  // The batch orders the insertion as at the restyled block, as it does with
+  // nothing between them: the paragraph takes what the block had.
+  const inserted = async (pending: string[]) => {
+    const { reviewer, id } = await withPendingDeletions(
+      ["Opening clause.", "Gone clause.", "Closing clause."].join("\n\n"),
+      pending,
+    );
+    const result = apply(reviewer, "tracked-changes", [
+      {
+        id: "restyle",
+        type: "setBlockParagraphProperties",
+        blockId: id("Closing clause."),
+        properties: { styleId: "Heading2" },
+      },
+      {
+        id: "insert",
+        type: "insertBeforeBlock",
+        blockId: id("Closing clause."),
+        text: "Inserted clause.",
+      },
+    ]);
+    expect(result.skipped).toEqual([]);
+    const block = reviewer
+      .snapshot()
+      .blocks.find(({ text }) => text === "Inserted clause.");
+    return { kind: block?.kind, styleId: block?.styleId };
+  };
+
+  test("takes the same properties as with nothing between them", async () => {
+    const plain = await inserted([]);
+    expect(plain).toEqual({ kind: "paragraph", styleId: undefined });
+    expect(await inserted(["Gone clause."])).toEqual(plain);
   });
 });

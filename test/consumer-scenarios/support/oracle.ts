@@ -927,6 +927,8 @@ type ModelRow = {
   besideTable?: boolean;
   /** A block of a table row the batch deletes, rather than one emptied alone. */
   rowDeleted?: boolean;
+  /** A cell paragraph of a table the batch inserts: no join runs into it. */
+  inInsertedTable?: boolean;
   /** A text box paragraph removed with the paragraph the box is drawn in. */
   removedWithTextBox?: boolean;
   /** For a block inserted next to a text box paragraph: that paragraph, whose box holds it. */
@@ -968,6 +970,8 @@ export type Model = {
   sourceRows: readonly Row[];
   /** Live blocks explicitly deleted by applied operations, including pending joins. */
   deletedBlockIds: Set<string>;
+  /** Live paragraphs whose every word is a pending deletion (`JoinSources`). */
+  deletedContentIds: ReadonlySet<string>;
   /**
    * The live document's numbering, for blocks the accepted package no longer
    * holds (a paragraph pending deletion): what such a block states is what a
@@ -1152,6 +1156,12 @@ export type JoinSources =
       type: "marked";
       ids: ReadonlySet<string>;
       emptyIds: ReadonlySet<string>;
+      /**
+       * Paragraphs whose every word is a pending deletion, whatever their
+       * mark: a merge into one that ends its container has nothing to put a
+       * separator in front of.
+       */
+      deletedContentIds?: ReadonlySet<string>;
     }
   | { type: "assumed" };
 
@@ -1170,6 +1180,18 @@ const joinsOnAccept = (sources: JoinSources, id: string): boolean => {
   }
 };
 
+/** Paragraph content that holds no words: markers a deletion leaves standing. */
+const ZERO_WIDTH_INLINES: ReadonlySet<string> = new Set([
+  "bookmarkStart",
+  "bookmarkEnd",
+  "commentRangeStart",
+  "commentRangeEnd",
+  "moveFromRangeStart",
+  "moveFromRangeEnd",
+  "moveToRangeStart",
+  "moveToRangeEnd",
+]);
+
 /** Paragraph marks accepting removes: a pending deletion, or a move's source. */
 const JOINING_MARK_KINDS: ReadonlySet<string> = new Set(["del", "moveFrom"]);
 
@@ -1177,9 +1199,18 @@ const JOINING_MARK_KINDS: ReadonlySet<string> = new Set(["del", "moveFrom"]);
 const markedJoinSourcesOf = async (bytes: Uint8Array): Promise<JoinSources> => {
   const ids = new Set<string>();
   const emptyIds = new Set<string>();
+  const deletedContentIds = new Set<string>();
   visitParsedParagraphs(
     await parseDocx(toArrayBuffer(bytes), { preloadFonts: false }),
     (paragraph) => {
+      if (
+        paragraph.paraId !== undefined &&
+        paragraph.content.some(({ type }) => type === "deletion") &&
+        paragraph.content.every(
+          ({ type }) => type === "deletion" || ZERO_WIDTH_INLINES.has(type),
+        )
+      )
+        deletedContentIds.add(paragraph.paraId);
       if (
         paragraph.paraId === undefined ||
         paragraph.pPrMark === undefined ||
@@ -1190,7 +1221,7 @@ const markedJoinSourcesOf = async (bytes: Uint8Array): Promise<JoinSources> => {
       if (paragraph.content.length === 0) emptyIds.add(paragraph.paraId);
     },
   );
-  return { type: "marked", ids, emptyIds };
+  return { type: "marked", ids, emptyIds, deletedContentIds };
 };
 
 /**
@@ -1221,6 +1252,10 @@ export const modelOf = (
     liveTextById: new Map(live.map(({ id, text }) => [id, text])),
     sourceRows: live,
     deletedBlockIds: new Set(),
+    deletedContentIds:
+      joinSources.type === "marked"
+        ? (joinSources.deletedContentIds ?? new Set())
+        : new Set(),
     removedNoteStories: new Set(),
     uncertainNoteStories: new Set(),
     noteStoryByBlockId: new Map(),
@@ -2760,6 +2795,19 @@ export const EXPECTATIONS = {
       next.removed = false;
       next.edits.push({ start: 0, end: next.text.length, replace: "" });
       row.mergeSeparator = "";
+    } else if (
+      next?.pre !== undefined &&
+      !next.removed &&
+      next.text === "" &&
+      next.edits.length === 0 &&
+      next.before.length === 0 &&
+      next.after.length === 0 &&
+      model.deletedContentIds.has(next.pre.id) &&
+      isContainerCarrier(model, next)
+    ) {
+      // Its words are pending deletions from before the batch, and it ends
+      // its container: the join meets nothing that stays, so no separator.
+      row.mergeSeparator = "";
     }
     const merged = operation["mergedParagraphProperties"] as
       ParagraphRequest | undefined;
@@ -2804,6 +2852,7 @@ export const EXPECTATIONS = {
       position,
       texts.map((text) => {
         const row = modelRow(text);
+        row.inInsertedTable = true;
         if (holder) row.inTextBoxOf = holder;
         return row;
       }),
@@ -3091,10 +3140,16 @@ const materialize = (model: Model): Expected[] => {
   if (model.story === "removed") return [];
   const out: Expected[] = [];
   let joinNext: { separator: string; container: Container } | undefined;
-  const push = (entry: Expected, container: Container) => {
+  // A join that meets a table ends before it: a paragraph cannot run into
+  // a cell, so the words keep their own paragraph, separator and all.
+  const push = (entry: Expected, container: Container, inTable: boolean) => {
     if (joinNext !== undefined) {
       const previous = out.at(-1);
-      if (previous && sameContainer(joinNext.container, container)) {
+      if (
+        previous &&
+        !inTable &&
+        sameContainer(joinNext.container, container)
+      ) {
         previous.text = `${previous.text}${joinNext.separator}${entry.text}`;
         // A join keeps the first paragraph's properties; formatting offsets no longer hold.
         previous.formats = [];
@@ -3127,6 +3182,7 @@ const materialize = (model: Model): Expected[] => {
             ...(whole && row.pre ? { pre: row.pre } : {}),
           },
           row.pre?.table,
+          row.inInsertedTable === true,
         ),
       );
       if (row.mergeSeparator !== undefined) {
@@ -3521,6 +3577,44 @@ const pendingAnchorMatches = (
     : containsInOrder(actual, old + replacement);
 };
 
+/**
+ * The id the words of `row`, a proven pending join's accepted owner, read
+ * under once accepted. Deleting the last paragraph of a story or cell keeps
+ * its mark (`deletionKeptBlock`): the paragraph before it runs into it, so
+ * when the batch removes every paragraph after `row` in its container, the
+ * words read under the id of that last one. Anything else after `row` (a
+ * block the batch adds, a table) keeps them under `row`'s own id.
+ */
+const acceptedOwnerId = (model: Model, row: ModelRow): string => {
+  const pre =
+    row.pre ?? assert.fail("A proven pending join must have an accepted owner");
+  if (row.after.length > 0) return pre.id;
+  let carrier: Row | undefined;
+  for (const later of model.rows.slice(model.rows.indexOf(row) + 1)) {
+    // A live-only row (a join's source, a paragraph pending deletion) is not
+    // in the accepted document the ids are read from.
+    if (later.outsidePreState === true) continue;
+    // A cell ends where the next one starts; in a story, a table stands
+    // between the words and that story's last paragraph.
+    if (
+      later.pre !== undefined &&
+      pre.table !== undefined &&
+      !sameParagraphContainer(pre, later.pre)
+    )
+      break;
+    if (
+      later.pre === undefined ||
+      !later.removed ||
+      later.before.length > 0 ||
+      later.after.length > 0 ||
+      !sameParagraphContainer(pre, later.pre)
+    )
+      return pre.id;
+    carrier = later.pre;
+  }
+  return carrier?.id ?? pre.id;
+};
+
 export const compareComments = (
   model: Model,
   before: readonly Comment[],
@@ -3599,8 +3693,7 @@ export const compareComments = (
     const owner =
       view.type === "pending-join" &&
       view.destinationPrediction.type === "exact"
-        ? (view.row.pre?.id ??
-          assert.fail("A proven pending join must have an accepted owner"))
+        ? acceptedOwnerId(model, view.row)
         : undefined;
     const index = remaining.findIndex(
       ({ id, text, blockId, anchor: actualAnchor }) =>
