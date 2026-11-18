@@ -1,5 +1,10 @@
 import type { TableBlockIntentOperation } from "../../src/ops/editorIntent";
-import { DOCUMENT_OP_TYPES, OP_STORIES } from "../../src/ops/types";
+import {
+  type BlockInsertionPoint,
+  DOCUMENT_OP_TYPES,
+  type InsertBlocksOp,
+  OP_STORIES,
+} from "../../src/ops/types";
 
 const base = {
   type: DOCUMENT_OP_TYPES.INSERT_TABLE,
@@ -54,3 +59,26 @@ void explicitParagraph;
 void tableAnchor;
 void separatedTable;
 void trailingTable;
+
+const tableSideParagraphs = {
+  type: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+  story: OP_STORIES.MAIN,
+  at: { type: "beforeTable", blockId: "23456789" },
+  blocks: [{ type: "paragraph", paraId: "34567890", content: [] }],
+} as const satisfies InsertBlocksOp;
+const paragraphSide = {
+  type: "before",
+  blockId: "23456789",
+} as const satisfies BlockInsertionPoint;
+// @ts-expect-error Paragraph-only insertion points cannot stand in for a table boundary.
+const tableAsParagraph: BlockInsertionPoint = tableSideParagraphs.at;
+const unknownBoundary = {
+  ...tableSideParagraphs,
+  at: { type: "insideTable", blockId: "23456789" },
+} as const;
+// @ts-expect-error Table insertion is beside its table, never an implicit cell insertion.
+const unsupportedBoundary: InsertBlocksOp = unknownBoundary;
+void tableSideParagraphs;
+void paragraphSide;
+void tableAsParagraph;
+void unsupportedBoundary;

@@ -228,7 +228,7 @@ export const applyBatch = (
         type: TOUCHED_BLOCKS_EFFECT,
         blockIds: [...new Set([...modified, ...inserted, ...removed])],
       };
-    } else if (sequencedEffectType(op.type) === TOUCHED_BLOCKS_EFFECT) {
+    } else if (sequencedEffectType(op) === TOUCHED_BLOCKS_EFFECT) {
       effect = blockScopedEffect(
         current,
         applied.value.document,

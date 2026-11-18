@@ -99,6 +99,7 @@ import {
   applyAll,
   count,
   COVERAGE_RUNS,
+  EXACT_BLOCK_REMOVAL_INVERSE_KINDS,
   expectEveryKindApplied,
   expectRestores,
   inTurn,
@@ -118,6 +119,7 @@ import {
   assertOutsideRunReviewCoverage,
   resolvePendingRunFormatting,
 } from "./runPropertyReviewOracle";
+import { tableBoundaryWireCases } from "./wireFixtures";
 
 setDefaultTimeout(propertyTestTimeout(240_000));
 
@@ -150,6 +152,31 @@ const expectCompactIntentIds = (
     current = applied.document;
   }
 };
+
+test("exact block removal inverse kinds are exercised by real table-side insertion producers", () => {
+  const declared = new Set(
+    Object.entries(EXACT_BLOCK_REMOVAL_INVERSE_KINDS).flatMap(([type, kinds]) =>
+      kinds.map((kind) => `${type}:${kind}`),
+    ),
+  );
+  const exercised = new Set<string>();
+  for (const { before, edit } of tableBoundaryWireCases()) {
+    expect(edit.inverse).toHaveLength(1);
+    for (const op of edit.inverse) {
+      const undone = applyDocumentOp(edit.document, op).unwrap();
+      const allowed: readonly DocumentOpType[] = INVERSE_KINDS[op.type];
+      expect(undone.inverse).toHaveLength(1);
+      for (const inverse of undone.inverse) {
+        expect(allowed).toContain(inverse.type);
+        const pair = `${op.type}:${inverse.type}`;
+        if (declared.has(pair)) exercised.add(pair);
+      }
+      expect(undone.document).toStrictEqual(before);
+      expectRestores(undone, edit.document);
+    }
+  }
+  expect([...exercised].toSorted()).toEqual([...declared].toSorted());
+});
 
 test("note lifecycle inverse kinds are exercised by actual direct and tracked producers", () => {
   const declaredAdditions = new Set(

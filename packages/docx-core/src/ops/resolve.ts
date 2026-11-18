@@ -32,7 +32,7 @@ import {
   markBeforeTableResolves,
   paragraphBlockRunInTarget,
   paragraphMarkOutcome,
-  paragraphTableRunInTarget,
+  paragraphTableRunInBoundary,
   type TableRunInTarget,
 } from "./blockDeletion";
 import {
@@ -3198,10 +3198,12 @@ const joinOps = (
   // A cell-ending mark describes the terminator, not a paragraph to retire.
   const cellFinal =
     containerFinal && location.list.some((step) => step.kind === "tableCell");
-  const tableTarget =
+  const tableBoundary =
     next?.type === "table"
-      ? paragraphTableRunInTarget(paragraph, next)
+      ? paragraphTableRunInBoundary(paragraph, next)
       : undefined;
+  const tableTarget =
+    tableBoundary?.type === "receiver" ? tableBoundary.target : undefined;
   const blockTarget =
     next !== undefined && followsBlock
       ? paragraphBlockRunInTarget(paragraph, next)
@@ -3251,7 +3253,12 @@ const joinOps = (
       remains.length > 0,
     tableRemovalIsTrackable:
       next?.type !== "table" ||
-      markBeforeTableResolves({ blocks, paragraph, table: next }),
+      (tableBoundary !== undefined &&
+        markBeforeTableResolves({ blocks, boundary: tableBoundary })),
+    emptyInsertedTableBoundary:
+      tableBoundary?.type === "blocked" && tableBoundary.reason === "review"
+        ? "pendingReview"
+        : "unavailable",
     removedSectionProperties:
       added && paragraph.sectionProperties !== undefined,
     precedingSectionOwner: precedingSectionOwner(previous, paragraph),

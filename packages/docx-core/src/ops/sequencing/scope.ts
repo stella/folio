@@ -23,6 +23,7 @@ import {
   type BatchRejectionReason,
   EXCLUSIVE_PARTS,
   type ExclusivePart,
+  sequencedEffectType,
   type SequencedOpEffect,
   TABLE_EXCLUSIVE_OP_TYPES,
 } from "./envelope";
@@ -51,7 +52,9 @@ type OpFootprint = {
  * paragraph: rows, columns, cells, grid or the table's own properties.
  */
 export const restructuresTable = (op: DocumentOp): boolean =>
-  Object.hasOwn(TABLE_EXCLUSIVE_OP_TYPES, op.type);
+  Object.hasOwn(TABLE_EXCLUSIVE_OP_TYPES, op.type) ||
+  (op.type === DOCUMENT_OP_TYPES.INSERT_BLOCKS &&
+    sequencedEffectType(op) === TOUCHED_BLOCKS_EFFECT);
 
 type PayloadFacts = { paraIds: string[]; numIds: number[]; sections: boolean };
 
@@ -155,7 +158,9 @@ const footprintOf = (op: DocumentOp): OpFootprint => {
         ),
       );
     case DOCUMENT_OP_TYPES.INSERT_BLOCKS:
-      return positional([op.at.blockId]);
+      return restructuresTable(op)
+        ? scoped([op.at.blockId])
+        : positional([op.at.blockId]);
     // Decisions address revisions by id: no offset of theirs moves.
     case DOCUMENT_OP_TYPES.RESOLVE_REVISION:
       return positional(
@@ -486,7 +491,8 @@ const tableParagraphIds = (
 ): readonly string[] => {
   let targetId = "blockId" in op ? op.blockId : undefined;
   if (
-    op.type === DOCUMENT_OP_TYPES.INSERT_TABLE &&
+    (op.type === DOCUMENT_OP_TYPES.INSERT_TABLE ||
+      op.type === DOCUMENT_OP_TYPES.INSERT_BLOCKS) &&
     (op.at.type === "beforeTable" || op.at.type === "afterTable")
   )
     targetId = op.at.blockId;
