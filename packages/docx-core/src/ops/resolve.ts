@@ -96,6 +96,7 @@ import { edgeChain, edgeChainPastRemoved } from "./resolvedEdges";
 import { reachableRowIds, resolveTableRows } from "./resolveTableRows";
 import {
   isAddedRevision,
+  isRemovedRevisionNode,
   isTrackedWrapper,
   reviewFieldsOf,
   type TrackedWrapper,
@@ -1797,9 +1798,11 @@ const resolveList = ({
   /** Seams a kept revision's own joins recorded at its edges. */
   const keptJoinSeams = new Set<number>();
   /**
-   * Of those, the seams with that revision's own content just before them
-   * (its join after) or just after them (its join before). That content is
-   * authored, not boundaries an earlier rejection kept at the seam.
+   * Of those a rejected deletion or move source recorded, the seams with its
+   * own content just before them (its join after) or just after them (its
+   * join before). That content is authored, not boundaries an earlier
+   * rejection kept at the seam. (An accepted insertion's join can be one a
+   * seam handed over to it, which its content stands inside.)
    */
   const ownContentBefore = new Set<number>();
   const ownContentAfter = new Set<number>();
@@ -2008,7 +2011,7 @@ const resolveList = ({
         recordSourceSeam(out.length, node.resolutionJoins.before);
         if (node.resolutionJoins.before > 0) {
           keptJoinSeams.add(out.length);
-          ownContentAfter.add(out.length);
+          if (isRemovedRevisionNode(node)) ownContentAfter.add(out.length);
         }
         if (
           node.resolutionJoins.before > 0 &&
@@ -2065,7 +2068,7 @@ const resolveList = ({
         recordSourceSeam(out.length, node.resolutionJoins.after);
         if (node.resolutionJoins.after > 0) {
           keptJoinSeams.add(out.length);
-          ownContentBefore.add(out.length);
+          if (isRemovedRevisionNode(node)) ownContentBefore.add(out.length);
         }
         if (
           node.resolutionJoins.after > 0 &&
