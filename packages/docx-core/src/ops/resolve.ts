@@ -2391,7 +2391,16 @@ const resolveList = ({
     const count = after + before;
     const left = out[seam - count - 1];
     const right = out[seam];
-    if (count === 0 || left === undefined || right === undefined) continue;
+    // A boundary across the seam from them is no piece the cut split: with
+    // no record on that side, as at the paragraph's start, they stand where
+    // they are.
+    if (
+      count === 0 ||
+      left === undefined ||
+      right === undefined ||
+      isStandingBoundary((after > 0 ? left : right).node)
+    )
+      continue;
     exactSeams.delete(recorded);
     exactSeams.set(seam, Math.max(exactSeams.get(seam) ?? 0, depth));
     // Boundaries this resolution kept there already float with the removal
