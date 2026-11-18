@@ -766,24 +766,34 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
       // an insertion against a deletion's range is the typing and deletion
       // class, and a hard inline split or join (rejoining or cutting a
       // record exactly) the record cutting class, each with rules of its own.
-      // The refusal names operation types only: when an excluded operation
-      // of a named type is among them, it may be the one refused.
+      // A direct deletion overlapping a tracked one that supplies revision
+      // ids refuses in both orders, outside the policy. The refusal names
+      // operation types only: when an excluded operation or pair of a named
+      // type is among them, it may be the one refused.
       const atRefusal = restoredOps(opsAtRefusal(batch, tail));
       const remoteOps = restoredOps(refusing);
+      const named = (op: DocumentOp, other: DocumentOp): boolean =>
+        (op.type === opType && other.type === overType) ||
+        (op.type === overType && other.type === opType);
       const excluded = (op: DocumentOp): boolean =>
         holdsPreconditions(op) || cutsRecordsExactly(op);
-      const ambiguous = [...atRefusal, ...remoteOps].some(
-        (op) => (op.type === opType || op.type === overType) && excluded(op),
-      );
+      const ambiguous =
+        [...atRefusal, ...remoteOps].some(
+          (op) => (op.type === opType || op.type === overType) && excluded(op),
+        ) ||
+        atRefusal.some((op) =>
+          remoteOps.some(
+            (other) =>
+              named(op, other) &&
+              trackedTransform.fragmentedDeletionOverlap(op, other),
+          ),
+        );
       for (const op of ambiguous ? [] : atRefusal)
         for (const other of remoteOps) {
           const kind = trackedTransform.trackedOrderPair(op, other);
-          const named =
-            (op.type === opType && other.type === overType) ||
-            (op.type === overType && other.type === opType);
           if (
             kind !== undefined &&
-            named &&
+            named(op, other) &&
             !holdsPreconditions(op) &&
             !holdsPreconditions(other) &&
             !insertionAgainstDeletion(op, other) &&
