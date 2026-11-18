@@ -1898,6 +1898,22 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_4CFD6DADC63EEB36 = {
   },
 } satisfies CanonicalRegression;
 
+/** Typing over everything after a suggested paste retires the comment it covers (#2903). */
+export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_328C996278E3AB12 = {
+  authority: "canonical",
+  seed: 1794983381,
+  path: "18:3:2:2",
+  fingerprint: "canonical-328c996278e3ab12",
+  trace: {
+    shape: "comments",
+    actions: [
+      { kind: "pasteMultiBlock", ...BROWSER_PASTE_PAYLOADS.pasteMultiBlock },
+      { kind: "selectAll" },
+      { kind: "typing", text: "alpha" },
+    ],
+  },
+} satisfies CanonicalRegression;
+
 /**
  * A canonical trace that commits other text than the default editor by
  * design: the canonical session is the authority, and `reason` says why. The
@@ -2124,4 +2140,5 @@ export const BROWSER_INPUT_REGRESSIONS = [
   CANONICAL_REPLAY_OF_DEFAULT_FINDING_4AB7DCA19B12D16D,
   CANONICAL_MIXED_LIST_GENERIC_HTML_VARIANT,
   CANONICAL_REPLAY_OF_DEFAULT_FINDING_4CFD6DADC63EEB36,
+  CANONICAL_REPLAY_OF_DEFAULT_FINDING_328C996278E3AB12,
 ];
