@@ -1838,6 +1838,14 @@ const resolveList = ({
   const removalSeams = new Set<number>();
   /** Seams a kept revision's own joins recorded at its edges. */
   const keptJoinSeams = new Set<number>();
+  /** The date of the earliest kept revision whose join recorded each seam. */
+  const keptJoinDates = new Map<number, string>();
+  const recordKeptJoin = (seam: number, node: TrackedWrapper): void => {
+    keptJoinSeams.add(seam);
+    const date = node.info.date ?? "";
+    const known = keptJoinDates.get(seam);
+    if (known === undefined || date < known) keptJoinDates.set(seam, date);
+  };
   /**
    * Of those a rejected deletion or move source recorded, the seams with its
    * own content just before them (its join after) or just after them (its
@@ -2051,7 +2059,7 @@ const resolveList = ({
       else {
         recordSourceSeam(out.length, node.resolutionJoins.before);
         if (node.resolutionJoins.before > 0) {
-          keptJoinSeams.add(out.length);
+          recordKeptJoin(out.length, node);
           if (isRemovedRevisionNode(node)) ownContentAfter.add(out.length);
         }
         if (
@@ -2108,7 +2116,7 @@ const resolveList = ({
       else {
         recordSourceSeam(out.length, node.resolutionJoins.after);
         if (node.resolutionJoins.after > 0) {
-          keptJoinSeams.add(out.length);
+          recordKeptJoin(out.length, node);
           if (isRemovedRevisionNode(node)) ownContentBefore.add(out.length);
         }
         if (
@@ -2876,11 +2884,42 @@ const resolveList = ({
         holdsPiece(rightStart, "start")
           ? rightStart
           : undefined;
+      // A kept revision's join belongs to the record that revision cut,
+      // counting that record's own tracked wrapper as its first level.
+      // Insertions made before the revision there are no changes made inside
+      // that record but pieces of it: rejecting them takes that wrapper away,
+      // so the seam they defer joins the pieces beyond them one level less
+      // deep, and not at all when that wrapper was all the revision cut.
+      const keptJoinFrom = removalSeams.has(recorded)
+        ? undefined
+        : keptJoinDates.get(recorded);
+      const earlier = (index: number): boolean => {
+        const node = out[index]?.node;
+        return (
+          keptJoinFrom !== undefined &&
+          node !== undefined &&
+          isTrackedWrapper(node) &&
+          (node.info.date ?? "") < keptJoinFrom
+        );
+      };
+      const piecesOnly =
+        leftHolder === undefined &&
+        rightHolder === undefined &&
+        Array.from(
+          { length: keptEnd - leftEnd },
+          (_, offset) => leftEnd + 1 + offset,
+        ).every(earlier) &&
+        Array.from(
+          { length: rightStart - seam },
+          (_, offset) => seam + offset,
+        ).every(earlier);
+      const deferredDepth = piecesOnly ? exactDepth - 1 : exactDepth;
       if (
         (leftEnd !== keptEnd ||
           rightStart !== seam ||
           leftHolder !== undefined ||
           rightHolder !== undefined) &&
+        deferredDepth > 0 &&
         leftEnd >= 0 &&
         rightStart < out.length
       ) {
@@ -2920,7 +2959,7 @@ const resolveList = ({
           let edge: { edge?: "start" | "end" } = {};
           if (index === leftHolder) edge = { edge: "end" };
           if (index === rightHolder) edge = { edge: "start" };
-          groups.push({ depth: exactDepth, blockers, ...keptFrom, ...edge });
+          groups.push({ depth: deferredDepth, blockers, ...keptFrom, ...edge });
           out[index] = occurrenceOf(
             Object.assign({}, node, {
               resolutionJoins: Object.assign({}, node.resolutionJoins, {
