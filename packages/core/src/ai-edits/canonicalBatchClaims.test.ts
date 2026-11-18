@@ -684,3 +684,138 @@ for (const columns of [1, 2])
       }
       expect(presentations[1]).toEqual(presentations[0]);
     });
+
+for (const mode of ["direct", "tracked-changes"] as const)
+  for (const reverse of [false, true])
+    test(`${mode}: an insertion after a block and its merge claim one gap (reverse=${reverse})`, async () => {
+      const outcomes: unknown[] = [];
+      for (const session of ["legacy", "canonical"] as const) {
+        const reviewer = await FolioDocxReviewer.fromBuffer(
+          await paragraphsDocx([
+            [textRun("Alpha.")],
+            [textRun("Bravo.")],
+            [textRun("Charlie.")],
+          ]),
+          { session },
+        );
+        const first =
+          reviewer.snapshot().blocks[0]?.id ??
+          panic("The fixture needs its first paragraph");
+        const operations = [
+          {
+            id: "insert",
+            type: "insertAfterBlock",
+            blockId: first,
+            text: "New.",
+          },
+          { id: "merge", type: "mergeBlockWithNext", blockId: first },
+        ] as const satisfies readonly FolioDocumentOperation[];
+        const result = reviewer.applyDocumentOperations(
+          {
+            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+            mode,
+            operations: reverse ? operations.toReversed() : [...operations],
+          },
+          { undefinedReferences: "refuse" },
+        );
+        const final = await FolioDocxReviewer.fromBuffer(
+          await reviewer.toBuffer(),
+          { session },
+        );
+        if (mode === "tracked-changes")
+          expect(final.acceptAll().skipped).toEqual([]);
+        outcomes.push({
+          skipped: result.skipped.map(({ id, reason }) => ({ id, reason })),
+          texts: final.getContent().map(({ text }) => text),
+        });
+      }
+      expect(outcomes[0]).toEqual({
+        skipped: [
+          {
+            id: reverse ? "insert" : "merge",
+            reason: "overlappingOperation",
+          },
+        ],
+        texts: reverse
+          ? ["Alpha.Bravo.", "Charlie."]
+          : ["Alpha.", "New.", "Bravo.", "Charlie."],
+      });
+      expect(outcomes[1]).toEqual(outcomes[0]);
+    });
+
+for (const mode of ["direct", "tracked-changes"] as const)
+  for (const reverse of [false, true])
+    test(`${mode}: a column inserted after a one-column table's only column survives its deletion (reverse=${reverse})`, async () => {
+      const bytes = (
+        await ensureParaIds(
+          new Uint8Array(
+            await createDocx(
+              fromMarkdown(
+                "Lead paragraph.\n\n| Only |\n| --- |\n| B1 |\n\nTail paragraph.",
+              ),
+            ),
+          ),
+        )
+      ).docx.slice().buffer;
+      const outcomes: unknown[] = [];
+      for (const session of ["legacy", "canonical"] as const) {
+        const reviewer = await FolioDocxReviewer.fromBuffer(bytes, { session });
+        const cellBlockId =
+          reviewer.snapshot().blocks.find((block) => block.text === "B1")?.id ??
+          panic("A fixture cell is missing");
+        const operations = [
+          {
+            id: "insert",
+            type: "insertTableColumn",
+            blockId: cellBlockId,
+            position: "after",
+            cellTexts: ["Added", "A1"],
+          },
+          { id: "delete", type: "deleteTableColumn", blockId: cellBlockId },
+        ] as const satisfies readonly FolioDocumentOperation[];
+        const result = reviewer.applyDocumentOperations(
+          {
+            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+            mode,
+            operations: reverse ? operations.toReversed() : [...operations],
+          },
+          { undefinedReferences: "refuse" },
+        );
+        const final = await FolioDocxReviewer.fromBuffer(
+          await reviewer.toBuffer(),
+          { session },
+        );
+        if (mode === "tracked-changes")
+          expect(final.acceptAll().skipped).toEqual([]);
+        outcomes.push({
+          applied: result.applied.map(({ id }) => id).toSorted(),
+          skipped: result.skipped.map(({ id, reason }) => ({ id, reason })),
+          texts: final.getContent().map(({ text }) => text),
+        });
+      }
+      const kept = {
+        applied: ["delete", "insert"],
+        skipped: [],
+        texts: ["Lead paragraph.", "Added", "A1", "Tail paragraph."],
+      };
+      // Both engines remove only the source column. Tracked, the canonical
+      // session asks for the table's pending review to be resolved first and
+      // leaves the table, the inserted column included, standing.
+      expect(outcomes).toEqual([
+        kept,
+        mode === "direct"
+          ? kept
+          : {
+              applied: ["insert"],
+              skipped: [{ id: "delete", reason: "unsupportedBlock" }],
+              texts: [
+                "Lead paragraph.",
+                "Only",
+                "Added",
+                "B1",
+                "A1",
+                "Tail paragraph.",
+              ],
+            },
+      ]);
+    });

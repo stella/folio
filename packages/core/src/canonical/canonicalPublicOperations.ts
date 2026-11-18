@@ -237,6 +237,16 @@ const canonicalBatchPlan = ({
     address: { type: "content", position, rank: 1, inputIndex },
     insertionRun: null,
   });
+  /**
+   * The block gap an insertion at `from` lands in, as every other claim names
+   * block boundaries: past the paragraph's node, or before it, when `from` is
+   * a text position at its end or start.
+   */
+  const gapAt = (side: "before" | "after") => {
+    const $from = doc.resolve(from);
+    if (!$from.parent.isTextblock) return from;
+    return side === "after" ? $from.after() : $from.before();
+  };
   const row = () =>
     findEnclosingTableRow(doc, block) ??
     panic("A resolved table operation lost its source row", {
@@ -294,7 +304,11 @@ const canonicalBatchPlan = ({
       });
     case "insertBeforeBlock":
     case "insertAfterBlock": {
-      const plan = content({ type: "insertion", at: from });
+      // It executes at its text position (the address) and claims the gap.
+      const plan = content({
+        type: "insertion",
+        at: gapAt(operation.type === "insertAfterBlock" ? "after" : "before"),
+      });
       // Matching the native owner: redirected or commented insertions do not
       // share a provisional insertion run with their neighbours.
       const hasComment = operation.comment !== undefined;
@@ -307,7 +321,10 @@ const canonicalBatchPlan = ({
     }
     case "insertTable":
     case "insertSignatureTable":
-      return content({ type: "insertion", at: from });
+      return content({
+        type: "insertion",
+        at: gapAt(operation.position ?? "after"),
+      });
     case "deleteTable": {
       const target = row();
       return content({
@@ -2261,25 +2278,34 @@ const batchPropertyRefusal = ({
 type MapColumnDeletionIntentsOptions = {
   intents: readonly EditorIntent[];
   columnIndex: number;
+  /** Columns the batch inserted in the gap before the deleted one. */
   inserted: number;
+  /** Columns the batch inserted in the gap after it. */
+  insertedAfter: number;
 };
 
-/** The native column applier uses the same successful same-gap insertion count. */
+/**
+ * The native column applier uses the same successful same-gap insertion
+ * count; a column inserted on either side keeps a one-column table standing.
+ */
 const mapColumnDeletionIntents = ({
   intents,
   columnIndex,
   inserted,
+  insertedAfter,
 }: MapColumnDeletionIntentsOptions): readonly EditorIntent[] => {
-  if (inserted === 0) return intents;
+  if (inserted === 0 && insertedAfter === 0) return intents;
   return intents.map((intent): EditorIntent => {
     if (
       intent.type === "table" &&
       intent.operation.type === DOCUMENT_OP_TYPES.DELETE_COLUMN
     )
-      return {
-        type: "table",
-        operation: { ...intent.operation, column: columnIndex + inserted },
-      };
+      return inserted === 0
+        ? intent
+        : {
+            type: "table",
+            operation: { ...intent.operation, column: columnIndex + inserted },
+          };
     // A source table with one column no longer disappears after the batch
     // inserts beside that column: remove the original column, keeping the new.
     if (
@@ -2835,6 +2861,13 @@ export class CanonicalPublicOperations {
               columnIndex: column.columnIndex,
               inserted:
                 columnInsertions.get(getTableColumnCoordinateKey(column)) ?? 0,
+              insertedAfter:
+                columnInsertions.get(
+                  getTableColumnCoordinateKey({
+                    ...column,
+                    columnIndex: column.columnIndex + 1,
+                  }),
+                ) ?? 0,
             })
           : intents;
       const compiled = compilePublicIntents({
