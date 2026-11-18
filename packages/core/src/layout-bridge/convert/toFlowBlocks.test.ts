@@ -3703,6 +3703,55 @@ describe("toFlowBlocks list numbering", () => {
     });
   });
 
+  test("an inserted paragraph shows no marker for numbering it lost", () => {
+    // A suggested paste split a numbered item: the new paragraph records the
+    // item's numbering as removed, but had no number before the change. The
+    // marker it would show is the same whether the change was just made (a
+    // rendered label) or read back from the file (the level's template).
+    for (const listMarker of ["2.", "%1."]) {
+      const doc = schema.node("doc", null, [
+        schema.node(
+          "paragraph",
+          {
+            numPr: { kind: "reference", numId: 1, ilvl: 0 },
+            listMarker: "1.",
+            listNumFmt: "decimal",
+            listIsBullet: false,
+          },
+          [schema.text("Numbered item")],
+        ),
+        schema.node(
+          "paragraph",
+          {
+            pPrMark: {
+              kind: "ins",
+              info: { id: 20, author: "Reviewer", date: "2026-01-02" },
+            },
+            _propertyChanges: [
+              {
+                type: "paragraphPropertyChange",
+                info: { id: 21, author: "Reviewer", date: "2026-01-02" },
+                previousFormatting: {
+                  numPr: { kind: "reference", numId: 1, ilvl: 0 },
+                  listIsBullet: false,
+                  listNumFmt: "decimal",
+                  listMarker,
+                  listMarkerTemplate: "%1.",
+                },
+              },
+            ],
+          },
+          [schema.text("Pasted paragraph")],
+        ),
+      ]);
+
+      const block = toFlowBlocks(doc).at(1);
+
+      expect(block?.attrs?.listMarker).toBeUndefined();
+      expect(block?.attrs?.listMarkerRevision).toBeUndefined();
+    }
+  });
+
   test("styles a resolved removed-numbering marker as a tracked deletion", () => {
     const doc = schema.node("doc", null, [
       schema.node(

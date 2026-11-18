@@ -1985,6 +1985,19 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_4CFD6DADC63EEB36 = {
   },
 } satisfies CanonicalRegression;
 
+/** The same #2596 trace in the default editor: pasted paragraphs show no lost number. */
+export const BROWSER_PASTE_SPLITTING_NUMBERED_ITEM_SEED_1794465004 = {
+  seed: 1794465004,
+  path: "10",
+  fingerprint: "4cfd6dadc63eeb36",
+  trace: CANONICAL_REPLAY_OF_DEFAULT_FINDING_4CFD6DADC63EEB36.trace,
+} satisfies {
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
 /** Typing over everything after a suggested paste retires the comment it covers (#2903). */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_328C996278E3AB12 = {
   authority: "canonical",
@@ -2231,5 +2244,6 @@ export const BROWSER_INPUT_REGRESSIONS = [
   BROWSER_TABLE_PASTE_AT_DOCUMENT_END_SEED_1794637615,
   CANONICAL_MIXED_LIST_GENERIC_HTML_VARIANT,
   CANONICAL_REPLAY_OF_DEFAULT_FINDING_4CFD6DADC63EEB36,
+  BROWSER_PASTE_SPLITTING_NUMBERED_ITEM_SEED_1794465004,
   CANONICAL_REPLAY_OF_DEFAULT_FINDING_328C996278E3AB12,
 ];
