@@ -8,13 +8,8 @@ import { storyBody, storyParagraphs } from "./blocks";
 import { type CompileIntent, nextCompoundMode } from "./compoundIntent";
 import type { EditorIntentMode } from "./editorIntent";
 import { resolveGap } from "./gaps";
-import {
-  formatParaId,
-  freshLeasedIds,
-  ID_LEASE_KINDS,
-  type IdLease,
-} from "./idLease";
-import { idKey, packageBookmarkCensus, packageParagraphIds } from "./ids";
+import { takeParagraphIds } from "./idLease";
+import { idKey, packageBookmarkCensus } from "./ids";
 import { paragraphLength, paragraphLogicalText } from "./offsets";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { sameStory } from "./stories";
@@ -77,30 +72,6 @@ const takeBookmarkId = (
     return id;
   }
   return undefined;
-};
-
-type TakeParagraphIdsOptions = {
-  document: Document;
-  count: number;
-  reserved: ReadonlySet<string> | undefined;
-  lease: IdLease | undefined;
-};
-const takeParagraphIds = ({
-  document,
-  count,
-  reserved,
-  lease,
-}: TakeParagraphIdsOptions): string[] | undefined => {
-  const occupied = new Set(
-    [...packageParagraphIds(document.package), ...(reserved ?? [])].map(idKey),
-  );
-  const ids = freshLeasedIds({
-    lease,
-    kind: ID_LEASE_KINDS.PARAGRAPH,
-    count,
-    taken: (id) => occupied.has(formatParaId(id)),
-  });
-  return ids.length === count ? ids.map(formatParaId) : undefined;
 };
 
 const takeBookmarkName = (

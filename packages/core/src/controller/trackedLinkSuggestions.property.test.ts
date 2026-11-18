@@ -51,7 +51,7 @@ const PARA_ID = "12345678";
 const DATE = "2026-01-01T00:00:00Z";
 const TYPED_REFUSALS = [
   "A link suggestion cannot strike text beside a marker inside the same link.",
-  "A link suggestion cannot copy content that names a record of its own, such as a drawing or a note reference.",
+  "A link suggestion cannot copy content that names a record of its own, such as a note reference.",
   "A link suggestion cannot copy text inside a content control or a direction or smart tag wrapper.",
 ];
 
