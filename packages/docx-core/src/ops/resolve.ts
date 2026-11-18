@@ -2421,6 +2421,10 @@ const resolveList = ({
     const left = out[seam - count - 1];
     const right = out[seam];
     if (count === 0 || left === undefined || right === undefined) continue;
+    // With no kept provenance on the seam, only boundaries between two
+    // pieces it joins can be ones a rejection kept there. Beside records it
+    // does not join they are the document's own and stay where they are.
+    if (kept === undefined && !sameOwnFields(left.node, right.node)) continue;
     exactSeams.delete(recorded);
     exactSeams.set(seam, Math.max(exactSeams.get(seam) ?? 0, depth));
     // Boundaries this resolution kept there already float with the removal

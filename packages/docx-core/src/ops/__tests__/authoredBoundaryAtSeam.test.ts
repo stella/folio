@@ -192,3 +192,54 @@ test("a removed cut whose pieces all go floats no boundary beyond them", () => {
     },
   ]);
 });
+
+test("a rejected deletion's join floats no boundary into a record it does not join", () => {
+  // Two deletions of a run's two parts: accepting the second and then
+  // rejecting the first, or the other way round, leaves the bookmark after
+  // them where it was, outside the insertion that follows.
+  const source = paragraph([
+    {
+      type: "run",
+      content: [{ type: "tab" }, { type: "text", text: "aaaa" }],
+    },
+    { type: "bookmarkStart", id: 1, name: "_Ref1" },
+    { type: "insertion", info: { id: 1, author: "A" }, content: [text("b")] },
+  ]);
+  const first = apply(source, {
+    type: "deleteRange",
+    from: { story: OP_STORIES.MAIN, blockId: "00000001", offset: 0 },
+    to: { story: OP_STORIES.MAIN, blockId: "00000001", offset: 1 },
+    newIds: NEW_IDS,
+    revision: revision(2, 0),
+  });
+  const tracked = apply(first, {
+    type: "deleteRange",
+    from: { story: OP_STORIES.MAIN, blockId: "00000001", offset: 1 },
+    to: { story: OP_STORIES.MAIN, blockId: "00000001", offset: 5 },
+    newIds: NEW_IDS,
+    revision: revision(3, 1),
+  });
+  const removedTab = idsDated(tracked, 0);
+  const removedText = idsDated(tracked, 1);
+  const acceptedFirst = resolve(
+    resolve(tracked, removedText, REVISION_DECISIONS.ACCEPT),
+    removedTab,
+    REVISION_DECISIONS.REJECT,
+  );
+  const rejectedFirst = resolve(
+    resolve(tracked, removedTab, REVISION_DECISIONS.REJECT),
+    removedText,
+    REVISION_DECISIONS.ACCEPT,
+  );
+  for (const resolved of [acceptedFirst, rejectedFirst])
+    expect(resolved.package.document.content).toMatchObject([
+      {
+        type: "paragraph",
+        content: [
+          { type: "run", content: [{ type: "tab" }] },
+          { type: "bookmarkStart", id: 1 },
+          { type: "insertion", content: [text("b")] },
+        ],
+      },
+    ]);
+});
