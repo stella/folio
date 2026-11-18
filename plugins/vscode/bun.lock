@@ -17,6 +17,7 @@
       },
     },
   },
+  "trustedDependencies": [],
   "overrides": {
     "fast-uri": "3.1.9",
     "follow-redirects": "1.16.3",
