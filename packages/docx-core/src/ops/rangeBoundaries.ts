@@ -705,11 +705,18 @@ export const withSeamBoundariesInside = ({
   const boundaries = [...left.slice(leftEnd), ...right.slice(0, rightStart)];
   const before = left.at(leftEnd - 1);
   const after = right.at(rightStart);
+  // Pieces still held in a pending deletion or move source stand only once
+  // it is rejected: the boundaries stand between them, as a seam inside the
+  // paragraph leaves them beside such a piece.
+  const heldInRemoval = (node: InlineNode): boolean =>
+    node.type === "deletion" || node.type === "moveFrom";
   if (
     boundaries.length === 0 ||
     before === undefined ||
     after === undefined ||
-    !sameOwnFields(before, after)
+    !sameOwnFields(before, after) ||
+    heldInRemoval(before) ||
+    heldInRemoval(after)
   )
     return { left, right };
   const intoAfter = withBoundariesAtEdge(after, boundaries, depth, "start");
