@@ -1016,6 +1016,26 @@ export const BROWSER_TABLE_CUT_PASTE_SEED_1794032767 = {
 };
 
 /** A list pasted over words running to a paragraph's end, while suggesting. */
+/** A table pasted over everything leaves the caret in its last cell. */
+export const BROWSER_TABLE_PASTE_OVER_EVERYTHING_SEED_1794896995 = {
+  seed: 1794896995,
+  path: "1:5:3:2:2",
+  fingerprint: "8daa28ea1bbd2663",
+  trace: {
+    shape: "invisible-markers",
+    actions: [
+      { kind: "selectAll" },
+      { kind: "pasteTable", ...BROWSER_PASTE_PAYLOADS.pasteTable },
+      { kind: "typing", text: "alpha" },
+    ],
+  },
+} satisfies {
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
 export const BROWSER_NOTES_LIST_PASTE_SEED_29 = {
   seed: 29,
   path: "15:2",
@@ -2089,6 +2109,7 @@ export const BROWSER_INPUT_REGRESSIONS = [
   BROWSER_LIST_SEED_47,
   BROWSER_TABLE_SEED_29,
   BROWSER_TABLE_CUT_PASTE_SEED_1794032767,
+  BROWSER_TABLE_PASTE_OVER_EVERYTHING_SEED_1794896995,
   BROWSER_CANCELLED_COMPOSITION_SEED_1793946574,
   BROWSER_PASTE_BEHIND_BOOKMARK_SEED_1793921366,
   BROWSER_RTL_COMPOSITION_SEED_1793914965,

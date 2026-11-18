@@ -640,8 +640,13 @@ export function handleSuggestionPaste(
   // Fit open block clipboard edges against the same container boundaries as
   // direct select-all replacement. Fitting beside the struck final paragraph
   // instead can create an empty row at an open table edge.
+  // The fitted slice is the whole document the direct paste leaves, so where
+  // that paste leaves its caret is an offset into the slice.
+  let directCaret: number | null = null;
   if (selectsAll && (slice.openStart > 0 || slice.openEnd > 0)) {
-    slice = new Slice(view.state.tr.replaceSelection(slice).doc.content, 0, 0);
+    const direct = view.state.tr.replaceSelection(slice);
+    slice = new Slice(direct.doc.content, 0, 0);
+    directCaret = direct.selection.head;
   }
 
   // Select-all spans the block boundaries around the content; replace the text
@@ -877,6 +882,19 @@ export function handleSuggestionPaste(
   // slice was block content and `insertTo` lands at a block boundary.
   // A table placed before struck words leaves text after them: the caret goes
   // there, past the words, as the direct paste has none of them to pass.
+  // Blocks placed in front of the struck words leave the caret where the
+  // direct paste does: at the end of what it pasted, searching back into it,
+  // so a pasted table's last cell, not the struck words past it. A fitted
+  // paste over everything is the whole document the direct paste leaves.
+  if (tableFirst) {
+    const end =
+      directCaret !== null && insertFrom + directCaret <= insertTo
+        ? insertFrom + directCaret
+        : insertTo;
+    tr.setSelection(TextSelection.near(tr.doc.resolve(end), -1));
+    view.dispatch(tr.scrollIntoView());
+    return true;
+  }
   const caret = beforeStruck && !wholeBlocks ? tr.mapping.map(to) : insertTo;
   tr.setSelection(TextSelection.near(tr.doc.resolve(caret)));
 
