@@ -784,3 +784,53 @@ describe("extended property shards", () => {
     expect(JSON.stringify(report.steps)).toContain("--log property-test.log");
   });
 });
+
+describe("continuous property shards", () => {
+  const workflow = Bun.YAML.parse(
+    readFileSync(
+      path.resolve(import.meta.dir, "../.github/workflows/continuous-fuzz.yml"),
+      "utf8",
+    ),
+  );
+  const job = workflow.jobs["property-fuzz"];
+  const shards: number[] = job.strategy.matrix.shard;
+
+  test("the fixed matrix partitions every property file exactly once", () => {
+    expect(shards).toEqual(shards.map((_, index) => index + 1));
+    expect(shards.length).toBeGreaterThan(1);
+    const files = propertyFiles();
+    const assigned = shards.flatMap((index) =>
+      shardPropertyFiles(files, { index, total: shards.length }, 4).map(
+        ({ file }) => file,
+      ),
+    );
+    expect(assigned.toSorted()).toEqual(
+      files.map(({ file }) => file).toSorted(),
+    );
+    expect(new Set(assigned).size).toBe(files.length);
+  });
+
+  test("each shard runs its share and every shard's log reaches the report", () => {
+    expect(job.strategy["fail-fast"]).toBe(false);
+    const suite = job.steps.find((step: { id?: string }) => step.id === "fuzz");
+    expect(suite.run).toContain(
+      '--all --shard "${PROPERTY_SHARD}/${PROPERTY_SHARD_COUNT}" --fixed-shards',
+    );
+    expect(suite.run).toContain("tee test-results/property-fuzz.log");
+    expect(suite.env.PROPERTY_SHARD).toBe("${{ matrix.shard }}");
+    expect(suite.env.PROPERTY_SHARD_COUNT).toBe("${{ strategy.job-total }}");
+    const upload = job.steps.find(
+      (step: { uses?: string }) =>
+        step.uses?.startsWith("actions/upload-artifact@") === true,
+    );
+    expect(upload.with.name).toBe(
+      "continuous-fuzz-property-${{ matrix.shard }}",
+    );
+    expect(upload.with.path).toBe("test-results/property-fuzz.log");
+    const report = JSON.stringify(workflow.jobs["report"].steps);
+    expect(report).toContain("--artifact-root fuzz-results");
+    expect(report).toContain(
+      "--log-pattern 'continuous-fuzz-property-*/property-fuzz.log'",
+    );
+  });
+});

@@ -21,6 +21,7 @@
  *   bun scripts/property-areas.ts --shard 1/4      (one partition of the selection)
  *   bun scripts/property-areas.ts --all --plan     (the extended shard matrix)
  *   bun scripts/property-areas.ts --all --shard 1/4 --timings <file>
+ *   bun scripts/property-areas.ts --all --shard 2/6 --fixed-shards
  *
  * Shards come from the measured planner in scripts/ci-test-shard-plan.ts. A
  * file weighs its measured time per unit of factor
@@ -28,7 +29,9 @@
  * its stated base budgets times the factor. `--plan` picks the fewest `--all`
  * shards whose longest planned load fits EXTENDED_PROPERTY_SHARD_BUDGET_MS;
  * `--timings` records each file's measured time per unit of factor so the
- * timing refresh can keep the plan current.
+ * timing refresh can keep the plan current. `--fixed-shards` partitions
+ * `--all` into exactly the requested count instead of the extended plan, for
+ * a lane whose matrix size is set by its own time limit (continuous fuzz).
  *
  * `--base` (default `origin/main`) is diffed from its merge base with HEAD.
  * `--factor` defaults to `PROPERTY_TEST_NUM_RUNS_FACTOR`, else 5 for a change
@@ -586,6 +589,7 @@ const parseArgs = (argv: readonly string[]) => {
   let plan = false;
   let timings: string | undefined;
   let shard: PropertyShard | undefined;
+  let fixedShards = false;
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--base") base = argv[++index] ?? base;
@@ -594,6 +598,7 @@ const parseArgs = (argv: readonly string[]) => {
     else if (arg === "--all") all = true;
     else if (arg === "--plan") plan = true;
     else if (arg === "--timings") timings = argv[++index];
+    else if (arg === "--fixed-shards") fixedShards = true;
     else if (arg === "--shard") {
       const parts = (argv[++index] ?? "").split("/");
       if (parts.length !== 2)
@@ -611,7 +616,9 @@ const parseArgs = (argv: readonly string[]) => {
     throw new Error("the factor must be a number ≥ 1");
   if (plan && !all) throw new Error("--plan plans the --all selection");
   if (timings === "") throw new Error("--timings needs a file");
-  return { base, factor, dryRun, all, plan, timings, shard };
+  if (fixedShards && (shard === undefined || plan))
+    throw new Error("--fixed-shards partitions one --shard, without --plan");
+  return { base, factor, dryRun, all, plan, timings, shard, fixedShards };
 };
 
 const changedFiles = async (base: string): Promise<string[]> => {
@@ -627,9 +634,8 @@ const changedFiles = async (base: string): Promise<string[]> => {
 const minutes = (ms: number) => (ms / 60_000).toFixed(1);
 
 const main = async () => {
-  const { base, factor, dryRun, all, plan, timings, shard } = parseArgs(
-    process.argv.slice(2),
-  );
+  const { base, factor, dryRun, all, plan, timings, shard, fixedShards } =
+    parseArgs(process.argv.slice(2));
   let selected: PropertyFile[];
   if (all) {
     selected = propertyFiles();
@@ -644,7 +650,7 @@ const main = async () => {
       `${String(changed.length)} changed files vs ${base}; ${String(selected.length)} property files in ${String(areas.length)} areas at factor ${String(factor)}${areas.length > 0 ? `: ${areas.join(", ")}` : ""}`,
     );
   }
-  if (all && (plan || shard !== undefined)) {
+  if (all && (plan || (shard !== undefined && !fixedShards))) {
     const planned = planExtendedPropertyShards(selected, factor);
     console.log(
       `Planned ${String(planned.shards.length)} property shards within ${minutes(EXTENDED_PROPERTY_SHARD_BUDGET_MS)} min: ${planned.loads.map((load, index) => `${String(index + 1)}=${minutes(load)} min`).join(", ")}; ${String(planned.unmeasured.length)} unmeasured files planned from stated budgets`,
