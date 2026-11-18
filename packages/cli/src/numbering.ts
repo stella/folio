@@ -379,6 +379,7 @@ const literalTargets = (
       ]),
   );
   const counters: number[] = [];
+  const totals: number[] = [];
   const targets: LiteralTarget[] = [];
   for (const block of reviewer.snapshot().blocks) {
     if (block.kind === "diagnostic" || block.table !== undefined) continue;
@@ -389,23 +390,35 @@ const literalTargets = (
     );
     if (levelFormat === undefined || UNNUMBERED_FORMATS.has(levelFormat))
       continue;
+    // Count every numbered paragraph, selected or not, so a label never
+    // depends on which paragraphs were chosen.
+    counters.length = reference.level + 1;
+    counters[reference.level] = (counters[reference.level] ?? 0) + 1;
+    totals[reference.level] = (totals[reference.level] ?? 0) + 1;
     if (numIds.value !== null && !numIds.value.includes(reference.numId))
       continue;
     if (blockIds.value !== null && !blockIds.value.includes(block.id)) continue;
-    counters.length = reference.level + 1;
-    counters[reference.level] = (counters[reference.level] ?? 0) + 1;
     const path = Array.from(
       { length: reference.level + 1 },
       (_, index) => counters[index] ?? 1,
     );
+    const count =
+      labels === "continuous"
+        ? totals[reference.level]
+        : counters[reference.level];
+    const replacements: Readonly<Record<string, string>> = {
+      label: block.displayLabel,
+      n: String(count),
+      path: path.join("."),
+    };
     targets.push({
       blockId: block.id,
       numId: reference.numId,
       level: reference.level,
-      label: format
-        .replaceAll("{label}", block.displayLabel)
-        .replaceAll("{n}", String(counters[reference.level]))
-        .replaceAll("{path}", path.join(".")),
+      label: format.replaceAll(
+        /\{(label|n|path)\}/gu,
+        (_token, name: string) => replacements[name] ?? "",
+      ),
       inherits: block.statedNumbering.kind !== "reference",
     });
   }
@@ -481,10 +494,19 @@ const stripLeadingLabel = (
   expression: RegExp,
 ): string | undefined => {
   const pieces: { run: XmlElement; element: XmlElement; text: string }[] = [];
+  let collecting = true;
   for (const run of childElements(paragraph)) {
-    if (isW(run, "pPr")) continue;
+    if (!collecting) break;
+    if (
+      isW(run, "pPr") ||
+      isW(run, "bookmarkStart") ||
+      isW(run, "bookmarkEnd") ||
+      isW(run, "proofErr")
+    )
+      continue;
     if (!isW(run, "r")) break;
     for (const element of childElements(run)) {
+      if (isW(element, "rPr")) continue;
       if (isW(element, "t")) {
         const text = (element.elements ?? [])
           .map((node) => String(node.text ?? ""))
@@ -492,6 +514,11 @@ const stripLeadingLabel = (
         pieces.push({ run, element, text });
       } else if (isW(element, "tab")) {
         pieces.push({ run, element, text: "\t" });
+      } else {
+        // A break or other content ends the leading text; joining across it
+        // would let an expression match words that are not adjacent.
+        collecting = false;
+        break;
       }
     }
   }
