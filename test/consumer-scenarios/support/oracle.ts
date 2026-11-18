@@ -3545,9 +3545,11 @@ export const compareComments = (
     const source = paragraphTextProjection(model, live?.blockId);
     // A block an operation removed hands its words to the block it ran into,
     // so its live quote is the one that moved with them.
-    const removedSource = model.rows.some(
+    const removedAt = model.rows.findIndex(
       (row) => row.pre?.id === live?.blockId && row.removed,
     );
+    const removedSource =
+      removedAt !== -1 && model.rows[removedAt + 1]?.pre?.id === entry.blockId;
     const located =
       live &&
       live.blockId !== entry.blockId &&
