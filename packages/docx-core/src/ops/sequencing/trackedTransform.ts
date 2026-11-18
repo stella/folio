@@ -21,6 +21,11 @@
  * replacement rather than a rebased change. These are the only pairs
  * accepted without commuting.
  */
+import type { Document } from "../../model/document";
+import { leafSpans } from "../leaves";
+import { findStoryParagraph } from "../paragraphLocator";
+import { isTrackedWrapper } from "../review";
+import { findStoryBody } from "../stories";
 import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
@@ -85,6 +90,63 @@ const trackedEdges = (op: DocumentOp): readonly TextPosition[] => {
     default:
       return [];
   }
+};
+
+/**
+ * A tracked change's edges in `document`: a tracked edit that meets a record
+ * of the same kind, author and date extends that change, so its edges are
+ * the merged change's. Without a document, the operation's own.
+ */
+const changeEdges = (
+  op: DocumentOp,
+  document: Document | undefined,
+): readonly TextPosition[] => {
+  const edges = trackedEdges(op);
+  const start = edges.at(0);
+  const end = edges.at(-1);
+  if (
+    document === undefined ||
+    start === undefined ||
+    end === undefined ||
+    !("revision" in op) ||
+    op.revision === undefined
+  )
+    return edges;
+  const body = findStoryBody(document, start.story);
+  const paragraph =
+    body === undefined
+      ? undefined
+      : findStoryParagraph(body, start.blockId)?.paragraph;
+  if (paragraph === undefined) return edges;
+  const kind =
+    op.type === DOCUMENT_OP_TYPES.DELETE_RANGE ? "deletion" : "insertion";
+  const { author, date } = op.revision;
+  const stamped = leafSpans(paragraph.content)
+    .filter(({ ancestors }) =>
+      ancestors.some(
+        (node) =>
+          isTrackedWrapper(node) &&
+          node.type === kind &&
+          node.info.author === author &&
+          node.info.date === date,
+      ),
+    )
+    .map(({ before, after }) => [before.offset, after.offset] as const);
+  let from = start.offset;
+  let to = end.offset;
+  for (let grown = true; grown;) {
+    grown = false;
+    for (const [left, right] of stamped)
+      if (left <= to && right >= from && (left < from || right > to)) {
+        from = Math.min(from, left);
+        to = Math.max(to, right);
+        grown = true;
+      }
+  }
+  return [
+    { ...start, offset: from },
+    { ...end, offset: to },
+  ];
 };
 
 /**
@@ -164,10 +226,13 @@ const overlappingDeletions = (left: DocumentOp, right: DocumentOp): boolean =>
  * The kind of order-dependent tracked pair two concurrent operations form,
  * or undefined when they are outside this policy. Scoped source restorations
  * keep their exclusive edit contract. Symmetric: either may be the tracked one.
+ * Given the document both address, a tracked edit's edges are those of the
+ * change it extends there (see {@link changeEdges}).
  */
 export const trackedOrderPair = (
   op: DocumentOp,
   over: DocumentOp,
+  document?: Document,
 ): TrackedOrderPair | undefined => {
   if (
     (op.type === DOCUMENT_OP_TYPES.INSERT_CONTENT && !isInlineInsertion(op)) ||
@@ -177,8 +242,8 @@ export const trackedOrderPair = (
   if (fragmentedDeletionOverlap(op, over)) return undefined;
   if (overlappingDeletions(op, over))
     return TRACKED_ORDER_PAIRS.OVERLAPPING_DELETIONS;
-  const opEdges = trackedEdges(op);
-  const overEdges = trackedEdges(over);
+  const opEdges = changeEdges(op, document);
+  const overEdges = changeEdges(over, document);
   if (reachesEdge(opEdges, over) || reachesEdge(overEdges, op))
     return TRACKED_ORDER_PAIRS.DELETION_AT_TRACKED_EDGE;
   if (reaches(opEdges, cutPoints(over)) || reaches(overEdges, cutPoints(op)))
