@@ -3481,6 +3481,60 @@ const acceptedClosedBoundary = ({
  * removing it exposes the seam rather than the piece. `undefined` when the
  * edge keeps a record down to its leaves.
  */
+/**
+ * How many of the `depth` levels a split cut, read down the records at its
+ * seam, are pieces of one tracked change on both sides that this resolution
+ * unwraps, keeping their content: an accepted insertion or move destination,
+ * a rejected deletion or move source.
+ */
+const unwrappedCutLevels = ({
+  left,
+  right,
+  depth,
+  resolution,
+  splitDate,
+}: {
+  left: readonly InlineNode[];
+  right: readonly InlineNode[];
+  depth: number;
+  resolution: Resolution;
+  /** The date of the split whose cut this reads, when it has one. */
+  splitDate: string | undefined;
+}): number => {
+  const unwraps = (node: InlineNode): node is TrackedWrapper =>
+    isTrackedWrapper(node) &&
+    resolution.ids.has(node.info.id) &&
+    !removesContent(node, resolution.decision);
+  // Content this resolution removes that was inserted after the split, or
+  // into the seam itself, is no piece the split left (see
+  // {@link removedClosedBoundary}).
+  const insideSeam = (node: InlineNode): boolean =>
+    isTrackedWrapper(node) &&
+    isAddedRevision(node) &&
+    resolution.ids.has(node.info.id) &&
+    removesContent(node, resolution.decision) &&
+    ((node.resolutionJoins?.remove ?? 0) > 0 ||
+      (splitDate !== undefined && (node.info.date ?? "") > splitDate));
+  const edgeOf = (
+    nodes: readonly InlineNode[] | undefined,
+    edge: "first" | "last",
+  ): InlineNode | undefined =>
+    (edge === "first" ? nodes : nodes?.toReversed())?.find(
+      (node) => !insideSeam(node),
+    );
+  let levels = 0;
+  let before = edgeOf(left, "last");
+  let after = edgeOf(right, "first");
+  for (let level = 0; level < depth; level += 1) {
+    if (before === undefined || after === undefined) break;
+    if (unwraps(before) && unwraps(after) && sameStamp(before, after))
+      levels += 1;
+    before = edgeOf(childNodes(before), "last");
+    after = edgeOf(childNodes(after), "first");
+  }
+  return levels;
+};
+
 const removedClosedBoundary = ({
   nodes,
   edge,
@@ -3875,8 +3929,20 @@ export const planRevisionResolution = ({
           candidate.pPrMark.resolutionJoin ?? 0,
         );
     }
+    // A level of the cut held by pieces of one tracked change this
+    // resolution unwraps is a level no more: their content meets uncut.
+    const unwrapped =
+      next?.type === "paragraph"
+        ? unwrappedCutLevels({
+            left: paragraph.content,
+            right: next.content,
+            depth: mark.resolutionJoin,
+            resolution,
+            splitDate: mark.info.date,
+          })
+        : 0;
     let depth = Math.max(
-      mark.resolutionJoin,
+      mark.resolutionJoin - unwrapped,
       resolvedCutEdges.get(idKey(paragraph.paraId ?? ""))?.last ?? 0,
       leadingCut,
     );
