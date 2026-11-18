@@ -16,6 +16,7 @@ import {
 
 import { withBatchOperations } from "./batch-operations";
 import type { DocumentPassName } from "./document-pass";
+import { LABEL_SOURCES, NUMBERING_ACTIONS } from "./numbering";
 import type { PackageRewriteName } from "./package-rewrite";
 import { DEFAULT_PLACEHOLDER_PATTERNS } from "./placeholders";
 import { DEFAULT_SANITIZE_TARGETS, SANITIZE_TARGETS } from "./sanitize";
@@ -405,6 +406,83 @@ const PLACEHOLDERS_TOOL = {
   ],
 } as const satisfies FolioFileToolSpec;
 
+const NUMBERING_TOOL = {
+  type: "packageRewrite",
+  name: "numbering",
+  rewrite: "numbering",
+  description:
+    "`literal`: write each numbered paragraph's label as text at its start and remove its list membership " +
+    "(`w:numPr`, or `numId` 0 over a style's numbering), keeping the level's indentation, tab stops, label " +
+    "run properties and `w:suff` separator as direct formatting. `labels: displayed` writes the label the " +
+    "document shows; `continuous` counts each level 1, 2, 3 across the whole body, ignoring restarts. " +
+    "`format` shapes the label from {label}, {n} (the level's count) and {path} (1.2.3). Bullets are left " +
+    "alone; `numIds` and `blockIds` narrow the paragraphs. `apply`: put `blockIds` into numbering instance " +
+    "`numId` at `level`, removing a leading label `strip` matches. Without a destination, reports the " +
+    "paragraphs and labels and writes nothing.",
+  argsSchema: {
+    type: "object",
+    properties: {
+      action: {
+        type: "string",
+        enum: NUMBERING_ACTIONS,
+        description: "literal (default) or apply.",
+      },
+      labels: {
+        type: "string",
+        enum: LABEL_SOURCES,
+        description: "literal: displayed (default) or continuous.",
+      },
+      format: {
+        type: "string",
+        description:
+          'literal: the label template, e.g. "[{n}.]" (default {label}, or {n}. for continuous).',
+      },
+      numIds: {
+        type: "array",
+        items: { type: "integer" },
+        description: "literal: only paragraphs in these numbering instances.",
+      },
+      blockIds: {
+        type: "array",
+        items: { type: "string" },
+        description:
+          "Paragraphs to change, by block id (literal: default all numbered).",
+      },
+      numId: {
+        type: "integer",
+        description: "apply: the numbering instance.",
+      },
+      level: {
+        type: "integer",
+        minimum: 0,
+        maximum: 8,
+        description: "apply: the zero-based level (default 0).",
+      },
+      strip: {
+        type: "string",
+        description:
+          "apply: a regular expression for a leading literal label to remove, e.g. \\[\\d+\\.\\]\\t.",
+      },
+    },
+    required: [],
+    additionalProperties: false,
+  },
+  commands: [
+    {
+      name: "literal-numbering",
+      summary: "Write list numbers as literal text",
+      preset: { action: "literal" },
+      flagNames: { blockIds: "block-id" },
+    },
+    {
+      name: "apply-numbering",
+      summary: "Put paragraphs into a numbering instance",
+      preset: { action: "apply" },
+      flagNames: { blockIds: "block-id" },
+    },
+  ],
+} as const satisfies FolioFileToolSpec;
+
 export const FOLIO_FILE_TOOLS: readonly FolioFileToolSpec[] = [
   agentRead({
     agentTool: FOLIO_AGENT_TOOL_NAMES.readDocument,
@@ -496,6 +574,7 @@ export const FOLIO_FILE_TOOLS: readonly FolioFileToolSpec[] = [
   SANITIZE_TOOL,
   PROOFING_LANGUAGE_TOOL,
   PLACEHOLDERS_TOOL,
+  NUMBERING_TOOL,
 ];
 
 const toolsByName = new Map(FOLIO_FILE_TOOLS.map((tool) => [tool.name, tool]));

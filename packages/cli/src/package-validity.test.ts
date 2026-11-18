@@ -102,7 +102,7 @@ const NO_FILE_COMMANDS = new Set(["mcp"]);
 const helpCommands = async (): Promise<string[]> => {
   const captured = captureIo();
   await runFolioCli(["--help"], captured.io);
-  return [...captured.stdout().matchAll(/^ {2}([a-z]+) {2,}/gmu)].map(
+  return [...captured.stdout().matchAll(/^ {2}([a-z][a-z-]*) {2,}/gmu)].map(
     ([, name]) => name ?? "",
   );
 };
