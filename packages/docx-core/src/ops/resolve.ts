@@ -96,6 +96,7 @@ import { edgeChain, edgeChainPastRemoved } from "./resolvedEdges";
 import { reachableRowIds, resolveTableRows } from "./resolveTableRows";
 import {
   isAddedRevision,
+  isRemovedRevisionNode,
   isTrackedWrapper,
   reviewFieldsOf,
   type TrackedWrapper,
@@ -1754,6 +1755,13 @@ const resolveList = ({
       afterIndex += 1;
     const before = beforeIndex >= 0 ? pending.at(beforeIndex) : undefined;
     const after = pending.at(afterIndex);
+    // Every piece on one side goes with this resolution: no record of the
+    // level it cut is left there to join.
+    if (
+      (before === undefined && beforeIndex < index - 1) ||
+      (after === undefined && afterIndex > index + 1)
+    )
+      return 0;
     if (before === undefined || after === undefined) return depth;
     return cutReach({
       before: edgeChain(before, "end"),
@@ -1789,6 +1797,15 @@ const resolveList = ({
   const removalSeams = new Set<number>();
   /** Seams a kept revision's own joins recorded at its edges. */
   const keptJoinSeams = new Set<number>();
+  /**
+   * Of those a rejected deletion or move source recorded, the seams with its
+   * own content just before them (its join after) or just after them (its
+   * join before). That content is authored, not boundaries an earlier
+   * rejection kept at the seam. (An accepted insertion's join can be one a
+   * seam handed over to it, which its content stands inside.)
+   */
+  const ownContentBefore = new Set<number>();
+  const ownContentAfter = new Set<number>();
   /** Those of them a removed insertion or move destination recorded. */
   const addedRemovalSeams = new Set<number>();
   const recordSourceSeam = (index: number, depth: number): void => {
@@ -1992,7 +2009,10 @@ const resolveList = ({
         plainSeams.add(out.length);
       else {
         recordSourceSeam(out.length, node.resolutionJoins.before);
-        if (node.resolutionJoins.before > 0) keptJoinSeams.add(out.length);
+        if (node.resolutionJoins.before > 0) {
+          keptJoinSeams.add(out.length);
+          if (isRemovedRevisionNode(node)) ownContentAfter.add(out.length);
+        }
         if (
           node.resolutionJoins.before > 0 &&
           node.resolutionJoins.keptFrom !== undefined
@@ -2046,7 +2066,10 @@ const resolveList = ({
         plainSeams.add(out.length);
       else {
         recordSourceSeam(out.length, node.resolutionJoins.after);
-        if (node.resolutionJoins.after > 0) keptJoinSeams.add(out.length);
+        if (node.resolutionJoins.after > 0) {
+          keptJoinSeams.add(out.length);
+          if (isRemovedRevisionNode(node)) ownContentBefore.add(out.length);
+        }
         if (
           node.resolutionJoins.after > 0 &&
           node.resolutionJoins.keptFrom !== undefined
@@ -2384,14 +2407,24 @@ const resolveList = ({
     // removal kept beside them stand where they are, as resolving both at
     // once leaves them.
     const limit = kept?.count ?? Number.POSITIVE_INFINITY;
-    const after = Math.min(standingAt(recorded, 1), limit);
+    // A kept revision's own content beside the seam its join recorded is
+    // authored content, not boundaries kept there: it stays where it is.
+    const after = ownContentAfter.has(recorded)
+      ? 0
+      : Math.min(standingAt(recorded, 1), limit);
     const before =
-      after > 0 ? 0 : Math.min(standingAt(recorded - 1, -1), limit);
+      after > 0 || ownContentBefore.has(recorded)
+        ? 0
+        : Math.min(standingAt(recorded - 1, -1), limit);
     const seam = recorded + after;
     const count = after + before;
     const left = out[seam - count - 1];
     const right = out[seam];
     if (count === 0 || left === undefined || right === undefined) continue;
+    // With no kept provenance on the seam, only boundaries between two
+    // pieces it joins can be ones a rejection kept there. Beside records it
+    // does not join they are the document's own and stay where they are.
+    if (kept === undefined && !sameOwnFields(left.node, right.node)) continue;
     exactSeams.delete(recorded);
     exactSeams.set(seam, Math.max(exactSeams.get(seam) ?? 0, depth));
     // Boundaries this resolution kept there already float with the removal
