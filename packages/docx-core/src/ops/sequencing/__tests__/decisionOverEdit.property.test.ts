@@ -122,7 +122,15 @@ const paragraphIn = (document: Document, paraId: string) =>
     ({ paragraph }) => paragraph.paraId === paraId,
   )?.paragraph;
 
-const EDIT_KINDS = ["type", "erase", "replace", "tab", "format"] as const;
+const EDIT_KINDS = [
+  "type",
+  "erase",
+  "replace",
+  "tab",
+  "format",
+  "split",
+  "align",
+] as const;
 
 const scenario = fc.record({
   paragraph: fc.constantFrom(SUGGESTED, PLAIN, LISTED, CELL),
@@ -185,6 +193,16 @@ const directEdit = (
         from: at(start),
         to: at(end),
         patch: { bold: true },
+      };
+      break;
+    case "split":
+      intent = { type: "splitParagraph", at: at(start), newBlockId: "" };
+      break;
+    case "align":
+      intent = {
+        type: "formatParagraph",
+        at: at(start),
+        patch: { alignment: "center" },
       };
       break;
     default: {
@@ -267,6 +285,27 @@ const EXAMPLES: [Scenario][] = [
   ],
   // A tab inside the suggested text cuts its record in two.
   [{ paragraph: SUGGESTED, kind: "tab", from: 8, span: 0, decision: "accept" }],
+  // A paragraph split inside the suggested text, and one in another paragraph.
+  [
+    {
+      paragraph: SUGGESTED,
+      kind: "split",
+      from: 8,
+      span: 0,
+      decision: "reject",
+    },
+  ],
+  [{ paragraph: PLAIN, kind: "split", from: 4, span: 0, decision: "accept" }],
+  // Paragraph formatting in the revision's paragraph.
+  [
+    {
+      paragraph: SUGGESTED,
+      kind: "align",
+      from: 0,
+      span: 0,
+      decision: "accept",
+    },
+  ],
 ];
 
 /** The test-only break: a decision does not rebase over a direct edit. */
@@ -437,7 +476,7 @@ describe("a revision decision over a concurrent direct edit", () => {
         // The break is a counterexample on purpose: report nothing.
         propertyConfig({
           numRuns: 1,
-          examples: EXAMPLES.slice(3),
+          examples: EXAMPLES.slice(3, 4),
           reporter: () => undefined,
         }),
       );
