@@ -1014,6 +1014,47 @@ const validRetainedIdentities = (node: InlineNode): boolean => {
 const isStandingBoundary = (node: InlineNode | undefined): boolean =>
   node !== undefined && isKeptBoundaryCarrier(node);
 
+/**
+ * The content an acceptance leaves in a record that is no tracked change:
+ * when it took everything there but pending insertions, those insertions
+ * are marked so rejecting the last of them removes the record too, as
+ * accepting that content after rejecting them does.
+ */
+const withEmptiedHolder = (
+  node: InlineNode,
+  children: readonly InlineNode[],
+  nodes: InlineNode[],
+  resolution: Resolution,
+): InlineNode[] => {
+  const pendingInsertion = (child: InlineNode): boolean =>
+    isAddedRevision(child) &&
+    !resolution.ids.has(child.info.id) &&
+    child.resolutionJoins !== undefined;
+  if (
+    resolution.decision !== REVISION_DECISIONS.ACCEPT ||
+    isTrackedWrapper(node) ||
+    nodes.length === 0 ||
+    !nodes.every(pendingInsertion) ||
+    children.every(pendingInsertion)
+  )
+    return nodes;
+  return nodes.map((child) => {
+    if (
+      !isAddedRevision(child) ||
+      child.resolutionJoins === undefined ||
+      child.resolutionJoins.emptiedHolder === true
+    )
+      return child;
+    const marked = Object.assign({}, child, {
+      resolutionJoins: Object.assign({}, child.resolutionJoins, {
+        emptiedHolder: true as const,
+      }),
+    });
+    carryResolutionState(resolution, child, marked);
+    return marked;
+  });
+};
+
 /** What has become of a deferred seam's blocker. */
 type BlockerFate = "pending" | "accepted" | "removed";
 
@@ -2178,9 +2219,16 @@ const resolveList = ({
     // leaves no record with nothing. Kept, the record could not tell a later
     // resolution it was emptied rather than empty before, and would stay where
     // accepting the same changes at once folds it into an alike neighbour.
+    // So does a record a rejection empties of insertions an acceptance left
+    // as all it held: accepting that content last would have emptied it.
     if (
       (isTrackedWrapper(node) ||
-        resolution.decision === REVISION_DECISIONS.ACCEPT) &&
+        resolution.decision === REVISION_DECISIONS.ACCEPT ||
+        children.some(
+          (child) =>
+            isAddedRevision(child) &&
+            child.resolutionJoins?.emptiedHolder === true,
+        )) &&
       inner.nodes.length === 0 &&
       children.length > 0
     ) {
@@ -2196,7 +2244,12 @@ const resolveList = ({
         plainSeams.add(out.length);
       continue;
     }
-    let rebuilt = recut(rebuildNode(node, inner.nodes));
+    let rebuilt = recut(
+      rebuildNode(
+        node,
+        withEmptiedHolder(node, children, inner.nodes, resolution),
+      ),
+    );
     if (
       isTrackedWrapper(rebuilt) &&
       rebuilt.resolutionJoins?.retainedAfter !== undefined

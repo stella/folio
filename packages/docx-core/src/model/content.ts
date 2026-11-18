@@ -1739,6 +1739,12 @@ type TrackedResolutionJoins = WritableRecord & {
    * source piece: resolving it joins plain runs there and nothing else.
    */
   plainSides?: readonly ("before" | "after")[];
+  /**
+   * An acceptance took every record of the container this insertion stands
+   * in other than pending insertions. Rejecting the last of them empties the
+   * container away, as accepting that content last does.
+   */
+  emptiedHolder?: true;
   /** A split seam survives only while all intervening insertions await rejection. */
   deferredRemove?: readonly (WritableRecord & {
     depth: number;
