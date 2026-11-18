@@ -142,6 +142,14 @@ export const isEmptyRecord = (node: InlineNode): boolean =>
     node.type === "moveTo") &&
     node.content.length === 0);
 
+/**
+ * Whether a hyperlink, field, content control or wrapper holds nothing. It is
+ * markup rather than an empty record, but it holds no run for a tracked
+ * deletion to mark: a file writes such a deletion as nothing.
+ */
+export const isEmptyContainer = (node: InlineNode): boolean =>
+  !isEmptyRecord(node) && childNodes(node)?.length === 0;
+
 /** A walk's place in the offset space: the offset, and the zero-width leaves passed there. */
 export type Cursor = { position: number; zeroWidthSeen: number };
 

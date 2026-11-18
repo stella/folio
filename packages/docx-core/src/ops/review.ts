@@ -35,6 +35,7 @@ import {
   type Gap,
   type InlineNode,
   isCommentAnchor,
+  isEmptyContainer,
   isParagraphContent,
   mergeLists,
   ownRunPropertyChanges,
@@ -423,6 +424,8 @@ type WrapState = {
   copiedBoundaries: Set<InlineNode>;
   /** Whether the wrap recorded anything: a wrapper created, or merged into a neighbour. */
   recorded: boolean;
+  /** Whether a wrapper it created holds more than empty containers. */
+  recordedContent: boolean;
   refusal: DocumentOpRefusalReason | undefined;
   /** Whether bare comment range anchors stand outside the deletion, as whole paragraphs leave them. */
   commentAnchorsStand: boolean;
@@ -657,6 +660,9 @@ const groupCovered = (
     }
     state.created.add(wrapper);
     state.recorded = true;
+    state.recordedContent ||= stretch.some(
+      ({ node }) => !isEmptyContainer(node),
+    );
     wrapperAt.push(out.length);
     out.push(wrapper);
     stretch = [];
@@ -846,7 +852,15 @@ export type WrapOptions = {
 };
 
 export type WrapOutcome =
-  | { kind: "wrapped"; content: ParagraphContent[] }
+  | {
+      kind: "wrapped";
+      content: ParagraphContent[];
+      /**
+       * Whether a wrapper it created holds more than empty containers: one
+       * holding only those marks no run, so no file or reader shows it.
+       */
+      recordsContent: boolean;
+    }
   | { kind: "unchanged" }
   | { kind: "refused"; reason: DocumentOpRefusalReason };
 
@@ -876,6 +890,7 @@ export const wrapTracked = ({
     created: new Set(),
     copiedBoundaries: new Set(copiedBoundaries),
     recorded: false,
+    recordedContent: false,
     refusal: undefined,
     commentAnchorsStand: commentAnchors === "stand",
   };
@@ -899,5 +914,9 @@ export const wrapTracked = ({
     }
     out.push(node);
   }
-  return { kind: "wrapped", content: out };
+  return {
+    kind: "wrapped",
+    content: out,
+    recordsContent: state.recordedContent,
+  };
 };
