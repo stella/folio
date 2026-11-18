@@ -699,6 +699,17 @@ const wrappedContent = (
   const wrapped = wrapTracked(options);
   switch (wrapped.kind) {
     case "wrapped":
+      // A deletion of a range holding nothing but empty hyperlinks, fields or
+      // content controls marks no run: no file or reader would show it,
+      // while deleting the range directly removes them.
+      if (options.kind === WRAP_KINDS.DELETION && !wrapped.recordsContent)
+        return Result.err(
+          refusal(
+            op,
+            DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+            "A tracked deletion cannot record only empty containers.",
+          ),
+        );
       return Result.ok(wrapped.content);
     case "unchanged":
       return Result.ok(undefined);

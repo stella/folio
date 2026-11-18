@@ -32,6 +32,7 @@ import {
   compareGaps,
   type Gap,
   isCommentAnchor,
+  isEmptyContainer,
   isParagraphContent,
   type LeafSpan,
   leafSpans,
@@ -447,7 +448,11 @@ export const replacementDeletionSegments = ({
       continue;
     }
     const segmentPlan = plan === "untouched" ? "tracked" : plan;
-    const records = plan !== "untouched";
+    // An empty container marks nothing tracked: a stretch holding nothing
+    // else is dropped, as one over deleted content is.
+    const records =
+      plan !== "untouched" &&
+      !(plan === "tracked" && isEmptyContainer(span.node));
     if (
       open !== undefined &&
       open.plan === segmentPlan &&
