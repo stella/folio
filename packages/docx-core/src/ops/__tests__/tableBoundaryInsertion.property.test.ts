@@ -481,7 +481,7 @@ for (const boundary of [
         type: DOCUMENT_OP_TYPES.DELETE_TABLE,
         story: OP_STORIES.MAIN,
         blockId: "10000022",
-        revision: { id: 10, author: "Reviewer" },
+        revision: { id: 10, author: "Reviewer", date: "2026-01-02T03:04:05Z" },
         newIds: {
           revision: Array.from({ length: 20 }, (_, index) => index + 11),
         },
@@ -526,7 +526,7 @@ for (const boundary of [
       intent,
       mode: {
         type: "suggesting",
-        revision: { id: 100, author: "Reviewer" },
+        revision: { id: 100, author: "Reviewer", date: "2026-01-02T03:04:05Z" },
         newIds: ids.newIds,
       },
     }).unwrap();
@@ -552,7 +552,7 @@ test("a pending-table insertion keeps a nonempty rejected mark refused until its
     type: DOCUMENT_OP_TYPES.DELETE_TABLE,
     story: OP_STORIES.MAIN,
     blockId: "10000022",
-    revision: { id: 10, author: "Reviewer" },
+    revision: { id: 10, author: "Reviewer", date: "2026-01-02T03:04:05Z" },
     newIds: { revision: Array.from({ length: 20 }, (_, index) => index + 11) },
   }).unwrap().document;
   const intent = {
@@ -573,7 +573,7 @@ test("a pending-table insertion keeps a nonempty rejected mark refused until its
     intent,
     mode: {
       type: "suggesting",
-      revision: { id: 100, author: "Reviewer" },
+      revision: { id: 100, author: "Reviewer", date: "2026-01-02T03:04:05Z" },
       newIds: ids.newIds,
     },
   }).unwrap();
