@@ -1935,6 +1935,19 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_4AB7DCA19B12D16D = {
   },
 } satisfies CanonicalRegression;
 
+/** The same #2302 trace in the default editor: a table pasted at the document's end. */
+export const BROWSER_TABLE_PASTE_AT_DOCUMENT_END_SEED_1794637615 = {
+  seed: 1794637615,
+  path: "0",
+  fingerprint: "4ab7dca19b12d16d",
+  trace: CANONICAL_REPLAY_OF_DEFAULT_FINDING_4AB7DCA19B12D16D.trace,
+} satisfies {
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
 /** Exact saved #2596 trace: seed 1794465004, path 10; payloads stay as recorded. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_4CFD6DADC63EEB36 = {
   authority: "canonical",
@@ -2215,6 +2228,7 @@ export const BROWSER_INPUT_REGRESSIONS = [
   CANONICAL_REPLAY_OF_DEFAULT_FINDING_DA47B019908DFA2E,
   CANONICAL_REPLAY_OF_DEFAULT_FINDING_CA0B65D37F32ED0A,
   CANONICAL_REPLAY_OF_DEFAULT_FINDING_4AB7DCA19B12D16D,
+  BROWSER_TABLE_PASTE_AT_DOCUMENT_END_SEED_1794637615,
   CANONICAL_MIXED_LIST_GENERIC_HTML_VARIANT,
   CANONICAL_REPLAY_OF_DEFAULT_FINDING_4CFD6DADC63EEB36,
   CANONICAL_REPLAY_OF_DEFAULT_FINDING_328C996278E3AB12,
