@@ -2729,13 +2729,6 @@ const resolveList = ({
       (kept === undefined || standingKept > 0) &&
       !cutPieces
     ) {
-      // A kept revision's join belongs to the record that revision cut: an
-      // insertion made no later than it is no change made inside that
-      // record but a piece of it, which rejecting removes rather than joins
-      // the records beyond it.
-      const keptJoinFrom = removalSeams.has(recorded)
-        ? undefined
-        : keptJoinDates.get(recorded);
       const blocking = (index: number): boolean => {
         const node = out[index]?.node;
         return (
@@ -2743,8 +2736,7 @@ const resolveList = ({
           isAddedRevision(node) &&
           isTrackedWrapper(node) &&
           node.resolutionJoins !== undefined &&
-          !resolution.ids.has(node.info.id) &&
-          (keptJoinFrom === undefined || (node.info.date ?? "") > keptJoinFrom)
+          !resolution.ids.has(node.info.id)
         );
       };
       // Boundaries this seam kept that no piece took stand just before it;
@@ -2839,11 +2831,40 @@ const resolveList = ({
         holdsPiece(rightStart, "start")
           ? rightStart
           : undefined;
+      // A kept revision's join belongs to the record that revision cut:
+      // insertions made before it there are no changes made inside that
+      // record but pieces of it, which took the join above. Rejecting them
+      // removes them and joins only what their own cuts split, so the seam
+      // waits on none of them.
+      const keptJoinFrom = removalSeams.has(recorded)
+        ? undefined
+        : keptJoinDates.get(recorded);
+      const earlier = (index: number): boolean => {
+        const node = out[index]?.node;
+        return (
+          keptJoinFrom !== undefined &&
+          node !== undefined &&
+          isTrackedWrapper(node) &&
+          (node.info.date ?? "") < keptJoinFrom
+        );
+      };
+      const onlyPieces =
+        leftHolder === undefined &&
+        rightHolder === undefined &&
+        Array.from(
+          { length: keptEnd - leftEnd },
+          (_, offset) => leftEnd + 1 + offset,
+        ).every(earlier) &&
+        Array.from(
+          { length: rightStart - seam },
+          (_, offset) => seam + offset,
+        ).every(earlier);
       if (
         (leftEnd !== keptEnd ||
           rightStart !== seam ||
           leftHolder !== undefined ||
           rightHolder !== undefined) &&
+        !onlyPieces &&
         leftEnd >= 0 &&
         rightStart < out.length
       ) {
