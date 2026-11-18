@@ -117,6 +117,38 @@ const withParagraphIds = (
   };
 };
 
+/**
+ * `document` with an id of its own on every revision record. A host model can
+ * let records share one (an inserted paragraph's mark and its words), as its
+ * writer later numbers them apart, where an operation refuses the repeat; the
+ * view resolves every record anyway, so it numbers them apart first.
+ */
+const withDistinctRevisionIds = (document: Document): Document => {
+  const ids = identityKeysIn(document.package).flatMap((key) =>
+    key.startsWith(REVISION_KEY_PREFIX)
+      ? [Number(key.slice(REVISION_KEY_PREFIX.length))]
+      : [],
+  );
+  if (new Set(ids).size === ids.length) return document;
+  let next = Math.max(...ids) + 1;
+  const seen = new Set<number>();
+  const pkg = mapRecords(document.package, (record) => {
+    const info = record["info"];
+    if (
+      !isPlainRecord(info) ||
+      typeof info["id"] !== "number" ||
+      typeof info["author"] !== "string"
+    )
+      return record;
+    if (!seen.has(info["id"])) {
+      seen.add(info["id"]);
+      return record;
+    }
+    return { ...record, info: { ...info, id: next++ } };
+  }) as Document["package"];
+  return pkg === document.package ? document : { ...document, package: pkg };
+};
+
 const withoutParagraphIds = (
   document: Document,
   minted: ReadonlySet<string>,
@@ -149,7 +181,7 @@ export const resolvedDocumentView = (
   const stories = documentStories(document);
   if (stories.every((story) => storyRevisionIds(document, story).length === 0))
     return { document, unresolved: [] };
-  const identified = withParagraphIds(document);
+  const identified = withParagraphIds(withDistinctRevisionIds(document));
   let current = identified.document;
   const unresolved: OpStory[] = [];
   for (const story of stories) {
