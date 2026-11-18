@@ -219,6 +219,18 @@ const cutIdentified = (effect: SequencedOpEffect | undefined): boolean =>
 const sameOffset = (left: TextPosition, right: TextPosition): boolean =>
   sameParagraph(left, right) && left.offset === right.offset;
 
+/**
+ * A paragraph split at a tracked insertion's point: a cut at a tracked
+ * change's edge, which the authority's order decides. The one sequenced
+ * later goes after the other, as two insertions at one gap do.
+ */
+const splitAtTrackedInsertion = (
+  split: DocumentOp,
+  insertion: InsertContentOp,
+): boolean =>
+  split.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK &&
+  insertion.revision !== undefined;
+
 /** A point operation (insertion, split) moved across an inline insertion. */
 const pointOverInsertion = (
   op: Extract<
@@ -255,7 +267,8 @@ const pointOverInsertion = (
     op.at.offset === over.at.offset &&
     op.type !== DOCUMENT_OP_TYPES.INSERT_TEXT &&
     op.type !== DOCUMENT_OP_TYPES.INSERT_CONTENT &&
-    !seam
+    !seam &&
+    !splitAtTrackedInsertion(op, over)
   )
     return refusal(
       op,
@@ -429,7 +442,7 @@ export const transformInlinePair = (pair: Pair): Transformed | undefined => {
         break;
       }
       case DOCUMENT_OP_TYPES.SPLIT_BLOCK:
-        if (sameOffset(op.at, over.at))
+        if (sameOffset(op.at, over.at) && !splitAtTrackedInsertion(over, op))
           return refusal(
             op,
             over,
@@ -474,11 +487,14 @@ export const transformInlinePair = (pair: Pair): Transformed | undefined => {
       default:
         return undefined;
     }
+    // Only a tracked insertion reaches here at a split's own point: the one
+    // sequenced later goes after the other, into the second half.
     const at = mapPoint(op.at, "after", {
       over,
       effect,
       order,
-      splitTiesToSecond: true,
+      splitTiesToSecond:
+        over.type !== DOCUMENT_OP_TYPES.SPLIT_BLOCK || order === "after",
     });
     return at === undefined
       ? refusal(

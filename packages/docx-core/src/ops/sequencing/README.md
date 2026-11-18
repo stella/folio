@@ -124,7 +124,10 @@ is split around it: a format into two formats, a direct deletion into two
 deletions. A tracked deletion around the point, a tracked insertion inside a
 direct deletion, and a range with preconditions or joins reaching the point
 refuse. Insertion at the start of a paragraph a concurrent join appends
-refuses, as for text.
+refuses, as for text. A paragraph split at the insertion's point refuses,
+unless the insertion is tracked: that is a cut at a tracked change's edge
+(see below), and the one sequenced later goes after the other, as two
+insertions at one gap do.
 
 Each sequenced `insertContent` records whether it cut a record carrying an
 id (a revision or a content control) in two (`cutIdentified`). Two
