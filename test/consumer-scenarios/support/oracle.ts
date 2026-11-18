@@ -3539,8 +3539,25 @@ export const compareComments = (
   for (const entry of before) {
     const live = liveBefore.find(({ id }) => id === entry.id);
     // The accepted quote belongs to the accepted model. Use a live quote
-    // only when a pending paragraph join moved its anchor to another block.
-    const located = live && live.blockId !== entry.blockId ? live : entry;
+    // only when a proven pending join maps that component to its accepted owner.
+    // A split can instead leave the live range start in pending deleted text
+    // while its entire accepted coverage belongs to the new paragraph.
+    const source = paragraphTextProjection(model, live?.blockId);
+    // A block an operation removed hands its words to the block it ran into,
+    // so its live quote is the one that moved with them.
+    const removedAt = model.rows.findIndex(
+      (row) => row.pre?.id === live?.blockId && row.removed,
+    );
+    const removedSource =
+      removedAt !== -1 && model.rows[removedAt + 1]?.pre?.id === entry.blockId;
+    const located =
+      live &&
+      live.blockId !== entry.blockId &&
+      ((source.type === "pending-join" &&
+        source.row.pre?.id === entry.blockId) ||
+        removedSource)
+        ? live
+        : entry;
     let disposition =
       mode === "suggested"
         ? "kept"
