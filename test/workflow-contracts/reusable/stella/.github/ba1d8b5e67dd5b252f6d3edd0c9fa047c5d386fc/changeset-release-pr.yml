@@ -89,7 +89,7 @@ jobs:
 
       - name: Inspect release lifecycle
         id: lifecycle
-        uses: stella/.github/.github/actions/changeset-release-lifecycle@c6d66dfa2a5ad1f96a21b819fe456fecdd3d6f6d
+        uses: stella/.github/.github/actions/changeset-release-lifecycle@41fbea3b521bfc57b791003918de97f153d790a7
         env:
           GH_TOKEN: ${{ github.token }}
 
@@ -138,7 +138,7 @@ jobs:
       - if: steps.lifecycle.outputs.may-update == 'true' && inputs.sync-cargo-inherited-lock
         name: Validate inherited Cargo lock versions
         id: cargo-sync
-        uses: stella/.github/.github/actions/sync-cargo-workspace-lock@c6d66dfa2a5ad1f96a21b819fe456fecdd3d6f6d
+        uses: stella/.github/.github/actions/sync-cargo-workspace-lock@156afa9596e6a469c10e329f459168d34a00e0fd
         with:
           mode: check
           manifest: ${{ inputs.cargo-manifest }}
