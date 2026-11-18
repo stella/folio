@@ -499,6 +499,16 @@ describe("paragraphMarkOutcome", () => {
       containerStillEndsWithParagraph: false,
       followingTableCanReceiveRunIn: false,
       tableRemovalIsTrackable: false,
+      expected: "remove",
+    },
+    {
+      follows: "table",
+      holdsContent: false,
+      markWasAdded: false,
+      containerStillEndsWithParagraph: false,
+      followingTableCanReceiveRunIn: false,
+      tableRemovalIsTrackable: false,
+      needsFollowingCommentHost: true,
       expected: "refuse",
     },
     {

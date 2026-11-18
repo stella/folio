@@ -307,6 +307,18 @@ export const paragraphMarkOutcome = ({
     case "paragraph":
       return { kind: "join", sectionDestination };
     case "table":
+      // An accepted deletion that leaves the paragraph empty is no run-in
+      // source either: it goes without crossing the table, wherever the
+      // story ends, as it does before a table that can receive words.
+      if (
+        !tableRemovalIsTrackable &&
+        !markWasAdded &&
+        !holdsContent &&
+        !needsFollowingCommentHost
+      )
+        return removalWouldDropSection
+          ? { kind: "keep", sectionDestination: "none" }
+          : { kind: "remove", sectionDestination };
       // A rejected insertion owns an empty paragraph, not a run-in source.
       // Its mark can go without crossing the table when no comment host is
       // retained; existing marks and content still require a trackable boundary.
