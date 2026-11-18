@@ -1754,6 +1754,13 @@ const resolveList = ({
       afterIndex += 1;
     const before = beforeIndex >= 0 ? pending.at(beforeIndex) : undefined;
     const after = pending.at(afterIndex);
+    // Every piece on one side goes with this resolution: no record of the
+    // level it cut is left there to join.
+    if (
+      (before === undefined && beforeIndex < index - 1) ||
+      (after === undefined && afterIndex > index + 1)
+    )
+      return 0;
     if (before === undefined || after === undefined) return depth;
     return cutReach({
       before: edgeChain(before, "end"),
@@ -1789,6 +1796,13 @@ const resolveList = ({
   const removalSeams = new Set<number>();
   /** Seams a kept revision's own joins recorded at its edges. */
   const keptJoinSeams = new Set<number>();
+  /**
+   * Of those, the seams with that revision's own content just before them
+   * (its join after) or just after them (its join before). That content is
+   * authored, not boundaries an earlier rejection kept at the seam.
+   */
+  const ownContentBefore = new Set<number>();
+  const ownContentAfter = new Set<number>();
   /** Those of them a removed insertion or move destination recorded. */
   const addedRemovalSeams = new Set<number>();
   const recordSourceSeam = (index: number, depth: number): void => {
@@ -1992,7 +2006,10 @@ const resolveList = ({
         plainSeams.add(out.length);
       else {
         recordSourceSeam(out.length, node.resolutionJoins.before);
-        if (node.resolutionJoins.before > 0) keptJoinSeams.add(out.length);
+        if (node.resolutionJoins.before > 0) {
+          keptJoinSeams.add(out.length);
+          ownContentAfter.add(out.length);
+        }
         if (
           node.resolutionJoins.before > 0 &&
           node.resolutionJoins.keptFrom !== undefined
@@ -2046,7 +2063,10 @@ const resolveList = ({
         plainSeams.add(out.length);
       else {
         recordSourceSeam(out.length, node.resolutionJoins.after);
-        if (node.resolutionJoins.after > 0) keptJoinSeams.add(out.length);
+        if (node.resolutionJoins.after > 0) {
+          keptJoinSeams.add(out.length);
+          ownContentBefore.add(out.length);
+        }
         if (
           node.resolutionJoins.after > 0 &&
           node.resolutionJoins.keptFrom !== undefined
@@ -2384,9 +2404,15 @@ const resolveList = ({
     // removal kept beside them stand where they are, as resolving both at
     // once leaves them.
     const limit = kept?.count ?? Number.POSITIVE_INFINITY;
-    const after = Math.min(standingAt(recorded, 1), limit);
+    // A kept revision's own content beside the seam its join recorded is
+    // authored content, not boundaries kept there: it stays where it is.
+    const after = ownContentAfter.has(recorded)
+      ? 0
+      : Math.min(standingAt(recorded, 1), limit);
     const before =
-      after > 0 ? 0 : Math.min(standingAt(recorded - 1, -1), limit);
+      after > 0 || ownContentBefore.has(recorded)
+        ? 0
+        : Math.min(standingAt(recorded - 1, -1), limit);
     const seam = recorded + after;
     const count = after + before;
     const left = out[seam - count - 1];
