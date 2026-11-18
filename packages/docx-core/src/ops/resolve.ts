@@ -1797,6 +1797,14 @@ const resolveList = ({
   const removalSeams = new Set<number>();
   /** Seams a kept revision's own joins recorded at its edges. */
   const keptJoinSeams = new Set<number>();
+  /** The date of the earliest kept revision whose join recorded each seam. */
+  const keptJoinDates = new Map<number, string>();
+  const recordKeptJoin = (seam: number, node: TrackedWrapper): void => {
+    keptJoinSeams.add(seam);
+    const date = node.info.date ?? "";
+    const known = keptJoinDates.get(seam);
+    if (known === undefined || date < known) keptJoinDates.set(seam, date);
+  };
   /**
    * Of those a rejected deletion or move source recorded, the seams with its
    * own content just before them (its join after) or just after them (its
@@ -2010,7 +2018,7 @@ const resolveList = ({
       else {
         recordSourceSeam(out.length, node.resolutionJoins.before);
         if (node.resolutionJoins.before > 0) {
-          keptJoinSeams.add(out.length);
+          recordKeptJoin(out.length, node);
           if (isRemovedRevisionNode(node)) ownContentAfter.add(out.length);
         }
         if (
@@ -2067,7 +2075,7 @@ const resolveList = ({
       else {
         recordSourceSeam(out.length, node.resolutionJoins.after);
         if (node.resolutionJoins.after > 0) {
-          keptJoinSeams.add(out.length);
+          recordKeptJoin(out.length, node);
           if (isRemovedRevisionNode(node)) ownContentBefore.add(out.length);
         }
         if (
@@ -2721,6 +2729,13 @@ const resolveList = ({
       (kept === undefined || standingKept > 0) &&
       !cutPieces
     ) {
+      // A kept revision's join belongs to the record that revision cut: an
+      // insertion made no later than it is no change made inside that
+      // record but a piece of it, which rejecting removes rather than joins
+      // the records beyond it.
+      const keptJoinFrom = removalSeams.has(recorded)
+        ? undefined
+        : keptJoinDates.get(recorded);
       const blocking = (index: number): boolean => {
         const node = out[index]?.node;
         return (
@@ -2728,7 +2743,8 @@ const resolveList = ({
           isAddedRevision(node) &&
           isTrackedWrapper(node) &&
           node.resolutionJoins !== undefined &&
-          !resolution.ids.has(node.info.id)
+          !resolution.ids.has(node.info.id) &&
+          (keptJoinFrom === undefined || (node.info.date ?? "") > keptJoinFrom)
         );
       };
       // Boundaries this seam kept that no piece took stand just before it;
