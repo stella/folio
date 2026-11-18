@@ -15,6 +15,12 @@
       "path": "2:4:0:18:21:23:24:44:45:40:40:40:40:40:40:40:40:40:40:40:40:40:40:40:40:40:40:40:40:40:40:40:40:40:40:40",
       "note": "Two suggesting erases of one paragraph, the second ending where the first starts",
       "date": "2026-11-14"
+    },
+    {
+      "seed": 1358605208,
+      "path": "12:3:2:4:4:4:4:6:5:8:8:8:8:8:10:13:13:14:11:11:11:11:11:11:11:11:11:15:14:15:14:14:14:14:15:14:14:14:14:14:14:14:15:15:15:15:15:15:15:15:15:15:15:15:15:15:15:15:15:15:15",
+      "note": "A sequenced acceptance moved across a pending paste's own paragraph split and paragraph formatting passes them; the paste is not dropped",
+      "date": "2026-11-18"
     }
   ],
   "canonical sequencing same-paragraph convergence": [
