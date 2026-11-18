@@ -1028,6 +1028,8 @@ const settleDeferredRemovals = (
 ): readonly InlineNode[] => {
   let changed = false;
   const out: InlineNode[] = [];
+  /** Seams with kept boundaries whose every blocker is accepted, by key. */
+  const acceptedKept = new Map<string, DeferredRemovalGroup>();
   for (const node of nodes) {
     let next = node;
     if (
@@ -1048,6 +1050,12 @@ const settleDeferredRemovals = (
             remainingGroups.push(group);
             continue;
           }
+          if (
+            group.keptCount !== undefined &&
+            group.edge === undefined &&
+            fates.every((fate) => fate === "accepted")
+          )
+            acceptedKept.set(deferredGroupKey(group), group);
           if (fates.includes("accepted")) continue;
           const remaining = group.blockers.filter(
             (_, index) => fates[index] === "pending",
@@ -1083,7 +1091,84 @@ const settleDeferredRemovals = (
     changed ||= next !== node;
     out.push(next);
   }
+  for (const group of acceptedKept.values())
+    changed = placeAcceptedSeamKept(out, group) || changed;
   return changed ? out : nodes;
+};
+
+/**
+ * Boundaries a seam kept standing beside pending insertions made after the
+ * revision they were kept from, once every one of those insertions is
+ * accepted: they go into the piece of the cut record they touch, as
+ * rejecting that revision after accepting the insertions places them. They
+ * stand where they are when no such piece can hold them. `out` is changed
+ * in place; whether it changed.
+ */
+const placeAcceptedSeamKept = (
+  out: InlineNode[],
+  group: DeferredRemovalGroup,
+): boolean => {
+  const count = group.keptCount ?? 0;
+  const blocker = (node: InlineNode | undefined): boolean =>
+    node !== undefined &&
+    isTrackedWrapper(node) &&
+    group.blockers.includes(node.info.id);
+  const indices = out.flatMap((node, index) => (blocker(node) ? [index] : []));
+  const first = indices.at(0);
+  const last = indices.at(-1);
+  if (count === 0 || first === undefined || last === undefined) return false;
+  // The boundaries stand just after the blockers before the seam, or just
+  // before those after it.
+  const start = [last + 1, first - count, ...indices.map((index) => index + 1)]
+    .filter((index) => index >= 0 && index + count <= out.length)
+    .find(
+      (index) =>
+        out
+          .slice(index, index + count)
+          .every((node) => isStandingBoundary(node)) &&
+        (blocker(out.at(index - 1)) || blocker(out.at(index + count))),
+    );
+  if (start === undefined) return false;
+  const boundaries = out.slice(start, start + count);
+  // A piece still held in a pending removal, or content made after the
+  // revision they were kept from, is no piece that takes them.
+  const takes = (node: InlineNode | undefined): node is InlineNode =>
+    node !== undefined &&
+    !blocker(node) &&
+    !isStandingBoundary(node) &&
+    !(node.type === "deletion" || node.type === "moveFrom") &&
+    !(
+      isAddedRevision(node) &&
+      group.keptFrom !== undefined &&
+      (node.info.date ?? "") > group.keptFrom
+    );
+  const after = out.at(start + count);
+  const before = start > 0 ? out.at(start - 1) : undefined;
+  const intoAfter = takes(after)
+    ? withBoundariesAtEdge(
+        after,
+        boundaries,
+        group.depth,
+        "start",
+        group.keptFrom,
+      )
+    : undefined;
+  if (intoAfter !== undefined) {
+    out.splice(start, count + 1, intoAfter);
+    return true;
+  }
+  const intoBefore = takes(before)
+    ? withBoundariesAtEdge(
+        before,
+        boundaries,
+        group.depth,
+        "end",
+        group.keptFrom,
+      )
+    : undefined;
+  if (intoBefore === undefined) return false;
+  out.splice(start - 1, count + 1, intoBefore);
+  return true;
 };
 
 /** Update an explicit pending seam before removing any of its blocking revisions. */
