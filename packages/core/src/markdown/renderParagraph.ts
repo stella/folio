@@ -79,8 +79,10 @@ export function renderParagraphBlock(
     // A numbered heading (`1. Scope`, through its style's `w:numPr` or its
     // own) keeps its number; a bulleted one its glyph, as a heading has no
     // Markdown bullet syntax to borrow.
-    if (!inline || (blank && label === undefined)) {
-      // Whitespace without a visible list label carries no text block.
+    if (blank && !label) {
+      // A heading without text or a visible list label carries no text
+      // block; with a label it shows that label, as an empty list item
+      // shows its marker.
       return { type: "paragraph", markdown: "" };
     }
     const hashes = "#".repeat(
@@ -89,9 +91,9 @@ export function renderParagraphBlock(
     // ATX headings occupy one source line; physical newlines create new blocks.
     const headingInline = inlineBreaksToHtml(inline);
     return {
-      markdown: label
-        ? `${hashes} ${label} ${headingInline}`
-        : `${hashes} ${headingInline}`,
+      markdown: [hashes, label, headingInline]
+        .filter((part) => part !== undefined && part !== "")
+        .join(" "),
       type: "paragraph",
     };
   }

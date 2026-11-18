@@ -490,6 +490,26 @@ export const BROWSER_DELETE_BESIDE_BOOKMARK_SEED_83 = {
   trace: BrowserInputTrace;
 };
 
+/** Typing over everything withdraws the paragraph breaks a suggested paste inserted. */
+export const BROWSER_TYPING_OVER_PASTED_BREAKS_SEED_1794983381 = {
+  seed: 1794983381,
+  path: "18:3:2:2",
+  fingerprint: "328c996278e3ab12",
+  trace: {
+    shape: "comments",
+    actions: [
+      { kind: "pasteMultiBlock", ...BROWSER_PASTE_PAYLOADS.pasteMultiBlock },
+      { kind: "selectAll" },
+      { kind: "typing", text: "alpha" },
+    ],
+  },
+} satisfies {
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
 export const BROWSER_CANCELLED_COMPOSITION_SEED_431 = {
   seed: 431,
   path: "9:2:1:1:1:2:2",
@@ -2099,6 +2119,7 @@ export const BROWSER_INPUT_REGRESSIONS = [
   BROWSER_CANCELLED_COMPOSITION_SEED_1793897521,
   BROWSER_CANCELLED_COMPOSITION_SEED_131,
   BROWSER_DELETE_BESIDE_BOOKMARK_SEED_83,
+  BROWSER_TYPING_OVER_PASTED_BREAKS_SEED_1794983381,
   CANONICAL_INSERTION_SEED_557,
   CANONICAL_ACROSS_PARAGRAPHS_SEED_347,
   CANONICAL_DELETION_SEED_11,

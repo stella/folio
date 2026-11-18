@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "title": "PINNED #1356, reported seed 1797766459: a merge of a joined paragraph meets the break a deletion in its batch keeps",
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "directNumbered",
+  "mode": "tracked-changes",
+  "seed": 1797766459,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 2365660932,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "3CEFFC83",
+          "separator": " ",
+          "mergedParagraphProperties": {
+            "alignment": null
+          }
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 1101252625,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "3CEFFC83",
+          "separator": " ",
+          "mergedParagraphProperties": {
+            "alignment": "center"
+          }
+        },
+        {
+          "type": "insertTable",
+          "blockId": "412DDC7F",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "31617F9A"
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "formatRange",
+    "commentOnRange",
+    "deleteBlock",
+    "splitBlock",
+    "mergeBlockWithNext",
+    "insertTable",
+    "insertTableRow",
+    "deleteTable"
+  ],
+  "origin": "shrunk from splice+dropOperation+unpin of 43cd3d5cb1bc85c0"
+}

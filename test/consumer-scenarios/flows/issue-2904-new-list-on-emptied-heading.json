@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "title": "PINNED #2904, reported seed 1006713221: a heading emptied by a split and numbered reads as its label in Markdown",
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "unusedNumbering",
+  "mode": "direct",
+  "seed": 1006713221,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 1190960512,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "splitBlock",
+          "blockId": "412DDC7F",
+          "offset": 8
+        },
+        {
+          "type": "replaceInBlock",
+          "blockId": "412DDC7F",
+          "find": "Service",
+          "replace": "",
+          "precondition": {
+            "blockTextHash": "hqw5sjd"
+          }
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 975520648,
+      "operations": [
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "412DDC7F",
+          "properties": {
+            "numbering": {
+              "kind": "newList",
+              "format": "numbered"
+            }
+          }
+        }
+      ],
+      "atomic": false
+    }
+  ],
+  "swarm": [
+    "replaceInBlock",
+    "commentOnRange",
+    "replaceBlock",
+    "splitBlock",
+    "setBlockParagraphProperties",
+    "insertTableRow",
+    "deleteTable"
+  ],
+  "origin": "shrunk from delete+reseed+unpin of a43c9ff1b50652d9"
+}

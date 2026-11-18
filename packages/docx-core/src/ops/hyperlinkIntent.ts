@@ -15,6 +15,7 @@ import type { EditorIntentMode } from "./editorIntent";
 import { structurallyEqual } from "./equality";
 import { resolveGap } from "./gaps";
 import { freshenIdentities } from "./identity";
+import { takeParagraphIds } from "./idLease";
 import {
   countKeys,
   identityKeysIn,
@@ -29,6 +30,7 @@ import {
   leafSpans,
   partitionContent,
 } from "./leaves";
+import { cloneModel } from "./modelClone";
 import { isTrackedChild, paragraphLength, withChildren } from "./offsets";
 import { findStoryParagraph } from "./paragraphLocator";
 import { selectedParagraphRuns } from "./plan";
@@ -290,14 +292,53 @@ type CompileHyperlinkIntentOptions = {
   compileIntent: CompileIntent;
 };
 
-/** Run content that names a record of its own, which a copy would duplicate. */
-const IDENTIFIED_RUN_CONTENT: ReadonlySet<string> = new Set([
+/**
+ * Content that names a record of its own, which a copy would duplicate: a
+ * note reference names its note, preserved markup may name anything, and a
+ * marker inside a copied text box names its bookmark, comment or move. A
+ * drawing or shape is copied as a paste copies it: the writer renumbers
+ * drawing ids, and paragraphs inside it take fresh ids.
+ */
+const IDENTIFIED_CONTENT: ReadonlySet<string> = new Set([
   "footnoteRef",
   "endnoteRef",
-  "drawing",
-  "shape",
   "preservedXml",
+  "preservedInline",
+  "bookmarkStart",
+  "bookmarkEnd",
+  "commentRangeStart",
+  "commentRangeEnd",
+  "commentReference",
+  "moveFromRangeStart",
+  "moveFromRangeEnd",
+  "moveToRangeStart",
+  "moveToRangeEnd",
 ]);
+
+/** Every record in a value, nested ones included. */
+const recordsIn = (value: unknown): object[] => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    value instanceof ArrayBuffer ||
+    ArrayBuffer.isView(value)
+  )
+    return [];
+  if (Array.isArray(value)) return value.flatMap(recordsIn);
+  return [value, ...Object.values(value).flatMap(recordsIn)];
+};
+
+const namesRecord = (record: object): boolean =>
+  "type" in record &&
+  typeof record.type === "string" &&
+  IDENTIFIED_CONTENT.has(record.type);
+
+/** The paragraphs inside a copy's drawings and text boxes. */
+const nestedParagraphs = (copy: readonly ParagraphContent[]): Paragraph[] =>
+  recordsIn(copy).filter(
+    (record): record is Paragraph =>
+      "type" in record && record.type === "paragraph",
+  );
 
 /**
  * The copy states a run's formatting as it now is; a pending formatting
@@ -503,19 +544,36 @@ const compileTrackedLinkEdit = (
         intent.type === "setHyperlink"
           ? wrapLinkedChildren(intent, children)
           : children;
-      if (
-        identityKeysIn(copy).length > 0 ||
-        copy.some(({ type }) => type === "preservedInline") ||
-        leafSpans(copy).some(({ node }) =>
-          IDENTIFIED_RUN_CONTENT.has(node.type),
-        )
-      )
+      if (identityKeysIn(copy).length > 0 || recordsIn(copy).some(namesRecord))
         return refuse(
-          "A link suggestion cannot copy content that names a record of its own, such as a drawing or a note reference.",
+          "A link suggestion cannot copy content that names a record of its own, such as a note reference.",
           DOCUMENT_OP_REFUSAL_REASONS.UNRECORDABLE_LINK_SUGGESTION,
         );
-      steps.push({ blockId, start: segment.start, end: segment.end, copy });
+      steps.push({
+        blockId,
+        start: segment.start,
+        end: segment.end,
+        copy: cloneModel(copy),
+      });
     }
+  }
+  // Paragraphs inside copied drawings and text boxes take fresh ids.
+  const nested = steps.flatMap(({ copy }) => nestedParagraphs(copy));
+  if (nested.length > 0) {
+    const ids = takeParagraphIds({
+      document,
+      count: nested.length,
+      reserved: mode.reservedBlockIds,
+      lease: mode.idLease,
+    });
+    if (ids === undefined)
+      return refuse(
+        "The paragraph identity space is exhausted.",
+        DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
+      );
+    for (const [index, paragraph] of nested.entries())
+      paragraph.paraId =
+        ids[index] ?? panic("An id was taken for each copied paragraph.");
   }
   const ops: DocumentOp[] = [];
   let current = document;

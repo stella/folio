@@ -47,6 +47,7 @@ import type { TrackedChangeInfo } from "../../types/document";
 import { addTrackedDeletionMark } from "../addTrackedDeletionMark";
 import { expectParagraphAttrs, expectTrackedChangeMarkAttrs } from "../attrs";
 import { clearIndentOnBackspace } from "../commands/clearParagraphIndent";
+import { paragraphJoinAfter } from "../commands/paragraphBookmarkJoin";
 import { paragraphPropertiesSnapshot } from "../commands/propertyChangeScope";
 import { paragraphEndsItsContainer } from "../containerFinalParagraph";
 import { encloseWholeControls } from "../contentControlRevisions";
@@ -54,6 +55,7 @@ import { splitBlockClearBorders } from "../extensions/features/BaseKeymapExtensi
 import { JOINED_RUNS_RESTYLED_META } from "../extensions/features/JoinedRunStyleExtension";
 import { expandNoteReferenceDeletionRange } from "../extensions/marks/noteReferenceDeletion";
 import { isInlineAnchor } from "../extensions/nodes/inlineAnchorDom";
+import { joinAtParagraphMark } from "../paragraphMarkJoin";
 import {
   carryParagraphProperties,
   paragraphLeftAfter,
@@ -255,6 +257,9 @@ function markRangeAsDeleted(
     ) || makeMarkAttrs(pluginState);
 
   let removedMark = false;
+  // Breaks the current author inserted go now, as their inserted words do:
+  // positions in `doc` of the paragraphs they end.
+  const retractedBreaks: number[] = [];
   doc.nodesBetween(from, to, (node, pos) => {
     if (
       node.type.name === "tableRow" &&
@@ -269,7 +274,11 @@ function markRangeAsDeleted(
       return;
     }
     const boundary = pos + node.nodeSize;
-    if (boundary > from && boundary <= to && node.attrs["pPrMark"] == null) {
+    if (boundary <= from || boundary > to) {
+      return;
+    }
+    const mark: unknown = node.attrs["pPrMark"];
+    if (mark == null) {
       tr.setNodeAttribute(pos, "pPrMark", {
         kind: "del",
         info: {
@@ -278,6 +287,9 @@ function markRangeAsDeleted(
           date: delAttrs.date,
         },
       });
+      removedMark = true;
+    } else if (isCurrentAuthorParagraphInsertion(mark, pluginState.author)) {
+      retractedBreaks.push(pos);
       removedMark = true;
     }
   });
@@ -310,26 +322,73 @@ function markRangeAsDeleted(
     });
   }
 
-  if (!hasMarkableContent) {
-    return;
+  if (hasMarkableContent) {
+    // A control the range spans whole is deleted with its text; one the range
+    // only empties stays. Recorded before the loop below moves any position.
+    encloseWholeControls({
+      tr,
+      from,
+      to,
+      revisionId: delAttrs.revisionId,
+    });
+
+    addTrackedDeletionMark({
+      tr,
+      from,
+      to,
+      mark: deletionType.create(delAttrs),
+      insertionPolicy: "retract-own",
+    });
   }
 
-  // A control the range spans whole is deleted with its text; one the range
-  // only empties stays. Recorded before the loop below moves any position.
-  encloseWholeControls({
+  retractParagraphBreaks({
     tr,
-    from,
-    to,
-    revisionId: delAttrs.revisionId,
+    positions: retractedBreaks,
+    stepsBeforeDoc,
+    styleResolver: joinState ? getDocumentStyleResolver(joinState) : null,
   });
+}
 
-  addTrackedDeletionMark({
-    tr,
-    from,
-    to,
-    mark: deletionType.create(delAttrs),
-    insertionPolicy: "retract-own",
-  });
+type RetractParagraphBreaksOptions = {
+  tr: Transaction;
+  /** Positions, before `tr`'s steps since `stepsBeforeDoc`, of the paragraphs whose breaks go. */
+  positions: readonly number[];
+  stepsBeforeDoc: number;
+  styleResolver: ReturnType<typeof getDocumentStyleResolver>;
+};
+
+/**
+ * Remove the current author's inserted paragraph breaks a deletion spans: the
+ * suggestion is withdrawn, so the paragraph runs on into the next one, as
+ * accepting a struck break joins them. Without this the emptied paragraph
+ * outlives its words, and accepting keeps a paragraph the direct edit removed.
+ */
+function retractParagraphBreaks({
+  tr,
+  positions,
+  stepsBeforeDoc,
+  styleResolver,
+}: RetractParagraphBreaksOptions): void {
+  // Last first: a join moves nothing in front of it.
+  for (const position of positions.toReversed()) {
+    // oxlint-disable-next-line unicorn/no-array-method-this-argument -- ProseMirror Mapping.map(pos, assoc)
+    const paragraphPos = tr.mapping.slice(stepsBeforeDoc).map(position);
+    const paragraph = tr.doc.nodeAt(paragraphPos);
+    if (paragraph?.type.name !== "paragraph") {
+      continue;
+    }
+    const join = paragraphJoinAfter(tr.doc, paragraphPos + paragraph.nodeSize);
+    if (!join) {
+      continue;
+    }
+    joinAtParagraphMark({
+      tr,
+      paragraphPos,
+      paragraph,
+      next: join.next,
+      styleResolver,
+    });
+  }
 }
 
 type EnclosePastedRunRevisionsOptions = {

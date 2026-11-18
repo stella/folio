@@ -213,6 +213,14 @@ const suffixView = (
     plain.trim() === expected.number
   )
     return view("", "listItem", undefined, expected.number);
+  if (
+    kind === "heading" &&
+    expected.kind === "heading" &&
+    expected.text.length === 0 &&
+    expected.number !== undefined &&
+    plain.trim() === expected.number
+  )
+    return view("", "heading", headingLevel, expected.number);
   const suffix =
     expected.text.length > 0 && plain.endsWith(expected.text)
       ? expected.text
@@ -514,9 +522,14 @@ const markdownSourceViews = (
   let previous: ContentBlock["table"];
   for (const block of blocks) {
     const paragraph = contentView(block, numberingFormats);
+    // A numbered block with no words still shows its number, which the
+    // exporter writes: a list item's marker, a numbered heading's label.
     if (
       !isFolioAIContentBlock(paragraph) &&
-      !(paragraph.kind === "listItem" && paragraph.number !== undefined)
+      !(
+        (paragraph.kind === "listItem" || paragraph.kind === "heading") &&
+        paragraph.number !== undefined
+      )
     )
       continue;
     const table = block.table;
