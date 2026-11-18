@@ -12,8 +12,10 @@
 import { type Document, MAX_REVISION_ID } from "../model/document";
 import {
   IDENTITY_SPACES,
+  idKey,
   packageIdentityKeyIndex,
   packageParagraphIdIndex,
+  packageParagraphIds,
 } from "./ids";
 
 export const ID_LEASE_KINDS: Readonly<{
@@ -211,4 +213,30 @@ export const freshLeasedIds = ({
     if (ids.length >= count) break;
   }
   return ids;
+};
+
+type TakeParagraphIdsOptions = {
+  document: Document;
+  count: number;
+  reserved: ReadonlySet<string> | undefined;
+  lease: IdLease | undefined;
+};
+
+/** `count` paragraph ids no paragraph of the package holds or the editor reserved. */
+export const takeParagraphIds = ({
+  document,
+  count,
+  reserved,
+  lease,
+}: TakeParagraphIdsOptions): string[] | undefined => {
+  const occupied = new Set(
+    [...packageParagraphIds(document.package), ...(reserved ?? [])].map(idKey),
+  );
+  const ids = freshLeasedIds({
+    lease,
+    kind: ID_LEASE_KINDS.PARAGRAPH,
+    count,
+    taken: (id) => occupied.has(formatParaId(id)),
+  });
+  return ids.length === count ? ids.map(formatParaId) : undefined;
 };

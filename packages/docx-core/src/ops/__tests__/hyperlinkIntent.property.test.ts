@@ -188,7 +188,7 @@ test("hyperlink intents have exact inverses and refuse unrepresentable suggestio
             );
             expect([
               "A link suggestion cannot strike text beside a marker inside the same link.",
-              "A link suggestion cannot copy content that names a record of its own, such as a drawing or a note reference.",
+              "A link suggestion cannot copy content that names a record of its own, such as a note reference.",
             ]).toContain(tracked.error.message);
           }
           expect(document).toStrictEqual(original(styleId));

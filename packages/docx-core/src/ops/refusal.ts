@@ -95,7 +95,8 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
   /**
    * A suggested link change would leave a piece of a link holding only
    * bookmark or comment markers, or would copy content that names a record of
-   * its own (a drawing, shape, note reference or preserved run markup).
+   * its own (a note reference, preserved run markup, or a marker inside a
+   * copied text box).
    */
   readonly UNRECORDABLE_LINK_SUGGESTION: "unrecordableLinkSuggestion";
   /** Seed contract: a main-story paragraph has no `paraId`. */
@@ -194,7 +195,8 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
   /**
    * A suggested link change would leave a piece of a link holding only
    * bookmark or comment markers, or would copy content that names a record of
-   * its own (a drawing, shape, note reference or preserved run markup).
+   * its own (a note reference, preserved run markup, or a marker inside a
+   * copied text box).
    */
   UNRECORDABLE_LINK_SUGGESTION: "unrecordableLinkSuggestion",
   /** Seed contract: a main-story paragraph has no `paraId`. */
