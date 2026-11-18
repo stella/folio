@@ -84,3 +84,76 @@ test("merge/delete oracle property covers every following deletion span", () => 
 test("merge whose next surviving block is a table cell keeps the separator", () => {
   assertMergeSkipsDeletedBlocks(2, 1, true);
 });
+
+const textsOf = (texts: string[], prefix = "block"): Row[] =>
+  texts.map((text, index) => ({
+    id: `${prefix}-${index}`,
+    text,
+    kind: "paragraph",
+  }));
+
+test("a merge across a deleted paragraph stays apart from a table the batch inserts there", () => {
+  const rows = textsOf(["Block 0", "Block 1"]);
+  const model = modelOf(rows);
+  model.mode = "tracked-changes";
+  const [first, second] = rows;
+  assert.ok(first && second);
+  expectOperation(model, {
+    id: "table",
+    type: "insertTable",
+    blockId: second.id,
+    rows: [["Term", "Value"]],
+  });
+  expectOperation(model, {
+    id: "merge",
+    type: "mergeBlockWithNext",
+    blockId: first.id,
+    separator: " ",
+  });
+  expectOperation(model, {
+    id: "delete",
+    type: "deleteBlock",
+    blockId: second.id,
+  });
+  const cells = textsOf(["Term", "Value"], "cell");
+  assert.deepEqual(
+    compareWithModel(model, [{ ...first, text: "Block 0 " }, ...cells]),
+    [],
+  );
+  assert.notDeepEqual(
+    compareWithModel(model, [
+      { ...first, text: "Block 0 Term" },
+      ...cells.slice(1),
+    ]),
+    [],
+  );
+});
+
+test("a merge into a last paragraph whose words are pending deletions adds no separator", () => {
+  const rows = textsOf(["Block 0", ""]);
+  const [first, last] = rows;
+  assert.ok(first && last);
+  const merged = (deletedContentIds: ReadonlySet<string>) => {
+    const model = modelOf(rows, rows, {
+      type: "marked",
+      ids: new Set(),
+      emptyIds: new Set(),
+      deletedContentIds,
+    });
+    model.mode = "tracked-changes";
+    expectOperation(model, {
+      id: "merge",
+      type: "mergeBlockWithNext",
+      blockId: first.id,
+      separator: " ",
+    });
+    return model;
+  };
+  const actual = (text: string) => [{ ...first, text }];
+  assert.deepEqual(
+    compareWithModel(merged(new Set([last.id])), actual("Block 0")),
+    [],
+  );
+  // A blank paragraph of its own still takes the separator.
+  assert.deepEqual(compareWithModel(merged(new Set()), actual("Block 0 ")), []);
+});
