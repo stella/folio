@@ -7,18 +7,6 @@
       "date": "2026-11-14"
     },
     {
-      "seed": 1490241278,
-      "path": "25:4:3:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:6:5:5:5:6:7:5:6:5:5:7:5:5:5:5:5:5:5:6",
-      "note": "A suggested removal of the last paragraph joins it with the one before when accepted: the same text, the later paragraph's id.",
-      "date": "2026-11-15"
-    },
-    {
-      "seed": -529709820,
-      "path": "28:0:0:0:0:0:0:2:1:1:1:1:1:1:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:3:2:2:0:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:2:2",
-      "note": "A suggested paragraph inserted after the body paragraph before a terminal table retains the source mark so rejection restores the original container.",
-      "date": "2026-11-16"
-    },
-    {
       "seed": 2078440352,
       "path": "15:0:0:0:0:0:0:0:0:2:1:1:1:1:1:1:1:3:3:3:3:4:3:3:3:3:4:4:5:5:5:5:5:5:5:5:5:5:5:5:5:7:8:7:5:5:8:5:5:8:5:5:9:7:10:8:8:8:7:7:8:7:7:9:9:7:8:10:8:8:7:7:7:7:7:7:22:0:20:20",
       "note": "A paragraph suggested after a table-cell paragraph, in a document with a pending join, goes beside the outermost table.",
@@ -29,6 +17,18 @@
       "path": "26:0:0:0:0:0:3:3:3:3:4:3:3:3:3:3:3:3:3:3:4:3:3:3:4:4:4:4:5:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:5:4:4:6:5:12:5:5:4:4:4:4:5:4:5:5:5:6:6:5:5:6:5:6:6:8:5:8:6:5:6:5:7:5:5:5:5:5:5:5",
       "note": "A paragraph suggested after a cell paragraph whose mark is a pending insertion goes beside the outermost table.",
       "date": "2026-11-18"
+    },
+    {
+      "seed": 1490241278,
+      "path": "25:4:3:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:6:5:5:5:6:7:5:6:5:5:7:5:5:5:5:5:5:5:6",
+      "note": "A suggested removal of the last paragraph joins it with the one before when accepted: the same text, the later paragraph's id.",
+      "date": "2026-11-15"
+    },
+    {
+      "seed": -529709820,
+      "path": "28:0:0:0:0:0:0:2:1:1:1:1:1:1:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:3:2:2:0:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:2:2",
+      "note": "A suggested paragraph inserted after the body paragraph before a terminal table retains the source mark so rejection restores the original container.",
+      "date": "2026-11-16"
     }
   ]
 }
