@@ -324,9 +324,18 @@ const readStory = (
     );
   }
   const story = bridge.readStory(parsed);
-  return story
-    ? ok(story)
-    : fail("The requested story was not found; run list_stories again.");
+  if (story === null) {
+    return fail("The requested story was not found; run list_stories again.");
+  }
+  const scoped =
+    parsed.type === "header" || parsed.type === "footer"
+      ? bridge.forStory?.(parsed)
+      : undefined;
+  return ok(
+    scoped
+      ? { ...story, blocks: scoped.snapshot().blocks.map(toAgentBlock) }
+      : story,
+  );
 };
 
 const CONTEXT_RADIUS = 40;
@@ -942,10 +951,17 @@ type PartitionedOperations = {
  * applied or queued under the same id. An id resent with a different
  * operation is the caller's mistake, not a retry, and refuses the call.
  */
-const partitionReplays = (
-  operations: readonly FolioDocumentOperation[],
-  ledger: ReadonlyMap<string, RecordedOperation>,
-): PartitionedOperations | string => {
+type OperationFingerprint = (operation: FolioDocumentOperation) => string;
+
+const partitionReplays = ({
+  operations,
+  ledger,
+  fingerprintOf,
+}: {
+  operations: readonly FolioDocumentOperation[];
+  ledger: ReadonlyMap<string, RecordedOperation>;
+  fingerprintOf: OperationFingerprint;
+}): PartitionedOperations | string => {
   const fresh: FolioDocumentOperation[] = [];
   const replays: Replay[] = [];
   for (const [index, operation] of operations.entries()) {
@@ -954,7 +970,7 @@ const partitionReplays = (
       fresh.push(operation);
       continue;
     }
-    if (recorded.fingerprint !== canonicalJson(operation)) {
+    if (recorded.fingerprint !== fingerprintOf(operation)) {
       return (
         `operations[${String(index)}].id "${operation.id}" already names a different operation ` +
         "this document applied. Give a new operation a new id, or omit ids to have them generated."
@@ -969,6 +985,7 @@ type RecordSettledOptions = {
   ledger: Map<string, RecordedOperation>;
   operations: readonly FolioDocumentOperation[];
   summary: FolioAgentApplyOperationsSummary;
+  fingerprintOf: OperationFingerprint;
 };
 
 /** Remember what landed. A skipped operation is not recorded, so resending it tries again. */
@@ -976,6 +993,7 @@ const recordSettled = ({
   ledger,
   operations,
   summary,
+  fingerprintOf,
 }: RecordSettledOptions): void => {
   const settled = new Set(
     [...summary.applied, ...summary.queued].map(({ id }) => id),
@@ -983,7 +1001,7 @@ const recordSettled = ({
   for (const operation of operations) {
     if (!settled.has(operation.id)) continue;
     ledger.set(operation.id, {
-      fingerprint: canonicalJson(operation),
+      fingerprint: fingerprintOf(operation),
       receipt: summary.receipts.find(
         ({ operationId }) => operationId === operation.id,
       ),
@@ -1059,8 +1077,22 @@ const suggestChanges = (
       "This editor surface cannot verify `documentVersion`; it has no document version to compare against.",
     );
   }
+  const scoped =
+    parsed.story === undefined ? bridge : bridge.forStory?.(parsed.story);
+  if (scoped === undefined) {
+    return fail("This editor surface cannot edit a header or footer story.");
+  }
+  if (scoped === null) {
+    return fail("The requested story was not found; run list_stories again.");
+  }
+  const fingerprintOf: OperationFingerprint = (operation) =>
+    canonicalJson({ story: parsed.story, operation });
   const ledger = ledgerOf(bridge);
-  const partitioned = partitionReplays(parsed.operations, ledger);
+  const partitioned = partitionReplays({
+    operations: parsed.operations,
+    ledger,
+    fingerprintOf,
+  });
   if (typeof partitioned === "string") {
     return fail(partitioned);
   }
@@ -1088,7 +1120,7 @@ const suggestChanges = (
         parsed.normalizations,
       );
     }
-    return applyOperations(bridge, {
+    return applyOperations(scoped, {
       operations: fresh,
       ...(parsed.precondition !== undefined && {
         precondition: parsed.precondition,
@@ -1097,7 +1129,7 @@ const suggestChanges = (
     });
   };
   const summary = applyFresh();
-  recordSettled({ ledger, operations: fresh, summary });
+  recordSettled({ ledger, operations: fresh, summary, fingerprintOf });
   return ok(withReplays({ summary, operations: parsed.operations, replays }));
 };
 

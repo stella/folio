@@ -9,7 +9,12 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { FolioDocxReviewer } from "@stll/folio-core/server";
+import {
+  createDocx,
+  type FolioDocumentOperation,
+  FolioDocxReviewer,
+} from "@stll/folio-core/server";
+import type { Paragraph } from "@stll/folio-core/types/document";
 
 import type { FolioAgentBridge } from "./bridge";
 import { createReviewerBridge } from "./bridges/reviewer";
@@ -160,6 +165,92 @@ describe("executeFolioToolCall: argument validation", () => {
 });
 
 describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", () => {
+  test("suggest_changes binds block preconditions and replays to the selected story", async () => {
+    const header = { type: "header", relationshipId: "rIdHeader" } as const;
+    const footer = { type: "footer", relationshipId: "rIdFooter" } as const;
+    const paragraph = (paraId: string) =>
+      ({
+        type: "paragraph",
+        paraId,
+        content: [{ type: "run", content: [{ type: "text", text: "Draft" }] }],
+      }) satisfies Paragraph;
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await createDocx({
+        package: {
+          document: {
+            content: [paragraph("10000001")],
+            finalSectionProperties: {
+              headerReferences: [
+                { type: "default", rId: header.relationshipId },
+              ],
+              footerReferences: [
+                { type: "default", rId: footer.relationshipId },
+              ],
+            },
+          },
+          headers: new Map([
+            [
+              header.relationshipId,
+              {
+                type: "header",
+                hdrFtrType: "default",
+                content: [paragraph("10000002")],
+              },
+            ],
+          ]),
+          footers: new Map([
+            [
+              footer.relationshipId,
+              {
+                type: "footer",
+                hdrFtrType: "default",
+                content: [paragraph("10000003")],
+              },
+            ],
+          ]),
+        },
+      }),
+    );
+    const bridge = createReviewerBridge(reviewer);
+    const story = expectOk(
+      executeFolioToolCall(
+        FOLIO_AGENT_TOOL_NAMES.readStory,
+        { handle: header },
+        bridge,
+      ),
+    );
+    const block = story.blocks?.at(0);
+    if (block === undefined) throw new Error("Expected a header block");
+    const operations = [
+      {
+        id: "edit-header",
+        type: "replaceInBlock",
+        blockId: block.blockId,
+        precondition: { blockTextHash: block.blockTextHash },
+        find: "Draft",
+        replace: "Final",
+      },
+    ] satisfies FolioDocumentOperation[];
+    const scoped = bridge.forStory?.(header);
+    expect(
+      scoped?.applyDocumentOperations({ version: 1, operations, dryRun: true })
+        .status,
+    ).toBe("previewed");
+    expect(reviewer.snapshotStory(header)?.blocks.at(0)?.text).toBe("Draft");
+    const suggest = (target: typeof header | typeof footer) =>
+      executeFolioToolCall(
+        FOLIO_AGENT_TOOL_NAMES.suggestChanges,
+        { story: target, operations },
+        bridge,
+      );
+    expect(expectOk(suggest(header)).applied).toHaveLength(1);
+    expect(expectOk(suggest(header)).replayed).toEqual([{ id: "edit-header" }]);
+    expect(suggest(footer)).toMatchObject({ ok: false });
+    expect(reviewer.readStory(header)?.text).toBe("Final");
+    expect(reviewer.readStory(footer)?.text).toBe("Draft");
+    expect(reviewer.getContent().at(0)?.text).toBe("Draft");
+  });
+
   test("list_stories returns typed handles that read_story accepts", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
     const bridge = createReviewerBridge(reviewer);

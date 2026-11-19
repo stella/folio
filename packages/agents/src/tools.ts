@@ -12,7 +12,9 @@ import {
   FOLIO_SCOPED_HANDLE_JSON_SCHEMA,
   FOLIO_SECTION_HANDLE_JSON_SCHEMA,
   FOLIO_STORY_HANDLE_JSON_SCHEMA,
+  FOLIO_SUGGESTION_STORY_JSON_SCHEMA,
   FOLIO_TEXT_RANGE_JSON_SCHEMA,
+  type FolioAgentSuggestionStory,
 } from "./codecs";
 import {
   FOLIO_BLOCK_PARAGRAPH_PROPERTIES_JSON_SCHEMA,
@@ -440,7 +442,8 @@ const SUGGEST_CHANGES_BASE_DESCRIPTION =
   "directly to the visible text. Each operation needs a blockId from `read_document` or `find_text`; if the " +
   "document changed since that read, re-read it and retry with fresh ids (a skip reason will say so). Pass " +
   "the `blockTextHash` from that read as `precondition.blockTextHash` to guard against the document " +
-  "changing between the read and this call.";
+  "changing between the read and this call. To edit a header or footer, pass its `story` handle " +
+  "from `list_stories` and use block ids and hashes from `read_story`.";
 
 const buildSuggestChangesToolDefinition = (
   resolved: ResolvedFolioSuggestChangesOptions,
@@ -455,6 +458,7 @@ const buildSuggestChangesToolDefinition = (
     inputSchema: {
       type: "object",
       properties: {
+        story: FOLIO_SUGGESTION_STORY_JSON_SCHEMA,
         ...(resolved.documentVersion !== null && {
           documentVersion: {
             type: "string",
@@ -531,7 +535,7 @@ export const FOLIO_AGENT_TOOL_REGISTRY: {
     {
       handle: FolioDocumentStoryHandle;
     },
-    FolioDocumentStory
+    FolioDocumentStory & { blocks?: FolioAgentBlock[] }
   >;
   readonly find_text: FolioAgentTypedToolDefinition<
     "find_text",
@@ -572,6 +576,7 @@ export const FOLIO_AGENT_TOOL_REGISTRY: {
     {
       operations: unknown[];
       documentVersion?: string;
+      story?: FolioAgentSuggestionStory;
     },
     FolioAgentApplyOperationsSummary
   >;
@@ -709,7 +714,7 @@ export const FOLIO_AGENT_TOOL_REGISTRY: {
   [FOLIO_AGENT_TOOL_NAMES.readStory]: defineFolioAgentToolDefinition({
     name: FOLIO_AGENT_TOOL_NAMES.readStory,
     description:
-      "Read one document story using a handle returned by `list_stories`.",
+      "Read a story using a handle from `list_stories`. Editable headers and footers include blocks and hashes for `suggest_changes`.",
     inputSchema: {
       type: "object",
       properties: {

@@ -10,7 +10,7 @@ import type {
   FolioDocumentStoryHandle,
 } from "@stll/folio-core/server";
 
-import type { FolioAgentCommentId } from "./codecs";
+import type { FolioAgentCommentId, FolioAgentSuggestionStory } from "./codecs";
 import type { FolioAgentChange, FolioAgentComment } from "./types";
 
 /**
@@ -63,6 +63,8 @@ export type FolioAgentBridge = {
   listStories?(): FolioDocumentStory[];
   /** Read one previously discovered story. */
   readStory?(handle: FolioDocumentStoryHandle): FolioDocumentStory | null;
+  /** Scope block snapshots and operations to an existing header or footer. */
+  forStory?(handle: FolioAgentSuggestionStory): FolioAgentBridge | null;
   /** Reply to a comment thread. Returns `false` when the target comment does not exist. */
   replyToComment(commentId: string, text: string): boolean;
   /** Mark a comment thread resolved or reopen it. Returns `false` when the target comment does not exist. */
