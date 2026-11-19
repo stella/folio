@@ -230,7 +230,16 @@ const suffixView = (
       : plain;
   const prefix =
     suffix === plain ? "" : plain.slice(0, plain.length - suffix.length);
-  const marker = LIST_MARKER.exec(prefix)?.groups?.["marker"];
+  // A label with words (`Box 1.`, `Article I.`) has no Markdown list syntax:
+  // the exporter writes it as text before the item's own, as the reader
+  // shows it.
+  const marker =
+    expected.kind === "listItem" &&
+    expected.number !== undefined &&
+    expected.number !== BULLET &&
+    prefix.trim() === expected.number
+      ? expected.number
+      : LIST_MARKER.exec(prefix)?.groups?.["marker"];
   if (
     kind === "paragraph" &&
     expected.kind === "listItem" &&
