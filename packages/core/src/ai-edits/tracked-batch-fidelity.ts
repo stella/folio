@@ -12,6 +12,7 @@ import {
   visitBlockTreeRecords,
   visitInlineContentSlots,
   visitParagraphRuns,
+  withInlineContentRewritten,
 } from "../docx/paragraphTraversal";
 import { consolidateParagraphContent } from "../docx/runConsolidator";
 import { serializeDocumentPart } from "../docx/serializer/documentSerializer";
@@ -25,7 +26,11 @@ import {
 import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
 import { isBlockBoundaryNode } from "../prosemirror/keptRangeBoundaries";
 import { readRangeAnchorAttrs } from "../prosemirror/rangeAnchorAttrs";
-import type { BlockContent, ParagraphFormatting } from "../types/document";
+import type {
+  BlockContent,
+  ParagraphContent,
+  ParagraphFormatting,
+} from "../types/document";
 import { commentAnchorIdsForNode } from "./comment-lifecycle";
 import { comparisonApplying, noteReferenceOf } from "./note-references";
 import { changedTopLevelWindow } from "./result-validation";
@@ -140,13 +145,21 @@ const withoutAddedComments = (
 
 const protectionKinds = ["note", "drawing", "field", "comment"] as const;
 type ProtectionKind = (typeof protectionKinds)[number];
-type Inventory = Record<ProtectionKind, Map<string, number>>;
+export type Inventory = Record<ProtectionKind, Map<string, number>>;
 
 const add = (items: Map<string, number>, key: string): void => {
   items.set(key, (items.get(key) ?? 0) + 1);
 };
 
-const protectedContent = (doc: PMNode): Inventory => {
+const isTrackedDeletion = (node: PMNode): boolean =>
+  node.marks.some(({ type }) => type.name === "deletion");
+
+/**
+ * The protected content of `doc`; with `deletedOnly`, only the notes,
+ * drawings and fields that are themselves pending deletion, which Accept All
+ * removes as the reviewer sees it.
+ */
+const protectedContent = (doc: PMNode, deletedOnly = false): Inventory => {
   const inventory: Inventory = {
     note: new Map(),
     drawing: new Map(),
@@ -156,6 +169,14 @@ const protectedContent = (doc: PMNode): Inventory => {
   const comments = new Set<number>();
   let hasComment = false;
   doc.descendants((node) => {
+    if (deletedOnly && !isTrackedDeletion(node)) return true;
+    // A text box stays a block of its own; its anchor in the carrier
+    // paragraph is what a deletion marks.
+    if (deletedOnly && node.type.name === "textBoxAnchor")
+      add(
+        inventory.drawing,
+        JSON.stringify(["textBox", node.attrs["anchorId"]]),
+      );
     const note = noteReferenceOf(node);
     if (note !== null)
       inventory.note.set(JSON.stringify([note.noteType, note.noteId]), 1);
@@ -187,6 +208,7 @@ const protectedContent = (doc: PMNode): Inventory => {
         add(inventory.field, String(node.attrs["instruction"]));
         break;
     }
+    if (deletedOnly) return true;
     for (const id of commentAnchorIdsForNode(node)) {
       comments.add(id);
       hasComment = true;
@@ -204,10 +226,31 @@ const protectedContent = (doc: PMNode): Inventory => {
   return inventory;
 };
 
+/**
+ * The protected content `after` holds as a pending deletion and `before` did
+ * not: an edit the reviewer sees as deleted, which Accept All may remove.
+ */
+const newlyDeleted = (before: Inventory, after: Inventory): Inventory => {
+  const inventory: Inventory = {
+    note: new Map(),
+    drawing: new Map(),
+    field: new Map(),
+    comment: new Map(),
+  };
+  for (const kind of protectionKinds) {
+    for (const [key, count] of after[kind]) {
+      const added = count - (before[kind].get(key) ?? 0);
+      if (added > 0) inventory[kind].set(key, added);
+    }
+  }
+  return inventory;
+};
+
 const missingProtectedContent = (
   expected: Inventory,
   actual: Inventory,
   retiredCommentIds: readonly number[],
+  deleted?: Inventory,
 ): ProtectionKind | null => {
   const retiredCommentKeys = new Set(
     retiredCommentIds.flatMap((id) => [String(id), `reference:${String(id)}`]),
@@ -216,7 +259,8 @@ const missingProtectedContent = (
     protectionKinds.find((kind) => {
       for (const [key, count] of expected[kind]) {
         if (kind === "comment" && retiredCommentKeys.has(key)) continue;
-        if ((actual[kind].get(key) ?? 0) < count) return true;
+        const removed = deleted?.[kind].get(key) ?? 0;
+        if ((actual[kind].get(key) ?? 0) + removed < count) return true;
       }
       return false;
     }) ?? null
@@ -353,16 +397,50 @@ const modelInventory = (blocks: readonly BlockContent[]): Inventory => {
   return inventory;
 };
 
+/** The notes, drawings and fields `blocks` hold inside tracked deletions. */
+const deletedModelInventory = (blocks: readonly BlockContent[]): Inventory => {
+  const deleted: ParagraphContent[] = [];
+  const collect = (content: readonly ParagraphContent[]): void => {
+    for (const item of content) {
+      if (item.type === "deletion") deleted.push(...item.content);
+      else
+        withInlineContentRewritten(item, (children) => {
+          collect(children);
+          return children;
+        });
+    }
+  };
+  visitBlockTreeRecords(blocks, (record) => {
+    if (record.type === "paragraph") collect(record.content);
+    return BLOCK_TREE_DESCENT.descend;
+  });
+  const inventory = modelInventory([{ type: "paragraph", content: deleted }]);
+  inventory.comment.clear();
+  return inventory;
+};
+
+/**
+ * The protected content the edited blocks hold as a new tracked deletion,
+ * which Accept All removes as the reviewer sees it.
+ */
+export const newlyDeletedProtectedBlocks = (
+  before: readonly BlockContent[],
+  after: readonly BlockContent[],
+): Inventory =>
+  newlyDeleted(deletedModelInventory(before), deletedModelInventory(after));
+
 /** The kind of protected content missing from the accepted blocks. */
 export const missingProtectedBlockKind = (
   before: readonly BlockContent[],
   after: readonly BlockContent[],
   retiredCommentIds: readonly number[] = [],
+  deleted?: Inventory,
 ): ProtectionKind | null =>
   missingProtectedContent(
     modelInventory(before),
     modelInventory(after),
     retiredCommentIds,
+    deleted,
   );
 
 const checkTrackedBatchFidelity = ({
@@ -409,6 +487,10 @@ const checkTrackedBatchFidelity = ({
     protectedContent(acceptedBefore.doc),
     protectedContent(acceptedAfter.doc),
     retiredCommentIds,
+    newlyDeleted(
+      protectedContent(original.doc, true),
+      protectedContent(candidate.doc, true),
+    ),
   );
   return lost === null ? null : `Accept All would lose a ${lost}.`;
 };

@@ -5,6 +5,12 @@
       "path": "16:0:0:0:0:0:1:5:5",
       "note": "A removed final linked paragraph transfers its id to surviving unlinked source content.",
       "date": "2026-11-16"
+    },
+    {
+      "seed": 946194673,
+      "path": "17:0:0:0:0:0:0:0:0",
+      "note": "A tracked deletion of a paragraph holding a note reference applies; Accept All removes the note with it.",
+      "date": "2026-11-19"
     }
   ]
 }
