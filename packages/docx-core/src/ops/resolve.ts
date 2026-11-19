@@ -19,6 +19,7 @@ import type {
   BlockContent,
   Deletion,
   Document,
+  DocumentBody,
   Paragraph,
   ParagraphMarkChangeKind,
   ParagraphPropertyChange,
@@ -38,6 +39,7 @@ import {
 import {
   blockListAt,
   endsItsContainer,
+  type ParagraphLocation,
   storyBody,
   storyParagraphs,
 } from "./blocks";
@@ -3551,12 +3553,56 @@ type ResolutionReceiverEffect = {
 type ParagraphMarkPlan = {
   ops: readonly DocumentOp[];
   receiverEffects: readonly ResolutionReceiverEffect[];
+  /**
+   * The paragraph, ending a block content control, whose join takes an
+   * empty paragraph after the control once every other join is done.
+   */
+  endsControl?: string;
+};
+
+/**
+ * The bare empty paragraph right after the block content control that the
+ * paragraph at `location` ends, with the list holding it: resolving away
+ * that paragraph's mark joins it with this one, which has nothing to bring
+ * into the control and goes. `undefined` where the paragraph ends no
+ * control, or what follows the control holds anything.
+ */
+const emptyParagraphAfterControl = (
+  body: DocumentBody,
+  { list, index }: Pick<ParagraphLocation, "list" | "index">,
+): { blocks: readonly BlockContent[]; index: number } | undefined => {
+  let steps = list;
+  let position = index;
+  for (;;) {
+    if (position !== blockListAt(body.content, steps).length - 1)
+      return undefined;
+    const last = steps.at(-1);
+    if (last?.kind !== "blockSdt") return undefined;
+    steps = steps.slice(0, -1);
+    position = last.block;
+    const blocks = blockListAt(body.content, steps);
+    const follower = blocks[position + 1];
+    if (follower === undefined) continue;
+    return follower.type === "paragraph" &&
+      follower.content.length === 0 &&
+      follower.pPrMark === undefined &&
+      follower.sectionProperties === undefined &&
+      (follower.propertyChanges?.length ?? 0) === 0
+      ? { blocks, index: position + 1 }
+      : undefined;
+  }
 };
 
 const paragraphMarkPlan = (
   ops: DocumentOp[],
   receiverEffects: ResolutionReceiverEffect[] = [],
-) => Result.ok({ ops, receiverEffects });
+  endsControl?: string,
+) =>
+  Result.ok<ParagraphMarkPlan>({
+    ops,
+    receiverEffects,
+    ...(endsControl === undefined ? {} : { endsControl }),
+  });
 
 const joinOps = (
   document: Document,
@@ -3963,7 +4009,7 @@ const joinOps = (
   }
   const review = reviewFieldsOf(paragraph);
   delete review.pPrMark;
-  return paragraphMarkPlan([
+  const markOps: DocumentOp[] = [
     {
       type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
       story,
@@ -3971,7 +4017,52 @@ const joinOps = (
       expected: reviewFieldsOf(paragraph),
       review,
     },
+  ];
+  // Ending a block content control, the paragraph joins the one after the
+  // control: an empty one has nothing to bring in, and goes, once the other
+  // joins have settled what follows the control.
+  return paragraphMarkPlan(
+    markOps,
+    [],
+    next === undefined &&
+      emptyParagraphAfterControl(body, location) !== undefined
+      ? paraId
+      : undefined,
+  );
+};
+
+/**
+ * Remove the empty paragraph after the control the paragraph `paraId` ends,
+ * where one still follows once every join of the resolution is done.
+ */
+const absorbControlFollower = (
+  document: Document,
+  story: OpStory,
+  paraId: string,
+  applyOps: ApplyOps,
+): Result<DocumentEdit | undefined, DocumentOpRefusal> => {
+  const body = storyBody(document, story);
+  const location = storyParagraphs(body).find(
+    ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(paraId),
+  );
+  if (location === undefined) return Result.ok(undefined);
+  const absorbed = emptyParagraphAfterControl(body, location);
+  const anchor = absorbed?.blocks.find(
+    (block, index): block is Paragraph =>
+      index !== absorbed.index && block.type === "paragraph",
+  );
+  if (absorbed === undefined || anchor === undefined)
+    return Result.ok(undefined);
+  const removed = applyOps(document, [
+    {
+      type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+      story,
+      blockId: anchor.paraId ?? "",
+      expected: absorbed.blocks,
+      blocks: absorbed.blocks.filter((_, index) => index !== absorbed.index),
+    },
   ]);
+  return removed.isErr() ? Result.err(removed.error) : Result.ok(removed.value);
 };
 
 /** The main story's own content: the body's blocks, without its comments or section view. */
@@ -4600,6 +4691,7 @@ export const planRevisionResolution = ({
   let current = rows.value.document;
   const ranInto = new Set<string>();
   const joinsBefore = new Set(joins.map(({ paraId }) => idKey(paraId)));
+  const controlEnds: string[] = [];
   for (const join of joins.toReversed()) {
     joinsBefore.delete(idKey(join.paraId));
     if (removedParagraphs.has(idKey(join.paraId))) continue;
@@ -4617,6 +4709,15 @@ export const planRevisionResolution = ({
     }
     edits.push(joined.value);
     current = joined.value.document;
+    if (planned.value.endsControl !== undefined)
+      controlEnds.push(planned.value.endsControl);
+  }
+  for (const paraId of controlEnds) {
+    const absorbed = absorbControlFollower(current, op.story, paraId, applyOps);
+    if (absorbed.isErr()) return Result.err(absorbed.error);
+    if (absorbed.value === undefined) continue;
+    edits.push(absorbed.value);
+    current = absorbed.value.document;
   }
   // Notes whose last reference went are removed first: a comment anchored in
   // one of them is then exhausted too and retires below.

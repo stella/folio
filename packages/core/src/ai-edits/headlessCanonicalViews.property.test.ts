@@ -38,6 +38,7 @@ import {
   propertyTestTimeout,
 } from "../../../../test/property-testing";
 import {
+  rejectedAbsorbedFollowerIdentities,
   rejectedContainerEndIdentities,
   rejectedJoinSurvivorIdentities,
 } from "../../../../test/support/rejectedJoinSurvivors";
@@ -281,16 +282,31 @@ const viewLaws = async (
   }
   // The legacy reviewer drops an empty paragraph whose rejected added mark
   // ends a local container; the paragraph stays there, as the canonical
-  // reviewer reads it, after the block it follows.
+  // reviewer reads it, after the block it follows, and takes an empty
+  // paragraph after the control the legacy reviewer keeps.
+  const legacyRejected = (await open(buffer, "legacy")).toResolvedDocument(
+    "reject",
+  );
   const containerEnds = new Set(
     rejectedContainerEndIdentities({
       source: before,
       actual: canonical.toResolvedDocument("reject"),
-      expected: (await open(buffer, "legacy")).toResolvedDocument("reject"),
+      expected: legacyRejected,
+    }),
+  );
+  const absorbedFollowers = new Set(
+    rejectedAbsorbedFollowerIdentities({
+      source: before,
+      actual: canonical.toResolvedDocument("reject"),
+      expected: legacyRejected,
     }),
   );
   for (const entry of expected) {
-    if (entry.view !== "original" || containerEnds.size === 0) continue;
+    if (
+      entry.view !== "original" ||
+      (containerEnds.size === 0 && absorbedFollowers.size === 0)
+    )
+      continue;
     const actualBlocks =
       read.find(
         (candidate) =>
@@ -307,6 +323,8 @@ const viewLaws = async (
       if (at === 0 && index !== 0) continue;
       entry.blocks = entry.blocks.toSpliced(at, 0, block);
     }
+    entry.blocks =
+      entry.blocks?.filter(({ id }) => !absorbedFollowers.has(id)) ?? null;
   }
   const fillerIds = new Map(
     isDeepStrictEqual(read, expected)
