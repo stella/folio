@@ -259,8 +259,8 @@ const authoredBlock = (block: BlockContent): string => {
 };
 
 export const sameOriginalBlocks = (
-  before: BlockContent[],
-  after: BlockContent[],
+  before: readonly BlockContent[],
+  after: readonly BlockContent[],
   addedCommentIds: ReadonlySet<number>,
 ): boolean => {
   const restored = removeCommentMarkers(after, addedCommentIds);
