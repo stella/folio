@@ -1480,13 +1480,22 @@ const sameParagraphContainer = (left: Row, right: Row): boolean => {
   );
 };
 
+/**
+ * Whether `later`, a block after `row`, is in `row`'s story or table cell:
+ * a paragraph there, or a cell of a table there. A story paragraph before a
+ * table does not end the story; the table follows it there.
+ */
+const followsInContainer = (row: Row, later: Row): boolean =>
+  sameParagraphContainer(row, later) ||
+  (row.table === undefined && later.table !== undefined);
+
 /** Whether block `id` is in `rows` and the last of its story or table cell there. */
 const endsContainer = (rows: readonly Row[], id: string): boolean => {
   const index = rows.findIndex((row) => row.id === id);
   const row = rows[index];
   return (
     row !== undefined &&
-    rows.slice(index + 1).every((later) => !sameParagraphContainer(row, later))
+    rows.slice(index + 1).every((later) => !followsInContainer(row, later))
   );
 };
 
@@ -1565,13 +1574,14 @@ const isContainerCarrier = (model: Model, row: ModelRow): boolean => {
   const pre = row.pre;
   if (pre === undefined) return false;
   const index = model.rows.indexOf(row);
-  return model.rows
-    .slice(index + 1)
-    .every(
-      (candidate) =>
-        candidate.pre === undefined ||
-        !sameParagraphContainer(pre, candidate.pre),
-    );
+  return model.rows.slice(index + 1).every(
+    (candidate) =>
+      candidate.pre === undefined ||
+      // A live-only row accepting removes (a join's source, which the
+      // model lists after every row) is not in the accepted container.
+      (candidate.outsidePreState === true && candidate.removed) ||
+      !followsInContainer(pre, candidate.pre),
+  );
 };
 
 const tableOf = (row: ModelRow): TableLocation => {

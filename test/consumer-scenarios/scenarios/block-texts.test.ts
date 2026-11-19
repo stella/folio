@@ -157,3 +157,80 @@ test("a merge into a last paragraph whose words are pending deletions adds no se
   // A blank paragraph of its own still takes the separator.
   assert.deepEqual(compareWithModel(merged(new Set()), actual("Block 0 ")), []);
 });
+
+test("a merge across a deleted story paragraph before a table keeps the separator", () => {
+  const rows: Row[] = [
+    ...textsOf(["Block 0", "Block 1"]),
+    {
+      id: "cell-0",
+      text: "Term",
+      kind: "paragraph",
+      table: {
+        outerTableIndex: 0,
+        tableIndex: 0,
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+        columnSpan: 1,
+        rowSpan: 1,
+      },
+    },
+  ];
+  const [first, second, cell] = rows;
+  assert.ok(first && second && cell);
+  const model = modelOf(rows);
+  model.mode = "tracked-changes";
+  // The table follows the paragraph in the story, so the paragraph does not
+  // end it: deleting it removes it, and the join stops before the table.
+  expectOperation(model, {
+    id: "delete",
+    type: "deleteBlock",
+    blockId: second.id,
+  });
+  expectOperation(model, {
+    id: "merge",
+    type: "mergeBlockWithNext",
+    blockId: first.id,
+    separator: " ",
+  });
+  assert.deepEqual(
+    compareWithModel(model, [{ ...first, text: "Block 0 " }, cell]),
+    [],
+  );
+  assert.notDeepEqual(
+    compareWithModel(model, [{ ...first, text: "Block 0" }, cell]),
+    [],
+  );
+});
+
+test("a pending join's source does not follow the last paragraph of its story", () => {
+  // Accepted, the source's words run into `joined`; the model lists the
+  // live-only source after every row.
+  const rows = textsOf(["Head Block 0", "Block 1", ""]);
+  const [joined, middle, last] = rows;
+  assert.ok(joined && middle && last);
+  const live: Row[] = [
+    { id: "source", text: "Head ", kind: "paragraph" },
+    { ...joined, text: "Block 0" },
+    middle,
+    last,
+  ];
+  const model = modelOf(rows, live, {
+    type: "marked",
+    ids: new Set(["source"]),
+    emptyIds: new Set(),
+    deletedContentIds: new Set([last.id]),
+  });
+  model.mode = "tracked-changes";
+  expectOperation(model, {
+    id: "merge",
+    type: "mergeBlockWithNext",
+    blockId: middle.id,
+    separator: " ",
+  });
+  assert.deepEqual(compareWithModel(model, [joined, middle]), []);
+  assert.notDeepEqual(
+    compareWithModel(model, [joined, { ...middle, text: "Block 1 " }]),
+    [],
+  );
+});
