@@ -8,6 +8,7 @@ import {
 } from "@stll/docx-core";
 import {
   isNumberingReference,
+  NUMBER_FORMATS,
   paragraphNumberingReference,
 } from "@stll/docx-core/model";
 
@@ -773,12 +774,24 @@ const LIST_KIND_SET: ReadonlySet<string> = new Set(LIST_KINDS);
 const isListKind = (value: string): value is ListKind =>
   LIST_KIND_SET.has(value);
 
-/** `{ kind: "newList", format, level? }`: a list the operation starts. */
+/** OOXML numbering formats accepted when defining a list. */
+export const FOLIO_LIST_NUMBER_FORMAT_VALUES: readonly NonNullable<
+  FolioAINewListReference["numFmt"]
+>[] = Object.freeze(NUMBER_FORMATS.filter((format) => format !== "custom"));
+
+/** A list the operation starts. */
 const readNewListReference = (
   candidate: Record<string, unknown>,
   numberingPath: string,
 ): FolioAINewListReference => {
-  assertAllowedKeys(candidate, numberingPath, ["kind", "format", "level"]);
+  assertAllowedKeys(candidate, numberingPath, [
+    "kind",
+    "format",
+    "level",
+    "numFmt",
+    "lvlText",
+    "start",
+  ]);
   const format = candidate["format"];
   if (typeof format !== "string" || !isListKind(format)) {
     return invalidBatch(
@@ -786,17 +799,39 @@ const readNewListReference = (
       `expected one of ${LIST_KINDS.join(", ")}`,
     );
   }
-  if (candidate["level"] === undefined) {
-    return { kind: "newList", format };
-  }
-  const level = readNonNegativeInteger(candidate, "level", numberingPath);
-  if (level > MAX_NEW_LIST_LEVEL) {
+  const level =
+    candidate["level"] === undefined
+      ? undefined
+      : readNonNegativeInteger(candidate, "level", numberingPath);
+  if (level !== undefined && level > MAX_NEW_LIST_LEVEL) {
     return invalidBatch(
       `${numberingPath}.level`,
       `expected at most ${MAX_NEW_LIST_LEVEL}`,
     );
   }
-  return { kind: "newList", format, level };
+  const requestedNumFmt = candidate["numFmt"];
+  const numFmt = FOLIO_LIST_NUMBER_FORMAT_VALUES.find(
+    (value) => value === requestedNumFmt,
+  );
+  if (requestedNumFmt !== undefined && numFmt === undefined) {
+    return invalidBatch(
+      `${numberingPath}.numFmt`,
+      "expected a supported OOXML numbering format",
+    );
+  }
+  const lvlText = readOptionalString(candidate, "lvlText", numberingPath);
+  const start =
+    candidate["start"] === undefined
+      ? undefined
+      : readNonNegativeInteger(candidate, "start", numberingPath);
+  return {
+    kind: "newList",
+    format,
+    ...(level === undefined ? {} : { level }),
+    ...(numFmt === undefined ? {} : { numFmt }),
+    ...(lvlText === undefined ? {} : { lvlText }),
+    ...(start === undefined ? {} : { start }),
+  };
 };
 
 const readClearableNumbering = ({

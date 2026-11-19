@@ -15,8 +15,8 @@ import type { NewListInstance } from "@stll/docx-core/ops";
 
 import type { FolioContentStatedNumbering } from "../compare/content-types";
 import {
-  type ListKind,
   mintListInstance,
+  type NewListDefinition,
 } from "../docx/listNumberingInstances";
 import {
   NO_NUMBERING_IDS_IN_USE,
@@ -25,10 +25,10 @@ import {
 import { createNumberingMap, type NumberingMap } from "../docx/numberingParser";
 import { paragraphNumberingReference } from "../docx/numberingReference";
 import type { Document, NumberingDefinitions } from "../types/document";
+import { canonicalJson } from "../utils/canonicalJson";
 import type {
   FolioAIBlockParagraphProperties,
   FolioAIEditOperation,
-  FolioAIListKind,
   FolioAIListNumbering,
   FolioAINewListReference,
   FolioAIResolvedEditOperation,
@@ -46,7 +46,7 @@ type ResolvedNewLists = {
 
 type DeferredNewListReference = {
   kind: "deferredNewList";
-  allocation: { format: ListKind };
+  allocation: NewListDefinition;
   level: number;
 };
 
@@ -91,26 +91,39 @@ export function assertNewListsAllocated(
   }
 }
 
+const newListDefinition = ({
+  format: kind,
+  level,
+  numFmt,
+  lvlText,
+  start,
+}: FolioAINewListReference): NewListDefinition => ({
+  kind,
+  ...(numFmt === undefined && lvlText === undefined
+    ? {}
+    : { format: { numFmt, lvlText } }),
+  ...(start === undefined ? {} : { start }),
+  ...(numFmt === undefined && lvlText === undefined && start === undefined
+    ? {}
+    : { level: level ?? 0 }),
+});
+
 const deferNewListRequests = (
   operations: readonly FolioAIEditOperation[],
 ): FolioAIStagedEditOperation[] => {
   const deferOperation = (
     operation: FolioAIEditOperation,
   ): FolioAIStagedEditOperation => {
-    const allocations = new Map<
-      ListKind,
-      DeferredNewListReference["allocation"]
-    >();
+    const allocations = new Map<string, NewListDefinition>();
     const resolve = (
       value: FolioAIListNumbering | undefined,
     ): FolioContentStatedNumbering | DeferredNewListReference | undefined => {
       if (value === undefined || !isFolioAINewListReference(value))
         return value;
-      let allocation = allocations.get(value.format);
-      if (allocation === undefined) {
-        allocation = { format: value.format };
-        allocations.set(value.format, allocation);
-      }
+      const definition = newListDefinition(value);
+      const key = canonicalJson(definition);
+      const allocation = allocations.get(key) ?? definition;
+      allocations.set(key, allocation);
       return { kind: "deferredNewList", allocation, level: value.level ?? 0 };
     };
     const resolveProperties = (
@@ -180,7 +193,7 @@ export const stageNewListOperations = (
 
 /**
  * Replace every new-list request with a reference to an instance minted for
- * its operation: one instance per operation and kind. `numbering` is the map
+ * its operation, shared by paragraphs requesting the same definition. `numbering` is the map
  * the batch applies against; the result's map adds the minted instances.
  * `elsewhere` holds the ids the package's other stories define, which no
  * minted instance takes.
@@ -203,7 +216,7 @@ export const resolveNewListOperations = (
       if (numId === undefined) {
         const instance = mintListInstance(
           definitions,
-          { kind: value.allocation.format },
+          value.allocation,
           elsewhere,
         );
         definitions = instance.definitions;
@@ -293,11 +306,11 @@ export type MintedList = { numId: number; newList: NewListInstance };
  */
 export const createBatchListMinter = (document: () => Document) => {
   let definitions: Document["package"]["numbering"] | null = null;
-  return (format: FolioAIListKind): MintedList => {
+  return (request: FolioAINewListReference): MintedList => {
     definitions ??= document().package.numbering;
     const minted = mintListInstance(
       definitions,
-      { kind: format },
+      newListDefinition(request),
       NO_NUMBERING_IDS_IN_USE,
     );
     definitions = minted.definitions;

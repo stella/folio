@@ -4,9 +4,13 @@
 
 ```ts
 
+import { AppliedDocumentOp } from '@stll/docx-core/ops';
+import { DocumentOpRefusal } from '@stll/docx-core/ops';
+import { EditorIntentMode } from '@stll/docx-core/ops';
 import { Hyperlink } from '@stll/docx-core/model';
 import * as import__stll_docx_core_model from '@stll/docx-core/model';
 import { Node as Node_2 } from 'prosemirror-model';
+import { NumberFormat } from '@stll/docx-core/model';
 import { OpStory } from '@stll/docx-core/ops';
 import { Paragraph } from '@stll/docx-core/model';
 import { ParagraphContent } from '@stll/docx-core/model';
@@ -98,6 +102,21 @@ export type BilingualTableParagraphRef = {
 
 // @public
 export const bookmark: (input: BookmarkOptions) => ParagraphContent[];
+
+// @public
+export const changeListFormat: (document: import__stll_docx_core_model.Document, input: ChangeListFormatOptions) => Result<AppliedDocumentOp, DocumentOpRefusal>;
+
+// @public (undocumented)
+export type ChangeListFormatOptions = {
+    sourceNumId: number;
+    level: number;
+    numFmt: Exclude<NumberFormat, "custom">;
+    lvlText?: string;
+    start?: number;
+    story?: OpStory;
+    paragraphIds?: readonly string[];
+    mode: EditorIntentMode;
+};
 
 // @public
 export const compareDocxVersions: (base: ArrayBuffer, revised: ArrayBuffer, options?: FolioCompareDocxVersionsOptions) => Promise<FolioVersionDiff>;
@@ -481,6 +500,9 @@ export const FOLIO_HIGHLIGHT_COLOR_VALUES: readonly HighlightColor[];
 
 // @public
 export const FOLIO_LINE_SPACING_RULE_VALUES: readonly import__stll_docx_core_model.LineSpacingRule[];
+
+// @public
+export const FOLIO_LIST_NUMBER_FORMAT_VALUES: readonly NonNullable<FolioAINewListReference["numFmt"]>[];
 
 // @public
 export const FOLIO_PAGE_BREAK_CLEAR_VALUES: readonly ["none", "left", "right", "all"];

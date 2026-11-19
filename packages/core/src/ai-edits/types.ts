@@ -17,6 +17,7 @@ import type { ListKind } from "../docx/listNumberingInstances";
 import type { CanonicalGap } from "../types/canonicalCapabilities";
 import type {
   BreakContent,
+  NumberFormat,
   OutlineLevel,
   ParagraphAlignment,
   TextFormatting,
@@ -106,14 +107,19 @@ export type FolioAIListKind = ListKind;
 /**
  * Start a new list: a numbering instance of `format`, defined for the
  * operation, with its paragraphs at `level` (zero-based, default 0). Every
- * paragraph one operation numbers this way joins the same new list; separate
- * operations start separate lists. A package without a numbering part gets
- * one.
+ * paragraph one operation numbers with the same settings joins the same new
+ * list. Separate operations start separate lists.
  */
 export type FolioAINewListReference = {
   kind: "newList";
   format: FolioAIListKind;
   level?: number;
+  /** Override the selected level's numbering format. */
+  numFmt?: Exclude<NumberFormat, "custom">;
+  /** Override the selected level's label text, such as `%1)`. */
+  lvlText?: string;
+  /** Override the selected level's initial counter value. */
+  start?: number;
 };
 
 /** An existing numbering instance and level, or a new list. */

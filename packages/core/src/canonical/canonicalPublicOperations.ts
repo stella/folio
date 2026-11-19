@@ -73,10 +73,7 @@ import {
   EXISTING_REVISION_CONFLICT_MESSAGE,
 } from "../ai-edits/existingRevisions";
 import { stripInlineEmphasisMarkers } from "../ai-edits/inline-emphasis";
-import {
-  createBatchListMinter,
-  type MintedList,
-} from "../ai-edits/newListNumbering";
+import { createBatchListMinter } from "../ai-edits/newListNumbering";
 import {
   cutsIntoNoteReference,
   type NoteReferenceLabels,
@@ -129,7 +126,6 @@ import type {
   FolioAIEditParagraphIdentity,
   FolioAIEditSkippedOperation,
   FolioAIEditSkipReason,
-  FolioAIListKind,
   FolioAIListNumbering,
   FolioAIParagraphIndentation,
   FolioAIParagraphSpacing,
@@ -768,7 +764,7 @@ const statedParagraphPatch = (
 };
 
 type ResolveParagraphPropertiesOptions = {
-  mintList: (format: FolioAIListKind) => MintedList;
+  mintList: ReturnType<typeof createBatchListMinter>;
   operation: Extract<
     FolioDocumentOperation,
     { type: "setBlockParagraphProperties" }
@@ -828,7 +824,7 @@ const statedPropertiesIntents = ({
   story: OpStory;
   blockId: string;
   properties: FolioAIBlockParagraphProperties | undefined;
-  mintList: (format: FolioAIListKind) => MintedList;
+  mintList: ReturnType<typeof createBatchListMinter>;
 }): EditorIntent[] => {
   if (properties === undefined) return [];
   const stated = statedNumbering(properties.numbering, mintList);
@@ -872,7 +868,7 @@ type ProjectedParagraph = NonNullable<
 >;
 
 type ResolveBlockInsertionOptions = {
-  mintList: (format: FolioAIListKind) => MintedList;
+  mintList: ReturnType<typeof createBatchListMinter>;
   operation: BlockInsertion;
   /** The paragraph the insertion goes beside. */
   paragraph: ProjectedParagraph;
@@ -2391,7 +2387,7 @@ type ResolveCanonicalPublicOperationOptions = {
    */
   suggested: boolean;
   /** A new list of one kind for this operation, minted after the batch's earlier ones. */
-  mintList: (format: FolioAIListKind) => MintedList;
+  mintList: ReturnType<typeof createBatchListMinter>;
   /** The blocks the batch deletes, and those it inserts beside. */
   besideDeletions: BesideDeletions;
 };
@@ -2407,11 +2403,11 @@ type BesideDeletions = {
  */
 const statedNumbering = (
   numbering: FolioAIListNumbering | undefined,
-  mint: (format: FolioAIListKind) => MintedList,
+  mint: ReturnType<typeof createBatchListMinter>,
 ): { numbering?: FolioContentStatedNumbering; newList?: NewListInstance } => {
   if (numbering === undefined) return {};
   if (numbering.kind !== "newList") return { numbering };
-  const minted = mint(numbering.format);
+  const minted = mint(numbering);
   return {
     numbering: paragraphNumberingReference({
       numId: minted.numId,

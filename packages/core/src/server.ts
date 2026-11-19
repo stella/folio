@@ -87,6 +87,10 @@ export {
   type TableCellSpec,
 } from "./docx/server/build";
 export {
+  changeListFormat,
+  type ChangeListFormatOptions,
+} from "./docx/server/changeListFormat";
+export {
   extractDocumentStyleSet,
   extractDocumentStyleSetFromDocx,
   inspectDocumentStyles,
@@ -196,6 +200,7 @@ export {
   FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE,
   FOLIO_HIGHLIGHT_COLOR_VALUES,
   FOLIO_LINE_SPACING_RULE_VALUES,
+  FOLIO_LIST_NUMBER_FORMAT_VALUES,
   FOLIO_PAGE_BREAK_CLEAR_VALUES,
   FOLIO_PARAGRAPH_ALIGNMENT_VALUES,
   FOLIO_DOCUMENT_OPERATION_PRECONDITIONS,
