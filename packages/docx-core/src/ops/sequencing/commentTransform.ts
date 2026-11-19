@@ -469,6 +469,9 @@ const restorationCommutes = (other: CommentOp): boolean =>
   other.type === DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT ||
   isAnchoredComment(other);
 
+const anchoredCreation = (op: CommentOp): AnchoredComment | undefined =>
+  isAnchoredComment(op) ? op : undefined;
+
 // The paragraphs a restoration states.
 const restoredBlocks = (op: RestoreCommentStateOp): Set<string> =>
   new Set(
@@ -555,19 +558,23 @@ export const transformCommentPair = ({
   }
   if (op.type === DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE) {
     const addressed = restoredBlocks(op);
+    const created = anchoredCreation(over);
     const changed = [
       ...touched,
-      ...(isAnchoredComment(over)
-        ? anchorPoints(over).map(({ blockId }) => blockId)
-        : []),
+      ...(created === undefined
+        ? []
+        : anchorPoints(created).map(({ blockId }) => blockId)),
     ];
     if (changed.some((blockId) => addressed.has(blockId)))
       return blockConflict(op, over);
     // The restoration keeps the new comment: it applies as if the comment
     // were absent, which leaves the comment where its creation places it.
-    if (isAnchoredComment(over))
+    if (created !== undefined)
       return Result.ok([
-        { ...op, createdSince: [...(op.createdSince ?? []), over.comment.id] },
+        {
+          ...op,
+          createdSince: [...(op.createdSince ?? []), created.comment.id],
+        },
       ]);
   }
   // Replies, edits, resolutions and deletions find their anchors in the
