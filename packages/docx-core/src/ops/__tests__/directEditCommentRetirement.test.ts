@@ -121,6 +121,47 @@ test("deleting every commented character directly retires the thread", () => {
   expect(markersOf(undone.document)).toEqual(markersOf(source));
 });
 
+test("a split over every commented character puts its break where the words were", () => {
+  // The reference stands in a run of its own, as packages write it, and counts
+  // as a position of the paragraph until the thread goes.
+  const source = commented();
+  const [block] = source.package.document.content;
+  if (block?.type !== "paragraph") throw new Error("no paragraph");
+  block.content = [
+    { type: "commentRangeStart", id: 1 },
+    run("gone"),
+    { type: "commentRangeEnd", id: 1 },
+    { type: "run", content: [{ type: "commentReference", id: 1 }] },
+    run(" keep."),
+  ];
+  const intent = {
+    type: "splitParagraph" as const,
+    at: at(0),
+    to: at(4),
+    newBlockId: "22222222",
+  };
+  const ids = allocateEditorIntentIds(source, intent);
+  const compiled = compileEditorIntent(source, {
+    intent,
+    mode: { type: "editing", newIds: ids.newIds },
+  }).unwrap();
+  const split = applyDocumentOps(source, compiled.ops).unwrap().document;
+  expect(split.package.document.comments ?? []).toEqual([]);
+  expect(
+    split.package.document.content.map((paragraph) =>
+      paragraph.type === "paragraph"
+        ? paragraph.content.flatMap((node) =>
+            node.type === "run"
+              ? node.content.flatMap((leaf) =>
+                  leaf.type === "text" ? [leaf.text] : [],
+                )
+              : [],
+          )
+        : [],
+    ),
+  ).toEqual([[], [" keep."]]);
+});
+
 test("a direct edit that leaves commented characters keeps the thread", () => {
   const edited = replace(commented(), 5, 7, "");
   expect(

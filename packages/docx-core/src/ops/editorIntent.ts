@@ -1480,6 +1480,36 @@ const directDeletionCaret = (
 };
 
 /** Compile one batch; the caller applies it atomically and journals its exact inverse. */
+/**
+ * `at` in `content` once the leaves `removed` picks are gone: after the
+ * same leaves that stood before it.
+ */
+const gapWithoutLeaves = (
+  content: readonly InlineNode[],
+  at: Gap,
+  removed: (leaf: InlineNode) => boolean,
+): Gap => {
+  let offset = 0;
+  let zeroWidthBefore = 0;
+  for (const span of leafSpans(content)) {
+    if (compareGaps(span.after, at) > 0) {
+      // A caret inside a run of characters keeps the characters before it.
+      if (span.before.offset < at.offset) {
+        offset += at.offset - span.before.offset;
+        zeroWidthBefore = 0;
+      }
+      break;
+    }
+    if (removed(span.node)) continue;
+    const width = span.after.offset - span.before.offset;
+    if (width > 0) {
+      offset += width;
+      zeroWidthBefore = 0;
+    } else zeroWidthBefore += 1;
+  }
+  return { offset, zeroWidthBefore };
+};
+
 export const compileEditorIntent = (
   document: Document,
   { intent, mode, firstBlockId }: CompileEditorIntentOptions,
@@ -3605,6 +3635,8 @@ export const compileEditorIntent = (
     // A thread whose every covered character the direct edit removed goes
     // with it, as a deleted block's does: the save drops an exhausted thread,
     // so keeping it would show a comment the reopened file no longer has.
+    const beforeRetirement = current;
+    const retiredIds = new Set<number>();
     for (const { id, parentId } of document.package.document.comments ?? []) {
       if (
         parentId !== undefined ||
@@ -3622,6 +3654,36 @@ export const compileEditorIntent = (
       compact.push(retire);
       steps.push(retired.value);
       current = retired.value.document;
+      retiredIds.add(id);
+    }
+    // The caret stands after the leaves before it; the retired threads'
+    // markers among them are gone.
+    const caretParagraph =
+      retiredIds.size === 0
+        ? undefined
+        : paragraphAt(beforeRetirement, selection);
+    if (caretParagraph !== undefined) {
+      const remaining = new Set(
+        (current.package.document.comments ?? []).map(({ id }) => id),
+      );
+      selection = {
+        ...selection,
+        ...gapWithoutLeaves(
+          caretParagraph.content,
+          {
+            offset: selection.offset,
+            zeroWidthBefore:
+              selection.zeroWidthBefore ??
+              defaultInsertionGap(caretParagraph.content, selection.offset)
+                .zeroWidthBefore,
+          },
+          (leaf) =>
+            (leaf.type === "commentRangeStart" ||
+              leaf.type === "commentRangeEnd" ||
+              leaf.type === "commentReference") &&
+            !remaining.has(leaf.id),
+        ),
+      };
     }
     ops = compact;
     // Typed text hands its application back; other intents apply again.
