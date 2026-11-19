@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "title": "PINNED #1757, reported seed 1862647861: a merge across a deleted paragraph that a table follows keeps its separator",
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "comments",
+  "mode": "tracked-changes",
+  "seed": 1862647861,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 1542941876,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "483CD5EB",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 87446945,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "483CD5EB"
+        },
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "5E88C024",
+          "separator": " "
+        }
+      ]
+    }
+  ],
+  "weights": {
+    "version": 1,
+    "cells": {},
+    "operations": []
+  },
+  "origin": "shrunk from collisions flow seed 1862647861"
+}

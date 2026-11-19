@@ -37,7 +37,10 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
-import { rejectedJoinSurvivorIdentities } from "../../../../test/support/rejectedJoinSurvivors";
+import {
+  rejectedContainerEndIdentities,
+  rejectedJoinSurvivorIdentities,
+} from "../../../../test/support/rejectedJoinSurvivors";
 import { rejectedParagraphFillerIdentities } from "../../../../test/support/rejectedParagraphFillers";
 import { CanonicalSessionError } from "../canonical/canonicalSession";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
@@ -274,6 +277,35 @@ const viewLaws = async (
         ) ?? null;
       entry.text =
         entry.text?.replaceAll(`[${expectedId}]`, `[${survivorId}]`) ?? null;
+    }
+  }
+  // The legacy reviewer drops an empty paragraph whose rejected added mark
+  // ends a local container; the paragraph stays there, as the canonical
+  // reviewer reads it, after the block it follows.
+  const containerEnds = new Set(
+    rejectedContainerEndIdentities({
+      source: before,
+      actual: canonical.toResolvedDocument("reject"),
+      expected: (await open(buffer, "legacy")).toResolvedDocument("reject"),
+    }),
+  );
+  for (const entry of expected) {
+    if (entry.view !== "original" || containerEnds.size === 0) continue;
+    const actualBlocks =
+      read.find(
+        (candidate) =>
+          candidate.view === "original" &&
+          isDeepStrictEqual(candidate.handle, entry.handle),
+      )?.blocks ?? [];
+    for (const [index, block] of actualBlocks.entries()) {
+      if (!containerEnds.has(block.id) || entry.blocks === null) continue;
+      const previous = actualBlocks.at(index - 1);
+      const at =
+        index === 0 || previous === undefined
+          ? 0
+          : entry.blocks.findIndex(({ id }) => id === previous.id) + 1;
+      if (at === 0 && index !== 0) continue;
+      entry.blocks = entry.blocks.toSpliced(at, 0, block);
     }
   }
   const fillerIds = new Map(
@@ -826,4 +858,64 @@ describe("text a resolved paragraph mark joins into another paragraph", () => {
     },
     propertyTestTimeout(30_000),
   );
+});
+
+// Seed 2113650910: once it passes, its path replays the whole shrink tree,
+// which outlasts the property's budget, so the shrunk case is fixed here.
+test("a comment range across a content control holding only a linked bookmark reads its resolved views", async () => {
+  const commentBody = (id: number, paraId: string) => ({
+    id,
+    author: "A",
+    content: [{ type: "paragraph" as const, paraId, content: [] }],
+  });
+  const buffer = await ingested(
+    await createDocx({
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              paraId: "00000001",
+              content: [{ type: "commentRangeStart", id: 34 }],
+            },
+            {
+              type: "blockSdt",
+              properties: { sdtType: "group", id: 1 },
+              content: [
+                {
+                  type: "paragraph",
+                  paraId: "00000002",
+                  content: [
+                    {
+                      type: "inlineSdt",
+                      properties: { sdtType: "richText", id: 2, tag: "clause" },
+                      content: [
+                        {
+                          type: "hyperlink",
+                          rId: "rId9",
+                          href: "https://example.org",
+                          children: [
+                            { type: "bookmarkStart", id: 1, name: "_Link" },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+            {
+              type: "paragraph",
+              paraId: "00000003",
+              content: [{ type: "commentRangeEnd", id: 34 }],
+              sectionProperties: { pageWidth: 11906 },
+            },
+          ],
+          finalSectionProperties: { pageWidth: 12240, pageHeight: 15840 },
+          comments: [commentBody(7, "7FFFFFF0"), commentBody(34, "00000004")],
+        },
+      },
+    }),
+  );
+  await viewLaws(buffer);
 });
