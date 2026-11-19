@@ -3202,20 +3202,32 @@ export const compileEditorIntent = (
                       paragraphLength(item),
                     ).length,
                   };
-            const segments = replacementDeletionSegments({
-              spans: leafSpans(item.content),
-              from: {
-                offset: start.offset,
-                zeroWidthBefore:
-                  start.zeroWidthBefore ??
-                  zeroWidthLeavesAt(item.content, start.offset).length,
-              },
-              to: {
-                offset: end.offset,
-                zeroWidthBefore: end.zeroWidthBefore ?? 0,
-              },
-              mode: { type: "editing" },
-            });
+            const segmentsKeeping = (keepsLoneEmptyContainers: boolean) =>
+              replacementDeletionSegments({
+                spans: leafSpans(item.content),
+                from: {
+                  offset: start.offset,
+                  zeroWidthBefore:
+                    start.zeroWidthBefore ??
+                    zeroWidthLeavesAt(item.content, start.offset).length,
+                },
+                to: {
+                  offset: end.offset,
+                  zeroWidthBefore: end.zeroWidthBefore ?? 0,
+                },
+                mode: { type: "editing", keepsLoneEmptyContainers },
+              });
+            // A tracked replacement marks no empty container standing alone
+            // and so keeps it; the direct one keeps it too. Only a deletion of
+            // nothing else in one paragraph, which has no tracked
+            // counterpart, removes it.
+            const keeping = segmentsKeeping(true);
+            const segments =
+              keeping.length === 0 &&
+              text === "" &&
+              idKey(from.blockId) === idKey(to.blockId)
+                ? segmentsKeeping(false)
+                : keeping;
             for (const segment of segments.toReversed()) {
               ops.push({
                 type: DOCUMENT_OP_TYPES.DELETE_RANGE,
@@ -3833,7 +3845,14 @@ const continuation = (
   const kept =
     struck || caret
       ? undefined
-      : leavesKeptByDirectDeletion({ spans, from: start, to: end }).at(-1);
+      : leavesKeptByDirectDeletion({
+          spans,
+          from: start,
+          to: end,
+          // Only a direct replacement with text gets here, which keeps an
+          // empty container standing alone.
+          keepsLoneEmptyContainers: true,
+        }).at(-1);
   return {
     containers,
     openStart: continued(

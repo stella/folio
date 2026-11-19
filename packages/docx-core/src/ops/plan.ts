@@ -421,7 +421,17 @@ type ReplacementDeletionSegmentsOptions = {
   spans: readonly LeafSpan[];
   from: Gap;
   to: Gap;
-  mode: { type: "editing" } | { type: "suggesting"; author: string };
+  mode:
+    | {
+        type: "editing";
+        /**
+         * Whether a stretch holding only empty containers is dropped, as a
+         * tracked one is. A direct edit drops it when its tracked counterpart
+         * records something else and so keeps the containers. (default: false)
+         */
+        keepsLoneEmptyContainers?: boolean;
+      }
+    | { type: "suggesting"; author: string };
 };
 
 export const replacementDeletionSegments = ({
@@ -430,6 +440,8 @@ export const replacementDeletionSegments = ({
   to,
   mode,
 }: ReplacementDeletionSegmentsOptions): Segment[] => {
+  const keepsLoneEmptyContainers =
+    mode.type === "editing" && mode.keepsLoneEmptyContainers === true;
   const out: Segment[] = [];
   let open: Segment | undefined;
   for (const span of spans) {
@@ -452,7 +464,10 @@ export const replacementDeletionSegments = ({
     // else is dropped, as one over deleted content is.
     const records =
       plan !== "untouched" &&
-      !(plan === "tracked" && isEmptyContainer(span.node));
+      !(
+        (plan === "tracked" || keepsLoneEmptyContainers) &&
+        isEmptyContainer(span.node)
+      );
     if (
       open !== undefined &&
       open.plan === segmentPlan &&
@@ -478,12 +493,15 @@ export const leavesKeptByDirectDeletion = ({
   spans,
   from,
   to,
-}: Omit<ReplacementDeletionSegmentsOptions, "mode">): LeafSpan[] => {
+  keepsLoneEmptyContainers = false,
+}: Omit<ReplacementDeletionSegmentsOptions, "mode"> & {
+  keepsLoneEmptyContainers?: boolean;
+}): LeafSpan[] => {
   const segments = replacementDeletionSegments({
     spans,
     from,
     to,
-    mode: { type: "editing" },
+    mode: { type: "editing", keepsLoneEmptyContainers },
   });
   return spans.filter((span) => {
     const start = laterGap(span.before, from);
