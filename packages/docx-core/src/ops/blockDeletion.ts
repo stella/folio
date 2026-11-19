@@ -79,6 +79,11 @@ const deletedContent = (
   | { kind: "deleted"; content: ParagraphContent[]; standing: InlineNode[] }
   | { kind: "unchanged"; standing: InlineNode[] }
   | { kind: "refused"; reason: DocumentOpRefusal["reason"] } => {
+  // A comment's reference stands with its range's end, which the deletion
+  // leaves standing; a point comment's reference is its only anchor, which
+  // a deletion takes.
+  if (!referencesFollowTheirEnds(paragraph.content))
+    return { kind: "refused", reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE };
   const wrapped = wrapTracked({
     items: paragraph.content,
     from: { offset: 0, zeroWidthBefore: 0 },
@@ -107,6 +112,18 @@ const deletedContent = (
     content: asParagraphContent(nodes),
     standing: standingIn(nodes, new Set(standing), created),
   };
+};
+
+/** Every comment reference in `nodes` follows its range's end among them. */
+const referencesFollowTheirEnds = (nodes: readonly InlineNode[]): boolean => {
+  const ends = new Set<number>();
+  const visit = (items: readonly InlineNode[]): boolean =>
+    items.every((node) => {
+      if (node.type === "commentRangeEnd") ends.add(node.id);
+      if (node.type === "commentReference") return ends.has(node.id);
+      return visit(childNodes(node) ?? []);
+    });
+  return visit(nodes);
 };
 
 /**
