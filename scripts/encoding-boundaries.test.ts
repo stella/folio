@@ -467,6 +467,8 @@ const generatedViolations = (text: string, file: string): string[] => {
   let decodes = 0;
   let encodes = 0;
   let encodeInto = 0;
+  let relayedDecodes = 0;
+  const relayCalls: string[][] = [];
   const compact = (node: Node): string =>
     nodeText(text, node).replace(/\s+/gu, "");
   for (const node of collectSyntaxTree(program).nodes) {
@@ -479,7 +481,10 @@ const generatedViolations = (text: string, file: string): string[] => {
       if (method === "decode") {
         decodes++;
         const args = node.arguments.map(compact);
-        if (
+        // wasm-bindgen 0.2.130 decodes through `decodeText(bytes)`, whose one
+        // caller must pass the whole allocation.
+        if (args.length === 1 && args[0] === "bytes") relayedDecodes++;
+        else if (
           args.length !== 0 &&
           (args.length !== 1 ||
             args[0] !== "getUint8ArrayMemory0().subarray(ptr,ptr+len)")
@@ -488,6 +493,11 @@ const generatedViolations = (text: string, file: string): string[] => {
             "decoder no longer reads one complete memory allocation",
           );
       }
+      if (
+        node.callee.type === "Identifier" &&
+        node.callee.name === "decodeText"
+      )
+        relayCalls.push(node.arguments.map(compact));
       if (method === "encode") {
         encodes++;
         if (
@@ -507,6 +517,14 @@ const generatedViolations = (text: string, file: string): string[] => {
       }
     }
   }
+  if (
+    relayedDecodes > 0 &&
+    (relayedDecodes !== 1 ||
+      relayCalls.length !== 1 ||
+      relayCalls[0]?.length !== 1 ||
+      relayCalls[0][0] !== "getUint8ArrayMemory0().subarray(ptr,ptr+len)")
+  )
+    problems.push("decoder no longer reads one complete memory allocation");
   const detected = findViolations(text, file);
   const rawReferences = detected.filter(({ reason }) =>
     reason.startsWith("raw text codec"),
