@@ -428,10 +428,10 @@ esac
 )
 
 verify_wasm_bindgen_cli() {
-  [[ -x '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129/wasm-bindgen-test-runner' ]] || return 1
-  [[ -x '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129/wasm2es6js' ]] || return 1
-  [[ -x '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129/wasm-bindgen' ]] || return 1
-  [[ "$( '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129/wasm-bindgen' --version)" == 'wasm-bindgen 0.2.129' || "$( '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129/wasm-bindgen' --version)" == 'wasm-bindgen 0.2.129 '* ]]
+  [[ -x '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.130/wasm-bindgen-test-runner' ]] || return 1
+  [[ -x '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.130/wasm2es6js' ]] || return 1
+  [[ -x '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.130/wasm-bindgen' ]] || return 1
+  [[ "$( '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.130/wasm-bindgen' --version)" == 'wasm-bindgen 0.2.130' || "$( '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.130/wasm-bindgen' --version)" == 'wasm-bindgen 0.2.130 '* ]]
 }
 install_wasm_bindgen_cli() (
   local artifact_url artifact_sha
@@ -440,35 +440,35 @@ install_wasm_bindgen_cli() (
     scratch="$(mktemp -d)"
     trap 'rm -rf -- "$scratch"' EXIT
     case "$ARCH" in
-  amd64) artifact_url='https://github.com/wasm-bindgen/wasm-bindgen/releases/download/0.2.129/wasm-bindgen-0.2.129-x86_64-unknown-linux-musl.tar.gz'; artifact_sha='82d12bb940e2d4e72e0d5605387fc1b8ca179044e012b620f0ce4e7440e8320e' ;;
-  arm64) artifact_url='https://github.com/wasm-bindgen/wasm-bindgen/releases/download/0.2.129/wasm-bindgen-0.2.129-aarch64-unknown-linux-musl.tar.gz'; artifact_sha='2ed4351c35dd9440308bbb02767d47ea278efe851a52465300f3c94f5b6c2a87' ;;
+  amd64) artifact_url='https://github.com/wasm-bindgen/wasm-bindgen/releases/download/0.2.130/wasm-bindgen-0.2.130-x86_64-unknown-linux-musl.tar.gz'; artifact_sha='9687f3bb551b9f66f37ed32a40d7913a00f7962db653054e56857bc306c3227f' ;;
+  arm64) artifact_url='https://github.com/wasm-bindgen/wasm-bindgen/releases/download/0.2.130/wasm-bindgen-0.2.130-aarch64-unknown-linux-musl.tar.gz'; artifact_sha='99ffc93ce80081b91632e2b539b782821a8f3439ab0fddc645287462b2f55d3d' ;;
 esac
     fetch_verified "$artifact_url" "$artifact_sha" "$scratch/archive.tar.gz"
     tar -xzf "$scratch/archive.tar.gz" -C "$scratch"
-    install -d -m 755 '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129'
+    install -d -m 755 '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.130'
     case "$ARCH" in
       amd64)
-        [[ ! -d '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129/wasm-bindgen-test-runner' ]] || fail 'Install target is a directory; remove it and rerun install:' '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129/wasm-bindgen-test-runner'
-        install -m 755 "$scratch/wasm-bindgen-0.2.129-x86_64-unknown-linux-musl/wasm-bindgen-test-runner" '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129/wasm-bindgen-test-runner'
-        [[ ! -d '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129/wasm2es6js' ]] || fail 'Install target is a directory; remove it and rerun install:' '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129/wasm2es6js'
-        install -m 755 "$scratch/wasm-bindgen-0.2.129-x86_64-unknown-linux-musl/wasm2es6js" '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129/wasm2es6js'
-        [[ ! -d '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129/wasm-bindgen' ]] || fail 'Install target is a directory; remove it and rerun install:' '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129/wasm-bindgen'
-        install -m 755 "$scratch/wasm-bindgen-0.2.129-x86_64-unknown-linux-musl/wasm-bindgen" '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129/wasm-bindgen'
+        [[ ! -d '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.130/wasm-bindgen-test-runner' ]] || fail 'Install target is a directory; remove it and rerun install:' '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.130/wasm-bindgen-test-runner'
+        install -m 755 "$scratch/wasm-bindgen-0.2.130-x86_64-unknown-linux-musl/wasm-bindgen-test-runner" '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.130/wasm-bindgen-test-runner'
+        [[ ! -d '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.130/wasm2es6js' ]] || fail 'Install target is a directory; remove it and rerun install:' '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.130/wasm2es6js'
+        install -m 755 "$scratch/wasm-bindgen-0.2.130-x86_64-unknown-linux-musl/wasm2es6js" '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.130/wasm2es6js'
+        [[ ! -d '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.130/wasm-bindgen' ]] || fail 'Install target is a directory; remove it and rerun install:' '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.130/wasm-bindgen'
+        install -m 755 "$scratch/wasm-bindgen-0.2.130-x86_64-unknown-linux-musl/wasm-bindgen" '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.130/wasm-bindgen'
         ;;
       arm64)
-        [[ ! -d '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129/wasm-bindgen-test-runner' ]] || fail 'Install target is a directory; remove it and rerun install:' '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129/wasm-bindgen-test-runner'
-        install -m 755 "$scratch/wasm-bindgen-0.2.129-aarch64-unknown-linux-musl/wasm-bindgen-test-runner" '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129/wasm-bindgen-test-runner'
-        [[ ! -d '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129/wasm2es6js' ]] || fail 'Install target is a directory; remove it and rerun install:' '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129/wasm2es6js'
-        install -m 755 "$scratch/wasm-bindgen-0.2.129-aarch64-unknown-linux-musl/wasm2es6js" '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129/wasm2es6js'
-        [[ ! -d '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129/wasm-bindgen' ]] || fail 'Install target is a directory; remove it and rerun install:' '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129/wasm-bindgen'
-        install -m 755 "$scratch/wasm-bindgen-0.2.129-aarch64-unknown-linux-musl/wasm-bindgen" '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129/wasm-bindgen'
+        [[ ! -d '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.130/wasm-bindgen-test-runner' ]] || fail 'Install target is a directory; remove it and rerun install:' '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.130/wasm-bindgen-test-runner'
+        install -m 755 "$scratch/wasm-bindgen-0.2.130-aarch64-unknown-linux-musl/wasm-bindgen-test-runner" '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.130/wasm-bindgen-test-runner'
+        [[ ! -d '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.130/wasm2es6js' ]] || fail 'Install target is a directory; remove it and rerun install:' '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.130/wasm2es6js'
+        install -m 755 "$scratch/wasm-bindgen-0.2.130-aarch64-unknown-linux-musl/wasm2es6js" '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.130/wasm2es6js'
+        [[ ! -d '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.130/wasm-bindgen' ]] || fail 'Install target is a directory; remove it and rerun install:' '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.130/wasm-bindgen'
+        install -m 755 "$scratch/wasm-bindgen-0.2.130-aarch64-unknown-linux-musl/wasm-bindgen" '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.130/wasm-bindgen'
         ;;
     esac
     verify_wasm_bindgen_cli || fail 'Installed wasm-bindgen-cli version differs from its pin'
   fi
-  ln -sfnT -- '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129/wasm-bindgen-test-runner' '/usr/local/bin/wasm-bindgen-test-runner'
-  ln -sfnT -- '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129/wasm2es6js' '/usr/local/bin/wasm2es6js'
-  ln -sfnT -- '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.129/wasm-bindgen' '/usr/local/bin/wasm-bindgen'
+  ln -sfnT -- '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.130/wasm-bindgen-test-runner' '/usr/local/bin/wasm-bindgen-test-runner'
+  ln -sfnT -- '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.130/wasm2es6js' '/usr/local/bin/wasm2es6js'
+  ln -sfnT -- '/opt/stll-cloud/tools/wasm-bindgen-cli/0.2.130/wasm-bindgen' '/usr/local/bin/wasm-bindgen'
 )
 
 install_tools() {
@@ -551,7 +551,7 @@ verify_shell_environment() {
 
 [[ -f 'rust-toolchain.toml' && ! -L 'rust-toolchain.toml' ]] && [[ "$(sha256sum -- 'rust-toolchain.toml' | cut -d ' ' -f1)" == 'a900fbe8d360e35c73e5ed3d47acc8139c2d2894d6ca9c20c3b1c0b7a212f217' ]] || fail 'rust-toolchain.toml changed; regenerate cloud-setup.sh'
 [[ ! -e 'rust-toolchain' && ! -L 'rust-toolchain' ]] || fail 'rust-toolchain appeared; regenerate cloud-setup.sh'
-[[ -f 'Cargo.lock' && ! -L 'Cargo.lock' ]] && awk -v expected='0.2.129' '
+[[ -f 'Cargo.lock' && ! -L 'Cargo.lock' ]] && awk -v expected='0.2.130' '
 function validate_package() {
   if (in_package && name == "wasm-bindgen") {
     count++

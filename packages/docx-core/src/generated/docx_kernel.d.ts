@@ -267,7 +267,7 @@ export function docxProjectionSchemaVersion(): number;
  * Returns a JavaScript `Error` when the package cannot be projected or a
  * numeric wire value cannot be represented by the schema.
  */
-export function projectCompressedDocx(bytes: Uint8Array): DocxProjectionWire;
+export function projectCompressedDocx(bytes: Uint8Array | number[]): DocxProjectionWire;
 
 /**
  * Projects the same fused snapshot with controls normalized for readable text.
@@ -277,7 +277,7 @@ export function projectCompressedDocx(bytes: Uint8Array): DocxProjectionWire;
  * Returns a JavaScript `Error` under the same conditions as
  * [`project_compressed_docx_with_review_facts`].
  */
-export function projectCompressedDocxWithReadableReviewFacts(bytes: Uint8Array): DocxPackageProjectionWire;
+export function projectCompressedDocxWithReadableReviewFacts(bytes: Uint8Array | number[]): DocxPackageProjectionWire;
 
 /**
  * Projects the document snapshot and attributed review facts from one bounded
@@ -288,7 +288,7 @@ export function projectCompressedDocxWithReadableReviewFacts(bytes: Uint8Array):
  * Returns a JavaScript `Error` when the document package itself cannot be
  * projected. Invalid optional review parts are represented as unknown facts.
  */
-export function projectCompressedDocxWithReviewFacts(bytes: Uint8Array): DocxPackageProjectionWire;
+export function projectCompressedDocxWithReviewFacts(bytes: Uint8Array | number[]): DocxPackageProjectionWire;
 
 /**
  * Projects bounded main-document XML or a relationship-selected Flat OPC package.
@@ -296,7 +296,7 @@ export function projectCompressedDocxWithReviewFacts(bytes: Uint8Array): DocxPac
  * # Errors
  * Returns a JavaScript `Error` for malformed input or a resource-limit violation.
  */
-export function projectMainDocumentXml(bytes: Uint8Array): DocxProjectionWire;
+export function projectMainDocumentXml(bytes: Uint8Array | number[]): DocxProjectionWire;
 
 /**
  * Projects one bounded paragraph fragment with unknown document structural facts.
@@ -304,7 +304,7 @@ export function projectMainDocumentXml(bytes: Uint8Array): DocxProjectionWire;
  * # Errors
  * Returns a JavaScript `Error` for malformed input or a resource-limit violation.
  */
-export function projectParagraphFragment(bytes: Uint8Array): DocxParagraphFragmentWire;
+export function projectParagraphFragment(bytes: Uint8Array | number[]): DocxParagraphFragmentWire;
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
@@ -317,8 +317,13 @@ export interface InitOutput {
     readonly projectMainDocumentXml: (a: number, b: number, c: number) => void;
     readonly projectParagraphFragment: (a: number, b: number, c: number) => void;
     readonly __wbindgen_export: (a: number) => void;
+    readonly __wbindgen_export2: () => number;
+    readonly __wbindgen_externrefs: WebAssembly.Table;
     readonly __wbindgen_add_to_stack_pointer: (a: number) => number;
-    readonly __wbindgen_export2: (a: number, b: number) => number;
+    readonly __wbindgen_export3: (a: number, b: number) => number;
+    readonly __wbindgen_export4: (a: number, b: number, c: number) => void;
+    readonly __wbindgen_export5: (a: number) => void;
+    readonly __wbindgen_start: () => void;
 }
 
 export type SyncInitInput = BufferSource | WebAssembly.Module;

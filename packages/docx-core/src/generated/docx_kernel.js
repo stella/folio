@@ -23,22 +23,22 @@ export function docxProjectionSchemaVersion() {
  *
  * Returns a JavaScript `Error` when the package cannot be projected or a
  * numeric wire value cannot be represented by the schema.
- * @param {Uint8Array} bytes
+ * @param {Uint8Array | number[]} bytes
  * @returns {DocxProjectionWire}
  */
 export function projectCompressedDocx(bytes) {
     try {
-        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_export2);
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16) >>> 0;
+        const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_export3);
         const len0 = WASM_VECTOR_LEN;
         wasm.projectCompressedDocx(retptr, ptr0, len0);
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
         var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
         var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
         if (r2) {
-            throw takeObject(r1);
+            throw takeFromExternrefTable0(r1);
         }
-        return takeObject(r0);
+        return takeFromExternrefTable0(r0);
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
     }
@@ -51,22 +51,22 @@ export function projectCompressedDocx(bytes) {
  *
  * Returns a JavaScript `Error` under the same conditions as
  * [`project_compressed_docx_with_review_facts`].
- * @param {Uint8Array} bytes
+ * @param {Uint8Array | number[]} bytes
  * @returns {DocxPackageProjectionWire}
  */
 export function projectCompressedDocxWithReadableReviewFacts(bytes) {
     try {
-        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_export2);
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16) >>> 0;
+        const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_export3);
         const len0 = WASM_VECTOR_LEN;
         wasm.projectCompressedDocxWithReadableReviewFacts(retptr, ptr0, len0);
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
         var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
         var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
         if (r2) {
-            throw takeObject(r1);
+            throw takeFromExternrefTable0(r1);
         }
-        return takeObject(r0);
+        return takeFromExternrefTable0(r0);
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
     }
@@ -80,22 +80,22 @@ export function projectCompressedDocxWithReadableReviewFacts(bytes) {
  *
  * Returns a JavaScript `Error` when the document package itself cannot be
  * projected. Invalid optional review parts are represented as unknown facts.
- * @param {Uint8Array} bytes
+ * @param {Uint8Array | number[]} bytes
  * @returns {DocxPackageProjectionWire}
  */
 export function projectCompressedDocxWithReviewFacts(bytes) {
     try {
-        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_export2);
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16) >>> 0;
+        const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_export3);
         const len0 = WASM_VECTOR_LEN;
         wasm.projectCompressedDocxWithReviewFacts(retptr, ptr0, len0);
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
         var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
         var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
         if (r2) {
-            throw takeObject(r1);
+            throw takeFromExternrefTable0(r1);
         }
-        return takeObject(r0);
+        return takeFromExternrefTable0(r0);
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
     }
@@ -106,22 +106,22 @@ export function projectCompressedDocxWithReviewFacts(bytes) {
  *
  * # Errors
  * Returns a JavaScript `Error` for malformed input or a resource-limit violation.
- * @param {Uint8Array} bytes
+ * @param {Uint8Array | number[]} bytes
  * @returns {DocxProjectionWire}
  */
 export function projectMainDocumentXml(bytes) {
     try {
-        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_export2);
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16) >>> 0;
+        const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_export3);
         const len0 = WASM_VECTOR_LEN;
         wasm.projectMainDocumentXml(retptr, ptr0, len0);
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
         var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
         var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
         if (r2) {
-            throw takeObject(r1);
+            throw takeFromExternrefTable0(r1);
         }
-        return takeObject(r0);
+        return takeFromExternrefTable0(r0);
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
     }
@@ -132,22 +132,22 @@ export function projectMainDocumentXml(bytes) {
  *
  * # Errors
  * Returns a JavaScript `Error` for malformed input or a resource-limit violation.
- * @param {Uint8Array} bytes
+ * @param {Uint8Array | number[]} bytes
  * @returns {DocxParagraphFragmentWire}
  */
 export function projectParagraphFragment(bytes) {
     try {
-        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_export2);
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16) >>> 0;
+        const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_export3);
         const len0 = WASM_VECTOR_LEN;
         wasm.projectParagraphFragment(retptr, ptr0, len0);
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
         var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
         var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
         if (r2) {
-            throw takeObject(r1);
+            throw takeFromExternrefTable0(r1);
         }
-        return takeObject(r0);
+        return takeFromExternrefTable0(r0);
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
     }
@@ -155,48 +155,53 @@ export function projectParagraphFragment(bytes) {
 function __wbg_get_imports() {
     const import0 = {
         __proto__: null,
-        __wbg___wbindgen_throw_41e9ee4f547fc59a: function(arg0, arg1) {
+        __wbg___wbindgen_throw_4c88d8bf264fd984: function(arg0, arg1) {
             throw new Error(getStringFromWasm0(arg0, arg1));
         },
-        __wbg_new_343a093a3c2ffb4e: function(arg0, arg1) {
-            const ret = new Error(getStringFromWasm0(arg0, arg1));
-            return addHeapObject(ret);
-        },
-        __wbg_new_617a8cdb8bb1130e: function() {
-            const ret = new Object();
-            return addHeapObject(ret);
-        },
-        __wbg_new_ee2291f50781bf1d: function() {
+        __wbg_new_37eb45aaf5eeb820: function() {
             const ret = new Array();
-            return addHeapObject(ret);
-        },
-        __wbg_new_with_length_469fcc27bd71672e: function(arg0) {
-            const ret = new Array(arg0 >>> 0);
-            return addHeapObject(ret);
-        },
-        __wbg_push_2baf45db356cf468: function(arg0, arg1) {
-            const ret = getObject(arg0).push(getObject(arg1));
             return ret;
         },
-        __wbg_set_145a351398b48c65: function() { return handleError(function (arg0, arg1, arg2) {
-            const ret = Reflect.set(getObject(arg0), getObject(arg1), getObject(arg2));
+        __wbg_new_787b9fb330d55d78: function(arg0, arg1) {
+            const ret = new Error(getStringFromWasm0(arg0, arg1));
+            return ret;
+        },
+        __wbg_new_cd4348290afae586: function() {
+            const ret = new Object();
+            return ret;
+        },
+        __wbg_new_with_length_a3dc62dea6e2e158: function(arg0) {
+            const ret = new Array(arg0 >>> 0);
+            return ret;
+        },
+        __wbg_push_c9f4893fc209f768: function(arg0, arg1) {
+            const ret = arg0.push(arg1);
+            return ret;
+        },
+        __wbg_set_2793479888329cb6: function() { return handleError(function (arg0, arg1, arg2) {
+            const ret = Reflect.set(arg0, arg1, arg2);
             return ret;
         }, arguments); },
-        __wbg_set_bea140a88be9b277: function(arg0, arg1, arg2) {
-            getObject(arg0)[arg1 >>> 0] = takeObject(arg2);
+        __wbg_set_d2d33b52458e984a: function(arg0, arg1, arg2) {
+            arg0[arg1 >>> 0] = arg2;
         },
         __wbindgen_generic_0000000000000001: function(arg0) {
             // Cast intrinsic for `F64 -> Externref`.
             const ret = arg0;
-            return addHeapObject(ret);
+            return ret;
         },
         __wbindgen_generic_0000000000000002: function(arg0, arg1) {
             // Cast intrinsic for `Ref(String) -> Externref`.
             const ret = getStringFromWasm0(arg0, arg1);
-            return addHeapObject(ret);
+            return ret;
         },
-        __wbindgen_object_drop_ref: function(arg0) {
-            takeObject(arg0);
+        __wbindgen_init_externref_table: function() {
+            const table = wasm.__wbindgen_externrefs;
+            table.set(0, undefined);
+            table.set(1024, undefined);
+            table.set(1025, null);
+            table.set(1026, true);
+            table.set(1027, false);
         },
     };
     return {
@@ -205,19 +210,10 @@ function __wbg_get_imports() {
     };
 }
 
-function addHeapObject(obj) {
-    if (heap_next === heap.length) heap.push(heap.length + 1);
-    const idx = heap_next;
-    heap_next = heap[idx];
-
-    heap[idx] = obj;
+function addToExternrefTable0(obj) {
+    const idx = wasm.__wbindgen_export2();
+    wasm.__wbindgen_externrefs.set(idx, obj);
     return idx;
-}
-
-function dropObject(idx) {
-    if (idx < 1028) return;
-    heap[idx] = heap_next;
-    heap_next = idx;
 }
 
 let cachedDataViewMemory0 = null;
@@ -229,7 +225,8 @@ function getDataViewMemory0() {
 }
 
 function getStringFromWasm0(ptr, len) {
-    return decodeText(ptr >>> 0, len);
+    ptr = ptr >>> 0;
+    return decodeText(getUint8ArrayMemory0().subarray(ptr, ptr + len));
 }
 
 let cachedUint8ArrayMemory0 = null;
@@ -240,20 +237,14 @@ function getUint8ArrayMemory0() {
     return cachedUint8ArrayMemory0;
 }
 
-function getObject(idx) { return heap[idx]; }
-
 function handleError(f, args) {
     try {
         return f.apply(this, args);
     } catch (e) {
-        wasm.__wbindgen_export(addHeapObject(e));
+        const idx = addToExternrefTable0(e);
+        wasm.__wbindgen_export(idx);
     }
 }
-
-let heap = new Array(1024).fill(undefined);
-heap.push(undefined, null, true, false);
-
-let heap_next = heap.length;
 
 function passArray8ToWasm0(arg, malloc) {
     const ptr = malloc(arg.length * 1, 1) >>> 0;
@@ -262,24 +253,24 @@ function passArray8ToWasm0(arg, malloc) {
     return ptr;
 }
 
-function takeObject(idx) {
-    const ret = getObject(idx);
-    dropObject(idx);
-    return ret;
+function takeFromExternrefTable0(idx) {
+    const value = wasm.__wbindgen_externrefs.get(idx);
+    wasm.__wbindgen_export5(idx);
+    return value;
 }
 
-let cachedTextDecoder = new TextDecoder('utf-8', { ignoreBOM: true, fatal: true });
+let cachedTextDecoder = new TextDecoder('utf-8', { ignoreBOM: true });
 cachedTextDecoder.decode();
 const MAX_SAFARI_DECODE_BYTES = 2146435072;
 let numBytesDecoded = 0;
-function decodeText(ptr, len) {
-    numBytesDecoded += len;
+function decodeText(bytes) {
+    numBytesDecoded += bytes.length;
     if (numBytesDecoded >= MAX_SAFARI_DECODE_BYTES) {
-        cachedTextDecoder = new TextDecoder('utf-8', { ignoreBOM: true, fatal: true });
+        cachedTextDecoder = new TextDecoder('utf-8', { ignoreBOM: true });
         cachedTextDecoder.decode();
-        numBytesDecoded = len;
+        numBytesDecoded = bytes.length;
     }
-    return cachedTextDecoder.decode(getUint8ArrayMemory0().subarray(ptr, ptr + len));
+    return cachedTextDecoder.decode(bytes);
 }
 
 let WASM_VECTOR_LEN = 0;
@@ -291,6 +282,7 @@ function __wbg_finalize_init(instance, module) {
     wasmModule = module;
     cachedDataViewMemory0 = null;
     cachedUint8ArrayMemory0 = null;
+    wasm.__wbindgen_start();
     return wasm;
 }
 
@@ -353,9 +345,17 @@ function initSync(module) {
     return __wbg_finalize_init(instance, module);
 }
 
+let __wbg_init_promise;
 async function __wbg_init(module_or_path) {
     if (wasm !== undefined) return wasm;
+    if (__wbg_init_promise === undefined) {
+        __wbg_init_promise = __wbg_init_once(module_or_path);
+        __wbg_init_promise.catch(() => { __wbg_init_promise = undefined; });
+    }
+    return __wbg_init_promise;
+}
 
+async function __wbg_init_once(module_or_path) {
 
     if (module_or_path !== undefined) {
         if (Object.getPrototypeOf(module_or_path) === Object.prototype) {

@@ -22,7 +22,7 @@ export function resolveBidi(text: string, right_to_left?: boolean | null): Int32
  * readable face, or a feature tag that is not four characters. The caller gets
  * a rejection rather than a run of no glyphs, which would paint as nothing.
  */
-export function shapeRun(font: Uint8Array, face_index: number, text: string, right_to_left: boolean, script: string, language: string, features_on: string[], features_off: string[]): Int32Array;
+export function shapeRun(font: Uint8Array | number[], face_index: number, text: string, right_to_left: boolean, script: string, language: string, features_on: string[], features_off: string[]): Int32Array;
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
@@ -32,8 +32,13 @@ export interface InitOutput {
     readonly shapeRun: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
-    readonly __wbindgen_add_to_stack_pointer: (a: number) => number;
     readonly __wbindgen_export3: (a: number, b: number, c: number) => void;
+    readonly __wbindgen_externrefs: WebAssembly.Table;
+    readonly __wbindgen_add_to_stack_pointer: (a: number) => number;
+    readonly __wbindgen_export4: () => number;
+    readonly __wbindgen_export5: (a: number, b: number) => void;
+    readonly __wbindgen_export6: (a: number) => void;
+    readonly __wbindgen_start: () => void;
 }
 
 export type SyncInitInput = BufferSource | WebAssembly.Module;
