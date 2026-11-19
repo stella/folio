@@ -213,6 +213,9 @@ const rangeOverInsertion = (
  * A batch's own insertion, which a foreign operation is moved across to
  * address the batch's next operation, has no effect and decides no ids.
  */
+const tracked = (op: DocumentOp): boolean =>
+  "revision" in op && op.revision !== undefined;
+
 const cutIdentified = (effect: SequencedOpEffect | undefined): boolean =>
   effect?.type === DOCUMENT_OP_TYPES.INSERT_CONTENT && effect.cutIdentified;
 
@@ -287,8 +290,10 @@ const pointOverInsertion = (
     );
   // Either side may have cut an identified record at the shared gap, and the
   // record's second half would take the id of whichever applied first. A
-  // seam join leaves identified records apart.
-  if (tie && !seam && cutIdentified(effect))
+  // seam join leaves identified records apart. When either insertion is
+  // tracked, the pair is a cut at a tracked change's edge: the authority's
+  // order decides it, and a peer that applied the other order replays it.
+  if (tie && !seam && cutIdentified(effect) && !tracked(op) && !tracked(over))
     return refusal(
       op,
       over,
