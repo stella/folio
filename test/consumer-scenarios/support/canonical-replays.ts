@@ -100,7 +100,7 @@ export const CANONICAL_VACUOUS_STEPS: Readonly<
   "revision-round-trip-1.json": [4],
   "revision-round-trip-10.json": [2],
   "revision-round-trip-3.json": [4],
-  "suggested-table-row-beside-replaced-paragraph.json": [6, 7, 8, 12, 13],
+  "suggested-table-row-beside-replaced-paragraph.json": [6, 7, 8],
   "undefined-numbering-level-projection.json": [1],
 };
 
