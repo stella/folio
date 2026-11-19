@@ -2725,6 +2725,10 @@ export class CanonicalPublicOperations {
     const { diff } = wordDiffSessionFromOptions(options.wordDiff);
     let nextRevisionId = options.revisionStamp?.idSeed ?? 1;
     if (!session.isComposing && options.revisionStamp === undefined) {
+      // Past every revision id the package holds, records the projection
+      // does not show (a table's grid change, say) included.
+      for (const id of leasedIdCensus(readModel(session.document)).revision)
+        nextRevisionId = Math.max(nextRevisionId, id + 1);
       for (const currentStory of documentStories(readModel(session.document))) {
         const currentProjection = session.projectStory(currentStory);
         if (currentProjection.isOk())
