@@ -19,6 +19,7 @@ import type {
   BreakContent,
   OutlineLevel,
   ParagraphAlignment,
+  TextFormatting,
 } from "../types/document";
 
 export type FolioAIBlockKind = FolioContentParagraphKind | "diagnostic";
@@ -32,7 +33,10 @@ export type FolioAIInlineFormatting = FolioContentInlineFormatting;
  * A run-formatting mutation: `false` authors an explicit off value, while
  * `null` removes the direct property so its inherited value becomes effective.
  */
-export type FolioAIInlineFormattingPatch = FolioContentInlineFormattingPatch;
+export type FolioAIInlineFormattingPatch = FolioContentInlineFormattingPatch & {
+  /** Use `none` to suppress an inherited highlight, or `null` to clear the direct value. */
+  highlight?: TextFormatting["highlight"] | null;
+};
 
 export type FolioAIBlockPreviewRun = FolioContentRun;
 

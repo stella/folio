@@ -59,8 +59,10 @@ import type {
   LineSpacingRule,
   OutlineLevel,
   ParagraphAlignment,
+  TextFormatting,
 } from "./types/document";
 import {
+  HIGHLIGHT_COLOR_VALUES,
   LINE_SPACING_RULE_VALUES,
   PARAGRAPH_ALIGNMENT_VALUES,
 } from "./types/documentEnumValues";
@@ -77,6 +79,12 @@ export const FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION = 1 as const;
 /** Direct paragraph-alignment values accepted by the operation contract. */
 export const FOLIO_PARAGRAPH_ALIGNMENT_VALUES: readonly ParagraphAlignment[] =
   Object.freeze([...PARAGRAPH_ALIGNMENT_VALUES]);
+
+type HighlightColor = NonNullable<TextFormatting["highlight"]>;
+
+/** Named `w:highlight` values accepted by the operation contract. */
+export const FOLIO_HIGHLIGHT_COLOR_VALUES: readonly HighlightColor[] =
+  Object.freeze([...HIGHLIGHT_COLOR_VALUES]);
 
 /** `w:spacing/@w:lineRule` values accepted by the operation contract. */
 export const FOLIO_LINE_SPACING_RULE_VALUES: readonly LineSpacingRule[] =
@@ -1051,6 +1059,7 @@ const readInlineFormatting = (
     "fontFamily",
     "fontSizePt",
     "color",
+    "highlight",
   ]);
   const bold = readClearableBoolean(candidate, "bold", formattingPath);
   const italic = readClearableBoolean(candidate, "italic", formattingPath);
@@ -1071,6 +1080,19 @@ const readInlineFormatting = (
     formattingPath,
   );
   const color = readClearableRgbColor(candidate, "color", formattingPath);
+  const requestedHighlight = candidate["highlight"];
+  const highlight =
+    requestedHighlight == null
+      ? requestedHighlight
+      : FOLIO_HIGHLIGHT_COLOR_VALUES.find(
+          (namedColor) => namedColor === requestedHighlight,
+        );
+  if (requestedHighlight !== undefined && highlight === undefined) {
+    return invalidBatch(
+      `${formattingPath}.highlight`,
+      "expected a named OOXML highlight color or null",
+    );
+  }
   if (
     bold === undefined &&
     italic === undefined &&
@@ -1078,7 +1100,8 @@ const readInlineFormatting = (
     strike === undefined &&
     fontFamily === undefined &&
     fontSizePt === undefined &&
-    color === undefined
+    color === undefined &&
+    highlight === undefined
   ) {
     return invalidBatch(
       formattingPath,
@@ -1093,6 +1116,7 @@ const readInlineFormatting = (
     ...(fontFamily !== undefined && { fontFamily }),
     ...(fontSizePt !== undefined && { fontSizePt }),
     ...(color !== undefined && { color }),
+    ...(highlight !== undefined && { highlight }),
   };
 };
 

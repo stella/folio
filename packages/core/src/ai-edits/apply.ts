@@ -1596,12 +1596,12 @@ type ApplyInlineFormattingOptions = {
 };
 
 const REPLACEMENT_BACKGROUND_CLEAR_FORMATTING = {
-  highlight: false,
+  highlight: null,
   runShading: false,
 } as const;
 
 type InlineFormattingPatch = FolioAIInlineFormattingPatch &
-  Partial<typeof REPLACEMENT_BACKGROUND_CLEAR_FORMATTING>;
+  Partial<Pick<typeof REPLACEMENT_BACKGROUND_CLEAR_FORMATTING, "runShading">>;
 
 const includedFormattingProperty = (
   includedProperties: readonly string[] | undefined,
@@ -1691,10 +1691,11 @@ const patchAuthoredRunFormatting = ({
     }
   }
   if (
-    formatting.highlight === false &&
+    formatting.highlight !== undefined &&
     includedFormattingProperty(includedProperties, "highlight")
   ) {
-    delete next.highlight;
+    if (formatting.highlight === null) delete next.highlight;
+    else next.highlight = formatting.highlight;
   }
   if (
     formatting.runShading === false &&

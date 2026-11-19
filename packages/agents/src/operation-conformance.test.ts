@@ -814,6 +814,34 @@ describe("document operation contract JSON schema conformance", () => {
     },
   );
 
+  test.each(["darkGreen", "none", null, "lime", "#FFFF00", false])(
+    "highlight %j agrees in the parser and schema",
+    (highlight) => {
+      const operation = {
+        id: "highlight",
+        type: "formatRange",
+        range: CONTRACT_RANGE,
+        formatting: { highlight },
+      };
+      const batch = {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        operations: [operation],
+      };
+      const valid =
+        highlight === "darkGreen" || highlight === "none" || highlight === null;
+      expect(admits(OPERATION_SCHEMA, operation)).toBe(valid);
+      if (valid) {
+        expect(parseFolioDocumentOperationBatch(batch).operations).toEqual([
+          operation,
+        ]);
+      } else {
+        expect(() => parseFolioDocumentOperationBatch(batch)).toThrow(
+          InvalidFolioDocumentOperationBatchError,
+        );
+      }
+    },
+  );
+
   test("admits a new list in both the parser and schema", () => {
     const operation = {
       id: "new-list",
