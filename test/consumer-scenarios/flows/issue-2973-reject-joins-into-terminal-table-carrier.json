@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "title": "PINNED #2973, reported seed 1820417505: rejecting a paragraph that joins a terminal-table carrier maps every position into the story",
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "comments",
+  "mode": "tracked-changes",
+  "seed": 1820417137,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 173098615,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "483CD5EB",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 2692864995,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "31617F9A",
+          "separator": " ",
+          "mergedParagraphProperties": {
+            "numbering": {
+              "kind": "newList",
+              "format": "numbered"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 1237370009,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "412DDC7F",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 3572889098,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "@9",
+          "text": "Invoice notice buyer notice."
+        },
+        {
+          "type": "insertAfterBlock",
+          "blockId": "@10",
+          "text": "Schedule invoice written party.",
+          "numbering": {
+            "kind": "reference",
+            "numId": 1,
+            "ilvl": 0
+          }
+        }
+      ]
+    },
+    {
+      "action": "reject one",
+      "seed": 3445006704
+    }
+  ],
+  "weights": {
+    "version": 1,
+    "cells": {},
+    "operations": []
+  },
+  "origin": "shrunk from splice of 5ffd66410e452eab"
+}

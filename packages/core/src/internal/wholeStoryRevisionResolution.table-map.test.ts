@@ -525,6 +525,43 @@ test("rejecting an empty inserted final paragraph after a table keeps it as the 
   expect(result.resolved.lastChild?.type.name).toBe("paragraph");
 });
 
+test("rejecting a terminal-table carrier a paragraph joins removes both once", () => {
+  const inserted = (text: string, attrs: Record<string, unknown>) =>
+    schema.node("paragraph", attrs, [
+      schema.text(text, [schema.mark("insertion")]),
+    ]);
+  const doc = schema.node("doc", null, [
+    paragraph("before"),
+    table([row([cell("cell")])]),
+    inserted("Invoice.", { pPrMark: insertedParagraphMark }),
+    inserted("Schedule.", { reviewCarrier: "terminal-table" }),
+  ]);
+
+  const result = resolveWholeStory({
+    doc,
+    mode: "reject",
+    styleResolver: null,
+    numbering: null,
+  });
+
+  expect(result.failed).toBe(false);
+  expect(result.resolved.lastChild?.type.name).toBe("table");
+  const replayed = new Transform(doc);
+  for (const step of result.steps) replayed.step(step);
+  expect(replayed.doc.eq(result.resolved)).toBe(true);
+  // Every position maps into the resolved story, the end onto its end.
+  for (let position = 0; position <= doc.content.size; position++) {
+    for (const association of [-1, 1] as const) {
+      expect(result.mapping.map(position, association)).toBeLessThanOrEqual(
+        result.resolved.content.size,
+      );
+    }
+  }
+  expect(result.mapping.map(doc.content.size)).toBe(
+    result.resolved.content.size,
+  );
+});
+
 test("reject removes orphan comment references before resolving paragraph marks", () => {
   const liveCommentId = 44;
   const liveComment = schema.node("paragraph", null, [
