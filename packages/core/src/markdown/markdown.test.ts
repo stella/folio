@@ -174,6 +174,7 @@ const parsedCharacters = (markdown: string) => {
         let text = "";
         if (part.type === "text") text = part.text;
         else if (part.type === "break") text = "\n";
+        else if (part.type === "tab") text = "\t";
         else throw new Error(`Unexpected parsed run content ${part.type}`);
         for (const char of text) {
           characters.push({
@@ -1267,5 +1268,45 @@ describe("toMarkdown — a tag split across runs", () => {
             .join("")
         : "";
     expect(text).toBe(parts.join(""));
+  });
+});
+
+describe("toMarkdown — tabs", () => {
+  const tabbed = (...parts: (string | null)[]): Run => ({
+    type: "run",
+    content: parts.map((part) =>
+      part === null ? { type: "tab" as const } : { type: "text", text: part },
+    ),
+  });
+
+  test("a tab is written as a tab and read back as one", () => {
+    const out = md([para([tabbed("Name:", null, "Jan")])]);
+    expect(out).toBe("Name:\tJan");
+    const [imported] = compileMarkdownToContent(out).content;
+    expect(
+      imported?.type === "paragraph"
+        ? imported.content.flatMap((item) =>
+            item.type === "run" ? item.content : [],
+          )
+        : [],
+    ).toEqual([
+      { type: "text", text: "Name:" },
+      { type: "tab" },
+      { type: "text", text: "Jan" },
+    ]);
+  });
+
+  test("a paragraph that starts with a tab or wide blanks stays a paragraph", () => {
+    const out = md([
+      para([tabbed(null, "Indented")]),
+      para([run("     Centred")]),
+      para([run("Next")]),
+    ]);
+    expect(out).toBe(
+      "&#9;Indented\n\n&#32;&#32;&#32;&#32;&#32;Centred\n\nNext",
+    );
+    expect(
+      compileMarkdownToContent(out).content.map((block) => block.type),
+    ).toEqual(["paragraph", "paragraph", "paragraph"]);
   });
 });

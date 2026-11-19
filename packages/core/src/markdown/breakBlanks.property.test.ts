@@ -74,6 +74,8 @@ const textOf = (paragraph: Paragraph): string =>
     .map((content) => {
       if (content.type === "text") return content.text;
       if (content.type === "break") return "\n";
+      // A tab character reads back as a tab element.
+      if (content.type === "tab") return "\t";
       return "";
     })
     .join("");

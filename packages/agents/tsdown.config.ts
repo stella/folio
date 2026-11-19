@@ -36,5 +36,10 @@ export default defineConfig([
     clean: false,
     plugins: [stableRelativeImportOrder()],
   },
-  { ...shared, dts: { generator: "oxc", dtsOnly: true }, clean: false },
+  {
+    ...shared,
+    dts: { generator: "oxc", dtsOnly: true },
+    clean: false,
+    plugins: [stableRelativeImportOrder()],
+  },
 ]);

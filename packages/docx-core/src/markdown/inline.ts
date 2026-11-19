@@ -47,12 +47,14 @@ export const textRun = (text: string, format: InlineRunFormat = {}): Run => {
     ...(format.highlight ? { highlight: format.highlight } : {}),
   };
   const content: Run["content"] = [];
-  for (const [index, segment] of text.split("\n").entries()) {
+  for (const [index, line] of text.split("\n").entries()) {
     if (index > 0) {
       content.push({ type: "break" });
     }
-    if (segment.length > 0) {
-      content.push({ type: "text", text: segment });
+    // A tab is a tab element in a run.
+    for (const [offset, segment] of line.split("\t").entries()) {
+      if (offset > 0) content.push({ type: "tab" });
+      if (segment.length > 0) content.push({ type: "text", text: segment });
     }
   }
   if (content.length === 0) {

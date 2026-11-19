@@ -36,10 +36,6 @@ export const CANONICAL_REPLAY_GAPS: Readonly<Record<string, string>> = {
     "clean Markdown still resolves with the default engine's acceptance",
   "issue-1757-paragraph-before-table-after-pending-join.json":
     "clean Markdown still resolves with the default engine's acceptance",
-  "tracked-replacement-of-accepted-join-comments.json":
-    "the replacement refuses for comment alignment, not for Reject All",
-  "tracked-replacement-over-separate-comments.json":
-    "the replacement refuses for comment alignment, not for Reject All",
 };
 
 /** How many scenario files share the canonical replays. */

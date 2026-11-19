@@ -133,6 +133,31 @@ describe("RevisionResolutionStep", () => {
     expect(composed.map(2, 1)).toBe(sequential.map(2, 1));
   });
 
+  test("composes edits that fall inside content the first map inserted", () => {
+    // The second map inserts and deletes inside the 113 positions the first
+    // put in place of 58..89; both of its boundaries project onto that range.
+    const first = new StepMap([17, 0, 31, 58, 31, 113, 116, 113, 0]);
+    const second = new StepMap([158, 0, 31, 171, 31, 0]);
+    const composed = composeRevisionResolutionMaps(first, second);
+    const ranges: number[][] = [];
+    composed.forEach((oldStart, oldEnd, newStart, newEnd) => {
+      ranges.push([oldStart, oldEnd, newStart, newEnd]);
+    });
+    expect(ranges).toEqual([
+      [17, 17, 17, 48],
+      [58, 89, 89, 202],
+      [116, 229, 229, 229],
+    ]);
+    const sequential = new Mapping([first, second]);
+    for (let position = 0; position <= 243; position++) {
+      for (const assoc of [-1, 1]) {
+        const mapped = sequential.mapResult(position, assoc);
+        if (!mapped.deleted)
+          expect(composed.map(position, assoc)).toBe(mapped.pos);
+      }
+    }
+  });
+
   test("composed maps keep all surviving positions over varied deletion layouts", () => {
     const mapFor = (size: number, seed: number) => {
       const ranges: number[] = [];

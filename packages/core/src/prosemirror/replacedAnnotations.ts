@@ -428,6 +428,13 @@ type ReplacementCommentAlignmentOptions = {
   doc: PMNode;
   source: { from: number; to: number };
   retiredCommentIds?: ReadonlySet<number> | undefined;
+  /**
+   * The replacement is tracked: the words it deletes keep their comment
+   * ranges, so rejecting gives every range back and accepting drops a
+   * comment whose words all went. Only a point comment or a selected marker
+   * still needs the comment to move.
+   */
+  deletionsKeepComments?: boolean;
   changes: readonly {
     from: number;
     to: number;
@@ -449,6 +456,7 @@ export const preservesReplacementCommentAlignment = ({
   source,
   changes,
   retiredCommentIds,
+  deletionsKeepComments = false,
 }: ReplacementCommentAlignmentOptions): boolean => {
   let previousEnd = source.from;
   for (const change of changes) {
@@ -478,6 +486,7 @@ export const preservesReplacementCommentAlignment = ({
     );
     if (comments.some((mark) => mark.attrs["point"] === true)) return false;
     if (change.markers === "selected" && comments.length > 0) return false;
+    if (deletionsKeepComments) continue;
     let internalCarrier = false;
     doc.nodesBetween(change.from, change.to, (node, position) => {
       if (
