@@ -35,6 +35,15 @@
         "version-update:semver-patch"
       ],
       "reason": "The VS Code extension's engine floor: plugins/vscode/scripts/check-engine-floor.ts requires engines.vscode to equal ^<@types/vscode>, so raising it drops older editors and is a deliberate change."
+    },
+    {
+      "ecosystem": "bun",
+      "dependency": "prosemirror-inputrules",
+      "updateTypes": [
+        "version-update:semver-minor",
+        "version-update:semver-patch"
+      ],
+      "reason": "1.6.0 imports prosemirror-model without declaring it, so bundling it from the isolated install fails to resolve; stay on 1.5.x until a release declares the dependency."
     }
   ]
 }

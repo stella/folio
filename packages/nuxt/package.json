@@ -58,7 +58,7 @@
     "@stll/utf8-boundaries": "workspace:*"
   },
   "devDependencies": {
-    "@nuxt/module-builder": "^1.0.0",
+    "@nuxt/module-builder": "^1.0.4",
     "@nuxt/schema": "^4.6.4",
     "nuxt": "^4.6.4",
     "prosemirror-history": "^1.5.1",
