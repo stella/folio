@@ -28,6 +28,7 @@ import type {
   Document,
   Paragraph,
   ParagraphContent,
+  Run,
 } from "../types/document";
 import { FolioDocxReviewer } from "./headless";
 
@@ -39,7 +40,7 @@ const EDIT_MODES = ["direct", "tracked-changes"] as const;
 const RANGE_END_PARAGRAPH = [1, 1, 2, 3, 3] as const;
 const FIRST_PARAGRAPH_TEXT = "First paragraph text.";
 
-const run = (text: string): ParagraphContent => ({
+const run = (text: string): Run => ({
   type: "run",
   content: [{ type: "text", text }],
 });
@@ -169,7 +170,7 @@ describe("replaceInBlock over a block that opens comment ranges", () => {
   );
 });
 
-test("tracked replacement keeps every disjoint comment anchor after acceptance", async () => {
+test("tracked replacement refuses to widen disjoint comment ranges on rejection", async () => {
   await fc.assert(
     fc.asyncProperty(
       fc.array(fc.integer({ min: 1, max: 8 }), { minLength: 2, maxLength: 5 }),
@@ -205,7 +206,8 @@ test("tracked replacement keeps every disjoint comment anchor after acceptance",
           });
           const target = reviewer.snapshot().blocks.at(0);
           expect(target).toBeDefined();
-          reviewer.applyOperations(
+          const before = reviewer.toDocument();
+          const result = reviewer.applyOperations(
             [
               {
                 id: "replace",
@@ -216,6 +218,20 @@ test("tracked replacement keeps every disjoint comment anchor after acceptance",
             ],
             { undefinedReferences: "refuse", mode },
           );
+          if (mode === "tracked-changes") {
+            expect(result.applied).toEqual([]);
+            expect(result.skipped).toEqual([
+              {
+                id: "replace",
+                reason: "invalidResult",
+                message:
+                  "Reject All would change the original content or formatting.",
+              },
+            ]);
+            expect(reviewer.toDocument()).toEqual(before);
+          } else {
+            expect(result.applied).toHaveLength(1);
+          }
           const saved = await FolioDocxReviewer.fromBuffer(
             await reviewer.toBuffer(),
             {
@@ -237,12 +253,68 @@ test("tracked replacement keeps every disjoint comment anchor after acceptance",
         expect(
           anchors.direct.every((anchor) => anchor === "New clause text."),
         ).toBe(true);
-        expect(anchors["tracked-changes"]).toEqual(anchors.direct);
+        expect(anchors["tracked-changes"]).toEqual(
+          lengths.map((length, id) => String(id).repeat(length)),
+        );
       },
     ),
     propertyConfig({ numRuns: 12 }),
   );
 });
+
+test.each(["legacy", "canonical"] as const)(
+  "accepting an authored replacement keeps both comment anchors in %s",
+  async (session) => {
+    const replacement = "New clause text.";
+    const source = await createDocx({
+      package: {
+        document: {
+          comments: [comment(0), comment(1)],
+          content: [
+            {
+              type: "paragraph",
+              paraId: "40000001",
+              content: [
+                { type: "commentRangeStart", id: 0 },
+                {
+                  type: "deletion",
+                  info: { id: 1, author: "Editor" },
+                  content: [run("0 between ")],
+                },
+                { type: "commentRangeStart", id: 1 },
+                {
+                  type: "deletion",
+                  info: { id: 2, author: "Editor" },
+                  content: [run("1 between ")],
+                },
+                {
+                  type: "insertion",
+                  info: { id: 3, author: "Editor" },
+                  content: [run(replacement)],
+                },
+                { type: "commentRangeEnd", id: 1 },
+                { type: "commentReference", id: 1 },
+                { type: "commentRangeEnd", id: 0 },
+                { type: "commentReference", id: 0 },
+              ],
+            },
+          ],
+        },
+      },
+    });
+    const reviewer = await FolioDocxReviewer.fromBuffer(source, { session });
+    expect(reviewer.acceptAll().resolved).toBeGreaterThan(0);
+    const reopened = await FolioDocxReviewer.fromBuffer(
+      await reviewer.toBuffer(),
+      { session },
+    );
+    expect(reopened.getChanges()).toEqual([]);
+    const quotes = reopened
+      .getComments()
+      .map(({ anchoredText }) => anchoredText);
+    expect(quotes).toEqual([replacement, replacement]);
+  },
+);
 
 const LINK_TEXT = "the standard terms";
 const LINK_TARGET = "https://example.invalid/standard-terms";
