@@ -1479,7 +1479,6 @@ const directDeletionCaret = (
   };
 };
 
-/** Compile one batch; the caller applies it atomically and journals its exact inverse. */
 /**
  * `at` in `content` once the leaves `removed` picks are gone: after the
  * same leaves that stood before it.
@@ -1510,6 +1509,7 @@ const gapWithoutLeaves = (
   return { offset, zeroWidthBefore };
 };
 
+/** Compile one batch; the caller applies it atomically and journals its exact inverse. */
 export const compileEditorIntent = (
   document: Document,
   { intent, mode, firstBlockId }: CompileEditorIntentOptions,
