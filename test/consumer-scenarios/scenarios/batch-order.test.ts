@@ -641,7 +641,7 @@ test("a block after a pending join replays ahead of a split of the paragraph it 
   const rows = (await openReviewer(fixture)).getContent() as Row[];
   assert.deepEqual(
     pendingJoinTargets(rows, new Set([clause.id])),
-    new Map([[clause.id, survivor.id]]),
+    new Map([[clause.id, { survivor: survivor.id, keepsWords: true }]]),
   );
   const insert: FolioDocumentOperation = {
     id: "insert",
@@ -659,4 +659,50 @@ test("a block after a pending join replays ahead of a split of the paragraph it 
     await compareWithReplay(fixture, mode, [insert, split]);
     await compareWithReplay(fixture, mode, [split, insert]);
   }
+});
+
+test("a block after a paragraph joining an emptied final one replays ahead of its new words", async () => {
+  const source = await openReviewer(
+    await packDocument(fromMarkdown("Alpha.\n\nThe Buyer pays.\n\nSigned.")),
+  );
+  const [, buyer, final] = source.getContent();
+  assert.ok(buyer && final);
+  // Deleting the final paragraph tracked deletes its words and the break
+  // before it: the paragraph before it joins it, which has no words left.
+  source.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "tracked-changes",
+      operations: [{ id: "delete", type: "deleteBlock", blockId: final.id }],
+    },
+    { undefinedReferences: "refuse" },
+  );
+  const fixture = new Uint8Array(await source.toBuffer());
+  const reopened = await openReviewer(fixture);
+  const rows = reopened.getContent() as Row[];
+  const sources = new Set(
+    reopened
+      .getChanges()
+      .flatMap(({ type, blockId }) =>
+        type === "paragraphMarkDeleted" && blockId !== null ? [blockId] : [],
+      ),
+  );
+  assert.deepEqual(
+    pendingJoinTargets(rows, sources),
+    new Map([[buyer.id, { survivor: final.id, keepsWords: false }]]),
+  );
+  const insert: FolioDocumentOperation = {
+    id: "insert",
+    type: "insertAfterBlock",
+    blockId: buyer.id,
+    text: "Inserted.",
+  };
+  const replace: FolioDocumentOperation = {
+    id: "replace",
+    type: "replaceBlock",
+    blockId: final.id,
+    text: "Replaced.",
+  };
+  await compareWithReplay(fixture, "tracked-changes", [insert, replace]);
+  await compareWithReplay(fixture, "tracked-changes", [replace, insert]);
 });
