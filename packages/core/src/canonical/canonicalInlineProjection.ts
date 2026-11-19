@@ -580,8 +580,18 @@ const commentMarkTransitions = ({
       transitions.set(position, { starts, ends });
     previous = current;
   };
-  paragraph.forEach((node, position) => {
+  const visit = (node: PMNode, position: number): void => {
     if (issue !== undefined) return;
+    // An inline content control's edges are gaps of its content, as its
+    // native cells place them: the comment marks are on what it holds, so
+    // the transitions are read there. An empty control carries its own.
+    if (
+      nativePolicies.get(node.type.name) === "control" &&
+      node.childCount > 0
+    ) {
+      node.forEach((child, offset) => visit(child, position + 1 + offset));
+      return;
+    }
     const current = new Set<number>();
     for (const mark of node.marks) {
       if (mark.type.name !== "comment") continue;
@@ -606,7 +616,8 @@ const commentMarkTransitions = ({
       }
     }
     record(position, current);
-  });
+  };
+  paragraph.forEach((node, position) => visit(node, position));
   // A range may continue into the next paragraph, whose marks verify this context.
   record(
     paragraph.content.size,

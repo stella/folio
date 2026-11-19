@@ -159,6 +159,7 @@ const listGlyphDocument = async (): Promise<Uint8Array> => {
 const numberedTableDocument = async (
   format: "decimal" | "bullet" = "decimal",
   rendering: "gfm" | "html" = "gfm",
+  words = true,
 ): Promise<Uint8Array> => {
   const document = fromMarkdown(
     "## Terms\n\n| Service | Value |\n| --- | --- |\n| Term | Included |",
@@ -201,6 +202,7 @@ const numberedTableDocument = async (
     ...paragraph.formatting,
     numPr: paragraphNumberingFromSlots({ numId, ilvl: 0 }),
   };
+  if (!words) paragraph.content = [];
   return packDocument(document);
 };
 
@@ -271,6 +273,59 @@ test("reads a numbered heading with no words as its label alone", () => {
   );
 });
 
+test("reads a bulleted heading with no words as its glyph alone", async () => {
+  const document = fromMarkdown("# Agreement\n\n# Gone\n\n## Terms");
+  const numId = 94;
+  const numbering = document.package.numbering ?? {
+    abstractNums: [],
+    nums: [],
+  };
+  numbering.abstractNums.push({
+    abstractNumId: numId,
+    multiLevelType: "singleLevel",
+    levels: [
+      {
+        ilvl: 0,
+        start: 1,
+        numFmt: "bullet",
+        lvlText: "•",
+        suffix: "space",
+        pPr: { indentLeft: 0, indentFirstLine: 0 },
+      },
+    ],
+  });
+  numbering.nums.push({ numId, abstractNumId: numId });
+  document.package.numbering = numbering;
+  const heading = document.package.document.content.filter(
+    (block): block is Paragraph => block.type === "paragraph",
+  )[1];
+  if (!heading) throw new Error("Bulleted heading fixture is missing");
+  heading.content = [];
+  heading.formatting = {
+    ...heading.formatting,
+    numPr: paragraphNumberingFromSlots({ numId, ilvl: 0 }),
+  };
+  const bytes = await packDocument(document);
+  const views = await readAll(bytes);
+  assert.deepEqual(views.markdown, [
+    { text: "Agreement", kind: "heading", headingLevel: 1 },
+    { text: "Terms", kind: "heading", headingLevel: 2 },
+  ]);
+  await assertReadersAgree(bytes, "empty bulleted heading reader fixture");
+  // Another glyph is text, not the bullet.
+  const expected = [
+    { text: "", kind: "heading", headingLevel: 1, number: "(bullet)" },
+  ] as const;
+  assert.deepEqual(
+    markdownViews("# •", [{ ...expected[0], bulletGlyph: "•" }]),
+    expected,
+  );
+  assert.notDeepEqual(
+    markdownViews("# o", [{ ...expected[0], bulletGlyph: "•" }]),
+    expected,
+  );
+});
+
 test("keeps a numbered table cell label in the Markdown comparison", async () => {
   const bytes = await numberedTableDocument();
   const views = await readAll(bytes);
@@ -282,6 +337,14 @@ test("keeps a numbered table cell label in the Markdown comparison", async () =>
   );
   assert.notDeepEqual(mutated, views.getContentAsMarkdown);
   await assertReadersAgree(bytes, "numbered table cell reader fixture");
+});
+
+test("reads a numbered table cell with no words as its label alone", async () => {
+  const bytes = await numberedTableDocument("decimal", "gfm", false);
+  const views = await readAll(bytes);
+  assert.ok(views.markdown.some(({ text }) => text === "3."));
+  assert.deepEqual(views.markdown, views.getContentAsMarkdown);
+  await assertReadersAgree(bytes, "empty numbered table cell reader fixture");
 });
 
 test("normalizes bullet table cells in GFM and HTML without hiding changed text", async () => {

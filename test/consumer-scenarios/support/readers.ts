@@ -202,7 +202,7 @@ const tokenText = (token: Token): string => {
 
 const suffixView = (
   rendered: string,
-  expected: BlockView,
+  expected: MarkdownExpectedView,
   kind: BlockView["kind"],
   headingLevel?: number,
 ): BlockView => {
@@ -213,12 +213,15 @@ const suffixView = (
     plain.trim() === expected.number
   )
     return view("", "listItem", undefined, expected.number);
+  // A heading has no Markdown bullet syntax: a bulleted one writes its glyph.
+  const headingLabel =
+    expected.number === BULLET ? expected.bulletGlyph : expected.number;
   if (
     kind === "heading" &&
     expected.kind === "heading" &&
     expected.text.length === 0 &&
-    expected.number !== undefined &&
-    plain.trim() === expected.number
+    headingLabel !== undefined &&
+    plain.trim() === headingLabel
   )
     return view("", "heading", headingLevel, expected.number);
   const suffix =
@@ -303,6 +306,8 @@ const isNestedListSeparator = (
 type MarkdownExpectedView = BlockView & {
   /** Source paragraphs occupying one Markdown table cell. */
   cellParagraphs?: BlockView[];
+  /** The glyph a bulleted block shows (its `number` reads `BULLET`). */
+  bulletGlyph?: string;
 };
 
 const gfmCellText = (text: string, expected: MarkdownExpectedView): string => {
@@ -506,7 +511,8 @@ const markdownComparable = (block: BlockView, inTable: boolean): BlockView =>
     ? view(
         block.number === undefined || block.number === BULLET
           ? block.text
-          : `${block.number} ${block.text}`,
+          : // A label with no words after it keeps no trailing blank.
+            [block.number, block.text].filter((part) => part !== "").join(" "),
         "paragraph",
         undefined,
         undefined,
@@ -545,22 +551,24 @@ const markdownSourceViews = (
     ) {
       last.text += `\n${comparable.text}`;
       last.cellParagraphs.push(paragraph);
+    } else if (table !== undefined) {
+      expected.push({ ...comparable, cellParagraphs: [paragraph] });
+    } else if (
+      paragraph.number === BULLET &&
+      block.displayLabel !== undefined
+    ) {
+      expected.push({ ...paragraph, bulletGlyph: block.displayLabel });
     } else {
-      expected.push(
-        table === undefined
-          ? paragraph
-          : {
-              ...comparable,
-              cellParagraphs: [paragraph],
-            },
-      );
+      expected.push(paragraph);
     }
     previous = table;
   }
   return {
     expected,
     comparable: expected
-      .map(({ cellParagraphs: _source, ...block }) => block)
+      .map(
+        ({ cellParagraphs: _source, bulletGlyph: _glyph, ...block }) => block,
+      )
       .filter(isFolioAIContentBlock),
   };
 };

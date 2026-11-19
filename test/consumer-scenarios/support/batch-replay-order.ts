@@ -36,6 +36,7 @@ const blockIdOf = (operation: AnyOperation): string =>
 const placement = (
   operation: AnyOperation,
   preRows: readonly Row[],
+  joinsInto: ReadonlyMap<string, string> = new Map(),
 ): [number, number, number] => {
   const index = preRows.findIndex((row) => row.id === blockIdOf(operation));
   const text = preRows[index]?.text ?? "";
@@ -54,6 +55,17 @@ const placement = (
     if (operation.type === "insertAfterBlock") {
       return [(rows.at(-1) ?? index) + 1, 0, 0];
     }
+  }
+  // A block put after a paragraph whose pending join runs into a later one
+  // lands after that one as the batch read it, and runs there: ahead of the
+  // edits inside the joined paragraphs.
+  const joined = joinsInto.get(blockIdOf(operation));
+  const after =
+    operation.type === "insertAfterBlock" ||
+    (operation.type === "insertTable" && operation["position"] !== "before");
+  if (after && joined !== undefined) {
+    const survivor = preRows.findIndex((row) => row.id === joined);
+    if (survivor >= 0) return [survivor + 1, 0, 0];
   }
   switch (operation.type) {
     case "replaceInBlock":
@@ -77,6 +89,30 @@ const sameContainerRows = (left: Row, right: Row | undefined): right is Row =>
   `${left.table?.tableIndex}:${left.table?.rowIndex}:${left.table?.cellIndex}` ===
     `${right.table?.tableIndex}:${right.table?.rowIndex}:${right.table?.cellIndex}`;
 
+/**
+ * The paragraph each pending join in `rows` runs into: from a paragraph whose
+ * mark is pending deletion (`sources`) on past the next ones whose marks go
+ * too, to the first one whose mark stays, in the same container, when that
+ * one keeps words. The engine places a block put after any paragraph of the
+ * join after that one.
+ */
+export const pendingJoinTargets = (
+  rows: readonly Row[],
+  sources: ReadonlySet<string>,
+): Map<string, string> => {
+  const targets = new Map<string, string>();
+  for (const [index, row] of rows.entries()) {
+    if (!sources.has(row.id)) continue;
+    let at = index + 1;
+    while (sources.has(rows[at]?.id ?? "") && sameContainerRows(row, rows[at]))
+      at += 1;
+    const survivor = rows[at];
+    if (sameContainerRows(row, survivor) && survivor.text.length > 0)
+      targets.set(row.id, survivor.id);
+  }
+  return targets;
+};
+
 type SequentialGroupsOptions = {
   applied: readonly AnyOperation[];
   /** The rows the batch's outcome is read against (accepted, for tracked changes). */
@@ -89,6 +125,8 @@ type SequentialGroupsOptions = {
    */
   liveRows?: readonly Row[];
   mode: Mode;
+  /** The paragraph each pending join runs into (`pendingJoinTargets`). */
+  joinsInto?: ReadonlyMap<string, string>;
 };
 
 export const sequentialGroups = ({
@@ -96,6 +134,7 @@ export const sequentialGroups = ({
   preRows,
   liveRows = preRows,
   mode,
+  joinsInto = new Map(),
 }: SequentialGroupsOptions): AnyOperation[][] => {
   const indexed = applied.map((operation, index) => ({ operation, index }));
   const deleted = new Set(
@@ -146,7 +185,7 @@ export const sequentialGroups = ({
       if (!INSERTIONS.has(operation.type)) return false;
       const anchor = preRows.find((row) => row.id === blockIdOf(operation));
       if (anchor === undefined) return false;
-      const [index] = placement(operation, preRows);
+      const [index] = placement(operation, preRows, joinsInto);
       if (index < start || index > lastAt) return false;
       // A paragraph placed beside a cell goes outside the table, into the
       // container the table stands in.
@@ -254,7 +293,7 @@ export const sequentialGroups = ({
           inputIndex: index,
         };
       }
-      const [block, inside, offset] = placement(operation, preRows);
+      const [block, inside, offset] = placement(operation, preRows, joinsInto);
       const hasDeletedSplit = deletedSplitTargets.has(blockIdOf(operation));
       const position =
         hasDeletedSplit && operation.type === "deleteBlock"
@@ -275,7 +314,7 @@ export const sequentialGroups = ({
     rest.map(({ operation }) => operation),
     (operation) => {
       if (!INSERTIONS.has(operation.type)) return null;
-      const [block, inside, offset] = placement(operation, preRows);
+      const [block, inside, offset] = placement(operation, preRows, joinsInto);
       return block * 1_000_000_000 + inside * 100_000_000 + offset;
     },
     (operation) => operation.type === "setBlockParagraphProperties",
