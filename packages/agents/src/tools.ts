@@ -1,6 +1,7 @@
 import {
   FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE,
   FOLIO_PARAGRAPH_ALIGNMENT_VALUES,
+  type FolioDocumentOperationBatch,
   type FolioDocumentOperationType,
   type FolioDocumentSectionHandle,
   type FolioDocumentStory,
@@ -22,6 +23,7 @@ import {
   FOLIO_CLEARABLE_PARAGRAPH_INDENTATION_JSON_SCHEMA,
   FOLIO_CLEARABLE_PARAGRAPH_SPACING_JSON_SCHEMA,
   FOLIO_CLEARABLE_PARAGRAPH_STYLE_ID_JSON_SCHEMA,
+  FOLIO_EXISTING_REVISIONS_JSON_SCHEMA,
   FOLIO_HARD_PAGE_BREAK_JSON_SCHEMA,
   FOLIO_HARD_PAGE_BREAK_OPERATION_CONSTRAINT,
   FOLIO_INSERT_FORMATTING_SCOPE_JSON_SCHEMA,
@@ -453,6 +455,7 @@ const buildSuggestChangesToolDefinition = (
       type: "object",
       properties: {
         story: FOLIO_SUGGESTION_STORY_JSON_SCHEMA,
+        existingRevisions: FOLIO_EXISTING_REVISIONS_JSON_SCHEMA,
         ...(resolved.documentVersion !== null && {
           documentVersion: {
             type: "string",
@@ -571,6 +574,7 @@ export const FOLIO_AGENT_TOOL_REGISTRY: {
       operations: unknown[];
       documentVersion?: string;
       story?: FolioAgentSuggestionStory;
+      existingRevisions?: FolioDocumentOperationBatch["existingRevisions"];
     },
     FolioAgentApplyOperationsSummary
   >;

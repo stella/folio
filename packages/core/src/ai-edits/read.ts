@@ -302,9 +302,17 @@ const continuationRevisionIdsByRow = (
 };
 
 /** Shared revision interpreter; a null block map omits unrelated block-id projection. */
+export type OwnedRevisionRange = {
+  author: string;
+  type: FolioReviewChangeKind;
+  from: number;
+  to: number;
+};
+
 const getTrackedChangeGroupsFromProjectedDoc = (
   doc: PMNode,
   blockStarts: ReadonlyMap<number, string> | null,
+  revisionRanges?: OwnedRevisionRange[],
 ): TrackedChangeGroup[] => {
   const insertionType = doc.type.schema.marks["insertion"];
   const deletionType = doc.type.schema.marks["deletion"];
@@ -342,8 +350,16 @@ const getTrackedChangeGroupsFromProjectedDoc = (
   const listFormatting = (
     changes: Iterable<RunPropertyChange>,
     text: string,
+    from: number,
+    to: number,
   ) => {
     for (const change of changes) {
+      revisionRanges?.push({
+        type: "formatting",
+        author: change.info.author,
+        from,
+        to,
+      });
       const key = `${currentBlockId ?? ""}:formatting:${String(change.info.id)}`;
       const existing = grouped.get(key);
       if (existing) {
@@ -374,6 +390,12 @@ const getTrackedChangeGroupsFromProjectedDoc = (
         ? (blockStarts?.get(pos) ?? null)
         : firstBlockIdWithin({ node, nodePos: pos, blockStarts });
       nodeRevisionCarriers.forEach((carrier, carrierIndex) => {
+        revisionRanges?.push({
+          type: carrier.type,
+          author: carrier.author,
+          from: carrier.from,
+          to: carrier.to,
+        });
         grouped.set(
           `node:${String(pos)}:${carrier.type}:${String(carrier.id)}:${String(carrierIndex)}`,
           {
@@ -437,6 +459,12 @@ const getTrackedChangeGroupsFromProjectedDoc = (
           blockId: firstBlockIdWithin({ node, nodePos: pos, blockStarts }),
         };
         const key = `row:${kind}:${revisionId}:${String(pos)}`;
+        revisionRanges?.push({
+          type: kind,
+          author: change.author,
+          from: pos,
+          to: pos + node.nodeSize,
+        });
         grouped.set(key, change);
         fold(key, continuationRevisions.get(pos) ?? []);
         rowRevisionScopes.push({
@@ -479,6 +507,12 @@ const getTrackedChangeGroupsFromProjectedDoc = (
           structuralChangeCellPositions.get(key) ?? new Set<number>();
         const shouldAppendText =
           existing !== undefined && !cellPositions.has(pos);
+        revisionRanges?.push({
+          type: kind,
+          author: typeof author === "string" ? author : "",
+          from: pos,
+          to: pos + node.nodeSize,
+        });
         grouped.set(key, {
           id: revisionId,
           type: kind,
@@ -501,6 +535,12 @@ const getTrackedChangeGroupsFromProjectedDoc = (
             continue;
           }
           const revisionId = change.info.id;
+          revisionRanges?.push({
+            type: "cellMerged",
+            author: change.info.author,
+            from: pos,
+            to: pos + node.nodeSize,
+          });
           const key = `cell:cellMerged:${revisionId}`;
           const existing = grouped.get(key);
           const text = node.textContent;
@@ -571,6 +611,8 @@ const getTrackedChangeGroupsFromProjectedDoc = (
           listFormatting(
             changesById.values(),
             runFormattingCarrierReviewText(formattingCarrier),
+            pos,
+            pos + node.nodeSize,
           );
       } else if (disposition === "not-a-run") {
         // A drawing, a shape or a text box anchor is no editor run, but it
@@ -583,6 +625,8 @@ const getTrackedChangeGroupsFromProjectedDoc = (
           listFormatting(
             expectRunPropertyChangeMarkAttrs(changeMark).changes,
             readerTextOf(node, noteReferences),
+            pos,
+            pos + node.nodeSize,
           );
       }
     }
@@ -694,6 +738,14 @@ const getTrackedChangeGroupsFromProjectedDoc = (
   let previousInline: { key: string; group: TrackedChangeGroup } | null = null;
   for (const [key, change] of grouped) {
     const range = inlineRanges.get(key);
+    if (range !== undefined) {
+      revisionRanges?.push({
+        type: change.type,
+        author: change.author,
+        from: range.start,
+        to: range.end,
+      });
+    }
     // Formatting is an independent revision stream: it cannot interrupt the
     // contiguous inline wrapper whose run carries the property revision.
     const previous = previousInline?.group;
@@ -767,6 +819,16 @@ export const getTrackedChangesFromSnapshot = (
  */
 export const getTrackedChangesFromDoc = (doc: PMNode): FolioReviewChange[] =>
   getTrackedChangesFromProjectedDoc(doc, blockStartIdsFromDoc(doc));
+
+export const getOwnedRevisionRanges = (doc: PMNode): OwnedRevisionRange[] => {
+  const ranges: OwnedRevisionRange[] = [];
+  getTrackedChangeGroupsFromProjectedDoc(
+    doc,
+    blockStartIdsFromDoc(doc),
+    ranges,
+  );
+  return ranges;
+};
 
 /**
  * The physical revision ids behind each listed change that `ids` name, one

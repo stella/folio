@@ -358,7 +358,14 @@ export type FolioDocumentOperationBatch = {
   readonly atomic?: boolean;
   readonly dryRun?: boolean;
   readonly precondition?: FolioDocumentOperationBatchPrecondition;
+  /** Opt in to refusing edits that touch another author's pending revision. */
+  readonly existingRevisions?: (typeof FOLIO_EXISTING_REVISION_POLICIES)[number];
 };
+
+export const FOLIO_EXISTING_REVISION_POLICIES = [
+  "allow",
+  "refuse-cross-author",
+] as const;
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -1933,6 +1940,7 @@ export const parseFolioDocumentOperationBatch = (
     "atomic",
     "dryRun",
     "precondition",
+    "existingRevisions",
   ]);
   const version = assertSupportedFolioDocumentOperationVersion(
     value["version"],
@@ -1956,6 +1964,16 @@ export const parseFolioDocumentOperationBatch = (
   const atomic = readOptionalBoolean(value, "atomic", "$");
   const dryRun = readOptionalBoolean(value, "dryRun", "$");
   const precondition = readOptionalBatchPrecondition(value);
+  const requestedPolicy = value["existingRevisions"];
+  const existingRevisions = FOLIO_EXISTING_REVISION_POLICIES.find(
+    (policy) => policy === requestedPolicy,
+  );
+  if (requestedPolicy !== undefined && existingRevisions === undefined) {
+    return invalidBatch(
+      "$.existingRevisions",
+      'expected "allow" or "refuse-cross-author" when provided',
+    );
+  }
   const parsedOperations = operations.map(parseDocumentOperation);
   const operationIds = new Set<string>();
   for (const [index, operation] of parsedOperations.entries()) {
@@ -1974,6 +1992,7 @@ export const parseFolioDocumentOperationBatch = (
     ...(atomic !== undefined && { atomic }),
     ...(dryRun !== undefined && { dryRun }),
     ...(precondition !== undefined && { precondition }),
+    ...(existingRevisions !== undefined && { existingRevisions }),
   } satisfies FolioDocumentOperationBatch;
   freezeParsedValue(parsedBatch);
   parsedFolioDocumentOperationBatches.add(parsedBatch);
@@ -2186,6 +2205,7 @@ const recoveryByReason = {
   invalidResult: "refreshDocument",
   pendingDeletion: "resolveTrackedChange",
   pendingParagraphMarkDeletion: "resolveTrackedChange",
+  existingRevisionConflict: "resolveTrackedChange",
   contentControlLock: "changeTarget",
 } as const satisfies Record<
   FolioAIEditSkippedOperation["reason"],
@@ -2214,6 +2234,7 @@ export const getFolioDocumentOperationIssues = (
         reason !== "pendingRunPropertyChange" &&
         reason !== "pendingDeletion" &&
         reason !== "pendingParagraphMarkDeletion" &&
+        reason !== "existingRevisionConflict" &&
         // A lock refuses the same change to the same control every time.
         reason !== "contentControlLock" &&
         // The same values never fit the same target; only a changed operation
@@ -2641,6 +2662,9 @@ export const applyFolioDocumentOperationsInPackage = ({
       snapshot,
       operations,
       mode: parsedBatch.mode ?? "tracked-changes",
+      ...(parsedBatch.existingRevisions === "refuse-cross-author" && {
+        refuseCrossAuthorRevisions: true,
+      }),
       ...(author !== undefined && { author }),
       ...(revisionStamp !== undefined && { revisionStamp }),
       ...(wordDiff !== undefined && { wordDiff }),

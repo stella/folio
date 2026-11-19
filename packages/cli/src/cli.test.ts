@@ -210,5 +210,62 @@ describe("runFolioCli", () => {
 
     expect(help.stdout()).toContain('"type":"replaceInBlock"');
     expect(help.stdout()).toContain("folio find contract.docx --query");
+    expect(help.stdout()).toContain("--existing-revisions");
+    expect(help.stdout()).toContain("refuse-cross-author");
+  });
+
+  test("refuses an edit in another author's revision when requested", async () => {
+    const file = await writeDocx(dir, "contract.docx", CONTRACT_PARAGRAPHS);
+    const suggest = ({
+      find,
+      replacement,
+      author,
+      policy = [],
+    }: {
+      find: string;
+      replacement: string;
+      author: string;
+      policy?: readonly string[];
+    }) => {
+      const captured = captureIo();
+      const exit = runFolioCli(
+        [
+          "suggest",
+          file,
+          "--in-place",
+          "--no-expect-version",
+          "--author",
+          author,
+          "--operations",
+          JSON.stringify([
+            {
+              type: "replaceInBlock",
+              blockId: "10000002",
+              find,
+              replace: replacement,
+            },
+          ]),
+          ...policy,
+        ],
+        captured.io,
+      );
+      return { captured, exit };
+    };
+    const first = suggest({
+      find: "pays",
+      replacement: "tenders",
+      author: "Reviewer One",
+    });
+    expect(await first.exit, first.captured.stdout()).toBe(0);
+    const before = await Bun.file(file).arrayBuffer();
+    const second = suggest({
+      find: "tenders",
+      replacement: "delivers",
+      author: "Reviewer Two",
+      policy: ["--existing-revisions", "refuse-cross-author"],
+    });
+    expect(await second.exit).not.toBe(0);
+    expect(second.captured.stdout()).toContain("existingRevisionConflict");
+    expect(await Bun.file(file).arrayBuffer()).toEqual(before);
   });
 });

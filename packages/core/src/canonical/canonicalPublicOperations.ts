@@ -67,6 +67,10 @@ import {
   resolveCleanTextRange,
 } from "../ai-edits/clean-text";
 import { directJoinSurvivor, directJoinTakes } from "../ai-edits/directJoin";
+import {
+  createExistingRevisionGuard,
+  EXISTING_REVISION_CONFLICT_MESSAGE,
+} from "../ai-edits/existingRevisions";
 import { stripInlineEmphasisMarkers } from "../ai-edits/inline-emphasis";
 import {
   createBatchListMinter,
@@ -2576,6 +2580,33 @@ export class CanonicalPublicOperations {
       };
     };
     let claims = new BatchClaims();
+    const conflictsWithRevision =
+      batch.mode !== "direct" &&
+      batch.existingRevisions === "refuse-cross-author" &&
+      projected.isOk()
+        ? createExistingRevisionGuard({
+            doc: projected.value.doc,
+            author: options.author ?? "AI",
+          })
+        : undefined;
+    const refusesExistingRevision = ({
+      operation,
+      plan,
+    }: ReturnType<typeof planned>) => {
+      if (
+        operation.type === "commentOnBlock" ||
+        operation.type === "commentOnRange" ||
+        !conflictsWithRevision?.(plan.claim)
+      ) {
+        return false;
+      }
+      skip(
+        operation.id,
+        "existingRevisionConflict",
+        EXISTING_REVISION_CONFLICT_MESSAGE,
+      );
+      return true;
+    };
     const overlapsResolved = (candidate: ReturnType<typeof planned>) =>
       claims.conflictOf(candidate.plan.claim) !== null;
     const admit = (candidate: ReturnType<typeof planned>) => {
@@ -2648,6 +2679,7 @@ export class CanonicalPublicOperations {
         continue;
       }
       const candidate = planned(compiled.value);
+      if (refusesExistingRevision(candidate)) continue;
       if (overlapsResolved(candidate)) {
         skip(operation.id, "overlappingOperation");
         continue;
@@ -2699,6 +2731,7 @@ export class CanonicalPublicOperations {
         continue;
       }
       const candidate = planned(alone.value);
+      if (refusesExistingRevision(candidate)) continue;
       if (overlapsResolved(candidate)) {
         skip(operation.id, "overlappingOperation");
         continue;

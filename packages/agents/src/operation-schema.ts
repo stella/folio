@@ -16,6 +16,7 @@
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   FOLIO_DOCUMENT_OPERATION_MODES,
+  FOLIO_EXISTING_REVISION_POLICIES,
   FOLIO_HIGHLIGHT_COLOR_VALUES,
   FOLIO_LINE_SPACING_RULE_VALUES,
   FOLIO_PAGE_BREAK_CLEAR_VALUES,
@@ -1321,14 +1322,14 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
   ],
 };
 
-/**
- * JSON Schema (draft-07 compatible) for the versioned batch envelope accepted
- * by `parseFolioDocumentOperationBatch`: `version` (always
- * `FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION`), `operations`, and the
- * optional `mode` / `atomic` / `dryRun` flags — the exact wire shape of
- * `FolioDocumentOperationBatch`. Hand this to an LLM tool definition (or any
- * JSON Schema consumer) instead of re-declaring the contract.
- */
+export const FOLIO_EXISTING_REVISIONS_JSON_SCHEMA = {
+  type: "string",
+  enum: FOLIO_EXISTING_REVISION_POLICIES,
+  description:
+    "Whether to refuse tracked edits inside another author's pending revision. Defaults to allow.",
+} as const satisfies FolioJsonSchema;
+
+/** JSON Schema (draft-07 compatible) for a versioned document operation batch. */
 export const FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA: FolioJsonSchema = {
   type: "object",
   description:
@@ -1358,6 +1359,7 @@ export const FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA: FolioJsonSchema = {
       description:
         "Reject the whole batch when any operation would be skipped.",
     },
+    existingRevisions: FOLIO_EXISTING_REVISIONS_JSON_SCHEMA,
     dryRun: {
       type: "boolean",
       description: "Preview the batch without mutating the document.",

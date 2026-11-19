@@ -206,6 +206,10 @@ import {
 } from "./clean-text";
 import { directJoinSurvivor, directJoinTakes } from "./directJoin";
 import {
+  createExistingRevisionGuard,
+  EXISTING_REVISION_CONFLICT_MESSAGE,
+} from "./existingRevisions";
+import {
   hasInlineEmphasis,
   parseInlineEmphasisRuns,
   stripInlineEmphasisMarkers,
@@ -401,6 +405,7 @@ type ApplyFolioAIEditOperationsOptions = {
 type ApplyFolioAIEditOperationsInPackageOptions =
   ApplyFolioAIEditOperationsOptions & {
     numberingIdsElsewhere: NumberingIdsInUse;
+    refuseCrossAuthorRevisions?: boolean;
   };
 
 type ApplyFolioAIEditOperationsInternalOptions =
@@ -5293,6 +5298,7 @@ const applyFolioAIEditOperationsInternal = ({
   wordDiffMode = "bounded",
   tableTemplates,
   replacementBackground = "clear",
+  refuseCrossAuthorRevisions,
   undefinedReferences,
   numberingIdsElsewhere,
 }: ApplyFolioAIEditOperationsInternalOptions): FolioAIEditApplyOutcome => {
@@ -5305,6 +5311,10 @@ const applyFolioAIEditOperationsInternal = ({
   const deletionType = view.state.schema.marks["deletion"];
   const commentType = view.state.schema.marks["comment"];
   const occupiedCommentIds = new Set<number>();
+  const conflictsWithRevision =
+    mode === "direct" || !refuseCrossAuthorRevisions
+      ? undefined
+      : createExistingRevisionGuard({ doc: view.state.doc, author });
   if (commentType) {
     view.state.doc.descendants((node) => {
       for (const mark of node.marks) {
@@ -5544,6 +5554,18 @@ const applyFolioAIEditOperationsInternal = ({
       doc: view.state.doc,
       producesTrackedChanges,
     });
+    if (
+      operation.type !== "commentOnBlock" &&
+      operation.type !== "commentOnRange" &&
+      conflictsWithRevision?.(claim)
+    ) {
+      skipped.push({
+        id: operation.id,
+        reason: "existingRevisionConflict",
+        message: EXISTING_REVISION_CONFLICT_MESSAGE,
+      });
+      continue;
+    }
     // A comparison describes differences two documents already hold; the
     // locks guard editing a document, not describing it.
     const lockViolation = comparisonApplying()

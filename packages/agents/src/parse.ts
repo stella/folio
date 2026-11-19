@@ -121,6 +121,7 @@ export type PrepareFolioAgentDocumentOperationBatchOptions = {
   atomic?: boolean;
   dryRun?: boolean;
   precondition?: FolioDocumentOperationBatchPrecondition;
+  existingRevisions?: FolioDocumentOperationBatch["existingRevisions"];
 };
 
 /**
@@ -135,6 +136,7 @@ export const prepareFolioAgentDocumentOperationBatch = ({
   atomic,
   dryRun,
   precondition,
+  existingRevisions,
 }: PrepareFolioAgentDocumentOperationBatchOptions): FolioDocumentOperationBatch =>
   parseFolioDocumentOperationBatch({
     version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -143,6 +145,7 @@ export const prepareFolioAgentDocumentOperationBatch = ({
     ...(atomic !== undefined && { atomic }),
     ...(dryRun !== undefined && { dryRun }),
     ...(precondition !== undefined && { precondition }),
+    ...(existingRevisions !== undefined && { existingRevisions }),
   });
 
 /** Result of {@link parseAddCommentInput}. */
@@ -223,6 +226,7 @@ export type ParseSuggestChangesResult =
       story?: FolioAgentSuggestionStory;
       /** Present when the call pinned a host document version. */
       precondition?: FolioDocumentOperationBatchPrecondition;
+      existingRevisions?: FolioDocumentOperationBatch["existingRevisions"];
       normalizations: FolioAgentInputNormalization[];
     }
   | { ok: false; error: string };
@@ -231,6 +235,7 @@ const SUGGEST_CHANGES_ARGUMENT_KEYS = [
   "operations",
   "documentVersion",
   "story",
+  "existingRevisions",
 ] as const;
 
 /** String-valued operation fields that count against the text caps. */
@@ -268,6 +273,7 @@ type DecodedSuggestChangesInput = {
   operations: Record<string, unknown>[];
   documentVersion: unknown;
   story: unknown;
+  existingRevisions: unknown;
   normalizations: FolioAgentInputNormalization[];
 };
 
@@ -372,6 +378,7 @@ const decodeSuggestChangesInput = (
     operations,
     documentVersion: args["documentVersion"],
     story: args["story"],
+    existingRevisions: args["existingRevisions"],
     normalizations,
   };
 };
@@ -548,12 +555,16 @@ export const parseSuggestChangesInput = (
     const batch = parseFolioDocumentOperationBatch({
       version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
       operations: prepared,
+      existingRevisions: decoded.existingRevisions,
       ...(precondition !== undefined && { precondition }),
     });
     return {
       ok: true,
       operations: [...batch.operations],
       ...(story !== undefined && { story }),
+      ...(batch.existingRevisions !== undefined && {
+        existingRevisions: batch.existingRevisions,
+      }),
       ...(batch.precondition !== undefined && {
         precondition: batch.precondition,
       }),
