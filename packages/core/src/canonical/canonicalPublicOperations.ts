@@ -744,7 +744,12 @@ const statedParagraphPatch = (
   properties: FolioAIBlockParagraphProperties,
 ): ParagraphPropsPatch => {
   const patch: Record<string, unknown> = {};
-  if (properties.styleId !== undefined) patch["styleId"] = properties.styleId;
+  if (properties.styleId !== undefined) {
+    patch["styleId"] = properties.styleId;
+    // The numbering the old style supplied is no longer the paragraph's:
+    // list normalization derives it again from the style the patch sets.
+    patch["numPrFromStyle"] = null;
+  }
   if (properties.outlineLevel !== undefined)
     patch["outlineLevel"] = properties.outlineLevel;
   if (properties.alignment !== undefined)
