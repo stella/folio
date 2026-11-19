@@ -74,10 +74,7 @@ import {
 } from "../ai-edits/existingRevisions";
 import { stripInlineEmphasisMarkers } from "../ai-edits/inline-emphasis";
 import { compileMarkdownInsertion } from "../ai-edits/markdownInsertion";
-import {
-  createBatchListMinter,
-  type MintedList,
-} from "../ai-edits/newListNumbering";
+import { createBatchListMinter } from "../ai-edits/newListNumbering";
 import {
   cutsIntoNoteReference,
   type NoteReferenceLabels,

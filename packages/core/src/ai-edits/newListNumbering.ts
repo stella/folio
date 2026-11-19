@@ -52,10 +52,10 @@ type DeferredNewListReference = {
 
 /** Start a list discovered while compiling one insertion. */
 export const deferInsertedList = (
-  format: ListKind,
+  kind: NewListDefinition["kind"],
 ): DeferredNewListReference => ({
   kind: "deferredNewList",
-  allocation: { format },
+  allocation: { kind },
   level: 0,
 });
 
