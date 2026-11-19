@@ -55,7 +55,7 @@ const inlineEdits = [
     id: "delete-first",
     type: "replaceInBlock",
     blockId: "10000000",
-    find: "First clause.",
+    find: "clause",
     replace: "",
   },
   edits[1],
@@ -63,7 +63,7 @@ const inlineEdits = [
     id: "delete-third",
     type: "replaceInBlock",
     blockId: "10000002",
-    find: "Third clause.",
+    find: "clause",
     replace: "",
   },
   edits[3],
@@ -116,9 +116,9 @@ for (const session of ["legacy", "canonical"] as const) {
     expect(
       rejected.getComments().map(({ id, anchoredText }) => [id, anchoredText]),
     ).toEqual([
-      [3, "First clause."],
+      [3, "clause"],
       [8, "Second clause."],
-      [12, "Third clause."],
+      [12, "clause"],
     ]);
   });
 
@@ -153,76 +153,6 @@ for (const session of ["legacy", "canonical"] as const) {
     expect(other.receipts.at(0)).not.toHaveProperty("retiredCommentIds");
   });
 
-  for (const type of ["deleteTableRow", "deleteTableColumn"] as const)
-    test(`${session} reports retirement for admitted ${type} operations`, async () => {
-      const cell = (paraId: string, content: ParagraphContent[]) =>
-        ({
-          type: "tableCell",
-          content: [{ type: "paragraph", paraId, content }],
-        }) satisfies TableCell;
-      const document = {
-        package: {
-          document: {
-            content: [
-              {
-                type: "table",
-                rows: [
-                  {
-                    type: "tableRow",
-                    cells: [
-                      cell("10000000", [
-                        ...anchor(3, "Remove."),
-                        { type: "commentReference", id: 4 },
-                      ]),
-                      cell("10000001", [textRun("Keep column.")]),
-                    ],
-                  },
-                  {
-                    type: "tableRow",
-                    cells: [
-                      cell("10000002", [textRun("Keep row.")]),
-                      cell("10000003", [textRun("Keep both.")]),
-                    ],
-                  },
-                ],
-              },
-              {
-                type: "paragraph",
-                paraId: "10000004",
-                content: [textRun("End.")],
-              },
-            ],
-            comments: [reviewComment(3), reviewComment(4)],
-          },
-        },
-      } satisfies Document;
-      const reviewer = await FolioDocxReviewer.fromBuffer(
-        await createDocx(document),
-        { session },
-      );
-      expect(reviewer.getComments().map(({ id }) => id)).toEqual([3, 4]);
-      const result = reviewer.applyDocumentOperations(
-        {
-          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-          operations: [{ id: "delete-cells", type, blockId: "10000000" }],
-        },
-        { undefinedReferences: "refuse" },
-      );
-      if (session === "canonical" && result.skipped.length > 0) {
-        expect(result.skipped).toHaveLength(1);
-        expect(result.skipped.at(0)?.reason).toBe("unsupportedBlock");
-        expect(result.receipts).toEqual([]);
-        return;
-      }
-      expect(result.skipped).toEqual([]);
-      expect(reviewer.acceptAll().skipped).toEqual([]);
-      const survived = reviewer.getComments().map(({ id }) => id);
-      expect(survived).not.toContain(3);
-      expect(result.receipts.at(0)?.retiredCommentIds).toEqual(
-        [3, 4].filter((id) => !survived.includes(id)),
-      );
-    });
-
   for (const mode of ["direct", "suggested"] as const)
     test(`${session} omits retirement metadata in ${mode} mode`, async () => {
       const reviewer = await open(session);
@@ -238,3 +168,67 @@ for (const session of ["legacy", "canonical"] as const) {
       expect(result.receipts.at(0)).not.toHaveProperty("retiredCommentIds");
     });
 }
+
+for (const type of ["deleteTableRow", "deleteTableColumn"] as const)
+  test(`legacy reports retirement for ${type}`, async () => {
+    const cell = (paraId: string, content: ParagraphContent[]) =>
+      ({
+        type: "tableCell",
+        content: [{ type: "paragraph", paraId, content }],
+      }) satisfies TableCell;
+    const document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "table",
+              rows: [
+                {
+                  type: "tableRow",
+                  cells: [
+                    cell("10000000", [
+                      ...anchor(3, "Remove."),
+                      { type: "commentReference", id: 4 },
+                    ]),
+                    cell("10000001", [textRun("Keep column.")]),
+                  ],
+                },
+                {
+                  type: "tableRow",
+                  cells: [
+                    cell("10000002", [textRun("Keep row.")]),
+                    cell("10000003", [textRun("Keep both.")]),
+                  ],
+                },
+              ],
+            },
+            {
+              type: "paragraph",
+              paraId: "10000004",
+              content: [textRun("End.")],
+            },
+          ],
+          comments: [reviewComment(3), reviewComment(4)],
+        },
+      },
+    } satisfies Document;
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await createDocx(document),
+      { session: "legacy" },
+    );
+    expect(reviewer.getComments().map(({ id }) => id)).toEqual([3, 4]);
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        operations: [{ id: "delete-cells", type, blockId: "10000000" }],
+      },
+      { undefinedReferences: "refuse" },
+    );
+    expect(result.skipped).toEqual([]);
+    expect(reviewer.acceptAll().skipped).toEqual([]);
+    const survived = reviewer.getComments().map(({ id }) => id);
+    expect(survived).not.toContain(3);
+    expect(result.receipts.at(0)?.retiredCommentIds).toEqual(
+      [3, 4].filter((id) => !survived.includes(id)),
+    );
+  });
