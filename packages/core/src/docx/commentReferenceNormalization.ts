@@ -2,6 +2,7 @@ import {
   PARSE_WARNING_CODES,
   type PreservedChild,
 } from "@stll/docx-core/model";
+import { preservedCommentRangeMarkersAt } from "@stll/docx-core/ops";
 
 import type {
   BlockContent,
@@ -16,7 +17,6 @@ import type {
 } from "../types/document";
 import { InlineContentRemovals } from "./inlineContentRemovals";
 import { visitInlineContentSlots } from "./paragraphTraversal";
-import { preservedCommentRangeMarkersAt } from "./preservedCommentRangeMarkers";
 
 /** The codes this normalisation is reported under, owned here, not at the caller. */
 export const DANGLING_COMMENT_REFERENCE_WARNING: "dangling-comment-reference" =

@@ -9,8 +9,14 @@ import {
   MAX_REVISION_ID,
   type Paragraph,
   type ParagraphContent,
+  type PreservedChild,
   setDocumentBodyComments,
+  type Table,
 } from "../model/document";
+import {
+  type PreservedCommentRangeMarker,
+  preservedCommentRangeMarker,
+} from "../xml/preservedCommentRangeMarkers";
 import { replaceParagraphs, storyParagraphs } from "./blocks";
 import {
   captureCommentBoundaries,
@@ -263,6 +269,52 @@ type StoryAnchorWalk = {
   heldToEnd: number;
 };
 
+const positionedCommentRanges = (
+  children: readonly PreservedChild[] | undefined,
+  childCount: number,
+) => {
+  if (children === undefined || children.length === 0) return undefined;
+  const positions = new Map<number, PreservedCommentRangeMarker[]>();
+  for (const child of children) {
+    const marker = preservedCommentRangeMarker(child);
+    if (marker === undefined) continue;
+    // Match the serializer when an edit removes the sibling the capture followed.
+    const index = Math.min(Math.max(child.index, 0), childCount);
+    const at = positions.get(index);
+    if (at === undefined) positions.set(index, [marker]);
+    else at.push(marker);
+  }
+  return positions;
+};
+
+/** Read table and row boundaries at their source gaps, then the adjacent cell content. */
+const walkTableCommentContent = (
+  table: Table,
+  walk: (blocks: readonly BlockContent[]) => void,
+): void => {
+  const tableRanges = positionedCommentRanges(
+    table.preserved?.children,
+    table.rows.length,
+  );
+  for (const [rowIndex, row] of table.rows.entries()) {
+    const beforeRow = tableRanges?.get(rowIndex);
+    if (beforeRow !== undefined) walk(beforeRow);
+    const rowRanges = positionedCommentRanges(
+      row.preserved?.children,
+      row.cells.length,
+    );
+    for (const [cellIndex, cell] of row.cells.entries()) {
+      const beforeCell = rowRanges?.get(cellIndex);
+      if (beforeCell !== undefined) walk(beforeCell);
+      walk(cell.content);
+    }
+    const afterCells = rowRanges?.get(row.cells.length);
+    if (afterCells !== undefined) walk(afterCells);
+  }
+  const afterRows = tableRanges?.get(table.rows.length);
+  if (afterRows !== undefined) walk(afterRows);
+};
+
 /**
  * A story's comment anchors in document order. A range marker between blocks
  * is one of them, placed at the edge of the text beside it: a start at the
@@ -305,8 +357,7 @@ const storyAnchors = (
           break;
         }
         case "table":
-          for (const row of block.rows)
-            for (const cell of row.cells) walk(cell.content);
+          walkTableCommentContent(block, walk);
           break;
         case "blockSdt":
         case "blockCustomXml":
@@ -499,8 +550,7 @@ const storyCoverageNodes = (
           out.push(...leafSpans(block.content));
           break;
         case "table":
-          for (const row of block.rows)
-            for (const cell of row.cells) walk(cell.content);
+          walkTableCommentContent(block, walk);
           break;
         case "blockSdt":
         case "blockCustomXml":

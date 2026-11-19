@@ -52,6 +52,11 @@ export const OOXML_NS: {
   pr: "http://schemas.openxmlformats.org/package/2006/relationships",
 };
 
+/** Bindings supplied by a rebuilt Transitional part to its captured children. */
+export const OOXML_NAMESPACE_SCOPE: XmlNamespaceScope = {
+  bindings: new Map(Object.entries(OOXML_NS)),
+};
+
 export type OoxmlPrefix = keyof typeof OOXML_NS;
 
 /**

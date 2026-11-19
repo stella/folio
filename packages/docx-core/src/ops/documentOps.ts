@@ -293,3 +293,8 @@ export {
 } from "./comments";
 
 export { planWholeParagraphReplacement } from "./wholeParagraphReplacement";
+
+export {
+  type PreservedCommentRangeMarker,
+  preservedCommentRangeMarkersAt,
+} from "../xml/preservedCommentRangeMarkers";

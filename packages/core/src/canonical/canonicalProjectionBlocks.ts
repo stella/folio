@@ -178,9 +178,14 @@ export const storyFactContributions = (
   visitBookmarkBoundaries(blocks, (id, type) =>
     contributions.push(type === "start" ? 0 : 1, id),
   );
-  visitCommentMarkerItems(blocks, markersOf, (item) => {
-    if (item.type === "commentRangeStart") contributions.push(2, item.id);
-    if (item.type === "commentReference") contributions.push(3, item.id);
+  visitCommentMarkerItems(blocks, {
+    markersOf,
+    visit(item, position) {
+      if (item.type === "commentRangeStart") contributions.push(2, item.id);
+      if (item.type === "commentReference") contributions.push(3, item.id);
+      if (item.type === "commentRangeEnd" && position === "positioned")
+        contributions.push(4, item.id);
+    },
   });
   return contributions;
 };

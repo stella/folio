@@ -8,6 +8,10 @@
  */
 
 import type { PreservedMarkup } from "@stll/docx-core/model";
+import {
+  type PreservedCommentRangeMarker,
+  preservedCommentRangeMarkersAt,
+} from "@stll/docx-core/ops";
 
 import type {
   BlockContent,
@@ -23,10 +27,6 @@ import type {
 } from "../types/document";
 import { cloneParagraphWithPropertySource } from "./paragraphPropertySource";
 import { visitInlineContentSlots } from "./paragraphTraversal";
-import {
-  type PreservedCommentRangeMarker,
-  preservedCommentRangeMarkersAt,
-} from "./preservedCommentRangeMarkers";
 
 type CommentMarker = Extract<
   ParagraphContent,
@@ -201,48 +201,102 @@ export class CommentMarkerCache {
   };
 }
 
-/**
- * Every comment marker of a story's blocks in the order
- * {@link visitCommentMarkers} visits them, each paragraph's read through
- * `markersOf`.
- */
+type CommentMarkerWalk = {
+  markersOf: ParagraphCommentMarkers;
+  visit: (item: CommentMarker, position: "content" | "positioned") => void;
+  enterParagraph?: (paragraph: Paragraph) => void;
+};
+
+/** Every source comment marker in story order, with paragraph reads cached by the caller. */
 export const visitCommentMarkerItems = (
   blocks: readonly BlockContent[],
-  markersOf: ParagraphCommentMarkers,
-  visit: (item: CommentMarker | BlockCommentMarkerSlot["item"]) => void,
+  { markersOf, visit, enterParagraph }: CommentMarkerWalk,
 ): void => {
-  for (const block of blocks) {
-    switch (block.type) {
-      case "commentRangeStart":
-      case "commentRangeEnd":
-        visit(block);
-        break;
-      case "paragraph":
-        for (const marker of markersOf(block)) visit(marker);
-        break;
-      case "table":
-        for (const row of block.rows)
-          for (const cell of row.cells)
-            visitCommentMarkerItems(cell.content, markersOf, visit);
-        break;
-      case "blockSdt":
-      case "blockCustomXml":
-        visitCommentMarkerItems(block.content, markersOf, visit);
-        break;
-      case "preservedBlock":
-      case "bookmarkStart":
-      case "bookmarkEnd":
-      case "moveFromRangeStart":
-      case "moveFromRangeEnd":
-      case "moveToRangeStart":
-      case "moveToRangeEnd":
-        break;
-      default: {
-        const unhandled: never = block;
-        return unhandled;
+  const at = (preserved: PreservedMarkup | undefined, index: number): void => {
+    for (const marker of preservedCommentRangeMarkersAt(
+      preserved?.children,
+      index,
+    ))
+      visit(marker, "positioned");
+  };
+  const walk = (nested: readonly BlockContent[]): void => {
+    for (const block of nested) {
+      switch (block.type) {
+        case "commentRangeStart":
+        case "commentRangeEnd":
+          visit(block, "content");
+          break;
+        case "paragraph":
+          enterParagraph?.(block);
+          for (const marker of markersOf(block)) visit(marker, "content");
+          break;
+        case "table":
+          for (const [rowIndex, row] of block.rows.entries()) {
+            at(block.preserved, rowIndex);
+            for (const [cellIndex, cell] of row.cells.entries()) {
+              at(row.preserved, cellIndex);
+              walk(cell.content);
+            }
+            at(row.preserved, row.cells.length);
+          }
+          at(block.preserved, block.rows.length);
+          break;
+        case "blockSdt":
+        case "blockCustomXml":
+          walk(block.content);
+          break;
+        case "preservedBlock":
+        case "bookmarkStart":
+        case "bookmarkEnd":
+        case "moveFromRangeStart":
+        case "moveFromRangeEnd":
+        case "moveToRangeStart":
+        case "moveToRangeEnd":
+          break;
+        default: {
+          const unhandled: never = block;
+          return unhandled;
+        }
       }
     }
+  };
+  walk(blocks);
+};
+
+/** Gaps at which positioned table or row markers enter canonical paragraph traversal. */
+export const positionedCommentGaps = (blocks: readonly BlockContent[]) => {
+  const before = new Map<Paragraph, CommentMarker[]>();
+  const after = new Map<Paragraph, CommentMarker[]>();
+  for (const block of blocks) {
+    if (
+      block.type !== "table" &&
+      block.type !== "blockSdt" &&
+      block.type !== "blockCustomXml"
+    )
+      continue;
+    let previous: Paragraph | undefined;
+    let waiting: CommentMarker[] = [];
+    visitCommentMarkerItems([block], {
+      markersOf: () => [],
+      enterParagraph(paragraph) {
+        if (waiting.length > 0) {
+          before.set(paragraph, waiting);
+          waiting = [];
+        }
+        previous = paragraph;
+      },
+      visit(marker, position) {
+        if (position !== "positioned") return;
+        if (previous === undefined) waiting.push(marker);
+        else {
+          const list = after.get(previous);
+          if (list === undefined) after.set(previous, [marker]);
+          else list.push(marker);
+        }
+      },
+    });
   }
+  return { before, after };
 };
 
 /** Remove every serialized anchor record for comments whose definitions are retired. */

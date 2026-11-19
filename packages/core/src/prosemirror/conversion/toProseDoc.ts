@@ -19,6 +19,7 @@ import {
   PARSE_WARNING_CODES,
   type PreservedMarkup,
 } from "@stll/docx-core/model";
+import { preservedCommentRangeMarkersAt } from "@stll/docx-core/ops";
 
 import { rangedCommentIds } from "../../docx/commentAnchorIndex";
 import { resolveColorValueToHex } from "../../docx/drawingUtils";
@@ -52,7 +53,6 @@ import {
   visitInlineContentSlotsInContent,
 } from "../../docx/paragraphTraversal";
 import type { ParseContext } from "../../docx/parseContext";
-import { preservedCommentRangeMarkersAt } from "../../docx/preservedCommentRangeMarkers";
 import { isBaselineVertAlign } from "../../docx/runParser";
 import { replayableShapeAlternateContent } from "../../docx/shapeAlternateContent";
 import { type ResolvedTableLook, resolveTableLook } from "../../docx/tableLook";
@@ -2911,7 +2911,7 @@ function convertTable(
     ? Math.max(countTableColumns(table.rows), totalColumns)
     : countTableColumns(table.rows);
   const rows = table.rows.map((row, rowIndex) => {
-    closePreservedCommentRanges(
+    passPreservedCommentRanges(
       table.preserved,
       rowIndex,
       context.openCommentIds,
@@ -2942,7 +2942,7 @@ function convertTable(
       resolvedRowJustification,
     );
   });
-  closePreservedCommentRanges(
+  passPreservedCommentRanges(
     table.preserved,
     table.rows.length,
     context.openCommentIds,
@@ -2957,7 +2957,7 @@ function convertTable(
  * it. The marker itself stays positioned markup and is written back where it
  * stood, so the conversion back writes no end of its own for the range.
  */
-function closePreservedCommentRanges(
+function passPreservedCommentRanges(
   preserved: PreservedMarkup | undefined,
   at: number,
   openCommentIds: Set<number>,
@@ -2966,7 +2966,8 @@ function closePreservedCommentRanges(
     preserved?.children,
     at,
   )) {
-    if (marker.type === "commentRangeEnd") openCommentIds.delete(marker.id);
+    if (marker.type === "commentRangeStart") openCommentIds.add(marker.id);
+    else openCommentIds.delete(marker.id);
   }
 }
 
@@ -3174,7 +3175,7 @@ function convertTableRow(
   }
 
   for (const [cellIndex, cellIndex_item] of effectiveCells.entries()) {
-    closePreservedCommentRanges(
+    passPreservedCommentRanges(
       row.preserved,
       cellIndex,
       context.openCommentIds,
@@ -3251,7 +3252,7 @@ function convertTableRow(
       }),
     );
   }
-  closePreservedCommentRanges(
+  passPreservedCommentRanges(
     row.preserved,
     effectiveCells.length,
     context.openCommentIds,

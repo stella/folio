@@ -214,9 +214,11 @@ describe("canonical DOCX document model validation", () => {
   describe("a comment range that closes between table rows or cells", () => {
     const tableClosing = (
       level: "table" | "row",
-      endXml: string,
+      ...endXml: string[]
     ): BlockContent => {
-      const preserved = { children: [{ index: 1, xml: endXml }] };
+      const preserved = {
+        children: endXml.map((xml) => ({ index: 1, xml })),
+      };
       return {
         type: "table",
         rows: [
@@ -237,15 +239,15 @@ describe("canonical DOCX document model validation", () => {
       } as BlockContent;
     };
     const comments = [{ id: 5, author: "Reviewer", content: [paragraph()] }];
+    const namespace =
+      "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    const end = `<x:commentRangeEnd xmlns:x="${namespace}" x:id="5"/>`;
 
     for (const level of ["table", "row"] as const) {
       test(`pairs a cell's start with the ${level}'s end`, () => {
         const result = validateDocumentModel(
           createDocument({
-            content: [
-              tableClosing(level, '<w:commentRangeEnd w:id="5"/>'),
-              paragraph(),
-            ],
+            content: [tableClosing(level, end), paragraph()],
             comments,
           }),
         );
@@ -253,13 +255,46 @@ describe("canonical DOCX document model validation", () => {
       });
     }
 
+    test("recognizes Strict range ends by namespace", () => {
+      const result = validateDocumentModel(
+        createDocument({
+          content: [
+            tableClosing(
+              "table",
+              '<x:commentRangeEnd xmlns:x="http://purl.oclc.org/ooxml/wordprocessingml/main" x:id="5"/>',
+            ),
+          ],
+          comments,
+        }),
+      );
+      expect(result.issues).toEqual([]);
+    });
+
+    test("does not pair a foreign element with the same local name", () => {
+      const result = validateDocumentModel(
+        createDocument({
+          content: [
+            tableClosing(
+              "table",
+              '<x:commentRangeEnd xmlns:x="urn:test" x:id="5"/>',
+            ),
+          ],
+          comments,
+        }),
+      );
+      expect(result.issues.map((issue) => issue.message)).toContain(
+        "Unbalanced comment range 5: commentRangeStart=1, commentRangeEnd=0.",
+      );
+    });
+
     test("counts no positioned marker that completes no range", () => {
       const result = validateDocumentModel(
         createDocument({
           content: [
             tableClosing(
               "table",
-              '<w:commentRangeEnd w:id="5"/><w:commentRangeStart w:id="9"/>',
+              end,
+              `<x:commentRangeStart xmlns:x="${namespace}" x:id="9"/>`,
             ),
             paragraph([{ type: "commentRangeEnd", id: 5 }, textRun()]),
           ],

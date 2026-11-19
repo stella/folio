@@ -68,6 +68,7 @@ import {
   CommentMarkerCache,
   type ParagraphCommentMarkers,
   paragraphCommentMarkers,
+  positionedCommentGaps,
   visitCommentMarkerItems,
 } from "../docx/commentAnchorIndex";
 import {
@@ -1077,6 +1078,7 @@ type BlockWalk = {
   /** Records the source a paragraph is projected from; false when one already was. */
   take: (source: Paragraph) => boolean;
   passComments: (paragraph: Paragraph) => void;
+  positionedComments: ReturnType<typeof positionedCommentGaps>;
   inline: InlineProjectionCache | undefined;
 };
 
@@ -1142,6 +1144,7 @@ const projectBlock = (
       return false;
     }
     if (located.top !== index) local = false;
+    passCommentMarkers(walk.positionedComments.before.get(source), walk.open);
     const inlineArgs = {
       source,
       paragraph: node,
@@ -1169,6 +1172,7 @@ const projectBlock = (
       source,
     });
     walk.passComments(source);
+    passCommentMarkers(walk.positionedComments.after.get(source), walk.open);
     return false;
   };
   if (visit(top, 0, null) && top.content.size > 0)
@@ -1185,15 +1189,21 @@ type StoryWalkOptions = {
   inline: InlineProjectionCache | undefined;
 };
 
+const passCommentMarkers = (
+  markers: ReturnType<ParagraphCommentMarkers> | undefined,
+  open: OpenComments,
+): void => {
+  for (const item of markers ?? []) {
+    if (item.type === "commentRangeStart") open.ids.add(item.id);
+    if (item.type === "commentRangeEnd") open.ids.delete(item.id);
+  }
+};
+
 /** Opens and closes the ranges a paragraph's markers start and end. */
 const commentPasser =
   (markersOf: ParagraphCommentMarkers, open: OpenComments) =>
-  (paragraph: Paragraph): void => {
-    for (const item of markersOf(paragraph)) {
-      if (item.type === "commentRangeStart") open.ids.add(item.id);
-      if (item.type === "commentRangeEnd") open.ids.delete(item.id);
-    }
-  };
+  (paragraph: Paragraph): void =>
+    passCommentMarkers(markersOf(paragraph), open);
 
 /** Every paragraph's address, walking every top-level node. */
 const projectEveryBlock = ({
@@ -1206,9 +1216,12 @@ const projectEveryBlock = ({
   const pairedBookmarkIds = collectPairedBookmarkIds(content);
   const rangedIds = new Set<number>();
   const referencedIds = new Set<number>();
-  visitCommentMarkerItems(content, markersOf, (item) => {
-    if (item.type === "commentRangeStart") rangedIds.add(item.id);
-    if (item.type === "commentReference") referencedIds.add(item.id);
+  visitCommentMarkerItems(content, {
+    markersOf,
+    visit(item) {
+      if (item.type === "commentRangeStart") rangedIds.add(item.id);
+      if (item.type === "commentReference") referencedIds.add(item.id);
+    },
   });
   const facts: StoryProjectionFacts = {
     pairedBookmarkIds,
@@ -1263,6 +1276,7 @@ const projectEveryBlock = ({
       return true;
     },
     passComments,
+    positionedComments: positionedCommentGaps(content),
     inline,
   };
   const blocks: ProjectedBlock[] = [];
@@ -1376,6 +1390,7 @@ const projectChangedBlocks = (
       return true;
     },
     passComments: commentPasser(markersOf, open),
+    positionedComments: positionedCommentGaps(content.slice(start, newEnd)),
     inline,
   };
   const window: ProjectedBlock[] = [];

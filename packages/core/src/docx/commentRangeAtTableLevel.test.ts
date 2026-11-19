@@ -167,6 +167,47 @@ const BOTH = {
 
 describe("a comment range that closes between table rows", () => {
   for (const endPlacement of ["table", "row"] as const) {
+    test(`canonical review preserves the authored thread (end at ${endPlacement} level)`, async () => {
+      const source = await buildDocx(endPlacement);
+      const reviewer = await FolioDocxReviewer.fromBuffer(source, {
+        session: "canonical",
+      });
+      expect(reviewer.getComments()).toMatchObject([
+        {
+          id: ROOT_ID,
+          text: "Rate only, or a quantity too?",
+          replies: [{ id: REPLY_ID, text: "Rate only is fine." }],
+        },
+      ]);
+      const result = reviewer.applyOperations(
+        [
+          {
+            id: "edit-tail",
+            type: "replaceInBlock",
+            blockId: "3CCC0004",
+            find: "After the table.",
+            replace: "After the schedule.",
+          },
+        ],
+        { mode: "direct", undefinedReferences: "refuse" },
+      );
+      expect(result.skipped).toEqual([]);
+      const saved = await reviewer.toBuffer();
+      const xml = await savedDocumentXml(saved);
+      expect(markers(xml)).toEqual(BOTH);
+      const closingTag = endPlacement === "table" ? "tbl" : "tr";
+      expect(xml).toMatch(
+        new RegExp(
+          String.raw`<w:commentRangeEnd w:id="${REPLY_ID}"[^>]*?/>\s*</w:${closingTag}>`,
+          "u",
+        ),
+      );
+      const reopened = await FolioDocxReviewer.fromBuffer(saved, {
+        session: "canonical",
+      });
+      expect(reopened.getComments()).toEqual(reviewer.getComments());
+    });
+
     test(`rewriting the paragraph that holds its reference keeps every marker (end at ${endPlacement} level)`, async () => {
       const { xml } = await edit(endPlacement, (blockId) => ({
         type: "replaceBlock",
