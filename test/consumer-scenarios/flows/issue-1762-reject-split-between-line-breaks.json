@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "title": "PINNED #1762, reported seed 2116006477: rejecting a split between line breaks reads the same after save",
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "lineBreaks",
+  "mode": "tracked-changes",
+  "seed": 2116006477,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 4006343058,
+      "operations": [
+        {
+          "type": "splitBlock",
+          "blockId": "1B0E5A11",
+          "offset": 39
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from swap+reseed+splice of eee73e8c851e49a0"
+}
