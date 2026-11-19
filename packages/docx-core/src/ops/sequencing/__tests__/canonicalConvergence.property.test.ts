@@ -167,17 +167,23 @@ const TRACKED_ORDER_KINDS = Object.values(trackedTransform.TRACKED_ORDER_PAIRS);
 /**
  * The declared tracked pairs a batch forms with the tail it was rebased
  * over, each compared in one coordinate space: the batch moved over the
- * tail batches sequenced before the one it meets.
+ * tail batches sequenced before the one it meets, in the document that one
+ * applied to, where a tracked edit may extend a change already there.
  */
 const declaredOver = (
   batch: DocumentBatch,
   tail: readonly SequencedBatch[],
+  history: readonly Document[],
 ): Set<trackedTransform.TrackedOrderPair> => {
   const kinds = new Set<trackedTransform.TrackedOrderPair>();
   for (const [index, remote] of tail.entries()) {
     const moved = transformBatch(batch, tail.slice(0, index));
     if (moved.isErr()) break;
-    for (const kind of trackedOrderPairs(moved.value.ops, remote.ops))
+    for (const kind of trackedOrderPairs(
+      moved.value.ops,
+      remote.ops,
+      history.at(remote.revision - 1),
+    ))
       kinds.add(kind);
   }
   return kinds;
@@ -322,11 +328,12 @@ const noTally = (): Tally => ({
 const trackedOrderPairs = (
   ops: readonly DocumentOp[],
   others: readonly DocumentOp[],
+  document?: Document,
 ): Set<trackedTransform.TrackedOrderPair> => {
   const kinds = new Set<trackedTransform.TrackedOrderPair>();
   for (const op of restoredOps(ops))
     for (const other of restoredOps(others)) {
-      const kind = trackedTransform.trackedOrderPair(op, other);
+      const kind = trackedTransform.trackedOrderPair(op, other, document);
       if (kind !== undefined) kinds.add(kind);
     }
   return kinds;
@@ -695,6 +702,9 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
   // The batch each peer last submitted, which a reconnection submits again.
   const inFlight = new Map<number, DocumentBatch>();
   let serial = 10;
+  // The paragraphs each batch changed where it was made, which its
+  // operations need not name: a decision names only its revisions.
+  const changedBy = new Map<string, string[]>();
 
   const enqueue = (peer: Peer, ops: readonly DocumentOp[]): void => {
     const before = peer.client.document;
@@ -724,6 +734,8 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
     outcome.enqueued.push(batch.opId);
     const applied = applyBatch(before, queued.value.ops);
     peer.undo = applied.isOk() ? applied.value.inverse : undefined;
+    if (applied.isOk())
+      changedBy.set(batch.opId, dependenciesIn(applied.value.effects));
     const minted = introducedIds(
       leasedIdCensus(before),
       leasedIdCensus(peer.client.document),
@@ -844,7 +856,7 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
         // Only a declared tracked pair may record other cuts, or leave
         // shared content to another deletion, in the other order; every
         // peer still reaches the authority's document by replay.
-        const declared = declaredOver(batch, tail);
+        const declared = declaredOver(batch, tail, history);
         if (declared.size === 0) outcome.diverged.push(batch.opId);
         for (const kind of declared) outcome.trackedOrder[kind] += 1;
       }
@@ -888,7 +900,8 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
           );
     // The first batch an answer drops failed against the remote or rejected
     // batch itself. A later one depends on what dropped it: it shares a
-    // paragraph or a tracked change with the remote or rejected batch, or
+    // paragraph (named or changed) or a tracked change with the remote or
+    // rejected batch, or
     // with a pending batch before it: a dropped one, or a kept one the
     // remote batch may not carry past, when the batches after it cross its
     // inverse. Block-scoped operations depend on parts, tables and numbering
@@ -898,15 +911,20 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
       event.type === "broadcast"
         ? event.batch.ops.every((op) => !isBlockScoped(op))
         : true;
+    const rejected = client.notices.at(noticed);
     const cause = new Set(
-      dependenciesIn(
-        event.type === "broadcast"
-          ? event.batch
-          : client.notices.at(noticed)?.ops,
-      ),
+      event.type === "broadcast"
+        ? dependenciesIn(event.batch)
+        : [
+            ...dependenciesIn(rejected?.ops),
+            ...(changedBy.get(rejected?.opId ?? "") ?? []),
+          ],
     );
     for (const [index, notice] of client.notices.slice(noticed).entries()) {
-      const touched = dependenciesIn(notice.ops);
+      const touched = [
+        ...dependenciesIn(notice.ops),
+        ...(changedBy.get(notice.opId) ?? []),
+      ];
       const ahead = queued.slice(
         0,
         Math.max(
@@ -943,7 +961,7 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
       const noticed = peer.observer.notices.length;
       const queued = peer.observer.pending.map(({ opId, ops }) => ({
         opId,
-        dependencies: dependenciesIn(ops),
+        dependencies: [...dependenciesIn(ops), ...(changedBy.get(opId) ?? [])],
         positional: ops.every((op) => !isBlockScoped(op)),
       }));
       switch (answer.type) {
@@ -2024,6 +2042,51 @@ describe("canonical sequencing", () => {
             peer: 0,
             seed: { kind: "type", a: 0, b: 0, suggest: false, focus: true },
           },
+        ],
+      ] as const satisfies Scenario;
+      await fc.assert(
+        convergence(noCounts(), fc.constant(scenario)),
+        propertyConfig({ numRuns: 1 }),
+      );
+    },
+    propertyTestTimeout(30_000),
+  );
+
+  test(
+    "a join made after a rejected decision goes with it as an edit of the paragraph it changed",
+    async () => {
+      // Saved flow -424242 (factor 4): peer 0 decides a revision, joins
+      // paragraphs and types; the decision is rejected beside a concurrent
+      // table, and the join, whose paragraph the decision changed, goes too.
+      const scenario = [
+        4,
+        [
+          {
+            type: "edit",
+            peer: 0,
+            seed: { kind: "decide", a: 0, b: 0, suggest: false },
+          },
+          {
+            type: "edit",
+            peer: 0,
+            seed: { kind: "join", a: 82051, b: 0, suggest: false },
+          },
+          { type: "deliver", seed: 0 },
+          { type: "deliver", seed: 0 },
+          { type: "submit", peer: 1 },
+          {
+            type: "edit",
+            peer: 0,
+            seed: { kind: "type", a: 0, b: 0, suggest: false },
+          },
+          { type: "submit", peer: 1 },
+          {
+            type: "edit",
+            peer: 3,
+            seed: { kind: "insertTable", a: 0, b: 0, suggest: false },
+          },
+          { type: "deliver", seed: 0 },
+          { type: "submit", peer: 3 },
         ],
       ] as const satisfies Scenario;
       await fc.assert(

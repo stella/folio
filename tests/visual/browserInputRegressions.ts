@@ -757,6 +757,40 @@ export const BROWSER_RTL_COMPOSITION_SEED_1793914965 = {
   trace: BrowserInputTrace;
 };
 
+/** A composition over everything replaces the text inside the document's edges. */
+export const BROWSER_COMPOSITION_OVER_EVERYTHING_TRACES = [
+  {
+    seed: 1794206220,
+    path: "0:2:1:1:1:1:1:1",
+    fingerprint: "0f194a9c3f728f97",
+    trace: {
+      shape: "rtl-cjk",
+      actions: [
+        { kind: "selectAll" },
+        { kind: "imeReplacement", updates: ["alpha"], completion: "commit" },
+      ],
+    },
+  },
+  {
+    seed: 1794471204,
+    path: "14:0:4:3:3",
+    fingerprint: "a18979eea69e8af9",
+    trace: {
+      shape: "tables",
+      actions: [
+        { kind: "selectAll" },
+        { kind: "imeReplacement", updates: ["alpha"], completion: "commit" },
+        { kind: "backspace" },
+      ],
+    },
+  },
+] satisfies readonly {
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+}[];
+
 export const BROWSER_PASTE_BEHIND_BOOKMARK_SEED_1793921366 = {
   seed: 1793921366,
   path: "11:4",
@@ -1901,6 +1935,19 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_4AB7DCA19B12D16D = {
   },
 } satisfies CanonicalRegression;
 
+/** The same #2302 trace in the default editor: a table pasted at the document's end. */
+export const BROWSER_TABLE_PASTE_AT_DOCUMENT_END_SEED_1794637615 = {
+  seed: 1794637615,
+  path: "0",
+  fingerprint: "4ab7dca19b12d16d",
+  trace: CANONICAL_REPLAY_OF_DEFAULT_FINDING_4AB7DCA19B12D16D.trace,
+} satisfies {
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
 /** Exact saved #2596 trace: seed 1794465004, path 10; payloads stay as recorded. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_4CFD6DADC63EEB36 = {
   authority: "canonical",
@@ -1937,6 +1984,19 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_4CFD6DADC63EEB36 = {
     ],
   },
 } satisfies CanonicalRegression;
+
+/** The same #2596 trace in the default editor: pasted paragraphs show no lost number. */
+export const BROWSER_PASTE_SPLITTING_NUMBERED_ITEM_SEED_1794465004 = {
+  seed: 1794465004,
+  path: "10",
+  fingerprint: "4cfd6dadc63eeb36",
+  trace: CANONICAL_REPLAY_OF_DEFAULT_FINDING_4CFD6DADC63EEB36.trace,
+} satisfies {
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
 
 /** Typing over everything after a suggested paste retires the comment it covers (#2903). */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_328C996278E3AB12 = {
@@ -2113,6 +2173,7 @@ export const BROWSER_INPUT_REGRESSIONS = [
   BROWSER_CANCELLED_COMPOSITION_SEED_1793946574,
   BROWSER_PASTE_BEHIND_BOOKMARK_SEED_1793921366,
   BROWSER_RTL_COMPOSITION_SEED_1793914965,
+  ...BROWSER_COMPOSITION_OVER_EVERYTHING_TRACES,
   BROWSER_PASTE_AFTER_TABLE_SEED_29,
   BROWSER_PASTE_BEFORE_STRUCK_SEED_431,
   BROWSER_SECOND_CELL_PASTE_SEED_47,
@@ -2180,7 +2241,9 @@ export const BROWSER_INPUT_REGRESSIONS = [
   CANONICAL_REPLAY_OF_DEFAULT_FINDING_DA47B019908DFA2E,
   CANONICAL_REPLAY_OF_DEFAULT_FINDING_CA0B65D37F32ED0A,
   CANONICAL_REPLAY_OF_DEFAULT_FINDING_4AB7DCA19B12D16D,
+  BROWSER_TABLE_PASTE_AT_DOCUMENT_END_SEED_1794637615,
   CANONICAL_MIXED_LIST_GENERIC_HTML_VARIANT,
   CANONICAL_REPLAY_OF_DEFAULT_FINDING_4CFD6DADC63EEB36,
+  BROWSER_PASTE_SPLITTING_NUMBERED_ITEM_SEED_1794465004,
   CANONICAL_REPLAY_OF_DEFAULT_FINDING_328C996278E3AB12,
 ];

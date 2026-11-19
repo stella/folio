@@ -532,7 +532,10 @@ export function paragraphAttrsWithListMarker(
     attrs.listMarkerSecondSlotOffsetTwips =
       pmAttrs.listMarkerSecondSlotOffsetTwips;
   }
-  if (!pmAttrs.numPr) {
+  // A paragraph whose own break is a pending insertion has no place in the
+  // document before the change, so numbering it lost shows no marker: there
+  // is no number it had.
+  if (!pmAttrs.numPr && pmAttrs.pPrMark?.kind !== "ins") {
     const numberingRemovedChange = propertyChanges.find(
       isRemovedNumberingChange,
     );

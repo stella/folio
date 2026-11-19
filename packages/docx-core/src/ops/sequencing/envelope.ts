@@ -849,6 +849,7 @@ const operationFields = {
     scaffoldIds: idSet,
     expected: commentState,
     state: commentState,
+    createdSince: optional(array(natural)),
   } satisfies OperationFields<"restoreCommentState">,
 } satisfies Record<DocumentOpType, Fields>;
 

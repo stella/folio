@@ -1,7 +1,15 @@
 # Sequencing wire fixtures
 
-`batches-v15.json` and `ops/__tests__/__fixtures__/ops-v15.json` pin the
-current semantic operation schema. Version 15 adds paragraph insertion at
+`batches-v16.json` and `ops/__tests__/__fixtures__/ops-v16.json` pin the
+current semantic operation schema. Version 16 adds `createdSince` to
+`restoreCommentState`: a restoration rebased over concurrent creations of
+comments anchored outside its paragraphs keeps them. Its envelopes are
+otherwise those of version 15.
+
+Version 15 and older envelopes receive `unsupportedSchema`.
+
+`batches-v15.json` and `ops/__tests__/__fixtures__/ops-v15.json` pin version
+15, which adds paragraph insertion at
 `beforeTable`/`afterTable` boundaries and exact empty paragraph replacements.
 Table-side insertions record block-scoped effects; existing paragraph-relative
 insertions keep their positional effect and payload meaning.

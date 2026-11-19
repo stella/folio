@@ -184,6 +184,20 @@ export const envelopeFixtures: readonly DocumentBatch[] = [
     baseRev: 0,
     ops: wideOps,
   },
+  {
+    schema: DOCUMENT_OP_SCHEMA_VERSION,
+    opId: "01JTESTBATCH000000000000006",
+    actor: "actor-1",
+    baseRev: 0,
+    // A restoration rebased over a comment created since it was captured.
+    ops: envelopes()
+      .flatMap(({ op }) =>
+        op.type === "restoreCommentState" && op.createdSince !== undefined
+          ? [op]
+          : [],
+      )
+      .slice(0, 1),
+  },
 ];
 
 export const sequencedFixture = {

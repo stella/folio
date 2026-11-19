@@ -57,6 +57,35 @@ const sourceDocument = (text: string): Document =>
     },
   ).unwrap().document;
 const revision = { id: 41, author: "Reviewer", date: "2026-11-17T00:00:00Z" };
+/**
+ * `document` with one more note of `kind`, as a new package: the source
+ * document came from an operation, whose package a census has already
+ * read, so it is never changed in place.
+ */
+const withNote = (
+  document: Document,
+  kind: "footnote" | "endnote",
+  content: Paragraph[],
+): Document => {
+  const { package: pkg } = document;
+  return {
+    ...document,
+    package:
+      kind === "footnote"
+        ? {
+            ...pkg,
+            footnotes: [
+              ...(pkg.footnotes ?? []),
+              { type: kind, id: 2, content },
+            ],
+          }
+        : {
+            ...pkg,
+            endnotes: [...(pkg.endnotes ?? []), { type: kind, id: 2, content }],
+          },
+  };
+};
+
 const textArbitrary = fc
   .array(fc.constantFrom("a", "b", "c", " "), { minLength: 2, maxLength: 10 })
   .map((letters) => letters.join(""));
@@ -200,15 +229,9 @@ test(
       fc.property(textArbitrary, (text) => {
         for (const kind of ["footnote", "endnote"] as const) {
           for (const mode of ["direct", "tracked"] as const) {
-            const original = sourceDocument(text);
-            const note = {
-              type: kind,
-              id: 2,
-              content: [paragraph("20000002", text)],
-            };
-            if (kind === "footnote")
-              original.package.footnotes?.push({ ...note, type: kind });
-            else original.package.endnotes?.push({ ...note, type: kind });
+            const original = withNote(sourceDocument(text), kind, [
+              paragraph("20000002", text),
+            ]);
             const comment = {
               type: DOCUMENT_OP_TYPES.CREATE_COMMENT,
               comment: {
@@ -268,15 +291,9 @@ test(
     assertProperty(
       fc.property(textArbitrary, (text) => {
         for (const kind of ["footnote", "endnote"] as const) {
-          const original = sourceDocument(text);
-          const orphan = {
-            type: kind,
-            id: 2,
-            content: [paragraph("20000002", "authored orphan")],
-          };
-          if (kind === "footnote")
-            original.package.footnotes?.push({ ...orphan, type: kind });
-          else original.package.endnotes?.push({ ...orphan, type: kind });
+          const original = withNote(sourceDocument(text), kind, [
+            paragraph("20000002", "authored orphan"),
+          ]);
           const noted = applyDocumentOp(original, {
             type: DOCUMENT_OP_TYPES.ADD_NOTE,
             at: { story: "main", blockId: "10000001", offset: 1 },
