@@ -519,3 +519,73 @@ for (const mode of ["direct", "tracked-changes"] as const)
         expect(reviewer.getComments()).toEqual([]);
       }
     });
+
+for (const mode of ["tracked-changes"] as const)
+  for (const kinds of [
+    ["paragraph", "table"],
+    ["paragraph", "paragraphs"],
+  ] as const)
+    test(`${mode} ${kinds.join("/")}: insertions after a paragraph the batch deletes keep input order before a pending paragraph`, async () => {
+      const bytes = (
+        await prepareCanonicalDocxInput(await createDocx(fromMarkdown("Left.")))
+      )
+        .unwrap()
+        .slice().buffer;
+      const reviewer = await FolioDocxReviewer.fromBuffer(bytes, {
+        session: "canonical",
+      });
+      const left =
+        reviewer.getContent().find(({ text }) => text === "Left.") ??
+        panic("The fixture needs its anchor paragraph.");
+      // The paragraph after the anchor is a pending insertion, so the anchor
+      // is the last paragraph whose mark the source holds.
+      const pending = reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode: "tracked-changes",
+          operations: [
+            {
+              id: "pending",
+              type: "insertAfterBlock",
+              blockId: left.id,
+              text: "Right.",
+            },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      );
+      expect(pending.skipped).toEqual([]);
+      const edited = reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode,
+          operations: [
+            insertion({
+              kind: kinds[0],
+              label: "First",
+              blockId: left.id,
+              side: "after",
+            }),
+            insertion({
+              kind: kinds[1],
+              label: "Second",
+              blockId: left.id,
+              side: "after",
+            }),
+            { id: "delete", type: "deleteBlock", blockId: left.id },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      );
+      expect(edited.skipped).toEqual([]);
+      expect(edited.applied).toHaveLength(3);
+      const accepted = reviewer.acceptAll();
+      expect(accepted.skipped).toEqual([]);
+      expect(reviewer.getChanges()).toEqual([]);
+      expect(labels(reviewer)).toEqual(["First", "Second", "Right"]);
+      const reopened = await FolioDocxReviewer.fromBuffer(
+        await reviewer.toBuffer(),
+        { session: "canonical" },
+      );
+      expect(labels(reopened)).toEqual(["First", "Second", "Right"]);
+    });

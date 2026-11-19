@@ -1278,6 +1278,34 @@ type InsertionAnchor =
   | { type: "paragraph"; at: BlockInsertionPoint }
   | { type: "table"; at: BlockInsertionPoint };
 
+/**
+ * The anchor a group of insertions after a paragraph replays against: the
+ * paragraph after it, when one follows, so each block goes before it in
+ * batch order. Placed after the anchor itself, a later block would find an
+ * earlier one between the anchor and that paragraph, and a tracked paragraph
+ * put after an anchor whose mark is under review, with a table and no
+ * paragraph after it, has no mark it can record its insertion on.
+ */
+const gapAnchorBeforeFollower = (
+  anchor: InsertionAnchor,
+  projection: CanonicalProjection,
+): InsertionAnchor => {
+  if (anchor.type !== "paragraph" || anchor.at.type !== "after") return anchor;
+  const paragraph = projection.paragraph(anchor.at.blockId);
+  if (paragraph === undefined)
+    return panic("An insertion anchor is missing from the projection.");
+  const position = paragraph.start - 1 + paragraph.node.nodeSize;
+  if (projection.doc.resolve(position).nodeAfter?.type.name !== "paragraph")
+    return anchor;
+  const follower = projection.paragraphStartingAt(position);
+  if (follower === undefined)
+    return panic("A following paragraph is missing from the projection.");
+  return {
+    type: "paragraph",
+    at: { type: "before", blockId: follower.blockId },
+  };
+};
+
 type InsertionGapOptions = {
   operation: FolioDocumentOperation;
   intents: readonly EditorIntent[];
@@ -3550,7 +3578,10 @@ export class CanonicalPublicOperations {
         });
         if (firstPlace === undefined)
           panic("An admitted insertion lost its source placement.");
-        const anchor = firstPlace.anchor;
+        const anchor = gapAnchorBeforeFollower(
+          firstPlace.anchor,
+          projected.value,
+        );
         const placed = partners.toSorted(
           (left, right) =>
             (orderOf(left.resolvedOperation) -
