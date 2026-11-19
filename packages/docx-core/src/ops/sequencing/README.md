@@ -132,9 +132,11 @@ insertions at one gap do.
 
 Each sequenced `insertContent` records whether it cut a record carrying an
 id (a revision or a content control) in two (`cutIdentified`). Two
-insertions at the same gap refuse when the earlier one cut such a record,
-since the record's second half would take the id of whichever applied
-first; in plain runs they pass.
+direct insertions at the same gap refuse when the earlier one cut such a
+record, since the record's second half would take the id of whichever
+applied first; in plain runs they pass. When either insertion is tracked,
+the pair is a cut at a tracked change's edge (see below): the one sequenced
+later goes after the other, and the authority's order decides the cut.
 
 `splitInline` and `joinInline` only move record boundaries, so offsets map
 one to one across them. A concurrent insertion, split or join at the same

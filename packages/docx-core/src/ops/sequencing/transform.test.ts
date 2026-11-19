@@ -550,6 +550,45 @@ describe("position transforms", () => {
   });
 });
 
+describe("insertions at a gap where a record was cut", () => {
+  const typed = (
+    text: string,
+    revision?: { id: number; author: string; date: string },
+  ) =>
+    ({
+      type: "insertContent",
+      at: at(2),
+      slice: {
+        content: [{ type: "run", content: [{ type: "text", text }] }],
+        openStart: 0,
+        openEnd: 0,
+      },
+      ...(revision === undefined ? {} : { revision }),
+    }) as const satisfies DocumentOp;
+  const stamp = { id: 30, author: "Actor", date: "2026-01-01T00:00:00Z" };
+  const cutting = (op: DocumentOp): SequencedBatch => ({
+    ...sequenced(op),
+    effects: [{ type: "insertContent", cutIdentified: true }],
+  });
+
+  test("two direct insertions refuse: the cut record's second half takes either id", () => {
+    expect(
+      transformBatch(batch(typed("x")), [cutting(typed("y"))]).isErr(),
+    ).toBe(true);
+  });
+
+  test("a tracked insertion passes, after the one sequenced first", () => {
+    for (const [op, over] of [
+      [typed("x", stamp), typed("y")],
+      [typed("x"), typed("y", stamp)],
+    ] as const) {
+      const moved = transformBatch(batch(op), [cutting(over)]);
+      if (moved.isErr()) throw moved.error;
+      expect(moved.value.ops).toEqual([{ ...op, at: at(3) }]);
+    }
+  });
+});
+
 describe("property and structural policies", () => {
   test("per-key paragraph and run property decisions converge", () => {
     for (const type of ["setParagraphProps", "setRunProps"] as const) {
