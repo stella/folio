@@ -327,7 +327,12 @@ for (const shape of [
       expect(initial.comments).toHaveLength(1);
       expect(initial.bookmarks).toHaveLength(2);
       const result = apply();
-      if (shape === "wholeParagraph" || shape === "pointOnDeletedWord") {
+      // A tracked deletion keeps a ranged comment on its deleted words; only a
+      // point comment still has nowhere to stay.
+      if (
+        (shape === "wholeParagraph" && mode !== "tracked-changes") ||
+        shape === "pointOnDeletedWord"
+      ) {
         expect(result.applied).toEqual([]);
         expect(result.undoHandle).toBeNull();
         expect(result.skipped).toMatchObject([
@@ -355,7 +360,8 @@ for (const shape of [
       expect(result.applied).toHaveLength(1);
       expect(result.skipped).toEqual([]);
       expect(result.receipts.at(0)?.retiredCommentIds).toEqual(
-        mode === "tracked-changes" && shape === "rangedWithTail"
+        mode === "tracked-changes" &&
+          (shape === "rangedWithTail" || shape === "wholeParagraph")
           ? [0]
           : undefined,
       );
@@ -437,7 +443,10 @@ for (const shape of [
         ).buffer,
       );
       expect(final.bookmarks).toEqual(initial.bookmarks);
-      if (shape === "rangedWithTail") {
+      if (
+        shape === "rangedWithTail" ||
+        (shape === "wholeParagraph" && mode === "tracked-changes")
+      ) {
         expect(final.comments).toEqual([]);
         expect(final.definitions).toEqual([]);
         expect(final.markers).toEqual([]);

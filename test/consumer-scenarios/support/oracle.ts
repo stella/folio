@@ -3447,6 +3447,7 @@ const anchorDisposition = (
   model: Model,
   entry: Comment,
   acceptedAnchor: string = entry.anchor,
+  mode: Mode = "direct",
 ): AnchorDisposition => {
   if (entry.blockId === null) return "kept";
   const row = model.rows.find(
@@ -3501,7 +3502,23 @@ const anchorDisposition = (
     ),
   );
   if (removedPlacements.every(Boolean)) return "removed";
-  return removedPlacements.some(Boolean) ? "ambiguous" : "kept";
+  if (removedPlacements.some(Boolean)) return "ambiguous";
+  // A tracked replacement keeps a comment on the words it deletes, and the
+  // new words go beside the range: accepting removes a comment whose every
+  // word the replacement covers. An engine may instead hand the comment to
+  // the replacement, so neither outcome is predicted.
+  const replaced = located.edits.filter(({ replace }) => replace.length > 0);
+  if (
+    mode === "tracked-changes" &&
+    starts.every((start) =>
+      Array.from({ length: quote.length }, (_, index) => start + index).every(
+        (offset) =>
+          replaced.some((edit) => edit.start <= offset && offset < edit.end),
+      ),
+    )
+  )
+    return "ambiguous";
+  return "kept";
 };
 
 /** Preserve untouched joined quotes and predict a complete component/block rewrite. */
@@ -3673,7 +3690,7 @@ export const compareComments = (
     let disposition =
       mode === "suggested"
         ? "kept"
-        : anchorDisposition(model, located, entry.anchor);
+        : anchorDisposition(model, located, entry.anchor, mode);
     // A suggested removal stays pending and rejectable, so its comments stay.
     if (
       mode !== "suggested" &&

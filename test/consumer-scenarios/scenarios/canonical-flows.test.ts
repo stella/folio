@@ -46,6 +46,8 @@ const CANONICAL_REPLAYS = [
   "issue-1356-c4f902fd90676d63.json",
   "issue-1817-insert-before-a-pending-merge.json",
   "issue-1762-reject-a-paragraph-emptied-before-a-table.json",
+  "tracked-replacement-of-accepted-join-comments.json",
+  "tracked-replacement-over-separate-comments.json",
 ] as const;
 
 test("the replays below run on the canonical session", () => {

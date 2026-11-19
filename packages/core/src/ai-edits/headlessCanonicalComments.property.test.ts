@@ -196,7 +196,66 @@ describe("a canonical reviewer replies to and resolves comments", () => {
   );
 });
 
-for (const mode of ["direct", "tracked-changes", "suggested"] as const) {
+test("a tracked replacement keeps the comments on its deleted words and reports those accepting drops", async () => {
+  const reviewer = await open(
+    await ingested(
+      await createDocx(
+        fromMarkdown(
+          "The Supplier delivers the goods on time.\n\nThe Buyer pays.",
+        ),
+      ),
+    ),
+    "canonical",
+  );
+  const block = reviewer.getContent().at(0);
+  if (!block) throw new Error("The fixture has no paragraph");
+  for (const quote of ["time", "The"])
+    expect(
+      reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode: "direct",
+          operations: [
+            {
+              id: quote,
+              type: "commentOnBlock",
+              blockId: block.id,
+              quote,
+              comment: { text: `On ${quote}.` },
+            },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      ).applied,
+    ).toHaveLength(1);
+  const original = threads(reviewer);
+  const result = reviewer.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "tracked-changes",
+      operations: [
+        {
+          id: "replace",
+          type: "replaceBlock",
+          blockId: block.id,
+          text: "Invoice delivery payment agreement supplier buyer payment term.",
+        },
+      ],
+    },
+    { undefinedReferences: "refuse" },
+  );
+  expect(result.skipped).toEqual([]);
+  expect(result.applied.at(0)?.retiredCommentIds?.toSorted()).toEqual([0, 1]);
+  const pending = await reviewer.toBuffer();
+  expect(threads(await open(pending, "canonical"))).toEqual(original);
+  const rejected = await open(pending, "canonical");
+  expect(rejected.rejectAll().skipped).toEqual([]);
+  expect(threads(rejected)).toEqual(original);
+  expect(reviewer.acceptAll().skipped).toEqual([]);
+  expect(threads(reviewer)).toEqual([]);
+});
+
+for (const mode of ["direct", "suggested"] as const) {
   test(`a reviewer reports the comment-alignment refusal without replacing words or losing comments (${mode})`, async () => {
     const reviewer = await open(
       await ingested(

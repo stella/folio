@@ -4670,6 +4670,7 @@ export class CanonicalPublicOperations {
             to: paragraph.start + paragraph.node.content.size,
           },
           changes: replacementChanges,
+          deletionsKeepComments: tracked && !suggested,
         })
       )
         return Result.err(

@@ -207,7 +207,7 @@ test("compiler-created boundary points survive native replacement or refuse unch
         }
 });
 
-test("DOCX-produced nested control comments are guarded without refusing exact covered words", async () => {
+test("DOCX-produced nested control comments are guarded directly and kept on deleted words when tracked", async () => {
   const text = (value: string) =>
     ({ type: "run", content: [{ type: "text", text: value }] }) satisfies Run;
   const control = (id: number, content: InlineSdt["content"]) =>
@@ -323,6 +323,27 @@ test("DOCX-produced nested control comments are guarded without refusing exact c
           ...range,
           text: "schedule",
         });
+        if (placement === "inside" && mode === "suggesting") {
+          // Tracked, the deleted words keep the comment: rejecting gives it
+          // back where it was. A selection taking the comment's markers
+          // still refuses.
+          expect(result.isOk()).toBe(true);
+          publish(result.unwrap());
+          publish(
+            session
+              .prepareResolve(state, {
+                revisionIds: getTrackedChangesFromDoc(state.doc).map(
+                  ({ id }) => id,
+                ),
+                resolution: "reject",
+              })
+              .unwrap(),
+          );
+          expect(
+            getCommentAnchorsFromDoc(state.doc).map(({ quote }) => quote),
+          ).toEqual(["time"]);
+          continue;
+        }
         if (placement !== "covered") {
           expect(result.isErr()).toBe(true);
           if (result.isErr())
@@ -346,7 +367,7 @@ test("DOCX-produced nested control comments are guarded without refusing exact c
             snapshot: createFolioAIEditSnapshot(state.doc),
             batch: {
               version: 1,
-              mode: mode === "editing" ? "direct" : "tracked-changes",
+              mode: "direct",
               operations: [
                 {
                   id: "replace",
@@ -519,6 +540,35 @@ describe("canonical replacement comments from the public producer", () => {
       }
     });
   }
+  /**
+   * A tracked replacement the new words cannot carry a comment into keeps
+   * each comment on the words it deletes: rejecting gives every comment back,
+   * and accepting keeps only comments that still cover words, reporting each
+   * one it drops.
+   */
+  const expectTrackedReplacementKeepsComments = async ({
+    reviewer,
+    result,
+    original,
+  }: {
+    reviewer: Awaited<ReturnType<typeof open>>;
+    result: ReturnType<
+      Awaited<ReturnType<typeof open>>["applyDocumentOperations"]
+    >;
+    original: ReturnType<typeof comments>;
+  }) => {
+    expect(result.skipped).toEqual([]);
+    expect(result.applied.map(({ id }) => id)).toEqual(["replace"]);
+    const pending = await reviewer.toBuffer();
+    const rejected = await open(pending, "canonical");
+    expect(rejected.rejectAll().skipped).toEqual([]);
+    expect(comments(rejected)).toEqual(original);
+    expect(reviewer.acceptAll().skipped).toEqual([]);
+    const kept = new Set(comments(reviewer).map(({ id }) => id));
+    const retired = new Set(result.applied[0]?.retiredCommentIds ?? []);
+    for (const { id } of original)
+      expect(kept.has(id) || retired.has(id)).toBe(true);
+  };
   for (const [name, scenario] of Object.entries(COMMENT_CASES)) {
     test(`${name}: supported replacements preserve threads; unsupported alignment refuses unchanged`, async () => {
       // Save updates package modification dates, independently of any edit.
@@ -576,6 +626,14 @@ describe("canonical replacement comments from the public producer", () => {
             },
             { undefinedReferences: "refuse" },
           );
+          if (mode === "tracked-changes") {
+            await expectTrackedReplacementKeepsComments({
+              reviewer,
+              result,
+              original,
+            });
+            continue;
+          }
           expect(result.applied).toEqual([]);
           expect(result.undoHandle).toBeNull();
           expect(result.skipped).toMatchObject([
