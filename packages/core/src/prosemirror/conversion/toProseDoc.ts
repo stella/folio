@@ -17,6 +17,7 @@ import type { Mark, Node as PMNode } from "prosemirror-model";
 import {
   DRAWING_RAW_XML_MODES,
   PARSE_WARNING_CODES,
+  type PreservedMarkup,
 } from "@stll/docx-core/model";
 
 import { rangedCommentIds } from "../../docx/commentAnchorIndex";
@@ -51,6 +52,7 @@ import {
   visitInlineContentSlotsInContent,
 } from "../../docx/paragraphTraversal";
 import type { ParseContext } from "../../docx/parseContext";
+import { preservedCommentRangeMarkersAt } from "../../docx/preservedCommentRangeMarkers";
 import { isBaselineVertAlign } from "../../docx/runParser";
 import { replayableShapeAlternateContent } from "../../docx/shapeAlternateContent";
 import { type ResolvedTableLook, resolveTableLook } from "../../docx/tableLook";
@@ -2909,6 +2911,11 @@ function convertTable(
     ? Math.max(countTableColumns(table.rows), totalColumns)
     : countTableColumns(table.rows);
   const rows = table.rows.map((row, rowIndex) => {
+    closePreservedCommentRanges(
+      table.preserved,
+      rowIndex,
+      context.openCommentIds,
+    );
     // Conditional formatting flag: firstRow in tblLook means "apply first-row styling"
     const isFirstRowStyled = rowIndex === 0 && look.firstRow;
     const resolvedRowJustification =
@@ -2935,8 +2942,32 @@ function convertTable(
       resolvedRowJustification,
     );
   });
+  closePreservedCommentRanges(
+    table.preserved,
+    table.rows.length,
+    context.openCommentIds,
+  );
 
   return schema.node("table", attrs, rows);
+}
+
+/**
+ * A comment range that closes between a table's rows, or a row's cells, ends
+ * there: the comment's mark covers the cells before the marker and none after
+ * it. The marker itself stays positioned markup and is written back where it
+ * stood, so the conversion back writes no end of its own for the range.
+ */
+function closePreservedCommentRanges(
+  preserved: PreservedMarkup | undefined,
+  at: number,
+  openCommentIds: Set<number>,
+): void {
+  for (const marker of preservedCommentRangeMarkersAt(
+    preserved?.children,
+    at,
+  )) {
+    if (marker.type === "commentRangeEnd") openCommentIds.delete(marker.id);
+  }
 }
 
 function countTableColumns(rows: TableRow[]): number {
@@ -3142,7 +3173,12 @@ function convertTableRow(
     );
   }
 
-  for (const cellIndex_item of effectiveCells) {
+  for (const [cellIndex, cellIndex_item] of effectiveCells.entries()) {
+    closePreservedCommentRanges(
+      row.preserved,
+      cellIndex,
+      context.openCommentIds,
+    );
     const cell = cellIndex_item;
     const colspan = cell.formatting?.gridSpan ?? 1;
 
@@ -3215,6 +3251,11 @@ function convertTableRow(
       }),
     );
   }
+  closePreservedCommentRanges(
+    row.preserved,
+    effectiveCells.length,
+    context.openCommentIds,
+  );
 
   // A row may simply stop short of the table's width, with no `w:gridAfter` to
   // say so. Those positions are as absent as declared ones, and the table map
