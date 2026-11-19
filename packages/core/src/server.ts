@@ -87,6 +87,10 @@ export {
   type TableCellSpec,
 } from "./docx/server/build";
 export {
+  changeListFormat,
+  type ChangeListFormatOptions,
+} from "./docx/server/changeListFormat";
+export {
   extractDocumentStyleSet,
   extractDocumentStyleSetFromDocx,
   inspectDocumentStyles,

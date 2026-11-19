@@ -17,7 +17,7 @@
  * the customized format and start of each level a command minted.
  */
 
-import { NUMBER_FORMATS } from "@stll/docx-core/model";
+import { NUMBER_FORMATS, resolveNumberingLevel } from "@stll/docx-core/model";
 
 import type {
   AbstractNumbering,
@@ -237,6 +237,58 @@ export const mintListInstance = (
         mintAbstractNumbering({ abstractNumId, kind, format, level }),
       ],
       nums: [...current.nums, instance],
+    },
+  };
+};
+
+type CloneListInstanceWithFormatOptions = {
+  sourceNumId: number;
+  level: number;
+  numFmt: NumberFormat;
+  lvlText?: string | undefined;
+  start?: number | undefined;
+};
+
+/** Clone a list instance with a full override for one effective level. */
+export const cloneListInstanceWithFormat = (
+  definitions: NumberingDefinitions | null | undefined,
+  {
+    sourceNumId,
+    level,
+    numFmt,
+    lvlText,
+    start,
+  }: CloneListInstanceWithFormatOptions,
+  elsewhere: NumberingIdsInUse,
+): MintedListInstance | undefined => {
+  if (sourceNumId === 0 || definitions == null) return undefined;
+  const source = definitions.nums.find(({ numId }) => numId === sourceNumId);
+  if (!source) return undefined;
+  const resolution = resolveNumberingLevel(definitions, sourceNumId, level);
+  if (resolution.kind !== "level") return undefined;
+
+  const numId = nextNumId(definitions, elsewhere);
+  const levelOverrides = [...(source.levelOverrides ?? [])];
+  const index = levelOverrides.findIndex(({ ilvl }) => ilvl === level);
+  const current = index < 0 ? undefined : levelOverrides.at(index);
+  const updated = withLevelFormat(current?.lvl ?? resolution.level, {
+    numFmt,
+    lvlText,
+  });
+  if (lvlText !== undefined) delete updated.lvlTextNull;
+  const override = {
+    ...current,
+    ilvl: level,
+    ...(start === undefined ? {} : { startOverride: start }),
+    lvl: updated,
+  } satisfies LevelOverride;
+  if (index < 0) levelOverrides.push(override);
+  else levelOverrides[index] = override;
+  return {
+    numId,
+    definitions: {
+      ...definitions,
+      nums: [...definitions.nums, { ...source, numId, levelOverrides }],
     },
   };
 };
