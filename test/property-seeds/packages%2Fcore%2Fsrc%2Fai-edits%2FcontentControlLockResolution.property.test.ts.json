@@ -1,0 +1,10 @@
+{
+  "resolving around a held change equals one pass": [
+    {
+      "seed": 968137258,
+      "path": "27:0:0:0:0:0:0:0:0:1:0:1:1:2",
+      "note": "Deleting every paragraph after the locked one deletes its mark; accepting that only runs the held change's paragraph into the next.",
+      "date": "2026-11-19"
+    }
+  ]
+}

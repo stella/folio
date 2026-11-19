@@ -1,0 +1,76 @@
+{
+  "version": 1,
+  "title": "PINNED #2044, reported seed 999742959: a bulleted heading left with no words reads as its glyph in Markdown",
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "styleNumbered",
+  "mode": "tracked-changes",
+  "seed": 1492413172,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 476930320,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "412DDC7F",
+          "text": "A new bullet.",
+          "numbering": {
+            "kind": "newList",
+            "format": "bullet"
+          }
+        }
+      ],
+      "atomic": false
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 1982953694,
+      "operations": [
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "412DDC7F",
+          "properties": {
+            "alignment": "center"
+          }
+        },
+        {
+          "type": "replaceInBlock",
+          "blockId": "3CEFFC83",
+          "find": "Scope",
+          "replace": "amended",
+          "precondition": {
+            "blockTextHash": "h3wo069"
+          }
+        },
+        {
+          "type": "insertAfterBlock",
+          "blockId": "3CEFFC83",
+          "text": "Term notice clause notice supplier warranty written term.",
+          "numbering": {
+            "kind": "newList",
+            "format": "numbered"
+          }
+        }
+      ]
+    },
+    {
+      "action": "accept one",
+      "seed": 23505487
+    },
+    {
+      "action": "reject one",
+      "seed": 1855071300
+    }
+  ],
+  "swarm": [
+    "replaceInBlock",
+    "insertAfterBlock",
+    "insertBeforeBlock",
+    "replaceBlock",
+    "mergeBlockWithNext",
+    "setBlockParagraphProperties",
+    "deleteTableRow"
+  ],
+  "origin": "shrunk from splice+dropOperation of 7ab6cd0460ca596b"
+}

@@ -733,6 +733,20 @@ type HyperlinkRevisionWalk = HyperlinkChildContext & {
   ) => Hyperlink;
 };
 
+/**
+ * Whether a transparent wrapper read inside a link's revision holds content
+ * the link cannot hold. The walk under the revision reads the paragraph's
+ * map, so a `w:dir` there may hold an equation or a nested revision; kept in
+ * the link, the editor would have nowhere to put it. A piece the serializer
+ * split around a lifted link is put back below the link by its tag instead.
+ */
+const holdsUnlinkable = (item: ParagraphContent): boolean =>
+  item.type === "inlineWrapper" &&
+  !splitPieces.has(item) &&
+  item.content.some(
+    (child) => !isHyperlinkContent(child) || holdsUnlinkable(child),
+  );
+
 /** Preserve a link across nested revision owners, rather than dropping its shell. */
 const linkedRevisionContent = (
   wrapped: readonly ParagraphContent[],
@@ -751,12 +765,21 @@ const linkedRevisionContent = (
     linked = [];
   };
   for (const item of wrapped) {
-    if (isHyperlinkContent(item)) {
+    if (isHyperlinkContent(item) && !holdsUnlinkable(item)) {
       linked.push(item);
       continue;
     }
     flushLinked();
     switch (item.type) {
+      // The wrapper owns the link's pieces, as a revision does: the link is
+      // put back around what it can hold inside the wrapper, and the rest
+      // stays in the wrapper beside it.
+      case "inlineWrapper":
+        content.push({
+          ...item,
+          content: linkedRevisionContent(item.content, linkOver),
+        });
+        break;
       case "insertion":
       case "deletion":
       case "moveFrom":
