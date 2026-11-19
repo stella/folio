@@ -24,6 +24,10 @@ const CANONICAL_REPLAYS = [
   "issue-1350-48a4c26dd3e1e6fd.json",
   "issue-1762-tracked-formatting-between-line-breaks.json",
   "issue-1754-clear-numbered-heading-style.json",
+  "issue-1350-new-list-after-deleted-list-paragraph.json",
+  "issue-2265-final-mark-rotation-over-a-merge-record.json",
+  "issue-2973-reject-joins-into-terminal-table-carrier.json",
+  "markdown-orphan-roman-level.json",
 ] as const;
 
 test("the replays below run on the canonical session", () => {
