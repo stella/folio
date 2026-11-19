@@ -99,6 +99,7 @@ import {
   hashFolioAIBlockText,
 } from "../ai-edits/snapshot";
 import {
+  followedOnlyByDeletedParagraphs,
   isInsertedPPrMark,
   snapshotBatchClaim,
   type SnapshotBatchOperation,
@@ -4629,7 +4630,14 @@ export class CanonicalPublicOperations {
       intent.type === "joinParagraphs"
     ) {
       // The separator goes in at the first paragraph's end, before the join.
-      const separator = operation.separator ?? "";
+      // Where only paragraphs pending deletion follow, accepting leaves no
+      // words after it to separate, as the default engine reads it.
+      const separator = followedOnlyByDeletedParagraphs(
+        projection.value.doc,
+        paragraph.start - 1 + paragraph.node.nodeSize,
+      )
+        ? ""
+        : (operation.separator ?? "");
       if (separator !== "") {
         const at = projection.value.addressAt(
           paragraph.start + paragraph.node.content.size,

@@ -50,6 +50,27 @@ export const isPlainDeletedPPrMark = (value: unknown): boolean =>
   "kind" in value &&
   value.kind === "del";
 
+/**
+ * Whether everything after `position` in its container is paragraphs pending
+ * deletion: a join there, once accepted, has no words after it, so a merge's
+ * separator would separate nothing.
+ */
+export const followedOnlyByDeletedParagraphs = (
+  doc: PMNode,
+  position: number,
+): boolean => {
+  const at = doc.resolve(position);
+  let deletes = false;
+  for (let index = at.index(); index < at.parent.childCount; index++) {
+    const node = at.parent.child(index);
+    if (node.type.name !== "paragraph" || !holdsOnlyDeletedContent(node))
+      return false;
+    deletes ||=
+      node.content.size > 0 || isPlainDeletedPPrMark(node.attrs["pPrMark"]);
+  }
+  return deletes;
+};
+
 /** The cells a column deletion removes: every cell standing in that column alone. */
 const deletedColumnCellRanges = (
   doc: PMNode,

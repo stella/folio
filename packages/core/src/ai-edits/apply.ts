@@ -269,6 +269,7 @@ import {
   isHiddenTableRow,
 } from "./snapshot";
 import {
+  followedOnlyByDeletedParagraphs,
   isInsertedPPrMark,
   isPlainDeletedPPrMark,
   snapshotBatchClaim,
@@ -3357,26 +3358,6 @@ const moveParagraphPastTables = (
   const target = before - paragraph.nodeSize;
   tr.delete(from, from + paragraph.nodeSize).insert(target, paragraph);
   return target;
-};
-
-/**
- * Whether everything after `position` in its container is paragraphs pending
- * deletion: a join there, once accepted, has no words after it.
- */
-const followedOnlyByDeletedParagraphs = (
-  doc: PMNode,
-  position: number,
-): boolean => {
-  const at = doc.resolve(position);
-  let deletes = false;
-  for (let index = at.index(); index < at.parent.childCount; index++) {
-    const node = at.parent.child(index);
-    if (node.type.name !== "paragraph" || !holdsOnlyDeletedContent(node))
-      return false;
-    deletes ||=
-      node.content.size > 0 || isPlainDeletedPPrMark(node.attrs["pPrMark"]);
-  }
-  return deletes;
 };
 
 /** An emptied paragraph still carries deleted content, rather than being an original blank. */
