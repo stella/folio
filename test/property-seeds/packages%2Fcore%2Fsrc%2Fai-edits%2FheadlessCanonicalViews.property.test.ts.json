@@ -47,6 +47,30 @@
       "path": "5:4:2:3:2:2:3:3:3:3:3:3:3:3:3:3:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4",
       "note": "Untracked zero-display opaque XML remains source content when a paragraph mark resolves before a content control; logical width zero does not permit dropping its payload.",
       "date": "2026-11-17"
+    },
+    {
+      "seed": -71922170,
+      "path": "17:0:0:0:0:0:1:0:0:0:0:4:2:2:4:5:4:5:5:5:5:5:5:5:6:5:5:5:5:8:7:7:7:7:7:7:11:9:7:7:15:7:7:7:7:7:7:7:7:7:10:10:10:10:10:10:10:10",
+      "note": "Rejecting an added mark joins its words into the next added-mark paragraph, which keeps its identity before preserved altChunk.",
+      "date": "2026-11-18"
+    },
+    {
+      "seed": -969066507,
+      "path": "14:0:0:0:0:0:0:0:0:3:2:2:2:2:3:2:2:2:2:4:4:4:4:4:5:4:4:4:4:7:7:7:8:7:7:7:7:7:7:7:7:8:7:7:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8",
+      "note": "Rejecting two bare added marks in a group content control keeps the later paragraph, whose mark ends the control.",
+      "date": "2026-11-18"
+    },
+    {
+      "seed": 1229269063,
+      "path": "2:0:0:0:0:0:0:0:3:2:2:2:3:2:2:2:3:4:4:4:4:4:5:4:4:4:4:4:4:4:4:4:5:4:4:4:4:4:4:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5",
+      "note": "Rejecting two bare added marks in a group content control keeps the later paragraph, whose mark ends the control.",
+      "date": "2026-11-18"
+    },
+    {
+      "seed": 837699992,
+      "path": "1:0:0:0:0:1:0:0:0:0:3:2:2:3:2:2:2:2:2:4:4:4:4:5:4:4:4:4:7:7:7:8:7:7:7:7:7:7:7:8:7:7:7:8:8:8:8:8:8:8:8:8:8:8:8:8:0:3:3:3:3:3",
+      "note": "Rejecting two bare added marks in a group content control keeps the later paragraph, whose mark ends the control.",
+      "date": "2026-11-18"
     }
   ]
 }

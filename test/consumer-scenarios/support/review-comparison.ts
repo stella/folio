@@ -5,6 +5,7 @@ import type {
   Paragraph,
   ParagraphContent,
 } from "@stll/docx-core/model";
+import { formattingEquals, mergeRunContent } from "@stll/docx-core/ops";
 import { visitDocxParagraphs } from "@stll/folio-core/docx/paragraphTraversal";
 import { consolidateParagraphContent } from "@stll/folio-core/docx/runConsolidator";
 
@@ -273,6 +274,57 @@ export const canonicalReviewModel = (
   aliases: ReadonlyMap<string, string> = new Map(),
 ): unknown => projectCanonicalReviewModel({ model, aliases });
 
+type Run = Extract<ParagraphContent, { type: "run" }>;
+
+/** Whether `a` and `b` are runs whose properties a reader cannot tell apart. */
+const sameRunProperties = (a: Run, b: Run): boolean =>
+  a.content.length > 0 &&
+  b.content.length > 0 &&
+  (a.propertyChanges?.length ?? 0) === 0 &&
+  (b.propertyChanges?.length ?? 0) === 0 &&
+  formattingEquals(a.formatting, b.formatting) &&
+  JSON.stringify(a.preservedAttributes ?? null) ===
+    JSON.stringify(b.preservedAttributes ?? null);
+
+/**
+ * `content` with adjacent runs of the same properties read as one run.
+ * Where one `w:r` ends and the next begins carries nothing a reader sees
+ * when both have the same properties: their text, breaks and tabs are the
+ * same content in one run or two. `consolidateParagraphContent` keeps a run
+ * holding a break or a tab apart, as an editing boundary; a resolved
+ * document is compared by what it holds.
+ */
+const joinRunsOfSameProperties = (
+  content: readonly ParagraphContent[],
+): ParagraphContent[] => {
+  const joined: ParagraphContent[] = [];
+  for (const item of content) {
+    const entry: ParagraphContent =
+      item.type === "hyperlink"
+        ? {
+            ...item,
+            children: joinRunsOfSameProperties(
+              item.children,
+            ) as typeof item.children,
+          }
+        : item;
+    const previous = joined.at(-1);
+    if (
+      previous?.type === "run" &&
+      entry.type === "run" &&
+      sameRunProperties(previous, entry)
+    ) {
+      joined[joined.length - 1] = {
+        ...previous,
+        content: mergeRunContent(previous.content, entry.content),
+      };
+      continue;
+    }
+    joined.push(entry);
+  }
+  return joined;
+};
+
 export const canonicalResolvedReviewModel = (
   model: Document,
   aliases: ReadonlyMap<string, string> = new Map(),
@@ -284,7 +336,7 @@ export const canonicalResolvedReviewModel = (
     seenParagraphs.add(paragraph);
     paragraphContentOverrides.set(
       paragraph,
-      consolidateParagraphContent(paragraph.content),
+      joinRunsOfSameProperties(consolidateParagraphContent(paragraph.content)),
     );
   };
   visitDocxParagraphs(
