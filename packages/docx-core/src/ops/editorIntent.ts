@@ -3602,6 +3602,27 @@ export const compileEditorIntent = (
       steps.push(joined.value);
       current = joined.value.document;
     }
+    // A thread whose every covered character the direct edit removed goes
+    // with it, as a deleted block's does: the save drops an exhausted thread,
+    // so keeping it would show a comment the reopened file no longer has.
+    for (const { id, parentId } of document.package.document.comments ?? []) {
+      if (
+        parentId !== undefined ||
+        isCommentExhausted({ type: "document", document, id }) ||
+        !isCommentExhausted({ type: "document", document: current, id })
+      )
+        continue;
+      const retire = {
+        type: DOCUMENT_OP_TYPES.DELETE_COMMENT,
+        id,
+        scope: "thread",
+      } as const;
+      const retired = applyDocumentOp(current, retire);
+      if (retired.isErr()) return Result.err(retired.error);
+      compact.push(retire);
+      steps.push(retired.value);
+      current = retired.value.document;
+    }
     ops = compact;
     // Typed text hands its application back; other intents apply again.
     if (intent.type === "replaceText")
