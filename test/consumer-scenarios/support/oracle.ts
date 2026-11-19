@@ -910,7 +910,7 @@ type ModelRow = {
   pendingDeletion?: boolean;
   /**
    * A paragraph pending deletion that holds nothing at all: its join runs
-   * into the paragraph after it, so a block inserted after it goes after
+   * into the paragraph after it, so a table inserted after it goes after
    * that paragraph when it keeps words.
    */
   emptyJoinSource?: boolean;
@@ -2373,9 +2373,9 @@ const sameContainer = (left: Container, right: Container): boolean =>
       left.cellIndex === right.cellIndex;
 
 /**
- * The paragraph an insertion after `row` follows: the one a pending join from
- * an empty `row` leaves, when that paragraph keeps words of its own; `row`
- * itself otherwise. Other blocks the reader lists but accepting removes go
+ * The paragraph a table inserted after `row` follows: the one a pending join
+ * from an empty `row` leaves, when that paragraph keeps words of its own;
+ * `row` itself otherwise. Other blocks the reader lists but accepting removes go
  * with the join on the way there.
  */
 const pastEmptyJoin = (model: Model, row: ModelRow): ModelRow => {
@@ -2399,9 +2399,17 @@ const insertionAnchor = (
   model: Model,
   row: ModelRow,
   position: "before" | "after",
+  block: "paragraph" | "table" = "table",
 ): ModelRow => {
+  // A paragraph goes right after the emptied paragraph it names, with that
+  // paragraph's properties, as pressing Enter at its end does; the join then
+  // runs into the new paragraph. A table follows the paragraph the join
+  // leaves.
   if (position === "after")
-    row = pastTextBoxes(model, pastEmptyJoin(model, row));
+    row = pastTextBoxes(
+      model,
+      block === "paragraph" ? row : pastEmptyJoin(model, row),
+    );
   const table = row.pre?.table;
   if (!table) return row;
   const rows = model.rows.filter(
@@ -2482,7 +2490,7 @@ const insertBlock =
   (position: "before" | "after"): Expect =>
   (model, operation) => {
     const named = target(model, operation["blockId"], { adjacent: true });
-    const anchor = insertionAnchor(model, named, position);
+    const anchor = insertionAnchor(model, named, position, "paragraph");
     const inherited =
       operation["inheritFormatting"] === false
         ? undefined

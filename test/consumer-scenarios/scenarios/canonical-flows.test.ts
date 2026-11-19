@@ -30,6 +30,7 @@ const CANONICAL_REPLAYS = [
   "tracked-comment-point.json",
   "unicode-comment-point.json",
   "issue-1754-clear-numbered-heading-style.json",
+  "issue-1757-paragraph-after-emptied-paragraph-pending-break.json",
   "issue-1350-new-list-after-deleted-list-paragraph.json",
   "issue-2265-final-mark-rotation-over-a-merge-record.json",
   "issue-2973-reject-joins-into-terminal-table-carrier.json",

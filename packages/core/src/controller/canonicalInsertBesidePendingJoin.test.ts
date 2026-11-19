@@ -1,12 +1,12 @@
 /**
  * A paragraph or a table inserted beside a paragraph whose break a pending
- * join removes, in the canonical session: a batch reads the document as it
- * stands before the batch, so a block put after one that reads as part of
- * the next goes after the paragraph it joins, as the batch read it, even when
- * the same batch splits that paragraph, and whether the joining paragraph
- * keeps its words or was emptied. One put before it keeps its place. Either
- * way the outcome is the one the same batch anchored on the joined paragraph
- * gives, and rejecting gives the document back.
+ * join removes, in the canonical session. A paragraph put after the joining
+ * paragraph goes right after it with its properties, as pressing Enter at its
+ * end does, and the join then runs the joining paragraph into the new one,
+ * directly as once the tracked insertion is accepted. A table put after it, and a block put before it, go beside the joined
+ * paragraph as the batch read it, even when the same batch splits that
+ * paragraph, and whether the joining paragraph keeps its words or was
+ * emptied. Rejecting gives the document back.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -212,6 +212,46 @@ describe("a block beside a paragraph that joins the next, in the canonical sessi
             editor.resolveAll("accept");
             return { pending, accepted: editor.blocks() };
           };
+
+          if (kind === "a paragraph" && side === "after") {
+            test(`goes right after the joining paragraph with its properties ${name}`, async () => {
+              const { pending, accepted } = await read("clause");
+              const inserted = pending.findIndex(
+                ({ text }) => text === INSERTED,
+              );
+              // Pending, the new paragraph stands between the joining
+              // paragraph and the one it joins, with the joining paragraph's
+              // properties, not the heading the join leaves.
+              expect(inserted).toBe(
+                pending.findIndex(({ text }) => text.endsWith(SURVIVOR)) - 1,
+              );
+              expect(pending[inserted - 1]?.text).toBe(
+                source === "a tracked merge" ? `${CLAUSE} ` : "",
+              );
+              expect(pending[inserted]?.styleId).toBeUndefined();
+              const texts = accepted.map(({ text }) => text);
+              const survivor = texts.findIndex((text) =>
+                text.endsWith(SURVIVOR),
+              );
+              // The paragraph the join leaves has the properties accepting
+              // gives it without the insertion.
+              const alone = await open(
+                (await fixture(source, `## ${SURVIVOR}`)).bytes,
+              );
+              alone.resolveAll("accept");
+              const joinedAlone = alone
+                .blocks()
+                .find(({ text }) => text.endsWith(SURVIVOR));
+              expect(accepted[survivor]?.styleId).toBe(joinedAlone?.styleId);
+              // The join now runs the joining paragraph into the new one; the
+              // paragraph it used to join stands on its own. Direct, it is
+              // the outcome the tracked insertion accepted gives.
+              expect(texts[survivor]).toBe(SURVIVOR);
+              expect(texts[survivor - 1]?.endsWith(INSERTED)).toBe(true);
+              expect(accepted[survivor - 1]?.styleId).toBeUndefined();
+            });
+            continue;
+          }
 
           test(`is placed as one beside the paragraph it joins ${name}`, async () => {
             const fromClause = await read("clause");
@@ -435,56 +475,99 @@ describe("a block beside a longer pending join, in the canonical session", () =>
     for (const [shape, { make, read: reading }] of Object.entries(LONGER_JOINS))
       for (const side of ["after", "before"] as const) {
         const name = `(${kind}, ${shape}, ${side})`;
+        /**
+         * A tracked paragraph after a joining paragraph that a range boundary
+         * separates from the next block has no paragraph for its own break
+         * to resolve against: refused, as one after the body's last is.
+         */
+        const refusedAfter = (anchor: string, join: LongerJoin) =>
+          kind === "a paragraph" &&
+          side === "after" &&
+          shape === "across a range boundary" &&
+          anchor === join.anchors.clause;
 
-        test(`is placed as one beside the paragraph the join leaves, whichever paragraph of the join it names ${name}`, async () => {
-          const join = await make();
-          const read = async (anchor: string) => {
-            const editor = await open(join.bytes);
-            expect(
-              editor.apply([block.operation(side, anchor)], "tracked-changes")
-                .skipped,
-            ).toEqual([]);
-            const pending = editor.blocks();
-            const ids = pending.map(({ id }) => id);
-            const texts = pending.map(({ text }) => text);
-            // Pending, the paragraph stands outside the join: right before its
-            // first paragraph, or right after the paragraph it leaves.
-            if (side === "after")
-              expect(texts[ids.indexOf(join.anchors.survivor) + 1]).toBe(
-                block.first,
+        if (kind === "a paragraph" && side === "after") {
+          test(`goes right after the paragraph of the join it names ${name}`, async () => {
+            const join = await make();
+            for (const anchor of Object.values(join.anchors)) {
+              const editor = await open(join.bytes);
+              const result = editor.apply(
+                [block.operation(side, anchor)],
+                "tracked-changes",
               );
-            else
-              expect(texts[ids.indexOf(join.anchors.clause) - 1]).toBe(
-                block.last,
+              if (refusedAfter(anchor, join)) {
+                expect(result.skipped.map(({ reason }) => reason)).toEqual([
+                  "unsupportedBlock",
+                ]);
+                continue;
+              }
+              expect(result.skipped).toEqual([]);
+              const pending = editor.blocks();
+              const ids = pending.map(({ id }) => id);
+              expect(pending[ids.indexOf(anchor) + 1]?.text).toBe(INSERTED);
+              if (reading === "pending") continue;
+              editor.resolveAll("accept");
+              const texts = editor.blocks().map(({ text }) => text);
+              const inserted = texts.findIndex((text) =>
+                text.endsWith(INSERTED),
               );
-            if (reading === "pending")
-              return { pending: shapeOf(pending), accepted: [] };
-            editor.resolveAll("accept");
-            return {
-              pending: shapeOf(pending),
-              accepted: editor.blocks().map(({ text }) => text),
+              expect(inserted).toBeGreaterThan(-1);
+              if (anchor !== join.anchors.survivor)
+                expect(texts[inserted + 1]?.endsWith(SURVIVOR)).toBe(true);
+              else expect(texts[inserted - 1]?.endsWith(SURVIVOR)).toBe(true);
+            }
+          });
+        } else
+          test(`is placed as one beside the paragraph the join leaves, whichever paragraph of the join it names ${name}`, async () => {
+            const join = await make();
+            const read = async (anchor: string) => {
+              const editor = await open(join.bytes);
+              expect(
+                editor.apply([block.operation(side, anchor)], "tracked-changes")
+                  .skipped,
+              ).toEqual([]);
+              const pending = editor.blocks();
+              const ids = pending.map(({ id }) => id);
+              const texts = pending.map(({ text }) => text);
+              // Pending, the paragraph stands outside the join: right before its
+              // first paragraph, or right after the paragraph it leaves.
+              if (side === "after")
+                expect(texts[ids.indexOf(join.anchors.survivor) + 1]).toBe(
+                  block.first,
+                );
+              else
+                expect(texts[ids.indexOf(join.anchors.clause) - 1]).toBe(
+                  block.last,
+                );
+              if (reading === "pending")
+                return { pending: shapeOf(pending), accepted: [] };
+              editor.resolveAll("accept");
+              return {
+                pending: shapeOf(pending),
+                accepted: editor.blocks().map(({ text }) => text),
+              };
             };
-          };
-          const expected = await read(join.anchors.survivor);
-          if (reading === "accepted") {
-            const joined = expected.accepted.findIndex((text) =>
-              text.endsWith(SURVIVOR),
-            );
-            expect(joined).toBeGreaterThan(-1);
-            if (side === "after")
-              expect(expected.accepted.indexOf(block.first)).toBe(joined + 1);
-            else
-              expect(expected.accepted.lastIndexOf(block.last)).toBe(
-                joined - 1,
+            const expected = await read(join.anchors.survivor);
+            if (reading === "accepted") {
+              const joined = expected.accepted.findIndex((text) =>
+                text.endsWith(SURVIVOR),
               );
-          }
-          for (const anchor of Object.values(join.anchors))
-            expect(await read(anchor)).toEqual(expected);
-        });
+              expect(joined).toBeGreaterThan(-1);
+              if (side === "after")
+                expect(expected.accepted.indexOf(block.first)).toBe(joined + 1);
+              else
+                expect(expected.accepted.lastIndexOf(block.last)).toBe(
+                  joined - 1,
+                );
+            }
+            for (const anchor of Object.values(join.anchors))
+              expect(await read(anchor)).toEqual(expected);
+          });
 
         test(`rejects to the document it started from, whichever paragraph it names ${name}`, async () => {
           const join = await make();
           for (const anchor of Object.values(join.anchors)) {
+            if (refusedAfter(anchor, join)) continue;
             const editor = await open(join.bytes);
             expect(
               editor.apply([block.operation(side, anchor)], "tracked-changes")
@@ -548,25 +631,42 @@ describe("a block after a paragraph that joins one the batch splits, in the cano
           const options = { source, block, offset, order };
           const name = `(${kind}, ${source}, split at ${offset}, ${order})`;
 
-          test(`follows the whole joined paragraph, as one put after it does ${name}`, async () => {
-            const { texts: accepted } = await splitBatch({
-              ...options,
-              anchor: "clause",
-              resolution: "accept",
+          if (kind === "a paragraph")
+            test(`stays right after the joining paragraph ${name}`, async () => {
+              const { texts: accepted } = await splitBatch({
+                ...options,
+                anchor: "clause",
+                resolution: "accept",
+              });
+              const inserted = accepted.findIndex((text) =>
+                text.endsWith(INSERTED),
+              );
+              expect(inserted).toBeGreaterThan(0);
+              expect(accepted.slice(inserted + 1, inserted + 3)).toEqual([
+                SURVIVOR.slice(0, offset),
+                SURVIVOR.slice(offset),
+              ]);
             });
-            const inserted = accepted.indexOf(block.first);
-            expect(inserted).toBeGreaterThan(0);
-            expect(accepted.at(inserted - 1)).toBe(SURVIVOR.slice(offset));
-            expect(accepted).toEqual(
-              (
-                await splitBatch({
-                  ...options,
-                  anchor: "survivor",
-                  resolution: "accept",
-                })
-              ).texts,
-            );
-          });
+          else
+            test(`follows the whole joined paragraph, as one put after it does ${name}`, async () => {
+              const { texts: accepted } = await splitBatch({
+                ...options,
+                anchor: "clause",
+                resolution: "accept",
+              });
+              const inserted = accepted.indexOf(block.first);
+              expect(inserted).toBeGreaterThan(0);
+              expect(accepted.at(inserted - 1)).toBe(SURVIVOR.slice(offset));
+              expect(accepted).toEqual(
+                (
+                  await splitBatch({
+                    ...options,
+                    anchor: "survivor",
+                    resolution: "accept",
+                  })
+                ).texts,
+              );
+            });
 
           test(`rejects to the document it started from ${name}`, async () => {
             const rejected = await splitBatch({
