@@ -2098,6 +2098,56 @@ describe("canonical sequencing", () => {
   );
 
   test(
+    "a decision elsewhere passes every operation of a pending suggested replacement",
+    async () => {
+      // Saved flow 1878345790 (factor 4): peer 0 accepts a revision while
+      // peer 2's suggested replacement in another paragraph is pending. The
+      // decision moves past the replacement's deletion to meet its
+      // insertion, and is not refused as a tracked edit continuing it.
+      const scenario = [
+        4,
+        [
+          {
+            type: "edit",
+            peer: 2,
+            seed: { kind: "type", a: 0, b: 0, suggest: false },
+          },
+          {
+            type: "edit",
+            peer: 2,
+            seed: { kind: "type", a: 37124, b: 0, suggest: false },
+          },
+          { type: "deliver", seed: 0 },
+          { type: "deliver", seed: 0 },
+          { type: "undo", peer: 0 },
+          { type: "deliver", seed: 0 },
+          { type: "deliver", seed: 0 },
+          {
+            type: "edit",
+            peer: 0,
+            seed: { kind: "editComment", a: 0, b: 0, suggest: false },
+          },
+          {
+            type: "edit",
+            peer: 0,
+            seed: { kind: "decide", a: 0, b: 0, suggest: false },
+          },
+          {
+            type: "edit",
+            peer: 2,
+            seed: { kind: "replace", a: 16665, b: 0, suggest: true },
+          },
+        ],
+      ] as const satisfies Scenario;
+      await fc.assert(
+        convergence(noCounts(), fc.constant(scenario)),
+        propertyConfig({ numRuns: 1 }),
+      );
+    },
+    propertyTestTimeout(30_000),
+  );
+
+  test(
     "a paragraph split at a concurrent suggested insertion's point is accepted in either order",
     async () => {
       // Saved flow -706043845: the split is sequenced after the suggestion.

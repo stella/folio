@@ -750,6 +750,32 @@ const transformOp = (
   return Result.ok(transformed.value.map(captureDocumentOp));
 };
 
+/**
+ * Whether a sequenced decision moves past a local edit it was just rebased
+ * past unchanged: its effect names every paragraph holding a revision it
+ * decided, and the edit addresses none of them, so the edit neither cuts nor
+ * continues a decided revision, tracked or not.
+ */
+const decidedElsewhere = (
+  decision: DocumentOp,
+  edit: DocumentOp,
+  effect: SequencedOpEffect | undefined,
+): boolean => {
+  if (
+    decision.type !== DOCUMENT_OP_TYPES.RESOLVE_REVISION ||
+    effect?.type !== "touchedBlocks"
+  )
+    return false;
+  const story = operationStory(edit);
+  const addressed = operationTargets(edit);
+  return (
+    story !== undefined &&
+    sameStory(story, decision.story) &&
+    addressed !== undefined &&
+    addressed.every((id) => !effect.blockIds.includes(id))
+  );
+};
+
 /** Rebase an atomic batch over an ordered journal tail. */
 export const transformBatch = (
   batch: DocumentBatch,
@@ -807,12 +833,14 @@ export const transformBatch = (
         // operation. Move the foreign operation into that coordinate space.
         const reciprocal: DocumentOp[] = [];
         for (const remoteOp of remote) {
-          const mapped = transformOp({
-            op: remoteOp,
-            over: op,
-            effect: undefined,
-            order: order === "after" ? "before" : "after",
-          });
+          const mapped = decidedElsewhere(remoteOp, op, remoteEffect)
+            ? Result.ok([remoteOp])
+            : transformOp({
+                op: remoteOp,
+                over: op,
+                effect: undefined,
+                order: order === "after" ? "before" : "after",
+              });
           if (mapped.isErr()) return mapped;
           reciprocal.push(...mapped.value);
           const story = operationStory(op);

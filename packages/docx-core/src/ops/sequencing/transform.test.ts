@@ -669,6 +669,34 @@ describe("property and structural policies", () => {
     ).toBe(true);
   });
 
+  test("a decision elsewhere moves past each operation of a tracked batch", () => {
+    const resolve = {
+      type: "resolveRevision",
+      story: "main",
+      revisionIds: [10],
+      decision: "accept",
+    } as const;
+    const revision = { id: 20, author: "Actor", date: "2026-01-01T00:00:00Z" };
+    const replacement = batch(
+      { ...deletion(0, 1), revision },
+      { ...insertion(1, "q"), revision },
+    );
+    const decided = (blockIds: string[]) =>
+      transformBatch(replacement, [
+        {
+          ...sequenced(resolve),
+          effects: [{ type: "touchedBlocks", blockIds }],
+        },
+      ]);
+    // Moving the decision past the deletion to meet the insertion: the
+    // paragraphs it decided hold none of the batch's edits.
+    const passed = decided(["00000002"]);
+    if (passed.isErr()) throw passed.error;
+    expect(passed.value.ops).toEqual(replacement.ops);
+    // In a paragraph the decision changed, the edit is refused.
+    expect(decided(["00000001"]).isErr()).toBe(true);
+  });
+
   test("numbering, deleted targets and structural overlaps reject", () => {
     const props = {
       type: "setParagraphProps",
