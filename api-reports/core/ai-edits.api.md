@@ -193,6 +193,7 @@ export type FolioAIEditApplyMode = "direct" | "tracked-changes" | "suggested";
 
 // @public
 export type FolioAIEditApplyOutcome = FolioAIEditApplyResult & {
+    heldRevisionConflict?: true;
     nextRevisionId: number;
 };
 

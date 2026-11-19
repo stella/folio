@@ -2243,6 +2243,51 @@ class CanonicalPublicOperationResolutionError extends CanonicalPublicOperationRe
   gap?: CanonicalGap | null;
 }> {}
 
+type MergeFormattingConflictOptions = {
+  before: NonNullable<ReturnType<typeof findStoryBody>>;
+  after: NonNullable<ReturnType<typeof findStoryBody>>;
+  ops: readonly DocumentOp[];
+  author: string;
+};
+
+/** Both the tracked join and a subsequent property alignment may write the survivor. */
+const overwritesForeignMergeFormatting = ({
+  before,
+  after,
+  ops,
+  author,
+}: MergeFormattingConflictOptions): boolean => {
+  const targets = new Set<string>();
+  for (const op of ops) {
+    if (op.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS) targets.add(op.nextBlockId);
+    if (op.type === DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS)
+      targets.add(op.blockId);
+  }
+  const foreignChanges = (paragraph: Paragraph) =>
+    paragraph.propertyChanges?.filter(({ info }) => info.author !== author) ??
+    [];
+  const pending = storyParagraphs(before).flatMap(({ paragraph }) => {
+    if (paragraph.paraId === undefined || !targets.has(paragraph.paraId))
+      return [];
+    const changes = foreignChanges(paragraph);
+    return changes.length === 0 ? [] : [[paragraph.paraId, changes] as const];
+  });
+  if (pending.length === 0) return false;
+  const survivors = new Map(
+    storyParagraphs(after).map(({ paragraph }) => [
+      paragraph.paraId,
+      paragraph,
+    ]),
+  );
+  return pending.some(([id, revisions]) => {
+    const survivor = survivors.get(id);
+    return (
+      survivor === undefined ||
+      JSON.stringify(revisions) !== JSON.stringify(foreignChanges(survivor))
+    );
+  });
+};
+
 type BatchPropertyRefusalOptions = {
   document: Document;
   story: OpStory;
@@ -2929,20 +2974,17 @@ export class CanonicalPublicOperations {
         operation.type === "mergeBlockWithNext" &&
         conflictsWithRevision !== undefined
       ) {
-        const body = findStoryBody(sourceDocument, story);
+        const beforeStory = findStoryBody(sourceDocument, story);
+        const afterStory = findStoryBody(nextDocument, story);
         if (
-          body &&
-          operationOps.some(
-            (op) =>
-              op.type === DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS &&
-              storyParagraphs(body).some(
-                ({ paragraph }) =>
-                  paragraph.paraId === op.blockId &&
-                  paragraph.propertyChanges?.some(
-                    ({ info }) => info.author !== (options.author ?? "AI"),
-                  ),
-              ),
-          )
+          beforeStory !== undefined &&
+          afterStory !== undefined &&
+          overwritesForeignMergeFormatting({
+            before: beforeStory,
+            after: afterStory,
+            ops: operationOps,
+            author: options.author ?? "AI",
+          })
         ) {
           return declined({
             reason: "existingRevisionConflict",
