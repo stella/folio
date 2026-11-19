@@ -6,12 +6,11 @@
 
 import assert from "node:assert/strict";
 
-import { validateDocxPackage } from "@stll/docx-core";
-
 import { openReviewer } from "./documents.ts";
 import { projectContentPair } from "./identity.ts";
 import { labelFields, readAll } from "./readers.ts";
 import { assertReviewRoundTrip } from "./review-comparison.ts";
+import { assertSavedPackageValid } from "./validity.ts";
 
 type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
 
@@ -189,12 +188,7 @@ export const saveAndReopen = async (
       cause: error,
     });
   }
-  const validity = await validateDocxPackage(buffer);
-  assert.equal(
-    validity.valid,
-    true,
-    `${context}: saved OOXML invalid: ${validity.valid ? "" : validity.error}`,
-  );
+  await assertSavedPackageValid(buffer, context);
   const bytes = new Uint8Array(buffer);
   let reopened: Reviewer;
   try {

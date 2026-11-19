@@ -35,7 +35,14 @@ const decodeBuiltInEntities = (text: string): string =>
     }
   });
 
-const htmlCellText = (nodes: readonly XmlElement[]): string => {
+/**
+ * A cell's own text. A table nested in the cell is read as the blocks it
+ * holds, after the cell's text, into `nested`, as a reader lists them.
+ */
+const htmlCellText = (
+  nodes: readonly XmlElement[],
+  nested: BlockView[],
+): string => {
   const rendered: string[] = [];
   for (const node of nodes) {
     if (node.type === "text") {
@@ -48,12 +55,43 @@ const htmlCellText = (nodes: readonly XmlElement[]): string => {
       rendered.push("\n");
       continue;
     }
+    if (tag === "table") {
+      nested.push(...tableViews(node.elements ?? []));
+      continue;
+    }
     if (!HTML_CELL_INLINE_TAGS.has(tag)) {
       throw new Error(`Unsupported HTML table cell tag: ${tag}`);
     }
-    rendered.push(htmlCellText(node.elements ?? []));
+    rendered.push(htmlCellText(node.elements ?? [], nested));
   }
   return rendered.join("");
+};
+
+/** The blocks a table's rows hold, cell by cell. */
+const tableViews = (nodes: readonly XmlElement[]): BlockView[] => {
+  const views: BlockView[] = [];
+  for (const node of nodes) {
+    if (node.type === "text") {
+      if (String(node.text ?? "").trim().length > 0) {
+        throw new Error("Unexpected text outside an HTML table cell");
+      }
+      continue;
+    }
+    const tag = node.name ?? "";
+    if (tag === "table" || tag === "thead" || tag === "tbody" || tag === "tr") {
+      views.push(...tableViews(node.elements ?? []));
+      continue;
+    }
+    if (tag === "th" || tag === "td") {
+      const nested: BlockView[] = [];
+      const text = htmlCellText(node.elements ?? [], nested).trim();
+      if (text.length > 0) views.push({ text, kind: "paragraph" });
+      views.push(...nested);
+      continue;
+    }
+    throw new Error(`Unsupported HTML table tag: ${tag}`);
+  }
+  return views;
 };
 
 export const htmlTableViews = (html: string): BlockView[] => {
@@ -66,36 +104,8 @@ export const htmlTableViews = (html: string): BlockView[] => {
   if (read.status === "rejected") {
     throw new Error(`Malformed HTML table: ${read.reason}`);
   }
-  const views: BlockView[] = [];
-  let sawTable = false;
-  const walk = (nodes: readonly XmlElement[]): void => {
-    for (const node of nodes) {
-      if (node.type === "text") {
-        if (String(node.text ?? "").trim().length > 0) {
-          throw new Error("Unexpected text outside an HTML table cell");
-        }
-        continue;
-      }
-      const tag = node.name ?? "";
-      if (
-        tag === "table" ||
-        tag === "thead" ||
-        tag === "tbody" ||
-        tag === "tr"
-      ) {
-        if (tag === "table") sawTable = true;
-        walk(node.elements ?? []);
-        continue;
-      }
-      if (tag === "th" || tag === "td") {
-        const text = htmlCellText(node.elements ?? []).trim();
-        if (text.length > 0) views.push({ text, kind: "paragraph" });
-        continue;
-      }
-      throw new Error(`Unsupported HTML table tag: ${tag}`);
-    }
-  };
-  walk(read.value.elements ?? []);
-  if (!sawTable) throw new Error("Markdown HTML block has no table");
-  return views;
+  const elements = read.value.elements ?? [];
+  if (!elements.some((node) => node.type !== "text" && node.name === "table"))
+    throw new Error("Markdown HTML block has no table");
+  return tableViews(elements);
 };

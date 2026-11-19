@@ -29,3 +29,17 @@ for (const text of [
     }
   });
 }
+
+test("a table nested in a cell reads as its cells after the cell's text", () => {
+  assert.deepEqual(
+    htmlTableViews(
+      "<table><tr><td>Outer<table><tr><td>Inner A</td><td>Inner B</td></tr></table></td><td>Next</td></tr></table>",
+    ),
+    [
+      { text: "Outer", kind: "paragraph" },
+      { text: "Inner A", kind: "paragraph" },
+      { text: "Inner B", kind: "paragraph" },
+      { text: "Next", kind: "paragraph" },
+    ],
+  );
+});
