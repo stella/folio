@@ -463,6 +463,7 @@ impl StyleSheet {
         (self.resolved_table_styles, _) = self.resolve_block_styles(StyleKind::Table);
     }
 
+    #[allow(clippy::map_unwrap_or)] // map_or_default grows the WebAssembly body here.
     pub(super) fn resolve_text(
         &self,
         TextStyleInput {
@@ -473,10 +474,12 @@ impl StyleSheet {
     ) -> Result<TextProperties, ()> {
         let table = self
             .table_style(&properties.table_style)?
-            .map_or_default(|style| style.text);
+            .map(|style| style.text)
+            .unwrap_or_default();
         let paragraph = table.inherit_style(
             self.paragraph_style(properties.style_id.as_deref())?
-                .map_or_default(|style| style.text),
+                .map(|style| style.text)
+                .unwrap_or_default(),
         );
         let character = character_style_id
             .filter(|style_id| {
@@ -698,6 +701,7 @@ impl StyleSheet {
             .map(|setting| (setting, ParagraphAlignmentSource::DocDefaults)))
     }
 
+    #[allow(clippy::map_unwrap_or)] // map_or_default grows the WebAssembly body here.
     fn resolve(
         &self,
         direct: &ParagraphProperties,
@@ -706,11 +710,13 @@ impl StyleSheet {
         let table = self
             .table_style(&direct.table_style)
             .map_err(|()| StructuralFactUnknownReason::UnsupportedStyles)?
-            .map_or_default(|style| style.properties);
+            .map(|style| style.properties)
+            .unwrap_or_default();
         let style = self
             .paragraph_style(direct.style_id.as_deref())
             .map_err(|()| StructuralFactUnknownReason::UnsupportedStyles)?
-            .map_or_default(|style| style.properties);
+            .map(|style| style.properties)
+            .unwrap_or_default();
         let style = ResolvedParagraphStyleProperties {
             indentation: table.indentation.inherit(style.indentation),
             numbering: table.numbering.inherit(style.numbering),
