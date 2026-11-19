@@ -194,11 +194,16 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
+      # The limit follows the step's measured p95 (scripts/workflow-durations.json).
+      - id: fuzz-limit
+        name: Derive the property suite limit
+        run: bun scripts/workflow-limit.ts --workflow .github/workflows/continuous-fuzz.yml --job property-fuzz --step "Property suite" --fallback 35 --max 45 >> "$GITHUB_OUTPUT"
+
       # Every property, scaled up, under a salt no other run uses; a failure
       # logs its seed, replay line and fingerprint (test/property-testing.ts).
       - name: Property suite
         id: fuzz
-        timeout-minutes: 35
+        timeout-minutes: ${{ fromJSON(steps.fuzz-limit.outputs.minutes) }}
         run: |
           set -o pipefail
           mkdir -p test-results

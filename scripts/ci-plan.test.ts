@@ -850,11 +850,24 @@ describe("CI plan", () => {
           step["run"].includes("playwright test"),
       );
       // Measured-duration and replay-capacity checks own the numeric budget.
-      const replayMinutes = isRecord(replays)
+      // The limit follows the measured p95 but never falls under the fallback
+      // its derivation step declares, so the capacity check uses that floor.
+      const declaredMinutes = isRecord(replays)
         ? replays["timeout-minutes"]
         : undefined;
-      if (typeof replayMinutes !== "number")
-        panic("Pinned browser replays require a numeric step timeout.");
+      const derivation = steps.find(
+        (step) => isRecord(step) && step["id"] === "replay-limit",
+      );
+      const fallback =
+        isRecord(derivation) && typeof derivation["run"] === "string"
+          ? /--fallback (\d+)/u.exec(derivation["run"])?.[1]
+          : undefined;
+      const replayMinutes =
+        typeof declaredMinutes === "number"
+          ? declaredMinutes
+          : Number(fallback);
+      if (!Number.isInteger(replayMinutes) || replayMinutes <= 0)
+        panic("Pinned browser replays require a step timeout or its fallback.");
       // A replay takes about 3.6 s in CI (69 replays in 4.1 minutes) and runs
       // once per font timing; at a 4 s ceiling, plus each timing's delay, each
       // shard's share must stay within 80% of the declared step limit, or the

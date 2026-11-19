@@ -16,7 +16,9 @@ import {
   parseWorkflowRuns,
   readWorkflowDurations,
   WORKFLOW_DURATIONS_FILE,
+  type WorkflowDurations,
 } from "./workflow-durations";
+import { derivedMinutes } from "./workflow-limit";
 
 setDefaultTimeout(scanTestTimeout(30_000));
 
@@ -744,4 +746,68 @@ test("duration snapshots require finite nonnegative percentiles and positive int
     [source.path]: { run: { job: { p95Seconds: 0, samples: 1 } } },
   };
   expect(parseWorkflowDurations(valid)).toEqual(valid);
+});
+
+const derivedWorkflow = (command: string, expression: string) => ({
+  jobs: {
+    run: {
+      "timeout-minutes": 30,
+      steps: [
+        { id: "limit", name: "Derive", run: command },
+        { name: "Timed", run: "true", "timeout-minutes": expression },
+      ],
+    },
+  },
+});
+const LIMIT_COMMAND = `bun scripts/workflow-limit.ts --workflow fixture --job run --step "Timed" --fallback 5 --max 20 >> "$GITHUB_OUTPUT"`;
+const LIMIT_EXPRESSION = "${{ fromJSON(steps.limit.outputs.minutes) }}";
+
+test("a step limit derived from its own measurement is accepted and measured", () => {
+  const workflow = derivedWorkflow(LIMIT_COMMAND, LIMIT_EXPRESSION);
+  expect(
+    limitsUnderMeasuredDurations(new Map([["fixture", workflow]]), {
+      fixture: { run: { steps: { Timed: { p95Seconds: 9999, samples: 3 } } } },
+    }),
+  ).toEqual([]);
+});
+
+test("a derived limit must come from a step that measures the same step", () => {
+  const other = LIMIT_COMMAND.replace('--step "Timed"', '--step "Other"');
+  expect(
+    limitsUnderMeasuredDurations(
+      new Map([["fixture", derivedWorkflow(other, LIMIT_EXPRESSION)]]),
+      {},
+    ),
+  ).toEqual([
+    'fixture: run step "Timed" derives its limit from fixture run "Other"',
+  ]);
+  expect(
+    limitsUnderMeasuredDurations(
+      new Map([["fixture", derivedWorkflow("true", LIMIT_EXPRESSION)]]),
+      {},
+    ),
+  ).toHaveLength(1);
+});
+
+test("the derived minutes follow the measurement and never fall under the fallback", () => {
+  const target = { workflow: "fixture", job: "run", step: "Timed" };
+  const measured = (p95Seconds: number): WorkflowDurations => ({
+    fixture: { run: { steps: { Timed: { p95Seconds, samples: 3 } } } },
+  });
+  expect(derivedMinutes({}, target, 5, 20)).toBe(5);
+  expect(derivedMinutes(measured(60), target, 5, 20)).toBe(5);
+  expect(derivedMinutes(measured(600), target, 5, 20)).toBe(
+    minimumMinutes(600),
+  );
+});
+
+test("a measurement over the reviewed max fails with the way to raise it", () => {
+  const target = { workflow: "fixture", job: "run", step: "Timed" };
+  const slow: WorkflowDurations = {
+    fixture: { run: { steps: { Timed: { p95Seconds: 1200, samples: 3 } } } },
+  };
+  expect(() => derivedMinutes(slow, target, 5, 20)).toThrow(
+    "measured p95 20.0 min needs a 25 min limit, which exceeds the reviewed max 20; raise it in fixture if intended",
+  );
+  expect(derivedMinutes(slow, target, 5, 25)).toBe(25);
 });
