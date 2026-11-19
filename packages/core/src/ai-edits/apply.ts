@@ -144,6 +144,7 @@ import {
   annotatedReplacement,
   commentsAcrossBlockBoundary,
   commentsForTrackedInsertion,
+  commentsSpanningInsertion,
   hasReplacedAnnotations,
   inheritedReplacementMarks,
   joinCommentStretches,
@@ -8948,9 +8949,11 @@ export const insertCleanText = ({
     ? surveyReplacedAnnotations(tr.doc, standsInFor.from, standsInFor.to)
         .carried
     : [];
+  // Text put between two covered positions, a paragraph's edge between them
+  // included, lies inside the comment's saved range, so it carries it.
   const replaced = keepsReplacedText
     ? (commentsForTrackedInsertion(tr.doc, from, [carried])[0] ?? [])
-    : carried;
+    : addCarriedMarks(carried, commentsSpanningInsertion(tr.doc, from, to));
   // Explicit stored marks (formatting switched on at the caret) win over the
   // replaced span, for text that replaces the selection. Elsewhere they are
   // another paragraph's caret formatting, such as an emptied heading's.
@@ -9442,7 +9445,11 @@ const planDocumentReplacement = ({
         text: change.text,
         insertion: {
           at: matchedFrom,
-          marks: (current) => current.resolve(matchedFrom).marks(),
+          marks: (current) =>
+            addCarriedMarks(
+              current.resolve(matchedFrom).marks(),
+              commentsSpanningInsertion(current, matchedFrom),
+            ),
         },
       });
       continue;
@@ -9462,10 +9469,13 @@ const planDocumentReplacement = ({
           at: climbAfter(previous.to),
           marks: (current) =>
             addCarriedMarks(
-              styleSource === null
-                ? []
-                : current.resolve(styleSource.to).marks(),
-              matchCarried,
+              addCarriedMarks(
+                styleSource === null
+                  ? []
+                  : current.resolve(styleSource.to).marks(),
+                matchCarried,
+              ),
+              commentsSpanningInsertion(current, climbAfter(previous.to)),
             ),
         },
       });
@@ -9485,12 +9495,15 @@ const planDocumentReplacement = ({
         at: climbBefore(first.from),
         marks: (current) =>
           addCarriedMarks(
-            styleSource === null
-              ? []
-              : (current.nodeAt(styleSource.from)?.marks ?? []).filter(
-                  isFormattingMark,
-                ),
-            matchCarried,
+            addCarriedMarks(
+              styleSource === null
+                ? []
+                : (current.nodeAt(styleSource.from)?.marks ?? []).filter(
+                    isFormattingMark,
+                  ),
+              matchCarried,
+            ),
+            commentsSpanningInsertion(current, climbBefore(first.from)),
           ),
       },
     });

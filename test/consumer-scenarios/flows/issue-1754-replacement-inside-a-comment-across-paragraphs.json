@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "title": "PINNED #1754, reported seed 1658079139: text put into a blank paragraph a comment's range runs through carries the comment, so accepting after its first stretch is deleted reads alike before and after a save",
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "comments",
+  "mode": "tracked-changes",
+  "seed": 1658078968,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 1146549392,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "splitBlock",
+          "blockId": "31617F9A",
+          "offset": 22
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 253651948,
+      "operations": [
+        {
+          "type": "replaceRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "@3",
+            "startOffset": 25,
+            "endOffset": 29,
+            "selectedTextHash": "hykidm8"
+          },
+          "replace": "updated"
+        },
+        {
+          "type": "replaceBlock",
+          "blockId": "412DDC7F",
+          "text": "Party schedule buyer goods goods written."
+        },
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "@3",
+          "text": "Period party agreement schedule clause delivery party."
+        }
+      ]
+    },
+    {
+      "action": "reject one",
+      "seed": 1
+    },
+    {
+      "action": "core batch",
+      "seed": 3129524398,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "31617F9A"
+        },
+        {
+          "type": "replaceBlock",
+          "blockId": "@3",
+          "text": "Payment supplier warranty payment schedule payment delivery."
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from splice+splice of 00b62e2d056c67da"
+}

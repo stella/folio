@@ -708,6 +708,35 @@ const neighboursAt = (
   return { before: neighbour(-1), after: neighbour(1) };
 };
 
+/**
+ * The content before `from` and after `to`, as a saved range's two points
+ * read it: in their paragraph past zero-width anchors, and past the
+ * paragraph's edge, empty paragraphs and table edges when nothing is left in
+ * it on that side.
+ */
+const contentAround = (
+  doc: PMNode,
+  from: number,
+  to: number = from,
+): { before: PMNode | null; after: PMNode | null } => {
+  const { before } = neighboursAt(doc, from);
+  const { after } = neighboursAt(doc, to);
+  const $from = doc.resolve(from);
+  const $to = doc.resolve(to);
+  return {
+    before:
+      before ??
+      ($from.parent.inlineContent && $from.depth > 0
+        ? contentBesideBoundary(doc, $from.before(), -1)
+        : null),
+    after:
+      after ??
+      ($to.parent.inlineContent && $to.depth > 0
+        ? contentBesideBoundary(doc, $to.after(), 1)
+        : null),
+  };
+};
+
 /** The comments on both `before` and `after`: text between them must carry them. */
 const commentsAround = (before: PMNode | null, after: PMNode | null): Mark[] =>
   before && after
@@ -715,6 +744,20 @@ const commentsAround = (before: PMNode | null, after: PMNode | null): Mark[] =>
         (mark) => mark.type.name === "comment" && mark.isInSet(after.marks),
       )
     : [];
+
+/**
+ * The comments covering the content on both sides of `[from, to)`, across a
+ * paragraph's edge too: text an edit puts there lies between the two points
+ * a save writes for each, so the saved package reopens with it covered.
+ */
+export const commentsSpanningInsertion = (
+  doc: PMNode,
+  from: number,
+  to: number = from,
+): Mark[] => {
+  const { before, after } = contentAround(doc, from, to);
+  return commentsAround(before, after);
+};
 
 /**
  * The mark sets of a run of text a TRACKED edit inserts at `at` (one set per
@@ -732,7 +775,9 @@ export const commentsForTrackedInsertion = (
   at: number,
   pieces: readonly (readonly Mark[])[],
 ): (readonly Mark[])[] => {
-  const { before, after } = neighboursAt(doc, at);
+  // At a paragraph's edge the neighbour is across it: a comment covering the
+  // content on both sides covers what lands between, as its saved range does.
+  const { before, after } = contentAround(doc, at);
   const sets: (readonly Mark[])[] = [
     before?.marks ?? [],
     ...pieces,
