@@ -76,6 +76,20 @@ const placement = (
         ? [survivor + 1, 0, 0]
         : [survivor, 1, AFTER_EVERY_OFFSET];
   }
+  // A block put before that paragraph with no words left lands in the same
+  // gap, and runs there too: alone after an edit gave it words, it would go
+  // before the paragraphs the join takes in.
+  const before =
+    operation.type === "insertBeforeBlock" ||
+    (operation.type === "insertTable" && operation["position"] === "before");
+  if (
+    before &&
+    [...joinsInto.values()].some(
+      ({ survivor, keepsWords }) =>
+        !keepsWords && survivor === blockIdOf(operation),
+    )
+  )
+    return [index, 1, AFTER_EVERY_OFFSET];
   switch (operation.type) {
     case "replaceInBlock":
       return [index, 1, Math.max(0, text.indexOf(String(operation["find"])))];
