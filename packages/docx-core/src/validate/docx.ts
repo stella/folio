@@ -14,6 +14,7 @@ import {
   isOoxmlSymbolCharacter,
   type Paragraph,
   type ParagraphContent,
+  type PreservedChild,
   type Run,
   type RunContent,
   type SectionProperties,
@@ -412,6 +413,9 @@ type ValidationContext = {
   referencedCommentIds: Map<number, string[]>;
   commentRangeStarts: CounterMap;
   commentRangeEnds: CounterMap;
+  /** Comment range markers a table or row keeps as positioned markup. */
+  preservedCommentRangeStarts: CounterMap;
+  preservedCommentRangeEnds: CounterMap;
   bookmarkStarts: CounterMap;
   bookmarkEnds: CounterMap;
   moveFromStarts: CounterMap;
@@ -443,6 +447,7 @@ export const validateDocumentModel = (
   validateComments(document.package.document.comments ?? [], ctx);
   validateNotes(document, ctx);
   validateMedia(document, ctx);
+  pairPreservedCommentRanges(ctx);
   validateCounterPairs(ctx.commentRangeStarts, ctx.commentRangeEnds, {
     label: "comment range",
     startName: "commentRangeStart",
@@ -498,6 +503,8 @@ const createValidationContext = (document: Document): ValidationContext => ({
   referencedCommentIds: new Map(),
   commentRangeStarts: new Map(),
   commentRangeEnds: new Map(),
+  preservedCommentRangeStarts: new Map(),
+  preservedCommentRangeEnds: new Map(),
   bookmarkStarts: new Map(),
   bookmarkEnds: new Map(),
   moveFromStarts: new Map(),
@@ -1048,8 +1055,54 @@ const validateTable = (
     return;
   }
 
+  countPreservedCommentRanges(table.preserved?.children, ctx);
   for (const [index, row] of table.rows.entries()) {
     validateTableRow(row, `${path}.rows[${index}]`, ctx);
+  }
+};
+
+const PRESERVED_COMMENT_RANGE_MARKER =
+  /<(?:[\w.-]+:)?commentRange(Start|End)(?=[\s/>])[^>]*?\s(?:[\w.-]+:)?id=["'](\d+)["']/gu;
+
+/**
+ * A comment range that opens or closes between a table's rows or a row's
+ * cells. Neither has a node for the marker, so the parser keeps it as
+ * positioned markup. A range that runs to the end of a table is written this
+ * way, with its partner in a cell paragraph.
+ */
+const countPreservedCommentRanges = (
+  children: readonly PreservedChild[] | undefined,
+  ctx: ValidationContext,
+): void => {
+  for (const child of children ?? []) {
+    for (const match of child.xml.matchAll(PRESERVED_COMMENT_RANGE_MARKER)) {
+      increment(
+        match[1] === "Start"
+          ? ctx.preservedCommentRangeStarts
+          : ctx.preservedCommentRangeEnds,
+        Number(match[2]),
+      );
+    }
+  }
+};
+
+/**
+ * Positioned markup stays opaque on its own: only a marker that completes a
+ * range a cell paragraph opens or closes is counted with it, so a stray marker
+ * kept as bytes is still read by nobody.
+ */
+const pairPreservedCommentRanges = (ctx: ValidationContext): void => {
+  const typed = new Set([
+    ...ctx.commentRangeStarts.keys(),
+    ...ctx.commentRangeEnds.keys(),
+  ]);
+  for (const [preserved, counted] of [
+    [ctx.preservedCommentRangeStarts, ctx.commentRangeStarts],
+    [ctx.preservedCommentRangeEnds, ctx.commentRangeEnds],
+  ] as const) {
+    for (const [id, count] of preserved) {
+      if (typed.has(id)) counted.set(id, (counted.get(id) ?? 0) + count);
+    }
   }
 };
 
@@ -1058,6 +1111,7 @@ const validateTableRow = (
   path: string,
   ctx: ValidationContext,
 ): void => {
+  countPreservedCommentRanges(row.preserved?.children, ctx);
   for (const [index, cell] of row.cells.entries()) {
     validateTableCell(cell, `${path}.cells[${index}]`, ctx);
   }

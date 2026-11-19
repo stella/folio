@@ -211,6 +211,67 @@ describe("canonical DOCX document model validation", () => {
     );
   });
 
+  describe("a comment range that closes between table rows or cells", () => {
+    const tableClosing = (
+      level: "table" | "row",
+      endXml: string,
+    ): BlockContent => {
+      const preserved = { children: [{ index: 1, xml: endXml }] };
+      return {
+        type: "table",
+        rows: [
+          {
+            type: "tableRow",
+            cells: [
+              {
+                type: "tableCell",
+                content: [
+                  paragraph([{ type: "commentRangeStart", id: 5 }, textRun()]),
+                ],
+              },
+            ],
+            ...(level === "row" && { preserved }),
+          },
+        ],
+        ...(level === "table" && { preserved }),
+      } as BlockContent;
+    };
+    const comments = [{ id: 5, author: "Reviewer", content: [paragraph()] }];
+
+    for (const level of ["table", "row"] as const) {
+      test(`pairs a cell's start with the ${level}'s end`, () => {
+        const result = validateDocumentModel(
+          createDocument({
+            content: [
+              tableClosing(level, '<w:commentRangeEnd w:id="5"/>'),
+              paragraph(),
+            ],
+            comments,
+          }),
+        );
+        expect(result.issues).toEqual([]);
+      });
+    }
+
+    test("counts no positioned marker that completes no range", () => {
+      const result = validateDocumentModel(
+        createDocument({
+          content: [
+            tableClosing(
+              "table",
+              '<w:commentRangeEnd w:id="5"/><w:commentRangeStart w:id="9"/>',
+            ),
+            paragraph([{ type: "commentRangeEnd", id: 5 }, textRun()]),
+          ],
+          comments,
+        }),
+      );
+      expect(result.issues.map((issue) => issue.message)).toEqual([
+        "Unbalanced comment range 5: commentRangeStart=1, commentRangeEnd=2.",
+      ]);
+    });
+  });
+
   test("warns but accepts unbalanced bookmarks from real-world DOCX files", () => {
     const result = validateDocumentModel(
       createDocument({

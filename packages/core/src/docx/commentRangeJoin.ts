@@ -29,7 +29,10 @@ type MarkerSlot = CommentMarkerSlot;
  *
  * A start or an end between blocks counts as one of the range's markers, so a
  * range that opens beside a content control keeps that start and loses the
- * one its mark wrote at the front of the first paragraph.
+ * one its mark wrote at the front of the first paragraph. A marker a table
+ * keeps between its rows, or a row between its cells, counts the same way:
+ * a range that closes after a table's last row loses the end its mark wrote
+ * in the last cell.
  */
 export const joinCommentRangesAcrossParagraphs = (
   blocks: readonly BlockContent[],
@@ -54,6 +57,8 @@ export const joinCommentRangesAcrossParagraphs = (
   const removals = new InlineContentRemovals();
   const blockRemovals = new Map<BlockContent[], number[]>();
   const remove = (slot: MarkerSlot): void => {
+    // A table's or a row's own marker is written back where it stood.
+    if (slot.level === "positioned") return;
     if (slot.level === "inline") {
       removals.mark(slot);
       return;

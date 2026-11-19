@@ -1,4 +1,7 @@
-import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
+import {
+  PARSE_WARNING_CODES,
+  type PreservedChild,
+} from "@stll/docx-core/model";
 
 import type {
   BlockContent,
@@ -13,6 +16,7 @@ import type {
 } from "../types/document";
 import { InlineContentRemovals } from "./inlineContentRemovals";
 import { visitInlineContentSlots } from "./paragraphTraversal";
+import { preservedCommentRangeMarkersAt } from "./preservedCommentRangeMarkers";
 
 /** The codes this normalisation is reported under, owned here, not at the caller. */
 export const DANGLING_COMMENT_REFERENCE_WARNING: "dangling-comment-reference" =
@@ -74,12 +78,31 @@ export const normalizeCommentReferences = ({
     });
   };
 
+  // A range may also open or close between a table's rows or a row's cells.
+  // The parser keeps those markers as positioned markup, so they are read here
+  // in document order; without them a range that closes after the last row
+  // looks unbalanced and its paragraph-side marker would be rewritten.
+  const collectPositionedMarkers = (
+    children: readonly PreservedChild[] | undefined,
+    at: number,
+  ): void => {
+    for (const marker of preservedCommentRangeMarkersAt(children, at)) {
+      if (validCommentIds.has(marker.id)) rangeMarkers.push(marker);
+    }
+  };
+
   const normalizeTable = (table: Table): void => {
-    for (const row of table.rows) {
-      for (const cell of row.cells) {
+    const tableChildren = table.preserved?.children;
+    for (const [rowIndex, row] of table.rows.entries()) {
+      collectPositionedMarkers(tableChildren, rowIndex);
+      const rowChildren = row.preserved?.children;
+      for (const [cellIndex, cell] of row.cells.entries()) {
+        collectPositionedMarkers(rowChildren, cellIndex);
         normalizeBlocks(cell.content);
       }
+      collectPositionedMarkers(rowChildren, row.cells.length);
     }
+    collectPositionedMarkers(tableChildren, table.rows.length);
   };
 
   const normalizeBlock = (block: BlockContent): void => {

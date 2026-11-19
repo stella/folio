@@ -7,6 +7,8 @@
  * walks would drift.
  */
 
+import type { PreservedMarkup } from "@stll/docx-core/model";
+
 import type {
   BlockContent,
   Hyperlink,
@@ -21,6 +23,10 @@ import type {
 } from "../types/document";
 import { cloneParagraphWithPropertySource } from "./paragraphPropertySource";
 import { visitInlineContentSlots } from "./paragraphTraversal";
+import {
+  type PreservedCommentRangeMarker,
+  preservedCommentRangeMarkersAt,
+} from "./preservedCommentRangeMarkers";
 
 type CommentMarker = Extract<
   ParagraphContent,
@@ -49,8 +55,20 @@ export type BlockCommentMarkerSlot = {
   >;
 };
 
+/**
+ * A range marker a table keeps between its rows, or a row between its cells,
+ * as positioned markup. It is written back where it stood, so a caller reads
+ * it as one of the range's markers but has nothing to splice.
+ */
+export type PositionedCommentMarkerSlot = {
+  level: "positioned";
+  item: PreservedCommentRangeMarker;
+};
+
 export type CommentMarkerSlot =
-  InlineCommentMarkerSlot | BlockCommentMarkerSlot;
+  | InlineCommentMarkerSlot
+  | BlockCommentMarkerSlot
+  | PositionedCommentMarkerSlot;
 
 export const visitCommentMarkers = (
   blocks: readonly BlockContent[],
@@ -68,17 +86,35 @@ export const visitCommentMarkers = (
     });
   };
 
+  const visitPositioned = (
+    preserved: PreservedMarkup | undefined,
+    at: number,
+  ): void => {
+    for (const item of preservedCommentRangeMarkersAt(
+      preserved?.children,
+      at,
+    )) {
+      visit({ level: "positioned", item });
+    }
+  };
+
   const visitBlock = (block: BlockContent): void => {
     switch (block.type) {
       case "paragraph":
         visitParagraph(block);
         return;
       case "table":
-        for (const row of block.rows) {
-          for (const cell of row.cells) {
+        // In document order: a positioned marker stands before the row or
+        // cell its index names.
+        for (const [rowIndex, row] of block.rows.entries()) {
+          visitPositioned(block.preserved, rowIndex);
+          for (const [cellIndex, cell] of row.cells.entries()) {
+            visitPositioned(row.preserved, cellIndex);
             visitBlocks(cell.content);
           }
+          visitPositioned(row.preserved, row.cells.length);
         }
+        visitPositioned(block.preserved, block.rows.length);
         return;
       case "blockSdt":
       case "blockCustomXml":
@@ -216,11 +252,12 @@ export const removeCommentMarkers = (
 ): BlockContent[] => {
   if (commentIds.size === 0) return blocks.slice();
   const removals = new Map<readonly unknown[], number[]>();
-  visitCommentMarkers(blocks, ({ content, index, item }) => {
-    if (!commentIds.has(item.id)) return;
-    const indexes = removals.get(content) ?? [];
-    indexes.push(index);
-    removals.set(content, indexes);
+  visitCommentMarkers(blocks, (slot) => {
+    // A table's or a row's own marker stays the positioned markup it was.
+    if (slot.level === "positioned" || !commentIds.has(slot.item.id)) return;
+    const indexes = removals.get(slot.content) ?? [];
+    indexes.push(slot.index);
+    removals.set(slot.content, indexes);
   });
   if (removals.size === 0) return blocks.slice();
 
