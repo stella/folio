@@ -1,0 +1,84 @@
+{
+  "version": 1,
+  "title": "PINNED #1842, reported seed 1658078430: deleting the final paragraph after a new reviewer opens the document retracts the split's inserted break before it, so the joined comment owner runs into it",
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "emoji",
+  "mode": "tracked-changes",
+  "seed": 1658078430,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 394407090,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "412DDC7F",
+          "text": "Period delivery schedule term."
+        }
+      ],
+      "atomic": false
+    },
+    {
+      "action": "core batch",
+      "seed": 1842325721,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "412DDC7F",
+          "text": "Schedule payment invoice."
+        },
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "31617F9A",
+          "separator": " ",
+          "mergedParagraphProperties": {
+            "alignment": "center"
+          }
+        },
+        {
+          "type": "splitBlock",
+          "blockId": "5E88C024",
+          "offset": 13
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 322889593,
+      "operations": [
+        {
+          "type": "commentOnRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "31617F9A",
+            "startOffset": 0,
+            "endOffset": 7,
+            "selectedTextHash": "hk7ezx1"
+          },
+          "comment": {
+            "text": "Warranty schedule period payment buyer notice schedule supplier."
+          }
+        }
+      ],
+      "atomic": false
+    },
+    {
+      "action": "new reviewer",
+      "seed": 1394737342
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 2594467485,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "@6"
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from random flow seed 1658078430"
+}
