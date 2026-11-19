@@ -68,6 +68,10 @@ import {
   resolveCleanTextRange,
 } from "../ai-edits/clean-text";
 import { directJoinSurvivor, directJoinTakes } from "../ai-edits/directJoin";
+import {
+  createExistingRevisionGuard,
+  EXISTING_REVISION_CONFLICT_MESSAGE,
+} from "../ai-edits/existingRevisions";
 import { stripInlineEmphasisMarkers } from "../ai-edits/inline-emphasis";
 import {
   createBatchListMinter,
@@ -2242,6 +2246,51 @@ class CanonicalPublicOperationResolutionError extends CanonicalPublicOperationRe
   gap?: CanonicalGap | null;
 }> {}
 
+type MergeFormattingConflictOptions = {
+  before: NonNullable<ReturnType<typeof findStoryBody>>;
+  after: NonNullable<ReturnType<typeof findStoryBody>>;
+  ops: readonly DocumentOp[];
+  author: string;
+};
+
+/** Both the tracked join and a subsequent property alignment may write the survivor. */
+const overwritesForeignMergeFormatting = ({
+  before,
+  after,
+  ops,
+  author,
+}: MergeFormattingConflictOptions): boolean => {
+  const targets = new Set<string>();
+  for (const op of ops) {
+    if (op.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS) targets.add(op.nextBlockId);
+    if (op.type === DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS)
+      targets.add(op.blockId);
+  }
+  const foreignChanges = (paragraph: Paragraph) =>
+    paragraph.propertyChanges?.filter(({ info }) => info.author !== author) ??
+    [];
+  const pending = storyParagraphs(before).flatMap(({ paragraph }) => {
+    if (paragraph.paraId === undefined || !targets.has(paragraph.paraId))
+      return [];
+    const changes = foreignChanges(paragraph);
+    return changes.length === 0 ? [] : [[paragraph.paraId, changes] as const];
+  });
+  if (pending.length === 0) return false;
+  const survivors = new Map(
+    storyParagraphs(after).map(({ paragraph }) => [
+      paragraph.paraId,
+      paragraph,
+    ]),
+  );
+  return pending.some(([id, revisions]) => {
+    const survivor = survivors.get(id);
+    return (
+      survivor === undefined ||
+      JSON.stringify(revisions) !== JSON.stringify(foreignChanges(survivor))
+    );
+  });
+};
+
 type BatchPropertyRefusalOptions = {
   document: Document;
   story: OpStory;
@@ -2581,6 +2630,33 @@ export class CanonicalPublicOperations {
       };
     };
     let claims = new BatchClaims();
+    const conflictsWithRevision =
+      batch.mode !== "direct" &&
+      batch.existingRevisions === "refuse-cross-author" &&
+      projected.isOk()
+        ? createExistingRevisionGuard({
+            doc: projected.value.doc,
+            author: options.author ?? "AI",
+          })
+        : undefined;
+    const refusesExistingRevision = ({
+      operation,
+      plan,
+    }: ReturnType<typeof planned>) => {
+      if (
+        operation.type === "commentOnBlock" ||
+        operation.type === "commentOnRange" ||
+        !conflictsWithRevision?.(plan.claim)
+      ) {
+        return false;
+      }
+      skip(
+        operation.id,
+        "existingRevisionConflict",
+        EXISTING_REVISION_CONFLICT_MESSAGE,
+      );
+      return true;
+    };
     const overlapsResolved = (candidate: ReturnType<typeof planned>) =>
       claims.conflictOf(candidate.plan.claim) !== null;
     const admit = (candidate: ReturnType<typeof planned>) => {
@@ -2661,6 +2737,7 @@ export class CanonicalPublicOperations {
         continue;
       }
       const candidate = planned(compiled.value);
+      if (refusesExistingRevision(candidate)) continue;
       if (overlapsResolved(candidate)) {
         skip(operation.id, "overlappingOperation");
         continue;
@@ -2712,6 +2789,7 @@ export class CanonicalPublicOperations {
         continue;
       }
       const candidate = planned(alone.value);
+      if (refusesExistingRevision(candidate)) continue;
       if (overlapsResolved(candidate)) {
         skip(operation.id, "overlappingOperation");
         continue;
@@ -2916,6 +2994,28 @@ export class CanonicalPublicOperations {
       }
       let nextDocument = compiled.value.document;
       const operationOps = [...compiled.value.ops];
+      if (
+        operation.type === "mergeBlockWithNext" &&
+        conflictsWithRevision !== undefined
+      ) {
+        const beforeStory = findStoryBody(sourceDocument, story);
+        const afterStory = findStoryBody(nextDocument, story);
+        if (
+          beforeStory !== undefined &&
+          afterStory !== undefined &&
+          overwritesForeignMergeFormatting({
+            before: beforeStory,
+            after: afterStory,
+            ops: operationOps,
+            author: options.author ?? "AI",
+          })
+        ) {
+          return declined({
+            reason: "existingRevisionConflict",
+            message: EXISTING_REVISION_CONFLICT_MESSAGE,
+          });
+        }
+      }
       let commentId: number | undefined;
       let commentAllocation: PrepareOperationOptions["commentAllocation"];
       switch (resolvedOperation.type) {

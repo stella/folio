@@ -1000,6 +1000,23 @@ describe("document operation contract JSON schema conformance", () => {
 describe("document operation batch standard schema", () => {
   const validate = folioDocumentOperationBatchSchema["~standard"].validate;
 
+  test.each(["allow", "refuse-cross-author"])(
+    "admits an existing revision policy of %s",
+    (existingRevisions) => {
+      const batch = { version: 1, operations: [], existingRevisions };
+      expect(admits(BATCH_SCHEMA, batch)).toBe(true);
+      expect(validate(batch)).toEqual({ value: batch });
+    },
+  );
+
+  test("refuses an unknown existing revision policy", () => {
+    const batch = { version: 1, operations: [], existingRevisions: "strict" };
+    expect(admits(BATCH_SCHEMA, batch)).toBe(false);
+    expect(validate(batch)).toMatchObject({
+      issues: [{ path: ["existingRevisions"] }],
+    });
+  });
+
   test("exposes the standard-schema surface and the attached JSON schema", () => {
     expect(folioDocumentOperationBatchSchema["~standard"].version).toBe(1);
     expect(folioDocumentOperationBatchSchema["~standard"].vendor).toBe("folio");

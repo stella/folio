@@ -34,6 +34,11 @@ type RecordedFormatting = NonNullable<
   ParagraphPropertyChangeAttrs["previousFormatting"]
 >;
 
+export const paragraphPropertySnapshotsDiffer = (
+  left: RecordedFormatting,
+  right: RecordedFormatting,
+): boolean => JSON.stringify(left) !== JSON.stringify(right);
+
 type CarryParagraphPropertiesOptions = {
   tr: Transaction;
   /** The paragraph that takes the properties. */
@@ -73,7 +78,7 @@ export const carryParagraphProperties = ({
   }
   const previousFormatting = paragraphPropertiesSnapshot(target);
   const formatting = paragraphPropertiesSnapshot(source);
-  if (JSON.stringify(previousFormatting) === JSON.stringify(formatting)) {
+  if (!paragraphPropertySnapshotsDiffer(previousFormatting, formatting)) {
     return { tr, changed: false, tracked: false };
   }
   const existing = expectParagraphAttrs(target)._propertyChanges;

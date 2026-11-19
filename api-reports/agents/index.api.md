@@ -388,6 +388,7 @@ export type ParseSuggestChangesResult = {
     operations: FolioAIEditOperation[];
     story?: FolioAgentSuggestionStory;
     precondition?: FolioDocumentOperationBatchPrecondition;
+    existingRevisions?: FolioDocumentOperationBatch["existingRevisions"];
     normalizations: FolioAgentInputNormalization[];
 } | {
     ok: false;

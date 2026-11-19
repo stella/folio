@@ -7,6 +7,7 @@ import {
   type FolioAIEditNormalization,
   type FolioAITextRangeHandle,
   type FolioDocumentOperation,
+  type FolioDocumentOperationBatch,
   type FolioDocumentOperationBatchPrecondition,
   type FolioDocumentOperationReceipt,
   type FolioDocumentStoryHandle,
@@ -728,6 +729,9 @@ const explainSkipReason = (reason: string): string => {
   if (reason === "pendingParagraphMarkDeletion") {
     return "a paragraph mark this operation depends on is pending tracked deletion; nothing was applied. Resolve that change first.";
   }
+  if (reason === "existingRevisionConflict") {
+    return "the edit touches another author's pending revision. Resolve that revision first or use existingRevisions: allow.";
+  }
   if (reason === "missingNumbering") {
     return '`numbering` names a numbering instance this document does not define; nothing was applied. Re-read the document and use a `{ kind: "reference", numId, ilvl? }` the document defines (the one a neighbouring list item carries), or choose another numbering state.';
   }
@@ -854,12 +858,18 @@ const rejectBatch = (
 type ApplyOperationsOptions = {
   operations: readonly FolioDocumentOperation[];
   precondition?: FolioDocumentOperationBatchPrecondition;
+  existingRevisions?: FolioDocumentOperationBatch["existingRevisions"];
   normalizations?: readonly FolioAgentInputNormalization[];
 };
 
 const applyOperations = (
   bridge: FolioAgentBridge,
-  { operations, precondition, normalizations = [] }: ApplyOperationsOptions,
+  {
+    operations,
+    precondition,
+    existingRevisions,
+    normalizations = [],
+  }: ApplyOperationsOptions,
 ): FolioAgentApplyOperationsSummary => {
   const snapshot = bridge.snapshot();
   const guardedOperations: FolioDocumentOperation[] = [];
@@ -888,6 +898,7 @@ const applyOperations = (
           mode: bridge.documentOperationMode,
         }),
         ...(precondition !== undefined && { precondition }),
+        ...(existingRevisions !== undefined && { existingRevisions }),
       }),
     ),
     normalizations,
@@ -1122,6 +1133,9 @@ const suggestChanges = (
     }
     return applyOperations(scoped, {
       operations: fresh,
+      ...(parsed.existingRevisions !== undefined && {
+        existingRevisions: parsed.existingRevisions,
+      }),
       ...(parsed.precondition !== undefined && {
         precondition: parsed.precondition,
       }),

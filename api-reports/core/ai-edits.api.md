@@ -193,6 +193,7 @@ export type FolioAIEditApplyMode = "direct" | "tracked-changes" | "suggested";
 
 // @public
 export type FolioAIEditApplyOutcome = FolioAIEditApplyResult & {
+    heldRevisionConflict?: true;
     nextRevisionId: number;
 };
 
@@ -565,7 +566,7 @@ export type FolioAIEditSkipReason =
 */
 "pendingDeletion" |
 /** Resolve the removed paragraph mark before editing its properties separately, or before inserting a paragraph between it and a table. */
-"pendingParagraphMarkDeletion";
+"pendingParagraphMarkDeletion" | "existingRevisionConflict";
 
 // @public
 export type FolioAIEditSnapshot = FolioContentSnapshot<FolioAIBlock> & {
@@ -701,6 +702,7 @@ export type FolioDocumentOperationBatch = {
     readonly atomic?: boolean;
     readonly dryRun?: boolean;
     readonly precondition?: FolioDocumentOperationBatchPrecondition;
+    readonly existingRevisions?: (typeof FOLIO_EXISTING_REVISION_POLICIES)[number];
 };
 
 // @public (undocumented)

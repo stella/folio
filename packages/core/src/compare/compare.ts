@@ -936,6 +936,7 @@ const COMPARE_SKIP_DISPOSITION = {
   emptyOperation: "unwritable",
   pendingParagraphPropertyChange: "unwritable",
   pendingParagraphMarkDeletion: "unwritable",
+  existingRevisionConflict: "unwritable",
   pendingRunPropertyChange: "unwritable",
   noopOperation: "unwritable",
   documentVersionMismatch: "fatal",

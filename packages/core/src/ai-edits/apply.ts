@@ -113,6 +113,7 @@ import { joinAtParagraphMark } from "../prosemirror/paragraphMarkJoin";
 import {
   carryParagraphProperties,
   paragraphLeftAfter,
+  paragraphPropertySnapshotsDiffer,
   recordReplacedParagraphProperties,
 } from "../prosemirror/paragraphPropertyCarry";
 import {
@@ -205,6 +206,10 @@ import {
   resolveCleanTextRange,
 } from "./clean-text";
 import { directJoinSurvivor, directJoinTakes } from "./directJoin";
+import {
+  createExistingRevisionGuard,
+  EXISTING_REVISION_CONFLICT_MESSAGE,
+} from "./existingRevisions";
 import {
   hasInlineEmphasis,
   parseInlineEmphasisRuns,
@@ -401,6 +406,7 @@ type ApplyFolioAIEditOperationsOptions = {
 type ApplyFolioAIEditOperationsInPackageOptions =
   ApplyFolioAIEditOperationsOptions & {
     numberingIdsElsewhere: NumberingIdsInUse;
+    refuseCrossAuthorRevisions?: boolean;
   };
 
 type ApplyFolioAIEditOperationsInternalOptions =
@@ -536,6 +542,8 @@ export type { FolioUndefinedReferencePolicy };
  * so rather than making the caller guess a stride.
  */
 export type FolioAIEditApplyOutcome = FolioAIEditApplyResult & {
+  /** The held transaction was refused when its final geometry exposed a protected break. */
+  heldRevisionConflict?: true;
   /**
    * First revision id a following batch may allocate: one past the last id
    * this batch used, or the seed it started from when it allocated none.
@@ -3499,6 +3507,7 @@ type RetireFinalParagraphsOptions = {
   batchRevisionIds: ReadonlySet<number>;
   revisionSeed: number;
   author: string;
+  refuseCrossAuthorRevisions?: boolean | undefined;
   date: string;
   styleResolver: ReturnType<typeof getDocumentStyleResolver>;
   numbering: NumberingMap | null;
@@ -3512,6 +3521,10 @@ type RetiredFinalParagraphs = {
   /** Batch revisions a retracted inserted break took out of the document. */
   retractedRevisionIds: number[];
 };
+
+type RetireFinalParagraphsOutcome =
+  | (RetiredFinalParagraphs & { type: "resolved" })
+  | { type: "blocked"; operationId: string; nextRevisionId: number };
 
 /** The preceding paragraph whose break a final deletion can retire. */
 const finalParagraphPredecessor = (doc: PMNode, at: number) => {
@@ -3636,6 +3649,46 @@ const canRetractFinalBreak = ({
     hasSerializableParagraphPropertyChange(
       expectParagraphAttrs(predecessor)._propertyChanges,
     )
+  );
+};
+
+/** The successor that can take a retractable final break. */
+const finalBreakRetractionTarget = (
+  doc: PMNode,
+  predecessor: { node: PMNode; position: number },
+) => {
+  const position = retractedBreakTargetPosition(doc, predecessor);
+  const target = doc.nodeAt(position);
+  return target &&
+    canRetractFinalBreak({ predecessor: predecessor.node, target })
+    ? { position, target }
+    : null;
+};
+
+const retractsForeignFinalBreak = ({
+  doc,
+  position,
+  author,
+}: {
+  doc: PMNode;
+  position: number;
+  author: string;
+}): boolean => {
+  const predecessor = finalParagraphPredecessor(doc, position);
+  if (!predecessor) return false;
+  return (
+    isForeignAddedBreak(predecessor.node, author) &&
+    (pendingParagraphRetraction(doc, position)?.clearBreakAt ===
+      predecessor.position ||
+      finalBreakRetractionTarget(doc, predecessor) !== null)
+  );
+};
+
+const isForeignAddedBreak = (node: PMNode, author: string): boolean => {
+  const mark = expectParagraphAttrs(node).pPrMark;
+  return (
+    (mark?.kind === "ins" || mark?.kind === "moveTo") &&
+    mark.info.author !== author
   );
 };
 
@@ -4168,10 +4221,11 @@ const withRetiredFinalParagraphs = ({
   batchRevisionIds,
   revisionSeed,
   author,
+  refuseCrossAuthorRevisions,
   date,
   styleResolver,
   numbering,
-}: RetireFinalParagraphsOptions): RetiredFinalParagraphs => {
+}: RetireFinalParagraphsOptions): RetireFinalParagraphsOutcome => {
   let nextRevisionId = revisionSeed;
   const addedRevisions: RetiredFinalParagraphs["addedRevisions"] = [];
   const retractedRevisionIds: number[] = [];
@@ -4256,15 +4310,15 @@ const withRetiredFinalParagraphs = ({
       continue;
     }
     if (addedBreakRevisionId(mark) !== null) {
-      const targetPosition = retractedBreakTargetPosition(tr.doc, predecessor);
-      const following = tr.doc.nodeAt(targetPosition);
-      if (
-        !following ||
-        !canRetractFinalBreak({ predecessor: previous, target: following })
-      ) {
+      const retraction = finalBreakRetractionTarget(tr.doc, predecessor);
+      if (retraction === null) {
         // One w:pPrChange per paragraph: an occupied predecessor keeps the emptied target.
         continue;
       }
+      if (refuseCrossAuthorRevisions && isForeignAddedBreak(previous, author)) {
+        return { type: "blocked", operationId, nextRevisionId };
+      }
+      const { position: targetPosition, target: following } = retraction;
       // Wholly deleted tables between them go on accepting, and the added
       // words on rejecting: the paragraph joins past them.
       if (targetPosition !== position + previous.nodeSize) {
@@ -4315,6 +4369,7 @@ const withRetiredFinalParagraphs = ({
     // A surviving deleted break stays as it is.
   }
   return {
+    type: "resolved",
     nextRevisionId,
     resolvedOperationIds,
     addedRevisions,
@@ -5293,6 +5348,7 @@ const applyFolioAIEditOperationsInternal = ({
   wordDiffMode = "bounded",
   tableTemplates,
   replacementBackground = "clear",
+  refuseCrossAuthorRevisions,
   undefinedReferences,
   numberingIdsElsewhere,
 }: ApplyFolioAIEditOperationsInternalOptions): FolioAIEditApplyOutcome => {
@@ -5305,6 +5361,10 @@ const applyFolioAIEditOperationsInternal = ({
   const deletionType = view.state.schema.marks["deletion"];
   const commentType = view.state.schema.marks["comment"];
   const occupiedCommentIds = new Set<number>();
+  const conflictsWithRevision =
+    mode === "direct" || !refuseCrossAuthorRevisions
+      ? undefined
+      : createExistingRevisionGuard({ doc: view.state.doc, author });
   if (commentType) {
     view.state.doc.descendants((node) => {
       for (const mark of node.marks) {
@@ -5544,6 +5604,26 @@ const applyFolioAIEditOperationsInternal = ({
       doc: view.state.doc,
       producesTrackedChanges,
     });
+    if (
+      operation.type !== "commentOnBlock" &&
+      operation.type !== "commentOnRange" &&
+      conflictsWithRevision !== undefined &&
+      (conflictsWithRevision(claim) ||
+        (claim.type === "deleteBlock" &&
+          claim.endsContainer &&
+          retractsForeignFinalBreak({
+            doc: view.state.doc,
+            position: claim.block,
+            author,
+          })))
+    ) {
+      skipped.push({
+        id: operation.id,
+        reason: "existingRevisionConflict",
+        message: EXISTING_REVISION_CONFLICT_MESSAGE,
+      });
+      continue;
+    }
     // A comparison describes differences two documents already hold; the
     // locks guard editing a document, not describing it.
     const lockViolation = comparisonApplying()
@@ -7114,6 +7194,22 @@ const applyFolioAIEditOperationsInternal = ({
           ? null
           : pendingParagraphRetraction(tr.doc, item.blockFrom);
         if (retraction) {
+          const breakOwner =
+            retraction.clearBreakAt === null
+              ? null
+              : tr.doc.nodeAt(retraction.clearBreakAt);
+          if (
+            conflictsWithRevision !== undefined &&
+            breakOwner &&
+            isForeignAddedBreak(breakOwner, author)
+          ) {
+            skipped.push({
+              id: item.operation.id,
+              reason: "existingRevisionConflict",
+              message: EXISTING_REVISION_CONFLICT_MESSAGE,
+            });
+            continue;
+          }
           if (isSuggested && !isSuggestedParagraphInsert(item.blockNode)) {
             // Retracting another author's tracked insertion would remove it
             // from the saved package before this suggestion is accepted.
@@ -7815,6 +7911,36 @@ const applyFolioAIEditOperationsInternal = ({
         // table ends there, apart from the table: the joined paragraph keeps
         // a break that stays, and no removed mark runs it into the table.
         const endsBeforeTable = joinEndsBeforeTable(tr.doc, join.nextPosition);
+        if (conflictsWithRevision !== undefined && !endsBeforeTable) {
+          const survivor = tr.doc.nodeAt(
+            paragraphMergeLeaves({
+              doc: tr.doc,
+              paragraphPos: blockFrom,
+              removedBreakPositions: pendingRemovedFinalBreakPositions(
+                tr,
+                deletedFinalParagraphs,
+              ),
+            }) ?? join.nextPosition,
+          );
+          if (
+            survivor &&
+            expectParagraphAttrs(survivor)._propertyChanges?.some(
+              ({ info }) => info.author !== author,
+            ) &&
+            (item.operation.mergedParagraphProperties !== undefined ||
+              paragraphPropertySnapshotsDiffer(
+                paragraphPropertiesSnapshot(live),
+                paragraphPropertiesSnapshot(survivor),
+              ))
+          ) {
+            skipped.push({
+              id: item.operation.id,
+              reason: "existingRevisionConflict",
+              message: EXISTING_REVISION_CONFLICT_MESSAGE,
+            });
+            continue;
+          }
+        }
         allocateNewLists({ status: "willApply", items: [item] });
         assertNewListsAllocated(item.operation);
         const separator = followedOnlyByDeletedParagraphs(tr.doc, blockTo)
@@ -8287,10 +8413,32 @@ const applyFolioAIEditOperationsInternal = ({
       batchRevisionIds,
       revisionSeed,
       author,
+      refuseCrossAuthorRevisions,
       date,
       styleResolver,
       numbering,
     });
+    if (retired.type === "blocked") {
+      // The carrier is decided over the complete held transaction. Nothing
+      // reaches the editor when another operation exposed a foreign break.
+      return {
+        heldRevisionConflict: true,
+        applied: [],
+        skipped: [
+          ...skipped,
+          ...applied.map(({ id }): FolioAIEditSkippedOperation =>
+            id === retired.operationId
+              ? {
+                  id,
+                  reason: "existingRevisionConflict",
+                  message: EXISTING_REVISION_CONFLICT_MESSAGE,
+                }
+              : { id, reason: "atomicBatchRejected" },
+          ),
+        ],
+        nextRevisionId: retired.nextRevisionId,
+      };
+    }
     revisionSeed = retired.nextRevisionId;
     withJoinsEndingWhereTheyDid({ tr, joins: joinsBefore });
     const settledJoinBreaks = withKeptJoinBreaksSettled({

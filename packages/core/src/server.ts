@@ -201,6 +201,7 @@ export {
   FOLIO_DOCUMENT_OPERATION_PRECONDITIONS,
   FOLIO_DOCUMENT_OPERATION_STORIES,
   FOLIO_DOCUMENT_OPERATION_TYPES,
+  FOLIO_EXISTING_REVISION_POLICIES,
   getFolioDocumentOperationCapabilities,
   getFolioDocumentOperationIssues,
   getFolioDocumentOperationReceipts,
