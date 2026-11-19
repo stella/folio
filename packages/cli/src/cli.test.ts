@@ -5,7 +5,7 @@ import {
   makeTempDir,
   writeDocx,
 } from "./__tests__/fixtures";
-import { captureIo, envelopeOf } from "./__tests__/io";
+import { captureIo, dataOf, envelopeOf } from "./__tests__/io";
 import { runFolioCli } from "./cli";
 
 let dir = "";
@@ -20,6 +20,110 @@ afterEach(async () => {
 });
 
 describe("runFolioCli", () => {
+  test("deletes comments by repeated id and exact author", async () => {
+    const file = await writeDocx(dir, "comments.docx", CONTRACT_PARAGRAPHS);
+    const run = async (command: string, ...flags: string[]) => {
+      const captured = captureIo();
+      expect(
+        await runFolioCli([command, file, ...flags], captured.io),
+        captured.stdout(),
+      ).toBe(0);
+      return dataOf(captured.stdout());
+    };
+    const writeFlags = ["--in-place", "--no-expect-version", "--allow-repack"];
+    const add = async (author: string, text: string) => {
+      await run(
+        "comment",
+        "--author",
+        author,
+        "--block-id",
+        "10000002",
+        "--text",
+        text,
+        ...writeFlags,
+      );
+    };
+
+    await add("Reviewer", "First");
+    await add("Reviewer", "Second");
+    await add("Reviewer", "Third");
+    await add("Reviewer Jr.", "Keep");
+    const comments = (await run("comments"))["result"];
+    if (!Array.isArray(comments)) throw new Error("Missing comments");
+    const idOf = (text: string) => {
+      const comment: unknown = comments.find(
+        (entry: unknown) =>
+          typeof entry === "object" &&
+          entry !== null &&
+          "text" in entry &&
+          entry.text === text,
+      );
+      if (
+        typeof comment !== "object" ||
+        comment === null ||
+        !("id" in comment)
+      ) {
+        throw new Error(`Missing comment ${text}`);
+      }
+      return String(comment.id);
+    };
+    const first = idOf("First");
+    const second = idOf("Second");
+    const selectedByAuthor = idOf("Third");
+
+    const byId = await run(
+      "delete-comments",
+      "--id",
+      first,
+      "--id",
+      second,
+      ...writeFlags,
+    );
+    expect(byId["result"]).toEqual({
+      deleted: [Number(first), Number(second)],
+    });
+
+    const byAuthor = await run(
+      "delete-comments",
+      "--by-author",
+      "Reviewer",
+      ...writeFlags,
+    );
+    expect(byAuthor["result"]).toEqual({ deleted: [Number(selectedByAuthor)] });
+    expect((await run("comments"))["result"]).toMatchObject([
+      { author: "Reviewer Jr.", text: "Keep" },
+    ]);
+  });
+
+  test.each([
+    { selector: [] },
+    { selector: ["--id", "1", "--by-author", "Reviewer"] },
+    { selector: ["--id", "1.5"] },
+    { selector: ["--id", "9007199254740992"] },
+  ])(
+    "refuses an invalid comment selection $selector without changing the file",
+    async ({ selector }) => {
+      const file = await writeDocx(dir, "unchanged.docx", CONTRACT_PARAGRAPHS);
+      const before = await Bun.file(file).arrayBuffer();
+      const captured = captureIo();
+      const exit = await runFolioCli(
+        [
+          "delete-comments",
+          file,
+          "--in-place",
+          "--no-expect-version",
+          ...selector,
+        ],
+        captured.io,
+      );
+      expect(exit).not.toBe(0);
+      expect(envelopeOf(captured.stdout())["error"]).toMatchObject({
+        code: "invalid_input",
+      });
+      expect(await Bun.file(file).arrayBuffer()).toEqual(before);
+    },
+  );
+
   test("prints a JSON envelope off a terminal and text on one", async () => {
     const file = await writeDocx(dir, "contract.docx", CONTRACT_PARAGRAPHS);
     const piped = captureIo();

@@ -492,6 +492,57 @@ const runDocumentPass = async ({
   });
 };
 
+const deleteComments = async ({
+  source,
+  args,
+  options,
+}: MutateOptions): Promise<Result<Mutation, FolioCliError>> => {
+  const { ids, author } = args;
+  if ((ids === undefined) === (author === undefined)) {
+    return Result.err(invalidInput("Pass --id or --by-author, exactly one."));
+  }
+  const commentIds: number[] = [];
+  if (ids !== undefined) {
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return Result.err(invalidInput("Pass at least one comment id."));
+    }
+    for (const id of ids) {
+      if (
+        typeof id !== "string" ||
+        !/^-?\d+$/u.test(id) ||
+        !Number.isSafeInteger(Number(id))
+      ) {
+        return Result.err(
+          invalidInput("Comment ids must be decimal integers."),
+        );
+      }
+      commentIds.push(Number(id));
+    }
+  }
+  if (author !== undefined && typeof author !== "string") {
+    return Result.err(invalidInput("The comment author must be a string."));
+  }
+
+  const opened = await openReviewer(source, options.author);
+  if (opened.isErr()) return Result.err(opened.error);
+  const { reviewer } = opened.value;
+  const result = reviewer.deleteComments(
+    author === undefined ? { ids: commentIds } : { author },
+  );
+  if (result.deleted.length === 0) {
+    return Result.err(
+      cliError({
+        code: FOLIO_CLI_ERROR_CODES.notFound,
+        message: "No comments matched the selector.",
+        hint: "Use folio comments to read the ids and authors.",
+      }),
+    );
+  }
+  const saved = await saveReviewer(reviewer, options.repack);
+  if (saved.isErr()) return Result.err(saved.error);
+  return Result.ok({ ...saved.value, result, receipts: [] });
+};
+
 const mutate = (
   options: MutateOptions,
 ): Promise<Result<Mutation, FolioCliError>> => {
@@ -500,6 +551,8 @@ const mutate = (
       return mutateWithAgentTool(options);
     case "resolveChanges":
       return resolveChanges(options);
+    case "deleteComments":
+      return deleteComments(options);
     case "compare":
       return writeRedline(options);
     case "packageRewrite":

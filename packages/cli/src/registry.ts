@@ -1,7 +1,6 @@
 /**
- * The one tool vocabulary behind both surfaces. Every entry is an MCP tool
- * (its `name`, description, and envelope-wrapped input schema) and one or
- * more `folio` commands whose flags are generated from the same schema. Tools
+ * The tool vocabulary behind both surfaces. The MCP tools also declare
+ * `folio` commands whose flags are generated from the same schema. Tools
  * that exist in `@stll/folio-agents` reuse its definitions verbatim; the file
  * envelope (`path`, `fileVersion`, ...) is added by each surface.
  */
@@ -67,7 +66,8 @@ type FolioToolSpecBase = {
 /**
  * How a tool runs. `agentRead` and `agentWrite` run a `@stll/folio-agents`
  * tool against one file (a write commits a transaction); `resolveChanges`
- * accepts or rejects tracked changes; `compare` diffs two files and, given a
+ * accepts or rejects tracked changes; `deleteComments` removes comments;
+ * `compare` diffs two files and, given a
  * destination, writes a redline; `packageRewrite` rewrites package parts
  * directly and, without a destination, reports what it would change;
  * `documentPass` inspects the opened document and, given a destination,
@@ -85,6 +85,7 @@ export type FolioFileToolSpec =
       readonly editMode: "tracked-or-direct" | "fixed";
     })
   | (FolioToolSpecBase & { readonly type: "resolveChanges" })
+  | (FolioToolSpecBase & { readonly type: "deleteComments" })
   | (FolioToolSpecBase & { readonly type: "compare" })
   | (FolioToolSpecBase & {
       readonly type: "packageRewrite";
@@ -106,6 +107,7 @@ export const toolAccess = (tool: FolioFileToolSpec): FolioToolAccess => {
       return "read";
     case "agentWrite":
     case "resolveChanges":
+    case "deleteComments":
       return "write";
     case "compare":
     case "packageRewrite":
@@ -656,7 +658,38 @@ export type FolioResolvedCommand = {
 };
 
 const commandsByName = new Map<string, FolioResolvedCommand>();
-for (const tool of FOLIO_FILE_TOOLS) {
+const DELETE_COMMENTS_COMMAND_TOOL = {
+  type: "deleteComments",
+  name: "delete_comments",
+  description:
+    "Delete comments by id or by exact author name. Choose one selector.",
+  argsSchema: {
+    type: "object",
+    properties: {
+      ids: {
+        type: "array",
+        items: { type: "string" },
+        minItems: 1,
+        description: "Comment ids from folio comments.",
+      },
+      author: {
+        type: "string",
+        description: "Exact comment author name.",
+      },
+    },
+    required: [],
+    additionalProperties: false,
+  },
+  commands: [
+    {
+      name: "delete-comments",
+      summary: "Delete comments by id or author",
+      flagNames: { ids: "id", author: "by-author" },
+    },
+  ],
+} as const satisfies FolioFileToolSpec;
+
+for (const tool of [...FOLIO_FILE_TOOLS, DELETE_COMMENTS_COMMAND_TOOL]) {
   for (const command of tool.commands) {
     if (commandsByName.has(command.name)) {
       panic(`two tools declare the command ${command.name}`);
