@@ -4910,7 +4910,10 @@ export class FolioDocxReviewer {
         this.engine.session.captureSaveSnapshot().document,
       );
       if (model.isErr()) throw model.error;
-      return model.value;
+      // The package relationships the save writes for the parts the model
+      // holds, a numbering part a new list started included, as the legacy
+      // model states them.
+      return reconcileDocumentPartRelationships(model.value);
     }
     const document = this.documentFromStateSnapshot(
       this.captureReviewerState(),
