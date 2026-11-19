@@ -40,50 +40,48 @@ const edit = {
   replace: replacementText,
 } as const;
 
-for (const session of ["legacy", "canonical"] as const) {
-  test(`${session} refuses the entire tracked batch when accepting would remove a comment`, async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await source(), {
-      session,
-    });
-    const original = reviewer.toDocument();
-    const comments = reviewer.getComments();
-    expect(comments.map(({ anchoredText }) => anchoredText)).toEqual([
-      commentedText,
+test("refuses the entire tracked batch when accepting would remove a comment", async () => {
+  const reviewer = await FolioDocxReviewer.fromBuffer(await source());
+  const original = reviewer.toDocument();
+  const comments = reviewer.getComments();
+  expect(comments.map(({ anchoredText }) => anchoredText)).toEqual([
+    commentedText,
+  ]);
+  const batch = {
+    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+    mode: "tracked-changes",
+    atomic: false,
+    operations: [
+      {
+        id: "delete-heading",
+        type: "deleteBlock",
+        blockId: commentedBlockId,
+      },
+      edit,
+    ],
+  } as const satisfies FolioDocumentOperationBatch;
+
+  for (const dryRun of [true, false]) {
+    const result = reviewer.applyDocumentOperations(
+      { ...batch, dryRun },
+      { undefinedReferences: "refuse" },
+    );
+    expect(result.status).toBe(dryRun ? "previewed" : "rejected");
+    expect(result.applied).toEqual([]);
+    expect(result.skipped.map(({ id, reason }) => ({ id, reason }))).toEqual([
+      { id: "delete-heading", reason: "invalidResult" },
+      { id: edit.id, reason: "invalidResult" },
     ]);
-    const batch = {
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode: "tracked-changes",
-      atomic: false,
-      operations: [
-        {
-          id: "delete-heading",
-          type: "deleteBlock",
-          blockId: commentedBlockId,
-        },
-        edit,
-      ],
-    } as const satisfies FolioDocumentOperationBatch;
+    expect(result.skipped.at(0)?.message).toMatch(/Accept All.*comment/u);
+    expect(result.receipts).toEqual([]);
+    expect(result.undoHandle).toBeNull();
+    expect(reviewer.toDocument()).toEqual(original);
+    expect(reviewer.getComments()).toEqual(comments);
+    expect(reviewer.getChanges()).toEqual([]);
+  }
+});
 
-    for (const dryRun of [true, false]) {
-      const result = reviewer.applyDocumentOperations(
-        { ...batch, dryRun },
-        { undefinedReferences: "refuse" },
-      );
-      expect(result.status).toBe(dryRun ? "previewed" : "rejected");
-      expect(result.applied).toEqual([]);
-      expect(result.skipped.map(({ id, reason }) => ({ id, reason }))).toEqual([
-        { id: "delete-heading", reason: "invalidResult" },
-        { id: edit.id, reason: "invalidResult" },
-      ]);
-      expect(result.skipped.at(0)?.message).toMatch(/Accept All.*comment/u);
-      expect(result.receipts).toEqual([]);
-      expect(result.undoHandle).toBeNull();
-      expect(reviewer.toDocument()).toEqual(original);
-      expect(reviewer.getComments()).toEqual(comments);
-      expect(reviewer.getChanges()).toEqual([]);
-    }
-  });
-
+for (const session of ["legacy", "canonical"] as const) {
   test(`${session} admits a reversible tracked edit beside a commented block`, async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(await source(), {
       session,

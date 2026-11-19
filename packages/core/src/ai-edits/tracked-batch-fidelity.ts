@@ -13,22 +13,13 @@ import {
   visitParagraphRuns,
 } from "../docx/paragraphTraversal";
 import { consolidateParagraphContent } from "../docx/runConsolidator";
+import { serializeDocumentPart } from "../docx/serializer/documentSerializer";
 import { pluginsForHeadlessRevisionResolution } from "../internal/headlessRevisionResolutionGuard";
 import { projectAllChangesInHeadlessState } from "../prosemirror/commands/comments";
 import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
 import { isBlockBoundaryNode } from "../prosemirror/keptRangeBoundaries";
-import {
-  createDocumentNumberingPlugin,
-  getStatedDocumentNumbering,
-} from "../prosemirror/plugins/documentNumbering";
-import {
-  createDocumentStylesPlugin,
-  getDocumentStyleResolver,
-} from "../prosemirror/plugins/documentStyles";
 import { readRangeAnchorAttrs } from "../prosemirror/rangeAnchorAttrs";
-import { singletonManager } from "../prosemirror/schema";
-import type { BlockContent, NumberingDefinitions } from "../types/document";
-import { canonicalJson } from "../utils/canonicalJson";
+import type { BlockContent } from "../types/document";
 import { commentAnchorIdsForNode } from "./comment-lifecycle";
 import { comparisonApplying, noteReferenceOf } from "./note-references";
 import { changedTopLevelWindow } from "./result-validation";
@@ -234,7 +225,9 @@ const authoredBlock = (block: BlockContent): string => {
     }
     return BLOCK_TREE_DESCENT.descend;
   });
-  return canonicalJson(authored);
+  return serializeDocumentPart({
+    package: { document: { content: [authored] } },
+  }).xml;
 };
 
 export const sameOriginalBlocks = (
@@ -328,26 +321,6 @@ export const protectedBlockLoss = (
   return lost === null ? null : `Accept All would lose a ${lost}.`;
 };
 
-type ResolutionStateOptions = {
-  doc: PMNode;
-  styleResolver: ReturnType<typeof getDocumentStyleResolver>;
-  numbering: NumberingDefinitions | null | undefined;
-};
-
-const resolutionState = ({
-  doc,
-  styleResolver,
-  numbering,
-}: ResolutionStateOptions): EditorState =>
-  EditorState.create({
-    doc,
-    plugins: [
-      createDocumentNumberingPlugin(numbering),
-      ...pluginsForHeadlessRevisionResolution(singletonManager.getPlugins()),
-      createDocumentStylesPlugin(styleResolver),
-    ],
-  });
-
 const checkTrackedBatchFidelity = ({
   before,
   after,
@@ -357,18 +330,9 @@ const checkTrackedBatchFidelity = ({
   if (comparisonApplying()) return null;
   const window = resolutionWindow(before.doc, after);
   if (window === null) return null;
-  const styleResolver = getDocumentStyleResolver(before);
-  const numbering = getStatedDocumentNumbering(before);
-  const original = resolutionState({
-    doc: window.before,
-    styleResolver,
-    numbering,
-  });
-  const candidate = resolutionState({
-    doc: window.after,
-    styleResolver,
-    numbering,
-  });
+  const plugins = pluginsForHeadlessRevisionResolution(before.plugins);
+  const original = EditorState.create({ doc: window.before, plugins });
+  const candidate = EditorState.create({ doc: window.after, plugins });
   const rejectedBefore = projectAllChangesInHeadlessState(original, "reject");
   const rejectedAfter = projectAllChangesInHeadlessState(candidate, "reject");
   if (rejectedBefore === null || rejectedAfter === null)
