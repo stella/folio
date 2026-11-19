@@ -1322,8 +1322,9 @@ export const startRelations = async ({
     const joinSources = new Set(
       pre
         .getChanges()
-        .filter(({ type }) => type === "paragraphMarkDeleted")
-        .map(({ blockId }) => blockId),
+        .flatMap(({ type, blockId }) =>
+          type === "paragraphMarkDeleted" && blockId !== null ? [blockId] : [],
+        ),
     );
     for (const group of sequentialGroups({
       applied,

@@ -532,8 +532,9 @@ const compareWithReplay = async (
   const joinSources = new Set(
     batched
       .getChanges()
-      .filter(({ type }) => type === "paragraphMarkDeleted")
-      .map(({ blockId }) => blockId),
+      .flatMap(({ type, blockId }) =>
+        type === "paragraphMarkDeleted" && blockId !== null ? [blockId] : [],
+      ),
   );
   const batch = batched.applyDocumentOperations(
     {
