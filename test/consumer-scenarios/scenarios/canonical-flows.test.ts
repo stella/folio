@@ -25,6 +25,7 @@ const CANONICAL_REPLAYS = [
   "issue-1757-merge-into-closing-paragraph-of-deleted-words.json",
   "issue-1350-48a4c26dd3e1e6fd.json",
   "issue-1811-comment-start-in-a-deleted-cell.json",
+  "issue-1350-split-pending-merge-with-requested-properties.json",
   "issue-1762-tracked-formatting-between-line-breaks.json",
   "issue-1356-table-after-a-deleted-final-paragraph-direct.json",
   "tracked-comment-point.json",
