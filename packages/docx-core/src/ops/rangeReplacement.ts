@@ -413,14 +413,21 @@ export const cutPieceHandoffs = ({
       !source.every((slot) => present.has(slotKey(slot)))
     )
       continue;
-    const piece = order
+    // The next record alike in fields is the piece cut off this one when it
+    // is new; when it is another record of the source, this one was not cut,
+    // and a new piece further on was cut off that other record.
+    const next = order
       .slice(index + 1)
       .find(
         ({ node }) =>
           sameOwnFields(node, first) &&
-          identitySlots(node).length === source.length &&
-          identitySlots(node).every((slot) => !present.has(slotKey(slot))),
+          identitySlots(node).length === source.length,
       )?.node;
+    const piece =
+      next !== undefined &&
+      identitySlots(next).every((slot) => !present.has(slotKey(slot)))
+        ? next
+        : undefined;
     if (piece === undefined) continue;
     const target = identitySlots(piece);
     for (const removal of children)
