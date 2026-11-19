@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "title": "PINNED #1356, reported seed 862088484: a table put after a deleted paragraph that joins the next one replays right after it, beside an insertion before that next one",
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "unusedNumbering",
+  "mode": "tracked-changes",
+  "seed": 131359965,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 1331090108,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "5E88C024"
+        }
+      ],
+      "atomic": false
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 3098714724,
+      "operations": [
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "483CD5EB",
+          "properties": {
+            "styleId": "Heading2"
+          }
+        },
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "483CD5EB",
+          "text": "Period term buyer schedule term."
+        },
+        {
+          "type": "insertTable",
+          "blockId": "5E88C024",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from unpin+unpin of 9a76d63ca2b96de4"
+}

@@ -801,3 +801,68 @@ test("blocks beside a table accepting removes replay in one gap, as the batch na
       [operations],
     );
 });
+
+test("a block after a paragraph with no words joining one that keeps them replays right after it", async () => {
+  const source = await openReviewer(
+    await packDocument(fromMarkdown("Alpha.\n\nGone.\n\nSigned.")),
+  );
+  const [, gone, signed] = source.getContent();
+  assert.ok(gone && signed);
+  // Deleting a paragraph tracked deletes its words and its break: it joins
+  // the next paragraph with no words of its own.
+  source.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "tracked-changes",
+      operations: [{ id: "delete", type: "deleteBlock", blockId: gone.id }],
+    },
+    { undefinedReferences: "refuse" },
+  );
+  const fixture = new Uint8Array(await source.toBuffer());
+  const reopened = await openReviewer(fixture);
+  const rows = reopened.getContent() as Row[];
+  const sources = new Set(
+    reopened
+      .getChanges()
+      .flatMap(({ type, blockId }) =>
+        type === "paragraphMarkDeleted" && blockId !== null ? [blockId] : [],
+      ),
+  );
+  assert.deepEqual(
+    pendingJoinTargets(rows, sources),
+    new Map([[gone.id, { survivor: signed.id, keepsWords: true }]]),
+  );
+  const table: FolioDocumentOperation = {
+    id: "table",
+    type: "insertTable",
+    blockId: gone.id,
+    rows: [["Term", "Value"]],
+  };
+  const after: FolioDocumentOperation = {
+    id: "after",
+    type: "insertAfterBlock",
+    blockId: gone.id,
+    text: "After.",
+  };
+  const before: FolioDocumentOperation = {
+    id: "before",
+    type: "insertBeforeBlock",
+    blockId: signed.id,
+    text: "Before.",
+  };
+  const restyle: FolioDocumentOperation = {
+    id: "restyle",
+    type: "setBlockParagraphProperties",
+    blockId: signed.id,
+    properties: { styleId: "Heading2" },
+  };
+  for (const placed of [table, after]) {
+    await compareWithReplay(fixture, "tracked-changes", [placed, before]);
+    await compareWithReplay(fixture, "tracked-changes", [before, placed]);
+    await compareWithReplay(fixture, "tracked-changes", [
+      restyle,
+      before,
+      placed,
+    ]);
+  }
+});
