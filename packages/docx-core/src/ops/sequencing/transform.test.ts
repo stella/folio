@@ -14,6 +14,7 @@ import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
 } from "../types";
+import { applyBatch } from "./applyBatch";
 import {
   BATCH_REJECTION_REASONS,
   type DocumentBatch,
@@ -480,6 +481,111 @@ describe("position transforms", () => {
     expect(
       transformBatch(batch(inverse), [sequenced(insertion(1, "X"))]).isErr(),
     ).toBe(true);
+  });
+
+  test("a structural inverse passes a split away from its range and a join of its paragraph", () => {
+    // The undo of typing "c": a deletion that expects the typed text.
+    const typed = applyBatch(
+      {
+        package: {
+          document: {
+            content: [
+              paragraph("00000001", "xyz"),
+              paragraph("00000002", "abdef"),
+            ],
+          },
+        },
+      },
+      [{ ...insertion(2, "c"), at: at(2, "00000002") }],
+    );
+    if (typed.isErr()) throw typed.error;
+    const { document } = typed.value;
+    const [inverse] = typed.value.inverse;
+    if (inverse?.type !== "deleteRange" || inverse.expected === undefined)
+      throw new Error("Typing must record a structural inverse.");
+    const split = (offset: number) =>
+      ({
+        type: "splitBlock",
+        at: at(offset, "00000002"),
+        newBlockId: "00000009",
+        newHalf: "second",
+      }) as const satisfies DocumentOp;
+    const join = {
+      type: "joinBlocks",
+      story: "main",
+      blockId: "00000001",
+      nextBlockId: "00000002",
+      survivor: "first",
+    } as const satisfies DocumentOp;
+    // Both orders give one document: the range's content is the same.
+    for (const over of [split(5), split(0), join]) {
+      const remote = applyBatch(document, [over]);
+      if (remote.isErr()) throw remote.error;
+      const moved = transformBatch(batch(inverse), [
+        { ...sequenced(over), effects: remote.value.effects },
+      ]);
+      if (moved.isErr()) throw moved.error;
+      const left = apply(remote.value.document, moved.value.ops);
+      const local = applyBatch(document, [inverse]);
+      if (local.isErr()) throw local.error;
+      const past = transformBatch(
+        batch(over),
+        [{ ...sequenced(inverse), effects: local.value.effects }],
+        { order: "before" },
+      );
+      if (past.isErr()) throw past.error;
+      const right = apply(local.value.document, past.value.ops);
+      expect(equalForStaleness(left, right)).toBe(true);
+    }
+    // A split at or inside the range still changes what it expects.
+    for (const offset of [2, 3]) {
+      const remote = applyBatch(document, [split(offset)]);
+      if (remote.isErr()) throw remote.error;
+      expect(
+        transformBatch(batch(inverse), [
+          { ...sequenced(split(offset)), effects: remote.value.effects },
+        ]).isErr(),
+      ).toBe(true);
+    }
+  });
+});
+
+describe("insertions at a gap where a record was cut", () => {
+  const typed = (
+    text: string,
+    revision?: { id: number; author: string; date: string },
+  ) =>
+    ({
+      type: "insertContent",
+      at: at(2),
+      slice: {
+        content: [{ type: "run", content: [{ type: "text", text }] }],
+        openStart: 0,
+        openEnd: 0,
+      },
+      ...(revision === undefined ? {} : { revision }),
+    }) as const satisfies DocumentOp;
+  const stamp = { id: 30, author: "Actor", date: "2026-01-01T00:00:00Z" };
+  const cutting = (op: DocumentOp): SequencedBatch => ({
+    ...sequenced(op),
+    effects: [{ type: "insertContent", cutIdentified: true }],
+  });
+
+  test("two direct insertions refuse: the cut record's second half takes either id", () => {
+    expect(
+      transformBatch(batch(typed("x")), [cutting(typed("y"))]).isErr(),
+    ).toBe(true);
+  });
+
+  test("a tracked insertion passes, after the one sequenced first", () => {
+    for (const [op, over] of [
+      [typed("x", stamp), typed("y")],
+      [typed("x"), typed("y", stamp)],
+    ] as const) {
+      const moved = transformBatch(batch(op), [cutting(over)]);
+      if (moved.isErr()) throw moved.error;
+      expect(moved.value.ops).toEqual([{ ...op, at: at(3) }]);
+    }
   });
 });
 

@@ -1,0 +1,10 @@
+{
+  "canonical remote apply convergence": [
+    {
+      "seed": -1156198521,
+      "path": "23:5:9:10:10:13:15:15:15:25:22:23:24:22:22:24:25:22:23:22:22:23:24:26:30:33:33:33:42:11:29:26:23:22:22:23:23:23:23:23:31:23:23:23:36:23:25:25:25:25:25:25:25:25:25",
+      "note": "An undo of typing meets a concurrent split at the end of its paragraph; the undo is not rejected",
+      "date": "2026-11-19"
+    }
+  ]
+}

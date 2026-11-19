@@ -485,6 +485,8 @@ const resolveStructure = ({
   });
   const reversed: PMNode[] = [];
   let chain: ParagraphChain | null = null;
+  /** Where each paragraph a chain left starts, the paragraphs it joined included. */
+  const chainStarts = new Map<PMNode, number>();
   let pendingBookmarks: PMNode[] = [];
   let following: "paragraph" | "table" | "block" | "nothing" = "nothing";
   const precedingParagraphs: boolean[] = [];
@@ -561,11 +563,12 @@ const resolveStructure = ({
         positionMap: new StepMap([0, 1, 0, bookmarks.size + 1, 1, 0]),
       });
     }
-    reversed.push(
+    const left =
       chain.chunks.length === 1 && final.eq(chain.before)
         ? chain.before
-        : final,
-    );
+        : final;
+    chainStarts.set(left, chain.position);
+    reversed.push(left);
     chain = null;
   };
   const flushBookmarks = (): void => {
@@ -825,10 +828,18 @@ const resolveStructure = ({
           reversed[carrierIndex] = cleared;
         } else if (reversed.length > 1) {
           reversed.splice(carrierIndex, 1);
-          context.deleted.push({
-            from: entry.position,
-            to: entry.position + carrier.nodeSize,
-          });
+          // The carrier goes whole, the paragraphs it joined included: what
+          // the joins removed between them goes with it, once.
+          const from = chainStarts.get(carrier) ?? entry.position;
+          const to = entry.position + entry.original.nodeSize;
+          const outside = (range: { from: number; to: number }) =>
+            range.to <= from || range.from >= to;
+          const keep = <T extends { from: number; to: number }>(ranges: T[]) =>
+            ranges.splice(0, ranges.length, ...ranges.filter(outside));
+          keep(context.deleted);
+          keep(context.replacements);
+          keep(context.bookmarkJoins);
+          context.deleted.push({ from, to });
         } else {
           const filler = node.type.schema.nodes["paragraph"]?.createAndFill();
           if (filler) {

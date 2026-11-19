@@ -132,9 +132,11 @@ insertions at one gap do.
 
 Each sequenced `insertContent` records whether it cut a record carrying an
 id (a revision or a content control) in two (`cutIdentified`). Two
-insertions at the same gap refuse when the earlier one cut such a record,
-since the record's second half would take the id of whichever applied
-first; in plain runs they pass.
+direct insertions at the same gap refuse when the earlier one cut such a
+record, since the record's second half would take the id of whichever
+applied first; in plain runs they pass. When either insertion is tracked,
+the pair is a cut at a tracked change's edge (see below): the one sequenced
+later goes after the other, and the authority's order decides the cut.
 
 `splitInline` and `joinInline` only move record boundaries, so offsets map
 one to one across them. A concurrent insertion, split or join at the same
@@ -293,7 +295,10 @@ actor's lease like every other id.
 
 Undo inverses are operations of the same kinds and follow the same rules.
 Rich inverse preconditions stay intact and may refuse an undo after another
-edit.
+edit. A deletion or format that expects its range's content (an undo of
+typing, say) passes an edit that leaves that content as it was: text typed
+or deleted outside the range, a split of its paragraph away from it, and a
+join of its paragraph with a neighbour.
 
 Partially overlapping writes to the same run property require additional
 structural effects and currently reject. Nonzero marker-gap changes and
