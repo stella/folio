@@ -744,12 +744,12 @@ test("Markdown custom marker oracle recognizes legal indentation without hiding 
 test("a cell's paragraphs compare without their edge blanks", () => {
   const cell = {
     text: "Court reference number\n(will begin)",
-    kind: "paragraph",
+    kind: "paragraph" as const,
     cellParagraphs: [
-      { text: "Court reference number", kind: "paragraph" },
-      { text: "(will begin)", kind: "paragraph" },
+      { text: "Court reference number", kind: "paragraph" as const },
+      { text: "(will begin)", kind: "paragraph" as const },
     ],
-  } as const;
+  };
   const view = [{ text: cell.text, kind: "paragraph" }];
   for (const markdown of [
     "| Court reference number <br>  (will begin) |\n| --- |",
