@@ -2669,6 +2669,52 @@ const resolveList = ({
       for (let index = at - count; index < at - entry.count; index += 1)
         floated.delete(index);
   }
+  /**
+   * Hand the join at a seam to the pending insertion at `holderAt` holding the
+   * other piece of the record the plain record at `piece` was cut from;
+   * whether it did.
+   */
+  const passesJoinOn = (
+    holderAt: number,
+    piece: number,
+    depth: number,
+  ): boolean => {
+    const occurrence = out[holderAt];
+    const holder = occurrence?.node;
+    const near = out[piece]?.node;
+    if (
+      occurrence === undefined ||
+      holder === undefined ||
+      near === undefined ||
+      isTrackedWrapper(near) ||
+      !isTrackedWrapper(holder) ||
+      !isAddedRevision(holder) ||
+      resolution.ids.has(holder.info.id)
+    )
+      return false;
+    const side = holderAt > piece ? "before" : "after";
+    const edge =
+      side === "before" ? holder.content.at(0) : holder.content.at(-1);
+    if (
+      edge === undefined ||
+      (side === "before" ? alikeDepth(near, edge) : alikeDepth(edge, near)) <
+        Math.min(depth, 1)
+    )
+      return false;
+    const joined = withJoinAtLeast(
+      holder.resolutionJoins === undefined
+        ? Object.assign({}, holder, {
+            resolutionJoins: { before: 0, after: 0, remove: 0 },
+          })
+        : holder,
+      side,
+      depth,
+    );
+    carryResolutionState(resolution, holder, joined);
+    out[holderAt] = occurrenceOf(joined, occurrence);
+    changed = true;
+    return true;
+  };
   // Boundaries an earlier rejection kept at a seam still stand between the
   // pieces it joins: they float there as the ones this resolution kept do,
   // so rejecting first and joining later places them as the other order.
@@ -2761,6 +2807,18 @@ const resolveList = ({
     // With no kept provenance on the seam, only boundaries between two
     // pieces it joins can be ones a rejection kept there. Beside records it
     // does not join they are the document's own and stay where they are.
+    // An accepted insertion whose content stands as boundaries only holds no
+    // piece of the record its join cut: the join reaches the record beyond
+    // them. A pending insertion holding that record's other piece takes the
+    // join, so accepting it later joins the pieces around the boundaries, as
+    // accepting both at once does.
+    if (
+      kept === undefined &&
+      resolution.decision === REVISION_DECISIONS.ACCEPT &&
+      keptJoinSeams.has(recorded) &&
+      passesJoinOn(seam, seam - count - 1, depth)
+    )
+      continue;
     if (kept === undefined && !sameOwnFields(left.node, right.node)) continue;
     exactSeams.delete(recorded);
     exactSeams.set(seam, Math.max(exactSeams.get(seam) ?? 0, depth));
