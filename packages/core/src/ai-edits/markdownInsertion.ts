@@ -81,10 +81,11 @@ export const compileMarkdownInsertion = (text: string): MarkdownInsertion => {
 
   // A direct outline level makes headings independent of a template's styles.
   const paragraphs: MarkdownParagraph[] = [];
-  for (const { formatting, ...paragraph } of content) {
-    const outlineLevel = formatting?.outlineLevel;
+  for (const paragraph of content) {
+    const outlineLevel = paragraph.formatting?.outlineLevel;
     paragraphs.push({
-      ...paragraph,
+      type: "paragraph",
+      content: paragraph.content,
       ...(outlineLevel !== undefined && { formatting: { outlineLevel } }),
     });
   }
