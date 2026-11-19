@@ -34,6 +34,10 @@ const CANONICAL_REPLAYS = [
   "issue-2265-final-mark-rotation-over-a-merge-record.json",
   "issue-2973-reject-joins-into-terminal-table-carrier.json",
   "markdown-orphan-roman-level.json",
+  "issue-1356-58c8b2f17ad44ed2.json",
+  "issue-1356-865c9c708580cbcc.json",
+  "issue-1356-c4f902fd90676d63.json",
+  "issue-1817-insert-before-a-pending-merge.json",
 ] as const;
 
 test("the replays below run on the canonical session", () => {
