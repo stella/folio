@@ -357,8 +357,35 @@ const acrossARangeBoundary = async (): Promise<LongerJoin> => {
   };
 };
 
+/**
+ * The clause, its break pending deletion, before a bookmark that starts
+ * between it and a table: no paragraph to join follows, so accepting the
+ * break is refused and the join stays blocked.
+ */
+const beforeATableAcrossARangeBoundary = async (): Promise<LongerJoin> => {
+  const run = (text: string) =>
+    `<w:r><w:t xml:space="preserve">${text}</w:t></w:r>`;
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  zip.set(
+    "word/document.xml",
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="${W}" xmlns:w14="${W14}"><w:body>` +
+      `<w:p w14:paraId="10000001">${run("Alpha.")}</w:p>` +
+      `<w:p w14:paraId="10000002"><w:pPr><w:rPr><w:del w:id="1" w:author="Test" w:date="2026-01-01T00:00:00Z"/></w:rPr></w:pPr>${run(CLAUSE)}</w:p>` +
+      `<w:bookmarkStart w:id="7" w:name="Signature"/>` +
+      `<w:tbl><w:tblGrid><w:gridCol w:w="4000"/></w:tblGrid><w:tr><w:tc><w:p w14:paraId="10000003">${run(SURVIVOR)}</w:p></w:tc></w:tr></w:tbl>` +
+      `<w:bookmarkEnd w:id="7"/>` +
+      `<w:p w14:paraId="10000005">${run("Delta.")}</w:p>` +
+      `<w:sectPr><w:pgSz w:w="12240" w:h="15840"/></w:sectPr></w:body></w:document>`,
+  );
+  return {
+    bytes: (await zip.generate({ compression: "store" })).buffer,
+    // The insertion goes beside the clause, before the blocked join.
+    anchors: { clause: "10000002", survivor: "10000001" },
+  };
+};
+
 test("verifies a tracked insertion beside an already blocked join", async () => {
-  const { bytes, anchors } = await acrossARangeBoundary();
+  const { bytes, anchors } = await beforeATableAcrossARangeBoundary();
   const baseline = await FolioDocxReviewer.fromBuffer(bytes, {
     session: "canonical",
   });
@@ -415,9 +442,8 @@ test("verifies a tracked insertion beside an already blocked join", async () => 
 });
 
 /**
- * Each longer join, with where its placement is read: once every change is
- * accepted, or pending, where the canonical session does not yet accept a
- * join across a range boundary.
+ * Each longer join, with where its placement is read once every change is
+ * accepted.
  */
 const LONGER_JOINS: Record<
   string,
@@ -427,7 +453,7 @@ const LONGER_JOINS: Record<
     make: throughAnEmptiedParagraph,
     read: "accepted",
   },
-  "across a range boundary": { make: acrossARangeBoundary, read: "pending" },
+  "across a range boundary": { make: acrossARangeBoundary, read: "accepted" },
 };
 
 describe("a block beside a longer pending join, in the canonical session", () => {
