@@ -23,6 +23,7 @@ const FLOWS_DIR = fileURLToPath(new URL("../flows/", import.meta.url));
 const CANONICAL_REPLAYS = [
   "issue-1757-merge-into-closing-paragraph-beside-a-pending-join.json",
   "issue-1757-merge-into-closing-paragraph-of-deleted-words.json",
+  "issue-1350-48a4c26dd3e1e6fd.json",
   "issue-1762-tracked-formatting-between-line-breaks.json",
   "issue-1754-clear-numbered-heading-style.json",
 ] as const;
