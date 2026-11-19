@@ -111,12 +111,16 @@ const placement = (
   // edits inside the joined paragraphs. Into one with no words left, it
   // lands before that one, still as the batch read it: it runs ahead of the
   // edits inside it, which alone would give the join words to run into and
-  // put the block after it.
+  // put the block after it. A paragraph with no words of its own joins
+  // nothing into one that keeps words: a block put after it lands right
+  // after it, as one put after any paragraph does.
   const joined = joinsInto.get(blockIdOf(operation));
   const after =
     operation.type === "insertAfterBlock" ||
     (operation.type === "insertTable" && operation["position"] !== "before");
-  if (after && joined !== undefined) {
+  const joinsWords =
+    joined !== undefined && !(joined.keepsWords && text === "");
+  if (after && joined !== undefined && joinsWords) {
     const survivor = preRows.findIndex((row) => row.id === joined.survivor);
     if (survivor >= 0)
       return joined.keepsWords
