@@ -503,6 +503,7 @@ export class DocumentOpRefusal extends DocumentOpRefusalBase<{
     message: string;
     reason: DocumentOpRefusalReason;
     opType: DocumentOpType | undefined;
+    blockedParagraphMarkRevisionId?: number;
 }> {}
 
 // @public

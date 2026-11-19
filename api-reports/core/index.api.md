@@ -1176,9 +1176,9 @@ export type FolioAIEditSkipReason =
 */
 "missingNumbering" |
 /**
-* Applying the operation would have left a document that cannot be saved:
-* the save-time model validator rejected the result. Nothing from the
-* operation was applied; `message` carries the validator's path and reason.
+* The operation would leave an unsaveable result or fail a tracked-revision
+* fidelity check. Nothing from the operation was applied. `message` names
+* the save error or the revision projection that failed.
 */
 "invalidResult" |
 /**

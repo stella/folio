@@ -9,6 +9,7 @@
     {
       "action": "suggest_changes",
       "seed": 3805472211,
+      "expectedFidelityRefusal": "note",
       "operations": [
         {
           "type": "deleteBlock",

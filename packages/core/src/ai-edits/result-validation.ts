@@ -61,7 +61,7 @@ type ChangedWindow = { from: number; beforeTo: number; afterTo: number };
  * The top-level children that differ between two versions of one story,
  * found by node identity from both ends. `null` when every child is shared.
  */
-const changedTopLevelWindow = (
+export const changedTopLevelWindow = (
   before: PMNode,
   after: PMNode,
 ): ChangedWindow | null => {

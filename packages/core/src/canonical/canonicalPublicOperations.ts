@@ -180,7 +180,7 @@ import type {
   StyleDefinitions,
 } from "../types/document";
 import { readModel } from "../types/documentModel";
-import { canonicalAcceptedComments } from "./canonicalAcceptedComments";
+import { createCanonicalBatchReview } from "./canonicalBatchReview";
 import {
   canonicalCommentBody,
   compileCanonicalComments,
@@ -191,6 +191,7 @@ import {
   type CanonicalProjection,
   type CanonicalSession,
 } from "./canonicalSession";
+import { canonicalTrackedBatchFidelityError } from "./canonicalTrackedBatchFidelity";
 import { indentationAsRead, spacingSidesAsRead } from "./paragraphPatchAsRead";
 
 type CanonicalBatchPlan = {
@@ -2603,6 +2604,7 @@ export class CanonicalPublicOperations {
     const result = (
       applied: FolioDocumentOperationResult["applied"],
       undoHandle: FolioDocumentOperationUndoHandle | null,
+      disposition: "normal" | "refused" = "normal",
     ): FolioDocumentOperationResult => {
       const failures = new Map(skipped.map((item) => [item.id, item]));
       const ordered = batch.operations.flatMap(({ id }) => {
@@ -2613,7 +2615,10 @@ export class CanonicalPublicOperations {
       });
       return {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        status: batchStatus(batch, ordered.length),
+        status:
+          disposition === "refused" && !batch.dryRun
+            ? "rejected"
+            : batchStatus(batch, ordered.length),
         applied,
         skipped: ordered,
         issues: getFolioDocumentOperationIssues(batch.operations, ordered),
@@ -3616,12 +3621,21 @@ export class CanonicalPublicOperations {
             blockId: operation.blockId,
           };
       }
-    }
-    if (batch.mode !== "direct" && batch.mode !== "suggested")
+    } else if (batch.mode !== "suggested") {
+      const trackedOperations = [...appliedById.values()];
+      const originalDocument = readModel(session.document);
+      const review = createCanonicalBatchReview({
+        story,
+        before: { document: originalDocument, projection: state.doc },
+        after: {
+          document: prepared.value.document,
+          projection: prepared.value.projection.doc,
+        },
+      });
       addRetiredCommentReceipts({
         before: state,
         after: prepared.value.projection.doc,
-        applied: [...appliedById.values()],
+        applied: trackedOperations,
         operations: batch.operations.filter(
           (operation) =>
             operation.type !== "deleteBlock" ||
@@ -3635,19 +3649,25 @@ export class CanonicalPublicOperations {
               : [[operation.id, deletionSpans] as const],
           ),
         ),
-        acceptedCommentIds: (side) =>
-          side === "before"
-            ? canonicalAcceptedComments({
-                document: readModel(session.document),
-                projection: state.doc,
-                story,
-              })
-            : canonicalAcceptedComments({
-                document: prepared.value.document,
-                projection: prepared.value.projection.doc,
-                story,
-              }),
+        acceptedCommentIds: review.acceptedCommentIds,
       });
+      const message = canonicalTrackedBatchFidelityError({
+        review,
+        createdCommentIds: new Set(
+          trackedOperations.flatMap(({ commentId }) =>
+            commentId === undefined ? [] : [commentId],
+          ),
+        ),
+        retiredCommentIds: trackedOperations.flatMap(
+          ({ retiredCommentIds }) => retiredCommentIds ?? [],
+        ),
+      });
+      if (message !== null) {
+        for (const { id } of trackedOperations)
+          skip(id, "invalidResult", message);
+        return result([], null, "refused");
+      }
+    }
     const applied = batch.operations.flatMap(({ id }) => {
       const entry = appliedById.get(id);
       if (entry === undefined) return [];

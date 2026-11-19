@@ -950,6 +950,22 @@ describe("a tracked or suggested replacement redlines only the characters it cha
                 rewritten: change.text,
               });
             }
+            if (
+              mode === "tracked-changes" &&
+              result.skipped.at(0)?.message === "Accept All would lose a field."
+            ) {
+              expect(
+                fields.some(({ offset, length }) =>
+                  changes.some(
+                    (chunk) =>
+                      chunk.start < offset + length && chunk.end > offset,
+                  ),
+                ),
+              ).toBe(true);
+              expect(result.applied).toEqual([]);
+              expect(firstParagraph(reviewer).node.eq(before.node)).toBe(true);
+              return;
+            }
             expect(result.skipped).toEqual([]);
             const expectedText =
               block.text.slice(0, start) + replace + block.text.slice(end);

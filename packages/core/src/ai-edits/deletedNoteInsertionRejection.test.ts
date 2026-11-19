@@ -87,7 +87,7 @@ for (const noteType of ["footnote", "endnote"] as const) {
           const deleted = reviewer.applyDocumentOperations(
             {
               version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-              mode: "tracked-changes",
+              mode: "suggested",
               operations: [
                 { id: "delete", type: "deleteBlock", blockId: reference.id },
               ],
@@ -95,6 +95,7 @@ for (const noteType of ["footnote", "endnote"] as const) {
             { undefinedReferences: "refuse" },
           );
           expect(deleted.applied).toHaveLength(1);
+          expect(reviewer.acceptSuggestion("delete")).toBe(true);
           const result = reviewer.applyDocumentOperationsToStory({
             story,
             batch: {
