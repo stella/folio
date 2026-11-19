@@ -6,6 +6,7 @@ import {
   removeCommentMarkers,
   visitCommentMarkers,
 } from "../docx/commentAnchorIndex";
+import { paragraphFormattingWithAuthoredIndentation } from "../docx/paragraphPropertySource";
 import {
   BLOCK_TREE_DESCENT,
   visitBlockTreeRecords,
@@ -24,7 +25,7 @@ import {
 import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
 import { isBlockBoundaryNode } from "../prosemirror/keptRangeBoundaries";
 import { readRangeAnchorAttrs } from "../prosemirror/rangeAnchorAttrs";
-import type { BlockContent } from "../types/document";
+import type { BlockContent, ParagraphFormatting } from "../types/document";
 import { commentAnchorIdsForNode } from "./comment-lifecycle";
 import { comparisonApplying, noteReferenceOf } from "./note-references";
 import { changedTopLevelWindow } from "./result-validation";
@@ -232,9 +233,23 @@ const PARAGRAPH_SESSION_ATTRIBUTES: ReadonlySet<string> = new Set([
 ]);
 
 const authoredBlock = (block: BlockContent): string => {
+  // A native reject restores authored properties, while the live model still
+  // projects list indentation. Read the authored values before cloning drops
+  // the provenance that distinguishes inherited indentation from direct edits.
+  const formatting: (ParagraphFormatting | undefined)[] = [];
+  visitBlockTreeRecords([block], (record) => {
+    if (record.type === "paragraph")
+      formatting.push(paragraphFormattingWithAuthoredIndentation(record));
+    return BLOCK_TREE_DESCENT.descend;
+  });
   const authored = structuredClone(block);
+  let paragraphIndex = 0;
   visitBlockTreeRecords([authored], (record) => {
     if (record.type === "paragraph") {
+      const properties = formatting.at(paragraphIndex);
+      paragraphIndex += 1;
+      if (properties === undefined) delete record.formatting;
+      else record.formatting = properties;
       delete record.paraId;
       delete record.textId;
       delete record.renderedPageBreakBefore;

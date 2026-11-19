@@ -22,7 +22,6 @@ import { ZipArchive } from "@stll/docx-core/zip";
 import { checkCoverageSample } from "../../../../test/property-coverage";
 import {
   assertProperty,
-  propertyConfig,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
 import * as canonicalListRendering from "../canonical/canonicalListRendering";
@@ -389,6 +388,24 @@ describe("numbering an operation sets", () => {
     propertyTestTimeout(120_000),
   );
 
+  test("tracked list references restore authored indentation on rejection", async () => {
+    const buffer = await fixture();
+    for (const target of [
+      { story: MAIN_STORY, text: "Body numbered" },
+      { story: NOTE_STORY, text: "Note numbered" },
+    ]) {
+      const read = await liveAndReopened(buffer, {
+        target,
+        mode: "tracked-changes",
+        numbering: { kind: "reference", numId: 6, ilvl: 1 },
+      });
+      expect(read).not.toBeNull();
+      if (read === null) continue;
+      expect(read.live).toEqual(read.reopened);
+      expect(renderingsOf(read.reopened)).toEqual(read.defaultEngine);
+    }
+  });
+
   test(
     "the law catches an edit's normalization that leaves a table's paragraphs as they were",
     async () => {
@@ -428,15 +445,14 @@ describe("numbering an operation sets", () => {
       }));
       const buffer = await fixture();
       try {
-        const result = await fc.check(
-          law(buffer, { applied: 0 }),
-          propertyConfig({
-            numRuns: 1,
-            examples: [[CELL_REFERENCE]],
-            reporter: () => undefined,
-          }),
-        );
-        expect(result.failed).toBe(true);
+        // The mutant also makes the tracked transaction unreviewable. Apply
+        // directly so the normalization law sees the stale table.
+        const read = await liveAndReopened(buffer, {
+          ...CELL_REFERENCE,
+          mode: "direct",
+        });
+        expect(read).not.toBeNull();
+        expect(read?.live).not.toEqual(read?.reopened);
       } finally {
         mock.module("../canonical/canonicalListRendering", () => original);
       }
