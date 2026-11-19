@@ -12,7 +12,7 @@ export type FolioAgentSuggestionStory = Extract<
   { type: "header" | "footer" }
 >;
 
-export const FOLIO_SUGGESTION_STORY_JSON_SCHEMA = {
+export const FOLIO_SUGGESTION_STORY_JSON_SCHEMA: FolioAgentJsonObjectSchema = {
   type: "object",
   properties: {
     type: { type: "string", enum: ["header", "footer"] },
@@ -22,7 +22,7 @@ export const FOLIO_SUGGESTION_STORY_JSON_SCHEMA = {
   additionalProperties: false,
   description:
     "Header or footer handle from list_stories. Omit to edit the body.",
-} as const satisfies FolioAgentJsonObjectSchema;
+};
 
 const NORMALIZED_TEXT_HASH_PATTERN = /^h[0-9a-z]+$/;
 
