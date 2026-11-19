@@ -236,6 +236,53 @@ test("inverse restores a retired comment whose surviving anchors followed the de
   expect(restored).toStrictEqual(document);
 });
 
+test.each([
+  ["inside the paragraph", false],
+  ["from the paragraph before", true],
+] as const)(
+  "a tracked deletion of a paragraph holding a comment's reference, its range %s, leaves the reference standing and resolves both ways",
+  (_shape, startsBefore) => {
+    const before: Paragraph = {
+      ...paragraph("00000001", "kept"),
+      content: [
+        ...(startsBefore
+          ? [{ type: "commentRangeStart" as const, id: 7 }]
+          : []),
+        { type: "run", content: [{ type: "text", text: "kept" }] },
+      ],
+    };
+    const removed: Paragraph = {
+      ...paragraph("00000002", "removed"),
+      content: [
+        ...(startsBefore
+          ? []
+          : [{ type: "commentRangeStart" as const, id: 7 }]),
+        { type: "run", content: [{ type: "text", text: "removed" }] },
+        { type: "commentRangeEnd", id: 7 },
+        { type: "commentReference", id: 7 },
+      ],
+    };
+    const document: Document = {
+      package: {
+        document: {
+          comments: [
+            { id: 7, author: "Reviewer", anchorKind: "range", content: [] },
+          ],
+          content: [before, removed, paragraph("00000003", "after")],
+        },
+      },
+    };
+    const { tracked } = assertLaws(document, deletion([removed.paraId ?? ""]));
+    const marked = storyParagraphs(tracked.document.package.document).find(
+      ({ paragraph: { paraId } }) => paraId === removed.paraId,
+    );
+    expect(marked?.paragraph.content).toContainEqual({
+      type: "commentReference",
+      id: 7,
+    });
+  },
+);
+
 test("a sole paragraph after a table is cleared without marking its final break", () => {
   const table = cell([paragraph("00000003", "cell")]);
   const final = paragraph("00000001", "remove");
