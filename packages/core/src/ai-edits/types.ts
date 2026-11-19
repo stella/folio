@@ -322,6 +322,8 @@ export type FolioAIEditOperation<Numbering = FolioAIListNumbering> =
            * with a tracked paragraph mark, so rejecting closes it away.
            */
           text: string;
+          /** Parse the text as Markdown instead of plain insertion text. */
+          textFormat?: "markdown";
           /**
            * `"paragraph"` (the default) splits newlines into consecutive blocks.
            * `"inline"` retains tabs and hard breaks inside this inserted block.

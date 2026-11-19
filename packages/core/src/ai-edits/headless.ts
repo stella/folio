@@ -69,6 +69,7 @@ import {
   applyFolioDocumentOperationsInPackage,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioDocumentOperationBatch,
+  type FolioDocumentOperationBatchInput,
   type FolioDocumentOperationResult,
   type FolioDocumentOperationUndoHandle,
   type FolioDocumentOperationUndoResult,
@@ -614,7 +615,7 @@ class FolioResolvedStorySerializationError extends FolioResolvedStorySerializati
 export type FolioApplyDocumentOperationsToStoryOptions =
   FolioApplyDocumentOperationsOptions & {
     story: FolioEditableDocumentStoryHandle;
-    batch: FolioDocumentOperationBatch;
+    batch: FolioDocumentOperationBatchInput;
     /**
      * Tables and rows an `insertTable` / `insertTableRow` in the batch places
      * verbatim, by operation id. A caller copying a table it already holds —
@@ -3153,12 +3154,12 @@ export class FolioDocxReviewer {
    * edit semantics.
    */
   applyDocumentOperations(
-    batch: FolioDocumentOperationBatch,
+    batch: FolioDocumentOperationBatchInput,
     options: FolioApplyDocumentOperationsOptions,
   ): FolioDocumentOperationResult {
     const internal = {
       story: MAIN_STORY,
-      batch,
+      batch: parseFolioDocumentOperationBatch(batch),
       ...(options.snapshot !== undefined && { snapshot: options.snapshot }),
       ...(options.revisionStamp !== undefined && {
         revisionStamp: options.revisionStamp,
@@ -3190,7 +3191,7 @@ export class FolioDocxReviewer {
   }: FolioApplyDocumentOperationsToStoryOptions): FolioDocumentOperationResult {
     const internal = {
       story,
-      batch,
+      batch: parseFolioDocumentOperationBatch(batch),
       ...(snapshot !== undefined && { snapshot }),
       ...(revisionStamp !== undefined && { revisionStamp }),
       ...(wordDiff !== undefined && { wordDiff }),
