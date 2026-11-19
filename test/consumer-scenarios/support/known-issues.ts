@@ -24,8 +24,6 @@ export const FINDINGS = {
     "legacy paragraph tab commands edit PM attrs, but imported paragraph serialization retains original tabs; canonical descriptors retire this defect for canonical sessions",
   MARKDOWN_DROPS_TEXT_BOX:
     "docxToMarkdown writes nothing of a text box's paragraphs, which getContent() and read_document list as blocks (support/readers.ts leaves them out of the Markdown comparison until fixed)",
-  HEADLESS_INSERT_AFTER_SPLIT_JOIN:
-    "the headless reviewer puts a block placed after a paragraph that reads as part of the next one between the halves of that next paragraph when the same batch splits it, where the batch read the whole paragraph and the block goes after it; retired when the headless reviewer runs on the canonical session",
 } as const;
 
 export type OpenIssue = keyof typeof OPEN_ISSUES;
@@ -87,8 +85,6 @@ export const FINDING_SYMPTOMS: Record<Finding, FailureSymptom> = {
   LEGACY_PARAGRAPH_TAB_EDITS_LOST:
     /legacy (?:setTabs|addTabStop|removeTabStop) serialization retains original paragraph tabs/u,
   MARKDOWN_DROPS_TEXT_BOX: /docxToMarkdown writes no text-box paragraph/u,
-  HEADLESS_INSERT_AFTER_SPLIT_JOIN:
-    /the result is not what was asked \(insertTable, splitBlock\)/u,
 };
 
 /**
@@ -96,10 +92,7 @@ export const FINDING_SYMPTOMS: Record<Finding, FailureSymptom> = {
  * finding; they run as expected failures there.
  */
 export const KNOWN_FAILING_CHECKED_IN_FLOWS: Readonly<Record<string, Finding>> =
-  {
-    "issue-1757-table-after-an-emptied-paragraph-whose-join-is-split.json":
-      "HEADLESS_INSERT_AFTER_SPLIT_JOIN",
-  };
+  {};
 
 /**
  * Checked-in flow files with steps that apply nothing (support/fuzz.ts

@@ -905,3 +905,55 @@ test("a paragraph's gaps and seams are projected with as many map operations how
   };
   expect(operationsFor(2000)).toBe(operationsFor(20));
 });
+
+test("a comment range open across a paragraph reads through its filled inline content controls", () => {
+  // The range covers the whole paragraph, so the editor marks what each
+  // control holds rather than the control itself.
+  const control = (id: number, content: ParagraphContent[]) =>
+    ({
+      type: "inlineSdt",
+      properties: { sdtType: "richText", id },
+      content,
+    }) satisfies ParagraphContent;
+  for (const held of [
+    [control(2, [{ type: "bookmarkStart", id: 5, name: "_Link" }])],
+    [control(2, [run("AB")])],
+    [run("L"), control(2, [run("AB")]), run("R")],
+    [control(2, [control(3, [run("AB")])])],
+  ] satisfies ParagraphContent[][]) {
+    const document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              paraId: "00000001",
+              content: [{ type: "commentRangeStart", id: 1 }],
+            },
+            { type: "paragraph", paraId: "00000002", content: held },
+            {
+              type: "paragraph",
+              paraId: "00000003",
+              content: [{ type: "commentRangeEnd", id: 1 }],
+            },
+          ],
+          comments: [
+            {
+              id: 1,
+              author: "Reviewer",
+              content: [
+                {
+                  type: "paragraph",
+                  paraId: "20000001",
+                  content: [run("Comment")],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    } satisfies Document;
+    const session = createCanonicalSession(document);
+    expect(session.isOk() ? null : session.error.message).toBeNull();
+  }
+});
