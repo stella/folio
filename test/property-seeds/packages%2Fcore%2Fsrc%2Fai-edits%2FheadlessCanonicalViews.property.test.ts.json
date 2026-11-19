@@ -71,6 +71,12 @@
       "path": "1:0:0:0:0:1:0:0:0:0:3:2:2:3:2:2:2:2:2:4:4:4:4:5:4:4:4:4:7:7:7:8:7:7:7:7:7:7:7:8:7:7:7:8:8:8:8:8:8:8:8:8:8:8:8:8:0:3:3:3:3:3",
       "note": "Rejecting two bare added marks in a group content control keeps the later paragraph, whose mark ends the control.",
       "date": "2026-11-18"
+    },
+    {
+      "seed": 1774066099,
+      "path": "30:0:0:0:0:0:1:0:0:0:0:0:0:0:3:2:2:2:2:3:2:2:2:2:2:2:2:3:2:2:3:3:3:3:3:3:3:3:3:7:5:4:3:5:5:5:3:3:3:3:5:5:3:3:3:3:3",
+      "note": "An empty paragraph whose rejected added mark ends a content control stays its last paragraph; the block before it keeps its place.",
+      "date": "2026-11-19"
     }
   ]
 }
