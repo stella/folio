@@ -12,7 +12,10 @@ import {
   type FolioDocumentOperation,
 } from "@stll/folio-core/server";
 
-import { sequentialGroups } from "../support/batch-replay-order.ts";
+import {
+  pendingJoinTargets,
+  sequentialGroups,
+} from "../support/batch-replay-order.ts";
 import { openReviewer, packDocument } from "../support/documents.ts";
 import { restate } from "../support/metamorphic.ts";
 import type { Row } from "../support/oracle.ts";
@@ -526,6 +529,13 @@ const compareWithReplay = async (
 ) => {
   const batched = await openReviewer(fixture);
   const preRows = batched.getContent() as Row[];
+  const joinSources = new Set(
+    batched
+      .getChanges()
+      .flatMap(({ type, blockId }) =>
+        type === "paragraphMarkDeleted" && blockId !== null ? [blockId] : [],
+      ),
+  );
   const batch = batched.applyDocumentOperations(
     {
       version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -540,6 +550,10 @@ const compareWithReplay = async (
     applied: operations,
     preRows,
     mode,
+    joinsInto:
+      mode === "suggested"
+        ? new Map()
+        : pendingJoinTargets(preRows, joinSources),
   })) {
     const replayed = sequential.applyDocumentOperations(
       {
@@ -597,5 +611,52 @@ test("a sole paragraph's deletion replays first, as the batch runs it", async ()
   for (const mode of MODES) {
     await compareWithReplay(fixture, mode, [remove, insert]);
     await compareWithReplay(fixture, mode, [insert, remove]);
+  }
+});
+
+test("a block after a pending join replays ahead of a split of the paragraph it joins", async () => {
+  const source = await openReviewer(
+    await packDocument(
+      fromMarkdown("Alpha.\n\nClause.\n\nSigned in two copies.\n\nEnd."),
+    ),
+  );
+  const [, clause, survivor] = source.getContent();
+  assert.ok(clause && survivor);
+  source.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "tracked-changes",
+      operations: [
+        {
+          id: "merge",
+          type: "mergeBlockWithNext",
+          blockId: clause.id,
+          separator: " ",
+        },
+      ],
+    },
+    { undefinedReferences: "refuse" },
+  );
+  const fixture = new Uint8Array(await source.toBuffer());
+  const rows = (await openReviewer(fixture)).getContent() as Row[];
+  assert.deepEqual(
+    pendingJoinTargets(rows, new Set([clause.id])),
+    new Map([[clause.id, survivor.id]]),
+  );
+  const insert: FolioDocumentOperation = {
+    id: "insert",
+    type: "insertTable",
+    blockId: clause.id,
+    rows: [["Term", "Value"]],
+  };
+  const split: FolioDocumentOperation = {
+    id: "split",
+    type: "splitBlock",
+    blockId: survivor.id,
+    offset: 14,
+  };
+  for (const mode of MODES) {
+    await compareWithReplay(fixture, mode, [insert, split]);
+    await compareWithReplay(fixture, mode, [split, insert]);
   }
 });

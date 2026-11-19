@@ -594,11 +594,10 @@ type ResolvedOperationFields = {
   boundaryComments?: readonly Mark[];
   /**
    * Which side of a pending join around the anchor a block insertion lands
-   * on, read when it runs: an earlier edit of the batch (a split of the
-   * paragraph the join leaves, or a deletion of one it takes in) can move
-   * where the join ends or starts. `from` orders the insertion among the
-   * batch's edits: the anchor's own gap after the join, where the block
-   * lands before it.
+   * on, read when it runs: an earlier edit of the batch (a deletion of a
+   * paragraph the join takes in) can move where the join ends or starts.
+   * `from` orders the insertion among the batch's edits where it lands, as
+   * the batch read it.
    */
   joinSide?: "before" | "after";
   /** Where the batch read the join to put the block, which `boundaryComments` describes. */
@@ -10236,14 +10235,15 @@ const resolveOperationTarget = ({
     const at = insertionGap(doc, boundary, side);
     return { from: at, at };
   };
-  // A block beside the anchor: `from` is the anchor's own gap, `at` where a
-  // pending join around it puts the block (see `joinSide`).
+  // A block beside the anchor: `at` is where a pending join around it puts
+  // the block (see `joinSide`), and `from` orders it there.
   const beside = (side: "before" | "after"): Placement => {
-    // A block after the join orders by the anchor's own gap: edits inside
-    // the paragraph the join leaves run first, and the block follows where
-    // they leave the join's end. A block before it orders by where it lands,
-    // ahead of the paragraphs the join takes in: edits inside them run first
-    // and keep the positions they were read at.
+    // A block beside the join orders by where it lands, outside the
+    // paragraphs the join takes in, as the batch read it: edits inside them
+    // run after a block put after the join (a split of the paragraph the
+    // join leaves keeps the block after its second half, as for a block put
+    // after that paragraph) and before one put before it, and keep the
+    // positions they were read at.
     // Either side of the blocks accepting removes whole is one gap
     // (`insertionGap`).
     const gap = (position: number): number => insertionGap(doc, position, side);
@@ -10253,10 +10253,9 @@ const resolveOperationTarget = ({
         : blockFrom,
     );
     const at = gap(joinBounds()[side]);
-    const from = side === "after" ? plain : at;
     return at === plain
-      ? { from, at }
-      : { from, at, joinSide: side, joinAt: at };
+      ? { from: at, at }
+      : { from: at, at, joinSide: side, joinAt: at };
   };
 
   if (
