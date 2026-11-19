@@ -899,6 +899,7 @@ export type FolioAIEditOperation<Numbering = FolioAIListNumbering> = FolioAIEdit
     type: "insertAfterBlock" | "insertBeforeBlock";
     blockId: string;
     text: string;
+    textFormat?: "markdown";
     lineBreakMode?: "paragraph" | "inline";
     formattingScope?: FolioAIInsertFormattingScope;
     inheritFormatting?: boolean;
@@ -1550,6 +1551,11 @@ export type FolioDocumentOperationBatch = {
     readonly dryRun?: boolean;
     readonly precondition?: FolioDocumentOperationBatchPrecondition;
     readonly existingRevisions?: (typeof FOLIO_EXISTING_REVISION_POLICIES)[number];
+};
+
+// @public
+export type FolioDocumentOperationBatchInput = Omit<FolioDocumentOperationBatch, "operations"> & {
+    readonly operations: readonly (FolioDocumentOperation | FolioMarkdownTableInput)[];
 };
 
 // @public (undocumented)

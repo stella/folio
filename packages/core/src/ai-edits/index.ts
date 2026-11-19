@@ -132,6 +132,7 @@ export {
   type FolioDocumentOperation,
   type FolioDocumentOperationAffectedTarget,
   type FolioDocumentOperationBatch,
+  type FolioDocumentOperationBatchInput,
   type FolioDocumentOperationCapabilities,
   type FolioDocumentOperationMode,
   type FolioDocumentOperationIssue,

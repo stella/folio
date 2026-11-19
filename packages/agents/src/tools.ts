@@ -30,6 +30,7 @@ import {
   FOLIO_PARAGRAPH_NUMBERING_JSON_SCHEMA,
   FOLIO_PRECONDITION_JSON_SCHEMA,
   INLINE_FORMATTING_JSON_SCHEMA,
+  MARKDOWN_INSERTION_TEXT_FORMAT_JSON_SCHEMA,
 } from "./operation-schema";
 import {
   DEFAULT_SUGGEST_CHANGES_OPERATION_TYPES,
@@ -201,6 +202,7 @@ const OPERATION_PROPERTY_SCHEMAS = {
   },
   spacing: FOLIO_CLEARABLE_PARAGRAPH_SPACING_JSON_SCHEMA,
   indentation: FOLIO_CLEARABLE_PARAGRAPH_INDENTATION_JSON_SCHEMA,
+  textFormat: MARKDOWN_INSERTION_TEXT_FORMAT_JSON_SCHEMA,
   lineBreakMode: {
     type: "string",
     enum: ["paragraph", "inline"],
@@ -251,7 +253,7 @@ const OPERATION_PROPERTY_SCHEMAS = {
   rows: {
     type: "array",
     description:
-      "Required for `insertTable`: cell texts row by row. Every row must hold the same number of cells.",
+      "For `insertTable`, provide equally sized rows of cell texts or one plain Markdown table in text.",
     items: { type: "array", items: { type: "string" } },
   },
   cellTexts: {

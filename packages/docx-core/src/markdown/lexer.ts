@@ -71,6 +71,13 @@ const legalMarkdown = new Marked({
 export const lexMarkdown = (source: string): Token[] =>
   plainMarkdown.lexer(source);
 
+export const visitMarkdownTokens = (
+  tokens: Token[],
+  visit: (token: Token) => void,
+): void => {
+  plainMarkdown.walkTokens(tokens, visit);
+};
+
 export type LegalSourceLexResult = {
   tokens: Token[];
   /** Maps a line number in the lexed text back to the author's source. */
@@ -149,6 +156,7 @@ type HandledTokens = {
   html: Tokens.HTML;
   link: Tokens.Link;
   list: Tokens.List;
+  list_item: Tokens.ListItem;
   paragraph: Tokens.Paragraph;
   strong: Tokens.Strong;
   table: Tokens.Table;

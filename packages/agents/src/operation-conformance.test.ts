@@ -858,6 +858,84 @@ describe("document operation contract JSON schema conformance", () => {
     },
   );
 
+  test("only insertion operations accept the Markdown text format", () => {
+    const operation = {
+      id: "markdown",
+      type: "insertAfterBlock",
+      blockId: "0304003A",
+      text: "# Terms",
+      textFormat: "markdown",
+    };
+    for (const candidate of [
+      operation,
+      { ...operation, type: "insertBeforeBlock" },
+    ]) {
+      expect(admits(OPERATION_SCHEMA, candidate)).toBe(true);
+      expect(
+        parseFolioDocumentOperationBatch({
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          operations: [candidate],
+        }).operations,
+      ).toEqual([candidate]);
+    }
+    for (const candidate of [
+      { ...operation, textFormat: "html" },
+      { ...operation, type: "replaceBlock" },
+    ]) {
+      expect(admits(OPERATION_SCHEMA, candidate)).toBe(false);
+      expect(() =>
+        parseFolioDocumentOperationBatch({
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          operations: [candidate],
+        }),
+      ).toThrow(InvalidFolioDocumentOperationBatchError);
+    }
+  });
+
+  test("a Markdown table is normalized to rows", () => {
+    const operation = {
+      id: "table",
+      type: "insertTable",
+      blockId: "0304003A",
+      textFormat: "markdown",
+      text: "| A | B |\n| --- | --- |\n| C | D |",
+    };
+    const batch = {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      operations: [operation],
+    };
+    expect(admits(OPERATION_SCHEMA, operation)).toBe(true);
+    expect(parseFolioDocumentOperationBatch(batch).operations).toEqual([
+      {
+        id: operation.id,
+        type: operation.type,
+        blockId: operation.blockId,
+        rows: [
+          ["A", "B"],
+          ["C", "D"],
+        ],
+      },
+    ]);
+    expect(admits(OPERATION_SCHEMA, { ...operation, rows: [["A"]] })).toBe(
+      false,
+    );
+    expect(admits(OPERATION_SCHEMA, { ...operation, textFormat: "html" })).toBe(
+      false,
+    );
+    for (const text of [
+      operation.text.replace("C", "**C**"),
+      operation.text.replace("---", ":---"),
+      `${operation.text}\n\nA paragraph.`,
+    ]) {
+      expect(() =>
+        parseFolioDocumentOperationBatch({
+          ...batch,
+          operations: [{ ...operation, text }],
+        }),
+      ).toThrow(InvalidFolioDocumentOperationBatchError);
+    }
+  });
+
   test.each([
     { kind: "newList", format: "numbered" },
     {

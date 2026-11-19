@@ -838,6 +838,15 @@ export const INLINE_FORMATTING_JSON_SCHEMA: FolioJsonSchema = {
   additionalProperties: false,
 };
 
+export const MARKDOWN_INSERTION_TEXT_FORMAT_JSON_SCHEMA: FolioJsonSchema = {
+  type: "string",
+  enum: ["markdown"],
+  description:
+    "Parse text as Markdown paragraphs, headings, or a standalone flat list. " +
+    "For insertTable, supply one plain Markdown table without rows. " +
+    "Use without insertion formatting fields, moveId, or a comment.",
+};
+
 /**
  * JSON Schema (draft-07 compatible) for ONE document operation: the full
  * union accepted by `parseFolioDocumentOperationBatch` in
@@ -929,6 +938,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
             'set `formattingScope: "allParagraphs"` to format every paragraph alike, for ' +
             "example several list items. Prefer one paragraph per operation otherwise.",
         },
+        textFormat: MARKDOWN_INSERTION_TEXT_FORMAT_JSON_SCHEMA,
         inheritFormatting: {
           type: "boolean",
           description:
@@ -986,6 +996,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
             'set `formattingScope: "allParagraphs"` to format every paragraph alike, for ' +
             "example several list items. Prefer one paragraph per operation otherwise.",
         },
+        textFormat: MARKDOWN_INSERTION_TEXT_FORMAT_JSON_SCHEMA,
         inheritFormatting: {
           type: "boolean",
           description:
@@ -1150,6 +1161,13 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
           description:
             "Place the table after the anchor (default) or before it.",
         },
+        textFormat: {
+          type: "string",
+          enum: ["markdown"],
+          description:
+            "Insert a standalone Markdown table with plain, unaligned cells.",
+        },
+        text: { type: "string", description: "The complete Markdown table." },
         rows: {
           type: "array",
           description:
@@ -1157,7 +1175,17 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
           items: { type: "array", items: { type: "string" } },
         },
       },
-      required: ["id", "type", "blockId", "rows"],
+      required: ["id", "type", "blockId"],
+      oneOf: [
+        {
+          required: ["rows"],
+          properties: { text: { not: {} }, textFormat: { not: {} } },
+        },
+        {
+          required: ["text", "textFormat"],
+          properties: { rows: { not: {} } },
+        },
+      ],
       additionalProperties: false,
     },
     {

@@ -216,6 +216,11 @@ import {
   stripInlineEmphasisMarkers,
 } from "./inline-emphasis";
 import {
+  compileMarkdownInsertion,
+  type MarkdownParagraph,
+  markdownRunText,
+} from "./markdownInsertion";
+import {
   applyTextChanges,
   changesFromSegments,
   keepAtomicSpans,
@@ -225,6 +230,7 @@ import {
 } from "./minimal-replacement";
 import {
   assertNewListsAllocated,
+  deferInsertedList,
   type FolioAIStagedEditOperation,
   resolveNewListOperations,
   stageNewListOperations,
@@ -594,6 +600,7 @@ type ResolvedOperationFields = {
    * was split into consecutive paragraphs (see {@link splitInsertParagraphTexts}).
    */
   insertTexts?: readonly string[];
+  markdownParagraphs?: readonly MarkdownParagraph[];
   /**
    * The comments running across the boundary a block insertion lands on, as
    * the batch read it. The inserted blocks carry them, so an edit that runs
@@ -4975,7 +4982,25 @@ const buildInsertedParagraphs = ({
       ? operation.hardPageBreak
       : undefined;
     let content: PMNode[] | null = null;
-    if (hardPageBreak !== undefined) {
+    const markdown = item.markdownParagraphs?.at(paragraphIndex);
+    if (markdown !== undefined) {
+      content = markdown.content.flatMap((run) =>
+        cleanTextInlineNodes({
+          schema,
+          text: markdownRunText(run),
+          marks,
+        }).map((node) =>
+          node.mark(
+            reconcileRunFormattingMarks({
+              authoredFormatting: run.formatting ?? {},
+              context: OPERATION_TEXT_CONTEXT,
+              node,
+              styleResolver,
+            }),
+          ),
+        ),
+      );
+    } else if (hardPageBreak !== undefined) {
       const pageBreakRun = schema.nodes["pageBreakRun"];
       if (pageBreakRun === undefined) {
         panic("The schema has no page-break run node", {
@@ -5252,6 +5277,11 @@ const buildInsertedParagraphs = ({
         date,
         ...(initials ? { initials } : {}),
       };
+    }
+    const outlineLevel = markdown?.formatting?.outlineLevel;
+    if (outlineLevel !== undefined) {
+      attrs["outlineLevel"] = outlineLevel;
+      attrs["_originalFormatting"] = { outlineLevel };
     }
     const paragraph = item.blockNode.type.create(attrs, content);
     // The new text carries only the marks the operation gave it (its
@@ -5687,6 +5717,7 @@ const applyFolioAIEditOperationsInternal = ({
     if (
       (operation.type === "insertAfterBlock" ||
         operation.type === "insertBeforeBlock") &&
+      operation.textFormat !== "markdown" &&
       operation.lineBreakMode !== "inline" &&
       LINE_BREAK_PATTERN.test(operation.text)
     ) {
@@ -10514,22 +10545,50 @@ const resolveOperationTarget = ({
       return { type: "skip", ...PENDING_JOIN_INSERTION_REFUSAL };
     }
     const insertFrom = placed.from;
+    const markdown =
+      operation.textFormat === "markdown"
+        ? compileMarkdownInsertion(operation.text)
+        : undefined;
+    if (markdown?.type === "unsupported")
+      return {
+        type: "skip",
+        reason: "unsupportedBlock",
+        message: markdown.message,
+      };
     const splitParagraphs =
       operation.lineBreakMode !== "inline" &&
       LINE_BREAK_PATTERN.test(operation.text);
-    const insertTexts = splitParagraphs
-      ? splitInsertParagraphTexts(operation.text)
-      : [operation.text];
+    const insertTexts =
+      markdown?.paragraphs.map(({ content }) =>
+        content.map(markdownRunText).join(""),
+      ) ??
+      (splitParagraphs
+        ? splitInsertParagraphTexts(operation.text)
+        : [operation.text]);
+    const insertOperation =
+      markdown === undefined
+        ? operation
+        : ({
+            ...operation,
+            inheritFormatting: false,
+            ...(markdown.listKind !== undefined && {
+              formattingScope: "allParagraphs" as const,
+              numbering: deferInsertedList(markdown.listKind),
+            }),
+          } as const);
     return {
       type: "resolved",
       operation: {
-        operation,
+        operation: insertOperation,
         from: insertFrom,
         to: insertFrom,
         blockFrom,
         blockTo,
         blockNode,
         insertTexts,
+        ...(markdown !== undefined && {
+          markdownParagraphs: markdown.paragraphs,
+        }),
         boundaryComments: commentsAcrossBlockBoundary(doc, placed.at),
         ...(placed.joinSide !== undefined && {
           joinSide: placed.joinSide,
