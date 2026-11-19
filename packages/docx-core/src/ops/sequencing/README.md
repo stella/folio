@@ -293,7 +293,10 @@ actor's lease like every other id.
 
 Undo inverses are operations of the same kinds and follow the same rules.
 Rich inverse preconditions stay intact and may refuse an undo after another
-edit.
+edit. A deletion or format that expects its range's content (an undo of
+typing, say) passes an edit that leaves that content as it was: text typed
+or deleted outside the range, a split of its paragraph away from it, and a
+join of its paragraph with a neighbour.
 
 Partially overlapping writes to the same run property require additional
 structural effects and currently reject. Nonzero marker-gap changes and
