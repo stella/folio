@@ -279,8 +279,13 @@ concurrent replies take the same places whichever applies first.
 Everything else on one comment is refused with `partConflict` naming the
 `comments` part: two content edits, opposite resolutions, a deletion against
 any other use of its thread (a reply to a deleted parent included), and a
-restoration against anything but a content edit of another comment (it puts
-records and part relationships back as captured). A reply or a resolution
+restoration against anything but a content edit of another comment or a new
+range or point comment (it puts records and part relationships back as
+captured). A restoration passes a new comment anchored outside its
+paragraphs, and keeps it: rebased over the creation, it names the comment in
+`createdSince` and applies as if the comment were absent, then puts it back
+before the first comment with a greater id, as its creation does, and
+reconciles the comment part relationship, so both orders give one document. A reply or a resolution
 after a concurrent deletion that removed a comment part relationship is
 refused naming `relationships`, since it would add the relationship under
 another id than it does before the deletion. Comment ids come from the

@@ -16,9 +16,11 @@ import {
   canonicalBase,
   compileCanonicalEdit,
 } from "./__tests__/canonicalEdits";
+import { applyBatch } from "./applyBatch";
 import { createClient } from "./client";
 import {
   BATCH_REJECTION_REASONS,
+  BatchRejection,
   type DocumentBatch,
   EXCLUSIVE_PARTS,
   type SequencedBatch,
@@ -86,6 +88,12 @@ const restoration = (id: number): CommentOp => ({
     anchors: [],
   },
 });
+
+const stateOf = (op: CommentOp) => {
+  if (op.type !== DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE)
+    throw new Error("A restoration is needed.");
+  return op.state;
+};
 
 const batch = (ops: readonly DocumentOp[]): DocumentBatch => ({
   schema: DOCUMENT_OP_SCHEMA_VERSION,
@@ -185,17 +193,40 @@ describe("concurrent comment operations", () => {
     ).toBe(true);
   });
 
-  test("a restoration passes only content edits of other comments", () => {
+  test("a restoration passes content edits and new comments of other comments", () => {
     expect(over(restoration(7), update(3)).isOk()).toBe(true);
     for (const remote of [
       update(7),
-      range(3, 1, 2),
       deletion(3),
       resolution(3, "resolved"),
+      reply(3, 5),
     ])
       expect(refusal(over(restoration(7), remote, touched([], [3]))).part).toBe(
         EXCLUSIVE_PARTS.COMMENTS,
       );
+    // It keeps a new comment anchored elsewhere, and the comment passes it.
+    const kept = over(restoration(7), range(3, 1, 2), touched([BLOCK], [3]));
+    if (kept.isErr()) throw kept.error;
+    expect(kept.value.ops).toEqual([{ ...restoration(7), createdSince: [3] }]);
+    expect(
+      over(range(3, 1, 2), restoration(7), touched(["10000001"], [7])).isOk(),
+    ).toBe(true);
+  });
+
+  test("a restoration and a new comment in one of its paragraphs refuse", () => {
+    const restored: CommentOp = {
+      ...restoration(7),
+      state: {
+        ...stateOf(restoration(7)),
+        anchors: [{ story: OP_STORIES.MAIN, blockId: BLOCK, content: [] }],
+      },
+    };
+    expect(refusal(over(restored, range(3, 1, 2))).reason).toBe(
+      BATCH_REJECTION_REASONS.BLOCK_CONFLICT,
+    );
+    expect(refusal(over(range(3, 1, 2), restored)).reason).toBe(
+      BATCH_REJECTION_REASONS.BLOCK_CONFLICT,
+    );
   });
 });
 
@@ -412,3 +443,119 @@ const endBetweenBlocks = (document: Document): Document => {
     },
   };
 };
+
+describe("a restoration and a comment created since it was captured", () => {
+  const base = canonicalBase();
+  const sequencer = createSequencer(base);
+  // A comment body takes its author's first leased paragraph id.
+  const author = (index: number) => {
+    const lease = sequencer.grantIdLease(`actor-${index}`);
+    if (lease.isErr()) throw lease.error;
+    return {
+      actor: `actor-${index}`,
+      tag: String(index),
+      lease: lease.value,
+      allocate: createEditorIntentIdAllocator(),
+    };
+  };
+  const applied = (document: Document, ops: readonly DocumentOp[]) => {
+    const result = applyBatch(document, ops);
+    if (result.isErr()) throw result.error;
+    return result.value;
+  };
+  const compiled = (
+    document: Document,
+    seed: { kind: "pointComment" | "comment"; a: number },
+    serial: number,
+  ) => {
+    const ops = compileCanonicalEdit(
+      document,
+      author(serial),
+      { ...seed, b: 0, suggest: false },
+      serial,
+    );
+    if (ops === undefined) throw new Error(`The ${seed.kind} did not compile.`);
+    return ops;
+  };
+  // The document's first comment, at the start of its first paragraph, and
+  // a range comment in the next paragraph made after it.
+  const first = compiled(base, { kind: "pointComment", a: 0 }, 1);
+  const withFirst = applied(base, first);
+  const second = compiled(withFirst.document, { kind: "comment", a: 1 }, 2);
+  const withBoth = applied(withFirst.document, second);
+  const undo = withFirst.inverse;
+  const undone = applied(withFirst.document, undo);
+  const alone = applied(base, second).document;
+  const sequencedAs = (
+    opId: string,
+    ops: readonly DocumentOp[],
+    effects: SequencedBatch["effects"],
+  ): SequencedBatch => ({ ...batch(ops), opId, revision: 1, effects });
+  const secondId = () => {
+    const op = second.at(0);
+    if (op?.type !== DOCUMENT_OP_TYPES.CREATE_COMMENT)
+      throw new Error("The range comment did not compile.");
+    return op.comment.id;
+  };
+
+  test("the two commute: the comment stays and takes back the comment part", () => {
+    const kept = transformBatch(batch(second), [
+      sequencedAs("undo", undo, undone.effects),
+    ]);
+    if (kept.isErr()) throw kept.error;
+    const afterUndo = applied(undone.document, kept.value.ops).document;
+    const rebased = transformBatch(batch(undo), [
+      sequencedAs("second", second, withBoth.effects),
+    ]);
+    if (rebased.isErr()) throw rebased.error;
+    expect(rebased.value.ops).toEqual(
+      undo.map((op) => ({ ...op, createdSince: [secondId()] })),
+    );
+    const afterSecond = applied(withBoth.document, rebased.value.ops).document;
+    expect(equalForStaleness(afterUndo, afterSecond)).toBe(true);
+    expect(afterSecond.package.document.comments?.map(({ id }) => id)).toEqual([
+      secondId(),
+    ]);
+    expect(equalForStaleness(afterSecond, alone)).toBe(true);
+  });
+
+  test("a rejected comment leaves a later one elsewhere pending", () => {
+    const client = createClient(base);
+    for (const [opId, ops] of [
+      ["first", first],
+      ["second", second],
+    ] as const) {
+      const queued = client.enqueue({ ...batch(ops), opId });
+      if (queued.isErr()) throw queued.error;
+    }
+    client.receiveReject({
+      type: "reject",
+      opId: "first",
+      headRev: 0,
+      reason: new BatchRejection({
+        reason: BATCH_REJECTION_REASONS.UNSUPPORTED_PAIR,
+        message: "Rejected.",
+      }),
+    });
+    // Only the rejected batch is noticed as dropped.
+    expect(client.notices.map(({ opId }) => opId)).toEqual(["first"]);
+    expect(client.pending.map(({ opId }) => opId)).toEqual(["second"]);
+    expect(equalForStaleness(client.document, alone)).toBe(true);
+  });
+
+  test("a restoration whose comment created since is gone is stale", () => {
+    const restored = undo.at(0);
+    if (restored?.type !== DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE)
+      throw new Error("The undo must restore comment state.");
+    const refused = applyBatch(withFirst.document, [
+      { ...restored, createdSince: [secondId()] },
+    ]);
+    expect(refused.isErr()).toBe(true);
+    if (refused.isErr()) expect(refused.error.reason).toBe("stale");
+    expect(
+      applyBatch(withBoth.document, [
+        { ...restored, createdSince: [secondId(), secondId()] },
+      ]).isErr(),
+    ).toBe(true);
+  });
+});

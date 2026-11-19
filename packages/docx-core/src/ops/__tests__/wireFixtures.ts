@@ -1099,6 +1099,35 @@ export const envelopes = (): DocumentOpEnvelope[] => {
     controls = result.value.document;
   }
 
+  // A comment's undo rebased over a later comment in another paragraph keeps
+  // it (`createdSince`).
+  const commentAt = (id: number, blockId: string): DocumentOp => ({
+    type: DOCUMENT_OP_TYPES.CREATE_COMMENT,
+    comment: {
+      id,
+      author: "Reviewer",
+      content: [
+        { type: "paragraph", paraId: `0000200${id % 10}`, content: [] },
+      ],
+    },
+    anchor: { kind: "point", at: at(blockId, 0) },
+  });
+  const commented = applyDocumentOp(
+    cloneModel(document),
+    commentAt(501, "00000001"),
+  ).unwrap();
+  const later = applyDocumentOp(
+    commented.document,
+    commentAt(502, "00000002"),
+  ).unwrap();
+  for (const undo of commented.inverse) {
+    if (undo.type !== DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE) continue;
+    const kept = { ...undo, createdSince: [502] };
+    const result = applyDocumentOp(later.document, kept).unwrap();
+    out.push(toOpEnvelope(kept));
+    for (const inverse of result.inverse) out.push(toOpEnvelope(inverse));
+  }
+
   return out;
 };
 

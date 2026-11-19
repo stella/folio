@@ -1190,15 +1190,58 @@ const restoreAnchors = ({
   return Result.ok(current);
 };
 
+// The comments created since a restoration was captured, and the document
+// without them: the one it was captured against. Undefined when one of them
+// is gone.
+const withoutCreatedSince = (
+  document: Document,
+  op: RestoreCommentStateOp,
+  ids: ReadonlySet<number>,
+): Result<
+  { view: Document; created: readonly Comment[] } | undefined,
+  DocumentOpRefusal
+> => {
+  const since = op.createdSince ?? [];
+  if (
+    !Array.isArray(since) ||
+    new Set(since).size !== since.length ||
+    since.some((id) => !validId(id) || ids.has(id))
+  )
+    return fail(op, "The comments created since a restoration are invalid.");
+  if (since.length === 0) return Result.ok({ view: document, created: [] });
+  const comments = document.package.document.comments ?? [];
+  const created: Comment[] = [];
+  for (const id of since) {
+    const comment = comments.find((entry) => entry.id === id);
+    if (comment === undefined) return Result.ok(undefined);
+    created.push(comment);
+  }
+  const later = new Set(since);
+  return Result.ok({
+    view: withComments(
+      document,
+      comments.filter(({ id }) => !later.has(id)),
+    ),
+    created,
+  });
+};
+
 const restore = (
   document: Document,
   op: RestoreCommentStateOp,
 ): Result<DocumentEdit, DocumentOpRefusal> => {
   const ids = new Set(op.ids);
+  const without = withoutCreatedSince(document, op, ids);
+  if (without.isErr()) return Result.err(without.error);
+  const since = without.value;
   if (
+    since === undefined ||
     ids.size !== op.ids.length ||
     op.ids.some((id) => !validId(id)) ||
-    !structurallyEqual(capture(document, ids, op.expected.anchors), op.expected)
+    !structurallyEqual(
+      capture(since.view, ids, op.expected.anchors),
+      op.expected,
+    )
   )
     return fail(
       op,
@@ -1290,8 +1333,9 @@ const restore = (
       op,
       "A comment inverse can only restore its own markers between blocks.",
     );
+  const { view } = since;
   const restoredAnchors = restoreAnchors({
-    document,
+    document: view,
     op,
     anchors: op.state.anchors,
   });
@@ -1305,7 +1349,7 @@ const restore = (
       "A paragraph beside a restored comment marker is missing.",
       DOCUMENT_OP_REFUSAL_REASONS.STALE,
     );
-  const comments = (document.package.document.comments ?? []).filter(
+  const comments = (view.package.document.comments ?? []).filter(
     ({ id }) => !ids.has(id),
   );
   for (const { index, comment } of op.state.records) {
@@ -1365,7 +1409,27 @@ const restore = (
       delete pkg.relationships;
       break;
   }
-  return edited(document, { ...restored, package: pkg }, op, ids);
+  if (since.created.length === 0)
+    return edited(document, { ...restored, package: pkg }, op, ids);
+  // Each comment created since takes its place as its creation does: before
+  // the first comment with a greater id, its part relationship reconciled.
+  let kept = [...comments];
+  for (const comment of since.created) {
+    const following = kept.findIndex(({ id }) => id > comment.id);
+    kept =
+      following < 0
+        ? [...kept, comment]
+        : kept.toSpliced(following, 0, comment);
+  }
+  return edited(
+    document,
+    reconcilePartRelationships(
+      withComments({ ...restored, package: pkg }, kept),
+      "comments",
+    ),
+    op,
+    ids,
+  );
 };
 
 const revisionRange = (
