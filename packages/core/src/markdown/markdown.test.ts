@@ -1250,3 +1250,22 @@ describe("toMarkdown — clean preset for skills", () => {
     );
   });
 });
+
+describe("toMarkdown — a tag split across runs", () => {
+  test.each([
+    [["<", "Name of party>"]],
+    [["<Name", " of party>"]],
+    [["<Na", "me of party>"]],
+  ])("%j stays text", (parts) => {
+    const out = md([para(parts.map((part) => run(part, { bold: true })))]);
+    const [block] = compileMarkdownToContent(out).content;
+    const text =
+      block?.type === "paragraph"
+        ? block.content
+            .flatMap((item) => (item.type === "run" ? item.content : []))
+            .map((item) => (item.type === "text" ? item.text : ""))
+            .join("")
+        : "";
+    expect(text).toBe(parts.join(""));
+  });
+});

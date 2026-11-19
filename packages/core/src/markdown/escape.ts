@@ -24,7 +24,10 @@ export function escapeInline(text: string): string {
   // Angle brackets only escaped when they form a plausible HTML tag — an
   // alphabetic name immediately followed by attributes/end. Prose like `x < y`
   // and `i < n` stays untouched.
-  out = out.replace(/<(?<tag>\/?[A-Za-z][\w-]*)(?=[\s/>])/gu, "\\<$<tag>");
+  // Text reaches here a run at a time: a `<` or tag name ending one run can
+  // open a tag the next run's text completes, so it is escaped there too.
+  out = out.replace(/<(?<tag>\/?[A-Za-z][\w-]*)(?=[\s/>]|$)/gu, "\\<$<tag>");
+  out = out.replace(/<$/u, "\\<");
   return out;
 }
 
