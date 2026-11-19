@@ -35,7 +35,7 @@ test("clean rooms derive exactly the repository release-age settings on every wr
       const written = Bun.TOML.parse(
         await readFile(path.join(consumerDir, "bunfig.toml"), "utf8"),
       );
-      expect(written).toEqual({ install: policy });
+      expect(written).toEqual({ install: { ...policy, globalStore: false } });
     }
   } finally {
     await rm(consumerDir, { recursive: true, force: true });
@@ -97,6 +97,8 @@ test("dependency consumers explicitly select the isolated linker", async () => {
       await readFile(path.join(consumerDir, "bunfig.toml"), "utf8"),
     );
     expect(config.install.linker).toBe("isolated");
+    // A user-level global store must not reach the consumer's install.
+    expect(config.install.globalStore).toBe(false);
   } finally {
     await rm(consumerDir, { recursive: true, force: true });
   }
