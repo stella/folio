@@ -9,8 +9,8 @@
     {
       "seed": 946194673,
       "path": "17:0:0:0:0:0:0:0:0",
-      "note": "#3007: a tracked deletion of the paragraph holding a note reference is refused; the reviewed suggestion stages it.",
-      "date": "2026-11-19"
+      "note": "#3007: a tracked deletion of a paragraph holding a note reference applies; Accept All removes the note with it.",
+      "date": "2026-11-20"
     }
   ]
 }
