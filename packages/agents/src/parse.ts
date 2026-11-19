@@ -26,6 +26,10 @@ import {
 } from "@stll/folio-core/server";
 
 import {
+  decodeSuggestionStory,
+  type FolioAgentSuggestionStory,
+} from "./codecs";
+import {
   type FolioSuggestChangesOptions,
   type ResolvedFolioSuggestChangesOptions,
   resolveSuggestChangesOptions,
@@ -216,6 +220,7 @@ export type ParseSuggestChangesResult =
   | {
       ok: true;
       operations: FolioAIEditOperation[];
+      story?: FolioAgentSuggestionStory;
       /** Present when the call pinned a host document version. */
       precondition?: FolioDocumentOperationBatchPrecondition;
       normalizations: FolioAgentInputNormalization[];
@@ -225,6 +230,7 @@ export type ParseSuggestChangesResult =
 const SUGGEST_CHANGES_ARGUMENT_KEYS = [
   "operations",
   "documentVersion",
+  "story",
 ] as const;
 
 /** String-valued operation fields that count against the text caps. */
@@ -261,6 +267,7 @@ const parseEmbeddedJson = (value: unknown): unknown => {
 type DecodedSuggestChangesInput = {
   operations: Record<string, unknown>[];
   documentVersion: unknown;
+  story: unknown;
   normalizations: FolioAgentInputNormalization[];
 };
 
@@ -364,6 +371,7 @@ const decodeSuggestChangesInput = (
   return {
     operations,
     documentVersion: args["documentVersion"],
+    story: args["story"],
     normalizations,
   };
 };
@@ -467,6 +475,17 @@ export const parseSuggestChangesInput = (
   if (typeof decoded === "string") {
     return { ok: false, error: decoded };
   }
+  const story =
+    decoded.story === undefined
+      ? undefined
+      : decodeSuggestionStory(decoded.story);
+  if (story === null) {
+    return {
+      ok: false,
+      error:
+        "suggest_changes requires a header or footer story handle from list_stories.",
+    };
+  }
 
   let precondition: FolioDocumentOperationBatchPrecondition | undefined;
   if (resolved.documentVersion !== null) {
@@ -534,6 +553,7 @@ export const parseSuggestChangesInput = (
     return {
       ok: true,
       operations: [...batch.operations],
+      ...(story !== undefined && { story }),
       ...(batch.precondition !== undefined && {
         precondition: batch.precondition,
       }),

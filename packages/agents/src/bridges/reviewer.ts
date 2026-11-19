@@ -1,5 +1,6 @@
 import type {
   FolioAIEditApplyMode,
+  FolioDocumentOperationBatch,
   FolioDocxReviewer,
   FolioReviewComment,
   FolioReviewCommentReply,
@@ -48,9 +49,8 @@ const toAgentComment = (comment: FolioReviewComment): FolioAgentComment => ({
 
 /**
  * Build a {@link FolioAgentBridge} over a headless {@link FolioDocxReviewer}
- * (`@stll/folio-core/server`). No optional capability members are
- * implemented: a headless document has no live page/selection/scroll
- * surface, so `read_page`, `read_selection`, and `scroll_to_block` report an
+ * (`@stll/folio-core/server`). A headless document has no live page, selection,
+ * or scroll surface, so `read_page`, `read_selection`, and `scroll_to_block` report an
  * unsupported-capability error via {@link executeFolioToolCall} on this
  * bridge.
  */
@@ -64,23 +64,47 @@ export const createReviewerBridge = (
   const replyDate =
     revisionStamp === undefined ? {} : { date: revisionStamp.date };
 
+  const withMode = (batch: FolioDocumentOperationBatch) =>
+    batch.mode === undefined ? { ...batch, mode } : batch;
+  const operationOptions = {
+    ...applyOptions,
+    undefinedReferences: "refuse",
+  } as const;
+  const registerBridge = (bridge: FolioAgentBridge) => {
+    registerOperationSession(bridge, reviewer);
+    return registerDecodedCommentHandlers(bridge, {
+      replyToComment: ({ numeric }, text) =>
+        reviewer.replyTo(numeric, { text, ...replyDate }) !== null,
+      resolveComment: ({ raw }, resolved) =>
+        reviewer.resolveComment(raw, { resolved }),
+    });
+  };
   const bridge: FolioAgentBridge = {
     snapshot: () => reviewer.snapshot(),
     documentOperationMode: mode,
     applyDocumentOperations: (batch) =>
-      reviewer.applyDocumentOperations(
-        batch.mode === undefined ? { ...batch, mode } : batch,
-        {
-          ...applyOptions,
-          undefinedReferences: "refuse",
-        },
-      ),
+      reviewer.applyDocumentOperations(withMode(batch), operationOptions),
     undoDocumentOperations: (undoHandle) =>
       reviewer.undoDocumentOperations(undoHandle),
     getComments: () => reviewer.getComments().map(toAgentComment),
     getChanges: () => reviewer.getChanges().map(toAgentChange),
     listStories: () => reviewer.listStories(),
     readStory: (handle) => reviewer.readStory(handle),
+    forStory: (story) => {
+      const snapshot = reviewer.snapshotStory(story);
+      if (snapshot === null) return null;
+      return registerBridge({
+        ...bridge,
+        snapshot: () => snapshot,
+        applyDocumentOperations: (batch) =>
+          reviewer.applyDocumentOperationsToStory({
+            ...operationOptions,
+            story,
+            batch: withMode(batch),
+            snapshot,
+          }),
+      });
+    },
     replyToComment: (commentId, text) => {
       const decoded = decodeCommentId(commentId);
       return (
@@ -95,11 +119,5 @@ export const createReviewerBridge = (
       );
     },
   };
-  registerOperationSession(bridge, reviewer);
-  return registerDecodedCommentHandlers(bridge, {
-    replyToComment: ({ numeric }, text) =>
-      reviewer.replyTo(numeric, { text, ...replyDate }) !== null,
-    resolveComment: ({ raw }, resolved) =>
-      reviewer.resolveComment(raw, { resolved }),
-  });
+  return registerBridge(bridge);
 };

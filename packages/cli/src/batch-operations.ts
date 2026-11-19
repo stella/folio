@@ -91,7 +91,7 @@ export const withBatchOperations = (
               enum: [...types, ...BATCH_OPERATION_TYPES],
               description:
                 `${typeof type["description"] === "string" ? type["description"] : ""} ` +
-                "replaceAll (replace every match of `find` in the body and tables); " +
+                "replaceAll (replace every match of `find` in the selected story); " +
                 "addComment (comment on `blockId`, or on the one block containing `quote`).",
             },
             ...BATCH_PROPERTY_SCHEMAS,

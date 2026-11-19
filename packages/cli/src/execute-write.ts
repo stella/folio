@@ -12,6 +12,7 @@ import { realpath, stat } from "node:fs/promises";
 import path from "node:path";
 
 import { createReviewerBridge } from "@stll/folio-agents/bridges/reviewer";
+import { decodeSuggestionStory } from "@stll/folio-agents/codecs";
 import { generateRedlineDocx } from "@stll/folio-agents/compare";
 import { executeFolioToolCallUntyped } from "@stll/folio-agents/execute";
 import type { FolioAgentToolOptions } from "@stll/folio-agents/suggest-changes-options";
@@ -273,7 +274,30 @@ const mutateWithAgentTool = async ({
   let callOptions: FolioAgentToolOptions = {};
   let replaced: ExpandedBatch["replaced"] = [];
   if (tool.agentTool === FOLIO_AGENT_TOOL_NAMES.suggestChanges) {
-    const batch = expandBatchOperations(args["operations"], bridge);
+    const rawStory = args["story"];
+    let target = bridge;
+    if (rawStory !== undefined) {
+      const story = decodeSuggestionStory(rawStory);
+      if (story === null) {
+        return Result.err(
+          invalidInput(
+            "Pass a header or footer story handle from folio stories.",
+          ),
+        );
+      }
+      const scoped = bridge.forStory?.(story);
+      if (!scoped) {
+        return Result.err(
+          cliError({
+            code: FOLIO_CLI_ERROR_CODES.notFound,
+            message: "The requested story was not found.",
+            hint: "Run folio stories again.",
+          }),
+        );
+      }
+      target = scoped;
+    }
+    const batch = expandBatchOperations(args["operations"], target);
     if (batch.isErr()) return Result.err(batch.error);
     callArgs = { ...args, operations: batch.value.operations };
     callOptions = batch.value.options;

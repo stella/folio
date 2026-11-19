@@ -156,6 +156,7 @@ export type FolioAgentBridge = {
     getChanges(): FolioAgentChange[];
     listStories?(): FolioDocumentStory[];
     readStory?(handle: FolioDocumentStoryHandle): FolioDocumentStory | null;
+    forStory?(handle: FolioAgentSuggestionStory): FolioAgentBridge | null;
     replyToComment(commentId: string, text: string): boolean;
     resolveComment(commentId: string, resolved: boolean): boolean;
     scrollToBlock?(blockId: string): boolean;
@@ -385,6 +386,7 @@ export const parseSuggestChangesInput: (args: unknown, options?: FolioSuggestCha
 export type ParseSuggestChangesResult = {
     ok: true;
     operations: FolioAIEditOperation[];
+    story?: FolioAgentSuggestionStory;
     precondition?: FolioDocumentOperationBatchPrecondition;
     normalizations: FolioAgentInputNormalization[];
 } | {
