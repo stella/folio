@@ -118,8 +118,8 @@ describe("stableRelativeImportOrder", () => {
     );
   });
 
-  test("source-mirrored JavaScript builds install the canonicalizer", () => {
-    for (const config of [coreConfigs.at(0), agentsConfigs.at(0)]) {
+  test("source-mirrored JavaScript and declaration builds install the canonicalizer", () => {
+    for (const config of [...coreConfigs, ...agentsConfigs]) {
       expect(config?.plugins).toEqual(
         expect.arrayContaining([
           expect.objectContaining({

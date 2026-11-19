@@ -81,5 +81,8 @@ export default defineConfig([
       dtsOnly: true,
     },
     clean: false,
+    // Declarations import their sibling modules in a stable order too, so two
+    // builds of the same sources emit the same `.d.ts`.
+    plugins: [stableRelativeImportOrder()],
   },
 ]);

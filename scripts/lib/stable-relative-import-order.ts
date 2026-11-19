@@ -69,7 +69,7 @@ export const canonicalizeRelativeImportOrder = (
 
 export const stableRelativeImportOrder = (): TsdownPlugin => ({
   name: STABLE_RELATIVE_IMPORT_ORDER_PLUGIN,
-  renderChunk(code, _chunk, options) {
+  renderChunk(code, chunk, options) {
     if (options.sourcemap) {
       this.error(
         `${STABLE_RELATIVE_IMPORT_ORDER_PLUGIN} requires sourcemaps to remain disabled`,
@@ -79,7 +79,12 @@ export const stableRelativeImportOrder = (): TsdownPlugin => ({
     const imports: RelativeImport[] = [];
     let group = 0;
     let previousWasRelative = false;
-    for (const statement of this.parse(code).body) {
+    // Declaration chunks hold TypeScript syntax; JavaScript chunks parse as is.
+    const declaration = /\.d\.[cm]?ts$/u.test(chunk.fileName);
+    for (const statement of this.parse(
+      code,
+      declaration ? { lang: "dts" } : undefined,
+    ).body) {
       if (
         statement.type === "ImportDeclaration" &&
         statement.source.value.startsWith(".")
