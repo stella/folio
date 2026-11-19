@@ -705,4 +705,18 @@ test("a block after a paragraph joining an emptied final one replays ahead of it
   };
   await compareWithReplay(fixture, "tracked-changes", [insert, replace]);
   await compareWithReplay(fixture, "tracked-changes", [replace, insert]);
+  // Put before the emptied paragraph, a block lands in the same gap.
+  const before: FolioDocumentOperation = {
+    id: "before",
+    type: "insertBeforeBlock",
+    blockId: final.id,
+    text: "Before.",
+  };
+  await compareWithReplay(fixture, "tracked-changes", [before, replace]);
+  await compareWithReplay(fixture, "tracked-changes", [replace, before]);
+  await compareWithReplay(fixture, "tracked-changes", [
+    insert,
+    before,
+    replace,
+  ]);
 });
