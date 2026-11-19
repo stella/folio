@@ -474,6 +474,9 @@ export const FOLIO_DOCX_XML_PATCH_PROPOSAL_PROFILE: "folio-xml-patch-proposal-v1
 export const FOLIO_DOCX_XML_PATCH_PROPOSAL_VERSION: 1;
 
 // @public
+export const FOLIO_HIGHLIGHT_COLOR_VALUES: readonly HighlightColor[];
+
+// @public
 export const FOLIO_LINE_SPACING_RULE_VALUES: readonly import__stll_docx_core_model.LineSpacingRule[];
 
 // @public
@@ -810,7 +813,9 @@ export type FolioAIInlineBooleanProperty = FolioContentInlineBooleanProperty;
 export type FolioAIInlineFormatting = FolioContentInlineFormatting;
 
 // @public
-export type FolioAIInlineFormattingPatch = FolioContentInlineFormattingPatch;
+export type FolioAIInlineFormattingPatch = FolioContentInlineFormattingPatch & {
+    highlight?: import__stll_docx_core_model.TextFormatting["highlight"] | null;
+};
 
 // @public (undocumented)
 export type FolioAIParagraphBlock = FolioContentBlock<FolioContentParagraphKind> & {

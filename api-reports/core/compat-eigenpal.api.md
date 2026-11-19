@@ -741,6 +741,9 @@ export const FOLIO_DOCUMENT_OPERATION_STORIES: readonly ["main", "header", "foot
 export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "replaceRange", "commentOnRange", "formatRange", "insertAfterBlock", "insertBeforeBlock", "replaceBlock", "deleteBlock", "splitBlock", "mergeBlockWithNext", "setBlockParagraphProperties", "insertTable", "deleteTable", "commentOnBlock", "insertSignatureTable", "insertTableRow", "deleteTableRow", "insertTableColumn", "deleteTableColumn", "mergeTableCells", "splitTableCell"];
 
 // @public
+export const FOLIO_HIGHLIGHT_COLOR_VALUES: readonly HighlightColor[];
+
+// @public
 export const FOLIO_LINE_SPACING_RULE_VALUES: readonly import__stll_docx_core_model.LineSpacingRule[];
 
 // @public
@@ -1199,7 +1202,9 @@ export type FolioAIInlineBooleanProperty = FolioContentInlineBooleanProperty;
 export type FolioAIInlineFormatting = FolioContentInlineFormatting;
 
 // @public
-export type FolioAIInlineFormattingPatch = FolioContentInlineFormattingPatch;
+export type FolioAIInlineFormattingPatch = FolioContentInlineFormattingPatch & {
+    highlight?: import__stll_docx_core_model.TextFormatting["highlight"] | null;
+};
 
 // @public (undocumented)
 export type FolioAIParagraphBlock = FolioContentBlock<FolioContentParagraphKind> & {
