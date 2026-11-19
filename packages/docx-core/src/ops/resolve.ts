@@ -2599,8 +2599,10 @@ const resolveList = ({
     edge: "start" | "end",
   ): InlineNode | undefined => {
     let node = out[index]?.node;
-    while (node !== undefined && isTrackedWrapper(node))
-      node = edge === "start" ? node.content.at(0) : node.content.at(-1);
+    while (node !== undefined && isTrackedWrapper(node)) {
+      const children = childNodes(node) ?? [];
+      node = edge === "start" ? children.at(0) : children.at(-1);
+    }
     return node;
   };
   const floated = new Set(
