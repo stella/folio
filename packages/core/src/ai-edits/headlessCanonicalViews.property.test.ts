@@ -30,6 +30,8 @@ import {
   documentStories,
   leasedIdCensus,
   OP_STORIES,
+  storyBody,
+  storyParagraphs,
 } from "@stll/docx-core/ops";
 
 import { reviewerDocumentArbitrary } from "../../../../test/generators/reviewerDocumentArbitraries";
@@ -38,9 +40,11 @@ import {
   propertyTestTimeout,
 } from "../../../../test/property-testing";
 import {
+  rejectedBoundaryHolderIdentities,
   rejectedContainerEndIdentities,
   rejectedJoinSurvivorIdentities,
   resolvedAbsorbedFollowerIdentities,
+  runInAlignedSource,
   withSurvivorProperties,
 } from "../../../../test/support/rejectedJoinSurvivors";
 import { rejectedParagraphFillerIdentities } from "../../../../test/support/rejectedParagraphFillers";
@@ -168,6 +172,21 @@ const expectedViews = async (buffer: ArrayBuffer) => {
   return expected;
 };
 
+/** Whether the paragraph `paraId` is the only paragraph of its block list. */
+const aloneInItsList = (document: Document, paraId: string): boolean =>
+  documentStories(document).some((story) => {
+    const paragraphs = storyParagraphs(storyBody(document, story));
+    const own = paragraphs.find(
+      (location) =>
+        location.paragraph.paraId?.toUpperCase() === paraId.toUpperCase(),
+    );
+    return (
+      own !== undefined &&
+      paragraphs.filter(({ list }) => isDeepStrictEqual(list, own.list))
+        .length === 1
+    );
+  });
+
 const viewLaws = async (
   buffer: ArrayBuffer,
   unsupported: "fail" | "known-input-boundaries" = "fail",
@@ -240,6 +259,12 @@ const viewLaws = async (
         );
         if (resolved.isOk()) return [];
         const refusal = resolved.error;
+        // Removing the only paragraph of its block list, before that list's
+        // final table, would leave the list without one to anchor it.
+        const anchorless =
+          /^Resolving the mark of ([0-9A-Fa-f]{8}) leaves no structural inverse anchor\.$/u.exec(
+            refusal.message,
+          )?.[1];
         const knownBoundary =
           refusal.reason === DOCUMENT_OP_REFUSAL_REASONS.CONTAINER_FINAL_MARK ||
           (refusal.reason === DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE &&
@@ -248,7 +273,9 @@ const viewLaws = async (
             ) ||
               /^Resolving the mark of [0-9A-Fa-f]{8} would leave its container without a final paragraph\.$/u.test(
                 refusal.message,
-              )));
+              ) ||
+              (anchorless !== undefined &&
+                aloneInItsList(before, anchorless))));
         return knownBoundary &&
           refusal.opType === DOCUMENT_OP_TYPES.RESOLVE_REVISION
           ? [refusal.message]
@@ -270,22 +297,36 @@ const viewLaws = async (
     actual: canonical.toResolvedDocument("reject"),
     expected: (await open(buffer, "legacy")).toResolvedDocument("reject"),
   });
-  // The join keeps the later paragraph's properties with its mark; the legacy
-  // reviewer reads them on the earlier paragraph once it has them too.
-  const aligned = withSurvivorProperties(before, survivors);
-  if (aligned !== undefined) {
+  // Where the legacy reviewer resolves a join otherwise, it reads the view
+  // from the document as the join leaves it: the survivor of a rejected join
+  // with the properties its mark keeps (`withSurvivorProperties`), a run into
+  // a table through the empty paragraphs whose marks go too, with the words
+  // keeping their own formatting (`runInAlignedSource`).
+  for (const view of FOLIO_RESOLVED_REVIEWED_VIEWS) {
+    const withSurvivors =
+      view === "original"
+        ? withSurvivorProperties(before, survivors)
+        : undefined;
+    const aligned =
+      runInAlignedSource({
+        source: withSurvivors ?? before,
+        view,
+        actual: canonical.toResolvedDocument(
+          view === "original" ? "reject" : "accept",
+        ),
+      }) ?? withSurvivors;
+    if (aligned === undefined) continue;
     const alignedBuffer = await packaged(aligned);
-    if (alignedBuffer === null)
-      panic("A document with a paragraph's properties copied packages.");
+    if (alignedBuffer === null) panic("An aligned document packages.");
     const alignedViews = await expectedViews(alignedBuffer);
     for (const [index, entry] of expected.entries()) {
-      if (entry.view !== "original") continue;
+      if (entry.view !== view) continue;
       expected[index] =
         alignedViews.find(
           (candidate) =>
-            candidate.view === "original" &&
+            candidate.view === view &&
             isDeepStrictEqual(candidate.handle, entry.handle),
-        ) ?? panic("The aligned document holds the same stories.");
+        ) ?? panic("An aligned document keeps its stories.");
     }
   }
   for (const entry of expected) {
@@ -331,9 +372,24 @@ const viewLaws = async (
       }),
     ),
   } satisfies Record<FolioResolvedReviewedView, Set<string>>;
+  // A paragraph the legacy reviewer keeps for nothing but range boundaries,
+  // whose rejected added mark goes before a block, goes; its boundaries stay
+  // in the nearest paragraph that does.
+  const boundaryHolders = new Set(
+    rejectedBoundaryHolderIdentities({
+      source: before,
+      actual: canonical.toResolvedDocument("reject"),
+      expected: legacyRejected,
+    }),
+  );
   for (const entry of expected) {
     const absorbed = absorbedFollowers[entry.view];
-    entry.blocks = entry.blocks?.filter(({ id }) => !absorbed.has(id)) ?? null;
+    entry.blocks =
+      entry.blocks?.filter(
+        ({ id }) =>
+          !absorbed.has(id) &&
+          (entry.view !== "original" || !boundaryHolders.has(id)),
+      ) ?? null;
     if (entry.view !== "original" || containerEnds.size === 0) continue;
     const actualBlocks =
       read.find(
