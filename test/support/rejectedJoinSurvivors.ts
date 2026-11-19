@@ -88,10 +88,11 @@ export const rejectedJoinSurvivorIdentities = ({
 };
 
 /**
- * Rejecting the added mark of an empty paragraph that ends a local container
- * has no paragraph to join it into there: the paragraph stays, without its
- * mark, as the container's last. Where the block before it keeps its place,
- * the legacy reviewer drops it instead. Each id names such a paragraph,
+ * Rejecting the added mark of a paragraph that ends a local container and
+ * holds nothing but added content has no paragraph to join it into there:
+ * the paragraph stays, emptied and without its mark, as the container's
+ * last. Where the block before it keeps its place, the legacy reviewer drops
+ * it instead. Each id names such a paragraph,
  * proven on both rejected documents: the canonical one keeps it last in that
  * container, the legacy one has no such paragraph anywhere; every other
  * block stays exact.
@@ -128,7 +129,9 @@ export const rejectedContainerEndIdentities = ({
         previous !== undefined &&
         !addedMark(previous) &&
         addedMark(last) &&
-        last.content.length === 0 &&
+        last.content.every(
+          ({ type }) => type === "insertion" || type === "moveTo",
+        ) &&
         typeof last.paraId === "string" &&
         canonicalLastIds.has(last.paraId) &&
         !legacyIds.has(last.paraId)
@@ -150,19 +153,35 @@ const controlLastParagraph = (block: BlockContent): Paragraph | undefined => {
   return last.type === "paragraph" ? last : controlLastParagraph(last);
 };
 
+const deletedMark = (block: BlockContent | undefined): block is Paragraph =>
+  block?.type === "paragraph" &&
+  (block.pPrMark?.kind === "del" || block.pPrMark?.kind === "moveFrom");
+
+type AbsorbedFollowersOptions = {
+  source: Document;
+  /** The canonical reviewer's resolved document. */
+  actual: Document;
+  /** The legacy reviewer's resolved document. */
+  expected: Document;
+  /** Rejecting resolves away added marks; accepting, deleted ones. */
+  decision: "reject" | "accept";
+};
+
 /**
- * Rejecting the added mark of the paragraph a block content control ends
- * with joins it with the paragraph after the control: an empty one, which
- * has nothing to bring into the control, goes; the
- * legacy reviewer keeps it. Each id names such a paragraph, proven on both
- * rejected documents: the canonical one has it no more, the legacy one keeps
- * it.
+ * Resolving away the mark of the paragraph a block content control ends
+ * with (rejecting an added one, accepting a deleted one) joins it with the
+ * paragraph after the control: an empty one, which has nothing to bring into
+ * the control, goes; the legacy reviewer keeps it. Each id names such a
+ * paragraph, proven on both resolved documents: the canonical one has it no
+ * more, the legacy one keeps it.
  */
-export const rejectedAbsorbedFollowerIdentities = ({
+export const resolvedAbsorbedFollowerIdentities = ({
   source,
   actual,
   expected,
-}: RejectedJoinSurvivorsOptions): string[] => {
+  decision,
+}: AbsorbedFollowersOptions): string[] => {
+  const markGoes = decision === "reject" ? addedMark : deletedMark;
   const absorbed: string[] = [];
   for (const story of documentStories(source)) {
     const legacyIds = new Set(
@@ -176,7 +195,7 @@ export const rejectedAbsorbedFollowerIdentities = ({
         for (const list of nestedLists(block)) walk(list);
         const follower = blocks[index + 1];
         if (
-          addedMark(controlLastParagraph(block)) &&
+          markGoes(controlLastParagraph(block)) &&
           follower?.type === "paragraph" &&
           follower.content.length === 0 &&
           follower.pPrMark === undefined &&

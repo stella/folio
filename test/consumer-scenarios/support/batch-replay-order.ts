@@ -36,40 +36,91 @@ const blockIdOf = (operation: AnyOperation): string =>
 /** An offset past every one inside a block (`placement` keeps them below 10^8). */
 const AFTER_EVERY_OFFSET = 99_999_999;
 
+/** Whether an insertion goes before its anchor rather than after it. */
+const insertsBefore = (operation: AnyOperation): boolean =>
+  operation.type === "insertBeforeBlock" ||
+  (operation.type === "insertTable" && operation["position"] === "before");
+
+/**
+ * The gap among `preRows` that an insertion anchored on a block they lack
+ * lands in: a block accepting removes, or a cell of a row or table it
+ * removes, named from `liveRows`. Beside a cell it goes beside the outermost
+ * table, at its first or last row that stays; with none staying, and beside
+ * a removed block outside tables, it goes before the next row that stays,
+ * the one gap the blocks around the removed ones share.
+ */
+const absentAnchorGap = (
+  operation: AnyOperation,
+  preRows: readonly Row[],
+  liveRows: readonly Row[],
+): number | undefined => {
+  const id = blockIdOf(operation);
+  if (!INSERTIONS.has(operation.type) || preRows.some((row) => row.id === id))
+    return undefined;
+  const at = liveRows.findIndex((row) => row.id === id);
+  if (at < 0) return undefined;
+  const outer = liveRows[at]?.table?.outerTableIndex;
+  const span =
+    outer === undefined
+      ? [at]
+      : liveRows.flatMap((row, index) =>
+          row.table?.outerTableIndex === outer ? [index] : [],
+        );
+  const preIndex = new Map(preRows.map((row, index) => [row.id, index]));
+  const staying = span.flatMap((index) => {
+    const kept = preIndex.get(liveRows[index]?.id ?? "");
+    return kept === undefined ? [] : [kept];
+  });
+  const first = staying.at(0);
+  const last = staying.at(-1);
+  if (first !== undefined && last !== undefined)
+    return insertsBefore(operation) ? first : last + 1;
+  for (const row of liveRows.slice((span.at(-1) ?? at) + 1)) {
+    const kept = preIndex.get(row.id);
+    if (kept !== undefined) return kept;
+  }
+  return preRows.length;
+};
+
 const placement = (
   operation: AnyOperation,
   preRows: readonly Row[],
   joinsInto: ReadonlyMap<string, PendingJoinTarget> = new Map(),
+  liveRows: readonly Row[] = preRows,
 ): [number, number, number] => {
   const index = preRows.findIndex((row) => row.id === blockIdOf(operation));
   const text = preRows[index]?.text ?? "";
   const handle = handleOf(operation);
   if (handle) return [index, 1, handle.startOffset];
-  // A paragraph added beside a table cell goes outside the table: before its
-  // first row or after its last, so every anchor in one outermost table shares a gap.
+  const absentGap = absentAnchorGap(operation, preRows, liveRows);
+  if (absentGap !== undefined) return [absentGap, 0, 0];
+  // A block added beside a table cell, a paragraph or a whole table, goes
+  // outside the table: before its first row or after its last, so every
+  // anchor in one outermost table shares a gap.
   const outer = preRows[index]?.table?.outerTableIndex;
-  if (outer !== undefined) {
+  if (outer !== undefined && INSERTIONS.has(operation.type)) {
     const rows = preRows.flatMap((row, at) =>
       row.table?.outerTableIndex === outer ? [at] : [],
     );
-    if (operation.type === "insertBeforeBlock") {
-      return [rows.at(0) ?? index, 0, 0];
-    }
-    if (operation.type === "insertAfterBlock") {
-      return [(rows.at(-1) ?? index) + 1, 0, 0];
-    }
+    return insertsBefore(operation)
+      ? [rows.at(0) ?? index, 0, 0]
+      : [(rows.at(-1) ?? index) + 1, 0, 0];
   }
   // A block put after a paragraph whose pending join runs into a later one
   // lands after that one as the batch read it, and runs there: ahead of the
   // edits inside the joined paragraphs. Into one with no words left, it
   // lands before that one, still as the batch read it: it runs ahead of the
   // edits inside it, which alone would give the join words to run into and
-  // put the block after it.
+  // put the block after it. A paragraph with no words of its own joins
+  // nothing into one that keeps words: a block put after it lands right
+  // after it, as one put after any paragraph does.
   const joined = joinsInto.get(blockIdOf(operation));
   const after =
     operation.type === "insertAfterBlock" ||
     (operation.type === "insertTable" && operation["position"] !== "before");
-  if (after && joined !== undefined) {
+  const joinsWords =
+    joined !== undefined && !(joined.keepsWords && text === "");
+  if (after && joined !== undefined && joinsWords) {
     const survivor = preRows.findIndex((row) => row.id === joined.survivor);
     if (survivor >= 0)
       return joined.keepsWords
@@ -214,7 +265,7 @@ export const sequentialGroups = ({
       if (!INSERTIONS.has(operation.type)) return false;
       const anchor = preRows.find((row) => row.id === blockIdOf(operation));
       if (anchor === undefined) return false;
-      const [index] = placement(operation, preRows, joinsInto);
+      const [index] = placement(operation, preRows, joinsInto, liveRows);
       if (index < start || index > lastAt) return false;
       // A paragraph placed beside a cell goes outside the table, into the
       // container the table stands in.
@@ -322,7 +373,12 @@ export const sequentialGroups = ({
           inputIndex: index,
         };
       }
-      const [block, inside, offset] = placement(operation, preRows, joinsInto);
+      const [block, inside, offset] = placement(
+        operation,
+        preRows,
+        joinsInto,
+        liveRows,
+      );
       const hasDeletedSplit = deletedSplitTargets.has(blockIdOf(operation));
       const position =
         hasDeletedSplit && operation.type === "deleteBlock"
@@ -343,7 +399,12 @@ export const sequentialGroups = ({
     rest.map(({ operation }) => operation),
     (operation) => {
       if (!INSERTIONS.has(operation.type)) return null;
-      const [block, inside, offset] = placement(operation, preRows, joinsInto);
+      const [block, inside, offset] = placement(
+        operation,
+        preRows,
+        joinsInto,
+        liveRows,
+      );
       return block * 1_000_000_000 + inside * 100_000_000 + offset;
     },
     (operation) => operation.type === "setBlockParagraphProperties",

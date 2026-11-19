@@ -144,6 +144,7 @@ import {
   annotatedReplacement,
   commentsAcrossBlockBoundary,
   commentsForTrackedInsertion,
+  commentsSpanningInsertion,
   hasReplacedAnnotations,
   inheritedReplacementMarks,
   joinCommentStretches,
@@ -194,6 +195,7 @@ import type {
   TextFormatting,
 } from "../types/document";
 import type { DeepReadonly } from "../types/documentModel";
+import { canonicalJson } from "../utils/canonicalJson";
 import { type BatchClaim, BatchClaims } from "./batch-claims";
 import { stripBlockIdentityAttrs } from "./block-identity";
 import {
@@ -1244,6 +1246,24 @@ const paragraphPropertiesBeforePendingChanges = (
   return earliest === undefined
     ? paragraphPropertiesSnapshot(node)
     : (earliest.previousFormatting ?? {});
+};
+
+/**
+ * Whether two pPr snapshots state the same properties. A pending change read
+ * back from a saved package has no `numPrFromStyle`, which no package writes
+ * and the live snapshot always states, nor absent values written as null, so
+ * only what a package can say is compared, in any key order.
+ */
+const sameParagraphProperties = (left: object, right: object): boolean => {
+  const stated = (properties: object) =>
+    canonicalJson(
+      Object.fromEntries(
+        Object.entries(properties).filter(
+          ([key, value]) => key !== "numPrFromStyle" && value != null,
+        ),
+      ),
+    );
+  return stated(left) === stated(right);
 };
 
 /** The pPr rejecting every pending change of a paragraph's properties leaves. */
@@ -3643,13 +3663,16 @@ const canRetractFinalBreak = ({
   target,
 }: CanRetractFinalBreakOptions) => {
   if (target.type !== predecessor.type) return false;
-  const targetBefore = JSON.stringify(
-    paragraphPropertiesBeforePendingChanges(target),
-  );
+  const targetBefore = paragraphPropertiesBeforePendingChanges(target);
   const formattingChanges =
-    targetBefore !== JSON.stringify(paragraphPropertiesSnapshot(predecessor)) &&
-    targetBefore !==
-      JSON.stringify(paragraphPropertiesBeforePendingChanges(predecessor));
+    !sameParagraphProperties(
+      targetBefore,
+      paragraphPropertiesSnapshot(predecessor),
+    ) &&
+    !sameParagraphProperties(
+      targetBefore,
+      paragraphPropertiesBeforePendingChanges(predecessor),
+    );
   return !(
     formattingChanges &&
     hasSerializableParagraphPropertyChange(
@@ -4753,11 +4776,7 @@ const withFinalBreaksRotated = ({
       }
 
       const currentFormatting = paragraphPropertiesSnapshot(current.node);
-      // Both snapshots are built by the same fixed walk over the in-scope keys,
-      // so comparing them serialized compares them key for key.
-      if (
-        JSON.stringify(previousFormatting) !== JSON.stringify(currentFormatting)
-      ) {
+      if (!sameParagraphProperties(previousFormatting, currentFormatting)) {
         const liveCurrent = next.doc.nodeAt(current.position);
         if (!liveCurrent || liveCurrent.type.name !== final.type.name) {
           panic("A final-mark rotation lost its paragraph", {
@@ -8930,9 +8949,11 @@ export const insertCleanText = ({
     ? surveyReplacedAnnotations(tr.doc, standsInFor.from, standsInFor.to)
         .carried
     : [];
+  // Text put between two covered positions, a paragraph's edge between them
+  // included, lies inside the comment's saved range, so it carries it.
   const replaced = keepsReplacedText
     ? (commentsForTrackedInsertion(tr.doc, from, [carried])[0] ?? [])
-    : carried;
+    : addCarriedMarks(carried, commentsSpanningInsertion(tr.doc, from, to));
   // Explicit stored marks (formatting switched on at the caret) win over the
   // replaced span, for text that replaces the selection. Elsewhere they are
   // another paragraph's caret formatting, such as an emptied heading's.
@@ -9424,7 +9445,11 @@ const planDocumentReplacement = ({
         text: change.text,
         insertion: {
           at: matchedFrom,
-          marks: (current) => current.resolve(matchedFrom).marks(),
+          marks: (current) =>
+            addCarriedMarks(
+              current.resolve(matchedFrom).marks(),
+              commentsSpanningInsertion(current, matchedFrom),
+            ),
         },
       });
       continue;
@@ -9444,10 +9469,13 @@ const planDocumentReplacement = ({
           at: climbAfter(previous.to),
           marks: (current) =>
             addCarriedMarks(
-              styleSource === null
-                ? []
-                : current.resolve(styleSource.to).marks(),
-              matchCarried,
+              addCarriedMarks(
+                styleSource === null
+                  ? []
+                  : current.resolve(styleSource.to).marks(),
+                matchCarried,
+              ),
+              commentsSpanningInsertion(current, climbAfter(previous.to)),
             ),
         },
       });
@@ -9467,12 +9495,15 @@ const planDocumentReplacement = ({
         at: climbBefore(first.from),
         marks: (current) =>
           addCarriedMarks(
-            styleSource === null
-              ? []
-              : (current.nodeAt(styleSource.from)?.marks ?? []).filter(
-                  isFormattingMark,
-                ),
-            matchCarried,
+            addCarriedMarks(
+              styleSource === null
+                ? []
+                : (current.nodeAt(styleSource.from)?.marks ?? []).filter(
+                    isFormattingMark,
+                  ),
+              matchCarried,
+            ),
+            commentsSpanningInsertion(current, climbBefore(first.from)),
           ),
       },
     });

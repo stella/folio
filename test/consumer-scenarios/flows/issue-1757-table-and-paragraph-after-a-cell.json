@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "title": "PINNED #1757, reported seed 206130447: a table and a paragraph put after one table cell replay in one gap, as the batch names them",
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "lineBreaks",
+  "mode": "tracked-changes",
+  "seed": 2116006477,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 254048132,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "1B0E5A11",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 2406190276,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "@2",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        },
+        {
+          "type": "insertAfterBlock",
+          "blockId": "@2",
+          "text": "Agreement delivery payment delivery goods delivery schedule warranty.",
+          "styleId": "Heading2"
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from dropOperation of cc1334cecd20da8a"
+}

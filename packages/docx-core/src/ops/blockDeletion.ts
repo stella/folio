@@ -711,6 +711,13 @@ export const deleteBlocks = ({
     }
     tracked.push(next);
   }
+  // What a pending deletion already holds whole, empty and with its mark
+  // taken, a further one records nothing on: no reader or file would show it.
+  if (tracked.every((paragraph, index) => paragraph === affected[index]))
+    return refuse(
+      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+      "A tracked paragraph deletion would record nothing.",
+    );
   const beforeKeys = new Set(identityKeysIn(affected));
   const fresh = freshenIdentities({
     before: affected,
