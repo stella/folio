@@ -611,7 +611,16 @@ describe("an edit applied directly and the same edit accepted", () => {
           const tracked = new OperationSession(base.state);
           const directResult = direct.apply("direct", [operation]);
           const trackedResult = tracked.apply("tracked-changes", [operation]);
-          // Both modes take the edit, or both refuse it for the same reason.
+          if (trackedResult.status === "rejected") {
+            expect(trackedResult.issues).toEqual([
+              expect.objectContaining({
+                operationId: operation.id,
+                code: "invalidResult",
+              }),
+            ]);
+            expect(tracked.state).toBe(base.state);
+            return;
+          }
           expect(trackedResult.skipped).toEqual(directResult.skipped);
           expect(trackedResult.normalizations ?? []).toEqual(
             directResult.normalizations ?? [],

@@ -122,6 +122,7 @@ import {
   supportsTableInsertionMode,
   type TableInsertionOperation,
 } from "../ai-edits/tableInsertionModes";
+import { trackedBatchFidelityError } from "../ai-edits/tracked-batch-fidelity";
 import type {
   FolioAIBlockParagraphProperties,
   FolioAIEditNormalization,
@@ -2603,6 +2604,7 @@ export class CanonicalPublicOperations {
     const result = (
       applied: FolioDocumentOperationResult["applied"],
       undoHandle: FolioDocumentOperationUndoHandle | null,
+      disposition: "normal" | "refused" = "normal",
     ): FolioDocumentOperationResult => {
       const failures = new Map(skipped.map((item) => [item.id, item]));
       const ordered = batch.operations.flatMap(({ id }) => {
@@ -2613,7 +2615,10 @@ export class CanonicalPublicOperations {
       });
       return {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        status: batchStatus(batch, ordered.length),
+        status:
+          disposition === "refused" && !batch.dryRun
+            ? "rejected"
+            : batchStatus(batch, ordered.length),
         applied,
         skipped: ordered,
         issues: getFolioDocumentOperationIssues(batch.operations, ordered),
@@ -3587,6 +3592,21 @@ export class CanonicalPublicOperations {
         );
       }
       return result([], null);
+    }
+    if (batch.mode !== "direct" && batch.mode !== "suggested") {
+      const message = trackedBatchFidelityError({
+        before: state,
+        after: prepared.value.projection.doc,
+        numbering: prepared.value.document.package.numbering ?? null,
+        createdCommentIds: [...appliedById.values()].flatMap(({ commentId }) =>
+          commentId === undefined ? [] : [commentId],
+        ),
+      });
+      if (message !== null) {
+        for (const { id } of appliedById.values())
+          skip(id, "invalidResult", message);
+        return result([], null, "refused");
+      }
     }
     if (batch.mode === "direct") {
       const finalBody = findStoryBody(prepared.value.document, story);
