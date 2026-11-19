@@ -2066,6 +2066,40 @@ const resolveList = ({
             ...(piece === undefined ? {} : { piece }),
           });
         }
+        // Those beyond the record that piece continues stand at the removed
+        // content's other edge: they go into the piece there where it is a
+        // piece of the record the removal's seam cut, whose other piece
+        // stands on the near side.
+        const beyond = kept.length - inside;
+        const far = piece === "before" ? "after" : "before";
+        const farPiece = nodes[far === "after" ? index + 1 : index - 1];
+        const cutAcross =
+          farPiece !== undefined &&
+          !isTrackedWrapper(farPiece) &&
+          !isStandingBoundary(farPiece) &&
+          (far === "after"
+            ? nodes
+                .slice(0, index)
+                .some((near) => alikeDepth(near, farPiece) > 0)
+            : nodes
+                .slice(index + 1)
+                .some((near) => alikeDepth(farPiece, near) > 0));
+        if (
+          piece !== undefined &&
+          beyond > 0 &&
+          cutAcross &&
+          (node.resolutionJoins?.remove ?? 0) > 0
+        ) {
+          floating.set(far === "after" ? out.length : out.length - inside, {
+            count: beyond,
+            depth: node.resolutionJoins?.remove ?? 0,
+            before: index > 0 ? sourceOwners.at(index - 1) : undefined,
+            after: sourceOwners.at(index + 1),
+            spanning: trackedWithin(node.content),
+            keptFrom: node.info.date ?? "",
+            piece: far,
+          });
+        }
         if (node.resolutionJoins === undefined) seams.push(out.length);
         else if ((node.resolutionJoins.plainSides?.length ?? 0) > 0)
           plainSeams.add(out.length);
@@ -2735,13 +2769,22 @@ const resolveList = ({
     // a seam recorded beside it, as one a rejected deletion leaves, joins
     // with them rather than replacing what they float with.
     if (floating.has(seam)) continue;
+    // Boundaries this resolution kept from a removed insertion float as of
+    // that insertion, as they do once an earlier rejection kept them.
+    const dates = Array.from({ length: count }, (_, offset) =>
+      keptDates.get(seam - count + offset),
+    );
+    const keptNow = dates.every((date) => date !== undefined)
+      ? dates.toSorted().at(0)
+      : undefined;
+    const keptFrom = kept?.from ?? keptNow;
     floating.set(seam, {
       count,
       depth,
       before: left.owner,
       after: right.owner,
       spanning: [],
-      ...(kept === undefined ? {} : { keptFrom: kept.from }),
+      ...(keptFrom === undefined ? {} : { keptFrom }),
       ...(kept?.piece === undefined ? {} : { piece: kept.piece }),
     });
   }
