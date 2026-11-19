@@ -28,6 +28,7 @@ import type { XmlElement, XmlNamespaceScope } from "./xmlElement";
 import {
   attachXmlNamespaceContext,
   EMPTY_NAMESPACE_SCOPE,
+  OOXML_NS,
 } from "./xmlNamespaceContext";
 import { FOLIO_XML_RESOURCE_LIMITS } from "./xmlResourceLimits";
 
@@ -631,6 +632,52 @@ export const scanStreamingXmlElements = (
   return parsed.status === "parsed"
     ? { status: "scanned" as const }
     : { status: "unsupported" };
+};
+
+const DRAWING_MAIN_BY_WORDPROCESSING_DRAWING = new Map([
+  [OOXML_NS.wp, OOXML_NS.a],
+  [
+    "http://purl.oclc.org/ooxml/drawingml/wordprocessingDrawing",
+    "http://purl.oclc.org/ooxml/drawingml/main",
+  ],
+]);
+
+/** Restore the namespace of an unbound graphic inside a WordprocessingDrawing anchor or inline. */
+export const repairMissingDrawingNamespace = (xml: string): string => {
+  const chunks: string[] = [];
+  let cursor = 0;
+  const scanned = scanStreamingXmlElements(
+    xml,
+    ({ element, parent, nameEnd }) => {
+      if (
+        element.name === undefined ||
+        element.namespaceUri !== undefined ||
+        parent?.name === undefined ||
+        parent.namespaceUri === undefined
+      )
+        return;
+
+      const separator = element.name.indexOf(":");
+      if (separator < 1 || element.name.slice(separator + 1) !== "graphic")
+        return;
+      const prefix = element.name.slice(0, separator);
+      if (prefix === "xmlns" || !XML_NAME.test(prefix)) return;
+      const localName = parent.name.slice(parent.name.indexOf(":") + 1);
+      if (localName !== "anchor" && localName !== "inline") return;
+      const namespace = DRAWING_MAIN_BY_WORDPROCESSING_DRAWING.get(
+        parent.namespaceUri,
+      );
+      if (namespace === undefined) return;
+      chunks.push(
+        xml.slice(cursor, nameEnd),
+        ` xmlns:${prefix}="${namespace}"`,
+      );
+      cursor = nameEnd;
+    },
+  );
+  if (scanned.status !== "scanned" || chunks.length === 0) return xml;
+  chunks.push(xml.slice(cursor));
+  return chunks.join("");
 };
 
 type ParsedOpenTag =

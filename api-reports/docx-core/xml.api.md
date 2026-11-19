@@ -22,6 +22,9 @@ export const parseStreamingXmlWithSourceRanges: (xml: string, inheritedNamespace
 export const readXml: (xml: string, input: XmlReadOptions) => XmlReadResult;
 
 // @public
+export const repairMissingDrawingNamespace: (xml: string) => string;
+
+// @public
 export const rewriteStreamingXmlDecimalAttributes: (xml: string, visitOpenTag: OpenTagVisitor) => {
     status: "rewritten";
     value: string;
