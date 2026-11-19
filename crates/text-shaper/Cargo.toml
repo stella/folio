@@ -23,6 +23,9 @@ rustybuzz = { version = "0.20.1", default-features = false, features = ["std"] }
 unicode-bidi = { version = "0.3.18", default-features = false, features = [
   "hardcoded-data",
 ] }
+
+# The bindings exist only on wasm32; on other targets the wasm feature adds nothing.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = { version = "0.2.126", optional = true }
 
 [dev-dependencies]

@@ -463,6 +463,7 @@ impl StyleSheet {
         (self.resolved_table_styles, _) = self.resolve_block_styles(StyleKind::Table);
     }
 
+    #[allow(clippy::map_unwrap_or)] // map_or_default grows the WebAssembly body here.
     pub(super) fn resolve_text(
         &self,
         TextStyleInput {
@@ -700,6 +701,7 @@ impl StyleSheet {
             .map(|setting| (setting, ParagraphAlignmentSource::DocDefaults)))
     }
 
+    #[allow(clippy::map_unwrap_or)] // map_or_default grows the WebAssembly body here.
     fn resolve(
         &self,
         direct: &ParagraphProperties,
