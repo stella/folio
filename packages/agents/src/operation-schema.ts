@@ -789,7 +789,7 @@ export const FOLIO_BLOCK_PARAGRAPH_PROPERTIES_JSON_SCHEMA: {
   additionalProperties: false,
 } as const satisfies FolioJsonSchema;
 
-export const INLINE_FORMATTING_JSON_SCHEMA = {
+export const INLINE_FORMATTING_JSON_SCHEMA: FolioJsonSchema = {
   type: "object",
   description: "Inline formatting to apply. Set at least one property.",
   properties: {
@@ -807,7 +807,7 @@ export const INLINE_FORMATTING_JSON_SCHEMA = {
   },
   minProperties: 1,
   additionalProperties: false,
-} as const satisfies FolioJsonSchema;
+};
 
 /**
  * JSON Schema (draft-07 compatible) for ONE document operation: the full
