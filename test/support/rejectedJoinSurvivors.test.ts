@@ -61,3 +61,30 @@ test("a bookmark that lands in any other paragraph proves nothing", () => {
     }),
   ).toStrictEqual([]);
 });
+
+test("paragraphs kept for their bookmarks before two controls are both proven where both bookmarks reach the same paragraph", () => {
+  const second = { type: "bookmarkStart", id: 2, name: "_Other" } as const;
+  expect(
+    rejectedBoundaryHolderIdentities({
+      source: documentOf([
+        added("00000001", [bookmark]),
+        control([paragraph("00000002")]),
+        added("00000004", [second]),
+        control([paragraph("00000005")]),
+        paragraph("00000003"),
+      ]),
+      actual: documentOf([
+        control([paragraph("00000002")]),
+        control([paragraph("00000005")]),
+        paragraph("00000003", [bookmark, second]),
+      ]),
+      expected: documentOf([
+        paragraph("00000001", [bookmark]),
+        control([paragraph("00000002")]),
+        paragraph("00000004", [second]),
+        control([paragraph("00000005")]),
+        paragraph("00000003"),
+      ]),
+    }),
+  ).toStrictEqual(["00000001", "00000004"]);
+});

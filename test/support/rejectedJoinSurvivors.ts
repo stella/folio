@@ -11,8 +11,15 @@ import type {
   Document,
   Paragraph,
 } from "../../packages/docx-core/src/model/document";
+import {
+  type InlineNode,
+  isCommentAnchor,
+} from "../../packages/docx-core/src/ops/leaves";
 import { paragraphHoldsContent } from "../../packages/docx-core/src/ops/offsets";
-import { paragraphRemains } from "../../packages/docx-core/src/ops/rangeBoundaries";
+import {
+  isBoundary,
+  paragraphRemains,
+} from "../../packages/docx-core/src/ops/rangeBoundaries";
 
 const addedMark = (block: BlockContent | undefined): block is Paragraph =>
   block?.type === "paragraph" &&
@@ -272,20 +279,27 @@ export const rejectedBoundaryHolderIdentities = ({
         const remains = paragraphRemains(kept.content);
         if (remains.length === 0) continue;
         // The nearest paragraph that stays takes them: the one just before,
-        // at its end, else the first one after in the same list, at its start.
+        // at its end, else the first one after in the same list that stays,
+        // at its start, beside what other removed paragraphs leave there.
+        const stays = (candidate: BlockContent | undefined) =>
+          candidate?.type === "paragraph" &&
+          typeof candidate.paraId === "string" &&
+          canonical.has(candidate.paraId);
         const previous = blocks[index - 1];
-        const before = previous?.type === "paragraph";
-        const host = before
-          ? previous
-          : blocks.slice(index + 1).find((later) => later.type === "paragraph");
+        const before = stays(previous);
+        const host = before ? previous : blocks.slice(index + 1).find(stays);
         const received =
           host?.type === "paragraph" && typeof host.paraId === "string"
             ? canonical.get(host.paraId)?.content
             : undefined;
         if (received === undefined) continue;
-        const edge = before
-          ? received.slice(-remains.length)
-          : received.slice(0, remains.length);
+        const carries = (node: InlineNode) =>
+          isBoundary(node) || isCommentAnchor(node);
+        const edgeOf = (nodes: readonly InlineNode[]) => {
+          const end = nodes.findIndex((node) => !carries(node));
+          return nodes.slice(0, end === -1 ? nodes.length : end);
+        };
+        const edge = before ? edgeOf(received.toReversed()) : edgeOf(received);
         const landed = boundaryKeys(edge);
         if ([...boundaryKeys(remains)].every((key) => landed.has(key)))
           removed.push(block.paraId);
