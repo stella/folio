@@ -159,7 +159,9 @@ test("tracks retirement with two independently blocked joins", async () => {
   const blockedJoin = (id: number, paragraphId: string, nextId: string) =>
     `<w:p w14:paraId="${paragraphId}"><w:pPr><w:rPr><w:del w:id="${id}" w:author="Reviewer"/></w:rPr></w:pPr>${run("Clause.")}</w:p>` +
     `<w:bookmarkStart w:id="${id}" w:name="Range${id}"/>` +
-    `<w:p w14:paraId="${nextId}">${run("Signature.")}</w:p>` +
+    // A table follows the boundary: no paragraph to join, so the join stays
+    // blocked.
+    `<w:tbl><w:tblGrid><w:gridCol w:w="4000"/></w:tblGrid><w:tr><w:tc><w:p w14:paraId="${nextId}">${run("Signature.")}</w:p></w:tc></w:tr></w:tbl>` +
     `<w:bookmarkEnd w:id="${id}"/>`;
   const withJoins = source.replace(
     "<w:sectPr>",
