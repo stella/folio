@@ -461,11 +461,13 @@ export const replacementDeletionSegments = ({
     }
     const segmentPlan = plan === "untouched" ? "tracked" : plan;
     // An empty container marks nothing tracked: a stretch holding nothing
-    // else is dropped, as one over deleted content is.
+    // else is dropped, as one over deleted content is. A suggestion drops it
+    // inside the author's own insertion too, so that a direct edit, which
+    // knows no author, can keep it the same way wherever it stands.
     const records =
       plan !== "untouched" &&
       !(
-        (plan === "tracked" || keepsLoneEmptyContainers) &&
+        (mode.type === "suggesting" || keepsLoneEmptyContainers) &&
         isEmptyContainer(span.node)
       );
     if (

@@ -138,52 +138,67 @@ describe.each(Object.entries(EMPTY_CONTAINERS))(
       expect(first).toMatchObject({ pPrMark: { kind: "del" } });
     });
 
-    test("a replacement of text around it, apart from it, keeps it in both modes", () => {
-      // The bookmark ends the stretch the text is in: the container stands
-      // alone in its own, which a suggestion marks nothing in.
-      const document = documentOf([
-        { type: "run", content: [{ type: "text", text: "a" }] },
-        { type: "bookmarkStart", id: 1, name: "_Mark" },
-        container,
-        { type: "bookmarkEnd", id: 1 },
-        { type: "run", content: [{ type: "text", text: "b" }] },
-      ]);
-      const intent = {
-        type: "replaceText",
-        from: gap(0, 0),
-        to: gap(2, 0),
-        text: "edited",
-      } as const;
-      const direct = compileEditorIntent(document, {
-        intent,
-        mode: { type: "editing" },
-      });
-      const tracked = compileEditorIntent(document, {
-        intent,
-        mode: {
-          type: "suggesting",
-          revision: STAMP,
-          newIds: { revision: [3, 4], control: [] },
-        },
-      });
-      if (direct.isErr()) throw direct.error;
-      if (tracked.isErr()) throw tracked.error;
-      const edited = applyDocumentOps(document, direct.value.ops);
-      const suggested = applyDocumentOps(document, tracked.value.ops);
-      if (edited.isErr()) throw edited.error;
-      if (suggested.isErr()) throw suggested.error;
-      const accepted = applyDocumentOp(suggested.value.document, {
-        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
-        story: OP_STORIES.MAIN,
-        revisionIds: suggested.value.revisions,
-        decision: REVISION_DECISIONS.ACCEPT,
-      });
-      if (accepted.isErr()) throw accepted.error;
-      expect(accepted.value.document).toStrictEqual(edited.value.document);
-      expect(edited.value.document.package.document.content[1]).toMatchObject({
-        content: expect.arrayContaining([container]),
-      });
-    });
+    test.each([
+      ["standing in the paragraph", (node: ParagraphContent) => node],
+      [
+        "inside the suggesting author's own insertion",
+        (node: ParagraphContent): ParagraphContent => ({
+          type: "insertion",
+          info: { id: 7, author: STAMP.author, date: STAMP.date },
+          content: [node],
+        }),
+      ],
+    ])(
+      "a replacement of text around it, apart from it, keeps it %s in both modes",
+      (_where, place) => {
+        // The bookmark ends the stretch the text is in: the container stands
+        // alone in its own, which a suggestion marks nothing in.
+        const document = documentOf([
+          { type: "run", content: [{ type: "text", text: "a" }] },
+          { type: "bookmarkStart", id: 1, name: "_Mark" },
+          place(container),
+          { type: "bookmarkEnd", id: 1 },
+          { type: "run", content: [{ type: "text", text: "b" }] },
+        ]);
+        const intent = {
+          type: "replaceText",
+          from: gap(0, 0),
+          to: gap(2, 0),
+          text: "edited",
+        } as const;
+        const direct = compileEditorIntent(document, {
+          intent,
+          mode: { type: "editing" },
+        });
+        const tracked = compileEditorIntent(document, {
+          intent,
+          mode: {
+            type: "suggesting",
+            revision: STAMP,
+            newIds: { revision: [3, 4], control: [] },
+          },
+        });
+        if (direct.isErr()) throw direct.error;
+        if (tracked.isErr()) throw tracked.error;
+        const edited = applyDocumentOps(document, direct.value.ops);
+        const suggested = applyDocumentOps(document, tracked.value.ops);
+        if (edited.isErr()) throw edited.error;
+        if (suggested.isErr()) throw suggested.error;
+        const accepted = applyDocumentOp(suggested.value.document, {
+          type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+          story: OP_STORIES.MAIN,
+          revisionIds: suggested.value.revisions,
+          decision: REVISION_DECISIONS.ACCEPT,
+        });
+        if (accepted.isErr()) throw accepted.error;
+        expect(accepted.value.document).toStrictEqual(edited.value.document);
+        expect(edited.value.document.package.document.content[1]).toMatchObject(
+          {
+            content: expect.arrayContaining([place(container)]),
+          },
+        );
+      },
+    );
 
     test("a direct deletion of nothing but it still removes it", () => {
       const document = documentOf([container]);
