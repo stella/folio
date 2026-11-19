@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "title": "PINNED #1757, reported seed 206130469: blocks put on either side of a table pending deletion replay in one gap, as the batch names them",
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "tables",
+  "mode": "tracked-changes",
+  "seed": 99689983,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 787890550,
+      "operations": [
+        {
+          "type": "deleteTable",
+          "blockId": "1BF99289"
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 3845945687,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "7B806329",
+          "text": "Period period invoice party party term delivery written."
+        },
+        {
+          "type": "insertTable",
+          "blockId": "3CEFFC83",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from unpin of 2d457c5430341a81"
+}
