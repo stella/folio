@@ -105,10 +105,11 @@ export {
 } from "./outlineLevel";
 
 // The ordered verbatim sink every dispatched container carries.
-export type {
-  PreservedAttribute,
-  PreservedChild,
-  PreservedMarkup,
+export {
+  type PreservedAttribute,
+  type PreservedChild,
+  preservedChildGap,
+  type PreservedMarkup,
 } from "./preservedMarkup";
 
 // How a drawing with no image data says what it looks like.

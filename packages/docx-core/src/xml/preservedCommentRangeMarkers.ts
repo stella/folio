@@ -1,4 +1,7 @@
-import type { PreservedChild } from "../model/preservedMarkup";
+import {
+  type PreservedChild,
+  preservedChildGap,
+} from "../model/preservedMarkup";
 import { readXml } from "./streamingXmlParser";
 import {
   OOXML_NAMESPACE_SCOPE,
@@ -51,11 +54,11 @@ export const preservedCommentRangeMarker = (
 /** Read the boundaries before the named row or cell, in authored order. */
 export const preservedCommentRangeMarkersAt = (
   children: readonly PreservedChild[] | undefined,
-  at: number,
+  { at, childCount }: { at: number; childCount: number },
 ): PreservedCommentRangeMarker[] => {
   const markers: PreservedCommentRangeMarker[] = [];
   for (const child of children ?? []) {
-    if (child.index !== at) continue;
+    if (preservedChildGap(child, childCount) !== at) continue;
     const marker = preservedCommentRangeMarker(child);
     if (marker !== undefined) markers.push(marker);
   }

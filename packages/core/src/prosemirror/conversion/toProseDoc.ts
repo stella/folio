@@ -2913,7 +2913,7 @@ function convertTable(
   const rows = table.rows.map((row, rowIndex) => {
     passPreservedCommentRanges(
       table.preserved,
-      rowIndex,
+      { at: rowIndex, childCount: table.rows.length },
       context.openCommentIds,
     );
     // Conditional formatting flag: firstRow in tblLook means "apply first-row styling"
@@ -2944,7 +2944,7 @@ function convertTable(
   });
   passPreservedCommentRanges(
     table.preserved,
-    table.rows.length,
+    { at: table.rows.length, childCount: table.rows.length },
     context.openCommentIds,
   );
 
@@ -2959,12 +2959,12 @@ function convertTable(
  */
 function passPreservedCommentRanges(
   preserved: PreservedMarkup | undefined,
-  at: number,
+  gap: { at: number; childCount: number },
   openCommentIds: Set<number>,
 ): void {
   for (const marker of preservedCommentRangeMarkersAt(
     preserved?.children,
-    at,
+    gap,
   )) {
     if (marker.type === "commentRangeStart") openCommentIds.add(marker.id);
     else openCommentIds.delete(marker.id);
@@ -3177,7 +3177,7 @@ function convertTableRow(
   for (const [cellIndex, cellIndex_item] of effectiveCells.entries()) {
     passPreservedCommentRanges(
       row.preserved,
-      cellIndex,
+      { at: cellIndex, childCount: effectiveCells.length },
       context.openCommentIds,
     );
     const cell = cellIndex_item;
@@ -3254,7 +3254,7 @@ function convertTableRow(
   }
   passPreservedCommentRanges(
     row.preserved,
-    effectiveCells.length,
+    { at: effectiveCells.length, childCount: effectiveCells.length },
     context.openCommentIds,
   );
 

@@ -24,7 +24,11 @@
  * model is a fixed sequence — see {@link sequencePositions}.
  */
 
-import type { PreservedChild, PreservedMarkup } from "@stll/docx-core/model";
+import {
+  type PreservedChild,
+  preservedChildGap,
+  type PreservedMarkup,
+} from "@stll/docx-core/model";
 import {
   SEQUENCE_CHILDREN,
   type SequenceChild,
@@ -390,10 +394,10 @@ export const withPreservedChildren = <
 
   const byIndex = new Map<number, Item[]>();
   for (const child of captures) {
-    const { index, xml } = child;
+    const { xml } = child;
     // A capture recorded past the modelled count — the model lost the sibling
     // it followed — lands at the end rather than being dropped.
-    const slot = Math.min(Math.max(index, 0), modelled.length);
+    const slot = preservedChildGap(child, modelled.length);
     const bucket = byIndex.get(slot);
     if (bucket) {
       bucket.push(wrap(xml, child));

@@ -1245,6 +1245,10 @@ const projectEveryBlock = ({
     orderedSources.map((source, index) => [source, index]),
   );
   const textBoxHosts = new Set<Paragraph>();
+  const positionedComments = positionedCommentGaps(
+    content,
+    continuationSources,
+  );
   let nextSource = 0;
   const walk: BlockWalk = {
     facts,
@@ -1266,7 +1270,9 @@ const projectEveryBlock = ({
       nextSource = index + 1;
       // The host carries no address, but a range it opens or closes still
       // covers the paragraphs after it.
+      passCommentMarkers(positionedComments.before.get(host), open);
       passComments(host);
+      passCommentMarkers(positionedComments.after.get(host), open);
       return true;
     },
     take: (source) => {
@@ -1276,7 +1282,7 @@ const projectEveryBlock = ({
       return true;
     },
     passComments,
-    positionedComments: positionedCommentGaps(content, continuationSources),
+    positionedComments,
     inline,
   };
   const blocks: ProjectedBlock[] = [];

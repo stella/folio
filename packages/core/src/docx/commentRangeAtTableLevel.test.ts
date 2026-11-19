@@ -28,24 +28,31 @@ const REPLY_PARA_ID = "2BBB0002";
 const ref = (id: number): string =>
   `<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="${id}"/></w:r>`;
 
-/** One row: the reply's range opens in the first cell and closes after the row. */
+type TableLayout = "plain" | "collapsed-continuation" | "text-box-host";
+
+/** The reply's range opens in the first cell and closes outside a cell. */
 const tableXml = (
   endPlacement: "table" | "row",
-  collapsedContinuation: boolean,
+  layout: TableLayout,
 ): string => {
   const replyEnd = `<w:commentRangeEnd w:id="${REPLY_ID}"/>`;
+  const collapsedContinuation = layout === "collapsed-continuation";
   const mergeStart = collapsedContinuation ? '<w:vMerge w:val="restart"/>' : "";
   const followingRow = collapsedContinuation
     ? '<w:tr><w:tc><w:tcPr><w:gridSpan w:val="2"/></w:tcPr><w:p w14:paraId="3CCC0005"><w:r><w:t>Last visible cell.</w:t></w:r></w:p></w:tc>' +
       '<w:tc><w:tcPr><w:vMerge/></w:tcPr><w:p w14:paraId="3CCC0006"/></w:tc></w:tr>'
     : "";
+  const textBoxHost =
+    layout === "text-box-host"
+      ? '<w:p w14:paraId="3CCC0007"><w:r><w:pict xmlns:v="urn:schemas-microsoft-com:vml"><v:shape style="width:2in;height:1in"><v:textbox><w:txbxContent><w:p><w:r><w:t>Box text.</w:t></w:r></w:p></w:txbxContent></v:textbox></v:shape></w:pict></w:r></w:p>'
+      : "";
   return (
     '<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/></w:tblPr>' +
     '<w:tblGrid><w:gridCol w:w="2000"/><w:gridCol w:w="2000"/><w:gridCol w:w="2000"/></w:tblGrid>' +
     "<w:tr>" +
     `<w:tc><w:tcPr><w:tcW w:w="2000" w:type="dxa"/></w:tcPr><w:p w14:paraId="3CCC0001"><w:commentRangeStart w:id="${REPLY_ID}"/><w:r><w:t>Item 3f</w:t></w:r></w:p></w:tc>` +
     `<w:tc><w:tcPr><w:tcW w:w="2000" w:type="dxa"/></w:tcPr><w:p w14:paraId="3CCC0002"><w:r><w:t>p</w:t></w:r><w:commentRangeStart w:id="${ROOT_ID}"/><w:r><w:t xml:space="preserve">er visit</w:t></w:r></w:p></w:tc>` +
-    `<w:tc><w:tcPr><w:tcW w:w="2000" w:type="dxa"/>${mergeStart}</w:tcPr><w:p w14:paraId="3CCC0003"><w:r><w:t>rate only</w:t></w:r><w:commentRangeEnd w:id="${ROOT_ID}"/>${ref(ROOT_ID)}${ref(REPLY_ID)}</w:p></w:tc>` +
+    `<w:tc><w:tcPr><w:tcW w:w="2000" w:type="dxa"/>${mergeStart}</w:tcPr><w:p w14:paraId="3CCC0003"><w:r><w:t>rate only</w:t></w:r><w:commentRangeEnd w:id="${ROOT_ID}"/>${ref(ROOT_ID)}${ref(REPLY_ID)}</w:p>${textBoxHost}</w:tc>` +
     (endPlacement === "row" ? replyEnd : "") +
     "</w:tr>" +
     followingRow +
@@ -56,11 +63,11 @@ const tableXml = (
 
 const documentXml = (
   endPlacement: "table" | "row",
-  collapsedContinuation: boolean,
+  layout: TableLayout,
 ): string =>
   `${XML_DECLARATION}<w:document xmlns:w="${W}" xmlns:w14="${W14}"><w:body>` +
   '<w:p w14:paraId="3CCC0000"><w:r><w:t>Schedule of rates</w:t></w:r></w:p>' +
-  tableXml(endPlacement, collapsedContinuation) +
+  tableXml(endPlacement, layout) +
   '<w:p w14:paraId="3CCC0004"><w:r><w:t>After the table.</w:t></w:r></w:p>' +
   "<w:sectPr/></w:body></w:document>";
 
@@ -74,7 +81,7 @@ const commentXml = (
 
 const buildDocx = async (
   endPlacement: "table" | "row",
-  collapsedContinuation = false,
+  layout: TableLayout = "plain",
 ): Promise<ArrayBuffer> => {
   const zip = new ZipArchive();
   zip.set(
@@ -98,10 +105,7 @@ const buildDocx = async (
       `<Relationship Id="rIdCx" Type="${RELATIONSHIP_TYPES.commentsExtended}" Target="commentsExtended.xml"/>` +
       "</Relationships>",
   );
-  zip.set(
-    "word/document.xml",
-    documentXml(endPlacement, collapsedContinuation),
-  );
+  zip.set("word/document.xml", documentXml(endPlacement, layout));
   zip.set(
     "word/comments.xml",
     `${XML_DECLARATION}<w:comments xmlns:w="${W}" xmlns:w14="${W14}">` +
@@ -184,7 +188,7 @@ const BOTH = {
 describe("a comment range that closes between table rows", () => {
   test("canonical projection closes a range after a collapsed continuation", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
-      await buildDocx("table", true),
+      await buildDocx("table", "collapsed-continuation"),
       { session: "canonical" },
     );
     const comments = reviewer.getComments();
@@ -221,6 +225,40 @@ describe("a comment range that closes between table rows", () => {
         "u",
       ),
     );
+  });
+
+  test("canonical projection closes a range after a standalone text box host", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await buildDocx("table", "text-box-host"),
+      { session: "canonical" },
+    );
+    let standaloneHost = false;
+    reviewer.state.doc.descendants((node) => {
+      if (
+        node.type.name === "textBox" &&
+        node.attrs["_docxPlacement"] === "standalone" &&
+        node.attrs["_docxHostParagraph"] != null
+      )
+        standaloneHost = true;
+    });
+    expect(standaloneHost).toBe(true);
+    const result = reviewer.applyOperations(
+      [
+        {
+          id: "edit-after-text-box",
+          type: "replaceInBlock",
+          blockId: "3CCC0004",
+          find: "After the table.",
+          replace: "After the schedule.",
+        },
+      ],
+      { mode: "direct", undefinedReferences: "refuse" },
+    );
+    expect(result.skipped).toEqual([]);
+    expect(result.applied).toHaveLength(1);
+    const xml = await savedDocumentXml(await reviewer.toBuffer());
+    expect(markers(xml)).toEqual(BOTH);
+    expect(xml).toContain("Box text.");
   });
 
   for (const endPlacement of ["table", "row"] as const) {

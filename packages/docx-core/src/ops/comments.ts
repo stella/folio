@@ -10,6 +10,7 @@ import {
   type Paragraph,
   type ParagraphContent,
   type PreservedChild,
+  preservedChildGap,
   setDocumentBodyComments,
   type Table,
 } from "../model/document";
@@ -278,8 +279,7 @@ const positionedCommentRanges = (
   for (const child of children) {
     const marker = preservedCommentRangeMarker(child);
     if (marker === undefined) continue;
-    // Match the serializer when an edit removes the sibling the capture followed.
-    const index = Math.min(Math.max(child.index, 0), childCount);
+    const index = preservedChildGap(child, childCount);
     const at = positions.get(index);
     if (at === undefined) positions.set(index, [marker]);
     else at.push(marker);

@@ -84,9 +84,9 @@ export const normalizeCommentReferences = ({
   // looks unbalanced and its paragraph-side marker would be rewritten.
   const collectPositionedMarkers = (
     children: readonly PreservedChild[] | undefined,
-    at: number,
+    gap: { at: number; childCount: number },
   ): void => {
-    for (const marker of preservedCommentRangeMarkersAt(children, at)) {
+    for (const marker of preservedCommentRangeMarkersAt(children, gap)) {
       if (validCommentIds.has(marker.id)) rangeMarkers.push(marker);
     }
   };
@@ -94,15 +94,27 @@ export const normalizeCommentReferences = ({
   const normalizeTable = (table: Table): void => {
     const tableChildren = table.preserved?.children;
     for (const [rowIndex, row] of table.rows.entries()) {
-      collectPositionedMarkers(tableChildren, rowIndex);
+      collectPositionedMarkers(tableChildren, {
+        at: rowIndex,
+        childCount: table.rows.length,
+      });
       const rowChildren = row.preserved?.children;
       for (const [cellIndex, cell] of row.cells.entries()) {
-        collectPositionedMarkers(rowChildren, cellIndex);
+        collectPositionedMarkers(rowChildren, {
+          at: cellIndex,
+          childCount: row.cells.length,
+        });
         normalizeBlocks(cell.content);
       }
-      collectPositionedMarkers(rowChildren, row.cells.length);
+      collectPositionedMarkers(rowChildren, {
+        at: row.cells.length,
+        childCount: row.cells.length,
+      });
     }
-    collectPositionedMarkers(tableChildren, table.rows.length);
+    collectPositionedMarkers(tableChildren, {
+      at: table.rows.length,
+      childCount: table.rows.length,
+    });
   };
 
   const normalizeBlock = (block: BlockContent): void => {

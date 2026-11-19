@@ -88,11 +88,11 @@ export const visitCommentMarkers = (
 
   const visitPositioned = (
     preserved: PreservedMarkup | undefined,
-    at: number,
+    gap: { at: number; childCount: number },
   ): void => {
     for (const item of preservedCommentRangeMarkersAt(
       preserved?.children,
-      at,
+      gap,
     )) {
       visit({ level: "positioned", item });
     }
@@ -107,14 +107,26 @@ export const visitCommentMarkers = (
         // In document order: a positioned marker stands before the row or
         // cell its index names.
         for (const [rowIndex, row] of block.rows.entries()) {
-          visitPositioned(block.preserved, rowIndex);
+          visitPositioned(block.preserved, {
+            at: rowIndex,
+            childCount: block.rows.length,
+          });
           for (const [cellIndex, cell] of row.cells.entries()) {
-            visitPositioned(row.preserved, cellIndex);
+            visitPositioned(row.preserved, {
+              at: cellIndex,
+              childCount: row.cells.length,
+            });
             visitBlocks(cell.content);
           }
-          visitPositioned(row.preserved, row.cells.length);
+          visitPositioned(row.preserved, {
+            at: row.cells.length,
+            childCount: row.cells.length,
+          });
         }
-        visitPositioned(block.preserved, block.rows.length);
+        visitPositioned(block.preserved, {
+          at: block.rows.length,
+          childCount: block.rows.length,
+        });
         return;
       case "blockSdt":
       case "blockCustomXml":
@@ -212,10 +224,13 @@ export const visitCommentMarkerItems = (
   blocks: readonly BlockContent[],
   { markersOf, visit, enterParagraph }: CommentMarkerWalk,
 ): void => {
-  const at = (preserved: PreservedMarkup | undefined, index: number): void => {
+  const at = (
+    preserved: PreservedMarkup | undefined,
+    gap: { at: number; childCount: number },
+  ): void => {
     for (const marker of preservedCommentRangeMarkersAt(
       preserved?.children,
-      index,
+      gap,
     ))
       visit(marker, "positioned");
   };
@@ -232,14 +247,26 @@ export const visitCommentMarkerItems = (
           break;
         case "table":
           for (const [rowIndex, row] of block.rows.entries()) {
-            at(block.preserved, rowIndex);
+            at(block.preserved, {
+              at: rowIndex,
+              childCount: block.rows.length,
+            });
             for (const [cellIndex, cell] of row.cells.entries()) {
-              at(row.preserved, cellIndex);
+              at(row.preserved, {
+                at: cellIndex,
+                childCount: row.cells.length,
+              });
               walk(cell.content);
             }
-            at(row.preserved, row.cells.length);
+            at(row.preserved, {
+              at: row.cells.length,
+              childCount: row.cells.length,
+            });
           }
-          at(block.preserved, block.rows.length);
+          at(block.preserved, {
+            at: block.rows.length,
+            childCount: block.rows.length,
+          });
           break;
         case "blockSdt":
         case "blockCustomXml":

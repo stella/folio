@@ -1,9 +1,83 @@
 import { describe, expect, test } from "bun:test";
 
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Comment, DocumentBody, HeaderFooter } from "../types/document";
+import { visitCommentMarkers } from "./commentAnchorIndex";
 import { normalizeCommentReferences } from "./commentReferenceNormalization";
 
 describe("comment reference normalization", () => {
+  for (const level of ["table", "row"] as const) {
+    test(`keeps a ${level} comment end after its last remaining child`, () => {
+      const preserved = {
+        children: [{ index: 2, xml: '<w:commentRangeEnd w:id="5"/>' }],
+      };
+      const documentBody: DocumentBody = {
+        content: [
+          {
+            type: "table",
+            rows: [
+              {
+                type: "tableRow",
+                cells: [
+                  {
+                    type: "tableCell",
+                    content: [
+                      {
+                        type: "paragraph",
+                        content: [
+                          { type: "commentRangeStart", id: 5 },
+                          {
+                            type: "run",
+                            content: [{ type: "text", text: "Covered" }],
+                          },
+                          { type: "commentReference", id: 5 },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+                ...(level === "row" && { preserved }),
+              },
+            ],
+            ...(level === "table" && { preserved }),
+          },
+          {
+            type: "paragraph",
+            content: [
+              { type: "run", content: [{ type: "text", text: "Outside" }] },
+            ],
+          },
+        ],
+      };
+      const comments: Comment[] = [{ id: 5, author: "Reviewer", content: [] }];
+      expect(
+        normalizeCommentReferences({ documentBody, comments })
+          .reanchoredUnbalancedRanges,
+      ).toBe(0);
+      const markers: string[] = [];
+      visitCommentMarkers(documentBody.content, ({ item }) =>
+        markers.push(item.type),
+      );
+      expect(markers).toEqual([
+        "commentRangeStart",
+        "commentReference",
+        "commentRangeEnd",
+      ]);
+
+      const covered: string[] = [];
+      toProseDoc({
+        package: { document: { ...documentBody, comments } },
+      }).descendants((node) => {
+        if (
+          node.isText &&
+          node.marks.some(({ type }) => type.name === "comment")
+        )
+          covered.push(node.textContent);
+      });
+      expect(covered).toEqual(["Covered"]);
+    });
+  }
+
   test("removes markers whose comments.xml entries are missing", () => {
     const documentBody: DocumentBody = {
       content: [
