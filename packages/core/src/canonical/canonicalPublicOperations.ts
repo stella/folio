@@ -3461,7 +3461,12 @@ export class CanonicalPublicOperations {
         before: state,
         after: prepared.value.projection.doc,
         applied: [...appliedById.values()],
-        operations: batch.operations,
+        operations: batch.operations.filter(
+          (operation) =>
+            operation.type !== "deleteBlock" ||
+            operation.moveId === undefined ||
+            !pairedMoves.has(operation.moveId),
+        ),
         sourceRanges: new Map(
           resolved.flatMap(({ operation, deletionSpans }) =>
             deletionSpans === undefined

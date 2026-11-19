@@ -8530,7 +8530,10 @@ const applyFolioAIEditOperationsInternal = ({
         before: view.state,
         after: tr.doc,
         applied,
-        operations: requestedOperations,
+        operations: requestedOperations.filter(
+          (operation) =>
+            operation.type !== "deleteBlock" || !isPairedMove(operation.moveId),
+        ),
       });
     if (tr.docChanged) view.dispatch(tr);
   }
