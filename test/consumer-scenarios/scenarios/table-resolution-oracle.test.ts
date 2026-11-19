@@ -64,6 +64,7 @@ describe("table operation source coordinates", () => {
       });
       if (type !== "deleteTable") continue;
       assert.equal(result.applied.length, 1);
+      assert.deepEqual(result.receipts.at(0)?.retiredCommentIds, [6, 19]);
       const acceptedIds = new Set(pre.rows.map(({ id }) => id));
       const outside = pre.liveRows.filter(
         ({ id, text, table }) =>

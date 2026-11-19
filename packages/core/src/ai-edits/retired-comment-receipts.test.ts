@@ -174,8 +174,9 @@ for (const session of ["legacy", "canonical"] as const) {
     ]);
   });
 
-  test(`${session} does not assign a jointly exhausted anchor or a pending loss to another edit`, async () => {
+  test(`${session} refuses a jointly exhausted anchor without assigning an operation receipt`, async () => {
     const reviewer = await open(session);
+    const before = structuredClone(reviewer.toDocument());
     const apply = (operations: readonly FolioDocumentOperation[]) =>
       reviewer.applyDocumentOperations(
         {
@@ -195,11 +196,18 @@ for (const session of ["legacy", "canonical"] as const) {
         replace: "",
       },
     ]);
-    expect(joint.skipped).toEqual([]);
-    expect(joint.applied).toHaveLength(2);
-    expect(
-      joint.receipts.map(({ retiredCommentIds }) => retiredCommentIds),
-    ).toEqual([undefined, undefined]);
+    expect(joint.status).toBe("rejected");
+    expect(joint.applied).toEqual([]);
+    expect(joint.receipts).toEqual([]);
+    expect(joint.skipped).toEqual(
+      ["delete-part", "delete-rest"].map((id) => ({
+        id,
+        reason: "invalidResult",
+        message: "Accept All would lose a comment.",
+      })),
+    );
+    expect(structuredClone(reviewer.toDocument())).toEqual(before);
+    expect(reviewer.getChanges()).toEqual([]);
     const other = apply([edits[3]]);
     expect(other.applied).toHaveLength(1);
     expect(other.receipts.at(0)).not.toHaveProperty("retiredCommentIds");

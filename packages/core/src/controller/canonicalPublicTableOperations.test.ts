@@ -928,6 +928,49 @@ describe("table structure operations in the canonical session", () => {
     }
   });
 
+  test("reviews a deleted column including its collapsed vertical continuation", async () => {
+    const source = await packageOf("a vertical merge");
+    const operation = OPERATIONS.deleteTableColumn("30000001");
+    const reviewer = await FolioDocxReviewer.fromBuffer(source.slice(0), {
+      session: "canonical",
+    });
+    const result = reviewer.applyDocumentOperations(
+      { version: 1, mode: "tracked-changes", operations: [operation] },
+      { undefinedReferences: "refuse" },
+    );
+    expect(result.skipped).toEqual([]);
+    const ids = result.applied.at(0)?.revisionIds ?? [];
+    expect(ids).toHaveLength(3);
+    const pending = await reviewer.toBuffer();
+    const open = () =>
+      FolioDocxReviewer.fromBuffer(pending.slice(0), { session: "canonical" });
+    const rejected = await open();
+    expect(
+      rejected
+        .getChanges()
+        .map(({ id }) => id)
+        .toSorted(),
+    ).toEqual([...ids].toSorted());
+    expect(rejected.rejectAll()).toEqual({ resolved: 3, skipped: [] });
+    expect(rejected.getChanges()).toEqual([]);
+    expect(await blocksOf(await rejected.toBuffer())).toEqual(
+      await blocksOf(source),
+    );
+
+    const accepted = await open();
+    expect(accepted.acceptAll()).toEqual({ resolved: 3, skipped: [] });
+    expect(accepted.getChanges()).toEqual([]);
+    const direct = await viaDefaultEngine({
+      source,
+      operation,
+      mode: "direct",
+    });
+    expect(direct.skipped).toEqual([]);
+    expect(await blocksOf(await accepted.toBuffer())).toEqual(
+      await blocksOf(direct.bytes),
+    );
+  });
+
   test("give the default engine's package, pending, accepted and rejected", async () => {
     await assertProperty(
       fc.asyncProperty(

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { type MarkSpec, Schema } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
@@ -7,6 +7,7 @@ import { ReplaceStep } from "prosemirror-transform";
 
 import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 import { applyFolioDocumentOperations } from "../document-operations";
+import { NO_NUMBERING_IDS_IN_USE } from "../docx/numberingIds";
 import {
   acceptAIEditRevision,
   acceptAllChanges,
@@ -16,7 +17,11 @@ import {
 import { RUN_FORMATTING_MARK_NAMES } from "../prosemirror/runFormattingMarkNames";
 import { schema as editorSchema } from "../prosemirror/schema";
 import { createStyleResolver } from "../prosemirror/styles/styleResolver";
-import { applyFolioAIEditOperations, type FolioWordDiffOptions } from "./apply";
+import {
+  applyFolioAIEditOperations,
+  type FolioWordDiffOptions,
+  previewFolioAIEditOperationsWithResult,
+} from "./apply";
 import { resolveFolioAITextRange } from "./blockRange";
 import { getTrackedChangesFromDoc } from "./read";
 import {
@@ -25,7 +30,10 @@ import {
   createFolioAITextRangeHandle,
 } from "./snapshot";
 import type { FolioAIEditApplyMode, FolioAIEditOperation } from "./types";
-import { createScopedWordDiffOptions } from "./word-diff";
+import {
+  createScopedWordDiffOptions,
+  wordDiffSessionFromOptions,
+} from "./word-diff";
 
 /**
  * The test's own marks, plus the editor's run-formatting marks it lacks:
@@ -2378,6 +2386,45 @@ describe("Folio AI edit operations", () => {
       },
     });
     expect(granularityReads).toBe(1);
+  });
+
+  test("bounded preview honors character granularity with a fresh diff session", () => {
+    const view = makeView(makeState(["Heading"]));
+    const original = view.state.doc;
+    const snapshot = createFolioAIEditSnapshot(original);
+    const wordDiff = createScopedWordDiffOptions({
+      granularity: "character" as const,
+    });
+    const commitDiff = spyOn(wordDiffSessionFromOptions(wordDiff), "diff");
+    const preview = previewFolioAIEditOperationsWithResult(
+      {
+        view,
+        snapshot,
+        operations: [
+          {
+            id: "replace",
+            type: "replaceInBlock",
+            blockId: snapshot.blocks.at(0)?.id ?? "",
+            find: "Heading",
+            replace: "Hearing",
+          },
+        ],
+        mode: "tracked-changes",
+        wordDiff,
+        numberingIdsElsewhere: NO_NUMBERING_IDS_IN_USE,
+        undefinedReferences: "refuse",
+      },
+      "bounded",
+    );
+
+    expect(preview.outcome.applied).toHaveLength(1);
+    expect(
+      getTrackedChangesFromDoc(preview.doc)
+        .map(({ text }) => text)
+        .toSorted(),
+    ).toEqual(["d", "r"]);
+    expect(commitDiff).not.toHaveBeenCalled();
+    expect(view.state.doc).toBe(original);
   });
 
   test("coarse atomic preflight keeps emphasis-stripped replacements as no-ops", () => {

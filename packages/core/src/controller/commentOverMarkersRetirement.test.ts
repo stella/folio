@@ -6,11 +6,13 @@
 import { afterEach, expect, setSystemTime, test } from "bun:test";
 import { EditorState } from "prosemirror-state";
 
+import { OP_STORIES } from "@stll/docx-core/ops";
 import { ZipArchive } from "@stll/docx-core/zip";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { getTrackedChangeStatsFromDoc } from "../ai-edits/read";
 import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
+import { createCanonicalBatchReview } from "../canonical/canonicalBatchReview";
 import { CanonicalPublicOperations } from "../canonical/canonicalPublicOperations";
 import {
   type CanonicalCommit,
@@ -148,6 +150,65 @@ test("a source comment whose range holds only a bookmark stays a point comment",
     await reviewer.toBuffer(),
   );
   expect(reopened.getComments()).toHaveLength(1);
+});
+
+test("tracks retirement with two independently blocked joins", async () => {
+  const zip = await ZipArchive.read(await fixture());
+  const source = await zip.entry("word/document.xml")?.text();
+  if (source === undefined) throw new Error("Missing fixture document XML");
+  const blockedJoin = (id: number, paragraphId: string, nextId: string) =>
+    `<w:p w14:paraId="${paragraphId}"><w:pPr><w:rPr><w:del w:id="${id}" w:author="Reviewer"/></w:rPr></w:pPr>${run("Clause.")}</w:p>` +
+    `<w:bookmarkStart w:id="${id}" w:name="Range${id}"/>` +
+    `<w:p w14:paraId="${nextId}">${run("Signature.")}</w:p>` +
+    `<w:bookmarkEnd w:id="${id}"/>`;
+  const withJoins = source.replace(
+    "<w:sectPr>",
+    blockedJoin(17, "10000001", "10000002") +
+      blockedJoin(18, "10000003", "10000004") +
+      `<w:p w14:paraId="10000005">${run("End.")}</w:p><w:sectPr>`,
+  );
+  zip.set("word/document.xml", withJoins);
+  const bytes = (await zip.generate({ compression: "store" })).buffer;
+
+  // With only the later join present at baseline, the earlier blocker
+  // must not be ignored when it appears in the edited document.
+  zip.set(
+    "word/document.xml",
+    withJoins.replace('<w:del w:id="17" w:author="Reviewer"/>', ""),
+  );
+  const reviewVersion = async (input: ArrayBuffer) => {
+    const document = await parseDocx(input, {
+      preloadFonts: false,
+      detectVariables: false,
+    });
+    return { document, projection: toProseDoc(document) };
+  };
+  const newBlocker = createCanonicalBatchReview({
+    story: OP_STORIES.MAIN,
+    before: await reviewVersion(
+      (await zip.generate({ compression: "store" })).buffer,
+    ),
+    after: await reviewVersion(bytes),
+  });
+  expect(newBlocker.accept()).toBeNull();
+
+  const reviewer = await FolioDocxReviewer.fromBuffer(bytes, {
+    session: "canonical",
+  });
+  expect(reviewer.getChanges().map(({ id }) => id)).toEqual([17, 18]);
+  const result = reviewer.applyOperations([DELETE_COMMENTED_TEXT], {
+    undefinedReferences: "refuse",
+    mode: "tracked-changes",
+  });
+  expect(result.skipped).toEqual([]);
+  expect(result.applied).toMatchObject([
+    { id: "drop", retiredCommentIds: [0] },
+  ]);
+  const deletion = reviewer.getChanges().find(({ text }) => text === "This");
+  if (deletion === undefined) throw new Error("Missing tracked deletion");
+  expect(reviewer.acceptChange(deletion)).toBe(true);
+  expect(reviewer.getComments()).toEqual([]);
+  expect(reviewer.getChanges().map(({ id }) => id)).toEqual([17, 18]);
 });
 
 type RetirementCase =
