@@ -33,7 +33,7 @@ const open = async (field: string) => {
 
 const apply = (
   reviewer: FolioDocxReviewer,
-  mode: "direct" | "tracked-changes",
+  mode: "direct" | "tracked-changes" | "suggested",
   operation: Record<string, unknown>,
 ) =>
   reviewer.applyDocumentOperations(
@@ -56,69 +56,83 @@ describe.each([
     expect(firstText(await open(field))).toBe(SOURCE);
   });
 
-  describe.each(["direct", "tracked-changes"] as const)("(%s)", (mode) => {
-    test("refuses an edit that cuts into its result", async () => {
-      const reviewer = await open(field);
-      const result = apply(reviewer, mode, {
-        type: "replaceInBlock",
-        blockId: HOST,
-        find: "20",
-        replace: "30",
+  describe.each(["direct", "tracked-changes", "suggested"] as const)(
+    "(%s)",
+    (mode) => {
+      test("refuses an edit that cuts into its result", async () => {
+        const reviewer = await open(field);
+        const result = apply(reviewer, mode, {
+          type: "replaceInBlock",
+          blockId: HOST,
+          find: "20",
+          replace: "30",
+        });
+        expect(result.applied).toHaveLength(0);
+        expect(firstText(await reopen(reviewer))).toBe(SOURCE);
       });
-      expect(result.applied).toHaveLength(0);
-      expect(firstText(await reopen(reviewer))).toBe(SOURCE);
-    });
 
-    test("is replaced whole by an edit of all of its result", async () => {
-      const reviewer = await open(field);
-      const result = apply(reviewer, mode, {
-        type: "replaceInBlock",
-        blockId: HOST,
-        find: "2014",
-        replace: "1999",
+      test.each([
+        [
+          "its entire result",
+          { type: "replaceInBlock", find: "2014", replace: "1999" },
+          ["Date: 1999 end", "Tail"],
+        ],
+        [
+          "text across it",
+          { type: "replaceInBlock", find: ": 2014 e", replace: "X" },
+          ["DateXnd", "Tail"],
+        ],
+        ["its host paragraph", { type: "deleteBlock" }, ["Tail"]],
+      ] as const)("edits %s as a unit", async (_name, operation, expected) => {
+        const reviewer = await open(field);
+        const original = reviewer.toDocument();
+        const result = apply(reviewer, mode, { ...operation, blockId: HOST });
+        if (mode === "tracked-changes") {
+          expect(result.status).toBe("rejected");
+          expect(result.applied).toEqual([]);
+          expect(result.skipped).toEqual([
+            {
+              id: "edit",
+              reason: "invalidResult",
+              message: expect.stringMatching(/Accept All.*field/u),
+            },
+          ]);
+          expect(reviewer.getChanges()).toEqual([]);
+          expect(reviewer.toDocument()).toEqual(original);
+          expect(firstText(await reopen(reviewer))).toBe(SOURCE);
+        } else {
+          expect(result.applied).toHaveLength(1);
+          if (mode === "suggested") {
+            const suggestionId = result.applied.at(0)?.suggestionId;
+            if (suggestionId === undefined)
+              throw new Error("Expected a field edit suggestion");
+            expect(reviewer.acceptSuggestion(suggestionId)).toBe(true);
+          }
+          const saved = await reopen(reviewer);
+          if (mode === "suggested")
+            expect(saved.acceptAll().resolved).toBeGreaterThan(0);
+          expect(saved.getContent().map(({ text }) => text)).toEqual(expected);
+        }
       });
-      expect(result.applied).toHaveLength(1);
-      const saved = await reopen(reviewer);
-      saved.acceptAll();
-      expect(firstText(saved)).toBe("Date: 1999 end");
-    });
-
-    test("goes whole with an edit across it", async () => {
-      const reviewer = await open(field);
-      const result = apply(reviewer, mode, {
-        type: "replaceInBlock",
-        blockId: HOST,
-        find: ": 2014 e",
-        replace: "X",
-      });
-      expect(result.applied).toHaveLength(1);
-      const saved = await reopen(reviewer);
-      saved.acceptAll();
-      expect(firstText(saved)).toBe("DateXnd");
-    });
-
-    test("goes with its paragraph", async () => {
-      const reviewer = await open(field);
-      const result = apply(reviewer, mode, {
-        type: "deleteBlock",
-        blockId: HOST,
-      });
-      expect(result.applied).toHaveLength(1);
-      const saved = await reopen(reviewer);
-      saved.acceptAll();
-      expect(saved.getContent().map(({ text }) => text)).toEqual(["Tail"]);
-    });
-  });
+    },
+  );
 
   test("comes back whole when its deletion is rejected", async () => {
     const reviewer = await open(field);
-    apply(reviewer, "tracked-changes", { type: "deleteBlock", blockId: HOST });
+    const staged = apply(reviewer, "suggested", {
+      type: "deleteBlock",
+      blockId: HOST,
+    });
+    const suggestionId = staged.applied.at(0)?.suggestionId;
+    if (suggestionId === undefined)
+      throw new Error("Expected a deletion suggestion");
+    expect(reviewer.acceptSuggestion(suggestionId)).toBe(true);
     const saved = await reopen(reviewer);
-    saved.rejectAll();
+    expect(saved.rejectAll().resolved).toBeGreaterThan(0);
     expect(firstText(saved)).toBe(SOURCE);
     expect(firstText(await reopen(saved))).toBe(SOURCE);
 
-    reviewer.rejectAll();
+    expect(reviewer.rejectAll().resolved).toBeGreaterThan(0);
     expect(firstText(reviewer)).toBe(SOURCE);
     expect(firstText(await reopen(reviewer))).toBe(SOURCE);
   });
