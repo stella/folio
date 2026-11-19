@@ -252,11 +252,12 @@ export const removeCommentMarkers = (
 ): BlockContent[] => {
   if (commentIds.size === 0) return blocks.slice();
   const removals = new Map<readonly unknown[], number[]>();
-  visitCommentMarkers(blocks, ({ content, index, item }) => {
-    if (!commentIds.has(item.id)) return;
-    const indexes = removals.get(content) ?? [];
-    indexes.push(index);
-    removals.set(content, indexes);
+  visitCommentMarkers(blocks, (slot) => {
+    // A table's or a row's own marker stays the positioned markup it was.
+    if (slot.level === "positioned" || !commentIds.has(slot.item.id)) return;
+    const indexes = removals.get(slot.content) ?? [];
+    indexes.push(slot.index);
+    removals.set(slot.content, indexes);
   });
   if (removals.size === 0) return blocks.slice();
 
