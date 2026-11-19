@@ -2600,7 +2600,7 @@ const resolveList = ({
   ): InlineNode | undefined => {
     let node: InlineNode | undefined = out[index]?.node;
     while (node !== undefined && isTrackedWrapper(node)) {
-      const children = childNodes(node) ?? [];
+      const children: readonly InlineNode[] = childNodes(node) ?? [];
       node = edge === "start" ? children.at(0) : children.at(-1);
     }
     return node;
