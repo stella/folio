@@ -86,7 +86,11 @@ export type FlowStep = {
   operationTypes?: string[];
   /** Require every pinned operation to apply, rather than just a nonempty batch. */
   expectedApplied?: number;
-  /** Require this pinned edit to report a specific review fidelity refusal. */
+  /**
+   * Require this pinned edit to report a specific review fidelity refusal.
+   * `rejectOriginal` also admits an edit that applies, which the flow's
+   * rejectAll relation then holds to giving the original back.
+   */
   expectedFidelityRefusal?: FidelityRefusal;
 };
 
