@@ -838,7 +838,7 @@ export const INLINE_FORMATTING_JSON_SCHEMA: FolioJsonSchema = {
   additionalProperties: false,
 };
 
-export const MARKDOWN_INSERTION_TEXT_FORMAT_JSON_SCHEMA = {
+const MARKDOWN_INSERTION_TEXT_FORMAT_JSON_SCHEMA = {
   type: "string",
   enum: ["markdown"],
   description:
