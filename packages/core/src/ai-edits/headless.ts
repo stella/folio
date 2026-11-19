@@ -1256,8 +1256,13 @@ type ReviewLockFact = {
   id: number;
   suggestionId: string | null;
   violation: LockedControlViolation | undefined;
-  /** Other revision ids of its story that resolving this change takes with it. */
+  /** Other revision ids of its story that resolving this change removes. */
   carries: ReadonlySet<number>;
+  /**
+   * Other revision ids of its story that resolving this change runs into the
+   * next paragraph, their text kept.
+   */
+  moves: ReadonlySet<number>;
 };
 
 type ClassifyReviewLocksOptions<Source, Change extends ReviewLockFact> = {
@@ -1270,7 +1275,11 @@ type HeldReviewLock = { violation: LockedControlViolation; message: string };
 /**
  * Source-specific probes supply facts; a held proposal stays whole across all
  * stories, and a change whose resolution would carry a held change away (its
- * removed content or block holds it) is held with it.
+ * removed content or block holds it) is held with it. A change that only runs
+ * a held change's paragraph into the next is held with it when the held change
+ * belongs to a proposal, which is restaged on the paragraphs it was made on;
+ * an ordinary held change keeps its text and record wherever its paragraph
+ * goes.
  */
 const classifyReviewLocks = <Source, Change extends ReviewLockFact>({
   stories,
@@ -1288,6 +1297,7 @@ const classifyReviewLocks = <Source, Change extends ReviewLockFact>({
   const heldSuggestions = new Map<string, LockedControlViolation>();
   const held = stories.map(() => new Map<Change, HeldReviewLock>());
   const heldIds = stories.map(() => new Map<number, LockedControlViolation>());
+  const heldProposalIds = stories.map(() => new Set<number>());
   const reasonFor = (
     change: Change,
     storyIndex: number,
@@ -1314,6 +1324,15 @@ const classifyReviewLocks = <Source, Change extends ReviewLockFact>({
           message: `Resolving this change would take a held change with it: ${lockedControlMessage(carried)}`,
         };
     }
+    for (const id of change.moves) {
+      if (!heldProposalIds[storyIndex]?.has(id)) continue;
+      const moved = heldIds[storyIndex]?.get(id);
+      if (moved !== undefined)
+        return {
+          violation: moved,
+          message: `Resolving this change would run a held proposal's paragraph into the next: ${lockedControlMessage(moved)}`,
+        };
+    }
     return undefined;
   };
   // Holding one change can hold its proposal and the changes that carry it.
@@ -1328,6 +1347,8 @@ const classifyReviewLocks = <Source, Change extends ReviewLockFact>({
         if (reason === undefined) continue;
         storyHeld.set(change, reason);
         heldIds[storyIndex]?.set(change.id, reason.violation);
+        if (change.suggestionId !== null)
+          heldProposalIds[storyIndex]?.add(change.id);
         if (
           grouping === "whole-proposal" &&
           change.suggestionId !== null &&
@@ -1367,19 +1388,40 @@ const numericRevisionId = (value: unknown): number | undefined =>
     ? value.revisionId
     : undefined;
 
+/** What resolving each change takes with it, by revision id. */
+type CarriedByResolution = {
+  /** The records it removes. */
+  removed: ReadonlyMap<number, ReadonlySet<number>>;
+  /** The records it runs into the next paragraph, their text kept. */
+  moved: ReadonlyMap<number, ReadonlySet<number>>;
+};
+
 /**
  * The revision ids each change's resolution takes with it: every record inside
  * content it removes (the text it inserted, when rejecting; deleted, when
- * accepting) or inside a paragraph, row or cell whose own carrier it removes.
+ * accepting) or inside a row or cell whose own carrier it removes. Removing a
+ * paragraph's mark removes the paragraph's own records and runs its content,
+ * with the records in it, into the next paragraph.
  */
 const revisionIdsCarriedByResolution = (
   doc: PMNode,
   mode: "accept" | "reject",
-): ReadonlyMap<number, ReadonlySet<number>> => {
-  const carried = new Map<number, Set<number>>();
+): CarriedByResolution => {
+  const removed = new Map<number, Set<number>>();
+  const moved = new Map<number, Set<number>>();
+  const add = (
+    into: Map<number, Set<number>>,
+    remover: number,
+    ids: ReadonlySet<number>,
+  ) => {
+    const set = into.get(remover) ?? new Set<number>();
+    for (const id of ids) if (id !== remover) set.add(id);
+    into.set(remover, set);
+  };
   const visit = (node: PMNode, pos: number): Set<number> => {
     const ids = new Set<number>();
     const removers = new Set<number>();
+    const markRemovers = new Set<number>();
     for (const mark of node.marks) {
       const id = numericRevisionId(mark.attrs);
       if (id !== undefined) {
@@ -1404,7 +1446,7 @@ const revisionIdsCarriedByResolution = (
     for (const carrier of getFolioNodeRevisionCarriers(node, pos)) {
       ids.add(carrier.id);
       if (carrier.type === PARAGRAPH_MARK_REMOVED_BY[mode])
-        removers.add(carrier.id);
+        markRemovers.add(carrier.id);
     }
     if (node.type.name === "tableRow")
       for (const attr of ["trIns", "trDel"] as const) {
@@ -1426,35 +1468,47 @@ const revisionIdsCarriedByResolution = (
         if (cellMarker.kind === CELL_REMOVED_BY[mode]) removers.add(id);
       }
     }
+    const own = new Set(ids);
+    const content = new Set<number>();
     node.forEach((child, offset) => {
-      for (const id of visit(child, pos + 1 + offset)) ids.add(id);
+      for (const id of visit(child, pos + 1 + offset)) {
+        ids.add(id);
+        content.add(id);
+      }
     });
-    for (const remover of removers) {
-      const set = carried.get(remover) ?? new Set<number>();
-      for (const id of ids) if (id !== remover) set.add(id);
-      carried.set(remover, set);
+    for (const remover of removers) add(removed, remover, ids);
+    for (const remover of markRemovers) {
+      add(removed, remover, own);
+      add(moved, remover, content);
     }
     return ids;
   };
   doc.forEach((child, offset) => {
     visit(child, offset);
   });
-  return carried;
+  return { removed, moved };
 };
 
-/** The ids a change's group carries: its other members and what each takes along. */
+/**
+ * What a change's group takes along: its other members and what each removes
+ * (`carries`), and what each runs into the next paragraph (`moves`).
+ */
 const carriedByGroup = (
   id: number,
   groupIds: readonly number[],
-  carried: ReadonlyMap<number, ReadonlySet<number>>,
-): ReadonlySet<number> => {
-  const out = new Set<number>();
+  { removed, moved }: CarriedByResolution,
+): Pick<ReviewLockFact, "carries" | "moves"> => {
+  const carries = new Set<number>();
+  const moves = new Set<number>();
   for (const member of [id, ...groupIds]) {
-    out.add(member);
-    for (const inner of carried.get(member) ?? []) out.add(inner);
+    carries.add(member);
+    for (const inner of removed.get(member) ?? []) carries.add(inner);
+    for (const inner of moved.get(member) ?? []) moves.add(inner);
   }
-  out.delete(id);
-  return out;
+  carries.delete(id);
+  for (const inner of carries) moves.delete(inner);
+  moves.delete(id);
+  return { carries, moves };
 };
 
 /**
@@ -2480,13 +2534,17 @@ export class FolioDocxReviewer {
         return [
           {
             source: { story },
-            changes: changes.map(({ id, suggestionId, groupIds }) => ({
-              id,
-              suggestionId,
-              groupIds,
-              violation: held.get(id),
-              carries: carriedByGroup(id, groupIds, carried),
-            })),
+            changes: changes.map(({ id, suggestionId, groupIds }) => {
+              const { carries, moves } = carriedByGroup(id, groupIds, carried);
+              return {
+                id,
+                suggestionId,
+                groupIds,
+                violation: held.get(id),
+                carries,
+                moves,
+              };
+            }),
           },
         ];
       });
@@ -4347,16 +4405,20 @@ export class FolioDocxReviewer {
       return [
         {
           source: { handle, state },
-          changes: getTrackedChangesFromDoc(state.doc).map(({ id }) => ({
-            id,
-            suggestionId: suggestionIdOfRevision(state, id),
-            violation: held.get(id),
-            carries: carriedByGroup(
+          changes: getTrackedChangesFromDoc(state.doc).map(({ id }) => {
+            const { carries, moves } = carriedByGroup(
               id,
               getTrackedChangeGroupIdsFromDoc(state.doc, id),
               carried,
-            ),
-          })),
+            );
+            return {
+              id,
+              suggestionId: suggestionIdOfRevision(state, id),
+              violation: held.get(id),
+              carries,
+              moves,
+            };
+          }),
         },
       ];
     });

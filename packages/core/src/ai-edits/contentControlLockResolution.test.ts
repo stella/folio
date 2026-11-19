@@ -228,3 +228,36 @@ describe("the change at a caret inside a locked inline control", () => {
     }
   });
 });
+
+describe("the mark of a paragraph holding a held change", () => {
+  // Removing the mark runs the paragraph, with the locked control and the
+  // held change in it, into the next one; the control's content is untouched.
+  const removedMark = (mode: "accept" | "reject") =>
+    `<w:pPr><w:rPr>${mode === "accept" ? `<w:del w:id="5" ${DATE}/>` : `<w:ins w:id="5" ${DATE}/>`}</w:rPr></w:pPr>`;
+  for (const mode of ["accept", "reject"] as const)
+    test(`${mode} all removes it and leaves only the held change`, async () => {
+      const held =
+        mode === "accept" ? inserted(1, " text") : deleted(1, " text");
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await createDocx(
+          `<w:p>${removedMark(mode)}${run("Held ")}${control("contentLocked", run("clause") + held)}</w:p>` +
+            `<w:p>${run(" next.")}</w:p>`,
+        ),
+      );
+      // `xml:space="preserve"` changes nothing on text with no space at its ends.
+      const content = (xml: string) =>
+        controlXml(xml)?.replaceAll(
+          /<w:t xml:space="preserve">(\S[^<]*\S)<\/w:t>/gu,
+          "<w:t>$1</w:t>",
+        );
+      const before = content(await documentXml(reviewer));
+      const result =
+        mode === "accept" ? reviewer.acceptAll() : reviewer.rejectAll();
+      expect(result.skipped.map(({ id }) => id)).toEqual([1]);
+      expect(reviewer.getChanges().map(({ id }) => id)).toEqual([1]);
+      const xml = await documentXml(reviewer);
+      expect(xml.match(/<w:p[ >]/gu)).toHaveLength(1);
+      expect(xml).toContain(" next.");
+      expect(content(xml)).toBe(before);
+    });
+});
