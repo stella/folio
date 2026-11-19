@@ -362,10 +362,10 @@ export type FolioDocumentOperationBatch = {
   readonly existingRevisions?: (typeof FOLIO_EXISTING_REVISION_POLICIES)[number];
 };
 
-export const FOLIO_EXISTING_REVISION_POLICIES = [
+export const FOLIO_EXISTING_REVISION_POLICIES: readonly [
   "allow",
   "refuse-cross-author",
-] as const;
+] = ["allow", "refuse-cross-author"];
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);

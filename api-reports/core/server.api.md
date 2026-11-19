@@ -473,6 +473,9 @@ export const FOLIO_DOCX_XML_PATCH_PROPOSAL_PROFILE: "folio-xml-patch-proposal-v1
 // @public (undocumented)
 export const FOLIO_DOCX_XML_PATCH_PROPOSAL_VERSION: 1;
 
+// @public (undocumented)
+export const FOLIO_EXISTING_REVISION_POLICIES: readonly ["allow", "refuse-cross-author"];
+
 // @public
 export const FOLIO_HIGHLIGHT_COLOR_VALUES: readonly HighlightColor[];
 
@@ -991,6 +994,7 @@ export type FolioDocumentOperationBatch = {
     readonly atomic?: boolean;
     readonly dryRun?: boolean;
     readonly precondition?: FolioDocumentOperationBatchPrecondition;
+    readonly existingRevisions?: (typeof FOLIO_EXISTING_REVISION_POLICIES)[number];
 };
 
 // @public
