@@ -398,7 +398,9 @@ test("verifies a tracked insertion beside an already blocked join", async () => 
       message: `A range boundary stands between ${anchors.clause} and the next block.`,
       blockedParagraphMarkRevisionId: 1,
     });
-    expect(reviewer.acceptAll().resolved).toBe(0);
+    expect(() => reviewer.acceptAll()).toThrow(
+      `A range boundary stands between ${anchors.clause} and the next block.`,
+    );
   }
   const insertedChange = edited
     .getChanges()
