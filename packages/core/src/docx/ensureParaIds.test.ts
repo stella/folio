@@ -426,6 +426,81 @@ describe("ensureParaIds", () => {
     }
   });
 
+  test.each([
+    {
+      profile: "Transitional",
+      wordprocessingDrawing:
+        "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing",
+      drawing: "http://schemas.openxmlformats.org/drawingml/2006/main",
+      container: "anchor",
+      prefix: "a",
+    },
+    {
+      profile: "Strict",
+      wordprocessingDrawing:
+        "http://purl.oclc.org/ooxml/drawingml/wordprocessingDrawing",
+      drawing: "http://purl.oclc.org/ooxml/drawingml/main",
+      container: "inline",
+      prefix: "draw",
+    },
+  ])(
+    "repairs a missing DrawingML namespace in the $profile graphic scope",
+    async ({ profile, wordprocessingDrawing, drawing, container, prefix }) => {
+      const graphic = `<${prefix}:graphic><${prefix}:graphicData uri="urn:graphic"><${prefix}:xfrm/></${prefix}:graphicData></${prefix}:graphic>`;
+      const declareGraphic = (content: string, uri = drawing) =>
+        content.replace(
+          `<${prefix}:graphic>`,
+          `<${prefix}:graphic xmlns:${prefix}="${uri}">`,
+        );
+      const descendantBinding = graphic.replace(
+        `<${prefix}:graphicData `,
+        `<${prefix}:graphicData xmlns:${prefix}="${drawing}" `,
+      );
+      const existingBinding = declareGraphic(graphic, "urn:existing");
+      const draw = (content: string) =>
+        `<w:r><w:drawing><frame:${container}>${content}</frame:${container}></w:drawing></w:r>`;
+      const roots = `${ID_NS}${MC_NS} mc:Ignorable="w14" xmlns:frame="${wordprocessingDrawing}"`;
+      const paragraph = (content: string) =>
+        `<w:p w14:paraId="10000001">${content}</w:p>`;
+      const xml = (content: string) => {
+        const source = documentXml(paragraph(content), roots);
+        return profile === "Strict"
+          ? source.replace(
+              W_NS,
+              'xmlns:w="http://purl.oclc.org/ooxml/wordprocessingml/main"',
+            )
+          : source;
+      };
+      const main = "word/document.xml";
+      const input = await buildDocx({
+        [main]: xml(
+          draw(graphic) + draw(descendantBinding) + draw(existingBinding),
+        ),
+      });
+
+      const repaired = await ensureParaIds(input);
+      expect(repaired.assigned).toBe(0);
+      expect(repaired.alreadyComplete).toBe(false);
+      expect(await getPart(repaired.docx, main)).toBe(
+        xml(
+          draw(declareGraphic(graphic)) +
+            draw(declareGraphic(descendantBinding)) +
+            draw(existingBinding),
+        ),
+      );
+      const reopened = await ensureParaIds(repaired.docx);
+      expect(reopened.alreadyComplete).toBe(true);
+      expect(reopened.docx).toEqual(repaired.docx);
+
+      const unrelated = await buildDocx({
+        [main]: xml(draw(graphic) + '<w:r missing:flag="1"/>'),
+      });
+      await expect(ensureParaIds(unrelated)).rejects.toMatchObject({
+        reason: ENSURE_PARA_IDS_REASONS.NAMESPACE_INVALID,
+      });
+    },
+  );
+
   test("refuses undeclared extension prefixes with a typed namespace error", async () => {
     for (const body of [
       PARA("Body", ' w14:paraId="12345678"'),

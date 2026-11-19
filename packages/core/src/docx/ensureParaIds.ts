@@ -52,6 +52,8 @@ const EnsureParaIdsErrorBase: TaggedErrorClass<"EnsureParaIdsError"> =
  *   in-scope namespace URI, including Strict and Transitional profiles and
  *   nested rebinding. Minted attributes use a root prefix with no conflicting
  *   nested binding; a fresh prefix is declared when necessary.
+ * - A DrawingML graphic with a missing namespace declaration is repaired in
+ *   its own scope when its drawing container establishes the OOXML profile.
  * - Idempotent: a document that already has full coverage is returned as the
  *   original bytes, untouched (`alreadyComplete: true`). A body with
  *   paragraphs the scan did not see is refused, never reported complete.
@@ -59,9 +61,12 @@ const EnsureParaIdsErrorBase: TaggedErrorClass<"EnsureParaIdsError"> =
  *   When normalization would rewrite the package, it fails unless the caller
  *   explicitly allows signature invalidation after warning the user.
  */
-import { TaggedError, type TaggedErrorClass } from "better-result";
+import { Result, TaggedError, type TaggedErrorClass } from "better-result";
 
-import { scanStreamingXmlElements } from "@stll/docx-core/xml";
+import {
+  repairMissingDrawingNamespace,
+  scanStreamingXmlElements,
+} from "@stll/docx-core/xml";
 import { resolveNamespaceUri } from "@stll/docx-core/xml/namespaces";
 import { ZipArchive } from "@stll/docx-core/zip";
 
@@ -204,6 +209,7 @@ type ParagraphOpenTag = {
 };
 
 type PartSpelling = {
+  xml: string;
   root: XmlElement;
   rootNameEnd: number;
   ignorable: AttributeSpan | undefined;
@@ -213,7 +219,7 @@ type PartSpelling = {
 };
 
 /** Resolve every element and attribute in its own scope; retain source offsets for splices. */
-const partSpelling = (xml: string, partPath: string): PartSpelling => {
+const scanPartSpelling = (xml: string, partPath: string): PartSpelling => {
   let root: XmlElement | undefined;
   let rootNameEnd = 0;
   let ignorable: AttributeSpan | undefined;
@@ -304,6 +310,7 @@ const partSpelling = (xml: string, partPath: string): PartSpelling => {
     return candidate;
   };
   return {
+    xml,
     root,
     rootNameEnd,
     ignorable,
@@ -311,6 +318,23 @@ const partSpelling = (xml: string, partPath: string): PartSpelling => {
     w14Prefix: prefixFor(W14_NAMESPACE_URI, MC_IGNORABLE_W14),
     mcPrefix: prefixFor(MC_NAMESPACE_URI, "mc"),
   };
+};
+
+const partSpelling = (xml: string, partPath: string): PartSpelling => {
+  const scanned = Result.try({
+    try: () => scanPartSpelling(xml, partPath),
+    catch: (cause) => cause,
+  });
+  if (scanned.isOk()) return scanned.value;
+  const error = scanned.error;
+  if (
+    error instanceof EnsureParaIdsError &&
+    error.reason === ENSURE_PARA_IDS_REASONS.NAMESPACE_INVALID
+  ) {
+    const repaired = repairMissingDrawingNamespace(xml);
+    if (repaired !== xml) return scanPartSpelling(repaired, partPath);
+  }
+  throw error;
 };
 
 const collectFallbackParaIds = (
@@ -684,10 +708,11 @@ const ensureParaIdsInternal = async (
   for (const partPath of targetParts) {
     // SAFETY: every target part name came out of partTexts' key set, and
     // every target part was given a spelling above
-    const xml = partTexts.get(partPath)!;
+    const sourceXml = partTexts.get(partPath)!;
     const spelling = spellings.get(partPath)!;
     const scan = scanPart({ partPath, spelling, context, seen });
     if (scan.edits.length === 0) {
+      if (spelling.xml !== sourceXml) updates.set(partPath, spelling.xml);
       continue;
     }
     assigned += scan.assigned;
@@ -700,7 +725,7 @@ const ensureParaIdsInternal = async (
     updates.set(
       partPath,
       applySplices(
-        xml,
+        spelling.xml,
         [...scan.edits, ...ensureRootNamespaces(spelling)],
         partPath,
       ),
