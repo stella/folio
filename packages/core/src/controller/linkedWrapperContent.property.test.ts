@@ -51,13 +51,15 @@ const bidi = (content: ParagraphContent[]): InlineWrapper => ({
   content,
 });
 
+const OMML = "<m:oMath><m:r><m:t>x</m:t></m:r></m:oMath>";
+const HELD_EQUATION = (): ParagraphContent => ({
+  type: "mathEquation",
+  display: "inline",
+  ommlXml: OMML,
+  plainText: "x",
+});
 const HELD = {
-  equation: () => ({
-    type: "mathEquation",
-    display: "inline",
-    ommlXml: "<m:oMath><m:r><m:t>x</m:t></m:r></m:oMath>",
-    plainText: "x",
-  }),
+  equation: HELD_EQUATION,
   insertion: (text: string) => ({
     type: "insertion",
     info: { id: 7, author: "Reviewer" },
@@ -78,6 +80,13 @@ const HELD = {
     type: "inlineSdt",
     properties: { sdtType: "richText", id: 9 },
     content: [run(text)],
+  }),
+  // A field whose own wrapper holds an equation, which a field cannot hold.
+  fieldWrapped: (text: string) => ({
+    type: "simpleField",
+    instruction: "PAGE",
+    fieldType: "PAGE",
+    content: [bidi([HELD_EQUATION(), run(text)])],
   }),
 } as const satisfies Record<string, (text: string) => ParagraphContent>;
 
@@ -126,6 +135,36 @@ const linkedText = (
     })
     .join("");
 
+/**
+ * Every equation and run text at any depth, fields included, in order: an
+ * equation a field cannot hold reads as the markup the parser captures.
+ */
+const heldContent = (items: readonly ParagraphContent[]): string[] =>
+  items.flatMap((item): string[] => {
+    switch (item.type) {
+      case "run":
+        return item.content.flatMap((part) =>
+          part.type === "text" ? [...part.text] : [],
+        );
+      case "mathEquation":
+        return [item.ommlXml];
+      case "preservedInline":
+        return [item.xml];
+      case "hyperlink":
+        return heldContent(item.children);
+      case "inlineWrapper":
+      case "insertion":
+      case "deletion":
+      case "moveFrom":
+      case "moveTo":
+      case "inlineSdt":
+      case "simpleField":
+        return heldContent(item.content);
+      default:
+        return [];
+    }
+  });
+
 const throughTheEditor = (paragraph: Paragraph): Paragraph => {
   const source = documentOf(paragraph);
   const block = fromProseDoc(toProseDoc(source), source, {
@@ -154,6 +193,10 @@ const holds = (paragraph: PMNode, kind: keyof typeof HELD): boolean => {
         break;
       case "control":
         found ||= node.type.name === "sdt" && node.textContent === "b";
+        break;
+      case "fieldWrapped":
+        found ||=
+          node.type.name === "preservedXml" && node.attrs["xml"] === OMML;
         break;
     }
   });
@@ -211,6 +254,9 @@ test(
       fc.property(paragraphArbitrary, (paragraph) => {
         const back = throughTheEditor(paragraph);
         expect(leaves(back.content)).toBe(leaves(paragraph.content));
+        expect(heldContent(back.content)).toEqual(
+          heldContent(paragraph.content),
+        );
         // Every run the link held is still linked.
         expect(linkedText(back.content)).toBe(linkedText(paragraph.content));
       }),
@@ -232,6 +278,7 @@ for (const kind of Object.keys(HELD) as (keyof typeof HELD)[]) {
     );
     const back = throughTheEditor(paragraph());
     expect(leaves(back.content)).toBe(leaves(paragraph().content));
+    expect(heldContent(back.content)).toEqual(heldContent(paragraph().content));
   });
 
   test(`a canonical session opens on ${kind} in a wrapper of a built link`, () => {
@@ -258,3 +305,37 @@ for (const kind of Object.keys(HELD) as (keyof typeof HELD)[]) {
     expect(commit.publish().isOk()).toBe(true);
   });
 }
+
+test("a built field keeps what its wrapper holds beyond the field as the parser captures it", () => {
+  const held: ParagraphContent[] = [
+    HELD_EQUATION(),
+    { type: "bookmarkStart", id: 3, name: "mark" },
+    HELD.control("s"),
+    HELD.field("1"),
+    run("b"),
+  ];
+  const paragraph = paragraphOf([
+    {
+      type: "simpleField",
+      instruction: "REF mark",
+      fieldType: "REF",
+      content: [bidi(held)],
+    },
+  ]);
+  const [field] = throughTheEditor(paragraph).content;
+  if (field?.type !== "simpleField")
+    throw new TypeError("The field disappeared.");
+  const [wrapper] = field.content;
+  expect(
+    wrapper?.type === "inlineWrapper" &&
+      wrapper.content.map((item) =>
+        item.type === "preservedInline" ? item.xml : item.type,
+      ),
+  ).toEqual([
+    OMML,
+    '<w:bookmarkStart w:id="3" w:name="mark"/>',
+    '<w:sdt><w:sdtPr><w:id w:val="9"/></w:sdtPr><w:sdtContent><w:r><w:t>s</w:t></w:r></w:sdtContent></w:sdt>',
+    '<w:fldSimple w:instr="PAGE"><w:r><w:t>1</w:t></w:r></w:fldSimple>',
+    "run",
+  ]);
+});

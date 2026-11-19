@@ -21,6 +21,7 @@ import {
 
 import { rangedCommentIds } from "../../docx/commentAnchorIndex";
 import { resolveColorValueToHex } from "../../docx/drawingUtils";
+import { withFieldWrapperCaptures } from "../../docx/fieldWrapperCaptures";
 import {
   isInlineSdtContent,
   isTrackedChangeWrapperChild,
@@ -1609,8 +1610,10 @@ function convertParagraph(
 
   // A link built with a wrapper that holds what a link cannot hold reads as
   // the parser reads one: the wrapper owns the link's pieces.
+  // A field built with a wrapper that holds what a field cannot hold keeps
+  // it as the capture the parser reads.
   const stacked = withInlineWrapperStacks(
-    withLinkedPiecesInWrappers(paragraph.content),
+    withFieldWrapperCaptures(withLinkedPiecesInWrappers(paragraph.content)),
   );
   visitInlineContentSlots(paragraph, ({ item }) => {
     if (item.type === "inlineSdt") paragraphContainsInlineSdt = true;
