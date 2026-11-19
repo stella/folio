@@ -408,6 +408,9 @@ test("verifies a tracked insertion beside an already blocked join", async () => 
   if (insertedChange === undefined)
     throw new Error("Missing tracked insertion");
   expect(edited.acceptChange(insertedChange)).toBe(true);
+  const insertedBreak = edited.getChanges().find(({ id }) => id !== 1);
+  if (insertedBreak === undefined) throw new Error("Missing inserted break");
+  expect(edited.acceptChange(insertedBreak)).toBe(true);
   expect(edited.getChanges().map(({ id }) => id)).toEqual([1]);
 });
 
