@@ -829,3 +829,59 @@ test("a tracked deletion of a paragraph holding another author's insertion delet
   if (undo.isErr()) throw undo.error;
   expect(undo.value.document).toStrictEqual(document);
 });
+
+test("a tracked deletion of the paragraph whose mark the last paragraph's deletion took for its properties is refused", () => {
+  const info = { id: 5, author: "Other", date: "2026-01-02T03:04:05Z" };
+  const numbered = {
+    numPr: { kind: "reference", numId: 2, ilvl: 0 },
+  } as const;
+  // Deleting "Closing." deleted the item's mark and gave the closing
+  // paragraph the item's properties; deleting the item too would leave them
+  // on a paragraph nothing of the item reaches.
+  const item: Paragraph = {
+    ...paragraph("00000002", "Item."),
+    formatting: numbered,
+    pPrMark: { kind: "del", info },
+  };
+  const closing = (rotated: boolean): Paragraph => ({
+    type: "paragraph",
+    paraId: "00000003",
+    ...(rotated
+      ? {
+          formatting: numbered,
+          propertyChanges: [
+            {
+              type: "paragraphPropertyChange",
+              info: { ...info, id: 6 },
+              currentFormatting: numbered,
+            },
+          ],
+        }
+      : {}),
+    content: [
+      {
+        type: "deletion",
+        info: { ...info, id: 7 },
+        content: [
+          { type: "run", content: [{ type: "text", text: "Closing." }] },
+        ],
+      },
+    ],
+  });
+  const refused = applyDocumentOp(
+    documentOf([paragraph("00000001", "Kept."), item, closing(true)]),
+    deletion(["00000002"]),
+  );
+  expect(refused.isErr() && refused.error.reason).toBe(
+    DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+  );
+  // A closing paragraph that kept its own properties leaves the earlier
+  // record standing.
+  const tracked = apply(
+    documentOf([paragraph("00000001", "Kept."), item, closing(false)]),
+    deletion(["00000002"]),
+  );
+  expect(
+    storyParagraphs(tracked.document.package.document).at(1)?.paragraph.pPrMark,
+  ).toStrictEqual(item.pPrMark);
+});

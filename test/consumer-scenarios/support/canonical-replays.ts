@@ -26,24 +26,16 @@ export const CANONICAL_REPLAY_GAPS: Readonly<Record<string, string>> = {
     "a block deletion beside a table the batch inserts is refused one block at a time",
   "issue-1350-7fe54148e47f13fe.json":
     "clean Markdown still resolves with the default engine's acceptance",
-  "issue-1350-split-pending-merge-with-requested-properties.json":
-    "the review reads a rebuilt list item's indentation as stated",
   "issue-1350-table-and-paragraph-before-deleted-final.json":
     "clean Markdown still resolves with the default engine's acceptance",
   "issue-1356-3058fb47c2ef6a7c.json":
     "the expectation keeps a deleted paragraph's words out of the following table's first cell, where accepting runs them",
   "issue-1356-table-after-a-deleted-final-paragraph.json":
     "the batch leaves otherwise than its operations one at a time",
-  "issue-1738-new-list-before-deleted-closing.json":
-    "the batch leaves otherwise than its operations one at a time",
   "issue-1757-7483271c36812e15.json":
     "clean Markdown still resolves with the default engine's acceptance",
   "issue-1757-paragraph-before-table-after-pending-join.json":
     "clean Markdown still resolves with the default engine's acceptance",
-  "issue-1762-reject-a-paragraph-emptied-before-a-table.json":
-    "the pinned deletion applies where the flow expects the Reject All refusal",
-  "issue-1842-joined-heading-comment-under-deleted-final-paragraph.json":
-    "a comment beside the deleted final paragraph reads otherwise than asked",
   "tracked-replacement-of-accepted-join-comments.json":
     "the replacement refuses for comment alignment, not for Reject All",
   "tracked-replacement-over-separate-comments.json":

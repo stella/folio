@@ -34,6 +34,7 @@ import {
   isRangeBoundary,
   type ParagraphContentVerdict,
   paragraphHoldsContent,
+  paragraphHoldsContentOnceAccepted,
   paragraphLength,
 } from "./offsets";
 import {
@@ -611,8 +612,24 @@ export const deleteBlocks = ({
   );
   // A mark a pending deletion already records deleted stays as it is: the
   // break goes either way, under the deletion that took it first.
+  // Not where that deletion took the mark for the container's last
+  // paragraph, whose words it deleted and to which it gave this paragraph's
+  // properties: deleting this paragraph too leaves those properties on a
+  // paragraph nothing of this one reaches.
+  const finalTakeover =
+    following?.type === "paragraph" &&
+    last.index + 1 === list.length - 1 &&
+    paragraphHoldsContent(following) &&
+    !paragraphHoldsContentOnceAccepted(following) &&
+    (following.propertyChanges?.length ?? 0) > 0 &&
+    sameParagraphProperties(
+      paragraphPropertiesOf(following.formatting),
+      paragraphPropertiesOf(last.paragraph.formatting),
+    );
   const keepsDeletedMark = (paragraph: Paragraph) =>
-    op.move !== true && paragraph.pPrMark?.kind === "del";
+    op.move !== true &&
+    paragraph.pPrMark?.kind === "del" &&
+    !(finalTakeover && paragraph === last.paragraph);
   if (
     affected.some(
       (paragraph) =>
