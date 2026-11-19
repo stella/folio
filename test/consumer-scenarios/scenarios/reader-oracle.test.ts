@@ -741,6 +741,23 @@ test("Markdown custom marker oracle recognizes legal indentation without hiding 
   assert.equal(cases, 16);
 });
 
+test("a cell's paragraphs compare without their edge blanks", () => {
+  const cell = {
+    text: "Court reference number\n(will begin)",
+    kind: "paragraph" as const,
+    cellParagraphs: [
+      { text: "Court reference number", kind: "paragraph" as const },
+      { text: "(will begin)", kind: "paragraph" as const },
+    ],
+  };
+  const view = [{ text: cell.text, kind: "paragraph" }];
+  for (const markdown of [
+    "| Court reference number <br>  (will begin) |\n| --- |",
+    "<table><tr><td>Court reference number <br>  (will begin)</td></tr></table>",
+  ])
+    assert.deepEqual(markdownViews(markdown, [cell]), view, markdown);
+});
+
 test("a list label with words reads as the item's label", () => {
   for (const number of ["Box 1.", "Article I."]) {
     const item = [{ text: "Scope", kind: "listItem", number }] as const;
