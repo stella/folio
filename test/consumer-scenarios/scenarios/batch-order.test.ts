@@ -720,3 +720,84 @@ test("a block after a paragraph joining an emptied final one replays ahead of it
     replace,
   ]);
 });
+
+const TABLE_BETWEEN =
+  "Alpha.\n\n| Term | Value |\n| --- | --- |\n| A | B |\n\nOmega.";
+
+test("blocks put beside a table from a cell replay in one gap, as the batch names them", async () => {
+  const fixture = await packDocument(fromMarkdown(TABLE_BETWEEN));
+  const rows = (await openReviewer(fixture)).getContent() as Row[];
+  const cell = rows.find(({ table }) => table !== undefined);
+  assert.ok(cell);
+  const table: FolioDocumentOperation = {
+    id: "table",
+    type: "insertTable",
+    blockId: cell.id,
+    rows: [["Added", "Table"]],
+  };
+  const after: FolioDocumentOperation = {
+    id: "after",
+    type: "insertAfterBlock",
+    blockId: cell.id,
+    text: "After.",
+  };
+  for (const operations of [
+    [table, after],
+    [after, table],
+  ]) {
+    assert.deepEqual(
+      sequentialGroups({ applied: operations, preRows: rows, mode: "direct" }),
+      [operations],
+    );
+    for (const mode of MODES)
+      await compareWithReplay(fixture, mode, operations);
+  }
+});
+
+test("blocks beside a table accepting removes replay in one gap, as the batch names them", async () => {
+  const source = await openReviewer(
+    await packDocument(fromMarkdown(TABLE_BETWEEN)),
+  );
+  const alpha = source.getContent().at(0);
+  const cell = source.getContent().find(({ table }) => table !== undefined);
+  assert.ok(alpha && cell);
+  const removed = source.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "tracked-changes",
+      operations: [{ id: "delete", type: "deleteTable", blockId: cell.id }],
+    },
+    { undefinedReferences: "refuse" },
+  );
+  assert.deepEqual(removed.skipped, []);
+  const liveRows = source.getContent() as Row[];
+  source.acceptAll();
+  // Accepted, the rows the batch is read against have no table.
+  const preRows = source.getContent() as Row[];
+  assert.ok(preRows.every(({ table }) => table === undefined));
+  const before: FolioDocumentOperation = {
+    id: "before",
+    type: "insertBeforeBlock",
+    blockId: cell.id,
+    text: "Before.",
+  };
+  const table: FolioDocumentOperation = {
+    id: "table",
+    type: "insertTable",
+    blockId: alpha.id,
+    rows: [["Added", "Table"]],
+  };
+  for (const operations of [
+    [before, table],
+    [table, before],
+  ])
+    assert.deepEqual(
+      sequentialGroups({
+        applied: operations,
+        preRows,
+        liveRows,
+        mode: "tracked-changes",
+      }),
+      [operations],
+    );
+});
