@@ -40,8 +40,8 @@ import {
 import {
   rejectedContainerEndIdentities,
   rejectedJoinSurvivorIdentities,
-  runInAlignedSource,
   resolvedAbsorbedFollowerIdentities,
+  runInAlignedSource,
   withSurvivorProperties,
 } from "../../../../test/support/rejectedJoinSurvivors";
 import { rejectedParagraphFillerIdentities } from "../../../../test/support/rejectedParagraphFillers";
