@@ -30,6 +30,7 @@ import {
   paragraphNumberingReferenceId,
 } from "../model/paragraphNumbering";
 import { hasIllegalXmlCharacters } from "../serialize/xmlEscape";
+import { preservedCommentRangeMarker } from "../xml/preservedCommentRangeMarkers";
 import { readXml, type XmlElement } from "../xml/streamingXmlParser";
 import { ZipArchive, type ZipEntry, ZipError } from "../zip/archive";
 import { validatePackageGraph } from "./packageGraph";
@@ -1061,9 +1062,6 @@ const validateTable = (
   }
 };
 
-const PRESERVED_COMMENT_RANGE_MARKER =
-  /<(?:[\w.-]+:)?commentRange(Start|End)(?=[\s/>])[^>]*?\s(?:[\w.-]+:)?id=["'](\d+)["']/gu;
-
 /**
  * A comment range that opens or closes between a table's rows or a row's
  * cells. Neither has a node for the marker, so the parser keeps it as
@@ -1075,14 +1073,14 @@ const countPreservedCommentRanges = (
   ctx: ValidationContext,
 ): void => {
   for (const child of children ?? []) {
-    for (const match of child.xml.matchAll(PRESERVED_COMMENT_RANGE_MARKER)) {
-      increment(
-        match[1] === "Start"
-          ? ctx.preservedCommentRangeStarts
-          : ctx.preservedCommentRangeEnds,
-        Number(match[2]),
-      );
-    }
+    const marker = preservedCommentRangeMarker(child);
+    if (marker === undefined) continue;
+    increment(
+      marker.type === "commentRangeStart"
+        ? ctx.preservedCommentRangeStarts
+        : ctx.preservedCommentRangeEnds,
+      marker.id,
+    );
   }
 };
 

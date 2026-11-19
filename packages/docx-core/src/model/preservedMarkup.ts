@@ -68,3 +68,9 @@ export type PreservedAttribute = WritableRecord & {
   name: string;
   value: string;
 };
+
+/** Locate captured markup among the children still present. */
+export const preservedChildGap = (
+  child: Pick<PreservedChild, "index">,
+  childCount: number,
+): number => Math.min(Math.max(child.index, 0), childCount);
