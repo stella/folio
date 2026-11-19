@@ -86,3 +86,58 @@ export const rejectedJoinSurvivorIdentities = ({
   }
   return pairs;
 };
+
+/**
+ * Rejecting the added mark of an empty paragraph that ends a local container
+ * has no paragraph to join it into there: the paragraph stays, without its
+ * mark, as the container's last. Where the block before it keeps its place,
+ * the legacy reviewer drops it instead. Each
+ * id names such a paragraph, proven on both rejected documents: the
+ * canonical one keeps it last in that container, the legacy one has no such
+ * paragraph anywhere; every other block stays exact.
+ */
+export const rejectedContainerEndIdentities = ({
+  source,
+  actual,
+  expected,
+}: RejectedJoinSurvivorsOptions): string[] => {
+  const kept: string[] = [];
+  for (const story of documentStories(source)) {
+    const legacyIds = new Set(
+      paragraphIdsIn(findStoryBody(expected, story)?.content ?? []),
+    );
+    const canonicalLastIds = new Set<string>();
+    const collect = (blocks: readonly BlockContent[], local: boolean) => {
+      const last = blocks.at(-1);
+      if (
+        local &&
+        last?.type === "paragraph" &&
+        last.pPrMark === undefined &&
+        typeof last.paraId === "string"
+      )
+        canonicalLastIds.add(last.paraId);
+      for (const block of blocks)
+        for (const list of nestedLists(block)) collect(list, true);
+    };
+    collect(findStoryBody(actual, story)?.content ?? [], false);
+    const walk = (blocks: readonly BlockContent[], local: boolean): void => {
+      const last = blocks.at(-1);
+      const previous = blocks.at(-2);
+      if (
+        local &&
+        previous !== undefined &&
+        !addedMark(previous) &&
+        addedMark(last) &&
+        last.content.length === 0 &&
+        typeof last.paraId === "string" &&
+        canonicalLastIds.has(last.paraId) &&
+        !legacyIds.has(last.paraId)
+      )
+        kept.push(last.paraId);
+      for (const block of blocks)
+        for (const list of nestedLists(block)) walk(list, true);
+    };
+    walk(storyBody(source, story).content, false);
+  }
+  return kept;
+};
