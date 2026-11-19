@@ -160,6 +160,37 @@ export const joinRunsWordsInto = ({
   return false;
 };
 
+/**
+ * The first paragraph a pending join runs into the table at `tablePos`, its
+ * words joining the table's first cell once accepted, or null when no join
+ * runs words into it or the cell they would join is itself pending. A block
+ * put before the table goes before this paragraph, as one put before any
+ * paragraph of a join goes before its first (`pendingJoinParagraphs`): in
+ * the gap between the join and the table it would take the joined words.
+ */
+export const firstParagraphJoiningTable = ({
+  doc,
+  paragraphPos: tablePos,
+  noteReferences,
+}: PendingJoinBoundsOptions): number | null => {
+  const table = doc.nodeAt(tablePos);
+  if (
+    table?.type.spec["tableRole"] !== "table" ||
+    runInCellPending(table) ||
+    !joinRunsWordsInto({ doc, paragraphPos: tablePos, noteReferences })
+  )
+    return null;
+  let first: number | null = null;
+  for (
+    let previous = joinedFromBefore(doc, tablePos);
+    previous !== null;
+    previous = joinedFromBefore(doc, previous)
+  )
+    if (joinsIn({ doc, paragraphPos: previous, noteReferences }))
+      first = previous;
+  return first;
+};
+
 /** The first and the last paragraph of a pending join, by node position. */
 export type PendingJoinParagraphs = { first: number; last: number };
 

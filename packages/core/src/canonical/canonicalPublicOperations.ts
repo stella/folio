@@ -83,6 +83,7 @@ import {
   segmentsAroundNoteReferences,
 } from "../ai-edits/note-references";
 import {
+  firstParagraphJoiningTable,
   isDeletedPPrMark,
   joinsIn,
   joinStopsAtTableAfter,
@@ -899,6 +900,7 @@ type ResolveBlockInsertionOptions = {
   /** The paragraph whose stated properties the new paragraph copies. */
   formattingSource: ProjectedParagraph;
   projection: CanonicalProjection;
+  noteReferences: NoteReferenceLabels;
   story: OpStory;
   refusal: (
     reason: FolioAIEditSkipReason,
@@ -920,6 +922,7 @@ const blockInsertionPlace = (
   operation: BlockInsertion,
   paragraph: NonNullable<ReturnType<CanonicalProjection["paragraph"]>>,
   projection: CanonicalProjection,
+  noteReferences: NoteReferenceLabels,
 ): { at: BlockInsertionPoint; position: number } | undefined => {
   const side = operation.type === "insertAfterBlock" ? "after" : "before";
   const table = findOutermostTableBoundary(projection.doc, paragraph.start - 1);
@@ -930,6 +933,23 @@ const blockInsertionPlace = (
         side === "after"
           ? paragraph.start + paragraph.node.content.size
           : paragraph.start,
+    };
+  // Before a table a pending join runs words into, the block goes before
+  // the join, which accepting makes one paragraph with the first cell.
+  const joining =
+    side === "before"
+      ? firstParagraphJoiningTable({
+          doc: projection.doc,
+          paragraphPos: table.before,
+          noteReferences,
+        })
+      : null;
+  const joined =
+    joining === null ? undefined : projection.paragraphStartingAt(joining);
+  if (joined !== undefined)
+    return {
+      at: { type: "before", blockId: joined.blockId },
+      position: joined.start,
     };
   const position = table[side];
   const resolved = projection.doc.resolve(position);
@@ -1026,6 +1046,7 @@ const resolveBlockInsertion = ({
   paragraph,
   formattingSource,
   projection,
+  noteReferences,
   story,
   mintList,
   refusal,
@@ -1148,7 +1169,12 @@ const resolveBlockInsertion = ({
   };
   const paragraphs =
     markdownParagraphs ?? paragraphsFrom(formattingSource.source.formatting);
-  const place = blockInsertionPlace(operation, paragraph, projection);
+  const place = blockInsertionPlace(
+    operation,
+    paragraph,
+    projection,
+    noteReferences,
+  );
   if (place === undefined)
     return refusal(
       "unsupportedBlock",
@@ -4269,6 +4295,7 @@ export class CanonicalPublicOperations {
         paragraph: placed.place,
         formattingSource: placed.formattingSource,
         projection: projection.value,
+        noteReferences,
         story,
         mintList,
         refusal,
