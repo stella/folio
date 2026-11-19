@@ -658,11 +658,15 @@ const compactWrite = (
       const normalizations = arrayOf(result["normalizations"]);
       const replaced = arrayOf(result["replaced"]);
       const commentIds = commentIdsOf(result["receipts"]);
+      const retirementReceipts = arrayOf(result["receipts"]).filter(
+        (entry) => arrayOf(recordOf(entry)["retiredCommentIds"]).length > 0,
+      );
       return {
         ...base,
         applied: arrayOf(result["applied"]).length,
         ...(replaced.length > 0 && { replaced }),
         ...(commentIds.length > 0 && { commentIds }),
+        ...(retirementReceipts.length > 0 && { receipts: retirementReceipts }),
         ...(normalizations.length > 0 && { normalizations }),
       };
     }

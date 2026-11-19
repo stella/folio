@@ -227,6 +227,45 @@ describe("folio mcp", () => {
   );
 
   test(
+    "reports comment retirement on the operation receipt",
+    async () => {
+      const file = await writeDocx(
+        root,
+        "retire-comment.docx",
+        CONTRACT_PARAGRAPHS,
+      );
+      const commented = await call("add_comment", {
+        path: file,
+        fileVersion: await versionOf(file),
+        blockId: "10000002",
+        text: "Check the amount.",
+      });
+      expect(commented.ok).toBe(true);
+      const commentId = Number(commented.data?.["commentId"]);
+      expect(Number.isSafeInteger(commentId)).toBe(true);
+      const suggested = await call("suggest_changes", {
+        path: file,
+        fileVersion: commented.data?.["fileVersion"],
+        operations: [
+          {
+            id: "remove-clause",
+            type: "replaceInBlock",
+            blockId: "10000002",
+            find: "The buyer pays $50 on signing.",
+            replace: "",
+          },
+        ],
+      });
+      expect(suggested.ok).toBe(true);
+      expect(suggested.data?.["applied"]).toBe(1);
+      expect(suggested.data?.["receipts"]).toMatchObject([
+        { operationId: "remove-clause", retiredCommentIds: [commentId] },
+      ]);
+    },
+    PROCESS_TEST_TIMEOUT_MS,
+  );
+
+  test(
     "runs an unlisted tool through invoke_capability",
     async () => {
       const file = await writeDocx(root, "resolve.docx", CONTRACT_PARAGRAPHS);
