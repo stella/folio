@@ -2483,6 +2483,7 @@ class CanonicalSession {
           doc: state.doc,
           source: { from: firstRange.from, to: lastRange.to },
           changes: commentChanges,
+          deletionsKeepComments: this.mode.type === "suggesting",
         })
       )
         return refuseUnder(
@@ -2525,6 +2526,7 @@ class CanonicalSession {
         !preservesReplacementCommentAlignment({
           doc: state.doc,
           retiredCommentIds: retirement.value?.commentIds,
+          deletionsKeepComments: this.mode.type === "suggesting",
           source: { from: inputFrom, to: inputTo },
           changes: [
             {

@@ -152,7 +152,7 @@ describe("canonical public operation batches", () => {
     }
   });
 
-  test("comment alignment inside an inline control refuses at the same owner", () => {
+  test("direct comment alignment inside an inline control refuses at the same owner", () => {
     const source = "The Supplier delivers on time.";
     const editor = setup({
       package: {
@@ -196,7 +196,7 @@ describe("canonical public operation batches", () => {
           text: "New agreement.",
         },
       ],
-      { mode: "tracked-changes" },
+      { mode: "direct" },
     );
     expect(result.applied).toEqual([]);
     expect(result.skipped).toMatchObject([
@@ -246,6 +246,8 @@ describe("canonical public operation batches", () => {
               { mode },
             );
             if (result.applied.length === 0) {
+              // Only a replacement that must move the comment refuses.
+              expect(mode).not.toBe("tracked-changes");
               expect(result.skipped).toMatchObject([
                 {
                   reason: "unsupportedBlock",
@@ -257,6 +259,31 @@ describe("canonical public operation batches", () => {
               return;
             }
             expect(result.skipped).toEqual([]);
+            if (mode === "tracked-changes") {
+              // The comment stays on the words the replacement deletes:
+              // rejecting gives it back, accepting keeps it only where the
+              // replacement took it over.
+              const ids = getTrackedChangesFromDoc(editor.state().doc).map(
+                ({ id }) => id,
+              );
+              const rejected = editor.session
+                .prepareResolve(editor.state(), {
+                  revisionIds: ids,
+                  resolution: "reject",
+                })
+                .unwrap();
+              expect(editor.publish(rejected)).toBe(true);
+              expect(
+                getCommentAnchorsFromDoc(editor.state().doc).map(
+                  ({ quote: anchoredQuote }) => anchoredQuote,
+                ),
+              ).toEqual([quote]);
+              expect(
+                editor.publish(
+                  editor.session.prepareUndo(editor.state()).unwrap(),
+                ),
+              ).toBe(true);
+            }
             if (mode === "suggested") {
               const adopted = editor.session
                 .prepareSuggestion(editor.state(), {
@@ -279,11 +306,12 @@ describe("canonical public operation batches", () => {
                 .unwrap();
               expect(editor.publish(accepted)).toBe(true);
             }
-            expect(
-              getCommentAnchorsFromDoc(editor.state().doc).map(
-                ({ quote: anchoredQuote }) => anchoredQuote,
-              ),
-            ).toEqual([replacement]);
+            const anchors = getCommentAnchorsFromDoc(editor.state().doc).map(
+              ({ quote: anchoredQuote }) => anchoredQuote,
+            );
+            if (mode === "tracked-changes")
+              expect([[], [replacement]]).toContainEqual(anchors);
+            else expect(anchors).toEqual([replacement]);
           },
         ),
         {
@@ -296,7 +324,68 @@ describe("canonical public operation batches", () => {
     propertyTestTimeout(30_000),
   );
 
-  for (const mode of ["direct", "tracked-changes", "suggested"] as const) {
+  test("a tracked replacement over separate comments keeps each on its deleted words", () => {
+    const source = "The Supplier delivers the goods on time and in good order.";
+    for (const type of ["replaceBlock", "replaceInBlock"] as const) {
+      const editor = setup(source);
+      for (const quote of ["time", "The"])
+        expect(
+          editor.apply([
+            {
+              id: quote,
+              type: "commentOnBlock",
+              blockId: "12345678",
+              quote,
+              comment: { text: quote },
+            },
+          ]).applied,
+        ).toHaveLength(1);
+      const text =
+        "Invoice delivery payment agreement supplier buyer payment term.";
+      const result = editor.apply(
+        [
+          type === "replaceBlock"
+            ? { id: "replace", type, blockId: "12345678", text }
+            : {
+                id: "replace",
+                type,
+                blockId: "12345678",
+                find: source,
+                replace: text,
+              },
+        ],
+        { mode: "tracked-changes" },
+      );
+      expect(result.skipped).toEqual([]);
+      expect(result.applied.map(({ id }) => id)).toEqual(["replace"]);
+      const quotes = () =>
+        getCommentAnchorsFromDoc(editor.state().doc)
+          .map(({ quote }) => quote)
+          .toSorted();
+      // Pending, both comments still cover their deleted words.
+      expect(quotes()).toEqual(["The", "time"]);
+      const ids = getTrackedChangesFromDoc(editor.state().doc).map(
+        ({ id }) => id,
+      );
+      const resolve = (resolution: "accept" | "reject") => {
+        const resolved = editor.session
+          .prepareResolve(editor.state(), { revisionIds: ids, resolution })
+          .unwrap();
+        expect(editor.publish(resolved)).toBe(true);
+      };
+      resolve("reject");
+      expect(editor.state().doc.textContent).toBe(source);
+      expect(quotes()).toEqual(["The", "time"]);
+      expect(
+        editor.publish(editor.session.prepareUndo(editor.state()).unwrap()),
+      ).toBe(true);
+      resolve("accept");
+      expect(editor.state().doc.textContent).toBe(text);
+      expect(quotes()).toEqual([]);
+    }
+  });
+
+  for (const mode of ["direct", "suggested"] as const) {
     for (const text of [
       "Invoice delivery payment agreement supplier buyer payment term.",
       "",
