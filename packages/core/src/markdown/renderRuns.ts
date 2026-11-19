@@ -359,7 +359,9 @@ function renderRunContent(
         out += escapeInline(item.text);
         break;
       case "tab":
-        out += "    ";
+        // A tab is text in Markdown; at a line's start it is written as a
+        // character reference (see protectBreakBlanks).
+        out += "\t";
         break;
       case "break":
         if (item.breakType === "page") {

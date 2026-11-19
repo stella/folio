@@ -51,18 +51,34 @@ const BLANK_REFERENCES: Record<string, string> = { " ": "&#32;", "\t": "&#9;" };
 const blankReferences = (blanks: string): string =>
   blanks.replace(/[ \t]/gu, (blank) => BLANK_REFERENCES[blank] ?? blank);
 
+/** A page break inside a paragraph is written as a paragraph break. */
+const PARAGRAPH_BREAK = "\n\n";
+
 /**
- * CommonMark strips the blanks at the start of a line and takes the blanks
- * before a line ending as the hard break's own syntax, so text blanks next to
- * an inline break would be lost on reading. They are written as character
- * references instead, which read back as the blanks they are.
+ * CommonMark strips the blanks at the start of a line, reads four of them (or
+ * a tab) there as an indented code block, and takes the blanks before a line
+ * ending as the hard break's own syntax, so text blanks at a paragraph's start
+ * or next to an inline break would be lost, or change the block, on reading.
+ * They are written as character references instead, which read back as the
+ * blanks they are.
  */
-export const protectBreakBlanks = (text: string): string => {
+export const protectBreakBlanks = (text: string): string =>
+  text.split(PARAGRAPH_BREAK).map(protectLineBlanks).join(PARAGRAPH_BREAK);
+
+const protectLineBlanks = (text: string): string => {
   const lines = text.split(TWO_SPACE_BREAK);
   let out = "";
   lines.forEach((line, index) => {
     const last = index === lines.length - 1;
-    const start = index === 0 ? 0 : (/^[ \t]*/u.exec(line)?.[0].length ?? 0);
+    const leading = /^[ \t]*/u.exec(line)?.[0] ?? "";
+    // A paragraph's own leading blanks only matter where they would indent
+    // it into a code block; a blank-only paragraph stays blank.
+    const start =
+      index > 0 ||
+      (leading.length < line.length &&
+        (leading.includes("\t") || leading.length >= 4))
+        ? leading.length
+        : 0;
     const end = last
       ? line.length
       : line.length - (/[ \t]*$/u.exec(line)?.[0].length ?? 0);

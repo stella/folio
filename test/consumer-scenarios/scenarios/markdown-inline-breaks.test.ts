@@ -23,7 +23,7 @@ test("inline breaks preserve Markdown block identity across paragraph kinds", as
   const separators = {
     textWrapping: "\n",
     column: "\n",
-    tab: "    ",
+    tab: "\t",
     softHyphen: "",
   } as const;
   for (const [kind, start] of Object.entries(starts)) {

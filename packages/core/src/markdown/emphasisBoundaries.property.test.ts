@@ -83,16 +83,17 @@ type Character = {
 const charactersOf = (paragraph: Paragraph): Character[] =>
   paragraph.content.flatMap((item) =>
     item.type === "run"
-      ? item.content.flatMap((content) =>
-          content.type === "text"
-            ? Array.from(content.text, (char) => ({
-                char,
-                bold: item.formatting?.bold === true,
-                italic: item.formatting?.italic === true,
-                strike: item.formatting?.strike === true,
-              }))
-            : [],
-        )
+      ? item.content.flatMap((content) => {
+          const marks = {
+            bold: item.formatting?.bold === true,
+            italic: item.formatting?.italic === true,
+            strike: item.formatting?.strike === true,
+          };
+          if (content.type === "text")
+            return Array.from(content.text, (char) => ({ char, ...marks }));
+          // A tab character reads back as a tab element.
+          return content.type === "tab" ? [{ char: "\t", ...marks }] : [];
+        })
       : [],
   );
 
