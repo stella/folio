@@ -91,7 +91,6 @@ export const CANONICAL_VACUOUS_STEPS: Readonly<
   "issue-1842-comment-quotes-across-line-breaks.json": [0, 1],
   "issue-1842-final-deletion-retracts-split-break-after-reopen.json": [4],
   "issue-2044-heading-style-in-a-table-cell.json": [12],
-  "issue-2222-styled-insert-after-undefined-numbering-level.json": [2],
   "issue-2236-new-list-in-header-after-other-stories-direct.json": [0],
   "issue-2316-c14cd1e28851babe.json": [0, 1],
   "issue-2904-merged-numbered-heading-emptied.json": [1],
@@ -101,7 +100,6 @@ export const CANONICAL_VACUOUS_STEPS: Readonly<
   "revision-round-trip-10.json": [2],
   "revision-round-trip-3.json": [4],
   "suggested-table-row-beside-replaced-paragraph.json": [6, 7, 8, 12, 13],
-  "undefined-numbering-level-projection.json": [1],
 };
 
 /** How many scenario files share the canonical replays. */

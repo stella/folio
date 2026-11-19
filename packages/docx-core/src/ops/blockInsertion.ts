@@ -308,11 +308,14 @@ export const insertBlocks = ({
         blocks: list,
         boundary: paragraphTableRunInBoundary(firstInserted, following),
       }));
+  // A pending change to the anchor's properties belongs to the mark it
+  // records them on, and goes with it to the new last paragraph.
+  const anchorPropertyChanges = location.paragraph.propertyChanges ?? [];
   if (
     takesOverMark &&
     (location.paragraph.pPrMark !== undefined ||
       location.paragraph.reviewCarrier !== undefined ||
-      (location.paragraph.propertyChanges?.length ?? 0) > 0)
+      anchorPropertyChanges.length > 1)
   ) {
     return refuse(
       DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
@@ -424,8 +427,13 @@ export const insertBlocks = ({
       });
       continue;
     }
-    // The anchor's former mark: its properties before are the anchor's.
-    const previous = location.paragraph.formatting;
+    // The anchor's former mark: its properties before are the anchor's,
+    // or the ones a pending change on that mark records.
+    const [pendingChange] = anchorPropertyChanges;
+    const previous =
+      pendingChange === undefined
+        ? location.paragraph.formatting
+        : pendingChange.previousFormatting;
     const current = finalizeParagraphFormatting(paragraph.formatting);
     blocks.push({
       ...paragraph,
@@ -445,10 +453,12 @@ export const insertBlocks = ({
           }),
     });
   }
+  const { propertyChanges: _moved, ...anchorWithoutChanges } =
+    location.paragraph;
   const anchorBlocks: Paragraph[] = takesOverMark
     ? [
         {
-          ...location.paragraph,
+          ...anchorWithoutChanges,
           pPrMark: {
             kind: markKind,
             info: stampInfo(revision),

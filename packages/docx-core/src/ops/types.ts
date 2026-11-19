@@ -675,8 +675,9 @@ export type BlockInsertionPoint =
  * paragraph receives an inserted mark and its content an insertion wrapper.
  * A tracked insertion after a paragraph no paragraph follows marks the
  * anchor's mark as the inserted one and gives the last new paragraph the
- * anchor's former mark; it is refused as `untrackable` when the anchor's mark
- * carries review records.
+ * anchor's former mark, and with it a pending change of the anchor's
+ * properties, which records them on that mark; it is refused as
+ * `untrackable` when the anchor's mark carries any other review record.
  * Incoming revision and content-control identities are refused in tracked
  * mode rather than nesting reviews or rewriting supplied identities.
  */

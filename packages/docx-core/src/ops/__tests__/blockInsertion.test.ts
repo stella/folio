@@ -640,3 +640,74 @@ for (const { name, after, markOwner } of followingTableCases)
           }
         }
       });
+
+test.each(["body", "cell"] as const)(
+  "a tracked insertion after a last paragraph with a pending property change moves the change with its mark (%s)",
+  (container) => {
+    const pending = {
+      type: "paragraphPropertyChange" as const,
+      info: { id: 7, author: "Reviewer B", date: "2026-01-01T00:00:00Z" },
+      previousFormatting: { alignment: "left" as const },
+    };
+    const anchor: Paragraph = Object.assign(
+      {},
+      makeParagraph("00000001", "kept"),
+      {
+        formatting: { alignment: "center" as const },
+        propertyChanges: [pending],
+      },
+    );
+    const added: Paragraph = Object.assign(
+      {},
+      makeParagraph("00000002", "added"),
+      { formatting: { alignment: "right" as const } },
+    );
+    const document = documentOf(
+      container === "body" ? [anchor] : [inCell([anchor])],
+    );
+    const applied = apply(document, {
+      ...insertion([added]),
+      at: { type: "after", blockId: "00000001" },
+    });
+    const paragraphsOf = (edited: Document) =>
+      storyParagraphs(edited.package.document).map(
+        ({ paragraph }) => paragraph,
+      );
+    const [first, last] = paragraphsOf(applied.document);
+    // The anchor's mark is the inserted one; the change it recorded goes
+    // with the mark it was on, to the new last paragraph.
+    expect(first?.pPrMark?.kind).toBe("ins");
+    expect(first?.propertyChanges).toBeUndefined();
+    expect(first?.formatting).toEqual({ alignment: "center" });
+    expect(
+      last?.propertyChanges?.map(
+        ({ previousFormatting }) => previousFormatting,
+      ),
+    ).toEqual([{ alignment: "left" }]);
+    const shapeOf = (edited: Document) =>
+      paragraphsOf(edited).map(({ formatting, content }) => [
+        formatting,
+        content,
+      ]);
+    const everything = [...applied.revisions, pending.info.id];
+    for (const decision of Object.values(REVISION_DECISIONS)) {
+      const resolved = resolve(
+        { document: applied.document, revisions: everything },
+        decision,
+      );
+      const original = resolve(
+        { document, revisions: [pending.info.id] },
+        decision,
+      );
+      expect(shapeOf(resolved.document)).toEqual(
+        decision === REVISION_DECISIONS.REJECT
+          ? shapeOf(original.document)
+          : [
+              [{ alignment: "center" }, anchor.content],
+              [{ alignment: "right" }, added.content],
+            ],
+      );
+    }
+    expect(undo(applied)).toEqual(document);
+  },
+);
