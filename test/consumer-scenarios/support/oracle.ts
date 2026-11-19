@@ -33,7 +33,7 @@ import {
 
 import { sequentialGroups } from "./batch-replay-order.ts";
 import { recordFeatureHit, recordHit, type StepKind } from "./coverage.ts";
-import { openReviewer, toArrayBuffer } from "./documents.ts";
+import { openReviewer, scenarioEngine, toArrayBuffer } from "./documents.ts";
 import {
   operationSelection,
   targetFeatureSignature,
@@ -944,6 +944,13 @@ type ModelRow = {
 };
 
 export type Model = {
+  /**
+   * The engine the result comes from. The legacy engine hands a comment over
+   * the words a replacement takes to the new words (FINDINGS
+   * LEGACY_REPLACEMENT_TAKES_COMMENT), so where that comment goes is
+   * predicted for the canonical session only.
+   */
+  engine: ReturnType<typeof scenarioEngine>;
   rows: ModelRow[];
   /** Live source paragraphs whose pending marks run into an accepted row. */
   pendingJoins: Map<
@@ -994,6 +1001,8 @@ export type Model = {
     text: string;
     anchor?: () => string | undefined;
     removed?: () => boolean;
+    /** Whether the batch leaves this comment's survival unpredicted. */
+    ambiguous?: () => boolean;
   }[];
   /** Operations the oracle has no expectation for; the check notes them. */
   unmodelled: string[];
@@ -1236,6 +1245,7 @@ export const modelOf = (
   joinSources: JoinSources = ASSUMED_JOIN_SOURCES,
 ): Model => {
   const model: Model = {
+    engine: scenarioEngine(),
     rows: rows.map((row) => modelRow(row.text, fieldsOf(row), row)),
     pendingJoins: new Map(),
     preservedJoinPrefixes: new Map(),
@@ -2262,6 +2272,7 @@ const addComment = (
   operation: Operation,
   anchor?: () => string | undefined,
   removed?: () => boolean,
+  ambiguous?: () => boolean,
 ): void => {
   const comment = operation["comment"] as { text?: string } | undefined;
   if (typeof comment?.text === "string") {
@@ -2269,23 +2280,81 @@ const addComment = (
       text: comment.text,
       ...(anchor === undefined ? {} : { anchor }),
       ...(removed === undefined ? {} : { removed }),
+      ...(ambiguous === undefined ? {} : { ambiguous }),
     });
   }
 };
 
+/** Words and marks, the finest pieces a word diff keeps unchanged. */
+const diffPieces = (text: string): Set<string> =>
+  new Set(text.match(/[\p{L}\p{N}_]+|[^\s\p{L}\p{N}_]/gu) ?? []);
+
+/**
+ * What becomes of a comment over `text[start, end)` once the edits apply.
+ * The words that replace a range go past the end of a comment the range
+ * reaches, so a comment every word of which edits take goes with them. A
+ * replacement sharing a word or mark with the covered text may keep that
+ * piece through a word diff, and the comment on it: neither is predicted.
+ * Neither is it on an engine that hands the comment to the new words.
+ */
+const coveredRangeFate = (
+  engine: Model["engine"],
+  edits: readonly TextEdit[],
+  text: string,
+  start: number,
+  end: number,
+): "removed" | "kept" | "ambiguous" => {
+  if (start >= end) return "kept";
+  const covering = new Set<TextEdit>();
+  for (let offset = start; offset < end; offset++) {
+    const edit = edits.find(
+      (candidate) => candidate.start <= offset && offset < candidate.end,
+    );
+    if (edit === undefined) return "kept";
+    covering.add(edit);
+  }
+  for (const edit of covering) {
+    if (edit.replace === "") continue;
+    if (engine !== "canonical") return "ambiguous";
+    const kept = diffPieces(edit.replace);
+    const covered = text.slice(
+      Math.max(start, edit.start),
+      Math.min(end, edit.end),
+    );
+    if ([...diffPieces(covered)].some((piece) => kept.has(piece)))
+      return "ambiguous";
+  }
+  return "removed";
+};
+
 const coveredRangeWasRemoved = (
+  model: Model,
   row: ModelRow,
   start: number,
   end: number,
 ): boolean =>
-  start < end &&
-  Array.from({ length: end - start }, (_, index) => start + index).every(
-    (offset) =>
-      row.edits.some(
-        ({ start: cutStart, end: cutEnd, replace }) =>
-          replace === "" && cutStart <= offset && offset < cutEnd,
-      ),
-  );
+  coveredRangeFate(
+    model.engine,
+    row.edits,
+    row.pre?.text ?? row.text,
+    start,
+    end,
+  ) === "removed";
+
+/** Whether the edits leave a comment over `text[start, end)` unpredicted. */
+const coveredRangeIsAmbiguous = (
+  model: Model,
+  row: ModelRow,
+  start: number,
+  end: number,
+): boolean =>
+  coveredRangeFate(
+    model.engine,
+    row.edits,
+    row.pre?.text ?? row.text,
+    start,
+    end,
+  ) === "ambiguous";
 
 /** Whether the row's text is still the pre-state's, so offsets into it hold. */
 const untouchedText = (row: ModelRow): boolean =>
@@ -2682,7 +2751,8 @@ export const EXPECTATIONS = {
         untouchedText(row) && !row.removed
           ? row.text.slice(start, end)
           : undefined,
-      () => coveredRangeWasRemoved(row, start, end),
+      () => coveredRangeWasRemoved(model, row, start, end),
+      () => coveredRangeIsAmbiguous(model, row, start, end),
     );
   },
   commentOnBlock: (model, operation) => {
@@ -2700,7 +2770,8 @@ export const EXPECTATIONS = {
         untouchedText(row) && !row.removed
           ? (anchored ?? view.text)
           : undefined,
-      () => localStart >= 0 && coveredRangeWasRemoved(row, start, end),
+      () => localStart >= 0 && coveredRangeWasRemoved(model, row, start, end),
+      () => localStart >= 0 && coveredRangeIsAmbiguous(model, row, start, end),
     );
   },
   insertAfterBlock: insertBlock("after"),
@@ -3447,7 +3518,6 @@ const anchorDisposition = (
   model: Model,
   entry: Comment,
   acceptedAnchor: string = entry.anchor,
-  mode: Mode = "direct",
 ): AnchorDisposition => {
   if (entry.blockId === null) return "kept";
   const row = model.rows.find(
@@ -3486,42 +3556,35 @@ const anchorDisposition = (
     limit,
   });
   if (starts.length === 0) return "kept";
-  const removed = [
-    ...located.edits
-      .filter(({ replace }) => replace.length === 0)
-      .map(({ start, end }) => ({ start, end })),
+  // A replacement's words go past the end of a comment it reaches, so one
+  // whose every word the edits take goes with them, direct or accepted.
+  const edits = [
+    ...located.edits,
     ...located.splits.map(({ offset, consumed }) => ({
       start: offset,
       end: offset + consumed,
+      replace: "",
     })),
   ];
-  const removedPlacements = starts.map((start) =>
-    Array.from({ length: quote.length }, (_, index) => start + index).every(
-      (offset) =>
-        removed.some((cut) => cut.start <= offset && offset < cut.end),
+  const fates = starts.map((start) =>
+    coveredRangeFate(
+      model.engine,
+      edits,
+      located.pre.text,
+      start,
+      start + quote.length,
     ),
   );
-  if (removedPlacements.every(Boolean)) return "removed";
-  if (removedPlacements.some(Boolean)) return "ambiguous";
-  // A tracked replacement keeps a comment on the words it deletes, and the
-  // new words go beside the range: accepting removes a comment whose every
-  // word the replacement covers. An engine may instead hand the comment to
-  // the replacement, so neither outcome is predicted.
-  const replaced = located.edits.filter(({ replace }) => replace.length > 0);
-  if (
-    mode === "tracked-changes" &&
-    starts.every((start) =>
-      Array.from({ length: quote.length }, (_, index) => start + index).every(
-        (offset) =>
-          replaced.some((edit) => edit.start <= offset && offset < edit.end),
-      ),
-    )
-  )
-    return "ambiguous";
+  if (fates.every((fate) => fate === "removed")) return "removed";
+  if (fates.some((fate) => fate !== "kept")) return "ambiguous";
   return "kept";
 };
 
-/** Preserve untouched joined quotes and predict a complete component/block rewrite. */
+/**
+ * Preserve untouched joined quotes. A complete component/block rewrite keeps
+ * the comment on the struck words, outside which the new words go; only a
+ * pending rewrite reaches here, as the accepted one removes the comment.
+ */
 const expectedKeptAnchor = (
   model: Model,
   entry: Comment,
@@ -3560,7 +3623,7 @@ const expectedKeptAnchor = (
       edit.replace !== "" &&
       !edit.replace.includes("\n")
     )
-      return edit.replace;
+      return entry.anchor;
   }
   const row = model.rows.find(
     (candidate) => candidate.pre?.id === entry.blockId,
@@ -3583,7 +3646,7 @@ const expectedKeptAnchor = (
   ) {
     return undefined;
   }
-  return edit.replace.includes("\n") ? undefined : edit.replace;
+  return edit.replace.includes("\n") ? undefined : entry.anchor;
 };
 
 /** Pending markup may interleave the old text and insertion in one range. */
@@ -3690,7 +3753,7 @@ export const compareComments = (
     let disposition =
       mode === "suggested"
         ? "kept"
-        : anchorDisposition(model, located, entry.anchor, mode);
+        : anchorDisposition(model, located, entry.anchor);
     // A suggested removal stays pending and rejectable, so its comments stay.
     if (
       mode !== "suggested" &&
@@ -3750,7 +3813,7 @@ export const compareComments = (
   }
   const beforeIds = new Set(before.map(({ id }) => id));
   for (const comment of model.comments) {
-    if (comment.removed?.()) continue;
+    if (comment.removed?.() || comment.ambiguous?.()) continue;
     const anchor = comment.anchor?.();
     const index = remaining.findIndex(
       (candidate) =>

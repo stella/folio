@@ -107,13 +107,34 @@ export const rangeEndAfterDeletion = ({
   const offset = paragraphLength(target) - (sourceLength - end.offset);
   const following =
     zeroWidthLeavesAt(source.content, end.offset).length - end.zeroWidthBefore;
+  const zeroWidthBefore =
+    zeroWidthLeavesAt(target.content, offset).length - following;
   return {
     story: from.story,
     blockId: holder.paraId ?? to.blockId,
     offset,
-    zeroWidthBefore:
-      zeroWidthLeavesAt(target.content, offset).length - following,
+    zeroWidthBefore: caret
+      ? zeroWidthBefore
+      : pastEndedComments(
+          zeroWidthLeavesAt(target.content, offset),
+          zeroWidthBefore,
+        ),
   };
+};
+
+/**
+ * Where what replaces a range goes among the zero-width leaves at the gap:
+ * past the ends of comments the range reached, so the new words never extend
+ * a comment whose end the range took. A comment starting at the gap keeps the
+ * new words, as it does when a tracked replacement is accepted.
+ */
+const pastEndedComments = (
+  leaves: readonly InlineNode[],
+  zeroWidthBefore: number,
+): number => {
+  let at = zeroWidthBefore;
+  while (leaves[at]?.type === "commentRangeEnd") at += 1;
+  return at;
 };
 
 /**

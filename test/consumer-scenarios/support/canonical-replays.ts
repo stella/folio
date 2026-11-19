@@ -86,7 +86,6 @@ export const CANONICAL_VACUOUS_STEPS: Readonly<
   "issue-1757-merge-across-deleted-paragraph-before-inserted-table.json": [0],
   "issue-1762-reject-deleted-first-row-after-a-split-half.json": [4],
   "issue-1811-comment-start-in-a-deleted-cell.json": [2],
-  "issue-1842-comment-on-split-note-tail.json": [2],
   "issue-1842-comment-on-split-replacement-tail.json": [3],
   "issue-1842-comment-quotes-across-line-breaks.json": [0, 1],
   "issue-1842-final-deletion-retracts-split-break-after-reopen.json": [4],
