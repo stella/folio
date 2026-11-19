@@ -79,6 +79,37 @@ export const minimumMinutes = (p95Seconds: number) =>
 
 type DeclaredLimits = { limits: Limit[]; problems: string[] };
 
+/**
+ * A step's limit may be derived from its measured p95 at run time:
+ * `timeout-minutes: ${{ fromJSON(steps.<id>.outputs.minutes) }}`, where the
+ * earlier step `<id>` runs scripts/workflow-limit.ts for that same step.
+ */
+const DERIVED_LIMIT_FORM =
+  "`${{ fromJSON(steps.<id>.outputs.minutes) }}` over a scripts/workflow-limit.ts step";
+
+const DERIVED_EXPRESSION =
+  /^\$\{\{ fromJSON\(steps\.([\w-]+)\.outputs\.minutes\) \}\}$/u;
+
+const LIMIT_COMMAND =
+  /bun scripts\/workflow-limit\.ts --workflow (\S+) --job (\S+) --step "([^"]+)" --fallback \d+ >> "\$GITHUB_OUTPUT"/u;
+
+const derivedStepLimit = (
+  expression: unknown,
+  steps: readonly unknown[],
+): { workflow: string; job: string; step: string } | undefined => {
+  if (typeof expression !== "string") return undefined;
+  const id = DERIVED_EXPRESSION.exec(expression)?.[1];
+  if (id === undefined) return undefined;
+  const provider = steps.find(
+    (candidate) => isRecord(candidate) && candidate["id"] === id,
+  );
+  const run = isRecord(provider) ? provider["run"] : undefined;
+  const match = typeof run === "string" ? LIMIT_COMMAND.exec(run) : null;
+  return match === null
+    ? undefined
+    : { workflow: match[1] ?? "", job: match[2] ?? "", step: match[3] ?? "" };
+};
+
 const declaredLimits = (file: string, workflow: unknown): DeclaredLimits => {
   const limits: Limit[] = [];
   const problems: string[] = [];
@@ -94,8 +125,17 @@ const declaredLimits = (file: string, workflow: unknown): DeclaredLimits => {
     }
     const reported = new Set<string>();
     for (const [index, step] of steps.entries()) {
-      if (!isRecord(step) || typeof step["timeout-minutes"] !== "number")
+      if (!isRecord(step) || step["timeout-minutes"] === undefined) continue;
+      const derived = derivedStepLimit(step["timeout-minutes"], steps);
+      if (
+        typeof step["timeout-minutes"] !== "number" &&
+        derived === undefined
+      ) {
+        problems.push(
+          `${file}: ${id} step ${index + 1} declares a timeout-minutes that is neither a number nor ${DERIVED_LIMIT_FORM}`,
+        );
         continue;
+      }
       const name = literalName(step["name"]);
       if (name === undefined) {
         problems.push(
@@ -109,10 +149,31 @@ const declaredLimits = (file: string, workflow: unknown): DeclaredLimits => {
         reported.add(name);
         continue;
       }
+      if (derived !== undefined) {
+        if (
+          derived.workflow !== file ||
+          derived.job !== id ||
+          derived.step !== name
+        ) {
+          problems.push(
+            `${file}: ${id} step "${name}" derives its limit from ${derived.workflow} ${derived.job} "${derived.step}"`,
+          );
+          continue;
+        }
+        // The limit follows the step's own measured p95, so it never sits
+        // under it; the step is still measured.
+        limits.push({
+          workflow: file,
+          job: id,
+          minutes: Number.POSITIVE_INFINITY,
+          step: name,
+        });
+        continue;
+      }
       limits.push({
         workflow: file,
         job: id,
-        minutes: step["timeout-minutes"],
+        minutes: Number(step["timeout-minutes"]),
         step: name,
       });
     }
