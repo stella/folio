@@ -17,7 +17,11 @@
  * the customized format and start of each level a command minted.
  */
 
-import { NUMBER_FORMATS, resolveNumberingLevel } from "@stll/docx-core/model";
+import {
+  isNumberingReference,
+  NUMBER_FORMATS,
+  resolveNumberingLevel,
+} from "@stll/docx-core/model";
 
 import type {
   AbstractNumbering,
@@ -37,6 +41,7 @@ import {
   type NumberingIdsInUse,
   numberingNumIdsTaken,
 } from "./numberingIds";
+import { numberingLevelUsesBulletMarker } from "./numberingParser";
 
 /** The two kinds of list a command can create. */
 export const LIST_KINDS = ["bullet", "numbered"] as const;
@@ -132,7 +137,7 @@ const templateLevel = (kind: ListKind, ilvl: number): ListLevel =>
   kind === "bullet" ? bulletLevel(ilvl) : numberedLevel(ilvl);
 
 const numberFormatKind = (numFmt: NumberFormat): ListKind =>
-  numFmt === "bullet" ? "bullet" : "numbered";
+  numberingLevelUsesBulletMarker({ numFmt }) ? "bullet" : "numbered";
 
 const withLevelFormat = (
   template: ListLevel,
@@ -261,7 +266,8 @@ export const cloneListInstanceWithFormat = (
   }: CloneListInstanceWithFormatOptions,
   elsewhere: NumberingIdsInUse,
 ): MintedListInstance | undefined => {
-  if (sourceNumId === 0 || definitions == null) return undefined;
+  if (!isNumberingReference(sourceNumId) || definitions == null)
+    return undefined;
   const source = definitions.nums.find(({ numId }) => numId === sourceNumId);
   if (!source) return undefined;
   const abstract = definitions.abstractNums.find(
