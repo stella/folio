@@ -250,8 +250,11 @@ export const rejectedBoundaryHolderIdentities = ({
       ),
     );
     const canonicalBody = findStoryBody(actual, story);
-    const canonicalIds = new Set(paragraphIdsIn(canonicalBody?.content ?? []));
-    const canonicalBoundaries = boundaryKeys(canonicalBody?.content ?? []);
+    const canonical = new Map(
+      (canonicalBody === undefined ? [] : storyParagraphs(canonicalBody)).map(
+        ({ paragraph }) => [paragraph.paraId, paragraph],
+      ),
+    );
     const walk = (blocks: readonly BlockContent[]): void => {
       for (const [index, block] of blocks.entries()) {
         for (const list of nestedLists(block)) walk(list);
@@ -261,18 +264,30 @@ export const rejectedBoundaryHolderIdentities = ({
           next === undefined ||
           next.type === "paragraph" ||
           typeof block.paraId !== "string" ||
-          canonicalIds.has(block.paraId)
+          canonical.has(block.paraId)
         )
           continue;
         const kept = legacy.get(block.paraId);
         if (kept === undefined || paragraphHoldsContent(kept)) continue;
         const remains = paragraphRemains(kept.content);
-        if (
-          remains.length > 0 &&
-          [...boundaryKeys(remains)].every((key) =>
-            canonicalBoundaries.has(key),
-          )
-        )
+        if (remains.length === 0) continue;
+        // The nearest paragraph that stays takes them: the one just before,
+        // at its end, else the first one after in the same list, at its start.
+        const previous = blocks[index - 1];
+        const before = previous?.type === "paragraph";
+        const host = before
+          ? previous
+          : blocks.slice(index + 1).find((later) => later.type === "paragraph");
+        const received =
+          host?.type === "paragraph" && typeof host.paraId === "string"
+            ? canonical.get(host.paraId)?.content
+            : undefined;
+        if (received === undefined) continue;
+        const edge = before
+          ? received.slice(-remains.length)
+          : received.slice(0, remains.length);
+        const landed = boundaryKeys(edge);
+        if ([...boundaryKeys(remains)].every((key) => landed.has(key)))
           removed.push(block.paraId);
       }
     };
