@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "title": "PINNED #1762, reported seed 2116006477: rejecting a replacement between line breaks reads the same after save",
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "lineBreaks",
+  "mode": "tracked-changes",
+  "seed": 2116006477,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 208728205,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "replaceRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "1B0E5A11",
+            "startOffset": 0,
+            "endOffset": 8,
+            "selectedTextHash": "h8syeus"
+          },
+          "replace": "updated"
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from unpin+reseed of 5c9b9622cdaacdbf"
+}

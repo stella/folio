@@ -21,6 +21,12 @@
       "path": "12:3:2:4:4:4:4:6:5:8:8:8:8:8:10:13:13:14:11:11:11:11:11:11:11:11:11:15:14:15:14:14:14:14:15:14:14:14:14:14:14:14:15:15:15:15:15:15:15:15:15:15:15:15:15:15:15:15:15:15:15",
       "note": "A sequenced acceptance moved across a pending paste's own paragraph split and paragraph formatting passes them; the paste is not dropped",
       "date": "2026-11-18"
+    },
+    {
+      "seed": -236540759,
+      "path": "9:2:0:2:3:3:3:3:3:4:6:6:4:5:5:5:7:1:1:1:0:2:2:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:3:2:2:2:3:3",
+      "note": "An undo of a rejected first comment keeps a later comment in another paragraph; the later comment is not dropped",
+      "date": "2026-11-19"
     }
   ],
   "canonical sequencing same-paragraph convergence": [

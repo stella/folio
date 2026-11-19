@@ -94,6 +94,8 @@ type SectionViewChange = {
 /**
  * The operation schema this module reads and writes.
  *
+ * Version 16 adds `createdSince` to `restoreCommentState`: a restoration
+ * rebased over concurrent comment creations keeps them.
  * Version 15 adds paragraph insertion beside tables and exact empty block
  * replacements. Older envelopes receive an unsupportedSchema refusal; old
  * operation payloads retain their meaning, with no automatic schema rewrite.
@@ -125,7 +127,7 @@ type SectionViewChange = {
  * and paragraph operations, and the review operations `setParagraphReview`,
  * `replaceInline` and `resolveRevision`.
  */
-export const DOCUMENT_OP_SCHEMA_VERSION = 15;
+export const DOCUMENT_OP_SCHEMA_VERSION = 16;
 
 /**
  * The main story has a fixed address; other editable parts use their stable
@@ -1287,6 +1289,13 @@ export type RestoreCommentStateOp = {
   scaffoldIds: NewIds;
   expected: CommentState;
   state: CommentState;
+  /**
+   * Comments created concurrently since the restoration was captured, in the
+   * order they were created: it applies as if they were absent, then each
+   * takes its place again before the first comment with a greater id, as its
+   * creation does. Absent when there are none.
+   */
+  createdSince?: readonly number[];
 };
 
 export type CommentOp =

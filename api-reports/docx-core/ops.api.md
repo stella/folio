@@ -424,7 +424,7 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
 }>;
 
 // @public
-export const DOCUMENT_OP_SCHEMA_VERSION = 15;
+export const DOCUMENT_OP_SCHEMA_VERSION = 16;
 
 // @public
 export const DOCUMENT_OP_TYPES: Readonly<{
@@ -1220,6 +1220,7 @@ export type RestoreCommentStateOp = {
     scaffoldIds: NewIds;
     expected: CommentState;
     state: CommentState;
+    createdSince?: readonly number[];
 };
 
 // @public

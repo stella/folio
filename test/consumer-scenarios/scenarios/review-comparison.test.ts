@@ -205,6 +205,44 @@ test("model comparison normalizes only safely mergeable adjacent runs", () => {
   }
 });
 
+test("resolved comparison reads runs of the same properties as one run around a line break", () => {
+  // A save may write the pieces a tracked change cut from one run holding a
+  // line break as separate runs; with the same properties they are the same
+  // content.
+  const lines = (formatting?: Run["formatting"]): ParagraphContent[] => [
+    textRun("Payment"),
+    {
+      type: "run",
+      ...(formatting && { formatting }),
+      content: [
+        { type: "text", text: " terms" },
+        { type: "break" },
+        { type: "text", text: "Notice" },
+      ],
+    },
+  ];
+  const whole = reviewDocumentWithContent([
+    {
+      type: "run",
+      content: [
+        { type: "text", text: "Payment terms" },
+        { type: "break" },
+        { type: "text", text: "Notice" },
+      ],
+    },
+  ]);
+  assert.deepEqual(
+    canonicalResolvedReviewModel(reviewDocumentWithContent(lines())),
+    canonicalResolvedReviewModel(whole),
+  );
+  assert.notDeepEqual(
+    canonicalResolvedReviewModel(
+      reviewDocumentWithContent(lines({ bold: true })),
+    ),
+    canonicalResolvedReviewModel(whole),
+  );
+});
+
 test("resolved projection visits section-local headers and footers without relaxing run formatting or metadata", () => {
   const segmented = documentWithSectionStories(
     [textRun("Section "), textRun("header")],

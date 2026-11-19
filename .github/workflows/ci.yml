@@ -2,10 +2,10 @@ name: CI
 
 env:
   TOOLCHAIN_BASE: ${{ (github.event_name == 'pull_request' && github.event.pull_request.base.sha) || (github.event_name == 'merge_group' && github.event.merge_group.base_sha) || (github.event_name == 'push' && github.event.before) || 'unavailable-toolchain-base' }}
-  HAWK_VERSION: "0.1.17"
+  HAWK_VERSION: "0.1.18"
   # The crates.io package of that release. Hawk links the compiler it is built
   # with, so it builds from this package against rust-toolchain.toml.
-  HAWK_CRATE_SHA256: "1806358550b05ac91fe2e511d9bcb6f69fc5b2dd0f8a560df3dc87064d57d510"
+  HAWK_CRATE_SHA256: "1201caf35ff351bcb2be17c9c44125da5483e002c5f6e070d9f28c5001899081"
 
 on:
   push:
