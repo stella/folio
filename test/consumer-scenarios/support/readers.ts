@@ -330,7 +330,14 @@ const gfmCellText = (text: string, expected: MarkdownExpectedView): string => {
     const line = lines.at(offset);
     if (paragraph.number === BULLET && line !== undefined)
       lines[offset] = line.replace(/^-\s+/u, "");
-    offset += paragraph.text.split("\n").length;
+    // Each source paragraph is compared without its edge blanks (see
+    // contentView); in a cell they are line edges inside one Markdown block.
+    const count = paragraph.text.split("\n").length;
+    const first = lines.at(offset);
+    if (first !== undefined) lines[offset] = first.trimStart();
+    const last = lines.at(offset + count - 1);
+    if (last !== undefined) lines[offset + count - 1] = last.trimEnd();
+    offset += count;
   }
   return lines.join("\n");
 };
