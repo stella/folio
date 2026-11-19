@@ -392,6 +392,9 @@ jobs:
       - name: Lockfile override-range check
         run: bun run check:lockfile-overrides
 
+      - name: Lockfile trusted-dependencies check
+        run: bun run check:lockfile-trust
+
       - name: Lockfile deduplication check
         run: bun run check:dedupe
 

@@ -13,6 +13,10 @@
       "if": null
     },
     {
+      "run": "bun run check:lockfile-trust",
+      "if": null
+    },
+    {
       "run": "bun run check:dedupe",
       "if": null
     },
