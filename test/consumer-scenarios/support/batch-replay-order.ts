@@ -33,10 +33,13 @@ const handleOf = (operation: AnyOperation): Handle | null =>
 const blockIdOf = (operation: AnyOperation): string =>
   handleOf(operation)?.blockId ?? String(operation["blockId"]);
 
+/** An offset past every one inside a block (`placement` keeps them below 10^8). */
+const AFTER_EVERY_OFFSET = 99_999_999;
+
 const placement = (
   operation: AnyOperation,
   preRows: readonly Row[],
-  joinsInto: ReadonlyMap<string, string> = new Map(),
+  joinsInto: ReadonlyMap<string, PendingJoinTarget> = new Map(),
 ): [number, number, number] => {
   const index = preRows.findIndex((row) => row.id === blockIdOf(operation));
   const text = preRows[index]?.text ?? "";
@@ -58,14 +61,20 @@ const placement = (
   }
   // A block put after a paragraph whose pending join runs into a later one
   // lands after that one as the batch read it, and runs there: ahead of the
-  // edits inside the joined paragraphs.
+  // edits inside the joined paragraphs. Into one with no words left, it
+  // lands before that one, still as the batch read it: it runs ahead of the
+  // edits inside it, which alone would give the join words to run into and
+  // put the block after it.
   const joined = joinsInto.get(blockIdOf(operation));
   const after =
     operation.type === "insertAfterBlock" ||
     (operation.type === "insertTable" && operation["position"] !== "before");
   if (after && joined !== undefined) {
-    const survivor = preRows.findIndex((row) => row.id === joined);
-    if (survivor >= 0) return [survivor + 1, 0, 0];
+    const survivor = preRows.findIndex((row) => row.id === joined.survivor);
+    if (survivor >= 0)
+      return joined.keepsWords
+        ? [survivor + 1, 0, 0]
+        : [survivor, 1, AFTER_EVERY_OFFSET];
   }
   switch (operation.type) {
     case "replaceInBlock":
@@ -89,26 +98,32 @@ const sameContainerRows = (left: Row, right: Row | undefined): right is Row =>
   `${left.table?.tableIndex}:${left.table?.rowIndex}:${left.table?.cellIndex}` ===
     `${right.table?.tableIndex}:${right.table?.rowIndex}:${right.table?.cellIndex}`;
 
+/** The paragraph a pending join runs into, and whether it keeps words. */
+export type PendingJoinTarget = { survivor: string; keepsWords: boolean };
+
 /**
  * The paragraph each pending join in `rows` runs into: from a paragraph whose
  * mark is pending deletion (`sources`) on past the next ones whose marks go
- * too, to the first one whose mark stays, in the same container, when that
- * one keeps words. The engine places a block put after any paragraph of the
- * join after that one.
+ * too, to the first one whose mark stays, in the same container. The engine
+ * places a block put after any paragraph of the join after that one when it
+ * keeps words, and in the gap before it otherwise.
  */
 export const pendingJoinTargets = (
   rows: readonly Row[],
   sources: ReadonlySet<string>,
-): Map<string, string> => {
-  const targets = new Map<string, string>();
+): Map<string, PendingJoinTarget> => {
+  const targets = new Map<string, PendingJoinTarget>();
   for (const [index, row] of rows.entries()) {
     if (!sources.has(row.id)) continue;
     let at = index + 1;
     while (sources.has(rows[at]?.id ?? "") && sameContainerRows(row, rows[at]))
       at += 1;
     const survivor = rows[at];
-    if (sameContainerRows(row, survivor) && survivor.text.length > 0)
-      targets.set(row.id, survivor.id);
+    if (sameContainerRows(row, survivor))
+      targets.set(row.id, {
+        survivor: survivor.id,
+        keepsWords: survivor.text.length > 0,
+      });
   }
   return targets;
 };
@@ -126,7 +141,7 @@ type SequentialGroupsOptions = {
   liveRows?: readonly Row[];
   mode: Mode;
   /** The paragraph each pending join runs into (`pendingJoinTargets`). */
-  joinsInto?: ReadonlyMap<string, string>;
+  joinsInto?: ReadonlyMap<string, PendingJoinTarget>;
 };
 
 export const sequentialGroups = ({
