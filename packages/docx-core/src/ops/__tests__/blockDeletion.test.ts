@@ -885,3 +885,20 @@ test("a tracked deletion of the paragraph whose mark the last paragraph's deleti
     storyParagraphs(tracked.document.package.document).at(1)?.paragraph.pPrMark,
   ).toStrictEqual(item.pPrMark);
 });
+
+test("a tracked deletion of an empty paragraph whose mark a pending deletion already took records nothing and is refused", () => {
+  const deleted: Paragraph = {
+    ...paragraph("00000001", ""),
+    pPrMark: {
+      kind: "del",
+      info: { id: 5, author: "Other", date: "2026-01-02T03:04:05Z" },
+    },
+  };
+  const refused = applyDocumentOp(
+    documentOf([deleted, paragraph("00000002", "After.")]),
+    deletion(["00000001"]),
+  );
+  expect(refused.isErr() && refused.error.reason).toBe(
+    DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+  );
+});
