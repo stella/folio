@@ -6,7 +6,10 @@
 
 import { panic } from "better-result";
 
-import { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
+import {
+  DOCX_CONFORMANCE_CLASSES,
+  headingOutlineLevel,
+} from "@stll/docx-core/model";
 
 import {
   BUILT_IN_STYLE_NAME,
@@ -316,6 +319,29 @@ function getDefaultStyles(): Style[] {
     },
   ];
 }
+
+/** Heading properties used when an edit needs a missing built-in definition. */
+export const defaultHeadingStyle = (styleId: string): Style | undefined => {
+  const level = /^Heading(?<level>[1-9])$/u.exec(styleId)?.groups?.["level"];
+  if (level === undefined) return undefined;
+  const defaults = getDefaultStyles();
+  const template = defaults.find(
+    (style) => style.styleId === (Number(level) <= 6 ? styleId : "Heading6"),
+  );
+  const outlineLevel = Number(level) - 1;
+  const outline = headingOutlineLevel(outlineLevel);
+  if (template === undefined || outline === undefined)
+    return panic("The default heading template is missing.");
+  return {
+    ...template,
+    styleId,
+    name: builtInHeadingStyleName(outlineLevel),
+    pPr: {
+      ...template.pPr,
+      outlineLevel: outline,
+    },
+  };
+};
 
 // ============================================================================
 // DEFAULT SECTION PROPERTIES

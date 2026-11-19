@@ -43,6 +43,7 @@ import {
   type OpStory,
   orderAddressingBeforeRemoval,
   orderBatchOperations,
+  packageResourcesOpOf,
   paragraphLength,
   type ParagraphPropsPatch,
   pendingSuggestionIdsIn,
@@ -132,6 +133,7 @@ import type {
 import {
   findUndefinedOperationReference,
   styleDefinitionLookup,
+  withOperationHeadingStyles,
 } from "../ai-edits/undefinedReferences";
 import { wordDiffSessionFromOptions } from "../ai-edits/word-diff";
 import type { FolioContentStatedNumbering } from "../compare/content-types";
@@ -173,6 +175,7 @@ import type {
   Paragraph,
   ParagraphFormatting,
   Run,
+  StyleDefinitions,
 } from "../types/document";
 import { readModel } from "../types/documentModel";
 import {
@@ -2458,6 +2461,7 @@ export class CanonicalPublicOperations {
     let definedReferences:
       | {
           styles: ReturnType<typeof styleDefinitionLookup>;
+          definitions: StyleDefinitions | undefined;
           numberingInstanceIds: ReadonlySet<number>;
         }
       | undefined;
@@ -2465,6 +2469,7 @@ export class CanonicalPublicOperations {
       if (definedReferences !== undefined) return definedReferences;
       const model = readModel(session.document);
       definedReferences = {
+        definitions: model.package.styles,
         styles: styleDefinitionLookup(
           createStyleResolver(model.package.styles),
         ),
@@ -2610,9 +2615,17 @@ export class CanonicalPublicOperations {
       }
       // The same reference check the default engine runs, in the same
       // place: before the operation compiles.
+      const referenceSet = references();
+      const headings = withOperationHeadingStyles(referenceSet.definitions, [
+        operation,
+      ]);
       const undefinedReference = findUndefinedOperationReference({
         operation,
-        ...references(),
+        numberingInstanceIds: referenceSet.numberingInstanceIds,
+        styles:
+          headings === referenceSet.definitions
+            ? referenceSet.styles
+            : styleDefinitionLookup(createStyleResolver(headings)),
         undefinedReferences: "refuse",
       });
       if (undefinedReference !== undefined) {
@@ -2870,8 +2883,19 @@ export class CanonicalPublicOperations {
                 ) ?? 0,
             })
           : intents;
+      const headings = withOperationHeadingStyles(
+        sourceDocument.package.styles,
+        [operation],
+      );
+      const withHeadings =
+        headings === undefined || headings === sourceDocument.package.styles
+          ? sourceDocument
+          : {
+              ...sourceDocument,
+              package: { ...sourceDocument.package, styles: headings },
+            };
       const compiled = compilePublicIntents({
-        document: sourceDocument,
+        document: withHeadings,
         intents: mappedIntents,
         allocate,
         reservedBlockIds,
@@ -3082,7 +3106,16 @@ export class CanonicalPublicOperations {
       return {
         type: "prepared" as const,
         document: nextDocument,
-        ops: operationOps,
+        ops:
+          withHeadings === sourceDocument
+            ? operationOps
+            : [
+                packageResourcesOpOf({
+                  before: sourceDocument,
+                  after: withHeadings,
+                }),
+                ...operationOps,
+              ],
         nextRevisionId: Math.max(
           compiled.value.nextRevisionId,
           (commentId ?? -1) + 1,

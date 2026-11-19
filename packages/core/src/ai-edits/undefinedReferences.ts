@@ -14,6 +14,8 @@ import type {
   ReadonlyStyle,
   StyleResolver,
 } from "../prosemirror/styles/styleResolver";
+import type { StyleDefinitions } from "../types/document";
+import { defaultHeadingStyle } from "../utils/createDocument";
 import type { FolioAIStagedEditOperation } from "./newListNumbering";
 import { classifyResourceReference } from "./referenceClassification";
 import type { FolioAIEditOperation } from "./types";
@@ -98,6 +100,34 @@ const operationParagraphStyleReferences = (
     default:
       return [];
   }
+};
+
+/** Add only absent, explicitly requested built-in heading definitions. */
+export const withOperationHeadingStyles = (
+  styles: StyleDefinitions | undefined,
+  operations: readonly StagedOperation[],
+): StyleDefinitions | undefined => {
+  const known = new Set(styles?.styles.map(({ styleId }) => styleId));
+  const normal = styles?.styles.some(
+    ({ styleId, type }) => styleId === "Normal" && type === "paragraph",
+  );
+  const additions: StyleDefinitions["styles"] = [];
+  for (const operation of operations) {
+    for (const { styleId } of operationParagraphStyleReferences(operation)) {
+      if (styleId == null || known.has(styleId)) continue;
+      const heading = defaultHeadingStyle(styleId);
+      if (heading === undefined) continue;
+      if (!normal) {
+        delete heading.basedOn;
+        delete heading.next;
+      }
+      additions.push(heading);
+      known.add(styleId);
+    }
+  }
+  return additions.length === 0
+    ? styles
+    : { ...styles, styles: [...(styles?.styles ?? []), ...additions] };
 };
 
 type FindUndefinedParagraphStyleReferenceOptions = {
