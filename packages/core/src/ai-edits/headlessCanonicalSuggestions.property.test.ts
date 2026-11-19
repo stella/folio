@@ -124,7 +124,13 @@ const suggestionLaws = async (
   const suggested = reads(reviewer);
   if (insertion !== null && besidePendingJoin) {
     // As it stands: the new paragraph is right beside the one it names, or,
-    // for one in a table cell, beside its outermost table.
+    // for one in a table cell, beside its outermost table; one put before a
+    // table goes before the pending join that runs words into its first cell.
+    const joining = new Set(
+      before.changes.flatMap(({ type, blockId }) =>
+        type === "paragraphMarkDeleted" && blockId !== null ? [blockId] : [],
+      ),
+    );
     const content = reviewer.getContent();
     const ids = content.map(({ id }) => id);
     const known = new Set(idsBefore);
@@ -136,6 +142,12 @@ const suggestionLaws = async (
     const step = insertion.type === "insertBeforeBlock" ? -1 : 1;
     let edge = at;
     while (inTable(edge + step)) edge += step;
+    while (
+      table !== undefined &&
+      step === -1 &&
+      joining.has(ids[edge + step] ?? "")
+    )
+      edge += step;
     const beside = ids[edge + step];
     expect(beside !== undefined && !known.has(beside)).toBe(true);
   }
