@@ -371,6 +371,8 @@ type Resolution = {
   acceptedClosed: Record<"first" | "last", WeakSet<InlineNode>>;
   /** Unconsumed source-cut edges on the actual rebuilt container. */
   cutEdges: WeakMap<InlineNode, CutEdges>;
+  /** Removal cuts supplied entirely by a deferred seam from a different edit. */
+  deferredOnlyRemovals: WeakSet<NonNullable<TrackedWrapper["resolutionJoins"]>>;
   /** Comment ranges with a start and an end in the paragraphs resolved. */
   pairedComments: ReadonlySet<number>;
   /** Source occurrences retained by the current paragraph's accepted deletions. */
@@ -394,6 +396,7 @@ const createResolution = (
   emptied: new WeakSet(),
   acceptedClosed: { first: new WeakSet(), last: new WeakSet() },
   cutEdges: new WeakMap(),
+  deferredOnlyRemovals: new WeakSet(),
   pairedComments: NO_COMMENT_RANGES,
   keptDeletionPaths: NO_BOUNDARY_PATHS,
   relocated: noRelocatedBoundaries(),
@@ -1060,6 +1063,11 @@ const withEmptiedHolder = (
 /** What has become of a deferred seam's blocker. */
 type BlockerFate = "pending" | "accepted" | "removed";
 
+type DeferredRemovalSettlement = {
+  fateOf: (blocker: number) => BlockerFate;
+  deferredOnlyRemovals?: Resolution["deferredOnlyRemovals"];
+};
+
 /**
  * The one rule for a deferred seam whose blockers leave the story. An
  * accepted blocker retires the seam; a removed one, rejected or emptied by
@@ -1068,8 +1076,9 @@ type BlockerFate = "pending" | "accepted" | "removed";
  */
 const settleDeferredRemovals = (
   nodes: readonly InlineNode[],
-  fateOf: (blocker: number) => BlockerFate,
+  options: DeferredRemovalSettlement,
 ): readonly InlineNode[] => {
+  const { fateOf, deferredOnlyRemovals } = options;
   let changed = false;
   const out: InlineNode[] = [];
   /** Seams with kept boundaries whose every blocker is accepted, by key. */
@@ -1126,6 +1135,11 @@ const settleDeferredRemovals = (
         delete joins.deferredRemove;
         if (remainingGroups.length > 0)
           joins.deferredRemove = canonicalDeferredGroups(remainingGroups);
+        if (
+          (node.resolutionJoins.remove === 0 && joins.remove > 0) ||
+          deferredOnlyRemovals?.has(node.resolutionJoins) === true
+        )
+          deferredOnlyRemovals?.add(joins);
         next = Object.assign({}, node, { resolutionJoins: joins });
       }
     }
@@ -1133,7 +1147,7 @@ const settleDeferredRemovals = (
     const settled =
       children === undefined
         ? children
-        : settleDeferredRemovals(children, fateOf);
+        : settleDeferredRemovals(children, options);
     if (children !== undefined && settled !== children)
       next = rebuildNode(next, settled ?? []);
     changed ||= next !== node;
@@ -1224,11 +1238,14 @@ const prepareDeferredRemovals = (
   nodes: readonly InlineNode[],
   resolution: Resolution,
 ): readonly InlineNode[] =>
-  settleDeferredRemovals(nodes, (id) => {
-    if (!resolution.ids.has(id)) return "pending";
-    return resolution.decision === REVISION_DECISIONS.ACCEPT
-      ? "accepted"
-      : "removed";
+  settleDeferredRemovals(nodes, {
+    deferredOnlyRemovals: resolution.deferredOnlyRemovals,
+    fateOf(id) {
+      if (!resolution.ids.has(id)) return "pending";
+      return resolution.decision === REVISION_DECISIONS.ACCEPT
+        ? "accepted"
+        : "removed";
+    },
   });
 
 type CutEdges = { first?: number; last?: number };
@@ -2030,9 +2047,13 @@ const resolveList = ({
         // piece are those before the removed content's first record past it,
         // that record's own included: one beyond that record stood outside
         // the record the piece continues.
+        // A cut deferred by another edit can join the surrounding content.
+        // It cannot give this removal's own boundaries solely to one side.
         const piece =
-          resolution.decision === REVISION_DECISIONS.REJECT
-            ? oneSidedKeptPiece(node.resolutionJoins)
+          resolution.decision === REVISION_DECISIONS.REJECT &&
+          joins !== undefined &&
+          !resolution.deferredOnlyRemovals.has(joins)
+            ? oneSidedKeptPiece(joins)
             : undefined;
         const records = removalContent.flatMap((child, at) =>
           childNodes(child) === undefined ? [] : [at],
@@ -4533,9 +4554,9 @@ export const planRevisionResolution = ({
   // A blocker the resolution emptied away, unnamed, leaves the story too.
   const standing = seamHolderIds([...resolvedContents.values()].flat());
   for (const [key, content] of resolvedContents) {
-    const settled = settleDeferredRemovals(content, (id) =>
-      standing.has(id) ? "pending" : "removed",
-    );
+    const settled = settleDeferredRemovals(content, {
+      fateOf: (id) => (standing.has(id) ? "pending" : "removed"),
+    });
     if (settled === content) continue;
     resolvedContents.set(key, settled);
     resolvedChanged.add(key);
