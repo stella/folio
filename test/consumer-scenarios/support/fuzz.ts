@@ -367,6 +367,12 @@ const batchEffect = ({
 }: BatchEffectOptions): BatchStepEffect => {
   const kind = flow.planned?.expectedFidelityRefusal;
   if (kind === undefined) return { type: "batch", applied };
+  // An engine that can apply the edit so that rejecting everything still
+  // gives the original back has nothing to refuse: the edit runs as any
+  // other, and the flow's rejectAll relation holds it to that. A loss on
+  // accepting (a note, a comment, a field, a drawing) is refused always.
+  if (kind === "rejectOriginal" && applied > 0)
+    return { type: "batch", applied };
   const message =
     kind === "rejectOriginal"
       ? "Reject All would change the original content or formatting."
