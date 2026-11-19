@@ -31,6 +31,7 @@ const deletionOperations: ReadonlySet<FolioAIEditOperation["type"]> = new Set([
   "replaceBlock",
   "replaceInBlock",
   "replaceRange",
+  "splitBlock",
 ]);
 
 type Deletion = { owner: string | undefined };

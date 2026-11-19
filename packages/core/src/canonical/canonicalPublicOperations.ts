@@ -4415,6 +4415,7 @@ export class CanonicalPublicOperations {
       operation.type === "splitBlock" &&
       intent.type === "splitParagraph"
     ) {
+      if (tracked && !suggested && end > start) deletionSpans = [range];
       intents.push(intent);
       // Each half's properties, as the default engine sets them once the
       // split is made: the first half keeps the paragraph's identity, the

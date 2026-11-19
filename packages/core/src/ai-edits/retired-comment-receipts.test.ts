@@ -122,6 +122,58 @@ for (const session of ["legacy", "canonical"] as const) {
     ]);
   });
 
+  test(`${session} attributes retirement to the split separator deletion`, async () => {
+    const bytes = await paragraphsDocx(
+      [
+        [textRun("Left"), ...anchor(3, "|"), textRun("Right")],
+        anchor(8, "Keep."),
+        [textRun("End.")],
+      ],
+      [reviewComment(3), reviewComment(8)],
+    );
+    const reviewer = await FolioDocxReviewer.fromBuffer(bytes, { session });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "tracked-changes",
+        operations: [
+          {
+            id: "split",
+            type: "splitBlock",
+            blockId: "10000000",
+            offset: 4,
+            separator: "|",
+          },
+          { ...edits[3], blockId: "10000002" },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
+    expect(result.skipped).toEqual([]);
+    expect(
+      result.receipts.map(({ operationId, retiredCommentIds }) => [
+        operationId,
+        retiredCommentIds,
+      ]),
+    ).toEqual([
+      ["split", [3]],
+      ["replace-end", undefined],
+    ]);
+
+    const saved = await reviewer.toBuffer();
+    const accepted = await FolioDocxReviewer.fromBuffer(saved, { session });
+    expect(accepted.acceptAll().skipped).toEqual([]);
+    expect(accepted.getComments().map(({ id }) => id)).toEqual([8]);
+    const rejected = await FolioDocxReviewer.fromBuffer(saved, { session });
+    expect(rejected.rejectAll().skipped).toEqual([]);
+    expect(
+      rejected.getComments().map(({ id, anchoredText }) => [id, anchoredText]),
+    ).toEqual([
+      [3, "|"],
+      [8, "Keep."],
+    ]);
+  });
+
   test(`${session} does not assign a jointly exhausted anchor or a pending loss to another edit`, async () => {
     const reviewer = await open(session);
     const apply = (operations: readonly FolioDocumentOperation[]) =>
