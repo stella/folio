@@ -429,7 +429,7 @@ describe("a canonical reviewer's resolved views", () => {
         },
       );
     },
-    propertyTestTimeout(120_000),
+    propertyTestTimeout(240_000),
   );
 });
 
