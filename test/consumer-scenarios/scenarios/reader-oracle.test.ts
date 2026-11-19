@@ -740,3 +740,10 @@ test("Markdown custom marker oracle recognizes legal indentation without hiding 
   }
   assert.equal(cases, 16);
 });
+
+test("a list label with words reads as the item's label", () => {
+  for (const number of ["Box 1.", "Article I."]) {
+    const item = [{ text: "Scope", kind: "listItem", number }] as const;
+    assert.deepEqual(markdownViews(`**${number}** Scope`, item), item, number);
+  }
+});
