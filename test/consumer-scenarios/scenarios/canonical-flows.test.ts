@@ -21,6 +21,7 @@ const FLOWS_DIR = fileURLToPath(new URL("../flows/", import.meta.url));
 
 /** The flows replayed on the canonical session as well. */
 const CANONICAL_REPLAYS = [
+  "issue-1350-48a4c26dd3e1e6fd.json",
   "issue-1762-tracked-formatting-between-line-breaks.json",
   "issue-1754-clear-numbered-heading-style.json",
 ] as const;
