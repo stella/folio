@@ -473,12 +473,10 @@ impl StyleSheet {
     ) -> Result<TextProperties, ()> {
         let table = self
             .table_style(&properties.table_style)?
-            .map(|style| style.text)
-            .unwrap_or_default();
+            .map_or_default(|style| style.text);
         let paragraph = table.inherit_style(
             self.paragraph_style(properties.style_id.as_deref())?
-                .map(|style| style.text)
-                .unwrap_or_default(),
+                .map_or_default(|style| style.text),
         );
         let character = character_style_id
             .filter(|style_id| {
@@ -708,13 +706,11 @@ impl StyleSheet {
         let table = self
             .table_style(&direct.table_style)
             .map_err(|()| StructuralFactUnknownReason::UnsupportedStyles)?
-            .map(|style| style.properties)
-            .unwrap_or_default();
+            .map_or_default(|style| style.properties);
         let style = self
             .paragraph_style(direct.style_id.as_deref())
             .map_err(|()| StructuralFactUnknownReason::UnsupportedStyles)?
-            .map(|style| style.properties)
-            .unwrap_or_default();
+            .map_or_default(|style| style.properties);
         let style = ResolvedParagraphStyleProperties {
             indentation: table.indentation.inherit(style.indentation),
             numbering: table.numbering.inherit(style.numbering),
