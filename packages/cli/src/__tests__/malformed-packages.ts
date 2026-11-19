@@ -302,6 +302,7 @@ export const TOOL_ARGUMENTS: Readonly<Record<string, Record<string, unknown>>> =
     add_comment: { blockId: "10000001", text: "Why?" },
     reply_comment: { commentId: "0", text: "Because." },
     resolve_comment: { commentId: "0" },
+    delete_comments: { ids: ["0"] },
     resolve_changes: { all: true },
     sanitize_document: {},
     proofing_language: {},
