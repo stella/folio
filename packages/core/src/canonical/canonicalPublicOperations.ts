@@ -180,7 +180,7 @@ import type {
   StyleDefinitions,
 } from "../types/document";
 import { readModel } from "../types/documentModel";
-import { canonicalAcceptedComments } from "./canonicalAcceptedComments";
+import { createCanonicalBatchReview } from "./canonicalBatchReview";
 import {
   canonicalCommentBody,
   compileCanonicalComments,
@@ -3624,6 +3624,14 @@ export class CanonicalPublicOperations {
     } else if (batch.mode !== "suggested") {
       const trackedOperations = [...appliedById.values()];
       const originalDocument = readModel(session.document);
+      const review = createCanonicalBatchReview({
+        story,
+        before: { document: originalDocument, projection: state.doc },
+        after: {
+          document: prepared.value.document,
+          projection: prepared.value.projection.doc,
+        },
+      });
       addRetiredCommentReceipts({
         before: state,
         after: prepared.value.projection.doc,
@@ -3641,26 +3649,10 @@ export class CanonicalPublicOperations {
               : [[operation.id, deletionSpans] as const],
           ),
         ),
-        acceptedCommentIds: (side) =>
-          side === "before"
-            ? canonicalAcceptedComments({
-                document: originalDocument,
-                projection: state.doc,
-                story,
-              })
-            : canonicalAcceptedComments({
-                document: prepared.value.document,
-                projection: prepared.value.projection.doc,
-                story,
-              }),
+        acceptedCommentIds: review.acceptedCommentIds,
       });
       const message = canonicalTrackedBatchFidelityError({
-        story,
-        before: { document: originalDocument, projection: state.doc },
-        after: {
-          document: prepared.value.document,
-          projection: prepared.value.projection.doc,
-        },
+        review,
         createdCommentIds: new Set(
           trackedOperations.flatMap(({ commentId }) =>
             commentId === undefined ? [] : [commentId],

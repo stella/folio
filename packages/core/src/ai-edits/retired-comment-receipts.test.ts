@@ -176,6 +176,7 @@ for (const session of ["legacy", "canonical"] as const) {
 
   test(`${session} refuses a jointly exhausted anchor without assigning an operation receipt`, async () => {
     const reviewer = await open(session);
+    const before = structuredClone(reviewer.toDocument());
     const apply = (operations: readonly FolioDocumentOperation[]) =>
       reviewer.applyDocumentOperations(
         {
@@ -205,6 +206,8 @@ for (const session of ["legacy", "canonical"] as const) {
         message: "Accept All would lose a comment.",
       })),
     );
+    expect(structuredClone(reviewer.toDocument())).toEqual(before);
+    expect(reviewer.getChanges()).toEqual([]);
     const other = apply([edits[3]]);
     expect(other.applied).toHaveLength(1);
     expect(other.receipts.at(0)).not.toHaveProperty("retiredCommentIds");

@@ -554,13 +554,21 @@ const getTrackedChangeGroupsFromProjectedDoc = (
             if (continuationRevisionsOwnedByRows.has(id)) continue;
             const type =
               kind === "tableCellInsertion" ? "cellInserted" : "cellDeleted";
+            const author =
+              typeof info["author"] === "string" ? info["author"] : "";
+            revisionRanges?.push({
+              type,
+              author,
+              from: pos,
+              to: pos + node.nodeSize,
+            });
             const key = `cell:${type}:${id}`;
             if (grouped.has(key)) continue;
             // The collapsed cell has no visible text node or block anchor.
             grouped.set(key, {
               id,
               type,
-              author: typeof info["author"] === "string" ? info["author"] : "",
+              author,
               date: typeof info["date"] === "string" ? info["date"] : null,
               text: "",
               blockId: firstBlockIdWithin({ node, nodePos: pos, blockStarts }),

@@ -8811,7 +8811,7 @@ export const previewFolioAIEditOperationsWithResult = (
       },
     }),
     revisionIdSeed: -1_000_000_000,
-    wordDiffMode: "coarse",
+    wordDiffMode,
   });
   return {
     outcome: {

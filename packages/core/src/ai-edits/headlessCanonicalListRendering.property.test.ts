@@ -409,6 +409,12 @@ describe("numbering an operation sets", () => {
   test(
     "the law catches an edit's normalization that leaves a table's paragraphs as they were",
     async () => {
+      const buffer = await fixture();
+      const draw = { ...CELL_REFERENCE, mode: "direct" } as const;
+      const baseline = await liveAndReopened(buffer, draw);
+      expect(baseline).not.toBeNull();
+      expect(baseline?.live).toEqual(baseline?.reopened);
+
       // The test-only break: the normalization after an edit stops at the
       // story's own paragraphs and leaves its tables as the edit left them.
       // Reopening reads the tables through the parser, which numbers them.
@@ -443,14 +449,10 @@ describe("numbering an operation sets", () => {
           };
         },
       }));
-      const buffer = await fixture();
       try {
         // The mutant also makes the tracked transaction unreviewable. Apply
         // directly so the normalization law sees the stale table.
-        const read = await liveAndReopened(buffer, {
-          ...CELL_REFERENCE,
-          mode: "direct",
-        });
+        const read = await liveAndReopened(buffer, draw);
         expect(read).not.toBeNull();
         expect(read?.live).not.toEqual(read?.reopened);
       } finally {

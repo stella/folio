@@ -442,6 +442,7 @@ describe("an edit operation that deletes a note reference", () => {
       .getContent()
       .find(({ text }) => text.startsWith("Noted text"));
     if (!block) throw new Error("no noted paragraph");
+    const before = structuredClone(reviewer.toDocument());
     const result = reviewer.applyDocumentOperations(
       {
         version: 1,
@@ -450,7 +451,7 @@ describe("an edit operation that deletes a note reference", () => {
       },
       { undefinedReferences: "refuse" },
     );
-    return { reviewer, result };
+    return { reviewer, before, result };
   };
   const saved = async (reviewer: FolioDocxReviewer): Promise<Document> =>
     parseShapeDocument(new Uint8Array(await reviewer.toBuffer()));
@@ -464,7 +465,8 @@ describe("an edit operation that deletes a note reference", () => {
   });
 
   test("a tracked edit cannot remove the note on acceptance", async () => {
-    const { reviewer, result } = await deleteNotedParagraph("tracked-changes");
+    const { reviewer, before, result } =
+      await deleteNotedParagraph("tracked-changes");
     expect(result.status).toBe("rejected");
     expect(result.applied).toEqual([]);
     expect(result.undoHandle).toBeNull();
@@ -474,6 +476,7 @@ describe("an edit operation that deletes a note reference", () => {
         message: expect.stringContaining("Accept All would lose a note"),
       }),
     ]);
+    expect(structuredClone(reviewer.toDocument())).toEqual(before);
     expect(noteState(await saved(reviewer), 1)).toEqual({
       text: "The note text.",
       deleted: false,
