@@ -309,15 +309,38 @@ describe("an edit leaves every comment and bookmark range balanced and anchored"
           if (!target) {
             return;
           }
-          const receipt = reviewer.applyOperations(
-            [operationFor(generated.edit, target.id)],
-            {
-              undefinedReferences: "refuse",
-              mode: generated.edit.mode,
-            },
-          );
+          const operation = operationFor(generated.edit, target.id);
+          const receipt = reviewer.applyOperations([operation], {
+            undefinedReferences: "refuse",
+            mode: generated.edit.mode,
+          });
 
-          expect(receipt.applied).toHaveLength(1);
+          if (
+            generated.edit.kind === "deleteBlock" &&
+            generated.edit.mode === "tracked-changes" &&
+            generated.edit.blockIndex === generated.noteRefParagraph
+          ) {
+            // A tracked edit cannot take a note on acceptance; a reviewed
+            // suggestion stages the same deletion.
+            expect(receipt.applied).toEqual([]);
+            expect(receipt.skipped).toEqual([
+              {
+                id: operation.id,
+                reason: "invalidResult",
+                message: "Accept All would lose a note.",
+              },
+            ]);
+            const staged = reviewer.applyOperations([operation], {
+              undefinedReferences: "refuse",
+              mode: "suggested",
+            });
+            const suggestionId = staged.applied.at(0)?.suggestionId;
+            expect(suggestionId).toBeDefined();
+            if (suggestionId === undefined) return;
+            expect(reviewer.acceptSuggestion(suggestionId)).toBe(true);
+          } else {
+            expect(receipt.applied).toHaveLength(1);
+          }
           const saved = await reviewer.toBuffer();
           const zip = await ZipArchive.read(saved);
           const xml = (await zip.entry("word/document.xml")?.text()) ?? "";
