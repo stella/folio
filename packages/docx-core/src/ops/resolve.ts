@@ -3380,6 +3380,7 @@ type JoinPlan = {
   op: ResolveRevisionOp;
   story: OpStory;
   paraId: string;
+  revisionId: number;
   added: boolean;
   depth: number | undefined;
 };
@@ -3559,7 +3560,7 @@ const paragraphMarkPlan = (
 
 const joinOps = (
   document: Document,
-  { op, story, paraId, added, depth }: JoinPlan,
+  { op, story, paraId, revisionId, added, depth }: JoinPlan,
   ends: EmptiedEndsById,
   /** Table receivers a later paragraph of this resolution already ran into. */
   ranInto: ReadonlySet<string> = new Set(),
@@ -3710,11 +3711,12 @@ const joinOps = (
   // blocks would move into or out of its range.
   if (next !== undefined && isBlockBoundary(next)) {
     return Result.err(
-      refusal(
-        op,
-        DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-        `A range boundary stands between ${paraId} and the next block.`,
-      ),
+      new DocumentOpRefusal({
+        opType: op.type,
+        reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+        message: `A range boundary stands between ${paraId} and the next block.`,
+        blockedParagraphMarkRevisionId: revisionId,
+      }),
     );
   }
   // No paragraph to join: a table or another block follows, or the
@@ -4548,7 +4550,14 @@ export const planRevisionResolution = ({
             : 0,
         );
       }
-      joins.push({ op, story: op.story, paraId, added, depth });
+      joins.push({
+        op,
+        story: op.story,
+        paraId,
+        revisionId: mark.info.id,
+        added,
+        depth,
+      });
     }
     let review = resolveParagraphReview(paragraph, resolution, keepsBreak);
     const retiredDepth = retiredCutDepths.get(idKey(paraId));

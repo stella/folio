@@ -33,6 +33,7 @@ type TrackedBatchFidelityOptions = {
   before: EditorState;
   after: PMNode;
   createdCommentIds: readonly number[];
+  retiredCommentIds?: readonly number[];
 };
 
 const copyRange = (doc: PMNode, from: number, to: number): PMNode => {
@@ -205,10 +206,15 @@ const protectedContent = (doc: PMNode): Inventory => {
 const missingProtectedContent = (
   expected: Inventory,
   actual: Inventory,
+  retiredCommentIds: readonly number[],
 ): ProtectionKind | null => {
+  const retiredCommentKeys = new Set(
+    retiredCommentIds.flatMap((id) => [String(id), `reference:${String(id)}`]),
+  );
   return (
     protectionKinds.find((kind) => {
       for (const [key, count] of expected[kind]) {
+        if (kind === "comment" && retiredCommentKeys.has(key)) continue;
         if ((actual[kind].get(key) ?? 0) < count) return true;
       }
       return false;
@@ -336,13 +342,19 @@ const modelInventory = (blocks: readonly BlockContent[]): Inventory => {
 export const missingProtectedBlockKind = (
   before: readonly BlockContent[],
   after: readonly BlockContent[],
+  retiredCommentIds: readonly number[] = [],
 ): ProtectionKind | null =>
-  missingProtectedContent(modelInventory(before), modelInventory(after));
+  missingProtectedContent(
+    modelInventory(before),
+    modelInventory(after),
+    retiredCommentIds,
+  );
 
 const checkTrackedBatchFidelity = ({
   before,
   after,
   createdCommentIds,
+  retiredCommentIds = [],
 }: TrackedBatchFidelityOptions): string | null => {
   // Comparisons verify against both input documents after matching all stories.
   if (comparisonApplying()) return null;
@@ -381,6 +393,7 @@ const checkTrackedBatchFidelity = ({
   const lost = missingProtectedContent(
     protectedContent(acceptedBefore.doc),
     protectedContent(acceptedAfter.doc),
+    retiredCommentIds,
   );
   return lost === null ? null : `Accept All would lose a ${lost}.`;
 };
