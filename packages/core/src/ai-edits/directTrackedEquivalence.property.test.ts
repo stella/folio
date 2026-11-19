@@ -39,8 +39,10 @@ import {
 import { createDocx } from "../docx/rezip";
 import { docxToMarkdown } from "../docx/server/docxToMarkdown";
 import { fromMarkdown } from "../markdown";
+import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
 import { readParagraphNumberingAttr } from "../prosemirror/numberingAttr";
 import type { Comment, ParagraphContent } from "../types/document";
+import { applyFolioAIEditOperations } from "./apply";
 import {
   changesFromSegments,
   planTextChanges,
@@ -546,7 +548,7 @@ describe("an edit applied directly and the same edit accepted", () => {
     );
   });
 
-  test("carries disjoint comments across a saved tracked replacement", async () => {
+  test("checks disjoint comment fidelity across a saved tracked replacement", async () => {
     const { content, comments } = paragraphOf([
       { kind: "comment", text: "Seller " },
       { kind: "field", result: "12" },
@@ -562,27 +564,64 @@ describe("an edit applied directly and the same edit accepted", () => {
       blockId: direct.snapshot().blocks[0]?.id ?? "",
       text: "s12Seller Seller ",
     } as const;
-    for (const [mode, reviewer] of [
-      ["direct", direct],
-      ["tracked-changes", tracked],
-    ] as const) {
-      expect(
-        reviewer.applyDocumentOperations(
-          {
-            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-            mode,
-            operations: [operation],
-          },
-          { undefinedReferences: "refuse" },
-        ).skipped,
-      ).toEqual([]);
+    const apply = (reviewer: typeof direct, mode: Mode) =>
+      reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode,
+          operations: [operation],
+        },
+        { undefinedReferences: "refuse" },
+      );
+    expect(apply(direct, "direct").applied).toHaveLength(1);
+    const before = tracked.toDocument();
+    const refused = apply(tracked, "tracked-changes");
+    expect(refused.applied).toEqual([]);
+    expect(refused.skipped).toEqual([
+      {
+        id: "edit",
+        reason: "invalidResult",
+        message: "Reject All would change the original content or formatting.",
+      },
+    ]);
+    expect(tracked.toDocument()).toEqual(before);
+
+    // Stage the unguarded replacement explicitly so a saved package still
+    // exercises native review of the two overlapping pending comment ranges.
+    const view = {
+      state: tracked.state,
+      dispatch: (transaction: Parameters<typeof tracked.state.apply>[0]) => {
+        view.state = view.state.apply(transaction);
+      },
+    };
+    const staged = applyFolioAIEditOperations({
+      view,
+      mode: "tracked-changes",
+      snapshot: tracked.snapshot(),
+      operations: [operation],
+      undefinedReferences: "refuse",
+      author: "Reviewer",
+    });
+    expect(staged.applied).toHaveLength(1);
+    const pendingParagraph = proseDocToBlocks(view.state.doc).at(0);
+    if (pendingParagraph?.type !== "paragraph") {
+      throw new Error("Expected the staged replacement paragraph");
     }
-    const pending = await reopened(tracked);
+    const pending = await openReviewer(
+      await paragraphsDocx([pendingParagraph.content], comments),
+    );
     expect(pending.getComments()).toHaveLength(2);
     for (const comment of pending.getComments()) {
       expect(comment.anchoredText).toContain("s12Seller");
     }
-    expect(reviewerPresentation(await reopenedAccepted(tracked))).toEqual(
+    const rejected = await reopened(pending);
+    expect(rejected.rejectAll().resolved).toBeGreaterThan(0);
+    const ranges = (reviewer: typeof tracked) =>
+      reviewer.getComments().map(({ anchoredText }) => anchoredText);
+    expect(ranges(tracked)).toEqual(["Seller ", "Seller "]);
+    expect(ranges(rejected).join("")).toContain("12");
+    expect(pending.acceptAll().resolved).toBeGreaterThan(0);
+    expect(reviewerPresentation(await reopened(pending))).toEqual(
       reviewerPresentation(await reopened(direct)),
     );
   });
