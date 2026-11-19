@@ -55,6 +55,12 @@
       "date": "2026-11-18"
     },
     {
+      "seed": -1381006377,
+      "path": "13:0:0:0:0:0:0:4:3:3:3:4:3:3:3:3:3:4:4:4:4:5:4:4:4:4:4:4:6:4:6:3:3:4:4:3:3:3:4:3:5:4:6:6:6:6:6:6:6:6:6",
+      "note": "Rejecting two added marks in a content control keeps the later paragraph with its own heading style; the legacy reviewer keeps the earlier one's properties.",
+      "date": "2026-11-19"
+    },
+    {
       "seed": -969066507,
       "path": "14:0:0:0:0:0:0:0:0:3:2:2:2:2:3:2:2:2:2:4:4:4:4:4:5:4:4:4:4:7:7:7:8:7:7:7:7:7:7:7:7:8:7:7:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8",
       "note": "Rejecting two bare added marks in a group content control keeps the later paragraph, whose mark ends the control.",

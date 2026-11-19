@@ -1,8 +1,11 @@
+import { isDeepStrictEqual } from "node:util";
+
 import {
   documentStories,
   findStoryBody,
   paragraphIdsIn,
   storyBody,
+  storyParagraphs,
 } from "@stll/docx-core/ops";
 
 import type {
@@ -85,6 +88,76 @@ export const rejectedJoinSurvivorIdentities = ({
     walk(storyBody(source, story).content, false);
   }
   return pairs;
+};
+
+/** A paragraph's properties: everything but its identity, content and mark. */
+const propertiesOf = ({
+  paraId: _paraId,
+  textId: _textId,
+  content: _content,
+  pPrMark: _pPrMark,
+  ...properties
+}: Paragraph) => properties;
+
+/**
+ * `source` with the earlier paragraph of each survivor pair given the
+ * properties of the later one, whose mark the join keeps with them; the
+ * legacy reviewer, which keeps the earlier paragraph, then reads the joined
+ * paragraph with the properties it has. `undefined` where every pair already
+ * has the same properties.
+ */
+export const withSurvivorProperties = (
+  source: Document,
+  pairs: readonly { expectedId: string; survivorId: string }[],
+): Document | undefined => {
+  const paragraphs = new Map<string, Paragraph>();
+  for (const story of documentStories(source))
+    for (const { paragraph } of storyParagraphs(storyBody(source, story)))
+      if (paragraph.paraId !== undefined)
+        paragraphs.set(paragraph.paraId, paragraph);
+  const replaced = new Map<string, Paragraph>();
+  for (const { expectedId, survivorId } of pairs) {
+    const earlier = paragraphs.get(expectedId);
+    const later = paragraphs.get(survivorId);
+    if (
+      earlier === undefined ||
+      later === undefined ||
+      isDeepStrictEqual(propertiesOf(earlier), propertiesOf(later))
+    )
+      continue;
+    replaced.set(expectedId, {
+      ...propertiesOf(later),
+      type: "paragraph",
+      paraId: expectedId,
+      ...(earlier.textId === undefined ? {} : { textId: earlier.textId }),
+      content: earlier.content,
+      ...(earlier.pPrMark === undefined ? {} : { pPrMark: earlier.pPrMark }),
+    });
+  }
+  if (replaced.size === 0) return undefined;
+  const visit = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(visit);
+    if (
+      typeof value !== "object" ||
+      value === null ||
+      Object.getPrototypeOf(value) !== Object.prototype
+    )
+      return value;
+    if (
+      "type" in value &&
+      value.type === "paragraph" &&
+      "paraId" in value &&
+      typeof value.paraId === "string"
+    ) {
+      const replacement = replaced.get(value.paraId);
+      if (replacement !== undefined) return replacement;
+    }
+    return Object.fromEntries(
+      Object.entries(value).map(([key, child]) => [key, visit(child)]),
+    );
+  };
+  // SAFETY: only paragraphs are replaced, each by a paragraph.
+  return visit(source) as Document;
 };
 
 /**

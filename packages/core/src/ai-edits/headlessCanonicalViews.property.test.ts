@@ -41,6 +41,7 @@ import {
   rejectedContainerEndIdentities,
   rejectedJoinSurvivorIdentities,
   resolvedAbsorbedFollowerIdentities,
+  withSurvivorProperties,
 } from "../../../../test/support/rejectedJoinSurvivors";
 import { rejectedParagraphFillerIdentities } from "../../../../test/support/rejectedParagraphFillers";
 import { CanonicalSessionError } from "../canonical/canonicalSession";
@@ -269,6 +270,24 @@ const viewLaws = async (
     actual: canonical.toResolvedDocument("reject"),
     expected: (await open(buffer, "legacy")).toResolvedDocument("reject"),
   });
+  // The join keeps the later paragraph's properties with its mark; the legacy
+  // reviewer reads them on the earlier paragraph once it has them too.
+  const aligned = withSurvivorProperties(before, survivors);
+  if (aligned !== undefined) {
+    const alignedBuffer = await packaged(aligned);
+    if (alignedBuffer === null)
+      panic("A document with a paragraph's properties copied packages.");
+    const alignedViews = await expectedViews(alignedBuffer);
+    for (const [index, entry] of expected.entries()) {
+      if (entry.view !== "original") continue;
+      expected[index] =
+        alignedViews.find(
+          (candidate) =>
+            candidate.view === "original" &&
+            isDeepStrictEqual(candidate.handle, entry.handle),
+        ) ?? panic("The aligned document holds the same stories.");
+    }
+  }
   for (const entry of expected) {
     if (entry.view !== "original") continue;
     for (const { expectedId, survivorId } of survivors) {
