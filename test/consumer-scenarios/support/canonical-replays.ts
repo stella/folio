@@ -95,7 +95,6 @@ export const CANONICAL_VACUOUS_STEPS: Readonly<
   "issue-2236-new-list-in-header-after-other-stories-direct.json": [0],
   "issue-2316-c14cd1e28851babe.json": [0, 1],
   "issue-2904-merged-numbered-heading-emptied.json": [1],
-  "markdown-note-reference-emphasis.json": [0, 1],
   "revision-boundary-1c6f520a41a4dcf4.json": [4],
   "revision-round-trip-1.json": [4],
   "revision-round-trip-10.json": [2],

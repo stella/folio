@@ -4424,26 +4424,25 @@ export class CanonicalPublicOperations {
       return refusal("splitsCharacter");
     // A note reference is not text: a replacement rewrites the prose around
     // the references its range holds, each kept in place, as the shared
-    // segmentation pairs them. A range that cuts a reference, an operation
-    // that does not replace text, and a replacement that drops, moves or
-    // invents a reference are refused.
+    // segmentation pairs them. A comment or formatting covers whole
+    // references as it covers the words beside them, and leaves them in
+    // place. A range that cuts a reference and a replacement that drops,
+    // moves or invents a reference are refused.
     const replacesText =
       operation.type === "replaceInBlock" ||
       operation.type === "replaceRange" ||
       operation.type === "replaceBlock";
     const references = noteReferenceSpansWithin(clean, start, end);
-    if (
-      cutsIntoNoteReference(clean, start, end) ||
-      (references.length > 0 && !replacesText)
-    )
+    if (cutsIntoNoteReference(clean, start, end))
       return refusal("protectedReference");
+    // Only a replacement rewrites the prose between references.
     const segments = segmentsAroundNoteReferences(
       clean.text.slice(start, end),
-      text,
+      replacesText ? text : clean.text.slice(start, end),
       references,
     );
     if (segments === null) return refusal("protectedReference");
-    const prose = segments.replacement.join("");
+    const prose = replacesText ? segments.replacement.join("") : "";
     if (stripInlineEmphasisMarkers(text) !== text)
       return refusal(
         "unsupportedBlock",
