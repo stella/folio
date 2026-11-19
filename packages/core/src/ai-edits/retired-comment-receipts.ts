@@ -11,6 +11,7 @@ import {
 } from "../prosemirror/plugins/documentNumbering";
 import { createDocumentStyleContextPlugin } from "../prosemirror/plugins/documentStyles";
 import { getDocumentStyleResolver } from "../prosemirror/plugins/documentStyleState";
+import { isZeroWidthAnchor } from "../prosemirror/zeroWidthAnchors";
 import {
   anchoredCommentIdsInProseDoc,
   commentAnchorIdsForNode,
@@ -176,7 +177,7 @@ export const addRetiredCommentReceipts = ({
     if (node.type.name === "commentReference") {
       for (const commentId of commentAnchorIdsForNode(node))
         recordCoverage(points, commentId, point);
-    } else if (node.isInline && !isCommentAnchorCarrier(node)) {
+    } else if (node.isInline && !isZeroWidthAnchor(node)) {
       const mark = node.marks.find(({ type }) => type.name === "deletion");
       const deletion =
         structure ??
@@ -218,7 +219,7 @@ export const addRetiredCommentReceipts = ({
     before.doc.descendants((node, position) => {
       if (
         !node.isInline ||
-        isCommentAnchorCarrier(node) ||
+        isZeroWidthAnchor(node) ||
         node.marks.some(({ type }) => type.name === "deletion")
       )
         return true;
