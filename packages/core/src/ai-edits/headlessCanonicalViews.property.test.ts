@@ -37,7 +37,10 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
-import { rejectedJoinSurvivorIdentities } from "../../../../test/support/rejectedJoinSurvivors";
+import {
+  rejectedContainerEndIdentities,
+  rejectedJoinSurvivorIdentities,
+} from "../../../../test/support/rejectedJoinSurvivors";
 import { rejectedParagraphFillerIdentities } from "../../../../test/support/rejectedParagraphFillers";
 import { CanonicalSessionError } from "../canonical/canonicalSession";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
@@ -274,6 +277,35 @@ const viewLaws = async (
         ) ?? null;
       entry.text =
         entry.text?.replaceAll(`[${expectedId}]`, `[${survivorId}]`) ?? null;
+    }
+  }
+  // The legacy reviewer drops an empty paragraph whose rejected added mark
+  // ends a local container; the paragraph stays there, as the canonical
+  // reviewer reads it, after the block it follows.
+  const containerEnds = new Set(
+    rejectedContainerEndIdentities({
+      source: before,
+      actual: canonical.toResolvedDocument("reject"),
+      expected: (await open(buffer, "legacy")).toResolvedDocument("reject"),
+    }),
+  );
+  for (const entry of expected) {
+    if (entry.view !== "original" || containerEnds.size === 0) continue;
+    const actualBlocks =
+      read.find(
+        (candidate) =>
+          candidate.view === "original" &&
+          isDeepStrictEqual(candidate.handle, entry.handle),
+      )?.blocks ?? [];
+    for (const [index, block] of actualBlocks.entries()) {
+      if (!containerEnds.has(block.id) || entry.blocks === null) continue;
+      const previous = actualBlocks.at(index - 1);
+      const at =
+        index === 0 || previous === undefined
+          ? 0
+          : entry.blocks.findIndex(({ id }) => id === previous.id) + 1;
+      if (at === 0 && index !== 0) continue;
+      entry.blocks = entry.blocks.toSpliced(at, 0, block);
     }
   }
   const fillerIds = new Map(
