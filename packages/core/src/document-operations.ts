@@ -29,6 +29,7 @@ import {
 } from "./ai-edits/result-validation";
 import type { FolioTableTemplates } from "./ai-edits/table-template";
 import { TABLE_INSERTION_MODES } from "./ai-edits/tableInsertionModes";
+import { trackedBatchFidelityError } from "./ai-edits/tracked-batch-fidelity";
 import type {
   FolioAIBlockParagraphProperties,
   FolioAIEditAppliedOperation,
@@ -2707,6 +2708,7 @@ type BatchAttempt = {
 
 /** An attempt after the result check: what to report and what to commit. */
 type GuardedBatch = {
+  fidelityRefused?: true;
   outcome: FolioAIEditApplyOutcome;
   commit: () => void;
 };
@@ -2937,15 +2939,57 @@ export const applyFolioDocumentOperationsInPackage = ({
   };
 
   /**
-   * Apply (or preview) the batch and check the result with the save-time
-   * validator before anything reaches the caller. Operations whose result would
-   * not save are skipped with `invalidResult`; in a best-effort batch the rest
-   * is applied again without them, in an atomic one nothing is.
+   * A fidelity failure invalidates the batch. Preserve the refusal details
+   * for operations already skipped by the applier or save-time validator.
    */
+  const refuseFidelityLoss = (
+    run: BatchAttempt,
+    skipped: readonly FolioAIEditSkippedOperation[] = [],
+  ): GuardedBatch | null => {
+    if (
+      run.doc === null ||
+      parsedBatch.mode === "direct" ||
+      parsedBatch.mode === "suggested"
+    ) {
+      return null;
+    }
+    const message = trackedBatchFidelityError({
+      before: view.state,
+      after: run.doc,
+      createdCommentIds: run.commentIds,
+      retiredCommentIds: run.outcome.applied.flatMap(
+        ({ retiredCommentIds }) => retiredCommentIds ?? [],
+      ),
+    });
+    if (message === null) return null;
+    return {
+      fidelityRefused: true,
+      outcome: {
+        ...run.outcome,
+        applied: [],
+        skipped: inOperationOrder(parsedBatch.operations, [
+          ...run.outcome.skipped,
+          ...skipped,
+          ...run.outcome.applied.map(({ id }): FolioAIEditSkippedOperation => ({
+            id,
+            reason: "invalidResult",
+            message,
+          })),
+        ]),
+      },
+      commit: NO_COMMIT,
+    };
+  };
+
+  /** Check the held result before dispatching any operation to the caller. */
   const guardedAttempt = (preview: boolean): GuardedBatch => {
     const first = attempt(parsedBatch.operations, preview);
     const [firstError] = introducedErrors(first);
     if (firstError === undefined) {
+      // Atomic preflight uses a coarse diff. Verify the held commit instead.
+      const fidelity =
+        preview && !parsedBatch.dryRun ? null : refuseFidelityLoss(first);
+      if (fidelity !== null) return fidelity;
       return {
         outcome: {
           ...first.outcome,
@@ -3001,6 +3045,8 @@ export const applyFolioDocumentOperationsInPackage = ({
         commit: NO_COMMIT,
       };
     }
+    const fidelity = refuseFidelityLoss(second.run, refused);
+    if (fidelity !== null) return fidelity;
     return {
       outcome: {
         ...second.run.outcome,
@@ -3085,8 +3131,9 @@ export const applyFolioDocumentOperationsInPackage = ({
   const { heldRevisionConflict, ...result } = guarded.outcome;
   if (heldRevisionConflict) return atomicResult(result, "rejected");
   if (
-    isAtomic &&
-    result.skipped.some(({ reason }) => reason === "invalidResult")
+    guarded.fidelityRefused === true ||
+    (isAtomic &&
+      result.skipped.some(({ reason }) => reason === "invalidResult"))
   ) {
     return atomicResult(result, "rejected");
   }

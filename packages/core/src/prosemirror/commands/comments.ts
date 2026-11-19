@@ -2013,12 +2013,20 @@ export function resolveAllChangesInHeadlessState(
   state: EditorState,
   mode: ResolveMode,
 ): EditorState {
+  return projectAllChangesInHeadlessState(state, mode) ?? state;
+}
+
+/** The review transaction, or null when its content cannot be resolved. */
+export const projectAllChangesInHeadlessState = (
+  state: EditorState,
+  mode: ResolveMode,
+): EditorState | null => {
   let resolvedState = state;
-  resolveAllChanges(mode)(state, (transaction) => {
+  const resolved = resolveAllChanges(mode)(state, (transaction) => {
     resolvedState = state.apply(transaction);
   });
-  return resolvedState;
-}
+  return resolved ? resolvedState : null;
+};
 
 /**
  * Resolve a story and retain its position map for callers addressing the tracked source.

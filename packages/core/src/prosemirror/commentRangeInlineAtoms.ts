@@ -8,8 +8,9 @@ import { TRACKED_RUN_INLINE_ATOM_DISPOSITIONS } from "./trackedRunInlineAtoms";
  *
  * - `extends`: a comment mark on the atom keeps the comment's range alive.
  * - `inert`: the atom is invisible to the reader, so a comment mark on it would
- *   be a ghost range nobody can see or select. Comment integrity strips the mark
- *   and never counts the atom as range content.
+ *   be a ghost range nobody can see or select. Comment integrity never counts
+ *   the atom as range content. On references, an authored mark can still
+ *   record which other ranges remain open at that position.
  *
  * This is separate from revision ownership: a cached rendered page break must
  * stay inside its tracked-change wrapper, but it can never hold a comment on
@@ -70,7 +71,7 @@ const participationByName = new Map<
   CommentRangeInlineAtomParticipation
 >(Object.entries(COMMENT_RANGE_INLINE_ATOM_PARTICIPATION));
 
-/** Whether a node is an inline atom that must never carry or extend a comment range. */
+/** Whether an inline atom cannot extend a comment's coverage. */
 export const isCommentRangeInertAtom = (node: PMNode): boolean => {
   if (!node.isInline || !node.isAtom) {
     return false;

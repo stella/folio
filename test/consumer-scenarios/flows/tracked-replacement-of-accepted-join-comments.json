@@ -5,7 +5,7 @@
   "fixture": "comments",
   "mode": "tracked-changes",
   "seed": 1026398514,
-  "title": "A tracked replacement of an accepted join keeps each comment one stretch",
+  "title": "A tracked replacement of an accepted join refuses to cover the separator",
   "steps": [
     {
       "action": "story batch",
@@ -26,6 +26,7 @@
     {
       "action": "suggest_changes",
       "seed": 624187064,
+      "expectedFidelityRefusal": "rejectOriginal",
       "operations": [
         {
           "type": "replaceBlock",

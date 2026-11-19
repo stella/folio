@@ -12,6 +12,7 @@ import {
 import { openReviewer, packDocument } from "../support/documents.ts";
 import { assertStoryInventory, saveAndReopen } from "../support/invariants.ts";
 import { MODES } from "../support/operations.ts";
+import { stageReviewedProtectedEdit } from "../support/protected-edit.ts";
 import { createRandom, type Random, sentence } from "../support/random.ts";
 
 test("note inventory oracle rejects stale, missing and duplicate trailer entries", () => {
@@ -185,21 +186,26 @@ for (const mode of MODES) {
             );
           assert.equal(blocks.length, references);
           for (const [index, block] of blocks.entries()) {
-            const result = reviewer.applyDocumentOperations(
-              {
-                version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-                mode,
-                operations: [
-                  {
-                    id: `delete-${kind}-${index}`,
-                    type: "deleteBlock",
-                    blockId: block.id,
-                  },
-                ],
-              },
-              { undefinedReferences: "refuse" },
-            );
-            assert.equal(result.applied.length, 1);
+            const operation = {
+              id: `delete-${kind}-${index}`,
+              type: "deleteBlock",
+              blockId: block.id,
+            } as const;
+            const liveReferences =
+              resolution === "reject" ? references : references - index;
+            if (mode === "tracked-changes" && liveReferences === 1) {
+              stageReviewedProtectedEdit({ reviewer, operation, kind: "note" });
+            } else {
+              const result = reviewer.applyDocumentOperations(
+                {
+                  version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+                  mode,
+                  operations: [operation],
+                },
+                { undefinedReferences: "refuse" },
+              );
+              assert.equal(result.applied.length, 1, JSON.stringify(result));
+            }
             assertStoryInventory(reviewer);
             if (mode !== "direct") {
               // Resolve reference runs and paragraph marks separately.

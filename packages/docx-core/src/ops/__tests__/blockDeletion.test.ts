@@ -577,7 +577,7 @@ test("accepting the marks of paragraphs before a block content control at once e
   }
 });
 
-test("tracked deletion refuses existing inline review and missing physical ids", () => {
+test("tracked deletion keeps existing inline review and refuses missing physical ids", () => {
   const first = paragraph("00000001", "first");
   const final = paragraph("00000002", "final");
   const reviewed: Paragraph = {
@@ -590,13 +590,21 @@ test("tracked deletion refuses existing inline review and missing physical ids",
       },
     ],
   };
-  const refused = applyDocumentOp(
-    documentOf([reviewed, final]),
-    deletion(["00000001"]),
-  );
-  expect(refused.isErr() && refused.error.reason).toBe(
-    DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-  );
+  // Content an earlier deletion already took stays under it; only the
+  // paragraph's mark is recorded deleted.
+  const source = documentOf([reviewed, final]);
+  const tracked = apply(source, deletion(["00000001"]));
+  const [kept] = storyParagraphs(tracked.document.package.document);
+  expect(kept?.paragraph.content).toStrictEqual(reviewed.content);
+  expect(kept?.paragraph.pPrMark?.kind).toBe("del");
+  expect(
+    apply(tracked.document, {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds: tracked.revisions,
+      decision: REVISION_DECISIONS.REJECT,
+    }).document,
+  ).toStrictEqual(source);
   const missing = applyDocumentOp(documentOf([first, final]), {
     ...deletion(["00000001"]),
     newIds: {},
@@ -735,4 +743,89 @@ test("tracked deletion before a table its mark cannot run into is refused, and o
     });
     if (resolved.isErr()) throw resolved.error;
   }
+});
+
+const resolveTracked = (
+  document: Document,
+  revisionIds: number[],
+  decision: RevisionDecision,
+) =>
+  apply(document, {
+    type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+    story: OP_STORIES.MAIN,
+    revisionIds,
+    decision,
+  }).document;
+
+test("a tracked deletion of a paragraph whose mark a pending deletion already took keeps that record", () => {
+  const joined: Paragraph = {
+    ...paragraph("00000001", "Kept item."),
+    pPrMark: {
+      kind: "del",
+      info: { id: 5, author: "Other", date: "2026-01-02T03:04:05Z" },
+    },
+  };
+  const document = documentOf([
+    joined,
+    paragraph("00000002", "Joined."),
+    paragraph("00000003", "Closing."),
+  ]);
+  const tracked = apply(document, deletion(["00000001"]));
+  const [first] = storyParagraphs(tracked.document.package.document);
+  expect(first?.paragraph.pPrMark).toStrictEqual(joined.pPrMark);
+  expect(first?.paragraph.content).toStrictEqual([
+    {
+      type: "deletion",
+      info: { id: 100, author: "Reviewer", date: "2026-02-03T04:05:06Z" },
+      content: [
+        { type: "run", content: [{ type: "text", text: "Kept item." }] },
+      ],
+    },
+  ]);
+  expect(
+    resolveTracked(tracked.document, [100], REVISION_DECISIONS.REJECT),
+  ).toStrictEqual(document);
+  const undo = applyDocumentOps(tracked.document, tracked.inverse);
+  if (undo.isErr()) throw undo.error;
+  expect(undo.value.document).toStrictEqual(document);
+});
+
+test("a tracked deletion of a paragraph holding another author's insertion deletes it in place", () => {
+  const document = documentOf([
+    {
+      ...paragraph("00000001", "Kept"),
+      content: [
+        { type: "run", content: [{ type: "text", text: "Kept" }] },
+        {
+          type: "insertion",
+          info: { id: 7, author: "Other", date: "2026-01-02T03:04:05Z" },
+          content: [
+            { type: "run", content: [{ type: "text", text: " item." }] },
+          ],
+        },
+      ],
+    },
+    paragraph("00000002", "Closing."),
+  ]);
+  const tracked = apply(document, deletion(["00000001"]));
+  expect(
+    resolveTracked(
+      tracked.document,
+      tracked.revisions,
+      REVISION_DECISIONS.REJECT,
+    ),
+  ).toStrictEqual(document);
+  const accepted = resolveTracked(
+    tracked.document,
+    [...tracked.revisions, 7],
+    REVISION_DECISIONS.ACCEPT,
+  );
+  expect(
+    storyParagraphs(accepted.package.document).map(
+      ({ paragraph: located }) => located.paraId,
+    ),
+  ).toStrictEqual(["00000002"]);
+  const undo = applyDocumentOps(tracked.document, tracked.inverse);
+  if (undo.isErr()) throw undo.error;
+  expect(undo.value.document).toStrictEqual(document);
 });
