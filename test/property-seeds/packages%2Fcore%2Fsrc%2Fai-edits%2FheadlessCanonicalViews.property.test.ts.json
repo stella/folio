@@ -43,6 +43,12 @@
       "date": "2026-11-19"
     },
     {
+      "seed": -1230500802,
+      "path": "2:0:0:0:0:0:1:0:0:0:0:0:0:2:1:1:1:1:1:1:2:2:2:2:2:2:2:2:2:2:7:28:28:28:28:28:28:28:28:28",
+      "note": "The same refusal where the only paragraph of the list follows a content control.",
+      "date": "2026-11-19"
+    },
+    {
       "seed": 289121159,
       "path": "5:0:0:0:0:0:0:0:0:1:0:3:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5",
       "note": "Reviewer construction assigns distinct comment bindings to independently drawn point references. The original duplicate-reference source remains a separate native activation refusal regression.",
