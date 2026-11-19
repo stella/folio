@@ -5,7 +5,7 @@ import { resolveNumberingLevel } from "@stll/docx-core/model";
 import type { NumberingDefinitions } from "../types/document";
 import { cloneListInstanceWithFormat } from "./listNumberingInstances";
 
-test("clones the effective level and keeps the shared numbering definition", () => {
+test("clones the effective level and allocates an independent numbering definition", () => {
   const definitions = {
     abstractNums: [
       {
@@ -47,7 +47,16 @@ test("clones the effective level and keeps the shared numbering definition", () 
   if (!clone) throw new Error("Expected a cloned numbering instance");
 
   expect([1, 2, 3]).not.toContain(clone.numId);
-  expect(clone.definitions.abstractNums).toBe(definitions.abstractNums);
+  expect(clone.definitions.abstractNums).toHaveLength(2);
+  expect(clone.definitions.abstractNums.at(0)).toBe(
+    definitions.abstractNums.at(0),
+  );
+  const copied = clone.definitions.abstractNums.at(-1);
+  expect(copied?.abstractNumId).toBe(2);
+  expect(copied?.levels).toEqual(definitions.abstractNums.at(0)?.levels);
+  expect(clone.definitions.nums.at(-1)?.abstractNumId).toBe(
+    copied?.abstractNumId,
+  );
   expect(resolveNumberingLevel(clone.definitions, clone.numId, 0)).toEqual({
     kind: "level",
     source: "override",

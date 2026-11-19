@@ -170,11 +170,13 @@ export const changeListFormat = (
     { sourceNumId, level, numFmt, lvlText, start },
     { ...NO_NUMBERING_IDS_IN_USE, numIds: referencedNumberingIds(document) },
   );
-  const num =
-    cloned === undefined
-      ? undefined
-      : cloned.definitions.nums.find(({ numId }) => numId === cloned.numId);
-  if (num === undefined)
+  const num = cloned?.definitions.nums.find(
+    ({ numId }) => numId === cloned.numId,
+  );
+  const abstractNum = cloned?.definitions.abstractNums.find(
+    ({ abstractNumId }) => abstractNumId === num?.abstractNumId,
+  );
+  if (num === undefined || abstractNum === undefined)
     return refuse(
       DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
       "The source list instance or its requested level is undefined.",
@@ -186,7 +188,7 @@ export const changeListFormat = (
         at: { story, blockId, offset: 0 },
         ilvl,
       })),
-      target: { type: "new", num },
+      target: { type: "new", num, abstractNum },
     },
     mode,
   });
