@@ -35,6 +35,7 @@ import {
   freshCommentId,
   groupInsertionRuns,
   type IdBlock,
+  idKey,
   type IdLease,
   introducedIds,
   type LeasedId,
@@ -649,6 +650,18 @@ type PreparedOperation = {
    * insertion after it. Without that half it resolves again on its own.
    */
   besideDeletion?: true;
+  /**
+   * The paragraph whose stated properties a block insertion copies, and the
+   * paragraphs it inserts from a given copy. The batch runs in its execution
+   * order, so the copy is read when the insertion runs: an edit of that
+   * paragraph's properties the order runs first is in it.
+   */
+  inheritsFrom?: {
+    blockId: string;
+    /** The paragraph's own break was already pending removal when read. */
+    markDeleted: boolean;
+    paragraphs: (formatting: ParagraphFormatting | undefined) => Paragraph[];
+  };
 } & (
   | { type: "plain"; operation: FolioDocumentOperation }
   | {
@@ -1044,11 +1057,7 @@ const resolveBlockInsertion = ({
     ? text.split(LINE_BREAK_PATTERN).filter((line) => line.trim().length > 0)
     : [text];
   const texts = lines.length === 0 ? [""] : lines;
-  const formatting: Record<string, unknown> =
-    operation.inheritFormatting === false
-      ? {}
-      : { ...formattingSource.source.formatting };
-  for (const [key, value] of Object.entries(
+  const ownPatch = Object.entries(
     statedParagraphPatch({
       ...(operation.styleId === undefined
         ? {}
@@ -1069,9 +1078,7 @@ const resolveBlockInsertion = ({
         ? {}
         : { numbering: stated.numbering }),
     }),
-  ))
-    if (value === null) Reflect.deleteProperty(formatting, key);
-    else formatting[key] = value;
+  );
   const everyParagraph = operation.formattingScope === "allParagraphs";
   const markdownNumbering =
     stated.numbering?.kind === "reference" ? stated.numbering : undefined;
@@ -1087,9 +1094,16 @@ const resolveBlockInsertion = ({
       markdownParagraphs.push(item);
     }
   }
-  const paragraphs =
-    markdownParagraphs ??
-    texts.map((line, index): Paragraph => {
+  // The source's properties with the operation's set or cleared over them.
+  const paragraphsFrom = (
+    source: ParagraphFormatting | undefined,
+  ): Paragraph[] => {
+    const formatting: Record<string, unknown> =
+      operation.inheritFormatting === false ? {} : { ...source };
+    for (const [key, value] of ownPatch)
+      if (value === null) Reflect.deleteProperty(formatting, key);
+      else formatting[key] = value;
+    return texts.map((line, index): Paragraph => {
       // The first paragraph takes the operation's formatting; later ones are
       // body paragraphs unless the scope formats every paragraph alike.
       const own: Record<string, unknown> =
@@ -1125,6 +1139,9 @@ const resolveBlockInsertion = ({
           : { formatting: own as ParagraphFormatting }),
       };
     });
+  };
+  const paragraphs =
+    markdownParagraphs ?? paragraphsFrom(formattingSource.source.formatting);
   const place = blockInsertionPlace(operation, paragraph, projection);
   if (place === undefined)
     return refusal(
@@ -1158,7 +1175,24 @@ const resolveBlockInsertion = ({
         },
       ]
     : [];
-  const resolved = { intents, normalizations, from: position, to: position };
+  const resolved = {
+    intents,
+    normalizations,
+    from: position,
+    to: position,
+    ...(markdownParagraphs === undefined &&
+    operation.inheritFormatting !== false
+      ? {
+          inheritsFrom: {
+            blockId: formattingSource.blockId,
+            markDeleted: isDeletedPPrMark(
+              formattingSource.node.attrs["pPrMark"],
+            ),
+            paragraphs: paragraphsFrom,
+          },
+        }
+      : {}),
+  };
   if (operation.comment === undefined)
     return Result.ok({ type: "plain" as const, operation, ...resolved });
   // Where the inserted paragraphs are is known once they are compiled.
@@ -1174,6 +1208,64 @@ const resolveBlockInsertion = ({
     },
     ...resolved,
   });
+};
+
+type InsertionIntentsAsItRunsOptions = {
+  document: Document;
+  story: OpStory;
+  resolvedOperation: PreparedOperation;
+};
+
+/**
+ * A block insertion's intents with the properties it copies read from
+ * `document`, the batch as it stands when the insertion runs: an edit of
+ * the copied paragraph the batch order runs first is in the copy, as the
+ * default engine copies it.
+ */
+const insertionIntentsAsItRuns = ({
+  document,
+  story,
+  resolvedOperation,
+}: InsertionIntentsAsItRunsOptions): readonly EditorIntent[] => {
+  const { intents, inheritsFrom } = resolvedOperation;
+  if (inheritsFrom === undefined) return intents;
+  const body = findStoryBody(document, story);
+  if (body === undefined) return intents;
+  const locations = storyParagraphs(body);
+  const key = idKey(inheritsFrom.blockId);
+  let at = locations.findIndex(
+    ({ paragraph }) => idKey(paragraph.paraId ?? "") === key,
+  );
+  if (at === -1) return intents;
+  // A join the batch made of the paragraph is pending now: the joined
+  // paragraph has the properties of the paragraph the join leaves, as an
+  // insertion beside a join already pending copies them.
+  if (!inheritsFrom.markDeleted)
+    for (;;) {
+      const here = locations[at];
+      const next = locations[at + 1];
+      if (
+        here === undefined ||
+        next === undefined ||
+        !isDeletedPPrMark(here.paragraph.pPrMark) ||
+        next.index !== here.index + 1 ||
+        JSON.stringify(next.list) !== JSON.stringify(here.list)
+      )
+        break;
+      at += 1;
+    }
+  const source = locations[at]?.paragraph;
+  if (source === undefined) return intents;
+  const copied: EditorIntent[] = [];
+  for (const intent of intents)
+    copied.push(
+      intent.type === "insertParagraphs"
+        ? Object.assign({}, intent, {
+            paragraphs: inheritsFrom.paragraphs(source.formatting),
+          })
+        : intent,
+    );
+  return copied;
 };
 
 type InsertionAnchor =
@@ -2956,7 +3048,12 @@ export class CanonicalPublicOperations {
       reservedBlockIds = session.reservedBlockIds,
       commentAllocation: admittedComment,
     }: PrepareOperationOptions) => {
-      const { operation, intents } = resolvedOperation;
+      const { operation } = resolvedOperation;
+      const intents = insertionIntentsAsItRuns({
+        document: sourceDocument,
+        story,
+        resolvedOperation,
+      });
       const livePropertyRefusal = batchPropertyRefusal({
         document: sourceDocument,
         story,
