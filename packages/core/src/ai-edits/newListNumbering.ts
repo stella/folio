@@ -50,6 +50,15 @@ type DeferredNewListReference = {
   level: number;
 };
 
+/** Start a list discovered while compiling one insertion. */
+export const deferInsertedList = (
+  kind: NewListDefinition["kind"],
+): DeferredNewListReference => ({
+  kind: "deferredNewList",
+  allocation: { kind },
+  level: 0,
+});
+
 export type FolioAIStagedEditOperation = FolioAIEditOperation<
   FolioContentStatedNumbering | DeferredNewListReference
 >;

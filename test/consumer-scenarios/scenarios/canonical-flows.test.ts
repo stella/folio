@@ -25,6 +25,7 @@ const CANONICAL_REPLAYS = [
   "issue-1356-table-after-a-deleted-final-paragraph-direct.json",
   "tracked-comment-point.json",
   "unicode-comment-point.json",
+  "issue-1754-clear-numbered-heading-style.json",
 ] as const;
 
 test("the replays below run on the canonical session", () => {

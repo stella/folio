@@ -363,7 +363,11 @@ const decodeSuggestChangesInput = (
       if (key === typeKey) {
         continue;
       }
-      if (allowedKeys.includes(key)) {
+      const unusedTableText =
+        type === "insertTable" &&
+        key === "text" &&
+        operation["textFormat"] === undefined;
+      if (allowedKeys.includes(key) && !unusedTableText) {
         decoded[key] = value;
         continue;
       }

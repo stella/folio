@@ -73,6 +73,7 @@ import {
   EXISTING_REVISION_CONFLICT_MESSAGE,
 } from "../ai-edits/existingRevisions";
 import { stripInlineEmphasisMarkers } from "../ai-edits/inline-emphasis";
+import { compileMarkdownInsertion } from "../ai-edits/markdownInsertion";
 import { createBatchListMinter } from "../ai-edits/newListNumbering";
 import {
   cutsIntoNoteReference,
@@ -179,7 +180,7 @@ import type {
   StyleDefinitions,
 } from "../types/document";
 import { readModel } from "../types/documentModel";
-import { canonicalAcceptedComments } from "./canonicalAcceptedComments";
+import { createCanonicalBatchReview } from "./canonicalBatchReview";
 import {
   canonicalCommentBody,
   compileCanonicalComments,
@@ -190,6 +191,7 @@ import {
   type CanonicalProjection,
   type CanonicalSession,
 } from "./canonicalSession";
+import { canonicalTrackedBatchFidelityError } from "./canonicalTrackedBatchFidelity";
 import { indentationAsRead, spacingSidesAsRead } from "./paragraphPatchAsRead";
 
 type CanonicalBatchPlan = {
@@ -742,7 +744,12 @@ const statedParagraphPatch = (
   properties: FolioAIBlockParagraphProperties,
 ): ParagraphPropsPatch => {
   const patch: Record<string, unknown> = {};
-  if (properties.styleId !== undefined) patch["styleId"] = properties.styleId;
+  if (properties.styleId !== undefined) {
+    patch["styleId"] = properties.styleId;
+    // The numbering the old style supplied is no longer the paragraph's:
+    // list normalization derives it again from the style the patch sets.
+    patch["numPrFromStyle"] = null;
+  }
   if (properties.outlineLevel !== undefined)
     patch["outlineLevel"] = properties.outlineLevel;
   if (properties.alignment !== undefined)
@@ -884,6 +891,10 @@ type ResolveBlockInsertionOptions = {
     reason: FolioAIEditSkipReason,
     message?: string,
   ) => Result<never, CanonicalPublicOperationResolutionError>;
+  skipAlike: (
+    reason: FolioAIEditSkipReason,
+    message: string,
+  ) => Result<never, CanonicalPublicOperationResolutionError>;
 };
 
 /**
@@ -1005,17 +1016,27 @@ const resolveBlockInsertion = ({
   story,
   mintList,
   refusal,
+  skipAlike,
 }: ResolveBlockInsertionOptions) => {
-  const requested = operation.numbering;
-  const stated = statedNumbering(requested, mintList);
   const { text } = operation;
-  if (stripInlineEmphasisMarkers(text) !== text)
+  const markdown =
+    operation.textFormat === "markdown"
+      ? compileMarkdownInsertion(text)
+      : undefined;
+  if (markdown?.type === "unsupported")
+    return skipAlike("unsupportedBlock", markdown.message);
+  const requested =
+    markdown?.listKind === undefined
+      ? operation.numbering
+      : ({ kind: "newList", format: markdown.listKind } as const);
+  const stated = statedNumbering(requested, mintList);
+  if (markdown === undefined && stripInlineEmphasisMarkers(text) !== text)
     return refusal(
       "unsupportedBlock",
       "Canonical public emphasis replacements are unavailable.",
     );
   const inline = operation.lineBreakMode === "inline";
-  if (/\[\^(?:e)?\d+\]/u.test(text))
+  if (markdown === undefined && /\[\^(?:e)?\d+\]/u.test(text))
     return refusal(
       "unsupportedBlock",
       "Canonical block insertion requires plain text.",
@@ -1023,7 +1044,8 @@ const resolveBlockInsertion = ({
   // Each line its own paragraph, blank lines dropped, as the default engine
   // splits them; inline, line breaks stay in the one paragraph. A tab is a
   // tab element either way.
-  const split = !inline && LINE_BREAK_PATTERN.test(text);
+  const split =
+    markdown === undefined && !inline && LINE_BREAK_PATTERN.test(text);
   const lines = split
     ? text.split(LINE_BREAK_PATTERN).filter((line) => line.trim().length > 0)
     : [text];
@@ -1057,42 +1079,58 @@ const resolveBlockInsertion = ({
     if (value === null) Reflect.deleteProperty(formatting, key);
     else formatting[key] = value;
   const everyParagraph = operation.formattingScope === "allParagraphs";
-  const paragraphs = texts.map((line, index): Paragraph => {
-    // The first paragraph takes the operation's formatting; later ones are
-    // body paragraphs unless the scope formats every paragraph alike.
-    const own: Record<string, unknown> =
-      index === 0 || everyParagraph ? { ...formatting } : {};
-    if (index === 0 && operation.pageBreakBefore === true)
-      own["pageBreakBefore"] = true;
-    // An authored page break stands in for the first paragraph's text.
-    const pageBreak = index === 0 ? operation.hardPageBreak : undefined;
-    let content: Paragraph["content"] = [];
-    if (pageBreak !== undefined)
-      content = [
-        {
-          type: "run",
-          content: [
-            {
-              type: "break",
-              breakType: "page",
-              ...(pageBreak.clear === undefined
-                ? {}
-                : { clear: pageBreak.clear }),
-            },
-          ],
-        },
-      ];
-    else if (line !== "")
-      content = [{ type: "run", content: inlineText(line) }];
-    return {
-      type: "paragraph",
-      content,
-      // The anchor's properties with the operation's set or cleared over them.
-      ...(Object.keys(own).length === 0
-        ? {}
-        : { formatting: own as ParagraphFormatting }),
-    };
-  });
+  const markdownNumbering =
+    stated.numbering?.kind === "reference" ? stated.numbering : undefined;
+  let markdownParagraphs: Paragraph[] | undefined;
+  if (markdown !== undefined) {
+    markdownParagraphs = [];
+    for (const {
+      listRendering: _listRendering,
+      ...item
+    } of markdown.paragraphs) {
+      if (markdownNumbering !== undefined)
+        item.formatting = { ...item.formatting, numPr: markdownNumbering };
+      markdownParagraphs.push(item);
+    }
+  }
+  const paragraphs =
+    markdownParagraphs ??
+    texts.map((line, index): Paragraph => {
+      // The first paragraph takes the operation's formatting; later ones are
+      // body paragraphs unless the scope formats every paragraph alike.
+      const own: Record<string, unknown> =
+        index === 0 || everyParagraph ? { ...formatting } : {};
+      if (index === 0 && operation.pageBreakBefore === true)
+        own["pageBreakBefore"] = true;
+      // An authored page break stands in for the first paragraph's text.
+      const pageBreak = index === 0 ? operation.hardPageBreak : undefined;
+      let content: Paragraph["content"] = [];
+      if (pageBreak !== undefined)
+        content = [
+          {
+            type: "run",
+            content: [
+              {
+                type: "break",
+                breakType: "page",
+                ...(pageBreak.clear === undefined
+                  ? {}
+                  : { clear: pageBreak.clear }),
+              },
+            ],
+          },
+        ];
+      else if (line !== "")
+        content = [{ type: "run", content: inlineText(line) }];
+      return {
+        type: "paragraph",
+        content,
+        // The anchor's properties with the operation's set or cleared over them.
+        ...(Object.keys(own).length === 0
+          ? {}
+          : { formatting: own as ParagraphFormatting }),
+      };
+    });
   const place = blockInsertionPlace(operation, paragraph, projection);
   if (place === undefined)
     return refusal(
@@ -2571,6 +2609,7 @@ export class CanonicalPublicOperations {
     const result = (
       applied: FolioDocumentOperationResult["applied"],
       undoHandle: FolioDocumentOperationUndoHandle | null,
+      disposition: "normal" | "refused" = "normal",
     ): FolioDocumentOperationResult => {
       const failures = new Map(skipped.map((item) => [item.id, item]));
       const ordered = batch.operations.flatMap(({ id }) => {
@@ -2581,7 +2620,10 @@ export class CanonicalPublicOperations {
       });
       return {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        status: batchStatus(batch, ordered.length),
+        status:
+          disposition === "refused" && !batch.dryRun
+            ? "rejected"
+            : batchStatus(batch, ordered.length),
         applied,
         skipped: ordered,
         issues: getFolioDocumentOperationIssues(batch.operations, ordered),
@@ -3584,12 +3626,21 @@ export class CanonicalPublicOperations {
             blockId: operation.blockId,
           };
       }
-    }
-    if (batch.mode !== "direct" && batch.mode !== "suggested")
+    } else if (batch.mode !== "suggested") {
+      const trackedOperations = [...appliedById.values()];
+      const originalDocument = readModel(session.document);
+      const review = createCanonicalBatchReview({
+        story,
+        before: { document: originalDocument, projection: state.doc },
+        after: {
+          document: prepared.value.document,
+          projection: prepared.value.projection.doc,
+        },
+      });
       addRetiredCommentReceipts({
         before: state,
         after: prepared.value.projection.doc,
-        applied: [...appliedById.values()],
+        applied: trackedOperations,
         operations: batch.operations.filter(
           (operation) =>
             operation.type !== "deleteBlock" ||
@@ -3603,19 +3654,25 @@ export class CanonicalPublicOperations {
               : [[operation.id, deletionSpans] as const],
           ),
         ),
-        acceptedCommentIds: (side) =>
-          side === "before"
-            ? canonicalAcceptedComments({
-                document: readModel(session.document),
-                projection: state.doc,
-                story,
-              })
-            : canonicalAcceptedComments({
-                document: prepared.value.document,
-                projection: prepared.value.projection.doc,
-                story,
-              }),
+        acceptedCommentIds: review.acceptedCommentIds,
       });
+      const message = canonicalTrackedBatchFidelityError({
+        review,
+        createdCommentIds: new Set(
+          trackedOperations.flatMap(({ commentId }) =>
+            commentId === undefined ? [] : [commentId],
+          ),
+        ),
+        retiredCommentIds: trackedOperations.flatMap(
+          ({ retiredCommentIds }) => retiredCommentIds ?? [],
+        ),
+      });
+      if (message !== null) {
+        for (const { id } of trackedOperations)
+          skip(id, "invalidResult", message);
+        return result([], null, "refused");
+      }
+    }
     const applied = batch.operations.flatMap(({ id }) => {
       const entry = appliedById.get(id);
       if (entry === undefined) return [];
@@ -4087,6 +4144,7 @@ export class CanonicalPublicOperations {
         story,
         mintList,
         refusal,
+        skipAlike,
       });
       return besideDeletion && inserted.isOk()
         ? Result.ok({ ...inserted.value, besideDeletion: true as const })

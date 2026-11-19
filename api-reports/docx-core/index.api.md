@@ -54,7 +54,9 @@ export const compileLegalSourceToDocument: (source: string, options?: LegalSourc
 export const compileLegalSourceToDocx: (source: string, options?: LegalSourceCompileOptions) => Promise<LegalSourceDocxCompileResult>;
 
 // @public
-export const compileMarkdownToContent: (markdown: string) => MarkdownContent;
+export const compileMarkdownToContent: (markdown: string, options?: {
+    editProfile?: "paragraphs" | "table";
+}) => MarkdownContent;
 
 // @public
 type Document_2 = WritableRecord & {

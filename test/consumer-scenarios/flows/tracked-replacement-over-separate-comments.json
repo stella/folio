@@ -5,7 +5,7 @@
   "fixture": "unusedNumbering",
   "mode": "tracked-changes",
   "seed": 7977770,
-  "title": "A tracked replacement over separate comments rejects alike before and after a save",
+  "title": "A tracked replacement over separate comments refuses to widen the original ranges",
   "steps": [
     {
       "action": "story batch",
@@ -41,6 +41,7 @@
       "action": "core batch",
       "seed": 1688932289,
       "atomic": false,
+      "expectedFidelityRefusal": "rejectOriginal",
       "operations": [
         {
           "type": "replaceBlock",

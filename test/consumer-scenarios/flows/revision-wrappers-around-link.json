@@ -9,6 +9,7 @@
     {
       "action": "core batch",
       "seed": 1512505397,
+      "expectedFidelityRefusal": "field",
       "operations": [
         {
           "type": "deleteBlock",

@@ -37,7 +37,7 @@ import { headingOutlineLevel } from "../model/outlineLevel";
 import { paragraphNumberingReference } from "../model/paragraphNumbering";
 import { sanitizeXmlCharacters } from "../serialize/xmlEscape";
 import { inlineTokensToRuns, textRun } from "./inline";
-import { isTokenType, lexMarkdown } from "./lexer";
+import { isTokenType, lexMarkdown, visitMarkdownTokens } from "./lexer";
 
 /** Block content and the numbering definitions its list paragraphs reference. */
 export type MarkdownContent = {
@@ -388,21 +388,89 @@ const buildNumbering = (
   return { abstractNums, nums };
 };
 
+const STRICT_PARAGRAPH_TOKENS: ReadonlySet<string> = new Set([
+  "space",
+  "paragraph",
+  "heading",
+  "list",
+  "list_item",
+  "text",
+  "strong",
+  "em",
+  "del",
+  "codespan",
+  "br",
+  "escape",
+]);
+
 /**
  * Parse GFM markdown into document blocks plus the numbering its lists need.
  * Synchronous. The caller places the blocks into a `Document` of its own
  * (page geometry, styles, and presets are the host's decision).
  */
-export const compileMarkdownToContent = (markdown: string): MarkdownContent => {
+export const compileMarkdownToContent = (
+  markdown: string,
+  options?: { editProfile?: "paragraphs" | "table" },
+): MarkdownContent => {
   const state: CompileState = { next: 1, levels: new Map(), warnings: [] };
   // Markdown arrives as text from outside folio, so it can carry characters no
   // XML document may contain. They are dropped here, while the input is still
   // one string, rather than at the serializer, where nothing could say which
   // input lost them. This particular drop has no channel to report it on.
-  const content = blocksFromTokens(
-    lexMarkdown(sanitizeXmlCharacters(markdown)),
-    state,
-  );
+  const clean = sanitizeXmlCharacters(markdown);
+  const tokens = lexMarkdown(clean);
+  const profile = options?.editProfile;
+  if (profile !== undefined) {
+    if (clean !== markdown)
+      return {
+        content: [],
+        warnings: ["Markdown contains invalid XML characters."],
+      };
+    if (profile === "table") {
+      const blocks = tokens.filter(({ type }) => type !== "space");
+      const table = blocks.at(0);
+      if (
+        blocks.length !== 1 ||
+        table === undefined ||
+        !isTokenType(table, "table")
+      )
+        return {
+          content: [],
+          warnings: ["Expected one standalone Markdown table."],
+        };
+      if (table.align.some((value) => value !== null))
+        return {
+          content: [],
+          warnings: ["Markdown table column alignment is unsupported."],
+        };
+    }
+    visitMarkdownTokens(tokens, (token) => {
+      if (state.warnings.length > 0) return;
+      const supported =
+        profile === "table"
+          ? token.type === "table" ||
+            token.type === "text" ||
+            token.type === "escape" ||
+            token.type === "space"
+          : STRICT_PARAGRAPH_TOKENS.has(token.type);
+      if (!supported) {
+        state.warnings.push(
+          `Markdown token ${JSON.stringify(token.type)} is unsupported.`,
+        );
+      } else if (
+        isTokenType(token, "list") &&
+        token.ordered &&
+        token.start !== 1
+      ) {
+        state.warnings.push("Markdown ordered lists must start at one.");
+      } else if (isTokenType(token, "list_item") && token.task) {
+        state.warnings.push("Markdown task items are unsupported.");
+      }
+    });
+    if (state.warnings.length > 0)
+      return { content: [], warnings: state.warnings };
+  }
+  const content = blocksFromTokens(tokens, state);
   return {
     content,
     ...(state.levels.size > 0 && { numbering: buildNumbering(state.levels) }),

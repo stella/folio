@@ -220,4 +220,6 @@ export class DocumentOpRefusal extends DocumentOpRefusalBase<{
   message: string;
   reason: DocumentOpRefusalReason;
   opType: DocumentOpType | undefined;
+  /** Paragraph-mark revision that would move text across a standing range boundary. */
+  blockedParagraphMarkRevisionId?: number;
 }> {}

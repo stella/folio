@@ -538,7 +538,7 @@ describe("findings of the metamorphic relations (support/metamorphic.ts) and the
     );
   });
 
-  test("comments on a replaced paragraph anchor alike directly and tracked-then-accepted", async () => {
+  test("two comments covering the same text anchor alike directly and tracked-then-accepted", async () => {
     const anchors: Record<string, (string | undefined)[]> = {};
     for (const mode of ["direct", "tracked-changes"] as const) {
       const reviewer = await openReviewer(await plainDocument());
@@ -557,19 +557,28 @@ describe("findings of the metamorphic relations (support/metamorphic.ts) and the
       apply(reviewer, mode, [
         {
           type: "commentOnRange",
-          range: range(31, 34),
+          range: range(0, 4),
           comment: { text: "b" },
         },
       ]);
-      apply(reviewer, mode, [
+      const replacement = apply(reviewer, mode, [
         { type: "replaceBlock", blockId: id, text: "New clause text." },
       ]);
+      assert.equal(
+        replacement.applied.length,
+        1,
+        JSON.stringify(replacement.issues),
+      );
       const saved = await reopen(reviewer);
       saved.acceptAll();
       anchors[mode] = (await reopen(saved))
         .getComments()
         .map((comment) => comment.anchoredText);
     }
+    assert.deepEqual(anchors["direct"], [
+      "New clause text.",
+      "New clause text.",
+    ]);
     assert.deepEqual(
       anchors["tracked-changes"],
       anchors["direct"],

@@ -25,6 +25,7 @@ import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { createDocumentNumberingPlugin } from "../prosemirror/plugins/documentNumbering";
+import { createDocumentStylesPlugin } from "../prosemirror/plugins/documentStyles";
 import { schema } from "../prosemirror/schema";
 import type { NumberingDefinitions } from "../types/document";
 import { FolioDocxReviewer } from "./headless";
@@ -436,7 +437,10 @@ describe("a batch result the save validator refuses is not committed", () => {
     let state = EditorState.create({
       schema,
       doc: toProseDoc(model),
-      plugins: [createDocumentNumberingPlugin(model.package.numbering)],
+      plugins: [
+        createDocumentStylesPlugin(model.package.styles),
+        createDocumentNumberingPlugin(model.package.numbering),
+      ],
     });
     const dispatched: Transaction[] = [];
     const view = {
@@ -481,6 +485,7 @@ describe("a batch result the save validator refuses is not committed", () => {
         ],
       },
     });
+    expect(accepted.skipped).toEqual([]);
     expect(accepted.applied.map(({ id }) => id)).toEqual(["a"]);
     expect(dispatched).toHaveLength(1);
   });

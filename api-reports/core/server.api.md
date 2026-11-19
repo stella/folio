@@ -664,6 +664,7 @@ export type FolioAIEditOperation<Numbering = FolioAIListNumbering> = FolioAIEdit
     type: "insertAfterBlock" | "insertBeforeBlock";
     blockId: string;
     text: string;
+    textFormat?: "markdown";
     lineBreakMode?: "paragraph" | "inline";
     formattingScope?: FolioAIInsertFormattingScope;
     inheritFormatting?: boolean;
@@ -866,7 +867,7 @@ export type FolioApplyDocumentOperationsOptions = Omit<FolioApplyOperationsOptio
 // @public (undocumented)
 export type FolioApplyDocumentOperationsToStoryOptions = FolioApplyDocumentOperationsOptions & {
     story: FolioEditableDocumentStoryHandle;
-    batch: FolioDocumentOperationBatch;
+    batch: FolioDocumentOperationBatchInput;
     tableTemplates?: FolioTableTemplates;
     replacementBackground?: FolioReplacementBackground;
 };
@@ -1017,6 +1018,11 @@ export type FolioDocumentOperationBatch = {
     readonly dryRun?: boolean;
     readonly precondition?: FolioDocumentOperationBatchPrecondition;
     readonly existingRevisions?: (typeof FOLIO_EXISTING_REVISION_POLICIES)[number];
+};
+
+// @public
+export type FolioDocumentOperationBatchInput = Omit<FolioDocumentOperationBatch, "operations"> & {
+    readonly operations: readonly (FolioDocumentOperation | FolioMarkdownTableInput)[];
 };
 
 // @public
@@ -1326,7 +1332,7 @@ export class FolioDocxReviewer {
     acceptSuggestion(suggestionId: string, options?: {
         author?: string;
     }): boolean;
-    applyDocumentOperations(batch: FolioDocumentOperationBatch, options: FolioApplyDocumentOperationsOptions): FolioDocumentOperationResult;
+    applyDocumentOperations(batch: FolioDocumentOperationBatchInput, options: FolioApplyDocumentOperationsOptions): FolioDocumentOperationResult;
     applyDocumentOperationsToStory(input: FolioApplyDocumentOperationsToStoryOptions): FolioDocumentOperationResult;
     applyOperations(operations: FolioAIEditOperation[], options: FolioApplyOperationsOptions): FolioAIEditApplyResult;
     readonly author: string;

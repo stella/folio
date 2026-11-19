@@ -3,7 +3,7 @@
   "title": "PINNED #1757, reported seed 1141252406: a merge into a closing paragraph whose words are pending deletions adds no separator",
   "kind": "random",
   "generation": "targeted",
-  "fixture": "notes",
+  "fixture": "plain",
   "mode": "tracked-changes",
   "seed": 1141252406,
   "steps": [
@@ -13,7 +13,7 @@
       "operations": [
         {
           "type": "deleteBlock",
-          "blockId": "7B806329"
+          "blockId": "483CD5EB"
         }
       ]
     },
@@ -28,7 +28,7 @@
       "operations": [
         {
           "type": "mergeBlockWithNext",
-          "blockId": "7735D914",
+          "blockId": "5E88C024",
           "separator": " "
         }
       ]

@@ -271,18 +271,27 @@ const tableGridRevisionId = (node: PMNode): number | null => {
     : null;
 };
 
+const rowRevisionMarkers = [
+  ["trIns", "rowInserted"],
+  ["trDel", "rowDeleted"],
+] as const;
+
 /**
- * Revision ids in the vertically merged continuation cells each row of
- * `table` holds without a merge revision of their own. The editor folds a
- * continuation cell into the cell that starts the merge, so its content has
- * no node; its row's change stands for it.
+ * Revision ids from collapsed continuation cells that a tracked row owns.
+ * A continuation cell with its own merge revision is listed separately.
  */
 const continuationRevisionIdsByRow = (
   table: PMNode,
   tablePos: number,
 ): Map<number, Set<number>> => {
-  const rowPositions: number[] = [];
-  table.forEach((_row, offset) => rowPositions.push(tablePos + 1 + offset));
+  const rowPositions: (number | undefined)[] = [];
+  table.forEach((row, offset) => {
+    const tracked = rowRevisionMarkers.some(([attribute]) => {
+      const marker: unknown = row.attrs[attribute];
+      return isRecord(marker) && typeof marker["revisionId"] === "number";
+    });
+    rowPositions.push(tracked ? tablePos + 1 + offset : undefined);
+  });
   const byRow = new Map<number, Set<number>>();
   table.forEach((row, _offset, rowIndex) => {
     row.forEach((cell) => {
@@ -343,6 +352,7 @@ const getTrackedChangeGroupsFromProjectedDoc = (
     foldedIds.set(key, folded);
   };
   const continuationRevisions = new Map<number, Set<number>>();
+  const continuationRevisionsOwnedByRows = new Set<number>();
   const derivedFormattingRepresentationPositions = new Set<number>();
   const noteReferences = collectNoteReferenceLabels(doc);
   let currentBlockId: string | null = null;
@@ -410,8 +420,10 @@ const getTrackedChangeGroupsFromProjectedDoc = (
       });
     }
     if (node.type.name === "table") {
-      for (const [rowPos, ids] of continuationRevisionIdsByRow(node, pos))
+      for (const [rowPos, ids] of continuationRevisionIdsByRow(node, pos)) {
         continuationRevisions.set(rowPos, ids);
+        for (const id of ids) continuationRevisionsOwnedByRows.add(id);
+      }
       const gridId = tableGridRevisionId(node);
       if (gridId !== null) {
         // A grid revision has no author or date of its own; it is part of
@@ -434,10 +446,7 @@ const getTrackedChangeGroupsFromProjectedDoc = (
       }
     }
     if (node.type.name === "tableRow") {
-      for (const [attrName, kind] of [
-        ["trIns", "rowInserted"],
-        ["trDel", "rowDeleted"],
-      ] as const) {
+      for (const [attrName, kind] of rowRevisionMarkers) {
         const marker = node.attrs[attrName];
         if (
           typeof marker !== "object" ||
@@ -529,9 +538,41 @@ const getTrackedChangeGroupsFromProjectedDoc = (
       }
       const continuationCells = node.attrs["_docxVMergeContinuationCells"];
       if (Array.isArray(continuationCells)) {
-        for (const continuationCell of continuationCells) {
+        for (const value of continuationCells) {
+          const continuationCell: unknown = value;
           const change = getTableCellMergeChange(continuationCell);
           if (!change) {
+            if (!isRecord(continuationCell)) continue;
+            const structuralChange = continuationCell["structuralChange"];
+            if (!isRecord(structuralChange)) continue;
+            const kind = structuralChange["type"];
+            if (kind !== "tableCellInsertion" && kind !== "tableCellDeletion")
+              continue;
+            const info = structuralChange["info"];
+            if (!isRecord(info) || typeof info["id"] !== "number") continue;
+            const id = info["id"];
+            if (continuationRevisionsOwnedByRows.has(id)) continue;
+            const type =
+              kind === "tableCellInsertion" ? "cellInserted" : "cellDeleted";
+            const author =
+              typeof info["author"] === "string" ? info["author"] : "";
+            revisionRanges?.push({
+              type,
+              author,
+              from: pos,
+              to: pos + node.nodeSize,
+            });
+            const key = `cell:${type}:${id}`;
+            if (grouped.has(key)) continue;
+            // The collapsed cell has no visible text node or block anchor.
+            grouped.set(key, {
+              id,
+              type,
+              author,
+              date: typeof info["date"] === "string" ? info["date"] : null,
+              text: "",
+              blockId: firstBlockIdWithin({ node, nodePos: pos, blockStarts }),
+            });
             continue;
           }
           const revisionId = change.info.id;

@@ -825,16 +825,27 @@ test("a simple DATE field in a deleted paragraph keeps its resolved model and un
   assert.equal(unchangedXml, originalXml);
   const block = reviewer.getContent().at(0);
   if (!block) throw new Error("Expected field block");
-  const result = reviewer.applyDocumentOperations(
-    {
-      version: 1,
-      mode: "tracked-changes",
-      operations: [{ id: "delete", type: "deleteBlock", blockId: block.id }],
-    },
+  const batch = {
+    version: 1,
+    operations: [{ id: "delete", type: "deleteBlock", blockId: block.id }],
+  } as const;
+  const refused = reviewer.applyDocumentOperations(
+    { ...batch, mode: "tracked-changes" },
     { undefinedReferences: "refuse" },
   );
-  assert.equal(result.applied.length, 1);
-  assert.deepEqual(result.skipped, []);
+  assert.equal(refused.status, "rejected");
+  assert.deepEqual(refused.applied, []);
+  assert.equal(refused.skipped.at(0)?.reason, "invalidResult");
+  assert.match(refused.skipped.at(0)?.message ?? "", /Accept All.*field/u);
+  assert.deepEqual(reviewer.getChanges(), []);
+  const staged = reviewer.applyDocumentOperations(
+    { ...batch, mode: "suggested" },
+    { undefinedReferences: "refuse" },
+  );
+  const suggestionId = staged.applied.at(0)?.suggestionId;
+  assert.ok(suggestionId, JSON.stringify(staged));
+  assert.equal(reviewer.acceptSuggestion(suggestionId), true);
+  assert.ok(reviewer.getChanges().length > 0);
   const reopened = await openReviewer(
     new Uint8Array(await reviewer.toBuffer()),
   );

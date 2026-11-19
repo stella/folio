@@ -22,12 +22,14 @@ import {
   type FolioWordDiffOptions,
   previewFolioAIEditOperationsWithResult,
 } from "./ai-edits/apply";
+import { compileMarkdownTableRows } from "./ai-edits/markdownInsertion";
 import {
   describeModelError,
   findIntroducedModelErrors,
 } from "./ai-edits/result-validation";
 import type { FolioTableTemplates } from "./ai-edits/table-template";
 import { TABLE_INSERTION_MODES } from "./ai-edits/tableInsertionModes";
+import { trackedBatchFidelityError } from "./ai-edits/tracked-batch-fidelity";
 import type {
   FolioAIBlockParagraphProperties,
   FolioAIEditAppliedOperation,
@@ -367,6 +369,21 @@ export const FOLIO_EXISTING_REVISION_POLICIES: readonly [
   "allow",
   "refuse-cross-author",
 ] = ["allow", "refuse-cross-author"];
+
+type FolioMarkdownTableInput = Omit<
+  Extract<FolioDocumentOperation, { type: "insertTable" }>,
+  "rows"
+> & { textFormat: "markdown"; text: string; rows?: never };
+
+/** Versioned input before parsing normalizes Markdown tables to cell rows. */
+export type FolioDocumentOperationBatchInput = Omit<
+  FolioDocumentOperationBatch,
+  "operations"
+> & {
+  readonly operations: readonly (
+    FolioDocumentOperation | FolioMarkdownTableInput
+  )[];
+};
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -1230,7 +1247,9 @@ const readReviewMeta = (
 
 /** Each operation variant under its discriminator; one pass over the union. */
 type OperationsByType = {
-  [Operation in FolioDocumentOperation as Operation["type"]]: Operation;
+  [
+    Operation in FolioDocumentOperationBatchInput["operations"][number] as Operation["type"]
+  ]: Operation;
 };
 
 /**
@@ -1240,9 +1259,11 @@ type OperationsByType = {
  * type without a decision here fails to compile, and a decision for a
  * property the type lacks is an excess property.
  */
+type KeysOfUnion<T> = T extends unknown ? keyof T : never;
+
 type OperationKeyDecisions = {
   [T in FolioDocumentOperationType]: Readonly<
-    Record<keyof OperationsByType[T], boolean>
+    Record<KeysOfUnion<OperationsByType[T]>, boolean>
   >;
 };
 
@@ -1291,6 +1312,7 @@ const OPERATION_KEY_DECISIONS = {
   insertAfterBlock: {
     ...COMMON_OPERATION_KEY_DECISIONS,
     text: true,
+    textFormat: true,
     inheritFormatting: true,
     alignment: true,
     spacing: true,
@@ -1308,6 +1330,7 @@ const OPERATION_KEY_DECISIONS = {
   insertBeforeBlock: {
     ...COMMON_OPERATION_KEY_DECISIONS,
     text: true,
+    textFormat: true,
     inheritFormatting: true,
     alignment: true,
     spacing: true,
@@ -1354,6 +1377,8 @@ const OPERATION_KEY_DECISIONS = {
     ...COMMON_OPERATION_KEY_DECISIONS,
     position: true,
     rows: true,
+    text: true,
+    textFormat: true,
   },
   deleteTable: COMMON_OPERATION_KEY_DECISIONS,
   commentOnBlock: {
@@ -1589,13 +1614,40 @@ const parseDocumentOperation = (
         'expected "after" or "before" when provided',
       );
     }
+    const textFormat = value["textFormat"];
+    let rows: readonly (readonly string[])[];
+    if (textFormat === "markdown") {
+      if (value["rows"] !== undefined)
+        return invalidBatch(
+          `${path}.rows`,
+          "cannot combine with a Markdown table",
+        );
+      const text = readString(value, "text", path);
+      if (value["text"] !== text)
+        return invalidBatch(
+          `${path}.text`,
+          "Markdown contains invalid XML characters",
+        );
+      const compiled = compileMarkdownTableRows(text);
+      if (compiled.isErr()) return invalidBatch(`${path}.text`, compiled.error);
+      rows = compiled.value;
+    } else {
+      if (textFormat !== undefined)
+        return invalidBatch(
+          `${path}.textFormat`,
+          'expected "markdown" when provided',
+        );
+      if (value["text"] !== undefined)
+        return invalidBatch(`${path}.text`, 'requires textFormat: "markdown"');
+      rows = readTableRows(value, path);
+    }
     return {
       ...operationMeta,
       id,
       type,
       blockId,
       ...(position !== undefined && { position }),
-      rows: readTableRows(value, path),
+      rows,
     };
   }
 
@@ -1732,6 +1784,40 @@ const parseDocumentOperation = (
       );
     }
     const text = readString(value, "text", path);
+    const textFormat = value["textFormat"];
+    if (textFormat !== undefined && textFormat !== "markdown")
+      return invalidBatch(
+        `${path}.textFormat`,
+        'expected "markdown" when provided',
+      );
+    if (textFormat === "markdown") {
+      if (value["text"] !== text)
+        return invalidBatch(
+          `${path}.text`,
+          "Markdown contains invalid XML characters",
+        );
+      for (const key of [
+        "inheritFormatting",
+        "alignment",
+        "spacing",
+        "indentation",
+        "lineBreakMode",
+        "formattingScope",
+        "numbering",
+        "moveId",
+        "pageBreakBefore",
+        "hardPageBreak",
+        "styleId",
+        "outlineLevel",
+        "comment",
+      ]) {
+        if (value[key] !== undefined)
+          return invalidBatch(
+            `${path}.${key}`,
+            "cannot combine with Markdown insertion",
+          );
+      }
+    }
     if (hardPageBreak !== undefined && text.length > 0) {
       return invalidBatch(
         `${path}.text`,
@@ -1756,6 +1842,7 @@ const parseDocumentOperation = (
       type,
       blockId,
       text,
+      ...(textFormat !== undefined && { textFormat }),
       ...(inheritFormatting !== undefined && { inheritFormatting }),
       ...(alignment !== undefined && { alignment }),
       ...(spacing !== undefined && { spacing }),
@@ -2621,6 +2708,7 @@ type BatchAttempt = {
 
 /** An attempt after the result check: what to report and what to commit. */
 type GuardedBatch = {
+  fidelityRefused?: true;
   outcome: FolioAIEditApplyOutcome;
   commit: () => void;
 };
@@ -2851,15 +2939,57 @@ export const applyFolioDocumentOperationsInPackage = ({
   };
 
   /**
-   * Apply (or preview) the batch and check the result with the save-time
-   * validator before anything reaches the caller. Operations whose result would
-   * not save are skipped with `invalidResult`; in a best-effort batch the rest
-   * is applied again without them, in an atomic one nothing is.
+   * A fidelity failure invalidates the batch. Preserve the refusal details
+   * for operations already skipped by the applier or save-time validator.
    */
+  const refuseFidelityLoss = (
+    run: BatchAttempt,
+    skipped: readonly FolioAIEditSkippedOperation[] = [],
+  ): GuardedBatch | null => {
+    if (
+      run.doc === null ||
+      parsedBatch.mode === "direct" ||
+      parsedBatch.mode === "suggested"
+    ) {
+      return null;
+    }
+    const message = trackedBatchFidelityError({
+      before: view.state,
+      after: run.doc,
+      createdCommentIds: run.commentIds,
+      retiredCommentIds: run.outcome.applied.flatMap(
+        ({ retiredCommentIds }) => retiredCommentIds ?? [],
+      ),
+    });
+    if (message === null) return null;
+    return {
+      fidelityRefused: true,
+      outcome: {
+        ...run.outcome,
+        applied: [],
+        skipped: inOperationOrder(parsedBatch.operations, [
+          ...run.outcome.skipped,
+          ...skipped,
+          ...run.outcome.applied.map(({ id }): FolioAIEditSkippedOperation => ({
+            id,
+            reason: "invalidResult",
+            message,
+          })),
+        ]),
+      },
+      commit: NO_COMMIT,
+    };
+  };
+
+  /** Check the held result before dispatching any operation to the caller. */
   const guardedAttempt = (preview: boolean): GuardedBatch => {
     const first = attempt(parsedBatch.operations, preview);
     const [firstError] = introducedErrors(first);
     if (firstError === undefined) {
+      // Atomic preflight uses a coarse diff. Verify the held commit instead.
+      const fidelity =
+        preview && !parsedBatch.dryRun ? null : refuseFidelityLoss(first);
+      if (fidelity !== null) return fidelity;
       return {
         outcome: {
           ...first.outcome,
@@ -2915,6 +3045,8 @@ export const applyFolioDocumentOperationsInPackage = ({
         commit: NO_COMMIT,
       };
     }
+    const fidelity = refuseFidelityLoss(second.run, refused);
+    if (fidelity !== null) return fidelity;
     return {
       outcome: {
         ...second.run.outcome,
@@ -2999,8 +3131,9 @@ export const applyFolioDocumentOperationsInPackage = ({
   const { heldRevisionConflict, ...result } = guarded.outcome;
   if (heldRevisionConflict) return atomicResult(result, "rejected");
   if (
-    isAtomic &&
-    result.skipped.some(({ reason }) => reason === "invalidResult")
+    guarded.fidelityRefused === true ||
+    (isAtomic &&
+      result.skipped.some(({ reason }) => reason === "invalidResult"))
   ) {
     return atomicResult(result, "rejected");
   }

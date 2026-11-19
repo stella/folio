@@ -442,6 +442,7 @@ describe("an edit operation that deletes a note reference", () => {
       .getContent()
       .find(({ text }) => text.startsWith("Noted text"));
     if (!block) throw new Error("no noted paragraph");
+    const before = structuredClone(reviewer.toDocument());
     const result = reviewer.applyDocumentOperations(
       {
         version: 1,
@@ -450,8 +451,7 @@ describe("an edit operation that deletes a note reference", () => {
       },
       { undefinedReferences: "refuse" },
     );
-    expect(result.skipped).toEqual([]);
-    return { reviewer, undoHandle: result.undoHandle };
+    return { reviewer, before, result };
   };
   const saved = async (reviewer: FolioDocxReviewer): Promise<Document> =>
     parseShapeDocument(new Uint8Array(await reviewer.toBuffer()));
@@ -464,34 +464,19 @@ describe("an edit operation that deletes a note reference", () => {
     });
   });
 
-  test("tracked, it deletes the note's text with the reference", async () => {
-    const { reviewer } = await deleteNotedParagraph("tracked-changes");
-    expect(noteState(await saved(reviewer), 1)).toEqual({
-      text: "The note text.",
-      deleted: true,
-    });
-  });
-
-  test("tracked and accepted, the note goes", async () => {
-    const { reviewer } = await deleteNotedParagraph("tracked-changes");
-    expect(reviewer.acceptAll().resolved).toBeGreaterThan(0);
-    expect(noteState(await saved(reviewer), 1)).toBeNull();
-  });
-
-  test("tracked and rejected, the note keeps its text", async () => {
-    const { reviewer } = await deleteNotedParagraph("tracked-changes");
-    expect(reviewer.rejectAll().resolved).toBeGreaterThan(0);
-    expect(noteState(await saved(reviewer), 1)).toEqual({
-      text: "The note text.",
-      deleted: false,
-    });
-  });
-
-  test("tracked and undone, the note keeps its text", async () => {
-    const { reviewer, undoHandle } =
+  test("a tracked edit cannot remove the note on acceptance", async () => {
+    const { reviewer, before, result } =
       await deleteNotedParagraph("tracked-changes");
-    if (!undoHandle) throw new Error("no undo handle");
-    expect(reviewer.undoDocumentOperations(undoHandle).status).toBe("undone");
+    expect(result.status).toBe("rejected");
+    expect(result.applied).toEqual([]);
+    expect(result.undoHandle).toBeNull();
+    expect(result.issues).toEqual([
+      expect.objectContaining({
+        code: "invalidResult",
+        message: expect.stringContaining("Accept All would lose a note"),
+      }),
+    ]);
+    expect(structuredClone(reviewer.toDocument())).toEqual(before);
     expect(noteState(await saved(reviewer), 1)).toEqual({
       text: "The note text.",
       deleted: false,
@@ -499,7 +484,8 @@ describe("an edit operation that deletes a note reference", () => {
   });
 
   test("direct, the note goes with its reference", async () => {
-    const { reviewer } = await deleteNotedParagraph("direct");
+    const { reviewer, result } = await deleteNotedParagraph("direct");
+    expect(result.skipped).toEqual([]);
     expect(noteState(await saved(reviewer), 1)).toBeNull();
   });
 });

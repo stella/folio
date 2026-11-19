@@ -91,10 +91,10 @@ export const rejectedJoinSurvivorIdentities = ({
  * Rejecting the added mark of an empty paragraph that ends a local container
  * has no paragraph to join it into there: the paragraph stays, without its
  * mark, as the container's last. Where the block before it keeps its place,
- * the legacy reviewer drops it instead. Each
- * id names such a paragraph, proven on both rejected documents: the
- * canonical one keeps it last in that container, the legacy one has no such
- * paragraph anywhere; every other block stays exact.
+ * the legacy reviewer drops it instead. Each id names such a paragraph,
+ * proven on both rejected documents: the canonical one keeps it last in that
+ * container, the legacy one has no such paragraph anywhere; every other
+ * block stays exact.
  */
 export const rejectedContainerEndIdentities = ({
   source,
@@ -140,4 +140,55 @@ export const rejectedContainerEndIdentities = ({
     walk(storyBody(source, story).content, false);
   }
   return kept;
+};
+
+/** The paragraph a block content control's content ends with, nested ones included. */
+const controlLastParagraph = (block: BlockContent): Paragraph | undefined => {
+  if (block.type !== "blockSdt") return undefined;
+  const last = block.content.at(-1);
+  if (last === undefined) return undefined;
+  return last.type === "paragraph" ? last : controlLastParagraph(last);
+};
+
+/**
+ * Rejecting the added mark of the paragraph a block content control ends
+ * with joins it with the paragraph after the control: an empty one, which
+ * has nothing to bring into the control, goes; the
+ * legacy reviewer keeps it. Each id names such a paragraph, proven on both
+ * rejected documents: the canonical one has it no more, the legacy one keeps
+ * it.
+ */
+export const rejectedAbsorbedFollowerIdentities = ({
+  source,
+  actual,
+  expected,
+}: RejectedJoinSurvivorsOptions): string[] => {
+  const absorbed: string[] = [];
+  for (const story of documentStories(source)) {
+    const legacyIds = new Set(
+      paragraphIdsIn(findStoryBody(expected, story)?.content ?? []),
+    );
+    const canonicalIds = new Set(
+      paragraphIdsIn(findStoryBody(actual, story)?.content ?? []),
+    );
+    const walk = (blocks: readonly BlockContent[]): void => {
+      for (const [index, block] of blocks.entries()) {
+        for (const list of nestedLists(block)) walk(list);
+        const follower = blocks[index + 1];
+        if (
+          addedMark(controlLastParagraph(block)) &&
+          follower?.type === "paragraph" &&
+          follower.content.length === 0 &&
+          follower.pPrMark === undefined &&
+          follower.sectionProperties === undefined &&
+          typeof follower.paraId === "string" &&
+          !canonicalIds.has(follower.paraId) &&
+          legacyIds.has(follower.paraId)
+        )
+          absorbed.push(follower.paraId);
+      }
+    };
+    walk(storyBody(source, story).content);
+  }
+  return absorbed;
 };

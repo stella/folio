@@ -216,6 +216,11 @@ import {
   stripInlineEmphasisMarkers,
 } from "./inline-emphasis";
 import {
+  compileMarkdownInsertion,
+  type MarkdownParagraph,
+  markdownRunText,
+} from "./markdownInsertion";
+import {
   applyTextChanges,
   changesFromSegments,
   keepAtomicSpans,
@@ -225,6 +230,7 @@ import {
 } from "./minimal-replacement";
 import {
   assertNewListsAllocated,
+  deferInsertedList,
   type FolioAIStagedEditOperation,
   resolveNewListOperations,
   stageNewListOperations,
@@ -594,6 +600,7 @@ type ResolvedOperationFields = {
    * was split into consecutive paragraphs (see {@link splitInsertParagraphTexts}).
    */
   insertTexts?: readonly string[];
+  markdownParagraphs?: readonly MarkdownParagraph[];
   /**
    * The comments running across the boundary a block insertion lands on, as
    * the batch read it. The inserted blocks carry them, so an edit that runs
@@ -3091,11 +3098,19 @@ const holdsOnlyContentInsertedBy = (
  * with any standing between the two; before a table they stand between
  * blocks; ending its container, they close the paragraph before it.
  */
-const removeParagraph = (
-  tr: Transaction,
-  from: number,
-  to: number,
-): Transaction => {
+type RemoveParagraphOptions = {
+  tr: Transaction;
+  from: number;
+  to: number;
+  kind: "direct" | "retract-pending";
+};
+
+const removeParagraph = ({
+  tr,
+  from,
+  to,
+  kind,
+}: RemoveParagraphOptions): Transaction => {
   const paragraph = tr.doc.nodeAt(from);
   const kept =
     paragraph === null
@@ -3122,6 +3137,15 @@ const removeParagraph = (
     return tr.insert(opening + 1, [...kept, ...joined]).delete(from, opening);
   }
   if (following !== null) {
+    if (kind === "retract-pending") {
+      // Rejecting an added break leaves the boundaries within the preceding
+      // paragraph. Retract the insertion with the same range endpoints.
+      return at.nodeBefore?.type.name === "paragraph"
+        ? tr.delete(from, to).insert(from - 1, kept)
+        : tr
+            .replaceWith(from + 1, to - 1, kept)
+            .setNodeAttribute(from, "pPrMark", null);
+    }
     // As the revision paths leave them: comment anchors, which only a
     // paragraph holds, close the paragraph before; with none there the
     // paragraph stays, holding them.
@@ -4975,7 +4999,25 @@ const buildInsertedParagraphs = ({
       ? operation.hardPageBreak
       : undefined;
     let content: PMNode[] | null = null;
-    if (hardPageBreak !== undefined) {
+    const markdown = item.markdownParagraphs?.at(paragraphIndex);
+    if (markdown !== undefined) {
+      content = markdown.content.flatMap((run) =>
+        cleanTextInlineNodes({
+          schema,
+          text: markdownRunText(run),
+          marks,
+        }).map((node) =>
+          node.mark(
+            reconcileRunFormattingMarks({
+              authoredFormatting: run.formatting ?? {},
+              context: OPERATION_TEXT_CONTEXT,
+              node,
+              styleResolver,
+            }),
+          ),
+        ),
+      );
+    } else if (hardPageBreak !== undefined) {
       const pageBreakRun = schema.nodes["pageBreakRun"];
       if (pageBreakRun === undefined) {
         panic("The schema has no page-break run node", {
@@ -5252,6 +5294,11 @@ const buildInsertedParagraphs = ({
         date,
         ...(initials ? { initials } : {}),
       };
+    }
+    const outlineLevel = markdown?.formatting?.outlineLevel;
+    if (outlineLevel !== undefined) {
+      attrs["outlineLevel"] = outlineLevel;
+      attrs["_originalFormatting"] = { outlineLevel };
     }
     const paragraph = item.blockNode.type.create(attrs, content);
     // The new text carries only the marks the operation gave it (its
@@ -5687,6 +5734,7 @@ const applyFolioAIEditOperationsInternal = ({
     if (
       (operation.type === "insertAfterBlock" ||
         operation.type === "insertBeforeBlock") &&
+      operation.textFormat !== "markdown" &&
       operation.lineBreakMode !== "inline" &&
       LINE_BREAK_PATTERN.test(operation.text)
     ) {
@@ -7133,7 +7181,12 @@ const applyFolioAIEditOperationsInternal = ({
             : undefined;
           const mappedFrom = tr.mapping.maps.length;
           tr = leavesAParagraph
-            ? removeParagraph(tr, item.blockFrom, item.blockTo)
+            ? removeParagraph({
+                tr,
+                from: item.blockFrom,
+                to: item.blockTo,
+                kind: "direct",
+              })
             : emptyParagraph(tr, item.blockFrom, item.blockTo);
           // The paragraph before a container's final one takes over ending
           // the container: the two join, and the joined paragraph is the one
@@ -7224,7 +7277,12 @@ const applyFolioAIEditOperationsInternal = ({
           // paragraph mark cannot say: accepting kept a blank paragraph, and
           // a suggested one failed to accept at all.
           const retracted = tr.doc.nodeAt(item.blockFrom);
-          tr = removeParagraph(tr, item.blockFrom, item.blockTo);
+          tr = removeParagraph({
+            tr,
+            from: item.blockFrom,
+            to: item.blockTo,
+            kind: "retract-pending",
+          });
           if (retraction.clearBreakAt !== null) {
             tr = tr.setNodeAttribute(retraction.clearBreakAt, "pPrMark", null);
             // The paragraph before now ends the container with the retracted
@@ -10514,22 +10572,50 @@ const resolveOperationTarget = ({
       return { type: "skip", ...PENDING_JOIN_INSERTION_REFUSAL };
     }
     const insertFrom = placed.from;
+    const markdown =
+      operation.textFormat === "markdown"
+        ? compileMarkdownInsertion(operation.text)
+        : undefined;
+    if (markdown?.type === "unsupported")
+      return {
+        type: "skip",
+        reason: "unsupportedBlock",
+        message: markdown.message,
+      };
     const splitParagraphs =
       operation.lineBreakMode !== "inline" &&
       LINE_BREAK_PATTERN.test(operation.text);
-    const insertTexts = splitParagraphs
-      ? splitInsertParagraphTexts(operation.text)
-      : [operation.text];
+    const insertTexts =
+      markdown?.paragraphs.map(({ content }) =>
+        content.map(markdownRunText).join(""),
+      ) ??
+      (splitParagraphs
+        ? splitInsertParagraphTexts(operation.text)
+        : [operation.text]);
+    const insertOperation =
+      markdown === undefined
+        ? operation
+        : ({
+            ...operation,
+            inheritFormatting: false,
+            ...(markdown.listKind !== undefined && {
+              formattingScope: "allParagraphs" as const,
+              numbering: deferInsertedList(markdown.listKind),
+            }),
+          } as const);
     return {
       type: "resolved",
       operation: {
-        operation,
+        operation: insertOperation,
         from: insertFrom,
         to: insertFrom,
         blockFrom,
         blockTo,
         blockNode,
         insertTexts,
+        ...(markdown !== undefined && {
+          markdownParagraphs: markdown.paragraphs,
+        }),
         boundaryComments: commentsAcrossBlockBoundary(doc, placed.at),
         ...(placed.joinSide !== undefined && {
           joinSide: placed.joinSide,

@@ -17,7 +17,12 @@ import {
 import { isCommentExhausted } from "./comments";
 import type { DocumentEdit } from "./edits";
 import { freshenIdentities } from "./identity";
-import { identityKeysIn, idKey, packageIdentityKeys } from "./ids";
+import {
+  IDENTITY_SPACES,
+  identityKeysIn,
+  idKey,
+  packageIdentityKeys,
+} from "./ids";
 import {
   asParagraphContent,
   childNodes,
@@ -604,10 +609,16 @@ export const deleteBlocks = ({
         paragraph.pPrMark.info.author === revision.author,
     ),
   );
+  // A mark a pending deletion already records deleted stays as it is: the
+  // break goes either way, under the deletion that took it first.
+  const keepsDeletedMark = (paragraph: Paragraph) =>
+    op.move !== true && paragraph.pPrMark?.kind === "del";
   if (
     affected.some(
       (paragraph) =>
-        paragraph.pPrMark !== undefined && !joinsNext.has(paragraph),
+        paragraph.pPrMark !== undefined &&
+        !joinsNext.has(paragraph) &&
+        !keepsDeletedMark(paragraph),
     )
   ) {
     return refuse(
@@ -615,7 +626,14 @@ export const deleteBlocks = ({
       "Deletion would overwrite a paragraph review record.",
     );
   }
-  if (identityKeysIn(selected.map(({ content }) => ({ content }))).length > 0) {
+  // Revisions in the content resolve as a tracked range deletion over them
+  // does; content controls keep their identity, which no deletion here
+  // carries.
+  if (
+    identityKeysIn(selected.map(({ content }) => ({ content }))).some(
+      (key) => !key.startsWith(`${IDENTITY_SPACES.REVISION}:`),
+    )
+  ) {
     return refuse(
       DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
       "Tracked paragraph deletion of identified review or content-control content is unsupported.",
@@ -644,6 +662,8 @@ export const deleteBlocks = ({
     if (joinsNext.has(paragraph)) {
       const { pPrMark: _removed, ...unmarked } = next;
       next = unmarked;
+    } else if (keepsDeletedMark(paragraph)) {
+      // Already deleted: the earlier record stands.
     } else if (losesMark(paragraph)) {
       next = {
         ...next,

@@ -276,6 +276,7 @@ export type FolioAIEditOperation<Numbering = FolioAIListNumbering> = FolioAIEdit
     type: "insertAfterBlock" | "insertBeforeBlock";
     blockId: string;
     text: string;
+    textFormat?: "markdown";
     lineBreakMode?: "paragraph" | "inline";
     formattingScope?: FolioAIInsertFormattingScope;
     inheritFormatting?: boolean;
@@ -552,9 +553,9 @@ export type FolioAIEditSkipReason =
 */
 "missingNumbering" |
 /**
-* Applying the operation would have left a document that cannot be saved:
-* the save-time model validator rejected the result. Nothing from the
-* operation was applied; `message` carries the validator's path and reason.
+* The operation would leave an unsaveable result or fail a tracked-revision
+* fidelity check. Nothing from the operation was applied. `message` names
+* the save error or the revision projection that failed.
 */
 "invalidResult" |
 /**
@@ -622,7 +623,7 @@ export type FolioAITextRangeHandle = {
 // @public (undocumented)
 export type FolioApplyDocumentOperationsToStoryOptions = FolioApplyDocumentOperationsOptions & {
     story: FolioEditableDocumentStoryHandle;
-    batch: FolioDocumentOperationBatch;
+    batch: FolioDocumentOperationBatchInput;
     tableTemplates?: FolioTableTemplates;
     replacementBackground?: FolioReplacementBackground;
 };
@@ -704,6 +705,11 @@ export type FolioDocumentOperationBatch = {
     readonly dryRun?: boolean;
     readonly precondition?: FolioDocumentOperationBatchPrecondition;
     readonly existingRevisions?: (typeof FOLIO_EXISTING_REVISION_POLICIES)[number];
+};
+
+// @public
+export type FolioDocumentOperationBatchInput = Omit<FolioDocumentOperationBatch, "operations"> & {
+    readonly operations: readonly (FolioDocumentOperation | FolioMarkdownTableInput)[];
 };
 
 // @public (undocumented)
