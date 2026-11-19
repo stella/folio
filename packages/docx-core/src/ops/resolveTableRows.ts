@@ -173,11 +173,35 @@ type PropertyTableOptions = {
   table: Table;
   ids: ReadonlySet<number>;
   reject: boolean;
+  /** Rows still hold columns a rejected grid change added: its grid stays. */
+  keepsGrid?: boolean;
 };
+/** The grid columns the first row covers, or undefined when the rows differ. */
+const rowCoverage = (table: Table): number | undefined => {
+  let coverage: number | undefined;
+  for (const row of table.rows) {
+    const covered =
+      (row.formatting?.gridBefore ?? 0) +
+      (row.formatting?.gridAfter ?? 0) +
+      row.cells.reduce(
+        (sum, cell) => sum + (cell.formatting?.gridSpan ?? 1),
+        0,
+      );
+    if (coverage !== undefined && covered !== coverage) return undefined;
+    coverage = covered;
+  }
+  return coverage;
+};
+
+/** Every row covers the same number of grid columns. */
+const coversEvenly = (table: Table): boolean =>
+  rowCoverage(table) !== undefined;
+
 const propertyTable = ({
   table,
   ids,
   reject,
+  keepsGrid = false,
 }: PropertyTableOptions): Result<Table, "unsupported"> => {
   const gridSnapshot = table.formatting?.gridChange;
   const selectedGrid = gridSnapshot !== undefined && ids.has(gridSnapshot.id);
@@ -238,7 +262,9 @@ const propertyTable = ({
         next.formatting = withoutGrid;
       }
     }
-    if (reject) {
+    // The earlier grid comes back, unless a row keeps a cell in the columns
+    // the change added: the columns it holds stay.
+    if (reject && !keepsGrid) {
       const columnWidths = gridSnapshot.columnWidths.flatMap((width) =>
         width === undefined ? [] : [width],
       );
@@ -367,7 +393,13 @@ const propertyCell = ({
 type GridCell = { cell: TableCell; start: number; end: number };
 type GridRow = { cells: GridCell[]; before: number; after: number };
 
-/** Remove tracked inserted/deleted cells only when their selected cells describe complete columns. */
+/**
+ * Remove the selected tracked inserted (rejected) or deleted (accepted) cells.
+ * A grid column only goes when every row loses what covers it; where other
+ * rows keep a cell in a removed cell's columns, the cell before it in its row
+ * (the one after it when it starts the row) widens over them, so every row
+ * still covers the one grid.
+ */
 type ResolveCellColumnsOptions = {
   table: Table;
   ids: ReadonlySet<number>;
@@ -377,18 +409,25 @@ const resolveCellColumns = ({
   table,
   ids,
   reject,
-}: ResolveCellColumnsOptions): Result<Table, "unsupported"> => {
-  const columnWidths = table.columnWidths;
-  if (columnWidths === undefined || columnWidths.length === 0)
-    return Result.err("unsupported");
-  const width = columnWidths.length;
+}: ResolveCellColumnsOptions): Result<
+  { table: Table; holdsRemovedColumns: boolean },
+  "unsupported"
+> => {
   const removeCells = (change: TableStructuralChangeInfo): boolean => {
     if (change.type === "tableCellInsertion") return reject;
     if (change.type === "tableCellDeletion") return !reject;
     return false;
   };
+  const removes = (cell: TableCell): boolean =>
+    cell.structuralChange !== undefined &&
+    ids.has(cell.structuralChange.info.id) &&
+    removeCells(cell.structuralChange);
+  const columnWidths =
+    table.columnWidths !== undefined && table.columnWidths.length > 0
+      ? table.columnWidths
+      : undefined;
   const gridRows: GridRow[] = [];
-  const targetSlots = new Set<number>();
+  let width = columnWidths?.length;
   for (const row of table.rows) {
     const before = row.formatting?.gridBefore ?? 0;
     const after = row.formatting?.gridAfter ?? 0;
@@ -405,86 +444,92 @@ const resolveCellColumns = ({
     for (const cell of row.cells) {
       const span = cell.formatting?.gridSpan ?? 1;
       if (!Number.isInteger(span) || span < 1) return Result.err("unsupported");
-      const end = cursor + span;
-      if (end > width - after) return Result.err("unsupported");
-      const change = cell.structuralChange;
-      if (
-        change !== undefined &&
-        ids.has(change.info.id) &&
-        removeCells(change)
-      ) {
-        for (let slot = cursor; slot < end; slot++) targetSlots.add(slot);
-      }
-      cells.push({ cell, start: cursor, end });
-      cursor = end;
+      cells.push({ cell, start: cursor, end: cursor + span });
+      cursor += span;
     }
-    if (cursor > width - after) return Result.err("unsupported");
+    width ??= cursor + after;
+    if (cursor + after !== width) return Result.err("unsupported");
     gridRows.push({ cells, before, after });
   }
-  if (targetSlots.size === 0) return Result.err("unsupported");
+  if (width === undefined || width === 0) return Result.err("unsupported");
+  const gridWidth = width;
 
-  const removedByRow: Set<number>[] = [];
-  for (const row of gridRows) {
-    const removed = new Set<number>();
-    for (const { cell, start, end } of row.cells) {
-      const overlaps = Array.from({ length: end - start }, (_, offset) =>
-        targetSlots.has(start + offset),
-      );
-      const isSelectedRemoval =
-        cell.structuralChange !== undefined &&
-        ids.has(cell.structuralChange.info.id) &&
-        removeCells(cell.structuralChange);
-      if (
-        overlaps.some(Boolean) !== isSelectedRemoval ||
-        (overlaps.some(Boolean) && !overlaps.every(Boolean))
-      ) {
-        return Result.err("unsupported");
-      }
-      if (isSelectedRemoval)
-        for (let slot = start; slot < end; slot++) removed.add(slot);
-    }
-    for (let slot = 0; slot < row.before; slot++)
-      if (targetSlots.has(slot)) removed.add(slot);
-    for (let slot = width - row.after; slot < width; slot++)
-      if (targetSlots.has(slot)) removed.add(slot);
-    if (removed.size !== targetSlots.size) return Result.err("unsupported");
-    removedByRow.push(removed);
+  // A slot goes when no row keeps anything in it.
+  const removable = new Set<number>();
+  for (let slot = 0; slot < gridWidth; slot++) {
+    const kept = gridRows.some(
+      ({ cells, before, after }) =>
+        slot >= before &&
+        slot < gridWidth - after &&
+        cells.some(
+          ({ cell, start, end }) =>
+            slot >= start && slot < end && !removes(cell),
+        ),
+    );
+    if (!kept) removable.add(slot);
   }
+  const removedIn = (start: number, end: number) =>
+    Array.from({ length: end - start }, (_, offset) =>
+      removable.has(start + offset),
+    ).filter(Boolean).length;
 
-  const nextWidths = columnWidths.filter(
-    (_columnWidth, index) => !targetSlots.has(index),
-  );
-  if (nextWidths.length === 0) return Result.err("unsupported");
-  const rows = table.rows.map((row, rowIndex) => {
+  // Whether a removed cell left columns other rows still hold.
+  let holdsRemovedColumns = false;
+  const rows: TableRow[] = [];
+  for (const [rowIndex, row] of table.rows.entries()) {
     const layout = gridRows[rowIndex];
-    const removed = removedByRow[rowIndex];
-    if (layout === undefined || removed === undefined) return row;
-    const nextRow = { ...row };
-    nextRow.cells = layout.cells.flatMap(({ cell }) => {
+    if (layout === undefined) return Result.err("unsupported");
+    const cells: TableCell[] = [];
+    // Columns a removed cell held that other rows keep, waiting for the
+    // next kept cell when nothing before it in the row can take them.
+    let carried = 0;
+    const widen = (cell: TableCell, extra: number): TableCell | undefined => {
+      if (extra === 0) return cell;
+      // A widened cell would no longer line up with its vertical merge.
+      if (cell.formatting?.vMerge !== undefined) return undefined;
+      return {
+        ...cell,
+        formatting: {
+          ...cell.formatting,
+          gridSpan: (cell.formatting?.gridSpan ?? 1) + extra,
+        },
+      };
+    };
+    for (const { cell, start, end } of layout.cells) {
+      if (removes(cell)) {
+        const kept = end - start - removedIn(start, end);
+        if (kept === 0) continue;
+        holdsRemovedColumns = true;
+        const previous = cells.at(-1);
+        if (previous === undefined) {
+          carried += kept;
+          continue;
+        }
+        const widened = widen(previous, kept);
+        if (widened === undefined) return Result.err("unsupported");
+        cells[cells.length - 1] = widened;
+        continue;
+      }
+      let next = cell;
       const change = cell.structuralChange;
-      if (
-        change !== undefined &&
-        ids.has(change.info.id) &&
-        removeCells(change)
-      )
-        return [];
       if (
         change !== undefined &&
         ids.has(change.info.id) &&
         change.type !== "tableCellMerge"
       ) {
-        const nextCell = { ...cell };
-        delete nextCell.structuralChange;
-        return [nextCell];
+        next = { ...cell };
+        delete next.structuralChange;
       }
-      return [cell];
-    });
-    const removedBefore = Array.from({ length: layout.before }, (_, slot) =>
-      removed.has(slot),
-    ).filter(Boolean).length;
-    const removedAfter = Array.from({ length: layout.after }, (_, offset) =>
-      removed.has(width - layout.after + offset),
-    ).filter(Boolean).length;
+      // A kept cell holds no column every row loses.
+      const widened = widen(next, carried);
+      if (widened === undefined) return Result.err("unsupported");
+      carried = 0;
+      cells.push(widened);
+    }
+    if (carried > 0 || cells.length === 0) return Result.err("unsupported");
+    const nextRow: TableRow = { ...row, cells };
+    const removedBefore = removedIn(0, layout.before);
+    const removedAfter = removedIn(gridWidth - layout.after, gridWidth);
     if (removedBefore > 0 || removedAfter > 0) {
       const formatting = { ...row.formatting };
       const before = layout.before - removedBefore;
@@ -496,9 +541,17 @@ const resolveCellColumns = ({
       if (Object.keys(formatting).length === 0) delete nextRow.formatting;
       else nextRow.formatting = formatting;
     }
-    return nextRow;
-  });
-  return Result.ok({ ...table, rows, columnWidths: nextWidths });
+    rows.push(nextRow);
+  }
+  const next: Table = { ...table, rows };
+  if (columnWidths !== undefined) {
+    const nextWidths = columnWidths.filter(
+      (_width, slot) => !removable.has(slot),
+    );
+    if (nextWidths.length === 0) return Result.err("unsupported");
+    next.columnWidths = nextWidths;
+  }
+  return Result.ok({ table: next, holdsRemovedColumns });
 };
 
 type ResolveCellChangesOptions = {
@@ -512,7 +565,10 @@ const resolveCellChanges = ({
   ids,
   reject,
   selectedGridChange,
-}: ResolveCellChangesOptions): Result<Table, "unsupported"> => {
+}: ResolveCellChangesOptions): Result<
+  { table: Table; holdsRemovedColumns: boolean },
+  "unsupported"
+> => {
   const properties = (source: Table): Table => ({
     ...source,
     rows: source.rows.map((row) => ({
@@ -560,7 +616,6 @@ const resolveCellChanges = ({
 
   const propertiesResolved = properties(table);
   const structureResolved = resolveStructure(propertiesResolved);
-  if (selectedGridChange) return Result.ok(structureResolved);
 
   const hasRemovedCells = table.rows.some((row) =>
     row.cells.some((cell) => {
@@ -573,12 +628,17 @@ const resolveCellChanges = ({
       );
     }),
   );
-  if (!hasRemovedCells) return Result.ok(structureResolved);
+  if (!hasRemovedCells)
+    return Result.ok({ table: structureResolved, holdsRemovedColumns: false });
 
   // Cell insertions used by horizontal/vertical splits restore the owner's span
-  // or merge state. Keep the grid when that restored topology covers it exactly.
-  if (tableGrid(structureResolved, DOCUMENT_OP_TYPES.SET_TABLE).isOk()) {
-    return Result.ok(structureResolved);
+  // or merge state. Keep the grid when that restored topology covers it
+  // exactly, or when the grid the selection restores will.
+  if (
+    tableGrid(structureResolved, DOCUMENT_OP_TYPES.SET_TABLE).isOk() ||
+    (selectedGridChange && coversEvenly(structureResolved))
+  ) {
+    return Result.ok({ table: structureResolved, holdsRemovedColumns: false });
   }
 
   // Historical cell marks without a grid snapshot can represent complete
@@ -589,7 +649,10 @@ const resolveCellChanges = ({
     reject,
   });
   if (columns.isErr()) return columns;
-  return Result.ok(resolveStructure(columns.value));
+  return Result.ok({
+    table: resolveStructure(columns.value.table),
+    holdsRemovedColumns: columns.value.holdsRemovedColumns,
+  });
 };
 
 type ResolveTableRowsOptions = {
@@ -723,7 +786,8 @@ export const resolveTableRows = ({
         ),
       );
     const propertiesResolved = propertyTable({
-      table: cellsResolved.value,
+      table: cellsResolved.value.table,
+      keepsGrid: cellsResolved.value.holdsRemovedColumns,
       ids,
       reject,
     });

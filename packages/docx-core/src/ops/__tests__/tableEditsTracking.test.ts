@@ -843,7 +843,7 @@ describe("tracked table edits", () => {
     ).toBeUndefined();
   });
 
-  test("stale table inverses and incomplete cell-column revisions refuse atomically", () => {
+  test("stale table inverses refuse atomically", () => {
     const baseline = documentOf(tableOf());
     const originalTable = tableIn(baseline);
     refused(
@@ -856,25 +856,54 @@ describe("tracked table edits", () => {
       },
       DOCUMENT_OP_REFUSAL_REASONS.STALE,
     );
+  });
 
-    const malformed = structuredClone(baseline);
-    const markedTable = tableIn(malformed);
-    const cell = markedTable.rows.at(0)?.cells.at(1);
-    if (cell === undefined) throw new Error("The target cell exists.");
-    cell.structuralChange = {
+  test("a cell removed from part of a column hands its columns to the cell beside it", () => {
+    const baseline = documentOf(tableOf());
+    const markedTable = tableIn(baseline);
+    const middle = markedTable.rows.at(0)?.cells.at(1);
+    const first = markedTable.rows.at(1)?.cells.at(0);
+    if (middle === undefined || first === undefined)
+      throw new Error("The target cells exist.");
+    middle.structuralChange = {
       type: "tableCellDeletion",
       info: { id: 800, author: "Reviewer" },
     };
-    refused(
-      malformed,
-      {
-        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
-        story: OP_STORIES.MAIN,
-        revisionIds: [800],
-        decision: REVISION_DECISIONS.ACCEPT,
-      },
-      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+    first.structuralChange = {
+      type: "tableCellDeletion",
+      info: { id: 801, author: "Reviewer" },
+    };
+    const accepted = tableIn(
+      resolved(baseline, [800, 801], REVISION_DECISIONS.ACCEPT).document,
     );
+    // The grid keeps every column; the cell before the removed one widens,
+    // or the one after it when it started its row.
+    expect(accepted.columnWidths).toEqual([500, 600, 700]);
+    expect(
+      accepted.rows.map((row) =>
+        row.cells.map((cell) => ({
+          id:
+            cell.content.at(0)?.type === "paragraph"
+              ? cell.content.at(0)?.paraId
+              : undefined,
+          span: cell.formatting?.gridSpan ?? 1,
+          tracked: cell.structuralChange !== undefined,
+        })),
+      ),
+    ).toEqual([
+      [
+        { id: "00000010", span: 2, tracked: false },
+        { id: "00000012", span: 1, tracked: false },
+      ],
+      [
+        { id: "00000021", span: 2, tracked: false },
+        { id: "00000022", span: 1, tracked: false },
+      ],
+    ]);
+    const rejected = tableIn(
+      resolved(baseline, [800, 801], REVISION_DECISIONS.REJECT).document,
+    );
+    expect(rejected.rows.map((row) => row.cells.length)).toEqual([3, 3]);
   });
 });
 
