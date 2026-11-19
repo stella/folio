@@ -6,7 +6,12 @@ import path from "node:path";
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-/** Copy only the registry release policy; workspace linker settings stay in the repo. */
+/**
+ * Copy only the registry release policy; workspace linker settings stay in the
+ * repo. The clean room also turns off Bun's shared global store: a user-level
+ * bunfig that enables it links packages from the shared cache, where Node
+ * cannot resolve their peers, so the consumer must not inherit it.
+ */
 export const writeCleanRoomInstallConfig = async (
   consumerDir: string,
   linker?: "isolated",
@@ -34,7 +39,7 @@ export const writeCleanRoomInstallConfig = async (
   }
   await writeFile(
     path.join(consumerDir, "bunfig.toml"),
-    `[install]\n${linker ? `linker = "${linker}"\n` : ""}minimumReleaseAge = ${minimumReleaseAge}\nminimumReleaseAgeExcludes = ${JSON.stringify(minimumReleaseAgeExcludes)}\n`,
+    `[install]\n${linker ? `linker = "${linker}"\n` : ""}globalStore = false\nminimumReleaseAge = ${minimumReleaseAge}\nminimumReleaseAgeExcludes = ${JSON.stringify(minimumReleaseAgeExcludes)}\n`,
   );
 };
 
