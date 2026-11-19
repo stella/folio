@@ -30,6 +30,8 @@ import {
   documentStories,
   leasedIdCensus,
   OP_STORIES,
+  storyBody,
+  storyParagraphs,
 } from "@stll/docx-core/ops";
 
 import { reviewerDocumentArbitrary } from "../../../../test/generators/reviewerDocumentArbitraries";
@@ -168,6 +170,21 @@ const expectedViews = async (buffer: ArrayBuffer) => {
   return expected;
 };
 
+/** Whether the paragraph `paraId` is the only paragraph of its block list. */
+const aloneInItsList = (document: Document, paraId: string): boolean =>
+  documentStories(document).some((story) => {
+    const paragraphs = storyParagraphs(storyBody(document, story));
+    const own = paragraphs.find(
+      (location) =>
+        location.paragraph.paraId?.toUpperCase() === paraId.toUpperCase(),
+    );
+    return (
+      own !== undefined &&
+      paragraphs.filter(({ list }) => isDeepStrictEqual(list, own.list))
+        .length === 1
+    );
+  });
+
 const viewLaws = async (
   buffer: ArrayBuffer,
   unsupported: "fail" | "known-input-boundaries" = "fail",
@@ -240,6 +257,12 @@ const viewLaws = async (
         );
         if (resolved.isOk()) return [];
         const refusal = resolved.error;
+        // Removing the only paragraph of its block list, before that list's
+        // final table, would leave the list without one to anchor it.
+        const anchorless =
+          /^Resolving the mark of ([0-9A-Fa-f]{8}) leaves no structural inverse anchor\.$/u.exec(
+            refusal.message,
+          )?.[1];
         const knownBoundary =
           refusal.reason === DOCUMENT_OP_REFUSAL_REASONS.CONTAINER_FINAL_MARK ||
           (refusal.reason === DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE &&
@@ -248,7 +271,9 @@ const viewLaws = async (
             ) ||
               /^Resolving the mark of [0-9A-Fa-f]{8} would leave its container without a final paragraph\.$/u.test(
                 refusal.message,
-              )));
+              ) ||
+              (anchorless !== undefined &&
+                aloneInItsList(before, anchorless))));
         return knownBoundary &&
           refusal.opType === DOCUMENT_OP_TYPES.RESOLVE_REVISION
           ? [refusal.message]

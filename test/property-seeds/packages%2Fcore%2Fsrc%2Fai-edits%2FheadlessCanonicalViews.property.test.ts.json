@@ -37,6 +37,12 @@
       "date": "2026-11-17"
     },
     {
+      "seed": 1002471682,
+      "path": "69:0:0:0:0:1:0:0:0:0:0:0:4:3:3:3:3:3:3:3:3:3:3:3:2:8:2:11:2:2:4:4:4:4:4:4:4:4:4:4",
+      "note": "Rejecting the added mark of the only paragraph of its list, before that list's final table, is refused: no paragraph would remain to anchor the list.",
+      "date": "2026-11-19"
+    },
+    {
       "seed": 289121159,
       "path": "5:0:0:0:0:0:0:0:0:1:0:3:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5",
       "note": "Reviewer construction assigns distinct comment bindings to independently drawn point references. The original duplicate-reference source remains a separate native activation refusal regression.",
