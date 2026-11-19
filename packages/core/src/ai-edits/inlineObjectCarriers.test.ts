@@ -494,17 +494,36 @@ describe("block operations on and next to an inline object's paragraph", () => {
             const reviewer = await FolioDocxReviewer.fromBuffer(source, {
               author: "Reviewer",
             });
+            const operation = scenario.operation(reviewer);
             const result = reviewer.applyDocumentOperations(
               {
                 version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
                 mode,
-                operations: [scenario.operation(reviewer)],
+                operations: [operation],
               },
               { undefinedReferences: "refuse" },
             );
             const reopened = await reopen(reviewer);
             expect(readerOrder(reopened)).toEqual(readerOrder(reviewer));
 
+            if (
+              mode === "tracked-changes" &&
+              operation.type === "deleteBlock"
+            ) {
+              expect(result.skipped).toEqual([
+                {
+                  id: "op",
+                  reason: "invalidResult",
+                  message: "Accept All would lose a drawing.",
+                },
+              ]);
+              expect(result.applied).toEqual([]);
+              expect(result.undoHandle).toBeNull();
+              expect(await savedBody(await reviewer.toBuffer())).toEqual(
+                expectedBody(ORIGINAL, object),
+              );
+              return;
+            }
             if (scenario.refused?.(kind, placement, mode)) {
               expect(result.skipped).toEqual([
                 { id: "op", reason: "unsupportedBlock" },
@@ -620,17 +639,17 @@ describe("a paragraph holding a text box, first in the body", () => {
     expect(texts(await FolioDocxReviewer.fromBuffer(saved))).toEqual([TAIL]);
   });
 
-  test("deleting it tracked marks the box deleted with it", async () => {
+  test("review of a staged deletion resolves the box with its paragraph", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await buildTextBoxCarrierFirst(),
       {
         author: "Reviewer",
       },
     );
-    reviewer.applyDocumentOperations(
+    const staged = reviewer.applyDocumentOperations(
       {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode: "tracked-changes",
+        mode: "suggested",
         operations: [
           {
             id: "delete",
@@ -641,6 +660,10 @@ describe("a paragraph holding a text box, first in the body", () => {
       },
       { undefinedReferences: "refuse" },
     );
+    const suggestion = staged.applied.at(0)?.suggestionId;
+    expect(staged.skipped).toEqual([]);
+    if (suggestion === undefined) throw new Error("Expected a staged deletion");
+    expect(reviewer.acceptSuggestion(suggestion)).toBe(true);
     const pending = await reviewer.toBuffer();
     // The drawing run is inside the paragraph's deletion.
     expect(await bodyXml(pending)).toMatch(

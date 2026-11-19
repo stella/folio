@@ -108,6 +108,16 @@ const twoParagraphs = async (): Promise<FolioDocxReviewer> => {
   });
 };
 
+/** Stage a pending deletion to exercise resolution of annotations it holds. */
+const stageDeletion = (reviewer: FolioDocxReviewer, blockId: string): void => {
+  const result = reviewer.applyOperations(
+    [{ id: "delete", type: "deleteBlock", blockId }],
+    { undefinedReferences: "refuse", mode: "suggested" },
+  );
+  expect(result.applied).toHaveLength(1);
+  expect(reviewer.acceptSuggestion("delete")).toBe(true);
+};
+
 /** Insert tracked text after the first block and comment on all of it. */
 const commentOnTrackedInsertion = async (): Promise<FolioDocxReviewer> => {
   const reviewer = await twoParagraphs();
@@ -216,11 +226,7 @@ describe("a comment in a note whose reference is pending deletion", () => {
   const pending = async () => {
     const reviewer = await footnoteComment();
     const [body] = reviewer.snapshot().blocks;
-    const result = reviewer.applyOperations(
-      [{ id: "delete", type: "deleteBlock", blockId: body!.id }],
-      { undefinedReferences: "refuse", mode: "tracked-changes" },
-    );
-    expect(result.applied).toHaveLength(1);
+    stageDeletion(reviewer, body!.id);
     return reviewer;
   };
 
@@ -321,11 +327,7 @@ describe("a comment in a note whose reference is pending deletion", () => {
       { undefinedReferences: "refuse", mode: "direct" },
     );
     expect(commented.applied).toHaveLength(1);
-    const tracked = reviewer.applyOperations(
-      [{ id: "delete-reference", type: "deleteBlock", blockId: reference!.id }],
-      { undefinedReferences: "refuse", mode: "tracked-changes" },
-    );
-    expect(tracked.applied).toHaveLength(1);
+    stageDeletion(reviewer, reference!.id);
     reviewer = await reopen(reviewer);
     const direct = reviewer.applyOperations(
       [
@@ -507,13 +509,7 @@ describe("a comment whose anchored content is removed goes with it", () => {
     const kept = reviewer
       .snapshot()
       .blocks.find((block) => block.text === "Keep.");
-    reviewer.applyOperations(
-      [{ id: "delete", type: "deleteBlock", blockId: kept!.id }],
-      {
-        undefinedReferences: "refuse",
-        mode: "tracked-changes",
-      },
-    );
+    stageDeletion(reviewer, kept!.id);
     expect(threads(reviewer.getComments())).toEqual([SURVIVOR]);
     expect(threads((await reopen(reviewer)).getComments())).toEqual([SURVIVOR]);
 

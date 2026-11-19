@@ -57,21 +57,22 @@ type CommentReferenceSurvey = {
   references: CommentReferenceOccurrence[];
   markExtents: CommentMarkExtent[];
   unanchoredMarks: { position: number; size: number; mark: Mark }[];
+  referenceMarks: {
+    position: number;
+    size: number;
+    mark: Mark;
+    commentId: number;
+    referenceId: number;
+  }[];
 };
 
 const surveyCommentReferences = (doc: PMNode): CommentReferenceSurvey => {
   const references: CommentReferenceOccurrence[] = [];
   const markEnds = new Map<number, number>();
   const unanchoredMarks: CommentReferenceSurvey["unanchoredMarks"] = [];
+  const referenceMarks: CommentReferenceSurvey["referenceMarks"] = [];
 
   doc.descendants((node, position) => {
-    const inert = isCommentRangeInertAtom(node);
-    if (inert) {
-      for (const mark of node.marks) {
-        if (mark.type.name === "comment")
-          unanchoredMarks.push({ position, size: node.nodeSize, mark });
-      }
-    }
     if (node.type.name === COMMENT_REFERENCE_NODE_NAME) {
       const attrs = readCommentReferenceAttrs(node);
       references.push(
@@ -84,7 +85,28 @@ const surveyCommentReferences = (doc: PMNode): CommentReferenceSurvey => {
             }
           : { status: "malformed", position, size: node.nodeSize },
       );
+      if (attrs.ok) {
+        for (const mark of node.marks) {
+          const commentId: unknown = mark.attrs["commentId"];
+          if (mark.type.name === "comment" && typeof commentId === "number") {
+            referenceMarks.push({
+              position,
+              size: node.nodeSize,
+              mark,
+              commentId,
+              referenceId: attrs.value.commentId,
+            });
+          }
+        }
+      }
       return false;
+    }
+    const inert = isCommentRangeInertAtom(node);
+    if (inert) {
+      for (const mark of node.marks) {
+        if (mark.type.name === "comment")
+          unanchoredMarks.push({ position, size: node.nodeSize, mark });
+      }
     }
     // Point comments have no marked content, so their range anchor is the
     // surviving extent that keeps the reference.
@@ -135,6 +157,7 @@ const surveyCommentReferences = (doc: PMNode): CommentReferenceSurvey => {
   return {
     references,
     unanchoredMarks,
+    referenceMarks,
     markExtents: [...markEnds].map(([commentId, end]) => ({ commentId, end })),
   };
 };
@@ -234,10 +257,38 @@ export const resolveCommentReferences = (
 ): CommentReferenceResolution | null => {
   const survey = surveyCommentReferences(doc);
   const orphans = pointCommentIds(survey);
+  const prior =
+    previous && (orphans.size > 0 || survey.referenceMarks.length > 0)
+      ? surveyCommentReferences(previous)
+      : undefined;
+  if (survey.referenceMarks.length > 0) {
+    // Imported references carry still-open ranges to keep their place among
+    // the range ends. Preserve that order without counting refs as coverage
+    // or giving newly applied comment marks a place on an inert atom.
+    const oldReferenceMarks = new Map<number, Mark[]>();
+    for (const { referenceId, mark } of prior?.referenceMarks ?? []) {
+      const marks = oldReferenceMarks.get(referenceId);
+      if (marks === undefined) oldReferenceMarks.set(referenceId, [mark]);
+      else marks.push(mark);
+    }
+    const covered = new Set(
+      survey.markExtents.map(({ commentId }) => commentId),
+    );
+    for (const occurrence of survey.referenceMarks) {
+      if (
+        !covered.has(occurrence.commentId) ||
+        !occurrence.mark.isInSet(
+          oldReferenceMarks.get(occurrence.referenceId) ?? [],
+        )
+      ) {
+        survey.unanchoredMarks.push(occurrence);
+      }
+    }
+  }
   const repairs = planCommentReferenceRepairs({
     ...survey,
-    ...(previous && orphans.size > 0
-      ? { pointIds: pointCommentIds(surveyCommentReferences(previous)) }
+    ...(prior !== undefined && orphans.size > 0
+      ? { pointIds: pointCommentIds(prior) }
       : {}),
   });
   if (repairs.length === 0 && survey.unanchoredMarks.length === 0) return null;

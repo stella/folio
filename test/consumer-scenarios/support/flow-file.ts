@@ -65,6 +65,15 @@ export const BATCH_ACTIONS: ReadonlySet<Action> = new Set([
   "story batch",
 ]);
 
+const FIDELITY_REFUSALS = [
+  "note",
+  "drawing",
+  "field",
+  "comment",
+  "rejectOriginal",
+] as const;
+type FidelityRefusal = (typeof FIDELITY_REFUSALS)[number];
+
 export type FlowStep = {
   action: Action;
   /** The generator's position when the step starts drawing. */
@@ -77,6 +86,8 @@ export type FlowStep = {
   operationTypes?: string[];
   /** Require every pinned operation to apply, rather than just a nonempty batch. */
   expectedApplied?: number;
+  /** Require this pinned edit to report a specific review fidelity refusal. */
+  expectedFidelityRefusal?: FidelityRefusal;
 };
 
 /** Replace a step's operations and keep operation-count assertions bound to that list. */
@@ -86,6 +97,7 @@ export const rebindStepOperations = (
 ): FlowStep => {
   const {
     expectedApplied: _expectedApplied,
+    expectedFidelityRefusal: _expectedFidelityRefusal,
     operations: _operations,
     ...rest
   } = step;
@@ -179,7 +191,25 @@ const parseStep = (value: unknown, index: number): FlowStep => {
       `flow step ${index}: expectedApplied needs suggest_changes and a positive integer`,
     );
   const operations = value["operations"];
+  const rawFidelityRefusal = value["expectedFidelityRefusal"];
+  const expectedFidelityRefusal = FIDELITY_REFUSALS.find(
+    (kind) => kind === rawFidelityRefusal,
+  );
+  if (
+    rawFidelityRefusal !== undefined &&
+    (expectedFidelityRefusal === undefined ||
+      expectedApplied !== undefined ||
+      !BATCH_ACTIONS.has(action) ||
+      !Array.isArray(operations) ||
+      operations.length === 0)
+  )
+    throw new TypeError(
+      `flow step ${index}: expectedFidelityRefusal needs a pinned batch and a fidelity refusal`,
+    );
   const batchOptions = {
+    ...(expectedFidelityRefusal === undefined
+      ? {}
+      : { expectedFidelityRefusal }),
     ...(atomic === undefined ? {} : { atomic }),
     ...(operationTypes === undefined ? {} : { operationTypes }),
     ...(expectedApplied === undefined ? {} : { expectedApplied }),

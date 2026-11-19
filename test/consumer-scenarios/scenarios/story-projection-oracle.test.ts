@@ -33,17 +33,29 @@ const pendingReference = async (
         ),
     );
   assert.ok(reference, "The fixture must expose its real note reference");
-  const receipt = reviewer.applyDocumentOperations(
-    {
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode: "tracked-changes",
-      operations: [
-        { id: "delete-reference", type: "deleteBlock", blockId: reference.id },
-      ],
-    },
+  const batch = {
+    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+    operations: [
+      { id: "delete-reference", type: "deleteBlock", blockId: reference.id },
+    ],
+  } as const;
+  const refused = reviewer.applyDocumentOperations(
+    { ...batch, mode: "tracked-changes" },
     { undefinedReferences: "refuse" },
   );
-  assert.equal(receipt.applied.length, 1, JSON.stringify(receipt));
+  assert.equal(refused.status, "rejected");
+  assert.deepEqual(refused.applied, []);
+  assert.equal(refused.skipped.at(0)?.reason, "invalidResult");
+  assert.match(refused.skipped.at(0)?.message ?? "", /Accept All.*note/u);
+  assert.deepEqual(reviewer.getChanges(), []);
+  const staged = reviewer.applyDocumentOperations(
+    { ...batch, mode: "suggested" },
+    { undefinedReferences: "refuse" },
+  );
+  const suggestionId = staged.applied.at(0)?.suggestionId;
+  assert.ok(suggestionId, JSON.stringify(staged));
+  assert.equal(reviewer.acceptSuggestion(suggestionId), true);
+  assert.ok(reviewer.getChanges().length > 0);
   const story = { type: kind, noteId: 1 };
   assert.ok(
     reviewer.readStory(story),

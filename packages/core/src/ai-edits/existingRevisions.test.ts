@@ -114,6 +114,80 @@ test("rejects a held batch when deleting an intervening paragraph exposes a fore
 });
 
 for (const session of ["legacy", "canonical"] as const) {
+  test(`${session} protects a foreign revision in a collapsed cell when deleting its table`, async () => {
+    const docx = await createDocx({
+      package: {
+        document: {
+          content: [
+            {
+              type: "table",
+              columnWidths: [1200, 1200],
+              rows: [
+                {
+                  type: "tableRow",
+                  cells: [
+                    {
+                      type: "tableCell",
+                      formatting: { vMerge: "restart" },
+                      content: [
+                        {
+                          type: "paragraph",
+                          paraId: "10000000",
+                          content: [textRun("Merged")],
+                        },
+                      ],
+                    },
+                    {
+                      type: "tableCell",
+                      content: [{ type: "paragraph", content: [] }],
+                    },
+                  ],
+                },
+                {
+                  type: "tableRow",
+                  cells: [
+                    {
+                      type: "tableCell",
+                      formatting: { vMerge: "continue" },
+                      structuralChange: {
+                        type: "tableCellDeletion",
+                        info: { id: 7, author: "First Reviewer" },
+                      },
+                      content: [{ type: "paragraph", content: [] }],
+                    },
+                    {
+                      type: "tableCell",
+                      content: [
+                        { type: "paragraph", content: [textRun("Cell")] },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+            { type: "paragraph", content: [textRun("After")] },
+          ],
+        },
+      },
+    });
+    const reviewer = await FolioDocxReviewer.fromBuffer(docx, {
+      author: "Second Reviewer",
+      session,
+    });
+    expect(reviewer.getChanges()).toMatchObject([
+      { id: 7, type: "cellDeleted", author: "First Reviewer", text: "" },
+    ]);
+    const result = apply(
+      reviewer,
+      [{ id: "delete-table", type: "deleteTable", blockId: "10000000" }],
+      POLICY,
+    );
+    expect(result.applied).toEqual([]);
+    expect(result.skipped).toMatchObject([
+      { id: "delete-table", reason: "existingRevisionConflict" },
+    ]);
+  });
+
   test(`${session} refuses a final deletion that retracts another author's break`, async () => {
     const docx = await createDocx({
       package: {
