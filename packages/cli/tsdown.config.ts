@@ -42,5 +42,6 @@ export default defineConfig([
       dtsOnly: true,
     },
     clean: false,
+    plugins: [stableRelativeImportOrder()],
   },
 ]);
