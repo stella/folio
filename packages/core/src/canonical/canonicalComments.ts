@@ -22,6 +22,8 @@ import {
   type UpdateCommentContentOp,
 } from "@stll/docx-core/ops";
 
+import { commentThreadParaId } from "../docx/commentThreadKey";
+import { threadedCommentIds } from "../docx/serializer/commentSerializer";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import type { Comment } from "../types/content";
 import type { Document } from "../types/document";
@@ -248,6 +250,31 @@ export const compileCanonicalComments = ({
     const applied = applyDocumentOps(draft, [materialized.value]);
     if (applied.isErr()) return refuse(applied.error.message);
     compiled.push(materialized.value);
+    draft = applied.value.document;
+  }
+  // A reply, its thread root and a resolved comment are linked through the
+  // paragraph id of their last paragraph; the save mints one where the model
+  // has none. The command mints it instead, so the model is what saves.
+  const threaded = threadedCommentIds(draft.package.document.comments ?? []);
+  for (const comment of draft.package.document.comments ?? []) {
+    const content = comment.content ?? [];
+    const last = content.at(-1);
+    if (
+      !threaded.has(comment.id) ||
+      last === undefined ||
+      commentThreadParaId(content.map(({ paraId }) => paraId)) !== undefined
+    )
+      continue;
+    const paraId = canonicalCommentBody(draft, "", idLease).at(0)?.paraId;
+    if (paraId === undefined) return refuse("No paragraph id is free.");
+    const op: DocumentOp = {
+      type: DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT,
+      id: comment.id,
+      content: [...content.slice(0, -1), { ...last, paraId }],
+    };
+    const applied = applyDocumentOps(draft, [op]);
+    if (applied.isErr()) return refuse(applied.error.message);
+    compiled.push(op);
     draft = applied.value.document;
   }
   return Result.ok({ ops: compiled, document: draft, commentId });

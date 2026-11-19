@@ -152,7 +152,7 @@ const XML_DECLARATION =
  * reply's parent (the thread root), or any comment carrying a resolved state.
  * A plain top-level comment set yields an empty set, so no part is written.
  */
-function threadedCommentIds(comments: readonly Comment[]): Set<number> {
+export function threadedCommentIds(comments: readonly Comment[]): Set<number> {
   const replyParents = new Set<number>();
   for (const comment of comments) {
     if (comment.parentId !== undefined) {
