@@ -16,7 +16,7 @@ import {
   getTrackedChangeStatsFromDoc,
 } from "../ai-edits/read";
 import {
-  protectedBlockLoss,
+  missingProtectedBlockKind,
   sameOriginalBlocks,
 } from "../ai-edits/tracked-batch-fidelity";
 import {
@@ -27,6 +27,7 @@ import { lockedControlSpans } from "../prosemirror/lockedControls";
 import type { Document } from "../types/document";
 import { lockViolationBetween } from "./canonicalLockGuard";
 import { canonicalRevisionLocks } from "./canonicalRevisionLocks";
+import { changedWindow } from "./canonicalSeedContent";
 
 type StoryVersion = {
   document: Document;
@@ -159,9 +160,13 @@ const checkCanonicalTrackedBatchFidelity = ({
   });
   if (acceptedBefore === undefined || acceptedAfter === undefined)
     return "Accept All could not resolve the tracked result.";
-  return acceptedBefore === acceptedAfter
-    ? null
-    : protectedBlockLoss(acceptedBefore, acceptedAfter);
+  if (acceptedBefore === acceptedAfter) return null;
+  const { removed, added } = changedWindow(acceptedBefore, acceptedAfter);
+  let lost = missingProtectedBlockKind(removed, added);
+  // A note or comment can stay reachable through an unchanged block.
+  if (lost === "note" || lost === "comment")
+    lost = missingProtectedBlockKind(acceptedBefore, acceptedAfter);
+  return lost === null ? null : `Accept All would lose a ${lost}.`;
 };
 
 /** Check canonical review through the package model before publishing. */

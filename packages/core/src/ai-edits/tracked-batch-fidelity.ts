@@ -332,16 +332,12 @@ const modelInventory = (blocks: readonly BlockContent[]): Inventory => {
   return inventory;
 };
 
-export const protectedBlockLoss = (
+/** The kind of protected content missing from the accepted blocks. */
+export const missingProtectedBlockKind = (
   before: readonly BlockContent[],
   after: readonly BlockContent[],
-): string | null => {
-  const lost = missingProtectedContent(
-    modelInventory(before),
-    modelInventory(after),
-  );
-  return lost === null ? null : `Accept All would lose a ${lost}.`;
-};
+): ProtectionKind | null =>
+  missingProtectedContent(modelInventory(before), modelInventory(after));
 
 const checkTrackedBatchFidelity = ({
   before,
