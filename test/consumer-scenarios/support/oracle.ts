@@ -3566,11 +3566,12 @@ const anchorDisposition = (
       replace: "",
     })),
   ];
+  const sourceText = located.pre.text;
   const fates = starts.map((start) =>
     coveredRangeFate(
       model.engine,
       edits,
-      located.pre.text,
+      sourceText,
       start,
       start + quote.length,
     ),
