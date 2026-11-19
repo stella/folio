@@ -12,7 +12,7 @@ import {
 import { FolioDocxReviewer } from "./headless";
 
 const commentedBlockId = "10000000";
-const secondBlockId = "10000001";
+const secondBlockId = "10000002";
 const commentedText = "Document heading";
 const originalText = "Original wording";
 const replacementText = "Revised wording";
@@ -26,6 +26,7 @@ const source = () =>
         { type: "commentRangeEnd", id: 1 },
         { type: "commentReference", id: 1 },
       ],
+      [textRun("Intervening paragraph.")],
       [textRun(originalText)],
     ],
     [reviewComment(1, "Check heading.")],
@@ -106,6 +107,7 @@ for (const session of ["legacy", "canonical"] as const) {
     expect(accepted.acceptAll().skipped).toEqual([]);
     expect(accepted.getContent().map(({ text }) => text)).toEqual([
       commentedText,
+      "Intervening paragraph.",
       replacementText,
     ]);
     expect(accepted.getComments()).toEqual(comments);

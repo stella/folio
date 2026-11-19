@@ -2983,7 +2983,9 @@ export const applyFolioDocumentOperationsInPackage = ({
     const first = attempt(parsedBatch.operations, preview);
     const [firstError] = introducedErrors(first);
     if (firstError === undefined) {
-      const fidelity = refuseFidelityLoss(first);
+      // Atomic preflight uses a coarse diff. Verify the held commit instead.
+      const fidelity =
+        preview && !parsedBatch.dryRun ? null : refuseFidelityLoss(first);
       if (fidelity !== null) return fidelity;
       return {
         outcome: {

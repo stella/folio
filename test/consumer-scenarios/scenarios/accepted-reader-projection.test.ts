@@ -413,19 +413,35 @@ test("clean Markdown keeps referenced footnote and endnote trailers through body
         type === "mergeBlockWithNext" ? position - 1 : position,
       );
       assert.ok(block);
+      const batch = {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        operations: [
+          type === "deleteBlock"
+            ? { id: "change", type, blockId: block.id }
+            : { id: "change", type, blockId: block.id, separator: " " },
+        ],
+      } as const;
       const result = reviewer.applyDocumentOperations(
-        {
-          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-          mode: "tracked-changes",
-          operations: [
-            type === "deleteBlock"
-              ? { id: "change", type, blockId: block.id }
-              : { id: "change", type, blockId: block.id, separator: " " },
-          ],
-        },
+        { ...batch, mode: "tracked-changes" },
         { undefinedReferences: "refuse" },
       );
-      assert.equal(result.applied.length, 1, JSON.stringify(result.issues));
+      if (type === "deleteBlock") {
+        assert.equal(result.status, "rejected");
+        assert.deepEqual(result.applied, []);
+        assert.equal(result.skipped.at(0)?.reason, "invalidResult");
+        assert.match(result.skipped.at(0)?.message ?? "", /Accept All.*note/u);
+        assert.deepEqual(reviewer.getChanges(), []);
+        const staged = reviewer.applyDocumentOperations(
+          { ...batch, mode: "suggested" },
+          { undefinedReferences: "refuse" },
+        );
+        const suggestionId = staged.applied.at(0)?.suggestionId;
+        assert.ok(suggestionId, JSON.stringify(staged));
+        assert.equal(reviewer.acceptSuggestion(suggestionId), true);
+        assert.ok(reviewer.getChanges().length > 0);
+      } else {
+        assert.equal(result.applied.length, 1, JSON.stringify(result.issues));
+      }
       await assertAcceptedReaders(
         new Uint8Array(await reviewer.toBuffer()),
         `${type}: reference ${prefix}`,

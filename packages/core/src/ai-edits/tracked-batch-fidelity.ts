@@ -2,28 +2,33 @@ import { Result } from "better-result";
 import { Fragment, type Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 
-import { visitCommentMarkers } from "../docx/commentAnchorIndex";
-import { getCachedNumberingMap } from "../docx/numberingParser";
+import {
+  removeCommentMarkers,
+  visitCommentMarkers,
+} from "../docx/commentAnchorIndex";
 import {
   BLOCK_TREE_DESCENT,
   visitBlockTreeRecords,
+  visitInlineContentSlots,
+  visitParagraphRuns,
 } from "../docx/paragraphTraversal";
-import { serializeDocumentBody } from "../docx/serializer/documentSerializer";
-import type { RevisionResolutionMode } from "../internal/revisionResolutionInline";
-import { resolveWholeStory } from "../internal/wholeStoryRevisionResolution";
+import { consolidateParagraphContent } from "../docx/runConsolidator";
+import { pluginsForHeadlessRevisionResolution } from "../internal/headlessRevisionResolutionGuard";
+import { projectAllChangesInHeadlessState } from "../prosemirror/commands/comments";
 import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
+import { isBlockBoundaryNode } from "../prosemirror/keptRangeBoundaries";
 import {
-  isBlockBoundaryNode,
-  normalizeKeptRangeBoundaries,
-} from "../prosemirror/keptRangeBoundaries";
-import { completeNumberingForDoc } from "../prosemirror/listInstanceReferences";
-import {
-  getDocumentNumbering,
+  createDocumentNumberingPlugin,
   getStatedDocumentNumbering,
 } from "../prosemirror/plugins/documentNumbering";
-import { getDocumentStyleResolver } from "../prosemirror/plugins/documentStyleState";
+import {
+  createDocumentStylesPlugin,
+  getDocumentStyleResolver,
+} from "../prosemirror/plugins/documentStyles";
 import { readRangeAnchorAttrs } from "../prosemirror/rangeAnchorAttrs";
-import type { NumberingDefinitions } from "../types/document";
+import { singletonManager } from "../prosemirror/schema";
+import type { BlockContent, NumberingDefinitions } from "../types/document";
+import { canonicalJson } from "../utils/canonicalJson";
 import { commentAnchorIdsForNode } from "./comment-lifecycle";
 import { comparisonApplying, noteReferenceOf } from "./note-references";
 import { changedTopLevelWindow } from "./result-validation";
@@ -31,7 +36,6 @@ import { changedTopLevelWindow } from "./result-validation";
 type TrackedBatchFidelityOptions = {
   before: EditorState;
   after: PMNode;
-  numbering?: NumberingDefinitions | null;
   createdCommentIds: readonly number[];
 };
 
@@ -193,7 +197,7 @@ const protectedContent = (doc: PMNode): Inventory => {
   for (const id of comments) add(inventory.comment, String(id));
   if (hasComment) {
     // A surviving start alone does not keep a comment visible on save.
-    visitCommentMarkers(proseDocToBlocks(doc), ({ item }) => {
+    visitCommentMarkers(proseDocToBlocks(doc, []), ({ item }) => {
       if (item.type === "commentReference")
         add(inventory.comment, `reference:${String(item.id)}`);
     });
@@ -201,9 +205,10 @@ const protectedContent = (doc: PMNode): Inventory => {
   return inventory;
 };
 
-const lostContent = (before: PMNode, after: PMNode): ProtectionKind | null => {
-  const expected = protectedContent(before);
-  const actual = protectedContent(after);
+const missingProtectedContent = (
+  expected: Inventory,
+  actual: Inventory,
+): ProtectionKind | null => {
   return (
     protectionKinds.find((kind) => {
       for (const [key, count] of expected[kind]) {
@@ -214,46 +219,138 @@ const lostContent = (before: PMNode, after: PMNode): ProtectionKind | null => {
   );
 };
 
-const originalXml = (doc: PMNode): string => {
-  const content = proseDocToBlocks(doc, []);
-  visitBlockTreeRecords(content, (record) => {
+const authoredBlock = (block: BlockContent): string => {
+  const authored = structuredClone(block);
+  visitBlockTreeRecords([authored], (record) => {
     if (record.type === "paragraph") {
-      // Paragraph identifiers and layout hints can be regenerated on replay.
       delete record.paraId;
       delete record.textId;
       delete record.renderedPageBreakBefore;
+      delete record.listRendering;
+      delete record.reviewCarrier;
+      if (record.formatting && Object.keys(record.formatting).length === 0)
+        delete record.formatting;
+      record.content = consolidateParagraphContent(record.content);
     }
     return BLOCK_TREE_DESCENT.descend;
   });
-  return serializeDocumentBody({ content });
+  return canonicalJson(authored);
+};
+
+export const sameOriginalBlocks = (
+  before: BlockContent[],
+  after: BlockContent[],
+  addedCommentIds: ReadonlySet<number>,
+): boolean => {
+  const restored = removeCommentMarkers(after, addedCommentIds);
+  return (
+    before.length === restored.length &&
+    before.every((block, index) => {
+      const other = restored.at(index);
+      return (
+        other !== undefined &&
+        (block === other || authoredBlock(block) === authoredBlock(other))
+      );
+    })
+  );
 };
 
 const sameOriginal = (before: PMNode, after: PMNode): boolean =>
   before.content.eq(after.content) ||
-  originalXml(before) === originalXml(after);
+  sameOriginalBlocks(
+    proseDocToBlocks(before, []),
+    proseDocToBlocks(after, []),
+    new Set(),
+  );
 
-type ResolveProjectionOptions = {
+const modelInventory = (blocks: readonly BlockContent[]): Inventory => {
+  const inventory: Inventory = {
+    note: new Map(),
+    drawing: new Map(),
+    field: new Map(),
+    comment: new Map(),
+  };
+  visitBlockTreeRecords(blocks, (record) => {
+    if (record.type !== "paragraph") return BLOCK_TREE_DESCENT.descend;
+    visitInlineContentSlots(record, ({ item }) => {
+      if (item.type === "simpleField" || item.type === "complexField")
+        add(inventory.field, item.instruction);
+    });
+    visitParagraphRuns(record, ({ content }) => {
+      for (const item of content) {
+        switch (item.type) {
+          case "footnoteRef":
+          case "endnoteRef":
+            add(inventory.note, JSON.stringify([item.type, item.id]));
+            break;
+          case "drawing":
+            add(
+              inventory.drawing,
+              JSON.stringify([
+                "drawing",
+                item.image.id,
+                item.image.rId ?? item.rawXml ?? item.image.src,
+              ]),
+            );
+            break;
+          case "shape":
+            add(
+              inventory.drawing,
+              JSON.stringify([
+                "shape",
+                item.shape.id,
+                item.shape.name,
+                item.shape.shapeType,
+              ]),
+            );
+            break;
+        }
+      }
+    });
+    return BLOCK_TREE_DESCENT.descend;
+  });
+  visitCommentMarkers(blocks, ({ item }) => {
+    inventory.comment.set(String(item.id), 1);
+    if (item.type === "commentReference")
+      inventory.comment.set(`reference:${String(item.id)}`, 1);
+  });
+  return inventory;
+};
+
+export const protectedBlockLoss = (
+  before: readonly BlockContent[],
+  after: readonly BlockContent[],
+): string | null => {
+  const lost = missingProtectedContent(
+    modelInventory(before),
+    modelInventory(after),
+  );
+  return lost === null ? null : `Accept All would lose a ${lost}.`;
+};
+
+type ResolutionStateOptions = {
   doc: PMNode;
-  mode: RevisionResolutionMode;
   styleResolver: ReturnType<typeof getDocumentStyleResolver>;
-  numbering: ReturnType<typeof getDocumentNumbering>;
+  numbering: NumberingDefinitions | null | undefined;
 };
 
-const resolveProjection = (
-  options: ResolveProjectionOptions,
-): PMNode | null => {
-  const { resolved, failed, keptBoundaries } = resolveWholeStory(options);
-  if (failed) return null;
-  if (resolved === options.doc) return resolved;
-  const tr = EditorState.create({ doc: resolved }).tr;
-  normalizeKeptRangeBoundaries(tr, keptBoundaries);
-  return tr.doc;
-};
+const resolutionState = ({
+  doc,
+  styleResolver,
+  numbering,
+}: ResolutionStateOptions): EditorState =>
+  EditorState.create({
+    doc,
+    plugins: [
+      createDocumentNumberingPlugin(numbering),
+      ...pluginsForHeadlessRevisionResolution(singletonManager.getPlugins()),
+      createDocumentStylesPlugin(styleResolver),
+    ],
+  });
 
 const checkTrackedBatchFidelity = ({
   before,
   after,
-  numbering,
   createdCommentIds,
 }: TrackedBatchFidelityOptions): string | null => {
   // Comparisons verify against both input documents after matching all stories.
@@ -261,39 +358,36 @@ const checkTrackedBatchFidelity = ({
   const window = resolutionWindow(before.doc, after);
   if (window === null) return null;
   const styleResolver = getDocumentStyleResolver(before);
-  const original = {
+  const numbering = getStatedDocumentNumbering(before);
+  const original = resolutionState({
     doc: window.before,
     styleResolver,
-    numbering: getDocumentNumbering(before),
-  };
-  const definitions =
-    numbering === undefined
-      ? completeNumberingForDoc(
-          getStatedDocumentNumbering(before) ?? undefined,
-          window.after,
-        )
-      : numbering;
-  const candidate = {
+    numbering,
+  });
+  const candidate = resolutionState({
     doc: window.after,
     styleResolver,
-    numbering: definitions ? getCachedNumberingMap(definitions) : null,
-  };
-  const rejectedBefore = resolveProjection({ ...original, mode: "reject" });
-  const rejectedAfter = resolveProjection({ ...candidate, mode: "reject" });
+    numbering,
+  });
+  const rejectedBefore = projectAllChangesInHeadlessState(original, "reject");
+  const rejectedAfter = projectAllChangesInHeadlessState(candidate, "reject");
   if (rejectedBefore === null || rejectedAfter === null)
     return "Reject All could not resolve the tracked result.";
   const rejected =
     createdCommentIds.length === 0
-      ? rejectedAfter
-      : withoutAddedComments(rejectedAfter, new Set(createdCommentIds));
-  if (rejected === null || !sameOriginal(rejectedBefore, rejected))
+      ? rejectedAfter.doc
+      : withoutAddedComments(rejectedAfter.doc, new Set(createdCommentIds));
+  if (rejected === null || !sameOriginal(rejectedBefore.doc, rejected))
     return "Reject All would change the original content or formatting.";
 
-  const acceptedBefore = resolveProjection({ ...original, mode: "accept" });
-  const acceptedAfter = resolveProjection({ ...candidate, mode: "accept" });
+  const acceptedBefore = projectAllChangesInHeadlessState(original, "accept");
+  const acceptedAfter = projectAllChangesInHeadlessState(candidate, "accept");
   if (acceptedBefore === null || acceptedAfter === null)
     return "Accept All could not resolve the tracked result.";
-  const lost = lostContent(acceptedBefore, acceptedAfter);
+  const lost = missingProtectedContent(
+    protectedContent(acceptedBefore.doc),
+    protectedContent(acceptedAfter.doc),
+  );
   return lost === null ? null : `Accept All would lose a ${lost}.`;
 };
 

@@ -122,7 +122,6 @@ import {
   supportsTableInsertionMode,
   type TableInsertionOperation,
 } from "../ai-edits/tableInsertionModes";
-import { trackedBatchFidelityError } from "../ai-edits/tracked-batch-fidelity";
 import type {
   FolioAIBlockParagraphProperties,
   FolioAIEditNormalization,
@@ -192,6 +191,7 @@ import {
   type CanonicalProjection,
   type CanonicalSession,
 } from "./canonicalSession";
+import { canonicalTrackedBatchFidelityError } from "./canonicalTrackedBatchFidelity";
 import { indentationAsRead, spacingSidesAsRead } from "./paragraphPatchAsRead";
 
 type CanonicalBatchPlan = {
@@ -3594,12 +3594,20 @@ export class CanonicalPublicOperations {
       return result([], null);
     }
     if (batch.mode !== "direct" && batch.mode !== "suggested") {
-      const message = trackedBatchFidelityError({
-        before: state,
-        after: prepared.value.projection.doc,
-        numbering: prepared.value.document.package.numbering ?? null,
-        createdCommentIds: [...appliedById.values()].flatMap(({ commentId }) =>
-          commentId === undefined ? [] : [commentId],
+      const message = canonicalTrackedBatchFidelityError({
+        story,
+        before: {
+          document: readModel(session.document),
+          projection: state.doc,
+        },
+        after: {
+          document: prepared.value.document,
+          projection: prepared.value.projection.doc,
+        },
+        createdCommentIds: new Set(
+          [...appliedById.values()].flatMap(({ commentId }) =>
+            commentId === undefined ? [] : [commentId],
+          ),
         ),
       });
       if (message !== null) {

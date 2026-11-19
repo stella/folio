@@ -54,11 +54,21 @@ const commentedParagraph = (
   ...(reference ? [{ type: "commentReference" as const, id: COMMENT_ID }] : []),
 ];
 
+type DeleteGoneOptions = {
+  mode: "direct" | "tracked-changes";
+  resolution?: "all" | "single";
+  deleted?: readonly string[];
+  expectRefusal?: boolean;
+};
+
 const deleteGone = async (
   covered: readonly ParagraphContent[],
-  mode: "direct" | "tracked-changes",
-  resolution: "all" | "single" = "all",
-  deleted = ["gone"],
+  {
+    mode,
+    resolution = "all",
+    deleted = ["gone"],
+    expectRefusal = false,
+  }: DeleteGoneOptions,
 ) => {
   const reviewer = await openReviewer(
     await paragraphsDocx(
@@ -68,6 +78,7 @@ const deleteGone = async (
   );
   const blockId = reviewer.snapshot().blocks.at(0)?.id;
   if (!blockId) throw new Error("Expected a paragraph block");
+  const original = expectRefusal ? reviewer.toDocument() : undefined;
   const result = reviewer.applyDocumentOperations(
     {
       version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -82,8 +93,22 @@ const deleteGone = async (
     },
     { undefinedReferences: "refuse" },
   );
-  expect(result.skipped).toEqual([]);
-  if (mode === "tracked-changes") {
+  if (expectRefusal) {
+    expect(result.status).toBe("rejected");
+    expect(result.applied).toEqual([]);
+    expect(result.skipped).toEqual(
+      deleted.map((_text, index) => ({
+        id: `delete-${String(index)}`,
+        reason: "invalidResult",
+        message: expect.stringMatching(/Accept All.*comment/u),
+      })),
+    );
+    expect(reviewer.getChanges()).toEqual([]);
+    expect(reviewer.toDocument()).toEqual(original);
+  } else {
+    expect(result.skipped).toEqual([]);
+  }
+  if (mode === "tracked-changes" && !expectRefusal) {
     if (resolution === "all") reviewer.acceptAll();
     else {
       const change = reviewer.getChanges().at(0);
@@ -179,11 +204,10 @@ describe("accepted deletion comment anchors", () => {
     "a retained inline image keeps the thread after accepting %s revisions",
     async (resolution) => {
       expect(
-        await deleteGone(
-          [textRun("gone"), atomContent.image],
-          "tracked-changes",
+        await deleteGone([textRun("gone"), atomContent.image], {
+          mode: "tracked-changes",
           resolution,
-        ),
+        }),
       ).toBe(true);
     },
   );
@@ -192,20 +216,50 @@ describe("accepted deletion comment anchors", () => {
     "a retained inline %s keeps the thread",
     async (kind) => {
       expect(
-        await deleteGone(
-          [textRun("gone"), atomContent[kind]],
-          "tracked-changes",
-        ),
+        await deleteGone([textRun("gone"), atomContent[kind]], {
+          mode: "tracked-changes",
+        }),
       ).toBe(true);
     },
   );
 
-  test("a surviving block loses a range when its last covered text is deleted", async () => {
-    expect(await deleteGone([textRun("gone")], "tracked-changes")).toBe(false);
+  test("a tracked batch cannot delete the last text covered by a comment", async () => {
+    expect(
+      await deleteGone([textRun("gone")], {
+        mode: "tracked-changes",
+        expectRefusal: true,
+      }),
+    ).toBe(true);
+  });
+
+  test("accepting an imported deletion retires its exhausted comment", async () => {
+    const reviewer = await openReviewer(
+      await paragraphsDocx(
+        [
+          [
+            ...commentedParagraph([
+              {
+                type: "deletion",
+                info: { id: 19, author: "Reviewer" },
+                content: [textRun("gone")],
+              },
+            ]),
+            textRun("outside the comment"),
+          ],
+        ],
+        [reviewComment(COMMENT_ID)],
+      ),
+    );
+    expect(reviewer.acceptAll().resolved).toBeGreaterThan(0);
+    const reopened = await openReviewer(await reviewer.toBuffer());
+    expect(reopened.getComments()).toEqual([]);
+    expect(reopened.getContent().map(({ text }) => text)).toEqual([
+      "outside the comment",
+    ]);
   });
 
   test("direct deletion removes the same exhausted range", async () => {
-    expect(await deleteGone([textRun("gone")], "direct")).toBe(false);
+    expect(await deleteGone([textRun("gone")], { mode: "direct" })).toBe(false);
   });
 
   test(
@@ -237,12 +291,16 @@ describe("accepted deletion comment anchors", () => {
             );
           }
           const expected = survivors.length > 0;
-          expect(await deleteGone(covered, "direct", "all", deleted)).toBe(
+          expect(await deleteGone(covered, { mode: "direct", deleted })).toBe(
             expected,
           );
           expect(
-            await deleteGone(covered, "tracked-changes", "all", deleted),
-          ).toBe(expected);
+            await deleteGone(covered, {
+              mode: "tracked-changes",
+              deleted,
+              expectRefusal: !expected,
+            }),
+          ).toBe(true);
           expect(
             await rejectInserted(
               survivors.map((kind, index) =>
