@@ -838,14 +838,14 @@ export const INLINE_FORMATTING_JSON_SCHEMA: FolioJsonSchema = {
   additionalProperties: false,
 };
 
-const MARKDOWN_INSERTION_TEXT_FORMAT_JSON_SCHEMA = {
+export const MARKDOWN_INSERTION_TEXT_FORMAT_JSON_SCHEMA: FolioJsonSchema = {
   type: "string",
   enum: ["markdown"],
   description:
     "Parse text as Markdown paragraphs, headings, or a standalone flat list. " +
     "For insertTable, supply one plain Markdown table without rows. " +
     "Use without insertion formatting fields, moveId, or a comment.",
-} as const satisfies FolioJsonSchema;
+};
 
 /**
  * JSON Schema (draft-07 compatible) for ONE document operation: the full

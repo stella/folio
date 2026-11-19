@@ -1246,7 +1246,9 @@ const readReviewMeta = (
 
 /** Each operation variant under its discriminator; one pass over the union. */
 type OperationsByType = {
-  [Operation in FolioDocumentOperation as Operation["type"]]: Operation;
+  [
+    Operation in FolioDocumentOperationBatchInput["operations"][number] as Operation["type"]
+  ]: Operation;
 };
 
 /**
@@ -1256,9 +1258,11 @@ type OperationsByType = {
  * type without a decision here fails to compile, and a decision for a
  * property the type lacks is an excess property.
  */
+type KeysOfUnion<T> = T extends unknown ? keyof T : never;
+
 type OperationKeyDecisions = {
   [T in FolioDocumentOperationType]: Readonly<
-    Record<keyof OperationsByType[T], boolean>
+    Record<KeysOfUnion<OperationsByType[T]>, boolean>
   >;
 };
 

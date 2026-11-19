@@ -1072,7 +1072,8 @@ const resolveBlockInsertion = ({
     if (value === null) Reflect.deleteProperty(formatting, key);
     else formatting[key] = value;
   const everyParagraph = operation.formattingScope === "allParagraphs";
-  const markdownNumbering = stated.numbering;
+  const markdownNumbering =
+    stated.numbering?.kind === "reference" ? stated.numbering : undefined;
   let markdownParagraphs: Paragraph[] | undefined;
   if (markdown !== undefined) {
     markdownParagraphs = [];

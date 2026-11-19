@@ -230,6 +230,7 @@ import {
 } from "./minimal-replacement";
 import {
   assertNewListsAllocated,
+  deferInsertedList,
   type FolioAIStagedEditOperation,
   resolveNewListOperations,
   stageNewListOperations,
@@ -10550,12 +10551,8 @@ const resolveOperationTarget = ({
             ...operation,
             inheritFormatting: false,
             ...(markdown.listKind !== undefined && {
-              formattingScope: "allParagraphs",
-              numbering: {
-                kind: "deferredNewList",
-                allocation: { format: markdown.listKind },
-                level: 0,
-              },
+              formattingScope: "allParagraphs" as const,
+              numbering: deferInsertedList(markdown.listKind),
             }),
           } as const);
     return {
