@@ -21,9 +21,11 @@ import {
 
 import { rangedCommentIds } from "../../docx/commentAnchorIndex";
 import { resolveColorValueToHex } from "../../docx/drawingUtils";
+import { withFieldWrapperCaptures } from "../../docx/fieldWrapperCaptures";
 import {
   isInlineSdtContent,
   isTrackedChangeWrapperChild,
+  withLinkedPiecesInWrappers,
 } from "../../docx/inlineWrapperContent";
 import {
   type ListRenderingDefinition,
@@ -1606,7 +1608,13 @@ function convertParagraph(
     );
   };
 
-  const stacked = withInlineWrapperStacks(paragraph.content);
+  // A link built with a wrapper that holds what a link cannot hold reads as
+  // the parser reads one: the wrapper owns the link's pieces.
+  // A field built with a wrapper that holds what a field cannot hold keeps
+  // it as the capture the parser reads.
+  const stacked = withInlineWrapperStacks(
+    withFieldWrapperCaptures(withLinkedPiecesInWrappers(paragraph.content)),
+  );
   visitInlineContentSlots(paragraph, ({ item }) => {
     if (item.type === "inlineSdt") paragraphContainsInlineSdt = true;
   });

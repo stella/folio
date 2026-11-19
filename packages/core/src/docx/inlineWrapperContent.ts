@@ -16,6 +16,8 @@
  * union cannot gain a member the map still lifts out.
  */
 
+import { panic } from "better-result";
+
 import type {
   Hyperlink,
   InlineSdt,
@@ -324,3 +326,145 @@ export const isSimpleFieldContent = <Content extends ParagraphContent>(
   content: Content,
 ): content is Extract<Content, SimpleField["content"][number]> =>
   SIMPLE_FIELD_CONTENT[content.type];
+
+/**
+ * Whether a transparent wrapper holds, at any depth, content a link cannot
+ * hold. The model types a wrapper's content as any paragraph content, so a
+ * wrapper inside a link may hold an equation, a revision, a field or a
+ * content control that the link itself may not.
+ */
+export const holdsUnlinkableContent = (item: ParagraphContent): boolean =>
+  item.type === "inlineWrapper" &&
+  item.content.some(
+    (child) => !isHyperlinkContent(child) || holdsUnlinkableContent(child),
+  );
+
+/** A field's content once its linked pieces are rebuilt: each came out of it. */
+const asFieldContent = (
+  content: readonly ParagraphContent[],
+): SimpleField["content"] => {
+  const admitted = content.filter(isSimpleFieldContent);
+  if (admitted.length !== content.length)
+    panic("A field's linked pieces must stay field content");
+  return admitted;
+};
+
+/**
+ * `content`, read under `link`, with the link put back around what it can hold
+ * and the rest left in the container that holds it: a wrapper, a revision, a
+ * content control or a field owns the link's pieces inside it, as the
+ * paragraph parser reads a wrapper under a link's revision.
+ */
+const linkedPieces = (
+  link: Hyperlink,
+  content: readonly ParagraphContent[],
+): ParagraphContent[] => {
+  const pieces: ParagraphContent[] = [];
+  let linked: Hyperlink["children"][number][] = [];
+  const flush = (): void => {
+    if (linked.length === 0) return;
+    pieces.push({ ...link, children: linked });
+    linked = [];
+  };
+  for (const item of content) {
+    if (isHyperlinkContent(item) && !holdsUnlinkableContent(item)) {
+      linked.push(item);
+      continue;
+    }
+    flush();
+    switch (item.type) {
+      case "inlineWrapper":
+        pieces.push({ ...item, content: linkedPieces(link, item.content) });
+        break;
+      case "insertion":
+      case "deletion":
+      case "moveFrom":
+      case "moveTo":
+        pieces.push({
+          ...item,
+          content: linkedPieces(link, item.content).filter(
+            isTrackedChangeWrapperChild,
+          ),
+        });
+        break;
+      case "inlineSdt":
+        pieces.push({
+          ...item,
+          content: linkedPieces(link, item.content).filter(isInlineSdtContent),
+        });
+        break;
+      case "simpleField":
+        pieces.push({
+          ...item,
+          content: asFieldContent(linkedPieces(link, item.content)),
+        });
+        break;
+      // An equation, a nested link and anything else with no runs of its own
+      // under this link stands beside the link's pieces.
+      default:
+        pieces.push(item);
+    }
+  }
+  flush();
+  return pieces;
+};
+
+/**
+ * Inline content with every link whose wrapper holds content the link cannot
+ * hold split into pieces that content's containers own. The editor carries a
+ * link as a mark on the leaves of its runs; an equation or a revision inside
+ * one has no place under that mark, and was dropped. Returns `content` itself
+ * when nothing in it needed splitting.
+ */
+export const withLinkedPiecesInWrappers = (
+  content: readonly ParagraphContent[],
+): readonly ParagraphContent[] => {
+  let changed = false;
+  const next: ParagraphContent[] = [];
+  for (const item of content) {
+    const normalized = linkedPiecesOf(item);
+    if (normalized.length !== 1 || normalized[0] !== item) changed = true;
+    next.push(...normalized);
+  }
+  return changed ? next : content;
+};
+
+const linkedPiecesOf = (
+  item: ParagraphContent,
+): readonly ParagraphContent[] => {
+  switch (item.type) {
+    case "hyperlink":
+      if (!item.children.some(holdsUnlinkableContent)) return [item];
+      // A container among the pieces may hold a further link of its own.
+      return withLinkedPiecesInWrappers(linkedPieces(item, item.children));
+    case "inlineWrapper": {
+      const content = withLinkedPiecesInWrappers(item.content);
+      return content === item.content
+        ? [item]
+        : [{ ...item, content: [...content] }];
+    }
+    case "insertion":
+    case "deletion":
+    case "moveFrom":
+    case "moveTo": {
+      const content = withLinkedPiecesInWrappers(item.content);
+      return content === item.content
+        ? [item]
+        : [{ ...item, content: content.filter(isTrackedChangeWrapperChild) }];
+    }
+    case "inlineSdt": {
+      const content = withLinkedPiecesInWrappers(item.content);
+      return content === item.content
+        ? [item]
+        : [{ ...item, content: content.filter(isInlineSdtContent) }];
+    }
+    case "simpleField": {
+      const content = withLinkedPiecesInWrappers(item.content);
+      return content === item.content
+        ? [item]
+        : [{ ...item, content: asFieldContent(content) }];
+    }
+    default:
+      return [item];
+  }
+};
