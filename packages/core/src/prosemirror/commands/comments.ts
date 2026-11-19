@@ -2611,6 +2611,16 @@ export function getSuggestions(state: EditorState): FolioSuggestion[] {
   );
 }
 
+/** Physical revision IDs of every pending suggestion, in one document walk. */
+export const pendingSuggestionRevisionIds = (
+  state: EditorState,
+): ReadonlySet<number> => {
+  const ids = new Set<number>();
+  for (const { revisionIds } of collectSuggestions(state).values())
+    for (const id of revisionIds) ids.add(id);
+  return ids;
+};
+
 /** The suggestion a revision belongs to, or `null` for an ordinary tracked change. */
 export function suggestionIdOfRevision(
   state: EditorState,
@@ -3892,6 +3902,38 @@ export function rejectAllSuggestions(): Command {
     return true;
   };
 }
+
+/**
+ * The story with every pending suggestion rejected: what a save writes, what a
+ * read of the saved package shows and what rejecting every change starts from.
+ *
+ * One rejection resolves each suggestion's revisions against a story the
+ * others still stand in. Where a paragraph break it takes out joins into, or
+ * is displaced onto, another rejected suggestion's paragraph, that suggestion
+ * is left holding a break of its own; the rejection runs again until no
+ * suggestion is left, so the story never keeps a rejected break.
+ */
+export const rejectEverySuggestion = (state: EditorState): EditorState => {
+  const count = collectSuggestions(state).size;
+  if (count === 0) return state;
+  let settled = state;
+  // Every round that changes the story resolves at least one suggestion.
+  for (let rounds = count; rounds >= 0; rounds -= 1) {
+    const next = rejectSuggestionsOnce(settled);
+    if (next === null) return settled;
+    settled = next;
+  }
+  return settled;
+};
+
+/** One `rejectAllSuggestions` over `state`; `null` when nothing was left to reject. */
+const rejectSuggestionsOnce = (state: EditorState): EditorState | null => {
+  let settled = state;
+  const rejected = rejectAllSuggestions()(state, (transaction) => {
+    settled = state.apply(transaction);
+  });
+  return rejected ? settled : null;
+};
 
 type ChangeRange = {
   from: number;

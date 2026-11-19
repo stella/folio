@@ -144,6 +144,7 @@ import {
   acceptSuggestion,
   getSuggestions,
   rejectAIEditRevision,
+  rejectEverySuggestion,
   rejectSuggestion,
   resolveAllChangesInHeadlessState,
   revisionResolutionLockViolation,
@@ -251,7 +252,6 @@ import {
   type FolioPendingSuggestionLoadResult,
   type FolioPendingSuggestionRecord,
   FolioPendingSuggestionRegistry,
-  rejectEverySuggestion,
   withoutPendingSuggestionCommentMarks,
 } from "./pending-suggestions";
 import {

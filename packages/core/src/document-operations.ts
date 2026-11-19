@@ -2129,6 +2129,8 @@ export type FolioDocumentOperationReceipt = {
   operationId: string;
   operationIndex: number;
   affected: FolioDocumentOperationAffectedTarget[];
+  /** Existing comments whose whole anchor this operation removes on acceptance. */
+  retiredCommentIds?: readonly number[];
 };
 
 /** Opaque handle for undoing one committed document-operation batch. */
@@ -2505,7 +2507,13 @@ export const getFolioDocumentOperationReceiptsForStory = ({
     if (appliedOperation.commentId !== undefined) {
       affected.push({ type: "comment", commentId: appliedOperation.commentId });
     }
-    receipts.push({ operationId: operation.id, operationIndex, affected });
+    const { retiredCommentIds } = appliedOperation;
+    receipts.push({
+      operationId: operation.id,
+      operationIndex,
+      affected,
+      ...(retiredCommentIds !== undefined && { retiredCommentIds }),
+    });
   });
   return receipts;
 };
@@ -2709,11 +2717,16 @@ export const applyFolioDocumentOperationsInPackage = ({
       undefinedReferences,
     } as const;
     if (preview) {
-      const previewed = previewFolioAIEditOperationsWithResult({
-        ...common,
-        view,
-        ...(createCommentId !== undefined && { createCommentId }),
-      });
+      const previewed = previewFolioAIEditOperationsWithResult(
+        {
+          ...common,
+          view,
+          ...(createCommentId !== undefined && { createCommentId }),
+        },
+        parsedBatch.dryRun && common.mode === "tracked-changes"
+          ? "bounded"
+          : "coarse",
+      );
       return { ...previewed, commit: NO_COMMIT };
     }
     // The run dispatches into a holding view, not the caller's: its result is
@@ -2950,10 +2963,13 @@ export const applyFolioDocumentOperationsInPackage = ({
     return {
       version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
       status: "previewed",
-      applied: previewResult.applied.map(({ id, paragraphIdentity }) => ({
-        id,
-        ...(paragraphIdentity === undefined ? {} : { paragraphIdentity }),
-      })),
+      applied: previewResult.applied.map(
+        ({ id, paragraphIdentity, retiredCommentIds }) => ({
+          id,
+          ...(paragraphIdentity === undefined ? {} : { paragraphIdentity }),
+          ...(retiredCommentIds === undefined ? {} : { retiredCommentIds }),
+        }),
+      ),
       skipped: previewResult.skipped,
       issues: getFolioDocumentOperationIssues(
         parsedBatch.operations,

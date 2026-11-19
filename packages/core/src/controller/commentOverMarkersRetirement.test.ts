@@ -291,6 +291,11 @@ for (const shape of [
       }
       expect(result.applied).toHaveLength(1);
       expect(result.skipped).toEqual([]);
+      expect(result.receipts.at(0)?.retiredCommentIds).toEqual(
+        mode === "tracked-changes" && shape === "rangedWithTail"
+          ? [0]
+          : undefined,
+      );
       if (result.undoHandle === null)
         throw new Error("Deletion returned no undo handle");
       expect(executor.undo(result.undoHandle)).toMatchObject({

@@ -757,6 +757,8 @@ export type FolioAIEditSkipReason =
 export type FolioAIEditAppliedOperation = {
   id: string;
   commentId?: number;
+  /** Existing comment anchors this tracked operation removes on acceptance. */
+  retiredCommentIds?: readonly number[];
   /**
    * Primary tracked-change revision id (only set when applied in
    * `tracked-changes` mode and the operation produced at least one

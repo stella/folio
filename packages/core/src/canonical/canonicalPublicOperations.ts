@@ -90,6 +90,7 @@ import {
   pendingMarkEditRefusal,
   pendingParagraphPropertiesRefusal,
 } from "../ai-edits/pendingJoin";
+import { addRetiredCommentReceipts } from "../ai-edits/retired-comment-receipts";
 import {
   collectNoteReferenceLabels,
   hashFolioAIBlockContent,
@@ -178,6 +179,7 @@ import type {
   StyleDefinitions,
 } from "../types/document";
 import { readModel } from "../types/documentModel";
+import { canonicalAcceptedComments } from "./canonicalAcceptedComments";
 import {
   canonicalCommentBody,
   compileCanonicalComments,
@@ -633,6 +635,8 @@ type PreparedOperation = {
   normalizations: readonly FolioAIEditNormalization[];
   from: number;
   to: number;
+  /** Deleted source spans of a tracked text replacement, in source order. */
+  deletionSpans?: readonly { from: number; to: number }[];
   /**
    * A deletion of the whole paragraph by its identity, with a block after
    * it: an insertion beside that paragraph keeps its own anchor.
@@ -3581,6 +3585,37 @@ export class CanonicalPublicOperations {
           };
       }
     }
+    if (batch.mode !== "direct" && batch.mode !== "suggested")
+      addRetiredCommentReceipts({
+        before: state,
+        after: prepared.value.projection.doc,
+        applied: [...appliedById.values()],
+        operations: batch.operations.filter(
+          (operation) =>
+            operation.type !== "deleteBlock" ||
+            operation.moveId === undefined ||
+            !pairedMoves.has(operation.moveId),
+        ),
+        sourceRanges: new Map(
+          resolved.flatMap(({ operation, deletionSpans }) =>
+            deletionSpans === undefined
+              ? []
+              : [[operation.id, deletionSpans] as const],
+          ),
+        ),
+        acceptedCommentIds: (side) =>
+          side === "before"
+            ? canonicalAcceptedComments({
+                document: readModel(session.document),
+                projection: state.doc,
+                story,
+              })
+            : canonicalAcceptedComments({
+                document: prepared.value.document,
+                projection: prepared.value.projection.doc,
+                story,
+              }),
+      });
     const applied = batch.operations.flatMap(({ id }) => {
       const entry = appliedById.get(id);
       if (entry === undefined) return [];
@@ -3591,6 +3626,9 @@ export class CanonicalPublicOperations {
               ...(entry.paragraphIdentity === undefined
                 ? {}
                 : { paragraphIdentity: entry.paragraphIdentity }),
+              ...(entry.retiredCommentIds === undefined
+                ? {}
+                : { retiredCommentIds: entry.retiredCommentIds }),
             }
           : entry,
       ];
@@ -4342,6 +4380,7 @@ export class CanonicalPublicOperations {
     }
     const intents: EditorIntent[] = [];
     const normalizations: FolioAIEditNormalization[] = [];
+    let deletionSpans: PreparedOperation["deletionSpans"];
     if (intent.type === "replaceText") {
       const changes: { start: number; end: number; text: string }[] = [];
       // Each piece of prose between kept references changes on its own, so
@@ -4414,6 +4453,10 @@ export class CanonicalPublicOperations {
             message:
               "Canonical replacement cannot preserve the aligned comment ranges.",
           }),
+        );
+      if (tracked && !suggested)
+        deletionSpans = replacementChanges.filter(
+          (span) => span.from < span.to,
         );
       for (const change of replacementChanges.toReversed()) {
         const gap = { from: change.from, to: change.to };
@@ -4501,6 +4544,7 @@ export class CanonicalPublicOperations {
       operation.type === "splitBlock" &&
       intent.type === "splitParagraph"
     ) {
+      if (tracked && !suggested && end > start) deletionSpans = [range];
       intents.push(intent);
       // Each half's properties, as the default engine sets them once the
       // split is made: the first half keeps the paragraph's identity, the
@@ -4534,6 +4578,7 @@ export class CanonicalPublicOperations {
       normalizations,
       from: range.from,
       to: claimedTo,
+      ...(deletionSpans !== undefined && { deletionSpans }),
     });
   }
 }

@@ -1065,6 +1065,7 @@ export type FolioDocumentOperationReceipt = {
     operationId: string;
     operationIndex: number;
     affected: FolioDocumentOperationAffectedTarget[];
+    retiredCommentIds?: readonly number[];
 };
 
 // @public (undocumented)

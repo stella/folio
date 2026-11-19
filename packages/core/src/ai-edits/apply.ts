@@ -253,6 +253,7 @@ import {
   getTrackedFolioDocumentOperationCarrierBlockId,
   getTrackedFolioDocumentOperationRemovedBlockIds,
 } from "./removed-blocks";
+import { addRetiredCommentReceipts } from "./retired-comment-receipts";
 import { separateRevisionStretches } from "./revisionStretches";
 import {
   collectNoteReferenceLabels,
@@ -8672,6 +8673,16 @@ const applyFolioAIEditOperationsInternal = ({
       for (const [position, pending] of transfers)
         tr = withIdentityOf({ tr, position, source: pending.source });
     }
+    if (mode === "tracked-changes")
+      addRetiredCommentReceipts({
+        before: view.state,
+        after: tr.doc,
+        applied,
+        operations: requestedOperations.filter(
+          (operation) =>
+            operation.type !== "deleteBlock" || !isPairedMove(operation.moveId),
+        ),
+      });
     if (tr.docChanged) view.dispatch(tr);
   }
 
@@ -8711,12 +8722,15 @@ export const previewFolioAIEditOperations = (
  */
 export const previewFolioAIEditOperationsWithResult = (
   options: ApplyFolioAIEditOperationsInPackageOptions,
+  wordDiffMode: "coarse" | "bounded" = "coarse",
 ): {
   outcome: FolioAIEditApplyOutcome;
   doc: PMNode;
   commentIds: readonly number[];
 } => {
-  const { view, createCommentId, ...applyOptions } = options;
+  const { view, createCommentId, wordDiff, ...applyOptions } = options;
+  const granularity =
+    wordDiffMode === "bounded" ? wordDiff?.granularity : undefined;
   let previewCommentId = -1;
   const commentIds: number[] = [];
   const previewView: FolioAIEditView = {
@@ -8728,6 +8742,9 @@ export const previewFolioAIEditOperationsWithResult = (
   const result = applyFolioAIEditOperationsInternal({
     ...applyOptions,
     view: previewView,
+    // An explicit preview gets its own work allowance even if its caller
+    // supplied a scoped diff for a subsequent commit.
+    ...(granularity !== undefined && { wordDiff: { granularity } }),
     ...(createCommentId !== undefined && {
       createCommentId: () => {
         const id = previewCommentId--;
@@ -8736,12 +8753,16 @@ export const previewFolioAIEditOperationsWithResult = (
       },
     }),
     revisionIdSeed: -1_000_000_000,
-    wordDiffMode: "coarse",
+    wordDiffMode,
   });
   return {
     outcome: {
-      applied: result.applied.map(({ id, paragraphIdentity }) =>
-        paragraphIdentity === undefined ? { id } : { id, paragraphIdentity },
+      applied: result.applied.map(
+        ({ id, paragraphIdentity, retiredCommentIds }) => ({
+          id,
+          ...(paragraphIdentity === undefined ? {} : { paragraphIdentity }),
+          ...(retiredCommentIds === undefined ? {} : { retiredCommentIds }),
+        }),
       ),
       skipped: result.skipped,
       ...(result.normalizations !== undefined && {

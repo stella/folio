@@ -805,6 +805,7 @@ export type FolioAIDiagnosticBlock = FolioContentBlockIdentity<"diagnostic"> & {
 export type FolioAIEditAppliedOperation = {
     id: string;
     commentId?: number;
+    retiredCommentIds?: readonly number[];
     revisionId?: number;
     revisionIds?: readonly number[];
     suggestionId?: string;
@@ -1587,6 +1588,7 @@ export type FolioDocumentOperationReceipt = {
     operationId: string;
     operationIndex: number;
     affected: FolioDocumentOperationAffectedTarget[];
+    retiredCommentIds?: readonly number[];
 };
 
 // @public (undocumented)
