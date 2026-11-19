@@ -3,7 +3,8 @@
  * reviewer applies what the default one applies there and refuses what it
  * refuses, with the same reason, directly and as a tracked change, and the
  * two read the same words pending, accepted and rejected, also after save and
- * reopen. A test-only break that has the canonical owner refuse every such
+ * reopen; a paragraph inserted after such a paragraph, where the canonical
+ * reviewer puts it right after it, reads as each case states. A test-only break that has the canonical owner refuse every such
  * edit shows the law fails.
  */
 
@@ -58,7 +59,29 @@ const fixture = async (): Promise<ArrayBuffer> => {
 type Case = {
   name: string;
   operation: (ids: { joined: string; blank: string }) => FolioDocumentOperation;
+  /**
+   * What the canonical reviewer reads where it departs from the default one:
+   * a paragraph inserted after one whose mark is pending deletion goes right
+   * after it, as pressing Enter at its end does, and the join then runs into
+   * it; the default engine puts it after the paragraph the join leaves.
+   */
+  canonical?: (mode: FolioAIEditApplyMode) => unknown;
 };
+
+/** The words a case reads pending, reopened, accepted and rejected. */
+const insertedRightAfter = (
+  mode: FolioAIEditApplyMode,
+  pending: string[],
+  accepted: string[],
+  inserted: string,
+) => ({
+  outcome: { applied: 1, skipped: [] },
+  pending,
+  reopened: pending,
+  accepted,
+  rejected:
+    mode === "direct" ? pending : pending.filter((text) => text !== inserted),
+});
 
 const CASES: readonly Case[] = [
   {
@@ -79,6 +102,13 @@ const CASES: readonly Case[] = [
       blockId: joined,
       text: "Inserted after",
     }),
+    canonical: (mode) =>
+      insertedRightAfter(
+        mode,
+        ["First words here", "Inserted after", "Second words", "Closing words"],
+        ["First words hereInserted after", "Second words", "Closing words"],
+        "Inserted after",
+      ),
   },
   {
     name: "a block before it",
@@ -140,6 +170,22 @@ const CASES: readonly Case[] = [
       blockId: blank,
       text: "Inserted after blank",
     }),
+    canonical: (mode) =>
+      insertedRightAfter(
+        mode,
+        [
+          "First words here",
+          "Second words",
+          "Inserted after blank",
+          "Closing words",
+        ],
+        [
+          "First words hereSecond words",
+          "Inserted after blank",
+          "Closing words",
+        ],
+        "Inserted after blank",
+      ),
   },
 ];
 
@@ -217,8 +263,12 @@ describe("an operation on a paragraph whose mark is pending deletion", () => {
     for (const mode of MODES)
       test(`${mode}: ${testCase.name}`, async () => {
         const buffer = await fixture();
-        const legacy = await runCase(buffer, "legacy", testCase, mode);
         const canonical = await runCase(buffer, "canonical", testCase, mode);
+        if (testCase.canonical !== undefined) {
+          expect(canonical).toEqual(testCase.canonical(mode));
+          return;
+        }
+        const legacy = await runCase(buffer, "legacy", testCase, mode);
         expect(canonical).toEqual(legacy);
       }, 60_000);
 });
@@ -240,7 +290,9 @@ test("the law catches a canonical session that refuses every edit on such a para
   try {
     const buffer = await fixture();
     let diverging = 0;
-    for (const testCase of CASES)
+    for (const testCase of CASES.filter(
+      ({ canonical }) => canonical === undefined,
+    ))
       for (const mode of MODES) {
         const legacy = await runCase(buffer, "legacy", testCase, mode);
         const canonical = await runCase(buffer, "canonical", testCase, mode);

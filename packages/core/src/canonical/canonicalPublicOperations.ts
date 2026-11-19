@@ -663,6 +663,11 @@ type PreparedOperation = {
     blockId: string;
     /** The paragraph's own break was already pending removal when read. */
     markDeleted: boolean;
+    /**
+     * The insertion goes right after the paragraph it copies, which keeps its
+     * own properties even when the batch joins it to the next one first.
+     */
+    followsAnchor: boolean;
     paragraphs: (formatting: ParagraphFormatting | undefined) => Paragraph[];
   };
 } & (
@@ -1221,6 +1226,9 @@ const resolveBlockInsertion = ({
             markDeleted: isDeletedPPrMark(
               formattingSource.node.attrs["pPrMark"],
             ),
+            followsAnchor:
+              operation.type === "insertAfterBlock" &&
+              formattingSource.blockId === paragraph.blockId,
             paragraphs: paragraphsFrom,
           },
         }
@@ -1273,7 +1281,7 @@ const insertionIntentsAsItRuns = ({
   // A join the batch made of the paragraph is pending now: the joined
   // paragraph has the properties of the paragraph the join leaves, as an
   // insertion beside a join already pending copies them.
-  if (!inheritsFrom.markDeleted)
+  if (!inheritsFrom.markDeleted && !inheritsFrom.followsAnchor)
     for (;;) {
       const here = locations[at];
       const next = locations[at + 1];
@@ -4265,14 +4273,18 @@ export class CanonicalPublicOperations {
         besideDeletion && after !== null
           ? { ...operation, type: "insertAfterBlock" }
           : operation;
-      const placed = suggested
-        ? besideAsItStands(paragraph)
-        : besidePendingJoin({
-            side: insertion.type === "insertAfterBlock" ? "after" : "before",
-            paragraph,
-            projection: projection.value,
-            noteReferences,
-          });
+      // A paragraph put after one whose break a pending join removes goes
+      // right after it with its properties, as pressing Enter at its end
+      // does: the join then runs the paragraph into the inserted one.
+      const placed =
+        suggested || insertion.type === "insertAfterBlock"
+          ? besideAsItStands(paragraph)
+          : besidePendingJoin({
+              side: "before",
+              paragraph,
+              projection: projection.value,
+              noteReferences,
+            });
       // A block the join would run into the words before it, or into a
       // table after it, waits for the join to be resolved.
       const gap =

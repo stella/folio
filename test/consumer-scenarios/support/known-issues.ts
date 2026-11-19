@@ -24,6 +24,8 @@ export const FINDINGS = {
     "legacy paragraph tab commands edit PM attrs, but imported paragraph serialization retains original tabs; canonical descriptors retire this defect for canonical sessions",
   MARKDOWN_DROPS_TEXT_BOX:
     "docxToMarkdown writes nothing of a text box's paragraphs, which getContent() and read_document list as blocks (support/readers.ts leaves them out of the Markdown comparison until fixed)",
+  LEGACY_INSERT_AFTER_EMPTIED_JOIN:
+    "legacy insertAfterBlock beside an emptied paragraph whose break is pending deletion puts the paragraph after the one the join leaves; it goes right after the emptied paragraph, with its properties, as the canonical session puts it",
 } as const;
 
 export type OpenIssue = keyof typeof OPEN_ISSUES;
@@ -85,6 +87,8 @@ export const FINDING_SYMPTOMS: Record<Finding, FailureSymptom> = {
   LEGACY_PARAGRAPH_TAB_EDITS_LOST:
     /legacy (?:setTabs|addTabStop|removeTabStop) serialization retains original paragraph tabs/u,
   MARKDOWN_DROPS_TEXT_BOX: /docxToMarkdown writes no text-box paragraph/u,
+  LEGACY_INSERT_AFTER_EMPTIED_JOIN:
+    /the result is not what was asked \(insertAfterBlock\):\s+block texts differ/u,
 };
 
 /**
@@ -92,7 +96,10 @@ export const FINDING_SYMPTOMS: Record<Finding, FailureSymptom> = {
  * finding; they run as expected failures there.
  */
 export const KNOWN_FAILING_CHECKED_IN_FLOWS: Readonly<Record<string, Finding>> =
-  {};
+  {
+    "issue-1757-paragraph-after-emptied-paragraph-pending-break.json":
+      "LEGACY_INSERT_AFTER_EMPTIED_JOIN",
+  };
 
 /**
  * Checked-in flow files with steps that apply nothing (support/fuzz.ts
