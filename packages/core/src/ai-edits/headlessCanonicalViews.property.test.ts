@@ -40,6 +40,7 @@ import {
 import {
   rejectedContainerEndIdentities,
   rejectedJoinSurvivorIdentities,
+  runInAlignedSource,
   resolvedAbsorbedFollowerIdentities,
   withSurvivorProperties,
 } from "../../../../test/support/rejectedJoinSurvivors";
@@ -270,22 +271,36 @@ const viewLaws = async (
     actual: canonical.toResolvedDocument("reject"),
     expected: (await open(buffer, "legacy")).toResolvedDocument("reject"),
   });
-  // The join keeps the later paragraph's properties with its mark; the legacy
-  // reviewer reads them on the earlier paragraph once it has them too.
-  const aligned = withSurvivorProperties(before, survivors);
-  if (aligned !== undefined) {
+  // Where the legacy reviewer resolves a join otherwise, it reads the view
+  // from the document as the join leaves it: the survivor of a rejected join
+  // with the properties its mark keeps (`withSurvivorProperties`), a run into
+  // a table through the empty paragraphs whose marks go too, with the words
+  // keeping their own formatting (`runInAlignedSource`).
+  for (const view of FOLIO_RESOLVED_REVIEWED_VIEWS) {
+    const withSurvivors =
+      view === "original"
+        ? withSurvivorProperties(before, survivors)
+        : undefined;
+    const aligned =
+      runInAlignedSource({
+        source: withSurvivors ?? before,
+        view,
+        actual: canonical.toResolvedDocument(
+          view === "original" ? "reject" : "accept",
+        ),
+      }) ?? withSurvivors;
+    if (aligned === undefined) continue;
     const alignedBuffer = await packaged(aligned);
-    if (alignedBuffer === null)
-      panic("A document with a paragraph's properties copied packages.");
+    if (alignedBuffer === null) panic("An aligned document packages.");
     const alignedViews = await expectedViews(alignedBuffer);
     for (const [index, entry] of expected.entries()) {
-      if (entry.view !== "original") continue;
+      if (entry.view !== view) continue;
       expected[index] =
         alignedViews.find(
           (candidate) =>
-            candidate.view === "original" &&
+            candidate.view === view &&
             isDeepStrictEqual(candidate.handle, entry.handle),
-        ) ?? panic("The aligned document holds the same stories.");
+        ) ?? panic("An aligned document keeps its stories.");
     }
   }
   for (const entry of expected) {

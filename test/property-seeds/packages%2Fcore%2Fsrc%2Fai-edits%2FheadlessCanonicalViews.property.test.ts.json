@@ -79,6 +79,18 @@
       "date": "2026-11-18"
     },
     {
+      "seed": 419345023,
+      "path": "22:0:0:0:0:0:3:2:2:2:2:2:2:6:5:6:7:8:7:8:8:8:8:8:8:8:9:8:8:8:8:8:10:10:10:11",
+      "note": "Accepting runs a moved-from paragraph through an empty moved-from one into the table after them, as when it stands right before the table; the legacy reviewer keeps it before the table.",
+      "date": "2026-11-19"
+    },
+    {
+      "seed": 419345023,
+      "path": "22:0:0:0:0:0:3:2:2:2:2:2:2:6:5:6:7:8:7:8:8:8:8:8:8:8:9:8:8:8:8:8:10:10:10:23:11:10:10:10:13:14:13:13:14:13:14:13:13:13:13:13:9:10:10:10:9:10:9:9:9:12:11:11:11:11:11:11:11:11:11:11:11:11:9:0:7:7:7:7:7:7:7:7",
+      "note": "Words a rejected added mark runs into a table cell keep their own formatting, not the receiving mark's run properties, which the legacy reviewer gives them.",
+      "date": "2026-11-19"
+    },
+    {
       "seed": 1774066099,
       "path": "30:0:0:0:0:0:1:0:0:0:0:0:0:0:3:2:2:2:2:3:2:2:2:2:2:2:2:3:2:2:3:3:3:3:3:3:3:3:3:7:5:4:3:5:5:5:3:3:3:3:5:5:3:3:3:3:3",
       "note": "An empty paragraph whose rejected added mark ends a content control stays its last paragraph; the block before it keeps its place.",
