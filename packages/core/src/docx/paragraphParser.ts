@@ -74,6 +74,7 @@ import {
 } from "./hyperlinkParser";
 import {
   EVERY_PARAGRAPH_CONTENT_IS_TRACKED_CHILD,
+  holdsUnlinkableContent,
   isHyperlinkContent,
   isInlineSdtContent,
   isSimpleFieldContent,
@@ -741,11 +742,7 @@ type HyperlinkRevisionWalk = HyperlinkChildContext & {
  * split around a lifted link is put back below the link by its tag instead.
  */
 const holdsUnlinkable = (item: ParagraphContent): boolean =>
-  item.type === "inlineWrapper" &&
-  !splitPieces.has(item) &&
-  item.content.some(
-    (child) => !isHyperlinkContent(child) || holdsUnlinkable(child),
-  );
+  !splitPieces.has(item) && holdsUnlinkableContent(item);
 
 /** Preserve a link across nested revision owners, rather than dropping its shell. */
 const linkedRevisionContent = (
