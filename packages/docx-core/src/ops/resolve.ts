@@ -3649,7 +3649,9 @@ type ParagraphMarkPlan = {
 const emptyParagraphAfterControl = (
   body: DocumentBody,
   { list, index }: Pick<ParagraphLocation, "list" | "index">,
-): { blocks: readonly BlockContent[]; index: number } | undefined => {
+):
+  | { blocks: readonly BlockContent[]; index: number; follower: Paragraph }
+  | undefined => {
   let steps = list;
   let position = index;
   for (;;) {
@@ -3667,7 +3669,7 @@ const emptyParagraphAfterControl = (
       follower.pPrMark === undefined &&
       follower.sectionProperties === undefined &&
       (follower.propertyChanges?.length ?? 0) === 0
-      ? { blocks, index: position + 1 }
+      ? { blocks, index: position + 1, follower }
       : undefined;
   }
 };
@@ -4110,16 +4112,28 @@ const joinOps = (
   );
 };
 
+type AbsorbControlFollowerOptions = {
+  document: Document;
+  story: OpStory;
+  paraId: string;
+  applyOps: ApplyOps;
+};
+
+type ControlFollowerAbsorption = { edit: DocumentEdit; receiver: Paragraph };
+
 /**
  * Remove the empty paragraph after the control the paragraph `paraId` ends,
  * where one still follows once every join of the resolution is done.
  */
-const absorbControlFollower = (
-  document: Document,
-  story: OpStory,
-  paraId: string,
-  applyOps: ApplyOps,
-): Result<DocumentEdit | undefined, DocumentOpRefusal> => {
+const absorbControlFollower = ({
+  document,
+  story,
+  paraId,
+  applyOps,
+}: AbsorbControlFollowerOptions): Result<
+  ControlFollowerAbsorption | undefined,
+  DocumentOpRefusal
+> => {
   const body = storyBody(document, story);
   const location = storyParagraphs(body).find(
     ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(paraId),
@@ -4141,7 +4155,9 @@ const absorbControlFollower = (
       blocks: absorbed.blocks.filter((_, index) => index !== absorbed.index),
     },
   ]);
-  return removed.isErr() ? Result.err(removed.error) : Result.ok(removed.value);
+  return removed.isErr()
+    ? Result.err(removed.error)
+    : Result.ok({ edit: removed.value, receiver: absorbed.follower });
 };
 
 /** The main story's own content: the body's blocks, without its comments or section view. */
@@ -4792,11 +4808,18 @@ export const planRevisionResolution = ({
       controlEnds.push(planned.value.endsControl);
   }
   for (const paraId of controlEnds) {
-    const absorbed = absorbControlFollower(current, op.story, paraId, applyOps);
+    const absorbed = absorbControlFollower({
+      document: current,
+      story: op.story,
+      paraId,
+      applyOps,
+    });
     if (absorbed.isErr()) return Result.err(absorbed.error);
     if (absorbed.value === undefined) continue;
-    edits.push(absorbed.value);
-    current = absorbed.value.document;
+    const { edit, receiver } = absorbed.value;
+    receiverEffects.push({ type: "paragraph-join", receiver });
+    edits.push(edit);
+    current = edit.document;
   }
   // Notes whose last reference went are removed first: a comment anchored in
   // one of them is then exhausted too and retires below.
