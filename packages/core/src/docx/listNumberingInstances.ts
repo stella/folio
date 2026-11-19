@@ -264,10 +264,17 @@ export const cloneListInstanceWithFormat = (
   if (sourceNumId === 0 || definitions == null) return undefined;
   const source = definitions.nums.find(({ numId }) => numId === sourceNumId);
   if (!source) return undefined;
+  const abstract = definitions.abstractNums.find(
+    ({ abstractNumId }) => abstractNumId === source.abstractNumId,
+  );
+  if (abstract === undefined) return undefined;
   const resolution = resolveNumberingLevel(definitions, sourceNumId, level);
   if (resolution.kind !== "level") return undefined;
 
   const numId = nextNumId(definitions, elsewhere);
+  // Instances sharing an abstract list can share a counter. The reformatted
+  // instance must not change the labels of other lists using that template.
+  const abstractNumId = nextAbstractNumId(definitions, elsewhere);
   const levelOverrides = [...(source.levelOverrides ?? [])];
   const index = levelOverrides.findIndex(({ ilvl }) => ilvl === level);
   const current = index < 0 ? undefined : levelOverrides.at(index);
@@ -288,7 +295,14 @@ export const cloneListInstanceWithFormat = (
     numId,
     definitions: {
       ...definitions,
-      nums: [...definitions.nums, { ...source, numId, levelOverrides }],
+      abstractNums: [
+        ...definitions.abstractNums,
+        { ...abstract, abstractNumId },
+      ],
+      nums: [
+        ...definitions.nums,
+        { ...source, numId, abstractNumId, levelOverrides },
+      ],
     },
   };
 };
