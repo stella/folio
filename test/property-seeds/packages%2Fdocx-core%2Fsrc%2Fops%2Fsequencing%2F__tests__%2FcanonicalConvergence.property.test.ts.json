@@ -27,6 +27,12 @@
       "path": "9:2:0:2:3:3:3:3:3:4:6:6:4:5:5:5:7:1:1:1:0:2:2:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:3:2:2:2:3:3",
       "note": "An undo of a rejected first comment keeps a later comment in another paragraph; the later comment is not dropped",
       "date": "2026-11-19"
+    },
+    {
+      "seed": 1926446661,
+      "path": "12:6:5:5:5:11:11:11:11:17:17:17:19:20:40:40:44:45:2:7:11:6:15:17:34:34:37:37:37:37:37:37:37:37:37:37:37:0:34:34:34:34:34:34:34",
+      "note": "#2787: a decision queued after a rejected paste passes the paste's inverse join.",
+      "date": "2026-11-19"
     }
   ],
   "canonical sequencing same-paragraph convergence": [

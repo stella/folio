@@ -669,6 +669,37 @@ describe("property and structural policies", () => {
     ).toBe(true);
   });
 
+  test("a decision passes a direct join that states both halves", () => {
+    const resolve = {
+      type: "resolveRevision",
+      story: "main",
+      revisionIds: [10],
+      decision: "accept",
+    } as const;
+    const join = {
+      type: "joinBlocks",
+      story: "main",
+      blockId: "00000002",
+      nextBlockId: "00000001",
+      depth: 2,
+      survivor: "second",
+      expectedRetired: {},
+      expectedSurvivor: {},
+    } as const;
+    expect(transformed(batch(resolve), sequenced(join))).toEqual([resolve]);
+    // Unstated halves may hold a property change the join moves.
+    const { expectedRetired: _retired, ...unstated } = join;
+    expect(transformBatch(batch(resolve), [sequenced(unstated)]).isErr()).toBe(
+      true,
+    );
+    const revision = { id: 20, author: "Actor", date: "2026-01-01T00:00:00Z" };
+    expect(
+      transformBatch(batch(resolve), [
+        sequenced({ ...join, depth: 0, revision }),
+      ]).isErr(),
+    ).toBe(true);
+  });
+
   test("a decision elsewhere moves past each operation of a tracked batch", () => {
     const resolve = {
       type: "resolveRevision",
