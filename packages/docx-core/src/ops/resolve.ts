@@ -2598,7 +2598,7 @@ const resolveList = ({
     index: number,
     edge: "start" | "end",
   ): InlineNode | undefined => {
-    let node = out[index]?.node;
+    let node: InlineNode | undefined = out[index]?.node;
     while (node !== undefined && isTrackedWrapper(node)) {
       const children = childNodes(node) ?? [];
       node = edge === "start" ? children.at(0) : children.at(-1);
