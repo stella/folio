@@ -932,6 +932,36 @@ const blockInsertionPlace = (
 ): { at: BlockInsertionPoint; position: number } | undefined => {
   const side = operation.type === "insertAfterBlock" ? "after" : "before";
   const table = findOutermostTableBoundary(projection.doc, paragraph.start - 1);
+  if (table === null && side === "before") {
+    // Put before a paragraph, a block lands before the blocks right before
+    // it that accepting removes whole, at the start of its gap, as the
+    // default engine puts it: accepted, both sides of those blocks are one
+    // place, and a block put after one of them follows this one there.
+    const gap = insertionGap(projection.doc, paragraph.start - 1, "before");
+    if (gap < paragraph.start - 1) {
+      const $gap = projection.doc.resolve(gap);
+      const first = $gap.nodeAfter;
+      const previous = $gap.nodeBefore;
+      const end =
+        previous?.type.name === "paragraph"
+          ? projection.paragraphStartingAt(gap - previous.nodeSize)
+          : undefined;
+      if (end !== undefined)
+        return {
+          at: { type: "after", blockId: end.blockId },
+          position: paragraph.start,
+        };
+      const start =
+        first?.type.name === "paragraph"
+          ? projection.paragraphStartingAt(gap)
+          : undefined;
+      if (start !== undefined)
+        return {
+          at: { type: "before", blockId: start.blockId },
+          position: paragraph.start,
+        };
+    }
+  }
   if (table === null)
     return {
       at: { type: side, blockId: paragraph.blockId },
