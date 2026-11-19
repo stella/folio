@@ -264,15 +264,34 @@ for (const shape of [
       expect(initial.comments).toHaveLength(1);
       expect(initial.bookmarks).toHaveLength(2);
       const result = apply();
-      if (shape === "wholeParagraph" || shape === "pointOnDeletedWord") {
+      const protectedComment =
+        shape === "rangedWithTail" && mode === "tracked-changes";
+      if (
+        protectedComment ||
+        shape === "wholeParagraph" ||
+        shape === "pointOnDeletedWord"
+      ) {
         expect(result.applied).toEqual([]);
         expect(result.undoHandle).toBeNull();
-        expect(result.skipped).toMatchObject([
-          {
-            reason: "unsupportedBlock",
-            canonicalRefusal: { gap: "comment-replacement-alignment" },
-          },
-        ]);
+        if (protectedComment) {
+          // The suggested arm stages and promotes this same deletion to
+          // exercise actual review and comment retirement below.
+          expect(result.status).toBe("rejected");
+          expect(result.skipped).toEqual([
+            {
+              id: operation.id,
+              reason: "invalidResult",
+              message: "Accept All would lose a comment.",
+            },
+          ]);
+        } else {
+          expect(result.skipped).toMatchObject([
+            {
+              reason: "unsupportedBlock",
+              canonicalRefusal: { gap: "comment-replacement-alignment" },
+            },
+          ]);
+        }
         expect(session.document).toBe(before);
         expect(session.version).toBe(0);
         expect(session.canUndo).toBe(false);

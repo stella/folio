@@ -214,18 +214,33 @@ test(
       { undefinedReferences: "refuse" },
     );
     expect(result.applied).toHaveLength(2);
-    expect(
+    const deleteParagraph = (mode: "tracked-changes" | "suggested") =>
       reviewer.applyDocumentOperations(
         {
           version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-          mode: "tracked-changes",
+          mode,
           operations: [
             { id: "delete", type: "deleteBlock", blockId: block.id },
           ],
         },
         { undefinedReferences: "refuse" },
-      ).applied,
-    ).toHaveLength(1);
+      );
+    const beforeDeletion = reviewer.toDocument();
+    expect(deleteParagraph("tracked-changes")).toMatchObject({
+      status: "rejected",
+      applied: [],
+      undoHandle: null,
+      skipped: [
+        {
+          id: "delete",
+          reason: "invalidResult",
+          message: "Accept All would lose a comment.",
+        },
+      ],
+    });
+    expect(reviewer.toDocument()).toEqual(beforeDeletion);
+    expect(deleteParagraph("suggested").applied).toHaveLength(1);
+    expect(reviewer.acceptSuggestion("delete")).toBe(true);
     const before = reviewer.getChanges();
     const reopened = await FolioDocxReviewer.fromBuffer(
       await reviewer.toBuffer(),

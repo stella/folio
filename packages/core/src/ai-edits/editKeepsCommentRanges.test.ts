@@ -96,7 +96,7 @@ const markerIds = (xml: string, marker: string): number[] =>
 
 const replaceFirstParagraph = async (
   mode: "direct" | "tracked-changes",
-): Promise<string> => {
+): Promise<FolioDocxReviewer> => {
   const reviewer = await FolioDocxReviewer.fromBuffer(
     await createDocx(buildDocument()),
     {
@@ -105,7 +105,7 @@ const replaceFirstParagraph = async (
   );
   const [target] = reviewer.snapshot().blocks;
   expect(target?.text).toBe(FIRST_PARAGRAPH_TEXT);
-  reviewer.applyOperations(
+  const receipt = reviewer.applyOperations(
     [
       {
         id: "r1",
@@ -117,14 +117,29 @@ const replaceFirstParagraph = async (
     ],
     { undefinedReferences: "refuse", mode },
   );
-  return documentXml(await reviewer.toBuffer());
+  expect(receipt.skipped).toEqual([]);
+  return reviewer;
 };
+
+const commentEndAndReferenceOrder = (xml: string): string[] =>
+  [
+    ...xml.matchAll(
+      /<w:(commentRangeEnd|commentReference)\b[^>]*\bw:id="(\d+)"/gu,
+    ),
+  ].map(([, kind, id]) => `${kind}:${id}`);
 
 describe("replaceInBlock over a block that opens comment ranges", () => {
   test.each(["direct", "tracked-changes"] as const)(
     "keeps every range's start in %s mode",
     async (mode) => {
-      const xml = await replaceFirstParagraph(mode);
+      const reviewer = await replaceFirstParagraph(mode);
+      const buffer = await reviewer.toBuffer();
+      const xml = await documentXml(buffer);
+      const authoredOrder = COMMENT_IDS.flatMap((id) => [
+        `commentRangeEnd:${id}`,
+        `commentReference:${id}`,
+      ]);
+      expect(commentEndAndReferenceOrder(xml)).toEqual(authoredOrder);
 
       expect(markerIds(xml, "commentRangeStart").toSorted()).toEqual([
         ...COMMENT_IDS,
@@ -143,6 +158,13 @@ describe("replaceInBlock over a block that opens comment ranges", () => {
         expect(firstParagraph).toContain(`<w:commentRangeStart w:id="${id}"/>`);
       }
       expect(xml).toContain("Wholly different wording.");
+      if (mode === "tracked-changes") {
+        const reopened = await FolioDocxReviewer.fromBuffer(buffer);
+        reopened.rejectAll();
+        const rejectedXml = await documentXml(await reopened.toBuffer());
+        expect(rejectedXml).toContain(FIRST_PARAGRAPH_TEXT);
+        expect(commentEndAndReferenceOrder(rejectedXml)).toEqual(authoredOrder);
+      }
     },
   );
 });

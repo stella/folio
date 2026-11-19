@@ -14,8 +14,13 @@ import {
 } from "../docx/paragraphTraversal";
 import { consolidateParagraphContent } from "../docx/runConsolidator";
 import { serializeDocumentPart } from "../docx/serializer/documentSerializer";
+import { WORDPROCESSINGML_NAMESPACE_URIS } from "../docx/xmlParser";
 import { pluginsForHeadlessRevisionResolution } from "../internal/headlessRevisionResolutionGuard";
-import { projectAllChangesInHeadlessState } from "../prosemirror/commands/comments";
+import {
+  getSuggestions,
+  projectAllChangesInHeadlessState,
+  rejectEverySuggestion,
+} from "../prosemirror/commands/comments";
 import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
 import { isBlockBoundaryNode } from "../prosemirror/keptRangeBoundaries";
 import { readRangeAnchorAttrs } from "../prosemirror/rangeAnchorAttrs";
@@ -46,6 +51,7 @@ const hasStoryBoundary = (doc: PMNode): boolean => {
       node.type.name === "bookmarkBoundary" ||
       node.type.name === "moveRangeBoundary" ||
       node.attrs["_sectionProperties"] != null ||
+      noteReferenceOf(node) !== null ||
       commentAnchorIdsForNode(node).length > 0;
     return !found;
   });
@@ -84,8 +90,8 @@ const resolutionWindow = (before: PMNode, after: PMNode) => {
   }
   const beforeWindow = copyRange(before, from, beforeTo);
   const afterWindow = copyRange(after, from, afterTo);
-  // Joint range repair and section ownership depend on carriers outside the
-  // affected blocks when a boundary or section record reaches the window.
+  // Ranges, sections and note references can depend on other blocks in the
+  // story. A note stays reachable while any one of its references survives.
   if (hasStoryBoundary(beforeWindow) || hasStoryBoundary(afterWindow))
     return { before, after };
   return { before: beforeWindow, after: afterWindow };
@@ -150,7 +156,7 @@ const protectedContent = (doc: PMNode): Inventory => {
   doc.descendants((node) => {
     const note = noteReferenceOf(node);
     if (note !== null)
-      add(inventory.note, JSON.stringify([note.noteType, note.noteId]));
+      inventory.note.set(JSON.stringify([note.noteType, note.noteId]), 1);
     switch (node.type.name) {
       case "image":
         add(
@@ -210,6 +216,15 @@ const missingProtectedContent = (
   );
 };
 
+// A resolved paragraph break can change the package's editing-session owner.
+const PARAGRAPH_SESSION_ATTRIBUTES: ReadonlySet<string> = new Set([
+  "rsidR",
+  "rsidRPr",
+  "rsidDel",
+  "rsidP",
+  "rsidRDefault",
+]);
+
 const authoredBlock = (block: BlockContent): string => {
   const authored = structuredClone(block);
   visitBlockTreeRecords([authored], (record) => {
@@ -219,6 +234,13 @@ const authoredBlock = (block: BlockContent): string => {
       delete record.renderedPageBreakBefore;
       delete record.listRendering;
       delete record.reviewCarrier;
+      if (record.preservedAttributes !== undefined) {
+        record.preservedAttributes = record.preservedAttributes.filter(
+          ({ name, namespace }) =>
+            !WORDPROCESSINGML_NAMESPACE_URIS.has(namespace ?? "") ||
+            !PARAGRAPH_SESSION_ATTRIBUTES.has(name),
+        );
+      }
       if (record.formatting && Object.keys(record.formatting).length === 0)
         delete record.formatting;
       record.content = consolidateParagraphContent(record.content);
@@ -274,7 +296,7 @@ const modelInventory = (blocks: readonly BlockContent[]): Inventory => {
         switch (item.type) {
           case "footnoteRef":
           case "endnoteRef":
-            add(inventory.note, JSON.stringify([item.type, item.id]));
+            inventory.note.set(JSON.stringify([item.type, item.id]), 1);
             break;
           case "drawing":
             add(
@@ -331,8 +353,20 @@ const checkTrackedBatchFidelity = ({
   const window = resolutionWindow(before.doc, after);
   if (window === null) return null;
   const plugins = pluginsForHeadlessRevisionResolution(before.plugins);
-  const original = EditorState.create({ doc: window.before, plugins });
-  const candidate = EditorState.create({ doc: window.after, plugins });
+  let original = EditorState.create({ doc: window.before, plugins });
+  let candidate = EditorState.create({ doc: window.after, plugins });
+  // A suggestion can span separate paragraphs. Peel it from the whole story
+  // before checking either ordinary review outcome.
+  if (
+    window.before !== before.doc &&
+    (getSuggestions(original).length > 0 ||
+      getSuggestions(candidate).length > 0)
+  ) {
+    original = EditorState.create({ doc: before.doc, plugins });
+    candidate = EditorState.create({ doc: after, plugins });
+  }
+  original = rejectEverySuggestion(original);
+  candidate = rejectEverySuggestion(candidate);
   const rejectedBefore = projectAllChangesInHeadlessState(original, "reject");
   const rejectedAfter = projectAllChangesInHeadlessState(candidate, "reject");
   if (rejectedBefore === null || rejectedAfter === null)

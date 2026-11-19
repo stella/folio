@@ -166,17 +166,29 @@ test("rejected adjacent deletions keep direct run sizes after save", async () =>
       })),
     ).applied,
   ).toHaveLength(2);
-  expect(
-    apply(
-      reviewer,
-      "tracked-changes",
-      targets.map((id, index) => ({
+  const deletions = targets.map(
+    (id, index) =>
+      ({
         id: `delete-${index}`,
         type: "deleteBlock",
         blockId: id,
-      })),
-    ).applied,
-  ).toHaveLength(2);
+      }) satisfies FolioDocumentOperation,
+  );
+  const before = reviewer.toDocument();
+  expect(apply(reviewer, "tracked-changes", deletions)).toMatchObject({
+    status: "rejected",
+    applied: [],
+    undoHandle: null,
+    skipped: deletions.map(({ id }) => ({
+      id,
+      reason: "invalidResult",
+      message: "Accept All would lose a comment.",
+    })),
+  });
+  expect(reviewer.toDocument()).toEqual(before);
+  expect(apply(reviewer, "suggested", deletions).applied).toHaveLength(2);
+  for (const { id } of deletions)
+    expect(reviewer.acceptSuggestion(id)).toBe(true);
 
   const liveFormatting = reviewer
     .toResolvedDocument("reject")
