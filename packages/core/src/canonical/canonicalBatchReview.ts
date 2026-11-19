@@ -20,6 +20,7 @@ import { lockedControlSpans } from "../prosemirror/lockedControls";
 import type { BlockContent, Document } from "../types/document";
 import { lockViolationBetween } from "./canonicalLockGuard";
 import { canonicalRevisionLocks } from "./canonicalRevisionLocks";
+import { preservePropertySources } from "./propertySourcePreservation";
 
 type StoryVersion = {
   document: Document;
@@ -48,6 +49,13 @@ type ResolveStoryOptions = {
   story: OpStory;
   ids: readonly number[];
   decision: RevisionDecision;
+  /**
+   * The document whose paragraphs a rejection gives back: their property
+   * sources carry over by paragraph id, as an undo carries them, so a
+   * paragraph the rejection rebuilt reads its properties as the original
+   * states them rather than as list numbering projects them.
+   */
+  restores?: Document;
 };
 
 type StoryResolution =
@@ -59,6 +67,7 @@ const resolveStory = ({
   story,
   ids,
   decision,
+  restores,
 }: ResolveStoryOptions): StoryResolution | undefined => {
   const read = (result: Document): StoryResolution | undefined => {
     const content = findStoryBody(result, story)?.content;
@@ -90,7 +99,16 @@ const resolveStory = ({
   if (resolved.isErr()) return { type: "refused", error: resolved.error };
   if (lockViolationBetween(document, resolved.value.document) !== null)
     return undefined;
-  return read(resolved.value.document);
+  return read(
+    restores === undefined
+      ? resolved.value.document
+      : preservePropertySources({
+          target: resolved.value.document,
+          source: restores,
+          stories: [story],
+          indentation: "restore",
+        }),
+  );
 };
 
 type StoryAcceptanceOptions = {
@@ -182,6 +200,7 @@ export const createCanonicalBatchReview = ({
         story,
         ids: revisions(side).all,
         decision: "reject",
+        ...(side === "after" ? { restores: before.document } : {}),
       });
       return rejected?.type === "resolved" ? rejected.content : undefined;
     },
