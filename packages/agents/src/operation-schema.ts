@@ -1322,12 +1322,12 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
   ],
 };
 
-export const FOLIO_EXISTING_REVISIONS_JSON_SCHEMA = {
+export const FOLIO_EXISTING_REVISIONS_JSON_SCHEMA: FolioJsonSchema = {
   type: "string",
   enum: FOLIO_EXISTING_REVISION_POLICIES,
   description:
     "Whether to refuse tracked edits inside another author's pending revision. Defaults to allow.",
-} as const satisfies FolioJsonSchema;
+};
 
 /** JSON Schema (draft-07 compatible) for a versioned document operation batch. */
 export const FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA: FolioJsonSchema = {
