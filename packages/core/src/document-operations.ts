@@ -2945,7 +2945,8 @@ export const applyFolioDocumentOperationsInPackage = ({
   }
 
   const guarded = guardedAttempt(false);
-  const result = guarded.outcome;
+  const { heldRevisionConflict, ...result } = guarded.outcome;
+  if (heldRevisionConflict) return atomicResult(result, "rejected");
   if (
     isAtomic &&
     result.skipped.some(({ reason }) => reason === "invalidResult")

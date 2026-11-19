@@ -2925,6 +2925,31 @@ export class CanonicalPublicOperations {
       }
       let nextDocument = compiled.value.document;
       const operationOps = [...compiled.value.ops];
+      if (
+        operation.type === "mergeBlockWithNext" &&
+        conflictsWithRevision !== undefined
+      ) {
+        const body = findStoryBody(sourceDocument, story);
+        if (
+          body &&
+          operationOps.some(
+            (op) =>
+              op.type === DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS &&
+              storyParagraphs(body).some(
+                ({ paragraph }) =>
+                  paragraph.paraId === op.blockId &&
+                  paragraph.propertyChanges?.some(
+                    ({ info }) => info.author !== (options.author ?? "AI"),
+                  ),
+              ),
+          )
+        ) {
+          return declined({
+            reason: "existingRevisionConflict",
+            message: EXISTING_REVISION_CONFLICT_MESSAGE,
+          });
+        }
+      }
       let commentId: number | undefined;
       let commentAllocation: PrepareOperationOptions["commentAllocation"];
       switch (resolvedOperation.type) {

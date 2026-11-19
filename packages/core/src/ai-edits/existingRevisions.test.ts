@@ -5,6 +5,7 @@ import type {
   FolioDocumentOperation,
   FolioDocumentOperationBatch,
 } from "../document-operations";
+import { createDocx } from "../docx/rezip";
 import { FolioDocxReviewer } from "./headless";
 import { hashFolioAIBlockText } from "./snapshot";
 
@@ -56,7 +57,161 @@ const outside = {
   replace: "Next",
 } as const;
 
+test("rejects a held batch when deleting an intervening paragraph exposes a foreign break", async () => {
+  const docx = await createDocx({
+    package: {
+      document: {
+        content: [
+          {
+            type: "paragraph",
+            paraId: "10000000",
+            content: [textRun("First")],
+            pPrMark: {
+              kind: "ins",
+              info: { id: 1, author: "First Reviewer" },
+            },
+          },
+          {
+            type: "paragraph",
+            paraId: "10000001",
+            content: [textRun("Middle")],
+          },
+          {
+            type: "paragraph",
+            paraId: "10000002",
+            content: [textRun("Final")],
+          },
+        ],
+      },
+    },
+  });
+  const reviewer = await FolioDocxReviewer.fromBuffer(docx, {
+    author: "Second Reviewer",
+    session: "legacy",
+  });
+  const result = apply(
+    reviewer,
+    [
+      { id: "middle", type: "deleteBlock", blockId: "10000001" },
+      { id: "final", type: "deleteBlock", blockId: "10000002" },
+    ],
+    POLICY,
+  );
+  expect(result.status).toBe("rejected");
+  expect(result.applied).toEqual([]);
+  expect(result.skipped).toEqual([
+    { id: "middle", reason: "atomicBatchRejected" },
+    expect.objectContaining({
+      id: "final",
+      reason: "existingRevisionConflict",
+    }),
+  ]);
+  expect(reviewer.getContent().map(({ text }) => text)).toEqual([
+    "First",
+    "Middle",
+    "Final",
+  ]);
+});
+
 for (const session of ["legacy", "canonical"] as const) {
+  test(`${session} refuses a final deletion that retracts another author's break`, async () => {
+    const docx = await createDocx({
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              paraId: "10000000",
+              content: [textRun("First")],
+              pPrMark: {
+                kind: "ins",
+                info: { id: 1, author: "First Reviewer" },
+              },
+            },
+            {
+              type: "paragraph",
+              paraId: "10000001",
+              content: [textRun("Final")],
+            },
+          ],
+        },
+      },
+    });
+    const reviewer = await FolioDocxReviewer.fromBuffer(docx, {
+      author: "Second Reviewer",
+      session,
+    });
+    const result = apply(
+      reviewer,
+      [{ id: "delete", type: "deleteBlock", blockId: "10000001" }],
+      POLICY,
+    );
+    expect(result.applied).toEqual([]);
+    if (session === "legacy") {
+      expect(result.skipped.at(0)?.reason).toBe("existingRevisionConflict");
+    }
+    expect(reviewer.getContent().map(({ text }) => text)).toEqual([
+      "First",
+      "Final",
+    ]);
+  });
+
+  test.each([false, true])(
+    `${session} protects a survivor's pending formatting when the carry changes it (%s)`,
+    async (sameFormatting) => {
+      const docx = await createDocx({
+        package: {
+          document: {
+            content: [
+              {
+                type: "paragraph",
+                paraId: "10000000",
+                content: [textRun("First")],
+                ...(sameFormatting && {
+                  formatting: { alignment: "right" } as const,
+                }),
+              },
+              {
+                type: "paragraph",
+                paraId: "10000001",
+                content: [textRun("Second")],
+              },
+            ],
+          },
+        },
+      });
+      const source = await FolioDocxReviewer.fromBuffer(docx, {
+        author: "First Reviewer",
+        session,
+      });
+      expect(
+        apply(source, [
+          {
+            id: "format",
+            type: "setBlockParagraphProperties",
+            blockId: "10000001",
+            properties: { alignment: "right" },
+          },
+        ]).applied,
+      ).toHaveLength(1);
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await source.toBuffer(),
+        { author: "Second Reviewer", session },
+      );
+      const result = apply(
+        reviewer,
+        [{ id: "merge", type: "mergeBlockWithNext", blockId: "10000000" }],
+        POLICY,
+      );
+      if (sameFormatting) {
+        expect(result.applied).toHaveLength(1);
+      } else {
+        expect(result.skipped.at(0)?.reason).toBe("existingRevisionConflict");
+        expect(result.applied).toEqual([]);
+      }
+    },
+  );
+
   test(`${session} refuses another author's range and keeps independent edits`, async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await revisedDocument(),
