@@ -3099,11 +3099,19 @@ const holdsOnlyContentInsertedBy = (
  * with any standing between the two; before a table they stand between
  * blocks; ending its container, they close the paragraph before it.
  */
-const removeParagraph = (
-  tr: Transaction,
-  from: number,
-  to: number,
-): Transaction => {
+type RemoveParagraphOptions = {
+  tr: Transaction;
+  from: number;
+  to: number;
+  kind: "direct" | "retract-pending";
+};
+
+const removeParagraph = ({
+  tr,
+  from,
+  to,
+  kind,
+}: RemoveParagraphOptions): Transaction => {
   const paragraph = tr.doc.nodeAt(from);
   const kept =
     paragraph === null
@@ -3130,6 +3138,15 @@ const removeParagraph = (
     return tr.insert(opening + 1, [...kept, ...joined]).delete(from, opening);
   }
   if (following !== null) {
+    if (kind === "retract-pending") {
+      // Rejecting an added break leaves the boundaries within the preceding
+      // paragraph. Retract the insertion with the same range endpoints.
+      return at.nodeBefore?.type.name === "paragraph"
+        ? tr.delete(from, to).insert(from - 1, kept)
+        : tr
+            .replaceWith(from + 1, to - 1, kept)
+            .setNodeAttribute(from, "pPrMark", null);
+    }
     // As the revision paths leave them: comment anchors, which only a
     // paragraph holds, close the paragraph before; with none there the
     // paragraph stays, holding them.
@@ -7145,7 +7162,12 @@ const applyFolioAIEditOperationsInternal = ({
             : undefined;
           const mappedFrom = tr.mapping.maps.length;
           tr = leavesAParagraph
-            ? removeParagraph(tr, item.blockFrom, item.blockTo)
+            ? removeParagraph({
+                tr,
+                from: item.blockFrom,
+                to: item.blockTo,
+                kind: "direct",
+              })
             : emptyParagraph(tr, item.blockFrom, item.blockTo);
           // The paragraph before a container's final one takes over ending
           // the container: the two join, and the joined paragraph is the one
@@ -7236,7 +7258,12 @@ const applyFolioAIEditOperationsInternal = ({
           // paragraph mark cannot say: accepting kept a blank paragraph, and
           // a suggested one failed to accept at all.
           const retracted = tr.doc.nodeAt(item.blockFrom);
-          tr = removeParagraph(tr, item.blockFrom, item.blockTo);
+          tr = removeParagraph({
+            tr,
+            from: item.blockFrom,
+            to: item.blockTo,
+            kind: "retract-pending",
+          });
           if (retraction.clearBreakAt !== null) {
             tr = tr.setNodeAttribute(retraction.clearBreakAt, "pPrMark", null);
             // The paragraph before now ends the container with the retracted

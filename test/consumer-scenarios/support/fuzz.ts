@@ -22,6 +22,7 @@
  * checked-in flows run.
  */
 
+import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 import {
@@ -344,6 +345,43 @@ type Receipt = {
     FolioDocumentOperationResult["applied"][number],
     "id"
   >[];
+  issues: FolioDocumentOperationResult["issues"];
+  receipts: FolioDocumentOperationResult["receipts"];
+};
+
+type BatchStepEffect =
+  { type: "batch"; applied: number } | { type: "expectedFidelityRefusal" };
+
+type BatchEffectOptions = {
+  flow: Flow;
+  receipt: Receipt | null;
+  before: ReturnType<Reviewer["toDocument"]> | undefined;
+  applied: number;
+};
+
+const batchEffect = ({
+  flow,
+  receipt,
+  before,
+  applied,
+}: BatchEffectOptions): BatchStepEffect => {
+  const kind = flow.planned?.expectedFidelityRefusal;
+  if (kind === undefined) return { type: "batch", applied };
+  const message =
+    kind === "rejectOriginal"
+      ? "Reject All would change the original content or formatting."
+      : `Accept All would lose a ${kind}.`;
+  assert.equal(flow.mode, "tracked-changes");
+  assert.equal(receipt?.applied.length, 0, JSON.stringify(receipt));
+  assert.ok(
+    receipt?.issues.some(
+      (issue) => issue.code === "invalidResult" && issue.message === message,
+    ),
+    `Expected ${message} in ${JSON.stringify(receipt)}`,
+  );
+  assert.deepEqual(receipt?.receipts, []);
+  assert.deepEqual(flow.reviewer.toDocument(), before);
+  return { type: "expectedFidelityRefusal" };
 };
 
 const isOperation = (value: unknown): value is Operation =>
@@ -386,19 +424,23 @@ const appliedOf = (
 
 /**
  * `suggest_changes` with ids on its operations, checked against what they
- * asked; returns how many applied.
+ * asked; returns the applied count or an observed expected refusal.
  */
 const suggestChecked = async (
   flow: Flow,
   args: { operations: unknown },
   entry: string,
-): Promise<number> => {
+): Promise<BatchStepEffect> => {
   const asked = identifySuggestedOperations(args.operations, flow.log.length);
   const operations = asked ?? args.operations;
   const done = record(
     flow,
     `${entry} ${JSON.stringify({ ...args, operations })}`,
   );
+  const before =
+    flow.planned?.expectedFidelityRefusal === undefined
+      ? undefined
+      : flow.reviewer.toDocument();
   const pre = await capture(flow.reviewer, flow.mode, { step: flow.session });
   const result = tool(flow, "suggest_changes", { ...args, operations });
   const receipt = result.ok ? (result.result as Receipt) : null;
@@ -425,7 +467,12 @@ const suggestChecked = async (
     outcome,
     `step ${flow.log.length - 1}`,
   );
-  return outcome.applied.length;
+  return batchEffect({
+    flow,
+    receipt,
+    before,
+    applied: outcome.applied.length,
+  });
 };
 
 /** Record what a step is about to do; `outcome` completes the entry. */
@@ -449,7 +496,7 @@ const coreBatchStep = async (
   story: FolioDocumentStoryHandle,
   operations: readonly Operation[],
   entry: string,
-): Promise<number> => {
+): Promise<BatchStepEffect> => {
   const drawnAtomic = flow.random.chance(0.5);
   const atomic = flow.planned?.atomic ?? drawnAtomic;
   const traced = flow.trace.at(-1);
@@ -461,6 +508,10 @@ const coreBatchStep = async (
     flow,
     `${entry} (atomic: ${batch.atomic}) ${JSON.stringify(operations)}`,
   );
+  const before =
+    flow.planned?.expectedFidelityRefusal === undefined
+      ? undefined
+      : flow.reviewer.toDocument();
   const pre = await capture(flow.reviewer, flow.mode, {
     story,
     step: flow.session,
@@ -488,7 +539,12 @@ const coreBatchStep = async (
     applied: result.applied,
     mode: flow.mode,
   });
-  return outcome.applied.length;
+  return batchEffect({
+    flow,
+    receipt: result,
+    before,
+    applied: outcome.applied.length,
+  });
 };
 
 /**
@@ -497,10 +553,7 @@ const coreBatchStep = async (
  * review or session step.
  */
 export type StepEffect =
-  | { type: "batch"; applied: number }
-  | { type: "mistake" }
-  | { type: "skipped" }
-  | { type: "ran" };
+  BatchStepEffect | { type: "mistake" } | { type: "skipped" } | { type: "ran" };
 
 const SKIPPED = { type: "skipped" } as const satisfies StepEffect;
 const RAN = { type: "ran" } as const satisfies StepEffect;
@@ -530,47 +583,36 @@ const step = async (flow: Flow, planned?: FlowStep): Promise<StepEffect> => {
     ...(planned?.expectedApplied === undefined
       ? {}
       : { expectedApplied: planned.expectedApplied }),
+    ...(planned?.expectedFidelityRefusal === undefined
+      ? {}
+      : { expectedFidelityRefusal: planned.expectedFidelityRefusal }),
   });
   const { random } = flow;
   switch (action) {
     case "suggest_changes": {
-      const applied = await suggestChecked(
+      return suggestChecked(
         flow,
         { operations: randomOperations(flow) },
         action,
       );
-      return { type: "batch", applied };
     }
     case "core batch": {
-      const applied = await coreBatchStep(
-        flow,
-        MAIN,
-        randomOperations(flow),
-        action,
-      );
-      return { type: "batch", applied };
+      return coreBatchStep(flow, MAIN, randomOperations(flow), action);
     }
     case "story batch": {
       const stories = secondaryStories(flow.reviewer);
       if (stories.length === 0) {
-        const applied = await coreBatchStep(
-          flow,
-          MAIN,
-          randomOperations(flow),
-          "core batch",
-        );
-        return { type: "batch", applied };
+        return coreBatchStep(flow, MAIN, randomOperations(flow), "core batch");
       }
       const story = random.pick(stories);
       const blocks = blocksOfStory(flow.reviewer, story);
       const operations = randomOperations(flow, blocks, pickerFor(flow, story));
-      const applied = await coreBatchStep(
+      return coreBatchStep(
         flow,
         story,
         operations,
         `story batch in ${JSON.stringify(story)}`,
       );
-      return { type: "batch", applied };
     }
     case "mistake": {
       const [name, build] = random.pick(Object.entries(MISTAKES));
@@ -842,6 +884,7 @@ export const vacuousSteps = ({ effects }: FlowRun): number[] =>
         return effect.applied === 0 ? [index] : [];
       case "skipped":
         return [index];
+      case "expectedFidelityRefusal":
       case "mistake":
       case "ran":
         return [];

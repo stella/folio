@@ -12,6 +12,12 @@
 import { describe, expect, test } from "bun:test";
 import { EditorState } from "prosemirror-state";
 
+import {
+  applyDocumentOps,
+  DOCUMENT_OP_REFUSAL_REASONS,
+  DOCUMENT_OP_TYPES,
+  OP_STORIES,
+} from "@stll/docx-core/ops";
 import { ZipArchive } from "@stll/docx-core/zip";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
@@ -350,6 +356,63 @@ const acrossARangeBoundary = async (): Promise<LongerJoin> => {
     anchors: { clause: "10000002", survivor: "10000003" },
   };
 };
+
+test("verifies a tracked insertion beside an already blocked join", async () => {
+  const { bytes, anchors } = await acrossARangeBoundary();
+  const baseline = await FolioDocxReviewer.fromBuffer(bytes, {
+    session: "canonical",
+  });
+  const edited = await FolioDocxReviewer.fromBuffer(bytes, {
+    session: "canonical",
+  });
+  expect(
+    edited.applyOperations(
+      [
+        {
+          id: "insert",
+          type: "insertAfterBlock",
+          blockId: anchors.survivor,
+          text: INSERTED,
+        },
+      ],
+      { mode: "tracked-changes" },
+    ).skipped,
+  ).toEqual([]);
+
+  for (const reviewer of [baseline, edited]) {
+    const ids = reviewer.getChanges().map(({ id }) => id);
+    const document = await parseDocx(await reviewer.toBuffer(), {
+      detectVariables: false,
+      preloadFonts: false,
+    });
+    const resolved = applyDocumentOps(document, [
+      {
+        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+        story: OP_STORIES.MAIN,
+        revisionIds: ids,
+        decision: "accept",
+      },
+    ]);
+    expect(resolved.isErr() && resolved.error).toMatchObject({
+      reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+      message: `A range boundary stands between ${anchors.clause} and the next block.`,
+      blockedParagraphMarkRevisionId: 1,
+    });
+    expect(() => reviewer.acceptAll()).toThrow(
+      `A range boundary stands between ${anchors.clause} and the next block.`,
+    );
+  }
+  const insertedChange = edited
+    .getChanges()
+    .find(({ text }) => text === INSERTED);
+  if (insertedChange === undefined)
+    throw new Error("Missing tracked insertion");
+  expect(edited.acceptChange(insertedChange)).toBe(true);
+  const insertedBreak = edited.getChanges().find(({ id }) => id !== 1);
+  if (insertedBreak === undefined) throw new Error("Missing inserted break");
+  expect(edited.acceptChange(insertedBreak)).toBe(true);
+  expect(edited.getChanges().map(({ id }) => id)).toEqual([1]);
+});
 
 /**
  * Each longer join, with where its placement is read: once every change is

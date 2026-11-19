@@ -24,6 +24,7 @@ const CANONICAL_REPLAYS = [
   "issue-1757-merge-into-closing-paragraph-beside-a-pending-join.json",
   "issue-1757-merge-into-closing-paragraph-of-deleted-words.json",
   "issue-1762-tracked-formatting-between-line-breaks.json",
+  "issue-1754-clear-numbered-heading-style.json",
 ] as const;
 
 test("the replays below run on the canonical session", () => {
