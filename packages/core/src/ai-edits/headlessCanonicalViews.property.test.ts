@@ -859,3 +859,63 @@ describe("text a resolved paragraph mark joins into another paragraph", () => {
     propertyTestTimeout(30_000),
   );
 });
+
+// Seed 2113650910: once it passes, its path replays the whole shrink tree,
+// which outlasts the property's budget, so the shrunk case is fixed here.
+test("a comment range across a content control holding only a linked bookmark reads its resolved views", async () => {
+  const commentBody = (id: number, paraId: string) => ({
+    id,
+    author: "A",
+    content: [{ type: "paragraph" as const, paraId, content: [] }],
+  });
+  const buffer = await ingested(
+    await createDocx({
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              paraId: "00000001",
+              content: [{ type: "commentRangeStart", id: 34 }],
+            },
+            {
+              type: "blockSdt",
+              properties: { sdtType: "group", id: 1 },
+              content: [
+                {
+                  type: "paragraph",
+                  paraId: "00000002",
+                  content: [
+                    {
+                      type: "inlineSdt",
+                      properties: { sdtType: "richText", id: 2, tag: "clause" },
+                      content: [
+                        {
+                          type: "hyperlink",
+                          rId: "rId9",
+                          href: "https://example.org",
+                          children: [
+                            { type: "bookmarkStart", id: 1, name: "_Link" },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+            {
+              type: "paragraph",
+              paraId: "00000003",
+              content: [{ type: "commentRangeEnd", id: 34 }],
+              sectionProperties: { pageWidth: 11906 },
+            },
+          ],
+          finalSectionProperties: { pageWidth: 12240, pageHeight: 15840 },
+          comments: [commentBody(7, "7FFFFFF0"), commentBody(34, "00000004")],
+        },
+      },
+    }),
+  );
+  await viewLaws(buffer);
+});
