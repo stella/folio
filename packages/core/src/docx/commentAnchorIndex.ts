@@ -264,7 +264,10 @@ export const visitCommentMarkerItems = (
 };
 
 /** Gaps at which positioned table or row markers enter canonical paragraph traversal. */
-export const positionedCommentGaps = (blocks: readonly BlockContent[]) => {
+export const positionedCommentGaps = (
+  blocks: readonly BlockContent[],
+  skippedContinuations: ReadonlySet<Paragraph>,
+) => {
   const before = new Map<Paragraph, CommentMarker[]>();
   const after = new Map<Paragraph, CommentMarker[]>();
   for (const block of blocks) {
@@ -279,6 +282,9 @@ export const positionedCommentGaps = (blocks: readonly BlockContent[]) => {
     visitCommentMarkerItems([block], {
       markersOf: () => [],
       enterParagraph(paragraph) {
+        // A collapsed continuation has no native paragraph on which to pass
+        // the following marker. Use the last rendered paragraph instead.
+        if (skippedContinuations.has(paragraph)) return;
         if (waiting.length > 0) {
           before.set(paragraph, waiting);
           waiting = [];

@@ -29,26 +29,38 @@ const ref = (id: number): string =>
   `<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="${id}"/></w:r>`;
 
 /** One row: the reply's range opens in the first cell and closes after the row. */
-const tableXml = (endPlacement: "table" | "row"): string => {
+const tableXml = (
+  endPlacement: "table" | "row",
+  collapsedContinuation: boolean,
+): string => {
   const replyEnd = `<w:commentRangeEnd w:id="${REPLY_ID}"/>`;
+  const mergeStart = collapsedContinuation ? '<w:vMerge w:val="restart"/>' : "";
+  const followingRow = collapsedContinuation
+    ? '<w:tr><w:tc><w:tcPr><w:gridSpan w:val="2"/></w:tcPr><w:p w14:paraId="3CCC0005"><w:r><w:t>Last visible cell.</w:t></w:r></w:p></w:tc>' +
+      '<w:tc><w:tcPr><w:vMerge/></w:tcPr><w:p w14:paraId="3CCC0006"/></w:tc></w:tr>'
+    : "";
   return (
     '<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/></w:tblPr>' +
     '<w:tblGrid><w:gridCol w:w="2000"/><w:gridCol w:w="2000"/><w:gridCol w:w="2000"/></w:tblGrid>' +
     "<w:tr>" +
     `<w:tc><w:tcPr><w:tcW w:w="2000" w:type="dxa"/></w:tcPr><w:p w14:paraId="3CCC0001"><w:commentRangeStart w:id="${REPLY_ID}"/><w:r><w:t>Item 3f</w:t></w:r></w:p></w:tc>` +
     `<w:tc><w:tcPr><w:tcW w:w="2000" w:type="dxa"/></w:tcPr><w:p w14:paraId="3CCC0002"><w:r><w:t>p</w:t></w:r><w:commentRangeStart w:id="${ROOT_ID}"/><w:r><w:t xml:space="preserve">er visit</w:t></w:r></w:p></w:tc>` +
-    `<w:tc><w:tcPr><w:tcW w:w="2000" w:type="dxa"/></w:tcPr><w:p w14:paraId="3CCC0003"><w:r><w:t>rate only</w:t></w:r><w:commentRangeEnd w:id="${ROOT_ID}"/>${ref(ROOT_ID)}${ref(REPLY_ID)}</w:p></w:tc>` +
+    `<w:tc><w:tcPr><w:tcW w:w="2000" w:type="dxa"/>${mergeStart}</w:tcPr><w:p w14:paraId="3CCC0003"><w:r><w:t>rate only</w:t></w:r><w:commentRangeEnd w:id="${ROOT_ID}"/>${ref(ROOT_ID)}${ref(REPLY_ID)}</w:p></w:tc>` +
     (endPlacement === "row" ? replyEnd : "") +
     "</w:tr>" +
+    followingRow +
     (endPlacement === "table" ? replyEnd : "") +
     "</w:tbl>"
   );
 };
 
-const documentXml = (endPlacement: "table" | "row"): string =>
+const documentXml = (
+  endPlacement: "table" | "row",
+  collapsedContinuation: boolean,
+): string =>
   `${XML_DECLARATION}<w:document xmlns:w="${W}" xmlns:w14="${W14}"><w:body>` +
   '<w:p w14:paraId="3CCC0000"><w:r><w:t>Schedule of rates</w:t></w:r></w:p>' +
-  tableXml(endPlacement) +
+  tableXml(endPlacement, collapsedContinuation) +
   '<w:p w14:paraId="3CCC0004"><w:r><w:t>After the table.</w:t></w:r></w:p>' +
   "<w:sectPr/></w:body></w:document>";
 
@@ -62,6 +74,7 @@ const commentXml = (
 
 const buildDocx = async (
   endPlacement: "table" | "row",
+  collapsedContinuation = false,
 ): Promise<ArrayBuffer> => {
   const zip = new ZipArchive();
   zip.set(
@@ -85,7 +98,10 @@ const buildDocx = async (
       `<Relationship Id="rIdCx" Type="${RELATIONSHIP_TYPES.commentsExtended}" Target="commentsExtended.xml"/>` +
       "</Relationships>",
   );
-  zip.set("word/document.xml", documentXml(endPlacement));
+  zip.set(
+    "word/document.xml",
+    documentXml(endPlacement, collapsedContinuation),
+  );
   zip.set(
     "word/comments.xml",
     `${XML_DECLARATION}<w:comments xmlns:w="${W}" xmlns:w14="${W14}">` +
@@ -166,6 +182,47 @@ const BOTH = {
 };
 
 describe("a comment range that closes between table rows", () => {
+  test("canonical projection closes a range after a collapsed continuation", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await buildDocx("table", true),
+      { session: "canonical" },
+    );
+    const comments = reviewer.getComments();
+    expect(comments).toMatchObject([
+      { id: ROOT_ID, replies: [{ id: REPLY_ID }] },
+    ]);
+    const result = reviewer.applyOperations(
+      [
+        {
+          id: "edit-last-visible-cell",
+          type: "replaceInBlock",
+          blockId: "3CCC0005",
+          find: "Last visible cell.",
+          replace: "Final visible cell.",
+        },
+        {
+          id: "edit-after-table",
+          type: "replaceInBlock",
+          blockId: "3CCC0004",
+          find: "After the table.",
+          replace: "After the schedule.",
+        },
+      ],
+      { mode: "direct", undefinedReferences: "refuse" },
+    );
+    expect(result.skipped).toEqual([]);
+    expect(result.applied).toHaveLength(2);
+    const saved = await reviewer.toBuffer();
+    const xml = await savedDocumentXml(saved);
+    expect(markers(xml)).toEqual(BOTH);
+    expect(xml).toMatch(
+      new RegExp(
+        String.raw`<w:commentRangeEnd w:id="${REPLY_ID}"[^>]*?/>\s*</w:tbl>`,
+        "u",
+      ),
+    );
+  });
+
   for (const endPlacement of ["table", "row"] as const) {
     test(`canonical review preserves the authored thread (end at ${endPlacement} level)`, async () => {
       const source = await buildDocx(endPlacement);

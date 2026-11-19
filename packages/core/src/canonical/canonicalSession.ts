@@ -1276,7 +1276,7 @@ const projectEveryBlock = ({
       return true;
     },
     passComments,
-    positionedComments: positionedCommentGaps(content),
+    positionedComments: positionedCommentGaps(content, continuationSources),
     inline,
   };
   const blocks: ProjectedBlock[] = [];
@@ -1390,7 +1390,10 @@ const projectChangedBlocks = (
       return true;
     },
     passComments: commentPasser(markersOf, open),
-    positionedComments: positionedCommentGaps(content.slice(start, newEnd)),
+    positionedComments: positionedCommentGaps(
+      content.slice(start, newEnd),
+      continuationSources,
+    ),
     inline,
   };
   const window: ProjectedBlock[] = [];

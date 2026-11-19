@@ -1150,6 +1150,15 @@ export const planWellFormedRanges: (occurrences: readonly BoundaryOccurrence[]) 
 // @public
 export const planWholeParagraphReplacement: (input: WholeParagraphReplacementOptions) => Result<WholeParagraphReplacementPlan | null, DocumentOpRefusal>;
 
+// @public (undocumented)
+export type PreservedCommentRangeMarker = {
+    type: "commentRangeStart" | "commentRangeEnd";
+    id: number;
+};
+
+// @public
+export const preservedCommentRangeMarkersAt: (children: readonly PreservedChild[] | undefined, at: number) => PreservedCommentRangeMarker[];
+
 // @public
 export const PROPERTY_REVIEW_POLICIES: Readonly<{
     readonly APPEND: "append";

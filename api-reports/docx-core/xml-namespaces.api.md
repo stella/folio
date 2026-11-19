@@ -11,6 +11,9 @@ export const attachXmlNamespaceContext: (element: XmlElement, inheritedNamespace
 export const EMPTY_NAMESPACE_SCOPE: XmlNamespaceScope;
 
 // @public
+export const OOXML_NAMESPACE_SCOPE: XmlNamespaceScope;
+
+// @public
 export const OOXML_NS: {
     readonly w: "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
     readonly a: "http://schemas.openxmlformats.org/drawingml/2006/main";
