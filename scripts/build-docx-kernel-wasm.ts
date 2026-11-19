@@ -78,6 +78,10 @@ const maximumFlatOpcMainProjectionBrotliBytes = 4872;
 // 411 bytes, rounded to 512-byte increments.
 const maximumUnicode18ScriptTablesBytes = 512;
 
+// The wasm-bindgen 0.2.130 runtime glue. Measured raw size 333,258 bytes
+// against the prior budget of 332,000, rounded to 512-byte increments.
+const maximumWasmBindgenRuntimeBytes = 1536;
+
 const kernel = {
   label: "DOCX kernel",
   crate: "stella-docx-kernel",
@@ -103,7 +107,8 @@ const kernel = {
     maximumEffectiveProjectionStylesBytes +
     maximumOriginalPropertySnapshotsBytes +
     maximumFlatOpcMainProjectionBytes +
-    maximumUnicode18ScriptTablesBytes,
+    maximumUnicode18ScriptTablesBytes +
+    maximumWasmBindgenRuntimeBytes,
   maximumBrotliBytes:
     100 * 1024 +
     maximumReviewDetailBrotliBytes +
