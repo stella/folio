@@ -2403,7 +2403,7 @@ export function parseTableGrid(
  * survives whether or not it stated a width, and `undefined` is what says the
  * column stated none.
  */
-function parseTableGridChange(
+export function parseTableGridChange(
   gridElement: XmlElement,
 ): TableGridChange | undefined {
   const changeElement = findChild(gridElement, "w", "tblGridChange");

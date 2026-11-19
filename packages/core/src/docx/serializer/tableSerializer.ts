@@ -56,12 +56,18 @@ import { TABLE_LOOK_FLAGS } from "../tableLook";
 import {
   parseTableCellProperties,
   parseTableGrid,
+  parseTableGridChange,
   parseTableProperties,
   parseTablePropertyExceptions,
   parseTableRowProperties,
 } from "../tableParser";
 import { serializeEmptyRowProperties } from "../tableRowPropertyPresence";
-import { OOXML_NAMESPACE_SCOPE, parseXml, type XmlElement } from "../xmlParser";
+import {
+  findChildren,
+  OOXML_NAMESPACE_SCOPE,
+  parseXml,
+  type XmlElement,
+} from "../xmlParser";
 import { serializeBlockCustomXml } from "./blockCustomXmlSerializer";
 import { serializeBlockSdt } from "./blockSdtSerializer";
 import { serializeBorder } from "./borderSerializer";
@@ -1049,13 +1055,15 @@ function serializeTableCellPropertyChange(
 // ============================================================================
 
 /**
- * Columns the grid has to declare: the widest row's span total, because a grid
- * narrower than a row leaves cells with no column to sit in.
+ * Columns the grid has to declare: the widest row's total of skipped columns
+ * and spans, because a grid narrower than a row leaves cells with no column
+ * to sit in.
  */
 function gridColumnCount(table: Table): number {
   let widest = 0;
   for (const row of table.rows) {
-    let columns = 0;
+    let columns =
+      (row.formatting?.gridBefore ?? 0) + (row.formatting?.gridAfter ?? 0);
     for (const cell of row.cells) {
       columns += cell.formatting?.gridSpan ?? 1;
     }
@@ -1074,12 +1082,22 @@ function gridColumnCount(table: Table): number {
 function serializeTableGrid(table: Table): string {
   const columnWidths = table.columnWidths;
   // The grid as it arrived, while it still states the widths the model holds.
+  // It must also declare the columns the rows cover and the grid change the
+  // model holds: an edit that adds a column without measuring it leaves the
+  // widths as they were, but not the grid.
   const gridSourceXml = table.formatting?.gridSourceXml;
   if (gridSourceXml !== undefined) {
-    const parsed = parseTableGrid(
-      parseXml(gridSourceXml, OOXML_NAMESPACE_SCOPE).elements?.[0] ?? null,
-    );
-    if (canonicalJson(parsed) === canonicalJson(columnWidths)) {
+    const element =
+      parseXml(gridSourceXml, OOXML_NAMESPACE_SCOPE).elements?.[0] ?? null;
+    const declared =
+      element === null ? 0 : findChildren(element, "w", "gridCol").length;
+    if (
+      canonicalJson(parseTableGrid(element)) === canonicalJson(columnWidths) &&
+      declared === (columnWidths?.length || gridColumnCount(table)) &&
+      canonicalJson(
+        element === null ? undefined : parseTableGridChange(element),
+      ) === canonicalJson(table.formatting?.gridChange)
+    ) {
       return gridSourceXml;
     }
   }
