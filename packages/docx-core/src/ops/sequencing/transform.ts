@@ -489,6 +489,20 @@ const transformRestoredOp = ({
       outside =
         over.to.offset < op.from.offset || over.from.offset > op.to.offset;
     }
+    // A split away from the range, or a join of the range's paragraph with
+    // its neighbour, leaves the range's content as it was: only its
+    // paragraph or offsets move.
+    const inOneParagraph =
+      sameParagraph(op.from, op.to) &&
+      !(op.type === DOCUMENT_OP_TYPES.DELETE_RANGE && op.join !== undefined) &&
+      !(
+        op.type === DOCUMENT_OP_TYPES.SET_RUN_PROPS &&
+        (op.joinStart !== undefined || op.joinEnd !== undefined)
+      );
+    if (over.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK && inOneParagraph)
+      outside =
+        over.at.offset < op.from.offset || over.at.offset > op.to.offset;
+    if (over.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS) outside = inOneParagraph;
     if (!outside)
       return refusal(
         op,
