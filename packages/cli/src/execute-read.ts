@@ -537,6 +537,7 @@ export const executeReadTool = async (
       return await inspectWithPass(tool, call, bounds);
     case "agentWrite":
     case "resolveChanges":
+    case "deleteComments":
       return panic("A write tool reached the read executor", {
         tool: tool.name,
       });

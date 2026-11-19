@@ -154,6 +154,10 @@ import {
   seedCommentAllocator,
 } from "../prosemirror/commentIdAllocator";
 import {
+  commentThreadIds,
+  removeCommentAnchors,
+} from "../prosemirror/commentRecords";
+import {
   fromProseDoc,
   proseDocToBlocks,
 } from "../prosemirror/conversion/fromProseDoc";
@@ -332,6 +336,7 @@ type FolioDocumentOperationUndoEntry = {
   afterState: EditorState;
   createdCommentsLengthBefore: number;
   createdCommentsLengthAfter: number;
+  deletedCommentIds: ReadonlySet<number>;
 };
 
 /** Options for {@link FolioDocxReviewer.fromBuffer}. */
@@ -730,6 +735,7 @@ type FolioReviewerStateSnapshot = {
   importedHeaders: ReadonlyMap<string, HeaderFooter>;
   importedFooters: ReadonlyMap<string, HeaderFooter>;
   createdComments: readonly Comment[];
+  deletedCommentIds: ReadonlySet<number>;
   resolvedOverrides: ReadonlyMap<number, boolean>;
   resolvedStoryExpectations: readonly FolioResolvedStoryExpectation[];
 };
@@ -1575,6 +1581,7 @@ export class FolioDocxReviewer {
     FolioResolvedStoryExpectation
   >();
   private readonly createdComments: Comment[] = [];
+  private deletedCommentIds: ReadonlySet<number> = new Set();
   /** Comments the body anchored when it was loaded, read as the editor projects it. */
   private readonly loadedMainCommentIds: ReadonlySet<number>;
   private readonly documentOperationUndoEntries: FolioDocumentOperationUndoEntry[] =
@@ -2384,6 +2391,7 @@ export class FolioDocxReviewer {
       importedHeaders,
       importedFooters,
       createdComments,
+      deletedCommentIds,
       resolvedOverrides,
       resolvedStoryExpectations,
       ...unhandled
@@ -2411,6 +2419,7 @@ export class FolioDocxReviewer {
     for (const [key, value] of importedFooters)
       this.importedFooters.set(key, value);
     this.createdComments.push(...createdComments);
+    this.deletedCommentIds = deletedCommentIds;
     for (const [key, value] of resolvedOverrides)
       this.resolvedOverrides.set(key, value);
     for (const expectation of resolvedStoryExpectations)
@@ -3294,6 +3303,7 @@ export class FolioDocxReviewer {
         afterState: view.state,
         createdCommentsLengthBefore,
         createdCommentsLengthAfter: this.createdComments.length,
+        deletedCommentIds: this.deletedCommentIds,
       });
       const excess =
         this.documentOperationUndoEntries.length -
@@ -3332,7 +3342,8 @@ export class FolioDocxReviewer {
     }
     if (
       this.requireEditableStoryState(entry.story) !== entry.afterState ||
-      this.createdComments.length !== entry.createdCommentsLengthAfter
+      this.createdComments.length !== entry.createdCommentsLengthAfter ||
+      this.deletedCommentIds !== entry.deletedCommentIds
     ) {
       return { status: "rejected", undoHandle, reason: "documentChanged" };
     }
@@ -3537,10 +3548,7 @@ export class FolioDocxReviewer {
     }
     const definitions = this.withResolvedOverrides(
       this.keptCommentThreads(
-        [
-          ...(this.baseDocument.package.document.comments ?? []),
-          ...this.createdComments,
-        ],
+        this.currentCommentDefinitions(),
         this.state,
         this.secondaryStoryStates.values(),
       ).filter(
@@ -3595,6 +3603,83 @@ export class FolioDocxReviewer {
   }
 
   /**
+   * Delete comments by numeric id or exact author, with every dependent reply.
+   * Returns the deleted ids in ascending order.
+   */
+  deleteComments(
+    selector:
+      | { ids: readonly number[]; author?: never }
+      | { author: string; ids?: never },
+  ): { deleted: number[] } {
+    const comments = this.currentCommentDefinitions();
+    const requested =
+      selector.ids !== undefined
+        ? new Set(selector.ids)
+        : new Set(
+            comments
+              .filter(({ author }) => author === selector.author)
+              .map(({ id }) => id),
+          );
+    const removed = new Set<number>();
+    const roots = new Map<number, "thread" | "reply">();
+    const knownIds = new Set(comments.map(({ id }) => id));
+    for (const { id, parentId } of comments) {
+      if (!requested.has(id) || removed.has(id)) continue;
+      for (const descendant of commentThreadIds(comments, id)) {
+        removed.add(descendant);
+        roots.delete(descendant);
+      }
+      roots.set(
+        id,
+        parentId !== undefined && knownIds.has(parentId) ? "reply" : "thread",
+      );
+    }
+    if (removed.size === 0) return { deleted: [] };
+    if (this.engine.type === "canonical") {
+      const prepared = this.engine.session.prepareOperations(
+        this.state,
+        [...roots].map(([id, scope]) => ({
+          type: DOCUMENT_OP_TYPES.DELETE_COMMENT,
+          id,
+          scope,
+        })),
+      );
+      if (prepared.isErr()) throw prepared.error;
+      this.publishOnSession(prepared.value);
+    } else {
+      this.deleteCommentAnchors(removed);
+    }
+    return { deleted: [...removed].sort((left, right) => left - right) };
+  }
+
+  private currentCommentDefinitions(): Comment[] {
+    return [
+      ...(this.baseDocument.package.document.comments ?? []),
+      ...this.createdComments,
+    ].filter(({ id }) => !this.deletedCommentIds.has(id));
+  }
+
+  private deleteCommentAnchors(ids: ReadonlySet<number>): void {
+    for (const story of this.listStoryHandlesInternal()) {
+      this.getEditableStoryState(story);
+    }
+    const edits = [
+      { handle: MAIN_STORY, state: this.state },
+      ...this.secondaryStoryStates.values(),
+    ].flatMap(({ handle, state }) => {
+      const transaction = state.tr;
+      removeCommentAnchors(transaction, ids);
+      return transaction.docChanged
+        ? [{ handle, state: state.apply(transaction) }]
+        : [];
+    });
+    for (const { handle, state } of edits)
+      this.setEditableStoryState(handle, state);
+    this.deletedCommentIds = new Set([...this.deletedCommentIds, ...ids]);
+    for (const id of ids) this.resolvedOverrides.delete(id);
+  }
+
+  /**
    * Add a reply to a comment thread. Pass a {@link FolioReviewComment} from
    * {@link getComments} or its id; the reply threads under that comment's root
    * (Word threads are flat). On {@link toBuffer} the reply is written as a real
@@ -3610,10 +3695,7 @@ export class FolioDocxReviewer {
     const parentId = typeof target === "number" ? target : target.id;
     if (this.engine.type === "canonical")
       return this.replyOnSession(this.engine.session, parentId, input);
-    const existing = [
-      ...(this.baseDocument.package.document.comments ?? []),
-      ...this.createdComments,
-    ];
+    const existing = this.currentCommentDefinitions();
     const reply = createReply(existing, parentId, {
       author: input.author ?? this.author,
       text: input.text,
@@ -3711,10 +3793,7 @@ export class FolioDocxReviewer {
         commentId,
         resolved,
       );
-    const existing = [
-      ...(this.baseDocument.package.document.comments ?? []),
-      ...this.createdComments,
-    ];
+    const existing = this.currentCommentDefinitions();
     const target = existing.find((comment) => String(comment.id) === commentId);
     if (!target) {
       return false;
@@ -4364,7 +4443,7 @@ export class FolioDocxReviewer {
     skipped: ReadonlySet<string>,
   ): Set<string> {
     const keys = new Set<string>(
-      noteKeysReferencedIn(this.baseDocument.package.document.comments ?? []),
+      noteKeysReferencedIn(this.currentCommentDefinitions()),
     );
     for (const handle of this.listStoryHandlesInternal()) {
       if (handle.type === "main") continue;
@@ -4827,6 +4906,7 @@ export class FolioDocxReviewer {
       importedHeaders: new Map(this.importedHeaders),
       importedFooters: new Map(this.importedFooters),
       createdComments: [...this.createdComments],
+      deletedCommentIds: this.deletedCommentIds,
       resolvedOverrides: new Map(this.resolvedOverrides),
       resolvedStoryExpectations: [
         ...this.resolvedStoryExpectations.values(),
@@ -4951,7 +5031,9 @@ export class FolioDocxReviewer {
         snapshot.secondaryStoryStates,
       ).map(({ id }) => id),
     );
-    const kept = definitions.filter(({ id }) => keptThreadIds.has(id));
+    const kept = definitions.filter(
+      ({ id }) => keptThreadIds.has(id) && !snapshot.deletedCommentIds.has(id),
+    );
     const keptIds = new Set(kept.map(({ id }) => id));
     const retiredCommentIds = new Set(
       knownDefinitions.filter(({ id }) => !keptIds.has(id)).map(({ id }) => id),
@@ -5287,7 +5369,7 @@ export class FolioDocxReviewer {
     if (!doc) {
       return null;
     }
-    const state = ensureBaseDirectionInState(
+    const initialState = ensureBaseDirectionInState(
       EditorState.create({
         schema,
         doc,
@@ -5297,9 +5379,15 @@ export class FolioDocxReviewer {
         ),
       }),
     );
+    const transaction = initialState.tr;
+    if (this.deletedCommentIds.size > 0)
+      removeCommentAnchors(transaction, this.deletedCommentIds);
+    const state = transaction.docChanged
+      ? initialState.apply(transaction)
+      : initialState;
     this.secondaryStoryStates.set(key, {
       handle: story,
-      initialState: state,
+      initialState,
       state,
     });
     return state;
