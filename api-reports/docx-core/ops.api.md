@@ -1157,7 +1157,10 @@ export type PreservedCommentRangeMarker = {
 };
 
 // @public
-export const preservedCommentRangeMarkersAt: (children: readonly PreservedChild[] | undefined, at: number) => PreservedCommentRangeMarker[];
+export const preservedCommentRangeMarkersAt: (children: readonly PreservedChild[] | undefined, input: {
+    at: number;
+    childCount: number;
+}) => PreservedCommentRangeMarker[];
 
 // @public
 export const PROPERTY_REVIEW_POLICIES: Readonly<{

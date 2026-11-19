@@ -1362,6 +1362,9 @@ export type PreservedChild = WritableRecord & {
 };
 
 // @public
+export const preservedChildGap: (child: Pick<PreservedChild, "index">, childCount: number) => number;
+
+// @public
 export type PreservedInline = WritableRecord & {
     type: "preservedInline";
     xml: string;
