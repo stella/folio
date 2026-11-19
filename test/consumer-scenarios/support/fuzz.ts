@@ -345,7 +345,8 @@ type Receipt = {
     FolioDocumentOperationResult["applied"][number],
     "id"
   >[];
-  skipped?: FolioDocumentOperationResult["skipped"];
+  issues: FolioDocumentOperationResult["issues"];
+  receipts: FolioDocumentOperationResult["receipts"];
 };
 
 type BatchStepEffect =
@@ -366,16 +367,19 @@ const batchEffect = ({
 }: BatchEffectOptions): BatchStepEffect => {
   const kind = flow.planned?.expectedFidelityRefusal;
   if (kind === undefined) return { type: "batch", applied };
-  const message = `Accept All would lose a ${kind}.`;
+  const message =
+    kind === "rejectOriginal"
+      ? "Reject All would change the original content or formatting."
+      : `Accept All would lose a ${kind}.`;
   assert.equal(flow.mode, "tracked-changes");
   assert.equal(receipt?.applied.length, 0, JSON.stringify(receipt));
   assert.ok(
-    receipt?.skipped?.some(
-      (skipped) =>
-        skipped.reason === "invalidResult" && skipped.message === message,
+    receipt?.issues.some(
+      (issue) => issue.code === "invalidResult" && issue.message === message,
     ),
     `Expected ${message} in ${JSON.stringify(receipt)}`,
   );
+  assert.deepEqual(receipt?.receipts, []);
   assert.deepEqual(flow.reviewer.toDocument(), before);
   return { type: "expectedFidelityRefusal" };
 };

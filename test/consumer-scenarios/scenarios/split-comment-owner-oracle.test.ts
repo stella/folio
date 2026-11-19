@@ -145,7 +145,7 @@ for (const { file, story, applied } of cases)
     assert.equal(owners.end.length, 1);
     assert.equal(owners.reference.length, 1);
     expectOperation(model, operation);
-    const issues = (comments: typeof after.comments) =>
+    const issues = (comments: Parameters<typeof compareComments>[2]) =>
       compareComments(
         model,
         before.comments,

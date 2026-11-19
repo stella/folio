@@ -65,13 +65,14 @@ export const BATCH_ACTIONS: ReadonlySet<Action> = new Set([
   "story batch",
 ]);
 
-const PROTECTED_FIDELITY_KINDS = [
+const FIDELITY_REFUSALS = [
   "note",
   "drawing",
   "field",
   "comment",
+  "rejectOriginal",
 ] as const;
-type ProtectedFidelityKind = (typeof PROTECTED_FIDELITY_KINDS)[number];
+type FidelityRefusal = (typeof FIDELITY_REFUSALS)[number];
 
 export type FlowStep = {
   action: Action;
@@ -85,8 +86,8 @@ export type FlowStep = {
   operationTypes?: string[];
   /** Require every pinned operation to apply, rather than just a nonempty batch. */
   expectedApplied?: number;
-  /** Require this pinned edit to refuse because acceptance would remove protected content. */
-  expectedFidelityRefusal?: ProtectedFidelityKind;
+  /** Require this pinned edit to report a specific review fidelity refusal. */
+  expectedFidelityRefusal?: FidelityRefusal;
 };
 
 /** Replace a step's operations and keep operation-count assertions bound to that list. */
@@ -191,7 +192,7 @@ const parseStep = (value: unknown, index: number): FlowStep => {
     );
   const operations = value["operations"];
   const rawFidelityRefusal = value["expectedFidelityRefusal"];
-  const expectedFidelityRefusal = PROTECTED_FIDELITY_KINDS.find(
+  const expectedFidelityRefusal = FIDELITY_REFUSALS.find(
     (kind) => kind === rawFidelityRefusal,
   );
   if (
@@ -203,7 +204,7 @@ const parseStep = (value: unknown, index: number): FlowStep => {
       operations.length === 0)
   )
     throw new TypeError(
-      `flow step ${index}: expectedFidelityRefusal needs a pinned batch and a protected content kind`,
+      `flow step ${index}: expectedFidelityRefusal needs a pinned batch and a fidelity refusal`,
     );
   const batchOptions = {
     ...(expectedFidelityRefusal === undefined

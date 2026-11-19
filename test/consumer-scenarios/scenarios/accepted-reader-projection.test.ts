@@ -194,7 +194,7 @@ test("recorded operation matrix seed 201 keeps clean readers consistent through 
     const deletion = rebound.operations.find(
       ({ type }) => type === "deleteTable",
     );
-    if (deletion !== undefined) {
+    if (deletion?.type === "deleteTable") {
       assert.equal(rebound.operations.length, 1);
       assertProtectedEditRefused({
         reviewer,
