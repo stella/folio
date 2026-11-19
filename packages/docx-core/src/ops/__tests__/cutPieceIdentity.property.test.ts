@@ -227,3 +227,86 @@ test("a replacement keeps the id of another reviewer's record it cuts, in every 
     },
   );
 });
+
+test("a record struck whole takes no id from a piece cut off an alike record after it", () => {
+  // Both insertions read the same; the replacement strikes the first whole
+  // and cuts the second, whose cut-off piece keeps its own new id.
+  const info = { author: "Earlier", date: "2026-01-02T03:04:05Z" };
+  const original = normalizeForOps({
+    package: {
+      document: {
+        content: [
+          {
+            type: "paragraph",
+            paraId: "00000001",
+            content: [
+              {
+                type: "insertion",
+                info: { id: 1, ...info },
+                content: [
+                  { type: "run", content: [{ type: "text", text: "a" }] },
+                ],
+              },
+              {
+                type: "insertion",
+                info: { id: 2, ...info },
+                content: [
+                  { type: "bookmarkStart", id: 3, name: "_Mark" },
+                  {
+                    type: "hyperlink",
+                    rId: "rId9",
+                    href: "https://example.org",
+                    children: [
+                      { type: "run", content: [{ type: "text", text: "a" }] },
+                      { type: "bookmarkEnd", id: 3 },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    },
+  });
+  const from = { story: OP_STORIES.MAIN, blockId: "00000001", offset: 0 };
+  const intent: EditorIntent = {
+    type: "replaceText",
+    from,
+    to: { ...from, offset: 2 },
+    text: "new",
+  };
+  const allocation = allocateEditorIntentIds(original, intent);
+  const direct = applyDocumentOps(
+    original,
+    compileEditorIntent(original, {
+      intent,
+      mode: { type: "editing", newIds: allocation.newIds },
+    }).unwrap().ops,
+  ).unwrap().document;
+  const tracked = applyDocumentOps(
+    original,
+    compileEditorIntent(original, {
+      intent,
+      mode: {
+        type: "suggesting",
+        revision: {
+          id: allocation.revisionId,
+          author: "Reviewer",
+          date: "2026-10-02T00:00:00Z",
+        },
+        newIds: allocation.newIds,
+      },
+    }).unwrap().ops,
+  ).unwrap();
+  assertFreshIdentityEquivalent({
+    actual: resolve(
+      tracked.document,
+      tracked.revisions,
+      REVISION_DECISIONS.ACCEPT,
+    ),
+    expected: direct,
+    original,
+    allocated: allocation.newIds,
+  });
+});
