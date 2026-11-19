@@ -5,6 +5,18 @@
       "path": "121:5:1:1:1:1:1:1:2",
       "note": "#2621: accepting a deletion of the story's last paragraph joins the anchor into it, which keeps that paragraph's id; the next batch reads the anchor again by its words.",
       "date": "2026-11-12"
+    },
+    {
+      "seed": -1168726935,
+      "path": "57:49:1:1",
+      "note": "#2621: run-in moves composed into one resolution map; edits inside content an earlier move inserted kept the map ordered.",
+      "date": "2026-11-19"
+    },
+    {
+      "seed": -1715172872,
+      "path": "101:5:1:4:4:5:5:5:9:10:11:12:12:14:15:1",
+      "note": "#2621: same map composition as -1168726935.",
+      "date": "2026-11-19"
     }
   ]
 }
