@@ -16,6 +16,7 @@
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   FOLIO_DOCUMENT_OPERATION_MODES,
+  FOLIO_HIGHLIGHT_COLOR_VALUES,
   FOLIO_LINE_SPACING_RULE_VALUES,
   FOLIO_PAGE_BREAK_CLEAR_VALUES,
   FOLIO_PARAGRAPH_ALIGNMENT_VALUES,
@@ -788,6 +789,26 @@ export const FOLIO_BLOCK_PARAGRAPH_PROPERTIES_JSON_SCHEMA: {
   additionalProperties: false,
 } as const satisfies FolioJsonSchema;
 
+export const INLINE_FORMATTING_JSON_SCHEMA: FolioJsonSchema = {
+  type: "object",
+  description: "Inline formatting to apply. Set at least one property.",
+  properties: {
+    bold: { type: "boolean" },
+    italic: { type: "boolean" },
+    underline: { type: "boolean" },
+    highlight: {
+      description:
+        'Named OOXML highlight color. Use "none" to disable highlighting or null to remove the direct value.',
+      oneOf: [
+        { type: "string", enum: FOLIO_HIGHLIGHT_COLOR_VALUES },
+        { type: "null" },
+      ],
+    },
+  },
+  minProperties: 1,
+  additionalProperties: false,
+};
+
 /**
  * JSON Schema (draft-07 compatible) for ONE document operation: the full
  * union accepted by `parseFolioDocumentOperationBatch` in
@@ -855,18 +876,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
         ...suggestionIdProperty,
         type: { type: "string", enum: ["formatRange"] },
         range: FOLIO_TEXT_RANGE_JSON_SCHEMA,
-        formatting: {
-          type: "object",
-          description:
-            "Inline formatting to apply; at least one property is required.",
-          properties: {
-            bold: { type: "boolean" },
-            italic: { type: "boolean" },
-            underline: { type: "boolean" },
-          },
-          minProperties: 1,
-          additionalProperties: false,
-        },
+        formatting: INLINE_FORMATTING_JSON_SCHEMA,
       },
       required: ["id", "type", "range", "formatting"],
       additionalProperties: false,

@@ -4176,6 +4176,9 @@ export class CanonicalPublicOperations {
                         hAnsi: formatting.fontFamily,
                       },
               }),
+          ...(formatting.highlight === undefined
+            ? {}
+            : { highlight: formatting.highlight }),
           ...(formatting.color === undefined
             ? {}
             : {

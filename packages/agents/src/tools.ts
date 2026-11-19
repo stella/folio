@@ -25,6 +25,7 @@ import {
   FOLIO_INSERT_FORMATTING_SCOPE_JSON_SCHEMA,
   FOLIO_PARAGRAPH_NUMBERING_JSON_SCHEMA,
   FOLIO_PRECONDITION_JSON_SCHEMA,
+  INLINE_FORMATTING_JSON_SCHEMA,
 } from "./operation-schema";
 import {
   DEFAULT_SUGGEST_CHANGES_OPERATION_TYPES,
@@ -257,16 +258,9 @@ const OPERATION_PROPERTY_SCHEMAS = {
     items: { type: "string" },
   },
   formatting: {
-    type: "object",
+    ...INLINE_FORMATTING_JSON_SCHEMA,
     description:
-      "Required for `formatRange`: set one or more inline properties to enable or disable.",
-    properties: {
-      bold: { type: "boolean" },
-      italic: { type: "boolean" },
-      underline: { type: "boolean" },
-    },
-    minProperties: 1,
-    additionalProperties: false,
+      "Required for `formatRange`. Set one or more inline properties.",
   },
   properties: {
     ...FOLIO_BLOCK_PARAGRAPH_PROPERTIES_JSON_SCHEMA,
