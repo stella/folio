@@ -38,6 +38,7 @@ import {
   propertyTestTimeout,
 } from "../../../../test/property-testing";
 import {
+  rejectedBoundaryHolderIdentities,
   rejectedContainerEndIdentities,
   rejectedJoinSurvivorIdentities,
   resolvedAbsorbedFollowerIdentities,
@@ -312,9 +313,24 @@ const viewLaws = async (
       }),
     ),
   } satisfies Record<FolioResolvedReviewedView, Set<string>>;
+  // A paragraph the legacy reviewer keeps for nothing but range boundaries,
+  // whose rejected added mark goes before a block, goes; its boundaries stay
+  // in the nearest paragraph that does.
+  const boundaryHolders = new Set(
+    rejectedBoundaryHolderIdentities({
+      source: before,
+      actual: canonical.toResolvedDocument("reject"),
+      expected: legacyRejected,
+    }),
+  );
   for (const entry of expected) {
     const absorbed = absorbedFollowers[entry.view];
-    entry.blocks = entry.blocks?.filter(({ id }) => !absorbed.has(id)) ?? null;
+    entry.blocks =
+      entry.blocks?.filter(
+        ({ id }) =>
+          !absorbed.has(id) &&
+          (entry.view !== "original" || !boundaryHolders.has(id)),
+      ) ?? null;
     if (entry.view !== "original" || containerEnds.size === 0) continue;
     const actualBlocks =
       read.find(

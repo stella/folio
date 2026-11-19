@@ -19,6 +19,12 @@
       "date": "2026-11-15"
     },
     {
+      "seed": -2119579498,
+      "path": "12:0:0:0:0:0:0:0:0:0:4:2:3:3:3:3:3:3:4:4:4:4:4:4:5:4:4:4:6:6:6:6:6:6:6:6:6:6:6:4:6:4:4:4:9:6:13:6:6:6:6:6:6:6:6",
+      "note": "Rejecting the added mark of a paragraph before a content control, left holding only a bookmark, removes it and hands the bookmark on; the legacy reviewer keeps the paragraph.",
+      "date": "2026-11-19"
+    },
+    {
       "seed": 627797610,
       "path": "0:0:0:0:0:0:0:0:0:0:0:0:1:1:1:1:1:2:1:1:1:1:3:2:2:2:2:2:2:2:2",
       "note": "An inserted empty paragraph after a section break and before preserved altChunk keeps the kernel opaque-follower paragraph-mark outcome in both readers",
