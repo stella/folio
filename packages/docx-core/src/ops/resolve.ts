@@ -3686,8 +3686,26 @@ const joinOps = (
   }
   const { paragraph } = location;
   const blocks = blockListAt(body.content, location.list);
-  const next = blocks[location.index + 1];
   const previous = blocks[location.index - 1];
+  // Range boundaries the block list holds between this paragraph and the
+  // next one go into the joined paragraph where the two meet: what stood
+  // before them stays before, what stood after stays after.
+  let followerIndex = location.index + 1;
+  while (
+    paragraph.sectionProperties === undefined &&
+    blocks[followerIndex] !== undefined &&
+    isBlockBoundary(blocks[followerIndex] ?? panic("A block is listed."))
+  )
+    followerIndex += 1;
+  const follower = blocks[followerIndex];
+  const standing =
+    follower?.type === "paragraph"
+      ? blocks.slice(location.index + 1, followerIndex).filter(isBlockBoundary)
+      : [];
+  const next =
+    standing.length > 0 && follower?.type === "paragraph"
+      ? { ...follower, content: [...standing, ...follower.content] }
+      : blocks[location.index + 1];
   if (next?.type === "paragraph") {
     const outcome = paragraphMarkOutcome({
       follows: "paragraph",
@@ -3782,13 +3800,43 @@ const joinOps = (
     const transfersToPrevious =
       outcome.sectionDestination === "preceding" &&
       previous?.type === "paragraph";
+    const receiver =
+      standing.length > 0 && follower?.type === "paragraph" ? follower : next;
     const receiverEffects: ResolutionReceiverEffect[] = [
-      { type: "paragraph-join", receiver: next },
+      { type: "paragraph-join", receiver },
     ];
     if (transfersToPrevious)
       receiverEffects.push({ type: "section-transfer", receiver: previous });
     if (receivesSection)
-      receiverEffects.push({ type: "section-transfer", receiver: next });
+      receiverEffects.push({ type: "section-transfer", receiver });
+    if (standing.length > 0) {
+      const start = transfersToPrevious ? location.index - 1 : location.index;
+      return paragraphMarkPlan(
+        [
+          {
+            type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+            story,
+            // The joined paragraph stays in the list to anchor the inverse.
+            blockId: survivor.paraId ?? paraId,
+            expected: blocks,
+            blocks: [
+              ...blocks.slice(0, start),
+              ...(transfersToPrevious
+                ? [
+                    {
+                      ...previous,
+                      sectionProperties: paragraph.sectionProperties,
+                    },
+                  ]
+                : []),
+              survivor,
+              ...blocks.slice(followerIndex + 1),
+            ],
+          },
+        ],
+        receiverEffects,
+      );
+    }
     return paragraphMarkPlan(
       [
         {
