@@ -3593,29 +3593,6 @@ export class CanonicalPublicOperations {
       }
       return result([], null);
     }
-    if (batch.mode !== "direct" && batch.mode !== "suggested") {
-      const message = canonicalTrackedBatchFidelityError({
-        story,
-        before: {
-          document: readModel(session.document),
-          projection: state.doc,
-        },
-        after: {
-          document: prepared.value.document,
-          projection: prepared.value.projection.doc,
-        },
-        createdCommentIds: new Set(
-          [...appliedById.values()].flatMap(({ commentId }) =>
-            commentId === undefined ? [] : [commentId],
-          ),
-        ),
-      });
-      if (message !== null) {
-        for (const { id } of appliedById.values())
-          skip(id, "invalidResult", message);
-        return result([], null, "refused");
-      }
-    }
     if (batch.mode === "direct") {
       const finalBody = findStoryBody(prepared.value.document, story);
       if (finalBody === undefined)
@@ -3644,12 +3621,13 @@ export class CanonicalPublicOperations {
             blockId: operation.blockId,
           };
       }
-    }
-    if (batch.mode !== "direct" && batch.mode !== "suggested")
+    } else if (batch.mode !== "suggested") {
+      const trackedOperations = [...appliedById.values()];
+      const originalDocument = readModel(session.document);
       addRetiredCommentReceipts({
         before: state,
         after: prepared.value.projection.doc,
-        applied: [...appliedById.values()],
+        applied: trackedOperations,
         operations: batch.operations.filter(
           (operation) =>
             operation.type !== "deleteBlock" ||
@@ -3666,7 +3644,7 @@ export class CanonicalPublicOperations {
         acceptedCommentIds: (side) =>
           side === "before"
             ? canonicalAcceptedComments({
-                document: readModel(session.document),
+                document: originalDocument,
                 projection: state.doc,
                 story,
               })
@@ -3676,6 +3654,28 @@ export class CanonicalPublicOperations {
                 story,
               }),
       });
+      const message = canonicalTrackedBatchFidelityError({
+        story,
+        before: { document: originalDocument, projection: state.doc },
+        after: {
+          document: prepared.value.document,
+          projection: prepared.value.projection.doc,
+        },
+        createdCommentIds: new Set(
+          trackedOperations.flatMap(({ commentId }) =>
+            commentId === undefined ? [] : [commentId],
+          ),
+        ),
+        retiredCommentIds: trackedOperations.flatMap(
+          ({ retiredCommentIds }) => retiredCommentIds ?? [],
+        ),
+      });
+      if (message !== null) {
+        for (const { id } of trackedOperations)
+          skip(id, "invalidResult", message);
+        return result([], null, "refused");
+      }
+    }
     const applied = batch.operations.flatMap(({ id }) => {
       const entry = appliedById.get(id);
       if (entry === undefined) return [];

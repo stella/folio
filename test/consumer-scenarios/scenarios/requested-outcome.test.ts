@@ -58,7 +58,6 @@ import {
   retireNoteReferences,
   type Row,
 } from "../support/oracle.ts";
-import { stageReviewedProtectedEdit } from "../support/protected-edit.ts";
 import { compareTableGeometry } from "../support/table-oracle.ts";
 
 type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
@@ -1065,10 +1064,9 @@ describe("the requested-outcome oracle", () => {
         },
       ],
     });
-    stageReviewedProtectedEdit({
-      reviewer,
-      operation: { id: "delete", type: "deleteBlock", blockId: block.id },
-      kind: "comment",
+    apply({
+      mode: "tracked-changes",
+      operations: [{ id: "delete", type: "deleteBlock", blockId: block.id }],
     });
     const bytes = new Uint8Array(await reviewer.toBuffer());
     const accepted = await openReviewer(bytes);

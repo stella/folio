@@ -21,10 +21,7 @@ import {
   missingProtectedBlockKind,
   sameOriginalBlocks,
 } from "../ai-edits/tracked-batch-fidelity";
-import {
-  findSuggestionRange,
-  getSuggestions,
-} from "../prosemirror/commands/comments";
+import { pendingSuggestionRevisionIds } from "../prosemirror/commands/comments";
 import { lockedControlSpans } from "../prosemirror/lockedControls";
 import type { BlockContent, Document, Paragraph } from "../types/document";
 import { lockViolationBetween } from "./canonicalLockGuard";
@@ -45,12 +42,7 @@ const revisionIdsOf = (doc: PMNode): RevisionIds => {
   const { ids } = getTrackedChangeStatsFromDoc(doc);
   if (ids.length === 0) return { all: ids, ordinary: ids };
   const state = EditorState.create({ doc });
-  const suggested = new Set(
-    getSuggestions(state).flatMap(
-      ({ suggestionId }) =>
-        findSuggestionRange(state, suggestionId)?.revisionIds ?? [],
-    ),
-  );
+  const suggested = pendingSuggestionRevisionIds(state);
   return {
     all: ids,
     ordinary:

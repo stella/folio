@@ -74,39 +74,21 @@ test(
           ] as const) {
             const target = reviewer.getContent().at(0);
             if (!target) throw new Error("Expected paragraph");
-            const operation = {
-              id: "replace",
-              type: "replaceBlock",
-              blockId: target.id,
-              text: replacement,
-            } as const;
-            const apply = (applyMode: typeof mode | "suggested") =>
-              reviewer.applyDocumentOperations(
-                { version: 1, mode: applyMode, operations: [operation] },
-                { undefinedReferences: "refuse" },
-              );
-            const protectedDeletion =
-              mode === "tracked-changes" && replacement === "";
-            const before = protectedDeletion ? reviewer.toDocument() : null;
-            const receipt = apply(mode);
-            if (protectedDeletion) {
-              expect(receipt).toMatchObject({
-                status: "rejected",
-                applied: [],
-                undoHandle: null,
-                skipped: [
+            const receipt = reviewer.applyDocumentOperations(
+              {
+                version: 1,
+                mode,
+                operations: [
                   {
-                    id: operation.id,
-                    reason: "invalidResult",
-                    message: "Accept All would lose a comment.",
+                    id: "replace",
+                    type: "replaceBlock",
+                    blockId: target.id,
+                    text: replacement,
                   },
                 ],
-              });
-              expect(reviewer.toDocument()).toEqual(before);
-              expect(apply("suggested").applied).toHaveLength(1);
-              expect(reviewer.acceptSuggestion(operation.id)).toBe(true);
-              continue;
-            }
+              },
+              { undefinedReferences: "refuse" },
+            );
             expect(receipt.applied).toHaveLength(1);
           }
           const pending = await tracked.toBuffer();

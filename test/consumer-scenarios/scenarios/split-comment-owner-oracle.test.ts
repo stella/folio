@@ -2,17 +2,14 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
-import { openReviewer } from "../support/documents.ts";
 import { parseFlowFile } from "../support/flow-file.ts";
 import { runFlowFile, vacuousSteps } from "../support/fuzz.ts";
 import {
-  assertRequestedOutcome,
   capture,
   compareComments,
   expectOperation,
   modelOf,
 } from "../support/oracle.ts";
-import { stageReviewedProtectedEdit } from "../support/protected-edit.ts";
 
 /** Read authored marker ownership independently of either comment projection. */
 const markerOwners = (document: unknown, commentId: number) => {
@@ -65,12 +62,12 @@ const cases = [
   {
     file: "issue-1842-comment-on-split-note-tail.json",
     story: { type: "footnote", noteId: 1 },
-    applied: [2, 1],
+    applied: [2, 1, 1],
   },
   {
     file: "issue-1842-comment-on-split-replacement-tail.json",
     story: { type: "main" },
-    applied: [1, 1, 1],
+    applied: [1, 1, 1, 1],
   },
 ] as const;
 
@@ -81,81 +78,119 @@ for (const { file, story, applied } of cases)
         readFileSync(new URL(`../flows/${file}`, import.meta.url), "utf8"),
       ),
     );
-    const run = await runFlowFile(
-      { ...flow, steps: flow.steps.slice(0, -1) },
-      { captureSaved: true },
-    );
+    let captured: Awaited<ReturnType<typeof capture>> | undefined;
+    let commentId: number | undefined;
+    const observed = new Set<number>();
+    const run = await runFlowFile(flow, {
+      checks: [
+        {
+          name: "independent split-range ownership",
+          check: async ({ flow: current, index }) => {
+            if (index < flow.steps.length - 2) return;
+            observed.add(index);
+            const snapshot = await capture(
+              current.reviewer,
+              "tracked-changes",
+              { story },
+            );
+            const document = current.reviewer.toDocument();
+            // Read the authored story content once; sections also project the
+            // body paragraphs and must not count the same markers a second time.
+            const content =
+              story.type === "main"
+                ? document.package.document.content
+                : document.package.footnotes?.find(
+                    ({ id }) => id === story.noteId,
+                  )?.content;
+            assert.ok(content);
+            if (index === flow.steps.length - 2) {
+              captured = snapshot;
+              const accepted = snapshot.comments.at(0);
+              const live = snapshot.liveComments.at(0);
+              assert.ok(accepted && live);
+              assert.equal(snapshot.comments.length, 1);
+              assert.equal(snapshot.liveComments.length, 1);
+              commentId = accepted.id;
+              assert.equal(accepted.anchor, "updated");
+              assert.notEqual(live.blockId, accepted.blockId);
+              assert.ok(live.anchor.endsWith(accepted.anchor));
+              assert.deepEqual(markerOwners(content, accepted.id), {
+                start: [live.blockId],
+                end: [accepted.blockId],
+                reference: [accepted.blockId],
+              });
+              assert.equal(
+                modelOf(snapshot.rows, snapshot.liveRows, snapshot.joinSources)
+                  .pendingJoins.size,
+                0,
+                "A tracked split is not a pending paragraph join",
+              );
+              return;
+            }
+            assert.ok(captured && commentId !== undefined);
+            assert.deepEqual(snapshot.comments, []);
+            assert.equal(
+              snapshot.liveComments.length,
+              1,
+              "Deleting the accepted coverage must keep the rejectable live thread",
+            );
+            assert.equal(snapshot.liveComments.at(0)?.id, commentId);
+            const owners = markerOwners(content, commentId);
+            assert.equal(owners.start.length, 1);
+            assert.equal(owners.end.length, 1);
+            assert.equal(owners.reference.length, 1);
+            const accepted = captured.comments.at(0);
+            assert.ok(accepted?.blockId);
+            const model = modelOf(
+              captured.rows,
+              captured.liveRows,
+              captured.joinSources,
+            );
+            expectOperation(model, {
+              type: "deleteBlock",
+              blockId: accepted.blockId,
+            });
+            assert.deepEqual(
+              compareComments(
+                model,
+                captured.comments,
+                [],
+                snapshot.rows,
+                captured.liveComments,
+                "tracked-changes",
+              ),
+              [],
+            );
+            assert.match(
+              compareComments(
+                model,
+                captured.comments,
+                [accepted],
+                snapshot.rows,
+                captured.liveComments,
+                "tracked-changes",
+              ).join("\n"),
+              /outlived/u,
+              "Retaining the thread on its removed accepted owner is an orphan",
+            );
+          },
+        },
+      ],
+    });
     assert.deepEqual(vacuousSteps(run), []);
     assert.deepEqual(
       run.effects.map((effect) => {
         assert.equal(effect.type, "batch");
-        if (effect.type !== "batch") assert.fail("Expected an edit batch");
+        if (effect.type !== "batch")
+          assert.fail("Every saved step must apply a batch");
         return effect.applied;
       }),
       applied,
     );
-    assert.ok(run.saved);
-    const reviewer = await openReviewer(run.saved);
-    const storyContent = () => {
-      const document = reviewer.toDocument();
-      return story.type === "main"
-        ? document.package.document.content
-        : document.package.footnotes?.find(({ id }) => id === story.noteId)
-            ?.content;
-    };
-    const before = await capture(reviewer, "tracked-changes", { story });
-    const [accepted] = before.comments;
-    const [live] = before.liveComments;
-    assert.ok(accepted?.blockId && live);
-    assert.equal(before.comments.length, 1);
-    assert.equal(before.liveComments.length, 1);
-    assert.equal(accepted.anchor, "updated");
-    assert.notEqual(live.blockId, accepted.blockId);
-    assert.ok(live.anchor.endsWith(accepted.anchor));
-    assert.deepEqual(markerOwners(storyContent(), accepted.id), {
-      start: [live.blockId],
-      end: [accepted.blockId],
-      reference: [accepted.blockId],
-    });
-    const model = modelOf(before.rows, before.liveRows, before.joinSources);
-    assert.equal(
-      model.pendingJoins.size,
-      0,
-      "A tracked split is not a pending join",
+    assert.deepEqual(
+      [...observed],
+      [flow.steps.length - 2, flow.steps.length - 1],
     );
-
-    const operation = {
-      id: "delete-tail",
-      type: "deleteBlock",
-      blockId: accepted.blockId,
-    } as const;
-    stageReviewedProtectedEdit({ reviewer, story, operation, kind: "comment" });
-    await assertRequestedOutcome(
-      reviewer,
-      before,
-      { applied: [operation] },
-      "review split tail deletion",
-    );
-    const after = await capture(reviewer, "tracked-changes", { story });
-    assert.deepEqual(after.comments, []);
-    assert.equal(after.liveComments.length, 1);
-    assert.equal(after.liveComments.at(0)?.id, accepted.id);
-    const owners = markerOwners(storyContent(), accepted.id);
-    assert.equal(owners.start.length, 1);
-    assert.equal(owners.end.length, 1);
-    assert.equal(owners.reference.length, 1);
-    expectOperation(model, operation);
-    const issues = (comments: Parameters<typeof compareComments>[2]) =>
-      compareComments(
-        model,
-        before.comments,
-        comments,
-        after.rows,
-        before.liveComments,
-        "tracked-changes",
-      );
-    assert.deepEqual(issues([]), []);
-    assert.match(issues([accepted]).join("\n"), /outlived/u);
   });
 
 test("a differing live locator cannot excuse unrelated accepted comment loss", () => {

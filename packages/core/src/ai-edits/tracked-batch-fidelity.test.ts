@@ -13,7 +13,8 @@ import { FolioDocxReviewer } from "./headless";
 
 const commentedBlockId = "10000000";
 const secondBlockId = "10000002";
-const commentedText = "Document heading";
+const commentedText = "Document heading.";
+const commentQuote = "heading";
 const originalText = "Original wording";
 const replacementText = "Revised wording";
 
@@ -21,10 +22,12 @@ const source = () =>
   paragraphsDocx(
     [
       [
+        textRun("Document "),
         { type: "commentRangeStart", id: 1 },
-        textRun(commentedText, { bold: true }),
+        textRun(commentQuote),
         { type: "commentRangeEnd", id: 1 },
         { type: "commentReference", id: 1 },
+        textRun("."),
       ],
       [textRun("Intervening paragraph.")],
       [textRun(originalText)],
@@ -40,25 +43,67 @@ const edit = {
   replace: replacementText,
 } as const;
 
-test("refuses the entire tracked batch when accepting would remove a comment", async () => {
+test.each(["legacy", "canonical"] as const)(
+  "%s admits a tracked deletion that identifies its retired comment",
+  async (session) => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(await source(), {
+      session,
+    });
+    const batch = {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "tracked-changes",
+      operations: [
+        {
+          id: "delete-heading",
+          type: "replaceInBlock",
+          blockId: commentedBlockId,
+          find: commentQuote,
+          replace: "",
+        },
+      ],
+    } as const satisfies FolioDocumentOperationBatch;
+    const before = reviewer.toDocument();
+    for (const dryRun of [true, false]) {
+      const result = reviewer.applyDocumentOperations(
+        { ...batch, dryRun },
+        { undefinedReferences: "refuse" },
+      );
+      expect(result.skipped).toEqual([]);
+      expect(result.applied).toHaveLength(1);
+      expect(result.receipts.at(0)?.retiredCommentIds).toEqual([1]);
+      if (dryRun) expect(reviewer.toDocument()).toEqual(before);
+    }
+    const pending = await reviewer.toBuffer();
+    const accepted = await FolioDocxReviewer.fromBuffer(pending, { session });
+    expect(accepted.acceptAll().skipped).toEqual([]);
+    expect(accepted.getComments()).toEqual([]);
+    const rejected = await FolioDocxReviewer.fromBuffer(pending, { session });
+    expect(rejected.rejectAll().skipped).toEqual([]);
+    expect(
+      rejected.getComments().map(({ anchoredText }) => anchoredText),
+    ).toEqual([commentQuote]);
+  },
+);
+
+test("refuses a tracked batch whose combined deletions remove an unreported comment", async () => {
   const reviewer = await FolioDocxReviewer.fromBuffer(await source());
   const original = reviewer.toDocument();
   const comments = reviewer.getComments();
   expect(comments.map(({ anchoredText }) => anchoredText)).toEqual([
-    commentedText,
+    commentQuote,
   ]);
+  const deletions = ["head", "ing"].map((find) => ({
+    id: `delete-${find}`,
+    type: "replaceInBlock" as const,
+    blockId: commentedBlockId,
+    find,
+    replace: "",
+  }));
   const batch = {
     version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
     mode: "tracked-changes",
     atomic: false,
-    operations: [
-      {
-        id: "delete-heading",
-        type: "deleteBlock",
-        blockId: commentedBlockId,
-      },
-      edit,
-    ],
+    operations: [...deletions, edit],
   } as const satisfies FolioDocumentOperationBatch;
 
   for (const dryRun of [true, false]) {
@@ -68,10 +113,9 @@ test("refuses the entire tracked batch when accepting would remove a comment", a
     );
     expect(result.status).toBe(dryRun ? "previewed" : "rejected");
     expect(result.applied).toEqual([]);
-    expect(result.skipped.map(({ id, reason }) => ({ id, reason }))).toEqual([
-      { id: "delete-heading", reason: "invalidResult" },
-      { id: edit.id, reason: "invalidResult" },
-    ]);
+    expect(result.skipped.map(({ id, reason }) => ({ id, reason }))).toEqual(
+      batch.operations.map(({ id }) => ({ id, reason: "invalidResult" })),
+    );
     expect(result.skipped.at(0)?.message).toMatch(/Accept All.*comment/u);
     expect(result.receipts).toEqual([]);
     expect(result.undoHandle).toBeNull();

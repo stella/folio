@@ -1,6 +1,11 @@
 /**
- * Direct edits and accepted suggestions remove a commented paragraph and its
- * anchor without leaving an empty paragraph behind.
+ * Deleting a run of whole paragraphs, one of which carries a comment, reads
+ * the same in every mode: applied directly, as tracked changes accepted, and
+ * as suggestions accepted. The comment's whole range goes with the words, and
+ * so does its reference, so nothing is left of the commented paragraph to
+ * hold an empty one in place: accepting leaves no blank paragraph where the
+ * run was, whichever paragraph of the run the comment is on and whether the
+ * run is deleted in one batch or one paragraph per batch.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -14,7 +19,7 @@ import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
 import { FolioDocxReviewer } from "./headless";
 
-type Mode = "direct" | "suggested";
+type Mode = "direct" | "tracked-changes" | "suggested";
 
 const KEPT_BEFORE = "Opening clause.";
 const RUN = [
@@ -132,13 +137,14 @@ const setups: Setup[] = ([0, 1, 2] as const).flatMap((commented) =>
 describe("a run of whole-paragraph deletions with a commented paragraph", () => {
   for (const setup of setups) {
     const name = `comment on the ${["first", "middle", "last"][setup.commented]}, ${setup.batching}, ${setup.order}`;
-    test(`leaves no paragraph after direct edit or suggestion (${name})`, async () => {
+    test(`leaves no paragraph behind in any mode (${name})`, async () => {
       const direct = await replay(setup, "direct");
       expect(direct.blocks.map(({ text }) => text)).toEqual([
         KEPT_BEFORE,
         "Listed clause.",
         KEPT_AFTER,
       ]);
+      expect(await replay(setup, "tracked-changes")).toEqual(direct);
       expect(await replay(setup, "suggested")).toEqual(direct);
     });
   }

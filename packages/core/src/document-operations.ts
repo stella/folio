@@ -2957,6 +2957,9 @@ export const applyFolioDocumentOperationsInPackage = ({
       before: view.state,
       after: run.doc,
       createdCommentIds: run.commentIds,
+      retiredCommentIds: run.outcome.applied.flatMap(
+        ({ retiredCommentIds }) => retiredCommentIds ?? [],
+      ),
     });
     if (message === null) return null;
     return {
