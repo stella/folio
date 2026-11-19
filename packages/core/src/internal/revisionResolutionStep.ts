@@ -171,6 +171,9 @@ export const composeRevisionResolutionMaps = (
     projectSecondBoundary(oldStart);
     projectSecondBoundary(oldEnd);
   });
+  // Boundaries inside content `first` inserted all project onto that
+  // insertion's ends, so the projections repeat out of order.
+  secondBreakpoints.sort((left, right) => left - right);
   const breakpoints: number[] = [];
   let firstIndex = 0;
   let secondIndex = 0;
