@@ -13,6 +13,8 @@ import type {
   Document,
   Paragraph,
 } from "../../packages/docx-core/src/model/document";
+import { paragraphHoldsContent } from "../../packages/docx-core/src/ops/offsets";
+import { paragraphRemains } from "../../packages/docx-core/src/ops/rangeBoundaries";
 
 const addedMark = (block: BlockContent | undefined): block is Paragraph =>
   block?.type === "paragraph" &&
@@ -283,4 +285,85 @@ export const resolvedAbsorbedFollowerIdentities = ({
     walk(storyBody(source, story).content);
   }
   return absorbed;
+};
+
+/** The ids of the range boundaries anywhere in `value`. */
+const boundaryKeys = (value: unknown, found: Set<string> = new Set()) => {
+  if (Array.isArray(value)) {
+    for (const item of value) boundaryKeys(item, found);
+    return found;
+  }
+  if (typeof value !== "object" || value === null) return found;
+  if ("type" in value && "id" in value && typeof value.type === "string")
+    found.add(`${value.type}:${String(value.id)}`);
+  for (const child of Object.values(value)) boundaryKeys(child, found);
+  return found;
+};
+
+/**
+ * Rejecting the added mark of a paragraph before a table or another block
+ * removes it when nothing but range boundaries stays in it: they go to the
+ * nearest paragraph that stays. The legacy reviewer keeps the paragraph for
+ * them. Each id names such a paragraph, proven on both rejected documents:
+ * the legacy one keeps it holding no content but its boundaries, the
+ * canonical one has it no more and keeps every one of those boundaries.
+ */
+export const rejectedBoundaryHolderIdentities = ({
+  source,
+  actual,
+  expected,
+}: RejectedJoinSurvivorsOptions): string[] => {
+  const removed: string[] = [];
+  for (const story of documentStories(source)) {
+    const legacyBody = findStoryBody(expected, story);
+    const legacy = new Map(
+      (legacyBody === undefined ? [] : storyParagraphs(legacyBody)).map(
+        ({ paragraph }) => [paragraph.paraId, paragraph],
+      ),
+    );
+    const canonicalBody = findStoryBody(actual, story);
+    const canonical = new Map(
+      (canonicalBody === undefined ? [] : storyParagraphs(canonicalBody)).map(
+        ({ paragraph }) => [paragraph.paraId, paragraph],
+      ),
+    );
+    const walk = (blocks: readonly BlockContent[]): void => {
+      for (const [index, block] of blocks.entries()) {
+        for (const list of nestedLists(block)) walk(list);
+        const next = blocks[index + 1];
+        if (
+          !addedMark(block) ||
+          next === undefined ||
+          next.type === "paragraph" ||
+          typeof block.paraId !== "string" ||
+          canonical.has(block.paraId)
+        )
+          continue;
+        const kept = legacy.get(block.paraId);
+        if (kept === undefined || paragraphHoldsContent(kept)) continue;
+        const remains = paragraphRemains(kept.content);
+        if (remains.length === 0) continue;
+        // The nearest paragraph that stays takes them: the one just before,
+        // at its end, else the first one after in the same list, at its start.
+        const previous = blocks[index - 1];
+        const before = previous?.type === "paragraph";
+        const host = before
+          ? previous
+          : blocks.slice(index + 1).find((later) => later.type === "paragraph");
+        const received =
+          host?.type === "paragraph" && typeof host.paraId === "string"
+            ? canonical.get(host.paraId)?.content
+            : undefined;
+        if (received === undefined) continue;
+        const edge = before
+          ? received.slice(-remains.length)
+          : received.slice(0, remains.length);
+        const landed = boundaryKeys(edge);
+        if ([...boundaryKeys(remains)].every((key) => landed.has(key)))
+          removed.push(block.paraId);
+      }
+    };
+    walk(storyBody(source, story).content);
+  }
+  return removed;
 };
