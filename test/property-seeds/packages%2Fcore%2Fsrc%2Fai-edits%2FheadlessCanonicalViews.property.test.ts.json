@@ -77,6 +77,18 @@
       "path": "30:0:0:0:0:0:1:0:0:0:0:0:0:0:3:2:2:2:2:3:2:2:2:2:2:2:2:3:2:2:3:3:3:3:3:3:3:3:3:7:5:4:3:5:5:5:3:3:3:3:5:5:3:3:3:3:3",
       "note": "An empty paragraph whose rejected added mark ends a content control stays its last paragraph; the block before it keeps its place.",
       "date": "2026-11-19"
+    },
+    {
+      "seed": 1642011166,
+      "path": "23:2:1:1:1:2:2:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3",
+      "note": "An equation in a bidirectional wrapper under an inserted link, before an unpaired bookmark end, stays in the editor: the wrapper owns the link pieces.",
+      "date": "2026-11-19"
+    },
+    {
+      "seed": 573832316,
+      "path": "54:0:0:0:0:0:0:0:0:0:0:1:0:4:3:3:5:5:5:5:5:5:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4",
+      "note": "An equation in a bidirectional wrapper under an inserted link in a group content control stays in the editor: the wrapper owns the link pieces.",
+      "date": "2026-11-19"
     }
   ]
 }
