@@ -72,6 +72,7 @@ import {
   type FolioDocumentOperationResult,
   type FolioDocumentOperationUndoHandle,
   type FolioDocumentOperationUndoResult,
+  parseFolioDocumentOperationBatch,
 } from "../document-operations";
 import {
   CanonicalSaveRepackRefusedError,
@@ -292,6 +293,7 @@ import type {
   FolioAIEditOperation,
   FolioAIEditSnapshot,
 } from "./types";
+import { withOperationHeadingStyles } from "./undefinedReferences";
 
 let undoHandleCursor = Date.now();
 
@@ -337,6 +339,8 @@ type FolioDocumentOperationUndoEntry = {
   createdCommentsLengthBefore: number;
   createdCommentsLengthAfter: number;
   deletedCommentIds: ReadonlySet<number>;
+  beforeStyles: StyleDefinitions | undefined;
+  afterStyles: StyleDefinitions | undefined;
 };
 
 /** Options for {@link FolioDocxReviewer.fromBuffer}. */
@@ -1864,17 +1868,30 @@ export class FolioDocxReviewer {
       this.stagePackageResourcesOnSession({ styles: result.styles });
       return result;
     }
-    if (result.status === "imported") {
-      this.importedStyles = result.styles;
-      this.state = withDocumentStyles(this.state, result.styles);
-      for (const entry of this.secondaryStoryStates.values()) {
-        const wasUntouched = entry.state === entry.initialState;
-        const refreshed = withDocumentStyles(entry.state, result.styles);
-        entry.state = refreshed;
-        if (wasUntouched) entry.initialState = refreshed;
-      }
-    }
+    if (result.status === "imported") this.installImportedStyles(result.styles);
     return result;
+  }
+
+  private installImportedStyles(
+    styles: StyleDefinitions | undefined,
+    restoredStory?: FolioEditableDocumentStoryHandle,
+  ): void {
+    this.importedStyles = styles;
+    const definitions = styles ?? this.loadedDocument.package.styles;
+    if (restoredStory?.type !== "main")
+      this.state = withDocumentStyles(this.state, definitions);
+    for (const entry of this.secondaryStoryStates.values()) {
+      if (
+        restoredStory !== undefined &&
+        editableStoryKey(entry.handle) === editableStoryKey(restoredStory)
+      ) {
+        continue;
+      }
+      const wasUntouched = entry.state === entry.initialState;
+      const refreshed = withDocumentStyles(entry.state, definitions);
+      entry.state = refreshed;
+      if (wasUntouched) entry.initialState = refreshed;
+    }
   }
 
   /**
@@ -3217,12 +3234,23 @@ export class FolioDocxReviewer {
     createUndoEntry,
     restagesSuggestions,
   }: ApplyDocumentOperationsInternalOptions): FolioDocumentOperationResult {
+    const validatedBatch = parseFolioDocumentOperationBatch(batch);
     const beforeState = this.requireEditableStoryState(story);
     const operationAuthor = author ?? this.author;
     const sourceSnapshot = snapshot ?? createStateSnapshot(beforeState);
     const createdCommentsLengthBefore = this.createdComments.length;
+    const beforeStyles = this.importedStyles;
+    const definitions = beforeStyles ?? this.loadedDocument.package.styles;
+    const candidateStyles =
+      undefinedReferences === "keep"
+        ? definitions
+        : withOperationHeadingStyles(definitions, validatedBatch.operations);
+    const candidateState =
+      candidateStyles === definitions
+        ? beforeState
+        : withDocumentStyles(beforeState, candidateStyles);
     const view = {
-      state: beforeState,
+      state: candidateState,
       dispatch: (transaction: Transaction) => {
         view.state = view.state.apply(transaction);
       },
@@ -3231,7 +3259,7 @@ export class FolioDocxReviewer {
     const result = applyFolioDocumentOperationsInPackage({
       view,
       snapshot: sourceSnapshot,
-      batch,
+      batch: validatedBatch,
       story: story.type === "main" ? "main" : story,
       author: operationAuthor,
       ...(revisionStamp !== undefined && { revisionStamp }),
@@ -3274,7 +3302,22 @@ export class FolioDocxReviewer {
     this.createdComments.push(
       ...createdByBatch.filter((comment) => appliedCommentIds.has(comment.id)),
     );
-    this.setEditableStoryState(story, view.state);
+    if (view.state !== candidateState)
+      this.setEditableStoryState(story, view.state);
+    if (candidateStyles !== definitions && view.state !== candidateState) {
+      const appliedIds = new Set(result.applied.map(({ id }) => id));
+      const committedStyles = withOperationHeadingStyles(
+        definitions,
+        validatedBatch.operations.filter(({ id }) => appliedIds.has(id)),
+      );
+      if (committedStyles !== definitions)
+        this.installImportedStyles(committedStyles);
+      else
+        this.setEditableStoryState(
+          story,
+          withDocumentStyles(view.state, definitions),
+        );
+    }
     if (batch.mode === "suggested") {
       const activeSuggestionIds = new Set(
         getSuggestions(beforeState).map(({ suggestionId }) => suggestionId),
@@ -3300,10 +3343,12 @@ export class FolioDocxReviewer {
         undoHandle: result.undoHandle,
         story,
         beforeState,
-        afterState: view.state,
+        afterState: this.requireEditableStoryState(story),
         createdCommentsLengthBefore,
         createdCommentsLengthAfter: this.createdComments.length,
         deletedCommentIds: this.deletedCommentIds,
+        beforeStyles,
+        afterStyles: this.importedStyles,
       });
       const excess =
         this.documentOperationUndoEntries.length -
@@ -3343,7 +3388,8 @@ export class FolioDocxReviewer {
     if (
       this.requireEditableStoryState(entry.story) !== entry.afterState ||
       this.createdComments.length !== entry.createdCommentsLengthAfter ||
-      this.deletedCommentIds !== entry.deletedCommentIds
+      this.deletedCommentIds !== entry.deletedCommentIds ||
+      this.importedStyles !== entry.afterStyles
     ) {
       return { status: "rejected", undoHandle, reason: "documentChanged" };
     }
@@ -3352,6 +3398,8 @@ export class FolioDocxReviewer {
     this.withNotesFollowingReferences(() =>
       this.setEditableStoryState(entry.story, entry.beforeState),
     );
+    if (entry.beforeStyles !== entry.afterStyles)
+      this.installImportedStyles(entry.beforeStyles, entry.story);
     this.createdComments.length = entry.createdCommentsLengthBefore;
     this.documentOperationUndoEntries.pop();
     return { status: "undone", undoHandle };
@@ -5374,7 +5422,7 @@ export class FolioDocxReviewer {
         schema,
         doc,
         plugins: createHeadlessPlugins(
-          this.baseDocument.package.styles,
+          this.importedStyles ?? this.baseDocument.package.styles,
           this.baseDocument.package.numbering,
         ),
       }),
@@ -5435,13 +5483,12 @@ export class FolioDocxReviewer {
     if (!source) {
       return null;
     }
+    const styles = this.importedStyles ?? this.baseDocument.package.styles;
     const conversionOptions = {
       ...(this.baseDocument.package.numbering !== undefined && {
         numbering: this.baseDocument.package.numbering,
       }),
-      ...(this.baseDocument.package.styles !== undefined && {
-        styles: this.baseDocument.package.styles,
-      }),
+      ...(styles !== undefined && { styles }),
       ...(this.baseDocument.package.theme !== undefined && {
         theme: this.baseDocument.package.theme,
       }),

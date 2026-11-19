@@ -1811,6 +1811,7 @@ type CanonicalReplaceTextInput = {
 
 type CachedStoryProjection = {
   content: NonNullable<ReturnType<typeof findStoryBody>>["content"];
+  styles: Document["package"]["styles"];
   theme: Document["package"]["theme"];
   projection: CanonicalProjection;
 };
@@ -2881,7 +2882,9 @@ class CanonicalSession {
     const to = this.projection.inputAddressAt(state.selection.to);
     if (to.isErr()) return to;
     const source = this.projection.paragraph(from.value.blockId);
-    const styles = this.styles ?? this.currentDocument.package.styles;
+    const styles = Object.hasOwn(this.currentDocument.package, "styles")
+      ? this.currentDocument.package.styles
+      : this.styles;
     const nextStyle = styles?.styles.find(
       ({ styleId }) => styleId === source?.source.formatting?.styleId,
     )?.next;
@@ -3128,8 +3131,12 @@ class CanonicalSession {
       return refuse("The canonical story no longer exists.");
     }
     const cached = this.storyProjections.get(key);
-    const theme = this.currentDocument.package.theme;
-    if (cached?.content === body.content && cached.theme === theme)
+    const { styles, theme } = this.currentDocument.package;
+    if (
+      cached?.content === body.content &&
+      cached.styles === styles &&
+      cached.theme === theme
+    )
       return Result.ok(cached.projection);
     const projected = project({
       document: this.currentDocument,
@@ -3141,6 +3148,7 @@ class CanonicalSession {
     if (projected.isOk())
       this.storyProjections.set(key, {
         content: body.content,
+        styles,
         theme,
         projection: projected.value,
       });
@@ -3853,6 +3861,7 @@ class CanonicalSession {
             panic("A staged story projection lost its source.");
           this.storyProjections.set(storyProjectionKey(projectedStory), {
             content: body.content,
+            styles: applied.value.document.package.styles,
             theme: applied.value.document.package.theme,
             projection: held,
           });
