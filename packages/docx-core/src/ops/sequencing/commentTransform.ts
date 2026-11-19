@@ -16,6 +16,7 @@ import {
   type CreateCommentOp,
   DOCUMENT_OP_TYPES,
   type DocumentOp,
+  type RestoreCommentStateOp,
   type TextPosition,
 } from "../types";
 import {
@@ -460,17 +461,25 @@ const mayAddRelationship = (op: CommentOp): boolean => {
   }
 };
 
-// A restoration puts records back at the list positions it captured and
-// sets the comment part relationships it captured: only a content edit
-// leaves both as they were.
+// A restoration puts its records back at the list positions it captured and
+// sets the comment part relationships it captured. A content edit of another
+// comment leaves both as they were; a new comment anchored elsewhere is kept
+// (`createdSince`) where its creation places it, its relationship reconciled.
 const restorationCommutes = (other: CommentOp): boolean =>
-  other.type === DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT;
+  other.type === DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT ||
+  isAnchoredComment(other);
+
+// The paragraphs a restoration states.
+const restoredBlocks = (op: RestoreCommentStateOp): Set<string> =>
+  new Set(
+    [...op.expected.anchors, ...op.state.anchors].map(({ blockId }) => blockId),
+  );
 
 /**
  * Decide a pair of concurrent comment operations. Uses of one comment
  * commute when they edit different fields (content and resolution), when a
  * reply's parent is only edited, resolved or replied to again, and when both
- * set the same resolution; any other use of one comment, a restoration beside anything but a content edit, and a reply or resolution
+ * set the same resolution; any other use of one comment, a restoration beside anything but a content edit or a new comment anchored outside its paragraphs, and a reply or resolution
  * after a concurrent removal of a comment part relationship are refused
  * naming the part. A range or point anchor moves past a concurrent comment's
  * reference.
@@ -537,18 +546,29 @@ export const transformCommentPair = ({
         : Result.ok([moved]);
     }
     // A reply, deletion or restoration changed anchors found in the document.
-    if (anchorPoints(op).some(({ blockId }) => touched.includes(blockId)))
+    const changed = new Set(touched);
+    if (over.type === DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE)
+      for (const blockId of restoredBlocks(over)) changed.add(blockId);
+    if (anchorPoints(op).some(({ blockId }) => changed.has(blockId)))
       return blockConflict(op, over);
     return Result.ok([op]);
   }
   if (op.type === DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE) {
-    const addressed = new Set(
-      [...op.expected.anchors, ...op.state.anchors].map(
-        ({ blockId }) => blockId,
-      ),
-    );
-    if (touched.some((blockId) => addressed.has(blockId)))
+    const addressed = restoredBlocks(op);
+    const changed = [
+      ...touched,
+      ...(isAnchoredComment(over)
+        ? anchorPoints(over).map(({ blockId }) => blockId)
+        : []),
+    ];
+    if (changed.some((blockId) => addressed.has(blockId)))
       return blockConflict(op, over);
+    // The restoration keeps the new comment: it applies as if the comment
+    // were absent, which leaves the comment where its creation places it.
+    if (isAnchoredComment(over))
+      return Result.ok([
+        { ...op, createdSince: [...(op.createdSince ?? []), over.comment.id] },
+      ]);
   }
   // Replies, edits, resolutions and deletions find their anchors in the
   // document they apply to.
