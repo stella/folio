@@ -507,7 +507,7 @@ function renderHtmlRun(
         text += escapeHtml(item.text);
         break;
       case "tab":
-        text += "&emsp;";
+        text += "\t";
         break;
       case "break":
         text += "<br>";
