@@ -1298,6 +1298,15 @@ export class FolioDocxReviewer {
     applyDocumentOperationsToStory(input: FolioApplyDocumentOperationsToStoryOptions): FolioDocumentOperationResult;
     applyOperations(operations: FolioAIEditOperation[], options: FolioApplyOperationsOptions): FolioAIEditApplyResult;
     readonly author: string;
+    deleteComments(selector: {
+        ids: readonly number[];
+        author?: never;
+    } | {
+        author: string;
+        ids?: never;
+    }): {
+        deleted: number[];
+    };
     exportPendingSuggestions(): FolioPendingSuggestionRecord[];
     fork(): FolioDocxReviewer;
     static fromBuffer(buffer: ArrayBuffer, options?: FolioDocxReviewerOptions): Promise<FolioDocxReviewer>;
