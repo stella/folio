@@ -330,8 +330,22 @@ const gfmCellText = (text: string, expected: MarkdownExpectedView): string => {
     const line = lines.at(offset);
     if (paragraph.number === BULLET && line !== undefined)
       lines[offset] = line.replace(/^-\s+/u, "");
-    // Each source paragraph is compared without its edge blanks (see
-    // contentView); in a cell they are line edges inside one Markdown block.
+    offset += paragraph.text.split("\n").length;
+  }
+  return withoutParagraphEdges(lines, expected);
+};
+
+/**
+ * A cell's lines with each source paragraph's edge blanks taken off: every
+ * paragraph is compared without them (see contentView), and in a cell they
+ * are line edges inside one Markdown block.
+ */
+const withoutParagraphEdges = (
+  lines: string[],
+  expected: MarkdownExpectedView,
+): string => {
+  let offset = 0;
+  for (const paragraph of expected.cellParagraphs ?? []) {
     const count = paragraph.text.split("\n").length;
     const first = lines.at(offset);
     if (first !== undefined) lines[offset] = first.trimStart();
@@ -503,8 +517,15 @@ export const markdownViews = (
           throw new Error("Unsupported structural Markdown token: html");
         }
         for (const tableView of htmlTableViews(token.text)) {
-          if (tableView.text.length > 0) nextExpected();
-          views.push(tableView);
+          if (tableView.text.length === 0) {
+            views.push(tableView);
+            continue;
+          }
+          const expected = nextExpected();
+          views.push({
+            ...tableView,
+            text: withoutParagraphEdges(tableView.text.split("\n"), expected),
+          });
         }
         return;
       }
