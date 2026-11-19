@@ -36,6 +36,8 @@ const CANONICAL_REPLAYS = [
   "suggested-table-row-beside-replaced-paragraph.json",
   "issue-1350-new-list-after-deleted-list-paragraph.json",
   "issue-2265-final-mark-rotation-over-a-merge-record.json",
+  "issue-1738-new-list-before-deleted-closing.json",
+  "issue-1842-joined-heading-comment-under-deleted-final-paragraph.json",
   "issue-2973-reject-joins-into-terminal-table-carrier.json",
   "markdown-orphan-roman-level.json",
   "issue-1757-paragraph-after-emptied-paragraph-pending-break.json",
