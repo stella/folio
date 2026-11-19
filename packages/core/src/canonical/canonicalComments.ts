@@ -23,6 +23,7 @@ import {
 } from "@stll/docx-core/ops";
 
 import { commentThreadParaId } from "../docx/commentThreadKey";
+import { cloneParagraphWithPropertySource } from "../docx/paragraphPropertySource";
 import { threadedCommentIds } from "../docx/serializer/commentSerializer";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import type { Comment } from "../types/content";
@@ -270,7 +271,10 @@ export const compileCanonicalComments = ({
     const op: DocumentOp = {
       type: DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT,
       id: comment.id,
-      content: [...content.slice(0, -1), { ...last, paraId }],
+      content: [
+        ...content.slice(0, -1),
+        cloneParagraphWithPropertySource(last, { paraId }),
+      ],
     };
     const applied = applyDocumentOps(draft, [op]);
     if (applied.isErr()) return refuse(applied.error.message);
