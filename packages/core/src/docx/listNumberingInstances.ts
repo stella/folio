@@ -3,7 +3,7 @@
  *
  * A list command in a document with no list of the requested kind has nothing
  * to reference: the package may have no numbering part at all. The command
- * then defines one, an `w:abstractNum` built from {@link defaultListLevels}
+ * then defines one, an `w:abstractNum` built from {@link templateLevel}
  * plus the `w:num` naming it, as a word processor does when a list is
  * started in a document without lists.
  *
@@ -13,9 +13,8 @@
  * `listMarkerTemplate`, `listStartOverride`, …), and those attrs travel with
  * the paragraph through undo, collaboration and every save path.
  * {@link completeListNumbering} turns them back into the definition wherever
- * the package's own numbering has no entry for the id. Because a minted
- * definition is the template plus level-0 facts that the rendering states, the
- * definition it rebuilds is the one the command minted.
+ * the package's own numbering has no entry for the id. The rendering states
+ * the customized format and start of each level a command minted.
  */
 
 import { NUMBER_FORMATS } from "@stll/docx-core/model";
@@ -43,20 +42,19 @@ import {
 export const LIST_KINDS = ["bullet", "numbered"] as const;
 export type ListKind = (typeof LIST_KINDS)[number];
 
-/** What a numbered list's first level counts in and how its marker reads. */
+/** What a list level counts in and how its marker reads. */
 export type ListLevelFormat = {
   numFmt: NumberFormat;
-  /** `w:lvlText` for level 0, e.g. `%1.` or `%1)`. */
+  /** `w:lvlText`, e.g. `%1.` or `%1)`. */
   lvlText: string;
 };
 
-/** The first-level appearance and start a new list is minted with. */
-type NewListDefinition = {
+/** The appearance and start of one level in a new list. */
+export type NewListDefinition = {
   kind: ListKind;
-  /** Level-0 format of a numbered list; the template's `%1.` decimal otherwise. */
-  format?: ListLevelFormat | undefined;
-  /** The value the first item shows, stated as a level-0 `w:startOverride`. */
+  format?: ListLevelFormatPatch | undefined;
   start?: number | undefined;
+  level?: number | undefined;
 };
 
 const INDENT_STEP_TWIPS = 720;
@@ -130,38 +128,49 @@ const bulletLevel = (ilvl: number): ListLevel => {
   };
 };
 
-/** The nine levels a list of `kind` is minted with. */
-const defaultListLevels = (kind: ListKind): ListLevel[] =>
-  Array.from({ length: LEVEL_COUNT }, (_, ilvl) =>
-    kind === "bullet" ? bulletLevel(ilvl) : numberedLevel(ilvl),
-  );
+const templateLevel = (kind: ListKind, ilvl: number): ListLevel =>
+  kind === "bullet" ? bulletLevel(ilvl) : numberedLevel(ilvl);
+
+const numberFormatKind = (numFmt: NumberFormat): ListKind =>
+  numFmt === "bullet" ? "bullet" : "numbered";
+
+const withLevelFormat = (
+  template: ListLevel,
+  format: ListLevelFormatPatch,
+): ListLevel => ({
+  ...template,
+  ...(format.numFmt === undefined ? {} : { numFmt: format.numFmt }),
+  ...(format.lvlText === undefined ? {} : { lvlText: format.lvlText }),
+});
+
+type ListLevelFormatPatch = {
+  numFmt?: NumberFormat | undefined;
+  lvlText?: string | undefined;
+};
 
 type MintAbstractNumberingOptions = {
   abstractNumId: number;
   kind: ListKind;
-  format?: ListLevelFormat | undefined;
+  format?: ListLevelFormatPatch | undefined;
+  level?: number | undefined;
 };
 
 const mintAbstractNumbering = ({
   abstractNumId,
   kind,
   format,
-}: MintAbstractNumberingOptions): AbstractNumbering => {
-  const levels = defaultListLevels(kind);
-  const first = levels[0];
-  if (first && kind === "numbered" && format) {
-    levels[0] = { ...first, numFmt: format.numFmt, lvlText: format.lvlText };
-  }
-  return { abstractNumId, multiLevelType: "hybridMultilevel", levels };
-};
-
-/** The template counts from one, so only another first value needs an override. */
-const levelZeroStart = (
-  start: number | undefined,
-): LevelOverride[] | undefined =>
-  start === undefined || start === 1
-    ? undefined
-    : [{ ilvl: 0, startOverride: start }];
+  level = 0,
+}: MintAbstractNumberingOptions): AbstractNumbering => ({
+  abstractNumId,
+  multiLevelType: "hybridMultilevel",
+  levels: Array.from({ length: LEVEL_COUNT }, (_, ilvl) => {
+    if (format === undefined || ilvl !== level)
+      return templateLevel(kind, ilvl);
+    const levelKind =
+      format.numFmt === undefined ? kind : numberFormatKind(format.numFmt);
+    return withLevelFormat(templateLevel(levelKind, ilvl), format);
+  }),
+});
 
 const EMPTY_DEFINITIONS: NumberingDefinitions = { abstractNums: [], nums: [] };
 
@@ -204,13 +213,16 @@ type MintedListInstance = {
  */
 export const mintListInstance = (
   definitions: NumberingDefinitions | null | undefined,
-  { kind, format, start }: NewListDefinition,
+  { kind, format, start, level = 0 }: NewListDefinition,
   elsewhere: NumberingIdsInUse,
 ): MintedListInstance => {
   const current = definitions ?? EMPTY_DEFINITIONS;
   const numId = nextNumId(current, elsewhere);
   const abstractNumId = nextAbstractNumId(current, elsewhere);
-  const levelOverrides = levelZeroStart(start);
+  const levelOverrides =
+    start === undefined || start === 1
+      ? undefined
+      : [{ ilvl: level, startOverride: start }];
   const instance: NumberingInstance = {
     numId,
     abstractNumId,
@@ -222,7 +234,7 @@ export const mintListInstance = (
       ...current,
       abstractNums: [
         ...current.abstractNums,
-        mintAbstractNumbering({ abstractNumId, kind, format }),
+        mintAbstractNumbering({ abstractNumId, kind, format, level }),
       ],
       nums: [...current.nums, instance],
     },
@@ -273,18 +285,33 @@ const isNumberFormat = (
 ): format is NumberFormat =>
   format !== undefined && NUMBER_FORMAT_SET.has(format);
 
-const levelZeroFormat = (
+const rebuildAbstract = (
+  abstractNumId: number,
   references: readonly ListInstanceReference[],
-): ListLevelFormat | undefined => {
-  const first = references.find(({ ilvl }) => ilvl === 0)?.rendering;
-  const numFmt =
-    first?.numFmt ??
-    references.find(({ rendering }) => rendering.levelNumFmts?.[0])?.rendering
-      .levelNumFmts?.[0];
-  if (!isNumberFormat(numFmt)) {
-    return undefined;
-  }
-  return { numFmt, lvlText: first?.markerTemplate ?? "%1." };
+): AbstractNumbering => {
+  const active = new Map(
+    references.map(({ ilvl, rendering }) => [ilvl, rendering] as const),
+  );
+  const declared = references.find(({ rendering }) => rendering.levelNumFmts)
+    ?.rendering.levelNumFmts;
+  const fallbackKind = references.some(({ rendering }) => rendering.isBullet)
+    ? "bullet"
+    : "numbered";
+  return {
+    abstractNumId,
+    multiLevelType: "hybridMultilevel",
+    levels: Array.from({ length: LEVEL_COUNT }, (_, ilvl) => {
+      const rendering = active.get(ilvl);
+      const format = rendering?.numFmt ?? declared?.at(ilvl);
+      const kind = isNumberFormat(format)
+        ? numberFormatKind(format)
+        : fallbackKind;
+      return withLevelFormat(templateLevel(kind, ilvl), {
+        numFmt: isNumberFormat(format) ? format : undefined,
+        lvlText: rendering?.markerTemplate,
+      });
+    }),
+  };
 };
 
 const startOverridesOf = (
@@ -354,16 +381,7 @@ export const completeListNumbering = (
         ?.rendering.abstractNumId ?? missingAbstractIds.next();
     if (!abstractIds.has(abstractNumId)) {
       abstractIds.add(abstractNumId);
-      const kind: ListKind = group.some(({ rendering }) => rendering.isBullet)
-        ? "bullet"
-        : "numbered";
-      abstractNums.push(
-        mintAbstractNumbering({
-          abstractNumId,
-          kind,
-          format: levelZeroFormat(group),
-        }),
-      );
+      abstractNums.push(rebuildAbstract(abstractNumId, group));
     }
     const levelOverrides = startOverridesOf(group);
     nums.push({

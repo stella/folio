@@ -18,6 +18,7 @@ import {
   FOLIO_DOCUMENT_OPERATION_MODES,
   FOLIO_HIGHLIGHT_COLOR_VALUES,
   FOLIO_LINE_SPACING_RULE_VALUES,
+  FOLIO_LIST_NUMBER_FORMAT_VALUES,
   FOLIO_PAGE_BREAK_CLEAR_VALUES,
   FOLIO_PARAGRAPH_ALIGNMENT_VALUES,
   type FolioDocumentOperationBatch,
@@ -374,6 +375,16 @@ export const FOLIO_PARAGRAPH_NUMBERING_JSON_SCHEMA: {
           readonly minimum: 0;
           readonly maximum: 8;
         };
+        readonly numFmt: {
+          readonly type: "string";
+          readonly enum: typeof FOLIO_LIST_NUMBER_FORMAT_VALUES;
+        };
+        readonly lvlText: { readonly type: "string" };
+        readonly start: {
+          readonly type: "integer";
+          readonly minimum: 0;
+          readonly maximum: number;
+        };
       };
       readonly required: readonly ["kind", "format"];
       readonly additionalProperties: false;
@@ -427,6 +438,13 @@ export const FOLIO_PARAGRAPH_NUMBERING_JSON_SCHEMA: {
         kind: { type: "string", enum: ["newList"] },
         format: { type: "string", enum: ["bullet", "numbered"] },
         level: { type: "integer", minimum: 0, maximum: 8 },
+        numFmt: { type: "string", enum: FOLIO_LIST_NUMBER_FORMAT_VALUES },
+        lvlText: { type: "string" },
+        start: {
+          type: "integer",
+          minimum: 0,
+          maximum: Number.MAX_SAFE_INTEGER,
+        },
       },
       required: ["kind", "format"],
       additionalProperties: false,
@@ -436,7 +454,7 @@ export const FOLIO_PARAGRAPH_NUMBERING_JSON_SCHEMA: {
     "A paragraph numbering request: `none` cancels numbering, `inherit` removes the direct " +
     "numbering reference, `levelOnly` sets only `w:ilvl`, `reference` selects a defined " +
     "numbering instance with an optional level override, and `newList` starts a list with " +
-    "the requested format.",
+    "the requested template and optional numbering format, label text, and start value at the selected level.",
 } as const satisfies FolioJsonSchema;
 
 export const FOLIO_HARD_PAGE_BREAK_JSON_SCHEMA: {
@@ -665,6 +683,16 @@ export const FOLIO_BLOCK_PARAGRAPH_PROPERTIES_JSON_SCHEMA: {
               readonly type: "integer";
               readonly minimum: 0;
               readonly maximum: 8;
+            };
+            readonly numFmt: {
+              readonly type: "string";
+              readonly enum: typeof FOLIO_LIST_NUMBER_FORMAT_VALUES;
+            };
+            readonly lvlText: { readonly type: "string" };
+            readonly start: {
+              readonly type: "integer";
+              readonly minimum: 0;
+              readonly maximum: number;
             };
           };
           readonly required: readonly ["kind", "format"];

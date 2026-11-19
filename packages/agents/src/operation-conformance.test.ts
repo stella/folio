@@ -795,6 +795,22 @@ describe("document operation contract JSON schema conformance", () => {
       numbering: { kind: "newList", format: "bullet", numId: 3 },
     },
     { label: "a new list without a format", numbering: { kind: "newList" } },
+    {
+      label: "an unknown numbering format",
+      numbering: { kind: "newList", format: "numbered", numFmt: "roman" },
+    },
+    {
+      label: "a custom numbering format",
+      numbering: { kind: "newList", format: "numbered", numFmt: "custom" },
+    },
+    {
+      label: "a non-string label",
+      numbering: { kind: "newList", format: "numbered", lvlText: 3 },
+    },
+    ...[-1, 0.5, Number.MAX_SAFE_INTEGER + 1].map((start) => ({
+      label: `an invalid start of ${start}`,
+      numbering: { kind: "newList", format: "numbered", start },
+    })),
   ] as const)(
     "rejects $label in both the parser and schema",
     ({ numbering }) => {
@@ -842,12 +858,30 @@ describe("document operation contract JSON schema conformance", () => {
     },
   );
 
-  test("admits a new list in both the parser and schema", () => {
+  test.each([
+    { kind: "newList", format: "numbered" },
+    {
+      kind: "newList",
+      format: "numbered",
+      level: 2,
+      numFmt: "lowerRoman",
+      lvlText: "%3)",
+      start: 3,
+    },
+    {
+      kind: "newList",
+      format: "bullet",
+      level: 8,
+      numFmt: "decimalZero",
+      lvlText: "",
+      start: 0,
+    },
+  ] as const)("admits new lists in both the parser and schema", (numbering) => {
     const operation = {
       id: "new-list",
       type: "setBlockParagraphProperties",
       blockId: "0304003A",
-      properties: { numbering: { kind: "newList", format: "numbered" } },
+      properties: { numbering },
     };
     const batch = {
       version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,

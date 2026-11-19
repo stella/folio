@@ -16,17 +16,24 @@ import { ensureParaIds } from "../docx/ensureParaIds";
 import { parseDocx } from "../docx/parser";
 import { createDocx, createEmptyDocx, repackDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import type { HeaderFooter } from "../types/document";
 import {
   FolioDocxReviewer,
   type FolioEditableDocumentStoryHandle,
 } from "./headless";
 
-const reviewerOf = async (markdown: string): Promise<FolioDocxReviewer> => {
+const reviewerOf = async (
+  markdown: string,
+  session?: HeadlessReviewerSession,
+): Promise<FolioDocxReviewer> => {
   const { docx } = await ensureParaIds(
     await createDocx(fromMarkdown(markdown)),
   );
-  return FolioDocxReviewer.fromBuffer(docx, { author: "Agent" });
+  return FolioDocxReviewer.fromBuffer(docx, {
+    author: "Agent",
+    ...(session === undefined ? {} : { session }),
+  });
 };
 
 const blockId = (reviewer: FolioDocxReviewer, text: string): string => {
@@ -116,6 +123,43 @@ const savedLabels = async (
 };
 
 describe("an operation that starts a new list", () => {
+  test.each([
+    ["lowerLetter", 0, "(%1)", 3, "(c)", "(d)"],
+    ["upperLetter", 0, "%1)", 3, "C)", "D)"],
+    ["lowerRoman", 1, "(%2)", 4, "(iv)", "(v)"],
+    ["upperRoman", 0, "%1)", 4, "IV)", "V)"],
+    ["decimalZero", 0, "%1)", 3, "03)", "04)"],
+  ] as const)(
+    "keeps the tracked %s format and start at level %i after reopening",
+    async (numFmt, level, lvlText, start, first, second) => {
+      for (const session of ["canonical", "legacy"] as const) {
+        const reviewer = await reviewerOf("Intro.", session);
+        const labels = await savedLabels(reviewer, [
+          {
+            id: "list",
+            type: "insertAfterBlock",
+            blockId: blockId(reviewer, "Intro."),
+            text: "First\nSecond",
+            formattingScope: "allParagraphs",
+            numbering: {
+              kind: "newList",
+              format: "numbered",
+              level,
+              numFmt,
+              lvlText,
+              start,
+            },
+          },
+        ]);
+        expect(labels, session).toEqual([
+          "Intro.",
+          `${first} First`,
+          `${second} Second`,
+        ]);
+      }
+    },
+  );
+
   test("defines the list in a package without a numbering part", async () => {
     const reviewer = await reviewerOf("Intro.\n\nTail.");
     const labels = await savedLabels(reviewer, [
