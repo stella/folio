@@ -922,7 +922,7 @@ jobs:
       # The limit follows the step's measured p95 (scripts/workflow-durations.json).
       - id: replay-limit
         name: Derive the replay step limit
-        run: bun scripts/workflow-limit.ts --workflow .github/workflows/ci.yml --job browser-input-pinned --step "Run only standing browser input regressions" --fallback 11 >> "$GITHUB_OUTPUT"
+        run: bun scripts/workflow-limit.ts --workflow .github/workflows/ci.yml --job browser-input-pinned --step "Run only standing browser input regressions" --fallback 11 --max 15 >> "$GITHUB_OUTPUT"
 
       - name: Run only standing browser input regressions
         timeout-minutes: ${{ fromJSON(steps.replay-limit.outputs.minutes) }}

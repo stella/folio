@@ -91,7 +91,7 @@ const DERIVED_EXPRESSION =
   /^\$\{\{ fromJSON\(steps\.([\w-]+)\.outputs\.minutes\) \}\}$/u;
 
 const LIMIT_COMMAND =
-  /bun scripts\/workflow-limit\.ts --workflow (\S+) --job (\S+) --step "([^"]+)" --fallback \d+ >> "\$GITHUB_OUTPUT"/u;
+  /bun scripts\/workflow-limit\.ts --workflow (\S+) --job (\S+) --step "([^"]+)" --fallback \d+ --max \d+ >> "\$GITHUB_OUTPUT"/u;
 
 const derivedStepLimit = (
   expression: unknown,
