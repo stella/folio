@@ -38,9 +38,9 @@ import {
   propertyTestTimeout,
 } from "../../../../test/property-testing";
 import {
-  rejectedAbsorbedFollowerIdentities,
   rejectedContainerEndIdentities,
   rejectedJoinSurvivorIdentities,
+  resolvedAbsorbedFollowerIdentities,
 } from "../../../../test/support/rejectedJoinSurvivors";
 import { rejectedParagraphFillerIdentities } from "../../../../test/support/rejectedParagraphFillers";
 import { CanonicalSessionError } from "../canonical/canonicalSession";
@@ -282,11 +282,11 @@ const viewLaws = async (
   }
   // The legacy reviewer drops an empty paragraph whose rejected added mark
   // ends a local container; the paragraph stays there, as the canonical
-  // reviewer reads it, after the block it follows, and takes an empty
-  // paragraph after the control the legacy reviewer keeps.
-  const legacyRejected = (await open(buffer, "legacy")).toResolvedDocument(
-    "reject",
-  );
+  // reviewer reads it, after the block it follows. A control's last
+  // paragraph whose mark either view resolves away takes an empty paragraph
+  // after the control, which the legacy reviewer keeps.
+  const legacyReviewer = await open(buffer, "legacy");
+  const legacyRejected = legacyReviewer.toResolvedDocument("reject");
   const containerEnds = new Set(
     rejectedContainerEndIdentities({
       source: before,
@@ -294,19 +294,28 @@ const viewLaws = async (
       expected: legacyRejected,
     }),
   );
-  const absorbedFollowers = new Set(
-    rejectedAbsorbedFollowerIdentities({
-      source: before,
-      actual: canonical.toResolvedDocument("reject"),
-      expected: legacyRejected,
-    }),
-  );
+  const absorbedFollowers = {
+    original: new Set(
+      resolvedAbsorbedFollowerIdentities({
+        source: before,
+        actual: canonical.toResolvedDocument("reject"),
+        expected: legacyRejected,
+        decision: "reject",
+      }),
+    ),
+    final: new Set(
+      resolvedAbsorbedFollowerIdentities({
+        source: before,
+        actual: canonical.toResolvedDocument("accept"),
+        expected: legacyReviewer.toResolvedDocument("accept"),
+        decision: "accept",
+      }),
+    ),
+  } satisfies Record<FolioResolvedReviewedView, Set<string>>;
   for (const entry of expected) {
-    if (
-      entry.view !== "original" ||
-      (containerEnds.size === 0 && absorbedFollowers.size === 0)
-    )
-      continue;
+    const absorbed = absorbedFollowers[entry.view];
+    entry.blocks = entry.blocks?.filter(({ id }) => !absorbed.has(id)) ?? null;
+    if (entry.view !== "original" || containerEnds.size === 0) continue;
     const actualBlocks =
       read.find(
         (candidate) =>
@@ -323,8 +332,6 @@ const viewLaws = async (
       if (at === 0 && index !== 0) continue;
       entry.blocks = entry.blocks.toSpliced(at, 0, block);
     }
-    entry.blocks =
-      entry.blocks?.filter(({ id }) => !absorbedFollowers.has(id)) ?? null;
   }
   const fillerIds = new Map(
     isDeepStrictEqual(read, expected)
@@ -422,7 +429,7 @@ describe("a canonical reviewer's resolved views", () => {
         },
       );
     },
-    propertyTestTimeout(120_000),
+    propertyTestTimeout(240_000),
   );
 });
 
