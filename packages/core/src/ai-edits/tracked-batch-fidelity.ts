@@ -2,6 +2,8 @@ import { Result } from "better-result";
 import { Fragment, type Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 
+import { mergeRunContent } from "@stll/docx-core/ops";
+
 import {
   removeCommentMarkers,
   visitCommentMarkers,
@@ -13,7 +15,10 @@ import {
   visitInlineContentSlots,
   visitParagraphRuns,
 } from "../docx/paragraphTraversal";
-import { consolidateParagraphContent } from "../docx/runConsolidator";
+import {
+  consolidateParagraphContent,
+  formattingEquals,
+} from "../docx/runConsolidator";
 import { serializeDocumentPart } from "../docx/serializer/documentSerializer";
 import { WORDPROCESSINGML_NAMESPACE_URIS } from "../docx/xmlParser";
 import { pluginsForHeadlessRevisionResolution } from "../internal/headlessRevisionResolutionGuard";
@@ -25,7 +30,11 @@ import {
 import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
 import { isBlockBoundaryNode } from "../prosemirror/keptRangeBoundaries";
 import { readRangeAnchorAttrs } from "../prosemirror/rangeAnchorAttrs";
-import type { BlockContent, ParagraphFormatting } from "../types/document";
+import type {
+  BlockContent,
+  Paragraph,
+  ParagraphFormatting,
+} from "../types/document";
 import { commentAnchorIdsForNode } from "./comment-lifecycle";
 import { comparisonApplying, noteReferenceOf } from "./note-references";
 import { changedTopLevelWindow } from "./result-validation";
@@ -232,6 +241,39 @@ const PARAGRAPH_SESSION_ATTRIBUTES: ReadonlySet<string> = new Set([
   "rsidRDefault",
 ]);
 
+/**
+ * `content` with adjacent runs of the same properties as one run: where a
+ * run boundary falls is no content or formatting of the paragraph, so a
+ * comment's markers taken out between two runs (around a line break, say)
+ * leave the paragraph the original was. A run carrying a property revision
+ * keeps its boundaries, which delimit the revision.
+ */
+const withoutRunBoundaries = (
+  content: Paragraph["content"],
+): Paragraph["content"] => {
+  const joined: Paragraph["content"] = [];
+  for (const item of content) {
+    const previous = joined.at(-1);
+    if (
+      previous?.type === "run" &&
+      item.type === "run" &&
+      previous.propertyChanges === undefined &&
+      item.propertyChanges === undefined &&
+      formattingEquals(previous.formatting, item.formatting) &&
+      JSON.stringify(previous.preservedAttributes) ===
+        JSON.stringify(item.preservedAttributes)
+    ) {
+      joined[joined.length - 1] = {
+        ...previous,
+        content: mergeRunContent(previous.content, item.content),
+      };
+      continue;
+    }
+    joined.push(item);
+  }
+  return joined;
+};
+
 const authoredBlock = (block: BlockContent): string => {
   // A native reject restores authored properties, while the live model still
   // projects list indentation. Read the authored values before cloning drops
@@ -264,7 +306,9 @@ const authoredBlock = (block: BlockContent): string => {
       }
       if (record.formatting && Object.keys(record.formatting).length === 0)
         delete record.formatting;
-      record.content = consolidateParagraphContent(record.content);
+      record.content = withoutRunBoundaries(
+        consolidateParagraphContent(record.content),
+      );
     }
     return BLOCK_TREE_DESCENT.descend;
   });
