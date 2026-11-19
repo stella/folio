@@ -53,7 +53,7 @@ import {
   type FolioDocumentStoryHandle,
 } from "@stll/folio-core/server";
 
-import { sequentialGroups } from "./batch-replay-order.ts";
+import { pendingJoinTargets, sequentialGroups } from "./batch-replay-order.ts";
 import { openReviewer } from "./documents.ts";
 import {
   projectCommentIdentities,
@@ -1317,10 +1317,22 @@ export const startRelations = async ({
     const paragraphIdentities = createParagraphIdentityRemapping();
     const listsBefore = definedListIds(pre);
     const problems: string[] = [];
+    // A paragraph whose mark is pending deletion joins the next one once
+    // accepted; the batch places a block put after it after that one.
+    const joinSources = new Set(
+      pre
+        .getChanges()
+        .filter(({ type }) => type === "paragraphMarkDeleted")
+        .map(({ blockId }) => blockId),
+    );
     for (const group of sequentialGroups({
       applied,
       preRows,
       mode: batchMode,
+      joinsInto:
+        batchMode === "suggested"
+          ? new Map()
+          : pendingJoinTargets(preRows, joinSources),
     })) {
       const snapshot =
         story.type === "main"
