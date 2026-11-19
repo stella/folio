@@ -256,6 +256,21 @@ const decisionOverEdit = (
     case DOCUMENT_OP_TYPES.SPLIT_BLOCK:
     case DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS:
       break;
+    // A direct join removes the first paragraph's mark, which goes in either
+    // order, and merges the records meeting at the seam, which keep their
+    // ids. Where it states both halves without property changes and the kept
+    // one without a mark change, no decided revision moves between them.
+    case DOCUMENT_OP_TYPES.JOIN_BLOCKS:
+      if (
+        over.sectionBoundary !== undefined ||
+        over.expectedRetired === undefined ||
+        over.expectedRetired.propertyChanges !== undefined ||
+        over.expectedSurvivor === undefined ||
+        over.expectedSurvivor.propertyChanges !== undefined ||
+        over.expectedSurvivor.pPrMark !== undefined
+      )
+        return undefined;
+      break;
     case DOCUMENT_OP_TYPES.INSERT_CONTENT:
       if (!isInlineInsertion(over)) return undefined;
       break;

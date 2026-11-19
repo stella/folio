@@ -63,8 +63,9 @@ formatting, paragraph splits and joins, anchored paragraph insertion and
 repeated revision decisions. Overlapping revision decisions with opposite
 outcomes reject. A revision decision names its revisions, not positions: it
 passes a concurrent direct positional edit (typing, an inline insertion, a
-deletion, a format, an inline record split or join, a paragraph split or
-paragraph formatting) unchanged, and is
+deletion, a format, an inline record split or join, a paragraph split,
+paragraph formatting, or a paragraph join that states both halves without
+property changes and its kept half without a mark change) unchanged, and is
 refused only when that edit cut a revision record in two and gave its
 second half a new id. A concurrent tracked edit refuses it, since its records
 may continue a decided revision, unless the decision is sequenced and the
