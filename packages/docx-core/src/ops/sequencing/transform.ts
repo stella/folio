@@ -736,7 +736,6 @@ const transformOp = (
   return Result.ok(transformed.value.map(captureDocumentOp));
 };
 
-/** Rebase an atomic batch over an ordered journal tail. */
 /**
  * Whether a sequenced decision moves past a local edit it was just rebased
  * past unchanged: its effect names every paragraph holding a revision it
@@ -763,6 +762,7 @@ const decidedElsewhere = (
   );
 };
 
+/** Rebase an atomic batch over an ordered journal tail. */
 export const transformBatch = (
   batch: DocumentBatch,
   over: readonly SequencedBatch[],
