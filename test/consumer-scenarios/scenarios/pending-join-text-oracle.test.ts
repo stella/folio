@@ -16,25 +16,34 @@ import {
   modelOf,
   rowsOf,
 } from "../support/oracle.ts";
+import { stageReviewedProtectedEdit } from "../support/protected-edit.ts";
 
 type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
 type Operation = Parameters<
   Reviewer["applyDocumentOperations"]
 >[0]["operations"][number];
 
-const applyChecked = async (reviewer: Reviewer, operation: Operation) => {
+const applyChecked = async (
+  reviewer: Reviewer,
+  operation: Operation,
+  loss?: "comment",
+) => {
   const pre = await capture(reviewer, "tracked-changes");
   const input = {
     version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
     mode: "tracked-changes",
     operations: [operation],
   } as const;
-  const receipt = reviewer.applyDocumentOperations(
-    JSON.parse(JSON.stringify(input)),
-    { undefinedReferences: "refuse" },
-  );
-  assert.equal(receipt.applied.length, 1, JSON.stringify(receipt));
-  assert.deepEqual(receipt.skipped, []);
+  if (loss === "comment") {
+    stageReviewedProtectedEdit({ reviewer, operation, kind: loss });
+  } else {
+    const receipt = reviewer.applyDocumentOperations(
+      JSON.parse(JSON.stringify(input)),
+      { undefinedReferences: "refuse" },
+    );
+    assert.equal(receipt.applied.length, 1, JSON.stringify(receipt));
+    assert.deepEqual(receipt.skipped, []);
+  }
   const model = modelOf(pre.rows, pre.liveRows, pre.joinSources);
   model.mode = pre.mode;
   expectOperation(model, operation);
@@ -181,7 +190,13 @@ test("the saved 1842 sequence retires the comment whose joined destination text 
       precondition: { blockTextHash: "h1habca" },
     },
   ] as const satisfies readonly Operation[];
-  for (const operation of operations) await applyChecked(reviewer, operation);
+  for (const operation of operations) {
+    await applyChecked(
+      reviewer,
+      operation,
+      operation.id === "remove" ? "comment" : undefined,
+    );
+  }
   const after = await capture(reviewer, "tracked-changes");
   assert.deepEqual(after.comments, []);
   assert.equal(after.rows.at(0)?.id, "3CEFFC83");
@@ -254,13 +269,17 @@ test("a quote in the other join component cannot excuse retention of a fully rem
     range: rangeOf(reviewer, second.id),
     comment: { text: "Remove destination token." },
   });
-  const result = await applyChecked(reviewer, {
-    id: "delete-destination-token",
-    type: "replaceInBlock",
-    blockId: second.id,
-    find: "token",
-    replace: "",
-  });
+  const result = await applyChecked(
+    reviewer,
+    {
+      id: "delete-destination-token",
+      type: "replaceInBlock",
+      blockId: second.id,
+      find: "token",
+      replace: "",
+    },
+    "comment",
+  );
   assert.deepEqual(result.after.comments, []);
   const stale = result.pre.comments.at(0);
   assert.ok(stale);
@@ -448,13 +467,17 @@ test("removing a relocated comment's remaining accepted quote retires its pendin
     find: "token",
     replace: "",
   });
-  const result = await applyChecked(reviewer, {
-    id: "delete-source-rest",
-    type: "replaceInBlock",
-    blockId: first.id,
-    find: " left",
-    replace: "",
-  });
+  const result = await applyChecked(
+    reviewer,
+    {
+      id: "delete-source-rest",
+      type: "replaceInBlock",
+      blockId: first.id,
+      find: " left",
+      replace: "",
+    },
+    "comment",
+  );
   assert.deepEqual(result.after.comments, []);
   const accepted = result.pre.comments.at(0);
   const live = result.pre.liveComments.at(0);

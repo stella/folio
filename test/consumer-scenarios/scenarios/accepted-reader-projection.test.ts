@@ -21,6 +21,10 @@ import {
 import { parseFlowFile } from "../support/flow-file.ts";
 import { assertReadersAgree } from "../support/invariants.ts";
 import { capture } from "../support/oracle.ts";
+import {
+  assertProtectedEditRefused,
+  importTableDeletion,
+} from "../support/protected-edit.ts";
 import { MARKDOWN_READ_OPTIONS, readAll } from "../support/readers.ts";
 
 /** Markup readers retain structural revisions; clean Markdown must match actual acceptance. */
@@ -165,7 +169,7 @@ test("recorded operation matrix seed 201 keeps clean readers consistent through 
   );
   const flow = parseFlowFile(input);
   assert.equal(flow.fixture, "tables");
-  const reviewer = await openReviewer(await tableDocument());
+  let reviewer = await openReviewer(await tableDocument());
   const fixtureIds = new Set(reviewer.getContent().map(({ id }) => id));
   const inserted = new Map<RecordedInsertionId, string>();
   for (const [index, step] of flow.steps.entries()) {
@@ -187,6 +191,19 @@ test("recorded operation matrix seed 201 keeps clean readers consistent through 
     // Preserve the original matrix's pre-operation accepted/rejected copies;
     // revision allocation influences the inserted identities later steps name.
     await capture(reviewer, "tracked-changes");
+    const deletion = rebound.operations.find(
+      ({ type }) => type === "deleteTable",
+    );
+    if (deletion !== undefined) {
+      assert.equal(rebound.operations.length, 1);
+      assertProtectedEditRefused({
+        reviewer,
+        operation: deletion,
+        kind: "comment",
+      });
+      reviewer = await importTableDeletion(reviewer, deletion.blockId);
+      continue;
+    }
     const result = reviewer.applyDocumentOperations(rebound, {
       undefinedReferences: "refuse",
     });

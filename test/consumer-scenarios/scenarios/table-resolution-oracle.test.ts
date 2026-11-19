@@ -18,6 +18,10 @@ import {
   modelOf,
   type Row,
 } from "../support/oracle.ts";
+import {
+  assertProtectedEditRefused,
+  importTableDeletion,
+} from "../support/protected-edit.ts";
 import { createRandom } from "../support/random.ts";
 
 type CellLocation = {
@@ -59,11 +63,25 @@ describe("table operation source coordinates", () => {
         [{ ...operation, id: `op-${type}` }],
         "tracked-changes",
       );
-      const result = reviewer.applyDocumentOperations(batch as never, {
-        undefinedReferences: "refuse",
+      if (operation.type !== "deleteTable") {
+        reviewer.applyDocumentOperations(batch as never, {
+          undefinedReferences: "refuse",
+        });
+        continue;
+      }
+      const { blockId } = operation;
+      assert.ok(typeof blockId === "string");
+      const deletion = {
+        id: `op-${type}`,
+        type: "deleteTable",
+        blockId,
+      } as const;
+      assertProtectedEditRefused({
+        reviewer,
+        operation: deletion,
+        kind: "comment",
       });
-      if (type !== "deleteTable") continue;
-      assert.equal(result.applied.length, 1);
+      const pending = await importTableDeletion(reviewer, blockId);
       const acceptedIds = new Set(pre.rows.map(({ id }) => id));
       const outside = pre.liveRows.filter(
         ({ id, text, table }) =>
@@ -79,7 +97,7 @@ describe("table operation source coordinates", () => {
         "the pinned generator must reach table comments",
       );
       await assertRequestedOutcome(
-        reviewer,
+        pending,
         pre,
         { applied: batch.operations },
         "table ownership seed 201",
