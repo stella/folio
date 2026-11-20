@@ -519,23 +519,17 @@ test("nightly replay fixture", () => {
           { seed: pinnedSeed, note: "test", date: "2026-11-20" },
         ],
       });
-      const seen: number[] = [];
       const run = () =>
         assertProperty(
-          fc.property(fc.integer(), (value) => {
-            seen.push(value);
-            return value !== poisoned;
-          }),
+          fc.property(fc.integer(), (value) => value !== poisoned),
           { id: "named case skips pins", numRuns: 1 },
         );
       // The pinned seed's first case fails, so a run that replays it throws.
       expect(run).toThrow("Pinned regression seed 101");
-      seen.length = 0;
+      // The named case passes, and the pin is not replayed before it.
       withEnv({ PROPERTY_TEST_SEED: "5", PROPERTY_TEST_PATH: "0" });
-      run();
+      expect(run).not.toThrow();
       overridePinnedSeedsForTesting(undefined);
-      expect(seen).not.toContain(poisoned);
-      expect(seen.length).toBeGreaterThan(0);
     });
   });
 

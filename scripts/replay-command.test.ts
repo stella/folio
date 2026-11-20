@@ -1,12 +1,14 @@
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { assertProperty } from "../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../test/property-testing";
 import {
   formatReplayCommand,
   parseReplayCommand,
   type ReplayCommand,
 } from "../test/replay-command";
+
+setDefaultTimeout(propertyTestTimeout(5_000));
 
 const segment = fc.stringMatching(/^[\w@.-]{1,12}$/u);
 const replayCommand: fc.Arbitrary<ReplayCommand> = fc
