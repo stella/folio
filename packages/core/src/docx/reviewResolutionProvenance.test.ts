@@ -268,7 +268,7 @@ test("malformed and future provenance is dropped on read and reported", () => {
         value: { before: 0, after: 0, remove: 0, acceptance },
       }),
     ),
-    JSON.stringify({ version: 2, value: { before: 0, after: 0, remove: 0 } }),
+    JSON.stringify({ version: 3, value: { before: 0, after: 0, remove: 0 } }),
     JSON.stringify({ version: 1, value: { before: -1, after: 0, remove: 0 } }),
     JSON.stringify({
       version: 1,
@@ -302,7 +302,7 @@ test("malformed and future provenance is dropped on read and reported", () => {
 test("paragraph cut provenance validates private envelopes and typed projection attributes", () => {
   for (const encoded of [
     "not-json",
-    JSON.stringify({ version: 2, value: 0 }),
+    JSON.stringify({ version: 3, value: 0 }),
     JSON.stringify({ version: 1, value: -1 }),
     JSON.stringify({ version: 1, value: 0.5 }),
     JSON.stringify({ version: 1, value: MAX_REVISION_ID + 1 }),
@@ -390,7 +390,7 @@ test("a cut record's identity handoff has its own private attribute", () => {
       version: 1,
       value: [{ levels: 0, source: [], target: [] }],
     }),
-    JSON.stringify({ version: 2, value: joins.retainedEnclosing }),
+    JSON.stringify({ version: 3, value: joins.retainedEnclosing }),
     "levels",
   ]) {
     const attributes = `${serializeResolutionJoins(withoutHandoff)} folio:retainedEnclosing="${escapeXmlAttribute(encoded)}"`;
@@ -461,7 +461,7 @@ test("the paragraph a rejected mark keeps has its own private attribute", () => 
   // An unreadable value drops only the marker, and says so.
   for (const encoded of [
     JSON.stringify({ version: 1, value: "second" }),
-    JSON.stringify({ version: 2, value: "first" }),
+    JSON.stringify({ version: 3, value: "first" }),
     "first",
   ]) {
     const dropped = element(
@@ -474,7 +474,7 @@ test("the paragraph a rejected mark keeps has its own private attribute", () => 
 
 test("copy-origin ancestry uses the bounded versioned private envelope", () => {
   const encoded = serializeCopyOriginAncestors([0, 2, 4]);
-  expect(encoded).toBe(JSON.stringify({ version: 1, value: [0, 2, 4] }));
+  expect(encoded).toBe(JSON.stringify({ version: 2, value: [0, 2, 4] }));
   expect(
     parseCopyOriginAncestors(
       element(
@@ -492,7 +492,7 @@ test("copy-origin ancestry uses the bounded versioned private envelope", () => {
 
   const invalidEnvelopes = [
     "not-json",
-    JSON.stringify({ version: 2, value: [0] }),
+    JSON.stringify({ version: 3, value: [0] }),
     JSON.stringify({ version: 1, value: [] }),
     JSON.stringify({ version: 1, value: [0, 0] }),
     JSON.stringify({ version: 1, value: [1, 0] }),

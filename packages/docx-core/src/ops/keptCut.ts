@@ -53,9 +53,21 @@ export const withoutKeptCuts = (node: InlineNode): InlineNode => {
     : rebuildNode(node, placed);
 };
 
-const validKeptCut = (cut: unknown): boolean =>
+const KEPT_CUT_FIELDS = {
+  depth: true,
+  keptFrom: true,
+} as const satisfies Record<keyof KeptCut, true>;
+
+/**
+ * Whether `cut` is a well-formed kept cut: exactly its fields, at least one
+ * level deep, kept from a dated revision. The contract and the review
+ * history reader share it.
+ */
+export const isKeptCut = (cut: unknown): cut is KeptCut =>
   typeof cut === "object" &&
   cut !== null &&
+  !Array.isArray(cut) &&
+  Object.keys(cut).every((key) => Object.hasOwn(KEPT_CUT_FIELDS, key)) &&
   "depth" in cut &&
   "keptFrom" in cut &&
   typeof cut.depth === "number" &&
@@ -66,7 +78,7 @@ const validKeptCut = (cut: unknown): boolean =>
 const hasValidKeptCuts = (nodes: readonly InlineNode[]): boolean =>
   nodes.every((node) => {
     if (carriesKeptCut(node) && node.keptCut !== undefined)
-      return validKeptCut(node.keptCut);
+      return isKeptCut(node.keptCut);
     return hasValidKeptCuts(childNodes(node) ?? []);
   });
 
