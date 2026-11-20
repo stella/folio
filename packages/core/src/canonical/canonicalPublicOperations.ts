@@ -60,10 +60,7 @@ import {
   SUGGESTED_SUPPORTED_OPERATION_TYPES,
 } from "../ai-edits/apply";
 import { BatchClaims } from "../ai-edits/batch-claims";
-import {
-  splitsGraphemeCluster,
-  splitsSurrogatePair,
-} from "../ai-edits/character-boundaries";
+import { describeCharacterSplit } from "../ai-edits/character-boundaries";
 import {
   buildCleanBlockText,
   resolveCleanTextRange,
@@ -121,6 +118,7 @@ import {
   findOutermostTableBoundary,
   tableRectangleCutsMergedCell,
 } from "../ai-edits/table-targets";
+import { tableFromTemplate } from "../ai-edits/table-template";
 import {
   supportsTableInsertionMode,
   type TableInsertionOperation,
@@ -183,6 +181,10 @@ import type {
   StyleDefinitions,
 } from "../types/document";
 import { readModel } from "../types/documentModel";
+import {
+  batchCommentReferenceShift,
+  mapIntentPositions,
+} from "./batchCommentReferences";
 import { createCanonicalBatchReview } from "./canonicalBatchReview";
 import {
   canonicalCommentBody,
@@ -568,10 +570,15 @@ const orderCanonicalBatch = <T extends PlannedOperation>({
         (other.type === "insertAfterBlock" ||
           (other.type === "insertTable" && other.position !== "before")),
     );
+    // A paragraph the batch puts right before it stays and takes its break.
+    const prepended = items.some(
+      ({ operation: other, plan: otherPlan }) =>
+        otherPlan.block === plan.block && other.type === "insertBeforeBlock",
+    );
     const removes = deletionRemovesBlock({
       endsContainer:
         !appended && paragraphEndsItsContainer(at, paragraph.type.name),
-      carrier: finalBreakCarrier(before).type,
+      carrier: prepended ? "kept" : finalBreakCarrier(before).type,
     });
     return { addresses: [], removes: removes ? [plan.block] : [] };
   };
@@ -1765,6 +1772,8 @@ type ResolveTableInsertionOptions = {
     reason: FolioAIEditSkipReason,
     message: string,
   ) => Result<never, CanonicalPublicOperationResolutionError>;
+  /** The table to copy, when the batch hands one for this operation. */
+  template: PMNode | undefined;
 };
 
 /**
@@ -1785,12 +1794,17 @@ const resolveTableInsertion = ({
   noteReferences,
   refusal,
   skipAlike,
+  template,
 }: ResolveTableInsertionOptions) => {
   const side = operation.position ?? "after";
   const { schema } = projection.doc.type;
   let node: PMNode | null;
   if (operation.type === "insertTable")
-    node = buildTableNode({ schema, rows: operation.rows });
+    node =
+      (template === undefined
+        ? null
+        : tableFromTemplate({ schema, template })) ??
+      buildTableNode({ schema, rows: operation.rows });
   else {
     if (operation.parties.length === 0)
       return skipAlike("emptyOperation", "A signature table needs a party.");
@@ -2073,6 +2087,8 @@ type ResolveTableStructureOptions = {
     reason: FolioAIEditSkipReason,
     message: string,
   ) => Result<never, CanonicalPublicOperationResolutionError>;
+  /** The row a new row copies, when the batch hands one for this operation. */
+  template: PMNode | undefined;
 };
 
 /**
@@ -2093,6 +2109,7 @@ const resolveTableStructure = ({
   paragraphOf,
   notInTable,
   skipAlike,
+  template,
 }: ResolveTableStructureOptions) => {
   const { doc } = projection;
   const blockFrom = paragraph.start - 1;
@@ -2391,6 +2408,7 @@ const resolveTableStructure = ({
         insertion,
         cellTexts: operation.cellTexts,
         revision: null,
+        ...(template === undefined ? {} : { template }),
       });
       if (built.type !== "applied") return refusal("unsupportedBlock");
       const table = built.transaction.doc.nodeAt(
@@ -3103,8 +3121,17 @@ export class CanonicalPublicOperations {
       );
       return true;
     };
-    const overlapsResolved = (candidate: ReturnType<typeof planned>) =>
-      claims.conflictOf(candidate.plan.claim) !== null;
+    /** Skip a candidate an earlier operation of the batch already claims. */
+    const skipsOverlap = (candidate: ReturnType<typeof planned>): boolean => {
+      const claimedBy = claims.conflictOf(candidate.plan.claim);
+      if (claimedBy === null) return false;
+      skip(
+        candidate.operation.id,
+        "overlappingOperation",
+        `operation ${JSON.stringify(claimedBy)}, earlier in this batch, already claims its target.`,
+      );
+      return true;
+    };
     const admit = (candidate: ReturnType<typeof planned>) => {
       claims.add(candidate.operation.id, candidate.plan.claim);
       resolved.push(candidate);
@@ -3121,26 +3148,15 @@ export class CanonicalPublicOperations {
         skip(operation.id, "unsupportedMode");
         continue;
       }
-      if (
-        options.tableTemplates !== undefined ||
-        options.undefinedReferences === "keep"
-      ) {
-        refusals.set(operation.id, {
-          gap: CANONICAL_GAP.publicUnsupportedInline,
-        });
-        skip(
-          operation.id,
-          "unsupportedBlock",
-          "This canonical compiler does not support the supplied execution options.",
-        );
-        continue;
-      }
       // The same reference check the default engine runs, in the same
       // place: before the operation compiles.
       const referenceSet = references();
-      const headings = withOperationHeadingStyles(referenceSet.definitions, [
-        operation,
-      ]);
+      // Kept references stand as they are spelled: a heading the document
+      // does not define stays undefined rather than gaining a definition.
+      const headings =
+        options.undefinedReferences === "keep"
+          ? referenceSet.definitions
+          : withOperationHeadingStyles(referenceSet.definitions, [operation]);
       const undefinedReference = findUndefinedOperationReference({
         operation,
         numberingInstanceIds: referenceSet.numberingInstanceIds,
@@ -3148,7 +3164,7 @@ export class CanonicalPublicOperations {
           headings === referenceSet.definitions
             ? referenceSet.styles
             : styleDefinitionLookup(createStyleResolver(headings)),
-        undefinedReferences: "refuse",
+        undefinedReferences: options.undefinedReferences,
       });
       if (undefinedReference !== undefined) {
         skip(
@@ -3184,10 +3200,7 @@ export class CanonicalPublicOperations {
       }
       const candidate = planned(compiled.value);
       if (refusesExistingRevision(candidate)) continue;
-      if (overlapsResolved(candidate)) {
-        skip(operation.id, "overlappingOperation");
-        continue;
-      }
+      if (skipsOverlap(candidate)) continue;
       admit(candidate);
     }
     // An operation resolved beside a deleted paragraph that ends its run
@@ -3233,10 +3246,7 @@ export class CanonicalPublicOperations {
       }
       const candidate = planned(alone.value);
       if (refusesExistingRevision(candidate)) continue;
-      if (overlapsResolved(candidate)) {
-        skip(operation.id, "overlappingOperation");
-        continue;
-      }
+      if (skipsOverlap(candidate)) continue;
       admit(candidate);
     }
     // A move id names one relocation, a move only when it reaches exactly one
@@ -3307,6 +3317,10 @@ export class CanonicalPublicOperations {
       doc: projected.value.doc,
     });
     let document = readModel(session.document);
+    // The batch's comments run before its edits, each adding a reference
+    // unit; the document once they stand maps the edits' pre-batch positions.
+    const beforeBatch = document;
+    let annotated: Document | undefined;
     const ops: DocumentOp[] = [];
     const appliedById = new Map<
       string,
@@ -3373,10 +3387,22 @@ export class CanonicalPublicOperations {
         story,
         resolvedOperation,
       });
+      const shift = batchCommentReferenceShift({
+        before: beforeBatch,
+        commented:
+          resolvedOperation.plan.address.type === "annotation"
+            ? sourceDocument
+            : (annotated ?? sourceDocument),
+      });
+      // Pre-batch positions first take the batch's comment references; the
+      // as-it-runs bindings below read the document as it stands, past them.
+      const shifted = inserting.map((intent) =>
+        mapIntentPositions(intent, shift),
+      );
       const deleting =
         resolvedOperation.joinsParagraphBefore === true
-          ? deletionIntentsAsItRuns(sourceDocument, story, inserting)
-          : inserting;
+          ? deletionIntentsAsItRuns(sourceDocument, story, shifted)
+          : shifted;
       const joining =
         operation.type === "mergeBlockWithNext"
           ? mergeIntentsAsItRuns({
@@ -3429,10 +3455,12 @@ export class CanonicalPublicOperations {
                 ) ?? 0,
             })
           : intents;
-      const headings = withOperationHeadingStyles(
-        sourceDocument.package.styles,
-        [operation],
-      );
+      const headings =
+        options.undefinedReferences === "keep"
+          ? sourceDocument.package.styles
+          : withOperationHeadingStyles(sourceDocument.package.styles, [
+              operation,
+            ]);
       const withHeadings =
         headings === undefined || headings === sourceDocument.package.styles
           ? sourceDocument
@@ -3599,7 +3627,7 @@ export class CanonicalPublicOperations {
               : revisionSpan(after.content, new Set(compiled.value.revisions));
           const from =
             changed === undefined
-              ? comment.from
+              ? shift(comment.from)
               : {
                   story: comment.from.story,
                   blockId: comment.from.blockId,
@@ -3610,7 +3638,7 @@ export class CanonicalPublicOperations {
               ? {
                   ...comment.to,
                   offset:
-                    comment.to.offset +
+                    shift(comment.to).offset +
                     paragraphLength(after) -
                     paragraphLength(before),
                 }
@@ -3789,6 +3817,8 @@ export class CanonicalPublicOperations {
     const completed = new Set<string>();
     for (const resolvedOperation of executionOrder) {
       if (completed.has(resolvedOperation.operation.id)) continue;
+      if (resolvedOperation.plan.address.type !== "annotation")
+        annotated ??= document;
       const window = windows.get(resolvedOperation);
       // The ordinary one-operation path performs no admission replay or census.
       if (window === undefined) {
@@ -4604,6 +4634,7 @@ export class CanonicalPublicOperations {
             : undefined,
         notInTable,
         skipAlike,
+        template: options.tableTemplates?.get(operation.id),
       });
     if (
       operation.type === "insertTable" ||
@@ -4617,6 +4648,7 @@ export class CanonicalPublicOperations {
         noteReferences,
         refusal,
         skipAlike,
+        template: options.tableTemplates?.get(operation.id),
       });
     if (isBlockInsertion(operation)) {
       const besideDeletion =
@@ -4799,14 +4831,13 @@ export class CanonicalPublicOperations {
         return unreachable;
       }
     }
-    if (
-      [start, end].some(
-        (offset) =>
-          splitsSurrogatePair(clean.text, offset) ||
-          splitsGraphemeCluster(clean.text, offset),
-      )
-    )
-      return refusal("splitsCharacter");
+    const characterSplit = describeCharacterSplit(
+      clean.text,
+      [start, end],
+      "grapheme",
+    );
+    if (characterSplit !== null)
+      return refusal("splitsCharacter", characterSplit);
     // A note reference is not text: a replacement rewrites the prose around
     // the references its range holds, each kept in place, as the shared
     // segmentation pairs them. A comment or formatting covers whole

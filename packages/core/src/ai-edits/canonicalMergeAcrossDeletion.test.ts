@@ -6,6 +6,7 @@ import {
   type FolioDocumentOperation,
 } from "../document-operations";
 import { FolioDocxReviewer } from "./headless";
+import { hashFolioAIBlockText } from "./snapshot";
 
 beforeAll(() => setSystemTime(new Date("2026-01-01T12:00:00Z")));
 afterAll(() => setSystemTime());
@@ -92,6 +93,27 @@ test("a direct merge puts its separator at the end of the paragraph its batch ed
       replace,
     },
   ];
+  // A comment the batch puts on the whole paragraph adds a reference at its
+  // end; the separator still goes there once.
+  const commented = (): FolioDocumentOperation[] => [
+    ...mergeAndEdit("Alphabet"),
+    {
+      id: "comment",
+      type: "commentOnRange",
+      range: {
+        type: "textRange",
+        story: "main",
+        blockId: idOf(0),
+        startOffset: 0,
+        endOffset: 6,
+        selectedTextHash: hashFolioAIBlockText("Alpha."),
+      },
+      comment: { text: "Check" },
+    },
+  ];
+  expect((await run("direct", commented())).texts.at(0)).toBe(
+    "Alphabet. Beta.",
+  );
   for (const replace of ["Alphabet", "A"]) {
     const { texts } = await run("direct", mergeAndEdit(replace));
     expect(texts.at(0)).toBe(`${replace}. Beta.`);

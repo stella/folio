@@ -12,7 +12,6 @@ import {
 } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { contractViolation } from "../contract";
-import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import { DOCUMENT_OP_TYPES, type DocumentOp } from "../types";
 
 const paragraph = (paraId: string, text: string): Paragraph => ({
@@ -177,17 +176,35 @@ test(
           } as const satisfies DocumentOp;
           expectRestoration(beforeDeletion, [deletion]);
           apply(deletion);
-          const refused = applyDocumentOp(beforeDeletion, {
-            type: DOCUMENT_OP_TYPES.DELETE_BLOCKS,
-            story: "main",
-            blockIds: [at.blockId],
-            revision,
-          });
-          expect(refused.isErr()).toBe(true);
-          if (refused.isErr())
-            expect(refused.error.reason).toBe(
-              DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-            );
+          // A tracked deletion marks the reference deleted and cleans up
+          // nothing: the note and every comment thread stay until accepted.
+          const tracked = expectRestoration(beforeDeletion, [
+            { ...deletion, revision, newIds: { revision: [42, 43] } },
+          ]).document;
+          expect(
+            tracked.package[kind === "footnote" ? "footnotes" : "endnotes"],
+          ).toStrictEqual(
+            beforeDeletion.package[
+              kind === "footnote" ? "footnotes" : "endnotes"
+            ],
+          );
+          expect(tracked.package.document.comments).toStrictEqual(
+            beforeDeletion.package.document.comments,
+          );
+          const trackedHost = tracked.package.document.content.at(0);
+          expect(
+            trackedHost?.type === "paragraph" &&
+              trackedHost.pPrMark?.kind === "del" &&
+              trackedHost.content.some(
+                (item) =>
+                  item.type === "deletion" &&
+                  item.content.some(
+                    (run) =>
+                      run.type === "run" &&
+                      run.content.some(({ type }) => type === `${kind}Ref`),
+                  ),
+              ),
+          ).toBe(true);
           expect(
             document.package[kind === "footnote" ? "footnotes" : "endnotes"],
           ).toStrictEqual(

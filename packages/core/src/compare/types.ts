@@ -27,6 +27,7 @@ import type {
   FolioAIEditSkippedOperation,
 } from "../ai-edits/types";
 import type { WordDiffGranularity } from "../ai-edits/word-diff";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import type { FolioContentFormatRange } from "./content-types";
 import type {
   CompareVerification,
@@ -80,6 +81,8 @@ export type CompareDocxOptions = {
    * resolved before the package is handed to Word.
    */
   revisionFormat?: CompareRevisionFormat;
+  /** The engine both documents are read and compared on, as a reviewer's `session` names it. */
+  session?: HeadlessReviewerSession;
 };
 
 /** Where one change sits in the base or target document. */

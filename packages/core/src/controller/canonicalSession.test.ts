@@ -809,11 +809,12 @@ describe("canonical session", () => {
     expect(session.captureSaveSnapshot().structure).toBe("changed");
   });
   test.each([
-    [OP_STORIES.MAIN],
-    [{ kind: "header", rId: "rIdHeader1" }],
+    [OP_STORIES.MAIN, "changed"],
+    // The save writes a header part whole, so the body splice still holds.
+    [{ kind: "header", rId: "rIdHeader1" }, "stable"],
   ] as const)(
-    "block insertion in %s changes the save structure and undoes exactly",
-    (story) => {
+    "block insertion in %o leaves the save structure %s and undoes exactly",
+    (story, structure) => {
       const source = seed("Body");
       source.package.headers = new Map([
         [
@@ -843,7 +844,7 @@ describe("canonical session", () => {
         .unwrap();
       expect(session.captureSaveSnapshot().structure).toBe("stable");
       const inserted = accept(state, commit);
-      expect(session.captureSaveSnapshot().structure).toBe("changed");
+      expect(session.captureSaveSnapshot().structure).toBe(structure);
       accept(inserted, session.prepareUndo(inserted).unwrap());
       expect(session.document).toStrictEqual(original);
     },
@@ -2790,7 +2791,7 @@ test.each([
   },
 );
 
-test("a header text edit changes the save structure while comment edits keep the splice path", () => {
+test("a header text edit keeps the splice path, which writes the header part whole", () => {
   const document = seed("ab");
   document.package.headers = new Map([
     [
@@ -2831,5 +2832,5 @@ test("a header text edit changes the save structure while comment edits keep the
     ])
     .unwrap();
   edit.publish().unwrap();
-  expect(session.captureSaveSnapshot().structure).toBe("changed");
+  expect(session.captureSaveSnapshot().structure).toBe("stable");
 });

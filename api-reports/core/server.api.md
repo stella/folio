@@ -46,6 +46,7 @@ export type ApplyFolioAIEditsToBufferOptions = {
     author?: string;
     mode?: FolioAIEditApplyMode;
     snapshot?: FolioAIEditSnapshot;
+    session?: HeadlessReviewerSession;
 };
 
 // @public
@@ -946,6 +947,7 @@ export type FolioBlockProperty = keyof typeof BLOCK_PROPERTIES;
 export type FolioCompareDocxVersionsOptions = {
     include?: readonly FolioVersionComparisonScope[];
     privacy?: FolioVersionDiffPrivacyOptions;
+    session?: HeadlessReviewerSession;
 };
 
 // @public
@@ -1737,6 +1739,7 @@ export type GenerateRedlineDocxOptions = {
     baseView?: FolioResolvedReviewedView;
     revisedView?: FolioResolvedReviewedView;
     privacy?: FolioDocumentPrivacyOptions;
+    session?: HeadlessReviewerSession;
 };
 
 // @public

@@ -11,13 +11,19 @@
  *   package, which then reads as the suggesting reviewer did;
  * - rejecting the suggestion gives the document before it back;
  * - accepting it adopts it as ordinary tracked changes: accepting every
- *   change then gives the words of the same operation applied directly.
+ *   change then gives the words of the same operation applied directly, in
+ *   paragraphs whose ids may differ: a paragraph the direct edit removes
+ *   whole, accepting may join into, and a join keeps the second paragraph's
+ *   id (docs/durable-block-ids.md).
  *   A paragraph put beside one whose break is pending removal is the
  *   exception: a suggestion reads the document as it stands and goes right
  *   beside the paragraph it names, where a direct edit reads the paragraphs
  *   the pending join runs together as one and goes beside all of them, as
  *   both engines place them. A paragraph named in a table cell has the new
  *   one beside its outermost table, as both engines place it either way.
+ *   One put before a paragraph outside a table lands before the blocks
+ *   right before that paragraph that accepting removes whole, as a block put
+ *   before one lands in every mode (`insertionGap`).
  */
 
 import { describe, expect, test } from "bun:test";
@@ -80,11 +86,80 @@ const reads = (reviewer: Reviewer) => ({
     .map(({ text, anchoredText, author }) => ({ text, anchoredText, author })),
 });
 
-const words = (text: string): string => text.replace(/\s+/gu, "");
+/** A reader's words, without the block ids each line starts with. */
+const words = (text: string): string =>
+  text.replace(/^\[[^\]\n]*\]/gmu, "").replace(/\s+/gu, "");
 
 /** The block ids a reader lists, in reading order. */
 const blockIds = (reviewer: Reviewer): string[] =>
   reviewer.getContent().map(({ id }) => id);
+
+type Block = Document["package"]["document"]["content"][number];
+
+/** Whether accepting every change removes the break after `block`. */
+const breakGoes = (block: Block | undefined): boolean =>
+  block?.type === "paragraph" &&
+  (block.pPrMark?.kind === "del" || block.pPrMark?.kind === "moveFrom");
+
+/**
+ * Whether accepting every change removes `block` whole: a table whose every
+ * row is a pending deletion, or a paragraph, ending no section, whose break
+ * goes and whose content is all pending removal.
+ */
+const acceptingRemovesWhole = (block: Block | undefined): boolean => {
+  if (block?.type === "table")
+    return (
+      block.rows.length > 0 &&
+      block.rows.every(
+        ({ structuralChange }) => structuralChange?.type === "tableRowDeletion",
+      )
+    );
+  return (
+    block?.type === "paragraph" &&
+    breakGoes(block) &&
+    block.sectionProperties === undefined &&
+    block.content.every(
+      ({ type }) => type === "deletion" || type === "moveFrom",
+    )
+  );
+};
+
+/** The id of the first paragraph a reader lists for `block`. */
+const firstParagraphId = (block: Block | undefined): string | undefined => {
+  if (block?.type === "paragraph") return block.paraId;
+  if (block?.type === "table")
+    return firstParagraphId(block.rows.at(0)?.cells.at(0)?.content.at(0));
+  return undefined;
+};
+
+/**
+ * The paragraph a block put before the paragraph `paraId`, outside a table,
+ * lands right before: the first of the blocks right before it that
+ * accepting removes whole, tables and paragraphs alike, as a block put
+ * before a paragraph lands in every mode. A paragraph whose break goes
+ * before them joins into what follows them, so they stay after the new
+ * block, the tables right before `paraId` aside.
+ */
+const gapStartBefore = (
+  blocks: readonly Block[],
+  paraId: string,
+): string | undefined => {
+  for (const [index, block] of blocks.entries()) {
+    if (block.type === "blockSdt" || block.type === "blockCustomXml") {
+      const inner = gapStartBefore(block.content, paraId);
+      if (inner !== undefined) return inner;
+    }
+    if (block.type !== "paragraph" || block.paraId !== paraId) continue;
+    let first = index;
+    while (acceptingRemovesWhole(blocks[first - 1])) first -= 1;
+    let start = index;
+    if (breakGoes(blocks[first - 1]))
+      while (start > first && blocks[start - 1]?.type === "table") start -= 1;
+    else start = first;
+    return firstParagraphId(blocks[start]);
+  }
+  return undefined;
+};
 
 type SuggestionOutcome =
   | "suggested"
@@ -119,6 +194,9 @@ const suggestionLaws = async (
   const besidePendingJoin =
     insertion !== null &&
     reviewer.getChanges().some(({ type }) => type === "paragraphMarkDeleted");
+  const blocksBefore = besidePendingJoin
+    ? reviewer.toDocument().package.document.content
+    : [];
   const result = apply(reviewer, operation, "suggested");
   if (result.applied.length === 0) return "refusedOperation";
   const suggested = reads(reviewer);
@@ -126,6 +204,9 @@ const suggestionLaws = async (
     // As it stands: the new paragraph is right beside the one it names, or,
     // for one in a table cell, beside its outermost table; one put before a
     // table goes before the pending join that runs words into its first cell.
+    // One put before a paragraph outside a table lands at the start of the
+    // gap before it, past the blocks right before it that accepting removes
+    // whole, unless a pending join from a paragraph before them reaches it.
     const joining = new Set(
       before.changes.flatMap(({ type, blockId }) =>
         type === "paragraphMarkDeleted" && blockId !== null ? [blockId] : [],
@@ -141,6 +222,11 @@ const suggestionLaws = async (
       table !== undefined && content[index]?.table?.outerTableIndex === table;
     const step = insertion.type === "insertBeforeBlock" ? -1 : 1;
     let edge = at;
+    if (table === undefined && step === -1) {
+      const start = gapStartBefore(blocksBefore, insertion.blockId);
+      expect(start).toBeDefined();
+      edge = ids.indexOf(start ?? "");
+    }
     while (inTable(edge + step)) edge += step;
     while (
       table !== undefined &&

@@ -247,11 +247,8 @@ test.each(["header", "footnote"] as const)(
         options: { mode: FOLIO_DOCX_SERIALIZATION_MODE.preferSelective },
       });
       expect(snapshot.changedBlockIds).toContain(target.paraId);
-      expect(saved.diagnostics).toEqual(
-        storyKind === "header"
-          ? [{ type: "selectiveSaveRefused", part: "word/document.xml" }]
-          : [],
-      );
+      // The selective save writes a header part whole and splices a note's.
+      expect(saved.diagnostics).toEqual([]);
       const reopened = await parseDocx(saved.buffer, { preloadFonts: false });
       expect(findStoryBody(reopened, story)?.content).toEqual(
         findStoryBody(snapshot.document, story)?.content,

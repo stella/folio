@@ -1,7 +1,10 @@
 import { expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 
-import { FolioDocxReviewer } from "@stll/folio-core/server";
+import {
+  FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+  FolioDocxReviewer,
+} from "@stll/folio-core/server";
 
 import { makeTempDir } from "./__tests__/fixtures";
 import { captureIo, dataOf, envelopeOf } from "./__tests__/io";
@@ -113,3 +116,66 @@ test.each([header, footer])(
     }
   },
 );
+
+for (const session of ["legacy", "canonical"] as const)
+  test.each([header, footer])(
+    `a $type edit saves without a repack on the ${session} engine`,
+    async (story) => {
+      const { dir, cleanup } = await makeTempDir();
+      try {
+        const file = await writePackage(dir, "draft.docx", {
+          body: paragraph("10000001"),
+          headers: { [header.relationshipId]: paragraph("10000002") },
+          footers: { [footer.relationshipId]: paragraph("10000003") },
+          sectPr:
+            '<w:headerReference w:type="default" r:id="rIdHeader"/>' +
+            '<w:footerReference w:type="default" r:id="rIdFooter"/>',
+        });
+        const before = await readFile(file);
+        const reviewer = await FolioDocxReviewer.fromBuffer(
+          before.slice().buffer,
+          { session, author: "Reviewer" },
+        );
+        const result = reviewer.applyDocumentOperationsToStory({
+          story,
+          batch: {
+            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+            mode: "tracked-changes",
+            operations: [
+              {
+                id: "story-edit",
+                type: "replaceInBlock",
+                blockId: story.type === "header" ? "10000002" : "10000003",
+                find: "Draft",
+                replace: "Final",
+              },
+            ],
+          },
+          undefinedReferences: "refuse",
+        });
+        expect(result.skipped).toEqual([]);
+        const saved = await reviewer.save({ repack: "refuse" });
+        if (saved.type !== "selective")
+          throw new Error(`Expected a selective save, got ${saved.type}`);
+        const originalParts = await packageTexts(before);
+        const savedParts = await packageTexts(new Uint8Array(saved.buffer));
+        const other = story.type === "header" ? footer : header;
+        const part = (handle: typeof header | typeof footer) =>
+          `word/${handle.type}-${handle.relationshipId}.xml`;
+        expect(savedParts.get("word/document.xml")).toBe(
+          originalParts.get("word/document.xml"),
+        );
+        expect(savedParts.get(part(other))).toBe(
+          originalParts.get(part(other)),
+        );
+        const reopened = await FolioDocxReviewer.fromBuffer(saved.buffer, {
+          session,
+        });
+        expect(reopened.readStory(story)?.text).toBe("Final");
+        reopened.rejectAll();
+        expect(reopened.readStory(story)?.text).toBe("Draft");
+      } finally {
+        await cleanup();
+      }
+    },
+  );

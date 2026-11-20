@@ -89,9 +89,44 @@ export const paragraphIdsIn = (value: unknown): string[] => {
   return out;
 };
 
+/**
+ * The paragraph ids each package record holds, read once per record object.
+ * Operations never change a record they are given, so a record an edit left
+ * as it was holds the ids it held, and a batch reads again only the records
+ * its edits replaced, not every paragraph of the package per operation.
+ */
+const RECORD_PARAGRAPH_IDS = new WeakMap<object, readonly string[]>();
+
+const collectPackageParagraphIds = (value: unknown, out: string[]): void => {
+  if (typeof value !== "object" || value === null) return;
+  if (Array.isArray(value)) {
+    for (const item of value) collectPackageParagraphIds(item, out);
+    return;
+  }
+  if (value instanceof Map) {
+    for (const item of value.values()) collectPackageParagraphIds(item, out);
+    return;
+  }
+  if (!isPlainRecord(value)) return;
+  let ids = RECORD_PARAGRAPH_IDS.get(value);
+  if (ids === undefined) {
+    const own: string[] = [];
+    const entries = Object.entries(value);
+    const id = paragraphIdOf(entries);
+    if (id !== undefined) own.push(id);
+    for (const [, field] of entries) collectPackageParagraphIds(field, own);
+    ids = own;
+    RECORD_PARAGRAPH_IDS.set(value, ids);
+  }
+  for (const id of ids) out.push(id);
+};
+
 /** Every paragraph id of a package, each story walked once. */
-export const packageParagraphIds = (pkg: DocxPackage): string[] =>
-  paragraphIdsIn(storiesOf(pkg));
+export const packageParagraphIds = (pkg: DocxPackage): string[] => {
+  const out: string[] = [];
+  collectPackageParagraphIds(storiesOf(pkg), out);
+  return out;
+};
 
 export type PackageBookmark = { id: number; name: string };
 export type PackageBookmarkCensus = {

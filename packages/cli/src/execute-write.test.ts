@@ -315,9 +315,9 @@ describe("refusals leave the file untouched", () => {
         write("suggest_changes", {
           operations: [
             {
-              type: "insertAfterBlock",
+              type: "insertTable",
               blockId: "10000004",
-              text: "New clause.",
+              rows: [["New", "clause"]],
             },
           ],
         }),
@@ -557,9 +557,9 @@ describe("destinations", () => {
         {
           operations: [
             {
-              type: "insertAfterBlock",
+              type: "insertTable",
               blockId: "10000004",
-              text: "New clause.",
+              rows: [["New", "clause"]],
             },
           ],
         },

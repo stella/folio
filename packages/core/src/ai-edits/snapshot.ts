@@ -817,6 +817,8 @@ const createFolioAIEditSnapshotInternal = (
   styleResolver: RunStyleResolver | null,
   noteReferenceLabels?: NoteReferenceLabels,
   numbering?: NumberingMap | null,
+  /** Paragraph ids minted for the document as it was opened, as `idStability` reads them. */
+  positionalParaIds?: ReadonlySet<string>,
 ): FolioAIEditSnapshot => {
   // Resolved once: the walk below classifies every block, and the index is
   // what lets a localized heading style reach the model as a heading.
@@ -978,7 +980,10 @@ const createFolioAIEditSnapshotInternal = (
         : null;
     const idStabilityAttr: unknown = node.attrs["idStability"];
     const idStability =
-      idStabilityAttr === "positional" ? "positional" : undefined;
+      idStabilityAttr === "positional" ||
+      (paraId !== null && positionalParaIds?.has(paraId) === true)
+        ? "positional"
+        : undefined;
     const isBlank = normalizedText.length === 0;
     let id: FolioBlockId;
     if (isBlank) {
@@ -1129,6 +1134,29 @@ export const createFolioAIEditSnapshotWithStyleResolver = (
   numbering?: NumberingMap | null,
 ): FolioAIEditSnapshot =>
   createFolioAIEditSnapshotInternal(doc, styleResolver, undefined, numbering);
+
+type CreateReviewerSnapshotOptions = {
+  doc: PMNode;
+  styleResolver: RunStyleResolver | null;
+  numbering: NumberingMap | null;
+  /** Paragraph ids minted when the document was opened, read as positional. */
+  positionalParaIds: ReadonlySet<string>;
+};
+
+/** @internal A reviewer's snapshot of a state that owns its style resolver. */
+export const createReviewerSnapshot = ({
+  doc,
+  styleResolver,
+  numbering,
+  positionalParaIds,
+}: CreateReviewerSnapshotOptions): FolioAIEditSnapshot =>
+  createFolioAIEditSnapshotInternal(
+    doc,
+    styleResolver,
+    undefined,
+    numbering,
+    positionalParaIds,
+  );
 
 /**
  * What a reader sees the block as, heading first: a numbered heading (`1.

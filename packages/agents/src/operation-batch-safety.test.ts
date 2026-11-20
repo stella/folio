@@ -86,58 +86,64 @@ const suggest = (
   return call.result as SuggestSummary;
 };
 
-describe("suggest_changes with two operations on one block", () => {
-  test("refuses the deletion that would have rewritten the next paragraph", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(
-      await buildDocx(["Alpha beta gamma.", "Second clause.", "Third clause."]),
-      { author: "QA" },
-    );
-    const blockId = reviewer.snapshot().blocks[0]?.id ?? "";
-    const summary = suggest(reviewer, [
-      {
-        id: "replace",
-        type: "replaceInBlock",
-        blockId,
-        find: "Alpha",
-        replace: "First",
-      },
-      { id: "delete", type: "deleteBlock", blockId },
-    ]);
+const SESSIONS = ["legacy", "canonical"] as const;
 
-    expect(summary.applied.map(({ id }) => id)).toEqual(["replace"]);
-    expect(summary.skipped).toHaveLength(1);
-    expect(summary.skipped[0]?.id).toBe("delete");
-    expect(summary.skipped[0]?.reason).toContain(
-      "earlier operation in this batch",
-    );
-    expect(summary.skipped[0]?.reason).toContain('"replace"');
-    expect(summary.issues.map(({ code }) => code)).toEqual([
-      "overlappingOperation",
-    ]);
-    expect(await acceptedTexts(reviewer)).toEqual([
-      "First beta gamma.",
-      "Second clause.",
-      "Third clause.",
-    ]);
+for (const session of SESSIONS)
+  describe(`suggest_changes with two operations on one block (${session})`, () => {
+    test("refuses the deletion that would have rewritten the next paragraph", async () => {
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await buildDocx([
+          "Alpha beta gamma.",
+          "Second clause.",
+          "Third clause.",
+        ]),
+        { session, author: "QA" },
+      );
+      const blockId = reviewer.snapshot().blocks[0]?.id ?? "";
+      const summary = suggest(reviewer, [
+        {
+          id: "replace",
+          type: "replaceInBlock",
+          blockId,
+          find: "Alpha",
+          replace: "First",
+        },
+        { id: "delete", type: "deleteBlock", blockId },
+      ]);
+
+      expect(summary.applied.map(({ id }) => id)).toEqual(["replace"]);
+      expect(summary.skipped).toHaveLength(1);
+      expect(summary.skipped[0]?.id).toBe("delete");
+      expect(summary.skipped[0]?.reason).toContain(
+        "earlier operation in this batch",
+      );
+      expect(summary.skipped[0]?.reason).toContain('"replace"');
+      expect(summary.issues.map(({ code }) => code)).toEqual([
+        "overlappingOperation",
+      ]);
+      expect(await acceptedTexts(reviewer)).toEqual([
+        "First beta gamma.",
+        "Second clause.",
+        "Third clause.",
+      ]);
+    });
   });
-});
 
-describe("suggest_changes splitting inside an emoji", () => {
-  test("refuses the offset and names the boundaries either side", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(
-      await buildDocx(["Party 🧑 agrees."]),
-      {
-        author: "QA",
-      },
-    );
-    const blockId = reviewer.snapshot().blocks[0]?.id ?? "";
-    const summary = suggest(reviewer, [
-      { id: "split", type: "splitBlock", blockId, offset: 7 },
-    ]);
+for (const session of SESSIONS)
+  describe(`suggest_changes splitting inside an emoji (${session})`, () => {
+    test("refuses the offset and names the boundaries either side", async () => {
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await buildDocx(["Party 🧑 agrees."]),
+        { session, author: "QA" },
+      );
+      const blockId = reviewer.snapshot().blocks[0]?.id ?? "";
+      const summary = suggest(reviewer, [
+        { id: "split", type: "splitBlock", blockId, offset: 7 },
+      ]);
 
-    expect(summary.applied).toEqual([]);
-    expect(summary.skipped[0]?.reason).toContain("inside a single character");
-    expect(summary.skipped[0]?.reason).toContain("use 6 or 8");
-    expect(await acceptedTexts(reviewer)).toEqual(["Party 🧑 agrees."]);
+      expect(summary.applied).toEqual([]);
+      expect(summary.skipped[0]?.reason).toContain("inside a single character");
+      expect(summary.skipped[0]?.reason).toContain("use 6 or 8");
+      expect(await acceptedTexts(reviewer)).toEqual(["Party 🧑 agrees."]);
+    });
   });
-});

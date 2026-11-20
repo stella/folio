@@ -96,13 +96,22 @@ export const compileCanonicalComments = ({
         content: command.content,
       });
       break;
-    case "resolve":
+    case "resolve": {
+      // A thread already in the asked state stays as it is: resolving a
+      // resolved thread, or reopening an open one, changes nothing.
+      const comment = byId.get(command.id);
+      if (
+        comment !== undefined &&
+        (comment.done === true) === (command.status === "resolved")
+      )
+        break;
       ops.push({
         type: DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION,
         id: command.id,
         status: command.status,
       });
       break;
+    }
     case "delete": {
       const comment = byId.get(command.id);
       if (!comment) return refuse("The comment no longer exists.");

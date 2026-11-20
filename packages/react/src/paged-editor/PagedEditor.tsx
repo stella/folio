@@ -5988,7 +5988,11 @@ export const PagedEditor: React.ForwardRefExoticComponent<
             }
 
             applyPendingHiddenEditorInput(view);
-            view.focus();
+            // A view the creating click already focused may hold a caret a
+            // key just moved, which ProseMirror reads from a later
+            // `selectionchange`: focusing again would put its older
+            // selection back over it.
+            if (!view.hasFocus()) view.focus();
             refreshBodyImeCaretAnchor();
             setIsFocused(true);
           });

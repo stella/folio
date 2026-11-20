@@ -112,11 +112,16 @@ export const addRetiredCommentReceipts = ({
       .map(({ id }) => id),
   );
   const byRevision = new Map<number, string>();
-  for (const { id, revisionIds } of applied) {
+  // A deletion folded into an adjacent pending deletion allocates no
+  // revision; the source ranges it deleted stand in for one.
+  const folded: string[] = [];
+  for (const { id, revisionIds = [] } of applied) {
     if (!deletions.has(id)) continue;
-    for (const revisionId of revisionIds ?? []) byRevision.set(revisionId, id);
+    if (revisionIds.length === 0 && sourceRanges?.has(id) === true)
+      folded.push(id);
+    for (const revisionId of revisionIds) byRevision.set(revisionId, id);
   }
-  if (byRevision.size === 0) return;
+  if (byRevision.size === 0 && folded.length === 0) return;
   const from = before.doc.content.findDiffStart(after.content);
   if (from === null) return;
   const changedEnd = before.doc.content.findDiffEnd(after.content);
@@ -132,6 +137,8 @@ export const addRetiredCommentReceipts = ({
 
   const coverage: AnchorCoverage = new Map();
   const points: AnchorCoverage = new Map();
+  // Comments whose ranged text the result holds, deleted or not.
+  const ranged = new Set<number>();
   const recordCoverage = (
     anchors: AnchorCoverage,
     commentId: number,
@@ -185,7 +192,9 @@ export const addRetiredCommentReceipts = ({
       for (const comment of node.marks) {
         if (comment.type.name !== "comment") continue;
         const id: unknown = comment.attrs["commentId"];
-        if (typeof id === "number") recordCoverage(coverage, id, deletion);
+        if (typeof id !== "number") continue;
+        ranged.add(id);
+        recordCoverage(coverage, id, deletion);
       }
     }
     node.forEach((child) => visit(child, structure, point));
@@ -193,6 +202,13 @@ export const addRetiredCommentReceipts = ({
   visit(after, undefined, undefined);
 
   const candidates = candidatesOf(coverage);
+  // Every ranged word is deleted by no revision of this batch: a folded
+  // deletion may own it, checked against its source ranges below.
+  const foldedComments = new Set(
+    [...ranged].filter((commentId) => !coverage.has(commentId)),
+  );
+  for (const commentId of foldedComments)
+    for (const owner of folded) candidates.push({ commentId, owner });
   const possiblePoints = candidatesOf(points).filter(
     ({ commentId }) => !coverage.has(commentId),
   );
@@ -249,8 +265,15 @@ export const addRetiredCommentReceipts = ({
     return true;
   };
 
-  const owned = candidates.filter(({ commentId, owner }) =>
+  const covering = candidates.filter(({ commentId, owner }) =>
     ownsOriginalCoverage(commentId, owner),
+  );
+  // A comment two folded deletions cover belongs to neither alone.
+  const owned = covering.filter(
+    ({ commentId }) =>
+      !foldedComments.has(commentId) ||
+      covering.filter((candidate) => candidate.commentId === commentId)
+        .length === 1,
   );
   if (owned.length === 0) return;
   const originallyAccepted = acceptedCommentIds

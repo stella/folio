@@ -1,0 +1,10 @@
+{
+  "note cleanup composes comment retirement and lifecycle inverses in reverse order": [
+    {
+      "seed": -1128269186,
+      "path": "0:0:0",
+      "note": "A tracked deletion of the paragraph holding a note reference and a ranged comment applies: it marks the reference deleted and keeps the note and every comment thread.",
+      "date": "2026-11-20"
+    }
+  ]
+}

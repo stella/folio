@@ -63,6 +63,7 @@ import {
   GenerateRedlineDocxOperationLimitError,
   MAX_GENERATED_REDLINE_OPERATIONS,
 } from "./redlineOperationLimit";
+import type { HeadlessReviewerSession } from "./types/canonicalCapabilities";
 import type { NumberingDefinitions } from "./types/document";
 import {
   alignFolioBlocksInSession,
@@ -79,6 +80,8 @@ export type GenerateRedlineDocxOptions = {
   revisedView?: FolioResolvedReviewedView;
   /** Optional output-only package-metadata privacy transforms. */
   privacy?: FolioDocumentPrivacyOptions;
+  /** The engine both documents are read and compared on, as a reviewer's `session` names it. */
+  session?: HeadlessReviewerSession;
 };
 
 /** Raised when a resolved input view is not `"original"` or `"final"`. */
@@ -504,8 +507,11 @@ export const generateRedlineDocx = async (
   const [baseReviewer, revisedReviewer] = await Promise.all([
     FolioDocxReviewer.fromBuffer(base, {
       author: options.author ?? "folio compare",
+      ...(options.session === undefined ? {} : { session: options.session }),
     }),
-    FolioDocxReviewer.fromBuffer(revised),
+    FolioDocxReviewer.fromBuffer(revised, {
+      ...(options.session === undefined ? {} : { session: options.session }),
+    }),
   ]);
   const baseStories = baseReviewer.listStories().map(({ handle }) => handle);
   const revisedStories = revisedReviewer

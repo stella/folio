@@ -679,15 +679,46 @@ const isParagraph = (value: unknown): value is Record<string, unknown> =>
   isRecord(value) && value["type"] === "paragraph";
 
 /**
- * A row the package marks deleted, whose cells' marks go with it.
+ * The table row or cell the package adds or removes around a container: its
+ * cells' marks come and go with it.
  *
- * A deleted table row is written as `w:trPr/w:del` PLUS a deletion on every
- * mark the row's cells end with: accepting takes the whole row away, so those
- * marks never have to join anything and are the shape the format asks for.
+ * A deleted row is written as `w:trPr/w:del` PLUS a deletion on every mark its
+ * cells end with: accepting takes the whole row away, so those marks never
+ * have to join anything. An inserted row or cell is written with an insertion
+ * on those marks: rejecting takes it away whole, and accepting keeps it.
  */
-const isADeletedTableRow = (value: Record<string, unknown>): boolean => {
+type TableStructure = "none" | "removed" | "added";
+
+const tableStructureOf = (
+  value: Record<string, unknown>,
+  enclosing: TableStructure,
+): TableStructure => {
   const change = value["structuralChange"];
-  return isRecord(change) && change["type"] === "tableRowDeletion";
+  const type = isRecord(change) ? change["type"] : undefined;
+  if (type === "tableRowDeletion" || type === "tableCellDeletion")
+    return "removed";
+  if (type === "tableRowInsertion" || type === "tableCellInsertion")
+    return enclosing === "removed" ? enclosing : "added";
+  return enclosing;
+};
+
+/** Whether a final mark's change comes and goes with the structure holding it. */
+const goesWithTableStructure = (
+  structure: TableStructure,
+  kind: ParagraphMarkChangeKind,
+): boolean => {
+  switch (structure) {
+    case "none":
+      return false;
+    case "removed":
+      return true;
+    case "added":
+      return kind === "ins";
+    default: {
+      const unreachable: never = structure;
+      return unreachable;
+    }
+  }
 };
 
 /**
@@ -699,8 +730,10 @@ const isADeletedTableRow = (value: Record<string, unknown>): boolean => {
  * cell, a header or footer, a note or a text box has no paragraph after it, so
  * neither direction states an edit that can be carried out: a consumer refuses
  * the package, or opens it and leaves a revision standing that neither
- * accepting nor rejecting everything can clear. The exception is a cell of a
- * row the package is DELETING: there the mark leaves with its row.
+ * accepting nor rejecting everything can clear. The exceptions are a cell of a
+ * row the package is DELETING, where the mark leaves with its row, and an
+ * insertion on the mark of a row or cell the package is INSERTING, which
+ * comes and goes with it.
  *
  * The walk is over the package model rather than over a list of the containers
  * known today: a container is any sequence that ends in a paragraph, so a part
@@ -730,7 +763,7 @@ export const revisedFinalParagraphMarks = (
     }
     return path.slice(1);
   };
-  const visit = (value: unknown, insideADeletedRow: boolean): void => {
+  const visit = (value: unknown, structure: TableStructure): void => {
     if (Array.isArray(value)) {
       const last: unknown = value.at(-1);
       const mark = isParagraph(last) ? last["pPrMark"] : undefined;
@@ -739,7 +772,11 @@ export const revisedFinalParagraphMarks = (
       const revisionId = isRecord(info) ? info["id"] : undefined;
       const isOurs =
         typeof revisionId === "number" ? revisionId >= since : true;
-      if (isAParagraphMarkChangeKind(kind) && isOurs && !insideADeletedRow) {
+      if (
+        isAParagraphMarkChangeKind(kind) &&
+        isOurs &&
+        !goesWithTableStructure(structure, kind)
+      ) {
         found.push({
           container: pathOf(),
           paragraphIndex: value.length - 1,
@@ -748,7 +785,7 @@ export const revisedFinalParagraphMarks = (
       }
       for (const [index, item] of value.entries()) {
         trail.push(index);
-        visit(item, insideADeletedRow);
+        visit(item, structure);
         trail.pop();
       }
       return;
@@ -756,7 +793,7 @@ export const revisedFinalParagraphMarks = (
     if (value instanceof Map) {
       for (const [key, item] of value) {
         trail.push(String(key));
-        visit(item, insideADeletedRow);
+        visit(item, structure);
         trail.pop();
       }
       return;
@@ -768,15 +805,15 @@ export const revisedFinalParagraphMarks = (
     ) {
       return;
     }
-    const inADeletedRow = insideADeletedRow || isADeletedTableRow(value);
+    const inStructure = tableStructureOf(value, structure);
     for (const [key, item] of Object.entries(value)) {
       // Sections partition the body; their endpoints are not physical container ends.
       if (key === "sections" && Array.isArray(value["content"])) continue;
       trail.push(key);
-      visit(item, inADeletedRow);
+      visit(item, inStructure);
       trail.pop();
     }
   };
-  visit(packageModel, false);
+  visit(packageModel, "none");
   return found;
 };

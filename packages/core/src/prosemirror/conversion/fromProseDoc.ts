@@ -138,6 +138,7 @@ import type {
   Paragraph,
   ParagraphContent,
   ParagraphFormatting,
+  ParagraphMarkChange,
   ParagraphPropertyChange,
   PreservedInline,
   PreservedMarkup,
@@ -1323,16 +1324,21 @@ function stripSuggestedNodeAttrs(node: PMNode): Record<string, unknown> | null {
     // its break until the suggestion is accepted.
     // The applier stamps the provenance onto the mark's info at run time; the
     // model type of that info does not declare it.
-    const markInfo: unknown = expectParagraphAttrs(node).pPrMark?.info;
-    const suggestedMark =
-      typeof markInfo === "object" &&
-      markInfo !== null &&
-      "provenance" in markInfo &&
-      markInfo.provenance === "suggested";
-    if (!suggestedMark) {
-      return stripped;
+    const mark = expectParagraphAttrs(node).pPrMark;
+    const suggested = (info: unknown) =>
+      typeof info === "object" &&
+      info !== null &&
+      "provenance" in info &&
+      info.provenance === "suggested";
+    if (mark && suggested(mark.info)) {
+      return { ...(stripped ?? node.attrs), pPrMark: null };
     }
-    return { ...(stripped ?? node.attrs), pPrMark: null };
+    // A suggested deletion of an added break goes; the insertion stays.
+    if (mark?.deletion && suggested(mark.deletion.info)) {
+      const { deletion: _suggested, ...added } = mark;
+      return { ...(stripped ?? node.attrs), pPrMark: added };
+    }
+    return stripped;
   }
   if (name === "tableRow") {
     const rowAttrs = expectTableRowAttrs(node);
@@ -2415,7 +2421,7 @@ function convertPMParagraph(
   }
 
   if (attrs.pPrMark) {
-    paragraph.pPrMark = attrs.pPrMark;
+    paragraph.pPrMark = paragraphMarkFromAttrs(attrs.pPrMark);
   }
 
   // The attribute remainder, by reference: `keepOneRecordCarriedByIdentity`
@@ -2433,6 +2439,33 @@ function convertPMParagraph(
   linkParagraphPropertySourceCandidate(paragraph, node);
   return paragraph;
 }
+
+/** A revision's info without the review surface's suggestion provenance. */
+const withoutReviewProvenance = <Info extends object>(info: Info): Info => {
+  const serialized = { ...info };
+  Reflect.deleteProperty(serialized, "provenance");
+  Reflect.deleteProperty(serialized, "suggestionId");
+  return serialized;
+};
+
+/**
+ * A paragraph mark as the model holds it. Suggested records were stripped
+ * before this point; an accepted one's provenance stays on the review surface.
+ */
+const paragraphMarkFromAttrs = (
+  mark: ParagraphMarkChange,
+): ParagraphMarkChange => ({
+  ...mark,
+  info: withoutReviewProvenance(mark.info),
+  ...(mark.deletion === undefined
+    ? {}
+    : {
+        deletion: {
+          ...mark.deletion,
+          info: withoutReviewProvenance(mark.deletion.info),
+        },
+      }),
+});
 
 const propertyChangeFromAttrs = (
   change: ParagraphPropertyChangeAttrs,
@@ -2456,6 +2489,11 @@ const propertyChangeFromAttrs = (
     if (normalizedPrevious[key] == null)
       Reflect.deleteProperty(normalizedPrevious, key);
   }
+  // A recorded marker is its level's template, as the record reads back from
+  // a saved file: the number the counters gave it belongs to where the
+  // paragraph stood when the record was written.
+  if (normalizedPrevious.listMarkerTemplate != null)
+    normalizedPrevious.listMarker = normalizedPrevious.listMarkerTemplate;
   return {
     ...normalizedChangeInfo,
     previousFormatting: {
