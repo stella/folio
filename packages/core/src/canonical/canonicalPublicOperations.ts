@@ -932,6 +932,36 @@ const blockInsertionPlace = (
 ): { at: BlockInsertionPoint; position: number } | undefined => {
   const side = operation.type === "insertAfterBlock" ? "after" : "before";
   const table = findOutermostTableBoundary(projection.doc, paragraph.start - 1);
+  if (table === null && side === "before") {
+    // Put before a paragraph, a block lands before the blocks right before
+    // it that accepting removes whole, at the start of its gap, as the
+    // default engine puts it: accepted, both sides of those blocks are one
+    // place, and a block put after one of them follows this one there.
+    const gap = insertionGap(projection.doc, paragraph.start - 1, "before");
+    if (gap < paragraph.start - 1) {
+      const $gap = projection.doc.resolve(gap);
+      const first = $gap.nodeAfter;
+      const previous = $gap.nodeBefore;
+      const end =
+        previous?.type.name === "paragraph"
+          ? projection.paragraphStartingAt(gap - previous.nodeSize)
+          : undefined;
+      if (end !== undefined)
+        return {
+          at: { type: "after", blockId: end.blockId },
+          position: paragraph.start,
+        };
+      const start =
+        first?.type.name === "paragraph"
+          ? projection.paragraphStartingAt(gap)
+          : undefined;
+      if (start !== undefined)
+        return {
+          at: { type: "before", blockId: start.blockId },
+          position: paragraph.start,
+        };
+    }
+  }
   if (table === null)
     return {
       at: { type: side, blockId: paragraph.blockId },
@@ -4543,26 +4573,25 @@ export class CanonicalPublicOperations {
       return refusal("splitsCharacter");
     // A note reference is not text: a replacement rewrites the prose around
     // the references its range holds, each kept in place, as the shared
-    // segmentation pairs them. A range that cuts a reference, an operation
-    // that does not replace text, and a replacement that drops, moves or
-    // invents a reference are refused.
+    // segmentation pairs them. A comment or formatting covers whole
+    // references as it covers the words beside them, and leaves them in
+    // place. A range that cuts a reference and a replacement that drops,
+    // moves or invents a reference are refused.
     const replacesText =
       operation.type === "replaceInBlock" ||
       operation.type === "replaceRange" ||
       operation.type === "replaceBlock";
     const references = noteReferenceSpansWithin(clean, start, end);
-    if (
-      cutsIntoNoteReference(clean, start, end) ||
-      (references.length > 0 && !replacesText)
-    )
+    if (cutsIntoNoteReference(clean, start, end))
       return refusal("protectedReference");
+    // Only a replacement rewrites the prose between references.
     const segments = segmentsAroundNoteReferences(
       clean.text.slice(start, end),
-      text,
+      replacesText ? text : clean.text.slice(start, end),
       references,
     );
     if (segments === null) return refusal("protectedReference");
-    const prose = segments.replacement.join("");
+    const prose = replacesText ? segments.replacement.join("") : "";
     if (stripInlineEmphasisMarkers(text) !== text)
       return refusal(
         "unsupportedBlock",
