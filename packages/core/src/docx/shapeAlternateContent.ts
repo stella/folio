@@ -8,6 +8,7 @@ import type {
   ShapeContent,
 } from "../types/content";
 import { canonicalJson } from "../utils/canonicalJson";
+import { OOXML_NAMESPACES } from "./serializer/partNamespaces";
 import {
   captureVerbatimXml,
   isSafeCapturedXmlDocument,
@@ -146,9 +147,11 @@ const namespaceDeclarationsFor = (body: XmlElement): Record<string, string> => {
       ...Object.keys(element.attributes ?? {}),
     ]) {
       const prefix = getNamespacePrefix(name);
+      // The writer's own prefixes too: a tracked change carries folio's
+      // review history attributes.
       const uri =
-        prefix !== null && Object.hasOwn(NAMESPACES, prefix)
-          ? NAMESPACES[prefix as keyof typeof NAMESPACES]
+        prefix !== null && Object.hasOwn(OOXML_NAMESPACES, prefix)
+          ? OOXML_NAMESPACES[prefix as keyof typeof OOXML_NAMESPACES].uri
           : undefined;
       if (prefix !== "xmlns" && uri !== undefined) {
         declarations[`xmlns:${prefix}`] = uri;
@@ -217,12 +220,35 @@ const updateAlternateContentText = (
   const prefix = getNamespacePrefix(qualifiedName);
   const declaration = prefix === null ? "xmlns" : `xmlns:${prefix}`;
   const declarations = namespaceDeclarationsFor(drawingBody);
+  // A prefix a consumer may not know is ignorable where it is declared:
+  // the captured element's ancestors in the part do not declare it.
+  const ignorable = Object.keys(declarations)
+    .map((name) => name.slice("xmlns:".length))
+    .filter(
+      (declared) =>
+        Object.hasOwn(OOXML_NAMESPACES, declared) &&
+        OOXML_NAMESPACES[declared as keyof typeof OOXML_NAMESPACES].ignorable,
+    );
   for (const body of [choiceBody, fallbackBody]) {
     body.name = qualifiedName;
+    const stated = body.attributes?.["mc:Ignorable"];
     body.attributes = {
       ...declarations,
       ...body.attributes,
       [declaration]: NAMESPACES.w,
+      ...(ignorable.length === 0
+        ? {}
+        : {
+            "xmlns:mc": NAMESPACES.mc,
+            "mc:Ignorable": [
+              ...new Set([
+                ...(typeof stated === "string" ? stated.split(/\s+/u) : []),
+                ...ignorable,
+              ]),
+            ]
+              .filter((value) => value !== "")
+              .join(" "),
+          }),
     };
     body.elements = drawingBody.elements ?? [];
   }

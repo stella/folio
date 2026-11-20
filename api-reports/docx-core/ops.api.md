@@ -935,6 +935,9 @@ export const locateParagraphInBlockList: (body: DocumentBody, blockId: string) =
 } | undefined;
 
 // @public
+export const locateParagraphThroughTextBoxes: (document: Document_2, story: OpStory, blockId: string) => ReturnType<typeof locateParagraphInBlockList>;
+
+// @public
 export const mapTocBookmarkPosition: (position: TextPosition, ops: readonly DocumentOp[]) => TextPosition;
 
 // @public
@@ -1126,6 +1129,9 @@ export type ParagraphReviewFields = {
     propertyChanges?: ParagraphPropertyChange[];
     pPrMark?: ParagraphMarkChange;
 };
+
+// @public
+export const paragraphsThroughTextBoxes: (document: Document_2, story: OpStory) => ParagraphLocation[];
 
 // @public
 export const paragraphVisibleText: (paragraph: Paragraph) => string;

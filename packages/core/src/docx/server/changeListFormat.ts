@@ -20,7 +20,7 @@ import {
   idKey,
   OP_STORIES,
   type OpStory,
-  storyParagraphs,
+  paragraphsThroughTextBoxes,
 } from "@stll/docx-core/ops";
 
 import { effectiveParagraphNumberingReference } from "../../prosemirror/numberingAttr";
@@ -70,9 +70,7 @@ const referencedNumberingIds = (document: Document): ReadonlySet<number> => {
     }
   };
   for (const story of documentStories(document)) {
-    const body = findStoryBody(document, story);
-    if (body === undefined) continue;
-    for (const { paragraph } of storyParagraphs(body)) {
+    for (const { paragraph } of paragraphsThroughTextBoxes(document, story)) {
       add(paragraph.formatting);
       for (const change of paragraph.propertyChanges ?? [])
         add(change.previousFormatting);
@@ -132,7 +130,8 @@ export const changeListFormat = (
     paragraphIds === undefined ? undefined : new Set(paragraphIds.map(idKey));
   const styles = createStyleResolver(document.package.styles);
   const levels = new Map<string, number>();
-  for (const { paragraph } of storyParagraphs(body)) {
+  // A text box's paragraphs are named through the story drawing it.
+  for (const { paragraph } of paragraphsThroughTextBoxes(document, story)) {
     const { paraId, formatting } = paragraph;
     if (
       requested !== undefined &&
