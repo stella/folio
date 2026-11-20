@@ -3350,16 +3350,17 @@ export class CanonicalPublicOperations {
         resolvedOperation.joinsParagraphBefore === true
           ? deletionIntentsAsItRuns(sourceDocument, story, inserting)
           : inserting;
-      const intents =
+      const joining =
         operation.type === "mergeBlockWithNext" && batch.mode === "direct"
           ? mergeIntentsAsItRuns(sourceDocument, story, deleting)
           : deleting;
-      if (intents === undefined)
+      if (joining === undefined)
         return declined({
           reason: "missingBlock",
           message:
             "No paragraph follows the paragraph to join once the batch's deletions are made.",
         });
+      const intents = joining;
       const livePropertyRefusal = batchPropertyRefusal({
         document: sourceDocument,
         story,
