@@ -8,6 +8,7 @@ import { equalForStaleness, structurallyEqual } from "./equality";
 import {
   countIds,
   countKeys,
+  type IdentityKeyIndex,
   identityKeysIn,
   idKey,
   isParaId,
@@ -112,8 +113,10 @@ export const touchedBetween = (
 export const identitiesOutside = (
   document: Document,
   before: readonly Paragraph[],
+  index: Pick<IdentityKeyIndex, "count"> = packageIdentityKeyIndex(
+    document.package,
+  ),
 ): KeyMembership => {
-  const index = packageIdentityKeyIndex(document.package);
   const inside = countKeys(identityKeysIn(before));
   return { has: (key) => index.count(key) > (inside.get(key) ?? 0) };
 };
@@ -144,20 +147,22 @@ type ParagraphIdCollisionOptions = {
   document: Document;
   incoming: readonly string[];
   removed?: unknown;
+  index?: Pick<IdentityKeyIndex, "count">;
 };
 
 export const paragraphIdsCollide = ({
   document,
   incoming,
   removed,
+  index,
 }: ParagraphIdCollisionOptions): boolean => {
   if (incoming.length === 0) return false;
-  const index = packageParagraphIdIndex(document.package);
+  const occupied = index ?? packageParagraphIdIndex(document.package);
   const removedCounts = countIds(paragraphIdsIn(removed));
   const seen = new Set<string>();
   for (const id of incoming) {
     const key = idKey(id);
-    if (seen.has(key) || index.count(key) > (removedCounts.get(key) ?? 0))
+    if (seen.has(key) || occupied.count(key) > (removedCounts.get(key) ?? 0))
       return true;
     seen.add(key);
   }
@@ -192,12 +197,16 @@ type ValidateBlockReplacementOptions = {
   document: Document;
   op: ReplaceBlocksOp;
   before: readonly Paragraph[];
+  paragraphIds?: Pick<IdentityKeyIndex, "count">;
+  recordIds?: Pick<IdentityKeyIndex, "count">;
 };
 
 export const validateBlockReplacement = ({
   document,
   op,
   before,
+  paragraphIds,
+  recordIds,
 }: ValidateBlockReplacementOptions): Result<void, DocumentOpRefusal> => {
   if (op.blocks.some(({ paraId }) => paraId === undefined)) {
     return Result.err(
@@ -250,6 +259,7 @@ export const validateBlockReplacement = ({
       document,
       incoming: paragraphIdsIn(op.blocks),
       removed: before,
+      ...(paragraphIds === undefined ? {} : { index: paragraphIds }),
     })
   ) {
     return Result.err(
@@ -262,7 +272,7 @@ export const validateBlockReplacement = ({
   }
   const incomingRecords = identityKeysIn(op.blocks);
   if (incomingRecords.length > 0) {
-    const outside = identitiesOutside(document, before);
+    const outside = identitiesOutside(document, before, recordIds);
     if (
       incomingRecords.some((key) => outside.has(key)) ||
       new Set(incomingRecords).size !== incomingRecords.length
