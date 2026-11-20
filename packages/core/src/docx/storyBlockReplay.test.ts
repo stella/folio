@@ -2,6 +2,7 @@ import { expect, spyOn, test } from "bun:test";
 
 import * as docx from "@stll/docx-core";
 import * as xml from "@stll/docx-core/xml";
+import * as xmlLimits from "@stll/docx-core/xml/limits";
 
 import type { BlockContent } from "../types/document";
 import { parseHeader } from "./headerFooterParser";
@@ -520,3 +521,120 @@ test.each([WORD, STRICT_WORD])(
     }
   },
 );
+
+test("compact replay reads shared namespace markup once and still checks raw siblings", () => {
+  const fragments = Array.from(
+    { length: 64 },
+    (_, index) => `<w:p z="${index}"><w:r><w:t>${index}</w:t></w:r></w:p>`,
+  );
+  const parsed = xml.parseStreamingXmlWithSourceRanges(
+    `<w:hdr xmlns:w="${WORD}" xmlns:mc="${COMPAT}" xmlns:x="urn:example" mc:Ignorable="x">${fragments.join("")}</w:hdr>`,
+  );
+  if (parsed.status !== "parsed")
+    throw new Error("Expected generated siblings");
+  const generatedRoot = getChildElements(parsed.value).at(0);
+  if (!generatedRoot) throw new Error("Expected story root");
+  const children = getChildElements(generatedRoot);
+  const validation = createReplayFragmentValidation();
+  const compact = spyOn(capture, "isSafeCompactReplayFragment");
+  const full = spyOn(capture, "isSafeCapturedXmlDocument");
+  const reader = spyOn(xml, "readXml");
+  try {
+    for (const [index, fragment] of fragments.entries()) {
+      const element = children[index];
+      if (!element) throw new Error("Expected generated child");
+      expect(
+        materializeReplayFragment({
+          xml: fragment,
+          element,
+          sourceNamespace: WORD,
+          generatedRoot,
+          validation,
+        }),
+      ).toBe(
+        fragment.replace(
+          ` z="${index}">`,
+          ` z="${index}" mc:Ignorable="x" xmlns:w="${WORD}" xmlns:mc="${COMPAT}" xmlns:x="urn:example">`,
+        ),
+      );
+    }
+    expect(compact).toHaveBeenCalledTimes(fragments.length);
+    expect(full).toHaveBeenCalledTimes(0);
+    expect(reader).toHaveBeenCalledTimes(fragments.length + 1);
+    const reads = reader.mock.calls.map(([raw]) => raw);
+    expect(reads.at(0)).toContain(' xmlns:x="urn:example"');
+    expect(reads.slice(1)).toEqual(fragments);
+
+    const element = children.at(0);
+    if (!element) throw new Error("Expected generated child");
+    for (const [raw, accepted] of [
+      ["<w:p><w:r></w:p>", false],
+      ["<w:p><no:unbound/></w:p>", false],
+      ["<w:p><w:bad:name/></w:p>", false],
+      ['<w:p xmlns:other="urn:other"><other:p/></w:p>', true],
+      [`<w:p xmlns:w="${WORD}"/>`, false],
+      ['<w:p mc:Ignorable="x"/>', false],
+      ["<w:p>&amp;</w:p>", true],
+      ["<w:p><?named harmless?></w:p>", true],
+      ["<w:p>".repeat(100) + "</w:p>".repeat(100), false],
+    ] as const) {
+      const options = {
+        xml: raw,
+        element,
+        sourceNamespace: WORD,
+        generatedRoot,
+      };
+      const expected = materializeReplayFragment(options);
+      expect(expected !== null).toBe(accepted);
+      const before = full.mock.calls.length;
+      expect(materializeReplayFragment({ ...options, validation })).toBe(
+        expected,
+      );
+      expect(full.mock.calls.length - before).toBe(1);
+    }
+  } finally {
+    reader.mockRestore();
+    full.mockRestore();
+    compact.mockRestore();
+  }
+});
+
+test("compact proof charges suffix UTF-8 bytes and its validated attribute count", () => {
+  const namespace = ` xmlns:w="${WORD}" xmlns:other="urn:é"`;
+  const suffix = capture.prepareCompactReplaySuffix(namespace);
+  if (suffix === undefined) throw new Error("Expected prepared replay suffix");
+  const raw = '<w:p data="é"/>';
+  const options = { xml: raw, suffix };
+  const scanner = xmlLimits.assertXmlResourceLimits;
+  const resources = spyOn(xmlLimits, "assertXmlResourceLimits");
+  try {
+    expect(capture.isSafeCompactReplayFragment(options)).toBe(true);
+    expect(resources.mock.calls).toEqual([
+      [
+        {
+          xml: raw,
+          limits: {
+            ...xmlLimits.FOLIO_XML_RESOURCE_LIMITS,
+            maxBytes:
+              xmlLimits.FOLIO_XML_RESOURCE_LIMITS.maxBytes -
+              new TextEncoder().encode(namespace).length,
+            maxAttributesPerPart:
+              xmlLimits.FOLIO_XML_RESOURCE_LIMITS.maxAttributesPerPart - 2,
+          },
+        },
+      ],
+    ]);
+    resources.mockImplementation((input) =>
+      scanner({
+        ...input,
+        limits: {
+          ...xmlLimits.FOLIO_XML_RESOURCE_LIMITS,
+          maxAttributesPerPart: 0,
+        },
+      }),
+    );
+    expect(capture.isSafeCompactReplayFragment(options)).toBe(false);
+  } finally {
+    resources.mockRestore();
+  }
+});

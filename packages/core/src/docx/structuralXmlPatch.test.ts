@@ -94,6 +94,7 @@ test("canonical replay and structural patch validate an identical fragment once"
     });
   };
   const validate = spyOn(verbatimCapture, "isSafeCapturedXmlDocument");
+  const compact = spyOn(verbatimCapture, "isSafeCompactReplayFragment");
   try {
     const before = run(undefined);
     expect(before.type).toBe("patched");
@@ -104,13 +105,15 @@ test("canonical replay and structural patch validate an identical fragment once"
     validate.mockClear();
     const validation = createReplayFragmentValidation();
     expect(run(validation)).toEqual(before);
-    expect(validate).toHaveBeenCalledTimes(1);
+    expect(validate).toHaveBeenCalledTimes(0);
+    expect(compact).toHaveBeenCalledTimes(1);
     validate.mockClear();
     const forged = { ...validation, isSafe: mock(() => true) };
     expect(run(forged)).toEqual(before);
     expect(validate).toHaveBeenCalledTimes(2);
     expect(forged.isSafe).toHaveBeenCalledTimes(0);
   } finally {
+    compact.mockRestore();
     validate.mockRestore();
   }
 });

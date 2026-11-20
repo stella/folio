@@ -583,6 +583,128 @@ const hasBoundNamespaces = (root: XmlElement): boolean => {
   return true;
 };
 
+type ReplayResourceLimits = NonNullable<
+  Parameters<typeof assertXmlResourceLimits>[0]["limits"]
+>;
+
+type ReadCompactReplayRootOptions = {
+  xml: string;
+  limits?: ReplayResourceLimits;
+  inheritedNamespaceScope?: XmlNamespaceScope;
+};
+const readCompactReplayRoot = ({
+  xml,
+  limits,
+  inheritedNamespaceScope,
+}: ReadCompactReplayRootOptions) => {
+  try {
+    const resources = assertXmlResourceLimits({
+      xml,
+      ...(limits === undefined ? {} : { limits }),
+    });
+    if (getDocxXmlLexicalIssue(xml) !== null) return undefined;
+    const parsed = readXml(xml, {
+      conformance: "well-formed",
+      ...(inheritedNamespaceScope === undefined
+        ? {}
+        : { inheritedNamespaceScope }),
+    });
+    if (parsed.status !== "parsed") return undefined;
+    const root = getChildElements(parsed.value).at(0);
+    return root === undefined ? undefined : { root, resources };
+  } catch {
+    return undefined;
+  }
+};
+
+const isNamespaceAttribute = (name: string): boolean =>
+  name === "xmlns" || name.startsWith("xmlns:");
+
+export const hasReplayOpeningDeclarations = ({
+  attributes,
+}: XmlElement): boolean =>
+  attributes !== undefined &&
+  Object.keys(attributes).some(
+    (name) => isNamespaceAttribute(name) || getLocalName(name) === "Ignorable",
+  );
+
+const compactSuffixToken = Symbol("compact-replay-suffix");
+type CompactReplaySuffix = {
+  readonly [compactSuffixToken]: true;
+  readonly serialized: string;
+  readonly inherited: XmlNamespaceScope;
+  readonly limits: Readonly<ReplayResourceLimits>;
+};
+
+/** Prepare the exact namespace and compatibility attributes the replay writer adds. */
+export const prepareCompactReplaySuffix = (
+  suffix: string,
+): CompactReplaySuffix | undefined => {
+  if (
+    !suffix.startsWith(" ") ||
+    suffix.includes("<") ||
+    suffix.includes(">") ||
+    suffix.includes("&")
+  )
+    return undefined;
+  const envelope = `<folio-replay-suffix${suffix}/>`;
+  const checked = readCompactReplayRoot({ xml: envelope });
+  if (checked === undefined || checked.resources.elements !== 1)
+    return undefined;
+  const { root, resources } = checked;
+  if (root.namespaceScope === undefined || !hasBoundNamespaces(root))
+    return undefined;
+  const compatibility = Object.keys(root.attributes ?? {}).filter(
+    (name) => !isNamespaceAttribute(name),
+  );
+  const ignorable = compatibility.at(0);
+  if (
+    compatibility.length > 1 ||
+    (ignorable !== undefined &&
+      (getLocalName(ignorable) !== "Ignorable" ||
+        resolveAttributeNamespaceUri(root, ignorable) !== NAMESPACES.mc))
+  )
+    return undefined;
+  return Object.freeze({
+    [compactSuffixToken]: true as const,
+    serialized: suffix,
+    inherited: root.namespaceScope,
+    limits: Object.freeze({
+      ...FOLIO_XML_RESOURCE_LIMITS,
+      maxBytes:
+        FOLIO_XML_RESOURCE_LIMITS.maxBytes -
+        new TextEncoder().encode(suffix).length,
+      maxAttributesPerPart:
+        FOLIO_XML_RESOURCE_LIMITS.maxAttributesPerPart - resources.attributes,
+    }),
+  });
+};
+
+type CheckCompactReplayFragmentOptions = {
+  xml: string;
+  suffix: CompactReplaySuffix;
+};
+
+/** Prove that the compact tree has the same bounds and namespace meaning after binding. */
+export const isSafeCompactReplayFragment = ({
+  xml,
+  suffix,
+}: CheckCompactReplayFragmentOptions): boolean => {
+  if (!xml.startsWith("<") || xml.includes("&") || xml.includes("<?"))
+    return false;
+  const checked = readCompactReplayRoot({
+    xml,
+    limits: suffix.limits,
+    inheritedNamespaceScope: suffix.inherited,
+  });
+  if (checked === undefined) return false;
+  return (
+    checked.resources.maxDepth < FOLIO_XML_RESOURCE_LIMITS.maxDepth &&
+    !hasReplayOpeningDeclarations(checked.root) &&
+    hasBoundNamespaces(checked.root)
+  );
+};
+
 const parsedReplayEnvelope = (
   xml: string,
   inheritedNamespaceScope: XmlNamespaceScope,
