@@ -358,7 +358,7 @@ export type FolioDocxReviewerOptions = {
   /** Password for Agile-encrypted .docx files (Office 2010+). */
   password?: string | undefined;
   /**
-   * The engine the document is held in. (default: `"legacy"`)
+   * The engine the document is held in. (default: `"canonical"`)
    *
    * `"canonical"` loads the document into the canonical session the editors'
    * canonical mode runs. Every read comes from it, and operations in every
