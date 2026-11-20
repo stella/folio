@@ -1339,9 +1339,9 @@ const deletionIntentsAsItRuns = (
   story: OpStory,
   intents: readonly EditorIntent[],
 ): readonly EditorIntent[] => {
-  const body = findStoryBody(document, story);
-  if (body === undefined) return intents;
-  const locations = storyParagraphs(body);
+  if (findStoryBody(document, story) === undefined) return intents;
+  // A text box's paragraphs are named through the story drawing it.
+  const locations = paragraphsThroughTextBoxes(document, story);
   return intents.map((intent) => {
     if (intent.type !== "joinParagraphs") return intent;
     const key = idKey(intent.nextBlockId);
