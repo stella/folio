@@ -59,3 +59,57 @@ test("a deletion of the last paragraph joins a paragraph the batch inserts befor
   expect(blocks.map(({ id }) => id)).not.toContain(identity.retiredBlockId);
   expect(identity.retiredBlockId).not.toBe(middle.id);
 });
+
+// Tracked, the deletion retires the break before it: the break of the
+// paragraph the batch inserted first, as when the two run one at a time.
+test.each(["tracked-changes", "suggested"] as const)(
+  "a %s deletion of the last paragraph retires the break of a paragraph the batch inserts before it",
+  async (mode) => {
+    const open = async () =>
+      FolioDocxReviewer.fromBuffer(
+        await createDocx(
+          fromMarkdown("Opening words.\n\nMiddle words.\n\nClosing words."),
+        ),
+        { author: "Editor", session: "canonical" },
+      );
+    const run = async (batches: "together" | "apart") => {
+      const reviewer = await open();
+      const [, middle, closing] = reviewer.snapshot().blocks;
+      if (middle === undefined || closing === undefined)
+        throw new Error("The fixture has three paragraphs.");
+      const operations = [
+        {
+          id: "insert",
+          type: "insertAfterBlock",
+          blockId: middle.id,
+          text: "Added words.",
+        },
+        { id: "delete", type: "deleteBlock", blockId: closing.id },
+      ] as const;
+      for (const batch of batches === "together"
+        ? [operations]
+        : operations.map((operation) => [operation])) {
+        const result = reviewer.applyDocumentOperations(
+          {
+            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+            mode,
+            operations: [...batch],
+          },
+          { undefinedReferences: "refuse" },
+        );
+        expect(result.skipped).toEqual([]);
+      }
+      return {
+        texts: reviewer.snapshot().blocks.map(({ text }) => text),
+        changes: reviewer.getChanges().map(({ type, text }) => [type, text]),
+      };
+    };
+    const apart = await run("apart");
+    expect(await run("together")).toEqual(apart);
+    expect(apart.texts).toEqual([
+      "Opening words.",
+      "Middle words.",
+      "Added words.",
+    ]);
+  },
+);

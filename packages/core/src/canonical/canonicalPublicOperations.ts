@@ -665,6 +665,13 @@ type PreparedOperation = {
    */
   joinsParagraphBefore?: true;
   /**
+   * A tracked deletion of a paragraph no paragraph follows, which retires
+   * the break before it: the break of the paragraph before it when the
+   * deletion runs, which an insertion the batch order runs first may have
+   * put there.
+   */
+  retiresBreakBefore?: true;
+  /**
    * The paragraph whose stated properties a block insertion copies, and the
    * paragraphs it inserts from a given copy. The batch runs in its execution
    * order, so the copy is read when the insertion runs: an edit of that
@@ -1304,6 +1311,49 @@ const resolveBlockInsertion = ({
       inserted: true as const,
     },
     ...resolved,
+  });
+};
+
+/**
+ * A tracked deletion of the paragraph that ends its block list, retiring the
+ * break of the paragraph before it in `document`, the batch as it stands
+ * when the deletion runs: an insertion the order ran first, right before the
+ * deleted paragraph, is the paragraph whose break it retires, as deleting it
+ * after that insertion does.
+ */
+const retiredBreakAsItRuns = (
+  document: Document,
+  story: OpStory,
+  intents: readonly EditorIntent[],
+): readonly EditorIntent[] => {
+  const body = findStoryBody(document, story);
+  if (body === undefined) return intents;
+  const locations = storyParagraphs(body);
+  return intents.map((intent) => {
+    if (intent.type !== "replaceText") return intent;
+    const key = idKey(intent.to.blockId);
+    const at = locations.findIndex(
+      ({ paragraph }) => idKey(paragraph.paraId ?? "") === key,
+    );
+    const here = locations[at];
+    const before = locations[at - 1];
+    if (
+      here === undefined ||
+      before === undefined ||
+      before.index + 1 !== here.index ||
+      JSON.stringify(before.list) !== JSON.stringify(here.list) ||
+      before.paragraph.paraId === undefined ||
+      idKey(before.paragraph.paraId) === idKey(intent.from.blockId)
+    )
+      return intent;
+    return {
+      ...intent,
+      from: {
+        story: intent.from.story,
+        blockId: before.paragraph.paraId,
+        offset: paragraphLength(before.paragraph),
+      },
+    };
   });
 };
 
@@ -3276,10 +3326,11 @@ export class CanonicalPublicOperations {
         story,
         resolvedOperation,
       });
-      const intents =
-        resolvedOperation.joinsParagraphBefore === true
-          ? deletionIntentsAsItRuns(sourceDocument, story, inserting)
-          : inserting;
+      let intents = inserting;
+      if (resolvedOperation.joinsParagraphBefore === true)
+        intents = deletionIntentsAsItRuns(sourceDocument, story, inserting);
+      if (resolvedOperation.retiresBreakBefore === true)
+        intents = retiredBreakAsItRuns(sourceDocument, story, inserting);
       const livePropertyRefusal = batchPropertyRefusal({
         document: sourceDocument,
         story,
@@ -4307,6 +4358,24 @@ export class CanonicalPublicOperations {
         from: previous.start + previous.node.content.size,
         to: end,
       };
+      // A paragraph the batch puts right after the one before it is the one
+      // whose break this deletion retires: claimed from the start of the
+      // paragraph before, the deletion runs after that insertion, as the
+      // direct deletion's join does.
+      if (previousGainsFollower) {
+        const from = projection.addressAt(range.from);
+        const to = projection.addressAt(end);
+        if (from.isErr() || to.isErr()) return refusal("unsupportedBlock");
+        return tracking({
+          intents: [
+            { type: "replaceText", from: from.value, to: to.value, text: "" },
+          ],
+          normalizations: [],
+          from: previous.start,
+          to: end,
+          retiresBreakBefore: true,
+        });
+      }
     }
     // After a table, or as the only paragraph of its container, the
     // paragraph ends its block list for good: it keeps its mark and loses its
