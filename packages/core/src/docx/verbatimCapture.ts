@@ -22,7 +22,11 @@ const UntranslatableStrictNamespaceErrorBase: TaggedErrorClass<"UntranslatableSt
 import { panic, TaggedError, type TaggedErrorClass } from "better-result";
 
 import { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
-import { assertXmlResourceLimits } from "@stll/docx-core/xml/limits";
+import { readXml } from "@stll/docx-core/xml";
+import {
+  assertXmlResourceLimits,
+  FOLIO_XML_RESOURCE_LIMITS,
+} from "@stll/docx-core/xml/limits";
 
 import type { DocxConformanceClass } from "../types/document";
 import {
@@ -53,7 +57,7 @@ import {
   type XmlElement,
   type XmlNamespaceScope,
 } from "./xmlParser";
-import { getDocxXmlSafetyIssue } from "./xmlSafety";
+import { getDocxXmlLexicalIssue, getDocxXmlSafetyIssue } from "./xmlSafety";
 
 /** A Strict fragment uses a namespace that has no Transitional counterpart. */
 export class UntranslatableStrictNamespaceError extends UntranslatableStrictNamespaceErrorBase<{
@@ -611,12 +615,11 @@ const parsedReplayEnvelope = (
   return root;
 };
 
-const withinXmlResourceLimits = (xml: string): boolean => {
+const xmlResourceCounts = (xml: string) => {
   try {
-    assertXmlResourceLimits({ xml });
-    return true;
+    return assertXmlResourceLimits({ xml });
   } catch {
-    return false;
+    return undefined;
   }
 };
 
@@ -625,13 +628,26 @@ const EMPTY_NAMESPACE_SCOPE: XmlNamespaceScope = { bindings: new Map() };
 /** Validate a complete XML part immediately before package output. */
 export const isSafeCapturedXmlDocument = (xml: string): boolean => {
   const trimmed = xml.trim();
-  if (
-    trimmed === "" ||
-    !withinXmlResourceLimits(xml) ||
-    getDocxXmlSafetyIssue(xml) !== null
-  ) {
-    return false;
+  if (trimmed === "") return false;
+  const resources = xmlResourceCounts(xml);
+  if (resources === undefined) return false;
+  // The replay envelope occupies one level in the existing reader. An
+  // entity-free element can supply both the syntax verdict and the same
+  // decoded namespace tree in a single read.
+  if (xml.startsWith("<") && !xml.includes("&") && !xml.includes("<?")) {
+    if (
+      resources.maxDepth >= FOLIO_XML_RESOURCE_LIMITS.maxDepth ||
+      getDocxXmlLexicalIssue(xml) !== null
+    )
+      return false;
+    const parsed = readXml(xml, { conformance: "well-formed" });
+    const root =
+      parsed.status === "parsed"
+        ? getChildElements(parsed.value).at(0)
+        : undefined;
+    return root !== undefined && hasBoundNamespaces(root);
   }
+  if (getDocxXmlSafetyIssue(xml) !== null) return false;
   const root = parsedReplayEnvelope(trimmed, EMPTY_NAMESPACE_SCOPE);
   return root !== null && hasBoundNamespaces(root);
 };
@@ -713,7 +729,10 @@ const sanitizeCapturedXmlElement = (
   if (!trimmed) {
     return null;
   }
-  if (!withinXmlResourceLimits(xml) || getDocxXmlSafetyIssue(xml) !== null) {
+  if (
+    xmlResourceCounts(xml) === undefined ||
+    getDocxXmlSafetyIssue(xml) !== null
+  ) {
     return null;
   }
 

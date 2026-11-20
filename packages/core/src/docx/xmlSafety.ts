@@ -279,7 +279,7 @@ const hasInvalidXmlLexicalForm = (xml: string): boolean => {
   return false;
 };
 
-export const getDocxXmlSafetyIssue = (
+export const getDocxXmlLexicalIssue = (
   xml: string,
 ): DocxXmlSafetyIssue | null => {
   if (DOCTYPE_PATTERN.test(xml)) {
@@ -291,5 +291,9 @@ export const getDocxXmlSafetyIssue = (
   if (hasInvalidXmlLexicalForm(xml)) {
     return "not-well-formed";
   }
-  return wellFormedXmlIssue(xml) === null ? null : "not-well-formed";
+  return null;
 };
+
+export const getDocxXmlSafetyIssue = (xml: string): DocxXmlSafetyIssue | null =>
+  getDocxXmlLexicalIssue(xml) ??
+  (wellFormedXmlIssue(xml) === null ? null : "not-well-formed");
