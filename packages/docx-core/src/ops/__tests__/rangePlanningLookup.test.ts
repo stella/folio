@@ -8,8 +8,10 @@ import type {
 } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import * as blocks from "../blocks";
+import { validateOpsDocument } from "../contract";
 import { formatParaId } from "../idLease";
 import { paragraphLogicalText } from "../offsets";
+import { planTrackedDeletion, selectedParagraphRuns } from "../plan";
 import {
   planTrackedReplace,
   type PlanTrackedReplaceOptions,
@@ -163,4 +165,125 @@ test("same-paragraph endpoint and offset refusals preserve their order", () => {
   expect(outOfRange.isErr() && outOfRange.error.reason).toBe(
     DOCUMENT_OP_REFUSAL_REASONS.INVALID_OFFSET,
   );
+});
+
+test.each([64, 256])(
+  "tracked deletion locates adjacent paragraphs in a %i-paragraph story",
+  (width) => {
+    const document: Document = {
+      package: {
+        document: {
+          content: Array.from({ length: width }, (_, i) =>
+            paragraph(i + 1, [run("text")]),
+          ),
+        },
+      },
+    };
+    validateOpsDocument(document).unwrap();
+    const options = {
+      from: {
+        story: OP_STORIES.MAIN,
+        blockId: formatParaId(width - 2),
+        offset: 2,
+      },
+      to: { story: OP_STORIES.MAIN, blockId: formatParaId(width), offset: 1 },
+      revision: { id: 1000, author: "Author", date: "2026-01-11T00:00:00Z" },
+      newIds: { revision: [1001, 1002, 1003, 1004, 1005] },
+    };
+    const walks = spyOn(blocks, "storyParagraphs");
+    try {
+      const runs = selectedParagraphRuns(
+        document,
+        options.from,
+        options.to,
+      ).unwrap();
+      expect(runs.map((group) => group.map(({ index }) => index))).toEqual([
+        [width - 3, width - 2, width - 1],
+      ]);
+      expect(
+        walks.mock.calls.filter(([body]) => body.content.length === width),
+      ).toHaveLength(0);
+      const ops = planTrackedDeletion(document, options).unwrap();
+      expect(
+        walks.mock.calls.filter(([body]) => body.content.length >= width - 2),
+      ).toHaveLength(0);
+      const applied = applyDocumentOps(document, ops).unwrap();
+      expect(
+        applyDocumentOps(applied.document, applied.inverse).unwrap().document,
+      ).toEqual(document);
+    } finally {
+      walks.mockRestore();
+    }
+  },
+);
+
+test("ranges with unnamed endpoints or nested blocks preserve their story-order walk", () => {
+  const unnamed: Paragraph = { type: "paragraph", content: [] };
+  const inside = paragraph(2, [run("cell")]);
+  const last = paragraph(3, [run("last")]);
+  const first = paragraph(1, [run("first")]);
+  const document: Document = {
+    package: {
+      document: {
+        content: [
+          unnamed,
+          first,
+          {
+            type: "table",
+            rows: [
+              {
+                type: "tableRow",
+                cells: [{ type: "tableCell", content: [inside] }],
+              },
+            ],
+          },
+          last,
+        ],
+      },
+    },
+  };
+  const at = (blockId: string) => ({
+    story: OP_STORIES.MAIN,
+    blockId,
+    offset: 0,
+  });
+  const walks = spyOn(blocks, "storyParagraphs");
+  try {
+    for (const [left, right, expected] of [
+      ["", formatParaId(1), [[unnamed, first]]],
+      [formatParaId(1), formatParaId(3), [[first], [inside], [last]]],
+      [formatParaId(2), formatParaId(3), [[inside], [last]]],
+    ] as const) {
+      walks.mockClear();
+      const groups = selectedParagraphRuns(
+        document,
+        at(left),
+        at(right),
+      ).unwrap();
+      expect(
+        groups.map((group) => group.map((location) => location.paragraph)),
+      ).toEqual(expected);
+      expect(
+        walks.mock.calls.filter(
+          ([body]) => body.content === document.package.document.content,
+        ),
+      ).toHaveLength(1);
+    }
+    walks.mockClear();
+    const reversed = selectedParagraphRuns(
+      document,
+      at(formatParaId(3)),
+      at(formatParaId(1)),
+    );
+    expect(reversed.isErr() && reversed.error.reason).toBe(
+      DOCUMENT_OP_REFUSAL_REASONS.NOT_ADJACENT,
+    );
+    expect(
+      walks.mock.calls.filter(
+        ([body]) => body.content === document.package.document.content,
+      ),
+    ).toHaveLength(0);
+  } finally {
+    walks.mockRestore();
+  }
 });
