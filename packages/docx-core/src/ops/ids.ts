@@ -15,6 +15,9 @@
 import type { DocxPackage } from "../model/document";
 import { structurallyEqual } from "./equality";
 
+const isObjectValue = (value: unknown): value is object =>
+  typeof value === "object" && value !== null;
+
 const isPlainRecord = (value: object): boolean => {
   const prototype: unknown = Object.getPrototypeOf(value);
   return prototype === Object.prototype || prototype === null;
@@ -53,8 +56,10 @@ const walk = ({
   const type = fieldOf(entries, "type");
   const ownerType = typeof type === "string" ? type : undefined;
   const table = type === "table" ? value : context.table;
-  for (const [heldBy, field] of entries)
-    walk({ value: field, visit, context: { heldBy, ownerType, table } });
+  for (const [heldBy, field] of entries) {
+    if (isObjectValue(field))
+      walk({ value: field, visit, context: { heldBy, ownerType, table } });
+  }
 };
 
 /** The package's stories, each once: the body without its derived section view. */
@@ -279,6 +284,7 @@ const controlIdOf = (
 const NO_KEYS: readonly string[] = Object.freeze([]);
 
 type Census = { keys: readonly string[]; shareable: boolean };
+const EMPTY_CENSUS: Census = Object.freeze({ keys: NO_KEYS, shareable: true });
 type CensusContext = VisitContext & {
   stacked: Map<object | undefined, Map<number, Record<string, unknown>[]>>;
 };
@@ -291,10 +297,9 @@ const contextKey = ({ heldBy, ownerType }: VisitContext): string =>
   `${heldBy ?? ""}\u0000${ownerType ?? ""}`;
 
 const joined = (parts: readonly (readonly string[])[]): readonly string[] => {
-  const filled = parts.filter((part) => part.length > 0);
-  if (filled.length === 0) return NO_KEYS;
-  if (filled.length === 1) return filled[0] ?? NO_KEYS;
-  return filled.flat();
+  if (parts.length === 0) return NO_KEYS;
+  if (parts.length === 1) return parts[0] ?? NO_KEYS;
+  return parts.flat();
 };
 
 type CensusOf = (value: unknown, context: CensusContext) => Census;
@@ -309,8 +314,12 @@ const censusWalker = (
   sharing: "shared" | "full",
 ): CensusOf => {
   const known = new WeakMap<object, Map<string, readonly string[]>>();
-  const remembered = (value: object, key: string, census: Census): Census => {
-    if (!census.shareable || sharing === "full") return census;
+  const remembered = (
+    value: object,
+    key: string | undefined,
+    census: Census,
+  ): Census => {
+    if (key === undefined || !census.shareable) return census;
     const keys =
       census.keys.length === 0 ? NO_KEYS : Object.freeze([...census.keys]);
     let byContext = known.get(value);
@@ -322,31 +331,35 @@ const censusWalker = (
     return { keys, shareable: true };
   };
   const censusOf: CensusOf = (value, context) => {
-    if (typeof value !== "object" || value === null)
-      return { keys: NO_KEYS, shareable: true };
+    if (!isObjectValue(value)) return EMPTY_CENSUS;
     const isList = Array.isArray(value) || value instanceof Map;
-    if (!isList && !isPlainRecord(value))
-      return { keys: NO_KEYS, shareable: true };
-    const key = contextKey(context);
-    const cached = known.get(value)?.get(key);
+    if (!isList && !isPlainRecord(value)) return EMPTY_CENSUS;
+    const key = sharing === "full" ? undefined : contextKey(context);
+    const cached = key === undefined ? undefined : known.get(value)?.get(key);
     if (cached !== undefined) return { keys: cached, shareable: true };
+    let shareable = true;
+    const parts: (readonly string[])[] = [];
     if (isList) {
-      const items = Array.isArray(value) ? value : [...value.values()];
-      const parts = items.map((item) => censusOf(item, context));
-      return remembered(value, key, {
-        keys: joined(parts.map((part) => part.keys)),
-        shareable: parts.every((part) => part.shareable),
-      });
-    }
-    const entries = Object.entries(value);
-    const own = ownKeys(entries, context);
-    let shareable = own.shareable;
-    const parts: (readonly string[])[] = [own.keys];
-    const inner = innerContext(entries, value, context);
-    for (const [heldBy, child] of entries) {
-      const census = censusOf(child, { ...inner, heldBy });
-      parts.push(census.keys);
-      if (!census.shareable) shareable = false;
+      const items = Array.isArray(value) ? value : value.values();
+      for (const item of items) {
+        if (!isObjectValue(item)) continue;
+        const census = censusOf(item, context);
+        if (census.keys.length > 0) parts.push(census.keys);
+        if (!census.shareable) shareable = false;
+      }
+    } else {
+      const entries = Object.entries(value);
+      const own = ownKeys(entries, context);
+      shareable = own.shareable;
+      if (own.keys.length > 0) parts.push(own.keys);
+      let inner: ReturnType<typeof innerContext> | undefined;
+      for (const [heldBy, child] of entries) {
+        if (!isObjectValue(child)) continue;
+        inner ??= innerContext(fieldOf(entries, "type"), value, context);
+        const census = censusOf(child, { ...inner, heldBy });
+        if (census.keys.length > 0) parts.push(census.keys);
+        if (!census.shareable) shareable = false;
+      }
     }
     return remembered(value, key, { keys: joined(parts), shareable });
   };
@@ -355,11 +368,10 @@ const censusWalker = (
 
 /** The context a record's fields are walked in, but for the field's own name. */
 const innerContext = (
-  entries: readonly [string, unknown][],
+  type: unknown,
   record: object,
   context: CensusContext,
 ): Omit<CensusContext, "heldBy"> => {
-  const type = fieldOf(entries, "type");
   return {
     ownerType: typeof type === "string" ? type : undefined,
     table: type === "table" ? record : context.table,
@@ -674,21 +686,34 @@ const censusChange = (
     const afterEntries = Object.entries(after);
     // A record's type is its fields' owner type: when it changes, every
     // field counts in another context.
-    if (fieldOf(beforeEntries, "type") !== fieldOf(afterEntries, "type"))
+    const type = fieldOf(afterEntries, "type");
+    if (fieldOf(beforeEntries, "type") !== type)
       return replaced(before, after, context, changes);
     tally(changes, ownKeys(beforeEntries, context).keys, -1);
     const own = ownKeys(afterEntries, context);
     if (!own.shareable) return false;
     tally(changes, own.keys, 1);
-    const inner = innerContext(afterEntries, after, context);
-    const beforeFields = new Map(beforeEntries);
+
+    // Only object-valued fields can contribute keys below this record.
+    let beforeFields: Map<string, object> | undefined;
+    for (const [heldBy, value] of beforeEntries) {
+      if (!isObjectValue(value)) continue;
+      beforeFields ??= new Map();
+      beforeFields.set(heldBy, value);
+    }
+    let inner: ReturnType<typeof innerContext> | undefined;
     for (const [heldBy, value] of afterEntries) {
-      const was = beforeFields.get(heldBy);
-      beforeFields.delete(heldBy);
+      const was = beforeFields?.get(heldBy);
+      if (was !== undefined) beforeFields?.delete(heldBy);
+      if (was === value || (was === undefined && !isObjectValue(value)))
+        continue;
+      inner ??= innerContext(type, after, context);
       if (!change(was, value, { ...inner, heldBy }, changes)) return false;
     }
-    for (const [heldBy, was] of beforeFields)
+    for (const [heldBy, was] of beforeFields ?? []) {
+      inner ??= innerContext(type, after, context);
       replaced(was, undefined, { ...inner, heldBy }, changes);
+    }
     return true;
   };
   const change = (
