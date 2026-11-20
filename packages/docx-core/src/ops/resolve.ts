@@ -60,6 +60,7 @@ import {
   slotKey,
 } from "./ids";
 import { joinParagraphSeam } from "./inline";
+import { settleKeptCuts, withKeptCuts, withoutKeptCuts } from "./keptCut";
 import { type KeptAtSeam, seamHandsOver, withJoinAtLeast } from "./keptJoins";
 import {
   alikeDepth,
@@ -1255,7 +1256,7 @@ const placeAcceptedSeamKept = (
   const records = placed?.records;
   if (placed === undefined || records === undefined) return false;
   const start = placed.index;
-  const boundaries = out.slice(start, start + records);
+  const boundaries = out.slice(start, start + records).map(withoutKeptCuts);
   // A piece still held in a pending removal, or content made after the
   // revision they were kept from, is no piece that takes them.
   const takes = (node: InlineNode | undefined): node is InlineNode =>
@@ -1991,7 +1992,7 @@ const resolveList = ({
         piece === "after" ? out.length - inside : first,
         piece === "after" ? out.length : first + inside,
       )
-      .map(({ node }) => node);
+      .map(({ node }) => withoutKeptCuts(node));
     if (piece === "after") {
       const next = pending.at(index + 1);
       if (next === undefined || !standsInside(next)) return;
@@ -3364,7 +3365,7 @@ const resolveList = ({
     if (kept !== undefined) {
       const boundaries = out
         .slice(seam - kept.count, seam)
-        .map(({ node }) => node);
+        .map(({ node }) => withoutKeptCuts(node));
       const beforeOccurrence = out[seam - kept.count - 1];
       const afterOccurrence = out[seam];
       const before = beforeOccurrence?.node;
@@ -3511,14 +3512,34 @@ const resolveList = ({
         );
         seam -= kept.count;
         standingKept = 0;
-      } else if (
-        holdSeamOnKeptRemovals({
-          seam,
-          count: kept.count,
-          depth: exactSeams.get(recorded) ?? kept.depth,
-        })
-      )
-        continue;
+      } else {
+        const depth = exactSeams.get(recorded) ?? kept.depth;
+        // No piece takes them while a pending change stands at the seam:
+        // each records the cut it stands in, to meet the pieces later.
+        const pendingAt = (node: InlineNode | undefined): boolean =>
+          node !== undefined &&
+          isTrackedWrapper(node) &&
+          !resolution.ids.has(node.info.id);
+        const waiting = [
+          out[seam - kept.count - 1]?.node,
+          out[seam]?.node,
+          ...out.slice(seam - kept.count, seam).map(({ node }) => node),
+        ].some(pendingAt);
+        if (waiting && kept.keptFrom !== undefined && depth > 0)
+          for (let index = seam - kept.count; index < seam; index += 1) {
+            const occurrence = out[index];
+            if (occurrence === undefined) continue;
+            const marked = withKeptCuts(occurrence.node, {
+              depth,
+              keptFrom: kept.keptFrom,
+            });
+            if (marked === occurrence.node) continue;
+            out[index] = occurrenceOf(marked, occurrence);
+            changed = true;
+          }
+        if (holdSeamOnKeptRemovals({ seam, count: kept.count, depth }))
+          continue;
+      }
     }
     const leftOccurrence = out[seam - 1];
     const rightOccurrence = out[seam];
@@ -3881,7 +3902,7 @@ const resolveList = ({
   if (nestedLast !== undefined)
     edges.last = Math.max(edges.last ?? 0, nestedLast);
   return {
-    nodes: out.map(({ node }) => node),
+    nodes: [...settleKeptCuts(out.map(({ node }) => node))],
     changed,
     edges,
     ...(enclosing.length === 0 ? {} : { enclosing }),
