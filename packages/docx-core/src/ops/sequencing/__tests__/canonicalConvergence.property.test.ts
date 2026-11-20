@@ -2387,7 +2387,9 @@ describe("canonical sequencing", () => {
   test("a comment dropping pending typing keeps an independent revision decision", async () => {
     const outcome = simulate(...decisionAfterCommentRefusesTyping);
     expect(outcome.independentDrops).toEqual([]);
-    expect(outcome.dropped).toEqual(["edit-12", "edit-14"]);
+    // The submitted typing is withheld until the authority rejects it; the
+    // queued batch that depends on it is dropped at once.
+    expect(outcome.dropped).toEqual(["edit-14", "edit-12"]);
     expect(outcome.sequenced).toContain("edit-16");
     expect(outcome.diverged).toEqual([]);
     const authority = await bytes(outcome.authority);

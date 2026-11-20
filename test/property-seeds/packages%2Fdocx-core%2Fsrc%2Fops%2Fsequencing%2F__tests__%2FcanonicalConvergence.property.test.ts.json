@@ -33,6 +33,12 @@
       "path": "12:6:5:5:5:11:11:11:11:17:17:17:19:20:40:40:44:45:2:7:11:6:15:17:34:34:37:37:37:37:37:37:37:37:37:37:37:0:34:34:34:34:34:34:34",
       "note": "#2787: a decision queued after a rejected paste passes the paste's inverse join.",
       "date": "2026-11-19"
+    },
+    {
+      "seed": 1544047907,
+      "path": "3:6:5:5:6:5:5:6:6:6:6:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:11",
+      "note": "A submitted package-resources batch that no longer rebases over a numbering change is withheld, not dropped: the authority sequences it once the change is undone, and it comes back as a foreign batch.",
+      "date": "2026-11-20"
     }
   ],
   "canonical sequencing same-paragraph convergence": [
@@ -67,6 +73,12 @@
       "path": "15:6:5:3:4:4:3:6:3:6:3:4:7:10:2:4:5:5:7:6:6:7:7:8:7:7:12:12:12:12:16:17:16:17:16:17:18:23:6:6:6:6:23:22:24:26:17:13:19:20:4:9:15:19:19:19:19:19:19:19:19:23:21:21:21:19:22:23:19:19:19:24:24:25:16:4:4:7:10:10:12:18:18:19:19:20:20:21:22:22:1:17:19:19:19:14:18:18:18",
       "note": "A suggested insertion at the gap where a concurrent direct insertion cut a tracked insertion is accepted in the authority order",
       "date": "2026-11-19"
+    },
+    {
+      "seed": -2029237382,
+      "path": "60:2:13:7:7:7:7:10:10:10:10:10:15:15:14:14:13:17:14:14:16:14:14:14:16:16:11:2:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19",
+      "note": "An acknowledged tracked deletion that does not rebase over a concurrent deletion here is withheld until its own revision comes back, not dropped.",
+      "date": "2026-11-20"
     }
   ]
 }
