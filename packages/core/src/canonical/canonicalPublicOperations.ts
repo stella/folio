@@ -4611,7 +4611,11 @@ export class CanonicalPublicOperations {
         tracked,
         gainsFollower,
         followsInsertedTable,
-        precedesInsertedTable: besideDeletions.tables.after.has(blockId),
+        // The table stands right after it only when no paragraph the batch
+        // inserts after it lands there too.
+        precedesInsertedTable:
+          besideDeletions.tables.after.has(blockId) &&
+          !besideDeletions.paragraphsAfter.has(blockId),
         previousGainsFollower:
           !followed &&
           typeof previousId === "string" &&
