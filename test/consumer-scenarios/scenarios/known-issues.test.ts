@@ -226,8 +226,17 @@ test("a paragraph inserted inside a comment spanning a table reads the same befo
 
 // Fixed findings stay as plain regressions.
 describe("fixed findings", () => {
-  test("a paragraph inserted after a block with a pending tracked merge stays its own paragraph once accepted", async () => {
-    const reviewer = await openReviewer(await plainDocument());
+  // Inserted after a paragraph whose mark a pending merge deletes, the new
+  // paragraph is right after it with its properties and an inserted mark.
+  // Accepting runs the merged words and the new text into one paragraph, as
+  // the canonical session does; the legacy engine keeps them apart.
+  const acceptedAfterInsertionBesideMerge = async (
+    session: NonNullable<FolioDocxReviewerOptions["session"]>,
+  ) => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      toArrayBuffer(await plainDocument()),
+      { author: AUTHOR, session },
+    );
     const buyer = reviewer
       .getContent()
       .find((block) => block.text.startsWith("The Buyer"));
@@ -235,20 +244,42 @@ describe("fixed findings", () => {
     for (const operation of [
       { type: "mergeBlockWithNext", blockId: buyer.id, separator: " " },
       { type: "insertAfterBlock", blockId: buyer.id, text: "New clause." },
-    ]) {
+    ] as const) {
       applyTo(reviewer, { type: "main" }, operation, "tracked-changes");
     }
-    const saved = await openReviewer(new Uint8Array(await reviewer.toBuffer()));
+    const saved = await FolioDocxReviewer.fromBuffer(
+      await reviewer.toBuffer(),
+      {
+        author: AUTHOR,
+        session,
+      },
+    );
     saved.acceptAll();
-    const accepted = (
-      await openReviewer(new Uint8Array(await saved.toBuffer()))
+    return (
+      await FolioDocxReviewer.fromBuffer(await saved.toBuffer(), {
+        author: AUTHOR,
+        session,
+      })
     )
       .getContent()
       .map((block) => block.text);
+  };
+
+  test("a paragraph inserted after a block with a pending tracked merge stays its own paragraph once accepted on the legacy engine", async () => {
+    const accepted = await acceptedAfterInsertionBesideMerge("legacy");
     assert.ok(
       accepted.includes("New clause."),
       `accepting glues the inserted paragraph onto the merged one: ${JSON.stringify(accepted)}`,
     );
+  });
+
+  test("a paragraph inserted after a block with a pending tracked merge runs into it once accepted on the canonical session", async () => {
+    const accepted = await acceptedAfterInsertionBesideMerge("canonical");
+    const at = accepted.indexOf(
+      "The Buyer pays each invoice within thirty days. New clause.",
+    );
+    assert.ok(at >= 0, JSON.stringify(accepted));
+    assert.equal(accepted.at(at + 1), "Signed in two copies.");
   });
 
   test("renumbering a mark pending terminal deletion refuses without mutation (seed 1785653011)", async () => {

@@ -22,6 +22,7 @@ import {
   emojiDocument,
   openReviewer,
   packDocument,
+  scenarioEngine,
   storiesDocument,
   styleNumberedDocument,
   tableDocument,
@@ -390,8 +391,18 @@ slowTest(MARKER_VISIBILITY_TEST, async () => {
               mode,
               context,
             );
-            assert.equal(result.applied.length, 1, context);
-            assert.deepEqual(result.issues, [], context);
+            // Inheriting what a paragraph already inherits changes nothing;
+            // an engine may refuse it as a no-op, as the canonical session does.
+            const restatesInherit =
+              type === "setBlockParagraphProperties" &&
+              numbering.kind === "inherit" &&
+              anchor.statedNumbering?.kind === "inherit";
+            if (restatesInherit && result.applied.length === 0)
+              assert.deepEqual(result.issues, ["op-1: noopOperation"], context);
+            else {
+              assert.equal(result.applied.length, 1, context);
+              assert.deepEqual(result.issues, [], context);
+            }
             const rows = rowsOf(reviewer);
             const targetText =
               type === "insertAfterBlock" ? "Inserted" : anchorText;
@@ -544,6 +555,19 @@ test(
               mode: "suggested",
             },
           });
+          // Inheriting what the paragraph already inherits changes nothing;
+          // an engine may refuse it as a no-op, leaving nothing pending.
+          if (
+            pending.applied.length === 0 &&
+            "numbering" in properties &&
+            properties.numbering.kind === "inherit"
+          ) {
+            assert.deepEqual(
+              pending.skipped.map(({ reason }) => reason),
+              ["noopOperation"],
+            );
+            continue;
+          }
           assert.equal(pending.applied.length, 1);
           const pre = await capture(reviewer, "suggested", { story });
           assert.equal(pre.numberingSource.type, "live");
@@ -635,6 +659,26 @@ test(
               mode: "suggested",
             },
           });
+          // Another suggestion's pending property change is its own: the
+          // canonical session refuses to fold this one into it, since
+          // rejecting either would discard both. The legacy engine folds them.
+          if (scenarioEngine() === "canonical") {
+            assert.deepEqual(
+              restyled.skipped.map(({ reason, message }) => ({
+                reason,
+                message,
+              })),
+              [
+                {
+                  reason: "unsupportedBlock",
+                  message:
+                    "A suggestion cannot take over another pending paragraph property change.",
+                },
+              ],
+            );
+            assert.deepEqual(rowsOf(reviewer, story), beforeStyle.liveRows);
+            continue;
+          }
           assert.equal(restyled.applied.length, 1);
           assert.deepEqual(restyled.issues, []);
           assert.deepEqual(

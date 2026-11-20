@@ -29,6 +29,7 @@ import { validateFolioDocumentModel } from "./modelValidation";
 import { parseNumbering } from "./numberingParser";
 import { normalizeImportedNumericIds } from "./numericIdNormalization";
 import { isUnsafePackagePath } from "./packageParts";
+import { visitDocxParagraphs } from "./paragraphTraversal";
 import { RELATIONSHIP_TYPES, resolveRelativePath } from "./relsParser";
 import {
   addCommentsExtendedOverride,
@@ -701,12 +702,25 @@ async function writeChangedParts({
           });
       }
 
+      // Header and footer parts are written whole below, so a changed
+      // paragraph of one needs no splice.
+      const headerFooterParaIds = new Set<string>();
+      visitDocxParagraphs(
+        {
+          documentBody: { content: [] },
+          headers: doc.package.headers,
+          footers: doc.package.footers,
+        },
+        ({ paraId }) => {
+          if (paraId !== undefined) headerFooterParaIds.add(paraId);
+        },
+      );
       const bodyChangedIds = new Set<string>();
       const noteCandidateIds = new Set<string>();
       for (const id of changedParaIds) {
         if (bodyParaIds.has(id) || originalBodyParaIds?.has(id)) {
           bodyChangedIds.add(id);
-        } else {
+        } else if (!headerFooterParaIds.has(id)) {
           noteCandidateIds.add(id);
         }
       }
