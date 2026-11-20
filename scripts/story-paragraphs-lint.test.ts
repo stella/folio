@@ -1,0 +1,70 @@
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
+import path from "node:path";
+import { z } from "zod";
+
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
+
+const REPO_ROOT = path.resolve(import.meta.dir, "..");
+const RULE_ID = "folio-story-paragraphs(through-text-boxes)";
+const FIXTURE_CASES = {
+  "story-paragraphs.direct.invalid.ts": [RULE_ID, RULE_ID],
+  "story-paragraphs.aliases.invalid.ts": [
+    RULE_ID,
+    RULE_ID,
+    RULE_ID,
+    RULE_ID,
+    RULE_ID,
+  ],
+  "story-paragraphs.valid.ts": [],
+};
+
+setDefaultTimeout(subprocessTestTimeout());
+
+const lintFixture = (fixture: string) => {
+  const result = expectExited(
+    runChild(
+      [
+        "bun",
+        "--bun",
+        "oxlint",
+        "-c",
+        "oxlint.fixtures.config.ts",
+        "--no-ignore",
+        "--format",
+        "json",
+        path.join("test", "__fixtures__", fixture),
+      ],
+      { cwd: REPO_ROOT },
+    ),
+  );
+  const { diagnostics } = z
+    .object({ diagnostics: z.array(z.object({ code: z.string() })) })
+    .parse(JSON.parse(result.stdout));
+  return {
+    status: result.exitCode,
+    ruleIds: diagnostics.map(({ code }) => code),
+  };
+};
+
+describe("canonical session paragraphs read through text boxes", () => {
+  test("exercises every declared story paragraphs fixture", () => {
+    const fixtures = Array.from(
+      new Bun.Glob("story-paragraphs*.ts").scanSync({
+        cwd: path.join(REPO_ROOT, "test", "__fixtures__"),
+      }),
+    );
+    expect(Object.keys(FIXTURE_CASES).sort()).toEqual(fixtures.sort());
+  });
+
+  for (const [fixture, ruleIds] of Object.entries(FIXTURE_CASES))
+    test(fixture, () => {
+      expect(lintFixture(fixture)).toEqual({
+        status: ruleIds.length === 0 ? 0 : 1,
+        ruleIds,
+      });
+    });
+});

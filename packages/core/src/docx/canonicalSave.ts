@@ -4,7 +4,7 @@ import type { Document } from "@stll/docx-core";
 import {
   idKey,
   packageParagraphIds,
-  storyParagraphs,
+  paragraphsThroughTextBoxes,
   withoutPendingSuggestions,
 } from "@stll/docx-core/ops";
 
@@ -206,11 +206,19 @@ export const serializeCanonicalSave = async ({
   // content control is as much the note's as one at its top level.
   const touched = new Set(snapshot.changedBlockIds.map(idKey));
   const changedNoteParaIds = new Set<string>();
-  for (const note of [
-    ...(document.package.footnotes ?? []),
-    ...(document.package.endnotes ?? []),
-  ])
-    for (const { paragraph } of storyParagraphs({ content: note.content }))
+  // A text box drawn in a note is the note's too.
+  const notes = [
+    ...(document.package.footnotes ?? []).map(({ id }) => ({
+      kind: "footnote" as const,
+      id,
+    })),
+    ...(document.package.endnotes ?? []).map(({ id }) => ({
+      kind: "endnote" as const,
+      id,
+    })),
+  ];
+  for (const note of notes)
+    for (const { paragraph } of paragraphsThroughTextBoxes(document, note))
       if (
         paragraph.paraId !== undefined &&
         touched.has(idKey(paragraph.paraId))

@@ -10,8 +10,7 @@ import {
   documentStories,
   idKey,
   packageParagraphIds,
-  storyBody,
-  storyParagraphs,
+  paragraphsThroughTextBoxes,
 } from "@stll/docx-core/ops";
 import { UndeclaredXmlEntityError } from "@stll/docx-core/xml";
 
@@ -125,8 +124,9 @@ export const prepareCanonicalDocxSource = async (
  * same one: the ids a canonical session addresses paragraphs by.
  */
 export const holdsUniqueParagraphIds = (document: Document): boolean => {
+  // A text box's paragraphs are addressed through the story drawing it.
   const paragraphs = documentStories(document).flatMap((story) =>
-    storyParagraphs(storyBody(document, story)),
+    paragraphsThroughTextBoxes(document, story),
   );
   if (paragraphs.some(({ paragraph }) => paragraph.paraId === undefined))
     return false;
