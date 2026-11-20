@@ -103,14 +103,16 @@ const SUGGESTIONS: Record<string, Staging> = {
 for (const [name, stage] of Object.entries(SUGGESTIONS)) {
   test(`accept-all leaves ${name} staged`, async () => {
     const reviewer = await open();
-    const ordinary = new Set(apply(reviewer, "tracked-changes", [
-      {
-        id: "ordinary",
-        type: "insertAfterBlock",
-        blockId: blockId(reviewer, "Closing words."),
-        text: "Ordinary words.",
-      },
-    ]).applied.flatMap(({ revisionIds }) => revisionIds ?? []));
+    const ordinary = new Set(
+      apply(reviewer, "tracked-changes", [
+        {
+          id: "ordinary",
+          type: "insertAfterBlock",
+          blockId: blockId(reviewer, "Closing words."),
+          text: "Ordinary words.",
+        },
+      ]).applied.flatMap(({ revisionIds }) => revisionIds ?? []),
+    );
     const before = await savedTexts(reviewer);
     stage(reviewer);
     const staged = reviewer
