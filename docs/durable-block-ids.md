@@ -128,7 +128,7 @@ header notes them.
 ## Canonical sessions: which paragraph survives a join
 
 The canonical session follows one rule, the one the document model's
-resolution and Word share:
+resolution follows:
 
 - A join keeps the second paragraph's id. Removing a paragraph mark (a
   direct join, accepting a deleted mark, rejecting an inserted one, deleting
