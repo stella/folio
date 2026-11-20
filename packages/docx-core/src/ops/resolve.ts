@@ -66,7 +66,15 @@ import {
   slotKey,
 } from "./ids";
 import { joinParagraphSeam } from "./inline";
-import { settleKeptCuts, withKeptCuts, withoutKeptCuts } from "./keptCut";
+import {
+  pendingAtEdge,
+  settleKeptCuts,
+  standsInKeptCut,
+  withKeptCuts,
+  withKeptCutsRecorded,
+  withoutKeptCuts,
+  withoutKeptCutsRecorded,
+} from "./keptCut";
 import { type KeptAtSeam, seamHandsOver, withJoinAtLeast } from "./keptJoins";
 import {
   alikeDepth,
@@ -1272,7 +1280,9 @@ const placeAcceptedSeamKept = (
   const records = placed?.records;
   if (placed === undefined || records === undefined) return false;
   const start = placed.index;
-  const boundaries = out.slice(start, start + records).map(withoutKeptCuts);
+  const boundaries = out
+    .slice(start, start + records)
+    .map((node) => withoutKeptCuts(node));
   // A piece still held in a pending removal, or content made after the
   // revision they were kept from, is no piece that takes them.
   const takes = (node: InlineNode | undefined): node is InlineNode =>
@@ -2008,7 +2018,9 @@ const resolveList = ({
         piece === "after" ? out.length - inside : first,
         piece === "after" ? out.length : first + inside,
       )
-      .map(({ node }) => withoutKeptCuts(node));
+      .map(({ node }) =>
+        withoutKeptCutsRecorded(node, resolution.relocated.nodes),
+      );
     if (piece === "after") {
       const next = pending.at(index + 1);
       if (next === undefined || !standsInside(next)) return;
@@ -2293,7 +2305,20 @@ const resolveList = ({
                 resolveRun(mark, resolution),
               ),
           });
-        const kept = keptOf(removalContent);
+        // Each boundary kept from the removed content records that it stands
+        // in the cut the removal made, as of the removed revision: a later
+        // join takes it, where an authored or accepted one blocks the join.
+        // Placing it inside a piece clears the record unless a pending change
+        // meets it there, as does a resolution that leaves none beside it.
+        const cut = {
+          depth: Math.max(1, joins?.remove ?? 0),
+          keptFrom: node.info.date ?? "",
+        };
+        const kept = keptOf(removalContent).map((boundary) =>
+          isKeptBoundaryCarrier(boundary)
+            ? withKeptCutsRecorded(boundary, cut, resolution.relocated.nodes)
+            : boundary,
+        );
         for (let offset = 0; offset < kept.length; offset += 1)
           keptDates.set(out.length + offset, node.info.date ?? "");
         appendUnowned(kept);
@@ -3302,15 +3327,26 @@ const resolveList = ({
         Array.from({ length: count }, (_, offset) => at - count + offset),
       ),
     );
-    /** Unclaimed kept records from `from`, for at most `limit` boundaries. */
+    const kept = exactKept.get(recorded);
+    /**
+     * Unclaimed kept records from `from`, for at most `limit` boundaries.
+     * Without provenance on the seam, only a marker that records the cut it
+     * stands in was kept there: an unmarked one is authored or accepted
+     * content and blocks the join.
+     */
     const standingAt = (from: number, step: 1 | -1, limit: number): KeptRun =>
       keptRun({
-        at: (index) => (claimed.has(index) ? undefined : out[index]?.node),
+        at: (index) => {
+          const node = claimed.has(index) ? undefined : out[index]?.node;
+          return node === undefined ||
+            (kept === undefined && !standsInKeptCut(node))
+            ? undefined
+            : node;
+        },
         from,
         step,
         limit,
       });
-    const kept = exactKept.get(recorded);
     // Only those the rejection kept, nearest the seam: boundaries another
     // removal kept beside them stand where they are, as resolving both at
     // once leaves them.
@@ -3389,13 +3425,38 @@ const resolveList = ({
     /** Kept boundaries left standing before the seam, held by no piece. */
     let standingKept = kept?.count ?? 0;
     if (kept !== undefined) {
-      const boundaries = out
-        .slice(seam - kept.count, seam)
-        .map(({ node }) => withoutKeptCuts(node));
       const beforeOccurrence = out[seam - kept.count - 1];
       const afterOccurrence = out[seam];
       const before = beforeOccurrence?.node;
       const after = afterOccurrence?.node;
+      const standing = out
+        .slice(seam - kept.count, seam)
+        .map(({ node }) => node);
+      /**
+       * The boundaries as placed at `piece`'s `edge`. Inside it, they still
+       * record their cut while a pending change meets them there, inside the
+       * piece or across from it: resolving that change can still let the
+       * records around them meet.
+       */
+      const placedAt = (
+        piece: InlineNode,
+        edge: "start" | "end",
+      ): InlineNode[] => {
+        const inside = childNodes(piece);
+        const waiting =
+          pendingAtEdge(
+            edge === "start" ? inside?.at(0) : inside?.at(-1),
+            edge,
+          ) ||
+          (edge === "start"
+            ? pendingAtEdge(before, "end")
+            : pendingAtEdge(after, "start"));
+        return waiting
+          ? standing
+          : standing.map((node) =>
+              withoutKeptCutsRecorded(node, resolution.relocated.nodes),
+            );
+      };
       // The depth counts the containers the removed content cut, read on
       // the records either side as the list held them: a container this
       // resolution resolves away is a level no more, and a tracked change on
@@ -3502,7 +3563,7 @@ const resolveList = ({
           ? undefined
           : withBoundariesAtEdge(
               after,
-              boundaries,
+              placedAt(after, "start"),
               afterDepth,
               "start",
               kept.keptFrom,
@@ -3515,7 +3576,7 @@ const resolveList = ({
           ? undefined
           : withBoundariesAtEdge(
               before,
-              boundaries,
+              placedAt(before, "end"),
               beforeDepth,
               "end",
               kept.keptFrom,
@@ -3928,7 +3989,15 @@ const resolveList = ({
   if (nestedLast !== undefined)
     edges.last = Math.max(edges.last ?? 0, nestedLast);
   return {
-    nodes: [...settleKeptCuts(out.map(({ node }) => node))],
+    nodes: [
+      ...settleKeptCuts(
+        out.map(({ node }) => node),
+        {
+          known: resolution.relocated.nodes,
+          rebuilt: (from, to) => carryResolutionState(resolution, from, to),
+        },
+      ),
+    ],
     changed,
     edges,
     ...(enclosing.length === 0 ? {} : { enclosing }),
@@ -5495,11 +5564,18 @@ const planSingleRecordResolution = (
     });
   }
   // A blocker the resolution emptied away, unnamed, leaves the story too.
+  // Kept cuts are settled once boundaries stand where the ranges put them.
   const standing = seamHolderIds([...resolvedContents.values()].flat());
   for (const [key, content] of resolvedContents) {
-    const settled = settleDeferredRemovals(content, {
-      fateOf: (id) => (standing.has(id) ? "pending" : "removed"),
-    });
+    const settled = settleKeptCuts(
+      settleDeferredRemovals(content, {
+        fateOf: (id) => (standing.has(id) ? "pending" : "removed"),
+      }),
+      {
+        known: resolution.relocated.nodes,
+        rebuilt: (from, to) => carryResolutionState(resolution, from, to),
+      },
+    );
     if (settled === content) continue;
     resolvedContents.set(key, settled);
     resolvedChanged.add(key);
