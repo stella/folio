@@ -7,9 +7,24 @@ import { createReviewerBridge } from "./bridges/reviewer";
 import { executeFolioToolCall } from "./execute";
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const SESSIONS = ["legacy", "canonical"] as const;
 
 const makeDocx = async (): Promise<ArrayBuffer> => {
   const zip = new ZipArchive();
+  zip.set(
+    "[Content_Types].xml",
+    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+      '<Default Extension="xml" ContentType="application/xml"/>' +
+      '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>' +
+      "</Types>",
+  );
+  zip.set(
+    "_rels/.rels",
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>' +
+      "</Relationships>",
+  );
   zip.set(
     "word/document.xml",
     `<w:document xmlns:w="${W}"><w:body><w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="1000"/></w:tblGrid>` +
@@ -24,68 +39,75 @@ const makeDocx = async (): Promise<ArrayBuffer> => {
 };
 
 describe("read_document inside table custom XML", () => {
-  test("row text remains visible in the snapshot and read_document", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await makeDocx());
-    const bridge = createReviewerBridge(reviewer);
-    const read = executeFolioToolCall("read_document", {}, bridge);
-    if (!read.ok) throw new Error(read.error);
+  test.each(SESSIONS)(
+    "row text remains visible in the snapshot and read_document (%s)",
+    async (session) => {
+      const reviewer = await FolioDocxReviewer.fromBuffer(await makeDocx(), {
+        session,
+      });
+      const bridge = createReviewerBridge(reviewer);
+      const read = executeFolioToolCall("read_document", {}, bridge);
+      if (!read.ok) throw new Error(read.error);
 
-    const expected = [
-      "Table custom XML sentinel.",
-      "Table SDT sentinel.",
-      "Row SDT sentinel.",
-    ];
-    expect(
-      reviewer
-        .snapshot()
-        .blocks.map(({ text }) => text)
-        .filter(Boolean),
-    ).toEqual(expected);
-    expect(read.result.map(({ text }) => text).filter(Boolean)).toEqual(
-      expected,
-    );
+      const expected = [
+        "Table custom XML sentinel.",
+        "Table SDT sentinel.",
+        "Row SDT sentinel.",
+      ];
+      expect(
+        reviewer
+          .snapshot()
+          .blocks.map(({ text }) => text)
+          .filter(Boolean),
+      ).toEqual(expected);
+      expect(read.result.map(({ text }) => text).filter(Boolean)).toEqual(
+        expected,
+      );
 
-    const editableBlock = read.result.find(({ text }) => text === expected[0]);
-    if (!editableBlock)
-      throw new Error("Expected the custom XML row to be editable");
-    const edit = executeFolioToolCall(
-      "suggest_changes",
-      {
-        operations: [
-          {
-            type: "replaceInBlock",
-            blockId: editableBlock.blockId,
-            find: "Table custom XML",
-            replace: "Edited custom XML",
-          },
-        ],
-      },
-      bridge,
-    );
-    if (!edit.ok) throw new Error(edit.error);
+      const editableBlock = read.result.find(
+        ({ text }) => text === expected[0],
+      );
+      if (!editableBlock)
+        throw new Error("Expected the custom XML row to be editable");
+      const edit = executeFolioToolCall(
+        "suggest_changes",
+        {
+          operations: [
+            {
+              type: "replaceInBlock",
+              blockId: editableBlock.blockId,
+              find: "Table custom XML",
+              replace: "Edited custom XML",
+            },
+          ],
+        },
+        bridge,
+      );
+      if (!edit.ok) throw new Error(edit.error);
 
-    const saved = await reviewer.toBuffer();
-    const xml =
-      (await (
-        await ZipArchive.read(saved)
-      )
-        .entry("word/document.xml")
-        ?.text()) ?? "";
-    expect(xml).toContain('<w:customXml w:element="row">');
-    expect(xml).toContain('<w:customXml w:element="cell">');
-    const rowXml = xml
-      .split('<w:customXml w:element="row">')[1]
-      ?.split("</w:customXml>")[0];
-    expect(rowXml).toContain("<w:customXmlPr>");
-    expect(rowXml).toContain('w:name="row-wrapper-start"');
-    const cellXml = xml
-      .split('<w:customXml w:element="cell">')[1]
-      ?.split("</w:customXml>")[0];
-    expect(cellXml).toContain("<w:customXmlPr>");
-    expect(cellXml).toContain('w:name="cell-wrapper-start"');
-    expect(
-      (xml.match(/<w:customXml w:element="duplicate">/gu) ?? []).length,
-    ).toBe(2);
-    expect(xml).toContain("Edited");
-  });
+      const saved = await reviewer.toBuffer();
+      const xml =
+        (await (
+          await ZipArchive.read(saved)
+        )
+          .entry("word/document.xml")
+          ?.text()) ?? "";
+      expect(xml).toContain('<w:customXml w:element="row">');
+      expect(xml).toContain('<w:customXml w:element="cell">');
+      const rowXml = xml
+        .split('<w:customXml w:element="row">')[1]
+        ?.split("</w:customXml>")[0];
+      expect(rowXml).toContain("<w:customXmlPr>");
+      expect(rowXml).toContain('w:name="row-wrapper-start"');
+      const cellXml = xml
+        .split('<w:customXml w:element="cell">')[1]
+        ?.split("</w:customXml>")[0];
+      expect(cellXml).toContain("<w:customXmlPr>");
+      expect(cellXml).toContain('w:name="cell-wrapper-start"');
+      expect(
+        (xml.match(/<w:customXml w:element="duplicate">/gu) ?? []).length,
+      ).toBe(2);
+      expect(xml).toContain("Edited");
+    },
+  );
 });

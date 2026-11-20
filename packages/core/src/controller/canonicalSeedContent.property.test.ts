@@ -97,7 +97,7 @@ const blockOf: fc.Arbitrary<BlockContent> = fc.oneof(
       id: commentIds,
     }),
   },
-  // A block the session cannot hold.
+  // A custom XML wrapper, which holds its own block list.
   {
     weight: 1,
     arbitrary: fc
