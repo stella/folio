@@ -13,6 +13,7 @@ import {
   storyBody,
   storyParagraphs,
 } from "@stll/docx-core/ops";
+import { UndeclaredXmlEntityError } from "@stll/docx-core/xml";
 
 import type { Document } from "../types/document";
 import { type DocxInput, toArrayBuffer } from "../utils/docxInput";
@@ -33,6 +34,20 @@ export class CanonicalDocxInputError extends CanonicalDocxInputErrorBase<{
   cause?: unknown;
 }> {}
 
+/** Why a package cannot seed a canonical session. */
+export type CanonicalDocxInputFailure =
+  CanonicalDocxInputError | UndeclaredXmlEntityError;
+
+/** The undeclared entity a normalization step refused a part for, if that is why. */
+const undeclaredEntityCause = (
+  cause: unknown,
+): UndeclaredXmlEntityError | undefined => {
+  for (let current = cause; current instanceof Error; current = current.cause) {
+    if (current instanceof UndeclaredXmlEntityError) return current;
+  }
+  return undefined;
+};
+
 /**
  * Canonical seeding supports plaintext packages; refuse encryption before ZIP
  * normalization. A package that repeats a paragraph, content control or
@@ -42,8 +57,8 @@ export class CanonicalDocxInputError extends CanonicalDocxInputErrorBase<{
 export const prepareCanonicalDocxInput = async (
   input: DocxInput,
 ): Promise<
-  | Err<ArrayBuffer, CanonicalDocxInputError>
-  | Ok<Uint8Array<ArrayBufferLike>, CanonicalDocxInputError>
+  | Err<ArrayBuffer, CanonicalDocxInputFailure>
+  | Ok<Uint8Array<ArrayBufferLike>, CanonicalDocxInputFailure>
 > => {
   const source = await prepareCanonicalDocxSource(input);
   return source.isErr()
@@ -65,7 +80,7 @@ export type CanonicalDocxSource = {
 /** {@link prepareCanonicalDocxInput}, with the paragraph ids it minted. */
 export const prepareCanonicalDocxSource = async (
   input: DocxInput,
-): Promise<Result<CanonicalDocxSource, CanonicalDocxInputError>> => {
+): Promise<Result<CanonicalDocxSource, CanonicalDocxInputFailure>> => {
   const bytes = await Result.tryPromise({
     try: () => toArrayBuffer(input),
     catch: (cause) =>
@@ -93,7 +108,8 @@ export const prepareCanonicalDocxSource = async (
       );
       return { docx, mintedParaIds: new Set(paragraphs.mintedParaIds) };
     },
-    catch: (cause) =>
+    catch: (cause): CanonicalDocxInputFailure =>
+      undeclaredEntityCause(cause) ??
       new CanonicalDocxInputError({
         message:
           cause instanceof Error
@@ -177,7 +193,8 @@ export const holdsUniqueSeedIds = (document: Document): boolean =>
 export const prepareCanonicalDocumentInput = async (
   document: Document,
 ): Promise<
-  Err<Document, CanonicalDocxInputError> | Ok<Document, CanonicalDocxInputError>
+  | Err<Document, CanonicalDocxInputFailure>
+  | Ok<Document, CanonicalDocxInputFailure>
 > => {
   if (holdsUniqueSeedIds(document)) return Result.ok(document);
   const written = await Result.tryPromise({
