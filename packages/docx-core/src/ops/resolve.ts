@@ -49,7 +49,12 @@ import {
   rejectCopyOriginAncestorsInNodes,
 } from "./copyOriginAncestors";
 import { keptDeletionBoundaryPaths } from "./deletionBoundaries";
-import { combineEdits, type DocumentEdit } from "./edits";
+import {
+  combineEditEffects,
+  combineEdits,
+  type DocumentEdit,
+  type DocumentEditEffects,
+} from "./edits";
 import { structurallyEqual } from "./equality";
 import { canonicalDeferredGroups, deferredGroupKey } from "./identity";
 import {
@@ -80,6 +85,7 @@ import {
   paragraphHoldsContent,
   paragraphHoldsContentOnceAccepted,
 } from "./offsets";
+import { findStoryParagraph } from "./paragraphLocator";
 import {
   isBlockBoundary,
   isKeptBoundaryCarrier,
@@ -3798,9 +3804,7 @@ const joinOps = (
   joinsBefore: ReadonlySet<string> = new Set(),
 ): Result<ParagraphMarkPlan, DocumentOpRefusal> => {
   const body = storyBody(document, story);
-  const location = storyParagraphs(body).find(
-    ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(paraId),
-  );
+  const location = findStoryParagraph(body, paraId);
   if (location === undefined) {
     return Result.err(
       refusal(
@@ -4286,9 +4290,7 @@ const absorbControlFollower = ({
   DocumentOpRefusal
 > => {
   const body = storyBody(document, story);
-  const location = storyParagraphs(body).find(
-    ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(paraId),
-  );
+  const location = findStoryParagraph(body, paraId);
   if (location === undefined) return Result.ok(undefined);
   const absorbed = emptyParagraphAfterControl(body, location);
   const anchor = absorbed?.blocks.find(
@@ -5127,7 +5129,12 @@ const planSingleRecordResolution = ({
   });
   if (rows.isErr()) return Result.err(rows.error);
   const removedParagraphs = new Set(rows.value.touched.removed.map(idKey));
-  const edits: DocumentEdit[] = [staged.value, rows.value];
+  const effects: (DocumentEditEffects & { document?: never })[] = [];
+  const record = ({ inverse, touched }: DocumentEdit) => {
+    effects.push({ inverse, touched });
+  };
+  record(staged.value);
+  record(rows.value);
   let current = rows.value.document;
   const ranInto = new Set<string>();
   const joinsBefore = new Set(joins.map(({ paraId }) => idKey(paraId)));
@@ -5147,7 +5154,7 @@ const planSingleRecordResolution = ({
     if (joined.isErr()) {
       return Result.err(joined.error);
     }
-    edits.push(
+    record(
       withAbsorptions(
         joined.value,
         joinSurvivor(joined.value, join.paraId, planned.value.receiverEffects),
@@ -5168,7 +5175,7 @@ const planSingleRecordResolution = ({
     if (absorbed.value === undefined) continue;
     const { edit, receiver } = absorbed.value;
     receiverEffects.push({ type: "paragraph-join", receiver });
-    edits.push(withAbsorptions(edit, paraId));
+    record(withAbsorptions(edit, paraId));
     current = edit.document;
   }
   // Notes whose last reference went are removed first: a comment anchored in
@@ -5211,7 +5218,7 @@ const planSingleRecordResolution = ({
       applyOps,
     });
     if (removed.isErr()) return Result.err(removed.error);
-    edits.push(removed.value);
+    record(removed.value);
     current = removed.value.document;
   }
   const exhausted = (document.package.document.comments ?? []).filter(
@@ -5225,10 +5232,10 @@ const planSingleRecordResolution = ({
       { type: DOCUMENT_OP_TYPES.DELETE_COMMENT, id, scope: "thread" },
     ]);
     if (retired.isErr()) return Result.err(retired.error);
-    edits.push(retired.value);
+    record(retired.value);
     current = retired.value.document;
   }
-  const edit = combineEdits(document, edits);
+  const edit = combineEditEffects(current, effects);
   if (orphaned.length > 0) {
     const { absorbed } = edit.touched;
     edit.touched = {
