@@ -186,6 +186,7 @@ export const tryTrackedInsertionGroup = ({
       op,
       anchor,
       ...(following === undefined ? {} : { following }),
+      validatedNeighbor: side === "after" ? (following ?? anchor) : anchor,
       paragraphIds,
       recordIds,
     });
@@ -241,14 +242,14 @@ export const tryTrackedInsertionGroup = ({
     }
     inserted.push(added);
     if (side === "after") following = added;
+    // Counts on an identical retained paragraph cancel in both identity spaces.
+    const removed = retained === before ? [] : [before];
+    const incoming = retained === before ? [added] : operation.blocks;
     paragraphIds.replace(
-      paragraphIdsIn([before]).map(idKey),
-      paragraphIdsIn(operation.blocks).map(idKey),
+      paragraphIdsIn(removed).map(idKey),
+      paragraphIdsIn(incoming).map(idKey),
     );
-    recordIds.replace(
-      identityKeysIn([before]),
-      identityKeysIn(operation.blocks),
-    );
+    recordIds.replace(identityKeysIn(removed), identityKeysIn(incoming));
     members.push({
       op: input,
       inverse: effect.inverse.map(captureDocumentOp),

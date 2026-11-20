@@ -6,6 +6,8 @@ import { applyDocumentOp, applyDocumentOps } from "../apply";
 import * as blocks from "../blocks";
 import { tryTrackedInsertionGroup } from "../documentOps";
 import * as edits from "../edits";
+import * as ids from "../ids";
+import * as primitives from "../paragraphPrimitive";
 import {
   getParagraphPropertySnapshot,
   registerParagraphPropertySnapshot,
@@ -204,6 +206,32 @@ test.each(["paragraph id", "revision id"] as const)(
   },
 );
 
+test("an insertion before a retained paragraph refuses its occupied id with native precedence", () => {
+  const { document } = makeSource({
+    following: false,
+    topology: "trailing",
+    tracked: true,
+  });
+  const drafted = compile({ side: "before", index: 1, previous: undefined });
+  for (const block of [
+    paragraph(sourceId, "new"),
+    { ...paragraph(sourceId, "new"), content: [{ type: "run", content: [] }] },
+  ] satisfies Paragraph[]) {
+    const op = { ...drafted, blocks: [block] };
+    const ordinary = applyDocumentOp(document, op);
+    if (ordinary.isOk())
+      throw new Error("Expected the insertion to be refused");
+    const grouped = tryTrackedInsertionGroup({
+      document,
+      next: () => ({ type: "member", op }),
+    });
+    if (grouped.type !== "fallback" || grouped.reason !== "refusal")
+      throw new Error("Expected the native refusal");
+    expect(grouped.index).toBe(0);
+    assertExactModel({ ...grouped.refusal }, { ...ordinary.error });
+  }
+});
+
 test("group falls back for a stale physical section and a compiler abort", () => {
   const op = compile({ side: "after", index: 0, previous: undefined });
   const { document: stale } = makeSource({
@@ -264,6 +292,71 @@ test.each([
       }
     } finally {
       splices.mockRestore();
+    }
+  },
+);
+
+test.each([8, 32])(
+  "an unchanged neighbor contributes no identity census for %i insertions",
+  (count) => {
+    const { document, anchor } = makeSource({
+      following: false,
+      topology: "trailing",
+      tracked: true,
+    });
+    const records = spyOn(ids, "identityKeysIn");
+    const paragraphs = spyOn(ids, "paragraphIdsIn");
+    try {
+      let index = 0;
+      const group = tryTrackedInsertionGroup({
+        document,
+        next: (previous) =>
+          index === count
+            ? { type: "done" }
+            : {
+                type: "member",
+                op: compile({ side: "before", index: index++, previous }),
+              },
+      });
+      expect(group.type).toBe("materialized");
+      const includesAnchor = ([input]: readonly [unknown]) =>
+        Array.isArray(input) && input.includes(anchor);
+      expect(records.mock.calls.filter(includesAnchor)).toHaveLength(0);
+      expect(paragraphs.mock.calls.filter(includesAnchor)).toHaveLength(0);
+    } finally {
+      records.mockRestore();
+      paragraphs.mockRestore();
+    }
+  },
+);
+
+test.each(["tail", "follower"] as const)(
+  "draft and stamped insertions use full replacement checks for a changed %s neighbor",
+  (placement) => {
+    const { document } = makeSource({
+      following: placement === "follower",
+      topology: "trailing",
+    });
+    const validator = spyOn(primitives, "validateBlockReplacement");
+    try {
+      let index = 0;
+      const group = tryTrackedInsertionGroup({
+        document,
+        next: (previous) =>
+          index === 8
+            ? { type: "done" }
+            : {
+                type: "member",
+                op: compile({ side: "after", index: index++, previous }),
+              },
+      });
+      expect(group.type).toBe("materialized");
+      expect(validator.mock.calls).toHaveLength(16);
+      expect(
+        validator.mock.calls.filter(([{ before }]) => before.length > 0),
+      ).toHaveLength(placement === "tail" ? 2 : 0);
+    } finally {
+      validator.mockRestore();
     }
   },
 );
