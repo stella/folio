@@ -1385,11 +1385,22 @@ const mergeIntentsAsItRuns = (
     here.index + 1 === next.index &&
     JSON.stringify(here.list) === JSON.stringify(next.list);
   const nextId = follows ? next.paragraph.paraId : undefined;
-  if (nextId === undefined) return undefined;
+  if (here === undefined || nextId === undefined) return undefined;
   const was = idKey(join.nextBlockId);
-  if (idKey(nextId) === was) return intents;
+  // The separator goes in at the first paragraph's end as it now stands: an
+  // edit of that paragraph the batch ran first may have changed its length.
+  const end = paragraphLength(here.paragraph);
   return intents.map((intent) => {
     switch (intent.type) {
+      case "replaceText":
+        return idKey(intent.from.blockId) === key &&
+          intent.from.offset === intent.to.offset
+          ? {
+              ...intent,
+              from: { ...intent.from, offset: end },
+              to: { ...intent.to, offset: end },
+            }
+          : intent;
       case "joinParagraphs":
         return idKey(intent.nextBlockId) === was
           ? { ...intent, nextBlockId: nextId }

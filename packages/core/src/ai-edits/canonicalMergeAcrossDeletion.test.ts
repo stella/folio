@@ -73,3 +73,30 @@ test("a merge has nothing to join once its batch deletes every paragraph after i
   expect(tracked.texts).toEqual(direct.texts);
   expect(direct.texts).toEqual(["Alpha.", "Beta.", "Gamma."]);
 });
+
+// An edit of the first paragraph that changes its length runs before the
+// direct merge that joins it away; the separator still goes at its end.
+test("a direct merge puts its separator at the end of the paragraph its batch edits", async () => {
+  const mergeAndEdit = (replace: string): FolioDocumentOperation[] => [
+    {
+      id: "merge",
+      type: "mergeBlockWithNext",
+      blockId: idOf(0),
+      separator: " ",
+    },
+    {
+      id: "replace",
+      type: "replaceInBlock",
+      blockId: idOf(0),
+      find: "Alpha",
+      replace,
+    },
+  ];
+  for (const replace of ["Alphabet", "A"]) {
+    const { texts } = await run("direct", mergeAndEdit(replace));
+    expect(texts.at(0)).toBe(`${replace}. Beta.`);
+    expect(texts).toEqual(
+      (await run("tracked-changes", mergeAndEdit(replace))).texts,
+    );
+  }
+});
