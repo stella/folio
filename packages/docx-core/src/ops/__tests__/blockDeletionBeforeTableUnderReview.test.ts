@@ -172,23 +172,67 @@ test("a paragraph its author added whole goes outright before that author's pend
   expect(undone.value.document).toStrictEqual(document);
 });
 
-test("a tracked join through a paragraph whose mark goes before a table is refused", () => {
+test.each([
+  ["deleted", { kind: "del" as const, info: stamp(50, "Reviewer") }],
+  [
+    "inserted, then deleted",
+    {
+      kind: "ins" as const,
+      info: stamp(50, "Other"),
+      deletion: { info: stamp(51, "Reviewer") },
+    },
+  ],
+])(
+  "a tracked join through a paragraph whose mark is %s, before a table under review, is refused",
+  (_shape, pPrMark) => {
+    const document = documentOf([
+      paragraph("00000001", "Intro."),
+      { ...paragraph("00000002", "Alpha."), pPrMark },
+      insertedTable("Reviewer"),
+      paragraph("00000003", "Final."),
+    ]);
+    const joined = applyDocumentOp(document, {
+      type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
+      story: OP_STORIES.MAIN,
+      blockId: "00000001",
+      nextBlockId: "00000002",
+      revision: stamp(100, "Reviewer"),
+      newIds: { revision: [101, 102, 103] },
+    });
+    expect(joined.isErr() ? joined.error.reason : "applied").toBe(
+      "untrackable",
+    );
+  },
+);
+
+test("an added paragraph holding a bookmark boundary is not removed outright", () => {
+  const added: Paragraph = {
+    ...paragraph("00000002", ""),
+    pPrMark: { kind: "ins", info: stamp(50, "Reviewer") },
+    content: [
+      { type: "bookmarkStart", id: 5, name: "kept" },
+      {
+        type: "insertion",
+        info: stamp(51, "Reviewer"),
+        content: [{ type: "run", content: [{ type: "text", text: "Alpha." }] }],
+      },
+    ],
+  };
   const document = documentOf([
     paragraph("00000001", "Intro."),
-    {
-      ...paragraph("00000002", "Alpha."),
-      pPrMark: { kind: "del", info: stamp(50, "Reviewer") },
-    },
+    added,
     insertedTable("Reviewer"),
-    paragraph("00000003", "Final."),
+    {
+      ...paragraph("00000003", "Final."),
+      content: [
+        { type: "run", content: [{ type: "text", text: "Final." }] },
+        { type: "bookmarkEnd", id: 5 },
+      ],
+    },
   ]);
-  const joined = applyDocumentOp(document, {
-    type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
-    story: OP_STORIES.MAIN,
-    blockId: "00000001",
-    nextBlockId: "00000002",
-    revision: stamp(100, "Reviewer"),
-    newIds: { revision: [101, 102, 103] },
-  });
-  expect(joined.isErr() ? joined.error.reason : "applied").toBe("untrackable");
+  const deleted = applyDocumentOp(document, deletion("00000002"));
+  if (deleted.isOk())
+    expect(JSON.stringify(deleted.value.document)).toContain(
+      '"type":"bookmarkStart"',
+    );
 });

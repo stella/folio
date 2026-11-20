@@ -40,6 +40,7 @@ import {
 } from "./offsets";
 import {
   isBlockBoundary,
+  isBoundary,
   withBoundariesOutsideDeletion,
 } from "./rangeBoundaries";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
@@ -119,17 +120,24 @@ const deletedContent = (
 
 /**
  * Whether `author`'s pending insertion added `paragraph` whole: its mark
- * and every word, with no one else's suggestion in it.
+ * and every word, with no one else's suggestion in it and no range boundary
+ * standing in it, which removing the paragraph would lose.
  */
 const addedWholeBy = (paragraph: Paragraph, author: string): boolean =>
   paragraph.pPrMark?.kind === "ins" &&
+  paragraph.pPrMark.deletion === undefined &&
   paragraph.pPrMark.info.author === author &&
   paragraph.content.every(
-    (item) =>
-      isRangeBoundary(item) ||
-      (item.type === "insertion" && item.info.author === author),
+    (item) => item.type === "insertion" && item.info.author === author,
   ) &&
+  !holdsRangeBoundary(paragraph.content) &&
   recordedOnlyBy(paragraph, author);
+
+/** Whether a range boundary stands anywhere among `nodes`. */
+const holdsRangeBoundary = (nodes: readonly InlineNode[]): boolean =>
+  nodes.some(
+    (node) => isBoundary(node) || holdsRangeBoundary(childNodes(node) ?? []),
+  );
 
 /**
  * Every comment reference in `nodes` outside a removal already pending
