@@ -536,6 +536,8 @@ export const paragraphIdSequence: IdentityKeySequence = {
  * of the whole package.
  */
 export type IdentityKeyIndex = {
+  /** Keys present in the other package but absent from this one. */
+  introducedIn: (next: DocxPackage) => string[];
   /** How many records carry `key`. */
   count: (key: string) => number;
   /** Whether any record carries `key`. */
@@ -815,7 +817,7 @@ const keyIndex = (
       prefixes: undefined,
     };
   };
-  return (pkg) => {
+  const index = (pkg: DocxPackage): IdentityKeyIndex => {
     let node = nodes.get(pkg);
     if (node === undefined) {
       node = derived(pkg) ?? counted(pkg);
@@ -824,6 +826,25 @@ const keyIndex = (
     recent.remember(pkg);
     const indexed = node;
     return {
+      introducedIn: (next) => {
+        if (pkg === next) return [];
+        const cached = nodes.get(next);
+        const changes = cached?.parent === indexed ? cached.changes : new Map();
+        if (
+          cached?.parent !== indexed &&
+          (!indexed.shareable ||
+            !changeBetween(viewOf(pkg), viewOf(next), changes))
+        ) {
+          return [...index(next).counts().keys()].filter(
+            (key) => countIn(indexed, key) === 0,
+          );
+        }
+        const introduced: string[] = [];
+        for (const [key, change] of changes) {
+          if (change > 0 && countIn(indexed, key) === 0) introduced.push(key);
+        }
+        return introduced;
+      },
       count: (key) => countIn(indexed, key),
       has: (key) => countIn(indexed, key) > 0,
       firstMissing: (sequence, limit) => {
@@ -841,6 +862,7 @@ const keyIndex = (
       repeated: () => indexed.repeated,
     };
   };
+  return index;
 };
 
 /** How many records of a package carry each revision and content-control id. */
@@ -855,6 +877,30 @@ const ownParagraphKeys: OwnKeys = (entries) => {
   const id = paragraphIdOf(entries);
   return { keys: id === undefined ? NO_KEYS : [idKey(id)], shareable: true };
 };
+
+/** The numeric spelling lease accounting has always accepted. */
+export const parseLeasedParaId = (id: string): number | undefined => {
+  const value = Number.parseInt(id, 16);
+  return Number.isSafeInteger(value) ? value : undefined;
+};
+
+const ownLeasedParagraphKeys: OwnKeys = (entries) => {
+  const raw = paragraphIdOf(entries);
+  const id = raw === undefined ? undefined : parseLeasedParaId(idKey(raw));
+  return {
+    keys: id === undefined ? NO_KEYS : [id.toString(16)],
+    shareable: true,
+  };
+};
+
+/** Numeric lease identities can have multiple source spellings. */
+export const packageLeasedParagraphKeyIndex: (
+  pkg: DocxPackage,
+) => IdentityKeyIndex = keyIndex(
+  censusWalker(ownLeasedParagraphKeys, "shared"),
+  ownLeasedParagraphKeys,
+  storiesOf,
+);
 
 /**
  * How many paragraphs of a package carry each id, by {@link idKey}: what

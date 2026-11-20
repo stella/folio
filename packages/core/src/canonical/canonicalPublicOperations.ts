@@ -38,7 +38,7 @@ import {
   type IdBlock,
   idKey,
   type IdLease,
-  introducedIds,
+  introducedDocumentIds,
   type LeasedId,
   leasedIdCensus,
   locateParagraphInBlockList,
@@ -3909,7 +3909,7 @@ export class CanonicalPublicOperations {
       type AdmittedMember = {
         resolvedOperation: AdmittedOperation;
         firstRevisionId: number;
-        ids: ReturnType<typeof introducedIds>;
+        ids: LeasedId[];
         ops: readonly DocumentOp[];
         allocations: NonNullable<CompilePublicIntentsOptions["allocations"]>;
         commentAllocation: PrepareOperationOptions["commentAllocation"];
@@ -3924,13 +3924,10 @@ export class CanonicalPublicOperations {
       let admissionRevisionId = nextRevisionId;
       let admissionCensus:
         | { type: "paragraphs"; ids: Set<number> | undefined }
-        | {
-            type: "package";
-            ids: ReturnType<typeof leasedIdCensus> | undefined;
-          } =
+        | { type: "package" } =
         session.idLease === undefined
           ? { type: "paragraphs", ids: undefined }
-          : { type: "package", ids: undefined };
+          : { type: "package" };
       for (const member of window) {
         completed.add(member.operation.id);
         const prepared = prepareOperation({
@@ -3962,13 +3959,11 @@ export class CanonicalPublicOperations {
             ids.push({ kind: ID_LEASE_KINDS.PARAGRAPH, id });
           }
         } else {
-          const before =
-            (admissionCensus.type === "package"
-              ? admissionCensus.ids
-              : undefined) ?? leasedIdCensus(admissionDocument);
-          const after = leasedIdCensus(prepared.document);
-          ids = introducedIds(before, after);
-          admissionCensus = { type: "package", ids: after };
+          ids = introducedDocumentIds({
+            before: admissionDocument,
+            after: prepared.document,
+          });
+          admissionCensus = { type: "package" };
         }
         admitted.push({
           resolvedOperation: member,

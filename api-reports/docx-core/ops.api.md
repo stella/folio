@@ -871,6 +871,12 @@ export type InsertTextOp = {
 };
 
 // @public
+export const introducedDocumentIds: (input: {
+    before: Document_2;
+    after: Document_2;
+}) => LeasedId[];
+
+// @public
 export const introducedIds: (before: LeasedIdCensus, after: LeasedIdCensus) => LeasedId[];
 
 // @public

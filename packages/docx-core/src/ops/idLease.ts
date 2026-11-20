@@ -15,8 +15,10 @@ import {
   IDENTITY_SPACES,
   idKey,
   packageIdentityKeyIndex,
+  packageLeasedParagraphKeyIndex,
   packageParagraphIdIndex,
   paragraphIdSequence,
+  parseLeasedParaId,
 } from "./ids";
 
 export { formatParaId } from "./ids";
@@ -63,11 +65,6 @@ export type IdBlock = IdRange & { readonly kind: IdLeaseKind };
 
 /** The ids one author may still mint: disjoint blocks, ascending per kind. */
 export type IdLease = { readonly blocks: readonly IdBlock[] };
-
-const parseParaId = (id: string): number | undefined => {
-  const value = Number.parseInt(id, 16);
-  return Number.isSafeInteger(value) ? value : undefined;
-};
 
 const blocksOf = (lease: IdLease, kind: IdLeaseKind): IdBlock[] =>
   lease.blocks
@@ -116,16 +113,23 @@ export const idLeaseRemaining = (lease: IdLease, kind: IdLeaseKind): number =>
 /** The ids of each kind a document holds anywhere in its package. */
 export type LeasedIdCensus = Readonly<Record<IdLeaseKind, ReadonlySet<number>>>;
 
-/** Every paragraph, revision, content-control and comment id of a document. */
-export const leasedIdCensus = (document: Document): LeasedIdCensus => {
+const leasedIdsOf = ({
+  paragraphKeys,
+  identityKeys,
+  comment,
+}: {
+  paragraphKeys: Iterable<string>;
+  identityKeys: Iterable<string>;
+  comment: ReadonlySet<number>;
+}): LeasedIdCensus => {
   const paragraph = new Set<number>();
-  for (const key of packageParagraphIdIndex(document.package).counts().keys()) {
-    const id = parseParaId(key);
+  for (const key of paragraphKeys) {
+    const id = parseLeasedParaId(key);
     if (id !== undefined) paragraph.add(id);
   }
   const revision = new Set<number>();
   const control = new Set<number>();
-  for (const key of packageIdentityKeyIndex(document.package).counts().keys()) {
+  for (const key of identityKeys) {
     const separator = key.lastIndexOf(":");
     const space = key.slice(0, separator);
     const id = Number(key.slice(separator + 1));
@@ -133,11 +137,16 @@ export const leasedIdCensus = (document: Document): LeasedIdCensus => {
     if (space === IDENTITY_SPACES.REVISION) revision.add(id);
     else if (space === IDENTITY_SPACES.CONTROL) control.add(id);
   }
-  const comment = new Set<number>();
-  for (const record of document.package.document.comments ?? [])
-    comment.add(record.id);
   return { paragraph, revision, control, comment };
 };
+
+/** Every paragraph, revision, content-control and comment id of a document. */
+export const leasedIdCensus = (document: Document): LeasedIdCensus =>
+  leasedIdsOf({
+    paragraphKeys: packageParagraphIdIndex(document.package).counts().keys(),
+    identityKeys: packageIdentityKeyIndex(document.package).counts().keys(),
+    comment: new Set(document.package.document.comments?.map(({ id }) => id)),
+  });
 
 /** One id of one kind. */
 export type LeasedId = { readonly kind: IdLeaseKind; readonly id: number };
@@ -155,6 +164,43 @@ export const introducedIds = (
     for (const id of ids) introduced.push({ kind, id });
   }
   return introduced;
+};
+
+const noIds: LeasedIdCensus = {
+  paragraph: new Set(),
+  revision: new Set(),
+  control: new Set(),
+  comment: new Set(),
+};
+
+/** The IDs introduced between package versions, in the same order as the census difference. */
+export const introducedDocumentIds = ({
+  before,
+  after,
+}: {
+  before: Document;
+  after: Document;
+}): LeasedId[] => {
+  if (before.package === after.package) return [];
+  const oldComments = before.package.document.comments;
+  const newComments = after.package.document.comments;
+  const comment = new Set<number>();
+  if (oldComments !== newComments && newComments !== undefined) {
+    const known = new Set(oldComments?.map(({ id }) => id));
+    for (const { id } of newComments) if (!known.has(id)) comment.add(id);
+  }
+  return introducedIds(
+    noIds,
+    leasedIdsOf({
+      paragraphKeys: packageLeasedParagraphKeyIndex(
+        before.package,
+      ).introducedIn(after.package),
+      identityKeys: packageIdentityKeyIndex(before.package).introducedIn(
+        after.package,
+      ),
+      comment,
+    }),
+  );
 };
 
 /**
