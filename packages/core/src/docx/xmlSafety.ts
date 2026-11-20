@@ -1,3 +1,4 @@
+import { hasIllegalXmlCharacters } from "@stll/docx-core";
 import { wellFormedXmlIssue } from "@stll/docx-core/xml";
 
 const DOCTYPE_PATTERN = /<!DOCTYPE(?:\s|>)/iu;
@@ -85,16 +86,6 @@ const isValidQName = (name: string): boolean => {
   return parts.length <= 2 && parts.every((part) => NCNAME.test(part));
 };
 
-const containsOnlyXmlCharacters = (xml: string): boolean => {
-  for (const character of xml) {
-    const codePoint = character.codePointAt(0);
-    if (codePoint === undefined || !isXmlCharacter(codePoint)) {
-      return false;
-    }
-  }
-  return true;
-};
-
 const isWhitespace = (character: string | undefined): boolean =>
   character === " " ||
   character === "\t" ||
@@ -125,7 +116,7 @@ const scanName = (xml: string, start: number): ScannedName | null => {
  * tree parser: structural nesting remains the reader's job.
  */
 const hasInvalidXmlLexicalForm = (xml: string): boolean => {
-  if (!containsOnlyXmlCharacters(xml)) {
+  if (hasIllegalXmlCharacters(xml)) {
     return true;
   }
   const byteOrderMark = xml.indexOf(BYTE_ORDER_MARK);
