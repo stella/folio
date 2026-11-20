@@ -1,5 +1,5 @@
-import type { BlockContent, DocumentBody } from "../model/document";
-import { type ParagraphLocation, storyParagraphs } from "./blocks";
+import type { BlockContent, DocumentBody, Paragraph } from "../model/document";
+import { blockListAt, type ParagraphLocation, storyParagraphs } from "./blocks";
 import { idKey } from "./ids";
 import { recentValues } from "./recentValues";
 
@@ -195,4 +195,25 @@ export const findStoryParagraph = (
   return location === undefined
     ? undefined
     : placed(location, body.content.indexOf(block));
+};
+
+/** The paragraph and its physical siblings, within the same body, wrapper or cell. */
+export const locateParagraphInBlockList = (
+  body: DocumentBody,
+  blockId: string,
+):
+  | { paragraph: Paragraph; blocks: readonly BlockContent[]; index: number }
+  | undefined => {
+  const at =
+    blockId === ""
+      ? storyParagraphs(body).find(
+          ({ paragraph }) => (paragraph.paraId ?? "") === "",
+        )
+      : findStoryParagraph(body, blockId);
+  if (at === undefined) return undefined;
+  return {
+    paragraph: at.paragraph,
+    blocks: blockListAt(body.content, at.list),
+    index: at.index,
+  };
 };
