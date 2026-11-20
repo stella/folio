@@ -5096,12 +5096,22 @@ export class CanonicalPublicOperations {
       intent.type === "joinParagraphs"
     ) {
       // The separator goes in at the first paragraph's end, before the join.
-      // Where only paragraphs pending deletion follow, accepting leaves no
-      // words after it to separate, as the default engine reads it.
+      // Where only paragraphs pending deletion follow, or ones the batch
+      // deletes and places nothing beside, accepting leaves no words after it
+      // to separate, as the default engine reads it.
+      const vanishing = new Set(
+        [...besideDeletions.deleted].filter(
+          (id) =>
+            !besideDeletions.insertedBeside.has(id) &&
+            !besideDeletions.paragraphsAfter.has(id) &&
+            !besideDeletions.tables.after.has(id) &&
+            !besideDeletions.tables.before.has(id),
+        ),
+      );
       const separator = followedOnlyByDeletedParagraphs(
         projection.value.doc,
         paragraph.start - 1 + paragraph.node.nodeSize,
-        besideDeletions.deleted,
+        vanishing,
       )
         ? ""
         : (operation.separator ?? "");
