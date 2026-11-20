@@ -33,10 +33,12 @@ const TOUCH_TRANSITIONS = {
   Record<TouchedState, TouchedState | undefined>
 >;
 
-/** Edits made in turn, starting from `document`, as one edit. */
-export const combineEdits = (
-  document: Document,
-  edits: readonly DocumentEdit[],
+export type DocumentEditEffects = Pick<DocumentEdit, "inverse" | "touched">;
+
+/** Effects of edits made in turn, with their final document. */
+export const combineEditEffects = (
+  final: Document,
+  edits: readonly DocumentEditEffects[],
 ): DocumentEdit => {
   const touched = new Map<string, TouchedState>();
   for (const edit of edits) {
@@ -55,7 +57,6 @@ export const combineEdits = (
   }
   const ids = (state: TouchedState): string[] =>
     [...touched].flatMap(([id, value]) => (value === state ? [id] : []));
-  const final = edits.at(-1)?.document ?? document;
   const lists = edits.map(({ touched: { absorbed: list } }) => list ?? []);
   const absorbed = lists.some((list) => list.length > 0)
     ? combinedAbsorptions(
@@ -75,6 +76,13 @@ export const combineEdits = (
     },
   };
 };
+
+/** Edits made in turn, starting from `document`, as one edit. */
+export const combineEdits = (
+  document: Document,
+  edits: readonly DocumentEdit[],
+): DocumentEdit =>
+  combineEditEffects(edits.at(-1)?.document ?? document, edits);
 
 /**
  * Absorptions made in turn, as one: a paragraph joined into one that a later

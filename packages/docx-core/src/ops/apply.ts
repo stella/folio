@@ -90,7 +90,12 @@ import {
   hasValidCopyOriginAncestors,
 } from "./copyOriginAncestors";
 import { keptDeletionBoundaries } from "./deletionBoundaries";
-import { combineEdits, type DocumentEdit } from "./edits";
+import {
+  combineEditEffects,
+  combineEdits,
+  type DocumentEdit,
+  type DocumentEditEffects,
+} from "./edits";
 import { equalForStaleness, structurallyEqual } from "./equality";
 import { resolveGap, type ZeroWidthDefault } from "./gaps";
 import { freshenIdentities, rebindRetainedIdentities } from "./identity";
@@ -3794,7 +3799,7 @@ const applyDocumentOpsForPurpose = ({
   purpose,
 }: ApplyDocumentOpsOptions): Result<AppliedDocumentOp, DocumentOpRefusal> => {
   let current = document;
-  const edits: DocumentEdit[] = [];
+  const effects: (DocumentEditEffects & { document?: never })[] = [];
   const revisions: number[] = [];
   for (const op of ops) {
     const applied = applyDocumentOpForPurpose({
@@ -3805,11 +3810,17 @@ const applyDocumentOpsForPurpose = ({
     if (applied.isErr()) {
       return applied;
     }
-    current = applied.value.document;
-    edits.push(applied.value);
-    revisions.push(...applied.value.revisions);
+    const {
+      document: next,
+      inverse,
+      touched,
+      revisions: recorded,
+    } = applied.value;
+    current = next;
+    effects.push({ inverse, touched });
+    revisions.push(...recorded);
   }
-  return Result.ok({ ...combineEdits(document, edits), revisions });
+  return Result.ok({ ...combineEditEffects(current, effects), revisions });
 };
 
 /**
