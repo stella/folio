@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 
 import type { Paragraph } from "../../model/document";
 import { hasMultipleParagraphPropertyChanges } from "../contract";
@@ -80,3 +80,64 @@ test.each([16, 64])(
     expect(reads).toBe(2 * size);
   },
 );
+
+test("large splices preserve both boundaries without using replacement elements as arguments", () => {
+  const size = 150_000;
+  const replacement = Array.from({ length: size }, (_, index) => index);
+  const source = [-1, -2, -3];
+  const native = spyOn(source, "toSpliced");
+  try {
+    const full = spliceItems({
+      items: source,
+      start: 0,
+      count: source.length,
+      replacement,
+    });
+    expect(full).toEqual(replacement);
+    expect(full).not.toBe(replacement);
+    expect(changedListBounds(source, full)).toMatchObject({
+      start: 0,
+      previousEnd: source.length,
+      end: size,
+    });
+
+    const middle = spliceItems({
+      items: source,
+      start: 1,
+      count: 1,
+      replacement,
+    });
+    expect(middle.at(0)).toBe(-1);
+    expect(middle.slice(1, -1)).toEqual(replacement);
+    expect(middle.at(-1)).toBe(-3);
+    expect(changedListBounds(middle, source)).toEqual({
+      start: 1,
+      previousEnd: size + 1,
+      end: 2,
+    });
+    expect(native.mock.calls.map((args) => args.length)).toEqual([2]);
+  } finally {
+    native.mockRestore();
+  }
+});
+
+test("large splices keep native numeric, sparse, and removed-element behavior", () => {
+  const replacement = Array.from({ length: 1_025 }, (_, index) => index);
+  const source = [-1, -2, -3, -4];
+  Reflect.deleteProperty(source, 0);
+  Object.defineProperty(source, 2, {
+    get: () => {
+      throw new Error("Splicing must not read an element it removes.");
+    },
+  });
+  const next = spliceItems({
+    items: source,
+    start: -2.9,
+    count: 1.9,
+    replacement,
+  });
+  expect(Object.hasOwn(next, 0)).toBe(true);
+  expect(next.slice(0, 2)).toEqual([undefined, -2]);
+  expect(next.slice(2, -1)).toEqual(replacement);
+  expect(next.at(-1)).toBe(-4);
+});
