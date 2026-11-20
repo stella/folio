@@ -1667,6 +1667,7 @@ export const beginTrackedInsertionCompilation = ({
     lease: undefined,
   });
   if (ids === undefined) return { type: "unsupported" };
+  const newParagraphIds = new Set(ids);
   let nextIndex = 0;
   return {
     type: "ready",
@@ -1677,6 +1678,8 @@ export const beginTrackedInsertionCompilation = ({
         id === undefined ||
         intent.story !== OP_STORIES.MAIN ||
         (intent.at.type !== "before" && intent.at.type !== "after") ||
+        (!newParagraphIds.has(idKey(intent.at.blockId)) &&
+          textBoxOfIntent(document, intent) !== undefined) ||
         intent.paragraphs.length !== 1 ||
         intent.move === true ||
         intent.newList !== undefined ||

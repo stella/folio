@@ -2,6 +2,7 @@ import { expect, spyOn, test } from "bun:test";
 
 import type { Document, Paragraph } from "../../model/document";
 import { applyDocumentOp } from "../apply";
+import { normalizeForOps } from "../contract";
 import {
   beginTrackedInsertionCompilation,
   compileEditorIntent,
@@ -100,4 +101,68 @@ test("one monotone paragraph allocation produces the exact per-member native ope
   } finally {
     allocations.mockRestore();
   }
+});
+
+test("a main-story address routed into a text box stays on the ordinary path", () => {
+  const baseline = normalizeForOps({
+    package: {
+      document: {
+        content: [
+          {
+            type: "paragraph",
+            paraId: "00000001",
+            content: [
+              {
+                type: "run",
+                content: [
+                  {
+                    type: "shape",
+                    shape: {
+                      type: "shape",
+                      shapeType: "textBox",
+                      id: "1",
+                      size: { width: 2_000_000, height: 800_000 },
+                      textBody: { content: [paragraph("00000010")] },
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    },
+  });
+  const intent = {
+    type: "insertParagraphs",
+    story: OP_STORIES.MAIN,
+    at: { type: "after", blockId: "00000010" },
+    paragraphs: [paragraph("00000040")],
+  } satisfies EditorIntent;
+  const mode = {
+    type: "suggesting",
+    revision: { id: 601, author: "Author", date: "2026-01-11T00:00:00.000Z" },
+    newIds: { revision: [602] },
+  } satisfies EditorIntentMode;
+  const group = beginTrackedInsertionCompilation({
+    document: baseline,
+    count: 1,
+  });
+  if (group.type !== "ready") throw new Error("Missing compiler");
+  expect(group.compile({ index: 0, intent, mode }).unwrap().type).toBe(
+    "unsupported",
+  );
+  const [ordinary] = compileEditorIntent(baseline, { intent, mode }).unwrap()
+    .ops;
+  if (ordinary === undefined) throw new Error("Missing ordinary operation");
+  expect(applyDocumentOp(baseline, ordinary).isOk()).toBe(true);
+  expect(
+    group
+      .compile({
+        index: 0,
+        intent: { ...intent, at: { type: "after", blockId: "00000001" } },
+        mode,
+      })
+      .unwrap().type,
+  ).toBe("operation");
 });
