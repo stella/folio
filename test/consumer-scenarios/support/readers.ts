@@ -703,18 +703,18 @@ export const readAll = async (bytes: Uint8Array): Promise<ReaderViews> => {
   );
   // Clean Markdown shows every change accepted, structure included (a
   // deleted paragraph mark joins two paragraphs); the readers above show the
-  // markup. Markdown is compared with the same package, accepted.
+  // markup. Markdown is compared with the reviewer's accepted view.
   let accepted = bodyContent;
-  let acceptedReviewer = reviewer;
   if (reviewer.getChanges().length > 0) {
-    acceptedReviewer = await openReviewer(bytes);
-    acceptedReviewer.acceptAll();
-    accepted = paragraphBlocks(acceptedReviewer.getContent());
+    const final = reviewer.readReviewedStory({ view: "final" });
+    if (final === null) throw new Error("The body has no accepted view");
+    accepted = paragraphBlocks(final.snapshot.blocks);
   }
   // `docxToMarkdown` writes no text-box paragraph the block readers list
   // (MARKDOWN_DROPS_TEXT_BOX, pinned in known-issues.test.ts); the rest of
   // the document is still compared. Drop this once that finding is fixed.
-  const boxed = featureIndex(acceptedReviewer).inTextBox;
+  // Acceptance keeps a paragraph's id, so the markup's text boxes name them.
+  const boxed = featureIndex(reviewer).inTextBox;
   accepted = accepted.filter((block) => !boxed.has(block.id));
   const markdownSource = markdownSourceViews(accepted, numberingFormats);
   return {
