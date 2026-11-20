@@ -152,6 +152,7 @@ import {
   resolveAllChangesInHeadlessState,
   revisionResolutionLockViolation,
   suggestionIdOfRevision,
+  suggestionOwnersByRevision,
 } from "../prosemirror/commands/comments";
 import {
   allocateCommentId,
@@ -268,6 +269,7 @@ import {
   getTrackedChangesFromDoc,
   getTrackedChangesFromSnapshot,
   getTrackedChangeStatsFromDoc,
+  listedRevisionGroups,
 } from "./read";
 import { classifyResourceReference } from "./referenceClassification";
 import {
@@ -2600,18 +2602,16 @@ export class FolioDocxReviewer {
         const state = this.getEditableStoryState(handle);
         if (!state) return [];
         const story = canonicalOpStory(handle);
-        const changes = getTrackedChangesFromDoc(state.doc)
-          // Bulk acceptance leaves pending proposals staged.
-          .filter(
-            ({ id }) =>
-              resolution === "reject" ||
-              suggestionIdOfRevision(state, id) === null,
-          )
-          .map(({ id }) => ({
-            id,
-            suggestionId: suggestionIdOfRevision(state, id),
-            groupIds: getTrackedChangeGroupIdsFromDoc(state.doc, id),
-          }));
+        const listed = listedRevisionGroups(state.doc);
+        if (listed.length === 0) return [];
+        const owners = suggestionOwnersByRevision(state);
+        // Bulk acceptance leaves pending proposals staged.
+        const changes = listed.flatMap(({ id, groupIds }) => {
+          const suggestionId = owners.get(id) ?? null;
+          return resolution === "accept" && suggestionId !== null
+            ? []
+            : [{ id, groupIds, suggestionId }];
+        });
         const locks = canonicalRevisionLocks({
           document: this.baseDocument,
           story,
@@ -4928,16 +4928,15 @@ export class FolioDocxReviewer {
             resolveFinalSectionChanges(current, resolution),
           )
         : null;
-    const ids = getTrackedChangesFromDoc(state.doc).flatMap(({ id }) =>
-      getTrackedChangeGroupIdsFromDoc(state.doc, id),
+    const groups = listedRevisionGroups(state.doc).map(
+      ({ groupIds }) => groupIds,
     );
+    const ids = groups.flat();
     if (ids.length === 0 && section === null) return true;
     const locks = canonicalRevisionLocks({
       document: this.baseDocument,
       story: canonicalOpStory(story),
-      groups: getTrackedChangesFromDoc(state.doc).map(({ id }) =>
-        getTrackedChangeGroupIdsFromDoc(state.doc, id),
-      ),
+      groups,
       decision: resolution,
     });
     const firstHeld = locks.held.at(0);

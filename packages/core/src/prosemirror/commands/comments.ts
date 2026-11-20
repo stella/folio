@@ -2730,6 +2730,18 @@ export const pendingSuggestionRevisionIds = (
   return ids;
 };
 
+/** The first owning suggestion for each physical revision, in source order. */
+export const suggestionOwnersByRevision = (
+  state: EditorState,
+): ReadonlyMap<number, string> => {
+  const owners = new Map<number, string>();
+  for (const [suggestionId, entry] of collectSuggestions(state)) {
+    for (const id of entry.revisionIds)
+      if (!owners.has(id)) owners.set(id, suggestionId);
+  }
+  return owners;
+};
+
 /** The suggestion a revision belongs to, or `null` for an ordinary tracked change. */
 export function suggestionIdOfRevision(
   state: EditorState,
