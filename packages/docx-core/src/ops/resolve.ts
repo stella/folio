@@ -200,20 +200,26 @@ type NoteReference = {
   added: boolean;
 };
 
+type RemovedNoteReferencesOptions = {
+  paragraphs: readonly ParagraphLocation[];
+  decision: RevisionDecision;
+  ids: ReadonlySet<number>;
+};
+
 /** Note bodies whose selected reference revision is removed by this decision. */
-const removedNoteReferences = (
-  document: Document,
-  op: ResolveRevisionOp,
-  ids: ReadonlySet<number>,
-): NoteReference[] => {
+const removedNoteReferences = ({
+  paragraphs,
+  decision,
+  ids,
+}: RemovedNoteReferencesOptions): NoteReference[] => {
   const references = new Map<string, NoteReference>();
-  for (const { paragraph } of storyParagraphs(storyBody(document, op.story))) {
+  for (const { paragraph } of paragraphs) {
     for (const { node, ancestors } of noteReferenceSpans(paragraph.content)) {
       const revision = ancestors.find(
         (ancestor) =>
           isTrackedWrapper(ancestor) &&
           ids.has(ancestor.info.id) &&
-          removesContent(ancestor, op.decision),
+          removesContent(ancestor, decision),
       );
       if (revision === undefined || !isTrackedWrapper(revision)) continue;
       const reference = {
@@ -4932,12 +4938,12 @@ type RevisionResolutionPlanOptions = {
  * - rejecting the deletion alone leaves the insertion pending.
  */
 const settleTwoRecordMarks = (
-  document: Document,
+  paragraphs: readonly ParagraphLocation[],
   op: ResolveRevisionOp,
 ): { ops: DocumentOp[]; ids: number[] } => {
   const ids = new Set(op.revisionIds);
   const ops: DocumentOp[] = [];
-  for (const { paragraph } of storyParagraphs(storyBody(document, op.story))) {
+  for (const { paragraph } of paragraphs) {
     const mark = paragraph.pPrMark;
     if (mark?.deletion === undefined) continue;
     const insertion = mark.info.id;
@@ -5036,15 +5042,20 @@ const planMarkResolution = (
   options: RevisionResolutionPlanOptions,
 ): Result<RevisionResolutionPlan, DocumentOpRefusal> => {
   const { document, op, applyOps } = options;
-  const settled = settleTwoRecordMarks(document, op);
-  if (settled.ops.length === 0) return planSingleRecordResolution(options);
+  const paragraphs = storyParagraphs(storyBody(document, op.story));
+  const settled = settleTwoRecordMarks(paragraphs, op);
+  if (settled.ops.length === 0)
+    return planSingleRecordResolution(options, paragraphs);
   const marks = applyOps(document, settled.ops);
   if (marks.isErr()) return Result.err(marks.error);
-  const rest = planSingleRecordResolution({
-    document: marks.value.document,
-    op: { ...op, revisionIds: settled.ids },
-    applyOps,
-  });
+  const rest = planSingleRecordResolution(
+    {
+      document: marks.value.document,
+      op: { ...op, revisionIds: settled.ids },
+      applyOps,
+    },
+    storyParagraphs(storyBody(marks.value.document, op.story)),
+  );
   if (rest.isErr()) return Result.err(rest.error);
   return Result.ok({
     edit: combineEdits(document, [marks.value, rest.value.edit]),
@@ -5052,14 +5063,10 @@ const planMarkResolution = (
   });
 };
 
-const planSingleRecordResolution = ({
-  document,
-  op,
-  applyOps,
-}: RevisionResolutionPlanOptions): Result<
-  RevisionResolutionPlan,
-  DocumentOpRefusal
-> => {
+const planSingleRecordResolution = (
+  { document, op, applyOps }: RevisionResolutionPlanOptions,
+  paragraphs: readonly ParagraphLocation[],
+): Result<RevisionResolutionPlan, DocumentOpRefusal> => {
   if (!Object.values(REVISION_DECISIONS).includes(op.decision)) {
     return Result.err(
       refusal(
@@ -5111,9 +5118,8 @@ const planSingleRecordResolution = ({
   let resolution = createResolution(ids, op.decision);
   const rejectedNoteReferences =
     op.decision === REVISION_DECISIONS.REJECT
-      ? removedNoteReferences(document, op, ids)
+      ? removedNoteReferences({ paragraphs, decision: op.decision, ids })
       : [];
-  const paragraphs = storyParagraphs(storyBody(document, op.story));
   const reachable = new Set([
     ...paragraphs.flatMap(({ paragraph }) => [...reachableIds(paragraph)]),
     ...reachableRowIds(document, op.story),
@@ -5325,7 +5331,7 @@ const planSingleRecordResolution = ({
   }
   const noteReferences =
     op.decision === REVISION_DECISIONS.ACCEPT
-      ? removedNoteReferences(document, op, ids)
+      ? removedNoteReferences({ paragraphs, decision: op.decision, ids })
       : rejectedNoteReferences;
   // Boundaries kept from removed content can leave a range ending before it starts.
   const normalizedRangeContents = wellFormedRanges({
