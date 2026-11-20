@@ -43,3 +43,22 @@ for (const decision of ["accept", "reject"] as const)
     // The host's model is read, never changed.
     expect(document.package.document.content[1]).toBe(inserted);
   });
+
+test("one mark object shared by several paragraphs resolves as a record in each", () => {
+  const deletedMark = { kind: "del" as const, info: { id: 91, author: "A" } };
+  const shared: Document = {
+    package: {
+      document: {
+        content: [
+          { ...text("00000001", "One "), pPrMark: deletedMark },
+          { ...text("00000002", "One "), pPrMark: deletedMark },
+          text("00000003", "Tail"),
+        ],
+      },
+    },
+  };
+  const view = resolvedDocumentView(shared, "accept");
+  expect(view.unresolved).toEqual([]);
+  expect(view.document.package.document.content).toHaveLength(1);
+  expect(JSON.stringify(view.document)).toContain("One One Tail");
+});
