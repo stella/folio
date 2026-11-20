@@ -1013,9 +1013,30 @@ const visitBlockSources = (
   }
 };
 
+/** The paragraphs of the text boxes a paragraph draws, those inside them included. */
+const visitTextBoxSources = (
+  paragraph: Paragraph,
+  visit: (source: Paragraph, container: readonly BlockContent[]) => void,
+): void => {
+  visitInlineContentSlots(paragraph, ({ item }) => {
+    if (item.type !== "run") return;
+    for (const content of item.content)
+      if (content.type === "shape" && content.shape.textBody !== undefined)
+        visitSourceParagraphs(
+          content.shape.textBody.content,
+          (source, container) => {
+            visit(source, container);
+            visitTextBoxSources(source, visit);
+          },
+        );
+  });
+};
+
 /** The source paragraphs of a run of story blocks. */
 type StorySources = {
   located: Map<string, LocatedSource>;
+  /** The paragraphs of the text boxes drawn in the run's paragraphs. */
+  boxed: Map<string, LocatedSource>;
   /** Each block's source paragraph ids, from the run's first block. */
   idsByBlock: string[][];
   all: Paragraph[];
@@ -1032,6 +1053,7 @@ const collectSources = (
 ): StorySources => {
   const found: StorySources = {
     located: new Map(),
+    boxed: new Map(),
     idsByBlock: [],
     all: [],
     continuation: new Set(),
@@ -1044,6 +1066,14 @@ const collectSources = (
     continuation: boolean,
   ): void => {
     found.all.push(source);
+    visitTextBoxSources(source, (boxed, boxContent) => {
+      if (boxed.paraId !== undefined && !found.boxed.has(boxed.paraId))
+        found.boxed.set(boxed.paraId, {
+          source: boxed,
+          container: boxContent,
+          top: at.top,
+        });
+    });
     if (continuation) found.continuation.add(source);
     if (source.paraId === undefined) return;
     if (found.located.has(source.paraId) || takenElsewhere(source.paraId))
@@ -1096,6 +1126,11 @@ type BlockWalk = {
   /** The story's own blocks: a paragraph held there has no container of its own. */
   content: readonly BlockContent[];
   locate: (paraId: string) => LocatedSource | undefined;
+  /** A text box paragraph's source, from the boxes drawn in the story's paragraphs. */
+  locateBoxed: (paraId: string) => LocatedSource | undefined;
+  /** Records a text box paragraph projected; false when one already was. */
+  takeBoxed: (source: Paragraph) => boolean;
+  markersOf: ParagraphCommentMarkers;
   /** Takes the paragraph a standalone text box was converted from; false when there is none. */
   claimTextBoxHost: () => boolean;
   /** Records the source a paragraph is projected from; false when one already was. */
@@ -1103,6 +1138,68 @@ type BlockWalk = {
   passComments: (paragraph: Paragraph) => void;
   positionedComments: ReturnType<typeof positionedCommentGaps>;
   inline: InlineProjectionCache | undefined;
+};
+
+type TextBoxProjectionOptions = {
+  box: PMNode;
+  /** The box node's offset from the top-level node's start. */
+  offset: number;
+  walk: BlockWalk;
+  paragraphs: BlockParagraph[];
+};
+
+/**
+ * The paragraphs of a text box's editor node, addressed as its story's
+ * paragraphs. A paragraph the session cannot place in the box's source (one
+ * the conversion drew without it) gets no address, so input there refuses
+ * and the box keeps its source as it was.
+ */
+const projectTextBoxParagraphs = ({
+  box,
+  offset,
+  walk,
+  paragraphs,
+}: TextBoxProjectionOptions): void => {
+  // Comment ranges do not run between a story and its text boxes.
+  const open = new OpenComments([]);
+  const commentContext = {
+    rangedIds: walk.facts.rangedIds,
+    pointIds: walk.facts.pointIds,
+    openIds: open.ids,
+  };
+  box.descendants((node, childOffset) => {
+    if (node.type.name !== "paragraph") return true;
+    const paraId = node.attrs["paraId"];
+    const located =
+      typeof paraId === "string" ? walk.locateBoxed(paraId) : undefined;
+    if (
+      typeof paraId !== "string" ||
+      located === undefined ||
+      !walk.takeBoxed(located.source)
+    )
+      return false;
+    const inlineArgs = {
+      source: located.source,
+      paragraph: node,
+      pairedBookmarkIds: walk.facts.pairedBookmarkIds,
+      commentContext,
+    };
+    const inline =
+      walk.inline === undefined
+        ? projectCanonicalInline(inlineArgs)
+        : walk.inline.project(inlineArgs);
+    if (inline.isOk())
+      paragraphs.push({
+        blockId: paraId,
+        container: located.container,
+        offset: offset + 1 + childOffset + 1,
+        inline: inline.value,
+        node,
+        source: located.source,
+      });
+    passCommentMarkers(walk.markersOf(located.source), open);
+    return false;
+  });
 };
 
 /**
@@ -1131,9 +1228,9 @@ const projectBlock = (
     parent: PMNode | null,
   ): boolean => {
     if (failure !== undefined) return false;
-    // A text box's paragraphs belong to its shape, not to this story. The
-    // session holds no address in them, so input there refuses and the box
-    // keeps its source as it was.
+    // A text box's paragraphs are a story of their own, drawn in a paragraph
+    // of this one: they are addressed through this story, as operations name
+    // them, with comment ranges of their own.
     if (node.type.name === "textBox") {
       if (
         node.attrs["_docxPlacement"] === "standalone" &&
@@ -1141,6 +1238,7 @@ const projectBlock = (
         !walk.claimTextBoxHost()
       )
         failure = structureRefusal();
+      else projectTextBoxParagraphs({ box: node, offset, walk, paragraphs });
       return false;
     }
     // A range opened between blocks covers the paragraphs after it.
@@ -1239,13 +1337,20 @@ const projectEveryBlock = ({
   const pairedBookmarkIds = collectPairedBookmarkIds(content);
   const rangedIds = new Set<number>();
   const referencedIds = new Set<number>();
-  visitCommentMarkerItems(content, {
+  const commentWalk = {
     markersOf,
-    visit(item) {
+    visit(item: { type: string; id: number }) {
       if (item.type === "commentRangeStart") rangedIds.add(item.id);
       if (item.type === "commentReference") referencedIds.add(item.id);
     },
-  });
+  };
+  visitCommentMarkerItems(content, commentWalk);
+  // The text boxes drawn in the story hold comments of their own.
+  visitSourceParagraphs(content, (source) =>
+    visitTextBoxSources(source, (boxed) =>
+      visitCommentMarkerItems([boxed], commentWalk),
+    ),
+  );
   const facts: StoryProjectionFacts = {
     pairedBookmarkIds,
     rangedIds,
@@ -1261,6 +1366,7 @@ const projectEveryBlock = ({
   const continuationSources = found.continuation;
   const idsByBlock = found.idsByBlock;
   const projectedSources = new Set<Paragraph>();
+  const projectedBoxed = new Set<Paragraph>();
   // A paragraph holding only text boxes projects as the boxes alone; the first
   // box of its group stands where the paragraph was.
   const orderedSources = [...allSources];
@@ -1278,6 +1384,13 @@ const projectEveryBlock = ({
     open,
     content,
     locate: (paraId) => sources.get(paraId),
+    locateBoxed: (paraId) => found.boxed.get(paraId),
+    takeBoxed: (source) => {
+      if (projectedBoxed.has(source)) return false;
+      projectedBoxed.add(source);
+      return true;
+    },
+    markersOf,
     claimTextBoxHost: () => {
       // The host is found by the story's paragraph order, across blocks.
       reusable = false;
@@ -1407,11 +1520,19 @@ const projectChangedBlocks = (
   const continuationSources = found.continuation;
   const open = new OpenComments(before[start - 1]?.openAfter ?? []);
   const projectedSources = new Set<Paragraph>();
+  const projectedBoxed = new Set<Paragraph>();
   const walk: BlockWalk = {
     facts: previous.facts,
     open,
     content,
     locate: (paraId) => sources.get(paraId),
+    locateBoxed: (paraId) => found.boxed.get(paraId),
+    takeBoxed: (source) => {
+      if (projectedBoxed.has(source)) return false;
+      projectedBoxed.add(source);
+      return true;
+    },
+    markersOf,
     claimTextBoxHost: () => false,
     take: (source) => {
       if (projectedSources.has(source)) return false;

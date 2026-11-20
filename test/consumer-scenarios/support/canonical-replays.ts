@@ -64,8 +64,6 @@ export const CANONICAL_VACUOUS_STEPS: Readonly<
     0,
   ],
   "issue-2222-styled-insert-after-undefined-numbering-level.json": [2],
-  "issue-2236-new-list-in-header-after-other-stories-direct.json": [0],
-  "issue-2316-c14cd1e28851babe.json": [0, 1],
   "undefined-numbering-level-projection.json": [1],
 };
 
