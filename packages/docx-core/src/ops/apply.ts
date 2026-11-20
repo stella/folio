@@ -2125,17 +2125,20 @@ const trackJoin = ({
       "Resolving a tracked join leaves the second paragraph.",
     );
   }
-  if (leading.pPrMark !== undefined) {
+  // A mark a pending deletion already took stays under that deletion: the
+  // break goes either way, as the join asks; only the joined properties are
+  // recorded.
+  const alreadyDeleted = leading.pPrMark?.kind === "del";
+  if (leading.pPrMark !== undefined && !alreadyDeleted) {
     return refuse(
       op,
       DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
       `The mark of ${op.blockId} already carries a tracked change.`,
     );
   }
-  const first: Paragraph = {
-    ...leading,
-    pPrMark: { kind: "del", info: stampInfo(stamp) },
-  };
+  const first: Paragraph = alreadyDeleted
+    ? leading
+    : { ...leading, pPrMark: { kind: "del", info: stampInfo(stamp) } };
   let second = trailing;
   // Primitive direct and tracked joins share physical paragraph semantics.
   // The editor intent compiler applies accepted-view group formatting.
