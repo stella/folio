@@ -1747,8 +1747,10 @@ type TrackedResolutionJoins = WritableRecord & {
   /** Exact join depth when the wrapper is removed. */
   remove: number;
   /**
-   * Sides where the wrapper now meets accepted new content rather than a
-   * source piece: resolving it joins plain runs there and nothing else.
+   * Sides where the wrapper meets no source piece of its cut: accepted new
+   * content beside it, or, at the edge of accepted content it stands in,
+   * whatever lies beyond that content. Resolving it joins plain runs there
+   * and nothing else.
    */
   plainSides?: readonly ("before" | "after")[];
   /**
