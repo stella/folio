@@ -63,6 +63,7 @@ import { recordedOnlyBy } from "./tableOwnPending";
 import {
   type DeleteBlocksOp,
   DOCUMENT_OP_TYPES,
+  type ParagraphAbsorption,
   type RevisionStamp,
 } from "./types";
 
@@ -563,10 +564,35 @@ export const deleteBlocks = ({
       "Deletion requires a following paragraph or a container-final paragraph.",
     );
   }
-  const preceding = terminal ? list[first.index - 1] : undefined;
+  // Tracked, paragraphs a pending deletion already takes whole, words and
+  // mark, stand between the container's last paragraph and the break its
+  // deletion retires: that is the break before them, as accepting them would
+  // leave it.
+  let previousIndex = first.index - 1;
+  if (terminal && op.revision !== undefined) {
+    let candidate = previousIndex;
+    for (;;) {
+      const block = list[candidate];
+      if (
+        block?.type !== "paragraph" ||
+        block.pPrMark?.kind !== "del" ||
+        block.sectionProperties !== undefined ||
+        paragraphHoldsContentOnceAccepted(block)
+      )
+        break;
+      candidate -= 1;
+    }
+    if (candidate !== previousIndex && list[candidate]?.type === "paragraph")
+      previousIndex = candidate;
+  }
+  const preceding = terminal ? list[previousIndex] : undefined;
   const previous = preceding?.type === "paragraph" ? preceding : undefined;
+  const between = list
+    .slice(previousIndex + 1, first.index)
+    .filter((block): block is Paragraph => block.type === "paragraph");
   const selected = found.map(({ paragraph }) => paragraph);
-  const affected = previous === undefined ? selected : [previous, ...selected];
+  const affected =
+    previous === undefined ? selected : [previous, ...between, ...selected];
   if (
     affected.some(({ sectionProperties }) => sectionProperties !== undefined)
   ) {
@@ -887,13 +913,16 @@ export const deleteBlocks = ({
       // its own identity and properties.
       const blocks: Paragraph[] = [];
       const removed: string[] = [];
+      const absorbed: ParagraphAbsorption[] = [];
       const modified = new Set<string>();
       let carried: ParagraphContent[] | undefined;
+      let joining: string[] = [];
       for (const [index, paragraph] of marked.entries()) {
         const source = original[index];
         if (source !== undefined && joinsNext.has(source)) {
           carried = [...(carried ?? []), ...paragraph.content];
           removed.push(paragraph.paraId ?? "");
+          joining.push(paragraph.paraId ?? "");
           continue;
         }
         const joined =
@@ -902,6 +931,9 @@ export const deleteBlocks = ({
             : { ...paragraph, content: [...carried, ...paragraph.content] };
         if (carried !== undefined || changed[index] !== source)
           modified.add(joined.paraId ?? "");
+        for (const id of joining)
+          absorbed.push({ absorbed: id, survivor: joined.paraId ?? "" });
+        joining = [];
         carried = undefined;
         blocks.push(joined);
       }
@@ -910,7 +942,12 @@ export const deleteBlocks = ({
         return refuse(result.error.reason, result.error.message);
       return Result.ok({
         ...result.value,
-        touched: { modified: [...modified], inserted: [], removed },
+        touched: {
+          modified: [...modified],
+          inserted: [],
+          removed,
+          ...(absorbed.length === 0 ? {} : { absorbed }),
+        },
       });
     }
     default: {

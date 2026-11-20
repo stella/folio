@@ -60,7 +60,6 @@ export const CANONICAL_VACUOUS_STEPS: Readonly<
 > = {
   "issue-1350-7fe54148e47f13fe.json": [1],
   "issue-1356-42bb7d148b3e1e55.json": [2],
-  "issue-1356-split-after-insertion-beside-pending-join.json": [4],
   "issue-1757-merge-across-deleted-note-paragraph-before-inserted-table.json": [
     0,
   ],

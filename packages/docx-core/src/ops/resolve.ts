@@ -3733,6 +3733,50 @@ const emptyParagraphAfterControl = (
   }
 };
 
+/**
+ * The paragraph a resolved mark's join left its content in: the paragraph
+ * itself where it stands (a join keeping the first), else the one its
+ * content ran into.
+ */
+const joinSurvivor = (
+  edit: DocumentEdit,
+  paraId: string,
+  effects: readonly ResolutionReceiverEffect[],
+): string | undefined => {
+  const removed = new Set(edit.touched.removed.map(idKey));
+  const candidates = [
+    paraId,
+    ...effects.flatMap(({ type, receiver }) =>
+      type === "paragraph-join" ||
+      type === "table-run-in" ||
+      type === "block-run-in"
+        ? [receiver.paraId ?? ""]
+        : [],
+    ),
+  ];
+  return candidates.find((id) => id !== "" && !removed.has(idKey(id)));
+};
+
+/** `edit` reporting every paragraph it removed as joined into `survivor`. */
+const withAbsorptions = (
+  edit: DocumentEdit,
+  survivor: string | undefined,
+): DocumentEdit =>
+  survivor === undefined || edit.touched.removed.length === 0
+    ? edit
+    : {
+        ...edit,
+        touched: {
+          ...edit.touched,
+          absorbed: [
+            ...(edit.touched.absorbed ?? []),
+            ...edit.touched.removed
+              .filter((id) => idKey(id) !== idKey(survivor))
+              .map((absorbed) => ({ absorbed, survivor })),
+          ],
+        },
+      };
+
 const paragraphMarkPlan = (
   ops: DocumentOp[],
   receiverEffects: ResolutionReceiverEffect[] = [],
@@ -4971,7 +5015,12 @@ const planSingleRecordResolution = ({
     if (joined.isErr()) {
       return Result.err(joined.error);
     }
-    edits.push(joined.value);
+    edits.push(
+      withAbsorptions(
+        joined.value,
+        joinSurvivor(joined.value, join.paraId, planned.value.receiverEffects),
+      ),
+    );
     current = joined.value.document;
     if (planned.value.endsControl !== undefined)
       controlEnds.push(planned.value.endsControl);
@@ -4987,7 +5036,7 @@ const planSingleRecordResolution = ({
     if (absorbed.value === undefined) continue;
     const { edit, receiver } = absorbed.value;
     receiverEffects.push({ type: "paragraph-join", receiver });
-    edits.push(edit);
+    edits.push(withAbsorptions(edit, paraId));
     current = edit.document;
   }
   // Notes whose last reference went are removed first: a comment anchored in
@@ -5048,8 +5097,13 @@ const planSingleRecordResolution = ({
     current = retired.value.document;
   }
   const edit = combineEdits(document, edits);
-  if (orphaned.length > 0)
-    edit.touched = storyLifecycleTouched({ before: document, after: current });
+  if (orphaned.length > 0) {
+    const { absorbed } = edit.touched;
+    edit.touched = {
+      ...storyLifecycleTouched({ before: document, after: current }),
+      ...(absorbed === undefined ? {} : { absorbed }),
+    };
+  }
   return Result.ok({ edit, receiverEffects });
 };
 

@@ -4,7 +4,8 @@
  */
 
 import type { Document } from "../model/document";
-import type { DocumentOp, TouchedBlocks } from "./types";
+import { idKey, packageParagraphIds } from "./ids";
+import type { DocumentOp, ParagraphAbsorption, TouchedBlocks } from "./types";
 
 /** What applying operations produced: the document, its inverse, and the blocks it changed. */
 export type DocumentEdit = {
@@ -54,13 +55,55 @@ export const combineEdits = (
   }
   const ids = (state: TouchedState): string[] =>
     [...touched].flatMap(([id, value]) => (value === state ? [id] : []));
+  const final = edits.at(-1)?.document ?? document;
+  const lists = edits.map(({ touched: { absorbed: list } }) => list ?? []);
+  const absorbed = lists.some((list) => list.length > 0)
+    ? combinedAbsorptions(
+        lists,
+        new Set(ids("removed")),
+        new Set(packageParagraphIds(final.package)),
+      )
+    : [];
   return {
-    document: edits.at(-1)?.document ?? document,
+    document: final,
     inverse: edits.toReversed().flatMap(({ inverse }) => inverse),
     touched: {
       modified: ids("modified"),
       inserted: ids("inserted"),
       removed: ids("removed"),
+      ...(absorbed.length === 0 ? {} : { absorbed }),
     },
   };
+};
+
+/**
+ * Absorptions made in turn, as one: a paragraph joined into one that a later
+ * edit joined on is reported against the paragraph that holds both now. Only
+ * paragraphs the edits removed in the end are reported, and only into a
+ * survivor the final document holds. Ids compare as addresses do, ignoring
+ * case.
+ */
+export const combinedAbsorptions = (
+  lists: readonly (readonly ParagraphAbsorption[])[],
+  removed: ReadonlySet<string>,
+  present: ReadonlySet<string>,
+): ParagraphAbsorption[] => {
+  const into = new Map<string, ParagraphAbsorption>();
+  for (const list of lists) {
+    for (const { absorbed, survivor } of list) {
+      const key = idKey(absorbed);
+      for (const [earlier, held] of into)
+        if (idKey(held.survivor) === key)
+          into.set(earlier, { absorbed: held.absorbed, survivor });
+      into.set(key, { absorbed, survivor });
+    }
+  }
+  const removedKeys = new Set([...removed].map(idKey));
+  const presentKeys = new Set([...present].map(idKey));
+  return [...into.values()].filter(
+    ({ absorbed, survivor }) =>
+      removedKeys.has(idKey(absorbed)) &&
+      !presentKeys.has(idKey(absorbed)) &&
+      presentKeys.has(idKey(survivor)),
+  );
 };

@@ -537,6 +537,12 @@ export const FOLIO_YJS_SNAPSHOT_MIGRATION_ERROR_CODES: readonly ["invalid_update
 // @public
 export const FOLIO_YJS_UPDATE_MAX_BYTES: number;
 
+// @public
+export type FolioAbsorbedBlock = {
+    blockId: string;
+    survivorBlockId: string;
+};
+
 // @public (undocumented)
 export type FolioAIBlock = FolioAIParagraphBlock | FolioAIDiagnosticBlock;
 
@@ -1616,6 +1622,7 @@ export type FolioReviewReplyInput = {
 export type FolioReviewResolution = {
     resolved: number;
     skipped: FolioReviewResolutionSkip[];
+    absorbedBlocks?: readonly FolioAbsorbedBlock[];
 };
 
 // @public

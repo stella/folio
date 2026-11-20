@@ -9,12 +9,15 @@ type ParagraphIdentityResults = {
   mode: Mode;
 };
 
-/** Follow only the paragraph retirements the public operation receipt reports. */
+/**
+ * Follow only the paragraph retirements the public operation receipt reports,
+ * in every mode: a tracked deletion of one's own inserted paragraph joins it
+ * at once, as a direct join does.
+ */
 export const createParagraphIdentityRemapping = () => {
   const joined = new Map<string, string>();
   return {
-    record({ applied, mode }: ParagraphIdentityResults) {
-      if (mode !== "direct") return;
+    record({ applied }: ParagraphIdentityResults) {
       for (const { paragraphIdentity } of applied) {
         if (paragraphIdentity === undefined) continue;
         switch (paragraphIdentity.type) {

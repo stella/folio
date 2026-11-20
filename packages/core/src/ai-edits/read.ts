@@ -136,6 +136,21 @@ export type FolioReviewResolution = {
   resolved: number;
   /** The changes it left pending, each as it was. */
   skipped: FolioReviewResolutionSkip[];
+  /**
+   * Paragraphs the resolution joined into another (a resolved paragraph mark
+   * leaves the paragraph after it), each with the paragraph that holds its
+   * content now. A host holding a removed id re-anchors on its survivor.
+   * Reported by a canonical reviewer; absent when nothing joined.
+   */
+  absorbedBlocks?: readonly FolioAbsorbedBlock[];
+};
+
+/** A paragraph an edit joined into another, and the paragraph it joined. */
+export type FolioAbsorbedBlock = {
+  /** The removed paragraph's id; it names no block any more. */
+  blockId: string;
+  /** The paragraph that holds its content now. */
+  survivorBlockId: string;
 };
 
 /** A comment anchor (the ranged text a comment marks) discovered in the body. */

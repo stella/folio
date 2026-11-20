@@ -125,6 +125,35 @@ by its tests:
 Both changes are deliberate divergences from the eigenpal upstream; the file
 header notes them.
 
+## Canonical sessions: which paragraph survives a join
+
+The canonical session follows one rule, the one the document model's
+resolution follows:
+
+- A join keeps the second paragraph's id. Removing a paragraph mark (a
+  direct join, accepting a deleted mark, rejecting an inserted one, deleting
+  one's own inserted paragraph) leaves the paragraph after it, which holds the
+  first one's content too. A mark that records `survivor: "first"` keeps the
+  first paragraph instead.
+- A split keeps the id on the half the operation names.
+
+The removed id names no block afterwards. Every edit reports where it went:
+
+- `TouchedBlocks.absorbed` (docx-core `applyDocumentOp` results) lists each
+  removed paragraph with the paragraph that holds its content now. Edits made
+  in turn chain: a paragraph joined into one that a later edit joined on is
+  reported against the paragraph left at the end.
+- A document-operation result's applied entry carries `paragraphIdentity`
+  `{ type: "joined", blockId, retiredBlockId }` for an operation whose
+  paragraph was joined away, tracked deletions of one's own insertions
+  included.
+- `acceptAll()` and `rejectAll()` on a canonical reviewer return
+  `absorbedBlocks: { blockId, survivorBlockId }[]` when the resolution joined
+  paragraphs.
+
+A host holding a removed id (a comment sidebar, an agent's block reference)
+re-anchors on its survivor instead of guessing from content.
+
 ## Table identity: decided against durable table-level IDs
 
 The framing document called out that tables/rows/cells carry no identity

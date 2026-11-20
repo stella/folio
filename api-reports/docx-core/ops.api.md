@@ -1041,6 +1041,12 @@ export const packageResourcesOpOf: (input: PackageResourcesOpOptions) => SetPack
 export const PARAGRAPH_MARK_FORMATTING_KEYS: readonly ["runProperties", "runInWithNext"];
 
 // @public
+export type ParagraphAbsorption = {
+    absorbed: string;
+    survivor: string;
+};
+
+// @public
 export type ParagraphContentVerdict = boolean & {
     readonly [paragraphContentBrand]: true;
 };
@@ -1595,6 +1601,7 @@ export type TouchedBlocks = {
     modified: readonly string[];
     inserted: readonly string[];
     removed: readonly string[];
+    absorbed?: readonly ParagraphAbsorption[];
 };
 
 // @public

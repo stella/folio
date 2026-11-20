@@ -127,7 +127,7 @@ test("rejected bare added containers leave one empty carrier and preserve every 
                 decision === "accept"
                   ? reviewer.acceptAll()
                   : reviewer.rejectAll(),
-              ).toEqual({ resolved: length, skipped: [] });
+              ).toMatchObject({ resolved: length, skipped: [] });
             } else {
               const order =
                 route === "forward" ? revisions : revisions.toReversed();

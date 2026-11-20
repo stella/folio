@@ -18,6 +18,7 @@ export { buildAnnotatedBlockText } from "./clean-text";
 export {
   getCommentAnchorsFromDoc,
   getTrackedChangesFromDoc,
+  type FolioAbsorbedBlock,
   type FolioCommentAnchor,
   type FolioReviewChange,
   type FolioReviewChangeKind,
