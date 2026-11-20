@@ -32,18 +32,18 @@ const REPRO =
   "cd packages/docx-core && PROPERTY_TEST_SEED=-12 PROPERTY_TEST_PATH='3:1:0' PROPERTY_TEST_CASE=0a1b2c3d bun test ./src/ops/__tests__/law.property.test.ts -t 'a law'\\''s case'";
 
 const record = ({
-  test,
+  name,
   repro = REPRO,
   exploration = true,
 }: {
-  test: string;
+  name: string;
   repro?: string;
   exploration?: boolean;
 }) =>
   failureRecord(
     {
       ...failureMarker({
-        test,
+        test: name,
         seed: -12,
         path: "3:1:0",
         repro,
@@ -61,23 +61,23 @@ test("reads the exploration findings of TypeScript property files, once each", (
   mkdirSync(shard);
   const law =
     "packages/docx-core/src/ops/__tests__/law.property.test.ts::a law";
-  writeFailureRecord(shard, record({ test: law }));
+  writeFailureRecord(shard, record({ name: law }));
   // The same finding from another shard's artifact.
-  writeFailureRecord(dir, record({ test: law }));
+  writeFailureRecord(dir, record({ name: law }));
   // A pinned or owned failure failed its run: it is not a report.
   writeFailureRecord(
     dir,
-    record({ test: `${law} pinned`, exploration: false }),
+    record({ name: `${law} pinned`, exploration: false }),
   );
   // A Rust property finding is filed by its own lane.
   writeFailureRecord(
     dir,
     record({
-      test: "crates/docx-kernel::projection laws",
+      name: "crates/docx-kernel::projection laws",
       repro: "PROPTEST_CASES=1 cargo test projection_laws",
     }),
   );
-  expect(reportedFailures(dir).map(({ test }) => test)).toEqual([law]);
+  expect(reportedFailures(dir).map((failure) => failure.test)).toEqual([law]);
   expect(reportedFailures(path.join(dir, "missing"))).toEqual([]);
 });
 
@@ -121,8 +121,8 @@ test("replays a failure alone on the base, without the test step's reporting env
 });
 
 test("blocks a failure the base passes or cannot replay, and lets one the base shares through", () => {
-  const failure = (test: string, repro = REPRO) => ({
-    test,
+  const failure = (name: string, repro = REPRO) => ({
+    test: name,
     fingerprint: "f".repeat(16),
     repro,
   });
@@ -137,16 +137,16 @@ test("blocks a failure the base passes or cannot replay, and lets one the base s
       message: "Replay did not execute tests",
     },
   } as const;
-  const failures = Object.keys(outcomes).map((test) => failure(test));
+  const failures = Object.keys(outcomes).map((name) => failure(name));
   let current = 0;
   const judged = judgeFailures({
     failures: [...failures, failure("packages/x.test.ts::no line", "bun test")],
     base: "/base",
     env: {},
     run: () => {
-      const test = failures[current]?.test as keyof typeof outcomes;
+      const name = failures[current]?.test as keyof typeof outcomes;
       current += 1;
-      return outcomes[test];
+      return outcomes[name];
     },
   });
   expect(judged.map(({ verdict }) => verdict.type)).toEqual([
