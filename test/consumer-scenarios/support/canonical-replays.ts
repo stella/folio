@@ -52,19 +52,13 @@ export const CANONICAL_REPLAY_GAPS: Readonly<Record<string, ReplayGap>> = {
 export const CANONICAL_VACUOUS_STEPS: Readonly<
   Record<string, readonly number[]>
 > = {
-  "commented-formatting-then-block-deletion.json": [1],
-  "delete-block-with-pending-replacement-comment.json": [1],
   "issue-1350-e377f5b27fbc60fc.json": [1],
-  "issue-1350-edbbeea12a9cfd50.json": [2],
-  "issue-1350-row-beside-held-comment-end.json": [0],
   "issue-1356-42bb7d148b3e1e55.json": [1, 2],
   "issue-1356-split-after-insertion-beside-pending-join.json": [4],
-  "issue-1754-cdc101c598f26387.json": [0],
   "issue-1757-merge-across-deleted-note-paragraph-before-inserted-table.json": [
     0,
   ],
   "issue-1811-comment-start-in-a-deleted-cell.json": [2],
-  "issue-1842-comment-on-split-replacement-tail.json": [3],
   "issue-1842-final-deletion-retracts-split-break-after-reopen.json": [4],
   "issue-2044-heading-style-in-a-table-cell.json": [12],
   "issue-2222-styled-insert-after-undefined-numbering-level.json": [2],
@@ -73,8 +67,6 @@ export const CANONICAL_VACUOUS_STEPS: Readonly<
   "issue-2904-merged-numbered-heading-emptied.json": [2],
   "revision-boundary-1c6f520a41a4dcf4.json": [4],
   "revision-round-trip-1.json": [4],
-  "revision-round-trip-10.json": [2],
-  "revision-round-trip-3.json": [4],
   "undefined-numbering-level-projection.json": [1],
 };
 

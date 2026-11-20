@@ -4035,8 +4035,6 @@ export class CanonicalPublicOperations {
     // A table before it, standing or put there by the batch, leaves it no
     // paragraph before it to end the list in its place.
     const previous = followsInsertedTable ? undefined : neighbour(before);
-    const followsBlock =
-      followsInsertedTable || (before !== null && previous === undefined);
     // A tracked deletion's comment covers the deleted paragraph's words.
     const commentFrom = projection.addressAt(paragraph.start);
     const commentTo = projection.addressAt(end);
@@ -4129,7 +4127,7 @@ export class CanonicalPublicOperations {
           : { removesParagraphBeforeBlock: true }),
       });
     }
-    let range: { from: number; to: number } | undefined;
+    let range: { from: number; to: number };
     // Removed directly, a paragraph no paragraph follows loses its words and
     // then joins the paragraph before it, whose properties it keeps; the
     // joined paragraph is the one whose mark remains, this one, as accepting
@@ -4185,18 +4183,14 @@ export class CanonicalPublicOperations {
         from: previous.start + previous.node.content.size,
         to: end,
       };
-    // After a table the paragraph ends its block list for good: it keeps its
-    // mark and loses its words, as a tracked deletion of the whole paragraph
-    // leaves it.
-    else if (followsBlock) {
+    // After a table, or as the only paragraph of its container, the
+    // paragraph ends its block list for good: it keeps its mark and loses its
+    // words, as a tracked deletion of the whole paragraph leaves it and as
+    // deleting it directly does.
+    else {
       if (paragraph.node.content.size === 0) return refusal("noopOperation");
       range = { from: paragraph.start, to: end };
     }
-    if (range === undefined)
-      return refusal(
-        "unsupportedBlock",
-        "Canonical deletion of the only paragraph in its container is unavailable.",
-      );
     const from = projection.addressAt(range.from);
     const to = projection.addressAt(range.to);
     if (from.isErr() || to.isErr()) return refusal("unsupportedBlock");
