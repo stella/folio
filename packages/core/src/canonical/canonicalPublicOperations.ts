@@ -42,6 +42,7 @@ import {
   type LeasedId,
   leasedIdCensus,
   locateParagraphInBlockList,
+  locateParagraphThroughTextBoxes,
   type NewListInstance,
   type OpStory,
   orderAddressingBeforeRemoval,
@@ -50,10 +51,10 @@ import {
   paragraphIdsIn as modelParagraphIdsIn,
   paragraphLength,
   type ParagraphPropsPatch,
+  paragraphsThroughTextBoxes,
   pendingSuggestionIdsIn,
   revisionSpan,
   type RunPropsPatch,
-  storyParagraphs,
   type TextPosition,
 } from "@stll/docx-core/ops";
 
@@ -1463,9 +1464,12 @@ const insertionIntentsAsItRuns = ({
 }: InsertionIntentsAsItRunsOptions): readonly EditorIntent[] => {
   const { intents, inheritsFrom } = resolvedOperation;
   if (inheritsFrom === undefined) return intents;
-  const body = findStoryBody(document, story);
-  if (body === undefined) return intents;
-  const at = locateParagraphInBlockList(body, inheritsFrom.blockId);
+  // A text box's paragraphs are named through the story drawing it.
+  const at = locateParagraphThroughTextBoxes(
+    document,
+    story,
+    inheritsFrom.blockId,
+  );
   if (at === undefined) return intents;
   let source = at.paragraph;
   // A pending deletion takes its formatting from the surviving paragraph in
@@ -2702,8 +2706,9 @@ class CanonicalPublicOperationResolutionError extends CanonicalPublicOperationRe
 }> {}
 
 type MergeFormattingConflictOptions = {
-  before: NonNullable<ReturnType<typeof findStoryBody>>;
-  after: NonNullable<ReturnType<typeof findStoryBody>>;
+  before: Document;
+  after: Document;
+  story: OpStory;
   ops: readonly DocumentOp[];
   author: string;
 };
@@ -2712,6 +2717,7 @@ type MergeFormattingConflictOptions = {
 const overwritesForeignMergeFormatting = ({
   before,
   after,
+  story,
   ops,
   author,
 }: MergeFormattingConflictOptions): boolean => {
@@ -2724,15 +2730,17 @@ const overwritesForeignMergeFormatting = ({
   const foreignChanges = (paragraph: Paragraph) =>
     paragraph.propertyChanges?.filter(({ info }) => info.author !== author) ??
     [];
-  const pending = storyParagraphs(before).flatMap(({ paragraph }) => {
-    if (paragraph.paraId === undefined || !targets.has(paragraph.paraId))
-      return [];
-    const changes = foreignChanges(paragraph);
-    return changes.length === 0 ? [] : [[paragraph.paraId, changes] as const];
-  });
+  const pending = paragraphsThroughTextBoxes(before, story).flatMap(
+    ({ paragraph }) => {
+      if (paragraph.paraId === undefined || !targets.has(paragraph.paraId))
+        return [];
+      const changes = foreignChanges(paragraph);
+      return changes.length === 0 ? [] : [[paragraph.paraId, changes] as const];
+    },
+  );
   if (pending.length === 0) return false;
   const survivors = new Map(
-    storyParagraphs(after).map(({ paragraph }) => [
+    paragraphsThroughTextBoxes(after, story).map(({ paragraph }) => [
       paragraph.paraId,
       paragraph,
     ]),
@@ -2767,13 +2775,9 @@ const batchPropertyRefusal = ({
     default:
       return undefined;
   }
-  const body = findStoryBody(document, story);
-  const paragraph =
-    body === undefined
-      ? undefined
-      : storyParagraphs(body).find(
-          (entry) => entry.paragraph.paraId === operation.blockId,
-        )?.paragraph;
+  const paragraph = paragraphsThroughTextBoxes(document, story).find(
+    (entry) => entry.paragraph.paraId === operation.blockId,
+  )?.paragraph;
   if (
     operation.type === "replaceBlock" &&
     operation.styleId === (paragraph?.formatting?.styleId ?? null)
@@ -3560,14 +3564,11 @@ export class CanonicalPublicOperations {
         operation.type === "mergeBlockWithNext" &&
         conflictsWithRevision !== undefined
       ) {
-        const beforeStory = findStoryBody(sourceDocument, story);
-        const afterStory = findStoryBody(nextDocument, story);
         if (
-          beforeStory !== undefined &&
-          afterStory !== undefined &&
           overwritesForeignMergeFormatting({
-            before: beforeStory,
-            after: afterStory,
+            before: sourceDocument,
+            after: nextDocument,
+            story,
             ops: operationOps,
             author: options.author ?? "AI",
           })
@@ -3596,12 +3597,10 @@ export class CanonicalPublicOperations {
             // The comment covers every paragraph the operation inserted, at
             // any depth: in a content control or a table cell as much as in
             // the story's own block list.
-            const paragraphsIn = (current: Document) => {
-              const body = findStoryBody(current, story);
-              return body === undefined
-                ? []
-                : storyParagraphs(body).map(({ paragraph }) => paragraph);
-            };
+            const paragraphsIn = (current: Document) =>
+              paragraphsThroughTextBoxes(current, story).map(
+                ({ paragraph }) => paragraph,
+              );
             const known = new Set(
               paragraphsIn(sourceDocument).flatMap(({ paraId }) =>
                 paraId === undefined ? [] : [paraId],
@@ -3666,14 +3665,10 @@ export class CanonicalPublicOperations {
           }
           // The anchor paragraph at any depth: in a table cell or a content
           // control as much as in the story's own block list.
-          const anchorIn = (current: Document) => {
-            const body = findStoryBody(current, story);
-            return body === undefined
-              ? undefined
-              : storyParagraphs(body).find(
-                  ({ paragraph }) => paragraph.paraId === comment.from.blockId,
-                )?.paragraph;
-          };
+          const anchorIn = (current: Document) =>
+            paragraphsThroughTextBoxes(current, story).find(
+              ({ paragraph }) => paragraph.paraId === comment.from.blockId,
+            )?.paragraph;
           const before = anchorIn(sourceDocument);
           const after = anchorIn(nextDocument);
           if (id.isErr() || before === undefined || after === undefined) {
@@ -4215,7 +4210,9 @@ export class CanonicalPublicOperations {
       if (finalBody === undefined)
         panic("A committed public operation lost its story.");
       const finalIds = new Set(
-        storyParagraphs(finalBody).map(({ paragraph }) => paragraph.paraId),
+        paragraphsThroughTextBoxes(prepared.value.document, story).map(
+          ({ paragraph }) => paragraph.paraId,
+        ),
       );
       for (const operation of batch.operations) {
         const entry = appliedById.get(operation.id);

@@ -1656,6 +1656,13 @@ describe("a text box paragraph", () => {
       replace: "Framed",
     },
     { id: "deleteBlock", type: "deleteBlock", blockId: "34567890" },
+    {
+      id: "commentOnBlock",
+      type: "commentOnBlock",
+      blockId: "34567890",
+      quote: "note",
+      comment: { text: "Check the box." },
+    },
   ] as const satisfies readonly FolioDocumentOperation[];
 
   /** The words of the box's paragraphs, deleted ones included. */
@@ -1678,6 +1685,7 @@ describe("a text box paragraph", () => {
     insertBeforeBlock: ["Added note.", "Boxed note.", "Second note."],
     replaceInBlock: ["Framed note.", "Second note."],
     deleteBlock: ["Second note."],
+    commentOnBlock: ["Boxed note.", "Second note."],
   };
 
   for (const mode of ["direct", "tracked-changes"] as const)

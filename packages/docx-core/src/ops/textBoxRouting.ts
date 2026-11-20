@@ -12,7 +12,10 @@
 import type { Document } from "../model/document";
 import { type ParagraphLocation, storyParagraphs } from "./blocks";
 import { IDENTITY_SPACES, identityKeysIn, idKey, slotKey } from "./ids";
-import { findStoryParagraph } from "./paragraphLocator";
+import {
+  findStoryParagraph,
+  locateParagraphInBlockList,
+} from "./paragraphLocator";
 import {
   findStoryBody,
   packageStoryOf,
@@ -373,4 +376,27 @@ export const paragraphsThroughTextBoxes = (
       storyParagraphs(storyBody(document, box)),
     ),
   ];
+};
+
+/**
+ * The paragraph `blockId` names in `story` and its physical siblings: one of
+ * the story's own, or one in a text box drawn there.
+ */
+export const locateParagraphThroughTextBoxes = (
+  document: Document,
+  story: OpStory,
+  blockId: string,
+): ReturnType<typeof locateParagraphInBlockList> => {
+  const body = findStoryBody(document, story);
+  if (body === undefined) return undefined;
+  const own = locateParagraphInBlockList(body, blockId);
+  if (own !== undefined) return own;
+  for (const box of textBoxStoriesIn(document, story)) {
+    const located = locateParagraphInBlockList(
+      storyBody(document, box),
+      blockId,
+    );
+    if (located !== undefined) return located;
+  }
+  return undefined;
 };
