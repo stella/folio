@@ -1154,6 +1154,15 @@ const projectBlock = (
     // A row's w:gridBefore and w:gridAfter render as filler cells whose empty
     // paragraph has no source; there is nothing in them to edit.
     if (parent?.attrs["_omittedGridSlot"] != null) return false;
+    // A content control or custom XML element the source leaves empty shows
+    // a filler paragraph with no source: the block stays as the source wrote
+    // it, and there is nothing in it to edit.
+    if (
+      (parent?.type.name === "blockSdt" ||
+        parent?.type.name === "blockCustomXml") &&
+      parent.attrs["_originallyEmpty"] === true
+    )
+      return false;
     const paraId = node.attrs["paraId"];
     const located =
       typeof paraId === "string" ? walk.locate(paraId) : undefined;

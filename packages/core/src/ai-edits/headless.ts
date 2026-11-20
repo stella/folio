@@ -5,7 +5,7 @@ import {
   type TaggedErrorClass,
 } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
-import { EditorState } from "prosemirror-state";
+import { EditorState, Selection, TextSelection } from "prosemirror-state";
 import type { Command, Plugin, Transaction } from "prosemirror-state";
 
 import {
@@ -400,17 +400,45 @@ type FolioReviewerEngine =
  * holds anything the session does not.
  */
 const canonicalReviewerState = (session: CanonicalSession): EditorState =>
-  canonicalStoryState(session, session.projection.doc);
+  canonicalStoryState(session, session.projection.doc, session.projection);
+
+/** The projection a story state reads its addresses from. */
+type AddressedProjection = Pick<CanonicalSession["projection"], "addressAt">;
+
+/**
+ * The caret a story state starts at: the start of the story, or where the
+ * session first holds an address when it holds none there, as in the filler
+ * paragraph of a content control the source leaves empty.
+ */
+const startingSelection = (
+  doc: PMNode,
+  projection: AddressedProjection | undefined,
+): Selection | undefined => {
+  const start = Selection.atStart(doc);
+  if (projection === undefined || projection.addressAt(start.from).isOk())
+    return undefined;
+  let found: number | undefined;
+  doc.descendants((node, position) => {
+    if (found !== undefined) return false;
+    if (!node.isTextblock) return true;
+    if (projection.addressAt(position + 1).isOk()) found = position + 1;
+    return false;
+  });
+  return found === undefined ? undefined : TextSelection.create(doc, found);
+};
 
 /** A story's state over `doc`, with the session document's numbering and styles. */
 const canonicalStoryState = (
   session: CanonicalSession,
   doc: PMNode,
+  projection?: AddressedProjection,
 ): EditorState => {
   const document = readModel(session.document);
+  const selection = startingSelection(doc, projection);
   return EditorState.create({
     schema,
     doc,
+    ...(selection === undefined ? {} : { selection }),
     plugins: [
       createDocumentNumberingPlugin(document.package.numbering),
       // The session's projection owns formatting: the style context gives
@@ -1093,12 +1121,14 @@ const createHeadlessPlugins = (
   createDocumentStylesPlugin(styles),
 ];
 
+/** A state's snapshot, of `doc` when it names the state's document otherwise spelled. */
 const createStateSnapshot = (
   state: EditorState,
   positionalParaIds: ReadonlySet<string>,
+  doc: PMNode = state.doc,
 ): FolioAIEditSnapshot =>
   createReviewerSnapshot({
-    doc: state.doc,
+    doc,
     styleResolver: getDocumentStyleResolver(state),
     numbering: getDocumentNumbering(state),
     positionalParaIds,
@@ -1567,6 +1597,22 @@ const lockHeldChanges = (
  */
 
 export class FolioDocxReviewer {
+  /**
+   * A state's snapshot. On the canonical session a paragraph with no id (the
+   * filler of a content control its source leaves empty) is named by the
+   * positional id the legacy engine mints for it, so both engines name it
+   * alike; a legacy state already holds every id.
+   */
+  private snapshotOf(state: EditorState): FolioAIEditSnapshot {
+    return this.engine.type === "canonical"
+      ? createStateSnapshot(
+          state,
+          this.positionalParaIds,
+          ensureParaIdsInDoc(state.doc),
+        )
+      : createStateSnapshot(state, this.positionalParaIds);
+  }
+
   /** Default author for tracked changes and comments. */
   readonly author: string;
   /** The legacy reviewer's parsed model; a canonical one reads its session's. */
@@ -2175,7 +2221,11 @@ export class FolioDocxReviewer {
           const projected = session.projectStory(story);
           return projected.isErr()
             ? null
-            : canonicalStoryState(session, projected.value.doc);
+            : canonicalStoryState(
+                session,
+                projected.value.doc,
+                projected.value,
+              );
         },
         publish: (commit) => this.publishOnSession(commit),
       }),
@@ -2697,8 +2747,7 @@ export class FolioDocxReviewer {
   private snapshotOnSession(
     story: FolioEditableDocumentStoryHandle,
   ): FolioAIEditSnapshot {
-    if (story.type === "main")
-      return createStateSnapshot(this.state, this.positionalParaIds);
+    if (story.type === "main") return this.snapshotOf(this.state);
     const snapshot = this.snapshotStory(story);
     if (!snapshot)
       throw new FolioDocumentStoryNotFoundError({
@@ -2765,7 +2814,7 @@ export class FolioDocxReviewer {
    * the anchor map the apply layer resolves operations against.
    */
   snapshot(): FolioAIEditSnapshot {
-    return createStateSnapshot(this.state, this.positionalParaIds);
+    return this.snapshotOf(this.state);
   }
 
   /**
@@ -2960,7 +3009,7 @@ export class FolioDocxReviewer {
     story: FolioEditableDocumentStoryHandle,
   ): FolioAIEditSnapshot | null {
     const state = this.getEditableStoryState(story);
-    return state ? createStateSnapshot(state, this.positionalParaIds) : null;
+    return state ? this.snapshotOf(state) : null;
   }
 
   private snapshotReviewedStoryInternal(
@@ -2982,10 +3031,7 @@ export class FolioDocxReviewer {
       ).snapshotReviewedStoryInternal({ story, view: "current-markup" });
     const sourceState = this.getEditableStoryState(story);
     return sourceState
-      ? createStateSnapshot(
-          resolveReviewedState(sourceState, view),
-          this.positionalParaIds,
-        )
+      ? this.snapshotOf(resolveReviewedState(sourceState, view))
       : null;
   }
 
@@ -3172,7 +3218,7 @@ export class FolioDocxReviewer {
     }
     const resolvedState = resolveReviewedState(sourceState, view);
     this.setEditableStoryState(story, resolvedState);
-    const snapshot = createStateSnapshot(resolvedState, this.positionalParaIds);
+    const snapshot = this.snapshotOf(resolvedState);
     const minted = mintedBlockOrdinals(snapshot);
     this.resolvedStoryExpectations.set(editableStoryKey(story), {
       story,
@@ -3309,8 +3355,7 @@ export class FolioDocxReviewer {
     const validatedBatch = parseFolioDocumentOperationBatch(batch);
     const beforeState = this.requireEditableStoryState(story);
     const operationAuthor = author ?? this.author;
-    const sourceSnapshot =
-      snapshot ?? createStateSnapshot(beforeState, this.positionalParaIds);
+    const sourceSnapshot = snapshot ?? this.snapshotOf(beforeState);
     const createdCommentsLengthBefore = this.createdComments.length;
     const beforeStyles = this.importedStyles;
     const definitions = beforeStyles ?? this.loadedDocument.package.styles;
@@ -4780,7 +4825,7 @@ export class FolioDocxReviewer {
       author: string;
     }[] = [];
     for (const record of records) {
-      const snapshot = createStateSnapshot(resolved, this.positionalParaIds);
+      const snapshot = this.snapshotOf(resolved);
       const view = {
         state: resolved,
         dispatch: (transaction: Transaction) => {
@@ -5491,8 +5536,15 @@ export class FolioDocxReviewer {
     // Nothing is held for a canonical story: its state is the session's
     // projection at every read.
     if (this.engine.type === "canonical") {
-      const doc = this.secondaryStoryDoc(story);
-      return doc && canonicalStoryState(this.engine.session, doc);
+      const projected = this.engine.session.projectStory(
+        canonicalOpStory(story),
+      );
+      if (projected.isErr()) throw projected.error;
+      return canonicalStoryState(
+        this.engine.session,
+        projected.value.doc,
+        projected.value,
+      );
     }
     const key = secondaryStoryKey(story);
     const existing = this.secondaryStoryStates.get(key);

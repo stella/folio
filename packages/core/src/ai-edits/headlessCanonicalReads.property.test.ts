@@ -348,7 +348,6 @@ const canonicalExpectation = ({
     }));
   return {
     ...legacy,
-    body: withoutPositionalIds(legacy.body),
     storyTables: legacy.storyTables.map(withoutPositionalIds),
     document: {
       ...packageModel,
@@ -556,8 +555,10 @@ describe("headless reviewer reads agree on both engines", () => {
       const source = await prepareCanonicalDocxSource(buffer);
       if (source.isErr()) throw source.error;
       const opened = await openOn(buffer, "canonical");
+      // A paragraph the package does not hold (an empty control's filler) is
+      // positional on both readings; only the ids minted on opening differ.
       expect(withoutIdStability(opened)).toEqual(
-        await openOn(await ingested(buffer), "canonical"),
+        withoutIdStability(await openOn(await ingested(buffer), "canonical")),
       );
       if (opened.type !== "read") return;
       // A blank paragraph's block id is derived, not its paragraph id.
