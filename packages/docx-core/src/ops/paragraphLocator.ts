@@ -41,25 +41,98 @@ const locationsIn = (
   return known;
 };
 
+type Holders = readonly BlockContent[];
+type Leaf = Map<number, Holders>;
+type SuffixPage = Map<number, Leaf>;
+type PrefixPage = Map<number, SuffixPage>;
+type HolderPages = Map<number, PrefixPage>;
+
+type IndexRoot = {
+  type: "root";
+  pages: HolderPages;
+  other: Map<string, Holders>;
+  depth: 0;
+};
+
 /**
- * The top-level blocks holding each id: every one (a root) or the ids whose
- * holders changed from the list it was derived from. Lookups take the first
- * answer up the chain, which {@link MAX_CHAIN} bounds.
+ * Each overlay contains the keys whose holders changed, including removals.
+ * The shared root uses a fixed number of bounded pages per hexadecimal key.
  */
-type IndexNode = {
-  parent: IndexNode | undefined;
-  holders: Map<string, readonly BlockContent[]>;
+type IndexOverlay = {
+  type: "overlay";
+  parent: IndexNode;
+  holders: Map<string, Holders>;
   depth: number;
 };
+type IndexNode = IndexRoot | IndexOverlay;
 
 const MAX_CHAIN = 32;
 
-const holdersIn = (node: IndexNode, key: string): readonly BlockContent[] => {
-  for (let at: IndexNode | undefined = node; at !== undefined; at = at.parent) {
+const HEX_ID = /^[0-9A-F]{8}$/;
+const isHexId = (key: string) => key.length === 8 && HEX_ID.test(key);
+const BYTE_MASK = 0xff;
+
+const holdersIn = (node: IndexNode, key: string): Holders => {
+  let at = node;
+  while (at.type === "overlay") {
     const held = at.holders.get(key);
     if (held !== undefined) return held;
+    at = at.parent;
   }
-  return [];
+  if (!isHexId(key)) return at.other.get(key) ?? [];
+  const id = Number.parseInt(key, 16);
+  return (
+    at.pages
+      .get(id >>> 24)
+      ?.get((id >>> 16) & BYTE_MASK)
+      ?.get((id >>> 8) & BYTE_MASK)
+      ?.get(id & BYTE_MASK) ?? []
+  );
+};
+
+const draftPage = <Key, Value>(
+  original: Map<Key, Value> | undefined,
+  drafts: WeakSet<object>,
+): Map<Key, Value> => {
+  if (original !== undefined && drafts.has(original)) return original;
+  const copy = new Map(original);
+  drafts.add(copy);
+  return copy;
+};
+
+const changedRoot = (
+  changes: ReadonlyMap<string, Holders>,
+  base?: IndexRoot,
+): IndexRoot => {
+  const drafts = new WeakSet<object>();
+  let pages = base?.pages ?? new Map<number, PrefixPage>();
+  let other = base?.other ?? new Map<string, Holders>();
+  for (const [key, held] of changes) {
+    if (!isHexId(key)) {
+      other = draftPage(other, drafts);
+      if (held.length === 0) other.delete(key);
+      else other.set(key, held);
+      continue;
+    }
+    pages = draftPage(pages, drafts);
+    const id = Number.parseInt(key, 16);
+    const first = id >>> 24;
+    const second = (id >>> 16) & BYTE_MASK;
+    const third = (id >>> 8) & BYTE_MASK;
+    const last = id & BYTE_MASK;
+    const prefix = draftPage(pages.get(first), drafts);
+    const suffix = draftPage(prefix.get(second), drafts);
+    const leaf = draftPage(suffix.get(third), drafts);
+    if (held.length === 0) leaf.delete(last);
+    else leaf.set(last, held);
+    if (leaf.size === 0) suffix.delete(third);
+    else suffix.set(third, leaf);
+    if (suffix.size === 0) prefix.delete(second);
+    else prefix.set(second, suffix);
+    if (prefix.size === 0) pages.delete(first);
+    else pages.set(first, prefix);
+  }
+  return { type: "root", pages, other, depth: 0 };
 };
 
 // A splice on either side of a block preserves its position from the opposite end.
@@ -101,19 +174,19 @@ const rootOf = (blocks: readonly BlockContent[]): IndexNode => {
         else list.push(block);
       }
   }
-  return { parent: undefined, holders, depth: 0 };
+  return changedRoot(holders);
 };
 
-/** Turns a node into a root holding every id's holders. */
-const settled = (node: IndexNode): IndexNode => {
-  const holders = new Map<string, readonly BlockContent[]>();
-  const chain: IndexNode[] = [];
-  for (let at: IndexNode | undefined = node; at !== undefined; at = at.parent)
-    chain.push(at);
-  for (const at of chain.toReversed())
-    for (const [key, held] of at.holders) holders.set(key, held);
-  for (const [key, held] of holders) if (held.length === 0) holders.delete(key);
-  return { parent: undefined, holders, depth: 0 };
+/** Retain only the newest holders per changed key when bounding the chain. */
+const settled = (node: IndexOverlay): IndexRoot => {
+  const changes = new Map<string, Holders>();
+  let at: IndexNode = node;
+  while (at.type === "overlay") {
+    for (const [key, held] of at.holders)
+      if (!changes.has(key)) changes.set(key, held);
+    at = at.parent;
+  }
+  return changedRoot(changes, at);
 };
 
 const nodes = new WeakMap<readonly BlockContent[], IndexNode>();
@@ -157,7 +230,12 @@ const derivedFrom = (
       for (let count = 0; count < located.length; count += 1) held.push(block);
     }
   }
-  const node: IndexNode = { parent: base, holders, depth: base.depth + 1 };
+  const node: IndexOverlay = {
+    type: "overlay",
+    parent: base,
+    holders,
+    depth: base.depth + 1,
+  };
   return node.depth >= MAX_CHAIN ? settled(node) : node;
 };
 
