@@ -3263,23 +3263,21 @@ const materialize = (model: Model): Expected[] => {
           const keepsMarker =
             head.listLineage.type === "none" &&
             entry.listLineage.type === "reference";
-          const joined = keepsMarker
+          const fields: Fields = keepsMarker
             ? {
-                ...entry,
-                fields: {
-                  ...head.fields,
-                  kind:
-                    head.fields.kind === "paragraph"
-                      ? entry.fields.kind
-                      : head.fields.kind,
-                  listLevel: entry.fields.listLevel,
-                },
+                ...head.fields,
+                kind:
+                  head.fields.kind === "paragraph"
+                    ? entry.fields.kind
+                    : head.fields.kind,
+                listLevel: entry.fields.listLevel,
               }
-            : {
-                ...entry,
-                fields: head.fields,
-                listLineage: head.listLineage,
-              };
+            : head.fields;
+          const joined = {
+            ...entry,
+            fields,
+            listLineage: keepsMarker ? entry.listLineage : head.listLineage,
+          };
           joinedProperties.set(joined, head);
           out.push(joined);
           joinNext = undefined;
