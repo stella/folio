@@ -3705,15 +3705,65 @@ export class CanonicalPublicOperations {
         previous.last = Math.max(previous.last, interval.last);
       else merged.push({ ...interval });
     }
+    const alreadyInReplayOrder = (window: readonly AdmittedOperation[]) => {
+      const first = window.at(0);
+      const initial = first?.intents.at(0);
+      if (
+        first === undefined ||
+        initial?.type !== "insertParagraphs" ||
+        (initial.at.type !== "before" && initial.at.type !== "after")
+      )
+        return false;
+      const group = groupOf.get(first);
+      if (group?.length !== window.length) return false;
+      const { type: side, blockId } = initial.at;
+      const { at: replayAt } = gapAnchorBeforeFollower(
+        { type: "paragraph", at: initial.at },
+        projected.value,
+      );
+      if (replayAt.type !== side || replayAt.blockId !== blockId) return false;
+      let previousOrder: number | undefined;
+      for (const member of window) {
+        const { operation, intents } = member;
+        const intent = intents.at(0);
+        if (
+          groupOf.get(member) !== group ||
+          member.type !== "plain" ||
+          !isBlockInsertion(operation) ||
+          operation.moveId !== undefined ||
+          intents.length !== 1 ||
+          intent?.type !== "insertParagraphs" ||
+          intent.move !== undefined ||
+          intent.newList !== undefined ||
+          intent.at.type !== side ||
+          intent.at.blockId !== blockId
+        )
+          return false;
+        const order = orderOf(member);
+        if (
+          previousOrder !== undefined &&
+          (side === "before" ? order <= previousOrder : order >= previousOrder)
+        )
+          return false;
+        previousOrder = order;
+      }
+      // These insertions only add paragraph IDs. Later siblings cannot take
+      // any of the IDs an earlier member already selected from the free space.
+      return true;
+    };
     const windows = new Map<AdmittedOperation, readonly AdmittedOperation[]>();
     for (const interval of merged) {
       const first = executionOrder.at(interval.first);
       if (first === undefined)
         panic("An insertion admission window lost its first operation.");
-      windows.set(
-        first,
-        executionOrder.slice(interval.first, interval.last + 1),
-      );
+      const window = executionOrder.slice(interval.first, interval.last + 1);
+      if (
+        session.idLease === undefined &&
+        batch.mode !== "suggested" &&
+        alreadyInReplayOrder(window)
+      )
+        continue;
+      windows.set(first, window);
     }
     const completed = new Set<string>();
     for (const resolvedOperation of executionOrder) {
