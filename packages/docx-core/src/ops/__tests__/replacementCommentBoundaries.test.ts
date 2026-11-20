@@ -11,7 +11,7 @@ import { describe, expect, test } from "bun:test";
 import type { Document, ParagraphContent } from "../../model/document";
 import { applyDocumentOps } from "../apply";
 import { allocateEditorIntentIds, compileEditorIntent } from "../editorIntent";
-import { OP_STORIES } from "../types";
+import { DOCUMENT_OP_TYPES, OP_STORIES, REVISION_DECISIONS } from "../types";
 
 const PARA_ID = "12345678";
 const DATE = "2026-01-01T00:00:00Z";
@@ -157,5 +157,105 @@ describe("a replacement beside a comment's range", () => {
         DIRECT[name].includes("[") ? 1 : 0,
       );
     });
+  }
+});
+
+test("comment ends at a content control's end all close it: the replacement stays in one control", () => {
+  const control = (content: ParagraphContent[]): ParagraphContent => ({
+    type: "inlineSdt",
+    properties: { sdtType: "richText", id: 5 },
+    content,
+  });
+  const document: Document = {
+    package: {
+      document: {
+        content: [
+          {
+            type: "paragraph",
+            paraId: PARA_ID,
+            content: [
+              { type: "commentRangeStart", id: 1 },
+              { type: "commentRangeStart", id: 2 },
+              control([
+                run("old"),
+                { type: "commentRangeEnd", id: 1 },
+                { type: "commentRangeEnd", id: 2 },
+              ]),
+            ],
+          },
+        ],
+        comments: [1, 2].map((id) => ({
+          id,
+          author: "A",
+          date: DATE,
+          anchorKind: "range" as const,
+          content: [
+            {
+              type: "paragraph" as const,
+              paraId: `0A00000${id}`,
+              content: [run("Note.")],
+            },
+          ],
+        })),
+      },
+    },
+  };
+  const at = (offset: number) => ({
+    story: OP_STORIES.MAIN,
+    blockId: PARA_ID,
+    offset,
+  });
+  const intent = {
+    type: "replaceText" as const,
+    from: at(0),
+    to: at(3),
+    text: "new",
+  };
+  const ids = allocateEditorIntentIds(document, intent);
+  const outcome = (tracked: boolean) => {
+    const compiled = compileEditorIntent(document, {
+      intent,
+      mode: tracked
+        ? {
+            type: "suggesting",
+            revision: { id: ids.revisionId, author: "B", date: DATE },
+            newIds: ids.newIds,
+          }
+        : { type: "editing", newIds: ids.newIds },
+    }).unwrap();
+    const edited = applyDocumentOps(document, compiled.ops).unwrap().document;
+    if (!tracked) return edited;
+    const [block] = edited.package.document.content;
+    const [wrapper] =
+      block?.type === "paragraph" ? block.content.slice(-1) : [];
+    const revisionIds = (
+      wrapper?.type === "inlineSdt" ? wrapper.content : []
+    ).flatMap((node) =>
+      node.type === "insertion" || node.type === "deletion"
+        ? [node.info.id]
+        : [],
+    );
+    expect(revisionIds.length).toBe(2);
+    return applyDocumentOps(edited, [
+      {
+        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+        story: OP_STORIES.MAIN,
+        revisionIds,
+        decision: REVISION_DECISIONS.ACCEPT,
+      },
+    ]).unwrap().document;
+  };
+  const expected = [
+    { type: "commentRangeStart", id: 1 },
+    { type: "commentRangeStart", id: 2 },
+    control([
+      run("new"),
+      { type: "commentRangeEnd", id: 1 },
+      { type: "commentRangeEnd", id: 2 },
+    ]),
+  ];
+  for (const tracked of [false, true]) {
+    const [block] = outcome(tracked).package.document.content;
+    expect(block?.type === "paragraph" ? block.content : []).toEqual(expected);
   }
 });
