@@ -722,36 +722,60 @@ describe("the requested-outcome oracle", () => {
     );
   });
 
-  test("a nonempty replacement carries a comment, while an empty one removes it", () => {
+  test("a replacement takes the comment over its words with them, empty or not", () => {
     const comment = { id: 1, text: "review", anchor: "Signed", blockId: "b" };
     const replaced = modelOf([row("b", "Signed")]);
+    // Only the canonical session puts the new words outside the comment.
+    replaced.engine = "canonical";
     expectOperation(replaced, {
       type: "replaceBlock",
       blockId: "b",
       text: "Written",
     });
+    // The new words go outside the comment, which keeps nothing to cover.
     assert.deepEqual(
-      compareComments(
-        replaced,
-        [comment],
-        [{ ...comment, anchor: "Written" }],
-        [row("b", "Written")],
-      ),
+      compareComments(replaced, [comment], [], [row("b", "Written")]),
       [],
     );
     assert.match(
       compareComments(
         replaced,
         [comment],
-        [{ ...comment, anchor: "Unrelated" }],
+        [{ ...comment, anchor: "Written" }],
         [row("b", "Written")],
       ).join("\n"),
-      /no comment/u,
+      /outlived/u,
     );
-    assert.equal(
-      compareComments(replaced, [comment], [], [row("b", "Written")]).length,
-      1,
-    );
+
+    // The legacy engine hands the comment to the new words instead
+    // (LEGACY_REPLACEMENT_TAKES_COMMENT): neither outcome is predicted there.
+    const legacy = modelOf([row("b", "Signed")]);
+    legacy.engine = "legacy";
+    expectOperation(legacy, {
+      type: "replaceBlock",
+      blockId: "b",
+      text: "Written",
+    });
+    for (const after of [[], [{ ...comment, anchor: "Written" }]])
+      assert.deepEqual(
+        compareComments(legacy, [comment], after, [row("b", "Written")]),
+        [],
+      );
+
+    // A replacement sharing a word with the comment may keep it on that word.
+    const kept = { id: 2, text: "review", anchor: "Signed copy", blockId: "c" };
+    const shared = modelOf([row("c", "Signed copy")]);
+    shared.engine = "canonical";
+    expectOperation(shared, {
+      type: "replaceBlock",
+      blockId: "c",
+      text: "Written copy",
+    });
+    for (const after of [[], [{ ...kept, anchor: "copy" }]])
+      assert.deepEqual(
+        compareComments(shared, [kept], after, [row("c", "Written copy")]),
+        [],
+      );
 
     const emptied = modelOf([row("b", "Signed")]);
     expectOperation(emptied, { type: "replaceBlock", blockId: "b", text: "" });
@@ -759,9 +783,10 @@ describe("the requested-outcome oracle", () => {
     assert.equal(compareComments(emptied, [comment], [comment], []).length, 1);
   });
 
-  test("a pending replacement may anchor both the old text and its insertion", () => {
+  test("a pending replacement keeps the comment on the old text", () => {
     const comment = { id: 1, text: "review", anchor: "Old", blockId: "b" };
     const model = modelOf([row("b", "Old")]);
+    model.engine = "canonical";
     expectOperation(model, { type: "replaceBlock", blockId: "b", text: "New" });
 
     assert.deepEqual(
@@ -786,16 +811,17 @@ describe("the requested-outcome oracle", () => {
       ).join("\n"),
       /no comment/u,
     );
-    assert.match(
+    // Pending, the struck words keep the comment; the new words go outside.
+    assert.deepEqual(
       compareComments(
         model,
         [comment],
-        [{ ...comment, anchor: "NewOld" }],
+        [{ ...comment, anchor: "Old" }],
         [row("b", "New")],
         [comment],
         "suggested",
-      ).join("\n"),
-      /no comment/u,
+      ),
+      [],
     );
     assert.match(
       compareComments(
@@ -806,7 +832,7 @@ describe("the requested-outcome oracle", () => {
         [comment],
         "direct",
       ).join("\n"),
-      /no comment/u,
+      /outlived/u,
     );
     assert.match(
       compareComments(

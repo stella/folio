@@ -110,23 +110,24 @@ const resolveTarget = (source: string, target: string): string | null => {
 };
 
 /** OPC presence and relationship graph checks over already bounded, inflated XML parts. */
-export const validatePackageGraph = (
+export const packageGraphIssues = (
   parts: ReadonlyMap<string, string>,
   paths: ReadonlySet<string>,
-): string | null => {
+): string[] => {
+  const issues: string[] = [];
   const contentTypes = elements(parts.get("[Content_Types].xml") ?? "");
   const root = contentTypes?.at(0);
   if (root?.name !== "Types" || root.namespace !== CONTENT_TYPES_NS)
-    return "Invalid OPC content-types root";
+    return ["Invalid OPC content-types root"];
   const defaults = new Map<string, string>();
   const overrides = new Map<string, string>();
   for (const element of contentTypes ?? []) {
     if (element === root) continue;
     if (element.namespace !== CONTENT_TYPES_NS)
-      return "Invalid content-type declaration namespace";
+      return ["Invalid content-type declaration namespace"];
     const type = element.attributes["ContentType"];
     if (typeof type !== "string" || type.length === 0)
-      return "Missing content type";
+      return ["Missing content type"];
     if (element.name === "Default") {
       const extension = element.attributes["Extension"];
       if (
@@ -134,17 +135,17 @@ export const validatePackageGraph = (
         !extension ||
         defaults.has(extension.toLowerCase())
       )
-        return "Invalid or duplicate default content type";
+        return ["Invalid or duplicate default content type"];
       defaults.set(extension.toLowerCase(), type);
     } else if (element.name === "Override") {
       const name = element.attributes["PartName"];
       if (typeof name !== "string" || !name.startsWith("/"))
-        return "Invalid content-type part name";
+        return ["Invalid content-type part name"];
       const resolved = resolveTarget("", name);
       if (resolved === null || overrides.has(resolved) || !paths.has(resolved))
-        return "Invalid or dangling content-type override";
+        return ["Invalid or dangling content-type override"];
       overrides.set(resolved, type);
-    } else return "Unknown content-type declaration";
+    } else return ["Unknown content-type declaration"];
   }
   const documentType =
     overrides.get("word/document.xml") ?? defaults.get("xml");
@@ -152,7 +153,7 @@ export const validatePackageGraph = (
     documentType !==
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"
   )
-    return "Invalid officeDocument content type";
+    return ["Invalid officeDocument content type"];
   for (const path of paths) {
     if (path === "[Content_Types].xml") continue;
     const segment = path.slice(path.lastIndexOf("/") + 1);
@@ -163,22 +164,26 @@ export const validatePackageGraph = (
       !overrides.has(path) &&
       (extension === undefined || !defaults.has(extension))
     )
-      return `Missing content type for ${path}`;
+      issues.push(`Missing content type for ${path}`);
   }
   let documentRelationship = false;
   const partRelationshipIds = new Map<string, Set<string>>();
   for (const [path, xml] of parts) {
     if (!path.endsWith(".rels")) continue;
     const source = relationshipSource(path);
-    if (source === null || (source !== "" && !paths.has(source)))
-      return `Dangling relationship source: ${path}`;
+    if (source === null || (source !== "" && !paths.has(source))) {
+      issues.push(`Dangling relationship source: ${path}`);
+      continue;
+    }
     const relationships = elements(xml);
     const relationshipRoot = relationships?.at(0);
     if (
       relationshipRoot?.name !== "Relationships" ||
       relationshipRoot.namespace !== RELATIONSHIPS_NS
-    )
-      return `Invalid relationships root: ${path}`;
+    ) {
+      issues.push(`Invalid relationships root: ${path}`);
+      continue;
+    }
     const ids = new Set<string>();
     partRelationshipIds.set(source, ids);
     for (const element of relationships ?? []) {
@@ -186,8 +191,10 @@ export const validatePackageGraph = (
       if (
         element.name !== "Relationship" ||
         element.namespace !== RELATIONSHIPS_NS
-      )
-        return `Invalid relationship element: ${path}`;
+      ) {
+        issues.push(`Invalid relationship element: ${path}`);
+        continue;
+      }
       const {
         Id: id,
         Type: type,
@@ -202,15 +209,21 @@ export const validatePackageGraph = (
         !type ||
         typeof target !== "string" ||
         !target
-      )
-        return `Invalid or duplicate relationship: ${path}`;
+      ) {
+        issues.push(`Invalid or duplicate relationship: ${path}`);
+        continue;
+      }
       ids.add(id);
-      if (mode !== undefined && mode !== "Internal" && mode !== "External")
-        return `Invalid relationship TargetMode: ${path}`;
+      if (mode !== undefined && mode !== "Internal" && mode !== "External") {
+        issues.push(`Invalid relationship TargetMode: ${path}`);
+        continue;
+      }
       if (mode === "External") continue;
       const resolved = resolveTarget(source, target);
-      if (resolved === null || !paths.has(resolved))
-        return `Missing relationship target: ${path} -> ${target}`;
+      if (resolved === null || !paths.has(resolved)) {
+        issues.push(`Missing relationship target: ${path} -> ${target}`);
+        continue;
+      }
       const role = type.slice(type.lastIndexOf("/") + 1);
       const officeRelationship =
         type.startsWith(
@@ -229,7 +242,7 @@ export const validatePackageGraph = (
           declaredType !==
           `application/vnd.openxmlformats-officedocument.wordprocessingml.${role}+xml`
         )
-          return `Invalid content type for ${role}: ${resolved}`;
+          issues.push(`Invalid content type for ${role}: ${resolved}`);
       }
       if (
         source === "" &&
@@ -246,7 +259,10 @@ export const validatePackageGraph = (
   for (const [path, xml] of parts) {
     if (path.endsWith(".rels") || path === "[Content_Types].xml") continue;
     const nodes = elements(xml);
-    if (nodes === null) return `Malformed XML: ${path}`;
+    if (nodes === null) {
+      issues.push(`Malformed XML: ${path}`);
+      continue;
+    }
     for (const node of nodes) {
       for (const [name, value] of Object.entries(node.attributes)) {
         if (!name.includes(":")) continue;
@@ -256,11 +272,19 @@ export const validatePackageGraph = (
           typeof value !== "string" ||
           !partRelationshipIds.get(path)?.has(value)
         )
-          return `Unresolved relationship attribute: ${path} ${name}=${String(value)}`;
+          issues.push(
+            `Unresolved relationship attribute: ${path} ${name}=${String(value)}`,
+          );
       }
     }
   }
-  return documentRelationship
-    ? null
-    : "Missing package officeDocument relationship";
+  if (!documentRelationship)
+    issues.push("Missing package officeDocument relationship");
+  return issues;
 };
+
+/** OPC presence and relationship graph checks: the first issue {@link packageGraphIssues} finds, or `null`. */
+export const validatePackageGraph = (
+  parts: ReadonlyMap<string, string>,
+  paths: ReadonlySet<string>,
+): string | null => packageGraphIssues(parts, paths)[0] ?? null;

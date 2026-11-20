@@ -117,6 +117,43 @@ describe("findings not yet filed", () => {
   });
 
   expectedFailure(
+    "LEGACY_REPLACEMENT_TAKES_COMMENT",
+    "replacing exactly the words a comment covers takes the comment with them",
+    FINDING_SYMPTOMS.LEGACY_REPLACEMENT_TAKES_COMMENT,
+    async () => {
+      const reviewer = await openReviewer(await plainDocument());
+      const block = reviewer
+        .getContent()
+        .find((candidate) => /\p{L}{3,}/u.test(candidate.text));
+      const quote = block?.text.match(/\p{L}{3,}/u)?.[0];
+      assert.ok(block && quote);
+      for (const operation of [
+        {
+          type: "commentOnBlock",
+          blockId: block.id,
+          quote,
+          comment: { text: "Replaced words" },
+        },
+        {
+          type: "replaceInBlock",
+          blockId: block.id,
+          find: quote,
+          replace: "zzz",
+        },
+      ] as const)
+        applyTo(reviewer, { type: "main" }, operation, "direct");
+      const kept = reviewer
+        .getComments()
+        .filter(({ text }) => text === "Replaced words");
+      assert.deepEqual(
+        kept,
+        [],
+        `legacy replacement keeps a comment over the words it replaced: ${JSON.stringify(kept.map(({ anchoredText }) => anchoredText))}`,
+      );
+    },
+  );
+
+  expectedFailure(
     "MARKDOWN_DROPS_TEXT_BOX",
     "docxToMarkdown reads a text box's paragraph that getContent() lists",
     FINDING_SYMPTOMS.MARKDOWN_DROPS_TEXT_BOX,

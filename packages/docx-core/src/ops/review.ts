@@ -376,8 +376,8 @@ const holdsCommentAnchor = (node: InlineNode): boolean =>
  * hyperlink holding one: accepting it removes every comment anchor it holds,
  * as deleting the range directly does. A transparent wrapper holding one is
  * still refused, as a bare anchor is. A deletion of whole paragraphs leaves
- * the bare comment range anchors standing outside it (`commentAnchorsStand`):
- * they are no content of the paragraphs, and accepting it hands them to the nearest
+ * the bare comment anchors, a comment's reference included, standing outside
+ * it (`commentAnchorsStand`): they are no content of the paragraphs, and accepting it hands them to the nearest
  * paragraph that stays, as deleting the paragraphs directly does. A
  * deletion recording no joins takes in no record holding one: accepting it
  * keeps the anchors of comment ranges that continue past it, which removing
@@ -387,9 +387,7 @@ const holdsCommentAnchor = (node: InlineNode): boolean =>
  */
 const coveredAction = (node: InlineNode, state: WrapState): CoveredAction => {
   if (isCommentAnchor(node)) {
-    return state.commentAnchorsStand && node.type !== "commentReference"
-      ? "skip"
-      : "refuse";
+    return state.commentAnchorsStand ? "skip" : "refuse";
   }
   if (state.kind === WRAP_KINDS.DELETION) {
     if (isRemovedRevisionNode(node)) return "skip";

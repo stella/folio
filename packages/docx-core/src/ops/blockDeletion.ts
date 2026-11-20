@@ -16,6 +16,7 @@ import {
 } from "./blocks";
 import { isCommentExhausted } from "./comments";
 import type { DocumentEdit } from "./edits";
+import { structurallyEqual } from "./equality";
 import { freshenIdentities } from "./identity";
 import {
   IDENTITY_SPACES,
@@ -67,7 +68,7 @@ import {
  * One paragraph's content as its tracked deletion leaves it: every leaf
  * wrapped in a deletion stamped `stamp`, split around the range boundaries
  * directly in it ({@link withBoundariesOutsideDeletion}), with the boundaries
- * that stand outside, the bare comment range anchors the deletion leaves standing
+ * that stand outside, the bare comment anchors the deletion leaves standing
  * among them, in document order. Deleting directly keeps exactly those, so
  * accepting the tracked deletion and deleting directly leave the same
  * document.
@@ -75,10 +76,16 @@ import {
 const deletedContent = (
   paragraph: Paragraph,
   stamp: RevisionStamp,
+  rangedComments: ReadonlySet<number>,
 ):
   | { kind: "deleted"; content: ParagraphContent[]; standing: InlineNode[] }
   | { kind: "unchanged"; standing: InlineNode[] }
   | { kind: "refused"; reason: DocumentOpRefusal["reason"] } => {
+  // A comment's reference stands with its range's end, which the deletion
+  // leaves standing wherever that end is; a point comment's reference is its
+  // only anchor, which a deletion takes.
+  if (!liveReferencesAreRanged(paragraph.content, rangedComments))
+    return { kind: "refused", reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE };
   const wrapped = wrapTracked({
     items: paragraph.content,
     from: { offset: 0, zeroWidthBefore: 0 },
@@ -110,6 +117,41 @@ const deletedContent = (
 };
 
 /**
+ * Every comment reference in `nodes` outside a removal already pending
+ * belongs to a comment with a range (`rangedComments`); one inside such a
+ * removal goes with it either way.
+ */
+const liveReferencesAreRanged = (
+  nodes: readonly InlineNode[],
+  rangedComments: ReadonlySet<number>,
+): boolean =>
+  nodes.every((node) => {
+    if (isRemovedRevisionNode(node)) return true;
+    if (node.type === "commentReference") return rangedComments.has(node.id);
+    return liveReferencesAreRanged(childNodes(node) ?? [], rangedComments);
+  });
+
+/** The ids of the comments whose range ends somewhere in `value`. */
+const rangeEndIdsIn = (
+  value: unknown,
+  ids = new Set<number>(),
+): Set<number> => {
+  if (Array.isArray(value)) {
+    for (const item of value) rangeEndIdsIn(item, ids);
+    return ids;
+  }
+  if (typeof value !== "object" || value === null) return ids;
+  const id: unknown = Reflect.get(value, "id");
+  if (
+    Reflect.get(value, "type") === "commentRangeEnd" &&
+    typeof id === "number"
+  )
+    ids.add(id);
+  for (const item of Object.values(value)) rangeEndIdsIn(item, ids);
+  return ids;
+};
+
+/**
  * The boundaries of `nodes` a deletion of their paragraph leaves standing,
  * in document order: those split out of its records (`split`) and the bare
  * comment range anchors it never took in. What a deletion stamped by the same
@@ -121,11 +163,7 @@ const standingIn = (
   created: (node: InlineNode) => boolean,
 ): InlineNode[] =>
   nodes.flatMap((node): InlineNode[] => {
-    if (
-      split.has(node) ||
-      (isCommentAnchor(node) && node.type !== "commentReference")
-    )
-      return [node];
+    if (split.has(node) || isCommentAnchor(node)) return [node];
     if (created(node) || isRemovedRevisionNode(node)) return [];
     return standingIn(childNodes(node) ?? [], split, created);
   });
@@ -397,6 +435,7 @@ export const deleteBlocks = ({
     );
   }
   const body = storyBody(document, op.story);
+  const rangedComments = rangeEndIdsIn(body.content);
   const paragraphs = storyParagraphs(body);
   const found = [];
   for (const id of op.blockIds) {
@@ -495,6 +534,7 @@ export const deleteBlocks = ({
     const form = deletedContent(
       paragraph,
       op.revision ?? DIRECT_DELETION_STAMP,
+      rangedComments,
     );
     if (form.kind === "refused" && op.revision !== undefined)
       return refuse(
@@ -661,7 +701,7 @@ export const deleteBlocks = ({
   for (const paragraph of affected) {
     let next = paragraph;
     if (selectedSet.has(paragraph)) {
-      const form = deletedContent(paragraph, op.revision);
+      const form = deletedContent(paragraph, op.revision, rangedComments);
       if (form.kind === "refused")
         return refuse(
           form.reason,
@@ -713,7 +753,12 @@ export const deleteBlocks = ({
   }
   // What a pending deletion already holds whole, empty and with its mark
   // taken, a further one records nothing on: no reader or file would show it.
-  if (tracked.every((paragraph, index) => paragraph === affected[index]))
+  // Where the direct deletion changes nothing either, as for an empty
+  // paragraph alone in its container, recording nothing is that deletion.
+  if (
+    tracked.every((paragraph, index) => paragraph === affected[index]) &&
+    !structurallyEqual(directBlocks, replacement([]).expected)
+  )
     return refuse(
       DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
       "A tracked paragraph deletion would record nothing.",

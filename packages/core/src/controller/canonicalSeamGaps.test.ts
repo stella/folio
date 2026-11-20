@@ -148,12 +148,13 @@ const replaceAndAccept = (
 
 describe("which markers a replaced selection takes", () => {
   for (const mode of ["editing", "suggesting"] as const) {
-    test(`${mode}: replacing exactly the commented words keeps the comment on the new text`, () => {
+    test(`${mode}: replacing exactly the commented words leaves the new text outside the comment`, () => {
       const result = replaceAndAccept(mode, (text) => {
         const from = text.indexOf("commented");
         return { from, to: from + "commented".length };
       });
-      expect(result).toEqual({ covered: "xy", text: "Lead xy tail" });
+      // The comment's words all went, so it goes with them.
+      expect(result).toEqual({ covered: "", text: "Lead xy tail" });
     });
 
     test(`${mode}: replacing a paragraph containing an internal comment refuses atomically`, async () => {

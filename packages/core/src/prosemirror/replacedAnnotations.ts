@@ -445,10 +445,9 @@ type ReplacementCommentAlignmentOptions = {
 
 /**
  * Whether source boundaries already express the replacement's aligned ranges.
- * A changed stretch lends every comment it touches to its replacement. A
- * comment that closes before the insertion needs an anchor transition the kernel
- * cannot represent yet. Pure deletions within surviving source content follow
- * the ranged-comment exhaustion owner; other collapses need a point policy.
+ * A changed stretch lends no comment to its replacement: the new words go
+ * past the end of every range the stretch reaches. Pure deletions within surviving source content follow the
+ * ranged-comment exhaustion owner; other collapses need a point policy.
  * Decide over the whole replacement, before any of its fragments are applied.
  */
 export const preservesReplacementCommentAlignment = ({
@@ -506,15 +505,10 @@ export const preservesReplacementCommentAlignment = ({
         if (!mark.isInSet(collapsing)) collapsing.push(mark);
       continue;
     }
-    let endingMarks: readonly Mark[] = [];
-    doc.nodesBetween(change.from, change.to, (node) => {
-      if (!node.isInline) return true;
-      if (!node.isLeaf) return lendsMarks(node, "asAccepted");
-      if (!isZeroWidthAnchor(node) && lendsMarks(node, "asAccepted"))
-        endingMarks = node.marks;
-      return false;
-    });
-    if (!comments.every((mark) => mark.isInSet(endingMarks))) return false;
+    // The new words take no comment from the words they replace: they go past
+    // the end of a range the change reaches, and one it covers wholly goes
+    // with its words. A range starting in the change keeps them, as accepting
+    // the tracked replacement leaves them in it.
     for (const mark of comments)
       if (!mark.isInSet(continued)) continued.push(mark);
   }

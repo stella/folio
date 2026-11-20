@@ -549,6 +549,60 @@ describe("table row review", () => {
     );
   });
 
+  test("a tracked deletion of a row its own author's pending insertion added removes it outright", () => {
+    const own = { id: 50, author: revision.author };
+    const inserted: TableRow = {
+      type: "tableRow",
+      structuralChange: { type: "tableRowInsertion", info: own },
+      cells: [
+        {
+          type: "tableCell",
+          content: [
+            {
+              type: "paragraph",
+              paraId: "00000010",
+              content: [
+                {
+                  type: "insertion",
+                  info: { ...own, id: 51 },
+                  content: [
+                    { type: "run", content: [{ type: "text", text: "new" }] },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const kept = makeRow("00000020");
+    const document = documentOf(tableOf(inserted, kept));
+    const op: DocumentOp = {
+      type: DOCUMENT_OP_TYPES.DELETE_ROW,
+      story: OP_STORIES.MAIN,
+      blockId: "00000010",
+      revision,
+      newIds,
+    };
+    const deleted = applied(document, op);
+    expect(deleted.document).toStrictEqual(documentOf(tableOf(kept)));
+
+    // Another author's suggestion in the row keeps the refusal.
+    const shared = structuredClone(inserted);
+    const cell = shared.cells[0]?.content[0];
+    if (cell?.type !== "paragraph") throw new Error("The row has a paragraph.");
+    cell.content.push({
+      type: "insertion",
+      info: { id: 52, author: "Other" },
+      content: [{ type: "run", content: [{ type: "text", text: " more" }] }],
+    });
+    expectRefusalWithoutMutation(
+      documentOf(tableOf(shared, makeRow("00000020"))),
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+    );
+  });
+
   test("a paragraph outside a table cannot target a row operation", () => {
     const document = documentOf(
       tableOf(makeRow("00000010"), makeRow("00000020")),

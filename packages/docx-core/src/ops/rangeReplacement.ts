@@ -10,6 +10,8 @@ import {
   childNodes,
   defaultInsertionGap,
   type InlineNode,
+  type LeafSpan,
+  leafSpans,
   rebuildNode,
   sameOwnFields,
   spanningRecords,
@@ -107,13 +109,58 @@ export const rangeEndAfterDeletion = ({
   const offset = paragraphLength(target) - (sourceLength - end.offset);
   const following =
     zeroWidthLeavesAt(source.content, end.offset).length - end.zeroWidthBefore;
+  const zeroWidthBefore =
+    zeroWidthLeavesAt(target.content, offset).length - following;
   return {
     story: from.story,
     blockId: holder.paraId ?? to.blockId,
     offset,
-    zeroWidthBefore:
-      zeroWidthLeavesAt(target.content, offset).length - following,
+    zeroWidthBefore: caret
+      ? zeroWidthBefore
+      : pastEndedComments(target.content, offset, zeroWidthBefore),
   };
+};
+
+/** The records holding a leaf other than its run, outermost first. */
+const containersOf = (span: LeafSpan): readonly InlineNode[] =>
+  span.ancestors.filter((ancestor) => ancestor.type !== "run");
+
+/**
+ * Where what replaces a range goes among the zero-width leaves at the gap:
+ * past the ends of comments the range reached, so the new words never extend
+ * a comment whose end the range took. A comment starting at the gap keeps the
+ * new words, as it does when a tracked replacement is accepted. An end that
+ * closes the container the replacement continues stays after the new words,
+ * which go into that container.
+ */
+const pastEndedComments = (
+  content: readonly InlineNode[],
+  offset: number,
+  zeroWidthBefore: number,
+): number => {
+  const spans = leafSpans(content);
+  // The zero-width leaves at one offset are consecutive leaves.
+  const first = spans.findIndex(
+    ({ before }) =>
+      before.offset === offset && before.zeroWidthBefore === zeroWidthBefore,
+  );
+  if (first === -1) return zeroWidthBefore;
+  let index = first;
+  while (spans[index]?.node.type === "commentRangeEnd") {
+    const end = spans[index];
+    if (end === undefined) break;
+    const containers = containersOf(end);
+    const next = spans[index + 1];
+    const nextContainers = next === undefined ? [] : containersOf(next);
+    const within =
+      next === undefined
+        ? containers.length === 0
+        : nextContainers.length === containers.length &&
+          nextContainers.every((node, depth) => node === containers[depth]);
+    if (!within) break;
+    index += 1;
+  }
+  return zeroWidthBefore + index - first;
 };
 
 /**
