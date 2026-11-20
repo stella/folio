@@ -1669,6 +1669,9 @@ export const transformPosition: (position: TextPosition, over: readonly Sequence
 export const trimIdLease: (lease: IdLease, ids: readonly LeasedId[]) => IdLease;
 
 // @public
+export const tryTrackedInsertionGroup: (input: TrackedInsertionGroupOptions) => TrackedInsertionGroupResult;
+
+// @public
 export const TYPED_TEXT_FORMATTING: Readonly<{
     readonly CARET: "caret";
     readonly BODY_TEXT: "bodyText";
