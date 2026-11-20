@@ -4,9 +4,32 @@ import * as nativeOps from "@stll/docx-core/ops";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { createDocx } from "../docx/rezip";
+import * as capture from "../docx/verbatimCapture";
+import * as parser from "../docx/xmlParser";
 import { createEmptyDocument } from "../utils/createDocument";
 
-test("tracked insertion batches bound story visits and review resolutions", async () => {
+const structuralSaveWork = async (reviewer: FolioDocxReviewer) => {
+  const parses = spyOn(parser, "parseXmlDocument");
+  const fragments = spyOn(capture, "isSafeCapturedXmlDocument");
+  try {
+    expect((await reviewer.save({ repack: "refuse" })).type).toBe("selective");
+    return {
+      parsedCharacters: parses.mock.calls.reduce(
+        (sum, [xml]) => sum + xml.length,
+        0,
+      ),
+      validatedCharacters: fragments.mock.calls.reduce(
+        (sum, [xml]) => sum + xml.length,
+        0,
+      ),
+    };
+  } finally {
+    fragments.mockRestore();
+    parses.mockRestore();
+  }
+};
+
+test("tracked insertion batches bound story visits, review resolutions and structural save work", async () => {
   const template = createEmptyDocument();
   const input = await createDocx({
     ...template,
@@ -48,7 +71,7 @@ test("tracked insertion batches bound story visits and review resolutions", asyn
         .filter(
           (op) => op.type === nativeOps.DOCUMENT_OP_TYPES.RESOLVE_REVISION,
         ).length;
-      return { visits, resolutions };
+      return { visits, resolutions, ...(await structuralSaveWork(reviewer)) };
     } finally {
       apply.mockRestore();
       walks.mockRestore();
@@ -60,4 +83,12 @@ test("tracked insertion batches bound story visits and review resolutions", asyn
   expect(large.resolutions).toBe(small.resolutions);
   expect(small.visits).toBeGreaterThan(0);
   expect(large.visits).toBeLessThanOrEqual(5 * small.visits);
+  expect(small.parsedCharacters).toBeGreaterThan(0);
+  expect(large.parsedCharacters).toBeLessThanOrEqual(
+    5 * small.parsedCharacters,
+  );
+  expect(small.validatedCharacters).toBeGreaterThan(0);
+  expect(large.validatedCharacters).toBeLessThanOrEqual(
+    5 * small.validatedCharacters,
+  );
 });
