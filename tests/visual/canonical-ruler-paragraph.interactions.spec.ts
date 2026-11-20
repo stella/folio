@@ -5,13 +5,14 @@ import { twipsToPixels } from "@stll/folio-core/utils/units";
 
 import type {} from "../parity/canonicalBridge";
 import { evaluateCanonicalLoad } from "../parity/canonicalLoadEvaluation";
+import { PLAYGROUND_PORTS } from "../parity/playgroundHosts";
 import type {} from "./interleavingBridge";
 
 const adapters = [
-  { name: "React", port: Number(process.env["FOLIO_PLAYGROUND_PORT"]) || 4200 },
+  { name: "React", port: PLAYGROUND_PORTS.react },
   {
     name: "Vue",
-    port: Number(process.env["FOLIO_PLAYGROUND_VUE_PORT"]) || 4201,
+    port: PLAYGROUND_PORTS.vue,
   },
 ] as const;
 

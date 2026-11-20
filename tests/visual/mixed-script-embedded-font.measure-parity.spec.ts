@@ -1,11 +1,12 @@
 import { expect, test } from "@playwright/test";
 
+import { PLAYGROUND_HOSTS } from "../parity/playgroundHosts";
 import { collectLineParity, PER_RUN_TOLERANCE_PX } from "../support/lineParity";
 
 const FIXTURE = "mixed-script-font-measure.docx";
 const EDITOR_HOSTS = [
-  { name: "React", url: "http://localhost:4200" },
-  { name: "Vue", url: "http://localhost:4201" },
+  { name: "React", url: PLAYGROUND_HOSTS.react },
+  { name: "Vue", url: PLAYGROUND_HOSTS.vue },
 ] as const;
 
 for (const host of EDITOR_HOSTS) {

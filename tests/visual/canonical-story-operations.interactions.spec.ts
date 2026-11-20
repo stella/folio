@@ -7,12 +7,13 @@ import { createEmptyDocument } from "../../packages/core/src/utils/createDocumen
 import { createEmptyHeaderFooter } from "../../packages/core/src/utils/headerFooter";
 import type {} from "../parity/canonicalBridge";
 import { evaluateCanonicalLoad } from "../parity/canonicalLoadEvaluation";
+import { PLAYGROUND_PORTS } from "../parity/playgroundHosts";
 
 const adapters = [
-  { name: "React", port: Number(process.env["FOLIO_PLAYGROUND_PORT"]) || 4200 },
+  { name: "React", port: PLAYGROUND_PORTS.react },
   {
     name: "Vue",
-    port: Number(process.env["FOLIO_PLAYGROUND_VUE_PORT"]) || 4201,
+    port: PLAYGROUND_PORTS.vue,
   },
 ] as const;
 

@@ -1,6 +1,6 @@
 /**
  * Cross-adapter parity harness. Declares each spec body once and forks it per
- * adapter (React on 4200, Vue on 4201), appending `[react]` / `[vue]` to the
+ * adapter (React and Vue playgrounds, see playgroundHosts.ts), appending `[react]` / `[vue]` to the
  * title. Both playgrounds expose an identical `window.__folioParity` bridge
  * (see packages/playground/src/App.tsx and packages/playground-vue/src/App.vue),
  * so one spec body proves the two editors behave the same.
@@ -13,6 +13,7 @@
 import { expect, type Page, test } from "@playwright/test";
 
 import type { FolioParityBridge } from "../../packages/playground-vue/src/parityBridge";
+import { PLAYGROUND_PORTS } from "./playgroundHosts";
 
 declare global {
   // Window augmentation requires an interface (declaration merging).
@@ -30,8 +31,8 @@ export type AdapterFixture = {
 };
 
 // The same ports playwright.config.ts starts the playgrounds on.
-const reactPort = Number(process.env["FOLIO_PLAYGROUND_PORT"]) || 4200;
-const vuePort = Number(process.env["FOLIO_PLAYGROUND_VUE_PORT"]) || 4201;
+const reactPort = PLAYGROUND_PORTS.react;
+const vuePort = PLAYGROUND_PORTS.vue;
 
 export const VUE_ADAPTER = {
   name: "vue",
