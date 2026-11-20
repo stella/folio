@@ -141,16 +141,19 @@ const validateAttributes = (
  * WML id bounds are an interoperability policy (the XSD integer is unbounded).
  * Unknown extension vocabularies remain available for lossless round trips.
  */
-export const validateSchemaAttributes = (xml: string): string | null => {
+export const schemaAttributeIssues = (xml: string): string[] => {
+  const issues: string[] = [];
   // An entity no declaration defines stays as written, as it always has here.
   const read = readXml(xml, {
     conformance: "well-formed",
     undeclaredEntities: "accept",
   });
   if (read.status === "rejected") {
-    return /<!DOCTYPE/i.test(xml)
-      ? "DOCTYPE is not allowed in DOCX XML"
-      : `Malformed XML: ${read.reason}`;
+    return [
+      /<!DOCTYPE/i.test(xml)
+        ? "DOCTYPE is not allowed in DOCX XML"
+        : `Malformed XML: ${read.reason}`,
+    ];
   }
   const pending: Array<{
     nodes: readonly XmlElement[];
@@ -176,16 +179,30 @@ export const validateSchemaAttributes = (xml: string): string | null => {
         else if (name.startsWith("xmlns:")) scope.set(name.slice(6), value);
       }
       const values = new Map<string, string>();
+      let unreadable: string | null = null;
       for (const [name, value] of Object.entries(attributes)) {
         if (name === "xmlns" || name.startsWith("xmlns:")) continue;
         const resolved = resolveName({ name, scope, attribute: true });
-        if (resolved === null) return `Unbound XML attribute prefix: ${name}`;
-        if (values.has(resolved)) return `Duplicate XML attribute: ${name}`;
+        if (resolved === null) {
+          unreadable = `Unbound XML attribute prefix: ${name}`;
+          break;
+        }
+        if (values.has(resolved)) {
+          unreadable = `Duplicate XML attribute: ${name}`;
+          break;
+        }
         if (typeof value === "string") values.set(resolved, value);
+      }
+      if (unreadable !== null) {
+        issues.push(unreadable);
+        continue;
       }
       const tag = node.name;
       const name = resolveName({ name: tag, scope, attribute: false });
-      if (name === null) return `Unbound XML element prefix: ${tag}`;
+      if (name === null) {
+        issues.push(`Unbound XML element prefix: ${tag}`);
+        continue;
+      }
       const contextual = current.types.flatMap(
         (type) => SCHEMA_ATTRIBUTE_FACTS.types[type]?.children[name] ?? [],
       );
@@ -199,9 +216,16 @@ export const validateSchemaAttributes = (xml: string): string | null => {
         issue = validateAttributes(model, values);
         if (issue === null) break;
       }
-      if (issue !== null) return `${tag}: ${issue}`;
+      if (issue !== null) issues.push(`${tag}: ${issue}`);
       pending.push({ nodes: node.elements ?? [], scope, types });
     }
   }
-  return null;
+  return issues;
 };
+
+/**
+ * Attribute-only oracle, not complete XSD validation. The caller bounds XML size.
+ * The first issue {@link schemaAttributeIssues} finds, or `null`.
+ */
+export const validateSchemaAttributes = (xml: string): string | null =>
+  schemaAttributeIssues(xml)[0] ?? null;

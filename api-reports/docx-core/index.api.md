@@ -252,6 +252,9 @@ export type LegalSourceParseResult = {
 };
 
 // @public
+export const listDocxPackageIssues: (buffer: ArrayBuffer | Uint8Array) => Promise<string[]>;
+
+// @public
 export type MarkdownContent = {
     content: BlockContent[];
     numbering?: NumberingDefinitions;

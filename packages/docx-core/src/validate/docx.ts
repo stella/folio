@@ -33,8 +33,11 @@ import { hasIllegalXmlCharacters } from "../serialize/xmlEscape";
 import { preservedCommentRangeMarker } from "../xml/preservedCommentRangeMarkers";
 import { readXml, type XmlElement } from "../xml/streamingXmlParser";
 import { ZipArchive, type ZipEntry, ZipError } from "../zip/archive";
-import { validatePackageGraph } from "./packageGraph";
-import { validateSchemaAttributes } from "./schemaAttributes";
+import { packageGraphIssues, validatePackageGraph } from "./packageGraph";
+import {
+  schemaAttributeIssues,
+  validateSchemaAttributes,
+} from "./schemaAttributes";
 
 export const DOCX_PACKAGE_ISSUE_CODES = {
   ArchiveBoundsExceeded: "archive_bounds_exceeded",
@@ -404,6 +407,43 @@ export const validateDocxPackage = async (
       error: error instanceof Error ? error.message : "Invalid DOCX package.",
     };
   }
+};
+
+/**
+ * Every issue {@link validateDocxPackage} would report, not only the first:
+ * each part's attribute issues and every package-graph issue. A package the
+ * archive, size or root checks reject gives that one issue. Empty when the
+ * package is valid.
+ */
+export const listDocxPackageIssues = async (
+  buffer: ArrayBuffer | Uint8Array,
+): Promise<string[]> => {
+  const first = await validateDocxPackage(buffer);
+  if (first.valid) return [];
+  if (
+    first.code !== DOCX_PACKAGE_ISSUE_CODES.InvalidSchemaAttribute &&
+    first.code !== DOCX_PACKAGE_ISSUE_CODES.InvalidPackageGraph
+  )
+    return [first.error];
+  const archiveBytes =
+    buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+  const opened = await openArchive(archiveBytes);
+  if (!opened.ok) return [first.error];
+  const issues: string[] = [];
+  const parts = new Map<string, string>();
+  const paths = new Set<string>();
+  for (const entry of opened.zip.entries()) {
+    paths.add(entry.path);
+    if (!entry.path.endsWith(".xml") && !entry.path.endsWith(".rels")) continue;
+    // oxlint-disable-next-line no-await-in-loop -- parts are read one at a time to bound memory
+    const read = await readXmlPart(entry, VALIDATE_DOCX_MAX_DOCUMENT_XML_BYTES);
+    if (!read.ok) return [read.error];
+    for (const issue of schemaAttributeIssues(read.text))
+      issues.push(`${entry.path}: ${issue}`);
+    parts.set(entry.path, read.text);
+  }
+  issues.push(...packageGraphIssues(parts, paths));
+  return issues;
 };
 
 type CounterMap = Map<number, number>;

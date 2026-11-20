@@ -1,12 +1,19 @@
 /**
- * A canonical headless reviewer's resolved views read as the legacy
- * reviewer's.
+ * A canonical headless reviewer's resolved views read as the review rules
+ * resolve the document.
  *
- * For every story of a document, the original and final views (text,
- * blocks and the changes left) and the story's tables in each view are
- * read on both engines. A canonical reviewer reads them from a second
- * session resolved to the view, and leaves its own document as it was.
- * A story resolved to its final view keeps that view and holds no change.
+ * For every story of a document, the original and final views (text, blocks
+ * and the changes left) and the story's tables in each view are read from
+ * the canonical reviewer. A canonical reviewer reads them from a second
+ * session resolved to the view, and leaves its own document as it was. A
+ * story resolved to its final view keeps that view and holds no change.
+ *
+ * Each view is expected to read as the document `resolveRevision` leaves
+ * when it rejects (original) or accepts (final) every revision of every
+ * story, notes before the body: those are the stated review rules, which the
+ * docx-core review laws hold it to. That document is packaged and read by
+ * the legacy reviewer, which then resolves nothing: no review code of either
+ * reviewer decides what a view expects.
  *
  * A note is part of a resolved view exactly when a reference to it survives
  * in that view, wherever the reference sits: in a run, a hyperlink, a content
@@ -16,7 +23,7 @@
  * removes only what a resolved change takes away.
  */
 
-import { panic } from "better-result";
+import { panic, type Result } from "better-result";
 import { describe, expect, spyOn, test } from "bun:test";
 import fc from "fast-check";
 import { readdirSync, readFileSync } from "node:fs";
@@ -24,9 +31,11 @@ import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
 import {
+  type AppliedDocumentOp,
   applyDocumentOps,
   DOCUMENT_OP_REFUSAL_REASONS,
   DOCUMENT_OP_TYPES,
+  type DocumentOpRefusal,
   documentStories,
   leasedIdCensus,
   OP_STORIES,
@@ -39,15 +48,6 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
-import {
-  rejectedBoundaryHolderIdentities,
-  rejectedContainerEndIdentities,
-  rejectedJoinSurvivorIdentities,
-  resolvedAbsorbedFollowerIdentities,
-  runInAlignedSource,
-  withSurvivorProperties,
-} from "../../../../test/support/rejectedJoinSurvivors";
-import { rejectedParagraphFillerIdentities } from "../../../../test/support/rejectedParagraphFillers";
 import { CanonicalSessionError } from "../canonical/canonicalSession";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { parseDocx } from "../docx/parser";
@@ -72,6 +72,7 @@ import type {
 import {
   FOLIO_RESOLVED_REVIEWED_VIEWS,
   FolioDocxReviewer,
+  type FolioEditableDocumentStoryHandle,
   type FolioResolvedReviewedView,
 } from "./headless";
 
@@ -101,75 +102,66 @@ const ingested = async (buffer: ArrayBuffer): Promise<ArrayBuffer> => {
 const open = (buffer: ArrayBuffer, session: HeadlessReviewerSession) =>
   FolioDocxReviewer.fromBuffer(buffer.slice(0), { session });
 
-/** Every story in both resolved views. */
-const views = (reviewer: FolioDocxReviewer) =>
-  reviewer.listStories().flatMap(({ handle }) =>
-    FOLIO_RESOLVED_REVIEWED_VIEWS.map((view) => {
-      const read = reviewer.readReviewedStory({ story: handle, view });
-      return {
-        handle,
-        view,
-        text: read?.text ?? null,
-        changes: read?.changes ?? null,
-        blocks: read?.snapshot.blocks ?? null,
-        tables: reviewer
-          .storyTables({ story: handle, view })
-          .map((table) => table.node.textContent),
-      };
-    }),
-  );
-
-/** Every note a reference reaches anywhere in `value`, at any depth. */
-const referencedNotes = (
-  value: unknown,
-  found: Set<string> = new Set(),
-): Set<string> => {
-  if (Array.isArray(value)) {
-    for (const item of value) referencedNotes(item, found);
-    return found;
+const packaged = async (document: Document): Promise<ArrayBuffer | null> => {
+  try {
+    return await ingested(await createDocx(structuredClone(document)));
+  } catch {
+    return null;
   }
-  if (typeof value !== "object" || value === null) return found;
-  if (
-    "type" in value &&
-    "id" in value &&
-    (value.type === "footnoteRef" || value.type === "endnoteRef") &&
-    typeof value.id === "number"
-  )
-    found.add(
-      `${value.type === "footnoteRef" ? "footnote" : "endnote"}:${String(value.id)}`,
-    );
-  for (const child of Object.values(value)) referencedNotes(child, found);
-  return found;
 };
 
-/**
- * The legacy reviewer's views, less each note the view takes every reference
- * away from: the legacy reviewer reads a note's own state whether or not
- * anything still refers to it, while resolving the document removes it.
- */
-const expectedViews = async (buffer: ArrayBuffer) => {
-  const legacy = await open(buffer, "legacy");
-  const referenced = referencedNotes(legacy.toDocument().package);
-  const reached: Record<FolioResolvedReviewedView, Set<string>> = {
-    original: referencedNotes(legacy.toResolvedDocument("reject").package),
-    final: referencedNotes(legacy.toResolvedDocument("accept").package),
+/** One story as `reviewer` reads it in `view`. */
+const readView = (
+  reviewer: FolioDocxReviewer,
+  handle: FolioEditableDocumentStoryHandle,
+  view: FolioResolvedReviewedView,
+) => {
+  const read = reviewer.readReviewedStory({ story: handle, view });
+  return {
+    handle,
+    view,
+    text: read?.text ?? null,
+    changes: read?.changes ?? null,
+    blocks: read?.snapshot.blocks ?? null,
+    tables: reviewer
+      .storyTables({ story: handle, view })
+      .map((table) => table.node.textContent),
   };
-  const expected = views(legacy);
-  for (const read of expected)
-    if (
-      (read.handle.type === "footnote" || read.handle.type === "endnote") &&
-      referenced.has(`${read.handle.type}:${String(read.handle.noteId)}`) &&
-      !reached[read.view].has(
-        `${read.handle.type}:${String(read.handle.noteId)}`,
-      )
-    )
-      Object.assign(read, {
-        text: null,
-        changes: null,
-        blocks: null,
-        tables: [],
-      });
-  return expected;
+};
+
+/** Every story of `reviewer` in both resolved views. */
+const views = (reviewer: FolioDocxReviewer) =>
+  reviewer
+    .listStories()
+    .flatMap(({ handle }) =>
+      FOLIO_RESOLVED_REVIEWED_VIEWS.map((view) =>
+        readView(reviewer, handle, view),
+      ),
+    );
+
+/**
+ * `document` with every revision of every story resolved by `decision`, as
+ * `resolveRevision` states the review rules. Notes resolve before the body,
+ * whose references can take them away.
+ */
+const resolvedByRules = (
+  document: Document,
+  decision: "accept" | "reject",
+): Result<AppliedDocumentOp, DocumentOpRefusal> => {
+  const revisionIds = [...leasedIdCensus(document).revision];
+  const stories = documentStories(document);
+  return applyDocumentOps(
+    document,
+    [
+      ...stories.filter((story) => story !== OP_STORIES.MAIN),
+      OP_STORIES.MAIN,
+    ].map((story) => ({
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story,
+      revisionIds,
+      decision,
+    })),
+  );
 };
 
 /** Whether the paragraph `paraId` is the only paragraph of its block list. */
@@ -186,6 +178,36 @@ const aloneInItsList = (document: Document, paraId: string): boolean =>
         .length === 1
     );
   });
+
+/**
+ * Whether the rules refuse resolving `document` for one of the input
+ * boundaries generated documents can reach: a reviewed paragraph before its
+ * container's final table or a standing range boundary, or the only
+ * paragraph of its block list before that list's final table, which would
+ * leave the list without one to anchor it.
+ */
+const knownInputBoundary = (
+  document: Document,
+  refusal: DocumentOpRefusal,
+): boolean => {
+  if (refusal.opType !== DOCUMENT_OP_TYPES.RESOLVE_REVISION) return false;
+  if (refusal.reason === DOCUMENT_OP_REFUSAL_REASONS.CONTAINER_FINAL_MARK)
+    return true;
+  if (refusal.reason !== DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE) return false;
+  const anchorless =
+    /^Resolving the mark of ([0-9A-Fa-f]{8}) leaves no structural inverse anchor\.$/u.exec(
+      refusal.message,
+    )?.[1];
+  return (
+    /^A range boundary stands between [0-9A-Fa-f]{8} and the next block\.$/u.test(
+      refusal.message,
+    ) ||
+    /^Resolving the mark of [0-9A-Fa-f]{8} would leave its container without a final paragraph\.$/u.test(
+      refusal.message,
+    ) ||
+    (anchorless !== undefined && aloneInItsList(document, anchorless))
+  );
+};
 
 const viewLaws = async (
   buffer: ArrayBuffer,
@@ -227,210 +249,60 @@ const viewLaws = async (
     return;
   }
   const before = canonical.toDocument();
+  const ruled = {
+    original: resolvedByRules(before, "reject"),
+    final: resolvedByRules(before, "accept"),
+  } satisfies Record<FolioResolvedReviewedView, unknown>;
   let read: ReturnType<typeof views>;
   try {
     read = views(canonical);
   } catch (error) {
-    // Generated input may place a reviewed paragraph before its container's
-    // final table or a standing range boundary. Verify the exact native
-    // refusal independently; an arbitrary session refusal must fail this law.
-    // Fixed supported regressions use the default strict policy.
+    // Generated input may reach a boundary the rules refuse to resolve
+    // (`knownInputBoundary`): the view refuses as they do. An arbitrary
+    // session refusal must fail this law, and fixed supported regressions
+    // use the default strict policy.
     if (
       unsupported !== "known-input-boundaries" ||
       !CanonicalSessionError.is(error)
     )
       throw error;
-    const revisionIds = [...leasedIdCensus(before).revision];
-    const stories = documentStories(before);
-    const order = [
-      ...stories.filter((story) => story !== OP_STORIES.MAIN),
-      OP_STORIES.MAIN,
-    ];
-    const nativeRefusals = (["accept", "reject"] as const).flatMap(
-      (decision) => {
-        const resolved = applyDocumentOps(
-          before,
-          order.map((story) => ({
-            type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
-            story,
-            revisionIds,
-            decision,
-          })),
-        );
-        if (resolved.isOk()) return [];
-        const refusal = resolved.error;
-        // Removing the only paragraph of its block list, before that list's
-        // final table, would leave the list without one to anchor it.
-        const anchorless =
-          /^Resolving the mark of ([0-9A-Fa-f]{8}) leaves no structural inverse anchor\.$/u.exec(
-            refusal.message,
-          )?.[1];
-        const knownBoundary =
-          refusal.reason === DOCUMENT_OP_REFUSAL_REASONS.CONTAINER_FINAL_MARK ||
-          (refusal.reason === DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE &&
-            (/^A range boundary stands between [0-9A-Fa-f]{8} and the next block\.$/u.test(
-              refusal.message,
-            ) ||
-              /^Resolving the mark of [0-9A-Fa-f]{8} would leave its container without a final paragraph\.$/u.test(
-                refusal.message,
-              ) ||
-              (anchorless !== undefined &&
-                aloneInItsList(before, anchorless))));
-        return knownBoundary &&
-          refusal.opType === DOCUMENT_OP_TYPES.RESOLVE_REVISION
-          ? [refusal.message]
-          : [];
-      },
-    );
-    expect(nativeRefusals).toContain(error.message);
+    expect(
+      Object.values(ruled).flatMap((result) =>
+        result.isErr() && knownInputBoundary(before, result.error)
+          ? [result.error.message]
+          : [],
+      ),
+    ).toContain(error.message);
     expect(error.reason).toBe("refused");
     expect(error.ground).toEqual({ gap: CANONICAL_GAP.dispatch });
     expect(canonical.toDocument()).toEqual(before);
     return;
   }
-  const expected = await expectedViews(buffer);
-  // The legacy reviewer keeps the wrong paragraph of a rejected join before a
-  // block the joined paragraph cannot run into; the view must keep the later
-  // one, whose mark stays.
-  const survivors = rejectedJoinSurvivorIdentities({
-    source: before,
-    actual: canonical.toResolvedDocument("reject"),
-    expected: (await open(buffer, "legacy")).toResolvedDocument("reject"),
-  });
-  // Where the legacy reviewer resolves a join otherwise, it reads the view
-  // from the document as the join leaves it: the survivor of a rejected join
-  // with the properties its mark keeps (`withSurvivorProperties`), a run into
-  // a table through the empty paragraphs whose marks go too, with the words
-  // keeping their own formatting (`runInAlignedSource`).
-  for (const view of FOLIO_RESOLVED_REVIEWED_VIEWS) {
-    const withSurvivors =
-      view === "original"
-        ? withSurvivorProperties(before, survivors)
-        : undefined;
-    const aligned =
-      runInAlignedSource({
-        source: withSurvivors ?? before,
-        view,
-        actual: canonical.toResolvedDocument(
-          view === "original" ? "reject" : "accept",
+  // Each view reads as the document the rules resolve it to, read where
+  // nothing is left to resolve.
+  const readerOf = async (view: FolioResolvedReviewedView) => {
+    const result = ruled[view];
+    if (result.isErr()) throw result.error;
+    // Packaged from the model alone: a part the source package held, such as
+    // the notes of a note the view removes, is not carried over.
+    const { originalBuffer: _source, ...model } = result.value.document;
+    const resolved = await packaged(model);
+    if (resolved === null) panic(`The ${view} view packages.`);
+    return open(resolved, "legacy");
+  };
+  const readers = {
+    original: await readerOf("original"),
+    final: await readerOf("final"),
+  } satisfies Record<FolioResolvedReviewedView, FolioDocxReviewer>;
+  expect(read).toEqual(
+    canonical
+      .listStories()
+      .flatMap(({ handle }) =>
+        FOLIO_RESOLVED_REVIEWED_VIEWS.map((view) =>
+          readView(readers[view], handle, view),
         ),
-      }) ?? withSurvivors;
-    if (aligned === undefined) continue;
-    const alignedBuffer = await packaged(aligned);
-    if (alignedBuffer === null) panic("An aligned document packages.");
-    const alignedViews = await expectedViews(alignedBuffer);
-    for (const [index, entry] of expected.entries()) {
-      if (entry.view !== view) continue;
-      expected[index] =
-        alignedViews.find(
-          (candidate) =>
-            candidate.view === view &&
-            isDeepStrictEqual(candidate.handle, entry.handle),
-        ) ?? panic("An aligned document keeps its stories.");
-    }
-  }
-  for (const entry of expected) {
-    if (entry.view !== "original") continue;
-    for (const { expectedId, survivorId } of survivors) {
-      entry.blocks =
-        entry.blocks?.map((block) =>
-          block.id === expectedId ? { ...block, id: survivorId } : block,
-        ) ?? null;
-      entry.text =
-        entry.text?.replaceAll(`[${expectedId}]`, `[${survivorId}]`) ?? null;
-    }
-  }
-  // The legacy reviewer drops an empty paragraph whose rejected added mark
-  // ends a local container; the paragraph stays there, as the canonical
-  // reviewer reads it, after the block it follows. A control's last
-  // paragraph whose mark either view resolves away takes an empty paragraph
-  // after the control, which the legacy reviewer keeps.
-  const legacyReviewer = await open(buffer, "legacy");
-  const legacyRejected = legacyReviewer.toResolvedDocument("reject");
-  const containerEnds = new Set(
-    rejectedContainerEndIdentities({
-      source: before,
-      actual: canonical.toResolvedDocument("reject"),
-      expected: legacyRejected,
-    }),
+      ),
   );
-  const absorbedFollowers = {
-    original: new Set(
-      resolvedAbsorbedFollowerIdentities({
-        source: before,
-        actual: canonical.toResolvedDocument("reject"),
-        expected: legacyRejected,
-        decision: "reject",
-      }),
-    ),
-    final: new Set(
-      resolvedAbsorbedFollowerIdentities({
-        source: before,
-        actual: canonical.toResolvedDocument("accept"),
-        expected: legacyReviewer.toResolvedDocument("accept"),
-        decision: "accept",
-      }),
-    ),
-  } satisfies Record<FolioResolvedReviewedView, Set<string>>;
-  // A paragraph the legacy reviewer keeps for nothing but range boundaries,
-  // whose rejected added mark goes before a block, goes; its boundaries stay
-  // in the nearest paragraph that does.
-  const boundaryHolders = new Set(
-    rejectedBoundaryHolderIdentities({
-      source: before,
-      actual: canonical.toResolvedDocument("reject"),
-      expected: legacyRejected,
-    }),
-  );
-  for (const entry of expected) {
-    const absorbed = absorbedFollowers[entry.view];
-    entry.blocks =
-      entry.blocks?.filter(
-        ({ id }) =>
-          !absorbed.has(id) &&
-          (entry.view !== "original" || !boundaryHolders.has(id)),
-      ) ?? null;
-    if (entry.view !== "original" || containerEnds.size === 0) continue;
-    const actualBlocks =
-      read.find(
-        (candidate) =>
-          candidate.view === "original" &&
-          isDeepStrictEqual(candidate.handle, entry.handle),
-      )?.blocks ?? [];
-    for (const [index, block] of actualBlocks.entries()) {
-      if (!containerEnds.has(block.id) || entry.blocks === null) continue;
-      const previous = actualBlocks.at(index - 1);
-      const at =
-        index === 0 || previous === undefined
-          ? 0
-          : entry.blocks.findIndex(({ id }) => id === previous.id) + 1;
-      if (at === 0 && index !== 0) continue;
-      entry.blocks = entry.blocks.toSpliced(at, 0, block);
-    }
-  }
-  const fillerIds = new Map(
-    isDeepStrictEqual(read, expected)
-      ? []
-      : rejectedParagraphFillerIdentities({
-          source: before,
-          actual: canonical.toResolvedDocument("reject"),
-          expected: (await open(buffer, "legacy")).toResolvedDocument("reject"),
-        }).map(({ actualId, expectedId }) => [actualId, expectedId]),
-  );
-  expect(
-    read.map((entry) =>
-      entry.view !== "original"
-        ? entry
-        : Object.assign({}, entry, {
-            blocks:
-              entry.blocks?.map((block) =>
-                Object.assign({}, block, {
-                  id: fillerIds.get(block.id) ?? block.id,
-                }),
-              ) ?? null,
-          }),
-    ),
-  ).toEqual(expected);
   // Reading a view resolves nothing in the reviewer itself.
   expect(canonical.toDocument()).toEqual(before);
 
@@ -454,14 +326,6 @@ const viewLaws = async (
   }
 };
 
-const packaged = async (document: Document): Promise<ArrayBuffer | null> => {
-  try {
-    return await ingested(await createDocx(structuredClone(document)));
-  } catch {
-    return null;
-  }
-};
-
 // These malformed corpus documents fail session construction. Every other
 // corpus document and every generated supported document must actually read.
 const IMPORT_REFUSALS = new Map([
@@ -477,7 +341,7 @@ const IMPORT_REFUSALS = new Map([
 
 describe("a canonical reviewer's resolved views", () => {
   test.each(FIXTURE_FILES)(
-    "%s reads its resolved views as the legacy reviewer does",
+    "%s reads its resolved views as the review rules resolve it",
     async (filename) => {
       const buffer = await ingested(readFixture(filename));
       const refused = IMPORT_REFUSALS.get(filename);
@@ -491,7 +355,7 @@ describe("a canonical reviewer's resolved views", () => {
   );
 
   test(
-    "generated documents read their resolved views as the legacy reviewer does",
+    "generated documents read their resolved views as the review rules resolve them",
     async () => {
       await assertProperty(
         fc.asyncProperty(reviewerDocumentArbitrary, async (document) => {
@@ -499,7 +363,7 @@ describe("a canonical reviewer's resolved views", () => {
           if (buffer !== null) await viewLaws(buffer, "known-input-boundaries");
         }),
         {
-          id: "generated documents read their resolved views as the legacy reviewer does",
+          id: "generated documents read their resolved views as the review rules resolve them",
           numRuns: 25,
         },
       );

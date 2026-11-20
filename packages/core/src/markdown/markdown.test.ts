@@ -1310,3 +1310,24 @@ describe("toMarkdown — tabs", () => {
     ).toEqual(["paragraph", "paragraph", "paragraph"]);
   });
 });
+
+describe("toMarkdown — a paragraph starting with a line break", () => {
+  test("stays one paragraph with no stray backslash", () => {
+    const broken: Run = {
+      type: "run",
+      content: [{ type: "break" }, { type: "text", text: "After" }],
+    };
+    const out = md([
+      para([run("Before")]),
+      para([broken]),
+      para([run("Next")]),
+    ]);
+    const blocks = compileMarkdownToContent(out).content;
+    expect(blocks.map((block) => block.type)).toEqual([
+      "paragraph",
+      "paragraph",
+      "paragraph",
+    ]);
+    expect(out).not.toContain("\n\\\n");
+  });
+});
