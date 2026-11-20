@@ -75,14 +75,15 @@ import {
 const deletedContent = (
   paragraph: Paragraph,
   stamp: RevisionStamp,
+  rangedComments: ReadonlySet<number>,
 ):
   | { kind: "deleted"; content: ParagraphContent[]; standing: InlineNode[] }
   | { kind: "unchanged"; standing: InlineNode[] }
   | { kind: "refused"; reason: DocumentOpRefusal["reason"] } => {
   // A comment's reference stands with its range's end, which the deletion
-  // leaves standing; a point comment's reference is its only anchor, which
-  // a deletion takes.
-  if (!referencesFollowTheirEnds(paragraph.content))
+  // leaves standing wherever that end is; a point comment's reference is its
+  // only anchor, which a deletion takes.
+  if (!liveReferencesAreRanged(paragraph.content, rangedComments))
     return { kind: "refused", reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE };
   const wrapped = wrapTracked({
     items: paragraph.content,
@@ -114,16 +115,39 @@ const deletedContent = (
   };
 };
 
-/** Every comment reference in `nodes` follows its range's end among them. */
-const referencesFollowTheirEnds = (nodes: readonly InlineNode[]): boolean => {
-  const ends = new Set<number>();
-  const visit = (items: readonly InlineNode[]): boolean =>
-    items.every((node) => {
-      if (node.type === "commentRangeEnd") ends.add(node.id);
-      if (node.type === "commentReference") return ends.has(node.id);
-      return visit(childNodes(node) ?? []);
-    });
-  return visit(nodes);
+/**
+ * Every comment reference in `nodes` outside a removal already pending
+ * belongs to a comment with a range (`rangedComments`); one inside such a
+ * removal goes with it either way.
+ */
+const liveReferencesAreRanged = (
+  nodes: readonly InlineNode[],
+  rangedComments: ReadonlySet<number>,
+): boolean =>
+  nodes.every((node) => {
+    if (isRemovedRevisionNode(node)) return true;
+    if (node.type === "commentReference") return rangedComments.has(node.id);
+    return liveReferencesAreRanged(childNodes(node) ?? [], rangedComments);
+  });
+
+/** The ids of the comments whose range ends somewhere in `value`. */
+const rangeEndIdsIn = (
+  value: unknown,
+  ids = new Set<number>(),
+): Set<number> => {
+  if (Array.isArray(value)) {
+    for (const item of value) rangeEndIdsIn(item, ids);
+    return ids;
+  }
+  if (typeof value !== "object" || value === null) return ids;
+  const id: unknown = Reflect.get(value, "id");
+  if (
+    Reflect.get(value, "type") === "commentRangeEnd" &&
+    typeof id === "number"
+  )
+    ids.add(id);
+  for (const item of Object.values(value)) rangeEndIdsIn(item, ids);
+  return ids;
 };
 
 /**
@@ -410,6 +434,7 @@ export const deleteBlocks = ({
     );
   }
   const body = storyBody(document, op.story);
+  const rangedComments = rangeEndIdsIn(body.content);
   const paragraphs = storyParagraphs(body);
   const found = [];
   for (const id of op.blockIds) {
@@ -508,6 +533,7 @@ export const deleteBlocks = ({
     const form = deletedContent(
       paragraph,
       op.revision ?? DIRECT_DELETION_STAMP,
+      rangedComments,
     );
     if (form.kind === "refused" && op.revision !== undefined)
       return refuse(
@@ -674,7 +700,7 @@ export const deleteBlocks = ({
   for (const paragraph of affected) {
     let next = paragraph;
     if (selectedSet.has(paragraph)) {
-      const form = deletedContent(paragraph, op.revision);
+      const form = deletedContent(paragraph, op.revision, rangedComments);
       if (form.kind === "refused")
         return refuse(
           form.reason,
