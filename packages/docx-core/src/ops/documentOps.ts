@@ -1,3 +1,11 @@
+import type { Document, DocumentBody } from "../model/document";
+import {
+  findStoryBody as findStoryBodyAt,
+  sameStory as sameStoryAt,
+  storyBody as storyBodyAt,
+} from "./stories";
+import type { OpStory } from "./types";
+
 export { reconcileDocumentPartRelationships } from "./comments";
 export {
   addCopyOriginAncestor,
@@ -14,13 +22,18 @@ export {
   withParagraphRenderings,
 } from "./paragraphCopies";
 export { captureStoryParts, sectionPropertiesAt } from "./storyLifecycle";
-export {
-  storyBody,
-  findStoryBody,
-  documentStories,
-  replaceStoryBody,
-  sameStory,
-} from "./stories";
+export { documentStories, replaceStoryBody } from "./stories";
+
+// Callers name package stories; a text box's story is internal to applying
+// an operation (`textBoxRouting.ts`).
+export const storyBody: (document: Document, story: OpStory) => DocumentBody =
+  storyBodyAt;
+export const findStoryBody: (
+  document: Document,
+  story: OpStory,
+) => DocumentBody | undefined = findStoryBodyAt;
+export const sameStory: (left: OpStory, right: OpStory) => boolean =
+  sameStoryAt;
 /**
  * `@stll/docx-core/ops`: document operations over the typed model.
  *

@@ -29,9 +29,8 @@ import type {
 } from "../model/document";
 import { structurallyEqual } from "./equality";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "./refusal";
-import { replaceStoryBody, storyBody } from "./stories";
+import { replaceStoryBody, type StoryAddress, storyBody } from "./stories";
 import {
-  type OpStory,
   type SectionMapState,
   type SectionViewEntry,
   type SectionViewState,
@@ -647,7 +646,7 @@ export const sectionsInStep = (body: DocumentBody): boolean => {
 
 type ReplaceParagraphsOptions = {
   document: Document;
-  story: OpStory;
+  story: StoryAddress;
   /** The splice boundary; every replaced paragraph follows it in this list. */
   at: Pick<ParagraphLocation, "list" | "index">;
   count: number;
