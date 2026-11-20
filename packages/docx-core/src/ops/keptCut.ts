@@ -25,6 +25,13 @@ type KeptCutCarrier = Extract<InlineNode, { keptCut?: KeptCut }>;
 const carriesKeptCut = (node: InlineNode): node is KeptCutCarrier =>
   isBoundary(node);
 
+/** The sides a kept marker can name as its cut's piece. */
+export const KEPT_CUT_PIECES = {
+  before: "before",
+  after: "after",
+  both: "both",
+} as const satisfies { [Piece in KeptCutPiece]: Piece };
+
 /**
  * `node` marked as standing in `cut`, when it is a range marker. A marker
  * already standing in a cut keeps the revision it was first kept from and
@@ -73,6 +80,21 @@ export const withKeptCutPieceRecorded = (
           : marker,
       known,
     ),
+  );
+
+/** `node` with every marker it stands for naming no side as its cut's piece. */
+export const withKeptCutPieceConsumed = (
+  node: InlineNode,
+  known: WeakMap<InlineNode, string>,
+): InlineNode =>
+  changeStandingMarkers(
+    node,
+    keepingRecord((marker) => {
+      if (!carriesKeptCut(marker) || marker.keptCut?.piece === undefined)
+        return marker;
+      const { piece: _consumed, ...cut } = marker.keptCut;
+      return Object.assign({}, marker, { keptCut: cut });
+    }, known),
   );
 
 /** The earliest revision a marker `node` stands for was kept from. */
@@ -189,13 +211,16 @@ export const withoutKeptCutsRecorded = (
   changeStandingMarkers(node, keepingRecord(withoutKeptCut, known));
 
 type SeamJoins = NonNullable<TrackedWrapper["resolutionJoins"]>;
+type SeamGroup = NonNullable<SeamJoins["deferredRemove"]>[number];
 
 /**
  * `nodes` with the kept markers that pending changes' joins name, as review
- * history version 1 wrote them (`keptFrom`, `keptCount` on the change, no
- * cut on the marker), marked as the version that follows marks them: the
- * markers standing nearest each side the change joins, as many boundaries as
- * it counts, stand in that cut, naming the change's side as its piece.
+ * history version 1 wrote them (`keptFrom`, `keptCount` on the change or on
+ * a deferred seam's group, no cut on the marker), marked as the version that
+ * follows marks them: the markers standing nearest each side the change
+ * joins, or beside the group's blockers, as many boundaries as it counts,
+ * stand in that cut, naming the change's side (the blockers', or both) as
+ * its piece.
  * `writtenOnChange` says which joins were written so. Markers already
  * standing in a cut keep it.
  */
@@ -257,6 +282,51 @@ const withKeptCutsFromChanges = (
         "before",
       );
   }
+  // A deferred seam's group dates the boundaries kept standing at the seam
+  // (`keptFrom`, `keptCount`): the run of unmarked markers its blockers
+  // stand beside, naming the blockers' side, or both, as its piece.
+  const keptGroups = (node: InlineNode | undefined): readonly SeamGroup[] => {
+    const joins =
+      node !== undefined && isTrackedWrapper(node)
+        ? node.resolutionJoins
+        : undefined;
+    return joins === undefined || !writtenOnChange(joins)
+      ? []
+      : (joins.deferredRemove ?? []).filter(
+          (group) => group.keptFrom !== undefined,
+        );
+  };
+  const seamOf = ({ depth, blockers, keptFrom }: SeamGroup): string =>
+    `${depth}:${blockers.join(",")}:${keptFrom ?? ""}`;
+  const unmarked = (node: InlineNode | undefined): boolean =>
+    node !== undefined && isKeptBoundaryCarrier(node) && !holdsKeptCut([node]);
+  let start = 0;
+  while (start < out.length) {
+    if (!unmarked(out[start])) {
+      start += 1;
+      continue;
+    }
+    let end = start + 1;
+    while (end < out.length && unmarked(out[end])) end += 1;
+    const before = keptGroups(start === 0 ? undefined : out[start - 1]);
+    const after = keptGroups(out[end]);
+    const afterSeams = new Set(after.map(seamOf));
+    const across = before.find((group) => afterSeams.has(seamOf(group)));
+    const group = across ?? after.at(0) ?? before.at(0);
+    if (group?.keptFrom !== undefined) {
+      let piece: KeptCutPiece = KEPT_CUT_PIECES.before;
+      if (across !== undefined) piece = KEPT_CUT_PIECES.both;
+      else if (after.includes(group)) piece = KEPT_CUT_PIECES.after;
+      const cut = {
+        keptFrom: group.keptFrom,
+        depth: group.depth,
+        count: group.keptCount ?? Number.POSITIVE_INFINITY,
+      };
+      if (piece === KEPT_CUT_PIECES.after) mark(end - 1, -1, cut, piece);
+      else mark(start, 1, cut, piece);
+    }
+    start = end;
+  }
   return out.every((node, index) => node === nodes[index]) ? nodes : out;
 };
 
@@ -278,11 +348,6 @@ const KEPT_CUT_FIELDS = {
   keptFrom: true,
   piece: true,
 } as const satisfies Record<RecordField<KeptCut>, true>;
-
-const KEPT_CUT_PIECES = {
-  before: true,
-  after: true,
-} as const satisfies Record<KeptCutPiece, true>;
 
 /**
  * Whether `cut` is a well-formed kept cut: exactly its fields, at least one
@@ -520,6 +585,9 @@ export const settleKeptCuts = (
     const facing = {
       before: start === 0 ? outside.start : trackedAt(start - 1),
       after: end === nodes.length ? outside.end : trackedAt(end),
+      both:
+        (start === 0 ? outside.start : trackedAt(start - 1)) ||
+        (end === nodes.length ? outside.end : trackedAt(end)),
     } as const satisfies Record<KeptCutPiece, boolean>;
     for (const [offset, node] of run.entries()) {
       const settled = waiting
