@@ -17,6 +17,56 @@ type ReplayMember = {
   ids: readonly LeasedId[];
 };
 
+type AdmissionLease =
+  | { type: "ordinary" }
+  | { type: "bounded"; lease: IdLease; start: number }
+  | { type: "fallback"; reason: ReplayRejection | "exhausted" };
+
+/**
+ * Once ordinary allocation succeeds, smaller paragraph IDs remain held
+ * for the rest of a plain insertion window. Advance only when an actual
+ * native insertion with exactly one new paragraph was admitted.
+ */
+export const startParagraphAdmissionCursor = (
+  reason: ReplayRejection | undefined,
+) => {
+  let next: AdmissionLease =
+    reason === undefined ? { type: "ordinary" } : { type: "fallback", reason };
+  return {
+    nextLease: (): AdmissionLease => next,
+    commit: (paragraphs: readonly number[] | undefined): void => {
+      if (next.type === "fallback") return;
+      const id = paragraphs?.at(0);
+      if (
+        paragraphs?.length !== 1 ||
+        id === undefined ||
+        id < (next.type === "bounded" ? next.start : 1) ||
+        id >= ID_KIND_LIMITS.paragraph
+      ) {
+        next = { type: "fallback", reason: "identity" };
+        return;
+      }
+      const start = id + 1;
+      next =
+        start === ID_KIND_LIMITS.paragraph
+          ? { type: "fallback", reason: "exhausted" }
+          : {
+              type: "bounded",
+              start,
+              lease: {
+                blocks: [
+                  {
+                    kind: ID_LEASE_KINDS.PARAGRAPH,
+                    start,
+                    end: ID_KIND_LIMITS.paragraph,
+                  },
+                ],
+              },
+            };
+    },
+  };
+};
+
 /**
  * A plain insertion only adds its one paragraph id. Every smaller id that
  * blocked it at admission is still held by the package or the retired set,

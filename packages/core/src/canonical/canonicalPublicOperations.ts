@@ -34,6 +34,7 @@ import {
   formatParaId,
   freshCommentId,
   groupInsertionRuns,
+  ID_KIND_LIMITS,
   ID_LEASE_KINDS,
   type IdBlock,
   idKey,
@@ -195,7 +196,10 @@ import {
   canonicalCommentBody,
   compileCanonicalComments,
 } from "./canonicalComments";
-import { planReplayParagraphIds } from "./canonicalInsertionReplayIds";
+import {
+  planReplayParagraphIds,
+  startParagraphAdmissionCursor,
+} from "./canonicalInsertionReplayIds";
 import { addJoinedParagraphReceipts } from "./canonicalJoinedReceipts";
 import { lockViolationBetween } from "./canonicalLockGuard";
 import {
@@ -2707,13 +2711,34 @@ type CompilePublicIntentsOptions = {
    * come from the allocator's leased ones rather than one contiguous range.
    */
   idLease: IdLease | undefined;
-  /** A replay-owned paragraph allocation, independent of the session revision lease. */
-  paragraphReplayLease?: IdLease;
+  /** A window-owned paragraph allocation, independent of the session revision lease. */
+  paragraphAllocationLease?: IdLease;
   allocations?: readonly ReturnType<
     ReturnType<typeof createEditorIntentIdAllocator>
   >[];
   verifyOperation?: PublicOperationStaging["apply"];
 };
+
+// Bound the generic allocator's prospective paragraph lookup and keep
+// the unrestricted revision/control ranges of an unleased editor.
+const allocatorLeaseForParagraphs = (paragraphLease: IdLease | undefined) =>
+  paragraphLease === undefined
+    ? undefined
+    : {
+        blocks: [
+          ...paragraphLease.blocks,
+          {
+            kind: ID_LEASE_KINDS.REVISION,
+            start: 1,
+            end: ID_KIND_LIMITS.revision,
+          },
+          {
+            kind: ID_LEASE_KINDS.CONTROL,
+            start: 1,
+            end: ID_KIND_LIMITS.control,
+          },
+        ],
+      };
 
 const compilePublicIntents = ({
   document,
@@ -2726,7 +2751,7 @@ const compilePublicIntents = ({
   allocate,
   reservedBlockIds,
   idLease,
-  paragraphReplayLease,
+  paragraphAllocationLease,
   allocations: admittedAllocations,
   verifyOperation,
 }: CompilePublicIntentsOptions) => {
@@ -2740,16 +2765,20 @@ const compilePublicIntents = ({
     ReturnType<typeof createEditorIntentIdAllocator>
   >[] = [];
   for (const [intentIndex, sourceIntent] of intents.entries()) {
+    const paragraphLease =
+      sourceIntent.type === "insertParagraphs"
+        ? paragraphAllocationLease
+        : undefined;
     const ids =
       admittedAllocations === undefined
-        ? allocate(document, sourceIntent, idLease)
+        ? allocate(
+            document,
+            sourceIntent,
+            idLease ?? allocatorLeaseForParagraphs(paragraphLease),
+          )
         : admittedAllocations.at(intentIndex);
     if (ids === undefined) panic("An admitted intent lost its allocation.");
     allocations.push(ids);
-    const paragraphLease =
-      sourceIntent.type === "insertParagraphs"
-        ? paragraphReplayLease
-        : undefined;
     const compilerLease = idLease ?? paragraphLease;
     const leased =
       compilerLease === undefined ? {} : { idLease: compilerLease };
@@ -3558,7 +3587,7 @@ export class CanonicalPublicOperations {
       columnInsertions: ReadonlyMap<string, number>;
       nextRevisionId: number;
       idLease?: IdLease;
-      paragraphReplayLease?: IdLease;
+      paragraphAllocationLease?: IdLease;
       allocations?: CompilePublicIntentsOptions["allocations"];
       reservedBlockIds?: ReadonlySet<string>;
       verifyOperation?: PublicOperationStaging["apply"];
@@ -3590,7 +3619,7 @@ export class CanonicalPublicOperations {
       columnInsertions,
       nextRevisionId: firstRevisionId,
       idLease = session.idLease,
-      paragraphReplayLease,
+      paragraphAllocationLease,
       allocations,
       reservedBlockIds = session.reservedBlockIds,
       verifyOperation,
@@ -3702,7 +3731,9 @@ export class CanonicalPublicOperations {
         allocate,
         reservedBlockIds,
         idLease: idLease,
-        ...(paragraphReplayLease === undefined ? {} : { paragraphReplayLease }),
+        ...(paragraphAllocationLease === undefined
+          ? {}
+          : { paragraphAllocationLease }),
         nextRevisionId: firstRevisionId,
         mode: batch.mode === "direct" ? "direct" : "tracked-changes",
         suggestionId,
@@ -4138,14 +4169,33 @@ export class CanonicalPublicOperations {
         session.idLease === undefined
           ? { type: "paragraphs", ids: undefined }
           : { type: "package" };
+      const rejectParagraphWindow = () => {
+        if (session.idLease !== undefined) return "lease";
+        if (batch.mode === "suggested") return "suggestion";
+        if (!window.every(isPlainInsertion)) return "windowShape";
+        return undefined;
+      };
+      const paragraphWindowRejection = rejectParagraphWindow();
+      const cursor = startParagraphAdmissionCursor(paragraphWindowRejection);
       for (const member of window) {
         completed.add(member.operation.id);
-        const prepared = prepareOperation({
+        const admissionOptions = {
           document: admissionDocument,
           columnInsertions: admissionColumns,
           resolvedOperation: member,
           nextRevisionId: admissionRevisionId,
+        };
+        const nextLease = cursor.nextLease();
+        let prepared = prepareOperation({
+          ...admissionOptions,
+          ...(nextLease.type === "bounded"
+            ? { paragraphAllocationLease: nextLease.lease }
+            : {}),
         });
+        // An allocation or validator refusal is still determined by the
+        // ordinary compiler, with its original exhaustion diagnostics.
+        if (nextLease.type === "bounded" && prepared.type === "declined")
+          prepared = prepareOperation(admissionOptions);
         if (prepared.type === "declined") {
           declinedMembers.push({ resolvedOperation: member, prepared });
           continue;
@@ -4155,6 +4205,7 @@ export class CanonicalPublicOperations {
           admissionCensus.type === "paragraphs"
             ? plainInsertedParagraphIds(prepared.ops)
             : undefined;
+        cursor.commit(paragraphs);
         let ids: LeasedId[];
         if (admissionCensus.type === "paragraphs" && paragraphs !== undefined) {
           // Without a lease replay reserves only sibling paragraph IDs. Seed
@@ -4242,17 +4293,11 @@ export class CanonicalPublicOperations {
           });
         }
       }
-      const paragraphReplayRejection = () => {
-        if (session.idLease !== undefined) return "lease";
-        if (batch.mode === "suggested") return "suggestion";
-        if (
-          !window.every(isPlainInsertion) ||
-          !ordered.every(({ operation }) => isPlainInsertion(operation))
-        )
-          return "windowShape";
-        return undefined;
-      };
-      const paragraphRejection = paragraphReplayRejection();
+      const paragraphRejection =
+        paragraphWindowRejection ??
+        (ordered.every(({ operation }) => isPlainInsertion(operation))
+          ? undefined
+          : "windowShape");
       const paragraphReplay = planReplayParagraphIds(
         paragraphRejection,
         paragraphRejection === undefined
@@ -4279,12 +4324,12 @@ export class CanonicalPublicOperations {
                   .map(({ ids }) => ids),
               });
         let reservedBlockIds = session.reservedBlockIds;
-        let paragraphReplayLease: IdLease | undefined;
+        let paragraphAllocationLease: IdLease | undefined;
         if (paragraphReplay.type === "admitted") {
-          paragraphReplayLease = paragraphReplay.leases.get(
+          paragraphAllocationLease = paragraphReplay.leases.get(
             replayOperation.operation.id,
           );
-          if (paragraphReplayLease === undefined)
+          if (paragraphAllocationLease === undefined)
             panic("An admitted insertion lost its paragraph replay lease.");
         } else {
           const reserved = new Set(session.reservedBlockIds);
@@ -4308,9 +4353,9 @@ export class CanonicalPublicOperations {
           resolvedOperation: replayOperation,
           nextRevisionId: member.firstRevisionId,
           reservedBlockIds,
-          ...(paragraphReplayLease === undefined
+          ...(paragraphAllocationLease === undefined
             ? {}
-            : { paragraphReplayLease }),
+            : { paragraphAllocationLease }),
           allocations: member.allocations,
           ...(reuseStaging ? { verifyOperation: operationStaging.apply } : {}),
           ...(member.commentAllocation === undefined
