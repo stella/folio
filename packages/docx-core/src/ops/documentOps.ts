@@ -70,6 +70,12 @@ export { packageResourcesOpOf } from "./packageResources";
 export { combineEdits } from "./edits";
 export { reviewFieldsOf } from "./review";
 export {
+  resolveSectionChange,
+  resolveSectionChanges,
+  sectionRejectProperties,
+  sectionResolutionPatch,
+} from "./sectionReview";
+export {
   paragraphPropertySnapshotToken,
   registerParagraphPropertySnapshot,
 } from "./paragraphPropertySnapshot";

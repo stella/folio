@@ -105,12 +105,14 @@ import {
   withMarkFormatting,
 } from "./review";
 import { runsMergeable } from "./runMerge";
+import { resolveSectionChange, sectionResolutionPatch } from "./sectionReview";
 import { identitySlots, withInlineIdentity } from "./slots";
 import { documentStories } from "./stories";
-import { storyLifecycleTouched } from "./storyLifecycle";
+import { sectionEnds, storyLifecycleTouched } from "./storyLifecycle";
 import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
+  OP_STORIES,
   type OpStory,
   type ParagraphReviewFields,
   type ResolveRevisionOp,
@@ -4966,6 +4968,69 @@ const settleTwoRecordMarks = (
  * cell or section change, a record inside a field) is refused.
  */
 export const planRevisionResolution = (
+  options: RevisionResolutionPlanOptions,
+): Result<RevisionResolutionPlan, DocumentOpRefusal> => {
+  const { document, op, applyOps } = options;
+  const sections = settleSectionRecords(document, op);
+  if (sections.ops.length === 0) return planMarkResolution(options);
+  const settled = applyOps(document, sections.ops);
+  if (settled.isErr()) return Result.err(settled.error);
+  const rest = planMarkResolution({
+    document: settled.value.document,
+    op: { ...op, revisionIds: sections.ids },
+    applyOps,
+  });
+  if (rest.isErr()) return Result.err(rest.error);
+  return Result.ok({
+    edit: combineEdits(document, [settled.value, rest.value.edit]),
+    receiverEffects: rest.value.receiverEffects,
+  });
+};
+
+/**
+ * The records of the body's sections the ids select, resolved through the
+ * section calculation every reviewer applies, with the revision ids left to
+ * resolve. A section's records travel on the paragraph that ends it; the
+ * final section's are resolved by section review.
+ */
+const settleSectionRecords = (
+  document: Document,
+  op: ResolveRevisionOp,
+): { ops: DocumentOp[]; ids: number[] } => {
+  if (
+    op.story !== OP_STORIES.MAIN ||
+    !Object.values(REVISION_DECISIONS).includes(op.decision)
+  )
+    return { ops: [], ids: [...op.revisionIds] };
+  const ids = new Set(op.revisionIds);
+  const ops: DocumentOp[] = [];
+  for (const [sectionIndex, { properties }] of sectionEnds(
+    document.package.document,
+  ).entries()) {
+    let resolved = properties;
+    for (const { info } of properties.propertyChanges ?? []) {
+      if (!ids.has(info.id)) continue;
+      const next = resolveSectionChange({
+        current: resolved,
+        decision: op.decision,
+        id: info.id,
+      });
+      if (next === null) continue;
+      resolved = next;
+      ids.delete(info.id);
+    }
+    if (resolved !== properties)
+      ops.push({
+        type: DOCUMENT_OP_TYPES.SET_SECTION_PROPS,
+        sectionIndex,
+        patch: sectionResolutionPatch({ current: properties, next: resolved }),
+      });
+  }
+  return { ops, ids: op.revisionIds.filter((id) => ids.has(id)) };
+};
+
+/** Paragraph marks, inline records, property records and table rows. */
+const planMarkResolution = (
   options: RevisionResolutionPlanOptions,
 ): Result<RevisionResolutionPlan, DocumentOpRefusal> => {
   const { document, op, applyOps } = options;
