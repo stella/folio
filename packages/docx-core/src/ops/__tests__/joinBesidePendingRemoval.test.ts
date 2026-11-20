@@ -8,6 +8,7 @@ import { expect, test } from "bun:test";
 
 import type { Document } from "../../model/document";
 import { applyDocumentOp } from "../apply";
+import { withoutKeptCuts } from "../keptCut";
 import { type DocumentOp, OP_STORIES, REVISION_DECISIONS } from "../types";
 
 const NEW_IDS = {
@@ -88,9 +89,10 @@ for (const removal of ["deletion", "moveFrom"] as const)
       ]);
   });
 
-test("a kept move range start stands between pending deletion pieces nested in an insertion in any order", () => {
-  // The deletion sits inside another reviewer's insertion: the insertion's
-  // pieces join around the boundary, the deletion's stay apart.
+test("a kept move range start stands between pending insertion pieces holding deletions in any order", () => {
+  // The deletion sits inside another reviewer's insertion: a kept boundary
+  // never goes inside a pending change, so it stands between the insertion's
+  // pieces, each holding a piece of the deletion.
   const source: Document = {
     package: {
       document: {
@@ -153,13 +155,20 @@ test("a kept move range start stands between pending deletion pieces nested in a
           {
             type: "insertion",
             info: { id: 1 },
-            content: [
-              { type: "deletion", info: { id: 4 } },
-              { type: "moveToRangeStart", id: 1 },
-              { type: "deletion" },
-            ],
+            content: [{ type: "deletion", info: { id: 4 } }],
           },
+          { type: "moveToRangeStart", id: 1 },
+          { type: "insertion", content: [{ type: "deletion" }] },
         ],
       },
     ]);
+  // Where it stands is the same in every order.
+  const [first, ...rest] = results.map(({ package: { document } }) =>
+    document.content.map((block) =>
+      block.type === "paragraph"
+        ? block.content.map((node) => withoutKeptCuts(node))
+        : block,
+    ),
+  );
+  for (const content of rest) expect(content).toEqual(first ?? []);
 });
