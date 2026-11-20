@@ -14,13 +14,25 @@ type KeptCutCarrier = Extract<InlineNode, { keptCut?: KeptCut }>;
 const carriesKeptCut = (node: InlineNode): node is KeptCutCarrier =>
   isBoundary(node);
 
-/** `node` marked as standing in `cut`, when it is a range marker. */
+/**
+ * `node` marked as standing in `cut`, when it is a range marker. A marker
+ * already standing in a cut keeps the revision it was first kept from, and
+ * the cut widens to the deeper of the two: whichever order kept it and then
+ * floated it with another removal's seam, it records the same cut.
+ */
 export const withKeptCut = (node: InlineNode, cut: KeptCut): InlineNode => {
   if (!carriesKeptCut(node)) return node;
   const known = node.keptCut;
-  if (known?.depth === cut.depth && known.keptFrom === cut.keptFrom)
+  const next =
+    known === undefined
+      ? cut
+      : {
+          depth: Math.max(known.depth, cut.depth),
+          keptFrom: known.keptFrom,
+        };
+  if (known?.depth === next.depth && known.keptFrom === next.keptFrom)
     return node;
-  return Object.assign({}, node, { keptCut: cut });
+  return Object.assign({}, node, { keptCut: next });
 };
 
 /**

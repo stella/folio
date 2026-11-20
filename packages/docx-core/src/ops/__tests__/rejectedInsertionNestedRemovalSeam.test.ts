@@ -1,8 +1,8 @@
 /**
- * An insertion that cut a link whose pieces now sit in pending deletions,
- * with a bookmark it kept between them, defers the link's seam on those
- * deletions when it is rejected: rejecting them later rejoins the link
- * around the bookmark, as rejecting everything at once does.
+ * An insertion that cut a pending inserted link whose pieces now sit in
+ * pending deletions, with a bookmark it kept between them: the bookmark never
+ * goes inside the pending insertion, so it stands between that insertion's
+ * pieces, whichever of the changes are rejected first.
  */
 import { expect, test } from "bun:test";
 
@@ -82,7 +82,7 @@ const tracked = (): Document => {
   });
 };
 
-test("rejecting the insertion that cut a link, then the deletions holding its pieces, rejoins the link around the kept bookmark", () => {
+test("rejecting the insertion that cut a pending link and the deletions holding its pieces leaves the kept bookmark between the pieces, in any order", () => {
   const document = tracked();
   // The deletion's pieces: one in each piece of the link, one holding the
   // bookmark.
@@ -105,7 +105,18 @@ test("rejecting the insertion that cut a link, then the deletions holding its pi
                 type: "hyperlink",
                 children: [
                   { type: "run", content: [{ type: "text", text: "a" }] },
-                  { type: "bookmarkStart", id: 1 },
+                ],
+              },
+            ],
+          },
+          { type: "bookmarkStart", id: 1 },
+          {
+            type: "insertion",
+            info: { id: 700 },
+            content: [
+              {
+                type: "hyperlink",
+                children: [
                   { type: "run", content: [{ type: "text", text: "a" }] },
                 ],
               },
