@@ -38,7 +38,7 @@ const build = async ([
 ]: Case): Promise<FolioDocxReviewer> => {
   const reviewer = await FolioDocxReviewer.fromBuffer(
     await createDocx(fromMarkdown("# Title\n\nFirst clause.\n\nLast clause.")),
-    { author: "AI" },
+    { session: "legacy", author: "AI" },
   );
   const apply = (operation: Record<string, unknown>) =>
     expect(
@@ -70,7 +70,9 @@ const build = async ([
 const reopen = async (
   reviewer: FolioDocxReviewer,
 ): Promise<FolioDocxReviewer> =>
-  FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+  FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
+    session: "legacy",
+  });
 
 /** Accept the insertion's last stretch; the rest must stay pending. */
 const acceptLastStretch = (reviewer: FolioDocxReviewer) => {

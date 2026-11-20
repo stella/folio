@@ -155,13 +155,17 @@ test("nested list paste and backspace rejects to the original paragraph after DO
     ...options,
   });
   const { bytes } = await saveHarnessState(tracked, base);
-  const accepting = await FolioDocxReviewer.fromBuffer(bytes.slice().buffer);
+  const accepting = await FolioDocxReviewer.fromBuffer(bytes.slice().buffer, {
+    session: "legacy",
+  });
   accepting.acceptAll();
   const accepted = createHarnessState(
     await parseShapeDocument(new Uint8Array(await accepting.toBuffer())),
     "editing",
   );
-  const rejecting = await FolioDocxReviewer.fromBuffer(bytes.slice().buffer);
+  const rejecting = await FolioDocxReviewer.fromBuffer(bytes.slice().buffer, {
+    session: "legacy",
+  });
   rejecting.rejectAll();
   const rejected = createHarnessState(
     await parseShapeDocument(new Uint8Array(await rejecting.toBuffer())),

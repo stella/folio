@@ -20,7 +20,9 @@ const textsOf = async (
   buffer: ArrayBuffer,
   view: "original" | "final",
 ): Promise<string[]> => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
+  const reviewer = await FolioDocxReviewer.fromBuffer(buffer, {
+    session: "legacy",
+  });
   return (reviewer.readReviewedStory({ view })?.snapshot.blocks ?? []).map(
     ({ text }) => text,
   );
@@ -48,7 +50,7 @@ const run = async ({
     await buildParagraphsDocx(paragraphs, {
       ...(inTableCell === true && { inTableCell }),
     }),
-    { author: "compare" },
+    { session: "legacy", author: "compare" },
   );
   const snapshot = reviewer.snapshot();
   const blockId = snapshot.blocks[blockIndex]?.id ?? "";
@@ -133,7 +135,7 @@ describe("splitBlock", () => {
         "The buyer shall pay the seller.",
         "Delivery follows.",
       ]),
-      { author: "compare" },
+      { session: "legacy", author: "compare" },
     );
     const blockId = reviewer.snapshot().blocks[0]?.id ?? "";
     const merge = reviewer.applyOperations(

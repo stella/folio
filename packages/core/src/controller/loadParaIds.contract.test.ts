@@ -53,7 +53,12 @@ const liveSnapshot = async (bytes: ArrayBuffer) => {
 };
 
 const headlessSnapshot = async (bytes: ArrayBuffer) =>
-  (await FolioDocxReviewer.fromBuffer(bytes, { author: "Test" })).snapshot();
+  (
+    await FolioDocxReviewer.fromBuffer(bytes, {
+      session: "legacy",
+      author: "Test",
+    })
+  ).snapshot();
 
 const identities = (blocks: readonly { id: string; idStability?: string }[]) =>
   blocks.map(({ id, idStability }) => ({ id, idStability }));
@@ -94,6 +99,7 @@ describe("load-time paragraph ids", () => {
       const blockId = target?.id ?? "";
 
       const reviewer = await FolioDocxReviewer.fromBuffer(bytes, {
+        session: "legacy",
         author: "Test",
       });
       const result = reviewer.applyDocumentOperations(
@@ -126,7 +132,7 @@ describe("load-time paragraph ids", () => {
       ]);
       const saved = await FolioDocxReviewer.fromBuffer(
         await reviewer.toBuffer(),
-        { author: "Test" },
+        { session: "legacy", author: "Test" },
       );
       const texts = saved.getContent().map(({ text }) => text);
       if (mode === "direct") {

@@ -73,7 +73,9 @@ describe("table drag input traces", () => {
     async ({ key, next }) => {
       const source = await shapeArrayBuffer("tables");
       const base = await parseShapeDocument(new Uint8Array(source));
-      const baseline = await FolioDocxReviewer.fromBuffer(source);
+      const baseline = await FolioDocxReviewer.fromBuffer(source, {
+        session: "legacy",
+      });
       const editing = new HeadlessEditorView(
         createHarnessState(base, "editing"),
       );
@@ -130,6 +132,7 @@ describe("table drag input traces", () => {
       );
       const edited = await FolioDocxReviewer.fromBuffer(
         editedBytes.slice().buffer,
+        { session: "legacy" },
       );
       const { bytes: suggestedBytes } = await saveHarnessState(
         suggesting.state,
@@ -137,9 +140,11 @@ describe("table drag input traces", () => {
       );
       const accepted = await FolioDocxReviewer.fromBuffer(
         suggestedBytes.slice().buffer,
+        { session: "legacy" },
       );
       const rejected = await FolioDocxReviewer.fromBuffer(
         suggestedBytes.slice().buffer,
+        { session: "legacy" },
       );
       accepted.acceptAll();
       rejected.rejectAll();
@@ -153,7 +158,9 @@ describe("table drag input traces", () => {
     async ({ offset, prefix, operation }) => {
       const source = await shapeArrayBuffer("tables");
       const base = await parseShapeDocument(new Uint8Array(source));
-      const baseline = await FolioDocxReviewer.fromBuffer(source);
+      const baseline = await FolioDocxReviewer.fromBuffer(source, {
+        session: "legacy",
+      });
       const editing = new HeadlessEditorView(
         createHarnessState(base, "editing"),
       );
@@ -222,6 +229,7 @@ describe("table drag input traces", () => {
       );
       const edited = await FolioDocxReviewer.fromBuffer(
         editedBytes.slice().buffer,
+        { session: "legacy" },
       );
       const { bytes: suggestedBytes } = await saveHarnessState(
         suggesting.state,
@@ -229,9 +237,11 @@ describe("table drag input traces", () => {
       );
       const accepted = await FolioDocxReviewer.fromBuffer(
         suggestedBytes.slice().buffer,
+        { session: "legacy" },
       );
       const rejected = await FolioDocxReviewer.fromBuffer(
         suggestedBytes.slice().buffer,
+        { session: "legacy" },
       );
       accepted.acceptAll();
       rejected.rejectAll();

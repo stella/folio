@@ -140,13 +140,17 @@ describe("a Word-style tracked row carries its cell content with it", () => {
       { texts: ["Added"], revision: "insertion" },
     ]);
 
-    const accepting = await FolioDocxReviewer.fromBuffer(buffer);
+    const accepting = await FolioDocxReviewer.fromBuffer(buffer, {
+      session: "legacy",
+    });
     accepting.acceptAll();
     const accepted = await accepting.toBuffer();
     expect(rowTexts(await tableRows(accepted))).toEqual([["Kept"], ["Added"]]);
     expect(await documentXml(accepted)).not.toContain("<w:ins ");
 
-    const rejecting = await FolioDocxReviewer.fromBuffer(buffer);
+    const rejecting = await FolioDocxReviewer.fromBuffer(buffer, {
+      session: "legacy",
+    });
     rejecting.rejectAll();
     const rejected = await rejecting.toBuffer();
     expect(rowTexts(await tableRows(rejected))).toEqual([["Kept"]]);
@@ -159,13 +163,17 @@ describe("a Word-style tracked row carries its cell content with it", () => {
       { texts: ["Removed"], revision: "deletion" },
     ]);
 
-    const accepting = await FolioDocxReviewer.fromBuffer(buffer);
+    const accepting = await FolioDocxReviewer.fromBuffer(buffer, {
+      session: "legacy",
+    });
     accepting.acceptAll();
     const accepted = await accepting.toBuffer();
     expect(rowTexts(await tableRows(accepted))).toEqual([["Kept"]]);
     expect(await documentXml(accepted)).not.toContain("<w:del ");
 
-    const rejecting = await FolioDocxReviewer.fromBuffer(buffer);
+    const rejecting = await FolioDocxReviewer.fromBuffer(buffer, {
+      session: "legacy",
+    });
     rejecting.rejectAll();
     const rejected = await rejecting.toBuffer();
     expect(rowTexts(await tableRows(rejected))).toEqual([
@@ -184,6 +192,7 @@ describe("a Word-style tracked row carries its cell content with it", () => {
           { texts: ["Kept"] },
           { texts: ["Moved"], revision },
         ]),
+        { session: "legacy" },
       );
       expect(reviewer.getChanges().map(({ type }) => type)).toEqual([
         revision === "insertion" ? "rowInserted" : "rowDeleted",
@@ -198,9 +207,11 @@ describe("a Word-style tracked row carries its cell content with it", () => {
         { texts: ["Marked"], revision },
       ]);
       const once = await (
-        await FolioDocxReviewer.fromBuffer(source)
+        await FolioDocxReviewer.fromBuffer(source, { session: "legacy" })
       ).toBuffer();
-      const twice = await (await FolioDocxReviewer.fromBuffer(once)).toBuffer();
+      const twice = await (
+        await FolioDocxReviewer.fromBuffer(once, { session: "legacy" })
+      ).toBuffer();
       expect(await documentXml(twice)).toBe(await documentXml(once));
     }
   });
@@ -223,7 +234,7 @@ describe("folio writes both halves of a row revision", () => {
   test("a tracked row deletion marks the row and strikes its runs", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await buildTableDocx([{ texts: ["Alpha"] }, { texts: ["Beta"] }]),
-      { author: "Reviewer" },
+      { session: "legacy", author: "Reviewer" },
     );
     reviewer.applyOperations(
       [
@@ -245,7 +256,7 @@ describe("folio writes both halves of a row revision", () => {
   test("a tracked row insertion marks the row and its runs", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await buildTableDocx([{ texts: ["Alpha"] }]),
-      { author: "Reviewer" },
+      { session: "legacy", author: "Reviewer" },
     );
     reviewer.applyOperations(
       [
@@ -271,7 +282,7 @@ describe("folio writes both halves of a row revision", () => {
         { texts: ["Alpha"] },
         { texts: ["Beta"], revision: "insertion" },
       ]),
-      { author: "Reviewer" },
+      { session: "legacy", author: "Reviewer" },
     );
     const result = reviewer.applyOperations(
       [
@@ -302,6 +313,7 @@ describe("folio writes both halves of a row revision", () => {
       ]);
       const edited = async () => {
         const reviewer = await FolioDocxReviewer.fromBuffer(source, {
+          session: "legacy",
           author: "Reviewer",
         });
         const blockId = await findRowBlock(reviewer, "Beta");
@@ -353,7 +365,7 @@ describe("folio writes both halves of a row revision", () => {
   test("resolving one revision clears the row marker and the run marks together", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await buildTableDocx([{ texts: ["Alpha"] }, { texts: ["Beta"] }]),
-      { author: "Reviewer" },
+      { session: "legacy", author: "Reviewer" },
     );
     reviewer.applyOperations(
       [
@@ -422,6 +434,7 @@ describe("row insert/delete round trips through the reviewed views", () => {
             const buffer = await buildTableDocx(rows);
 
             const base = await FolioDocxReviewer.fromBuffer(buffer, {
+              session: "legacy",
               author: "Reviewer",
             });
             const blocks = base.snapshot().blocks;
@@ -435,6 +448,7 @@ describe("row insert/delete round trips through the reviewed views", () => {
                 : { id: "row", type, blockId };
 
             const direct = await FolioDocxReviewer.fromBuffer(buffer, {
+              session: "legacy",
               author: "Reviewer",
             });
             if (
@@ -447,6 +461,7 @@ describe("row insert/delete round trips through the reviewed views", () => {
             }
 
             const tracked = await FolioDocxReviewer.fromBuffer(buffer, {
+              session: "legacy",
               author: "Reviewer",
             });
             if (

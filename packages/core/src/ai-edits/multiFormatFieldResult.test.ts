@@ -28,7 +28,9 @@ const open = async (field: string) => {
     "word/document.xml",
     `<?xml version="1.0" encoding="UTF-8"?><w:document ${NS}><w:body><w:p w14:paraId="${HOST}"><w:r><w:t xml:space="preserve">Date: </w:t></w:r>${field}<w:r><w:t xml:space="preserve"> end</w:t></w:r></w:p><w:p w14:paraId="10000002"><w:r><w:t>Tail</w:t></w:r></w:p></w:body></w:document>`,
   );
-  return FolioDocxReviewer.fromBuffer((await zip.generate()).slice().buffer);
+  return FolioDocxReviewer.fromBuffer((await zip.generate()).slice().buffer, {
+    session: "legacy",
+  });
 };
 
 const apply = (
@@ -45,7 +47,9 @@ const firstText = (reviewer: FolioDocxReviewer) =>
   reviewer.getContent().at(0)?.text;
 
 const reopen = async (reviewer: FolioDocxReviewer) =>
-  FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+  FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
+    session: "legacy",
+  });
 
 describe.each([
   ["complex", COMPLEX],

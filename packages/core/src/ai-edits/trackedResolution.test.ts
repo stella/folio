@@ -28,7 +28,10 @@ const ORIGINAL = [
 
 const open = async (bytes?: ArrayBuffer): Promise<FolioDocxReviewer> => {
   if (bytes) {
-    return FolioDocxReviewer.fromBuffer(bytes, { author: "Reviewer" });
+    return FolioDocxReviewer.fromBuffer(bytes, {
+      session: "legacy",
+      author: "Reviewer",
+    });
   }
   const document = fromMarkdown(
     ["# Service Agreement", ...ORIGINAL.slice(1)].join("\n\n"),
@@ -41,7 +44,7 @@ const open = async (bytes?: ArrayBuffer): Promise<FolioDocxReviewer> => {
       docx.byteOffset,
       docx.byteOffset + docx.byteLength,
     ) as ArrayBuffer,
-    { author: "Reviewer" },
+    { session: "legacy", author: "Reviewer" },
   );
 };
 

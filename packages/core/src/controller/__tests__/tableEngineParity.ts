@@ -153,7 +153,9 @@ export const blocksOf = async (bytes: ArrayBuffer): Promise<BlockShape[]> => {
 /** The package pending, with every change accepted, and with every change rejected. */
 export const outcomes = async (bytes: ArrayBuffer) => {
   const resolved = async (decision: "accept" | "reject") => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice(0));
+    const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice(0), {
+      session: "legacy",
+    });
     if (decision === "accept") reviewer.acceptAll();
     else reviewer.rejectAll();
     return blocksOf(await reviewer.toBuffer());
@@ -218,7 +220,9 @@ export const viaDefaultEngine = async (
   operation: FolioDocumentOperation,
   mode: Mode,
 ) => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(source.slice(0));
+  const reviewer = await FolioDocxReviewer.fromBuffer(source.slice(0), {
+    session: "legacy",
+  });
   const result = reviewer.applyOperations([operation], { mode });
   return {
     skipped: result.skipped.map(({ reason }) => reason),

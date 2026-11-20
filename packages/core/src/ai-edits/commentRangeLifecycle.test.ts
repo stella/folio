@@ -64,7 +64,10 @@ const table = (cells: Paragraph[][]): Table => ({
 const reopen = async (
   reviewer: FolioDocxReviewer,
 ): Promise<FolioDocxReviewer> =>
-  FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), { author: "Editor" });
+  FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
+    session: "legacy",
+    author: "Editor",
+  });
 
 /** The thread fields a save must round-trip. */
 const threads = (comments: readonly FolioReviewComment[]) =>
@@ -104,6 +107,7 @@ const twoParagraphs = async (): Promise<FolioDocxReviewer> => {
     },
   };
   return FolioDocxReviewer.fromBuffer(await createDocx(document), {
+    session: "legacy",
     author: "Editor",
   });
 };
@@ -184,9 +188,7 @@ const footnoteComment = async (): Promise<FolioDocxReviewer> => {
   };
   const reviewer = await FolioDocxReviewer.fromBuffer(
     await createDocx(document),
-    {
-      author: "Editor",
-    },
+    { session: "legacy", author: "Editor" },
   );
   const story = { type: "footnote", noteId: 1 } as const;
   const [block] = reviewer.snapshotStory(story)!.blocks;
@@ -280,9 +282,7 @@ describe("a comment in a note whose reference is pending deletion", () => {
     };
     let reviewer = await FolioDocxReviewer.fromBuffer(
       await createDocx(document),
-      {
-        author: "Editor",
-      },
+      { session: "legacy", author: "Editor" },
     );
     const story = { type: "footnote", noteId: 1 } as const;
     const [note] = reviewer.snapshotStory(story)!.blocks;
@@ -449,7 +449,9 @@ describe("a comment whose anchored content is removed goes with it", () => {
         references: 1,
         definitions: 1,
       });
-      const reopened = await FolioDocxReviewer.fromBuffer(saved);
+      const reopened = await FolioDocxReviewer.fromBuffer(saved, {
+        session: "legacy",
+      });
       expect(threads(reopened.getComments())).toEqual([SURVIVOR]);
     });
 
@@ -499,9 +501,11 @@ describe("a comment whose anchored content is removed goes with it", () => {
     expect(reviewer.getComments()).toEqual([]);
     const saved = await reviewer.toBuffer();
     expect((await packageCounts(saved)).definitions).toBe(0);
-    expect((await FolioDocxReviewer.fromBuffer(saved)).getComments()).toEqual(
-      [],
-    );
+    expect(
+      (
+        await FolioDocxReviewer.fromBuffer(saved, { session: "legacy" })
+      ).getComments(),
+    ).toEqual([]);
   });
 
   test("a tracked deletion keeps the comment until it is accepted", async () => {
@@ -529,6 +533,7 @@ describe("a comment whose anchored content is removed goes with it", () => {
     };
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await createDocx(document),
+      { session: "legacy" },
     );
     const [first] = reviewer.snapshot().blocks;
     reviewer.applyOperations(
@@ -591,9 +596,7 @@ describe("a comment spanning a paragraph and a table", () => {
       test(`inserting ${where} (${mode}) reads the same live and reopened`, async () => {
         const reviewer = await FolioDocxReviewer.fromBuffer(
           await createDocx(spanningDocument()),
-          {
-            author: "Editor",
-          },
+          { session: "legacy", author: "Editor" },
         );
         expect(reviewer.getComments()[0]?.anchoredText).toBe("Before.Cell A.");
         const target = reviewer

@@ -73,7 +73,9 @@ export const expectOneMainDocument = async (
   ].filter(([element]) => element.includes(MAIN_TYPE));
   expect(mainOverrides).toHaveLength(1);
   expect(mainOverrides[0]?.[0]).toContain('PartName="/word/document.xml"');
-  const reopened = await FolioDocxReviewer.fromBuffer(bytes);
+  const reopened = await FolioDocxReviewer.fromBuffer(bytes, {
+    session: "legacy",
+  });
   expect(reopened.getContent().map((block) => block.text)).toEqual([text]);
 };
 

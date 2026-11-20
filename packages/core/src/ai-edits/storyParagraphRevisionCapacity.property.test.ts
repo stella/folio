@@ -188,7 +188,9 @@ const checkCapacity = async ({
   merge,
 }: CapacityCase) => {
   const story = STORIES[kind];
-  const reviewer = await FolioDocxReviewer.fromBuffer(await fixture(length));
+  const reviewer = await FolioDocxReviewer.fromBuffer(await fixture(length), {
+    session: "legacy",
+  });
   // Deleted intermediate marks move the formatting destination beyond the next paragraph.
   for (let index = length - 2; index >= 1; index--) {
     expect(
@@ -275,10 +277,13 @@ const checkCapacity = async ({
   }
   await capacity({ reviewer, kind });
   const saved = await reviewer.toBuffer();
-  const rejecting = await FolioDocxReviewer.fromBuffer(saved);
+  const rejecting = await FolioDocxReviewer.fromBuffer(saved, {
+    session: "legacy",
+  });
   rejecting.rejectAll();
   const reopenedRejected = await FolioDocxReviewer.fromBuffer(
     await rejecting.toBuffer(),
+    { session: "legacy" },
   );
   expect(
     reopenedRejected
@@ -297,10 +302,13 @@ const checkCapacity = async ({
       directAlignment: "left",
     })),
   );
-  const accepting = await FolioDocxReviewer.fromBuffer(saved);
+  const accepting = await FolioDocxReviewer.fromBuffer(saved, {
+    session: "legacy",
+  });
   accepting.acceptAll();
   const reopenedAccepted = await FolioDocxReviewer.fromBuffer(
     await accepting.toBuffer(),
+    { session: "legacy" },
   );
   expect(
     reopenedAccepted.readReviewedStory({ story, view: "current-markup" })
@@ -377,7 +385,9 @@ test.each(Object.values(STORIES))(
   "equal-property plain merge preserves an occupied $type survivor revision",
   async ({ type }) => {
     const story = STORIES[type];
-    const reviewer = await FolioDocxReviewer.fromBuffer(await fixture(2));
+    const reviewer = await FolioDocxReviewer.fromBuffer(await fixture(2), {
+      session: "legacy",
+    });
     const first = block({ reviewer, story, index: 0 });
     const survivor = block({ reviewer, story, index: 1 });
     expect(
@@ -424,19 +434,25 @@ test.each(Object.values(STORIES))(
     ).toBe("committed");
     await capacity({ reviewer, kind: type });
     const saved = await reviewer.toBuffer();
-    const accepting = await FolioDocxReviewer.fromBuffer(saved);
+    const accepting = await FolioDocxReviewer.fromBuffer(saved, {
+      session: "legacy",
+    });
     accepting.acceptAll();
     const accepted = await FolioDocxReviewer.fromBuffer(
       await accepting.toBuffer(),
+      { session: "legacy" },
     );
     expect(accepted.snapshotStory(story)?.blocks.at(0)).toMatchObject({
       text: "Clause 0. Clause 1.",
       directAlignment: "center",
     });
-    const rejecting = await FolioDocxReviewer.fromBuffer(saved);
+    const rejecting = await FolioDocxReviewer.fromBuffer(saved, {
+      session: "legacy",
+    });
     rejecting.rejectAll();
     const rejected = await FolioDocxReviewer.fromBuffer(
       await rejecting.toBuffer(),
+      { session: "legacy" },
     );
     expect(
       rejected
@@ -454,7 +470,9 @@ test.each(Object.values(STORIES))(
   "plain merge retracts an inserted $type break with a pending property revision",
   async ({ type }) => {
     const story = STORIES[type];
-    const reviewer = await FolioDocxReviewer.fromBuffer(await fixture(2));
+    const reviewer = await FolioDocxReviewer.fromBuffer(await fixture(2), {
+      session: "legacy",
+    });
     expect(
       apply({
         reviewer,
@@ -495,13 +513,17 @@ test.each(Object.values(STORIES))(
     ).toBe("committed");
     await capacity({ reviewer, kind: type });
     const saved = await reviewer.toBuffer();
-    const accepting = await FolioDocxReviewer.fromBuffer(saved);
+    const accepting = await FolioDocxReviewer.fromBuffer(saved, {
+      session: "legacy",
+    });
     accepting.acceptAll();
     expect(
       expectParagraphBlock(accepting.snapshotStory(story)?.blocks.at(0))
         .directAlignment,
     ).toBe("center");
-    const rejecting = await FolioDocxReviewer.fromBuffer(saved);
+    const rejecting = await FolioDocxReviewer.fromBuffer(saved, {
+      session: "legacy",
+    });
     rejecting.rejectAll();
     expect(
       rejecting
@@ -527,7 +549,9 @@ test.each(Object.values(STORIES))(
     const story = STORIES[type];
     const bytes = await fixture(2, "leading");
     const prepare = async () => {
-      const reviewer = await FolioDocxReviewer.fromBuffer(bytes);
+      const reviewer = await FolioDocxReviewer.fromBuffer(bytes, {
+        session: "legacy",
+      });
       const sourceIndex = type === "main" ? 1 : 0;
       const source = block({ reviewer, story, index: sourceIndex });
       const survivor = block({ reviewer, story, index: sourceIndex + 1 });

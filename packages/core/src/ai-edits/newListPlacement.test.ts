@@ -45,7 +45,7 @@ const listDocx = async (): Promise<ArrayBuffer> => {
 };
 
 const open = (buffer: ArrayBuffer) =>
-  FolioDocxReviewer.fromBuffer(buffer, { author: AUTHOR });
+  FolioDocxReviewer.fromBuffer(buffer, { session: "legacy", author: AUTHOR });
 
 type Reviewer = Awaited<ReturnType<typeof open>>;
 type Mode = "direct" | "tracked-changes" | "suggested";

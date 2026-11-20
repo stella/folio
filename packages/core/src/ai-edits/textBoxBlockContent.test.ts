@@ -85,7 +85,9 @@ const editHost = async (
   bytes: ArrayBuffer,
   mode: "direct" | "tracked-changes",
 ): Promise<string> => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice(0));
+  const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice(0), {
+    session: "legacy",
+  });
   const { applied } = reviewer.applyDocumentOperations(
     {
       version: 1,
@@ -148,6 +150,7 @@ test("a saved box reads back as the same blocks", async () => {
   const inner = CASES[0].inner;
   const reviewer = await FolioDocxReviewer.fromBuffer(
     (await packageWith(inner)).slice(0),
+    { session: "legacy" },
   );
   reviewer.applyDocumentOperations(
     {

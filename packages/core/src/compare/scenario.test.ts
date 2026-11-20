@@ -7,7 +7,7 @@ import { buildNumberedListDocx } from "./__fixtures__/numbered-list";
 import { applyEditScript } from "./scenario";
 
 const blocksOf = async (buffer: ArrayBuffer) =>
-  (await FolioDocxReviewer.fromBuffer(buffer))
+  (await FolioDocxReviewer.fromBuffer(buffer, { session: "legacy" }))
     .getContent()
     .map(expectParagraphBlock);
 

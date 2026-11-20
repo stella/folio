@@ -52,7 +52,10 @@ const styleNumberedReviewer = async (): Promise<FolioDocxReviewer> => {
     numPr: paragraphNumberingFromSlots({ numId: CLAUSES, ilvl: 0 }),
   };
   const { docx } = await ensureParaIds(await createDocx(document));
-  return FolioDocxReviewer.fromBuffer(docx, { author: "Agent" });
+  return FolioDocxReviewer.fromBuffer(docx, {
+    session: "legacy",
+    author: "Agent",
+  });
 };
 
 const labels = (reviewer: FolioDocxReviewer): string[] =>
@@ -110,6 +113,7 @@ describe("removing numbering a paragraph style supplies", () => {
         expect(labels(reviewer)).toEqual(expected);
         const reopened = await FolioDocxReviewer.fromBuffer(
           await reviewer.toBuffer(),
+          { session: "legacy" },
         );
         expect(labels(reopened)).toEqual(expected);
       });
@@ -146,6 +150,7 @@ describe("removing numbering a paragraph style supplies", () => {
     expect(labels(reviewer)).toEqual(expected);
     const reopened = await FolioDocxReviewer.fromBuffer(
       await reviewer.toBuffer(),
+      { session: "legacy" },
     );
     expect(labels(reopened)).toEqual(expected);
     expect(reopened.getContent()[1]).toMatchObject({
@@ -190,6 +195,7 @@ describe("a paragraph inserted with a style of its own", () => {
     expect(labels(reviewer)).toEqual(expected);
     const reopened = await FolioDocxReviewer.fromBuffer(
       await reviewer.toBuffer(),
+      { session: "legacy" },
     );
     expect(labels(reopened)).toEqual(expected);
   });
@@ -224,6 +230,7 @@ describe("a paragraph inserted with a style of its own", () => {
     expect(labels(reviewer)).toEqual(expected);
     const reopened = await FolioDocxReviewer.fromBuffer(
       await reviewer.toBuffer(),
+      { session: "legacy" },
     );
     expect(labels(reopened)).toEqual(expected);
   });
@@ -257,6 +264,7 @@ describe("a paragraph inserted with a style of its own", () => {
     expect(labels(reviewer)).toEqual(expected);
     const reopened = await FolioDocxReviewer.fromBuffer(
       await reviewer.toBuffer(),
+      { session: "legacy" },
     );
     expect(labels(reopened)).toEqual(expected);
   });
@@ -289,6 +297,7 @@ describe("restyling a paragraph", () => {
       .map(({ kind, text: blockText }) => `${kind} ${blockText}`);
     const reopened = await FolioDocxReviewer.fromBuffer(
       await reviewer.toBuffer(),
+      { session: "legacy" },
     );
     expect(
       reopened.getContent().map(({ kind, text: t }) => `${kind} ${t}`),
@@ -330,7 +339,11 @@ describe("restyling a paragraph", () => {
     const expected = ["1. Scope", "2. Body.", "3. Payment", "Closing."];
     expect(labels(reviewer)).toEqual(expected);
     expect(
-      labels(await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer())),
+      labels(
+        await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
+          session: "legacy",
+        }),
+      ),
     ).toEqual(expected);
   });
 
@@ -355,6 +368,7 @@ describe("a paragraph inserted with a style of its own after a heading", () => {
     heading.formatting = { ...heading.formatting, styleId: "Heading4" };
     const { docx } = await ensureParaIds(await createDocx(document));
     const reviewer = await FolioDocxReviewer.fromBuffer(docx, {
+      session: "legacy",
       author: "Agent",
     });
     const result = reviewer.applyDocumentOperations(
@@ -379,7 +393,11 @@ describe("a paragraph inserted with a style of its own after a heading", () => {
       current.getContent().find(({ text }) => text === "Body under it")?.kind;
     expect(kindOf(reviewer)).toBe("paragraph");
     expect(
-      kindOf(await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer())),
+      kindOf(
+        await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
+          session: "legacy",
+        }),
+      ),
     ).toBe("paragraph");
   });
 });

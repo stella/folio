@@ -187,13 +187,17 @@ const expectAcceptedAndRejectedFormatting = async ({
   const compared = await compareDocx(base, revised, OPTIONS);
   if (compared.isErr()) throw compared.error;
 
-  const accepting = await FolioDocxReviewer.fromBuffer(compared.value.buffer);
+  const accepting = await FolioDocxReviewer.fromBuffer(compared.value.buffer, {
+    session: "legacy",
+  });
   expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
   expect(await directFormattingCharacters(await accepting.toBuffer())).toEqual(
     expectedRevised,
   );
 
-  const rejecting = await FolioDocxReviewer.fromBuffer(compared.value.buffer);
+  const rejecting = await FolioDocxReviewer.fromBuffer(compared.value.buffer, {
+    session: "legacy",
+  });
   expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
   expect(await directFormattingCharacters(await rejecting.toBuffer())).toEqual(
     expectedBase,

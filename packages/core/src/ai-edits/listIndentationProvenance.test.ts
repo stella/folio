@@ -81,6 +81,7 @@ test.each(CASES)(
     };
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await createDocx(document),
+      { session: "legacy" },
     );
     const anchor = reviewer.getContent().find(({ text }) => text === "Anchor");
     if (!anchor) throw new TypeError("Combined list fixture lost its anchor.");
@@ -164,14 +165,18 @@ test.each(CASES)(
     const review = mode === "tracked-changes" ? "pending" : "settled";
     assertContent(reviewer, review);
     assertContent(
-      await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer()),
+      await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
+        session: "legacy",
+      }),
       review,
     );
     if (mode === "tracked-changes") {
       expect(reviewer.acceptAll().resolved).toBeGreaterThan(0);
       assertContent(reviewer, "settled");
       assertContent(
-        await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer()),
+        await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
+          session: "legacy",
+        }),
         "settled",
       );
     }
@@ -236,6 +241,7 @@ test.each([2, 3, 4, 5, 6, 7, 8])(
 
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await createDocx(document),
+      { session: "legacy" },
     );
     const closing = reviewer
       .getContent()
@@ -302,6 +308,7 @@ test.each([2, 3, 4, 5, 6, 7, 8])(
     expect(result.applied.map(({ id }) => id)).toEqual(["undefined-level"]);
     const expectedReviewer = await FolioDocxReviewer.fromBuffer(
       await reviewer.toBuffer(),
+      { session: "legacy" },
     );
     const expectedDocument = expectedReviewer.toResolvedDocument("accept");
     const expectedInserted = expectedDocument.package.document.content.find(

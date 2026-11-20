@@ -106,6 +106,7 @@ const saveAndReopen = async (
   reviewer: FolioDocxReviewer,
 ): Promise<FolioDocxReviewer> =>
   await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
+    session: "legacy",
     author: "Reviewer",
   });
 
@@ -305,7 +306,10 @@ const MODES: readonly FolioAIEditApplyMode[] = [
 const source = await buildSectionsDocx();
 
 const open = async (): Promise<FolioDocxReviewer> =>
-  await FolioDocxReviewer.fromBuffer(source, { author: "Reviewer" });
+  await FolioDocxReviewer.fromBuffer(source, {
+    session: "legacy",
+    author: "Reviewer",
+  });
 
 const original = project(await open());
 
@@ -384,6 +388,7 @@ describe("an applied operation saves as requested", () => {
           const pending = await saveAndReopen(reviewer);
           const rejecting = await FolioDocxReviewer.fromBuffer(
             await pending.toBuffer(),
+            { session: "legacy" },
           );
           pending.acceptAll();
           expect(project(await saveAndReopen(pending))).toEqual(expected);

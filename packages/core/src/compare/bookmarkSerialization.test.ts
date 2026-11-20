@@ -60,6 +60,7 @@ describe("tracked bookmark serialization", () => {
   test("rejecting an inserted range keeps its bookmark where the insertion was", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await withTrackedBookmark("ins", "inserted "),
+      { session: "legacy" },
     );
     const story = reviewer.listStories().at(0)?.handle;
     if (!story) {

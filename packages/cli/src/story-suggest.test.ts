@@ -104,6 +104,7 @@ test.each([header, footer])(
       expect(savedParts.get(part(story))).toMatch(/<w:del\b/);
       const reviewer = await FolioDocxReviewer.fromBuffer(
         await Bun.file(file).arrayBuffer(),
+        { session: "legacy" },
       );
       expect(reviewer.readStory(story)?.text).toBe("Final");
       reviewer.rejectAll();

@@ -115,6 +115,7 @@ test("generated compare corpus resolves every parsed story like the full-range c
       });
       const reviewer = await FolioDocxReviewer.fromBuffer(
         compared.value.buffer,
+        { session: "legacy" },
       );
       configurations += 1;
       for (const { handle } of reviewer.listStories()) {

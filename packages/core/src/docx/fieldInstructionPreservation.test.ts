@@ -29,7 +29,9 @@ test.each([
     ];
     let buffer = await createDocx(document);
     for (let pass = 0; pass < 2; pass++) {
-      const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
+      const reviewer = await FolioDocxReviewer.fromBuffer(buffer, {
+        session: "legacy",
+      });
       const block = reviewer.toDocument().package.document.content.at(0);
       if (block?.type !== "paragraph")
         throw new Error("Expected field paragraph");

@@ -455,6 +455,7 @@ describe("tracked-change resolution matches the reference", () => {
       test(`${name} › ${mode} all, every story`, async () => {
         const reviewer = await FolioDocxReviewer.fromBuffer(
           (await buildPackage(fixture)).slice().buffer,
+          { session: "legacy" },
         );
         if (mode === "accept") reviewer.acceptAll();
         else reviewer.rejectAll();
@@ -474,6 +475,7 @@ describe("tracked-change resolution matches the reference", () => {
     test(`${name} › reject ${rejectAuthor}'s revisions`, async () => {
       const reviewer = await FolioDocxReviewer.fromBuffer(
         (await buildPackage(fixture)).slice().buffer,
+        { session: "legacy" },
       );
       for (const change of reviewer
         .getChanges()

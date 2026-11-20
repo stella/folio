@@ -76,12 +76,15 @@ const createEditorRef = (
 const createSurfaces = async (): Promise<ConformanceSurface[]> => {
   const source = readArrayBuffer(SOURCE_PATH);
   const headlessReviewer = await FolioDocxReviewer.fromBuffer(source, {
+    session: "legacy",
     author: AUTHOR,
   });
   const reviewerBridgeReviewer = await FolioDocxReviewer.fromBuffer(source, {
+    session: "legacy",
     author: AUTHOR,
   });
   const editorBridgeReviewer = await FolioDocxReviewer.fromBuffer(source, {
+    session: "legacy",
     author: AUTHOR,
   });
   const reviewerBridge = createReviewerBridge(reviewerBridgeReviewer);
@@ -147,6 +150,7 @@ describe("document operation cross-surface conformance", () => {
       const result = surface.apply(batch);
       const savedReviewer = await FolioDocxReviewer.fromBuffer(
         await surface.reviewer.toBuffer(),
+        { session: "legacy" },
       );
       outputs.push({
         name: surface.name,

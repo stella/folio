@@ -205,7 +205,9 @@ const expectReviewedProjection = async (
   action: "accept" | "reject",
   expected: readonly ReturnType<typeof projectedBlocks>[number][],
 ): Promise<void> => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
+  const reviewer = await FolioDocxReviewer.fromBuffer(buffer, {
+    session: "legacy",
+  });
   const revisionCount = (
     action === "accept" ? reviewer.acceptAll() : reviewer.rejectAll()
   ).resolved;
@@ -218,7 +220,9 @@ const expectReviewedProjection = async (
   expect(savedXml).not.toContain("<w:pPrChange");
   expect(savedXml).not.toContain("<w:ins");
   expect(savedXml).not.toContain("<w:del");
-  const reopened = await FolioDocxReviewer.fromBuffer(saved);
+  const reopened = await FolioDocxReviewer.fromBuffer(saved, {
+    session: "legacy",
+  });
   expect(reopened.getChanges()).toEqual([]);
   expect(projectedBlocks(reopened)).toEqual(expected);
 };
@@ -227,6 +231,7 @@ describe("paragraph split and merge formatting", () => {
   test("direct split and merge operations apply their complete paragraph property payloads", async () => {
     const splitting = await FolioDocxReviewer.fromBuffer(
       await joinedDocument(),
+      { session: "legacy" },
     );
     const joinedBlockId = splitting.snapshot().blocks.at(0)?.id;
     if (!joinedBlockId) {
@@ -261,7 +266,9 @@ describe("paragraph split and merge formatting", () => {
     expect(split.skipped).toEqual([]);
     expect(projectedBlocks(splitting)).toEqual(SPLIT_PROJECTION);
 
-    const merging = await FolioDocxReviewer.fromBuffer(await splitDocument());
+    const merging = await FolioDocxReviewer.fromBuffer(await splitDocument(), {
+      session: "legacy",
+    });
     const firstSplitBlockId = merging.snapshot().blocks.at(0)?.id;
     if (!firstSplitBlockId) {
       panic("expected a split paragraph block id");
@@ -412,7 +419,10 @@ describe("paragraph split and merge formatting", () => {
   );
 
   test("refuses a formatting split when the source already has a pending pPrChange", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await joinedDocument());
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await joinedDocument(),
+      { session: "legacy" },
+    );
     const blockId = reviewer.snapshot().blocks.at(0)?.id;
     if (!blockId) {
       panic("expected a joined paragraph block id");
@@ -470,7 +480,9 @@ describe("paragraph split and merge formatting", () => {
   });
 
   test("refuses a formatting merge when the first paragraph has a pending pPrChange", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await splitDocument());
+    const reviewer = await FolioDocxReviewer.fromBuffer(await splitDocument(), {
+      session: "legacy",
+    });
     const blockId = reviewer.snapshot().blocks.at(0)?.id;
     if (!blockId) {
       panic("expected a split paragraph block id");

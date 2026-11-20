@@ -71,7 +71,8 @@ const withDocument = async (
   if (normalized.isErr()) return Result.err(normalized.error);
   const { docx } = normalized.value;
   const reviewer = await Result.tryPromise({
-    try: () => FolioDocxReviewer.fromBuffer(docx.slice().buffer),
+    try: () =>
+      FolioDocxReviewer.fromBuffer(docx.slice().buffer, { session: "legacy" }),
     catch: (error) =>
       cliError({
         code: FOLIO_CLI_ERROR_CODES.invalidDocument,

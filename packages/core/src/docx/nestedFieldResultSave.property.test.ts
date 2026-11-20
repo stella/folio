@@ -140,7 +140,9 @@ describe("nested complex fields across a save that writes from the model", () =>
         async (nodes) => {
           const source = await documentOf(nodes);
           const expected = `Lead ${nodes.map((node) => visibleOf(node, false)).join("")}tail.`;
-          const reviewer = await FolioDocxReviewer.fromBuffer(source);
+          const reviewer = await FolioDocxReviewer.fromBuffer(source, {
+            session: "legacy",
+          });
           expect(paragraphText(reviewer)).toBe(expected);
           // A paragraph inserted elsewhere makes the save write the body from
           // the model.
@@ -160,12 +162,16 @@ describe("nested complex fields across a save that writes from the model", () =>
           expect(await fieldStructureOf(saved)).toEqual(
             await fieldStructureOf(source),
           );
-          const reopened = await FolioDocxReviewer.fromBuffer(saved);
+          const reopened = await FolioDocxReviewer.fromBuffer(saved, {
+            session: "legacy",
+          });
           expect(paragraphText(reopened)).toBe(expected);
           // An edit of text a field shows either applies or is refused, and
           // leaves every field's characters as they were.
           for (const mode of ["direct", "tracked-changes"] as const) {
-            const editing = await FolioDocxReviewer.fromBuffer(saved);
+            const editing = await FolioDocxReviewer.fromBuffer(saved, {
+              session: "legacy",
+            });
             const edit = editing.applyOperations(
               [
                 {
@@ -179,7 +185,9 @@ describe("nested complex fields across a save that writes from the model", () =>
               { undefinedReferences: "refuse", mode },
             );
             const edited = await editing.toBuffer();
-            const editedReader = await FolioDocxReviewer.fromBuffer(edited);
+            const editedReader = await FolioDocxReviewer.fromBuffer(edited, {
+              session: "legacy",
+            });
             if (mode === "tracked-changes") editedReader.acceptAll();
             if (edit.applied.length === 0)
               expect(paragraphText(editedReader)).toBe(expected);

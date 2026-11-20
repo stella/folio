@@ -201,7 +201,9 @@ describe("nested field-code visibility oracle", () => {
 
           const buffer = await createDocx(xml);
 
-          const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
+          const reviewer = await FolioDocxReviewer.fromBuffer(buffer, {
+            session: "legacy",
+          });
           const mainText = reviewer.getContent().at(0)?.text ?? "";
           expect(sentinelsPresent(mainText, generated.depth)).toEqual(expected);
 

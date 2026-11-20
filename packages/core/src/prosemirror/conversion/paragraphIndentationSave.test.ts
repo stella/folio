@@ -164,6 +164,7 @@ test(
           };
           const bytes = (await ensureParaIds(await createDocx(document))).docx;
           const reviewer = await FolioDocxReviewer.fromBuffer(bytes, {
+            session: "legacy",
             author: "Test",
           });
           const block = reviewer
@@ -190,9 +191,7 @@ test(
             .find((candidate) => candidate.text === "Body clause.");
           const saved = await FolioDocxReviewer.fromBuffer(
             await reviewer.toBuffer(),
-            {
-              author: "Test",
-            },
+            { session: "legacy", author: "Test" },
           );
           const reopened = saved
             .getContent()

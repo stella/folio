@@ -499,9 +499,7 @@ describe("headless docx review round-trip", () => {
   test("keeps text-box table projections isolated across tracked review views", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await buildTextBoxTableDocument(),
-      {
-        author: "Reviewer",
-      },
+      { session: "legacy", author: "Reviewer" },
     );
     const before = reviewer.snapshot();
     const target = findBlock(before.blocks, "Cell value");
@@ -550,7 +548,9 @@ describe("headless docx review round-trip", () => {
 
   test("edits a table cell inside shape text and preserves its container", async () => {
     const baseline = await buildTextBoxTableDocument();
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
+    });
     const target = findBlock(reviewer.snapshot().blocks, "Cell value");
 
     const result = reviewer.applyOperations(
@@ -604,15 +604,17 @@ describe("headless docx review round-trip", () => {
     const cellParagraph = table.rows.at(0)?.cells.at(0)?.content.at(0);
     expect(cellParagraph?.type).toBe("paragraph");
     expect(
-      await FolioDocxReviewer.fromBuffer(saved).then((reopened) =>
-        reopened.getContentAsText(),
+      await FolioDocxReviewer.fromBuffer(saved, { session: "legacy" }).then(
+        (reopened) => reopened.getContentAsText(),
       ),
     ).toContain("Updated value");
   });
 
   test("inserts, persists, and undoes a row inside shape text", async () => {
     const baseline = await buildTextBoxTableDocument();
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
+    });
     const target = findBlock(reviewer.snapshot().blocks, "Cell value");
 
     const rejected = reviewer.applyDocumentOperations(
@@ -689,7 +691,9 @@ describe("headless docx review round-trip", () => {
       "paragraph",
     );
     expect(
-      (await FolioDocxReviewer.fromBuffer(saved)).getContentAsText(),
+      (
+        await FolioDocxReviewer.fromBuffer(saved, { session: "legacy" })
+      ).getContentAsText(),
     ).toContain("Added value");
 
     if (!result.undoHandle) {
@@ -715,6 +719,7 @@ describe("headless docx review round-trip", () => {
   test("tracks, persists, accepts, and rejects a row insertion", async () => {
     const baseline = await buildTextBoxTableDocument();
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
       author: "Reviewer",
     });
     const target = findBlock(reviewer.snapshot().blocks, "Cell value");
@@ -751,7 +756,9 @@ describe("headless docx review round-trip", () => {
     expect(pendingXml).toContain("<w:ins ");
     expect(pendingXml).toContain("Added value");
 
-    const reopened = await FolioDocxReviewer.fromBuffer(pending);
+    const reopened = await FolioDocxReviewer.fromBuffer(pending, {
+      session: "legacy",
+    });
     const reopenedChange = reopened
       .getChanges()
       .find(({ type }) => type === "rowInserted");
@@ -777,7 +784,9 @@ describe("headless docx review round-trip", () => {
     }
     expect(acceptedTable.rows).toHaveLength(2);
 
-    const rejecting = await FolioDocxReviewer.fromBuffer(pending);
+    const rejecting = await FolioDocxReviewer.fromBuffer(pending, {
+      session: "legacy",
+    });
     const rejectChange = rejecting
       .getChanges()
       .find(({ type }) => type === "rowInserted");
@@ -805,7 +814,9 @@ describe("headless docx review round-trip", () => {
 
   test("deletes, persists, and undoes a row inside shape text", async () => {
     const baseline = await buildTextBoxTableDocument();
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
+    });
     const target = findBlock(reviewer.snapshot().blocks, "Cell value");
 
     const rejected = reviewer.applyDocumentOperations(
@@ -870,7 +881,9 @@ describe("headless docx review round-trip", () => {
       findTextBoxShape(reparsed).textBody?.content.map(({ type }) => type),
     ).toEqual(["paragraph", "paragraph"]);
     expect(
-      (await FolioDocxReviewer.fromBuffer(saved)).getContentAsText(),
+      (
+        await FolioDocxReviewer.fromBuffer(saved, { session: "legacy" })
+      ).getContentAsText(),
     ).not.toContain("Cell value");
 
     if (!result.undoHandle) {
@@ -896,6 +909,7 @@ describe("headless docx review round-trip", () => {
   test("tracks, persists, accepts, and rejects a row deletion", async () => {
     const baseline = await buildTextBoxTableDocument();
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
       author: "Reviewer",
     });
     const target = findBlock(reviewer.snapshot().blocks, "Cell value");
@@ -932,7 +946,9 @@ describe("headless docx review round-trip", () => {
     expect(pendingXml).toContain("<w:del ");
     expect(pendingXml).toContain("Cell value");
 
-    const reopened = await FolioDocxReviewer.fromBuffer(pending);
+    const reopened = await FolioDocxReviewer.fromBuffer(pending, {
+      session: "legacy",
+    });
     const reopenedChange = reopened
       .getChanges()
       .find(({ type }) => type === "rowDeleted");
@@ -955,7 +971,9 @@ describe("headless docx review round-trip", () => {
       ).textBody?.content.map(({ type }) => type),
     ).toEqual(["paragraph", "paragraph"]);
 
-    const rejecting = await FolioDocxReviewer.fromBuffer(pending);
+    const rejecting = await FolioDocxReviewer.fromBuffer(pending, {
+      session: "legacy",
+    });
     const rejectChange = rejecting
       .getChanges()
       .find(({ type }) => type === "rowDeleted");
@@ -990,7 +1008,9 @@ describe("headless docx review round-trip", () => {
         date: "2026-07-16T10:00:00.000Z",
       },
     });
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
+    });
     const change = reviewer
       .getChanges()
       .find(({ type }) => type === "cellInserted");
@@ -1004,7 +1024,9 @@ describe("headless docx review round-trip", () => {
     expect(await partText(pending, "word/document.xml")).toContain(
       "<w:cellIns ",
     );
-    const reopened = await FolioDocxReviewer.fromBuffer(pending);
+    const reopened = await FolioDocxReviewer.fromBuffer(pending, {
+      session: "legacy",
+    });
     const reopenedChange = reopened
       .getChanges()
       .find(({ type }) => type === "cellInserted");
@@ -1019,7 +1041,9 @@ describe("headless docx review round-trip", () => {
     );
     expect(reopened.getContentAsText()).toContain("Cell value");
 
-    const rejecting = await FolioDocxReviewer.fromBuffer(pending);
+    const rejecting = await FolioDocxReviewer.fromBuffer(pending, {
+      session: "legacy",
+    });
     const rejectChange = rejecting
       .getChanges()
       .find(({ type }) => type === "cellInserted");
@@ -1043,7 +1067,9 @@ describe("headless docx review round-trip", () => {
         date: "2026-07-16T10:30:00.000Z",
       },
     });
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
+    });
     const change = reviewer
       .getChanges()
       .find(({ type }) => type === "cellDeleted");
@@ -1057,7 +1083,9 @@ describe("headless docx review round-trip", () => {
     expect(await partText(pending, "word/document.xml")).toContain(
       "<w:cellDel ",
     );
-    const reopened = await FolioDocxReviewer.fromBuffer(pending);
+    const reopened = await FolioDocxReviewer.fromBuffer(pending, {
+      session: "legacy",
+    });
     const reopenedChange = reopened
       .getChanges()
       .find(({ type }) => type === "cellDeleted");
@@ -1072,7 +1100,9 @@ describe("headless docx review round-trip", () => {
     );
     expect(reopened.getContentAsText()).not.toContain("Cell value");
 
-    const rejecting = await FolioDocxReviewer.fromBuffer(pending);
+    const rejecting = await FolioDocxReviewer.fromBuffer(pending, {
+      session: "legacy",
+    });
     const rejectChange = rejecting
       .getChanges()
       .find(({ type }) => type === "cellDeleted");
@@ -1090,6 +1120,7 @@ describe("headless docx review round-trip", () => {
   test("tracks, persists, accepts, and rejects an empty vertical cell merge", async () => {
     const baseline = await buildTextBoxVerticalMergeCandidateDocument();
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
       author: "Reviewer",
     });
     const target = findBlock(reviewer.snapshot().blocks, "Cell value");
@@ -1184,7 +1215,9 @@ describe("headless docx review round-trip", () => {
       verticalMergeOriginal: "rest",
     });
 
-    const accepting = await FolioDocxReviewer.fromBuffer(pending);
+    const accepting = await FolioDocxReviewer.fromBuffer(pending, {
+      session: "legacy",
+    });
     const acceptChange = accepting
       .getChanges()
       .find(({ type }) => type === "cellMerged");
@@ -1216,7 +1249,9 @@ describe("headless docx review round-trip", () => {
     });
     expect(acceptedContinuation?.structuralChange).toBeUndefined();
 
-    const rejecting = await FolioDocxReviewer.fromBuffer(pending);
+    const rejecting = await FolioDocxReviewer.fromBuffer(pending, {
+      session: "legacy",
+    });
     const rejectChange = rejecting
       .getChanges()
       .find(({ type }) => type === "cellMerged");
@@ -1256,6 +1291,7 @@ describe("headless docx review round-trip", () => {
   test("tracks, persists, accepts, and rejects a vertical cell split", async () => {
     const baseline = await buildTextBoxVerticalMergeDocument();
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
       author: "Reviewer",
     });
     const target = findBlock(reviewer.snapshot().blocks, "Cell value");
@@ -1304,7 +1340,9 @@ describe("headless docx review round-trip", () => {
       verticalMergeOriginal: "continue",
     });
 
-    const accepting = await FolioDocxReviewer.fromBuffer(pending);
+    const accepting = await FolioDocxReviewer.fromBuffer(pending, {
+      session: "legacy",
+    });
     const acceptChange = accepting
       .getChanges()
       .find(({ type }) => type === "cellMerged");
@@ -1333,7 +1371,9 @@ describe("headless docx review round-trip", () => {
     expect(acceptedContinuation?.formatting?.verticalAlign).toBe("bottom");
     expect(acceptedContinuation?.formatting?.vMerge).toBeUndefined();
 
-    const rejecting = await FolioDocxReviewer.fromBuffer(pending);
+    const rejecting = await FolioDocxReviewer.fromBuffer(pending, {
+      session: "legacy",
+    });
     const rejectChange = rejecting
       .getChanges()
       .find(({ type }) => type === "cellMerged");
@@ -1366,6 +1406,7 @@ describe("headless docx review round-trip", () => {
   test("tracks, persists, accepts, and rejects a column insertion", async () => {
     const baseline = await buildTextBoxTableDocument();
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
       author: "Reviewer",
     });
     const target = findBlock(reviewer.snapshot().blocks, "Cell value");
@@ -1403,7 +1444,9 @@ describe("headless docx review round-trip", () => {
     expect(pendingXml).toContain("<w:cellIns ");
     expect(pendingXml).toContain("Added value");
 
-    const reopened = await FolioDocxReviewer.fromBuffer(pending);
+    const reopened = await FolioDocxReviewer.fromBuffer(pending, {
+      session: "legacy",
+    });
     const reopenedChange = reopened
       .getChanges()
       .find(({ type }) => type === "cellInserted");
@@ -1428,7 +1471,9 @@ describe("headless docx review round-trip", () => {
     }
     expect(acceptedTable.rows.at(0)?.cells).toHaveLength(2);
 
-    const rejecting = await FolioDocxReviewer.fromBuffer(pending);
+    const rejecting = await FolioDocxReviewer.fromBuffer(pending, {
+      session: "legacy",
+    });
     const rejectChange = rejecting
       .getChanges()
       .find(({ type }) => type === "cellInserted");
@@ -1457,6 +1502,7 @@ describe("headless docx review round-trip", () => {
   test("tracks, persists, accepts, and rejects a column deletion", async () => {
     const baseline = await buildTextBoxTableDocument();
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
       author: "Reviewer",
     });
     const target = findBlock(reviewer.snapshot().blocks, "Cell value");
@@ -1493,7 +1539,9 @@ describe("headless docx review round-trip", () => {
     expect(pendingXml).toContain("<w:cellDel ");
     expect(pendingXml).toContain("Cell value");
 
-    const reopened = await FolioDocxReviewer.fromBuffer(pending);
+    const reopened = await FolioDocxReviewer.fromBuffer(pending, {
+      session: "legacy",
+    });
     const reopenedChange = reopened
       .getChanges()
       .find(({ type }) => type === "cellDeleted");
@@ -1517,7 +1565,9 @@ describe("headless docx review round-trip", () => {
       "paragraph",
     ]);
 
-    const rejecting = await FolioDocxReviewer.fromBuffer(pending);
+    const rejecting = await FolioDocxReviewer.fromBuffer(pending, {
+      session: "legacy",
+    });
     const rejectChange = rejecting
       .getChanges()
       .find(({ type }) => type === "cellDeleted");
@@ -1545,7 +1595,9 @@ describe("headless docx review round-trip", () => {
 
   test("inserts, persists, and undoes a column inside shape text", async () => {
     const baseline = await buildTextBoxTableDocument();
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
+    });
     const target = findBlock(reviewer.snapshot().blocks, "Cell value");
 
     const rejected = reviewer.applyDocumentOperations(
@@ -1617,7 +1669,9 @@ describe("headless docx review round-trip", () => {
     expect(table.rows).toHaveLength(1);
     expect(table.rows.at(0)?.cells).toHaveLength(2);
     expect(
-      (await FolioDocxReviewer.fromBuffer(saved)).getContentAsText(),
+      (
+        await FolioDocxReviewer.fromBuffer(saved, { session: "legacy" })
+      ).getContentAsText(),
     ).toContain("Added value");
 
     if (!result.undoHandle) {
@@ -1642,7 +1696,9 @@ describe("headless docx review round-trip", () => {
 
   test("merges, persists, and undoes cells inside shape text", async () => {
     const baseline = await buildTextBoxTableDocument();
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
+    });
     const initialTarget = findBlock(reviewer.snapshot().blocks, "Cell value");
     const insertion = reviewer.applyDocumentOperations(
       {
@@ -1742,10 +1798,14 @@ describe("headless docx review round-trip", () => {
     }
     expect(table.rows.at(0)?.cells).toHaveLength(1);
     expect(
-      (await FolioDocxReviewer.fromBuffer(saved)).getContentAsText(),
+      (
+        await FolioDocxReviewer.fromBuffer(saved, { session: "legacy" })
+      ).getContentAsText(),
     ).toContain("Cell value");
     expect(
-      (await FolioDocxReviewer.fromBuffer(saved)).getContentAsText(),
+      (
+        await FolioDocxReviewer.fromBuffer(saved, { session: "legacy" })
+      ).getContentAsText(),
     ).toContain("Added value");
 
     if (!result.undoHandle) {
@@ -1769,7 +1829,9 @@ describe("headless docx review round-trip", () => {
 
   test("persists a vertical cell merge with continuation geometry", async () => {
     const baseline = await buildTextBoxTableDocument();
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
+    });
     const initialTarget = findBlock(reviewer.snapshot().blocks, "Cell value");
     // A second column, so the merged rows keep a cell of their own: a row of
     // nothing but continuations is removed with the merge.
@@ -1864,7 +1926,9 @@ describe("headless docx review round-trip", () => {
 
   test("splits, persists, and undoes a merged cell inside shape text", async () => {
     const baseline = await buildTextBoxTableDocument();
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
+    });
     const initialTarget = findBlock(reviewer.snapshot().blocks, "Cell value");
     expect(
       reviewer.applyDocumentOperations(
@@ -1981,7 +2045,9 @@ describe("headless docx review round-trip", () => {
 
   test("clears vertical merge metadata when splitting a cell", async () => {
     const baseline = await buildTextBoxTableDocument();
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
+    });
     const initialTarget = findBlock(reviewer.snapshot().blocks, "Cell value");
     // A second column, so the merged rows keep a cell of their own: a row of
     // nothing but continuations is removed with the merge.
@@ -2068,7 +2134,9 @@ describe("headless docx review round-trip", () => {
 
   test("deletes, persists, and undoes a column inside shape text", async () => {
     const baseline = await buildTextBoxTableDocument();
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
+    });
     const target = findBlock(reviewer.snapshot().blocks, "Cell value");
 
     const rejected = reviewer.applyDocumentOperations(
@@ -2133,7 +2201,9 @@ describe("headless docx review round-trip", () => {
       findTextBoxShape(reparsed).textBody?.content.map(({ type }) => type),
     ).toEqual(["paragraph", "paragraph"]);
     expect(
-      (await FolioDocxReviewer.fromBuffer(saved)).getContentAsText(),
+      (
+        await FolioDocxReviewer.fromBuffer(saved, { session: "legacy" })
+      ).getContentAsText(),
     ).not.toContain("Cell value");
 
     if (!result.undoHandle) {
@@ -2163,6 +2233,7 @@ describe("headless docx review round-trip", () => {
       relationshipId: HEADER_RELATIONSHIP_ID,
     } as const;
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
       author: "Reviewer",
     });
     const snapshot = reviewer.snapshotStory(story);
@@ -2216,7 +2287,9 @@ describe("headless docx review round-trip", () => {
       await partBytes(baseline, "word/footer1.xml"),
     );
 
-    const reopened = await FolioDocxReviewer.fromBuffer(saved);
+    const reopened = await FolioDocxReviewer.fromBuffer(saved, {
+      session: "legacy",
+    });
     expect(reopened.readStory(story)?.text).toBe("Updated header");
   });
 
@@ -2227,6 +2300,7 @@ describe("headless docx review round-trip", () => {
       relationshipId: FOOTER_RELATIONSHIP_ID,
     } as const;
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
       author: "Reviewer",
     });
     const snapshot = reviewer.snapshotStory(story);
@@ -2319,6 +2393,7 @@ describe("headless docx review round-trip", () => {
       zip.set(part, rewrittenPart);
       const reviewer = await FolioDocxReviewer.fromBuffer(
         (await zip.generate({ compression: "store" })).buffer,
+        { session: "legacy" },
       );
 
       expect(
@@ -2335,7 +2410,9 @@ describe("headless docx review round-trip", () => {
       expect(xml).not.toContain("MOVED FROM");
       expect(xml).not.toMatch(/<w:(?:ins|del|moveFrom|moveTo)\b/u);
 
-      const reopened = await FolioDocxReviewer.fromBuffer(saved);
+      const reopened = await FolioDocxReviewer.fromBuffer(saved, {
+        session: "legacy",
+      });
       expect(
         reopened.readReviewedStory({ story, view: "current-markup" })?.changes,
       ).toEqual([]);
@@ -2348,6 +2425,7 @@ describe("headless docx review round-trip", () => {
     async ({ story, part, text, before, after }) => {
       const baseline = await alignedSecondaryStoriesBaseline(before);
       const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+        session: "legacy",
         author: "Reviewer",
       });
       const initial = reviewer.snapshotStory(story);
@@ -2395,7 +2473,9 @@ describe("headless docx review round-trip", () => {
         previous: alignedStoryProperties(before),
       });
 
-      const accepting = await FolioDocxReviewer.fromBuffer(pending);
+      const accepting = await FolioDocxReviewer.fromBuffer(pending, {
+        session: "legacy",
+      });
       expect(accepting.resolveReviewedStory({ story, view: "final" })).toBe(
         true,
       );
@@ -2410,14 +2490,18 @@ describe("headless docx review round-trip", () => {
       expect(untrackedParagraphProperties(acceptedParagraph)).toBe(
         alignedStoryProperties(after),
       );
-      const reopenedAccepted = await FolioDocxReviewer.fromBuffer(accepted);
+      const reopenedAccepted = await FolioDocxReviewer.fromBuffer(accepted, {
+        session: "legacy",
+      });
       expect(
         expectParagraphBlock(
           reopenedAccepted.snapshotStory(story)?.blocks.at(0),
         ).directAlignment,
       ).toBe(after);
 
-      const rejecting = await FolioDocxReviewer.fromBuffer(pending);
+      const rejecting = await FolioDocxReviewer.fromBuffer(pending, {
+        session: "legacy",
+      });
       expect(rejecting.resolveReviewedStory({ story, view: "original" })).toBe(
         true,
       );
@@ -2432,7 +2516,9 @@ describe("headless docx review round-trip", () => {
       expect(untrackedParagraphProperties(rejectedParagraph)).toBe(
         alignedStoryProperties(before),
       );
-      const reopenedRejected = await FolioDocxReviewer.fromBuffer(rejected);
+      const reopenedRejected = await FolioDocxReviewer.fromBuffer(rejected, {
+        session: "legacy",
+      });
       expect(
         expectParagraphBlock(
           reopenedRejected.snapshotStory(story)?.blocks.at(0),
@@ -2444,6 +2530,7 @@ describe("headless docx review round-trip", () => {
   test("rejects a missing editable story before applying operations", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await makeHeaderFooterBaseline(),
+      { session: "legacy" },
     );
     const story = { type: "header", relationshipId: "missing" } as const;
     expect(reviewer.snapshotStory(story)).toBeNull();
@@ -2459,6 +2546,7 @@ describe("headless docx review round-trip", () => {
   test("replaceInBlock (direct) rewrites the text with no tracked marks", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
       author: "AI",
     });
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
@@ -2496,6 +2584,7 @@ describe("headless docx review round-trip", () => {
   test("replaceInBlock (tracked-changes) redlines old vs new and preserves untouched parts", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
       author: "AI Reviewer",
     });
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
@@ -2541,7 +2630,9 @@ describe("headless docx review round-trip", () => {
   test("both headless apply entry points honor character-granularity redlines", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
     for (const entryPoint of ["operations", "document-operations"] as const) {
-      const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
+      const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+        session: "legacy",
+      });
       const target = findBlock(reviewer.snapshot().blocks, "Heading");
       const operation = {
         id: `character-${entryPoint}`,
@@ -2577,7 +2668,9 @@ describe("headless docx review round-trip", () => {
       type: "header",
       relationshipId: HEADER_RELATIONSHIP_ID,
     } as const;
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
+    });
     const snapshot = reviewer.snapshotStory(story);
     if (!snapshot) {
       throw new Error("expected the header story");
@@ -2614,6 +2707,7 @@ describe("headless docx review round-trip", () => {
   test("applyDocumentOperations executes a versioned tracked-change batch", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
       author: "AI Reviewer",
     });
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
@@ -2675,6 +2769,7 @@ describe("headless docx review round-trip", () => {
   test("atomic batches reject every operation without document or comment changes", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
       author: "AI Reviewer",
     });
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
@@ -2737,6 +2832,7 @@ describe("headless docx review round-trip", () => {
   test("atomic batches commit all operations after a successful preflight", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
       author: "AI Reviewer",
     });
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
@@ -2820,6 +2916,7 @@ describe("headless docx review round-trip", () => {
 
     const reparsed = await FolioDocxReviewer.fromBuffer(
       await reviewer.toBuffer(),
+      { session: "legacy" },
     );
     expect(reparsed.getContentAsText()).toBe(contentBefore);
     expect(reparsed.getComments()).toEqual([]);
@@ -2827,7 +2924,9 @@ describe("headless docx review round-trip", () => {
 
   test("undo handles reject unknown, out-of-order, and changed document state", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
+    });
     const skipped = reviewer.applyDocumentOperations(
       {
         version: 1,
@@ -2901,7 +3000,9 @@ describe("headless docx review round-trip", () => {
       reason: "unknownHandle",
     });
 
-    const changedReviewer = await FolioDocxReviewer.fromBuffer(baseline);
+    const changedReviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
+    });
     const changedTarget = findBlock(
       changedReviewer.snapshot().blocks,
       "Heading",
@@ -2930,7 +3031,9 @@ describe("headless docx review round-trip", () => {
       reason: "unknownHandle",
     });
 
-    const commentReviewer = await FolioDocxReviewer.fromBuffer(baseline);
+    const commentReviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
+    });
     const commentTarget = findBlock(
       commentReviewer.snapshot().blocks,
       "Heading",
@@ -2977,6 +3080,7 @@ describe("headless docx review round-trip", () => {
   test("dry runs predict best-effort results without document or comment changes", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
       author: "AI Reviewer",
     });
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
@@ -3058,6 +3162,7 @@ describe("headless docx review round-trip", () => {
   test("dry runs predict atomic rejection without exposing generated ids", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
       author: "AI Reviewer",
     });
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
@@ -3117,7 +3222,9 @@ describe("headless docx review round-trip", () => {
 
   test("insertAfterBlock (direct) adds a sibling paragraph, no tracked marks", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
+    });
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
 
     const result = reviewer.applyOperations(
@@ -3154,6 +3261,7 @@ describe("headless docx review round-trip", () => {
   test("insertAfterBlock (tracked-changes) marks the new paragraph as an insertion", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
       author: "AI",
     });
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
@@ -3193,7 +3301,9 @@ describe("headless docx review round-trip", () => {
   test("applyFolioAIEditsToBuffer one-shot convenience applies against a fresh snapshot", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
     // Derive the operation's blockId from a snapshot of the same buffer.
-    const snapshot = (await FolioDocxReviewer.fromBuffer(baseline)).snapshot();
+    const snapshot = (
+      await FolioDocxReviewer.fromBuffer(baseline, { session: "legacy" })
+    ).snapshot();
     const target = findBlock(snapshot.blocks, "Heading");
 
     const { buffer, applied, skipped } = await applyFolioAIEditsToBuffer(
@@ -3238,6 +3348,7 @@ describe("headless document-operation undo history", () => {
     ];
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await createDocx(document),
+      { session: "legacy" },
     );
     const blockId = findBlock(reviewer.snapshot().blocks, "v0").id;
     const handles = [];
@@ -3294,9 +3405,11 @@ describe("headless docx review discovery + resolve", () => {
     const actualSensitiveText = "different serialized content";
     const expectedReviewer = await FolioDocxReviewer.fromBuffer(
       await makeBaseline(sensitiveText, "21000010"),
+      { session: "legacy" },
     );
     const mismatchedReviewer = await FolioDocxReviewer.fromBuffer(
       await makeBaseline(actualSensitiveText, "21000011"),
+      { session: "legacy" },
     );
     expect(expectedReviewer.resolveReviewedStory({ view: "final" })).toBe(true);
 
@@ -3324,7 +3437,9 @@ describe("headless docx review discovery + resolve", () => {
 
   test("getContentAsText labels every block with its stable id", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
+    });
     const blocks = reviewer.getContent();
     const heading = findBlock(blocks, "Heading");
 
@@ -3342,6 +3457,7 @@ describe("headless docx review discovery + resolve", () => {
   test("getChanges surfaces the deletion and insertion of a tracked replace", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
       author: "AI Reviewer",
     });
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
@@ -3377,6 +3493,7 @@ describe("headless docx review discovery + resolve", () => {
     const baseline = await makeParaIdBaseline(readFixture());
 
     const accepting = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
       author: "AI",
     });
     const acceptTarget = findBlock(accepting.snapshot().blocks, "Heading");
@@ -3405,6 +3522,7 @@ describe("headless docx review discovery + resolve", () => {
     );
 
     const rejecting = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
       author: "AI",
     });
     const rejectTarget = findBlock(rejecting.snapshot().blocks, "Heading");
@@ -3433,6 +3551,7 @@ describe("headless docx review discovery + resolve", () => {
     const baseline = await makeParaIdBaseline(readFixture());
 
     const accepting = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
       author: "AI",
     });
     const acceptBlocks = accepting.snapshot().blocks;
@@ -3468,6 +3587,7 @@ describe("headless docx review discovery + resolve", () => {
     expect(accepting.getChanges()).toEqual([]);
 
     const rejecting = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
       author: "AI",
     });
     const rejectBlocks = rejecting.snapshot().blocks;
@@ -3506,6 +3626,7 @@ describe("headless docx review discovery + resolve", () => {
   test("getComments returns authored comments with their anchor", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
       author: "AI Reviewer",
     });
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
@@ -3533,6 +3654,7 @@ describe("headless docx review discovery + resolve", () => {
   test("replyTo threads a reply under a comment and round-trips it", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
       author: "AI Reviewer",
     });
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
@@ -3598,6 +3720,7 @@ describe("headless docx review discovery + resolve", () => {
   test("resolveComment marks a thread resolved, round-trips, and can reopen it", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
       author: "AI Reviewer",
     });
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
@@ -3636,6 +3759,7 @@ describe("headless docx review discovery + resolve", () => {
     expect(savedComment?.done).toBe(true);
 
     const reopenedReviewer = await FolioDocxReviewer.fromBuffer(saved, {
+      session: "legacy",
       author: "AI Reviewer",
     });
     expect(reopenedReviewer.getComments()[0]?.done).toBe(true);
@@ -3663,14 +3787,18 @@ describe("headless docx review discovery + resolve", () => {
     // The raw corpus fixture ships without `w14:paraId`s. Two independent
     // parses must mint identical block ids so ops built against the first
     // snapshot resolve against the second rather than skipping as missingBlock.
-    const first = await FolioDocxReviewer.fromBuffer(readFixture());
+    const first = await FolioDocxReviewer.fromBuffer(readFixture(), {
+      session: "legacy",
+    });
     const snapshot = first.snapshot();
     expect(
       snapshot.blocks.every(({ idStability }) => idStability === "positional"),
     ).toBe(true);
     const target = findBlock(snapshot.blocks, "Heading");
 
-    const second = await FolioDocxReviewer.fromBuffer(readFixture());
+    const second = await FolioDocxReviewer.fromBuffer(readFixture(), {
+      session: "legacy",
+    });
     expect(second.getContent().map((b) => b.id)).toEqual(
       first.getContent().map((b) => b.id),
     );
@@ -3699,6 +3827,7 @@ describe("headless docx review annotated read surface", () => {
   test("reads original, current-markup, and final views without mutating the reviewer", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
       author: "Reviewer",
     });
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
@@ -3740,9 +3869,7 @@ describe("headless docx review annotated read surface", () => {
   test("persists a resolved final main story and reopens with no revisions", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await makeParaIdBaseline(readFixture()),
-      {
-        author: "Reviewer",
-      },
+      { session: "legacy", author: "Reviewer" },
     );
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
     reviewer.applyOperations(
@@ -3765,7 +3892,9 @@ describe("headless docx review annotated read surface", () => {
     expect(documentXml).not.toContain("Heading paragraph.");
     expect(documentXml).not.toMatch(/<w:(?:ins|del|moveFrom|moveTo)\b/u);
 
-    const reopened = await FolioDocxReviewer.fromBuffer(saved);
+    const reopened = await FolioDocxReviewer.fromBuffer(saved, {
+      session: "legacy",
+    });
     expect(
       reopened.readReviewedStory({ view: "current-markup" })?.changes,
     ).toEqual([]);
@@ -3775,9 +3904,7 @@ describe("headless docx review annotated read surface", () => {
   test("persists a resolved final main story with a comment anchor", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await makeParaIdBaseline(readFixture()),
-      {
-        author: "Reviewer",
-      },
+      { session: "legacy", author: "Reviewer" },
     );
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
     reviewer.applyOperations(
@@ -3801,7 +3928,9 @@ describe("headless docx review annotated read surface", () => {
 
     expect(reviewer.resolveReviewedStory({ view: "final" })).toBe(true);
     const saved = await reviewer.toBuffer();
-    const reopened = await FolioDocxReviewer.fromBuffer(saved);
+    const reopened = await FolioDocxReviewer.fromBuffer(saved, {
+      session: "legacy",
+    });
     expect(
       reopened.readReviewedStory({ view: "current-markup" })?.changes,
     ).toEqual([]);
@@ -3814,6 +3943,7 @@ describe("headless docx review annotated read surface", () => {
   test("rejects an unsupported reviewed view at the public boundary", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await makeParaIdBaseline(readFixture()),
+      { session: "legacy" },
     );
     expect(() =>
       Reflect.apply(reviewer.readReviewedStory, reviewer, [
@@ -3825,6 +3955,7 @@ describe("headless docx review annotated read surface", () => {
   test("getContentAsText({ annotated }) inlines redline + comment tags; default stays clean", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
       author: "AI Reviewer",
     });
     const blocks = reviewer.snapshot().blocks;
@@ -4026,7 +4157,7 @@ const mainDocumentWithIdlessPropertyParagraphs =
 test("preserves an id-less main paragraph source after a neighboring property edit", async () => {
   const reviewer = await FolioDocxReviewer.fromBuffer(
     await mainDocumentWithIdlessPropertyParagraphs(),
-    { author: "Reviewer" },
+    { session: "legacy", author: "Reviewer" },
   );
   const snapshot = reviewer.snapshot();
   const target = findBlock(snapshot.blocks, "Main edited source");
@@ -4067,7 +4198,9 @@ test("preserves an id-less main paragraph source after a neighboring property ed
   expect(editedParagraph).toContain('w:oddHBand="1"');
   expect(untouchedParagraph).toContain(SECONDARY_STORY_PROPERTY_SOURCE);
 
-  const reopened = await FolioDocxReviewer.fromBuffer(saved);
+  const reopened = await FolioDocxReviewer.fromBuffer(saved, {
+    session: "legacy",
+  });
   expect(reopened.getContentAsText()).toContain("Main edited");
   expect(
     await partBytes(await reopened.toBuffer(), "word/document.xml"),
@@ -4094,6 +4227,7 @@ test.each(secondaryStoryPropertyIdentityCases)(
       includeParaIds,
     });
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
       author: "Reviewer",
     });
     const snapshot = reviewer.snapshotStory(story);
@@ -4143,7 +4277,9 @@ test.each(secondaryStoryPropertyIdentityCases)(
     expect(editedParagraph).toContain('w:oddHBand="1"');
     expect(untouchedParagraph).toContain(SECONDARY_STORY_PROPERTY_SOURCE);
 
-    const reopened = await FolioDocxReviewer.fromBuffer(saved);
+    const reopened = await FolioDocxReviewer.fromBuffer(saved, {
+      session: "legacy",
+    });
     expect(reopened.readStory(story)?.text).toContain(`${story.type} edited`);
     expect(await partBytes(await reopened.toBuffer(), part)).toEqual(
       await partBytes(saved, part),
@@ -4170,6 +4306,7 @@ test.each(secondaryStoryPropertyCases)(
       includeParaIds: false,
     });
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
       author: "Reviewer",
     });
     const snapshot = reviewer.snapshotStory(story);
@@ -4205,7 +4342,9 @@ test.each(secondaryStoryPropertyCases)(
       SECONDARY_STORY_PROPERTY_SOURCE,
     );
 
-    const reopened = await FolioDocxReviewer.fromBuffer(saved);
+    const reopened = await FolioDocxReviewer.fromBuffer(saved, {
+      session: "legacy",
+    });
     expect(reopened.readStory(story)?.text).toContain(editedText);
     expect(await partBytes(await reopened.toBuffer(), part)).toEqual(
       await partBytes(saved, part),
@@ -4255,6 +4394,7 @@ describe("headless docx review notes read surface", () => {
   test("reads every visible note content kind in the accepted view", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await readRichNotesFixture(),
+      { session: "legacy" },
     );
     const footnote = reviewer
       .listStories()
@@ -4332,6 +4472,7 @@ describe("headless docx review notes read surface", () => {
       zip.set(part, rewrittenNotesXml);
       const reviewer = await FolioDocxReviewer.fromBuffer(
         (await zip.generate({ compression: "store" })).buffer,
+        { session: "legacy" },
       );
 
       expect(reviewer.resolveReviewedStory({ story, view: "final" })).toBe(
@@ -4352,7 +4493,9 @@ describe("headless docx review notes read surface", () => {
       expect(savedNotesXml).not.toContain("<w:moveTo ");
       expect(savedNotesXml).toContain(preservedParagraph);
 
-      const reopened = await FolioDocxReviewer.fromBuffer(saved);
+      const reopened = await FolioDocxReviewer.fromBuffer(saved, {
+        session: "legacy",
+      });
       expect(
         reopened.readReviewedStory({ story, view: "current-markup" })?.changes,
       ).toEqual([]);
@@ -4394,6 +4537,7 @@ describe("headless docx review notes read surface", () => {
       zip.set(part, notesXml);
       const reviewer = await FolioDocxReviewer.fromBuffer(
         (await zip.generate({ compression: "store" })).buffer,
+        { session: "legacy" },
       );
 
       expect(reviewer.resolveReviewedStory({ story, view: "final" })).toBe(
@@ -4412,7 +4556,9 @@ describe("headless docx review notes read surface", () => {
         ).toBe(false);
       }
 
-      const reopened = await FolioDocxReviewer.fromBuffer(saved);
+      const reopened = await FolioDocxReviewer.fromBuffer(saved, {
+        session: "legacy",
+      });
       expect(
         reopened.readReviewedStory({ story, view: "current-markup" })?.changes,
       ).toEqual([]);
@@ -4456,13 +4602,16 @@ describe("headless docx review notes read surface", () => {
       );
       const reviewer = await FolioDocxReviewer.fromBuffer(
         (await zip.generate({ compression: "store" })).buffer,
+        { session: "legacy" },
       );
 
       expect(reviewer.resolveReviewedStory({ story, view: "final" })).toBe(
         true,
       );
       const saved = await reviewer.toBuffer();
-      const reopened = await FolioDocxReviewer.fromBuffer(saved);
+      const reopened = await FolioDocxReviewer.fromBuffer(saved, {
+        session: "legacy",
+      });
       const reviewed = reopened.readReviewedStory({
         story,
         view: "current-markup",
@@ -4488,6 +4637,7 @@ describe("headless docx review notes read surface", () => {
       panic("parser must retain the imported package");
     const story = { type: "footnote", noteId: 2 } as const;
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
       author: "Reviewer",
     });
     const snapshot = reviewer.snapshotStory(story);
@@ -4538,7 +4688,9 @@ describe("headless docx review notes read surface", () => {
       await partBytes(imported.originalBuffer, "word/endnotes.xml"),
     );
 
-    const reopened = await FolioDocxReviewer.fromBuffer(saved);
+    const reopened = await FolioDocxReviewer.fromBuffer(saved, {
+      session: "legacy",
+    });
     expect(reopened.readStory(story)?.text).toBe("Updated footnote body text.");
   });
 
@@ -4546,6 +4698,7 @@ describe("headless docx review notes read surface", () => {
     const baseline = await readNotesFixture();
     const story = { type: "endnote", noteId: 3 } as const;
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
       author: "Reviewer",
     });
     const snapshot = reviewer.snapshotStory(story);
@@ -4607,6 +4760,7 @@ describe("headless docx review notes read surface", () => {
   test("rejects a missing note story before applying operations", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await readNotesFixture(),
+      { session: "legacy" },
     );
     const story = { type: "footnote", noteId: 999_999 } as const;
     expect(reviewer.snapshotStory(story)).toBeNull();
@@ -4623,6 +4777,7 @@ describe("headless docx review notes read surface", () => {
   test("listStories discovers typed handles that readStory resolves", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await readNotesFixture(),
+      { session: "legacy" },
     );
     const stories = reviewer.listStories();
     expect(stories.at(0)?.handle).toEqual({ type: "main" });
@@ -4644,6 +4799,7 @@ describe("headless docx review notes read surface", () => {
   test("getNotesAsText surfaces header, footer, and footnote text with labels", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await readNotesFixture(),
+      { session: "legacy" },
     );
     const notes = reviewer.getNotesAsText();
 
@@ -4659,7 +4815,9 @@ describe("headless docx review notes read surface", () => {
 
   test("getNotesAsText is empty for a document without headers/footers or notes", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
+    });
     expect(reviewer.getNotesAsText()).toBe("");
   });
 });

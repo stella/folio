@@ -94,9 +94,7 @@ test.each(CASES)(
   async ({ text, comment }) => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await createDocx(formattingDocument(text)),
-      {
-        author: "Reviewer",
-      },
+      { session: "legacy", author: "Reviewer" },
     );
     const block = reviewer.snapshot().blocks.at(0);
     if (!block || block.kind === "diagnostic")
@@ -162,11 +160,14 @@ test.each(CASES)(
     const before = reviewer.getChanges();
     const reopened = await FolioDocxReviewer.fromBuffer(
       await reviewer.toBuffer(),
+      { session: "legacy" },
     );
     expect(reopened.getChanges()).toEqual(before);
     expect(
       (
-        await FolioDocxReviewer.fromBuffer(await reopened.toBuffer())
+        await FolioDocxReviewer.fromBuffer(await reopened.toBuffer(), {
+          session: "legacy",
+        })
       ).getChanges(),
     ).toEqual(before);
   },
@@ -180,7 +181,7 @@ test(
       await createDocx(
         formattingDocument("Alpha Bravo Omega\n\nClosing clause."),
       ),
-      { author: "Reviewer" },
+      { session: "legacy", author: "Reviewer" },
     );
     const block = reviewer.snapshot().blocks.at(0);
     if (!block || block.kind === "diagnostic")
@@ -229,6 +230,7 @@ test(
     const before = reviewer.getChanges();
     const reopened = await FolioDocxReviewer.fromBuffer(
       await reviewer.toBuffer(),
+      { session: "legacy" },
     );
     expect(reopened.getChanges()).toEqual(before);
     const deletion = reopened

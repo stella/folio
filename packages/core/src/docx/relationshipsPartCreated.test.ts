@@ -47,6 +47,7 @@ const part = async (buffer: ArrayBuffer, path: string) =>
 const commented = async () => {
   const reviewer = await FolioDocxReviewer.fromBuffer(
     await packageWithoutDocumentRelationships(),
+    { session: "legacy" },
   );
   const blockId = reviewer.snapshot().blocks[0]?.id;
   if (blockId === undefined) throw new Error("the fixture has no paragraph");

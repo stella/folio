@@ -61,7 +61,9 @@ const expectError = (result: FolioToolCallResult): string => {
 
 describe("executeFolioToolCall: argument validation", () => {
   test("unknown tool name is rejected with the valid tool list", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture(), {
+      session: "legacy",
+    });
     const bridge = createReviewerBridge(reviewer);
 
     const result = executeFolioToolCallUntyped("not_a_real_tool", {}, bridge);
@@ -71,7 +73,9 @@ describe("executeFolioToolCall: argument validation", () => {
   });
 
   test("missing required argument is rejected", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture(), {
+      session: "legacy",
+    });
     const bridge = createReviewerBridge(reviewer);
 
     const result = executeFolioToolCall(
@@ -83,7 +87,9 @@ describe("executeFolioToolCall: argument validation", () => {
   });
 
   test("wrong-type argument is rejected", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture(), {
+      session: "legacy",
+    });
     const bridge = createReviewerBridge(reviewer);
 
     const result = executeFolioToolCall(
@@ -95,7 +101,9 @@ describe("executeFolioToolCall: argument validation", () => {
   });
 
   test("unsupported capability on the headless reviewer bridge reports a plain-language error", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture(), {
+      session: "legacy",
+    });
     const bridge = createReviewerBridge(reviewer);
 
     const result = executeFolioToolCall(
@@ -108,7 +116,9 @@ describe("executeFolioToolCall: argument validation", () => {
   });
 
   test("read_selection and scroll_to_block are also unsupported on the reviewer bridge", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture(), {
+      session: "legacy",
+    });
     const bridge = createReviewerBridge(reviewer);
 
     expect(
@@ -128,7 +138,9 @@ describe("executeFolioToolCall: argument validation", () => {
   });
 
   test("custom bridges retain opaque comment ids", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture(), {
+      session: "legacy",
+    });
     const base = createReviewerBridge(reviewer);
     const received: string[] = [];
     const bridge = {
@@ -210,6 +222,7 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
           ]),
         },
       }),
+      { session: "legacy" },
     );
     const bridge = createReviewerBridge(reviewer);
     const story = expectOk(
@@ -252,7 +265,9 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
   });
 
   test("list_stories returns typed handles that read_story accepts", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture(), {
+      session: "legacy",
+    });
     const bridge = createReviewerBridge(reviewer);
     const stories = expectOk(
       executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.listStories, {}, bridge),
@@ -270,6 +285,7 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
 
   test("read_document -> find_text -> suggest_changes -> read_changes -> add_comment -> read_comments -> reply_comment -> resolve_comment", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(readFixture(), {
+      session: "legacy",
       author: "AI Reviewer",
     });
     const bridge = createReviewerBridge(reviewer);
@@ -453,6 +469,7 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
 
   test("suggest_changes: insertAfterBlock with multi-line text splits into paragraphs and reports a normalization", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(readFixture(), {
+      session: "legacy",
       author: "AI Reviewer",
     });
     const bridge = createReviewerBridge(reviewer);
@@ -511,7 +528,9 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
   });
 
   test("suggest_changes reports a plain-language skip reason for a missing block", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture(), {
+      session: "legacy",
+    });
     const bridge = createReviewerBridge(reviewer);
 
     const result = expectOk(
@@ -543,7 +562,9 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
   });
 
   test("suggest_changes explains how to resolve a pending paragraph-format change", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture(), {
+      session: "legacy",
+    });
     const bridge = createReviewerBridge(reviewer);
     const block = reviewer.snapshot().blocks.at(0);
     if (!block) {
@@ -591,7 +612,9 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
   });
 
   test("suggest_changes attaches a block-text precondition and explains a stale target", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture(), {
+      session: "legacy",
+    });
     const reviewerBridge = createReviewerBridge(reviewer);
     const heading = reviewer
       .snapshot()
@@ -646,7 +669,9 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
   });
 
   test("suggest_changes honors a caller-supplied precondition, catching staleness a fresh same-call snapshot cannot", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture(), {
+      session: "legacy",
+    });
     const bridge = createReviewerBridge(reviewer);
 
     const blocks = expectOk(
@@ -735,7 +760,9 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
   });
 
   test("suggest_changes explains an unsupported mutation mode", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture(), {
+      session: "legacy",
+    });
     const reviewerBridge = createReviewerBridge(reviewer);
     const bridge = {
       ...reviewerBridge,
@@ -774,7 +801,9 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
   });
 
   test("suggest_changes rejects an empty operations array", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture(), {
+      session: "legacy",
+    });
     const bridge = createReviewerBridge(reviewer);
 
     const result = executeFolioToolCall(
@@ -786,7 +815,9 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
   });
 
   test("suggest_changes rejects an operations array over the per-call cap", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture(), {
+      session: "legacy",
+    });
     const bridge = createReviewerBridge(reviewer);
 
     const operations = Array.from({ length: 51 }, (_, i) => ({
@@ -804,7 +835,9 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
   });
 
   test("suggest_changes rejects find/replace/text/comment strings over the length cap", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture(), {
+      session: "legacy",
+    });
     const bridge = createReviewerBridge(reviewer);
     const tooLong = "x".repeat(100_001);
 
@@ -858,7 +891,9 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
   });
 
   test("add_comment rejects text/quote over the length cap", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture(), {
+      session: "legacy",
+    });
     const bridge = createReviewerBridge(reviewer);
     const tooLong = "x".repeat(100_001);
     const blocks = reviewer.snapshot().blocks;
@@ -889,7 +924,9 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
   });
 
   test("reply_comment rejects text over the length cap", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture(), {
+      session: "legacy",
+    });
     const bridge = createReviewerBridge(reviewer);
     const tooLong = "x".repeat(100_001);
 
@@ -904,7 +941,9 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
 
 describe("find_text edge cases", () => {
   test("multiple occurrences in one block increment occurrenceInBlock, matching is case-insensitive by default", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture(), {
+      session: "legacy",
+    });
     const bridge = createReviewerBridge(reviewer);
 
     // Apply an edit that guarantees a repeated substring inside a single block.
@@ -980,7 +1019,9 @@ describe("find_text edge cases", () => {
   });
 
   test("query over the length cap is rejected", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture(), {
+      session: "legacy",
+    });
     const bridge = createReviewerBridge(reviewer);
 
     const result = executeFolioToolCall(
@@ -992,7 +1033,9 @@ describe("find_text edge cases", () => {
   });
 
   test("matches beyond the cap are reported as truncated with an accurate totalMatches", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture(), {
+      session: "legacy",
+    });
     const bridge = createReviewerBridge(reviewer);
 
     const blocks = reviewer.snapshot().blocks;
@@ -1026,7 +1069,9 @@ describe("find_text edge cases", () => {
   });
 
   test("whole-word matching uses Unicode word boundaries", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture(), {
+      session: "legacy",
+    });
     const bridge = createReviewerBridge(reviewer);
     const target = reviewer.snapshot().blocks.at(0);
     if (target === undefined) {
@@ -1063,7 +1108,9 @@ describe("find_text edge cases", () => {
     // "prefixedTARGET" directly abuts a word character on its left, so the
     // exclusion must still trigger from a window that only looks a few
     // characters either side of the match.
-    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture(), {
+      session: "legacy",
+    });
     const bridge = createReviewerBridge(reviewer);
     const target = reviewer.snapshot().blocks.at(0);
     if (target === undefined) {
@@ -1088,7 +1135,9 @@ describe("find_text edge cases", () => {
   });
 
   test("limits main-story search to real page mappings and exposes the page on matches", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture(), {
+      session: "legacy",
+    });
     const base = createReviewerBridge(reviewer);
     const target = reviewer
       .snapshot()
@@ -1120,7 +1169,9 @@ describe("find_text edge cases", () => {
   });
 
   test("searches a non-main story without inventing block handles", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture(), {
+      session: "legacy",
+    });
     const base = createReviewerBridge(reviewer);
     const bridge: FolioAgentBridge = {
       ...base,
@@ -1154,7 +1205,9 @@ describe("find_text edge cases", () => {
 
 describe("outline-first scoped reads", () => {
   test("returns stable outline handles and bounded section pages", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture(), {
+      session: "legacy",
+    });
     const base = createReviewerBridge(reviewer);
     const snapshot = reviewer.snapshot();
     const firstBlock = snapshot.blocks.at(0);
@@ -1212,7 +1265,9 @@ describe("outline-first scoped reads", () => {
   });
 
   test("show_in_document accepts either a block or an exact range", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture(), {
+      session: "legacy",
+    });
     const base = createReviewerBridge(reviewer);
     const block = reviewer.snapshot().blocks.at(0);
     if (block === undefined) {

@@ -142,7 +142,9 @@ const paragraphsOf = async (bytes: ArrayBuffer) => {
 /** The package pending, with every change accepted, and with every change rejected. */
 const outcomes = async (bytes: ArrayBuffer) => {
   const resolved = async (decision: "accept" | "reject") => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice(0));
+    const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice(0), {
+      session: "legacy",
+    });
     if (decision === "accept") reviewer.acceptAll();
     else reviewer.rejectAll();
     return paragraphsOf(await reviewer.toBuffer());
@@ -159,7 +161,9 @@ const viaDefaultEngine = async (
   operation: FolioDocumentOperation,
   mode: Mode,
 ) => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice(0));
+  const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice(0), {
+    session: "legacy",
+  });
   const result = reviewer.applyOperations([operation], { mode });
   return {
     skipped: result.skipped.map(({ reason }) => reason),
@@ -221,6 +225,7 @@ const startingPackage = async ({
       { ...(first ?? panic("A case has paragraphs.")), markDeleted: true },
       ...rest,
     ]),
+    { session: "legacy" },
   );
   if (review === "accept") reviewer.acceptAll();
   else reviewer.rejectAll();
@@ -240,7 +245,7 @@ const compareEngines = async (
 ) => {
   const bytes = await startingPackage(example);
   const blocks = (
-    await FolioDocxReviewer.fromBuffer(bytes.slice(0))
+    await FolioDocxReviewer.fromBuffer(bytes.slice(0), { session: "legacy" })
   ).getContent();
   const target =
     blocks[example.target % blocks.length] ??
@@ -351,7 +356,11 @@ describe("a replacement that names a paragraph style", () => {
           review,
         });
         const target =
-          (await FolioDocxReviewer.fromBuffer(bytes.slice(0)))
+          (
+            await FolioDocxReviewer.fromBuffer(bytes.slice(0), {
+              session: "legacy",
+            })
+          )
             .getContent()
             .find(({ text }) => text.startsWith("Alpha")) ??
           panic("The reviewed package lost the paragraph holding Alpha.");

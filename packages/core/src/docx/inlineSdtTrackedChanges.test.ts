@@ -195,7 +195,9 @@ describe("inline content-control tracked changes", () => {
   test("accept and reject keep the content control with the correct text", async () => {
     const buffer = await createDocx(reviewedDocument());
 
-    const accepting = await FolioDocxReviewer.fromBuffer(buffer);
+    const accepting = await FolioDocxReviewer.fromBuffer(buffer, {
+      session: "legacy",
+    });
     expect(accepting.getChanges()).toHaveLength(2);
     expect(accepting.acceptAll().resolved).toBe(2);
     const accepted = await accepting.toBuffer();
@@ -205,7 +207,9 @@ describe("inline content-control tracked changes", () => {
       true,
     );
 
-    const rejecting = await FolioDocxReviewer.fromBuffer(buffer);
+    const rejecting = await FolioDocxReviewer.fromBuffer(buffer, {
+      session: "legacy",
+    });
     expect(rejecting.getChanges()).toHaveLength(2);
     expect(rejecting.rejectAll().resolved).toBe(2);
     const rejected = await rejecting.toBuffer();

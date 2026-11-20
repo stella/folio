@@ -273,14 +273,18 @@ test("imports target-only numbering for an introduced list and preserves rejecti
   if (result.isErr()) throw result.error;
   expect(result.value.verification).toEqual({ status: "verified" });
 
-  const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+  const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer, {
+    session: "legacy",
+  });
   expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
   expect(paragraphBlocksOf(accepting).at(1)?.listReference).toEqual({
     numId: 5,
     level: 0,
   });
 
-  const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+  const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer, {
+    session: "legacy",
+  });
   expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
   expect(paragraphBlocksOf(rejecting).map(({ text }) => text)).toEqual([
     "Anchor paragraph.",
@@ -299,10 +303,13 @@ test("preserves an absent authored list level on a retained paragraph", async ()
   if (result.isErr()) throw result.error;
   expect(result.value.verification).toEqual({ status: "verified" });
 
-  const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+  const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer, {
+    session: "legacy",
+  });
   expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
   const accepted = await FolioDocxReviewer.fromBuffer(
     await accepting.toBuffer(),
+    { session: "legacy" },
   );
   const acceptedParagraph = accepted
     .toDocument()
@@ -323,10 +330,13 @@ test("preserves an absent authored list level on a retained paragraph", async ()
     level: 0,
   });
 
-  const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+  const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer, {
+    session: "legacy",
+  });
   expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
   const rejected = await FolioDocxReviewer.fromBuffer(
     await rejecting.toBuffer(),
+    { session: "legacy" },
   );
   const rejectedParagraph = rejected
     .toDocument()
@@ -359,10 +369,13 @@ test("preserves an absent list level when restyling a retained paragraph into a 
   if (result.isErr()) throw result.error;
   expect(result.value.verification).toEqual({ status: "verified" });
 
-  const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+  const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer, {
+    session: "legacy",
+  });
   expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
   const accepted = await FolioDocxReviewer.fromBuffer(
     await accepting.toBuffer(),
+    { session: "legacy" },
   );
   const acceptedParagraph = accepted
     .toDocument()
@@ -384,10 +397,13 @@ test("preserves an absent list level when restyling a retained paragraph into a 
     kind: "inherit",
   });
 
-  const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+  const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer, {
+    session: "legacy",
+  });
   expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
   const rejected = await FolioDocxReviewer.fromBuffer(
     await rejecting.toBuffer(),
+    { session: "legacy" },
   );
   const rejectedParagraph = rejected
     .toDocument()
@@ -413,10 +429,13 @@ test("preserves a style-sourced introduced list instance without materializing l
   if (result.isErr()) throw result.error;
   expect(result.value.verification).toEqual({ status: "verified" });
 
-  const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+  const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer, {
+    session: "legacy",
+  });
   expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
   const accepted = await FolioDocxReviewer.fromBuffer(
     await accepting.toBuffer(),
+    { session: "legacy" },
   );
   const introduced = accepted.toDocument().package.document.content.at(1);
   if (introduced?.type !== "paragraph") {
@@ -450,7 +469,9 @@ test("preserves a style-sourced introduced list instance without materializing l
     kind: "inherit",
   });
 
-  const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+  const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer, {
+    session: "legacy",
+  });
   expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
   expect(paragraphBlocksOf(rejecting).map(({ text }) => text)).toEqual([
     "Independently numbered anchor.",
@@ -469,7 +490,9 @@ test("rebinds a colliding target numbering definition through a tracked paragrap
   if (result.isErr()) throw result.error;
   expect(result.value.verification).toEqual({ status: "verified" });
 
-  const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+  const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer, {
+    session: "legacy",
+  });
   expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
   expect(paragraphBlocksOf(accepting).at(0)?.listReference).toEqual({
     numId: 6,
@@ -481,7 +504,9 @@ test("rebinds a colliding target numbering definition through a tracked paragrap
       .find(({ numId, level }) => numId === 6 && level === 0)?.format,
   ).toBe("lowerRoman");
 
-  const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+  const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer, {
+    session: "legacy",
+  });
   expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
   expect(paragraphBlocksOf(rejecting).at(0)?.listReference).toEqual({
     numId: 5,
@@ -506,7 +531,9 @@ test("rebinds a colliding marker-typography change even when its label is unchan
   if (result.isErr()) throw result.error;
   expect(result.value.verification).toEqual({ status: "verified" });
 
-  const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+  const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer, {
+    session: "legacy",
+  });
   expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
   const acceptedNumbering = accepting.toDocument().package.numbering;
   const acceptedNum = acceptedNumbering?.nums.find(({ numId }) => numId === 6);
@@ -516,7 +543,9 @@ test("rebinds a colliding marker-typography change even when its label is unchan
       ?.levels.find(({ ilvl }) => ilvl === 0)?.rPr?.bold,
   ).toBe(true);
 
-  const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+  const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer, {
+    session: "legacy",
+  });
   expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
   const rejectedNumbering = rejecting.toDocument().package.numbering;
   const rejectedNum = rejectedNumbering?.nums.find(({ numId }) => numId === 5);
@@ -539,10 +568,13 @@ test("rebinds a colliding numbering definition in an inserted table row", async 
   if (result.isErr()) throw result.error;
   expect(result.value.verification).toEqual({ status: "verified" });
 
-  const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+  const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer, {
+    session: "legacy",
+  });
   expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
   const accepted = await FolioDocxReviewer.fromBuffer(
     await accepting.toBuffer(),
+    { session: "legacy" },
   );
   expect(
     paragraphBlocksOf(accepted).map(({ text, listReference }) => ({
@@ -562,10 +594,13 @@ test("rebinds a colliding numbering definition in an inserted table row", async 
       .find(({ numId, level }) => numId === 6 && level === 0)?.format,
   ).toBe("lowerRoman");
 
-  const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+  const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer, {
+    session: "legacy",
+  });
   expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
   const rejected = await FolioDocxReviewer.fromBuffer(
     await rejecting.toBuffer(),
+    { session: "legacy" },
   );
   expect(
     paragraphBlocksOf(rejected).map(({ text, listReference }) => ({

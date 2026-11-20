@@ -72,11 +72,15 @@ test("Folio-exact imports an embedded watermark without replacing base media", a
   if (result.isErr()) throw result.error;
   expect(result.value.verification.status).toBe("verified");
   for (const decision of ["accept", "reject"] as const) {
-    const reviewer = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+    const reviewer = await FolioDocxReviewer.fromBuffer(result.value.buffer, {
+      session: "legacy",
+    });
     if (decision === "accept") reviewer.acceptAll();
     else reviewer.rejectAll();
     const bytes = await reviewer.toBuffer();
-    const reopened = await FolioDocxReviewer.fromBuffer(bytes);
+    const reopened = await FolioDocxReviewer.fromBuffer(bytes, {
+      session: "legacy",
+    });
     const headers = reopened.toDocument().package.headers;
     expect(headers?.size ?? 0).toBe(decision === "accept" ? 1 : 0);
     const saved = await ZipArchive.read(bytes);

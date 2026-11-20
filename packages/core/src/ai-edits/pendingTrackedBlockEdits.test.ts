@@ -65,7 +65,10 @@ const tableDocument = async (): Promise<ArrayBuffer> => {
 };
 
 const open = (buffer: ArrayBuffer) =>
-  FolioDocxReviewer.fromBuffer(buffer, { author: "Reviewer" });
+  FolioDocxReviewer.fromBuffer(buffer, {
+    session: "legacy",
+    author: "Reviewer",
+  });
 const reopen = async (reviewer: FolioDocxReviewer) =>
   open(await reviewer.toBuffer());
 

@@ -458,7 +458,9 @@ const blocksOf = async (bytes: ArrayBuffer) => {
 /** The package pending, with every change accepted, and with every change rejected. */
 const outcomes = async (bytes: ArrayBuffer) => {
   const resolved = async (decision: "accept" | "reject") => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice(0));
+    const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice(0), {
+      session: "legacy",
+    });
     if (decision === "accept") reviewer.acceptAll();
     else reviewer.rejectAll();
     return blocksOf(await reviewer.toBuffer());
@@ -527,7 +529,9 @@ const viaDefaultEngine = async ({
   mode,
   resolveSuggestion,
 }: EngineRunOptions) => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(source.slice(0));
+  const reviewer = await FolioDocxReviewer.fromBuffer(source.slice(0), {
+    session: "legacy",
+  });
   const before = await reviewer.toBuffer();
   const snapshot = reviewer.snapshot();
   const result = reviewer.applyDocumentOperations(
@@ -793,7 +797,9 @@ describe("table structure operations in the canonical session", () => {
     ] as const;
     for (const value of cases) {
       const source = await packageOf(value.body);
-      const reviewer = await FolioDocxReviewer.fromBuffer(source.slice(0));
+      const reviewer = await FolioDocxReviewer.fromBuffer(source.slice(0), {
+        session: "legacy",
+      });
       expect(reviewer.snapshot().anchors[value.anchor]).toBeDefined();
       for (const mode of ["direct", "tracked-changes", "suggested"] as const) {
         for (const type of TABLE_INSERTION_TYPES) {

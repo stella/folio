@@ -51,6 +51,7 @@ const expectReopenedHeading = async (
   const before = headingState(reviewer, text);
   const reopened = await FolioDocxReviewer.fromBuffer(
     await reviewer.toBuffer(),
+    { session: "legacy" },
   );
   expect(headingState(reopened, text)).toEqual(before);
 };
@@ -99,9 +100,7 @@ test(
         };
         const reviewer = await FolioDocxReviewer.fromBuffer(
           await createDocx(model),
-          {
-            author: "Editor",
-          },
+          { session: "legacy", author: "Editor" },
         );
         const block = reviewer.getContent().find(({ text }) => text === TITLE);
         if (!block) throw new Error("fixture must expose its heading");

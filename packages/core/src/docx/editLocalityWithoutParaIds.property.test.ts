@@ -261,7 +261,9 @@ const saveEdited = async (
   kind: EditKind,
 ): Promise<SavedEdit> => {
   const source = await buildPackage(texts, coverage);
-  const reviewer = await FolioDocxReviewer.fromBuffer(source);
+  const reviewer = await FolioDocxReviewer.fromBuffer(source, {
+    session: "legacy",
+  });
   const { operation, untouched } = planEdit(kind, reviewer.snapshot().blocks);
   const applied = reviewer.applyOperations([operation], {
     undefinedReferences: "refuse",
@@ -272,7 +274,9 @@ const saveEdited = async (
   // The control save pays the same package-wide id and version normalization
   // the edited save does, so what survives the comparison is the edit's reach.
   const control = await documentPartOf(
-    await (await FolioDocxReviewer.fromBuffer(source)).toBuffer(),
+    await (
+      await FolioDocxReviewer.fromBuffer(source, { session: "legacy" })
+    ).toBuffer(),
   );
   return { buffer, control, edited: await documentPartOf(buffer), untouched };
 };

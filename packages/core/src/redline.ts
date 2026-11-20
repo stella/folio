@@ -503,9 +503,10 @@ export const generateRedlineDocx = async (
   );
   const [baseReviewer, revisedReviewer] = await Promise.all([
     FolioDocxReviewer.fromBuffer(base, {
+      session: "legacy",
       author: options.author ?? "folio compare",
     }),
-    FolioDocxReviewer.fromBuffer(revised),
+    FolioDocxReviewer.fromBuffer(revised, { session: "legacy" }),
   ]);
   const baseStories = baseReviewer.listStories().map(({ handle }) => handle);
   const revisedStories = revisedReviewer

@@ -84,11 +84,14 @@ const blocksAfter = async (
   const saved = await saveHarnessState(view.state, base);
   const reviewer = await FolioDocxReviewer.fromBuffer(
     saved.bytes.buffer as ArrayBuffer,
+    { session: "legacy" },
   );
   if (resolution === "accept") reviewer.acceptAll();
   else reviewer.rejectAll();
   return summarizeReviewer(
-    await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer()),
+    await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
+      session: "legacy",
+    }),
   ).map(({ kind, text }) => ({ kind, text }));
 };
 
@@ -105,6 +108,7 @@ describe("a list pasted after cutting table cells", () => {
     const source = summarizeReviewer(
       await FolioDocxReviewer.fromBuffer(
         (await shape.build()).buffer as ArrayBuffer,
+        { session: "legacy" },
       ),
     ).map(({ kind, text }) => ({ kind, text }));
     for (const [, anchor, head] of SELECTIONS)

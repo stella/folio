@@ -199,9 +199,7 @@ const panic = (message: string): never => {
 const openSession = async (mode: (typeof REPLAY_MODES)[number]) => {
   const reviewer = await FolioDocxReviewer.fromBuffer(
     await createDocx(fromMarkdown(MARKDOWN)),
-    {
-      author: "Agent",
-    },
+    { session: "legacy", author: "Agent" },
   );
   return { reviewer, bridge: createReviewerBridge(reviewer, { mode }) };
 };

@@ -120,7 +120,9 @@ test.each(["mixed-lists", "image", "notes"])(
     const bytes = await shape.build();
     const base = await parseShapeDocument(bytes);
     const baseline = project(
-      await FolioDocxReviewer.fromBuffer(bytes.slice().buffer),
+      await FolioDocxReviewer.fromBuffer(bytes.slice().buffer, {
+        session: "legacy",
+      }),
     );
     const outputs = [];
     for (const mode of ["editing", "suggesting"] as const) {
@@ -177,19 +179,33 @@ test.each(["mixed-lists", "image", "notes"])(
     const suggested = outputs.at(1) ?? panic("Missing tracked output");
     const accepted = await FolioDocxReviewer.fromBuffer(
       suggested.bytes.slice().buffer,
+      { session: "legacy" },
     );
     accepted.acceptAll();
     expect(
-      project(await FolioDocxReviewer.fromBuffer(await accepted.toBuffer())),
+      project(
+        await FolioDocxReviewer.fromBuffer(await accepted.toBuffer(), {
+          session: "legacy",
+        }),
+      ),
     ).toEqual(
-      project(await FolioDocxReviewer.fromBuffer(edited.bytes.slice().buffer)),
+      project(
+        await FolioDocxReviewer.fromBuffer(edited.bytes.slice().buffer, {
+          session: "legacy",
+        }),
+      ),
     );
     const rejected = await FolioDocxReviewer.fromBuffer(
       suggested.bytes.slice().buffer,
+      { session: "legacy" },
     );
     rejected.rejectAll();
     expect(
-      project(await FolioDocxReviewer.fromBuffer(await rejected.toBuffer())),
+      project(
+        await FolioDocxReviewer.fromBuffer(await rejected.toBuffer(), {
+          session: "legacy",
+        }),
+      ),
     ).toEqual(baseline);
   },
 );
@@ -201,7 +217,9 @@ test("plain paste followed by backward and forward deletion preserves bookmark r
   const bytes = await shape.build();
   const base = await parseShapeDocument(bytes);
   const baseline = project(
-    await FolioDocxReviewer.fromBuffer(bytes.slice().buffer),
+    await FolioDocxReviewer.fromBuffer(bytes.slice().buffer, {
+      session: "legacy",
+    }),
   );
   const saved = [];
   for (const mode of ["editing", "suggesting"] as const) {
@@ -216,22 +234,33 @@ test("plain paste followed by backward and forward deletion preserves bookmark r
   const suggested = saved.at(1) ?? panic("Missing tracked output");
   const accepted = await FolioDocxReviewer.fromBuffer(
     suggested.bytes.slice().buffer,
+    { session: "legacy" },
   );
   accepted.acceptAll();
   const direct = await FolioDocxReviewer.fromBuffer(
     edited.bytes.slice().buffer,
+    { session: "legacy" },
   );
   expect(project(direct).at(0)?.text).toBe("alphookmarked heading text");
   expect(
-    project(await FolioDocxReviewer.fromBuffer(await accepted.toBuffer())),
+    project(
+      await FolioDocxReviewer.fromBuffer(await accepted.toBuffer(), {
+        session: "legacy",
+      }),
+    ),
   ).toEqual(project(direct));
 
   const rejected = await FolioDocxReviewer.fromBuffer(
     suggested.bytes.slice().buffer,
+    { session: "legacy" },
   );
   rejected.rejectAll();
   expect(
-    project(await FolioDocxReviewer.fromBuffer(await rejected.toBuffer())),
+    project(
+      await FolioDocxReviewer.fromBuffer(await rejected.toBuffer(), {
+        session: "legacy",
+      }),
+    ),
   ).toEqual(baseline);
 });
 

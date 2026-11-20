@@ -40,6 +40,7 @@ const sourceDocument = () => {
 test("comparison story imports are empty, collision-safe, and captured by saves", async () => {
   const source = await FolioDocxReviewer.fromBuffer(
     await createDocx(sourceDocument()),
+    { session: "legacy" },
   );
   const sourceHandle = source
     .listStories()
@@ -48,6 +49,7 @@ test("comparison story imports are empty, collision-safe, and captured by saves"
     throw new Error("Missing source header");
   const destination = await FolioDocxReviewer.fromBuffer(
     await createDocx(createEmptyDocument()),
+    { session: "legacy" },
   );
   const original = destination.toDocument();
   const access = getFolioDocxComparisonAccess(destination);
@@ -63,7 +65,9 @@ test("comparison story imports are empty, collision-safe, and captured by saves"
   if (!second) throw new Error("Second header import refused");
   expect(second.relationshipId).not.toBe(first.relationshipId);
   expect(original.package.headers?.size ?? 0).toBe(0);
-  const saved = await FolioDocxReviewer.fromBuffer(await firstSave);
+  const saved = await FolioDocxReviewer.fromBuffer(await firstSave, {
+    session: "legacy",
+  });
   expect(
     saved.listStories().filter(({ handle }) => handle.type === "header"),
   ).toHaveLength(1);
@@ -78,7 +82,10 @@ test("comparison stages a new story's inherited formatting from another package"
     ...document.package.styles,
     docDefaults: { rPr: { bold: true } },
   };
-  const source = await FolioDocxReviewer.fromBuffer(await createDocx(document));
+  const source = await FolioDocxReviewer.fromBuffer(
+    await createDocx(document),
+    { session: "legacy" },
+  );
   const sourceHandle = source
     .listStories()
     .find(({ handle }) => handle.type === "header")?.handle;
@@ -86,6 +93,7 @@ test("comparison stages a new story's inherited formatting from another package"
     throw new Error("Missing source header");
   const destination = await FolioDocxReviewer.fromBuffer(
     await createDocx(createEmptyDocument()),
+    { session: "legacy" },
   );
   const access = getFolioDocxComparisonAccess(destination);
   expect(
@@ -131,14 +139,18 @@ test("comparison rebinds an imported header's external hyperlink relationship", 
   if (result.isErr()) throw result.error;
   expect(result.value.verification.status).toBe("verified");
   for (const decision of ["accept", "reject"] as const) {
-    const reviewer = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+    const reviewer = await FolioDocxReviewer.fromBuffer(result.value.buffer, {
+      session: "legacy",
+    });
     if (decision === "accept") {
       reviewer.acceptAll();
     } else {
       reviewer.rejectAll();
     }
     const buffer = await reviewer.toBuffer();
-    const reopened = await FolioDocxReviewer.fromBuffer(buffer);
+    const reopened = await FolioDocxReviewer.fromBuffer(buffer, {
+      session: "legacy",
+    });
     expect(reopened.toDocument().package.headers?.size ?? 0).toBe(
       decision === "accept" ? 1 : 0,
     );
@@ -207,7 +219,9 @@ test("comparison preserves an imported footer's empty hyperlink container", asyn
   if (result.isErr()) throw result.error;
   expect(result.value.verification.status).toBe("verified");
   for (const decision of ["accept", "reject"] as const) {
-    const reviewer = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+    const reviewer = await FolioDocxReviewer.fromBuffer(result.value.buffer, {
+      session: "legacy",
+    });
     if (decision === "accept") {
       reviewer.acceptAll();
     } else {

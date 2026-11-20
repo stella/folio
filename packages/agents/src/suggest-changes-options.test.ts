@@ -684,7 +684,9 @@ const readFixture = (): ArrayBuffer => {
 
 describe("executeFolioToolCall: suggest_changes document-version pinning and queue bridges", () => {
   test("a version-pinned call fails when the bridge cannot report a document version", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture(), {
+      session: "legacy",
+    });
     const bridge = createReviewerBridge(reviewer);
     const block = bridge.snapshot().blocks.at(0);
     if (block === undefined) {
@@ -708,7 +710,9 @@ describe("executeFolioToolCall: suggest_changes document-version pinning and que
   });
 
   test("a document-version mismatch skips the whole batch with documentVersionMismatch", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture(), {
+      session: "legacy",
+    });
     const reviewerBridge = createReviewerBridge(reviewer);
     const block = reviewerBridge.snapshot().blocks.at(0);
     if (block === undefined) {
@@ -741,7 +745,9 @@ describe("executeFolioToolCall: suggest_changes document-version pinning and que
   });
 
   test("a matching document version lets the batch apply", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture(), {
+      session: "legacy",
+    });
     const reviewerBridge = createReviewerBridge(reviewer);
     const block = reviewerBridge.snapshot().blocks.at(0);
     if (block === undefined) {
@@ -770,7 +776,9 @@ describe("executeFolioToolCall: suggest_changes document-version pinning and que
   });
 
   test("a hand-written queue bridge reports queued operations with receipts", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture(), {
+      session: "legacy",
+    });
     const block = reviewer.snapshot().blocks.at(0);
     if (block === undefined) {
       throw new Error("expected at least one block in the fixture");
@@ -827,7 +835,9 @@ describe("executeFolioToolCall: suggest_changes document-version pinning and que
   });
 
   test("the summary carries the parser's normalizations", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture(), {
+      session: "legacy",
+    });
     const bridge = createReviewerBridge(reviewer);
     const block = bridge.snapshot().blocks.at(0);
     if (block === undefined) {

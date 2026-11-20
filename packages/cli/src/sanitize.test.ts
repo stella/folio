@@ -206,7 +206,7 @@ describe("sanitize rewrite", () => {
     // The result still opens, with its text and its revision intact.
     const reviewer = await FolioDocxReviewer.fromBuffer(
       first.rewritten.slice().buffer,
-      { author: "Test" },
+      { session: "legacy", author: "Test" },
     );
     expect(reviewer.getComments()).toEqual([]);
     expect(reviewer.getChanges().length).toBe(1);

@@ -70,7 +70,9 @@ const BATCHES: [string, number, Record<string, unknown>[]][] = [
 
 describe.each(BATCHES)("%s", (_name, count, operations) => {
   const run = async (mode: "direct" | "tracked-changes") => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await docx(count));
+    const reviewer = await FolioDocxReviewer.fromBuffer(await docx(count), {
+      session: "legacy",
+    });
     const result = reviewer.applyDocumentOperations(
       {
         version: 1,
@@ -101,11 +103,15 @@ describe.each(BATCHES)("%s", (_name, count, operations) => {
     const tracked = await run("tracked-changes");
     const saved = await tracked.reviewer.toBuffer();
 
-    const accepted = await FolioDocxReviewer.fromBuffer(saved);
+    const accepted = await FolioDocxReviewer.fromBuffer(saved, {
+      session: "legacy",
+    });
     accepted.acceptAll();
     expect(outcome(accepted)).toEqual(outcome(direct.reviewer));
 
-    const rejected = await FolioDocxReviewer.fromBuffer(saved);
+    const rejected = await FolioDocxReviewer.fromBuffer(saved, {
+      session: "legacy",
+    });
     rejected.rejectAll();
     expect(outcome(rejected)).toEqual(
       Array.from({ length: count }, (_, index) => `T${String(index + 1)}:-`),

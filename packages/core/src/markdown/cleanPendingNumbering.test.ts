@@ -14,7 +14,7 @@ describe("clean Markdown of a pending numbering removal", () => {
           ["1. Deposit on signature", "2. Balance on delivery"].join("\n"),
         ),
       ),
-      { author: "Reviewer" },
+      { session: "legacy", author: "Reviewer" },
     );
     const balance = reviewer
       .getContent()
@@ -38,6 +38,7 @@ describe("clean Markdown of a pending numbering removal", () => {
     const saved = await reviewer.toBuffer();
 
     const accepted = await FolioDocxReviewer.fromBuffer(saved, {
+      session: "legacy",
       author: "Reviewer",
     });
     accepted.acceptAll();

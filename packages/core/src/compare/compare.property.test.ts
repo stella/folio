@@ -55,6 +55,7 @@ const readFixture = (filename: string): ArrayBuffer => {
 const buildSyntheticBase = async (): Promise<ArrayBuffer> => {
   const reviewer = await FolioDocxReviewer.fromBuffer(
     readFixture("upstream-empty.docx"),
+    { session: "legacy" },
   );
   const anchor = reviewer.snapshot();
   // An empty document is one blank paragraph, so its first block is the anchor
@@ -88,6 +89,7 @@ const withPriorRevisions = async (
   buffer: ArrayBuffer,
 ): Promise<ArrayBuffer> => {
   const reviewer = await FolioDocxReviewer.fromBuffer(buffer, {
+    session: "legacy",
     author: PRIOR_AUTHOR,
   });
   const snapshot = reviewer.snapshot();
@@ -166,7 +168,9 @@ const paragraphIdsInPackage = async (
 };
 
 const authorsOfChanges = async (buffer: ArrayBuffer): Promise<string[]> => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
+  const reviewer = await FolioDocxReviewer.fromBuffer(buffer, {
+    session: "legacy",
+  });
   return [
     ...new Set(reviewer.getChanges().map(({ author }) => author)),
   ].toSorted();
@@ -191,7 +195,9 @@ const OPTIONS = {
 } as const;
 
 const blocksOf = async (buffer: ArrayBuffer): Promise<FolioAIBlock[]> =>
-  (await FolioDocxReviewer.fromBuffer(buffer)).getContent();
+  (
+    await FolioDocxReviewer.fromBuffer(buffer, { session: "legacy" })
+  ).getContent();
 
 /** Parsed once at module scope: `describe` bodies run synchronously. */
 const BASE_CASES = await Promise.all(
@@ -215,7 +221,9 @@ const projectView = async (
   buffer: ArrayBuffer,
   view: "original" | "final",
 ): Promise<BlockProjection[]> => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
+  const reviewer = await FolioDocxReviewer.fromBuffer(buffer, {
+    session: "legacy",
+  });
   const story = reviewer.readReviewedStory({ view });
   return (story?.snapshot.blocks ?? []).map((block) => ({
     text: block.text,
@@ -1428,7 +1436,9 @@ describe("compareDocx", () => {
               base,
               scripted.value.buffer,
             );
-            const written = await FolioDocxReviewer.fromBuffer(buffer);
+            const written = await FolioDocxReviewer.fromBuffer(buffer, {
+              session: "legacy",
+            });
             expect(revisedFinalParagraphMarks(written.toDocument())).toEqual(
               [],
             );

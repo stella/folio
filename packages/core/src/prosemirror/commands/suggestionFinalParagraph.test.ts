@@ -275,6 +275,7 @@ const documentXml = async (state: EditorState): Promise<string> => {
 const reopenedState = async (state: EditorState): Promise<EditorState> => {
   const reviewer = await FolioDocxReviewer.fromBuffer(
     await documentBuffer(state),
+    { session: "legacy" },
   );
   const sourceDocument = reviewer.toDocument();
   const doc = toProseDoc(sourceDocument);

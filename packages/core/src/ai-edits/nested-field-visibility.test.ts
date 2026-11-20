@@ -106,7 +106,9 @@ const createDocx = async (
 };
 
 const mainBlockText = async (buffer: ArrayBuffer): Promise<string> => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
+  const reviewer = await FolioDocxReviewer.fromBuffer(buffer, {
+    session: "legacy",
+  });
   return reviewer.getContent().at(0)?.text ?? "";
 };
 
@@ -223,7 +225,9 @@ describe("a nested field's instruction-region result stays hidden", () => {
       run("Before ") + complexField(outerCode, run("Shown")) + run(" after.");
 
     const buffer = await createDocx(run("body"), { footnoteInner });
-    const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
+    const reviewer = await FolioDocxReviewer.fromBuffer(buffer, {
+      session: "legacy",
+    });
     const stories = reviewer.listStories();
     const footnote = stories.find(({ handle }) => handle.type === "footnote");
     expect(footnote?.text).toBe("Before Shown after.");
@@ -243,7 +247,9 @@ describe("a nested field's instruction-region result stays hidden", () => {
     const buffer = await createDocx(run("Editable text."), {
       secondParagraphInner: fieldParagraph,
     });
-    const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
+    const reviewer = await FolioDocxReviewer.fromBuffer(buffer, {
+      session: "legacy",
+    });
     const blocks = reviewer.getContent();
     expect(blocks.map((b) => b.text)).toEqual([
       "Editable text.",
@@ -272,7 +278,9 @@ describe("a nested field's instruction-region result stays hidden", () => {
     expect(afterEdit.join("")).not.toContain("99");
 
     const saved = await reviewer.toBuffer();
-    const reopened = await FolioDocxReviewer.fromBuffer(saved);
+    const reopened = await FolioDocxReviewer.fromBuffer(saved, {
+      session: "legacy",
+    });
     const reopenedTexts = reopened.getContent().map((b) => b.text);
     expect(reopenedTexts).toEqual(["Edited text.", "Before Shown after."]);
     expect(reopenedTexts.join("")).not.toContain("99");

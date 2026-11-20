@@ -86,7 +86,9 @@ test.each(["legacy", "canonical"] as const)(
 );
 
 test("refuses a tracked batch whose combined deletions remove an unreported comment", async () => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(await source());
+  const reviewer = await FolioDocxReviewer.fromBuffer(await source(), {
+    session: "legacy",
+  });
   const original = reviewer.toDocument();
   const comments = reviewer.getComments();
   expect(comments.map(({ anchoredText }) => anchoredText)).toEqual([

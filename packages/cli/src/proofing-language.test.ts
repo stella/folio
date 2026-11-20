@@ -129,7 +129,7 @@ describe("proofing language rewrite", () => {
     if (rewritten === null) throw new Error("expected a rewrite");
     const reviewer = await FolioDocxReviewer.fromBuffer(
       rewritten.slice().buffer,
-      { author: "Test" },
+      { session: "legacy", author: "Test" },
     );
     expect(reviewer.getContentAsText()).toContain("Agreement Vertrag plain");
   });

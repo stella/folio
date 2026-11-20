@@ -282,7 +282,8 @@ export const checkPackageIntegrity = async (
     return Result.err(integrityError(mainPart.error.message));
   }
   const reopened = await Result.tryPromise({
-    try: () => FolioDocxReviewer.fromBuffer(bytes.slice().buffer),
+    try: () =>
+      FolioDocxReviewer.fromBuffer(bytes.slice().buffer, { session: "legacy" }),
     catch: (error) =>
       integrityError(
         `The saved package does not reopen: ${error instanceof Error ? error.message : String(error)}`,

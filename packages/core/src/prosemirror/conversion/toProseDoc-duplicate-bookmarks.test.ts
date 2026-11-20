@@ -102,6 +102,7 @@ describe("bookmark boundaries that do not pair", () => {
   test("the reviewer loads it and keeps every block", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await buildUntidyBookmarkDocx(),
+      { session: "legacy" },
     );
 
     expect(reviewer.getContent().map((block) => block.text)).toEqual([
@@ -112,9 +113,11 @@ describe("bookmark boundaries that do not pair", () => {
   test("it survives a save and reload", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await buildUntidyBookmarkDocx(),
+      { session: "legacy" },
     );
     const reloaded = await FolioDocxReviewer.fromBuffer(
       await reviewer.toBuffer(),
+      { session: "legacy" },
     );
 
     expect(reloaded.getContent().map((block) => block.text)).toEqual([

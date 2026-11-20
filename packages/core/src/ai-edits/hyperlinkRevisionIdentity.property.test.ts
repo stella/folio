@@ -52,6 +52,7 @@ test(
           ];
           const reviewer = await FolioDocxReviewer.fromBuffer(
             await createDocx(document),
+            { session: "legacy" },
           );
           const block = reviewer.snapshot().blocks.at(0);
           if (!block) throw new Error("Expected hyperlink block");
@@ -75,6 +76,7 @@ test(
           expect(result.applied).toHaveLength(1);
           const reopened = await FolioDocxReviewer.fromBuffer(
             await reviewer.toBuffer(),
+            { session: "legacy" },
           );
           const live = reviewer.toResolvedDocument("reject");
           const saved = reopened.toResolvedDocument("reject");
@@ -106,10 +108,12 @@ test("adjacent identical imported hyperlinks stay distinct through save and reop
   ];
   const reviewer = await FolioDocxReviewer.fromBuffer(
     await createDocx(document),
+    { session: "legacy" },
   );
   expect(linksOf(reviewer.toDocument())).toHaveLength(2);
   const reopened = await FolioDocxReviewer.fromBuffer(
     await reviewer.toBuffer(),
+    { session: "legacy" },
   );
   expect(linksOf(reopened.toDocument())).toHaveLength(2);
 });
@@ -133,9 +137,11 @@ test("accepting a changed hyperlink target keeps different targets split", async
   ];
   const reviewer = await FolioDocxReviewer.fromBuffer(
     await createDocx(document),
+    { session: "legacy" },
   );
   const reopened = await FolioDocxReviewer.fromBuffer(
     await reviewer.toBuffer(),
+    { session: "legacy" },
   );
   for (const current of [reviewer, reopened]) {
     expect(

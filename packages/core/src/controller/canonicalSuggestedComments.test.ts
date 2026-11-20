@@ -161,7 +161,9 @@ const canonicalHost = async (bytes: ArrayBuffer) => {
 
 /** What a reader of the saved file sees: the text and every comment. */
 const readSaved = async (bytes: ArrayBuffer) => {
-  const reader = await FolioDocxReviewer.fromBuffer(bytes);
+  const reader = await FolioDocxReviewer.fromBuffer(bytes, {
+    session: "legacy",
+  });
   return {
     text: reader.snapshot().blocks.map(({ text }) => text),
     comments: reader.getComments().map(({ text, anchoredText, author }) => ({
@@ -260,6 +262,7 @@ describe("an edit's attached comment covers the same text in both engines", () =
         } as const;
         const reviewer = await FolioDocxReviewer.fromBuffer(
           await sourceBytes(),
+          { session: "legacy" },
         );
         reviewer.applyOperations([operation], {
           undefinedReferences: "refuse",

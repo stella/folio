@@ -66,14 +66,13 @@ describe("a tracked deletion of pending inserted text", () => {
   for (const secondAuthor of ["Reviewer", "Second Reviewer"]) {
     test(`survives a save (${secondAuthor === "Reviewer" ? "same" : "another"} author)`, async () => {
       const first = await FolioDocxReviewer.fromBuffer(await buildDocument(), {
+        session: "legacy",
         author: "Reviewer",
       });
       replace(first, "two", "three");
       const second = await FolioDocxReviewer.fromBuffer(
         await first.toBuffer(),
-        {
-          author: secondAuthor,
-        },
+        { session: "legacy", author: secondAuthor },
       );
       replace(second, "three", "four");
       expect(second.getContent()[0]?.text).toBe("Signed in four copies.");
@@ -88,7 +87,9 @@ describe("a tracked deletion of pending inserted text", () => {
         /<w:ins [^>]*><w:del [^>]*><w:r>(?:<w:rPr\/>)?<w:delText>three<\/w:delText>/u,
       );
 
-      const reopened = await FolioDocxReviewer.fromBuffer(saved);
+      const reopened = await FolioDocxReviewer.fromBuffer(saved, {
+        session: "legacy",
+      });
       expect(reopened.getContent()[0]?.text).toBe("Signed in four copies.");
       expect(changesOf(reopened)).toContainEqual({
         type: "deletion",
@@ -98,7 +99,9 @@ describe("a tracked deletion of pending inserted text", () => {
 
       reopened.rejectAll();
       expect(reopened.getContent()[0]?.text).toBe(TEXT);
-      const accepted = await FolioDocxReviewer.fromBuffer(saved);
+      const accepted = await FolioDocxReviewer.fromBuffer(saved, {
+        session: "legacy",
+      });
       accepted.acceptAll();
       expect(accepted.getContent()[0]?.text).toBe("Signed in four copies.");
     });
@@ -108,6 +111,7 @@ describe("a tracked deletion of pending inserted text", () => {
 describe("revision wrapper enumeration", () => {
   test("keeps deletion fragments around a pending insertion across save", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocument(), {
+      session: "legacy",
       author: "Reviewer",
     });
     replace(reviewer, "two", "three");
@@ -124,6 +128,7 @@ describe("revision wrapper enumeration", () => {
     expect(result.applied).toHaveLength(1);
     const reopened = await FolioDocxReviewer.fromBuffer(
       await reviewer.toBuffer(),
+      { session: "legacy" },
     );
     const sorted = (target: FolioDocxReviewer) =>
       changesOf(target).toSorted((a, b) =>

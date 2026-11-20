@@ -89,7 +89,9 @@ const DELETE_COMMENTED_TEXT = {
 } as const;
 
 test("the legacy engine drops the comment from the save", async () => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(await fixture());
+  const reviewer = await FolioDocxReviewer.fromBuffer(await fixture(), {
+    session: "legacy",
+  });
   expect(reviewer.getComments()).toHaveLength(1);
   const result = reviewer.applyOperations([DELETE_COMMENTED_TEXT], {
     undefinedReferences: "refuse",
@@ -98,6 +100,7 @@ test("the legacy engine drops the comment from the save", async () => {
   expect(result.skipped).toEqual([]);
   const reopened = await FolioDocxReviewer.fromBuffer(
     await reviewer.toBuffer(),
+    { session: "legacy" },
   );
   expect(reopened.getComments()).toEqual([]);
   expect(reopened.getContent().map(({ text }) => text)).toContain(" stays.");
@@ -134,7 +137,9 @@ test("the canonical session drops the comment from the save", async () => {
   const saved = await serializeCanonicalSave({
     snapshot: session.captureSaveSnapshot(),
   });
-  const reopened = await FolioDocxReviewer.fromBuffer(saved.buffer);
+  const reopened = await FolioDocxReviewer.fromBuffer(saved.buffer, {
+    session: "legacy",
+  });
   expect(reopened.getComments()).toEqual([]);
   expect(reopened.getContent().map(({ text }) => text)).toContain(" stays.");
 });
@@ -145,9 +150,11 @@ test("a source comment whose range holds only a bookmark stays a point comment",
   zip.set("word/document.xml", xml.replace(run("This"), ""));
   const reviewer = await FolioDocxReviewer.fromBuffer(
     (await zip.generate({ compression: "store" })).buffer,
+    { session: "legacy" },
   );
   const reopened = await FolioDocxReviewer.fromBuffer(
     await reviewer.toBuffer(),
+    { session: "legacy" },
   );
   expect(reopened.getComments()).toHaveLength(1);
 });
@@ -257,7 +264,9 @@ const savedCommentFacts = async (bytes: ArrayBuffer) => {
     preloadFonts: false,
     detectVariables: false,
   });
-  const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice(0));
+  const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice(0), {
+    session: "legacy",
+  });
   const markers: CommentMarkerSlot["item"][] = [];
   visitCommentMarkers(parsed.package.document.content, ({ item }) =>
     markers.push(item),

@@ -44,7 +44,10 @@ const seed = async (container: Container): Promise<ArrayBuffer> => {
 };
 
 const open = (bytes: ArrayBuffer) =>
-  FolioDocxReviewer.fromBuffer(bytes, { author: "Reviewer" });
+  FolioDocxReviewer.fromBuffer(bytes, {
+    session: "legacy",
+    author: "Reviewer",
+  });
 
 const insertAfterAnchor = (
   reviewer: FolioDocxReviewer,

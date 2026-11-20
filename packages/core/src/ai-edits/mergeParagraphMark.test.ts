@@ -21,6 +21,7 @@ test("direct merges retain the ending paragraph mark revision", async () => {
     ];
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await createDocx(document),
+      { session: "legacy" },
     );
     const first = reviewer.getContent().find(({ text }) => text === "First");
     if (!first) throw new Error("Expected first paragraph");

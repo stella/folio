@@ -23,7 +23,10 @@ const openReviewer = async () => {
     `# Agreement\n\nFirst clause.\n\n${ANCHOR}\n\nTail.`,
   );
   const { docx } = await ensureParaIds(await createDocx(model));
-  const reviewer = await FolioDocxReviewer.fromBuffer(docx, { author: "AI" });
+  const reviewer = await FolioDocxReviewer.fromBuffer(docx, {
+    session: "legacy",
+    author: "AI",
+  });
   const anchor = reviewer
     .getContent()
     .find((block) => block.text === ANCHOR)?.id;

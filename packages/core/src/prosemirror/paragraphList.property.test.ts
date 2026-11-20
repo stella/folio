@@ -367,9 +367,7 @@ describe("paragraph list reader agreement", () => {
 
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await createDocx(document),
-      {
-        author: "Reviewer",
-      },
+      { session: "legacy", author: "Reviewer" },
     );
 
     // ECMA-376 §17.9.19: an `ilvl` without a `numId` takes the numId its
@@ -415,9 +413,7 @@ describe("paragraph list reader agreement", () => {
 
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await createDocx(document),
-      {
-        author: "Reviewer",
-      },
+      { session: "legacy", author: "Reviewer" },
     );
 
     expect(reviewer.readNumberingDefinitions()).toContainEqual({
@@ -515,11 +511,13 @@ describe("paragraph list reader agreement", () => {
 
           const source = await createDocx(document);
           const reviewer = await FolioDocxReviewer.fromBuffer(source, {
+            session: "legacy",
             author: "Reviewer",
           });
           assertReaders(reviewer, expected);
           const saved = await reviewer.toBuffer();
           const reopened = await FolioDocxReviewer.fromBuffer(saved, {
+            session: "legacy",
             author: "Reviewer",
           });
           assertReaders(reopened, expected);

@@ -34,17 +34,21 @@ const editIn = async (shape: string, mode: EditorMode, edits: Edit[]) => {
 const expectReviewEquivalence = async (shape: string, edits: Edit[]) => {
   const source = await FolioDocxReviewer.fromBuffer(
     await shapeArrayBuffer(shape),
+    { session: "legacy" },
   );
   const direct = await FolioDocxReviewer.fromBuffer(
     (await editIn(shape, "editing", edits)).slice().buffer,
+    { session: "legacy" },
   );
   const suggested = await editIn(shape, "suggesting", edits);
   const accepting = await FolioDocxReviewer.fromBuffer(
     suggested.slice().buffer,
+    { session: "legacy" },
   );
   accepting.acceptAll();
   const rejecting = await FolioDocxReviewer.fromBuffer(
     suggested.slice().buffer,
+    { session: "legacy" },
   );
   rejecting.rejectAll();
   expect(blocks(accepting)).toEqual(blocks(direct));

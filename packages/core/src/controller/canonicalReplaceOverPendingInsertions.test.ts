@@ -19,7 +19,9 @@ import type { Document } from "../types/document";
 
 const read = async (document: Document) => {
   const { bytes } = await saveCanonicalHarnessDocument(document);
-  const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice().buffer);
+  const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice().buffer, {
+    session: "legacy",
+  });
   return {
     blocks: reviewer.snapshot().blocks.map(({ text }) => text),
     comments: reviewer.getComments().map(({ id }) => id),

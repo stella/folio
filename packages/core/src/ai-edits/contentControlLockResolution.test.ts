@@ -134,7 +134,9 @@ const controlXml = (xml: string): string | undefined =>
   xml.match(/<w:sdt>.*?<\/w:sdt>/u)?.[0];
 
 const open = async (fixture: Fixture, lock: string | null) =>
-  FolioDocxReviewer.fromBuffer(await createDocx(fixture.body(lock)));
+  FolioDocxReviewer.fromBuffer(await createDocx(fixture.body(lock)), {
+    session: "legacy",
+  });
 
 describe("resolving tracked changes in a locked content control", () => {
   for (const fixture of FIXTURES)
@@ -243,6 +245,7 @@ describe("the mark of a paragraph holding a held change", () => {
           `<w:p>${removedMark(mode)}${run("Held ")}${control("contentLocked", run("clause") + held)}</w:p>` +
             `<w:p>${run(" next.")}</w:p>`,
         ),
+        { session: "legacy" },
       );
       // `xml:space="preserve"` changes nothing on text with no space at its ends.
       const content = (xml: string) =>

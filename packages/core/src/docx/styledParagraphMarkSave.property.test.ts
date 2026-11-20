@@ -155,7 +155,9 @@ describe("a paragraph with a style, rewritten on save", () => {
         let saved: ArrayBuffer;
         if (example.edit === "typed") saved = await typedAndSaved(source);
         else {
-          const reviewer = await FolioDocxReviewer.fromBuffer(source);
+          const reviewer = await FolioDocxReviewer.fromBuffer(source, {
+            session: "legacy",
+          });
           if (example.edit === "direct") {
             const result = reviewer.applyOperations(
               [

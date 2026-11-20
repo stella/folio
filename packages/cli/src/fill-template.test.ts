@@ -96,7 +96,9 @@ const fill = async (args: Record<string, unknown>) => {
   return {
     report: outcome.report,
     bytes,
-    reviewer: await FolioDocxReviewer.fromBuffer(bytes.slice().buffer),
+    reviewer: await FolioDocxReviewer.fromBuffer(bytes.slice().buffer, {
+      session: "legacy",
+    }),
   };
 };
 
@@ -282,6 +284,7 @@ describe("folio fill", () => {
     expect(await readFile(template)).toEqual(before);
     const reviewer = await FolioDocxReviewer.fromBuffer(
       new Uint8Array(await readFile(out)).buffer,
+      { session: "legacy" },
     );
     expect(reviewer.getContentAsText()).toContain(
       "The claimant asks for costs.",

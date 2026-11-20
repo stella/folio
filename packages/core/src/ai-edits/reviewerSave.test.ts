@@ -105,6 +105,7 @@ describe("FolioDocxReviewer.save", () => {
     };
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await createDocx(document),
+      { session: "legacy" },
     );
 
     expect(reviewer.rejectAll().resolved).toBe(1);
@@ -113,6 +114,7 @@ describe("FolioDocxReviewer.save", () => {
 
     const reopened = await FolioDocxReviewer.fromBuffer(
       await reviewer.toBuffer(),
+      { session: "legacy" },
     );
     expect(reopened.getComments()).toEqual(beforeSave);
   });
@@ -180,6 +182,7 @@ describe("FolioDocxReviewer.save", () => {
     };
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await createDocx(document),
+      { session: "legacy" },
     );
     const story: FolioEditableDocumentStoryHandle = {
       type: "header",
@@ -229,6 +232,7 @@ describe("FolioDocxReviewer.save", () => {
   test("a new reply has the same live and saved range", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await buildDocx(["Clause."]),
+      { session: "legacy" },
     );
     reviewer.applyOperations(
       [
@@ -263,6 +267,7 @@ describe("FolioDocxReviewer.save", () => {
 
     const reopened = await FolioDocxReviewer.fromBuffer(
       await reviewer.toBuffer(),
+      { session: "legacy" },
     );
     expect(toMarkdown(live)).toEqual(toMarkdown(reopened.toDocument()));
     expect(reviewer.snapshot().anchors).toEqual(reopened.snapshot().anchors);
@@ -271,9 +276,7 @@ describe("FolioDocxReviewer.save", () => {
   test("reports a selective save for an in-paragraph edit", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await buildDocx(["Pay $50 now."]),
-      {
-        author: "Reviewer",
-      },
+      { session: "legacy", author: "Reviewer" },
     );
     reviewer.applyOperations(
       [
@@ -297,6 +300,7 @@ describe("FolioDocxReviewer.save", () => {
     const source = await buildDocx(["First.", "Second."]);
     const insert = async (): Promise<FolioDocxReviewer> => {
       const reviewer = await FolioDocxReviewer.fromBuffer(source, {
+        session: "legacy",
         author: "Reviewer",
       });
       reviewer.applyOperations(
@@ -323,7 +327,9 @@ describe("FolioDocxReviewer.save", () => {
     expect(repacked.type).toBe("full-repack");
     if (repacked.type !== "full-repack") return;
     expect(repacked.reason).toBe("structuralChange");
-    const reopened = await FolioDocxReviewer.fromBuffer(repacked.buffer);
+    const reopened = await FolioDocxReviewer.fromBuffer(repacked.buffer, {
+      session: "legacy",
+    });
     expect(reopened.getContent().map(({ text }) => text)).toContain("New.");
   });
 
@@ -331,9 +337,7 @@ describe("FolioDocxReviewer.save", () => {
     const date = "2026-01-02T03:04:05Z";
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await buildDocx(["Clause."]),
-      {
-        author: "Reviewer",
-      },
+      { session: "legacy", author: "Reviewer" },
     );
     reviewer.applyDocumentOperations(
       {

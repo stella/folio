@@ -117,7 +117,7 @@ const savedLabels = async (
     const numId = paragraphNumberingReferenceId(block.formatting?.numPr);
     if (numId !== undefined) expect(defined.has(numId)).toBe(true);
   }
-  return (await FolioDocxReviewer.fromBuffer(saved))
+  return (await FolioDocxReviewer.fromBuffer(saved, { session: "legacy" }))
     .getContent()
     .map(({ text, displayLabel }) => `${displayLabel ?? ""} ${text}`.trim());
 };
@@ -255,9 +255,11 @@ describe("an operation that starts a new list", () => {
 
     const reopenedDirect = await FolioDocxReviewer.fromBuffer(
       await direct.toBuffer(),
+      { session: "legacy" },
     );
     const reopenedTracked = await FolioDocxReviewer.fromBuffer(
       await tracked.toBuffer(),
+      { session: "legacy" },
     );
     expect(await listInstancesByText(reopenedTracked)).toEqual(
       await listInstancesByText(reopenedDirect),
@@ -308,9 +310,11 @@ describe("an operation that starts a new list", () => {
 
     const source = await prepared.toBuffer();
     const batch = await FolioDocxReviewer.fromBuffer(source, {
+      session: "legacy",
       author: "Agent",
     });
     const sequential = await FolioDocxReviewer.fromBuffer(source, {
+      session: "legacy",
       author: "Agent",
     });
     const operations: FolioDocumentOperation[] = [
@@ -473,6 +477,7 @@ describe("new lists in different stories", () => {
     "a list started in %j and then in %j keep distinct ids across a save",
     async (first, second) => {
       const reviewer = await FolioDocxReviewer.fromBuffer(await storiesDocx(), {
+        session: "legacy",
         author: "Agent",
       });
       const start = (
@@ -510,6 +515,7 @@ describe("new lists in different stories", () => {
       expect(live["First list"]).not.toBe(live["Second list"]);
       const reopened = await FolioDocxReviewer.fromBuffer(
         await reviewer.toBuffer(),
+        { session: "legacy" },
       );
       expect(listIdsByText(reopened)).toEqual(live);
     },

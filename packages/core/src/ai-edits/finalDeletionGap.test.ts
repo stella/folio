@@ -56,7 +56,7 @@ const open = async (bytes: Uint8Array) =>
       bytes.byteOffset,
       bytes.byteOffset + bytes.byteLength,
     ) as ArrayBuffer,
-    { author: "Test" },
+    { session: "legacy", author: "Test" },
   );
 
 const idOf = (reviewer: Reviewer, text: string) => {

@@ -13,12 +13,17 @@ const SOURCE_TEXT = "Source paragraph.";
 const ORIGINAL = [SOURCE_TEXT];
 
 const open = async (bytes?: ArrayBuffer) => {
-  if (bytes) return FolioDocxReviewer.fromBuffer(bytes, { author: "Reviewer" });
+  if (bytes)
+    return FolioDocxReviewer.fromBuffer(bytes, {
+      session: "legacy",
+      author: "Reviewer",
+    });
   const document = fromMarkdown(SOURCE_TEXT);
   const { docx } = await ensureParaIds(
     new Uint8Array(await createDocx(document)),
   );
   return FolioDocxReviewer.fromBuffer(new Uint8Array(docx).buffer, {
+    session: "legacy",
     author: "Reviewer",
   });
 };

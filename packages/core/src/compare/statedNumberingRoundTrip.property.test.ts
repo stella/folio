@@ -246,7 +246,9 @@ const paragraphProjection = async (
   buffer: ArrayBuffer,
   text = PARAGRAPH_TEXT,
 ) => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
+  const reviewer = await FolioDocxReviewer.fromBuffer(buffer, {
+    session: "legacy",
+  });
   const paragraph = expectParagraphBlock(
     reviewer.snapshot().blocks.find((block) => block.text === text),
   );
@@ -298,6 +300,7 @@ test("accept and reject preserve authored numbering independently from rendered 
 
         const accepting = await FolioDocxReviewer.fromBuffer(
           compared.value.buffer,
+          { session: "legacy" },
         );
         expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
         const acceptedProjection = await paragraphProjection(
@@ -307,6 +310,7 @@ test("accept and reject preserve authored numbering independently from rendered 
 
         const rejecting = await FolioDocxReviewer.fromBuffer(
           compared.value.buffer,
+          { session: "legacy" },
         );
         expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
         const rejectedProjection = await paragraphProjection(
@@ -401,10 +405,13 @@ test("accept and reject preserve style-only numbering across colliding definitio
 
         const accepting = await FolioDocxReviewer.fromBuffer(
           compared.value.buffer,
+          { session: "legacy" },
         );
         expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
         const acceptedBuffer = await accepting.toBuffer();
-        const accepted = await FolioDocxReviewer.fromBuffer(acceptedBuffer);
+        const accepted = await FolioDocxReviewer.fromBuffer(acceptedBuffer, {
+          session: "legacy",
+        });
         const acceptedProjection = await paragraphProjection(acceptedBuffer);
         expect(acceptedProjection.statedNumbering).toEqual(statedNumbering);
         expect(acceptedProjection.styleId).not.toBe("BaseNumbered");
@@ -419,10 +426,13 @@ test("accept and reject preserve style-only numbering across colliding definitio
 
         const rejecting = await FolioDocxReviewer.fromBuffer(
           compared.value.buffer,
+          { session: "legacy" },
         );
         expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
         const rejectedBuffer = await rejecting.toBuffer();
-        const rejected = await FolioDocxReviewer.fromBuffer(rejectedBuffer);
+        const rejected = await FolioDocxReviewer.fromBuffer(rejectedBuffer, {
+          session: "legacy",
+        });
         const rejectedProjection = await paragraphProjection(rejectedBuffer);
         expect(rejectedProjection.statedNumbering).toEqual(
           INHERITED_PARAGRAPH_NUMBERING,
@@ -503,10 +513,14 @@ test("compare and redline preserve inserted style-only numbering across collisio
         expect(redline.skipped).toEqual([]);
 
         for (const buffer of [compared.value.buffer, redline.buffer]) {
-          const accepting = await FolioDocxReviewer.fromBuffer(buffer);
+          const accepting = await FolioDocxReviewer.fromBuffer(buffer, {
+            session: "legacy",
+          });
           expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
           const acceptedBuffer = await accepting.toBuffer();
-          const accepted = await FolioDocxReviewer.fromBuffer(acceptedBuffer);
+          const accepted = await FolioDocxReviewer.fromBuffer(acceptedBuffer, {
+            session: "legacy",
+          });
           expect(accepted.snapshot().blocks.map((block) => block.text)).toEqual(
             [ANCHOR_TEXT, PARAGRAPH_TEXT],
           );
@@ -521,10 +535,14 @@ test("compare and redline preserve inserted style-only numbering across collisio
             }),
           );
 
-          const rejecting = await FolioDocxReviewer.fromBuffer(buffer);
+          const rejecting = await FolioDocxReviewer.fromBuffer(buffer, {
+            session: "legacy",
+          });
           expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
           const rejectedBuffer = await rejecting.toBuffer();
-          const rejected = await FolioDocxReviewer.fromBuffer(rejectedBuffer);
+          const rejected = await FolioDocxReviewer.fromBuffer(rejectedBuffer, {
+            session: "legacy",
+          });
           expect(rejected.snapshot().blocks.map((block) => block.text)).toEqual(
             [ANCHOR_TEXT],
           );
@@ -585,7 +603,9 @@ test("redline preserves insertion resources between unchanged anchors with dupli
       } else {
         expect(xml).not.toMatch(/w14:(?:paraId|textId)="/u);
       }
-      const revised = await FolioDocxReviewer.fromBuffer(targetBuffer);
+      const revised = await FolioDocxReviewer.fromBuffer(targetBuffer, {
+        session: "legacy",
+      });
       const inserted = expectParagraphBlock(
         revised
           .snapshot()
@@ -595,10 +615,14 @@ test("redline preserves insertion resources between unchanged anchors with dupli
       expect(inserted.idStability).toBe("positional");
       const redline = await generateRedlineDocx(baseBuffer, targetBuffer);
       expect(redline.skipped).toEqual([]);
-      const accepting = await FolioDocxReviewer.fromBuffer(redline.buffer);
+      const accepting = await FolioDocxReviewer.fromBuffer(redline.buffer, {
+        session: "legacy",
+      });
       expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
       const acceptedBuffer = await accepting.toBuffer();
-      const accepted = await FolioDocxReviewer.fromBuffer(acceptedBuffer);
+      const accepted = await FolioDocxReviewer.fromBuffer(acceptedBuffer, {
+        session: "legacy",
+      });
       expect(accepted.snapshot().blocks.map((block) => block.text)).toEqual([
         ANCHOR_TEXT,
         PARAGRAPH_TEXT,
@@ -624,10 +648,14 @@ test("redline preserves insertion resources between unchanged anchors with dupli
           ),
         ),
       ).toEqual(anchorProjections);
-      const rejecting = await FolioDocxReviewer.fromBuffer(redline.buffer);
+      const rejecting = await FolioDocxReviewer.fromBuffer(redline.buffer, {
+        session: "legacy",
+      });
       expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
       const rejectedBuffer = await rejecting.toBuffer();
-      const rejected = await FolioDocxReviewer.fromBuffer(rejectedBuffer);
+      const rejected = await FolioDocxReviewer.fromBuffer(rejectedBuffer, {
+        session: "legacy",
+      });
       expect(rejected.snapshot().blocks.map((block) => block.text)).toEqual([
         ANCHOR_TEXT,
         TRAILING_ANCHOR_TEXT,

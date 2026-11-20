@@ -117,7 +117,9 @@ const viaCanonicalEngine = async (source: ArrayBuffer, mode: Mode) => {
 };
 
 const viaDefaultEngine = async (source: ArrayBuffer, mode: Mode) => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(source.slice(0));
+  const reviewer = await FolioDocxReviewer.fromBuffer(source.slice(0), {
+    session: "legacy",
+  });
   reviewer.applyDocumentOperations(
     { version: 1, mode, operations: [EDIT] },
     { undefinedReferences: "refuse" },

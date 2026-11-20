@@ -60,7 +60,11 @@ const createFieldDocx = async (): Promise<ArrayBuffer> => {
 };
 
 const blockTexts = async (): Promise<string[]> =>
-  (await FolioDocxReviewer.fromBuffer(await createFieldDocx()))
+  (
+    await FolioDocxReviewer.fromBuffer(await createFieldDocx(), {
+      session: "legacy",
+    })
+  )
     .getContent()
     .map(({ text }) => text);
 
@@ -80,6 +84,7 @@ describe("field results in AI block text", () => {
   test("keeps the annotated view on the same text", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await createFieldDocx(),
+      { session: "legacy" },
     );
 
     expect(reviewer.getContentAsText({ annotated: true })).toContain(

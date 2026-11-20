@@ -25,7 +25,9 @@ const makeDocx = async (): Promise<ArrayBuffer> => {
 
 describe("read_document inside block custom XML", () => {
   test("rows agree with the reviewer's snapshot", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await makeDocx());
+    const reviewer = await FolioDocxReviewer.fromBuffer(await makeDocx(), {
+      session: "legacy",
+    });
     const bridge = createReviewerBridge(reviewer);
     const read = executeFolioToolCall("read_document", {}, bridge);
     if (!read.ok) {

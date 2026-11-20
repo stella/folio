@@ -220,6 +220,7 @@ describe("a save leaves every note part's comment ranges balanced", () => {
         fc.asyncProperty(generatedCase, async (generated) => {
           const source = await createDocx(buildDocument(generated));
           const reviewer = await FolioDocxReviewer.fromBuffer(source, {
+            session: "legacy",
             author: "Editor",
           });
           const story = { type: generated.noteKind, noteId: NOTE_ID } as const;

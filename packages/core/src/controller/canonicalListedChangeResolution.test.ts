@@ -105,7 +105,11 @@ const resolveAndSave = async (
 };
 
 const listedChanges = async (bytes: Uint8Array) =>
-  (await FolioDocxReviewer.fromBuffer(bytes.slice().buffer)).getChanges();
+  (
+    await FolioDocxReviewer.fromBuffer(bytes.slice().buffer, {
+      session: "legacy",
+    })
+  ).getChanges();
 
 const describeRange = (range: CutRange) =>
   range.type === "all" ? "everything" : `${range.from}..${range.to}`;

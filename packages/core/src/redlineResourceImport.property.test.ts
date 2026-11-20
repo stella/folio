@@ -142,8 +142,12 @@ test("a failing insertion style closure refuses the whole redline without changi
             });
             const baseBytes = new Uint8Array(base).slice();
             const revisedBytes = new Uint8Array(revised).slice();
-            const original = await FolioDocxReviewer.fromBuffer(base);
-            const target = await FolioDocxReviewer.fromBuffer(revised);
+            const original = await FolioDocxReviewer.fromBuffer(base, {
+              session: "legacy",
+            });
+            const target = await FolioDocxReviewer.fromBuffer(revised, {
+              session: "legacy",
+            });
             const originalTexts = original
               .snapshot()
               .blocks.map((block) => block.text);
@@ -184,10 +188,12 @@ test("a failing insertion style closure refuses the whole redline without changi
               expect(applySpy).toHaveBeenCalledTimes(1);
               const accepting = await FolioDocxReviewer.fromBuffer(
                 outcome.value.buffer,
+                { session: "legacy" },
               );
               expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
               const accepted = await FolioDocxReviewer.fromBuffer(
                 await accepting.toBuffer(),
+                { session: "legacy" },
               );
               expect(
                 accepted.snapshot().blocks.map(({ text }) => text),
@@ -209,10 +215,12 @@ test("a failing insertion style closure refuses the whole redline without changi
               ).toBe(false);
               const rejecting = await FolioDocxReviewer.fromBuffer(
                 outcome.value.buffer,
+                { session: "legacy" },
               );
               expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
               const rejected = await FolioDocxReviewer.fromBuffer(
                 await rejecting.toBuffer(),
+                { session: "legacy" },
               );
               expect(
                 rejected.snapshot().blocks.map(({ text }) => text),
@@ -220,7 +228,9 @@ test("a failing insertion style closure refuses the whole redline without changi
             }
             expect(new Uint8Array(base)).toEqual(baseBytes);
             expect(new Uint8Array(revised)).toEqual(revisedBytes);
-            const reopened = await FolioDocxReviewer.fromBuffer(base);
+            const reopened = await FolioDocxReviewer.fromBuffer(base, {
+              session: "legacy",
+            });
             expect(
               reopened.snapshot().blocks.map((block) => block.text),
             ).toEqual(originalTexts);
@@ -295,8 +305,12 @@ test("unstyled redline insertions preserve differing default paragraph styles in
             };
             const base = await fixture("base");
             const revised = await fixture("revised");
-            const original = await FolioDocxReviewer.fromBuffer(base);
-            const target = await FolioDocxReviewer.fromBuffer(revised);
+            const original = await FolioDocxReviewer.fromBuffer(base, {
+              session: "legacy",
+            });
+            const target = await FolioDocxReviewer.fromBuffer(revised, {
+              session: "legacy",
+            });
             const effectiveFormatting = (reviewer: FolioDocxReviewer) => {
               const resolver = createStyleResolver(
                 reviewer.toDocument().package.styles,
@@ -315,10 +329,12 @@ test("unstyled redline insertions preserve differing default paragraph styles in
             expect(outcome.skipped).toEqual([]);
             const accepting = await FolioDocxReviewer.fromBuffer(
               outcome.buffer,
+              { session: "legacy" },
             );
             expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
             const accepted = await FolioDocxReviewer.fromBuffer(
               await accepting.toBuffer(),
+              { session: "legacy" },
             );
             expect(effectiveFormatting(accepted)).toEqual(
               effectiveFormatting(target),
@@ -329,10 +345,12 @@ test("unstyled redline insertions preserve differing default paragraph styles in
             expect(inserted.styleId).toBeDefined();
             const rejecting = await FolioDocxReviewer.fromBuffer(
               outcome.buffer,
+              { session: "legacy" },
             );
             expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
             const rejected = await FolioDocxReviewer.fromBuffer(
               await rejecting.toBuffer(),
+              { session: "legacy" },
             );
             expect(effectiveFormatting(rejected)).toEqual(
               effectiveFormatting(original),

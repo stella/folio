@@ -63,7 +63,9 @@ const save = async (overrides: Partial<SaveDocumentOptions> = {}) =>
 
 const texts = async (filePath: string): Promise<string[]> => {
   const bytes = new Uint8Array(await readFile(filePath));
-  const reviewer = await FolioDocxReviewer.fromBuffer(bytes.buffer);
+  const reviewer = await FolioDocxReviewer.fromBuffer(bytes.buffer, {
+    session: "legacy",
+  });
   return reviewer.getContent().map(({ text }) => text);
 };
 

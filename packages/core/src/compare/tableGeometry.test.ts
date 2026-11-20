@@ -70,16 +70,22 @@ const roundTrip = async (
   if (result.isErr()) {
     throw result.error;
   }
-  const compared = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+  const compared = await FolioDocxReviewer.fromBuffer(result.value.buffer, {
+    session: "legacy",
+  });
   return {
     xml: await documentXml(result.value.buffer),
     accepted: projectTableGeometry(compared.storyTables({ view: "final" })),
     target: projectTableGeometry(
-      (await FolioDocxReviewer.fromBuffer(target)).storyTables(),
+      (
+        await FolioDocxReviewer.fromBuffer(target, { session: "legacy" })
+      ).storyTables(),
     ),
     rejected: projectTableGeometry(compared.storyTables({ view: "original" })),
     base: projectTableGeometry(
-      (await FolioDocxReviewer.fromBuffer(base)).storyTables(),
+      (
+        await FolioDocxReviewer.fromBuffer(base, { session: "legacy" })
+      ).storyTables(),
     ),
   };
 };
@@ -433,25 +439,35 @@ describe("a table whose properties changed and whose words did not", () => {
     expect(xml).toContain("<w:bidiVisual/>");
     expect(xml).toContain('<w:tblLook w:val="04A0"/>');
 
-    const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+    const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer, {
+      session: "legacy",
+    });
     accepting.acceptAll();
     const accepted = await FolioDocxReviewer.fromBuffer(
       await accepting.toBuffer(),
+      { session: "legacy" },
     );
     expect(projectTableGeometry(accepted.storyTables())).toEqual(
       projectTableGeometry(
-        (await FolioDocxReviewer.fromBuffer(target)).storyTables(),
+        (
+          await FolioDocxReviewer.fromBuffer(target, { session: "legacy" })
+        ).storyTables(),
       ),
     );
 
-    const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+    const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer, {
+      session: "legacy",
+    });
     rejecting.rejectAll();
     const rejected = await FolioDocxReviewer.fromBuffer(
       await rejecting.toBuffer(),
+      { session: "legacy" },
     );
     expect(projectTableGeometry(rejected.storyTables())).toEqual(
       projectTableGeometry(
-        (await FolioDocxReviewer.fromBuffer(base)).storyTables(),
+        (
+          await FolioDocxReviewer.fromBuffer(base, { session: "legacy" })
+        ).storyTables(),
       ),
     );
   });
@@ -641,19 +657,25 @@ describe("table geometry round trip", () => {
       "table-insert",
     ]);
 
-    const compared = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+    const compared = await FolioDocxReviewer.fromBuffer(result.value.buffer, {
+      session: "legacy",
+    });
     expect(
       projectTableGeometry(compared.storyTables({ view: "final" })),
     ).toEqual(
       projectTableGeometry(
-        (await FolioDocxReviewer.fromBuffer(target)).storyTables(),
+        (
+          await FolioDocxReviewer.fromBuffer(target, { session: "legacy" })
+        ).storyTables(),
       ),
     );
     expect(
       projectTableGeometry(compared.storyTables({ view: "original" })),
     ).toEqual(
       projectTableGeometry(
-        (await FolioDocxReviewer.fromBuffer(base)).storyTables(),
+        (
+          await FolioDocxReviewer.fromBuffer(base, { session: "legacy" })
+        ).storyTables(),
       ),
     );
   });
@@ -690,19 +712,25 @@ describe("table geometry round trip", () => {
       "table-insert",
     ]);
 
-    const compared = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+    const compared = await FolioDocxReviewer.fromBuffer(result.value.buffer, {
+      session: "legacy",
+    });
     expect(
       projectTableGeometry(compared.storyTables({ view: "final" })),
     ).toEqual(
       projectTableGeometry(
-        (await FolioDocxReviewer.fromBuffer(target)).storyTables(),
+        (
+          await FolioDocxReviewer.fromBuffer(target, { session: "legacy" })
+        ).storyTables(),
       ),
     );
     expect(
       projectTableGeometry(compared.storyTables({ view: "original" })),
     ).toEqual(
       projectTableGeometry(
-        (await FolioDocxReviewer.fromBuffer(base)).storyTables(),
+        (
+          await FolioDocxReviewer.fromBuffer(base, { session: "legacy" })
+        ).storyTables(),
       ),
     );
   });
@@ -843,19 +871,26 @@ describe("table geometry round trip", () => {
           expect(result.value.verification.status).toBe("verified");
           const compared = await FolioDocxReviewer.fromBuffer(
             result.value.buffer,
+            { session: "legacy" },
           );
           expect(
             projectTableGeometry(compared.storyTables({ view: "final" })),
           ).toEqual(
             projectTableGeometry(
-              (await FolioDocxReviewer.fromBuffer(target)).storyTables(),
+              (
+                await FolioDocxReviewer.fromBuffer(target, {
+                  session: "legacy",
+                })
+              ).storyTables(),
             ),
           );
           expect(
             projectTableGeometry(compared.storyTables({ view: "original" })),
           ).toEqual(
             projectTableGeometry(
-              (await FolioDocxReviewer.fromBuffer(base)).storyTables(),
+              (
+                await FolioDocxReviewer.fromBuffer(base, { session: "legacy" })
+              ).storyTables(),
             ),
           );
         },

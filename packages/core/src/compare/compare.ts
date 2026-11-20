@@ -125,7 +125,8 @@ const parseSide = async (
   author: string,
 ): Promise<Result<FolioDocxReviewer, CompareDocxParseError>> =>
   await Result.tryPromise({
-    try: async () => await FolioDocxReviewer.fromBuffer(buffer, { author }),
+    try: async () =>
+      await FolioDocxReviewer.fromBuffer(buffer, { session: "legacy", author }),
     catch: (cause) =>
       new CompareDocxParseError({
         message: `The ${side} document could not be parsed.`,

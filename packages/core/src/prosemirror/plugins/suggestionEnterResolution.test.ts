@@ -101,6 +101,7 @@ for (const kind of [
       for (const resolution of ["accept", "reject"] as const) {
         const reviewer = await FolioDocxReviewer.fromBuffer(
           saved.bytes.slice().buffer,
+          { session: "legacy" },
         );
         if (resolution === "accept") reviewer.acceptAll();
         else reviewer.rejectAll();

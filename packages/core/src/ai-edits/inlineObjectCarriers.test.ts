@@ -261,7 +261,9 @@ const savedBody = async (bytes: ArrayBuffer): Promise<SavedParagraph[]> => {
 };
 
 const hasRevisions = async (bytes: ArrayBuffer): Promise<boolean> => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(bytes);
+  const reviewer = await FolioDocxReviewer.fromBuffer(bytes, {
+    session: "legacy",
+  });
   return reviewer.getChanges().length > 0;
 };
 
@@ -461,6 +463,7 @@ const reopen = async (
   reviewer: FolioDocxReviewer,
 ): Promise<FolioDocxReviewer> =>
   FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
+    session: "legacy",
     author: "Reviewer",
   });
 
@@ -492,6 +495,7 @@ describe("block operations on and next to an inline object's paragraph", () => {
             );
 
             const reviewer = await FolioDocxReviewer.fromBuffer(source, {
+              session: "legacy",
               author: "Reviewer",
             });
             const operation = scenario.operation(reviewer);
@@ -614,6 +618,7 @@ describe("a paragraph holding a text box, first in the body", () => {
   test("deleting it directly deletes the box", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await buildTextBoxCarrierFirst(),
+      { session: "legacy" },
     );
     const result = reviewer.applyDocumentOperations(
       {
@@ -636,15 +641,15 @@ describe("a paragraph holding a text box, first in the body", () => {
     const xml = await bodyXml(saved);
     expect(xml).not.toContain(BOX);
     expect(xml).not.toContain("<w:drawing");
-    expect(texts(await FolioDocxReviewer.fromBuffer(saved))).toEqual([TAIL]);
+    expect(
+      texts(await FolioDocxReviewer.fromBuffer(saved, { session: "legacy" })),
+    ).toEqual([TAIL]);
   });
 
   test("review of a staged deletion resolves the box with its paragraph", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await buildTextBoxCarrierFirst(),
-      {
-        author: "Reviewer",
-      },
+      { session: "legacy", author: "Reviewer" },
     );
     const staged = reviewer.applyDocumentOperations(
       {
@@ -670,14 +675,18 @@ describe("a paragraph holding a text box, first in the body", () => {
       /<w:del [^>]*>(?:(?!<\/w:del>).)*<w:drawing/s,
     );
 
-    const accepted = await FolioDocxReviewer.fromBuffer(pending);
+    const accepted = await FolioDocxReviewer.fromBuffer(pending, {
+      session: "legacy",
+    });
     accepted.acceptAll();
     const acceptedXml = await bodyXml(await accepted.toBuffer());
     expect(acceptedXml).not.toContain(BOX);
     expect(acceptedXml).not.toContain(CARRIER);
     expect(texts(accepted)).toEqual([TAIL]);
 
-    const rejected = await FolioDocxReviewer.fromBuffer(pending);
+    const rejected = await FolioDocxReviewer.fromBuffer(pending, {
+      session: "legacy",
+    });
     rejected.rejectAll();
     expect(texts(rejected)).toEqual([CARRIER, BOX, TAIL]);
     expect(await savedBody(await rejected.toBuffer())).toEqual([
@@ -690,6 +699,7 @@ describe("a paragraph holding a text box, first in the body", () => {
     test(`${type} keeps the reader's order across a save`, async () => {
       const reviewer = await FolioDocxReviewer.fromBuffer(
         await buildTextBoxCarrierFirst(),
+        { session: "legacy" },
       );
       reviewer.applyDocumentOperations(
         {
@@ -714,6 +724,7 @@ describe("a paragraph holding a text box, first in the body", () => {
       );
       const reopened = await FolioDocxReviewer.fromBuffer(
         await reviewer.toBuffer(),
+        { session: "legacy" },
       );
       expect(readerOrder(reopened)).toEqual(readerOrder(reviewer));
     });

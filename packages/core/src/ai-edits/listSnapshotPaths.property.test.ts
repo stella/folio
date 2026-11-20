@@ -113,6 +113,7 @@ describe("list snapshots", () => {
         async (paragraphs) => {
           const reviewer = await FolioDocxReviewer.fromBuffer(
             await packageOf(paragraphs),
+            { session: "legacy" },
           );
           const withNumbering = readable(reviewer.snapshot().blocks);
           const documentAlone = readable(

@@ -140,6 +140,7 @@ const cases = Object.entries(PACKAGES).flatMap(([packageName, numbering]) =>
 
 const openReviewer = async (numbering?: NumberingDefinitions) => {
   const reviewer = await FolioDocxReviewer.fromBuffer(await build(numbering), {
+    session: "legacy",
     author: "AI",
   });
   const blocks = reviewer.getContent();
@@ -203,7 +204,12 @@ describe("an undefined numbering instance is skipped before anything is applied"
       expect(outline(reviewer)).toEqual(before);
       const saved = await reviewer.toBuffer();
       expect(
-        outline(await FolioDocxReviewer.fromBuffer(saved, { author: "AI" })),
+        outline(
+          await FolioDocxReviewer.fromBuffer(saved, {
+            session: "legacy",
+            author: "AI",
+          }),
+        ),
       ).toEqual(before);
     },
   );
@@ -303,9 +309,7 @@ describe("a batch result the save validator refuses is not committed", () => {
   const openWithBlankAuthor = async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await build(UNUSED_901),
-      {
-        author: "  ",
-      },
+      { session: "legacy", author: "  " },
     );
     const tail = reviewer.getContent().find((block) => block.text === TAIL)?.id;
     if (tail === undefined) {

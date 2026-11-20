@@ -48,9 +48,9 @@ const pastedParagraphs = (doc: PMNode) => {
 
 /** Text and kind of each block, as a reader of the package sees it. */
 const blocksOf = async (bytes: ArrayBuffer) =>
-  summarizeReviewer(await FolioDocxReviewer.fromBuffer(bytes)).map(
-    ({ kind, text }) => ({ kind, text }),
-  );
+  summarizeReviewer(
+    await FolioDocxReviewer.fromBuffer(bytes, { session: "legacy" }),
+  ).map(({ kind, text }) => ({ kind, text }));
 
 const SELECTIONS = {
   "a caret inside the paragraph": (start: number) => [start + 10, start + 10],
@@ -98,6 +98,7 @@ describe("a list pasted while suggesting, then rejected", () => {
         const saved = await saveHarnessState(view.state, base);
         const rejecting = await FolioDocxReviewer.fromBuffer(
           saved.bytes.buffer as ArrayBuffer,
+          { session: "legacy" },
         );
         rejecting.rejectAll();
         expect(await blocksOf(await rejecting.toBuffer())).toEqual(

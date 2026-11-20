@@ -100,6 +100,7 @@ describe("strike under a paragraph style", () => {
       fc.asyncProperty(statedArbitrary, statedArbitrary, async (style, run) => {
         const reviewer = await FolioDocxReviewer.fromBuffer(
           await packageOf(style, run),
+          { session: "legacy" },
         );
         const applied = reviewer.applyOperations(
           [

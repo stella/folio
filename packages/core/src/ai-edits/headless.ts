@@ -1549,7 +1549,7 @@ const lockHeldChanges = (
  *
  * @example
  * ```ts
- * const reviewer = await FolioDocxReviewer.fromBuffer(buffer, { author: "AI" });
+ * const reviewer = await FolioDocxReviewer.fromBuffer(buffer, { session: "legacy", author: "AI" });
  * const { blocks } = reviewer.snapshot();
  * reviewer.applyOperations([
  *   { id: "1", type: "replaceInBlock", blockId: blocks[0].id, find: "$50k", replace: "$500k" },
@@ -5330,7 +5330,9 @@ export class FolioDocxReviewer {
     if (expectations.length === 0) {
       return;
     }
-    const reopened = await FolioDocxReviewer.fromBuffer(buffer);
+    const reopened = await FolioDocxReviewer.fromBuffer(buffer, {
+      session: "legacy",
+    });
     for (const { story, text, blocks, minted } of expectations) {
       const serialized = reopened.readReviewedStory({
         story,
@@ -6145,6 +6147,7 @@ export const applyFolioAIEditsToBuffer = async (
   options: ApplyFolioAIEditsToBufferOptions = {},
 ): Promise<ApplyFolioAIEditsToBufferResult> => {
   const reviewer = await FolioDocxReviewer.fromBuffer(buffer, {
+    session: "legacy",
     ...(options.author !== undefined && { author: options.author }),
   });
   const { applied, skipped } = reviewer.applyOperations(operations, {

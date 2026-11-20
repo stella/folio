@@ -198,10 +198,12 @@ const prematch = async (
   base: ArrayBuffer,
   target: ArrayBuffer,
 ): Promise<Prematch | null> => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(base.slice(0));
+  const reviewer = await FolioDocxReviewer.fromBuffer(base.slice(0), {
+    session: "legacy",
+  });
   const baseSnapshot = mainSnapshotOf(reviewer, "with-revision-census");
   const targetSnapshot = mainSnapshotOf(
-    await FolioDocxReviewer.fromBuffer(target.slice(0)),
+    await FolioDocxReviewer.fromBuffer(target.slice(0), { session: "legacy" }),
     "without-revision-census",
   );
   const labels = alignedNoteReferenceLabels(
@@ -397,7 +399,7 @@ const expectAgreement = async (
   }
   if (readsLikeTarget) {
     const revised = (
-      await FolioDocxReviewer.fromBuffer(target.slice(0))
+      await FolioDocxReviewer.fromBuffer(target.slice(0), { session: "legacy" })
     ).snapshot();
     for (const accepted of [legacyViews[0], canonicalViews[0]]) {
       expect(accepted.blocks.map(({ text }) => text)).toEqual(

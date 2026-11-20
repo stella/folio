@@ -147,7 +147,8 @@ const checkParses = async (
   bytes: Uint8Array,
 ): Promise<Result<void, FolioCliError>> => {
   const parsed = await Result.tryPromise({
-    try: () => FolioDocxReviewer.fromBuffer(bytes.slice().buffer),
+    try: () =>
+      FolioDocxReviewer.fromBuffer(bytes.slice().buffer, { session: "legacy" }),
     catch: (error) =>
       cliError({
         code: FOLIO_CLI_ERROR_CODES.invalidDocument,

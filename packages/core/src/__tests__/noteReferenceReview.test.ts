@@ -322,7 +322,10 @@ describe("a note goes with its reference", () => {
   for (const mode of ["accept", "reject"] as const) {
     test(`the reviewer resolving only the reference's deletion (${mode}) resolves the note too`, async () => {
       const bytes = await packageOf(fixture);
-      const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice().buffer);
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        bytes.slice().buffer,
+        { session: "legacy" },
+      );
       const state = createHarnessState(await open(fixture), "editing");
       const id = referenceDeletion(state.doc);
       expect(
@@ -372,7 +375,9 @@ describe("a note shared with other revisions and other stories", () => {
 
   test("the reviewer rejecting the reference's deletion keeps the note's other deletion", async () => {
     const bytes = await packageOf(withEarlierDeletion);
-    const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice().buffer);
+    const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice().buffer, {
+      session: "legacy",
+    });
     const state = createHarnessState(
       await open(withEarlierDeletion),
       "editing",
@@ -407,7 +412,9 @@ describe("a note shared with other revisions and other stories", () => {
         '<w:p w14:paraId="7A000007"><w:r><w:t>Header</w:t></w:r><w:r><w:rPr><w:vertAlign w:val="superscript"/></w:rPr><w:footnoteReference w:id="1"/></w:r></w:p>',
     };
     const bytes = await packageOf(withHeader);
-    const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice().buffer);
+    const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice().buffer, {
+      session: "legacy",
+    });
     const state = createHarnessState(await open(withHeader), "editing");
     expect(reviewer.acceptChange(referenceDeletion(state.doc))).toBe(true);
     expect(
@@ -437,6 +444,7 @@ describe("an edit operation that deletes a note reference", () => {
   const deleteNotedParagraph = async (mode: "direct" | "tracked-changes") => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       (await packageOf(live)).slice().buffer,
+      { session: "legacy" },
     );
     const block = reviewer
       .getContent()

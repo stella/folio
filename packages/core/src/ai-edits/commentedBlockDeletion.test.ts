@@ -39,13 +39,17 @@ const open = async (): Promise<FolioDocxReviewer> => {
   const bytes = (
     await ensureParaIds(await createDocx(fromMarkdown(markdown.join("\n\n"))))
   ).docx;
-  return FolioDocxReviewer.fromBuffer(bytes, { author: "Reviewer" });
+  return FolioDocxReviewer.fromBuffer(bytes, {
+    session: "legacy",
+    author: "Reviewer",
+  });
 };
 
 const reopen = async (
   reviewer: FolioDocxReviewer,
 ): Promise<FolioDocxReviewer> =>
   FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
+    session: "legacy",
     author: "Reviewer",
   });
 

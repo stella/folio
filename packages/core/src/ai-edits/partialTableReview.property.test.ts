@@ -83,6 +83,7 @@ type ReviewerOptions = {
 const reviewerFor = async ({ rows, columns, operation }: ReviewerOptions) => {
   const reviewer = await FolioDocxReviewer.fromBuffer(
     await buildTableDocx(tableSpec(rows, columns)),
+    { session: "legacy" },
   );
   const anchor = reviewer.getContent().find(({ text }) => text === "r0c0");
   if (!anchor)
@@ -156,6 +157,7 @@ describe("partial tracked table-column review", () => {
 
             const reopened = await FolioDocxReviewer.fromBuffer(
               await reviewer.toBuffer(),
+              { session: "legacy" },
             );
             await assertReviewRoundTrip({
               live: reviewer,

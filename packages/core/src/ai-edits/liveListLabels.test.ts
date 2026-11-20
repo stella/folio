@@ -26,7 +26,10 @@ const reviewerOf = async (markdown: string): Promise<FolioDocxReviewer> => {
   const { docx } = await ensureParaIds(
     await createDocx(fromMarkdown(markdown)),
   );
-  return FolioDocxReviewer.fromBuffer(docx, { author: "Agent" });
+  return FolioDocxReviewer.fromBuffer(docx, {
+    session: "legacy",
+    author: "Agent",
+  });
 };
 
 const blockId = (reviewer: FolioDocxReviewer, text: string): string => {
@@ -87,6 +90,7 @@ const expectLabels = async (
   expect(markdownLabels(reviewer)).toEqual(expected);
   const reopened = await FolioDocxReviewer.fromBuffer(
     await reviewer.toBuffer(),
+    { session: "legacy" },
   );
   expect(contentLabels(reopened)).toEqual(expected);
 };
@@ -208,6 +212,7 @@ describe("list labels after an operation", () => {
     expect(textLabels(reviewer)).toEqual(expected);
     const reopened = await FolioDocxReviewer.fromBuffer(
       await reviewer.toBuffer(),
+      { session: "legacy" },
     );
     expect(contentLabels(reopened)).toEqual(expected);
   });
@@ -262,7 +267,9 @@ describe("a paragraph numbered at a level its list does not define", () => {
     ]);
     for (const current of [
       reviewer,
-      await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer()),
+      await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
+        session: "legacy",
+      }),
     ]) {
       expect(
         current.getContent().find(({ text }) => text === "Level eight."),

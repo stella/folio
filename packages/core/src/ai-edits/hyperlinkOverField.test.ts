@@ -52,7 +52,9 @@ describe("setHyperlink over a paragraph with fields", () => {
     "keeps the fields and their results (%s)",
     async (mode) => {
       const saved = await link(mode);
-      const reopened = await FolioDocxReviewer.fromBuffer(saved);
+      const reopened = await FolioDocxReviewer.fromBuffer(saved, {
+        session: "legacy",
+      });
       expect(reopened.getContent().map(({ text }) => text)).toContain(
         "Page 1 of 1",
       );

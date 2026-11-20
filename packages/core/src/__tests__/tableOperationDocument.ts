@@ -485,7 +485,9 @@ export const readReviewerTables = async (
 ): Promise<TableReading> => {
   const live = projectSnapshotTables(reviewer.getContent());
   const bytes = await reviewer.toBuffer();
-  const reopened = await FolioDocxReviewer.fromBuffer(bytes);
+  const reopened = await FolioDocxReviewer.fromBuffer(bytes, {
+    session: "legacy",
+  });
   const content = reopened.getContent();
   return {
     bytes,

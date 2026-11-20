@@ -61,10 +61,18 @@ for (const finalKind of ["paragraph", "heading"] as const) {
               ).join("\n\n"),
             ),
           );
-          const direct = await FolioDocxReviewer.fromBuffer(bytes);
-          let tracked = await FolioDocxReviewer.fromBuffer(bytes);
-          let rejected = await FolioDocxReviewer.fromBuffer(bytes);
-          let selectivelyRejected = await FolioDocxReviewer.fromBuffer(bytes);
+          const direct = await FolioDocxReviewer.fromBuffer(bytes, {
+            session: "legacy",
+          });
+          let tracked = await FolioDocxReviewer.fromBuffer(bytes, {
+            session: "legacy",
+          });
+          let rejected = await FolioDocxReviewer.fromBuffer(bytes, {
+            session: "legacy",
+          });
+          let selectivelyRejected = await FolioDocxReviewer.fromBuffer(bytes, {
+            session: "legacy",
+          });
           const before = shape(tracked);
           const replay = (
             reviewer: FolioDocxReviewer,
@@ -118,12 +126,15 @@ for (const finalKind of ["paragraph", "heading"] as const) {
           if (session === "reopened") {
             tracked = await FolioDocxReviewer.fromBuffer(
               await tracked.toBuffer(),
+              { session: "legacy" },
             );
             rejected = await FolioDocxReviewer.fromBuffer(
               await rejected.toBuffer(),
+              { session: "legacy" },
             );
             selectivelyRejected = await FolioDocxReviewer.fromBuffer(
               await selectivelyRejected.toBuffer(),
+              { session: "legacy" },
             );
           }
           expect(
@@ -147,6 +158,7 @@ for (const finalKind of ["paragraph", "heading"] as const) {
             shape(
               await FolioDocxReviewer.fromBuffer(
                 await selectivelyRejected.toBuffer(),
+                { session: "legacy" },
               ),
             ),
           ).toEqual(before.slice(0, 2));
@@ -155,11 +167,17 @@ for (const finalKind of ["paragraph", "heading"] as const) {
           rejected.rejectAll();
           expect(shape(rejected)).toEqual(before);
           expect(
-            shape(await FolioDocxReviewer.fromBuffer(await tracked.toBuffer())),
+            shape(
+              await FolioDocxReviewer.fromBuffer(await tracked.toBuffer(), {
+                session: "legacy",
+              }),
+            ),
           ).toEqual(shape(direct));
           expect(
             shape(
-              await FolioDocxReviewer.fromBuffer(await rejected.toBuffer()),
+              await FolioDocxReviewer.fromBuffer(await rejected.toBuffer(), {
+                session: "legacy",
+              }),
             ),
           ).toEqual(before);
         });

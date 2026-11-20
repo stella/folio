@@ -211,7 +211,9 @@ const booleanFormattingProjection = async (
   buffer: ArrayBuffer,
   property: FolioAIInlineBooleanProperty,
 ): Promise<BooleanFormattingProjection> => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
+  const reviewer = await FolioDocxReviewer.fromBuffer(buffer, {
+    session: "legacy",
+  });
   const run = reviewer.snapshot().blocks.at(0)?.previewRuns?.at(0);
   const direct = run?.directFormatting?.[property];
   return {
@@ -266,7 +268,9 @@ const markIsInserted = (paragraph: string): boolean => {
 };
 
 const blocksOf = async (buffer: ArrayBuffer): Promise<FolioAIBlock[]> =>
-  (await FolioDocxReviewer.fromBuffer(buffer)).getContent();
+  (
+    await FolioDocxReviewer.fromBuffer(buffer, { session: "legacy" })
+  ).getContent();
 
 type BlockProjection = { text: string; table: FolioAIBlock["table"] | null };
 
@@ -274,7 +278,9 @@ const projectView = async (
   buffer: ArrayBuffer,
   view: "original" | "final",
 ): Promise<BlockProjection[]> => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
+  const reviewer = await FolioDocxReviewer.fromBuffer(buffer, {
+    session: "legacy",
+  });
   const story = reviewer.readReviewedStory({ view });
   return (story?.snapshot.blocks ?? []).map((block) => ({
     text: block.text,
@@ -287,7 +293,9 @@ const styledView = async (
   buffer: ArrayBuffer,
   view: "original" | "final",
 ): Promise<(BlockProjection & { styleId: string | null })[]> => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
+  const reviewer = await FolioDocxReviewer.fromBuffer(buffer, {
+    session: "legacy",
+  });
   const story = reviewer.readReviewedStory({ view });
   return (story?.snapshot.blocks ?? []).map((block) => ({
     text: block.text,
@@ -718,20 +726,30 @@ describe("single-mutation probes", () => {
 
             const accepting = await FolioDocxReviewer.fromBuffer(
               result.value.buffer,
+              { session: "legacy" },
             );
             accepting.acceptAll();
             const accepted = await accepting.toBuffer();
             const rejecting = await FolioDocxReviewer.fromBuffer(
               result.value.buffer,
+              { session: "legacy" },
             );
             rejecting.rejectAll();
             const rejected = await rejecting.toBuffer();
 
             expect(
-              (await FolioDocxReviewer.fromBuffer(accepted)).getChanges(),
+              (
+                await FolioDocxReviewer.fromBuffer(accepted, {
+                  session: "legacy",
+                })
+              ).getChanges(),
             ).toEqual([]);
             expect(
-              (await FolioDocxReviewer.fromBuffer(rejected)).getChanges(),
+              (
+                await FolioDocxReviewer.fromBuffer(rejected, {
+                  session: "legacy",
+                })
+              ).getChanges(),
             ).toEqual([]);
             expect(
               await booleanFormattingProjection(accepted, property),
@@ -773,7 +791,9 @@ describe("single-mutation probes", () => {
 
     expect(result.value.changes.map(({ kind }) => kind)).toEqual(["format"]);
     expect(result.value.verification).toEqual({ status: "verified" });
-    const accepted = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+    const accepted = await FolioDocxReviewer.fromBuffer(result.value.buffer, {
+      session: "legacy",
+    });
     const acceptedBlock = accepted.readReviewedStory({ view: "final" })
       ?.snapshot.blocks[blockIndex];
     const rejectedBlock = accepted.readReviewedStory({ view: "original" })
@@ -810,7 +830,9 @@ describe("single-mutation probes", () => {
         },
       },
     ]);
-    const reviewed = await FolioDocxReviewer.fromBuffer(buffer);
+    const reviewed = await FolioDocxReviewer.fromBuffer(buffer, {
+      session: "legacy",
+    });
     expect(
       reviewed
         .readReviewedStory({ view: "final" })
@@ -865,7 +887,9 @@ describe("single-mutation probes", () => {
         formatting: { fontFamily: null, fontSizePt: null, color: null },
       },
     ]);
-    const reviewed = await FolioDocxReviewer.fromBuffer(buffer);
+    const reviewed = await FolioDocxReviewer.fromBuffer(buffer, {
+      session: "legacy",
+    });
     expect(
       reviewed
         .readReviewedStory({ view: "final" })
@@ -1057,7 +1081,9 @@ describe("single-mutation probes", () => {
     }
     expect(result.value.changes.map(({ kind }) => kind)).toEqual(["insert"]);
 
-    const reviewer = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+    const reviewer = await FolioDocxReviewer.fromBuffer(result.value.buffer, {
+      session: "legacy",
+    });
     reviewer.resolveReviewedStory({ view: "final" });
     expect(
       reviewer
@@ -1257,17 +1283,23 @@ describe("single-mutation probes", () => {
 
     const acceptedReviewer = await FolioDocxReviewer.fromBuffer(
       result.value.buffer,
+      { session: "legacy" },
     );
     acceptedReviewer.acceptAll();
     const accepted = await acceptedReviewer.toBuffer();
     const rejectedReviewer = await FolioDocxReviewer.fromBuffer(
       result.value.buffer,
+      { session: "legacy" },
     );
     rejectedReviewer.rejectAll();
     const rejected = await rejectedReviewer.toBuffer();
 
-    const acceptedReopened = await FolioDocxReviewer.fromBuffer(accepted);
-    const rejectedReopened = await FolioDocxReviewer.fromBuffer(rejected);
+    const acceptedReopened = await FolioDocxReviewer.fromBuffer(accepted, {
+      session: "legacy",
+    });
+    const rejectedReopened = await FolioDocxReviewer.fromBuffer(rejected, {
+      session: "legacy",
+    });
     expect(
       acceptedReopened.readReviewedStory({ view: "current-markup" })?.changes,
     ).toEqual([]);
@@ -1509,7 +1541,9 @@ describe("single-mutation probes", () => {
     );
 
     for (const mode of ["accept", "reject"] as const) {
-      const reviewer = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+      const reviewer = await FolioDocxReviewer.fromBuffer(result.value.buffer, {
+        session: "legacy",
+      });
       const changes = reviewer.getChanges();
       const terminalTableDeletion = changes.find(
         ({ type }) => type === "rowDeleted",
@@ -1537,7 +1571,9 @@ describe("single-mutation probes", () => {
           : reviewer.rejectChange(terminalTableDeletion),
       ).toBe(true);
       const resolved = await reviewer.toBuffer();
-      const reopened = await FolioDocxReviewer.fromBuffer(resolved);
+      const reopened = await FolioDocxReviewer.fromBuffer(resolved, {
+        session: "legacy",
+      });
       expect(reopened.getChanges()).toEqual([]);
       expect(await documentPartOf(resolved)).not.toContain(
         'folio:reviewCarrier="terminal-table"',

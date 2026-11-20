@@ -108,7 +108,7 @@ const savedColumns = async (buffer: ArrayBuffer) => {
 };
 
 const open = (buffer: ArrayBuffer) =>
-  FolioDocxReviewer.fromBuffer(buffer.slice(0));
+  FolioDocxReviewer.fromBuffer(buffer.slice(0), { session: "legacy" });
 
 const apply = (
   reviewer: FolioDocxReviewer,

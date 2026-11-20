@@ -99,6 +99,7 @@ const MODES: readonly FolioAIEditApplyMode[] = [
 
 const open = async () => {
   const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocx(), {
+    session: "legacy",
     author: "Reviewer",
   });
   const block = reviewer.getContent()[0];
@@ -112,6 +113,7 @@ const open = async () => {
 const savedMarkdown = async (reviewer: FolioDocxReviewer): Promise<string> => {
   const reopened = await FolioDocxReviewer.fromBuffer(
     await reviewer.toBuffer(),
+    { session: "legacy" },
   );
   reopened.acceptAll();
   return markdownOf(await reopened.toBuffer());

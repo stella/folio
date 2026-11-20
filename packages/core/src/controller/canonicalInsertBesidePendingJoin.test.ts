@@ -61,7 +61,7 @@ const fixture = async (
   const markdown = `Alpha.\n\n${CLAUSE}\n\n${survivorMarkdown}\n\nCharlie.`;
   const reviewer = await FolioDocxReviewer.fromBuffer(
     (await ensureParaIds(await createDocx(fromMarkdown(markdown)))).docx,
-    { author: "Test" },
+    { session: "legacy", author: "Test" },
   );
   const [, clause, survivor] = reviewer.snapshot().blocks;
   if (clause?.text !== CLAUSE || survivor?.text !== SURVIVOR)
@@ -331,7 +331,7 @@ const throughAnEmptiedParagraph = async (): Promise<LongerJoin> => {
   const markdown = `Alpha.\n\n${CLAUSE}\n\n${SURVIVOR}\n\nCharlie.`;
   const reviewer = await FolioDocxReviewer.fromBuffer(
     (await ensureParaIds(await createDocx(fromMarkdown(markdown)))).docx,
-    { author: "Test" },
+    { session: "legacy", author: "Test" },
   );
   const clause = reviewer.snapshot().blocks.at(1);
   if (clause?.text !== CLAUSE) throw new Error("Missing fixture");

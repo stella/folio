@@ -161,6 +161,7 @@ describe("a move saved in a package", () => {
   test("keeps w:t in the source through save and reopen", async () => {
     const opened = await FolioDocxReviewer.fromBuffer(
       await packageWithBody(MOVE_BODY),
+      { session: "legacy" },
     );
     const saved = await opened.toBuffer();
     const savedXml = await documentPart(saved);
@@ -170,7 +171,9 @@ describe("a move saved in a package", () => {
       expect(source).toMatch(/<w:t(?:\s[^>]*)?>Some moved text\.<\/w:t>/u);
     }
 
-    const reopened = await FolioDocxReviewer.fromBuffer(saved);
+    const reopened = await FolioDocxReviewer.fromBuffer(saved, {
+      session: "legacy",
+    });
     expect(reopened.getChanges()).toEqual(opened.getChanges());
     expect(await documentPart(await reopened.toBuffer())).toBe(savedXml);
   });

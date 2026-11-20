@@ -100,6 +100,7 @@ describe("a paragraph rewritten into two before a heading stating its level", ()
     test(`is written by the ${writer} as body paragraphs and accepts to the revised version`, async () => {
       const written = await FolioDocxReviewer.fromBuffer(
         await write(await packageOf(BEFORE), await packageOf(AFTER)),
+        { session: "legacy" },
       );
       const layout = layoutOf(written);
       // No paragraph holding only new words states an outline level or a

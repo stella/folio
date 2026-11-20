@@ -55,10 +55,12 @@ const acceptedTexts = async (
 ): Promise<string[]> => {
   const reopened = await FolioDocxReviewer.fromBuffer(
     await reviewer.toBuffer(),
+    { session: "legacy" },
   );
   reopened.acceptAll();
   const accepted = await FolioDocxReviewer.fromBuffer(
     await reopened.toBuffer(),
+    { session: "legacy" },
   );
   return accepted.snapshot().blocks.map((block) => block.text);
 };
@@ -90,7 +92,7 @@ describe("suggest_changes with two operations on one block", () => {
   test("refuses the deletion that would have rewritten the next paragraph", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await buildDocx(["Alpha beta gamma.", "Second clause.", "Third clause."]),
-      { author: "QA" },
+      { session: "legacy", author: "QA" },
     );
     const blockId = reviewer.snapshot().blocks[0]?.id ?? "";
     const summary = suggest(reviewer, [
@@ -126,9 +128,7 @@ describe("suggest_changes splitting inside an emoji", () => {
   test("refuses the offset and names the boundaries either side", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await buildDocx(["Party 🧑 agrees."]),
-      {
-        author: "QA",
-      },
+      { session: "legacy", author: "QA" },
     );
     const blockId = reviewer.snapshot().blocks[0]?.id ?? "";
     const summary = suggest(reviewer, [

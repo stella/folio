@@ -105,7 +105,7 @@ const SHAPE_BUILDERS: Record<string, () => Promise<Uint8Array>> = {
       await docxFromMarkdown(
         "Commented clause text.\n\nSecond clause.\n\nThird.",
       ),
-      { author: "Reader" },
+      { session: "legacy", author: "Reader" },
     );
     const target = reviewer.getContent()[0];
     reviewer.applyDocumentOperations(
@@ -138,6 +138,7 @@ beforeAll(async () => {
     const bytes = await SHAPE_BUILDERS[shape]!();
     shapeBytes.set(shape, bytes);
     const reviewer = await FolioDocxReviewer.fromBuffer(bytes, {
+      session: "legacy",
       author: "AI",
     });
     foreignIds.push(...reviewer.getContent().map((block) => block.id));
@@ -457,7 +458,10 @@ const materialize = (
 
 const assertSaveable = async (reviewer: FolioDocxReviewer): Promise<void> => {
   const saved = await reviewer.toBuffer();
-  const reopened = await FolioDocxReviewer.fromBuffer(saved, { author: "AI" });
+  const reopened = await FolioDocxReviewer.fromBuffer(saved, {
+    session: "legacy",
+    author: "AI",
+  });
   expect(reopened.getContent().length).toBeGreaterThan(0);
 };
 
@@ -471,9 +475,7 @@ describe("operation batches never commit an unsaveable document", () => {
           async ({ shape, operations, mode, atomic, dryRun }) => {
             const reviewer = await FolioDocxReviewer.fromBuffer(
               shapeBytes.get(shape)!,
-              {
-                author: "AI",
-              },
+              { session: "legacy", author: "AI" },
             );
             const blocks = reviewer.getContent();
             const materials: Materials = {

@@ -107,6 +107,7 @@ describe("a body edit beside a text box with a Fallback", () => {
       const source = documentXml(coverage);
       const reviewer = await FolioDocxReviewer.fromBuffer(
         await buildPackage(source),
+        { session: "legacy" },
       );
       const target = reviewer.snapshot().blocks[0];
       if (!target) {

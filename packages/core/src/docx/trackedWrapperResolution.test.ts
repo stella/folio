@@ -74,6 +74,7 @@ describe("resolving a revision that holds a bidirectional wrapper", () => {
   test("accepting keeps the text and drops the revision", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await createDocx(insertedInsideWrapper()),
+      { session: "legacy" },
     );
     expect(reviewer.getChanges()).toHaveLength(1);
     expect(reviewer.acceptAll().resolved).toBe(1);
@@ -86,6 +87,7 @@ describe("resolving a revision that holds a bidirectional wrapper", () => {
   test("rejecting drops the text and leaves no empty wrapper behind", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await createDocx(insertedInsideWrapper()),
+      { session: "legacy" },
     );
     expect(reviewer.getChanges()).toHaveLength(1);
     expect(reviewer.rejectAll().resolved).toBe(1);

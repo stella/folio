@@ -68,7 +68,9 @@ const packageOf = async (before: string, word: string, after: string) => {
 
 /** The comments a package reads, pending and once every change is accepted. */
 const commentsOf = async (bytes: ArrayBuffer) => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(bytes);
+  const reviewer = await FolioDocxReviewer.fromBuffer(bytes, {
+    session: "legacy",
+  });
   const pending = reviewer
     .getComments()
     .map(({ id, anchoredText }) => ({ id, anchoredText }));

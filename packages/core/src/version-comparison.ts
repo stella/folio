@@ -888,8 +888,8 @@ export const compareDocxVersions = async (
 ): Promise<FolioVersionDiff> => {
   const scopes = resolveComparisonScopes(options);
   const [baseReviewer, revisedReviewer] = await Promise.all([
-    FolioDocxReviewer.fromBuffer(base),
-    FolioDocxReviewer.fromBuffer(revised),
+    FolioDocxReviewer.fromBuffer(base, { session: "legacy" }),
+    FolioDocxReviewer.fromBuffer(revised, { session: "legacy" }),
   ]);
   const changes: FolioBlockDiff[] = [];
   const stories: FolioStoryDiff[] = [];

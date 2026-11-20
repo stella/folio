@@ -47,7 +47,10 @@ const buildDocument = (): Document => {
 };
 
 const reopen = async (reviewer: FolioDocxReviewer) =>
-  FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), { author: "Test" });
+  FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
+    session: "legacy",
+    author: "Test",
+  });
 
 /** The run formatting of the paragraph that holds the text box. */
 const hostRunFormatting = (document: Document) => {
@@ -72,7 +75,7 @@ const hostRunFormatting = (document: Document) => {
 const openWithIds = async () => {
   const reviewer = await FolioDocxReviewer.fromBuffer(
     await createDocx(buildDocument()),
-    { author: "Editor" },
+    { session: "legacy", author: "Editor" },
   );
   const idOf = (text: string) => {
     const id = reviewer

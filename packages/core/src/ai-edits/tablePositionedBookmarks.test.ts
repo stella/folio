@@ -25,7 +25,9 @@ const open = async (rows: string): Promise<FolioDocxReviewer> => {
     "word/document.xml",
     `<?xml version="1.0" encoding="UTF-8"?><w:document ${NS}><w:body><w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="1000"/><w:gridCol w:w="1000"/></w:tblGrid>${rows}</w:tbl><w:p w14:paraId="10000009"><w:r><w:t>Tail</w:t></w:r></w:p></w:body></w:document>`,
   );
-  return FolioDocxReviewer.fromBuffer((await zip.generate()).slice().buffer);
+  return FolioDocxReviewer.fromBuffer((await zip.generate()).slice().buffer, {
+    session: "legacy",
+  });
 };
 
 const savedTable = async (reviewer: FolioDocxReviewer) => {

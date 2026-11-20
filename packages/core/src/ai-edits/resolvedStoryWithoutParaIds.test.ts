@@ -66,7 +66,9 @@ const buildDocx = async (
 const resolveEveryStoryToFinal = async (
   source: ArrayBuffer,
 ): Promise<ArrayBuffer> => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(source);
+  const reviewer = await FolioDocxReviewer.fromBuffer(source, {
+    session: "legacy",
+  });
   for (const { handle } of reviewer.listStories()) {
     expect(
       reviewer.resolveReviewedStory({ story: handle, view: "final" }),
@@ -93,7 +95,9 @@ describe("a resolved story in a package with no authored paragraph ids", () => {
     // writing it here would upgrade an id-less document on every edit.
     expect(xml).not.toContain("w14:paraId");
 
-    const reopened = await FolioDocxReviewer.fromBuffer(saved);
+    const reopened = await FolioDocxReviewer.fromBuffer(saved, {
+      session: "legacy",
+    });
     expect(
       reopened.readReviewedStory({ view: "current-markup" })?.changes,
     ).toEqual([]);
@@ -113,7 +117,9 @@ describe("a resolved story in a package with no authored paragraph ids", () => {
 
     const saved = await resolveEveryStoryToFinal(source);
 
-    const reopened = await FolioDocxReviewer.fromBuffer(saved);
+    const reopened = await FolioDocxReviewer.fromBuffer(saved, {
+      session: "legacy",
+    });
     const note = reopened
       .listStories()
       .find(({ handle }) => handle.type === "endnote");

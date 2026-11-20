@@ -25,7 +25,10 @@ const openFixture = async (): Promise<FolioDocxReviewer> => {
     new Uint8Array(await createDocx(document)),
   );
   const buffer = new Uint8Array(docx).buffer;
-  return FolioDocxReviewer.fromBuffer(buffer, { author: "Reviewer" });
+  return FolioDocxReviewer.fromBuffer(buffer, {
+    session: "legacy",
+    author: "Reviewer",
+  });
 };
 
 const read = (reviewer: FolioDocxReviewer): string[] =>
@@ -97,9 +100,7 @@ test("reject removes adjacent insertions and a comment without adding a paragrap
 
   const reloaded = await FolioDocxReviewer.fromBuffer(
     await reviewer.toBuffer(),
-    {
-      author: "Reviewer",
-    },
+    { session: "legacy", author: "Reviewer" },
   );
   expect(read(reloaded)).toEqual(original);
   expect(

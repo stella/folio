@@ -30,6 +30,7 @@ const buildDocument = async (): Promise<ArrayBuffer> => {
 
 const suggest = async (): Promise<FolioDocxReviewer> => {
   const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocument(), {
+    session: "legacy",
     author: "AI",
   });
   const anchor = reviewer
@@ -65,7 +66,11 @@ const suggest = async (): Promise<FolioDocxReviewer> => {
 };
 
 const savedTexts = async (reviewer: FolioDocxReviewer): Promise<string[]> =>
-  (await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer()))
+  (
+    await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
+      session: "legacy",
+    })
+  )
     .getContent()
     .map(({ text }) => text);
 
@@ -79,6 +84,7 @@ describe("resolving every suggestion headlessly", () => {
 
   test("a suggested block deletion leaves no tracked change in the saved package", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocument(), {
+      session: "legacy",
       author: "AI",
     });
     const target = reviewer
@@ -96,7 +102,10 @@ describe("resolving every suggestion headlessly", () => {
       { undefinedReferences: "refuse" },
     );
     expect(result.applied).toHaveLength(1);
-    const saved = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+    const saved = await FolioDocxReviewer.fromBuffer(
+      await reviewer.toBuffer(),
+      { session: "legacy" },
+    );
     expect(saved.getChanges()).toEqual([]);
     expect(saved.getContent().map(({ text }) => text)).toEqual([
       "First clause.",
@@ -110,6 +119,7 @@ describe("resolving every suggestion headlessly", () => {
 
   test("a suggested deletion cannot retract an ordinary tracked split", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocument(), {
+      session: "legacy",
       author: "AI",
     });
     const target = reviewer
@@ -182,6 +192,7 @@ describe("resolving every suggestion headlessly", () => {
 
   test("acceptAll resolves ordinary revisions while preserving a pending suggestion", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocument(), {
+      session: "legacy",
       author: "AI",
     });
     const first = reviewer
@@ -237,9 +248,7 @@ describe("resolving every suggestion headlessly", () => {
     );
     const reopened = await FolioDocxReviewer.fromBuffer(
       await reviewer.toBuffer(),
-      {
-        author: "AI",
-      },
+      { session: "legacy", author: "AI" },
     );
     expect(reopened.loadPendingSuggestions(records)).toEqual([
       { status: "restaged", suggestionId: "pending" },
@@ -267,7 +276,10 @@ describe("resolving every suggestion headlessly", () => {
     const { docx } = await ensureParaIds(
       new Uint8Array(await createDocx(document)),
     );
-    const reviewer = await FolioDocxReviewer.fromBuffer(docx, { author: "AI" });
+    const reviewer = await FolioDocxReviewer.fromBuffer(docx, {
+      session: "legacy",
+      author: "AI",
+    });
     const [first, last] = reviewer.getContent();
     if (!first || !last) throw new Error("fixture paragraphs missing");
     expect(
@@ -318,6 +330,7 @@ describe("resolving every suggestion headlessly", () => {
 
   test("acceptAll fails without changing the document when a suggestion cannot be restaged", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocument(), {
+      session: "legacy",
       author: "AI",
     });
     const [first, last] = reviewer.getContent();
@@ -406,9 +419,7 @@ describe("resolving every suggestion headlessly", () => {
     expect(records).toHaveLength(2);
     const reopened = await FolioDocxReviewer.fromBuffer(
       await reviewer.toBuffer(),
-      {
-        author: "AI",
-      },
+      { session: "legacy", author: "AI" },
     );
     expect(reopened.loadPendingSuggestions(records)).toEqual([
       { status: "restaged", suggestionId: "insert" },
@@ -426,7 +437,9 @@ describe("resolving every suggestion headlessly", () => {
   });
 
   test("bulk acceptance preserves a pending comment and its comment id", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocument());
+    const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocument(), {
+      session: "legacy",
+    });
     const [first, last] = reviewer.getContent();
     if (!first || !last) throw new Error("fixture paragraphs missing");
     expect(
@@ -477,6 +490,7 @@ describe("resolving every suggestion headlessly", () => {
     );
     const reopened = await FolioDocxReviewer.fromBuffer(
       await reviewer.toBuffer(),
+      { session: "legacy" },
     );
     expect(reopened.getComments()).toEqual([]);
     expect(reopened.loadPendingSuggestions(records)).toEqual([
@@ -486,7 +500,9 @@ describe("resolving every suggestion headlessly", () => {
   });
 
   test("bulk acceptance drops a proposal whose anchor was merged away", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocument());
+    const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocument(), {
+      session: "legacy",
+    });
     const [first, last] = reviewer.getContent();
     if (!first || !last) throw new Error("fixture paragraphs missing");
     // Accepting the merge removes the first paragraph's mark, and the
@@ -527,6 +543,7 @@ describe("resolving every suggestion headlessly", () => {
 
   test("refuses a suggestion that would retract a tracked insertion", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocument(), {
+      session: "legacy",
       author: "AI",
     });
     const first = reviewer.getContent()[0];
@@ -572,6 +589,7 @@ describe("resolving every suggestion headlessly", () => {
 
   test("refuses suggestions anchored to a tracked deletion", async () => {
     const writer = await FolioDocxReviewer.fromBuffer(await buildDocument(), {
+      session: "legacy",
       author: "AI",
     });
     const first = writer.getContent()[0];
@@ -591,9 +609,11 @@ describe("resolving every suggestion headlessly", () => {
     const bytes = await writer.toBuffer();
     for (const type of ["insertAfterBlock", "insertBeforeBlock"] as const) {
       const baseline = await FolioDocxReviewer.fromBuffer(bytes, {
+        session: "legacy",
         author: "AI",
       });
       const staged = await FolioDocxReviewer.fromBuffer(bytes, {
+        session: "legacy",
         author: "AI",
       });
       const blank = staged.getContent().find(({ text }) => text === "");
@@ -614,17 +634,22 @@ describe("resolving every suggestion headlessly", () => {
       ]);
       const beforeBulk = await FolioDocxReviewer.fromBuffer(
         await staged.toBuffer(),
+        { session: "legacy" },
       );
       expect(beforeBulk.getContent()).toEqual(baseline.getContent());
       baseline.acceptAll();
       staged.acceptAll();
       expect(
         (
-          await FolioDocxReviewer.fromBuffer(await staged.toBuffer())
+          await FolioDocxReviewer.fromBuffer(await staged.toBuffer(), {
+            session: "legacy",
+          })
         ).getContent(),
       ).toEqual(
         (
-          await FolioDocxReviewer.fromBuffer(await baseline.toBuffer())
+          await FolioDocxReviewer.fromBuffer(await baseline.toBuffer(), {
+            session: "legacy",
+          })
         ).getContent(),
       );
     }
@@ -640,7 +665,7 @@ describe("resolving every suggestion headlessly", () => {
         docx.byteOffset,
         docx.byteOffset + docx.byteLength,
       ) as ArrayBuffer,
-      { author: "AI" },
+      { session: "legacy", author: "AI" },
     );
     const block = (prefix: string) =>
       reviewer.getContent().find(({ text }) => text.startsWith(prefix));
@@ -675,19 +700,17 @@ describe("resolving every suggestion headlessly", () => {
     expect(tracked.applied).toHaveLength(3);
     const trackedReopened = await FolioDocxReviewer.fromBuffer(
       await reviewer.toBuffer(),
-      {
-        author: "AI",
-      },
+      { session: "legacy", author: "AI" },
     );
     const baseline = await FolioDocxReviewer.fromBuffer(
       await reviewer.toBuffer(),
-      {
-        author: "AI",
-      },
+      { session: "legacy", author: "AI" },
     );
     baseline.acceptAll();
     const baselineContent = (
-      await FolioDocxReviewer.fromBuffer(await baseline.toBuffer())
+      await FolioDocxReviewer.fromBuffer(await baseline.toBuffer(), {
+        session: "legacy",
+      })
     ).getContent();
     const heading = trackedReopened.getContent()[0];
     if (!heading) throw new Error("heading missing");
@@ -713,6 +736,7 @@ describe("resolving every suggestion headlessly", () => {
     trackedReopened.acceptAll();
     const reopened = await FolioDocxReviewer.fromBuffer(
       await trackedReopened.toBuffer(),
+      { session: "legacy" },
     );
     expect(reopened.getContent()).toEqual(baselineContent);
   });
@@ -767,7 +791,7 @@ describe("resolving every suggestion headlessly", () => {
     test(`a suggested paragraph after a break pending deletion persists once accepted (${accept})`, async () => {
       const reviewer = await FolioDocxReviewer.fromBuffer(
         await buildDocument(),
-        { author: "AI" },
+        { session: "legacy", author: "AI" },
       );
       const first = reviewer
         .getContent()

@@ -66,7 +66,9 @@ const paragraphXml = (document: string, id: string): string =>
 
 const blocksOf = async (bytes: Uint8Array | null) => {
   if (bytes === null) throw new Error("expected a rewritten package");
-  const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice().buffer);
+  const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice().buffer, {
+    session: "legacy",
+  });
   return reviewer.snapshot().blocks;
 };
 

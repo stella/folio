@@ -134,7 +134,9 @@ const paragraphsOf = async (bytes: ArrayBuffer) => {
 /** The package pending, with every change accepted, and with every change rejected. */
 const outcomes = async (bytes: ArrayBuffer) => {
   const resolved = async (decision: "accept" | "reject") => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice(0));
+    const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice(0), {
+      session: "legacy",
+    });
     if (decision === "accept") reviewer.acceptAll();
     else reviewer.rejectAll();
     return paragraphsOf(await reviewer.toBuffer());
@@ -151,7 +153,9 @@ const viaDefaultEngine = async (
   operation: FolioDocumentOperation,
   mode: Mode,
 ) => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice(0));
+  const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice(0), {
+    session: "legacy",
+  });
   const result = reviewer.applyOperations([operation], { mode });
   return {
     skipped: result.skipped.map(({ reason }) => reason),
@@ -203,7 +207,9 @@ const viaCanonicalEngine = async (
 
 /** The paragraph holding "Alpha" once the join is resolved, and its words. */
 const alphaParagraph = async (bytes: ArrayBuffer) => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice(0));
+  const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice(0), {
+    session: "legacy",
+  });
   return (
     reviewer.getContent().find(({ text }) => text.startsWith("Alpha")) ??
     panic("The resolved package lost the paragraph holding Alpha.")
@@ -222,6 +228,7 @@ describe("a paragraph whose mark is pending deletion", () => {
           if (resolution !== "pending") {
             const reviewer = await FolioDocxReviewer.fromBuffer(
               sourceBytes.slice(0),
+              { session: "legacy" },
             );
             if (resolution === "accept") reviewer.acceptAll();
             else reviewer.rejectAll();

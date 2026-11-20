@@ -71,7 +71,9 @@ const apply = (
 // Rejecting the split joins that half into the suggested paragraph, which must
 // not make the source words part of the suggestion.
 test("rejecting a split beside a suggested paragraph keeps the split's words", async () => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(await source());
+  const reviewer = await FolioDocxReviewer.fromBuffer(await source(), {
+    session: "legacy",
+  });
   expect(
     apply(reviewer, "tracked-changes", [
       { id: "split", type: "splitBlock", blockId: "10000002", offset: 14 },
@@ -179,7 +181,9 @@ const SLOT_TAKEN: readonly (readonly Batch[])[] = [
 ];
 
 const applyBatches = async (bytes: ArrayBuffer, batches: readonly Batch[]) => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice(0));
+  const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice(0), {
+    session: "legacy",
+  });
   for (const { mode, operation } of batches)
     expect(apply(reviewer, mode, [operation]).skipped).toEqual([]);
   return reviewer;
@@ -278,7 +282,9 @@ test(
         ),
         fc.array(fc.nat(), { minLength: 12, maxLength: 12 }),
         async (batches, picks) => {
-          const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice(0));
+          const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice(0), {
+            session: "legacy",
+          });
           const suggestions: string[] = [];
           for (const [index, { mode, operation: op }] of batches.entries()) {
             const id = `op-${String(index)}`;

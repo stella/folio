@@ -588,7 +588,9 @@ export type Readback = {
  * what an editor reopening them paints.
  */
 export const readBack = async (bytes: Uint8Array): Promise<Readback> => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice().buffer);
+  const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice().buffer, {
+    session: "legacy",
+  });
   const reopened = createHarnessState(
     await parseShapeDocument(bytes),
     "editing",
