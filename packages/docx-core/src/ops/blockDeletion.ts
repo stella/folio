@@ -65,6 +65,7 @@ import {
   DOCUMENT_OP_TYPES,
   type ParagraphAbsorption,
   type RevisionStamp,
+  SECTION_BOUNDARY_POLICIES,
 } from "./types";
 
 /**
@@ -593,20 +594,25 @@ export const deleteBlocks = ({
   const selected = found.map(({ paragraph }) => paragraph);
   const affected =
     previous === undefined ? selected : [previous, ...between, ...selected];
-  if (
-    affected.some(({ sectionProperties }) => sectionProperties !== undefined)
-  ) {
-    return refuse(
-      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      "Deleting section boundaries requires section operations.",
-    );
-  }
+  // A section break is a property of the paragraph mark that ends the
+  // section. A direct deletion that takes that mark takes the break: the
+  // sections on either side become one under the properties of the section
+  // after it, as accepting a tracked deletion of the mark leaves them. A
+  // tracked deletion records the mark deleted with its break on it, so
+  // rejecting it keeps the section as it was.
+  const expected =
+    following?.type === "paragraph" ? [...selected, following] : affected;
+  const sectionBoundaries = expected.some(
+    ({ sectionProperties }) => sectionProperties !== undefined,
+  )
+    ? { sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE }
+    : {};
   const replacement = (blocks: readonly Paragraph[]) => ({
     type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
     story: op.story,
-    expected:
-      following?.type === "paragraph" ? [...selected, following] : affected,
+    expected,
     blocks,
+    ...sectionBoundaries,
   });
   const finalReview = reviewFieldsOf(last.paragraph);
   if (previous !== undefined && paragraphLength(previous) > 0) {
@@ -730,11 +736,15 @@ export const deleteBlocks = ({
   // A mark the same author's pending insertion or move added goes outright,
   // joining its paragraph to the next one, as deleting over one's own
   // insertion removes it; no deletion of an addition is recorded. Before a
-  // table, the last paragraph has none to join and keeps the refusal.
+  // table, the last paragraph has none to join and keeps the refusal. A mark
+  // that ends a section is not taken back here: where its break goes is what
+  // rejecting the insertion decides, so the deletion is recorded beside it
+  // and that resolution moves the break.
   const joinsNext = new Set(
     affected.filter(
       (paragraph) =>
         losesMark(paragraph) &&
+        paragraph.sectionProperties === undefined &&
         (paragraph !== last.paragraph || following?.type === "paragraph") &&
         (paragraph.pPrMark?.kind === "ins" ||
           paragraph.pPrMark?.kind === "moveTo") &&
@@ -764,7 +774,8 @@ export const deleteBlocks = ({
       paragraph.pPrMark?.deletion !== undefined) &&
     !(finalTakeover && paragraph === last.paragraph);
   // Another author's added mark the deletion takes keeps that insertion and
-  // records the deletion beside it, as a later deletion of an insertion does.
+  // records the deletion beside it, as a later deletion of an insertion does;
+  // so does one's own that ends a section.
   const deletingAuthor = op.revision.author;
   const deletesAddedMark = (paragraph: Paragraph) =>
     op.move !== true &&
@@ -773,7 +784,8 @@ export const deleteBlocks = ({
     (paragraph.pPrMark?.kind === "ins" ||
       paragraph.pPrMark?.kind === "moveTo") &&
     paragraph.pPrMark.deletion === undefined &&
-    paragraph.pPrMark.info.author !== deletingAuthor &&
+    (paragraph.pPrMark.info.author !== deletingAuthor ||
+      paragraph.sectionProperties !== undefined) &&
     !(finalTakeover && paragraph === last.paragraph);
   if (
     affected.some(
