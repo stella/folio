@@ -20,7 +20,9 @@ import { applyDocumentOp } from "../apply";
 import {
   identityKeysIn,
   packageIdentityKeys,
+  packageParagraphIds,
   packageReservedIdentityKeys,
+  paragraphIdsIn,
   reservedIdentityKeysIn,
 } from "../ids";
 import { documentStories } from "../stories";
@@ -89,6 +91,7 @@ const withStackedRowControl = (document: Document): Document => {
 const counted = (document: Document) => ({
   package: [...packageIdentityKeys(document.package)],
   packageReserved: [...packageReservedIdentityKeys(document.package)],
+  paragraphIds: packageParagraphIds(document.package),
 });
 
 /** The same census walking every record, as if nothing were counted before. */
@@ -101,6 +104,7 @@ const countedInFull = (document: Document) => {
     package: identityKeysIn(stories),
     // Reserved ids are read off the whole package, its section view included.
     packageReserved: reservedIdentityKeysIn(document.package),
+    paragraphIds: paragraphIdsIn(stories),
   };
 };
 
