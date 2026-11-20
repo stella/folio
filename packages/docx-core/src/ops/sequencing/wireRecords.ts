@@ -288,10 +288,13 @@ const runContentKinds = {
 
 const runContent = kinded(runContentKinds);
 
+/** Review state on a kept range marker (see `KeptCut`). */
+const keptCut = optional(object({ depth: natural, keptFrom: string }));
 const marker = {
   id: natural,
   displacedByCustomXml: boundedJson,
   copyOriginAncestors: boundedJson,
+  keptCut,
 } as const;
 const moveRangeStart = {
   type: string,
@@ -363,11 +366,13 @@ const inlineContentKinds = {
     type: string,
     id: natural,
     displacedByCustomXml: boundedJson,
+    keptCut,
   },
   commentRangeEnd: {
     type: string,
     id: natural,
     displacedByCustomXml: boundedJson,
+    keptCut,
   },
   commentReference: { type: string, id: natural },
   insertion: trackedRun,

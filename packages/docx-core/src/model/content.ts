@@ -390,7 +390,19 @@ export type MarkupRangeMarker = WritableRecord & {
   /** Pairs a start with its end (`w:id`). */
   id: number;
   displacedByCustomXml?: DisplacedByCustomXml;
+  /**
+   * Review state, never written: a resolution kept this marker from removed
+   * content and it stands between pieces of a record that content cut,
+   * waiting for them to meet.
+   */
+  keptCut?: KeptCut;
 };
+
+/**
+ * The cut a kept range marker stands in: how many container levels the
+ * removed content cut there, and the date of the revision it was kept from.
+ */
+export type KeptCut = WritableRecord & { depth: number; keptFrom: string };
 
 /** Added-revision ancestors that own a copied bookmark or move boundary. */
 type CopyOriginAncestorOrdinals = readonly [number, ...number[]];

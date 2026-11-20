@@ -318,6 +318,8 @@ export const projectReview = ({
     for (const [key, field] of Object.entries(value)) {
       // Optional undefined fields serialize exactly as absent fields.
       if (field === undefined) continue;
+      // Review state a kept marker carries is no content of the document.
+      if (key === "keptCut") continue;
       if (paragraph && projection === "π′" && PARAGRAPH_IDENTITY_KEYS.has(key))
         continue;
       out[key] = walk(field);
