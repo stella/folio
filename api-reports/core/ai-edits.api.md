@@ -129,6 +129,12 @@ export const FOLIO_RESOLVED_REVIEWED_VIEWS: readonly ["original", "final"];
 // @public (undocumented)
 export const FOLIO_REVIEWED_VIEWS: readonly ["original", "current-markup", "final"];
 
+// @public
+export type FolioAbsorbedBlock = {
+    blockId: string;
+    survivorBlockId: string;
+};
+
 // @public (undocumented)
 export type FolioAIBlock = FolioAIParagraphBlock | FolioAIDiagnosticBlock;
 
@@ -979,6 +985,7 @@ export type FolioReviewedView = (typeof FOLIO_REVIEWED_VIEWS)[number];
 export type FolioReviewResolution = {
     resolved: number;
     skipped: FolioReviewResolutionSkip[];
+    absorbedBlocks?: readonly FolioAbsorbedBlock[];
 };
 
 // @public
