@@ -64,6 +64,8 @@ const EnsureParaIdsErrorBase: TaggedErrorClass<"EnsureParaIdsError"> =
 import { Result, TaggedError, type TaggedErrorClass } from "better-result";
 
 import {
+  getXmlSourceRange,
+  parseStreamingXmlWithSourceRanges,
   repairMissingDrawingNamespace,
   scanStreamingXmlElements,
 } from "@stll/docx-core/xml";
@@ -318,6 +320,88 @@ const scanPartSpelling = (xml: string, partPath: string): PartSpelling => {
     w14Prefix: prefixFor(W14_NAMESPACE_URI, MC_IGNORABLE_W14),
     mcPrefix: prefixFor(MC_NAMESPACE_URI, "mc"),
   };
+};
+
+const isWordprocessingElement = (element: XmlElement, localName: string) =>
+  getLocalName(element.name ?? "") === localName &&
+  WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(element) ?? "");
+
+/**
+ * The block that decides whether a cell ends in a paragraph, as the parser
+ * reads it: the last paragraph or table among the cell's children, content
+ * controls and custom XML elements read through.
+ */
+const lastFlowBlock = (
+  children: readonly XmlElement[],
+): "paragraph" | "table" | undefined => {
+  for (let index = children.length - 1; index >= 0; index -= 1) {
+    const child = children[index];
+    if (child === undefined) continue;
+    if (isWordprocessingElement(child, "p")) return "paragraph";
+    if (isWordprocessingElement(child, "tbl")) return "table";
+    if (isWordprocessingElement(child, "sdt")) {
+      const content = getChildElements(child).find((element) =>
+        isWordprocessingElement(element, "sdtContent"),
+      );
+      const nested = content && lastFlowBlock(getChildElements(content));
+      if (nested !== undefined) return nested;
+    }
+    if (isWordprocessingElement(child, "customXml")) {
+      const nested = lastFlowBlock(getChildElements(child));
+      if (nested !== undefined) return nested;
+    }
+  }
+  return undefined;
+};
+
+/**
+ * A cell must end in a paragraph. One that ends in a table, or holds none,
+ * is read with the empty paragraph it implies there; that paragraph is
+ * written into the part so it can carry an id as every other paragraph does.
+ */
+const withImpliedCellParagraphs = (xml: string): string => {
+  if (!/<(?:[\w.-]+:)?tc[\s/>]/u.test(xml)) return xml;
+  const parsed = parseStreamingXmlWithSourceRanges(xml);
+  if (parsed.status !== "parsed") return xml;
+  const edits: { start: number; end: number; text: string }[] = [];
+  const visit = (element: XmlElement): void => {
+    // A fallback branch is another rendering of content read elsewhere.
+    if (
+      getLocalName(element.name ?? "") === "Fallback" &&
+      getNamespaceUri(element) === MC_NAMESPACE_URI
+    )
+      return;
+    const children = getChildElements(element);
+    if (
+      isWordprocessingElement(element, "tc") &&
+      lastFlowBlock(children) !== "paragraph"
+    ) {
+      const range = getXmlSourceRange(element);
+      const name = element.name ?? "";
+      const separator = name.indexOf(":");
+      const paragraph = `<${separator < 0 ? "" : name.slice(0, separator + 1)}p/>`;
+      if (range !== undefined && xml.slice(range.end - 2, range.end) === "/>")
+        edits.push({
+          start: range.start,
+          end: range.end,
+          text: `${xml.slice(range.start, range.end - 2).trimEnd()}>${paragraph}</${name}>`,
+        });
+      else if (range !== undefined) {
+        const close = xml.lastIndexOf("</", range.end - 1);
+        if (close > range.start)
+          edits.push({ start: close, end: close, text: paragraph });
+      }
+    }
+    for (const child of children) visit(child);
+  };
+  visit(parsed.value);
+  if (edits.length === 0) return xml;
+  return (
+    spliceXml(
+      xml,
+      edits.map(({ start, end, text }) => ({ start, end, newXml: text })),
+    ) ?? xml
+  );
 };
 
 const partSpelling = (xml: string, partPath: string): PartSpelling => {
@@ -692,7 +776,7 @@ const ensureParaIdsInternal = async (
   const seen = new Set<string>();
   for (const [partPath, xml] of partTexts) {
     if (partPath === documentPartName || isTargetPart(partPath)) {
-      const spelling = partSpelling(xml, partPath);
+      const spelling = partSpelling(withImpliedCellParagraphs(xml), partPath);
       spellings.set(partPath, spelling);
       collectFallbackParaIds(spelling, seen);
     } else {

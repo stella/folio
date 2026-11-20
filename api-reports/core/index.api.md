@@ -388,6 +388,7 @@ export type CompareDocxOptions = {
     onUnverified?: "refuse" | "emit";
     granularity?: WordDiffGranularity;
     revisionFormat?: CompareRevisionFormat;
+    session?: HeadlessReviewerSession;
 };
 
 // @public (undocumented)

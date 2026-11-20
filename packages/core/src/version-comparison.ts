@@ -100,6 +100,7 @@ import {
   isFolioDocumentPrivacyTransform,
   PRIVATE_METADATA_PROPERTIES_BY_TRANSFORM,
 } from "./docx/metadataPrivacy";
+import type { HeadlessReviewerSession } from "./types/canonicalCapabilities";
 
 /** One word-level diff segment within a `modified` block. Mirrors {@link WordDiffSegment}. */
 export type FolioVersionDiffSegment = WordDiffSegment;
@@ -124,6 +125,8 @@ export type FolioCompareDocxVersionsOptions = {
   include?: readonly FolioVersionComparisonScope[];
   /** Optional output-only privacy transforms. Source buffers are never mutated. */
   privacy?: FolioVersionDiffPrivacyOptions;
+  /** The engine both documents are read on, as a reviewer's `session` names it. */
+  session?: HeadlessReviewerSession;
 };
 
 const InvalidFolioVersionComparisonOptionsErrorBase: TaggedErrorClass<"InvalidFolioVersionComparisonOptionsError"> =
@@ -887,9 +890,11 @@ export const compareDocxVersions = async (
   options: FolioCompareDocxVersionsOptions = {},
 ): Promise<FolioVersionDiff> => {
   const scopes = resolveComparisonScopes(options);
+  const reviewerOptions =
+    options.session === undefined ? {} : { session: options.session };
   const [baseReviewer, revisedReviewer] = await Promise.all([
-    FolioDocxReviewer.fromBuffer(base),
-    FolioDocxReviewer.fromBuffer(revised),
+    FolioDocxReviewer.fromBuffer(base, reviewerOptions),
+    FolioDocxReviewer.fromBuffer(revised, reviewerOptions),
   ]);
   const changes: FolioBlockDiff[] = [];
   const stories: FolioStoryDiff[] = [];

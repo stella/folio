@@ -15,7 +15,6 @@ import {
   idKey,
   packageIdentityKeyIndex,
   packageParagraphIdIndex,
-  packageParagraphIds,
 } from "./ids";
 
 export const ID_LEASE_KINDS: Readonly<{
@@ -229,14 +228,16 @@ export const takeParagraphIds = ({
   reserved,
   lease,
 }: TakeParagraphIdsOptions): string[] | undefined => {
-  const occupied = new Set(
-    [...packageParagraphIds(document.package), ...(reserved ?? [])].map(idKey),
-  );
+  const occupied = packageParagraphIdIndex(document.package);
+  const held = new Set(Array.from(reserved ?? [], idKey));
   const ids = freshLeasedIds({
     lease,
     kind: ID_LEASE_KINDS.PARAGRAPH,
     count,
-    taken: (id) => occupied.has(formatParaId(id)),
+    taken: (id) => {
+      const key = formatParaId(id);
+      return held.has(key) || occupied.has(key);
+    },
   });
   return ids.length === count ? ids.map(formatParaId) : undefined;
 };

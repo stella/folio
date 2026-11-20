@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 
 import type { BlockContent, Document, Paragraph } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
@@ -386,11 +386,6 @@ test("deletion refuses invalid selections and boundaries", () => {
     },
     {
       document: documentOf([first, cell([final])]),
-      ids: ["00000001"],
-      reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-    },
-    {
-      document: documentOf([{ ...first, sectionProperties: {} }, final]),
       ids: ["00000001"],
       reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
     },
@@ -1114,4 +1109,65 @@ test("a tracked deletion of the last paragraph after one a pending deletion take
   const undo = applyDocumentOps(tracked.document, tracked.inverse);
   if (undo.isErr()) throw undo.error;
   expect(undo.value.document).toStrictEqual(document);
+});
+
+describe("deleting a paragraph that ends a section", () => {
+  const sectioned = (paraId: string, text: string, pageWidth: number) =>
+    ({
+      ...paragraph(paraId, text),
+      sectionProperties: { pageWidth },
+    }) satisfies Paragraph;
+  const document = documentOf([
+    sectioned("00000001", "first section", 10_000),
+    sectioned("00000002", "second section", 12_000),
+    paragraph("00000003", "final section"),
+  ]);
+  const pageWidths = ({ package: { document: body } }: Document) =>
+    body.content.flatMap((block) =>
+      block.type === "paragraph" && block.sectionProperties !== undefined
+        ? [block.sectionProperties.pageWidth]
+        : [],
+    );
+
+  // The break is the deleted mark's: taking it joins the sections on either
+  // side under the properties of the one after it; rejecting keeps both.
+  test.each([
+    { ids: ["00000001"], accepted: [12_000] },
+    { ids: ["00000002"], accepted: [10_000] },
+    { ids: ["00000001", "00000002"], accepted: [] },
+    { ids: ["00000003"], accepted: [10_000] },
+  ])("deleting $ids takes the break its mark carries", ({ ids, accepted }) => {
+    const { tracked, direct } = assertLaws(document, deletion(ids));
+    expect(pageWidths(direct.document)).toEqual(accepted);
+    expect(pageWidths(tracked.document)).toEqual([10_000, 12_000]);
+  });
+
+  // Taking back one's own added break would have to decide where its section
+  // goes; the deletion recorded beside the insertion leaves that to the
+  // insertion's own resolution.
+  test("one's own added mark that ends a section records the deletion beside it", () => {
+    const added = {
+      ...sectioned("00000001", "added", 10_000),
+      pPrMark: { kind: "ins", info: { id: 7, author: "Reviewer" } },
+    } satisfies Paragraph;
+    const own = documentOf([
+      paragraph("00000004", "opening"),
+      added,
+      paragraph("00000003", "final section"),
+    ]);
+    const tracked = apply(own, deletion(["00000001"]));
+    const marked = tracked.document.package.document.content.at(1);
+    expect(marked?.type === "paragraph" && marked.pPrMark).toEqual({
+      ...added.pPrMark,
+      deletion: { info: expect.objectContaining({ author: "Reviewer" }) },
+    });
+    expect(pageWidths(tracked.document)).toEqual([10_000]);
+    const rejected = apply(tracked.document, {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds: tracked.revisions,
+      decision: REVISION_DECISIONS.REJECT,
+    });
+    expect(rejected.document).toStrictEqual(own);
+  });
 });

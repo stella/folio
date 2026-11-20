@@ -2866,7 +2866,9 @@ export const EXPECTATIONS = {
   },
   mergeBlockWithNext: (model, operation) => {
     const row = target(model, operation["blockId"]);
-    const next = model.rows[model.rows.indexOf(row) + 1];
+    // The paragraphs of a text box drawn in it are listed right after it, in
+    // a story of their own: the join meets the paragraph after them.
+    const next = model.rows[model.rows.indexOf(pastTextBoxes(model, row)) + 1];
     if (row.pendingDeletion || next?.pendingDeletion) {
       // Whether the join keeps that paragraph's pending deletion is not modelled yet.
       throw new Unmodelled("a join with a paragraph pending deletion");
@@ -3237,27 +3239,44 @@ const applyEdits = (
 const materialize = (model: Model): Expected[] => {
   if (model.story === "removed") return [];
   const out: Expected[] = [];
-  let joinNext: { separator: string; container: Container } | undefined;
+  let joinNext:
+    | {
+        separator: string;
+        container: Container;
+        host: Expected;
+        hostInTextBox: boolean;
+      }
+    | undefined;
   /** Suggested mode: the properties accepting a pending join gives the paragraph. */
   const joinedProperties = new Map<
     Expected,
     { fields: Fields; listLineage: ListLineage }
   >();
+  const boxed = (row: ModelRow): boolean =>
+    row.inTextBoxOf !== undefined ||
+    (row.pre !== undefined && model.inTextBox?.has(row.pre.id) === true);
   // A join that meets a table ends before it: a paragraph cannot run into
-  // a cell, so the words keep their own paragraph, separator and all.
-  const push = (entry: Expected, container: Container, inTable: boolean) => {
+  // a cell, so the words keep their own paragraph, separator and all. The
+  // paragraphs of a text box drawn in the joined paragraph stay listed
+  // after it; the join runs past them.
+  const push = (
+    entry: Expected,
+    container: Container,
+    inTable: boolean,
+    inTextBox: boolean,
+  ) => {
+    if (joinNext !== undefined && inTextBox && !joinNext.hostInTextBox) {
+      out.push(entry);
+      return;
+    }
     if (joinNext !== undefined) {
-      const previous = out.at(-1);
-      if (
-        previous &&
-        !inTable &&
-        sameContainer(joinNext.container, container)
-      ) {
+      const { host } = joinNext;
+      if (!inTable && sameContainer(joinNext.container, container)) {
         if (model.mode === "suggested") {
           // A suggested join is pending: the live view lists both paragraphs,
           // the second already in the properties the joined one gets.
-          previous.text += joinNext.separator;
-          const head = joinedProperties.get(previous) ?? previous;
+          host.text += joinNext.separator;
+          const head = joinedProperties.get(host) ?? host;
           // A pending change that takes a paragraph's numbering away still
           // shows its marker, as for any pending numbering removal.
           const keepsMarker =
@@ -3283,13 +3302,13 @@ const materialize = (model: Model): Expected[] => {
           joinNext = undefined;
           return;
         }
-        previous.text = `${previous.text}${joinNext.separator}${entry.text}`;
+        host.text = `${host.text}${joinNext.separator}${entry.text}`;
         // A join keeps the first paragraph's properties; formatting offsets no longer hold.
-        previous.formats = [];
+        host.formats = [];
         joinNext = undefined;
         return;
       }
-      if (previous) previous.text += joinNext.separator;
+      host.text += joinNext.separator;
       joinNext = undefined;
     }
     out.push(entry);
@@ -3321,16 +3340,22 @@ const materialize = (model: Model): Expected[] => {
           },
           row.pre?.table,
           row.inInsertedTable === true,
+          boxed(row),
         ),
       );
-      if (row.mergeSeparator !== undefined) {
-        joinNext = { separator: row.mergeSeparator, container: row.pre?.table };
+      const host = out.at(-1);
+      if (row.mergeSeparator !== undefined && host !== undefined) {
+        joinNext = {
+          separator: row.mergeSeparator,
+          container: row.pre?.table,
+          host,
+          hostInTextBox: boxed(row),
+        };
         // The joined paragraph takes what the accepted model gives its first
         // part; a part a pending join already reached keeps that one.
-        const last = out.at(-1);
         const lastSegment = segments.at(-1);
-        if (model.mode === "suggested" && last && !joinedProperties.has(last))
-          joinedProperties.set(last, {
+        if (model.mode === "suggested" && !joinedProperties.has(host))
+          joinedProperties.set(host, {
             fields:
               segments.length === 1
                 ? row.fields

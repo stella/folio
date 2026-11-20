@@ -76,6 +76,7 @@ import {
 import { sectionReferenceHistory } from "../docx/sectionReferenceHistory";
 import { sameCanonicalInlinePresentation } from "../internal/compare/inline-presentation";
 import { revisionIdSeedAbove } from "../prosemirror/plugins/revisionIds";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import type { SectionProperties } from "../types/document";
 import { canonicalJson } from "../utils/canonicalJson";
 import { createContentComparisonWorkSession } from "./content";
@@ -119,13 +120,22 @@ import {
  */
 export const MAX_COMPARE_OPERATIONS = 10_000;
 
+type ParseSideOptions = {
+  side: "base" | "target";
+  author: string;
+  session: HeadlessReviewerSession | undefined;
+};
+
 const parseSide = async (
   buffer: ArrayBuffer,
-  side: "base" | "target",
-  author: string,
+  { side, author, session }: ParseSideOptions,
 ): Promise<Result<FolioDocxReviewer, CompareDocxParseError>> =>
   await Result.tryPromise({
-    try: async () => await FolioDocxReviewer.fromBuffer(buffer, { author }),
+    try: async () =>
+      await FolioDocxReviewer.fromBuffer(buffer, {
+        author,
+        ...(session === undefined ? {} : { session }),
+      }),
     catch: (cause) =>
       new CompareDocxParseError({
         message: `The ${side} document could not be parsed.`,
@@ -535,11 +545,19 @@ export const parseComparison = async (
     );
   }
 
-  const baseParse = await parseSide(base, "base", options.author);
+  const baseParse = await parseSide(base, {
+    side: "base",
+    author: options.author,
+    session: options.session,
+  });
   if (baseParse.isErr()) {
     return Result.err(baseParse.error);
   }
-  const targetParse = await parseSide(target, "target", options.author);
+  const targetParse = await parseSide(target, {
+    side: "target",
+    author: options.author,
+    session: options.session,
+  });
   if (targetParse.isErr()) {
     return Result.err(targetParse.error);
   }

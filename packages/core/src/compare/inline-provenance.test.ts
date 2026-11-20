@@ -173,150 +173,167 @@ const directFormattingCharacters = async (
   return characters;
 };
 
+const SESSIONS = ["legacy", "canonical"] as const;
+
 const expectAcceptedAndRejectedFormatting = async ({
   base,
   revised,
+  session,
 }: {
   base: ArrayBuffer;
   revised: ArrayBuffer;
+  session: (typeof SESSIONS)[number];
 }): Promise<void> => {
   const [expectedBase, expectedRevised] = await Promise.all([
     directFormattingCharacters(base),
     directFormattingCharacters(revised),
   ]);
-  const compared = await compareDocx(base, revised, OPTIONS);
+  const compared = await compareDocx(base, revised, { ...OPTIONS, session });
   if (compared.isErr()) throw compared.error;
+  expect(compared.value.verification).toEqual({ status: "verified" });
 
-  const accepting = await FolioDocxReviewer.fromBuffer(compared.value.buffer);
+  const accepting = await FolioDocxReviewer.fromBuffer(compared.value.buffer, {
+    session,
+  });
   expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
   expect(await directFormattingCharacters(await accepting.toBuffer())).toEqual(
     expectedRevised,
   );
 
-  const rejecting = await FolioDocxReviewer.fromBuffer(compared.value.buffer);
+  const rejecting = await FolioDocxReviewer.fromBuffer(compared.value.buffer, {
+    session,
+  });
   expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
   expect(await directFormattingCharacters(await rejecting.toBuffer())).toEqual(
     expectedBase,
   );
 };
 
-describe("inline formatting provenance through comparison", () => {
-  test("accepting a replacement retains every revised direct run property", async () => {
-    await expectAcceptedAndRejectedFormatting({
-      base: await documentWith([
-        paragraph("10000001", [{ text: "Base terms" }]),
-      ]),
-      revised: await documentWith([paragraph("20000001", MIXED_TARGET_RUNS)]),
-    });
-  });
-
-  test("accepting an inserted paragraph retains target direct run properties", async () => {
-    await expectAcceptedAndRejectedFormatting({
-      base: await documentWith([paragraph("30000001", [{ text: "Anchor" }])]),
-      revised: await documentWith([
-        paragraph("40000001", MIXED_TARGET_RUNS),
-        paragraph("30000001", [{ text: "Anchor" }]),
-      ]),
-    });
-  });
-
-  test("a text-equal direct run-property change has distinct accepted and rejected values", async () => {
-    await expectAcceptedAndRejectedFormatting({
-      base: await documentWith([
-        paragraph("50000001", [
-          {
-            text: "Stable wording",
-            formatting: {
-              bold: false,
-              boldCs: false,
-              italic: false,
-              italicCs: false,
-              color: { auto: true },
-              underline: { style: "none" },
-            },
-          },
+for (const session of SESSIONS)
+  describe(`inline formatting provenance through comparison (${session})`, () => {
+    test("accepting a replacement retains every revised direct run property", async () => {
+      await expectAcceptedAndRejectedFormatting({
+        session,
+        base: await documentWith([
+          paragraph("10000001", [{ text: "Base terms" }]),
         ]),
-      ]),
-      revised: await documentWith([
-        paragraph("50000001", [
-          {
-            text: "Stable wording",
-            formatting: {
-              bold: true,
-              boldCs: true,
-              italic: true,
-              italicCs: true,
-              color: { themeColor: "accent3", themeShade: "40" },
-              underline: { style: "dash", color: { rgb: "0070C0" } },
-              highlight: "green",
-            },
-          },
+        revised: await documentWith([paragraph("20000001", MIXED_TARGET_RUNS)]),
+      });
+    });
+
+    test("accepting an inserted paragraph retains target direct run properties", async () => {
+      await expectAcceptedAndRejectedFormatting({
+        session,
+        base: await documentWith([paragraph("30000001", [{ text: "Anchor" }])]),
+        revised: await documentWith([
+          paragraph("40000001", MIXED_TARGET_RUNS),
+          paragraph("30000001", [{ text: "Anchor" }]),
         ]),
-      ]),
+      });
+    });
+
+    test("a text-equal direct run-property change has distinct accepted and rejected values", async () => {
+      await expectAcceptedAndRejectedFormatting({
+        session,
+        base: await documentWith([
+          paragraph("50000001", [
+            {
+              text: "Stable wording",
+              formatting: {
+                bold: false,
+                boldCs: false,
+                italic: false,
+                italicCs: false,
+                color: { auto: true },
+                underline: { style: "none" },
+              },
+            },
+          ]),
+        ]),
+        revised: await documentWith([
+          paragraph("50000001", [
+            {
+              text: "Stable wording",
+              formatting: {
+                bold: true,
+                boldCs: true,
+                italic: true,
+                italicCs: true,
+                color: { themeColor: "accent3", themeShade: "40" },
+                underline: { style: "dash", color: { rgb: "0070C0" } },
+                highlight: "green",
+              },
+            },
+          ]),
+        ]),
+      });
+    });
+
+    test("accept and reject preserve every direct formatting catalog value across mixed changes", async () => {
+      await fc.assert(
+        fc.asyncProperty(
+          fc.record({
+            baseCuts: fc.array(fc.boolean(), {
+              minLength: INLINE_FORMATTING_CATALOG.length,
+              maxLength: INLINE_FORMATTING_CATALOG.length,
+            }),
+            revisedCuts: fc.array(fc.boolean(), {
+              minLength: INLINE_FORMATTING_CATALOG.length,
+              maxLength: INLINE_FORMATTING_CATALOG.length,
+            }),
+            baseMatchingCuts: fc.array(fc.boolean(), {
+              minLength: 3,
+              maxLength: 3,
+            }),
+            revisedMatchingCuts: fc.array(fc.boolean(), {
+              minLength: 3,
+              maxLength: 3,
+            }),
+          }),
+          async ({
+            baseCuts,
+            revisedCuts,
+            baseMatchingCuts,
+            revisedMatchingCuts,
+          }) => {
+            const base = await documentWith([
+              paragraph("60000001", [
+                ...partitionMatchingRun(baseMatchingCuts),
+                { text: " base " },
+                ...partitionFormattingRuns({ prefix: "B", cuts: baseCuts }),
+                { text: " tail" },
+              ]),
+              paragraph("60000002", [{ text: "Anchor" }]),
+            ]);
+            const revised = await documentWith([
+              paragraph("60000001", [
+                ...partitionMatchingRun(revisedMatchingCuts),
+                { text: " revised " },
+                ...partitionFormattingRuns({ prefix: "R", cuts: revisedCuts }),
+                { text: " tail" },
+              ]),
+              paragraph(
+                "60000003",
+                partitionFormattingRuns({
+                  prefix: "I",
+                  cuts: revisedCuts,
+                  catalog: [...INLINE_FORMATTING_CATALOG].reverse(),
+                }),
+              ),
+              paragraph("60000002", [{ text: "Anchor" }]),
+            ]);
+
+            await expectAcceptedAndRejectedFormatting({
+              base,
+              revised,
+              session,
+            });
+          },
+        ),
+        propertyConfig({ numRuns: 16 }),
+      );
     });
   });
-
-  test("accept and reject preserve every direct formatting catalog value across mixed changes", async () => {
-    await fc.assert(
-      fc.asyncProperty(
-        fc.record({
-          baseCuts: fc.array(fc.boolean(), {
-            minLength: INLINE_FORMATTING_CATALOG.length,
-            maxLength: INLINE_FORMATTING_CATALOG.length,
-          }),
-          revisedCuts: fc.array(fc.boolean(), {
-            minLength: INLINE_FORMATTING_CATALOG.length,
-            maxLength: INLINE_FORMATTING_CATALOG.length,
-          }),
-          baseMatchingCuts: fc.array(fc.boolean(), {
-            minLength: 3,
-            maxLength: 3,
-          }),
-          revisedMatchingCuts: fc.array(fc.boolean(), {
-            minLength: 3,
-            maxLength: 3,
-          }),
-        }),
-        async ({
-          baseCuts,
-          revisedCuts,
-          baseMatchingCuts,
-          revisedMatchingCuts,
-        }) => {
-          const base = await documentWith([
-            paragraph("60000001", [
-              ...partitionMatchingRun(baseMatchingCuts),
-              { text: " base " },
-              ...partitionFormattingRuns({ prefix: "B", cuts: baseCuts }),
-              { text: " tail" },
-            ]),
-            paragraph("60000002", [{ text: "Anchor" }]),
-          ]);
-          const revised = await documentWith([
-            paragraph("60000001", [
-              ...partitionMatchingRun(revisedMatchingCuts),
-              { text: " revised " },
-              ...partitionFormattingRuns({ prefix: "R", cuts: revisedCuts }),
-              { text: " tail" },
-            ]),
-            paragraph(
-              "60000003",
-              partitionFormattingRuns({
-                prefix: "I",
-                cuts: revisedCuts,
-                catalog: [...INLINE_FORMATTING_CATALOG].reverse(),
-              }),
-            ),
-            paragraph("60000002", [{ text: "Anchor" }]),
-          ]);
-
-          await expectAcceptedAndRejectedFormatting({ base, revised });
-        },
-      ),
-      propertyConfig({ numRuns: 16 }),
-    );
-  });
-});
 
 /**
  * Make the document refuse to resolve a position, so provenance that reaches

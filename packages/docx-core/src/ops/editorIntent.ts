@@ -49,6 +49,7 @@ import {
   ID_LEASE_KINDS,
   type IdLease,
   type IdLeaseKind,
+  takeParagraphIds,
 } from "./idLease";
 import {
   IDENTITY_SPACES,
@@ -3841,16 +3842,8 @@ const freshParagraphIds = ({
   count,
   opType,
 }: FreshParagraphIdsOptions): Result<string[], DocumentOpRefusal> => {
-  const occupied = new Set(
-    [...packageParagraphIds(document.package), ...(reserved ?? [])].map(idKey),
-  );
-  const ids = freshLeasedIds({
-    lease,
-    kind: ID_LEASE_KINDS.PARAGRAPH,
-    count,
-    taken: (id) => occupied.has(formatParaId(id)),
-  });
-  if (ids.length < count)
+  const ids = takeParagraphIds({ document, reserved, lease, count });
+  if (ids === undefined)
     return Result.err(
       new DocumentOpRefusal({
         opType,
@@ -3861,7 +3854,7 @@ const freshParagraphIds = ({
             : "The paragraph identity lease is exhausted.",
       }),
     );
-  return Result.ok(ids.map(formatParaId));
+  return Result.ok(ids);
 };
 
 const rowParagraphCount = (row: TableRow): number =>
