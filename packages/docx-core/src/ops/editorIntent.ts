@@ -53,9 +53,9 @@ import {
 } from "./idLease";
 import {
   IDENTITY_SPACES,
+  type IdentitySpace,
   idKey,
   packageIdentityKeys,
-  packageParagraphIds,
   packageReservedIdentityKeys,
 } from "./ids";
 import { deleteBetween, gapAfterInserted } from "./inline";
@@ -1154,20 +1154,16 @@ const identifyClipboardParagraphs = ({
   DocumentOpRefusal
 > => {
   const copy = cloneModel([...paragraphs]);
-  const occupied = new Set(
-    packageIdentityKeys(document.package).concat(
-      packageReservedIdentityKeys(document.package),
-    ),
-  );
-  for (const id of mode.newIds?.revision ?? [])
-    occupied.add(`${IDENTITY_SPACES.REVISION}:${id}`);
-  for (const id of mode.newIds?.control ?? [])
-    occupied.add(`${IDENTITY_SPACES.CONTROL}:${id}`);
+  let occupancy: ReturnType<typeof packageIdOccupancy> | undefined;
+  const packageOccupancy = () =>
+    (occupancy ??= packageIdOccupancy(document.package));
+  const assignedIds = {
+    [IDENTITY_SPACES.REVISION]: new Set(mode.newIds?.revision),
+    [IDENTITY_SPACES.CONTROL]: new Set(mode.newIds?.control),
+  };
   if (mode.type === "suggesting")
-    occupied.add(`${IDENTITY_SPACES.REVISION}:${mode.revision.id}`);
-  const blockIds = new Set(packageParagraphIds(document.package).map(idKey));
-  const markers = new Set<number>();
-  const names = new Set<string>();
+    assignedIds[IDENTITY_SPACES.REVISION].add(mode.revision.id);
+  const blockIds = new Set<string>();
   const renamedBookmarks = new Map<string, string>();
   const visit = (value: unknown, callback: (value: object) => void): void => {
     if (typeof value !== "object" || value === null) return;
@@ -1178,21 +1174,29 @@ const identifyClipboardParagraphs = ({
     callback(value);
     for (const field of Object.values(value)) visit(field, callback);
   };
-  visit(document.package, (value) => {
-    if (
-      "type" in value &&
-      "id" in value &&
-      typeof value.id === "number" &&
-      isCopiedRangeMarker(value)
-    )
-      markers.add(value.id);
-    if (
-      isCopiedRangeStart(value) &&
-      "name" in value &&
-      typeof value.name === "string"
-    )
-      names.add(value.name);
-  });
+  let destinationMarkers: { ids: Set<number>; names: Set<string> } | undefined;
+  const markersInDestination = () => {
+    if (destinationMarkers !== undefined) return destinationMarkers;
+    const ids = new Set<number>();
+    const names = new Set<string>();
+    visit(document.package, (value) => {
+      if (
+        "type" in value &&
+        "id" in value &&
+        typeof value.id === "number" &&
+        isCopiedRangeMarker(value)
+      )
+        ids.add(value.id);
+      if (
+        isCopiedRangeStart(value) &&
+        "name" in value &&
+        typeof value.name === "string"
+      )
+        names.add(value.name);
+    });
+    destinationMarkers = { ids, names };
+    return destinationMarkers;
+  };
   visit(copy, (value) => {
     if (
       !isCopiedRangeStart(value) ||
@@ -1206,6 +1210,7 @@ const identifyClipboardParagraphs = ({
       value.name = renamed;
       return;
     }
+    const { names } = markersInDestination();
     let name = original;
     let suffix = 1;
     while (names.has(name)) {
@@ -1225,7 +1230,10 @@ const identifyClipboardParagraphs = ({
       kind: ID_LEASE_KINDS.PARAGRAPH,
       count: 1,
       from: nextBlock,
-      taken: (candidate) => blockIds.has(formatParaId(candidate)),
+      taken: (candidate) => {
+        const key = formatParaId(candidate);
+        return blockIds.has(key) || packageOccupancy().paragraphs.has(key);
+      },
     }).at(0);
     if (fresh === undefined) return undefined;
     const id = formatParaId(fresh);
@@ -1235,10 +1243,19 @@ const identifyClipboardParagraphs = ({
   };
   // A leased author mints revision and content-control ids from its lease.
   let leaseExhausted = false;
-  const freshId = (space: string, oldId: number) => {
+  const freshId = (space: IdentitySpace | "bookmark", oldId: number) => {
     const key = `${space}:${oldId}`;
     const existing = remapped.get(key);
     if (existing !== undefined) return existing;
+    const assigned =
+      space === "bookmark" ? markersInDestination().ids : assignedIds[space];
+    const taken = (candidate: number) =>
+      assigned.has(candidate) ||
+      (space !== "bookmark" &&
+        (space === IDENTITY_SPACES.REVISION
+          ? packageOccupancy().revisions
+          : packageOccupancy().controls
+        ).has(candidate));
     let id = nextInSpace.get(space) ?? 1;
     if (
       mode.idLease !== undefined &&
@@ -1252,17 +1269,13 @@ const identifyClipboardParagraphs = ({
             : ID_LEASE_KINDS.CONTROL,
         count: 1,
         from: id,
-        taken: (candidate) => occupied.has(`${space}:${candidate}`),
+        taken,
       }).at(0);
       if (leased === undefined) leaseExhausted = true;
       id = leased ?? MAX_REVISION_ID + 1;
     }
-    while (
-      space === "bookmark" ? markers.has(id) : occupied.has(`${space}:${id}`)
-    )
-      id += 1;
-    if (space === "bookmark") markers.add(id);
-    else occupied.add(`${space}:${id}`);
+    while (taken(id)) id += 1;
+    assigned.add(id);
     remapped.set(key, id);
     nextInSpace.set(space, id + 1);
     return id;
