@@ -1545,20 +1545,18 @@ const gapWithoutLeaves = (
 };
 
 /** Compile one batch; the caller applies it atomically and journals its exact inverse. */
-/**
- * Compile an editor intent. One naming paragraphs of a text box through the
- * story drawing it is compiled in the box's own story; what it hands back
- * names the package story again, as operations on the box do.
- */
+// An intent naming paragraphs of a text box through the story drawing it is
+// compiled in the box's own story; what it hands back names the package
+// story again, as operations on the box do.
 export const compileEditorIntent = (
   document: Document,
-  options: CompileEditorIntentOptions,
+  input: CompileEditorIntentOptions,
 ): Result<CompiledEditorIntent, DocumentOpRefusal> => {
-  const routed = textBoxOfIntent(document, options.intent);
-  if (routed === undefined) return compileInStory(document, options);
+  const routed = textBoxOfIntent(document, input.intent);
+  if (routed === undefined) return compileInStory(document, input);
   const compiled = compileInStory(document, {
-    ...options,
-    intent: addressedTo(options.intent, routed.story, routed.box),
+    ...input,
+    intent: addressedTo(input.intent, routed.story, routed.box),
   });
   if (compiled.isErr()) return compiled;
   const { ops, selection, applied } = compiled.value;

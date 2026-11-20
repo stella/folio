@@ -26,15 +26,12 @@ export { documentStories, replaceStoryBody } from "./stories";
 
 // Callers name package stories; a text box's story is internal to applying
 // an operation (`textBoxRouting.ts`).
-/** The body of a package story. */
 export const storyBody: (document: Document, story: OpStory) => DocumentBody =
   storyBodyAt;
-/** The body of a package story, when the package holds it. */
 export const findStoryBody: (
   document: Document,
   story: OpStory,
 ) => DocumentBody | undefined = findStoryBodyAt;
-/** Whether two package story addresses name the same story. */
 export const sameStory: (left: OpStory, right: OpStory) => boolean =
   sameStoryAt;
 /**
