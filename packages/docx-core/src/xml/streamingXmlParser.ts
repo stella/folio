@@ -1013,17 +1013,11 @@ const instructionIssue = ({
 };
 
 const findTagClose = (xml: string, start: number): number => {
-  let quote = 0;
   for (let cursor = start; cursor < xml.length; cursor += 1) {
     const code = xml.charCodeAt(cursor);
-    if (quote !== 0) {
-      if (code === quote) {
-        quote = 0;
-      }
-      continue;
-    }
     if (code === 34 || code === 39) {
-      quote = code;
+      cursor = xml.indexOf(code === 34 ? '"' : "'", cursor + 1);
+      if (cursor === -1) return -1;
       continue;
     }
     if (code === 62) {
