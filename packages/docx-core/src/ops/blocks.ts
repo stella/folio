@@ -1,3 +1,5 @@
+import { spliceItems } from "./listSplice";
+
 const SectionViewErrorBase: TaggedErrorClass<"SectionViewError"> =
   TaggedError("SectionViewError");
 
@@ -669,11 +671,9 @@ export const replaceParagraphs = ({
   restoreSections,
 }: ReplaceParagraphsOptions): Result<Document, SectionViewError> => {
   const body = storyBody(document, story);
-  const content = updateBlockList(body.content, at.list, (blocks) => {
-    const out = [...blocks];
-    out.splice(at.index, count, ...replacement);
-    return out;
-  });
+  const content = updateBlockList(body.content, at.list, (blocks) =>
+    spliceItems({ items: blocks, start: at.index, count, replacement }),
+  );
   const nextBody: DocumentBody = { ...body, content };
   const onlySection =
     body.sections?.length === 1 ? body.sections.at(0) : undefined;
@@ -693,15 +693,37 @@ export const replaceParagraphs = ({
       replacement.every(
         (paragraph, offset) => paragraph === body.content[at.index + offset],
       );
-    nextBody.sections = [
-      sameBlocks
-        ? onlySection
-        : {
-            ...onlySection,
-            properties: body.finalSectionProperties ?? onlySection.properties,
-            content: content.slice(),
-          },
-    ];
+    if (sameBlocks) {
+      nextBody.sections = [onlySection];
+    } else {
+      const outer = at.list.at(0);
+      // The checked section has the same blocks as the body, in its own
+      // array. Record the same splice so indexes can skip the shared blocks.
+      const sectionContent =
+        outer === undefined
+          ? spliceItems({
+              items: onlySection.content,
+              start: at.index,
+              count,
+              replacement,
+            })
+          : spliceItems({
+              items: onlySection.content,
+              start: outer.block,
+              count: 1,
+              replacement: [
+                content[outer.block] ??
+                  panic("A nested splice retains its top-level block."),
+              ],
+            });
+      nextBody.sections = [
+        {
+          ...onlySection,
+          properties: body.finalSectionProperties ?? onlySection.properties,
+          content: sectionContent,
+        },
+      ];
+    }
     checkedTrailingSections.add(nextBody);
     return Result.ok(replaceStoryBody({ document, story, body: nextBody }));
   }

@@ -1,3 +1,4 @@
+import type { DocxPackage } from "../model/document";
 /**
  * The id domains of a package.
  *
@@ -11,9 +12,8 @@
  * same paragraph must not count twice. The walk is otherwise structural, so a
  * story the model gains is covered without a list to keep in step.
  */
-
-import type { DocxPackage } from "../model/document";
 import { structurallyEqual } from "./equality";
+import { changedListBounds } from "./listSplice";
 import { recentValues } from "./recentValues";
 
 const isObjectValue = (value: unknown): value is object =>
@@ -662,23 +662,11 @@ const censusChange = (
     context: CensusContext,
     changes: Map<string, number>,
   ): boolean => {
-    let start = 0;
-    while (
-      start < before.length &&
-      start < after.length &&
-      before[start] === after[start]
-    )
-      start += 1;
-    let beforeEnd = before.length;
-    let afterEnd = after.length;
-    while (
-      beforeEnd > start &&
-      afterEnd > start &&
-      before[beforeEnd - 1] === after[afterEnd - 1]
-    ) {
-      beforeEnd -= 1;
-      afterEnd -= 1;
-    }
+    const {
+      start,
+      previousEnd: beforeEnd,
+      end: afterEnd,
+    } = changedListBounds(before, after);
     const paired = Math.min(beforeEnd, afterEnd) - start;
     for (let offset = 0; offset < paired; offset += 1) {
       if (
