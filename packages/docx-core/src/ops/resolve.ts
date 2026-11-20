@@ -53,6 +53,7 @@ import {
   storyParagraphs,
 } from "./blocks";
 import { isCommentExhausted, linksEmptiedByRetirement } from "./comments";
+import { planContiguousResolutionJoins } from "./contiguousResolutionJoins";
 import {
   acceptCopyOriginAncestor,
   rejectCopyOriginAncestorsInNodes,
@@ -8358,7 +8359,31 @@ const planSingleRecordResolution = (
     story: op.story,
     locations: paragraphs,
     inline,
-    join: joins.length === 0 ? { type: "none" } : { type: "required" },
+    join:
+      joins.length === 0
+        ? { type: "noJoins" }
+        : {
+            type: "plan",
+            prepare: ({ paragraphCount, paragraphAt }) => {
+              const ends = new Map(emptiedEnds);
+              return planContiguousResolutionJoins({
+                document,
+                story: op.story,
+                paragraphCount,
+                paragraphAt,
+                joins,
+                // On a proven section-free main-list pair, joinOps only
+                // needs these adjacent paragraphs. Its receiver is still
+                // the real working follower, with its actual review fields.
+                planPair: ({ join, first, second }) =>
+                  joinOps(
+                    { package: { document: { content: [first, second] } } },
+                    join,
+                    ends,
+                  ),
+              });
+            },
+          },
     noteReferences,
     receiverEffects,
   });
