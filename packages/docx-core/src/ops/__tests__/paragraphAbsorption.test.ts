@@ -114,9 +114,27 @@ test("absorptions made in turn chain to the paragraph holding them now", () => {
         [{ absorbed: "D", survivor: "E" }],
       ],
       new Set(["A", "B", "D", "E"]),
+      new Set(["C", "F"]),
     ),
   ).toEqual([
     { absorbed: "A", survivor: "C" },
     { absorbed: "B", survivor: "C" },
+  ]);
+});
+
+test("absorptions chain whatever case an id is written in, and name only a survivor that stands", () => {
+  expect(
+    combinedAbsorptions(
+      [
+        [{ absorbed: "0000000A", survivor: "0000000b" }],
+        [{ absorbed: "0000000B", survivor: "0000000C" }],
+        [{ absorbed: "0000000D", survivor: "0000000E" }],
+      ],
+      new Set(["0000000A", "0000000B", "0000000D"]),
+      new Set(["0000000C"]),
+    ),
+  ).toEqual([
+    { absorbed: "0000000A", survivor: "0000000C" },
+    { absorbed: "0000000B", survivor: "0000000C" },
   ]);
 });
