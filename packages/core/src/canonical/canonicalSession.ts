@@ -2142,6 +2142,14 @@ class CanonicalSession {
   private readonly newOpId: () => string;
   private readonly styles: DeepReadonly<StyleDefinitions> | null | undefined;
   private readonly sourceRestores: readonly CanonicalSourceRestore[];
+  /**
+   * The ids of the paragraphs the session added to the stories it read in its
+   * own form (a story's closing paragraph), which no package names: a reader
+   * reports them as positional.
+   */
+  get sourceMintedParaIds(): ReadonlySet<string> {
+    return new Set(this.sourceRestores.flatMap(({ minted }) => minted));
+  }
   /** Notes the opened package held without a reference: content, kept on save. */
   private readonly heldUnreferencedNotes: ReadonlySet<string>;
   /** What earlier projections converted, reused by every later one. */

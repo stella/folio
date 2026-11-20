@@ -408,10 +408,12 @@ describe("a canonical reviewer's pending suggestions", () => {
       },
     } satisfies Document;
     const buffer = await ingested(await createDocx(document));
-    // The literal draw wraps over the two actual saved blocks and targets the body.
+    // The literal draw wraps over the three blocks the session reads (the
+    // body paragraph, the cell paragraph and the paragraph closing the body
+    // after the table) and targets the body paragraph.
     const draw = {
       kind: "insertAfterBlock",
-      block: 2,
+      block: 3,
       word: 0,
       text: "revised",
     } as const satisfies OperationDraw;
