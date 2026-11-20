@@ -2014,6 +2014,102 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_328C996278E3AB12 = {
   },
 } satisfies CanonicalRegression;
 
+const PASTE_OVER_PASTED_LIST_ITEMS = {
+  shape: "plain-markdown",
+  actions: [
+    { kind: "pasteListHtml", ...BROWSER_PASTE_PAYLOADS.pasteListHtml },
+    { kind: "selectionDrag", target: "paragraphs" },
+    { kind: "pasteHtml", ...BROWSER_PASTE_PAYLOADS.pasteHtml },
+  ],
+} satisfies BrowserInputTrace;
+
+/** A paste from inside a pasted list item into the next keeps the first item's level. */
+export const BROWSER_PASTE_OVER_PASTED_LIST_ITEMS_SEED_83 = {
+  seed: 83,
+  path: "18:5:2:2",
+  fingerprint: "16ea251af88f6319",
+  trace: PASTE_OVER_PASTED_LIST_ITEMS,
+} satisfies {
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
+export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_16EA251AF88F6319 = {
+  authority: "canonical",
+  seed: 83,
+  path: "18:5:2:2",
+  fingerprint: "canonical-16ea251af88f6319",
+  trace: PASTE_OVER_PASTED_LIST_ITEMS,
+} satisfies CanonicalRegression;
+
+const PASTE_OVER_EVERYTHING_FROM_PASTED_TABLE = {
+  shape: "notes",
+  actions: [
+    { kind: "pasteTable", ...BROWSER_PASTE_PAYLOADS.pasteTable },
+    { kind: "redo" },
+    { kind: "selectAll" },
+    { kind: "pasteHtml", ...BROWSER_PASTE_PAYLOADS.pasteHtml },
+    { kind: "backspace" },
+    { kind: "pastePlain", plain: "valid é invoice", html: "" },
+  ],
+} satisfies BrowserInputTrace;
+
+/** A paste over everything withdraws the table a suggested paste put first. */
+export const BROWSER_PASTE_OVER_PASTED_TABLE_SEED_1795156188 = {
+  seed: 1795156188,
+  path: "0",
+  fingerprint: "68e2257269d2dcd0",
+  trace: PASTE_OVER_EVERYTHING_FROM_PASTED_TABLE,
+} satisfies {
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
+export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_68E2257269D2DCD0 = {
+  authority: "canonical",
+  seed: 1795156188,
+  path: "0",
+  fingerprint: "canonical-68e2257269d2dcd0",
+  trace: PASTE_OVER_EVERYTHING_FROM_PASTED_TABLE,
+} satisfies CanonicalRegression;
+
+const ENTER_IN_PARAGRAPH_WITH_STRUCK_BREAK = {
+  shape: "fields-links-bookmarks",
+  actions: [
+    { kind: "selectAll" },
+    { kind: "backspace" },
+    { kind: "pastePlain", plain: "shall", html: "" },
+    { kind: "typing", text: "東京 👩🏽‍⚖️ shall" },
+    { kind: "enter" },
+    { kind: "typing", text: "buyer" },
+  ],
+} satisfies BrowserInputTrace;
+
+/** Enter in a paragraph whose break is struck moves that break to the new paragraph. */
+export const BROWSER_ENTER_BESIDE_STRUCK_BREAK_SEED_1795156188 = {
+  seed: 1795156188,
+  path: "11",
+  fingerprint: "282aa9454f604633",
+  trace: ENTER_IN_PARAGRAPH_WITH_STRUCK_BREAK,
+} satisfies {
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
+export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_282AA9454F604633 = {
+  authority: "canonical",
+  seed: 1795156188,
+  path: "11",
+  fingerprint: "canonical-282aa9454f604633",
+  trace: ENTER_IN_PARAGRAPH_WITH_STRUCK_BREAK,
+} satisfies CanonicalRegression;
+
 /**
  * A canonical trace that commits other text than the default editor by
  * design: the canonical session is the authority, and `reason` says why. The
@@ -2246,4 +2342,10 @@ export const BROWSER_INPUT_REGRESSIONS = [
   CANONICAL_REPLAY_OF_DEFAULT_FINDING_4CFD6DADC63EEB36,
   BROWSER_PASTE_SPLITTING_NUMBERED_ITEM_SEED_1794465004,
   CANONICAL_REPLAY_OF_DEFAULT_FINDING_328C996278E3AB12,
+  BROWSER_PASTE_OVER_PASTED_LIST_ITEMS_SEED_83,
+  CANONICAL_REPLAY_OF_DEFAULT_FINDING_16EA251AF88F6319,
+  BROWSER_PASTE_OVER_PASTED_TABLE_SEED_1795156188,
+  CANONICAL_REPLAY_OF_DEFAULT_FINDING_68E2257269D2DCD0,
+  BROWSER_ENTER_BESIDE_STRUCK_BREAK_SEED_1795156188,
+  CANONICAL_REPLAY_OF_DEFAULT_FINDING_282AA9454F604633,
 ];
