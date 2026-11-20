@@ -11,11 +11,15 @@
  */
 import { type Document, MAX_REVISION_ID } from "../model/document";
 import {
+  formatParaId,
   IDENTITY_SPACES,
   idKey,
   packageIdentityKeyIndex,
   packageParagraphIdIndex,
+  paragraphIdSequence,
 } from "./ids";
+
+export { formatParaId } from "./ids";
 
 export const ID_LEASE_KINDS: Readonly<{
   readonly PARAGRAPH: "paragraph";
@@ -59,10 +63,6 @@ export type IdBlock = IdRange & { readonly kind: IdLeaseKind };
 
 /** The ids one author may still mint: disjoint blocks, ascending per kind. */
 export type IdLease = { readonly blocks: readonly IdBlock[] };
-
-/** A paragraph id's spelling for its number. */
-export const formatParaId = (id: number): string =>
-  id.toString(16).padStart(8, "0").toUpperCase();
 
 const parseParaId = (id: string): number | undefined => {
   const value = Number.parseInt(id, 16);
@@ -234,6 +234,10 @@ export const takeParagraphIds = ({
     lease,
     kind: ID_LEASE_KINDS.PARAGRAPH,
     count,
+    from:
+      lease === undefined && count > 0
+        ? occupied.firstMissing(paragraphIdSequence, ID_KIND_LIMITS.paragraph)
+        : 1,
     taken: (id) => {
       const key = formatParaId(id);
       return held.has(key) || occupied.has(key);
