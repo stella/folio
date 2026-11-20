@@ -42,10 +42,10 @@ const locationsIn = (
 };
 
 type Holders = readonly BlockContent[];
-type Leaf = Map<string, Holders>;
-type SuffixPage = Map<string, Leaf>;
-type PrefixPage = Map<string, SuffixPage>;
-type HolderPages = Map<string, PrefixPage>;
+type Leaf = Map<number, Holders>;
+type SuffixPage = Map<number, Leaf>;
+type PrefixPage = Map<number, SuffixPage>;
+type HolderPages = Map<number, PrefixPage>;
 
 type IndexRoot = {
   type: "root";
@@ -70,6 +70,7 @@ const MAX_CHAIN = 32;
 
 const HEX_ID = /^[0-9A-F]{8}$/;
 const isHexId = (key: string) => key.length === 8 && HEX_ID.test(key);
+const BYTE_MASK = 0xff;
 
 const holdersIn = (node: IndexNode, key: string): Holders => {
   let at = node;
@@ -79,12 +80,13 @@ const holdersIn = (node: IndexNode, key: string): Holders => {
     at = at.parent;
   }
   if (!isHexId(key)) return at.other.get(key) ?? [];
+  const id = Number.parseInt(key, 16);
   return (
     at.pages
-      .get(key.slice(0, 2))
-      ?.get(key.slice(2, 4))
-      ?.get(key.slice(4, 6))
-      ?.get(key.slice(6, 8)) ?? []
+      .get(id >>> 24)
+      ?.get((id >>> 16) & BYTE_MASK)
+      ?.get((id >>> 8) & BYTE_MASK)
+      ?.get(id & BYTE_MASK) ?? []
   );
 };
 
@@ -103,7 +105,7 @@ const changedRoot = (
   base?: IndexRoot,
 ): IndexRoot => {
   const drafts = new WeakSet<object>();
-  let pages = base?.pages ?? new Map<string, PrefixPage>();
+  let pages = base?.pages ?? new Map<number, PrefixPage>();
   let other = base?.other ?? new Map<string, Holders>();
   for (const [key, held] of changes) {
     if (!isHexId(key)) {
@@ -113,10 +115,11 @@ const changedRoot = (
       continue;
     }
     pages = draftPage(pages, drafts);
-    const first = key.slice(0, 2);
-    const second = key.slice(2, 4);
-    const third = key.slice(4, 6);
-    const last = key.slice(6, 8);
+    const id = Number.parseInt(key, 16);
+    const first = id >>> 24;
+    const second = (id >>> 16) & BYTE_MASK;
+    const third = (id >>> 8) & BYTE_MASK;
+    const last = id & BYTE_MASK;
     const prefix = draftPage(pages.get(first), drafts);
     const suffix = draftPage(prefix.get(second), drafts);
     const leaf = draftPage(suffix.get(third), drafts);
