@@ -4186,6 +4186,32 @@ const readOnce = (reviewer: Reviewer): Reviewer => {
   });
 };
 
+/**
+ * The ids of the comments anchored in the table that holds `blockId`, which
+ * removing that table retires. Each engine allocates comment ids its own way,
+ * so a pinned flow names the comments by where they are, not by number.
+ */
+export const commentIdsInTableOf = (
+  reviewer: Reviewer,
+  blockId: string,
+): number[] => {
+  const blocks = reviewer.getContent();
+  const table = blocks.find(({ id }) => id === blockId)?.table;
+  assert.ok(table, `block ${blockId} is not in a table`);
+  const cells = new Set(
+    blocks
+      .filter((block) => block.table?.tableIndex === table.tableIndex)
+      .map(({ id }) => id),
+  );
+  return reviewer
+    .getComments()
+    .filter(
+      ({ blockId: anchor }) => typeof anchor === "string" && cells.has(anchor),
+    )
+    .map(({ id }) => id)
+    .sort((left, right) => left - right);
+};
+
 export const capture = async (
   editable: Reviewer,
   mode: Mode,
