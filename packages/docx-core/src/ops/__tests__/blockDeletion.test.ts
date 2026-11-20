@@ -236,6 +236,121 @@ test("inverse restores a retired comment whose surviving anchors followed the de
   expect(restored).toStrictEqual(document);
 });
 
+test.each([
+  ["inside the paragraph", false],
+  ["from the paragraph before", true],
+] as const)(
+  "a tracked deletion of a paragraph holding a comment's reference, its range %s, leaves the reference standing and resolves both ways",
+  (_shape, startsBefore) => {
+    const before: Paragraph = {
+      ...paragraph("00000001", "kept"),
+      content: [
+        ...(startsBefore
+          ? [{ type: "commentRangeStart" as const, id: 7 }]
+          : []),
+        { type: "run", content: [{ type: "text", text: "kept" }] },
+      ],
+    };
+    const removed: Paragraph = {
+      ...paragraph("00000002", "removed"),
+      content: [
+        ...(startsBefore
+          ? []
+          : [{ type: "commentRangeStart" as const, id: 7 }]),
+        { type: "run", content: [{ type: "text", text: "removed" }] },
+        { type: "commentRangeEnd", id: 7 },
+        { type: "commentReference", id: 7 },
+      ],
+    };
+    const document: Document = {
+      package: {
+        document: {
+          comments: [
+            { id: 7, author: "Reviewer", anchorKind: "range", content: [] },
+          ],
+          content: [before, removed, paragraph("00000003", "after")],
+        },
+      },
+    };
+    const { tracked } = assertLaws(document, deletion([removed.paraId ?? ""]));
+    const marked = storyParagraphs(tracked.document.package.document).find(
+      ({ paragraph: { paraId } }) => paraId === removed.paraId,
+    );
+    expect(marked?.paragraph.content).toContainEqual({
+      type: "commentReference",
+      id: 7,
+    });
+  },
+);
+
+test("a deletion keeps a comment's reference whose range ends in an earlier paragraph, tracked as directly", () => {
+  const before: Paragraph = {
+    ...paragraph("00000001", "kept"),
+    content: [
+      { type: "commentRangeStart", id: 7 },
+      { type: "run", content: [{ type: "text", text: "kept" }] },
+      { type: "commentRangeEnd", id: 7 },
+    ],
+  };
+  const removed: Paragraph = {
+    ...paragraph("00000002", "removed"),
+    content: [
+      { type: "run", content: [{ type: "text", text: "removed" }] },
+      { type: "commentReference", id: 7 },
+    ],
+  };
+  const document: Document = {
+    package: {
+      document: {
+        comments: [
+          { id: 7, author: "Reviewer", anchorKind: "range", content: [] },
+        ],
+        content: [before, removed, paragraph("00000003", "after")],
+      },
+    },
+  };
+  const { direct } = assertLaws(document, deletion([removed.paraId ?? ""]));
+  expect(
+    direct.document.package.document.comments?.map(({ id }) => id),
+  ).toEqual([7]);
+  expect(JSON.stringify(direct.document.package.document.content)).toContain(
+    '"type":"commentReference"',
+  );
+});
+
+test("a tracked deletion passes over a point comment's reference an earlier deletion already holds", () => {
+  const removed: Paragraph = {
+    ...paragraph("00000002", "live"),
+    content: [
+      {
+        type: "deletion",
+        info: { id: 50, author: "Other", date: "2026-01-01T00:00:00Z" },
+        content: [
+          { type: "run", content: [{ type: "text", text: "old" }] },
+          { type: "commentReference", id: 9 },
+        ],
+      },
+      { type: "run", content: [{ type: "text", text: "live" }] },
+    ],
+  };
+  const document: Document = {
+    package: {
+      document: {
+        comments: [
+          { id: 9, author: "Reviewer", anchorKind: "point", content: [] },
+        ],
+        content: [
+          paragraph("00000001", "kept"),
+          removed,
+          paragraph("00000003", "after"),
+        ],
+      },
+    },
+  };
+  const result = applyDocumentOp(document, deletion([removed.paraId ?? ""]));
+  expect(result.isOk()).toBe(true);
+});
+
 test("a sole paragraph after a table is cleared without marking its final break", () => {
   const table = cell([paragraph("00000003", "cell")]);
   const final = paragraph("00000001", "remove");
