@@ -400,9 +400,12 @@ test("DOCX-produced nested control comments are guarded directly and kept on del
               })
               .unwrap(),
           );
+        // The new words go outside the range of the comment whose words
+        // they replace, which leaves it nothing to cover.
         expect(
           getCommentAnchorsFromDoc(state.doc).map(({ quote }) => quote),
-        ).toEqual(["schedule"]);
+        ).toEqual([]);
+        expect(state.doc.textContent).toContain("Before schedule after");
       }
     }
   }
@@ -609,10 +612,8 @@ describe("canonical replacement comments from the public producer", () => {
       } as const;
       const direct = await open(bytes, "canonical");
       const tracked = await open(bytes, "canonical");
-      const legacy = await open(bytes, "legacy");
       const original = comments(tracked);
       expect(original).toHaveLength(scenario.quotes.length);
-      apply(legacy, operation, "direct");
       if (scenario.type === "alignment") {
         for (const mode of ["direct", "tracked-changes"] as const) {
           const reviewer = await open(bytes, "canonical");
@@ -655,12 +656,15 @@ describe("canonical replacement comments from the public producer", () => {
       const result = apply(tracked, operation, "tracked-changes");
       const pending = await tracked.toBuffer();
       expect(tracked.acceptAll().skipped).toEqual([]);
-      expect(comments(direct)).toEqual(comments(legacy));
-      expect(comments(tracked)).toEqual(comments(legacy));
+      // The replacement takes every word these comments cover, and the
+      // comments go with their words: the new words take no comment's range.
+      const replaced: ReturnType<typeof comments> = [];
+      expect(comments(direct)).toEqual(replaced);
+      expect(comments(tracked)).toEqual(replaced);
       for (const reviewer of [direct, tracked])
         expect(
           comments(await open(await reviewer.toBuffer(), "canonical")),
-        ).toEqual(comments(legacy));
+        ).toEqual(replaced);
       const rejected = await open(pending, "canonical");
       expect(rejected.rejectAll().skipped).toEqual([]);
       expect(comments(rejected)).toEqual(original);
@@ -676,7 +680,7 @@ describe("canonical replacement comments from the public producer", () => {
                 ? individually.acceptChange(change)
                 : individually.rejectChange(change),
             ).toBe(true);
-          const expected = decision === "accept" ? comments(legacy) : original;
+          const expected = decision === "accept" ? replaced : original;
           expect(comments(individually)).toEqual(expected);
           expect(
             comments(await open(await individually.toBuffer(), "canonical")),

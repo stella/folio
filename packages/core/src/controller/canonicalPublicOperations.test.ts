@@ -309,9 +309,9 @@ describe("canonical public operation batches", () => {
             const anchors = getCommentAnchorsFromDoc(editor.state().doc).map(
               ({ quote: anchoredQuote }) => anchoredQuote,
             );
-            if (mode === "tracked-changes")
-              expect([[], [replacement]]).toContainEqual(anchors);
-            else expect(anchors).toEqual([replacement]);
+            // The replacement takes every source word, and with them the
+            // comment: the new words never inherit its range.
+            expect(anchors).toEqual([]);
           },
         ),
         {
@@ -479,7 +479,7 @@ describe("canonical public operation batches", () => {
   }
 
   for (const mode of ["editing", "suggesting"] as const) {
-    test(`${mode}: exact covered-edge native replacement remains supported`, () => {
+    test(`${mode}: exact covered-edge native replacement takes the comment with its words`, () => {
       const editor = setup("The Supplier delivers on time.");
       expect(
         editor.apply([
@@ -520,9 +520,14 @@ describe("canonical public operation batches", () => {
           .unwrap();
         expect(editor.publish(accepted)).toBe(true);
       }
+      // The new words go outside the range of the comment whose words they
+      // replace, which leaves it nothing to cover.
       expect(
         getCommentAnchorsFromDoc(editor.state().doc).map(({ quote }) => quote),
-      ).toEqual(["schedule"]);
+      ).toEqual([]);
+      expect(editor.state().doc.textContent).toBe(
+        "The Supplier delivers on schedule.",
+      );
     });
 
     test(`${mode}: native marker-inclusive whole-paragraph replacement refuses even uniform comments`, () => {

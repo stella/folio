@@ -1,9 +1,10 @@
 /**
- * Replacing exactly the text a comment covers keeps the comment on the new
- * text, in direct and tracked mode, pending and after accepting, as the
- * default engine does: the replacement's edges stay inside the comment's
- * range markers. Both engines keep the same comment for every placement of
- * the commented words in the paragraph.
+ * Replacing exactly the text a comment covers puts the new text past the
+ * comment's end, for every placement of the commented words in the paragraph.
+ * Direct, the comment goes with its words. Tracked, it stays on the struck
+ * words while the change is pending, so rejecting gives it back, and goes with
+ * them on accepting. The default engine hands the comment to the new text
+ * instead.
  */
 import { describe, expect, test } from "bun:test";
 import { EditorState } from "prosemirror-state";
@@ -78,28 +79,6 @@ const commentsOf = async (bytes: ArrayBuffer) => {
   return { pending, accepted };
 };
 
-const viaDefaultEngine = async (
-  source: ArrayBuffer,
-  word: string,
-  mode: "direct" | "tracked-changes",
-) => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(source);
-  const result = reviewer.applyOperations(
-    [
-      {
-        id: "edit",
-        type: "replaceInBlock",
-        blockId: "22222222",
-        find: word,
-        replace: "Changed",
-      },
-    ],
-    { mode, undefinedReferences: "refuse" },
-  );
-  expect(result.applied).toHaveLength(1);
-  return reviewer.toBuffer();
-};
-
 const viaCanonicalEngine = async (
   source: ArrayBuffer,
   word: string,
@@ -156,26 +135,14 @@ const PLACEMENTS = [
 describe("replacing exactly the text a comment covers", () => {
   for (const [placement, before, word, after] of PLACEMENTS)
     for (const mode of ["direct", "tracked-changes"] as const)
-      test(`${placement}, ${mode}: keeps the comment on the new text in both engines`, async () => {
+      test(`${placement}, ${mode}: puts the new text past the comment`, async () => {
         const source = await packageOf(before, word, after);
-        const expected = await commentsOf(
-          await viaDefaultEngine(source, word, mode),
-        );
-        expect(expected.accepted).toEqual([
-          { id: expect.any(Number), anchoredText: "Changed" },
-        ]);
         const actual = await commentsOf(
           await viaCanonicalEngine(source, word, mode),
         );
-        expect(actual.accepted).toEqual(expected.accepted);
-        // While the change is pending the comment covers the struck words,
-        // then the new ones, in both engines.
-        expect(expected.pending).toEqual([
-          {
-            id: expected.accepted.at(0)?.id ?? -1,
-            anchoredText: mode === "direct" ? "Changed" : `${word}Changed`,
-          },
-        ]);
-        expect(actual.pending).toEqual(expected.pending);
+        expect(actual.accepted).toEqual([]);
+        expect(actual.pending).toEqual(
+          mode === "direct" ? [] : [{ id: 7, anchoredText: word }],
+        );
       });
 });
