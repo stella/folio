@@ -776,6 +776,9 @@ const visibleOffsetAtPhysicalOffset = (
   return visible;
 };
 
+const joinsFollowingParagraph = (paragraph: Paragraph): boolean =>
+  paragraph.pPrMark?.kind === "del" || paragraph.pPrMark?.kind === "moveFrom";
+
 /** Deleted paragraph marks concatenate physical paragraphs in the editing view. */
 export const editorParagraphGroups = (
   document: Document,
@@ -806,11 +809,7 @@ export const editorParagraphGroups = (
     }
     previous = location;
     pending.push(paragraph);
-    if (
-      paragraph.pPrMark?.kind === "del" ||
-      paragraph.pPrMark?.kind === "moveFrom"
-    )
-      continue;
+    if (joinsFollowingParagraph(paragraph)) continue;
     groups.push({
       blockId: paragraph.paraId ?? "",
       paragraphs: pending,
@@ -964,33 +963,30 @@ const authoredFormatting = (
   from: TextPosition,
   to: TextPosition,
 ): TextFormatting | undefined => {
-  const paragraph = paragraphAt(document, from);
-  if (paragraph === undefined)
+  const body = storyBody(document, from.story);
+  const location = findStoryParagraph(body, from.blockId);
+  if (location === undefined)
     panic(
       "A validated input paragraph must exist when reading authored formatting.",
     );
+  const { paragraph } = location;
   const collapsed = from.blockId === to.blockId && from.offset === to.offset;
   if (!collapsed) return formattingAt(paragraph, from.offset);
   const left = visibleFormattingSpans(paragraph).some(
     ({ before }) => before.offset < from.offset,
   );
   if (left) return formattingAt(paragraph, from.offset - 1);
-  const group = editorParagraphGroups(document, from.story).find(
-    ({ paragraphs }) =>
-      paragraphs.some(
-        ({ paraId }) => idKey(paraId ?? "") === idKey(from.blockId),
-      ),
-  );
-  const index =
-    group?.paragraphs.findIndex(
-      ({ paraId }) => idKey(paraId ?? "") === idKey(from.blockId),
-    ) ?? 0;
-  const previous = group?.paragraphs
-    .slice(0, index)
-    .findLast((item) => paragraphVisibleText(item) !== "");
-  return previous === undefined
-    ? formattingAt(paragraph, from.offset)
-    : formattingAt(previous, paragraphLength(previous));
+  // A caret at the start can inherit from the preceding physical paragraphs
+  // only while their removed breaks join them into this logical paragraph.
+  const blocks = blockListAt(body.content, location.list);
+  for (let index = location.index - 1; index >= 0; index -= 1) {
+    const previous = blocks[index];
+    if (previous?.type !== "paragraph" || !joinsFollowingParagraph(previous))
+      break;
+    if (paragraphVisibleText(previous) !== "")
+      return formattingAt(previous, paragraphLength(previous));
+  }
+  return formattingAt(paragraph, from.offset);
 };
 
 type IntentRunFormattingOptions = {
