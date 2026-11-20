@@ -68,6 +68,7 @@ export { mapTocBookmarkPosition } from "./tocIntent";
 export { packageResourcesOpOf } from "./packageResources";
 export { combineEdits } from "./edits";
 export { reviewFieldsOf } from "./review";
+export { tryTrackedInsertionGroup } from "./trackedInsertionGroup";
 export {
   paragraphPropertySnapshotToken,
   registerParagraphPropertySnapshot,

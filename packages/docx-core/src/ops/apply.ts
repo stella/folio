@@ -4,7 +4,6 @@ import {
   type Document,
   finalizeParagraphFormatting,
   type Insertion,
-  MAX_REVISION_ID,
   type Paragraph,
   type ParagraphContent,
   type ParagraphFormatting,
@@ -99,14 +98,12 @@ import { equalForStaleness, structurallyEqual } from "./equality";
 import { resolveGap, type ZeroWidthDefault } from "./gaps";
 import { freshenIdentities, rebindRetainedIdentities } from "./identity";
 import {
-  IDENTITY_SPACES,
   idKey,
   isParaId,
   packageIdentityKeyIndex,
   packageParagraphIdIndex,
   packageReservedKeyIndex,
   paragraphIdsIn,
-  slotKey,
 } from "./ids";
 import {
   concatIds,
@@ -219,6 +216,7 @@ import { applyRowOp } from "./tableRows";
 import { applyTableOp } from "./tables";
 import { stampedTableRevisionIds } from "./tableTracking";
 import { namingPackageStories, textBoxRoute } from "./textBoxRouting";
+import { trackedStampRefusal } from "./trackedStamp";
 import {
   type AddNoteOp,
   type DeleteRangeOp,
@@ -291,39 +289,6 @@ const refuse = (
   reason: DocumentOpRefusalReason,
   message: string,
 ): Applied => Result.err(refusal(op, reason, message));
-
-/**
- * Whether a tracked operation's stamp can name the first record it creates:
- * a revision id in range that no record in the package carries.
- */
-const stampRefusal = (
-  document: Document,
-  op: DocumentOp,
-  stamp: RevisionStamp,
-): DocumentOpRefusal | undefined => {
-  // A revision id reserves no value: every integer in range names a record.
-  const revisionId = stamp.id;
-  if (
-    !Number.isInteger(revisionId) ||
-    revisionId < 0 ||
-    revisionId > MAX_REVISION_ID
-  ) {
-    return refusal(
-      op,
-      DOCUMENT_OP_REFUSAL_REASONS.INVALID_NEW_ID,
-      `${revisionId} cannot be a revision id.`,
-    );
-  }
-  const key = slotKey({ space: IDENTITY_SPACES.REVISION, id: stamp.id });
-  if (packageIdentityKeyIndex(document.package).has(key)) {
-    return refusal(
-      op,
-      DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
-      `Revision id ${stamp.id} is already used in the package.`,
-    );
-  }
-  return undefined;
-};
 
 type CutHasResolutionProvenanceOptions = {
   content: readonly ParagraphContent[];
@@ -3280,7 +3245,11 @@ const applyAddressedOp = ({
 }: ApplyAddressedOpOptions): Result<AppliedDocumentOp, DocumentOpRefusal> => {
   const stamp = stampOf(op);
   const badStamp =
-    stamp === undefined ? undefined : stampRefusal(document, op, stamp);
+    stamp === undefined
+      ? undefined
+      : trackedStampRefusal(op, stamp, (key) =>
+          packageIdentityKeyIndex(document.package).has(key),
+        );
   if (badStamp !== undefined) {
     return Result.err(badStamp);
   }

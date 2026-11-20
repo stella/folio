@@ -1622,6 +1622,9 @@ export const transformPosition: (position: TextPosition, over: readonly Sequence
 // @public
 export const trimIdLease: (lease: IdLease, ids: readonly LeasedId[]) => IdLease;
 
+// @public
+export const tryTrackedInsertionGroup: (input: TrackedInsertionGroupOptions) => TrackedInsertionGroupResult;
+
 // @public (undocumented)
 export type UpdateCommentContentOp = {
     type: typeof DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT;
