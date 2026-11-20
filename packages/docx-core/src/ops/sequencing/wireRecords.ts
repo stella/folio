@@ -292,7 +292,7 @@ const keptCut = optional(
   object({
     depth: natural,
     keptFrom: string,
-    piece: optional(literal("before", "after")),
+    piece: optional(literal("before", "after", "both")),
   }),
 );
 const marker = {

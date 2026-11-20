@@ -91,7 +91,7 @@ describe("a kept range marker's cut", () => {
       },
       text("b"),
       { type: "moveToRangeEnd", id: 3, keptCut: { ...CUT, piece: "after" } },
-      { type: "commentRangeEnd", id: 2, keptCut: CUT },
+      { type: "commentRangeEnd", id: 2, keptCut: { ...CUT, piece: "both" } },
       link([
         text("c"),
         { type: "bookmarkStart", id: 4, name: "inLink", keptCut: CUT },
@@ -172,7 +172,8 @@ const KEPT_FROM = "2026-03-04T05:00:02Z";
 /**
  * A link piece in a pending deletion, a kept bookmark end, an insertion
  * waiting with the seam, the other piece: the seam's kept boundaries were
- * kept from a revision dated {@link KEPT_FROM}.
+ * kept from a revision dated {@link KEPT_FROM}, the waiting insertion's side
+ * the piece of their cut.
  */
 const tracked = (): Document =>
   documentWith([
@@ -182,7 +183,11 @@ const tracked = (): Document =>
       content: [link([text("x")])],
       resolutionJoins: { before: 0, after: 2, remove: 0 },
     },
-    { type: "bookmarkEnd", id: 1 },
+    {
+      type: "bookmarkEnd",
+      id: 1,
+      keptCut: { depth: 2, keptFrom: KEPT_FROM, piece: "after" },
+    },
     {
       type: "insertion",
       info: { id: 6, author: "A", date: "2026-03-04T05:00:03Z" },
