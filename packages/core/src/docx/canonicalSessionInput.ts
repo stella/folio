@@ -45,6 +45,27 @@ export const prepareCanonicalDocxInput = async (
   | Err<ArrayBuffer, CanonicalDocxInputError>
   | Ok<Uint8Array<ArrayBufferLike>, CanonicalDocxInputError>
 > => {
+  const source = await prepareCanonicalDocxSource(input);
+  return source.isErr()
+    ? Result.err(source.error)
+    : Result.ok(source.value.docx);
+};
+
+/** A canonical input package and the paragraph ids normalizing it minted. */
+export type CanonicalDocxSource = {
+  docx: Uint8Array<ArrayBufferLike>;
+  /**
+   * Ids written for paragraphs the package names none for, or names one
+   * another paragraph already holds: they say nothing about the paragraph
+   * across versions of the document.
+   */
+  mintedParaIds: ReadonlySet<string>;
+};
+
+/** {@link prepareCanonicalDocxInput}, with the paragraph ids it minted. */
+export const prepareCanonicalDocxSource = async (
+  input: DocxInput,
+): Promise<Result<CanonicalDocxSource, CanonicalDocxInputError>> => {
   const bytes = await Result.tryPromise({
     try: () => toArrayBuffer(input),
     catch: (cause) =>
@@ -53,7 +74,7 @@ export const prepareCanonicalDocxInput = async (
         cause,
       }),
   });
-  if (bytes.isErr()) return bytes;
+  if (bytes.isErr()) return Result.err(bytes.error);
   if (detectDocxContainerType(bytes.value) === DOCX_CONTAINER_TYPES.CFB) {
     return Result.err(
       new CanonicalDocxInputError({
@@ -65,16 +86,13 @@ export const prepareCanonicalDocxInput = async (
   return Result.tryPromise({
     // Paragraph ids, content control ids and revision ids, each unique in
     // the package as the model holds them.
-    try: async () =>
-      (
-        await ensureUniqueRevisionIds(
-          (
-            await ensureUniqueControlIds(
-              (await ensureParaIds(bytes.value)).docx,
-            )
-          ).docx,
-        )
-      ).docx,
+    try: async () => {
+      const paragraphs = await ensureParaIds(bytes.value);
+      const { docx } = await ensureUniqueRevisionIds(
+        (await ensureUniqueControlIds(paragraphs.docx)).docx,
+      );
+      return { docx, mintedParaIds: new Set(paragraphs.mintedParaIds) };
+    },
     catch: (cause) =>
       new CanonicalDocxInputError({
         message:
