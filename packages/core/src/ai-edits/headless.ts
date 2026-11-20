@@ -6146,6 +6146,8 @@ export type ApplyFolioAIEditsToBufferOptions = {
    * anchor resolution matches exactly.
    */
   snapshot?: FolioAIEditSnapshot;
+  /** The engine the review runs on; see {@link FolioDocxReviewerOptions.session}. */
+  session?: HeadlessReviewerSession;
 };
 
 /** Result of {@link applyFolioAIEditsToBuffer}. */
@@ -6167,6 +6169,7 @@ export const applyFolioAIEditsToBuffer = async (
 ): Promise<ApplyFolioAIEditsToBufferResult> => {
   const reviewer = await FolioDocxReviewer.fromBuffer(buffer, {
     ...(options.author !== undefined && { author: options.author }),
+    ...(options.session !== undefined && { session: options.session }),
   });
   const { applied, skipped } = reviewer.applyOperations(operations, {
     undefinedReferences: "refuse",
