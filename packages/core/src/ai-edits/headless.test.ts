@@ -3659,6 +3659,32 @@ describe("headless docx review discovery + resolve", () => {
     expect(reopenedSavedComment?.done).toBe(false);
   });
 
+  for (const session of ["legacy", "canonical"] as const)
+    test(`${session}: resolveComment leaves a thread already in the asked state as it is`, async () => {
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await makeParaIdBaseline(readFixture()),
+        { author: "AI Reviewer", session },
+      );
+      const target = findBlock(reviewer.snapshot().blocks, "Heading");
+      reviewer.applyOperations(
+        [
+          {
+            id: "c1",
+            type: "commentOnBlock",
+            blockId: target.id,
+            comment: { text: "Please check." },
+          },
+        ],
+        { undefinedReferences: "refuse" },
+      );
+      const id = String(reviewer.getComments().at(0)?.id);
+      expect(reviewer.resolveComment(id, { resolved: false })).toBe(true);
+      expect(reviewer.getComments().at(0)?.done).toBe(false);
+      expect(reviewer.resolveComment(id)).toBe(true);
+      expect(reviewer.resolveComment(id)).toBe(true);
+      expect(reviewer.getComments().at(0)?.done).toBe(true);
+    });
+
   test("ops from one parse's snapshot resolve on a separate parse of a paraId-less doc", async () => {
     // The raw corpus fixture ships without `w14:paraId`s. Two independent
     // parses must mint identical block ids so ops built against the first
