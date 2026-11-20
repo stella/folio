@@ -1379,9 +1379,10 @@ const mergeIntentsAsItRuns = (
     (intent): intent is Extract<EditorIntent, { type: "joinParagraphs" }> =>
       intent.type === "joinParagraphs",
   );
-  const body = findStoryBody(document, story);
-  if (join === undefined || body === undefined) return intents;
-  const locations = storyParagraphs(body);
+  if (join === undefined || findStoryBody(document, story) === undefined)
+    return intents;
+  // A text box's paragraphs are named through the story drawing it.
+  const locations = paragraphsThroughTextBoxes(document, story);
   const key = idKey(join.blockId);
   const at = locations.findIndex(
     ({ paragraph }) => idKey(paragraph.paraId ?? "") === key,
