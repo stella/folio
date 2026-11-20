@@ -46,6 +46,7 @@ import type {
   NoteReferenceContent,
   Paragraph,
   ParagraphMarkChange,
+  ParagraphMarkDeletion,
   ParagraphPropertyChange,
   PictureWatermark,
   PositionalTab,
@@ -1290,11 +1291,24 @@ export const PARAGRAPH_MARK_CHANGE_RESERVED = {
   info: NO_RESERVED_VALUE,
   resolutionJoin: NO_RESERVED_VALUE,
   survivor: NO_RESERVED_VALUE,
+  deletion: NO_RESERVED_VALUE,
 } satisfies Record<RecordField<ParagraphMarkChange>, ReservedValueDisposition>;
 
 export type ExhaustiveParagraphMarkChangeReserved = ExhaustiveFields<
   ParagraphMarkChange,
   keyof typeof PARAGRAPH_MARK_CHANGE_RESERVED
+>;
+
+export const PARAGRAPH_MARK_DELETION_RESERVED = {
+  info: NO_RESERVED_VALUE,
+} satisfies Record<
+  RecordField<ParagraphMarkDeletion>,
+  ReservedValueDisposition
+>;
+
+export type ExhaustiveParagraphMarkDeletionReserved = ExhaustiveFields<
+  ParagraphMarkDeletion,
+  keyof typeof PARAGRAPH_MARK_DELETION_RESERVED
 >;
 
 export const PARAGRAPH_RESERVED = {
