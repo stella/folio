@@ -110,6 +110,11 @@ import { tableEditParagraphDemand } from "./tableEdits";
 import { tableGrid } from "./tableGrid";
 import { locateTableRow, tableRowAnchor } from "./tableLocation";
 import { rowsWithoutRow } from "./tableRowRemoval";
+import {
+  addressedTo,
+  namingPackageStories,
+  textBoxOfIntent,
+} from "./textBoxRouting";
 import { compileGenerateTOCIntent, type GenerateTOCIntent } from "./tocIntent";
 import {
   type DeleteRangeOp,
@@ -1540,7 +1545,36 @@ const gapWithoutLeaves = (
 };
 
 /** Compile one batch; the caller applies it atomically and journals its exact inverse. */
+/**
+ * Compile an editor intent. One naming paragraphs of a text box through the
+ * story drawing it is compiled in the box's own story; what it hands back
+ * names the package story again, as operations on the box do.
+ */
 export const compileEditorIntent = (
+  document: Document,
+  options: CompileEditorIntentOptions,
+): Result<CompiledEditorIntent, DocumentOpRefusal> => {
+  const routed = textBoxOfIntent(document, options.intent);
+  if (routed === undefined) return compileInStory(document, options);
+  const compiled = compileInStory(document, {
+    ...options,
+    intent: addressedTo(options.intent, routed.story, routed.box),
+  });
+  if (compiled.isErr()) return compiled;
+  const { ops, selection, applied } = compiled.value;
+  const named: CompiledEditorIntent = {
+    ops: ops.map(namingPackageStories),
+    selection: namingPackageStories(selection),
+  };
+  if (applied !== undefined)
+    named.applied = {
+      ...applied,
+      inverse: applied.inverse.map(namingPackageStories),
+    };
+  return Result.ok(named);
+};
+
+const compileInStory = (
   document: Document,
   { intent, mode, firstBlockId }: CompileEditorIntentOptions,
 ): Result<CompiledEditorIntent, DocumentOpRefusal> => {
