@@ -400,9 +400,20 @@ export type MarkupRangeMarker = WritableRecord & {
 
 /**
  * The cut a kept range marker stands in: how many container levels the
- * removed content cut there, and the date of the revision it was kept from.
+ * removed content cut there, counted from the list the marker stands in, the
+ * date of the revision it was kept from, and, where only one side of it is a
+ * piece of that cut (`piece`), that side: its record, or the pending change
+ * beside the marker once resolved, takes the marker with no alike record
+ * across from it.
  */
-export type KeptCut = WritableRecord & { depth: number; keptFrom: string };
+export type KeptCut = WritableRecord & {
+  depth: number;
+  keptFrom: string;
+  piece?: KeptCutPiece;
+};
+
+/** The side of a kept marker whose record is a piece of its cut. */
+export type KeptCutPiece = "before" | "after";
 
 /** Added-revision ancestors that own a copied bookmark or move boundary. */
 type CopyOriginAncestorOrdinals = readonly [number, ...number[]];

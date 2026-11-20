@@ -288,7 +288,13 @@ const runContentKinds = {
 const runContent = kinded(runContentKinds);
 
 /** Review state on a kept range marker (see `KeptCut`). */
-const keptCut = optional(object({ depth: natural, keptFrom: string }));
+const keptCut = optional(
+  object({
+    depth: natural,
+    keptFrom: string,
+    piece: optional(literal("before", "after")),
+  }),
+);
 const marker = {
   id: natural,
   displacedByCustomXml: boundedJson,

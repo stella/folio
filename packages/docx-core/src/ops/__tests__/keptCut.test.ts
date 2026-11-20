@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import type { Document, ParagraphContent } from "../../model/document";
 import { contractViolation } from "../contract";
-import { settleKeptCuts } from "../keptCut";
+import { isKeptCut, settleKeptCuts } from "../keptCut";
 import type { InlineNode } from "../leaves";
 
 const CUT = { depth: 2, keptFrom: "2026-03-04T05:00:01Z" };
@@ -38,6 +38,13 @@ describe("a kept range marker's cut", () => {
       ]);
     expect(contractViolation(marked(2))).toBeUndefined();
     expect(contractViolation(marked(0))).toBeDefined();
+  });
+
+  test("a cut names one side as its piece, or none", () => {
+    expect(isKeptCut(CUT)).toBe(true);
+    expect(isKeptCut({ ...CUT, piece: "before" })).toBe(true);
+    expect(isKeptCut({ ...CUT, piece: "after" })).toBe(true);
+    expect(isKeptCut({ ...CUT, piece: "inside" })).toBe(false);
   });
 
   test("stays while a pending change waits beside the markers, and goes once none does", () => {
