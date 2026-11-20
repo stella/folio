@@ -15,12 +15,13 @@
 
 import { expect, type Page, test } from "@playwright/test";
 
+import { PLAYGROUND_HOSTS } from "../parity/playgroundHosts";
 import { collectLineParity, PER_RUN_TOLERANCE_PX } from "../support/lineParity";
 
 const FIXTURE = "font-subsets.docx";
 const EDITOR_HOSTS = [
-  { name: "React", url: "http://localhost:4200" },
-  { name: "Vue", url: "http://localhost:4201" },
+  { name: "React", url: PLAYGROUND_HOSTS.react },
+  { name: "Vue", url: PLAYGROUND_HOSTS.vue },
 ] as const;
 /** Lines in the fixture at this page width, as a floor against a vacuous pass. */
 const MIN_LINES = 18;

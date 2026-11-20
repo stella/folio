@@ -125,6 +125,24 @@ const within = (
   point: TextPosition,
   range: DeleteRangeOp | SetRunPropsOp,
 ): { fromSide: -1 | 0 | 1; toSide: -1 | 0 | 1 } | undefined => {
+  if (range.type === DOCUMENT_OP_TYPES.SET_RUN_PROPS) {
+    // A format's absent end gaps keep the zero-width children at its ends out
+    // of it: it starts after the ones at its start and ends before the ones
+    // at its end, so a point among them is never inside it.
+    const start =
+      range.from.zeroWidthBefore === undefined &&
+      point.offset === range.from.offset &&
+      (point.zeroWidthBefore ?? 0) !== 0
+        ? -1
+        : comparePositions(point, range.from);
+    const end = comparePositions(point, {
+      ...range.to,
+      zeroWidthBefore: range.to.zeroWidthBefore ?? 0,
+    });
+    return start === undefined || end === undefined
+      ? undefined
+      : { fromSide: start, toSide: end };
+  }
   const start = comparePositions(point, range.from);
   const end = comparePositions(point, range.to);
   return start === undefined || end === undefined

@@ -2,10 +2,11 @@ import { expect, type Page } from "@playwright/test";
 
 import { evaluateCanonicalLoad } from "./canonicalLoadEvaluation";
 import type { canonicalLoadFixture } from "./canonicalLoadFixture";
+import { PLAYGROUND_PORTS } from "./playgroundHosts";
 
 export const MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
-export const reactPort = Number(process.env["FOLIO_PLAYGROUND_PORT"]) || 4200;
-export const vuePort = Number(process.env["FOLIO_PLAYGROUND_VUE_PORT"]) || 4201;
+export const reactPort = PLAYGROUND_PORTS.react;
+export const vuePort = PLAYGROUND_PORTS.vue;
 
 export const snapshot = (page: Page) =>
   page.evaluate(() => globalThis.__folioCanonical?.snapshot());

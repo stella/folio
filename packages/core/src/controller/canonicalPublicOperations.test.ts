@@ -91,7 +91,7 @@ const setup = (source: string | Document = "alpha beta") => {
 };
 
 describe("canonical public operation batches", () => {
-  test("cell replacement preflight covers every sorted cell independently of selection direction", () => {
+  test("cell replacement covers every sorted cell independently of selection direction, taking a comment with its words", () => {
     const source = fromMarkdown("| A | B |\n|---|---|\n| C | D |");
     const table = source.package.document.content.at(0);
     if (table?.type !== "table") return panic("Produced table is missing");
@@ -131,28 +131,30 @@ describe("canonical public operation batches", () => {
       const state = editor
         .state()
         .apply(editor.state().tr.setSelection(selection));
-      const before = editor.session.document;
-      const version = editor.session.version;
-      let committed = 0;
-      editor.session.onCommitted(() => committed++);
       const result = editor.session.prepareReplace(state, {
         from: selection.from,
         to: selection.to,
         text: "replacement",
       });
-      expect(result.isErr()).toBe(true);
-      if (result.isErr())
-        expect(result.error.ground).toEqual({
-          gap: "comment-replacement-alignment",
-        });
-      expect(editor.session.document).toBe(before);
-      expect(editor.session.version).toBe(version);
-      expect(editor.session.canUndo).toBe(true);
-      expect(committed).toBe(0);
+      expect(result.isOk()).toBe(true);
+      expect(editor.publish(result.unwrap())).toBe(true);
+      // The text goes into the first cell whichever way the selection ran,
+      // and the comment on the cleared words goes with them.
+      const cells: string[] = [];
+      editor.state().doc.descendants((node) => {
+        if (node.type.name === "tableCell" || node.type.name === "tableHeader")
+          cells.push(node.textContent);
+        return true;
+      });
+      expect(cells).toEqual(["replacement", "", "", ""]);
+      expect(getCommentAnchorsFromDoc(editor.state().doc)).toEqual([]);
+      expect(editor.session.document.package.document.comments ?? []).toEqual(
+        [],
+      );
     }
   });
 
-  test("direct comment alignment inside an inline control refuses at the same owner", () => {
+  test("a direct replacement inside an inline control takes the comment with its words", () => {
     const source = "The Supplier delivers on time.";
     const editor = setup({
       package: {
@@ -186,7 +188,6 @@ describe("canonical public operation batches", () => {
         },
       ]).applied,
     ).toHaveLength(1);
-    const before = editor.session.document;
     const result = editor.apply(
       [
         {
@@ -198,14 +199,11 @@ describe("canonical public operation batches", () => {
       ],
       { mode: "direct" },
     );
-    expect(result.applied).toEqual([]);
-    expect(result.skipped).toMatchObject([
-      {
-        reason: "unsupportedBlock",
-        canonicalRefusal: { gap: "comment-replacement-alignment" },
-      },
-    ]);
-    expect(editor.session.document).toBe(before);
+    expect(result.skipped).toEqual([]);
+    expect(result.applied).toHaveLength(1);
+    expect(editor.state().doc.textContent).toBe("New agreement.");
+    expect(getCommentAnchorsFromDoc(editor.state().doc)).toEqual([]);
+    expect(editor.session.document.package.document.comments ?? []).toEqual([]);
   });
 
   test(
@@ -246,8 +244,10 @@ describe("canonical public operation batches", () => {
               { mode },
             );
             if (result.applied.length === 0) {
-              // Only a replacement that must move the comment refuses.
-              expect(mode).not.toBe("tracked-changes");
+              // Only a suggestion that must move the comment refuses: a
+              // direct replacement takes a comment with its words, and a
+              // tracked one keeps it on them.
+              expect(mode).toBe("suggested");
               expect(result.skipped).toMatchObject([
                 {
                   reason: "unsupportedBlock",
@@ -385,97 +385,144 @@ describe("canonical public operation batches", () => {
     }
   });
 
-  for (const mode of ["direct", "suggested"] as const) {
-    for (const text of [
-      "Invoice delivery payment agreement supplier buyer payment term.",
-      "",
-    ]) {
-      test(`${mode}/${text === "" ? "empty" : "nonempty"}: comment alignment refusal preserves the live document and journal`, () => {
-        const source =
-          "The Supplier delivers the goods on time and in good order.";
-        for (const type of [
-          "replaceBlock",
-          "replaceInBlock",
-          "replaceRange",
-        ] as const) {
-          const editor = setup(source);
-          const comment = (quote: string) =>
-            editor.apply([
-              {
-                id: quote,
-                type: "commentOnBlock",
-                blockId: "12345678",
-                quote,
-                comment: { text: quote },
-              },
-            ]);
-          expect(comment("time").applied).toHaveLength(1);
-          const firstComment = editor.session.document;
-          expect(comment("The").applied).toHaveLength(1);
-          const before = editor.session.document;
-          const version = editor.session.version;
-          const selection = editor.session.selection;
-          const save = editor.session.captureSaveSnapshot();
-          let committed = 0;
-          let dropped = 0;
-          editor.session.onCommitted(() => committed++);
-          editor.session.onHistoryDrop(() => dropped++);
-          const operation = (() => {
-            switch (type) {
-              case "replaceBlock":
-                return { id: "replace", type, blockId: "12345678", text };
-              case "replaceInBlock":
-                return {
-                  id: "replace",
-                  type,
-                  blockId: "12345678",
-                  find: source,
-                  replace: text,
-                };
-              case "replaceRange":
-                return {
-                  id: "replace",
-                  type,
-                  range: {
-                    type: "textRange" as const,
-                    story: "main" as const,
-                    blockId: "12345678",
-                    startOffset: 0,
-                    endOffset: source.length,
-                    selectedTextHash: hashFolioAIBlockText(source),
-                  },
-                  replace: text,
-                };
-              default: {
-                const unhandled: never = type;
-                return panic(`Unknown replacement type ${unhandled}`);
-              }
-            }
-          })();
-          const result = editor.apply([operation], { mode });
-          expect(result.applied).toEqual([]);
-          expect(result.undoHandle).toBeNull();
-          expect(result.skipped).toMatchObject([
-            {
-              reason: "unsupportedBlock",
-              canonicalRefusal: { gap: "comment-replacement-alignment" },
-            },
-          ]);
-          expect(editor.session.document).toBe(before);
-          expect(editor.session.version).toBe(version);
-          expect(editor.session.selection).toEqual(selection);
-          expect(editor.session.captureSaveSnapshot()).toEqual(save);
-          expect(editor.session.canUndo).toBe(true);
-          expect(editor.session.canRedo).toBe(false);
-          expect(committed).toBe(0);
-          expect(dropped).toBe(0);
-          expect(
-            editor.publish(editor.session.prepareUndo(editor.state()).unwrap()),
-          ).toBe(true);
-          expect(editor.session.document).toEqual(firstComment);
-        }
-      });
+  const REPLACEMENT_SOURCE =
+    "The Supplier delivers the goods on time and in good order.";
+  const REPLACEMENT_TYPES = [
+    "replaceBlock",
+    "replaceInBlock",
+    "replaceRange",
+  ] as const;
+  type ReplacementOperationOptions = {
+    type: (typeof REPLACEMENT_TYPES)[number];
+    text: string;
+  };
+  const wholeBlockReplacement = ({
+    type,
+    text,
+  }: ReplacementOperationOptions): FolioDocumentOperation => {
+    switch (type) {
+      case "replaceBlock":
+        return { id: "replace", type, blockId: "12345678", text };
+      case "replaceInBlock":
+        return {
+          id: "replace",
+          type,
+          blockId: "12345678",
+          find: REPLACEMENT_SOURCE,
+          replace: text,
+        };
+      case "replaceRange":
+        return {
+          id: "replace",
+          type,
+          range: {
+            type: "textRange",
+            story: "main",
+            blockId: "12345678",
+            startOffset: 0,
+            endOffset: REPLACEMENT_SOURCE.length,
+            selectedTextHash: hashFolioAIBlockText(REPLACEMENT_SOURCE),
+          },
+          replace: text,
+        };
+      default: {
+        const unhandled: never = type;
+        return panic(`Unknown replacement type ${unhandled}`);
+      }
     }
+  };
+  const commentedReplacementSource = () => {
+    const editor = setup(REPLACEMENT_SOURCE);
+    const comment = (quote: string) =>
+      editor.apply([
+        {
+          id: quote,
+          type: "commentOnBlock",
+          blockId: "12345678",
+          quote,
+          comment: { text: quote },
+        },
+      ]);
+    expect(comment("time").applied).toHaveLength(1);
+    const firstComment = editor.session.document;
+    expect(comment("The").applied).toHaveLength(1);
+    return { editor, firstComment };
+  };
+
+  for (const text of [
+    "Invoice delivery payment agreement supplier buyer payment term.",
+    "",
+  ]) {
+    test(`direct/${text === "" ? "empty" : "nonempty"}: a whole-block replacement takes the comments with their words, as accepting the tracked one does`, () => {
+      for (const type of REPLACEMENT_TYPES) {
+        const operation = wholeBlockReplacement({ type, text });
+        const { editor: direct } = commentedReplacementSource();
+        const before = direct.session.document;
+        const result = direct.apply([operation], { mode: "direct" });
+        expect(result.skipped).toEqual([]);
+        expect(result.applied).toHaveLength(1);
+        const { editor: tracked } = commentedReplacementSource();
+        expect(
+          tracked.apply([operation], { mode: "tracked-changes" }).skipped,
+        ).toEqual([]);
+        const accepted = tracked.session
+          .prepareResolve(tracked.state(), {
+            revisionIds: getTrackedChangesFromDoc(tracked.state().doc).map(
+              ({ id }) => id,
+            ),
+            resolution: "accept",
+          })
+          .unwrap();
+        expect(tracked.publish(accepted)).toBe(true);
+        for (const editor of [direct, tracked]) {
+          expect(editor.state().doc.textContent).toBe(text);
+          expect(getCommentAnchorsFromDoc(editor.state().doc)).toEqual([]);
+          expect(
+            editor.session.document.package.document.comments ?? [],
+          ).toEqual([]);
+        }
+        expect(
+          direct.publish(direct.session.prepareUndo(direct.state()).unwrap()),
+        ).toBe(true);
+        expect(direct.session.document).toEqual(before);
+      }
+    });
+
+    test(`suggested/${text === "" ? "empty" : "nonempty"}: comment alignment refusal preserves the live document and journal`, () => {
+      for (const type of REPLACEMENT_TYPES) {
+        const { editor, firstComment } = commentedReplacementSource();
+        const before = editor.session.document;
+        const version = editor.session.version;
+        const selection = editor.session.selection;
+        const save = editor.session.captureSaveSnapshot();
+        let committed = 0;
+        let dropped = 0;
+        editor.session.onCommitted(() => committed++);
+        editor.session.onHistoryDrop(() => dropped++);
+        const operation = wholeBlockReplacement({ type, text });
+        const result = editor.apply([operation], { mode: "suggested" });
+        expect(result.applied).toEqual([]);
+        expect(result.undoHandle).toBeNull();
+        expect(result.skipped).toMatchObject([
+          {
+            reason: "unsupportedBlock",
+            canonicalRefusal: { gap: "comment-replacement-alignment" },
+          },
+        ]);
+        expect(editor.session.document).toBe(before);
+        expect(editor.session.version).toBe(version);
+        expect(editor.session.selection).toEqual(selection);
+        expect(editor.session.captureSaveSnapshot()).toEqual(save);
+        expect(editor.session.canUndo).toBe(true);
+        expect(editor.session.canRedo).toBe(false);
+        expect(committed).toBe(0);
+        expect(dropped).toBe(0);
+        expect(
+          editor.publish(editor.session.prepareUndo(editor.state()).unwrap()),
+        ).toBe(true);
+        expect(editor.session.document).toEqual(firstComment);
+      }
+    });
   }
 
   for (const mode of ["editing", "suggesting"] as const) {
@@ -530,7 +577,7 @@ describe("canonical public operation batches", () => {
       );
     });
 
-    test(`${mode}: native marker-inclusive whole-paragraph replacement refuses even uniform comments`, () => {
+    test(`${mode}: native marker-inclusive whole-paragraph replacement ${mode === "editing" ? "takes" : "refuses"} even a uniform comment`, () => {
       const source = "The Supplier delivers on time.";
       const editor = setup(source);
       expect(
@@ -558,6 +605,16 @@ describe("canonical public operation batches", () => {
         to: paragraph.start + paragraph.node.content.size,
         text: "New agreement.",
       });
+      if (mode === "editing") {
+        // Typed over directly, the comment goes with every word it covered.
+        expect(editor.publish(result.unwrap())).toBe(true);
+        expect(editor.state().doc.textContent).toBe("New agreement.");
+        expect(getCommentAnchorsFromDoc(editor.state().doc)).toEqual([]);
+        expect(editor.session.document.package.document.comments ?? []).toEqual(
+          [],
+        );
+        return;
+      }
       expect(result.isErr()).toBe(true);
       if (result.isErr())
         expect(result.error.ground).toEqual({
@@ -608,7 +665,7 @@ describe("canonical public operation batches", () => {
         expect(editor.session.document).toEqual(before);
       });
     }
-    test(`${mode}: native replacement alignment refuses before publishing or changing history`, () => {
+    test(`${mode}: native whole-paragraph replacement over a comment ${mode === "editing" ? "takes it with its words" : "refuses before publishing or changing history"}`, () => {
       const editor = setup(
         "The Supplier delivers the goods on time and in good order.",
       );
@@ -640,6 +697,19 @@ describe("canonical public operation batches", () => {
         to: paragraph.start + paragraph.node.content.size,
         text: "Invoice delivery payment agreement supplier buyer payment term.",
       });
+      if (mode === "editing") {
+        expect(editor.publish(result.unwrap())).toBe(true);
+        expect(committed).toBe(1);
+        expect(getCommentAnchorsFromDoc(editor.state().doc)).toEqual([]);
+        expect(editor.session.document.package.document.comments ?? []).toEqual(
+          [],
+        );
+        expect(
+          editor.publish(editor.session.prepareUndo(editor.state()).unwrap()),
+        ).toBe(true);
+        expect(editor.session.document).toEqual(before);
+        return;
+      }
       expect(result.isErr()).toBe(true);
       if (result.isErr())
         expect(result.error.ground).toEqual({
@@ -717,7 +787,7 @@ describe("canonical public operation batches", () => {
       ]);
       expect(result.applied).toEqual([]);
       expect(result.issues).toMatchObject([
-        { operationId: "merge", code: "missingBlock" },
+        { operationId: "merge", code: "unsupportedBlock" },
       ]);
       expect(editor.session.version).toBe(0);
     }

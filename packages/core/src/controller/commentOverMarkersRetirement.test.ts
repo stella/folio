@@ -327,10 +327,11 @@ for (const shape of [
       expect(initial.comments).toHaveLength(1);
       expect(initial.bookmarks).toHaveLength(2);
       const result = apply();
-      // A tracked deletion keeps a ranged comment on its deleted words; only a
-      // point comment still has nowhere to stay.
+      // A tracked deletion keeps a ranged comment on its deleted words, and a
+      // direct one takes it with them; a suggestion and a point comment
+      // still have nowhere to put it.
       if (
-        (shape === "wholeParagraph" && mode !== "tracked-changes") ||
+        (shape === "wholeParagraph" && mode === "suggested") ||
         shape === "pointOnDeletedWord"
       ) {
         expect(result.applied).toEqual([]);
@@ -445,7 +446,7 @@ for (const shape of [
       expect(final.bookmarks).toEqual(initial.bookmarks);
       if (
         shape === "rangedWithTail" ||
-        (shape === "wholeParagraph" && mode === "tracked-changes")
+        (shape === "wholeParagraph" && mode !== "suggested")
       ) {
         expect(final.comments).toEqual([]);
         expect(final.definitions).toEqual([]);

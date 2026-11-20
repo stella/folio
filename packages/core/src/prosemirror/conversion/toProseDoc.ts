@@ -1965,6 +1965,14 @@ const withTrackedRunMark = (
   return node;
 };
 
+/** The provenance attrs a structural marker of a pending suggestion carries. */
+const suggestionProvenanceOf = ({
+  suggestionId,
+}: {
+  suggestionId?: string;
+}): { provenance: "suggested"; suggestionId: string } | Record<never, never> =>
+  suggestionId === undefined ? {} : { provenance: "suggested", suggestionId };
+
 /** A revision's info as the review surface reads it: a suggestion's says so. */
 const suggestedRevisionInfo = <Info extends { suggestionId?: string }>(
   info: Info,
@@ -2262,6 +2270,11 @@ function convertTrackedChange(
     ...(change.resolutionJoins === undefined
       ? {}
       : { resolutionJoins: change.resolutionJoins }),
+    // An outer revision of a pending suggestion stays that suggestion's when
+    // a nested revision carries it.
+    ...(change.info.suggestionId === undefined
+      ? {}
+      : { suggestionId: change.info.suggestionId }),
   };
   return nodes.map((node) => withTrackedRunMark(node, mark, ancestor));
 }
@@ -3132,6 +3145,7 @@ function convertTableRow(
       ...(rowStructuralChange.info.initials
         ? { initials: rowStructuralChange.info.initials }
         : {}),
+      ...suggestionProvenanceOf(rowStructuralChange.info),
     };
     switch (rowStructuralChange.type) {
       case "tableRowInsertion":
@@ -3411,12 +3425,13 @@ function convertTableCell({
         ? { initials: cellStructuralChange.info.initials }
         : {}),
     };
+    const suggestion = suggestionProvenanceOf(cellStructuralChange.info);
     switch (cellStructuralChange.type) {
       case "tableCellInsertion":
-        attrs.cellMarker = { kind: "ins", info };
+        attrs.cellMarker = { kind: "ins", info: { ...info, ...suggestion } };
         break;
       case "tableCellDeletion":
-        attrs.cellMarker = { kind: "del", info };
+        attrs.cellMarker = { kind: "del", info: { ...info, ...suggestion } };
         break;
       case "tableCellMerge":
         attrs.cellMarker = {

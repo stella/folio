@@ -1,8 +1,9 @@
 import { test } from "@playwright/test";
 
 import { expect } from "./parity-fixture";
+import { PLAYGROUND_HOSTS } from "./playgroundHosts";
 
-const VUE_PLAYGROUND = "http://localhost:4201";
+const VUE_PLAYGROUND = PLAYGROUND_HOSTS.vue;
 
 test("Vue inherits locale and reactive system color mode from the host", async ({
   page,

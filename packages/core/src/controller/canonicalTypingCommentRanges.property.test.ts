@@ -254,11 +254,14 @@ test(
   propertyTestTimeout(30_000),
 );
 
-// The old fixture checked only empty covered text; direct and accepted edits
-// actually disagreed on whether its collapsed ranged-comment definition survived.
+// Typed over directly, the ranged comment goes with its words, definition and
+// markers alike. A reference whose comment covers nothing has no words to go
+// with, and a tracked selection taking the markers has nowhere to keep them:
+// both still refuse.
 for (const references of [0, 1, 2, 3])
   for (const type of ["editing", "suggesting"] as const) {
-    test(`${type}, ${references} references: replacing the whole mixed-coverage paragraph refuses atomically`, async () => {
+    const takes = type === "editing" && references <= 1;
+    test(`${type}, ${references} references: replacing the whole mixed-coverage paragraph ${takes ? "takes its comment" : "refuses atomically"}`, async () => {
       setSystemTime(new Date("2026-01-02T03:04:05Z"));
       const source = sourceDocument({
         references,
@@ -287,6 +290,25 @@ for (const references of [0, 1, 2, 3])
         text: "x",
         semantic: "typing",
       });
+      if (takes) {
+        publishCanonicalProjection({
+          session,
+          state,
+          commit: result.unwrap(),
+        }).unwrap();
+        const typed = await savedView(
+          (
+            await serializeCanonicalSave({
+              snapshot: session.captureSaveSnapshot(),
+            })
+          ).buffer,
+        );
+        expect(typed.definitions ?? []).toEqual([]);
+        expect(typed.markers).toEqual([]);
+        expect(typed.comments).toEqual([]);
+        expect(typed.text).toBe("x");
+        return;
+      }
       expect(result.isErr()).toBe(true);
       if (result.isErr())
         expect(result.error.ground).toEqual({

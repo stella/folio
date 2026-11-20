@@ -31,7 +31,7 @@ import {
   parseDocx,
 } from "@stll/folio-core/server";
 
-import { sequentialGroups } from "./batch-replay-order.ts";
+import { blanksGoingWhole, sequentialGroups } from "./batch-replay-order.ts";
 import { recordFeatureHit, recordHit, type StepKind } from "./coverage.ts";
 import { openReviewer, scenarioEngine, toArrayBuffer } from "./documents.ts";
 import {
@@ -922,6 +922,11 @@ type ModelRow = {
    */
   outsidePreState?: boolean;
   /**
+   * Such a block whose words accepting drops with no pending join to place
+   * them (a table row pending deletion, say): removed before the batch ran.
+   */
+  wordsAcceptingDrops?: true;
+  /**
    * A block inserted before or after the table its anchor sits in. Rows and
    * cells the batch adds to that table go inside it, so they stay between
    * the table's own blocks and this one, whatever the batch order.
@@ -979,6 +984,8 @@ export type Model = {
   sourceRows: readonly Row[];
   /** Live blocks explicitly deleted by applied operations, including pending joins. */
   deletedBlockIds: Set<string>;
+  /** Live blocks whose whole text an applied replaceBlock replaced, with the new text. */
+  replacedBlocks: Map<string, string>;
   /** Live paragraphs whose every word is a pending deletion (`JoinSources`). */
   deletedContentIds: ReadonlySet<string>;
   /**
@@ -1160,7 +1167,9 @@ const modelRow = (text: string, fields: Fields = {}, pre?: Row): ModelRow => {
  * drops words the model does not place. `emptyIds` are those holding nothing
  * at all, not even deleted words: a pending join starts from them, while a
  * paragraph with only deleted words goes whole. `assumed`: every one of them
- * (for hand-built rows with no package to read).
+ * (for hand-built rows with no package to read). `live`: the suggested model,
+ * which reads the live rows themselves, so no block is missing from them and
+ * none joins another; `goWhole` are the blank ones accepting removes whole.
  */
 export type JoinSources =
   | {
@@ -1174,6 +1183,7 @@ export type JoinSources =
        */
       deletedContentIds?: ReadonlySet<string>;
     }
+  | { type: "live"; goWhole: ReadonlySet<string> }
   | { type: "assumed" };
 
 const ASSUMED_JOIN_SOURCES: JoinSources = { type: "assumed" };
@@ -1182,6 +1192,8 @@ const joinsOnAccept = (sources: JoinSources, id: string): boolean => {
   switch (sources.type) {
     case "marked":
       return sources.ids.has(id);
+    case "live":
+      return false;
     case "assumed":
       return true;
     default: {
@@ -1264,6 +1276,7 @@ export const modelOf = (
     liveTextById: new Map(live.map(({ id, text }) => [id, text])),
     sourceRows: live,
     deletedBlockIds: new Set(),
+    replacedBlocks: new Map(),
     deletedContentIds:
       joinSources.type === "marked"
         ? (joinSources.deletedContentIds ?? new Set())
@@ -1321,6 +1334,7 @@ export const modelOf = (
       // pending deletion whose runs are not marked deleted, say). Where they
       // go is not modelled; no join is guessed for them.
       ghost.removed = true;
+      ghost.wordsAcceptingDrops = true;
       model.unmodelled.push(
         `block ${row.id} has words accepting drops with no pending paragraph-mark deletion`,
       );
@@ -1351,6 +1365,10 @@ export const modelOf = (
     const head = model.rows[indexOf(previous)];
     if (head) head.pendingJoin = true;
   }
+  if (joinSources.type === "live")
+    for (const row of model.rows)
+      if (row.pre !== undefined && joinSources.goWhole.has(row.pre.id))
+        row.pendingDeletion = true;
   return model;
 };
 
@@ -1369,6 +1387,12 @@ const target = (
     );
   if (row.pendingJoin)
     throw new Unmodelled(`block ${String(blockId)} has a pending join`);
+  // Accepting already drops it, before the batch: an edit there is not one
+  // the batch makes on a block it removed.
+  if (row.wordsAcceptingDrops && !adjacent)
+    throw new Unmodelled(
+      `block ${String(blockId)} has words accepting drops with no pending paragraph-mark deletion`,
+    );
   // An insertion only places a block beside its anchor, which may go.
   if (row.removed && !adjacent) {
     throw new Error(
@@ -3130,6 +3154,12 @@ export const expectOperation = (model: Model, operation: Operation): void => {
     model.deletedBlockIds.add(operation["blockId"]);
   }
   if (
+    operation.type === "replaceBlock" &&
+    typeof operation["blockId"] === "string"
+  ) {
+    model.replacedBlocks.set(operation["blockId"], String(operation["text"]));
+  }
+  if (
     model.mode === "suggested" &&
     ["deleteTable", "deleteTableRow", "deleteTableColumn"].includes(
       operation.type,
@@ -3626,6 +3656,34 @@ const anchorDisposition = (
       ? view
       : undefined;
   const located = mapped?.row ?? row;
+  // A pending join's source paragraph is no modelled row of its own, so a
+  // replaceBlock of it is not in any row's edits: every word of it goes on
+  // acceptance, and with them a comment anchored in them.
+  const replacement = model.replacedBlocks.get(entry.blockId);
+  const joinSource = [...model.pendingJoins.values()].some(({ sources }) =>
+    sources.some(({ id }) => id === entry.blockId),
+  );
+  if (joinSource && replacement !== undefined && entry.anchor !== "") {
+    const text = model.liveTextById.get(entry.blockId) ?? "";
+    const whole = [{ start: 0, end: text.length, replace: replacement }];
+    const fates = quotePlacements({
+      text,
+      quote: entry.anchor,
+      first: 0,
+      limit: text.length,
+    }).map((start) =>
+      coveredRangeFate(
+        model.engine,
+        whole,
+        text,
+        start,
+        start + entry.anchor.length,
+      ),
+    );
+    if (fates.length > 0 && fates.every((fate) => fate === "removed"))
+      return "removed";
+    if (fates.some((fate) => fate !== "kept")) return "ambiguous";
+  }
   // An unproven join keeps the existing preservation check; it does not excuse loss.
   if (!located?.pre || located.removed || entry.anchor === "") return "kept";
   const quote = mapped === undefined ? entry.anchor : acceptedAnchor;
@@ -4237,6 +4295,16 @@ export const commentIdsInTableOf = (
     .sort((left, right) => left - right);
 };
 
+/** The live paragraphs whose own mark is a pending deletion. */
+export const markDeletedIds = (reviewer: Reviewer): Set<string> =>
+  new Set(
+    reviewer
+      .getChanges()
+      .flatMap(({ type, blockId }) =>
+        type === "paragraphMarkDeleted" && blockId !== null ? [blockId] : [],
+      ),
+  );
+
 export const capture = async (
   editable: Reviewer,
   mode: Mode,
@@ -4257,9 +4325,10 @@ export const capture = async (
       rows,
       resolvedStory: "present",
       liveRows: rows,
-      // The suggested model reads the live rows themselves: no block is
-      // missing from them, so none joins another.
-      joinSources: { type: "marked", ids: new Set(), emptyIds: new Set() },
+      joinSources: {
+        type: "live",
+        goWhole: blanksGoingWhole(rows, markDeletedIds(reviewer)),
+      },
       numberingSource: {
         type: "live",
         facts: liveNumberingFacts(reviewer, story),
@@ -4506,6 +4575,9 @@ export const assertRequestedOutcome = async (
     preRows: pre.rows,
     liveRows: pre.liveRows,
     mode: pre.mode,
+    ...(pre.joinSources.type === "live" && {
+      goWhole: pre.joinSources.goWhole,
+    }),
   }).flat();
   for (const operation of replayOperations) {
     const index = outcome.applied.findIndex(({ id }) => id === operation.id);

@@ -1702,7 +1702,7 @@ describe("canonical session", () => {
     ).toEqual(["paragraph"]);
   });
 
-  test("activation refuses list paragraphs inside an unsupported block before normalization", () => {
+  test("activation refuses a document before normalizing its list paragraphs", () => {
     const paragraph: Paragraph = {
       type: "paragraph",
       paraId: "34567890",
@@ -1712,21 +1712,30 @@ describe("canonical session", () => {
       ],
     };
     const document = seed("Body");
-    // Custom XML around blocks has no canonical projection yet; refusing it
-    // must leave the list paragraph inside it unnormalized.
-    document.package.document.content.push({
-      type: "blockCustomXml",
-      openingXml: '<w:customXml w:element="clause">',
-      closingXml: "</w:customXml>",
-      content: [paragraph],
-    });
+    // An unstructured field character has no canonical projection; refusing
+    // it must leave the list paragraph before it unnormalized.
+    document.package.document.content.push(
+      {
+        type: "blockCustomXml",
+        openingXml: '<w:customXml w:element="clause">',
+        closingXml: "</w:customXml>",
+        content: [paragraph],
+      },
+      {
+        type: "paragraph",
+        paraId: "45678901",
+        content: [
+          { type: "run", content: [{ type: "fieldChar", charType: "begin" }] },
+        ],
+      },
+    );
     const original = structuredClone(document);
     const result = createCanonicalSession(document);
     expect(result.isErr()).toBe(true);
     if (result.isErr()) {
       expect(result.error).toBeInstanceOf(CanonicalSessionError);
       expect(result.error.message).toBe(
-        "Canonical sessions currently require paragraphs, tables and supported inline atoms.",
+        "Canonical editing cannot preserve unstructured field instructions; a structured field is required.",
       );
     }
     expect(document).toStrictEqual(original);
