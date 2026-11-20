@@ -509,19 +509,24 @@ const orderCanonicalBatch = <T extends PlannedOperation>({
   );
   /**
    * The batch's deletion of the first of the paragraphs it deletes in a row
-   * right before the paragraph at `block`, if it deletes the one before it.
+   * right before the paragraph at `block`, if it deletes the one before it
+   * and a paragraph it keeps stands before the run to take the break. A run
+   * back to the container's start or a table collapses right to left instead
+   * (`finalBreakCarrier`'s `runStart`).
    */
   const firstDeletedBefore = (block: number): T | undefined => {
     const at = doc.resolve(block);
     let position = block;
     let first: T | undefined;
     for (let index = at.index() - 1; index >= 0; index--) {
-      position -= at.parent.child(index).nodeSize;
+      const previous = at.parent.child(index);
+      position -= previous.nodeSize;
       const deletion = deletionOf.get(position);
-      if (deletion === undefined) break;
+      if (deletion === undefined)
+        return previous.type.name === "paragraph" ? first : undefined;
       first = deletion;
     }
-    return first;
+    return undefined;
   };
   const address = (item: T): BatchOrderAddress => {
     const { operation, plan } = item;
