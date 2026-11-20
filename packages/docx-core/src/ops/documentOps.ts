@@ -86,6 +86,7 @@ export {
   mergeRunContent,
 } from "./runMerge";
 export {
+  beginTrackedInsertionCompilation,
   compileEditorIntent,
   createEditorIntentIdAllocator,
   paragraphVisibleText,
