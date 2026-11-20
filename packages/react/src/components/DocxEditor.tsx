@@ -418,7 +418,7 @@ function isDisplayMode(value: unknown): value is DisplayMode {
 // MAIN COMPONENT
 // ============================================================================
 
-// Comment helpers and the in-process id allocator live in ./commentsHelpers.
+// Comment helpers live in ./commentsHelpers; comment ids are per document (useFolioComments).
 
 function buildImagePropertiesData(
   ctx: EditorState["pmImageContext"],

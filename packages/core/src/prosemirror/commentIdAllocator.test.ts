@@ -10,6 +10,7 @@ import {
   propertyTestTimeout,
 } from "../../../../test/property-testing";
 import {
+  type CommentIdAllocator,
   createCommentIdAllocator,
   seedCommentAllocator,
 } from "./commentIdAllocator";
@@ -25,18 +26,26 @@ const loadedIds = fc.uniqueArray(
 
 describe("comment ID allocation", () => {
   test(
-    "all editor handles preserve the range and reserve loaded and issued IDs",
+    "a document's IDs stay in range, never repeat a loaded or issued ID, and ignore other documents",
     () => {
-      // The previous editor factory tests covered only small sequential IDs; vary
-      // loaded IDs across the full range, including the wrap boundary.
+      // Vary loaded IDs across the full range, including the wrap boundary, and
+      // what other documents in the process allocated first, up to the maximum.
       fc.assert(
-        fc.property(loadedIds, (ids) => {
-          const first = createCommentIdAllocator();
-          const second = createCommentIdAllocator();
-          for (const id of ids) first.seedAbove(id);
+        fc.property(loadedIds, loadedIds, (ids, otherIds) => {
+          const issue = (allocator: CommentIdAllocator) => {
+            for (const id of ids) allocator.seedAbove(id);
+            return Array.from({ length: 24 }, () => allocator.next());
+          };
+          const alone = issue(createCommentIdAllocator());
+
+          const other = createCommentIdAllocator();
+          for (const id of otherIds) other.seedAbove(id);
+          other.seedAbove(MAX_REVISION_ID - 1);
+          for (let index = 0; index < 4; index += 1) other.next();
+          expect(issue(createCommentIdAllocator())).toEqual(alone);
+
           const issued = new Set(ids);
-          for (let index = 0; index < 24; index += 1) {
-            const id = (index % 2 === 0 ? first : second).next();
+          for (const id of alone) {
             expect(Number.isInteger(id)).toBe(true);
             expect(id).toBeGreaterThan(0);
             expect(id).toBeLessThanOrEqual(MAX_REVISION_ID);
@@ -49,6 +58,14 @@ describe("comment ID allocation", () => {
     },
     propertyTestTimeout(30_000),
   );
+
+  test("a copy continues from its document's reservations, apart from the original", () => {
+    const original = createCommentIdAllocator();
+    original.seedAbove(7);
+    const copy = original.clone();
+    expect([original.next(), original.next()]).toEqual([8, 9]);
+    expect(copy.next()).toBe(8);
+  });
 
   test("reserves every live anchor even when comment metadata is absent", () => {
     const allocator = createCommentIdAllocator();

@@ -1,5 +1,5 @@
 /**
- * Realm-wide comment ID allocation, shared by live editors and headless reviewers.
+ * Per-document comment ID allocation for live editors and headless reviewers.
  * Loaded and issued IDs stay reserved even when a comment is deleted.
  */
 
@@ -14,7 +14,7 @@ import {
   isCommentRangeBoundaryNode,
 } from "./commentRangeBoundaryAttrs";
 import {
-  maxAnnotationIdInDoc,
+  forEachAnnotationIdInDoc,
   seedRevisionIdsAbove,
 } from "./plugins/revisionIds";
 import { readRangeAnchorAttrs } from "./rangeAnchorAttrs";
@@ -29,47 +29,53 @@ export class CommentIdSpaceExhaustedError extends CommentIdSpaceExhaustedErrorBa
   message: string;
 }> {}
 
-let nextId = 1;
-const reservedIds = new Set<number>();
-
-/** Allocate a valid, unused comment ID in this realm. */
-export function allocateCommentId(): number {
-  if (reservedIds.size >= MAX_REVISION_ID) {
-    throw new CommentIdSpaceExhaustedError({
-      message: "The OOXML comment ID space is exhausted.",
-    });
-  }
-  while (reservedIds.has(nextId)) {
-    nextId = nextId === MAX_REVISION_ID ? 1 : nextId + 1;
-  }
-  const id = nextId;
-  reservedIds.add(id);
-  nextId = id === MAX_REVISION_ID ? 1 : id + 1;
-  return id;
-}
-
-/** Reserve a loaded ID and advance past it when the upper bound permits. */
-export function seedCommentIdAbove(id: number): void {
-  if (!Number.isInteger(id) || id < 0 || id > MAX_REVISION_ID) {
-    return;
-  }
-  if (id > 0) reservedIds.add(id);
-  if (id >= nextId) {
-    nextId = id === MAX_REVISION_ID ? 1 : id + 1;
-  }
-}
-
 export type CommentIdAllocator = {
   /** Allocate the next unused ID. */
   next(): number;
   /** Reserve a loaded ID and seed above it when possible. */
   seedAbove(id: number): void;
+  /** An allocator holding this one's reservations, for a copy of its document. */
+  clone(): CommentIdAllocator;
 };
 
-/** Every handle uses the same counter, including separate editor instances. */
-export function createCommentIdAllocator(): CommentIdAllocator {
-  return { next: allocateCommentId, seedAbove: seedCommentIdAbove };
-}
+type AllocatorState = { nextId: number; reservedIds: Set<number> };
+
+const allocatorOver = (state: AllocatorState): CommentIdAllocator => ({
+  next: () => {
+    if (state.reservedIds.size >= MAX_REVISION_ID) {
+      throw new CommentIdSpaceExhaustedError({
+        message: "The OOXML comment ID space is exhausted.",
+      });
+    }
+    while (state.reservedIds.has(state.nextId)) {
+      state.nextId = state.nextId === MAX_REVISION_ID ? 1 : state.nextId + 1;
+    }
+    const id = state.nextId;
+    state.reservedIds.add(id);
+    state.nextId = id === MAX_REVISION_ID ? 1 : id + 1;
+    return id;
+  },
+  seedAbove: (id) => {
+    if (!Number.isInteger(id) || id < 0 || id > MAX_REVISION_ID) return;
+    if (id > 0) state.reservedIds.add(id);
+    if (id >= state.nextId) {
+      state.nextId = id === MAX_REVISION_ID ? 1 : id + 1;
+    }
+  },
+  clone: () =>
+    allocatorOver({
+      nextId: state.nextId,
+      reservedIds: new Set(state.reservedIds),
+    }),
+});
+
+/**
+ * Comment IDs for one document: seeded from its comments and annotation ids,
+ * then never reissued, also after a deletion. Each document holds its own, so
+ * an ID depends only on that document and the edits made to it.
+ */
+export const createCommentIdAllocator = (): CommentIdAllocator =>
+  allocatorOver({ nextId: 1, reservedIds: new Set() });
 
 /** Seed from comments, replies, and the document's conservative annotation maximum. */
 export function seedCommentAllocator(
@@ -109,7 +115,12 @@ export function seedCommentAllocator(
         allocator.seedAbove(expectCommentRangeBoundaryAttrs(node).marker.id);
       }
     });
-    max = Math.max(max, maxAnnotationIdInDoc(view.state.doc));
+    // Every id the annotation space holds stays reserved, so an allocation
+    // that wraps past the maximum never reuses one.
+    forEachAnnotationIdInDoc(view.state.doc, (id) => {
+      allocator.seedAbove(id);
+      max = Math.max(max, id);
+    });
   }
   allocator.seedAbove(max);
   seedRevisionIdsAbove(max);
