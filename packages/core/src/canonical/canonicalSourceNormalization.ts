@@ -37,6 +37,8 @@ import { canonicalJson } from "../utils/canonicalJson";
 type NormalizedStory = {
   story: OpStory;
   source: readonly BlockContent[];
+  /** The ids of the paragraphs the session added, which no package names. */
+  minted: readonly string[];
 };
 
 /** A normalized story, with what it held when the session opened. */
@@ -174,18 +176,17 @@ export const normalizeCanonicalSource = (
     const body = findStoryBody(current, story);
     if (body === undefined) continue;
     let content = withRunTabElements(body.content);
+    const minted: string[] = [];
     // A separator or continuation note is the application's own, not a story
     // a caret goes in; the session leaves it as read.
     if (!endsInParagraph(content) && !isSeparatorNote(document, story)) {
-      const paragraph: Paragraph = {
-        type: "paragraph",
-        paraId: freshParaId(takenIds()),
-        content: [],
-      };
+      const paraId = freshParaId(takenIds());
+      const paragraph: Paragraph = { type: "paragraph", paraId, content: [] };
+      minted.push(paraId);
       content = [...content, paragraph];
     }
     if (content === body.content) continue;
-    normalized.push({ story, source: body.content });
+    normalized.push({ story, source: body.content, minted });
     current = replaceStoryBody({
       document: current,
       story,
