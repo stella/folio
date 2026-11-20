@@ -125,10 +125,12 @@ import {
   type DocumentOp,
   EMPTY_PROPERTY_SETS,
   type InlineSlice,
+  type InsertBlocksOp,
   type InsertContentOp,
   type InsertRowOp,
   type JoinInlineOp,
   type NewIds,
+  OP_STORIES,
   type OpStory,
   type ParagraphPropsPatch,
   PROPERTY_REVIEW_POLICIES,
@@ -1600,6 +1602,132 @@ export const compileEditorIntent = (
   return Result.ok(named);
 };
 
+type InsertParagraphsIntent = Extract<
+  EditorIntent,
+  { type: "insertParagraphs" }
+>;
+
+type BuildParagraphInsertionOptions = {
+  intent: InsertParagraphsIntent;
+  ids: readonly string[];
+  tracked: Pick<InsertBlocksOp, "revision" | "newIds">;
+  mode: EditorIntentMode["type"];
+};
+const buildParagraphInsertion = ({
+  intent,
+  ids,
+  tracked,
+  mode,
+}: BuildParagraphInsertionOptions): Result<
+  { op: InsertBlocksOp; selection: TextPosition },
+  DocumentOpRefusal
+> => {
+  const blocks = intent.paragraphs.map((paragraph, index) => ({
+    ...paragraph,
+    paraId: ids[index] ?? panic("A fresh paragraph id is missing."),
+  }));
+  const first = blocks.at(0);
+  if (first === undefined)
+    return Result.err(
+      new DocumentOpRefusal({
+        reason: DOCUMENT_OP_REFUSAL_REASONS.EMPTY_BLOCK_LIST,
+        message: "No paragraphs to insert.",
+        opType: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+      }),
+    );
+  return Result.ok({
+    op: {
+      type: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+      story: intent.story,
+      at: intent.at,
+      blocks,
+      ...tracked,
+      ...(mode === "suggesting" && intent.move === true
+        ? { move: true as const }
+        : {}),
+    },
+    selection: { story: intent.story, blockId: first.paraId, offset: 0 },
+  });
+};
+
+type TrackedBatchOptions = {
+  document: Document;
+  count: number;
+  reservedBlockIds?: ReadonlySet<string>;
+};
+type TrackedMemberOptions = {
+  index: number;
+  intent: InsertParagraphsIntent;
+  mode: EditorIntentMode;
+};
+type TrackedInsertionCompilation =
+  { type: "unsupported" } | { type: "operation"; op: InsertBlocksOp };
+type TrackedInsertionCompiler =
+  | { type: "unsupported" }
+  | {
+      type: "ready";
+      compile: (
+        options: TrackedMemberOptions,
+      ) => Result<TrackedInsertionCompilation, DocumentOpRefusal>;
+    };
+
+/**
+ * Reserve the selection of fresh paragraph IDs for a private monotone run.
+ * The caller uses each index once, in order, and discards the whole run if
+ * any step fails or changes the original class of operations.
+ */
+export const beginTrackedInsertionCompilation = ({
+  document,
+  count,
+  reservedBlockIds,
+}: TrackedBatchOptions): TrackedInsertionCompiler => {
+  if (
+    !Number.isSafeInteger(count) ||
+    count <= 0 ||
+    count >= ID_KIND_LIMITS.paragraph
+  )
+    return { type: "unsupported" };
+  const ids = takeParagraphIds({
+    document,
+    count,
+    reserved: reservedBlockIds,
+    lease: undefined,
+  });
+  if (ids === undefined) return { type: "unsupported" };
+  const newParagraphIds = new Set(ids);
+  let nextIndex = 0;
+  return {
+    type: "ready",
+    compile: ({ index, intent, mode }) => {
+      const id = ids[nextIndex];
+      if (
+        index !== nextIndex ||
+        id === undefined ||
+        intent.story !== OP_STORIES.MAIN ||
+        (intent.at.type !== "before" && intent.at.type !== "after") ||
+        (!newParagraphIds.has(idKey(intent.at.blockId)) &&
+          textBoxOfIntent(document, intent) !== undefined) ||
+        intent.paragraphs.length !== 1 ||
+        intent.move === true ||
+        intent.newList !== undefined ||
+        mode.type !== "suggesting" ||
+        mode.idLease !== undefined ||
+        mode.reservedBlockIds !== reservedBlockIds
+      )
+        return Result.ok({ type: "unsupported" });
+      return buildParagraphInsertion({
+        intent,
+        ids: [id],
+        tracked: { revision: mode.revision, newIds: mode.newIds },
+        mode: mode.type,
+      }).map(({ op }) => {
+        nextIndex += 1;
+        return { type: "operation" as const, op };
+      });
+    },
+  };
+};
+
 const compileInStory = (
   document: Document,
   { intent, mode, firstBlockId }: CompileEditorIntentOptions,
@@ -2578,35 +2706,15 @@ const compileInStory = (
         opType: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
       });
       if (fresh.isErr()) return Result.err(fresh.error);
-      const blocks = intent.paragraphs.map((paragraph, index) => ({
-        ...paragraph,
-        paraId: fresh.value[index] ?? panic("A fresh paragraph id is missing."),
+      return buildParagraphInsertion({
+        intent,
+        ids: fresh.value,
+        tracked,
+        mode: mode.type,
+      }).map(({ op, selection: caret }) => ({
+        ops: [...newListOps(intent.newList), op],
+        selection: caret,
       }));
-      const first = blocks[0];
-      if (first === undefined)
-        return Result.err(
-          new DocumentOpRefusal({
-            reason: DOCUMENT_OP_REFUSAL_REASONS.EMPTY_BLOCK_LIST,
-            message: "No paragraphs to insert.",
-            opType: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
-          }),
-        );
-      return Result.ok({
-        ops: [
-          ...newListOps(intent.newList),
-          {
-            type: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
-            story: intent.story,
-            at: intent.at,
-            blocks,
-            ...tracked,
-            ...(mode.type === "suggesting" && intent.move === true
-              ? { move: true as const }
-              : {}),
-          },
-        ],
-        selection: { story: intent.story, blockId: first.paraId, offset: 0 },
-      });
     }
     case "tableBlock": {
       if (intent.operation.type === DOCUMENT_OP_TYPES.INSERT_TABLE) {
