@@ -404,13 +404,13 @@ export const usesCanonicalSession = (
 ): boolean => session !== "legacy";
 
 /**
- * The engine a headless reviewer holds its document in. Its default is
- * independent of the editors; a host can pin either engine.
+ * The engine a headless reviewer holds its document in. It defaults to the
+ * canonical session, as the editors do; a host can pin either engine.
  */
 export type HeadlessReviewerSession = "legacy" | "canonical";
 
-/** Every host keeps the legacy reviewer until it opts in. */
-export const DEFAULT_HEADLESS_REVIEWER_SESSION = "legacy";
+/** A host that names no engine reviews on the canonical session. */
+export const DEFAULT_HEADLESS_REVIEWER_SESSION = "canonical";
 
 /**
  * Whether a headless reviewer runs on the canonical session: the one place
