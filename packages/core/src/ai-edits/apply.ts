@@ -4312,12 +4312,27 @@ const withRetiredFinalParagraphs = ({
     const { node: previous } = predecessor;
     let { position } = predecessor;
     const mark: unknown = previous.attrs["pPrMark"];
-    if (mark == null) {
+    // Another author's added break is theirs to resolve: its deletion is
+    // recorded beside their insertion, as for a break nothing records.
+    const foreignBreak =
+      !refuseCrossAuthorRevisions &&
+      isForeignAddedBreak(previous, author) &&
+      expectParagraphAttrs(previous).pPrMark?.deletion === undefined
+        ? expectParagraphAttrs(previous).pPrMark
+        : undefined;
+    if (mark == null || foreignBreak) {
       const revisionId = nextRevisionId++;
-      tr.setNodeAttribute(position, "pPrMark", {
-        kind: "del",
-        info: { id: revisionId, author, date, ...revisionExtras },
-      });
+      const info = { id: revisionId, author, date, ...revisionExtras };
+      tr.setNodeAttribute(
+        position,
+        "pPrMark",
+        foreignBreak
+          ? ({
+              ...foreignBreak,
+              deletion: { info },
+            } satisfies ParagraphMarkChange)
+          : { kind: "del", info },
+      );
       // Accepted, the removed break leaves the emptied carrier, which ends
       // the container: it takes this paragraph's properties as part of the
       // same change, so the words that stay read as they did.
@@ -7284,6 +7299,17 @@ const applyFolioAIEditOperationsInternal = ({
             });
             continue;
           }
+        }
+        if (
+          retraction &&
+          !(
+            retraction.clearBreakAt !== null &&
+            isForeignAddedBreak(
+              tr.doc.nodeAt(retraction.clearBreakAt) ?? item.blockNode,
+              author,
+            )
+          )
+        ) {
           if (isSuggested && !isSuggestedParagraphInsert(item.blockNode)) {
             // Retracting another author's tracked insertion would remove it
             // from the saved package before this suggestion is accepted.

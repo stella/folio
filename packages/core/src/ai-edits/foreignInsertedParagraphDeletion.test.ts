@@ -173,3 +173,63 @@ for (const session of ["legacy", "canonical"] as const) {
     });
   }
 }
+
+for (const session of ["legacy", "canonical"] as const) {
+  test(`${session}: deleting the final paragraph after another author's added break records its deletion beside the insertion`, async () => {
+    const docx = await createDocx({
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              paraId: "10000000",
+              content: [textRun("First")],
+            },
+            {
+              type: "paragraph",
+              paraId: "10000001",
+              content: [textRun("Split head")],
+              pPrMark: {
+                kind: "ins",
+                info: { id: 2, author: "First Reviewer" },
+              },
+            },
+            {
+              type: "paragraph",
+              paraId: "10000002",
+              content: [textRun("tail")],
+            },
+          ],
+        },
+      },
+    });
+    const reviewer = await FolioDocxReviewer.fromBuffer(docx, {
+      author: "Second Reviewer",
+      session,
+    });
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "tracked-changes",
+        operations: [
+          { id: "delete", type: "deleteBlock", blockId: "10000002" },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
+    expect(result.skipped).toEqual([]);
+    const saved = await reviewer.toBuffer();
+    expect((await unzipDocx(saved)).documentXml ?? "").toMatch(
+      /<w:rPr><w:ins w:id="2" w:author="First Reviewer"\/><w:del w:id="\d+" w:author="Second Reviewer"[^>]*\/><\/w:rPr>/u,
+    );
+    const reopened = await FolioDocxReviewer.fromBuffer(saved, { session });
+    expect(texts(reopened.toResolvedDocument("accept"))).toEqual([
+      "First",
+      "Split head",
+    ]);
+    expect(texts(reopened.toResolvedDocument("reject"))).toEqual([
+      "First",
+      "Split headtail",
+    ]);
+  });
+}
