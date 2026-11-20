@@ -251,6 +251,16 @@ const belongsToRowRevision = (
   (revision.author === scope.change.author &&
     revision.date === scope.change.date);
 
+/**
+ * The paragraph-mark revision a marked row writes on its cells' paragraphs:
+ * a row deletion deletes each cell paragraph's mark with it, an insertion
+ * inserts it. The row's entry stands for those marks as it does for its runs.
+ */
+const ROW_PARAGRAPH_MARK_CARRIERS = {
+  insertion: "paragraphMarkInserted",
+  deletion: "paragraphMarkDeleted",
+} as const satisfies Record<RowRevisionScope["kind"], FolioNodeRevisionKind>;
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
@@ -422,6 +432,15 @@ const getTrackedChangeGroupsFromProjectedDoc = (
           from: carrier.from,
           to: carrier.to,
         });
+        const rowScope = rowRevisionScopes.at(-1);
+        if (
+          rowScope !== undefined &&
+          ROW_PARAGRAPH_MARK_CARRIERS[rowScope.kind] === carrier.type &&
+          belongsToRowRevision(rowScope, carrier)
+        ) {
+          fold(rowScope.key, [carrier.id]);
+          return;
+        }
         grouped.set(
           `node:${String(pos)}:${carrier.type}:${String(carrier.id)}:${String(carrierIndex)}`,
           {
@@ -871,8 +890,8 @@ export const getTrackedChangesFromSnapshot = (
  * fold into one entry; interrupted or differently nested wrappers stay separate.
  *
  * A tracked row insertion or deletion marks the row AND every run in its
- * cells, the way Word writes it. Both halves are one change, so the run marks
- * fold into the row's entry rather than reporting a second time.
+ * cells, and can mark its cell paragraphs' marks. It is one change, so those
+ * marks fold into the row's entry rather than reporting a second time.
  */
 export const getTrackedChangesFromDoc = (doc: PMNode): FolioReviewChange[] =>
   getTrackedChangesFromProjectedDoc(doc, blockStartIdsFromDoc(doc));
