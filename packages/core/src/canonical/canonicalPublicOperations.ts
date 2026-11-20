@@ -1361,6 +1361,68 @@ const deletionIntentsAsItRuns = (
   });
 };
 
+type OwnMarkBeforeInsertedTableOptions = {
+  document: Document;
+  story: OpStory;
+  blockId: string;
+  author: string;
+  /** Whether the batch puts a block right after the paragraph `id`. */
+  gainsFollower: (id: string) => boolean;
+  intents: readonly EditorIntent[];
+};
+
+/**
+ * A tracked deletion of a body paragraph whose break is `author`'s own
+ * pending insertion, right before a table whose rows are all pending
+ * insertion, as the batch stands when it runs: the block deletion records
+ * the deletion beside that insertion and takes the words, so accepting
+ * removes the paragraph as the direct deletion does. Read as it runs, it is
+ * the same whether that table, or that insertion, came before the batch or
+ * from it.
+ */
+const ownMarkBeforeInsertedTableAsItRuns = ({
+  document,
+  story,
+  blockId,
+  author,
+  gainsFollower,
+  intents,
+}: OwnMarkBeforeInsertedTableOptions): readonly EditorIntent[] => {
+  const blocks = findStoryBody(document, story)?.content ?? [];
+  const index = blocks.findIndex(
+    (block) =>
+      block.type === "paragraph" &&
+      idKey(block.paraId ?? "") === idKey(blockId),
+  );
+  const paragraph = blocks[index];
+  const following = blocks[index + 1];
+  const previous = blocks[index - 1];
+  // A paragraph before it whose mark goes would run into the table once both
+  // are accepted: the deletion then takes the words only. A block the batch
+  // puts after that paragraph stands between them instead.
+  const previousJoins =
+    previous?.type === "paragraph" &&
+    !gainsFollower(previous.paraId ?? "") &&
+    (previous.pPrMark?.kind === "del" ||
+      previous.pPrMark?.kind === "moveFrom" ||
+      previous.pPrMark?.deletion !== undefined);
+  if (
+    previousJoins ||
+    paragraph?.type !== "paragraph" ||
+    paragraph.paraId === undefined ||
+    paragraph.pPrMark?.kind !== "ins" ||
+    paragraph.pPrMark.deletion !== undefined ||
+    paragraph.pPrMark.info.author !== author ||
+    following?.type !== "table" ||
+    following.rows.length === 0 ||
+    !following.rows.every(
+      (row) => row.structuralChange?.type === "tableRowInsertion",
+    )
+  )
+    return intents;
+  return [{ type: "deleteParagraphs", story, blockIds: [paragraph.paraId] }];
+};
+
 type MergeIntentsAsItRunsOptions = {
   document: Document;
   story: OpStory;
@@ -3473,15 +3535,30 @@ export class CanonicalPublicOperations {
         resolvedOperation.joinsParagraphBefore === true
           ? deletionIntentsAsItRuns(sourceDocument, story, shifted)
           : shifted;
+      const retracting =
+        operation.type === "deleteBlock" &&
+        batch.mode !== "direct" &&
+        operation.moveId === undefined
+          ? ownMarkBeforeInsertedTableAsItRuns({
+              document: sourceDocument,
+              story,
+              blockId: operation.blockId,
+              author: options.author ?? "AI",
+              gainsFollower: (id) =>
+                besideDeletions.tables.after.has(id) ||
+                besideDeletions.paragraphsAfter.has(id),
+              intents: deleting,
+            })
+          : deleting;
       const joining =
         operation.type === "mergeBlockWithNext"
           ? mergeIntentsAsItRuns({
               document: sourceDocument,
               story,
-              intents: deleting,
+              intents: retracting,
               mode: batch.mode,
             })
-          : deleting;
+          : retracting;
       if (joining === undefined)
         return declined({
           reason: "missingBlock",

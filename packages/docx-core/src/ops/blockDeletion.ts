@@ -125,6 +125,12 @@ const deletedContent = (
  * and every word, with no one else's suggestion in it and no range boundary
  * standing in it, which removing the paragraph would lose.
  */
+/** Whether accepting every change takes `paragraph`'s own mark. */
+const markGoes = ({ pPrMark }: Paragraph): boolean =>
+  pPrMark?.kind === "del" ||
+  pPrMark?.kind === "moveFrom" ||
+  pPrMark?.deletion !== undefined;
+
 const addedWholeBy = (paragraph: Paragraph, author: string): boolean =>
   paragraph.pPrMark?.kind === "ins" &&
   paragraph.pPrMark.deletion === undefined &&
@@ -775,8 +781,20 @@ export const deleteBlocks = ({
     !(finalTakeover && paragraph === last.paragraph);
   // Another author's added mark the deletion takes keeps that insertion and
   // records the deletion beside it, as a later deletion of an insertion does;
-  // so does one's own that ends a section.
+  // so does one's own that ends a section, and one's own on the last
+  // paragraph before a table whose rows are all pending insertion: it has no
+  // paragraph to join, and accepting both records removes it without running
+  // into the table. Not where the paragraph before it loses its own mark:
+  // accepting would run that one into the table instead.
   const deletingAuthor = op.revision.author;
+  const before = list[first.index - 1];
+  const beforeInsertedTable =
+    !(before?.type === "paragraph" && markGoes(before)) &&
+    following?.type === "table" &&
+    following.rows.length > 0 &&
+    following.rows.every(
+      (row) => row.structuralChange?.type === "tableRowInsertion",
+    );
   const deletesAddedMark = (paragraph: Paragraph) =>
     op.move !== true &&
     losesMark(paragraph) &&
@@ -785,7 +803,8 @@ export const deleteBlocks = ({
       paragraph.pPrMark?.kind === "moveTo") &&
     paragraph.pPrMark.deletion === undefined &&
     (paragraph.pPrMark.info.author !== deletingAuthor ||
-      paragraph.sectionProperties !== undefined) &&
+      paragraph.sectionProperties !== undefined ||
+      (beforeInsertedTable && paragraph === last.paragraph)) &&
     !(finalTakeover && paragraph === last.paragraph);
   if (
     affected.some(
