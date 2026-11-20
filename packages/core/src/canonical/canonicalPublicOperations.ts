@@ -472,11 +472,14 @@ const orderCanonicalBatch = <T extends PlannedOperation>({
   items,
   doc,
 }: CanonicalBatchOrderOptions<T>): T[] => {
-  const deleted = new Set(
-    items.flatMap(({ operation, plan }) =>
-      operation.type === "deleteBlock" ? [plan.block] : [],
+  const deletionOf = new Map(
+    items.flatMap((item) =>
+      item.operation.type === "deleteBlock"
+        ? [[item.plan.block, item] as const]
+        : [],
     ),
   );
+  const deleted = new Set(deletionOf.keys());
   const joinedAway = new Set(
     items.flatMap(({ plan }) =>
       plan.claim.type === "merge" && plan.claim.joinsNow ? [plan.block] : [],
@@ -505,8 +508,21 @@ const orderCanonicalBatch = <T extends PlannedOperation>({
         : [];
     }),
   );
-  const address = ({ operation, plan }: T): BatchOrderAddress => {
+  const address = (item: T): BatchOrderAddress => {
+    const { operation, plan } = item;
     if (plan.address.type !== "content") return plan.address;
+    // A direct merge into a paragraph the batch deletes runs right after
+    // that deletion, joining across it to what then follows.
+    const deletion =
+      plan.claim.type === "merge" && plan.claim.joinsNow
+        ? deletionOf.get(plan.claim.next)
+        : undefined;
+    if (deletion !== undefined) {
+      const after = address(deletion);
+      return after.type === "content"
+        ? { ...plan.address, position: after.position, rank: after.rank + 1 }
+        : plan.address;
+    }
     const hasDeletedSplit = deletedSplits.has(plan.block);
     return {
       ...plan.address,
@@ -1342,6 +1358,76 @@ const deletionIntentsAsItRuns = (
     )
       return intent;
     return { ...intent, blockId: before.paragraph.paraId };
+  });
+};
+
+/**
+ * A direct merge's join bound to the paragraph after the first one in
+ * `document`, the batch as it stands when the merge runs: a paragraph the
+ * batch deleted first is no longer there, so the merge joins across it to
+ * the paragraph that now follows, as merging after that deletion does.
+ * `undefined` when no paragraph follows any more.
+ */
+const mergeIntentsAsItRuns = (
+  document: Document,
+  story: OpStory,
+  intents: readonly EditorIntent[],
+): readonly EditorIntent[] | undefined => {
+  const join = intents.find(
+    (intent): intent is Extract<EditorIntent, { type: "joinParagraphs" }> =>
+      intent.type === "joinParagraphs",
+  );
+  const body = findStoryBody(document, story);
+  if (join === undefined || body === undefined) return intents;
+  const locations = storyParagraphs(body);
+  const key = idKey(join.blockId);
+  const at = locations.findIndex(
+    ({ paragraph }) => idKey(paragraph.paraId ?? "") === key,
+  );
+  const here = locations[at];
+  const next = locations[at + 1];
+  const follows =
+    here !== undefined &&
+    next !== undefined &&
+    here.index + 1 === next.index &&
+    JSON.stringify(here.list) === JSON.stringify(next.list);
+  const nextId = follows ? next.paragraph.paraId : undefined;
+  if (here === undefined || nextId === undefined) return undefined;
+  const was = idKey(join.nextBlockId);
+  // The separator goes in at the first paragraph's end as it now stands: an
+  // edit of that paragraph the batch ran first may have changed its length.
+  const end = paragraphLength(here.paragraph);
+  return intents.map((intent) => {
+    switch (intent.type) {
+      case "replaceText":
+        return idKey(intent.from.blockId) === key &&
+          intent.from.offset === intent.to.offset
+          ? {
+              ...intent,
+              from: { ...intent.from, offset: end },
+              to: { ...intent.to, offset: end },
+            }
+          : intent;
+      case "joinParagraphs":
+        return idKey(intent.nextBlockId) === was
+          ? { ...intent, nextBlockId: nextId }
+          : intent;
+      case "formatParagraph":
+        return idKey(intent.at.blockId) === was
+          ? { ...intent, at: { ...intent.at, blockId: nextId } }
+          : intent;
+      case "setList":
+        return {
+          ...intent,
+          items: intent.items.map((item) =>
+            idKey(item.at.blockId) === was
+              ? { ...item, at: { ...item.at, blockId: nextId } }
+              : item,
+          ),
+        };
+      default:
+        return intent;
+    }
   });
 };
 
@@ -3292,11 +3378,26 @@ export class CanonicalPublicOperations {
             ? sourceDocument
             : (annotated ?? sourceDocument),
       });
-      const intents = (
+      // Pre-batch positions first take the batch's comment references; the
+      // as-it-runs bindings below read the document as it stands, past them.
+      const shifted = inserting.map((intent) =>
+        mapIntentPositions(intent, shift),
+      );
+      const deleting =
         resolvedOperation.joinsParagraphBefore === true
-          ? deletionIntentsAsItRuns(sourceDocument, story, inserting)
-          : inserting
-      ).map((intent) => mapIntentPositions(intent, shift));
+          ? deletionIntentsAsItRuns(sourceDocument, story, shifted)
+          : shifted;
+      const joining =
+        operation.type === "mergeBlockWithNext" && batch.mode === "direct"
+          ? mergeIntentsAsItRuns(sourceDocument, story, deleting)
+          : deleting;
+      if (joining === undefined)
+        return declined({
+          reason: "missingBlock",
+          message:
+            "No paragraph follows the paragraph to join once the batch's deletions are made.",
+        });
+      const intents = joining;
       const livePropertyRefusal = batchPropertyRefusal({
         document: sourceDocument,
         story,
@@ -5037,11 +5138,22 @@ export class CanonicalPublicOperations {
       intent.type === "joinParagraphs"
     ) {
       // The separator goes in at the first paragraph's end, before the join.
-      // Where only paragraphs pending deletion follow, accepting leaves no
-      // words after it to separate, as the default engine reads it.
+      // Where only paragraphs pending deletion follow, or ones the batch
+      // deletes and places nothing beside, accepting leaves no words after it
+      // to separate, as the default engine reads it.
+      const vanishing = new Set(
+        [...besideDeletions.deleted].filter(
+          (id) =>
+            !besideDeletions.insertedBeside.has(id) &&
+            !besideDeletions.paragraphsAfter.has(id) &&
+            !besideDeletions.tables.after.has(id) &&
+            !besideDeletions.tables.before.has(id),
+        ),
+      );
       const separator = followedOnlyByDeletedParagraphs(
         projection.value.doc,
         paragraph.start - 1 + paragraph.node.nodeSize,
+        vanishing,
       )
         ? ""
         : (operation.separator ?? "");
