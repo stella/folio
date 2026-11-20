@@ -474,6 +474,12 @@ const intentEndpoints = (intent: EditorIntentAllocation) => {
 const PARAGRAPH_REVISION_DEMAND = 3;
 const leafRevisionDemand = (ancestorCount: number) => 4 * (1 + ancestorCount);
 
+type AllocationRange = {
+  body: ReturnType<typeof storyBody>;
+  fromKey: string;
+  toKey: string;
+};
+
 /**
  * Cache only immutable document versions; never retain a retired version
  * strongly. A new paragraph identity avoids `reservedBlockIds`, the ones
@@ -487,6 +493,25 @@ export const createEditorIntentIdAllocator = ({
     ReturnType<typeof storyBody>,
     ReturnType<typeof storyParagraphs>
   >();
+  const paragraphsBetween = ({ body, fromKey, toKey }: AllocationRange) => {
+    // An empty endpoint also matches a paragraph with no id in the story walk.
+    if (fromKey !== "" && fromKey === toKey) {
+      const location = findStoryParagraph(body, fromKey);
+      return location === undefined ? [] : [location];
+    }
+    let locations = storyLocations.get(body);
+    if (locations === undefined) {
+      locations = storyParagraphs(body);
+      storyLocations.set(body, locations);
+    }
+    const first = locations.findIndex(
+      ({ paragraph }) => idKey(paragraph.paraId ?? "") === fromKey,
+    );
+    const last = locations.findIndex(
+      ({ paragraph }) => idKey(paragraph.paraId ?? "") === toKey,
+    );
+    return first < 0 || last < first ? [] : locations.slice(first, last + 1);
+  };
   return (
     document: Document,
     intent: EditorIntentAllocation,
@@ -503,34 +528,28 @@ export const createEditorIntentIdAllocator = ({
     const { story, fromId, toId, fromOffset, toOffset } =
       intentEndpoints(intent);
     const body = storyBody(document, story);
-    let locations = storyLocations.get(body);
-    if (locations === undefined) {
-      locations = storyParagraphs(body);
-      storyLocations.set(body, locations);
-    }
-    const first = locations.findIndex(
-      ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(fromId),
-    );
-    const last = locations.findIndex(
-      ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(toId),
-    );
+    const fromKey = idKey(fromId);
+    const toKey = idKey(toId);
     // Every selected leaf may start a deletion segment; ancestors may be cut
-    // at both endpoints. Each paragraph adds join/mark/property stamps.
+    // at both endpoints. Table and whole-paragraph insertion demand is
+    // computed below from the table or inserted paragraphs.
     let demand = 1;
     const selected =
-      first < 0 || last < first ? [] : locations.slice(first, last + 1);
-    for (const { paragraph } of intent.type === "table" ? [] : selected) {
+      intent.type === "table" || intent.type === "insertParagraphs"
+        ? []
+        : paragraphsBetween({ body, fromKey, toKey });
+    for (const { paragraph } of selected) {
       demand += PARAGRAPH_REVISION_DEMAND;
       const blockId = idKey(paragraph.paraId ?? "");
       for (const span of leafSpans(paragraph.content)) {
         if (
-          blockId === idKey(fromId) &&
+          blockId === fromKey &&
           fromOffset !== undefined &&
           span.after.offset < fromOffset
         )
           continue;
         if (
-          blockId === idKey(toId) &&
+          blockId === toKey &&
           toOffset !== undefined &&
           span.before.offset > toOffset
         )

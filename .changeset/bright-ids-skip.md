@@ -2,4 +2,4 @@
 "@stll/docx-core": patch
 ---
 
-Reuse occupied identity prefixes across editor edits when allocating paragraph, revision, and content-control IDs.
+Reuse occupied identity prefixes and limit editor intent allocation to the paragraphs that determine identity demand.
