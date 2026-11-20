@@ -14,6 +14,7 @@
 
 import type { DocxPackage } from "../model/document";
 import { structurallyEqual } from "./equality";
+import { recentValues } from "./recentValues";
 
 const isPlainRecord = (value: object): boolean => {
   const prototype: unknown = Object.getPrototypeOf(value);
@@ -512,9 +513,6 @@ type IndexNode = {
 
 const MAX_CHAIN = 32;
 
-/** How many recently indexed packages an index may derive a new one from. */
-const RECENT_BASES = 8;
-
 const countIn = (node: IndexNode, key: string): number => {
   let count = 0;
   for (let at: IndexNode | undefined = node; at !== undefined; at = at.parent)
@@ -702,29 +700,14 @@ const keyIndex = (
 ): ((pkg: DocxPackage) => IdentityKeyIndex) => {
   const nodes = new WeakMap<DocxPackage, IndexNode>();
   const changeBetween = censusChange(censusOf, ownKeys);
-  // The packages indexed last, newest first, held weakly. A package indexed
-  // only on the way to another (an edit's intermediate version) is often
-  // collected before the next lookup; an older one still alive, such as the
-  // version an editor holds, is then the base instead of a full count.
-  const recent: WeakRef<DocxPackage>[] = [];
+  const recent = recentValues<DocxPackage>();
   const baseFor = ():
     { previous: DocxPackage; base: IndexNode } | undefined => {
-    for (const reference of recent) {
-      const previous = reference.deref();
-      const base = previous === undefined ? undefined : nodes.get(previous);
-      if (previous !== undefined && base?.shareable === true)
-        return { previous, base };
+    for (const previous of recent.values()) {
+      const base = nodes.get(previous);
+      if (base?.shareable === true) return { previous, base };
     }
     return undefined;
-  };
-  const remember = (pkg: DocxPackage): void => {
-    if (recent[0]?.deref() === pkg) return;
-    const alive = recent.filter((reference) => {
-      const held = reference.deref();
-      return held !== undefined && held !== pkg;
-    });
-    recent.length = 0;
-    recent.push(new WeakRef(pkg), ...alive.slice(0, RECENT_BASES - 1));
   };
   const derived = (pkg: DocxPackage): IndexNode | undefined => {
     const found = baseFor();
@@ -772,7 +755,7 @@ const keyIndex = (
       node = derived(pkg) ?? counted(pkg);
       nodes.set(pkg, node);
     }
-    remember(pkg);
+    recent.remember(pkg);
     const indexed = node;
     return {
       count: (key) => countIn(indexed, key),
