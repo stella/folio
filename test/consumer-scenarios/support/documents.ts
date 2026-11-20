@@ -174,16 +174,14 @@ type ReviewerEngine = NonNullable<
 >;
 
 /**
- * The engine scenarios open reviewers on: `FOLIO_SCENARIO_ENGINE`, else the
- * reviewer's own default, the canonical session. A scenario file that replays
- * on the legacy engine sets it before it opens anything; each scenario file
- * runs in its own process.
+ * The engine scenarios open reviewers on: `FOLIO_SCENARIO_ENGINE`, `legacy`
+ * when unset. A scenario file that replays on the canonical session sets it
+ * before it opens anything; each scenario file runs in its own process.
  */
 export const scenarioEngine = (): ReviewerEngine => {
   const raw = process.env["FOLIO_SCENARIO_ENGINE"];
-  if (raw === undefined || raw === "" || raw === "canonical")
-    return "canonical";
-  if (raw === "legacy") return "legacy";
+  if (raw === undefined || raw === "" || raw === "legacy") return "legacy";
+  if (raw === "canonical") return "canonical";
   throw new Error(`Invalid FOLIO_SCENARIO_ENGINE: ${raw}`);
 };
 

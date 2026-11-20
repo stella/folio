@@ -470,7 +470,7 @@ const save = async (page: Page) => {
 const reopenSaved = async (buffer: ArrayBuffer) => {
   const validity = await validateDocxPackage(buffer);
   expect(validity.valid, validity.valid ? "" : validity.error).toBe(true);
-  return FolioDocxReviewer.fromBuffer(buffer);
+  return FolioDocxReviewer.fromBuffer(buffer, { session: "legacy" });
 };
 
 const canonicalSnapshot = async (page: Page) => {
@@ -724,13 +724,17 @@ const checkDefaultEditorTrace = async ({
   });
   if (edited.type !== "ready" || suggested.type !== "ready")
     throw new TypeError("The legacy editor unexpectedly refused activation.");
-  const accepting = await FolioDocxReviewer.fromBuffer(suggested.buffer);
+  const accepting = await FolioDocxReviewer.fromBuffer(suggested.buffer, {
+    session: "legacy",
+  });
   accepting.acceptAll();
   expect(
     project(await reopenSaved(await accepting.toBuffer())),
     ACCEPTED_EQUALS_EDITED,
   ).toEqual(edited.blocks);
-  const rejecting = await FolioDocxReviewer.fromBuffer(suggested.buffer);
+  const rejecting = await FolioDocxReviewer.fromBuffer(suggested.buffer, {
+    session: "legacy",
+  });
   rejecting.rejectAll();
   expect(
     project(await reopenSaved(await rejecting.toBuffer())),
@@ -756,7 +760,9 @@ const checkCommittedAsDefaultEditor = async ({
   const typed = (changes: readonly { type: string; text: string }[]) =>
     changes.map(({ type, text }) => ({ type, text }));
   const sourceChanges = typed(
-    (await FolioDocxReviewer.fromBuffer(source)).getChanges(),
+    (
+      await FolioDocxReviewer.fromBuffer(source, { session: "legacy" })
+    ).getChanges(),
   );
   for (const suggesting of [false, true]) {
     const canonical = await runMode({
@@ -834,7 +840,9 @@ const paintedTargetReplays = [
 for (const [index, trace] of paintedTargetReplays.entries()) {
   test(`painted target replay ${index}`, async ({ page }) => {
     const source = await shapeArrayBuffer(trace.shape);
-    const baseline = project(await FolioDocxReviewer.fromBuffer(source));
+    const baseline = project(
+      await FolioDocxReviewer.fromBuffer(source, { session: "legacy" }),
+    );
     for (const suggesting of [false, true]) {
       const loaded = await load({
         page,
@@ -875,7 +883,9 @@ test.describe("pinned browser input", () => {
         });
         const replay = async () => {
           const source = await shapeArrayBuffer(trace.shape);
-          const baseline = project(await FolioDocxReviewer.fromBuffer(source));
+          const baseline = project(
+            await FolioDocxReviewer.fromBuffer(source, { session: "legacy" }),
+          );
           if ("preconditionAt" in regression) {
             await load({
               page,
@@ -1000,7 +1010,9 @@ for (const [shape, target] of paintedDrags) {
       page,
     }) => {
       const source = await shapeArrayBuffer(shape);
-      const baseline = project(await FolioDocxReviewer.fromBuffer(source));
+      const baseline = project(
+        await FolioDocxReviewer.fromBuffer(source, { session: "legacy" }),
+      );
       const loaded = await load({
         page,
         bytes: source,
@@ -1211,7 +1223,9 @@ for (const seed of config.defaultEditorSeeds) {
       budget: DEFAULT_EDITOR_FUZZ_BUDGET,
       check: async (trace) => {
         const source = await shapeArrayBuffer(trace.shape);
-        const baseline = project(await FolioDocxReviewer.fromBuffer(source));
+        const baseline = project(
+          await FolioDocxReviewer.fromBuffer(source, { session: "legacy" }),
+        );
         await checkDefaultEditorTrace({ page, source, baseline, trace });
       },
     });
@@ -1228,7 +1242,9 @@ for (const seed of config.seeds) {
       budget: BROWSER_FUZZ_BUDGET,
       check: async (trace) => {
         const source = await shapeArrayBuffer(trace.shape);
-        const baseline = project(await FolioDocxReviewer.fromBuffer(source));
+        const baseline = project(
+          await FolioDocxReviewer.fromBuffer(source, { session: "legacy" }),
+        );
         await checkCanonicalTrace({ page, source, baseline, trace });
       },
     });

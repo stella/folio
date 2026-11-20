@@ -539,7 +539,9 @@ export const resolveReopenedCanonicalHarnessDocument = async (
   if (storyRevisionIds(source).length === 0)
     return resolveListedChanges(source, () => [], decision);
   const { bytes } = await saveCanonicalHarnessDocument(source);
-  const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice().buffer);
+  const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice().buffer, {
+    session: "legacy",
+  });
   const listed = reviewer.getChanges().map(({ id }) => id);
   return resolveListedChanges(
     await parseShapeDocument(bytes),

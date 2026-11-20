@@ -32,7 +32,7 @@ const reviewerOf = async (
   );
   return FolioDocxReviewer.fromBuffer(docx, {
     author: "Agent",
-    ...(session === undefined ? {} : { session }),
+    session: session ?? "legacy",
   });
 };
 

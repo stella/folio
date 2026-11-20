@@ -27,6 +27,7 @@ test.each(cases)(
     ]);
     const reviewer = await FolioDocxReviewer.fromBuffer(
       new Uint8Array(source).buffer,
+      { session: "legacy" },
     );
     const operations = [
       { id: "insert", type: "insertAfterBlock", blockId, text },
@@ -62,6 +63,7 @@ test("rejects insertion receipts with the wrong discriminator or anchor", async 
   ]);
   const reviewer = await FolioDocxReviewer.fromBuffer(
     new Uint8Array(source).buffer,
+    { session: "legacy" },
   );
   const operation = {
     id: "insert",

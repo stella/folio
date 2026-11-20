@@ -48,6 +48,7 @@ const semanticProjection = async (bytes: Uint8Array) => {
   expect(await validateDocxPackage(bytes)).toEqual({ valid: true });
   const reviewer = await FolioDocxReviewer.fromBuffer(
     new Uint8Array(bytes).buffer,
+    { session: "legacy" },
   );
   return {
     // Exclude regenerated identity and package metadata, retain semantic structure.
@@ -143,6 +144,7 @@ test("generated flow saves equivalent semantics in React, Vue, headless and CLI"
         });
         const headless = await FolioDocxReviewer.fromBuffer(
           new Uint8Array(source).buffer,
+          { session: "legacy" },
         );
         for (const batch of batches) {
           const operation = batch.operations[0];

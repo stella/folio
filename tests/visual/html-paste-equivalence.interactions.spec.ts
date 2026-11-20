@@ -90,6 +90,7 @@ const paste = async (page: Page, input: PasteCase, suggesting: boolean) => {
     throw new Error("editor did not return the original DOCX");
   const baseline = await FolioDocxReviewer.fromBuffer(
     new Uint8Array(baselineBytes).buffer,
+    { session: "legacy" },
   );
 
   if (suggesting)
@@ -167,7 +168,9 @@ const paste = async (page: Page, input: PasteCase, suggesting: boolean) => {
     throw new Error(`editor did not return the pasted DOCX: ${status}`);
   }
   const buffer = new Uint8Array(savedBytes).buffer;
-  const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
+  const reviewer = await FolioDocxReviewer.fromBuffer(buffer, {
+    session: "legacy",
+  });
   return {
     buffer,
     baseline: project(baseline),
@@ -187,18 +190,26 @@ for (const input of cases) {
     expect(suggested.baseline).toEqual(edited.baseline);
     expect(suggested.pending.length).toBeGreaterThan(0);
 
-    const accepting = await FolioDocxReviewer.fromBuffer(suggested.buffer);
+    const accepting = await FolioDocxReviewer.fromBuffer(suggested.buffer, {
+      session: "legacy",
+    });
     accepting.acceptAll();
     const accepted = await FolioDocxReviewer.fromBuffer(
       await accepting.toBuffer(),
+      { session: "legacy" },
     );
-    const editedSaved = await FolioDocxReviewer.fromBuffer(edited.buffer);
+    const editedSaved = await FolioDocxReviewer.fromBuffer(edited.buffer, {
+      session: "legacy",
+    });
     expect(project(accepted)).toEqual(project(editedSaved));
 
-    const rejecting = await FolioDocxReviewer.fromBuffer(suggested.buffer);
+    const rejecting = await FolioDocxReviewer.fromBuffer(suggested.buffer, {
+      session: "legacy",
+    });
     rejecting.rejectAll();
     const rejected = await FolioDocxReviewer.fromBuffer(
       await rejecting.toBuffer(),
+      { session: "legacy" },
     );
     expect(project(rejected)).toEqual(suggested.baseline);
 
@@ -311,25 +322,37 @@ test("native cut copies the selection and resolves like editing mode", async ({
   const edited = await run(false);
   const suggested = await run(true);
   expect(suggested.selected).toBe(edited.selected);
-  const editedSaved = await FolioDocxReviewer.fromBuffer(edited.buffer);
-  const pending = await FolioDocxReviewer.fromBuffer(suggested.buffer);
+  const editedSaved = await FolioDocxReviewer.fromBuffer(edited.buffer, {
+    session: "legacy",
+  });
+  const pending = await FolioDocxReviewer.fromBuffer(suggested.buffer, {
+    session: "legacy",
+  });
   expect(pending.getChanges()).toEqual(
     expect.arrayContaining([
       expect.objectContaining({ type: "deletion", text: suggested.selected }),
     ]),
   );
-  const accepting = await FolioDocxReviewer.fromBuffer(suggested.buffer);
+  const accepting = await FolioDocxReviewer.fromBuffer(suggested.buffer, {
+    session: "legacy",
+  });
   accepting.acceptAll();
   const accepted = await FolioDocxReviewer.fromBuffer(
     await accepting.toBuffer(),
+    { session: "legacy" },
   );
   expect(project(accepted)).toEqual(project(editedSaved));
-  const rejecting = await FolioDocxReviewer.fromBuffer(suggested.buffer);
+  const rejecting = await FolioDocxReviewer.fromBuffer(suggested.buffer, {
+    session: "legacy",
+  });
   rejecting.rejectAll();
   const rejected = await FolioDocxReviewer.fromBuffer(
     await rejecting.toBuffer(),
+    { session: "legacy" },
   );
-  const baseline = await FolioDocxReviewer.fromBuffer(suggested.original);
+  const baseline = await FolioDocxReviewer.fromBuffer(suggested.original, {
+    session: "legacy",
+  });
   expect(project(rejected)).toEqual(project(baseline));
 });
 
