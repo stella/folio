@@ -40,6 +40,7 @@ import {
 } from "./offsets";
 import {
   isBlockBoundary,
+  isBoundary,
   withBoundariesOutsideDeletion,
 } from "./rangeBoundaries";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
@@ -58,6 +59,7 @@ import {
   WRAP_KINDS,
   wrapTracked,
 } from "./review";
+import { recordedOnlyBy } from "./tableOwnPending";
 import {
   type DeleteBlocksOp,
   DOCUMENT_OP_TYPES,
@@ -115,6 +117,27 @@ const deletedContent = (
     standing: standingIn(nodes, new Set(standing), created),
   };
 };
+
+/**
+ * Whether `author`'s pending insertion added `paragraph` whole: its mark
+ * and every word, with no one else's suggestion in it and no range boundary
+ * standing in it, which removing the paragraph would lose.
+ */
+const addedWholeBy = (paragraph: Paragraph, author: string): boolean =>
+  paragraph.pPrMark?.kind === "ins" &&
+  paragraph.pPrMark.deletion === undefined &&
+  paragraph.pPrMark.info.author === author &&
+  paragraph.content.every(
+    (item) => item.type === "insertion" && item.info.author === author,
+  ) &&
+  !holdsRangeBoundary(paragraph.content) &&
+  recordedOnlyBy(paragraph, author);
+
+/** Whether a range boundary stands anywhere among `nodes`. */
+const holdsRangeBoundary = (nodes: readonly InlineNode[]): boolean =>
+  nodes.some(
+    (node) => isBoundary(node) || holdsRangeBoundary(childNodes(node) ?? []),
+  );
 
 /**
  * Every comment reference in `nodes` outside a removal already pending
@@ -473,16 +496,58 @@ export const deleteBlocks = ({
   const list = blockListAt(body.content, first.list);
   const following = list[last.index + 1];
   const terminal = last.index === list.length - 1;
+  // Paragraphs the same author's pending insertion added whole, with no one
+  // else's suggestion in them, go outright before a table, as deleting over
+  // one's own insertion removes it; no deletion of an addition is recorded.
+  if (
+    op.revision !== undefined &&
+    following?.type === "table" &&
+    list.at(-1)?.type === "paragraph" &&
+    found.every(({ paragraph }) =>
+      addedWholeBy(paragraph, op.revision?.author ?? ""),
+    )
+  ) {
+    const removed = applyOps(document, [
+      {
+        type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+        story: op.story,
+        expected: found.map(({ paragraph }) => paragraph),
+        blocks: [],
+      },
+    ]);
+    if (removed.isErr())
+      return refuse(removed.error.reason, removed.error.message);
+    return Result.ok({
+      document: removed.value.document,
+      inverse: removed.value.inverse,
+      touched: {
+        modified: [],
+        inserted: [],
+        removed: found.map(({ paragraph }) => paragraph.paraId ?? ""),
+      },
+    });
+  }
   // Tracked, a paragraph a table or another block follows loses its words
   // and its own mark, as the default editor records it; accepting removes
   // it, which needs what resolving that mark needs.
+  const tableBoundary =
+    following?.type === "table"
+      ? paragraphTableRunInBoundary(last.paragraph, following)
+      : undefined;
+  // Before a table whose first row is itself pending review, the words have
+  // nowhere to run in, but the deletion takes them all: accepting leaves the
+  // paragraph empty, and an empty paragraph after another block goes without
+  // crossing the table, as resolving its mark already does.
+  const emptiedBeforeTableUnderReview =
+    tableBoundary?.type === "blocked" &&
+    tableBoundary.reason === "review" &&
+    list.at(-1)?.type === "paragraph" &&
+    first.index > 0;
   const trackedBeforeTable =
     op.revision !== undefined &&
-    following?.type === "table" &&
-    markBeforeTableResolves({
-      blocks: list,
-      boundary: paragraphTableRunInBoundary(last.paragraph, following),
-    });
+    tableBoundary !== undefined &&
+    (markBeforeTableResolves({ blocks: list, boundary: tableBoundary }) ||
+      emptiedBeforeTableUnderReview);
   const trackedBeforeBlock =
     op.revision !== undefined &&
     isOpaqueFollower(following) &&

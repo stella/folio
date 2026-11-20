@@ -13,7 +13,11 @@ import {
 } from "../model/document";
 import { getSingularRunPropertyChange } from "../model/runPropertyReview";
 import { hasIllegalXmlCharacters } from "../serialize/xmlEscape";
-import { deleteBlocks } from "./blockDeletion";
+import {
+  deleteBlocks,
+  markBeforeTableResolves,
+  paragraphTableRunInBoundary,
+} from "./blockDeletion";
 import { insertBlocks } from "./blockInsertion";
 import {
   blockListAt,
@@ -2139,6 +2143,30 @@ const trackJoin = ({
       op,
       DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
       `The mark of ${op.blockId} already carries a tracked change.`,
+    );
+  }
+  // The second paragraph's own mark already goes, before a table that cannot
+  // receive what runs in (its first row or cell is under review): accepting
+  // both would run the first paragraph's words into that table.
+  const trailingMark = trailing.pPrMark;
+  const trailingMarkGoes =
+    trailingMark?.kind === "del" ||
+    trailingMark?.kind === "moveFrom" ||
+    trailingMark?.deletion !== undefined;
+  const list = blockListAt(storyBody(document, op.story).content, at.list);
+  const afterTrailing = list[at.index + 2];
+  if (
+    trailingMarkGoes &&
+    afterTrailing?.type === "table" &&
+    !markBeforeTableResolves({
+      blocks: list,
+      boundary: paragraphTableRunInBoundary(trailing, afterTrailing),
+    })
+  ) {
+    return refuse(
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+      `Joining ${op.blockId} would run it into the table after ${op.nextBlockId}.`,
     );
   }
   const first: Paragraph = {
