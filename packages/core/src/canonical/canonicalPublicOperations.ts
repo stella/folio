@@ -1496,7 +1496,7 @@ type BesidePendingJoin = {
   formattingSource: ProjectedParagraph;
 };
 
-/** A suggestion reads the document as it stands: beside the paragraph it names. */
+/** Beside the paragraph an insertion names as it stands, with its properties. */
 const besideAsItStands = (
   paragraph: ProjectedParagraph,
 ): BesidePendingJoin => ({
@@ -4237,10 +4237,7 @@ type ResolveCanonicalPublicOperationOptions = {
   diff: ReturnType<typeof wordDiffSessionFromOptions>["diff"];
   /** Whether the batch records its edits as revisions. */
   tracked: boolean;
-  /**
-   * Whether the batch records its edits as suggestions, which read the
-   * document as it stands rather than as accepting leaves it.
-   */
+  /** Whether the batch records its edits as suggestions. */
   suggested: boolean;
   /** A new list of one kind for this operation, minted after the batch's earlier ones. */
   mintList: ReturnType<typeof createBatchListMinter>;
@@ -7061,9 +7058,12 @@ export class CanonicalPublicOperations {
           ? { ...operation, type: "insertAfterBlock" }
           : operation;
       // A paragraph put after one whose break a pending join removes goes
-      // where `insertionAfterPendingBreak` puts it.
+      // where `insertionAfterPendingBreak` puts it. One put before a
+      // paragraph goes before the join it is part of, in every mode
+      // (`insertionGap`): a suggestion lands where the same tracked insertion
+      // does, so accepting it leaves what the direct edit does.
       const placed =
-        suggested || insertion.type === "insertAfterBlock"
+        insertion.type === "insertAfterBlock"
           ? placeAfter({
               suggested,
               paragraph,
