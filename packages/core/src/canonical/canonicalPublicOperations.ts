@@ -2378,6 +2378,11 @@ type ResolveBlockDeletionOptions = {
    * follows the table rather than the paragraph before it.
    */
   followsInsertedTable: boolean;
+  /**
+   * Whether the batch inserts a paragraph after the paragraph before this
+   * one, which then stands between them when this deletion runs.
+   */
+  previousGainsFollower: boolean;
   refusal: (
     reason: FolioAIEditSkipReason,
     message?: string,
@@ -4060,6 +4065,7 @@ export class CanonicalPublicOperations {
     tracked,
     gainsFollower,
     followsInsertedTable,
+    previousGainsFollower,
     refusal,
   }: ResolveBlockDeletionOptions) {
     // A direct deletion leaves no text for a comment to cover, as the default
@@ -4223,7 +4229,7 @@ export class CanonicalPublicOperations {
         normalizations: [],
         from: previous === undefined ? paragraph.start : previous.start,
         to: end,
-        ...(previous === undefined
+        ...(previous === undefined || !previousGainsFollower
           ? {}
           : { joinsParagraphBefore: true as const }),
       });
@@ -4537,6 +4543,10 @@ export class CanonicalPublicOperations {
         tracked,
         gainsFollower,
         followsInsertedTable,
+        previousGainsFollower:
+          !followed &&
+          typeof previousId === "string" &&
+          besideDeletions.paragraphsAfter.has(previousId),
         refusal,
       });
       return gainsFollower && deleted.isOk()
