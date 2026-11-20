@@ -176,6 +176,7 @@ export {
   ID_LEASE_KINDS,
   idLeaseHolds,
   idLeaseRemaining,
+  introducedDocumentIds,
   introducedIds,
   leasedIdCensus,
   trimIdLease,
