@@ -3473,7 +3473,7 @@ export class CanonicalPublicOperations {
       const shifted = inserting.map((intent) =>
         mapIntentPositions(intent, shift),
       );
-      let deleting = shifted;
+      let deleting: readonly EditorIntent[] = shifted;
       if (resolvedOperation.joinsParagraphBefore === true)
         deleting = deletionIntentsAsItRuns(sourceDocument, story, shifted);
       if (resolvedOperation.retiresBreakBefore === true)
