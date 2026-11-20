@@ -22,6 +22,7 @@ import {
   openReviewer,
   packDocument,
   plainDocument,
+  scenarioEngine,
 } from "../support/documents.ts";
 import {
   assertHealthy,
@@ -1375,7 +1376,10 @@ test("cell merge and split predict the saved grid", async () => {
   assert.equal(split.applied.length, 1);
 });
 
-test("a deleted merge neighbor does not join the following table cell", async () => {
+// Accepting runs the heading's words into the table's first cell, as the
+// reference app accepts the join (canonical session); the legacy engine
+// keeps them in their own paragraph before the table.
+test("a deleted merge neighbor's join runs into the following table cell only on the canonical session", async () => {
   const reviewer = await openReviewer(await ALL_FIXTURES.tables());
   const heading = blocksOf(reviewer).find(
     (candidate) => candidate.text === "Price Schedule",
@@ -1395,6 +1399,15 @@ test("a deleted merge neighbor does not join the following table cell", async ()
     "join then remove neighbor",
   );
   assert.equal(applied.length, 2);
+  const accepted = await openReviewer(
+    new Uint8Array(await reviewer.toBuffer()),
+  );
+  accepted.acceptAll();
+  const firstCell = blocksOf(accepted).find(({ table }) => table !== undefined);
+  assert.equal(
+    firstCell?.text,
+    scenarioEngine() === "canonical" ? "Price Schedule Item" : "Item",
+  );
 });
 
 function location(cellIndex: number) {

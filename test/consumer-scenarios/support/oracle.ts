@@ -3289,6 +3289,31 @@ const materialize = (model: Model): Expected[] => {
         joinNext = undefined;
         return;
       }
+      // Accepted, a join whose next paragraph goes runs its words into the
+      // first cell of the table that follows, whose paragraph keeps its own
+      // mark and properties, as the reference app accepts it. The legacy
+      // engine keeps them in their own paragraph.
+      if (
+        previous &&
+        !inTable &&
+        model.mode !== "suggested" &&
+        model.engine === "canonical" &&
+        joinNext.container === undefined &&
+        container?.rowIndex === 0 &&
+        container.cellIndex === 0 &&
+        out.at(-1) === previous
+      ) {
+        out.pop();
+        out.push({
+          text: `${previous.text}${joinNext.separator}${entry.text}`,
+          fields: entry.fields,
+          checks: entry.checks,
+          formats: [],
+          listLineage: entry.listLineage,
+        });
+        joinNext = undefined;
+        return;
+      }
       if (previous) previous.text += joinNext.separator;
       joinNext = undefined;
     }
