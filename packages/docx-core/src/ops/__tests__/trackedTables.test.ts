@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 
 import type {
   BlockContent,
@@ -11,6 +11,7 @@ import { contractViolation } from "../contract";
 import { identityKeysIn } from "../ids";
 import { revisionIdDemand } from "../plan";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
+import * as tableTracking from "../tableTracking";
 import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
@@ -124,6 +125,45 @@ const trackedInsertion = (value = makeTable()) =>
 
 // These fixtures exercise the fields previously ignored by whole-table operations.
 describe("tracked whole tables", () => {
+  test("revision receipts visit the inserted table and report rows before paragraphs", () => {
+    const before = Array.from({ length: 16 }, (_, index) =>
+      makeParagraph((0x10000000 + index).toString(16)),
+    );
+    const after = [makeParagraph("00000002"), makeParagraph("00000003")];
+    const document = documentOf([...before, ...after]);
+    const collectRows = spyOn(tableTracking, "stampedTableRevisionIds");
+    try {
+      const result = applyDocumentOp(document, trackedInsertion());
+      if (result.isErr()) throw result.error;
+      const inserted = firstTable(result.value.document);
+      expect(collectRows).toHaveBeenCalledTimes(1);
+      expect(collectRows.mock.calls.at(0)?.at(0)?.blocks).toEqual([inserted]);
+      const rowIds: number[] = [];
+      const paragraphIds: number[] = [];
+      for (const row of inserted.rows) {
+        if (!row.structuralChange)
+          throw new Error("The inserted row must carry its revision");
+        rowIds.push(row.structuralChange.info.id);
+        for (const cell of row.cells) {
+          for (const block of cell.content) {
+            if (block.type !== "paragraph")
+              throw new Error("The fixture contains only cell paragraphs");
+            if (block.pPrMark) paragraphIds.push(block.pPrMark.info.id);
+            for (const record of block.content) {
+              if (record.type === "insertion")
+                paragraphIds.push(record.info.id);
+            }
+          }
+        }
+      }
+      expect(rowIds).toHaveLength(2);
+      expect(paragraphIds).toHaveLength(6);
+      expect(result.value.revisions).toEqual([...rowIds, ...paragraphIds]);
+    } finally {
+      collectRows.mockRestore();
+    }
+  });
+
   test("insertion tracks every row, cell content and final cell mark without changing surrounding paragraphs", () => {
     const before = makeParagraph("00000001");
     const final = makeParagraph("00000002", "final");
