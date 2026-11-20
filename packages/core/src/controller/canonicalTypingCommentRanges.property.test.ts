@@ -99,7 +99,7 @@ const savedView = async (buffer: ArrayBuffer) => {
   };
 };
 
-// A fully covered text span has retained marker edges and proven range inheritance.
+// Typing over a comment's whole words leaves the typed words outside its range.
 test(
   "successive typing follows the replacement caret across comment boundaries",
   async () => {
@@ -214,8 +214,15 @@ test(
                 })
               ).buffer,
             );
-            expect(accepted.definitions).toEqual(initial.definitions);
-            expect(accepted.markers).toEqual(initial.markers);
+            // The typed words go outside the comment whose words they
+            // replace, so accepting leaves that comment nothing to cover: it
+            // goes, and every other comment stays as it was.
+            const others = <T extends { id: number }>(items: readonly T[]) =>
+              items.filter(({ id }) => id !== 0);
+            expect(accepted.definitions ?? []).toEqual(
+              others(initial.definitions ?? []),
+            );
+            expect(accepted.markers).toEqual(others(initial.markers));
             expect(
               accepted.comments.map(({ id, text, anchoredText }) => ({
                 id,
@@ -223,10 +230,10 @@ test(
                 anchoredText,
               })),
             ).toEqual(
-              initial.comments.map(({ id, text, anchoredText }) => ({
+              others(initial.comments).map(({ id, text, anchoredText }) => ({
                 id,
                 text,
-                anchoredText: id === 0 ? typed.join("") : anchoredText,
+                anchoredText,
               })),
             );
             acceptedViews.set(type, accepted);

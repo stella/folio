@@ -16,6 +16,7 @@ import {
 } from "./blocks";
 import { isCommentExhausted } from "./comments";
 import type { DocumentEdit } from "./edits";
+import { structurallyEqual } from "./equality";
 import { freshenIdentities } from "./identity";
 import {
   IDENTITY_SPACES,
@@ -752,7 +753,12 @@ export const deleteBlocks = ({
   }
   // What a pending deletion already holds whole, empty and with its mark
   // taken, a further one records nothing on: no reader or file would show it.
-  if (tracked.every((paragraph, index) => paragraph === affected[index]))
+  // Where the direct deletion changes nothing either, as for an empty
+  // paragraph alone in its container, recording nothing is that deletion.
+  if (
+    tracked.every((paragraph, index) => paragraph === affected[index]) &&
+    !structurallyEqual(directBlocks, replacement([]).expected)
+  )
     return refuse(
       DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
       "A tracked paragraph deletion would record nothing.",

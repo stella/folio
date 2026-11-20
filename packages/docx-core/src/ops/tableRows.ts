@@ -307,6 +307,28 @@ const commitRows = ({
   });
 };
 
+/** Every tracked record in `value`, at any depth, is `author`'s. */
+const recordedOnlyBy = (value: unknown, author: string): boolean => {
+  if (Array.isArray(value))
+    return value.every((item) => recordedOnlyBy(item, author));
+  if (typeof value !== "object" || value === null) return true;
+  const info: unknown = Reflect.get(value, "info");
+  if (
+    typeof info === "object" &&
+    info !== null &&
+    Reflect.get(info, "author") !== undefined &&
+    Reflect.get(info, "author") !== author
+  )
+    return false;
+  return Object.values(value).every((item) => recordedOnlyBy(item, author));
+};
+
+/** A row `author`'s pending insertion added, holding no one else's suggestion. */
+const ownInsertion = (row: TableRow, author: string): boolean =>
+  row.structuralChange?.type === "tableRowInsertion" &&
+  row.structuralChange.info.author === author &&
+  recordedOnlyBy(row, author);
+
 export const applyRowOp = (
   document: Document,
   op: RowOp,
@@ -379,7 +401,12 @@ export const applyRowOp = (
           message: "The row to remove has changed.",
         });
       }
-      if (op.revision === undefined && before.length === 1) {
+      // A row the same author's pending insertion added, with nothing in it
+      // anyone else suggested, goes outright, as deleting over one's own
+      // insertion removes it; no deletion of an addition is recorded.
+      const removesOutright =
+        op.revision === undefined || ownInsertion(row, op.revision.author);
+      if (removesOutright && before.length === 1) {
         return commitRows({ document, op, location, rows: [] });
       }
       if (needsTableEdit(location.table)) {
@@ -390,7 +417,7 @@ export const applyRowOp = (
             "Indexed table markup or shared row wrappers require a table operation.",
         });
       }
-      if (op.revision === undefined) {
+      if (removesOutright || op.revision === undefined) {
         return commitRows({
           document,
           op,

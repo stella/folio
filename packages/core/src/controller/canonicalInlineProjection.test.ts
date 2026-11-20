@@ -344,7 +344,7 @@ const commentRangeContent = [
   run("R"),
 ] satisfies ParagraphContent[];
 
-test("a comment range carried by native comment marks activates and keeps its boundaries through edits", () => {
+test("a comment range carried by native comment marks activates and keeps its boundaries outside replacements", () => {
   const source = {
     type: "paragraph",
     paraId: "12345678",
@@ -352,9 +352,11 @@ test("a comment range carried by native comment marks activates and keeps its bo
   } satisfies Paragraph;
   const session = createCanonicalSession(documentFor(source)).unwrap();
   // The range is a mark on "x": the native paragraph holds only "LxR" (positions 1-3).
+  // Replacing exactly the commented "x" puts the new words past the
+  // comment's end, which leaves the range nothing to cover.
   for (const edit of [
-    { from: 3, to: 4, text: "Q", expected: "LxQ" },
-    { from: 2, to: 3, text: "yz", expected: "LyzQ" },
+    { from: 3, to: 4, text: "Q", expected: "LxQ", end: 2 },
+    { from: 2, to: 3, text: "yz", expected: "LyzQ", end: 1 },
   ]) {
     const state = EditorState.create({ doc: session.projection.doc });
     const commit = session.prepareReplace(state, {
@@ -376,10 +378,9 @@ test("a comment range carried by native comment marks activates and keeps its bo
           ? [{ type: node.type, offset: before.offset }]
           : [],
     );
-    // The comment keeps bracketing the text between "L" and the trailing character.
     expect(boundaries).toEqual([
       { type: "commentRangeStart", offset: 1 },
-      { type: "commentRangeEnd", offset: edit.expected.length - 1 },
+      { type: "commentRangeEnd", offset: edit.end },
     ]);
   }
 });

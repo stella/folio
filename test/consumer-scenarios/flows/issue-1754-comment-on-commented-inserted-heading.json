@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "title": "PINNED #1754, reported seed 1482786267: a comment put on a word of a suggested heading another comment covers keeps its reference inside that range, so accepting the replacement reads alike before and after a save",
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "comments",
+  "mode": "tracked-changes",
+  "seed": 1482786267,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 2554634016,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "splitBlock",
+          "blockId": "5E88C024",
+          "offset": 35
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 595185809,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "5E88C024",
+          "text": "Written term warranty party.",
+          "styleId": "Heading2"
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 2234928031,
+      "operations": [
+        {
+          "type": "commentOnRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "@5",
+            "startOffset": 0,
+            "endOffset": 6,
+            "selectedTextHash": "h8c37xr"
+          },
+          "comment": {
+            "text": "Term clause agreement."
+          }
+        }
+      ]
+    },
+    {
+      "action": "mistake",
+      "seed": 2738881307
+    }
+  ],
+  "weights": {
+    "version": 1,
+    "cells": {},
+    "operations": []
+  },
+  "origin": "shrunk from collisions flow seed 1482786267"
+}

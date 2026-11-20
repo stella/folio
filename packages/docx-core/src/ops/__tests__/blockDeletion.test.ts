@@ -1017,3 +1017,20 @@ test("a tracked deletion of an empty paragraph whose mark a pending deletion alr
     DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
   );
 });
+
+test.each(["body", "cell"] as const)(
+  "a tracked deletion of the empty paragraph alone in a %s applies as its direct deletion does, recording nothing",
+  (container) => {
+    const lone: Paragraph = {
+      ...paragraph("00000001", ""),
+      formatting: { runProperties: { italic: false } },
+    };
+    const document = documentOf(
+      container === "body" ? [lone] : [cell([lone]), paragraph("00000002", "")],
+    );
+    const { tracked, direct } = assertLaws(document, deletion(["00000001"]));
+    expect(tracked.revisions).toEqual([]);
+    expect(tracked.document).toStrictEqual(document);
+    expect(direct.document).toStrictEqual(document);
+  },
+);

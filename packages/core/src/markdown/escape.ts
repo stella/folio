@@ -92,6 +92,9 @@ const protectLineBlanks = (text: string): string => {
     if (last) return;
     // An empty line before a break would read as a blank line, which ends the
     // paragraph: its break takes the backslash form, which keeps it inside.
+    // At the paragraph's start a lone backslash is text, not a break: a blank
+    // reference first makes the line a line of the paragraph.
+    if (line.length === 0 && index === 0) out += BLANK_REFERENCES[" "];
     out += line.length === 0 ? BACKSLASH_BREAK : TWO_SPACE_BREAK;
   });
   return out;
