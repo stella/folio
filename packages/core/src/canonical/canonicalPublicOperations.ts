@@ -195,6 +195,7 @@ import {
   compileCanonicalComments,
 } from "./canonicalComments";
 import { addJoinedParagraphReceipts } from "./canonicalJoinedReceipts";
+import { planReplayParagraphIds } from "./canonicalInsertionReplayIds";
 import { lockViolationBetween } from "./canonicalLockGuard";
 import {
   type CanonicalCommit,
@@ -2566,6 +2567,8 @@ type CompilePublicIntentsOptions = {
    * come from the allocator's leased ones rather than one contiguous range.
    */
   idLease: IdLease | undefined;
+  /** A replay-owned paragraph allocation, independent of the session revision lease. */
+  paragraphReplayLease?: IdLease;
   allocations?: readonly ReturnType<
     ReturnType<typeof createEditorIntentIdAllocator>
   >[];
@@ -2583,6 +2586,7 @@ const compilePublicIntents = ({
   allocate,
   reservedBlockIds,
   idLease,
+  paragraphReplayLease,
   allocations: admittedAllocations,
   verifyOperation,
 }: CompilePublicIntentsOptions) => {
@@ -2602,7 +2606,13 @@ const compilePublicIntents = ({
         : admittedAllocations.at(intentIndex);
     if (ids === undefined) panic("An admitted intent lost its allocation.");
     allocations.push(ids);
-    const leased = idLease === undefined ? {} : { idLease };
+    const paragraphLease =
+      sourceIntent.type === "insertParagraphs"
+        ? paragraphReplayLease
+        : undefined;
+    const compilerLease = idLease ?? paragraphLease;
+    const leased =
+      compilerLease === undefined ? {} : { idLease: compilerLease };
     let intent: EditorIntent = sourceIntent;
     if (sourceIntent.type === "splitParagraph") {
       allocated.set(sourceIntent.newBlockId, ids.newBlockId);
@@ -3408,6 +3418,7 @@ export class CanonicalPublicOperations {
       columnInsertions: ReadonlyMap<string, number>;
       nextRevisionId: number;
       idLease?: IdLease;
+      paragraphReplayLease?: IdLease;
       allocations?: CompilePublicIntentsOptions["allocations"];
       reservedBlockIds?: ReadonlySet<string>;
       verifyOperation?: PublicOperationStaging["apply"];
@@ -3439,6 +3450,7 @@ export class CanonicalPublicOperations {
       columnInsertions,
       nextRevisionId: firstRevisionId,
       idLease = session.idLease,
+      paragraphReplayLease,
       allocations,
       reservedBlockIds = session.reservedBlockIds,
       verifyOperation,
@@ -3535,6 +3547,7 @@ export class CanonicalPublicOperations {
         allocate,
         reservedBlockIds,
         idLease: idLease,
+        ...(paragraphReplayLease === undefined ? {} : { paragraphReplayLease }),
         nextRevisionId: firstRevisionId,
         mode: batch.mode === "direct" ? "direct" : "tracked-changes",
         suggestionId,
@@ -4088,6 +4101,12 @@ export class CanonicalPublicOperations {
           });
         }
       }
+      const paragraphReplay = planReplayParagraphIds({
+        sessionLease: session.idLease,
+        mode: batch.mode,
+        window,
+        ordered,
+      });
       for (const declinedMember of declinedMembers)
         commitOperation(
           declinedMember.resolvedOperation,
@@ -4103,25 +4122,39 @@ export class CanonicalPublicOperations {
                   .filter((other) => other !== member)
                   .map(({ ids }) => ids),
               });
-        const reservedBlockIds = new Set(session.reservedBlockIds);
-        for (const other of admitted) {
-          if (other === member) continue;
-          for (const { kind, id } of other.ids) {
-            if (kind === "paragraph") reservedBlockIds.add(formatParaId(id));
+        let reservedBlockIds = session.reservedBlockIds;
+        let paragraphReplayLease: IdLease | undefined;
+        if (paragraphReplay.type === "admitted") {
+          paragraphReplayLease = paragraphReplay.leases.get(
+            replayOperation.operation.id,
+          );
+          if (paragraphReplayLease === undefined)
+            panic("An admitted insertion lost its paragraph replay lease.");
+        } else {
+          const reserved = new Set(session.reservedBlockIds);
+          for (const other of admitted) {
+            if (other === member) continue;
+            for (const { kind, id } of other.ids) {
+              if (kind === "paragraph") reserved.add(formatParaId(id));
+            }
           }
+          const droppedCarrier = droppedInsertionCarrier({
+            admitted: member.resolvedOperation.intents,
+            replayed: replayOperation.intents,
+            ops: member.ops,
+          });
+          if (droppedCarrier !== undefined) reserved.add(droppedCarrier);
+          reservedBlockIds = reserved;
         }
-        const droppedCarrier = droppedInsertionCarrier({
-          admitted: member.resolvedOperation.intents,
-          replayed: replayOperation.intents,
-          ops: member.ops,
-        });
-        if (droppedCarrier !== undefined) reservedBlockIds.add(droppedCarrier);
         const prepared = prepareOperation({
           document,
           columnInsertions: insertedColumnCounts,
           resolvedOperation: replayOperation,
           nextRevisionId: member.firstRevisionId,
           reservedBlockIds,
+          ...(paragraphReplayLease === undefined
+            ? {}
+            : { paragraphReplayLease }),
           allocations: member.allocations,
           ...(reuseStaging ? { verifyOperation: operationStaging.apply } : {}),
           ...(member.commentAllocation === undefined
