@@ -1496,6 +1496,7 @@ describe("single-mutation probes", () => {
     const result = await compareDocx(base, target, {
       ...OPTIONS,
       revisionFormat: "folio-exact",
+      session: "legacy",
     });
     if (result.isErr()) throw result.error;
 
@@ -1509,7 +1510,9 @@ describe("single-mutation probes", () => {
     );
 
     for (const mode of ["accept", "reject"] as const) {
-      const reviewer = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+      const reviewer = await FolioDocxReviewer.fromBuffer(result.value.buffer, {
+        session: "legacy",
+      });
       const changes = reviewer.getChanges();
       const terminalTableDeletion = changes.find(
         ({ type }) => type === "rowDeleted",
@@ -1537,11 +1540,49 @@ describe("single-mutation probes", () => {
           : reviewer.rejectChange(terminalTableDeletion),
       ).toBe(true);
       const resolved = await reviewer.toBuffer();
-      const reopened = await FolioDocxReviewer.fromBuffer(resolved);
+      const reopened = await FolioDocxReviewer.fromBuffer(resolved, {
+        session: "legacy",
+      });
       expect(reopened.getChanges()).toEqual([]);
       expect(await documentPartOf(resolved)).not.toContain(
         'folio:reviewCarrier="terminal-table"',
       );
+      expect(await projectView(resolved, "final")).toEqual(
+        await projectView(mode === "accept" ? target : base, "final"),
+      );
+    }
+  });
+
+  test("folio-exact on the canonical session deletes a terminal table in standard markup", async () => {
+    const base = await withoutTerminalBodyParagraph(
+      await buildBodySequenceDocx([
+        { kind: "paragraph", text: "The source clause changes." },
+        { kind: "table", rows: [["Source", "Amount"]] },
+      ]),
+    );
+    const target = await buildBodySequenceDocx([
+      { kind: "paragraph", text: "The target clause changes." },
+      { kind: "paragraph", text: "Terminal target paragraph." },
+    ]);
+    const result = await compareDocx(base, target, {
+      ...OPTIONS,
+      revisionFormat: "folio-exact",
+      session: "canonical",
+    });
+    if (result.isErr()) throw result.error;
+
+    expect(result.value.verification).toEqual({ status: "verified" });
+    expect(result.value.compatibility).toEqual({ status: "standard-ooxml" });
+    expect(await documentPartOf(result.value.buffer)).not.toContain(
+      "folio:reviewCarrier",
+    );
+    for (const mode of ["accept", "reject"] as const) {
+      const reviewer = await FolioDocxReviewer.fromBuffer(result.value.buffer, {
+        session: "canonical",
+      });
+      if (mode === "accept") reviewer.acceptAll();
+      else reviewer.rejectAll();
+      const resolved = await reviewer.toBuffer();
       expect(await projectView(resolved, "final")).toEqual(
         await projectView(mode === "accept" ? target : base, "final"),
       );

@@ -13,15 +13,11 @@ import path from "node:path";
 
 import { ZipArchive } from "@stll/docx-core/zip";
 
-import { CanonicalSessionError } from "../canonical/canonicalSession";
 import { buildBodySequenceDocx } from "../compare/__fixtures__/body-sequence";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
-import {
-  CANONICAL_GAP,
-  type HeadlessReviewerSession,
-} from "../types/canonicalCapabilities";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import type { Document, SectionProperties } from "../types/document";
 import { FolioDocxReviewer, getFolioDocxComparisonAccess } from "./headless";
 import { sourceDocumentOf } from "./snapshot";
@@ -320,7 +316,7 @@ describe("comparison staging on the canonical session", () => {
     );
   });
 
-  test("a terminal table's review carrier refuses on the session", async () => {
+  test("a terminal table needs no review carrier on the session", async () => {
     const target = await openBuffer(
       await buildBodySequenceDocx([
         { kind: "paragraph", text: "The target clause changes." },
@@ -339,23 +335,15 @@ describe("comparison staging on the canonical session", () => {
     };
     const legacy = await staged("legacy");
     expect(legacy.result).toBe(true);
-    // A canonical session holds no review-carrier paragraph yet: staging one
-    // refuses under the story content gap and leaves the document as it was.
+    // The session writes a story-final table's deletion in standard markup,
+    // so it stages nothing and leaves the document as it was.
     const base = await openBuffer(await endingInATable(), "canonical");
     const before = base.toDocument();
-    let thrown: unknown;
-    try {
+    expect(
       getFolioDocxComparisonAccess(base).stageTerminalTableReviewCarrier(
         sourceDocumentOf(snapshot),
-      );
-    } catch (error) {
-      thrown = error;
-    }
-    expect(CanonicalSessionError.is(thrown)).toBe(true);
-    expect(thrown).toMatchObject({
-      reason: "refused",
-      ground: { gap: CANONICAL_GAP.storyContentProjection },
-    });
+      ),
+    ).toBe(false);
     expect(base.toDocument()).toEqual(before);
   });
 

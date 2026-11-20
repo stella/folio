@@ -55,7 +55,9 @@ import { matchInlineAtomsOnModel } from "../compare/inline-atoms-model";
 import {
   type InlineProvenanceTargetOptions,
   matchInlineProvenance,
+  planInlineProvenance,
 } from "../compare/inline-provenance";
+import { inlineProvenanceOperations } from "../compare/inline-provenance-model";
 import {
   stageSectionBoundaryOperations,
   stageSectionBoundaryProperties as stageMappedSectionBoundaryProperties,
@@ -2212,14 +2214,9 @@ export class FolioDocxReviewer {
       throw canonicalReviewerRefusal(action);
     };
     return Object.freeze({
-      stageTerminalTableReviewCarrier: () => {
-        throw new CanonicalSessionError({
-          reason: "refused",
-          ground: { gap: CANONICAL_GAP.storyContentProjection },
-          message:
-            "A canonical story projection cannot hold a terminal-table review carrier.",
-        });
-      },
+      // The session writes a story-final table's deletion in standard
+      // markup that resolves either way, so it needs no receiver.
+      stageTerminalTableReviewCarrier: () => false,
       stageTargetStyles: (options) => this.stageTargetStyles(options),
       createComparisonHeaderFooter: (source, story) =>
         this.createComparisonHeaderFooter(source, story),
@@ -2262,7 +2259,46 @@ export class FolioDocxReviewer {
           documentChanged: result.operations.length > 0,
         };
       },
-      matchInlineProvenance: () => refuse("match inline provenance"),
+      matchInlineProvenance: ({
+        story,
+        targetReviewer: _targetReviewer,
+        targetStory: _targetStory,
+        revisionStamp,
+        ...options
+      }) => {
+        if (this.engine.type !== "canonical")
+          return panic("Only a canonical reviewer matches on the session");
+        const { session } = this.engine;
+        const projected = session.projectStory(canonicalOpStory(story));
+        if (projected.isErr()) throw projected.error;
+        const projection = projected.value;
+        const plan = planInlineProvenance({
+          ...options,
+          state: canonicalStoryState(session, projection.doc),
+        });
+        if (plan.status !== "planned") return plan;
+        const written = inlineProvenanceOperations({
+          document: session.document,
+          changes: plan.changes,
+          addressAt: (position) => {
+            const address = projection.addressAt(position);
+            return address.isOk() ? address.value : null;
+          },
+          revisionStamp,
+          author: this.author,
+        });
+        if (written.status !== "matched") return { status: "unalignable" };
+        // The whole batch is one session commit; a refusal throws.
+        if (written.operations.length > 0)
+          this.commitOpsOnSession(written.operations);
+        return {
+          status: "matched",
+          nextRevisionId: written.nextRevisionId,
+          changedTargetBlockIds: written.changedTargetBlockIds,
+          rangeCount: plan.changes.length,
+          documentChanged: written.operations.length > 0,
+        };
+      },
       projectStories: (mode) => this.projectComparisonStoriesOnSession(mode),
       snapshotReviewedStory: (options) =>
         this.snapshotReviewedStoryInternal(options),

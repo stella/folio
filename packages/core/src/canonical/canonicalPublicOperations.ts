@@ -121,6 +121,7 @@ import {
   findOutermostTableBoundary,
   tableRectangleCutsMergedCell,
 } from "../ai-edits/table-targets";
+import { tableFromTemplate } from "../ai-edits/table-template";
 import {
   supportsTableInsertionMode,
   type TableInsertionOperation,
@@ -1663,6 +1664,8 @@ type ResolveTableInsertionOptions = {
     reason: FolioAIEditSkipReason,
     message: string,
   ) => Result<never, CanonicalPublicOperationResolutionError>;
+  /** The table to copy, when the batch hands one for this operation. */
+  template: PMNode | undefined;
 };
 
 /**
@@ -1683,12 +1686,17 @@ const resolveTableInsertion = ({
   noteReferences,
   refusal,
   skipAlike,
+  template,
 }: ResolveTableInsertionOptions) => {
   const side = operation.position ?? "after";
   const { schema } = projection.doc.type;
   let node: PMNode | null;
   if (operation.type === "insertTable")
-    node = buildTableNode({ schema, rows: operation.rows });
+    node =
+      (template === undefined
+        ? null
+        : tableFromTemplate({ schema, template })) ??
+      buildTableNode({ schema, rows: operation.rows });
   else {
     if (operation.parties.length === 0)
       return skipAlike("emptyOperation", "A signature table needs a party.");
@@ -1971,6 +1979,8 @@ type ResolveTableStructureOptions = {
     reason: FolioAIEditSkipReason,
     message: string,
   ) => Result<never, CanonicalPublicOperationResolutionError>;
+  /** The row a new row copies, when the batch hands one for this operation. */
+  template: PMNode | undefined;
 };
 
 /**
@@ -1991,6 +2001,7 @@ const resolveTableStructure = ({
   paragraphOf,
   notInTable,
   skipAlike,
+  template,
 }: ResolveTableStructureOptions) => {
   const { doc } = projection;
   const blockFrom = paragraph.start - 1;
@@ -2289,6 +2300,7 @@ const resolveTableStructure = ({
         insertion,
         cellTexts: operation.cellTexts,
         revision: null,
+        ...(template === undefined ? {} : { template }),
       });
       if (built.type !== "applied") return refusal("unsupportedBlock");
       const table = built.transaction.doc.nodeAt(
@@ -3019,26 +3031,15 @@ export class CanonicalPublicOperations {
         skip(operation.id, "unsupportedMode");
         continue;
       }
-      if (
-        options.tableTemplates !== undefined ||
-        options.undefinedReferences === "keep"
-      ) {
-        refusals.set(operation.id, {
-          gap: CANONICAL_GAP.publicUnsupportedInline,
-        });
-        skip(
-          operation.id,
-          "unsupportedBlock",
-          "This canonical compiler does not support the supplied execution options.",
-        );
-        continue;
-      }
       // The same reference check the default engine runs, in the same
       // place: before the operation compiles.
       const referenceSet = references();
-      const headings = withOperationHeadingStyles(referenceSet.definitions, [
-        operation,
-      ]);
+      // Kept references stand as they are spelled: a heading the document
+      // does not define stays undefined rather than gaining a definition.
+      const headings =
+        options.undefinedReferences === "keep"
+          ? referenceSet.definitions
+          : withOperationHeadingStyles(referenceSet.definitions, [operation]);
       const undefinedReference = findUndefinedOperationReference({
         operation,
         numberingInstanceIds: referenceSet.numberingInstanceIds,
@@ -3046,7 +3047,7 @@ export class CanonicalPublicOperations {
           headings === referenceSet.definitions
             ? referenceSet.styles
             : styleDefinitionLookup(createStyleResolver(headings)),
-        undefinedReferences: "refuse",
+        undefinedReferences: options.undefinedReferences,
       });
       if (undefinedReference !== undefined) {
         skip(
@@ -3311,10 +3312,12 @@ export class CanonicalPublicOperations {
                 ) ?? 0,
             })
           : intents;
-      const headings = withOperationHeadingStyles(
-        sourceDocument.package.styles,
-        [operation],
-      );
+      const headings =
+        options.undefinedReferences === "keep"
+          ? sourceDocument.package.styles
+          : withOperationHeadingStyles(sourceDocument.package.styles, [
+              operation,
+            ]);
       const withHeadings =
         headings === undefined || headings === sourceDocument.package.styles
           ? sourceDocument
@@ -4486,6 +4489,7 @@ export class CanonicalPublicOperations {
             : undefined,
         notInTable,
         skipAlike,
+        template: options.tableTemplates?.get(operation.id),
       });
     if (
       operation.type === "insertTable" ||
@@ -4499,6 +4503,7 @@ export class CanonicalPublicOperations {
         noteReferences,
         refusal,
         skipAlike,
+        template: options.tableTemplates?.get(operation.id),
       });
     if (isBlockInsertion(operation)) {
       const besideDeletion =
