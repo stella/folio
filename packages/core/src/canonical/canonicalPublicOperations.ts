@@ -4908,7 +4908,13 @@ export class CanonicalPublicOperations {
         break;
       case "mergeBlockWithNext": {
         const next = projection.value.nextParagraphInContainer(blockId);
-        if (next === undefined) return refusal("missingBlock");
+        // The block exists; it ends its container, so there is nothing to
+        // merge it with.
+        if (next === undefined)
+          return skipAlike(
+            "unsupportedBlock",
+            "The block ends its container; no paragraph follows it there.",
+          );
         // The merged paragraph is the one whose mark remains, the second,
         // as accepting the tracked merge leaves it.
         intent = {

@@ -717,7 +717,7 @@ describe("canonical public operation batches", () => {
       ]);
       expect(result.applied).toEqual([]);
       expect(result.issues).toMatchObject([
-        { operationId: "merge", code: "missingBlock" },
+        { operationId: "merge", code: "unsupportedBlock" },
       ]);
       expect(editor.session.version).toBe(0);
     }
