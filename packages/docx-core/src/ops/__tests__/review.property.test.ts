@@ -26,7 +26,9 @@
  *   every revision in the story (A*) gives the same once the run's have been
  *   accepted operation by operation, in whatever order marks are removed,
  *   and rejecting every one (J*) gives what it gives on the document the run
- *   started from.
+ *   started from. Orders are compared under π′ with the cut each kept range
+ *   marker records, and every result is settled: no kept cut outlives the
+ *   pending change it waits on.
  * - **L4 Inverse.** Tracked operations and resolutions are undone exactly by
  *   their inverses, after a JSON round trip too.
  * - **L5 Determinism.** Equal inputs give equal results.
@@ -49,7 +51,7 @@ import {
   propertyConfig,
   propertyTestTimeout,
 } from "../../../../../test/property-testing";
-import { projectReview } from "../../../../../test/reviewProjection";
+import { KEPT_CUTS, projectReview } from "../../../../../test/reviewProjection";
 import type { BlockContent, Document, Paragraph } from "../../model/document";
 import {
   type AppliedDocumentOp,
@@ -67,6 +69,7 @@ import {
   paragraphIdsIn,
 } from "../ids";
 import { gapAfterInserted } from "../inline";
+import { settleKeptCuts } from "../keptCut";
 import * as keptJoinsModule from "../keptJoins";
 import {
   childNodes,
@@ -164,6 +167,13 @@ type Projection = "π" | "π′";
 
 const projected = (document: Document, projection: Projection = "π"): unknown =>
   projectReview({ document, projection });
+
+/**
+ * π′ with the cut each kept range marker records: every order of resolving
+ * the same revisions leaves each marker standing in the same cut.
+ */
+const projectedWithCuts = (document: Document): unknown =>
+  projectReview({ document, projection: "π′", keptCuts: KEPT_CUTS.COMPARED });
 
 const expectEquivalent = (
   actual: Document,
@@ -554,9 +564,10 @@ const stampedIds = (
 /**
  * No deferred seam outlives its blockers: every group a wrapper holds names
  * only revisions still pending in the story. Once every revision in a
- * paragraph is resolved, no group remains in it.
+ * paragraph is resolved, no group remains in it. No kept cut outlives the
+ * pending change it waits on: settling a resolved paragraph changes nothing.
  */
-const expectSettledDeferredSeams = (document: Document): void => {
+const expectSettled = (document: Document): void => {
   const pending = new Set<number>();
   const groups: { holder: number; blockers: readonly number[] }[] = [];
   const visit = (nodes: readonly InlineNode[]): void => {
@@ -578,6 +589,8 @@ const expectSettledDeferredSeams = (document: Document): void => {
     visit(paragraph.content);
   for (const group of groups)
     expect(group.blockers.filter((id) => !pending.has(id))).toEqual([]);
+  for (const { paragraph } of storyParagraphs(document.package.document))
+    expect(settleKeptCuts(paragraph.content)).toEqual(paragraph.content);
 };
 
 /**
@@ -979,11 +992,11 @@ const atOnceLaw = (tally: Tally) =>
         REVISION_DECISIONS.REJECT,
       );
       assertExactModel(
-        projected(rejectedAtOnce, "π′"),
-        projected(rejectedInTurn, "π′"),
+        projectedWithCuts(rejectedAtOnce),
+        projectedWithCuts(rejectedInTurn),
       );
-      expectSettledDeferredSeams(rejectedAtOnce);
-      expectSettledDeferredSeams(rejectedInTurn);
+      expectSettled(rejectedAtOnce);
+      expectSettled(rejectedInTurn);
       // A split at a paragraph's end is given back under the new paragraph's id.
       if (!keptEarlier) {
         expectRejectedTo({
@@ -1005,21 +1018,21 @@ const atOnceLaw = (tally: Tally) =>
         acceptedInTurn,
         REVISION_DECISIONS.ACCEPT,
       );
-      expectSettledDeferredSeams(acceptedInTurn);
+      expectSettled(acceptedInTurn);
       if (allAccepted !== undefined && turnAccepted !== undefined) {
         count(tally, "A*");
-        expectSettledDeferredSeams(allAccepted);
-        expectSettledDeferredSeams(turnAccepted);
+        expectSettled(allAccepted);
+        expectSettled(turnAccepted);
         assertExactModel(
-          projected(allAccepted, "π′"),
-          projected(turnAccepted, "π′"),
+          projectedWithCuts(allAccepted),
+          projectedWithCuts(turnAccepted),
         );
       }
       const allRejected = resolvedAll(current, REVISION_DECISIONS.REJECT);
       const originalRejected = resolvedAll(document, REVISION_DECISIONS.REJECT);
       if (allRejected !== undefined && originalRejected !== undefined) {
         count(tally, "J*");
-        expectSettledDeferredSeams(allRejected);
+        expectSettled(allRejected);
         expectRejectedTo({
           rejected: allRejected,
           tracked: current,
@@ -1095,23 +1108,23 @@ const twoBatchesLaw = (tally: Tally) =>
       let oneByOne = current;
       for (const { ids, decision } of order) {
         oneByOne = resolved(oneByOne, ids, decision);
-        expectSettledDeferredSeams(oneByOne);
+        expectSettled(oneByOne);
       }
-      const expected = projected(oneByOne, "π′");
+      const expected = projectedWithCuts(oneByOne);
       const acceptedFirst = resolved(
         resolved(current, accepted, REVISION_DECISIONS.ACCEPT),
         rejected,
         REVISION_DECISIONS.REJECT,
       );
-      expectSettledDeferredSeams(acceptedFirst);
-      assertExactModel(projected(acceptedFirst, "π′"), expected);
+      expectSettled(acceptedFirst);
+      assertExactModel(projectedWithCuts(acceptedFirst), expected);
       const rejectedFirst = resolved(
         resolved(current, rejected, REVISION_DECISIONS.REJECT),
         accepted,
         REVISION_DECISIONS.ACCEPT,
       );
-      expectSettledDeferredSeams(rejectedFirst);
-      assertExactModel(projected(rejectedFirst, "π′"), expected);
+      expectSettled(rejectedFirst);
+      assertExactModel(projectedWithCuts(rejectedFirst), expected);
     },
   );
 
@@ -1164,9 +1177,9 @@ const rejectedInAnyOrderLaw = (tally: Tally) =>
         .map(({ ids }) => ids);
       const atOnce = resolved(current, all, REVISION_DECISIONS.REJECT);
       const inOrder = resolvedInTurn(current, order, REVISION_DECISIONS.REJECT);
-      assertExactModel(projected(atOnce, "π′"), projected(inOrder, "π′"));
-      expectSettledDeferredSeams(atOnce);
-      expectSettledDeferredSeams(inOrder);
+      assertExactModel(projectedWithCuts(atOnce), projectedWithCuts(inOrder));
+      expectSettled(atOnce);
+      expectSettled(inOrder);
     },
   );
 
