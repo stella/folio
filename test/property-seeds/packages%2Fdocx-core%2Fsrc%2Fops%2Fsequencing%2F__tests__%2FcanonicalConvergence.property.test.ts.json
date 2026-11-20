@@ -47,6 +47,12 @@
       "path": "21:4:10:18:19:21:20:20:20:20:20:20:20:20:20:20:34:30:29:38:33:33:48:39:39:39:39:43:43:43:43:43:43",
       "note": "An interior direct erase removes the first newly tracked deletion fragment; refuse rather than reassign the pending review target",
       "date": "2026-11-17"
+    },
+    {
+      "seed": -1895404737,
+      "path": "13:3:0:4:6:5:5:5:8:11:19:15:18:15:24:30:16:24:29:27:26:26:33:35:41:43:41:39:39:39:39:41:49:43:41:41:41:43:47:47:48:48:43:44:44:45:45:50:47:47:47:47",
+      "note": "A tracked insertion after a zero-width child at the end of a concurrent direct format lies outside it: the format keeps the children at its ends out, so the pair is ordered, not refused.",
+      "date": "2026-11-20"
     }
   ],
   "canonical sequencing tracked pairs": [
