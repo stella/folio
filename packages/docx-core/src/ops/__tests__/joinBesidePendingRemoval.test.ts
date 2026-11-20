@@ -8,7 +8,6 @@ import { expect, test } from "bun:test";
 
 import type { Document } from "../../model/document";
 import { applyDocumentOp } from "../apply";
-import { withoutKeptCuts } from "../keptCut";
 import { type DocumentOp, OP_STORIES, REVISION_DECISIONS } from "../types";
 
 const NEW_IDS = {
@@ -157,18 +156,20 @@ test("a kept move range start stands between pending insertion pieces holding de
             info: { id: 1 },
             content: [{ type: "deletion", info: { id: 4 } }],
           },
-          { type: "moveToRangeStart", id: 1 },
+          {
+            type: "moveToRangeStart",
+            id: 1,
+            // The split cut the insertion four levels deep; the boundary,
+            // inserted after it, stands in that cut.
+            keptCut: { depth: 4, keptFrom: "2026-03-04T05:00:02Z" },
+          },
           { type: "insertion", content: [{ type: "deletion" }] },
         ],
       },
     ]);
-  // Where it stands is the same in every order.
-  const [first, ...rest] = results.map(({ package: { document } }) =>
-    document.content.map((block) =>
-      block.type === "paragraph"
-        ? block.content.map((node) => withoutKeptCuts(node))
-        : block,
-    ),
+  // Where it stands, and in what cut, is the same in every order.
+  const [first, ...rest] = results.map(
+    ({ package: { document } }) => document.content,
   );
   for (const content of rest) expect(content).toEqual(first ?? []);
 });
