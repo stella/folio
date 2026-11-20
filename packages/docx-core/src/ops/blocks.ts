@@ -31,6 +31,7 @@ import { structurallyEqual } from "./equality";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "./refusal";
 import { replaceStoryBody, type StoryAddress, storyBody } from "./stories";
 import {
+  OP_STORIES,
   type SectionMapState,
   type SectionViewEntry,
   type SectionViewState,
@@ -655,6 +656,9 @@ type ReplaceParagraphsOptions = {
   restoreSections?: readonly SectionViewEntry[];
 };
 
+/** Immutable bodies with one checked trailing section and canonical block identities. */
+const checkedTrailingSections = new WeakSet<DocumentBody>();
+
 /** The document with `count` paragraphs from `at` replaced. */
 export const replaceParagraphs = ({
   document,
@@ -671,6 +675,36 @@ export const replaceParagraphs = ({
     return out;
   });
   const nextBody: DocumentBody = { ...body, content };
+  const onlySection =
+    body.sections?.length === 1 ? body.sections.at(0) : undefined;
+  if (
+    story === OP_STORIES.MAIN &&
+    restoreSections === undefined &&
+    checkedTrailingSections.has(body) &&
+    onlySection !== undefined &&
+    (at.list.length > 0 || !replacement.some(breaksSection))
+  ) {
+    // The checked body has no top-level section break. A nested splice keeps
+    // the containing block's kind, and a top-level splice inserts no breaks,
+    // so the new blocks still form exactly one trailing section.
+    const sameBlocks =
+      at.list.length === 0 &&
+      count === replacement.length &&
+      replacement.every(
+        (paragraph, offset) => paragraph === body.content[at.index + offset],
+      );
+    nextBody.sections = [
+      sameBlocks
+        ? onlySection
+        : {
+            ...onlySection,
+            properties: body.finalSectionProperties ?? onlySection.properties,
+            content: content.slice(),
+          },
+    ];
+    checkedTrailingSections.add(nextBody);
+    return Result.ok(replaceStoryBody({ document, story, body: nextBody }));
+  }
   if (restoreSections !== undefined) {
     const restored = restoreSectionView(content, restoreSections);
     if (restored.isErr()) return restored;
@@ -688,5 +722,12 @@ export const replaceParagraphs = ({
     return sectionFailure(
       "The restored section metadata conflicts with its canonical boundaries.",
     );
+  const last = content.at(-1);
+  if (
+    story === OP_STORIES.MAIN &&
+    nextBody.sections?.length === 1 &&
+    (last === undefined || !breaksSection(last))
+  )
+    checkedTrailingSections.add(nextBody);
   return Result.ok(replaceStoryBody({ document, story, body: nextBody }));
 };
