@@ -89,30 +89,44 @@ const mapRecords = (
 };
 
 /**
- * `document` with an id on every paragraph, which resolution addresses
- * paragraphs by, and the ids it minted: the view leaves them off again.
+ * What each id the view minted stood in for: no id, or the id an earlier
+ * paragraph of the package already holds.
+ */
+type MintedParagraphIds = ReadonlyMap<string, string | undefined>;
+
+/**
+ * `document` with an id of its own on every paragraph, which resolution
+ * addresses paragraphs by, and the ids it minted: the view gives each
+ * paragraph its own id back. A host model can repeat an id across stories
+ * (a header copied from the body), where an operation refuses the repeat.
  */
 const withParagraphIds = (
   document: Document,
-): { document: Document; minted: ReadonlySet<string> } => {
+): { document: Document; minted: MintedParagraphIds } => {
   const taken = new Set(packageParagraphIds(document.package));
-  const minted = new Set<string>();
+  const minted = new Map<string, string | undefined>();
+  const held = new Set<string>();
   let next = 0x10000000;
-  const fresh = (): string => {
+  const fresh = (original: string | undefined): string => {
     let id = next.toString(16).toUpperCase();
     while (taken.has(id)) {
       next += 1;
       id = next.toString(16).toUpperCase();
     }
     next += 1;
-    minted.add(id);
+    minted.set(id, original);
     return id;
   };
-  const pkg = mapRecords(document.package, (record) =>
-    record["type"] === "paragraph" && typeof record["paraId"] !== "string"
-      ? { ...record, paraId: fresh() }
-      : record,
-  ) as Document["package"];
+  const pkg = mapRecords(document.package, (record) => {
+    if (record["type"] !== "paragraph") return record;
+    const id = record["paraId"];
+    if (typeof id !== "string") return { ...record, paraId: fresh(undefined) };
+    if (!held.has(id)) {
+      held.add(id);
+      return record;
+    }
+    return { ...record, paraId: fresh(id) };
+  }) as Document["package"];
   return {
     document:
       pkg === document.package ? document : { ...document, package: pkg },
@@ -175,7 +189,7 @@ const withDistinctRevisionIds = (document: Document): Document => {
 
 const withoutParagraphIds = (
   document: Document,
-  minted: ReadonlySet<string>,
+  minted: MintedParagraphIds,
 ): Document => {
   if (minted.size === 0) return document;
   const pkg = mapRecords(document.package, (record) => {
@@ -186,6 +200,8 @@ const withoutParagraphIds = (
       !minted.has(id)
     )
       return record;
+    const original = minted.get(id);
+    if (original !== undefined) return { ...record, paraId: original };
     return Object.fromEntries(
       Object.entries(record).filter(([key]) => key !== "paraId"),
     );

@@ -62,3 +62,46 @@ test("one mark object shared by several paragraphs resolves as a record in each"
   expect(view.document.package.document.content).toHaveLength(1);
   expect(JSON.stringify(view.document)).toContain("One One Tail");
 });
+
+for (const decision of ["accept", "reject"] as const)
+  test(`a paragraph id repeated across stories resolves in each and keeps its id (${decision})`, () => {
+    const story = (): Paragraph[] => [
+      text("0000000A", "Kept"),
+      {
+        type: "paragraph",
+        paraId: "0000000B",
+        content: [
+          {
+            type: "insertion",
+            info,
+            content: [
+              { type: "run", content: [{ type: "text", text: "Added" }] },
+            ],
+          },
+        ],
+      },
+    ];
+    const repeated: Document = {
+      package: {
+        document: { content: story() },
+        headers: new Map([
+          ["rId1", { type: "header", hdrFtrType: "default", content: story() }],
+        ]),
+      },
+    };
+    const view = resolvedDocumentView(repeated, decision);
+    expect(view.unresolved).toEqual([]);
+    const read = (blocks: readonly unknown[]) =>
+      blocks.map((block) => {
+        const { paraId, content } = block as Paragraph;
+        return { paraId, added: JSON.stringify(content).includes("Added") };
+      });
+    const expected = [
+      { paraId: "0000000A", added: false },
+      { paraId: "0000000B", added: decision === "accept" },
+    ];
+    expect(read(view.document.package.document.content)).toEqual(expected);
+    expect(
+      read(view.document.package.headers?.get("rId1")?.content ?? []),
+    ).toEqual(expected);
+  });
