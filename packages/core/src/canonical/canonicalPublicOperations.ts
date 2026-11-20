@@ -654,6 +654,12 @@ type PreparedOperation = {
    */
   besideDeletion?: true;
   /**
+   * A direct deletion of a paragraph no paragraph follows, which joins the
+   * paragraph before it: the one before it when the deletion runs, which an
+   * insertion the batch order runs first may have put there.
+   */
+  joinsParagraphBefore?: true;
+  /**
    * The paragraph whose stated properties a block insertion copies, and the
    * paragraphs it inserts from a given copy. The batch runs in its execution
    * order, so the copy is read when the insertion runs: an edit of that
@@ -1278,6 +1284,42 @@ const resolveBlockInsertion = ({
       inserted: true as const,
     },
     ...resolved,
+  });
+};
+
+/**
+ * A direct deletion's join with the paragraph before it, bound to the
+ * paragraph before it in `document`, the batch as it stands when the
+ * deletion runs: an insertion the order ran first, right before the deleted
+ * paragraph, is the paragraph it joins, as deleting it after that insertion
+ * joins it.
+ */
+const deletionIntentsAsItRuns = (
+  document: Document,
+  story: OpStory,
+  intents: readonly EditorIntent[],
+): readonly EditorIntent[] => {
+  const body = findStoryBody(document, story);
+  if (body === undefined) return intents;
+  const locations = storyParagraphs(body);
+  return intents.map((intent) => {
+    if (intent.type !== "joinParagraphs") return intent;
+    const key = idKey(intent.nextBlockId);
+    const at = locations.findIndex(
+      ({ paragraph }) => idKey(paragraph.paraId ?? "") === key,
+    );
+    const here = locations[at];
+    const before = locations[at - 1];
+    if (
+      here === undefined ||
+      before === undefined ||
+      before.index + 1 !== here.index ||
+      JSON.stringify(before.list) !== JSON.stringify(here.list) ||
+      before.paragraph.paraId === undefined ||
+      idKey(before.paragraph.paraId) === idKey(intent.blockId)
+    )
+      return intent;
+    return { ...intent, blockId: before.paragraph.paraId };
   });
 };
 
@@ -2336,6 +2378,11 @@ type ResolveBlockDeletionOptions = {
    * follows the table rather than the paragraph before it.
    */
   followsInsertedTable: boolean;
+  /**
+   * Whether the batch inserts a paragraph after the paragraph before this
+   * one, which then stands between them when this deletion runs.
+   */
+  previousGainsFollower: boolean;
   refusal: (
     reason: FolioAIEditSkipReason,
     message?: string,
@@ -3204,11 +3251,15 @@ export class CanonicalPublicOperations {
       commentAllocation: admittedComment,
     }: PrepareOperationOptions) => {
       const { operation } = resolvedOperation;
-      const intents = insertionIntentsAsItRuns({
+      const inserting = insertionIntentsAsItRuns({
         document: sourceDocument,
         story,
         resolvedOperation,
       });
+      const intents =
+        resolvedOperation.joinsParagraphBefore === true
+          ? deletionIntentsAsItRuns(sourceDocument, story, inserting)
+          : inserting;
       const livePropertyRefusal = batchPropertyRefusal({
         document: sourceDocument,
         story,
@@ -3489,6 +3540,8 @@ export class CanonicalPublicOperations {
       }
       return {
         type: "prepared" as const,
+        // The intents as they ran, which name what this operation joined.
+        intents: mappedIntents,
         document: nextDocument,
         ops:
           withHeadings === sourceDocument
@@ -3516,11 +3569,7 @@ export class CanonicalPublicOperations {
       resolvedOperation: AdmittedOperation,
       prepared: OperationAttempt,
     ) => {
-      const {
-        operation,
-        intents,
-        normalizations: adjustments,
-      } = resolvedOperation;
+      const { operation, normalizations: adjustments } = resolvedOperation;
       if (prepared.type === "declined") {
         if (prepared.refusal !== undefined)
           refusals.set(operation.id, prepared.refusal);
@@ -3536,7 +3585,7 @@ export class CanonicalPublicOperations {
       const revisionId = revisionIds.at(0);
       const joined =
         batch.mode === "direct"
-          ? joinedParagraphsOf(operation.type, intents)
+          ? joinedParagraphsOf(operation.type, prepared.intents)
           : undefined;
       appliedById.set(operation.id, {
         id: operation.id,
@@ -4016,6 +4065,7 @@ export class CanonicalPublicOperations {
     tracked,
     gainsFollower,
     followsInsertedTable,
+    previousGainsFollower,
     refusal,
   }: ResolveBlockDeletionOptions) {
     // A direct deletion leaves no text for a comment to cover, as the default
@@ -4177,6 +4227,9 @@ export class CanonicalPublicOperations {
         normalizations: [],
         from: previous === undefined ? paragraph.start : previous.start,
         to: end,
+        ...(previous === undefined || !previousGainsFollower
+          ? {}
+          : { joinsParagraphBefore: true as const }),
       });
     } else if (previous !== undefined)
       range = {
@@ -4484,6 +4537,10 @@ export class CanonicalPublicOperations {
         tracked,
         gainsFollower,
         followsInsertedTable,
+        previousGainsFollower:
+          !followed &&
+          typeof previousId === "string" &&
+          besideDeletions.paragraphsAfter.has(previousId),
         refusal,
       });
       return gainsFollower && deleted.isOk()
