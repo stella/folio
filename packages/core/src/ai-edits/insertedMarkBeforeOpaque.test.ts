@@ -55,16 +55,6 @@ for (const [kind, follower] of Object.entries(followers))
       )
         .unwrap()
         .slice().buffer;
-      if (kind === "blockCustomXml" && session === "canonical") {
-        await expect(
-          FolioDocxReviewer.fromBuffer(input, { session }),
-        ).rejects.toMatchObject({
-          _tag: "CanonicalSessionError",
-          reason: "refused",
-          ground: { gap: "unclassified-transactions" },
-        });
-        return;
-      }
       for (const text of ["", "new\nmore"])
         for (const route of ["individual", "all"] as const) {
           const reviewer = await FolioDocxReviewer.fromBuffer(input.slice(0), {

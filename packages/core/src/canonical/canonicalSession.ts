@@ -968,7 +968,7 @@ const visitBlockSources = (
     visit(block, container, insideSkippedContinuation);
     return;
   }
-  if (block.type === "blockSdt") {
+  if (block.type === "blockSdt" || block.type === "blockCustomXml") {
     visitSourceParagraphs(block.content, visit, insideSkippedContinuation);
     return;
   }
