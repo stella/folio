@@ -4372,9 +4372,6 @@ const joinOps = (
   // paragraph ends its container.
   const followsBlock = isOpaqueFollower(next);
   const containerFinal = endsItsContainer(body, location);
-  // A cell-ending mark describes the terminator, not a paragraph to retire.
-  const cellFinal =
-    containerFinal && location.list.some((step) => step.kind === "tableCell");
   const tableBoundary =
     next?.type === "table"
       ? paragraphTableRunInBoundary(paragraph, next)
@@ -4417,10 +4414,9 @@ const joinOps = (
     containerStillEndsWithParagraph:
       follows !== "nothing"
         ? blocks.at(-1)?.type === "paragraph"
-        : // Removing the final paragraph leaves the block before it last.
-          containerFinal &&
-          !cellFinal &&
-          blocks.at(location.index - 1)?.type === "paragraph",
+        : // Removing the final paragraph leaves the block before it last: in
+          // a cell, that paragraph's mark becomes the cell's terminator.
+          containerFinal && blocks.at(location.index - 1)?.type === "paragraph",
     followingTableCanReceiveRunIn: tableTarget !== undefined,
     holdsContentOnceAccepted: paragraphHoldsContentOnceAccepted(chained),
     followingBlockCanReceiveRunIn: blockTarget !== undefined,
