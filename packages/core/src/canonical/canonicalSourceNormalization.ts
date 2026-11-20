@@ -6,9 +6,11 @@
  *
  * - A literal tab character in `w:t`, which a reader shows as a tab: the
  *   session's model spells a tab as `w:tab`, so the text is split around it.
- * - A story with no blocks (a header or a footer holding nothing): a story
- *   ends with a paragraph, the one a caret goes in, so the session gives it an
- *   empty one.
+ * - A story with no blocks (a header or a footer holding nothing), or one
+ *   that ends in a table: a story ends with a paragraph, the one a caret goes
+ *   in and the one a reader shows after a final table, so the session gives
+ *   it an empty one: the body, headers, footers and notes alike (a table
+ *   cell already reads the paragraph it implies).
  *
  * Both are the session's model only. Each normalized story keeps the blocks it
  * was read with, and a save of that story while it still holds what the
@@ -119,6 +121,31 @@ const freshParaId = (used: Set<string>): string => {
   return panic("Every paragraph id is in use.");
 };
 
+/**
+ * Whether `blocks` end in a paragraph: their last paragraph or table, content
+ * controls and custom XML read through, is a paragraph. Opaque markup and
+ * bookmark markers are neither.
+ */
+const endsInParagraph = (blocks: readonly BlockContent[]): boolean => {
+  for (let index = blocks.length - 1; index >= 0; index -= 1) {
+    const block = blocks[index];
+    if (block?.type === "paragraph") return true;
+    if (block?.type === "table") return false;
+    if (
+      (block?.type === "blockSdt" || block?.type === "blockCustomXml") &&
+      block.content.some(
+        ({ type }) =>
+          type === "paragraph" ||
+          type === "table" ||
+          type === "blockSdt" ||
+          type === "blockCustomXml",
+      )
+    )
+      return endsInParagraph(block.content);
+  }
+  return false;
+};
+
 const isSeparatorNote = (document: Document, story: OpStory): boolean => {
   if (story === OP_STORIES.MAIN) return false;
   if (story.kind !== "footnote" && story.kind !== "endnote") return false;
@@ -149,13 +176,13 @@ export const normalizeCanonicalSource = (
     let content = withRunTabElements(body.content);
     // A separator or continuation note is the application's own, not a story
     // a caret goes in; the session leaves it as read.
-    if (content.length === 0 && !isSeparatorNote(document, story)) {
+    if (!endsInParagraph(content) && !isSeparatorNote(document, story)) {
       const paragraph: Paragraph = {
         type: "paragraph",
         paraId: freshParaId(takenIds()),
         content: [],
       };
-      content = [paragraph];
+      content = [...content, paragraph];
     }
     if (content === body.content) continue;
     normalized.push({ story, source: body.content });
