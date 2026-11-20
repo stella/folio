@@ -245,7 +245,8 @@ const COMMENT_OPERATION_TYPES: ReadonlySet<DocumentOp["type"]> = new Set([
   DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE,
 ]);
 
-const operationChangesPackage = (op: DocumentOp): boolean => {
+/** The story an operation edits, or null for one that edits the package. */
+const operationStory = (op: DocumentOp): OpStory | null => {
   switch (op.type) {
     case DOCUMENT_OP_TYPES.CREATE_COMMENT:
     case DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT:
@@ -262,15 +263,37 @@ const operationChangesPackage = (op: DocumentOp): boolean => {
     case DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE:
     case DOCUMENT_OP_TYPES.DELETE_NUMBERING_INSTANCE:
     case DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT:
-      return true;
+      return null;
     default: {
-      if ("story" in op) return !sameStory(op.story, OP_STORIES.MAIN);
-      if ("at" in op) return !sameStory(op.at.story, OP_STORIES.MAIN);
-      if ("from" in op) return !sameStory(op.from.story, OP_STORIES.MAIN);
+      if ("story" in op) return op.story;
+      if ("at" in op) return op.at.story;
+      if ("from" in op) return op.from.story;
       const unreachable: never = op;
       return unreachable;
     }
   }
+};
+
+/**
+ * An edit inside a header or footer: the selective save writes every header
+ * and footer part whole, and declines one that needs a resource of its own,
+ * so the edit leaves the body's paragraph splice standing.
+ */
+const editsHeaderFooter = (op: DocumentOp): boolean => {
+  const story = operationStory(op);
+  return (
+    story !== null &&
+    story !== OP_STORIES.MAIN &&
+    (story.kind === "header" || story.kind === "footer")
+  );
+};
+
+const operationChangesPackage = (op: DocumentOp): boolean => {
+  const story = operationStory(op);
+  return (
+    story === null ||
+    (!sameStory(story, OP_STORIES.MAIN) && !editsHeaderFooter(op))
+  );
 };
 
 const operationChangesStructure = (op: DocumentOp): boolean => {
@@ -3922,11 +3945,13 @@ class CanonicalSession {
             pending?.touched.add(id);
           }
         }
-        // Comment operations touch only the comments part and keep the paragraph
-        // splice path; every other operation that inserts or removes blocks, or
-        // changes package parts or a non-body story, invalidates it.
+        // Comment operations touch only the comments part, and header and
+        // footer edits only their own parts: both keep the paragraph splice
+        // path. Every other operation that inserts or removes blocks, or
+        // changes package parts or a note, invalidates it.
         const bodyOps = ops.filter(
-          (op) => !COMMENT_OPERATION_TYPES.has(op.type),
+          (op) =>
+            !COMMENT_OPERATION_TYPES.has(op.type) && !editsHeaderFooter(op),
         );
         if (
           bodyOps.some(operationChangesStructure) ||

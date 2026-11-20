@@ -1376,9 +1376,9 @@ test("cell merge and split predict the saved grid", async () => {
   assert.equal(split.applied.length, 1);
 });
 
-// Accepting runs the heading's words into the table's first cell, as the
-// reference app accepts the join (canonical session); the legacy engine
-// keeps them in their own paragraph before the table.
+// Accepting runs the heading's words into the table's first cell on the
+// canonical session; the legacy engine keeps them in their own paragraph
+// before the table.
 test("a deleted merge neighbor's join runs into the following table cell only on the canonical session", async () => {
   const reviewer = await openReviewer(await ALL_FIXTURES.tables());
   const heading = blocksOf(reviewer).find(

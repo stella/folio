@@ -316,60 +316,79 @@ describe("referenced comparison style resources", () => {
     );
   });
 
-  test("serializes a tracked style-context bridge with the old authored run formatting", async () => {
-    const styles: StyleDefinitions = {
-      docDefaults: {
-        rPr: { fontFamily: { ascii: "Base Font", hAnsi: "Base Font" } },
-      },
-      styles: [
-        { styleId: "Normal", type: "paragraph", default: true },
-        {
-          styleId: "Target",
-          type: "paragraph",
-          rPr: {
-            fontFamily: {
-              ascii: "Target Font",
-              hAnsi: "Target Font",
-              eastAsia: "Target Font",
-              cs: "Target Font",
+  test.each(["legacy", "canonical"] as const)(
+    "a tracked restyled replacement rejects to the old authored run formatting (%s)",
+    async (session) => {
+      const styles: StyleDefinitions = {
+        docDefaults: {
+          rPr: { fontFamily: { ascii: "Base Font", hAnsi: "Base Font" } },
+        },
+        styles: [
+          { styleId: "Normal", type: "paragraph", default: true },
+          {
+            styleId: "Target",
+            type: "paragraph",
+            rPr: {
+              fontFamily: {
+                ascii: "Target Font",
+                hAnsi: "Target Font",
+                eastAsia: "Target Font",
+                cs: "Target Font",
+              },
+              language: { val: "en-US", eastAsia: "en-US", bidi: "ar-SA" },
             },
-            language: { val: "en-US", eastAsia: "en-US", bidi: "ar-SA" },
           },
-        },
-      ],
-    };
-    const reviewer = await FolioDocxReviewer.fromBuffer(
-      await documentWith({
-        styles,
-        text: "Styled",
-        formatting: { bold: true, boldCs: true },
-      }),
-    );
-    const block = reviewer.snapshot().blocks.at(0);
-    if (!block) throw new Error("Expected a source block");
-    const result = reviewer.applyOperations(
-      [
-        {
-          id: "style-context",
-          type: "replaceBlock",
-          blockId: block.id,
-          text: "Replacement",
-          styleId: "Target",
-        },
-      ],
-      { undefinedReferences: "refuse" },
-    );
-    expect(result.skipped).toEqual([]);
-    const pending = await reviewer.toBuffer();
-    expect(await documentXml(pending)).toContain("<w:rPrChange");
+        ],
+      };
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await documentWith({
+          styles,
+          text: "Styled",
+          formatting: { bold: true, boldCs: true },
+        }),
+        { session },
+      );
+      const block = reviewer.snapshot().blocks.at(0);
+      if (!block) throw new Error("Expected a source block");
+      const result = reviewer.applyOperations(
+        [
+          {
+            id: "style-context",
+            type: "replaceBlock",
+            blockId: block.id,
+            text: "Replacement",
+            styleId: "Target",
+          },
+        ],
+        { undefinedReferences: "refuse" },
+      );
+      expect(result.skipped).toEqual([]);
+      const pending = await reviewer.toBuffer();
+      // The legacy engine records the old authored formatting as a bridge on
+      // the replacement; the canonical one keeps it on the deleted run.
+      if (session === "legacy")
+        expect(await documentXml(pending)).toContain("<w:rPrChange");
 
-    const rejected = await FolioDocxReviewer.fromBuffer(pending);
-    rejected.rejectAll();
-    expect(await documentXml(await rejected.toBuffer())).not.toContain(
-      "<w:rFonts ",
-    );
-    expect(await documentXml(await rejected.toBuffer())).not.toContain(
-      "<w:lang ",
-    );
-  });
+      const rejected = await FolioDocxReviewer.fromBuffer(pending, { session });
+      rejected.rejectAll();
+      const rejectedXml = await documentXml(await rejected.toBuffer());
+      expect(rejectedXml).not.toContain("<w:rFonts ");
+      expect(rejectedXml).not.toContain("<w:lang ");
+      expect(rejected.snapshot().blocks.at(0)?.text).toBe("Styled");
+      expect(rejected.snapshot().blocks.at(0)?.previewRuns).toEqual(
+        (
+          await FolioDocxReviewer.fromBuffer(
+            await documentWith({
+              styles,
+              text: "Styled",
+              formatting: { bold: true, boldCs: true },
+            }),
+            { session },
+          )
+        )
+          .snapshot()
+          .blocks.at(0)?.previewRuns,
+      );
+    },
+  );
 });

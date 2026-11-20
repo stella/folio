@@ -142,6 +142,53 @@ test.each(["Reviewer", "Other"])(
   },
 );
 
+/** A table whose only row another author's pending deletion takes. */
+const deletedTable = (): Table => ({
+  type: "table",
+  rows: [
+    {
+      type: "tableRow",
+      structuralChange: { type: "tableRowDeletion", info: stamp(70, "Other") },
+      cells: [{ type: "tableCell", content: [paragraph("00000030", "Cell.")] }],
+    },
+  ],
+});
+
+test.each([
+  {
+    kind: "insertion",
+    table: insertedTable("Other"),
+    tableRevisions: [60, 61, 62],
+    accepted: ["Cell.", "Final."],
+    rejected: ["Alpha.", "Final."],
+  },
+  {
+    kind: "deletion",
+    table: deletedTable(),
+    tableRevisions: [70],
+    accepted: ["Final."],
+    rejected: ["Alpha.", "Cell.", "Final."],
+  },
+])(
+  "the first paragraph of the story before a table under pending $kind loses its words and mark",
+  ({ table, tableRevisions, accepted, rejected }) => {
+    const document = documentOf([
+      paragraph("00000002", "Alpha."),
+      table,
+      paragraph("00000003", "Final."),
+    ]);
+    const deleted = applyDocumentOp(document, deletion("00000002"));
+    if (deleted.isErr()) throw deleted.error;
+    const every = [...tableRevisions, ...deleted.value.revisions];
+    expect(
+      texts(resolve(deleted.value.document, every, REVISION_DECISIONS.ACCEPT)),
+    ).toEqual(accepted);
+    expect(
+      texts(resolve(deleted.value.document, every, REVISION_DECISIONS.REJECT)),
+    ).toEqual(rejected);
+  },
+);
+
 test("a paragraph its author added whole goes outright before that author's pending table", () => {
   const added: Paragraph = {
     ...paragraph("00000002", ""),

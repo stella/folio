@@ -29,7 +29,10 @@ import {
   CanonicalSessionError,
   createCanonicalSession,
 } from "../canonical/canonicalSession";
-import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
+import {
+  prepareCanonicalDocxInput,
+  prepareCanonicalDocxSource,
+} from "../docx/canonicalSessionInput";
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
 import {
@@ -67,6 +70,22 @@ const readFixture = (filename: string): ArrayBuffer => {
 };
 
 /** The package as a host stores it: every paragraph and control identified. */
+/** A reading with no block's `idStability`, which only the opening decides. */
+const withoutIdStability = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(withoutIdStability);
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    Object.getPrototypeOf(value) !== Object.prototype
+  )
+    return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => key !== "idStability")
+      .map(([key, entry]) => [key, withoutIdStability(entry)]),
+  );
+};
+
 const ingested = async (buffer: ArrayBuffer): Promise<ArrayBuffer> => {
   const prepared = await prepareCanonicalDocxInput(buffer);
   if (prepared.isErr()) throw prepared.error;
@@ -531,11 +550,22 @@ describe("headless reviewer reads agree on both engines", () => {
       // Legacy mints missing paragraph ids in PM; canonical, like the
       // canonical editor, reads the package after `ensureParaIds`. Both are
       // deterministic per input; the canonical reading of the stored bytes is
-      // the reading of the identified package.
+      // the reading of the identified package, except that an id minted on
+      // opening reads as positional, as a legacy minted id does.
       const buffer = readFixture(filename);
-      expect(await openOn(buffer, "canonical")).toEqual(
+      const source = await prepareCanonicalDocxSource(buffer);
+      if (source.isErr()) throw source.error;
+      const opened = await openOn(buffer, "canonical");
+      expect(withoutIdStability(opened)).toEqual(
         await openOn(await ingested(buffer), "canonical"),
       );
+      if (opened.type !== "read") return;
+      // A blank paragraph's block id is derived, not its paragraph id.
+      for (const block of opened.reads.snapshot.blocks)
+        if (block.text !== "")
+          expect(block.idStability === "positional").toBe(
+            source.value.mintedParaIds.has(block.id),
+          );
     },
     propertyTestTimeout(20_000),
   );
