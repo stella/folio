@@ -5,7 +5,6 @@ import {
   type Document,
   finalizeParagraphFormatting,
   type Insertion,
-  MAX_REVISION_ID,
   type Paragraph,
   type ParagraphContent,
   type ParagraphFormatting,
@@ -24,7 +23,6 @@ import {
   blockListAt,
   blockListEndsInParagraph,
   captureSectionView,
-  endsItsContainer,
   hasContainerFinalParagraphMark,
   type ParagraphLocation,
   replaceParagraphs,
@@ -101,18 +99,12 @@ import { equalForStaleness, structurallyEqual } from "./equality";
 import { resolveGap, type ZeroWidthDefault } from "./gaps";
 import { freshenIdentities, rebindRetainedIdentities } from "./identity";
 import {
-  countIds,
-  countKeys,
-  IDENTITY_SPACES,
-  identityKeysIn,
   idKey,
   isParaId,
-  type KeyMembership,
   packageIdentityKeyIndex,
   packageParagraphIdIndex,
   packageReservedKeyIndex,
   paragraphIdsIn,
-  slotKey,
 } from "./ids";
 import {
   concatIds,
@@ -136,11 +128,9 @@ import {
 } from "./inline";
 import {
   asParagraphContent,
-  childNodes,
   compareGaps,
   type Gap,
   type InlineNode,
-  isEmptyRecord,
   leafSpans,
   nestedRecords,
   recordsBetween,
@@ -151,15 +141,24 @@ import {
 } from "./leaves";
 import { cloneModel } from "./modelClone";
 import { replaceNoteParts } from "./noteLifecycle";
-import {
-  automaticNoteMarkRuns,
-  noteContentWithAutomaticMark,
-  removedNoteStories,
-} from "./noteMarks";
+import { noteContentWithAutomaticMark, removedNoteStories } from "./noteMarks";
 import { applyNumberingSectionOp } from "./numberingSections";
 import { paragraphLength } from "./offsets";
 import { applyPackageResourcesOp } from "./packageResources";
 import { findStoryParagraph } from "./paragraphLocator";
+import {
+  contentRestoring,
+  holdsEmptyRecord,
+  identitiesOutside,
+  nonemptyBlockReplacementEffects,
+  paragraphIdsCollide,
+  prepareResolutionParagraphOp,
+  type ResolutionParagraphOp,
+  reviewRestoring,
+  touchedBetween,
+  validateBlockReplacement,
+  withContent,
+} from "./paragraphPrimitive";
 import {
   authoredParagraphFormatting,
   changesRecordingAuthored,
@@ -217,6 +216,7 @@ import { applyRowOp } from "./tableRows";
 import { applyTableOp } from "./tables";
 import { stampedTableRevisionIds } from "./tableTracking";
 import { namingPackageStories, textBoxRoute } from "./textBoxRouting";
+import { trackedStampRefusal } from "./trackedStamp";
 import {
   type AddNoteOp,
   type DeleteRangeOp,
@@ -233,7 +233,6 @@ import {
   PROPERTY_REVIEW_POLICIES,
   type RemoveNoteOp,
   type ReplaceBlocksOp,
-  type ReplaceInlineOp,
   REVISION_DECISIONS,
   type RevisionStamp,
   SECTION_BOUNDARY_POLICIES,
@@ -291,52 +290,6 @@ const refuse = (
   message: string,
 ): Applied => Result.err(refusal(op, reason, message));
 
-/**
- * Whether a tracked operation's stamp can name the first record it creates:
- * a revision id in range that no record in the package carries.
- */
-const stampRefusal = (
-  document: Document,
-  op: DocumentOp,
-  stamp: RevisionStamp,
-): DocumentOpRefusal | undefined => {
-  // A revision id reserves no value: every integer in range names a record.
-  const revisionId = stamp.id;
-  if (
-    !Number.isInteger(revisionId) ||
-    revisionId < 0 ||
-    revisionId > MAX_REVISION_ID
-  ) {
-    return refusal(
-      op,
-      DOCUMENT_OP_REFUSAL_REASONS.INVALID_NEW_ID,
-      `${revisionId} cannot be a revision id.`,
-    );
-  }
-  const key = slotKey({ space: IDENTITY_SPACES.REVISION, id: stamp.id });
-  if (packageIdentityKeyIndex(document.package).has(key)) {
-    return refusal(
-      op,
-      DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
-      `Revision id ${stamp.id} is already used in the package.`,
-    );
-  }
-  return undefined;
-};
-
-/** The replacement that gives a paragraph back the content it had. */
-const contentRestoring = (
-  story: OpStory,
-  result: Paragraph,
-  original: Paragraph,
-): ReplaceInlineOp => ({
-  type: DOCUMENT_OP_TYPES.REPLACE_INLINE,
-  story,
-  blockId: result.paraId ?? original.paraId ?? "",
-  expected: result.content,
-  content: original.content,
-});
-
 type CutHasResolutionProvenanceOptions = {
   content: readonly ParagraphContent[];
   gaps: readonly Gap[];
@@ -358,19 +311,6 @@ const cutHasResolutionProvenance = ({
         record.resolutionJoins !== undefined,
     ),
   );
-
-/** The review fields' setting that gives a paragraph back the ones it had. */
-const reviewRestoring = (
-  story: OpStory,
-  result: Paragraph,
-  original: Paragraph,
-): SetParagraphReviewOp => ({
-  type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
-  story,
-  blockId: result.paraId ?? original.paraId ?? "",
-  expected: reviewFieldsOf(result),
-  review: reviewFieldsOf(original),
-});
 
 /** Characters `insertText` does not carry: each is an inline atom of its own. */
 const NON_TEXT_CHARACTER_PATTERN = /[\t\n\r]/u;
@@ -521,59 +461,6 @@ const positionAt = (
   zeroWidthBefore: gap.zeroWidthBefore,
 });
 
-const touchedBetween = (
-  before: readonly Paragraph[],
-  after: readonly Paragraph[],
-): TouchedBlocks => {
-  const beforeIds = before.flatMap(({ paraId }) =>
-    paraId === undefined ? [] : [paraId],
-  );
-  const afterIds = after.flatMap(({ paraId }) =>
-    paraId === undefined ? [] : [paraId],
-  );
-  const afterKeys = new Set(afterIds.map(idKey));
-  const beforeKeys = new Set(beforeIds.map(idKey));
-  return {
-    modified: beforeIds.filter((id) => afterKeys.has(idKey(id))),
-    inserted: afterIds.filter((id) => !beforeKeys.has(idKey(id))),
-    removed: beforeIds.filter((id) => !afterKeys.has(idKey(id))),
-  };
-};
-
-/** Revision and control ids the package uses outside `before`. */
-const identitiesOutside = (
-  document: Document,
-  before: readonly Paragraph[],
-): KeyMembership => {
-  const index = packageIdentityKeyIndex(document.package);
-  const inside = countKeys(identityKeysIn(before));
-  return { has: (key) => index.count(key) > (inside.get(key) ?? 0) };
-};
-
-type ParagraphIdCollisionOptions = {
-  document: Document;
-  incoming: readonly string[];
-  removed?: unknown;
-};
-
-const paragraphIdsCollide = ({
-  document,
-  incoming,
-  removed,
-}: ParagraphIdCollisionOptions): boolean => {
-  if (incoming.length === 0) return false;
-  const index = packageParagraphIdIndex(document.package);
-  const removedCounts = countIds(paragraphIdsIn(removed));
-  const seen = new Set<string>();
-  for (const id of incoming) {
-    const key = idKey(id);
-    if (seen.has(key) || index.count(key) > (removedCounts.get(key) ?? 0))
-      return true;
-    seen.add(key);
-  }
-  return false;
-};
-
 type Commit = {
   document: Document;
   op: DocumentOp;
@@ -662,14 +549,6 @@ const commit = (options: Commit): Result<Committed, DocumentOpRefusal> => {
     touched: touchedBetween(before, paragraphs.value),
   });
 };
-
-const withContent = (
-  paragraph: Paragraph,
-  content: readonly Paragraph["content"][number][],
-): Paragraph =>
-  content === paragraph.content
-    ? paragraph
-    : { ...paragraph, content: [...content] };
 
 /** An edit of one paragraph, committed, with the inverse built from the paragraph it became. */
 const editOne = (
@@ -917,11 +796,6 @@ const insertText = (document: Document, op: InsertTextOp): Applied => {
     revision: op.revision,
   });
 };
-
-const holdsEmptyRecord = (nodes: readonly InlineNode[]): boolean =>
-  nodes.some(
-    (node) => isEmptyRecord(node) || holdsEmptyRecord(childNodes(node) ?? []),
-  );
 
 const insertContent = (document: Document, op: InsertContentOp): Applied => {
   // The slice's records are new records wherever they came from: copies, so
@@ -2481,30 +2355,6 @@ const joinBlocks = (document: Document, op: JoinBlocksOp): Applied => {
   });
 };
 
-/**
- * Whether a replacement leaves every section break where it was: the replaced
- * paragraphs lie in one section (only the last may end it) and the
- * replacement ends it the same way. Anything else would change the sections
- * the body is divided into, which is a section operation.
- */
-const sameSectionBreaks = (
-  before: readonly Paragraph[],
-  after: readonly Paragraph[],
-): boolean => {
-  const breaksInside = (paragraphs: readonly Paragraph[]) =>
-    paragraphs
-      .slice(0, -1)
-      .some(({ sectionProperties }) => sectionProperties !== undefined);
-  return (
-    !breaksInside(before) &&
-    !breaksInside(after) &&
-    structurallyEqual(
-      before.at(-1)?.sectionProperties,
-      after.at(-1)?.sectionProperties,
-    )
-  );
-};
-
 const replaceBlocks = (document: Document, op: ReplaceBlocksOp): Applied => {
   const [firstExpected] = op.expected;
   if (firstExpected === undefined) {
@@ -2514,7 +2364,7 @@ const replaceBlocks = (document: Document, op: ReplaceBlocksOp): Applied => {
       "A replacement names the paragraphs it replaces and the ones it puts in their place.",
     );
   }
-  const paragraphs = storyParagraphs(storyBody(document, op.story));
+  const body = storyBody(document, op.story);
   const found: ParagraphLocation[] = [];
   for (const expected of op.expected) {
     if (expected.paraId === undefined) {
@@ -2524,7 +2374,11 @@ const replaceBlocks = (document: Document, op: ReplaceBlocksOp): Applied => {
         "A replaced paragraph has no id.",
       );
     }
-    const located = findParagraph(op, paragraphs, expected.paraId);
+    // Empty ids also match an unidentified paragraph in the legacy lookup.
+    const located =
+      expected.paraId === ""
+        ? findParagraph(op, storyParagraphs(body), expected.paraId)
+        : locate(document, op, op.story, expected.paraId);
     if (located.isErr()) {
       return Result.err(located.error);
     }
@@ -2561,73 +2415,11 @@ const replaceBlocks = (document: Document, op: ReplaceBlocksOp): Applied => {
       "The paragraphs to replace have changed.",
     );
   }
-  if (op.blocks.some(({ paraId }) => paraId === undefined)) {
-    return refuse(
-      op,
-      DOCUMENT_OP_REFUSAL_REASONS.INVALID_BLOCK_ID,
-      "A replacement paragraph has no id.",
-    );
-  }
-  if (op.blocks.some(({ content }) => holdsEmptyRecord(content))) {
-    return refuse(
-      op,
-      DOCUMENT_OP_REFUSAL_REASONS.EMPTY_CONTENT,
-      "A replacement paragraph holds an empty run, text node, or revision wrapper.",
-    );
-  }
   const before = found.map(({ paragraph }) => paragraph);
-  // An id only one side has is created by the replacement or by its inverse.
-  const kept = new Set(before.map(({ paraId }) => idKey(paraId ?? "")));
-  const placed = new Set(op.blocks.map(({ paraId }) => idKey(paraId ?? "")));
-  const created = [
-    ...op.blocks.filter(({ paraId }) => !kept.has(idKey(paraId ?? ""))),
-    ...before.filter(({ paraId }) => !placed.has(idKey(paraId ?? ""))),
-  ];
-  if (created.some(({ paraId }) => paraId === undefined || !isParaId(paraId))) {
-    return refuse(
-      op,
-      DOCUMENT_OP_REFUSAL_REASONS.INVALID_BLOCK_ID,
-      "A paragraph the replacement adds or removes has no usable id.",
-    );
-  }
-  if (
-    op.sectionBoundaries !== SECTION_BOUNDARY_POLICIES.REPLACE &&
-    !sameSectionBreaks(before, op.blocks)
-  ) {
-    return refuse(
-      op,
-      DOCUMENT_OP_REFUSAL_REASONS.SECTION_BOUNDARY,
-      "A replacement keeps every section break where it is.",
-    );
-  }
-  if (
-    paragraphIdsCollide({
-      document,
-      incoming: paragraphIdsIn(op.blocks),
-      removed: before,
-    })
-  ) {
-    return refuse(
-      op,
-      DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
-      "A replacement paragraph id is already used in the package.",
-    );
-  }
-  const outside = identitiesOutside(document, before);
-  const incomingRecords = identityKeysIn(op.blocks);
-  if (
-    incomingRecords.some((key) => outside.has(key)) ||
-    new Set(incomingRecords).size !== incomingRecords.length
-  ) {
-    return refuse(
-      op,
-      DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
-      "A replacement carries a revision or content-control id already used in the package.",
-    );
-  }
+  const valid = validateBlockReplacement({ document, op, before });
+  if (valid.isErr()) return valid;
   let inverseAt: TableInsertionPoint | undefined;
   if (op.blocks.length === 0) {
-    const body = storyBody(document, op.story);
     // The insertion inverse must be able to place every captured source mark.
     if (
       found.some((location) => hasContainerFinalParagraphMark(body, location))
@@ -2651,10 +2443,7 @@ const replaceBlocks = (document: Document, op: ReplaceBlocksOp): Applied => {
         DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
         "An empty replacement cannot restore an owned empty paragraph-formatting field through insertion.",
       );
-    const originalList = blockListAt(
-      storyBody(document, op.story).content,
-      start.list,
-    );
+    const originalList = blockListAt(body.content, start.list);
     const removalList = [...originalList];
     removalList.splice(start.index, before.length);
     inverseAt = blockInsertionPointAt({
@@ -2725,205 +2514,36 @@ const replaceBlocks = (document: Document, op: ReplaceBlocksOp): Applied => {
   }
   return Result.ok({
     document: replaced.value,
-    inverse: [
-      {
-        type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
-        story: op.story,
-        expected: op.blocks,
-        blocks: before,
-        ...(op.sectionBoundaries === SECTION_BOUNDARY_POLICIES.REPLACE
-          ? { sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE }
-          : {}),
-      },
-    ],
-    touched: touchedBetween(before, op.blocks),
+    ...nonemptyBlockReplacementEffects(op, before),
   });
 };
 
-/** Revision and control ids a paragraph's own review fields carry, as slot keys. */
-const reviewKeysOf = (review: ParagraphReviewFields): string[] =>
-  identityKeysIn({
-    propertyChanges: review.propertyChanges,
-    pPrMark: review.pPrMark,
-  });
-
-const setParagraphReview = (
+const applyParagraphPrimitive = (
   document: Document,
-  op: SetParagraphReviewOp,
+  op: ResolutionParagraphOp,
 ): Applied => {
   const located = locate(document, op, op.story, op.blockId);
-  if (located.isErr()) {
-    return Result.err(located.error);
-  }
-  const { paragraph } = located.value;
-  if (
-    !equalForStaleness(reviewFieldsOf(paragraph), reviewFieldsOf(op.expected))
-  ) {
-    return refuse(
-      op,
-      DOCUMENT_OP_REFUSAL_REASONS.STALE,
-      `${op.blockId} states other review fields than expected.`,
-    );
-  }
-  const review = cloneModel(op.review);
-  const next = withReviewFields(paragraph, review);
-  if (structurallyEqual(next, paragraph)) {
-    return unchanged(document);
-  }
-  type TerminalMarkTransitionOptions = {
-    from: Paragraph["pPrMark"];
-    to: Paragraph["pPrMark"];
-  };
-  const refusesMarkTransition = ({ from, to }: TerminalMarkTransitionOptions) =>
-    to !== undefined &&
-    !structurallyEqual(to, from) &&
-    endsItsContainer(storyBody(document, op.story), located.value) &&
-    !(
-      located.value.list.some((step) => step.kind === "tableCell") &&
-      (to.kind === "ins" || to.kind === "del")
-    );
-  if (refusesMarkTransition({ from: paragraph.pPrMark, to: review.pPrMark })) {
-    return refuse(
-      op,
-      DOCUMENT_OP_REFUSAL_REASONS.CONTAINER_FINAL_MARK,
-      `${op.blockId} ends its container: there is no next paragraph its mark could join.`,
-    );
-  }
-  const outside = identitiesOutside(document, [paragraph]);
-  const own = new Set(identityKeysIn(paragraph.content));
-  const incoming = reviewKeysOf(review);
-  if (
-    incoming.some((key) => outside.has(key) || own.has(key)) ||
-    new Set(incoming).size !== incoming.length
-  ) {
-    return refuse(
-      op,
-      DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
-      "The review fields carry a revision id already used in the package.",
-    );
-  }
+  if (located.isErr()) return Result.err(located.error);
+  const prepared = prepareResolutionParagraphOp({
+    document,
+    op,
+    at: located.value,
+  });
+  if (prepared.isErr()) return Result.err(prepared.error);
+  if (prepared.value.type === "unchanged") return unchanged(document);
+  const { paragraph, inverse, touched } = prepared.value;
   const replaced = replaceParagraphs({
     document,
     story: op.story,
     at: located.value,
     count: 1,
-    replacement: [next],
+    replacement: [paragraph],
   });
   if (replaced.isErr())
     return Result.err(
       refusal(op, replaced.error.reason, replaced.error.message),
     );
-  return Result.ok({
-    document: replaced.value,
-    inverse: [
-      // Imported terminal marks may be resolved even when a new mark could
-      // not be set there. Restore that exact source snapshot, with a whole
-      // paragraph stale check, rather than replaying a prohibited new set.
-      refusesMarkTransition({ from: next.pPrMark, to: paragraph.pPrMark })
-        ? {
-            type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
-            story: op.story,
-            expected: [next],
-            blocks: [paragraph],
-          }
-        : reviewRestoring(op.story, next, paragraph),
-    ],
-    touched: touchedBetween([paragraph], [next]),
-  });
-};
-
-const replaceInline = (document: Document, op: ReplaceInlineOp): Applied => {
-  const located = locate(document, op, op.story, op.blockId);
-  if (located.isErr()) {
-    return Result.err(located.error);
-  }
-  const { paragraph } = located.value;
-  if (!equalForStaleness(paragraph.content, op.expected)) {
-    return refuse(
-      op,
-      DOCUMENT_OP_REFUSAL_REASONS.STALE,
-      `${op.blockId} holds other content than expected.`,
-    );
-  }
-  let content = cloneModel(op.content);
-  const noteKind =
-    op.story !== "main" &&
-    (op.story.kind === "footnote" || op.story.kind === "endnote")
-      ? op.story.kind
-      : undefined;
-  if (
-    noteKind !== undefined &&
-    !leafSpans(content).some(
-      ({ node }) => node.type === "noteMarker" && node.kind === noteKind,
-    )
-  ) {
-    const markers = automaticNoteMarkRuns(paragraph.content).filter((run) =>
-      run.content.some(
-        (node) => node.type === "noteMarker" && node.kind === noteKind,
-      ),
-    );
-    content = [...markers, ...content];
-  }
-  if (holdsEmptyRecord(content)) {
-    return refuse(
-      op,
-      DOCUMENT_OP_REFUSAL_REASONS.EMPTY_CONTENT,
-      "The content holds an empty run, text node, or revision wrapper.",
-    );
-  }
-  if (textsIn(content).some(hasIllegalXmlCharacters)) {
-    return refuse(
-      op,
-      DOCUMENT_OP_REFUSAL_REASONS.INVALID_TEXT,
-      "The content holds text that cannot be written.",
-    );
-  }
-  if (structurallyEqual(content, paragraph.content)) {
-    return unchanged(document);
-  }
-  if (
-    paragraphIdsCollide({
-      document,
-      incoming: paragraphIdsIn(content),
-      removed: paragraph.content,
-    })
-  ) {
-    return refuse(
-      op,
-      DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
-      "The content holds a paragraph id the package already uses.",
-    );
-  }
-  const outside = identitiesOutside(document, [paragraph]);
-  const own = new Set(reviewKeysOf(reviewFieldsOf(paragraph)));
-  const incoming = identityKeysIn(content);
-  if (
-    incoming.some((key) => outside.has(key) || own.has(key)) ||
-    new Set(incoming).size !== incoming.length
-  ) {
-    return refuse(
-      op,
-      DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
-      "The content carries a revision or content-control id already used in the package.",
-    );
-  }
-  const next = withContent(paragraph, content);
-  const replaced = replaceParagraphs({
-    document,
-    story: op.story,
-    at: located.value,
-    count: 1,
-    replacement: [next],
-  });
-  if (replaced.isErr())
-    return Result.err(
-      refusal(op, replaced.error.reason, replaced.error.message),
-    );
-  return Result.ok({
-    document: replaced.value,
-    inverse: [contentRestoring(op.story, next, paragraph)],
-    touched: touchedBetween([paragraph], [next]),
-  });
+  return Result.ok({ document: replaced.value, inverse: [inverse], touched });
 };
 
 /**
@@ -3212,9 +2832,8 @@ const dispatchCore = ({ document, op, purpose }: DispatchOptions): Applied => {
     case DOCUMENT_OP_TYPES.REPLACE_BLOCKS:
       return replaceBlocks(document, op);
     case DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW:
-      return setParagraphReview(document, op);
     case DOCUMENT_OP_TYPES.REPLACE_INLINE:
-      return replaceInline(document, op);
+      return applyParagraphPrimitive(document, op);
     case DOCUMENT_OP_TYPES.RESOLVE_REVISION:
       return resolveRevision(document, op, applyOps);
     case DOCUMENT_OP_TYPES.SET_REVISION_INFO:
@@ -3653,7 +3272,11 @@ const applyAddressedOp = ({
 }: ApplyAddressedOpOptions): Result<AppliedDocumentOp, DocumentOpRefusal> => {
   const stamp = stampOf(op);
   const badStamp =
-    stamp === undefined ? undefined : stampRefusal(document, op, stamp);
+    stamp === undefined
+      ? undefined
+      : trackedStampRefusal(op, stamp, (key) =>
+          packageIdentityKeyIndex(document.package).has(key),
+        );
   if (badStamp !== undefined) {
     return Result.err(badStamp);
   }

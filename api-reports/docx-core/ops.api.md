@@ -177,6 +177,9 @@ export type ClientNotice = {
 };
 
 // @public
+export const combineEditEffects: (final: Document_2, edits: readonly DocumentEditEffects[]) => DocumentEdit;
+
+// @public
 export const combineEdits: (document: Document_2, edits: readonly DocumentEdit[]) => DocumentEdit;
 
 // @public
@@ -1621,6 +1624,9 @@ export const transformPosition: (position: TextPosition, over: readonly Sequence
 
 // @public
 export const trimIdLease: (lease: IdLease, ids: readonly LeasedId[]) => IdLease;
+
+// @public
+export const tryTrackedInsertionGroup: (input: TrackedInsertionGroupOptions) => TrackedInsertionGroupResult;
 
 // @public (undocumented)
 export type UpdateCommentContentOp = {
