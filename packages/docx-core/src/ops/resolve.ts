@@ -4943,6 +4943,61 @@ const planSingleRecordResolution = ({
   }
   const retiredCutDepths = new Map<string, number>();
   const body = storyBody(document, op.story);
+  type FollowingCuts = { leadingCut: number; chainCut: number };
+  const followingCutsByList = new WeakMap<
+    readonly BlockContent[],
+    Map<number, FollowingCuts>
+  >();
+  const cutsFollowing = (
+    list: readonly BlockContent[],
+    start: number,
+  ): FollowingCuts => {
+    let known = followingCutsByList.get(list);
+    if (known === undefined) {
+      known = new Map();
+      followingCutsByList.set(list, known);
+    }
+    const visited: { index: number; cuts: FollowingCuts }[] = [];
+    let suffix: FollowingCuts = { leadingCut: 0, chainCut: 0 };
+    for (let index = start; index < list.length; index += 1) {
+      const cached = known.get(index);
+      if (cached !== undefined) {
+        suffix = cached;
+        break;
+      }
+      const candidate = list.at(index);
+      if (candidate?.type !== "paragraph") break;
+      const key = idKey(candidate.paraId ?? "");
+      const firstCut = resolvedCutEdges.get(key)?.first ?? 0;
+      const mark = candidate.pPrMark;
+      if (
+        (resolvedContents.get(key)?.length ?? 0) !== 0 ||
+        mark === undefined ||
+        !markWasAdded(mark.kind)
+      ) {
+        suffix = { leadingCut: firstCut, chainCut: 0 };
+        known.set(index, suffix);
+        break;
+      }
+      // An empty inserted paragraph can carry part of a cut to a later join.
+      const chainCut =
+        op.decision === REVISION_DECISIONS.REJECT && ids.has(mark.info.id)
+          ? (mark.resolutionJoin ?? 0)
+          : 0;
+      visited.push({
+        index,
+        cuts: { leadingCut: Math.max(firstCut, chainCut), chainCut },
+      });
+    }
+    for (const { index, cuts } of visited.reverse()) {
+      suffix = {
+        leadingCut: Math.max(cuts.leadingCut, suffix.leadingCut),
+        chainCut: Math.max(cuts.chainCut, suffix.chainCut),
+      };
+      known.set(index, suffix);
+    }
+    return suffix;
+  };
   for (const location of paragraphs) {
     const paragraph = location.paragraph;
     const mark = paragraph.pPrMark;
@@ -4959,9 +5014,8 @@ const planSingleRecordResolution = ({
       edge: "last",
       resolution,
     });
-    const next = blockListAt(body.content, location.list).at(
-      location.index + 1,
-    );
+    const list = blockListAt(body.content, location.list);
+    const next = list.at(location.index + 1);
     const leading =
       next?.type === "paragraph"
         ? acceptedClosedBoundary({
@@ -4972,41 +5026,7 @@ const planSingleRecordResolution = ({
             resolution,
           })
         : undefined;
-    let leadingCut =
-      next?.type === "paragraph"
-        ? (resolvedCutEdges.get(idKey(next.paraId ?? ""))?.first ?? 0)
-        : 0;
-    // The part of that cut an empty inserted paragraph carries across the
-    // chain to the paragraph beyond it, whose pieces this join reaches too.
-    let chainCut = 0;
-    const following = blockListAt(body.content, location.list);
-    for (let index = location.index + 1; index < following.length; index += 1) {
-      const candidate = following.at(index);
-      if (candidate?.type !== "paragraph") break;
-      leadingCut = Math.max(
-        leadingCut,
-        resolvedCutEdges.get(idKey(candidate.paraId ?? ""))?.first ?? 0,
-      );
-      if (
-        (resolvedContents.get(idKey(candidate.paraId ?? ""))?.length ?? 0) !==
-          0 ||
-        candidate.pPrMark === undefined ||
-        !markWasAdded(candidate.pPrMark.kind)
-      )
-        break;
-      // An empty inserted paragraph can carry the source cut for a later
-      // join. Rejecting its break must carry that cut across the entire chain.
-      if (
-        op.decision === REVISION_DECISIONS.REJECT &&
-        ids.has(candidate.pPrMark.info.id)
-      ) {
-        leadingCut = Math.max(
-          leadingCut,
-          candidate.pPrMark.resolutionJoin ?? 0,
-        );
-        chainCut = Math.max(chainCut, candidate.pPrMark.resolutionJoin ?? 0);
-      }
-    }
+    const { leadingCut, chainCut } = cutsFollowing(list, location.index + 1);
     // A level of the cut held by pieces of one tracked change this
     // resolution unwraps is a level no more: their content meets uncut.
     const unwrapped =
