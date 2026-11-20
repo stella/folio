@@ -75,7 +75,12 @@ import {
   withFieldResult,
 } from "./leaves";
 import { replaceNoteParts } from "./noteLifecycle";
-import { automaticNoteMarkRuns, noteReferenceSpans } from "./noteMarks";
+import {
+  automaticNoteMarkRuns,
+  noteReferenceKey,
+  noteReferenceSpans,
+  referencedNoteKeys,
+} from "./noteMarks";
 import {
   paragraphHoldsContent,
   paragraphHoldsContentOnceAccepted,
@@ -107,7 +112,6 @@ import {
 import { runsMergeable } from "./runMerge";
 import { resolveSectionChange, sectionResolutionPatch } from "./sectionReview";
 import { identitySlots, withInlineIdentity } from "./slots";
-import { documentStories } from "./stories";
 import { sectionEnds, storyLifecycleTouched } from "./storyLifecycle";
 import {
   DOCUMENT_OP_TYPES,
@@ -215,26 +219,25 @@ const removedNoteReferences = (
         id: node.id,
         added: isAddedRevision(revision),
       } as const;
-      references.set(`${reference.kind}:${reference.id}`, reference);
+      references.set(noteReferenceKey(reference.kind, reference.id), reference);
     }
   }
   return [...references.values()];
 };
 
-const hasNoteReference = (
+/** Check every removed reference against the same post-resolution document. */
+const orphanedNoteReferences = (
   document: Document,
-  reference: NoteReference,
-): boolean =>
-  documentStories(document).some((story) =>
-    storyParagraphs(storyBody(document, story)).some(({ paragraph }) =>
-      noteReferenceSpans(paragraph.content).some(
-        ({ node }) =>
-          node.type ===
-            (reference.kind === "footnote" ? "footnoteRef" : "endnoteRef") &&
-          node.id === reference.id,
-      ),
-    ),
+  removed: readonly NoteReference[],
+) => {
+  if (removed.length === 0) return [];
+  const surviving = referencedNoteKeys(document);
+  return removed.filter(
+    ({ kind, id }) =>
+      // A NaN id cannot match any numeric reference, including another NaN.
+      Number.isNaN(id) || !surviving.has(noteReferenceKey(kind, id)),
   );
+};
 
 /**
  * The paragraph a rejected mark that keeps the first paragraph leaves: the
@@ -5629,9 +5632,7 @@ const planSingleRecordResolution = ({
   }
   // Notes whose last reference went are removed first: a comment anchored in
   // one of them is then exhausted too and retires below.
-  const orphaned = noteReferences.filter(
-    (reference) => !hasNoteReference(current, reference),
-  );
+  const orphaned = orphanedNoteReferences(current, noteReferences);
   if (orphaned.length > 0) {
     const footnotes = new Set(
       orphaned.filter(({ kind }) => kind === "footnote").map(({ id }) => id),
