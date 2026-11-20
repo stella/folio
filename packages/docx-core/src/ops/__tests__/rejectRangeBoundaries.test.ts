@@ -6,6 +6,7 @@ import type {
   ParagraphContent,
 } from "../../model/document";
 import { applyDocumentOp } from "../apply";
+import { withoutKeptCuts } from "../keptCut";
 import { DOCUMENT_OP_TYPES, OP_STORIES, REVISION_DECISIONS } from "../types";
 
 const at = { story: OP_STORIES.MAIN, blockId: "00000001", offset: 0 } as const;
@@ -678,7 +679,11 @@ describe("a split seam with nothing left on one side joins nothing", () => {
     let inTurn = tracked();
     for (const ids of [[5001], [5002, 303648], [5003], [303649]])
       inTurn = rejected(inTurn, ids);
-    expect(contentOf(inTurn)).toEqual(atOnce);
+    // The cut a kept marker records is review state the orders need not
+    // share; where it stands is the same.
+    const placed = (content: ReturnType<typeof contentOf>) =>
+      content?.map((node) => withoutKeptCuts(node));
+    expect(placed(contentOf(inTurn))).toEqual(placed(atOnce));
     expect(atOnce?.[0]).toEqual({ type: "bookmarkEnd", id: 1 });
   });
 });
@@ -731,7 +736,12 @@ describe("a pending deletion nested in a rejected insertion keeps its boundaries
       {
         type: "deletion",
         info: { id: 2, author: "B", date: "2026-03-04T05:00:02Z" },
-        content: [bookmark],
+        content: [
+          {
+            ...bookmark,
+            keptCut: { depth: 1, keptFrom: "2026-03-04T05:00:01Z" },
+          },
+        ],
       },
       x,
     ]);
@@ -959,7 +969,14 @@ describe("a seam joins only pieces that stand, whatever the order", () => {
   for (const removal of ["deletion", "moveFrom"] as const) {
     test(`rejecting the insertion leaves the bookmark end outside the link while its other piece is in a pending ${removal}`, () => {
       expect(firstParagraph(resolveIds(tracked(removal), [2], REJECT))).toEqual(
-        [expect.objectContaining({ type: removal }), bookmarkEnd, link("a")],
+        [
+          expect.objectContaining({ type: removal }),
+          {
+            ...bookmarkEnd,
+            keptCut: { depth: 1, keptFrom: "2026-03-04T05:00:02Z" },
+          },
+          link("a"),
+        ],
       );
     });
 

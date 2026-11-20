@@ -54,4 +54,27 @@ describe("a kept range marker's cut", () => {
     ]);
     expect(cuts(settleKeptCuts([before, marker, after]))).toEqual([]);
   });
+
+  test("inside a record, stays while a pending change meets the markers across its edge", () => {
+    const pending: InlineNode = {
+      type: "insertion",
+      info: { id: 4, author: "C", date: "2026-03-04T05:00:02Z" },
+      content: [link("x")],
+    };
+    const holding = (): ParagraphContent => ({
+      type: "hyperlink",
+      rId: "rId9",
+      href: "https://example.org",
+      children: [
+        { type: "bookmarkEnd", id: 1, keptCut: CUT },
+        { type: "run", content: [{ type: "text", text: "a" }] },
+      ],
+    });
+    const inner = (nodes: readonly InlineNode[]): unknown[] =>
+      nodes.flatMap((node) =>
+        node.type === "hyperlink" ? cuts(node.children) : [],
+      );
+    expect(inner(settleKeptCuts([pending, holding()]))).toEqual([CUT]);
+    expect(inner(settleKeptCuts([link("b"), holding()]))).toEqual([]);
+  });
 });
