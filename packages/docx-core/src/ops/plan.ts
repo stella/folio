@@ -934,23 +934,38 @@ export const appendTrackedDeletion = ({
     });
     if (check.isErr()) return Result.err(check.error);
     const content = paragraph.content;
+    const fromGap = {
+      offset: start.offset,
+      zeroWidthBefore:
+        start.zeroWidthBefore ??
+        zeroWidthLeavesAt(content, start.offset).length,
+    };
+    const toGap = {
+      offset: end.offset,
+      zeroWidthBefore: end.zeroWidthBefore ?? 0,
+    };
     const segments = replacementDeletionSegments({
       spans: leafSpans(content),
-      from: {
-        offset: start.offset,
-        zeroWidthBefore:
-          start.zeroWidthBefore ??
-          zeroWidthLeavesAt(content, start.offset).length,
-      },
-      to: { offset: end.offset, zeroWidthBefore: end.zeroWidthBefore ?? 0 },
+      from: fromGap,
+      to: toGap,
       mode: { type: "suggesting", author: revision.author },
     });
-    ranges.push({ paragraph, at, segments });
+    const only = segments.at(0);
+    const reusesPreflight =
+      first.index === last.index &&
+      segments.length === 1 &&
+      only !== undefined &&
+      start.story === end.story &&
+      start.blockId === at.blockId &&
+      end.blockId === at.blockId &&
+      compareGaps(only.from, fromGap) === 0 &&
+      compareGaps(only.to, toGap) === 0;
+    ranges.push({ at, segments, reusesPreflight });
   }
   // Direct simulation gives the surviving paragraph's authored properties,
   // independent of tracked-deleted content that still occupies offsets.
   let direct = document;
-  for (const { at, segments } of ranges.toReversed()) {
+  for (const { at, segments, reusesPreflight } of ranges.toReversed()) {
     for (const segment of segments.toReversed()) {
       const op = {
         type: DOCUMENT_OP_TYPES.DELETE_RANGE,
@@ -961,6 +976,10 @@ export const appendTrackedDeletion = ({
         segment.plan === "tracked" ? { ...op, revision } : op,
       );
       if (appended.isErr()) return appended;
+      // The preflight already applied this exact direct deletion to the
+      // original document. A direct delete does not consume new IDs, and
+      // this single-paragraph plan has no join that needs its output.
+      if (reusesPreflight) return Result.ok(undefined);
       const allocated = plan.ops.at(-1);
       const simulated = applyDocumentOp(direct, {
         ...op,
