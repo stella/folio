@@ -2,7 +2,12 @@
 import { panic, Result } from "better-result";
 
 import type { Document, DocumentBody, Paragraph } from "../model/document";
-import { storyBody, storyParagraphs } from "./blocks";
+import {
+  type ParagraphLocation,
+  sameBlockList,
+  storyBody,
+  storyParagraphs,
+} from "./blocks";
 import { identityKeysIn, idKey, slotKey } from "./ids";
 import { gapAfterInserted } from "./inline";
 import {
@@ -201,6 +206,27 @@ const pastEndedComments = (
   return zeroWidthBefore + index - first;
 };
 
+/** The surviving deletion targets, in the story order used to append seam repairs. */
+const seamRepairTargets = (body: DocumentBody, ids: ReadonlySet<string>) => {
+  const inStoryOrder = () =>
+    storyParagraphs(body).filter(({ paragraph }) =>
+      ids.has(idKey(paragraph.paraId ?? "")),
+    );
+  // Successful delete pieces have checked the package's paragraph identities.
+  // An unnamed target needs the traversal's empty-id matching rule.
+  if (ids.has("")) return inStoryOrder();
+  const targets: ParagraphLocation[] = [];
+  for (const id of ids) {
+    const target = findStoryParagraph(body, id);
+    if (target === undefined) continue;
+    const first = targets.at(0);
+    if (first !== undefined && !sameBlockList(first.list, target.list))
+      return inStoryOrder();
+    targets.push(target);
+  }
+  return targets.sort((left, right) => left.index - right.index);
+};
+
 /**
  * A range replacement fragment: newly identified paragraphs before its last
  * paragraph, and the inline tail inserted into the retained original paragraph.
@@ -306,10 +332,14 @@ export const planTrackedReplace = (
     // The new authored payload separates the source's two cut pieces.
     // Removing this deletion must retain its identity transfers without
     // joining the payload to the retained suffix.
-    for (const { paragraph } of storyParagraphs(
-      storyBody(plan.document(), from.story),
-    )) {
-      if (!deletionBlocks.has(idKey(paragraph.paraId ?? ""))) continue;
+    const targets =
+      deletionIds.size === 0
+        ? []
+        : seamRepairTargets(
+            storyBody(plan.document(), from.story),
+            deletionBlocks,
+          );
+    for (const { paragraph } of targets) {
       const content = paragraph.content.map(breakRemovedSeam);
       if (content.every((node, index) => node === paragraph.content[index]))
         continue;

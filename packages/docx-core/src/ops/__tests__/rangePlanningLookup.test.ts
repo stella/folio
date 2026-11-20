@@ -43,6 +43,7 @@ const operation = ({
   from: number;
   to: number;
 }): PlanTrackedReplaceOptions => ({
+  sourceContainerPolicy: "join",
   from: { story: OP_STORIES.MAIN, blockId: id.toLowerCase(), offset: from },
   to: { story: OP_STORIES.MAIN, blockId: id, offset: to },
   revision: { id: 1000, author: "Author", date: "2026-01-11T00:00:00.000Z" },
@@ -287,3 +288,90 @@ test("ranges with unnamed endpoints or nested blocks preserve their story-order 
     walks.mockRestore();
   }
 });
+
+test.each([32, 128])(
+  "tracked paste visits only its seam paragraphs in a %i-paragraph body",
+  (width) => {
+    const seed = Array.from({ length: width }, (_, index) =>
+      paragraph(index + 1, [run("abcdef")]),
+    );
+    const anchor = formatParaId(width - 2);
+    for (const { fromId, toId, offset, fallbackWalks } of [
+      { fromId: anchor, toId: anchor, offset: 1, fallbackWalks: 0 },
+      { fromId: anchor, toId: anchor, offset: 3, fallbackWalks: 0 },
+      {
+        fromId: anchor,
+        toId: formatParaId(width),
+        offset: 3,
+        fallbackWalks: 0,
+      },
+      {
+        fromId: anchor,
+        toId: formatParaId(width + 1),
+        offset: 3,
+        fallbackWalks: 1,
+      },
+      { fromId: "", toId: "", offset: 3, fallbackWalks: 1 },
+    ]) {
+      const cell: BlockContent = {
+        type: "table",
+        rows: [
+          {
+            type: "tableRow",
+            cells: [
+              {
+                type: "tableCell",
+                content: [paragraph(width + 1, [run("cell text")])],
+              },
+            ],
+          },
+        ],
+      };
+      const last = paragraph(width + 2, [run("last text")]);
+      if (fromId === "") last.paraId = "";
+      const document: Document = {
+        package: { document: { content: [...seed, cell, last] } },
+      };
+      validateOpsDocument(document).unwrap();
+      const input = {
+        ...operation({ id: fromId, from: 1, to: offset }),
+        to: { story: OP_STORIES.MAIN, blockId: toId, offset: offset },
+        newIds: { revision: Array.from({ length: 32 }, (_, i) => 1001 + i) },
+      };
+      const walks = spyOn(blocks, "storyParagraphs");
+      try {
+        const count = (
+          policy: PlanTrackedReplaceOptions["sourceContainerPolicy"],
+        ) => {
+          walks.mockClear();
+          const planned = planTrackedReplace(document, {
+            ...input,
+            sourceContainerPolicy: policy,
+          }).unwrap();
+          return {
+            planned,
+            count: walks.mock.calls.filter(
+              ([body]) => body.content.length >= width - 3,
+            ).length,
+          };
+        };
+        const joined = count("join");
+        const separate = count("separate");
+        if (fromId === anchor && toId === anchor && offset === 3) {
+          expect(
+            separate.planned.some(
+              (op) => op.type === DOCUMENT_OP_TYPES.REPLACE_INLINE,
+            ),
+          ).toBe(true);
+        }
+        expect(separate.count - joined.count).toBe(fallbackWalks);
+        const applied = applyDocumentOps(document, separate.planned).unwrap();
+        expect(
+          applyDocumentOps(applied.document, applied.inverse).unwrap().document,
+        ).toEqual(document);
+      } finally {
+        walks.mockRestore();
+      }
+    }
+  },
+);
