@@ -20,7 +20,7 @@ import {
 } from "../support/documents.ts";
 import { parseFlowFile } from "../support/flow-file.ts";
 import { assertReadersAgree } from "../support/invariants.ts";
-import { capture } from "../support/oracle.ts";
+import { capture, commentIdsInTableOf } from "../support/oracle.ts";
 import { MARKDOWN_READ_OPTIONS, readAll } from "../support/readers.ts";
 
 /** Markup readers retain structural revisions; clean Markdown must match actual acceptance. */
@@ -187,6 +187,11 @@ test("recorded operation matrix seed 201 keeps clean readers consistent through 
     // Preserve the original matrix's pre-operation accepted/rejected copies;
     // revision allocation influences the inserted identities later steps name.
     await capture(reviewer, "tracked-changes");
+    const tableCommentIds = rebound.operations.flatMap((operation) =>
+      operation.type === "deleteTable"
+        ? commentIdsInTableOf(reviewer, operation.blockId)
+        : [],
+    );
     const result = reviewer.applyDocumentOperations(rebound, {
       undefinedReferences: "refuse",
     });
@@ -202,8 +207,13 @@ test("recorded operation matrix seed 201 keeps clean readers consistent through 
       index === NOOP_PROPERTIES_STEP ? expectedNoop : [],
       `seed 201 step ${index}: recorded refusals`,
     );
-    if (rebound.operations.some(({ type }) => type === "deleteTable"))
-      assert.deepEqual(result.receipts.at(0)?.retiredCommentIds, [6, 19]);
+    if (rebound.operations.some(({ type }) => type === "deleteTable")) {
+      assert.equal(tableCommentIds.length, 2);
+      assert.deepEqual(
+        result.receipts.at(0)?.retiredCommentIds,
+        tableCommentIds,
+      );
+    }
     for (const operation of rebound.operations) {
       const created = reviewer
         .getContent()
