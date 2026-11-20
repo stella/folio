@@ -425,7 +425,8 @@ describe("property areas", () => {
         ).toEqual([repoPath]);
       }
     }
-  });
+    // It reads and selects over every property file in the repository.
+  }, 60_000);
 });
 
 describe("property scheduling profiles", () => {
