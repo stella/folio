@@ -16,6 +16,7 @@ import {
   PARAGRAPH_MARK_CHANGE_KINDS,
   REVIEW_CARRIERS,
 } from "@stll/docx-core/model";
+import { paragraphKeptCutsFromChanges } from "@stll/docx-core/ops";
 
 import type {
   BookmarkEnd,
@@ -116,6 +117,7 @@ import {
 import { type PreviewLedger, standalonePreviewLedger } from "./previewBudget";
 import { FOLIO_REVIEW_HISTORY_NAMESPACE } from "./reviewHistoryNamespace";
 import {
+  joinsNameKeptMarkers,
   parseParagraphMarkResolutionJoin,
   parseResolutionJoins,
   parseSplitResolutionPiece,
@@ -2741,7 +2743,9 @@ export function parseParagraph(
     options?.runConsolidation === "deferred"
       ? content
       : consolidateParagraphContent(content);
-  paragraph.content = consolidated(rawContent);
+  paragraph.content = consolidated(
+    paragraphKeptCutsFromChanges(rawContent, joinsNameKeptMarkers),
+  );
 
   // Compute list rendering if this is a list item.
   //
