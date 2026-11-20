@@ -196,6 +196,7 @@ import {
 import { tableEditBoundaryRefusal } from "./tableEditBoundary";
 import { applyTableEdit } from "./tableEdits";
 import { blockInsertionPointAt } from "./tableLocation";
+import { ownPendingTableInsertion } from "./tableOwnPending";
 import { applyRowOp } from "./tableRows";
 import { applyTableOp } from "./tables";
 import { stampedTableRevisionIds } from "./tableTracking";
@@ -216,6 +217,7 @@ import {
   type RemoveNoteOp,
   type ReplaceBlocksOp,
   type ReplaceInlineOp,
+  REVISION_DECISIONS,
   type RevisionStamp,
   SECTION_BOUNDARY_POLICIES,
   type SetParagraphPropsOp,
@@ -3143,8 +3145,27 @@ const dispatchCore = ({ document, op, purpose }: DispatchOptions): Applied => {
       return resolveRevision(document, op, applyOps);
     case DOCUMENT_OP_TYPES.SET_REVISION_INFO:
       return setRevisionInfo(document, op);
+    case DOCUMENT_OP_TYPES.DELETE_TABLE: {
+      // The author's own pending column goes outright before the rest of
+      // the table is suggested for deletion.
+      const pending = ownPendingTableInsertion(document, op);
+      if (pending === undefined) return applyTableOp(document, op);
+      const { expected: _checked, ...rest } = op;
+      return applyOps(document, [
+        {
+          type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+          story: op.story,
+          revisionIds: pending.revisionIds,
+          decision: REVISION_DECISIONS.REJECT,
+        },
+        { ...rest, blockId: pending.blockId },
+      ]).map(({ document: edited, inverse, touched }) => ({
+        document: edited,
+        inverse,
+        touched,
+      }));
+    }
     case DOCUMENT_OP_TYPES.INSERT_TABLE:
-    case DOCUMENT_OP_TYPES.DELETE_TABLE:
     case DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS:
       return applyTableOp(document, op);
     case DOCUMENT_OP_TYPES.INSERT_ROW:

@@ -363,6 +363,9 @@ export const trackTableRows = ({
       },
       kind,
       stamp: revision,
+      ...(kind === WRAP_KINDS.DELETION
+        ? { commentAnchors: "stand" as const }
+        : {}),
     });
     if (wrapped.kind === "refused") {
       return refused({
