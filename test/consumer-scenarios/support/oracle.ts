@@ -981,6 +981,8 @@ export type Model = {
   deletedBlockIds: Set<string>;
   /** Live paragraphs whose every word is a pending deletion (`JoinSources`). */
   deletedContentIds: ReadonlySet<string>;
+  /** Paragraphs of table rows pending insertion (`JoinSources`). */
+  insertedRowIds: ReadonlySet<string>;
   /**
    * The live document's numbering, for blocks the accepted package no longer
    * holds (a paragraph pending deletion): what such a block states is what a
@@ -1173,6 +1175,11 @@ export type JoinSources =
        * separator in front of.
        */
       deletedContentIds?: ReadonlySet<string>;
+      /**
+       * Paragraphs of table rows pending insertion: a join through a deleted
+       * paragraph does not run into a table under review.
+       */
+      insertedRowIds?: ReadonlySet<string>;
     }
   | { type: "assumed" };
 
@@ -1211,28 +1218,54 @@ const markedJoinSourcesOf = async (bytes: Uint8Array): Promise<JoinSources> => {
   const ids = new Set<string>();
   const emptyIds = new Set<string>();
   const deletedContentIds = new Set<string>();
-  visitParsedParagraphs(
-    await parseDocx(toArrayBuffer(bytes), { preloadFonts: false }),
-    (paragraph) => {
-      if (
-        paragraph.paraId !== undefined &&
-        paragraph.content.some(({ type }) => type === "deletion") &&
-        paragraph.content.every(
-          ({ type }) => type === "deletion" || ZERO_WIDTH_INLINES.has(type),
-        )
+  const insertedRowIds = new Set<string>();
+  const parsed = await parseDocx(toArrayBuffer(bytes), { preloadFonts: false });
+  const visitBlocks = (blocks: readonly unknown[], inserted: boolean): void => {
+    for (const block of blocks) {
+      if (typeof block !== "object" || block === null) continue;
+      const type: unknown = Reflect.get(block, "type");
+      if (type === "paragraph") {
+        const id: unknown = Reflect.get(block, "paraId");
+        if (inserted && typeof id === "string") insertedRowIds.add(id);
+        continue;
+      }
+      if (type !== "table") continue;
+      const rows: unknown = Reflect.get(block, "rows");
+      for (const row of Array.isArray(rows) ? rows : []) {
+        const change: unknown = Reflect.get(row, "structuralChange");
+        const rowInserted =
+          inserted ||
+          (typeof change === "object" &&
+            change !== null &&
+            Reflect.get(change, "type") === "tableRowInsertion");
+        const cells: unknown = Reflect.get(row, "cells");
+        for (const cell of Array.isArray(cells) ? cells : []) {
+          const content: unknown = Reflect.get(cell, "content");
+          visitBlocks(Array.isArray(content) ? content : [], rowInserted);
+        }
+      }
+    }
+  };
+  visitBlocks(parsed.package.document.content, false);
+  visitParsedParagraphs(parsed, (paragraph) => {
+    if (
+      paragraph.paraId !== undefined &&
+      paragraph.content.some(({ type }) => type === "deletion") &&
+      paragraph.content.every(
+        ({ type }) => type === "deletion" || ZERO_WIDTH_INLINES.has(type),
       )
-        deletedContentIds.add(paragraph.paraId);
-      if (
-        paragraph.paraId === undefined ||
-        paragraph.pPrMark === undefined ||
-        !JOINING_MARK_KINDS.has(paragraph.pPrMark.kind)
-      )
-        return;
-      ids.add(paragraph.paraId);
-      if (paragraph.content.length === 0) emptyIds.add(paragraph.paraId);
-    },
-  );
-  return { type: "marked", ids, emptyIds, deletedContentIds };
+    )
+      deletedContentIds.add(paragraph.paraId);
+    if (
+      paragraph.paraId === undefined ||
+      paragraph.pPrMark === undefined ||
+      !JOINING_MARK_KINDS.has(paragraph.pPrMark.kind)
+    )
+      return;
+    ids.add(paragraph.paraId);
+    if (paragraph.content.length === 0) emptyIds.add(paragraph.paraId);
+  });
+  return { type: "marked", ids, emptyIds, deletedContentIds, insertedRowIds };
 };
 
 /**
@@ -1267,6 +1300,10 @@ export const modelOf = (
     deletedContentIds:
       joinSources.type === "marked"
         ? (joinSources.deletedContentIds ?? new Set())
+        : new Set(),
+    insertedRowIds:
+      joinSources.type === "marked"
+        ? (joinSources.insertedRowIds ?? new Set())
         : new Set(),
     removedNoteStories: new Set(),
     uncertainNoteStories: new Set(),
@@ -3298,6 +3335,7 @@ const materialize = (model: Model): Expected[] => {
         !inTable &&
         model.mode !== "suggested" &&
         model.engine === "canonical" &&
+        !(entry.pre && model.insertedRowIds.has(entry.pre.id)) &&
         joinNext.container === undefined &&
         container?.rowIndex === 0 &&
         container.cellIndex === 0 &&
