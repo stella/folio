@@ -93,6 +93,8 @@ export {
   validateOpsDocument,
 } from "./contract";
 export {
+  type CommentReferenceOffset,
+  commentReferenceOffsets,
   OBJECT_REPLACEMENT_CHARACTER,
   paragraphContentVerdict,
   paragraphLength,

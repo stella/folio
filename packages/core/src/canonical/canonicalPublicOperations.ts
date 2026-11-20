@@ -183,6 +183,10 @@ import type {
   StyleDefinitions,
 } from "../types/document";
 import { readModel } from "../types/documentModel";
+import {
+  batchCommentReferenceShift,
+  mapIntentPositions,
+} from "./batchCommentReferences";
 import { createCanonicalBatchReview } from "./canonicalBatchReview";
 import {
   canonicalCommentBody,
@@ -3205,6 +3209,10 @@ export class CanonicalPublicOperations {
       doc: projected.value.doc,
     });
     let document = readModel(session.document);
+    // The batch's comments run before its edits, each adding a reference
+    // unit; the document once they stand maps the edits' pre-batch positions.
+    const beforeBatch = document;
+    let annotated: Document | undefined;
     const ops: DocumentOp[] = [];
     const appliedById = new Map<
       string,
@@ -3271,10 +3279,18 @@ export class CanonicalPublicOperations {
         story,
         resolvedOperation,
       });
-      const intents =
+      const shift = batchCommentReferenceShift({
+        before: beforeBatch,
+        commented:
+          resolvedOperation.plan.address.type === "annotation"
+            ? sourceDocument
+            : (annotated ?? sourceDocument),
+      });
+      const intents = (
         resolvedOperation.joinsParagraphBefore === true
           ? deletionIntentsAsItRuns(sourceDocument, story, inserting)
-          : inserting;
+          : inserting
+      ).map((intent) => mapIntentPositions(intent, shift));
       const livePropertyRefusal = batchPropertyRefusal({
         document: sourceDocument,
         story,
@@ -3481,7 +3497,7 @@ export class CanonicalPublicOperations {
               : revisionSpan(after.content, new Set(compiled.value.revisions));
           const from =
             changed === undefined
-              ? comment.from
+              ? shift(comment.from)
               : {
                   story: comment.from.story,
                   blockId: comment.from.blockId,
@@ -3492,7 +3508,7 @@ export class CanonicalPublicOperations {
               ? {
                   ...comment.to,
                   offset:
-                    comment.to.offset +
+                    shift(comment.to).offset +
                     paragraphLength(after) -
                     paragraphLength(before),
                 }
@@ -3671,6 +3687,8 @@ export class CanonicalPublicOperations {
     const completed = new Set<string>();
     for (const resolvedOperation of executionOrder) {
       if (completed.has(resolvedOperation.operation.id)) continue;
+      if (resolvedOperation.plan.address.type !== "annotation")
+        annotated ??= document;
       const window = windows.get(resolvedOperation);
       // The ordinary one-operation path performs no admission replay or census.
       if (window === undefined) {
