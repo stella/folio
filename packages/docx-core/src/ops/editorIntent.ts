@@ -897,6 +897,36 @@ const replacementCaret = (at: TextPosition, text: string): TextPosition =>
           : { zeroWidthBefore: at.zeroWidthBefore }),
       };
 
+/**
+ * Why a join's paragraphs cannot be joined, as the join itself refuses it:
+ * one is missing, or the second does not directly follow the first.
+ */
+const adjacentJoinRefusal = (
+  document: Document,
+  join: { story: OpStory; blockId: string; nextBlockId: string },
+): DocumentOpRefusal | undefined => {
+  const paragraphs = storyParagraphs(storyBody(document, join.story));
+  const find = (blockId: string) =>
+    paragraphs.find(
+      ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(blockId),
+    );
+  const first = find(join.blockId);
+  const next = find(join.nextBlockId);
+  if (first === undefined || next === undefined)
+    return new DocumentOpRefusal({
+      reason: DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
+      message: `${first === undefined ? join.blockId : join.nextBlockId} does not exist.`,
+      opType: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
+    });
+  if (!sameBlockList(first.list, next.list) || next.index !== first.index + 1)
+    return new DocumentOpRefusal({
+      reason: DOCUMENT_OP_REFUSAL_REASONS.NOT_ADJACENT,
+      message: `${join.nextBlockId} does not directly follow ${join.blockId}.`,
+      opType: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
+    });
+  return undefined;
+};
+
 const paragraphAt = (document: Document, at: TextPosition) =>
   findStoryParagraph(storyBody(document, at.story), at.blockId)?.paragraph;
 
@@ -3471,9 +3501,17 @@ export const compileEditorIntent = (
           revision: mode.revision,
           newIds: mode.newIds,
         });
-        const joined = plan.join(join);
-        if (joined.isErr()) return Result.err(joined.error);
-        cancelledAddedMark = joined.value === "cancelled-added-mark";
+        // A mark a pending deletion already took already joins the two
+        // paragraphs as the view shows them; the suggestion records only the
+        // properties the join gives, under that deletion.
+        if (paragraph?.pPrMark?.kind !== "del") {
+          const joined = plan.join(join);
+          if (joined.isErr()) return Result.err(joined.error);
+          cancelledAddedMark = joined.value === "cancelled-added-mark";
+        } else {
+          const adjacent = adjacentJoinRefusal(document, join);
+          if (adjacent !== undefined) return Result.err(adjacent);
+        }
         const alignment = joinParagraphPropertyAlignment({
           document,
           current: plan.document(),

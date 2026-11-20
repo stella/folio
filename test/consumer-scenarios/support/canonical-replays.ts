@@ -58,18 +58,16 @@ export const CANONICAL_REPLAY_GAPS: Readonly<Record<string, ReplayGap>> = {
 export const CANONICAL_VACUOUS_STEPS: Readonly<
   Record<string, readonly number[]>
 > = {
-  "accepted-tracked-replacement.json": [0],
   "issue-1356-42bb7d148b3e1e55.json": [1, 2],
   "issue-1356-split-after-insertion-beside-pending-join.json": [4],
   "issue-1757-merge-across-deleted-note-paragraph-before-inserted-table.json": [
     0,
   ],
-  "issue-1757-merge-across-deleted-paragraph-before-inserted-table.json": [0],
   "issue-2044-heading-style-in-a-table-cell.json": [12],
   "issue-2222-styled-insert-after-undefined-numbering-level.json": [2],
   "issue-2236-new-list-in-header-after-other-stories-direct.json": [0],
   "issue-2316-c14cd1e28851babe.json": [0, 1],
-  "issue-2904-merged-numbered-heading-emptied.json": [1],
+  "issue-2904-merged-numbered-heading-emptied.json": [2],
   "undefined-numbering-level-projection.json": [1],
 };
 
