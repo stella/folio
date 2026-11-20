@@ -1118,6 +1118,9 @@ export type ParagraphReviewFields = {
 };
 
 // @public
+export const paragraphsThroughTextBoxes: (document: Document_2, story: OpStory) => ParagraphLocation[];
+
+// @public
 export const paragraphVisibleText: (paragraph: Paragraph) => string;
 
 // @public

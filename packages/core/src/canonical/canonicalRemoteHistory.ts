@@ -6,11 +6,10 @@ import {
   DOCUMENT_OP_TYPES,
   type DocumentBatch,
   type DocumentOp,
-  findStoryBody,
   type OpStory,
   paragraphLength,
+  paragraphsThroughTextBoxes,
   type SequencedBatch,
-  storyParagraphs,
   type TextPosition,
   transformBatch,
   transformPosition,
@@ -53,12 +52,8 @@ export const remapSelection = (
   return { type: selection.type === "all" ? "all" : "text", anchor, head };
 };
 
-const storyParagraphList = (document: Document, story: OpStory) => {
-  const body = findStoryBody(document, story);
-  return body === undefined
-    ? []
-    : storyParagraphs(body).map(({ paragraph }) => paragraph);
-};
+const storyParagraphList = (document: Document, story: OpStory) =>
+  paragraphsThroughTextBoxes(document, story).map(({ paragraph }) => paragraph);
 
 /**
  * Where a position the remote edit could not map goes: its paragraph clamped

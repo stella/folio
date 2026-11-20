@@ -5,7 +5,7 @@ import { EditorState } from "prosemirror-state";
 import { mergeRunContent } from "@stll/docx-core/ops";
 
 import {
-  removeCommentMarkers,
+  removeCommentMarkersThroughTextBoxes,
   visitCommentMarkers,
 } from "../docx/commentAnchorIndex";
 import { paragraphFormattingWithAuthoredIndentation } from "../docx/paragraphPropertySource";
@@ -363,7 +363,7 @@ export const sameOriginalBlocks = (
   after: readonly BlockContent[],
   addedCommentIds: ReadonlySet<number>,
 ): boolean => {
-  const restored = removeCommentMarkers(after, addedCommentIds);
+  const restored = removeCommentMarkersThroughTextBoxes(after, addedCommentIds);
   return (
     before.length === restored.length &&
     before.every((block, index) => {
