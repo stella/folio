@@ -2473,6 +2473,18 @@ export type ParagraphMarkChange = WritableRecord & {
    * reader that does not know it joins as any rejected mark does.
    */
   survivor?: "first" | undefined;
+  /**
+   * A later pending deletion of this added mark, `w:del` written beside its
+   * `w:ins` or `w:moveTo`: another author deleted the break an insertion
+   * made, and either can be resolved first. Absent on deleted and
+   * moved-from marks.
+   */
+  deletion?: ParagraphMarkDeletion | undefined;
+};
+
+/** The later deletion an added paragraph mark holds beside its insertion. */
+export type ParagraphMarkDeletion = WritableRecord & {
+  info: TrackedChangeInfo;
 };
 
 export const REVIEW_CARRIERS = {

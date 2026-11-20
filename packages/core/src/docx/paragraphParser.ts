@@ -480,10 +480,19 @@ function parseParagraphMarkChange(
       kind,
     );
     if (element) {
+      // An added mark can also carry a later deletion of it: both records
+      // stand on the mark, and neither is dropped.
+      const deletion =
+        kind === "ins" || kind === "moveTo"
+          ? findChildByNamespaceUri(rPr, WORDPROCESSINGML_NAMESPACE_URIS, "del")
+          : null;
       return {
         kind,
         info: parseTrackedChangeInfo(element),
         ...parseParagraphMarkResolutionJoin(element),
+        ...(deletion
+          ? { deletion: { info: parseTrackedChangeInfo(deletion) } }
+          : {}),
       };
     }
   }

@@ -43,6 +43,8 @@ import {
 } from "prosemirror-transform";
 import type { EditorView } from "prosemirror-view";
 
+import type { ParagraphMarkChange } from "@stll/docx-core/model";
+
 import type { TrackedChangeInfo } from "../../types/document";
 import { addTrackedDeletionMark } from "../addTrackedDeletionMark";
 import { expectParagraphAttrs, expectTrackedChangeMarkAttrs } from "../attrs";
@@ -290,6 +292,20 @@ function markRangeAsDeleted(
       removedMark = true;
     } else if (isCurrentAuthorParagraphInsertion(mark, pluginState.author)) {
       retractedBreaks.push(pos);
+      removedMark = true;
+    } else if (isOtherAuthorParagraphInsertion(mark, pluginState.author)) {
+      // Another author's added break keeps their insertion; its deletion is
+      // recorded beside it.
+      tr.setNodeAttribute(pos, "pPrMark", {
+        ...mark,
+        deletion: {
+          info: {
+            id: delAttrs.revisionId,
+            author: delAttrs.author,
+            date: delAttrs.date,
+          },
+        },
+      });
       removedMark = true;
     }
   });
@@ -1765,6 +1781,21 @@ function isCurrentAuthorParagraphInsertion(
   }
   const info = mark.info as { author?: unknown };
   return info.author === author;
+}
+
+/** An added break another author made that no deletion has taken yet. */
+function isOtherAuthorParagraphInsertion(
+  value: unknown,
+  author: string,
+): value is ParagraphMarkChange {
+  if (typeof value !== "object" || value === null) return false;
+  const mark = value as Partial<ParagraphMarkChange>;
+  return (
+    (mark.kind === "ins" || mark.kind === "moveTo") &&
+    mark.deletion === undefined &&
+    typeof mark.info === "object" &&
+    mark.info.author !== author
+  );
 }
 
 /**

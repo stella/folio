@@ -666,16 +666,31 @@ export const deleteBlocks = ({
       paragraphPropertiesOf(following.formatting),
       paragraphPropertiesOf(last.paragraph.formatting),
     );
+  // So does an added mark whose later deletion already took it.
   const keepsDeletedMark = (paragraph: Paragraph) =>
     op.move !== true &&
-    paragraph.pPrMark?.kind === "del" &&
+    (paragraph.pPrMark?.kind === "del" ||
+      paragraph.pPrMark?.deletion !== undefined) &&
+    !(finalTakeover && paragraph === last.paragraph);
+  // Another author's added mark the deletion takes keeps that insertion and
+  // records the deletion beside it, as a later deletion of an insertion does.
+  const deletingAuthor = op.revision.author;
+  const deletesAddedMark = (paragraph: Paragraph) =>
+    op.move !== true &&
+    losesMark(paragraph) &&
+    !joinsNext.has(paragraph) &&
+    (paragraph.pPrMark?.kind === "ins" ||
+      paragraph.pPrMark?.kind === "moveTo") &&
+    paragraph.pPrMark.deletion === undefined &&
+    paragraph.pPrMark.info.author !== deletingAuthor &&
     !(finalTakeover && paragraph === last.paragraph);
   if (
     affected.some(
       (paragraph) =>
         paragraph.pPrMark !== undefined &&
         !joinsNext.has(paragraph) &&
-        !keepsDeletedMark(paragraph),
+        !keepsDeletedMark(paragraph) &&
+        !deletesAddedMark(paragraph),
     )
   ) {
     return refuse(
@@ -721,6 +736,14 @@ export const deleteBlocks = ({
       next = unmarked;
     } else if (keepsDeletedMark(paragraph)) {
       // Already deleted: the earlier record stands.
+    } else if (deletesAddedMark(paragraph) && next.pPrMark !== undefined) {
+      next = {
+        ...next,
+        pPrMark: {
+          ...next.pPrMark,
+          deletion: { info: stampInfo(op.revision) },
+        },
+      };
     } else if (losesMark(paragraph)) {
       next = {
         ...next,

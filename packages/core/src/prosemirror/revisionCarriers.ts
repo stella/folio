@@ -345,6 +345,20 @@ export const getFolioNodeRevisionCarriers = (
           to: nodePos + node.nodeSize,
         });
       }
+      // A later deletion of an added mark is its own change on the mark.
+      const deletion = paragraphMark["deletion"];
+      const deletionMetadata = isObjectRecord(deletion)
+        ? propertyRevisionMetadata(deletion["info"])
+        : null;
+      if (deletionMetadata) {
+        carriers.push({
+          ...deletionMetadata,
+          type: "paragraphMarkDeleted",
+          text: node.textContent,
+          from: nodePos + node.nodeSize - 1,
+          to: nodePos + node.nodeSize,
+        });
+      }
     }
   }
 

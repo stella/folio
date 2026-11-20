@@ -112,6 +112,8 @@ const revisionInfosOf = (paragraph: Paragraph): TrackedChangeInfo[] => {
   const out: TrackedChangeInfo[] = [];
   for (const change of paragraph.propertyChanges ?? []) out.push(change.info);
   if (paragraph.pPrMark !== undefined) out.push(paragraph.pPrMark.info);
+  if (paragraph.pPrMark?.deletion !== undefined)
+    out.push(paragraph.pPrMark.deletion.info);
   const visit = (nodes: readonly InlineNode[]): void => {
     for (const node of nodes) {
       if (isTrackedWrapper(node)) out.push(node.info);

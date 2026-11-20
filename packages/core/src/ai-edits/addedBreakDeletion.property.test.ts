@@ -228,7 +228,7 @@ test("retracting an inserted paragraph before a table keeps a comment that ends 
   );
 });
 
-test("retracting an inserted paragraph first in its container keeps a comment that starts in it and leaves no insertion", async () => {
+test("deleting another author's inserted paragraph first in its container keeps a comment that starts in it and records the deletion beside the insertion", async () => {
   const document = createEmptyDocument();
   const info = { author: "Earlier Reviewer", date: "2026-01-01T00:00:00Z" };
   document.package.document.comments = [
@@ -279,8 +279,10 @@ test("retracting an inserted paragraph first in its container keeps a comment th
   expect(xml.indexOf('commentRangeStart w:id="8"')).toBeLessThan(
     xml.indexOf('commentRangeEnd w:id="8"'),
   );
-  // Nothing of the retracted insertion stays pending.
-  expect(xml).not.toMatch(/<w:ins\b/u);
+  // The earlier insertion stays pending, its break deleted beside it.
+  expect(xml).toMatch(
+    /<w:rPr><w:ins w:id="3"[^>]*\/><w:del [^>]*\/><\/w:rPr>/u,
+  );
 });
 
 test.each(

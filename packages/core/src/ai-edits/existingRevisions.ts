@@ -32,6 +32,17 @@ export const createExistingRevisionGuard = ({
     );
   const paragraphMarkAt = (position: number) =>
     position + (doc.nodeAt(position)?.nodeSize ?? 1) - 1;
+  // Deleting a container's last paragraph deletes the break before it: the
+  // previous paragraph's mark, which may be another author's revision.
+  const endsItsContainer = (position: number): boolean => {
+    const at = doc.resolve(position);
+    const index = at.index();
+    return (
+      index > 0 &&
+      index === at.parent.childCount - 1 &&
+      at.parent.child(index - 1).type.name === "paragraph"
+    );
+  };
   return (claim: BatchClaim): boolean => {
     switch (claim.type) {
       case "text":
@@ -50,7 +61,11 @@ export const createExistingRevisionGuard = ({
       case "paragraphProperties":
         return propertiesAt(paragraphMarkAt(claim.block));
       case "deleteBlock":
-        return intersects(claim.block, claim.end);
+        return (
+          intersects(claim.block, claim.end) ||
+          (endsItsContainer(claim.block) &&
+            intersects(claim.block - 1, claim.block))
+        );
       case "merge":
         return (
           intersects(claim.next - 1, claim.next) ||
