@@ -1,10 +1,13 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 
-import { parseStreamingXmlWithSourceRanges } from "@stll/docx-core/xml";
+import * as xml from "@stll/docx-core/xml";
 
 import type { BlockContent } from "../types/document";
 import { parseHeader } from "./headerFooterParser";
-import { buildStoryBlockReplay } from "./storyBlockReplay";
+import {
+  buildStoryBlockReplay,
+  materializeReplayFragment,
+} from "./storyBlockReplay";
 import { getChildElements, getNamespaceUri } from "./xmlParser";
 
 const WORD = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
@@ -34,6 +37,39 @@ const sourceParagraph = (text: string) =>
   `<q:p><q:r><q:t>${text}</q:t></q:r></q:p>`;
 const emittedParagraph = (text: string) =>
   `<w:p><w:r><w:t>${text}</w:t></w:r></w:p>`;
+
+test("materializing a Strict fragment needs neither a full token list nor source ranges", () => {
+  const fragment = '<w:p example="a > b"><w:r><w:t>changed</w:t></w:r></w:p>';
+  const parsed = xml.parseStreamingXmlWithSourceRanges(emitted(fragment));
+  if (parsed.status !== "parsed") throw new Error("Expected a generated story");
+  const root = getChildElements(parsed.value).at(0);
+  const element = getChildElements(root).at(0);
+  if (!element) throw new Error("Expected a generated paragraph");
+
+  const matchAll = String.prototype.matchAll;
+  let fragmentTokenScans = 0;
+  const tokens = spyOn(String.prototype, "matchAll").mockImplementation(
+    function (this: string, ...args: Parameters<typeof matchAll>) {
+      if (String(this) === fragment) fragmentTokenScans += 1;
+      return matchAll.apply(this, args);
+    },
+  );
+  const readsWithRanges = spyOn(xml, "parseStreamingXmlWithSourceRanges");
+  try {
+    const materialized = materializeReplayFragment({
+      xml: fragment,
+      element,
+      sourceNamespace: STRICT_WORD,
+    });
+    expect(materialized).toContain(`xmlns:w="${STRICT_WORD}"`);
+    expect(materialized).toContain("<w:t>changed</w:t>");
+    expect(fragmentTokenScans).toBe(0);
+    expect(readsWithRanges).toHaveBeenCalledTimes(0);
+  } finally {
+    readsWithRanges.mockRestore();
+    tokens.mockRestore();
+  }
+});
 
 test("moves paragraphs with identical text by stable identity without reusing a source range", () => {
   const first = block("11111111", "same");
@@ -147,7 +183,7 @@ test("changed fragments bind generated aliases locally and map namespace declara
       `<q:hdr xmlns:q='${STRICT_WORD}' xmlns:w="urn:foreign">`,
     ),
   ).toBe(true);
-  const parsed = parseStreamingXmlWithSourceRanges(output ?? "");
+  const parsed = xml.parseStreamingXmlWithSourceRanges(output ?? "");
   expect(parsed.status).toBe("parsed");
   if (parsed.status !== "parsed") return;
   const root = getChildElements(parsed.value).at(0);
