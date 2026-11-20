@@ -506,24 +506,6 @@ describe("block operations on and next to an inline object's paragraph", () => {
             const reopened = await reopen(reviewer);
             expect(readerOrder(reopened)).toEqual(readerOrder(reviewer));
 
-            if (
-              mode === "tracked-changes" &&
-              operation.type === "deleteBlock"
-            ) {
-              expect(result.skipped).toEqual([
-                {
-                  id: "op",
-                  reason: "invalidResult",
-                  message: "Accept All would lose a drawing.",
-                },
-              ]);
-              expect(result.applied).toEqual([]);
-              expect(result.undoHandle).toBeNull();
-              expect(await savedBody(await reviewer.toBuffer())).toEqual(
-                expectedBody(ORIGINAL, object),
-              );
-              return;
-            }
             if (scenario.refused?.(kind, placement, mode)) {
               expect(result.skipped).toEqual([
                 { id: "op", reason: "unsupportedBlock" },

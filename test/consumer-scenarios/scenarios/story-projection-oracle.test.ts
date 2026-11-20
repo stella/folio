@@ -39,22 +39,12 @@ const pendingReference = async (
       { id: "delete-reference", type: "deleteBlock", blockId: reference.id },
     ],
   } as const;
-  const refused = reviewer.applyDocumentOperations(
+  const applied = reviewer.applyDocumentOperations(
     { ...batch, mode: "tracked-changes" },
     { undefinedReferences: "refuse" },
   );
-  assert.equal(refused.status, "rejected");
-  assert.deepEqual(refused.applied, []);
-  assert.equal(refused.skipped.at(0)?.reason, "invalidResult");
-  assert.match(refused.skipped.at(0)?.message ?? "", /Accept All.*note/u);
-  assert.deepEqual(reviewer.getChanges(), []);
-  const staged = reviewer.applyDocumentOperations(
-    { ...batch, mode: "suggested" },
-    { undefinedReferences: "refuse" },
-  );
-  const suggestionId = staged.applied.at(0)?.suggestionId;
-  assert.ok(suggestionId, JSON.stringify(staged));
-  assert.equal(reviewer.acceptSuggestion(suggestionId), true);
+  assert.equal(applied.applied.length, 1, JSON.stringify(applied));
+  assert.deepEqual(applied.skipped, []);
   assert.ok(reviewer.getChanges().length > 0);
   const story = { type: kind, noteId: 1 };
   assert.ok(

@@ -427,23 +427,7 @@ test("clean Markdown keeps referenced footnote and endnote trailers through body
         { ...batch, mode: "tracked-changes" },
         { undefinedReferences: "refuse" },
       );
-      if (type === "deleteBlock") {
-        assert.equal(result.status, "rejected");
-        assert.deepEqual(result.applied, []);
-        assert.equal(result.skipped.at(0)?.reason, "invalidResult");
-        assert.match(result.skipped.at(0)?.message ?? "", /Accept All.*note/u);
-        assert.deepEqual(reviewer.getChanges(), []);
-        const staged = reviewer.applyDocumentOperations(
-          { ...batch, mode: "suggested" },
-          { undefinedReferences: "refuse" },
-        );
-        const suggestionId = staged.applied.at(0)?.suggestionId;
-        assert.ok(suggestionId, JSON.stringify(staged));
-        assert.equal(reviewer.acceptSuggestion(suggestionId), true);
-        assert.ok(reviewer.getChanges().length > 0);
-      } else {
-        assert.equal(result.applied.length, 1, JSON.stringify(result.issues));
-      }
+      assert.equal(result.applied.length, 1, JSON.stringify(result.issues));
       await assertAcceptedReaders(
         new Uint8Array(await reviewer.toBuffer()),
         `${type}: reference ${prefix}`,
