@@ -575,6 +575,28 @@ const paragraphIdsCollide = ({
   return false;
 };
 
+type ParagraphRecordCollisionOptions = {
+  document: Document;
+  paragraph: Paragraph;
+  incoming: readonly string[];
+  kept: () => readonly string[];
+};
+
+const paragraphRecordsCollide = ({
+  document,
+  paragraph,
+  incoming,
+  kept,
+}: ParagraphRecordCollisionOptions): boolean => {
+  if (incoming.length === 0) return false;
+  const outside = identitiesOutside(document, [paragraph]);
+  const own = new Set(kept());
+  return (
+    incoming.some((key) => outside.has(key) || own.has(key)) ||
+    new Set(incoming).size !== incoming.length
+  );
+};
+
 type Commit = {
   document: Document;
   op: DocumentOp;
@@ -2830,12 +2852,13 @@ const setParagraphReview = (
       `${op.blockId} ends its container: there is no next paragraph its mark could join.`,
     );
   }
-  const outside = identitiesOutside(document, [paragraph]);
-  const own = new Set(identityKeysIn(paragraph.content));
-  const incoming = reviewKeysOf(review);
   if (
-    incoming.some((key) => outside.has(key) || own.has(key)) ||
-    new Set(incoming).size !== incoming.length
+    paragraphRecordsCollide({
+      document,
+      paragraph,
+      incoming: reviewKeysOf(review),
+      kept: () => identityKeysIn(paragraph.content),
+    })
   ) {
     return refuse(
       op,
@@ -2935,12 +2958,13 @@ const replaceInline = (document: Document, op: ReplaceInlineOp): Applied => {
       "The content holds a paragraph id the package already uses.",
     );
   }
-  const outside = identitiesOutside(document, [paragraph]);
-  const own = new Set(reviewKeysOf(reviewFieldsOf(paragraph)));
-  const incoming = identityKeysIn(content);
   if (
-    incoming.some((key) => outside.has(key) || own.has(key)) ||
-    new Set(incoming).size !== incoming.length
+    paragraphRecordsCollide({
+      document,
+      paragraph,
+      incoming: identityKeysIn(content),
+      kept: () => reviewKeysOf(reviewFieldsOf(paragraph)),
+    })
   ) {
     return refuse(
       op,
