@@ -22,7 +22,10 @@ import type {
   MoveToRangeEnd,
   MoveToRangeStart,
 } from "../../types/document";
-import { serializeCopyOriginAncestors } from "../reviewResolutionProvenance";
+import {
+  serializeCopyOriginAncestors,
+  serializeKeptCut,
+} from "../reviewResolutionProvenance";
 
 const attribute = (name: string, value: string | number): string =>
   `${name}="${escapeXmlAttribute(String(value))}"`;
@@ -38,6 +41,9 @@ export const markupRangeAttributes = (
     );
   }
   attributes.push(...copyOriginAttributes(copyOriginAncestors));
+  const keptCut = serializeKeptCut(marker.keptCut);
+  if (keptCut !== undefined)
+    attributes.push(attribute("folio:keptCut", keptCut));
   return attributes;
 };
 

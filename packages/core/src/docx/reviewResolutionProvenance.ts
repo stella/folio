@@ -5,11 +5,13 @@ import { MAX_REVISION_ID } from "@stll/docx-core/model";
 import {
   type CopyOriginAncestorList,
   isCopyOriginAncestors,
+  isKeptCut,
 } from "@stll/docx-core/ops";
 
 import { MAX_REVIEW_HISTORY_ATTRIBUTE_LENGTH } from "../reviewHistoryLimits";
 import type {
   Insertion,
+  KeptCut,
   ParagraphMarkChange,
   ParagraphPropertyChange,
   RecordField,
@@ -23,8 +25,9 @@ const NAMESPACES: ReadonlySet<string> = new Set([
 ]);
 /**
  * The review history version folio writes. Version 2 adds the revision a
- * paragraph property change belongs to (`folio:resolvesWith`). Version 1
- * files carry no such link and are read as they are.
+ * paragraph property change belongs to (`folio:resolvesWith`) and a kept
+ * range marker's cut (`folio:keptCut`). Version 1 files carry neither and are
+ * read as they are.
  */
 const VERSION = 2;
 /** Every version the reader understands. */
@@ -398,6 +401,13 @@ export const parseCopyOriginAncestors = (
     attribute: "copyOriginAncestors",
     valid: isCopyOriginAncestors,
   });
+/** The cut a kept range marker stands in (`folio:keptCut`). */
+export const parseKeptCut = (node: XmlElement): KeptCut | undefined =>
+  parseAttribute({ node, attribute: "keptCut", valid: isKeptCut });
+export const serializeKeptCut = (
+  value: KeptCut | undefined,
+): string | undefined =>
+  encodeAttribute({ attribute: "keptCut", value, valid: isKeptCut });
 export const serializeResolutionJoins = (
   value: Insertion["resolutionJoins"],
 ): string =>
@@ -590,6 +600,7 @@ const PROVENANCE_VALUE_SHAPES: Readonly<
   [PARAGRAPH_MARK_FIELDS.resolutionJoin.attribute]:
     isEncodedParagraphMarkResolutionJoin,
   copyOriginAncestors: isCopyOriginAncestors,
+  keptCut: isKeptCut,
   splitResolutionJoins: isSplitResolutionPiece,
   [ENCLOSING_ATTRIBUTE]: enclosingHandoffs,
   [PARAGRAPH_MARK_FIELDS.survivor.attribute]: isParagraphMarkSurvivor,

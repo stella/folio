@@ -85,6 +85,7 @@ import type { InlineWrapperElement } from "./inlineWrapperParser";
 import { preserveLinkedSdt } from "./linkedSdtPreservation";
 import {
   parseCopyOriginMarker,
+  parseKeptCutMarker,
   parseMarkupRangeMarker,
   parseMoveBookmarkMarker,
 } from "./markupRangeMarker";
@@ -1041,7 +1042,7 @@ type HoistedRevision = {
  * Delegates to bookmarkParser module.
  */
 function parseBookmarkStart(node: XmlElement): BookmarkStart {
-  return parseBookmarkStartFromModule(node);
+  return { ...parseBookmarkStartFromModule(node), ...parseKeptCutMarker(node) };
 }
 
 /**
@@ -1049,7 +1050,7 @@ function parseBookmarkStart(node: XmlElement): BookmarkStart {
  * Delegates to bookmarkParser module.
  */
 function parseBookmarkEnd(node: XmlElement): BookmarkEnd {
-  return parseBookmarkEndFromModule(node);
+  return { ...parseBookmarkEndFromModule(node), ...parseKeptCutMarker(node) };
 }
 
 /**
@@ -2326,6 +2327,7 @@ const PARAGRAPH_CONTENT_HANDLERS = {
     contents.push({
       type: "moveFromRangeStart",
       ...parseMoveBookmarkMarker(child),
+      ...parseKeptCutMarker(child),
     });
   },
   moveFromRangeEnd: (child, { contents }) => {
@@ -2333,12 +2335,14 @@ const PARAGRAPH_CONTENT_HANDLERS = {
       type: "moveFromRangeEnd",
       ...parseMarkupRangeMarker(child),
       ...parseCopyOriginMarker(child),
+      ...parseKeptCutMarker(child),
     });
   },
   moveToRangeStart: (child, { contents }) => {
     contents.push({
       type: "moveToRangeStart",
       ...parseMoveBookmarkMarker(child),
+      ...parseKeptCutMarker(child),
     });
   },
   moveToRangeEnd: (child, { contents }) => {
@@ -2346,6 +2350,7 @@ const PARAGRAPH_CONTENT_HANDLERS = {
       type: "moveToRangeEnd",
       ...parseMarkupRangeMarker(child),
       ...parseCopyOriginMarker(child),
+      ...parseKeptCutMarker(child),
     });
   },
 
@@ -2353,12 +2358,14 @@ const PARAGRAPH_CONTENT_HANDLERS = {
     contents.push({
       type: "commentRangeStart",
       ...parseMarkupRangeMarker(child),
+      ...parseKeptCutMarker(child),
     });
   },
   commentRangeEnd: (child, { contents }) => {
     contents.push({
       type: "commentRangeEnd",
       ...parseMarkupRangeMarker(child),
+      ...parseKeptCutMarker(child),
     });
   },
 

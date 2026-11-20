@@ -32,6 +32,10 @@ import type {
 import type { DeepReadonly } from "../types/documentModel";
 import { sanitizeExternalUrl } from "../utils/urlSecurity";
 import {
+  parseBookmarkEnd as parseSharedBookmarkEnd,
+  parseBookmarkStart as parseSharedBookmarkStart,
+} from "./bookmarkParser";
+import {
   CAPTURE,
   type ChildHandlers,
   type ChildReader,
@@ -44,6 +48,7 @@ import type { InlineWrapperElement } from "./inlineWrapperParser";
 import { preserveLinkedSdt } from "./linkedSdtPreservation";
 import {
   parseCopyOriginMarker,
+  parseKeptCutMarker,
   parseMarkupRangeMarker,
   parseMoveBookmarkMarker,
 } from "./markupRangeMarker";
@@ -63,7 +68,6 @@ import {
   getAttribute,
   getAttributeByNamespaceUri,
   mergeXmlnsDeclarations,
-  parseNumericAttribute,
   parseOnOffAttribute,
   WORDPROCESSINGML_NAMESPACE_URIS,
 } from "./xmlParser";
@@ -74,44 +78,16 @@ import type { XmlElement } from "./xmlParser";
 // ============================================================================
 
 /**
- * Parse bookmark start (w:bookmarkStart)
- *
- * Used for internal hyperlink targets within the document.
+ * A bookmark marker inside a link, read as the paragraph reads one: every
+ * attribute the shared marker reader knows, and the cut a kept marker stands
+ * in.
  */
 function parseBookmarkStart(node: XmlElement): BookmarkStart {
-  const id = parseNumericAttribute(node, "w", "id") ?? 0;
-  const name = getAttribute(node, "w", "name") ?? "";
-
-  const bookmark: BookmarkStart = {
-    type: "bookmarkStart",
-    id,
-    name,
-  };
-
-  // Table column bookmarks
-  const colFirst = parseNumericAttribute(node, "w", "colFirst");
-  if (colFirst !== undefined) {
-    bookmark.colFirst = colFirst;
-  }
-
-  const colLast = parseNumericAttribute(node, "w", "colLast");
-  if (colLast !== undefined) {
-    bookmark.colLast = colLast;
-  }
-
-  return bookmark;
+  return { ...parseSharedBookmarkStart(node), ...parseKeptCutMarker(node) };
 }
 
-/**
- * Parse bookmark end (w:bookmarkEnd)
- */
 function parseBookmarkEnd(node: XmlElement): BookmarkEnd {
-  const id = parseNumericAttribute(node, "w", "id") ?? 0;
-
-  return {
-    type: "bookmarkEnd",
-    id,
-  };
+  return { ...parseSharedBookmarkEnd(node), ...parseKeptCutMarker(node) };
 }
 
 /**
@@ -300,13 +276,18 @@ const linkedRangeMarker =
     switch (type) {
       case "moveFromRangeStart":
       case "moveToRangeStart":
-        push({ type, ...parseMoveBookmarkMarker(child) });
+        push({
+          type,
+          ...parseMoveBookmarkMarker(child),
+          ...parseKeptCutMarker(child),
+        });
         return;
       case "commentRangeStart":
       case "commentRangeEnd":
         push({
           type,
           ...parseMarkupRangeMarker(child),
+          ...parseKeptCutMarker(child),
         });
         return;
       // As the paragraph parser reads them: a move range end carries the
@@ -317,6 +298,7 @@ const linkedRangeMarker =
           type,
           ...parseMarkupRangeMarker(child),
           ...parseCopyOriginMarker(child),
+          ...parseKeptCutMarker(child),
         });
         return;
       default: {
