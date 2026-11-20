@@ -1,4 +1,6 @@
 /** Conservative body-paragraph splices; source offsets never come from reserialization. */
+import { resolveNamespaceUri } from "@stll/docx-core/xml/namespaces";
+
 import type { StructuralSpliceDeclineReason } from "../types/selectiveSaveDecline";
 import { canonicalJson } from "../utils/canonicalJson";
 import {
@@ -17,11 +19,13 @@ import {
 import {
   materializeReplayFragment,
   type ReplayFragmentValidation,
+  replayIgnorablePrefixes,
 } from "./storyBlockReplay";
 import {
   findAttributeByNamespaceUri,
   findChild,
   getAttribute,
+  getAttributeByNamespaceUri,
   getChildElements,
   getLocalName,
   getNamespaceUri,
@@ -230,6 +234,8 @@ type StructuralPatchOptions = {
   serializedXml: string;
   changedIds: ReadonlySet<string>;
   fragmentValidation?: ReplayFragmentValidation | undefined;
+  /** Demand proof that the authored body can receive raw generated paragraphs. */
+  emptySourceParagraphCount?: number;
 };
 
 /** The spliced part, or why the splice declined and the save repacks. */
@@ -244,6 +250,62 @@ const decline = (
 const isBodyMarker = (element: XmlElement): boolean =>
   WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(element) ?? "") &&
   BODY_MARKERS.has(getLocalName(element.name));
+
+type ReadBody = NonNullable<ReturnType<typeof readBody>>;
+type EmptySourceShapeOptions = {
+  source: ReadBody;
+  current: ReadBody;
+  paragraphCount: number;
+};
+const MC_NAMESPACES = new Set([NAMESPACES.mc]);
+
+const coversEmptySource = ({
+  source,
+  current,
+  paragraphCount,
+}: EmptySourceShapeOptions): boolean => {
+  const beforeSection = source.blocks.at(0)?.element;
+  const afterSection = current.blocks.at(-1)?.element;
+  if (
+    paragraphCount < 1 ||
+    source.blocks.length !== 1 ||
+    current.blocks.length !== paragraphCount + 1 ||
+    beforeSection === undefined ||
+    afterSection === undefined ||
+    !isWordElement(beforeSection, "sectPr") ||
+    !isWordElement(afterSection, "sectPr") ||
+    getNamespaceUri(source.body) !== NAMESPACES.w ||
+    getNamespaceUri(current.body) !== NAMESPACES.w ||
+    getChildElements(source.root).length !== 1 ||
+    getChildElements(current.root).length !== 1 ||
+    current.blocks
+      .slice(0, -1)
+      .some(({ element }) => !isWordElement(element, "p")) ||
+    current.body.elements?.some(
+      (node) => node.type === "text" && String(node.text ?? "").trim() !== "",
+    )
+  )
+    return false;
+
+  // Replay binds the generated body scope on every fragment. When that
+  // fragment is read back inside the source, it must inherit no extra
+  // declarations. A second materialization then adds none.
+  for (let scope = source.body.namespaceScope; scope; scope = scope.parent)
+    for (const [prefix, uri] of scope.bindings)
+      if (resolveNamespaceUri(current.body.namespaceScope, prefix) !== uri)
+        return false;
+
+  // The second materialization prepends the source tokens to the already
+  // materialized generated tokens. Their authored order cannot change.
+  const ignorable = (root: XmlElement) =>
+    replayIgnorablePrefixes(
+      getAttributeByNamespaceUri(root, MC_NAMESPACES, "Ignorable") ?? "",
+    );
+  const generated = ignorable(current.root);
+  return ignorable(source.root).every(
+    (prefix, index) => prefix === generated[index],
+  );
+};
 
 const parseBodyModel = (root: XmlElement) =>
   parseDocumentBodyTree({
@@ -269,6 +331,7 @@ export const buildStructuralDocumentPatch = ({
   serializedXml,
   changedIds,
   fragmentValidation,
+  emptySourceParagraphCount,
 }: StructuralPatchOptions): StructuralPatchResult => {
   const source = readBody(originalXml);
   const current = readBody(serializedXml);
@@ -296,6 +359,18 @@ export const buildStructuralDocumentPatch = ({
         return decline("structuralBodyBlock");
     }
   }
+  if (
+    emptySourceParagraphCount !== undefined &&
+    (!plainBody ||
+      allSourceIds.size !== 0 ||
+      allCurrentIds.size !== emptySourceParagraphCount ||
+      !coversEmptySource({
+        source,
+        current,
+        paragraphCount: emptySourceParagraphCount,
+      }))
+  )
+    return decline("structuralBodyBlock");
   // Barriers are matched by position, so the source's must be the same
   // elements as the serialized ones: a marker the reader dropped would shift
   // every barrier after it.

@@ -672,6 +672,7 @@ async function writeChangedParts({
           bodyAuthority: options.bodyAuthority,
           onDiagnostic: collectDiagnostic,
           fragmentValidation,
+          structuralReplay: structuralChange ? "empty-source" : undefined,
         },
       );
       const serializedDocXml = serializedDocument.xml;
@@ -749,12 +750,14 @@ async function writeChangedParts({
       if (bodyChangedIds.size > 0 || structuralChange) {
         let patchedDocXml: string | null;
         if (structuralChange) {
-          const structural = buildStructuralDocumentPatch({
-            originalXml: originalDocXml,
-            serializedXml: serializedDocXml,
-            changedIds: bodyChangedIds,
-            fragmentValidation,
-          });
+          const structural =
+            serializedDocument.structuralPatch ??
+            buildStructuralDocumentPatch({
+              originalXml: originalDocXml,
+              serializedXml: serializedDocXml,
+              changedIds: bodyChangedIds,
+              fragmentValidation,
+            });
           if (structural.type === "declined")
             return decline({
               scope: "part",
