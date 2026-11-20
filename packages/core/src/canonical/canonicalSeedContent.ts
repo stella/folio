@@ -45,8 +45,9 @@ const issuesIn = (block: BlockContent): BlockIssues => {
       if (BETWEEN_BLOCK_MARKERS.has(child.type)) continue;
       // Opaque markup the session keeps as it found it and never edits inside.
       if (child.type === "preservedBlock") continue;
-      // A block content control holds its own block list, as a cell does.
-      if (child.type === "blockSdt") {
+      // A block content control or custom XML wrapper holds its own block
+      // list, as a cell does.
+      if (child.type === "blockSdt" || child.type === "blockCustomXml") {
         const issue = collect(child.content);
         if (issue !== null) return issue;
         continue;
@@ -269,8 +270,9 @@ export const unsupportedSeedReasonWholeDocument = (
           continue;
         // Opaque markup the session keeps as it found it and never edits inside.
         if (block.type === "preservedBlock") continue;
-        // A block content control holds its own block list, as a cell does.
-        if (block.type === "blockSdt") {
+        // A block content control or custom XML wrapper holds its own block
+        // list, as a cell does.
+        if (block.type === "blockSdt" || block.type === "blockCustomXml") {
           const issue = collect(block.content);
           if (issue !== null) return issue;
           continue;

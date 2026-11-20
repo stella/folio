@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 
 import {
   type BlockContent,
@@ -12,6 +12,7 @@ import {
   applyDocumentOps,
 } from "../apply";
 import { storyParagraphs } from "../blocks";
+import * as identityKeys from "../ids";
 import { revisionIdDemand } from "../plan";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import {
@@ -94,6 +95,42 @@ const insertion = (blocks: Paragraph[]): InsertBlocksOp => ({
   revision: stamp,
   newIds: { revision: Array.from({ length: 32 }, (_, index) => 101 + index) },
 });
+
+test.each(["after", "afterTable"] as const)(
+  "tracked insertions at %s do not repeat package identity censuses",
+  (type) => {
+    const census = spyOn(identityKeys, "packageIdentityKeys");
+    try {
+      const carrier = makeParagraph("00000001", "kept");
+      const tableAnchor = makeParagraph("00000010", "cell");
+      let document = documentOf(
+        type === "after" ? [carrier] : [inCell([tableAnchor]), carrier],
+      );
+      const blockId = type === "after" ? "00000001" : "00000010";
+      const count = 8;
+      for (let index = 0; index < count; index += 1) {
+        const paraId = (0x10000000 + index).toString(16);
+        const revisionId = stamp.id + index * 4;
+        const result = apply(document, {
+          ...insertion([makeParagraph(paraId, "inserted")]),
+          at: { type, blockId },
+          revision: { ...stamp, id: revisionId },
+          newIds: {
+            revision: [revisionId + 1, revisionId + 2, revisionId + 3],
+          },
+        });
+        expect(result.revisions).toContain(revisionId);
+        document = result.document;
+      }
+      // Contract validation can census the initial package and each new
+      // package produced directly by table-side insertion.
+      const validationCensuses = type === "afterTable" ? count + 1 : 1;
+      expect(census.mock.calls.length).toBeLessThanOrEqual(validationCensuses);
+    } finally {
+      census.mockRestore();
+    }
+  },
+);
 
 test.each(["body", "cell"] as const)(
   "tracked list insertion in a %s accepts without a leftover paragraph",

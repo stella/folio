@@ -207,7 +207,7 @@ test("compiler-created boundary points survive native replacement or refuse unch
         }
 });
 
-test("DOCX-produced nested control comments are guarded directly and kept on deleted words when tracked", async () => {
+test("DOCX-produced nested control comments go with their words directly and stay on deleted words when tracked", async () => {
   const text = (value: string) =>
     ({ type: "run", content: [{ type: "text", text: value }] }) satisfies Run;
   const control = (id: number, content: InlineSdt["content"]) =>
@@ -344,7 +344,9 @@ test("DOCX-produced nested control comments are guarded directly and kept on del
           ).toEqual(["time"]);
           continue;
         }
-        if (placement !== "covered") {
+        if (placement === "crossing" && mode === "suggesting") {
+          // Tracked, a selection taking the comment's markers still refuses.
+          // Replacing the block directly takes the comment with its words.
           expect(result.isErr()).toBe(true);
           if (result.isErr())
             expect(result.error.ground).toEqual({
@@ -378,13 +380,11 @@ test("DOCX-produced nested control comments are guarded directly and kept on del
               ],
             },
           });
-          expect(applied.applied).toEqual([]);
-          expect(applied.skipped).toMatchObject([
-            { canonicalRefusal: { gap: "comment-replacement-alignment" } },
-          ]);
-          expect(session.document).toBe(before);
-          expect(session.version).toBe(0);
-          expect(committed).toBe(0);
+          expect(applied.skipped).toEqual([]);
+          expect(applied.applied).toHaveLength(1);
+          expect(getCommentAnchorsFromDoc(state.doc)).toEqual([]);
+          expect(session.document.package.document.comments ?? []).toEqual([]);
+          expect(state.doc.textContent).toBe("New agreement.");
           continue;
         }
         expect(result.isOk()).toBe(true);
@@ -401,11 +401,15 @@ test("DOCX-produced nested control comments are guarded directly and kept on del
               .unwrap(),
           );
         // The new words go outside the range of the comment whose words
-        // they replace, which leaves it nothing to cover.
+        // they replace, which leaves it nothing to cover; a direct edit
+        // taking every word of the comment takes the comment with them.
         expect(
           getCommentAnchorsFromDoc(state.doc).map(({ quote }) => quote),
         ).toEqual([]);
-        expect(state.doc.textContent).toContain("Before schedule after");
+        expect(session.document.package.document.comments ?? []).toEqual([]);
+        expect(state.doc.textContent).toContain(
+          placement === "covered" ? "Before schedule after" : "schedule",
+        );
       }
     }
   }
@@ -416,13 +420,13 @@ const REPLACEMENT =
   "Invoice delivery payment agreement supplier buyer payment term.";
 afterEach(() => setSystemTime());
 const COMMENT_CASES = {
-  prefix: { quotes: ["The"], type: "alignment" },
-  interior: { quotes: ["time"], type: "alignment" },
-  suffix: { quotes: ["order."], type: "supported" },
-  whole: { quotes: [SOURCE], type: "supported" },
-  disjoint: { quotes: ["The", "time"], type: "alignment" },
-  nested: { quotes: [SOURCE, "time"], type: "alignment" },
-  overlapping: { quotes: ["on time", "time and"], type: "alignment" },
+  prefix: ["The"],
+  interior: ["time"],
+  suffix: ["order."],
+  whole: [SOURCE],
+  disjoint: ["The", "time"],
+  nested: [SOURCE, "time"],
+  overlapping: ["on time", "time and"],
 } as const;
 
 const open = (buffer: ArrayBuffer, session: HeadlessReviewerSession) =>
@@ -543,37 +547,8 @@ describe("canonical replacement comments from the public producer", () => {
       }
     });
   }
-  /**
-   * A tracked replacement the new words cannot carry a comment into keeps
-   * each comment on the words it deletes: rejecting gives every comment back,
-   * and accepting keeps only comments that still cover words, reporting each
-   * one it drops.
-   */
-  const expectTrackedReplacementKeepsComments = async ({
-    reviewer,
-    result,
-    original,
-  }: {
-    reviewer: Awaited<ReturnType<typeof open>>;
-    result: ReturnType<
-      Awaited<ReturnType<typeof open>>["applyDocumentOperations"]
-    >;
-    original: ReturnType<typeof comments>;
-  }) => {
-    expect(result.skipped).toEqual([]);
-    expect(result.applied.map(({ id }) => id)).toEqual(["replace"]);
-    const pending = await reviewer.toBuffer();
-    const rejected = await open(pending, "canonical");
-    expect(rejected.rejectAll().skipped).toEqual([]);
-    expect(comments(rejected)).toEqual(original);
-    expect(reviewer.acceptAll().skipped).toEqual([]);
-    const kept = new Set(comments(reviewer).map(({ id }) => id));
-    const retired = new Set(result.applied[0]?.retiredCommentIds ?? []);
-    for (const { id } of original)
-      expect(kept.has(id) || retired.has(id)).toBe(true);
-  };
-  for (const [name, scenario] of Object.entries(COMMENT_CASES)) {
-    test(`${name}: supported replacements preserve threads; unsupported alignment refuses unchanged`, async () => {
+  for (const [name, quotes] of Object.entries(COMMENT_CASES)) {
+    test(`${name}: a direct replacement leaves the comments accepting the tracked one leaves`, async () => {
       // Save updates package modification dates, independently of any edit.
       setSystemTime(new Date("2026-01-02T03:04:05Z"));
       const prepared = await prepareCanonicalDocxInput(
@@ -585,7 +560,7 @@ describe("canonical replacement comments from the public producer", () => {
       const producer = await open(prepared.value.slice().buffer, "legacy");
       const block = producer.getContent().at(0);
       if (!block) throw new Error("Source paragraph is missing");
-      for (const [index, quote] of scenario.quotes.entries()) {
+      for (const [index, quote] of quotes.entries()) {
         apply(
           producer,
           {
@@ -613,51 +588,14 @@ describe("canonical replacement comments from the public producer", () => {
       const direct = await open(bytes, "canonical");
       const tracked = await open(bytes, "canonical");
       const original = comments(tracked);
-      expect(original).toHaveLength(scenario.quotes.length);
-      if (scenario.type === "alignment") {
-        for (const mode of ["direct", "tracked-changes"] as const) {
-          const reviewer = await open(bytes, "canonical");
-          const before = reviewer.toDocument();
-          const saved = await reviewer.toBuffer();
-          const result = reviewer.applyDocumentOperations(
-            {
-              version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-              mode,
-              operations: [operation],
-            },
-            { undefinedReferences: "refuse" },
-          );
-          if (mode === "tracked-changes") {
-            await expectTrackedReplacementKeepsComments({
-              reviewer,
-              result,
-              original,
-            });
-            continue;
-          }
-          expect(result.applied).toEqual([]);
-          expect(result.undoHandle).toBeNull();
-          expect(result.skipped).toMatchObject([
-            {
-              id: "replace",
-              reason: "unsupportedBlock",
-              canonicalRefusal: { gap: "comment-replacement-alignment" },
-            },
-          ]);
-          expect(reviewer.toDocument()).toEqual(before);
-          expect(comments(reviewer)).toEqual(original);
-          expect(new Uint8Array(await reviewer.toBuffer())).toEqual(
-            new Uint8Array(saved),
-          );
-        }
-        return;
-      }
+      expect(original).toHaveLength(quotes.length);
       apply(direct, operation, "direct");
       const result = apply(tracked, operation, "tracked-changes");
       const pending = await tracked.toBuffer();
       expect(tracked.acceptAll().skipped).toEqual([]);
       // The replacement takes every word these comments cover, and the
-      // comments go with their words: the new words take no comment's range.
+      // comments go with their words, directly or once accepted: the new
+      // words take no comment's range.
       const replaced: ReturnType<typeof comments> = [];
       expect(comments(direct)).toEqual(replaced);
       expect(comments(tracked)).toEqual(replaced);

@@ -31,6 +31,7 @@ import type {
 import type { DeepReadonly } from "../types/documentModel";
 import type { NumberingMap } from "./numberingParser";
 import { parseParagraph } from "./paragraphParser";
+import { enrichParagraphTextBoxes } from "./paragraphTextBoxEnrichment";
 import type { ParseContext } from "./parseContext";
 import { type PreviewLedger, standalonePreviewLedger } from "./previewBudget";
 import { captureSdtSiblingMarkers, parseSdtProperties } from "./sdtProperties";
@@ -167,11 +168,29 @@ function parseNoteBlockContent(
   for (const child of getChildElements(element)) {
     const localName = getLocalName(child.name ?? "");
     if (localName === "p") {
-      blocks.push(
-        parseParagraph(child, styles, theme, numbering, rels, media, {
-          previews,
-        }),
+      // A text box drawn in a note is read as the body reads one: its
+      // paragraphs are the note's to show, edit and save.
+      const paragraph = parseParagraph(
+        child,
+        styles,
+        theme,
+        numbering,
+        rels,
+        media,
+        { previews, runConsolidation: "deferred" },
       );
+      enrichParagraphTextBoxes(
+        paragraph,
+        child,
+        styles,
+        theme,
+        numbering,
+        rels,
+        media,
+        parseTable,
+        previews,
+      );
+      blocks.push(paragraph);
     } else if (localName === "tbl") {
       const table = parseTable(child, styles, theme, numbering, rels, media, {
         previews,

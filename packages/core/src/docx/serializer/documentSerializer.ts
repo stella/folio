@@ -25,6 +25,7 @@ import type { SerializedPart } from "../selectiveXmlPatch";
 import {
   buildDocumentBlockReplay,
   canReplayDocumentSource,
+  type ReplayFragmentValidation,
 } from "../storyBlockReplay";
 import { serializeBlockCustomXml } from "./blockCustomXmlSerializer";
 import { serializeBlockSdt } from "./blockSdtSerializer";
@@ -201,7 +202,10 @@ export type DocumentBodyAuthorityOptions = {
 };
 
 type DocumentSourceOptions = SaveDiagnosticOptions &
-  DocumentBodyAuthorityOptions & { xml?: string | undefined };
+  DocumentBodyAuthorityOptions & {
+    xml?: string | undefined;
+    fragmentValidation?: ReplayFragmentValidation | undefined;
+  };
 
 export function serializeDocument(
   doc: Document,
@@ -273,6 +277,7 @@ export function serializeDocumentPart(
       baseline: baseline.body,
       current: doc.package.document,
       serializedXml,
+      validation: source?.fragmentValidation,
     });
     if (replay !== null) return replay;
   }

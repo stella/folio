@@ -26,6 +26,7 @@ import {
 } from "../../test/property-testing";
 import { assertGeneratedFlowReceipt } from "./flow-receipt";
 import { openEditor } from "./parity-fixture";
+import { PLAYGROUND_PORTS } from "./playgroundHosts";
 
 // Authored paragraph ids address the original paragraphs through insertions and saves.
 // Actions shrink independently; each replacement keeps its find token available.
@@ -76,8 +77,8 @@ const semanticProjection = async (bytes: Uint8Array) => {
   };
 };
 
-const reactPort = Number(process.env["FOLIO_PLAYGROUND_PORT"]) || 4200;
-const vuePort = Number(process.env["FOLIO_PLAYGROUND_VUE_PORT"]) || 4201;
+const reactPort = PLAYGROUND_PORTS.react;
+const vuePort = PLAYGROUND_PORTS.vue;
 
 test("generated flow saves equivalent semantics in React, Vue, headless and CLI", async ({
   browser,

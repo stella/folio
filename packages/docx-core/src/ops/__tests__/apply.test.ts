@@ -568,6 +568,47 @@ describe("splitBlock and joinBlocks", () => {
       }),
     ).toBe(DOCUMENT_OP_REFUSAL_REASONS.SECTION_BOUNDARY);
   });
+
+  test("batched joins report the final survivor and undo in reverse order", () => {
+    const [first, second, third] = [
+      "00000001",
+      "00000002",
+      "00000003",
+    ] as const;
+    const document = documentOf(
+      ...[first, second, third].map((paraId) => ({
+        type: "paragraph" as const,
+        paraId,
+        content: [run(paraId)],
+      })),
+    );
+    const joined = applyDocumentOps(document, [
+      {
+        type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
+        story: OP_STORIES.MAIN,
+        blockId: first,
+        nextBlockId: second,
+        depth: 2,
+      },
+      {
+        type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
+        story: OP_STORIES.MAIN,
+        blockId: second,
+        nextBlockId: third,
+        depth: 2,
+      },
+    ]).unwrap();
+    expect(joined.touched).toEqual({
+      modified: [third],
+      inserted: [],
+      removed: [second, first],
+      absorbed: [
+        { absorbed: first, survivor: third },
+        { absorbed: second, survivor: third },
+      ],
+    });
+    expect(undone(joined.document, joined.inverse)).toEqual(document);
+  });
 });
 
 describe("refusals", () => {
@@ -662,6 +703,56 @@ describe("refusals", () => {
       DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
     );
     expect(refusalOf(document, replace("0000abce"))).toBeUndefined();
+  });
+
+  test("paragraph id collision checks reuse the package census", () => {
+    let untouchedReads = 0;
+    const target = {
+      type: "paragraph",
+      paraId: "0000000A",
+      content: [run("ab")],
+    } satisfies Paragraph;
+    const source = documentOf(target, {
+      type: "paragraph",
+      paraId: "0000000B",
+      content: [],
+      get preservedAttributes() {
+        untouchedReads += 1;
+        return RSID;
+      },
+    });
+    const split = {
+      type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+      at: at(target.paraId, 1),
+      newBlockId: "0000000b",
+    } satisfies DocumentOp;
+    expect(refusalOf(source, split)).toBe(
+      DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
+    );
+    expect(untouchedReads).toBeGreaterThan(0);
+    untouchedReads = 0;
+
+    const replace = (...ids: string[]): DocumentOp => ({
+      type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+      story: OP_STORIES.MAIN,
+      expected: [target],
+      blocks: ids.map((paraId) => ({
+        type: "paragraph",
+        content: target.content,
+        paraId,
+      })),
+    });
+    for (const op of [
+      split,
+      replace("0000000a", "0000000b"),
+      replace("0000000a", "0000000A"),
+    ]) {
+      expect(refusalOf(source, op)).toBe(
+        DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
+      );
+    }
+    expect(untouchedReads).toBe(0);
+    expect(refusalOf(source, replace("0000000a"))).toBeUndefined();
   });
 
   test("a replacement does not move a section break", () => {

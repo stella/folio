@@ -11,6 +11,7 @@ import { assertExactModel } from "../../test/exactModel";
 import { expectParagraphBlock } from "../../test/paragraphBlock";
 import type { buildCanonicalBridge } from "../parity/canonicalBridge";
 import { evaluateCanonicalLoad } from "../parity/canonicalLoadEvaluation";
+import { PLAYGROUND_PORTS } from "../parity/playgroundHosts";
 
 declare global {
   var __folioPlayground:
@@ -387,10 +388,7 @@ test("canonical rich clipboard preserves generated marks, open ends and exact hi
 }) => {
   test.setTimeout(120_000);
   const modifier = process.platform === "darwin" ? "Meta" : "Control";
-  const ports = [
-    Number(process.env["FOLIO_PLAYGROUND_PORT"]) || 4200,
-    Number(process.env["FOLIO_PLAYGROUND_VUE_PORT"]) || 4201,
-  ];
+  const ports = [PLAYGROUND_PORTS.react, PLAYGROUND_PORTS.vue];
   const sourceDocument = createEmptyDocument({ initialText: "leftRIGHT" });
   const destination = sourceDocument.package.document.content.at(0);
   if (destination?.type !== "paragraph")

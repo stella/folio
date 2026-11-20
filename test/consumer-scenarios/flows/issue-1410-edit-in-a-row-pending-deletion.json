@@ -1,0 +1,76 @@
+{
+  "version": 1,
+  "title": "PINNED #1410, reported seed 1683635146: an edit in a table row pending deletion, on words a rejected deletion revived, is not one the batch makes on a block it removed",
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "unusedNumbering",
+  "mode": "tracked-changes",
+  "seed": 1683635146,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 1427870358,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "3CEFFC83",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    },
+    {
+      "action": "accept all",
+      "seed": 1299987964
+    },
+    {
+      "action": "story batch",
+      "seed": 2499718107,
+      "operations": [
+        {
+          "type": "replaceInBlock",
+          "blockId": "@5",
+          "find": "months",
+          "replace": "",
+          "precondition": {
+            "blockTextHash": "h49bqt3"
+          }
+        }
+      ],
+      "atomic": false
+    },
+    {
+      "action": "story batch",
+      "seed": 4267342723,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "deleteTableRow",
+          "blockId": "@4"
+        }
+      ]
+    },
+    {
+      "action": "reject one",
+      "seed": 2875788989
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 3883695541,
+      "operations": [
+        {
+          "type": "replaceInBlock",
+          "blockId": "@5",
+          "find": "months",
+          "replace": "revised",
+          "precondition": {
+            "blockTextHash": "h3y1dyc"
+          }
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from random flow seed 1683635146"
+}

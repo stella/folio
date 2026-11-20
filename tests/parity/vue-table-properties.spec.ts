@@ -6,10 +6,11 @@ import {
   expect,
   openCanonicalEditor,
 } from "./parity-fixture";
+import { PLAYGROUND_HOSTS } from "./playgroundHosts";
 
 const VUE_ADAPTER = {
   name: "vue",
-  baseUrl: "http://localhost:4201",
+  baseUrl: PLAYGROUND_HOSTS.vue,
 } as const satisfies AdapterFixture;
 
 test("Vue applies table properties from the table options menu", async ({

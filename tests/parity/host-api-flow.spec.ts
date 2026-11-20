@@ -32,6 +32,7 @@ import {
   navigationWasEffective,
 } from "./hostApiFlow";
 import { ensureLiveView, openEditor } from "./parity-fixture";
+import { PLAYGROUND_PORTS } from "./playgroundHosts";
 
 const semanticProjection = async (bytes: Uint8Array) => {
   expect(await validateDocxPackage(bytes)).toEqual({ valid: true });
@@ -214,9 +215,7 @@ test("host APIs interleaved with edits save equally across React, Vue, headless 
       await page.setViewportSize({ width: 1280, height: 600 });
       await page.emulateMedia({ reducedMotion: "reduce" });
       const port =
-        name === "react"
-          ? Number(process.env["FOLIO_PLAYGROUND_PORT"]) || 4200
-          : Number(process.env["FOLIO_PLAYGROUND_VUE_PORT"]) || 4201;
+        name === "react" ? PLAYGROUND_PORTS.react : PLAYGROUND_PORTS.vue;
       await page.route("**/fixtures/host-flow.docx", (route) =>
         route.fulfill({
           body: Buffer.from(source),
