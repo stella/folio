@@ -1571,8 +1571,8 @@ describe("a paragraph after one whose mark is pending deletion", () => {
       });
 });
 
-describe("a paragraph the session holds no address in", () => {
-  // A text box's paragraph belongs to its shape, not to the body story.
+describe("a text box paragraph", () => {
+  // A text box is a story of its own, its paragraphs named through the body.
   const document = {
     package: {
       document: {
@@ -1605,6 +1605,18 @@ describe("a paragraph the session holds no address in", () => {
                                 type: "run",
                                 content: [
                                   { type: "text", text: "Boxed note." },
+                                ],
+                              },
+                            ],
+                          },
+                          {
+                            type: "paragraph",
+                            paraId: "3456789A",
+                            content: [
+                              {
+                                type: "run",
+                                content: [
+                                  { type: "text", text: "Second note." },
                                 ],
                               },
                             ],
@@ -1646,26 +1658,50 @@ describe("a paragraph the session holds no address in", () => {
     { id: "deleteBlock", type: "deleteBlock", blockId: "34567890" },
   ] as const satisfies readonly FolioDocumentOperation[];
 
+  /** The words of the box's paragraphs, deleted ones included. */
+  const boxWords = (current: Document): string[] => {
+    const host = current.package.document.content[0];
+    const run = host?.type === "paragraph" ? host.content[1] : undefined;
+    const shape = run?.type === "run" ? run.content[0] : undefined;
+    if (shape?.type !== "shape" || shape.shape.textBody === undefined)
+      return panic("The host still draws the box.");
+    return shape.shape.textBody.content.map(
+      (block) =>
+        JSON.stringify(block)
+          .match(/"text":"[^"]*"/gu)
+          ?.map((text) => text.slice(8, -1))
+          .join("") ?? "",
+    );
+  };
+  const direct: Record<(typeof operations)[number]["id"], string[]> = {
+    insertAfterBlock: ["Boxed note.", "Added note.", "Second note."],
+    insertBeforeBlock: ["Added note.", "Boxed note.", "Second note."],
+    replaceInBlock: ["Framed note.", "Second note."],
+    deleteBlock: ["Second note."],
+  };
+
   for (const mode of ["direct", "tracked-changes"] as const)
     for (const operation of operations)
-      test(`${operation.type} refuses under a typed gap, ${mode}`, () => {
+      test(`${operation.type} acts in the box, ${mode}`, () => {
         const editor = setup(document);
-        // A reader lists the paragraph, so the operation names a block that exists.
         expect(
           editor.snapshot().blocks.some(({ id }) => id === "34567890"),
         ).toBe(true);
         const original = editor.session.document;
         const result = editor.apply([operation], { mode });
-        expect(result.applied).toEqual([]);
-        expect(
-          result.skipped.map(({ reason, canonicalRefusal }) => ({
-            reason,
-            gap: canonicalRefusal?.gap,
-          })),
-        ).toEqual([
-          { reason: "unsupportedBlock", gap: "publicOps.unsupportedInline" },
-        ]);
-        expect(editor.session.document).toEqual(original);
+        expect(result.skipped).toEqual([]);
+        expect(result.applied).toHaveLength(1);
+        const changed = editor.session.document;
+        // The body keeps its other paragraphs as they were.
+        expect(changed.package.document.content[1]).toBe(
+          original.package.document.content[1],
+        );
+        if (mode === "direct")
+          expect(boxWords(changed)).toEqual(direct[operation.id]);
+        else
+          expect(changed.package.document.content[0]).not.toEqual(
+            original.package.document.content[0],
+          );
       });
 
   test("a block no reader lists is still missing", () => {
