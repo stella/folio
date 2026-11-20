@@ -34,25 +34,11 @@ const MARKDOWN_ACCEPTANCE: ReplayGap = {
   symptom: /Markdown contains more text blocks than the source reader/u,
 };
 
-const SEQUENTIAL_DELETION: ReplayGap = {
-  reason:
-    "the batch's block deletion beside the table it inserts is refused one operation at a time",
-  symptom:
-    /\[batchSequential\][^\n]*\n\s+op-2 refused one at a time: unsupportedBlock/u,
-};
-
 /** Checked-in flows the canonical session does not pass yet. */
 export const CANONICAL_REPLAY_GAPS: Readonly<Record<string, ReplayGap>> = {
-  "comment-replacement-point.json": {
-    reason:
-      "a commented block's deletion before the table the batch inserts after it is refused",
-    symptom: /step 4: expected 2 applied operations, got 1/u,
-  },
   "issue-1350-7fe54148e47f13fe.json": MARKDOWN_ACCEPTANCE,
   "issue-1350-table-and-paragraph-before-deleted-final.json":
     MARKDOWN_ACCEPTANCE,
-  "issue-1356-3058fb47c2ef6a7c.json": SEQUENTIAL_DELETION,
-  "issue-1356-table-after-a-deleted-final-paragraph.json": SEQUENTIAL_DELETION,
   "issue-1757-7483271c36812e15.json": MARKDOWN_ACCEPTANCE,
   "issue-1757-paragraph-before-table-after-pending-join.json":
     MARKDOWN_ACCEPTANCE,
@@ -91,7 +77,6 @@ export const CANONICAL_VACUOUS_STEPS: Readonly<
   "revision-round-trip-1.json": [4],
   "revision-round-trip-10.json": [2],
   "revision-round-trip-3.json": [4],
-  "suggested-table-row-beside-replaced-paragraph.json": [6, 7, 8],
   "undefined-numbering-level-projection.json": [1],
 };
 
