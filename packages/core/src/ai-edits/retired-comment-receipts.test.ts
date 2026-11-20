@@ -174,6 +174,34 @@ for (const session of ["legacy", "canonical"] as const) {
     ]);
   });
 
+  test(`${session} retires an anchor whose last words a later deletion removes`, async () => {
+    const reviewer = await open(session);
+    const apply = (operation: FolioDocumentOperation) =>
+      reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode: "tracked-changes",
+          operations: [operation],
+        },
+        { undefinedReferences: "refuse" },
+      );
+    expect(apply(edits[1]).receipts.at(0)).not.toHaveProperty(
+      "retiredCommentIds",
+    );
+    // The second deletion meets the first one's words, pending already.
+    const rest = apply({
+      id: "delete-rest",
+      type: "replaceInBlock",
+      blockId: "10000001",
+      find: "clause.",
+      replace: "",
+    });
+    expect(rest.skipped).toEqual([]);
+    expect(rest.receipts.at(0)?.retiredCommentIds).toEqual([8]);
+    expect(reviewer.acceptAll().skipped).toEqual([]);
+    expect(reviewer.getComments().map(({ id }) => id)).toEqual([3, 12]);
+  });
+
   test(`${session} refuses a jointly exhausted anchor without assigning an operation receipt`, async () => {
     const reviewer = await open(session);
     const before = structuredClone(reviewer.toDocument());
