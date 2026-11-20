@@ -191,6 +191,7 @@ import {
   wrapTracked,
 } from "./review";
 import { setRevisionInfo } from "./revisionInfo";
+import { isOwnRecord } from "./revisionOwner";
 import { documentStories, findStoryBody, sameStory } from "./stories";
 import {
   applyStoryLifecycle,
@@ -2132,12 +2133,12 @@ const trackJoin = ({
     );
   }
   const mark = leading.pPrMark;
-  // Another author's added break keeps their insertion, and the join is
+  // Another owner's added break keeps their insertion, and the join is
   // recorded as its deletion beside it.
   const deletesAddedMark =
     (mark?.kind === "ins" || mark?.kind === "moveTo") &&
     mark.deletion === undefined &&
-    mark.info.author !== stamp.author;
+    !isOwnRecord(mark.info, stamp);
   if (mark !== undefined && !deletesAddedMark) {
     return refuse(
       op,

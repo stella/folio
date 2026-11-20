@@ -34,6 +34,11 @@ import { textsIn } from "./leaves";
 import { cloneModel } from "./modelClone";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { WRAP_KINDS } from "./review";
+import {
+  isOwnRecord,
+  recordedOnlyBy,
+  type RevisionOwner,
+} from "./revisionOwner";
 import { replaceStoryBody } from "./stories";
 import {
   locateTableRow,
@@ -307,27 +312,11 @@ const commitRows = ({
   });
 };
 
-/** Every tracked record in `value`, at any depth, is `author`'s. */
-const recordedOnlyBy = (value: unknown, author: string): boolean => {
-  if (Array.isArray(value))
-    return value.every((item) => recordedOnlyBy(item, author));
-  if (typeof value !== "object" || value === null) return true;
-  const info: unknown = Reflect.get(value, "info");
-  if (
-    typeof info === "object" &&
-    info !== null &&
-    Reflect.get(info, "author") !== undefined &&
-    Reflect.get(info, "author") !== author
-  )
-    return false;
-  return Object.values(value).every((item) => recordedOnlyBy(item, author));
-};
-
-/** A row `author`'s pending insertion added, holding no one else's suggestion. */
-const ownInsertion = (row: TableRow, author: string): boolean =>
+/** A row `owner`'s pending insertion added, holding no one else's suggestion. */
+const ownInsertion = (row: TableRow, owner: RevisionOwner): boolean =>
   row.structuralChange?.type === "tableRowInsertion" &&
-  row.structuralChange.info.author === author &&
-  recordedOnlyBy(row, author);
+  isOwnRecord(row.structuralChange.info, owner) &&
+  recordedOnlyBy(row, owner);
 
 export const applyRowOp = (
   document: Document,
@@ -405,7 +394,7 @@ export const applyRowOp = (
       // anyone else suggested, goes outright, as deleting over one's own
       // insertion removes it; no deletion of an addition is recorded.
       const removesOutright =
-        op.revision === undefined || ownInsertion(row, op.revision.author);
+        op.revision === undefined || ownInsertion(row, op.revision);
       if (removesOutright && before.length === 1) {
         return commitRows({ document, op, location, rows: [] });
       }

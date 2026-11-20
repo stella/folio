@@ -47,6 +47,7 @@ import {
   isTrackedWrapper,
   paragraphPropertiesOf,
 } from "./review";
+import { isOwnRecord, type RevisionOwner } from "./revisionOwner";
 import { findStoryBody, sameStory, storyBody } from "./stories";
 import {
   type CreateCommentOp,
@@ -387,14 +388,17 @@ export const revisionIdDemand = (
 /** How a leaf of a range to delete is deleted. */
 type LeafPlan = "direct" | "tracked" | "untouched" | "anchor";
 
-const leafPlan = ({ node, ancestors }: LeafSpan, author: string): LeafPlan => {
+const leafPlan = (
+  { node, ancestors }: LeafSpan,
+  owner: RevisionOwner,
+): LeafPlan => {
   if (ancestors.some(isRemovedRevisionNode)) return "untouched";
   if (isCommentAnchor(node)) return "anchor";
   const own = ancestors.some(
     (ancestor) =>
       isAddedRevision(ancestor) &&
       isTrackedWrapper(ancestor) &&
-      ancestor.info.author === author,
+      isOwnRecord(ancestor.info, owner),
   );
   return own ? "direct" : "tracked";
 };
@@ -431,7 +435,7 @@ type ReplacementDeletionSegmentsOptions = {
          */
         keepsLoneEmptyContainers?: boolean;
       }
-    | { type: "suggesting"; author: string };
+    | { type: "suggesting"; owner: RevisionOwner };
 };
 
 export const replacementDeletionSegments = ({
@@ -453,7 +457,7 @@ export const replacementDeletionSegments = ({
       continue;
     }
     let plan: LeafPlan = isCommentAnchor(span.node) ? "anchor" : "direct";
-    if (mode.type === "suggesting") plan = leafPlan(span, mode.author);
+    if (mode.type === "suggesting") plan = leafPlan(span, mode.owner);
     else if (span.ancestors.some(isRemovedRevisionNode)) plan = "untouched";
     if (plan === "anchor") {
       open = undefined;
@@ -735,7 +739,7 @@ const appendTrackedParagraphJoin = ({
   const mark = leading?.pPrMark;
   const cancelsAddedMark =
     (mark?.kind === "ins" || mark?.kind === "moveTo") &&
-    mark.info.author === revision.author;
+    isOwnRecord(mark.info, revision);
   const before = findStoryParagraph(body, idKey(join.nextBlockId))?.paragraph;
   const joined = append(cancelsAddedMark ? join : { ...join, revision });
   if (joined.isErr()) return Result.err(joined.error);
@@ -943,7 +947,7 @@ export const appendTrackedDeletion = ({
           zeroWidthLeavesAt(content, start.offset).length,
       },
       to: { offset: end.offset, zeroWidthBefore: end.zeroWidthBefore ?? 0 },
-      mode: { type: "suggesting", author: revision.author },
+      mode: { type: "suggesting", owner: revision },
     });
     ranges.push({ paragraph, at, segments });
   }
