@@ -58,6 +58,14 @@ export const changedListBounds = (
   const splice = sourceSplice(current);
   if (splice !== undefined && splice.previous === listKeys.get(previous))
     return splice;
+  // Inverse validation compares the same two versions in reverse order.
+  const inverse = sourceSplice(previous);
+  if (inverse !== undefined && inverse.previous === listKeys.get(current))
+    return {
+      start: inverse.start,
+      previousEnd: inverse.end,
+      end: inverse.previousEnd,
+    };
   let start = 0;
   let previousEnd = previous.length;
   let end = current.length;

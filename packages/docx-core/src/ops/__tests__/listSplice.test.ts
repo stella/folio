@@ -23,6 +23,33 @@ test("splice boundaries apply only to their exact source", () => {
 });
 
 test.each([16, 64])(
+  "inverse splice checks leave the unchanged prefix unread at length %i",
+  (size) => {
+    let reads = 0;
+    const source = Array.from({ length: size }, (_, index) => index);
+    Object.defineProperty(source, 0, {
+      get: () => {
+        reads++;
+        return 0;
+      },
+    });
+    const result = spliceItems({
+      items: source,
+      start: size - 1,
+      count: 1,
+      replacement: [-1, -2],
+    });
+    const before = reads;
+    expect(changedListBounds(result, source)).toEqual({
+      start: size - 1,
+      previousEnd: size + 1,
+      end: size,
+    });
+    expect(reads).toBe(before);
+  },
+);
+
+test.each([16, 64])(
   "property checks visit only replacement paragraphs across %i edits",
   (size) => {
     let reads = 0;
