@@ -792,10 +792,28 @@ function parseRunPropertyChanges(
 /**
  * Parse text content (w:t)
  */
-function parseTextContent(element: XmlElement): TextContent {
+/** A carriage return and line feed pair, or either alone, inside `w:t`. */
+const RAW_LINE_BREAK = /\r\n|[\r\n]/gu;
+const RAW_TAB = "\t";
+
+/**
+ * The text a `w:t` (or `w:delText`) holds, as a word processor reads it: a
+ * carriage return and line feed pair is one space, each other carriage return
+ * or line feed is one space, none collapsing into the spaces beside it, and a
+ * tab character is a tab element. An XML parser already reads a literal CR LF
+ * in the source as one line feed.
+ */
+function parseTextContents(element: XmlElement): (TextContent | TabContent)[] {
   // `xml:space` is not read: it is a property of the serialized text, and the
   // serializer re-derives it with `requiresXmlSpacePreserve`.
-  return { type: "text", text: getTextContent(element) };
+  const text = getTextContent(element).replace(RAW_LINE_BREAK, " ");
+  if (!text.includes(RAW_TAB)) return [{ type: "text", text }];
+  const contents: (TextContent | TabContent)[] = [];
+  for (const [index, piece] of text.split(RAW_TAB).entries()) {
+    if (index > 0) contents.push(parseTabContent());
+    if (piece !== "") contents.push({ type: "text", text: piece });
+  }
+  return contents;
 }
 
 /**
@@ -1103,7 +1121,7 @@ function parseRunContents(
     switch (localName) {
       case "t":
         // Text content
-        contents.push(parseTextContent(child));
+        contents.push(...parseTextContents(child));
         break;
 
       case "tab":
