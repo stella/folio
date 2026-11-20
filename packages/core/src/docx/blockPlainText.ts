@@ -89,18 +89,65 @@ const collectResolvedBlockTexts = (
   return texts;
 };
 
+/** The kind of note whose automatic mark the blocks hold, if any. */
+const noteMarkerKind = (value: unknown): "footnote" | "endnote" | undefined => {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const kind = noteMarkerKind(item);
+      if (kind !== undefined) return kind;
+    }
+    return undefined;
+  }
+  if (typeof value !== "object" || value === null) return undefined;
+  if ("type" in value && value.type === "noteMarker" && "kind" in value)
+    return value.kind === "endnote" ? "endnote" : "footnote";
+  for (const field of ["content", "rows", "cells"] as const) {
+    if (field in value) {
+      const kind = noteMarkerKind((value as Record<string, unknown>)[field]);
+      if (kind !== undefined) return kind;
+    }
+  }
+  return undefined;
+};
+
+/** The blocks accepted as Accept All accepts them, read as the story they belong to. */
+const acceptedBlocks = (blocks: readonly BlockContent[]) => {
+  // A note's blocks hold its automatic mark, which only a note story of
+  // that kind may: they resolve as that note, not as a body.
+  const kind = noteMarkerKind(blocks);
+  if (kind === undefined) {
+    const view = resolvedDocumentView(
+      { package: { document: { content: [...blocks] } } },
+      "accept",
+    );
+    return { blocks: view.document.package.document.content, view };
+  }
+  const note = { type: kind, id: 1, content: [...blocks] } as const;
+  const view = resolvedDocumentView(
+    {
+      package: {
+        document: { content: [] },
+        ...(kind === "footnote"
+          ? { footnotes: [{ ...note, type: "footnote" as const }] }
+          : { endnotes: [{ ...note, type: "endnote" as const }] }),
+      },
+    },
+    "accept",
+  );
+  const resolved =
+    kind === "footnote"
+      ? view.document.package.footnotes?.[0]
+      : view.document.package.endnotes?.[0];
+  return { blocks: resolved?.content ?? [], view };
+};
+
 /** One entry per accepted block; deleted breaks and table structure resolve together. */
 export const collectBlockTexts = (
   blocks: readonly BlockContent[],
 ): string[] => {
   // The blocks read as one story, accepted as Accept All accepts it.
-  const view = resolvedDocumentView(
-    { package: { document: { content: [...blocks] } } },
-    "accept",
-  );
-  const texts = collectResolvedBlockTexts(
-    view.document.package.document.content,
-  );
+  const { blocks: accepted, view } = acceptedBlocks(blocks);
+  const texts = collectResolvedBlockTexts(accepted);
   if (view.unresolved.length > 0) {
     texts.push("[Unresolved tracked structural changes]");
   }
