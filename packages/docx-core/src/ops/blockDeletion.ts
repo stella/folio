@@ -537,13 +537,13 @@ export const deleteBlocks = ({
       : undefined;
   // Before a table whose first row is itself pending review, the words have
   // nowhere to run in, but the deletion takes them all: accepting leaves the
-  // paragraph empty, and an empty paragraph after another block goes without
-  // crossing the table, as resolving its mark already does.
+  // paragraph empty, and an empty paragraph goes without crossing the table,
+  // first in its container or after another block, as resolving its mark
+  // already does.
   const emptiedBeforeTableUnderReview =
     tableBoundary?.type === "blocked" &&
     tableBoundary.reason === "review" &&
-    list.at(-1)?.type === "paragraph" &&
-    first.index > 0;
+    list.at(-1)?.type === "paragraph";
   const trackedBeforeTable =
     op.revision !== undefined &&
     tableBoundary !== undefined &&

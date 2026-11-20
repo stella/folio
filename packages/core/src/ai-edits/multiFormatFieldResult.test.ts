@@ -85,34 +85,26 @@ describe.each([
         ["its host paragraph", { type: "deleteBlock" }, ["Tail"]],
       ] as const)("edits %s as a unit", async (_name, operation, expected) => {
         const reviewer = await open(field);
-        const original = reviewer.toDocument();
         const result = apply(reviewer, mode, { ...operation, blockId: HOST });
-        if (mode === "tracked-changes") {
-          expect(result.status).toBe("rejected");
-          expect(result.applied).toEqual([]);
-          expect(result.skipped).toEqual([
-            {
-              id: "edit",
-              reason: "invalidResult",
-              message: expect.stringMatching(/Accept All.*field/u),
-            },
-          ]);
-          expect(reviewer.getChanges()).toEqual([]);
-          expect(reviewer.toDocument()).toEqual(original);
-          expect(firstText(await reopen(reviewer))).toBe(SOURCE);
-        } else {
-          expect(result.applied).toHaveLength(1);
-          if (mode === "suggested") {
-            const suggestionId = result.applied.at(0)?.suggestionId;
-            if (suggestionId === undefined)
-              throw new Error("Expected a field edit suggestion");
-            expect(reviewer.acceptSuggestion(suggestionId)).toBe(true);
-          }
-          const saved = await reopen(reviewer);
-          if (mode === "suggested")
-            expect(saved.acceptAll().resolved).toBeGreaterThan(0);
-          expect(saved.getContent().map(({ text }) => text)).toEqual(expected);
+        expect(result.applied).toHaveLength(1);
+        if (mode === "suggested") {
+          const suggestionId = result.applied.at(0)?.suggestionId;
+          if (suggestionId === undefined)
+            throw new Error("Expected a field edit suggestion");
+          expect(reviewer.acceptSuggestion(suggestionId)).toBe(true);
         }
+        if (mode !== "direct") {
+          const rejected = await reopen(reviewer);
+          expect(rejected.rejectAll().resolved).toBeGreaterThan(0);
+          expect(rejected.getContent().map(({ text }) => text)).toEqual([
+            SOURCE,
+            "Tail",
+          ]);
+        }
+        const saved = await reopen(reviewer);
+        if (mode !== "direct")
+          expect(saved.acceptAll().resolved).toBeGreaterThan(0);
+        expect(saved.getContent().map(({ text }) => text)).toEqual(expected);
       });
     },
   );

@@ -191,7 +191,15 @@ import {
   wrapTracked,
 } from "./review";
 import { setRevisionInfo } from "./revisionInfo";
-import { documentStories, findStoryBody, sameStory } from "./stories";
+import {
+  documentStories,
+  findStoryBody,
+  sameStory,
+  type StoryAddress,
+  textBoxHostIds,
+  type TextBoxStory,
+  textBoxStoryOf,
+} from "./stories";
 import {
   applyStoryLifecycle,
   captureStoryParts,
@@ -204,6 +212,7 @@ import { ownPendingTableInsertion } from "./tableOwnPending";
 import { applyRowOp } from "./tableRows";
 import { applyTableOp } from "./tables";
 import { stampedTableRevisionIds } from "./tableTracking";
+import { namingPackageStories, textBoxRoute } from "./textBoxRouting";
 import {
   type AddNoteOp,
   type DeleteRangeOp,
@@ -3412,11 +3421,13 @@ const recordedRevisions = (
   before: Document,
   edit: DocumentEdit,
   stamp: RevisionStamp,
+  boxes: readonly TextBoxStory[],
 ): number[] => {
   const touched = new Set(
     [...edit.touched.modified, ...edit.touched.inserted].map(idKey),
   );
-  const paragraphs = documentStories(edit.document)
+  const stories: StoryAddress[] = [...documentStories(edit.document), ...boxes];
+  const paragraphs = stories
     .flatMap((story) => storyParagraphs(storyBody(edit.document, story)))
     .map(({ paragraph }) => paragraph)
     .filter(({ paraId }) => paraId !== undefined && touched.has(idKey(paraId)));
@@ -3426,7 +3437,7 @@ const recordedRevisions = (
   );
   // Every physical row record is reported, including later rows of a table.
   revisions.unshift(
-    ...documentStories(edit.document).flatMap((story) =>
+    ...stories.flatMap((story) =>
       stampedTableRevisionIds({
         blocks: storyBody(edit.document, story).content,
         stamp,
@@ -3441,6 +3452,7 @@ const recordedRevisions = (
 const preserveParagraphPropertySnapshots = (options: {
   before: Document;
   edit: DocumentEdit;
+  boxes: readonly TextBoxStory[];
 }): void => {
   for (const { source, target } of paragraphSnapshotTransfers(options))
     transferParagraphPropertySnapshot({ source, target });
@@ -3479,13 +3491,10 @@ const applyDocumentOpForPurpose = ({
   }
   const malformedTable = tableEditBoundaryRefusal(op);
   if (malformedTable !== undefined) return Result.err(malformedTable);
-  const addressed = (() => {
-    if ("at" in op && typeof op.at === "object" && "story" in op.at)
-      return op.at.story;
-    if ("from" in op) return op.from.story;
-    if ("story" in op) return op.story;
-    return undefined;
-  })();
+  const addressed =
+    op.type === DOCUMENT_OP_TYPES.CREATE_COMMENT
+      ? undefined
+      : addressedStory(op);
   if (
     addressed !== undefined &&
     op.type !== DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER &&
@@ -3499,6 +3508,95 @@ const applyDocumentOpForPurpose = ({
       ),
     );
   }
+  const story = addressedStory(op);
+  const routes = textBoxRoute(document, op, story);
+  if (routes === undefined) {
+    // An operation compiled in a box's own story names it already.
+    const box = story === undefined ? undefined : textBoxStoryOf(story);
+    return applyAddressedOp({
+      document,
+      op,
+      purpose,
+      boxes: box === undefined ? [] : [box],
+    });
+  }
+  let current = document;
+  const edits: DocumentEdit[] = [];
+  const revisions: number[] = [];
+  for (const route of routes) {
+    const applied = applyAddressedOp({
+      document: current,
+      op: route.op,
+      purpose,
+      boxes: route.box === undefined ? [] : [route.box],
+    });
+    if (applied.isErr()) return applied;
+    // The paragraphs drawing the box hold its body: they change with it.
+    const hosts =
+      route.box === undefined ||
+      findStoryBody(current, route.box) ===
+        findStoryBody(applied.value.document, route.box)
+        ? []
+        : textBoxHostIds(route.box);
+    current = applied.value.document;
+    const { touched } = applied.value;
+    edits.push({
+      ...applied.value,
+      touched: {
+        ...touched,
+        modified: [
+          ...touched.modified,
+          ...hosts.filter((id) => !touched.modified.includes(id)),
+        ],
+      },
+    });
+    revisions.push(...applied.value.revisions);
+  }
+  const combined = combineEdits(document, edits);
+  return Result.ok({
+    ...combined,
+    inverse: combined.inverse.map(namingPackageStories),
+    revisions,
+  });
+};
+
+/** The story an operation's text or blocks are in, for those that name one. */
+const addressedStory = (op: DocumentOp): OpStory | undefined => {
+  if (op.type === DOCUMENT_OP_TYPES.CREATE_COMMENT)
+    switch (op.anchor.kind) {
+      case "range":
+        return op.anchor.from.story;
+      case "point":
+        return op.anchor.at.story;
+      case "revision":
+        return op.anchor.story;
+      case "reply":
+        return undefined;
+      default: {
+        const unreachable: never = op.anchor;
+        return unreachable;
+      }
+    }
+  if ("at" in op && typeof op.at === "object" && "story" in op.at)
+    return op.at.story;
+  if ("from" in op) return op.from.story;
+  if ("story" in op) return op.story;
+  return undefined;
+};
+
+type ApplyAddressedOpOptions = {
+  document: Document;
+  op: DocumentOp;
+  purpose: OperationExecutionPurpose;
+  /** The text box story the operation was routed to, if any. */
+  boxes: readonly TextBoxStory[];
+};
+const applyAddressedOp = ({
+  document,
+  op,
+  purpose,
+  boxes,
+}: ApplyAddressedOpOptions): Result<AppliedDocumentOp, DocumentOpRefusal> => {
   const stamp = stampOf(op);
   const badStamp =
     stamp === undefined ? undefined : stampRefusal(document, op, stamp);
@@ -3560,7 +3658,7 @@ const applyDocumentOpForPurpose = ({
     }
   }
   // Check all operation outputs before trusting them, including caller-supplied block/review records.
-  if (hasMultipleParagraphPropertyChanges(edit.document)) {
+  if (hasMultipleParagraphPropertyChanges(edit.document, boxes)) {
     return Result.err(
       refusal(
         op,
@@ -3575,7 +3673,7 @@ const applyDocumentOpForPurpose = ({
   if (repeatedId !== undefined)
     return Result.err(refusal(op, repeatedId.reason, repeatedId.message));
   meetsContract(edit.document);
-  preserveParagraphPropertySnapshots({ before: document, edit });
+  preserveParagraphPropertySnapshots({ before: document, edit, boxes });
   // A direct join removes one of its paragraphs into the other.
   if (op.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS) {
     const gone = edit.touched.removed.find(
@@ -3599,7 +3697,9 @@ const applyDocumentOpForPurpose = ({
     ...edit,
     inverse: edit.inverse.map(captureDocumentOp),
     revisions:
-      stamp === undefined ? [] : recordedRevisions(document, edit, stamp),
+      stamp === undefined
+        ? []
+        : recordedRevisions(document, edit, stamp, boxes),
   });
 };
 

@@ -20,7 +20,7 @@ import {
 } from "../support/documents.ts";
 import { parseFlowFile } from "../support/flow-file.ts";
 import { assertReadersAgree } from "../support/invariants.ts";
-import { capture } from "../support/oracle.ts";
+import { capture, commentIdsInTableOf } from "../support/oracle.ts";
 import { MARKDOWN_READ_OPTIONS, readAll } from "../support/readers.ts";
 
 /** Markup readers retain structural revisions; clean Markdown must match actual acceptance. */
@@ -187,6 +187,11 @@ test("recorded operation matrix seed 201 keeps clean readers consistent through 
     // Preserve the original matrix's pre-operation accepted/rejected copies;
     // revision allocation influences the inserted identities later steps name.
     await capture(reviewer, "tracked-changes");
+    const tableCommentIds = rebound.operations.flatMap((operation) =>
+      operation.type === "deleteTable"
+        ? commentIdsInTableOf(reviewer, operation.blockId)
+        : [],
+    );
     const result = reviewer.applyDocumentOperations(rebound, {
       undefinedReferences: "refuse",
     });
@@ -202,8 +207,13 @@ test("recorded operation matrix seed 201 keeps clean readers consistent through 
       index === NOOP_PROPERTIES_STEP ? expectedNoop : [],
       `seed 201 step ${index}: recorded refusals`,
     );
-    if (rebound.operations.some(({ type }) => type === "deleteTable"))
-      assert.deepEqual(result.receipts.at(0)?.retiredCommentIds, [6, 19]);
+    if (rebound.operations.some(({ type }) => type === "deleteTable")) {
+      assert.equal(tableCommentIds.length, 2);
+      assert.deepEqual(
+        result.receipts.at(0)?.retiredCommentIds,
+        tableCommentIds,
+      );
+    }
     for (const operation of rebound.operations) {
       const created = reviewer
         .getContent()
@@ -427,23 +437,7 @@ test("clean Markdown keeps referenced footnote and endnote trailers through body
         { ...batch, mode: "tracked-changes" },
         { undefinedReferences: "refuse" },
       );
-      if (type === "deleteBlock") {
-        assert.equal(result.status, "rejected");
-        assert.deepEqual(result.applied, []);
-        assert.equal(result.skipped.at(0)?.reason, "invalidResult");
-        assert.match(result.skipped.at(0)?.message ?? "", /Accept All.*note/u);
-        assert.deepEqual(reviewer.getChanges(), []);
-        const staged = reviewer.applyDocumentOperations(
-          { ...batch, mode: "suggested" },
-          { undefinedReferences: "refuse" },
-        );
-        const suggestionId = staged.applied.at(0)?.suggestionId;
-        assert.ok(suggestionId, JSON.stringify(staged));
-        assert.equal(reviewer.acceptSuggestion(suggestionId), true);
-        assert.ok(reviewer.getChanges().length > 0);
-      } else {
-        assert.equal(result.applied.length, 1, JSON.stringify(result.issues));
-      }
+      assert.equal(result.applied.length, 1, JSON.stringify(result.issues));
       await assertAcceptedReaders(
         new Uint8Array(await reviewer.toBuffer()),
         `${type}: reference ${prefix}`,

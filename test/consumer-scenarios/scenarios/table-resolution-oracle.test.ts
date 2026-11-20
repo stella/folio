@@ -12,6 +12,7 @@ import {
 import {
   assertRequestedOutcome,
   capture,
+  commentIdsInTableOf,
   compareComments,
   compareWithModel,
   expectOperation,
@@ -55,6 +56,10 @@ describe("table operation source coordinates", () => {
       const operation = GENERATORS[type]?.(reviewer.getContent(), random);
       if (!operation) continue;
       const pre = await capture(reviewer, "tracked-changes");
+      const tableCommentIds =
+        operation.type === "deleteTable"
+          ? commentIdsInTableOf(reviewer, String(operation["blockId"]))
+          : [];
       const batch = coreBatch(
         [{ ...operation, id: `op-${type}` }],
         "tracked-changes",
@@ -64,7 +69,14 @@ describe("table operation source coordinates", () => {
       });
       if (type !== "deleteTable") continue;
       assert.equal(result.applied.length, 1);
-      assert.deepEqual(result.receipts.at(0)?.retiredCommentIds, [6, 19]);
+      assert.ok(
+        tableCommentIds.length >= 2,
+        "the pinned generator must reach table comments",
+      );
+      assert.deepEqual(
+        result.receipts.at(0)?.retiredCommentIds,
+        tableCommentIds,
+      );
       const acceptedIds = new Set(pre.rows.map(({ id }) => id));
       const outside = pre.liveRows.filter(
         ({ id, text, table }) =>

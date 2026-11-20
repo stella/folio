@@ -315,27 +315,10 @@ describe("operations aimed at every feature of the body", () => {
         "no paragraph draws a text box",
       );
       const operation = { type: "deleteBlock", blockId: anchor.id } as const;
-      if (mode === "tracked-changes") {
-        const original = reviewer.toDocument();
-        const result = reviewer.applyDocumentOperations(
-          coreBatch([operation], mode) as never,
-          { undefinedReferences: "refuse" },
-        );
-        assert.equal(result.status, "rejected");
-        assert.deepEqual(result.applied, []);
-        assert.equal(result.skipped.at(0)?.reason, "invalidResult");
-        assert.match(
-          result.skipped.at(0)?.message ?? "",
-          /Accept All.*drawing/u,
-        );
-        assert.deepEqual(reviewer.getChanges(), []);
-        assert.deepEqual(reviewer.toDocument(), original);
-      } else {
-        assert.ok(
-          await applyChecked(reviewer, MAIN, operation, mode, "fresh"),
-          `text box / ${mode}: deleting its paragraph applied nothing`,
-        );
-      }
+      assert.ok(
+        await applyChecked(reviewer, MAIN, operation, mode, "fresh"),
+        `text box / ${mode}: deleting its paragraph applied nothing`,
+      );
       await assertStoriesHealthy(reviewer, mode, `text box anchor / ${mode}`);
     });
   }

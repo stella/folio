@@ -2366,30 +2366,62 @@ const readSuggestedParagraphPropertyChange = (
   return { suggestionId: change.info.suggestionId, revisionId: change.info.id };
 };
 
-const readSuggestedParagraphMark = (
-  node: PMNode,
-): {
+type SuggestedParagraphMark = {
   suggestionId: string;
   revisionId: number;
   kind: SuggestionKind;
-} | null => {
+};
+
+/** The suggestion one paragraph-mark record belongs to, read off its info. */
+const suggestionIdOfMarkRecord = (
+  info: ParagraphMarkChange["info"],
+): string | null =>
+  "provenance" in info &&
+  info.provenance === "suggested" &&
+  "suggestionId" in info &&
+  typeof info.suggestionId === "string"
+    ? info.suggestionId
+    : null;
+
+const suggestedRecordOf = (
+  info: ParagraphMarkChange["info"],
+  kind: SuggestionKind,
+): SuggestedParagraphMark | null => {
+  const suggestionId = suggestionIdOfMarkRecord(info);
+  return suggestionId === null
+    ? null
+    : { suggestionId, revisionId: info.id, kind };
+};
+
+/** The suggestion the paragraph mark's own record, its break's, belongs to. */
+const readSuggestedParagraphMark = (
+  node: PMNode,
+): SuggestedParagraphMark | null => {
   if (node.type.name !== "paragraph") return null;
   const mark = node.attrs["pPrMark"];
   if (!isPPrMarkAttr(mark)) return null;
-  const { info } = mark;
-  if (
-    !("provenance" in info) ||
-    info.provenance !== "suggested" ||
-    !("suggestionId" in info) ||
-    typeof info.suggestionId !== "string"
-  ) {
-    return null;
-  }
-  return {
-    suggestionId: info.suggestionId,
-    revisionId: info.id,
-    kind: paragraphMarkWasAdded(mark.kind) ? "insertion" : "deletion",
-  };
+  return suggestedRecordOf(
+    mark.info,
+    paragraphMarkWasAdded(mark.kind) ? "insertion" : "deletion",
+  );
+};
+
+/**
+ * Every suggested record of a paragraph's mark: its own, and the later
+ * deletion an added mark holds beside its insertion.
+ */
+const readSuggestedParagraphMarkRecords = (
+  node: PMNode,
+): SuggestedParagraphMark[] => {
+  const own = readSuggestedParagraphMark(node);
+  const mark: unknown = node.attrs["pPrMark"];
+  const deletion =
+    node.type.name === "paragraph" &&
+    isPPrMarkAttr(mark) &&
+    mark.deletion !== undefined
+      ? suggestedRecordOf(mark.deletion.info, "deletion")
+      : null;
+  return [own, deletion].filter((record) => record !== null);
 };
 
 const readStructuralSuggestion = (
@@ -2510,8 +2542,7 @@ const collectSuggestions = (
       entry.revisionIds.add(structural.revisionId);
     }
     if (node.type.name === "paragraph") {
-      const paragraphMark = readSuggestedParagraphMark(node);
-      if (paragraphMark) {
+      for (const paragraphMark of readSuggestedParagraphMarkRecords(node)) {
         const entry = entryFor(paragraphMark.suggestionId);
         entry.segments.push({ from: pos, to: pos + node.nodeSize });
         entry.kinds.add(paragraphMark.kind);
@@ -3616,21 +3647,34 @@ const acceptSuggestions = (
           _propertyChanges: propertyChanges,
         };
       }
-      const paragraphMark = readSuggestedParagraphMark(node);
-      if (paragraphMark && matchesSuggestion(paragraphMark.suggestionId)) {
-        const mark = node.attrs["pPrMark"];
-        if (isPPrMarkAttr(mark)) {
-          nextAttrs = {
-            ...(nextAttrs ?? node.attrs),
-            pPrMark: {
-              ...mark,
-              info: {
-                ...mark.info,
+      const paragraphMark: unknown = node.attrs["pPrMark"];
+      if (isPPrMarkAttr(paragraphMark)) {
+        // Each record of the mark the suggestion owns becomes the user's.
+        const accepted = (info: ParagraphMarkChange["info"]) => {
+          const suggestionId = suggestionIdOfMarkRecord(info);
+          return suggestionId !== null && matchesSuggestion(suggestionId)
+            ? {
+                ...info,
                 author: options.author,
                 date,
                 provenance: "user",
                 suggestionId: null,
-              },
+              }
+            : null;
+        };
+        const own = accepted(paragraphMark.info);
+        const { deletion: pendingDeletion } = paragraphMark;
+        const deletion =
+          pendingDeletion === undefined ? null : accepted(pendingDeletion.info);
+        if (own !== null || deletion !== null) {
+          nextAttrs = {
+            ...(nextAttrs ?? node.attrs),
+            pPrMark: {
+              ...paragraphMark,
+              ...(own === null ? {} : { info: own }),
+              ...(deletion === null || pendingDeletion === undefined
+                ? {}
+                : { deletion: { ...pendingDeletion, info: deletion } }),
             },
           };
         }

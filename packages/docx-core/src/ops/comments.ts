@@ -63,11 +63,16 @@ import {
 } from "./refusal";
 import type { ApplyOps } from "./resolve";
 import {
+  contentOutsideTextBoxes,
   documentStories,
   findStoryBody,
   sameStory,
   storyBody,
 } from "./stories";
+import {
+  locateThroughTextBoxes,
+  paragraphsThroughTextBoxes,
+} from "./textBoxRouting";
 import {
   type CommentOp,
   type CommentState,
@@ -890,12 +895,8 @@ const capture = (
   }
   const anchors: CommentState["anchors"][number][] = [];
   for (const { story, blockId } of addressed) {
-    const found = findStoryBody(document, story);
-    const paragraph =
-      found &&
-      storyParagraphs(found).find(
-        ({ paragraph: value }) => idKey(value.paraId ?? "") === idKey(blockId),
-      )?.paragraph;
+    const paragraph = locateThroughTextBoxes(document, story, blockId)?.location
+      .paragraph;
     if (paragraph) anchors.push({ story, blockId, content: paragraph.content });
   }
   const boundaries = captureCommentBoundaries(document, ids) ?? [];
@@ -916,14 +917,22 @@ const changedAnchors = (
   const anchors: CommentState["anchors"][number][] = [];
   for (const story of documentStories(before)) {
     const next = new Map(
-      storyParagraphs(storyBody(after, story)).map(({ paragraph }) => [
+      paragraphsThroughTextBoxes(after, story).map(({ paragraph }) => [
         idKey(paragraph.paraId ?? ""),
         paragraph,
       ]),
     );
-    for (const { paragraph } of storyParagraphs(storyBody(before, story))) {
+    for (const { paragraph } of paragraphsThroughTextBoxes(before, story)) {
+      const now = next.get(idKey(paragraph.paraId ?? ""));
+      // A paragraph changed only inside its text boxes keeps its own anchors;
+      // the boxes' paragraphs are listed on their own.
       if (
-        paragraph.content !== next.get(idKey(paragraph.paraId ?? ""))?.content
+        paragraph.content !== now?.content &&
+        (now === undefined ||
+          !structurallyEqual(
+            contentOutsideTextBoxes(paragraph),
+            contentOutsideTextBoxes(now),
+          ))
       )
         anchors.push({
           story,
@@ -1212,21 +1221,17 @@ const restoreAnchors = ({
 }: RestoreAnchorsOptions): Result<Document, DocumentOpRefusal> => {
   let current = document;
   for (const { story, blockId, content } of anchors) {
-    const body = findStoryBody(current, story);
-    const location =
-      body &&
-      storyParagraphs(body).find(
-        ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(blockId),
-      );
-    if (!location)
+    const located = locateThroughTextBoxes(current, story, blockId);
+    if (!located)
       return fail(
         op,
         "An owned comment paragraph is missing.",
         DOCUMENT_OP_REFUSAL_REASONS.STALE,
       );
+    const { location } = located;
     const changed = replaceParagraphs({
       document: current,
-      story,
+      story: located.story,
       at: location,
       count: 1,
       replacement: [
@@ -2069,7 +2074,7 @@ export const applyCommentOp = (
   }
   let current = document;
   for (const story of documentStories(document)) {
-    for (const { paragraph } of storyParagraphs(storyBody(document, story))) {
+    for (const { paragraph } of paragraphsThroughTextBoxes(document, story)) {
       const seams = new Set(ownedSeams(paragraph.content, ids));
       if (seams.size === 0) continue;
       const content = normalizedWithoutAnchors({

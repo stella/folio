@@ -7,6 +7,7 @@ import type {
 } from "@stll/docx-core/model";
 import { formattingEquals, mergeRunContent } from "@stll/docx-core/ops";
 import { visitDocxParagraphs } from "@stll/folio-core/docx/paragraphTraversal";
+import { RELATIONSHIP_TYPES } from "@stll/folio-core/docx/relsParser";
 import { consolidateParagraphContent } from "@stll/folio-core/docx/runConsolidator";
 
 import { openReviewer } from "./documents.ts";
@@ -148,6 +149,71 @@ const hasModeledComments = (value: object): boolean => {
   );
 };
 
+/**
+ * Parts a package finds by relationship type alone (ECMA-376 implicit
+ * relationships). No content names them by id, so the id a save allocates
+ * them is no part of what the package reads as.
+ */
+const IMPLICIT_PART_RELATIONSHIPS = new Set<string>([
+  RELATIONSHIP_TYPES.styles,
+  RELATIONSHIP_TYPES.numbering,
+  RELATIONSHIP_TYPES.settings,
+  RELATIONSHIP_TYPES.webSettings,
+  RELATIONSHIP_TYPES.fontTable,
+  RELATIONSHIP_TYPES.theme,
+  RELATIONSHIP_TYPES.footnotes,
+  RELATIONSHIP_TYPES.endnotes,
+  RELATIONSHIP_TYPES.comments,
+  RELATIONSHIP_TYPES.commentsExtended,
+]);
+
+const relationshipType = (relationship: unknown): string | undefined =>
+  typeof relationship === "object" &&
+  relationship !== null &&
+  "type" in relationship &&
+  typeof relationship.type === "string"
+    ? relationship.type
+    : undefined;
+
+type MeaningfulRelationshipsOptions = {
+  relationships: ReadonlyMap<unknown, unknown>;
+  modeledComments: boolean;
+};
+
+/** Relationships keyed by what content reads them through: id, or type and target. */
+const meaningfulRelationships = ({
+  relationships,
+  modeledComments,
+}: MeaningfulRelationshipsOptions): Map<unknown, unknown> => {
+  const meaningful = new Map<unknown, unknown>();
+  for (const [id, relationship] of relationships) {
+    const type = relationshipType(relationship);
+    if (
+      !modeledComments &&
+      type !== undefined &&
+      EMPTY_PART_RELATIONSHIPS.has(type)
+    )
+      continue;
+    if (
+      type === undefined ||
+      !IMPLICIT_PART_RELATIONSHIPS.has(type) ||
+      typeof relationship !== "object" ||
+      relationship === null
+    ) {
+      meaningful.set(id, relationship);
+      continue;
+    }
+    const rest = Object.fromEntries(
+      Object.entries(relationship).filter(([field]) => field !== "id"),
+    );
+    const key = `implicit ${type} ${String(rest["target"])}`;
+    let duplicate = 1;
+    while (meaningful.has(`${key} #${duplicate}`)) duplicate++;
+    meaningful.set(`${key} #${duplicate}`, rest);
+  }
+  return meaningful;
+};
+
 type CanonicalReviewModelOptions = {
   model: unknown;
   aliases?: ReadonlyMap<string, string>;
@@ -221,21 +287,11 @@ const projectCanonicalReviewModel = ({
         )
           continue;
       }
-      if (
-        key === "relationships" &&
-        entry instanceof Map &&
-        !hasModeledComments(value)
-      ) {
-        const meaningful = new Map(
-          [...entry].filter(
-            ([, relationship]) =>
-              typeof relationship !== "object" ||
-              relationship === null ||
-              !("type" in relationship) ||
-              typeof relationship.type !== "string" ||
-              !EMPTY_PART_RELATIONSHIPS.has(relationship.type),
-          ),
-        );
+      if (key === "relationships" && entry instanceof Map) {
+        const meaningful = meaningfulRelationships({
+          relationships: entry,
+          modeledComments: hasModeledComments(value),
+        });
         entries.push([key, project(meaningful, `${modelPath}/${key}`)]);
         continue;
       }
@@ -325,6 +381,87 @@ const joinRunsOfSameProperties = (
   return joined;
 };
 
+/** Package fields that hold no numbering reference a reader follows. */
+const NUMBERING_REFERENCE_FREE_KEYS = new Set(["numbering", "media", "fonts"]);
+
+/** Every `numId` a numbering reference outside the numbering part names. */
+const referencedNumIds = (model: Document): Set<number> => {
+  const referenced = new Set<number>();
+  const visited = new WeakSet<object>();
+  const visit = (value: unknown): void => {
+    if (typeof value !== "object" || value === null) return;
+    if (value instanceof ArrayBuffer || ArrayBuffer.isView(value)) return;
+    if (visited.has(value)) return;
+    visited.add(value);
+    if (value instanceof Map) {
+      for (const entry of value.values()) visit(entry);
+      return;
+    }
+    if (
+      "kind" in value &&
+      value.kind === "reference" &&
+      "numId" in value &&
+      typeof value.numId === "number"
+    )
+      referenced.add(value.numId);
+    for (const child of Object.values(value)) visit(child);
+  };
+  for (const [key, value] of Object.entries(model.package))
+    if (!NUMBERING_REFERENCE_FREE_KEYS.has(key)) visit(value);
+  return referenced;
+};
+
+/**
+ * `model` with only the numbering definitions a reference reaches: the
+ * instances a paragraph, style or recorded previous formatting names, their
+ * abstract definitions, and the abstract a level-less one links to by style.
+ * A definition nothing reaches changes nothing a reader sees; a save may
+ * drop one a session added and no longer uses, and with it a numbering part
+ * left with no definition a reference reaches.
+ */
+const withReachableNumbering = (model: Document): Document => {
+  const { numbering } = model.package;
+  if (numbering === undefined) return model;
+  const referenced = referencedNumIds(model);
+  const nums = numbering.nums.filter(({ numId }) => referenced.has(numId));
+  const abstractIds = new Set(nums.map(({ abstractNumId }) => abstractNumId));
+  const styleLinks = new Set(
+    numbering.abstractNums.flatMap(({ abstractNumId, numStyleLink }) =>
+      abstractIds.has(abstractNumId) && numStyleLink !== undefined
+        ? [numStyleLink]
+        : [],
+    ),
+  );
+  const abstractNums = numbering.abstractNums.filter(
+    ({ abstractNumId, styleLink }) =>
+      abstractIds.has(abstractNumId) ||
+      (styleLink !== undefined && styleLinks.has(styleLink)),
+  );
+  if (nums.length > 0 || abstractNums.length > 0)
+    return {
+      ...model,
+      package: {
+        ...model.package,
+        numbering: { ...numbering, nums, abstractNums },
+      },
+    };
+  const { relationships } = model.package;
+  return {
+    ...model,
+    package: {
+      ...model.package,
+      numbering: undefined,
+      relationships:
+        relationships &&
+        new Map(
+          [...relationships].filter(
+            ([, { type }]) => type !== RELATIONSHIP_TYPES.numbering,
+          ),
+        ),
+    },
+  };
+};
+
 export const canonicalResolvedReviewModel = (
   model: Document,
   aliases: ReadonlyMap<string, string> = new Map(),
@@ -360,7 +497,7 @@ export const canonicalResolvedReviewModel = (
     );
   }
   return projectCanonicalReviewModel({
-    model,
+    model: withReachableNumbering(model),
     aliases,
     paragraphContentOverrides,
   });
