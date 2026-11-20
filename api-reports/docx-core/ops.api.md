@@ -1241,6 +1241,12 @@ export type ResolveRevisionOp = {
     decision: RevisionDecision;
 };
 
+// @public
+export const resolveSectionChange: (input: ResolveSectionChangeOptions) => SectionProperties | null;
+
+// @public
+export const resolveSectionChanges: (current: SectionProperties, decision: RevisionDecision) => SectionProperties | null;
+
 // @public (undocumented)
 export type RestoreCommentStateOp = {
     type: typeof DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE;
@@ -1327,6 +1333,12 @@ export type SectionPropertiesState = {
     type: "present";
     value: SectionProperties;
 };
+
+// @public
+export const sectionRejectProperties: (input: SectionRejectPropertiesOptions) => SectionProperties;
+
+// @public
+export const sectionResolutionPatch: (input: SectionResolutionPatchOptions) => FormattingPatch<SectionProperties>;
 
 // @public
 export type SectionViewEntry = {

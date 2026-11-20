@@ -27,6 +27,9 @@ import {
   packageResourcesOpOf,
   pendingSuggestionIdsIn,
   reconcileDocumentPartRelationships,
+  resolveSectionChange,
+  resolveSectionChanges,
+  sectionResolutionPatch,
   type StoryParts,
   withoutPendingSuggestions,
 } from "@stll/docx-core/ops";
@@ -242,12 +245,7 @@ import {
   coveredCommentIdsInProseDoc,
   withoutLostCommentThreads,
 } from "./comment-lifecycle";
-import {
-  finalSectionResolutionPatch,
-  resolveFinalSectionChange,
-  resolveFinalSectionChanges,
-  stagedFinalSectionProperties,
-} from "./finalSectionReview";
+import { stagedFinalSectionProperties } from "./finalSectionReview";
 import { noteReferenceEditsAllowed } from "./note-references";
 import { noteStoryInventory } from "./note-story-inventory";
 import {
@@ -2578,7 +2576,7 @@ export class FolioDocxReviewer {
     if (!current || !next) return null;
     return createCanonicalSectionPropertiesOperation(
       this.baseDocument,
-      finalSectionResolutionPatch({ current, next }),
+      sectionResolutionPatch({ current, next }),
     );
   }
 
@@ -4113,7 +4111,7 @@ export class FolioDocxReviewer {
   ): number {
     const current = this.currentFinalSectionProperties();
     const resolved =
-      current && resolveFinalSectionChange({ current, mode, id });
+      current && resolveSectionChange({ current, decision: mode, id });
     if (!resolved) return 0;
     this.finalSectionPropertiesOverride = resolved;
     return 1;
@@ -4317,7 +4315,7 @@ export class FolioDocxReviewer {
       if (!adopted || resolution === "reject") return adopted;
     }
     const section = this.finalSectionOperation((current) =>
-      resolveFinalSectionChange({ current, mode: resolution, id }),
+      resolveSectionChange({ current, decision: resolution, id }),
     );
     const prepared = session.prepareResolve(this.state, {
       revisionIds: [id],
@@ -4370,7 +4368,7 @@ export class FolioDocxReviewer {
       this.currentFinalSectionProperties()?.propertyChanges ?? []
     ).map(({ info }) => info.id);
     const section = this.finalSectionOperation((current) =>
-      resolveFinalSectionChanges(current, resolution),
+      resolveSectionChanges(current, resolution),
     );
     const proposedComments =
       resolution === "reject"
@@ -4477,7 +4475,7 @@ export class FolioDocxReviewer {
 
   private resolveEveryFinalSectionChange(mode: "accept" | "reject"): number {
     const current = this.currentFinalSectionProperties();
-    const resolved = current && resolveFinalSectionChanges(current, mode);
+    const resolved = current && resolveSectionChanges(current, mode);
     if (!resolved) return 0;
     this.finalSectionPropertiesOverride = resolved;
     return current?.propertyChanges?.length ?? 0;
@@ -4925,7 +4923,7 @@ export class FolioDocxReviewer {
     const section =
       story.type === "main"
         ? this.finalSectionOperation((current) =>
-            resolveFinalSectionChanges(current, resolution),
+            resolveSectionChanges(current, resolution),
           )
         : null;
     const ids = getTrackedChangesFromDoc(state.doc).flatMap(({ id }) =>

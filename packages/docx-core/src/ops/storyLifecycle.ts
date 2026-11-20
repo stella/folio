@@ -486,7 +486,10 @@ export const storyLifecycleEdit = (
 };
 
 /** Ordered section breaks; the final section follows every paragraph sectPr. */
-const sectionEnds = (body: DocumentBody) =>
+type SectionEnd = { index: number; properties: SectionProperties };
+
+/** The body paragraphs that end a section, with that section's properties. */
+export const sectionEnds = (body: DocumentBody): SectionEnd[] =>
   body.content.flatMap((block, index) =>
     block.type === "paragraph" && block.sectionProperties !== undefined
       ? [{ index, properties: block.sectionProperties }]
