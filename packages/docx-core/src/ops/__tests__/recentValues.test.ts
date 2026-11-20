@@ -55,7 +55,14 @@ test("package and locator indexes dereference only bounded recency lists", () =>
         shared,
       );
     }
-    const targets = new Set(deref.mock.results.map(({ value }) => value));
+    // The module's lists may predate this test: a collection after the job
+    // that filled them empties their references, which then read as
+    // `undefined` once before a list is made again.
+    const targets = new Set(
+      deref.mock.results
+        .map(({ value }) => value)
+        .filter((value) => value !== undefined),
+    );
     expect(targets.size).toBe(2);
     for (const target of targets) {
       expect(Array.isArray(target)).toBe(true);
