@@ -763,7 +763,7 @@ test.each(["body", "cell"] as const)(
   },
 );
 
-test("tracked deletion before a table its mark cannot run into is refused, and one it can is resolvable alone", () => {
+test("tracked deletion before a table under review empties the paragraph, one before no receiving cell is refused, and each resolves alone", () => {
   const foreign = { id: 9, author: "Other", date: "2026-01-01T00:00:00Z" };
   const inner = cell([paragraph("00000003", "cell")]);
   if (inner.type !== "table") throw new Error("A cell fixture is a table.");
@@ -771,7 +771,7 @@ test("tracked deletion before a table its mark cannot run into is refused, and o
   if (row === undefined) throw new Error("A cell fixture has a row.");
   const [firstCell] = row.cells;
   if (firstCell === undefined) throw new Error("A cell fixture has a cell.");
-  const blocked: BlockContent[] = [
+  const underReview: BlockContent[] = [
     // The first row is a pending insertion or deletion.
     {
       ...inner,
@@ -806,6 +806,28 @@ test("tracked deletion before a table its mark cannot run into is refused, and o
         },
       ],
     },
+  ];
+  // The words have nowhere to run in, but the deletion takes them all: each
+  // decision on it alone resolves, accepting without crossing the table.
+  for (const table of underReview) {
+    const document = documentOf([
+      paragraph("00000001", "first"),
+      paragraph("00000002", "target"),
+      table,
+      paragraph("00000004", "after"),
+    ]);
+    const tracked = apply(document, deletion(["00000002"]));
+    for (const decision of Object.values(REVISION_DECISIONS)) {
+      const resolved = applyDocumentOp(tracked.document, {
+        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+        story: OP_STORIES.MAIN,
+        revisionIds: tracked.revisions,
+        decision,
+      });
+      if (resolved.isErr()) throw resolved.error;
+    }
+  }
+  const blocked: BlockContent[] = [
     // The first cell opens with no paragraph.
     {
       ...inner,

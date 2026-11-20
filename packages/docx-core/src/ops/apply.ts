@@ -2141,6 +2141,20 @@ const trackJoin = ({
       `The mark of ${op.blockId} already carries a tracked change.`,
     );
   }
+  // The second paragraph's own mark already goes, before a table: accepting
+  // both would run the first paragraph's words into the table, which a join
+  // of two paragraphs does not ask for.
+  if (
+    trailing.pPrMark?.kind === "del" &&
+    blockListAt(storyBody(document, op.story).content, at.list)[at.index + 2]
+      ?.type === "table"
+  ) {
+    return refuse(
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+      `Joining ${op.blockId} would run it into the table after ${op.nextBlockId}.`,
+    );
+  }
   const first: Paragraph = {
     ...leading,
     pPrMark:
