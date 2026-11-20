@@ -77,4 +77,25 @@ describe("a kept range marker's cut", () => {
     expect(inner(settleKeptCuts([pending, holding()]))).toEqual([CUT]);
     expect(inner(settleKeptCuts([link("b"), holding()]))).toEqual([]);
   });
+
+  test("markers standing together while a change waits stand in the deepest cut any records", () => {
+    const pending: InlineNode = {
+      type: "insertion",
+      info: { id: 4, author: "C", date: "2026-03-04T05:00:02Z" },
+      content: [link("x")],
+    };
+    const shallow = { depth: 1, keptFrom: "2026-03-04T05:00:03Z" };
+    const settled = settleKeptCuts([
+      pending,
+      { type: "bookmarkStart", id: 1, name: "b", keptCut: CUT },
+      { type: "bookmarkEnd", id: 1, keptCut: shallow },
+      { type: "bookmarkEnd", id: 2 },
+    ]);
+    // Each keeps the revision it was kept from; the authored marker gains no cut.
+    expect(settled.slice(1)).toEqual([
+      { type: "bookmarkStart", id: 1, name: "b", keptCut: CUT },
+      { type: "bookmarkEnd", id: 1, keptCut: { ...shallow, depth: CUT.depth } },
+      { type: "bookmarkEnd", id: 2 },
+    ]);
+  });
 });
