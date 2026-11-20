@@ -947,6 +947,7 @@ export type FolioBlockProperty = keyof typeof BLOCK_PROPERTIES;
 export type FolioCompareDocxVersionsOptions = {
     include?: readonly FolioVersionComparisonScope[];
     privacy?: FolioVersionDiffPrivacyOptions;
+    session?: HeadlessReviewerSession;
 };
 
 // @public

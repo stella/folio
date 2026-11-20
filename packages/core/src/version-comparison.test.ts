@@ -267,6 +267,8 @@ const findChange = (
   return change;
 };
 
+const SESSIONS = ["legacy", "canonical"] as const;
+
 describe("compareDocxVersions: real w14:paraId alignment", () => {
   test("reports a nested text-box table-cell edit with stable source handles", async () => {
     const diff = await compareDocxVersions(
@@ -459,71 +461,72 @@ describe("compareDocxVersions: document stories", () => {
   });
 });
 
-describe("compareDocxVersions: deterministic fallback ids (no w14:paraId)", () => {
-  test("a same-text block whose ordinal shifted still pairs through a gap-local exact anchor", async () => {
-    // Neither source carries a w14:paraId, so FolioDocxReviewer assigns each
-    // block a deterministic id derived from text plus ordinal and marks its
-    // provenance positional. The "Epsilon" insertion shifts Gamma from third
-    // to fourth, changing that id even though its text is untouched. Stable-id
-    // pairing must ignore these ids; the unique exact-text anchor recovers Gamma.
-    const base = await buildDocxBuffer([
-      { text: "Alpha paragraph." },
-      { text: "Beta paragraph." },
-      { text: "Gamma paragraph." },
-    ]);
-    const revised = await buildDocxBuffer([
-      { text: "Alpha paragraph." },
-      { text: "Beta paragraph modified." },
-      { text: "Epsilon paragraph." },
-      { text: "Gamma paragraph." },
-    ]);
+for (const session of SESSIONS)
+  describe(`compareDocxVersions: deterministic fallback ids, no w14:paraId (${session})`, () => {
+    test("a same-text block whose ordinal shifted still pairs through a gap-local exact anchor", async () => {
+      // Neither source carries a w14:paraId, so FolioDocxReviewer assigns each
+      // block a deterministic id derived from text plus ordinal and marks its
+      // provenance positional. The "Epsilon" insertion shifts Gamma from third
+      // to fourth, changing that id even though its text is untouched. Stable-id
+      // pairing must ignore these ids; the unique exact-text anchor recovers Gamma.
+      const base = await buildDocxBuffer([
+        { text: "Alpha paragraph." },
+        { text: "Beta paragraph." },
+        { text: "Gamma paragraph." },
+      ]);
+      const revised = await buildDocxBuffer([
+        { text: "Alpha paragraph." },
+        { text: "Beta paragraph modified." },
+        { text: "Epsilon paragraph." },
+        { text: "Gamma paragraph." },
+      ]);
 
-    const [baseReviewer, revisedReviewer] = await Promise.all([
-      FolioDocxReviewer.fromBuffer(base),
-      FolioDocxReviewer.fromBuffer(revised),
-    ]);
-    expect(
-      [
-        ...baseReviewer.snapshot().blocks,
-        ...revisedReviewer.snapshot().blocks,
-      ].every(({ idStability }) => idStability === "positional"),
-    ).toBe(true);
+      const [baseReviewer, revisedReviewer] = await Promise.all([
+        FolioDocxReviewer.fromBuffer(base, { session }),
+        FolioDocxReviewer.fromBuffer(revised, { session }),
+      ]);
+      expect(
+        [
+          ...baseReviewer.snapshot().blocks,
+          ...revisedReviewer.snapshot().blocks,
+        ].every(({ idStability }) => idStability === "positional"),
+      ).toBe(true);
 
-    const diff = await compareDocxVersions(base, revised);
+      const diff = await compareDocxVersions(base, revised, { session });
 
-    // Alpha (unshifted, same fallback id both sides) and Gamma (shifted,
-    // recovered through the exact-anchor pass) are both unchanged and absent from `changes`.
-    expect(diff.summaryCounts).toEqual({
-      added: 1,
-      deleted: 0,
-      modified: 1,
-      formatChanged: 0,
-      moved: 0,
-      metadataChanged: 0,
-      unchanged: 2,
+      // Alpha (unshifted, same fallback id both sides) and Gamma (shifted,
+      // recovered through the exact-anchor pass) are both unchanged and absent from `changes`.
+      expect(diff.summaryCounts).toEqual({
+        added: 1,
+        deleted: 0,
+        modified: 1,
+        formatChanged: 0,
+        moved: 0,
+        metadataChanged: 0,
+        unchanged: 2,
+      });
+      expect(diff.changes.map((c) => c.type)).toEqual(["modified", "added"]);
+
+      const modified = diff.changes[0];
+      if (!modified || modified.type !== "modified") {
+        throw new Error("expected a modified change");
+      }
+      // Reconstruct the revised text from the `equal` + `ins` segments (the
+      // `del` segments carry the superseded base-side text, not part of either
+      // whole string on their own).
+      const reconstructedRevised = modified.segments
+        .filter((s) => s.type !== "del")
+        .map((s) => s.text)
+        .join("");
+      expect(reconstructedRevised).toBe("Beta paragraph modified.");
+
+      const added = diff.changes[1];
+      if (!added || added.type !== "added") {
+        throw new Error("expected an added change");
+      }
+      expect(added.text).toBe("Epsilon paragraph.");
     });
-    expect(diff.changes.map((c) => c.type)).toEqual(["modified", "added"]);
-
-    const modified = diff.changes[0];
-    if (!modified || modified.type !== "modified") {
-      throw new Error("expected a modified change");
-    }
-    // Reconstruct the revised text from the `equal` + `ins` segments (the
-    // `del` segments carry the superseded base-side text, not part of either
-    // whole string on their own).
-    const reconstructedRevised = modified.segments
-      .filter((s) => s.type !== "del")
-      .map((s) => s.text)
-      .join("");
-    expect(reconstructedRevised).toBe("Beta paragraph modified.");
-
-    const added = diff.changes[1];
-    if (!added || added.type !== "added") {
-      throw new Error("expected an added change");
-    }
-    expect(added.text).toBe("Epsilon paragraph.");
   });
-});
 
 describe("compareDocxVersions: no-op", () => {
   test("identical documents produce zero changes and every block counts as unchanged", async () => {
@@ -1049,57 +1052,62 @@ describe("compareDocxVersions: move detection", () => {
     });
   });
 
-  test("preserves positional fallback ids when delegating move classification", async () => {
-    const [base, revised] = await Promise.all([
-      buildDocxBuffer([
-        { text: "alpha beta gamma" },
-        { text: "bravo charlie delta" },
-        { text: "echo foxtrot golf" },
-        { text: "hotel india juliet" },
-      ]),
-      buildDocxBuffer([
-        { text: "bravo charlie delta" },
-        { text: "hotel india juliet" },
-        { text: "alpha beta gamma" },
-        { text: "echo foxtrot golf" },
-      ]),
-    ]);
-    const [baseReviewer, revisedReviewer] = await Promise.all([
-      FolioDocxReviewer.fromBuffer(base),
-      FolioDocxReviewer.fromBuffer(revised),
-    ]);
-    const baseBlocks = baseReviewer.snapshot().blocks;
-    const revisedBlocks = revisedReviewer.snapshot().blocks;
-    expect(
-      [...baseBlocks, ...revisedBlocks].every(
-        ({ idStability }) => idStability === "positional",
-      ),
-    ).toBe(true);
-    const neutral = compareContent({
-      base: { blocks: baseBlocks },
-      revised: { blocks: revisedBlocks },
-    });
-    if (neutral.isErr()) {
-      throw neutral.error;
-    }
-    const neutralChanges = neutral.value.events
-      .filter(({ type }) => type !== "unchanged")
-      .map(({ type }) => type);
+  test.each(SESSIONS)(
+    "preserves positional fallback ids when delegating move classification (%s)",
+    async (session) => {
+      const [base, revised] = await Promise.all([
+        buildDocxBuffer([
+          { text: "alpha beta gamma" },
+          { text: "bravo charlie delta" },
+          { text: "echo foxtrot golf" },
+          { text: "hotel india juliet" },
+        ]),
+        buildDocxBuffer([
+          { text: "bravo charlie delta" },
+          { text: "hotel india juliet" },
+          { text: "alpha beta gamma" },
+          { text: "echo foxtrot golf" },
+        ]),
+      ]);
+      const [baseReviewer, revisedReviewer] = await Promise.all([
+        FolioDocxReviewer.fromBuffer(base, { session }),
+        FolioDocxReviewer.fromBuffer(revised, { session }),
+      ]);
+      const baseBlocks = baseReviewer.snapshot().blocks;
+      const revisedBlocks = revisedReviewer.snapshot().blocks;
+      expect(
+        [...baseBlocks, ...revisedBlocks].every(
+          ({ idStability }) => idStability === "positional",
+        ),
+      ).toBe(true);
+      const neutral = compareContent({
+        base: { blocks: baseBlocks },
+        revised: { blocks: revisedBlocks },
+      });
+      if (neutral.isErr()) {
+        throw neutral.error;
+      }
+      const neutralChanges = neutral.value.events
+        .filter(({ type }) => type !== "unchanged")
+        .map(({ type }) => type);
 
-    expect(neutralChanges).toEqual([
-      "movedFrom",
-      "movedFrom",
-      "movedTo",
-      "movedTo",
-    ]);
-    const versionDiff = await compareDocxVersions(base, revised);
-    expect(versionDiff.changes.map(({ type }) => type)).toEqual(neutralChanges);
-    expect(versionDiff.summaryCounts).toMatchObject({
-      added: 0,
-      deleted: 0,
-      moved: 2,
-    });
-  });
+      expect(neutralChanges).toEqual([
+        "movedFrom",
+        "movedFrom",
+        "movedTo",
+        "movedTo",
+      ]);
+      const versionDiff = await compareDocxVersions(base, revised, { session });
+      expect(versionDiff.changes.map(({ type }) => type)).toEqual(
+        neutralChanges,
+      );
+      expect(versionDiff.summaryCounts).toMatchObject({
+        added: 0,
+        deleted: 0,
+        moved: 2,
+      });
+    },
+  );
 });
 
 describe("compareDocxVersions: neutral structural classification", () => {

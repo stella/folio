@@ -79,7 +79,7 @@ import {
   CanonicalSaveRepackRefusedError,
   serializeCanonicalSave,
 } from "../docx/canonicalSave";
-import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
+import { prepareCanonicalDocxSource } from "../docx/canonicalSessionInput";
 import { removeCommentMarkers } from "../docx/commentAnchorIndex";
 import { applyReplyThreadMarkers } from "../docx/commentReplyMarkers";
 /**
@@ -270,7 +270,7 @@ import {
 import { classifyResourceReference } from "./referenceClassification";
 import {
   collectNoteReferenceLabels,
-  createFolioAIEditSnapshotWithStyleResolver,
+  createReviewerSnapshot,
   detachFolioAIEditSnapshotExternalHyperlinks,
   type FolioStoryTable,
   folioStoryTables,
@@ -1091,12 +1091,16 @@ const createHeadlessPlugins = (
   createDocumentStylesPlugin(styles),
 ];
 
-const createStateSnapshot = (state: EditorState): FolioAIEditSnapshot =>
-  createFolioAIEditSnapshotWithStyleResolver(
-    state.doc,
-    getDocumentStyleResolver(state),
-    getDocumentNumbering(state),
-  );
+const createStateSnapshot = (
+  state: EditorState,
+  positionalParaIds: ReadonlySet<string>,
+): FolioAIEditSnapshot =>
+  createReviewerSnapshot({
+    doc: state.doc,
+    styleResolver: getDocumentStyleResolver(state),
+    numbering: getDocumentNumbering(state),
+    positionalParaIds,
+  });
 
 const formatStorySnapshotForLLM = (
   snapshot: FolioAIEditSnapshot,
@@ -1591,6 +1595,12 @@ export class FolioDocxReviewer {
   private deletedCommentIds: ReadonlySet<number> = new Set();
   /** Comments the body anchored when it was loaded, read as the editor projects it. */
   private readonly loadedMainCommentIds: ReadonlySet<number>;
+  /**
+   * Paragraph ids the canonical session's input minted for paragraphs the
+   * package named none for: a snapshot reads them as positional, so nothing
+   * pairs two documents' paragraphs by them.
+   */
+  private readonly positionalParaIds: ReadonlySet<string>;
   private readonly documentOperationUndoEntries: FolioDocumentOperationUndoEntry[] =
     [];
   private pendingSuggestions = new FolioPendingSuggestionRegistry();
@@ -1612,8 +1622,11 @@ export class FolioDocxReviewer {
     author: string;
     engine: FolioReviewerEngineSource;
     loadedMainCommentIds?: ReadonlySet<number>;
+    /** Paragraph ids minted when the document was opened. */
+    positionalParaIds?: ReadonlySet<string>;
   }) {
     this.loadedDocument = args.baseDocument;
+    this.positionalParaIds = args.positionalParaIds ?? new Set();
     this.originalBuffer = args.originalBuffer;
     this.state = args.state;
     this.author = args.author;
@@ -2123,9 +2136,9 @@ export class FolioDocxReviewer {
     buffer: ArrayBuffer,
     options: FolioDocxReviewerOptions,
   ): Promise<FolioDocxReviewer> {
-    const prepared = await prepareCanonicalDocxInput(buffer);
+    const prepared = await prepareCanonicalDocxSource(buffer);
     if (prepared.isErr()) throw prepared.error;
-    const parsed = await parseDocx(prepared.value, {
+    const parsed = await parseDocx(prepared.value.docx, {
       detectVariables: false,
       preloadFonts: false,
     });
@@ -2140,6 +2153,7 @@ export class FolioDocxReviewer {
       state: canonicalReviewerState(session),
       author: options.author ?? "AI",
       engine: { type: "canonical", session },
+      positionalParaIds: prepared.value.mintedParaIds,
     });
   }
 
@@ -2184,6 +2198,7 @@ export class FolioDocxReviewer {
         state: canonicalReviewerState(created.value),
         author: this.author,
         engine: { type: "canonical", session: created.value },
+        positionalParaIds: this.positionalParaIds,
       });
       copy.pendingSuggestions = this.pendingSuggestions.clone();
       return copy;
@@ -2646,7 +2661,8 @@ export class FolioDocxReviewer {
   private snapshotOnSession(
     story: FolioEditableDocumentStoryHandle,
   ): FolioAIEditSnapshot {
-    if (story.type === "main") return createStateSnapshot(this.state);
+    if (story.type === "main")
+      return createStateSnapshot(this.state, this.positionalParaIds);
     const snapshot = this.snapshotStory(story);
     if (!snapshot)
       throw new FolioDocumentStoryNotFoundError({
@@ -2713,7 +2729,7 @@ export class FolioDocxReviewer {
    * the anchor map the apply layer resolves operations against.
    */
   snapshot(): FolioAIEditSnapshot {
-    return createStateSnapshot(this.state);
+    return createStateSnapshot(this.state, this.positionalParaIds);
   }
 
   /**
@@ -2794,6 +2810,7 @@ export class FolioDocxReviewer {
         state: canonicalReviewerState(created.value),
         author: this.author,
         engine: { type: "canonical", session: created.value },
+        positionalParaIds: this.positionalParaIds,
       }).getEditableStoryState(story);
       return saved
         ? createPendingSuggestionSourceSnapshot(saved, new Set())
@@ -2907,7 +2924,7 @@ export class FolioDocxReviewer {
     story: FolioEditableDocumentStoryHandle,
   ): FolioAIEditSnapshot | null {
     const state = this.getEditableStoryState(story);
-    return state ? createStateSnapshot(state) : null;
+    return state ? createStateSnapshot(state, this.positionalParaIds) : null;
   }
 
   private snapshotReviewedStoryInternal(
@@ -2929,7 +2946,10 @@ export class FolioDocxReviewer {
       ).snapshotReviewedStoryInternal({ story, view: "current-markup" });
     const sourceState = this.getEditableStoryState(story);
     return sourceState
-      ? createStateSnapshot(resolveReviewedState(sourceState, view))
+      ? createStateSnapshot(
+          resolveReviewedState(sourceState, view),
+          this.positionalParaIds,
+        )
       : null;
   }
 
@@ -3116,7 +3136,7 @@ export class FolioDocxReviewer {
     }
     const resolvedState = resolveReviewedState(sourceState, view);
     this.setEditableStoryState(story, resolvedState);
-    const snapshot = createStateSnapshot(resolvedState);
+    const snapshot = createStateSnapshot(resolvedState, this.positionalParaIds);
     const minted = mintedBlockOrdinals(snapshot);
     this.resolvedStoryExpectations.set(editableStoryKey(story), {
       story,
@@ -3253,7 +3273,8 @@ export class FolioDocxReviewer {
     const validatedBatch = parseFolioDocumentOperationBatch(batch);
     const beforeState = this.requireEditableStoryState(story);
     const operationAuthor = author ?? this.author;
-    const sourceSnapshot = snapshot ?? createStateSnapshot(beforeState);
+    const sourceSnapshot =
+      snapshot ?? createStateSnapshot(beforeState, this.positionalParaIds);
     const createdCommentsLengthBefore = this.createdComments.length;
     const beforeStyles = this.importedStyles;
     const definitions = beforeStyles ?? this.loadedDocument.package.styles;
@@ -4720,7 +4741,7 @@ export class FolioDocxReviewer {
       author: string;
     }[] = [];
     for (const record of records) {
-      const snapshot = createStateSnapshot(resolved);
+      const snapshot = createStateSnapshot(resolved, this.positionalParaIds);
       const view = {
         state: resolved,
         dispatch: (transaction: Transaction) => {
@@ -4822,6 +4843,7 @@ export class FolioDocxReviewer {
       state: canonicalReviewerState(created.value),
       author: this.author,
       engine: { type: "canonical", session: created.value },
+      positionalParaIds: this.positionalParaIds,
     });
     const resolution = view === "final" ? copy.acceptAll() : copy.rejectAll();
     if (resolution.skipped.length > 0)
