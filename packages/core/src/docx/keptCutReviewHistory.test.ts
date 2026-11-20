@@ -80,7 +80,7 @@ describe("a kept range marker's cut", () => {
     content: [
       { type: "bookmarkStart", id: 1, name: "kept", keptCut: CUT },
       text("a"),
-      { type: "bookmarkEnd", id: 1, keptCut: CUT },
+      { type: "bookmarkEnd", id: 1, keptCut: { ...CUT, piece: "before" } },
       { type: "commentRangeStart", id: 2, keptCut: CUT },
       {
         type: "moveToRangeStart",
@@ -90,7 +90,7 @@ describe("a kept range marker's cut", () => {
         keptCut: CUT,
       },
       text("b"),
-      { type: "moveToRangeEnd", id: 3, keptCut: CUT },
+      { type: "moveToRangeEnd", id: 3, keptCut: { ...CUT, piece: "after" } },
       { type: "commentRangeEnd", id: 2, keptCut: CUT },
       link([
         text("c"),
@@ -110,10 +110,11 @@ describe("a kept range marker's cut", () => {
     expect(keptCuts(reopened)).toEqual(keptCuts(paragraph));
   });
 
-  test("an unreadable cut is dropped and the marker kept", () => {
-    const encoded = escapeXmlAttribute(
-      JSON.stringify({ version: 2, value: { ...CUT, depth: 0 } }),
-    );
+  test.each([
+    ["no level deep", { ...CUT, depth: 0 }],
+    ["naming no side as its piece", { ...CUT, piece: "inside" }],
+  ])("an unreadable cut (%s) is dropped and the marker kept", (_, value) => {
+    const encoded = escapeXmlAttribute(JSON.stringify({ version: 2, value }));
     const root = parseXmlDocument(
       `<w:p xmlns:w="${W}" xmlns:folio="${FOLIO_REVIEW_HISTORY_NAMESPACE}"><w:bookmarkEnd w:id="1" folio:keptCut="${encoded}"/></w:p>`,
     ) as XmlElement | null;
@@ -306,5 +307,56 @@ describe("a review saved midway", () => {
         shape(paragraphOf(fromSource)),
       );
     }
+  });
+});
+
+describe("a version 1 change naming its kept markers", () => {
+  const R =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+  const read = (version: number): Paragraph => {
+    const joins = {
+      before: 1,
+      after: 0,
+      remove: 0,
+      keptFrom: KEPT_FROM,
+      keptCount: 1,
+    };
+    const root = parseXmlDocument(
+      [
+        `<w:p xmlns:w="${W}" xmlns:r="${R}" xmlns:folio="${FOLIO_REVIEW_HISTORY_NAMESPACE}">`,
+        '<w:bookmarkEnd w:id="1"/>',
+        `<w:ins w:id="3" w:author="A" w:date="2026-03-04T05:00:03Z" folio:resolutionJoins="${escapeXmlAttribute(JSON.stringify({ version, value: joins }))}">`,
+        '<w:hyperlink r:id="rId9"><w:r><w:t>x</w:t></w:r></w:hyperlink></w:ins>',
+        "</w:p>",
+      ].join(""),
+    ) as XmlElement | null;
+    if (!root) throw new Error("The paragraph parses.");
+    return parseParagraph(root, null, null, null, null, null);
+  };
+
+  test("marks them as standing in its cut, its side the piece", () => {
+    expect(read(1).content.at(0)).toEqual({
+      type: "bookmarkEnd",
+      id: 1,
+      keptCut: { depth: 1, keptFrom: KEPT_FROM, piece: "after" },
+    });
+    // Version 2 marks kept markers itself: an unmarked one was not kept.
+    expect(read(2).content.at(0)).toEqual({ type: "bookmarkEnd", id: 1 });
+  });
+
+  test("accepting the change places them inside its piece", () => {
+    const accepted = resolveOne(documentWith(read(1).content), [
+      3,
+      REVISION_DECISIONS.ACCEPT,
+    ]);
+    expect(shape(paragraphOf(accepted))).toEqual([
+      {
+        type: "hyperlink",
+        children: [
+          { type: "bookmarkEnd", id: 1 },
+          { type: "run", children: [{ type: "text", text: "x" }] },
+        ],
+      },
+    ]);
   });
 });
