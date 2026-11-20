@@ -45,10 +45,10 @@ describe("canonical cutover guard", () => {
     }
   });
 
-  test("the editor default does not change the headless reviewer's own default", () => {
-    expect(DEFAULT_HEADLESS_REVIEWER_SESSION).toBe("legacy");
-    expect(headlessReviewerUsesCanonicalSession()).toBe(false);
-    expect(headlessReviewerUsesCanonicalSession(undefined)).toBe(false);
+  test("the headless reviewer defaults to the canonical session, as the editors do", () => {
+    expect(DEFAULT_HEADLESS_REVIEWER_SESSION).toBe("canonical");
+    expect(headlessReviewerUsesCanonicalSession()).toBe(true);
+    expect(headlessReviewerUsesCanonicalSession(undefined)).toBe(true);
     expect(headlessReviewerUsesCanonicalSession("legacy")).toBe(false);
     expect(headlessReviewerUsesCanonicalSession("canonical")).toBe(true);
   });
