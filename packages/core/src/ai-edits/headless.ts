@@ -4262,13 +4262,15 @@ export class FolioDocxReviewer {
     const section = this.finalSectionOperation((current) =>
       resolveFinalSectionChange({ current, mode: resolution, id }),
     );
-    return this.resolveOnSession(
-      session.prepareResolve(this.state, {
-        revisionIds: [id],
-        resolution,
-        before: section ? [section] : [],
-      }),
-    ).resolved;
+    const prepared = session.prepareResolve(this.state, {
+      revisionIds: [id],
+      resolution,
+      before: section ? [section] : [],
+    });
+    // A change the engine will not resolve on its own stays pending, as a
+    // locked one does: the caller reads `false`.
+    if (prepared.isErr() && prepared.error.reason === "refused") return false;
+    return this.resolveOnSession(prepared).resolved;
   }
 
   /**
@@ -4283,14 +4285,15 @@ export class FolioDocxReviewer {
     author: string,
   ): boolean {
     if (!this.activeSuggestionIds().has(suggestionId)) return false;
-    return this.resolveOnSession(
-      session.prepareSuggestion(this.state, {
-        suggestionId,
-        resolution,
-        author,
-        date: new Date().toISOString(),
-      }),
-    ).resolved;
+    const prepared = session.prepareSuggestion(this.state, {
+      suggestionId,
+      resolution,
+      author,
+      date: new Date().toISOString(),
+    });
+    // A proposal the engine will not resolve stays staged: `false`.
+    if (prepared.isErr() && prepared.error.reason === "refused") return false;
+    return this.resolveOnSession(prepared).resolved;
   }
 
   /**
