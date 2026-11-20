@@ -3911,12 +3911,11 @@ export class CanonicalPublicOperations {
           });
         }
       }
-      const replayColumns = new Map(insertedColumnCounts);
-      let replayDocument = document;
-      const replayed: {
-        resolvedOperation: AdmittedOperation;
-        prepared: OperationAttempt;
-      }[] = [];
+      for (const declinedMember of declinedMembers)
+        commitOperation(
+          declinedMember.resolvedOperation,
+          declinedMember.prepared,
+        );
       for (const { member, operation: replayOperation } of ordered) {
         const idLease =
           session.idLease === undefined
@@ -3941,8 +3940,8 @@ export class CanonicalPublicOperations {
         });
         if (droppedCarrier !== undefined) reservedBlockIds.add(droppedCarrier);
         const prepared = prepareOperation({
-          document: replayDocument,
-          columnInsertions: replayColumns,
+          document,
+          columnInsertions: insertedColumnCounts,
           resolvedOperation: replayOperation,
           nextRevisionId: member.firstRevisionId,
           reservedBlockIds,
@@ -3954,17 +3953,8 @@ export class CanonicalPublicOperations {
         });
         if (prepared.type === "declined")
           panic(`Admitted insertion failed when ordered: ${prepared.message}`);
-        recordColumnInsertion(replayOperation, replayColumns);
-        replayDocument = prepared.document;
-        replayed.push({ resolvedOperation: replayOperation, prepared });
+        commitOperation(replayOperation, prepared);
       }
-      for (const declinedMember of declinedMembers)
-        commitOperation(
-          declinedMember.resolvedOperation,
-          declinedMember.prepared,
-        );
-      for (const replay of replayed)
-        commitOperation(replay.resolvedOperation, replay.prepared);
       nextRevisionId = Math.max(nextRevisionId, admissionRevisionId);
     }
     // A move half that did not apply leaves the other a plain insertion or
