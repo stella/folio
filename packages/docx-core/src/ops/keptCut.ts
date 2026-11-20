@@ -23,6 +23,15 @@ export const withKeptCut = (node: InlineNode, cut: KeptCut): InlineNode => {
   return Object.assign({}, node, { keptCut: cut });
 };
 
+/**
+ * Whether `node` stands in a kept cut: a marked range marker, or a pending
+ * deletion holding only marked ones.
+ */
+export const standsInKeptCut = (node: InlineNode): boolean =>
+  node.type === "deletion"
+    ? node.content.length > 0 && node.content.every(standsInKeptCut)
+    : carriesKeptCut(node) && node.keptCut !== undefined;
+
 /** `node` without a kept cut: placed inside a piece, it waits for nothing. */
 export const withoutKeptCut = (node: InlineNode): InlineNode => {
   if (!carriesKeptCut(node) || node.keptCut === undefined) return node;
@@ -32,26 +41,70 @@ export const withoutKeptCut = (node: InlineNode): InlineNode => {
 };
 
 /**
+ * `node` with `change` made to every range marker it stands for: the marker
+ * itself, or those a pending deletion holding only kept ones holds.
+ */
+const changeStandingMarkers = (
+  node: InlineNode,
+  change: (marker: InlineNode) => InlineNode,
+): InlineNode => {
+  if (node.type !== "deletion") return change(node);
+  const changed = node.content.map((child) =>
+    changeStandingMarkers(child, change),
+  );
+  return changed.every((child, index) => child === node.content[index])
+    ? node
+    : rebuildNode(node, changed);
+};
+
+/**
+ * `change`, keeping what the resolution recorded about a marker (`known`,
+ * keyed by the marker itself) on the copy it makes.
+ */
+const keepingRecord =
+  (
+    change: (marker: InlineNode) => InlineNode,
+    known: WeakMap<InlineNode, string>,
+  ) =>
+  (marker: InlineNode): InlineNode => {
+    const next = change(marker);
+    const date = known.get(marker);
+    if (next !== marker && date !== undefined) known.set(next, date);
+    return next;
+  };
+
+/**
  * `node` with every range marker it stands for marked as standing in `cut`:
  * the marker itself, or those a pending deletion holding only kept ones
  * holds.
  */
-export const withKeptCuts = (node: InlineNode, cut: KeptCut): InlineNode => {
-  if (node.type !== "deletion") return withKeptCut(node, cut);
-  const marked = node.content.map((child) => withKeptCuts(child, cut));
-  return marked.every((child, index) => child === node.content[index])
-    ? node
-    : rebuildNode(node, marked);
-};
+export const withKeptCuts = (node: InlineNode, cut: KeptCut): InlineNode =>
+  changeStandingMarkers(node, (marker) => withKeptCut(marker, cut));
+
+/** {@link withKeptCuts}, keeping what the resolution recorded per marker. */
+export const withKeptCutsRecorded = (
+  node: InlineNode,
+  cut: KeptCut,
+  known: WeakMap<InlineNode, string>,
+): InlineNode =>
+  changeStandingMarkers(
+    node,
+    keepingRecord((marker) => withKeptCut(marker, cut), known),
+  );
 
 /** `node` with no kept cut on the markers it stands for. */
-export const withoutKeptCuts = (node: InlineNode): InlineNode => {
-  if (node.type !== "deletion") return withoutKeptCut(node);
-  const placed = node.content.map(withoutKeptCuts);
-  return placed.every((child, index) => child === node.content[index])
-    ? node
-    : rebuildNode(node, placed);
-};
+export const withoutKeptCuts = (node: InlineNode): InlineNode =>
+  changeStandingMarkers(node, withoutKeptCut);
+
+/**
+ * {@link withoutKeptCuts}, keeping what the resolution recorded about each
+ * marker on its cleared copy.
+ */
+export const withoutKeptCutsRecorded = (
+  node: InlineNode,
+  known: WeakMap<InlineNode, string>,
+): InlineNode =>
+  changeStandingMarkers(node, keepingRecord(withoutKeptCut, known));
 
 const KEPT_CUT_FIELDS = {
   depth: true,
@@ -107,19 +160,79 @@ export const hasValidKeptCutsInBlocks = (
   });
 
 /**
- * `nodes` with the kept cuts that wait on nothing cleared: a run of kept
- * markers records its cut only while a pending change stands beside it or
- * holds some of them, the change whose resolution can still let the pieces
- * meet. Whichever order resolved the rest, no cut outlives that change.
+ * Whether a pending change stands at `node`'s `edge`: the node itself, or
+ * one at that edge of the records it holds, whose resolution can still let
+ * the pieces across from it meet.
+ */
+export const pendingAtEdge = (
+  node: InlineNode | undefined,
+  edge: "start" | "end",
+): boolean => {
+  if (node === undefined) return false;
+  if (isTrackedWrapper(node)) return true;
+  const children = childNodes(node);
+  if (children === undefined) return false;
+  return pendingAtEdge(
+    edge === "start" ? children.at(0) : children.at(-1),
+    edge,
+  );
+};
+
+type SettleKeptCutsOptions = {
+  /** What the resolution recorded about each marker, kept on its copies. */
+  known?: WeakMap<InlineNode, string>;
+  /** Told of every record rebuilt around a cleared marker. */
+  rebuilt?: (from: InlineNode, to: InlineNode) => void;
+  /** Whether a pending change meets the list from outside, at each end. */
+  outside?: { start: boolean; end: boolean };
+};
+
+/**
+ * `nodes` with the kept cuts that wait on nothing cleared, at every depth: a
+ * run of kept markers records its cut only while a pending change stands
+ * beside it, across the edges of the records around it, or holds some of
+ * them: the change whose resolution can still let the pieces meet. A record
+ * holding the run is no such change; resolving it keeps them again.
+ * Whichever order resolved the rest, no cut outlives that change.
  */
 export const settleKeptCuts = (
   nodes: readonly InlineNode[],
+  {
+    known = new WeakMap(),
+    rebuilt,
+    outside = { start: false, end: false },
+  }: SettleKeptCutsOptions = {},
 ): readonly InlineNode[] => {
   let out: InlineNode[] | undefined;
+  const pendingBefore = (index: number): boolean =>
+    index === 0 ? outside.start : pendingAtEdge(nodes[index - 1], "end");
+  const pendingAfter = (index: number): boolean =>
+    index === nodes.length - 1
+      ? outside.end
+      : pendingAtEdge(nodes[index + 1], "start");
   let start = 0;
   while (start < nodes.length) {
     const first = nodes[start];
-    if (first === undefined || !isKeptBoundaryCarrier(first)) {
+    if (first === undefined) break;
+    if (!isKeptBoundaryCarrier(first)) {
+      const children = childNodes(first);
+      const settled =
+        children === undefined
+          ? children
+          : settleKeptCuts(children, {
+              known,
+              ...(rebuilt === undefined ? {} : { rebuilt }),
+              outside: {
+                start: pendingBefore(start),
+                end: pendingAfter(start),
+              },
+            });
+      if (children !== undefined && settled !== children) {
+        const next = rebuildNode(first, settled ?? []);
+        rebuilt?.(first, next);
+        out ??= [...nodes];
+        out[start] = next;
+      }
       start += 1;
       continue;
     }
@@ -129,15 +242,13 @@ export const settleKeptCuts = (
       if (node === undefined || !isKeptBoundaryCarrier(node)) break;
     }
     const run = nodes.slice(start, end);
-    const before = nodes[start - 1];
-    const after = nodes[end];
     const waiting =
       run.some((node) => node.type === "deletion") ||
-      (before !== undefined && isTrackedWrapper(before)) ||
-      (after !== undefined && isTrackedWrapper(after));
+      pendingBefore(start) ||
+      pendingAfter(end - 1);
     if (!waiting)
       for (const [offset, node] of run.entries()) {
-        const settled = withoutKeptCuts(node);
+        const settled = withoutKeptCutsRecorded(node, known);
         if (settled === node) continue;
         out ??= [...nodes];
         out[start + offset] = settled;
