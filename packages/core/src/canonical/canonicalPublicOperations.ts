@@ -2498,6 +2498,11 @@ type ResolveBlockDeletionOptions = {
    */
   followsInsertedTable: boolean;
   /**
+   * Whether the batch puts a table right after this paragraph, which then
+   * stands before the table when this deletion runs.
+   */
+  precedesInsertedTable: boolean;
+  /**
    * Whether the batch inserts a paragraph after the paragraph before this
    * one, which then stands between them when this deletion runs.
    */
@@ -4219,6 +4224,7 @@ export class CanonicalPublicOperations {
     tracked,
     gainsFollower,
     followsInsertedTable,
+    precedesInsertedTable,
     previousGainsFollower,
     refusal,
   }: ResolveBlockDeletionOptions) {
@@ -4293,7 +4299,8 @@ export class CanonicalPublicOperations {
       tracked &&
       operation.moveId === undefined &&
       !gainsFollower &&
-      after?.type.name === "table" &&
+      // A table before it, standing or put there by the batch first.
+      (after?.type.name === "table" || precedesInsertedTable) &&
       isInsertedPPrMark(paragraph.node.attrs["pPrMark"]) &&
       holdsOriginalWords
     ) {
@@ -4723,6 +4730,11 @@ export class CanonicalPublicOperations {
         tracked,
         gainsFollower,
         followsInsertedTable,
+        // The table stands right after it only when no paragraph the batch
+        // inserts after it lands there too.
+        precedesInsertedTable:
+          besideDeletions.tables.after.has(blockId) &&
+          !besideDeletions.paragraphsAfter.has(blockId),
         previousGainsFollower:
           !followed &&
           typeof previousId === "string" &&
