@@ -31,7 +31,12 @@ import { contractViolation } from "../contract";
 import { isCommentAnchor, leafSpans } from "../leaves";
 import { paragraphLength } from "../offsets";
 import { allocateCommentAnchorIds, planTrackedDeletion } from "../plan";
-import { documentStories, storyBody } from "../stories";
+import {
+  documentStories,
+  type StoryAddress,
+  storyBody,
+  textBoxStoriesIn,
+} from "../stories";
 import {
   type CommentOp,
   DOCUMENT_OP_SCHEMA_VERSION,
@@ -56,6 +61,31 @@ const seed = (presence: "absent" | "undefined" | "present"): Document => {
         content: [
           paragraph("00000001", "alpha"),
           paragraph("00000002", "omega"),
+          {
+            type: "paragraph",
+            paraId: "00000008",
+            content: [
+              {
+                type: "run",
+                content: [
+                  {
+                    type: "shape",
+                    shape: {
+                      type: "shape",
+                      shapeType: "textBox",
+                      size: { width: 2_000_000, height: 800_000 },
+                      textBody: {
+                        content: [
+                          paragraph("00000009", "boxed"),
+                          paragraph("0000000A", "boxed tail"),
+                        ],
+                      },
+                    },
+                  },
+                ],
+              },
+            ],
+          },
         ],
       },
       headers: new Map([
@@ -89,14 +119,18 @@ const comment = (id: number, paraId: string, text: string): Comment => {
   return value;
 };
 const anchorSequence = (document: Document) =>
-  documentStories(document).flatMap((story) =>
-    storyParagraphs(storyBody(document, story)).flatMap(
-      ({ paragraph: block }) =>
-        leafSpans(block.content)
-          .filter(({ node }) => isCommentAnchor(node))
-          .map(({ node }) => node),
-    ),
-  );
+  documentStories(document)
+    .flatMap((story) =>
+      [story as StoryAddress].concat(textBoxStoriesIn(document, story)),
+    )
+    .flatMap((story) =>
+      storyParagraphs(storyBody(document, story)).flatMap(
+        ({ paragraph: block }) =>
+          leafSpans(block.content)
+            .filter(({ node }) => isCommentAnchor(node))
+            .map(({ node }) => node),
+      ),
+    );
 const exact = (document: Document, op: DocumentOp) => {
   const applied = applyDocumentOp(document, op).unwrap();
   expect(contractViolation(applied.document)).toBeUndefined();
@@ -241,7 +275,12 @@ test("generated comment histories preserve exact state, declaration order, opaqu
         "undefined" as const,
         "present" as const,
       ),
-      fc.constantFrom("main" as const, "header" as const, "note" as const),
+      fc.constantFrom(
+        "main" as const,
+        "header" as const,
+        "note" as const,
+        "textBox" as const,
+      ),
       fc.array(fc.constantFrom("resolve", "open", "edit"), {
         minLength: 1,
         maxLength: 8,
@@ -255,6 +294,8 @@ test("generated comment histories preserve exact state, declaration order, opaqu
             blockId: "00000003",
           },
           note: { story: { kind: "footnote", id: 1 }, blockId: "00000004" },
+          // A text box's paragraph, named through the story drawing it.
+          textBox: { story: OP_STORIES.MAIN, blockId: "00000009" },
         } as const satisfies Record<
           typeof storyKind,
           { story: OpStory; blockId: string }
@@ -385,7 +426,12 @@ test.each([...PARAGRAPH_MARK_CHANGE_KINDS, "properties" as const])(
   (revisionKind) => {
     assertProperty(
       fc.property(
-        fc.constantFrom("main" as const, "header" as const, "note" as const),
+        fc.constantFrom(
+          "main" as const,
+          "header" as const,
+          "note" as const,
+          "textBox" as const,
+        ),
         fc.constantFrom("", "text", "longer text"),
         (storyKind, text) => {
           const document = seed("absent");
@@ -393,11 +439,17 @@ test.each([...PARAGRAPH_MARK_CHANGE_KINDS, "properties" as const])(
             main: OP_STORIES.MAIN,
             header: { kind: "header", rId: "rIdHeader" },
             note: { kind: "footnote", id: 1 },
+            // A text box's paragraph, named through the story drawing it.
+            textBox: OP_STORIES.MAIN,
           } as const satisfies Record<typeof storyKind, OpStory>;
           const story = stories[storyKind];
-          const first = storyParagraphs(storyBody(document, story)).at(
-            0,
-          )?.paragraph;
+          const [box] = textBoxStoriesIn(document, OP_STORIES.MAIN);
+          const first = storyParagraphs(
+            storyBody(
+              document,
+              storyKind === "textBox" && box !== undefined ? box : story,
+            ),
+          ).at(0)?.paragraph;
           if (!first) throw new Error("Missing paragraph");
           first.content =
             text === "" ? [] : paragraph("00000001", text).content;

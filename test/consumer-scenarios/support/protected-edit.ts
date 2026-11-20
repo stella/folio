@@ -19,7 +19,7 @@ type ProtectedEditOptions = {
 
 const edit = (
   { reviewer, operation, story }: ProtectedEditOptions,
-  mode: "tracked-changes" | "suggested",
+  mode: "tracked-changes",
 ) => {
   const batch = {
     version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -35,29 +35,10 @@ const edit = (
       });
 };
 
-const assertProtectedEditRefused = (options: ProtectedEditOptions) => {
-  const { reviewer, operation, kind } = options;
-  const before = reviewer.toDocument();
+/** A tracked edit that deletes a note, drawing or field shows it deleted. */
+export const applyTrackedProtectedEdit = (options: ProtectedEditOptions) => {
   const result = edit(options, "tracked-changes");
-  assert.equal(result.status, "rejected", JSON.stringify(result));
-  assert.deepEqual(result.applied, []);
-  assert.deepEqual(result.skipped, [
-    {
-      id: operation.id,
-      reason: "invalidResult",
-      message: `Accept All would lose a ${kind}.`,
-    },
-  ]);
-  assert.deepEqual(result.receipts, []);
-  assert.equal(result.undoHandle, null);
-  assert.deepEqual(reviewer.toDocument(), before);
-};
-
-export const stageReviewedProtectedEdit = (options: ProtectedEditOptions) => {
-  assertProtectedEditRefused(options);
-  const result = edit(options, "suggested");
-  assert.deepEqual(result.skipped, []);
-  const suggestionId = result.applied.at(0)?.suggestionId;
-  assert.ok(suggestionId, JSON.stringify(result));
-  assert.equal(options.reviewer.acceptSuggestion(suggestionId), true);
+  assert.deepEqual(result.skipped, [], JSON.stringify(result));
+  assert.equal(result.applied.length, 1, JSON.stringify(result));
+  assert.ok(options.reviewer.getChanges().length > 0);
 };

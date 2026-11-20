@@ -4414,6 +4414,95 @@ const unwrappedCutLevels = ({
   return levels;
 };
 
+/**
+ * `nodes` with the cut sides of the tracked changes an inserted break split
+ * closed, where this resolution unwraps them. A split inside a change leaves
+ * a piece of it either side of the new mark, each carrying the change's
+ * joins, so the two still merge back as one record when the break goes. The
+ * join a piece holds on the side facing the mark is a copy of the one at the
+ * change's far edge: the change's content met nothing there. Unwrapped, the
+ * piece records no seam on that side, as unwrapping the change after its
+ * pieces met records none inside it. `edge` is the side of `nodes` facing
+ * the mark, `facing` the content across it, `depth` the levels the split cut.
+ */
+const closedSplitCutSides = ({
+  nodes,
+  facing,
+  edge,
+  depth,
+  resolution,
+  splitDate,
+}: {
+  nodes: readonly InlineNode[];
+  facing: readonly InlineNode[];
+  edge: "first" | "last";
+  depth: number;
+  resolution: Resolution;
+  splitDate: string;
+}): readonly InlineNode[] => {
+  // Content this resolution removes that was inserted after the split, or
+  // into the seam itself, is no piece the split left (as in
+  // {@link unwrappedCutLevels}).
+  const insideSeam = (node: InlineNode): boolean =>
+    isTrackedWrapper(node) &&
+    isAddedRevision(node) &&
+    resolution.ids.has(node.info.id) &&
+    removesContent(node, resolution.decision) &&
+    ((node.resolutionJoins?.remove ?? 0) > 0 ||
+      (node.info.date ?? "") > splitDate);
+  const edgeAt = (
+    list: readonly InlineNode[],
+    side: "first" | "last",
+  ): number =>
+    side === "first"
+      ? list.findIndex((node) => !insideSeam(node))
+      : list.findLastIndex((node) => !insideSeam(node));
+  const side = edge === "last" ? "after" : "before";
+  const close = (
+    list: readonly InlineNode[],
+    across: readonly InlineNode[],
+    level: number,
+  ): readonly InlineNode[] => {
+    if (level >= depth) return list;
+    const at = edgeAt(list, edge);
+    const node = list.at(at);
+    const other = across.at(edgeAt(across, edge === "last" ? "first" : "last"));
+    if (at < 0 || node === undefined || other === undefined) return list;
+    const tracked = isTrackedWrapper(node) && isTrackedWrapper(other);
+    const pieces = tracked
+      ? sameStamp(node, other) && (node.info.date ?? "") < splitDate
+      : !isTrackedWrapper(node) &&
+        !isTrackedWrapper(other) &&
+        sameOwnFields(node, other);
+    if (!pieces) return list;
+    const children = childNodes(node);
+    const inner =
+      children === undefined
+        ? undefined
+        : close(children, childNodes(other) ?? [], level + 1);
+    let next =
+      inner === undefined || inner === children
+        ? node
+        : rebuildNode(node, inner);
+    const joins = isTrackedWrapper(next) ? next.resolutionJoins : undefined;
+    if (
+      isTrackedWrapper(next) &&
+      joins !== undefined &&
+      joins[side] > 0 &&
+      joins.plainSides?.includes(side) !== true &&
+      resolution.ids.has(next.info.id) &&
+      !removesContent(next, resolution.decision)
+    )
+      next = {
+        ...next,
+        resolutionJoins:
+          side === "after" ? { ...joins, after: 0 } : { ...joins, before: 0 },
+      };
+    return next === node ? list : list.with(at, next);
+  };
+  return close(nodes, facing, 0);
+};
+
 const removedClosedBoundary = ({
   nodes,
   edge,
@@ -4649,11 +4738,54 @@ const planSingleRecordResolution = ({
   const emptiedEnds: EmptiedEndsById = new Map();
   const resolvedContents = new Map<string, readonly InlineNode[]>();
   const resolvedCutEdges = new Map<string, CutEdges>();
-  const prepareContents = () =>
-    paragraphs.map(({ paragraph }) => ({
+  const prepareContents = () => {
+    const prepared = paragraphs.map(({ paragraph }) => ({
       paragraph,
       content: prepareDeferredRemovals(paragraph.content, resolution),
     }));
+    // The pieces an inserted break split a change into face it with copies
+    // of the change's far joins: closed where this resolution unwraps them.
+    const at = new Map(
+      prepared.map((entry, index) => [entry.paragraph, index] as const),
+    );
+    const blocks = storyBody(document, op.story);
+    for (const location of paragraphs) {
+      const mark = location.paragraph.pPrMark;
+      if (
+        mark === undefined ||
+        !markWasAdded(mark.kind) ||
+        (mark.resolutionJoin ?? 0) === 0
+      )
+        continue;
+      const next = blockListAt(blocks.content, location.list).at(
+        location.index + 1,
+      );
+      if (next?.type !== "paragraph") continue;
+      const left = prepared[at.get(location.paragraph) ?? -1];
+      const right = prepared[at.get(next) ?? -1];
+      if (left === undefined || right === undefined) continue;
+      const shared = {
+        depth: mark.resolutionJoin ?? 0,
+        resolution,
+        splitDate: mark.info.date ?? "",
+      };
+      const trailing = closedSplitCutSides({
+        ...shared,
+        nodes: left.content,
+        facing: right.content,
+        edge: "last",
+      });
+      const leading = closedSplitCutSides({
+        ...shared,
+        nodes: right.content,
+        facing: left.content,
+        edge: "first",
+      });
+      left.content = trailing;
+      right.content = leading;
+    }
+    return prepared;
+  };
   let preparedContents = prepareContents();
   const resolvedChanged = new Set<string>();
   type SelectionClosure =

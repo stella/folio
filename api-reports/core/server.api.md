@@ -46,6 +46,7 @@ export type ApplyFolioAIEditsToBufferOptions = {
     author?: string;
     mode?: FolioAIEditApplyMode;
     snapshot?: FolioAIEditSnapshot;
+    session?: HeadlessReviewerSession;
 };
 
 // @public

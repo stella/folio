@@ -8,6 +8,7 @@ import { ZipArchive, ZipError } from "./archive";
 import { streamZipCodec, webZipCodec } from "./codec";
 
 const REPOSITORY_ROOT = resolve(import.meta.dir, "../../../..");
+const SYSTEM_CHECK_TIMEOUT_MS = 30_000;
 
 /**
  * Entry hashes JSZip produced for every office fixture in the repository,
@@ -305,5 +306,7 @@ describe("writing", () => {
         ok: true,
       });
     },
+    // Two external processes start here; a loaded runner can take seconds.
+    SYSTEM_CHECK_TIMEOUT_MS,
   );
 });

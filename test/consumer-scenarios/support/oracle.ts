@@ -895,6 +895,8 @@ type ModelRow = {
   /** Split points in the pre-state text's coordinates, with what the break consumes. */
   splits: { offset: number; consumed: number; second?: Fields }[];
   mergeSeparator?: string;
+  /** Suggested mode: the properties a paragraph shows while its join is pending. */
+  ownWhileJoinPending?: { fields: Fields; listLineage: ListLineage };
   removed: boolean;
   /**
    * The block ends in a paragraph mark pending deletion: a reader lists it
@@ -2869,6 +2871,13 @@ export const EXPECTATIONS = {
       // Whether the join keeps that paragraph's pending deletion is not modelled yet.
       throw new Unmodelled("a join with a paragraph pending deletion");
     }
+    // A suggested join stays pending: the paragraph shows its own properties
+    // until the join is accepted.
+    if (model.mode === "suggested")
+      row.ownWhileJoinPending ??= {
+        fields: { ...row.fields },
+        listLineage: row.listLineage,
+      };
     row.mergeSeparator =
       typeof operation["separator"] === "string" ? operation["separator"] : "";
     if (
@@ -3229,6 +3238,11 @@ const materialize = (model: Model): Expected[] => {
   if (model.story === "removed") return [];
   const out: Expected[] = [];
   let joinNext: { separator: string; container: Container } | undefined;
+  /** Suggested mode: the properties accepting a pending join gives the paragraph. */
+  const joinedProperties = new Map<
+    Expected,
+    { fields: Fields; listLineage: ListLineage }
+  >();
   // A join that meets a table ends before it: a paragraph cannot run into
   // a cell, so the words keep their own paragraph, separator and all.
   const push = (entry: Expected, container: Container, inTable: boolean) => {
@@ -3239,6 +3253,36 @@ const materialize = (model: Model): Expected[] => {
         !inTable &&
         sameContainer(joinNext.container, container)
       ) {
+        if (model.mode === "suggested") {
+          // A suggested join is pending: the live view lists both paragraphs,
+          // the second already in the properties the joined one gets.
+          previous.text += joinNext.separator;
+          const head = joinedProperties.get(previous) ?? previous;
+          // A pending change that takes a paragraph's numbering away still
+          // shows its marker, as for any pending numbering removal.
+          const keepsMarker =
+            head.listLineage.type === "none" &&
+            entry.listLineage.type === "reference";
+          const fields: Fields = keepsMarker
+            ? {
+                ...head.fields,
+                kind:
+                  head.fields.kind === "paragraph"
+                    ? entry.fields.kind
+                    : head.fields.kind,
+                listLevel: entry.fields.listLevel,
+              }
+            : head.fields;
+          const joined = {
+            ...entry,
+            fields,
+            listLineage: keepsMarker ? entry.listLineage : head.listLineage,
+          };
+          joinedProperties.set(joined, head);
+          out.push(joined);
+          joinNext = undefined;
+          return;
+        }
         previous.text = `${previous.text}${joinNext.separator}${entry.text}`;
         // A join keeps the first paragraph's properties; formatting offsets no longer hold.
         previous.formats = [];
@@ -3259,15 +3303,20 @@ const materialize = (model: Model): Expected[] => {
     if (!gone) {
       const segments = applyEdits(row.text, row.edits, row.splits);
       const whole = untouchedText(row);
+      const shown =
+        (model.mode === "suggested" ? row.ownWhileJoinPending : undefined) ??
+        row;
       segments.forEach((segment, index) =>
         push(
           {
             text: segment.text,
             fields:
-              index === 0 ? row.fields : (segment.split?.second ?? row.fields),
+              index === 0
+                ? shown.fields
+                : (segment.split?.second ?? shown.fields),
             checks: row.checks,
             formats: whole ? row.formats : [],
-            listLineage: row.listLineage,
+            listLineage: shown.listLineage,
             ...(whole && row.pre ? { pre: row.pre } : {}),
           },
           row.pre?.table,
@@ -3276,6 +3325,18 @@ const materialize = (model: Model): Expected[] => {
       );
       if (row.mergeSeparator !== undefined) {
         joinNext = { separator: row.mergeSeparator, container: row.pre?.table };
+        // The joined paragraph takes what the accepted model gives its first
+        // part; a part a pending join already reached keeps that one.
+        const last = out.at(-1);
+        const lastSegment = segments.at(-1);
+        if (model.mode === "suggested" && last && !joinedProperties.has(last))
+          joinedProperties.set(last, {
+            fields:
+              segments.length === 1
+                ? row.fields
+                : (lastSegment?.split?.second ?? row.fields),
+            listLineage: row.listLineage,
+          });
       }
     }
     for (const inserted of row.after) emit(inserted);
@@ -4123,6 +4184,32 @@ const readOnce = (reviewer: Reviewer): Reviewer => {
       };
     },
   });
+};
+
+/**
+ * The ids of the comments anchored in the table that holds `blockId`, which
+ * removing that table retires. Each engine allocates comment ids its own way,
+ * so a pinned flow names the comments by where they are, not by number.
+ */
+export const commentIdsInTableOf = (
+  reviewer: Reviewer,
+  blockId: string,
+): number[] => {
+  const blocks = reviewer.getContent();
+  const table = blocks.find(({ id }) => id === blockId)?.table;
+  assert.ok(table, `block ${blockId} is not in a table`);
+  const cells = new Set(
+    blocks
+      .filter((block) => block.table?.tableIndex === table.tableIndex)
+      .map(({ id }) => id),
+  );
+  return reviewer
+    .getComments()
+    .filter(
+      ({ blockId: anchor }) => typeof anchor === "string" && cells.has(anchor),
+    )
+    .map(({ id }) => id)
+    .sort((left, right) => left - right);
 };
 
 export const capture = async (
