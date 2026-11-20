@@ -2,6 +2,7 @@ import type { Result } from "better-result";
 
 import type { Document, Paragraph } from "../model/document";
 import type { DocumentEditEffects } from "./edits";
+import { structurallyEqual } from "./equality";
 import { isParaId } from "./ids";
 import {
   nonemptyBlockReplacementEffects,
@@ -21,12 +22,29 @@ const plainFields = new Set(["type", "paraId", "textId", "content", "pPrMark"]);
 
 type IdentifiedParagraph = Paragraph & { paraId: string };
 
-const isEmptyJoinParagraph = (
+const isPlainTextContent = (paragraph: Paragraph): boolean => {
+  if (paragraph.content.length === 0) return true;
+  const run = paragraph.content.at(0);
+  if (
+    paragraph.content.length !== 1 ||
+    run?.type !== "run" ||
+    Object.keys(run).some((key) => key !== "type" && key !== "content") ||
+    run.content.length !== 1
+  )
+    return false;
+  const text = run.content.at(0);
+  return (
+    text?.type === "text" &&
+    Object.keys(text).every((key) => key === "type" || key === "text")
+  );
+};
+
+const isPlainJoinParagraph = (
   paragraph: Paragraph,
 ): paragraph is IdentifiedParagraph =>
   paragraph.paraId !== undefined &&
   isParaId(paragraph.paraId) &&
-  paragraph.content.length === 0 &&
+  isPlainTextContent(paragraph) &&
   Object.keys(paragraph).every((key) => plainFields.has(key));
 
 type PlanPairOptions = { join: JoinPlan; first: Paragraph; second: Paragraph };
@@ -35,6 +53,7 @@ type ContiguousJoinOptions = {
   document: Document;
   story: JoinPlan["story"];
   paragraphCount: number;
+  indexOf: (id: string) => number | undefined;
   paragraphAt: (index: number) => Paragraph | undefined;
   joins: readonly JoinPlan[];
   planPair: (
@@ -46,43 +65,50 @@ type ContiguousJoinResult =
   | { type: "fallback"; reason: "joinShape" | "joinPlan" | "joinValidation" }
   | {
       type: "planned";
-      paragraphs: Paragraph[];
+      start: number;
+      end: number;
+      survivor: Paragraph;
       effects: DocumentEditEffects[];
       receiverEffects: ResolutionReceiverEffect[];
     };
 
 /**
  * Each rejected inserted mark joins its paragraph into the already settled
- * suffix. For a chain of empty, section-free paragraphs, only the left paragraph
- * and the current survivor can affect the ordinary adjacent-pair plan.
+ * suffix of its contiguous run. In a section-free pair with at most one plain
+ * text payload, only those two paragraphs can affect the ordinary join plan.
  */
 export const planContiguousResolutionJoins = ({
   document,
   story,
   paragraphCount,
+  indexOf,
   paragraphAt,
   joins,
   planPair,
 }: ContiguousJoinOptions): ContiguousJoinResult => {
-  let survivor = paragraphAt(paragraphCount - 1);
+  const firstJoin = joins.at(0);
+  const start = firstJoin === undefined ? undefined : indexOf(firstJoin.paraId);
+  if (start === undefined) return { type: "fallback", reason: "joinShape" };
+  const end = start + joins.length + 1;
+  let survivor = paragraphAt(end - 1);
   if (
     story !== "main" ||
-    joins.length === 0 ||
-    joins.length + 1 !== paragraphCount ||
+    end > paragraphCount ||
     survivor === undefined ||
     survivor.pPrMark !== undefined ||
-    !isEmptyJoinParagraph(survivor)
+    !isPlainJoinParagraph(survivor)
   )
     return { type: "fallback", reason: "joinShape" };
 
   const effects: DocumentEditEffects[] = [];
   const receiverEffects: ResolutionReceiverEffect[] = [];
   for (let i = joins.length - 1; i >= 0; i--) {
-    const first = paragraphAt(i);
+    const first = paragraphAt(start + i);
     const join = joins[i];
     if (
       first === undefined ||
-      !isEmptyJoinParagraph(first) ||
+      !isPlainJoinParagraph(first) ||
+      (first.content.length > 0 && survivor.content.length > 0) ||
       join === undefined ||
       join.story !== story ||
       join.op.decision !== REVISION_DECISIONS.REJECT ||
@@ -122,7 +148,11 @@ export const planContiguousResolutionJoins = ({
     if (
       next === undefined ||
       next.pPrMark !== undefined ||
-      !isEmptyJoinParagraph(next) ||
+      !isPlainJoinParagraph(next) ||
+      !structurallyEqual(
+        next.content,
+        first.content.length === 0 ? second.content : first.content,
+      ) ||
       (next.paraId !== first.paraId && next.paraId !== second.paraId)
     )
       return { type: "fallback", reason: "joinPlan" };
@@ -152,5 +182,5 @@ export const planContiguousResolutionJoins = ({
     receiverEffects.push(receiver);
     survivor = next;
   }
-  return { type: "planned", paragraphs: [survivor], effects, receiverEffects };
+  return { type: "planned", start, end, survivor, effects, receiverEffects };
 };
