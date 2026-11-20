@@ -159,6 +159,8 @@ export type TrackedRevisionAncestor = {
   initials?: string;
   outerWrapperCount: number;
   resolutionJoins?: Insertion["resolutionJoins"];
+  /** The pending suggestion this outer revision belongs to; absent for a user's. */
+  suggestionId?: string;
 };
 
 export type TrackedChangeMarkAttrs = {

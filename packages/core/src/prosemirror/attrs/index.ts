@@ -2552,7 +2552,10 @@ export const isTrackedRevisionAncestorArray = (
       Number.isSafeInteger(ancestor["outerWrapperCount"]) &&
       ancestor["outerWrapperCount"] >= 0 &&
       (ancestor["resolutionJoins"] === undefined ||
-        isResolutionJoins(ancestor["resolutionJoins"])),
+        isResolutionJoins(ancestor["resolutionJoins"])) &&
+      (ancestor["suggestionId"] === undefined ||
+        (typeof ancestor["suggestionId"] === "string" &&
+          ancestor["suggestionId"].length > 0)),
   );
 
 export const readTrackedChangeMarkAttrs = (
