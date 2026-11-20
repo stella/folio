@@ -377,6 +377,23 @@ const serializeAttribute = (options: SerializeAttributeOptions): string => {
     : ` folio:${options.attribute}="${escapeXmlAttribute(encoded)}"`;
 };
 
+/**
+ * Joins read from version 1 history, whose kept markers carry no cut: the
+ * change names them (`keptFrom`, `keptCount`), and the paragraph reader
+ * marks them as version 2 does ({@link joinsNameKeptMarkers}).
+ */
+const VERSION_1_JOINS = new WeakSet<ResolutionJoins>();
+const versionOf = (node: XmlElement, attribute: string): unknown => {
+  const encoded = getAttributeByNamespaceUri(node, NAMESPACES, attribute);
+  if (encoded === null) return undefined;
+  const parsed = Result.try({
+    try: (): unknown => JSON.parse(encoded),
+    catch: () => undefined,
+  });
+  return parsed.isOk() && record(parsed.value)
+    ? parsed.value["version"]
+    : undefined;
+};
 export const parseResolutionJoins = (
   node: XmlElement,
 ): ResolutionJoins | undefined => {
@@ -385,8 +402,14 @@ export const parseResolutionJoins = (
     attribute: "resolutionJoins",
     valid: isStoredResolutionJoins,
   });
-  return joins === undefined ? undefined : withEnclosing(joins, node);
+  if (joins === undefined) return undefined;
+  const enclosed = withEnclosing(joins, node);
+  if (versionOf(node, "resolutionJoins") === 1) VERSION_1_JOINS.add(enclosed);
+  return enclosed;
 };
+/** Whether `joins` came from version 1 history and name their kept markers. */
+export const joinsNameKeptMarkers = (joins: ResolutionJoins): boolean =>
+  VERSION_1_JOINS.has(joins);
 export const parseBoundaryJoins = (
   node: XmlElement,
 ): BoundaryJoins | undefined =>

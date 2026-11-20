@@ -16,7 +16,7 @@ export {
   rejectCopyOriginAncestors,
   shiftCopyOriginAncestors,
 } from "./copyOriginAncestors";
-export { isKeptCut } from "./keptCut";
+export { isKeptCut, paragraphKeptCutsFromChanges } from "./keptCut";
 export { noteUsesCustomMark } from "./noteMarks";
 export {
   withParagraphCopies,
