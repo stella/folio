@@ -67,9 +67,11 @@ import {
 } from "./ids";
 import { joinParagraphSeam } from "./inline";
 import {
+  holdsKeptCut,
   pendingAtEdge,
   settleKeptCuts,
   standsInKeptCut,
+  withEdgeKeptCutsWidened,
   withKeptCuts,
   withKeptCutsRecorded,
   withoutKeptCuts,
@@ -4208,16 +4210,19 @@ const resolveList = ({
     edges.first = Math.max(edges.first ?? 0, nestedFirst);
   if (nestedLast !== undefined)
     edges.last = Math.max(edges.last ?? 0, nestedLast);
+  const resolvedNodes = out.map(({ node }) => node);
   return {
-    nodes: [
-      ...settleKeptCuts(
-        out.map(({ node }) => node),
-        {
-          known: resolution.relocated.nodes,
-          rebuilt: (from, to) => carryResolutionState(resolution, from, to),
-        },
-      ),
-    ],
+    // A paragraph's own list is settled once the joins stand: one can put a
+    // pending change beside a marker its paragraph leaves waiting on nothing.
+    nodes:
+      path.length === 0
+        ? resolvedNodes
+        : [
+            ...settleKeptCuts(resolvedNodes, {
+              known: resolution.relocated.nodes,
+              rebuilt: (from, to) => carryResolutionState(resolution, from, to),
+            }),
+          ],
     changed,
     edges,
     ...(enclosing.length === 0 ? {} : { enclosing }),
@@ -4294,6 +4299,8 @@ type JoinPlan = {
   revisionId: number;
   added: boolean;
   depth: number | undefined;
+  /** When the paragraph mark the join resolves was made. */
+  splitDate: string | undefined;
 };
 
 /**
@@ -4561,7 +4568,7 @@ const paragraphMarkPlan = (
 
 const joinOps = (
   document: Document,
-  { op, story, paraId, revisionId, added, depth }: JoinPlan,
+  { op, story, paraId, revisionId, added, depth, splitDate }: JoinPlan,
   ends: EmptiedEndsById,
   /** Table receivers a later paragraph of this resolution already ran into. */
   ranInto: ReadonlySet<string> = new Set(),
@@ -4649,6 +4656,13 @@ const joinOps = (
             }
           : { left: paragraph.content, right: next.content, depth },
       );
+      // Markers kept from content made after the split stood in its seam:
+      // they stand in the join's cut, as when the join was resolved first.
+      if (depth > 0 && splitDate !== undefined) {
+        const cut = { depth, after: splitDate };
+        seam.left = withEdgeKeptCutsWidened(seam.left, "end", cut);
+        seam.right = withEdgeKeptCutsWidened(seam.right, "start", cut);
+      }
       const left = seam.left.at(-1);
       const right = seam.right.at(0);
       if (depth > 0 && left !== undefined && right !== undefined) {
@@ -5785,18 +5799,11 @@ const planSingleRecordResolution = (
     });
   }
   // A blocker the resolution emptied away, unnamed, leaves the story too.
-  // Kept cuts are settled once boundaries stand where the ranges put them.
   const standing = seamHolderIds([...resolvedContents.values()].flat());
   for (const [key, content] of resolvedContents) {
-    const settled = settleKeptCuts(
-      settleDeferredRemovals(content, {
-        fateOf: (id) => (standing.has(id) ? "pending" : "removed"),
-      }),
-      {
-        known: resolution.relocated.nodes,
-        rebuilt: (from, to) => carryResolutionState(resolution, from, to),
-      },
-    );
+    const settled = settleDeferredRemovals(content, {
+      fateOf: (id) => (standing.has(id) ? "pending" : "removed"),
+    });
     if (settled === content) continue;
     resolvedContents.set(key, settled);
     resolvedChanged.add(key);
@@ -5987,6 +5994,7 @@ const planSingleRecordResolution = (
         revisionId: mark.info.id,
         added,
         depth,
+        splitDate: mark.info.date,
       });
     }
     let review = resolveParagraphReview(paragraph, resolution, keepsBreak);
@@ -6078,6 +6086,28 @@ const planSingleRecordResolution = (
     receiverEffects.push({ type: "paragraph-join", receiver });
     record(withAbsorptions(edit, paraId));
     current = edit.document;
+  }
+  // Kept cuts are settled where the joins leave each marker, so a cut waits
+  // on the same pending changes whichever order brought the pieces together.
+  if ([...resolvedContents.values()].some(holdsKeptCut)) {
+    const settledCuts: DocumentOp[] = [];
+    for (const { paragraph } of storyParagraphs(storyBody(current, op.story))) {
+      const settled = settleKeptCuts(paragraph.content);
+      if (settled === paragraph.content) continue;
+      settledCuts.push({
+        type: DOCUMENT_OP_TYPES.REPLACE_INLINE,
+        story: op.story,
+        blockId: paragraph.paraId ?? "",
+        expected: paragraph.content,
+        content: asParagraphContent(settled),
+      });
+    }
+    if (settledCuts.length > 0) {
+      const settled = applyOps(current, settledCuts);
+      if (settled.isErr()) return Result.err(settled.error);
+      edits.push(settled.value);
+      current = settled.value.document;
+    }
   }
   // Notes whose last reference went are removed first: a comment anchored in
   // one of them is then exhausted too and retires below.
