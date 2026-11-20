@@ -1,7 +1,8 @@
 import { panic } from "better-result";
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import { EditorState } from "prosemirror-state";
 
+import * as native from "@stll/docx-core/ops";
 import {
   DOCUMENT_OP_TYPES,
   type InsertBlocksOp,
@@ -74,4 +75,90 @@ test("insertion staging owns the verified operation and rejects foreign or stale
   const stale = staging.prepare(state, selection);
   if (stale.isOk()) panic("The previous version's staging should be stale.");
   expect(stale.error.message).toContain("stale canonical document");
+});
+
+test("one verified run contributes each owned effect to the journal exactly once", () => {
+  const anchor = "00000001";
+  const session = createCanonicalSession({
+    package: {
+      document: {
+        content: [{ type: "paragraph", paraId: anchor, content: [] }],
+      },
+    },
+  }).unwrap();
+  const document = readModel(session.document);
+  const state = EditorState.create({ doc: session.projection.doc });
+  const selection = session.projection.selectionAt(state).unwrap();
+  const operations = Array.from({ length: 32 }, (_, index): InsertBlocksOp => {
+    const id = 1 + 8 * index;
+    return {
+      type: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+      story: OP_STORIES.MAIN,
+      at: { type: "after", blockId: anchor },
+      blocks: [
+        {
+          type: "paragraph",
+          paraId: native.formatParaId(index + 2),
+          content: [
+            { type: "run", content: [{ type: "text", text: String(index) }] },
+          ],
+        },
+      ],
+      revision: { id, author: "Reviewer", date: "2026-01-01T00:00:00Z" },
+      newIds: { revision: [id + 1, id + 2, id + 3] },
+    };
+  });
+  const reference = native.applyDocumentOps(document, operations).unwrap();
+  const staged = session.beginVerifiedOperationStaging(
+    canonicalOperationStagingAccess,
+  );
+  const first = operations[0] ?? panic("Expected a first insertion");
+  let attempts = 0;
+  expect(
+    staged.tryAppendInsertionGroup(document, () => {
+      attempts += 1;
+      return attempts === 1
+        ? { type: "member", op: first }
+        : { type: "fallback" };
+    }),
+  ).toEqual({ type: "fallback", reason: "compiler" });
+  expect(attempts).toBe(2);
+  const combined = spyOn(native, "combineEditEffects");
+  try {
+    const members = operations.values();
+    const added = staged.tryAppendInsertionGroup(document, () => {
+      const member = members.next();
+      return member.done
+        ? { type: "done" }
+        : { type: "member", op: member.value };
+    });
+    if (added.type !== "materialized")
+      panic("Expected a verified insertion run");
+    expect(added.revisions.flat()).toEqual(reference.revisions);
+    expect(combined).toHaveBeenCalledTimes(0);
+    expect(
+      staged.tryAppendInsertionGroup(document, () =>
+        panic("Stale compiler ran"),
+      ),
+    ).toEqual({
+      type: "fallback",
+      reason: "base",
+    });
+    const commit = staged.prepare(state, selection).unwrap();
+    expect(combined).toHaveBeenCalledTimes(1);
+    expect(combined.mock.calls[0]?.[1].length).toBe(operations.length);
+    expect(commit.document).toEqual(reference.document);
+    expect(commit.touched).toEqual(reference.touched);
+    expect(commit.ops).toEqual(operations);
+    const published = publishCanonicalProjection({
+      session,
+      state,
+      commit,
+    }).unwrap();
+    const undo = session.prepareUndo(published.state).unwrap();
+    expect(undo.ops).toEqual(reference.inverse);
+    expect(undo.document).toEqual(document);
+  } finally {
+    combined.mockRestore();
+  }
 });

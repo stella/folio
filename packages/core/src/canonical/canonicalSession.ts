@@ -27,6 +27,7 @@ import {
   applyDocumentOp,
   applyDocumentOps,
   type ClientDocumentChange,
+  combineEditEffects,
   combineEdits,
   compileEditorIntent,
   createEditorIntentIdAllocator,
@@ -59,6 +60,7 @@ import {
   survivingComments,
   type TextPosition,
   type TouchedBlocks,
+  tryTrackedInsertionGroup,
   validateOpsDocument,
   withParagraphCopies,
 } from "@stll/docx-core/ops";
@@ -2938,6 +2940,34 @@ class CanonicalSession {
           return view;
         });
       },
+      tryAppendInsertionGroup: (
+        before: Document,
+        next: Parameters<typeof tryTrackedInsertionGroup>[0]["next"],
+      ) => {
+        if (before !== document)
+          return { type: "fallback" as const, reason: "base" as const };
+        const group = tryTrackedInsertionGroup({
+          document,
+          next: (previous) => {
+            const member = next(previous);
+            return member.type === "member"
+              ? { type: "member", op: structuredClone(member.op) }
+              : member;
+          },
+        });
+        if (group.type === "fallback") return group;
+        document = group.document;
+        for (const member of group.members) {
+          ops.push(member.op);
+          effects.push({ inverse: member.inverse, touched: member.touched });
+          revisions.push(...member.revisions);
+        }
+        return {
+          type: "materialized" as const,
+          document,
+          revisions: group.members.map((member) => member.revisions.slice()),
+        };
+      },
       append: (view: VerifiedOperation): boolean => {
         const step = verified.get(view);
         if (step === undefined || step.before !== document) return false;
@@ -2958,14 +2988,7 @@ class CanonicalSession {
           );
         // The combiner reads only the last document, so the effects need no
         // intermediate versions.
-        const combined = combineEdits(
-          document,
-          effects.map(({ inverse, touched }) => ({
-            document,
-            inverse,
-            touched,
-          })),
-        );
+        const combined = combineEditEffects(document, effects);
         return this.prepareJournalledOps({
           state,
           ops: [...ops],
