@@ -895,6 +895,9 @@ export const isCommentExhausted: (input: CommentExhaustionInput) => boolean;
 export const isCopyOriginAncestors: (value: unknown) => value is CopyOriginAncestorList;
 
 // @public
+export const isKeptCut: (cut: unknown) => cut is KeptCut;
+
+// @public
 export function isTextOnlyRun(run: Run): boolean;
 
 // @public
