@@ -10,6 +10,7 @@ import {
   copyDocumentParagraphPropertySourceContract,
 } from "../docx/paragraphPropertySource";
 import type { BlockContent, Document, Paragraph } from "../types/document";
+import { canonicalJson } from "../utils/canonicalJson";
 import { changedWindow } from "./canonicalSeedContent";
 
 /**
@@ -73,6 +74,38 @@ const carriedCopies = (
       indentation,
     });
     if (carried !== next) replaced.set(next, carried);
+  }
+  // A paragraph the edit made, as a split's new half, holds the properties
+  // of the paragraph before it as that paragraph had them: it takes that
+  // paragraph's sources too, so properties read from a list or a style stay
+  // read from there and are not written as its own.
+  const originalById = new Map(
+    originalParagraphs.flatMap((paragraph) =>
+      paragraph.paraId === undefined
+        ? []
+        : [[paragraph.paraId, paragraph] as const],
+    ),
+  );
+  for (const [index, paragraph] of derivedParagraphs.entries()) {
+    if (paragraph.paraId === undefined || originalById.has(paragraph.paraId))
+      continue;
+    const before = derivedParagraphs.at(index - 1);
+    const source =
+      index > 0 && before?.paraId !== undefined
+        ? originalById.get(before.paraId)
+        : undefined;
+    if (
+      source === undefined ||
+      canonicalJson(paragraph.formatting ?? null) !==
+        canonicalJson(source.formatting ?? null)
+    )
+      continue;
+    const carried = carryParagraphPropertySource({
+      target: replaced.get(paragraph) ?? paragraph,
+      source,
+      indentation,
+    });
+    if (carried !== paragraph) replaced.set(paragraph, carried);
   }
   return replaced;
 };
