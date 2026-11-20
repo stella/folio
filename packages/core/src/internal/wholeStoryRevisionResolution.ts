@@ -613,7 +613,12 @@ const resolveStructure = ({
     }
     const marker = expectParagraphAttrs(paragraph).pPrMark;
     const markWasAdded = marker?.kind === "ins" || marker?.kind === "moveTo";
-    const joins = marker && markWasAdded !== (context.mode === "accept");
+    // An added mark another author then deleted goes either way: accepted,
+    // its deletion takes it; rejected, its insertion does.
+    const joins =
+      marker &&
+      (marker.deletion !== undefined ||
+        markWasAdded !== (context.mode === "accept"));
     if (joins && entries[index + 1]?.node?.type.name === "textBox")
       context.textBoxesStandInJoins = true;
     if (joins && chain) {
@@ -927,7 +932,11 @@ const moveTextBoxesOutOfJoins = (
     if (node.type.name !== "paragraph") return true;
     const mark = expectParagraphAttrs(node).pPrMark;
     const wasAdded = mark?.kind === "ins" || mark?.kind === "moveTo";
-    if (mark && wasAdded !== (mode === "accept")) joining.push(position);
+    if (
+      mark &&
+      (mark.deletion !== undefined || wasAdded !== (mode === "accept"))
+    )
+      joining.push(position);
     return false;
   });
   for (const position of joining.toReversed())

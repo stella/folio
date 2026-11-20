@@ -240,6 +240,7 @@ export const paragraphMarkChange: Validator = object({
   info: trackedChangeInfo,
   resolutionJoin: optional(natural),
   survivor: optional(literal("first")),
+  deletion: optional(object({ info: trackedChangeInfo })),
 } satisfies RecordFields<ParagraphMarkChange>);
 
 export const paragraphPropertyChange: Validator = object({

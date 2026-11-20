@@ -32,6 +32,8 @@ export const identitySlots = (record: IdentifiedRecord): IdentitySlot[] => {
       );
       if (record.pPrMark !== undefined)
         out.push(revision(record.pPrMark.info.id));
+      if (record.pPrMark?.deletion !== undefined)
+        out.push(revision(record.pPrMark.deletion.info.id));
       return out;
     }
     case "run":
@@ -124,10 +126,21 @@ export const withParagraphIdentity = (
     next.propertyChanges = withParagraphChangeIds(changes, ids);
   }
   if (paragraph.pPrMark !== undefined) {
-    const id = ids[changes?.length ?? 0] ?? paragraph.pPrMark.info.id;
+    const at = changes?.length ?? 0;
+    const { deletion } = paragraph.pPrMark;
     next.pPrMark = {
       ...paragraph.pPrMark,
-      info: { ...paragraph.pPrMark.info, id },
+      info: {
+        ...paragraph.pPrMark.info,
+        id: ids[at] ?? paragraph.pPrMark.info.id,
+      },
+      ...(deletion === undefined
+        ? {}
+        : {
+            deletion: {
+              info: { ...deletion.info, id: ids[at + 1] ?? deletion.info.id },
+            },
+          }),
     };
   }
   return next;

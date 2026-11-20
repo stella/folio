@@ -17,6 +17,7 @@ import {
   lockedControlMessage,
   type LockedControlSpan,
   type LockedControlTouch,
+  type ParagraphMarkChange,
   REVIEW_CARRIERS,
 } from "@stll/docx-core/model";
 import {
@@ -3713,6 +3714,21 @@ const retractsForeignFinalBreak = ({
   );
 };
 
+/** Whether `paragraph`'s break or any of its words is another author's pending insertion. */
+const holdsForeignInsertion = (paragraph: PMNode, author: string): boolean => {
+  if (isForeignAddedBreak(paragraph, author)) return true;
+  let foreign = false;
+  paragraph.descendants((node) => {
+    if (foreign) return false;
+    foreign = node.marks.some(
+      (mark) =>
+        mark.type.name === "insertion" && mark.attrs["author"] !== author,
+    );
+    return !foreign;
+  });
+  return foreign;
+};
+
 const isForeignAddedBreak = (node: PMNode, author: string): boolean => {
   const mark = expectParagraphAttrs(node).pPrMark;
   return (
@@ -4296,12 +4312,27 @@ const withRetiredFinalParagraphs = ({
     const { node: previous } = predecessor;
     let { position } = predecessor;
     const mark: unknown = previous.attrs["pPrMark"];
-    if (mark == null) {
+    // Another author's added break is theirs to resolve: its deletion is
+    // recorded beside their insertion, as for a break nothing records.
+    const foreignBreak =
+      !refuseCrossAuthorRevisions &&
+      isForeignAddedBreak(previous, author) &&
+      expectParagraphAttrs(previous).pPrMark?.deletion === undefined
+        ? expectParagraphAttrs(previous).pPrMark
+        : undefined;
+    if (mark == null || foreignBreak) {
       const revisionId = nextRevisionId++;
-      tr.setNodeAttribute(position, "pPrMark", {
-        kind: "del",
-        info: { id: revisionId, author, date, ...revisionExtras },
-      });
+      const info = { id: revisionId, author, date, ...revisionExtras };
+      tr.setNodeAttribute(
+        position,
+        "pPrMark",
+        foreignBreak
+          ? ({
+              ...foreignBreak,
+              deletion: { info },
+            } satisfies ParagraphMarkChange)
+          : { kind: "del", info },
+      );
       // Accepted, the removed break leaves the emptied carrier, which ends
       // the container: it takes this paragraph's properties as part of the
       // same change, so the words that stay read as they did.
@@ -4338,7 +4369,15 @@ const withRetiredFinalParagraphs = ({
       addedRevisions.push({ operationId, revisionId });
       continue;
     }
-    if (addedBreakRevisionId(mark) !== null) {
+    // Another author's added break a pending deletion already takes stays
+    // as it is, both records with it, as a deleted break does.
+    const takenForeignBreak =
+      isForeignAddedBreak(previous, author) &&
+      expectParagraphAttrs(previous).pPrMark?.deletion !== undefined;
+    if (refuseCrossAuthorRevisions && takenForeignBreak) {
+      return { type: "blocked", operationId, nextRevisionId };
+    }
+    if (addedBreakRevisionId(mark) !== null && !takenForeignBreak) {
       const retraction = finalBreakRetractionTarget(tr.doc, predecessor);
       if (retraction === null) {
         // One w:pPrChange per paragraph: an occupied predecessor keeps the emptied target.
@@ -7244,9 +7283,13 @@ const applyFolioAIEditOperationsInternal = ({
           break;
         }
 
-        const retraction = isPairedMove(item.operation.moveId)
-          ? null
-          : pendingParagraphRetraction(tr.doc, item.blockFrom);
+        // Another author's insertion is theirs to resolve: deleting it is
+        // recorded beside it, never retracted.
+        const retraction =
+          isPairedMove(item.operation.moveId) ||
+          holdsForeignInsertion(item.blockNode, author)
+            ? null
+            : pendingParagraphRetraction(tr.doc, item.blockFrom);
         if (retraction) {
           const breakOwner =
             retraction.clearBreakAt === null
@@ -7264,6 +7307,17 @@ const applyFolioAIEditOperationsInternal = ({
             });
             continue;
           }
+        }
+        if (
+          retraction &&
+          !(
+            retraction.clearBreakAt !== null &&
+            isForeignAddedBreak(
+              tr.doc.nodeAt(retraction.clearBreakAt) ?? item.blockNode,
+              author,
+            )
+          )
+        ) {
           if (isSuggested && !isSuggestedParagraphInsert(item.blockNode)) {
             // Retracting another author's tracked insertion would remove it
             // from the saved package before this suggestion is accepted.
@@ -7391,8 +7445,25 @@ const applyFolioAIEditOperationsInternal = ({
           // matching one elsewhere rather than being a deletion of its own.
           let markPosition = sinceRead(tr, item).map(item.blockFrom);
           const markOwner = tr.doc.nodeAt(markPosition);
+          const ownerMark =
+            markOwner && expectParagraphAttrs(markOwner).pPrMark;
+          const deletesForeignBreak =
+            markOwner !== null &&
+            ownerMark !== undefined &&
+            ownerMark !== null &&
+            ownerMark.deletion === undefined &&
+            !isPairedMove(item.operation.moveId) &&
+            isForeignAddedBreak(markOwner, author);
+          // One a pending deletion already takes keeps both its records.
+          const foreignBreakTaken =
+            markOwner !== null &&
+            ownerMark?.deletion !== undefined &&
+            !isPairedMove(item.operation.moveId) &&
+            isForeignAddedBreak(markOwner, author);
           const across =
             markOwner &&
+            !deletesForeignBreak &&
+            !foreignBreakTaken &&
             !isPairedMove(item.operation.moveId) &&
             addedBreakRevisionId(markOwner.attrs["pPrMark"]) !== null
               ? paragraphAcrossVanishingTables(tr.doc, markPosition)
@@ -7413,7 +7484,27 @@ const applyFolioAIEditOperationsInternal = ({
           const following =
             deleted &&
             paragraphJoinAfter(tr.doc, markPosition + deleted.nodeSize)?.next;
-          if (
+          if (deletesForeignBreak && ownerMark) {
+            // Another author added this break: the deletion is recorded on
+            // the mark beside their insertion, and each resolves on its own.
+            const markRevisionId = operationRevisionSeed++;
+            tr = tr.setNodeAttribute(markPosition, "pPrMark", {
+              ...ownerMark,
+              deletion: {
+                info: {
+                  id: markRevisionId,
+                  author,
+                  date,
+                  ...trackedRevisionExtras,
+                },
+              },
+            } satisfies ParagraphMarkChange);
+            appliedRevisionIds = inlineRevisionApplied
+              ? [revisionId, markRevisionId]
+              : [markRevisionId];
+          } else if (foreignBreakTaken) {
+            // The break goes under the deletion that took it first.
+          } else if (
             deleted &&
             following?.type === deleted.type &&
             !isPairedMove(item.operation.moveId) &&

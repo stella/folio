@@ -2127,7 +2127,14 @@ const trackJoin = ({
       "Resolving a tracked join leaves the second paragraph.",
     );
   }
-  if (leading.pPrMark !== undefined) {
+  const mark = leading.pPrMark;
+  // Another author's added break keeps their insertion, and the join is
+  // recorded as its deletion beside it.
+  const deletesAddedMark =
+    (mark?.kind === "ins" || mark?.kind === "moveTo") &&
+    mark.deletion === undefined &&
+    mark.info.author !== stamp.author;
+  if (mark !== undefined && !deletesAddedMark) {
     return refuse(
       op,
       DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
@@ -2136,7 +2143,10 @@ const trackJoin = ({
   }
   const first: Paragraph = {
     ...leading,
-    pPrMark: { kind: "del", info: stampInfo(stamp) },
+    pPrMark:
+      mark === undefined
+        ? { kind: "del", info: stampInfo(stamp) }
+        : { ...mark, deletion: { info: stampInfo(stamp) } },
   };
   let second = trailing;
   // Primitive direct and tracked joins share physical paragraph semantics.

@@ -3503,6 +3503,8 @@ const reachableIds = (paragraph: Paragraph): Set<number> => {
   const out = new Set<number>();
   for (const change of paragraph.propertyChanges ?? []) out.add(change.info.id);
   if (paragraph.pPrMark !== undefined) out.add(paragraph.pPrMark.info.id);
+  if (paragraph.pPrMark?.deletion !== undefined)
+    out.add(paragraph.pPrMark.deletion.info.id);
   const visit = (nodes: readonly InlineNode[]): void => {
     for (const node of nodes) {
       if (isTrackedWrapper(node)) out.add(node.info.id);
@@ -4416,12 +4418,74 @@ type RevisionResolutionPlanOptions = {
 };
 
 /**
+ * A mark holding an insertion and a later deletion of it, settled to the one
+ * record resolution then decides, with the revision ids left to resolve:
+ * - accepting the deletion takes the break, whatever becomes of the
+ *   insertion: the mark is the deletion alone, which the resolution accepts;
+ * - accepting the insertion alone leaves the deletion pending;
+ * - rejecting the insertion takes the break with its deletion: the mark is
+ *   the insertion alone, which the resolution rejects;
+ * - rejecting the deletion alone leaves the insertion pending.
+ */
+const settleTwoRecordMarks = (
+  document: Document,
+  op: ResolveRevisionOp,
+): { ops: DocumentOp[]; ids: number[] } => {
+  const ids = new Set(op.revisionIds);
+  const ops: DocumentOp[] = [];
+  for (const { paragraph } of storyParagraphs(storyBody(document, op.story))) {
+    const mark = paragraph.pPrMark;
+    if (mark?.deletion === undefined) continue;
+    const insertion = mark.info.id;
+    const deletion = mark.deletion.info.id;
+    if (!ids.has(insertion) && !ids.has(deletion)) continue;
+    const review = reviewFieldsOf(paragraph);
+    if (op.decision === REVISION_DECISIONS.ACCEPT) {
+      review.pPrMark = { kind: "del", info: mark.deletion.info };
+      ids.delete(insertion);
+    } else {
+      const { deletion: _deleted, ...added } = mark;
+      review.pPrMark = added;
+      ids.delete(deletion);
+    }
+    ops.push({
+      type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
+      story: op.story,
+      blockId: paragraph.paraId ?? "",
+      expected: reviewFieldsOf(paragraph),
+      review,
+    });
+  }
+  return { ops, ids: op.revisionIds.filter((id) => ids.has(id)) };
+};
+
+/**
  * Resolve tracked changes by revision id, applied as the primitive
  * operations it expands to. An id no record in the story carries is
  * skipped; one carried by a record resolution does not reach yet (a table,
  * cell or section change, a record inside a field) is refused.
  */
-export const planRevisionResolution = ({
+export const planRevisionResolution = (
+  options: RevisionResolutionPlanOptions,
+): Result<RevisionResolutionPlan, DocumentOpRefusal> => {
+  const { document, op, applyOps } = options;
+  const settled = settleTwoRecordMarks(document, op);
+  if (settled.ops.length === 0) return planSingleRecordResolution(options);
+  const marks = applyOps(document, settled.ops);
+  if (marks.isErr()) return Result.err(marks.error);
+  const rest = planSingleRecordResolution({
+    document: marks.value.document,
+    op: { ...op, revisionIds: settled.ids },
+    applyOps,
+  });
+  if (rest.isErr()) return Result.err(rest.error);
+  return Result.ok({
+    edit: combineEdits(document, [marks.value, rest.value.edit]),
+    receiverEffects: rest.value.receiverEffects,
+  });
+};
+
+const planSingleRecordResolution = ({
   document,
   op,
   applyOps,

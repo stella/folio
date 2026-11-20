@@ -59,7 +59,7 @@ describe("parseParagraph — paragraph-mark tracked change (ECMA-376 §17.13.5)"
     expect(paragraph.pPrMark).toBeUndefined();
   });
 
-  test("ins takes precedence over del when both appear (malformed but defensive)", () => {
+  test("reads an inserted mark's later deletion beside its insertion", () => {
     const paragraph = parseParagraphXml(`
       <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
         <w:pPr>
@@ -71,7 +71,30 @@ describe("parseParagraph — paragraph-mark tracked change (ECMA-376 §17.13.5)"
       </w:p>
     `);
 
-    expect(paragraph.pPrMark?.kind).toBe("ins");
+    expect(paragraph.pPrMark).toEqual({
+      kind: "ins",
+      info: { id: 1, author: "A" },
+      deletion: { info: { id: 2, author: "B" } },
+    });
+  });
+
+  test("reads a moved-to mark's later deletion beside it", () => {
+    const paragraph = parseParagraphXml(`
+      <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:pPr>
+          <w:rPr>
+            <w:del w:id="4" w:author="B"/>
+            <w:moveTo w:id="3" w:author="A"/>
+          </w:rPr>
+        </w:pPr>
+      </w:p>
+    `);
+
+    expect(paragraph.pPrMark).toEqual({
+      kind: "moveTo",
+      info: { id: 3, author: "A" },
+      deletion: { info: { id: 4, author: "B" } },
+    });
   });
 
   test("omits w:date when it is absent on the source element", () => {

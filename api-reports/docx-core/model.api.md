@@ -1205,10 +1205,16 @@ export type ParagraphMarkChange = WritableRecord & {
     info: TrackedChangeInfo;
     resolutionJoin?: number | undefined;
     survivor?: "first" | undefined;
+    deletion?: ParagraphMarkDeletion | undefined;
 };
 
 // @public
 export type ParagraphMarkChangeKind = (typeof PARAGRAPH_MARK_CHANGE_KINDS)[number];
+
+// @public
+export type ParagraphMarkDeletion = WritableRecord & {
+    info: TrackedChangeInfo;
+};
 
 // @public
 export const paragraphNumberingFromSlots: (input: {

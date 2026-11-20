@@ -63,14 +63,11 @@ export const CANONICAL_VACUOUS_STEPS: Readonly<
   "issue-1757-merge-across-deleted-note-paragraph-before-inserted-table.json": [
     0,
   ],
-  "issue-1842-final-deletion-retracts-split-break-after-reopen.json": [4],
   "issue-2044-heading-style-in-a-table-cell.json": [12],
   "issue-2222-styled-insert-after-undefined-numbering-level.json": [2],
   "issue-2236-new-list-in-header-after-other-stories-direct.json": [0],
   "issue-2316-c14cd1e28851babe.json": [0, 1],
   "issue-2904-merged-numbered-heading-emptied.json": [2],
-  "revision-boundary-1c6f520a41a4dcf4.json": [4],
-  "revision-round-trip-1.json": [4],
   "undefined-numbering-level-projection.json": [1],
 };
 

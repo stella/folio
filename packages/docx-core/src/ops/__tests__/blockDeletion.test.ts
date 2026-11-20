@@ -365,13 +365,9 @@ test("a sole paragraph after a table is cleared without marking its final break"
   expect(direct.document.package.document.content.at(0)).toBe(table);
 });
 
-test("deletion refuses invalid selections, boundaries and paragraph review conflicts", () => {
+test("deletion refuses invalid selections and boundaries", () => {
   const first = paragraph("00000001", "first");
   const final = paragraph("00000002", "final");
-  const marked = {
-    ...first,
-    pPrMark: { kind: "ins", info: { id: 9, author: "A" } },
-  } satisfies Paragraph;
   const cases = [
     {
       document: documentOf([first, final]),
@@ -392,11 +388,6 @@ test("deletion refuses invalid selections, boundaries and paragraph review confl
       document: documentOf([first, cell([final])]),
       ids: ["00000001"],
       reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-    },
-    {
-      document: documentOf([marked, final]),
-      ids: ["00000001"],
-      reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
     },
     {
       document: documentOf([{ ...first, sectionProperties: {} }, final]),
@@ -481,15 +472,8 @@ test("a tracked deletion removes a mark its own author's pending insertion added
     if (undo.isErr()) throw undo.error;
     expect(undo.value.document).toStrictEqual(document);
   }
-  // Another author's mark, or one with no paragraph after it, stays refused.
+  // One with no paragraph after it stays refused.
   for (const blocks of [
-    [
-      {
-        ...paragraph("00000001", "gone"),
-        pPrMark: { kind: "ins", info: { id: 9, author: "Other" } },
-      } satisfies Paragraph,
-      paragraph("00000002", "kept"),
-    ],
     [
       ownMark(paragraph("00000001", "gone")),
       cell([paragraph("00000003", "cell")]),
@@ -1034,3 +1018,38 @@ test.each(["body", "cell"] as const)(
     expect(direct.document).toStrictEqual(document);
   },
 );
+
+test("a tracked deletion of another author's inserted paragraph records its deletion beside the insertion", () => {
+  const inserted: Paragraph = {
+    ...paragraph("00000001", "Added."),
+    pPrMark: {
+      kind: "ins",
+      info: { id: 5, author: "Other", date: "2026-01-02T03:04:05Z" },
+    },
+  };
+  const document = documentOf([inserted, paragraph("00000002", "Closing.")]);
+  const tracked = apply(document, deletion(["00000001"]));
+  const [first] = storyParagraphs(tracked.document.package.document);
+  expect(first?.paragraph.pPrMark).toStrictEqual({
+    ...inserted.pPrMark,
+    deletion: {
+      info: { id: 100, author: "Reviewer", date: "2026-02-03T04:05:06Z" },
+    },
+  });
+  expect(
+    resolveTracked(tracked.document, [100, 101], REVISION_DECISIONS.REJECT),
+  ).toStrictEqual(document);
+  const accepted = resolveTracked(
+    tracked.document,
+    [100, 101, 5],
+    REVISION_DECISIONS.ACCEPT,
+  );
+  expect(
+    storyParagraphs(accepted.package.document).map(
+      ({ paragraph: located }) => located.paraId,
+    ),
+  ).toStrictEqual(["00000002"]);
+  const undo = applyDocumentOps(tracked.document, tracked.inverse);
+  if (undo.isErr()) throw undo.error;
+  expect(undo.value.document).toStrictEqual(document);
+});
