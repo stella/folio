@@ -1623,12 +1623,12 @@ const buildParagraphInsertion = ({
   });
 };
 
-type BeginTrackedInsertionCompilationOptions = {
+type TrackedBatchOptions = {
   document: Document;
   count: number;
   reservedBlockIds?: ReadonlySet<string>;
 };
-type CompileTrackedInsertionOptions = {
+type TrackedMemberOptions = {
   index: number;
   intent: InsertParagraphsIntent;
   mode: EditorIntentMode;
@@ -1640,7 +1640,7 @@ type TrackedInsertionCompiler =
   | {
       type: "ready";
       compile: (
-        options: CompileTrackedInsertionOptions,
+        options: TrackedMemberOptions,
       ) => Result<TrackedInsertionCompilation, DocumentOpRefusal>;
     };
 
@@ -1653,7 +1653,7 @@ export const beginTrackedInsertionCompilation = ({
   document,
   count,
   reservedBlockIds,
-}: BeginTrackedInsertionCompilationOptions): TrackedInsertionCompiler => {
+}: TrackedBatchOptions): TrackedInsertionCompiler => {
   if (
     !Number.isSafeInteger(count) ||
     count <= 0 ||

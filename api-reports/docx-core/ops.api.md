@@ -128,7 +128,7 @@ export type BatchRejectionReason = (typeof BATCH_REJECTION_REASONS)[keyof typeof
 export type BatchSubmission = BatchAck | BatchReject;
 
 // @public
-export const beginTrackedInsertionCompilation: (input: BeginTrackedInsertionCompilationOptions) => TrackedInsertionCompiler;
+export const beginTrackedInsertionCompilation: (input: TrackedBatchOptions) => TrackedInsertionCompiler;
 
 // @public
 export const blockControlHolding: (blocks: readonly BlockContent[], blockId: string) => {
