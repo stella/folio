@@ -116,6 +116,7 @@ import {
   type Picker,
   storyKindOf,
 } from "./targets.ts";
+import { setSourcePackage } from "./validity.ts";
 
 type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
 
@@ -1038,6 +1039,8 @@ const execute = async (plan: Plan, options: RunOptions): Promise<FlowRun> => {
     );
   }
   const bytes = await loadFixture({ fixture, kind, generation });
+  // Saves are held to the validity of the package the flow opened.
+  await setSourcePackage(bytes);
   const weights =
     plan.weights === undefined ? undefined : parseFeatureCoverage(plan.weights);
   const flow: Flow = {
