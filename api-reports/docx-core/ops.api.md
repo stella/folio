@@ -932,6 +932,9 @@ export const locateParagraphInBlockList: (body: DocumentBody, blockId: string) =
 } | undefined;
 
 // @public
+export const locateParagraphThroughTextBoxes: (document: Document_2, story: OpStory, blockId: string) => ReturnType<typeof locateParagraphInBlockList>;
+
+// @public
 export const mapTocBookmarkPosition: (position: TextPosition, ops: readonly DocumentOp[]) => TextPosition;
 
 // @public
