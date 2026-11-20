@@ -15,7 +15,6 @@ import {
   asParagraphContent,
   childNodes,
   type InlineNode,
-  leafPlaces,
   rebuildNode,
 } from "./leaves";
 import { OP_STORIES, type OpStory } from "./types";
@@ -229,10 +228,31 @@ const isTextBoxLeaf = (node: InlineNode): node is TextBoxLeaf =>
 /** A paragraph's text boxes in leaf order, each with its path from the paragraph. */
 export const paragraphTextBoxes = (
   paragraph: Paragraph,
-): { leaf: TextBoxLeaf; path: readonly number[] }[] =>
-  leafPlaces(paragraph.content).flatMap(({ node, path }) =>
-    isTextBoxLeaf(node) ? [{ leaf: node, path }] : [],
-  );
+): readonly PlacedTextBox[] => {
+  // Paragraphs are never changed in place, so a paragraph's boxes are read once.
+  const known = placedTextBoxes.get(paragraph);
+  if (known !== undefined) return known;
+  const out: PlacedTextBox[] = [];
+  const path: number[] = [];
+  const visit = (nodes: readonly InlineNode[]): void => {
+    for (const [index, node] of nodes.entries()) {
+      path.push(index);
+      if (isTextBoxLeaf(node)) out.push({ leaf: node, path: [...path] });
+      else {
+        const children = childNodes(node);
+        if (children !== undefined) visit(children);
+      }
+      path.pop();
+    }
+  };
+  visit(paragraph.content);
+  placedTextBoxes.set(paragraph, out);
+  return out;
+};
+
+type PlacedTextBox = { leaf: TextBoxLeaf; path: readonly number[] };
+
+const placedTextBoxes = new WeakMap<Paragraph, readonly PlacedTextBox[]>();
 
 /**
  * One body per text body, so reading a box's story twice gives the same
