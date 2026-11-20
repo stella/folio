@@ -2,15 +2,19 @@ import { panic } from "better-result";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import type {
-  ComplexField,
-  Document,
-  HeaderFooter,
-  ParagraphContent,
-  Run,
-  SimpleField,
+import {
+  type AbstractNumbering,
+  type ComplexField,
+  type Document,
+  type HeaderFooter,
+  type ParagraphContent,
+  paragraphNumberingReference,
+  type Relationship,
+  type Run,
+  type SimpleField,
 } from "@stll/docx-core/model";
 import { ZipArchive } from "@stll/docx-core/zip";
+import { RELATIONSHIP_TYPES } from "@stll/folio-core/docx/relsParser";
 import { fromMarkdown } from "@stll/folio-core/markdown";
 import { createDocx, paragraph } from "@stll/folio-core/server";
 
@@ -97,6 +101,113 @@ const documentWithSectionStories = (
   ];
   return document;
 };
+
+type PackagePartsOptions = {
+  relationships: [string, string, string][];
+  abstractNums: AbstractNumbering[];
+};
+
+/** One numbered paragraph naming `numId` 1, over the given parts. */
+const documentWithParts = ({
+  relationships,
+  abstractNums,
+}: PackagePartsOptions): Document => {
+  const document = reviewDocumentWithContent([textRun("Item")]);
+  const first = document.package.document.content.at(0);
+  if (first?.type !== "paragraph") panic("Expected paragraph");
+  first.formatting = { numPr: paragraphNumberingReference({ numId: 1 }) };
+  document.package.relationships = new Map(
+    relationships.map(([id, type, target]): [string, Relationship] => [
+      id,
+      { id, type, target },
+    ]),
+  );
+  document.package.numbering = {
+    abstractNums,
+    nums: abstractNums.map(({ abstractNumId }) => ({
+      numId: abstractNumId,
+      abstractNumId,
+    })),
+  };
+  return document;
+};
+
+const abstractNum = (abstractNumId: number, lvlText: string) =>
+  ({
+    abstractNumId,
+    levels: [{ ilvl: 0, numFmt: "decimal", lvlText }],
+  }) satisfies AbstractNumbering;
+
+test("resolved comparison reads parts as content reaches them", () => {
+  const { numbering, settings, header } = RELATIONSHIP_TYPES;
+  const saved = documentWithParts({
+    relationships: [
+      ["rId1", numbering, "numbering.xml"],
+      ["rId2", settings, "settings.xml"],
+      ["rId3", header, "header1.xml"],
+    ],
+    abstractNums: [abstractNum(1, "%1.")],
+  });
+  const projection = canonicalResolvedReviewModel(saved);
+
+  // Implicit parts may take any id; a list nothing names may be dropped.
+  assert.deepEqual(
+    canonicalResolvedReviewModel(
+      documentWithParts({
+        relationships: [
+          ["rId2", numbering, "numbering.xml"],
+          ["rId1", settings, "settings.xml"],
+          ["rId3", header, "header1.xml"],
+        ],
+        abstractNums: [abstractNum(1, "%1."), abstractNum(2, "-")],
+      }),
+    ),
+    projection,
+  );
+
+  const controls = [
+    // A header is named by its id.
+    documentWithParts({
+      relationships: [
+        ["rId1", numbering, "numbering.xml"],
+        ["rId2", settings, "settings.xml"],
+        ["rId4", header, "header1.xml"],
+      ],
+      abstractNums: [abstractNum(1, "%1.")],
+    }),
+    // The list a paragraph names stays strict.
+    documentWithParts({
+      relationships: [
+        ["rId1", numbering, "numbering.xml"],
+        ["rId2", settings, "settings.xml"],
+        ["rId3", header, "header1.xml"],
+      ],
+      abstractNums: [abstractNum(1, "%1)")],
+    }),
+  ];
+  for (const control of controls)
+    assert.notDeepEqual(canonicalResolvedReviewModel(control), projection);
+
+  // A numbering part no reference reaches reads as no numbering part.
+  const unnumbered = (parts: PackagePartsOptions): Document => {
+    const document = documentWithParts(parts);
+    const first = document.package.document.content.at(0);
+    if (first?.type !== "paragraph") panic("Expected paragraph");
+    first.formatting = {};
+    return document;
+  };
+  assert.deepEqual(
+    canonicalResolvedReviewModel(
+      unnumbered({
+        relationships: [["rId1", numbering, "numbering.xml"]],
+        abstractNums: [abstractNum(1, "%1.")],
+      }),
+    ),
+    canonicalResolvedReviewModel(
+      unnumbered({ relationships: [], abstractNums: [] }),
+    ),
+  );
+});
 
 test("model comparison normalizes only safely mergeable adjacent runs", () => {
   const merged = reviewDocumentWithContent([textRun("Alpha beta")]);
