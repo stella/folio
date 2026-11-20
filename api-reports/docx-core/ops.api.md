@@ -177,6 +177,9 @@ export type ClientNotice = {
 };
 
 // @public
+export const combineEditEffects: (final: Document_2, edits: readonly DocumentEditEffects[]) => DocumentEdit;
+
+// @public
 export const combineEdits: (document: Document_2, edits: readonly DocumentEdit[]) => DocumentEdit;
 
 // @public

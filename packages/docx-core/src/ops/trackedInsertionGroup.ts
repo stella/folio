@@ -7,11 +7,7 @@ import {
   repeatedParagraphId,
   validateOpsDocument,
 } from "./contract";
-import {
-  combineEditEffects,
-  type DocumentEdit,
-  type DocumentEditEffects,
-} from "./edits";
+import type { DocumentEditEffects } from "./edits";
 import {
   type IdentityKeyIndex,
   identityKeysIn,
@@ -77,7 +73,7 @@ type TrackedInsertionGroupResult =
     }
   | {
       type: "materialized";
-      edit: DocumentEdit;
+      document: Document;
       members: readonly MemberEffect[];
     };
 
@@ -282,7 +278,7 @@ export const tryTrackedInsertionGroup = ({
   meetsContract(final.value);
   return {
     type: "materialized",
-    edit: combineEditEffects(final.value, members),
+    document: final.value,
     members,
   };
 };
