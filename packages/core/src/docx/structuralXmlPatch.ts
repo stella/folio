@@ -1,7 +1,12 @@
 /** Conservative body-paragraph splices; source offsets never come from reserialization. */
 import type { StructuralSpliceDeclineReason } from "../types/selectiveSaveDecline";
 import { canonicalJson } from "../utils/canonicalJson";
-import { parseDocumentBodyTree } from "./documentParser";
+import {
+  isPlainDocumentMetadataParagraph,
+  parseDocumentBackground,
+  parseDocumentBodyTree,
+  parseFinalBodySectionProperties,
+} from "./documentParser";
 import { paraIdAttribute } from "./paraIdAttribute";
 import { standalonePreviewLedger } from "./previewBudget";
 import {
@@ -15,6 +20,7 @@ import {
 } from "./storyBlockReplay";
 import {
   findAttributeByNamespaceUri,
+  findChild,
   getAttribute,
   getChildElements,
   getLocalName,
@@ -87,7 +93,7 @@ const readBody = (xml: string) => {
   }
   if (stack.length > 0 || blocks.length !== children.length || bodyEnd < 0)
     return null;
-  return { root, blocks, bodyEnd };
+  return { root, body, blocks, bodyEnd };
 };
 
 function* descendants(element: XmlElement): Generator<XmlElement> {
@@ -271,20 +277,23 @@ export const buildStructuralDocumentPatch = ({
   const allCurrentIds = paragraphIds(current.root);
   if (!allSourceIds || !allCurrentIds) return decline("structuralParagraphIds");
   const changed = new Set([...changedIds].map((id) => id.toUpperCase()));
+  let plainBody =
+    findChild(source.root, "w", "body") === source.body &&
+    findChild(current.root, "w", "body") === current.body;
   for (const { element } of [...source.blocks, ...current.blocks]) {
     if (isWordElement(element, "p")) {
       const id = paraIdAttribute(element)?.toUpperCase();
       if (!id) return decline("structuralParagraphIds");
+      if (plainBody && isPlainDocumentMetadataParagraph(element)) continue;
+      plainBody = false;
       const touched =
         changed.has(id) || !allSourceIds.has(id) || !allCurrentIds.has(id);
       if (!paragraphIsSafe(element, touched))
         return decline("structuralDependentContent");
-    } else if (
-      !isWordElement(element, "tbl") &&
-      !isWordElement(element, "sectPr") &&
-      !isBodyMarker(element)
-    ) {
-      return decline("structuralBodyBlock");
+    } else if (!isWordElement(element, "sectPr")) {
+      plainBody = false;
+      if (!isWordElement(element, "tbl") && !isBodyMarker(element))
+        return decline("structuralBodyBlock");
     }
   }
   // Barriers are matched by position, so the source's must be the same
@@ -302,8 +311,19 @@ export const buildStructuralDocumentPatch = ({
 
   // Compare both sides through the same parser, avoiding lexical differences
   // such as empty tags and attribute order. Unmodeled table bytes stay in source.
-  const sourceBody = parseBodyModel(source.root);
-  const currentBody = parseBodyModel(current.root);
+  const barrierBody = ({
+    root,
+    body,
+  }: NonNullable<ReturnType<typeof readBody>>) =>
+    plainBody
+      ? {
+          content: [],
+          finalSectionProperties: parseFinalBodySectionProperties(body),
+          background: parseDocumentBackground(root, undefined),
+        }
+      : parseBodyModel(root);
+  const sourceBody = barrierBody(source);
+  const currentBody = barrierBody(current);
   const barriers = (body: typeof sourceBody) =>
     body.content.filter((block) => block.type !== "paragraph");
   const sourceBarriers = barriers(sourceBody);
