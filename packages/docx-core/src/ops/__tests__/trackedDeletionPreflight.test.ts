@@ -7,7 +7,11 @@ import type {
   RunContent,
 } from "../../model/document";
 import * as apply from "../apply";
-import { appendTrackedDeletion, createTrackedPlan } from "../plan";
+import {
+  appendTrackedDeletion,
+  createTrackedPlan,
+  revisionIdDemand,
+} from "../plan";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import { DOCUMENT_OP_TYPES, OP_STORIES, type TextPosition } from "../types";
 
@@ -29,18 +33,7 @@ const at = (offset: number): TextPosition => ({
   blockId: PARA_ID,
   offset,
 });
-type PlanOptions = {
-  document: Document;
-  from: TextPosition;
-  to: TextPosition;
-  countEveryPiece: boolean;
-};
-const planWithCount = ({
-  document,
-  from,
-  to,
-  countEveryPiece,
-}: PlanOptions) => {
+const countDeletionCalls = <T>(execute: () => T) => {
   const applyOp = apply.applyDocumentOp;
   let direct = 0;
   let tracked = 0;
@@ -54,6 +47,26 @@ const planWithCount = ({
     },
   );
   try {
+    const value = execute();
+    return { value, direct, tracked };
+  } finally {
+    applications.mockRestore();
+  }
+};
+
+type PlanOptions = {
+  document: Document;
+  from: TextPosition;
+  to: TextPosition;
+  countEveryPiece: boolean;
+};
+const planWithCount = ({
+  document,
+  from,
+  to,
+  countEveryPiece,
+}: PlanOptions) => {
+  const { value, direct, tracked } = countDeletionCalls(() => {
     const options = { from, to, revision: REVISION, newIds: NEW_IDS };
     const plan = createTrackedPlan({
       document,
@@ -62,10 +75,9 @@ const planWithCount = ({
       countEveryPiece,
     });
     const result = appendTrackedDeletion({ document, options, plan });
-    return { result, ops: plan.ops, direct, tracked };
-  } finally {
-    applications.mockRestore();
-  }
+    return { result, ops: plan.ops };
+  });
+  return { ...value, direct, tracked };
 };
 
 const alias = (position: TextPosition): TextPosition => ({
@@ -178,15 +190,29 @@ test("invalid zero-width and surrogate endpoints refuse before a tracked edit", 
     },
     { from: at(2), reason: DOCUMENT_OP_REFUSAL_REASONS.SPLITS_SURROGATE_PAIR },
   ]) {
+    const to = at(3);
+    const preflight = countDeletionCalls(() =>
+      revisionIdDemand(document, {
+        type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+        from,
+        to,
+      }),
+    );
     const { result, direct, tracked, ops } = planWithCount({
       document,
       from,
-      to: at(3),
+      to,
       countEveryPiece: false,
     });
+    expect(preflight.value.isErr()).toBe(true);
     expect(result.isErr()).toBe(true);
-    if (result.isErr()) expect(result.error.reason).toBe(reason);
-    expect(direct).toBe(1);
+    if (result.isErr() && preflight.value.isErr()) {
+      expect(result.error.reason).toBe(reason);
+      assertExactModel(result.error, preflight.value.error);
+    }
+    // An invalid range ends at the demand preflight, including its retries.
+    expect(preflight.direct).toBeGreaterThan(0);
+    expect(direct).toBe(preflight.direct);
     expect(tracked).toBe(0);
     expect(ops).toEqual([]);
   }
@@ -201,6 +227,16 @@ test("tracked refusal is still reported after the direct preflight succeeds", ()
       content: [run(text("e"))],
     },
   ]);
+  const stampDemand = countDeletionCalls(() =>
+    revisionIdDemand(document, {
+      type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+      from: { ...at(1), zeroWidthBefore: 0 },
+      to: { ...at(3), zeroWidthBefore: 0 },
+      revision: REVISION,
+    }),
+  );
+  expect(stampDemand.value.isErr()).toBe(true);
+  expect(stampDemand.tracked).toBeGreaterThan(0);
   for (const countEveryPiece of [false, true]) {
     const current = planWithCount({
       document,
@@ -226,7 +262,11 @@ test("tracked refusal is still reported after the direct preflight succeeds", ()
     }
     expect(current.direct).toBe(1);
     expect(fallback.direct).toBe(1);
-    expect(current.tracked).toBe(countEveryPiece ? 1 : 2);
+    // The append may first try its own zero-ID apply, then asks the demand
+    // counter for the same fatal tracked refusal.
+    expect(current.tracked).toBe(
+      stampDemand.tracked + (countEveryPiece ? 0 : 1),
+    );
     expect(fallback.tracked).toBe(current.tracked);
     expect(current.ops).toEqual([]);
   }
