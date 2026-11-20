@@ -309,6 +309,34 @@ test("insertion validates identities, review conflicts and section boundaries", 
   );
 });
 
+test("a direct insertion keeps a supplied mark only before its container end", () => {
+  const anchor = makeParagraph("0abcdef1", "anchor");
+  const wrapper = {
+    type: "blockSdt",
+    properties: {},
+    content: [anchor],
+  } satisfies BlockContent;
+  const marked = {
+    ...makeParagraph("00000002", "marked"),
+    pPrMark: { kind: "ins", info: { id: 9, author: "A" } },
+  } satisfies Paragraph;
+  const op = {
+    ...insertion([marked]),
+    at: { type: "after", blockId: "0ABCDEF1" },
+    revision: undefined,
+  } as const;
+  const terminal = applyDocumentOp(documentOf([wrapper]), op);
+  expect(terminal.isErr() && terminal.error.reason).toBe(
+    DOCUMENT_OP_REFUSAL_REASONS.CONTAINER_FINAL_MARK,
+  );
+  const tail = makeParagraph("00000003", "tail");
+  const nonterminal = apply(documentOf([wrapper, tail]), op);
+  expect(nonterminal.document.package.document.content).toEqual([
+    { ...wrapper, content: [anchor, marked] },
+    tail,
+  ]);
+});
+
 test.each([
   ["no paragraph follows", [] as BlockContent[]],
   ["a paragraph follows", [makeParagraph("00000004", "after")]],

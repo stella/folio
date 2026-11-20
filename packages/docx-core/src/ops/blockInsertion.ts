@@ -13,23 +13,19 @@ import {
 import {
   blockListAt,
   blockListEndsInParagraph,
+  endsItsContainer,
   hasContainerFinalParagraphMark,
   replaceParagraphs,
   storyBody,
-  storyParagraphs,
 } from "./blocks";
 import { validateOpsDocument } from "./contract";
 import type { DocumentEdit } from "./edits";
 import { structurallyEqual } from "./equality";
 import { freshenIdentities } from "./identity";
-import {
-  identityKeysIn,
-  idKey,
-  isParaId,
-  packageIdentityKeyIndex,
-} from "./ids";
+import { identityKeysIn, isParaId, packageIdentityKeyIndex } from "./ids";
 import { asMoveHalf } from "./moves";
 import { paragraphLength } from "./offsets";
+import { findStoryParagraph } from "./paragraphLocator";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import type { ApplyOps } from "./resolve";
 import { stampInfo, WRAP_KINDS, wrapTracked } from "./review";
@@ -268,9 +264,7 @@ export const insertBlocks = ({
     );
   }
   const body = storyBody(document, op.story);
-  const location = storyParagraphs(body).find(
-    ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(op.at.blockId),
-  );
+  const location = findStoryParagraph(body, op.at.blockId);
   if (location === undefined) {
     return refuse(
       DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
@@ -365,25 +359,21 @@ export const insertBlocks = ({
         opType: op.type,
       }),
     );
-  const insertedIds = new Set(
-    canonicalBlocks.map(({ paraId }) => idKey(paraId ?? "")),
-  );
-  const finalMarks = storyParagraphs(
-    storyBody(direct.value.document, op.story),
-  ).some(
-    (at) =>
-      insertedIds.has(idKey(at.paragraph.paraId ?? "")) &&
-      hasContainerFinalParagraphMark(
-        storyBody(direct.value.document, op.story),
-        at,
-      ),
-  );
-  if (finalMarks) {
+  // Every other insertion is followed by another inserted paragraph or the
+  // unchanged anchor in this block list.
+  const lastInserted = canonicalBlocks.at(-1);
+  if (
+    !before &&
+    lastInserted?.pPrMark !== undefined &&
+    endsItsContainer(storyBody(direct.value.document, op.story), {
+      list: location.list,
+      index: location.index + canonicalBlocks.length,
+    })
+  )
     return refuse(
       DOCUMENT_OP_REFUSAL_REASONS.CONTAINER_FINAL_MARK,
       "Insertion would leave a tracked mark on a container-final paragraph.",
     );
-  }
   const touched = {
     // The anchor's mark becomes the inserted one when it takes over.
     modified:
