@@ -6,7 +6,6 @@ import type {
   ParagraphContent,
 } from "../../model/document";
 import { applyDocumentOp } from "../apply";
-import { withoutKeptCuts } from "../keptCut";
 import { DOCUMENT_OP_TYPES, OP_STORIES, REVISION_DECISIONS } from "../types";
 
 const at = { story: OP_STORIES.MAIN, blockId: "00000001", offset: 0 } as const;
@@ -679,12 +678,14 @@ describe("a split seam with nothing left on one side joins nothing", () => {
     let inTurn = tracked();
     for (const ids of [[5001], [5002, 303648], [5003], [303649]])
       inTurn = rejected(inTurn, ids);
-    // The cut a kept marker records is review state the orders need not
-    // share; where it stands is the same.
-    const placed = (content: ReturnType<typeof contentOf>) =>
-      content?.map((node) => withoutKeptCuts(node));
-    expect(placed(contentOf(inTurn))).toEqual(placed(atOnce));
-    expect(atOnce?.[0]).toEqual({ type: "bookmarkEnd", id: 1 });
+    // The marker stands beside the pending insertion the joins bring to it,
+    // in the cut it was kept in, whichever order brought them together.
+    expect(contentOf(inTurn)).toEqual(atOnce);
+    expect(atOnce?.[0]).toEqual({
+      type: "bookmarkEnd",
+      id: 1,
+      keptCut: { depth: 1, keptFrom: "2026-03-04T05:00:03Z" },
+    });
   });
 });
 

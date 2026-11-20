@@ -44,6 +44,14 @@ export const standsInKeptCut = (node: InlineNode): boolean =>
     ? node.content.length > 0 && node.content.every(standsInKeptCut)
     : carriesKeptCut(node) && node.keptCut !== undefined;
 
+/** Whether some range marker in `nodes`, at any depth, stands in a kept cut. */
+export const holdsKeptCut = (nodes: readonly InlineNode[]): boolean =>
+  nodes.some(
+    (node) =>
+      (carriesKeptCut(node) && node.keptCut !== undefined) ||
+      holdsKeptCut(childNodes(node) ?? []),
+  );
+
 /** `node` without a kept cut: placed inside a piece, it waits for nothing. */
 export const withoutKeptCut = (node: InlineNode): InlineNode => {
   if (!carriesKeptCut(node) || node.keptCut === undefined) return node;
@@ -190,6 +198,68 @@ export const pendingAtEdge = (
   );
 };
 
+/** The deepest kept cut among the markers `node` stands for; 0 for none. */
+const deepestKeptCut = (node: InlineNode): number => {
+  if (node.type === "deletion")
+    return Math.max(0, ...node.content.map(deepestKeptCut));
+  if (!carriesKeptCut(node)) return 0;
+  return node.keptCut?.depth ?? 0;
+};
+
+/**
+ * `node` with every marked range marker it stands for widened to `depth`,
+ * keeping what the resolution recorded per marker. An unmarked marker
+ * stays unmarked: it was authored or accepted, not kept.
+ */
+const withKeptCutDepthRecorded = (
+  node: InlineNode,
+  depth: number,
+  known: WeakMap<InlineNode, string>,
+): InlineNode =>
+  changeStandingMarkers(
+    node,
+    keepingRecord(
+      (marker) =>
+        carriesKeptCut(marker) && marker.keptCut !== undefined
+          ? withKeptCut(marker, { depth, keptFrom: marker.keptCut.keptFrom })
+          : marker,
+      known,
+    ),
+  );
+
+/** A paragraph join's cut, and when the paragraph mark it resolves was made. */
+type JoinCut = { depth: number; after: string };
+
+/**
+ * `nodes` with the kept markers standing at its `edge` that were kept from
+ * revisions made after the split widened to the join's cut: they stood in
+ * its seam, as a join resolved earlier hands its depth to the removal that
+ * keeps them. A marker kept from content the split cut keeps its own cut.
+ */
+export const withEdgeKeptCutsWidened = (
+  nodes: readonly InlineNode[],
+  edge: "start" | "end",
+  { depth, after }: JoinCut,
+): readonly InlineNode[] => {
+  let out: InlineNode[] | undefined;
+  for (let step = 0; step < nodes.length; step += 1) {
+    const index = edge === "start" ? step : nodes.length - 1 - step;
+    const node = nodes[index];
+    if (node === undefined || !isKeptBoundaryCarrier(node)) break;
+    const widened = changeStandingMarkers(node, (marker) =>
+      carriesKeptCut(marker) &&
+      marker.keptCut !== undefined &&
+      marker.keptCut.keptFrom > after
+        ? withKeptCut(marker, { depth, keptFrom: marker.keptCut.keptFrom })
+        : marker,
+    );
+    if (widened === node) continue;
+    out ??= [...nodes];
+    out[index] = widened;
+  }
+  return out ?? nodes;
+};
+
 type SettleKeptCutsOptions = {
   /** What the resolution recorded about each marker, kept on its copies. */
   known?: WeakMap<InlineNode, string>;
@@ -205,7 +275,8 @@ type SettleKeptCutsOptions = {
  * beside it, across the edges of the records around it, or holds some of
  * them: the change whose resolution can still let the pieces meet. A record
  * holding the run is no such change; resolving it keeps them again.
- * Whichever order resolved the rest, no cut outlives that change.
+ * Whichever order resolved the rest, no cut outlives that change. A waiting
+ * run stands in one cut, as deep as the deepest any of its markers records.
  */
 export const settleKeptCuts = (
   nodes: readonly InlineNode[],
@@ -258,13 +329,18 @@ export const settleKeptCuts = (
       run.some((node) => node.type === "deletion") ||
       pendingBefore(start) ||
       pendingAfter(end - 1);
-    if (!waiting)
-      for (const [offset, node] of run.entries()) {
-        const settled = withoutKeptCutsRecorded(node, known);
-        if (settled === node) continue;
-        out ??= [...nodes];
-        out[start + offset] = settled;
-      }
+    // Markers standing together stand in one cut: the deepest any of them
+    // records. Whether removals met at one seam at once or one after another,
+    // each keeps that depth.
+    const depth = Math.max(0, ...run.map(deepestKeptCut));
+    for (const [offset, node] of run.entries()) {
+      const settled = waiting
+        ? withKeptCutDepthRecorded(node, depth, known)
+        : withoutKeptCutsRecorded(node, known);
+      if (settled === node) continue;
+      out ??= [...nodes];
+      out[start + offset] = settled;
+    }
     start = end;
   }
   return out ?? nodes;
