@@ -1743,15 +1743,29 @@ const setParagraphProps = (
         DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
         FOLD_INTO_OTHER_SUGGESTION_MESSAGE,
       );
-    // The change records what the paragraph now states as its current
-    // properties, as a reopened file reads them.
-    next.propertyChanges = [
-      foldedParagraphPropertyChange({
-        paragraph,
-        formatting: authoredParagraphFormatting(next),
-        stamp: revision,
-      }),
-    ];
+    const authored = authoredParagraphFormatting(next);
+    const pending = paragraph.propertyChanges;
+    if (
+      pending?.length === 1 &&
+      structurallyEqual(
+        finalizeParagraphFormatting(pending.at(0)?.previousFormatting),
+        authored,
+      )
+    ) {
+      // Back to the properties the pending change started from: nothing is
+      // left to review, so the change goes.
+      delete next.propertyChanges;
+    } else {
+      // The change records what the paragraph now states as its current
+      // properties, as a reopened file reads them.
+      next.propertyChanges = [
+        foldedParagraphPropertyChange({
+          paragraph,
+          formatting: authored,
+          stamp: revision,
+        }),
+      ];
+    }
     return editOne(
       {
         document,
