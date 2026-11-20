@@ -10,15 +10,17 @@ import type {
   TableRow,
   TableStructuralChangeInfo,
 } from "../model/document";
-import { storyBody } from "./blocks";
+import { storyBody, storyParagraphs } from "./blocks";
 import { combineEdits, type DocumentEdit } from "./edits";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import type { ApplyOps } from "./resolve";
+import { reviewFieldsOf } from "./review";
 import { tableGrid } from "./tableGrid";
 import { locateTableRow, tableRowAnchor } from "./tableLocation";
 import { removalOrphansAMerge, rowsWithoutRow } from "./tableRowRemoval";
 import {
   DOCUMENT_OP_TYPES,
+  type DocumentOp,
   type OpStory,
   type ResolveRevisionOp,
   REVISION_DECISIONS,
@@ -661,6 +663,53 @@ const refusal = (op: ResolveRevisionOp, message: string) =>
     message,
   });
 
+/**
+ * The paragraph marks still pending in rows and cells this decision removes,
+ * resolved away first: the paragraphs go with their row or cell, so no mark
+ * of theirs is left pending in a structure that goes, which the inverse
+ * restoring it could not state (a cell's final mark would be pending there).
+ */
+const marksInRemovedStructure = (
+  document: Document,
+  op: ResolveRevisionOp,
+): DocumentOp[] => {
+  const ids = new Set(op.revisionIds);
+  const removes = (change: TableStructuralChangeInfo | undefined): boolean => {
+    if (change === undefined || !ids.has(change.info.id)) return false;
+    if (op.decision === REVISION_DECISIONS.REJECT)
+      return (
+        change.type === "tableRowInsertion" ||
+        change.type === "tableCellInsertion"
+      );
+    return (
+      change.type === "tableRowDeletion" || change.type === "tableCellDeletion"
+    );
+  };
+  const ops: DocumentOp[] = [];
+  for (const table of tablesIn(document, op.story))
+    for (const row of table.rows)
+      for (const cell of row.cells) {
+        if (!removes(row.structuralChange) && !removes(cell.structuralChange))
+          continue;
+        for (const { paragraph } of storyParagraphs({
+          content: cell.content,
+        })) {
+          if (paragraph.pPrMark === undefined || paragraph.paraId === undefined)
+            continue;
+          const review = reviewFieldsOf(paragraph);
+          delete review.pPrMark;
+          ops.push({
+            type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
+            story: op.story,
+            blockId: paragraph.paraId,
+            expected: reviewFieldsOf(paragraph),
+            review,
+          });
+        }
+      }
+  return ops;
+};
+
 export const resolveTableRows = ({
   document,
   op,
@@ -669,6 +718,14 @@ export const resolveTableRows = ({
   const ids = new Set(op.revisionIds);
   let current = document;
   const edits: DocumentEdit[] = [];
+
+  const settled = marksInRemovedStructure(document, op);
+  if (settled.length > 0) {
+    const applied = applyOps(document, settled);
+    if (applied.isErr()) return Result.err(applied.error);
+    edits.push(applied.value);
+    current = applied.value.document;
+  }
 
   // Keep row insertion/deletion on its established primitive, which also
   // removes an emptied table. Table property and cell changes use setTable.
