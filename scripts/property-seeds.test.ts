@@ -147,6 +147,7 @@ const ENV_KEYS = [
   "GITHUB_SHA",
   "PROPERTY_TEST_SEED",
   "PROPERTY_TEST_PATH",
+  "PROPERTY_TEST_CASE",
   "PROPERTY_TEST_NUM_RUNS_FACTOR",
   "PROPERTY_TEST_SEED_SALT",
   "FOLIO_FUZZ_HEALTH",
@@ -347,7 +348,7 @@ test("nightly replay fixture", () => {
       .split("\n")
       .find((line) => line.startsWith("Replay: "));
     expect(replay).toMatch(
-      /^Replay: PROPERTY_TEST_SEED=1234 PROPERTY_TEST_PATH='[\d:]+' bun test \.\/scripts\/property-seeds\.test\.ts -t 'a failure names the seed, the path and a replay line for this test'$/,
+      /^Replay: PROPERTY_TEST_SEED=1234 PROPERTY_TEST_PATH='[\d:]+' PROPERTY_TEST_CASE=[0-9a-f]{8} bun test \.\/scripts\/property-seeds\.test\.ts -t 'a failure names the seed, the path and a replay line for this test'$/,
     );
     expect(message).toContain(
       `under "a failure names the seed, the path and a replay line for this test" in ${seedFileFor("scripts/property-seeds.test.ts")}`,
@@ -431,6 +432,111 @@ test("nightly replay fixture", () => {
     expect(/Counterexample: (.*)/.exec(replayed)?.[1]).toBe(
       /Counterexample: (.*)/.exec(first)?.[1] as string,
     );
+  });
+
+  describe("a replay of the case the replay line names", () => {
+    const record = (): {
+      seed: string;
+      path: string;
+      digest: string;
+      counterexample: string;
+    } => {
+      withEnv({});
+      let message = "";
+      try {
+        fc.assert(
+          fc.property(fc.array(fc.nat()), (values) => values.length < 3),
+          propertyConfig({ numRuns: 200 }),
+        );
+      } catch (error) {
+        message = (error as Error).message;
+      }
+      const replay = /Replay: (.*)/.exec(message)?.[1] ?? "";
+      return {
+        seed: /PROPERTY_TEST_SEED=(-?\d+)/.exec(replay)?.[1] ?? "",
+        path: /PROPERTY_TEST_PATH='([\d:]+)'/.exec(replay)?.[1] ?? "",
+        digest: /PROPERTY_TEST_CASE=([0-9a-f]{8})/.exec(replay)?.[1] ?? "",
+        counterexample: /Counterexample: (.*)/.exec(message)?.[1] ?? "",
+      };
+    };
+    const outcome = (
+      arbitrary: fc.Arbitrary<number[]>,
+      holds: (values: number[]) => boolean,
+    ): string => {
+      try {
+        fc.assert(
+          fc.property(arbitrary, holds),
+          propertyConfig({ numRuns: 200 }),
+        );
+      } catch (error) {
+        return (error as Error).message;
+      }
+      return "passed";
+    };
+
+    test("reproduces the recorded counterexample when its path still leads there", () => {
+      const recorded = record();
+      expect(recorded.digest).not.toBe("");
+      withEnv({
+        PROPERTY_TEST_SEED: recorded.seed,
+        PROPERTY_TEST_PATH: recorded.path,
+        PROPERTY_TEST_CASE: recorded.digest,
+      });
+      const replayed = outcome(
+        fc.array(fc.nat()),
+        (values) => values.length < 3,
+      );
+      expect(/Counterexample: (.*)/.exec(replayed)?.[1]).toBe(
+        recorded.counterexample,
+      );
+    });
+
+    test("fails as stale when the path leads elsewhere, even to a passing case", () => {
+      const recorded = record();
+      withEnv({
+        PROPERTY_TEST_SEED: recorded.seed,
+        PROPERTY_TEST_PATH: recorded.path,
+        PROPERTY_TEST_CASE: recorded.digest,
+      });
+      // Another generator: the path now names some other case, which passes.
+      expect(
+        outcome(
+          fc.array(fc.nat()).map((values) => values.map((value) => value + 1)),
+          () => true,
+        ),
+      ).toContain("Stale replay");
+    });
+
+    test("does not replay the property's pinned seeds first", () => {
+      withEnv({});
+      const pinnedSeed = 101;
+      const [poisoned] = fc.sample(fc.integer(), {
+        seed: pinnedSeed,
+        numRuns: 1,
+      });
+      overridePinnedSeedsForTesting({
+        "scripts/property-seeds.test.ts::named case skips pins": [
+          { seed: pinnedSeed, note: "test", date: "2026-11-20" },
+        ],
+      });
+      const seen: number[] = [];
+      const run = () =>
+        assertProperty(
+          fc.property(fc.integer(), (value) => {
+            seen.push(value);
+            return value !== poisoned;
+          }),
+          { id: "named case skips pins", numRuns: 1 },
+        );
+      // The pinned seed's first case fails, so a run that replays it throws.
+      expect(run).toThrow("Pinned regression seed 101");
+      seen.length = 0;
+      withEnv({ PROPERTY_TEST_SEED: "5", PROPERTY_TEST_PATH: "0" });
+      run();
+      overridePinnedSeedsForTesting(undefined);
+      expect(seen).not.toContain(poisoned);
+      expect(seen.length).toBeGreaterThan(0);
+    });
   });
 
   test("under CI a failure also logs one machine-readable line", () => {
