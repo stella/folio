@@ -1,5 +1,5 @@
 import { panic } from "better-result";
-import type { Mark, Node as PMNode } from "prosemirror-model";
+import { Mark, type Node as PMNode } from "prosemirror-model";
 import { type Step, type StepMap, Transform } from "prosemirror-transform";
 
 import {
@@ -64,13 +64,18 @@ type CommentReferenceSurvey = {
     commentId: number;
     referenceId: number;
   }[];
+  /** Each comment's content stretch: its mark, first and last covered position. */
+  markSpans: Map<number, CommentMarkSpan>;
 };
+
+type CommentMarkSpan = { mark: Mark; from: number; to: number };
 
 const surveyCommentReferences = (doc: PMNode): CommentReferenceSurvey => {
   const references: CommentReferenceOccurrence[] = [];
   const markEnds = new Map<number, number>();
   const unanchoredMarks: CommentReferenceSurvey["unanchoredMarks"] = [];
   const referenceMarks: CommentReferenceSurvey["referenceMarks"] = [];
+  const markSpans = new Map<number, CommentMarkSpan>();
 
   doc.descendants((node, position) => {
     if (node.type.name === COMMENT_REFERENCE_NODE_NAME) {
@@ -150,6 +155,14 @@ const surveyCommentReferences = (doc: PMNode): CommentReferenceSurvey => {
         commentId,
         Math.max(markEnds.get(commentId) ?? 0, position + node.nodeSize),
       );
+      const span = markSpans.get(commentId);
+      if (span === undefined)
+        markSpans.set(commentId, {
+          mark,
+          from: position,
+          to: position + node.nodeSize,
+        });
+      else span.to = Math.max(span.to, position + node.nodeSize);
     }
     return true;
   });
@@ -158,6 +171,7 @@ const surveyCommentReferences = (doc: PMNode): CommentReferenceSurvey => {
     references,
     unanchoredMarks,
     referenceMarks,
+    markSpans,
     markExtents: [...markEnds].map(([commentId, end]) => ({ commentId, end })),
   };
 };
@@ -247,6 +261,75 @@ const pointCommentIds = ({
   return ids;
 };
 
+/** Whether a comment's content runs on both sides of `from`..`to`. */
+const spansAcross = (
+  span: CommentMarkSpan | undefined,
+  from: number,
+  to: number,
+): boolean => span !== undefined && span.from < from && span.to > to;
+
+/**
+ * The comment marks references lack although their comments' content runs on
+ * both sides of them. A range is one stretch, so any save writes such a
+ * reference inside it, and reopening reads the reference carrying the mark;
+ * the reference carries it live too, or resolving the content after it away
+ * would close the range before the reference here and after it there.
+ */
+const missingEnclosingMarks = ({
+  references,
+  referenceMarks,
+  markSpans,
+}: CommentReferenceSurvey): {
+  position: number;
+  size: number;
+  mark: Mark;
+}[] => {
+  if (markSpans.size === 0 || references.length === 0) return [];
+  const carried = new Set(
+    referenceMarks.map(
+      ({ position, commentId }) => `${String(position)}:${String(commentId)}`,
+    ),
+  );
+  const spans = [...markSpans].toSorted(
+    ([, first], [, second]) => first.from - second.from,
+  );
+  const missing: { position: number; size: number; mark: Mark }[] = [];
+  let next = 0;
+  let open: [number, CommentMarkSpan][] = [];
+  for (const reference of references) {
+    if (reference.status !== "valid") continue;
+    const from = reference.position;
+    const to = from + reference.size;
+    for (; next < spans.length; next += 1) {
+      const span = spans[next];
+      if (span === undefined || span[1].from >= from) break;
+      open.push(span);
+    }
+    open = open.filter(([, span]) => span.to > from);
+    for (const [commentId, span] of open) {
+      if (commentId === reference.commentId || !spansAcross(span, from, to))
+        continue;
+      if (carried.has(`${String(from)}:${String(commentId)}`)) continue;
+      missing.push({ position: from, size: reference.size, mark: span.mark });
+    }
+  }
+  return missing;
+};
+
+/** The comment marks a reference put at `position` sits inside. */
+const enclosingMarksAt = (
+  markSpans: ReadonlyMap<number, CommentMarkSpan>,
+  position: number,
+  commentId: number,
+): Mark[] => {
+  const marks: Mark[] = [];
+  for (const [id, span] of markSpans) {
+    if (id !== commentId && spansAcross(span, position, position))
+      marks.push(span.mark);
+  }
+  return marks;
+};
+
 /**
  * Repair `doc`. `previous` is the document it was changed from: only a change
  * can orphan a reference, so what stood alone there still stands.
@@ -277,9 +360,14 @@ export const resolveCommentReferences = (
     for (const occurrence of survey.referenceMarks) {
       if (
         !covered.has(occurrence.commentId) ||
-        !occurrence.mark.isInSet(
+        (!occurrence.mark.isInSet(
           oldReferenceMarks.get(occurrence.referenceId) ?? [],
-        )
+        ) &&
+          !spansAcross(
+            survey.markSpans.get(occurrence.commentId),
+            occurrence.position,
+            occurrence.position + occurrence.size,
+          ))
       ) {
         survey.unanchoredMarks.push(occurrence);
       }
@@ -291,11 +379,19 @@ export const resolveCommentReferences = (
       ? { pointIds: pointCommentIds(prior) }
       : {}),
   });
-  if (repairs.length === 0 && survey.unanchoredMarks.length === 0) return null;
+  const enclosing = missingEnclosingMarks(survey);
+  if (
+    repairs.length === 0 &&
+    survey.unanchoredMarks.length === 0 &&
+    enclosing.length === 0
+  )
+    return null;
 
   const transform = new Transform(doc);
   for (const { position, size, mark } of survey.unanchoredMarks)
     transform.removeMark(position, position + size, mark);
+  for (const { position, size, mark } of enclosing)
+    transform.addMark(position, position + size, mark);
   const referenceType = doc.type.schema.nodes[COMMENT_REFERENCE_NODE_NAME];
   for (const repair of repairs) {
     if (repair.type === "delete") {
@@ -308,7 +404,13 @@ export const resolveCommentReferences = (
       );
     transform.insert(
       transform.mapping.map(repair.position),
-      referenceType.create({ commentId: repair.commentId }),
+      referenceType.create(
+        { commentId: repair.commentId },
+        null,
+        Mark.setFrom(
+          enclosingMarksAt(survey.markSpans, repair.position, repair.commentId),
+        ),
+      ),
     );
   }
   return {
