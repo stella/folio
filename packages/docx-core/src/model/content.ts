@@ -412,8 +412,12 @@ export type KeptCut = WritableRecord & {
   piece?: KeptCutPiece;
 };
 
-/** The side of a kept marker whose record is a piece of its cut. */
-export type KeptCutPiece = "before" | "after";
+/**
+ * The side of a kept marker whose record, or the pending change that took
+ * its seam, is a piece of its cut; `both` where pending changes either side
+ * took it.
+ */
+export type KeptCutPiece = "before" | "after" | "both";
 
 /** Added-revision ancestors that own a copied bookmark or move boundary. */
 type CopyOriginAncestorOrdinals = readonly [number, ...number[]];
