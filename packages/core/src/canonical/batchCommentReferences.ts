@@ -9,10 +9,9 @@ import {
   type CommentReferenceOffset,
   commentReferenceOffsets,
   type EditorIntent,
-  findStoryBody,
   idKey,
   type OpStory,
-  storyParagraphs,
+  paragraphsThroughTextBoxes,
   type TextPosition,
 } from "@stll/docx-core/ops";
 
@@ -25,10 +24,9 @@ type ParagraphReferences = (
 ) => readonly CommentReferenceOffset[];
 
 const paragraphReferences: ParagraphReferences = (document, story, blockId) => {
-  const body = findStoryBody(document, story);
-  if (body === undefined) return [];
   const key = idKey(blockId);
-  const paragraph = storyParagraphs(body).find(
+  // A text box's paragraphs are named through the story drawing it.
+  const paragraph = paragraphsThroughTextBoxes(document, story).find(
     ({ paragraph: candidate }) => idKey(candidate.paraId ?? "") === key,
   )?.paragraph;
   return paragraph === undefined ? [] : commentReferenceOffsets(paragraph);

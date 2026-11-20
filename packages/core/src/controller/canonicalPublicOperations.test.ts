@@ -1712,6 +1712,44 @@ describe("a text box paragraph", () => {
           );
       });
 
+  // The batch runs its comments first: an edit after a comment it adds in the
+  // box lands past that comment's reference, as it does applied after it.
+  for (const mode of ["direct", "tracked-changes"] as const)
+    test(`an edit after a comment of its batch in the box lands as it would after that comment, ${mode}`, () => {
+      const comment = {
+        id: "comment",
+        type: "commentOnBlock",
+        blockId: "34567890",
+        quote: "Boxed",
+        comment: { text: "Check the box." },
+      } as const satisfies FolioDocumentOperation;
+      const edit = {
+        id: "edit",
+        type: "replaceInBlock",
+        blockId: "34567890",
+        find: "note",
+        replace: "line",
+      } as const satisfies FolioDocumentOperation;
+      const batched = setup(document);
+      expect(
+        batched
+          .apply([edit, comment], { mode })
+          .applied.map(({ id }) => id)
+          .toSorted(),
+      ).toEqual(["comment", "edit"]);
+      const sequential = setup(document);
+      sequential.apply([comment], { mode });
+      sequential.apply([edit], { mode });
+      expect(boxWords(batched.session.document)).toEqual(
+        boxWords(sequential.session.document),
+      );
+      if (mode === "direct")
+        expect(boxWords(batched.session.document)).toEqual([
+          "Boxed line.",
+          "Second note.",
+        ]);
+    });
+
   test("a block no reader lists is still missing", () => {
     const editor = setup(document);
     const result = editor.apply([
