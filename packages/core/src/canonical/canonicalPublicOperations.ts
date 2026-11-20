@@ -552,10 +552,15 @@ const orderCanonicalBatch = <T extends PlannedOperation>({
         (other.type === "insertAfterBlock" ||
           (other.type === "insertTable" && other.position !== "before")),
     );
+    // A paragraph the batch puts right before it stays and takes its break.
+    const prepended = items.some(
+      ({ operation: other, plan: otherPlan }) =>
+        otherPlan.block === plan.block && other.type === "insertBeforeBlock",
+    );
     const removes = deletionRemovesBlock({
       endsContainer:
         !appended && paragraphEndsItsContainer(at, paragraph.type.name),
-      carrier: finalBreakCarrier(before).type,
+      carrier: prepended ? "kept" : finalBreakCarrier(before).type,
     });
     return { addresses: [], removes: removes ? [plan.block] : [] };
   };
