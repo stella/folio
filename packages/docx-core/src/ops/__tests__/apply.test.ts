@@ -399,6 +399,67 @@ describe("setParagraphProps", () => {
     expect(result.inverse).toEqual([]);
     expect(paragraphs(result.document)[0]?.propertyChanges).toBeUndefined();
   });
+
+  // Another author's pending change: "Reviewer" centred a paragraph that
+  // stated no alignment.
+  const pendingCentre: Paragraph = {
+    type: "paragraph",
+    paraId: "00000001",
+    formatting: { alignment: "center" },
+    propertyChanges: [
+      {
+        type: "paragraphPropertyChange",
+        info: { id: 7, author: "Reviewer", date: "2026-01-01T00:00:00Z" },
+        previousFormatting: {},
+      },
+    ],
+    content: [run("ab")],
+  };
+  type ParagraphPatch = Extract<
+    DocumentOp,
+    { type: typeof DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS }
+  >["patch"];
+  const trackedPatch = (patch: ParagraphPatch): DocumentOp => ({
+    type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
+    story: OP_STORIES.MAIN,
+    blockId: "00000001",
+    patch,
+    revision: { id: 9, author: "Editor", date: "2026-02-02T00:00:00Z" },
+  });
+
+  test("a second author's change folds into the pending one, keeping where it started", () => {
+    const document = documentOf(pendingCentre);
+    const { document: next, inverse } = applied(
+      document,
+      trackedPatch({ spacing: { after: 360 } }),
+    );
+    const paragraph = paragraphs(next).at(0);
+    expect(paragraph?.formatting).toEqual({
+      alignment: "center",
+      spacing: { after: 360 },
+    });
+    expect(paragraph?.propertyChanges).toEqual([
+      {
+        type: "paragraphPropertyChange",
+        info: { id: 7, author: "Editor", date: "2026-02-02T00:00:00Z" },
+        previousFormatting: {},
+        currentFormatting: { alignment: "center", spacing: { after: 360 } },
+      },
+    ]);
+    expect(undone(next, inverse)).toEqual(document);
+  });
+
+  test("a change back to where the pending change started leaves nothing pending", () => {
+    const document = documentOf(pendingCentre);
+    const { document: next, inverse } = applied(
+      document,
+      trackedPatch({ alignment: null }),
+    );
+    const paragraph = paragraphs(next).at(0);
+    expect(paragraph?.propertyChanges).toBeUndefined();
+    expect(paragraph?.formatting ?? {}).toEqual({});
+    expect(undone(next, inverse)).toEqual(document);
+  });
 });
 
 describe("splitBlock and joinBlocks", () => {
