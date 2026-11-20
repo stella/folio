@@ -2456,6 +2456,11 @@ const propertyChangeFromAttrs = (
     if (normalizedPrevious[key] == null)
       Reflect.deleteProperty(normalizedPrevious, key);
   }
+  // A recorded marker is its level's template, as the record reads back from
+  // a saved file: the number the counters gave it belongs to where the
+  // paragraph stood when the record was written.
+  if (normalizedPrevious.listMarkerTemplate != null)
+    normalizedPrevious.listMarker = normalizedPrevious.listMarkerTemplate;
   return {
     ...normalizedChangeInfo,
     previousFormatting: {
