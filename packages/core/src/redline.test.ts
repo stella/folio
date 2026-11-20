@@ -1502,48 +1502,53 @@ describe("generateRedlineDocx operation limit", () => {
 });
 
 describe("generateRedlineDocx text boxes", () => {
-  test("redlines a nested text-box table-cell edit without changing either source", async () => {
-    const base = await buildTextBoxTableDocument("Original cell value");
-    const revised = await buildTextBoxTableDocument("Revised cell value");
-    const baseBytes = new Uint8Array(base).slice();
-    const revisedBytes = new Uint8Array(revised).slice();
+  for (const session of SESSIONS)
+    test(`redlines a nested text-box table-cell edit without changing either source (${session})`, async () => {
+      const base = await buildTextBoxTableDocument("Original cell value");
+      const revised = await buildTextBoxTableDocument("Revised cell value");
+      const baseBytes = new Uint8Array(base).slice();
+      const revisedBytes = new Uint8Array(revised).slice();
 
-    const result = await generateRedlineDocx(base, revised);
+      const result = await generateRedlineDocx(base, revised, { session });
 
-    expect(result.skipped).toEqual([]);
-    expect(result.unprocessedStories).toEqual([]);
-    expect(result.applied).toHaveLength(1);
-    expect(new Uint8Array(base)).toEqual(baseBytes);
-    expect(new Uint8Array(revised)).toEqual(revisedBytes);
+      expect(result.skipped).toEqual([]);
+      expect(result.unprocessedStories).toEqual([]);
+      expect(result.applied).toHaveLength(1);
+      expect(new Uint8Array(base)).toEqual(baseBytes);
+      expect(new Uint8Array(revised)).toEqual(revisedBytes);
 
-    const acceptView = await FolioDocxReviewer.fromBuffer(result.buffer);
-    expect(
-      acceptView.snapshot().blocks.find(({ id }) => id === "22000003")?.text,
-    ).toBe("Revised cell value");
-    expect(acceptView.getChanges().length).toBeGreaterThan(0);
+      const acceptView = await FolioDocxReviewer.fromBuffer(result.buffer, {
+        session,
+      });
+      expect(
+        acceptView.snapshot().blocks.find(({ id }) => id === "22000003")?.text,
+      ).toBe("Revised cell value");
+      expect(acceptView.getChanges().length).toBeGreaterThan(0);
 
-    const output = await parseDocx(result.buffer, {
-      detectVariables: false,
-      preloadFonts: false,
+      const output = await parseDocx(result.buffer, {
+        detectVariables: false,
+        preloadFonts: false,
+      });
+      const shape = findTextBoxShape(output);
+      expect(shape.size).toEqual({ width: 1_828_800, height: 914_400 });
+      expect(shape.textBody?.margins).toEqual({
+        top: 45_720,
+        bottom: 45_720,
+        left: 91_440,
+        right: 91_440,
+      });
+      expect(shape.textBody?.content.map(({ type }) => type)).toEqual([
+        "paragraph",
+        "table",
+        "paragraph",
+      ]);
+
+      const rejectView = await FolioDocxReviewer.fromBuffer(result.buffer, {
+        session,
+      });
+      rejectView.rejectAll();
+      expect(
+        rejectView.snapshot().blocks.find(({ id }) => id === "22000003")?.text,
+      ).toBe("Original cell value");
     });
-    const shape = findTextBoxShape(output);
-    expect(shape.size).toEqual({ width: 1_828_800, height: 914_400 });
-    expect(shape.textBody?.margins).toEqual({
-      top: 45_720,
-      bottom: 45_720,
-      left: 91_440,
-      right: 91_440,
-    });
-    expect(shape.textBody?.content.map(({ type }) => type)).toEqual([
-      "paragraph",
-      "table",
-      "paragraph",
-    ]);
-
-    const rejectView = await FolioDocxReviewer.fromBuffer(result.buffer);
-    rejectView.rejectAll();
-    expect(
-      rejectView.snapshot().blocks.find(({ id }) => id === "22000003")?.text,
-    ).toBe("Original cell value");
-  });
 });
