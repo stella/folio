@@ -24,6 +24,7 @@
 import { TaggedError, type TaggedErrorClass } from "better-result";
 
 import { isOoxmlNumericIdAttributeName } from "../serialize/numericIdNames";
+import { hasIllegalXmlCharacters } from "../serialize/xmlEscape";
 import type { XmlElement, XmlNamespaceScope } from "./xmlElement";
 import {
   attachXmlNamespaceContext,
@@ -209,7 +210,7 @@ const parseStreamingXmlInternal = (
         });
   const wellFormed = rules.conformance === "well-formed";
   const retainInstructions = options.instructions === "retain";
-  if (wellFormed && !containsOnlyXmlCharacters(xml)) {
+  if (wellFormed && hasIllegalXmlCharacters(xml)) {
     return reject("a character XML does not allow");
   }
   const visitOpenTag = options.visitOpenTag;
@@ -996,24 +997,6 @@ const isXmlCharacter = (codePoint: number): boolean =>
   (codePoint >= 0x20 && codePoint <= 0xd7ff) ||
   (codePoint >= 0xe000 && codePoint <= 0xfffd) ||
   (codePoint >= 0x10000 && codePoint <= 0x10ffff);
-
-const containsOnlyXmlCharacters = (xml: string): boolean => {
-  for (let index = 0; index < xml.length; index += 1) {
-    const code = xml.charCodeAt(index);
-    if (code >= 0x20 && code < 0xd800) continue;
-    if (code === 0x09 || code === 0x0a || code === 0x0d) continue;
-    if (code >= 0xe000 && code <= 0xfffd) continue;
-    if (code >= 0xd800 && code <= 0xdbff) {
-      const next = xml.charCodeAt(index + 1);
-      if (next >= 0xdc00 && next <= 0xdfff) {
-        index += 1;
-        continue;
-      }
-    }
-    return false;
-  }
-  return true;
-};
 
 type ReferenceDecoder = (entity: string) => string | null;
 
