@@ -52,11 +52,6 @@ export const CANONICAL_REPLAY_GAPS: Readonly<Record<string, ReplayGap>> = {
   "issue-1350-table-and-paragraph-before-deleted-final.json":
     MARKDOWN_ACCEPTANCE,
   "issue-1356-3058fb47c2ef6a7c.json": SEQUENTIAL_DELETION,
-  "issue-1356-table-after-a-deleted-paragraph-joining-the-next.json": {
-    reason:
-      "a table put after a wordless paragraph joining the next goes before a paragraph the batch put before that next one earlier",
-    symptom: /the result is not what was asked[^\n]*\n\s+block texts differ/u,
-  },
   "issue-1356-table-after-a-deleted-final-paragraph.json": SEQUENTIAL_DELETION,
   "issue-1757-7483271c36812e15.json": MARKDOWN_ACCEPTANCE,
   "issue-1757-paragraph-before-table-after-pending-join.json":
@@ -83,17 +78,15 @@ export const CANONICAL_VACUOUS_STEPS: Readonly<
   "issue-1762-reject-deleted-first-row-after-a-split-half.json": [4],
   "issue-1811-comment-start-in-a-deleted-cell.json": [2],
   "issue-1842-comment-on-split-note-tail.json": [2],
-  "issue-1842-comment-quotes-across-line-breaks.json": [0, 1],
   "issue-1842-final-deletion-retracts-split-break-after-reopen.json": [4],
   "issue-2044-heading-style-in-a-table-cell.json": [12],
   "issue-2222-styled-insert-after-undefined-numbering-level.json": [2],
   "issue-2236-new-list-in-header-after-other-stories-direct.json": [0],
   "issue-2316-c14cd1e28851babe.json": [0, 1],
   "issue-2904-merged-numbered-heading-emptied.json": [1],
-  "markdown-note-reference-emphasis.json": [0, 1],
   "revision-boundary-1c6f520a41a4dcf4.json": [4],
   "revision-round-trip-1.json": [4],
-  "suggested-table-row-beside-replaced-paragraph.json": [6, 7, 8, 12, 13],
+  "suggested-table-row-beside-replaced-paragraph.json": [6, 7, 8],
   "undefined-numbering-level-projection.json": [1],
 };
 

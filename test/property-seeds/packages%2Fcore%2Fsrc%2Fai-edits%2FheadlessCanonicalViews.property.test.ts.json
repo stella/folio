@@ -19,6 +19,12 @@
       "date": "2026-11-15"
     },
     {
+      "seed": -2119579498,
+      "path": "12:0:0:0:0:0:0:0:0:0:4:2:3:3:3:3:3:3:4:4:4:4:4:4:5:4:4:4:6:6:6:6:6:6:6:6:6:6:6:4:6:4:4:4:9:6:13:6:6:6:6:6:6:6:6",
+      "note": "Rejecting the added mark of a paragraph before a content control, left holding only a bookmark, removes it and hands the bookmark on; the legacy reviewer keeps the paragraph.",
+      "date": "2026-11-19"
+    },
+    {
       "seed": 627797610,
       "path": "0:0:0:0:0:0:0:0:0:0:0:0:1:1:1:1:1:2:1:1:1:1:3:2:2:2:2:2:2:2:2",
       "note": "An inserted empty paragraph after a section break and before preserved altChunk keeps the kernel opaque-follower paragraph-mark outcome in both readers",
@@ -35,6 +41,18 @@
       "path": "6:0:0:0:0:0:0:0:0:4:3:3:3:3:4:3:3:3:3:3:3:3:3:4:3:3:3:3:3:3:6:6:6:6:6:6:6:6",
       "note": "Rejecting empty added paragraphs inside an interior content control retains the logical-container paragraph owner",
       "date": "2026-11-17"
+    },
+    {
+      "seed": 1002471682,
+      "path": "69:0:0:0:0:1:0:0:0:0:0:0:4:3:3:3:3:3:3:3:3:3:3:3:2:8:2:11:2:2:4:4:4:4:4:4:4:4:4:4",
+      "note": "Rejecting the added mark of the only paragraph of its list, before that list's final table, is refused: no paragraph would remain to anchor the list.",
+      "date": "2026-11-19"
+    },
+    {
+      "seed": -1230500802,
+      "path": "2:0:0:0:0:0:1:0:0:0:0:0:0:2:1:1:1:1:1:1:2:2:2:2:2:2:2:2:2:2:7:28:28:28:28:28:28:28:28:28",
+      "note": "The same refusal where the only paragraph of the list follows a content control.",
+      "date": "2026-11-19"
     },
     {
       "seed": 289121159,
@@ -77,6 +95,18 @@
       "path": "1:0:0:0:0:1:0:0:0:0:3:2:2:3:2:2:2:2:2:4:4:4:4:5:4:4:4:4:7:7:7:8:7:7:7:7:7:7:7:8:7:7:7:8:8:8:8:8:8:8:8:8:8:8:8:8:0:3:3:3:3:3",
       "note": "Rejecting two bare added marks in a group content control keeps the later paragraph, whose mark ends the control.",
       "date": "2026-11-18"
+    },
+    {
+      "seed": 419345023,
+      "path": "22:0:0:0:0:0:3:2:2:2:2:2:2:6:5:6:7:8:7:8:8:8:8:8:8:8:9:8:8:8:8:8:10:10:10:11",
+      "note": "Accepting runs a moved-from paragraph through an empty moved-from one into the table after them, as when it stands right before the table; the legacy reviewer keeps it before the table.",
+      "date": "2026-11-19"
+    },
+    {
+      "seed": 419345023,
+      "path": "22:0:0:0:0:0:3:2:2:2:2:2:2:6:5:6:7:8:7:8:8:8:8:8:8:8:9:8:8:8:8:8:10:10:10:23:11:10:10:10:13:14:13:13:14:13:14:13:13:13:13:13:9:10:10:10:9:10:9:9:9:12:11:11:11:11:11:11:11:11:11:11:11:11:9:0:7:7:7:7:7:7:7:7",
+      "note": "Words a rejected added mark runs into a table cell keep their own formatting, not the receiving mark's run properties, which the legacy reviewer gives them.",
+      "date": "2026-11-19"
     },
     {
       "seed": 1774066099,

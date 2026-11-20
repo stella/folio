@@ -1850,6 +1850,40 @@ const resolveList = ({
     const levels = cutLevelsOnceResolved(node, index);
     return levels < (node.resolutionJoins?.remove ?? 0) ? levels : undefined;
   };
+  /**
+   * The cut of the record a removed change at `index` was made inside, when
+   * this resolution removes that record's pieces either side of it too: the
+   * boundaries the change kept stand inside the record, and go with its
+   * cut, as rejecting the change first and the record after places them.
+   * `undefined` when no such record encloses it.
+   */
+  const enclosingRecordCut = (
+    node: TrackedWrapper,
+    index: number,
+  ): { depth: number; date: string } | undefined => {
+    const before = index > 0 ? pending.at(index - 1) : undefined;
+    const after = pending.at(index + 1);
+    if (
+      before === undefined ||
+      after === undefined ||
+      !isTrackedWrapper(before) ||
+      !isTrackedWrapper(after) ||
+      !sameStamp(before, after) ||
+      ![before, after].every(
+        (piece) =>
+          resolution.ids.has(piece.info.id) &&
+          removesContent(piece, resolution.decision),
+      )
+    )
+      return undefined;
+    const date = before.info.date ?? "";
+    if (date >= (node.info.date ?? "")) return undefined;
+    const depth = Math.min(
+      before.resolutionJoins?.remove ?? 0,
+      after.resolutionJoins?.remove ?? 0,
+    );
+    return depth > 0 ? { depth, date } : undefined;
+  };
   const appendUnowned = (items: readonly InlineNode[]): void => {
     out.push(...items.map((node) => ({ node, owner: undefined })));
   };
@@ -2076,13 +2110,15 @@ const resolveList = ({
             piece === "before"
               ? out.length - (kept.length - inside)
               : out.length;
+          const own = node.resolutionJoins?.remove ?? 0;
+          const enclosingCut = enclosingRecordCut(node, index);
           floating.set(at, {
             count: inside,
-            depth: node.resolutionJoins?.remove ?? 0,
+            depth: Math.max(own, enclosingCut?.depth ?? 0),
             before: index > 0 ? sourceOwners.at(index - 1) : undefined,
             after: sourceOwners.at(index + 1),
             spanning: trackedWithin(node.content),
-            keptFrom: node.info.date ?? "",
+            keptFrom: enclosingCut?.date ?? node.info.date ?? "",
             // Accepting content beside this removed piece can leave its
             // recorded container join on one side only. The other side's
             // authored record is not part of that cut container.
@@ -2429,11 +2465,32 @@ const resolveList = ({
     const depth = exactSeams.get(seam);
     if (depth === undefined) continue;
     const standing = floating.get(seam)?.count ?? 0;
-    const left = out.at(seam - standing - 1)?.node;
-    const right = out.at(seam)?.node;
+    // Boundaries this resolution kept beside the seam are no record of it:
+    // the seam takes them inside the alike pieces it joins, so the
+    // container beyond them meets it, inner cut and all, as it does when
+    // their removal is resolved first.
+    const keptStanding = (index: number): boolean =>
+      keptDates.has(index) && isStandingBoundary(out.at(index)?.node);
+    let leftAt = seam - standing - 1;
+    while (leftAt >= 0 && keptStanding(leftAt)) leftAt -= 1;
+    let rightAt = seam;
+    while (rightAt < out.length && keptStanding(rightAt)) rightAt += 1;
+    const pastKept =
+      leftAt >= 0 &&
+      rightAt < out.length &&
+      sameOwnFields(
+        out[leftAt]?.node ?? panic("A list position holds a record."),
+        out[rightAt]?.node ?? panic("A list position holds a record."),
+      );
+    if (!pastKept) {
+      leftAt = seam - standing - 1;
+      rightAt = seam;
+    }
+    const left = out.at(leftAt)?.node;
+    const right = out.at(rightAt)?.node;
     const reach = Math.max(
       depth,
-      seam - standing > 0 && left !== undefined
+      leftAt >= 0 && left !== undefined
         ? (resolution.cutEdges.get(left)?.last ?? 0)
         : 0,
       right === undefined ? 0 : (resolution.cutEdges.get(right)?.first ?? 0),
