@@ -2514,7 +2514,7 @@ const replaceBlocks = (document: Document, op: ReplaceBlocksOp): Applied => {
       "A replacement names the paragraphs it replaces and the ones it puts in their place.",
     );
   }
-  const paragraphs = storyParagraphs(storyBody(document, op.story));
+  const body = storyBody(document, op.story);
   const found: ParagraphLocation[] = [];
   for (const expected of op.expected) {
     if (expected.paraId === undefined) {
@@ -2524,7 +2524,11 @@ const replaceBlocks = (document: Document, op: ReplaceBlocksOp): Applied => {
         "A replaced paragraph has no id.",
       );
     }
-    const located = findParagraph(op, paragraphs, expected.paraId);
+    // Empty ids also match an unidentified paragraph in the legacy lookup.
+    const located =
+      expected.paraId === ""
+        ? findParagraph(op, storyParagraphs(body), expected.paraId)
+        : locate(document, op, op.story, expected.paraId);
     if (located.isErr()) {
       return Result.err(located.error);
     }
@@ -2613,21 +2617,22 @@ const replaceBlocks = (document: Document, op: ReplaceBlocksOp): Applied => {
       "A replacement paragraph id is already used in the package.",
     );
   }
-  const outside = identitiesOutside(document, before);
   const incomingRecords = identityKeysIn(op.blocks);
-  if (
-    incomingRecords.some((key) => outside.has(key)) ||
-    new Set(incomingRecords).size !== incomingRecords.length
-  ) {
-    return refuse(
-      op,
-      DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
-      "A replacement carries a revision or content-control id already used in the package.",
-    );
+  if (incomingRecords.length > 0) {
+    const outside = identitiesOutside(document, before);
+    if (
+      incomingRecords.some((key) => outside.has(key)) ||
+      new Set(incomingRecords).size !== incomingRecords.length
+    ) {
+      return refuse(
+        op,
+        DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
+        "A replacement carries a revision or content-control id already used in the package.",
+      );
+    }
   }
   let inverseAt: TableInsertionPoint | undefined;
   if (op.blocks.length === 0) {
-    const body = storyBody(document, op.story);
     // The insertion inverse must be able to place every captured source mark.
     if (
       found.some((location) => hasContainerFinalParagraphMark(body, location))
@@ -2651,10 +2656,7 @@ const replaceBlocks = (document: Document, op: ReplaceBlocksOp): Applied => {
         DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
         "An empty replacement cannot restore an owned empty paragraph-formatting field through insertion.",
       );
-    const originalList = blockListAt(
-      storyBody(document, op.story).content,
-      start.list,
-    );
+    const originalList = blockListAt(body.content, start.list);
     const removalList = [...originalList];
     removalList.splice(start.index, before.length);
     inverseAt = blockInsertionPointAt({
