@@ -1104,7 +1104,13 @@ type GeneratedLaneOptions = {
   budget: { discoveryMs: number; shrinkMs: number };
   check: (trace: BrowserInputTrace) => Promise<void>;
 };
-/** One seed's generated traces, with failures reported the same way for every lane. */
+/**
+ * One seed's generated traces, with failures reported the same way for every
+ * lane. A seed reports every failing trace, not only its first: after a
+ * finding the search resumes at the trace after it, within the seed's
+ * discovery budget, so a later failure is not hidden behind an earlier one
+ * until that is fixed. A replay runs its own path only.
+ */
 const runGeneratedLane = async ({
   info,
   seed,
@@ -1114,48 +1120,66 @@ const runGeneratedLane = async ({
   check,
 }: GeneratedLaneOptions) => {
   reportFuzzHealth({ status: "started", completed: 0 });
-  const { verdict } = await checkWithBoundedShrink({
-    arbitrary: INPUT_TRACE,
-    evaluate: async (trace) => {
-      checkFreshRender(trace);
-      await check(trace);
-    },
-    seed,
-    numRuns: config.runs,
-    discoveryMs: budget.discoveryMs,
-    shrinkMs: budget.shrinkMs,
-    ...(replayPath ? { path: replayPath } : {}),
-    onFirstFailure: async ({
-      seed: originalSeed,
-      path,
-      value: trace,
-      error: failure,
-    }) => {
-      const marker = failureMarker({
-        test: testName,
+  const startedAt = performance.now();
+  const findings: { error: Error; failure: unknown }[] = [];
+  let next = 0;
+  while (next < config.runs) {
+    const discoveryMs = Math.round(
+      budget.discoveryMs - (performance.now() - startedAt),
+    );
+    // Out of budget after a finding: the findings stand; the rest is unsearched.
+    if (findings.length > 0 && discoveryMs <= 0) break;
+    const resumeAt = next;
+    const { verdict } = await checkWithBoundedShrink({
+      arbitrary: INPUT_TRACE,
+      evaluate: async (trace) => {
+        checkFreshRender(trace);
+        await check(trace);
+      },
+      seed,
+      numRuns: config.runs - resumeAt,
+      discoveryMs: Math.max(discoveryMs, 1),
+      shrinkMs: budget.shrinkMs,
+      ...(replayPath
+        ? { path: replayPath }
+        : resumeAt > 0
+          ? { path: String(resumeAt) }
+          : {}),
+      onFirstFailure: async ({
         seed: originalSeed,
         path,
-        repro: `${replayEnv}=${originalSeed} FOLIO_FUZZ_RUNS=${config.runs} PROPERTY_TEST_PATH=${path} bunx playwright test --project=browser-fuzzer tests/visual/browser-input-fuzz.interactions.spec.ts --workers=1`,
-        failure,
-        flow: `${trace.shape}: ${trace.actions.map(({ kind }) => kind).join(" → ")}`,
-      });
-      logFailureMarker(marker);
-      const artifact = writeFailureRecord(
-        "fuzz-artifacts/browser/original",
-        failureRecord(marker, failure, { flow: trace }),
-      );
-      await info.attach("browser-original-failure", {
-        path: artifact,
-        contentType: "application/json",
-      });
-    },
-  });
-  const health = classifyFuzzRun(verdict);
-  reportFuzzHealth(health);
-  if (health.status === "infrastructure") {
-    throw new Error(`Fuzz infrastructure: ${health.detail}`);
-  }
-  if (verdict.failed) {
+        value: trace,
+        error: failure,
+      }) => {
+        const marker = failureMarker({
+          test: testName,
+          seed: originalSeed,
+          path,
+          repro: `${replayEnv}=${originalSeed} FOLIO_FUZZ_RUNS=${config.runs} PROPERTY_TEST_PATH=${path} bunx playwright test --project=browser-fuzzer tests/visual/browser-input-fuzz.interactions.spec.ts --workers=1`,
+          failure,
+          flow: `${trace.shape}: ${trace.actions.map(({ kind }) => kind).join(" → ")}`,
+        });
+        logFailureMarker(marker);
+        const artifact = writeFailureRecord(
+          "fuzz-artifacts/browser/original",
+          failureRecord(marker, failure, { flow: trace }),
+        );
+        await info.attach("browser-original-failure", {
+          path: artifact,
+          contentType: "application/json",
+        });
+      },
+    });
+    const health = classifyFuzzRun(verdict);
+    if (health.status !== "finding") {
+      // A resumed search the budget stopped leaves the findings it followed.
+      if (findings.length > 0) break;
+      reportFuzzHealth(health);
+      if (health.status === "infrastructure")
+        throw new Error(`Fuzz infrastructure: ${health.detail}`);
+      return;
+    }
+    reportFuzzHealth(health);
     const failure = verdict.errorInstance;
     const trace = verdict.counterexample?.at(0);
     if (trace !== undefined && failure !== undefined && failure !== null) {
@@ -1188,11 +1212,29 @@ const runGeneratedLane = async ({
         flow: fc.stringify(verdict.counterexample?.at(0)),
       }),
     );
-    throw new Error(
-      `seed=${seed} path=${verdict.counterexamplePath} trace=${JSON.stringify(verdict.counterexample?.at(0))}\n${detail}`,
-      { cause: failure },
-    );
+    findings.push({
+      error: new Error(
+        `seed=${seed} path=${verdict.counterexamplePath} trace=${JSON.stringify(verdict.counterexample?.at(0))}\n${detail}`,
+        { cause: failure },
+      ),
+      failure,
+    });
+    if (replayPath) break;
+    // The path's first step is the failing trace's index in the seed's run.
+    const index = Number(verdict.counterexamplePath?.split(":").at(0));
+    if (!Number.isInteger(index) || index < resumeAt)
+      throw new Error(
+        `Fuzz infrastructure: the finding's path ${String(verdict.counterexamplePath)} does not name a trace at or after ${String(resumeAt)}`,
+      );
+    next = index + 1;
   }
+  const [first, ...rest] = findings;
+  if (first === undefined) return;
+  if (rest.length === 0) throw first.error;
+  throw new Error(
+    `${String(findings.length)} failing traces for seed ${String(seed)}:\n\n${findings.map(({ error }) => error.message).join("\n\n")}`,
+    { cause: first.failure },
+  );
 };
 
 // First in the file: when a slow night runs out of step time, the editor people
