@@ -86,3 +86,25 @@ export const seamHandsOver = ({
   piecesBeyond: boolean;
   facingJoin: number;
 }): boolean => seam === "keptJoin" || facingJoin > 0 || !piecesBeyond;
+
+/**
+ * `node`, a pending tracked change, with no join on `side`: the content it
+ * faced there, made inside its piece, was rejected, so the join has nothing
+ * left to take.
+ */
+export const withJoinRetired = (
+  node: InlineNode,
+  side: "before" | "after",
+): InlineNode => {
+  if (!isTrackedWrapper(node) || node.resolutionJoins === undefined)
+    return panic("A facing insertion is a pending change with joins.");
+  const joins = node.resolutionJoins;
+  if (joins[side] === 0) return node;
+  return Object.assign({}, node, {
+    resolutionJoins: Object.assign(
+      {},
+      joins,
+      side === "before" ? { before: 0 } : { after: 0 },
+    ),
+  });
+};
