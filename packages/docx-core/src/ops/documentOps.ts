@@ -276,6 +276,7 @@ export {
   type SplitInlineOp,
   type SplitParagraphFields,
   type TextPosition,
+  type ParagraphAbsorption,
   type TouchedBlocks,
 } from "./types";
 

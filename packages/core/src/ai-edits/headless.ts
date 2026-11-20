@@ -256,6 +256,7 @@ import {
   withoutPendingSuggestionCommentMarks,
 } from "./pending-suggestions";
 import {
+  type FolioAbsorbedBlock,
   type FolioReviewChange,
   type FolioReviewChangeKind,
   type FolioReviewResolution,
@@ -1141,6 +1142,7 @@ const formatStorySnapshotForLLM = (
 // delegates to `getTrackedChangesFromDoc` and re-exports the types here so its
 // public surface is unchanged.
 export type {
+  FolioAbsorbedBlock,
   FolioReviewChange,
   FolioReviewChangeKind,
   FolioReviewResolution,
@@ -2489,7 +2491,11 @@ export class FolioDocxReviewer {
   private resolveOnSession(
     prepared: Result<CanonicalCommit, CanonicalSessionError>,
   ):
-    | { resolved: true; lockHeld: readonly number[] }
+    | {
+        resolved: true;
+        lockHeld: readonly number[];
+        absorbedBlocks: readonly FolioAbsorbedBlock[];
+      }
     | { resolved: false; reason: "noChange" | "lockHeld" } {
     if (prepared.isErr()) {
       const { error } = prepared;
@@ -2500,7 +2506,16 @@ export class FolioDocxReviewer {
       throw error;
     }
     this.publishOnSession(prepared.value);
-    return { resolved: true, lockHeld: prepared.value.lockHeld ?? [] };
+    return {
+      resolved: true,
+      lockHeld: prepared.value.lockHeld ?? [],
+      absorbedBlocks: (prepared.value.touched.absorbed ?? []).map(
+        ({ absorbed, survivor }) => ({
+          blockId: absorbed,
+          survivorBlockId: survivor,
+        }),
+      ),
+    };
   }
 
   /** A semantic operation for the final section, shared by staging and review resolution. */
@@ -4341,7 +4356,13 @@ export class FolioDocxReviewer {
       );
       return { resolved: 0, skipped };
     }
-    return { resolved: stories.count + sectionIds.length, skipped };
+    return {
+      resolved: stories.count + sectionIds.length,
+      skipped,
+      ...(outcome.absorbedBlocks.length === 0
+        ? {}
+        : { absorbedBlocks: outcome.absorbedBlocks }),
+    };
   }
 
   private resolveAll(mode: "accept" | "reject"): FolioReviewResolution {

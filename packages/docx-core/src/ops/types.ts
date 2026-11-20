@@ -1369,4 +1369,19 @@ export type TouchedBlocks = {
   modified: readonly string[];
   inserted: readonly string[];
   removed: readonly string[];
+  /**
+   * Removed paragraphs whose content an edit joined into another paragraph,
+   * each with the paragraph that holds it now. A join keeps the second
+   * paragraph's id (a paragraph mark that goes leaves the one after it); a
+   * host holding a removed id re-anchors on its survivor.
+   */
+  absorbed?: readonly ParagraphAbsorption[];
+};
+
+/** A paragraph an edit joined into another, and the paragraph it joined. */
+export type ParagraphAbsorption = {
+  /** The removed paragraph's id. */
+  absorbed: string;
+  /** The id of the paragraph that holds its content now. */
+  survivor: string;
 };

@@ -121,6 +121,7 @@ export {
   isFolioReviewedView,
   type ApplyFolioAIEditsToBufferOptions,
   type ApplyFolioAIEditsToBufferResult,
+  type FolioAbsorbedBlock,
   type FolioApplyOperationsOptions,
   type FolioApplyDocumentOperationsOptions,
   type FolioApplyDocumentOperationsToStoryOptions,

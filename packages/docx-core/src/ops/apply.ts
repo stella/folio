@@ -3576,6 +3576,25 @@ const applyDocumentOpForPurpose = ({
     return Result.err(refusal(op, repeatedId.reason, repeatedId.message));
   meetsContract(edit.document);
   preserveParagraphPropertySnapshots({ before: document, edit });
+  // A direct join removes one of its paragraphs into the other.
+  if (op.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS) {
+    const gone = edit.touched.removed.find(
+      (id) =>
+        idKey(id) === idKey(op.blockId) || idKey(id) === idKey(op.nextBlockId),
+    );
+    if (gone !== undefined)
+      edit.touched = {
+        ...edit.touched,
+        absorbed: [
+          ...(edit.touched.absorbed ?? []),
+          {
+            absorbed: gone,
+            survivor:
+              idKey(gone) === idKey(op.blockId) ? op.nextBlockId : op.blockId,
+          },
+        ],
+      };
+  }
   return Result.ok({
     ...edit,
     inverse: edit.inverse.map(captureDocumentOp),

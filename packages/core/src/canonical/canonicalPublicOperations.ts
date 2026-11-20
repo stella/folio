@@ -1033,6 +1033,21 @@ type BesidePendingJoinOptions = {
   noteReferences: NoteReferenceLabels;
 };
 
+/** Whether `paragraph` holds anything no pending deletion takes. */
+const holdsStandingContent = (paragraph: PMNode): boolean => {
+  let standing = false;
+  paragraph.descendants((node) => {
+    if (standing) return false;
+    if (
+      node.isInline &&
+      !node.marks.some(({ type }) => type.name === "deletion")
+    )
+      standing = true;
+    return !standing;
+  });
+  return standing;
+};
+
 /**
  * Where an insertion beside `paragraph` goes, read as the joined paragraph a
  * pending join makes of it in the document the batch read
@@ -3892,6 +3907,28 @@ export class CanonicalPublicOperations {
       }
       return result([], null);
     }
+    // A paragraph the commit joined into another names its survivor, in
+    // every mode: a tracked deletion of one's own inserted paragraph joins it
+    // now, as a direct join does. The operation names either paragraph: the
+    // one it removed, or the one left holding both.
+    for (const { absorbed, survivor } of prepared.value.touched.absorbed ??
+      []) {
+      for (const operation of batch.operations) {
+        const entry = appliedById.get(operation.id);
+        if (
+          entry === undefined ||
+          entry.paragraphIdentity !== undefined ||
+          !("blockId" in operation) ||
+          (operation.blockId !== absorbed && operation.blockId !== survivor)
+        )
+          continue;
+        entry.paragraphIdentity = {
+          type: "joined",
+          blockId: survivor,
+          retiredBlockId: absorbed,
+        };
+      }
+    }
     if (batch.mode === "direct") {
       const finalBody = findStoryBody(prepared.value.document, story);
       if (finalBody === undefined)
@@ -4231,11 +4268,41 @@ export class CanonicalPublicOperations {
           ? {}
           : { joinsParagraphBefore: true as const }),
       });
-    } else if (previous !== undefined)
+    } else if (previous !== undefined) {
+      // Paragraphs a pending deletion already takes whole, words and mark,
+      // stand between it and the break the deletion retires: that is the
+      // break before them, as accepting them would leave it.
+      let retiring = previous;
+      for (;;) {
+        if (
+          !isDeletedPPrMark(retiring.node.attrs["pPrMark"]) ||
+          holdsStandingContent(retiring.node)
+        )
+          break;
+        const earlier = neighbour(doc.resolve(retiring.start - 1).nodeBefore);
+        if (earlier === undefined) break;
+        retiring = earlier;
+      }
+      // The block deletion retires that break and gives this paragraph the
+      // words' properties, which a text range over the joined marks cannot.
+      if (retiring !== previous)
+        return tracking({
+          intents: [
+            {
+              type: "deleteParagraphs",
+              story: projectionStory,
+              blockIds: [paragraph.blockId],
+            },
+          ],
+          normalizations: [],
+          from: retiring.start,
+          to: end,
+        });
       range = {
         from: previous.start + previous.node.content.size,
         to: end,
       };
+    }
     // After a table, or as the only paragraph of its container, the
     // paragraph ends its block list for good: it keeps its mark and loses its
     // words, as a tracked deletion of the whole paragraph leaves it and as

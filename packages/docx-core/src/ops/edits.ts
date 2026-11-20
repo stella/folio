@@ -4,7 +4,7 @@
  */
 
 import type { Document } from "../model/document";
-import type { DocumentOp, TouchedBlocks } from "./types";
+import type { DocumentOp, ParagraphAbsorption, TouchedBlocks } from "./types";
 
 /** What applying operations produced: the document, its inverse, and the blocks it changed. */
 export type DocumentEdit = {
@@ -54,6 +54,10 @@ export const combineEdits = (
   }
   const ids = (state: TouchedState): string[] =>
     [...touched].flatMap(([id, value]) => (value === state ? [id] : []));
+  const absorbed = combinedAbsorptions(
+    edits.map(({ touched: { absorbed: list } }) => list ?? []),
+    new Set(ids("removed")),
+  );
   return {
     document: edits.at(-1)?.document ?? document,
     inverse: edits.toReversed().flatMap(({ inverse }) => inverse),
@@ -61,6 +65,32 @@ export const combineEdits = (
       modified: ids("modified"),
       inserted: ids("inserted"),
       removed: ids("removed"),
+      ...(absorbed.length === 0 ? {} : { absorbed }),
     },
   };
+};
+
+/**
+ * Absorptions made in turn, as one: a paragraph joined into one that a later
+ * edit joined on is reported against the paragraph that holds both now. Only
+ * paragraphs the edits removed in the end are reported, and only into a
+ * survivor that stands.
+ */
+export const combinedAbsorptions = (
+  lists: readonly (readonly ParagraphAbsorption[])[],
+  removed: ReadonlySet<string>,
+): ParagraphAbsorption[] => {
+  const into = new Map<string, string>();
+  for (const list of lists) {
+    for (const { absorbed, survivor } of list) {
+      for (const [earlier, held] of into)
+        if (held === absorbed) into.set(earlier, survivor);
+      into.set(absorbed, survivor);
+    }
+  }
+  return [...into].flatMap(([absorbed, survivor]) =>
+    removed.has(absorbed) && !removed.has(survivor)
+      ? [{ absorbed, survivor }]
+      : [],
+  );
 };
