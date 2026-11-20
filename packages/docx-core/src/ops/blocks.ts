@@ -659,6 +659,11 @@ type ReplaceParagraphsOptions = {
 /** Immutable bodies with one checked trailing section and canonical block identities. */
 const checkedTrailingSections = new WeakSet<DocumentBody>();
 
+/** A top-level main splice with no inserted section break needs no section repair. */
+export const canSpliceMainBodyWithoutSectionRepair = (
+  body: DocumentBody,
+): boolean => body.sections === undefined || checkedTrailingSections.has(body);
+
 /** The document with `count` paragraphs from `at` replaced. */
 export const replaceParagraphs = ({
   document,

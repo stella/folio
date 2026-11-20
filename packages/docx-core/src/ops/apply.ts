@@ -19,7 +19,7 @@ import {
   markBeforeTableResolves,
   paragraphTableRunInBoundary,
 } from "./blockDeletion";
-import { insertBlocks } from "./blockInsertion";
+import { insertBlocks, type ValidateBlockReplacement } from "./blockInsertion";
 import {
   blockListAt,
   blockListEndsInParagraph,
@@ -2505,6 +2505,77 @@ const sameSectionBreaks = (
   );
 };
 
+const validateBlockReplacement: ValidateBlockReplacement = ({
+  document,
+  op,
+  before,
+}) => {
+  if (op.blocks.some(({ paraId }) => paraId === undefined)) {
+    return refuse(
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.INVALID_BLOCK_ID,
+      "A replacement paragraph has no id.",
+    );
+  }
+  if (op.blocks.some(({ content }) => holdsEmptyRecord(content))) {
+    return refuse(
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.EMPTY_CONTENT,
+      "A replacement paragraph holds an empty run, text node, or revision wrapper.",
+    );
+  }
+  // An id only one side has is created by the replacement or by its inverse.
+  const kept = new Set(before.map(({ paraId }) => idKey(paraId ?? "")));
+  const placed = new Set(op.blocks.map(({ paraId }) => idKey(paraId ?? "")));
+  const created = [
+    ...op.blocks.filter(({ paraId }) => !kept.has(idKey(paraId ?? ""))),
+    ...before.filter(({ paraId }) => !placed.has(idKey(paraId ?? ""))),
+  ];
+  if (created.some(({ paraId }) => paraId === undefined || !isParaId(paraId))) {
+    return refuse(
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.INVALID_BLOCK_ID,
+      "A paragraph the replacement adds or removes has no usable id.",
+    );
+  }
+  if (
+    op.sectionBoundaries !== SECTION_BOUNDARY_POLICIES.REPLACE &&
+    !sameSectionBreaks(before, op.blocks)
+  ) {
+    return refuse(
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.SECTION_BOUNDARY,
+      "A replacement keeps every section break where it is.",
+    );
+  }
+  if (
+    paragraphIdsCollide({
+      document,
+      incoming: paragraphIdsIn(op.blocks),
+      removed: before,
+    })
+  ) {
+    return refuse(
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
+      "A replacement paragraph id is already used in the package.",
+    );
+  }
+  const outside = identitiesOutside(document, before);
+  const incomingRecords = identityKeysIn(op.blocks);
+  if (
+    incomingRecords.some((key) => outside.has(key)) ||
+    new Set(incomingRecords).size !== incomingRecords.length
+  ) {
+    return refuse(
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
+      "A replacement carries a revision or content-control id already used in the package.",
+    );
+  }
+  return Result.ok(undefined);
+};
+
 const replaceBlocks = (document: Document, op: ReplaceBlocksOp): Applied => {
   const [firstExpected] = op.expected;
   if (firstExpected === undefined) {
@@ -2561,70 +2632,9 @@ const replaceBlocks = (document: Document, op: ReplaceBlocksOp): Applied => {
       "The paragraphs to replace have changed.",
     );
   }
-  if (op.blocks.some(({ paraId }) => paraId === undefined)) {
-    return refuse(
-      op,
-      DOCUMENT_OP_REFUSAL_REASONS.INVALID_BLOCK_ID,
-      "A replacement paragraph has no id.",
-    );
-  }
-  if (op.blocks.some(({ content }) => holdsEmptyRecord(content))) {
-    return refuse(
-      op,
-      DOCUMENT_OP_REFUSAL_REASONS.EMPTY_CONTENT,
-      "A replacement paragraph holds an empty run, text node, or revision wrapper.",
-    );
-  }
   const before = found.map(({ paragraph }) => paragraph);
-  // An id only one side has is created by the replacement or by its inverse.
-  const kept = new Set(before.map(({ paraId }) => idKey(paraId ?? "")));
-  const placed = new Set(op.blocks.map(({ paraId }) => idKey(paraId ?? "")));
-  const created = [
-    ...op.blocks.filter(({ paraId }) => !kept.has(idKey(paraId ?? ""))),
-    ...before.filter(({ paraId }) => !placed.has(idKey(paraId ?? ""))),
-  ];
-  if (created.some(({ paraId }) => paraId === undefined || !isParaId(paraId))) {
-    return refuse(
-      op,
-      DOCUMENT_OP_REFUSAL_REASONS.INVALID_BLOCK_ID,
-      "A paragraph the replacement adds or removes has no usable id.",
-    );
-  }
-  if (
-    op.sectionBoundaries !== SECTION_BOUNDARY_POLICIES.REPLACE &&
-    !sameSectionBreaks(before, op.blocks)
-  ) {
-    return refuse(
-      op,
-      DOCUMENT_OP_REFUSAL_REASONS.SECTION_BOUNDARY,
-      "A replacement keeps every section break where it is.",
-    );
-  }
-  if (
-    paragraphIdsCollide({
-      document,
-      incoming: paragraphIdsIn(op.blocks),
-      removed: before,
-    })
-  ) {
-    return refuse(
-      op,
-      DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
-      "A replacement paragraph id is already used in the package.",
-    );
-  }
-  const outside = identitiesOutside(document, before);
-  const incomingRecords = identityKeysIn(op.blocks);
-  if (
-    incomingRecords.some((key) => outside.has(key)) ||
-    new Set(incomingRecords).size !== incomingRecords.length
-  ) {
-    return refuse(
-      op,
-      DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
-      "A replacement carries a revision or content-control id already used in the package.",
-    );
-  }
+  const valid = validateBlockReplacement({ document, op, before });
+  if (valid.isErr()) return valid;
   let inverseAt: TableInsertionPoint | undefined;
   if (op.blocks.length === 0) {
     const body = storyBody(document, op.story);
@@ -3190,7 +3200,7 @@ const dispatchCore = ({ document, op, purpose }: DispatchOptions): Applied => {
     case DOCUMENT_OP_TYPES.DELETE_BLOCKS:
       return deleteBlocks({ document, op, applyOps });
     case DOCUMENT_OP_TYPES.INSERT_BLOCKS:
-      return insertBlocks({ document, op, applyOps });
+      return insertBlocks({ document, op, applyOps, validateBlockReplacement });
     case DOCUMENT_OP_TYPES.INSERT_TEXT:
       return insertText(document, op);
     case DOCUMENT_OP_TYPES.INSERT_CONTENT:
