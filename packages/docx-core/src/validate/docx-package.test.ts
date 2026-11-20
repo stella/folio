@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
 import { ZipArchive } from "../zip/archive";
-import { DOCX_PACKAGE_ISSUE_CODES, validateDocxPackage } from "./docx";
+import {
+  DOCX_PACKAGE_ISSUE_CODES,
+  listDocxPackageIssues,
+  validateDocxPackage,
+} from "./docx";
 
 const packageWithDocument = async (
   documentXml: string,
@@ -268,5 +272,26 @@ describe("validateDocxPackage archive inflation limits", () => {
       code: DOCX_PACKAGE_ISSUE_CODES.ArchiveBoundsExceeded,
       error: "Generated DOCX holds more than 4096 archive entries.",
     });
+  });
+});
+
+describe("listDocxPackageIssues", () => {
+  const main = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+
+  test("is empty for a valid package", async () => {
+    const bytes = await packageWithDocument(
+      `<w:document xmlns:w="${main}"><w:body/></w:document>`,
+    );
+    expect(await listDocxPackageIssues(bytes)).toEqual([]);
+  });
+
+  test("lists every attribute issue, the first as validateDocxPackage reports it", async () => {
+    const bytes = await packageWithDocument(
+      `<w:document xmlns:w="${main}"><w:body><w:sectPr><w:pgMar w:top="1" w:right="1" w:bottom="1" w:left="1" w:header="1" w:gutter="0"/></w:sectPr><w:p><w:pPr><w:jc w:val="nowhere"/></w:pPr></w:p></w:body></w:document>`,
+    );
+    const issues = await listDocxPackageIssues(bytes);
+    expect(issues).toHaveLength(2);
+    const first = await validateDocxPackage(bytes);
+    expect(first.valid ? undefined : first.error).toBe(issues[0]);
   });
 });
