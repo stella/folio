@@ -162,6 +162,10 @@ const lockedIn = (document: Document) => {
   return locked;
 };
 
+/** Only locks present in the source can hold a resolution. */
+export const hasLockedControls = (document: Document): boolean =>
+  lockedIn(document).size > 0;
+
 /**
  * What a change from `before` to `after` does to a locked content control,
  * judged on the result rather than the steps that produced it, so every path
