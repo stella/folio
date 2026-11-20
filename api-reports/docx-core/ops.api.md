@@ -214,6 +214,15 @@ export type CommentExhaustionInput = {
 };
 
 // @public
+export type CommentReferenceOffset = {
+    id: number;
+    offset: number;
+};
+
+// @public
+export const commentReferenceOffsets: (paragraph: Paragraph) => CommentReferenceOffset[];
+
+// @public
 export type CommentState = {
     relationshipPresence: "absent" | "undefined" | "present";
     relationships: readonly {

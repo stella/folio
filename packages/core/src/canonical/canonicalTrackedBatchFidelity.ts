@@ -11,6 +11,7 @@ import {
 import { comparisonApplying } from "../ai-edits/note-references";
 import {
   missingProtectedBlockKind,
+  newlyDeletedProtectedBlocks,
   sameOriginalBlocks,
 } from "../ai-edits/tracked-batch-fidelity";
 import type { BlockContent, Document, Paragraph } from "../types/document";
@@ -221,13 +222,24 @@ const checkCanonicalTrackedBatchFidelity = ({
   const { original: acceptedBefore, edited: acceptedAfter } = accepted;
   if (acceptedBefore === acceptedAfter) return null;
   const { removed, added } = changedWindow(acceptedBefore, acceptedAfter);
-  let lost = missingProtectedBlockKind(removed, added, retiredCommentIds);
+  // What the batch shows as deleted, Accept All may remove.
+  const deleted = newlyDeletedProtectedBlocks(
+    beforeStory.content,
+    afterStory.content,
+  );
+  let lost = missingProtectedBlockKind(
+    removed,
+    added,
+    retiredCommentIds,
+    deleted,
+  );
   // A note or comment can stay reachable through an unchanged block.
   if (lost === "note" || lost === "comment")
     lost = missingProtectedBlockKind(
       acceptedBefore,
       acceptedAfter,
       retiredCommentIds,
+      deleted,
     );
   return lost === null ? null : `Accept All would lose a ${lost}.`;
 };

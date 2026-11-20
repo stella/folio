@@ -334,8 +334,11 @@ describe("resolving tracked edits that build on pending ones", () => {
     const before = reviewer
       .getComments()
       .map((comment) => comment.anchoredText);
-    // The removed word and its complete aligned replacement span.
-    assert.deepEqual(before, ["good promptly."]);
+    // The removed word stays in its comment's range. The new words go past
+    // its end, except on the legacy engine, which hands them the comment
+    // (LEGACY_REPLACEMENT_TAKES_COMMENT); either way the save keeps it.
+    assert.equal(before.length, 1);
+    assert.match(before.at(0) ?? "", /^good\b/u);
     const { reopened } = await saveAndReopen(reviewer, "comment anchor");
     assert.deepEqual(
       reopened.getComments().map((comment) => comment.anchoredText),

@@ -12,7 +12,7 @@ import {
 import { openReviewer, packDocument } from "../support/documents.ts";
 import { assertStoryInventory, saveAndReopen } from "../support/invariants.ts";
 import { MODES } from "../support/operations.ts";
-import { stageReviewedProtectedEdit } from "../support/protected-edit.ts";
+import { applyTrackedProtectedEdit } from "../support/protected-edit.ts";
 import { createRandom, type Random, sentence } from "../support/random.ts";
 
 test("note inventory oracle rejects stale, missing and duplicate trailer entries", () => {
@@ -194,7 +194,7 @@ for (const mode of MODES) {
             const liveReferences =
               resolution === "reject" ? references : references - index;
             if (mode === "tracked-changes" && liveReferences === 1) {
-              stageReviewedProtectedEdit({ reviewer, operation, kind: "note" });
+              applyTrackedProtectedEdit({ reviewer, operation, kind: "note" });
             } else {
               const result = reviewer.applyDocumentOperations(
                 {

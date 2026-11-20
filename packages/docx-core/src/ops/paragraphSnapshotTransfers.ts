@@ -8,9 +8,28 @@ import { storyParagraphs } from "./blocks";
 import type { DocumentEdit } from "./edits";
 import { structurallyEqual } from "./equality";
 import { idKey } from "./ids";
-import { documentStories, findStoryBody, storyBody } from "./stories";
+import {
+  documentStories,
+  findStoryBody,
+  type StoryAddress,
+  storyBody,
+  type TextBoxStory,
+} from "./stories";
 
-type SnapshotTransfersOptions = { before: Document; edit: DocumentEdit };
+type SnapshotTransfersOptions = {
+  before: Document;
+  edit: DocumentEdit;
+  /** Text boxes the edit was applied in, read as stories of their own. */
+  boxes?: readonly TextBoxStory[];
+};
+
+const changedStories = ({
+  edit,
+  boxes = [],
+}: SnapshotTransfersOptions): StoryAddress[] => [
+  ...documentStories(edit.document),
+  ...boxes,
+];
 
 /** A snapshot to carry from `source` to `target`. */
 export type SnapshotTransfer = { source: Paragraph; target: Paragraph };
@@ -51,14 +70,14 @@ const transfersBetween = (
  * from either end. A paragraph of a kept block is its own original, and the
  * seed contract keeps paragraph ids unique, so no other paragraph is one.
  */
-export const paragraphSnapshotTransfers = ({
-  before,
-  edit,
-}: SnapshotTransfersOptions): SnapshotTransfer[] => {
+export const paragraphSnapshotTransfers = (
+  options: SnapshotTransfersOptions,
+): SnapshotTransfer[] => {
+  const { before, edit } = options;
   const transfers: SnapshotTransfer[] = [];
   if (edit.touched.modified.length === 0) return transfers;
   const modified = new Set(edit.touched.modified.map(idKey));
-  for (const story of documentStories(edit.document)) {
+  for (const story of changedStories(options)) {
     const previous = findStoryBody(before, story);
     const next = storyBody(edit.document, story);
     if (previous === undefined || previous === next) continue;
@@ -89,14 +108,14 @@ export const paragraphSnapshotTransfers = ({
 };
 
 /** The transfers read from every paragraph of each story the edit changed. */
-export const paragraphSnapshotTransfersReadingEveryParagraph = ({
-  before,
-  edit,
-}: SnapshotTransfersOptions): SnapshotTransfer[] => {
+export const paragraphSnapshotTransfersReadingEveryParagraph = (
+  options: SnapshotTransfersOptions,
+): SnapshotTransfer[] => {
+  const { before, edit } = options;
   const transfers: SnapshotTransfer[] = [];
   if (edit.touched.modified.length === 0) return transfers;
   const modified = new Set(edit.touched.modified.map(idKey));
-  for (const story of documentStories(edit.document)) {
+  for (const story of changedStories(options)) {
     const previous = findStoryBody(before, story);
     const next = storyBody(edit.document, story);
     if (previous === undefined || previous === next) continue;

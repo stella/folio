@@ -1293,7 +1293,10 @@ export function useDocxEditor(
     // the first paint settle first. Mirrors PagedEditor.handleEditorViewReady.
     if (!toValue(readOnly)) {
       requestAnimationFrame(() => {
-        if (editorView.value === view) {
+        // A view already focused may hold a caret a key just moved, which
+        // ProseMirror reads from a later `selectionchange`: focusing again
+        // would put its older selection back over it.
+        if (editorView.value === view && !view.hasFocus()) {
           view.focus();
         }
       });
