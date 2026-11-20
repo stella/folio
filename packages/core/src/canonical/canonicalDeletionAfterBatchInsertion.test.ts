@@ -43,9 +43,19 @@ test("a deletion of the last paragraph joins a paragraph the batch inserts befor
     "delete",
     "insert",
   ]);
-  expect(reviewer.snapshot().blocks.map(({ text }) => text)).toEqual([
+  const blocks = reviewer.snapshot().blocks;
+  expect(blocks.map(({ text }) => text)).toEqual([
     "Opening words.",
     "Middle words.",
     "Added words.",
   ]);
+  // The receipt names the paragraph the join retired: the inserted one, not
+  // the paragraph before it, which stays.
+  const deleted = result.applied.find(({ id }) => id === "delete");
+  const identity = deleted?.paragraphIdentity;
+  if (identity?.type !== "joined")
+    throw new Error("The deletion reports the join it made.");
+  expect(identity.blockId).toBe(closing.id);
+  expect(blocks.map(({ id }) => id)).not.toContain(identity.retiredBlockId);
+  expect(identity.retiredBlockId).not.toBe(middle.id);
 });

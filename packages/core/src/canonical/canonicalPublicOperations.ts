@@ -3487,6 +3487,8 @@ export class CanonicalPublicOperations {
       }
       return {
         type: "prepared" as const,
+        // The intents as they ran, which name what this operation joined.
+        intents: mappedIntents,
         document: nextDocument,
         ops:
           withHeadings === sourceDocument
@@ -3514,11 +3516,7 @@ export class CanonicalPublicOperations {
       resolvedOperation: AdmittedOperation,
       prepared: OperationAttempt,
     ) => {
-      const {
-        operation,
-        intents,
-        normalizations: adjustments,
-      } = resolvedOperation;
+      const { operation, normalizations: adjustments } = resolvedOperation;
       if (prepared.type === "declined") {
         if (prepared.refusal !== undefined)
           refusals.set(operation.id, prepared.refusal);
@@ -3534,7 +3532,7 @@ export class CanonicalPublicOperations {
       const revisionId = revisionIds.at(0);
       const joined =
         batch.mode === "direct"
-          ? joinedParagraphsOf(operation.type, intents)
+          ? joinedParagraphsOf(operation.type, prepared.intents)
           : undefined;
       appliedById.set(operation.id, {
         id: operation.id,
