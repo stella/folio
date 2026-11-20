@@ -68,12 +68,15 @@ export const modelPendingTextEffect = (
       return;
     }
     case "mergeBlockWithNext": {
+      // A pending join keeps both paragraphs under their own ids until it is
+      // accepted; the separator ends the first.
       const entries = [...textByBlock];
       const index = entries.findIndex(([id]) => id === blockId);
-      const next = entries.at(index + 1);
-      assert.ok(next, "Pinned merge must have a following paragraph");
-      textByBlock.set(blockId, text + (operation.separator ?? "") + next[1]);
-      textByBlock.delete(next[0]);
+      assert.ok(
+        entries.at(index + 1),
+        "Pinned merge must have a following paragraph",
+      );
+      textByBlock.set(blockId, text + (operation.separator ?? ""));
       return;
     }
     case "insertBeforeBlock":

@@ -74,7 +74,10 @@ const cases = {
       blockId,
       separator: " ",
     },
-    expected: [[blockId, "a 😀 b tail"]],
+    expected: [
+      [blockId, "a 😀 b "],
+      [nextId, "tail"],
+    ],
   },
   insertBeforeBlock: {
     operation: {
@@ -224,7 +227,15 @@ test("pending text effects compose over live paragraph order", () => {
   const model = new Map<string, string>(unchanged);
   modelPendingTextEffect(cases.splitBlock.operation, model);
   modelPendingTextEffect(cases.mergeBlockWithNext.operation, model);
-  assert.deepEqual([...model], unchanged);
+  // The pending join leaves the split's second paragraph addressable.
+  assert.deepEqual(
+    [...model],
+    [
+      [blockId, "a 😀 "],
+      ["model:split:split", "b"],
+      [nextId, "tail"],
+    ],
+  );
   modelPendingTextEffect(cases.insertBeforeBlock.operation, model);
   modelPendingTextEffect(cases.deleteBlock.operation, model);
   assert.equal(model.has(blockId), false);
@@ -233,6 +244,7 @@ test("pending text effects compose over live paragraph order", () => {
     [
       ["model:before:0", "first"],
       ["model:before:1", "second"],
+      ["model:split:split", "b"],
       [nextId, "tail"],
     ],
   );
