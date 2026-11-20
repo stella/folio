@@ -584,13 +584,13 @@ const hasBoundNamespaces = (root: XmlElement): boolean => {
   return true;
 };
 
-type ReplayResourceLimits = NonNullable<
+type ReplayLimits = NonNullable<
   Parameters<typeof assertXmlResourceLimits>[0]["limits"]
 >;
 
 type ReadCompactReplayRootOptions = {
   xml: string;
-  limits?: ReplayResourceLimits;
+  limits?: ReplayLimits;
   inheritedNamespaceScope?: XmlNamespaceScope;
 };
 const readCompactReplayRoot = ({
@@ -630,17 +630,17 @@ export const hasReplayOpeningDeclarations = ({
   );
 
 const compactSuffixToken = Symbol("compact-replay-suffix");
-type CompactReplaySuffix = {
+type ReplaySuffix = {
   readonly [compactSuffixToken]: true;
   readonly serialized: string;
   readonly inherited: XmlNamespaceScope;
-  readonly limits: Readonly<ReplayResourceLimits>;
+  readonly limits: Readonly<ReplayLimits>;
 };
 
 /** Prepare the exact namespace and compatibility attributes the replay writer adds. */
 export const prepareCompactReplaySuffix = (
   suffix: string,
-): CompactReplaySuffix | undefined => {
+): ReplaySuffix | undefined => {
   if (
     !suffix.startsWith(" ") ||
     suffix.includes("<") ||
@@ -680,16 +680,16 @@ export const prepareCompactReplaySuffix = (
   });
 };
 
-type CheckCompactReplayFragmentOptions = {
+type ReplayInput = {
   xml: string;
-  suffix: CompactReplaySuffix;
+  suffix: ReplaySuffix;
 };
 
 /** Prove that the compact tree has the same bounds and namespace meaning after binding. */
 export const isSafeCompactReplayFragment = ({
   xml,
   suffix,
-}: CheckCompactReplayFragmentOptions): boolean => {
+}: ReplayInput): boolean => {
   if (!xml.startsWith("<") || xml.includes("&") || xml.includes("<?"))
     return false;
   const checked = readCompactReplayRoot({
