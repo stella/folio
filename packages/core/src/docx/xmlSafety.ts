@@ -46,6 +46,7 @@ const validEntity = (entity: string): boolean => {
 };
 
 const hasForbiddenEntity = (xml: string): boolean => {
+  if (!xml.includes("&")) return false;
   let cursor = 0;
   while (cursor < xml.length) {
     if (xml.startsWith("<!--", cursor)) {

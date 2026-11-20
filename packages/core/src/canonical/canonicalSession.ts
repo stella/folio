@@ -103,7 +103,10 @@ import {
   toProseDoc,
 } from "../prosemirror/conversion/toProseDoc";
 import { heldUnreferencedNotes as notesHeldWithoutReference } from "../prosemirror/noteReferenceReview";
-import { preservesReplacementCommentAlignment } from "../prosemirror/replacedAnnotations";
+import {
+  preservesReplacementCommentAlignment,
+  type ReplacementRemoval,
+} from "../prosemirror/replacedAnnotations";
 import { runFormattingPatchFromMarks } from "../prosemirror/runFormattingFromMarks";
 import {
   CANONICAL_GAP,
@@ -2030,6 +2033,23 @@ class CanonicalSession {
     );
   }
 
+  /** How a replacement in the current mode removes the words it changes. */
+  private replacementRemoval(): ReplacementRemoval {
+    switch (this.mode.type) {
+      case "editing":
+        return {
+          type: "direct",
+          comments: this.currentDocument.package.document.comments ?? [],
+        };
+      case "suggesting":
+        return { type: "tracked" };
+      default: {
+        const unhandled: never = this.mode;
+        return panic(`Unknown canonical session mode ${String(unhandled)}`);
+      }
+    }
+  }
+
   private advanceBlockId(): void {
     while (
       this.allocatedBlockIds.has(
@@ -2506,7 +2526,7 @@ class CanonicalSession {
           doc: state.doc,
           source: { from: firstRange.from, to: lastRange.to },
           changes: commentChanges,
-          deletionsKeepComments: this.mode.type === "suggesting",
+          removal: this.replacementRemoval(),
         })
       )
         return refuseUnder(
@@ -2549,7 +2569,7 @@ class CanonicalSession {
         !preservesReplacementCommentAlignment({
           doc: state.doc,
           retiredCommentIds: retirement.value?.commentIds,
-          deletionsKeepComments: this.mode.type === "suggesting",
+          removal: this.replacementRemoval(),
           source: { from: inputFrom, to: inputTo },
           changes: [
             {

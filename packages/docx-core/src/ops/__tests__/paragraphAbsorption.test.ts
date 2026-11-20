@@ -2,11 +2,12 @@
  * Edits that join paragraphs report each removed paragraph with the one its
  * content went into: a join keeps the second paragraph's id.
  */
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 
 import type { Document, Paragraph } from "../../model/document";
 import { applyDocumentOp } from "../apply";
 import { combinedAbsorptions } from "../edits";
+import * as identities from "../ids";
 import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
@@ -137,4 +138,50 @@ test("absorptions chain whatever case an id is written in, and name only a survi
     { absorbed: "0000000A", survivor: "0000000C" },
     { absorbed: "0000000B", survivor: "0000000C" },
   ]);
+});
+
+test("a retired ID can be reused after its earlier joins have moved on", () => {
+  expect(
+    combinedAbsorptions(
+      [
+        [
+          { absorbed: "AA", survivor: "BB" },
+          { absorbed: "bb", survivor: "CC" },
+          { absorbed: "BB", survivor: "DD" },
+        ],
+      ],
+      new Set(["aa", "bb"]),
+      new Set(["cc", "dd"]),
+    ),
+  ).toEqual([
+    { absorbed: "AA", survivor: "CC" },
+    { absorbed: "BB", survivor: "DD" },
+  ]);
+});
+
+test("resolving four times as many chained marks takes linear ID comparisons", () => {
+  const keys = spyOn(identities, "idKey");
+  const work = (count: number) => {
+    const id = (index: number) => index.toString(16).padStart(8, "0");
+    const list = Array.from({ length: count }, (_, index) => ({
+      absorbed: id(index),
+      survivor: id(index + 1),
+    }));
+    keys.mockClear();
+    const result = combinedAbsorptions(
+      [list],
+      new Set(list.map(({ absorbed }) => absorbed)),
+      new Set([id(count)]),
+    );
+    expect(result).toHaveLength(count);
+    expect(result.every(({ survivor }) => survivor === id(count))).toBe(true);
+    return keys.mock.calls.length;
+  };
+  try {
+    const small = work(16);
+    expect(small).toBeGreaterThan(0);
+    expect(work(64)).toBeLessThanOrEqual(5 * small);
+  } finally {
+    keys.mockRestore();
+  }
 });

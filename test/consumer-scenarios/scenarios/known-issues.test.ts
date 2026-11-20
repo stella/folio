@@ -621,10 +621,17 @@ describe("findings of the metamorphic relations (support/metamorphic.ts) and the
     );
   });
 
-  test("two comments covering the same text anchor alike directly and tracked-then-accepted", async () => {
+  // Both comments cover the paragraph's first word, which the replacement
+  // takes. The legacy engine lends them the new words; the canonical session
+  // takes them with the words they covered. Direct and accepted agree on both.
+  const anchorsAfterReplacingTwiceCommentedText = async (
+    session: NonNullable<FolioDocxReviewerOptions["session"]>,
+  ) => {
+    const open = (buffer: ArrayBuffer) =>
+      FolioDocxReviewer.fromBuffer(buffer, { author: AUTHOR, session });
     const anchors: Record<string, (string | undefined)[]> = {};
     for (const mode of ["direct", "tracked-changes"] as const) {
-      const reviewer = await openReviewer(await plainDocument());
+      const reviewer = await open(toArrayBuffer(await plainDocument()));
       const text = "This agreement is made between the parties named below.";
       const id = blockId(reviewer, text);
       const range = (startOffset: number, endOffset: number) =>
@@ -652,20 +659,31 @@ describe("findings of the metamorphic relations (support/metamorphic.ts) and the
         1,
         JSON.stringify(replacement.issues),
       );
-      const saved = await reopen(reviewer);
+      const saved = await open(await reviewer.toBuffer());
       saved.acceptAll();
-      anchors[mode] = (await reopen(saved))
+      anchors[mode] = (await open(await saved.toBuffer()))
         .getComments()
         .map((comment) => comment.anchoredText);
     }
-    assert.deepEqual(anchors["direct"], [
-      "New clause text.",
-      "New clause text.",
-    ]);
     assert.deepEqual(
       anchors["tracked-changes"],
       anchors["direct"],
       "[directTracked] anchors tracked and accepted (actual) vs direct (expected)",
+    );
+    return anchors["direct"];
+  };
+
+  test("two comments covering the same text anchor alike directly and tracked-then-accepted on the legacy engine", async () => {
+    assert.deepEqual(await anchorsAfterReplacingTwiceCommentedText("legacy"), [
+      "New clause text.",
+      "New clause text.",
+    ]);
+  });
+
+  test("two comments covering the same text anchor alike directly and tracked-then-accepted on the canonical session", async () => {
+    assert.deepEqual(
+      await anchorsAfterReplacingTwiceCommentedText("canonical"),
+      [],
     );
   });
 

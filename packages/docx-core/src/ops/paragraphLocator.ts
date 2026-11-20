@@ -1,6 +1,7 @@
-import type { BlockContent, DocumentBody } from "../model/document";
-import { type ParagraphLocation, storyParagraphs } from "./blocks";
+import type { BlockContent, DocumentBody, Paragraph } from "../model/document";
+import { blockListAt, type ParagraphLocation, storyParagraphs } from "./blocks";
 import { idKey } from "./ids";
+import { recentValues } from "./recentValues";
 
 /**
  * Finding a story's paragraph by its id without locating every paragraph of
@@ -52,9 +53,6 @@ type IndexNode = {
 
 const MAX_CHAIN = 32;
 
-/** How many recently indexed block lists a new index may derive from. */
-const RECENT_BASES = 8;
-
 const holdersIn = (node: IndexNode, key: string): readonly BlockContent[] => {
   for (let at: IndexNode | undefined = node; at !== undefined; at = at.parent) {
     const held = at.holders.get(key);
@@ -88,17 +86,7 @@ const settled = (node: IndexNode): IndexNode => {
 };
 
 const nodes = new WeakMap<readonly BlockContent[], IndexNode>();
-const recent: WeakRef<readonly BlockContent[]>[] = [];
-
-const remember = (blocks: readonly BlockContent[]): void => {
-  if (recent[0]?.deref() === blocks) return;
-  const alive = recent.filter((reference) => {
-    const held = reference.deref();
-    return held !== undefined && held !== blocks;
-  });
-  recent.length = 0;
-  recent.push(new WeakRef(blocks), ...alive.slice(0, RECENT_BASES - 1));
-};
+const recent = recentValues<readonly BlockContent[]>();
 
 /**
  * The index of `blocks` from `previous`'s: the ids the differing blocks hold
@@ -157,17 +145,16 @@ const derivedFrom = (
 const indexOf = (blocks: readonly BlockContent[]): IndexNode => {
   let node = nodes.get(blocks);
   if (node === undefined) {
-    for (const reference of recent) {
-      const previous = reference.deref();
-      const base = previous === undefined ? undefined : nodes.get(previous);
-      if (previous === undefined || base === undefined) continue;
+    for (const previous of recent.values()) {
+      const base = nodes.get(previous);
+      if (base === undefined) continue;
       node = derivedFrom(previous, base, blocks);
       break;
     }
     node ??= rootOf(blocks);
     nodes.set(blocks, node);
   }
-  remember(blocks);
+  recent.remember(blocks);
   return node;
 };
 
@@ -208,4 +195,25 @@ export const findStoryParagraph = (
   return location === undefined
     ? undefined
     : placed(location, body.content.indexOf(block));
+};
+
+/** The paragraph and its physical siblings, within the same body, wrapper or cell. */
+export const locateParagraphInBlockList = (
+  body: DocumentBody,
+  blockId: string,
+):
+  | { paragraph: Paragraph; blocks: readonly BlockContent[]; index: number }
+  | undefined => {
+  const at =
+    blockId === ""
+      ? storyParagraphs(body).find(
+          ({ paragraph }) => (paragraph.paraId ?? "") === "",
+        )
+      : findStoryParagraph(body, blockId);
+  if (at === undefined) return undefined;
+  return {
+    paragraph: at.paragraph,
+    blocks: blockListAt(body.content, at.list),
+    index: at.index,
+  };
 };

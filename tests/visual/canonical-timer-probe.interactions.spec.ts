@@ -2,13 +2,14 @@ import { expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { stripTypeScriptTypes } from "node:module";
 
+import { PLAYGROUND_HOSTS } from "../parity/playgroundHosts";
 import { assertCanonicalInputTimersSettled, test } from "./canonicalTimerProbe";
 
 // Serve the actual producer as a browser module with a bundle-shaped URL.
 // Ownership must survive the absence of source paths in browser stacks.
-const bootstrapURL = "http://localhost:4200/timer-probe";
-const bootstrapScriptURL = "http://localhost:4200/assets/bootstrap-123.js";
-const ownerURL = "http://localhost:4200/assets/input-timer-456.js";
+const bootstrapURL = `${PLAYGROUND_HOSTS.react}/timer-probe`;
+const bootstrapScriptURL = `${PLAYGROUND_HOSTS.react}/assets/bootstrap-123.js`;
+const ownerURL = `${PLAYGROUND_HOSTS.react}/assets/input-timer-456.js`;
 // The module uses erasable TypeScript only, so stripping types yields the
 // browser module.
 const ownerModule = stripTypeScriptTypes(

@@ -19,6 +19,7 @@ import {
   openCanonicalEditor,
 } from "../parity/parity-fixture";
 import type { AdapterFixture } from "../parity/parity-fixture";
+import { PLAYGROUND_PORTS } from "../parity/playgroundHosts";
 
 const TRACKED_FIXTURE = "markup-views.docx";
 
@@ -99,7 +100,7 @@ for (const { label, companion } of VIEWS) {
 }
 
 test("document scroll closes the Vue markup menu", async ({ page }) => {
-  const vuePort = Number(process.env["FOLIO_PLAYGROUND_VUE_PORT"]) || 4201;
+  const vuePort = PLAYGROUND_PORTS.vue;
   await openCanonicalEditor(
     page,
     { name: "vue", baseUrl: `http://localhost:${vuePort}` },

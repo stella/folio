@@ -568,6 +568,47 @@ describe("splitBlock and joinBlocks", () => {
       }),
     ).toBe(DOCUMENT_OP_REFUSAL_REASONS.SECTION_BOUNDARY);
   });
+
+  test("batched joins report the final survivor and undo in reverse order", () => {
+    const [first, second, third] = [
+      "00000001",
+      "00000002",
+      "00000003",
+    ] as const;
+    const document = documentOf(
+      ...[first, second, third].map((paraId) => ({
+        type: "paragraph" as const,
+        paraId,
+        content: [run(paraId)],
+      })),
+    );
+    const joined = applyDocumentOps(document, [
+      {
+        type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
+        story: OP_STORIES.MAIN,
+        blockId: first,
+        nextBlockId: second,
+        depth: 2,
+      },
+      {
+        type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
+        story: OP_STORIES.MAIN,
+        blockId: second,
+        nextBlockId: third,
+        depth: 2,
+      },
+    ]).unwrap();
+    expect(joined.touched).toEqual({
+      modified: [third],
+      inserted: [],
+      removed: [second, first],
+      absorbed: [
+        { absorbed: first, survivor: third },
+        { absorbed: second, survivor: third },
+      ],
+    });
+    expect(undone(joined.document, joined.inverse)).toEqual(document);
+  });
 });
 
 describe("refusals", () => {

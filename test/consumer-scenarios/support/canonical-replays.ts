@@ -54,6 +54,13 @@ export const CANONICAL_VACUOUS_STEPS: Readonly<
 > = {
   "issue-1350-7fe54148e47f13fe.json": [1],
   "issue-1356-42bb7d148b3e1e55.json": [2],
+  // Step 4's seeded "reject one" picks by index from each engine's change
+  // list. The canonical session lists the deleted row's cell paragraph marks
+  // as records of their own (rowDeleted, two paragraphMarkDeleted, the
+  // "months" deletion; the legacy list has rowDeleted and the deletion), so it
+  // rejects a cell mark rather than the deletion, "months" stays struck, and
+  // step 5's replacement of it finds its block changed.
+  "issue-1410-edit-in-a-row-pending-deletion.json": [5],
   "issue-1757-merge-across-deleted-note-paragraph-before-inserted-table.json": [
     0,
   ],

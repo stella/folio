@@ -15,9 +15,19 @@ import { paragraphNumberingReference } from "../../model/paragraphNumbering";
 import { serializeDocumentToDocx } from "../../serialize/docx";
 import { ZipArchive } from "../../zip/archive";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
-import { captureSectionView, captureSectionViewState } from "../blocks";
+import {
+  captureSectionView,
+  captureSectionViewState,
+  rebuildSections,
+  replaceParagraphs,
+  sectionsInStep,
+} from "../blocks";
 import { contractViolation } from "../contract";
-import { DOCUMENT_OP_TYPES, SECTION_BOUNDARY_POLICIES } from "../types";
+import {
+  DOCUMENT_OP_TYPES,
+  OP_STORIES,
+  SECTION_BOUNDARY_POLICIES,
+} from "../types";
 import type { DocumentOp, SectionPropertiesState } from "../types";
 import { documentArbitrary } from "./documentArbitraries";
 
@@ -30,6 +40,63 @@ const paragraph: Paragraph = {
 };
 
 const base: Document = { package: { document: { content: [paragraph] } } };
+
+test("ordinary paragraph splices reuse the checked trailing section", () => {
+  let untouchedBoundaryReads = 0;
+  const untouched: Paragraph = {
+    ...paragraph,
+    get sectionProperties() {
+      untouchedBoundaryReads += 1;
+      return undefined;
+    },
+  };
+  const editable = { ...paragraph, paraId: "00000002" };
+  const content = [untouched, editable];
+  const properties = {};
+  const document = {
+    package: {
+      document: {
+        content,
+        finalSectionProperties: properties,
+        sections: [{ content, properties }],
+      },
+    },
+  } satisfies Document;
+  const splice = (current: Document, replacement: readonly Paragraph[]) => {
+    const result = replaceParagraphs({
+      document: current,
+      story: OP_STORIES.MAIN,
+      at: { list: [], index: 1 },
+      count: 1,
+      replacement,
+    });
+    if (result.isErr()) throw result.error;
+    return result.value;
+  };
+  const checked = splice(document, [editable]);
+  expect(untouchedBoundaryReads).toBeGreaterThan(0);
+  const section = checked.package.document.sections?.at(0);
+  if (!section) throw new Error("The splice must retain the trailing section");
+
+  untouchedBoundaryReads = 0;
+  expect(splice(checked, [editable]).package.document.sections?.at(0)).toBe(
+    section,
+  );
+  const edited = splice(checked, [
+    editable,
+    { ...paragraph, paraId: "00000003" },
+  ]).package.document;
+  expect(untouchedBoundaryReads).toBe(0);
+
+  const rebuilt = rebuildSections({
+    document: checked,
+    content: edited.content,
+    previous: [section],
+  });
+  if (rebuilt.isErr()) throw rebuilt.error;
+  expect(edited.sections).toStrictEqual(rebuilt.value);
+  expect(sectionsInStep(edited)).toBe(true);
+});
 
 test("numbering instance creation and its inverse preserve absent numbering and exact ids", () => {
   fc.assert(

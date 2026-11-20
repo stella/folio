@@ -1,6 +1,7 @@
 import { panic, Result } from "better-result";
 
 import {
+  type BlockContent,
   type Document,
   finalizeParagraphFormatting,
   type Insertion,
@@ -90,7 +91,12 @@ import {
   hasValidCopyOriginAncestors,
 } from "./copyOriginAncestors";
 import { keptDeletionBoundaries } from "./deletionBoundaries";
-import { combineEdits, type DocumentEdit } from "./edits";
+import {
+  combineEditEffects,
+  combineEdits,
+  type DocumentEdit,
+  type DocumentEditEffects,
+} from "./edits";
 import { equalForStaleness, structurallyEqual } from "./equality";
 import { resolveGap, type ZeroWidthDefault } from "./gaps";
 import { freshenIdentities, rebindRetainedIdentities } from "./identity";
@@ -194,7 +200,6 @@ import {
   documentStories,
   findStoryBody,
   sameStory,
-  type StoryAddress,
   textBoxHostIds,
   type TextBoxStory,
   textBoxStoryOf,
@@ -3438,6 +3443,33 @@ export const stampOf = (op: DocumentOp): RevisionStamp | undefined => {
   }
 };
 
+/** Shared prefix and suffix blocks can carry only identities already present. */
+const changedRevisionBlocks = (
+  previous: readonly BlockContent[] | undefined,
+  current: BlockContent[],
+): BlockContent[] => {
+  if (previous === current) return [];
+  if (previous === undefined) return current;
+  let start = 0;
+  let previousEnd = previous.length;
+  let end = current.length;
+  while (
+    start < previousEnd &&
+    start < end &&
+    previous[start] === current[start]
+  )
+    start += 1;
+  while (
+    previousEnd > start &&
+    end > start &&
+    previous[previousEnd - 1] === current[end - 1]
+  ) {
+    previousEnd -= 1;
+    end -= 1;
+  }
+  return current.slice(start, end);
+};
+
 /** Newly allocated revision ids; folding changes an existing record in place. */
 const recordedRevisions = (
   before: Document,
@@ -3448,26 +3480,26 @@ const recordedRevisions = (
   const touched = new Set(
     [...edit.touched.modified, ...edit.touched.inserted].map(idKey),
   );
-  const stories: StoryAddress[] = [...documentStories(edit.document), ...boxes];
-  const paragraphs = stories
-    .flatMap((story) => storyParagraphs(storyBody(edit.document, story)))
-    .map(({ paragraph }) => paragraph)
-    .filter(({ paraId }) => paraId !== undefined && touched.has(idKey(paraId)));
   const known = packageIdentityKeyIndex(before.package);
-  const revisions = paragraphs.flatMap((paragraph) =>
-    stampedRevisionIds([paragraph], stamp, known),
-  );
-  // Every physical row record is reported, including later rows of a table.
-  revisions.unshift(
-    ...stories.flatMap((story) =>
-      stampedTableRevisionIds({
-        blocks: storyBody(edit.document, story).content,
-        stamp,
-        known,
-      }),
-    ),
-  );
-  return revisions;
+  const tableRevisions: number[] = [];
+  const paragraphRevisions: number[] = [];
+  for (const story of [...documentStories(edit.document), ...boxes]) {
+    const blocks = changedRevisionBlocks(
+      findStoryBody(before, story)?.content,
+      storyBody(edit.document, story).content,
+    );
+    if (blocks.length === 0) continue;
+    tableRevisions.push(...stampedTableRevisionIds({ blocks, stamp, known }));
+    for (const { paragraph } of storyParagraphs({ content: blocks })) {
+      const { paraId } = paragraph;
+      if (paraId !== undefined && touched.has(idKey(paraId)))
+        paragraphRevisions.push(
+          ...stampedRevisionIds([paragraph], stamp, known),
+        );
+    }
+  }
+  // Every physical row record is reported before paragraph records.
+  return tableRevisions.concat(paragraphRevisions);
 };
 
 /** Content edits retain authored snapshots across immutable paragraph replacements. */
@@ -3794,7 +3826,7 @@ const applyDocumentOpsForPurpose = ({
   purpose,
 }: ApplyDocumentOpsOptions): Result<AppliedDocumentOp, DocumentOpRefusal> => {
   let current = document;
-  const edits: DocumentEdit[] = [];
+  const effects: (DocumentEditEffects & { document?: never })[] = [];
   const revisions: number[] = [];
   for (const op of ops) {
     const applied = applyDocumentOpForPurpose({
@@ -3805,11 +3837,17 @@ const applyDocumentOpsForPurpose = ({
     if (applied.isErr()) {
       return applied;
     }
-    current = applied.value.document;
-    edits.push(applied.value);
-    revisions.push(...applied.value.revisions);
+    const {
+      document: next,
+      inverse,
+      touched,
+      revisions: recorded,
+    } = applied.value;
+    current = next;
+    effects.push({ inverse, touched });
+    revisions.push(...recorded);
   }
-  return Result.ok({ ...combineEdits(document, edits), revisions });
+  return Result.ok({ ...combineEditEffects(current, effects), revisions });
 };
 
 /**

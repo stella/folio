@@ -42,6 +42,7 @@ export const sameStory: (left: OpStory, right: OpStory) => boolean =
  */
 
 export { storyParagraphs, withBodyContent } from "./blocks";
+export { locateParagraphInBlockList } from "./paragraphLocator";
 export { blockControlHolding } from "./contentControls";
 export { paragraphMarkOutcome } from "./blockDeletion";
 export {
