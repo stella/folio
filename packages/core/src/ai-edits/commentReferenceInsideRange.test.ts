@@ -6,7 +6,9 @@
  * reference leaves the outer range ending after it, saved or not.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
+
+import { MAX_REVISION_ID } from "@stll/docx-core/model";
 
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -16,6 +18,7 @@ import {
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
+import * as commentIds from "../prosemirror/commentIdAllocator";
 import type { Document } from "../types/document";
 import { FolioDocxReviewer } from "./headless";
 import { hashFolioAIBlockText } from "./snapshot";
@@ -65,37 +68,49 @@ const markers = (document: Document) =>
       : [],
   );
 
+type NestedCommentIds = { outerId: number; innerId: number };
+
 /** "Outer" covers the paragraph; "Inner" covers its first word only. */
-const nested = async () => {
+const nested = async ({ outerId, innerId }: NestedCommentIds) => {
   const reviewer = await open(
     (await ensureParaIds(await createDocx(fromMarkdown("Clause one tail."))))
       .docx,
   );
   const block = reviewer.snapshot().blocks[0];
   if (!block) throw new Error("Missing fixture");
-  apply(reviewer, "direct", [
-    {
-      id: "outer",
-      type: "commentOnBlock",
-      blockId: block.id,
-      comment: { text: "Outer" },
-    },
-  ]);
-  apply(reviewer, "direct", [
-    {
-      id: "inner",
-      type: "commentOnRange",
-      range: {
-        type: "textRange",
-        story: "main",
+  // Starts at the same position are ordered by ID. Pin the IDs while
+  // adding both comments through public operations.
+  const allocator = spyOn(commentIds, "allocateCommentId")
+    .mockReturnValueOnce(outerId)
+    .mockReturnValueOnce(innerId);
+  try {
+    apply(reviewer, "direct", [
+      {
+        id: "outer",
+        type: "commentOnBlock",
         blockId: block.id,
-        startOffset: 0,
-        endOffset: 6,
-        selectedTextHash: hashFolioAIBlockText("Clause"),
+        comment: { text: "Outer" },
       },
-      comment: { text: "Inner" },
-    },
-  ]);
+    ]);
+    apply(reviewer, "direct", [
+      {
+        id: "inner",
+        type: "commentOnRange",
+        range: {
+          type: "textRange",
+          story: "main",
+          blockId: block.id,
+          startOffset: 0,
+          endOffset: 6,
+          selectedTextHash: hashFolioAIBlockText("Clause"),
+        },
+        comment: { text: "Inner" },
+      },
+    ]);
+    expect(allocator).toHaveBeenCalledTimes(2);
+  } finally {
+    allocator.mockRestore();
+  }
   return { reviewer, blockId: block.id };
 };
 
@@ -120,23 +135,35 @@ const removeTail = (
   );
 };
 
+const ID_ORDERS = [
+  { name: "ascending IDs", outerId: 1, innerId: 2, starts: ["Outer", "Inner"] },
+  {
+    name: "wrapped IDs",
+    outerId: MAX_REVISION_ID,
+    innerId: 1,
+    starts: ["Inner", "Outer"],
+  },
+] as const;
+
 describe("a comment reference put inside another comment's range", () => {
   for (const mode of MODES) {
-    test(`stays inside it once the text after it goes, saved or not (${mode})`, async () => {
-      const live = await nested();
-      const saved = await nested();
-      const reopened = await open(await saved.reviewer.toBuffer());
-      const expected = removeTail(reopened, mode, saved.blockId);
-      expect(removeTail(live.reviewer, mode, live.blockId)).toEqual(expected);
-      expect(expected).toEqual([
-        "commentRangeStart Outer",
-        "commentRangeStart Inner",
-        "Clause",
-        "commentRangeEnd Inner",
-        "commentReference Inner",
-        "commentRangeEnd Outer",
-        "commentReference Outer",
-      ]);
-    });
+    for (const { name, outerId, innerId, starts } of ID_ORDERS) {
+      test(`stays inside it after removing the tail (${mode}, ${name})`, async () => {
+        const { reviewer, blockId } = await nested({ outerId, innerId });
+        const liveBeforeSave = markers(reviewer.toDocument());
+        const reopened = await open(await reviewer.toBuffer());
+        expect(markers(reviewer.toDocument())).toEqual(liveBeforeSave);
+        const expected = [
+          ...starts.map((comment) => `commentRangeStart ${comment}`),
+          "Clause",
+          "commentRangeEnd Inner",
+          "commentReference Inner",
+          "commentRangeEnd Outer",
+          "commentReference Outer",
+        ];
+        expect(removeTail(reviewer, mode, blockId)).toEqual(expected);
+        expect(removeTail(reopened, mode, blockId)).toEqual(expected);
+      });
+    }
   }
 });
