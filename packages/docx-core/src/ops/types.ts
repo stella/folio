@@ -638,9 +638,8 @@ export type SplitBlockOp = {
  * relayout recomputes are not compared).
  *
  * With `revision`, the join is tracked and moves nothing: the first
- * paragraph's mark becomes a tracked deletion (one a pending deletion already
- * took keeps that record; any other tracked change on it refuses the join),
- * and the second takes the paragraph properties
+ * paragraph's mark becomes a tracked deletion, refused when the mark already
+ * carries a tracked change, and the second takes the paragraph properties
  * the direct join would give it as a tracked property change. Accepting removes the mark, which
  * leaves the second paragraph with the first's content before its own: what
  * the direct join leaves. A tracked join always leaves the second, so

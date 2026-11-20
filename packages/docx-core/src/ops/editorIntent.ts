@@ -3471,9 +3471,14 @@ export const compileEditorIntent = (
           revision: mode.revision,
           newIds: mode.newIds,
         });
-        const joined = plan.join(join);
-        if (joined.isErr()) return Result.err(joined.error);
-        cancelledAddedMark = joined.value === "cancelled-added-mark";
+        // A mark a pending deletion already took already joins the two
+        // paragraphs as the view shows them; the suggestion records only the
+        // properties the join gives, under that deletion.
+        if (paragraph?.pPrMark?.kind !== "del") {
+          const joined = plan.join(join);
+          if (joined.isErr()) return Result.err(joined.error);
+          cancelledAddedMark = joined.value === "cancelled-added-mark";
+        }
         const alignment = joinParagraphPropertyAlignment({
           document,
           current: plan.document(),
