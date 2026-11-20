@@ -255,31 +255,22 @@ test("a tracked replacement keeps the comments on its deleted words and reports 
   expect(threads(reviewer)).toEqual([]);
 });
 
-for (const mode of ["direct", "suggested"] as const) {
-  test(`a reviewer reports the comment-alignment refusal without replacing words or losing comments (${mode})`, async () => {
-    const reviewer = await open(
-      await ingested(
-        await createDocx(
-          fromMarkdown(
-            "The Supplier delivers the goods on time.\n\nThe Buyer pays.",
-          ),
+test("a direct replacement takes the comments on its words, as accepting the tracked one does", async () => {
+  const reviewer = await open(
+    await ingested(
+      await createDocx(
+        fromMarkdown(
+          "The Supplier delivers the goods on time.\n\nThe Buyer pays.",
         ),
       ),
-      "canonical",
-    );
-    const block = reviewer.getContent().at(0);
-    if (!block) throw new Error("The fixture has no paragraph");
-    const apply = (operation: FolioDocumentOperation) =>
+    ),
+    "canonical",
+  );
+  const block = reviewer.getContent().at(0);
+  if (!block) throw new Error("The fixture has no paragraph");
+  for (const quote of ["time", "The"])
+    expect(
       reviewer.applyDocumentOperations(
-        {
-          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-          mode,
-          operations: [operation],
-        },
-        { undefinedReferences: "refuse" },
-      );
-    const commentResults = ["time", "The"].map((quote) => {
-      const result = reviewer.applyDocumentOperations(
         {
           version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
           mode: "direct",
@@ -294,43 +285,112 @@ for (const mode of ["direct", "suggested"] as const) {
           ],
         },
         { undefinedReferences: "refuse" },
-      );
-      expect(result.applied).toHaveLength(1);
-      return result;
-    });
-    const undoHandle = commentResults.at(-1)?.undoHandle;
-    if (undoHandle === undefined || undoHandle === null)
-      throw new Error("The comments have no undo handle");
-    const before = {
-      document: reviewer.toDocument(),
-      comments: threads(reviewer),
-      records: reviewer.exportPendingSuggestions(),
-    };
-    const result = apply({
-      id: "replace",
-      type: "replaceBlock",
-      blockId: block.id,
-      text: "Invoice delivery payment agreement supplier buyer payment term.",
-    });
-    expect(result.applied).toEqual([]);
-    expect(result.undoHandle).toBeNull();
-    expect(result.skipped).toMatchObject([
-      {
-        reason: "unsupportedBlock",
-        canonicalRefusal: { gap: CANONICAL_GAP.commentReplacementAlignment },
-      },
-    ]);
-    expect({
-      document: reviewer.toDocument(),
-      comments: threads(reviewer),
-      records: reviewer.exportPendingSuggestions(),
-    }).toEqual(before);
-    expect(threads(await open(await reviewer.toBuffer(), "canonical"))).toEqual(
-      before.comments,
-    );
-    expect(reviewer.undoDocumentOperations(undoHandle)).toMatchObject({
-      status: "undone",
-    });
-    expect(threads(reviewer).map(({ text }) => text)).toEqual(["On time."]);
+      ).applied,
+    ).toHaveLength(1);
+  const original = threads(reviewer);
+  const result = reviewer.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "direct",
+      operations: [
+        {
+          id: "replace",
+          type: "replaceBlock",
+          blockId: block.id,
+          text: "Invoice delivery payment agreement supplier buyer payment term.",
+        },
+      ],
+    },
+    { undefinedReferences: "refuse" },
+  );
+  expect(result.skipped).toEqual([]);
+  expect(result.applied).toHaveLength(1);
+  expect(threads(reviewer)).toEqual([]);
+  expect(threads(await open(await reviewer.toBuffer(), "canonical"))).toEqual(
+    [],
+  );
+  if (result.undoHandle === null)
+    throw new Error("The replacement has no undo handle");
+  expect(reviewer.undoDocumentOperations(result.undoHandle)).toMatchObject({
+    status: "undone",
   });
-}
+  expect(threads(reviewer)).toEqual(original);
+});
+
+test("a reviewer reports the comment-alignment refusal of a suggestion without replacing words or losing comments", async () => {
+  const reviewer = await open(
+    await ingested(
+      await createDocx(
+        fromMarkdown(
+          "The Supplier delivers the goods on time.\n\nThe Buyer pays.",
+        ),
+      ),
+    ),
+    "canonical",
+  );
+  const block = reviewer.getContent().at(0);
+  if (!block) throw new Error("The fixture has no paragraph");
+  const apply = (operation: FolioDocumentOperation) =>
+    reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "suggested",
+        operations: [operation],
+      },
+      { undefinedReferences: "refuse" },
+    );
+  const commentResults = ["time", "The"].map((quote) => {
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "direct",
+        operations: [
+          {
+            id: quote,
+            type: "commentOnBlock",
+            blockId: block.id,
+            quote,
+            comment: { text: `On ${quote}.` },
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
+    expect(result.applied).toHaveLength(1);
+    return result;
+  });
+  const undoHandle = commentResults.at(-1)?.undoHandle;
+  if (undoHandle === undefined || undoHandle === null)
+    throw new Error("The comments have no undo handle");
+  const before = {
+    document: reviewer.toDocument(),
+    comments: threads(reviewer),
+    records: reviewer.exportPendingSuggestions(),
+  };
+  const result = apply({
+    id: "replace",
+    type: "replaceBlock",
+    blockId: block.id,
+    text: "Invoice delivery payment agreement supplier buyer payment term.",
+  });
+  expect(result.applied).toEqual([]);
+  expect(result.undoHandle).toBeNull();
+  expect(result.skipped).toMatchObject([
+    {
+      reason: "unsupportedBlock",
+      canonicalRefusal: { gap: CANONICAL_GAP.commentReplacementAlignment },
+    },
+  ]);
+  expect({
+    document: reviewer.toDocument(),
+    comments: threads(reviewer),
+    records: reviewer.exportPendingSuggestions(),
+  }).toEqual(before);
+  expect(threads(await open(await reviewer.toBuffer(), "canonical"))).toEqual(
+    before.comments,
+  );
+  expect(reviewer.undoDocumentOperations(undoHandle)).toMatchObject({
+    status: "undone",
+  });
+  expect(threads(reviewer).map(({ text }) => text)).toEqual(["On time."]);
+});

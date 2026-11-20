@@ -157,7 +157,7 @@ describe("which markers a replaced selection takes", () => {
       expect(result).toEqual({ covered: "", text: "Lead xy tail" });
     });
 
-    test(`${mode}: replacing a paragraph containing an internal comment refuses atomically`, async () => {
+    test(`${mode}: replacing a paragraph containing an internal comment ${mode === "editing" ? "takes the comment with its words" : "refuses atomically"}`, async () => {
       setSystemTime(new Date("2026-01-02T03:04:05Z"));
       const { session, state } = replacementState(mode, (text) => ({
         from: 0,
@@ -176,8 +176,31 @@ describe("which markers a replaced selection takes", () => {
         text: "x",
         semantic: "typing",
       });
-      // Empty covered text hid a disagreement: direct editing kept a collapsed
-      // definition, while accepting the suggestion removed it entirely.
+      if (mode === "editing") {
+        // Typed over directly, every word the comment covered goes, and the
+        // comment goes with them: definition and markers alike.
+        publishCanonicalProjection({
+          session,
+          state,
+          commit: result.unwrap(),
+        }).unwrap();
+        const reopened = await parseDocx(
+          (
+            await serializeCanonicalSave({
+              snapshot: session.captureSaveSnapshot(),
+            })
+          ).buffer,
+          { preloadFonts: false },
+        );
+        expect(session.document.package.document.comments ?? []).toEqual([]);
+        expect(reopened.package.document.comments ?? []).toEqual([]);
+        expect(JSON.stringify(reopened.package.document.content)).not.toMatch(
+          /comment(RangeStart|RangeEnd|Reference)/u,
+        );
+        expect(toProseDoc(reopened).textContent).toBe("x");
+        return;
+      }
+      // Tracked, a selection taking the comment's markers still refuses.
       expect(result.isErr()).toBe(true);
       if (result.isErr())
         expect(result.error.ground).toEqual({

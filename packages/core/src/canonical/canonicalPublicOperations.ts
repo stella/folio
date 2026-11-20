@@ -5186,7 +5186,14 @@ export class CanonicalPublicOperations {
             to: paragraph.start + paragraph.node.content.size,
           },
           changes: replacementChanges,
-          deletionsKeepComments: tracked && !suggested,
+          removal: tracked
+            ? { type: suggested ? "suggested" : "tracked" }
+            : {
+                type: "direct",
+                comments:
+                  readModel(this.options.session.document).package.document
+                    .comments ?? [],
+              },
         })
       )
         return Result.err(
