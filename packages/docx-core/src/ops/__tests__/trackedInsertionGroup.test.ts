@@ -5,6 +5,7 @@ import type { Document, Paragraph } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import * as blocks from "../blocks";
 import { tryTrackedInsertionGroup } from "../documentOps";
+import * as edits from "../edits";
 import {
   getParagraphPropertySnapshot,
   registerParagraphPropertySnapshot,
@@ -111,6 +112,7 @@ test.each([
     });
     const baseModel = structuredClone(document);
     const splices = spyOn(blocks, "replaceParagraphs");
+    const combine = spyOn(edits, "combineEditEffects");
     try {
       let nextIndex = 0;
       const grouped = tryTrackedInsertionGroup({
@@ -125,6 +127,7 @@ test.each([
       if (grouped.type !== "materialized")
         throw new Error(JSON.stringify(grouped));
       expect(splices).toHaveBeenCalledTimes(1);
+      expect(combine).toHaveBeenCalledTimes(0);
       splices.mockClear();
       let ordinary = document;
       let previous: readonly number[] | undefined;
@@ -144,14 +147,14 @@ test.each([
       }
       expect(splices.mock.calls.length).toBeGreaterThanOrEqual(count);
       expect(grouped.members).toHaveLength(count);
-      assertExactModel(grouped.edit.document, ordinary);
-      assertExactModel(snapshots(grouped.edit.document), snapshots(ordinary));
+      assertExactModel(grouped.document, ordinary);
+      assertExactModel(snapshots(grouped.document), snapshots(ordinary));
       expect(getParagraphPropertySnapshot(anchor)).toEqual({
         alignment: "center",
       });
       assertExactModel(document, baseModel);
 
-      let undone = grouped.edit.document;
+      let undone = grouped.document;
       for (const [index, member] of grouped.members
         .entries()
         .toArray()
@@ -159,12 +162,9 @@ test.each([
         undone = applyDocumentOps(undone, member.inverse).unwrap().document;
         assertExactModel(undone, prior.at(index));
       }
-      assertExactModel(
-        applyDocumentOps(grouped.edit.document, grouped.edit.inverse).unwrap()
-          .document,
-        document,
-      );
+      assertExactModel(undone, document);
     } finally {
+      combine.mockRestore();
       splices.mockRestore();
     }
   },
@@ -257,7 +257,7 @@ test.each([
         expect(result.reason).toBe("wideSpan");
         expect(splices).toHaveBeenCalledTimes(0);
       } else {
-        expect(result.edit.document.package.document.content).toHaveLength(
+        expect(result.document.package.document.content).toHaveLength(
           count + 1,
         );
         expect(splices).toHaveBeenCalledTimes(1);
