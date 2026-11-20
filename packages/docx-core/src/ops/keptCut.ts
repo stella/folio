@@ -4,7 +4,7 @@
  * place inside a piece of the record that content cut. It is never written.
  */
 
-import type { BlockContent, KeptCut } from "../model/document";
+import type { BlockContent, KeptCut, RecordField } from "../model/document";
 import { childNodes, type InlineNode, rebuildNode } from "./leaves";
 import { isBoundary, isKeptBoundaryCarrier } from "./rangeBoundaries";
 import { isTrackedWrapper } from "./review";
@@ -56,7 +56,7 @@ export const withoutKeptCuts = (node: InlineNode): InlineNode => {
 const KEPT_CUT_FIELDS = {
   depth: true,
   keptFrom: true,
-} as const satisfies Record<keyof KeptCut, true>;
+} as const satisfies Record<RecordField<KeptCut>, true>;
 
 /**
  * Whether `cut` is a well-formed kept cut: exactly its fields, at least one
