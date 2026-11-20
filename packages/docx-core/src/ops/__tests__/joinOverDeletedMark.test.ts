@@ -75,3 +75,51 @@ test.each(["Earlier Reviewer", "Reviewer"])(
     expect(rejected.value.document).toStrictEqual(document);
   },
 );
+
+test.each([
+  ["a missing paragraph", "0000000F", "blockNotFound"],
+  ["a paragraph that does not follow it", "00000003", "notAdjacent"],
+] as const)(
+  "a suggested join over an already-deleted mark with %s is refused",
+  (_shape, nextBlockId, reason) => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              ...paragraph("00000001", "First.", "center"),
+              pPrMark: {
+                kind: "del",
+                info: {
+                  id: 1,
+                  author: "Reviewer",
+                  date: "2026-01-01T00:00:00Z",
+                },
+              },
+            },
+            paragraph("00000002", "Second.", "right"),
+            paragraph("00000003", "Third.", "right"),
+          ],
+        },
+      },
+    };
+    const compiled = compileEditorIntent(document, {
+      intent: {
+        type: "joinParagraphs",
+        story: OP_STORIES.MAIN,
+        blockId: "00000001",
+        nextBlockId,
+      },
+      mode: {
+        type: "suggesting",
+        revision: {
+          id: 100,
+          author: "Reviewer",
+          date: "2026-02-03T04:05:06Z",
+        },
+        newIds: { revision: [101, 102, 103] },
+      },
+    });
+    expect(compiled.isErr() ? compiled.error.reason : "applied").toBe(reason);
+  },
+);
