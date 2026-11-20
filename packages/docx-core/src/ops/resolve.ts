@@ -60,7 +60,7 @@ import {
   slotKey,
 } from "./ids";
 import { joinParagraphSeam } from "./inline";
-import { seamHandsOver, withJoinAtLeast } from "./keptJoins";
+import { type KeptAtSeam, seamHandsOver, withJoinAtLeast } from "./keptJoins";
 import {
   alikeDepth,
   asParagraphContent,
@@ -2023,6 +2023,51 @@ const resolveList = ({
     for (let offset = kept - inside; offset < kept; offset += 1)
       keptDates.delete(first + offset);
   };
+  /**
+   * Boundaries a rejection kept from new content joined to nothing, standing
+   * beside an earlier pending insertion whose join there cuts the record the
+   * content was made in: that join takes them, as of the revision they were kept from. A seam
+   * meeting such an insertion hands it the same (see {@link withJoinAtLeast}),
+   * so accepting the insertion later places them inside that record, as
+   * accepting it before this rejection does.
+   */
+  const handKeptToFacingJoins = ({
+    index,
+    kept,
+    standing,
+  }: {
+    /** The removed content's place in `pending`. */
+    index: number;
+    kept: KeptAtSeam;
+    /** How many records the kept boundaries are, the last ones `out` holds. */
+    standing: number;
+  }): void => {
+    const facing = (
+      node: InlineNode | undefined,
+      side: "before" | "after",
+    ): number =>
+      node !== undefined &&
+      isTrackedWrapper(node) &&
+      isAddedRevision(node) &&
+      !resolution.ids.has(node.info.id) &&
+      // Made before the removed content, at the seam its join records: the
+      // removed content was made inside the record that join cut. One made
+      // later, inside the removed content, cuts nothing that stays.
+      (node.info.date ?? "") < kept.from
+        ? (node.resolutionJoins?.[side] ?? 0)
+        : 0;
+    const next = pending[index + 1];
+    const nextJoin = facing(next, "before");
+    if (next !== undefined && nextJoin > 0)
+      pending[index + 1] = withJoinAtLeast(next, "before", nextJoin, kept);
+    const previousAt = out.length - standing - 1;
+    const previous = out[previousAt];
+    const previousJoin = facing(previous?.node, "after");
+    if (previous === undefined || previousJoin === 0) return;
+    const handed = withJoinAtLeast(previous.node, "after", previousJoin, kept);
+    carryResolutionState(resolution, previous.node, handed);
+    out[previousAt] = occurrenceOf(handed, previous);
+  };
   const recordExactSeam = (index: number, depth: number): void => {
     if (depth > 0)
       exactSeams.set(index, Math.max(exactSeams.get(index) ?? 0, depth));
@@ -2305,6 +2350,23 @@ const resolveList = ({
               (piece === "after" ? lastRecord : firstRecord) ?? -1
             ],
             keptFrom: node.info.date,
+          });
+        if (
+          kept.length > 0 &&
+          joins !== undefined &&
+          joins.before === 0 &&
+          joins.after === 0 &&
+          joins.remove === 0 &&
+          resolution.decision === REVISION_DECISIONS.REJECT &&
+          isAddedRevision(node)
+        )
+          handKeptToFacingJoins({
+            index,
+            kept: {
+              from: node.info.date ?? "",
+              count: keptBoundaryCount(kept),
+            },
+            standing: kept.length,
           });
         // Those beyond the record that piece continues stand at the removed
         // content's other edge: they go into the piece there where it is a
