@@ -62,15 +62,45 @@ const holdersIn = (node: IndexNode, key: string): readonly BlockContent[] => {
   return [];
 };
 
+// A splice on either side of a block preserves its position from the opposite end.
+const positions = new WeakMap<
+  BlockContent,
+  { index: number; fromEnd: number }
+>();
+const rememberPosition = (
+  blocks: readonly BlockContent[],
+  index: number,
+): void => {
+  const block = blocks[index];
+  if (block !== undefined)
+    positions.set(block, { index, fromEnd: blocks.length - index });
+};
+const blockPosition = (
+  blocks: readonly BlockContent[],
+  block: BlockContent,
+): number => {
+  const known = positions.get(block);
+  if (known !== undefined) {
+    if (blocks[known.index] === block) return known.index;
+    const shifted = blocks.length - known.fromEnd;
+    if (blocks[shifted] === block) return shifted;
+  }
+  const index = blocks.indexOf(block);
+  rememberPosition(blocks, index);
+  return index;
+};
+
 const rootOf = (blocks: readonly BlockContent[]): IndexNode => {
   const holders = new Map<string, BlockContent[]>();
-  for (const block of blocks)
+  for (const [index, block] of blocks.entries()) {
+    rememberPosition(blocks, index);
     for (const [key, held] of locationsIn(block))
       for (let count = 0; count < held.length; count += 1) {
         const list = holders.get(key);
         if (list === undefined) holders.set(key, [block]);
         else list.push(block);
       }
+  }
   return { parent: undefined, holders, depth: 0 };
 };
 
@@ -120,11 +150,13 @@ const derivedFrom = (
         if (at >= 0) held.splice(at, 1);
       }
     }
-  for (const block of added)
+  for (const [offset, block] of added.entries()) {
+    rememberPosition(blocks, start + offset);
     for (const [key, located] of locationsIn(block)) {
       const held = holdersOf(key);
       for (let count = 0; count < located.length; count += 1) held.push(block);
     }
+  }
   const node: IndexNode = { parent: base, holders, depth: base.depth + 1 };
   return node.depth >= MAX_CHAIN ? settled(node) : node;
 };
@@ -181,5 +213,5 @@ export const findStoryParagraph = (
   const [location] = located;
   return location === undefined
     ? undefined
-    : placed(location, body.content.indexOf(block));
+    : placed(location, blockPosition(body.content, block));
 };
