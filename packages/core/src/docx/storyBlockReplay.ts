@@ -188,6 +188,18 @@ type MaterializeReplayFragmentOptions = {
   element: XmlElement;
   sourceNamespace: string;
   generatedRoot?: XmlElement;
+  validation?: ReplayFragmentValidation | undefined;
+};
+
+const validationToken = Symbol("replay-fragment-validation");
+export type ReplayFragmentValidation = { readonly [validationToken]: true };
+const validatedFragments = new WeakMap<ReplayFragmentValidation, Set<string>>();
+
+/** Validation shared by both replay passes of a single save. */
+export const createReplayFragmentValidation = (): ReplayFragmentValidation => {
+  const token = Object.freeze({ [validationToken]: true } as const);
+  validatedFragments.set(token, new Set());
+  return token;
 };
 
 /** Bind a replay fragment once, retaining existing local declarations and compatibility tokens. */
@@ -196,6 +208,7 @@ export const materializeReplayFragment = ({
   element,
   sourceNamespace,
   generatedRoot,
+  validation,
 }: MaterializeReplayFragmentOptions): string | null => {
   const strict = TRANSITIONAL_NAMESPACE_BY_STRICT_URI.has(sourceNamespace);
   const first = XML_TOKEN.exec(xml);
@@ -277,7 +290,12 @@ export const materializeReplayFragment = ({
     additions.join("") +
     replacedOpening.slice(close);
   const materialized = replacedOpening + xml.slice(opening.length);
-  if (!isSafeCapturedXmlDocument(materialized)) return null;
+  const valid =
+    validation === undefined ? undefined : validatedFragments.get(validation);
+  if (valid?.has(materialized) !== true) {
+    if (!isSafeCapturedXmlDocument(materialized)) return null;
+    valid?.add(materialized);
+  }
   if (!strict) return materialized;
   const parsed = parseStreamingXml(materialized);
   if (parsed.status !== "parsed") return null;
@@ -402,6 +420,7 @@ type StoryReplayOptions = {
   baselineContent: readonly BlockContent[];
   currentContent: readonly BlockContent[];
   generatedRoot: XmlElement;
+  validation?: ReplayFragmentValidation | undefined;
 };
 
 /**
@@ -416,6 +435,7 @@ const replayStoryBlocks = ({
   baselineContent,
   currentContent,
   generatedRoot,
+  validation,
 }: StoryReplayOptions): XmlSplice[] | null => {
   if (
     getLocalName(source.rootName) !== getLocalName(generated.root.name) ||
@@ -496,6 +516,7 @@ const replayStoryBlocks = ({
       element: replacement.element,
       sourceNamespace: source.namespace,
       generatedRoot,
+      validation,
     });
     if (fragment === null) return null;
     fragments.push(fragment);
@@ -918,6 +939,7 @@ type DocumentBlockReplayOptions = {
   serializedXml: string;
   baseline: DocumentBody;
   current: DocumentBody;
+  validation?: ReplayFragmentValidation | undefined;
 };
 
 /**
@@ -933,6 +955,7 @@ export const buildDocumentBlockReplay = ({
   serializedXml,
   baseline,
   current,
+  validation,
 }: DocumentBlockReplayOptions): SerializedPart | null => {
   const source = readSourceDocument(sourceXml, baseline);
   const generatedStory = readDocumentStory(serializedXml);
@@ -949,6 +972,7 @@ export const buildDocumentBlockReplay = ({
     baselineContent: baseline.content,
     currentContent: current.content,
     generatedRoot: generated.root,
+    validation,
   });
   if (bodySplices === null) return null;
   // The splices that change the source; the others copy a block's own bytes.

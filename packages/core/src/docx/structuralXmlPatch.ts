@@ -9,7 +9,10 @@ import {
   spliceXml,
   type XmlSplice,
 } from "./selectiveXmlPatch";
-import { materializeReplayFragment } from "./storyBlockReplay";
+import {
+  materializeReplayFragment,
+  type ReplayFragmentValidation,
+} from "./storyBlockReplay";
 import {
   findAttributeByNamespaceUri,
   getAttribute,
@@ -220,6 +223,7 @@ type StructuralPatchOptions = {
   originalXml: string;
   serializedXml: string;
   changedIds: ReadonlySet<string>;
+  fragmentValidation?: ReplayFragmentValidation | undefined;
 };
 
 /** The spliced part, or why the splice declined and the save repacks. */
@@ -258,6 +262,7 @@ export const buildStructuralDocumentPatch = ({
   originalXml,
   serializedXml,
   changedIds,
+  fragmentValidation,
 }: StructuralPatchOptions): StructuralPatchResult => {
   const source = readBody(originalXml);
   const current = readBody(serializedXml);
@@ -340,6 +345,7 @@ export const buildStructuralDocumentPatch = ({
       element: block.element,
       sourceNamespace: getNamespaceUri(source.root) ?? "",
       generatedRoot: current.root,
+      validation: fragmentValidation,
     });
   const splices: XmlSplice[] = [];
   for (const [key, block] of before) {

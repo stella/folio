@@ -1,9 +1,16 @@
-import { expect, spyOn, test } from "bun:test";
+import { expect, mock, spyOn, test } from "bun:test";
 
 import { wellFormedXmlIssue } from "@stll/docx-core/xml";
 
+import type { DocumentBody } from "../types/document";
 import * as documentParser from "./documentParser";
+import {
+  buildDocumentBlockReplay,
+  createReplayFragmentValidation,
+  type ReplayFragmentValidation,
+} from "./storyBlockReplay";
 import { buildStructuralDocumentPatch } from "./structuralXmlPatch";
+import * as verbatimCapture from "./verbatimCapture";
 import { getChildElements, parseXmlDocument } from "./xmlParser";
 
 type PatchOptions = Parameters<typeof buildStructuralDocumentPatch>[0];
@@ -52,6 +59,59 @@ test("structural splices reuse the parsed parts for model barrier comparison", (
   } finally {
     parseFromTree.mockRestore();
     parseFromXml.mockRestore();
+  }
+});
+
+test("canonical replay and structural patch validate an identical fragment once", () => {
+  const body = (entries: readonly [number, string][]): DocumentBody => ({
+    content: entries.map(([id, text]) => ({
+      type: "paragraph",
+      paraId: id.toString(16).padStart(8, "0"),
+      content: [{ type: "run", content: [{ type: "text", text }] }],
+    })),
+  });
+  const sourceXml = wrap(paragraph(1, "kept"));
+  const emittedXml = wrap(paragraph(1, "kept") + paragraph(2, "inserted"));
+  const baseline = body([[1, "kept"]]);
+  const current = body([
+    [1, "kept"],
+    [2, "inserted"],
+  ]);
+  const run = (validation: ReplayFragmentValidation | undefined) => {
+    const replay = buildDocumentBlockReplay({
+      sourceXml,
+      serializedXml: emittedXml,
+      baseline,
+      current,
+      validation,
+    });
+    if (!replay) throw new Error("The generated body must replay");
+    return buildStructuralDocumentPatch({
+      originalXml: sourceXml,
+      serializedXml: replay.xml,
+      changedIds: new Set(["00000002"]),
+      fragmentValidation: validation,
+    });
+  };
+  const validate = spyOn(verbatimCapture, "isSafeCapturedXmlDocument");
+  try {
+    const before = run(undefined);
+    expect(before.type).toBe("patched");
+    const [first, second] = validate.mock.calls;
+    expect(first?.at(0)).toContain("inserted");
+    expect(second).toEqual(first);
+    expect(validate).toHaveBeenCalledTimes(2);
+    validate.mockClear();
+    const validation = createReplayFragmentValidation();
+    expect(run(validation)).toEqual(before);
+    expect(validate).toHaveBeenCalledTimes(1);
+    validate.mockClear();
+    const forged = { ...validation, isSafe: mock(() => true) };
+    expect(run(forged)).toEqual(before);
+    expect(validate).toHaveBeenCalledTimes(2);
+    expect(forged.isSafe).toHaveBeenCalledTimes(0);
+  } finally {
+    validate.mockRestore();
   }
 });
 
