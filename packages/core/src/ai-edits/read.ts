@@ -9,6 +9,7 @@
  * snapshot and apply layers use.
  */
 
+import { panic } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
 
 import {
@@ -886,6 +887,16 @@ export const getOwnedRevisionRanges = (doc: PMNode): OwnedRevisionRange[] => {
   return ranges;
 };
 
+/** Repeated physical ids belong to the first listed group that carries them. */
+const firstGroupById = (groups: readonly TrackedChangeGroup[]) => {
+  const first = new Map<number, number[]>();
+  for (const { ids } of groups) {
+    const members = [...new Set(ids)];
+    for (const id of members) if (!first.has(id)) first.set(id, members);
+  }
+  return first;
+};
+
 /**
  * The physical revision ids behind each listed change that `ids` name, one
  * group per change. An inline change split by markup is one entry of the
@@ -897,20 +908,38 @@ export const getTrackedChangeGroupsForIds = (
   doc: PMNode,
   ids: readonly number[],
 ): number[][] => {
+  if (ids.length === 0) return [];
   const groups = getTrackedChangeGroupsFromProjectedDoc(
     doc,
     blockStartIdsFromDoc(doc),
   );
+  const first = ids.length > 1 ? firstGroupById(groups) : undefined;
   const out: number[][] = [];
   const taken = new Set<number>();
   for (const id of ids) {
     if (taken.has(id)) continue;
-    const members = groups.find((group) => group.ids.includes(id))?.ids ?? [id];
+    const members = (first
+      ? first.get(id)
+      : groups.find((group) => group.ids.includes(id))?.ids) ?? [id];
     const fresh = [...new Set(members)].filter((member) => !taken.has(member));
     for (const member of fresh) taken.add(member);
     out.push(fresh);
   }
   return out;
+};
+
+/** Physical members of each listed revision, including repeated display IDs. */
+export const listedRevisionGroups = (doc: PMNode) => {
+  const groups = getTrackedChangeGroupsFromProjectedDoc(
+    doc,
+    blockStartIdsFromDoc(doc),
+  );
+  const firstGroup = firstGroupById(groups);
+  return groups.map(({ change: { id } }) => ({
+    id,
+    groupIds:
+      firstGroup.get(id) ?? panic("A listed revision must carry its own id."),
+  }));
 };
 
 /** Physical revision ids behind an inline change split by markup. */
