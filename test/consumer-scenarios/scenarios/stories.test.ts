@@ -15,7 +15,11 @@ import { describe, test } from "node:test";
 import type { FolioDocumentStoryHandle } from "@stll/folio-core/server";
 
 import type { StepKind } from "../support/coverage.ts";
-import { openReviewer, storiesDocument } from "../support/documents.ts";
+import {
+  openReviewer,
+  scenarioEngine,
+  storiesDocument,
+} from "../support/documents.ts";
 import { SECOND_REVIEWER } from "../support/fuzz.ts";
 import {
   assertHealthy,
@@ -42,8 +46,16 @@ import {
 
 type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
 const MAIN: FolioDocumentStoryHandle = { type: "main" };
-// Recorded formatting merge after a footnote split/deletion chain.
-const TRACKED_STORY_REVISION_SEED = 1455;
+// Recorded formatting merge after a footnote split/deletion chain. The sweep
+// picks blocks through their ids, which each engine mints its own way, so
+// each engine reaches that merge from a seed of its own.
+const TRACKED_STORY_REVISION = {
+  legacy: { seed: 1455, step: 44 },
+  canonical: { seed: 3, step: 40 },
+} as const satisfies Record<
+  ReturnType<typeof scenarioEngine>,
+  { seed: number; step: number }
+>;
 
 /** Apply `operation` to `story` as a one-operation core batch, and check it. */
 const applyChecked = async (
@@ -145,7 +157,7 @@ describe("operations in every header, footer and note", () => {
       const reviewer = await openReviewer(await storiesDocument());
       const random = createRandom(
         mode === "tracked-changes"
-          ? TRACKED_STORY_REVISION_SEED
+          ? TRACKED_STORY_REVISION[scenarioEngine()].seed
           : mode.length * 97,
       );
       const applied = new Map<string, number>();
@@ -173,7 +185,10 @@ describe("operations in every header, footer and note", () => {
           ) {
             // Positive control: this seed must reach the occupied survivor,
             // rather than merely run a merge that has nothing to guard.
-            assert.equal(generatedSteps, 44);
+            assert.equal(
+              generatedSteps,
+              TRACKED_STORY_REVISION[scenarioEngine()].step,
+            );
             assert.deepEqual(operation["mergedParagraphProperties"], {
               alignment: "center",
             });
