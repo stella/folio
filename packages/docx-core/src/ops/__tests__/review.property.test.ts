@@ -359,8 +359,78 @@ const expectWellFormedRanges = (
 };
 
 /**
+ * `document` without the paragraphs `holders` names that hold nothing and
+ * that `expected` no longer has, where their block list keeps another block.
+ */
+const withoutBoundaryHolders = ({
+  document,
+  holders,
+  expected,
+}: {
+  document: Document;
+  holders: ReadonlySet<string>;
+  expected: Document;
+}): Document => {
+  const standing = new Set(
+    storyParagraphs(expected.package.document).map(
+      ({ paragraph }) => paragraph.paraId ?? "",
+    ),
+  );
+  const goes = (value: unknown): boolean => {
+    if (typeof value !== "object" || value === null) return false;
+    const paraId: unknown = Reflect.get(value, "paraId");
+    const content: unknown = Reflect.get(value, "content");
+    return (
+      Reflect.get(value, "type") === "paragraph" &&
+      typeof paraId === "string" &&
+      holders.has(paraId) &&
+      !standing.has(paraId) &&
+      Array.isArray(content) &&
+      content.length === 0
+    );
+  };
+  const visit = (value: unknown): void => {
+    if (Array.isArray(value)) {
+      for (let index = value.length - 1; index >= 0; index -= 1)
+        if (value.length > 1 && goes(value[index])) value.splice(index, 1);
+      for (const item of value) visit(item);
+      return;
+    }
+    if (typeof value === "object" && value !== null)
+      for (const child of Object.values(value)) visit(child);
+  };
+  visit(document.package.document.content);
+  return document;
+};
+
+/** The paragraphs of `document` holding nothing but `boundaries`. */
+const boundaryHolders = (
+  document: Document,
+  boundaries: readonly RangeBoundary[],
+): Set<string> => {
+  const keys = new Set(boundaries.map(({ type, id }) => `${type}:${id}`));
+  return new Set(
+    storyParagraphs(document.package.document).flatMap(({ paragraph }) =>
+      paragraph.content.length > 0 &&
+      paragraph.content.every((item) => {
+        const boundary = asRangeBoundary(item);
+        return (
+          boundary !== undefined && keys.has(`${boundary.type}:${boundary.id}`)
+        );
+      })
+        ? [paragraph.paraId ?? ""]
+        : [],
+    ),
+  );
+};
+
+/**
  * Rejecting gives back `expected` but for the range boundaries the removed
- * content held, which stay where it was in well-formed ranges.
+ * content held, which stay where it was in well-formed ranges. A paragraph
+ * they alone keep, which `expected` no longer has, goes with them: it stands
+ * only to hold them where they were, as an empty paragraph after a content
+ * control the rejection of its last paragraph's added mark takes in would
+ * otherwise go.
  */
 const expectRejectedTo = ({
   rejected,
@@ -377,8 +447,13 @@ const expectRejectedTo = ({
 }): void => {
   const kept = boundariesKeptByRejecting(tracked, new Set(ids));
   expectWellFormedRanges(rejected, kept);
+  const stripped = withoutBoundaryHolders({
+    document: withoutBoundaries(rejected, kept),
+    holders: boundaryHolders(rejected, kept),
+    expected,
+  });
   assertExactModel(
-    projected(withoutBoundaries(rejected, kept), projection),
+    projected(stripped, projection),
     projected(expected, projection),
   );
 };
