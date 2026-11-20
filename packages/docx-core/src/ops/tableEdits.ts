@@ -25,6 +25,7 @@ import { idKey, isParaId, packageParagraphIds, paragraphIdsIn } from "./ids";
 import { applyFormattingPatch } from "./patch";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { stampInfo } from "./review";
+import { replaceStoryBody } from "./stories";
 import {
   reachesPastRemovedCell,
   strandsABookmark,
@@ -355,10 +356,11 @@ const commitTable = ({
     next[location.index] = table;
     return next;
   });
-  const next = {
-    ...document,
-    package: { ...document.package, document: withBodyContent(body, content) },
-  };
+  const next = replaceStoryBody({
+    document,
+    story: op.story,
+    body: withBodyContent(body, content),
+  });
   const valid = validateOpsDocument(next);
   if (valid.isErr())
     return refuse({
