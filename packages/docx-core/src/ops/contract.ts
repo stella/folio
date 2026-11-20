@@ -37,6 +37,7 @@ import { sectionsInStep, storyParagraphs, withBodyContent } from "./blocks";
 import { hasValidCopyOriginAncestorsInBlocks } from "./copyOriginAncestors";
 import { structurallyEqual } from "./equality";
 import { countKeys, packageIdentityKeys, packageParagraphIdIndex } from "./ids";
+import { hasValidKeptCutsInBlocks } from "./keptCut";
 import {
   asParagraphContent,
   childNodes,
@@ -170,6 +171,16 @@ const violation = (
     return new DocumentOpsContractError({
       reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
       message: "A copied range boundary has invalid added-revision ancestry.",
+    });
+  }
+  if (
+    documentStories(document).some(
+      (story) => !hasValidKeptCutsInBlocks(storyBody(document, story).content),
+    )
+  ) {
+    return new DocumentOpsContractError({
+      reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+      message: "A kept range marker records an invalid cut.",
     });
   }
   for (const notes of [document.package.footnotes, document.package.endnotes]) {
