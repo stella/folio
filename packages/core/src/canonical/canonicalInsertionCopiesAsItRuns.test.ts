@@ -19,6 +19,7 @@ import type {
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
+import { createEmptyDocument } from "../utils/createDocument";
 
 const INSERTED = "Inserted clause.";
 
@@ -240,6 +241,50 @@ test.each([4, 8])(
   },
 );
 
+test("staging reuses a verified blank replacement followed by paragraph insertions", async () => {
+  const template = createEmptyDocument();
+  const input = await createDocx({
+    ...template,
+    package: {
+      ...template.package,
+      document: { ...template.package.document, content: [] },
+    },
+  });
+  const reviewer = await FolioDocxReviewer.fromBuffer(input, {
+    session: "canonical",
+  });
+  const anchor = reviewer.snapshot().blocks.at(0);
+  if (anchor === undefined || anchor.text !== "")
+    throw new Error("The fixture needs its blank paragraph anchor.");
+  const operations = Array.from(
+    { length: 6 },
+    (_, index) =>
+      ({
+        id: `insert-${index}`,
+        type: index === 0 ? "replaceBlock" : "insertAfterBlock",
+        blockId: anchor.id,
+        text: `Appended clause ${index}.`,
+      }) satisfies FolioDocumentOperation,
+  );
+  const applyOps = spyOn(documentOperations, "applyDocumentOps");
+  try {
+    apply(reviewer, operations, "tracked-changes");
+    const insertions = applyOps.mock.calls.filter(([, ops]) =>
+      ops.some(
+        ({ type }) =>
+          type === documentOperations.DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+      ),
+    );
+    expect(insertions).toHaveLength(operations.length - 1);
+    expect(insertions.every(([, ops]) => ops.length === 1)).toBe(true);
+    expect(reviewer.snapshot().blocks.map(({ text }) => text)).toEqual(
+      operations.map(({ text }) => text),
+    );
+  } finally {
+    applyOps.mockRestore();
+  }
+});
+
 test.each([4, 8])(
   "compiles each of %i already ordered paragraph insertions once",
   async (count) => {
@@ -255,6 +300,7 @@ test.each([4, 8])(
         }) satisfies FolioDocumentOperation,
     );
     const compiler = spyOn(documentOperations, "compileEditorIntent");
+    const applyOps = spyOn(documentOperations, "applyDocumentOps");
     try {
       const result = reviewer.applyDocumentOperations(
         { version: 1, mode: "tracked-changes", atomic: true, operations },
@@ -268,6 +314,13 @@ test.each([4, 8])(
         operations.map(({ id }) => id),
       );
       expect(compiler).toHaveBeenCalledTimes(count);
+      const appliedInsertions = applyOps.mock.calls.filter(([, ops]) =>
+        ops.some(
+          ({ type }) =>
+            type === documentOperations.DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+        ),
+      );
+      expect(appliedInsertions).toHaveLength(count);
       expect(
         reviewer
           .snapshot()
@@ -287,6 +340,7 @@ test.each([4, 8])(
       expect(revisions.length).toBeGreaterThanOrEqual(count);
       expect(new Set(revisions).size).toBe(revisions.length);
     } finally {
+      applyOps.mockRestore();
       compiler.mockRestore();
     }
   },

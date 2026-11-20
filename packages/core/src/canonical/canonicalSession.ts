@@ -33,6 +33,7 @@ import {
   DOCUMENT_OP_REFUSAL_REASONS,
   DOCUMENT_OP_TYPES,
   type DocumentOp,
+  type DocumentOpRefusal,
   documentStories,
   type EditorIntent,
   type EditorIntentMode,
@@ -42,6 +43,9 @@ import {
   freshLeasedIds,
   ID_LEASE_KINDS,
   type IdLease,
+  type InsertBlocksOp,
+  type InsertContentOp,
+  type InsertTextOp,
   inverseMeetingDocument,
   normalizeForOps,
   OP_STORIES,
@@ -84,6 +88,7 @@ import {
 import { visitInlineContentSlots } from "../docx/paragraphTraversal";
 import { isCellMergeContinuation } from "../docx/tableParser";
 import { calculateRowSpans } from "../docx/verticalMergeProjection";
+import { canonicalOperationStagingAccess } from "../internal/canonicalOperationStaging";
 import {
   type CanonicalTyping,
   recordCanonicalTyping,
@@ -1814,6 +1819,14 @@ type JournalledOpsOptions = {
   semantic?: CanonicalInputSemantic;
 };
 
+type StageableOperation = InsertBlocksOp | InsertContentOp | InsertTextOp;
+type OperationEffect = Pick<AppliedDocumentOp, "inverse" | "touched">;
+
+type VerifiedOperation = {
+  readonly document: ReadonlyDocument;
+  readonly revisions: readonly number[];
+};
+
 type CanonicalSessionSeedOptions = {
   document: Document;
   projection: CanonicalProjection;
@@ -2871,6 +2884,96 @@ class CanonicalSession {
     postSelection: CanonicalSelection,
   ): Result<CanonicalCommit, CanonicalSessionError> {
     return this.prepareJournalledOps({ state, ops, postSelection });
+  }
+
+  /** Verify compiled insertions and stage only the chain this session applied. */
+  beginVerifiedOperationStaging(access: symbol) {
+    if (access !== canonicalOperationStagingAccess)
+      panic(
+        "Only the public-operation compiler may stage verified operations.",
+      );
+    const base = this.currentDocument;
+    const version = this.currentVersion;
+    const verified = new WeakMap<
+      VerifiedOperation,
+      {
+        before: Document;
+        document: Document;
+        op: StageableOperation;
+        effect: OperationEffect;
+        revisions: readonly number[];
+      }
+    >();
+    let document = base;
+    const ops: DocumentOp[] = [];
+    const effects: OperationEffect[] = [];
+    const revisions: number[] = [];
+
+    return {
+      apply: (
+        before: Document,
+        input: StageableOperation,
+      ): Result<VerifiedOperation, DocumentOpRefusal> => {
+        // Own the operation that is both applied and journalled. Neither
+        // caller changes nor a speculative attempt can rewrite that pairing.
+        const op = structuredClone(input);
+        return applyDocumentOps(before, [op]).map((applied) => {
+          const {
+            document: next,
+            inverse,
+            touched,
+            revisions: recorded,
+          } = applied;
+          const view = Object.freeze({
+            document: next,
+            revisions: Object.freeze([...recorded]),
+          });
+          verified.set(view, {
+            before,
+            document: next,
+            op,
+            effect: { inverse, touched },
+            revisions: recorded,
+          });
+          return view;
+        });
+      },
+      append: (view: VerifiedOperation): boolean => {
+        const step = verified.get(view);
+        if (step === undefined || step.before !== document) return false;
+        verified.delete(view);
+        document = step.document;
+        ops.push(step.op);
+        effects.push(step.effect);
+        revisions.push(...step.revisions);
+        return true;
+      },
+      prepare: (
+        state: EditorState,
+        postSelection: CanonicalSelection,
+      ): Result<CanonicalCommit, CanonicalSessionError> => {
+        if (version !== this.currentVersion || base !== this.currentDocument)
+          return refuse(
+            "The compiled operations use a stale canonical document.",
+          );
+        // The combiner reads only the last document, so the effects need no
+        // intermediate versions.
+        const combined = combineEdits(
+          document,
+          effects.map(({ inverse, touched }) => ({
+            document,
+            inverse,
+            touched,
+          })),
+        );
+        return this.prepareJournalledOps({
+          state,
+          ops: [...ops],
+          postSelection,
+          stagedApplied: { ...combined, revisions },
+        });
+      },
+    };
   }
 
   private prepareJournalledOps({

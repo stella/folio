@@ -156,6 +156,7 @@ import {
   parseFolioDocumentOperationBatch,
   withDistinctSuggestionIds,
 } from "../document-operations";
+import { canonicalOperationStagingAccess } from "../internal/canonicalOperationStaging";
 import { expectTableAttrs } from "../prosemirror/attrs";
 import { tableAnchor } from "../prosemirror/canonicalTableCommands";
 import { paragraphEndsItsContainer } from "../prosemirror/containerFinalParagraph";
@@ -2545,6 +2546,11 @@ type CanonicalPublicOperationsOptions = {
   publish: (commit: CanonicalCommit) => boolean;
 };
 
+type PublicOperationStaging = ReturnType<
+  CanonicalSession["beginVerifiedOperationStaging"]
+>;
+type VerifiedOperation = Parameters<PublicOperationStaging["append"]>[0];
+
 type CompilePublicIntentsOptions = {
   document: Document;
   intents: readonly EditorIntent[];
@@ -2565,6 +2571,7 @@ type CompilePublicIntentsOptions = {
   allocations?: readonly ReturnType<
     ReturnType<typeof createEditorIntentIdAllocator>
   >[];
+  verifyOperation?: PublicOperationStaging["apply"];
 };
 
 const compilePublicIntents = ({
@@ -2579,9 +2586,11 @@ const compilePublicIntents = ({
   reservedBlockIds,
   idLease,
   allocations: admittedAllocations,
+  verifyOperation,
 }: CompilePublicIntentsOptions) => {
   const ops: DocumentOp[] = [];
   const revisions: number[] = [];
+  let verifiedOperation: VerifiedOperation | undefined;
   // A split's new half takes the id allocated here, not the one it resolved
   // with: a later intent naming that half names the allocated one.
   const allocated = new Map<string, string>();
@@ -2646,15 +2655,38 @@ const compilePublicIntents = ({
             },
     });
     if (compiled.isErr()) return Result.err(compiled.error);
-    const applied = applyDocumentOps(document, compiled.value.ops);
+    const [only] = compiled.value.ops;
+    const verified =
+      verifyOperation !== undefined &&
+      intents.length === 1 &&
+      compiled.value.ops.length === 1 &&
+      ((sourceIntent.type === "insertParagraphs" &&
+        only?.type === DOCUMENT_OP_TYPES.INSERT_BLOCKS) ||
+        (sourceIntent.type === "replaceText" &&
+          (only?.type === DOCUMENT_OP_TYPES.INSERT_CONTENT ||
+            only?.type === DOCUMENT_OP_TYPES.INSERT_TEXT)))
+        ? verifyOperation(document, only)
+        : undefined;
+    if (verified !== undefined) {
+      if (verified.isErr()) return Result.err(verified.error);
+      verifiedOperation = verified.value;
+    }
+    const applied = verified ?? applyDocumentOps(document, compiled.value.ops);
     if (applied.isErr()) return Result.err(applied.error);
-    document = applied.value.document;
+    document = readModel(applied.value.document);
     ops.push(...compiled.value.ops);
     revisions.push(...applied.value.revisions);
     for (const id of applied.value.revisions)
       nextRevisionId = Math.max(nextRevisionId, id + 1);
   }
-  return Result.ok({ document, ops, revisions, nextRevisionId, allocations });
+  return Result.ok({
+    document,
+    ops,
+    revisions,
+    nextRevisionId,
+    allocations,
+    verifiedOperation,
+  });
 };
 
 const CanonicalPublicOperationResolutionErrorBase: TaggedErrorClass<"CanonicalPublicOperationResolutionError"> =
@@ -3337,6 +3369,10 @@ export class CanonicalPublicOperations {
     const beforeBatch = document;
     let annotated: Document | undefined;
     const ops: DocumentOp[] = [];
+    const operationStaging = session.beginVerifiedOperationStaging(
+      canonicalOperationStagingAccess,
+    );
+    let reuseStaging = true;
     const appliedById = new Map<
       string,
       FolioDocumentOperationResult["applied"][number]
@@ -3364,6 +3400,7 @@ export class CanonicalPublicOperations {
       idLease?: IdLease;
       allocations?: CompilePublicIntentsOptions["allocations"];
       reservedBlockIds?: ReadonlySet<string>;
+      verifyOperation?: PublicOperationStaging["apply"];
       commentAllocation?: {
         id: number;
         content: ReturnType<typeof canonicalCommentBody>;
@@ -3394,6 +3431,7 @@ export class CanonicalPublicOperations {
       idLease = session.idLease,
       allocations,
       reservedBlockIds = session.reservedBlockIds,
+      verifyOperation,
       commentAllocation: admittedComment,
     }: PrepareOperationOptions) => {
       const { operation } = resolvedOperation;
@@ -3490,6 +3528,11 @@ export class CanonicalPublicOperations {
         author: options.author ?? "AI",
         date,
         ...(allocations === undefined ? {} : { allocations }),
+        ...(withHeadings === sourceDocument &&
+        resolvedOperation.type === "plain" &&
+        verifyOperation !== undefined
+          ? { verifyOperation }
+          : {}),
       });
       if (compiled.isErr()) {
         return declined({
@@ -3733,6 +3776,7 @@ export class CanonicalPublicOperations {
         suggestionId,
         allocations: compiled.value.allocations,
         commentAllocation,
+        verifiedOperation: compiled.value.verifiedOperation,
       };
     };
     type OperationAttempt = ReturnType<typeof prepareOperation>;
@@ -3752,6 +3796,10 @@ export class CanonicalPublicOperations {
       recordColumnInsertion(resolvedOperation, insertedColumnCounts);
       document = prepared.document;
       ops.push(...prepared.ops);
+      if (reuseStaging)
+        reuseStaging =
+          prepared.verifiedOperation !== undefined &&
+          operationStaging.append(prepared.verifiedOperation);
       nextRevisionId = Math.max(nextRevisionId, prepared.nextRevisionId);
       const revisionId = revisionIds.at(0);
       const joined =
@@ -3889,6 +3937,9 @@ export class CanonicalPublicOperations {
             resolvedOperation,
             nextRevisionId,
             columnInsertions: insertedColumnCounts,
+            ...(reuseStaging
+              ? { verifyOperation: operationStaging.apply }
+              : {}),
           }),
         );
         continue;
@@ -4059,6 +4110,7 @@ export class CanonicalPublicOperations {
           nextRevisionId: member.firstRevisionId,
           reservedBlockIds,
           allocations: member.allocations,
+          ...(reuseStaging ? { verifyOperation: operationStaging.apply } : {}),
           ...(member.commentAllocation === undefined
             ? {}
             : { commentAllocation: member.commentAllocation }),
@@ -4117,10 +4169,13 @@ export class CanonicalPublicOperations {
       return result([], null);
     }
     if (ops.length === 0) return result([], null);
-    const selection = projected.value.selectionAt(state);
-    const prepared = selection.isErr()
-      ? selection
-      : session.prepareOps(state, ops, selection.value);
+    const prepared = projected.value
+      .selectionAt(state)
+      .andThen((selection) =>
+        reuseStaging
+          ? operationStaging.prepare(state, selection)
+          : session.prepareOps(state, ops, selection),
+      );
     if (prepared.isErr()) {
       // A batch that changes nothing is a no-op, not a capability gap.
       const noChange = prepared.error.reason === "noChange";
