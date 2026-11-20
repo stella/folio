@@ -459,6 +459,7 @@ const canonicalBatchPlan = ({
 type PlannedOperation = {
   operation: FolioDocumentOperation;
   plan: CanonicalBatchPlan;
+  joinsParagraphBefore?: true;
 };
 
 type CanonicalBatchOrderOptions<T extends PlannedOperation> = {
@@ -506,21 +507,49 @@ const orderCanonicalBatch = <T extends PlannedOperation>({
         : [];
     }),
   );
+  /**
+   * The batch's deletion of the first of the paragraphs it deletes in a row
+   * right before the paragraph at `block`, if it deletes the one before it.
+   */
+  const firstDeletedBefore = (block: number): T | undefined => {
+    const at = doc.resolve(block);
+    let position = block;
+    let first: T | undefined;
+    for (let index = at.index() - 1; index >= 0; index--) {
+      position -= at.parent.child(index).nodeSize;
+      const deletion = deletionOf.get(position);
+      if (deletion === undefined) break;
+      first = deletion;
+    }
+    return first;
+  };
   const address = (item: T): BatchOrderAddress => {
     const { operation, plan } = item;
     if (plan.address.type !== "content") return plan.address;
-    // A direct merge into a paragraph the batch deletes runs right after
-    // that deletion, joining across it to what then follows.
+    const planned = plan.address;
+    /** This operation's address right after `deletion`, `steps` ranks on. */
+    const following = (deletion: T, steps: number): BatchOrderAddress => {
+      const before = address(deletion);
+      return before.type === "content"
+        ? { ...planned, position: before.position, rank: before.rank + steps }
+        : planned;
+    };
+    // A direct merge into a paragraph the batch deletes runs after that
+    // deletion, and after a deletion of the container's last paragraph that
+    // joins across it, so it joins what then follows.
     const deletion =
       plan.claim.type === "merge" && plan.claim.joinsNow
         ? deletionOf.get(plan.claim.next)
         : undefined;
-    if (deletion !== undefined) {
-      const after = address(deletion);
-      return after.type === "content"
-        ? { ...plan.address, position: after.position, rank: after.rank + 1 }
-        : plan.address;
-    }
+    if (deletion !== undefined) return following(deletion, 2);
+    // A direct deletion that joins the paragraph before it as it runs goes
+    // after the batch's deletions of the paragraphs right before it, so it
+    // joins the one that stays.
+    const run =
+      item.joinsParagraphBefore === true && operation.type === "deleteBlock"
+        ? firstDeletedBefore(plan.block)
+        : undefined;
+    if (run !== undefined) return following(run, 1);
     const hasDeletedSplit = deletedSplits.has(plan.block);
     return {
       ...plan.address,
@@ -4701,10 +4730,13 @@ export class CanonicalPublicOperations {
         tracked,
         gainsFollower,
         followsInsertedTable,
+        // The paragraph before it is another when the deletion runs: the
+        // batch puts one after it, or deletes it first.
         previousGainsFollower:
           !followed &&
           typeof previousId === "string" &&
-          besideDeletions.paragraphsAfter.has(previousId),
+          (besideDeletions.paragraphsAfter.has(previousId) ||
+            besideDeletions.deleted.has(previousId)),
         refusal,
       });
       return gainsFollower && deleted.isOk()
