@@ -235,6 +235,7 @@ import { resolveHeaderFooterSelectionGeometry } from "@stll/folio-core/render-do
 import {
   CANONICAL_GAP,
   type CanonicalRefusalGround,
+  type EditorSession,
   usesCanonicalSession,
 } from "@stll/folio-core/types/canonicalCapabilities";
 import type { Footnote } from "@stll/folio-core/types/content";
@@ -331,7 +332,7 @@ export type PagedEditorProps = {
   accessibleName: string;
   /** The document model to edit; the editor reads it and never writes it. */
   document: ReadonlyDocument | null;
-  experimentalSession?: "canonical";
+  experimentalSession?: EditorSession;
   /** Who answers the undo and redo keys; the editor when unset. */
   historyShortcuts?: HistoryShortcutOwner;
   /** Adapter-owned document I/O exposed through the shared controller. */
@@ -6732,12 +6733,14 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           getCanonicalApi={getCanonicalApi}
           readCanonicalDocument={readCanonicalDocument}
           onSessionRefusal={handleSessionRefusal}
-          {...(!usesCanonicalSession(
-            experimentalSession,
-            CANONICAL_GAP.authorityRouting,
-          )
-            ? {}
-            : { experimentalSession })}
+          experimentalSession={
+            usesCanonicalSession(
+              experimentalSession,
+              CANONICAL_GAP.authorityRouting,
+            )
+              ? "canonical"
+              : "legacy"
+          }
           {...(styles !== undefined ? { styles } : {})}
           {...(_theme !== undefined ? { theme: _theme } : {})}
         />
@@ -6749,12 +6752,14 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           getCanonicalApi={getCanonicalApi}
           readCanonicalDocument={readCanonicalDocument}
           onSessionRefusal={handleSessionRefusal}
-          {...(!usesCanonicalSession(
-            experimentalSession,
-            CANONICAL_GAP.authorityRouting,
-          )
-            ? {}
-            : { experimentalSession })}
+          experimentalSession={
+            usesCanonicalSession(
+              experimentalSession,
+              CANONICAL_GAP.authorityRouting,
+            )
+              ? "canonical"
+              : "legacy"
+          }
           onDocumentChange={handleNoteDocumentChange}
           onStoryChange={handleNoteStoryTransaction}
           plugins={noteStoryPlugins}
@@ -6770,12 +6775,14 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           anonymizationTerms={anonymizationTerms}
           document={document}
           documentIdentity={documentIdentity}
-          {...(!usesCanonicalSession(
-            experimentalSession,
-            CANONICAL_GAP.authorityRouting,
-          )
-            ? {}
-            : { experimentalSession })}
+          experimentalSession={
+            usesCanonicalSession(
+              experimentalSession,
+              CANONICAL_GAP.authorityRouting,
+            )
+              ? "canonical"
+              : "legacy"
+          }
           {...(historyShortcuts === undefined ? {} : { historyShortcuts })}
           {...(onCanonicalHistory === undefined ? {} : { onCanonicalHistory })}
           {...(onCanonicalHistoryDrop === undefined

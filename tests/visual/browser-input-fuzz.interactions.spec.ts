@@ -150,7 +150,9 @@ const load = async ({
         )
       : undefined;
   if (activationRow) validateHarnessRefusalRows([activationRow]);
-  await page.goto(authority === "canonical" ? "/?session=canonical" : "/");
+  await page.goto(
+    authority === "canonical" ? "/?session=canonical" : "/?session=legacy",
+  );
   // A page that cannot mount fails here, not at the test's long fuzz budget.
   await page.waitForSelector(".layout-page", { timeout: LOAD_TIMEOUT_MS });
   await page.evaluate(() =>
@@ -697,7 +699,7 @@ const checkCanonicalTrace = async ({
 };
 
 type DefaultEditorTraceOptions = CanonicalTraceOptions;
-/** One trace through the default editor's two modes, then its review outcomes. */
+/** One trace through the legacy editor's two modes, then its review outcomes. */
 const checkDefaultEditorTrace = async ({
   page,
   source,
@@ -721,7 +723,7 @@ const checkDefaultEditorTrace = async ({
     authority: "prosemirror",
   });
   if (edited.type !== "ready" || suggested.type !== "ready")
-    throw new TypeError("The default editor unexpectedly refused activation.");
+    throw new TypeError("The legacy editor unexpectedly refused activation.");
   const accepting = await FolioDocxReviewer.fromBuffer(suggested.buffer);
   accepting.acceptAll();
   expect(
@@ -737,7 +739,7 @@ const checkDefaultEditorTrace = async ({
 };
 
 /**
- * Both modes commit through the canonical session what the default editor
+ * Both modes commit through the canonical session what the legacy editor
  * commits, but for a designed difference: there the named block commits what
  * the platform convention gives, and suggesting records the one span it
  * removed as deletions, beside the document's own changes.
