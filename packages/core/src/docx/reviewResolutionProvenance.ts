@@ -74,6 +74,8 @@ const PARAGRAPH_MARK_FIELDS = {
   // a field of another: a reader that does not know it drops only the
   // marker, and joins the paragraphs as any rejected mark.
   survivor: { type: "private", attribute: "rejectionSurvivor" },
+  // A later deletion of an added mark is its own w:del beside it.
+  deletion: { type: "ooxml" },
 } as const satisfies Record<
   RecordField<ParagraphMarkChange>,
   { type: "ooxml" } | { type: "private"; attribute: string }
