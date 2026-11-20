@@ -1745,6 +1745,8 @@ const setParagraphProps = (
       );
     const authored = authoredParagraphFormatting(next);
     const pending = paragraph.propertyChanges;
+    // Stated, not effective, properties: an explicit value still holds if the
+    // style changes, so it is not the inherited default.
     if (
       pending?.length === 1 &&
       structurallyEqual(
