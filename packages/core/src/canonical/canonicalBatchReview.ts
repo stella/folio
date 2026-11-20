@@ -195,12 +195,16 @@ export const createCanonicalBatchReview = ({
     after: after.document,
     accept,
     reject(side: "before" | "after") {
+      // Both sides give back the paragraphs the document before the batch
+      // states: a rejection rebuilds a paragraph (a pending split joined
+      // again) the same way on either side, so neither reads list
+      // indentation as its own where the other does not.
       const rejected = resolveStory({
         version: side === "before" ? before : after,
         story,
         ids: revisions(side).all,
         decision: "reject",
-        ...(side === "after" ? { restores: before.document } : {}),
+        restores: before.document,
       });
       return rejected?.type === "resolved" ? rejected.content : undefined;
     },
