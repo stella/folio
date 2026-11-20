@@ -1,5 +1,6 @@
 import type { Document, DocumentBody, Paragraph } from "../model/document";
 import { type ParagraphLocation, replaceParagraphs } from "./blocks";
+import type { planContiguousResolutionJoins } from "./contiguousResolutionJoins";
 import {
   hasMultipleParagraphPropertyChanges,
   meetsContract,
@@ -32,16 +33,8 @@ const MAX_INLINE_RESOLUTION_SPAN = 16_384;
 
 export type ResolutionInlineOp = ReplaceInlineOp | SetParagraphReviewOp;
 
-type JoinFallback = "joinShape" | "joinPlan" | "joinValidation";
-
-type JoinResult =
-  | { type: "fallback"; reason: JoinFallback }
-  | {
-      type: "planned";
-      paragraphs: Paragraph[];
-      effects: readonly DocumentEditEffects[];
-      receiverEffects: readonly ResolutionReceiverEffect[];
-    };
+type JoinResult = ReturnType<typeof planContiguousResolutionJoins>;
+type JoinFallback = Extract<JoinResult, { type: "fallback" }>["reason"];
 
 type JoinPreparation =
   | { type: "noJoins" }
@@ -49,6 +42,7 @@ type JoinPreparation =
       type: "plan";
       prepare: (view: {
         paragraphCount: number;
+        indexOf: (id: string) => number | undefined;
         paragraphAt: (index: number) => Paragraph | undefined;
       }) => JoinResult;
     };
@@ -239,19 +233,36 @@ export const tryMaterializeResolution = ({
     join.type === "plan"
       ? join.prepare({
           paragraphCount: originals.length,
+          indexOf: (id) => byId.get(idKey(id))?.index,
           paragraphAt: (index) =>
             replacements.get(index) ?? originals.at(index),
         })
       : undefined;
   if (joined?.type === "fallback") return joined;
-  const start = joined === undefined ? first : 0;
-  const stop = joined === undefined ? end : originals.length;
-  if (joined === undefined && stop - start > MAX_INLINE_RESOLUTION_SPAN)
+  const start = joined === undefined ? first : Math.min(first, joined.start);
+  const stop = joined === undefined ? end : Math.max(end, joined.end);
+  const removed = joined === undefined ? 0 : joined.end - joined.start - 1;
+  if (stop - start - removed > MAX_INLINE_RESOLUTION_SPAN)
     return fallback("wideSpan");
-  const replacement = joined?.paragraphs ?? originals.slice(start, stop);
+  let replacement: Paragraph[];
   if (joined === undefined) {
+    replacement = originals.slice(start, stop);
     for (const [index, paragraph] of replacements)
       replacement[index - start] = paragraph;
+  } else {
+    replacement = [];
+    // Keep inline work outside the join in the same physical splice. The
+    // settled chain contributes one paragraph regardless of its length.
+    for (let index = start; index < stop; index++) {
+      if (index === joined.start) {
+        replacement.push(joined.survivor);
+        index = joined.end - 1;
+      } else {
+        const current = replacements.get(index) ?? originals.at(index);
+        if (current === undefined) return fallback("paragraphList");
+        replacement.push(current);
+      }
+    }
   }
   const final = replaceParagraphs({
     document,

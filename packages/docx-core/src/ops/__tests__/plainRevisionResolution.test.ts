@@ -497,3 +497,127 @@ test("a reject chain reads the staged paragraphs without cloning the source list
     slices.mockRestore();
   }
 });
+
+test.each(["before", "after"] as const)(
+  "reject materializes one contiguous %s-insertion run amid existing paragraphs",
+  (side) => {
+    const location = "20000011";
+    const retained = (id: number): Paragraph => ({
+      type: "paragraph",
+      paraId: id.toString(16).padStart(8, "0"),
+      content: [run("untouched")],
+    });
+    const leading = Array.from({ length: 64 }, (_, index) =>
+      retained(index + 1),
+    );
+    const trailing = Array.from({ length: 64 }, (_, index) =>
+      retained(index + 129),
+    );
+    const trackedOutside = (key: string, id: number): Paragraph => ({
+      type: "paragraph",
+      paraId: key,
+      content: [
+        {
+          type: "insertion",
+          info: markInfo(id),
+          content: [run("other selected text")],
+        },
+      ],
+    });
+    const anchor: Paragraph = {
+      type: "paragraph",
+      paraId: location,
+      content: [run("existing text")],
+    };
+    const left = trackedOutside("20000012", 7);
+    const right = trackedOutside("20000013", 8);
+    const content =
+      side === "before"
+        ? [left, ...leading, anchor, ...trailing, right]
+        : [left, ...leading, ...trailing, right, anchor];
+    let document = bodyOf(content);
+    const ids = [7, 8];
+    for (let i = 0; i < 16; i++) {
+      const id = 100 + 8 * i;
+      const edit = apply(document, {
+        type: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+        story: OP_STORIES.MAIN,
+        at: { type: side, blockId: location },
+        revision: markInfo(id),
+        blocks: [
+          {
+            type: "paragraph",
+            paraId: (0x30000000 + i).toString(16),
+            content: [run("inserted")],
+          },
+        ],
+        newIds: { revision: [id + 1, id + 2, id + 3, id + 4] },
+      });
+      ids.push(...edit.revisions);
+      document = edit.document;
+    }
+    const checked = counted(document, resolveOp("reject", ids));
+    if (checked.actual.isErr()) throw checked.actual.error;
+    if (checked.expected.isErr()) throw checked.expected.error;
+    expect(checked.successful).toBe(1);
+    expect(checked.fallbacks).toEqual([]);
+    expect(checked.actualSplices).toBe(1);
+    expect(checked.generalSplices).toBeGreaterThan(16);
+    expectExact(checked.actual.value, checked.expected.value);
+    expectUndo(checked.actual.value, document);
+    expect(checked.actual.value.document.package.document.content.at(1)).toBe(
+      leading.at(0),
+    );
+
+    // Leave distant revisions pending. The one splice replaces exactly the
+    // selected mark chain, including its survivor, inside the larger body.
+    const selected = resolveOp("reject", ids.slice(2));
+    const splices = spyOn(blocks, "replaceParagraphs");
+    try {
+      apply(document, selected);
+      expect(splices).toHaveBeenCalledTimes(1);
+      const window = splices.mock.calls.at(0)?.[0];
+      expect(window?.count).toBe(17);
+      expect(window?.replacement).toHaveLength(1);
+      expect(window?.at.index).toBe(
+        side === "before" ? leading.length + 1 : content.length - 1,
+      );
+    } finally {
+      splices.mockRestore();
+    }
+
+    const options = { document, op: selected, applyOps: applyDocumentOps };
+    const materialize = spyOn(materialization, "tryMaterializeResolution");
+    try {
+      const actual = planRevisionResolution(options).unwrap();
+      materialize.mockReturnValue({ type: "fallback", reason: "joinShape" });
+      const ordinary = planRevisionResolution(options).unwrap();
+      expect(actual.receiverEffects).toHaveLength(16);
+      assertExactModel(actual.receiverEffects, ordinary.receiverEffects);
+    } finally {
+      materialize.mockRestore();
+    }
+  },
+);
+
+test("two surviving text payloads leave the join to the ordinary planner", () => {
+  const first: Paragraph = {
+    type: "paragraph",
+    paraId: "20000001",
+    content: [run("first")],
+    pPrMark: { kind: "ins", info: markInfo(1) },
+  };
+  const second: Paragraph = {
+    type: "paragraph",
+    paraId: "20000002",
+    content: [run("second")],
+  };
+  const document = bodyOf([first, second]);
+  const checked = counted(document, resolveOp("reject", [1]));
+  if (checked.actual.isErr()) throw checked.actual.error;
+  if (checked.expected.isErr()) throw checked.expected.error;
+  expect(checked.successful).toBe(0);
+  expect(checked.fallbacks).toEqual(["joinShape"]);
+  expectExact(checked.actual.value, checked.expected.value);
+  expectUndo(checked.actual.value, document);
+});

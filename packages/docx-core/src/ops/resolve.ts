@@ -8364,13 +8364,12 @@ const planSingleRecordResolution = (
         ? { type: "noJoins" }
         : {
             type: "plan",
-            prepare: ({ paragraphCount, paragraphAt }) => {
+            prepare: (view) => {
               const ends = new Map(emptiedEnds);
               return planContiguousResolutionJoins({
                 document,
                 story: op.story,
-                paragraphCount,
-                paragraphAt,
+                ...view,
                 joins,
                 // On a proven section-free main-list pair, joinOps only
                 // needs these adjacent paragraphs. Its receiver is still
