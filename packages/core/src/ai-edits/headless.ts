@@ -158,7 +158,7 @@ import {
   suggestionOwnersByRevision,
 } from "../prosemirror/commands/comments";
 import {
-  allocateCommentId,
+  type CommentIdAllocator,
   createCommentIdAllocator,
   seedCommentAllocator,
 } from "../prosemirror/commentIdAllocator";
@@ -1662,6 +1662,8 @@ export class FolioDocxReviewer {
    */
   private readonly resolvedOverrides = new Map<number, boolean>();
   private readonly engine: FolioReviewerEngine;
+  /** This document's comment ids: loaded, created, and never reissued. */
+  private readonly commentIds: CommentIdAllocator;
 
   private constructor(args: {
     baseDocument: Document;
@@ -1672,6 +1674,8 @@ export class FolioDocxReviewer {
     loadedMainCommentIds?: ReadonlySet<number>;
     /** Paragraph ids minted when the document was opened. */
     positionalParaIds?: ReadonlySet<string>;
+    /** The comment ids of the document this reviewer copies. */
+    commentIds?: CommentIdAllocator;
   }) {
     this.loadedDocument = args.baseDocument;
     this.positionalParaIds = args.positionalParaIds ?? new Set();
@@ -1682,8 +1686,9 @@ export class FolioDocxReviewer {
       args.engine.type === "legacy"
         ? args.engine
         : this.canonicalEngine(args.engine.session);
+    this.commentIds = args.commentIds?.clone() ?? createCommentIdAllocator();
     seedCommentAllocator(
-      createCommentIdAllocator(),
+      this.commentIds,
       args.baseDocument.package.document.comments,
       {
         state: args.state,
@@ -2268,6 +2273,7 @@ export class FolioDocxReviewer {
       author: this.author,
       engine: { type: "legacy" },
       loadedMainCommentIds: this.loadedMainCommentIds,
+      commentIds: this.commentIds,
     });
     copy.restoreReviewerState(snapshot);
     copy.pendingSuggestions = this.pendingSuggestions.clone();
@@ -3860,11 +3866,16 @@ export class FolioDocxReviewer {
     if (this.engine.type === "canonical")
       return this.replyOnSession(this.engine.session, parentId, input);
     const existing = this.currentCommentDefinitions();
-    const reply = createReply(existing, parentId, {
-      author: input.author ?? this.author,
-      text: input.text,
-      ...(input.initials !== undefined ? { initials: input.initials } : {}),
-      ...(input.date !== undefined && { date: input.date }),
+    const reply = createReply({
+      comments: existing,
+      parentCommentId: parentId,
+      input: {
+        author: input.author ?? this.author,
+        text: input.text,
+        ...(input.initials !== undefined ? { initials: input.initials } : {}),
+        ...(input.date !== undefined && { date: input.date }),
+      },
+      commentIds: this.commentIds,
     });
     if (!reply) {
       return null;
@@ -6200,7 +6211,7 @@ export class FolioDocxReviewer {
 
   /** Allocate outside every parsed or newly-created comment and reply id. */
   private nextCommentId(): number {
-    return allocateCommentId();
+    return this.commentIds.next();
   }
 
   /**

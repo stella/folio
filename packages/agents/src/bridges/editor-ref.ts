@@ -1,6 +1,7 @@
 import type { FolioUndefinedReferencePolicy } from "@stll/folio-core/ai-edits/apply";
 import type { FolioCommentAnchor } from "@stll/folio-core/ai-edits/read";
 import { createReply } from "@stll/folio-core/docx/replyToComment";
+import { createCommentIdAllocator } from "@stll/folio-core/prosemirror/commentIdAllocator";
 import type {
   FolioAIEditApplyMode,
   FolioAIEditApplyResult,
@@ -188,7 +189,13 @@ export const createEditorRefBridge = (
 
   const replyToDecodedComment = (commentId: number, text: string): boolean => {
     const comments = getComments();
-    const reply = createReply(comments, commentId, { author, text });
+    // The host's comments are the document's: the reply takes the next id.
+    const reply = createReply({
+      comments,
+      parentCommentId: commentId,
+      input: { author, text },
+      commentIds: createCommentIdAllocator(),
+    });
     if (!reply) {
       return false;
     }

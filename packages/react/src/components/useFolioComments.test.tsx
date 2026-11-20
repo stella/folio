@@ -12,7 +12,6 @@ import type { Comment } from "@stll/folio-core/types/content";
 import type { Document } from "@stll/folio-core/types/document";
 import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
 
-import { allocateCommentId, createComment } from "./commentsHelpers";
 import { useFolioComments } from "./useFolioComments";
 
 // React only silences its "not wrapped in act" warning when this flag is set.
@@ -46,6 +45,8 @@ type Harness = {
 
 type MountOptions = {
   doc?: Document;
+  /** A document the host may swap, read on every render. */
+  loadedDoc?: { current: Document };
   autoOpenReviewSidebar?: boolean;
   commentsProp?: Comment[];
   controlledComments?: { current: Comment[] };
@@ -66,6 +67,7 @@ const makeComment = (id: number): Comment => ({
 
 const mount = ({
   doc,
+  loadedDoc,
   autoOpenReviewSidebar = false,
   commentsProp,
   controlledComments,
@@ -83,7 +85,7 @@ const mount = ({
   const Host = () => {
     const [, setTick] = useState(0);
     const hook = useFolioComments({
-      doc: doc ?? null,
+      doc: loadedDoc?.current ?? doc ?? null,
       autoOpenReviewSidebar,
       anchorPositions: new Map(),
       editorContentRef: { current: editorContent ?? null },
@@ -153,19 +155,23 @@ describe("useFolioComments.setComments", () => {
   test.each(["loaded", "controlled"] as const)(
     "reserves %s comment IDs before creating a comment",
     (source) => {
-      const existingId = allocateCommentId() + 500;
+      const existingId = 500;
       const existing = makeComment(existingId);
       const doc = createEmptyDocument();
       doc.package.document.comments = [existing];
-      mount(source === "loaded" ? { doc } : { commentsProp: [existing] });
-      expect(createComment("New note", "Reviewer").id).toBe(existingId + 1);
+      const harness = mount(
+        source === "loaded" ? { doc } : { commentsProp: [existing] },
+      );
+      expect(harness.hook.createComment("New note", "Reviewer").id).toBe(
+        existingId + 1,
+      );
     },
   );
 
   test.each(["loaded", "controlled"] as const)(
     "reserves %s IDs before child layout callbacks",
     (source) => {
-      const existingId = allocateCommentId() + 500;
+      const existingId = 500;
       const existing = makeComment(existingId);
       const doc = createEmptyDocument();
       doc.package.document.comments = [existing];
@@ -182,12 +188,33 @@ describe("useFolioComments.setComments", () => {
 
   test("reserves IDs synchronously when adopting comments through the setter", () => {
     const harness = mount();
-    const existingId = allocateCommentId() + 500;
+    const existingId = 500;
     act(() => {
       harness.hook.setComments([makeComment(existingId)]);
-      expect(createComment("New note", "Reviewer").id).toBe(existingId + 1);
+      expect(harness.hook.createComment("New note", "Reviewer").id).toBe(
+        existingId + 1,
+      );
     });
   });
+
+  test("a newly loaded document allocates from its own comments", () => {
+    const first = createEmptyDocument();
+    first.package.document.comments = [makeComment(900)];
+    const loadedDoc = { current: first };
+    const harness = mount({ loadedDoc });
+    expect(harness.hook.createComment("Note", "Reviewer").id).toBe(901);
+    const second = createEmptyDocument();
+    second.package.document.comments = [makeComment(3)];
+    // The loader replaces the document and forgets its list together.
+    act(() => {
+      loadedDoc.current = second;
+      harness.hook.resetLoadedComments();
+      harness.hook.resetComments();
+    });
+    expect(harness.hook.comments.map(({ id }) => id)).toEqual([3]);
+    expect(harness.hook.createComment("Note", "Reviewer").id).toBe(4);
+  });
+
   test("uncontrolled: a mutation survives an unrelated host rerender", () => {
     const changes: Comment[][] = [];
     const harness = mount({ onCommentsChange: (next) => changes.push(next) });

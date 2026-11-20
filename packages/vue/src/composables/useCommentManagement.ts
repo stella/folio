@@ -123,7 +123,8 @@ export type UseCommentManagementReturn = {
 export function useCommentManagement(
   options: UseCommentManagementOptions,
 ): UseCommentManagementReturn {
-  const allocator = createCommentIdAllocator();
+  // The loaded document's comment ids; each load starts its own.
+  let allocator = createCommentIdAllocator();
   const internalComments = ref<Comment[]>([]);
   // Dirty flag for comment-only edits (see the return type doc). Not set inside
   // `setComments`, which is also the load-seed path — only the user-driven
@@ -321,6 +322,7 @@ export function useCommentManagement(
     // `commentsDirtyRef` on document reset). Cleared unconditionally so a
     // controlled host's swap resets the flag too.
     clearCommentsDirty();
+    allocator = createCommentIdAllocator();
     if (canonicalComments.value !== null) return;
     if (isControlled.value) return;
     const bodyComments = options.getDocument()?.package.document.comments;

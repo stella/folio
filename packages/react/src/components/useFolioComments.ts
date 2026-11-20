@@ -24,6 +24,10 @@ import type { EditorView } from "prosemirror-view";
 
 import { cloneCommentsWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
 import {
+  type CommentIdAllocator,
+  createCommentIdAllocator,
+} from "@stll/folio-core/prosemirror/commentIdAllocator";
+import {
   type CommentRecords,
   commentRecordsOf,
   editCommentRecords,
@@ -48,7 +52,6 @@ import {
   getCommentAuthorKey,
   getCommentParentId,
   PENDING_COMMENT_ID,
-  seedCommentIdAbove,
 } from "./commentsHelpers";
 
 /**
@@ -231,15 +234,33 @@ export function useFolioComments({
   );
   const comments = sanitizedCommentsProp ?? records ?? internalComments;
 
+  // The loaded document's comment ids; a newly loaded document starts its own.
+  const commentIdsRef = useRef<{
+    doc: ReadonlyDocument | null;
+    ids: CommentIdAllocator;
+  } | null>(null);
+  const documentCommentIds = useCallback((): CommentIdAllocator => {
+    const held = commentIdsRef.current;
+    if (held?.doc === doc) return held.ids;
+    const ids = createCommentIdAllocator();
+    commentIdsRef.current = { doc, ids };
+    return ids;
+  }, [doc]);
+  const documentCommentIdsRef = useRef(documentCommentIds);
+  useLayoutEffect(() => {
+    documentCommentIdsRef.current = documentCommentIds;
+  }, [documentCommentIds]);
+
   // Reserve before browser events can mint comments, including controlled replies.
   useLayoutEffect(() => {
+    const ids = documentCommentIds();
     for (const { id } of doc?.package.document.comments ?? []) {
-      seedCommentIdAbove(id);
+      ids.seedAbove(id);
     }
     for (const { id } of comments) {
-      seedCommentIdAbove(id);
+      ids.seedAbove(id);
     }
-  }, [comments, doc]);
+  }, [comments, doc, documentCommentIds]);
 
   const commentsDirtyRef = useRef(false);
   const getCommentsDirty = useCallback(
@@ -273,7 +294,8 @@ export function useFolioComments({
     return subscribeCommentRecords(bodyView, (next, origin) => {
       if (next === null) return;
       const list = listOf(next);
-      for (const { id } of list) seedCommentIdAbove(id);
+      const ids = documentCommentIdsRef.current();
+      for (const { id } of list) ids.seedAbove(id);
       if (commentsModeRef.current === "uncontrolled")
         commentsRef.current = list;
       if (origin === "sync") return;
@@ -312,15 +334,21 @@ export function useFolioComments({
 
   const createComment = useCallback(
     (text: string, author: string, parentId?: number): Comment => {
+      const commentIds = documentCommentIds();
       for (const { id } of doc?.package.document.comments ?? []) {
-        seedCommentIdAbove(id);
+        commentIds.seedAbove(id);
       }
       for (const { id } of commentsRef.current) {
-        seedCommentIdAbove(id);
+        commentIds.seedAbove(id);
       }
-      return buildComment(text, author, parentId);
+      return buildComment({
+        commentIds,
+        text,
+        author,
+        ...(parentId !== undefined && { parentId }),
+      });
     },
-    [doc],
+    [doc, documentCommentIds],
   );
 
   const setComments = useCallback(
@@ -343,13 +371,15 @@ export function useFolioComments({
       switch (commentsMode) {
         case "controlled":
           break;
-        case "uncontrolled":
+        case "uncontrolled": {
+          const ids = documentCommentIdsRef.current();
           for (const { id } of resolved) {
-            seedCommentIdAbove(id);
+            ids.seedAbove(id);
           }
           commentsRef.current = resolved;
           setInternalComments(resolved);
           break;
+        }
         default: {
           const unreachable: never = commentsMode;
           return unreachable;

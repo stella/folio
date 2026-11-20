@@ -12,11 +12,11 @@
 import { setDocumentBodyComments } from "@stll/docx-core/model";
 
 import {
-  allocateCommentId,
-  seedCommentIdAbove,
+  type CommentIdAllocator,
+  createCommentIdAllocator,
 } from "../prosemirror/commentIdAllocator";
 import type { Comment, Document } from "../types/document";
-import { generateHexId } from "../utils/hexId";
+import { deterministicHexId } from "../utils/hexId";
 import { commentTextParagraph } from "./commentTextParagraph";
 
 export type CreateCommentReplyInput = {
@@ -39,10 +39,16 @@ const usedParaIds = (comments: readonly Comment[]): Set<string> => {
   return ids;
 };
 
-const freshParaId = (used: Set<string>): string => {
-  let id = generateHexId();
+/**
+ * A paragraph id no comment paragraph holds, derived from `seed`, so the same
+ * reply to the same comments gets the same id.
+ */
+const freshParaId = (used: Set<string>, seed: string): string => {
+  let attempt = 0;
+  let id = deterministicHexId(seed);
   while (used.has(id.toUpperCase())) {
-    id = generateHexId();
+    attempt += 1;
+    id = deterministicHexId(`${seed}:${String(attempt)}`);
   }
   used.add(id.toUpperCase());
   return id;
@@ -58,11 +64,23 @@ const freshParaId = (used: Set<string>): string => {
  * cannot anchor a thread. A reply to a reply re-parents onto the same thread as
  * the target (Word threads are flat: every reply links to the root).
  */
-export const createReply = (
-  comments: readonly Comment[],
-  parentCommentId: number,
-  input: CreateCommentReplyInput,
-): Comment | null => {
+export type CreateReplyOptions = {
+  comments: readonly Comment[];
+  parentCommentId: number;
+  input: CreateCommentReplyInput;
+  /**
+   * The document's comment ids. The reply's id is the next of them, above
+   * every comment in `comments`.
+   */
+  commentIds: CommentIdAllocator;
+};
+
+export const createReply = ({
+  comments,
+  parentCommentId,
+  input,
+  commentIds,
+}: CreateReplyOptions): Comment | null => {
   const parent = comments.find((comment) => comment.id === parentCommentId);
   if (!parent) {
     return null;
@@ -82,20 +100,24 @@ export const createReply = (
   }
 
   for (const { id } of comments) {
-    seedCommentIdAbove(id);
+    commentIds.seedAbove(id);
   }
   const used = usedParaIds(comments);
   // The root's last paragraph must carry a paraId so the reply can reference it
   // via `w15:paraIdParent`; a doc authored without paraIds gets one now.
   if (!rootLastParagraph.paraId) {
-    rootLastParagraph.paraId = freshParaId(used);
+    rootLastParagraph.paraId = freshParaId(
+      used,
+      `comment:${String(threadRootId)}`,
+    );
   }
 
+  const id = commentIds.next();
   const replyParagraph = commentTextParagraph(input.text);
-  replyParagraph.paraId = freshParaId(used);
+  replyParagraph.paraId = freshParaId(used, `comment:${String(id)}`);
 
   return {
-    id: allocateCommentId(),
+    id,
     author: input.author,
     date: input.date ?? new Date().toISOString(),
     parentId: threadRootId,
@@ -116,7 +138,13 @@ export const replyToComment = (
   input: CreateCommentReplyInput,
 ): Comment | null => {
   const comments = doc.package.document.comments ?? [];
-  const reply = createReply(comments, parentCommentId, input);
+  // The document's comments are its comment ids: the reply takes the next.
+  const reply = createReply({
+    comments,
+    parentCommentId,
+    input,
+    commentIds: createCommentIdAllocator(),
+  });
   if (!reply) {
     return null;
   }
