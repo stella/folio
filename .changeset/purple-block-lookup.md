@@ -2,4 +2,4 @@
 "@stll/docx-core": patch
 ---
 
-Use indexed paragraph lookups to replace blocks, including joins during tracked change resolution.
+Reuse indexed paragraph lookups and skip identity collision scans when tracked change resolution leaves no incoming records.
