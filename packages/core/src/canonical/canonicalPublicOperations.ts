@@ -1354,18 +1354,29 @@ const deletionIntentsAsItRuns = (
   });
 };
 
+type MergeIntentsAsItRunsOptions = {
+  document: Document;
+  story: OpStory;
+  intents: readonly EditorIntent[];
+  mode: FolioDocumentOperationBatch["mode"];
+};
+
 /**
- * A direct merge's join bound to the paragraph after the first one in
- * `document`, the batch as it stands when the merge runs: a paragraph the
- * batch deleted first is no longer there, so the merge joins across it to
- * the paragraph that now follows, as merging after that deletion does.
- * `undefined` when no paragraph follows any more.
+ * A merge's intents as the batch stands in `document` when the merge runs.
+ * The separator goes in at the first paragraph's end as it now stands: an
+ * edit of that paragraph the batch ran first, a comment's reference among
+ * them, may have changed its length. Direct, the join also binds to the
+ * paragraph that now follows: a paragraph the batch deleted first is no
+ * longer there, so the merge joins across it, as merging after that deletion
+ * does; `undefined` when no paragraph follows any more. Tracked, a deleted
+ * paragraph stays, and the join keeps it.
  */
-const mergeIntentsAsItRuns = (
-  document: Document,
-  story: OpStory,
-  intents: readonly EditorIntent[],
-): readonly EditorIntent[] | undefined => {
+const mergeIntentsAsItRuns = ({
+  document,
+  story,
+  intents,
+  mode,
+}: MergeIntentsAsItRunsOptions): readonly EditorIntent[] | undefined => {
   const join = intents.find(
     (intent): intent is Extract<EditorIntent, { type: "joinParagraphs" }> =>
       intent.type === "joinParagraphs",
@@ -1378,29 +1389,33 @@ const mergeIntentsAsItRuns = (
     ({ paragraph }) => idKey(paragraph.paraId ?? "") === key,
   );
   const here = locations[at];
+  if (here === undefined) return mode === "direct" ? undefined : intents;
+  const end = paragraphLength(here.paragraph);
+  const separatorAtEnd: EditorIntent[] = [];
+  for (const intent of intents) {
+    separatorAtEnd.push(
+      intent.type === "replaceText" &&
+        idKey(intent.from.blockId) === key &&
+        intent.from.offset === intent.to.offset
+        ? {
+            ...intent,
+            from: { ...intent.from, offset: end },
+            to: { ...intent.to, offset: end },
+          }
+        : intent,
+    );
+  }
+  if (mode !== "direct") return separatorAtEnd;
   const next = locations[at + 1];
   const follows =
-    here !== undefined &&
     next !== undefined &&
     here.index + 1 === next.index &&
     JSON.stringify(here.list) === JSON.stringify(next.list);
   const nextId = follows ? next.paragraph.paraId : undefined;
-  if (here === undefined || nextId === undefined) return undefined;
+  if (nextId === undefined) return undefined;
   const was = idKey(join.nextBlockId);
-  // The separator goes in at the first paragraph's end as it now stands: an
-  // edit of that paragraph the batch ran first may have changed its length.
-  const end = paragraphLength(here.paragraph);
-  return intents.map((intent) => {
+  const boundToNext = (intent: EditorIntent): EditorIntent => {
     switch (intent.type) {
-      case "replaceText":
-        return idKey(intent.from.blockId) === key &&
-          intent.from.offset === intent.to.offset
-          ? {
-              ...intent,
-              from: { ...intent.from, offset: end },
-              to: { ...intent.to, offset: end },
-            }
-          : intent;
       case "joinParagraphs":
         return idKey(intent.nextBlockId) === was
           ? { ...intent, nextBlockId: nextId }
@@ -1421,7 +1436,8 @@ const mergeIntentsAsItRuns = (
       default:
         return intent;
     }
-  });
+  };
+  return separatorAtEnd.map(boundToNext);
 };
 
 type InsertionIntentsAsItRunsOptions = {
@@ -3362,8 +3378,13 @@ export class CanonicalPublicOperations {
           ? deletionIntentsAsItRuns(sourceDocument, story, inserting)
           : inserting;
       const joining =
-        operation.type === "mergeBlockWithNext" && batch.mode === "direct"
-          ? mergeIntentsAsItRuns(sourceDocument, story, deleting)
+        operation.type === "mergeBlockWithNext"
+          ? mergeIntentsAsItRuns({
+              document: sourceDocument,
+              story,
+              intents: deleting,
+              mode: batch.mode,
+            })
           : deleting;
       if (joining === undefined)
         return declined({
