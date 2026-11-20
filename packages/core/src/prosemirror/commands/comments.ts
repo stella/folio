@@ -41,6 +41,9 @@ import {
   expectFieldAttrs,
   expectParagraphAttrs,
   expectRunPropertyChangeMarkAttrs,
+  expectTableAttrs,
+  expectTableCellAttrs,
+  expectTableRowAttrs,
   expectTrackedChangeMarkAttrs,
 } from "../attrs";
 import {
@@ -2366,6 +2369,26 @@ const readSuggestedParagraphPropertyChange = (
   return { suggestionId: change.info.suggestionId, revisionId: change.info.id };
 };
 
+/**
+ * The property changes a table, row or cell carries as the model holds them:
+ * a pending suggestion's names its suggestion in its info.
+ */
+const tablePropertyChangesOf = (
+  node: PMNode,
+): readonly { info: { id: number; suggestionId?: string } }[] => {
+  switch (node.type.name) {
+    case "table":
+      return expectTableAttrs(node).tblPrChange ?? [];
+    case "tableRow":
+      return expectTableRowAttrs(node).trPrChange ?? [];
+    case "tableCell":
+    case "tableHeader":
+      return expectTableCellAttrs(node).tcPrChange ?? [];
+    default:
+      return [];
+  }
+};
+
 const readSuggestedParagraphMark = (
   node: PMNode,
 ): {
@@ -2509,6 +2532,13 @@ const collectSuggestions = (
       entry.kinds.add(structural.kind);
       entry.revisionIds.add(structural.revisionId);
     }
+    for (const { info } of tablePropertyChangesOf(node)) {
+      if (info.suggestionId === undefined) continue;
+      const entry = entryFor(info.suggestionId);
+      entry.segments.push({ from: pos, to: pos + node.nodeSize });
+      entry.kinds.add("formatting");
+      entry.revisionIds.add(info.id);
+    }
     if (node.type.name === "paragraph") {
       const paragraphMark = readSuggestedParagraphMark(node);
       if (paragraphMark) {
@@ -2542,6 +2572,22 @@ const collectSuggestions = (
         entry.kinds.add("comment");
         entry.commentIds.add(expectCommentMarkAttrs(mark).commentId);
         continue;
+      }
+      if (mark.type.name === "insertion" || mark.type.name === "deletion") {
+        // Outer revisions a nested one carries belong to their own
+        // suggestions, whatever the nested revision belongs to.
+        for (const ancestor of expectTrackedChangeMarkAttrs(mark)
+          ._docxRevisionAncestors ?? []) {
+          if (ancestor.suggestionId === undefined) continue;
+          const entry = entryFor(ancestor.suggestionId);
+          entry.segments.push({ from: pos, to: pos + node.nodeSize });
+          entry.kinds.add(
+            ancestor.type === "insertion" || ancestor.type === "moveTo"
+              ? "insertion"
+              : "deletion",
+          );
+          entry.revisionIds.add(ancestor.revisionId);
+        }
       }
       if (!isSuggestionMark(mark)) {
         continue;
