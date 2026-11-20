@@ -52,7 +52,11 @@ import {
   type FolioDocumentStoryHandle,
 } from "@stll/folio-core/server";
 
-import { pendingJoinTargets, sequentialGroups } from "./batch-replay-order.ts";
+import {
+  blanksGoingWhole,
+  pendingJoinTargets,
+  sequentialGroups,
+} from "./batch-replay-order.ts";
 import { openReviewer } from "./documents.ts";
 import {
   projectCommentIdentities,
@@ -64,7 +68,12 @@ import { holdsPendingSuggestions } from "./invariants.ts";
 import type { Finding } from "./known-issues.ts";
 import { comparableMarkdown } from "./markdown-comparison.ts";
 import type { Mode } from "./operations.ts";
-import { intentResolutionScope, resolvedState, type Row } from "./oracle.ts";
+import {
+  intentResolutionScope,
+  markDeletedIds,
+  resolvedState,
+  type Row,
+} from "./oracle.ts";
 import { createParagraphIdentityRemapping } from "./paragraph-identity.ts";
 import { createRandom, type Random } from "./random.ts";
 import { type Relation, RELATIONS } from "./relation-contract.ts";
@@ -1313,14 +1322,9 @@ export const startRelations = async ({
     const listsBefore = definedListIds(pre);
     const problems: string[] = [];
     // A paragraph whose mark is pending deletion joins the next one once
-    // accepted; the batch places a block put after it after that one.
-    const joinSources = new Set(
-      pre
-        .getChanges()
-        .flatMap(({ type, blockId }) =>
-          type === "paragraphMarkDeleted" && blockId !== null ? [blockId] : [],
-        ),
-    );
+    // accepted; the batch places a block put after it after that one. A blank
+    // one goes whole, and its two sides are one gap.
+    const joinSources = markDeletedIds(pre);
     for (const group of sequentialGroups({
       applied,
       preRows,
@@ -1329,6 +1333,7 @@ export const startRelations = async ({
         batchMode === "suggested"
           ? new Map()
           : pendingJoinTargets(preRows, joinSources),
+      goWhole: blanksGoingWhole(preRows, joinSources),
     })) {
       const snapshot =
         story.type === "main"

@@ -82,6 +82,34 @@ const absentAnchorGap = (
   return preRows.length;
 };
 
+/**
+ * The paragraphs among `rows`, outside tables, that accepting removes whole:
+ * a reader lists one as a blank block, and its own mark is pending deletion
+ * (`markDeleted`). The two sides of such paragraphs are one gap, as the
+ * engine places blocks, unless words before them run on through them: the
+ * paragraph before the blank ones has a mark pending deletion too, and the
+ * join stops the gap. A cell paragraph stays: the gap is the table's.
+ */
+export const blanksGoingWhole = (
+  rows: readonly Row[],
+  markDeleted: ReadonlySet<string>,
+): Set<string> => {
+  const goWhole = new Set<string>();
+  let joinRunsOn = false;
+  for (const { id, text, table } of rows) {
+    if (table !== undefined) {
+      joinRunsOn = false;
+      continue;
+    }
+    if (text === "" && markDeleted.has(id)) {
+      if (!joinRunsOn) goWhole.add(id);
+      continue;
+    }
+    joinRunsOn = markDeleted.has(id);
+  }
+  return goWhole;
+};
+
 const placement = (
   operation: AnyOperation,
   preRows: readonly Row[],
@@ -207,6 +235,8 @@ type SequentialGroupsOptions = {
   mode: Mode;
   /** The paragraph each pending join runs into (`pendingJoinTargets`). */
   joinsInto?: ReadonlyMap<string, PendingJoinTarget>;
+  /** Blank paragraphs of `preRows` accepting removes whole (`blanksGoingWhole`). */
+  goWhole?: ReadonlySet<string>;
 };
 
 export const sequentialGroups = ({
@@ -215,7 +245,42 @@ export const sequentialGroups = ({
   liveRows = preRows,
   mode,
   joinsInto = new Map(),
+  goWhole = new Set(),
 }: SequentialGroupsOptions): AnyOperation[][] => {
+  /**
+   * Where the gap at `at` starts: before the blank paragraphs right before
+   * it that accepting removes whole.
+   */
+  const gapStart = (at: number): number => {
+    let start = at;
+    while (start > 0 && goWhole.has(preRows[start - 1]?.id ?? "")) start -= 1;
+    return start;
+  };
+  /**
+   * The gap an insertion lands in, which decides the run it replays in. The
+   * two sides of blank paragraphs accepting removes whole are one gap: a
+   * block put before the paragraph after them lands before them, beside one
+   * put after the paragraph before them, in the order the batch names them.
+   * One put after such a blank paragraph runs with them too: one at a time
+   * ahead of a block put before the paragraphs after it, it would stop that
+   * block's walk back across the blanks.
+   */
+  const insertionGapKey = (operation: AnyOperation): number => {
+    const [block, inside, offset] = placement(
+      operation,
+      preRows,
+      joinsInto,
+      liveRows,
+    );
+    if (inside !== 0)
+      return block * 1_000_000_000 + inside * 100_000_000 + offset;
+    const id = blockIdOf(operation);
+    const from =
+      goWhole.has(id) && !insertsBefore(operation)
+        ? preRows.findIndex((row) => row.id === id)
+        : block;
+    return gapStart(from) * 1_000_000_000 + offset;
+  };
   const indexed = applied.map((operation, index) => ({ operation, index }));
   const deleted = new Set(
     applied
@@ -397,16 +462,8 @@ export const sequentialGroups = ({
   const inputOrder = new Map(applied.map(({ id }, index) => [id, index]));
   const groups = groupInsertionRuns(
     rest.map(({ operation }) => operation),
-    (operation) => {
-      if (!INSERTIONS.has(operation.type)) return null;
-      const [block, inside, offset] = placement(
-        operation,
-        preRows,
-        joinsInto,
-        liveRows,
-      );
-      return block * 1_000_000_000 + inside * 100_000_000 + offset;
-    },
+    (operation) =>
+      INSERTIONS.has(operation.type) ? insertionGapKey(operation) : null,
     (operation) => operation.type === "setBlockParagraphProperties",
   ).map((group) =>
     group.toSorted(
