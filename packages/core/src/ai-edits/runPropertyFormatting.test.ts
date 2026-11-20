@@ -337,7 +337,7 @@ const applyTrackedFormatting = async ({
 }: ApplyTrackedFormattingOptions): Promise<ArrayBuffer> => {
   const reviewer = await FolioDocxReviewer.fromBuffer(
     await createFormattingBaseline({ formatting: baselineFormatting }),
-    { author: "Reviewer" },
+    { session: "legacy", author: "Reviewer" },
   );
   const block = reviewer.snapshot().blocks.at(0);
   const range = block
@@ -614,6 +614,7 @@ describe("tracked run formatting", () => {
   test("public snapshots distinguish direct formatting from paragraph and character styles", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await createSnapshotFormattingProvenanceDocument(),
+      { session: "legacy" },
     );
 
     expectSnapshotFormattingProvenance(reviewer.snapshot());
@@ -622,9 +623,11 @@ describe("tracked run formatting", () => {
   test("public snapshot formatting provenance survives save and reopen", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await createSnapshotFormattingProvenanceDocument(),
+      { session: "legacy" },
     );
     const reopened = await FolioDocxReviewer.fromBuffer(
       await reviewer.toBuffer(),
+      { session: "legacy" },
     );
 
     expectSnapshotFormattingProvenance(reopened.snapshot());
@@ -633,6 +636,7 @@ describe("tracked run formatting", () => {
   test("direct formatting authors off and clearing restores inherited formatting", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await createSnapshotFormattingProvenanceDocument(),
+      { session: "legacy" },
     );
     const inherited = reviewer
       .snapshot()
@@ -667,7 +671,9 @@ describe("tracked run formatting", () => {
     );
     expect(authoredOff.skipped).toEqual([]);
     const offBuffer = await reviewer.toBuffer();
-    const reopenedOff = await FolioDocxReviewer.fromBuffer(offBuffer);
+    const reopenedOff = await FolioDocxReviewer.fromBuffer(offBuffer, {
+      session: "legacy",
+    });
     const offBlock = reopenedOff
       .snapshot()
       .blocks.find(({ text }) => text === "paragraph style inherited");
@@ -706,6 +712,7 @@ describe("tracked run formatting", () => {
     expect(cleared.skipped).toEqual([]);
     const reopenedCleared = await FolioDocxReviewer.fromBuffer(
       await reopenedOff.toBuffer(),
+      { session: "legacy" },
     );
     const clearedRun = reopenedCleared
       .snapshot()
@@ -718,6 +725,7 @@ describe("tracked run formatting", () => {
   test("snapshot preserves same-valued direct font properties", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await createSameValuedDirectFormattingDocument(),
+      { session: "legacy" },
     );
 
     expect(reviewer.snapshot().blocks.at(0)?.previewRuns).toEqual([
@@ -744,6 +752,7 @@ describe("tracked run formatting", () => {
   test("snapshot does not promote paragraph font properties beside direct bold", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await createParagraphFontWithDirectBoldDocument(),
+      { session: "legacy" },
     );
 
     expect(
@@ -756,7 +765,7 @@ describe("tracked run formatting", () => {
   test("tracks same-valued inherited font properties as new direct formatting", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await createSameValuedDirectFormattingDocument(),
-      { author: "Reviewer" },
+      { session: "legacy", author: "Reviewer" },
     );
     const block = reviewer.snapshot().blocks.at(0);
     const range = block
@@ -804,7 +813,7 @@ describe("tracked run formatting", () => {
   test("clears only direct font properties in a mixed inherited range", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await createSameValuedDirectFormattingDocument(),
-      { author: "Reviewer" },
+      { session: "legacy", author: "Reviewer" },
     );
     const block = reviewer.snapshot().blocks.at(0);
     const range = block
@@ -856,7 +865,9 @@ describe("tracked run formatting", () => {
     expect(trackedXml).toContain("<w:rPrChange ");
     expect(trackedXml).toContain("<w:b/>");
 
-    const accepting = await FolioDocxReviewer.fromBuffer(tracked);
+    const accepting = await FolioDocxReviewer.fromBuffer(tracked, {
+      session: "legacy",
+    });
     const acceptedChange = accepting
       .getChanges()
       .find(({ type }) => type === "formatting");
@@ -868,7 +879,9 @@ describe("tracked run formatting", () => {
     expect(acceptedXml).not.toContain("<w:rPrChange ");
     expect(acceptedXml).toContain("<w:b/>");
 
-    const rejecting = await FolioDocxReviewer.fromBuffer(tracked);
+    const rejecting = await FolioDocxReviewer.fromBuffer(tracked, {
+      session: "legacy",
+    });
     const rejectedChange = rejecting
       .getChanges()
       .find(({ type }) => type === "formatting");
@@ -884,9 +897,7 @@ describe("tracked run formatting", () => {
   test("never serializes two unresolved formatting revisions on one run", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await createFormattingBaseline(),
-      {
-        author: "Reviewer",
-      },
+      { session: "legacy", author: "Reviewer" },
     );
     const block = reviewer.snapshot().blocks.at(0);
     const range = block
@@ -924,13 +935,17 @@ describe("tracked run formatting", () => {
     expect(trackedXml).toContain("<w:i/>");
     expect(trackedXml).not.toContain("<w:b/>");
 
-    const accepting = await FolioDocxReviewer.fromBuffer(tracked);
+    const accepting = await FolioDocxReviewer.fromBuffer(tracked, {
+      session: "legacy",
+    });
     accepting.acceptAll();
     const acceptedXml = await documentXml(await accepting.toBuffer());
     expect(acceptedXml).not.toContain("<w:rPrChange ");
     expect(acceptedXml).toContain("<w:i/>");
 
-    const rejecting = await FolioDocxReviewer.fromBuffer(tracked);
+    const rejecting = await FolioDocxReviewer.fromBuffer(tracked, {
+      session: "legacy",
+    });
     rejecting.rejectAll();
     const rejectedXml = await documentXml(await rejecting.toBuffer());
     expect(rejectedXml).not.toContain("<w:rPrChange ");
@@ -942,6 +957,7 @@ describe("tracked run formatting", () => {
       formatting: { highlight: "yellow" },
     });
     const first = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
       author: "Reviewer",
     });
     const firstBlock = first.snapshot().blocks.at(0);
@@ -978,6 +994,7 @@ describe("tracked run formatting", () => {
 
     const tracked = await first.toBuffer();
     const reopened = await FolioDocxReviewer.fromBuffer(tracked, {
+      session: "legacy",
       author: "Reviewer",
     });
     const beforeRefusal = await reopened.toBuffer();
@@ -1060,10 +1077,13 @@ describe("tracked run formatting", () => {
 
     const accepting = await FolioDocxReviewer.fromBuffer(
       await reopened.toBuffer(),
+      { session: "legacy" },
     );
     accepting.acceptAll();
     const acceptedBuffer = await accepting.toBuffer();
-    const accepted = await FolioDocxReviewer.fromBuffer(acceptedBuffer);
+    const accepted = await FolioDocxReviewer.fromBuffer(acceptedBuffer, {
+      session: "legacy",
+    });
     const acceptedXml = await documentXml(acceptedBuffer);
     expect(acceptedXml).toContain("<w:b/>");
     expect(acceptedXml).toContain("<w:i/>");
@@ -1072,10 +1092,13 @@ describe("tracked run formatting", () => {
 
     const rejecting = await FolioDocxReviewer.fromBuffer(
       await reopened.toBuffer(),
+      { session: "legacy" },
     );
     rejecting.rejectAll();
     const rejectedBuffer = await rejecting.toBuffer();
-    const rejected = await FolioDocxReviewer.fromBuffer(rejectedBuffer);
+    const rejected = await FolioDocxReviewer.fromBuffer(rejectedBuffer, {
+      session: "legacy",
+    });
     const rejectedXml = await documentXml(rejectedBuffer);
     expect(rejectedXml).not.toContain("<w:b/>");
     expect(rejectedXml).not.toContain("<w:i/>");
@@ -1087,7 +1110,9 @@ describe("tracked run formatting", () => {
     const source = await createDocx(
       createMixedInlineCarrierFormattingDocument(),
     );
-    const reviewer = await FolioDocxReviewer.fromBuffer(source);
+    const reviewer = await FolioDocxReviewer.fromBuffer(source, {
+      session: "legacy",
+    });
     const symbol = decodeOoxmlSymbolCharacter("F06F");
     if (!symbol) {
       throw new Error("expected a decodable symbol fixture");
@@ -1100,12 +1125,16 @@ describe("tracked run formatting", () => {
 
     const saved = await reviewer.toBuffer();
     assertSingularRunPropertyChanges(await documentXml(saved), 6);
-    expect((await FolioDocxReviewer.fromBuffer(saved)).getChanges()).toEqual(
-      reviewer.getChanges(),
-    );
+    expect(
+      (
+        await FolioDocxReviewer.fromBuffer(saved, { session: "legacy" })
+      ).getChanges(),
+    ).toEqual(reviewer.getChanges());
 
     for (const mode of ["accept", "reject"] as const) {
-      const resolving = await FolioDocxReviewer.fromBuffer(saved);
+      const resolving = await FolioDocxReviewer.fromBuffer(saved, {
+        session: "legacy",
+      });
       for (const { id } of resolving.getChanges()) {
         expect(
           mode === "accept"
@@ -1115,7 +1144,9 @@ describe("tracked run formatting", () => {
       }
       const resolved = await resolving.toBuffer();
       expect(
-        (await FolioDocxReviewer.fromBuffer(resolved)).getChanges(),
+        (
+          await FolioDocxReviewer.fromBuffer(resolved, { session: "legacy" })
+        ).getChanges(),
       ).toEqual([]);
       const xml = await documentXml(resolved);
       expect(xml).not.toContain("<w:rPrChange ");
@@ -1148,7 +1179,9 @@ describe("tracked run formatting", () => {
           stylesheetSource: { type: "package" },
         }),
       );
-      const reopened = await FolioDocxReviewer.fromBuffer(resolved);
+      const reopened = await FolioDocxReviewer.fromBuffer(resolved, {
+        session: "legacy",
+      });
       expect(reopened.getChanges()).toEqual([]);
       expect(countXmlElements(await documentXml(resolved), "b")).toBe(
         mode === "accept" ? 6 : 0,
@@ -1161,7 +1194,7 @@ describe("tracked run formatting", () => {
     async (mode) => {
       const reviewer = await FolioDocxReviewer.fromBuffer(
         await createDocx(createUnformattedMixedInlineCarrierDocument()),
-        { author: "Reviewer" },
+        { session: "legacy", author: "Reviewer" },
       );
       const block = reviewer.snapshot().blocks.at(0);
       const range = block
@@ -1216,7 +1249,9 @@ describe("tracked run formatting", () => {
       if (mode === "direct") {
         expect(formattedXml).not.toContain("<w:rPrChange ");
         expect(
-          (await FolioDocxReviewer.fromBuffer(formatted)).getChanges(),
+          (
+            await FolioDocxReviewer.fromBuffer(formatted, { session: "legacy" })
+          ).getChanges(),
         ).toEqual([]);
         return;
       }
@@ -1227,7 +1262,9 @@ describe("tracked run formatting", () => {
         throw new Error("expected a decodable symbol fixture");
       }
       expect(
-        (await FolioDocxReviewer.fromBuffer(formatted)).getChanges(),
+        (
+          await FolioDocxReviewer.fromBuffer(formatted, { session: "legacy" })
+        ).getChanges(),
       ).toEqual(
         ["A", "\t", "\n", symbol, "1", "field"].map((text, index) =>
           expect.objectContaining({
@@ -1238,7 +1275,9 @@ describe("tracked run formatting", () => {
         ),
       );
       for (const decision of ["accept", "reject"] as const) {
-        const resolving = await FolioDocxReviewer.fromBuffer(formatted);
+        const resolving = await FolioDocxReviewer.fromBuffer(formatted, {
+          session: "legacy",
+        });
         if (decision === "accept") {
           resolving.acceptAll();
         } else {
@@ -1260,7 +1299,9 @@ describe("tracked run formatting", () => {
           decision === "accept" ? 6 : 0,
         );
         expect(
-          (await FolioDocxReviewer.fromBuffer(resolved)).getChanges(),
+          (
+            await FolioDocxReviewer.fromBuffer(resolved, { session: "legacy" })
+          ).getChanges(),
         ).toEqual([]);
       }
     },
@@ -1271,6 +1312,7 @@ describe("tracked run formatting", () => {
       createMixedInlineCarrierDocumentWithPendingTab(),
     );
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+      session: "legacy",
       author: "Reviewer",
     });
     const before = await reviewer.toBuffer();
@@ -1328,9 +1370,7 @@ describe("tracked run formatting", () => {
     };
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await createHeaderFormattingBaseline(),
-      {
-        author: "Reviewer",
-      },
+      { session: "legacy", author: "Reviewer" },
     );
     const snapshot = reviewer.snapshotStory(story);
     const block = snapshot?.blocks.at(0);
@@ -1395,6 +1435,7 @@ describe("tracked run formatting", () => {
 
     const reopened = await FolioDocxReviewer.fromBuffer(
       await reviewer.toBuffer(),
+      { session: "legacy" },
     );
     expect(
       reopened.readReviewedStory({ story, view: "current-markup" })?.changes,
@@ -1415,7 +1456,9 @@ describe("tracked run formatting", () => {
     expect(trackedXml).toContain('<w:color w:val="C00000"');
     expect(trackedXml).toContain('<w:sz w:val="21"');
 
-    const reopened = await FolioDocxReviewer.fromBuffer(tracked);
+    const reopened = await FolioDocxReviewer.fromBuffer(tracked, {
+      session: "legacy",
+    });
     expect(
       reopened
         .readReviewedStory({ view: "final" })
@@ -1454,7 +1497,9 @@ describe("tracked run formatting", () => {
         color: { rgb: "C00000" },
       },
     });
-    const reopened = await FolioDocxReviewer.fromBuffer(tracked);
+    const reopened = await FolioDocxReviewer.fromBuffer(tracked, {
+      session: "legacy",
+    });
     expect(
       reopened
         .readReviewedStory({ view: "final" })
@@ -1498,6 +1543,7 @@ test.each([undefined, {}, { italic: true }] satisfies (
       for (const replace of [false, true]) {
         const reviewer = await FolioDocxReviewer.fromBuffer(
           await createFormattingBaseline({ formatting }),
+          { session: "legacy" },
         );
         const block = reviewer.snapshot().blocks.at(0);
         if (!block) throw new Error("Expected formatting block");
@@ -1543,6 +1589,7 @@ test.each([undefined, {}, { italic: true }] satisfies (
           }
           const reopened = await FolioDocxReviewer.fromBuffer(
             await reviewer.toBuffer(),
+            { session: "legacy" },
           );
           for (const decision of ["accept", "reject"] as const) {
             const live = reviewer.toResolvedDocument(decision);

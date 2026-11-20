@@ -57,7 +57,9 @@ describe("deleted-run property-change lifecycle", () => {
     "preserves x:%s rPrChange metadata through reopen and both resolutions",
     async (wrapper) => {
       const source = await sourceWithDeletedRunPropertyChange(wrapper);
-      const firstOpen = await FolioDocxReviewer.fromBuffer(source);
+      const firstOpen = await FolioDocxReviewer.fromBuffer(source, {
+        session: "legacy",
+      });
       expect(firstOpen.getChanges()).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
@@ -74,7 +76,9 @@ describe("deleted-run property-change lifecycle", () => {
       );
 
       const pending = await firstOpen.toBuffer();
-      const reopened = await FolioDocxReviewer.fromBuffer(pending);
+      const reopened = await FolioDocxReviewer.fromBuffer(pending, {
+        session: "legacy",
+      });
       expect(reopened.getChanges()).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
@@ -93,19 +97,27 @@ describe("deleted-run property-change lifecycle", () => {
         /<(?:w|x):rPrChange (?:w|x):id="92" (?:w|x):author="Formatter" (?:w|x):date="2026-09-09T00:01:00Z">/u,
       );
 
-      const accepting = await FolioDocxReviewer.fromBuffer(pending);
+      const accepting = await FolioDocxReviewer.fromBuffer(pending, {
+        session: "legacy",
+      });
       accepting.acceptAll();
       const accepted = await accepting.toBuffer();
       expect(
-        (await FolioDocxReviewer.fromBuffer(accepted)).getChanges(),
+        (
+          await FolioDocxReviewer.fromBuffer(accepted, { session: "legacy" })
+        ).getChanges(),
       ).toHaveLength(0);
       expect(await documentXml(accepted)).not.toContain("removed");
 
-      const rejecting = await FolioDocxReviewer.fromBuffer(pending);
+      const rejecting = await FolioDocxReviewer.fromBuffer(pending, {
+        session: "legacy",
+      });
       rejecting.rejectAll();
       const rejected = await rejecting.toBuffer();
       const rejectedXml = await documentXml(rejected);
-      const rejectedReopen = await FolioDocxReviewer.fromBuffer(rejected);
+      const rejectedReopen = await FolioDocxReviewer.fromBuffer(rejected, {
+        session: "legacy",
+      });
       expect(rejectedReopen.getChanges()).toHaveLength(0);
       expect(rejectedReopen.snapshot().blocks.at(0)?.text).toBe("removed");
       expect(rejectedXml).toContain("<w:i/>");

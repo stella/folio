@@ -117,7 +117,9 @@ describe("a point comment beside tracked deletions", () => {
     for (const resolution of ["accept", "reject"] as const)
       test(`next to ${name}: ${resolution}ing keeps the comment at its reference, in both engines`, async () => {
         const source = await packageOf(body);
-        const reviewer = await FolioDocxReviewer.fromBuffer(source);
+        const reviewer = await FolioDocxReviewer.fromBuffer(source, {
+          session: "legacy",
+        });
         expect(commentIds(reviewer)).toEqual([11]);
         if (resolution === "accept") reviewer.acceptAll();
         else reviewer.rejectAll();
@@ -125,14 +127,24 @@ describe("a point comment beside tracked deletions", () => {
         const saved = await reviewer.toBuffer();
         // Saved back as the point it was: one reference, no range.
         expect(await referencesIn(saved)).toEqual({ references: 1, ranges: 0 });
-        expect(commentIds(await FolioDocxReviewer.fromBuffer(saved))).toEqual([
-          11,
-        ]);
+        expect(
+          commentIds(
+            await FolioDocxReviewer.fromBuffer(saved, { session: "legacy" }),
+          ),
+        ).toEqual([11]);
 
         const canonical = await canonicallyResolved(source, resolution);
         expect(
-          commentIds(await FolioDocxReviewer.fromBuffer(canonical)),
-        ).toEqual(commentIds(await FolioDocxReviewer.fromBuffer(saved)));
+          commentIds(
+            await FolioDocxReviewer.fromBuffer(canonical, {
+              session: "legacy",
+            }),
+          ),
+        ).toEqual(
+          commentIds(
+            await FolioDocxReviewer.fromBuffer(saved, { session: "legacy" }),
+          ),
+        );
         expect(await referencesIn(canonical)).toEqual(
           await referencesIn(saved),
         );

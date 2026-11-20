@@ -45,7 +45,10 @@ const buildDocx = async (body: string): Promise<ArrayBuffer> => {
 };
 
 const open = async (bytes: ArrayBuffer): Promise<FolioDocxReviewer> =>
-  await FolioDocxReviewer.fromBuffer(bytes, { author: "Reviewer" });
+  await FolioDocxReviewer.fromBuffer(bytes, {
+    session: "legacy",
+    author: "Reviewer",
+  });
 
 const documentXml = async (bytes: ArrayBuffer): Promise<string> => {
   const xml = await (

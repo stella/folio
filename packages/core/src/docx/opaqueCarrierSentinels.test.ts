@@ -190,7 +190,9 @@ describe("content carrier sentinels", () => {
       const bytes = await makeDocx(xml);
       const parsed = await parseDocx(bytes, { preloadFonts: false });
       const warnings = parsed.parseWarnings ?? [];
-      const reviewer = await FolioDocxReviewer.fromBuffer(bytes);
+      const reviewer = await FolioDocxReviewer.fromBuffer(bytes, {
+        session: "legacy",
+      });
       const reads = {
         getContent: reviewer
           .getContent()

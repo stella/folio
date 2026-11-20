@@ -99,6 +99,7 @@ const baseDocument = async (): Promise<ArrayBuffer> => {
 
 const open = async (bytes?: ArrayBuffer): Promise<FolioDocxReviewer> =>
   FolioDocxReviewer.fromBuffer(bytes ?? (await baseDocument()), {
+    session: "legacy",
     author: "Reviewer",
   });
 

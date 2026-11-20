@@ -19,7 +19,10 @@ const reviewerOf = async (markdown: string): Promise<FolioDocxReviewer> => {
   const { docx } = await ensureParaIds(
     await createDocx(fromMarkdown(markdown)),
   );
-  return FolioDocxReviewer.fromBuffer(docx, { author: "Agent" });
+  return FolioDocxReviewer.fromBuffer(docx, {
+    session: "legacy",
+    author: "Agent",
+  });
 };
 
 /** What a reader sees of each block: kind and list reference. */
@@ -108,6 +111,7 @@ describe("rejecting a tracked numbering change", () => {
       expect(kinds(reviewer)).toEqual(before);
       const reopened = await FolioDocxReviewer.fromBuffer(
         await reviewer.toBuffer(),
+        { session: "legacy" },
       );
       expect(kinds(reopened)).toEqual(before);
     });

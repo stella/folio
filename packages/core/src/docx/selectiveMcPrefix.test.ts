@@ -43,6 +43,7 @@ describe("selective save with an aliased markup-compatibility prefix", () => {
       const sourceXml = documentXml(nestedRebinding);
       const reviewer = await FolioDocxReviewer.fromBuffer(
         await packageWith(sourceXml),
+        { session: "legacy" },
       );
       const target = reviewer
         .snapshot()

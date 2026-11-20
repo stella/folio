@@ -64,8 +64,14 @@ describe("rejecting a paragraph added after", () => {
   for (const { name, body, anchor } of CASES) {
     const edit = async () => {
       const bytes = await docx(body);
-      const source = texts(await FolioDocxReviewer.fromBuffer(bytes.slice(0)));
-      const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice(0));
+      const source = texts(
+        await FolioDocxReviewer.fromBuffer(bytes.slice(0), {
+          session: "legacy",
+        }),
+      );
+      const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice(0), {
+        session: "legacy",
+      });
       const result = reviewer.applyDocumentOperations(
         {
           version: 1,
@@ -92,6 +98,7 @@ describe("rejecting a paragraph added after", () => {
       expect(texts(reviewer)).toEqual(source);
       const reopened = await FolioDocxReviewer.fromBuffer(
         await reviewer.toBuffer(),
+        { session: "legacy" },
       );
       expect(texts(reopened)).toEqual(source);
     });
@@ -114,6 +121,7 @@ describe("rejecting a paragraph added after", () => {
       const { reviewer, source } = await edit();
       const reopened = await FolioDocxReviewer.fromBuffer(
         await reviewer.toBuffer(),
+        { session: "legacy" },
       );
       reopened.rejectAll();
       expect(texts(reopened)).toEqual(source);
@@ -131,6 +139,7 @@ describe("rejecting a paragraph added after", () => {
 test("an unrelated rejection leaves an added final paragraph alone", async () => {
   const reviewer = await FolioDocxReviewer.fromBuffer(
     await docx(`${paragraph("10000002", "Head")}${TABLE}`),
+    { session: "legacy" },
   );
   reviewer.applyDocumentOperations(
     {
@@ -165,6 +174,7 @@ test("an unrelated rejection leaves an added final paragraph alone", async () =>
 test("accepting an added final paragraph keeps it as an ordinary one", async () => {
   const reviewer = await FolioDocxReviewer.fromBuffer(
     await docx(`${paragraph("10000002", "Head")}${TABLE}`),
+    { session: "legacy" },
   );
   reviewer.applyDocumentOperations(
     {
@@ -184,6 +194,7 @@ test("accepting an added final paragraph keeps it as an ordinary one", async () 
   reviewer.acceptAll();
   const reopened = await FolioDocxReviewer.fromBuffer(
     await reviewer.toBuffer(),
+    { session: "legacy" },
   );
   expect(texts(reopened)).toEqual(["Head", "Cell", "Added"]);
   expect(reopened.getChanges()).toEqual([]);
@@ -192,7 +203,8 @@ test("accepting an added final paragraph keeps it as an ordinary one", async () 
 describe("a tracked removed break on a paragraph with a text box drawn in it", () => {
   const BODY = `<w:p w14:paraId="10000003"><w:pPr><w:rPr><w:del w:id="9" w:author="A" w:date="2026-01-01T00:00:00Z"/></w:rPr></w:pPr>${TEXT_BOX}<w:r><w:t>Host</w:t></w:r></w:p>${paragraph("10000004", "Next")}${paragraph("10000006", "Tail")}`;
 
-  const open = async () => FolioDocxReviewer.fromBuffer(await docx(BODY));
+  const open = async () =>
+    FolioDocxReviewer.fromBuffer(await docx(BODY), { session: "legacy" });
 
   test("accepting joins the two, and the box follows", async () => {
     const reviewer = await open();
@@ -200,6 +212,7 @@ describe("a tracked removed break on a paragraph with a text box drawn in it", (
     expect(texts(reviewer)).toEqual(["HostNext", "Boxed", "Tail"]);
     const reopened = await FolioDocxReviewer.fromBuffer(
       await reviewer.toBuffer(),
+      { session: "legacy" },
     );
     expect(texts(reopened)).toEqual(["HostNext", "Boxed", "Tail"]);
   });

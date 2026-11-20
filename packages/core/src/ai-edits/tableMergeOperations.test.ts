@@ -35,7 +35,7 @@ const MERGED_LEFT: TableSpec = {
 type Mode = "direct" | "tracked-changes";
 
 const open = (bytes: ArrayBuffer) =>
-  FolioDocxReviewer.fromBuffer(bytes, { author: "Tester" });
+  FolioDocxReviewer.fromBuffer(bytes, { session: "legacy", author: "Tester" });
 
 const blockId = (reviewer: FolioDocxReviewer, text: string): string => {
   const block = reviewer

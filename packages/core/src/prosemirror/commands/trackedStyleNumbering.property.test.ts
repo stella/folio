@@ -321,6 +321,7 @@ const assertStyleNumberingRequest = async (request: StyleNumberingRequest) => {
   let saved: ArrayBuffer;
   if (request === "new list" || request === "cancel") {
     const reviewer = await FolioDocxReviewer.fromBuffer(docx, {
+      session: "legacy",
       author: "Reviewer",
     });
     const result = reviewer.applyDocumentOperations(
@@ -393,7 +394,9 @@ const assertStyleNumberingRequest = async (request: StyleNumberingRequest) => {
   const reopenedBytes = await parseDocx(saved);
   const reopenedProse = toProseDoc(reopenedBytes);
   const renderedAttrs = expectParagraphAttrs(reopenedProse.child(1));
-  const reopenedReviewer = await FolioDocxReviewer.fromBuffer(saved);
+  const reopenedReviewer = await FolioDocxReviewer.fromBuffer(saved, {
+    session: "legacy",
+  });
   const projection = targetProjection(reopenedReviewer);
   const hasEffectiveReference = projection.listReference !== undefined;
   const hasRenderedMarker = renderedAttrs.listNumFmt !== undefined;

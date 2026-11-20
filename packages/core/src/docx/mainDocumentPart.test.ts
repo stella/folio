@@ -36,6 +36,7 @@ describe("a main document at another path", () => {
   ])("opens with its text from %s", async (path, target) => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await packageWithMainAt(path, target),
+      { session: "legacy" },
     );
     expect(reviewer.getContent().map(({ text }) => text)).toEqual([
       "Authored text",
@@ -46,6 +47,7 @@ describe("a main document at another path", () => {
     test(`saves an edit where the package says the document is (${mode})`, async () => {
       const reviewer = await FolioDocxReviewer.fromBuffer(
         await packageWithMainAt("word/document2.xml"),
+        { session: "legacy" },
       );
       const result = reviewer.applyDocumentOperations(
         {
@@ -94,6 +96,7 @@ describe("a main document at another path", () => {
     );
     const reviewer = await FolioDocxReviewer.fromBuffer(
       (await zip.generate()).slice().buffer,
+      { session: "legacy" },
     );
     expect(reviewer.getContent().map(({ text }) => text)).toEqual([
       "Authored text",
@@ -115,6 +118,7 @@ describe("a main document at another path", () => {
     );
     const moved = await FolioDocxReviewer.fromBuffer(
       (await zip.generate()).slice().buffer,
+      { session: "legacy" },
     );
     expect(moved.getContent()).toHaveLength(1);
   });

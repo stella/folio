@@ -160,11 +160,11 @@ describe("block ids resolve against the live document", () => {
         fc.asyncProperty(bodyArb, async (items) => {
           const docx = await buildBodySequenceDocx(items);
           const blockCount = (
-            await FolioDocxReviewer.fromBuffer(docx)
+            await FolioDocxReviewer.fromBuffer(docx, { session: "legacy" })
           ).snapshot().blocks.length;
           const reviewer = await FolioDocxReviewer.fromBuffer(
             await withProbeStyles(docx, blockCount),
-            { author: "probe" },
+            { session: "legacy", author: "probe" },
           );
           const before = reviewer.snapshot().blocks;
 

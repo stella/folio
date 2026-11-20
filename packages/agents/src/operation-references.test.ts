@@ -40,7 +40,10 @@ const openReviewer = async (numbering?: NumberingDefinitions) => {
     model.package.numbering = numbering;
   }
   const { docx } = await ensureParaIds(await createDocx(model));
-  const reviewer = await FolioDocxReviewer.fromBuffer(docx, { author: "AI" });
+  const reviewer = await FolioDocxReviewer.fromBuffer(docx, {
+    session: "legacy",
+    author: "AI",
+  });
   const anchor = reviewer
     .getContent()
     .find((block) => block.text === ANCHOR)?.id;

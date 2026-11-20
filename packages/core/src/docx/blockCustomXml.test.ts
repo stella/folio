@@ -85,7 +85,9 @@ describe("block-level custom XML", () => {
       ) +
       paragraph("After.", "50000000");
     const bytes = await makeDocx(body);
-    const reviewer = await FolioDocxReviewer.fromBuffer(bytes);
+    const reviewer = await FolioDocxReviewer.fromBuffer(bytes, {
+      session: "legacy",
+    });
     const expected = [
       "Before.",
       "First clause.",
@@ -122,7 +124,7 @@ describe("block-level custom XML", () => {
       "blockCustomXml",
     );
     expect(
-      (await FolioDocxReviewer.fromBuffer(bytes))
+      (await FolioDocxReviewer.fromBuffer(bytes, { session: "legacy" }))
         .getContent()
         .map(({ text }) => text),
     ).toEqual(["Cell clause."]);
@@ -155,6 +157,7 @@ describe("block-level custom XML", () => {
   test("direct editing changes a wrapped paragraph and keeps the wrapper", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await makeDocx(wrap(paragraph("Original clause.", "11111111"))),
+      { session: "legacy" },
     );
     const block = reviewer
       .snapshot()
@@ -178,7 +181,9 @@ describe("block-level custom XML", () => {
     expect(applied.skipped).toEqual([]);
 
     const saved = await reviewer.toBuffer();
-    const reopened = await FolioDocxReviewer.fromBuffer(saved);
+    const reopened = await FolioDocxReviewer.fromBuffer(saved, {
+      session: "legacy",
+    });
     expect(reopened.getContent().map(({ text }) => text)).toEqual([
       "Revised clause.",
     ]);
@@ -213,7 +218,7 @@ describe("block-level custom XML", () => {
       expect(xml).toContain("Nested clause.");
       expect(xml).toContain("Table clause.");
       expect(
-        (await FolioDocxReviewer.fromBuffer(saved))
+        (await FolioDocxReviewer.fromBuffer(saved, { session: "legacy" }))
           .getContent()
           .map(({ text }) => text),
       ).toEqual(["First clause.", "Nested clause.", "Table clause."]);

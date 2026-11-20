@@ -341,7 +341,8 @@ export const applyEditScript = async (
   Result<EditScriptResult, CompareDocxParseError | CompareDocxSerializeError>
 > => {
   const parsed = await Result.tryPromise({
-    try: async () => await FolioDocxReviewer.fromBuffer(base),
+    try: async () =>
+      await FolioDocxReviewer.fromBuffer(base, { session: "legacy" }),
     catch: (cause) =>
       new CompareDocxParseError({
         message: "The edit script's base document could not be parsed.",

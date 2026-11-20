@@ -90,7 +90,9 @@ const buildDocx = async (
 const OPTIONS = { author: "Compare", timestamp: "2026-09-27T00:00:00.000Z" };
 
 const resolved = async (redlined: ArrayBuffer, view: "accept" | "reject") => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(redlined);
+  const reviewer = await FolioDocxReviewer.fromBuffer(redlined, {
+    session: "legacy",
+  });
   if (view === "accept") reviewer.acceptAll();
   else reviewer.rejectAll();
   return await reviewer.toBuffer();
@@ -104,7 +106,7 @@ const changesBetween = async (left: ArrayBuffer, right: ArrayBuffer) => {
 
 /** Each block's text with where its references sit, which literal marker text does not have. */
 const referencesOf = async (docx: ArrayBuffer) =>
-  (await FolioDocxReviewer.fromBuffer(docx))
+  (await FolioDocxReviewer.fromBuffer(docx, { session: "legacy" }))
     .getContent()
     .map(({ text, structuralBoundaries }) => ({ text, structuralBoundaries }));
 
@@ -150,7 +152,9 @@ const expectExactRedline = async (
   });
 
 const importedOccurrenceIds = async (buffer: ArrayBuffer) => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
+  const reviewer = await FolioDocxReviewer.fromBuffer(buffer, {
+    session: "legacy",
+  });
   const ids: string[] = [];
   sourceDocumentOf(reviewer.snapshot()).descendants((node) => {
     const mark = node.marks.find(({ type }) => type.name === "footnoteRef");

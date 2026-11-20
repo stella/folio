@@ -479,8 +479,8 @@ describe("compareDocxVersions: deterministic fallback ids (no w14:paraId)", () =
     ]);
 
     const [baseReviewer, revisedReviewer] = await Promise.all([
-      FolioDocxReviewer.fromBuffer(base),
-      FolioDocxReviewer.fromBuffer(revised),
+      FolioDocxReviewer.fromBuffer(base, { session: "legacy" }),
+      FolioDocxReviewer.fromBuffer(revised, { session: "legacy" }),
     ]);
     expect(
       [
@@ -974,8 +974,8 @@ describe("compareDocxVersions: move detection", () => {
       },
     ]);
     const [baseReviewer, revisedReviewer] = await Promise.all([
-      FolioDocxReviewer.fromBuffer(base),
-      FolioDocxReviewer.fromBuffer(revised),
+      FolioDocxReviewer.fromBuffer(base, { session: "legacy" }),
+      FolioDocxReviewer.fromBuffer(revised, { session: "legacy" }),
     ]);
     const neutral = compareContent({
       base: { blocks: baseReviewer.snapshot().blocks },
@@ -1065,8 +1065,8 @@ describe("compareDocxVersions: move detection", () => {
       ]),
     ]);
     const [baseReviewer, revisedReviewer] = await Promise.all([
-      FolioDocxReviewer.fromBuffer(base),
-      FolioDocxReviewer.fromBuffer(revised),
+      FolioDocxReviewer.fromBuffer(base, { session: "legacy" }),
+      FolioDocxReviewer.fromBuffer(revised, { session: "legacy" }),
     ]);
     const baseBlocks = baseReviewer.snapshot().blocks;
     const revisedBlocks = revisedReviewer.snapshot().blocks;
@@ -1110,8 +1110,8 @@ describe("compareDocxVersions: neutral structural classification", () => {
       buildTableCellDocxBuffer(text),
     ]);
     const [baseReviewer, revisedReviewer] = await Promise.all([
-      FolioDocxReviewer.fromBuffer(base),
-      FolioDocxReviewer.fromBuffer(revised),
+      FolioDocxReviewer.fromBuffer(base, { session: "legacy" }),
+      FolioDocxReviewer.fromBuffer(revised, { session: "legacy" }),
     ]);
     const neutral = compareContent({
       base: { blocks: baseReviewer.snapshot().blocks },
@@ -1327,6 +1327,7 @@ describe("compareDocxVersions: as-accepted semantics", () => {
     // replace against a fresh reviewer over `base` — the revised buffer still
     // carries real w:ins/w:del marks on disk.
     const revisedReviewer = await FolioDocxReviewer.fromBuffer(base, {
+      session: "legacy",
       author: "AI",
     });
     const target = revisedReviewer.snapshot().blocks.at(0);

@@ -107,9 +107,11 @@ describe("suggestion mode cell selection deletion", () => {
       const { bytes } = await saveHarnessState(suggesting.state, base);
       const accepting = await FolioDocxReviewer.fromBuffer(
         bytes.slice().buffer,
+        { session: "legacy" },
       );
       const rejecting = await FolioDocxReviewer.fromBuffer(
         bytes.slice().buffer,
+        { session: "legacy" },
       );
       accepting.acceptAll();
       rejecting.rejectAll();

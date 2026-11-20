@@ -25,7 +25,7 @@ const apply = (
 const revisedDocument = async () => {
   const reviewer = await FolioDocxReviewer.fromBuffer(
     await paragraphsDocx([[textRun("Start old end.")], [textRun("Neighbor.")]]),
-    { author: "First Reviewer" },
+    { session: "legacy", author: "First Reviewer" },
   );
   expect(
     apply(reviewer, [

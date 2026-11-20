@@ -158,8 +158,12 @@ test("undefined inserted references stay dangling or are cleared before binding 
             });
             const baseBytes = new Uint8Array(base).slice();
             const revisedBytes = new Uint8Array(revised).slice();
-            const before = await FolioDocxReviewer.fromBuffer(base);
-            const target = await FolioDocxReviewer.fromBuffer(revised);
+            const before = await FolioDocxReviewer.fromBuffer(base, {
+              session: "legacy",
+            });
+            const target = await FolioDocxReviewer.fromBuffer(revised, {
+              session: "legacy",
+            });
             const targetSnapshot = target.snapshot();
             const insertedSource = expectParagraphBlock(
               targetSnapshot.blocks.find(
@@ -207,10 +211,16 @@ test("undefined inserted references stay dangling or are cleared before binding 
             );
             expect(new Uint8Array(base)).toEqual(baseBytes);
             expect(new Uint8Array(revised)).toEqual(revisedBytes);
-            const accepting = await FolioDocxReviewer.fromBuffer(result.buffer);
+            const accepting = await FolioDocxReviewer.fromBuffer(
+              result.buffer,
+              { session: "legacy" },
+            );
             expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
             const acceptedBuffer = await accepting.toBuffer();
-            const accepted = await FolioDocxReviewer.fromBuffer(acceptedBuffer);
+            const accepted = await FolioDocxReviewer.fromBuffer(
+              acceptedBuffer,
+              { session: "legacy" },
+            );
             expect(accepted.snapshot().blocks.map(({ text }) => text)).toEqual(
               targetSnapshot.blocks.map(({ text }) => text),
             );
@@ -244,10 +254,14 @@ test("undefined inserted references stay dangling or are cleared before binding 
                 expect(inserted.styleId).not.toBe(UNKNOWN_STYLE);
               }
             }
-            const rejecting = await FolioDocxReviewer.fromBuffer(result.buffer);
+            const rejecting = await FolioDocxReviewer.fromBuffer(
+              result.buffer,
+              { session: "legacy" },
+            );
             expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
             const rejected = await FolioDocxReviewer.fromBuffer(
               await rejecting.toBuffer(),
+              { session: "legacy" },
             );
             expect(rejected.snapshot().blocks.map(({ text }) => text)).toEqual(
               before.snapshot().blocks.map(({ text }) => text),

@@ -50,7 +50,9 @@ test.each(cases)(
     const bytes = await documentShape("image").build();
     const base = await parseShapeDocument(bytes);
     const baseline = project(
-      await FolioDocxReviewer.fromBuffer(bytes.slice().buffer),
+      await FolioDocxReviewer.fromBuffer(bytes.slice().buffer, {
+        session: "legacy",
+      }),
     );
     const outputs = [];
     for (const mode of ["editing", "suggesting"] as const) {
@@ -101,21 +103,33 @@ test.each(cases)(
     const direct = outputs.at(0) ?? panic("Missing edited output");
     const suggested = outputs.at(1) ?? panic("Missing suggested output");
     const edited = project(
-      await FolioDocxReviewer.fromBuffer(direct.bytes.slice().buffer),
+      await FolioDocxReviewer.fromBuffer(direct.bytes.slice().buffer, {
+        session: "legacy",
+      }),
     );
     const accepted = await FolioDocxReviewer.fromBuffer(
       suggested.bytes.slice().buffer,
+      { session: "legacy" },
     );
     accepted.acceptAll();
     expect(
-      project(await FolioDocxReviewer.fromBuffer(await accepted.toBuffer())),
+      project(
+        await FolioDocxReviewer.fromBuffer(await accepted.toBuffer(), {
+          session: "legacy",
+        }),
+      ),
     ).toEqual(edited);
     const rejected = await FolioDocxReviewer.fromBuffer(
       suggested.bytes.slice().buffer,
+      { session: "legacy" },
     );
     rejected.rejectAll();
     expect(
-      project(await FolioDocxReviewer.fromBuffer(await rejected.toBuffer())),
+      project(
+        await FolioDocxReviewer.fromBuffer(await rejected.toBuffer(), {
+          session: "legacy",
+        }),
+      ),
     ).toEqual(baseline);
   },
 );

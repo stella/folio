@@ -20,6 +20,7 @@ test("paragraph merges use the boundary after batch annotations", async () => {
       ];
       const reviewer = await FolioDocxReviewer.fromBuffer(
         await createDocx(source),
+        { session: "legacy" },
       );
       const first = reviewer
         .getContent()
@@ -55,6 +56,7 @@ test("paragraph merges use the boundary after batch annotations", async () => {
       reviewer.acceptAll();
       const reopened = await FolioDocxReviewer.fromBuffer(
         await reviewer.toBuffer(),
+        { session: "legacy" },
       );
       expect(reopened.getContent().map(({ text }) => text)).toEqual([
         "First part end Second",

@@ -457,12 +457,13 @@ describe("live comment threads match the saved package after every step", () => 
     ];
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await createDocx(buildDocument(comments)),
-      { author: "Editor" },
+      { session: "legacy", author: "Editor" },
     );
 
     const expectSavedRoots = async (expectedRootIds: number[]) => {
       const saved = await reviewer.toBuffer();
       const reopened = await FolioDocxReviewer.fromBuffer(saved, {
+        session: "legacy",
         author: "Editor",
       });
       const persisted = reopened.toDocument().package.document.comments ?? [];
@@ -500,13 +501,14 @@ describe("live comment threads match the saved package after every step", () => 
         fc.asyncProperty(sessionArbitrary, async ({ comments, steps }) => {
           let reviewer = await FolioDocxReviewer.fromBuffer(
             await createDocx(buildDocument(comments)),
-            { author: "Editor" },
+            { session: "legacy", author: "Editor" },
           );
           for (const [index, { step, reopen }] of steps.entries()) {
             applyStep(reviewer, step);
             const live = threadsOf(reviewer.getComments());
             const saved = await reviewer.toBuffer();
             const reopened = await FolioDocxReviewer.fromBuffer(saved, {
+              session: "legacy",
               author: "Editor",
             });
             const persisted = threadsOf(reopened.getComments());

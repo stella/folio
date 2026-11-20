@@ -307,7 +307,7 @@ const buildOperation = (
 };
 
 const open = (bytes: ArrayBuffer) =>
-  FolioDocxReviewer.fromBuffer(bytes, { author: "Tester" });
+  FolioDocxReviewer.fromBuffer(bytes, { session: "legacy", author: "Tester" });
 
 type Run = {
   planned: PlannedOperation[];

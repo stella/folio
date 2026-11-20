@@ -14,7 +14,7 @@ import { fromMarkdown } from "../markdown/fromMarkdown";
 import { FolioDocxReviewer } from "./headless";
 
 const open = async (bytes: ArrayBuffer | Uint8Array) =>
-  FolioDocxReviewer.fromBuffer(bytes, { author: "Test" });
+  FolioDocxReviewer.fromBuffer(bytes, { session: "legacy", author: "Test" });
 
 const apply = (
   reviewer: FolioDocxReviewer,

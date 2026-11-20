@@ -41,9 +41,7 @@ describe("createReviewerBridge revisionStamp", () => {
     const revisionStamp = { date: "2026-01-02T03:04:05Z", idSeed: 7000 };
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await buildDocx("Pay $50 now."),
-      {
-        author: "Reviewer",
-      },
+      { session: "legacy", author: "Reviewer" },
     );
     const bridge = createReviewerBridge(reviewer, { revisionStamp });
 

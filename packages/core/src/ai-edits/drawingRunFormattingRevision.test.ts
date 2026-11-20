@@ -199,6 +199,7 @@ describe.each(CASES)(
       test(`the reviewer can ${decision} it`, async () => {
         const reviewer = await FolioDocxReviewer.fromBuffer(
           (await trackedPackage(shape)).slice().buffer,
+          { session: "legacy" },
         );
         expect(reviewer.getChanges().map(({ id }) => id)).toEqual([REVISION]);
         expect(

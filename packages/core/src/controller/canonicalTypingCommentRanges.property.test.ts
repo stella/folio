@@ -85,7 +85,9 @@ const savedView = async (buffer: ArrayBuffer) => {
     preloadFonts: false,
     detectVariables: false,
   });
-  const reviewer = await FolioDocxReviewer.fromBuffer(buffer.slice(0));
+  const reviewer = await FolioDocxReviewer.fromBuffer(buffer.slice(0), {
+    session: "legacy",
+  });
   const markers: CommentMarkerSlot["item"][] = [];
   visitCommentMarkers(document.package.document.content, ({ item }) =>
     markers.push(item),

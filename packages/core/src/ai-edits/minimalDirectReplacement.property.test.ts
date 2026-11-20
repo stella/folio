@@ -513,6 +513,7 @@ describe("a direct replacement changes only the characters it changes", () => {
         async (items, edit, type) => {
           const reviewer = await FolioDocxReviewer.fromBuffer(
             await createDocx(items.map(itemXml).join("")),
+            { session: "legacy" },
           );
           const block = reviewer.snapshot().blocks.at(0);
           const picked =
@@ -625,7 +626,9 @@ describe("a direct replacement changes only the characters it changes", () => {
 
           // The package still says the same after a save and a reopen.
           const saved = await reviewer.toBuffer();
-          const reopened = await FolioDocxReviewer.fromBuffer(saved);
+          const reopened = await FolioDocxReviewer.fromBuffer(saved, {
+            session: "legacy",
+          });
           const reopenedText = reopened.snapshot().blocks.at(0)?.text ?? "";
           if (items.some((entry) => entry.kind === "link")) {
             // Where a saved `w:hyperlink` lands among its sibling runs is the
@@ -864,7 +867,9 @@ describe("a tracked or suggested replacement redlines only the characters it cha
           operationType,
           async (items, edit, mode, granularity, type) => {
             const source = await createDocx(items.map(itemXml).join(""));
-            const reviewer = await FolioDocxReviewer.fromBuffer(source);
+            const reviewer = await FolioDocxReviewer.fromBuffer(source, {
+              session: "legacy",
+            });
             const block = reviewer.snapshot().blocks.at(0);
             const picked =
               block === undefined ? null : pickEdit(block.text, edit);
@@ -1095,14 +1100,20 @@ describe("a tracked or suggested replacement redlines only the characters it cha
               // The redline survives a save; the reopened package resolves the
               // same way through the reviewer's own accept and reject.
               const saved = await reviewer.toBuffer();
-              const acceptedPackage = await FolioDocxReviewer.fromBuffer(saved);
+              const acceptedPackage = await FolioDocxReviewer.fromBuffer(
+                saved,
+                { session: "legacy" },
+              );
               acceptedPackage.acceptAll();
               expect(
                 countNodes(firstParagraph(acceptedPackage).node, "sdt"),
               ).toBe(countNodes(before.node, "sdt"));
               const acceptedText =
                 acceptedPackage.snapshot().blocks.at(0)?.text ?? "";
-              const rejectedPackage = await FolioDocxReviewer.fromBuffer(saved);
+              const rejectedPackage = await FolioDocxReviewer.fromBuffer(
+                saved,
+                { session: "legacy" },
+              );
               rejectedPackage.rejectAll();
               const rejectedText =
                 rejectedPackage.snapshot().blocks.at(0)?.text ?? "";
@@ -1212,9 +1223,13 @@ type ReplaceOptions = {
 const replaceFirst = async (paragraphXml: string, options: ReplaceOptions) => {
   const source = await createDocx(paragraphXml);
   const control = await savedFirstParagraph(
-    await (await FolioDocxReviewer.fromBuffer(source)).toBuffer(),
+    await (
+      await FolioDocxReviewer.fromBuffer(source, { session: "legacy" })
+    ).toBuffer(),
   );
-  const reviewer = await FolioDocxReviewer.fromBuffer(source);
+  const reviewer = await FolioDocxReviewer.fromBuffer(source, {
+    session: "legacy",
+  });
   const block = reviewer.snapshot().blocks.at(0);
   if (!block) {
     throw new Error("expected a block");
@@ -1418,7 +1433,9 @@ describe("tracked replacement examples", () => {
           control,
         );
         if (mode === "tracked-changes") {
-          const reopened = await FolioDocxReviewer.fromBuffer(saved);
+          const reopened = await FolioDocxReviewer.fromBuffer(saved, {
+            session: "legacy",
+          });
           reopened.rejectAll();
           expect(await savedFirstParagraph(await reopened.toBuffer())).toBe(
             control,
@@ -1474,6 +1491,7 @@ describe("tracked replacement examples", () => {
     expect(edited).toContain("<w:tab/>");
     const accepting = await FolioDocxReviewer.fromBuffer(
       await reviewer.toBuffer(),
+      { session: "legacy" },
     );
     accepting.acceptAll();
     expect(accepting.snapshot().blocks.at(0)?.text).toBe("see 3.6\tbelow here");

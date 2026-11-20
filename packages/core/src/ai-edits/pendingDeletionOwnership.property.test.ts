@@ -163,12 +163,11 @@ for (const [kind, operation] of Object.entries(operations)) {
               document.package.document.content = [p, paragraph("following")];
             const reviewer = await FolioDocxReviewer.fromBuffer(
               await createDocx(document),
-              {
-                author,
-              },
+              { session: "legacy", author },
             );
             const before = await FolioDocxReviewer.fromBuffer(
               await reviewer.toBuffer(),
+              { session: "legacy" },
             );
             before.rejectAll();
             const block = reviewer.getContent().at(0);
@@ -193,6 +192,7 @@ for (const [kind, operation] of Object.entries(operations)) {
             );
             const saved = await FolioDocxReviewer.fromBuffer(
               await reviewer.toBuffer(),
+              { session: "legacy" },
             );
             saved.rejectAll();
             expect(content(saved)).toEqual(content(before));

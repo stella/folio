@@ -102,9 +102,13 @@ const deleteControlText = async (
 ) => {
   const source = await createDocx(fixture.bodyXml);
   const original = await bodyOf(
-    await (await FolioDocxReviewer.fromBuffer(source)).toBuffer(),
+    await (
+      await FolioDocxReviewer.fromBuffer(source, { session: "legacy" })
+    ).toBuffer(),
   );
-  const reviewer = await FolioDocxReviewer.fromBuffer(source);
+  const reviewer = await FolioDocxReviewer.fromBuffer(source, {
+    session: "legacy",
+  });
   const blockWithControl = reviewer
     .snapshot()
     .blocks.find((candidate) => candidate.text.includes(fixture.find));
@@ -160,7 +164,9 @@ describe("deleting all of a content control's text", () => {
       const { reviewer } = await deleteControlText(fixture, "tracked-changes");
       const saved = await reviewer.toBuffer();
       expect(await bodyOf(saved)).toMatch(/<w:sdtContent>(?:<w:p>)?<w:del /u);
-      const reopened = await FolioDocxReviewer.fromBuffer(saved);
+      const reopened = await FolioDocxReviewer.fromBuffer(saved, {
+        session: "legacy",
+      });
       reopened.acceptAll();
       expect(controlCount(await bodyOf(await reopened.toBuffer()))).toBe(1);
     });
@@ -184,6 +190,7 @@ describe("deleting all of a content control's text", () => {
       await createDocx(
         FIXTURES[0].bodyXml + "<w:p><w:r><w:t>Next.</w:t></w:r></w:p>",
       ),
+      { session: "legacy" },
     );
     const block = reviewer.snapshot().blocks.at(0);
     if (!block) {
@@ -203,7 +210,7 @@ describe("deleting all of a content control's text", () => {
     );
     for (const accepting of [
       reviewer,
-      await FolioDocxReviewer.fromBuffer(saved),
+      await FolioDocxReviewer.fromBuffer(saved, { session: "legacy" }),
     ]) {
       accepting.acceptAll();
       const accepted = await bodyOf(await accepting.toBuffer());

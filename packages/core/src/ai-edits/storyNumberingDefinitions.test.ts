@@ -47,7 +47,9 @@ const storyParts = async (buffer: ArrayBuffer) => {
 };
 
 const openReviewer = async (bytes?: ArrayBuffer) =>
-  FolioDocxReviewer.fromBuffer((bytes ?? (await fixture())).slice(0));
+  FolioDocxReviewer.fromBuffer((bytes ?? (await fixture())).slice(0), {
+    session: "legacy",
+  });
 
 describe("a list a note operation starts", () => {
   for (const mode of ["direct", "tracked-changes", "suggested"] as const)

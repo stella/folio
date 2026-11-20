@@ -40,9 +40,7 @@ test(
           ];
           let reviewer = await FolioDocxReviewer.fromBuffer(
             await createDocx(document),
-            {
-              author: "Reviewer",
-            },
+            { session: "legacy", author: "Reviewer" },
           );
           let find = "clause";
           for (const [index, word] of words.entries()) {
@@ -69,6 +67,7 @@ test(
             const reopened = await FolioDocxReviewer.fromBuffer(
               await reviewer.toBuffer(),
               {
+                session: "legacy",
                 author: anotherAuthor ? "Second Reviewer" : "Reviewer",
               },
             );
@@ -91,6 +90,7 @@ test(
           expect(result.applied).toHaveLength(1);
           const reopened = await FolioDocxReviewer.fromBuffer(
             await reviewer.toBuffer(),
+            { session: "legacy" },
           );
           expect(revisionView(reopened)).toEqual(revisionView(reviewer));
         },

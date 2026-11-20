@@ -89,7 +89,9 @@ describe("ensureParaIds with non-conventional WordprocessingML prefixes", () => 
   for (const variant of ["alias", "default", "w14-alias"] as const) {
     test(`${variant}: stamps every paragraph and the ids survive save and reopen`, async () => {
       const input = await respelled(await twoParagraphs(), variant);
-      const before = await FolioDocxReviewer.fromBuffer(toArrayBuffer(input));
+      const before = await FolioDocxReviewer.fromBuffer(toArrayBuffer(input), {
+        session: "legacy",
+      });
       expect(before.getContent().map((block) => block.text)).toEqual([
         "Alpha clause.",
         "Beta clause.",
@@ -101,6 +103,7 @@ describe("ensureParaIds with non-conventional WordprocessingML prefixes", () => 
 
       const reviewer = await FolioDocxReviewer.fromBuffer(
         toArrayBuffer(result.docx),
+        { session: "legacy" },
       );
       const blocks = reviewer.getContent();
       expect(blocks.map((block) => block.idStability)).toEqual([
@@ -110,6 +113,7 @@ describe("ensureParaIds with non-conventional WordprocessingML prefixes", () => 
 
       const reopened = await FolioDocxReviewer.fromBuffer(
         await reviewer.toBuffer(),
+        { session: "legacy" },
       );
       expect(reopened.getContent().map((block) => block.id)).toEqual(
         blocks.map((block) => block.id),

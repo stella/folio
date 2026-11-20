@@ -144,6 +144,7 @@ const reopenedView = async (doc: PMNode, sourceDocument: Document) => {
         stylesheetSource: { type: "package" },
       }),
     ),
+    { session: "legacy" },
   );
   return viewFromDoc(toProseDoc(reviewer.toDocument()));
 };

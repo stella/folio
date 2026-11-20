@@ -45,20 +45,30 @@ const expectVerifiedRestyle = async (
   expect(compared.value.unsupported).toEqual([]);
   expect(compared.value.changes.map(({ kind }) => kind)).toEqual(kinds);
 
-  const accepting = await FolioDocxReviewer.fromBuffer(compared.value.buffer);
+  const accepting = await FolioDocxReviewer.fromBuffer(compared.value.buffer, {
+    session: "legacy",
+  });
   expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
   const accepted = await FolioDocxReviewer.fromBuffer(
     await accepting.toBuffer(),
+    { session: "legacy" },
   );
-  const expected = await FolioDocxReviewer.fromBuffer(target);
+  const expected = await FolioDocxReviewer.fromBuffer(target, {
+    session: "legacy",
+  });
   expect(restyleProjection(accepted)).toEqual(restyleProjection(expected));
 
-  const rejecting = await FolioDocxReviewer.fromBuffer(compared.value.buffer);
+  const rejecting = await FolioDocxReviewer.fromBuffer(compared.value.buffer, {
+    session: "legacy",
+  });
   expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
   const rejected = await FolioDocxReviewer.fromBuffer(
     await rejecting.toBuffer(),
+    { session: "legacy" },
   );
-  const original = await FolioDocxReviewer.fromBuffer(base);
+  const original = await FolioDocxReviewer.fromBuffer(base, {
+    session: "legacy",
+  });
   expect(restyleProjection(rejected)).toEqual(restyleProjection(original));
 };
 
@@ -72,7 +82,9 @@ describe("comparison paragraph restyles", () => {
 
   test("verifies a plain-to-heading editor restyle without a run change", async () => {
     const base = await markdownDocx("Scope\n\nBody.");
-    const reviewer = await FolioDocxReviewer.fromBuffer(base);
+    const reviewer = await FolioDocxReviewer.fromBuffer(base, {
+      session: "legacy",
+    });
     const blockId = reviewer.snapshot().blocks.at(0)?.id;
     expect(blockId).toBeDefined();
     if (blockId === undefined) return;

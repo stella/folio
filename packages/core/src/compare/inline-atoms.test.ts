@@ -193,10 +193,16 @@ describe("matchInlineAtoms", () => {
 
     if (compared.isErr()) throw compared.error;
     expect(compared.value.verification).toEqual({ status: "verified" });
-    const accepting = await FolioDocxReviewer.fromBuffer(compared.value.buffer);
+    const accepting = await FolioDocxReviewer.fromBuffer(
+      compared.value.buffer,
+      { session: "legacy" },
+    );
     accepting.acceptAll();
     expect(accepting.snapshot().blocks.at(0)?.text).toBe("Count: 12");
-    const rejecting = await FolioDocxReviewer.fromBuffer(compared.value.buffer);
+    const rejecting = await FolioDocxReviewer.fromBuffer(
+      compared.value.buffer,
+      { session: "legacy" },
+    );
     rejecting.rejectAll();
     expect(rejecting.snapshot().blocks.at(0)?.text).toBe("Count: 12");
   });
@@ -222,7 +228,10 @@ describe("matchInlineAtoms", () => {
 
     if (compared.isErr()) throw compared.error;
     expect(compared.value.verification).toEqual({ status: "verified" });
-    const rejecting = await FolioDocxReviewer.fromBuffer(compared.value.buffer);
+    const rejecting = await FolioDocxReviewer.fromBuffer(
+      compared.value.buffer,
+      { session: "legacy" },
+    );
     rejecting.rejectAll();
     expect(rejecting.snapshot().blocks.at(0)?.text).toBe("Count: 12");
     const rejected = await compareDocx(base, await rejecting.toBuffer(), {
@@ -270,7 +279,10 @@ describe("matchInlineAtoms", () => {
     });
     if (compared.isErr()) throw compared.error;
     expect(compared.value.verification).toEqual({ status: "verified" });
-    const rejecting = await FolioDocxReviewer.fromBuffer(compared.value.buffer);
+    const rejecting = await FolioDocxReviewer.fromBuffer(
+      compared.value.buffer,
+      { session: "legacy" },
+    );
     rejecting.rejectAll();
     const rejected = await compareDocx(base, await rejecting.toBuffer(), {
       author: "Compare",

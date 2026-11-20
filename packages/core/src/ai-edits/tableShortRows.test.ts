@@ -49,7 +49,8 @@ const savedRows = async (buffer: ArrayBuffer): Promise<string[][]> => {
   );
 };
 
-const open = async () => FolioDocxReviewer.fromBuffer(await shortRowsDocx());
+const open = async () =>
+  FolioDocxReviewer.fromBuffer(await shortRowsDocx(), { session: "legacy" });
 
 const apply = (
   reviewer: FolioDocxReviewer,

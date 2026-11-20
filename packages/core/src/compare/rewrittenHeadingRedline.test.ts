@@ -107,7 +107,9 @@ describe("headings rewritten into body paragraphs", () => {
       OPTIONS,
     );
     if (compared.isErr()) throw compared.error;
-    const written = await FolioDocxReviewer.fromBuffer(compared.value.buffer);
+    const written = await FolioDocxReviewer.fromBuffer(compared.value.buffer, {
+      session: "legacy",
+    });
     const layout = layoutOf(written.toDocument().package.document.content);
     // No paragraph holding only the new words is written with the heading
     // style, before any resolution.
@@ -121,7 +123,9 @@ describe("headings rewritten into body paragraphs", () => {
       ),
     }).toMatchObject({ inserted: [] });
 
-    const accepted = await FolioDocxReviewer.fromBuffer(compared.value.buffer);
+    const accepted = await FolioDocxReviewer.fromBuffer(compared.value.buffer, {
+      session: "legacy",
+    });
     accepted.acceptAll();
     expect({
       layout,

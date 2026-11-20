@@ -59,7 +59,7 @@ const texts = (reviewer: FolioDocxReviewer) =>
 test("a tracked split of inserted words a pending merge runs into survives accepting", async () => {
   const reviewer = await FolioDocxReviewer.fromBuffer(
     await createDocx(buildDocument()),
-    { author: "Editor" },
+    { session: "legacy", author: "Editor" },
   );
   // Inserted words opening "Beta words here.", under that paragraph's own break.
   tracked(reviewer, {
@@ -94,6 +94,7 @@ test("a tracked split of inserted words a pending merge runs into survives accep
 
   const reopened = await FolioDocxReviewer.fromBuffer(
     await reviewer.toBuffer(),
+    { session: "legacy" },
   );
   for (const document of [reviewer, reopened]) {
     document.acceptAll();
@@ -109,7 +110,7 @@ describe("a tracked split of a paragraph a pending merge joins on", () => {
   const open = async () =>
     FolioDocxReviewer.fromBuffer(
       (await ensureParaIds(await createDocx(fromMarkdown(FIXTURE)))).docx,
-      { author: "Test" },
+      { session: "legacy", author: "Test" },
     );
   const edit = async (
     mode: "direct" | "tracked-changes",
@@ -175,7 +176,7 @@ describe("a tracked split of a paragraph a pending merge joins on", () => {
       const edited = await edit("tracked-changes", properties);
       const reopened = await FolioDocxReviewer.fromBuffer(
         await edited.toBuffer(),
-        { author: "Test" },
+        { session: "legacy", author: "Test" },
       );
       for (const reviewer of [edited, reopened]) {
         reviewer.rejectAll();

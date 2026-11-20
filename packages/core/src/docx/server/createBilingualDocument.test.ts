@@ -129,6 +129,7 @@ const bilingualDocumentOptions = async (
     (
       await FolioDocxReviewer.fromBuffer(
         source.originalBuffer ?? (await createDocx(source)),
+        { session: "legacy" },
       )
     )
       .snapshot()
@@ -847,7 +848,7 @@ describe("createBilingualDocx", () => {
     });
     const rows = await readBilingualDocx(buffer);
     const editableIds = new Set(
-      (await FolioDocxReviewer.fromBuffer(buffer))
+      (await FolioDocxReviewer.fromBuffer(buffer, { session: "legacy" }))
         .snapshot()
         .blocks.map(({ id }) => id),
     );

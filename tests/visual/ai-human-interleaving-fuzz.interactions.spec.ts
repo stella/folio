@@ -59,7 +59,9 @@ const save = async (page: Page) => {
 const checkpoint = async (page: Page) => {
   const current = await live(page);
   const bytes = await save(page);
-  const reopened = await FolioDocxReviewer.fromBuffer(bytes);
+  const reopened = await FolioDocxReviewer.fromBuffer(bytes, {
+    session: "legacy",
+  });
   expect(project(reopened)).toEqual(current.blocks);
   expect(
     reopened.getChanges().map(({ id, type, text }) => ({ id, type, text })),
@@ -121,6 +123,7 @@ const drive = async (page: Page, action: InterleavingAction) => {
       const after = await checkpoint(page);
       const expectedReopened = await FolioDocxReviewer.fromBuffer(
         await before.reopened.toBuffer(),
+        { session: "legacy" },
       );
       expect(after.current.blocks).toEqual(project(expectedReopened));
       expect(after.current.changes).toEqual(

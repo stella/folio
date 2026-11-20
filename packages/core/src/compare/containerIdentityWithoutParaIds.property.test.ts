@@ -95,7 +95,9 @@ const baseForCoverage = async (coverage: IdCoverage): Promise<ArrayBuffer> => {
 };
 
 const blocksOf = async (buffer: ArrayBuffer): Promise<FolioAIBlock[]> =>
-  (await FolioDocxReviewer.fromBuffer(buffer)).getContent();
+  (
+    await FolioDocxReviewer.fromBuffer(buffer, { session: "legacy" })
+  ).getContent();
 
 const changesFor = async (
   base: ArrayBuffer,

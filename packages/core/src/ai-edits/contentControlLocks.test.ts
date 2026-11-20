@@ -370,6 +370,7 @@ const controlsIn = async (saved: ArrayBuffer): Promise<string[]> => {
 const open = async (placement: Placement, lock: Lock) => {
   const reviewer = await FolioDocxReviewer.fromBuffer(
     await createDocx(placement.bodyXml(lock)),
+    { session: "legacy" },
   );
   const blocks = reviewer.snapshot().blocks;
   const holderIndex = blocks.findIndex(

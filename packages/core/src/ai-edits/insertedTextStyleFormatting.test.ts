@@ -28,7 +28,7 @@ const insertedRuns = async (
 ) => {
   const reviewer = await FolioDocxReviewer.fromBuffer(
     await createDocx(fromMarkdown("# Agreement\n\n## Scope\n\nBody text.")),
-    { author: "AI" },
+    { session: "legacy", author: "AI" },
   );
   const blockId = reviewer
     .getContent()
@@ -53,6 +53,7 @@ const insertedRuns = async (
   if (mode !== "direct") reviewer.acceptAll();
   const reopened = await FolioDocxReviewer.fromBuffer(
     await reviewer.toBuffer(),
+    { session: "legacy" },
   );
   return [reviewer, reopened].map(
     (current) =>

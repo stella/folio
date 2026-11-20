@@ -38,9 +38,7 @@ const build = async (
 ): Promise<FolioDocxReviewer> => {
   const reviewer = await FolioDocxReviewer.fromBuffer(
     await createDocx(fromMarkdown(MARKDOWN)),
-    {
-      author: "AI",
-    },
+    { session: "legacy", author: "AI" },
   );
   const blockId = reviewer
     .getContent()
@@ -67,7 +65,9 @@ const build = async (
 const reopen = async (
   reviewer: FolioDocxReviewer,
 ): Promise<FolioDocxReviewer> =>
-  FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+  FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
+    session: "legacy",
+  });
 
 describe("tracked column changes", () => {
   test.each(TYPES)(

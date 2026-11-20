@@ -192,6 +192,7 @@ test("the editor saves after a direct deleteBlock of the paragraph that ends a s
 
 test("the editor saves after accepting a tracked deletion of that paragraph", async () => {
   const reviewer = await FolioDocxReviewer.fromBuffer(await twoSections(), {
+    session: "legacy",
     author: "Reviewer",
   });
   const [first] = reviewer.getContent();

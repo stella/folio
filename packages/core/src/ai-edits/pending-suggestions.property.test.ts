@@ -48,6 +48,7 @@ const projection = (reviewer: FolioDocxReviewer) =>
 const stage = async (text: string, replacement: string) => {
   const reviewer = await FolioDocxReviewer.fromBuffer(
     await documentBytes(text),
+    { session: "legacy" },
   );
   const result = reviewer.applyOperations(
     [
@@ -87,6 +88,7 @@ describe("host-persisted pending suggestions", () => {
             const before = projection(reviewer);
             const reopened = await FolioDocxReviewer.fromBuffer(
               await reviewer.toBuffer(),
+              { session: "legacy" },
             );
             expect(projection(reopened)).not.toEqual(before);
             expect(reopened.loadPendingSuggestions(records)).toEqual([
@@ -112,6 +114,7 @@ describe("host-persisted pending suggestions", () => {
     const { records } = await stage("Second clause.", "Revised clause.");
     const changed = await FolioDocxReviewer.fromBuffer(
       await documentBytes("Changed clause."),
+      { session: "legacy" },
     );
     const changedBefore = projection(changed);
     expect(changed.loadPendingSuggestions(records)).toEqual([
@@ -122,6 +125,7 @@ describe("host-persisted pending suggestions", () => {
 
     const deleted = await FolioDocxReviewer.fromBuffer(
       await documentBytes("", false),
+      { session: "legacy" },
     );
     const deletedBefore = projection(deleted);
     expect(deleted.loadPendingSuggestions(records)).toEqual([
@@ -134,6 +138,7 @@ describe("host-persisted pending suggestions", () => {
     const text = "Second clause.";
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await documentBytes(text),
+      { session: "legacy" },
     );
     const range = createFolioAITextRangeHandle({
       blockId: SECOND_ID,
@@ -164,9 +169,7 @@ describe("host-persisted pending suggestions", () => {
   test("loading retains the original proposal author", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await documentBytes("Second clause."),
-      {
-        author: "Origin Author",
-      },
+      { session: "legacy", author: "Origin Author" },
     );
     const result = reviewer.applyOperations(
       [
@@ -186,9 +189,7 @@ describe("host-persisted pending suggestions", () => {
     );
     const reopened = await FolioDocxReviewer.fromBuffer(
       await reviewer.toBuffer(),
-      {
-        author: "Review Author",
-      },
+      { session: "legacy", author: "Review Author" },
     );
     expect(reopened.loadPendingSuggestions(records)).toEqual([
       { status: "restaged", suggestionId: "authored" },
@@ -201,6 +202,7 @@ describe("host-persisted pending suggestions", () => {
   test("sequential proposals in one paragraph replay in order", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await documentBytes("Second clause."),
+      { session: "legacy" },
     );
     for (const [id, find, replace] of [
       ["first-proposal", "Second", "Revised"],
@@ -219,6 +221,7 @@ describe("host-persisted pending suggestions", () => {
     const before = projection(reviewer);
     const reopened = await FolioDocxReviewer.fromBuffer(
       await reviewer.toBuffer(),
+      { session: "legacy" },
     );
     expect(reopened.loadPendingSuggestions(records)).toEqual([
       { status: "restaged", suggestionId: "first-proposal" },
@@ -227,6 +230,7 @@ describe("host-persisted pending suggestions", () => {
     expect(projection(reopened)).toEqual(before);
     const loadedInBatches = await FolioDocxReviewer.fromBuffer(
       await reviewer.toBuffer(),
+      { session: "legacy" },
     );
     expect(loadedInBatches.loadPendingSuggestions(records.slice(0, 1))).toEqual(
       [{ status: "restaged", suggestionId: "first-proposal" }],
@@ -240,6 +244,7 @@ describe("host-persisted pending suggestions", () => {
   test("replay records the comment id allocated by the host", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await documentBytes("Second clause."),
+      { session: "legacy" },
     );
     expect(
       reviewer.applyOperations(
@@ -260,6 +265,7 @@ describe("host-persisted pending suggestions", () => {
     expect(records.at(0)?.commentId).toBeDefined();
     const source = await FolioDocxReviewer.fromBuffer(
       await reviewer.toBuffer(),
+      { session: "legacy" },
     );
     const snapshot = source.snapshot();
     const registry = new FolioPendingSuggestionRegistry();
@@ -297,6 +303,7 @@ describe("host-persisted pending suggestions", () => {
     const { records } = await stage("Second clause.", "Revised clause.");
     const changed = await FolioDocxReviewer.fromBuffer(
       await documentBytes("Second clause."),
+      { session: "legacy" },
     );
     const range = createFolioAITextRangeHandle({
       blockId: SECOND_ID,
@@ -329,6 +336,7 @@ describe("host-persisted pending suggestions", () => {
   test("a formatted baseline keeps the same fingerprint across a save", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await documentBytes("Second clause."),
+      { session: "legacy" },
     );
     const range = createFolioAITextRangeHandle({
       blockId: SECOND_ID,
@@ -368,6 +376,7 @@ describe("host-persisted pending suggestions", () => {
     );
     const reopened = await FolioDocxReviewer.fromBuffer(
       await reviewer.toBuffer(),
+      { session: "legacy" },
     );
     expect(reopened.loadPendingSuggestions(records)).toEqual([
       { status: "restaged", suggestionId: "formatted-proposal" },
@@ -395,6 +404,7 @@ describe("host-persisted pending suggestions", () => {
     );
     const reopened = await FolioDocxReviewer.fromBuffer(
       await reviewer.toBuffer(),
+      { session: "legacy" },
     );
     expect(reopened.loadPendingSuggestions(records)).toEqual([
       { status: "restaged", suggestionId: "proposal-1" },
@@ -419,7 +429,9 @@ describe("host-persisted pending suggestions", () => {
       headerReferences: [{ type: "default", rId: relationshipId }],
     };
     const bytes = await repackDocx(document, { updateModifiedDate: false });
-    const reviewer = await FolioDocxReviewer.fromBuffer(bytes);
+    const reviewer = await FolioDocxReviewer.fromBuffer(bytes, {
+      session: "legacy",
+    });
     const snapshot = reviewer.snapshotStory(story);
     expect(snapshot).not.toBeNull();
     const result = reviewer.applyDocumentOperationsToStory({
@@ -447,6 +459,7 @@ describe("host-persisted pending suggestions", () => {
     const live = reviewer.snapshotStory(story)?.blocks.map(({ text }) => text);
     const reopened = await FolioDocxReviewer.fromBuffer(
       await reviewer.toBuffer(),
+      { session: "legacy" },
     );
     expect(reopened.loadPendingSuggestions(records)).toEqual([
       { status: "restaged", suggestionId: "header-proposal" },
@@ -494,6 +507,7 @@ describe("host-persisted pending suggestions", () => {
     const { records } = await stage("Second clause.", "Revised clause.");
     const target = await FolioDocxReviewer.fromBuffer(
       await documentBytes("Second clause."),
+      { session: "legacy" },
     );
     const record = records.at(0);
     expect(target.loadPendingSuggestions([{ ...record, version: 2 }])).toEqual([
@@ -510,6 +524,7 @@ describe("host-persisted pending suggestions", () => {
     const { records } = await stage("Second clause.", "Revised clause.");
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await documentBytes("Second clause."),
+      { session: "legacy" },
     );
     expect(reviewer.loadPendingSuggestions(records)).toEqual([
       { status: "restaged", suggestionId: "proposal-1" },

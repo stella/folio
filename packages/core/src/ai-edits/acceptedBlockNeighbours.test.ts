@@ -37,7 +37,10 @@ const ROWS = [
 const open = async (markdown: string): Promise<FolioDocxReviewer> => {
   const bytes = (await ensureParaIds(await createDocx(fromMarkdown(markdown))))
     .docx;
-  return FolioDocxReviewer.fromBuffer(bytes, { author: "Test" });
+  return FolioDocxReviewer.fromBuffer(bytes, {
+    session: "legacy",
+    author: "Test",
+  });
 };
 
 const idOf = (reviewer: FolioDocxReviewer, text: string): string => {
@@ -66,9 +69,7 @@ const accepted = async (reviewer: FolioDocxReviewer) => {
   reviewer.acceptAll();
   const reopened = await FolioDocxReviewer.fromBuffer(
     await reviewer.toBuffer(),
-    {
-      author: "Test",
-    },
+    { session: "legacy", author: "Test" },
   );
   return reopened.snapshot().blocks.map((block) => ({
     text: block.text,
@@ -98,9 +99,7 @@ const withPendingDeletions = async (markdown: string, texts: string[]) => {
   expect(result.skipped).toEqual([]);
   const reopened = await FolioDocxReviewer.fromBuffer(
     await reviewer.toBuffer(),
-    {
-      author: "Test",
-    },
+    { session: "legacy", author: "Test" },
   );
   const id = (text: string): string => {
     const found = ids.get(text);
@@ -284,6 +283,7 @@ describe("blocks put on either side of a table accepting removes", () => {
 /** The block texts once every change is rejected, from a saved copy. */
 const rejected = async (reviewer: FolioDocxReviewer): Promise<string[]> => {
   const copy = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
+    session: "legacy",
     author: "Test",
   });
   copy.rejectAll();

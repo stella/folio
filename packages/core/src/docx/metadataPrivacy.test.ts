@@ -232,6 +232,7 @@ describe("rewriteDocxMetadataPrivacy", () => {
     });
     const selectiveReviewer = await FolioDocxReviewer.fromBuffer(
       rewritten.buffer,
+      { session: "legacy" },
     );
     const target = selectiveReviewer.snapshot().blocks.at(0);
     if (!target) {
@@ -251,8 +252,10 @@ describe("rewriteDocxMetadataPrivacy", () => {
     const selectivelySaved = await selectiveReviewer.toBuffer();
     await expectPrivateMetadataAbsent(selectivelySaved);
 
-    const structuralReviewer =
-      await FolioDocxReviewer.fromBuffer(selectivelySaved);
+    const structuralReviewer = await FolioDocxReviewer.fromBuffer(
+      selectivelySaved,
+      { session: "legacy" },
+    );
     const structuralTarget = structuralReviewer.snapshot().blocks.at(0);
     if (!structuralTarget) {
       throw new Error("expected a body block");

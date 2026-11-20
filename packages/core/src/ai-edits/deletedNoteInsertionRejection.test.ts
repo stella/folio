@@ -77,6 +77,7 @@ for (const noteType of ["footnote", "endnote"] as const) {
             document.package.endnotes = [{ type: noteType, id: 37, content }];
           let reviewer = await FolioDocxReviewer.fromBuffer(
             await createDocx(document),
+            { session: "legacy" },
           );
           const story = { type: noteType, noteId: 37 };
           const before = shape(reviewer, story);
@@ -121,6 +122,7 @@ for (const noteType of ["footnote", "endnote"] as const) {
           if (session === "reopened")
             reviewer = await FolioDocxReviewer.fromBuffer(
               await reviewer.toBuffer(),
+              { session: "legacy" },
             );
           const originalView = reviewer.readReviewedStory({
             story,
@@ -136,6 +138,7 @@ for (const noteType of ["footnote", "endnote"] as const) {
           expect(shape(reviewer, story)).toEqual(before);
           const reopened = await FolioDocxReviewer.fromBuffer(
             await reviewer.toBuffer(),
+            { session: "legacy" },
           );
           expect(shape(reopened, story)).toEqual(before);
         });

@@ -806,7 +806,9 @@ describe("page-break run ownership", () => {
           ?.info.id,
       ).toBe(PROPERTY_REVISION.info.id);
 
-      const reviewer = await FolioDocxReviewer.fromBuffer(pending);
+      const reviewer = await FolioDocxReviewer.fromBuffer(pending, {
+        session: "legacy",
+      });
       expect(reviewer.getChanges()).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
@@ -844,13 +846,17 @@ describe("page-break run ownership", () => {
       const keepOnAccept = type === "insertion" || type === "moveTo";
 
       for (const decision of ["accept", "reject"] as const) {
-        const reviewer = await FolioDocxReviewer.fromBuffer(pending);
+        const reviewer = await FolioDocxReviewer.fromBuffer(pending, {
+          session: "legacy",
+        });
         expect(
           (decision === "accept" ? reviewer.acceptAll() : reviewer.rejectAll())
             .resolved,
         ).toBe(2);
         const resolved = await reviewer.toBuffer();
-        const reopened = await FolioDocxReviewer.fromBuffer(resolved);
+        const reopened = await FolioDocxReviewer.fromBuffer(resolved, {
+          session: "legacy",
+        });
         expect(reopened.getChanges()).toHaveLength(0);
         const reparsed = await parseDocx(resolved);
         const paragraph = reparsed.package.document.content.at(0);

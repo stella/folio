@@ -135,6 +135,7 @@ describe("a comment range that opens between blocks", () => {
     test(`keeps one start ${where} when an edit elsewhere rewrites the body`, async () => {
       const reviewer = await FolioDocxReviewer.fromBuffer(
         await commentedPackage(commented),
+        { session: "legacy" },
       );
       const blockId = reviewer.snapshot().blocks.at(-1)?.id;
       if (blockId === undefined)

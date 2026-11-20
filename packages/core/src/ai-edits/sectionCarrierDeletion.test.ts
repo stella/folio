@@ -23,7 +23,10 @@ import { FolioDocxReviewer } from "./headless";
 import type { FolioAIEditApplyMode } from "./types";
 
 const open = async (bytes: ArrayBuffer): Promise<FolioDocxReviewer> =>
-  await FolioDocxReviewer.fromBuffer(bytes, { author: "Reviewer" });
+  await FolioDocxReviewer.fromBuffer(bytes, {
+    session: "legacy",
+    author: "Reviewer",
+  });
 
 const blockId = (reviewer: FolioDocxReviewer, text: string): string => {
   const block = reviewer

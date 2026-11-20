@@ -57,6 +57,7 @@ const insertAfter = async ({
 }: InsertAfterOptions): Promise<FolioAIBlock[]> => {
   const { docx } = await numberedListDocx();
   const reviewer = await FolioDocxReviewer.fromBuffer(docx, {
+    session: "legacy",
     author: "Agent",
   });
   const anchor = reviewer
@@ -86,6 +87,7 @@ const insertAfter = async ({
 
   const reopened = await FolioDocxReviewer.fromBuffer(
     await reviewer.toBuffer(),
+    { session: "legacy" },
   );
   return reopened.getContent();
 };

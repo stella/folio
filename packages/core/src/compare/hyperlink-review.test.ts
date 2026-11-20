@@ -43,7 +43,9 @@ for (const [baseHref, targetHref] of [
     if (result.isErr()) throw result.error;
     expect(result.value.verification.status).toBe("verified");
     for (const view of ["accept", "reject"] as const) {
-      const reviewer = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+      const reviewer = await FolioDocxReviewer.fromBuffer(result.value.buffer, {
+        session: "legacy",
+      });
       if (view === "accept") reviewer.acceptAll();
       else reviewer.rejectAll();
       const saved = await reviewer.toBuffer();
@@ -61,7 +63,9 @@ for (const [baseHref, targetHref] of [
       expect(links.map(({ href }) => href ?? "")).toEqual(
         expected === undefined ? [] : [expected],
       );
-      const reopened = await FolioDocxReviewer.fromBuffer(saved);
+      const reopened = await FolioDocxReviewer.fromBuffer(saved, {
+        session: "legacy",
+      });
       expect(reopened.getChanges()).toHaveLength(0);
     }
   });

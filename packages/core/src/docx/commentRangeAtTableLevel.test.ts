@@ -156,9 +156,7 @@ const edit = async (
 ): Promise<{ xml: string; reviewer: FolioDocxReviewer }> => {
   const reviewer = await FolioDocxReviewer.fromBuffer(
     await buildDocx(endPlacement),
-    {
-      author: "Editor",
-    },
+    { session: "legacy", author: "Editor" },
   );
   const blocks = reviewer.snapshot().blocks;
   const blockId = (text: string): string => {

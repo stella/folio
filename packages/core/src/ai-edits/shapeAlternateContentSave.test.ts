@@ -25,7 +25,9 @@ const open = async () => {
     "word/document.xml",
     `<?xml version="1.0" encoding="UTF-8"?><w:document ${NS}><w:body><w:p w14:paraId="10000001"><w:r>${ALTERNATE}</w:r><w:r><w:t>Host</w:t></w:r></w:p><w:p w14:paraId="10000003"><w:r><w:t>Tail</w:t></w:r></w:p></w:body></w:document>`,
   );
-  return FolioDocxReviewer.fromBuffer((await zip.generate()).slice().buffer);
+  return FolioDocxReviewer.fromBuffer((await zip.generate()).slice().buffer, {
+    session: "legacy",
+  });
 };
 
 describe("a text box with a fallback branch", () => {
@@ -62,7 +64,9 @@ describe("a text box with a fallback branch", () => {
           ?.text()) ?? "";
       // Both branches carry the edit.
       expect(xml.match(/text<\/w:t>/gu)).toHaveLength(2);
-      const reopened = await FolioDocxReviewer.fromBuffer(saved);
+      const reopened = await FolioDocxReviewer.fromBuffer(saved, {
+        session: "legacy",
+      });
       reopened.acceptAll();
       expect(reopened.getContent().map(({ text }) => text)).toContain(
         "Boxed text",

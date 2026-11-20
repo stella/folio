@@ -45,6 +45,7 @@ type Ids = { heading: string; anchor: string; tail: string };
 
 const openReviewer = async () => {
   const reviewer = await FolioDocxReviewer.fromBuffer(await build(), {
+    session: "legacy",
     author: "AI",
   });
   const blocks = reviewer.getContent();
@@ -304,9 +305,7 @@ describe("a defined paragraph style still applies", () => {
     );
     const reopened = await FolioDocxReviewer.fromBuffer(
       await reviewer.toBuffer(),
-      {
-        author: "AI",
-      },
+      { session: "legacy", author: "AI" },
     );
     expect(
       reopened.getContent().find((block) => block.text === ANCHOR),

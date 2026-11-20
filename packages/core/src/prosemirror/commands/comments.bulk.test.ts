@@ -962,6 +962,7 @@ describe("bulk revision lifecycle", () => {
       } as const;
       const reviewer = await FolioDocxReviewer.fromBuffer(
         await secondaryStoryBuffer(),
+        { session: "legacy" },
       );
       expect(
         reviewer.readReviewedStory({ story, view: "current-markup" })?.changes
@@ -979,6 +980,7 @@ describe("bulk revision lifecycle", () => {
       });
       const reopened = await FolioDocxReviewer.fromBuffer(
         await reviewer.toBuffer(),
+        { session: "legacy" },
       );
       const actual = reopened.readReviewedStory({
         story,
@@ -1000,6 +1002,7 @@ describe("bulk revision lifecycle", () => {
             stylesheetSource: { type: "package" },
           }),
         ),
+        { session: "legacy" },
       );
       const before = reviewer.readReviewedStory({ view: "current-markup" });
       expect(before?.changes.length).toBeGreaterThan(0);
@@ -1012,6 +1015,7 @@ describe("bulk revision lifecycle", () => {
       const expected = reviewer.readReviewedStory({ view: "current-markup" });
       const reopened = await FolioDocxReviewer.fromBuffer(
         await reviewer.toBuffer(),
+        { session: "legacy" },
       );
       const actual = reopened.readReviewedStory({ view: "current-markup" });
 
@@ -1043,6 +1047,7 @@ describe("bulk revision lifecycle", () => {
             stylesheetSource: { type: "package" },
           }),
         ),
+        { session: "legacy" },
       );
       if (mode === "accept") {
         reviewer.acceptAll();
@@ -1051,7 +1056,9 @@ describe("bulk revision lifecycle", () => {
       }
       const expected = reviewer.readReviewedStory({ view: "current-markup" });
       const saved = await reviewer.toBuffer();
-      const reopened = await FolioDocxReviewer.fromBuffer(saved);
+      const reopened = await FolioDocxReviewer.fromBuffer(saved, {
+        session: "legacy",
+      });
       const actual = reopened.readReviewedStory({ view: "current-markup" });
       const roundTripped = toProseDoc(
         await parseDocx(saved, { detectVariables: false, preloadFonts: false }),
@@ -1109,6 +1116,7 @@ describe("bulk revision lifecycle", () => {
             stylesheetSource: { type: "package" },
           }),
         ),
+        { session: "legacy" },
       );
 
       if (mode === "accept") {
@@ -1119,6 +1127,7 @@ describe("bulk revision lifecycle", () => {
       const expected = reviewer.readReviewedStory({ view: "current-markup" });
       const reopened = await FolioDocxReviewer.fromBuffer(
         await reviewer.toBuffer(),
+        { session: "legacy" },
       );
       const story = reopened.readReviewedStory({ view: "current-markup" });
 

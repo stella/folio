@@ -43,6 +43,7 @@ const DRAFT: PackageFixture = {
 
 const reviewerOf = async (bytes: Uint8Array): Promise<FolioDocxReviewer> =>
   await FolioDocxReviewer.fromBuffer(bytes.slice().buffer, {
+    session: "legacy",
     author: "Drafter",
   });
 

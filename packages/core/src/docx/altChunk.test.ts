@@ -93,7 +93,9 @@ describe("w:altChunk", () => {
   test("keeps the payload opaque, reports it to readers, and preserves its XML on save", async () => {
     const input = await buildDocx(CHUNK);
     const parsed = await parseDocx(input, { preloadFonts: false });
-    const reviewer = await FolioDocxReviewer.fromBuffer(input);
+    const reviewer = await FolioDocxReviewer.fromBuffer(input, {
+      session: "legacy",
+    });
 
     expect(
       parsed.parseWarnings?.filter(
@@ -144,7 +146,9 @@ describe("w:altChunk", () => {
       contentType: "text/plain",
       payload,
     });
-    const reviewer = await FolioDocxReviewer.fromBuffer(input);
+    const reviewer = await FolioDocxReviewer.fromBuffer(input, {
+      session: "legacy",
+    });
     const reads = [
       reviewer
         .getContent()
@@ -188,7 +192,7 @@ describe("w:altChunk", () => {
         payload: "Override precedence sentinel",
       });
       const text = (
-        await FolioDocxReviewer.fromBuffer(input)
+        await FolioDocxReviewer.fromBuffer(input, { session: "legacy" })
       ).getContentAsText();
       expect(text.includes("Override precedence sentinel")).toBe(exposed);
     }
@@ -412,6 +416,7 @@ describe("w:altChunk", () => {
     );
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await buildDocx(CHUNK + CHUNK, { contentType: "text/plain", payload }),
+      { session: "legacy" },
     );
     const text = reviewer.getContentAsText();
     expect(text.split(payload).length - 1).toBe(1);
@@ -450,6 +455,7 @@ describe("w:altChunk", () => {
         contentType: "text/plain",
         payload: nestedPayload,
       }),
+      { session: "legacy" },
     );
     expect(nestedReader.getContentAsText()).toContain(nestedPayload);
 
@@ -460,6 +466,7 @@ describe("w:altChunk", () => {
         payload: strictPayload,
         relationshipType: "strict",
       }),
+      { session: "legacy" },
     );
     expect(strictReader.getContentAsText()).toContain(strictPayload);
 
@@ -469,6 +476,7 @@ describe("w:altChunk", () => {
         payload: "Do not read external content.",
         relationshipMode: "External",
       }),
+      { session: "legacy" },
     );
     expect(externalReader.getContentAsText()).toContain(
       "Unsupported w:altChunk content",
@@ -482,6 +490,7 @@ describe("w:altChunk", () => {
         contentType: "text/plain",
         payload: "x".repeat(ALT_CHUNK_PLAIN_TEXT_LIMIT_BYTES + 1),
       }),
+      { session: "legacy" },
     );
     expect(oversizedReader.getContentAsText()).toContain(
       "Unsupported w:altChunk content",
@@ -495,6 +504,7 @@ describe("w:altChunk", () => {
         contentType: "text/plain",
         payload: new Uint8Array([0xff, 0xfe]),
       }),
+      { session: "legacy" },
     );
     expect(invalidUtf8Reader.getContentAsText()).toContain(
       "Unsupported w:altChunk content",

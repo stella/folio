@@ -55,7 +55,7 @@ describe("a restyled paragraph's inherited numbering", () => {
     test(`leaves with the style it came from (${mode})`, async () => {
       const reviewer = await FolioDocxReviewer.fromBuffer(
         await styleNumberedDocx(),
-        { author: "Reviewer" },
+        { session: "legacy", author: "Reviewer" },
       );
       const scope = reviewer.getContent().find(({ text }) => text === "Scope");
       expect(scope?.kind).toBe("heading");
@@ -78,7 +78,7 @@ describe("a restyled paragraph's inherited numbering", () => {
 
       const reopened = await FolioDocxReviewer.fromBuffer(
         await reviewer.toBuffer(),
-        { author: "Reviewer" },
+        { session: "legacy", author: "Reviewer" },
       );
       const live =
         mode === "direct"

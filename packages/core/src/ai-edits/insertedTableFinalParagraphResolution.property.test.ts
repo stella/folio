@@ -66,7 +66,10 @@ const buildSeed = async (): Promise<ArrayBuffer> => {
 };
 
 const open = async (bytes: ArrayBuffer): Promise<FolioDocxReviewer> =>
-  FolioDocxReviewer.fromBuffer(bytes, { author: "Reviewer" });
+  FolioDocxReviewer.fromBuffer(bytes, {
+    session: "legacy",
+    author: "Reviewer",
+  });
 
 const content = (
   reviewer: FolioDocxReviewer,

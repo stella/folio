@@ -66,8 +66,12 @@ test(
             },
           } satisfies Document;
           const bytes = await createDocx(model);
-          const direct = await FolioDocxReviewer.fromBuffer(bytes);
-          const tracked = await FolioDocxReviewer.fromBuffer(bytes);
+          const direct = await FolioDocxReviewer.fromBuffer(bytes, {
+            session: "legacy",
+          });
+          const tracked = await FolioDocxReviewer.fromBuffer(bytes, {
+            session: "legacy",
+          });
           for (const [reviewer, mode] of [
             [direct, "direct"],
             [tracked, "tracked-changes"],
@@ -105,17 +109,23 @@ test(
           );
           const reopenedDirect = await FolioDocxReviewer.fromBuffer(
             await direct.toBuffer(),
+            { session: "legacy" },
           );
           const reopenedTracked = await FolioDocxReviewer.fromBuffer(
             await tracked.toBuffer(),
+            { session: "legacy" },
           );
           expect(comments(reopenedTracked)).toEqual(comments(reopenedDirect));
           expect(comments(reopenedDirect)).toEqual(comments(direct));
-          const individually = await FolioDocxReviewer.fromBuffer(pending);
+          const individually = await FolioDocxReviewer.fromBuffer(pending, {
+            session: "legacy",
+          });
           for (const change of individually.getChanges())
             individually.acceptChange(change);
           expect(comments(individually)).toEqual(comments(direct));
-          const rejected = await FolioDocxReviewer.fromBuffer(pending);
+          const rejected = await FolioDocxReviewer.fromBuffer(pending, {
+            session: "legacy",
+          });
           rejected.rejectAll();
           expect(rejected.getComments().at(0)?.anchoredText).toBe(
             source.slice(start, end),

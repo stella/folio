@@ -231,7 +231,9 @@ describe("saving threaded comments is a fixed point after the first save", () =>
         );
         stripParaIds(parsed.package.document.comments ?? [], forest);
         const first = await repackDocx(parsed, { updateModifiedDate: false });
-        const reviewer = await FolioDocxReviewer.fromBuffer(first);
+        const reviewer = await FolioDocxReviewer.fromBuffer(first, {
+          session: "legacy",
+        });
         const second = await repackDocx(reviewer.toDocument(), {
           updateModifiedDate: false,
         });

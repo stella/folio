@@ -112,9 +112,12 @@ test("IME replacement preserves the selected text as a deletion after save @brow
   });
   if (!saved) throw new Error("editor did not return the revised DOCX");
   const bytes = new Uint8Array(saved);
-  const reviewed = await FolioDocxReviewer.fromBuffer(bytes.buffer);
+  const reviewed = await FolioDocxReviewer.fromBuffer(bytes.buffer, {
+    session: "legacy",
+  });
   const baseline = await FolioDocxReviewer.fromBuffer(
     new Uint8Array(original).buffer,
+    { session: "legacy" },
   );
   const originalBlocks = baseline.snapshot().blocks.map((block) => block.text);
   expect(
@@ -125,10 +128,13 @@ test("IME replacement preserves the selected text as a deletion after save @brow
       { type: "insertion", text: "契約" },
     ]),
   );
-  const accepting = await FolioDocxReviewer.fromBuffer(bytes.buffer);
+  const accepting = await FolioDocxReviewer.fromBuffer(bytes.buffer, {
+    session: "legacy",
+  });
   accepting.acceptAll();
   const accepted = await FolioDocxReviewer.fromBuffer(
     await accepting.toBuffer(),
+    { session: "legacy" },
   );
   const changedBlock = originalBlocks.findIndex((text) =>
     text.includes(selected),
@@ -142,6 +148,7 @@ test("IME replacement preserves the selected text as a deletion after save @brow
   reviewed.rejectAll();
   const reopened = await FolioDocxReviewer.fromBuffer(
     await reviewed.toBuffer(),
+    { session: "legacy" },
   );
   expect(reopened.snapshot().blocks.map((block) => block.text)).toEqual(
     originalBlocks,

@@ -104,6 +104,7 @@ describe("a tracked change around a hyperlink", () => {
     ).toHaveLength(3);
     const reviewer = await FolioDocxReviewer.fromBuffer(
       stripped.slice().buffer,
+      { session: "legacy" },
     );
     reviewer.rejectAll();
     expect(reviewer.getContent().map(({ text }) => text)).toEqual(["ae"]);

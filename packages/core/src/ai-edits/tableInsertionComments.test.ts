@@ -57,9 +57,7 @@ const anchoredAfterAccept = async (
 ): Promise<string | undefined> => {
   const reviewer = await FolioDocxReviewer.fromBuffer(
     await createDocx(buildDocument()),
-    {
-      author: "Editor",
-    },
+    { session: "legacy", author: "Editor" },
   );
   const blocks = reviewer.getContent();
   const idOf = (text: string) => {
@@ -86,6 +84,7 @@ const anchoredAfterAccept = async (
   if (mode !== "direct") reviewer.acceptAll();
   const reopened = await FolioDocxReviewer.fromBuffer(
     await reviewer.toBuffer(),
+    { session: "legacy" },
   );
   return reopened.getComments()[0]?.anchoredText;
 };
@@ -184,7 +183,7 @@ describe("paragraphs inserted together inside a comment", () => {
     async (mode) => {
       const reviewer = await FolioDocxReviewer.fromBuffer(
         await createDocx(commented()),
-        { author: "Editor" },
+        { session: "legacy", author: "Editor" },
       );
       const end = reviewer
         .getContent()
@@ -215,6 +214,7 @@ describe("paragraphs inserted together inside a comment", () => {
       expect(result.skipped).toEqual([]);
       const reopened = await FolioDocxReviewer.fromBuffer(
         await reviewer.toBuffer(),
+        { session: "legacy" },
       );
       const anchoredWhenAccepted = (source: FolioDocxReviewer) =>
         source
@@ -238,6 +238,7 @@ describe("paragraphs inserted together inside a comment", () => {
       if (mode !== "direct") reviewer.acceptAll();
       const saved = await FolioDocxReviewer.fromBuffer(
         await reviewer.toBuffer(),
+        { session: "legacy" },
       );
       expect(saved.getComments()[0]?.anchoredText).toBe(
         "The supplier delivers goods.First added clause.Second added clause.",

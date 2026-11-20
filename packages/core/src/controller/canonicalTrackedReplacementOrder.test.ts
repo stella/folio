@@ -124,7 +124,9 @@ const reviewMarkup = async (bytes: ArrayBuffer): Promise<Summary> => {
 /** What the saved file reads as pending, accepted and rejected. */
 const readings = async (bytes: ArrayBuffer) => {
   const read = async (decision?: "accept" | "reject") => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(bytes);
+    const reviewer = await FolioDocxReviewer.fromBuffer(bytes, {
+      session: "legacy",
+    });
     if (decision === "accept") reviewer.acceptAll();
     if (decision === "reject") reviewer.rejectAll();
     return {
@@ -292,7 +294,9 @@ const viaDefaultEngine = async (
   find: string,
   replace: string,
 ) => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(source);
+  const reviewer = await FolioDocxReviewer.fromBuffer(source, {
+    session: "legacy",
+  });
   const result = reviewer.applyOperations([operation(find, replace)], {
     mode: "tracked-changes",
     undefinedReferences: "refuse",

@@ -49,6 +49,7 @@ describe("list normalization without paragraph identities", () => {
   test("a headless save writes the document", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await styleNumberedWithoutIds(),
+      { session: "legacy" },
     );
     const saved = await reviewer.toBuffer();
     const xml =

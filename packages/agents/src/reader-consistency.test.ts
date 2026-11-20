@@ -419,7 +419,9 @@ const MARKDOWN_OPTIONS = {
 /** Every reader of the package `bytes` holds, opened afresh. */
 const readAll = async (bytes: Uint8Array) =>
   readReviewer(
-    await FolioDocxReviewer.fromBuffer(toArrayBuffer(bytes)),
+    await FolioDocxReviewer.fromBuffer(toArrayBuffer(bytes), {
+      session: "legacy",
+    }),
     await docxToMarkdown(toArrayBuffer(bytes), MARKDOWN_OPTIONS),
   );
 
@@ -719,7 +721,7 @@ const runListEdits = async (
   const random = seeded(seed);
   const reviewer = await FolioDocxReviewer.fromBuffer(
     toArrayBuffer(await buildNumberedDocument()),
-    { author: "Agent" },
+    { session: "legacy", author: "Agent" },
   );
   const log: string[] = [];
   const check = async (body: () => Promise<void> | void): Promise<void> => {
@@ -927,6 +929,7 @@ const buildNotedDocument = async (): Promise<Uint8Array> => {
   // A comment over a reference, written by the reviewer and saved, so the
   // package carries the comment's range and reference runs beside the notes.
   const reviewer = await FolioDocxReviewer.fromBuffer(toArrayBuffer(bytes), {
+    session: "legacy",
     author: "R",
   });
   const block = reviewer.getContent()[0];
@@ -956,7 +959,9 @@ const buildNotedDocument = async (): Promise<Uint8Array> => {
 describe("readers agree on note references", () => {
   test("every reader shows the reading-order marker, never the package id", async () => {
     const bytes = await buildNotedDocument();
-    const reviewer = await FolioDocxReviewer.fromBuffer(toArrayBuffer(bytes));
+    const reviewer = await FolioDocxReviewer.fromBuffer(toArrayBuffer(bytes), {
+      session: "legacy",
+    });
     const bridge = createReviewerBridge(reviewer);
     const read = executeFolioToolCall("read_document", {}, bridge);
     if (!read.ok) {
@@ -996,6 +1001,7 @@ describe("readers agree on note references", () => {
   test("find_text never matches inside a marker, and matches a whole one", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       toArrayBuffer(await buildNotedDocument()),
+      { session: "legacy" },
     );
     const bridge = createReviewerBridge(reviewer);
     const find = (query: string) => {

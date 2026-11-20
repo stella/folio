@@ -65,7 +65,7 @@ const insertedAfterReopen = async (
 ) => {
   const reviewer = await FolioDocxReviewer.fromBuffer(
     await createDocx(fromMarkdown(`# ${HEADING}\n\n${BODY}`)),
-    { author: "AI" },
+    { session: "legacy", author: "AI" },
   );
   const blockId = reviewer
     .getContent()
@@ -86,6 +86,7 @@ const insertedAfterReopen = async (
   if (mode !== "direct") reviewer.acceptAll();
   const reopened = await FolioDocxReviewer.fromBuffer(
     await reviewer.toBuffer(),
+    { session: "legacy" },
   );
   return reopened.getContent().find((block) => block.text === INSERTED);
 };

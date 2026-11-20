@@ -37,6 +37,7 @@ const semanticProjection = async (bytes: Uint8Array) => {
   expect(await validateDocxPackage(bytes)).toEqual({ valid: true });
   const reviewer = await FolioDocxReviewer.fromBuffer(
     new Uint8Array(bytes).buffer,
+    { session: "legacy" },
   );
   return {
     blocks: reviewer.snapshot().blocks.map((block) => {
@@ -242,6 +243,7 @@ test("host APIs interleaved with edits save equally across React, Vue, headless 
         fc.asyncProperty(hostApiFlowArbitrary, async (flow) => {
           let headless = await FolioDocxReviewer.fromBuffer(
             new Uint8Array(source).buffer,
+            { session: "legacy" },
           );
           let expectedFirstText = "First page";
           const exercised = new Map(
@@ -259,6 +261,7 @@ test("host APIs interleaved with edits save equally across React, Vue, headless 
             if (index === flow.replacementAfter) {
               headless = await FolioDocxReviewer.fromBuffer(
                 new Uint8Array(replacement).buffer,
+                { session: "legacy" },
               );
               expectedFirstText = "Replacement page";
               await writeFile(file, replacement);

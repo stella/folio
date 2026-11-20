@@ -309,7 +309,9 @@ describe("referenced comparison style resources", () => {
     const pendingDocumentXml = await pendingDocument.text();
     expect(pendingDocumentXml).not.toContain("<w:u ");
 
-    const reviewer = await FolioDocxReviewer.fromBuffer(compared.value.buffer);
+    const reviewer = await FolioDocxReviewer.fromBuffer(compared.value.buffer, {
+      session: "legacy",
+    });
     reviewer.acceptAll();
     expect(await stylesXml(await reviewer.toBuffer())).toContain(
       'w:styleId="TargetCharacter"',
@@ -344,6 +346,7 @@ describe("referenced comparison style resources", () => {
         text: "Styled",
         formatting: { bold: true, boldCs: true },
       }),
+      { session: "legacy" },
     );
     const block = reviewer.snapshot().blocks.at(0);
     if (!block) throw new Error("Expected a source block");
@@ -363,7 +366,9 @@ describe("referenced comparison style resources", () => {
     const pending = await reviewer.toBuffer();
     expect(await documentXml(pending)).toContain("<w:rPrChange");
 
-    const rejected = await FolioDocxReviewer.fromBuffer(pending);
+    const rejected = await FolioDocxReviewer.fromBuffer(pending, {
+      session: "legacy",
+    });
     rejected.rejectAll();
     expect(await documentXml(await rejected.toBuffer())).not.toContain(
       "<w:rFonts ",

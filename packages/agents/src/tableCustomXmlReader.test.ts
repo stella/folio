@@ -25,7 +25,9 @@ const makeDocx = async (): Promise<ArrayBuffer> => {
 
 describe("read_document inside table custom XML", () => {
   test("row text remains visible in the snapshot and read_document", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await makeDocx());
+    const reviewer = await FolioDocxReviewer.fromBuffer(await makeDocx(), {
+      session: "legacy",
+    });
     const bridge = createReviewerBridge(reviewer);
     const read = executeFolioToolCall("read_document", {}, bridge);
     if (!read.ok) throw new Error(read.error);

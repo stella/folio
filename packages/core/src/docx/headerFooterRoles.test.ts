@@ -55,6 +55,7 @@ describe("header and footer roles", () => {
   test("readers label each part with its roles and the sections that show it", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await buildSectionsDocx(),
+      { session: "legacy" },
     );
     const text = (id: keyof typeof SECTIONS_FIXTURE_PARTS) =>
       SECTIONS_FIXTURE_PARTS[id].text;
@@ -104,6 +105,7 @@ describe("header and footer roles", () => {
     };
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await createDocx(model),
+      { session: "legacy" },
     );
 
     expect(rolesOf(reviewer.toDocument().package.headers)).toEqual({

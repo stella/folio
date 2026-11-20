@@ -62,7 +62,9 @@ describe.each(["direct", "tracked-changes"] as const)(
   (mode) => {
     const edited = async () => {
       const source = await open();
-      const reviewer = await FolioDocxReviewer.fromBuffer(source.slice(0));
+      const reviewer = await FolioDocxReviewer.fromBuffer(source.slice(0), {
+        session: "legacy",
+      });
       const result = reviewer.applyDocumentOperations(
         {
           version: 1,
@@ -121,6 +123,7 @@ test("a relationship to an entry that keeps its name's escapes is not dangling",
   );
   const reviewer = await FolioDocxReviewer.fromBuffer(
     (await zip.generate()).slice().buffer,
+    { session: "legacy" },
   );
   reviewer.applyDocumentOperations(
     {

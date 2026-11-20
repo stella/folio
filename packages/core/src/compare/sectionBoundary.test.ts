@@ -109,7 +109,9 @@ const reopenResolved = async (
   buffer: ArrayBuffer,
   mode: "accept" | "reject",
 ): Promise<FolioDocxReviewer> => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
+  const reviewer = await FolioDocxReviewer.fromBuffer(buffer, {
+    session: "legacy",
+  });
   if (mode === "accept") {
     reviewer.acceptAll();
   } else {
@@ -133,10 +135,10 @@ const reopenResolved = async (
     reopenedConcurrentFirst,
     reopenedConcurrentSecond,
   ] = await Promise.all([
-    FolioDocxReviewer.fromBuffer(first),
-    FolioDocxReviewer.fromBuffer(second),
-    FolioDocxReviewer.fromBuffer(concurrentFirst),
-    FolioDocxReviewer.fromBuffer(concurrentSecond),
+    FolioDocxReviewer.fromBuffer(first, { session: "legacy" }),
+    FolioDocxReviewer.fromBuffer(second, { session: "legacy" }),
+    FolioDocxReviewer.fromBuffer(concurrentFirst, { session: "legacy" }),
+    FolioDocxReviewer.fromBuffer(concurrentSecond, { session: "legacy" }),
   ]);
   const expectedProjection = storyProjection(reopenedFirst);
   expect(storyProjection(reopenedSecond)).toEqual(expectedProjection);
@@ -154,8 +156,8 @@ const expectResolvedTerminals = async (
     createDocx(targetDocument),
   ]);
   const [baseReviewer, targetReviewer] = await Promise.all([
-    FolioDocxReviewer.fromBuffer(base),
-    FolioDocxReviewer.fromBuffer(target),
+    FolioDocxReviewer.fromBuffer(base, { session: "legacy" }),
+    FolioDocxReviewer.fromBuffer(target, { session: "legacy" }),
   ]);
   const result = await compareDocx(base, target, OPTIONS);
   if (result.isErr()) {
@@ -194,8 +196,8 @@ const expectPendingTerminals = async ({
   ]);
   const [pendingZip, acceptedReviewer, rejectedReviewer] = await Promise.all([
     ZipArchive.read(pending),
-    FolioDocxReviewer.fromBuffer(accepted),
-    FolioDocxReviewer.fromBuffer(rejected),
+    FolioDocxReviewer.fromBuffer(accepted, { session: "legacy" }),
+    FolioDocxReviewer.fromBuffer(rejected, { session: "legacy" }),
   ]);
   const pendingXml = await pendingZip.entry("word/document.xml")?.text();
   expect(pendingXml).toMatch(
@@ -334,7 +336,9 @@ describe("tracked section-boundary ownership", () => {
         paragraph("00000003", "Tail", FOLLOWING_SECTION),
       ]),
     );
-    const reviewer = await FolioDocxReviewer.fromBuffer(pending);
+    const reviewer = await FolioDocxReviewer.fromBuffer(pending, {
+      session: "legacy",
+    });
 
     expect(reviewer.acceptChange(1)).toBe(true);
     const firstSave = reviewer.toBuffer();
@@ -343,8 +347,8 @@ describe("tracked section-boundary ownership", () => {
 
     const [first, second] = await Promise.all([firstSave, secondSave]);
     const [reopenedFirst, reopenedSecond] = await Promise.all([
-      FolioDocxReviewer.fromBuffer(first),
-      FolioDocxReviewer.fromBuffer(second),
+      FolioDocxReviewer.fromBuffer(first, { session: "legacy" }),
+      FolioDocxReviewer.fromBuffer(second, { session: "legacy" }),
     ]);
     expect(storyProjection(reopenedFirst)).toEqual({
       blocks: [
@@ -427,7 +431,9 @@ test("an inserted section imports its header part and keeps the rejected body un
     accepted.readStory({ type: "header", relationshipId: reference.rId })?.text,
   ).toBe("Section heading");
   const rejected = await reopenResolved(result.value.buffer, "reject");
-  const original = await FolioDocxReviewer.fromBuffer(baseBuffer);
+  const original = await FolioDocxReviewer.fromBuffer(baseBuffer, {
+    session: "legacy",
+  });
   expect(storyProjection(rejected)).toEqual(storyProjection(original));
   expect(
     rejected.listStories().filter(({ handle }) => handle.type === "header"),

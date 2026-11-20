@@ -65,6 +65,7 @@ describe("a package without document relationships", () => {
   test("saves unedited without gaining them", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await packageWithoutDocumentRelationships(),
+      { session: "legacy" },
     );
     const saved = await ZipArchive.read(await reviewer.toBuffer());
     expect(saved.entry(DOCUMENT_RELS)).toBeUndefined();
@@ -75,7 +76,7 @@ describe("a package without document relationships", () => {
       test(`saves a ${name} added in ${mode} mode`, async () => {
         const reviewer = await FolioDocxReviewer.fromBuffer(
           await packageWithoutDocumentRelationships(),
-          { author: "Agent" },
+          { session: "legacy", author: "Agent" },
         );
         const result = reviewer.applyOperations([operation], {
           undefinedReferences: "refuse",
@@ -86,7 +87,9 @@ describe("a package without document relationships", () => {
         const saved = await reviewer.toBuffer();
         const zip = await ZipArchive.read(saved);
         const relationships = (await zip.entry(DOCUMENT_RELS)?.text()) ?? "";
-        const reopened = await FolioDocxReviewer.fromBuffer(saved);
+        const reopened = await FolioDocxReviewer.fromBuffer(saved, {
+          session: "legacy",
+        });
         if (name === "comment") {
           expect(relationships).toContain(RELATIONSHIP_TYPES.comments);
           expect(reopened.getComments().map(({ text }) => text)).toContain(

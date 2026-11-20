@@ -150,7 +150,9 @@ describe("toggle properties of a paragraph written from the model", () => {
     await assertProperty(
       fc.asyncProperty(caseArbitrary, async (example) => {
         const source = await documentOf(example);
-        const reviewer = await FolioDocxReviewer.fromBuffer(source);
+        const reviewer = await FolioDocxReviewer.fromBuffer(source, {
+          session: "legacy",
+        });
         if (example.edit === "direct") {
           const result = reviewer.applyOperations(
             [

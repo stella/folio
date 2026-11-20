@@ -68,10 +68,14 @@ const run = async (): Promise<void> => {
     return;
   }
 
-  const reviewer = await FolioDocxReviewer.fromBuffer(input);
+  const reviewer = await FolioDocxReviewer.fromBuffer(input, {
+    session: "legacy",
+  });
   const before = publicRead(reviewer);
   const saved = await reviewer.toBuffer();
-  const reopened = await FolioDocxReviewer.fromBuffer(saved);
+  const reopened = await FolioDocxReviewer.fromBuffer(saved, {
+    session: "legacy",
+  });
   assert.deepEqual(
     publicRead(reopened),
     before,

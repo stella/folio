@@ -148,11 +148,13 @@ const expectSameParts = async (
 };
 
 const blockRows = async (docx: ArrayBuffer) =>
-  (await FolioDocxReviewer.fromBuffer(docx)).getContent().map((block) => ({
-    id: block.id,
-    stability: block.idStability ?? "package",
-    text: block.text,
-  }));
+  (await FolioDocxReviewer.fromBuffer(docx, { session: "legacy" }))
+    .getContent()
+    .map((block) => ({
+      id: block.id,
+      stability: block.idStability ?? "package",
+      text: block.text,
+    }));
 
 const firstTextParagraph = (doc: Document): Paragraph | undefined =>
   doc.package.document.content.find(
@@ -368,7 +370,9 @@ describe("string-level XML patchers are prefix independent", () => {
 
     // The reviewer's save, which tries the selective splice first.
     const reviewed = async (docx: Uint8Array) => {
-      const reviewer = await FolioDocxReviewer.fromBuffer(toArrayBuffer(docx));
+      const reviewer = await FolioDocxReviewer.fromBuffer(toArrayBuffer(docx), {
+        session: "legacy",
+      });
       const block = reviewer
         .getContent()
         .find((candidate) => candidate.text.trim().length > 0);

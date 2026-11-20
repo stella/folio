@@ -275,6 +275,7 @@ const reopen = async (
   reviewer: FolioDocxReviewer,
 ): Promise<FolioDocxReviewer> =>
   FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
+    session: "legacy",
     author: "Story test",
   });
 
@@ -616,6 +617,7 @@ describe.each(STORIES)(
 
     test.each(cases)("$label ($mode)", async (operation) => {
       const reviewer = await FolioDocxReviewer.fromBuffer(await seed(), {
+        session: "legacy",
         author: "Story test",
       });
       const ids = (text: string) => blockWithText(reviewer, story, text).id;
@@ -644,6 +646,7 @@ describe.each(STORIES)(
 
     test("a split cell comes back split after a merge", async () => {
       const reviewer = await FolioDocxReviewer.fromBuffer(await seed(), {
+        session: "legacy",
         author: "Story test",
       });
       const ids = (text: string) => blockWithText(reviewer, story, text).id;
@@ -670,6 +673,7 @@ describe.each(STORIES)(
       "%s anchors are read back from the story",
       async (type) => {
         const reviewer = await FolioDocxReviewer.fromBuffer(await seed(), {
+          session: "legacy",
           author: "Story test",
         });
         const block = blockWithText(reviewer, story, "Bravo two.");
@@ -744,6 +748,7 @@ describe.each(NOTES)(
 
     test("a deleted paragraph with no other edit is gone from the saved part", async () => {
       const reviewer = await FolioDocxReviewer.fromBuffer(await seed(), {
+        session: "legacy",
         author: "Story test",
       });
       const deleted = blockWithText(reviewer, story, "Alpha one.");
@@ -761,6 +766,7 @@ describe.each(NOTES)(
 
     test("a tracked table deletion keeps its row revisions through save", async () => {
       const reviewer = await FolioDocxReviewer.fromBuffer(await seed(), {
+        session: "legacy",
         author: "Story test",
       });
       apply(reviewer, story, "tracked-changes", {

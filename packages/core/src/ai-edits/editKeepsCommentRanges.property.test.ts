@@ -302,6 +302,7 @@ describe("an edit leaves every comment and bookmark range balanced and anchored"
           const generated = toCase(raw);
           const source = await createDocx(buildDocument(generated));
           const reviewer = await FolioDocxReviewer.fromBuffer(source, {
+            session: "legacy",
             author: "Editor",
           });
           const target = reviewer.snapshot().blocks[generated.edit.blockIndex];

@@ -341,7 +341,9 @@ const expectCompareRoundTrip = async ({
     previous: expectedParagraphProperties(before.directSpacing),
   });
 
-  const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+  const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer, {
+    session: "legacy",
+  });
   expectDirectSpacing(accepting, after.directSpacing);
   expect(accepting.acceptAll().resolved).toBe(1);
   expectDirectSpacing(accepting, after.directSpacing);
@@ -352,11 +354,13 @@ const expectCompareRoundTrip = async ({
     expectedParagraphProperties(after.directSpacing),
   );
   expectDirectSpacing(
-    await FolioDocxReviewer.fromBuffer(accepted),
+    await FolioDocxReviewer.fromBuffer(accepted, { session: "legacy" }),
     after.directSpacing,
   );
 
-  const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+  const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer, {
+    session: "legacy",
+  });
   expectDirectSpacing(rejecting, after.directSpacing);
   expect(rejecting.rejectAll().resolved).toBe(1);
   expectDirectSpacing(rejecting, before.directSpacing);
@@ -367,7 +371,7 @@ const expectCompareRoundTrip = async ({
     expectedParagraphProperties(before.directSpacing),
   );
   expectDirectSpacing(
-    await FolioDocxReviewer.fromBuffer(rejected),
+    await FolioDocxReviewer.fromBuffer(rejected, { session: "legacy" }),
     before.directSpacing,
   );
 };
@@ -428,13 +432,15 @@ describe("paragraph spacing comparison", () => {
     if (result.isErr()) {
       throw result.error;
     }
-    const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+    const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer, {
+      session: "legacy",
+    });
     expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
     const rejectedBuffer = await rejecting.toBuffer();
 
     expect(directSpacingXml(await mainDocumentXml(rejectedBuffer))).toBe("");
     expectDirectSpacing(
-      await FolioDocxReviewer.fromBuffer(rejectedBuffer),
+      await FolioDocxReviewer.fromBuffer(rejectedBuffer, { session: "legacy" }),
       undefined,
     );
   });
@@ -517,20 +523,26 @@ describe("paragraph spacing comparison", () => {
       previous: expectedParagraphProperties(beforeSpacing),
     });
 
-    const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+    const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer, {
+      session: "legacy",
+    });
     expect(accepting.acceptAll().resolved).toBe(1);
     const accepted = await FolioDocxReviewer.fromBuffer(
       await accepting.toBuffer(),
+      { session: "legacy" },
     );
     expect(accepted.snapshot().blocks.at(0)).toMatchObject({
       styleId: NEXT_STYLE_ID,
       directSpacing: FULL_SPACING,
     });
 
-    const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+    const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer, {
+      session: "legacy",
+    });
     expect(rejecting.rejectAll().resolved).toBe(1);
     const rejected = await FolioDocxReviewer.fromBuffer(
       await rejecting.toBuffer(),
+      { session: "legacy" },
     );
     expect(rejected.snapshot().blocks.at(0)).toMatchObject({
       styleId: STYLE_ID,
@@ -540,7 +552,9 @@ describe("paragraph spacing comparison", () => {
 
   test("does not project style-inherited spacing as direct formatting", async () => {
     const source = await spacingDocument({ inheritedSpacing: FULL_SPACING });
-    const reviewer = await FolioDocxReviewer.fromBuffer(source);
+    const reviewer = await FolioDocxReviewer.fromBuffer(source, {
+      session: "legacy",
+    });
     expectDirectSpacing(reviewer, undefined);
 
     const saved = await reviewer.toBuffer();
@@ -549,7 +563,10 @@ describe("paragraph spacing comparison", () => {
         firstParagraphXml(await mainDocumentXml(saved)),
       ),
     ).toBe(expectedParagraphProperties(undefined));
-    expectDirectSpacing(await FolioDocxReviewer.fromBuffer(saved), undefined);
+    expectDirectSpacing(
+      await FolioDocxReviewer.fromBuffer(saved, { session: "legacy" }),
+      undefined,
+    );
 
     const result = await compareDocx(source, source, OPTIONS);
     if (result.isErr()) {
@@ -627,7 +644,9 @@ describe("paragraph spacing comparison", () => {
       expect(result.value.changes).toEqual([
         expect.objectContaining({ kind: "insert", after: INSERTED_TEXT }),
       ]);
-      const pending = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+      const pending = await FolioDocxReviewer.fromBuffer(result.value.buffer, {
+        session: "legacy",
+      });
       expect(pending.snapshot().blocks.at(0)?.text).toBe(INSERTED_TEXT);
       expect(
         expectParagraphBlock(pending.snapshot().blocks.at(0)).directSpacing,
@@ -635,7 +654,9 @@ describe("paragraph spacing comparison", () => {
 
       expect(pending.acceptAll().resolved).toBeGreaterThan(0);
       const acceptedBuffer = await pending.toBuffer();
-      const accepted = await FolioDocxReviewer.fromBuffer(acceptedBuffer);
+      const accepted = await FolioDocxReviewer.fromBuffer(acceptedBuffer, {
+        session: "legacy",
+      });
       expect(accepted.snapshot().blocks.map(({ text }) => text)).toEqual([
         INSERTED_TEXT,
         TEXT,
@@ -645,10 +666,14 @@ describe("paragraph spacing comparison", () => {
         spacingXml(directSpacing),
       );
 
-      const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+      const rejecting = await FolioDocxReviewer.fromBuffer(
+        result.value.buffer,
+        { session: "legacy" },
+      );
       expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
       const rejected = await FolioDocxReviewer.fromBuffer(
         await rejecting.toBuffer(),
+        { session: "legacy" },
       );
       expect(rejected.snapshot().blocks.map(({ text }) => text)).toEqual([
         TEXT,
@@ -690,24 +715,36 @@ describe("paragraph spacing comparison", () => {
       const pendingXml = await mainDocumentXml(result.value.buffer);
       expect(pendingXml.match(/<w:pPrChange\b/gu)).toHaveLength(1);
       expectDirectSpacing(
-        await FolioDocxReviewer.fromBuffer(result.value.buffer),
+        await FolioDocxReviewer.fromBuffer(result.value.buffer, {
+          session: "legacy",
+        }),
         directSpacing,
         1,
       );
 
-      const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+      const accepting = await FolioDocxReviewer.fromBuffer(
+        result.value.buffer,
+        { session: "legacy" },
+      );
       expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
       const accepted = await accepting.toBuffer();
-      const reopenedAccepted = await FolioDocxReviewer.fromBuffer(accepted);
+      const reopenedAccepted = await FolioDocxReviewer.fromBuffer(accepted, {
+        session: "legacy",
+      });
       expect(
         reopenedAccepted.snapshot().blocks.map(({ text }) => text),
       ).toEqual([TEXT, INSERTED_TEXT]);
       expectDirectSpacing(reopenedAccepted, directSpacing, 1);
 
-      const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+      const rejecting = await FolioDocxReviewer.fromBuffer(
+        result.value.buffer,
+        { session: "legacy" },
+      );
       expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
       const rejected = await rejecting.toBuffer();
-      const reopenedRejected = await FolioDocxReviewer.fromBuffer(rejected);
+      const reopenedRejected = await FolioDocxReviewer.fromBuffer(rejected, {
+        session: "legacy",
+      });
       expect(
         reopenedRejected.snapshot().blocks.map(({ text }) => text),
       ).toEqual([TEXT]);
@@ -722,7 +759,9 @@ describe("paragraph spacing comparison", () => {
     } as const;
     const firstTarget = { spaceAfter: 0, beforeAutospacing: false } as const;
     const source = await spacingDocument({ directSpacing: originalSpacing });
-    const reviewer = await FolioDocxReviewer.fromBuffer(source);
+    const reviewer = await FolioDocxReviewer.fromBuffer(source, {
+      session: "legacy",
+    });
     const blockId = reviewer.snapshot().blocks.at(0)?.id;
     if (!blockId) {
       panic("expected a paragraph block id");
@@ -747,7 +786,9 @@ describe("paragraph spacing comparison", () => {
     expectDirectSpacing(reviewer, firstTarget);
 
     const pending = await reviewer.toBuffer();
-    const reopened = await FolioDocxReviewer.fromBuffer(pending);
+    const reopened = await FolioDocxReviewer.fromBuffer(pending, {
+      session: "legacy",
+    });
     const second = reopened.applyDocumentOperations(
       {
         version: 1,
@@ -815,17 +856,25 @@ describe("paragraph spacing comparison", () => {
       previous: expectedParagraphProperties(originalSpacing),
     });
 
-    const accepting = await FolioDocxReviewer.fromBuffer(stillPending);
+    const accepting = await FolioDocxReviewer.fromBuffer(stillPending, {
+      session: "legacy",
+    });
     expect(accepting.acceptAll().resolved).toBe(1);
     expectDirectSpacing(
-      await FolioDocxReviewer.fromBuffer(await accepting.toBuffer()),
+      await FolioDocxReviewer.fromBuffer(await accepting.toBuffer(), {
+        session: "legacy",
+      }),
       firstTarget,
     );
 
-    const rejecting = await FolioDocxReviewer.fromBuffer(stillPending);
+    const rejecting = await FolioDocxReviewer.fromBuffer(stillPending, {
+      session: "legacy",
+    });
     expect(rejecting.rejectAll().resolved).toBe(1);
     expectDirectSpacing(
-      await FolioDocxReviewer.fromBuffer(await rejecting.toBuffer()),
+      await FolioDocxReviewer.fromBuffer(await rejecting.toBuffer(), {
+        session: "legacy",
+      }),
       originalSpacing,
     );
   });
@@ -838,6 +887,7 @@ describe("paragraph spacing comparison", () => {
     const firstTarget = { spaceAfter: 0, beforeAutospacing: false } as const;
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await spacingDocument({ directSpacing: originalSpacing }),
+      { session: "legacy" },
     );
     const blockId = reviewer.snapshot().blocks.at(0)?.id;
     if (!blockId) {
@@ -921,10 +971,13 @@ describe("paragraph spacing comparison", () => {
       previous: expectedParagraphProperties(originalSpacing),
     });
 
-    const accepting = await FolioDocxReviewer.fromBuffer(pending);
+    const accepting = await FolioDocxReviewer.fromBuffer(pending, {
+      session: "legacy",
+    });
     expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
     const accepted = await FolioDocxReviewer.fromBuffer(
       await accepting.toBuffer(),
+      { session: "legacy" },
     );
     expect(accepted.snapshot().blocks.map(({ text }) => text)).toEqual([
       INSERTED_TEXT,
@@ -932,10 +985,13 @@ describe("paragraph spacing comparison", () => {
     ]);
     expectDirectSpacing(accepted, firstTarget, 1);
 
-    const rejecting = await FolioDocxReviewer.fromBuffer(pending);
+    const rejecting = await FolioDocxReviewer.fromBuffer(pending, {
+      session: "legacy",
+    });
     expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
     const rejected = await FolioDocxReviewer.fromBuffer(
       await rejecting.toBuffer(),
+      { session: "legacy" },
     );
     expect(rejected.snapshot().blocks.map(({ text }) => text)).toEqual([TEXT]);
     expectDirectSpacing(rejected, originalSpacing);
@@ -946,6 +1002,7 @@ describe("paragraph spacing comparison", () => {
     const firstTarget = { spaceAfter: 240 } as const;
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await spacingDocument({ directSpacing: originalSpacing }),
+      { session: "legacy" },
     );
     const blockId = reviewer.snapshot().blocks.at(0)?.id;
     if (!blockId) {
@@ -997,19 +1054,22 @@ describe("paragraph spacing comparison", () => {
       ).toBeLessThanOrEqual(1);
     }
     expectDirectSpacing(
-      await FolioDocxReviewer.fromBuffer(pending),
+      await FolioDocxReviewer.fromBuffer(pending, { session: "legacy" }),
       firstTarget,
     );
     expectDirectSpacing(
-      await FolioDocxReviewer.fromBuffer(pending),
+      await FolioDocxReviewer.fromBuffer(pending, { session: "legacy" }),
       FULL_SPACING,
       1,
     );
 
-    const accepting = await FolioDocxReviewer.fromBuffer(pending);
+    const accepting = await FolioDocxReviewer.fromBuffer(pending, {
+      session: "legacy",
+    });
     expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
     const accepted = await FolioDocxReviewer.fromBuffer(
       await accepting.toBuffer(),
+      { session: "legacy" },
     );
     expect(accepted.snapshot().blocks.map(({ text }) => text)).toEqual([
       TEXT,
@@ -1018,10 +1078,13 @@ describe("paragraph spacing comparison", () => {
     expectDirectSpacing(accepted, firstTarget);
     expectDirectSpacing(accepted, FULL_SPACING, 1);
 
-    const rejecting = await FolioDocxReviewer.fromBuffer(pending);
+    const rejecting = await FolioDocxReviewer.fromBuffer(pending, {
+      session: "legacy",
+    });
     expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
     const rejected = await FolioDocxReviewer.fromBuffer(
       await rejecting.toBuffer(),
+      { session: "legacy" },
     );
     expect(rejected.snapshot().blocks.map(({ text }) => text)).toEqual([TEXT]);
     expectDirectSpacing(rejected, originalSpacing);

@@ -81,7 +81,9 @@ describe("headless comment IDs", () => {
           const issued = new Set(ids);
           const issuedRevisions = new Set(ids);
           for (let reviewerIndex = 0; reviewerIndex < 2; reviewerIndex += 1) {
-            const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
+            const reviewer = await FolioDocxReviewer.fromBuffer(buffer, {
+              session: "legacy",
+            });
             const block =
               reviewer.snapshot().blocks.at(0) ??
               panic("Expected a reviewable block");
@@ -141,7 +143,9 @@ describe("headless comment IDs", () => {
             }
             const saved = await reviewer.toBuffer();
             const reopened = await parseDocx(saved, { preloadFonts: false });
-            const reopenedReviewer = await FolioDocxReviewer.fromBuffer(saved);
+            const reopenedReviewer = await FolioDocxReviewer.fromBuffer(saved, {
+              session: "legacy",
+            });
             expect(
               new Set(reopenedReviewer.getChanges().map(({ id }) => id)),
             ).toEqual(new Set(reviewer.getChanges().map(({ id }) => id)));

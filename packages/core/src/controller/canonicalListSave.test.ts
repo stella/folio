@@ -1049,7 +1049,9 @@ test(
             canonicalReviewModel(after),
           );
           for (const mode of ["direct", "tracked-changes"] as const) {
-            const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
+            const reviewer = await FolioDocxReviewer.fromBuffer(buffer, {
+              session: "legacy",
+            });
             const block = reviewer.snapshot().blocks.at(0);
             if (!block) panic("Expected list fixture block");
             const result = reviewer.applyDocumentOperations(
@@ -1071,6 +1073,7 @@ test(
             expect(result.applied).toHaveLength(1);
             const reopened = await FolioDocxReviewer.fromBuffer(
               await reviewer.toBuffer(),
+              { session: "legacy" },
             );
             for (const decision of ["accept", "reject"] as const) {
               expect(
@@ -1179,7 +1182,9 @@ test("changing to a style without numbering drops style numbering before and aft
     canonicalReviewModel(before),
   );
 
-  const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
+  const reviewer = await FolioDocxReviewer.fromBuffer(buffer, {
+    session: "legacy",
+  });
   const block = reviewer.snapshot().blocks.at(0);
   if (!block) panic("Expected list fixture block");
   const result = reviewer.applyDocumentOperations(
@@ -1203,7 +1208,9 @@ test("changing to a style without numbering drops style numbering before and aft
   expectUnnumbered(paragraphAt(live, 0));
   expect(paragraphAt(live, 1).listRendering?.marker).toBe("1.");
   const saved = (
-    await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer())
+    await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
+      session: "legacy",
+    })
   ).toDocument();
   expectUnnumbered(paragraphAt(saved, 0));
   expect(paragraphAt(saved, 1).listRendering?.marker).toBe("1.");

@@ -274,6 +274,7 @@ const withPendingMainChange = async (
   text: string,
 ): Promise<ArrayBuffer> => {
   const reviewer = await FolioDocxReviewer.fromBuffer(source, {
+    session: "legacy",
     author: "Source reviewer",
   });
   const target = reviewer.snapshot().blocks.at(0);
@@ -317,7 +318,9 @@ describe("generateRedlineDocx", () => {
     buffers.push(compared.value.buffer);
 
     for (const buffer of buffers) {
-      const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
+      const reviewer = await FolioDocxReviewer.fromBuffer(buffer, {
+        session: "legacy",
+      });
       const hasFineGrainedChange = reviewer.listStories().map(({ handle }) => {
         const story = reviewer.readReviewedStory({
           story: handle,
@@ -345,7 +348,9 @@ describe("generateRedlineDocx", () => {
     expect(new Uint8Array(base)).toEqual(baseBytes);
     expect(new Uint8Array(revised)).toEqual(revisedBytes);
 
-    const acceptView = await FolioDocxReviewer.fromBuffer(result.buffer);
+    const acceptView = await FolioDocxReviewer.fromBuffer(result.buffer, {
+      session: "legacy",
+    });
     expect(
       acceptView.snapshot().blocks.find(({ id }) => id === "22000003")?.text,
     ).toBe("Revised cell value");
@@ -369,7 +374,9 @@ describe("generateRedlineDocx", () => {
       "paragraph",
     ]);
 
-    const rejectView = await FolioDocxReviewer.fromBuffer(result.buffer);
+    const rejectView = await FolioDocxReviewer.fromBuffer(result.buffer, {
+      session: "legacy",
+    });
     rejectView.rejectAll();
     expect(
       rejectView.snapshot().blocks.find(({ id }) => id === "22000003")?.text,
@@ -413,7 +420,9 @@ describe("generateRedlineDocx", () => {
     expect(result.applied.length).toBeGreaterThan(0);
 
     // The redline carries real tracked changes attributed to the default author.
-    const acceptView = await FolioDocxReviewer.fromBuffer(result.buffer);
+    const acceptView = await FolioDocxReviewer.fromBuffer(result.buffer, {
+      session: "legacy",
+    });
     const changes = acceptView.getChanges();
     expect(changes.length).toBeGreaterThan(0);
     expect(new Set(changes.map((change) => change.author))).toEqual(
@@ -433,7 +442,9 @@ describe("generateRedlineDocx", () => {
     );
 
     // Invariant 2: rejecting every change restores the base document.
-    const rejectView = await FolioDocxReviewer.fromBuffer(result.buffer);
+    const rejectView = await FolioDocxReviewer.fromBuffer(result.buffer, {
+      session: "legacy",
+    });
     rejectView.rejectAll();
     expect(blockTexts(rejectView)).toEqual(baseTexts);
   });
@@ -455,16 +466,22 @@ describe("generateRedlineDocx", () => {
     ]);
 
     const result = await generateRedlineDocx(base, revised);
-    const baseFormatting = (await FolioDocxReviewer.fromBuffer(base))
+    const baseFormatting = (
+      await FolioDocxReviewer.fromBuffer(base, { session: "legacy" })
+    )
       .snapshot()
       .blocks.at(0)?.previewRuns;
-    const revisedFormatting = (await FolioDocxReviewer.fromBuffer(revised))
+    const revisedFormatting = (
+      await FolioDocxReviewer.fromBuffer(revised, { session: "legacy" })
+    )
       .snapshot()
       .blocks.at(0)?.previewRuns;
 
     expect(result.skipped).toEqual([]);
     expect(result.applied).toHaveLength(1);
-    const output = await FolioDocxReviewer.fromBuffer(result.buffer);
+    const output = await FolioDocxReviewer.fromBuffer(result.buffer, {
+      session: "legacy",
+    });
     expect(output.getChanges()).toEqual([
       expect.objectContaining({
         type: "formatting",
@@ -476,7 +493,9 @@ describe("generateRedlineDocx", () => {
       revisedFormatting,
     );
 
-    const rejecting = await FolioDocxReviewer.fromBuffer(result.buffer);
+    const rejecting = await FolioDocxReviewer.fromBuffer(result.buffer, {
+      session: "legacy",
+    });
     rejecting.rejectAll();
     expect(rejecting.snapshot().blocks.at(0)?.previewRuns).toEqual(
       baseFormatting,
@@ -498,16 +517,22 @@ describe("generateRedlineDocx", () => {
     );
 
     const result = await generateRedlineDocx(base, revised);
-    const baseFormatting = (await FolioDocxReviewer.fromBuffer(base))
+    const baseFormatting = (
+      await FolioDocxReviewer.fromBuffer(base, { session: "legacy" })
+    )
       .snapshot()
       .blocks.at(0)?.previewRuns;
-    const revisedFormatting = (await FolioDocxReviewer.fromBuffer(revised))
+    const revisedFormatting = (
+      await FolioDocxReviewer.fromBuffer(revised, { session: "legacy" })
+    )
       .snapshot()
       .blocks.at(0)?.previewRuns;
 
     expect(result.skipped).toEqual([]);
     expect(result.applied).toHaveLength(1);
-    const output = await FolioDocxReviewer.fromBuffer(result.buffer);
+    const output = await FolioDocxReviewer.fromBuffer(result.buffer, {
+      session: "legacy",
+    });
     expect(output.getChanges()).toEqual([
       expect.objectContaining({
         type: "formatting",
@@ -518,7 +543,9 @@ describe("generateRedlineDocx", () => {
       revisedFormatting,
     );
 
-    const rejecting = await FolioDocxReviewer.fromBuffer(result.buffer);
+    const rejecting = await FolioDocxReviewer.fromBuffer(result.buffer, {
+      session: "legacy",
+    });
     rejecting.rejectAll();
     expect(rejecting.snapshot().blocks.at(0)?.previewRuns).toEqual(
       baseFormatting,
@@ -580,7 +607,9 @@ describe("generateRedlineDocx", () => {
     const result = await generateRedlineDocx(base, revised);
     expect(result.skipped).toEqual([]);
 
-    const acceptView = await FolioDocxReviewer.fromBuffer(result.buffer);
+    const acceptView = await FolioDocxReviewer.fromBuffer(result.buffer, {
+      session: "legacy",
+    });
     // The relocated block is deleted where it stood and inserted again below.
     // The deleted paragraph closed the body, so the break that went with it is
     // the one before it: the preceding paragraph carries `w:pPr/w:rPr/w:del`.
@@ -591,7 +620,9 @@ describe("generateRedlineDocx", () => {
       "",
     ]);
 
-    const rejectView = await FolioDocxReviewer.fromBuffer(result.buffer);
+    const rejectView = await FolioDocxReviewer.fromBuffer(result.buffer, {
+      session: "legacy",
+    });
     rejectView.rejectAll();
     expect(blockTexts(rejectView)).toEqual([
       "Governing law shall be Czech law.",
@@ -615,7 +646,9 @@ describe("generateRedlineDocx", () => {
     const result = await generateRedlineDocx(base, revised);
 
     expect(result.skipped).toEqual([]);
-    const acceptView = await FolioDocxReviewer.fromBuffer(result.buffer);
+    const acceptView = await FolioDocxReviewer.fromBuffer(result.buffer, {
+      session: "legacy",
+    });
     expect(blockTexts(acceptView)).toEqual([
       "Agreement terms.",
       "Final existing clause.",
@@ -624,7 +657,9 @@ describe("generateRedlineDocx", () => {
       "Third appendix.",
     ]);
 
-    const rejectView = await FolioDocxReviewer.fromBuffer(result.buffer);
+    const rejectView = await FolioDocxReviewer.fromBuffer(result.buffer, {
+      session: "legacy",
+    });
     rejectView.rejectAll();
     expect(blockTexts(rejectView)).toEqual([
       "Agreement terms.",
@@ -644,7 +679,9 @@ describe("generateRedlineDocx", () => {
 
     expect(result.applied).toEqual([]);
     expect(result.skipped).toEqual([]);
-    const view = await FolioDocxReviewer.fromBuffer(result.buffer);
+    const view = await FolioDocxReviewer.fromBuffer(result.buffer, {
+      session: "legacy",
+    });
     expect(view.getChanges()).toEqual([]);
     expect(blockTexts(view)).toEqual(["Alpha paragraph.", "Beta paragraph."]);
   });
@@ -659,13 +696,17 @@ describe("generateRedlineDocx", () => {
     const result = await generateRedlineDocx(base, revised);
 
     expect(result.skipped).toEqual([]);
-    const acceptView = await FolioDocxReviewer.fromBuffer(result.buffer);
+    const acceptView = await FolioDocxReviewer.fromBuffer(result.buffer, {
+      session: "legacy",
+    });
     expect(blockTexts(acceptView)).toEqual([
       "First paragraph.",
       "Second paragraph.",
     ]);
 
-    const rejectView = await FolioDocxReviewer.fromBuffer(result.buffer);
+    const rejectView = await FolioDocxReviewer.fromBuffer(result.buffer, {
+      session: "legacy",
+    });
     rejectView.rejectAll();
     // The empty base is one blank paragraph, not nothing: a package always
     // holds at least one. Rejecting the additions restores exactly that.
@@ -684,7 +725,9 @@ describe("generateRedlineDocx", () => {
       author: "Jan Kubica",
     });
 
-    const view = await FolioDocxReviewer.fromBuffer(result.buffer);
+    const view = await FolioDocxReviewer.fromBuffer(result.buffer, {
+      session: "legacy",
+    });
     const authors = new Set(view.getChanges().map((change) => change.author));
     expect(authors).toEqual(new Set(["Jan Kubica"]));
   });
@@ -710,7 +753,9 @@ describe("generateRedlineDocx", () => {
     expect(result.skipped).toEqual([]);
     expect(result.unprocessedStories).toEqual([]);
     expect(result.applied).toHaveLength(5);
-    const output = await FolioDocxReviewer.fromBuffer(result.buffer);
+    const output = await FolioDocxReviewer.fromBuffer(result.buffer, {
+      session: "legacy",
+    });
     expect(storyTextByType(output, "original")).toEqual({
       main: "Body baseline.",
       header: "Header baseline.",
@@ -743,7 +788,9 @@ describe("generateRedlineDocx", () => {
       baseView: "original",
       revisedView: "original",
     });
-    const output = await FolioDocxReviewer.fromBuffer(result.buffer);
+    const output = await FolioDocxReviewer.fromBuffer(result.buffer, {
+      session: "legacy",
+    });
 
     expect(
       output.readReviewedStory({ view: "original" })?.snapshot.blocks.at(0)
@@ -887,11 +934,15 @@ describe("generateRedlineDocx inserted list items", () => {
     buffer: ArrayBuffer,
     resolution: "accept" | "reject",
   ) => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
+    const reviewer = await FolioDocxReviewer.fromBuffer(buffer, {
+      session: "legacy",
+    });
     if (resolution === "accept") reviewer.acceptAll();
     else reviewer.rejectAll();
     const saved = await reviewer.toBuffer();
-    const reopened = await FolioDocxReviewer.fromBuffer(saved);
+    const reopened = await FolioDocxReviewer.fromBuffer(saved, {
+      session: "legacy",
+    });
     return {
       blocks: reopened.snapshot().blocks.map((block) => {
         const paragraph = expectParagraphBlock(block);
@@ -1281,10 +1332,14 @@ describe("generateRedlineDocx inserted list items", () => {
       const result = await generateRedlineDocx(base, revised);
       expect(result.skipped).toEqual([]);
 
-      const accepting = await FolioDocxReviewer.fromBuffer(result.buffer);
+      const accepting = await FolioDocxReviewer.fromBuffer(result.buffer, {
+        session: "legacy",
+      });
       accepting.acceptAll();
       const acceptedBuffer = await accepting.toBuffer();
-      const accepted = await FolioDocxReviewer.fromBuffer(acceptedBuffer);
+      const accepted = await FolioDocxReviewer.fromBuffer(acceptedBuffer, {
+        session: "legacy",
+      });
       const acceptedBlock = expectParagraphBlock(
         accepted.snapshot().blocks.at(-1),
       );
@@ -1314,10 +1369,13 @@ describe("generateRedlineDocx inserted list items", () => {
         }),
       );
 
-      const rejecting = await FolioDocxReviewer.fromBuffer(result.buffer);
+      const rejecting = await FolioDocxReviewer.fromBuffer(result.buffer, {
+        session: "legacy",
+      });
       rejecting.rejectAll();
       const rejected = await FolioDocxReviewer.fromBuffer(
         await rejecting.toBuffer(),
+        { session: "legacy" },
       );
       expect(rejected.snapshot().blocks.map((block) => block.text)).toEqual([
         "Anchor.",
@@ -1345,10 +1403,12 @@ describe("generateRedlineDocx inserted list items", () => {
       );
       const identicalReviewer = await FolioDocxReviewer.fromBuffer(
         identicalResult.buffer,
+        { session: "legacy" },
       );
       identicalReviewer.acceptAll();
       const identicalAccepted = await FolioDocxReviewer.fromBuffer(
         await identicalReviewer.toBuffer(),
+        { session: "legacy" },
       );
       const identicalParagraph = identicalAccepted
         .toDocument()
@@ -1398,10 +1458,13 @@ test("the current text-redline contract flattens new carriers and imports their 
     const result = await generateRedlineDocx(base, revised);
     expect(result.skipped).toEqual([]);
     expect(result.unprocessedStories).toEqual([]);
-    const accepting = await FolioDocxReviewer.fromBuffer(result.buffer);
+    const accepting = await FolioDocxReviewer.fromBuffer(result.buffer, {
+      session: "legacy",
+    });
     expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
     const accepted = await FolioDocxReviewer.fromBuffer(
       await accepting.toBuffer(),
+      { session: "legacy" },
     );
     expect(accepted.snapshot().blocks.map(({ text }) => text)).toEqual([
       "Unchanged anchor",
@@ -1433,10 +1496,13 @@ test("the current text-redline contract flattens new carriers and imports their 
     expect(
       accepted.toDocument().package.document.content.map(({ type }) => type),
     ).toEqual(["paragraph", "paragraph", "paragraph"]);
-    const rejecting = await FolioDocxReviewer.fromBuffer(result.buffer);
+    const rejecting = await FolioDocxReviewer.fromBuffer(result.buffer, {
+      session: "legacy",
+    });
     expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
     const rejected = await FolioDocxReviewer.fromBuffer(
       await rejecting.toBuffer(),
+      { session: "legacy" },
     );
     expect(rejected.snapshot().blocks.map(({ text }) => text)).toEqual([
       "Unchanged anchor",

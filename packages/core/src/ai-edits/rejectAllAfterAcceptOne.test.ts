@@ -40,7 +40,7 @@ const MARKDOWN = LINES.map((line, index) =>
 ).join("\n\n");
 
 const open = async (bytes: Uint8Array | ArrayBuffer) =>
-  FolioDocxReviewer.fromBuffer(bytes, { author: "Test" });
+  FolioDocxReviewer.fromBuffer(bytes, { session: "legacy", author: "Test" });
 
 const idOf = (reviewer: FolioDocxReviewer, text: string): string => {
   const block = reviewer.getContent().find((entry) => entry.text === text);

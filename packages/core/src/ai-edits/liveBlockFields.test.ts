@@ -10,11 +10,17 @@ import { FolioDocxReviewer } from "./headless";
 const open = async (markdown: string) => {
   const bytes = (await ensureParaIds(await createDocx(fromMarkdown(markdown))))
     .docx;
-  return FolioDocxReviewer.fromBuffer(bytes, { author: "Test" });
+  return FolioDocxReviewer.fromBuffer(bytes, {
+    session: "legacy",
+    author: "Test",
+  });
 };
 
 const reopen = async (reviewer: FolioDocxReviewer) =>
-  FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), { author: "Test" });
+  FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
+    session: "legacy",
+    author: "Test",
+  });
 
 const blockId = (reviewer: FolioDocxReviewer, text: string) => {
   const block = reviewer

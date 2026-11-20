@@ -146,7 +146,9 @@ const resolveAll = async (
   decision: "accept" | "reject",
   expectedType: "insertion" | "deletion",
 ): Promise<ArrayBuffer> => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
+  const reviewer = await FolioDocxReviewer.fromBuffer(buffer, {
+    session: "legacy",
+  });
   expect(reviewer.getChanges()).toEqual([
     expect.objectContaining({
       id: REVISION_INFO.id,
@@ -159,7 +161,9 @@ const resolveAll = async (
       .resolved,
   ).toBe(1);
   const resolved = await reviewer.toBuffer();
-  const reopened = await FolioDocxReviewer.fromBuffer(resolved);
+  const reopened = await FolioDocxReviewer.fromBuffer(resolved, {
+    session: "legacy",
+  });
   expect(reopened.getChanges()).toHaveLength(0);
   return resolved;
 };
@@ -311,7 +315,9 @@ describe("tracked run inline atom ownership", () => {
           `<w:${type === "insertion" ? "ins" : "del"} `,
         );
 
-        const reopened = await FolioDocxReviewer.fromBuffer(pending);
+        const reopened = await FolioDocxReviewer.fromBuffer(pending, {
+          session: "legacy",
+        });
         expect(reopened.getChanges()).toEqual([
           expect.objectContaining({ id: REVISION_INFO.id, type, text: "" }),
         ]);
@@ -323,7 +329,9 @@ describe("tracked run inline atom ownership", () => {
         const original = await createDocx(
           unreviewedAtomDocument(content, formatting),
         );
-        const reviewer = await FolioDocxReviewer.fromBuffer(original);
+        const reviewer = await FolioDocxReviewer.fromBuffer(original, {
+          session: "legacy",
+        });
         expect(reviewer.getChanges()).toHaveLength(0);
         const savedXml = await documentXml(await reviewer.toBuffer());
         expect(elementCount(savedXml, xmlTag)).toBe(1);
@@ -431,7 +439,9 @@ describe("tracked run inline atom ownership", () => {
     const untracked = await createDocx(
       withMainContent([{ type: "paragraph", content: [field] }]),
     );
-    const reviewer = await FolioDocxReviewer.fromBuffer(untracked);
+    const reviewer = await FolioDocxReviewer.fromBuffer(untracked, {
+      session: "legacy",
+    });
     expect(reviewer.getChanges()).toHaveLength(0);
     const savedXml = await documentXml(await reviewer.toBuffer());
     expect(savedXml).toContain('<w:fldSimple w:instr=" REF field-link \\h ">');

@@ -19,7 +19,10 @@ const MARKDOWN = "# Terms\n\n1. Numbered clause one\n\nUnnumbered body text.";
 const open = async () => {
   const bytes = (await ensureParaIds(await createDocx(fromMarkdown(MARKDOWN))))
     .docx;
-  return FolioDocxReviewer.fromBuffer(bytes, { author: "Test" });
+  return FolioDocxReviewer.fromBuffer(bytes, {
+    session: "legacy",
+    author: "Test",
+  });
 };
 
 type MergedProperties = Extract<
@@ -107,9 +110,7 @@ const edit = async ({ mode, batched, merged, insertion }: EditOptions) => {
   if (mode !== "direct") reviewer.acceptAll();
   const reopened = await FolioDocxReviewer.fromBuffer(
     await reviewer.toBuffer(),
-    {
-      author: "Test",
-    },
+    { session: "legacy", author: "Test" },
   );
   return reopened.snapshot().blocks.map((block) => ({
     text: block.text,
@@ -292,6 +293,7 @@ describe("a block after a paragraph deleted whole that a join runs through", () 
       )
     ).docx;
     const reviewer = await FolioDocxReviewer.fromBuffer(bytes, {
+      session: "legacy",
       author: "Test",
     });
     const [alpha, bravo] = reviewer.snapshot().blocks;
@@ -385,6 +387,7 @@ describe("a paragraph between a pending join and the table that stops it", () =>
       )
     ).docx;
     const reviewer = await FolioDocxReviewer.fromBuffer(bytes, {
+      session: "legacy",
       author: "Test",
     });
     const [alpha, bravo] = reviewer.snapshot().blocks;
@@ -503,6 +506,7 @@ describe("a paragraph between a pending join and the table that stops it", () =>
         )
       ).docx;
       const reviewer = await FolioDocxReviewer.fromBuffer(bytes, {
+        session: "legacy",
         author: "Test",
       });
       const [alpha, bravo] = reviewer.snapshot().blocks;
@@ -610,6 +614,7 @@ const fromEmptySource = async (
     await ensureParaIds(await createDocx(fromMarkdown(EMPTY_SOURCE_MARKDOWN)))
   ).docx;
   const reviewer = await FolioDocxReviewer.fromBuffer(bytes, {
+    session: "legacy",
     author: "Test",
   });
   const alpha = reviewer.snapshot().blocks.at(0);
@@ -725,6 +730,7 @@ const openSplitFixture = async (source: JoinSource): Promise<SplitFixture> => {
     await ensureParaIds(await createDocx(fromMarkdown(SPLIT_MARKDOWN)))
   ).docx;
   const reviewer = await FolioDocxReviewer.fromBuffer(bytes, {
+    session: "legacy",
     author: "Test",
   });
   const [, clause, survivor] = reviewer.snapshot().blocks;
@@ -952,6 +958,7 @@ describe("a table and a paragraph inserted before a deleted final paragraph", ()
       )
     ).docx;
     const reviewer = await FolioDocxReviewer.fromBuffer(bytes, {
+      session: "legacy",
       author: "Test",
     });
     const [, bravo, charlie] = reviewer.snapshot().blocks;
@@ -1005,7 +1012,7 @@ describe("a table and a paragraph inserted before a deleted final paragraph", ()
     const tracked = await beforeFinal("tracked-changes");
     const reopened = await FolioDocxReviewer.fromBuffer(
       await tracked.toBuffer(),
-      { author: "Test" },
+      { session: "legacy", author: "Test" },
     );
     for (const reviewer of [tracked, reopened]) {
       reviewer.rejectAll();

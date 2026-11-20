@@ -32,6 +32,7 @@ const buildReviewer = async (): Promise<FolioDocxReviewer> => {
       docx.byteOffset,
       docx.byteOffset + docx.byteLength,
     ) as ArrayBuffer,
+    { session: "legacy" },
   );
 };
 

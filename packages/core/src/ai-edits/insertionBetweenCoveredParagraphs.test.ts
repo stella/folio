@@ -23,7 +23,7 @@ import { FolioDocxReviewer } from "./headless";
 const MODES = ["direct", "tracked-changes"] as const;
 
 const open = async (bytes: ArrayBuffer | Uint8Array) =>
-  FolioDocxReviewer.fromBuffer(bytes, { author: "Test" });
+  FolioDocxReviewer.fromBuffer(bytes, { session: "legacy", author: "Test" });
 
 const apply = (
   reviewer: FolioDocxReviewer,

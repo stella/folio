@@ -96,7 +96,9 @@ const REPLACE_FIFTY = {
 
 const reopen = async (filePath: string): Promise<FolioDocxReviewer> => {
   const bytes = new Uint8Array(await readFile(filePath));
-  return await FolioDocxReviewer.fromBuffer(bytes.buffer);
+  return await FolioDocxReviewer.fromBuffer(bytes.buffer, {
+    session: "legacy",
+  });
 };
 
 describe("suggest_changes in place", () => {

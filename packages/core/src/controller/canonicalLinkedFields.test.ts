@@ -129,7 +129,9 @@ describe("a field inside a hyperlink in the canonical session", () => {
     );
     const saved = await savedBytes(current);
     for (const resolution of ["accept", "reject"] as const) {
-      const reviewer = await FolioDocxReviewer.fromBuffer(saved);
+      const reviewer = await FolioDocxReviewer.fromBuffer(saved, {
+        session: "legacy",
+      });
       if (resolution === "accept") reviewer.acceptAll();
       else reviewer.rejectAll();
       const resolved = await reviewer.toBuffer();

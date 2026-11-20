@@ -77,7 +77,10 @@ const fixture = async ({ kind, following, anchors, text }: FixtureOptions) => {
 };
 
 const open = (bytes: ArrayBuffer) =>
-  FolioDocxReviewer.fromBuffer(bytes, { author: "Reviewer" });
+  FolioDocxReviewer.fromBuffer(bytes, {
+    session: "legacy",
+    author: "Reviewer",
+  });
 const reopen = async (reviewer: FolioDocxReviewer) =>
   open(await reviewer.toBuffer());
 const resolved = async (

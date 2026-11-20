@@ -689,6 +689,7 @@ describe("body revision enumeration", () => {
     ]);
     const reopened = await FolioDocxReviewer.fromBuffer(
       await createDocx(document),
+      { session: "legacy" },
     );
     const view = (changes: typeof live) =>
       changes.map(({ id: _id, ...change }) => change);
@@ -748,9 +749,7 @@ describe("body revision enumeration", () => {
   test("keeps changes in document order when a comment splits revision runs", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await createDocx(revisionDocument()),
-      {
-        author: AUTHOR,
-      },
+      { session: "legacy", author: AUTHOR },
     );
     const snapshot = reviewer.snapshot();
     const target = snapshot.blocks.find(({ text }) =>
@@ -781,6 +780,7 @@ describe("body revision enumeration", () => {
 
     const reopened = await FolioDocxReviewer.fromBuffer(
       await reviewer.toBuffer(),
+      { session: "legacy" },
     );
     expect(reopened.getChanges()).toEqual(before);
   });
@@ -817,6 +817,7 @@ describe("body revision enumeration", () => {
       ];
       const reviewer = await FolioDocxReviewer.fromBuffer(
         await createDocx(document),
+        { session: "legacy" },
       );
       expect(reviewer.getChanges().map(({ text }) => text)).toEqual([
         "Before linked after",
@@ -831,6 +832,7 @@ describe("body revision enumeration", () => {
       expect(reviewer.getChanges()).toEqual([]);
       const reopened = await FolioDocxReviewer.fromBuffer(
         await reviewer.toBuffer(),
+        { session: "legacy" },
       );
       expect(reopened.getChanges()).toEqual([]);
     },
@@ -854,9 +856,7 @@ describe("body revision enumeration", () => {
       ];
       const reviewer = await FolioDocxReviewer.fromBuffer(
         await createDocx(document),
-        {
-          author: AUTHOR,
-        },
+        { session: "legacy", author: AUTHOR },
       );
       const blockId = reviewer.getContent().at(0)?.id;
       if (blockId === undefined) throw new Error("the paragraph is missing");
@@ -908,6 +908,7 @@ describe("body revision enumeration", () => {
       ]);
       const reopened = await FolioDocxReviewer.fromBuffer(
         await reviewer.toBuffer(),
+        { session: "legacy" },
       );
       expect(project(reopened.getChanges())).toEqual(live);
 
@@ -966,6 +967,7 @@ describe("body revision enumeration", () => {
     async (mode) => {
       const reviewer = await FolioDocxReviewer.fromBuffer(
         await createDocx(revisionDocument()),
+        { session: "legacy" },
       );
       const changes = reviewer.getChanges();
       expect(
@@ -986,6 +988,7 @@ describe("body revision enumeration", () => {
 
       const reopened = await FolioDocxReviewer.fromBuffer(
         await reviewer.toBuffer(),
+        { session: "legacy" },
       );
       expect(reopened.getChanges()).toEqual([]);
     },
@@ -996,9 +999,7 @@ describe("resolved story serialization structural matrix", () => {
   test("keeps each story projection bound to its own state across resolution and mutation", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await makeRevisionMatrixDocx("with"),
-      {
-        author: AUTHOR,
-      },
+      { session: "legacy", author: AUTHOR },
     );
     const comparisonAccess = getFolioDocxComparisonAccess(reviewer);
     const arrivingByStory = new Map<
@@ -1133,6 +1134,7 @@ describe("resolved story serialization structural matrix", () => {
     async ({ view, paragraphIds, commentScenario }) => {
       const baseline = await makeRevisionMatrixDocx(paragraphIds);
       const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+        session: "legacy",
         author: AUTHOR,
       });
 
@@ -1247,7 +1249,9 @@ describe("resolved story serialization structural matrix", () => {
           commentIdsByStory.get(storyKey(story)) ?? [],
         );
       }
-      const reopened = await FolioDocxReviewer.fromBuffer(saved);
+      const reopened = await FolioDocxReviewer.fromBuffer(saved, {
+        session: "legacy",
+      });
       for (const story of REVIEW_STORIES) {
         const actual = storyProjection(reopened, story);
         expect(actual.changes).toEqual([]);
@@ -1262,7 +1266,9 @@ describe("resolved story serialization structural matrix", () => {
       expect(await partBytes(savedAgain, PRESERVATION_SENTINEL_PART)).toEqual(
         PRESERVATION_SENTINEL,
       );
-      const reopenedAgain = await FolioDocxReviewer.fromBuffer(savedAgain);
+      const reopenedAgain = await FolioDocxReviewer.fromBuffer(savedAgain, {
+        session: "legacy",
+      });
       for (const story of REVIEW_STORIES) {
         await assertCommentAnchorsInStoryPart(
           savedAgain,

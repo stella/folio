@@ -144,7 +144,12 @@ describe("headless reviewer invariants (full corpus)", () => {
     async (filename) => {
       const buffer = readFixture(filename);
       const idsOf = async (): Promise<string[]> =>
-        (await FolioDocxReviewer.fromBuffer(buffer, { author: "AI" }))
+        (
+          await FolioDocxReviewer.fromBuffer(buffer, {
+            session: "legacy",
+            author: "AI",
+          })
+        )
           .snapshot()
           .blocks.map((b) => b.id);
       expect(await idsOf()).toEqual(await idsOf());
@@ -156,14 +161,12 @@ describe("headless reviewer invariants (full corpus)", () => {
     async (filename) => {
       const reviewer = await FolioDocxReviewer.fromBuffer(
         readFixture(filename),
-        { author: "AI" },
+        { session: "legacy", author: "AI" },
       );
       const before = blockTexts(reviewer);
       const reparsed = await FolioDocxReviewer.fromBuffer(
         await reviewer.toBuffer(),
-        {
-          author: "AI",
-        },
+        { session: "legacy", author: "AI" },
       );
       expect(blockTexts(reparsed)).toEqual(before);
     },
@@ -180,6 +183,7 @@ describe("headless reviewer invariants (full corpus)", () => {
           async (filename, selector, replace) => {
             const buffer = readFixture(filename);
             const probe = await FolioDocxReviewer.fromBuffer(buffer, {
+              session: "legacy",
               author: "AI",
             });
             const targets = editTargets(probe.snapshot().blocks);
@@ -189,6 +193,7 @@ describe("headless reviewer invariants (full corpus)", () => {
             const op = replaceOp(targets[selector % targets.length]!, replace);
 
             const tracked = await FolioDocxReviewer.fromBuffer(buffer, {
+              session: "legacy",
               author: "AI",
             });
             const applied = tracked.applyOperations([op], {
@@ -200,6 +205,7 @@ describe("headless reviewer invariants (full corpus)", () => {
             tracked.acceptAll();
 
             const direct = await FolioDocxReviewer.fromBuffer(buffer, {
+              session: "legacy",
               author: "AI",
             });
             direct.applyOperations([op], {
@@ -227,6 +233,7 @@ describe("headless reviewer invariants (full corpus)", () => {
           async (filename, selector, replace) => {
             const buffer = readFixture(filename);
             const probe = await FolioDocxReviewer.fromBuffer(buffer, {
+              session: "legacy",
               author: "AI",
             });
             const targets = editTargets(probe.snapshot().blocks);
@@ -241,6 +248,7 @@ describe("headless reviewer invariants (full corpus)", () => {
             const original = blockTexts(probe);
 
             const tracked = await FolioDocxReviewer.fromBuffer(buffer, {
+              session: "legacy",
               author: "AI",
             });
             const applied = tracked.applyOperations([op], {
@@ -270,6 +278,7 @@ describe("headless reviewer invariants (full corpus)", () => {
       for (const filename of FIXTURE_FILES) {
         const baseline = await makeParaIdBaseline(readFixture(filename));
         const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+          session: "legacy",
           author: "AI",
         });
         const targets = editTargets(reviewer.snapshot().blocks);
@@ -314,9 +323,11 @@ describe("headless reviewer invariants (full corpus)", () => {
           originalBuffer: baseline,
         });
         const fromSelective = await FolioDocxReviewer.fromBuffer(selective, {
+          session: "legacy",
           author: "AI",
         });
         const fromFull = await FolioDocxReviewer.fromBuffer(fullRepack, {
+          session: "legacy",
           author: "AI",
         });
         expect(blockTexts(fromSelective)).toEqual(blockTexts(fromFull));
@@ -352,6 +363,7 @@ describe("headless reviewer invariants (full corpus)", () => {
             }
             const buffer = readFixture(filename);
             const probe = await FolioDocxReviewer.fromBuffer(buffer, {
+              session: "legacy",
               author: "AI",
             });
             const targets = editTargets(probe.snapshot().blocks);
@@ -367,6 +379,7 @@ describe("headless reviewer invariants (full corpus)", () => {
             };
 
             const reviewer = await FolioDocxReviewer.fromBuffer(buffer, {
+              session: "legacy",
               author: "AI",
             });
             const applied = reviewer.applyOperations([op], {
@@ -412,6 +425,7 @@ describe("headless reviewer invariants (full corpus)", () => {
           async (filename, selectorA, selectorB, lines) => {
             const buffer = readFixture(filename);
             const probe = await FolioDocxReviewer.fromBuffer(buffer, {
+              session: "legacy",
               author: "AI",
             });
             const targets = editTargets(probe.snapshot().blocks);
@@ -422,6 +436,7 @@ describe("headless reviewer invariants (full corpus)", () => {
             const targetB = targets[selectorB % targets.length]!;
 
             const reviewer = await FolioDocxReviewer.fromBuffer(buffer, {
+              session: "legacy",
               author: "AI",
             });
             const firstApply = reviewer.applyOperations(

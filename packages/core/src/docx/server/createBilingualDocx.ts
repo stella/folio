@@ -37,7 +37,7 @@ export async function createBilingualDocx(
   const stampedBuffer = await toArrayBuffer(stamped.docx);
   // A blank paragraph is not an editable row: it carries nothing to translate.
   const editableParagraphIds = new Set(
-    (await FolioDocxReviewer.fromBuffer(stampedBuffer))
+    (await FolioDocxReviewer.fromBuffer(stampedBuffer, { session: "legacy" }))
       .snapshot()
       .blocks.filter(isFolioAIContentBlock)
       .map(({ id }) => id),
@@ -59,7 +59,7 @@ export async function readBilingualDocx(
   const buffer = await toArrayBuffer(input);
   const document = await parseDocx(buffer, { preloadFonts: false });
   const editableParagraphIds = new Set(
-    (await FolioDocxReviewer.fromBuffer(buffer))
+    (await FolioDocxReviewer.fromBuffer(buffer, { session: "legacy" }))
       .snapshot()
       .blocks.filter(isFolioAIContentBlock)
       .map(({ id }) => id),

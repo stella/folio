@@ -212,7 +212,9 @@ describe("resolving around a change a lock holds", () => {
               .map(({ words, alignment }) => paragraphXml(words, alignment))
               .join(""),
         );
-        const reviewer = await FolioDocxReviewer.fromBuffer(source);
+        const reviewer = await FolioDocxReviewer.fromBuffer(source, {
+          session: "legacy",
+        });
         for (const intent of intents) {
           const operation = operationOf(reviewer, intent);
           if (operation === null) continue;
@@ -223,7 +225,9 @@ describe("resolving around a change a lock holds", () => {
         }
         const pending = new Uint8Array(await reviewer.toBuffer());
 
-        const locked = await FolioDocxReviewer.fromBuffer(pending);
+        const locked = await FolioDocxReviewer.fromBuffer(pending, {
+          session: "legacy",
+        });
         const lockedResult =
           mode === "accept" ? locked.acceptAll() : locked.rejectAll();
         expect(lockedResult.skipped.map(({ id }) => id)).toEqual([900]);
@@ -236,6 +240,7 @@ describe("resolving around a change a lock holds", () => {
         unlockedZip.set("word/document.xml", documentXml.replace(LOCK, ""));
         const unlocked = await FolioDocxReviewer.fromBuffer(
           await unlockedZip.generate({ compression: "store" }),
+          { session: "legacy" },
         );
         const unlockedResult =
           mode === "accept" ? unlocked.acceptAll() : unlocked.rejectAll();

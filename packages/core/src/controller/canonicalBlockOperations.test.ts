@@ -146,13 +146,17 @@ const blocksOf = async (bytes: ArrayBuffer) => {
 /** The package pending, with every change accepted, and with every change rejected. */
 const outcomes = async (bytes: ArrayBuffer) => {
   const resolved = async (decision: "accept" | "reject") => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice(0));
+    const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice(0), {
+      session: "legacy",
+    });
     if (decision === "accept") reviewer.acceptAll();
     else reviewer.rejectAll();
     return blocksOf(await reviewer.toBuffer());
   };
   const commented = async (decision?: "accept") => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice(0));
+    const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice(0), {
+      session: "legacy",
+    });
     if (decision === "accept") reviewer.acceptAll();
     return reviewer
       .getComments()
@@ -249,7 +253,9 @@ const viaDefaultEngine = async (
   operation: FolioDocumentOperation | readonly FolioDocumentOperation[],
   mode: Mode,
 ) => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(source.slice(0));
+  const reviewer = await FolioDocxReviewer.fromBuffer(source.slice(0), {
+    session: "legacy",
+  });
   const result = reviewer.applyOperations(batchOf(operation), {
     mode,
     undefinedReferences: "refuse",
@@ -268,7 +274,9 @@ const viaDefaultSuggested = async (
   operation: FolioDocumentOperation | readonly FolioDocumentOperation[],
   resolution: Suggestion,
 ) => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(source.slice(0));
+  const reviewer = await FolioDocxReviewer.fromBuffer(source.slice(0), {
+    session: "legacy",
+  });
   const result = reviewer.applyOperations(batchOf(operation), {
     mode: "suggested",
     undefinedReferences: "refuse",
@@ -583,6 +591,7 @@ describe("block-level public operations match the legacy engine", () => {
           if (skippedByBoth !== undefined) {
             const reviewer = await FolioDocxReviewer.fromBuffer(
               source.slice(0),
+              { session: "legacy" },
             );
             const byDefault = reviewer.applyOperations([operation], {
               mode,
@@ -1167,7 +1176,9 @@ describe("a block move matches the legacy engine", () => {
       kind: "insertion" | "deletion",
       decision: "accept" | "reject",
     ) => {
-      const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice(0));
+      const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice(0), {
+        session: "legacy",
+      });
       for (const change of reviewer.getChanges())
         if (change.type === kind)
           if (decision === "accept") reviewer.acceptChange(change);

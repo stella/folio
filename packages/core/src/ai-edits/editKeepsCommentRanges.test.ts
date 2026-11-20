@@ -100,9 +100,7 @@ const replaceFirstParagraph = async (
 ): Promise<FolioDocxReviewer> => {
   const reviewer = await FolioDocxReviewer.fromBuffer(
     await createDocx(buildDocument()),
-    {
-      author: "Editor",
-    },
+    { session: "legacy", author: "Editor" },
   );
   const [target] = reviewer.snapshot().blocks;
   expect(target?.text).toBe(FIRST_PARAGRAPH_TEXT);
@@ -160,7 +158,9 @@ describe("replaceInBlock over a block that opens comment ranges", () => {
       }
       expect(xml).toContain("Wholly different wording.");
       if (mode === "tracked-changes") {
-        const reopened = await FolioDocxReviewer.fromBuffer(buffer);
+        const reopened = await FolioDocxReviewer.fromBuffer(buffer, {
+          session: "legacy",
+        });
         reopened.rejectAll();
         const rejectedXml = await documentXml(await reopened.toBuffer());
         expect(rejectedXml).toContain(FIRST_PARAGRAPH_TEXT);
@@ -202,6 +202,7 @@ test("tracked replacement refuses to widen disjoint comment ranges on rejection"
         };
         for (const mode of EDIT_MODES) {
           const reviewer = await FolioDocxReviewer.fromBuffer(source, {
+            session: "legacy",
             author: "Editor",
           });
           const target = reviewer.snapshot().blocks.at(0);
@@ -234,16 +235,12 @@ test("tracked replacement refuses to widen disjoint comment ranges on rejection"
           }
           const saved = await FolioDocxReviewer.fromBuffer(
             await reviewer.toBuffer(),
-            {
-              author: "Editor",
-            },
+            { session: "legacy", author: "Editor" },
           );
           saved.acceptAll();
           const reopened = await FolioDocxReviewer.fromBuffer(
             await saved.toBuffer(),
-            {
-              author: "Editor",
-            },
+            { session: "legacy", author: "Editor" },
           );
           anchors[mode] = reopened
             .getComments()
@@ -347,9 +344,7 @@ describe("replaceInBlock over a block whose text is a hyperlink", () => {
     async (mode) => {
       const reviewer = await FolioDocxReviewer.fromBuffer(
         await createDocx(buildLinkedDocument()),
-        {
-          author: "Editor",
-        },
+        { session: "legacy", author: "Editor" },
       );
       const [target] = reviewer.snapshot().blocks;
       expect(target?.text).toBe(LINK_TEXT);

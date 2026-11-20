@@ -21,7 +21,9 @@ const open = async (): Promise<FolioDocxReviewer> => {
     "word/document.xml",
     `<?xml version="1.0" encoding="UTF-8"?><w:document ${NS}><w:body><w:p w14:paraId="10000001"><w:r><w:t xml:space="preserve">Before </w:t></w:r><w:sdt><w:sdtPr><w:id w:val="7"/><w:text/></w:sdtPr><w:sdtContent><w:r><w:t>Inside</w:t></w:r></w:sdtContent></w:sdt></w:p><w:p w14:paraId="10000002"><w:r><w:t>Next</w:t></w:r></w:p><w:sectPr/></w:body></w:document>`,
   );
-  return FolioDocxReviewer.fromBuffer((await zip.generate()).slice().buffer);
+  return FolioDocxReviewer.fromBuffer((await zip.generate()).slice().buffer, {
+    session: "legacy",
+  });
 };
 
 const split = (
@@ -52,6 +54,7 @@ describe.each(["direct", "tracked-changes"] as const)("%s", (mode) => {
     expect(texts(reviewer)).toEqual(before);
     const reopened = await FolioDocxReviewer.fromBuffer(
       await reviewer.toBuffer(),
+      { session: "legacy" },
     );
     reopened.rejectAll();
     expect(texts(reopened)).toEqual(before);

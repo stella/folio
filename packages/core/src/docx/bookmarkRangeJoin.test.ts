@@ -32,6 +32,7 @@ const markersAfterSplit = async (
 ) => {
   const reviewer = await FolioDocxReviewer.fromBuffer(
     await packageWith(paragraph),
+    { session: "legacy" },
   );
   const blockId = reviewer.snapshot().blocks[0]?.id;
   if (blockId === undefined) throw new Error("the fixture has no paragraph");

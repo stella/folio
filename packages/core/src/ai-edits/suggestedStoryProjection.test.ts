@@ -110,6 +110,7 @@ for (const story of Object.values(STORIES)) {
         };
         const reviewer = await FolioDocxReviewer.fromBuffer(
           await createDocx(document),
+          { session: "legacy" },
         );
         const expected = markdownStory(reviewer, story);
         const fullMarkdown = toMarkdown(reviewer.toDocument());
@@ -143,6 +144,7 @@ for (const story of Object.values(STORIES)) {
         expect(reviewer.getNotesAsText()).toBe(notes);
         const reopened = await FolioDocxReviewer.fromBuffer(
           await reviewer.toBuffer(),
+          { session: "legacy" },
         );
         expect(markdownStory(reopened, story)).toBe(expected);
         expect(toMarkdown(reopened.toDocument())).toBe(fullMarkdown);

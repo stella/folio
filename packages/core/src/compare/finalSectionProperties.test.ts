@@ -73,22 +73,32 @@ describe("final section property comparison", () => {
       ?.text();
     expect(pendingXml).toContain("<w:sectPrChange");
 
-    const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+    const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer, {
+      session: "legacy",
+    });
     expect(accepting.acceptAll().resolved).toBe(1);
     const acceptedReopened = await FolioDocxReviewer.fromBuffer(
       await accepting.toBuffer(),
+      { session: "legacy" },
     );
     expect(finalSection(acceptedReopened)).toEqual(
-      finalSection(await FolioDocxReviewer.fromBuffer(targetBuffer)),
+      finalSection(
+        await FolioDocxReviewer.fromBuffer(targetBuffer, { session: "legacy" }),
+      ),
     );
 
-    const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+    const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer, {
+      session: "legacy",
+    });
     expect(rejecting.rejectAll().resolved).toBe(1);
     const rejectedReopened = await FolioDocxReviewer.fromBuffer(
       await rejecting.toBuffer(),
+      { session: "legacy" },
     );
     expect(finalSection(rejectedReopened)).toEqual(
-      finalSection(await FolioDocxReviewer.fromBuffer(baseBuffer)),
+      finalSection(
+        await FolioDocxReviewer.fromBuffer(baseBuffer, { session: "legacy" }),
+      ),
     );
   });
 
@@ -111,7 +121,9 @@ describe("final section property comparison", () => {
       }),
     );
 
-    const rejectingEarlier = await FolioDocxReviewer.fromBuffer(buffer);
+    const rejectingEarlier = await FolioDocxReviewer.fromBuffer(buffer, {
+      session: "legacy",
+    });
     expect(rejectingEarlier.getChanges().map(({ id }) => id)).toEqual([71, 72]);
     expect(rejectingEarlier.rejectChange(71)).toBe(true);
     expect(finalSection(rejectingEarlier)?.pageWidth).toBe(12_240);
@@ -119,7 +131,9 @@ describe("final section property comparison", () => {
     expect(rejectingEarlier.rejectChange(72)).toBe(true);
     expect(finalSection(rejectingEarlier)?.pageWidth).toBe(10_000);
 
-    const acceptingEarlier = await FolioDocxReviewer.fromBuffer(buffer);
+    const acceptingEarlier = await FolioDocxReviewer.fromBuffer(buffer, {
+      session: "legacy",
+    });
     expect(acceptingEarlier.acceptChange(71)).toBe(true);
     expect(acceptingEarlier.getChanges().map(({ id }) => id)).toEqual([72]);
     expect(acceptingEarlier.rejectChange(72)).toBe(true);
@@ -160,7 +174,9 @@ describe("final section property comparison", () => {
     );
     const buffer = (await archive.generate({ compression: "store" })).buffer;
     for (const mode of ["accept", "reject"] as const) {
-      const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
+      const reviewer = await FolioDocxReviewer.fromBuffer(buffer, {
+        session: "legacy",
+      });
       expect(
         mode === "accept"
           ? reviewer.acceptChange(73)
@@ -172,6 +188,7 @@ describe("final section property comparison", () => {
       );
       const reopened = await FolioDocxReviewer.fromBuffer(
         await reviewer.toBuffer(),
+        { session: "legacy" },
       );
       expect(reopened.getChanges()).toEqual([]);
       expect(finalSection(reopened)?.pageWidth).toBe(
@@ -237,7 +254,9 @@ test("Folio-exact header removal restores references on reject and removes retir
     status: "requires-folio",
     reasons: ["section-reference-history"],
   });
-  const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+  const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer, {
+    session: "legacy",
+  });
   const pendingSave = accepting.toBuffer();
   expect(accepting.acceptAll().resolved).toBe(1);
   expect(accepting.listStories()).toHaveLength(1);
@@ -248,18 +267,27 @@ test("Folio-exact header removal restores references on reject and removes retir
       .paths()
       .filter((name) => /^word\/(?:header|footer)\d*\.xml$/u.test(name)),
   ).toEqual([]);
-  const accepted = await FolioDocxReviewer.fromBuffer(acceptedBuffer);
+  const accepted = await FolioDocxReviewer.fromBuffer(acceptedBuffer, {
+    session: "legacy",
+  });
   expect(finalSection(accepted)).toEqual(
-    finalSection(await FolioDocxReviewer.fromBuffer(targetBuffer)),
+    finalSection(
+      await FolioDocxReviewer.fromBuffer(targetBuffer, { session: "legacy" }),
+    ),
   );
   expect(accepted.listStories()).toHaveLength(1);
-  const rejecting = await FolioDocxReviewer.fromBuffer(await pendingSave);
+  const rejecting = await FolioDocxReviewer.fromBuffer(await pendingSave, {
+    session: "legacy",
+  });
   expect(rejecting.rejectAll().resolved).toBe(1);
   const rejected = await FolioDocxReviewer.fromBuffer(
     await rejecting.toBuffer(),
+    { session: "legacy" },
   );
   expect(finalSection(rejected)).toEqual(
-    finalSection(await FolioDocxReviewer.fromBuffer(baseBuffer)),
+    finalSection(
+      await FolioDocxReviewer.fromBuffer(baseBuffer, { session: "legacy" }),
+    ),
   );
   expect(rejected.listStories().map(({ text }) => text)).toContain("Header");
   expect(rejected.listStories().map(({ text }) => text)).toContain("Footer");
@@ -307,6 +335,7 @@ test.each(["accept", "reject"] as const)(
     );
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await createDocx(document),
+      { session: "legacy" },
     );
     expect(
       decision === "accept"
@@ -315,11 +344,13 @@ test.each(["accept", "reject"] as const)(
     ).toBe(true);
     const remaining = await FolioDocxReviewer.fromBuffer(
       await reviewer.toBuffer(),
+      { session: "legacy" },
     );
     expect(remaining.getChanges().map(({ id }) => id)).toEqual([72]);
     expect(remaining.rejectChange(72)).toBe(true);
     const resolved = await FolioDocxReviewer.fromBuffer(
       await remaining.toBuffer(),
+      { session: "legacy" },
     );
     const name = decision === "accept" ? "b" : "a";
     expect(finalSection(resolved)?.headerReferences).toEqual(

@@ -56,14 +56,18 @@ describe("folio suggest --in-place preserves corpus ZIP entry names", () => {
           sourceNames,
         );
 
-        const reviewer = await FolioDocxReviewer.fromBuffer(source);
+        const reviewer = await FolioDocxReviewer.fromBuffer(source, {
+          session: "legacy",
+        });
         // snapshot() includes blank paragraphs, so even the empty document is
         // edited. A content control's lock refuses an insertion inside it, so
         // the anchor is the first paragraph a new one may follow.
         let anchor: { id: string } | undefined;
         for (const block of reviewer.snapshot().blocks) {
           if (block.kind === "diagnostic") continue;
-          const probe = await FolioDocxReviewer.fromBuffer(source);
+          const probe = await FolioDocxReviewer.fromBuffer(source, {
+            session: "legacy",
+          });
           const { skipped } = probe.applyOperations(
             [
               {
@@ -127,7 +131,9 @@ describe("folio suggest --in-place preserves corpus ZIP entry names", () => {
         expect((await ZipArchive.read(saved)).paths().toSorted()).toEqual(
           sourceNames,
         );
-        const reopened = await FolioDocxReviewer.fromBuffer(saved);
+        const reopened = await FolioDocxReviewer.fromBuffer(saved, {
+          session: "legacy",
+        });
         expect(
           reopened.getContent().filter(({ text }) => text === INSERTED_TEXT),
         ).toHaveLength(

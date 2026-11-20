@@ -126,7 +126,9 @@ const runCount = async (bytes: Uint8Array) =>
 /** What the saved file reads as pending, accepted and rejected. */
 const readings = async (bytes: Uint8Array) => {
   const read = async (decision?: "accept" | "reject") => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice().buffer);
+    const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice().buffer, {
+      session: "legacy",
+    });
     if (decision === "accept") reviewer.acceptAll();
     if (decision === "reject") reviewer.rejectAll();
     return reviewer.snapshot().blocks.map(({ text }) => text);

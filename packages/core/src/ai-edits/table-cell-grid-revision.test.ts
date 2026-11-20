@@ -102,7 +102,9 @@ const tablesFrom = async (buffer: ArrayBuffer): Promise<Table[]> => {
 
 describe("tracked table cell grid provenance", () => {
   test("accepting cell removals is a save/reopen fixed point", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await buildSource());
+    const reviewer = await FolioDocxReviewer.fromBuffer(await buildSource(), {
+      session: "legacy",
+    });
 
     expect(reviewer.acceptAll().resolved).toBe(3);
     const once = await reviewer.toBuffer();
@@ -120,13 +122,17 @@ describe("tracked table cell grid provenance", () => {
       UNCHANGED_GRID_SOURCE,
     ]);
 
-    const reopened = await FolioDocxReviewer.fromBuffer(once);
+    const reopened = await FolioDocxReviewer.fromBuffer(once, {
+      session: "legacy",
+    });
     const twice = await reopened.toBuffer();
     expect(await documentXml(twice)).toBe(await documentXml(once));
   });
 
   test("rejecting cell removals preserves both table grids verbatim", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await buildSource());
+    const reviewer = await FolioDocxReviewer.fromBuffer(await buildSource(), {
+      session: "legacy",
+    });
 
     expect(reviewer.rejectAll().resolved).toBe(3);
     const once = await reviewer.toBuffer();
@@ -142,7 +148,9 @@ describe("tracked table cell grid provenance", () => {
       UNCHANGED_GRID_SOURCE,
     ]);
 
-    const reopened = await FolioDocxReviewer.fromBuffer(once);
+    const reopened = await FolioDocxReviewer.fromBuffer(once, {
+      session: "legacy",
+    });
     const twice = await reopened.toBuffer();
     expect(await documentXml(twice)).toBe(await documentXml(once));
   });

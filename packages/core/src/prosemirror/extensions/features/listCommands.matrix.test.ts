@@ -377,7 +377,7 @@ const expectEveryReferenceDefined = (document: Document): void => {
 type Label = { text: string; label: string };
 
 const labelsOf = async (bytes: ArrayBuffer): Promise<Label[]> =>
-  (await FolioDocxReviewer.fromBuffer(bytes))
+  (await FolioDocxReviewer.fromBuffer(bytes, { session: "legacy" }))
     .getContent()
     .map(({ text, displayLabel }) => ({ text, label: displayLabel ?? "" }));
 

@@ -42,7 +42,9 @@ const open = async () => {
       '<Relationship Id="rId99" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="comments.xml"/></Relationships>',
     ),
   );
-  return FolioDocxReviewer.fromBuffer((await zip.generate()).slice().buffer);
+  return FolioDocxReviewer.fromBuffer((await zip.generate()).slice().buffer, {
+    session: "legacy",
+  });
 };
 
 const edit = (
@@ -56,7 +58,11 @@ const edit = (
   );
 
 const savedCommentTexts = async (reviewer: FolioDocxReviewer) =>
-  (await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer()))
+  (
+    await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
+      session: "legacy",
+    })
+  )
     .getComments()
     .map(({ text }) => text);
 

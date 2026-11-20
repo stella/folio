@@ -197,6 +197,7 @@ export const openReviewer = async (
   const reviewer = await Result.tryPromise({
     try: () =>
       FolioDocxReviewer.fromBuffer(bytes.slice().buffer, {
+        session: "legacy",
         ...(author !== undefined && { author }),
       }),
     catch: (error) =>

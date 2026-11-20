@@ -71,6 +71,7 @@ describe("completing a missing comment reference", () => {
     expect(referenceCount(await documentXml(source))).toBe(0);
 
     const reviewer = await FolioDocxReviewer.fromBuffer(source, {
+      session: "legacy",
       author: "Editor",
     });
     const target = reviewer.snapshot().blocks[1];

@@ -28,6 +28,7 @@ const buildReviewer = async () => {
     },
   };
   return FolioDocxReviewer.fromBuffer(await createDocx(document), {
+    session: "legacy",
     author: "Test",
   });
 };
@@ -77,7 +78,7 @@ test("the words a tracked merge hands a paragraph mark's cascade read the same a
   }
   const reopened = await FolioDocxReviewer.fromBuffer(
     await reviewer.toBuffer(),
-    { author: "Test" },
+    { session: "legacy", author: "Test" },
   );
   expect(previewRuns(reopened)).toEqual(previewRuns(reviewer));
 });

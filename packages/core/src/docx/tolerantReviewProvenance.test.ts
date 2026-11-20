@@ -54,7 +54,9 @@ const outcome = async (bytes: Uint8Array) => {
     preloadFonts: false,
   });
   const resolved = async (decision: "accept" | "reject") => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice().buffer);
+    const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice().buffer, {
+      session: "legacy",
+    });
     if (decision === "accept") reviewer.acceptAll();
     else reviewer.rejectAll();
     return reviewer.getContent().map(({ text }) => text);

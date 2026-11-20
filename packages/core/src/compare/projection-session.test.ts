@@ -103,6 +103,7 @@ const instrumentStoryTraversals = (
 test("comparison projection avoids a separate nested-revision scan", async () => {
   const baseReviewer = await FolioDocxReviewer.fromBuffer(
     await storyMatrixDocx("before"),
+    { session: "legacy" },
   );
   const baseTraversals = instrumentStoryTraversals(baseReviewer);
   const baseProjection = getFolioDocxComparisonAccess(
@@ -118,6 +119,7 @@ test("comparison projection avoids a separate nested-revision scan", async () =>
 
   const targetReviewer = await FolioDocxReviewer.fromBuffer(
     await storyMatrixDocx("after"),
+    { session: "legacy" },
   );
   const targetTraversals = instrumentStoryTraversals(targetReviewer);
   const targetProjection = getFolioDocxComparisonAccess(

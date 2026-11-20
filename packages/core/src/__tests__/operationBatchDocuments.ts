@@ -70,13 +70,17 @@ export const paragraphsDocx = (
 };
 
 export const openReviewer = (buffer: ArrayBuffer): Promise<FolioDocxReviewer> =>
-  FolioDocxReviewer.fromBuffer(buffer, { author: "Reviewer" });
+  FolioDocxReviewer.fromBuffer(buffer, {
+    session: "legacy",
+    author: "Reviewer",
+  });
 
 /** The reviewer's document, saved and opened again. */
 export const reopened = async (
   reviewer: FolioDocxReviewer,
 ): Promise<FolioDocxReviewer> =>
   FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
+    session: "legacy",
     author: "Reviewer",
   });
 

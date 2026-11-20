@@ -144,7 +144,9 @@ const createStoryDocx = async (): Promise<ArrayBuffer> => {
 const secondaryStoryTexts = async (
   load: boolean,
 ): Promise<Map<string, string>> => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(await createStoryDocx());
+  const reviewer = await FolioDocxReviewer.fromBuffer(await createStoryDocx(), {
+    session: "legacy",
+  });
   const handles = reviewer
     .listStories()
     .map(({ handle }) => handle)

@@ -159,7 +159,9 @@ const createNoteFieldDocx = async (): Promise<ArrayBuffer> => {
 const openWithLoadedStories = async (
   buffer: ArrayBuffer,
 ): Promise<FolioDocxReviewer> => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
+  const reviewer = await FolioDocxReviewer.fromBuffer(buffer, {
+    session: "legacy",
+  });
   for (const { handle } of reviewer.listStories()) {
     if (handle.type !== "main") {
       reviewer.snapshotStory(handle);
@@ -222,7 +224,9 @@ describe("field results in header, footer, and note text", () => {
   test("leaves a note without a field byte-for-byte unchanged", async () => {
     const buffer = await createNoteFieldDocx();
     const loaded = await openWithLoadedStories(buffer);
-    const unloaded = await FolioDocxReviewer.fromBuffer(buffer);
+    const unloaded = await FolioDocxReviewer.fromBuffer(buffer, {
+      session: "legacy",
+    });
     const line = `[footnote #${NOTE_WITHOUT_FIELD_ID}] ${PLAIN_NOTE_TEXT}`;
 
     expect(loaded.getNotesAsText().split("\n")).toContain(line);

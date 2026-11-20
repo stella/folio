@@ -60,10 +60,12 @@ test.each([
   async (shape, thenBackspace) => {
     const source = await FolioDocxReviewer.fromBuffer(
       await shapeArrayBuffer(shape),
+      { session: "legacy" },
     );
     const direct = await FolioDocxReviewer.fromBuffer(
       (await composeOverEverything(shape, "editing", thenBackspace)).slice()
         .buffer,
+      { session: "legacy" },
     );
     const suggested = await composeOverEverything(
       shape,
@@ -72,11 +74,13 @@ test.each([
     );
     const accepting = await FolioDocxReviewer.fromBuffer(
       suggested.slice().buffer,
+      { session: "legacy" },
     );
     accepting.acceptAll();
     expect(blocks(accepting)).toEqual(blocks(direct));
     const rejecting = await FolioDocxReviewer.fromBuffer(
       suggested.slice().buffer,
+      { session: "legacy" },
     );
     rejecting.rejectAll();
     expect(blocks(rejecting)).toEqual(blocks(source));
