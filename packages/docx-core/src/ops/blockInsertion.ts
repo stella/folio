@@ -1,5 +1,5 @@
 /** Paragraph insertion, isolated from the inline and table operation implementations. */
-import { Result } from "better-result";
+import { panic, Result } from "better-result";
 
 import {
   type Document,
@@ -13,6 +13,7 @@ import {
 import {
   blockListAt,
   blockListEndsInParagraph,
+  canSpliceMainBodyWithoutSectionRepair,
   endsItsContainer,
   hasContainerFinalParagraphMark,
   replaceParagraphs,
@@ -33,6 +34,8 @@ import { locateBlockInsertion } from "./tableLocation";
 import {
   DOCUMENT_OP_TYPES,
   type InsertBlocksOp,
+  OP_STORIES,
+  type ReplaceBlocksOp,
   type RevisionStamp,
 } from "./types";
 
@@ -84,12 +87,20 @@ type BlockInsertionOptions = {
   document: Document;
   op: InsertBlocksOp;
   applyOps: ApplyOps;
+  validateBlockReplacement: ValidateBlockReplacement;
 };
+
+export type ValidateBlockReplacement = (options: {
+  document: Document;
+  op: ReplaceBlocksOp;
+  before: readonly Paragraph[];
+}) => Result<void, DocumentOpRefusal>;
 
 export const insertBlocks = ({
   document,
   op,
   applyOps,
+  validateBlockReplacement,
 }: BlockInsertionOptions): Result<DocumentEdit, DocumentOpRefusal> => {
   const refuse = (reason: DocumentOpRefusal["reason"], message: string) =>
     Result.err(new DocumentOpRefusal({ reason, message, opType: op.type }));
@@ -349,8 +360,34 @@ export const insertBlocks = ({
       "Insertion after a pending paragraph mark needs its former formatting snapshot and revision ids.",
     );
   }
-  // Validate incoming identities and model records before creating any review records.
-  const direct = applyOps(document, [replacement(canonicalBlocks)]);
+  // A draft ordinary insertion has no other work when its main-body splice
+  // has no section or note repair and cannot add inline stories or review
+  // records. The tracked replacement below still runs full validation.
+  const draft = replacement(canonicalBlocks);
+  const direct =
+    op.revision !== undefined &&
+    op.story === OP_STORIES.MAIN &&
+    location.list.length === 0 &&
+    anchor.paraId !== undefined &&
+    isParaId(anchor.paraId) &&
+    canSpliceMainBodyWithoutSectionRepair(body) &&
+    (document.package.footnotes?.length ?? 0) === 0 &&
+    (document.package.endnotes?.length ?? 0) === 0 &&
+    canonicalBlocks.every(
+      ({ pPrMark, propertyChanges, reviewCarrier, content }) =>
+        pPrMark === undefined &&
+        propertyChanges === undefined &&
+        reviewCarrier === undefined &&
+        content.every(
+          (node) =>
+            node.type === "run" &&
+            node.content.every((leaf) => leaf.type === "text"),
+        ),
+    )
+      ? validateBlockReplacement({ document, op: draft, before: [anchor] }).map(
+          () => undefined,
+        )
+      : applyOps(document, [draft]);
   if (direct.isErr())
     return Result.err(
       new DocumentOpRefusal({
@@ -363,6 +400,7 @@ export const insertBlocks = ({
   // unchanged anchor in this block list.
   const lastInserted = canonicalBlocks.at(-1);
   if (
+    direct.value !== undefined &&
     !before &&
     lastInserted?.pPrMark !== undefined &&
     endsItsContainer(storyBody(direct.value.document, op.story), {
@@ -385,7 +423,12 @@ export const insertBlocks = ({
     ),
     removed: [],
   };
-  if (op.revision === undefined) return Result.ok({ ...direct.value, touched });
+  if (op.revision === undefined)
+    return Result.ok({
+      ...(direct.value ??
+        panic("An ordinary insertion needs its direct edit.")),
+      touched,
+    });
   if (identityKeysIn(op.blocks).length > 0) {
     return refuse(
       DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
