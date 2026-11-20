@@ -51,6 +51,12 @@ export const CANONICAL_REPLAY_GAPS: Readonly<Record<string, ReplayGap>> = {
   "issue-1350-7fe54148e47f13fe.json": MARKDOWN_ACCEPTANCE,
   "issue-1350-table-and-paragraph-before-deleted-final.json":
     MARKDOWN_ACCEPTANCE,
+  "issue-1356-48eb3fcfbb6a954d.json": {
+    reason:
+      "a tracked insertion after a paragraph that would take over the last paragraph's pending property change is refused, which the direct replay applies",
+    symptom:
+      /\[directTracked\] the flow's batches replayed tracked and accepted read otherwise than replayed direct/u,
+  },
   "issue-1356-3058fb47c2ef6a7c.json": SEQUENTIAL_DELETION,
   "issue-1356-table-after-a-deleted-final-paragraph.json": SEQUENTIAL_DELETION,
   "issue-1757-7483271c36812e15.json": MARKDOWN_ACCEPTANCE,
@@ -69,7 +75,6 @@ export const CANONICAL_VACUOUS_STEPS: Readonly<
   "accepted-tracked-replacement.json": [0],
   "commented-formatting-then-block-deletion.json": [1],
   "delete-block-with-pending-replacement-comment.json": [1],
-  "issue-1350-e377f5b27fbc60fc.json": [1],
   "issue-1350-edbbeea12a9cfd50.json": [2],
   "issue-1350-row-beside-held-comment-end.json": [0],
   "issue-1356-42bb7d148b3e1e55.json": [1, 2],
