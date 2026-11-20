@@ -576,7 +576,7 @@ export const createEditorIntentIdAllocator = ({
       }
     }
     const fresh = (
-      occupied: { has: (id: number) => boolean },
+      occupied: typeof census.revisions,
       count: number,
       kind: IdLeaseKind,
     ) =>
@@ -584,6 +584,10 @@ export const createEditorIntentIdAllocator = ({
         lease,
         kind,
         count,
+        from:
+          lease === undefined && count > 0
+            ? occupied.occupiedPrefixEnd(ID_KIND_LIMITS[kind])
+            : 1,
         taken: (id) => occupied.has(id),
       });
     if (intent.type === "insertParagraphs") {
@@ -693,6 +697,10 @@ export const createEditorIntentIdAllocator = ({
       lease,
       kind: ID_LEASE_KINDS.PARAGRAPH,
       count: 1,
+      from:
+        lease === undefined
+          ? census.paragraphs.occupiedPrefixEnd(ID_KIND_LIMITS.paragraph)
+          : 1,
       taken: (id) => taken(formatParaId(id)),
     }).at(0);
     const newBlockId = formatParaId(paragraph ?? ID_KIND_LIMITS.paragraph);

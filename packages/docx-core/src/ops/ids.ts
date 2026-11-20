@@ -209,6 +209,10 @@ const RESERVED_PARA_ID_PATTERN = /^0{8}$/u;
 export const isParaId = (id: string): boolean =>
   PARA_ID_PATTERN.test(id) && !RESERVED_PARA_ID_PATTERN.test(id);
 
+/** A paragraph id's spelling for its number. */
+export const formatParaId = (id: number): string =>
+  id.toString(16).padStart(8, "0").toUpperCase();
+
 /** The id spaces of revisions and content controls. */
 export const IDENTITY_SPACES: Readonly<{
   readonly REVISION: "revision";
@@ -515,6 +519,17 @@ export const packageReservedIdentityKeys: (
 /** Which keys are taken, asked one key at a time. */
 export type KeyMembership = { has: (key: string) => boolean };
 
+/** The keys of one numeric identity space, in allocation order. */
+export type IdentityKeySequence = {
+  keyOf: (id: number) => string;
+  numberOf: (key: string) => number | undefined;
+};
+
+export const paragraphIdSequence: IdentityKeySequence = {
+  keyOf: formatParaId,
+  numberOf: (key) => (isParaId(key) ? Number.parseInt(key, 16) : undefined),
+};
+
 /**
  * How many records of one package carry each key, answered without a census
  * of the whole package.
@@ -524,6 +539,8 @@ export type IdentityKeyIndex = {
   count: (key: string) => number;
   /** Whether any record carries `key`. */
   has: (key: string) => boolean;
+  /** The first absent positive id of a stable sequence, capped at `limit`. */
+  firstMissing: (sequence: IdentityKeySequence, limit: number) => number;
   /** Every key with its count, as {@link countKeys} gives them. */
   counts: () => ReadonlyMap<string, number>;
   /** How many keys more than one record carries. */
@@ -543,6 +560,8 @@ type IndexNode = {
   shareable: boolean;
   /** How many keys more than one record of the package carries. */
   repeated: number;
+  /** All ids strictly below each cached candidate are present. */
+  prefixes: Map<IdentityKeySequence, number> | undefined;
 };
 
 const MAX_CHAIN = 32;
@@ -770,13 +789,23 @@ const keyIndex = (
       return undefined;
     // Only a key whose count changed can start or stop repeating.
     let { repeated } = base;
+    const prefixes =
+      base.prefixes === undefined ? undefined : new Map(base.prefixes);
     for (const [key, change] of changes) {
       if (change === 0) {
         changes.delete(key);
         continue;
       }
       const was = countIn(base, key);
-      repeated += Number(was + change > 1) - Number(was > 1);
+      const count = was + change;
+      repeated += Number(count > 1) - Number(was > 1);
+      if (count === 0 && prefixes !== undefined) {
+        for (const [sequence, candidate] of prefixes) {
+          const id = sequence.numberOf(key);
+          if (id !== undefined && id > 0 && id < candidate)
+            prefixes.set(sequence, id);
+        }
+      }
     }
     const node: IndexNode = {
       parent: base,
@@ -784,6 +813,7 @@ const keyIndex = (
       depth: base.depth + 1,
       shareable: true,
       repeated,
+      prefixes,
     };
     if (node.depth >= MAX_CHAIN) settle(node);
     return node;
@@ -799,6 +829,7 @@ const keyIndex = (
       depth: 0,
       shareable: census.shareable,
       repeated,
+      prefixes: undefined,
     };
   };
   return (pkg) => {
@@ -812,6 +843,14 @@ const keyIndex = (
     return {
       count: (key) => countIn(indexed, key),
       has: (key) => countIn(indexed, key) > 0,
+      firstMissing: (sequence, limit) => {
+        indexed.prefixes ??= new Map();
+        const known = indexed.prefixes.get(sequence) ?? 1;
+        let id = Math.min(known, limit);
+        while (id < limit && countIn(indexed, sequence.keyOf(id)) > 0) id += 1;
+        if (id > known) indexed.prefixes.set(sequence, id);
+        return id;
+      },
       counts: () => {
         settle(indexed);
         return indexed.changes;
