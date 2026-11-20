@@ -1,7 +1,8 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 
 import { wellFormedXmlIssue } from "@stll/docx-core/xml";
 
+import * as documentParser from "./documentParser";
 import { buildStructuralDocumentPatch } from "./structuralXmlPatch";
 import { getChildElements, parseXmlDocument } from "./xmlParser";
 
@@ -28,6 +29,31 @@ const ids = (xml: string) => {
     (element) => element.attributes?.["id:paraId"],
   );
 };
+
+test("structural splices reuse the parsed parts for model barrier comparison", () => {
+  const parseFromXml = spyOn(documentParser, "parseDocumentBody");
+  const parseFromTree = spyOn(documentParser, "parseDocumentBodyTree");
+  try {
+    const table = `<w:tbl><w:tr><w:tc>${paragraph(9)}</w:tc></w:tr></w:tbl>`;
+    const result = splice({
+      originalXml: wrap(paragraph(1) + table + paragraph(2)),
+      serializedXml: wrap(paragraph(1) + table + paragraph(3) + paragraph(2)),
+      changedIds: new Set(),
+    });
+    expect(result).toContain(table);
+    expect(ids(result ?? "")).toEqual([
+      "00000001",
+      undefined,
+      "00000003",
+      "00000002",
+    ]);
+    expect(parseFromXml).toHaveBeenCalledTimes(0);
+    expect(parseFromTree).toHaveBeenCalledTimes(2);
+  } finally {
+    parseFromTree.mockRestore();
+    parseFromXml.mockRestore();
+  }
+});
 
 test("all deletion subsets and insertion gaps retain surviving source bytes and ordering", () => {
   const original = wrap(

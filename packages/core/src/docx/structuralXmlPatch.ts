@@ -1,8 +1,9 @@
 /** Conservative body-paragraph splices; source offsets never come from reserialization. */
 import type { StructuralSpliceDeclineReason } from "../types/selectiveSaveDecline";
 import { canonicalJson } from "../utils/canonicalJson";
-import { parseDocumentBody } from "./documentParser";
+import { parseDocumentBodyTree } from "./documentParser";
 import { paraIdAttribute } from "./paraIdAttribute";
+import { standalonePreviewLedger } from "./previewBudget";
 import {
   spliceSupportsRootNamespaces,
   spliceXml,
@@ -234,6 +235,17 @@ const isBodyMarker = (element: XmlElement): boolean =>
   WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(element) ?? "") &&
   BODY_MARKERS.has(getLocalName(element.name));
 
+const parseBodyModel = (root: XmlElement) =>
+  parseDocumentBodyTree({
+    doc: { elements: [root] },
+    styles: null,
+    theme: null,
+    numbering: null,
+    rels: null,
+    media: null,
+    previews: standalonePreviewLedger(),
+  });
+
 /**
  * Insert/delete direct body paragraphs between surviving paragraph/table anchors.
  * Tables and body-level range markers are opaque barriers: their modeled
@@ -285,8 +297,8 @@ export const buildStructuralDocumentPatch = ({
 
   // Compare both sides through the same parser, avoiding lexical differences
   // such as empty tags and attribute order. Unmodeled table bytes stay in source.
-  const sourceBody = parseDocumentBody(originalXml);
-  const currentBody = parseDocumentBody(serializedXml);
+  const sourceBody = parseBodyModel(source.root);
+  const currentBody = parseBodyModel(current.root);
   const barriers = (body: typeof sourceBody) =>
     body.content.filter((block) => block.type !== "paragraph");
   const sourceBarriers = barriers(sourceBody);
