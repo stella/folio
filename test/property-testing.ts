@@ -68,7 +68,8 @@ import {
  *     for lookup. Entries carry seeds and optional counterexample paths that
  *     once failed. `assertProperty`
  *     replays each of them before the property's generated runs, in every
- *     environment; `propertyConfig` refuses a property that has pinned seeds
+ *     environment: a pin with a path replays that one case, a pin without
+ *     one its seed's whole run; `propertyConfig` refuses a property that has pinned seeds
  *     but is not asserted through `assertProperty`.
  *
  *  5. Exploration reports. With `FOLIO_FUZZ_EXPLORATION=report` under CI (pull
@@ -827,6 +828,11 @@ const buildConfig = <Ts>(
     Reflect.deleteProperty(config, "asyncReporter");
     Reflect.deleteProperty(config, "markInterruptAsFailure");
     config.reporter = replayReporter<Ts>(identity, pinned, exploration, budget);
+    config.numRuns = 1;
+    config.endOnFailure = true;
+  } else if (pinned?.path !== undefined && pinned.path !== "") {
+    // A pin with a path is one recorded case: replaying the rest of its run
+    // repeats what the generated pass already explores, once per pin.
     config.numRuns = 1;
     config.endOnFailure = true;
   }
