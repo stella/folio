@@ -931,6 +931,13 @@ export type LeasedIdCensus = Readonly<Record<IdLeaseKind, ReadonlySet<number>>>;
 export const leasedIdCensus: (document: Document_2) => LeasedIdCensus;
 
 // @public
+export const locateParagraphInBlockList: (body: DocumentBody, blockId: string) => {
+    paragraph: Paragraph;
+    blocks: readonly BlockContent[];
+    index: number;
+} | undefined;
+
+// @public
 export const mapTocBookmarkPosition: (position: TextPosition, ops: readonly DocumentOp[]) => TextPosition;
 
 // @public
