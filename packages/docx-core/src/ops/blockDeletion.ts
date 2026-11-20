@@ -666,9 +666,11 @@ export const deleteBlocks = ({
       paragraphPropertiesOf(following.formatting),
       paragraphPropertiesOf(last.paragraph.formatting),
     );
+  // So does an added mark whose later deletion already took it.
   const keepsDeletedMark = (paragraph: Paragraph) =>
     op.move !== true &&
-    paragraph.pPrMark?.kind === "del" &&
+    (paragraph.pPrMark?.kind === "del" ||
+      paragraph.pPrMark?.deletion !== undefined) &&
     !(finalTakeover && paragraph === last.paragraph);
   // Another author's added mark the deletion takes keeps that insertion and
   // records the deletion beside it, as a later deletion of an insertion does.

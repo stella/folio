@@ -4369,7 +4369,15 @@ const withRetiredFinalParagraphs = ({
       addedRevisions.push({ operationId, revisionId });
       continue;
     }
-    if (addedBreakRevisionId(mark) !== null) {
+    // Another author's added break a pending deletion already takes stays
+    // as it is, both records with it, as a deleted break does.
+    const takenForeignBreak =
+      isForeignAddedBreak(previous, author) &&
+      expectParagraphAttrs(previous).pPrMark?.deletion !== undefined;
+    if (refuseCrossAuthorRevisions && takenForeignBreak) {
+      return { type: "blocked", operationId, nextRevisionId };
+    }
+    if (addedBreakRevisionId(mark) !== null && !takenForeignBreak) {
       const retraction = finalBreakRetractionTarget(tr.doc, predecessor);
       if (retraction === null) {
         // One w:pPrChange per paragraph: an occupied predecessor keeps the emptied target.
@@ -7446,9 +7454,16 @@ const applyFolioAIEditOperationsInternal = ({
             ownerMark.deletion === undefined &&
             !isPairedMove(item.operation.moveId) &&
             isForeignAddedBreak(markOwner, author);
+          // One a pending deletion already takes keeps both its records.
+          const foreignBreakTaken =
+            markOwner !== null &&
+            ownerMark?.deletion !== undefined &&
+            !isPairedMove(item.operation.moveId) &&
+            isForeignAddedBreak(markOwner, author);
           const across =
             markOwner &&
             !deletesForeignBreak &&
+            !foreignBreakTaken &&
             !isPairedMove(item.operation.moveId) &&
             addedBreakRevisionId(markOwner.attrs["pPrMark"]) !== null
               ? paragraphAcrossVanishingTables(tr.doc, markPosition)
@@ -7487,6 +7502,8 @@ const applyFolioAIEditOperationsInternal = ({
             appliedRevisionIds = inlineRevisionApplied
               ? [revisionId, markRevisionId]
               : [markRevisionId];
+          } else if (foreignBreakTaken) {
+            // The break goes under the deletion that took it first.
           } else if (
             deleted &&
             following?.type === deleted.type &&

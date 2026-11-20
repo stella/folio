@@ -233,3 +233,63 @@ for (const session of ["legacy", "canonical"] as const) {
     ]);
   });
 }
+
+const takenMark = {
+  kind: "ins" as const,
+  info: { id: 2, author: "First Reviewer" },
+  deletion: { info: { id: 3, author: "Second Reviewer" } },
+};
+
+for (const session of ["legacy", "canonical"] as const) {
+  for (const target of ["the paragraph", "the final paragraph"] as const) {
+    test(`${session}: deleting ${target} again keeps both records of a mark another deletion already took`, async () => {
+      const docx = await createDocx({
+        package: {
+          document: {
+            content: [
+              {
+                type: "paragraph",
+                paraId: "10000000",
+                content: [textRun("First")],
+              },
+              {
+                type: "paragraph",
+                paraId: "10000001",
+                content: [textRun("Added")],
+                pPrMark: takenMark,
+              },
+              {
+                type: "paragraph",
+                paraId: "10000002",
+                content: [textRun("tail")],
+              },
+            ],
+          },
+        },
+      });
+      const reviewer = await FolioDocxReviewer.fromBuffer(docx, {
+        author: "Third Reviewer",
+        session,
+      });
+      reviewer.applyDocumentOperations(
+        {
+          version: 1,
+          mode: "tracked-changes",
+          operations: [
+            {
+              id: "delete",
+              type: "deleteBlock",
+              blockId: target === "the paragraph" ? "10000001" : "10000002",
+            },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      );
+      const xml =
+        (await unzipDocx(await reviewer.toBuffer())).documentXml ?? "";
+      expect(xml).toMatch(
+        /<w:rPr><w:ins w:id="2" w:author="First Reviewer"\/><w:del w:id="3" w:author="Second Reviewer"\/><\/w:rPr>/u,
+      );
+    });
+  }
+}
