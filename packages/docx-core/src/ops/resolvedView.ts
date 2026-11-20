@@ -51,37 +51,40 @@ const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
 /**
  * `value` with `edit` applied to every plain record, bottom up, copying only
  * what changes. A record reached twice (a section's view of the body shares
- * the body's paragraphs) maps to one copy.
+ * the body's paragraphs) maps to one copy, except one `each` names: that one
+ * maps anew in every place.
  */
 const mapRecords = (
   value: unknown,
   edit: (record: Record<string, unknown>) => Record<string, unknown>,
+  each: (record: Record<string, unknown>) => boolean = () => false,
   seen: Map<object, unknown> = new Map(),
 ): unknown => {
   if (typeof value !== "object" || value === null) return value;
-  const known = seen.get(value);
+  const fresh = isPlainRecord(value) && each(value);
+  const known = fresh ? undefined : seen.get(value);
   if (known !== undefined) return known;
   let out: unknown = value;
   if (Array.isArray(value)) {
-    const items = value.map((item) => mapRecords(item, edit, seen));
+    const items = value.map((item) => mapRecords(item, edit, each, seen));
     if (items.some((item, index) => item !== value[index])) out = items;
   } else if (value instanceof Map) {
     const entries = [...value.entries()].map(
-      ([key, item]) => [key, mapRecords(item, edit, seen)] as const,
+      ([key, item]) => [key, mapRecords(item, edit, each, seen)] as const,
     );
     if (entries.some(([key, item]) => item !== value.get(key)))
       out = new Map(entries);
   } else if (isPlainRecord(value)) {
     let record = value;
     for (const [key, item] of Object.entries(value)) {
-      const mapped = mapRecords(item, edit, seen);
+      const mapped = mapRecords(item, edit, each, seen);
       if (mapped === item) continue;
       if (record === value) record = { ...value };
       record[key] = mapped;
     }
     out = edit(record);
   }
-  seen.set(value, out);
+  if (!fresh) seen.set(value, out);
   return out;
 };
 
@@ -123,29 +126,50 @@ const withParagraphIds = (
  * writer later numbers them apart, where an operation refuses the repeat; the
  * view resolves every record anyway, so it numbers them apart first.
  */
+const revisionIdOf = (record: Record<string, unknown>): number | undefined => {
+  const info = record["info"];
+  return isPlainRecord(info) &&
+    typeof info["id"] === "number" &&
+    typeof info["author"] === "string"
+    ? info["id"]
+    : undefined;
+};
+
+const isRevisionRecord = (record: Record<string, unknown>): boolean =>
+  revisionIdOf(record) !== undefined;
+
 const withDistinctRevisionIds = (document: Document): Document => {
-  const ids = identityKeysIn(document.package).flatMap((key) =>
-    key.startsWith(REVISION_KEY_PREFIX)
-      ? [Number(key.slice(REVISION_KEY_PREFIX.length))]
-      : [],
+  // Every place a revision record stands counts and is numbered on its own,
+  // one object a model shares between paragraphs included: its writer gives
+  // each place its own id, and the identity census reads equal shared records
+  // as one. A paragraph shared whole (a section's view) stays one place.
+  const ids: number[] = [];
+  mapRecords(
+    document.package,
+    (record) => {
+      const id = revisionIdOf(record);
+      if (id !== undefined) ids.push(id);
+      return record;
+    },
+    isRevisionRecord,
   );
   if (new Set(ids).size === ids.length) return document;
   let next = Math.max(...ids) + 1;
   const seen = new Set<number>();
-  const pkg = mapRecords(document.package, (record) => {
-    const info = record["info"];
-    if (
-      !isPlainRecord(info) ||
-      typeof info["id"] !== "number" ||
-      typeof info["author"] !== "string"
-    )
-      return record;
-    if (!seen.has(info["id"])) {
-      seen.add(info["id"]);
-      return record;
-    }
-    return { ...record, info: { ...info, id: next++ } };
-  }) as Document["package"];
+  const pkg = mapRecords(
+    document.package,
+    (record) => {
+      const id = revisionIdOf(record);
+      if (id === undefined) return record;
+      if (!seen.has(id)) {
+        seen.add(id);
+        return record;
+      }
+      const info = record["info"] as Record<string, unknown>;
+      return { ...record, info: { ...info, id: next++ } };
+    },
+    isRevisionRecord,
+  ) as Document["package"];
   return pkg === document.package ? document : { ...document, package: pkg };
 };
 
