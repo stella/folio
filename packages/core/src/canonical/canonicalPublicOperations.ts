@@ -43,6 +43,7 @@ import {
   leasedIdCensus,
   locateParagraphInBlockList,
   type NewListInstance,
+  OP_STORIES,
   type OpStory,
   orderAddressingBeforeRemoval,
   orderBatchOperations,
@@ -194,8 +195,8 @@ import {
   canonicalCommentBody,
   compileCanonicalComments,
 } from "./canonicalComments";
-import { addJoinedParagraphReceipts } from "./canonicalJoinedReceipts";
 import { planReplayParagraphIds } from "./canonicalInsertionReplayIds";
+import { addJoinedParagraphReceipts } from "./canonicalJoinedReceipts";
 import { lockViolationBetween } from "./canonicalLockGuard";
 import {
   type CanonicalCommit,
@@ -1736,6 +1737,42 @@ const plainInsertedParagraphIds = (
   }
   if (modelParagraphIdsIn(op.blocks).length !== ids.length) return undefined;
   return ids.sort((left, right) => left - right);
+};
+
+type ReplayOperation = {
+  type: string;
+  operation: FolioDocumentOperation;
+  intents: readonly EditorIntent[];
+};
+
+const isPlainInsertion = ({
+  type,
+  operation,
+  intents,
+}: ReplayOperation): boolean => {
+  const intent = intents.at(0);
+  return (
+    type === "plain" &&
+    (operation.type === "insertBeforeBlock" ||
+      operation.type === "insertAfterBlock") &&
+    operation.moveId === undefined &&
+    intents.length === 1 &&
+    intent?.type === "insertParagraphs" &&
+    intent.story === OP_STORIES.MAIN &&
+    (intent.at.type === "before" || intent.at.type === "after") &&
+    intent.move === undefined &&
+    intent.newList === undefined &&
+    intent.paragraphs.length === 1 &&
+    intent.paragraphs.every(
+      (paragraph) =>
+        paragraph.sectionProperties === undefined &&
+        paragraph.content.every(
+          (node) =>
+            node.type === "run" &&
+            node.content.every(({ type: leaf }) => leaf === "text"),
+        ),
+    )
+  );
 };
 
 /** A replay cannot spend identities admitted to another operation. */
@@ -4101,12 +4138,27 @@ export class CanonicalPublicOperations {
           });
         }
       }
-      const paragraphReplay = planReplayParagraphIds({
-        sessionLease: session.idLease,
-        mode: batch.mode,
-        window,
-        ordered,
-      });
+      const paragraphReplayRejection = () => {
+        if (session.idLease !== undefined) return "lease";
+        if (batch.mode === "suggested") return "suggestion";
+        if (
+          !window.every(isPlainInsertion) ||
+          !ordered.every(({ operation }) => isPlainInsertion(operation))
+        )
+          return "windowShape";
+        return undefined;
+      };
+      const paragraphRejection = paragraphReplayRejection();
+      const paragraphReplay = planReplayParagraphIds(
+        paragraphRejection,
+        paragraphRejection === undefined
+          ? ordered.map(({ member, operation }) => ({
+              id: operation.operation.id,
+              ops: member.ops,
+              ids: member.ids,
+            }))
+          : [],
+      );
       for (const declinedMember of declinedMembers)
         commitOperation(
           declinedMember.resolvedOperation,

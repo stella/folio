@@ -120,9 +120,9 @@ test.each([
     const plan = replayIds.planReplayParagraphIds;
     let beforeReplay = 0;
     const proof = spyOn(replayIds, "planReplayParagraphIds").mockImplementation(
-      (options) => {
+      (rejection, members) => {
         beforeReplay = format.mock.calls.length;
-        return plan(options);
+        return plan(rejection, members);
       },
     );
     const compile = spyOn(documentOperations, "compileEditorIntent");
@@ -235,18 +235,6 @@ test("a legacy numeric alias or exhausted paragraph range declines the whole sho
     at: { type: "before", blockId: "00000001" },
     paragraphs: content,
   } satisfies documentOperations.EditorIntent;
-  const operation = {
-    type: "plain",
-    operation: {
-      type: "insertBeforeBlock",
-      id: "insert",
-      blockId: "00000001",
-      text: "Inserted",
-    },
-    intents: [intent],
-  } satisfies Parameters<
-    typeof replayIds.planReplayParagraphIds
-  >[0]["window"][number];
   const op = {
     type: documentOperations.DOCUMENT_OP_TYPES.INSERT_BLOCKS,
     story: intent.story,
@@ -257,30 +245,22 @@ test("a legacy numeric alias or exhausted paragraph range declines the whole sho
     kind: documentOperations.ID_LEASE_KINDS.PARAGRAPH,
     id: 11,
   } as const;
-  const options = {
-    sessionLease: undefined,
-    mode: "direct",
-    window: [operation],
-    ordered: [{ operation, member: { ops: [op], ids: [id] } }],
-  } satisfies Parameters<typeof replayIds.planReplayParagraphIds>[0];
-  expect(replayIds.planReplayParagraphIds(options).type).toBe("admitted");
+  const member = { id: "insert", ops: [op], ids: [id] };
+  expect(replayIds.planReplayParagraphIds(undefined, [member]).type).toBe(
+    "admitted",
+  );
   const lastId = documentOperations.ID_KIND_LIMITS.paragraph - 1;
   const lastParagraphId = documentOperations.formatParaId(lastId);
-  const atLimit = replayIds.planReplayParagraphIds({
-    ...options,
-    ordered: [
-      {
-        operation,
-        member: {
-          ops: [{ ...op, blocks: [paragraph(lastParagraphId, "Last free")] }],
-          ids: [{ ...id, id: lastId }],
-        },
-      },
-    ],
-  });
+  const atLimit = replayIds.planReplayParagraphIds(undefined, [
+    {
+      ...member,
+      ops: [{ ...op, blocks: [paragraph(lastParagraphId, "Last free")] }],
+      ids: [{ ...id, id: lastId }],
+    },
+  ]);
   if (atLimit.type !== "admitted")
     throw new Error("Expected the last valid paragraph id");
-  const lease = atLimit.leases.get(operation.operation.id);
+  const lease = atLimit.leases.get(member.id);
   if (lease === undefined)
     throw new Error("Expected the accepted paragraph lease");
   const template = createEmptyDocument();
@@ -311,18 +291,16 @@ test("a legacy numeric alias or exhausted paragraph range declines the whole sho
     [{ ...id, id: documentOperations.ID_KIND_LIMITS.paragraph }],
   ]) {
     expect(
-      replayIds.planReplayParagraphIds({
-        ...options,
-        ordered: [{ operation, member: { ops: [op], ids } }],
-      }),
-    ).toEqual({ type: "fallback", reason: "identity" });
+      replayIds.planReplayParagraphIds(undefined, [{ ...member, ids }]),
+    ).toEqual({
+      type: "fallback",
+      reason: "identity",
+    });
   }
-  expect(
-    replayIds.planReplayParagraphIds({
-      ...options,
-      sessionLease: { blocks: [{ kind: id.kind, start: 11, end: 12 }] },
-    }),
-  ).toEqual({ type: "fallback", reason: "lease" });
+  expect(replayIds.planReplayParagraphIds("lease", [])).toEqual({
+    type: "fallback",
+    reason: "lease",
+  });
 });
 
 test("a table insertion in a replay window counts one shape fallback", async () => {
