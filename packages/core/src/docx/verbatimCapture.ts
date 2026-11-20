@@ -29,6 +29,7 @@ import {
 } from "@stll/docx-core/xml/limits";
 
 import type { DocxConformanceClass } from "../types/document";
+import { encodeUtf8 } from "../utils/textEncoding";
 import {
   type SlotEncoding,
   TRANSITIONAL_NAMESPACE_BY_STRICT_URI,
@@ -672,8 +673,7 @@ export const prepareCompactReplaySuffix = (
     limits: Object.freeze({
       ...FOLIO_XML_RESOURCE_LIMITS,
       maxBytes:
-        FOLIO_XML_RESOURCE_LIMITS.maxBytes -
-        new TextEncoder().encode(suffix).length,
+        FOLIO_XML_RESOURCE_LIMITS.maxBytes - encodeUtf8(suffix).byteLength,
       maxAttributesPerPart:
         FOLIO_XML_RESOURCE_LIMITS.maxAttributesPerPart - resources.attributes,
     }),
