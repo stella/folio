@@ -105,7 +105,11 @@ import {
  */
 function serializeParagraphMarkChange(mark: ParagraphMarkChange): string {
   const attrs = serializeTrackedChangeAttributes(mark.info);
-  return `<w:${mark.kind} ${attrs}${serializeParagraphMarkResolutionJoin(mark)}/>`;
+  const own = `<w:${mark.kind} ${attrs}${serializeParagraphMarkResolutionJoin(mark)}/>`;
+  if (mark.deletion === undefined) return own;
+  // The schema orders the mark's records ins, del, moveFrom, moveTo.
+  const deletion = `<w:del ${serializeTrackedChangeAttributes(mark.deletion.info)}/>`;
+  return mark.kind === "moveTo" ? deletion + own : own + deletion;
 }
 
 type SerializeParagraphFormattingOptions = {
@@ -431,11 +435,22 @@ const withParagraphMarkChange = (
     ...trackedChangeAttributeRecord(mark.info),
     ...paragraphMarkResolutionJoinAttributes(mark),
   };
-  const markElement = cloneElement(root, {
+  const ownElement = cloneElement(root, {
     name: `w:${mark.kind}`,
     attributes,
     elements: [],
   });
+  const markElements = [ownElement];
+  if (mark.deletion !== undefined) {
+    const deletionElement = cloneElement(root, {
+      name: "w:del",
+      attributes: trackedChangeAttributeRecord(mark.deletion.info),
+      elements: [],
+    });
+    // The schema orders the mark's records ins, del, moveFrom, moveTo.
+    if (mark.kind === "moveTo") markElements.unshift(deletionElement);
+    else markElements.push(deletionElement);
+  }
   const elements = [...(root.elements ?? [])];
   const paragraphMarkIndex = elements.findIndex(
     (child) =>
@@ -448,7 +463,7 @@ const withParagraphMarkChange = (
       cloneElement(root, {
         name: "w:rPr",
         attributes: {},
-        elements: [markElement],
+        elements: markElements,
       }),
     );
   } else {
@@ -462,7 +477,7 @@ const withParagraphMarkChange = (
       );
     }
     elements[paragraphMarkIndex] = cloneElement(paragraphMarkProperties, {
-      elements: [markElement, ...(paragraphMarkProperties.elements ?? [])],
+      elements: [...markElements, ...(paragraphMarkProperties.elements ?? [])],
     });
   }
   return captureVerbatimXml(cloneElement(root, { elements }));

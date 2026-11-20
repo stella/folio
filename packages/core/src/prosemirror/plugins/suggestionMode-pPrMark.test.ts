@@ -201,6 +201,33 @@ describe("suggestion mode — paragraph-mark keymap", () => {
     expect(firstMark?.info.revisionId).toBeUndefined();
   });
 
+  test("deleting a range over another author's added break records its deletion beside the insertion", () => {
+    const inserted = {
+      kind: "ins",
+      info: { id: 99, author: "Other", date: "2026-01-01" },
+    };
+    const initial = stateWith([
+      { text: "first", pPrMark: inserted },
+      { text: "second" },
+    ]);
+    const state = initial.apply(
+      initial.tr.setSelection(TextSelection.create(initial.doc, 3, 11)),
+    );
+    const view = createFakeView(state);
+    const p = plug();
+    p.props.handleKeyDown?.call(
+      p,
+      view as unknown as EditorView,
+      { key: "Delete" } as KeyboardEvent,
+    );
+
+    expect(view.state.doc.childCount).toBe(2);
+    expect(view.state.doc.child(0).attrs["pPrMark"]).toMatchObject({
+      ...inserted,
+      deletion: { info: { author: "Tester" } },
+    });
+  });
+
   test("Backspace retracts the current author's paragraph-mark insertion", () => {
     const initial = stateWith([
       {

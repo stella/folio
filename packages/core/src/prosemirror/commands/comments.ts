@@ -19,6 +19,7 @@ import { Mapping } from "prosemirror-transform";
 import {
   type LockedControlViolation,
   PARAGRAPH_MARK_CHANGE_KINDS,
+  type ParagraphMarkChange,
   type ParagraphMarkChangeKind,
   REVIEW_CARRIERS,
 } from "@stll/docx-core/model";
@@ -766,7 +767,7 @@ function resolveChangeUnguarded(
         return !node.isTextblock;
       });
       // A mark that goes must not leave a copy of its section record behind.
-      if (pPrMarkOps.some(({ action }) => action !== "clear")) {
+      if (pPrMarkOps.some(({ action }) => action === "join")) {
         for (const position of sectionRecordCopyPositions(tr.doc)) {
           tr.setNodeAttribute(position, "_sectionProperties", null);
         }
@@ -787,6 +788,10 @@ function resolveChangeUnguarded(
         }
         if (op.action === "clear") {
           tr.setNodeAttribute(mappedPos, "pPrMark", null);
+          continue;
+        }
+        if (op.action === "settle") {
+          tr.setNodeAttribute(mappedPos, "pPrMark", op.mark ?? null);
           continue;
         }
         // The text boxes drawn in the paragraph are blocks between it and the
@@ -1239,7 +1244,10 @@ const resolveRunPropertyChange = ({
 
 type PPrMarkOp = {
   paragraphPos: number;
-  action: "clear" | "join";
+  /** `settle` leaves the one record of a two-record mark still pending. */
+  action: "clear" | "join" | "settle";
+  /** The mark `settle` leaves. */
+  mark?: ParagraphMarkChange | undefined;
   /**
    * Whether the mark said the break was ADDED. A break that was added can be
    * taken back out at a container's edge, because the paragraph it ends was
@@ -1585,6 +1593,25 @@ function collectPPrMarkOp(
   if (!isPPrMarkAttr(pPrMark)) {
     return null;
   }
+  const deletion = pPrMark.deletion;
+  if (deletion !== undefined) {
+    // An added mark another author then deleted: accepting the deletion or
+    // rejecting the insertion takes the break; the other decision on one
+    // record leaves the other pending.
+    const chosen = (id: number) => revisionSet === null || revisionSet.has(id);
+    const insertionChosen = chosen(pPrMark.info.id);
+    const deletionChosen = chosen(deletion.info.id);
+    if (!insertionChosen && !deletionChosen) return null;
+    if (mode === "accept" ? deletionChosen : insertionChosen)
+      return { paragraphPos: pos, action: "join", markWasAdded: true };
+    const { deletion: _resolved, ...added } = pPrMark;
+    return {
+      paragraphPos: pos,
+      action: "settle",
+      mark: mode === "accept" ? { kind: "del", info: deletion.info } : added,
+      markWasAdded: true,
+    };
+  }
   if (revisionSet !== null && !revisionSet.has(pPrMark.info.id)) {
     return null;
   }
@@ -1618,10 +1645,7 @@ function rangeCoversNode(
   return from <= pos && to >= pos + node.nodeSize;
 }
 
-function isPPrMarkAttr(value: unknown): value is {
-  kind: ParagraphMarkChangeKind;
-  info: { id: number; author?: unknown; date?: unknown; initials?: unknown };
-} {
+function isPPrMarkAttr(value: unknown): value is ParagraphMarkChange {
   if (typeof value !== "object" || value === null) {
     return false;
   }

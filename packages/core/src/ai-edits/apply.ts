@@ -17,6 +17,7 @@ import {
   lockedControlMessage,
   type LockedControlSpan,
   type LockedControlTouch,
+  type ParagraphMarkChange,
   REVIEW_CARRIERS,
 } from "@stll/docx-core/model";
 import {
@@ -3713,6 +3714,21 @@ const retractsForeignFinalBreak = ({
   );
 };
 
+/** Whether `paragraph`'s break or any of its words is another author's pending insertion. */
+const holdsForeignInsertion = (paragraph: PMNode, author: string): boolean => {
+  if (isForeignAddedBreak(paragraph, author)) return true;
+  let foreign = false;
+  paragraph.descendants((node) => {
+    if (foreign) return false;
+    foreign = node.marks.some(
+      (mark) =>
+        mark.type.name === "insertion" && mark.attrs["author"] !== author,
+    );
+    return !foreign;
+  });
+  return foreign;
+};
+
 const isForeignAddedBreak = (node: PMNode, author: string): boolean => {
   const mark = expectParagraphAttrs(node).pPrMark;
   return (
@@ -7244,9 +7260,13 @@ const applyFolioAIEditOperationsInternal = ({
           break;
         }
 
-        const retraction = isPairedMove(item.operation.moveId)
-          ? null
-          : pendingParagraphRetraction(tr.doc, item.blockFrom);
+        // Another author's insertion is theirs to resolve: deleting it is
+        // recorded beside it, never retracted.
+        const retraction =
+          isPairedMove(item.operation.moveId) ||
+          holdsForeignInsertion(item.blockNode, author)
+            ? null
+            : pendingParagraphRetraction(tr.doc, item.blockFrom);
         if (retraction) {
           const breakOwner =
             retraction.clearBreakAt === null
@@ -7391,8 +7411,18 @@ const applyFolioAIEditOperationsInternal = ({
           // matching one elsewhere rather than being a deletion of its own.
           let markPosition = sinceRead(tr, item).map(item.blockFrom);
           const markOwner = tr.doc.nodeAt(markPosition);
+          const ownerMark =
+            markOwner && expectParagraphAttrs(markOwner).pPrMark;
+          const deletesForeignBreak =
+            markOwner !== null &&
+            ownerMark !== undefined &&
+            ownerMark !== null &&
+            ownerMark.deletion === undefined &&
+            !isPairedMove(item.operation.moveId) &&
+            isForeignAddedBreak(markOwner, author);
           const across =
             markOwner &&
+            !deletesForeignBreak &&
             !isPairedMove(item.operation.moveId) &&
             addedBreakRevisionId(markOwner.attrs["pPrMark"]) !== null
               ? paragraphAcrossVanishingTables(tr.doc, markPosition)
@@ -7413,7 +7443,25 @@ const applyFolioAIEditOperationsInternal = ({
           const following =
             deleted &&
             paragraphJoinAfter(tr.doc, markPosition + deleted.nodeSize)?.next;
-          if (
+          if (deletesForeignBreak && ownerMark) {
+            // Another author added this break: the deletion is recorded on
+            // the mark beside their insertion, and each resolves on its own.
+            const markRevisionId = operationRevisionSeed++;
+            tr = tr.setNodeAttribute(markPosition, "pPrMark", {
+              ...ownerMark,
+              deletion: {
+                info: {
+                  id: markRevisionId,
+                  author,
+                  date,
+                  ...trackedRevisionExtras,
+                },
+              },
+            } satisfies ParagraphMarkChange);
+            appliedRevisionIds = inlineRevisionApplied
+              ? [revisionId, markRevisionId]
+              : [markRevisionId];
+          } else if (
             deleted &&
             following?.type === deleted.type &&
             !isPairedMove(item.operation.moveId) &&

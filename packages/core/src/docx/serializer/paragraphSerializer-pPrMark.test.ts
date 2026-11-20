@@ -78,6 +78,31 @@ describe("serializeParagraph — paragraph-mark tracked change", () => {
     expect(xml).toContain("&quot;");
   });
 
+  test.each([
+    ["ins", '<w:ins w:id="1" w:author="A"/><w:del w:id="2" w:author="B"/>'],
+    [
+      "moveTo",
+      '<w:del w:id="2" w:author="B"/><w:moveTo w:id="1" w:author="A"/>',
+    ],
+  ] as const)(
+    "writes an added %s mark's later deletion beside it, in schema order",
+    (kind, records) => {
+      const paragraph: Paragraph = {
+        type: "paragraph",
+        pPrMark: {
+          kind,
+          info: { id: 1, author: "A" },
+          deletion: { info: { id: 2, author: "B" } },
+        },
+        content: [],
+      };
+
+      expect(serializeParagraph(paragraph)).toContain(
+        `<w:pPr><w:rPr>${records}</w:rPr></w:pPr>`,
+      );
+    },
+  );
+
   test("omits <w:rPr> when no pPrMark, no runProperties, and no specVanish", () => {
     const paragraph: Paragraph = {
       type: "paragraph",

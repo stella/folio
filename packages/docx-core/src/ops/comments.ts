@@ -1499,7 +1499,8 @@ const revisionRange = (
     });
     if (
       paragraph.propertyChanges?.some(({ info }) => info.id === revisionId) ||
-      paragraph.pPrMark?.info.id === revisionId
+      paragraph.pPrMark?.info.id === revisionId ||
+      paragraph.pPrMark?.deletion?.info.id === revisionId
     ) {
       const start = leaves.at(0)?.before ?? { offset: 0, zeroWidthBefore: 0 };
       const end = leaves.at(-1)?.after ?? start;

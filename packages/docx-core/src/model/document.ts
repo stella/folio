@@ -359,6 +359,7 @@ export type {
   Paragraph,
   ParagraphMarkChange,
   ParagraphMarkChangeKind,
+  ParagraphMarkDeletion,
   HeaderFooterType,
   HeaderReference,
   FooterReference,
