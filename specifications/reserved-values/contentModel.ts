@@ -289,6 +289,7 @@ export const BOOKMARK_START_RESERVED = {
   colFirst: NO_RESERVED_VALUE,
   colLast: NO_RESERVED_VALUE,
   displacedByCustomXml: NO_RESERVED_VALUE,
+  keptCut: NO_RESERVED_VALUE,
 } satisfies Record<RecordField<BookmarkStart>, ReservedValueDisposition>;
 
 export type ExhaustiveBookmarkStartReserved = ExhaustiveFields<
@@ -301,6 +302,7 @@ export const BOOKMARK_END_RESERVED = {
   copyOriginAncestors: NO_RESERVED_VALUE,
   id: NO_RESERVED_VALUE,
   displacedByCustomXml: NO_RESERVED_VALUE,
+  keptCut: NO_RESERVED_VALUE,
 } satisfies Record<RecordField<BookmarkEnd>, ReservedValueDisposition>;
 
 export type ExhaustiveBookmarkEndReserved = ExhaustiveFields<
@@ -902,6 +904,7 @@ export const COMMENT_RANGE_START_RESERVED = {
   type: NO_RESERVED_VALUE,
   id: NO_RESERVED_VALUE,
   displacedByCustomXml: NO_RESERVED_VALUE,
+  keptCut: NO_RESERVED_VALUE,
 } satisfies Record<RecordField<CommentRangeStart>, ReservedValueDisposition>;
 
 export type ExhaustiveCommentRangeStartReserved = ExhaustiveFields<
@@ -913,6 +916,7 @@ export const COMMENT_RANGE_END_RESERVED = {
   type: NO_RESERVED_VALUE,
   id: NO_RESERVED_VALUE,
   displacedByCustomXml: NO_RESERVED_VALUE,
+  keptCut: NO_RESERVED_VALUE,
 } satisfies Record<RecordField<CommentRangeEnd>, ReservedValueDisposition>;
 
 export type ExhaustiveCommentRangeEndReserved = ExhaustiveFields<
@@ -1043,6 +1047,7 @@ export const MOVE_FROM_RANGE_START_RESERVED = {
   colLast: NO_RESERVED_VALUE,
   date: NO_RESERVED_VALUE,
   displacedByCustomXml: NO_RESERVED_VALUE,
+  keptCut: NO_RESERVED_VALUE,
 } satisfies Record<RecordField<MoveFromRangeStart>, ReservedValueDisposition>;
 
 export type ExhaustiveMoveFromRangeStartReserved = ExhaustiveFields<
@@ -1055,6 +1060,7 @@ export const MOVE_FROM_RANGE_END_RESERVED = {
   copyOriginAncestors: NO_RESERVED_VALUE,
   id: NO_RESERVED_VALUE,
   displacedByCustomXml: NO_RESERVED_VALUE,
+  keptCut: NO_RESERVED_VALUE,
 } satisfies Record<RecordField<MoveFromRangeEnd>, ReservedValueDisposition>;
 
 export type ExhaustiveMoveFromRangeEndReserved = ExhaustiveFields<
@@ -1072,6 +1078,7 @@ export const MOVE_TO_RANGE_START_RESERVED = {
   colLast: NO_RESERVED_VALUE,
   date: NO_RESERVED_VALUE,
   displacedByCustomXml: NO_RESERVED_VALUE,
+  keptCut: NO_RESERVED_VALUE,
 } satisfies Record<RecordField<MoveToRangeStart>, ReservedValueDisposition>;
 
 export type ExhaustiveMoveToRangeStartReserved = ExhaustiveFields<
@@ -1084,6 +1091,7 @@ export const MOVE_TO_RANGE_END_RESERVED = {
   copyOriginAncestors: NO_RESERVED_VALUE,
   id: NO_RESERVED_VALUE,
   displacedByCustomXml: NO_RESERVED_VALUE,
+  keptCut: NO_RESERVED_VALUE,
 } satisfies Record<RecordField<MoveToRangeEnd>, ReservedValueDisposition>;
 
 export type ExhaustiveMoveToRangeEndReserved = ExhaustiveFields<
