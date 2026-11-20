@@ -246,7 +246,16 @@ const assertSourceOwnership = ({
   expect(projectReview({ document: batch, projection: "π′" })).toEqual(
     projectReview({ document: reverse, projection: "π′" }),
   );
-  expect(paragraphOf(batch).content).toEqual([foreign, marker]);
+  // Beside a pending change, the kept marker records the cut it stands in.
+  expect(paragraphOf(batch).content).toEqual([
+    foreign,
+    isTrackedWrapper(foreign)
+      ? {
+          ...marker,
+          keptCut: { depth: expect.any(Number), keptFrom: SECOND_DATE },
+        }
+      : marker,
+  ]);
 };
 
 const standing = { type: "bookmarkEnd", id: 3 } satisfies ParagraphContent;
