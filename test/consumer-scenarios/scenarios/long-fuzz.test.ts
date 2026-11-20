@@ -3,9 +3,18 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { test } from "node:test";
 
+import { scenarioEngine } from "../support/documents.ts";
 import { writeFailureRecord } from "../support/failure-fingerprints.ts";
-import { recordFailure, relationInputs } from "../support/fuzz-loop.ts";
+import {
+  flowTestName,
+  recordFailure,
+  relationInputs,
+} from "../support/fuzz-loop.ts";
 import { FlowError, runFlow } from "../support/fuzz.ts";
+import {
+  logRecordedFinding,
+  recordedFindingOf,
+} from "../support/known-issues.ts";
 import { LARGE_DOCUMENT_FIXTURE } from "../support/large-document.ts";
 import { consumerScenarioReplay } from "../support/replay-inputs.ts";
 
@@ -33,7 +42,7 @@ if (!ENABLED) {
       "long fuzz requires a seed, 200–1000 steps, and FOLIO_SCENARIO_LONG_OUTPUT",
     );
   }
-  test(`long flow: seed ${seed}, ${steps} steps, 100 pages`, async () => {
+  test(`long flow: seed ${seed}, ${steps} steps, 100 pages`, async (t) => {
     await mkdir(output, { recursive: true });
     const repro = consumerScenarioReplay({
       inputs: {
@@ -63,6 +72,17 @@ if (!ENABLED) {
         path.join(output, "original-flow.json"),
         `${JSON.stringify(error.flow)}\n`,
       );
+      // A recorded finding is reported as itself, not filed again.
+      const finding = recordedFindingOf(error, scenarioEngine());
+      if (finding !== undefined) {
+        logRecordedFinding(finding, {
+          test: flowTestName(error.flow),
+          seed,
+          repro,
+        });
+        t.skip(`reproduces the recorded finding ${finding}`);
+        return;
+      }
       const record = await recordFailure(
         error,
         { seed, repro },

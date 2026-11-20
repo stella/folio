@@ -3,7 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { test } from "node:test";
 
-import { openReviewer } from "../support/documents.ts";
+import { openReviewer, scenarioEngine } from "../support/documents.ts";
 import {
   failureMarker,
   failureRecord,
@@ -12,9 +12,17 @@ import {
   writeFailureRecord,
 } from "../support/failure-fingerprints.ts";
 import type { FlowFile } from "../support/flow-file.ts";
-import { recordFailure, relationInputs } from "../support/fuzz-loop.ts";
+import {
+  flowTestName,
+  recordFailure,
+  relationInputs,
+} from "../support/fuzz-loop.ts";
 import { FlowError, runFlow, runFlowFile } from "../support/fuzz.ts";
 import { assertReadersAgree, saveAndReopen } from "../support/invariants.ts";
+import {
+  logRecordedFinding,
+  recordedFindingOf,
+} from "../support/known-issues.ts";
 import { startRelations } from "../support/metamorphic.ts";
 import {
   loadPublicCorpusFixture,
@@ -299,7 +307,7 @@ if (!ENABLED) {
     test(
       `public corpus full flow: ${fixture}`,
       { timeout: 180_000 },
-      async () => {
+      async (t) => {
         const destination = path.join(
           output,
           fixture.slice(PUBLIC_CORPUS_PREFIX.length),
@@ -338,6 +346,17 @@ if (!ENABLED) {
               path.join(destination, "original-flow.json"),
               `${JSON.stringify(error.flow)}\n`,
             );
+            // A recorded finding is reported as itself, not filed again.
+            const finding = recordedFindingOf(error, scenarioEngine());
+            if (finding !== undefined) {
+              logRecordedFinding(finding, {
+                test: flowTestName(error.flow),
+                seed,
+                repro,
+              });
+              t.skip(`reproduces the recorded finding ${finding}`);
+              return;
+            }
             const record = await recordFailure(
               error,
               { seed, repro },

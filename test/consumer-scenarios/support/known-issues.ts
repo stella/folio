@@ -8,6 +8,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import type { ReviewerEngine } from "./documents.ts";
 import { holdFailureMarkers } from "./failure-fingerprints.ts";
 import type { Relation } from "./metamorphic.ts";
 
@@ -93,6 +94,56 @@ export const FINDING_SYMPTOMS: Record<Finding, FailureSymptom> = {
     /the result is not what was asked \(insertAfterBlock\):\s+block texts differ/u,
   LEGACY_REPLACEMENT_TAKES_COMMENT:
     /legacy replacement keeps a comment over the words it replaced/u,
+};
+
+/**
+ * The engines each finding reproduces on: a legacy finding's symptom on the
+ * canonical session is a new failure, not that finding.
+ */
+export const FINDING_ENGINES = {
+  LEGACY_TOC_REGENERATION_DANGLING_REFERENCES: ["legacy"],
+  LEGACY_PARAGRAPH_TAB_EDITS_LOST: ["legacy"],
+  MARKDOWN_DROPS_TEXT_BOX: ["legacy", "canonical"],
+  LEGACY_INSERT_AFTER_EMPTIED_JOIN: ["legacy"],
+  LEGACY_REPLACEMENT_TAKES_COMMENT: ["legacy"],
+} as const satisfies Record<Finding, readonly ReviewerEngine[]>;
+
+const isFinding = (name: string): name is Finding =>
+  Object.hasOwn(FINDINGS, name);
+
+/**
+ * The recorded finding a generated flow's failure on `engine` reproduces:
+ * one whose symptom the failure has. A generated flow pins no finding, so
+ * its fuzz runner reports such a failure as that finding instead of filing
+ * it as a new or recurring failure. Checked-in flows that reproduce a
+ * finding stay in KNOWN_FAILING_CHECKED_IN_FLOWS, which notices one that
+ * stops reproducing.
+ */
+export const recordedFindingOf = (
+  failure: unknown,
+  engine: ReviewerEngine,
+): Finding | undefined => {
+  for (const [finding, engines] of Object.entries(FINDING_ENGINES)) {
+    if (!isFinding(finding)) continue;
+    if (!engines.some((each) => each === engine)) continue;
+    if (matchesFailureSymptom(finding, FINDING_SYMPTOMS[finding], failure))
+      return finding;
+  }
+  return undefined;
+};
+
+/**
+ * Log a generated flow's failure as the recorded finding it reproduces. The
+ * line is not a failure marker, so the fuzz reporters file nothing for it.
+ */
+export const logRecordedFinding = (
+  finding: Finding,
+  failure: { test: string; seed: number; repro: string },
+): void => {
+  const { seed, repro } = failure;
+  console.warn(
+    `FOLIO_RECORDED_FINDING ${JSON.stringify({ finding, test: failure.test, seed, repro })}`,
+  );
 };
 
 /**

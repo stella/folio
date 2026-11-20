@@ -3,7 +3,9 @@ import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { reportScenarioFailure } from "../test/consumer-scenarios/support/failure-fingerprints";
 import {
   FINDING_SYMPTOMS,
+  logRecordedFinding,
   matchesFailureSymptom,
+  recordedFindingOf,
   settleExpectedFailure,
 } from "../test/consumer-scenarios/support/known-issues";
 import { extractFailureMarkers } from "./failure-fingerprints";
@@ -77,5 +79,64 @@ describe("expected failures and the failure markers fuzz reporters file", () => 
   test("markers logged outside an expected failure are logged at once", () => {
     expect(failWith(KNOWN)).toThrow("writes no text-box paragraph");
     expect(markers()).toHaveLength(1);
+  });
+});
+
+// A generated flow's failure as support/fuzz.ts throws it: the flow's steps,
+// then the oracle's message.
+const generatedFailure = (message: string) =>
+  new Error(
+    [
+      "collisions flow (targeted) with seed 1546692994 (large-100-pages / tracked-changes) failed at step 1:",
+      "  0. story batch: deleteBlock",
+      "  1. story batch: insertAfterBlock",
+      message,
+    ].join("\n"),
+  );
+const EMPTIED_JOIN =
+  'step 1: the result is not what was asked (insertAfterBlock):\n  block texts differ:\n    expected ["Goods.","Inserted."]\n    got      ["Inserted.","Goods."]';
+
+describe("generated flows that reproduce a recorded finding", () => {
+  test("a failure with a legacy finding's symptom on the legacy engine is that finding", () => {
+    expect(recordedFindingOf(generatedFailure(EMPTIED_JOIN), "legacy")).toBe(
+      "LEGACY_INSERT_AFTER_EMPTIED_JOIN",
+    );
+  });
+
+  test("the same failure on the canonical session is no finding", () => {
+    expect(
+      recordedFindingOf(generatedFailure(EMPTIED_JOIN), "canonical"),
+    ).toBeUndefined();
+  });
+
+  test("a finding of both engines is that finding on the canonical session", () => {
+    expect(recordedFindingOf(generatedFailure(KNOWN), "canonical")).toBe(
+      FINDING,
+    );
+  });
+
+  test("a failure with no recorded symptom is no finding", () => {
+    expect(
+      recordedFindingOf(generatedFailure(OTHER), "legacy"),
+    ).toBeUndefined();
+  });
+
+  test("a recorded finding logs no failure marker", () => {
+    const logged: string[] = [];
+    const capture = (...parts: unknown[]) => {
+      logged.push(parts.map(String).join(" "));
+    };
+    const spies = [
+      spyOn(console, "error").mockImplementation(capture),
+      spyOn(console, "warn").mockImplementation(capture),
+      spyOn(console, "log").mockImplementation(capture),
+    ];
+    try {
+      logRecordedFinding("LEGACY_INSERT_AFTER_EMPTIED_JOIN", FLOW);
+    } finally {
+      for (const spy of spies) spy.mockRestore();
+    }
+    expect(logged.join("\n")).toContain("LEGACY_INSERT_AFTER_EMPTIED_JOIN");
+    expect(extractFailureMarkers(logged.join("\n"))).toEqual([]);
   });
 });
