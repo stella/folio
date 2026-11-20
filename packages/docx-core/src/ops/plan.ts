@@ -785,12 +785,24 @@ export const selectedParagraphRuns = (
       DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
       "A text range stays in one story.",
     );
-  const locations = storyParagraphs(storyBody(document, from.story));
+  const body = storyBody(document, from.story);
+  const start = idKey(from.blockId);
+  const end = idKey(to.blockId);
+  if (start !== "" && start === end) {
+    const at = findStoryParagraph(body, start);
+    return at === undefined
+      ? refuse(
+          DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
+          "A range endpoint does not exist.",
+        )
+      : Result.ok([[at]]);
+  }
+  const locations = storyParagraphs(body);
   const first = locations.findIndex(
-    ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(from.blockId),
+    ({ paragraph }) => idKey(paragraph.paraId ?? "") === start,
   );
   const last = locations.findIndex(
-    ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(to.blockId),
+    ({ paragraph }) => idKey(paragraph.paraId ?? "") === end,
   );
   if (first < 0 || last < 0)
     return refuse(
@@ -884,13 +896,9 @@ export const appendTrackedDeletion = ({
       DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
       "The story does not exist.",
     );
-  const paragraphs = storyParagraphs(body);
-  const first = paragraphs.find(
-    ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(from.blockId),
-  );
-  const last = paragraphs.find(
-    ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(to.blockId),
-  );
+  const run = partitioned.value.at(0);
+  const first = run?.at(0);
+  const last = run?.at(-1);
   if (first === undefined || last === undefined)
     return refuse(
       DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
