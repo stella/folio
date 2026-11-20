@@ -32,7 +32,26 @@ const MAX_INLINE_RESOLUTION_SPAN = 16_384;
 
 export type ResolutionInlineOp = ReplaceInlineOp | SetParagraphReviewOp;
 
-type JoinPreparation = { type: "none" } | { type: "required" };
+type JoinFallback = "joinShape" | "joinPlan" | "joinValidation";
+
+type JoinResult =
+  | { type: "fallback"; reason: JoinFallback }
+  | {
+      type: "planned";
+      paragraphs: Paragraph[];
+      effects: readonly DocumentEditEffects[];
+      receiverEffects: readonly ResolutionReceiverEffect[];
+    };
+
+type JoinPreparation =
+  | { type: "noJoins" }
+  | {
+      type: "plan";
+      prepare: (view: {
+        paragraphCount: number;
+        paragraphAt: (index: number) => Paragraph | undefined;
+      }) => JoinResult;
+    };
 
 type MaterializationOptions = {
   document: Document;
@@ -45,7 +64,7 @@ type MaterializationOptions = {
 };
 
 type FallbackReason =
-  | "joinShape"
+  | JoinFallback
   | "story"
   | "packageDependencies"
   | "sectionView"
@@ -112,7 +131,6 @@ export const tryMaterializeResolution = ({
   noteReferences,
   receiverEffects,
 }: MaterializationOptions): MaterializationResult => {
-  if (join.type === "required") return fallback("joinShape");
   if (story !== OP_STORIES.MAIN) return fallback("story");
   const body = document.package.document;
   if (
@@ -207,24 +225,40 @@ export const tryMaterializeResolution = ({
     });
   }
 
-  if (effects.length === 0) {
+  if (effects.length === 0 && join.type === "noJoins") {
     return {
       type: "materialized",
       edit: combineEditEffects(document, []),
       receiverEffects: [],
     };
   }
-  if (end - first > MAX_INLINE_RESOLUTION_SPAN) return fallback("wideSpan");
-  // Copy only the touched span, leaving the outer list for the immutable splice.
-  const working = originals.slice(first, end);
-  for (const [index, paragraph] of replacements)
-    working[index - first] = paragraph;
+  const combinedInline = combineEditEffects(document, effects);
+  // The join planner reads the staged overlay directly. Only the no-join
+  // branch needs to copy the span that the immutable splice will replace.
+  const joined =
+    join.type === "plan"
+      ? join.prepare({
+          paragraphCount: originals.length,
+          paragraphAt: (index) =>
+            replacements.get(index) ?? originals.at(index),
+        })
+      : undefined;
+  if (joined?.type === "fallback") return joined;
+  const start = joined === undefined ? first : 0;
+  const stop = joined === undefined ? end : originals.length;
+  if (joined === undefined && stop - start > MAX_INLINE_RESOLUTION_SPAN)
+    return fallback("wideSpan");
+  const replacement = joined?.paragraphs ?? originals.slice(start, stop);
+  if (joined === undefined) {
+    for (const [index, paragraph] of replacements)
+      replacement[index - start] = paragraph;
+  }
   const final = replaceParagraphs({
     document,
     story,
-    at: { list: [], index: first },
-    count: end - first,
-    replacement: working,
+    at: { list: [], index: start },
+    count: stop - start,
+    replacement,
   });
   if (
     final.isErr() ||
@@ -235,7 +269,10 @@ export const tryMaterializeResolution = ({
   meetsContract(final.value);
   return {
     type: "materialized",
-    edit: combineEditEffects(final.value, effects),
-    receiverEffects: [],
+    edit: combineEditEffects(final.value, [
+      combinedInline,
+      ...(joined?.effects ?? []),
+    ]),
+    receiverEffects: joined?.receiverEffects ?? [],
   };
 };

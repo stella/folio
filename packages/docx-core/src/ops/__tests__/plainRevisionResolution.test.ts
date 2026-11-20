@@ -14,6 +14,7 @@ import {
 } from "../paragraphPropertySnapshot";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import * as materialization from "../resolutionMaterialization";
+import { planRevisionResolution } from "../resolve";
 import {
   DOCUMENT_OP_TYPES,
   OP_STORIES,
@@ -184,12 +185,14 @@ const expectUndo = (edit: AppliedDocumentOp, source: Document) => {
 test.each([
   ["accept", 16, "sectionless"],
   ["accept", 48, "trailing section"],
+  ["reject", 16, "sectionless"],
+  ["reject", 48, "trailing section"],
 ] as const)(
   "plain tracked tail resolves natively with exact %s effects (%i, %s)",
   (decision, count, topology) => {
     const { document, ids } = trackedTail(count, {
       topology,
-      source: "mixed",
+      source: decision === "reject" ? "empty" : "mixed",
     });
     const originalModel = structuredClone(document);
     // Resolve with duplicated and reversed request IDs. Effects retain the
@@ -395,6 +398,45 @@ test("declared comments keep the plain-resolution optimization off", () => {
   expectUndo(actual.value, document);
 });
 
+test("a rejected tail with remaining anchor text falls back to the native join path", () => {
+  const { document, ids } = trackedTail(16);
+  const {
+    actual,
+    expected,
+    successful,
+    fallbacks,
+    actualSplices,
+    generalSplices,
+  } = counted(document, resolveOp("reject", ids));
+  if (actual.isErr()) throw actual.error;
+  if (expected.isErr()) throw expected.error;
+  expect(successful).toBe(0);
+  expect(fallbacks).toEqual(["joinShape"]);
+  expect(actualSplices).toBe(generalSplices);
+  expectExact(actual.value, expected.value);
+  expectUndo(actual.value, document);
+});
+
+test("the eligible reject plan emits the original receivers in the original order", () => {
+  const { document, ids } = trackedTail(16, { source: "empty" });
+  const options = {
+    document,
+    op: resolveOp("reject", ids),
+    applyOps: applyDocumentOps,
+  };
+  const materialize = spyOn(materialization, "tryMaterializeResolution");
+  try {
+    const actual = planRevisionResolution(options).unwrap();
+    expect(materialize.mock.results.at(0)?.value?.type).toBe("materialized");
+    materialize.mockReturnValue({ type: "fallback", reason: "primitiveShape" });
+    const expected = planRevisionResolution(options).unwrap();
+    expect(actual.receiverEffects).toHaveLength(16);
+    assertExactModel(actual.receiverEffects, expected.receiverEffects);
+  } finally {
+    materialize.mockRestore();
+  }
+});
+
 test("a middle accept splices only the selected paragraph", () => {
   const midpoint = 64;
   const selectedId = 999;
@@ -431,5 +473,27 @@ test("a middle accept splices only the selected paragraph", () => {
   } finally {
     splices.mockRestore();
     materialize.mockRestore();
+  }
+});
+
+test("a reject chain reads the staged paragraphs without cloning the source list", () => {
+  const { document, ids } = trackedTail(48, {
+    topology: "trailing section",
+    source: "empty",
+  });
+  const slices = spyOn(document.package.document.content, "slice");
+  const splices = spyOn(blocks, "replaceParagraphs");
+  try {
+    const { edit } = planRevisionResolution({
+      document,
+      op: resolveOp("reject", ids),
+      applyOps: applyDocumentOps,
+    }).unwrap();
+    expect(splices).toHaveBeenCalledTimes(1);
+    expect(slices).toHaveBeenCalledTimes(0);
+    expect(edit.document.package.document.content).toHaveLength(1);
+  } finally {
+    splices.mockRestore();
+    slices.mockRestore();
   }
 });
