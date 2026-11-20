@@ -979,6 +979,8 @@ export type Model = {
   sourceRows: readonly Row[];
   /** Live blocks explicitly deleted by applied operations, including pending joins. */
   deletedBlockIds: Set<string>;
+  /** Live blocks whose whole text an applied replaceBlock replaced, with the new text. */
+  replacedBlocks: Map<string, string>;
   /** Live paragraphs whose every word is a pending deletion (`JoinSources`). */
   deletedContentIds: ReadonlySet<string>;
   /**
@@ -1264,6 +1266,7 @@ export const modelOf = (
     liveTextById: new Map(live.map(({ id, text }) => [id, text])),
     sourceRows: live,
     deletedBlockIds: new Set(),
+    replacedBlocks: new Map(),
     deletedContentIds:
       joinSources.type === "marked"
         ? (joinSources.deletedContentIds ?? new Set())
@@ -3130,6 +3133,12 @@ export const expectOperation = (model: Model, operation: Operation): void => {
     model.deletedBlockIds.add(operation["blockId"]);
   }
   if (
+    operation.type === "replaceBlock" &&
+    typeof operation["blockId"] === "string"
+  ) {
+    model.replacedBlocks.set(operation["blockId"], String(operation["text"]));
+  }
+  if (
     model.mode === "suggested" &&
     ["deleteTable", "deleteTableRow", "deleteTableColumn"].includes(
       operation.type,
@@ -3626,6 +3635,34 @@ const anchorDisposition = (
       ? view
       : undefined;
   const located = mapped?.row ?? row;
+  // A pending join's source paragraph is no modelled row of its own, so a
+  // replaceBlock of it is not in any row's edits: every word of it goes on
+  // acceptance, and with them a comment anchored in them.
+  const replacement = model.replacedBlocks.get(entry.blockId);
+  const joinSource = [...model.pendingJoins.values()].some(({ sources }) =>
+    sources.some(({ id }) => id === entry.blockId),
+  );
+  if (joinSource && replacement !== undefined && entry.anchor !== "") {
+    const text = model.liveTextById.get(entry.blockId) ?? "";
+    const whole = [{ start: 0, end: text.length, replace: replacement }];
+    const fates = quotePlacements({
+      text,
+      quote: entry.anchor,
+      first: 0,
+      limit: text.length,
+    }).map((start) =>
+      coveredRangeFate(
+        model.engine,
+        whole,
+        text,
+        start,
+        start + entry.anchor.length,
+      ),
+    );
+    if (fates.length > 0 && fates.every((fate) => fate === "removed"))
+      return "removed";
+    if (fates.some((fate) => fate !== "kept")) return "ambiguous";
+  }
   // An unproven join keeps the existing preservation check; it does not excuse loss.
   if (!located?.pre || located.removed || entry.anchor === "") return "kept";
   const quote = mapped === undefined ? entry.anchor : acceptedAnchor;
