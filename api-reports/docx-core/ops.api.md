@@ -1096,6 +1096,9 @@ export const paragraphContentVerdict: (input: {
 export const paragraphIdsIn: (value: unknown) => string[];
 
 // @public
+export const paragraphKeptCutsFromChanges: (content: readonly ParagraphContent[], writtenOnChange: (joins: SeamJoins) => boolean) => ParagraphContent[];
+
+// @public
 export const paragraphLength: (paragraph: Paragraph) => number;
 
 // @public

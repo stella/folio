@@ -808,7 +808,11 @@ export const isThemeColor: (value: string) => value is ThemeColor;
 export type KeptCut = WritableRecord & {
     depth: number;
     keptFrom: string;
+    piece?: KeptCutPiece;
 };
+
+// @public
+export type KeptCutPiece = "before" | "after";
 
 // @public
 export const knownThemeColor: (value: DeepReadonly<ThemeColorValue>) => ThemeColor | undefined;
