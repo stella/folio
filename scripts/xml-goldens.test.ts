@@ -49,6 +49,14 @@ const REPAIRED_BEFORE =
   "the earlier parser rebuilt a tree from broken markup; it is refused now";
 const RESERVED = "names the reader reserves are refused";
 const NOT_WELL_FORMED = "not well-formed XML 1.0";
+const UNDECLARED_ENTITY =
+  "a name no declaration defines is refused; the earlier parser read it";
+const UNDECLARED_ENTITIES = [
+  "HTML entity in text",
+  "HTML entity in attribute",
+  "unknown entity",
+  "numeric identifier with HTML entity",
+];
 
 const pruneAnswer = (xml: string) => {
   const prunable = prepareXmlPruning(xml);
@@ -137,6 +145,9 @@ describe("prepareXmlPruning", () => {
         "DOCTYPE entity expansion": "a DOCTYPE is refused",
         "prototype attribute": RESERVED,
         "constructor attribute": RESERVED,
+        ...Object.fromEntries(
+          UNDECLARED_ENTITIES.map((name) => [name, UNDECLARED_ENTITY]),
+        ),
       },
       reread: Object.fromEntries(
         [
@@ -144,15 +155,12 @@ describe("prepareXmlPruning", () => {
           "CRLF and tab attribute",
           "comment and PI",
           "text before root",
-          "HTML entity in text",
-          "HTML entity in attribute",
           "raw control character",
           "declaration after whitespace",
           "byte-order mark",
           "space before tag name",
           "space after self-closing slash",
           "numeric identifier with reference",
-          "numeric identifier with HTML entity",
         ].map((name) => [name, REWRITTEN]),
       ),
     });
@@ -201,6 +209,7 @@ describe("validateOoxmlPart", () => {
             "unclosed CDATA",
             "unclosed comment",
             "depth 150",
+            ...UNDECLARED_ENTITIES,
           ].map((name) => [name, unreadable]),
         ),
       },

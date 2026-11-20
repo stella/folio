@@ -33,6 +33,8 @@ const EDGES = [...XML_EDGE_INPUTS, ...XML_EDGE_FRAGMENTS];
 /** Markup no XML reader accepts; earlier releases repaired it into some tree. */
 const REPAIRED_BEFORE =
   "earlier releases rebuilt a tree from broken markup; it is refused now";
+const UNDECLARED_ENTITY =
+  "earlier releases read an HTML name or kept an unknown one; a name no declaration defines is refused now";
 
 describe("parseXml", () => {
   test("reads every fixture part as before", () => {
@@ -81,6 +83,11 @@ describe("parseXml", () => {
         ENTITY: "markup declarations are refused",
         "depth 101":
           "nesting is bounded at the resource limit the package reader applies",
+        "HTML entity in text": UNDECLARED_ENTITY,
+        "HTML entity in attribute": UNDECLARED_ENTITY,
+        "unknown entity": UNDECLARED_ENTITY,
+        "numeric identifier with HTML entity": UNDECLARED_ENTITY,
+        "HTML entity": UNDECLARED_ENTITY,
       },
       reread: {
         "text before root":

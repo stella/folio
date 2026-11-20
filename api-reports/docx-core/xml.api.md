@@ -35,6 +35,7 @@ export const rewriteStreamingXmlDecimalAttributes: (xml: string, visitOpenTag: O
 // @public
 export const scanStreamingXmlElements: (xml: string, visitElement: ElementScanVisitor) => {
     status: "unsupported";
+    refusal: XmlRefusal;
 } | {
     status: "scanned";
 };
@@ -45,6 +46,17 @@ export const scanStreamingXmlNumericIdAttributes: (xml: string, visitOpenTag: Op
 } | {
     status: "scanned";
 };
+
+// @public
+export class UndeclaredXmlEntityError extends UndeclaredXmlEntityErrorBase<{
+    message: string;
+    part: string;
+    offset: number;
+    entity: string;
+}> {}
+
+// @public
+export const undeclaredXmlEntityError: (part: string, xml: string) => UndeclaredXmlEntityError | null;
 
 // @public
 export const wellFormedXmlIssue: (xml: string, undeclaredEntities?: XmlUndeclaredEntities) => string | null;
@@ -98,10 +110,20 @@ export type XmlReadResult = {
 } | {
     status: "rejected";
     reason: string;
+    refusal: XmlRefusal;
 };
 
 // @public
 export type XmlReferenceHandling = "decode" | "raw";
+
+// @public
+export type XmlRefusal = {
+    type: "markup";
+} | {
+    type: "undeclaredEntity";
+    offset: number;
+    name: string;
+};
 
 // @public
 export type XmlUndeclaredEntities = "refuse" | "accept";
