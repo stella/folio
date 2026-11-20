@@ -1,0 +1,241 @@
+import type { Document, DocumentBody, Paragraph } from "../model/document";
+import { type ParagraphLocation, replaceParagraphs } from "./blocks";
+import {
+  hasMultipleParagraphPropertyChanges,
+  meetsContract,
+  repeatedParagraphId,
+  validateOpsDocument,
+} from "./contract";
+import {
+  combineEditEffects,
+  type DocumentEdit,
+  type DocumentEditEffects,
+} from "./edits";
+import { structurallyEqual } from "./equality";
+import { idKey, isParaId } from "./ids";
+import type { InlineNode } from "./leaves";
+import { prepareResolutionParagraphOp } from "./paragraphPrimitive";
+import { transferParagraphPropertySnapshot } from "./paragraphPropertySnapshot";
+import type { ResolutionReceiverEffect } from "./resolutionMarkPlan";
+import {
+  DOCUMENT_OP_TYPES,
+  OP_STORIES,
+  type OpStory,
+  type ReplaceInlineOp,
+  type SetParagraphReviewOp,
+} from "./types";
+import { captureDocumentOp } from "./wire";
+
+// Remove with the size-independent native paragraph splice. The older
+// splice spreads its replacement into a function call.
+const MAX_INLINE_RESOLUTION_SPAN = 16_384;
+
+export type ResolutionInlineOp = ReplaceInlineOp | SetParagraphReviewOp;
+
+type JoinPreparation = { type: "none" } | { type: "required" };
+
+type MaterializationOptions = {
+  document: Document;
+  story: OpStory;
+  locations: readonly ParagraphLocation[];
+  inline: readonly ResolutionInlineOp[];
+  join: JoinPreparation;
+  noteReferences: readonly unknown[];
+  receiverEffects: readonly ResolutionReceiverEffect[];
+};
+
+type FallbackReason =
+  | "joinShape"
+  | "story"
+  | "packageDependencies"
+  | "sectionView"
+  | "paragraphList"
+  | "referenceEffects"
+  | "inputContract"
+  | "primitiveShape"
+  | "primitiveValidation"
+  | "identityIntroduction"
+  | "wideSpan"
+  | "materialization";
+
+type MaterializationResult =
+  | { type: "fallback"; reason: FallbackReason }
+  | {
+      type: "materialized";
+      edit: DocumentEdit;
+      receiverEffects: readonly ResolutionReceiverEffect[];
+    };
+
+const fallback = (reason: FallbackReason): MaterializationResult => ({
+  type: "fallback",
+  reason,
+});
+
+const isTextRun = (node: InlineNode): boolean =>
+  node.type === "run" && node.content.every(({ type }) => type === "text");
+
+const isLocalText = (node: InlineNode): boolean =>
+  isTextRun(node) ||
+  ((node.type === "insertion" || node.type === "deletion") &&
+    node.content.every(isTextRun));
+
+// Called after ruling out physical section breaks. A projected body can
+// already be canonical before a native splice has recorded that fact.
+const hasCanonicalTrailingSection = (body: DocumentBody): boolean => {
+  if (body.sections === undefined) return true;
+  if (body.sections?.length !== 1 || body.finalSectionProperties === undefined)
+    return false;
+  const section = body.sections.at(0);
+  return (
+    section !== undefined &&
+    section.properties === body.finalSectionProperties &&
+    Object.keys(section).length === 2 &&
+    Object.hasOwn(section, "properties") &&
+    Object.hasOwn(section, "content") &&
+    section.content.length === body.content.length &&
+    body.content.every((block, index) => block === section.content[index])
+  );
+};
+
+/**
+ * The ordinary primitive validators prepare each paragraph in journal order.
+ * They can read the original package here because each edit only retires IDs.
+ * Section, note, range and other container interactions stay in the ordinary
+ * sequential planner. A failed proof lets that planner determine the refusal.
+ */
+export const tryMaterializeResolution = ({
+  document,
+  story,
+  locations,
+  inline,
+  join,
+  noteReferences,
+  receiverEffects,
+}: MaterializationOptions): MaterializationResult => {
+  if (join.type === "required") return fallback("joinShape");
+  if (story !== OP_STORIES.MAIN) return fallback("story");
+  const body = document.package.document;
+  if (
+    (document.package.footnotes?.length ?? 0) > 0 ||
+    (document.package.endnotes?.length ?? 0) > 0 ||
+    (body.comments?.length ?? 0) > 0
+  )
+    return fallback("packageDependencies");
+  if (noteReferences.length > 0 || receiverEffects.length > 0)
+    return fallback("referenceEffects");
+  const originals = body.content;
+  if (
+    !originals.every(
+      (block): block is Paragraph => block.type === "paragraph",
+    ) ||
+    locations.length !== originals.length
+  )
+    return fallback("paragraphList");
+  if (
+    originals.some(
+      ({ sectionProperties }) => sectionProperties !== undefined,
+    ) ||
+    !hasCanonicalTrailingSection(body)
+  )
+    return fallback("sectionView");
+  // Normal operations have already validated the input. Callers inspecting a
+  // plan directly still meet the same contract before using its effects.
+  if (validateOpsDocument(document).isErr()) return fallback("inputContract");
+
+  const byId = new Map<string, ParagraphLocation>();
+  for (const at of locations) {
+    const { paraId } = at.paragraph;
+    if (
+      at.list.length > 0 ||
+      originals.at(at.index) !== at.paragraph ||
+      paraId === undefined ||
+      !isParaId(paraId)
+    )
+      return fallback("paragraphList");
+    byId.set(idKey(paraId), at);
+  }
+  const replacements = new Map<number, Paragraph>();
+  const effects: DocumentEditEffects[] = [];
+  let first = originals.length;
+  let end = 0;
+  for (const op of inline) {
+    const at = byId.get(idKey(op.blockId));
+    const paragraph =
+      at === undefined
+        ? undefined
+        : (replacements.get(at.index) ?? originals.at(at.index));
+    if (
+      op.story !== story ||
+      at === undefined ||
+      paragraph === undefined ||
+      !paragraph.content.every(isLocalText)
+    )
+      return fallback("primitiveShape");
+    if (op.type === DOCUMENT_OP_TYPES.REPLACE_INLINE) {
+      if (!op.content.every(isTextRun)) return fallback("primitiveShape");
+    } else if (
+      op.review.propertyChanges !== undefined ||
+      op.review.pPrMark !== undefined
+    ) {
+      return fallback("primitiveShape");
+    }
+    const prepared = prepareResolutionParagraphOp({
+      document,
+      op,
+      at: { ...at, paragraph },
+    });
+    if (prepared.isErr()) return fallback("primitiveValidation");
+    if (prepared.value.type === "unchanged") continue;
+    const next = prepared.value;
+    if (
+      next.incomingParagraphIds.length > 0 ||
+      next.incomingIdentityKeys.length > 0
+    )
+      return fallback("identityIntroduction");
+    if (!structurallyEqual(next.paragraph.formatting, paragraph.formatting))
+      return fallback("primitiveShape");
+    transferParagraphPropertySnapshot({
+      source: paragraph,
+      target: next.paragraph,
+    });
+    replacements.set(at.index, next.paragraph);
+    first = Math.min(first, at.index);
+    end = Math.max(end, at.index + 1);
+    effects.push({
+      inverse: [captureDocumentOp(next.inverse)],
+      touched: next.touched,
+    });
+  }
+
+  if (effects.length === 0) {
+    return {
+      type: "materialized",
+      edit: combineEditEffects(document, []),
+      receiverEffects: [],
+    };
+  }
+  if (end - first > MAX_INLINE_RESOLUTION_SPAN) return fallback("wideSpan");
+  // Copy only the touched span, leaving the outer list for the immutable splice.
+  const working = originals.slice(first, end);
+  for (const [index, paragraph] of replacements)
+    working[index - first] = paragraph;
+  const final = replaceParagraphs({
+    document,
+    story,
+    at: { list: [], index: first },
+    count: end - first,
+    replacement: working,
+  });
+  if (
+    final.isErr() ||
+    hasMultipleParagraphPropertyChanges(final.value) ||
+    repeatedParagraphId(final.value) !== undefined
+  )
+    return fallback("materialization");
+  meetsContract(final.value);
+  return {
+    type: "materialized",
+    edit: combineEditEffects(final.value, effects),
+    receiverEffects: [],
+  };
+};
