@@ -137,9 +137,9 @@ import type {
   FolioAIParagraphSpacing,
 } from "../ai-edits/types";
 import {
+  createOperationHeadingStyles,
   findUndefinedOperationReference,
   styleDefinitionLookup,
-  withOperationHeadingStyles,
 } from "../ai-edits/undefinedReferences";
 import { wordDiffSessionFromOptions } from "../ai-edits/word-diff";
 import type { FolioContentStatedNumbering } from "../compare/content-types";
@@ -2987,6 +2987,18 @@ export class CanonicalPublicOperations {
       };
       return definedReferences;
     };
+    const headingStyles = createOperationHeadingStyles();
+    const headingLookups = new WeakMap<
+      StyleDefinitions,
+      ReturnType<typeof styleDefinitionLookup>
+    >();
+    const headingLookup = (definitions: StyleDefinitions) => {
+      const existing = headingLookups.get(definitions);
+      if (existing !== undefined) return existing;
+      const lookup = styleDefinitionLookup(createStyleResolver(definitions));
+      headingLookups.set(definitions, lookup);
+      return lookup;
+    };
     const mintList = createBatchListMinter(() => readModel(session.document));
     const { diff } = wordDiffSessionFromOptions(options.wordDiff);
     let nextRevisionId = options.revisionStamp?.idSeed ?? 1;
@@ -3168,14 +3180,14 @@ export class CanonicalPublicOperations {
       const headings =
         options.undefinedReferences === "keep"
           ? referenceSet.definitions
-          : withOperationHeadingStyles(referenceSet.definitions, [operation]);
+          : headingStyles(referenceSet.definitions, operation);
       const undefinedReference = findUndefinedOperationReference({
         operation,
         numberingInstanceIds: referenceSet.numberingInstanceIds,
         styles:
-          headings === referenceSet.definitions
+          headings === undefined || headings === referenceSet.definitions
             ? referenceSet.styles
-            : styleDefinitionLookup(createStyleResolver(headings)),
+            : headingLookup(headings),
         undefinedReferences: options.undefinedReferences,
       });
       if (undefinedReference !== undefined) {
@@ -3470,9 +3482,7 @@ export class CanonicalPublicOperations {
       const headings =
         options.undefinedReferences === "keep"
           ? sourceDocument.package.styles
-          : withOperationHeadingStyles(sourceDocument.package.styles, [
-              operation,
-            ]);
+          : headingStyles(sourceDocument.package.styles, operation);
       const withHeadings =
         headings === undefined || headings === sourceDocument.package.styles
           ? sourceDocument

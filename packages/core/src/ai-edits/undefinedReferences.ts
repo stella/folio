@@ -102,32 +102,102 @@ const operationParagraphStyleReferences = (
   }
 };
 
-/** Add only absent, explicitly requested built-in heading definitions. */
-export const withOperationHeadingStyles = (
-  styles: StyleDefinitions | undefined,
-  operations: readonly StagedOperation[],
-): StyleDefinitions | undefined => {
-  const known = new Set(styles?.styles.map(({ styleId }) => styleId));
-  const normal = styles?.styles.some(
-    ({ styleId, type }) => styleId === "Normal" && type === "paragraph",
-  );
+type HeadingStyleIndex = {
+  ids: ReadonlySet<string>;
+  normal: boolean;
+  versions?: Map<string, StyleDefinitions>;
+};
+
+const indexHeadingStyles = (
+  definitions: StyleDefinitions | undefined,
+): HeadingStyleIndex => {
+  const ids = new Set<string>();
+  let normal = false;
+  for (const { styleId, type } of definitions?.styles ?? []) {
+    ids.add(styleId);
+    normal ||= styleId === "Normal" && type === "paragraph";
+  }
+  return { ids, normal };
+};
+
+type AddHeadingStylesOptions = {
+  definitions: StyleDefinitions | undefined;
+  operations: readonly StagedOperation[];
+  lookup: () => HeadingStyleIndex;
+};
+
+const addHeadingStyles = ({
+  definitions,
+  operations,
+  lookup,
+}: AddHeadingStylesOptions): StyleDefinitions | undefined => {
+  let index: HeadingStyleIndex | undefined;
   const additions: StyleDefinitions["styles"] = [];
   for (const operation of operations) {
     for (const { styleId } of operationParagraphStyleReferences(operation)) {
-      if (styleId == null || known.has(styleId)) continue;
+      if (styleId == null) continue;
+      index ??= lookup();
+      if (
+        index.ids.has(styleId) ||
+        additions.some((heading) => heading.styleId === styleId)
+      )
+        continue;
       const heading = defaultHeadingStyle(styleId);
       if (heading === undefined) continue;
-      if (!normal) {
+      if (!index.normal) {
         delete heading.basedOn;
         delete heading.next;
       }
       additions.push(heading);
-      known.add(styleId);
     }
   }
-  return additions.length === 0
-    ? styles
-    : { ...styles, styles: [...(styles?.styles ?? []), ...additions] };
+  if (additions.length === 0) return definitions;
+  const key = additions.map(({ styleId }) => styleId).join(",");
+  const cached = index?.versions?.get(key);
+  if (cached !== undefined) return cached;
+  const augmented = {
+    ...definitions,
+    styles: [...(definitions?.styles ?? []), ...additions],
+  };
+  index?.versions?.set(key, augmented);
+  return augmented;
+};
+
+/** Add only absent, explicitly requested built-in heading definitions. */
+export const withOperationHeadingStyles = (
+  definitions: StyleDefinitions | undefined,
+  operations: readonly StagedOperation[],
+): StyleDefinitions | undefined => {
+  const index = indexHeadingStyles(definitions);
+  return addHeadingStyles({ definitions, operations, lookup: () => index });
+};
+
+/** Share immutable style membership and added definitions within one batch. */
+export const createOperationHeadingStyles = () => {
+  const indexes = new WeakMap<StyleDefinitions, HeadingStyleIndex>();
+  const empty: HeadingStyleIndex = {
+    ...indexHeadingStyles(undefined),
+    versions: new Map(),
+  };
+  return (
+    definitions: StyleDefinitions | undefined,
+    operation: StagedOperation,
+  ) =>
+    addHeadingStyles({
+      definitions,
+      operations: [operation],
+      lookup: () => {
+        if (definitions === undefined) return empty;
+        const existing = indexes.get(definitions);
+        if (existing !== undefined) return existing;
+        const index = {
+          ...indexHeadingStyles(definitions),
+          versions: new Map(),
+        } satisfies HeadingStyleIndex;
+        indexes.set(definitions, index);
+        return index;
+      },
+    });
 };
 
 type FindUndefinedParagraphStyleReferenceOptions = {
