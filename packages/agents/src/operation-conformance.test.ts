@@ -1,3 +1,4 @@
+import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -45,9 +46,21 @@ const readArrayBuffer = (filePath: string): ArrayBuffer => {
   );
 };
 
-const readOperationFixture = (): FolioDocumentOperationBatch =>
+const SESSIONS = ["legacy", "canonical"] as const;
+
+/**
+ * The source writes no `w14:paraId`, so each engine mints its own block ids.
+ * The fixture's operation is retargeted at the heading block the reviewer
+ * names; its text-hash precondition still pins the paragraph it edits.
+ */
+const readOperationFixture = (
+  headingBlockId: string,
+): FolioDocumentOperationBatch =>
   parseFolioDocumentOperationBatch(
-    JSON.parse(readFileSync(OPERATION_FIXTURE_PATH, "utf8")),
+    JSON.parse(
+      readFileSync(OPERATION_FIXTURE_PATH, "utf8"),
+      (key, value: unknown) => (key === "blockId" ? headingBlockId : value),
+    ),
   );
 
 type ConformanceSurface = {
@@ -73,16 +86,27 @@ const createEditorRef = (
   getTrackedChanges: () => reviewer.getChanges(),
 });
 
-const createSurfaces = async (): Promise<ConformanceSurface[]> => {
+type Surfaces = {
+  surfaces: ConformanceSurface[];
+  /** The source's block ids, as every surface's reviewer names them. */
+  blockIds: { heading: string; trailing: string };
+};
+
+const createSurfaces = async (
+  session: (typeof SESSIONS)[number],
+): Promise<Surfaces> => {
   const source = readArrayBuffer(SOURCE_PATH);
   const headlessReviewer = await FolioDocxReviewer.fromBuffer(source, {
     author: AUTHOR,
+    session,
   });
   const reviewerBridgeReviewer = await FolioDocxReviewer.fromBuffer(source, {
     author: AUTHOR,
+    session,
   });
   const editorBridgeReviewer = await FolioDocxReviewer.fromBuffer(source, {
     author: AUTHOR,
+    session,
   });
   const reviewerBridge = createReviewerBridge(reviewerBridgeReviewer);
   const editorBridge = createEditorRefBridge({
@@ -92,7 +116,18 @@ const createSurfaces = async (): Promise<ConformanceSurface[]> => {
     setComments: () => {},
   });
 
-  return [
+  const { blocks } = headlessReviewer.snapshot();
+  const blockIdOf = (text: string) =>
+    blocks.find((block) => block.text === text)?.id ??
+    panic(`Expected the source paragraph "${text}"`);
+  const heading = blockIdOf("Heading paragraph.");
+  const trailing = blockIdOf("Trailing paragraph.");
+  for (const reviewer of [reviewerBridgeReviewer, editorBridgeReviewer])
+    expect(reviewer.snapshot().blocks.map(({ id }) => id)).toEqual(
+      blocks.map(({ id }) => id),
+    );
+
+  const surfaces: ConformanceSurface[] = [
     {
       name: "headless",
       reviewer: headlessReviewer,
@@ -112,6 +147,7 @@ const createSurfaces = async (): Promise<ConformanceSurface[]> => {
       apply: (batch) => editorBridge.applyDocumentOperations(batch),
     },
   ];
+  return { surfaces, blockIds: { heading, trailing } };
 };
 
 const normalizeResult = ({
@@ -138,137 +174,144 @@ const normalizeChanges = (reviewer: FolioDocxReviewer) =>
     blockId,
   }));
 
-describe("document operation cross-surface conformance", () => {
-  test("produces equivalent results and saved semantics", async () => {
-    const batch = readOperationFixture();
-    const outputs = [];
+describe.each(SESSIONS)(
+  "document operation cross-surface conformance (%s)",
+  (session) => {
+    test("produces equivalent results and saved semantics", async () => {
+      const { surfaces, blockIds } = await createSurfaces(session);
+      const batch = readOperationFixture(blockIds.heading);
+      const outputs = [];
 
-    for (const surface of await createSurfaces()) {
-      const result = surface.apply(batch);
-      const savedReviewer = await FolioDocxReviewer.fromBuffer(
-        await surface.reviewer.toBuffer(),
-      );
-      outputs.push({
-        name: surface.name,
-        result: normalizeResult(result),
-        content: surface.reviewer.getContentAsText(),
-        changes: normalizeChanges(surface.reviewer),
-        savedContent: savedReviewer.getContentAsText(),
-        savedChanges: normalizeChanges(savedReviewer),
-      });
-    }
+      for (const surface of surfaces) {
+        const result = surface.apply(batch);
+        const savedReviewer = await FolioDocxReviewer.fromBuffer(
+          await surface.reviewer.toBuffer(),
+          { session },
+        );
+        outputs.push({
+          name: surface.name,
+          result: normalizeResult(result),
+          content: surface.reviewer.getContentAsText(),
+          changes: normalizeChanges(surface.reviewer),
+          savedContent: savedReviewer.getContentAsText(),
+          savedChanges: normalizeChanges(savedReviewer),
+        });
+      }
 
-    const expected = {
-      result: {
-        version: 1,
-        status: "committed",
-        applied: [{ id: "replace-heading" }],
-        skipped: [],
-        issues: [],
-        receipts: [
+      const expected = {
+        result: {
+          version: 1,
+          status: "committed",
+          applied: [{ id: "replace-heading" }],
+          skipped: [],
+          issues: [],
+          receipts: [
+            {
+              operationId: "replace-heading",
+              operationIndex: 0,
+              affected: [
+                {
+                  type: "block",
+                  story: "main",
+                  blockId: blockIds.heading,
+                  effect: "updated",
+                },
+              ],
+            },
+          ],
+        },
+        content: `[${blockIds.heading}] Intro paragraph.\n[${blockIds.trailing}] Trailing paragraph.`,
+        changes: [
           {
-            operationId: "replace-heading",
-            operationIndex: 0,
-            affected: [
-              {
-                type: "block",
-                story: "main",
-                blockId: "0304003A",
-                effect: "updated",
-              },
-            ],
+            type: "deletion",
+            author: AUTHOR,
+            text: "Heading",
+            blockId: blockIds.heading,
+          },
+          {
+            type: "insertion",
+            author: AUTHOR,
+            text: "Intro",
+            blockId: blockIds.heading,
           },
         ],
-      },
-      content: "[0304003A] Intro paragraph.\n[32560014] Trailing paragraph.",
-      changes: [
-        {
-          type: "deletion",
-          author: AUTHOR,
-          text: "Heading",
-          blockId: "0304003A",
-        },
-        {
-          type: "insertion",
-          author: AUTHOR,
-          text: "Intro",
-          blockId: "0304003A",
-        },
-      ],
-    };
+      };
 
-    // The fixture writes no `w14:paraId`, and the save keeps it that way: the
-    // edited paragraph is spliced without the id folio minted for it, so the
-    // reopened package mints its ids afresh. The saved semantics are compared
-    // with the ids set aside, plus the one thing the ids must still say: every
-    // change sits on the edited paragraph.
-    const withoutBlockIds = (content: string): string =>
-      content.replaceAll(/^\[[0-9A-F]{8}\] /gmu, "");
-    const withoutChangeBlockIds = (changes: typeof expected.changes) =>
-      changes.map(({ blockId: _blockId, ...change }) => change);
+      // The fixture writes no `w14:paraId`, and the save keeps it that way: the
+      // edited paragraph is spliced without the id folio minted for it, so the
+      // reopened package mints its ids afresh. The saved semantics are compared
+      // with the ids set aside, plus the one thing the ids must still say: every
+      // change sits on the edited paragraph.
+      const withoutBlockIds = (content: string): string =>
+        content.replaceAll(/^\[[0-9A-F]{8}\] /gmu, "");
+      const withoutChangeBlockIds = (changes: typeof expected.changes) =>
+        changes.map(({ blockId: _blockId, ...change }) => change);
 
-    for (const output of outputs) {
-      expect(output.result, output.name).toEqual(expected.result);
-      expect(output.content, output.name).toBe(expected.content);
-      expect(output.changes, output.name).toEqual(expected.changes);
-      expect(withoutBlockIds(output.savedContent), output.name).toBe(
-        withoutBlockIds(expected.content),
-      );
-      expect(withoutChangeBlockIds(output.savedChanges), output.name).toEqual(
-        withoutChangeBlockIds(expected.changes),
-      );
-      const editedBlockId = /^\[(?<id>[0-9A-F]{8})\]/u.exec(output.savedContent)
-        ?.groups?.["id"];
-      expect(
-        output.savedChanges.map(({ blockId }) => blockId),
-        output.name,
-      ).toEqual(expected.changes.map(() => editedBlockId));
-    }
-  });
+      for (const output of outputs) {
+        expect(output.result, output.name).toEqual(expected.result);
+        expect(output.content, output.name).toBe(expected.content);
+        expect(output.changes, output.name).toEqual(expected.changes);
+        expect(withoutBlockIds(output.savedContent), output.name).toBe(
+          withoutBlockIds(expected.content),
+        );
+        expect(withoutChangeBlockIds(output.savedChanges), output.name).toEqual(
+          withoutChangeBlockIds(expected.changes),
+        );
+        const editedBlockId = /^\[(?<id>[0-9A-F]{8})\]/u.exec(
+          output.savedContent,
+        )?.groups?.["id"];
+        expect(
+          output.savedChanges.map(({ blockId }) => blockId),
+          output.name,
+        ).toEqual(expected.changes.map(() => editedBlockId));
+      }
+    });
 
-  test("previews equivalent results without mutating any surface", async () => {
-    const batch = { ...readOperationFixture(), dryRun: true };
-    const outputs = [];
+    test("previews equivalent results without mutating any surface", async () => {
+      const { surfaces, blockIds } = await createSurfaces(session);
+      const batch = { ...readOperationFixture(blockIds.heading), dryRun: true };
+      const outputs = [];
 
-    for (const surface of await createSurfaces()) {
-      const contentBefore = surface.reviewer.getContentAsText();
-      const result = surface.apply(batch);
-      outputs.push({
-        name: surface.name,
-        result: normalizeResult(result),
-        contentBefore,
-        contentAfter: surface.reviewer.getContentAsText(),
-        changes: normalizeChanges(surface.reviewer),
-      });
-    }
+      for (const surface of surfaces) {
+        const contentBefore = surface.reviewer.getContentAsText();
+        const result = surface.apply(batch);
+        outputs.push({
+          name: surface.name,
+          result: normalizeResult(result),
+          contentBefore,
+          contentAfter: surface.reviewer.getContentAsText(),
+          changes: normalizeChanges(surface.reviewer),
+        });
+      }
 
-    for (const output of outputs) {
-      expect(output.result, output.name).toEqual({
-        version: 1,
-        status: "previewed",
-        applied: [{ id: "replace-heading" }],
-        skipped: [],
-        issues: [],
-        receipts: [
-          {
-            operationId: "replace-heading",
-            operationIndex: 0,
-            affected: [
-              {
-                type: "block",
-                story: "main",
-                blockId: "0304003A",
-                effect: "updated",
-              },
-            ],
-          },
-        ],
-      });
-      expect(output.contentAfter, output.name).toBe(output.contentBefore);
-      expect(output.changes, output.name).toEqual([]);
-    }
-  });
-});
+      for (const output of outputs) {
+        expect(output.result, output.name).toEqual({
+          version: 1,
+          status: "previewed",
+          applied: [{ id: "replace-heading" }],
+          skipped: [],
+          issues: [],
+          receipts: [
+            {
+              operationId: "replace-heading",
+              operationIndex: 0,
+              affected: [
+                {
+                  type: "block",
+                  story: "main",
+                  blockId: blockIds.heading,
+                  effect: "updated",
+                },
+              ],
+            },
+          ],
+        });
+        expect(output.contentAfter, output.name).toBe(output.contentBefore);
+        expect(output.changes, output.name).toEqual([]);
+      }
+    });
+  },
+);
 
 /**
  * Targeted structural JSON Schema checker (no ajv): supports exactly the
