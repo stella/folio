@@ -7,7 +7,9 @@
  * in the copy, and one it runs after is not.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
+
+import * as documentOperations from "@stll/docx-core/ops";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import type {
@@ -198,3 +200,41 @@ describe("an inserted paragraph copies its neighbour as the batch order leaves i
     expect(inserted(reviewer).listReference).toEqual(numbered.listReference);
   });
 });
+
+test.each([4, 8])(
+  "admission counts the package once for %i paragraph insertions at one gap",
+  async (count) => {
+    const { reviewer, body } = await open();
+    const operations = Array.from(
+      { length: count },
+      (_, index) =>
+        ({
+          type: "insertBeforeBlock",
+          id: `insert-${index}`,
+          blockId: body.id,
+          text: `Inserted clause ${index}.`,
+        }) satisfies FolioDocumentOperation,
+    );
+    const census = spyOn(documentOperations, "leasedIdCensus");
+    try {
+      const result = reviewer.applyDocumentOperations(
+        { version: 1, mode: "tracked-changes", atomic: true, operations },
+        {
+          undefinedReferences: "refuse",
+          revisionStamp: { idSeed: 1, date: "2026-01-02T03:04:05Z" },
+        },
+      );
+      expect(result.skipped).toEqual([]);
+      expect(result.applied).toHaveLength(count);
+      expect(census).toHaveBeenCalledTimes(1);
+      expect(
+        reviewer
+          .snapshot()
+          .blocks.map(({ text }) => text)
+          .filter((text) => text.startsWith("Inserted clause ")),
+      ).toEqual(operations.map(({ text }) => text));
+    } finally {
+      census.mockRestore();
+    }
+  },
+);
