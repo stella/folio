@@ -13,6 +13,7 @@ import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { contractViolation } from "../contract";
 import { allocateEditorIntentIds, compileEditorIntent } from "../editorIntent";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
+import { findStoryBody } from "../stories";
 import { tableGrid } from "../tableGrid";
 import {
   DOCUMENT_OP_TYPES,
@@ -959,6 +960,97 @@ test("imported grid and table property histories resolve with the selected basel
     ),
     {
       id: "imported grid and table property histories resolve with the selected baseline and exact inverse",
+    },
+  );
+});
+
+describe("table edits in every story", () => {
+  const stories = [
+    { kind: "header", rId: "rIdHeader" },
+    { kind: "footer", rId: "rIdFooter" },
+    { kind: "footnote", id: 2 },
+    { kind: "endnote", id: 3 },
+  ] as const;
+  type Story = (typeof stories)[number];
+
+  /** The body holds a paragraph only; `story` holds the fixture table. */
+  const storyDocument = (story: Story, table: Table): Document => {
+    const content = [
+      paragraph("00000001", "before"),
+      table,
+      paragraph("00000002", "after"),
+    ];
+    const document: Document = {
+      package: { document: { content: [paragraph("00000003", "body")] } },
+    };
+    switch (story.kind) {
+      case "header":
+        document.package.headers = new Map([
+          [story.rId, { type: "header", hdrFtrType: "default", content }],
+        ]);
+        return document;
+      case "footer":
+        document.package.footers = new Map([
+          [story.rId, { type: "footer", hdrFtrType: "default", content }],
+        ]);
+        return document;
+      case "footnote":
+        document.package.footnotes = [
+          { type: "footnote", id: story.id, noteType: "normal", content },
+        ];
+        return document;
+      case "endnote":
+        document.package.endnotes = [
+          { type: "endnote", id: story.id, noteType: "normal", content },
+        ];
+        return document;
+      default: {
+        const unreachable: never = story;
+        return unreachable;
+      }
+    }
+  };
+
+  for (const story of stories)
+    test.each(["table", "row", "cell"] as const)(
+      `%s property revisions in a ${story.kind} accept to the direct edit and reject to baseline`,
+      (kind) => {
+        const baseline = storyDocument(story, tableOf());
+        const id = 300;
+        const direct = applied(baseline, { ...propertyEdit(kind), story });
+        const tracked = applied(baseline, {
+          ...propertyEdit(kind, revision(id)),
+          story,
+        });
+        const resolve = (decision: "accept" | "reject") =>
+          applied(tracked.document, {
+            type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+            story,
+            revisionIds: [id],
+            decision,
+          }).document;
+        exact(resolve(REVISION_DECISIONS.REJECT), baseline);
+        exact(resolve(REVISION_DECISIONS.ACCEPT), direct.document);
+      },
+    );
+
+  test.each(stories)(
+    "a column inserted into a $kind table edits that story only",
+    (story) => {
+      const baseline = storyDocument(story, tableOf());
+      const edited = applied(baseline, {
+        type: DOCUMENT_OP_TYPES.INSERT_COLUMN,
+        story,
+        blockId: "00000010",
+        column: 1,
+        width: 400,
+        newBlockIds: ["00000030", "00000031"],
+      });
+      expect(edited.document.package.document).toBe(baseline.package.document);
+      const table = findStoryBody(edited.document, story)?.content.at(1);
+      if (table?.type !== "table")
+        throw new Error("The story keeps its table.");
+      expect(table.rows.map(({ cells }) => cells.length)).toEqual([4, 4]);
     },
   );
 });
