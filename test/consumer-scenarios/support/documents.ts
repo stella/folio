@@ -169,7 +169,7 @@ const saveFixture = async (
   return bytes;
 };
 
-type ReviewerEngine = NonNullable<
+export type ReviewerEngine = NonNullable<
   NonNullable<Parameters<typeof FolioDocxReviewer.fromBuffer>[1]>["session"]
 >;
 
