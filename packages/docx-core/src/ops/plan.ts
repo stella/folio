@@ -310,6 +310,16 @@ export const revisionIdDemand = (
   document: Document,
   op: DocumentOp,
 ): Result<number, DocumentOpRefusal> => {
+  // DELETE_RANGE consumes candidate ids only when a tracked cut needs to
+  // freshen a record. A successful empty-pool apply proves a full synthetic
+  // control pool could not change the demand or make an unused id invalid.
+  if (
+    op.type === DOCUMENT_OP_TYPES.DELETE_RANGE &&
+    op.undefinedFields === undefined
+  ) {
+    const unallocated = withNewIds(op, { revision: [], control: [] });
+    if (applyDocumentOp(document, unallocated).isOk()) return Result.ok(0);
+  }
   const largest = (ids: ReadonlySet<number>, floor: number): number => {
     let out = floor;
     for (const id of ids) out = Math.max(out, id);
