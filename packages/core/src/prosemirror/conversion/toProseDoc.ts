@@ -2388,12 +2388,24 @@ function paragraphFormattingToAttrs(
     attrs._preservedAttributes = paragraph.preservedAttributes;
   }
   if (paragraph.pPrMark) {
+    const { info, deletion } = paragraph.pPrMark;
+    // Each record of the mark, its own and a later deletion beside an
+    // insertion, shows as the suggestion it belongs to.
     attrs.pPrMark =
-      paragraph.pPrMark.info.suggestionId === undefined
+      info.suggestionId === undefined &&
+      deletion?.info.suggestionId === undefined
         ? paragraph.pPrMark
         : {
             ...paragraph.pPrMark,
-            info: suggestedRevisionInfo(paragraph.pPrMark.info),
+            info: suggestedRevisionInfo(info),
+            ...(deletion === undefined
+              ? {}
+              : {
+                  deletion: {
+                    ...deletion,
+                    info: suggestedRevisionInfo(deletion.info),
+                  },
+                }),
           };
   }
 
