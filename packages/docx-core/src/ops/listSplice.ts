@@ -22,13 +22,44 @@ type SpliceItemsOptions<T> = {
   replacement: readonly T[];
 };
 
+// Keep small splices on the native path without relying on the runtime's
+// argument limit for large replacement windows.
+const MAX_NATIVE_SPLICE_INSERTIONS = 1_024;
+
+const spliceLargeReplacement = <T>({
+  items,
+  start,
+  count,
+  replacement,
+}: SpliceItemsOptions<T>): T[] => {
+  if (start === 0 && count === items.length) return Array.from(replacement);
+
+  // Native toSpliced still owns deletion and returns a dense list of the
+  // retained entries. Make room for replacements without another list.
+  const next = items.toSpliced(start, count);
+  const startInteger = Math.trunc(start) || 0;
+  const at =
+    startInteger < 0
+      ? Math.max(0, items.length + startInteger)
+      : Math.min(items.length, startInteger);
+  const retained = next.length;
+  next.length += replacement.length;
+  next.copyWithin(at + replacement.length, at, retained);
+  let index = at;
+  for (const item of replacement) next[index++] = item;
+  return next;
+};
+
 export const spliceItems = <T>({
   items,
   start,
   count,
   replacement,
 }: SpliceItemsOptions<T>): T[] => {
-  const next = items.toSpliced(start, count, ...replacement);
+  const next =
+    replacement.length <= MAX_NATIVE_SPLICE_INSERTIONS
+      ? items.toSpliced(start, count, ...replacement)
+      : spliceLargeReplacement({ items, start, count, replacement });
   if (
     Number.isInteger(start) &&
     start >= 0 &&
