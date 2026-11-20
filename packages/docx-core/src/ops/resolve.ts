@@ -1142,7 +1142,7 @@ const settleDeferredRemovals = (
   const { fateOf, deferredOnlyRemovals } = options;
   let changed = false;
   const out: InlineNode[] = [];
-  /** Seams with kept boundaries whose every blocker is accepted, by key. */
+  /** Seams whose every blocker is accepted, by key: see placeAcceptedSeamKept. */
   const acceptedKept = new Map<string, DeferredRemovalGroup>();
   for (const node of nodes) {
     let next = node;
@@ -1165,7 +1165,6 @@ const settleDeferredRemovals = (
             continue;
           }
           if (
-            group.keptCount !== undefined &&
             group.edge === undefined &&
             fates.every((fate) => fate === "accepted")
           )
@@ -1180,17 +1179,6 @@ const settleDeferredRemovals = (
             else if (group.edge === "end")
               joins.after = Math.max(joins.after, group.depth);
             else joins.remove = Math.max(joins.remove, group.depth);
-            // The boundaries the seam kept float with its join, as of the
-            // revision they were kept from, as many as it kept; kept from
-            // the same revision as the removal's own, they add to its count.
-            if (group.keptFrom !== undefined) {
-              const own =
-                joins.keptFrom === group.keptFrom ? joins.keptCount : 0;
-              joins.keptFrom = group.keptFrom;
-              if (group.keptCount === undefined || own === undefined)
-                delete joins.keptCount;
-              else joins.keptCount = group.keptCount + own;
-            }
           } else remainingGroups.push({ ...group, blockers: remaining });
         }
         delete joins.deferredRemove;
@@ -1224,14 +1212,14 @@ const settleDeferredRemovals = (
  * revision they were kept from, once every one of those insertions is
  * accepted: they go into the piece of the cut record they touch, as
  * rejecting that revision after accepting the insertions places them. They
- * stand where they are when no such piece can hold them. `out` is changed
- * in place; whether it changed.
+ * are the kept markers beside the blockers naming the blockers' side, or
+ * both, as their cut's piece. They stand where they are when no such piece
+ * can hold them. `out` is changed in place; whether it changed.
  */
 const placeAcceptedSeamKept = (
   out: InlineNode[],
   group: DeferredRemovalGroup,
 ): boolean => {
-  const count = group.keptCount ?? 0;
   const blocker = (node: InlineNode | undefined): boolean =>
     node !== undefined &&
     isTrackedWrapper(node) &&
@@ -1239,38 +1227,53 @@ const placeAcceptedSeamKept = (
   const indices = out.flatMap((node, index) => (blocker(node) ? [index] : []));
   const first = indices.at(0);
   const last = indices.at(-1);
-  if (count === 0 || first === undefined || last === undefined) return false;
-  /** The records from `from` stepping by `step` that stand for `count`. */
-  const recordsFor = (from: number, step: 1 | -1): number | undefined => {
-    const run = keptRun({
-      at: (index) => (index < 0 ? undefined : out[index]),
-      from,
-      step,
-      limit: count,
-    });
-    return run.boundaries === count ? run.records : undefined;
+  if (first === undefined || last === undefined) return false;
+  /**
+   * How many kept markers from `from`, stepping by `step`, name `piece` or
+   * both as their cut's piece.
+   */
+  const namedFrom = (
+    from: number,
+    step: 1 | -1,
+    piece: KeptCutPiece,
+  ): number => {
+    let records = 0;
+    for (let index = from; ; index += step) {
+      const node = index < 0 ? undefined : out[index];
+      const named = node === undefined ? undefined : keptCutPiece(node);
+      if (
+        node === undefined ||
+        !standsInKeptCut(node) ||
+        (named !== piece && named !== KEPT_CUT_PIECES.both)
+      )
+        return records;
+      records += 1;
+    }
   };
   // The boundaries stand just after the blockers before the seam, or just
   // before those after it.
-  const preceding = recordsFor(first - 1, -1);
-  const forward = (index: number) => ({ index, records: recordsFor(index, 1) });
+  const preceding = namedFrom(first - 1, -1, KEPT_CUT_PIECES.after);
+  const forward = (index: number) => ({
+    index,
+    records: namedFrom(index, 1, KEPT_CUT_PIECES.before),
+  });
   const placed = [
     forward(last + 1),
-    ...(preceding === undefined
-      ? []
-      : [{ index: first - preceding, records: preceding }]),
+    { index: first - preceding, records: preceding },
     ...indices.map((index) => forward(index + 1)),
   ].find(
     ({ index, records }) =>
-      records !== undefined &&
+      records > 0 &&
       (blocker(out.at(index - 1)) || blocker(out.at(index + records))),
   );
-  const records = placed?.records;
-  if (placed === undefined || records === undefined) return false;
-  const start = placed.index;
-  const boundaries = out
-    .slice(start, start + records)
-    .map((node) => withoutKeptCuts(node));
+  if (placed === undefined) return false;
+  const { index: start, records } = placed;
+  const standing = out.slice(start, start + records);
+  const keptFrom = standing
+    .flatMap((node) => keptCutFrom(node) ?? [])
+    .toSorted()
+    .at(0);
+  const boundaries = standing.map((node) => withoutKeptCuts(node));
   // A piece still held in a pending removal, or content made after the
   // revision they were kept from, is no piece that takes them.
   const takes = (node: InlineNode | undefined): node is InlineNode =>
@@ -1280,8 +1283,8 @@ const placeAcceptedSeamKept = (
     !(node.type === "deletion" || node.type === "moveFrom") &&
     !(
       isAddedRevision(node) &&
-      group.keptFrom !== undefined &&
-      (node.info.date ?? "") > group.keptFrom
+      keptFrom !== undefined &&
+      (node.info.date ?? "") > keptFrom
     );
   const after = out.at(start + records);
   const before = start > 0 ? out.at(start - 1) : undefined;
@@ -4233,10 +4236,6 @@ const resolveList = ({
             ? [node.info.id]
             : [];
         });
-        const keptFrom =
-          standingKept > 0 && kept?.keptFrom !== undefined
-            ? { keptFrom: kept.keptFrom, keptCount: standingBoundaries }
-            : {};
         for (const index of blockerIndices) {
           const occurrence = out[index];
           const node = occurrence?.node;
@@ -4251,7 +4250,7 @@ const resolveList = ({
           let edge: { edge?: "start" | "end" } = {};
           if (index === leftHolder) edge = { edge: "end" };
           if (index === rightHolder) edge = { edge: "start" };
-          groups.push({ depth: deferredDepth, blockers, ...keptFrom, ...edge });
+          groups.push({ depth: deferredDepth, blockers, ...edge });
           out[index] = occurrenceOf(
             Object.assign({}, node, {
               resolutionJoins: Object.assign({}, node.resolutionJoins, {
