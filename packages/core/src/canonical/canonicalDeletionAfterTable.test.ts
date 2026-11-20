@@ -1,0 +1,152 @@
+/**
+ * Deleting a paragraph a table stands right before, or right after, on the
+ * canonical session: the body's last paragraph after a table keeps its mark
+ * and loses its words, whether the table stood there already or the same
+ * batch puts it there; a paragraph before a table whose own mark is a pending
+ * insertion keeps that mark and loses its words.
+ */
+import { expect, test } from "bun:test";
+
+import { FolioDocxReviewer } from "../ai-edits/headless";
+import {
+  FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+  type FolioDocumentOperation,
+} from "../document-operations";
+import { createDocx } from "../docx/rezip";
+import { fromMarkdown } from "../markdown/fromMarkdown";
+import type { Document } from "../types/document";
+
+type Mode = "direct" | "tracked-changes";
+
+const batch = (mode: Mode, operations: FolioDocumentOperation[]) => ({
+  version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+  mode,
+  operations,
+});
+
+const open = async (document: Document) =>
+  FolioDocxReviewer.fromBuffer(await createDocx(document), {
+    author: "Editor",
+    session: "canonical",
+  });
+
+const ROWS = [["Term", "Value"]];
+
+const blockText = (
+  block: Document["package"]["document"]["content"][number],
+) => {
+  if (block.type === "table") return "[table]";
+  if (block.type !== "paragraph") return block.type;
+  return block.content
+    .flatMap((node) =>
+      node.type === "run"
+        ? node.content.flatMap((leaf) =>
+            leaf.type === "text" ? [leaf.text] : [],
+          )
+        : [],
+    )
+    .join("");
+};
+
+/** Block texts, a table as one entry. */
+const shape = (reviewer: FolioDocxReviewer) =>
+  reviewer.toDocument().package.document.content.map(blockText);
+
+test.each(["direct", "tracked-changes"] as const)(
+  "the last paragraph after a table loses its words and keeps its mark (%s)",
+  async (mode) => {
+    const reviewer = await open(
+      fromMarkdown("Opening words.\n\nMiddle words.\n\nClosing words."),
+    );
+    const [, middle, closing] = reviewer.snapshot().blocks;
+    if (middle === undefined || closing === undefined)
+      throw new Error("the fixture's blocks are missing");
+    expect(
+      reviewer.applyDocumentOperations(
+        batch("direct", [
+          { id: "table", type: "insertTable", blockId: middle.id, rows: ROWS },
+        ]),
+        { undefinedReferences: "refuse" },
+      ).skipped,
+    ).toEqual([]);
+    const deleted = reviewer.applyDocumentOperations(
+      batch(mode, [{ id: "delete", type: "deleteBlock", blockId: closing.id }]),
+      { undefinedReferences: "refuse" },
+    );
+    expect(deleted.skipped).toEqual([]);
+    reviewer.acceptAll();
+    expect(shape(reviewer)).toEqual([
+      "Opening words.",
+      "Middle words.",
+      "[table]",
+      "",
+    ]);
+  },
+);
+
+test.each(["direct", "tracked-changes"] as const)(
+  "a table the batch puts before the deleted last paragraph keeps the paragraph before it whole (%s)",
+  async (mode) => {
+    const reviewer = await open(
+      fromMarkdown("Opening words.\n\nMiddle words.\n\nClosing words."),
+    );
+    const [, middle, closing] = reviewer.snapshot().blocks;
+    if (middle === undefined || closing === undefined)
+      throw new Error("the fixture's blocks are missing");
+    const result = reviewer.applyDocumentOperations(
+      batch(mode, [
+        { id: "table", type: "insertTable", blockId: middle.id, rows: ROWS },
+        { id: "delete", type: "deleteBlock", blockId: closing.id },
+      ]),
+      { undefinedReferences: "refuse" },
+    );
+    expect(result.skipped).toEqual([]);
+    reviewer.acceptAll();
+    expect(shape(reviewer)).toEqual([
+      "Opening words.",
+      "Middle words.",
+      "[table]",
+      "",
+    ]);
+  },
+);
+
+test("a paragraph before a table whose mark is a pending insertion keeps the mark", async () => {
+  const document = fromMarkdown(
+    "Opening words.\n\nInserted break.\n\nClosing.",
+  );
+  const inserted = document.package.document.content[1];
+  if (inserted?.type !== "paragraph") throw new Error("no paragraph");
+  inserted.pPrMark = {
+    kind: "ins",
+    info: { id: 7, author: "Earlier Reviewer", date: "2026-01-01T00:00:00Z" },
+  };
+  const reviewer = await open(document);
+  const [, paragraph] = reviewer.snapshot().blocks;
+  if (paragraph === undefined) throw new Error("no paragraph");
+  expect(
+    reviewer.applyDocumentOperations(
+      batch("direct", [
+        { id: "table", type: "insertTable", blockId: paragraph.id, rows: ROWS },
+      ]),
+      { undefinedReferences: "refuse" },
+    ).skipped,
+  ).toEqual([]);
+  const deleted = reviewer.applyDocumentOperations(
+    batch("tracked-changes", [
+      { id: "delete", type: "deleteBlock", blockId: paragraph.id },
+    ]),
+    { undefinedReferences: "refuse" },
+  );
+  expect(deleted.skipped).toEqual([]);
+  const target = reviewer
+    .toDocument()
+    .package.document.content.find(
+      (block) =>
+        block.type === "paragraph" &&
+        block.paraId?.toUpperCase() === paragraph.id.toUpperCase(),
+    );
+  expect(target?.type === "paragraph" && target.pPrMark?.kind).toBe("ins");
+  reviewer.rejectAll();
+  expect(shape(reviewer)).toEqual(["Opening words.", "[table]", "Closing."]);
+});

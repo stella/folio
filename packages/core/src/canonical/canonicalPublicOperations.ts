@@ -932,6 +932,36 @@ const blockInsertionPlace = (
 ): { at: BlockInsertionPoint; position: number } | undefined => {
   const side = operation.type === "insertAfterBlock" ? "after" : "before";
   const table = findOutermostTableBoundary(projection.doc, paragraph.start - 1);
+  if (table === null && side === "before") {
+    // Put before a paragraph, a block lands before the blocks right before
+    // it that accepting removes whole, at the start of its gap, as the
+    // default engine puts it: accepted, both sides of those blocks are one
+    // place, and a block put after one of them follows this one there.
+    const gap = insertionGap(projection.doc, paragraph.start - 1, "before");
+    if (gap < paragraph.start - 1) {
+      const $gap = projection.doc.resolve(gap);
+      const first = $gap.nodeAfter;
+      const previous = $gap.nodeBefore;
+      const end =
+        previous?.type.name === "paragraph"
+          ? projection.paragraphStartingAt(gap - previous.nodeSize)
+          : undefined;
+      if (end !== undefined)
+        return {
+          at: { type: "after", blockId: end.blockId },
+          position: paragraph.start,
+        };
+      const start =
+        first?.type.name === "paragraph"
+          ? projection.paragraphStartingAt(gap)
+          : undefined;
+      if (start !== undefined)
+        return {
+          at: { type: "before", blockId: start.blockId },
+          position: paragraph.start,
+        };
+    }
+  }
   if (table === null)
     return {
       at: { type: side, blockId: paragraph.blockId },
@@ -2301,6 +2331,11 @@ type ResolveBlockDeletionOptions = {
    * finds this paragraph by identity.
    */
   gainsFollower: boolean;
+  /**
+   * Whether the batch puts a table right before this paragraph, which then
+   * follows the table rather than the paragraph before it.
+   */
+  followsInsertedTable: boolean;
   refusal: (
     reason: FolioAIEditSkipReason,
     message?: string,
@@ -2592,6 +2627,43 @@ type ResolveCanonicalPublicOperationOptions = {
 type BesideDeletions = {
   deleted: ReadonlySet<string>;
   insertedBeside: ReadonlySet<string>;
+  /** The blocks the batch puts a table after, and those it puts one before. */
+  tables: { after: ReadonlySet<string>; before: ReadonlySet<string> };
+  /** The blocks the batch puts a paragraph after. */
+  paragraphsAfter: ReadonlySet<string>;
+};
+
+/** The ids of the paragraphs `block` holds, at any depth. */
+const paragraphIdsIn = (block: PMNode): string[] => {
+  const ids: string[] = [];
+  block.descendants((node) => {
+    const id: unknown = node.attrs["paraId"];
+    if (node.type.name === "paragraph" && typeof id === "string") ids.push(id);
+    return node.type.name !== "paragraph";
+  });
+  return ids;
+};
+
+/** The blocks a batch's table insertions name, on `side` of them. */
+const tableAnchors = (
+  operations: readonly FolioDocumentOperation[],
+  side: "after" | "before",
+): ReadonlySet<string> =>
+  new Set(
+    operations.flatMap((operation) =>
+      (operation.type === "insertTable" ||
+        operation.type === "insertSignatureTable") &&
+      (operation.position ?? "after") === side
+        ? [operation.blockId]
+        : [],
+    ),
+  );
+
+const NO_BESIDE_DELETIONS: BesideDeletions = {
+  deleted: new Set(),
+  insertedBeside: new Set(),
+  tables: { after: new Set(), before: new Set() },
+  paragraphsAfter: new Set(),
 };
 
 /**
@@ -2725,6 +2797,10 @@ export class CanonicalPublicOperations {
     const { diff } = wordDiffSessionFromOptions(options.wordDiff);
     let nextRevisionId = options.revisionStamp?.idSeed ?? 1;
     if (!session.isComposing && options.revisionStamp === undefined) {
+      // Past every revision id the package holds, records the projection
+      // does not show (a table's grid change, say) included.
+      for (const id of leasedIdCensus(readModel(session.document)).revision)
+        nextRevisionId = Math.max(nextRevisionId, id + 1);
       for (const currentStory of documentStories(readModel(session.document))) {
         const currentProjection = session.projectStory(currentStory);
         if (currentProjection.isOk())
@@ -2804,6 +2880,15 @@ export class CanonicalPublicOperations {
           operation.type === "insertBeforeBlock"
             ? [operation.blockId]
             : [],
+        ),
+      ),
+      tables: {
+        after: tableAnchors(batch.operations, "after"),
+        before: tableAnchors(batch.operations, "before"),
+      },
+      paragraphsAfter: new Set(
+        batch.operations.flatMap((operation) =>
+          operation.type === "insertAfterBlock" ? [operation.blockId] : [],
         ),
       ),
     };
@@ -2976,10 +3061,7 @@ export class CanonicalPublicOperations {
         tracked: batch.mode !== "direct",
         suggested: batch.mode === "suggested",
         mintList,
-        besideDeletions: {
-          deleted: new Set(),
-          insertedBeside: new Set(),
-        },
+        besideDeletions: NO_BESIDE_DELETIONS,
       });
       if (alone.isErr()) {
         refuseResolution(operation.id, alone.error);
@@ -3933,6 +4015,7 @@ export class CanonicalPublicOperations {
     doc,
     tracked,
     gainsFollower,
+    followsInsertedTable,
     refusal,
   }: ResolveBlockDeletionOptions) {
     // A direct deletion leaves no text for a comment to cover, as the default
@@ -3949,7 +4032,11 @@ export class CanonicalPublicOperations {
         : undefined;
     };
     const next = neighbour(after);
-    const previous = neighbour(before);
+    // A table before it, standing or put there by the batch, leaves it no
+    // paragraph before it to end the list in its place.
+    const previous = followsInsertedTable ? undefined : neighbour(before);
+    const followsBlock =
+      followsInsertedTable || (before !== null && previous === undefined);
     // A tracked deletion's comment covers the deleted paragraph's words.
     const commentFrom = projection.addressAt(paragraph.start);
     const commentTo = projection.addressAt(end);
@@ -3985,6 +4072,41 @@ export class CanonicalPublicOperations {
     // tracked, before it, the deletion finds it by identity there too, and
     // the inserted paragraph's own pending mark joins it. A move's halves do
     // the same, so no mark is left on the container's final paragraph.
+    // Before a table, a paragraph whose own mark is a pending insertion and
+    // that holds words of the original keeps that mark: tracked, the deletion
+    // takes its words only, and rejecting the insertion later runs them into
+    // the table as it would have. A paragraph the insertion added whole goes
+    // with it, as the block deletion takes it.
+    let holdsOriginalWords = false;
+    paragraph.node.descendants((node) => {
+      if (
+        node.isText &&
+        !node.marks.some(
+          ({ type }) => type.name === "insertion" || type.name === "deletion",
+        )
+      )
+        holdsOriginalWords = true;
+    });
+    if (
+      tracked &&
+      operation.moveId === undefined &&
+      !gainsFollower &&
+      after?.type.name === "table" &&
+      isInsertedPPrMark(paragraph.node.attrs["pPrMark"]) &&
+      holdsOriginalWords
+    ) {
+      const from = projection.addressAt(paragraph.start);
+      const to = projection.addressAt(end);
+      if (from.isErr() || to.isErr()) return refusal("unsupportedBlock");
+      return tracking({
+        intents: [
+          { type: "replaceText", from: from.value, to: to.value, text: "" },
+        ],
+        normalizations: [],
+        from: paragraph.start,
+        to: end,
+      });
+    }
     if (
       next !== undefined ||
       gainsFollower ||
@@ -4063,6 +4185,13 @@ export class CanonicalPublicOperations {
         from: previous.start + previous.node.content.size,
         to: end,
       };
+    // After a table the paragraph ends its block list for good: it keeps its
+    // mark and loses its words, as a tracked deletion of the whole paragraph
+    // leaves it.
+    else if (followsBlock) {
+      if (paragraph.node.content.size === 0) return refusal("noopOperation");
+      range = { from: paragraph.start, to: end };
+    }
     if (range === undefined)
       return refusal(
         "unsupportedBlock",
@@ -4329,6 +4458,29 @@ export class CanonicalPublicOperations {
     if (operation.type === "deleteBlock") {
       const gainsFollower =
         !followed && besideDeletions.insertedBeside.has(blockId);
+      const before = state.doc.resolve(paragraph.start - 1).nodeBefore;
+      const previousId: unknown =
+        before?.type.name === "paragraph" ? before.attrs["paraId"] : undefined;
+      const followsInsertedTable =
+        !followed &&
+        (besideDeletions.tables.before.has(blockId) ||
+          (typeof previousId === "string" &&
+            besideDeletions.tables.after.has(previousId)));
+      // A paragraph the batch puts right after the table before it is the
+      // one a deletion of this paragraph would end the list on; the batch
+      // cannot read it yet, so the deletion waits for it.
+      if (
+        !followed &&
+        before !== null &&
+        before.type.name !== "paragraph" &&
+        paragraphIdsIn(before).some((id) =>
+          besideDeletions.paragraphsAfter.has(id),
+        )
+      )
+        return refusal(
+          "unsupportedBlock",
+          "Canonical deletion of a paragraph after a table the batch puts a paragraph after is unavailable.",
+        );
       const deleted = this.resolveBlockDeletion({
         operation,
         paragraph,
@@ -4337,6 +4489,7 @@ export class CanonicalPublicOperations {
         doc: state.doc,
         tracked,
         gainsFollower,
+        followsInsertedTable,
         refusal,
       });
       return gainsFollower && deleted.isOk()
@@ -4420,26 +4573,25 @@ export class CanonicalPublicOperations {
       return refusal("splitsCharacter");
     // A note reference is not text: a replacement rewrites the prose around
     // the references its range holds, each kept in place, as the shared
-    // segmentation pairs them. A range that cuts a reference, an operation
-    // that does not replace text, and a replacement that drops, moves or
-    // invents a reference are refused.
+    // segmentation pairs them. A comment or formatting covers whole
+    // references as it covers the words beside them, and leaves them in
+    // place. A range that cuts a reference and a replacement that drops,
+    // moves or invents a reference are refused.
     const replacesText =
       operation.type === "replaceInBlock" ||
       operation.type === "replaceRange" ||
       operation.type === "replaceBlock";
     const references = noteReferenceSpansWithin(clean, start, end);
-    if (
-      cutsIntoNoteReference(clean, start, end) ||
-      (references.length > 0 && !replacesText)
-    )
+    if (cutsIntoNoteReference(clean, start, end))
       return refusal("protectedReference");
+    // Only a replacement rewrites the prose between references.
     const segments = segmentsAroundNoteReferences(
       clean.text.slice(start, end),
-      text,
+      replacesText ? text : clean.text.slice(start, end),
       references,
     );
     if (segments === null) return refusal("protectedReference");
-    const prose = segments.replacement.join("");
+    const prose = replacesText ? segments.replacement.join("") : "";
     if (stripInlineEmphasisMarkers(text) !== text)
       return refusal(
         "unsupportedBlock",

@@ -2,8 +2,9 @@
  * A tracked replacement reads as a redline: the struck text first, then what
  * replaces it. Typing, pasting or pressing Enter over a selection, and a
  * public replacement, save the same review markup in both engines, and the
- * saved file reads the same once every change is accepted or rejected,
- * including the text a comment covers.
+ * saved file reads the same once every change is accepted or rejected. The
+ * words that replace exactly the text a comment covers go past the comment's
+ * end, so accepting leaves the comment nothing to cover.
  */
 import { describe, expect, test } from "bun:test";
 import type { Node as PMNode } from "prosemirror-model";
@@ -345,15 +346,21 @@ const PUBLIC_CASES = [
     body: paragraph("11111111", run("Alpha Beta Gamma")),
     find: "Beta",
   },
-  {
-    id: "a public replacement of exactly the text a comment covers",
-    body: paragraph(
-      "11111111",
-      `${run("Notes on ")}${commented("Documentation")}${run(" of Training")}`,
-    ),
-    find: "Documentation",
-  },
 ] as const;
+
+const COMMENTED_BODY = paragraph(
+  "11111111",
+  `${run("Notes on ")}${commented("Documentation")}${run(" of Training")}`,
+);
+
+/** The redline of `replace` over the commented word: the comment keeps the struck word. */
+const COMMENTED_REDLINE = (replace: string) => [
+  { kind: "text", text: "Notes on [" },
+  { kind: "del", text: "Documentation" },
+  { kind: "text", text: "]" },
+  { kind: "ins", text: replace },
+  { kind: "text", text: " of Training" },
+];
 
 describe("a tracked replacement puts the struck text first", () => {
   for (const editorCase of EDITOR_CASES)
@@ -367,12 +374,8 @@ describe("a tracked replacement puts the struck text first", () => {
       if (inserted !== -1) expect(struck).toBeLessThan(inserted);
     });
 
-  test("typing over exactly the text a comment covers keeps the comment on the new text", async () => {
-    const body = paragraph(
-      "11111111",
-      `${run("Notes on ")}${commented("Documentation")}${run(" of Training")}`,
-    );
-    const source = await packageOf(body);
+  test("typing over exactly the text a comment covers puts the new text past the comment", async () => {
+    const source = await packageOf(COMMENTED_BODY);
     const harness = createCanonicalEditorHarness(
       await parseDocx(source, { preloadFonts: false, detectVariables: false }),
       "suggesting",
@@ -380,7 +383,7 @@ describe("a tracked replacement puts the struck text first", () => {
     try {
       drive(harness, {
         id: "commented word",
-        body,
+        body: COMMENTED_BODY,
         from: ["Documentation", 0],
         to: ["Documentation", 13],
         edit: "type",
@@ -388,23 +391,21 @@ describe("a tracked replacement puts the struck text first", () => {
       expect(harness.refusals).toEqual([]);
       const saved = await saveCanonicalHarnessDocument(harness.snapshot());
       const actual = await readings(saved.bytes.slice().buffer);
-      // As the public replacement of the same words saves in both engines.
-      // The default editor's typing puts the new text after the comment's
-      // end instead, so accepting there leaves the comment nothing to cover.
-      const replaced = await readings(
-        await viaDefaultEngine(source, "Documentation", "XY"),
-      );
-      expect(actual).toEqual(replaced);
-      expect(actual.markup.at(0)?.content).toEqual([
-        { kind: "text", text: "Notes on [" },
-        { kind: "del", text: "Documentation" },
-        { kind: "ins", text: "XY" },
-        { kind: "text", text: "] of Training" },
-      ]);
-      expect(actual.accepted.comments).toEqual([{ id: 7, anchoredText: "XY" }]);
+      // The default engine hands the comment to the typed words instead.
+      expect(actual.markup.at(0)?.content).toEqual(COMMENTED_REDLINE("XY"));
+      expect(actual.accepted.comments).toEqual([]);
     } finally {
       harness.dispose();
     }
+  });
+
+  test("a public replacement of exactly the text a comment covers saves as typing does", async () => {
+    const source = await packageOf(COMMENTED_BODY);
+    const actual = await readings(
+      await viaCanonicalEngine(source, "Documentation", "Changed"),
+    );
+    expect(actual.markup.at(0)?.content).toEqual(COMMENTED_REDLINE("Changed"));
+    expect(actual.accepted.comments).toEqual([]);
   });
 
   for (const { id, body, find } of PUBLIC_CASES)
