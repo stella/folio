@@ -34,6 +34,7 @@ import {
   formatParaId,
   freshCommentId,
   groupInsertionRuns,
+  ID_LEASE_KINDS,
   type IdBlock,
   idKey,
   type IdLease,
@@ -45,6 +46,7 @@ import {
   orderAddressingBeforeRemoval,
   orderBatchOperations,
   packageResourcesOpOf,
+  paragraphIdsIn as modelParagraphIdsIn,
   paragraphLength,
   type ParagraphPropsPatch,
   pendingSuggestionIdsIn,
@@ -1710,6 +1712,30 @@ const droppedInsertionCarrier = ({
 type MemberIdLeaseOptions = {
   lease: IdLease;
   siblings: readonly (readonly LeasedId[])[];
+};
+
+/** A paragraph-side insertion keeps its anchor and introduces only these paragraph IDs. */
+const plainInsertedParagraphIds = (
+  ops: readonly DocumentOp[],
+): number[] | undefined => {
+  const [op] = ops;
+  if (
+    ops.length !== 1 ||
+    op?.type !== DOCUMENT_OP_TYPES.INSERT_BLOCKS ||
+    (op.at.type !== "before" && op.at.type !== "after") ||
+    op.move === true
+  )
+    return undefined;
+  const ids: number[] = [];
+  for (const { paraId } of op.blocks) {
+    if (paraId === undefined) return undefined;
+    const id = Number.parseInt(paraId, 16);
+    if (!Number.isSafeInteger(id) || formatParaId(id) !== paraId)
+      return undefined;
+    ids.push(id);
+  }
+  if (modelParagraphIdsIn(op.blocks).length !== ids.length) return undefined;
+  return ids.sort((left, right) => left - right);
 };
 
 /** A replay cannot spend identities admitted to another operation. */
@@ -3788,15 +3814,65 @@ export class CanonicalPublicOperations {
         previous.last = Math.max(previous.last, interval.last);
       else merged.push({ ...interval });
     }
+    const alreadyInReplayOrder = (window: readonly AdmittedOperation[]) => {
+      const first = window.at(0);
+      const initial = first?.intents.at(0);
+      if (
+        first === undefined ||
+        initial?.type !== "insertParagraphs" ||
+        (initial.at.type !== "before" && initial.at.type !== "after")
+      )
+        return false;
+      const group = groupOf.get(first);
+      if (group?.length !== window.length) return false;
+      const { type: side, blockId } = initial.at;
+      const { at: replayAt } = gapAnchorBeforeFollower(
+        { type: "paragraph", at: initial.at },
+        projected.value,
+      );
+      if (replayAt.type !== side || replayAt.blockId !== blockId) return false;
+      let previousOrder: number | undefined;
+      for (const member of window) {
+        const { operation, intents } = member;
+        const intent = intents.at(0);
+        if (
+          groupOf.get(member) !== group ||
+          member.type !== "plain" ||
+          !isBlockInsertion(operation) ||
+          operation.moveId !== undefined ||
+          intents.length !== 1 ||
+          intent?.type !== "insertParagraphs" ||
+          intent.move !== undefined ||
+          intent.newList !== undefined ||
+          intent.at.type !== side ||
+          intent.at.blockId !== blockId
+        )
+          return false;
+        const order = orderOf(member);
+        if (
+          previousOrder !== undefined &&
+          (side === "before" ? order <= previousOrder : order >= previousOrder)
+        )
+          return false;
+        previousOrder = order;
+      }
+      // These insertions only add paragraph IDs. Later siblings cannot take
+      // any of the IDs an earlier member already selected from the free space.
+      return true;
+    };
     const windows = new Map<AdmittedOperation, readonly AdmittedOperation[]>();
     for (const interval of merged) {
       const first = executionOrder.at(interval.first);
       if (first === undefined)
         panic("An insertion admission window lost its first operation.");
-      windows.set(
-        first,
-        executionOrder.slice(interval.first, interval.last + 1),
-      );
+      const window = executionOrder.slice(interval.first, interval.last + 1);
+      if (
+        session.idLease === undefined &&
+        batch.mode !== "suggested" &&
+        alreadyInReplayOrder(window)
+      )
+        continue;
+      windows.set(first, window);
     }
     const completed = new Set<string>();
     for (const resolvedOperation of executionOrder) {
@@ -3833,6 +3909,15 @@ export class CanonicalPublicOperations {
       const admissionColumns = new Map(insertedColumnCounts);
       let admissionDocument = document;
       let admissionRevisionId = nextRevisionId;
+      let admissionCensus:
+        | { type: "paragraphs"; ids: Set<number> | undefined }
+        | {
+            type: "package";
+            ids: ReturnType<typeof leasedIdCensus> | undefined;
+          } =
+        session.idLease === undefined
+          ? { type: "paragraphs", ids: undefined }
+          : { type: "package", ids: undefined };
       for (const member of window) {
         completed.add(member.operation.id);
         const prepared = prepareOperation({
@@ -3846,16 +3931,39 @@ export class CanonicalPublicOperations {
           continue;
         }
         recordColumnInsertion(member, admissionColumns);
+        const paragraphs =
+          admissionCensus.type === "paragraphs"
+            ? plainInsertedParagraphIds(prepared.ops)
+            : undefined;
+        let ids: LeasedId[];
+        if (admissionCensus.type === "paragraphs" && paragraphs !== undefined) {
+          // Without a lease replay reserves only sibling paragraph IDs. Seed
+          // the numeric set from the full census to preserve legacy spellings.
+          admissionCensus.ids ??= new Set(
+            leasedIdCensus(admissionDocument).paragraph,
+          );
+          ids = [];
+          for (const id of paragraphs) {
+            if (admissionCensus.ids.has(id)) continue;
+            admissionCensus.ids.add(id);
+            ids.push({ kind: ID_LEASE_KINDS.PARAGRAPH, id });
+          }
+        } else {
+          const before =
+            (admissionCensus.type === "package"
+              ? admissionCensus.ids
+              : undefined) ?? leasedIdCensus(admissionDocument);
+          const after = leasedIdCensus(prepared.document);
+          ids = introducedIds(before, after);
+          admissionCensus = { type: "package", ids: after };
+        }
         admitted.push({
           resolvedOperation: member,
           firstRevisionId: admissionRevisionId,
           allocations: prepared.allocations,
           ops: prepared.ops,
           commentAllocation: prepared.commentAllocation,
-          ids: introducedIds(
-            leasedIdCensus(admissionDocument),
-            leasedIdCensus(prepared.document),
-          ),
+          ids,
         });
         admissionDocument = prepared.document;
         admissionRevisionId = prepared.nextRevisionId;

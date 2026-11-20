@@ -7,7 +7,9 @@
  * in the copy, and one it runs after is not.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
+
+import * as documentOperations from "@stll/docx-core/ops";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import type {
@@ -35,14 +37,15 @@ const open = async () => {
   const reviewer = await FolioDocxReviewer.fromBuffer(input, {
     session: "canonical",
   });
-  const [heading, numbered, body] = reviewer.snapshot().blocks;
+  const [heading, numbered, body, closing] = reviewer.snapshot().blocks;
   if (
     heading?.text !== "Terms" ||
     numbered?.listReference === undefined ||
-    body?.text !== "Unnumbered body text."
+    body?.text !== "Unnumbered body text." ||
+    closing?.text !== "Closing."
   )
     throw new Error("Missing fixture");
-  return { reviewer, heading, numbered, body };
+  return { reviewer, heading, numbered, body, closing };
 };
 
 const insertion = (
@@ -198,3 +201,93 @@ describe("an inserted paragraph copies its neighbour as the batch order leaves i
     expect(inserted(reviewer).listReference).toEqual(numbered.listReference);
   });
 });
+
+test.each([4, 8])(
+  "admission counts the package once for %i reordered paragraph insertions",
+  async (count) => {
+    const { reviewer, body } = await open();
+    const operations = Array.from(
+      { length: count },
+      (_, index) =>
+        ({
+          type: "insertBeforeBlock",
+          id: `insert-${index}`,
+          blockId: body.id,
+          text: `Inserted clause ${index}.`,
+        }) satisfies FolioDocumentOperation,
+    );
+    const census = spyOn(documentOperations, "leasedIdCensus");
+    try {
+      const result = reviewer.applyDocumentOperations(
+        { version: 1, mode: "tracked-changes", atomic: true, operations },
+        {
+          undefinedReferences: "refuse",
+          revisionStamp: { idSeed: 1, date: "2026-01-02T03:04:05Z" },
+        },
+      );
+      expect(result.skipped).toEqual([]);
+      expect(result.applied).toHaveLength(count);
+      expect(census).toHaveBeenCalledTimes(1);
+      expect(
+        reviewer
+          .snapshot()
+          .blocks.map(({ text }) => text)
+          .filter((text) => text.startsWith("Inserted clause ")),
+      ).toEqual(operations.map(({ text }) => text));
+    } finally {
+      census.mockRestore();
+    }
+  },
+);
+
+test.each([4, 8])(
+  "compiles each of %i already ordered paragraph insertions once",
+  async (count) => {
+    const { reviewer, closing } = await open();
+    const operations = Array.from(
+      { length: count },
+      (_, index) =>
+        ({
+          type: "insertAfterBlock",
+          id: `insert-${index}`,
+          blockId: closing.id,
+          text: `Appended clause ${index}.`,
+        }) satisfies FolioDocumentOperation,
+    );
+    const compiler = spyOn(documentOperations, "compileEditorIntent");
+    try {
+      const result = reviewer.applyDocumentOperations(
+        { version: 1, mode: "tracked-changes", atomic: true, operations },
+        {
+          undefinedReferences: "refuse",
+          revisionStamp: { idSeed: 1, date: "2026-01-02T03:04:05Z" },
+        },
+      );
+      expect(result.skipped).toEqual([]);
+      expect(result.applied.map(({ id }) => id)).toEqual(
+        operations.map(({ id }) => id),
+      );
+      expect(compiler).toHaveBeenCalledTimes(count);
+      expect(
+        reviewer
+          .snapshot()
+          .blocks.slice(-count)
+          .map(({ text }) => text),
+      ).toEqual(operations.map(({ text }) => text));
+      const primaryRevisions = result.applied.map(
+        ({ revisionId }) => revisionId ?? -1,
+      );
+      expect(primaryRevisions.at(-1)).toBe(1);
+      expect(primaryRevisions).toEqual(
+        primaryRevisions.toSorted((left, right) => right - left),
+      );
+      const revisions = result.applied.flatMap(
+        ({ revisionIds }) => revisionIds ?? [],
+      );
+      expect(revisions.length).toBeGreaterThanOrEqual(count);
+      expect(new Set(revisions).size).toBe(revisions.length);
+    } finally {
+      compiler.mockRestore();
+    }
+  },
+);
