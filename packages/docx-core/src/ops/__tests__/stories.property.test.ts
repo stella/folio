@@ -20,12 +20,20 @@ import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { contractViolation, normalizeForOps } from "../contract";
 import { noteStoriesTouchedByReferences } from "../noteMarks";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
-import { documentStories, findStoryBody, sameStory } from "../stories";
+import {
+  documentStories,
+  findStoryBody,
+  sameStory,
+  storyBody,
+  textBoxStoriesIn,
+  type TextBoxStory,
+} from "../stories";
 import { applyStoryLifecycle } from "../storyLifecycle";
 import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
   INHERIT_RUN_PROPS,
+  OP_STORIES,
   type OpStory,
   SPLIT_HALVES,
 } from "../types";
@@ -45,6 +53,27 @@ const paragraph = (id: string, text: string): Paragraph => ({
       type: "run",
       formatting: { bold: true },
       content: [{ type: "text", text }],
+    },
+  ],
+});
+/** A body paragraph drawing a text box that holds one paragraph. */
+const textBoxHost = (id: string, boxed: Paragraph): Paragraph => ({
+  type: "paragraph",
+  paraId: id,
+  content: [
+    {
+      type: "run",
+      content: [
+        {
+          type: "shape",
+          shape: {
+            type: "shape",
+            shapeType: "textBox",
+            size: { width: 2_000_000, height: 800_000 },
+            textBody: { content: [boxed] },
+          },
+        },
+      ],
     },
   ],
 });
@@ -80,6 +109,23 @@ const seedDocument = (text: string): Document => ({
   },
 });
 
+/** The seed with a body paragraph drawing a text box after its paragraph. */
+const seedDocumentWithTextBox = (text: string): Document => {
+  const seeded = seedDocument(text);
+  return {
+    ...seeded,
+    package: {
+      ...seeded.package,
+      document: {
+        content: [
+          ...seeded.package.document.content,
+          textBoxHost("000000B0", paragraph("000000B1", text)),
+        ],
+      },
+    },
+  };
+};
+
 const expectExact = (document: Document, op: DocumentOp) => {
   const applied = applyDocumentOp(document, op).unwrap();
   expect(contractViolation(applied.document)).toBeUndefined();
@@ -103,9 +149,16 @@ describe("all-story operation laws", () => {
         fc.stringMatching(/^[A-Za-z]{2,12}$/),
         fc.nat(),
         (text, selector) => {
-          const document = normalizeForOps(seedDocument(text));
-          for (const story of documentStories(document)) {
-            const body = findStoryBody(document, story);
+          const document = normalizeForOps(seedDocumentWithTextBox(text));
+          // A text box's paragraph is named through the story drawing it.
+          const boxed = textBoxStoriesIn(document, OP_STORIES.MAIN).map(
+            (box) => ({ story: OP_STORIES.MAIN, box }),
+          );
+          const targets: { story: OpStory; box?: TextBoxStory }[] =
+            documentStories(document).map((own) => ({ story: own }));
+          targets.push(...boxed);
+          for (const { story, box } of targets) {
+            const body = findStoryBody(document, box ?? story);
             const block = body?.content.at(0);
             if (block?.type !== "paragraph" || !block.paraId)
               return panic(
@@ -159,6 +212,17 @@ describe("all-story operation laws", () => {
                   findStoryBody(document, untouched),
                 );
               }
+              // Within the story, an edit in its text box changes only the
+              // paragraph drawing the box.
+              if (box !== undefined)
+                for (const [index, kept] of storyBody(
+                  document,
+                  story,
+                ).content.entries())
+                  if (kept.type !== "paragraph" || kept.paraId !== box.blockId)
+                    expect(
+                      storyBody(applied.document, story).content[index],
+                    ).toBe(kept);
               if (op.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK) {
                 expectExact(applied.document, {
                   type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
@@ -285,6 +349,97 @@ describe("all-story operation laws", () => {
     const counts = { applied: 0 };
     checkCoverageSample(law(counts), COVERAGE_RUNS);
     expect(counts.applied).toBeGreaterThan(50);
+  });
+
+  test("the rich operation generator acts on a text box's paragraphs, named through the story drawing it, as on a story of its own", () => {
+    const box = {
+      kind: "textBox",
+      host: OP_STORIES.MAIN,
+      blockId: "7FFFFFFE",
+      index: 0,
+    } as const;
+    const law = (counts: { applied: number }) =>
+      fc.property(documentArbitrary, opSeedArbitrary, (source, seed) => {
+        const { content } = source.package.document;
+        // A text box holds no section boundary and no note reference.
+        const serialized = JSON.stringify(content);
+        fc.pre(
+          !serialized.includes('"sectionProperties"') &&
+            !serialized.includes('"footnoteRef"') &&
+            !serialized.includes('"endnoteRef"') &&
+            !serialized.includes('"noteMarker"'),
+        );
+        // The generated blocks as a story of their own, and as a text box
+        // drawn in a body paragraph.
+        const own: Document = {
+          ...source,
+          package: { ...source.package, document: { content } },
+        };
+        const host = textBoxHost(box.blockId, paragraph("7FFFFFFD", "box"));
+        const drawn = host.content[0];
+        if (drawn?.type !== "run" || drawn.content[0]?.type !== "shape")
+          return panic("The host draws a text box.");
+        const boxed: Document = {
+          ...source,
+          package: {
+            ...source.package,
+            document: {
+              content: [
+                {
+                  ...host,
+                  content: [
+                    {
+                      ...drawn,
+                      content: [
+                        {
+                          ...drawn.content[0],
+                          shape: {
+                            ...drawn.content[0].shape,
+                            textBody: { content },
+                          },
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        };
+        const op = opForStory({ document: own, seed, story: OP_STORIES.MAIN });
+        const inOwn = applyDocumentOp(own, op);
+        const inBox = applyDocumentOp(boxed, op);
+        if (inOwn.isErr()) {
+          expect(inBox.isErr() ? inBox.error.reason : "applied").toBe(
+            inOwn.error.reason,
+          );
+          return;
+        }
+        counts.applied += 1;
+        const applied = expectExact(boxed, op);
+        expect(storyBody(applied.document, box).content).toEqual(
+          inOwn.value.document.package.document.content,
+        );
+        expect(applied.revisions).toEqual(inOwn.value.revisions);
+        // The paragraph drawing the box changes with the box's body.
+        const changed =
+          storyBody(applied.document, box) !== storyBody(boxed, box);
+        expect(applied.touched).toEqual({
+          ...inOwn.value.touched,
+          modified: [
+            ...inOwn.value.touched.modified,
+            ...(changed ? [box.blockId] : []),
+          ],
+        });
+      });
+    assertProperty(law({ applied: 0 }), {
+      numRuns: 100,
+      id: "the rich operation generator acts on a text box's paragraphs, named through the story drawing it, as on a story of its own",
+    });
+    const COVERAGE_RUNS = 100;
+    const counts = { applied: 0 };
+    checkCoverageSample(law(counts), COVERAGE_RUNS);
+    expect(counts.applied).toBeGreaterThan(20);
   });
 
   test("generated header/footer variants, note references and section properties have exact inverses", () => {

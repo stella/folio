@@ -14,9 +14,12 @@ import {
   docxToMarkdown,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioDocumentOperation,
+  FolioDocxReviewer,
+  type FolioDocxReviewerOptions,
 } from "@stll/folio-core/server";
 
 import {
+  AUTHOR,
   commentDocument,
   directNumberedDocument,
   notesDocument,
@@ -116,42 +119,54 @@ describe("findings not yet filed", () => {
     await reviewer.toBuffer();
   });
 
+  // The finding is the legacy engine's; the canonical session takes the
+  // comment with the words it covers.
+  const replaceCommentedWords = async (
+    session: NonNullable<FolioDocxReviewerOptions["session"]>,
+  ) => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      toArrayBuffer(await plainDocument()),
+      { author: AUTHOR, session },
+    );
+    const block = reviewer
+      .getContent()
+      .find((candidate) => /\p{L}{3,}/u.test(candidate.text));
+    const quote = block?.text.match(/\p{L}{3,}/u)?.[0];
+    assert.ok(block && quote);
+    for (const operation of [
+      {
+        type: "commentOnBlock",
+        blockId: block.id,
+        quote,
+        comment: { text: "Replaced words" },
+      },
+      {
+        type: "replaceInBlock",
+        blockId: block.id,
+        find: quote,
+        replace: "zzz",
+      },
+    ] as const)
+      applyTo(reviewer, { type: "main" }, operation, "direct");
+    const kept = reviewer
+      .getComments()
+      .filter(({ text }) => text === "Replaced words");
+    assert.deepEqual(
+      kept,
+      [],
+      `${session} replacement keeps a comment over the words it replaced: ${JSON.stringify(kept.map(({ anchoredText }) => anchoredText))}`,
+    );
+  };
+
   expectedFailure(
     "LEGACY_REPLACEMENT_TAKES_COMMENT",
     "replacing exactly the words a comment covers takes the comment with them",
     FINDING_SYMPTOMS.LEGACY_REPLACEMENT_TAKES_COMMENT,
-    async () => {
-      const reviewer = await openReviewer(await plainDocument());
-      const block = reviewer
-        .getContent()
-        .find((candidate) => /\p{L}{3,}/u.test(candidate.text));
-      const quote = block?.text.match(/\p{L}{3,}/u)?.[0];
-      assert.ok(block && quote);
-      for (const operation of [
-        {
-          type: "commentOnBlock",
-          blockId: block.id,
-          quote,
-          comment: { text: "Replaced words" },
-        },
-        {
-          type: "replaceInBlock",
-          blockId: block.id,
-          find: quote,
-          replace: "zzz",
-        },
-      ] as const)
-        applyTo(reviewer, { type: "main" }, operation, "direct");
-      const kept = reviewer
-        .getComments()
-        .filter(({ text }) => text === "Replaced words");
-      assert.deepEqual(
-        kept,
-        [],
-        `legacy replacement keeps a comment over the words it replaced: ${JSON.stringify(kept.map(({ anchoredText }) => anchoredText))}`,
-      );
-    },
+    () => replaceCommentedWords("legacy"),
   );
+
+  test("the canonical session takes a comment with exactly the words it covers", () =>
+    replaceCommentedWords("canonical"));
 
   expectedFailure(
     "MARKDOWN_DROPS_TEXT_BOX",

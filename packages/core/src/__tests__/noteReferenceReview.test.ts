@@ -464,18 +464,37 @@ describe("an edit operation that deletes a note reference", () => {
     });
   });
 
-  test("a tracked edit cannot remove the note on acceptance", async () => {
+  test("tracked, it deletes the note's text with the reference", async () => {
+    const { reviewer, result } = await deleteNotedParagraph("tracked-changes");
+    expect(result.skipped).toEqual([]);
+    expect(noteState(await saved(reviewer), 1)).toEqual({
+      text: "The note text.",
+      deleted: true,
+    });
+  });
+
+  test("tracked and accepted, the note goes", async () => {
+    const { reviewer } = await deleteNotedParagraph("tracked-changes");
+    expect(reviewer.acceptAll().resolved).toBeGreaterThan(0);
+    expect(noteState(await saved(reviewer), 1)).toBeNull();
+  });
+
+  test("tracked and rejected, the note keeps its text", async () => {
+    const { reviewer } = await deleteNotedParagraph("tracked-changes");
+    expect(reviewer.rejectAll().resolved).toBeGreaterThan(0);
+    expect(noteState(await saved(reviewer), 1)).toEqual({
+      text: "The note text.",
+      deleted: false,
+    });
+  });
+
+  test("tracked and undone, the note keeps its text", async () => {
     const { reviewer, before, result } =
       await deleteNotedParagraph("tracked-changes");
-    expect(result.status).toBe("rejected");
-    expect(result.applied).toEqual([]);
-    expect(result.undoHandle).toBeNull();
-    expect(result.issues).toEqual([
-      expect.objectContaining({
-        code: "invalidResult",
-        message: expect.stringContaining("Accept All would lose a note"),
-      }),
-    ]);
+    if (!result.undoHandle) throw new Error("no undo handle");
+    expect(reviewer.undoDocumentOperations(result.undoHandle).status).toBe(
+      "undone",
+    );
     expect(structuredClone(reviewer.toDocument())).toEqual(before);
     expect(noteState(await saved(reviewer), 1)).toEqual({
       text: "The note text.",

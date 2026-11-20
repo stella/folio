@@ -35,6 +35,7 @@ const DocumentOpsContractErrorBase: TaggedErrorClass<"DocumentOpsContractError">
  */
 import { sectionsInStep, storyParagraphs, withBodyContent } from "./blocks";
 import { hasValidCopyOriginAncestorsInBlocks } from "./copyOriginAncestors";
+import { structurallyEqual } from "./equality";
 import { countKeys, packageIdentityKeys, packageParagraphIdIndex } from "./ids";
 import {
   asParagraphContent,
@@ -49,7 +50,13 @@ import {
   DOCUMENT_OP_REFUSAL_REASONS,
   type DocumentOpRefusalReason,
 } from "./refusal";
-import { documentStories, replaceStoryBody, storyBody } from "./stories";
+import {
+  documentStories,
+  replaceStoryBody,
+  storyBody,
+  textBoxStoriesIn,
+  type TextBoxStory,
+} from "./stories";
 
 /** A document that does not meet the seed contract. */
 export class DocumentOpsContractError extends DocumentOpsContractErrorBase<{
@@ -109,8 +116,9 @@ const blocksHaveMultiplePropertyChanges = (
 /** Check every editable story and nested block container, reusing unchanged lists. */
 export const hasMultipleParagraphPropertyChanges = (
   document: Document,
+  boxes: readonly TextBoxStory[] = [],
 ): boolean =>
-  documentStories(document).some((story) =>
+  [...documentStories(document), ...boxes].some((story) =>
     blocksHaveMultiplePropertyChanges(storyBody(document, story).content),
   );
 
@@ -352,6 +360,17 @@ export const normalizeForOps = (document: Document): Document => {
       story,
       body: withBodyContent(body, normalizeBlocks(body.content)),
     });
+    // A text box drawn in the story is a story operations edit as well.
+    for (const box of textBoxStoriesIn(current, story)) {
+      const boxed = storyBody(current, box).content;
+      const normalized = normalizeBlocks(boxed);
+      if (!structurallyEqual(normalized, boxed))
+        current = replaceStoryBody({
+          document: current,
+          story: box,
+          body: { content: normalized },
+        });
+    }
   }
   return current;
 };
