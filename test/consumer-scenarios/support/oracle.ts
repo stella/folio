@@ -4144,7 +4144,9 @@ export const commentIdsInTableOf = (
   );
   return reviewer
     .getComments()
-    .filter(({ blockId: anchor }) => anchor !== undefined && cells.has(anchor))
+    .filter(
+      ({ blockId: anchor }) => typeof anchor === "string" && cells.has(anchor),
+    )
     .map(({ id }) => id)
     .sort((left, right) => left - right);
 };
