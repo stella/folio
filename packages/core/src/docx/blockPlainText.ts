@@ -17,7 +17,7 @@ import { panic } from "better-result";
 
 import { resolvedDocumentView } from "@stll/docx-core/ops";
 
-import type { BlockContent } from "../types/document";
+import type { BlockContent, DocxPackage } from "../types/document";
 import { ALT_CHUNK_READER_DIAGNOSTIC, isAltChunkMarkup } from "./altChunk";
 import {
   isOpaqueNestedRowMarkup,
@@ -122,18 +122,18 @@ const acceptedBlocks = (blocks: readonly BlockContent[]) => {
     );
     return { blocks: view.document.package.document.content, view };
   }
-  const note = { type: kind, id: 1, content: [...blocks] } as const;
-  const view = resolvedDocumentView(
-    {
-      package: {
-        document: { content: [] },
-        ...(kind === "footnote"
-          ? { footnotes: [{ ...note, type: "footnote" as const }] }
-          : { endnotes: [{ ...note, type: "endnote" as const }] }),
-      },
-    },
-    "accept",
-  );
+  const content: BlockContent[] = [...blocks];
+  const notePackage: DocxPackage =
+    kind === "footnote"
+      ? {
+          document: { content: [] },
+          footnotes: [{ type: "footnote", id: 1, content }],
+        }
+      : {
+          document: { content: [] },
+          endnotes: [{ type: "endnote", id: 1, content }],
+        };
+  const view = resolvedDocumentView({ package: notePackage }, "accept");
   const resolved =
     kind === "footnote"
       ? view.document.package.footnotes?.[0]
