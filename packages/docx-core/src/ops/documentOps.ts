@@ -28,7 +28,7 @@ export {
  * sequencer apply operations with one implementation.
  */
 
-export { storyParagraphs, withBodyContent } from "./blocks";
+export { blockListAt, storyParagraphs, withBodyContent } from "./blocks";
 export { blockControlHolding } from "./contentControls";
 export { paragraphMarkOutcome } from "./blockDeletion";
 export {

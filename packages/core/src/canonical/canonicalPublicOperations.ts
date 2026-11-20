@@ -20,6 +20,7 @@ import {
   type BatchBlockAccess,
   type BatchOrderAddress,
   type BlockInsertionPoint,
+  blockListAt,
   compileEditorIntent,
   contentRank,
   createEditorIntentIdAllocator,
@@ -29,6 +30,7 @@ import {
   documentStories,
   type EditorIntent,
   type FinalBreakCandidate,
+  type FinalBreakCarrier,
   finalBreakCarrier,
   findStoryBody,
   formatParaId,
@@ -45,11 +47,13 @@ import {
   orderAddressingBeforeRemoval,
   orderBatchOperations,
   packageResourcesOpOf,
+  type ParagraphAbsorption,
   paragraphLength,
   type ParagraphPropsPatch,
   pendingSuggestionIdsIn,
   revisionSpan,
   type RunPropsPatch,
+  SPLIT_HALVES,
   storyParagraphs,
   type TextPosition,
 } from "@stll/docx-core/ops";
@@ -460,12 +464,23 @@ type PlannedOperation = {
   operation: FolioDocumentOperation;
   plan: CanonicalBatchPlan;
   joinsParagraphBefore?: true;
+  collapsesRunStart?: true;
+  retiresRunBreak?: true;
 };
 
 type CanonicalBatchOrderOptions<T extends PlannedOperation> = {
   items: readonly T[];
   doc: PMNode;
 };
+
+/**
+ * A paragraph's mark, as a block an operation addresses or removes: no
+ * block position is negative.
+ */
+const markOf = (block: number): number => -block - 1;
+
+/** Below every `contentRank`, so it runs first at its position. */
+const RUN_START_COLLAPSE_RANK = -1;
 
 const orderCanonicalBatch = <T extends PlannedOperation>({
   items,
@@ -551,10 +566,15 @@ const orderCanonicalBatch = <T extends PlannedOperation>({
     // after the batch's deletions of the paragraphs right before it, so it
     // joins the one that stays.
     const run =
-      item.joinsParagraphBefore === true && operation.type === "deleteBlock"
+      (item.joinsParagraphBefore === true || item.retiresRunBreak === true) &&
+      operation.type === "deleteBlock"
         ? firstDeletedBefore(plan.block)
         : undefined;
     if (run !== undefined) return following(run, 1);
+    // A final deletion collapsing a run back to its start runs first at the
+    // paragraph before it, ahead of that paragraph's own deletion.
+    if (item.collapsesRunStart === true)
+      return { ...planned, rank: RUN_START_COLLAPSE_RANK };
     const hasDeletedSplit = deletedSplits.has(plan.block);
     return {
       ...plan.address,
@@ -582,6 +602,9 @@ const orderCanonicalBatch = <T extends PlannedOperation>({
       return { addresses: [], removes: [] };
     if (operation.type === "insertBeforeBlock" && joinedAway.has(plan.block))
       return { addresses: [], removes: [] };
+    // An edit of a paragraph's properties addresses its mark too.
+    if (claim.type === "paragraphProperties")
+      return { addresses: [plan.block, markOf(plan.block)], removes: [] };
     if (claim.type !== "deleteBlock")
       return { addresses: [plan.block], removes: [] };
     const at = doc.resolve(plan.block);
@@ -602,12 +625,26 @@ const orderCanonicalBatch = <T extends PlannedOperation>({
         (other.type === "insertAfterBlock" ||
           (other.type === "insertTable" && other.position !== "before")),
     );
+    const carrier = finalBreakCarrier(before);
     const removes = deletionRemovesBlock({
       endsContainer:
         !appended && paragraphEndsItsContainer(at, paragraph.type.name),
-      carrier: finalBreakCarrier(before).type,
+      carrier: carrier.type,
     });
-    return { addresses: [], removes: removes ? [plan.block] : [] };
+    // Resolved from before it, the deletion retires the break of the
+    // paragraph the batch keeps there: a property edit of that paragraph
+    // runs first, as one at a time.
+    const takesCarrierMark =
+      carrier.type === "kept" &&
+      plan.address.type === "content" &&
+      plan.address.position < plan.block;
+    return {
+      addresses: [],
+      removes: [
+        ...(removes ? [plan.block] : []),
+        ...(takesCarrierMark ? [markOf(carrier.paragraph)] : []),
+      ],
+    };
   };
   const runs = groupInsertionRuns(
     orderBatchOperations(items, address),
@@ -709,6 +746,25 @@ type PreparedOperation = {
    * insertion the batch order runs first may have put there.
    */
   joinsParagraphBefore?: true;
+  /**
+   * A direct deletion of a container's final paragraph whose batch deletes
+   * every paragraph before it back to the container's start or another
+   * block (`finalBreakCarrier`'s `runStart`): it runs first there, while the
+   * paragraph before it stands, and joins into it, which keeps its identity
+   * and properties; that paragraph's own deletion follows.
+   */
+  collapsesRunStart?: true;
+  /**
+   * A tracked deletion of a container's final paragraph whose batch deletes
+   * the paragraphs right before it, a kept one before them: it runs after
+   * their deletions, so it retires the break before them.
+   */
+  retiresRunBreak?: true;
+  /**
+   * A direct deletion of a paragraph that another paragraph follows, which
+   * the batch may delete first: then it deletes a final paragraph as it runs.
+   */
+  mayEndContainer?: true;
   /**
    * The paragraph whose stated properties a block insertion copies, and the
    * paragraphs it inserts from a given copy. The batch runs in its execution
@@ -1386,6 +1442,130 @@ const deletionIntentsAsItRuns = (
       return intent;
     return { ...intent, blockId: before.paragraph.paraId };
   });
+};
+
+/**
+ * A direct paragraph deletion as it runs in `document`: a paragraph the
+ * batch's earlier operations left last in its container is deleted as a
+ * final one is. It loses its words and joins the paragraph before it, which
+ * keeps its identity and properties; with none before it, it only loses its
+ * words, as the container keeps a paragraph.
+ */
+const finalDeletionIntentsAsItRuns = (
+  document: Document,
+  story: OpStory,
+  intents: readonly EditorIntent[],
+): readonly EditorIntent[] => {
+  const [deletion, ...rest] = intents;
+  if (
+    deletion?.type !== "deleteParagraphs" ||
+    deletion.move === true ||
+    rest.length > 0 ||
+    deletion.blockIds.length !== 1
+  )
+    return intents;
+  const blockId = deletion.blockIds.at(0);
+  const body = findStoryBody(document, story);
+  if (blockId === undefined || body === undefined) return intents;
+  const locations = storyParagraphs(body);
+  const at = locations.findIndex(
+    ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(blockId),
+  );
+  const here = locations[at];
+  if (here === undefined) return intents;
+  const list = blockListAt(body.content, here.list);
+  if (here.index !== list.length - 1) return intents;
+  const length = paragraphLength(here.paragraph);
+  const cleared: EditorIntent[] =
+    length === 0
+      ? []
+      : [
+          {
+            type: "replaceText",
+            from: { story, blockId, offset: 0 },
+            to: { story, blockId, offset: length },
+            text: "",
+          },
+        ];
+  const before = list[here.index - 1];
+  if (before?.type !== "paragraph" || before.paraId === undefined)
+    return cleared;
+  return [
+    ...cleared,
+    {
+      type: "joinParagraphs",
+      story,
+      blockId: before.paraId,
+      nextBlockId: blockId,
+      survivor: SPLIT_HALVES.FIRST,
+    },
+  ];
+};
+
+type FormattingIntentsAsItRunsOptions = {
+  document: Document;
+  story: OpStory;
+  /** Each paragraph the batch joined away, to the one it now lives in. */
+  survivorOf: ReadonlyMap<string, string>;
+  intents: readonly EditorIntent[];
+};
+
+/**
+ * Paragraph property edits bound to the paragraph as the batch stands when
+ * they run: one an earlier operation joined away, such as the first half of
+ * a split whose retraction joins it to the second, is edited in the
+ * paragraph that now holds it.
+ */
+const formattingIntentsAsItRuns = ({
+  document,
+  story,
+  survivorOf,
+  intents,
+}: FormattingIntentsAsItRunsOptions): readonly EditorIntent[] => {
+  if (survivorOf.size === 0) return intents;
+  const body = findStoryBody(document, story);
+  if (body === undefined) return intents;
+  const present = new Set(
+    storyParagraphs(body).map(({ paragraph }) => idKey(paragraph.paraId ?? "")),
+  );
+  // The paragraph's start, in the paragraph that now holds it.
+  const bound = (at: TextPosition): TextPosition => {
+    const survivor = survivorOf.get(idKey(at.blockId));
+    return survivor === undefined || present.has(idKey(at.blockId))
+      ? at
+      : { story: at.story, blockId: survivor, offset: 0 };
+  };
+  return intents.map((intent) => {
+    switch (intent.type) {
+      case "formatParagraph":
+        return { ...intent, at: bound(intent.at) };
+      case "setList":
+        return {
+          ...intent,
+          items: intent.items.map((item) => ({ ...item, at: bound(item.at) })),
+        };
+      default:
+        return intent;
+    }
+  });
+};
+
+/** Whether the paragraph a join names after the first is gone from `document`. */
+const joinTargetIsGone = (
+  document: Document,
+  story: OpStory,
+  intents: readonly EditorIntent[],
+): boolean => {
+  const join = intents.find(
+    (intent): intent is Extract<EditorIntent, { type: "joinParagraphs" }> =>
+      intent.type === "joinParagraphs",
+  );
+  const body = findStoryBody(document, story);
+  if (join === undefined || body === undefined) return false;
+  const key = idKey(join.nextBlockId);
+  return !storyParagraphs(body).some(
+    ({ paragraph }) => idKey(paragraph.paraId ?? "") === key,
+  );
 };
 
 /**
@@ -2518,6 +2698,8 @@ type ResolveBlockDeletionOptions = {
    * one, which then stands between them when this deletion runs.
    */
   previousGainsFollower: boolean;
+  /** The run of paragraphs right before this one the batch deletes. */
+  deletedRun: FinalBreakCarrier<unknown>["type"];
   refusal: (
     reason: FolioAIEditSkipReason,
     message?: string,
@@ -2567,6 +2749,7 @@ const compilePublicIntents = ({
 }: CompilePublicIntentsOptions) => {
   const ops: DocumentOp[] = [];
   const revisions: number[] = [];
+  const absorbed: ParagraphAbsorption[] = [];
   // A split's new half takes the id allocated here, not the one it resolved
   // with: a later intent naming that half names the allocated one.
   const allocated = new Map<string, string>();
@@ -2636,10 +2819,18 @@ const compilePublicIntents = ({
     document = applied.value.document;
     ops.push(...compiled.value.ops);
     revisions.push(...applied.value.revisions);
+    absorbed.push(...(applied.value.touched.absorbed ?? []));
     for (const id of applied.value.revisions)
       nextRevisionId = Math.max(nextRevisionId, id + 1);
   }
-  return Result.ok({ document, ops, revisions, nextRevisionId, allocations });
+  return Result.ok({
+    document,
+    ops,
+    revisions,
+    nextRevisionId,
+    allocations,
+    absorbed,
+  });
 };
 
 const CanonicalPublicOperationResolutionErrorBase: TaggedErrorClass<"CanonicalPublicOperationResolutionError"> =
@@ -2813,6 +3004,44 @@ type BesideDeletions = {
   tables: { after: ReadonlySet<string>; before: ReadonlySet<string> };
   /** The blocks the batch puts a paragraph after. */
   paragraphsAfter: ReadonlySet<string>;
+};
+
+type DeletedRunBeforeOptions = {
+  doc: PMNode;
+  /** Where the content of the paragraph whose run this is starts. */
+  paragraphStart: number;
+  besideDeletions: BesideDeletions;
+};
+
+/**
+ * The paragraphs right before the one starting at `paragraphStart` that the
+ * batch deletes, putting nothing beside them, as `finalBreakCarrier` reads
+ * them: `kept` when a paragraph the batch keeps precedes them, `runStart`
+ * when they reach back to the container's start or another block, `none`
+ * when the batch keeps the paragraph right before it.
+ */
+const deletedRunBefore = ({
+  doc,
+  paragraphStart,
+  besideDeletions,
+}: DeletedRunBeforeOptions): FinalBreakCarrier<unknown>["type"] => {
+  const at = doc.resolve(paragraphStart - 1);
+  let deleted = 0;
+  for (let index = at.index() - 1; index >= 0; index--) {
+    const previous = at.parent.child(index);
+    if (previous.type.name !== "paragraph") break;
+    const id: unknown = previous.attrs["paraId"];
+    if (
+      typeof id !== "string" ||
+      !besideDeletions.deleted.has(id) ||
+      besideDeletions.insertedBeside.has(id) ||
+      besideDeletions.tables.after.has(id) ||
+      besideDeletions.tables.before.has(id)
+    )
+      return deleted === 0 ? "none" : "kept";
+    deleted += 1;
+  }
+  return deleted === 0 ? "none" : "runStart";
 };
 
 /** The ids of the paragraphs `block` holds, at any depth. */
@@ -3373,6 +3602,12 @@ export class CanonicalPublicOperations {
       message,
       refusal,
     });
+    /**
+     * The paragraph each paragraph an earlier operation of the batch joined
+     * away now lives in: an edit of its properties edits that one, as it
+     * does one at a time after that operation.
+     */
+    const survivorOf = new Map<string, string>();
     // Preparation owns no session state: even comments and lock refusals are
     // facts until the batch chooses this attempt.
     const prepareOperation = ({
@@ -3386,17 +3621,32 @@ export class CanonicalPublicOperations {
       commentAllocation: admittedComment,
     }: PrepareOperationOptions) => {
       const { operation } = resolvedOperation;
-      const inserting = insertionIntentsAsItRuns({
+      const inserting = formattingIntentsAsItRuns({
         document: sourceDocument,
         story,
-        resolvedOperation,
+        survivorOf,
+        intents: insertionIntentsAsItRuns({
+          document: sourceDocument,
+          story,
+          resolvedOperation,
+        }),
       });
-      const deleting =
+      const rebound =
         resolvedOperation.joinsParagraphBefore === true
           ? deletionIntentsAsItRuns(sourceDocument, story, inserting)
           : inserting;
+      const deleting =
+        resolvedOperation.mayEndContainer === true
+          ? finalDeletionIntentsAsItRuns(sourceDocument, story, rebound)
+          : rebound;
+      // Tracked, a merge follows its paragraph only once an earlier
+      // operation took the one it named, as retracting a split joins the
+      // split's halves under the second's id.
       const joining =
-        operation.type === "mergeBlockWithNext" && batch.mode === "direct"
+        operation.type === "mergeBlockWithNext" &&
+        (batch.mode === "direct" ||
+          (batch.mode === "tracked-changes" &&
+            joinTargetIsGone(sourceDocument, story, deleting)))
           ? mergeIntentsAsItRuns(sourceDocument, story, deleting)
           : deleting;
       if (joining === undefined)
@@ -3704,6 +3954,7 @@ export class CanonicalPublicOperations {
           (commentId ?? -1) + 1,
         ),
         revisionIds: compiled.value.revisions,
+        absorbed: compiled.value.absorbed,
         commentId,
         suggestionId,
         allocations: compiled.value.allocations,
@@ -3721,6 +3972,11 @@ export class CanonicalPublicOperations {
           refusals.set(operation.id, prepared.refusal);
         skip(operation.id, prepared.reason, prepared.message);
         return;
+      }
+      for (const { absorbed, survivor } of prepared.absorbed) {
+        for (const [gone, kept] of survivorOf)
+          if (kept === idKey(absorbed)) survivorOf.set(gone, idKey(survivor));
+        survivorOf.set(idKey(absorbed), idKey(survivor));
       }
       const { commentId, suggestionId, revisionIds } = prepared;
       normalizations.push(...adjustments);
@@ -4234,6 +4490,7 @@ export class CanonicalPublicOperations {
     gainsFollower,
     followsInsertedTable,
     previousGainsFollower,
+    deletedRun,
     refusal,
   }: ResolveBlockDeletionOptions) {
     // A direct deletion leaves no text for a comment to cover, as the default
@@ -4343,6 +4600,10 @@ export class CanonicalPublicOperations {
         ...(after === null && !gainsFollower
           ? {}
           : { removesParagraphBeforeBlock: true }),
+        // A paragraph follows it now; the batch may delete that one first.
+        ...(!tracked && next !== undefined && !gainsFollower
+          ? { mayEndContainer: true as const }
+          : {}),
       });
     }
     let range: { from: number; to: number };
@@ -4378,16 +4639,26 @@ export class CanonicalPublicOperations {
       const intents: EditorIntent[] = [...cleared.value];
       // The paragraph before it takes over: before a table or a content
       // control the deleted paragraph's mark goes with it, and the one before
-      // it keeps its identity (`directJoinSurvivor`).
+      // it keeps its identity (`directJoinSurvivor`). Collapsing a run the
+      // batch deletes back to its start, it joins the run's paragraph before
+      // it, which keeps its identity and properties until its own deletion.
+      const collapsesRunStart =
+        previous !== undefined && deletedRun === "runStart";
       if (previous !== undefined)
         intents.push({
           type: "joinParagraphs",
           story: projectionStory,
           blockId: previous.blockId,
           nextBlockId: paragraph.blockId,
-          survivor: directJoinSurvivor({ laterMarkRemains: after === null }),
+          survivor: collapsesRunStart
+            ? SPLIT_HALVES.FIRST
+            : directJoinSurvivor({ laterMarkRemains: after === null }),
         });
       if (intents.length === 0) return refusal("noopOperation");
+      let joinOrder = {};
+      if (collapsesRunStart) joinOrder = { collapsesRunStart: true as const };
+      else if (previous !== undefined && previousGainsFollower)
+        joinOrder = { joinsParagraphBefore: true as const };
       return Result.ok({
         type: "plain" as const,
         operation,
@@ -4395,9 +4666,24 @@ export class CanonicalPublicOperations {
         normalizations: [],
         from: previous === undefined ? paragraph.start : previous.start,
         to: end,
-        ...(previous === undefined || !previousGainsFollower
-          ? {}
-          : { joinsParagraphBefore: true as const }),
+        ...joinOrder,
+      });
+    } else if (previous !== undefined && deletedRun === "kept") {
+      // The batch deletes the paragraphs right before it, a kept one before
+      // them: it runs after their deletions and retires the break before
+      // them, as it does one at a time once they are pending.
+      return tracking({
+        intents: [
+          {
+            type: "deleteParagraphs",
+            story: projectionStory,
+            blockIds: [paragraph.blockId],
+          },
+        ],
+        normalizations: [],
+        from: previous.start,
+        to: end,
+        retiresRunBreak: true,
       });
     } else if (previous !== undefined) {
       // Paragraphs a pending deletion already takes whole, words and mark,
@@ -4742,6 +5028,13 @@ export class CanonicalPublicOperations {
           typeof previousId === "string" &&
           (besideDeletions.paragraphsAfter.has(previousId) ||
             besideDeletions.deleted.has(previousId)),
+        deletedRun: followed
+          ? "none"
+          : deletedRunBefore({
+              doc: state.doc,
+              paragraphStart: paragraph.start,
+              besideDeletions,
+            }),
         refusal,
       });
       return gainsFollower && deleted.isOk()
