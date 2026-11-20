@@ -11,7 +11,7 @@ import {
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const RULE_ID = "folio-story-paragraphs(through-text-boxes)";
 const FIXTURE_CASES = {
-  "story-paragraphs.direct.invalid.ts": [RULE_ID, RULE_ID],
+  "story-paragraphs.direct.invalid.ts": [RULE_ID, RULE_ID, RULE_ID],
   "story-paragraphs.aliases.invalid.ts": [
     RULE_ID,
     RULE_ID,

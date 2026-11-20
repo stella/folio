@@ -1,8 +1,9 @@
 /**
  * A canonical session names a text box's paragraphs through the story drawing
- * the box. `storyParagraphs` lists a story's own paragraphs and none in its
- * text boxes, so canonical session code that looks a paragraph up by it misses
- * every box paragraph. It reads them through `paragraphsThroughTextBoxes`.
+ * the box. `storyParagraphs` and `locateParagraphInBlockList` read a story's
+ * own paragraphs and none in its text boxes, so canonical session code that
+ * looks a paragraph up by them misses every box paragraph. It reads them
+ * through `paragraphsThroughTextBoxes` and `locateParagraphThroughTextBoxes`.
  */
 type AstNode = Record<string, unknown> & { type: string };
 type RuleContext = {
@@ -12,7 +13,10 @@ type RuleContext = {
   }) => void;
 };
 
-const BANNED = "storyParagraphs";
+const BANNED: ReadonlySet<string> = new Set([
+  "storyParagraphs",
+  "locateParagraphInBlockList",
+]);
 
 const isNode = (value: unknown): value is AstNode =>
   typeof value === "object" &&
@@ -36,30 +40,31 @@ export default {
         type: "problem",
         messages: {
           throughTextBoxes:
-            "Canonical session code reads a story's paragraphs through paragraphsThroughTextBoxes; storyParagraphs misses the paragraphs of its text boxes.",
+            "Canonical session code reads a story's paragraphs through paragraphsThroughTextBoxes or locateParagraphThroughTextBoxes; storyParagraphs and locateParagraphInBlockList miss the paragraphs of its text boxes.",
         },
       },
       create(context: RuleContext) {
         return {
           // A named import, renamed or not.
           ImportSpecifier: (node: AstNode) => {
-            if (nameOf(node.imported) === BANNED)
+            if (BANNED.has(nameOf(node.imported) ?? ""))
               context.report({ node, messageId: "throughTextBoxes" });
           },
           // A re-export hands it on to the same code.
           ExportSpecifier: (node: AstNode) => {
-            if (nameOf(node.local) === BANNED)
+            if (BANNED.has(nameOf(node.local) ?? ""))
               context.report({ node, messageId: "throughTextBoxes" });
           },
           // A namespace or dynamic import read by name.
           MemberExpression: (node: AstNode) => {
             const property = node.property;
             if (
-              (node.computed !== true && nameOf(property) === BANNED) ||
+              (node.computed !== true && BANNED.has(nameOf(property) ?? "")) ||
               (node.computed === true &&
                 isNode(property) &&
                 property.type === "Literal" &&
-                property.value === BANNED)
+                typeof property.value === "string" &&
+                BANNED.has(property.value))
             )
               context.report({ node, messageId: "throughTextBoxes" });
           },
@@ -69,7 +74,7 @@ export default {
             if (
               isNode(parent) &&
               parent.type === "ObjectPattern" &&
-              nameOf(node.key) === BANNED
+              BANNED.has(nameOf(node.key) ?? "")
             )
               context.report({ node, messageId: "throughTextBoxes" });
           },

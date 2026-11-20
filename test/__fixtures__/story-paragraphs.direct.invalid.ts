@@ -9,3 +9,5 @@ export const direct = (document: Document) =>
 
 export const renamed = (document: Document) =>
   ownParagraphs(document.package.document);
+
+export { locateParagraphInBlockList } from "@stll/docx-core/ops";

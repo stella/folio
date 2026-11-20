@@ -10,3 +10,6 @@ export const located = (document: Document, blockId: string) =>
     .paragraphsThroughTextBoxes(document, OP_STORIES.MAIN)
     .find(({ paragraph }) => paragraph.paraId === blockId);
 
+
+export const locatedWithSiblings = (document: Document, blockId: string) =>
+  ops.locateParagraphThroughTextBoxes(document, OP_STORIES.MAIN, blockId);
