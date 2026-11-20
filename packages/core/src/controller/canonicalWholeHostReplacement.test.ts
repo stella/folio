@@ -254,7 +254,7 @@ for (const boundary of [
   for (const mode of boundary === "pending-host-mark"
     ? (["suggesting"] as const)
     : (["editing", "suggesting"] as const))
-    test(`${mode}/${boundary}: unproven comment-host ownership refuses with all state unchanged`, async () => {
+    test(`${mode}/${boundary}: ${mode === "editing" && boundary === "surviving-host-comment" ? "typing over every word of the surviving host's comment takes it" : "unproven comment-host ownership refuses with all state unchanged"}`, async () => {
       setSystemTime(new Date(DATE));
       let document = await fixture();
       const first = document.package.document.content.at(0);
@@ -356,6 +356,29 @@ for (const boundary of [
         text: "xyz",
         semantic: "typing",
       });
+      if (mode === "editing" && boundary === "surviving-host-comment") {
+        // The selection takes every word of the surviving host's comment
+        // too, so the direct edit takes the comment with them, as it takes
+        // the hosts' own ranged threads; point threads keep their places.
+        state = publishCanonicalProjection({
+          session,
+          state,
+          commit: result.unwrap(),
+        }).unwrap().state;
+        expect(state.doc.textContent).toBe("xyz");
+        expect(
+          session.document.package.document.comments?.map(({ id }) => id),
+        ).toEqual([3, 20, 120]);
+        const undo = session.prepareUndo(state).unwrap();
+        state = publishCanonicalProjection({
+          session,
+          state,
+          commit: undo,
+        }).unwrap().state;
+        expect(session.document).toStrictEqual(before);
+        off();
+        return;
+      }
       expect(result.isErr()).toBe(true);
       if (result.isErr())
         expect(result.error.ground).toEqual({
