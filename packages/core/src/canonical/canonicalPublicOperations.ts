@@ -60,10 +60,7 @@ import {
   SUGGESTED_SUPPORTED_OPERATION_TYPES,
 } from "../ai-edits/apply";
 import { BatchClaims } from "../ai-edits/batch-claims";
-import {
-  splitsGraphemeCluster,
-  splitsSurrogatePair,
-} from "../ai-edits/character-boundaries";
+import { describeCharacterSplit } from "../ai-edits/character-boundaries";
 import {
   buildCleanBlockText,
   resolveCleanTextRange,
@@ -3001,8 +2998,17 @@ export class CanonicalPublicOperations {
       );
       return true;
     };
-    const overlapsResolved = (candidate: ReturnType<typeof planned>) =>
-      claims.conflictOf(candidate.plan.claim) !== null;
+    /** Skip a candidate an earlier operation of the batch already claims. */
+    const skipsOverlap = (candidate: ReturnType<typeof planned>): boolean => {
+      const claimedBy = claims.conflictOf(candidate.plan.claim);
+      if (claimedBy === null) return false;
+      skip(
+        candidate.operation.id,
+        "overlappingOperation",
+        `operation ${JSON.stringify(claimedBy)}, earlier in this batch, already claims its target.`,
+      );
+      return true;
+    };
     const admit = (candidate: ReturnType<typeof planned>) => {
       claims.add(candidate.operation.id, candidate.plan.claim);
       resolved.push(candidate);
@@ -3082,10 +3088,7 @@ export class CanonicalPublicOperations {
       }
       const candidate = planned(compiled.value);
       if (refusesExistingRevision(candidate)) continue;
-      if (overlapsResolved(candidate)) {
-        skip(operation.id, "overlappingOperation");
-        continue;
-      }
+      if (skipsOverlap(candidate)) continue;
       admit(candidate);
     }
     // An operation resolved beside a deleted paragraph that ends its run
@@ -3131,10 +3134,7 @@ export class CanonicalPublicOperations {
       }
       const candidate = planned(alone.value);
       if (refusesExistingRevision(candidate)) continue;
-      if (overlapsResolved(candidate)) {
-        skip(operation.id, "overlappingOperation");
-        continue;
-      }
+      if (skipsOverlap(candidate)) continue;
       admit(candidate);
     }
     // A move id names one relocation, a move only when it reaches exactly one
@@ -4681,14 +4681,13 @@ export class CanonicalPublicOperations {
         return unreachable;
       }
     }
-    if (
-      [start, end].some(
-        (offset) =>
-          splitsSurrogatePair(clean.text, offset) ||
-          splitsGraphemeCluster(clean.text, offset),
-      )
-    )
-      return refusal("splitsCharacter");
+    const characterSplit = describeCharacterSplit(
+      clean.text,
+      [start, end],
+      "grapheme",
+    );
+    if (characterSplit !== null)
+      return refusal("splitsCharacter", characterSplit);
     // A note reference is not text: a replacement rewrites the prose around
     // the references its range holds, each kept in place, as the shared
     // segmentation pairs them. A comment or formatting covers whole
