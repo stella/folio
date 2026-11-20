@@ -11,8 +11,23 @@ import {
 setDefaultTimeout(propertyTestTimeout(5_000));
 
 const segment = fc.stringMatching(/^[\w@.-]{1,12}$/u);
-const replayCommand: fc.Arbitrary<ReplayCommand> = fc
-  .record(
+// A digest names the case a path leads to: it is written only beside one.
+const pathAndDigest = fc.oneof(
+  fc.constant({ path: null }),
+  fc.record(
+    {
+      path: fc
+        .array(fc.nat({ max: 999 }), { minLength: 1, maxLength: 12 })
+        .map((steps) => steps.join(":")),
+      digest: fc.stringMatching(/^[0-9a-f]{8}$/u),
+    },
+    { requiredKeys: ["path"] },
+  ),
+);
+// A line with no test file names no package and no test either.
+const target = fc.oneof(
+  fc.constant({ dir: "" }),
+  fc.record(
     {
       dir: fc.oneof(
         fc.constant(""),
@@ -22,27 +37,20 @@ const replayCommand: fc.Arbitrary<ReplayCommand> = fc
         .array(segment, { minLength: 1, maxLength: 4 })
         .map((parts) => `${parts.join("/")}.test.ts`),
       pattern: fc.string({ maxLength: 40 }),
-      seed: fc.integer(),
-      path: fc.option(
-        fc
-          .array(fc.nat({ max: 999 }), { minLength: 1, maxLength: 12 })
-          .map((steps) => steps.join(":")),
-        { nil: null },
-      ),
-      digest: fc.stringMatching(/^[0-9a-f]{8}$/u),
-      factor: fc.constantFrom(1, 4, 10, 2.5),
     },
-    { requiredKeys: ["dir", "seed", "path", "factor"] },
+    { requiredKeys: ["dir", "file"] },
+  ),
+);
+const replayCommand: fc.Arbitrary<ReplayCommand> = fc
+  .tuple(
+    fc.record({
+      seed: fc.integer(),
+      factor: fc.constantFrom(1, 4, 10, 2.5),
+    }),
+    pathAndDigest,
+    target,
   )
-  // A digest names the case a path leads to: it is written only beside one.
-  .map((command) => (command.path === null ? omitDigest(command) : command))
-  // A line with no test file names no package either.
-  .map((command) =>
-    command.file === undefined ? { ...omitPattern(command), dir: "" } : command,
-  );
-
-const omitDigest = ({ digest: _digest, ...rest }: ReplayCommand) => rest;
-const omitPattern = ({ pattern: _pattern, ...rest }: ReplayCommand) => rest;
+  .map(([run, replay, where]) => Object.assign({}, run, replay, where));
 
 test("a replay line reads back as the replay it was written from", () => {
   assertProperty(
