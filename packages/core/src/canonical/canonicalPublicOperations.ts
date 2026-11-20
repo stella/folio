@@ -470,11 +470,14 @@ const orderCanonicalBatch = <T extends PlannedOperation>({
   items,
   doc,
 }: CanonicalBatchOrderOptions<T>): T[] => {
-  const deleted = new Set(
-    items.flatMap(({ operation, plan }) =>
-      operation.type === "deleteBlock" ? [plan.block] : [],
+  const deletionOf = new Map(
+    items.flatMap((item) =>
+      item.operation.type === "deleteBlock"
+        ? [[item.plan.block, item] as const]
+        : [],
     ),
   );
+  const deleted = new Set(deletionOf.keys());
   const joinedAway = new Set(
     items.flatMap(({ plan }) =>
       plan.claim.type === "merge" && plan.claim.joinsNow ? [plan.block] : [],
@@ -503,8 +506,21 @@ const orderCanonicalBatch = <T extends PlannedOperation>({
         : [];
     }),
   );
-  const address = ({ operation, plan }: T): BatchOrderAddress => {
+  const address = (item: T): BatchOrderAddress => {
+    const { operation, plan } = item;
     if (plan.address.type !== "content") return plan.address;
+    // A direct merge into a paragraph the batch deletes runs right after
+    // that deletion, joining across it to what then follows.
+    const deletion =
+      plan.claim.type === "merge" && plan.claim.joinsNow
+        ? deletionOf.get(plan.claim.next)
+        : undefined;
+    if (deletion !== undefined) {
+      const after = address(deletion);
+      return after.type === "content"
+        ? { ...plan.address, position: after.position, rank: after.rank + 1 }
+        : plan.address;
+    }
     const hasDeletedSplit = deletedSplits.has(plan.block);
     return {
       ...plan.address,
@@ -1335,6 +1351,65 @@ const deletionIntentsAsItRuns = (
     )
       return intent;
     return { ...intent, blockId: before.paragraph.paraId };
+  });
+};
+
+/**
+ * A direct merge's join bound to the paragraph after the first one in
+ * `document`, the batch as it stands when the merge runs: a paragraph the
+ * batch deleted first is no longer there, so the merge joins across it to
+ * the paragraph that now follows, as merging after that deletion does.
+ * `undefined` when no paragraph follows any more.
+ */
+const mergeIntentsAsItRuns = (
+  document: Document,
+  story: OpStory,
+  intents: readonly EditorIntent[],
+): readonly EditorIntent[] | undefined => {
+  const join = intents.find(
+    (intent): intent is Extract<EditorIntent, { type: "joinParagraphs" }> =>
+      intent.type === "joinParagraphs",
+  );
+  const body = findStoryBody(document, story);
+  if (join === undefined || body === undefined) return intents;
+  const locations = storyParagraphs(body);
+  const key = idKey(join.blockId);
+  const at = locations.findIndex(
+    ({ paragraph }) => idKey(paragraph.paraId ?? "") === key,
+  );
+  const here = locations[at];
+  const next = locations[at + 1];
+  const follows =
+    here !== undefined &&
+    next !== undefined &&
+    here.index + 1 === next.index &&
+    JSON.stringify(here.list) === JSON.stringify(next.list);
+  const nextId = follows ? next.paragraph.paraId : undefined;
+  if (nextId === undefined) return undefined;
+  const was = idKey(join.nextBlockId);
+  if (idKey(nextId) === was) return intents;
+  return intents.map((intent) => {
+    switch (intent.type) {
+      case "joinParagraphs":
+        return idKey(intent.nextBlockId) === was
+          ? { ...intent, nextBlockId: nextId }
+          : intent;
+      case "formatParagraph":
+        return idKey(intent.at.blockId) === was
+          ? { ...intent, at: { ...intent.at, blockId: nextId } }
+          : intent;
+      case "setList":
+        return {
+          ...intent,
+          items: intent.items.map((item) =>
+            idKey(item.at.blockId) === was
+              ? { ...item, at: { ...item.at, blockId: nextId } }
+              : item,
+          ),
+        };
+      default:
+        return intent;
+    }
   });
 };
 
@@ -3271,10 +3346,20 @@ export class CanonicalPublicOperations {
         story,
         resolvedOperation,
       });
-      const intents =
+      const deleting =
         resolvedOperation.joinsParagraphBefore === true
           ? deletionIntentsAsItRuns(sourceDocument, story, inserting)
           : inserting;
+      const intents =
+        operation.type === "mergeBlockWithNext" && batch.mode === "direct"
+          ? mergeIntentsAsItRuns(sourceDocument, story, deleting)
+          : deleting;
+      if (intents === undefined)
+        return declined({
+          reason: "missingBlock",
+          message:
+            "No paragraph follows the paragraph to join once the batch's deletions are made.",
+        });
       const livePropertyRefusal = batchPropertyRefusal({
         document: sourceDocument,
         story,
@@ -5015,6 +5100,7 @@ export class CanonicalPublicOperations {
       const separator = followedOnlyByDeletedParagraphs(
         projection.value.doc,
         paragraph.start - 1 + paragraph.node.nodeSize,
+        besideDeletions.deleted,
       )
         ? ""
         : (operation.separator ?? "");
