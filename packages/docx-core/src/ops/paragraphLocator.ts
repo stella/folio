@@ -173,24 +173,45 @@ const placed = (
       };
 };
 
-/**
- * The paragraph of a story body that `blockId` names, compared as hex, as
- * the first of `storyParagraphs(body)` carrying it.
- */
+/** The first paragraph of a story body that `blockId` names, compared as hex. */
 export const findStoryParagraph = (
   body: DocumentBody,
   blockId: string,
-): ParagraphLocation | undefined => {
+): ParagraphLocation | undefined =>
+  findInStoryOrder({ body, blockId, order: "first" });
+
+/** The last holder of a nonempty id, for a planner that kept the last match. */
+export const findLastStoryParagraph = (
+  body: DocumentBody,
+  blockId: string,
+): ParagraphLocation | undefined =>
+  findInStoryOrder({ body, blockId, order: "last" });
+
+type FindStoryParagraphOptions = {
+  body: DocumentBody;
+  blockId: string;
+  order: "first" | "last";
+};
+
+const findInStoryOrder = ({
+  body,
+  blockId,
+  order,
+}: FindStoryParagraphOptions): ParagraphLocation | undefined => {
   const key = idKey(blockId);
   const held = holdersIn(indexOf(body.content), key);
   if (held.length === 0) return undefined;
   const [block] = held;
   const located = block === undefined ? undefined : locationsIn(block).get(key);
-  // A repeated id is found as a walk in document order finds it.
-  if (held.length > 1 || block === undefined || located?.length !== 1)
-    return storyParagraphs(body).find(
-      ({ paragraph }) => idKey(paragraph.paraId ?? "") === key,
-    );
+  // A repeated id is found in physical story order.
+  if (held.length > 1 || block === undefined || located?.length !== 1) {
+    const locations = storyParagraphs(body);
+    const matches = ({ paragraph }: ParagraphLocation) =>
+      idKey(paragraph.paraId ?? "") === key;
+    return order === "first"
+      ? locations.find(matches)
+      : locations.findLast(matches);
+  }
   const [location] = located;
   return location === undefined
     ? undefined
