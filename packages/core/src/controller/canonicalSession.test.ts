@@ -809,11 +809,12 @@ describe("canonical session", () => {
     expect(session.captureSaveSnapshot().structure).toBe("changed");
   });
   test.each([
-    [OP_STORIES.MAIN],
-    [{ kind: "header", rId: "rIdHeader1" }],
+    [OP_STORIES.MAIN, "changed"],
+    // The save writes a header part whole, so the body splice still holds.
+    [{ kind: "header", rId: "rIdHeader1" }, "stable"],
   ] as const)(
-    "block insertion in %s changes the save structure and undoes exactly",
-    (story) => {
+    "block insertion in %o leaves the save structure %s and undoes exactly",
+    (story, structure) => {
       const source = seed("Body");
       source.package.headers = new Map([
         [
@@ -843,7 +844,7 @@ describe("canonical session", () => {
         .unwrap();
       expect(session.captureSaveSnapshot().structure).toBe("stable");
       const inserted = accept(state, commit);
-      expect(session.captureSaveSnapshot().structure).toBe("changed");
+      expect(session.captureSaveSnapshot().structure).toBe(structure);
       accept(inserted, session.prepareUndo(inserted).unwrap());
       expect(session.document).toStrictEqual(original);
     },
@@ -1701,7 +1702,7 @@ describe("canonical session", () => {
     ).toEqual(["paragraph"]);
   });
 
-  test("activation refuses list paragraphs inside an unsupported block before normalization", () => {
+  test("activation refuses a document before normalizing its list paragraphs", () => {
     const paragraph: Paragraph = {
       type: "paragraph",
       paraId: "34567890",
@@ -1711,21 +1712,30 @@ describe("canonical session", () => {
       ],
     };
     const document = seed("Body");
-    // Custom XML around blocks has no canonical projection yet; refusing it
-    // must leave the list paragraph inside it unnormalized.
-    document.package.document.content.push({
-      type: "blockCustomXml",
-      openingXml: '<w:customXml w:element="clause">',
-      closingXml: "</w:customXml>",
-      content: [paragraph],
-    });
+    // An unstructured field character has no canonical projection; refusing
+    // it must leave the list paragraph before it unnormalized.
+    document.package.document.content.push(
+      {
+        type: "blockCustomXml",
+        openingXml: '<w:customXml w:element="clause">',
+        closingXml: "</w:customXml>",
+        content: [paragraph],
+      },
+      {
+        type: "paragraph",
+        paraId: "45678901",
+        content: [
+          { type: "run", content: [{ type: "fieldChar", charType: "begin" }] },
+        ],
+      },
+    );
     const original = structuredClone(document);
     const result = createCanonicalSession(document);
     expect(result.isErr()).toBe(true);
     if (result.isErr()) {
       expect(result.error).toBeInstanceOf(CanonicalSessionError);
       expect(result.error.message).toBe(
-        "Canonical sessions currently require paragraphs, tables and supported inline atoms.",
+        "Canonical editing cannot preserve unstructured field instructions; a structured field is required.",
       );
     }
     expect(document).toStrictEqual(original);
@@ -2790,7 +2800,7 @@ test.each([
   },
 );
 
-test("a header text edit changes the save structure while comment edits keep the splice path", () => {
+test("a header text edit keeps the splice path, which writes the header part whole", () => {
   const document = seed("ab");
   document.package.headers = new Map([
     [
@@ -2831,5 +2841,5 @@ test("a header text edit changes the save structure while comment edits keep the
     ])
     .unwrap();
   edit.publish().unwrap();
-  expect(session.captureSaveSnapshot().structure).toBe("changed");
+  expect(session.captureSaveSnapshot().structure).toBe("stable");
 });

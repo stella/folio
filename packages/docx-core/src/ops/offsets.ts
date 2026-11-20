@@ -309,6 +309,30 @@ export const contentWidth = (items: readonly ParagraphContent[]): number => {
 export const paragraphLength = (paragraph: Paragraph): number =>
   contentWidth(paragraph.content);
 
+/** A comment reference and the offset of the unit it takes. */
+export type CommentReferenceOffset = { id: number; offset: number };
+
+/** Where each comment reference of a paragraph stands, in document order. */
+export const commentReferenceOffsets = (
+  paragraph: Paragraph,
+): CommentReferenceOffset[] => {
+  const references: CommentReferenceOffset[] = [];
+  let offset = 0;
+  const walk = (items: readonly ParagraphContent[]): void => {
+    for (const item of items) {
+      if (isInlineContainer(item)) {
+        walk(childrenOf(item));
+        continue;
+      }
+      if (item.type === "commentReference")
+        references.push({ id: item.id, offset });
+      offset += inlineWidth(item);
+    }
+  };
+  walk(paragraph.content);
+  return references;
+};
+
 /** The character a unit that is not run text stands for in {@link paragraphLogicalText}. */
 export const OBJECT_REPLACEMENT_CHARACTER = "￼";
 

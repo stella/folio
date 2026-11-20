@@ -31,7 +31,11 @@ editor maps its selection and history without its own coordinates.
 A pending batch that does not rebase over a sequenced one, or that the
 authority rejected, is dropped with a notice; the pending batches after it
 rebase as if it had never been made, over its inverse first, so only a batch
-that edits what the dropped one put there is dropped with it. When a
+that edits what the dropped one put there is dropped with it. A submitted
+batch that does not rebase is withheld instead: the document stops showing
+it, the authority's rejection drops it with a notice, and its sequencing
+brings it back as a foreign batch, so no batch is both dropped and
+sequenced. When a
 sequenced batch cannot be carried past a kept pending one, the later pending
 batches cross that one's inverse, the sequenced batch and its rebased self.
 

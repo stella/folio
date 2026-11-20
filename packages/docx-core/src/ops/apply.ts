@@ -95,7 +95,6 @@ import { equalForStaleness, structurallyEqual } from "./equality";
 import { resolveGap, type ZeroWidthDefault } from "./gaps";
 import { freshenIdentities, rebindRetainedIdentities } from "./identity";
 import {
-  collides,
   countIds,
   countKeys,
   IDENTITY_SPACES,
@@ -104,7 +103,7 @@ import {
   isParaId,
   type KeyMembership,
   packageIdentityKeyIndex,
-  packageParagraphIds,
+  packageParagraphIdIndex,
   packageReservedKeyIndex,
   paragraphIdsIn,
   slotKey,
@@ -546,6 +545,30 @@ const identitiesOutside = (
   return { has: (key) => index.count(key) > (inside.get(key) ?? 0) };
 };
 
+type ParagraphIdCollisionOptions = {
+  document: Document;
+  incoming: readonly string[];
+  removed?: unknown;
+};
+
+const paragraphIdsCollide = ({
+  document,
+  incoming,
+  removed,
+}: ParagraphIdCollisionOptions): boolean => {
+  if (incoming.length === 0) return false;
+  const index = packageParagraphIdIndex(document.package);
+  const removedCounts = countIds(paragraphIdsIn(removed));
+  const seen = new Set<string>();
+  for (const id of incoming) {
+    const key = idKey(id);
+    if (seen.has(key) || index.count(key) > (removedCounts.get(key) ?? 0))
+      return true;
+    seen.add(key);
+  }
+  return false;
+};
+
 type Commit = {
   document: Document;
   op: DocumentOp;
@@ -933,10 +956,7 @@ const insertContent = (document: Document, op: InsertContentOp): Applied => {
     );
   }
   const incoming = paragraphIdsIn(slice.content);
-  if (
-    incoming.length > 0 &&
-    collides(countIds(packageParagraphIds(document.package)), incoming)
-  ) {
+  if (paragraphIdsCollide({ document, incoming })) {
     return refuse(
       op,
       DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
@@ -1929,9 +1949,7 @@ const splitBlock = (document: Document, op: SplitBlockOp): Applied => {
       `${op.newBlockId} is not a paragraph id.`,
     );
   }
-  if (
-    collides(countIds(packageParagraphIds(document.package)), [op.newBlockId])
-  ) {
+  if (packageParagraphIdIndex(document.package).has(idKey(op.newBlockId))) {
     return refuse(
       op,
       DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
@@ -2577,11 +2595,13 @@ const replaceBlocks = (document: Document, op: ReplaceBlocksOp): Applied => {
       "A replacement keeps every section break where it is.",
     );
   }
-  const remaining = countIds(packageParagraphIds(document.package));
-  for (const id of paragraphIdsIn(before)) {
-    remaining.set(idKey(id), (remaining.get(idKey(id)) ?? 1) - 1);
-  }
-  if (collides(remaining, paragraphIdsIn(op.blocks))) {
+  if (
+    paragraphIdsCollide({
+      document,
+      incoming: paragraphIdsIn(op.blocks),
+      removed: before,
+    })
+  ) {
     return refuse(
       op,
       DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
@@ -2856,11 +2876,13 @@ const replaceInline = (document: Document, op: ReplaceInlineOp): Applied => {
   if (structurallyEqual(content, paragraph.content)) {
     return unchanged(document);
   }
-  const remaining = countIds(packageParagraphIds(document.package));
-  for (const id of paragraphIdsIn(paragraph.content)) {
-    remaining.set(idKey(id), (remaining.get(idKey(id)) ?? 1) - 1);
-  }
-  if (collides(remaining, paragraphIdsIn(content))) {
+  if (
+    paragraphIdsCollide({
+      document,
+      incoming: paragraphIdsIn(content),
+      removed: paragraph.content,
+    })
+  ) {
     return refuse(
       op,
       DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,

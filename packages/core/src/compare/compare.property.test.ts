@@ -24,6 +24,7 @@ import {
 } from "../../../../test/property-testing";
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import type { FolioAIBlock } from "../ai-edits/types";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import { compareDocx } from "./compare";
 import {
   applyEditScript,
@@ -226,8 +227,12 @@ const projectView = async (
 const compareOrThrow = async (
   base: ArrayBuffer,
   target: ArrayBuffer,
+  session?: HeadlessReviewerSession,
 ): Promise<CompareResult> => {
-  const result = await compareDocx(base, target, OPTIONS);
+  const result = await compareDocx(base, target, {
+    ...OPTIONS,
+    ...(session === undefined ? {} : { session }),
+  });
   if (result.isErr()) {
     throw result.error;
   }
@@ -1212,48 +1217,56 @@ describe("compareDocx", () => {
     );
   });
 
-  test("added rows do not make surviving cells report as changed", async () => {
-    // Each inserted row is one structural change. Exact row evidence keeps the
-    // pre-existing rows paired even when several insertions shift their indexes.
-    const base = readFixture("upstream-with-tables.docx");
-    const script: EditScript = [
-      {
-        type: "insertTableRow",
-        blockIndex: 1,
-        cellTexts: ["one", "two", "three"],
-      },
-      {
-        type: "insertTableRow",
-        blockIndex: 3,
-        cellTexts: ["four", "five", "six"],
-      },
-      {
-        type: "insertTableRow",
-        blockIndex: 7,
-        cellTexts: ["seven", "eight", "nine"],
-      },
-      {
-        type: "insertTableRow",
-        blockIndex: 9,
-        cellTexts: ["ten", "eleven", "twelve"],
-      },
-    ];
+  test.each(["legacy", "canonical"] as const)(
+    "added rows do not make surviving cells report as changed (%s)",
+    async (session) => {
+      // Each inserted row is one structural change. Exact row evidence keeps the
+      // pre-existing rows paired even when several insertions shift their indexes.
+      const base = readFixture("upstream-with-tables.docx");
+      const script: EditScript = [
+        {
+          type: "insertTableRow",
+          blockIndex: 1,
+          cellTexts: ["one", "two", "three"],
+        },
+        {
+          type: "insertTableRow",
+          blockIndex: 3,
+          cellTexts: ["four", "five", "six"],
+        },
+        {
+          type: "insertTableRow",
+          blockIndex: 7,
+          cellTexts: ["seven", "eight", "nine"],
+        },
+        {
+          type: "insertTableRow",
+          blockIndex: 9,
+          cellTexts: ["ten", "eleven", "twelve"],
+        },
+      ];
 
-    const scripted = await applyEditScript(base, script);
-    if (scripted.isErr()) {
-      throw scripted.error;
-    }
-    expect(scripted.value.unresolved).toEqual([]);
+      const scripted = await applyEditScript(base, script);
+      if (scripted.isErr()) {
+        throw scripted.error;
+      }
+      expect(scripted.value.unresolved).toEqual([]);
 
-    const { changes } = await compareOrThrow(base, scripted.value.buffer);
-    expect(kindsOf(changes)).toEqual([
-      "table-row-insert",
-      "table-row-insert",
-      "table-row-insert",
-      "table-row-insert",
-    ]);
-    expect(changes).toHaveLength(scripted.value.applied.length);
-  });
+      const { changes, verification } = await compareOrThrow(
+        base,
+        scripted.value.buffer,
+        session,
+      );
+      expect(verification).toEqual({ status: "verified" });
+      expect(kindsOf(changes)).toEqual([
+        "table-row-insert",
+        "table-row-insert",
+        "table-row-insert",
+        "table-row-insert",
+      ]);
+      expect(changes).toHaveLength(scripted.value.applied.length);
+    },
+  );
 
   test("keeps the sole shifted surviving row paired between row insertions and deletions", async () => {
     const base = readFixture("upstream-with-tables.docx");

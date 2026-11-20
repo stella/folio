@@ -55,7 +55,15 @@ const authoredNumberingStates = [
 const historicalRenderingStates = [
   { state: "absent", attrs: {}, model: {} },
   { state: "cleared", attrs: CLEARED_LIST_RENDERING_ATTRS, model: {} },
-  { state: "rendered", attrs: recordedRendering, model: recordedRendering },
+  // The model records the level's template, as a saved record reads back.
+  {
+    state: "rendered",
+    attrs: recordedRendering,
+    model: {
+      ...recordedRendering,
+      listMarker: recordedRendering.listMarkerTemplate,
+    },
+  },
 ];
 
 const samplePropertyChange: ParagraphPropertyChange = {

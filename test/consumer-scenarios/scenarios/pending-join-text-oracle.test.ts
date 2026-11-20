@@ -7,7 +7,12 @@ import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
 } from "@stll/folio-core/server";
 
-import { FIXTURES, openReviewer, packDocument } from "../support/documents.ts";
+import {
+  FIXTURES,
+  openReviewer,
+  packDocument,
+  scenarioEngine,
+} from "../support/documents.ts";
 import {
   assertRequestedOutcome,
   capture,
@@ -514,61 +519,123 @@ const applyUnmodelledStructural = async (
   return { pre, model, after: await capture(reviewer, "tracked-changes") };
 };
 
+// Replacing every word a comment covers takes the comment with them; only
+// the legacy engine hands it to the new words
+// (LEGACY_REPLACEMENT_TAKES_COMMENT), so that kind keeps it there alone.
+const replacementKeepsComment =
+  scenarioEngine() === "legacy"
+    ? false
+    : "LEGACY_REPLACEMENT_TAKES_COMMENT: the comment goes with its replaced words";
+
 for (const kind of [
   "splitBlock",
   "mergeBlockWithNext",
   "replaceBlock",
 ] as const)
-  test(`an applied unmodelled ${kind} expires only its joined destination prediction`, async () => {
+  test(
+    `an applied unmodelled ${kind} expires only its joined destination prediction`,
+    {
+      skip: kind === "replaceBlock" ? replacementKeepsComment : false,
+    },
+    async () => {
+      const { reviewer, second } = await pending();
+      await applyChecked(reviewer, {
+        id: "comment-before-structure",
+        type: "commentOnRange",
+        range: rangeOf(reviewer, second.id, 6, 11),
+        comment: { text: "Keep the structurally moved comment." },
+      });
+      const operations = {
+        splitBlock: {
+          id: "split",
+          type: "splitBlock",
+          blockId: second.id,
+          offset: 6,
+        },
+        mergeBlockWithNext: {
+          id: "merge-next",
+          type: "mergeBlockWithNext",
+          blockId: second.id,
+          separator: " ",
+        },
+        replaceBlock: {
+          id: "rewrite",
+          type: "replaceBlock",
+          blockId: second.id,
+          text: "x",
+        },
+      } as const satisfies Record<typeof kind, Operation>;
+      const result = await applyUnmodelledStructural(
+        reviewer,
+        operations[kind],
+      );
+      const before = result.pre.comments.at(0);
+      const after = result.after.comments.at(0);
+      assert.ok(before && after);
+      assert.equal(after.id, before.id);
+      assert.ok(
+        after.blockId !== before.blockId || after.anchor !== before.anchor,
+        "The actual producer changes the previously predicted owner or quote",
+      );
+      assert.equal(
+        compareComments(
+          result.model,
+          result.pre.comments,
+          [],
+          result.after.rows,
+          result.pre.liveComments,
+          "tracked-changes",
+        ).length,
+        1,
+        "Unmodelled structure cannot excuse losing the comment",
+      );
+    },
+  );
+
+test(
+  "an applied unmodelled replaceBlock retires a joined destination's comment with its words",
+  {
+    skip:
+      scenarioEngine() === "canonical"
+        ? false
+        : "LEGACY_REPLACEMENT_TAKES_COMMENT: the legacy engine hands the comment to the new words",
+  },
+  async () => {
     const { reviewer, second } = await pending();
     await applyChecked(reviewer, {
       id: "comment-before-structure",
       type: "commentOnRange",
       range: rangeOf(reviewer, second.id, 6, 11),
-      comment: { text: "Keep the structurally moved comment." },
+      comment: { text: "Go with the replaced words." },
     });
-    const operations = {
-      splitBlock: {
-        id: "split",
-        type: "splitBlock",
-        blockId: second.id,
-        offset: 6,
+    const commentId = reviewer.getComments().at(0)?.id;
+    assert.ok(commentId !== undefined);
+    const receipt = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "tracked-changes",
+        operations: [
+          {
+            id: "rewrite",
+            type: "replaceBlock",
+            blockId: second.id,
+            text: "x",
+          },
+        ],
       },
-      mergeBlockWithNext: {
-        id: "merge-next",
-        type: "mergeBlockWithNext",
-        blockId: second.id,
-        separator: " ",
-      },
-      replaceBlock: {
-        id: "rewrite",
-        type: "replaceBlock",
-        blockId: second.id,
-        text: "x",
-      },
-    } as const satisfies Record<typeof kind, Operation>;
-    const result = await applyUnmodelledStructural(reviewer, operations[kind]);
-    const before = result.pre.comments.at(0);
-    const after = result.after.comments.at(0);
-    assert.ok(before && after);
-    assert.equal(after.id, before.id);
-    assert.ok(
-      after.blockId !== before.blockId || after.anchor !== before.anchor,
-      "The actual producer changes the previously predicted owner or quote",
+      { undefinedReferences: "refuse" },
     );
-    assert.equal(
-      compareComments(
-        result.model,
-        result.pre.comments,
-        [],
-        result.after.rows,
-        result.pre.liveComments,
-        "tracked-changes",
-      ).length,
-      1,
-      "Unmodelled structure cannot excuse losing the comment",
+    assert.deepEqual(receipt.skipped, []);
+    assert.deepEqual(receipt.receipts.at(0)?.retiredCommentIds, [commentId]);
+    const after = await capture(reviewer, "tracked-changes");
+    assert.deepEqual(after.comments, []);
+    assert.deepEqual(
+      after.liveComments.map(({ id, anchor }) => [id, anchor]),
+      [[commentId, "right"]],
+      "Rejecting the replacement restores the comment, so its thread stays",
     );
-  });
+  },
+);
 
 test("an unmodelled effect in one join cannot weaken another join's owner and quote proof", async () => {
   const reviewer = await openReviewer(

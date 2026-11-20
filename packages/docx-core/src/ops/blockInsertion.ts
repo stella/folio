@@ -22,7 +22,12 @@ import { validateOpsDocument } from "./contract";
 import type { DocumentEdit } from "./edits";
 import { structurallyEqual } from "./equality";
 import { freshenIdentities } from "./identity";
-import { identityKeysIn, idKey, isParaId, packageIdentityKeys } from "./ids";
+import {
+  identityKeysIn,
+  idKey,
+  isParaId,
+  packageIdentityKeyIndex,
+} from "./ids";
 import { asMoveHalf } from "./moves";
 import { paragraphLength } from "./offsets";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
@@ -190,7 +195,7 @@ export const insertBlocks = ({
         before: [],
         after: tracked,
         newIds: op.newIds ?? {},
-        usedElsewhere: () => new Set(packageIdentityKeys(document.package)),
+        usedElsewhere: () => packageIdentityKeyIndex(document.package),
       });
       switch (fresh.kind) {
         case "fresh":
@@ -463,7 +468,7 @@ export const insertBlocks = ({
     before: takesOverMark ? [location.paragraph] : [],
     after: [...anchorBlocks, ...blocks],
     newIds: op.newIds ?? {},
-    usedElsewhere: () => new Set(packageIdentityKeys(document.package)),
+    usedElsewhere: () => packageIdentityKeyIndex(document.package),
   });
   switch (fresh.kind) {
     case "needsIds":

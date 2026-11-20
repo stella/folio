@@ -103,6 +103,9 @@ export const createClient = (
   let headRev = 0;
   let entries: PendingEntry[] = [];
   let inFlight: string | undefined;
+  // The submitted batch that no longer rebases here: the document stops
+  // showing it, but the authority answers it, so only its rejection drops it.
+  let withheld: PendingEntry | undefined;
   const received = new Map<number, SequencedBatch>();
   const history = new Map<number, SequencedBatch>();
   const appliedIds = new Set<string>();
@@ -333,7 +336,12 @@ export const createClient = (
         carried = passed.value.leading;
         fresh = passed.value.fresh;
       } else {
-        drop(entry, passed.error);
+        // The authority may still sequence a submitted batch that does not
+        // rebase here, when its own transform reaches a document it applies
+        // to: it is withheld, not dropped, until the authority answers it.
+        if (forced === undefined && entry.batch.opId === inFlight)
+          withheld = entry;
+        else drop(entry, passed.error);
         // Only identities this batch actually introduced are dependencies;
         // unused allocation pools and preexisting revisions are not targets
         // lost with it. Later dropped batches can introduce dependencies too.
@@ -512,6 +520,11 @@ export const createClient = (
       if (inFlight === rejection.opId) {
         inFlight = undefined;
       }
+      // The document already stopped showing a withheld batch.
+      if (withheld?.batch.opId === rejection.opId) {
+        drop(withheld, rejection.reason);
+        withheld = undefined;
+      }
       return [];
     }
     const entry = entries[index];
@@ -639,13 +652,18 @@ export const createClient = (
       const previousEntries = entries.slice();
       const noticesBefore = notices.length;
       let rebasedRemote: SequencedBatch | undefined;
-      if (localIds.has(next.opId)) {
+      if (inFlight === next.opId) {
+        inFlight = undefined;
+      }
+      if (withheld?.batch.opId === next.opId) {
+        withheld = undefined;
+      }
+      // An own batch still pending is already shown; a withheld one comes
+      // back as a foreign batch does.
+      if (local !== undefined) {
         entries = entries.filter(
           ({ batch: pendingBatch }) => pendingBatch.opId !== next.opId,
         );
-        if (inFlight === next.opId) {
-          inFlight = undefined;
-        }
       } else {
         const rebased = rebaseRun({
           run: entries,
