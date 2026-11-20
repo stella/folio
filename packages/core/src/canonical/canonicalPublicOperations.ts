@@ -190,6 +190,7 @@ import {
   canonicalCommentBody,
   compileCanonicalComments,
 } from "./canonicalComments";
+import { addJoinedParagraphReceipts } from "./canonicalJoinedReceipts";
 import { lockViolationBetween } from "./canonicalLockGuard";
 import {
   type CanonicalCommit,
@@ -4034,28 +4035,11 @@ export class CanonicalPublicOperations {
       }
       return result([], null);
     }
-    // A paragraph the commit joined into another names its survivor, in
-    // every mode: a tracked deletion of one's own inserted paragraph joins it
-    // now, as a direct join does. The operation names either paragraph: the
-    // one it removed, or the one left holding both.
-    for (const { absorbed, survivor } of prepared.value.touched.absorbed ??
-      []) {
-      for (const operation of batch.operations) {
-        const entry = appliedById.get(operation.id);
-        if (
-          entry === undefined ||
-          entry.paragraphIdentity !== undefined ||
-          !("blockId" in operation) ||
-          (operation.blockId !== absorbed && operation.blockId !== survivor)
-        )
-          continue;
-        entry.paragraphIdentity = {
-          type: "joined",
-          blockId: survivor,
-          retiredBlockId: absorbed,
-        };
-      }
-    }
+    addJoinedParagraphReceipts({
+      absorptions: prepared.value.touched.absorbed,
+      operations: batch.operations,
+      applied: appliedById,
+    });
     if (batch.mode === "direct") {
       const finalBody = findStoryBody(prepared.value.document, story);
       if (finalBody === undefined)
