@@ -40,6 +40,7 @@ import {
   introducedIds,
   type LeasedId,
   leasedIdCensus,
+  locateParagraphInBlockList,
   type NewListInstance,
   type OpStory,
   orderAddressingBeforeRemoval,
@@ -1323,25 +1324,17 @@ const deletionIntentsAsItRuns = (
 ): readonly EditorIntent[] => {
   const body = findStoryBody(document, story);
   if (body === undefined) return intents;
-  const locations = storyParagraphs(body);
   return intents.map((intent) => {
     if (intent.type !== "joinParagraphs") return intent;
-    const key = idKey(intent.nextBlockId);
-    const at = locations.findIndex(
-      ({ paragraph }) => idKey(paragraph.paraId ?? "") === key,
-    );
-    const here = locations[at];
-    const before = locations[at - 1];
+    const here = locateParagraphInBlockList(body, intent.nextBlockId);
+    const before = here?.blocks[here.index - 1];
     if (
-      here === undefined ||
-      before === undefined ||
-      before.index + 1 !== here.index ||
-      JSON.stringify(before.list) !== JSON.stringify(here.list) ||
-      before.paragraph.paraId === undefined ||
-      idKey(before.paragraph.paraId) === idKey(intent.blockId)
+      before?.type !== "paragraph" ||
+      before.paraId === undefined ||
+      idKey(before.paraId) === idKey(intent.blockId)
     )
       return intent;
-    return { ...intent, blockId: before.paragraph.paraId };
+    return { ...intent, blockId: before.paraId };
   });
 };
 
@@ -1366,31 +1359,19 @@ const insertionIntentsAsItRuns = ({
   if (inheritsFrom === undefined) return intents;
   const body = findStoryBody(document, story);
   if (body === undefined) return intents;
-  const locations = storyParagraphs(body);
-  const key = idKey(inheritsFrom.blockId);
-  let at = locations.findIndex(
-    ({ paragraph }) => idKey(paragraph.paraId ?? "") === key,
-  );
-  if (at === -1) return intents;
-  // A join the batch made of the paragraph is pending now: the joined
-  // paragraph has the properties of the paragraph the join leaves, as an
-  // insertion beside a join already pending copies them.
-  if (!inheritsFrom.markDeleted && !inheritsFrom.followsAnchor)
-    for (;;) {
-      const here = locations[at];
-      const next = locations[at + 1];
-      if (
-        here === undefined ||
-        next === undefined ||
-        !isDeletedPPrMark(here.paragraph.pPrMark) ||
-        next.index !== here.index + 1 ||
-        JSON.stringify(next.list) !== JSON.stringify(here.list)
-      )
-        break;
-      at += 1;
+  const at = locateParagraphInBlockList(body, inheritsFrom.blockId);
+  if (at === undefined) return intents;
+  let source = at.paragraph;
+  // A pending deletion takes its formatting from the surviving paragraph in
+  // this block list. A table or wrapper ends the chain.
+  if (!inheritsFrom.markDeleted && !inheritsFrom.followsAnchor) {
+    let index = at.index;
+    while (isDeletedPPrMark(source.pPrMark)) {
+      const next = at.blocks[++index];
+      if (next?.type !== "paragraph") break;
+      source = next;
     }
-  const source = locations[at]?.paragraph;
-  if (source === undefined) return intents;
+  }
   const copied: EditorIntent[] = [];
   for (const intent of intents)
     copied.push(
