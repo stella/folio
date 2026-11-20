@@ -1,6 +1,7 @@
 import type { BlockContent, DocumentBody } from "../model/document";
 import { type ParagraphLocation, storyParagraphs } from "./blocks";
 import { idKey } from "./ids";
+import { changedListBounds } from "./listSplice";
 import { recentValues } from "./recentValues";
 
 /**
@@ -97,23 +98,9 @@ const derivedFrom = (
   base: IndexNode,
   blocks: readonly BlockContent[],
 ): IndexNode | undefined => {
-  let prefix = 0;
-  while (
-    prefix < blocks.length &&
-    prefix < previous.length &&
-    blocks[prefix] === previous[prefix]
-  )
-    prefix += 1;
-  let suffix = 0;
-  while (
-    suffix < blocks.length - prefix &&
-    suffix < previous.length - prefix &&
-    blocks[blocks.length - 1 - suffix] ===
-      previous[previous.length - 1 - suffix]
-  )
-    suffix += 1;
-  const removed = previous.slice(prefix, previous.length - suffix);
-  const added = blocks.slice(prefix, blocks.length - suffix);
+  const { start, previousEnd, end } = changedListBounds(previous, blocks);
+  const removed = previous.slice(start, previousEnd);
+  const added = blocks.slice(start, end);
   // A list that shares little with the base is counted in full.
   if (removed.length + added.length > blocks.length / 2 + 8) return undefined;
   const holders = new Map<string, BlockContent[]>();

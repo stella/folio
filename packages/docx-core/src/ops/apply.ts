@@ -149,6 +149,7 @@ import {
   withNestedRecords,
   zeroWidthLeavesAt,
 } from "./leaves";
+import { changedListBounds } from "./listSplice";
 import { cloneModel } from "./modelClone";
 import { replaceNoteParts } from "./noteLifecycle";
 import {
@@ -3450,23 +3451,7 @@ const changedRevisionBlocks = (
 ): BlockContent[] => {
   if (previous === current) return [];
   if (previous === undefined) return current;
-  let start = 0;
-  let previousEnd = previous.length;
-  let end = current.length;
-  while (
-    start < previousEnd &&
-    start < end &&
-    previous[start] === current[start]
-  )
-    start += 1;
-  while (
-    previousEnd > start &&
-    end > start &&
-    previous[previousEnd - 1] === current[end - 1]
-  ) {
-    previousEnd -= 1;
-    end -= 1;
-  }
+  const { start, end } = changedListBounds(previous, current);
   return current.slice(start, end);
 };
 

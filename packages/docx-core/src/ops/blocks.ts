@@ -1,3 +1,5 @@
+import { spliceItems } from "./listSplice";
+
 const SectionViewErrorBase: TaggedErrorClass<"SectionViewError"> =
   TaggedError("SectionViewError");
 
@@ -669,11 +671,9 @@ export const replaceParagraphs = ({
   restoreSections,
 }: ReplaceParagraphsOptions): Result<Document, SectionViewError> => {
   const body = storyBody(document, story);
-  const content = updateBlockList(body.content, at.list, (blocks) => {
-    const out = [...blocks];
-    out.splice(at.index, count, ...replacement);
-    return out;
-  });
+  const content = updateBlockList(body.content, at.list, (blocks) =>
+    spliceItems({ items: blocks, start: at.index, count, replacement }),
+  );
   const nextBody: DocumentBody = { ...body, content };
   const onlySection =
     body.sections?.length === 1 ? body.sections.at(0) : undefined;
