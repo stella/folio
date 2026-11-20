@@ -74,7 +74,8 @@ type MatchedRepresentation = {
   targetBlockId: string;
 };
 
-type PlannedChange = MatchedRepresentation & {
+/** A matched stretch whose run formatting or link the comparison changes. */
+export type PlannedInlineProvenance = MatchedRepresentation & {
   formatting: TextFormatting;
   previousFormatting: TextFormatting;
   inserted: boolean;
@@ -89,6 +90,19 @@ const isDeleted = (carrier: RunFormattingCarrier): boolean =>
 
 const hyperlinkOf = (node: PMNode): Mark | undefined =>
   node.marks.find(({ type }) => type.name === "hyperlink");
+
+/**
+ * The link a run carries, as the model writes a new one: its destination and
+ * tooltip, which are what a comparison compares.
+ */
+export const hyperlinkLinkOf = (
+  node: PMNode,
+): { href: string; tooltip?: string } | undefined => {
+  const mark = hyperlinkOf(node);
+  if (!mark) return undefined;
+  const { href, tooltip } = expectHyperlinkMarkAttrs(mark);
+  return tooltip === undefined ? { href } : { href, tooltip };
+};
 
 const hyperlinkIdentity = (node: PMNode): string => {
   const mark = hyperlinkOf(node);
@@ -365,19 +379,28 @@ const changeWithCurrentFormatting = ({
   formatting: TextFormatting;
 }): RunPropertyChange => ({ ...change, currentFormatting: formatting });
 
+export type PlanInlineProvenanceOptions = Omit<
+  InlineProvenanceTargetOptions,
+  "revisionStamp"
+> & { state: EditorState };
+
+export type PlanInlineProvenanceResult =
+  | { status: "planned"; changes: readonly PlannedInlineProvenance[] }
+  | { status: "unalignable" }
+  | { status: "budget-exceeded" };
+
 /**
- * Reconcile direct inline run formatting after the comparison plan has aligned
- * text. It deliberately performs all stream, revision-slot, and range-budget
- * checks before creating a transaction step.
+ * The run formatting and link changes that make the reviewed story's text
+ * read as the revised story's, once the comparison plan has aligned text.
+ * Every stream, revision-slot, and range-budget check runs here, before
+ * anything is written.
  */
-export const matchInlineProvenance = ({
+export const planInlineProvenance = ({
   state,
   targetSnapshot,
-  revisionStamp,
   originalRevisionIdSeed,
-  author,
   maxRanges,
-}: MatchInlineProvenanceOptions): MatchInlineProvenanceResult => {
+}: PlanInlineProvenanceOptions): PlanInlineProvenanceResult => {
   const targetStyleResolver = styleResolverOf(targetSnapshot);
   if (!Number.isSafeInteger(maxRanges) || maxRanges < 0) {
     return { status: "budget-exceeded" };
@@ -401,7 +424,7 @@ export const matchInlineProvenance = ({
 
   const propertyChangeType = state.schema.marks["runPropertyChange"];
   const liveStyleResolver = getDocumentStyleResolver(state);
-  const planned: PlannedChange[] = [];
+  const planned: PlannedInlineProvenance[] = [];
   for (const segment of matched) {
     const liveFormatting = authoredFormattingAt({
       representation: segment.live,
@@ -456,11 +479,34 @@ export const matchInlineProvenance = ({
   if (planned.length > maxRanges) {
     return { status: "budget-exceeded" };
   }
+  return { status: "planned", changes: planned };
+};
 
+/**
+ * Reconcile direct inline run formatting after the comparison plan has aligned
+ * text, as one transaction on the reviewed story's editor state.
+ */
+export const matchInlineProvenance = ({
+  state,
+  targetSnapshot,
+  revisionStamp,
+  originalRevisionIdSeed,
+  author,
+  maxRanges,
+}: MatchInlineProvenanceOptions): MatchInlineProvenanceResult => {
+  const plan = planInlineProvenance({
+    state,
+    targetSnapshot,
+    originalRevisionIdSeed,
+    maxRanges,
+  });
+  if (plan.status !== "planned") return plan;
+  const propertyChangeType = state.schema.marks["runPropertyChange"];
+  const liveStyleResolver = getDocumentStyleResolver(state);
   const transaction = state.tr;
   let nextRevisionId = revisionStamp.idSeed;
   const changedTargetBlockIds = new Set<string>();
-  for (const change of planned.toReversed()) {
+  for (const change of plan.changes.toReversed()) {
     const context = nearestParagraphRunStyleContext(
       change.live.paragraph,
       liveStyleResolver,
@@ -549,7 +595,7 @@ export const matchInlineProvenance = ({
     transaction,
     nextRevisionId,
     changedTargetBlockIds: [...changedTargetBlockIds],
-    rangeCount: planned.length,
+    rangeCount: plan.changes.length,
   };
 };
 

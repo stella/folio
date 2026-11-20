@@ -1739,6 +1739,7 @@ export type GenerateRedlineDocxOptions = {
     baseView?: FolioResolvedReviewedView;
     revisedView?: FolioResolvedReviewedView;
     privacy?: FolioDocumentPrivacyOptions;
+    session?: HeadlessReviewerSession;
 };
 
 // @public
