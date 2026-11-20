@@ -5,11 +5,13 @@ import { MAX_REVISION_ID } from "@stll/docx-core/model";
 import {
   type CopyOriginAncestorList,
   isCopyOriginAncestors,
+  isKeptCut,
 } from "@stll/docx-core/ops";
 
 import { MAX_REVIEW_HISTORY_ATTRIBUTE_LENGTH } from "../reviewHistoryLimits";
 import type {
   Insertion,
+  KeptCut,
   ParagraphMarkChange,
   RecordField,
   RunPropertyChange,
@@ -20,7 +22,14 @@ import { getAttributeByNamespaceUri, type XmlElement } from "./xmlParser";
 const NAMESPACES: ReadonlySet<string> = new Set([
   FOLIO_REVIEW_HISTORY_NAMESPACE,
 ]);
-const VERSION = 1;
+/**
+ * The review history version folio writes. Version 2 adds a kept range
+ * marker's cut (`folio:keptCut`). Version 1 files carry no marker cut and are
+ * read as they are.
+ */
+const VERSION = 2;
+/** Every version the reader understands. */
+const READABLE_VERSIONS: ReadonlySet<unknown> = new Set([1, VERSION]);
 type ResolutionJoins = NonNullable<Insertion["resolutionJoins"]>;
 type DeferredRemoval = NonNullable<ResolutionJoins["deferredRemove"]>[number];
 type BoundaryJoins = NonNullable<RunPropertyChange["boundaryJoins"]>;
@@ -306,7 +315,7 @@ const decodeProvenance = (
     Object.keys(decoded).some((key) => key !== "version" && key !== "value")
   )
     return { status: "dropped", reason: "invalid" };
-  if (decoded["version"] !== VERSION)
+  if (!READABLE_VERSIONS.has(decoded["version"]))
     return { status: "dropped", reason: "unsupportedVersion" };
   const value = decoded["value"];
   if (!valid(value)) return { status: "dropped", reason: "invalid" };
@@ -390,6 +399,13 @@ export const parseCopyOriginAncestors = (
     attribute: "copyOriginAncestors",
     valid: isCopyOriginAncestors,
   });
+/** The cut a kept range marker stands in (`folio:keptCut`). */
+export const parseKeptCut = (node: XmlElement): KeptCut | undefined =>
+  parseAttribute({ node, attribute: "keptCut", valid: isKeptCut });
+export const serializeKeptCut = (
+  value: KeptCut | undefined,
+): string | undefined =>
+  encodeAttribute({ attribute: "keptCut", value, valid: isKeptCut });
 export const serializeResolutionJoins = (
   value: Insertion["resolutionJoins"],
 ): string =>
@@ -555,6 +571,7 @@ const PROVENANCE_VALUE_SHAPES: Readonly<
   [PARAGRAPH_MARK_FIELDS.resolutionJoin.attribute]:
     isEncodedParagraphMarkResolutionJoin,
   copyOriginAncestors: isCopyOriginAncestors,
+  keptCut: isKeptCut,
   splitResolutionJoins: isSplitResolutionPiece,
   [ENCLOSING_ATTRIBUTE]: enclosingHandoffs,
   [PARAGRAPH_MARK_FIELDS.survivor.attribute]: isParagraphMarkSurvivor,
