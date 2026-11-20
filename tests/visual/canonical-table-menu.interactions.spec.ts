@@ -6,6 +6,7 @@ import type { DocxEditorRef } from "../../packages/react/src/components/DocxEdit
 import type {} from "../parity/canonicalBridge";
 import { evaluateCanonicalLoad } from "../parity/canonicalLoadEvaluation";
 import type {} from "../parity/parity-fixture";
+import { PLAYGROUND_PORTS } from "../parity/playgroundHosts";
 
 declare global {
   var __folioPlayground:
@@ -13,10 +14,10 @@ declare global {
 }
 
 const adapters = [
-  { name: "React", port: Number(process.env["FOLIO_PLAYGROUND_PORT"]) || 4200 },
+  { name: "React", port: PLAYGROUND_PORTS.react },
   {
     name: "Vue",
-    port: Number(process.env["FOLIO_PLAYGROUND_VUE_PORT"]) || 4201,
+    port: PLAYGROUND_PORTS.vue,
   },
 ] as const;
 

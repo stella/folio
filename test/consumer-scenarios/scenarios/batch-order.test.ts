@@ -13,12 +13,13 @@ import {
 } from "@stll/folio-core/server";
 
 import {
+  blanksGoingWhole,
   pendingJoinTargets,
   sequentialGroups,
 } from "../support/batch-replay-order.ts";
 import { openReviewer, packDocument } from "../support/documents.ts";
 import { restate } from "../support/metamorphic.ts";
-import type { Row } from "../support/oracle.ts";
+import { markDeletedIds, type Row } from "../support/oracle.ts";
 
 const MODES = ["direct", "tracked-changes"] as const;
 const ORDERS = [
@@ -554,6 +555,7 @@ const compareWithReplay = async (
       mode === "suggested"
         ? new Map()
         : pendingJoinTargets(preRows, joinSources),
+    goWhole: blanksGoingWhole(preRows, joinSources),
   })) {
     const replayed = sequential.applyDocumentOperations(
       {
@@ -864,5 +866,50 @@ test("a block after a paragraph with no words joining one that keeps them replay
       before,
       placed,
     ]);
+  }
+});
+
+test("blocks put on both sides of a paragraph accepting removes whole replay in one gap, as the batch names them", async () => {
+  const source = await openReviewer(
+    await packDocument(fromMarkdown("Alpha.\n\nGone.\n\nSigned.")),
+  );
+  const [alpha, gone, signed] = source.getContent();
+  assert.ok(alpha && gone && signed);
+  source.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "tracked-changes",
+      operations: [{ id: "delete", type: "deleteBlock", blockId: gone.id }],
+    },
+    { undefinedReferences: "refuse" },
+  );
+  const fixture = new Uint8Array(await source.toBuffer());
+  const reopened = await openReviewer(fixture);
+  const rows = reopened.getContent() as Row[];
+  const goWhole = blanksGoingWhole(rows, markDeletedIds(reopened));
+  assert.deepEqual(goWhole, new Set([gone.id]));
+  const after: FolioDocumentOperation = {
+    id: "after",
+    type: "insertAfterBlock",
+    blockId: alpha.id,
+    text: "After.",
+  };
+  const before: FolioDocumentOperation = {
+    id: "before",
+    type: "insertBeforeBlock",
+    blockId: signed.id,
+    text: "Before.",
+  };
+  for (const operations of [
+    [after, before],
+    [before, after],
+  ]) {
+    for (const mode of MODES) {
+      assert.deepEqual(
+        sequentialGroups({ applied: operations, preRows: rows, mode, goWhole }),
+        [operations],
+      );
+      await compareWithReplay(fixture, mode, operations);
+    }
   }
 });

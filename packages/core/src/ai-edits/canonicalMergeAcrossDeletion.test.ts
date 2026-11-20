@@ -122,3 +122,29 @@ test("a direct merge puts its separator at the end of the paragraph its batch ed
     );
   }
 });
+
+// A comment the batch puts in the first paragraph adds its reference there
+// before the merge runs; tracked as directly, the separator follows it, at
+// the paragraph's end.
+test("a merge puts its separator past a comment its batch adds to the paragraph", async () => {
+  const commentAndMerge = (): FolioDocumentOperation[] => [
+    {
+      id: "comment",
+      type: "commentOnBlock",
+      blockId: idOf(0),
+      quote: "Alpha",
+      comment: { text: "Noted." },
+    },
+    {
+      id: "merge",
+      type: "mergeBlockWithNext",
+      blockId: idOf(0),
+      separator: " ",
+    },
+  ];
+  const { texts } = await run("direct", commentAndMerge());
+  expect(texts.at(0)).toBe("Alpha. Beta.");
+  expect(texts).toEqual(
+    (await run("tracked-changes", commentAndMerge())).texts,
+  );
+});

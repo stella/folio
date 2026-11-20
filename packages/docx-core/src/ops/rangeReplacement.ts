@@ -125,6 +125,19 @@ export const rangeEndAfterDeletion = ({
 const containersOf = (span: LeafSpan): readonly InlineNode[] =>
   span.ancestors.filter((ancestor) => ancestor.type !== "run");
 
+/** Whether `span` sits in exactly `containers`. */
+const sameContainers = (
+  span: LeafSpan | undefined,
+  containers: readonly InlineNode[],
+): boolean => {
+  if (span === undefined) return false;
+  const own = containersOf(span);
+  return (
+    own.length === containers.length &&
+    own.every((node, depth) => node === containers[depth])
+  );
+};
+
 /**
  * Where what replaces a range goes among the zero-width leaves at the gap:
  * past the ends of comments the range reached, so the new words never extend
@@ -150,13 +163,19 @@ const pastEndedComments = (
     const end = spans[index];
     if (end === undefined) break;
     const containers = containersOf(end);
-    const next = spans[index + 1];
-    const nextContainers = next === undefined ? [] : containersOf(next);
+    // Further ends in the same containers close them with this one: the leaf
+    // after them decides whether this end closes its container.
+    let ahead = index + 1;
+    while (
+      spans[ahead]?.node.type === "commentRangeEnd" &&
+      sameContainers(spans[ahead], containers)
+    )
+      ahead += 1;
+    const next = spans[ahead];
     const within =
       next === undefined
         ? containers.length === 0
-        : nextContainers.length === containers.length &&
-          nextContainers.every((node, depth) => node === containers[depth]);
+        : sameContainers(next, containers);
     if (!within) break;
     index += 1;
   }

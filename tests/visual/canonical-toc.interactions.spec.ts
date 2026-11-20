@@ -6,6 +6,7 @@ import { createEmptyDocument } from "../../packages/core/src/utils/createDocumen
 import type {} from "../parity/canonicalBridge";
 import type {} from "../parity/canonicalFuzzErrors";
 import { evaluateCanonicalLoad } from "../parity/canonicalLoadEvaluation";
+import { PLAYGROUND_PORTS } from "../parity/playgroundHosts";
 
 const MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
 const snapshot = async (page: Page) => {
@@ -22,11 +23,11 @@ const snapshot = async (page: Page) => {
 for (const { adapter, port } of [
   {
     adapter: "React",
-    port: Number(process.env["FOLIO_PLAYGROUND_PORT"]) || 4200,
+    port: PLAYGROUND_PORTS.react,
   },
   {
     adapter: "Vue",
-    port: Number(process.env["FOLIO_PLAYGROUND_VUE_PORT"]) || 4201,
+    port: PLAYGROUND_PORTS.vue,
   },
 ]) {
   test(`canonical TOC toolbar retains bookmark targets and exact history in ${adapter}`, async ({

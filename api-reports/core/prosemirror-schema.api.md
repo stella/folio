@@ -791,6 +791,7 @@ export type TrackedRevisionAncestor = {
     initials?: string;
     outerWrapperCount: number;
     resolutionJoins?: import__stll_docx_core_model.Insertion["resolutionJoins"];
+    suggestionId?: string;
 };
 
 // @public
