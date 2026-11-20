@@ -1,0 +1,18 @@
+{
+  "block deletion satisfies L1–L7, exact id demand and stale inverses": [
+    {
+      "seed": 1373260833,
+      "path": "93:0",
+      "note": "A tracked deletion of an empty paragraph alone in its container records nothing, as its direct deletion changes nothing, and applies rather than being refused.",
+      "date": "2026-11-20"
+    }
+  ],
+  "independent deletion sequences satisfy batch acceptance, rejection and inverse laws": [
+    {
+      "seed": 1360517356,
+      "path": "51:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
+      "note": "A sequence deleting an empty paragraph alone in its container records nothing for it, as its direct deletion changes nothing, and applies rather than being refused.",
+      "date": "2026-11-20"
+    }
+  ]
+}
