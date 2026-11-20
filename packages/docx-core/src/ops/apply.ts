@@ -2511,17 +2511,21 @@ const validateBlockReplacement: ValidateBlockReplacement = ({
   before,
 }) => {
   if (op.blocks.some(({ paraId }) => paraId === undefined)) {
-    return refuse(
-      op,
-      DOCUMENT_OP_REFUSAL_REASONS.INVALID_BLOCK_ID,
-      "A replacement paragraph has no id.",
+    return Result.err(
+      refusal(
+        op,
+        DOCUMENT_OP_REFUSAL_REASONS.INVALID_BLOCK_ID,
+        "A replacement paragraph has no id.",
+      ),
     );
   }
   if (op.blocks.some(({ content }) => holdsEmptyRecord(content))) {
-    return refuse(
-      op,
-      DOCUMENT_OP_REFUSAL_REASONS.EMPTY_CONTENT,
-      "A replacement paragraph holds an empty run, text node, or revision wrapper.",
+    return Result.err(
+      refusal(
+        op,
+        DOCUMENT_OP_REFUSAL_REASONS.EMPTY_CONTENT,
+        "A replacement paragraph holds an empty run, text node, or revision wrapper.",
+      ),
     );
   }
   // An id only one side has is created by the replacement or by its inverse.
@@ -2532,20 +2536,24 @@ const validateBlockReplacement: ValidateBlockReplacement = ({
     ...before.filter(({ paraId }) => !placed.has(idKey(paraId ?? ""))),
   ];
   if (created.some(({ paraId }) => paraId === undefined || !isParaId(paraId))) {
-    return refuse(
-      op,
-      DOCUMENT_OP_REFUSAL_REASONS.INVALID_BLOCK_ID,
-      "A paragraph the replacement adds or removes has no usable id.",
+    return Result.err(
+      refusal(
+        op,
+        DOCUMENT_OP_REFUSAL_REASONS.INVALID_BLOCK_ID,
+        "A paragraph the replacement adds or removes has no usable id.",
+      ),
     );
   }
   if (
     op.sectionBoundaries !== SECTION_BOUNDARY_POLICIES.REPLACE &&
     !sameSectionBreaks(before, op.blocks)
   ) {
-    return refuse(
-      op,
-      DOCUMENT_OP_REFUSAL_REASONS.SECTION_BOUNDARY,
-      "A replacement keeps every section break where it is.",
+    return Result.err(
+      refusal(
+        op,
+        DOCUMENT_OP_REFUSAL_REASONS.SECTION_BOUNDARY,
+        "A replacement keeps every section break where it is.",
+      ),
     );
   }
   if (
@@ -2555,10 +2563,12 @@ const validateBlockReplacement: ValidateBlockReplacement = ({
       removed: before,
     })
   ) {
-    return refuse(
-      op,
-      DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
-      "A replacement paragraph id is already used in the package.",
+    return Result.err(
+      refusal(
+        op,
+        DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
+        "A replacement paragraph id is already used in the package.",
+      ),
     );
   }
   const outside = identitiesOutside(document, before);
@@ -2567,10 +2577,12 @@ const validateBlockReplacement: ValidateBlockReplacement = ({
     incomingRecords.some((key) => outside.has(key)) ||
     new Set(incomingRecords).size !== incomingRecords.length
   ) {
-    return refuse(
-      op,
-      DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
-      "A replacement carries a revision or content-control id already used in the package.",
+    return Result.err(
+      refusal(
+        op,
+        DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
+        "A replacement carries a revision or content-control id already used in the package.",
+      ),
     );
   }
   return Result.ok(undefined);
