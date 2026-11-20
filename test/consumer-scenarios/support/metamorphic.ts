@@ -44,7 +44,6 @@
 import assert from "node:assert/strict";
 import { inflateRawSync } from "node:zlib";
 
-import { validateDocxPackage } from "@stll/docx-core";
 import { createReviewerBridge } from "@stll/folio-agents";
 import { toMarkdown } from "@stll/folio-core/markdown";
 import {
@@ -71,6 +70,7 @@ import { createRandom, type Random } from "./random.ts";
 import { type Relation, RELATIONS } from "./relation-contract.ts";
 import { assertReviewRoundTrip } from "./review-comparison.ts";
 import { blocksOfStory } from "./targets.ts";
+import { assertSavedPackageValid } from "./validity.ts";
 
 type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
 type Batch = Parameters<Reviewer["applyDocumentOperations"]>[0];
@@ -151,12 +151,7 @@ export const relationSummary = (): string =>
 
 const save = async (reviewer: Reviewer): Promise<Uint8Array> => {
   const bytes = new Uint8Array(await reviewer.toBuffer());
-  const validity = await validateDocxPackage(bytes);
-  assert.equal(
-    validity.valid,
-    true,
-    `Metamorphic saved OOXML invalid: ${validity.valid ? "" : validity.error}`,
-  );
+  await assertSavedPackageValid(bytes, "Metamorphic");
   return bytes;
 };
 
