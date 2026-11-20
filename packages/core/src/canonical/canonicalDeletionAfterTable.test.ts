@@ -3,7 +3,8 @@
  * canonical session: the body's last paragraph after a table keeps its mark
  * and loses its words, whether the table stood there already or the same
  * batch puts it there; a paragraph before a table whose own mark is a pending
- * insertion keeps that mark and loses its words.
+ * insertion keeps that mark and loses its words; so does a paragraph between
+ * two tables, which keeps them apart.
  */
 import { expect, test } from "bun:test";
 
@@ -150,3 +151,72 @@ test("a paragraph before a table whose mark is a pending insertion keeps the mar
   reviewer.rejectAll();
   expect(shape(reviewer)).toEqual(["Opening words.", "[table]", "Closing."]);
 });
+
+test.each([
+  ["direct", "standing"],
+  ["tracked-changes", "standing"],
+  ["direct", "same batch"],
+  ["tracked-changes", "same batch"],
+] as const)(
+  "a paragraph between two tables keeps its mark and loses its words (%s, table before it %s)",
+  async (mode, before) => {
+    const reviewer = await open(
+      fromMarkdown("Opening words.\n\nBetween words.\n\nClosing."),
+    );
+    const [opening, between] = reviewer.snapshot().blocks;
+    if (opening === undefined || between === undefined)
+      throw new Error("the fixture's blocks are missing");
+    const after: FolioDocumentOperation = {
+      id: "after",
+      type: "insertTable",
+      blockId: between.id,
+      rows: ROWS,
+    };
+    const preceding: FolioDocumentOperation = {
+      id: "before",
+      type: "insertTable",
+      blockId: opening.id,
+      rows: ROWS,
+    };
+    const standing = before === "standing" ? [after, preceding] : [after];
+    expect(
+      reviewer.applyDocumentOperations(batch("direct", standing), {
+        undefinedReferences: "refuse",
+      }).skipped,
+    ).toEqual([]);
+    const deleted = reviewer.applyDocumentOperations(
+      batch(mode, [
+        ...(before === "standing" ? [] : [preceding]),
+        { id: "delete", type: "deleteBlock", blockId: between.id },
+      ]),
+      { undefinedReferences: "refuse" },
+    );
+    expect(deleted.skipped).toEqual([]);
+    const pending = await FolioDocxReviewer.fromBuffer(
+      await reviewer.toBuffer(),
+      { author: "Editor", session: "canonical" },
+    );
+    pending.rejectAll();
+    let rejected = ["Opening words.", "[table]", "", "[table]", "Closing."];
+    if (mode === "tracked-changes")
+      rejected =
+        before === "standing"
+          ? [
+              "Opening words.",
+              "[table]",
+              "Between words.",
+              "[table]",
+              "Closing.",
+            ]
+          : ["Opening words.", "Between words.", "[table]", "Closing."];
+    expect(shape(pending)).toEqual(rejected);
+    reviewer.acceptAll();
+    expect(shape(reviewer)).toEqual([
+      "Opening words.",
+      "[table]",
+      "",
+      "[table]",
+      "Closing.",
+    ]);
+  },
+);

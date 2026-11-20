@@ -4289,6 +4289,12 @@ export class CanonicalPublicOperations {
     // takes its words only, and rejecting the insertion later runs them into
     // the table as it would have. A paragraph the insertion added whole goes
     // with it, as the block deletion takes it.
+    // Between two tables, the deletion takes the words and leaves the mark,
+    // as the direct deletion empties the paragraph: accepting it keeps the
+    // tables apart.
+    const betweenTables =
+      after?.type.name === "table" &&
+      (before?.type.name === "table" || followsInsertedTable);
     let holdsOriginalWords = false;
     paragraph.node.descendants((node) => {
       if (
@@ -4304,9 +4310,11 @@ export class CanonicalPublicOperations {
       operation.moveId === undefined &&
       !gainsFollower &&
       after?.type.name === "table" &&
-      isInsertedPPrMark(paragraph.node.attrs["pPrMark"]) &&
-      holdsOriginalWords
+      (betweenTables ||
+        (isInsertedPPrMark(paragraph.node.attrs["pPrMark"]) &&
+          holdsOriginalWords))
     ) {
+      if (paragraph.start === end) return refusal("noopOperation");
       const from = projection.addressAt(paragraph.start);
       const to = projection.addressAt(end);
       if (from.isErr() || to.isErr()) return refusal("unsupportedBlock");
