@@ -27,6 +27,7 @@ import {
   idKey,
   packageIdentityKeyIndex,
   packageIdentityKeys,
+  slotKey,
 } from "./ids";
 import {
   compareGaps,
@@ -617,6 +618,22 @@ type TrackedPlan = {
   ops: DocumentOp[];
 };
 
+type AvailableIdsOptions = {
+  document: Document;
+  space: IdentitySpace;
+  candidates: readonly number[] | undefined;
+};
+
+const availableIds = ({
+  document,
+  space,
+  candidates,
+}: AvailableIdsOptions): number[] => {
+  if (!candidates?.length) return [];
+  const used = packageIdentityKeyIndex(document.package);
+  return candidates.filter((id) => !used.has(slotKey({ space, id })));
+};
+
 /** Shared allocation and simulation for all pieces of one planned edit. */
 export const createTrackedPlan = ({
   document,
@@ -625,10 +642,11 @@ export const createTrackedPlan = ({
   countEveryPiece = false,
   deletionRevision,
 }: TrackedPlanOptions): TrackedPlan => {
-  const used = usedIds(document, IDENTITY_SPACES.REVISION);
-  const pool = [...new Set(newIds?.revision ?? [])].filter(
-    (id) => !used.has(id) && id !== revision.id,
-  );
+  const pool = availableIds({
+    document,
+    space: IDENTITY_SPACES.REVISION,
+    candidates: [...new Set(newIds?.revision)],
+  }).filter((id) => id !== revision.id);
   let taken = 0;
   let remaining = pool.length;
   let stampUsed = false;
@@ -663,8 +681,11 @@ export const createTrackedPlan = ({
         stamp = deletionRevision;
       op = { ...input, revision: { ...stamp, id: stampId } };
     }
-    const controls = usedIds(current, IDENTITY_SPACES.CONTROL);
-    const control = (newIds?.control ?? []).filter((id) => !controls.has(id));
+    const control = availableIds({
+      document: current,
+      space: IDENTITY_SPACES.CONTROL,
+      candidates: newIds?.control,
+    });
     const story = storyOf(input);
     // Most edits take no new id: applied with none, the edit is planned as
     // it is. It took none when it used none of the content-control ids
