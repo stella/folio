@@ -28,6 +28,8 @@ export const FINDINGS = {
     "legacy insertAfterBlock beside an emptied paragraph whose break is pending deletion puts the paragraph after the one the join leaves; it goes right after the emptied paragraph, with its properties, as the canonical session puts it",
   LEGACY_REPLACEMENT_TAKES_COMMENT:
     "legacy replacement hands a comment over the words it replaces to the new words; they go past the end of that comment, which goes with its words, as the canonical session does (support/oracle.ts predicts where that comment goes on the canonical session only)",
+  LEGACY_ACCEPTANCE_KEEPS_JOINED_BLOCKS:
+    "clean Markdown reads the document as the canonical resolution accepts it; the legacy engine's accepted readers keep blocks that resolution joins (the canonical replays of these flows pass)",
 } as const;
 
 export type OpenIssue = keyof typeof OPEN_ISSUES;
@@ -63,7 +65,16 @@ export const KNOWN_FAILING_FLOWS: readonly {
   generation?: "targeted" | "legacy";
   /** Required relation for a finding; the scenario is omitted when disabled. */
   relation?: Relation;
-}[] = [];
+}[] = [
+  {
+    seed: 1430159026,
+    steps: 16,
+    kind: "collisions",
+    finding: "LEGACY_ACCEPTANCE_KEEPS_JOINED_BLOCKS",
+    reason:
+      "paragraphs inserted after a pending merge: the legacy reader keeps a block the canonical acceptance joins",
+  },
+];
 
 /** How each finding fails a scenario, so an expected failure fails for that reason only. */
 type FailureSymptom = RegExp | ((failure: unknown) => boolean);
@@ -93,6 +104,8 @@ export const FINDING_SYMPTOMS: Record<Finding, FailureSymptom> = {
     /the result is not what was asked \(insertAfterBlock\):\s+block texts differ/u,
   LEGACY_REPLACEMENT_TAKES_COMMENT:
     /legacy replacement keeps a comment over the words it replaced/u,
+  LEGACY_ACCEPTANCE_KEEPS_JOINED_BLOCKS:
+    /Markdown contains fewer text blocks than the source reader/u,
 };
 
 /**
@@ -103,6 +116,17 @@ export const KNOWN_FAILING_CHECKED_IN_FLOWS: Readonly<Record<string, Finding>> =
   {
     "issue-1757-paragraph-after-emptied-paragraph-pending-break.json":
       "LEGACY_INSERT_AFTER_EMPTIED_JOIN",
+    "issue-1350-7fe54148e47f13fe.json": "LEGACY_ACCEPTANCE_KEEPS_JOINED_BLOCKS",
+    "issue-1757-merge-across-deleted-note-paragraph-before-inserted-table.json":
+      "LEGACY_ACCEPTANCE_KEEPS_JOINED_BLOCKS",
+    "issue-1757-merge-across-deleted-paragraph-before-a-table.json":
+      "LEGACY_ACCEPTANCE_KEEPS_JOINED_BLOCKS",
+    "issue-1757-merge-across-deleted-paragraph-before-inserted-table.json":
+      "LEGACY_ACCEPTANCE_KEEPS_JOINED_BLOCKS",
+    "issue-1817-insert-beside-a-join-into-a-deleted-list-item.json":
+      "LEGACY_ACCEPTANCE_KEEPS_JOINED_BLOCKS",
+    "issue-2904-merged-numbered-heading-emptied.json":
+      "LEGACY_ACCEPTANCE_KEEPS_JOINED_BLOCKS",
   };
 
 /**
