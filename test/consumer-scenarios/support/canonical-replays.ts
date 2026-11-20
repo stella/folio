@@ -29,20 +29,8 @@ type ReplayGap = {
   symptom: RegExp;
 };
 
-const MARKDOWN_ACCEPTANCE: ReplayGap = {
-  reason: "clean Markdown still resolves with the default engine's acceptance",
-  symptom: /Markdown contains more text blocks than the source reader/u,
-};
-
 /** Checked-in flows the canonical session does not pass yet. */
-export const CANONICAL_REPLAY_GAPS: Readonly<Record<string, ReplayGap>> = {
-  "issue-1350-table-and-paragraph-before-deleted-final.json":
-    MARKDOWN_ACCEPTANCE,
-  "issue-1757-7483271c36812e15.json": MARKDOWN_ACCEPTANCE,
-  "issue-1757-paragraph-before-table-after-pending-join.json":
-    MARKDOWN_ACCEPTANCE,
-  "issue-2904-merged-numbered-heading-emptied.json": MARKDOWN_ACCEPTANCE,
-};
+export const CANONICAL_REPLAY_GAPS: Readonly<Record<string, ReplayGap>> = {};
 
 /**
  * Checked-in flows whose steps act on nothing on the canonical session where
