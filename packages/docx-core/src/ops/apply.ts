@@ -144,6 +144,7 @@ import {
 } from "./leaves";
 import { changedListBounds } from "./listSplice";
 import { cloneModel } from "./modelClone";
+import { deleteNotesWithReferences } from "./noteDeletion";
 import { replaceNoteParts } from "./noteLifecycle";
 import { noteContentWithAutomaticMark, removedNoteStories } from "./noteMarks";
 import { applyNumberingSectionOp } from "./numberingSections";
@@ -2952,12 +2953,26 @@ const dispatchCore = ({ document, op, purpose }: DispatchOptions): Applied => {
 };
 
 /**
- * A direct operation owns the note records made unreachable by its text edit.
+ * A direct operation owns the note records made unreachable by its text edit,
+ * and a tracked one deletes the notes whose last live reference it deletes.
  * Keeping this in dispatch makes the lifecycle edit part of the operation's
  * result, so its inverse and touched-story contract include the removed body.
  */
 const dispatch = ({ document, op, purpose }: DispatchOptions): Applied => {
-  const applied = dispatchCore({ document, op, purpose });
+  const core = dispatchCore({ document, op, purpose });
+  if (core.isErr()) return core;
+  const stamp = stampOf(op);
+  const applied =
+    stamp === undefined
+      ? core
+      : deleteNotesWithReferences({
+          before: document,
+          edit: core.value,
+          op,
+          stamp,
+          applyOps: (current, ops) =>
+            applyDocumentOpsForPurpose({ document: current, ops, purpose }),
+        });
   if (applied.isErr()) return applied;
   if (
     op.type === DOCUMENT_OP_TYPES.ADD_NOTE ||

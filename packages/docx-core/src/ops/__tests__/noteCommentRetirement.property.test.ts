@@ -16,6 +16,9 @@ import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import { DOCUMENT_OP_TYPES, type DocumentOp, OP_STORIES } from "../types";
 
 const revision = { id: 41, author: "Reviewer", date: "2026-11-17T00:00:00Z" };
+const NOTE_IDS = {
+  revision: Array.from({ length: 16 }, (_, index) => 42 + index),
+};
 const expectExact = (document: Document, ops: readonly DocumentOp[]) => {
   const original = structuredClone(document);
   const edit = applyDocumentOps(document, ops).unwrap();
@@ -94,7 +97,8 @@ test(
                     otherKind === "footnote" ? "footnotes" : "endnotes"
                   ]?.at(0),
                 );
-                const tracked = { ...direct, revision };
+                // The note's text goes with its sole reference, under ids of its own.
+                const tracked = { ...direct, revision, newIds: NOTE_IDS };
                 const pending = expectExact(document, [tracked]);
                 expect(pending.package.document.comments).toEqual(
                   document.package.document.comments,

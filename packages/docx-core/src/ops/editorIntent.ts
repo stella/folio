@@ -80,6 +80,11 @@ import {
 } from "./leaves";
 import { cloneModel } from "./modelClone";
 import {
+  noteReferenceKey,
+  noteReferenceKind,
+  noteReferenceSpans,
+} from "./noteMarks";
+import {
   isRangeBoundary,
   paragraphLength,
   paragraphLogicalText,
@@ -109,6 +114,7 @@ import {
 import { groupedDeletionStamp, ownInsertionSlice } from "./revisionGrouping";
 import { runsMergeable } from "./runMerge";
 import { identitySlots } from "./slots";
+import { findStoryBody } from "./stories";
 import { tableEditParagraphDemand } from "./tableEdits";
 import { tableGrid } from "./tableGrid";
 import { locateTableRow, tableRowAnchor } from "./tableLocation";
@@ -478,6 +484,34 @@ const intentEndpoints = (intent: EditorIntentAllocation) => {
 const PARAGRAPH_REVISION_DEMAND = 3;
 const leafRevisionDemand = (ancestorCount: number) => 4 * (1 + ancestorCount);
 
+/**
+ * The ids deleting the notes `paragraphs` refer to takes, where a tracked
+ * deletion takes their last live reference: each note paragraph's mark
+ * and its leaves.
+ */
+const noteDeletionDemand = (
+  document: Document,
+  paragraphs: readonly Paragraph[],
+): number => {
+  const seen = new Set<string>();
+  let demand = 0;
+  for (const paragraph of paragraphs)
+    for (const { node } of noteReferenceSpans(paragraph.content)) {
+      const kind = noteReferenceKind(node);
+      const key = noteReferenceKey(kind, node.id);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const body = findStoryBody(document, { kind, id: node.id });
+      if (body === undefined) continue;
+      for (const { paragraph: noteParagraph } of storyParagraphs(body)) {
+        demand += PARAGRAPH_REVISION_DEMAND;
+        for (const span of leafSpans(noteParagraph.content))
+          demand += leafRevisionDemand(span.ancestors.length);
+      }
+    }
+  return demand;
+};
+
 type AllocationRange = {
   body: ReturnType<typeof storyBody>;
   fromKey: string;
@@ -568,6 +602,10 @@ export const createEditorIntentIdAllocator = ({
         demand += leafRevisionDemand(span.ancestors.length);
       }
     }
+    demand += noteDeletionDemand(
+      document,
+      selected.map(({ paragraph }) => paragraph),
+    );
     const incoming =
       intent.type === "replaceFragment" || intent.type === "moveFragment"
         ? intent.paragraphs
@@ -644,13 +682,18 @@ export const createEditorIntentIdAllocator = ({
         // Each leaf may start its own deletion record where pending
         // revisions already cut the text, as a range deletion counts it.
         demand = 2 + table.rows.length + PARAGRAPH_REVISION_DEMAND;
-        for (const { paragraph } of storyParagraphs({
+        const paragraphs = storyParagraphs({
           content: [{ type: "table", rows: table.rows }],
-        })) {
+        });
+        for (const { paragraph } of paragraphs) {
           demand += PARAGRAPH_REVISION_DEMAND;
           for (const span of leafSpans(paragraph.content))
             demand += leafRevisionDemand(span.ancestors.length);
         }
+        demand += noteDeletionDemand(
+          document,
+          paragraphs.map(({ paragraph }) => paragraph),
+        );
       }
     }
     if (intent.type === "tableRow") {
@@ -665,13 +708,18 @@ export const createEditorIntentIdAllocator = ({
               .unwrapOr(undefined);
       if (row !== undefined) {
         demand = 2 + PARAGRAPH_REVISION_DEMAND;
-        for (const { paragraph } of storyParagraphs({
+        const paragraphs = storyParagraphs({
           content: [{ type: "table", rows: [row] }],
-        })) {
+        });
+        for (const { paragraph } of paragraphs) {
           demand += PARAGRAPH_REVISION_DEMAND;
           for (const span of leafSpans(paragraph.content))
             demand += leafRevisionDemand(span.ancestors.length);
         }
+        demand += noteDeletionDemand(
+          document,
+          paragraphs.map(({ paragraph }) => paragraph),
+        );
       }
     }
     if (intent.type === "table") {

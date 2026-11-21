@@ -145,7 +145,12 @@ describe("a link suggestion over a note reference", () => {
       const [original, copy] = pending;
       if (original === undefined || copy === undefined)
         throw new Error("expected both notes");
-      expect(noteText(copy)).toBe(noteText(original));
+      // The copy holds the note's text; the struck reference's note has it
+      // deleted with the reference.
+      const source = notesOf(document, kind).at(0);
+      if (source === undefined) throw new Error("expected the source note");
+      expect(noteText(copy)).toBe(noteText(source));
+      expect(noteText(original)).toContain('"type":"deletion"');
       const paraIds = applied.document.package.document.content
         .concat(pending.flatMap(({ content }) => content))
         .map((block) => (block.type === "paragraph" ? block.paraId : ""));
