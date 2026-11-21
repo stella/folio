@@ -6,11 +6,14 @@
 
 import type {
   BlockContent,
+  DocumentBody,
   KeptCut,
   KeptCutPiece,
+  Paragraph,
   ParagraphContent,
   RecordField,
 } from "../model/document";
+import { blockListAt, storyParagraphs } from "./blocks";
 import {
   asParagraphContent,
   childNodes,
@@ -623,4 +626,37 @@ export const settleKeptCuts = (
     start = end;
   }
   return out ?? nodes;
+};
+
+/** A paragraph whose kept cuts settle, with its settled content. */
+type SettledParagraph = {
+  paragraph: Paragraph;
+  content: readonly InlineNode[];
+};
+
+/**
+ * The paragraphs of `body` whose kept cuts settle, each with its settled
+ * content. A pending change of the mark between two paragraphs stands at
+ * both edges it faces: resolving it can join them, so the markers at those
+ * edges wait on it, as they wait on whatever stands beside them once the
+ * paragraphs are joined first.
+ */
+export const settledParagraphKeptCuts = (
+  body: DocumentBody,
+): SettledParagraph[] => {
+  const out: SettledParagraph[] = [];
+  for (const { list, index, paragraph } of storyParagraphs(body)) {
+    const siblings = blockListAt(body.content, list);
+    const previous = index === 0 ? undefined : siblings[index - 1];
+    const content = settleKeptCuts(paragraph.content, {
+      outside: {
+        start: previous?.type === "paragraph" && previous.pPrMark !== undefined,
+        end:
+          paragraph.pPrMark !== undefined &&
+          siblings[index + 1]?.type === "paragraph",
+      },
+    });
+    if (content !== paragraph.content) out.push({ paragraph, content });
+  }
+  return out;
 };
