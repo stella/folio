@@ -132,8 +132,6 @@ describe("host-persisted pending suggestions", () => {
           fc.boolean(),
           fc.stringMatching(/^[A-Za-z]{3,12}$/u),
           async (session, kind, statesIds, word) => {
-            // Canonical has no suggested signature table yet.
-            fc.pre(session === "legacy" || kind === "paragraph");
             const document = createEmptyDocument();
             document.package.document.content = [
               {
