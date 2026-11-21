@@ -68,13 +68,14 @@ export type XmlConformance = "ooxml" | "well-formed" | "tolerant";
 export type XmlReferenceHandling = "decode" | "raw";
 
 /**
- * What a reference to an entity no declaration defines does. `refuse` is
- * XML 1.0: without a DTD only the five built-ins exist. `accept` admits any
- * reference that is syntactically one (`&Name;`, `&#digits;`, `&#xhex;`) and
- * keeps it as written, for checks that must accept what earlier releases
- * accepted. Not used by the tolerant reader, which accepts every reference.
+ * The character references a well-formed read admits. `xml` is XML 1.0
+ * (§4.1: characters §2.2 admits, `&#x` in lower case); `syntactic` admits
+ * every reference written as one (`&#digits;`, `&#xhex;`) whatever character
+ * it names, keeping one XML refuses as written, for checks that pass the
+ * references the engines read. An entity no declaration defines is refused
+ * either way: without a DTD only the five built-ins exist.
  */
-export type XmlUndeclaredEntities = "refuse" | "accept";
+export type XmlCharacterReferences = "xml" | "syntactic";
 
 const XmlReadErrorBase: TaggedErrorClass<"XmlReadError"> =
   TaggedError("XmlReadError");
@@ -170,7 +171,7 @@ type StreamingXmlOptions = {
   inheritedNamespaceScope?: XmlNamespaceScope;
   conformance?: XmlConformance;
   references?: XmlReferenceHandling;
-  undeclaredEntities?: XmlUndeclaredEntities;
+  characterReferences?: XmlCharacterReferences;
   instructions?: "skip" | "retain";
 } & (
   | {
@@ -203,13 +204,13 @@ type ReadRules = {
 type ReadPolicy = {
   conformance: XmlConformance;
   references: XmlReferenceHandling;
-  undeclaredEntities: XmlUndeclaredEntities;
+  characterReferences: XmlCharacterReferences;
 };
 
 const valueReaderFor = ({
   conformance,
   references,
-  undeclaredEntities,
+  characterReferences,
 }: ReadPolicy): ValueReader => {
   if (conformance === "tolerant") {
     return references === "decode"
@@ -223,8 +224,8 @@ const valueReaderFor = ({
             : null;
   }
   let decodeReference = decodeOoxmlReference;
-  if (undeclaredEntities === "accept") {
-    decodeReference = decodeReferenceKeepingUndeclared;
+  if (characterReferences === "syntactic") {
+    decodeReference = decodeSyntacticReference;
   } else if (conformance === "well-formed") {
     decodeReference = decodeWellFormedReference;
   }
@@ -254,16 +255,16 @@ const parseStreamingXmlInternal = (
   const rules =
     options.conformance === undefined &&
     options.references === undefined &&
-    options.undeclaredEntities === undefined
+    options.characterReferences === undefined
       ? (defaultRules ??= readRulesFor({
           conformance: "ooxml",
           references: "decode",
-          undeclaredEntities: "refuse",
+          characterReferences: "xml",
         }))
       : readRulesFor({
           conformance: options.conformance ?? "ooxml",
           references: options.references ?? "decode",
-          undeclaredEntities: options.undeclaredEntities ?? "refuse",
+          characterReferences: options.characterReferences ?? "xml",
         });
   const wellFormed = rules.conformance === "well-formed";
   const retainInstructions = options.instructions === "retain";
@@ -517,8 +518,8 @@ export type XmlReadOptions = {
   conformance: XmlConformance;
   /** Defaults to `"decode"`. */
   references?: XmlReferenceHandling;
-  /** Defaults to `"refuse"`. */
-  undeclaredEntities?: XmlUndeclaredEntities;
+  /** For a well-formed read; defaults to `"xml"`. */
+  characterReferences?: XmlCharacterReferences;
   /**
    * `"retain"` keeps processing instructions, the XML declaration included,
    * as `{ type: "instruction", name, instruction }` nodes; comments are always
@@ -535,7 +536,7 @@ export const readXml = (
   {
     conformance,
     references = "decode",
-    undeclaredEntities = "refuse",
+    characterReferences = "xml",
     instructions = "skip",
     inheritedNamespaceScope = EMPTY_NAMESPACE_SCOPE,
   }: XmlReadOptions,
@@ -545,7 +546,7 @@ export const readXml = (
     mode: "tree",
     conformance,
     references,
-    undeclaredEntities,
+    characterReferences,
     instructions,
     inheritedNamespaceScope,
   });
@@ -593,14 +594,14 @@ export const undeclaredXmlEntityError = (
  */
 export const wellFormedXmlIssue = (
   xml: string,
-  undeclaredEntities: XmlUndeclaredEntities = "refuse",
+  characterReferences: XmlCharacterReferences = "xml",
 ): string | null => {
   const parsed = parseStreamingXmlInternal({
     xml,
     mode: "verdict",
     conformance: "well-formed",
     references: "raw",
-    undeclaredEntities,
+    characterReferences,
   });
   return parsed.status === "parsed" ? null : parsed.reason;
 };
@@ -1201,19 +1202,16 @@ const decodeWellFormedReference: ReferenceDecoder = (entity) => {
 };
 
 /**
- * A reference that is syntactically one: decoded when XML defines it, kept as
- * written when it names an entity no declaration defines.
+ * A character reference that is syntactically one: decoded when XML defines
+ * it, kept as written otherwise. A named reference is only a built-in.
  */
-const decodeReferenceKeepingUndeclared: ReferenceDecoder = (entity) => {
+const decodeSyntacticReference: ReferenceDecoder = (entity) => {
   const decoded = decodeWellFormedReference(entity);
-  if (decoded !== null) return decoded;
-  if (entity.charCodeAt(0) === 35) {
-    const reference = parseCharacterReference(entity);
-    return reference === null || reference.hexMarker === "X"
-      ? null
-      : `&${entity};`;
-  }
-  return XML_NAME.test(entity) ? `&${entity};` : null;
+  if (decoded !== null || entity.charCodeAt(0) !== 35) return decoded;
+  const reference = parseCharacterReference(entity);
+  return reference === null || reference.hexMarker === "X"
+    ? null
+    : `&${entity};`;
 };
 
 type UndeclaredReference = { index: number; name: string };

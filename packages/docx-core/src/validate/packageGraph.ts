@@ -36,7 +36,7 @@ type PackageElement = {
 const elements = (xml: string): PackageElement[] | null => {
   const read = readXml(xml, {
     conformance: "well-formed",
-    undeclaredEntities: "accept",
+    characterReferences: "syntactic",
   });
   if (read.status === "rejected") return null;
   const output: PackageElement[] = [];

@@ -78,6 +78,8 @@ const perPart = (
 /** Markup no XML reader accepts, which the earlier validator did not look for. */
 const NOT_WELL_FORMED = "not well-formed XML 1.0";
 const DEPTH = "nesting is bounded at the reader's resource limit";
+/** An entity no declaration defines, which neither engine opens. */
+const UNDECLARED_ENTITY = "an undeclared entity is not well-formed XML";
 
 describe("validateSchemaAttributes", () => {
   const refused = refusedWhen((value) => value !== null);
@@ -104,6 +106,9 @@ describe("validateSchemaAttributes", () => {
         "double hyphen in comment": NOT_WELL_FORMED,
         "declaration inside the root": NOT_WELL_FORMED,
         "depth 101": DEPTH,
+        "HTML entity in text": UNDECLARED_ENTITY,
+        "HTML entity in attribute": UNDECLARED_ENTITY,
+        "unknown entity": UNDECLARED_ENTITY,
       },
     });
   });
@@ -141,6 +146,10 @@ describe("validatePackageGraph", () => {
         "double hyphen in comment": NOT_WELL_FORMED,
         "declaration inside the root": NOT_WELL_FORMED,
         "depth 101": DEPTH,
+        "HTML entity in text": UNDECLARED_ENTITY,
+        "HTML entity in attribute": UNDECLARED_ENTITY,
+        "unknown entity": UNDECLARED_ENTITY,
+        "numeric identifier with HTML entity": UNDECLARED_ENTITY,
       },
     });
   });

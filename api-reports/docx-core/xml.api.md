@@ -59,7 +59,10 @@ export class UndeclaredXmlEntityError extends UndeclaredXmlEntityErrorBase<{
 export const undeclaredXmlEntityError: (part: string, xml: string) => UndeclaredXmlEntityError | null;
 
 // @public
-export const wellFormedXmlIssue: (xml: string, undeclaredEntities?: XmlUndeclaredEntities) => string | null;
+export const wellFormedXmlIssue: (xml: string, characterReferences?: XmlCharacterReferences) => string | null;
+
+// @public
+export type XmlCharacterReferences = "xml" | "syntactic";
 
 // @public
 export type XmlConformance = "ooxml" | "well-formed" | "tolerant";
@@ -98,7 +101,7 @@ export class XmlReadError extends XmlReadErrorBase<{
 export type XmlReadOptions = {
     conformance: XmlConformance;
     references?: XmlReferenceHandling;
-    undeclaredEntities?: XmlUndeclaredEntities;
+    characterReferences?: XmlCharacterReferences;
     instructions?: "skip" | "retain";
     inheritedNamespaceScope?: XmlNamespaceScope;
 };
@@ -124,9 +127,6 @@ export type XmlRefusal = {
     offset: number;
     name: string;
 };
-
-// @public
-export type XmlUndeclaredEntities = "refuse" | "accept";
 
 // (No @packageDocumentation comment for this package)
 
