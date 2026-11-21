@@ -118,6 +118,7 @@ export default library({
     "./.oxlint-plugins/folio-asset-urls.ts",
     "./.oxlint-plugins/folio-page-resources.ts",
     "./.oxlint-plugins/folio-base64.ts",
+    "./.oxlint-plugins/folio-math-extremes.ts",
     "./.oxlint-plugins/folio-read-model.ts",
     "./.oxlint-plugins/folio-editor-commands.ts",
     "./.oxlint-plugins/folio-deletion-marks.ts",
@@ -519,6 +520,27 @@ export default library({
       ],
       rules: {
         "folio-base64/no-hand-rolled-base64": "error",
+      },
+    },
+    {
+      // A spread into `Math.max` / `Math.min` throws `RangeError` once the
+      // array outgrows the engine's argument limit; package source folds
+      // through its `maxOf` / `minOf` helper instead. Tests choose their input
+      // sizes. See `.oxlint-plugins/folio-math-extremes.ts` and the matching
+      // test at `scripts/math-extremes-lint.test.ts`, which lints the
+      // `test/__fixtures__` files covered here.
+      files: [
+        "packages/*/src/**/*.{ts,tsx,js,jsx,vue}",
+        "test/__fixtures__/math-extremes.*.ts",
+      ],
+      rules: {
+        "folio-math-extremes/no-spread-arguments": "error",
+      },
+    },
+    {
+      files: ["packages/*/src/**/*.test.*", "packages/*/src/**/__tests__/**"],
+      rules: {
+        "folio-math-extremes/no-spread-arguments": "off",
       },
     },
     {

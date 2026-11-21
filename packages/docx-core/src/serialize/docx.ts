@@ -12,6 +12,7 @@ import type {
   Table,
   TextFormatting,
 } from "../model/document";
+import { maxOf } from "../model/extremes";
 import type { ListLevel, NumberingDefinitions } from "../model/lists";
 import { paragraphNumberingSlots } from "../model/paragraphNumbering";
 import type { StyleDefinitions } from "../model/styles";
@@ -452,7 +453,10 @@ const serializeRunContent = (content: RunContent): string => {
 };
 
 const serializeTable = (table: Table): string => {
-  const columnCount = Math.max(0, ...table.rows.map((row) => row.cells.length));
+  const columnCount = maxOf(
+    table.rows.map((row) => row.cells.length),
+    0,
+  );
   const gridWidth =
     columnCount > 0 ? Math.max(1, Math.floor(9000 / columnCount)) : 9000;
   const grid =

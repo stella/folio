@@ -19,6 +19,7 @@ import {
 } from "./errors";
 import { CLI_READ_BOUNDS, executeReadTool } from "./execute-read";
 import { executeWriteTool, type WriteDestination } from "./execute-write";
+import { maxOf } from "./extremes";
 import {
   coerceFlag,
   flagsForSchema,
@@ -251,7 +252,7 @@ const rootHelp = (): string => {
     ),
     ...OTHER_COMMANDS,
   ];
-  const width = Math.max(...rows.map(([name]) => name.length)) + 2;
+  const width = maxOf(rows.map(([name]) => name.length)) + 2;
   const exitCodes = exitCodeEntries().map(
     ({ code, meaning }) => `  ${String(code).padEnd(4)}${meaning}`,
   );
