@@ -26,6 +26,7 @@ export { documentStories, replaceStoryBody } from "./stories";
 export {
   locateParagraphThroughTextBoxes,
   paragraphsThroughTextBoxes,
+  textBoxContentsIn,
 } from "./textBoxRouting";
 
 // Callers name package stories; a text box's story is internal to applying

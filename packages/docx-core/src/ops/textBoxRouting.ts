@@ -9,7 +9,7 @@
  * What an applied operation hands back (its inverse) names the package story
  * again, so it is routed the same way when it runs.
  */
-import type { Document } from "../model/document";
+import type { BlockContent, Document } from "../model/document";
 import { type ParagraphLocation, storyParagraphs } from "./blocks";
 import { IDENTITY_SPACES, identityKeysIn, idKey, slotKey } from "./ids";
 import {
@@ -362,6 +362,20 @@ export const locateThroughTextBoxes = (
   }
   return undefined;
 };
+
+/**
+ * The content of each text box drawn in `story`, at any depth, a box before
+ * the boxes drawn in it.
+ */
+export const textBoxContentsIn = (
+  document: Document,
+  story: OpStory,
+): readonly (readonly BlockContent[])[] =>
+  findStoryBody(document, story) === undefined
+    ? []
+    : textBoxStoriesIn(document, story).map(
+        (box) => storyBody(document, box).content,
+      );
 
 /** A story's own paragraphs, then those of each text box drawn in it. */
 export const paragraphsThroughTextBoxes = (
