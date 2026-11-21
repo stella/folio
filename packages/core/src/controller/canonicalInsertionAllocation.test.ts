@@ -182,3 +182,30 @@ test("reordered insertions retain normal-order paragraph and attached-comment al
   ).toStrictEqual(readModel(normal.session.document).package.document.comments);
   expect(planned.session.version).toBe(1);
 });
+
+test("a comment on inserted lines needs no original-story enumeration", () => {
+  const editor = setup();
+  const originalWidth = source.package.document.content.length;
+  const walk = spyOn(documentOperations, "paragraphsThroughTextBoxes");
+  try {
+    const result = editor.apply([
+      {
+        id: "insert",
+        type: "insertAfterBlock",
+        blockId: "10000001",
+        text: "First line\nLast line",
+        comment: { text: "Both lines" },
+      },
+    ]);
+    expect(result.skipped).toEqual([]);
+    expect(result.applied.map(({ id }) => id)).toEqual(["insert"]);
+    expect(
+      walk.mock.calls.filter(
+        ([document]) =>
+          document.package.document.content.length === originalWidth,
+      ),
+    ).toHaveLength(0);
+  } finally {
+    walk.mockRestore();
+  }
+});
