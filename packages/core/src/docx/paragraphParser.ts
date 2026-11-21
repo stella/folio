@@ -2745,13 +2745,15 @@ export function parseParagraph(
 
   // Text-box enrichment matches model runs to source w:r elements by position.
   // Its block parsers defer this merge until that source-dependent pass ends.
-  const consolidated = (content: ParagraphContent[]): ParagraphContent[] =>
-    options?.runConsolidation === "deferred"
-      ? content
-      : consolidateParagraphContent(content);
-  paragraph.content = consolidated(
-    paragraphKeptCutsFromChanges(rawContent, versionOneKeptMarkers),
-  );
+  // Version 1 kept markers take their cuts here, on whichever content the
+  // paragraph keeps: the fold below reads the content as parsed.
+  const consolidated = (content: ParagraphContent[]): ParagraphContent[] => {
+    const cut = paragraphKeptCutsFromChanges(content, versionOneKeptMarkers);
+    return options?.runConsolidation === "deferred"
+      ? cut
+      : consolidateParagraphContent(cut);
+  };
+  paragraph.content = consolidated(rawContent);
 
   // Compute list rendering if this is a list item.
   //
