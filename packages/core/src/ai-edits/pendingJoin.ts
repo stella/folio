@@ -320,6 +320,19 @@ export const PENDING_JOIN_INSERTION_REFUSAL: PendingRefusal = {
 };
 
 /**
+ * A table placed right after a paragraph whose break is pending deletion (a
+ * join, or a deletion of the paragraph after it that retires that break):
+ * accepting the deletion would run the paragraph's words into the table's
+ * first cell, which no direct edit does. Refused, as a join into a pending
+ * inserted table is.
+ */
+export const PENDING_BREAK_TABLE_REFUSAL: PendingRefusal = {
+  reason: "pendingParagraphMarkDeletion",
+  message:
+    "Accepting the pending deletion of this paragraph's break would run its words into the inserted table. Resolve that change first, or insert the table elsewhere.",
+};
+
+/**
  * A public operation that edits a paragraph's properties waits while the
  * paragraph's mark is pending deletion, in both engines: accepting the
  * deletion gives the joined paragraph the next paragraph's properties, so
