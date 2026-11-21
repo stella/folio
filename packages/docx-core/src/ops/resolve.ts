@@ -2073,16 +2073,16 @@ const resolveList = ({
     return levels < (node.resolutionJoins?.remove ?? 0) ? levels : undefined;
   };
   /**
-   * The cut of the record a removed change at `index` was made inside, when
-   * this resolution removes that record's pieces either side of it too: the
-   * boundaries the change kept stand inside the record, and go with its
-   * cut, as rejecting the change first and the record after places them.
-   * `undefined` when no such record encloses it.
+   * The depth of the cut of the record a removed change at `index` was made
+   * inside, when this resolution removes that record's pieces either side
+   * of it too: the boundaries the change kept stand inside the record, and
+   * go with its cut, as rejecting the change first and the record after
+   * places them. `undefined` when no such record encloses it.
    */
   const enclosingRecordCut = (
     node: TrackedWrapper,
     index: number,
-  ): { depth: number; date: string } | undefined => {
+  ): number | undefined => {
     const before = index > 0 ? pending.at(index - 1) : undefined;
     const after = pending.at(index + 1);
     if (
@@ -2098,13 +2098,12 @@ const resolveList = ({
       )
     )
       return undefined;
-    const date = before.info.date ?? "";
-    if (date >= (node.info.date ?? "")) return undefined;
+    if ((before.info.date ?? "") >= (node.info.date ?? "")) return undefined;
     const depth = Math.min(
       before.resolutionJoins?.remove ?? 0,
       after.resolutionJoins?.remove ?? 0,
     );
-    return depth > 0 ? { depth, date } : undefined;
+    return depth > 0 ? depth : undefined;
   };
   const appendUnowned = (items: readonly InlineNode[]): void => {
     out.push(...items.map((node) => ({ node, owner: undefined })));
@@ -2713,7 +2712,7 @@ const resolveList = ({
             node.resolutionJoins?.plainSides?.includes(side) === true;
           floating.set(at, {
             count: inside,
-            depth: Math.max(own, enclosingCut?.depth ?? 0),
+            depth: Math.max(own, enclosingCut ?? 0),
             before:
               index > 0 && !closedOn("before")
                 ? sourceOwners.at(index - 1)
