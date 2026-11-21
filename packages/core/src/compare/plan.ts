@@ -1550,20 +1550,45 @@ export const planStoryCompare = ({
         break;
       }
       case "targetColumn": {
-        changes.push({
-          kind: "table-column-insert",
-          location: { story, cell: step.location },
-          tableIndex: step.location.tableIndex,
-          columnIndex: step.columnIndex,
-          cells: columnCellTexts(step.blocks),
-          targetBlockIds: step.blocks.map(({ id }) => id),
-        });
+        // Adjacent new columns at one anchor go in as one operation: tracked,
+        // a table records one pending grid change for all of them.
+        const columns = [step];
+        const texts = [columnCellTexts(step.blocks)];
+        for (const [offset, next] of steps.slice(stepIndex + 1).entries()) {
+          const last = columns.at(-1) ?? step;
+          if (
+            next.type !== "targetColumn" ||
+            next.columnIndex !== last.columnIndex + 1 ||
+            next.anchor.blockId !== step.anchor.blockId ||
+            next.anchor.position !== step.anchor.position
+          )
+            break;
+          const nextTexts = columnCellTexts(next.blocks);
+          if (nextTexts.length !== texts[0]?.length) break;
+          columns.push(next);
+          texts.push(nextTexts);
+          consumedSteps.add(stepIndex + 1 + offset);
+        }
+        for (const [index, column] of columns.entries())
+          changes.push({
+            kind: "table-column-insert",
+            location: { story, cell: column.location },
+            tableIndex: column.location.tableIndex,
+            columnIndex: column.columnIndex,
+            cells: texts[index] ?? [],
+            targetBlockIds: column.blocks.map(({ id }) => id),
+          });
+        // The new cells' texts in reading order: row by row, left to right.
+        const cellTexts = (texts[0] ?? []).flatMap((_text, row) =>
+          texts.map((column) => column[row] ?? ""),
+        );
         operations.push({
           id: nextOperationId(),
           type: "insertTableColumn",
           blockId: step.anchor.blockId,
           position: step.anchor.position,
-          cellTexts: columnCellTexts(step.blocks),
+          ...(columns.length === 1 ? {} : { columnCount: columns.length }),
+          cellTexts,
         });
         break;
       }
