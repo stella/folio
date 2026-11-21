@@ -2704,8 +2704,10 @@ class CanonicalSession {
         document: this.currentDocument,
         from: start.value,
         to: end.value,
-        suggestingAuthor:
-          this.mode.type === "suggesting" ? this.mode.author : undefined,
+        suggesting:
+          this.mode.type === "suggesting"
+            ? { author: this.mode.author }
+            : undefined,
       });
       if (retirement.isErr()) return refuse(retirement.error.message);
       if (

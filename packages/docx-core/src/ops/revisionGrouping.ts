@@ -17,6 +17,7 @@ import {
   rebuildNode,
 } from "./leaves";
 import { carriesStamp, isTrackedWrapper, type TrackedWrapper } from "./review";
+import { isOwnRecord } from "./revisionOwner";
 import type { InlineSlice, RevisionStamp } from "./types";
 
 /** The leaf just before a gap and the leaf just after it, partly covered ones included. */
@@ -38,10 +39,10 @@ const ownRecord = (
   const record = span.ancestors.findLast(
     (ancestor) => isTrackedWrapper(ancestor) && ancestor.type === kind,
   );
+  // An ordinary change of the author's: a suggestion's records never group.
   return record !== undefined &&
     isTrackedWrapper(record) &&
-    record.info.author === author &&
-    record.info.suggestionId === undefined
+    isOwnRecord(record.info, { author })
     ? record
     : undefined;
 };

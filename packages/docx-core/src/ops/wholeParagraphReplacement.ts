@@ -14,6 +14,7 @@ import {
 import { selectedParagraphRuns } from "./plan";
 import type { DocumentOpRefusal } from "./refusal";
 import { isTrackedWrapper } from "./review";
+import { isOwnRecord, type RevisionOwner } from "./revisionOwner";
 import type { TextPosition } from "./types";
 
 type WholeParagraphReplacementOptions = {
@@ -21,11 +22,11 @@ type WholeParagraphReplacementOptions = {
   from: TextPosition;
   to: TextPosition;
   /**
-   * The author a suggesting replacement records, absent for a direct edit.
-   * A suggestion retracts only its author's pending insertions; a host with
-   * another author's stays with the ordinary range planner.
+   * Who a suggesting replacement records, absent for a direct edit. A
+   * suggestion retracts only its own pending insertions; a host with
+   * another owner's stays with the ordinary range planner.
    */
-  suggestingAuthor?: string | undefined;
+  suggesting?: RevisionOwner | undefined;
 };
 
 type WholeParagraphReplacementPlan = {
@@ -44,7 +45,7 @@ export const planWholeParagraphReplacement = ({
   document,
   from,
   to,
-  suggestingAuthor,
+  suggesting,
 }: WholeParagraphReplacementOptions): Result<
   WholeParagraphReplacementPlan | null,
   DocumentOpRefusal
@@ -71,8 +72,8 @@ export const planWholeParagraphReplacement = ({
   // A pending insertion, words or break, goes with its host: the direct edit
   // removes it, and a suggestion retracts its author's own. Pending removals
   // and moves outlive a direct edit, and an empty wrapper is a leaf of its own.
-  const retires = ({ author }: TrackedChangeInfo) =>
-    suggestingAuthor === undefined || author === suggestingAuthor;
+  const retires = (info: TrackedChangeInfo) =>
+    suggesting === undefined || isOwnRecord(info, suggesting);
   const blockIds: string[] = [];
   const starts = new Set<number>();
   const ends = new Set<number>();

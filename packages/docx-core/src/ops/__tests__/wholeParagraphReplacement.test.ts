@@ -199,7 +199,7 @@ test("pending insertions, words or break, retire with their host", () => {
     blockIds: ["00000001"],
     commentIds: new Set([7]),
   });
-  const suggested = (suggestingAuthor: string) =>
+  const suggested = (author: string, suggestionId?: string) =>
     planWholeParagraphReplacement({
       document,
       from: {
@@ -214,11 +214,16 @@ test("pending insertions, words or break, retire with their host", () => {
         offset: 0,
         zeroWidthBefore: 0,
       },
-      suggestingAuthor,
+      suggesting: {
+        author,
+        ...(suggestionId === undefined ? {} : { suggestionId }),
+      },
     }).unwrap();
-  // A suggestion retracts its author's own insertions, not another's.
+  // A suggestion retracts its author's own insertions, not another's, nor
+  // an ordinary insertion of the same author, which rejecting it gives back.
   expect(suggested("Drafter")).toEqual(plan(document));
   expect(suggested("Reviewer")).toBeNull();
+  expect(suggested("Drafter", "s1")).toBeNull();
 });
 
 test("pending removals in a host still refuse to certify retirement", () => {

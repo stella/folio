@@ -25,6 +25,7 @@ import type { Document } from "../../model/document";
 import { leafSpans } from "../leaves";
 import { findStoryParagraph } from "../paragraphLocator";
 import { isTrackedWrapper } from "../review";
+import { isOwnRecord } from "../revisionOwner";
 import { findStoryBody } from "../stories";
 import {
   DOCUMENT_OP_TYPES,
@@ -120,15 +121,15 @@ const changeEdges = (
   if (paragraph === undefined) return edges;
   const kind =
     op.type === DOCUMENT_OP_TYPES.DELETE_RANGE ? "deletion" : "insertion";
-  const { author, date } = op.revision;
+  const revision = op.revision;
   const stamped = leafSpans(paragraph.content)
     .filter(({ ancestors }) =>
       ancestors.some(
         (node) =>
           isTrackedWrapper(node) &&
           node.type === kind &&
-          node.info.author === author &&
-          node.info.date === date,
+          isOwnRecord(node.info, revision) &&
+          node.info.date === revision.date,
       ),
     )
     .map(({ before, after }) => [before.offset, after.offset] as const);

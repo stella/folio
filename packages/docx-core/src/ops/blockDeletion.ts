@@ -59,7 +59,11 @@ import {
   WRAP_KINDS,
   wrapTracked,
 } from "./review";
-import { recordedOnlyBy } from "./tableOwnPending";
+import {
+  isOwnRecord,
+  recordedOnlyBy,
+  type RevisionOwner,
+} from "./revisionOwner";
 import {
   type DeleteBlocksOp,
   DOCUMENT_OP_TYPES,
@@ -120,26 +124,26 @@ const deletedContent = (
   };
 };
 
-/**
- * Whether `author`'s pending insertion added `paragraph` whole: its mark
- * and every word, with no one else's suggestion in it and no range boundary
- * standing in it, which removing the paragraph would lose.
- */
 /** Whether accepting every change takes `paragraph`'s own mark. */
 const markGoes = ({ pPrMark }: Paragraph): boolean =>
   pPrMark?.kind === "del" ||
   pPrMark?.kind === "moveFrom" ||
   pPrMark?.deletion !== undefined;
 
-const addedWholeBy = (paragraph: Paragraph, author: string): boolean =>
+/**
+ * Whether `owner`'s pending insertion added `paragraph` whole: its mark
+ * and every word, with no one else's suggestion in it and no range boundary
+ * standing in it, which removing the paragraph would lose.
+ */
+const addedWholeBy = (paragraph: Paragraph, owner: RevisionOwner): boolean =>
   paragraph.pPrMark?.kind === "ins" &&
   paragraph.pPrMark.deletion === undefined &&
-  paragraph.pPrMark.info.author === author &&
+  isOwnRecord(paragraph.pPrMark.info, owner) &&
   paragraph.content.every(
-    (item) => item.type === "insertion" && item.info.author === author,
+    (item) => item.type === "insertion" && isOwnRecord(item.info, owner),
   ) &&
   !holdsRangeBoundary(paragraph.content) &&
-  recordedOnlyBy(paragraph, author);
+  recordedOnlyBy(paragraph, owner);
 
 /** Whether a range boundary stands anywhere among `nodes`. */
 const holdsRangeBoundary = (nodes: readonly InlineNode[]): boolean =>
@@ -507,13 +511,12 @@ export const deleteBlocks = ({
   // Paragraphs the same author's pending insertion added whole, with no one
   // else's suggestion in them, go outright before a table, as deleting over
   // one's own insertion removes it; no deletion of an addition is recorded.
+  const owner = op.revision;
   if (
-    op.revision !== undefined &&
+    owner !== undefined &&
     following?.type === "table" &&
     list.at(-1)?.type === "paragraph" &&
-    found.every(({ paragraph }) =>
-      addedWholeBy(paragraph, op.revision?.author ?? ""),
-    )
+    found.every(({ paragraph }) => addedWholeBy(paragraph, owner))
   ) {
     const removed = applyOps(document, [
       {
@@ -754,7 +757,7 @@ export const deleteBlocks = ({
         (paragraph !== last.paragraph || following?.type === "paragraph") &&
         (paragraph.pPrMark?.kind === "ins" ||
           paragraph.pPrMark?.kind === "moveTo") &&
-        paragraph.pPrMark.info.author === revision.author,
+        isOwnRecord(paragraph.pPrMark.info, revision),
     ),
   );
   // A mark a pending deletion already records deleted stays as it is: the
@@ -779,14 +782,13 @@ export const deleteBlocks = ({
     (paragraph.pPrMark?.kind === "del" ||
       paragraph.pPrMark?.deletion !== undefined) &&
     !(finalTakeover && paragraph === last.paragraph);
-  // Another author's added mark the deletion takes keeps that insertion and
+  // Another owner's added mark the deletion takes keeps that insertion and
   // records the deletion beside it, as a later deletion of an insertion does;
   // so does one's own that ends a section, and one's own on the last
   // paragraph before a table whose rows are all pending insertion: it has no
   // paragraph to join, and accepting both records removes it without running
   // into the table. Not where the paragraph before it loses its own mark:
   // accepting would run that one into the table instead.
-  const deletingAuthor = op.revision.author;
   const before = list[first.index - 1];
   const beforeInsertedTable =
     !(before?.type === "paragraph" && markGoes(before)) &&
@@ -802,7 +804,7 @@ export const deleteBlocks = ({
     (paragraph.pPrMark?.kind === "ins" ||
       paragraph.pPrMark?.kind === "moveTo") &&
     paragraph.pPrMark.deletion === undefined &&
-    (paragraph.pPrMark.info.author !== deletingAuthor ||
+    (!isOwnRecord(paragraph.pPrMark.info, revision) ||
       paragraph.sectionProperties !== undefined ||
       (beforeInsertedTable && paragraph === last.paragraph)) &&
     !(finalTakeover && paragraph === last.paragraph);

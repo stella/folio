@@ -1,28 +1,17 @@
 import type { Document, Table, TableCell } from "../model/document";
 import { storyParagraphs } from "./blocks";
 import { equalForStaleness } from "./equality";
+import {
+  isOwnRecord,
+  recordedOnlyBy,
+  type RevisionOwner,
+} from "./revisionOwner";
 import { locateTableRow } from "./tableLocation";
 import type { DeleteTableOp } from "./types";
 
-/** Every tracked record in `value`, at any depth, is `author`'s. */
-export const recordedOnlyBy = (value: unknown, author: string): boolean => {
-  if (Array.isArray(value))
-    return value.every((item) => recordedOnlyBy(item, author));
-  if (typeof value !== "object" || value === null) return true;
-  const info: unknown = Reflect.get(value, "info");
-  if (
-    typeof info === "object" &&
-    info !== null &&
-    Reflect.get(info, "author") !== undefined &&
-    Reflect.get(info, "author") !== author
-  )
-    return false;
-  return Object.values(value).every((item) => recordedOnlyBy(item, author));
-};
-
-const insertedBy = (cell: TableCell, author: string): boolean =>
+const insertedBy = (cell: TableCell, owner: RevisionOwner): boolean =>
   cell.structuralChange?.type === "tableCellInsertion" &&
-  cell.structuralChange.info.author === author;
+  isOwnRecord(cell.structuralChange.info, owner);
 
 /**
  * What a tracked deletion of a table removes outright first: cells the same
@@ -37,27 +26,27 @@ export const ownPendingTableInsertion = (
   document: Document,
   op: DeleteTableOp,
 ): { revisionIds: number[]; blockId: string } | undefined => {
-  const author = op.revision?.author;
-  if (author === undefined) return undefined;
+  const owner = op.revision;
+  if (owner === undefined) return undefined;
   const located = locateTableRow(document, op);
   if (located.isErr()) return undefined;
   const table: Table = located.value.table;
   if (op.expected !== undefined && !equalForStaleness(table, op.expected))
     return undefined;
   const cells = table.rows.flatMap((row) => row.cells);
-  const inserted = cells.filter((cell) => insertedBy(cell, author));
+  const inserted = cells.filter((cell) => insertedBy(cell, owner));
   if (
     inserted.length === 0 ||
     table.rows.some((row) => row.structuralChange !== undefined) ||
     cells.some(
       (cell) =>
-        (cell.structuralChange !== undefined && !insertedBy(cell, author)) ||
-        (insertedBy(cell, author) && !recordedOnlyBy(cell, author)),
+        (cell.structuralChange !== undefined && !insertedBy(cell, owner)) ||
+        (insertedBy(cell, owner) && !recordedOnlyBy(cell, owner)),
     ) ||
-    (table.propertyChanges ?? []).some(({ info }) => info.author !== author)
+    (table.propertyChanges ?? []).some(({ info }) => !isOwnRecord(info, owner))
   )
     return undefined;
-  const staying = cells.find((cell) => !insertedBy(cell, author));
+  const staying = cells.find((cell) => !insertedBy(cell, owner));
   const paragraph =
     staying === undefined
       ? undefined
