@@ -20,7 +20,11 @@ import {
   type InlineNode,
   rebuildNode,
 } from "./leaves";
-import { isBoundary, isKeptBoundaryCarrier } from "./rangeBoundaries";
+import {
+  isBoundary,
+  isKeptBoundaryCarrier,
+  joinNeighbour,
+} from "./rangeBoundaries";
 import { isTrackedWrapper, type TrackedWrapper } from "./review";
 
 type KeptCutCarrier = Extract<InlineNode, { keptCut?: KeptCut }>;
@@ -498,6 +502,61 @@ const withKeptCutDepthRecorded = (
     ),
   );
 
+/** The sides of a run of kept markers whose records a resolution removes. */
+export type KeptRunSides = { before: boolean; after: boolean };
+
+/** Whether the piece a marker names goes with the records on the sides `gone`. */
+const pieceGoes = (piece: KeptCutPiece, gone: KeptRunSides): boolean => {
+  switch (piece) {
+    case "before":
+      return gone.before;
+    case "after":
+      return gone.after;
+    case "both":
+      return gone.before && gone.after;
+    default: {
+      const unhandled: never = piece;
+      return unhandled;
+    }
+  }
+};
+
+type KeptRunBesideRemovedOptions = {
+  /** The levels left to join across the run once the records go. */
+  depth: number;
+  gone: KeptRunSides;
+  /** What the resolution recorded about each marker, kept on its copies. */
+  known: WeakMap<InlineNode, string>;
+};
+
+/**
+ * `node`, standing in a run of kept markers, once the records beside the
+ * run on the sides `gone` names go with a resolution: its cut is no deeper
+ * than the levels then left to join across it, and a piece named on a side
+ * that goes is consumed with the change that took the seam, as resolving
+ * those records with the revision the markers were kept from leaves them.
+ */
+export const withKeptCutBesideRemoved = (
+  node: InlineNode,
+  { depth, gone, known }: KeptRunBesideRemovedOptions,
+): InlineNode =>
+  changeStandingMarkers(
+    node,
+    keepingRecord((marker) => {
+      if (!carriesKeptCut(marker) || marker.keptCut === undefined)
+        return marker;
+      const { piece, ...cut } = marker.keptCut;
+      const keepsPiece = piece === undefined || !pieceGoes(piece, gone);
+      if (cut.depth <= depth && keepsPiece) return marker;
+      const next: KeptCut = {
+        depth: Math.min(cut.depth, depth),
+        keptFrom: cut.keptFrom,
+        ...(keepsPiece && piece !== undefined ? { piece } : {}),
+      };
+      return Object.assign({}, marker, { keptCut: next });
+    }, known),
+  );
+
 /** A paragraph join's cut, and when the paragraph mark it resolves was made. */
 type JoinCut = { depth: number; after: string };
 
@@ -531,13 +590,45 @@ export const withEdgeKeptCutsWidened = (
   return out ?? nodes;
 };
 
+/** What meets a list's edge from outside, as kept cuts at that edge read it. */
+export const KEPT_CUT_EDGES = {
+  /** Nothing pending: a cut there waits on nothing. */
+  NOTHING: "nothing",
+  /**
+   * A pending change of a paragraph mark: resolving it can join the
+   * paragraph with its neighbour, so a cut waits on it, but it took no
+   * seam, so it holds no piece a marker names.
+   */
+  PENDING_MARK: "pendingMark",
+  /** A pending tracked change, which can hold a piece a marker names. */
+  PENDING_CHANGE: "pendingChange",
+  /**
+   * Not known yet: the edge of a nested list, which the paragraph's own
+   * settlement reads once the joins stand. Its markers keep what they have.
+   */
+  UNSETTLED: "unsettled",
+} as const;
+
+type KeptCutEdge = (typeof KEPT_CUT_EDGES)[keyof typeof KEPT_CUT_EDGES];
+
+/** Whether a cut at an edge waits there, and whether a piece named there stands. */
+const EDGE_READING = {
+  nothing: { waits: false, holdsPiece: false },
+  pendingMark: { waits: true, holdsPiece: false },
+  pendingChange: { waits: true, holdsPiece: true },
+  unsettled: { waits: true, holdsPiece: true },
+} as const satisfies Record<
+  KeptCutEdge,
+  { waits: boolean; holdsPiece: boolean }
+>;
+
 type SettleKeptCutsOptions = {
   /** What the resolution recorded about each marker, kept on its copies. */
   known?: WeakMap<InlineNode, string>;
   /** Told of every record rebuilt around a cleared marker. */
   rebuilt?: (from: InlineNode, to: InlineNode) => void;
-  /** Whether a pending change meets the list from outside, at each end. */
-  outside?: { start: boolean; end: boolean };
+  /** What meets the list from outside, at each end. */
+  outside?: { start: KeptCutEdge; end: KeptCutEdge };
 };
 
 /**
@@ -554,16 +645,20 @@ export const settleKeptCuts = (
   {
     known = new WeakMap(),
     rebuilt,
-    outside = { start: false, end: false },
+    outside = { start: KEPT_CUT_EDGES.NOTHING, end: KEPT_CUT_EDGES.NOTHING },
   }: SettleKeptCutsOptions = {},
 ): readonly InlineNode[] => {
   let out: InlineNode[] | undefined;
-  const pendingBefore = (index: number): boolean =>
-    index === 0 ? outside.start : pendingAtEdge(nodes[index - 1], "end");
-  const pendingAfter = (index: number): boolean =>
+  const edgeOf = (node: InlineNode | undefined, edge: "start" | "end") =>
+    pendingAtEdge(node, edge)
+      ? KEPT_CUT_EDGES.PENDING_CHANGE
+      : KEPT_CUT_EDGES.NOTHING;
+  const pendingBefore = (index: number): KeptCutEdge =>
+    index === 0 ? outside.start : edgeOf(nodes[index - 1], "end");
+  const pendingAfter = (index: number): KeptCutEdge =>
     index === nodes.length - 1
       ? outside.end
-      : pendingAtEdge(nodes[index + 1], "start");
+      : edgeOf(nodes[index + 1], "start");
   let start = 0;
   while (start < nodes.length) {
     const first = nodes[start];
@@ -596,10 +691,12 @@ export const settleKeptCuts = (
       if (node === undefined || !isKeptBoundaryCarrier(node)) break;
     }
     const run = nodes.slice(start, end);
+    const before = EDGE_READING[pendingBefore(start)];
+    const after = EDGE_READING[pendingAfter(end - 1)];
     const waiting =
       run.some((node) => node.type === "deletion") ||
-      pendingBefore(start) ||
-      pendingAfter(end - 1);
+      before.waits ||
+      after.waits;
     // Markers standing together stand in one cut: the deepest any of them
     // records. Whether removals met at one seam at once or one after another,
     // each keeps that depth.
@@ -607,9 +704,9 @@ export const settleKeptCuts = (
     // A marker names a side as its cut's piece only while the pending change
     // that took its seam stands there: resolving that change consumes it.
     const facing = {
-      before: pendingBefore(start),
-      after: pendingAfter(end - 1),
-      both: pendingBefore(start) || pendingAfter(end - 1),
+      before: before.holdsPiece,
+      after: after.holdsPiece,
+      both: before.holdsPiece || after.holdsPiece,
     } as const satisfies Record<KeptCutPiece, boolean>;
     for (const [offset, node] of run.entries()) {
       const settled = waiting
@@ -636,10 +733,12 @@ type SettledParagraph = {
 
 /**
  * The paragraphs of `body` whose kept cuts settle, each with its settled
- * content. A pending change of the mark between two paragraphs stands at
- * both edges it faces: resolving it can join them, so the markers at those
+ * content. A pending change of the mark between two paragraphs, past any
+ * range boundaries between them, stands at both edges it faces: resolving
+ * it can join them (see {@link joinNeighbour}), so the markers at those
  * edges wait on it, as they wait on whatever stands beside them once the
- * paragraphs are joined first.
+ * paragraphs are joined first. It took no seam: a piece a marker there
+ * names goes with the change that took it.
  */
 export const settledParagraphKeptCuts = (
   body: DocumentBody,
@@ -647,13 +746,18 @@ export const settledParagraphKeptCuts = (
   const out: SettledParagraph[] = [];
   for (const { list, index, paragraph } of storyParagraphs(body)) {
     const siblings = blockListAt(body.content, list);
-    const previous = index === 0 ? undefined : siblings[index - 1];
+    const markEdge = (pending: boolean): KeptCutEdge =>
+      pending ? KEPT_CUT_EDGES.PENDING_MARK : KEPT_CUT_EDGES.NOTHING;
     const content = settleKeptCuts(paragraph.content, {
       outside: {
-        start: previous?.type === "paragraph" && previous.pPrMark !== undefined,
-        end:
+        start: markEdge(
+          joinNeighbour(siblings, { index, side: "before" })?.pPrMark !==
+            undefined,
+        ),
+        end: markEdge(
           paragraph.pPrMark !== undefined &&
-          siblings[index + 1]?.type === "paragraph",
+            joinNeighbour(siblings, { index, side: "after" }) !== undefined,
+        ),
       },
     });
     if (content !== paragraph.content) out.push({ paragraph, content });
