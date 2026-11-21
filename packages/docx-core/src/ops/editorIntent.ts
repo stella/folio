@@ -4102,11 +4102,12 @@ const strikeInsideControl = ({
   readonly DocumentOp[],
   DocumentOpRefusal
 > => {
-  if (inside?.start !== true || inside.end !== true || text === "")
-    return Result.ok(planned);
-  const split = planned.findIndex(
-    (op) => op.type === DOCUMENT_OP_TYPES.INSERT_CONTENT,
-  );
+  if (inside?.start !== true || inside.end !== true) return Result.ok(planned);
+  // A deletion is the whole plan; a replacement's text follows it.
+  const split =
+    text === ""
+      ? planned.length
+      : planned.findIndex((op) => op.type === DOCUMENT_OP_TYPES.INSERT_CONTENT);
   if (split <= 0) return Result.ok(planned);
   const deletion = planned.slice(0, split);
   const struck = new Set(
