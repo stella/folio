@@ -12,7 +12,11 @@ import {
 import type { BlockContent, DocumentBody } from "../../types/document";
 import { canonicalJson } from "../../utils/canonicalJson";
 import { spliceXml, type XmlSplice } from "../selectiveXmlPatch";
-import { materializeReplayFragment } from "../storyBlockReplay";
+import {
+  materializeReplayFragment,
+  type ReplayDestination,
+  replayDestinationOf,
+} from "../storyBlockReplay";
 import { TRANSITIONAL_NAMESPACE_BY_STRICT_URI } from "../strictValueEncodings.gen";
 import {
   getChildElements,
@@ -181,6 +185,7 @@ type ReplayScopeOptions = {
   source: XmlNamespaceScope | undefined;
   generated: XmlNamespaceScope | undefined;
   generatedRoot: XmlElement | undefined;
+  destination?: ReplayDestination;
 };
 
 type StoryBlockReplayOptions = {
@@ -204,6 +209,8 @@ const replayBlocks = (
 ): string | null => {
   const source = readStory(sourceXml, scope?.source, ignoredChild);
   const generated = readStory(serializedXml, scope?.generated, ignoredChild);
+  const destination =
+    scope?.destination ?? (source ? replayDestinationOf(source.root) : undefined);
   if (
     !source ||
     !generated ||
@@ -298,6 +305,7 @@ const replayBlocks = (
       element: replacement.element,
       sourceNamespace: getNamespaceUri(source.root) ?? "",
       generatedRoot,
+      destination,
     });
     if (fragment === null) return null;
     fragments.push(fragment);
@@ -714,6 +722,7 @@ export const buildDocumentBlockReplay = ({
       source: sourceBody.namespaceScope,
       generated: generatedBody.namespaceScope,
       generatedRoot: generated.root,
+      destination: replayDestinationOf(sourceStory.document.root, sourceBody),
     },
   );
   if (bodyXml === null) return null;
