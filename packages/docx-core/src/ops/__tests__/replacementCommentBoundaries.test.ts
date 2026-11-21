@@ -11,7 +11,12 @@ import { describe, expect, test } from "bun:test";
 import type { Document, ParagraphContent } from "../../model/document";
 import { applyDocumentOps } from "../apply";
 import { allocateEditorIntentIds, compileEditorIntent } from "../editorIntent";
-import { DOCUMENT_OP_TYPES, OP_STORIES, REVISION_DECISIONS } from "../types";
+import {
+  DOCUMENT_OP_TYPES,
+  OP_STORIES,
+  REVISION_DECISIONS,
+  type RevisionDecision,
+} from "../types";
 
 const PARA_ID = "12345678";
 const DATE = "2026-01-01T00:00:00Z";
@@ -160,7 +165,92 @@ describe("a replacement beside a comment's range", () => {
   }
 });
 
-test("comment ends at a content control's end all close it: the replacement stays in one control", () => {
+test("a bookmark ending before a comment's end does not change what a replacement of the commented words takes", () => {
+  const source = commented();
+  const [block] = source.package.document.content;
+  if (block?.type !== "paragraph") throw new Error("Expected a paragraph");
+  const document: Document = {
+    package: {
+      document: {
+        ...source.package.document,
+        content: [
+          {
+            ...block,
+            content: [
+              { type: "bookmarkStart", id: 3, name: "_Ref3" },
+              ...block.content.flatMap((node): ParagraphContent[] =>
+                node.type === "commentRangeEnd"
+                  ? [{ type: "bookmarkEnd", id: 3 }, node]
+                  : [node],
+              ),
+            ],
+          },
+        ],
+      },
+    },
+  };
+  const at = (offset: number) => ({
+    story: OP_STORIES.MAIN,
+    blockId: PARA_ID,
+    offset,
+  });
+  const intent = {
+    type: "replaceText" as const,
+    from: at(10),
+    to: at(21),
+    text: "at once",
+  };
+  const ids = allocateEditorIntentIds(document, intent);
+  const compiled = (tracked: boolean) => {
+    const result = applyDocumentOps(
+      document,
+      compileEditorIntent(document, {
+        intent,
+        mode: tracked
+          ? {
+              type: "suggesting",
+              revision: { id: ids.revisionId, author: "B", date: DATE },
+              newIds: ids.newIds,
+            }
+          : { type: "editing", newIds: ids.newIds },
+      }).unwrap().ops,
+    ).unwrap();
+    return { document: result.document, revisionIds: result.revisions };
+  };
+  const tracked = compiled(true);
+  expect(shape(tracked.document)).toBe(
+    "The goods [-on time and-]+at once+ in order.",
+  );
+  const direct = compiled(false).document;
+  expect(shape(direct)).toBe("The goods at once in order.");
+  expect(direct.package.document.comments ?? []).toEqual([]);
+  // The new words follow the bookmark's end, as they follow the comment's.
+  const [edited] = direct.package.document.content;
+  const content = edited?.type === "paragraph" ? edited.content : [];
+  const newWords = content.findIndex(
+    (node) =>
+      node.type === "run" &&
+      node.content.some(
+        (leaf) => leaf.type === "text" && leaf.text.includes("at once"),
+      ),
+  );
+  const bookmarkEnd = content.findIndex((node) => node.type === "bookmarkEnd");
+  expect(bookmarkEnd).toBeGreaterThan(-1);
+  expect(newWords).toBeGreaterThan(bookmarkEnd);
+  const resolved = (decision: RevisionDecision) =>
+    applyDocumentOps(tracked.document, [
+      {
+        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+        story: OP_STORIES.MAIN,
+        revisionIds: tracked.revisionIds,
+        decision,
+      },
+    ]).unwrap().document;
+  expect(resolved(REVISION_DECISIONS.ACCEPT)).toEqual(direct);
+  expect(resolved(REVISION_DECISIONS.REJECT)).toEqual(document);
+});
+
+test("comments ending at a content control's end go with the words a replacement takes, which stays in the control", () => {
   const control = (content: ParagraphContent[]): ParagraphContent => ({
     type: "inlineSdt",
     properties: { sdtType: "richText", id: 5 },
@@ -212,50 +302,54 @@ test("comment ends at a content control's end all close it: the replacement stay
     text: "new",
   };
   const ids = allocateEditorIntentIds(document, intent);
-  const outcome = (tracked: boolean) => {
-    const compiled = compileEditorIntent(document, {
-      intent,
-      mode: tracked
-        ? {
-            type: "suggesting",
-            revision: { id: ids.revisionId, author: "B", date: DATE },
-            newIds: ids.newIds,
-          }
-        : { type: "editing", newIds: ids.newIds },
-    }).unwrap();
-    const edited = applyDocumentOps(document, compiled.ops).unwrap().document;
-    if (!tracked) return edited;
+  const compiled = (tracked: boolean) =>
+    applyDocumentOps(
+      document,
+      compileEditorIntent(document, {
+        intent,
+        mode: tracked
+          ? {
+              type: "suggesting",
+              revision: { id: ids.revisionId, author: "B", date: DATE },
+              newIds: ids.newIds,
+            }
+          : { type: "editing", newIds: ids.newIds },
+      }).unwrap().ops,
+    ).unwrap().document;
+  const controlContent = (edited: Document) => {
     const [block] = edited.package.document.content;
     const [wrapper] =
       block?.type === "paragraph" ? block.content.slice(-1) : [];
-    const revisionIds = (
-      wrapper?.type === "inlineSdt" ? wrapper.content : []
-    ).flatMap((node) =>
-      node.type === "insertion" || node.type === "deletion"
-        ? [node.info.id]
-        : [],
-    );
-    expect(revisionIds.length).toBe(2);
-    return applyDocumentOps(edited, [
+    return wrapper?.type === "inlineSdt" ? wrapper.content : [];
+  };
+  // Tracked, the struck words keep both ranges and the new words follow
+  // their ends inside the control.
+  const tracked = compiled(true);
+  expect(controlContent(tracked).map(({ type }) => type)).toEqual([
+    "deletion",
+    "commentRangeEnd",
+    "commentRangeEnd",
+    "insertion",
+  ]);
+  const revisionIds = controlContent(tracked).flatMap((node) =>
+    node.type === "insertion" || node.type === "deletion" ? [node.info.id] : [],
+  );
+  const resolved = (decision: RevisionDecision) =>
+    applyDocumentOps(tracked, [
       {
         type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
         story: OP_STORIES.MAIN,
         revisionIds,
-        decision: REVISION_DECISIONS.ACCEPT,
+        decision,
       },
     ]).unwrap().document;
-  };
-  const expected = [
-    { type: "commentRangeStart", id: 1 },
-    { type: "commentRangeStart", id: 2 },
-    control([
-      run("new"),
-      { type: "commentRangeEnd", id: 1 },
-      { type: "commentRangeEnd", id: 2 },
-    ]),
-  ];
-  for (const tracked of [false, true]) {
-    const [block] = outcome(tracked).package.document.content;
-    expect(block?.type === "paragraph" ? block.content : []).toEqual(expected);
-  }
+  // Direct, the replacement covers both comments wholly and takes them;
+  // accepting the tracked one does the same, rejecting it gives the source.
+  const direct = compiled(false);
+  expect(direct.package.document.content).toEqual([
+    { type: "paragraph", paraId: PARA_ID, content: [control([run("new")])] },
+  ]);
+  expect(direct.package.document.comments ?? []).toEqual([]);
+  expect(resolved(REVISION_DECISIONS.ACCEPT)).toEqual(direct);
+  expect(resolved(REVISION_DECISIONS.REJECT)).toEqual(document);
 });

@@ -34,7 +34,7 @@ import {
   storyBody,
   storyParagraphs,
 } from "./blocks";
-import { isCommentExhausted } from "./comments";
+import { isCommentExhausted, linksEmptiedByRetirement } from "./comments";
 import { packageIdOccupancy } from "./editorIntentCensus";
 import { combineEdits } from "./edits";
 import { structurallyEqual } from "./equality";
@@ -3989,6 +3989,18 @@ const compileInStory = (
       current = retired.value.document;
       retiredIds.add(id);
     }
+    for (const removal of linksEmptiedByRetirement({
+      before: beforeRetirement,
+      after: current,
+      story,
+      retired: retiredIds,
+    })) {
+      const removed = applyDocumentOp(current, removal);
+      if (removed.isErr()) return Result.err(removed.error);
+      compact.push(removal);
+      steps.push(removed.value);
+      current = removed.value.document;
+    }
     // The caret stands after the leaves before it; the retired threads'
     // markers among them are gone.
     const caretParagraph =
@@ -4414,7 +4426,9 @@ const continuation = (
         }).at(-1);
   // The replacement goes past the ends of comments the range reached (see
   // `pastEndedComments`): it meets the last of them and the leaf after it,
-  // so a link ending before them is one the text takes a copy of.
+  // so a link ending before them is one the text takes a copy of. The
+  // comment goes with the words a direct edit took, and with it the link
+  // piece holding only its start (`linksEmptiedByRetirement`).
   const passedCount =
     caret || containers.length === 0
       ? 0

@@ -44,7 +44,7 @@ import {
   storyBody,
   storyParagraphs,
 } from "./blocks";
-import { isCommentExhausted } from "./comments";
+import { isCommentExhausted, linksEmptiedByRetirement } from "./comments";
 import {
   acceptCopyOriginAncestor,
   rejectCopyOriginAncestorsInNodes,
@@ -6011,6 +6011,7 @@ const planSingleRecordResolution = (
       !isCommentExhausted({ type: "document", document, id }) &&
       isCommentExhausted({ type: "document", document: current, id }),
   );
+  const beforeRetirement = current;
   for (const { id } of exhausted) {
     const retired = applyOps(current, [
       { type: DOCUMENT_OP_TYPES.DELETE_COMMENT, id, scope: "thread" },
@@ -6018,6 +6019,18 @@ const planSingleRecordResolution = (
     if (retired.isErr()) return Result.err(retired.error);
     record(retired.value);
     current = retired.value.document;
+  }
+  const emptiedLinks = linksEmptiedByRetirement({
+    before: beforeRetirement,
+    after: current,
+    story: op.story,
+    retired: new Set(exhausted.map(({ id }) => id)),
+  });
+  if (emptiedLinks.length > 0) {
+    const removed = applyOps(current, emptiedLinks);
+    if (removed.isErr()) return Result.err(removed.error);
+    record(removed.value);
+    current = removed.value.document;
   }
   const edit = combineEditEffects(current, effects);
   if (orphaned.length > 0) {

@@ -6,7 +6,9 @@
  * the link beside the struck one; accepting it gives the direct edit, one
  * link, whichever order its revisions are resolved in, and rejecting it gives
  * the source back. Bookmark and comment markers at the link's edges do not
- * change that.
+ * change that. A direct replacement of every word a comment covers takes the
+ * comment; a tracked one keeps it on the struck words, and accepting it takes
+ * the comment as the direct edit does.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -268,6 +270,34 @@ describe.each([
   });
 });
 
+/** The range markers and references `content` holds, in order. */
+const markerTypes = (content: readonly ParagraphContent[]): string[] =>
+  (JSON.stringify(content).match(/"type":"[a-zA-Z]+"/gu) ?? []).filter((type) =>
+    /Start|End|Reference/u.test(type),
+  );
+
+/** The text, struck or not, between comment 7's range markers. */
+const commentedText = (document: Document): string => {
+  let inside = false;
+  let text = "";
+  const visit = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      for (const item of node) visit(item);
+      return;
+    }
+    if (typeof node !== "object" || node === null) return;
+    const type: unknown = Reflect.get(node, "type");
+    if (type === "commentRangeStart") inside = true;
+    if (type === "commentRangeEnd") inside = false;
+    const value: unknown = Reflect.get(node, "text");
+    if (type === "text" && inside && typeof value === "string") text += value;
+    visit(Reflect.get(node, "content"));
+    visit(Reflect.get(node, "children"));
+  };
+  visit(paragraphContent(document));
+  return text;
+};
+
 const BOOKMARK_START = { type: "bookmarkStart", id: 1, name: "_Ref1" } as const;
 const BOOKMARK_END = { type: "bookmarkEnd", id: 1 } as const;
 const COMMENT_START = { type: "commentRangeStart", id: 7 } as const;
@@ -315,8 +345,18 @@ describe.each([
     exact: "See [the revised terms] now.",
   },
   {
-    // The new text goes past the end of the comment whose text it replaces,
-    // which is past the link's end: it takes a copy of the link there.
+    name: "a comment around the link",
+    content: [
+      run("See "),
+      COMMENT_START,
+      { ...LINK, children: [run(TERMS)] },
+      COMMENT_END,
+      COMMENT_REFERENCE,
+      run(" now."),
+    ],
+    exact: "See [the revised terms] now.",
+  },
+  {
     name: "a comment starting inside the link",
     content: [
       run("See "),
@@ -325,7 +365,7 @@ describe.each([
       COMMENT_REFERENCE,
       run(" now."),
     ],
-    exact: "See [][the revised terms] now.",
+    exact: "See [the revised terms] now.",
   },
   {
     name: "a comment ending inside the link",
@@ -341,38 +381,46 @@ describe.each([
 ] satisfies { name: string; content: ParagraphContent[]; exact: string }[])(
   "with $name",
   ({ content, exact }) => {
-    const marked = sourceOf(content);
+    const commented = markerTypes(content).some((type) =>
+      type.includes("comment"),
+    );
+    const marked = sourceOf(content, commented ? "range" : undefined);
     describe.each([
       {
         name: "exactly the link's text",
         edit: { from: 4, to: 22, text: "the revised terms" },
         direct: exact,
+        takesComment: commented,
       },
       {
         name: "words strictly inside the link",
         edit: { from: 8, to: 16, text: "revised" },
         direct: "See [the revised terms] now.",
+        takesComment: false,
       },
-    ])("replacing $name", ({ edit, direct }) => {
+    ])("replacing $name", ({ edit, direct, takesComment }) => {
       test("directly keeps the text in the link", () => {
         const edited = replaced(edit, EDITING, marked);
         expect(reading(edited)).toBe(direct);
-        expect(
-          JSON.stringify(paragraphContent(edited))
-            .match(/"type":"[a-zA-Z]+"/gu)
-            ?.filter((type) => /Start|End|Reference/u.test(type)),
-        ).toEqual(
-          JSON.stringify(content)
-            .match(/"type":"[a-zA-Z]+"/gu)
-            ?.filter((type) => /Start|End|Reference/u.test(type)),
+        // A comment whose every word the replacement took goes with them;
+        // every other marker stays.
+        expect(markerTypes(paragraphContent(edited))).toEqual(
+          markerTypes(content).filter(
+            (type) => !(takesComment && type.includes("comment")),
+          ),
+        );
+        expect(edited.package.document.comments?.length ?? 0).toBe(
+          takesComment ? 0 : 1,
         );
       });
 
       test("tracked, accepting gives the direct edit and rejecting the source", () => {
         const tracked = replaced(edit, SUGGESTING, marked);
-        expect(
-          paragraphContent(resolved(tracked, REVISION_DECISIONS.ACCEPT)),
-        ).toStrictEqual(paragraphContent(replaced(edit, EDITING, marked)));
+        // The comment stays on the struck words alone.
+        if (takesComment) expect(commentedText(tracked)).toBe(TERMS);
+        expect(resolved(tracked, REVISION_DECISIONS.ACCEPT)).toStrictEqual(
+          replaced(edit, EDITING, marked),
+        );
         expect(resolved(tracked, REVISION_DECISIONS.REJECT)).toStrictEqual(
           marked,
         );

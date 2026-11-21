@@ -103,6 +103,10 @@ export const isInlineContainer = (
 export const isOpeningMarker = (item: ParagraphContent): boolean =>
   INLINE_KINDS[item.type] === "openingMarker";
 
+/** A zero-width boundary that closes a range: it belongs with what precedes it. */
+export const isClosingMarker = (item: ParagraphContent): boolean =>
+  INLINE_KINDS[item.type] === "closingMarker";
+
 /** A source range boundary is zero-width and remains outside replacement revisions. */
 export const isRangeBoundary = (item: ParagraphContent): boolean =>
   INLINE_KINDS[item.type] === "openingMarker" ||
