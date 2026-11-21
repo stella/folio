@@ -487,5 +487,32 @@ test.each(SESSIONS)(
     expectOriginal(
       await FolioDocxReviewer.fromBuffer(await pending.toBuffer(), { session }),
     );
+    // Rejecting only the section's change, its break still pending: an empty
+    // previous record is how an added section is stored, so the section goes
+    // and no default one stands in for it.
+    const unsectioned = await FolioDocxReviewer.fromBuffer(buffer, { session });
+    const sectionChange = unsectioned
+      .getChanges()
+      .find(({ type }) => type === "sectionPropertiesChanged");
+    if (sectionChange === undefined) throw new Error("Missing section change");
+    expect(unsectioned.rejectChange(sectionChange)).toBe(true);
+    expect(unsectioned.getChanges().map(({ type }) => type)).toEqual([
+      "paragraphMarkInserted",
+    ]);
+    const sections = (reviewer: FolioDocxReviewer) =>
+      reviewer
+        .toDocument()
+        .package.document.content.map((block) =>
+          block.type === "paragraph" ? (block.sectionProperties ?? null) : null,
+        );
+    expect(sections(unsectioned)).toEqual([null, null, null]);
+    const reopened = await FolioDocxReviewer.fromBuffer(
+      await unsectioned.toBuffer(),
+      { session },
+    );
+    expect(sections(reopened)).toEqual([null, null, null]);
+    reopened.acceptAll();
+    expect(reopened.getChanges()).toEqual([]);
+    expect(sections(reopened)).toEqual([null, null, null]);
   },
 );

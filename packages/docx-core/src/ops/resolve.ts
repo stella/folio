@@ -4983,6 +4983,26 @@ const resolveSectionRecords = ({
 };
 
 /**
+ * A paragraph's section record that states nothing. A `w:sectPrChange` whose
+ * previous record is empty is how an added section is stored, so rejecting it
+ * leaves no section rather than one with default page settings.
+ */
+const isEmptySectionRecord = (properties: SectionProperties): boolean =>
+  Object.keys(properties).length === 0;
+
+/** `paragraph` without the section it ends. */
+const withoutSection = (story: OpStory, paragraph: Paragraph): DocumentOp => {
+  const { sectionProperties: _section, ...unsectioned } = paragraph;
+  return {
+    type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+    story,
+    expected: [paragraph],
+    blocks: [unsectioned],
+    sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE,
+  };
+};
+
+/**
  * The records of the sections the ids select, resolved through the section
  * calculation every reviewer applies, with the revision ids left to resolve.
  * A section's records travel on the paragraph that ends it; the final
@@ -4999,24 +5019,32 @@ const settleSectionRecords = (
   const ids = new Set(op.revisionIds);
   const ops: DocumentOp[] = [];
   if (op.story === OP_STORIES.MAIN) {
-    for (const [sectionIndex, { properties }] of sectionEnds(
-      document.package.document,
+    const body = document.package.document;
+    for (const [sectionIndex, { index, properties }] of sectionEnds(
+      body,
     ).entries()) {
       const resolved = resolveSectionRecords({
         properties,
         ids,
         decision: op.decision,
       });
-      if (resolved !== properties)
-        ops.push({
-          type: DOCUMENT_OP_TYPES.SET_SECTION_PROPS,
-          sectionIndex,
-          patch: sectionResolutionPatch({
-            current: properties,
-            next: resolved,
-          }),
-        });
+      if (resolved === properties) continue;
+      const paragraph = body.content[index];
+      if (isEmptySectionRecord(resolved) && paragraph?.type === "paragraph") {
+        ops.push(withoutSection(op.story, paragraph));
+        continue;
+      }
+      ops.push({
+        type: DOCUMENT_OP_TYPES.SET_SECTION_PROPS,
+        sectionIndex,
+        patch: sectionResolutionPatch({
+          current: properties,
+          next: resolved,
+        }),
+      });
     }
+    // A removed section renumbers the sections after it: settle those first.
+    ops.reverse();
   } else {
     for (const { paragraph } of storyParagraphs(
       storyBody(document, op.story),
@@ -5028,14 +5056,18 @@ const settleSectionRecords = (
         ids,
         decision: op.decision,
       });
-      if (resolved !== properties)
-        ops.push({
-          type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
-          story: op.story,
-          expected: [paragraph],
-          blocks: [{ ...paragraph, sectionProperties: resolved }],
-          sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE,
-        });
+      if (resolved === properties) continue;
+      ops.push(
+        isEmptySectionRecord(resolved)
+          ? withoutSection(op.story, paragraph)
+          : {
+              type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+              story: op.story,
+              expected: [paragraph],
+              blocks: [{ ...paragraph, sectionProperties: resolved }],
+              sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE,
+            },
+      );
     }
   }
   return { ops, ids: op.revisionIds.filter((id) => ids.has(id)) };
