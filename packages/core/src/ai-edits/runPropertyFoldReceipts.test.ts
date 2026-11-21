@@ -135,12 +135,12 @@ const BATCHES = {
     [4, END, BOLD],
   ],
   "bold inside, then bold cleared around it": [
-    [0, TEXT.length, { bold: null }],
     [4, END, BOLD],
+    [0, TEXT.length, { bold: null }],
   ],
   "bold inside, then italic around it": [
-    [0, TEXT.length, ITALIC],
     [4, END, BOLD],
+    [0, TEXT.length, ITALIC],
   ],
 } as const satisfies Record<string, readonly Patch[]>;
 

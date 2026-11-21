@@ -644,17 +644,17 @@ const firstRunProperties = (xml: string): string =>
   )?.[1] ?? "";
 
 /**
- * Bold, then italic, on one unformatted run in one tracked batch. Legacy
- * refuses the edit that would give the run a second pending change; the
- * canonical session folds it into the run's one change, which still starts
- * from the original properties, so accepting gives both and rejecting
- * neither.
+ * Bold, then italic, on one unformatted run in one tracked batch, applied in
+ * input order. Legacy refuses the italic, which would give the run a second
+ * pending change; the canonical session folds it into the run's one change,
+ * which still starts from the original properties, so accepting gives both
+ * and rejecting neither.
  */
 const TWO_EDITS_OF_ONE_RUN = {
   legacy: {
-    applied: ["italic"],
-    skipped: [{ id: "bold", reason: "pendingRunPropertyChange" }],
-    properties: "<w:i/>",
+    applied: ["bold"],
+    skipped: [{ id: "italic", reason: "pendingRunPropertyChange" }],
+    properties: "<w:b/>",
   },
   canonical: {
     applied: ["bold", "italic"],

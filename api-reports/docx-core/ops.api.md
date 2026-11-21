@@ -48,6 +48,12 @@ export const applyDocumentOpEnvelope: (document: Document_2, envelope: {
 // @public
 export const applyDocumentOps: (document: Document_2, ops: readonly DocumentOp[]) => Result<AppliedDocumentOp, DocumentOpRefusal>;
 
+// @public
+export const BATCH_ANNOTATION_KINDS: {
+    readonly FORMATTING: "formatting";
+    readonly COMMENT: "comment";
+};
+
 // @public (undocumented)
 export const BATCH_REJECTION_REASONS: {
     readonly INVALID_BATCH: "invalidBatch";
@@ -72,6 +78,9 @@ export type BatchAck = {
     rev: number;
 };
 
+// @public (undocumented)
+export type BatchAnnotationKind = (typeof BATCH_ANNOTATION_KINDS)[keyof typeof BATCH_ANNOTATION_KINDS];
+
 // @public
 export type BatchBlockAccess<Block> = {
     addresses: readonly Block[];
@@ -81,6 +90,7 @@ export type BatchBlockAccess<Block> = {
 // @public
 export type BatchOrderAddress = {
     type: "annotation";
+    kind: BatchAnnotationKind;
     position: number;
     inputIndex: number;
 } | {
