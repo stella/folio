@@ -139,7 +139,9 @@ import {
   type RevisionStamp,
   type RunPropsPatch,
   SECTION_BOUNDARY_POLICIES,
+  type SetParagraphPropsOp,
   SPLIT_HALVES,
+  type SplitBlockOp,
   type SplitHalf,
   type TableEditOp,
   type TableInsertionPoint,
@@ -1136,6 +1138,70 @@ const splitParagraphFields = (document: Document, at: TextPosition) => {
   return survivor?.formatting === undefined
     ? {}
     : { formatting: survivor.formatting };
+};
+
+type SplitAtOptions = {
+  document: Document;
+  at: TextPosition;
+  newBlockId: string;
+  newHalf: SplitHalf;
+  /** The revision and identity fields of the split and of the first half's properties. */
+  fields: { revision?: RevisionStamp; newIds?: NewIds };
+};
+
+/**
+ * The ops of a split at `at`. The mark the split creates ends the first half,
+ * which starts a logical paragraph of its own and takes the surviving mark's
+ * properties; the paragraph's own mark ends the second, which keeps its
+ * properties. Where the second half is the new paragraph, the first keeps
+ * the paragraph's id, so it takes the surviving mark's properties by a
+ * property change of its own. They differ from the paragraph's only where
+ * its mark is pending deletion and a later paragraph's mark survives it.
+ */
+const splitAtOps = ({
+  document,
+  at,
+  newBlockId,
+  newHalf,
+  fields,
+}: SplitAtOptions): (SplitBlockOp | SetParagraphPropsOp)[] => {
+  const split = {
+    type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+    at,
+    newBlockId,
+    newHalf,
+    ...fields,
+  } as const;
+  if (newHalf === SPLIT_HALVES.FIRST)
+    return [{ ...split, newParagraph: splitParagraphFields(document, at) }];
+  const paragraph = paragraphAt(document, at);
+  const survivor = createParagraphMarkOwnerLookup(document)(at);
+  const own = paragraph?.formatting;
+  const madeSecond = {
+    ...split,
+    newParagraph: own === undefined ? {} : { formatting: own },
+  };
+  const existing = paragraphPropertiesOf(own);
+  const desired = paragraphPropertiesOf(survivor?.formatting);
+  if (survivor === undefined || structurallyEqual(existing, desired))
+    return [madeSecond];
+  return [
+    madeSecond,
+    {
+      type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
+      story: at.story,
+      blockId: at.blockId,
+      patch: Object.fromEntries([
+        ...Object.keys(existing ?? {}).map((key) => [key, null]),
+        ...Object.entries(desired ?? {}),
+      ]),
+      whenEmpty:
+        survivor.formatting === undefined
+          ? EMPTY_PROPERTY_SETS.OMIT
+          : EMPTY_PROPERTY_SETS.KEEP,
+      ...(fields.revision === undefined ? {} : { revision: fields.revision }),
+    },
+  ];
 };
 
 /** A compound intent consumes one identity pool across its sequential plans. */
@@ -3673,25 +3739,27 @@ const compileInStory = (
             opType: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
           }),
         );
+      const newHalf = intent.newHalf ?? SPLIT_HALVES.FIRST;
       if (intent.to === undefined) {
-        const split = {
-          type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+        const split = splitAtOps({
+          document,
           at: intent.at,
           newBlockId: intent.newBlockId,
-          newHalf: intent.newHalf ?? SPLIT_HALVES.FIRST,
-          newParagraph: splitParagraphFields(document, intent.at),
-          ...tracked,
-        } as const;
+          newHalf,
+          fields: tracked,
+        });
         if (mode.type === "suggesting") {
           const plan = createTrackedPlan({
             document,
             revision: mode.revision,
             newIds: mode.newIds,
           });
-          const appended = plan.append(split);
-          if (appended.isErr()) return Result.err(appended.error);
+          for (const op of split) {
+            const appended = plan.append(op);
+            if (appended.isErr()) return Result.err(appended.error);
+          }
           ops = plan.ops;
-        } else ops = [split];
+        } else ops = split;
         selection = { ...intent.at, offset: 0, zeroWidthBefore: 0 };
         break;
       }
@@ -3718,16 +3786,16 @@ const compileInStory = (
           from: intent.at,
           to: intent.to,
         });
-        const split = plan.append({
-          type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+        for (const op of splitAtOps({
+          document: plan.document(),
           at,
           newBlockId: intent.newBlockId,
-          newHalf: intent.newHalf ?? SPLIT_HALVES.FIRST,
-          newParagraph: splitParagraphFields(plan.document(), at),
-          newIds: mode.newIds,
-          revision: mode.revision,
-        });
-        if (split.isErr()) return Result.err(split.error);
+          newHalf,
+          fields: { newIds: mode.newIds, revision: mode.revision },
+        })) {
+          const split = plan.append(op);
+          if (split.isErr()) return Result.err(split.error);
+        }
         ops = plan.ops;
         selection = { ...at, offset: 0, zeroWidthBefore: 0 };
         break;
@@ -3746,17 +3814,13 @@ const compileInStory = (
       if (deleted.isErr()) return Result.err(deleted.error);
       ops = [
         ...deletion.value.ops,
-        {
-          type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+        ...splitAtOps({
+          document: deleted.value.document,
           at: deletion.value.selection,
           newBlockId: intent.newBlockId,
-          newHalf: intent.newHalf ?? SPLIT_HALVES.FIRST,
-          newParagraph: splitParagraphFields(
-            deleted.value.document,
-            deletion.value.selection,
-          ),
-          ...allocationFields,
-        },
+          newHalf,
+          fields: allocationFields,
+        }),
       ];
       selection = {
         ...deletion.value.selection,
