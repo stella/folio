@@ -89,7 +89,13 @@ const deletedContent = (
   stamp: RevisionStamp,
   rangedComments: ReadonlySet<number>,
 ):
-  | { kind: "deleted"; content: ParagraphContent[]; standing: InlineNode[] }
+  | {
+      kind: "deleted";
+      content: ParagraphContent[];
+      standing: InlineNode[];
+      /** Whether the deletion marks a run, not only empty containers. */
+      recordsContent: boolean;
+    }
   | { kind: "unchanged"; standing: InlineNode[] }
   | { kind: "refused"; reason: DocumentOpRefusal["reason"] } => {
   // A comment's reference stands with its range's end, which the deletion
@@ -124,6 +130,7 @@ const deletedContent = (
     kind: "deleted",
     content: asParagraphContent(nodes),
     standing: standingIn(nodes, new Set(standing), created),
+    recordsContent: wrapped.recordsContent,
   };
 };
 
@@ -1263,7 +1270,14 @@ export const deleteBlocks = ({
           form.reason,
           "The selected paragraph content cannot be tracked.",
         );
-      if (form.kind === "deleted")
+      // A paragraph holding only empty containers, whose mark is already
+      // pending deletion, has nothing left to record: a deletion of the empty
+      // containers alone would be a change no reviewer sees.
+      const nothingToRecord =
+        form.kind === "deleted" &&
+        !form.recordsContent &&
+        keepsDeletedMark(paragraph);
+      if (form.kind === "deleted" && !nothingToRecord)
         next = {
           ...paragraph,
           content:
