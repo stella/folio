@@ -107,7 +107,7 @@ const OPERATION_TYPE_SUMMARIES = {
   insertTableRow: "insert a table row next to the row containing a cell block",
   deleteTableRow: "delete the table row containing a cell block",
   insertTableColumn:
-    "insert a table column next to the column containing a cell block",
+    "insert one or `columnCount` adjacent table columns next to the column containing a cell block",
   deleteTableColumn: "delete the table column containing a cell block",
   mergeTableCells:
     "merge table cells from a cell block to `endBlockId`, or `rowCount` rows downward",
@@ -148,6 +148,13 @@ const OPERATION_PROPERTY_SCHEMAS = {
     type: "string",
     minLength: 1,
     description: "For cell merging, a block in the opposite corner cell.",
+  },
+  columnCount: {
+    type: "integer",
+    minimum: 1,
+    maximum: 63,
+    description:
+      "For column insertion, how many adjacent columns to insert (default 1); they are one change, accepted or rejected together.",
   },
   rowCount: {
     type: "integer",
@@ -259,7 +266,7 @@ const OPERATION_PROPERTY_SCHEMAS = {
   cellTexts: {
     type: "array",
     description:
-      "For row or column insertion, initial text for new physical cells in source order, up to 100,000 characters per cell.",
+      "For row or column insertion, initial text for new physical cells in reading order (row by row, left to right), up to 100,000 characters per cell.",
     maxItems: 256,
     items: { type: "string" },
   },

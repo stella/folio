@@ -3136,13 +3136,15 @@ const resolveTableStructure = ({
         position: operation.position ?? "after",
       });
       if (insertion === null) return notInTable();
+      const columnCount = operation.columnCount ?? 1;
       const overflow = describeUnplacedCellTexts({
         cellTexts: operation.cellTexts,
-        capacity: getInsertedPhysicalColumnRows(
-          TableMap.get(row.table),
-          row.table,
-          insertion.columnIndex,
-        ).length,
+        capacity:
+          getInsertedPhysicalColumnRows(
+            TableMap.get(row.table),
+            row.table,
+            insertion.columnIndex,
+          ).length * columnCount,
         target: "column",
       });
       if (overflow !== null) return refusal("payloadDoesNotFit", overflow);
@@ -3169,6 +3171,8 @@ const resolveTableStructure = ({
           // The neighbour's width, as the default engine gives it; a table
           // that states no grid keeps none, whatever the width.
           width: insertedColumnWidth(row.table, insertion.columnIndex) ?? 1,
+          // The columns of one operation share the table's one grid change.
+          ...(columnCount === 1 ? {} : { count: columnCount }),
         },
         ...(operation.cellTexts === undefined
           ? {}
@@ -4711,7 +4715,11 @@ export class CanonicalPublicOperations {
       const column = member.plan.address;
       if (column.type !== "column" || !column.insertion) return;
       const key = getTableColumnCoordinateKey(column);
-      counts.set(key, (counts.get(key) ?? 0) + 1);
+      const added =
+        member.operation.type === "insertTableColumn"
+          ? (member.operation.columnCount ?? 1)
+          : 1;
+      counts.set(key, (counts.get(key) ?? 0) + added);
     };
     type PrepareOperationOptions = {
       document: Document;
