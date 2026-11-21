@@ -685,7 +685,9 @@ const marksInRemovedStructure = (
       change.type === "tableRowDeletion" || change.type === "tableCellDeletion"
     );
   };
-  const ops: DocumentOp[] = [];
+  // A nested table's paragraphs are in its own rows and in the outer cell
+  // holding it: each paragraph is settled once, whichever removal reaches it.
+  const settled = new Map<string, DocumentOp>();
   for (const table of tablesIn(document, op.story))
     for (const row of table.rows)
       for (const cell of row.cells) {
@@ -694,20 +696,25 @@ const marksInRemovedStructure = (
         for (const { paragraph } of storyParagraphs({
           content: cell.content,
         })) {
-          if (paragraph.pPrMark === undefined || paragraph.paraId === undefined)
+          const { paraId } = paragraph;
+          if (
+            paragraph.pPrMark === undefined ||
+            paraId === undefined ||
+            settled.has(paraId)
+          )
             continue;
           const review = reviewFieldsOf(paragraph);
           delete review.pPrMark;
-          ops.push({
+          settled.set(paraId, {
             type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
             story: op.story,
-            blockId: paragraph.paraId,
+            blockId: paraId,
             expected: reviewFieldsOf(paragraph),
             review,
           });
         }
       }
-  return ops;
+  return [...settled.values()];
 };
 
 export const resolveTableRows = ({
