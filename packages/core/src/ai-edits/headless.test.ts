@@ -4585,7 +4585,8 @@ describe("headless docx review notes read surface", () => {
     expect(reopened.readStory(story)?.text).toBe("Updated footnote body text.");
   });
 
-  test("tracks and undoes an endnote operation batch", async () => {
+  for (const session of ["canonical", "legacy"] as const)
+  test(`${session}: tracks and undoes an endnote operation batch`, async () => {
     // A package whose paragraphs hold ids already: either engine saves an
     // untouched part as it read it.
     const baseline = (
@@ -4594,6 +4595,7 @@ describe("headless docx review notes read surface", () => {
     const story = { type: "endnote", noteId: 3 } as const;
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
       author: "Reviewer",
+      session,
     });
     const snapshot = reviewer.snapshotStory(story);
     if (!snapshot) {
