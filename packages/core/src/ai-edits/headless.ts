@@ -242,6 +242,7 @@ import type {
   FolioUndefinedReferencePolicy,
   FolioWordDiffOptions,
 } from "./apply";
+import { persistedBlock } from "./block-identity";
 import { buildAnnotatedBlockTextWithNoteReferences } from "./clean-text";
 import {
   anchoredCommentIdsInBlocks,
@@ -723,8 +724,7 @@ const resolvedStoryBlockProjection = (
   ordinal: number,
   minted: ReadonlySet<number>,
 ) => {
-  const persisted = { ...block };
-  delete persisted.idStability;
+  const persisted = persistedBlock(block);
   return minted.has(ordinal)
     ? { ...persisted, id: `minted-${String(ordinal)}` }
     : persisted;
