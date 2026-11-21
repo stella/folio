@@ -1567,7 +1567,9 @@ describe("an empty content control is content: resolution never merges it away",
 });
 
 describe("section-aware tracked editor joins", () => {
-  test("rejecting an added boundary after a table keeps its section on the joined paragraph", () => {
+  // An added mark's section break never stood in the original: rejecting the
+  // mark takes the section with it, and accepting keeps both.
+  test("rejecting an added boundary after a table takes its section with it", () => {
     const properties = { pageWidth: 10_000 };
     const document = documentOf(
       table("cell"),
@@ -1579,16 +1581,20 @@ describe("section-aware tracked editor joins", () => {
     );
 
     expect(resolved(document, [1], REVISION_DECISIONS.REJECT)).toEqual(
+      documentOf(table("cell"), paragraph("00000002", [run("beforeafter")])),
+    );
+    expect(resolved(document, [1], REVISION_DECISIONS.ACCEPT)).toEqual(
       documentOf(
         table("cell"),
-        paragraph("00000002", [run("beforeafter")], {
+        paragraph("00000001", [run("before")], {
           sectionProperties: properties,
         }),
+        paragraph("00000002", [run("after")]),
       ),
     );
   });
 
-  test("rejecting an empty added boundary moves its section to the preceding paragraph", () => {
+  test("rejecting an empty added boundary takes its section with it", () => {
     const properties = { pageWidth: 10_000 };
     const document = documentOf(
       paragraph("00000001", [run("before")]),
@@ -1601,15 +1607,13 @@ describe("section-aware tracked editor joins", () => {
 
     expect(resolved(document, [1], REVISION_DECISIONS.REJECT)).toEqual(
       documentOf(
-        paragraph("00000001", [run("before")], {
-          sectionProperties: properties,
-        }),
+        paragraph("00000001", [run("before")]),
         paragraph("00000003", [run("after")]),
       ),
     );
   });
 
-  test("rejecting an adjacent added boundary moves its section to the following paragraph", () => {
+  test("rejecting an added boundary beside a section keeps only the existing section", () => {
     const first = { pageWidth: 10_000 };
     const second = { pageWidth: 12_000 };
     const document = documentOf(
@@ -1624,7 +1628,56 @@ describe("section-aware tracked editor joins", () => {
     expect(resolved(document, [1], REVISION_DECISIONS.REJECT)).toEqual(
       documentOf(
         paragraph("00000001", [run("before")], { sectionProperties: first }),
-        paragraph("00000003", [run("after")], { sectionProperties: second }),
+        paragraph("00000003", [run("after")]),
+      ),
+    );
+  });
+
+  test("rejecting an empty added boundary between tables takes it and its section away", () => {
+    const properties = { pageWidth: 10_000 };
+    const second: Table = {
+      type: "table",
+      rows: [
+        {
+          type: "tableRow",
+          cells: [
+            {
+              type: "tableCell",
+              content: [paragraph("10000002", [run("second")])],
+            },
+          ],
+        },
+      ],
+    };
+    const document = documentOf(
+      table("first"),
+      paragraph("00000001", [], {
+        sectionProperties: properties,
+        pPrMark: { kind: "ins", info: stamp(1) },
+      }),
+      second,
+      paragraph("00000002", [run("after")]),
+    );
+
+    expect(resolved(document, [1], REVISION_DECISIONS.REJECT)).toEqual(
+      documentOf(table("first"), second, paragraph("00000002", [run("after")])),
+    );
+  });
+
+  test("rejecting an added boundary that ends its story takes its section where the paragraph stays", () => {
+    const properties = { pageWidth: 10_000 };
+    const document = documentOf(
+      paragraph("00000001", [run("before")]),
+      paragraph("00000002", [run("after")], {
+        sectionProperties: properties,
+        pPrMark: { kind: "ins", info: stamp(1) },
+      }),
+    );
+
+    expect(resolved(document, [1], REVISION_DECISIONS.REJECT)).toEqual(
+      documentOf(
+        paragraph("00000001", [run("before")]),
+        paragraph("00000002", [run("after")]),
       ),
     );
   });
