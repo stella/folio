@@ -557,6 +557,7 @@ export type EditorIntent = HyperlinkEditorIntent | GenerateTOCIntent | {
     story: OpStory;
     blockIds: readonly string[];
     move?: true;
+    joinedWords?: "deleted";
 } | {
     type: "replaceFragment";
     from: TextPosition;
