@@ -15,6 +15,10 @@ const splices = new WeakMap<
   SpliceBounds & { previous: object }
 >();
 
+// A series of one-for-one edits at the same slot shares every other value
+// with its first source. Keep that source's key, without retaining any lists.
+const sameSlotOrigin = new WeakMap<readonly unknown[], object>();
+
 type SpliceItemsOptions<T> = {
   items: readonly T[];
   start: number;
@@ -68,8 +72,15 @@ export const spliceItems = <T>({
     count >= 0 &&
     count <= items.length - start
   ) {
+    const previous = listKey(items);
+    if (count === 1 && replacement.length === 1) {
+      const prior = splices.get(items);
+      const origin =
+        prior?.start === start ? sameSlotOrigin.get(items) : undefined;
+      sameSlotOrigin.set(next, origin ?? previous);
+    }
     splices.set(next, {
-      previous: listKey(items),
+      previous,
       start,
       previousEnd: start + count,
       end: start + replacement.length,
@@ -97,6 +108,23 @@ export const changedListBounds = (
       previousEnd: inverse.end,
       end: inverse.previousEnd,
     };
+  const laterOrigin = sameSlotOrigin.get(current);
+  const earlierOrigin = sameSlotOrigin.get(previous);
+  // Planning and replay may independently edit the same slot from the same
+  // source. Replacing another slot or shifting any position resets the proof.
+  if (laterOrigin !== undefined && splice !== undefined) {
+    if (
+      laterOrigin === listKeys.get(previous) ||
+      (laterOrigin === earlierOrigin && splice.start === inverse?.start)
+    )
+      return { start: splice.start, previousEnd: splice.end, end: splice.end };
+  }
+  if (
+    earlierOrigin !== undefined &&
+    inverse !== undefined &&
+    earlierOrigin === listKeys.get(current)
+  )
+    return { start: inverse.start, previousEnd: inverse.end, end: inverse.end };
   let start = 0;
   let previousEnd = previous.length;
   let end = current.length;
