@@ -106,21 +106,25 @@ export const tableRowAnchor = (rows: readonly TableRow[]): string | undefined =>
   )?.paragraph.paraId;
 
 type LocateBlockInsertionOptions = Pick<
-  InsertBlocksOp,
+  InsertBlocksOp | InsertTableOp,
   "type" | "story" | "at"
 >;
 
-/** A paragraph or table side, in the block list containing that block. */
+/**
+ * A paragraph or table side, or the start of the block list holding a
+ * paragraph, in the block list containing that block.
+ */
 export const locateBlockInsertion = (
   document: Document,
   op: LocateBlockInsertionOptions,
 ): Result<Pick<ParagraphLocation, "list" | "index">, DocumentOpRefusal> => {
   switch (op.at.type) {
     case "before":
-    case "after": {
+    case "after":
+    case "containerStart": {
+      const { at } = op;
       const paragraph = storyParagraphs(storyBody(document, op.story)).find(
-        ({ paragraph: item }) =>
-          idKey(item.paraId ?? "") === idKey(op.at.blockId),
+        ({ paragraph: item }) => idKey(item.paraId ?? "") === idKey(at.blockId),
       );
       if (paragraph === undefined)
         return Result.err(
@@ -130,10 +134,12 @@ export const locateBlockInsertion = (
             message: "The insertion anchor does not exist.",
           }),
         );
-      return Result.ok({
-        list: paragraph.list,
-        index: paragraph.index + (op.at.type === "after" ? 1 : 0),
-      });
+      const index = {
+        before: paragraph.index,
+        after: paragraph.index + 1,
+        containerStart: 0,
+      } as const satisfies Record<typeof at.type, number>;
+      return Result.ok({ list: paragraph.list, index: index[at.type] });
     }
     case "beforeTable":
     case "afterTable": {
@@ -179,5 +185,10 @@ export const blockInsertionPointAt = ({
     const blockId = tableRowAnchor(previous.rows);
     if (blockId !== undefined) return { type: "afterTable", blockId };
   }
+  // At the list's start, before a block that holds no paragraph to name.
+  if (index !== 0) return undefined;
+  for (const block of blocks)
+    if (block.type === "paragraph" && block.paraId !== undefined)
+      return { type: "containerStart", blockId: block.paraId };
   return undefined;
 };

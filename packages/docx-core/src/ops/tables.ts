@@ -40,7 +40,7 @@ import { isBlockBoundary } from "./rangeBoundaries";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { stampInfo, WRAP_KINDS } from "./review";
 import { replaceStoryBody } from "./stories";
-import { locateTableRow } from "./tableLocation";
+import { locateBlockInsertion, locateTableRow } from "./tableLocation";
 import { permitsRestoredCellFinalMark, trackTableRows } from "./tableTracking";
 import {
   type DeleteTableOp,
@@ -410,13 +410,17 @@ const commitBlocks = ({
 type InsertBesideTableOptions = {
   document: Document;
   op: InsertTableOp;
-  at: Extract<TableInsertionPoint, { type: "beforeTable" | "afterTable" }>;
+  at: Extract<
+    TableInsertionPoint,
+    { type: "beforeTable" | "afterTable" | "containerStart" }
+  >;
 };
 
 /**
  * A table put straight before or after the innermost table holding the
- * paragraph `at` names, in the block list holding that table. The list's
- * last paragraph, which stays, carries the structural inverse.
+ * paragraph `at` names, in the block list holding that table, or before the
+ * first block of the list holding that paragraph. The list's last
+ * paragraph, which stays, carries the structural inverse.
  */
 const insertBesideTable = ({
   document,
@@ -429,13 +433,13 @@ const insertBesideTable = ({
       reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
       message: "A table beside a table takes no terminal paragraph.",
     });
-  const located = locateTableRow(document, {
+  const located = locateBlockInsertion(document, {
     type: op.type,
     story: op.story,
-    blockId: at.blockId,
+    at,
   });
   if (located.isErr()) return Result.err(located.error);
-  const { list, index } = located.value;
+  const { list, index: tableIndex } = located.value;
   const body = storyBody(document, op.story);
   const blocks = [...blockListAt(body.content, list)];
   const carrierIndex = blocks.findLastIndex(
@@ -448,7 +452,6 @@ const insertBesideTable = ({
       reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
       message: "The table's block list ends without a paragraph.",
     });
-  const tableIndex = index + (at.type === "afterTable" ? 1 : 0);
   const anchor: ParagraphLocation = {
     list,
     index: carrierIndex,
@@ -491,7 +494,11 @@ export const applyTableOp = (
   switch (op.type) {
     case DOCUMENT_OP_TYPES.INSERT_TABLE: {
       const at = op.at;
-      if (at.type === "beforeTable" || at.type === "afterTable")
+      if (
+        at.type === "beforeTable" ||
+        at.type === "afterTable" ||
+        at.type === "containerStart"
+      )
         return insertBesideTable({ document, op, at });
       if (at.type !== "before" && at.type !== "after")
         return refuse({

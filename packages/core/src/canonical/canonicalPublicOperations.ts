@@ -1064,9 +1064,18 @@ type ProjectedParagraph = NonNullable<
   ReturnType<CanonicalProjection["paragraph"]>
 >;
 
+/**
+ * The start of the block list holding the paragraph `blockId` names, at
+ * `position`: where a block goes before a first block that holds no
+ * paragraph to name it by, such as an empty content control.
+ */
+type ListStartPlace = { blockId: string; position: number };
+
 type ResolveBlockInsertionOptions = {
   mintList: ReturnType<typeof createBatchListMinter>;
   operation: BlockInsertion;
+  /** Where the insertion goes in place of beside `paragraph`. */
+  listStart?: ListStartPlace;
   /** The paragraph the insertion goes beside. */
   paragraph: ProjectedParagraph;
   /** The paragraph whose stated properties the new paragraph copies. */
@@ -1282,6 +1291,7 @@ const besidePendingJoin = ({
  */
 const resolveBlockInsertion = ({
   operation,
+  listStart,
   paragraph,
   formattingSource,
   projection,
@@ -1411,12 +1421,13 @@ const resolveBlockInsertion = ({
     paragraphsFrom(
       paragraphFormattingWithAuthoredIndentation(formattingSource.source),
     );
-  const place = blockInsertionPlace(
-    operation,
-    paragraph,
-    projection,
-    noteReferences,
-  );
+  const place =
+    listStart === undefined
+      ? blockInsertionPlace(operation, paragraph, projection, noteReferences)
+      : {
+          at: { type: "containerStart", blockId: listStart.blockId } as const,
+          position: listStart.position,
+        };
   if (place === undefined)
     return refusal(
       "unsupportedBlock",
@@ -1867,7 +1878,13 @@ const insertionIntentsAsItRuns = ({
 
 type InsertionAnchor =
   | { type: "paragraph"; at: BlockInsertionPoint }
-  | { type: "table"; at: BlockInsertionPoint };
+  | { type: "table"; at: BlockInsertionPoint }
+  /**
+   * The start of the block list holding the paragraph `at` names. Each
+   * block put there goes ahead of those the batch put there before it, as
+   * blocks put after one paragraph do, so it reads as `after` that start.
+   */
+  | { type: "containerStart"; at: { type: "after"; blockId: string } };
 
 /**
  * The anchor a group of insertions after a paragraph replays against: the
@@ -1927,6 +1944,12 @@ const canonicalInsertionGap = ({
           },
         };
         break;
+      case "containerStart":
+        anchor = {
+          type: "containerStart",
+          at: { type: "after", blockId: intent.at.blockId },
+        };
+        break;
       default: {
         const unreachable: never = intent.at;
         return unreachable;
@@ -1937,9 +1960,13 @@ const canonicalInsertionGap = ({
     intent.operation.type === DOCUMENT_OP_TYPES.INSERT_TABLE
   ) {
     const { anchor: type, side, blockId } = intent.operation;
-    if (type === undefined || side === undefined)
-      panic("A resolved table insertion needs an explicit anchor and side.");
-    anchor = { type, at: { type: side, blockId } };
+    if (type === "containerStart")
+      anchor = { type, at: { type: "after", blockId } };
+    else if (type === undefined || side === undefined)
+      return panic(
+        "A resolved table insertion needs an explicit anchor and side.",
+      );
+    else anchor = { type, at: { type: side, blockId } };
   } else return undefined;
   const paragraph = projection.paragraph(anchor.at.blockId);
   if (paragraph === undefined)
@@ -1950,12 +1977,16 @@ const canonicalInsertionGap = ({
       : null;
   if (anchor.type === "table" && outer === null)
     panic("A resolved table insertion lost its source table.");
-  const boundary =
-    outer === null
-      ? paragraph.start -
-        1 +
-        (anchor.at.type === "after" ? paragraph.node.nodeSize : 0)
-      : outer[anchor.at.type];
+  let boundary: number;
+  if (anchor.type === "containerStart")
+    boundary = projection.doc.resolve(paragraph.start - 1).start();
+  else
+    boundary =
+      outer === null
+        ? paragraph.start -
+          1 +
+          (anchor.at.type === "after" ? paragraph.node.nodeSize : 0)
+        : outer[anchor.at.type];
   if (!placesBlock(operation)) return undefined;
   const source = projection.paragraph(operation.blockId);
   if (source === undefined)
@@ -1998,17 +2029,27 @@ const placeInsertionIntents = ({
 }: PlaceInsertionIntentsOptions): readonly EditorIntent[] =>
   intents.map((intent) => {
     if (intent.type === "insertParagraphs") {
-      return {
-        ...intent,
-        at:
-          anchor.type === "paragraph"
-            ? anchor.at
-            : {
-                type:
-                  anchor.at.type === "before" ? "beforeTable" : "afterTable",
-                blockId: anchor.at.blockId,
-              },
-      };
+      switch (anchor.type) {
+        case "paragraph":
+          return { ...intent, at: anchor.at };
+        case "table":
+          return {
+            ...intent,
+            at: {
+              type: anchor.at.type === "before" ? "beforeTable" : "afterTable",
+              blockId: anchor.at.blockId,
+            },
+          };
+        case "containerStart":
+          return {
+            ...intent,
+            at: { type: "containerStart", blockId: anchor.at.blockId },
+          };
+        default: {
+          const unreachable: never = anchor;
+          return unreachable;
+        }
+      }
     }
     if (
       intent.type !== "tableBlock" ||
@@ -2016,6 +2057,17 @@ const placeInsertionIntents = ({
     )
       return intent;
     const { operation } = intent;
+    if (anchor.type === "containerStart")
+      return {
+        type: "tableBlock",
+        operation: {
+          type: operation.type,
+          story: operation.story,
+          table: operation.table,
+          blockId: anchor.at.blockId,
+          anchor: "containerStart",
+        },
+      };
     if (anchor.type === "table")
       return {
         type: "tableBlock",
@@ -2180,6 +2232,8 @@ const LINE_BREAK_PATTERN = /\r\n|\r|\n/u;
 
 type ResolveTableInsertionOptions = {
   operation: TableInsertion;
+  /** Where the table goes in place of beside `paragraph`. */
+  listStart?: ListStartPlace;
   paragraph: ProjectedParagraph;
   projection: CanonicalProjection;
   story: OpStory;
@@ -2208,6 +2262,7 @@ type ResolveTableInsertionOptions = {
  */
 const resolveTableInsertion = ({
   operation,
+  listStart,
   paragraph,
   projection,
   story,
@@ -2283,6 +2338,26 @@ const resolveTableInsertion = ({
       to: position,
     });
   };
+  if (listStart !== undefined)
+    return Result.ok({
+      type: "plain" as const,
+      operation,
+      intents: [
+        {
+          type: "tableBlock",
+          operation: {
+            type: DOCUMENT_OP_TYPES.INSERT_TABLE,
+            story,
+            blockId: listStart.blockId,
+            table,
+            anchor: "containerStart",
+          },
+        } satisfies EditorIntent,
+      ],
+      normalizations: [],
+      from: listStart.position,
+      to: listStart.position,
+    });
   const outer = findOutermostTableBoundary(projection.doc, paragraph.start - 1);
   if (outer !== null) {
     if (
@@ -3300,6 +3375,11 @@ const mapColumnDeletionIntents = ({
 
 type ResolveCanonicalPublicOperationOptions = {
   operation: FolioDocumentOperation;
+  /**
+   * Where an insertion goes in place of beside the block it names: the
+   * start of a list, which no block names (`restatedBesideEmptyControl`).
+   */
+  listStart?: ListStartPlace;
   options: CanonicalPublicOperationOptions;
   state: EditorState;
   story: OpStory;
@@ -3494,15 +3574,29 @@ type BesideEmptyControlOptions = {
 
 type BesideEmptyControl =
   | { type: "beside"; operation: FolioDocumentOperation }
+  | {
+      type: "listStart";
+      operation: FolioDocumentOperation;
+      listStart: ListStartPlace;
+    }
   | { type: "refused"; message: string };
+
+/** What stands on one side of a block, as an insertion there names it. */
+type ControlSide =
+  | { type: "paragraph"; blockId: string }
+  | { type: "table"; blockId: string }
+  | { type: "listStart"; listStart: ListStartPlace }
+  | { type: "none" };
 
 /**
  * An operation on the filler of a block the source leaves empty, restated
  * beside the block: the paragraph or table it inserts goes in the gap before
- * or after the block, named by the paragraph on that side of it, and the
- * block stays as the source wrote it. The filler's properties are none, so
- * an inserted paragraph inherits none. Every other operation would edit the
- * filler, which holds nothing to edit.
+ * or after the block, named by the paragraph or table on that side of it,
+ * or, before a block that starts its list, by the start of that list; the
+ * block stays as the source wrote it. Inside a table the insertion goes
+ * beside the outermost table, as beside any paragraph of a cell. The
+ * filler's properties are none, so an inserted paragraph inherits none.
+ * Every other operation would edit the filler, which holds nothing to edit.
  */
 const besideEmptyControl = ({
   operation,
@@ -3510,50 +3604,107 @@ const besideEmptyControl = ({
   projection,
 }: BesideEmptyControlOptions): BesideEmptyControl => {
   const { doc } = projection;
-  const neighbour = (side: "before" | "after") => {
+  const tableAddress = (before: number) => {
+    const table = doc.nodeAt(before);
+    return table === null
+      ? undefined
+      : tableBlockAddress(projection, { table, tableStart: before + 1 });
+  };
+  const outer = findOutermostTableBoundary(doc, control.before);
+  const sideOf = (side: "before" | "after"): ControlSide => {
     const $gap = doc.resolve(control[side]);
     const beside = side === "after" ? $gap.nodeAfter : $gap.nodeBefore;
-    if (beside?.type.name !== "paragraph") return undefined;
-    return projection.paragraphStartingAt(
-      side === "after" ? control.after : control.before - beside.nodeSize,
-    );
+    const at = side === "after" ? control.after : control.before;
+    const besideAt = side === "after" ? at : at - (beside?.nodeSize ?? 0);
+    if (beside?.type.name === "paragraph") {
+      const paragraph = projection.paragraphStartingAt(besideAt);
+      return paragraph === undefined
+        ? { type: "none" }
+        : { type: "paragraph", blockId: paragraph.blockId };
+    }
+    if (beside?.type.name === "table") {
+      const blockId = tableAddress(besideAt);
+      return blockId === undefined
+        ? { type: "none" }
+        : { type: "table", blockId };
+    }
+    if (beside !== null) return { type: "none" };
+    // The block starts its list: the list is named by a paragraph it holds,
+    // and every list ends with one.
+    let named: string | undefined;
+    $gap.parent.forEach((child, offset) => {
+      if (named !== undefined || child.type.name !== "paragraph") return;
+      named = projection.paragraphStartingAt($gap.start() + offset)?.blockId;
+    });
+    return named === undefined
+      ? { type: "none" }
+      : { type: "listStart", listStart: { blockId: named, position: at } };
   };
   const noNeighbour = {
     type: "refused",
     message:
-      "Canonical insertion beside an empty content control needs a paragraph on that side of it.",
+      "Canonical insertion beside an empty content control needs a paragraph or table on that side of it.",
   } as const;
+  type Placement = {
+    side: "before" | "after";
+    beside: (
+      blockId: string,
+      side: "before" | "after",
+    ) => FolioDocumentOperation;
+  };
+  // The insertion named by what stands on `side` of the control, put on the
+  // side of it that faces the control.
+  const placed = ({ side, beside }: Placement): BesideEmptyControl => {
+    const facing = side === "after" ? "before" : "after";
+    if (outer !== null) {
+      const blockId = tableAddress(outer.before);
+      return blockId === undefined
+        ? noNeighbour
+        : { type: "beside", operation: beside(blockId, side) };
+    }
+    const standing = sideOf(side);
+    switch (standing.type) {
+      case "paragraph":
+      case "table":
+        return {
+          type: "beside",
+          operation: beside(standing.blockId, facing),
+        };
+      case "listStart":
+        return {
+          type: "listStart",
+          operation: beside(standing.listStart.blockId, side),
+          listStart: standing.listStart,
+        };
+      case "none":
+        return noNeighbour;
+      default: {
+        const unreachable: never = standing;
+        return unreachable;
+      }
+    }
+  };
   switch (operation.type) {
     case "insertAfterBlock":
     case "insertBeforeBlock": {
-      const side = operation.type === "insertAfterBlock" ? "after" : "before";
-      const paragraph = neighbour(side);
-      if (paragraph === undefined) return noNeighbour;
       const { precondition: _precondition, ...rest } = operation;
-      return {
-        type: "beside",
-        operation: {
+      return placed({
+        side: operation.type === "insertAfterBlock" ? "after" : "before",
+        beside: (blockId, side) => ({
           ...rest,
-          type: side === "after" ? "insertBeforeBlock" : "insertAfterBlock",
-          blockId: paragraph.blockId,
+          type: side === "after" ? "insertAfterBlock" : "insertBeforeBlock",
+          blockId,
           inheritFormatting: false,
-        },
-      };
+        }),
+      });
     }
     case "insertTable":
     case "insertSignatureTable": {
-      const side = operation.position ?? "after";
-      const paragraph = neighbour(side);
-      if (paragraph === undefined) return noNeighbour;
       const { precondition: _precondition, ...rest } = operation;
-      return {
-        type: "beside",
-        operation: {
-          ...rest,
-          blockId: paragraph.blockId,
-          position: side === "after" ? "before" : "after",
-        },
-      };
+      return placed({
+        side: operation.position ?? "after",
+        beside: (blockId, side) => ({ ...rest, blockId, position: side }),
+      });
     }
     case "replaceInBlock":
     case "replaceRange":
@@ -5423,16 +5574,22 @@ export class CanonicalPublicOperations {
    * block the source leaves empty is first restated beside that block.
    */
   private resolve(options: ResolveCanonicalPublicOperationOptions) {
-    const operation = this.restatedBesideEmptyControl(options);
-    if (operation.isErr()) return Result.err(operation.error);
-    return this.resolveOperation({ ...options, operation: operation.value });
+    const restated = this.restatedBesideEmptyControl(options);
+    if (restated.isErr()) return Result.err(restated.error);
+    const { operation, listStart } = restated.value;
+    return this.resolveOperation({
+      ...options,
+      operation,
+      ...(listStart === undefined ? {} : { listStart }),
+    });
   }
 
   /**
    * `operation`, or, where it names the filler of a block the source leaves
-   * empty (`emptyControlOfFiller`), the same insertion beside that block; any
-   * other operation on the filler is refused, as is one whose precondition
-   * the filler, which holds no words, does not meet.
+   * empty (`emptyControlOfFiller`), the same insertion beside that block,
+   * with the start of its list where that is where it goes; any other
+   * operation on the filler is refused, as is one whose precondition the
+   * filler, which holds no words, does not meet.
    */
   private restatedBesideEmptyControl({
     operation,
@@ -5440,7 +5597,7 @@ export class CanonicalPublicOperations {
     state,
     story,
   }: ResolveCanonicalPublicOperationOptions): Result<
-    FolioDocumentOperation,
+    Pick<ResolveCanonicalPublicOperationOptions, "operation" | "listStart">,
     CanonicalPublicOperationResolutionError
   > {
     const blockId =
@@ -5458,9 +5615,9 @@ export class CanonicalPublicOperations {
       projection.isErr() ||
       projection.value.paragraph(blockId) !== undefined
     )
-      return Result.ok(operation);
+      return Result.ok({ operation });
     const control = emptyControlOfFiller(state.doc, blockId);
-    if (control === undefined) return Result.ok(operation);
+    if (control === undefined) return Result.ok({ operation });
     const refusal = (reason: FolioAIEditSkipReason, message?: string) =>
       Result.err(
         new CanonicalPublicOperationResolutionError({
@@ -5481,13 +5638,26 @@ export class CanonicalPublicOperations {
       control,
       projection: projection.value,
     });
-    return beside.type === "refused"
-      ? refusal("unsupportedBlock", beside.message)
-      : Result.ok(beside.operation);
+    switch (beside.type) {
+      case "refused":
+        return refusal("unsupportedBlock", beside.message);
+      case "beside":
+        return Result.ok({ operation: beside.operation });
+      case "listStart":
+        return Result.ok({
+          operation: beside.operation,
+          listStart: beside.listStart,
+        });
+      default: {
+        const unreachable: never = beside;
+        return unreachable;
+      }
+    }
   }
 
   private resolveOperation({
     operation,
+    listStart,
     options,
     state,
     story,
@@ -5660,6 +5830,7 @@ export class CanonicalPublicOperations {
     )
       return resolveTableInsertion({
         operation,
+        ...(listStart === undefined ? {} : { listStart }),
         paragraph,
         projection: projection.value,
         story,
@@ -5667,6 +5838,21 @@ export class CanonicalPublicOperations {
         refusal,
         skipAlike,
         template: options.tableTemplates?.get(operation.id),
+      });
+    // Nothing stands before a list's start: no pending join reads the place,
+    // and no paragraph the batch deletes is beside it.
+    if (isBlockInsertion(operation) && listStart !== undefined)
+      return resolveBlockInsertion({
+        operation,
+        listStart,
+        paragraph,
+        formattingSource: paragraph,
+        projection: projection.value,
+        noteReferences,
+        story,
+        mintList,
+        refusal,
+        skipAlike,
       });
     if (isBlockInsertion(operation)) {
       const besideDeletion =

@@ -7,6 +7,7 @@ import {
   type Paragraph,
 } from "../model/document";
 import {
+  isOpaqueFollower,
   markBeforeTableResolves,
   paragraphTableRunInBoundary,
 } from "./blockDeletion";
@@ -403,7 +404,28 @@ export const insertBlocks = ({
       "No paragraphs to insert.",
     );
   }
-  if (op.at.type === "beforeTable" || op.at.type === "afterTable") {
+  if (op.at.type === "containerStart") {
+    const located = locateBlockInsertion(document, op);
+    if (located.isErr()) return located;
+    const first = blockListAt(
+      storyBody(document, op.story).content,
+      located.value.list,
+    ).at(0);
+    // A list that starts with a paragraph is named by it: one place, one
+    // insertion, whichever way it is addressed.
+    if (first?.type === "paragraph" && first.paraId !== undefined)
+      return insertBlocks({
+        document,
+        op: { ...op, at: { type: "before", blockId: first.paraId } },
+        applyOps,
+        validateBlockReplacement,
+      });
+  }
+  if (
+    op.at.type === "beforeTable" ||
+    op.at.type === "afterTable" ||
+    op.at.type === "containerStart"
+  ) {
     if (
       op.blocks.some(({ sectionProperties }) => sectionProperties !== undefined)
     )
@@ -463,7 +485,10 @@ export const insertBlocks = ({
             DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
             "Tracked table-side insertion needs a paragraph terminator after its table receiver.",
           );
-      } else if (following?.type !== "paragraph")
+      } else if (
+        following?.type !== "paragraph" &&
+        !isOpaqueFollower(following)
+      )
         return refuse(
           DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
           "Tracked table-side insertion needs a following paragraph or a proven table boundary.",

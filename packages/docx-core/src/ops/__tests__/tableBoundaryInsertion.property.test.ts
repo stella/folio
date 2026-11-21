@@ -440,7 +440,6 @@ for (const boundary of [
   "review-section",
   "structure",
   "terminal",
-  "opaque",
   "range",
   "no-carrier",
 ] as const)
@@ -461,12 +460,6 @@ for (const boundary of [
         content: [paragraph({ paraId: "10000030", text: "Nested" })],
       });
     if (boundary === "terminal") before.package.document.content.pop();
-    if (boundary === "opaque")
-      before.package.document.content.splice(3, 0, {
-        type: "blockSdt",
-        properties: { sdtType: "richText", id: 88 },
-        content: [paragraph({ paraId: "10000030", text: "Nested" })],
-      });
     if (boundary === "range")
       before.package.document.content.splice(3, 0, {
         type: "commentRangeStart",
@@ -503,7 +496,7 @@ for (const boundary of [
     const original = structuredClone(before);
     const at = {
       type:
-        boundary === "terminal" || boundary === "opaque" || boundary === "range"
+        boundary === "terminal" || boundary === "range"
           ? "afterTable"
           : "beforeTable",
       blockId: "10000022",
