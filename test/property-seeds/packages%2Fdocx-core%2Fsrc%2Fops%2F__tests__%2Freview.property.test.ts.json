@@ -700,6 +700,12 @@
       "path": "4809:2:1:5:5:5:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:6:4:12:4:19:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:10:10:12:13:13:13:13:13:13:13:13:37:13:17:17:17:18:23:9:18:31:31:31:31:31:31:31:31:31:31:31:31:31:31:31:34:32:31:31:31:31:31:32:33:31:32:32:34:31:34:34:33:35:32:33:32:33:32:32:34:33:38:33:32:32:32:33:33:31:31:31:31:31:31:31:31:31:31:31:31:31:31:31:31:31:31:31:31:31:31:31:31:31:31:31:31",
       "note": "#3161: once the pieces a removed change cut go with it, the records left meet only as far as they are alike, so its kept marker stands beside an unrelated link in every rejection order (seen at 40x runs).",
       "date": "2026-11-21"
+    },
+    {
+      "seed": 1794992374,
+      "path": "166:0:0:0:0:0:0:0:4:2:2:4:3:3:3:7:6:8:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:12:12:12:12:12:12:12:12:13:10:10:10:10:10:10:12:10:10:11:10:12:10:10:10:10:10:10:10:10:10:10:10:11:11:11:11:11:11:11:11:12:12:12:12:13:12:40:40:41:41:41:41:41:41:41:41:41:41:41:41:41:41:41:41:41:41:41:42:11:13:13:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:18:38:9:37:37:38:37:38:37:38:38:37:39:38:38:38:37:37:37:37:37:38:37:37:39:39:39:39:39:39:39:39:39:39:39:39:39:39:41:40:40:40:40:40:40:40:40:40:40:40:40:40",
+      "note": "#3161: rejecting content made inside a pending insertion defers its seam on the insertion standing between the pieces, so a marker kept there records the same cut in either order.",
+      "date": "2026-11-21"
     }
   ],
   "L3: a run's accepted and rejected revisions resolved as two batches, in either order, equal resolving each operation's in any order": [

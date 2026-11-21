@@ -4715,10 +4715,22 @@ const resolveList = ({
           (node.resolutionJoins?.remove ?? 0) > 0
         );
       });
+      // Pending changes beyond them are such pieces when they are alike down
+      // to the seam's depth: the removed content was made inside that
+      // pending change, and rejecting the insertions between them joins it.
+      const pendingPieces =
+        beyondLeft !== undefined &&
+        beyondRight !== undefined &&
+        isTrackedWrapper(beyondLeft) &&
+        isTrackedWrapper(beyondRight) &&
+        !resolution.ids.has(beyondLeft.info.id) &&
+        !resolution.ids.has(beyondRight.info.id) &&
+        alikeDepth(beyondLeft, beyondRight) >= exactDepth;
       const mayWait =
         cutsOwn ||
         leftHolder !== undefined ||
         rightHolder !== undefined ||
+        pendingPieces ||
         (beyondLeft !== undefined &&
           beyondRight !== undefined &&
           !isTrackedWrapper(beyondLeft) &&
