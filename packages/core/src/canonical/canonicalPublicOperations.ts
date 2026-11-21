@@ -1842,22 +1842,32 @@ type FormattingIntentsAsItRunsOptions = {
   survivorOf: ReadonlyMap<string, string>;
   /** Those of them whose words open the paragraph they now live in. */
   openingSurvivorOf: ReadonlyMap<string, string>;
+  /**
+   * Each paragraph a block deletion of the batch absorbed, such as the one
+   * that takes the final mark of a deleted run ending its container, to the
+   * one it now lives in. A join's absorbed half is not here: an insertion
+   * beside it keeps its own place.
+   */
+  deletionSurvivorOf: ReadonlyMap<string, string>;
   intents: readonly EditorIntent[];
 };
 
 /**
- * Paragraph property edits and paragraphs put before a paragraph, bound to
- * the paragraph as the batch stands when they run: one an earlier operation
- * joined away, such as the first half of a split whose retraction joins it
- * to the second, is edited in the paragraph that now holds it, and a
- * paragraph put before it goes before that one when its words open it, as
- * a merge into the next paragraph leaves them.
+ * Paragraph property edits and paragraph insertions bound to the paragraph
+ * as the batch stands when they run: one an earlier operation joined away,
+ * such as the first half of a split whose retraction joins it to the second,
+ * or a paragraph that took the mark of the run a block deletion of the
+ * batch deleted after it, is edited, or inserted beside, in the paragraph
+ * that now holds it; a join's absorbed half keeps its own place for an
+ * insertion, except that a paragraph put before it goes before the
+ * paragraph its words open, as a merge into the next paragraph leaves them.
  */
 const formattingIntentsAsItRuns = ({
   document,
   story,
   survivorOf,
   openingSurvivorOf,
+  deletionSurvivorOf,
   intents,
 }: FormattingIntentsAsItRunsOptions): readonly EditorIntent[] => {
   if (survivorOf.size === 0) return intents;
@@ -1868,8 +1878,11 @@ const formattingIntentsAsItRuns = ({
     ),
   );
   // The paragraph's start, in the paragraph that now holds it.
-  const bound = (at: TextPosition): TextPosition => {
-    const survivor = survivorOf.get(idKey(at.blockId));
+  const bound = (
+    at: TextPosition,
+    survivors: ReadonlyMap<string, string> = survivorOf,
+  ): TextPosition => {
+    const survivor = survivors.get(idKey(at.blockId));
     return survivor === undefined || present.has(idKey(at.blockId))
       ? at
       : { story: at.story, blockId: survivor, offset: 0 };
@@ -1885,12 +1898,21 @@ const formattingIntentsAsItRuns = ({
         };
       case "insertParagraphs": {
         const { at } = intent;
-        if (at.type !== "before" || present.has(idKey(at.blockId)))
-          return intent;
-        const survivor = openingSurvivorOf.get(idKey(at.blockId));
-        return survivor === undefined
+        if (at.type !== "before" && at.type !== "after") return intent;
+        if (present.has(idKey(at.blockId))) return intent;
+        const opening =
+          at.type === "before"
+            ? openingSurvivorOf.get(idKey(at.blockId))
+            : undefined;
+        if (opening !== undefined)
+          return { ...intent, at: { type: "before", blockId: opening } };
+        const { blockId } = bound(
+          { story, blockId: at.blockId, offset: 0 },
+          deletionSurvivorOf,
+        );
+        return blockId === at.blockId
           ? intent
-          : { ...intent, at: { type: "before", blockId: survivor } };
+          : { ...intent, at: { type: at.type, blockId } };
       }
       default:
         return intent;
@@ -4672,6 +4694,7 @@ export class CanonicalPublicOperations {
     const survivorOf = new Map<string, string>();
     /** Those whose words open the paragraph they now live in. */
     const openingSurvivorOf = new Map<string, string>();
+    const deletionSurvivorOf = new Map<string, string>();
     // Preparation owns no session state: even comments and lock refusals are
     // facts until the batch chooses this attempt.
     const prepareOperation = ({
@@ -4703,6 +4726,7 @@ export class CanonicalPublicOperations {
         story,
         survivorOf,
         openingSurvivorOf,
+        deletionSurvivorOf,
         intents: insertionIntentsAsItRuns({
           document: sourceDocument,
           story,
@@ -5090,17 +5114,23 @@ export class CanonicalPublicOperations {
         skip(operation.id, prepared.reason, prepared.message);
         return;
       }
+      const survivorMaps =
+        operation.type === "deleteBlock"
+          ? [survivorOf, deletionSurvivorOf]
+          : [survivorOf];
       for (const absorption of prepared.absorbed) {
         const { absorbed, survivor } = absorption;
         const opens = opensSurvivor({ document, story, absorption });
-        for (const [gone, kept] of survivorOf)
-          if (kept === idKey(absorbed)) survivorOf.set(gone, idKey(survivor));
+        for (const survivors of survivorMaps) {
+          for (const [gone, kept] of survivors)
+            if (kept === idKey(absorbed)) survivors.set(gone, idKey(survivor));
+          survivors.set(idKey(absorbed), idKey(survivor));
+        }
         for (const [gone, kept] of openingSurvivorOf) {
           if (kept !== idKey(absorbed)) continue;
           if (opens) openingSurvivorOf.set(gone, idKey(survivor));
           else openingSurvivorOf.delete(gone);
         }
-        survivorOf.set(idKey(absorbed), idKey(survivor));
         if (opens) openingSurvivorOf.set(idKey(absorbed), idKey(survivor));
       }
       const { commentId, suggestionId, revisionIds, retiredCommentIds } =
