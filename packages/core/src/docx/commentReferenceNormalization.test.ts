@@ -138,6 +138,7 @@ describe("comment reference normalization", () => {
     expect(result).toEqual({
       removedDanglingReferences: 4,
       reanchoredUnbalancedRanges: 0,
+      droppedUnpairedBoundaries: 0,
     });
     const paragraph = documentBody.content.at(0);
     expect(paragraph?.type).toBe("paragraph");
@@ -189,6 +190,7 @@ describe("comment reference normalization", () => {
     expect(result).toEqual({
       removedDanglingReferences: 0,
       reanchoredUnbalancedRanges: 1,
+      droppedUnpairedBoundaries: 0,
     });
     const paragraph = documentBody.content.at(0);
     expect(paragraph?.type).toBe("paragraph");
@@ -201,7 +203,7 @@ describe("comment reference normalization", () => {
     });
   });
 
-  test("re-anchors out-of-order valid range markers as point comments", () => {
+  test("re-anchors out-of-order valid range markers as one point comment", () => {
     const documentBody: DocumentBody = {
       comments: [
         {
@@ -232,7 +234,8 @@ describe("comment reference normalization", () => {
 
     expect(result).toEqual({
       removedDanglingReferences: 0,
-      reanchoredUnbalancedRanges: 2,
+      reanchoredUnbalancedRanges: 1,
+      droppedUnpairedBoundaries: 1,
     });
     const paragraph = documentBody.content.at(0);
     expect(paragraph?.type).toBe("paragraph");
@@ -242,6 +245,44 @@ describe("comment reference normalization", () => {
     expect(paragraph.content.map((content) => content.type)).toEqual([
       "commentReference",
       "run",
+    ]);
+  });
+
+  test("drops a lone boundary of a comment its reference anchors", () => {
+    const comments: Comment[] = [{ id: 7, author: "Reviewer", content: [] }];
+    const documentBody: DocumentBody = {
+      comments,
+      content: [
+        { type: "commentRangeStart", id: 7 },
+        {
+          type: "paragraph",
+          content: [
+            { type: "run", content: [{ type: "text", text: "Text" }] },
+            { type: "commentRangeEnd", id: 7 },
+            { type: "commentRangeEnd", id: 7 },
+            { type: "commentReference", id: 7 },
+          ],
+        },
+        { type: "commentRangeEnd", id: 7 },
+      ],
+    };
+
+    const result = normalizeCommentReferences({ documentBody, comments });
+
+    expect(result).toEqual({
+      removedDanglingReferences: 0,
+      reanchoredUnbalancedRanges: 0,
+      droppedUnpairedBoundaries: 2,
+    });
+    expect(documentBody.content.at(-1)).toEqual({
+      type: "preservedBlock",
+      xml: '<w:commentRangeEnd w:id="7"/>',
+    });
+    const paragraph = documentBody.content.at(1);
+    if (paragraph?.type !== "paragraph") throw new Error("expected paragraph");
+    expect(paragraph.content.map((content) => content.type)).toEqual([
+      "run",
+      "commentRangeEnd",
       "commentReference",
     ]);
   });

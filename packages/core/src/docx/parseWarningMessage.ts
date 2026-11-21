@@ -54,6 +54,10 @@ const PARSE_WARNING_MESSAGES = {
     `Removed ${plural(warning.count, "dangling comment reference marker")} whose comments.xml entries are missing.`,
   [PARSE_WARNING_CODES.unbalancedCommentRange]: (warning) =>
     `Re-anchored ${plural(warning.count, "unbalanced comment range marker")} as point comments.`,
+  [PARSE_WARNING_CODES.unpairedCommentRangeBoundary]: (warning) =>
+    `Dropped ${plural(warning.count, "unpaired comment range boundary", "unpaired comment range boundaries")}; each comment stays anchored at its reference.`,
+  [PARSE_WARNING_CODES.repeatedCommentParagraphId]: (warning) =>
+    `Gave ${plural(warning.count, "comment paragraph")} repeating an earlier paragraph's w14:paraId a minted id.`,
   [PARSE_WARNING_CODES.danglingHeaderReference]: (warning) =>
     `Removed ${plural(warning.count, "dangling header reference")} whose header parts are missing.`,
   [PARSE_WARNING_CODES.danglingFooterReference]: (warning) =>
