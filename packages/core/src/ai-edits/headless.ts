@@ -3701,11 +3701,15 @@ export class FolioDocxReviewer {
         handles.push({ type: "endnote", noteId: endnote.id });
       }
     }
+    // On the session, a part a resolution retired is gone, as a save drops it.
+    const retired =
+      this.engine.type === "canonical"
+        ? this.engine.session.retiredHeaderFooters()
+        : undefined;
     return handles.filter((handle) => {
       if (handle.type === "header" || handle.type === "footer") {
-        return !this.removedHeaderFooterStories.has(
-          headerFooterStoryKey(handle),
-        );
+        const key = headerFooterStoryKey(handle);
+        return !this.removedHeaderFooterStories.has(key) && !retired?.has(key);
       }
       return true;
     });
