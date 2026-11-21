@@ -1,4 +1,9 @@
-import { Result, TaggedError, type TaggedErrorClass } from "better-result";
+import {
+  panic,
+  Result,
+  TaggedError,
+  type TaggedErrorClass,
+} from "better-result";
 
 import { escapeXmlAttribute } from "@stll/docx-core";
 import { MAX_REVISION_ID } from "@stll/docx-core/model";
@@ -6,6 +11,8 @@ import {
   type CopyOriginAncestorList,
   isCopyOriginAncestors,
   isKeptCut,
+  type VersionOneKept,
+  type VersionOneKeptMarkers,
 } from "@stll/docx-core/ops";
 
 import { MAX_REVIEW_HISTORY_ATTRIBUTE_LENGTH } from "../reviewHistoryLimits";
@@ -23,9 +30,10 @@ const NAMESPACES: ReadonlySet<string> = new Set([
   FOLIO_REVIEW_HISTORY_NAMESPACE,
 ]);
 /**
- * The review history version folio writes. Version 2 adds a kept range
- * marker's cut (`folio:keptCut`). Version 1 files carry no marker cut and are
- * read as they are.
+ * The review history version folio writes. Version 2 records a kept range
+ * marker's cut on the marker (`folio:keptCut`). Version 1 files carry no
+ * marker cut: their changes name the kept markers instead, which the reader
+ * translates onto the markers ({@link versionOneKeptMarkers}).
  */
 const VERSION = 2;
 /** Every version the reader understands. */
@@ -55,8 +63,6 @@ const JOIN_FIELDS = {
   emptiedHolder: true,
   holdsControlText: true,
   retainedEnclosing: true,
-  keptFrom: true,
-  keptCount: true,
 } as const satisfies Record<RecordField<ResolutionJoins>, true>;
 type EnclosingHandoff = NonNullable<
   ResolutionJoins["retainedEnclosing"]
@@ -94,8 +100,6 @@ const PARAGRAPH_MARK_FIELDS = {
 const DEFERRED_REMOVAL_FIELDS = {
   depth: true,
   blockers: true,
-  keptFrom: true,
-  keptCount: true,
   edge: true,
 } as const satisfies Record<RecordField<DeferredRemoval>, true>;
 
@@ -152,17 +156,12 @@ const enclosingHandoffs = (
     );
   });
 
-/** A count of kept boundaries, with the date they were kept from. */
-const validKeptCount = (value: Record<string, unknown>): boolean => {
-  if (!Object.hasOwn(value, "keptCount")) return true;
-  const count = value["keptCount"];
-  return (
-    Object.hasOwn(value, "keptFrom") &&
-    natural(count) &&
-    count >= 1 &&
-    count <= MAX_REVISION_ID
-  );
-};
+/** What tells two deferred seam groups apart. */
+const deferredRemovalKey = ({
+  depth,
+  blockers,
+  edge,
+}: DeferredRemoval): string => JSON.stringify({ depth, blockers, edge });
 
 const deferredRemoval = (value: unknown): value is DeferredRemoval => {
   if (
@@ -175,9 +174,6 @@ const deferredRemoval = (value: unknown): value is DeferredRemoval => {
   const depth = value["depth"];
   const blockers = value["blockers"];
   return (
-    (!Object.hasOwn(value, "keptFrom") ||
-      typeof value["keptFrom"] === "string") &&
-    validKeptCount(value) &&
     (!Object.hasOwn(value, "edge") ||
       value["edge"] === "start" ||
       value["edge"] === "end") &&
@@ -203,9 +199,7 @@ const deferredRemovals = (
     !value.every(deferredRemoval)
   )
     return false;
-  const groups = value.map(({ depth, blockers, keptFrom, keptCount, edge }) =>
-    JSON.stringify({ depth, blockers, keptFrom, keptCount, edge }),
-  );
+  const groups = value.map(deferredRemovalKey);
   return new Set(groups).size === groups.length;
 };
 
@@ -215,9 +209,6 @@ export const isResolutionJoins = (value: unknown): value is ResolutionJoins =>
   natural(value["before"]) &&
   natural(value["after"]) &&
   natural(value["remove"]) &&
-  (!Object.hasOwn(value, "keptFrom") ||
-    typeof value["keptFrom"] === "string") &&
-  validKeptCount(value) &&
   (!Object.hasOwn(value, "acceptance") ||
     (typeof value["acceptance"] === "string" &&
       Object.hasOwn(ACCEPTANCE_POLICIES, value["acceptance"]))) &&
@@ -295,12 +286,15 @@ type ParseAttributeOptions<Value> = {
 
 /** Why a provenance attribute's text cannot be read, or the value it holds. */
 type DecodedProvenance =
-  | { status: "read"; value: unknown }
+  | { status: "read"; value: unknown; version: unknown }
   | { status: "dropped"; reason: "invalid" | "unsupportedVersion" };
+
+/** Whether `value` has the shape the history `version` writes. */
+type ProvenanceShape = (value: unknown, version: unknown) => boolean;
 
 const decodeProvenance = (
   encoded: string,
-  valid: (value: unknown) => boolean,
+  valid: ProvenanceShape,
 ): DecodedProvenance => {
   if (encoded.length > MAX_REVIEW_HISTORY_ATTRIBUTE_LENGTH)
     return { status: "dropped", reason: "invalid" };
@@ -315,11 +309,12 @@ const decodeProvenance = (
     Object.keys(decoded).some((key) => key !== "version" && key !== "value")
   )
     return { status: "dropped", reason: "invalid" };
-  if (!READABLE_VERSIONS.has(decoded["version"]))
+  const version = decoded["version"];
+  if (!READABLE_VERSIONS.has(version))
     return { status: "dropped", reason: "unsupportedVersion" };
   const value = decoded["value"];
-  if (!valid(value)) return { status: "dropped", reason: "invalid" };
-  return { status: "read", value };
+  if (!valid(value, version)) return { status: "dropped", reason: "invalid" };
+  return { status: "read", value, version };
 };
 
 /**
@@ -378,38 +373,136 @@ const serializeAttribute = (options: SerializeAttributeOptions): string => {
 };
 
 /**
- * Joins read from version 1 history, whose kept markers carry no cut: the
- * change names them (`keptFrom`, `keptCount`), and the paragraph reader
- * marks them as version 2 does ({@link joinsNameKeptMarkers}).
+ * Version 1 history, whose kept markers carry no cut, named them on the
+ * change instead (`keptFrom`, `keptCount`, on its joins and on each deferred
+ * seam group). This is the one place those fields are read: they are taken
+ * off the joins as read, and the paragraph reader marks the markers they
+ * name as later versions do ({@link versionOneKeptMarkers}). Later versions
+ * never write them.
  */
-const VERSION_1_JOINS = new WeakSet<ResolutionJoins>();
-const versionOf = (node: XmlElement, attribute: string): unknown => {
-  const encoded = getAttributeByNamespaceUri(node, NAMESPACES, attribute);
-  if (encoded === null) return undefined;
-  const parsed = Result.try({
-    try: (): unknown => JSON.parse(encoded),
-    catch: () => undefined,
-  });
-  return parsed.isOk() && record(parsed.value)
-    ? parsed.value["version"]
+type VersionOneJoins = { joins: ResolutionJoins; kept: VersionOneKept };
+
+/**
+ * `value` without the kept marker fields version 1 wrote on it, and what
+ * they say; `undefined` when they are malformed.
+ */
+const withoutVersionOneKept = (
+  value: Record<string, unknown>,
+):
+  | { rest: Record<string, unknown>; kept: VersionOneKeptMarkers | undefined }
+  | undefined => {
+  const { keptFrom, keptCount, ...rest } = value;
+  if (!Object.hasOwn(value, "keptFrom") && !Object.hasOwn(value, "keptCount"))
+    return { rest, kept: undefined };
+  if (typeof keptFrom !== "string") return undefined;
+  if (!Object.hasOwn(value, "keptCount")) return { rest, kept: { keptFrom } };
+  return natural(keptCount) && keptCount >= 1 && keptCount <= MAX_REVISION_ID
+    ? { rest, kept: { keptFrom, keptCount } }
     : undefined;
 };
+
+/** Version 1 joins as the model holds them, and what they said of kept markers. */
+const readVersionOneJoins = (value: unknown): VersionOneJoins | undefined => {
+  if (!record(value)) return undefined;
+  const change = withoutVersionOneKept(value);
+  if (change === undefined) return undefined;
+  const { deferredRemove, ...joins } = change.rest;
+  const groups: (VersionOneKeptMarkers | undefined)[] = [];
+  if (Object.hasOwn(change.rest, "deferredRemove")) {
+    if (!Array.isArray(deferredRemove)) return undefined;
+    const stripped: unknown[] = [];
+    const written = new Set<string>();
+    const seen = new Set<string>();
+    for (const group of deferredRemove) {
+      const read = record(group) ? withoutVersionOneKept(group) : undefined;
+      if (read === undefined || !deferredRemoval(read.rest)) return undefined;
+      // Version 1 wrote each group once.
+      const asWritten = JSON.stringify([
+        deferredRemovalKey(read.rest),
+        read.kept,
+      ]);
+      if (written.has(asWritten)) return undefined;
+      written.add(asWritten);
+      // Groups only kept dates told apart are one seam: the first names its
+      // markers.
+      const key = deferredRemovalKey(read.rest);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      stripped.push(read.rest);
+      groups.push(read.kept);
+    }
+    joins["deferredRemove"] = stripped;
+  }
+  if (!isStoredResolutionJoins(joins)) return undefined;
+  return {
+    joins,
+    kept:
+      change.kept === undefined ? { groups } : { change: change.kept, groups },
+  };
+};
+
+/** The joins as `version` of the history writes them. */
+const isStoredJoinsOf: ProvenanceShape = (value, version) =>
+  version === 1
+    ? readVersionOneJoins(value) !== undefined
+    : isStoredResolutionJoins(value);
+
+/** What version 1 history said of kept markers, by the joins read from it. */
+const VERSION_ONE_KEPT = new WeakMap<ResolutionJoins, VersionOneKept>();
+
+/** `joins` decoded from `version` of the history, as the model holds them. */
+const modelJoins = (joins: unknown, version: unknown): ResolutionJoins => {
+  if (version !== 1) {
+    if (!isStoredResolutionJoins(joins))
+      return panic("Decoded resolution joins have their version's shape.");
+    return joins;
+  }
+  const read =
+    readVersionOneJoins(joins) ??
+    panic("Decoded version 1 joins have their version's shape.");
+  VERSION_ONE_KEPT.set(read.joins, read.kept);
+  return read.joins;
+};
+
+/** `joins` with their handoff, keeping what version 1 said of kept markers. */
+const withEnclosingKept = (
+  joins: ResolutionJoins,
+  node: XmlElement,
+): ResolutionJoins => {
+  const enclosed = withEnclosing(joins, node);
+  const kept = VERSION_ONE_KEPT.get(joins);
+  if (kept !== undefined) VERSION_ONE_KEPT.set(enclosed, kept);
+  return enclosed;
+};
+
+/** Decode a provenance attribute of `node` whose shape depends on its version. */
+const decodeAttribute = (
+  node: XmlElement,
+  attribute: string,
+  valid: ProvenanceShape,
+): { value: unknown; version: unknown } | undefined => {
+  const encoded = getAttributeByNamespaceUri(node, NAMESPACES, attribute);
+  if (encoded === null) return undefined;
+  const decoded = decodeProvenance(encoded, valid);
+  return decoded.status === "read" ? decoded : undefined;
+};
+
 export const parseResolutionJoins = (
   node: XmlElement,
 ): ResolutionJoins | undefined => {
-  const joins = parseAttribute({
-    node,
-    attribute: "resolutionJoins",
-    valid: isStoredResolutionJoins,
-  });
-  if (joins === undefined) return undefined;
-  const enclosed = withEnclosing(joins, node);
-  if (versionOf(node, "resolutionJoins") === 1) VERSION_1_JOINS.add(enclosed);
-  return enclosed;
+  const decoded = decodeAttribute(node, "resolutionJoins", isStoredJoinsOf);
+  return decoded === undefined
+    ? undefined
+    : withEnclosingKept(modelJoins(decoded.value, decoded.version), node);
 };
-/** Whether `joins` came from version 1 history and name their kept markers. */
-export const joinsNameKeptMarkers = (joins: ResolutionJoins): boolean =>
-  VERSION_1_JOINS.has(joins);
+
+/**
+ * What version 1 history said of the kept markers `joins` name, when they
+ * were read from it.
+ */
+export const versionOneKeptMarkers = (
+  joins: ResolutionJoins,
+): VersionOneKept | undefined => VERSION_ONE_KEPT.get(joins);
 export const parseBoundaryJoins = (
   node: XmlElement,
 ): BoundaryJoins | undefined =>
@@ -560,17 +653,31 @@ export const isSplitResolutionPiece = (
   (!Object.hasOwn(value, "joins") ||
     (value["piece"] === 0 && isStoredResolutionJoins(value["joins"])));
 
+/** A split piece as `version` of the history writes it. */
+const isSplitPieceOf: ProvenanceShape = (value, version) => {
+  if (version !== 1 || !record(value) || !Object.hasOwn(value, "joins"))
+    return isSplitResolutionPiece(value);
+  return isSplitResolutionPiece({
+    ...value,
+    joins: readVersionOneJoins(value["joins"])?.joins,
+  });
+};
+
 export const parseSplitResolutionPiece = (
   node: XmlElement,
 ): SplitResolutionPiece | undefined => {
-  const piece = parseAttribute({
-    node,
-    attribute: "splitResolutionJoins",
-    valid: isSplitResolutionPiece,
-  });
-  return piece?.joins === undefined
-    ? piece
-    : { ...piece, joins: withEnclosing(piece.joins, node) };
+  const decoded = decodeAttribute(node, "splitResolutionJoins", isSplitPieceOf);
+  if (decoded === undefined) return undefined;
+  const { value, version } = decoded;
+  if (!record(value) || !Object.hasOwn(value, "joins")) {
+    if (!isSplitResolutionPiece(value))
+      return panic("A decoded split piece has its version's shape.");
+    return value;
+  }
+  const piece = { ...value, joins: modelJoins(value["joins"], version) };
+  if (!isSplitResolutionPiece(piece) || piece.joins === undefined)
+    return panic("A decoded split piece has its version's shape.");
+  return { ...piece, joins: withEnclosingKept(piece.joins, node) };
 };
 
 export const serializeSplitResolutionPiece = (
@@ -586,16 +693,14 @@ export const serializeSplitResolutionPiece = (
   }) + serializeEnclosing(value.joins);
 
 /** Every provenance attribute folio reads, with the shape its value must have. */
-const PROVENANCE_VALUE_SHAPES: Readonly<
-  Record<string, (value: unknown) => boolean>
-> = {
-  resolutionJoins: isStoredResolutionJoins,
+const PROVENANCE_VALUE_SHAPES: Readonly<Record<string, ProvenanceShape>> = {
+  resolutionJoins: isStoredJoinsOf,
   boundaryJoins: isBoundaryJoins,
   [PARAGRAPH_MARK_FIELDS.resolutionJoin.attribute]:
     isEncodedParagraphMarkResolutionJoin,
   copyOriginAncestors: isCopyOriginAncestors,
   keptCut: isKeptCut,
-  splitResolutionJoins: isSplitResolutionPiece,
+  splitResolutionJoins: isSplitPieceOf,
   [ENCLOSING_ATTRIBUTE]: enclosingHandoffs,
   [PARAGRAPH_MARK_FIELDS.survivor.attribute]: isParagraphMarkSurvivor,
 };

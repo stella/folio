@@ -117,11 +117,11 @@ import {
 import { type PreviewLedger, standalonePreviewLedger } from "./previewBudget";
 import { FOLIO_REVIEW_HISTORY_NAMESPACE } from "./reviewHistoryNamespace";
 import {
-  joinsNameKeptMarkers,
   parseParagraphMarkResolutionJoin,
   parseResolutionJoins,
   parseSplitResolutionPiece,
   type SplitResolutionPiece,
+  versionOneKeptMarkers,
 } from "./reviewResolutionProvenance";
 import { consolidateParagraphContent } from "./runConsolidator";
 import { parseRun } from "./runParser";
@@ -2747,7 +2747,7 @@ export function parseParagraph(
       ? content
       : consolidateParagraphContent(content);
   paragraph.content = consolidated(
-    paragraphKeptCutsFromChanges(rawContent, joinsNameKeptMarkers),
+    paragraphKeptCutsFromChanges(rawContent, versionOneKeptMarkers),
   );
 
   // Compute list rendering if this is a list item.

@@ -1093,7 +1093,7 @@ export const paragraphContentVerdict: (input: {
 export const paragraphIdsIn: (value: unknown) => string[];
 
 // @public
-export const paragraphKeptCutsFromChanges: (content: readonly ParagraphContent[], writtenOnChange: (joins: SeamJoins) => boolean) => ParagraphContent[];
+export const paragraphKeptCutsFromChanges: (content: readonly ParagraphContent[], writtenOnChange: (joins: SeamJoins) => VersionOneKept | undefined) => ParagraphContent[];
 
 // @public
 export const paragraphLength: (paragraph: Paragraph) => number;
@@ -1690,6 +1690,18 @@ export const validateOpsDocument: (document: Document_2) => Result<Document_2, D
 
 // @public
 export const validateSequencedBatch: (value: unknown) => Result<SequencedBatch, BatchRejection>;
+
+// @public
+export type VersionOneKept = {
+    change?: VersionOneKeptMarkers;
+    groups: readonly (VersionOneKeptMarkers | undefined)[];
+};
+
+// @public
+export type VersionOneKeptMarkers = {
+    keptFrom: string;
+    keptCount?: number;
+};
 
 // @public
 export type WellFormedRangePlan = {

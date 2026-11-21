@@ -16,7 +16,12 @@ export {
   rejectCopyOriginAncestors,
   shiftCopyOriginAncestors,
 } from "./copyOriginAncestors";
-export { isKeptCut, paragraphKeptCutsFromChanges } from "./keptCut";
+export {
+  isKeptCut,
+  paragraphKeptCutsFromChanges,
+  type VersionOneKept,
+  type VersionOneKeptMarkers,
+} from "./keptCut";
 export { noteUsesCustomMark } from "./noteMarks";
 export {
   withParagraphCopies,
