@@ -5,6 +5,10 @@
  * inserted words, the later inserted marks and the pending property changes.
  * Rejecting by revision (the change's card) and at the caret keeps them,
  * through a save and reopen, and what is left resolves.
+ *
+ * The canonical engine records no property change on a wholly inserted
+ * paragraph, and where the join meets the two records a split made of one
+ * insertion, rejecting the mark rejoins them into the record they came from.
  */
 import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
@@ -21,9 +25,15 @@ import {
   rejectChange,
 } from "../prosemirror/commands/comments";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import { FolioDocxReviewer } from "./headless";
 
 type Container = "body" | "cell";
+
+const SESSIONS = [
+  "legacy",
+  "canonical",
+] as const satisfies readonly HeadlessReviewerSession[];
 
 const seed = async (container: Container): Promise<ArrayBuffer> => {
   const document = fromMarkdown("Body end.");
@@ -43,8 +53,8 @@ const seed = async (container: Container): Promise<ArrayBuffer> => {
   return new Uint8Array(docx).buffer;
 };
 
-const open = (bytes: ArrayBuffer) =>
-  FolioDocxReviewer.fromBuffer(bytes, { author: "Reviewer" });
+const opener = (session: HeadlessReviewerSession) => (bytes: ArrayBuffer) =>
+  FolioDocxReviewer.fromBuffer(bytes, { author: "Reviewer", session });
 
 const insertAfterAnchor = (
   reviewer: FolioDocxReviewer,
@@ -84,30 +94,60 @@ const content = (reviewer: FolioDocxReviewer) =>
 
 // In the body the anchor's own mark is the inserted one and the last new
 // paragraph holds the mark the anchor had, with a pending change of the
-// anchor's properties. In a cell the new paragraphs' marks are the inserted
-// ones. Either way the first inserted mark joins two paragraphs.
+// anchor's properties; the legacy engine records one on the middle paragraph
+// too. In a cell the new paragraphs' marks are the inserted ones, and the
+// canonical engine rejoins the second paragraph's insertion, which the split
+// made of the first's, into it. Either way the first inserted mark joins two
+// paragraphs.
 const EXPECTED = {
   body: {
     joinedFrom: "kept",
     joined: "keptfirst",
-    rest: [
-      "insertion",
-      "insertion",
-      "paragraphMarkInserted",
-      "paragraphPropertiesChanged",
-      "paragraphPropertiesChanged",
-    ],
+    rest: {
+      legacy: [
+        "insertion",
+        "insertion",
+        "paragraphMarkInserted",
+        "paragraphPropertiesChanged",
+        "paragraphPropertiesChanged",
+      ],
+      canonical: [
+        "insertion",
+        "insertion",
+        "paragraphMarkInserted",
+        "paragraphPropertiesChanged",
+      ],
+    },
+    rejoined: { legacy: null, canonical: null },
   },
   cell: {
     joinedFrom: "first",
     joined: "firstsecond",
-    rest: ["insertion", "insertion", "paragraphMarkInserted"],
+    rest: {
+      legacy: ["insertion", "insertion", "paragraphMarkInserted"],
+      canonical: ["insertion", "insertion", "paragraphMarkInserted"],
+    },
+    rejoined: { legacy: null, canonical: "second" },
   },
-} as const;
+} as const satisfies Record<
+  Container,
+  {
+    joinedFrom: string;
+    joined: string;
+    rest: Record<HeadlessReviewerSession, readonly string[]>;
+    /** The inserted words whose record rejoins the one a split made it from. */
+    rejoined: Record<HeadlessReviewerSession, string | null>;
+  }
+>;
 
-describe.each(["body", "cell"] as const)(
-  "rejecting only the first inserted paragraph mark after a final paragraph (%s)",
-  (container) => {
+describe.each(
+  SESSIONS.flatMap((session) =>
+    (["body", "cell"] as const).map((container) => [container, session]),
+  ),
+)(
+  "rejecting only the first inserted paragraph mark after a final paragraph (%s, %s)",
+  (container, session) => {
+    const open = opener(session);
     test("keeps every other pending change, by revision, through save", async () => {
       const expected = EXPECTED[container];
       const original = await seed(container);
@@ -122,19 +162,30 @@ describe.each(["body", "cell"] as const)(
       expect(firstMark.text).toBe(expected.joinedFrom);
       const rest = changes(pending).filter(([id]) => id !== firstMark.id);
       expect(rest.map(([, type]) => type).toSorted()).toEqual([
-        ...expected.rest,
+        ...expected.rest[session],
       ]);
+      const rejoinedText = expected.rejoined[session];
+      const rejoined =
+        rejoinedText === null
+          ? undefined
+          : (pending
+              .getChanges()
+              .find(
+                ({ type, text }) =>
+                  type === "insertion" && text === rejoinedText,
+              ) ?? panic("Missing the rejoined insertion"));
+      const kept = rest.filter(([id]) => id !== rejoined?.id);
 
       // The change's card rejects by revision.
       const byRevision = await open(pendingBytes);
       expect(byRevision.rejectChange(firstMark.id)).toBe(true);
-      expect(changes(byRevision)).toEqual(rest);
+      expect(changes(byRevision)).toEqual(kept);
       const joined = content(byRevision);
       expect(joined.map(({ text }) => text)).toContain(expected.joined);
 
       // Saved and reopened, the rest is still pending and resolves both ways.
       const reopened = await open(await byRevision.toBuffer());
-      expect(changes(reopened)).toEqual(rest);
+      expect(changes(reopened)).toEqual(kept);
       expect(content(reopened)).toEqual(joined);
 
       const rejecting = await open(await byRevision.toBuffer());
@@ -150,37 +201,43 @@ describe.each(["body", "cell"] as const)(
   },
 );
 
-test("rejecting the anchor's mark at its caret in the body keeps every other pending change", async () => {
-  const pending = await open(await seed("body"));
-  insertAfterAnchor(pending, "tracked-changes");
-  const pendingBytes = await pending.toBuffer();
-  const anchorMark =
-    pending.getChanges().find(({ type }) => type === "paragraphMarkInserted") ??
-    panic("Missing the anchor's inserted mark");
-  const rest = changes(pending).filter(([id]) => id !== anchorMark.id);
-  const byRevision = await open(pendingBytes);
-  expect(byRevision.rejectChange(anchorMark.id)).toBe(true);
+test.each(SESSIONS)(
+  "rejecting the anchor's mark at its caret in the body keeps every other pending change (%s)",
+  async (session) => {
+    const open = opener(session);
+    const pending = await open(await seed("body"));
+    insertAfterAnchor(pending, "tracked-changes");
+    const pendingBytes = await pending.toBuffer();
+    const anchorMark =
+      pending
+        .getChanges()
+        .find(({ type }) => type === "paragraphMarkInserted") ??
+      panic("Missing the anchor's inserted mark");
+    const rest = changes(pending).filter(([id]) => id !== anchorMark.id);
+    const byRevision = await open(pendingBytes);
+    expect(byRevision.rejectChange(anchorMark.id)).toBe(true);
 
-  // The anchor's own words are not tracked, so the caret at its end reaches
-  // only its paragraph mark.
-  const parsed = await parseDocx(pendingBytes);
-  let state = createHarnessState(parsed, "editing");
-  const markBlock =
-    findTextblock(state.doc, "kept") ?? panic("Missing the anchor textblock");
-  const caret = markBlock.pos + markBlock.node.nodeSize - 1;
-  const range = findChangeAtPosition(state, caret, caret);
-  expect(
-    rejectChange(range.from, range.to)(state, (transaction) => {
-      state = state.apply(transaction);
-    }),
-  ).toBe(true);
-  const atCaret = await open(
-    await createDocx(
-      fromProseDoc(state.doc, parsed, {
-        stylesheetSource: { type: "package" },
+    // The anchor's own words are not tracked, so the caret at its end reaches
+    // only its paragraph mark.
+    const parsed = await parseDocx(pendingBytes);
+    let state = createHarnessState(parsed, "editing");
+    const markBlock =
+      findTextblock(state.doc, "kept") ?? panic("Missing the anchor textblock");
+    const caret = markBlock.pos + markBlock.node.nodeSize - 1;
+    const range = findChangeAtPosition(state, caret, caret);
+    expect(
+      rejectChange(range.from, range.to)(state, (transaction) => {
+        state = state.apply(transaction);
       }),
-    ),
-  );
-  expect(changes(atCaret)).toEqual(rest);
-  expect(content(atCaret)).toEqual(content(byRevision));
-});
+    ).toBe(true);
+    const atCaret = await open(
+      await createDocx(
+        fromProseDoc(state.doc, parsed, {
+          stylesheetSource: { type: "package" },
+        }),
+      ),
+    );
+    expect(changes(atCaret)).toEqual(rest);
+    expect(content(atCaret)).toEqual(content(byRevision));
+  },
+);
