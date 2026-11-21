@@ -106,3 +106,82 @@ for (const decision of Object.values(REVISION_DECISIONS))
     );
     expect(JSON.stringify(resolved)).not.toContain('"insertion"');
   });
+
+/** A paragraph of a story with no sections that still carries section properties with a record. */
+const storyParagraphWithSection = (paraId: string, id: number): Paragraph => ({
+  ...text(paraId, "Story paragraph"),
+  sectionProperties: {
+    sectionStart: "nextPage",
+    propertyChanges: [
+      {
+        type: "sectionPropertyChange",
+        info: info(id),
+        previousProperties: { sectionStart: "continuous" },
+      },
+    ],
+  },
+});
+
+const STORIES = [
+  { story: { kind: "header", rId: "rIdHeader" }, paraId: "00000011", id: 9 },
+  { story: { kind: "footnote", id: 2 }, paraId: "00000012", id: 10 },
+] as const;
+
+const storyDocument = (): Document => {
+  const document = sectionDocument();
+  document.package.headers = new Map([
+    [
+      "rIdHeader",
+      {
+        type: "header",
+        hdrFtrType: "default",
+        content: [storyParagraphWithSection("00000011", 9)],
+      },
+    ],
+  ]);
+  document.package.footnotes = [
+    {
+      type: "footnote",
+      id: 2,
+      noteType: "normal",
+      content: [storyParagraphWithSection("00000012", 10)],
+    },
+  ];
+  return document;
+};
+
+for (const { story, paraId, id } of STORIES)
+  for (const [decision, sectionStart] of [
+    [REVISION_DECISIONS.ACCEPT, "nextPage"],
+    [REVISION_DECISIONS.REJECT, "continuous"],
+  ] as const)
+    test(`a section change on a ${story.kind} paragraph resolves on that paragraph (${decision})`, () => {
+      const before = storyDocument();
+      const result = applyDocumentOp(before, {
+        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+        story,
+        revisionIds: [id],
+        decision,
+      });
+      if (result.isErr()) throw result.error;
+      const content =
+        story.kind === "header"
+          ? result.value.document.package.headers?.get(story.rId)?.content
+          : result.value.document.package.footnotes?.at(0)?.content;
+      expect(content).toEqual([
+        {
+          ...text(paraId, "Story paragraph"),
+          sectionProperties: { sectionStart },
+        },
+      ]);
+      // The body's own section change belongs to another story: it stays.
+      expect(sectionEnd(result.value.document)?.propertyChanges).toHaveLength(
+        1,
+      );
+      const undone = applyDocumentOps(
+        result.value.document,
+        result.value.inverse,
+      );
+      if (undone.isErr()) throw undone.error;
+      expect(undone.value.document).toEqual(before);
+    });

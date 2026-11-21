@@ -25,6 +25,7 @@ import type {
   ParagraphPropertyChange,
   Run,
   RunPropertyChange,
+  SectionProperties,
   Table,
 } from "../model/document";
 import { getSingularRunPropertyChange } from "../model/runPropertyReview";
@@ -4998,44 +4999,89 @@ export const planRevisionResolution = (
   });
 };
 
+type SectionRecordsOptions = {
+  properties: SectionProperties;
+  /** The ids left to resolve; those resolved here are removed. */
+  ids: Set<number>;
+  decision: ResolveRevisionOp["decision"];
+};
+
+/** `properties` with the records `ids` selects resolved, in record order. */
+const resolveSectionRecords = ({
+  properties,
+  ids,
+  decision,
+}: SectionRecordsOptions): SectionProperties => {
+  let resolved = properties;
+  for (const { info } of properties.propertyChanges ?? []) {
+    if (!ids.has(info.id)) continue;
+    const next = resolveSectionChange({
+      current: resolved,
+      decision,
+      id: info.id,
+    });
+    if (next === null) continue;
+    resolved = next;
+    ids.delete(info.id);
+  }
+  return resolved;
+};
+
 /**
- * The records of the body's sections the ids select, resolved through the
- * section calculation every reviewer applies, with the revision ids left to
- * resolve. A section's records travel on the paragraph that ends it; the
- * final section's are resolved by section review.
+ * The records of the sections the ids select, resolved through the section
+ * calculation every reviewer applies, with the revision ids left to resolve.
+ * A section's records travel on the paragraph that ends it; the final
+ * section's are resolved by section review. A header, footer or note has no
+ * sections, but a paragraph there may still carry section properties with
+ * records: they resolve by the same calculation, on that paragraph.
  */
 const settleSectionRecords = (
   document: Document,
   op: ResolveRevisionOp,
 ): { ops: DocumentOp[]; ids: number[] } => {
-  if (
-    op.story !== OP_STORIES.MAIN ||
-    !Object.values(REVISION_DECISIONS).includes(op.decision)
-  )
+  if (!Object.values(REVISION_DECISIONS).includes(op.decision))
     return { ops: [], ids: [...op.revisionIds] };
   const ids = new Set(op.revisionIds);
   const ops: DocumentOp[] = [];
-  for (const [sectionIndex, { properties }] of sectionEnds(
-    document.package.document,
-  ).entries()) {
-    let resolved = properties;
-    for (const { info } of properties.propertyChanges ?? []) {
-      if (!ids.has(info.id)) continue;
-      const next = resolveSectionChange({
-        current: resolved,
+  if (op.story === OP_STORIES.MAIN) {
+    for (const [sectionIndex, { properties }] of sectionEnds(
+      document.package.document,
+    ).entries()) {
+      const resolved = resolveSectionRecords({
+        properties,
+        ids,
         decision: op.decision,
-        id: info.id,
       });
-      if (next === null) continue;
-      resolved = next;
-      ids.delete(info.id);
+      if (resolved !== properties)
+        ops.push({
+          type: DOCUMENT_OP_TYPES.SET_SECTION_PROPS,
+          sectionIndex,
+          patch: sectionResolutionPatch({
+            current: properties,
+            next: resolved,
+          }),
+        });
     }
-    if (resolved !== properties)
-      ops.push({
-        type: DOCUMENT_OP_TYPES.SET_SECTION_PROPS,
-        sectionIndex,
-        patch: sectionResolutionPatch({ current: properties, next: resolved }),
+  } else {
+    for (const { paragraph } of storyParagraphs(
+      storyBody(document, op.story),
+    )) {
+      const properties = paragraph.sectionProperties;
+      if (properties === undefined) continue;
+      const resolved = resolveSectionRecords({
+        properties,
+        ids,
+        decision: op.decision,
       });
+      if (resolved !== properties)
+        ops.push({
+          type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+          story: op.story,
+          expected: [paragraph],
+          blocks: [{ ...paragraph, sectionProperties: resolved }],
+          sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE,
+        });
+    }
   }
   return { ops, ids: op.revisionIds.filter((id) => ids.has(id)) };
 };

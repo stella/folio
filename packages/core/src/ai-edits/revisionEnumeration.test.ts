@@ -649,14 +649,19 @@ const REVIEW_COMMENT_SCENARIOS = [
   ),
 ];
 
-const MATRIX_CASES = FOLIO_RESOLVED_REVIEWED_VIEWS.flatMap((view) =>
-  PARAGRAPH_ID_STATES.flatMap((paragraphIds) =>
-    REVIEW_COMMENT_SCENARIOS.map((commentScenario) => ({
-      view,
-      paragraphIds,
-      comments: commentScenario.name,
-      commentScenario,
-    })),
+const SESSIONS = ["legacy", "canonical"] as const;
+
+const MATRIX_CASES = SESSIONS.flatMap((session) =>
+  FOLIO_RESOLVED_REVIEWED_VIEWS.flatMap((view) =>
+    PARAGRAPH_ID_STATES.flatMap((paragraphIds) =>
+      REVIEW_COMMENT_SCENARIOS.map((commentScenario) => ({
+        session,
+        view,
+        paragraphIds,
+        comments: commentScenario.name,
+        commentScenario,
+      })),
+    ),
   ),
 );
 
@@ -993,113 +998,123 @@ describe("body revision enumeration", () => {
 });
 
 describe("resolved story serialization structural matrix", () => {
-  test("keeps each story projection bound to its own state across resolution and mutation", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(
-      await makeRevisionMatrixDocx("with"),
-      {
-        author: AUTHOR,
-      },
-    );
-    const comparisonAccess = getFolioDocxComparisonAccess(reviewer);
-    const arrivingByStory = new Map<
-      string,
-      {
-        snapshot: FolioAIEditSnapshot;
-        changes: ReturnType<typeof getTrackedChangesFromSnapshot>;
-        ids: readonly number[];
-      }
-    >();
-
-    for (const story of REVIEW_STORIES) {
-      const arriving = comparisonAccess.snapshotReviewedStory({
-        story,
-        view: "current-markup",
-      });
-      if (!arriving) {
-        throw new Error(`revision matrix is missing ${storyKey(story)}`);
-      }
-      const arrivingChanges = getTrackedChangesFromSnapshot(arriving);
-      expect(arrivingChanges).not.toHaveLength(0);
-      arrivingByStory.set(storyKey(story), {
-        snapshot: arriving,
-        changes: arrivingChanges,
-        ids: getTrackedChangeStatsFromDoc(sourceDocumentOf(arriving)).ids,
-      });
-    }
-
-    const projection = comparisonAccess.projectStories("with-revision-census");
-    expect(projection.stories.map(({ handle }) => handle)).toEqual(
-      REVIEW_STORIES,
-    );
-    expect(projection.revisions.present).toBe(true);
-    expect(Math.max(...projection.revisions.ids)).toBe(
-      Math.max(...expectedChanges.map(({ id }) => id)),
-    );
-    expect(new Set(projection.revisions.ids)).toEqual(
-      new Set([...arrivingByStory.values()].flatMap(({ ids }) => ids)),
-    );
-    for (const { changes } of arrivingByStory.values()) {
-      for (const { id } of changes)
-        expect(projection.revisions.ids).toContain(id);
-    }
-
-    for (const { handle: story, snapshot: resolved } of projection.stories) {
-      if (!resolved) {
-        throw new Error(`revision matrix could not resolve ${storyKey(story)}`);
-      }
-      expect(getTrackedChangesFromSnapshot(resolved)).toEqual([]);
-      const target = resolved.blocks.find(({ text }) => text === "Cell");
-      if (!target) {
-        throw new Error(
-          `revision matrix is missing the table cell in ${storyKey(story)}`,
-        );
-      }
-      const mutationText = `${story.type} mutation`;
-      const result = reviewer.applyDocumentOperationsToStory({
-        undefinedReferences: "refuse",
-        story,
-        snapshot: resolved,
-        batch: {
-          version: 1,
-          mode: "direct",
-          operations: [
-            {
-              id: `${story.type}-snapshot-freshness`,
-              type: "replaceInBlock",
-              blockId: target.id,
-              find: "Cell",
-              replace: mutationText,
-            },
-          ],
+  test.each(SESSIONS)(
+    "%s: keeps each story projection bound to its own state across resolution and mutation",
+    async (session) => {
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await makeRevisionMatrixDocx("with"),
+        {
+          author: AUTHOR,
+          session,
         },
-      });
-      expect(result.status).toBe("committed");
+      );
+      const comparisonAccess = getFolioDocxComparisonAccess(reviewer);
+      const arrivingByStory = new Map<
+        string,
+        {
+          snapshot: FolioAIEditSnapshot;
+          changes: ReturnType<typeof getTrackedChangesFromSnapshot>;
+          ids: readonly number[];
+        }
+      >();
 
-      const mutated = comparisonAccess.snapshotReviewedStory({
-        story,
-        view: "current-markup",
-      });
-      if (!mutated) {
-        throw new Error(
-          `revision matrix lost ${storyKey(story)} after mutation`,
-        );
+      for (const story of REVIEW_STORIES) {
+        const arriving = comparisonAccess.snapshotReviewedStory({
+          story,
+          view: "current-markup",
+        });
+        if (!arriving) {
+          throw new Error(`revision matrix is missing ${storyKey(story)}`);
+        }
+        const arrivingChanges = getTrackedChangesFromSnapshot(arriving);
+        expect(arrivingChanges).not.toHaveLength(0);
+        arrivingByStory.set(storyKey(story), {
+          snapshot: arriving,
+          changes: arrivingChanges,
+          ids: getTrackedChangeStatsFromDoc(sourceDocumentOf(arriving)).ids,
+        });
       }
-      expect(storyTablesOf(resolved).at(0)?.node.textContent).toContain("Cell");
-      expect(storyTablesOf(resolved).at(0)?.node.textContent).not.toContain(
-        mutationText,
+
+      const projection = comparisonAccess.projectStories(
+        "with-revision-census",
       );
-      expect(storyTablesOf(mutated).at(0)?.node.textContent).toContain(
-        mutationText,
+      expect(projection.stories.map(({ handle }) => handle)).toEqual(
+        REVIEW_STORIES,
       );
-      const arriving = arrivingByStory.get(storyKey(story));
-      expect(arriving).toBeDefined();
-      if (arriving) {
-        expect(getTrackedChangesFromSnapshot(arriving.snapshot)).toEqual(
-          arriving.changes,
-        );
+      expect(projection.revisions.present).toBe(true);
+      expect(Math.max(...projection.revisions.ids)).toBe(
+        Math.max(...expectedChanges.map(({ id }) => id)),
+      );
+      expect(new Set(projection.revisions.ids)).toEqual(
+        new Set([...arrivingByStory.values()].flatMap(({ ids }) => ids)),
+      );
+      for (const { changes } of arrivingByStory.values()) {
+        for (const { id } of changes)
+          expect(projection.revisions.ids).toContain(id);
       }
-    }
-  });
+
+      for (const { handle: story, snapshot: resolved } of projection.stories) {
+        if (!resolved) {
+          throw new Error(
+            `revision matrix could not resolve ${storyKey(story)}`,
+          );
+        }
+        expect(getTrackedChangesFromSnapshot(resolved)).toEqual([]);
+        const target = resolved.blocks.find(({ text }) => text === "Cell");
+        if (!target) {
+          throw new Error(
+            `revision matrix is missing the table cell in ${storyKey(story)}`,
+          );
+        }
+        const mutationText = `${story.type} mutation`;
+        const result = reviewer.applyDocumentOperationsToStory({
+          undefinedReferences: "refuse",
+          story,
+          snapshot: resolved,
+          batch: {
+            version: 1,
+            mode: "direct",
+            operations: [
+              {
+                id: `${story.type}-snapshot-freshness`,
+                type: "replaceInBlock",
+                blockId: target.id,
+                find: "Cell",
+                replace: mutationText,
+              },
+            ],
+          },
+        });
+        expect(result.status).toBe("committed");
+
+        const mutated = comparisonAccess.snapshotReviewedStory({
+          story,
+          view: "current-markup",
+        });
+        if (!mutated) {
+          throw new Error(
+            `revision matrix lost ${storyKey(story)} after mutation`,
+          );
+        }
+        expect(storyTablesOf(resolved).at(0)?.node.textContent).toContain(
+          "Cell",
+        );
+        expect(storyTablesOf(resolved).at(0)?.node.textContent).not.toContain(
+          mutationText,
+        );
+        expect(storyTablesOf(mutated).at(0)?.node.textContent).toContain(
+          mutationText,
+        );
+        const arriving = arrivingByStory.get(storyKey(story));
+        expect(arriving).toBeDefined();
+        if (arriving) {
+          expect(getTrackedChangesFromSnapshot(arriving.snapshot)).toEqual(
+            arriving.changes,
+          );
+        }
+      }
+    },
+  );
 
   test.each(WORDPROCESSINGML_NAMESPACES)(
     "recognizes comment anchors in the %s namespace independent of prefix",
@@ -1115,11 +1130,12 @@ describe("resolved story serialization structural matrix", () => {
   );
 
   test("enumerates the declared Cartesian product exactly once", () => {
-    const keys = MATRIX_CASES.map(({ view, paragraphIds, comments }) =>
-      JSON.stringify({ view, paragraphIds, comments }),
+    const keys = MATRIX_CASES.map(({ session, view, paragraphIds, comments }) =>
+      JSON.stringify({ session, view, paragraphIds, comments }),
     );
     expect(MATRIX_CASES).toHaveLength(
-      FOLIO_RESOLVED_REVIEWED_VIEWS.length *
+      SESSIONS.length *
+        FOLIO_RESOLVED_REVIEWED_VIEWS.length *
         PARAGRAPH_ID_STATES.length *
         REVIEW_COMMENT_SCENARIOS.length,
     );
@@ -1129,11 +1145,12 @@ describe("resolved story serialization structural matrix", () => {
   });
 
   test.each(MATRIX_CASES)(
-    "preserves every revision kind in $view view, $paragraphIds paragraph ids, comments: $comments",
-    async ({ view, paragraphIds, commentScenario }) => {
+    "$session: preserves every revision kind in $view view, $paragraphIds paragraph ids, comments: $comments",
+    async ({ session, view, paragraphIds, commentScenario }) => {
       const baseline = await makeRevisionMatrixDocx(paragraphIds);
       const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
         author: AUTHOR,
+        session,
       });
 
       const commentIdsByStory = new Map<string, readonly number[]>();
@@ -1247,7 +1264,7 @@ describe("resolved story serialization structural matrix", () => {
           commentIdsByStory.get(storyKey(story)) ?? [],
         );
       }
-      const reopened = await FolioDocxReviewer.fromBuffer(saved);
+      const reopened = await FolioDocxReviewer.fromBuffer(saved, { session });
       for (const story of REVIEW_STORIES) {
         const actual = storyProjection(reopened, story);
         expect(actual.changes).toEqual([]);
@@ -1262,7 +1279,9 @@ describe("resolved story serialization structural matrix", () => {
       expect(await partBytes(savedAgain, PRESERVATION_SENTINEL_PART)).toEqual(
         PRESERVATION_SENTINEL,
       );
-      const reopenedAgain = await FolioDocxReviewer.fromBuffer(savedAgain);
+      const reopenedAgain = await FolioDocxReviewer.fromBuffer(savedAgain, {
+        session,
+      });
       for (const story of REVIEW_STORIES) {
         await assertCommentAnchorsInStoryPart(
           savedAgain,
