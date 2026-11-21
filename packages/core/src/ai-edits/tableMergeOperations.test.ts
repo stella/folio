@@ -17,7 +17,6 @@ import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioDocumentOperation,
 } from "../document-operations";
-import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import { FolioDocxReviewer } from "./headless";
 
 /** Two columns, three rows, `A1` merged down over the second row. */
@@ -35,305 +34,372 @@ const MERGED_LEFT: TableSpec = {
 
 type Mode = "direct" | "tracked-changes";
 
-const open = (bytes: ArrayBuffer, session?: HeadlessReviewerSession) =>
-  FolioDocxReviewer.fromBuffer(bytes, {
-    author: "Tester",
-    ...(session === undefined ? {} : { session }),
-  });
+const SESSIONS = ["legacy", "canonical"] as const;
 
-const blockId = (reviewer: FolioDocxReviewer, text: string): string => {
-  const block = reviewer
-    .getContent()
-    .find((candidate) => candidate.text === text);
-  if (!block) {
-    throw new Error(`no block reads ${JSON.stringify(text)}`);
-  }
-  return block.id;
-};
+describe.each(SESSIONS)("%s session", (session) => {
+  const open = (bytes: ArrayBuffer) =>
+    FolioDocxReviewer.fromBuffer(bytes, { author: "Tester", session });
 
-const apply = async (
-  base: ArrayBuffer,
-  mode: Mode,
-  build: (reviewer: FolioDocxReviewer) => Omit<FolioDocumentOperation, "id">,
-) => {
-  const reviewer = await open(base);
-  const result = reviewer.applyDocumentOperations(
-    {
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode,
-      operations: [{ id: "op", ...build(reviewer) } as FolioDocumentOperation],
-    },
-    { undefinedReferences: "refuse" },
-  );
-  return { reviewer, result };
-};
-
-/** A tracked result, saved, reopened and resolved one way. */
-const resolveTracked = async (
-  reviewer: FolioDocxReviewer,
-  resolution: "accept" | "reject",
-  session?: HeadlessReviewerSession,
-): Promise<TableReading> => {
-  const reopened = await open(await reviewer.toBuffer(), session);
-  expect(
-    (resolution === "accept" ? reopened.acceptAll() : reopened.rejectAll())
-      .resolved,
-  ).toBeGreaterThan(0);
-  return readReviewerTables(reopened);
-};
-
-const cells = (reading: TableReading) =>
-  reading.snapshot.map((table) =>
-    table.cells.map(({ row, column, rowSpan, columnSpan, text }) => [
-      `${row}:${column}`,
-      `${rowSpan}x${columnSpan}`,
-      text,
-    ]),
-  );
-
-test("a row-removing merge cannot shift another merge's original row coordinates", async () => {
-  // The right cell spanning the first two rows leaves row 1 with only left
-  // cells. The taller left merge runs first and removes that row; a shorter
-  // right merge would then read rows 2..3 as the original rows 3..4.
-  const spec: TableSpec = {
-    rows: 5,
-    columns: 3,
-    cells: [
-      ...Array.from({ length: 5 }, (_, row) =>
-        [0, 1].map((column) => ({
-          row,
-          column,
-          rowSpan: 1,
-          columnSpan: 1,
-          text: `left-${row}-${column}`,
-        })),
-      ).flat(),
-      { row: 0, column: 2, rowSpan: 2, columnSpan: 1, text: "right-top" },
-      { row: 2, column: 2, rowSpan: 1, columnSpan: 1, text: "right-middle" },
-      { row: 3, column: 2, rowSpan: 1, columnSpan: 1, text: "" },
-      { row: 4, column: 2, rowSpan: 1, columnSpan: 1, text: "right-bottom" },
-    ],
-  };
-  const base = await buildTableDocx(spec);
-  const direct = await open(base);
-  const result = direct.applyDocumentOperations(
-    {
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      mode: "direct",
-      operations: [
-        {
-          id: "tall",
-          type: "mergeTableCells",
-          blockId: blockId(direct, "left-4-1"),
-          endBlockId: blockId(direct, "left-0-0"),
-        },
-        {
-          id: "short",
-          type: "mergeTableCells",
-          blockId: blockId(direct, "right-middle"),
-          rowCount: 2,
-        },
-      ],
-    },
-    { undefinedReferences: "refuse" },
-  );
-  expect(result.applied.map(({ id }) => id)).toEqual(["tall"]);
-  expect(result.skipped).toEqual([{ id: "short", reason: "unsupportedBlock" }]);
-  const reading = await readReviewerTables(direct);
-  expect(tableReadingProblems(reading)).toEqual([]);
-  const rightCells = reading.snapshot
-    .at(0)
-    ?.cells.filter(({ column }) => column === 2);
-  expect(rightCells?.map(({ text, rowSpan }) => [text, rowSpan])).toEqual([
-    ["right-top", 1],
-    ["right-middle", 1],
-    ["", 1],
-    ["right-bottom", 1],
-  ]);
-  for (const { text } of spec.cells) {
-    if (text !== "") expect(reading.texts.join("\n")).toContain(text);
-  }
-});
-
-describe("inserting a row inside a vertical merge", () => {
-  test.each(["direct", "tracked-changes"] as const)(
-    "refuses a cell text the new row has no cell for, and changes nothing (%s)",
-    async (mode) => {
-      const base = await buildTableDocx(MERGED_LEFT);
-      const original = await readReviewerTables(await open(base));
-      const { reviewer, result } = await apply(base, mode, (live) => ({
-        type: "insertTableRow",
-        blockId: blockId(live, "B1"),
-        position: "after",
-        cellTexts: ["X", "Y"],
-      }));
-
-      expect(result.applied).toEqual([]);
-      expect(result.issues).toEqual([
-        expect.objectContaining({
-          operationId: "op",
-          code: "payloadDoesNotFit",
-          recovery: "changeTarget",
-          message: expect.stringContaining('cellTexts[1] "Y"'),
-        }),
-      ]);
-      const after = await readReviewerTables(reviewer);
-      expect(cells(after)).toEqual(cells(original));
-    },
-  );
-
-  test("places every text it has a cell for, direct and tracked alike", async () => {
-    const base = await buildTableDocx(MERGED_LEFT);
-    const operation = (live: FolioDocxReviewer) =>
-      ({
-        type: "insertTableRow",
-        blockId: blockId(live, "B1"),
-        position: "after",
-        cellTexts: ["X"],
-      }) as const;
-    const direct = await apply(base, "direct", operation);
-    const tracked = await apply(base, "tracked-changes", operation);
-    expect(direct.result.issues).toEqual([]);
-    expect(tracked.result.issues).toEqual([]);
-
-    const directReading = await readReviewerTables(direct.reviewer);
-    const accepted = await resolveTracked(tracked.reviewer, "accept");
-    const rejected = await resolveTracked(tracked.reviewer, "reject");
-    const original = await readReviewerTables(await open(base));
-
-    expect(cells(directReading)).toEqual([
-      [
-        ["0:0", "3x1", "A1"],
-        ["0:1", "1x1", "B1"],
-        ["1:1", "1x1", "X"],
-        ["2:1", "1x1", "B2"],
-        ["3:0", "1x1", "A3"],
-        ["3:1", "1x1", "B3"],
-      ],
-    ]);
-    expect(cells(accepted)).toEqual(cells(directReading));
-    expect(cells(rejected)).toEqual(cells(original));
-    for (const reading of [directReading, accepted, rejected]) {
-      expect(tableReadingProblems(reading)).toEqual([]);
-    }
-  });
-});
-describe("deleting the column beside a vertical merge", () => {
-  test("direct and accepted tracked deletion leave the same coherent table", async () => {
-    const base = await buildTableDocx(MERGED_LEFT);
-    const operation = (live: FolioDocxReviewer) =>
-      ({ type: "deleteTableColumn", blockId: blockId(live, "B1") }) as const;
-    const direct = await apply(base, "direct", operation);
-    const tracked = await apply(base, "tracked-changes", operation);
-    expect(direct.result.issues).toEqual([]);
-    expect(tracked.result.issues).toEqual([]);
-
-    const directReading = await readReviewerTables(direct.reviewer);
-    const accepted = await resolveTracked(tracked.reviewer, "accept");
-    const rejected = await resolveTracked(tracked.reviewer, "reject");
-    const original = await readReviewerTables(await open(base));
-
-    // The merged cell's second row held nothing but the merge once column B
-    // went, so the row goes with it and the merge closes over one row.
-    expect(cells(directReading)).toEqual([
-      [
-        ["0:0", "1x1", "A1"],
-        ["1:0", "1x1", "A3"],
-      ],
-    ]);
-    expect(cells(accepted)).toEqual(cells(directReading));
-    expect(cells(rejected)).toEqual(cells(original));
-    for (const reading of [directReading, accepted, rejected]) {
-      expect(tableReadingProblems(reading)).toEqual([]);
-    }
-  });
-});
-
-describe("a column deletion in a nested table the same batch moves", () => {
-  /**
-   * The outer table merges whole, carrying the nested table into the merged
-   * cell, while the nested table loses the only column its second row had a
-   * cell in. The emptied row still has to close once the batch is done.
-   */
-  const NESTED: TableSpec = {
-    rows: 3,
-    columns: 4,
-    cells: [
-      { row: 0, column: 0, rowSpan: 1, columnSpan: 1, text: "" },
-      {
-        row: 0,
-        column: 1,
-        rowSpan: 2,
-        columnSpan: 2,
-        text: "c1",
-        nested: {
-          rows: 2,
-          columns: 3,
-          cells: [
-            { row: 0, column: 0, rowSpan: 2, columnSpan: 2, text: "n0" },
-            { row: 0, column: 2, rowSpan: 1, columnSpan: 1, text: "n1" },
-            { row: 1, column: 2, rowSpan: 1, columnSpan: 1, text: "n2" },
-          ],
-        },
-      },
-      { row: 0, column: 3, rowSpan: 1, columnSpan: 1, text: "" },
-      { row: 1, column: 0, rowSpan: 1, columnSpan: 1, text: "" },
-      { row: 1, column: 3, rowSpan: 2, columnSpan: 1, text: "c4" },
-      { row: 2, column: 0, rowSpan: 1, columnSpan: 2, text: "" },
-      { row: 2, column: 2, rowSpan: 1, columnSpan: 1, text: "" },
-    ],
-  };
-
-  test("closes the row the deletion emptied, in the editor and the package alike", async () => {
-    const reviewer = await open(await buildTableDocx(NESTED));
-    const firstCell = reviewer
+  const blockId = (reviewer: FolioDocxReviewer, text: string): string => {
+    const block = reviewer
       .getContent()
-      .find(
-        ({ table }) =>
-          table?.tableIndex === 0 &&
-          table.rowIndex === 0 &&
-          table.gridColumnIndex === 0 &&
-          table.paragraphIndex === 0,
-      );
-    if (!firstCell) {
-      throw new Error("no block starts the first cell");
+      .find((candidate) => candidate.text === text);
+    if (!block) {
+      throw new Error(`no block reads ${JSON.stringify(text)}`);
     }
+    return block.id;
+  };
+
+  const apply = async (
+    base: ArrayBuffer,
+    mode: Mode,
+    build: (reviewer: FolioDocxReviewer) => Omit<FolioDocumentOperation, "id">,
+  ) => {
+    const reviewer = await open(base);
     const result = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode,
+        operations: [
+          { id: "op", ...build(reviewer) } as FolioDocumentOperation,
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
+    return { reviewer, result };
+  };
+
+  /** A tracked result, saved, reopened and resolved one way. */
+  const resolveTracked = async (
+    reviewer: FolioDocxReviewer,
+    resolution: "accept" | "reject",
+  ): Promise<TableReading> => {
+    const reopened = await open(await reviewer.toBuffer());
+    expect(
+      (resolution === "accept" ? reopened.acceptAll() : reopened.rejectAll())
+        .resolved,
+    ).toBeGreaterThan(0);
+    return readReviewerTables(reopened);
+  };
+
+  const cells = (reading: TableReading) =>
+    reading.snapshot.map((table) =>
+      table.cells.map(({ row, column, rowSpan, columnSpan, text }) => [
+        `${row}:${column}`,
+        `${rowSpan}x${columnSpan}`,
+        text,
+      ]),
+    );
+
+  test("a row-removing merge cannot shift another merge's original row coordinates", async () => {
+    // The right cell spanning the first two rows leaves row 1 with only left
+    // cells. The taller left merge runs first and removes that row; a shorter
+    // right merge would then read rows 2..3 as the original rows 3..4.
+    const spec: TableSpec = {
+      rows: 5,
+      columns: 3,
+      cells: [
+        ...Array.from({ length: 5 }, (_, row) =>
+          [0, 1].map((column) => ({
+            row,
+            column,
+            rowSpan: 1,
+            columnSpan: 1,
+            text: `left-${row}-${column}`,
+          })),
+        ).flat(),
+        { row: 0, column: 2, rowSpan: 2, columnSpan: 1, text: "right-top" },
+        { row: 2, column: 2, rowSpan: 1, columnSpan: 1, text: "right-middle" },
+        { row: 3, column: 2, rowSpan: 1, columnSpan: 1, text: "" },
+        { row: 4, column: 2, rowSpan: 1, columnSpan: 1, text: "right-bottom" },
+      ],
+    };
+    const base = await buildTableDocx(spec);
+    const direct = await open(base);
+    const result = direct.applyDocumentOperations(
       {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
         mode: "direct",
         operations: [
           {
-            id: "merge",
+            id: "tall",
             type: "mergeTableCells",
-            blockId: blockId(reviewer, "c4"),
-            endBlockId: firstCell.id,
+            blockId: blockId(direct, "left-4-1"),
+            endBlockId: blockId(direct, "left-0-0"),
           },
           {
-            id: "column",
-            type: "deleteTableColumn",
-            blockId: blockId(reviewer, "n1"),
+            id: "short",
+            type: "mergeTableCells",
+            blockId: blockId(direct, "right-middle"),
+            rowCount: 2,
           },
         ],
       },
       { undefinedReferences: "refuse" },
     );
-    expect(result.applied.map(({ id }) => id).toSorted()).toEqual([
-      "column",
-      "merge",
-    ]);
-
-    const reading = await readReviewerTables(reviewer);
+    const reading = await readReviewerTables(direct);
     expect(tableReadingProblems(reading)).toEqual([]);
-    expect(cells(reading)[1]).toEqual([["0:0", "1x2", "n0"]]);
+    const rightCells = reading.snapshot
+      .at(0)
+      ?.cells.filter(({ column }) => column === 2);
+    if (session === "legacy") {
+      // Legacy refuses the shorter merge rather than read shifted rows.
+      expect(result.applied.map(({ id }) => id)).toEqual(["tall"]);
+      expect(result.skipped).toEqual([
+        { id: "short", reason: "unsupportedBlock" },
+      ]);
+      expect(rightCells?.map(({ text, rowSpan }) => [text, rowSpan])).toEqual([
+        ["right-top", 1],
+        ["right-middle", 1],
+        ["", 1],
+        ["right-bottom", 1],
+      ]);
+    } else {
+      // Canonical addresses the shorter merge by its cells, so it merges the
+      // original rows 2..3; the emptied row 3 then closes as well.
+      expect(result.applied.map(({ id }) => id)).toEqual(["tall", "short"]);
+      expect(rightCells?.map(({ text, rowSpan }) => [text, rowSpan])).toEqual([
+        ["right-top", 1],
+        ["right-middle", 1],
+        ["right-bottom", 1],
+      ]);
+    }
+    for (const { text } of spec.cells) {
+      if (text !== "") expect(reading.texts.join("\n")).toContain(text);
+    }
   });
-});
 
-const SESSIONS: readonly HeadlessReviewerSession[] = ["canonical", "legacy"];
+  describe("inserting a row inside a vertical merge", () => {
+    test.each(["direct", "tracked-changes"] as const)(
+      "refuses a cell text the new row has no cell for, and changes nothing (%s)",
+      async (mode) => {
+        const base = await buildTableDocx(MERGED_LEFT);
+        const original = await readReviewerTables(await open(base));
+        const { reviewer, result } = await apply(base, mode, (live) => ({
+          type: "insertTableRow",
+          blockId: blockId(live, "B1"),
+          position: "after",
+          cellTexts: ["X", "Y"],
+        }));
 
-describe.each(SESSIONS)(
-  "%s: a merge or split the batch requests beside a row insertion in the same table",
-  (session) => {
+        expect(result.applied).toEqual([]);
+        expect(result.issues).toEqual([
+          expect.objectContaining({
+            operationId: "op",
+            code: "payloadDoesNotFit",
+            recovery: "changeTarget",
+            message: expect.stringContaining('cellTexts[1] "Y"'),
+          }),
+        ]);
+        const after = await readReviewerTables(reviewer);
+        expect(cells(after)).toEqual(cells(original));
+      },
+    );
+
+    test("places every text it has a cell for, direct and tracked alike", async () => {
+      const base = await buildTableDocx(MERGED_LEFT);
+      const operation = (live: FolioDocxReviewer) =>
+        ({
+          type: "insertTableRow",
+          blockId: blockId(live, "B1"),
+          position: "after",
+          cellTexts: ["X"],
+        }) as const;
+      const direct = await apply(base, "direct", operation);
+      const tracked = await apply(base, "tracked-changes", operation);
+      expect(direct.result.issues).toEqual([]);
+      expect(tracked.result.issues).toEqual([]);
+
+      const directReading = await readReviewerTables(direct.reviewer);
+      const accepted = await resolveTracked(tracked.reviewer, "accept");
+      const rejected = await resolveTracked(tracked.reviewer, "reject");
+      const original = await readReviewerTables(await open(base));
+
+      expect(cells(directReading)).toEqual([
+        [
+          ["0:0", "3x1", "A1"],
+          ["0:1", "1x1", "B1"],
+          ["1:1", "1x1", "X"],
+          ["2:1", "1x1", "B2"],
+          ["3:0", "1x1", "A3"],
+          ["3:1", "1x1", "B3"],
+        ],
+      ]);
+      expect(cells(accepted)).toEqual(cells(directReading));
+      expect(cells(rejected)).toEqual(cells(original));
+      for (const reading of [directReading, accepted, rejected]) {
+        expect(tableReadingProblems(reading)).toEqual([]);
+      }
+    });
+  });
+  describe("merging down the only cell a row starts", () => {
+    /** `A1` merged down over the second row; `B2` is blank. */
+    const BLANK_B2: TableSpec = {
+      rows: 3,
+      columns: 2,
+      cells: [
+        { row: 0, column: 0, rowSpan: 2, columnSpan: 1, text: "A1" },
+        { row: 0, column: 1, rowSpan: 1, columnSpan: 1, text: "B1" },
+        { row: 1, column: 1, rowSpan: 1, columnSpan: 1, text: "" },
+        { row: 2, column: 0, rowSpan: 1, columnSpan: 1, text: "A3" },
+        { row: 2, column: 1, rowSpan: 1, columnSpan: 1, text: "B3" },
+      ],
+    };
+    const operation = (live: FolioDocxReviewer) =>
+      ({
+        type: "mergeTableCells",
+        blockId: blockId(live, "B1"),
+        rowCount: 2,
+      }) as const;
+
+    test("removes the row directly, and a tracked merge accepts to the same table", async () => {
+      const base = await buildTableDocx(BLANK_B2);
+      const direct = await apply(base, "direct", operation);
+      const tracked = await apply(base, "tracked-changes", operation);
+      expect(direct.result.issues).toEqual([]);
+
+      // The second row kept nothing of its own once B2 merged into B1, so
+      // the row goes and both merges close over one row.
+      const directReading = await readReviewerTables(direct.reviewer);
+      expect(cells(directReading)).toEqual([
+        [
+          ["0:0", "1x1", "A1"],
+          ["0:1", "1x1", "B1"],
+          ["1:0", "1x1", "A3"],
+          ["1:1", "1x1", "B3"],
+        ],
+      ]);
+      expect(tableReadingProblems(directReading)).toEqual([]);
+      if (session === "legacy") {
+        // Legacy cannot record the row going with a tracked merge.
+        expect(tracked.result.applied).toEqual([]);
+        return;
+      }
+      // The tracked merge records the row's deletion beside the merge.
+      expect(tracked.result.issues).toEqual([]);
+      const accepted = await resolveTracked(tracked.reviewer, "accept");
+      const rejected = await resolveTracked(tracked.reviewer, "reject");
+      const original = await readReviewerTables(await open(base));
+      expect(cells(accepted)).toEqual(cells(directReading));
+      expect(cells(rejected)).toEqual(cells(original));
+      for (const reading of [accepted, rejected]) {
+        expect(tableReadingProblems(reading)).toEqual([]);
+      }
+    });
+  });
+
+  describe("deleting the column beside a vertical merge", () => {
+    test("direct and accepted tracked deletion leave the same coherent table", async () => {
+      const base = await buildTableDocx(MERGED_LEFT);
+      const operation = (live: FolioDocxReviewer) =>
+        ({ type: "deleteTableColumn", blockId: blockId(live, "B1") }) as const;
+      const direct = await apply(base, "direct", operation);
+      const tracked = await apply(base, "tracked-changes", operation);
+      expect(direct.result.issues).toEqual([]);
+      expect(tracked.result.issues).toEqual([]);
+
+      const directReading = await readReviewerTables(direct.reviewer);
+      const accepted = await resolveTracked(tracked.reviewer, "accept");
+      const rejected = await resolveTracked(tracked.reviewer, "reject");
+      const original = await readReviewerTables(await open(base));
+
+      // The merged cell's second row held nothing but the merge once column B
+      // went, so the row goes with it and the merge closes over one row.
+      expect(cells(directReading)).toEqual([
+        [
+          ["0:0", "1x1", "A1"],
+          ["1:0", "1x1", "A3"],
+        ],
+      ]);
+      expect(cells(accepted)).toEqual(cells(directReading));
+      expect(cells(rejected)).toEqual(cells(original));
+      for (const reading of [directReading, accepted, rejected]) {
+        expect(tableReadingProblems(reading)).toEqual([]);
+      }
+    });
+  });
+
+  describe("a column deletion in a nested table the same batch moves", () => {
+    /**
+     * The outer table merges whole, carrying the nested table into the merged
+     * cell, while the nested table loses the only column its second row had a
+     * cell in. The emptied row still has to close once the batch is done.
+     */
+    const NESTED: TableSpec = {
+      rows: 3,
+      columns: 4,
+      cells: [
+        { row: 0, column: 0, rowSpan: 1, columnSpan: 1, text: "" },
+        {
+          row: 0,
+          column: 1,
+          rowSpan: 2,
+          columnSpan: 2,
+          text: "c1",
+          nested: {
+            rows: 2,
+            columns: 3,
+            cells: [
+              { row: 0, column: 0, rowSpan: 2, columnSpan: 2, text: "n0" },
+              { row: 0, column: 2, rowSpan: 1, columnSpan: 1, text: "n1" },
+              { row: 1, column: 2, rowSpan: 1, columnSpan: 1, text: "n2" },
+            ],
+          },
+        },
+        { row: 0, column: 3, rowSpan: 1, columnSpan: 1, text: "" },
+        { row: 1, column: 0, rowSpan: 1, columnSpan: 1, text: "" },
+        { row: 1, column: 3, rowSpan: 2, columnSpan: 1, text: "c4" },
+        { row: 2, column: 0, rowSpan: 1, columnSpan: 2, text: "" },
+        { row: 2, column: 2, rowSpan: 1, columnSpan: 1, text: "" },
+      ],
+    };
+
+    test("closes the row the deletion emptied, in the editor and the package alike", async () => {
+      const reviewer = await open(await buildTableDocx(NESTED));
+      const firstCell = reviewer
+        .getContent()
+        .find(
+          ({ table }) =>
+            table?.tableIndex === 0 &&
+            table.rowIndex === 0 &&
+            table.gridColumnIndex === 0 &&
+            table.paragraphIndex === 0,
+        );
+      if (!firstCell) {
+        throw new Error("no block starts the first cell");
+      }
+      const result = reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode: "direct",
+          operations: [
+            {
+              id: "merge",
+              type: "mergeTableCells",
+              blockId: blockId(reviewer, "c4"),
+              endBlockId: firstCell.id,
+            },
+            {
+              id: "column",
+              type: "deleteTableColumn",
+              blockId: blockId(reviewer, "n1"),
+            },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      );
+      expect(result.applied.map(({ id }) => id).toSorted()).toEqual([
+        "column",
+        "merge",
+      ]);
+
+      const reading = await readReviewerTables(reviewer);
+      expect(tableReadingProblems(reading)).toEqual([]);
+      expect(cells(reading)[1]).toEqual([["0:0", "1x2", "n0"]]);
+    });
+  });
+
+  describe("a merge or split the batch requests before a row insertion in the same table", () => {
     /** Two columns, three rows, nothing merged. */
     const PLAIN: TableSpec = {
       rows: 3,
@@ -352,7 +418,7 @@ describe.each(SESSIONS)(
       mode: Mode,
       build: (reviewer: FolioDocxReviewer) => FolioDocumentOperation[],
     ) => {
-      const reviewer = await open(await buildTableDocx(spec), session);
+      const reviewer = await open(await buildTableDocx(spec));
       const result = reviewer.applyDocumentOperations(
         {
           version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -371,7 +437,7 @@ describe.each(SESSIONS)(
     ): Promise<TableReading> =>
       mode === "direct"
         ? readReviewerTables(reviewer)
-        : resolveTracked(reviewer, "accept", session);
+        : resolveTracked(reviewer, "accept");
 
     // `cellTexts` fills the row as the source grid has it: the cell-shape edit
     // is refused whatever its place in the request, so it never runs first.
@@ -418,38 +484,6 @@ describe.each(SESSIONS)(
       },
     );
 
-    // Inserted above the merge, the row would move the cells it names.
-    test("a merge below a row the batch inserts is refused rather than shifted onto the new row", async () => {
-      const { reviewer, result } = await applyBatch(PLAIN, "direct", (live) => [
-        {
-          id: "row",
-          type: "insertTableRow",
-          blockId: blockId(live, "A1"),
-          position: "after",
-          cellTexts: ["X", "Y"],
-        },
-        {
-          id: "merge",
-          type: "mergeTableCells",
-          blockId: blockId(live, "A2"),
-          rowCount: 2,
-        },
-      ]);
-
-      expect(result.applied.map(({ id }) => id)).toEqual(["row"]);
-      expect(result.issues).toEqual([
-        expect.objectContaining({
-          operationId: "merge",
-          code: "unsupportedBlock",
-        }),
-      ]);
-      const reading = await settle(reviewer, "direct");
-      expect(tableReadingProblems(reading)).toEqual([]);
-      expect(cells(reading)[0]?.map(([, span]) => span)).toEqual(
-        Array.from({ length: 8 }, () => "1x1"),
-      );
-    });
-
     test.each(["direct", "tracked-changes"] as const)(
       "a split of the merge crossing the boundary is refused and the row keeps its source capacity (%s)",
       async (mode) => {
@@ -493,154 +527,189 @@ describe.each(SESSIONS)(
         ]);
       },
     );
-  },
-);
 
-describe("an edit inside a cell the same batch merges away", () => {
-  /** Two rows; the right column is blank, so a tracked merge may fold it. */
-  const BLANK_RIGHT: TableSpec = {
-    rows: 2,
-    columns: 2,
-    cells: [
-      { row: 0, column: 0, rowSpan: 1, columnSpan: 1, text: "A1" },
-      { row: 0, column: 1, rowSpan: 1, columnSpan: 1, text: "" },
-      { row: 1, column: 0, rowSpan: 1, columnSpan: 1, text: "A2" },
-      { row: 1, column: 1, rowSpan: 1, columnSpan: 1, text: "" },
-    ],
-  };
-
-  /** The first paragraph of the outer table's cell at `row`, `column`. */
-  const cellBlockId = (
-    reviewer: FolioDocxReviewer,
-    row: number,
-    column: number,
-  ): string => {
-    const block = reviewer
-      .getContent()
-      .find(
-        ({ table }) =>
-          table?.tableIndex === 0 &&
-          table.rowIndex === row &&
-          table.gridColumnIndex === column &&
-          table.paragraphIndex === 0,
-      );
-    if (!block) {
-      throw new Error(`no block starts cell ${row}:${column}`);
-    }
-    return block.id;
-  };
-
-  /** The batch applied, and its table as applied: a tracked result accepted. */
-  const run = async (
-    mode: Mode,
-    build: (reviewer: FolioDocxReviewer) => FolioDocumentOperation[],
-  ) => {
-    const reviewer = await open(await buildTableDocx(BLANK_RIGHT));
-    const result = reviewer.applyDocumentOperations(
-      {
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode,
-        operations: build(reviewer),
-      },
-      { undefinedReferences: "refuse" },
-    );
-    const reading =
-      mode === "direct"
-        ? await readReviewerTables(reviewer)
-        : await resolveTracked(reviewer, "accept");
-    expect(tableReadingProblems(reading)).toEqual([]);
-    return { result, table: cells(reading) };
-  };
-
-  const merge = (live: FolioDocxReviewer): FolioDocumentOperation => ({
-    id: "merge",
-    type: "mergeTableCells",
-    blockId: cellBlockId(live, 0, 1),
-    endBlockId: cellBlockId(live, 1, 1),
-  });
-
-  // Applied directly, a folded cell's text moves into the merged cell; tracked,
-  // the merge takes only blank cells. An edit filling one would let the merge
-  // through in one mode and not the other, so both refuse the later of the two.
-  test.each(["direct", "tracked-changes"] as const)(
-    "refuses a merge after an edit of a cell it folds (%s)",
-    async (mode) => {
-      const { result, table } = await run(mode, (live) => [
+    // Inserted above the merge, the row would move the cells it names.
+    test("a merge below a row the batch inserts is refused rather than shifted onto the new row", async () => {
+      const { reviewer, result } = await applyBatch(PLAIN, "direct", (live) => [
         {
-          id: "edit",
-          type: "replaceBlock",
-          blockId: cellBlockId(live, 1, 1),
-          text: "X",
+          id: "row",
+          type: "insertTableRow",
+          blockId: blockId(live, "A1"),
+          position: "after",
+          cellTexts: ["X", "Y"],
         },
-        merge(live),
+        {
+          id: "merge",
+          type: "mergeTableCells",
+          blockId: blockId(live, "A2"),
+          rowCount: 2,
+        },
       ]);
 
-      expect(result.applied.map(({ id }) => id)).toEqual(["edit"]);
-      expect(result.skipped).toEqual([
+      expect(result.applied.map(({ id }) => id)).toEqual(["row"]);
+      expect(result.issues).toEqual([
         expect.objectContaining({
-          id: "merge",
-          reason: "overlappingOperation",
+          operationId: "merge",
+          code: "unsupportedBlock",
         }),
       ]);
-      expect(table).toEqual([
-        [
-          ["0:0", "1x1", "A1"],
-          ["0:1", "1x1", ""],
-          ["1:0", "1x1", "A2"],
-          ["1:1", "1x1", "X"],
-        ],
-      ]);
-    },
-  );
+      const reading = await settle(reviewer, "direct");
+      expect(tableReadingProblems(reading)).toEqual([]);
+      expect(cells(reading)[0]?.map(([, span]) => span)).toEqual(
+        Array.from({ length: 8 }, () => "1x1"),
+      );
+    });
+  });
 
-  test.each(["direct", "tracked-changes"] as const)(
-    "refuses an edit of a cell an earlier merge folds (%s)",
-    async (mode) => {
-      const { result, table } = await run(mode, (live) => [
-        merge(live),
+  describe("an edit inside a cell the same batch merges away", () => {
+    /** Two rows; the right column is blank, so a tracked merge may fold it. */
+    const BLANK_RIGHT: TableSpec = {
+      rows: 2,
+      columns: 2,
+      cells: [
+        { row: 0, column: 0, rowSpan: 1, columnSpan: 1, text: "A1" },
+        { row: 0, column: 1, rowSpan: 1, columnSpan: 1, text: "" },
+        { row: 1, column: 0, rowSpan: 1, columnSpan: 1, text: "A2" },
+        { row: 1, column: 1, rowSpan: 1, columnSpan: 1, text: "" },
+      ],
+    };
+
+    /** The first paragraph of the outer table's cell at `row`, `column`. */
+    const cellBlockId = (
+      reviewer: FolioDocxReviewer,
+      row: number,
+      column: number,
+    ): string => {
+      const block = reviewer
+        .getContent()
+        .find(
+          ({ table }) =>
+            table?.tableIndex === 0 &&
+            table.rowIndex === row &&
+            table.gridColumnIndex === column &&
+            table.paragraphIndex === 0,
+        );
+      if (!block) {
+        throw new Error(`no block starts cell ${row}:${column}`);
+      }
+      return block.id;
+    };
+
+    /** The batch applied, and its table as applied: a tracked result accepted. */
+    const run = async (
+      mode: Mode,
+      build: (reviewer: FolioDocxReviewer) => FolioDocumentOperation[],
+    ) => {
+      const reviewer = await open(await buildTableDocx(BLANK_RIGHT));
+      const result = reviewer.applyDocumentOperations(
         {
-          id: "edit",
-          type: "replaceBlock",
-          blockId: cellBlockId(live, 1, 1),
-          text: "X",
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode,
+          operations: build(reviewer),
         },
-      ]);
+        { undefinedReferences: "refuse" },
+      );
+      const reading =
+        mode === "direct"
+          ? await readReviewerTables(reviewer)
+          : await resolveTracked(reviewer, "accept");
+      expect(tableReadingProblems(reading)).toEqual([]);
+      return { result, table: cells(reading) };
+    };
 
-      expect(result.applied.map(({ id }) => id)).toEqual(["merge"]);
-      expect(result.skipped).toEqual([
-        expect.objectContaining({ id: "edit", reason: "overlappingOperation" }),
-      ]);
-      expect(table).toEqual([
-        [
-          ["0:0", "1x1", "A1"],
-          ["0:1", "2x1", ""],
-          ["1:0", "1x1", "A2"],
-        ],
-      ]);
-    },
-  );
+    const merge = (live: FolioDocxReviewer): FolioDocumentOperation => ({
+      id: "merge",
+      type: "mergeTableCells",
+      blockId: cellBlockId(live, 0, 1),
+      endBlockId: cellBlockId(live, 1, 1),
+    });
 
-  test.each(["direct", "tracked-changes"] as const)(
-    "applies an edit of the cell the merge keeps alongside it (%s)",
-    async (mode) => {
-      const { result, table } = await run(mode, (live) => [
-        {
-          id: "edit",
-          type: "replaceBlock",
-          blockId: cellBlockId(live, 0, 1),
-          text: "X",
-        },
-        merge(live),
-      ]);
+    // Applied directly, a folded cell's text moves into the merged cell; tracked,
+    // the merge takes only blank cells. An edit filling one would let the merge
+    // through in one mode and not the other, so both refuse the later of the two.
+    test.each(["direct", "tracked-changes"] as const)(
+      "refuses a merge after an edit of a cell it folds (%s)",
+      async (mode) => {
+        const { result, table } = await run(mode, (live) => [
+          {
+            id: "edit",
+            type: "replaceBlock",
+            blockId: cellBlockId(live, 1, 1),
+            text: "X",
+          },
+          merge(live),
+        ]);
 
-      expect(result.applied.map(({ id }) => id)).toEqual(["edit", "merge"]);
-      expect(table).toEqual([
-        [
-          ["0:0", "1x1", "A1"],
-          ["0:1", "2x1", "X"],
-          ["1:0", "1x1", "A2"],
-        ],
-      ]);
-    },
-  );
+        expect(result.applied.map(({ id }) => id)).toEqual(["edit"]);
+        expect(result.skipped).toEqual([
+          expect.objectContaining({
+            id: "merge",
+            reason: "overlappingOperation",
+          }),
+        ]);
+        expect(table).toEqual([
+          [
+            ["0:0", "1x1", "A1"],
+            ["0:1", "1x1", ""],
+            ["1:0", "1x1", "A2"],
+            ["1:1", "1x1", "X"],
+          ],
+        ]);
+      },
+    );
+
+    test.each(["direct", "tracked-changes"] as const)(
+      "refuses an edit of a cell an earlier merge folds (%s)",
+      async (mode) => {
+        const { result, table } = await run(mode, (live) => [
+          merge(live),
+          {
+            id: "edit",
+            type: "replaceBlock",
+            blockId: cellBlockId(live, 1, 1),
+            text: "X",
+          },
+        ]);
+
+        expect(result.applied.map(({ id }) => id)).toEqual(["merge"]);
+        expect(result.skipped).toEqual([
+          expect.objectContaining({
+            id: "edit",
+            reason: "overlappingOperation",
+          }),
+        ]);
+        expect(table).toEqual([
+          [
+            ["0:0", "1x1", "A1"],
+            ["0:1", "2x1", ""],
+            ["1:0", "1x1", "A2"],
+          ],
+        ]);
+      },
+    );
+
+    test.each(["direct", "tracked-changes"] as const)(
+      "applies an edit of the cell the merge keeps alongside it (%s)",
+      async (mode) => {
+        const { result, table } = await run(mode, (live) => [
+          {
+            id: "edit",
+            type: "replaceBlock",
+            blockId: cellBlockId(live, 0, 1),
+            text: "X",
+          },
+          merge(live),
+        ]);
+
+        expect(result.applied.map(({ id }) => id)).toEqual(["edit", "merge"]);
+        expect(table).toEqual([
+          [
+            ["0:0", "1x1", "A1"],
+            ["0:1", "2x1", "X"],
+            ["1:0", "1x1", "A2"],
+          ],
+        ]);
+      },
+    );
+  });
 });
