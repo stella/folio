@@ -16,8 +16,6 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
   readonly BLOCK_NOT_FOUND: "blockNotFound";
   /** A raw operation is missing required fields or supplies their wrong shape. */
   readonly INVALID_OPERATION: "invalidOperation";
-  /** Removing a column would leave a row with no active cells. */
-  readonly TABLE_ROW_EMPTY: "tableRowEmpty";
   /** The requested topology edit changes nothing. */
   readonly NO_CHANGE: "noChange";
   /** Removed content carries anchors or review records that require coordinated resolution. */
@@ -116,8 +114,6 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
   BLOCK_NOT_FOUND: "blockNotFound",
   /** A raw operation is missing required fields or supplies their wrong shape. */
   INVALID_OPERATION: "invalidOperation",
-  /** Removing a column would leave a row with no active cells. */
-  TABLE_ROW_EMPTY: "tableRowEmpty",
   /** The requested topology edit changes nothing. */
   NO_CHANGE: "noChange",
   /** Removed content carries anchors or review records that require coordinated resolution. */
