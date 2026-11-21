@@ -2170,7 +2170,7 @@ const trackJoin = ({
   ) {
     return refuse(
       op,
-      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+      DOCUMENT_OP_REFUSAL_REASONS.JOIN_INTO_PENDING_TABLE,
       `Joining ${op.blockId} would run it into the table after ${op.nextBlockId}.`,
     );
   }

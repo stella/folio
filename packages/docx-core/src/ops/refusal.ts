@@ -94,6 +94,12 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
    * {@link DOCUMENT_OP_REFUSAL_REASONS.PENDING_RUN_PROPERTY_CHANGE}.
    */
   readonly PENDING_PARAGRAPH_PROPERTY_CHANGE: "pendingParagraphPropertyChange";
+  /**
+   * A tracked join would run a paragraph, through one whose own mark is
+   * already going, into the table after it while that table's first row or
+   * cell is under review: the table cannot receive what runs in.
+   */
+  readonly JOIN_INTO_PENDING_TABLE: "joinIntoPendingTable";
   /** The operation would put a mark on a paragraph that ends its story body or table cell. */
   readonly CONTAINER_FINAL_MARK: "containerFinalMark";
   /**
@@ -216,6 +222,12 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
    * {@link DOCUMENT_OP_REFUSAL_REASONS.PENDING_RUN_PROPERTY_CHANGE}.
    */
   PENDING_PARAGRAPH_PROPERTY_CHANGE: "pendingParagraphPropertyChange",
+  /**
+   * A tracked join would run a paragraph, through one whose own mark is
+   * already going, into the table after it while that table's first row or
+   * cell is under review: the table cannot receive what runs in.
+   */
+  JOIN_INTO_PENDING_TABLE: "joinIntoPendingTable",
   /** The operation would put a mark on a paragraph that ends its story body or table cell. */
   CONTAINER_FINAL_MARK: "containerFinalMark",
   /**
