@@ -6501,7 +6501,7 @@ const planSingleRecordResolution = (
     if (settledCuts.length > 0) {
       const settled = applyOps(current, settledCuts);
       if (settled.isErr()) return Result.err(settled.error);
-      edits.push(settled.value);
+      record(settled.value);
       current = settled.value.document;
     }
   }
