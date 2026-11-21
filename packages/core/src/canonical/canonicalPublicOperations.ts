@@ -6445,11 +6445,22 @@ export class CanonicalPublicOperations {
               noteReferences,
             });
       // A block the join would run into the words before it, or into a
-      // table after it, waits for the join to be resolved.
+      // table after it, waits for the join to be resolved. A suggestion is
+      // placed beside the paragraph as it stands, but waits wherever a
+      // tracked insertion would, so the two modes refuse alike.
+      const refusalPlace =
+        suggested && insertion.type === "insertAfterBlock"
+          ? placeAfter({
+              suggested: false,
+              paragraph,
+              projection: projection.value,
+              noteReferences,
+            }).place
+          : placed.place;
       const gap =
         insertion.type === "insertAfterBlock"
-          ? placed.place.start - 1 + placed.place.node.nodeSize
-          : placed.place.start - 1;
+          ? refusalPlace.start - 1 + refusalPlace.node.nodeSize
+          : refusalPlace.start - 1;
       if (
         joinStopsAtTableAfter({
           insertedBlock: "paragraph",
