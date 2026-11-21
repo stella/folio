@@ -231,3 +231,116 @@ describe.each(SESSIONS)(
     }
   },
 );
+
+/*
+ * A batch deleting a container's last paragraphs and placing a block in the
+ * gap before them: tracked, in every stated order and one at a time, accepting
+ * leaves what applying the operations directly does, and rejecting restores
+ * the original.
+ */
+const CLOSINGS = ["First closing.", "Second closing.", "Third closing."];
+const RUN_SOURCE = fromMarkdown(
+  ["# Terms", "Body text.", ...CLOSINGS].join("\n\n"),
+);
+
+/** Each way to place a block in or before the deleted run. */
+const RUN_GAP_INSERTIONS: Record<
+  string,
+  (ids: { before: string; first: string }) => FolioDocumentOperation
+> = {
+  "a paragraph after the paragraph before them": ({ before }) => ({
+    id: "insert",
+    type: "insertAfterBlock",
+    blockId: before,
+    text: "Added clause.",
+    styleId: "Heading2",
+  }),
+  "a paragraph before the first of them": ({ first }) => ({
+    id: "insert",
+    type: "insertBeforeBlock",
+    blockId: first,
+    text: "Added clause.",
+    styleId: "Heading2",
+  }),
+  "a paragraph after the first of them": ({ first }) => ({
+    id: "insert",
+    type: "insertAfterBlock",
+    blockId: first,
+    text: "Added clause.",
+    styleId: "Heading2",
+  }),
+  "a table after the paragraph before them": ({ before }) => ({
+    id: "insert",
+    type: "insertTable",
+    blockId: before,
+    rows: [["Term", "Value"]],
+  }),
+};
+
+describe.each(SESSIONS)(
+  "a batch deleting a container's last paragraphs beside a gap insertion (%s)",
+  (session) => {
+    const open = opener(session);
+    for (const count of [2, 3])
+      for (const [name, insertion] of Object.entries(RUN_GAP_INSERTIONS))
+        test(`${name}, deleting the last ${count}`, async () => {
+          const source = (await ensureParaIds(await createDocx(RUN_SOURCE)))
+            .docx;
+          const original = (await open(source))
+            .snapshot()
+            .blocks.map(({ text }) => text);
+          const operationsOf = (reviewer: Reviewer) => {
+            const run = CLOSINGS.slice(-count);
+            const deletions = run.map(
+              (text, index): FolioDocumentOperation => ({
+                id: `delete-${index}`,
+                type: "deleteBlock",
+                blockId: idOf(reviewer, text),
+              }),
+            );
+            const before = CLOSINGS.at(-count - 1) ?? "Body text.";
+            const insert = insertion({
+              before: idOf(reviewer, before),
+              first: idOf(reviewer, run[0] ?? ""),
+            });
+            return { deletions, insert };
+          };
+          // Applied directly one at a time, the insertion first.
+          const direct = await open(source);
+          const directOperations = operationsOf(direct);
+          for (const operation of [
+            directOperations.insert,
+            ...directOperations.deletions,
+          ])
+            apply(direct, "direct", [operation]);
+          const expected = await settled(open, direct);
+          expect(expected.at(-1)?.inTable).toBe(false);
+          // Tracked, as a batch in each stated order and one at a time.
+          const orders: Record<
+            string,
+            (
+              operations: ReturnType<typeof operationsOf>,
+            ) => FolioDocumentOperation[][]
+          > = {
+            "insertion first": ({ insert, deletions }) => [
+              [insert, ...deletions],
+            ],
+            "insertion last": ({ insert, deletions }) => [
+              [...deletions, insert],
+            ],
+            "deletions backwards": ({ insert, deletions }) => [
+              [...deletions.toReversed(), insert],
+            ],
+            "one at a time": ({ insert, deletions }) =>
+              [insert, ...deletions].map((operation) => [operation]),
+          };
+          for (const batches of Object.values(orders)) {
+            const reviewer = await open(source);
+            for (const batch of batches(operationsOf(reviewer)))
+              apply(reviewer, "tracked-changes", batch);
+            expect(await rejected(open, reviewer)).toEqual(original);
+            expect(await settled(open, reviewer)).toEqual(expected);
+          }
+        });
+  },
+);
