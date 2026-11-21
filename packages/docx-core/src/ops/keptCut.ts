@@ -90,6 +90,22 @@ export const withKeptCutPieceConsumed = (
     }, known),
   );
 
+/** Retain the marker's provenance once both pieces of its cut are rejected. */
+export const withKeptCutConsumed = (
+  node: InlineNode,
+  known: WeakMap<InlineNode, string>,
+): InlineNode =>
+  changeStandingMarkers(
+    node,
+    keepingRecord((marker) => {
+      if (!carriesKeptCut(marker) || marker.keptCut === undefined)
+        return marker;
+      return Object.assign({}, marker, {
+        keptCut: { depth: 1, keptFrom: marker.keptCut.keptFrom },
+      });
+    }, known),
+  );
+
 /** The earliest revision a marker `node` stands for was kept from. */
 export const keptCutFrom = (node: InlineNode): string | undefined => {
   if (node.type === "deletion")

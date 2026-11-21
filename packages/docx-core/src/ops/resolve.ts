@@ -76,6 +76,7 @@ import {
   settleKeptCuts,
   standsInKeptCut,
   withEdgeKeptCutsWidened,
+  withKeptCutConsumed,
   withKeptCutPieceConsumed,
   withKeptCutPieceRecorded,
   withKeptCutsRecorded,
@@ -2172,9 +2173,12 @@ const withRemovedPiecesMet = (
         first.resolutionJoins?.after ?? 0,
         second.resolutionJoins?.before ?? 0,
       ) - 1;
+    const kept = source()
+      .slice(index + 1, end)
+      .map((node) => withKeptCutConsumed(node, resolution.relocated.nodes));
     const seam = withSeamBoundariesInside({
       left: first.content,
-      right: [...source().slice(index + 1, end), ...second.content],
+      right: [...kept, ...second.content],
       depth,
     });
     const content =
@@ -2900,11 +2904,15 @@ const resolveList = ({
         // join takes it, where an authored or accepted one blocks the join.
         // Placing it inside a piece clears the record unless a pending change
         // meets it there, as does a resolution that leaves none beside it.
+        const boundaries = keptOf(removalContent);
         const cut = {
-          depth: Math.max(1, joins?.remove ?? 0),
+          depth:
+            boundaries.length === 0
+              ? 1
+              : Math.max(1, cutLevelsOnceResolved(node, index)),
           keptFrom: node.info.date ?? "",
         };
-        const kept = keptOf(removalContent).map((boundary) =>
+        const kept = boundaries.map((boundary) =>
           isKeptBoundaryCarrier(boundary)
             ? withKeptCutsRecorded(boundary, cut, resolution.relocated.nodes)
             : boundary,
