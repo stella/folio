@@ -12,6 +12,7 @@ import { TableMap } from "prosemirror-tables";
 import {
   CONTENT_CONTROL_LOCK,
   lockedControlMessage,
+  MAX_REVISION_ID,
   paragraphNumberingReference,
   type Table,
 } from "@stll/docx-core/model";
@@ -176,7 +177,7 @@ import {
 } from "../prosemirror/conversion/fromProseDoc";
 import { ensureParaIdsInDoc } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import { insertionGap } from "../prosemirror/insertionGaps";
-import { maxAnnotationIdInDoc } from "../prosemirror/plugins/revisionIds";
+import { forEachAnnotationIdInDoc } from "../prosemirror/plugins/revisionIds";
 import { preservesReplacementCommentAlignment } from "../prosemirror/replacedAnnotations";
 import { createStyleResolver } from "../prosemirror/styles/styleResolver";
 import {
@@ -3291,6 +3292,32 @@ type CompilePublicIntentsOptions = {
 
 // Bound the generic allocator's prospective paragraph lookup and keep
 // the unrestricted revision/control ranges of an unleased editor.
+/**
+ * Room past the highest revision or annotation id below which a batch draws
+ * its revision ids from the free ones instead: more than any one batch asks.
+ */
+const REVISION_ID_WRAP_HEADROOM = 1 << 16;
+
+/**
+ * A lease of every id, but for revisions only the ones no revision record or
+ * annotation holds, lowest first.
+ */
+const wrappedRevisionLease = (taken: ReadonlySet<number>): IdLease => {
+  const blocks: IdBlock[] = Object.values(ID_LEASE_KINDS)
+    .filter((kind) => kind !== ID_LEASE_KINDS.REVISION)
+    .map((kind) => ({ kind, start: 1, end: ID_KIND_LIMITS[kind] }));
+  let start = 1;
+  for (const id of [...taken].toSorted((left, right) => left - right)) {
+    if (id < start) continue;
+    if (id > start)
+      blocks.push({ kind: ID_LEASE_KINDS.REVISION, start, end: id });
+    start = id + 1;
+  }
+  const end = ID_KIND_LIMITS[ID_LEASE_KINDS.REVISION];
+  if (start < end) blocks.push({ kind: ID_LEASE_KINDS.REVISION, start, end });
+  return { blocks };
+};
+
 const allocatorLeaseForParagraphs = (paragraphLease: IdLease | undefined) =>
   paragraphLease === undefined
     ? undefined
@@ -4070,19 +4097,29 @@ export class CanonicalPublicOperations {
     const mintList = createBatchListMinter(() => readModel(session.document));
     const { diff } = wordDiffSessionFromOptions(options.wordDiff);
     let nextRevisionId = options.revisionStamp?.idSeed ?? 1;
+    let batchLease = session.idLease;
     if (!session.isComposing && options.revisionStamp === undefined) {
       // Past every revision id the package holds, records the projection
       // does not show (a table's grid change, say) included.
-      for (const id of leasedIdCensus(readModel(session.document)).revision)
-        nextRevisionId = Math.max(nextRevisionId, id + 1);
+      const taken = new Set(
+        leasedIdCensus(readModel(session.document)).revision,
+      );
       for (const currentStory of documentStories(readModel(session.document))) {
         const currentProjection = session.projectStory(currentStory);
         if (currentProjection.isOk())
-          nextRevisionId = Math.max(
-            nextRevisionId,
-            maxAnnotationIdInDoc(currentProjection.value.doc) + 1,
+          forEachAnnotationIdInDoc(currentProjection.value.doc, (id) =>
+            taken.add(id),
           );
       }
+      for (const id of taken) nextRevisionId = Math.max(nextRevisionId, id + 1);
+      // With little room left past the highest id, the batch draws its
+      // revision ids from the lowest ones no record or annotation holds, as
+      // a lease does, so a package holding the largest id still takes edits.
+      if (
+        batchLease === undefined &&
+        MAX_REVISION_ID + 1 - nextRevisionId < REVISION_ID_WRAP_HEADROOM
+      )
+        batchLease = wrappedRevisionLease(taken);
     }
     const skip = (
       id: string,
@@ -4499,7 +4536,7 @@ export class CanonicalPublicOperations {
       resolvedOperation,
       columnInsertions,
       nextRevisionId: firstRevisionId,
-      idLease = session.idLease,
+      idLease = batchLease,
       paragraphAllocationLease,
       allocations,
       reservedBlockIds = session.reservedBlockIds,
@@ -4677,6 +4714,9 @@ export class CanonicalPublicOperations {
       }
       let commentId: number | undefined;
       let commentAllocation: PrepareOperationOptions["commentAllocation"];
+      // A lease the batch takes only for its revision ids leaves comments to
+      // their own allocator.
+      const commentLease = session.idLease === undefined ? undefined : idLease;
       switch (resolvedOperation.type) {
         case "plain":
           break;
@@ -4684,7 +4724,7 @@ export class CanonicalPublicOperations {
           const { comment } = resolvedOperation;
           const id =
             admittedComment === undefined
-              ? freshCommentId(nextDocument, idLease)
+              ? freshCommentId(nextDocument, commentLease)
               : Result.ok(admittedComment.id);
           // A suggested operation's comment is proposed with it: pending,
           // never saved, accepted and rejected with the suggestion.
@@ -4709,7 +4749,7 @@ export class CanonicalPublicOperations {
             const lastAdded = added.at(-1);
             const commentContent =
               admittedComment?.content ??
-              canonicalCommentBody(nextDocument, comment.text, idLease);
+              canonicalCommentBody(nextDocument, comment.text, commentLease);
             const commented =
               id.isErr() ||
               firstAdded?.paraId === undefined ||
@@ -4808,7 +4848,7 @@ export class CanonicalPublicOperations {
                 };
           const commentContent =
             admittedComment?.content ??
-            canonicalCommentBody(nextDocument, comment.text, idLease);
+            canonicalCommentBody(nextDocument, comment.text, commentLease);
           const commented = compileCanonicalComments({
             document: nextDocument,
             idLease: idLease,
@@ -5036,7 +5076,7 @@ export class CanonicalPublicOperations {
         panic("An insertion admission window lost its first operation.");
       const window = executionOrder.slice(interval.first, interval.last + 1);
       if (
-        session.idLease === undefined &&
+        batchLease === undefined &&
         batch.mode !== "suggested" &&
         alreadyInReplayOrder(window)
       )
@@ -5084,11 +5124,11 @@ export class CanonicalPublicOperations {
       let admissionCensus:
         | { type: "paragraphs"; ids: Set<number> | undefined }
         | { type: "package" } =
-        session.idLease === undefined
+        batchLease === undefined
           ? { type: "paragraphs", ids: undefined }
           : { type: "package" };
       const rejectParagraphWindow = () => {
-        if (session.idLease !== undefined) return "lease";
+        if (batchLease !== undefined) return "lease";
         if (batch.mode === "suggested") return "suggestion";
         if (!window.every(isPlainInsertion)) return "windowShape";
         return undefined;
@@ -5233,10 +5273,10 @@ export class CanonicalPublicOperations {
         );
       for (const { member, operation: replayOperation } of ordered) {
         const idLease =
-          session.idLease === undefined
+          batchLease === undefined
             ? undefined
             : insertionMemberIdLease({
-                lease: session.idLease,
+                lease: batchLease,
                 siblings: admitted
                   .filter((other) => other !== member)
                   .map(({ ids }) => ids),

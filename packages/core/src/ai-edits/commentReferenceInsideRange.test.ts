@@ -202,44 +202,34 @@ describe("a comment reference put inside another comment's range", () => {
   for (const session of SESSIONS)
     for (const mode of MODES) {
       for (const { name, reservedId, outerId, innerId, starts } of ID_ORDERS) {
-        // Ratchet: the canonical session's revision ids run one past every
-        // annotation id and do not wrap yet, so a tracked edit beside a comment
-        // holding the highest id is refused.
-        const ratchet =
-          session === "canonical" &&
-          mode === "tracked-changes" &&
-          reservedId !== undefined;
-        (ratchet ? test.failing : test)(
-          `stays inside it after removing the tail (${session}, ${mode}, ${name})`,
-          async () => {
-            const { reviewer, blockId } = await nested(session, reservedId);
-            const commentIds =
-              reservedId === undefined
-                ? { Outer: outerId(session), Inner: innerId(session) }
-                : {
-                    Outer: outerId(session),
-                    Inner: innerId(session),
-                    "Already occupied": reservedId,
-                  };
-            expect(commentIdsByText(reviewer)).toEqual(commentIds);
-            const liveBeforeSave = markers(reviewer.toDocument());
-            const reopened = await open(await reviewer.toBuffer(), session);
-            expect(markers(reviewer.toDocument())).toEqual(liveBeforeSave);
-            expect(commentIdsByText(reopened)).toEqual(commentIds);
-            const expected = [
-              ...startsOf(session, starts).map(
-                (comment) => `commentRangeStart ${comment}`,
-              ),
-              "Clause",
-              "commentRangeEnd Inner",
-              "commentReference Inner",
-              "commentRangeEnd Outer",
-              "commentReference Outer",
-            ];
-            expect(removeTail(reviewer, mode, blockId)).toEqual(expected);
-            expect(removeTail(reopened, mode, blockId)).toEqual(expected);
-          },
-        );
+        test(`stays inside it after removing the tail (${session}, ${mode}, ${name})`, async () => {
+          const { reviewer, blockId } = await nested(session, reservedId);
+          const commentIds =
+            reservedId === undefined
+              ? { Outer: outerId(session), Inner: innerId(session) }
+              : {
+                  Outer: outerId(session),
+                  Inner: innerId(session),
+                  "Already occupied": reservedId,
+                };
+          expect(commentIdsByText(reviewer)).toEqual(commentIds);
+          const liveBeforeSave = markers(reviewer.toDocument());
+          const reopened = await open(await reviewer.toBuffer(), session);
+          expect(markers(reviewer.toDocument())).toEqual(liveBeforeSave);
+          expect(commentIdsByText(reopened)).toEqual(commentIds);
+          const expected = [
+            ...startsOf(session, starts).map(
+              (comment) => `commentRangeStart ${comment}`,
+            ),
+            "Clause",
+            "commentRangeEnd Inner",
+            "commentReference Inner",
+            "commentRangeEnd Outer",
+            "commentReference Outer",
+          ];
+          expect(removeTail(reviewer, mode, blockId)).toEqual(expected);
+          expect(removeTail(reopened, mode, blockId)).toEqual(expected);
+        });
       }
     }
 });
