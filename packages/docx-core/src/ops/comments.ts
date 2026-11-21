@@ -37,6 +37,7 @@ import {
   packageIdentityKeys,
 } from "./ids";
 import {
+  alikeDepth,
   asParagraphContent,
   childNodes,
   type CommentAnchorCarrier,
@@ -64,6 +65,7 @@ import {
   type DocumentOpRefusalReason,
 } from "./refusal";
 import type { ApplyOps } from "./resolve";
+import { isTrackedWrapper } from "./review";
 import {
   contentOutsideTextBoxes,
   documentStories,
@@ -1051,6 +1053,52 @@ const normalizedWithoutAnchors = ({
       normalized = mergeAlike(normalized, [normalizedNode]);
     else normalized.push(normalizedNode);
     position += leafSpans([normalizedNode]).at(-1)?.after.offset ?? 0;
+  }
+  return withSeamsAcrossInsertions({ normalized, seams, start });
+};
+
+type SeamsAcrossInsertionsOptions = {
+  normalized: InlineNode[];
+  seams: ReadonlySet<number>;
+  start: number;
+};
+
+/**
+ * A pending insertion standing at a seam the removed anchors opened keeps
+ * apart the records that seam would have merged. Removing it later joins
+ * them as far as they are alike, as removing it before the anchors went
+ * would have let the seam merge them: resolution stays order-free.
+ */
+const withSeamsAcrossInsertions = ({
+  normalized,
+  seams,
+  start,
+}: SeamsAcrossInsertionsOptions): InlineNode[] => {
+  let position = start;
+  for (const [index, node] of normalized.entries()) {
+    const from = position;
+    position += leafSpans([node]).at(-1)?.after.offset ?? 0;
+    if (
+      node.type !== "insertion" ||
+      node.resolutionJoins === undefined ||
+      !(seams.has(from) || seams.has(position))
+    )
+      continue;
+    const left = normalized[index - 1];
+    const right = normalized[index + 1];
+    if (
+      left === undefined ||
+      right === undefined ||
+      isTrackedWrapper(left) ||
+      isTrackedWrapper(right)
+    )
+      continue;
+    const depth = alikeDepth(left, right);
+    if (depth <= node.resolutionJoins.remove) continue;
+    normalized[index] = {
+      ...node,
+      resolutionJoins: { ...node.resolutionJoins, remove: depth },
+    };
   }
   return normalized;
 };

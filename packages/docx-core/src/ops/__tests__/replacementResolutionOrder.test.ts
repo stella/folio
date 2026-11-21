@@ -3,7 +3,8 @@
  * run's two cut pieces. Resolving the deletion and the insertion one at a
  * time, in either order and with either decision each, gives the document
  * resolving them together gives: the pieces rejoin once nothing new stands
- * between them, at top level and inside a content control.
+ * between them, at top level and inside a content control, and around a
+ * comment that accepting the deletion retires.
  */
 import { describe, expect, test } from "bun:test";
 
@@ -128,4 +129,37 @@ describe("a tracked replacement inside a source run", () => {
               expect(inTurn).toEqual(together);
             }
       });
+});
+
+test("a tracked replacement of a comment's words resolves alike in either order, accepting the deletion retiring the comment", () => {
+  const document: Document = {
+    package: {
+      document: {
+        content: [
+          {
+            type: "paragraph",
+            paraId: "00000001",
+            content: [
+              run("aaa"),
+              { type: "commentRangeStart", id: 7 },
+              run("bbb"),
+              { type: "commentRangeEnd", id: 7 },
+              { type: "commentReference", id: 7 },
+              run("ccc"),
+            ],
+          },
+        ],
+        comments: [{ id: 7, author: "A", anchorKind: "range", content: [] }],
+      },
+    },
+  };
+  const pending = tracked(document, 3, 6);
+  const ids = revisionIds(pending);
+  expect(ids).toHaveLength(2);
+  const [one = 0, two = 0] = ids;
+  for (const first of DECISIONS)
+    for (const second of DECISIONS)
+      expect(resolve(resolve(pending, [one], first), [two], second)).toEqual(
+        resolve(resolve(pending, [two], second), [one], first),
+      );
 });
