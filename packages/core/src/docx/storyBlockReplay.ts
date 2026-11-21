@@ -16,7 +16,10 @@ import {
 import { TRANSITIONAL_NAMESPACE_BY_STRICT_URI } from "./strictValueEncodings.gen";
 import {
   captureSourceProfileXml,
+  hasReplayOpeningDeclarations,
   isSafeCapturedXmlDocument,
+  isSafeCompactReplayFragment,
+  prepareCompactReplaySuffix,
 } from "./verbatimCapture";
 import {
   getAttributeByNamespaceUri,
@@ -197,6 +200,7 @@ type ReplayFragmentOpening = {
   suffix: string;
   ignorableAttribute: string | undefined;
   escapedIgnorable: string;
+  compact: ReturnType<typeof prepareCompactReplaySuffix>;
 };
 type ReplayFragmentState = {
   readonly valid: Set<string>;
@@ -210,15 +214,6 @@ const fragmentStates = new WeakMap<
   ReplayFragmentValidation,
   ReplayFragmentState
 >();
-
-const hasLocalNamespaceOrIgnorable = ({ attributes }: XmlElement): boolean =>
-  attributes !== undefined &&
-  Object.keys(attributes).some(
-    (name) =>
-      name === "xmlns" ||
-      name.startsWith("xmlns:") ||
-      getLocalName(name) === "Ignorable",
-  );
 
 type BindFragmentOpeningOptions = {
   xml: string;
@@ -234,7 +229,8 @@ const bindFragmentOpening = ({
   strict,
   state,
 }: BindFragmentOpeningOptions): string | null => {
-  const { ignorableAttribute, escapedIgnorable, suffix } = plan;
+  const { ignorableAttribute, escapedIgnorable, compact } = plan;
+  const suffix = compact?.serialized ?? plan.suffix;
   // The raw fragment may be supplied separately from its parsed source scope.
   const replacedOpening =
     ignorableAttribute !== undefined && opening.includes(ignorableAttribute)
@@ -256,7 +252,12 @@ const bindFragmentOpening = ({
     xml.slice(opening.length);
   const valid = state?.valid;
   if (valid?.has(materialized) !== true) {
-    if (!isSafeCapturedXmlDocument(materialized)) return null;
+    const compactSafe =
+      !strict &&
+      compact !== undefined &&
+      replacedOpening === opening &&
+      isSafeCompactReplayFragment({ xml, suffix: compact });
+    if (!compactSafe && !isSafeCapturedXmlDocument(materialized)) return null;
     valid?.add(materialized);
   }
   if (!strict) return materialized;
@@ -301,7 +302,7 @@ export const materializeReplayFragment = ({
   const state =
     validation === undefined ? undefined : fragmentStates.get(validation);
   const sibling =
-    state === undefined || hasLocalNamespaceOrIgnorable(element)
+    state === undefined || hasReplayOpeningDeclarations(element)
       ? undefined
       : state;
   const scope = element.namespaceScope;
@@ -368,10 +369,15 @@ export const materializeReplayFragment = ({
     if (element.attributes?.[name] !== undefined) continue;
     additions.push(` ${name}="${escapeXmlAttribute(uri)}"`);
   }
+  const suffix = additions.join("");
   const plan = {
-    suffix: additions.join(""),
+    suffix,
     ignorableAttribute,
     escapedIgnorable,
+    compact:
+      sibling !== undefined && !strict
+        ? prepareCompactReplaySuffix(suffix)
+        : undefined,
   };
   if (sibling !== undefined)
     sibling.opening = { scope, root: generatedRoot, plan };
