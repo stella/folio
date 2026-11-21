@@ -69,7 +69,6 @@ import {
 import { joinParagraphSeam } from "./inline";
 import {
   holdsKeptCut,
-  KEPT_CUT_PIECES,
   keptCutFrom,
   keptCutPiece,
   pendingAtEdge,
@@ -1262,7 +1261,7 @@ const placeAcceptedSeamKept = (
       if (
         node === undefined ||
         !standsInKeptCut(node) ||
-        (named !== piece && named !== KEPT_CUT_PIECES.both)
+        (named !== piece && named !== "both")
       )
         return records;
       records += 1;
@@ -1270,10 +1269,10 @@ const placeAcceptedSeamKept = (
   };
   // The boundaries stand just after the blockers before the seam, or just
   // before those after it.
-  const preceding = namedFrom(first - 1, -1, KEPT_CUT_PIECES.after);
+  const preceding = namedFrom(first - 1, -1, "after");
   const forward = (index: number) => ({
     index,
-    records: namedFrom(index, 1, KEPT_CUT_PIECES.before),
+    records: namedFrom(index, 1, "before"),
   });
   const placed = [
     forward(last + 1),
@@ -2463,7 +2462,7 @@ const resolveList = ({
         const node = at(position);
         if (node === undefined || !standsInKeptCut(node)) return;
         const named = keptCutPiece(node);
-        if (named !== piece && named !== KEPT_CUT_PIECES.both) return;
+        if (named !== piece && named !== "both") return;
         const date = keptCutFrom(node);
         if (date !== undefined) dates.push(date);
         count += keptBoundaryCount([node]);
@@ -2477,7 +2476,7 @@ const resolveList = ({
       (position) => out[position]?.node,
       before - 1,
       -1,
-      KEPT_CUT_PIECES.after,
+      "after",
       (position, node) => {
         const occurrence = out[position];
         if (occurrence !== undefined)
@@ -2488,7 +2487,7 @@ const resolveList = ({
       (position) => pending[position],
       index + 1,
       1,
-      KEPT_CUT_PIECES.before,
+      "before",
       (position, node) => {
         pending[position] = node;
       },
@@ -4292,10 +4291,8 @@ const resolveList = ({
         // name the blockers' side, or both, as their cut's piece.
         const blockedBefore = leftEnd !== keptEnd || leftHolder !== undefined;
         const blockedAfter = rightStart !== seam || rightHolder !== undefined;
-        let blockedSide: KeptCutPiece = blockedBefore
-          ? KEPT_CUT_PIECES.before
-          : KEPT_CUT_PIECES.after;
-        if (blockedBefore && blockedAfter) blockedSide = KEPT_CUT_PIECES.both;
+        let blockedSide: KeptCutPiece = blockedBefore ? "before" : "after";
+        if (blockedBefore && blockedAfter) blockedSide = "both";
         if (standingKept > 0)
           nameKeptPiece(seam - standingKept, seam, blockedSide);
         continue;
