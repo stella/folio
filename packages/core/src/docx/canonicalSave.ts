@@ -19,6 +19,7 @@ import {
   type FolioDocxSerializationPath,
   type FolioGetDocxOptions,
 } from "../types/docxSerialization";
+import { canonicalJson } from "../utils/canonicalJson";
 import { repackWithCanonicalStoryRemovals } from "./canonicalStoryRepack";
 import {
   copyHeaderFooterBaselineHandles,
@@ -118,6 +119,59 @@ const withSaveBaseline = (
   return rebased;
 };
 
+/** Each paragraph record of a package by id key, nested ones included. */
+const paragraphRecordsById = (
+  document: Document,
+): Map<string, { paraId: string; record: object }> => {
+  const out = new Map<string, { paraId: string; record: object }>();
+  const visit = (value: unknown): void => {
+    if (typeof value !== "object" || value === null) return;
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item);
+      return;
+    }
+    if (value instanceof Map) {
+      for (const item of value.values()) visit(item);
+      return;
+    }
+    if ("type" in value && value.type === "paragraph" && "paraId" in value) {
+      const { paraId } = value;
+      if (typeof paraId === "string")
+        out.set(idKey(paraId), { paraId, record: value });
+    }
+    for (const field of Object.values(value)) visit(field);
+  };
+  // The body's sections are a derived view of its content.
+  visit({
+    ...document.package,
+    document: { ...document.package.document, sections: undefined },
+  });
+  return out;
+};
+
+type ParagraphsRewrittenOptions = { before: Document; after: Document };
+
+/**
+ * The ids of the paragraphs `after` holds that differ from the paragraph of
+ * the same id in `before`. Operations never change a record they are given,
+ * so an unchanged paragraph is the same record and costs no comparison.
+ */
+const paragraphsRewritten = ({
+  before,
+  after,
+}: ParagraphsRewrittenOptions): string[] => {
+  const previous = paragraphRecordsById(before);
+  const out: string[] = [];
+  for (const [key, { paraId, record }] of paragraphRecordsById(after)) {
+    const prior = previous.get(key)?.record;
+    if (prior === record) continue;
+    if (prior !== undefined && canonicalJson(prior) === canonicalJson(record))
+      continue;
+    out.push(paraId);
+  }
+  return out;
+};
+
 export const serializeCanonicalSave = async ({
   snapshot,
   repack: repackPolicy = "allow",
@@ -146,7 +200,11 @@ export const serializeCanonicalSave = async ({
   );
   // A paragraph a pending suggestion adds is not in the file, so it is no
   // change to write: rejecting the suggestion only ever removes paragraphs
-  // the suggestion itself added.
+  // the suggestion itself added. Rejecting one can still change a paragraph
+  // the session never touched: an accepted deleted break may have run
+  // another paragraph's words into a paragraph a suggestion added, and the
+  // rejection runs them on into the paragraph that stays. That paragraph is
+  // a change to write.
   const heldBack = new Set<string>();
   if (withoutSuggestions.value !== snapshot.document) {
     const kept = new Set(
@@ -155,6 +213,13 @@ export const serializeCanonicalSave = async ({
     for (const id of packageParagraphIds(snapshot.document.package))
       if (!kept.has(idKey(id))) heldBack.add(idKey(id));
   }
+  const rejectionRewrote =
+    withoutSuggestions.value === snapshot.document
+      ? []
+      : paragraphsRewritten({
+          before: snapshot.document,
+          after: withoutSuggestions.value,
+        });
   // The package the session last saved, when it has one, is what this save
   // patches; the result still carries the session's own document.
   const written =
@@ -211,9 +276,10 @@ export const serializeCanonicalSave = async ({
     const { attemptSelectiveSave } = await import("./selectiveSave");
     selectiveBuffer = await attemptSelectiveSave(written, baseline, {
       bodyAuthority: "canonical",
-      changedParaIds: new Set(
-        changedBlockIds.filter((id) => !heldBack.has(idKey(id))),
-      ),
+      changedParaIds: new Set([
+        ...changedBlockIds.filter((id) => !heldBack.has(idKey(id))),
+        ...rejectionRewrote,
+      ]),
       structuralChange: snapshot.structure === "changed",
       hasUntrackedChanges: false,
       maxBytes: flags.selectiveSaveMaxBytes,

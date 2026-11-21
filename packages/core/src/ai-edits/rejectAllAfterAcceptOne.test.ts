@@ -14,6 +14,8 @@
  *   rejected. Deleting the last paragraph and accepting its deleted break
  *   leaves a suggested paragraph holding another suggestion's break; the
  *   save rejects both, so the accepted join is in the package too.
+ * - Saving with suggestions pending writes them rejected: a paragraph that
+ *   rejection runs another paragraph's words into is written too.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -25,7 +27,16 @@ import {
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import { FolioDocxReviewer, type FolioReviewChangeKind } from "./headless";
+
+const SESSIONS = [
+  "legacy",
+  "canonical",
+] as const satisfies readonly HeadlessReviewerSession[];
+
+/** Each sweep replays every shape of one deleted paragraph. */
+const SWEEP_TIMEOUT_MS = 60_000;
 
 const LINES = [
   "Service Agreement",
@@ -39,8 +50,14 @@ const MARKDOWN = LINES.map((line, index) =>
   index === 0 ? `# ${line}` : line,
 ).join("\n\n");
 
-const open = async (bytes: Uint8Array | ArrayBuffer) =>
-  FolioDocxReviewer.fromBuffer(bytes, { author: "Test" });
+const open = async (
+  bytes: Uint8Array | ArrayBuffer,
+  session?: HeadlessReviewerSession,
+) =>
+  FolioDocxReviewer.fromBuffer(bytes, {
+    author: "Test",
+    ...(session === undefined ? {} : { session }),
+  });
 
 const idOf = (reviewer: FolioDocxReviewer, text: string): string => {
   const block = reviewer.getContent().find((entry) => entry.text === text);
@@ -66,10 +83,12 @@ const apply = ({ reviewer, mode, operations }: ApplyOptions) =>
   );
 
 /** The heading, the body paragraphs and two comment threads. */
-const fixture = async (): Promise<Uint8Array> => {
+const fixture = async (
+  session?: HeadlessReviewerSession,
+): Promise<Uint8Array> => {
   const bytes = (await ensureParaIds(await createDocx(fromMarkdown(MARKDOWN))))
     .docx;
-  const reviewer = await open(bytes);
+  const reviewer = await open(bytes, session);
   const commented = apply({
     reviewer,
     mode: "direct",
@@ -107,13 +126,17 @@ const project = (reviewer: FolioDocxReviewer) => ({
     .map((comment) => [comment.text, comment.anchoredText ?? ""]),
 });
 
-/** Every change rejected, saved and reopened. */
-const rejected = async (reviewer: FolioDocxReviewer) => {
+/** Every change rejected, saved and reopened on the reviewer's engine. */
+const rejected = async (
+  reviewer: FolioDocxReviewer,
+  session?: HeadlessReviewerSession,
+) => {
   reviewer.rejectAll();
-  return project(await open(await reviewer.toBuffer()));
+  return project(await open(await reviewer.toBuffer(), session));
 };
 
 type Step = {
+  session: HeadlessReviewerSession;
   /** The paragraph the second batch deletes and inserts two before. */
   deleted: number;
   /** The index of the change accepted after it. */
@@ -126,12 +149,12 @@ type Step = {
  */
 const suggest = async (
   bytes: Uint8Array,
-  { deleted, accept }: Step,
+  { session, deleted, accept }: Step,
 ): Promise<{
   reviewer: FolioDocxReviewer;
   accepted: FolioReviewChangeKind;
 } | null> => {
-  const reviewer = await open(bytes);
+  const reviewer = await open(bytes, session);
   const first = apply({
     reviewer,
     mode: "suggested",
@@ -201,7 +224,8 @@ type Shape = Step & {
 };
 
 /**
- * KNOWN GAP, held by the `test.failing` below: the last paragraph is deleted,
+ * KNOWN GAP of the legacy engine, held by the `test.failing` below: the last
+ * paragraph is deleted,
  * its deleted break alone is accepted, and the last suggestion inserts a
  * paragraph right before the suggested paragraph that then holds another
  * suggestion's displaced break (the first added clause). Rejecting every
@@ -215,10 +239,11 @@ type DisplacedBreakGapOptions = {
 };
 
 const isDisplacedBreakGap = ({
-  shape: { deleted, after },
+  shape: { session, deleted, after },
   accepted,
   reviewer,
 }: DisplacedBreakGapOptions): boolean =>
+  session === "legacy" &&
   deleted === LINES.length - 1 &&
   accepted === "paragraphMarkDeleted" &&
   reviewer.getContent().at(after + 1)?.text === "First added clause.";
@@ -234,7 +259,7 @@ const rejectsToBaseline = async (
 ): Promise<{ matches: boolean; gap: boolean } | null> => {
   const probe = await suggest(bytes, shape);
   if (probe === null) return null;
-  const expected = await rejected(probe.reviewer);
+  const expected = await rejected(probe.reviewer, shape.session);
   const live = await suggest(bytes, shape);
   if (live === null) throw new Error("the flow no longer replays");
   const gap = isDisplacedBreakGap({
@@ -243,10 +268,11 @@ const rejectsToBaseline = async (
     reviewer: live.reviewer,
   });
   if (!suggestAfter(live.reviewer, shape.after)) return null;
-  const saved = await open(await live.reviewer.toBuffer());
-  const results = [await rejected(live.reviewer), await rejected(saved)].map(
-    (result) => JSON.stringify(result),
-  );
+  const saved = await open(await live.reviewer.toBuffer(), shape.session);
+  const results = [
+    await rejected(live.reviewer, shape.session),
+    await rejected(saved, shape.session),
+  ].map((result) => JSON.stringify(result));
   return {
     matches: results.every((result) => result === JSON.stringify(expected)),
     gap,
@@ -254,118 +280,141 @@ const rejectsToBaseline = async (
 };
 
 /** Every shape over the paragraph `deleted`: each accepted change, each anchor. */
-const shapesOf = async (
-  bytes: Uint8Array,
-  deleted: number,
-): Promise<Shape[]> => {
+type ShapesOfOptions = {
+  bytes: Uint8Array;
+  session: HeadlessReviewerSession;
+  deleted: number;
+};
+
+const shapesOf = async ({
+  bytes,
+  session,
+  deleted,
+}: ShapesOfOptions): Promise<Shape[]> => {
   const shapes: Shape[] = [];
   for (let accept = 0; ; accept += 1) {
-    const probe = await suggest(bytes, { deleted, accept });
+    const probe = await suggest(bytes, { session, deleted, accept });
     if (probe === null) return shapes;
     const blocks = probe.reviewer.getContent().length;
     for (let after = 0; after < blocks; after += 1) {
-      shapes.push({ deleted, accept, after });
+      shapes.push({ session, deleted, accept, after });
     }
   }
 };
 
 describe("reject all after accepting one of several suggestions", () => {
-  for (const deleted of LINES.keys()) {
-    test(`a rejected last suggestion leaves nothing, deleting paragraph ${deleted}`, async () => {
-      const bytes = await fixture();
-      const mismatches: Shape[] = [];
-      let checked = 0;
-      let gaps = 0;
-      for (const shape of await shapesOf(bytes, deleted)) {
-        const outcome = await rejectsToBaseline(bytes, shape);
-        if (outcome === null) continue;
-        if (outcome.gap) {
-          gaps += 1;
-          continue;
-        }
-        if (!outcome.matches) mismatches.push(shape);
-        checked += 1;
-      }
-      expect(mismatches).toEqual([]);
-      expect(checked).toBeGreaterThan(10);
-      // The known gap is excluded only where its predicate names it.
-      expect(gaps > 0).toBe(deleted === LINES.length - 1);
-    });
-  }
+  for (const session of SESSIONS)
+    for (const deleted of LINES.keys()) {
+      test(
+        `a rejected last suggestion leaves nothing, deleting paragraph ${deleted} (${session})`,
+        async () => {
+          const bytes = await fixture(session);
+          const mismatches: Shape[] = [];
+          let checked = 0;
+          let gaps = 0;
+          for (const shape of await shapesOf({ bytes, session, deleted })) {
+            const outcome = await rejectsToBaseline(bytes, shape);
+            if (outcome === null) continue;
+            if (outcome.gap) {
+              gaps += 1;
+              continue;
+            }
+            if (!outcome.matches) mismatches.push(shape);
+            checked += 1;
+          }
+          expect(mismatches).toEqual([]);
+          expect(checked).toBeGreaterThan(10);
+          // The known gap is excluded only where its predicate names it.
+          expect(gaps > 0).toBe(
+            session === "legacy" && deleted === LINES.length - 1,
+          );
+        },
+        SWEEP_TIMEOUT_MS,
+      );
+    }
 
   // KNOWN GAP (see `isDisplacedBreakGap`): passes while the gap is there and
   // fails once it is fixed, so the predicate and this test go together.
   test.failing(
-    "a rejected paragraph suggested before one holding another suggestion's displaced break leaves nothing",
+    "a rejected paragraph suggested before one holding another suggestion's displaced break leaves nothing (legacy)",
     async () => {
-      const bytes = await fixture();
+      const session = "legacy";
+      const bytes = await fixture(session);
       const mismatches: Shape[] = [];
-      for (const shape of await shapesOf(bytes, LINES.length - 1)) {
+      for (const shape of await shapesOf({
+        bytes,
+        session,
+        deleted: LINES.length - 1,
+      })) {
         const outcome = await rejectsToBaseline(bytes, shape);
         if (outcome?.gap === true && !outcome.matches) mismatches.push(shape);
       }
       expect(mismatches).toEqual([]);
     },
+    SWEEP_TIMEOUT_MS,
   );
 
-  test("the reported flow keeps the joined words in the paragraph that stays", async () => {
-    // The heading is deleted and its deleted break alone is accepted.
-    const flow = await open(await fixture());
-    apply({
-      reviewer: flow,
-      mode: "suggested",
-      operations: [
-        {
-          id: "before",
-          type: "insertBeforeBlock",
-          blockId: idOf(flow, LINES[1]),
-          text: "Period written supplier invoice.",
-        },
-      ],
-    });
-    const heading = idOf(flow, LINES[0]);
-    apply({
-      reviewer: flow,
-      mode: "suggested",
-      operations: [
-        { id: "delete", type: "deleteBlock", blockId: heading },
-        {
-          id: "first",
-          type: "insertBeforeBlock",
-          blockId: heading,
-          text: "First added clause.",
-        },
-        {
-          id: "second",
-          type: "insertBeforeBlock",
-          blockId: heading,
-          text: "Second added clause.",
-        },
-      ],
-    });
-    const deletedBreak = flow
-      .getChanges()
-      .find((change) => change.type === "paragraphMarkDeleted");
-    if (deletedBreak === undefined) throw new Error("no deleted break");
-    expect(flow.acceptChange(deletedBreak)).toBe(true);
-    expect(suggestAfter(flow, 2)).toBe(true);
-    const saved = await open(await flow.toBuffer());
-    const joined = {
-      text: `${LINES[0]}${LINES[1]}`,
-      kind: "paragraph",
-      styleId: undefined,
-      headingLevel: undefined,
-      directAlignment: undefined,
-    };
-    for (const reviewer of [flow, saved]) {
-      const { blocks } = await rejected(reviewer);
-      expect(blocks[0]).toEqual(joined);
-      expect(blocks.map(({ text }) => text)).toEqual([
-        `${LINES[0]}${LINES[1]}`,
-        ...LINES.slice(2),
-      ]);
-    }
-  });
+  test.each(SESSIONS)(
+    "the reported flow keeps the joined words in the paragraph that stays (%s)",
+    async (session) => {
+      // The heading is deleted and its deleted break alone is accepted.
+      const flow = await open(await fixture(session), session);
+      apply({
+        reviewer: flow,
+        mode: "suggested",
+        operations: [
+          {
+            id: "before",
+            type: "insertBeforeBlock",
+            blockId: idOf(flow, LINES[1]),
+            text: "Period written supplier invoice.",
+          },
+        ],
+      });
+      const heading = idOf(flow, LINES[0]);
+      apply({
+        reviewer: flow,
+        mode: "suggested",
+        operations: [
+          { id: "delete", type: "deleteBlock", blockId: heading },
+          {
+            id: "first",
+            type: "insertBeforeBlock",
+            blockId: heading,
+            text: "First added clause.",
+          },
+          {
+            id: "second",
+            type: "insertBeforeBlock",
+            blockId: heading,
+            text: "Second added clause.",
+          },
+        ],
+      });
+      const deletedBreak = flow
+        .getChanges()
+        .find((change) => change.type === "paragraphMarkDeleted");
+      if (deletedBreak === undefined) throw new Error("no deleted break");
+      expect(flow.acceptChange(deletedBreak)).toBe(true);
+      expect(suggestAfter(flow, 2)).toBe(true);
+      const saved = await open(await flow.toBuffer(), session);
+      const joined = {
+        text: `${LINES[0]}${LINES[1]}`,
+        kind: "paragraph",
+        styleId: undefined,
+        headingLevel: undefined,
+        directAlignment: undefined,
+      };
+      for (const reviewer of [flow, saved]) {
+        const { blocks } = await rejected(reviewer, session);
+        expect(blocks[0]).toEqual(joined);
+        expect(blocks.map(({ text }) => text)).toEqual([
+          `${LINES[0]}${LINES[1]}`,
+          ...LINES.slice(2),
+        ]);
+      }
+    },
+  );
 
   test("an accepted deleted last break is in the saved package", async () => {
     const flow = await open(await fixture());
