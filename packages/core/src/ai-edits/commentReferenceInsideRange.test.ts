@@ -285,3 +285,57 @@ test.each(SESSIONS)(
     expect([...revisions].filter((id) => comments.has(id))).toEqual([]);
   },
 );
+
+describe("a block comment over two comments on the same words", () => {
+  test.each(
+    SESSIONS.flatMap((session) =>
+      MODES.map((mode) => [session, mode] as const),
+    ),
+  )(
+    "keeps both references inside its range (%s, %s)",
+    async (session, mode) => {
+      const reviewer = await open(
+        (
+          await ensureParaIds(
+            await createDocx(fromMarkdown("Clause one tail.")),
+          )
+        ).docx,
+        session,
+      );
+      const block = reviewer.snapshot().blocks[0];
+      if (!block) throw new Error("Missing fixture");
+      for (const text of ["First", "Second"])
+        apply(reviewer, mode, [
+          {
+            id: text,
+            type: "commentOnRange",
+            range: {
+              type: "textRange",
+              story: "main",
+              blockId: block.id,
+              startOffset: 0,
+              endOffset: 6,
+              selectedTextHash: hashFolioAIBlockText("Clause"),
+            },
+            comment: { text },
+          },
+        ]);
+      apply(reviewer, mode, [
+        {
+          id: "outer",
+          type: "commentOnBlock",
+          blockId: block.id,
+          comment: { text: "Outer" },
+        },
+      ]);
+      const references = markers(reviewer.toDocument()).filter((marker) =>
+        marker.startsWith("commentReference"),
+      );
+      expect(references.toSorted()).toEqual([
+        "commentReference First",
+        "commentReference Outer",
+        "commentReference Second",
+      ]);
+    },
+  );
+});
