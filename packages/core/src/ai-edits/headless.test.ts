@@ -418,6 +418,35 @@ const buildTextBoxVerticalMergeDocument = async (): Promise<ArrayBuffer> => {
   return repackDocx(document, { updateModifiedDate: false });
 };
 
+type ResolveOperationChangeOptions = {
+  reviewer: FolioDocxReviewer;
+  change: FolioReviewChange;
+  decision: "accept" | "reject";
+  session: "legacy" | "canonical";
+};
+
+/**
+ * Resolve the one operation pending in `reviewer`. The legacy engine lists a
+ * table edit as one change; the canonical session lists each cell, row and
+ * property record it made, so the operation is every pending change.
+ */
+const resolveOperationChange = ({
+  reviewer,
+  change,
+  decision,
+  session,
+}: ResolveOperationChangeOptions) => {
+  if (session === "legacy")
+    expect(
+      decision === "accept"
+        ? reviewer.acceptChange(change)
+        : reviewer.rejectChange(change),
+    ).toBe(true);
+  else if (decision === "accept") reviewer.acceptAll();
+  else reviewer.rejectAll();
+  expect(reviewer.getChanges()).toEqual([]);
+};
+
 const buildTextBoxVerticalMergeCandidateDocument =
   async (): Promise<ArrayBuffer> => {
     const baseline = await buildTextBoxTableDocument();
@@ -1088,281 +1117,324 @@ describe("headless docx review round-trip", () => {
     expect(rejecting.getContentAsText()).toContain("Cell value");
   });
 
-  test("tracks, persists, accepts, and rejects an empty vertical cell merge", async () => {
-    const baseline = await buildTextBoxVerticalMergeCandidateDocument();
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
-      author: "Reviewer",
-    });
-    const target = findBlock(reviewer.snapshot().blocks, "Cell value");
+  for (const session of ["legacy", "canonical"] as const)
+    test(`${session}: tracks, persists, accepts, and rejects an empty vertical cell merge`, async () => {
+      const baseline = await buildTextBoxVerticalMergeCandidateDocument();
+      const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+        author: "Reviewer",
+        session,
+      });
+      const target = findBlock(reviewer.snapshot().blocks, "Cell value");
 
-    const rejectedBatch = reviewer.applyDocumentOperations(
-      {
-        version: 1,
-        mode: "tracked-changes",
-        atomic: true,
-        operations: [
-          {
-            id: "merge-cells",
-            type: "mergeTableCells",
-            blockId: target.id,
-            rowCount: 2,
-          },
-          { id: "missing", type: "deleteBlock", blockId: "para-missing" },
-        ],
-      },
-      { undefinedReferences: "refuse" },
-    );
-    expect(rejectedBatch.status).toBe("rejected");
-    expect(rejectedBatch.applied).toEqual([]);
-    expect(reviewer.getChanges()).toEqual([]);
+      const rejectedBatch = reviewer.applyDocumentOperations(
+        {
+          version: 1,
+          mode: "tracked-changes",
+          atomic: true,
+          operations: [
+            {
+              id: "merge-cells",
+              type: "mergeTableCells",
+              blockId: target.id,
+              rowCount: 2,
+            },
+            { id: "missing", type: "deleteBlock", blockId: "para-missing" },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      );
+      expect(rejectedBatch.status).toBe("rejected");
+      expect(rejectedBatch.applied).toEqual([]);
+      expect(reviewer.getChanges()).toEqual([]);
 
-    const result = reviewer.applyDocumentOperations(
-      {
-        version: 1,
-        mode: "tracked-changes",
-        operations: [
-          {
-            id: "merge-cells",
-            type: "mergeTableCells",
-            blockId: target.id,
-            rowCount: 2,
-          },
-        ],
-      },
-      { undefinedReferences: "refuse" },
-    );
+      const result = reviewer.applyDocumentOperations(
+        {
+          version: 1,
+          mode: "tracked-changes",
+          operations: [
+            {
+              id: "merge-cells",
+              type: "mergeTableCells",
+              blockId: target.id,
+              rowCount: 2,
+            },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      );
 
-    expect(result.status).toBe("committed");
-    expect(result.skipped).toEqual([]);
-    expect(result.applied).toHaveLength(1);
-    expect(typeof result.applied.at(0)?.revisionId).toBe("number");
-    expect(result.receipts).toEqual([
-      {
-        operationId: "merge-cells",
-        operationIndex: 0,
-        affected: [
-          {
-            type: "tableCells",
-            story: "main",
-            anchorBlockId: target.id,
-            rowCount: 2,
-            effect: "merged",
-          },
-        ],
-      },
-    ]);
-    const pendingChange = reviewer
-      .getChanges()
-      .find(({ type }) => type === "cellMerged");
-    if (!pendingChange) {
-      throw new Error("expected a pending vertical merge");
-    }
-    expect(pendingChange.author).toBe("Reviewer");
+      expect(result.status).toBe("committed");
+      expect(result.skipped).toEqual([]);
+      expect(result.applied).toHaveLength(1);
+      expect(typeof result.applied.at(0)?.revisionId).toBe("number");
+      expect(result.receipts).toEqual([
+        {
+          operationId: "merge-cells",
+          operationIndex: 0,
+          affected: [
+            {
+              type: "tableCells",
+              story: "main",
+              anchorBlockId: target.id,
+              rowCount: 2,
+              effect: "merged",
+            },
+          ],
+        },
+      ]);
+      const pendingChange = reviewer
+        .getChanges()
+        .find(({ type }) => type === "cellMerged");
+      if (!pendingChange) {
+        throw new Error("expected a pending vertical merge");
+      }
+      expect(pendingChange.author).toBe("Reviewer");
 
-    const pending = await reviewer.toBuffer();
-    const pendingXml = await partText(pending, "word/document.xml");
-    expect(pendingXml).toContain("<w:cellMerge ");
-    expect(pendingXml).toContain('w:vMerge="cont"');
-    expect(pendingXml).toContain('w:vMergeOrig="rest"');
-    const pendingTable = findTextBoxShape(
-      await parseDocx(pending, { detectVariables: false, preloadFonts: false }),
-    ).textBody?.content.at(1);
-    expect(pendingTable?.type).toBe("table");
-    if (pendingTable?.type !== "table") {
-      throw new Error("expected a pending table");
-    }
-    expect(pendingTable.rows.at(0)?.cells.at(0)?.formatting?.vMerge).toBe(
-      "restart",
-    );
-    const pendingContinuation = pendingTable.rows.at(1)?.cells.at(0);
-    expect(pendingContinuation?.formatting).toMatchObject({
-      vMerge: "continue",
-      verticalAlign: "bottom",
-    });
-    expect(pendingContinuation?.structuralChange).toMatchObject({
-      type: "tableCellMerge",
-      verticalMerge: "continue",
-      verticalMergeOriginal: "rest",
-    });
+      const pending = await reviewer.toBuffer();
+      const pendingXml = await partText(pending, "word/document.xml");
+      expect(pendingXml).toContain("<w:cellMerge ");
+      expect(pendingXml).toContain('w:vMerge="cont"');
+      // The legacy engine states the cell's former state as a merge start;
+      // the canonical session states none (the cell was not merged) and records
+      // its former properties in a property change, which rejecting restores.
+      if (session === "legacy")
+        expect(pendingXml).toContain('w:vMergeOrig="rest"');
+      else expect(pendingXml).not.toContain("w:vMergeOrig");
+      const pendingTable = findTextBoxShape(
+        await parseDocx(pending, {
+          detectVariables: false,
+          preloadFonts: false,
+        }),
+      ).textBody?.content.at(1);
+      expect(pendingTable?.type).toBe("table");
+      if (pendingTable?.type !== "table") {
+        throw new Error("expected a pending table");
+      }
+      expect(pendingTable.rows.at(0)?.cells.at(0)?.formatting?.vMerge).toBe(
+        "restart",
+      );
+      const pendingContinuation = pendingTable.rows.at(1)?.cells.at(0);
+      expect(pendingContinuation?.formatting).toMatchObject({
+        vMerge: "continue",
+        verticalAlign: "bottom",
+      });
+      expect(pendingContinuation?.structuralChange).toMatchObject({
+        type: "tableCellMerge",
+        verticalMerge: "continue",
+        ...(session === "legacy" ? { verticalMergeOriginal: "rest" } : {}),
+      });
 
-    const accepting = await FolioDocxReviewer.fromBuffer(pending);
-    const acceptChange = accepting
-      .getChanges()
-      .find(({ type }) => type === "cellMerged");
-    if (!acceptChange) {
-      throw new Error("expected the vertical merge after reopen");
-    }
-    expect(accepting.acceptChange(acceptChange)).toBe(true);
-    const accepted = await accepting.toBuffer();
-    expect(await partText(accepted, "word/document.xml")).not.toContain(
-      "<w:cellMerge ",
-    );
-    const acceptedTable = findTextBoxShape(
-      await parseDocx(accepted, {
-        detectVariables: false,
-        preloadFonts: false,
-      }),
-    ).textBody?.content.at(1);
-    expect(acceptedTable?.type).toBe("table");
-    if (acceptedTable?.type !== "table") {
-      throw new Error("expected an accepted table");
-    }
-    expect(acceptedTable.rows.at(0)?.cells.at(0)?.formatting?.vMerge).toBe(
-      "restart",
-    );
-    const acceptedContinuation = acceptedTable.rows.at(1)?.cells.at(0);
-    expect(acceptedContinuation?.formatting).toMatchObject({
-      vMerge: "continue",
-      verticalAlign: "bottom",
-    });
-    expect(acceptedContinuation?.structuralChange).toBeUndefined();
+      const accepting = await FolioDocxReviewer.fromBuffer(pending, {
+        session,
+      });
+      const acceptChange = accepting
+        .getChanges()
+        .find(({ type }) => type === "cellMerged");
+      if (!acceptChange) {
+        throw new Error("expected the vertical merge after reopen");
+      }
+      resolveOperationChange({
+        reviewer: accepting,
+        change: acceptChange,
+        decision: "accept",
+        session,
+      });
+      const accepted = await accepting.toBuffer();
+      expect(await partText(accepted, "word/document.xml")).not.toContain(
+        "<w:cellMerge ",
+      );
+      const acceptedTable = findTextBoxShape(
+        await parseDocx(accepted, {
+          detectVariables: false,
+          preloadFonts: false,
+        }),
+      ).textBody?.content.at(1);
+      expect(acceptedTable?.type).toBe("table");
+      if (acceptedTable?.type !== "table") {
+        throw new Error("expected an accepted table");
+      }
+      expect(acceptedTable.rows.at(0)?.cells.at(0)?.formatting?.vMerge).toBe(
+        "restart",
+      );
+      const acceptedContinuation = acceptedTable.rows.at(1)?.cells.at(0);
+      expect(acceptedContinuation?.formatting).toMatchObject({
+        vMerge: "continue",
+        verticalAlign: "bottom",
+      });
+      expect(acceptedContinuation?.structuralChange).toBeUndefined();
 
-    const rejecting = await FolioDocxReviewer.fromBuffer(pending);
-    const rejectChange = rejecting
-      .getChanges()
-      .find(({ type }) => type === "cellMerged");
-    if (!rejectChange) {
-      throw new Error("expected the vertical merge before rejection");
-    }
-    expect(rejecting.rejectChange(rejectChange)).toBe(true);
-    const rejected = await rejecting.toBuffer();
-    expect(await partText(rejected, "word/document.xml")).not.toContain(
-      "<w:cellMerge ",
-    );
-    const rejectedTable = findTextBoxShape(
-      await parseDocx(rejected, {
-        detectVariables: false,
-        preloadFonts: false,
-      }),
-    ).textBody?.content.at(1);
-    expect(rejectedTable?.type).toBe("table");
-    if (rejectedTable?.type !== "table") {
-      throw new Error("expected a rejected table");
-    }
-    expect(
-      rejectedTable.rows.at(0)?.cells.at(0)?.formatting?.vMerge,
-    ).toBeUndefined();
-    const rejectedContinuation = rejectedTable.rows.at(1)?.cells.at(0);
-    expect(rejectedContinuation?.formatting?.verticalAlign).toBe("bottom");
-    expect(rejectedContinuation?.formatting?.vMerge).toBeUndefined();
+      const rejecting = await FolioDocxReviewer.fromBuffer(pending, {
+        session,
+      });
+      const rejectChange = rejecting
+        .getChanges()
+        .find(({ type }) => type === "cellMerged");
+      if (!rejectChange) {
+        throw new Error("expected the vertical merge before rejection");
+      }
+      resolveOperationChange({
+        reviewer: rejecting,
+        change: rejectChange,
+        decision: "reject",
+        session,
+      });
+      const rejected = await rejecting.toBuffer();
+      expect(await partText(rejected, "word/document.xml")).not.toContain(
+        "<w:cellMerge ",
+      );
+      const rejectedTable = findTextBoxShape(
+        await parseDocx(rejected, {
+          detectVariables: false,
+          preloadFonts: false,
+        }),
+      ).textBody?.content.at(1);
+      expect(rejectedTable?.type).toBe("table");
+      if (rejectedTable?.type !== "table") {
+        throw new Error("expected a rejected table");
+      }
+      expect(
+        rejectedTable.rows.at(0)?.cells.at(0)?.formatting?.vMerge,
+      ).toBeUndefined();
+      const rejectedContinuation = rejectedTable.rows.at(1)?.cells.at(0);
+      expect(rejectedContinuation?.formatting?.verticalAlign).toBe("bottom");
+      expect(rejectedContinuation?.formatting?.vMerge).toBeUndefined();
 
-    if (!result.undoHandle) {
-      throw new Error("expected an undo handle");
-    }
-    expect(reviewer.undoDocumentOperations(result.undoHandle).status).toBe(
-      "undone",
-    );
-  });
-
-  test("tracks, persists, accepts, and rejects a vertical cell split", async () => {
-    const baseline = await buildTextBoxVerticalMergeDocument();
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
-      author: "Reviewer",
-    });
-    const target = findBlock(reviewer.snapshot().blocks, "Cell value");
-
-    const result = reviewer.applyDocumentOperations(
-      {
-        version: 1,
-        mode: "tracked-changes",
-        operations: [
-          { id: "split-cell", type: "splitTableCell", blockId: target.id },
-        ],
-      },
-      { undefinedReferences: "refuse" },
-    );
-
-    expect(result.status).toBe("committed");
-    expect(result.skipped).toEqual([]);
-    expect(result.applied).toHaveLength(1);
-    expect(typeof result.applied.at(0)?.revisionId).toBe("number");
-    const pendingChange = reviewer
-      .getChanges()
-      .find(({ type }) => type === "cellMerged");
-    if (!pendingChange) {
-      throw new Error("expected a pending vertical split");
-    }
-    expect(pendingChange.author).toBe("Reviewer");
-
-    const pending = await reviewer.toBuffer();
-    const pendingXml = await partText(pending, "word/document.xml");
-    expect(pendingXml).toContain("<w:cellMerge ");
-    expect(pendingXml).toContain('w:vMergeOrig="cont"');
-    const pendingTable = findTextBoxShape(
-      await parseDocx(pending, { detectVariables: false, preloadFonts: false }),
-    ).textBody?.content.at(1);
-    expect(pendingTable?.type).toBe("table");
-    if (pendingTable?.type !== "table") {
-      throw new Error("expected a pending table");
-    }
-    expect(
-      pendingTable.rows.at(0)?.cells.at(0)?.formatting?.vMerge,
-    ).toBeUndefined();
-    const pendingContinuation = pendingTable.rows.at(1)?.cells.at(0);
-    expect(pendingContinuation?.formatting?.verticalAlign).toBe("bottom");
-    expect(pendingContinuation?.structuralChange).toMatchObject({
-      type: "tableCellMerge",
-      verticalMergeOriginal: "continue",
+      if (!result.undoHandle) {
+        throw new Error("expected an undo handle");
+      }
+      expect(reviewer.undoDocumentOperations(result.undoHandle).status).toBe(
+        "undone",
+      );
     });
 
-    const accepting = await FolioDocxReviewer.fromBuffer(pending);
-    const acceptChange = accepting
-      .getChanges()
-      .find(({ type }) => type === "cellMerged");
-    if (!acceptChange) {
-      throw new Error("expected the vertical split after reopen");
-    }
-    expect(accepting.acceptChange(acceptChange)).toBe(true);
-    const accepted = await accepting.toBuffer();
-    expect(await partText(accepted, "word/document.xml")).not.toContain(
-      "<w:cellMerge ",
-    );
-    const acceptedTable = findTextBoxShape(
-      await parseDocx(accepted, {
-        detectVariables: false,
-        preloadFonts: false,
-      }),
-    ).textBody?.content.at(1);
-    expect(acceptedTable?.type).toBe("table");
-    if (acceptedTable?.type !== "table") {
-      throw new Error("expected an accepted table");
-    }
-    expect(
-      acceptedTable.rows.at(0)?.cells.at(0)?.formatting?.vMerge,
-    ).toBeUndefined();
-    const acceptedContinuation = acceptedTable.rows.at(1)?.cells.at(0);
-    expect(acceptedContinuation?.formatting?.verticalAlign).toBe("bottom");
-    expect(acceptedContinuation?.formatting?.vMerge).toBeUndefined();
+  for (const session of ["legacy", "canonical"] as const)
+    test(`${session}: tracks, persists, accepts, and rejects a vertical cell split`, async () => {
+      const baseline = await buildTextBoxVerticalMergeDocument();
+      const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+        author: "Reviewer",
+        session,
+      });
+      const target = findBlock(reviewer.snapshot().blocks, "Cell value");
 
-    const rejecting = await FolioDocxReviewer.fromBuffer(pending);
-    const rejectChange = rejecting
-      .getChanges()
-      .find(({ type }) => type === "cellMerged");
-    if (!rejectChange) {
-      throw new Error("expected the vertical split before rejection");
-    }
-    expect(rejecting.rejectChange(rejectChange)).toBe(true);
-    const rejected = await rejecting.toBuffer();
-    expect(await partText(rejected, "word/document.xml")).not.toContain(
-      "<w:cellMerge ",
-    );
-    const rejectedTable = findTextBoxShape(
-      await parseDocx(rejected, {
-        detectVariables: false,
-        preloadFonts: false,
-      }),
-    ).textBody?.content.at(1);
-    expect(rejectedTable?.type).toBe("table");
-    if (rejectedTable?.type !== "table") {
-      throw new Error("expected a rejected table");
-    }
-    expect(rejectedTable.rows.at(0)?.cells.at(0)?.formatting?.vMerge).toBe(
-      "restart",
-    );
-    const rejectedContinuation = rejectedTable.rows.at(1)?.cells.at(0);
-    expect(rejectedContinuation?.formatting?.verticalAlign).toBe("bottom");
-    expect(rejectedContinuation?.formatting?.vMerge).toBe("continue");
-  });
+      const result = reviewer.applyDocumentOperations(
+        {
+          version: 1,
+          mode: "tracked-changes",
+          operations: [
+            { id: "split-cell", type: "splitTableCell", blockId: target.id },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      );
+
+      expect(result.status).toBe("committed");
+      expect(result.skipped).toEqual([]);
+      expect(result.applied).toHaveLength(1);
+      expect(typeof result.applied.at(0)?.revisionId).toBe("number");
+      const pendingChange = reviewer
+        .getChanges()
+        .find(({ type }) => type === "cellMerged");
+      if (!pendingChange) {
+        throw new Error("expected a pending vertical split");
+      }
+      expect(pendingChange.author).toBe("Reviewer");
+
+      const pending = await reviewer.toBuffer();
+      const pendingXml = await partText(pending, "word/document.xml");
+      expect(pendingXml).toContain("<w:cellMerge ");
+      expect(pendingXml).toContain('w:vMergeOrig="cont"');
+      const pendingTable = findTextBoxShape(
+        await parseDocx(pending, {
+          detectVariables: false,
+          preloadFonts: false,
+        }),
+      ).textBody?.content.at(1);
+      expect(pendingTable?.type).toBe("table");
+      if (pendingTable?.type !== "table") {
+        throw new Error("expected a pending table");
+      }
+      expect(
+        pendingTable.rows.at(0)?.cells.at(0)?.formatting?.vMerge,
+      ).toBeUndefined();
+      const pendingContinuation = pendingTable.rows.at(1)?.cells.at(0);
+      expect(pendingContinuation?.formatting?.verticalAlign).toBe("bottom");
+      expect(pendingContinuation?.structuralChange).toMatchObject({
+        type: "tableCellMerge",
+        verticalMergeOriginal: "continue",
+      });
+
+      const accepting = await FolioDocxReviewer.fromBuffer(pending, {
+        session,
+      });
+      const acceptChange = accepting
+        .getChanges()
+        .find(({ type }) => type === "cellMerged");
+      if (!acceptChange) {
+        throw new Error("expected the vertical split after reopen");
+      }
+      resolveOperationChange({
+        reviewer: accepting,
+        change: acceptChange,
+        decision: "accept",
+        session,
+      });
+      const accepted = await accepting.toBuffer();
+      expect(await partText(accepted, "word/document.xml")).not.toContain(
+        "<w:cellMerge ",
+      );
+      const acceptedTable = findTextBoxShape(
+        await parseDocx(accepted, {
+          detectVariables: false,
+          preloadFonts: false,
+        }),
+      ).textBody?.content.at(1);
+      expect(acceptedTable?.type).toBe("table");
+      if (acceptedTable?.type !== "table") {
+        throw new Error("expected an accepted table");
+      }
+      expect(
+        acceptedTable.rows.at(0)?.cells.at(0)?.formatting?.vMerge,
+      ).toBeUndefined();
+      const acceptedContinuation = acceptedTable.rows.at(1)?.cells.at(0);
+      expect(acceptedContinuation?.formatting?.verticalAlign).toBe("bottom");
+      expect(acceptedContinuation?.formatting?.vMerge).toBeUndefined();
+
+      const rejecting = await FolioDocxReviewer.fromBuffer(pending, {
+        session,
+      });
+      const rejectChange = rejecting
+        .getChanges()
+        .find(({ type }) => type === "cellMerged");
+      if (!rejectChange) {
+        throw new Error("expected the vertical split before rejection");
+      }
+      resolveOperationChange({
+        reviewer: rejecting,
+        change: rejectChange,
+        decision: "reject",
+        session,
+      });
+      const rejected = await rejecting.toBuffer();
+      expect(await partText(rejected, "word/document.xml")).not.toContain(
+        "<w:cellMerge ",
+      );
+      const rejectedTable = findTextBoxShape(
+        await parseDocx(rejected, {
+          detectVariables: false,
+          preloadFonts: false,
+        }),
+      ).textBody?.content.at(1);
+      expect(rejectedTable?.type).toBe("table");
+      if (rejectedTable?.type !== "table") {
+        throw new Error("expected a rejected table");
+      }
+      expect(rejectedTable.rows.at(0)?.cells.at(0)?.formatting?.vMerge).toBe(
+        "restart",
+      );
+      const rejectedContinuation = rejectedTable.rows.at(1)?.cells.at(0);
+      expect(rejectedContinuation?.formatting?.verticalAlign).toBe("bottom");
+      expect(rejectedContinuation?.formatting?.vMerge).toBe("continue");
+    });
 
   test("tracks, persists, accepts, and rejects a column insertion", async () => {
     const baseline = await buildTextBoxTableDocument();
@@ -1455,94 +1527,114 @@ describe("headless docx review round-trip", () => {
     expect(rejectedTable.rows.at(0)?.cells).toHaveLength(1);
   });
 
-  test("tracks, persists, accepts, and rejects a column deletion", async () => {
-    const baseline = await buildTextBoxTableDocument();
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
-      author: "Reviewer",
+  for (const session of ["legacy", "canonical"] as const)
+    test(`${session}: tracks, persists, accepts, and rejects a column deletion`, async () => {
+      const baseline = await buildTextBoxTableDocument();
+      const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+        author: "Reviewer",
+        session,
+      });
+      const target = findBlock(reviewer.snapshot().blocks, "Cell value");
+
+      const result = reviewer.applyDocumentOperations(
+        {
+          version: 1,
+          mode: "tracked-changes",
+          operations: [
+            {
+              id: "delete-column",
+              type: "deleteTableColumn",
+              blockId: target.id,
+            },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      );
+
+      expect(result.status).toBe("committed");
+      expect(result.applied).toHaveLength(1);
+      expect(typeof result.applied.at(0)?.revisionId).toBe("number");
+      // Deleting the column that holds every cell deletes the table: the
+      // canonical session records its rows deleted, the legacy engine its cells.
+      const deletion =
+        session === "legacy"
+          ? { change: "cellDeleted", marker: "<w:cellDel " }
+          : { change: "rowDeleted", marker: "<w:del " };
+      const pendingChange = reviewer
+        .getChanges()
+        .find(({ type }) => type === deletion.change);
+      if (!pendingChange) {
+        throw new Error("expected a pending column deletion");
+      }
+      expect(pendingChange.author).toBe("Reviewer");
+      expect(pendingChange.text).toContain("Cell value");
+
+      const pending = await reviewer.toBuffer();
+      const pendingXml = await partText(pending, "word/document.xml");
+      expect(pendingXml).toContain(deletion.marker);
+      expect(pendingXml).toContain("Cell value");
+
+      const reopened = await FolioDocxReviewer.fromBuffer(pending, { session });
+      const reopenedChange = reopened
+        .getChanges()
+        .find(({ type }) => type === deletion.change);
+      if (!reopenedChange) {
+        throw new Error("expected the column deletion after reopen");
+      }
+      resolveOperationChange({
+        reviewer: reopened,
+        change: reopenedChange,
+        decision: "accept",
+        session,
+      });
+      const accepted = await reopened.toBuffer();
+      expect(await partText(accepted, "word/document.xml")).not.toContain(
+        deletion.marker,
+      );
+      expect(reopened.getContentAsText()).not.toContain("Cell value");
+      const acceptedContent = findTextBoxShape(
+        await parseDocx(accepted, {
+          detectVariables: false,
+          preloadFonts: false,
+        }),
+      ).textBody?.content;
+      expect(acceptedContent?.map(({ type }) => type)).toEqual([
+        "paragraph",
+        "paragraph",
+      ]);
+
+      const rejecting = await FolioDocxReviewer.fromBuffer(pending, {
+        session,
+      });
+      const rejectChange = rejecting
+        .getChanges()
+        .find(({ type }) => type === deletion.change);
+      if (!rejectChange) {
+        throw new Error("expected the column deletion before rejection");
+      }
+      resolveOperationChange({
+        reviewer: rejecting,
+        change: rejectChange,
+        decision: "reject",
+        session,
+      });
+      const rejected = await rejecting.toBuffer();
+      expect(await partText(rejected, "word/document.xml")).not.toContain(
+        deletion.marker,
+      );
+      expect(rejecting.getContentAsText()).toContain("Cell value");
+      const rejectedTable = findTextBoxShape(
+        await parseDocx(rejected, {
+          detectVariables: false,
+          preloadFonts: false,
+        }),
+      ).textBody?.content.at(1);
+      expect(rejectedTable?.type).toBe("table");
+      if (rejectedTable?.type !== "table") {
+        throw new Error("expected a rejected table");
+      }
+      expect(rejectedTable.rows.at(0)?.cells).toHaveLength(1);
     });
-    const target = findBlock(reviewer.snapshot().blocks, "Cell value");
-
-    const result = reviewer.applyDocumentOperations(
-      {
-        version: 1,
-        mode: "tracked-changes",
-        operations: [
-          {
-            id: "delete-column",
-            type: "deleteTableColumn",
-            blockId: target.id,
-          },
-        ],
-      },
-      { undefinedReferences: "refuse" },
-    );
-
-    expect(result.status).toBe("committed");
-    expect(result.applied).toHaveLength(1);
-    expect(typeof result.applied.at(0)?.revisionId).toBe("number");
-    const pendingChange = reviewer
-      .getChanges()
-      .find(({ type }) => type === "cellDeleted");
-    if (!pendingChange) {
-      throw new Error("expected a pending column deletion");
-    }
-    expect(pendingChange.author).toBe("Reviewer");
-    expect(pendingChange.text).toContain("Cell value");
-
-    const pending = await reviewer.toBuffer();
-    const pendingXml = await partText(pending, "word/document.xml");
-    expect(pendingXml).toContain("<w:cellDel ");
-    expect(pendingXml).toContain("Cell value");
-
-    const reopened = await FolioDocxReviewer.fromBuffer(pending);
-    const reopenedChange = reopened
-      .getChanges()
-      .find(({ type }) => type === "cellDeleted");
-    if (!reopenedChange) {
-      throw new Error("expected the column deletion after reopen");
-    }
-    expect(reopened.acceptChange(reopenedChange)).toBe(true);
-    const accepted = await reopened.toBuffer();
-    expect(await partText(accepted, "word/document.xml")).not.toContain(
-      "<w:cellDel ",
-    );
-    expect(reopened.getContentAsText()).not.toContain("Cell value");
-    const acceptedContent = findTextBoxShape(
-      await parseDocx(accepted, {
-        detectVariables: false,
-        preloadFonts: false,
-      }),
-    ).textBody?.content;
-    expect(acceptedContent?.map(({ type }) => type)).toEqual([
-      "paragraph",
-      "paragraph",
-    ]);
-
-    const rejecting = await FolioDocxReviewer.fromBuffer(pending);
-    const rejectChange = rejecting
-      .getChanges()
-      .find(({ type }) => type === "cellDeleted");
-    if (!rejectChange) {
-      throw new Error("expected the column deletion before rejection");
-    }
-    expect(rejecting.rejectChange(rejectChange)).toBe(true);
-    const rejected = await rejecting.toBuffer();
-    expect(await partText(rejected, "word/document.xml")).not.toContain(
-      "<w:cellDel ",
-    );
-    expect(rejecting.getContentAsText()).toContain("Cell value");
-    const rejectedTable = findTextBoxShape(
-      await parseDocx(rejected, {
-        detectVariables: false,
-        preloadFonts: false,
-      }),
-    ).textBody?.content.at(1);
-    expect(rejectedTable?.type).toBe("table");
-    if (rejectedTable?.type !== "table") {
-      throw new Error("expected a rejected table");
-    }
-    expect(rejectedTable.rows.at(0)?.cells).toHaveLength(1);
-  });
 
   test("inserts, persists, and undoes a column inside shape text", async () => {
     const baseline = await buildTextBoxTableDocument();
