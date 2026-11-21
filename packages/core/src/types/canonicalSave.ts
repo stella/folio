@@ -28,6 +28,11 @@ export type CanonicalSaveSnapshot = {
    */
   restoredSinceSource: readonly string[];
   /**
+   * The headers and footers a section of the opened package referenced. One
+   * no section references any more goes; the others survive the save.
+   */
+  referencedHeaderFootersAtOpen: ReadonlySet<string>;
+  /**
    * The package the session last saved, when it is the one this save
    * patches instead of the opened package.
    */

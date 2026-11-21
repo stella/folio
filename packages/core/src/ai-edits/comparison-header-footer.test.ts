@@ -5,8 +5,11 @@ import { ZipArchive } from "@stll/docx-core/zip";
 import { compareDocx } from "../compare/compare";
 import { parseRelationships, RELATIONSHIP_TYPES } from "../docx/relsParser";
 import { createDocx } from "../docx/rezip";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import { createEmptyDocument } from "../utils/createDocument";
 import { FolioDocxReviewer, getFolioDocxComparisonAccess } from "./headless";
+
+const SESSIONS: readonly HeadlessReviewerSession[] = ["canonical", "legacy"];
 
 const sourceDocument = () => {
   const document = createEmptyDocument();
@@ -100,129 +103,178 @@ test("comparison stages a new story's inherited formatting from another package"
   expect(destination.listStories()).toHaveLength(2);
 });
 
-test("comparison rebinds an imported header's external hyperlink relationship", async () => {
-  const target = sourceDocument();
-  const header = target.package.headers?.values().next().value;
-  if (!header) throw new Error("Missing target header");
-  header.content = [
-    {
-      type: "paragraph",
-      content: [
-        {
-          type: "hyperlink",
-          href: "https://example.test/imported-header-link",
-          tooltip: "Imported header link",
-          children: [
-            { type: "run", content: [{ type: "text", text: "Linked header" }] },
-          ],
-        },
-      ],
-    },
-  ];
-  const result = await compareDocx(
-    await createDocx(createEmptyDocument()),
-    await createDocx(target),
-    {
-      author: "Reviewer",
-      timestamp: "2026-09-13T00:00:00.000Z",
-      revisionFormat: "folio-exact",
-    },
-  );
-  if (result.isErr()) throw result.error;
-  expect(result.value.verification.status).toBe("verified");
-  for (const decision of ["accept", "reject"] as const) {
-    const reviewer = await FolioDocxReviewer.fromBuffer(result.value.buffer);
-    if (decision === "accept") {
-      reviewer.acceptAll();
-    } else {
-      reviewer.rejectAll();
-    }
-    const buffer = await reviewer.toBuffer();
-    const reopened = await FolioDocxReviewer.fromBuffer(buffer);
-    expect(reopened.toDocument().package.headers?.size ?? 0).toBe(
-      decision === "accept" ? 1 : 0,
-    );
-    if (decision === "reject") continue;
-    const zip = await ZipArchive.read(buffer);
-    const rels = zip
-      .entries()
-      .map((archiveEntry) => [archiveEntry.path, archiveEntry] as const)
-      .find(([path]) => /^word\/_rels\/header\d+\.xml\.rels$/u.test(path));
-    if (!rels) throw new Error("Missing imported header relationships");
-    const relationship = [
-      ...parseRelationships(await rels[1].text()).values(),
-    ].find(({ type }) => type === RELATIONSHIP_TYPES.hyperlink);
-    expect(relationship?.target).toBe(
-      "https://example.test/imported-header-link",
-    );
-    expect(relationship?.targetMode).toBe("External");
-  }
-});
-
-test("comparison preserves an imported footer's empty hyperlink container", async () => {
-  const target = sourceDocument();
-  const header = target.package.headers?.values().next().value;
-  if (!header) throw new Error("Missing target header");
-  target.package.headers = undefined;
-  target.package.document.finalSectionProperties = {
-    ...target.package.document.finalSectionProperties,
-    headerReferences: undefined,
-    footerReferences: [{ type: "default", rId: "rId_footer" }],
-  };
-  target.package.footers = new Map([
-    [
-      "rId_footer",
+test.each(SESSIONS)(
+  "%s: comparison rebinds an imported header's external hyperlink relationship",
+  async (session) => {
+    const target = sourceDocument();
+    const header = target.package.headers?.values().next().value;
+    if (!header) throw new Error("Missing target header");
+    header.content = [
       {
-        type: "footer",
-        hdrFtrType: "default",
+        type: "paragraph",
         content: [
           {
-            type: "paragraph",
-            content: [
+            type: "hyperlink",
+            href: "https://example.test/imported-header-link",
+            tooltip: "Imported header link",
+            children: [
               {
-                type: "hyperlink",
-                href: "",
-                children: [
-                  {
-                    type: "run",
-                    content: [{ type: "text", text: "Container text" }],
-                  },
-                ],
+                type: "run",
+                content: [{ type: "text", text: "Linked header" }],
               },
             ],
           },
         ],
       },
-    ],
-  ]);
-  const result = await compareDocx(
-    await createDocx(createEmptyDocument()),
-    await createDocx(target),
-    {
-      author: "Reviewer",
-      timestamp: "2026-09-13T00:00:00.000Z",
-      revisionFormat: "folio-exact",
-    },
-  );
-  if (result.isErr()) throw result.error;
-  expect(result.value.verification.status).toBe("verified");
-  for (const decision of ["accept", "reject"] as const) {
-    const reviewer = await FolioDocxReviewer.fromBuffer(result.value.buffer);
-    if (decision === "accept") {
-      reviewer.acceptAll();
-    } else {
-      reviewer.rejectAll();
+    ];
+    const result = await compareDocx(
+      await createDocx(createEmptyDocument()),
+      await createDocx(target),
+      {
+        author: "Reviewer",
+        timestamp: "2026-09-13T00:00:00.000Z",
+        revisionFormat: "folio-exact",
+      },
+    );
+    if (result.isErr()) throw result.error;
+    expect(result.value.verification.status).toBe("verified");
+    for (const decision of ["accept", "reject"] as const) {
+      const reviewer = await FolioDocxReviewer.fromBuffer(result.value.buffer, {
+        session,
+      });
+      if (decision === "accept") {
+        reviewer.acceptAll();
+      } else {
+        reviewer.rejectAll();
+      }
+      const buffer = await reviewer.toBuffer();
+      const reopened = await FolioDocxReviewer.fromBuffer(buffer, { session });
+      expect(reopened.toDocument().package.headers?.size ?? 0).toBe(
+        decision === "accept" ? 1 : 0,
+      );
+      if (decision === "reject") continue;
+      const zip = await ZipArchive.read(buffer);
+      const rels = zip
+        .entries()
+        .map((archiveEntry) => [archiveEntry.path, archiveEntry] as const)
+        .find(([path]) => /^word\/_rels\/header\d+\.xml\.rels$/u.test(path));
+      if (!rels) throw new Error("Missing imported header relationships");
+      const relationship = [
+        ...parseRelationships(await rels[1].text()).values(),
+      ].find(({ type }) => type === RELATIONSHIP_TYPES.hyperlink);
+      expect(relationship?.target).toBe(
+        "https://example.test/imported-header-link",
+      );
+      expect(relationship?.targetMode).toBe("External");
     }
-    const buffer = await reviewer.toBuffer();
-    const zip = await ZipArchive.read(buffer);
-    const footers = zip
-      .paths()
-      .filter((path) => /^word\/footer\d+\.xml$/u.test(path));
-    expect(footers).toHaveLength(decision === "accept" ? 1 : 0);
-    if (decision === "accept") {
-      const footer = footers.at(0);
-      if (!footer) throw new Error("Missing imported footer");
-      expect(await zip.entry(footer)?.text()).toContain("<w:hyperlink>");
+  },
+);
+
+test.each(SESSIONS)(
+  "%s: comparison preserves an imported footer's empty hyperlink container",
+  async (session) => {
+    const target = sourceDocument();
+    const header = target.package.headers?.values().next().value;
+    if (!header) throw new Error("Missing target header");
+    target.package.headers = undefined;
+    target.package.document.finalSectionProperties = {
+      ...target.package.document.finalSectionProperties,
+      headerReferences: undefined,
+      footerReferences: [{ type: "default", rId: "rId_footer" }],
+    };
+    target.package.footers = new Map([
+      [
+        "rId_footer",
+        {
+          type: "footer",
+          hdrFtrType: "default",
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "hyperlink",
+                  href: "",
+                  children: [
+                    {
+                      type: "run",
+                      content: [{ type: "text", text: "Container text" }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    ]);
+    const result = await compareDocx(
+      await createDocx(createEmptyDocument()),
+      await createDocx(target),
+      {
+        author: "Reviewer",
+        timestamp: "2026-09-13T00:00:00.000Z",
+        revisionFormat: "folio-exact",
+      },
+    );
+    if (result.isErr()) throw result.error;
+    expect(result.value.verification.status).toBe("verified");
+    for (const decision of ["accept", "reject"] as const) {
+      const reviewer = await FolioDocxReviewer.fromBuffer(result.value.buffer, {
+        session,
+      });
+      if (decision === "accept") {
+        reviewer.acceptAll();
+      } else {
+        reviewer.rejectAll();
+      }
+      const buffer = await reviewer.toBuffer();
+      const zip = await ZipArchive.read(buffer);
+      const footers = zip
+        .paths()
+        .filter((path) => /^word\/footer\d+\.xml$/u.test(path));
+      expect(footers).toHaveLength(decision === "accept" ? 1 : 0);
+      if (decision === "accept") {
+        const footer = footers.at(0);
+        if (!footer) throw new Error("Missing imported footer");
+        expect(await zip.entry(footer)?.text()).toContain("<w:hyperlink>");
+      }
     }
-  }
-});
+  },
+);
+
+test.each(SESSIONS)(
+  "%s: a header the package holds without a section reference survives an edit and save",
+  async (session) => {
+    const document = sourceDocument();
+    document.package.document.finalSectionProperties = {
+      ...document.package.document.finalSectionProperties,
+      headerReferences: undefined,
+    };
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await createDocx(document),
+      { session },
+    );
+    const body = reviewer.getContent().at(0);
+    if (!body) throw new Error("Missing body paragraph");
+    reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "tracked-changes",
+        operations: [
+          {
+            id: "edit",
+            type: "insertAfterBlock",
+            blockId: body.id,
+            text: "New.",
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
+    const zip = await ZipArchive.read(await reviewer.toBuffer());
+    expect(
+      zip.paths().filter((path) => /^word\/header\d+\.xml$/u.test(path)),
+    ).toHaveLength(1);
+  },
+);
