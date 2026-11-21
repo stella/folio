@@ -97,9 +97,13 @@ const MODES: readonly FolioAIEditApplyMode[] = [
   "suggested",
 ];
 
-const open = async () => {
+const SESSIONS = ["legacy", "canonical"] as const;
+type Session = (typeof SESSIONS)[number];
+
+const open = async (session?: Session) => {
   const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocx(), {
     author: "Reviewer",
+    ...(session !== undefined && { session }),
   });
   const block = reviewer.getContent()[0];
   if (!block) {
@@ -109,9 +113,13 @@ const open = async () => {
 };
 
 /** Save, reopen with every revision accepted, and read it as Markdown. */
-const savedMarkdown = async (reviewer: FolioDocxReviewer): Promise<string> => {
+const savedMarkdown = async (
+  reviewer: FolioDocxReviewer,
+  session?: Session,
+): Promise<string> => {
   const reopened = await FolioDocxReviewer.fromBuffer(
     await reviewer.toBuffer(),
+    session === undefined ? {} : { session },
   );
   reopened.acceptAll();
   return markdownOf(await reopened.toBuffer());
@@ -172,10 +180,14 @@ describe("a text operation cannot reach a note reference", () => {
     expect(result.skipped).toEqual([{ id: "id", reason: "missingFind" }]);
   });
 
-  test.each(MODES)(
-    "%s: rewriting, dropping or cutting into a marker is refused",
-    async (mode) => {
-      const { reviewer, block } = await open();
+  test.each(
+    SESSIONS.flatMap((session) =>
+      MODES.map((mode) => [session, mode] as const),
+    ),
+  )(
+    "%s, %s: rewriting, dropping or cutting into a marker is refused",
+    async (session, mode) => {
+      const { reviewer, block } = await open(session);
       const range = createFolioAITextRangeHandle({
         blockId: block.id,
         text: block.text,
@@ -254,7 +266,7 @@ describe("a text operation cannot reach a note reference", () => {
         });
       }
       expect(reviewer.getContent()[0]?.text).toBe(TEXT);
-      expect(await savedMarkdown(reviewer)).toBe(MARKDOWN);
+      expect(await savedMarkdown(reviewer, session)).toBe(MARKDOWN);
     },
   );
 });
