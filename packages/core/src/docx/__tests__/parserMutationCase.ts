@@ -3,6 +3,8 @@
 import assert from "node:assert/strict";
 
 import { FolioDocxReviewer } from "../../ai-edits/headless";
+import type { HeadlessReviewerSession } from "../../types/canonicalCapabilities";
+import { CanonicalDocxInputError } from "../canonicalSessionInput";
 import { DocxEncryptionError } from "../encryption/errors";
 import { DocxParseError, parseDocx } from "../parser";
 
@@ -53,9 +55,25 @@ const isTypedRefusal = (error: unknown): boolean =>
   (error instanceof DocxParseError || error instanceof DocxEncryptionError) &&
   !isProgrammerError(error);
 
+/** A canonical session refuses what it cannot hold with a typed error. */
+const isTypedSessionRefusal = (error: unknown): boolean =>
+  (error instanceof CanonicalDocxInputError ||
+    (error instanceof Error &&
+      "_tag" in error &&
+      error._tag === "CanonicalSessionError")) &&
+  !isProgrammerError(error);
+
 const run = async (): Promise<void> => {
   const encoded = process.argv.at(2);
   if (!encoded) throw new Error("Missing parser mutation case bytes");
+  const SESSIONS = [
+    "legacy",
+    "canonical",
+  ] as const satisfies readonly HeadlessReviewerSession[];
+  const session = SESSIONS.find(
+    (candidate) => candidate === process.argv.at(3),
+  );
+  if (session === undefined) throw new Error("Missing reviewer session");
   const input = Uint8Array.from(Buffer.from(encoded, "base64")).buffer;
   try {
     await parseDocx(input, { preloadFonts: false, detectVariables: false });
@@ -68,10 +86,20 @@ const run = async (): Promise<void> => {
     return;
   }
 
-  const reviewer = await FolioDocxReviewer.fromBuffer(input);
+  let reviewer: FolioDocxReviewer;
+  try {
+    reviewer = await FolioDocxReviewer.fromBuffer(input, { session });
+  } catch (error) {
+    assert.ok(
+      isTypedSessionRefusal(error),
+      `untyped session refusal: ${String(error)}`,
+    );
+    process.stdout.write("refused\n");
+    return;
+  }
   const before = publicRead(reviewer);
   const saved = await reviewer.toBuffer();
-  const reopened = await FolioDocxReviewer.fromBuffer(saved);
+  const reopened = await FolioDocxReviewer.fromBuffer(saved, { session });
   assert.deepEqual(
     publicRead(reopened),
     before,
