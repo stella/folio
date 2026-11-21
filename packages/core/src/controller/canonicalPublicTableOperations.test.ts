@@ -1099,3 +1099,33 @@ describe("table structure operations in the canonical session", () => {
     );
   });
 });
+
+/**
+ * Markup the default engine already wrote resolves in the canonical session
+ * as the default engine resolves it: a tracked deletion of a one-column
+ * table's column marks every cell deleted, and accepting takes the table
+ * (property seed -685065398).
+ */
+test("the canonical session resolves a one-column table's tracked column deletion the default engine wrote", async () => {
+  const source = await packageOf("a deleted break before a paragraph");
+  const legacy = await viaLegacyEngine({
+    source,
+    operation: { id: "op", type: "deleteTableColumn", blockId: "70000006" },
+    mode: "tracked-changes",
+  });
+  expect(legacy.skipped).toEqual([]);
+  const resolved = async (session: "legacy" | "canonical") => {
+    const results = [];
+    for (const decision of ["accept", "reject"] as const) {
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        legacy.bytes.slice(0),
+        { session },
+      );
+      if (decision === "accept") reviewer.acceptAll();
+      else reviewer.rejectAll();
+      results.push(await blocksOf(await reviewer.toBuffer()));
+    }
+    return results;
+  };
+  expect(await resolved("canonical")).toEqual(await resolved("legacy"));
+});
