@@ -454,6 +454,7 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
     readonly PENDING_BREAK_TAKEOVER: "pendingBreakTakeover";
     readonly PENDING_PARAGRAPH_MARK_DELETION: "pendingParagraphMarkDeletion";
     readonly PENDING_PARAGRAPH_MARK_INSERTION: "pendingParagraphMarkInsertion";
+    readonly PENDING_PARAGRAPH_JOIN: "pendingParagraphJoin";
     readonly PENDING_GRID_CHANGE: "pendingGridChange";
     readonly UNRECORDABLE_LINK_SUGGESTION: "unrecordableLinkSuggestion";
     readonly MISSING_BLOCK_ID: "missingBlockId";
