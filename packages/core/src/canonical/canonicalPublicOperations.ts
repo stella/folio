@@ -53,7 +53,6 @@ import {
   orderBatchOperations,
   packageResourcesOpOf,
   type ParagraphAbsorption,
-  paragraphIdsIn as modelParagraphIdsIn,
   paragraphLength,
   type ParagraphPropsPatch,
   paragraphsThroughTextBoxes,
@@ -206,6 +205,10 @@ import {
   canonicalCommentBody,
   compileCanonicalComments,
 } from "./canonicalComments";
+import {
+  insertedCommentRange,
+  plainInsertedParagraphIds,
+} from "./canonicalInsertedCommentRange";
 import {
   planReplayParagraphIds,
   startParagraphAdmissionCursor,
@@ -2418,30 +2421,6 @@ const droppedInsertionCarrier = ({
 type MemberIdLeaseOptions = {
   lease: IdLease;
   siblings: readonly (readonly LeasedId[])[];
-};
-
-/** A paragraph-side insertion keeps its anchor and introduces only these paragraph IDs. */
-const plainInsertedParagraphIds = (
-  ops: readonly DocumentOp[],
-): number[] | undefined => {
-  const [op] = ops;
-  if (
-    ops.length !== 1 ||
-    op?.type !== DOCUMENT_OP_TYPES.INSERT_BLOCKS ||
-    (op.at.type !== "before" && op.at.type !== "after") ||
-    op.move === true
-  )
-    return undefined;
-  const ids: number[] = [];
-  for (const { paraId } of op.blocks) {
-    if (paraId === undefined) return undefined;
-    const id = Number.parseInt(paraId, 16);
-    if (!Number.isSafeInteger(id) || formatParaId(id) !== paraId)
-      return undefined;
-    ids.push(id);
-  }
-  if (modelParagraphIdsIn(op.blocks).length !== ids.length) return undefined;
-  return ids.sort((left, right) => left - right);
 };
 
 type ReplayOperation = {
@@ -4824,23 +4803,12 @@ export class CanonicalPublicOperations {
           // never saved, accepted and rejected with the suggestion.
           const proposedBy = suggestionId === undefined ? {} : { suggestionId };
           if (comment.inserted === true) {
-            // The comment covers every paragraph the operation inserted, at
-            // any depth: in a content control or a table cell as much as in
-            // the story's own block list.
-            const paragraphsIn = (current: Document) =>
-              paragraphsThroughTextBoxes(current, story).map(
-                ({ paragraph }) => paragraph,
-              );
-            const known = new Set(
-              paragraphsIn(sourceDocument).flatMap(({ paraId }) =>
-                paraId === undefined ? [] : [paraId],
-              ),
-            );
-            const added = paragraphsIn(nextDocument).filter(
-              ({ paraId }) => paraId !== undefined && !known.has(paraId),
-            );
-            const firstAdded = added.at(0);
-            const lastAdded = added.at(-1);
+            const { firstAdded, lastAdded } = insertedCommentRange({
+              before: sourceDocument,
+              after: nextDocument,
+              story,
+              ops: compiled.value.ops,
+            });
             const commentContent =
               admittedComment?.content ??
               canonicalCommentBody(nextDocument, comment.text, idLease);
