@@ -483,6 +483,48 @@ const directRemovalReceiver = ({
     : { receiver, content: [...kept, ...receiver.content] };
 };
 
+/**
+ * The index of the paragraph whose break a tracked deletion of the paragraphs
+ * from `index` to their container's end retires: the one before them, past
+ * the paragraphs pending deletions already take whole, words and mark, which
+ * accepting them would leave it right before.
+ */
+const breakRetiredBefore = (
+  list: readonly BlockContent[],
+  index: number,
+): number => {
+  let candidate = index - 1;
+  for (;;) {
+    const block = list[candidate];
+    if (
+      block?.type !== "paragraph" ||
+      block.pPrMark?.kind !== "del" ||
+      block.sectionProperties !== undefined ||
+      paragraphHoldsContentOnceAccepted(block)
+    )
+      break;
+    candidate -= 1;
+  }
+  return candidate !== index - 1 && list[candidate]?.type === "paragraph"
+    ? candidate
+    : index - 1;
+};
+
+/**
+ * Whether accepting leaves nothing of `blocks`, a container's last blocks:
+ * paragraphs that keep no content once accepted, each before the last with
+ * its break pending deletion, and no section break among them.
+ */
+const goesOnceAccepted = (blocks: readonly BlockContent[]): boolean =>
+  blocks.length > 0 &&
+  blocks.every(
+    (block, index) =>
+      block.type === "paragraph" &&
+      block.sectionProperties === undefined &&
+      !paragraphHoldsContentOnceAccepted(block) &&
+      (index === blocks.length - 1 || block.pPrMark?.kind === "del"),
+  );
+
 export const deleteBlocks = ({
   document,
   op,
@@ -616,23 +658,10 @@ export const deleteBlocks = ({
   // mark, stand between the container's last paragraph and the break its
   // deletion retires: that is the break before them, as accepting them would
   // leave it.
-  let previousIndex = first.index - 1;
-  if (terminal && op.revision !== undefined) {
-    let candidate = previousIndex;
-    for (;;) {
-      const block = list[candidate];
-      if (
-        block?.type !== "paragraph" ||
-        block.pPrMark?.kind !== "del" ||
-        block.sectionProperties !== undefined ||
-        paragraphHoldsContentOnceAccepted(block)
-      )
-        break;
-      candidate -= 1;
-    }
-    if (candidate !== previousIndex && list[candidate]?.type === "paragraph")
-      previousIndex = candidate;
-  }
+  const previousIndex =
+    terminal && op.revision !== undefined
+      ? breakRetiredBefore(list, first.index)
+      : first.index - 1;
   const preceding = terminal ? list[previousIndex] : undefined;
   const previous = preceding?.type === "paragraph" ? preceding : undefined;
   const between = list
@@ -807,6 +836,29 @@ export const deleteBlocks = ({
     });
   }
   const revision = op.revision;
+  // A range whose last break a pending deletion already takes, into
+  // paragraphs that keep nothing once accepted up to its container's end,
+  // ends that container once accepted, as a range at its end does: its
+  // deletion retires the break before it too, as it would had those
+  // paragraphs' deletions been accepted first.
+  const retiredIndex =
+    !terminal &&
+    last.paragraph.pPrMark?.kind === "del" &&
+    goesOnceAccepted(list.slice(last.index + 1))
+      ? breakRetiredBefore(list, first.index)
+      : undefined;
+  const retired =
+    retiredIndex === undefined ? undefined : list.at(retiredIndex);
+  const reviewed =
+    retiredIndex === undefined || retired?.type !== "paragraph"
+      ? affected
+      : [
+          retired,
+          ...list
+            .slice(retiredIndex + 1, first.index)
+            .filter((block): block is Paragraph => block.type === "paragraph"),
+          ...selected,
+        ];
   // The paragraphs whose own mark the tracked deletion records deleted.
   const losesMark = (paragraph: Paragraph) =>
     !terminal || paragraph !== last.paragraph;
@@ -818,7 +870,7 @@ export const deleteBlocks = ({
   // rejecting the insertion decides, so the deletion is recorded beside it
   // and that resolution moves the break.
   const joinsNext = new Set(
-    affected.filter(
+    reviewed.filter(
       (paragraph) =>
         losesMark(paragraph) &&
         paragraph.sectionProperties === undefined &&
@@ -877,7 +929,7 @@ export const deleteBlocks = ({
       (beforeInsertedTable && paragraph === last.paragraph)) &&
     !(finalTakeover && paragraph === last.paragraph);
   if (
-    affected.some(
+    reviewed.some(
       (paragraph) =>
         paragraph.pPrMark !== undefined &&
         !joinsNext.has(paragraph) &&
@@ -895,7 +947,7 @@ export const deleteBlocks = ({
   // and accepting the deletion removes it.
   const selectedSet = new Set(selected);
   const tracked: Paragraph[] = [];
-  for (const paragraph of affected) {
+  for (const paragraph of reviewed) {
     let next = paragraph;
     if (selectedSet.has(paragraph)) {
       const form = deletedContent(paragraph, op.revision, rangedComments);
@@ -961,16 +1013,16 @@ export const deleteBlocks = ({
   // Where the direct deletion changes nothing either, as for an empty
   // paragraph alone in its container, recording nothing is that deletion.
   if (
-    tracked.every((paragraph, index) => paragraph === affected[index]) &&
+    tracked.every((paragraph, index) => paragraph === reviewed[index]) &&
     !structurallyEqual(directBlocks, replacement([]).expected)
   )
     return refuse(
       DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
       "A tracked paragraph deletion would record nothing.",
     );
-  const beforeKeys = new Set(identityKeysIn(affected));
+  const beforeKeys = new Set(identityKeysIn(reviewed));
   const fresh = freshenIdentities({
-    before: affected,
+    before: reviewed,
     after: tracked,
     newIds: op.newIds ?? {},
     usedElsewhere: () =>
@@ -997,7 +1049,7 @@ export const deleteBlocks = ({
           ? [...fresh.paragraphs, following]
           : fresh.paragraphs;
       const original =
-        following?.type === "paragraph" ? [...affected, following] : affected;
+        following?.type === "paragraph" ? [...reviewed, following] : reviewed;
       const changed =
         following?.type === "paragraph" ? [...tracked, following] : tracked;
       // Each paragraph whose mark went joins the one after it, which keeps
@@ -1028,7 +1080,9 @@ export const deleteBlocks = ({
         carried = undefined;
         blocks.push(joined);
       }
-      const result = applyOps(document, [replacement(blocks)]);
+      const result = applyOps(document, [
+        { ...replacement(blocks), expected: original },
+      ]);
       if (result.isErr())
         return refuse(result.error.reason, result.error.message);
       return Result.ok({
