@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { EditorState } from "prosemirror-state";
 
-import { documentStories, suggestionRevisionInfos } from "@stll/docx-core/ops";
+import {
+  documentStories,
+  OP_STORIES,
+  suggestionRevisionInfos,
+} from "@stll/docx-core/ops";
 
 import { createCanonicalSession } from "../canonical/canonicalSession";
 import { getSuggestions } from "../prosemirror/commands/comments";
@@ -262,3 +266,69 @@ for (const resolution of ["accept", "reject"] as const)
     expect(session.document).toEqual(after);
     expect(session.projection.doc.toJSON()).toEqual(projectionAfter);
   });
+
+test("a suggested whole table is adopted as an ordinary tracked table insertion, and undoes", () => {
+  const cell = (id: number, text: string): Paragraph => ({
+    type: "paragraph",
+    paraId: (0x20000000 + id).toString(16),
+    pPrMark: { kind: "ins", info: info(id, "table-proposal") },
+    content: [
+      {
+        type: "insertion",
+        info: info(id + 1, "table-proposal"),
+        content: [run(text)],
+      },
+    ],
+  });
+  const session = createCanonicalSession({
+    package: {
+      document: {
+        content: [
+          { type: "paragraph", paraId: "10000000", content: [run("Opening.")] },
+          {
+            type: "table",
+            rows: [
+              {
+                type: "tableRow",
+                structuralChange: {
+                  type: "tableRowInsertion",
+                  info: info(1, "table-proposal"),
+                },
+                cells: [{ type: "tableCell", content: [cell(2, "Party")] }],
+              },
+            ],
+          },
+          { type: "paragraph", paraId: "10000001", content: [run("Closing.")] },
+        ],
+      },
+    },
+  }).unwrap();
+  const before = session.document;
+  const story = OP_STORIES.MAIN;
+  expect(suggestionRevisionInfos(before, story, "table-proposal")).toHaveLength(
+    3,
+  );
+  const state = EditorState.create({ schema, doc: session.projection.doc });
+  const commit = session
+    .prepareSuggestion(state, {
+      suggestionId: "table-proposal",
+      resolution: "accept",
+      author: "Adopter",
+      date: "2026-02-02T00:00:00Z",
+    })
+    .unwrap();
+  expect(commit.publish().isOk()).toBe(true);
+  expect(
+    suggestionRevisionInfos(session.document, story, "table-proposal"),
+  ).toEqual([]);
+  const [, table] = session.document.package.document.content;
+  expect(
+    table?.type === "table" ? table.rows[0]?.structuralChange : undefined,
+  ).toEqual({
+    type: "tableRowInsertion",
+    info: { id: 1, author: "Adopter", date: "2026-02-02T00:00:00Z" },
+  });
+  const undo = session.prepareUndo(state.apply(commit.transaction)).unwrap();
+  expect(undo.publish().isOk()).toBe(true);
+  expect(session.document).toEqual(before);
+});
