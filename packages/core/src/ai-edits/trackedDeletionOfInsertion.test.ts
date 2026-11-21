@@ -1,7 +1,9 @@
 /**
  * A tracked deletion over text that is itself a pending tracked insertion (a
  * reviewer revising a suggestion) saves as `w:ins > w:del` and reads back as
- * it was left: the deleted inserted text stays deleted.
+ * it was left: the deleted inserted text stays deleted. On the canonical
+ * engine an author deleting their own pending insertion takes it back
+ * instead: the inserted text goes with no deletion recorded.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -12,8 +14,14 @@ import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operation
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { createDocx } from "../docx/rezip";
 import { paragraph } from "../docx/server/build";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import { createEmptyDocument } from "../utils/createDocument";
 import { FolioDocxReviewer } from "./headless";
+
+const SESSIONS = [
+  "legacy",
+  "canonical",
+] as const satisfies readonly HeadlessReviewerSession[];
 
 const TEXT = "Signed in two copies.";
 
@@ -62,53 +70,67 @@ const changesOf = (reviewer: FolioDocxReviewer) =>
     .getChanges()
     .map(({ type, text, author }) => ({ type, text, author }));
 
-describe("a tracked deletion of pending inserted text", () => {
-  for (const secondAuthor of ["Reviewer", "Second Reviewer"]) {
-    test(`survives a save (${secondAuthor === "Reviewer" ? "same" : "another"} author)`, async () => {
-      const first = await FolioDocxReviewer.fromBuffer(await buildDocument(), {
-        author: "Reviewer",
-      });
-      replace(first, "two", "three");
-      const second = await FolioDocxReviewer.fromBuffer(
-        await first.toBuffer(),
-        {
+describe.each(SESSIONS)(
+  "a tracked deletion of pending inserted text (%s)",
+  (session) => {
+    for (const secondAuthor of ["Reviewer", "Second Reviewer"]) {
+      const sameAuthor = secondAuthor === "Reviewer";
+      // Only the canonical engine takes back an author's own insertion.
+      const takesBack = sameAuthor && session === "canonical";
+      test(`survives a save (${sameAuthor ? "same" : "another"} author)`, async () => {
+        const first = await FolioDocxReviewer.fromBuffer(
+          await buildDocument(),
+          {
+            author: "Reviewer",
+            session,
+          },
+        );
+        replace(first, "two", "three");
+        const second = await FolioDocxReviewer.fromBuffer(
+          await first.toBuffer(),
+          { author: secondAuthor, session },
+        );
+        replace(second, "three", "four");
+        expect(second.getContent()[0]?.text).toBe("Signed in four copies.");
+
+        const saved = await second.toBuffer();
+        const xml = await (
+          await ZipArchive.read(saved)
+        )
+          .entry("word/document.xml")
+          ?.text();
+        if (takesBack) expect(xml).not.toContain("three");
+        else
+          expect(xml).toMatch(
+            /<w:ins [^>]*><w:del [^>]*><w:r>(?:<w:rPr\/>)?<w:delText>three<\/w:delText>/u,
+          );
+
+        const reopened = await FolioDocxReviewer.fromBuffer(saved, { session });
+        expect(reopened.getContent()[0]?.text).toBe("Signed in four copies.");
+        const deletedThree = {
+          type: "deletion",
+          text: "three",
           author: secondAuthor,
-        },
-      );
-      replace(second, "three", "four");
-      expect(second.getContent()[0]?.text).toBe("Signed in four copies.");
+        };
+        if (takesBack)
+          expect(changesOf(reopened)).not.toContainEqual(deletedThree);
+        else expect(changesOf(reopened)).toContainEqual(deletedThree);
 
-      const saved = await second.toBuffer();
-      const xml = await (
-        await ZipArchive.read(saved)
-      )
-        .entry("word/document.xml")
-        ?.text();
-      expect(xml).toMatch(
-        /<w:ins [^>]*><w:del [^>]*><w:r>(?:<w:rPr\/>)?<w:delText>three<\/w:delText>/u,
-      );
-
-      const reopened = await FolioDocxReviewer.fromBuffer(saved);
-      expect(reopened.getContent()[0]?.text).toBe("Signed in four copies.");
-      expect(changesOf(reopened)).toContainEqual({
-        type: "deletion",
-        text: "three",
-        author: secondAuthor,
+        reopened.rejectAll();
+        expect(reopened.getContent()[0]?.text).toBe(TEXT);
+        const accepted = await FolioDocxReviewer.fromBuffer(saved, { session });
+        accepted.acceptAll();
+        expect(accepted.getContent()[0]?.text).toBe("Signed in four copies.");
       });
+    }
+  },
+);
 
-      reopened.rejectAll();
-      expect(reopened.getContent()[0]?.text).toBe(TEXT);
-      const accepted = await FolioDocxReviewer.fromBuffer(saved);
-      accepted.acceptAll();
-      expect(accepted.getContent()[0]?.text).toBe("Signed in four copies.");
-    });
-  }
-});
-
-describe("revision wrapper enumeration", () => {
+describe.each(SESSIONS)("revision wrapper enumeration (%s)", (session) => {
   test("keeps deletion fragments around a pending insertion across save", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocument(), {
       author: "Reviewer",
+      session,
     });
     replace(reviewer, "two", "three");
     const block = reviewer.getContent().at(0);
@@ -124,6 +146,7 @@ describe("revision wrapper enumeration", () => {
     expect(result.applied).toHaveLength(1);
     const reopened = await FolioDocxReviewer.fromBuffer(
       await reviewer.toBuffer(),
+      { session },
     );
     const sorted = (target: FolioDocxReviewer) =>
       changesOf(target).toSorted((a, b) =>
