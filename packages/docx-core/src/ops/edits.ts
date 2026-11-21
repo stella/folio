@@ -5,7 +5,12 @@
 
 import type { Document } from "../model/document";
 import { idKey, type KeyMembership, packageParagraphIdIndex } from "./ids";
-import type { DocumentOp, ParagraphAbsorption, TouchedBlocks } from "./types";
+import type {
+  DocumentOp,
+  ParagraphAbsorption,
+  RevisionAbsorption,
+  TouchedBlocks,
+} from "./types";
 
 /** What applying operations produced: the document, its inverse, and the blocks it changed. */
 export type DocumentEdit = {
@@ -65,6 +70,7 @@ export const combineEditEffects = (
         packageParagraphIdIndex(final.package),
       )
     : [];
+  const absorbedRevisions = combinedRevisionAbsorptions(edits);
   return {
     document: final,
     inverse: edits.toReversed().flatMap(({ inverse }) => inverse),
@@ -73,8 +79,29 @@ export const combineEditEffects = (
       inserted: ids("inserted"),
       removed: ids("removed"),
       ...(absorbed.length === 0 ? {} : { absorbed }),
+      ...(absorbedRevisions.length === 0 ? {} : { absorbedRevisions }),
     },
   };
+};
+
+/**
+ * Revision absorptions made in turn, as one: a change joined into one that a
+ * later edit joined on is reported against the change that holds both now.
+ */
+const combinedRevisionAbsorptions = (
+  edits: readonly DocumentEditEffects[],
+): RevisionAbsorption[] => {
+  const survivorOf = new Map<number, number>();
+  for (const { touched } of edits)
+    for (const { absorbed, survivor } of touched.absorbedRevisions ?? []) {
+      for (const [earlier, into] of survivorOf)
+        if (into === absorbed) survivorOf.set(earlier, survivor);
+      survivorOf.set(absorbed, survivor);
+    }
+  return [...survivorOf].map(([absorbed, survivor]) => ({
+    absorbed,
+    survivor,
+  }));
 };
 
 /** Edits made in turn, starting from `document`, as one edit. */

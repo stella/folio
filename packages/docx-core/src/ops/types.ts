@@ -1396,6 +1396,21 @@ export type TouchedBlocks = {
    * host holding a removed id re-anchors on its survivor.
    */
   absorbed?: readonly ParagraphAbsorption[];
+  /**
+   * Tracked changes a resolution joined into the alike change they met, the
+   * pieces of one change rejoining where what stood between them went, each
+   * with the change that holds their content now and keeps its id. A host
+   * holding an absorbed revision id decides the survivor instead.
+   */
+  absorbedRevisions?: readonly RevisionAbsorption[];
+};
+
+/** A tracked change a resolution joined into another, and the one it joined. */
+export type RevisionAbsorption = {
+  /** The id no record carries any more. */
+  absorbed: number;
+  /** The id of the change that holds its content now. */
+  survivor: number;
 };
 
 /** A paragraph an edit joined into another, and the paragraph it joined. */
