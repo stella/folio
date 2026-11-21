@@ -52,13 +52,6 @@ const INTENTIONAL_BREAKS: IntentionalBreaks = {
         "minimatch 11.0.1 is the first release that fixes GHSA-g3hv-75wg-m249",
     },
   ],
-  valibot: [
-    {
-      dependent: "@stll/conditions",
-      range: "1.4.2",
-      reason: "one valibot across workspaces (#1279)",
-    },
-  ],
 };
 
 const DEPENDENCY_FIELDS = [
