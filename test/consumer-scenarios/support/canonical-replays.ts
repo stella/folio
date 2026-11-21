@@ -52,14 +52,7 @@ export const CANONICAL_REPLAY_GAPS: Readonly<Record<string, ReplayGap>> = {
 export const CANONICAL_VACUOUS_STEPS: Readonly<
   Record<string, readonly number[]>
 > = {
-  "issue-1350-7fe54148e47f13fe.json": [1],
   "issue-1356-42bb7d148b3e1e55.json": [2],
-  "issue-1757-merge-across-deleted-note-paragraph-before-inserted-table.json": [
-    0,
-  ],
-  // The deleted paragraph's own inserted break goes with it before the
-  // inserted table, so the merge would run into that table: refused.
-  "issue-1757-merge-across-deleted-paragraph-before-inserted-table.json": [0],
   "issue-2222-styled-insert-after-undefined-numbering-level.json": [2],
   "undefined-numbering-level-projection.json": [1],
 };

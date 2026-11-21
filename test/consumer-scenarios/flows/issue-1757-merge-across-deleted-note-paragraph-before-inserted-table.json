@@ -29,7 +29,13 @@
           "blockId": "31617F9A",
           "separator": " "
         }
-      ]
+      ],
+      "expectedRefusals": {
+        "canonical": {
+          "code": "unsupportedBlock",
+          "message": "Joining 31617F9A would run it into the table after 5E88C024."
+        }
+      }
     }
   ],
   "weights": {
