@@ -27,11 +27,16 @@ import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { createDocumentNumberingPlugin } from "../prosemirror/plugins/documentNumbering";
 import { createDocumentStylesPlugin } from "../prosemirror/plugins/documentStyles";
 import { schema } from "../prosemirror/schema";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import type { NumberingDefinitions } from "../types/document";
 import { FolioDocxReviewer } from "./headless";
 import { findIntroducedModelErrors } from "./result-validation";
 import { createFolioAIEditSnapshot } from "./snapshot";
 
+const SESSIONS = [
+  "legacy",
+  "canonical",
+] as const satisfies readonly HeadlessReviewerSession[];
 const ANCHOR = "1.2. Second clause.";
 const TAIL = "Tail.";
 const MARKDOWN = `# Agreement\n\n## 1. Subject\n\n1.1. First clause.\n\n${ANCHOR}\n\n${TAIL}`;
@@ -296,200 +301,207 @@ describe("an undefined numbering instance is skipped before anything is applied"
   });
 });
 
-describe("a batch result the save validator refuses is not committed", () => {
-  // A whitespace-only author makes every tracked change the batch writes one
-  // no save accepts — nothing an operation's own fields can be checked for up
-  // front, which is what the result check is for.
-  const openWithBlankAuthor = async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(
-      await build(UNUSED_901),
-      {
-        author: "  ",
-      },
-    );
-    const tail = reviewer.getContent().find((block) => block.text === TAIL)?.id;
-    if (tail === undefined) {
-      throw new Error("fixture must expose its tail block");
-    }
-    return { reviewer, tail };
-  };
-
-  test("the operation is skipped with invalidResult and the validator's reason", async () => {
-    const { reviewer, tail } = await openWithBlankAuthor();
-    const before = outline(reviewer);
-    const result = reviewer.applyDocumentOperations(
-      {
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode: "tracked-changes",
-        operations: [
-          {
-            id: "insert",
-            type: "insertAfterBlock",
-            blockId: tail,
-            text: "Added.",
-          },
-        ],
-      },
-      { undefinedReferences: "refuse" },
-    );
-    expect(result.status).toBe("committed");
-    expect(result.applied).toEqual([]);
-    expect(result.undoHandle).toBeNull();
-    expect(result.issues).toEqual([
-      {
-        operationId: "insert",
-        operationIndex: 0,
-        path: "$.operations[0]",
-        code: "invalidResult",
-        retryable: false,
-        recovery: "refreshDocument",
-        message: expect.stringContaining("Tracked change author is empty."),
-      },
-    ]);
-    expect(outline(reviewer)).toEqual(before);
-    await reviewer.toBuffer();
-  });
-
-  test("in a best-effort batch only the offending operation is refused", async () => {
-    const { reviewer, tail } = await openWithBlankAuthor();
-    const result = reviewer.applyDocumentOperations(
-      {
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode: "direct",
-        operations: [
-          {
-            id: "direct",
-            type: "insertAfterBlock",
-            blockId: tail,
-            text: "Direct.",
-          },
-          {
-            id: "noted",
-            type: "commentOnBlock",
-            blockId: tail,
-            comment: { text: "Why?" },
-          },
-        ],
-      },
-      { undefinedReferences: "refuse" },
-    );
-    // Direct insertion writes no revision, so no author; the comment's author
-    // is the blank one, which no save accepts.
-    expect(result.applied.map(({ id }) => id)).toEqual(["direct"]);
-    expect(result.skipped).toEqual([
-      {
-        id: "noted",
-        reason: "invalidResult",
-        message: expect.stringContaining(
-          "Comment author cannot be whitespace-only.",
-        ),
-      },
-    ]);
-    expect(outline(reviewer)).toContain(`· Direct.`);
-    await reviewer.toBuffer();
-  });
-
-  test("an atomic batch is rejected whole", async () => {
-    const { reviewer, tail } = await openWithBlankAuthor();
-    const before = outline(reviewer);
-    const result = reviewer.applyDocumentOperations(
-      {
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode: "tracked-changes",
-        atomic: true,
-        operations: [
-          { id: "a", type: "insertAfterBlock", blockId: tail, text: "One." },
-          { id: "b", type: "insertBeforeBlock", blockId: tail, text: "Two." },
-        ],
-      },
-      { undefinedReferences: "refuse" },
-    );
-    expect(result.status).toBe("rejected");
-    expect(result.skipped.map(({ reason }) => reason)).toEqual([
-      "invalidResult",
-      "invalidResult",
-    ]);
-    expect(outline(reviewer)).toEqual(before);
-  });
-
-  test("a dry run reports the refusal without applying anything", async () => {
-    const { reviewer, tail } = await openWithBlankAuthor();
-    const result = reviewer.applyDocumentOperations(
-      {
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode: "tracked-changes",
-        dryRun: true,
-        operations: [
-          { id: "a", type: "insertAfterBlock", blockId: tail, text: "One." },
-        ],
-      },
-      { undefinedReferences: "refuse" },
-    );
-    expect(result.status).toBe("previewed");
-    expect(result.skipped.map(({ reason }) => reason)).toEqual([
-      "invalidResult",
-    ]);
-  });
-
-  test("a live view never receives the refused transaction", () => {
-    // The seam a live editor passes: its dispatch is what reaches the screen.
-    const model = fromMarkdown(`Alpha.\n\n${TAIL}`);
-    let state = EditorState.create({
-      schema,
-      doc: toProseDoc(model),
-      plugins: [
-        createDocumentStylesPlugin(model.package.styles),
-        createDocumentNumberingPlugin(model.package.numbering),
-      ],
-    });
-    const dispatched: Transaction[] = [];
-    const view = {
-      get state() {
-        return state;
-      },
-      dispatch: (transaction: Transaction) => {
-        dispatched.push(transaction);
-        state = state.apply(transaction);
-      },
+describe.each(SESSIONS)(
+  "a batch result the save validator refuses is not committed (%s)",
+  (session) => {
+    // A whitespace-only author makes every tracked change the batch writes one
+    // no save accepts: the legacy session finds it in the result, the
+    // canonical one before it records the author.
+    const openWithBlankAuthor = async () => {
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await build(UNUSED_901),
+        {
+          author: "  ",
+          session,
+        },
+      );
+      const tail = reviewer
+        .getContent()
+        .find((block) => block.text === TAIL)?.id;
+      if (tail === undefined) {
+        throw new Error("fixture must expose its tail block");
+      }
+      return { reviewer, tail };
     };
-    const snapshot = createFolioAIEditSnapshot(state.doc);
-    const tail = snapshot.blocks.find((block) => block.text === TAIL)?.id ?? "";
-    const refused = applyFolioDocumentOperations({
-      undefinedReferences: "refuse",
-      view,
-      snapshot,
-      author: " ",
-      batch: {
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode: "tracked-changes",
-        operations: [
-          { id: "a", type: "insertAfterBlock", blockId: tail, text: "One." },
-        ],
-      },
-    });
-    expect(refused.skipped.map(({ reason }) => reason)).toEqual([
-      "invalidResult",
-    ]);
-    expect(dispatched).toEqual([]);
 
-    const accepted = applyFolioDocumentOperations({
-      undefinedReferences: "refuse",
-      view,
-      snapshot,
-      author: "Reviewer",
-      batch: {
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode: "tracked-changes",
-        operations: [
-          { id: "a", type: "insertAfterBlock", blockId: tail, text: "One." },
-        ],
-      },
+    test("the operation is skipped with invalidResult and the validator's reason", async () => {
+      const { reviewer, tail } = await openWithBlankAuthor();
+      const before = outline(reviewer);
+      const result = reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode: "tracked-changes",
+          operations: [
+            {
+              id: "insert",
+              type: "insertAfterBlock",
+              blockId: tail,
+              text: "Added.",
+            },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      );
+      expect(result.status).toBe("committed");
+      expect(result.applied).toEqual([]);
+      expect(result.undoHandle).toBeNull();
+      expect(result.issues).toEqual([
+        {
+          operationId: "insert",
+          operationIndex: 0,
+          path: "$.operations[0]",
+          code: "invalidResult",
+          retryable: false,
+          recovery: "refreshDocument",
+          message: expect.stringContaining("Tracked change author is empty."),
+        },
+      ]);
+      expect(outline(reviewer)).toEqual(before);
+      await reviewer.toBuffer();
     });
-    expect(accepted.skipped).toEqual([]);
-    expect(accepted.applied.map(({ id }) => id)).toEqual(["a"]);
-    expect(dispatched).toHaveLength(1);
-  });
-});
+
+    test("in a best-effort batch only the offending operation is refused", async () => {
+      const { reviewer, tail } = await openWithBlankAuthor();
+      const result = reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode: "direct",
+          operations: [
+            {
+              id: "direct",
+              type: "insertAfterBlock",
+              blockId: tail,
+              text: "Direct.",
+            },
+            {
+              id: "noted",
+              type: "commentOnBlock",
+              blockId: tail,
+              comment: { text: "Why?" },
+            },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      );
+      // Direct insertion writes no revision, so no author; the comment's author
+      // is the blank one, which no save accepts.
+      expect(result.applied.map(({ id }) => id)).toEqual(["direct"]);
+      expect(result.skipped).toEqual([
+        {
+          id: "noted",
+          reason: "invalidResult",
+          message: expect.stringContaining(
+            "Comment author cannot be whitespace-only.",
+          ),
+        },
+      ]);
+      expect(outline(reviewer)).toContain(`· Direct.`);
+      await reviewer.toBuffer();
+    });
+
+    test("an atomic batch is rejected whole", async () => {
+      const { reviewer, tail } = await openWithBlankAuthor();
+      const before = outline(reviewer);
+      const result = reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode: "tracked-changes",
+          atomic: true,
+          operations: [
+            { id: "a", type: "insertAfterBlock", blockId: tail, text: "One." },
+            { id: "b", type: "insertBeforeBlock", blockId: tail, text: "Two." },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      );
+      expect(result.status).toBe("rejected");
+      expect(result.skipped.map(({ reason }) => reason)).toEqual([
+        "invalidResult",
+        "invalidResult",
+      ]);
+      expect(outline(reviewer)).toEqual(before);
+    });
+
+    test("a dry run reports the refusal without applying anything", async () => {
+      const { reviewer, tail } = await openWithBlankAuthor();
+      const result = reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode: "tracked-changes",
+          dryRun: true,
+          operations: [
+            { id: "a", type: "insertAfterBlock", blockId: tail, text: "One." },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      );
+      expect(result.status).toBe("previewed");
+      expect(result.skipped.map(({ reason }) => reason)).toEqual([
+        "invalidResult",
+      ]);
+    });
+
+    test("a live view never receives the refused transaction", () => {
+      // The seam a live editor passes: its dispatch is what reaches the screen.
+      const model = fromMarkdown(`Alpha.\n\n${TAIL}`);
+      let state = EditorState.create({
+        schema,
+        doc: toProseDoc(model),
+        plugins: [
+          createDocumentStylesPlugin(model.package.styles),
+          createDocumentNumberingPlugin(model.package.numbering),
+        ],
+      });
+      const dispatched: Transaction[] = [];
+      const view = {
+        get state() {
+          return state;
+        },
+        dispatch: (transaction: Transaction) => {
+          dispatched.push(transaction);
+          state = state.apply(transaction);
+        },
+      };
+      const snapshot = createFolioAIEditSnapshot(state.doc);
+      const tail =
+        snapshot.blocks.find((block) => block.text === TAIL)?.id ?? "";
+      const refused = applyFolioDocumentOperations({
+        undefinedReferences: "refuse",
+        view,
+        snapshot,
+        author: " ",
+        batch: {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode: "tracked-changes",
+          operations: [
+            { id: "a", type: "insertAfterBlock", blockId: tail, text: "One." },
+          ],
+        },
+      });
+      expect(refused.skipped.map(({ reason }) => reason)).toEqual([
+        "invalidResult",
+      ]);
+      expect(dispatched).toEqual([]);
+
+      const accepted = applyFolioDocumentOperations({
+        undefinedReferences: "refuse",
+        view,
+        snapshot,
+        author: "Reviewer",
+        batch: {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode: "tracked-changes",
+          operations: [
+            { id: "a", type: "insertAfterBlock", blockId: tail, text: "One." },
+          ],
+        },
+      });
+      expect(accepted.skipped).toEqual([]);
+      expect(accepted.applied.map(({ id }) => id)).toEqual(["a"]);
+      expect(dispatched).toHaveLength(1);
+    });
+  },
+);
 
 describe("findIntroducedModelErrors", () => {
   test("recognizes existing section part references outside the changed window", () => {
