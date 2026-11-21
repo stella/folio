@@ -33,6 +33,7 @@ import { CANONICAL_RULE } from "../types/canonicalCapabilities";
 import type { Document, Paragraph } from "../types/document";
 import { readModel } from "../types/documentModel";
 import { FolioDocxReviewer, getFolioDocxComparisonAccess } from "./headless";
+import { FolioPendingSuggestionRegistry } from "./pending-suggestions";
 
 beforeEach(() => setSystemTime(new Date("2026-01-02T03:04:05Z")));
 afterEach(() => setSystemTime());
@@ -301,6 +302,38 @@ const proposed = async (entry: (typeof STORIES)[number]) => {
   return { bytes, unlocked: document, locked: lockControl(document, entry) };
 };
 
+/**
+ * Record the proposal the fixture plants in the model, as the reviewer that
+ * made it would hold it: bulk resolution requires every proposal in the
+ * document to have its record.
+ */
+const recordPlantedProposal = (
+  reviewer: FolioDocxReviewer,
+  entry: (typeof STORIES)[number],
+): void => {
+  const registry: unknown = Reflect.get(reviewer, "pendingSuggestions");
+  if (!(registry instanceof FolioPendingSuggestionRegistry))
+    panic("The reviewer must hold a suggestion registry.");
+  registry.recordApplied({
+    snapshot:
+      reviewer.snapshotStory(entry.handle) ??
+      panic("The fixture story must exist."),
+    story: entry.handle,
+    operations: [
+      {
+        id: PROPOSAL,
+        type: "replaceInBlock",
+        blockId: entry.free,
+        find: "Free",
+        replace: "Free proposed",
+      },
+    ],
+    applied: [{ id: PROPOSAL, suggestionId: PROPOSAL }],
+    author: "Proposer",
+    activeSuggestionIds: new Set([PROPOSAL]),
+  });
+};
+
 for (const entry of STORIES) {
   test(`${entry.handle.type}: one held part refuses rejection of the whole proposal atomically`, async () => {
     const { unlocked, locked } = await proposed(entry);
@@ -371,6 +404,7 @@ for (const entry of STORIES) {
         session: "canonical",
       });
       if (owner === undefined) panic("The reviewer must own a real session.");
+      recordPlantedProposal(reviewer, entry);
       expect(
         reviewer.readReviewedStory({
           story: entry.handle,

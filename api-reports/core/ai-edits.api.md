@@ -933,9 +933,12 @@ export class FolioPendingSuggestionRegistry {
     exportPendingSuggestions(input: ExportPendingSuggestionsOptions): FolioPendingSuggestionRecord[];
     // (undocumented)
     loadPendingSuggestions(input: LoadPendingSuggestionsOptions): FolioPendingSuggestionLoadResult[];
+    placeRemovedAnchors(input: PlaceRemovedAnchorsOptions): void;
+    prepareAbsorption(input: PrepareAbsorptionOptions): AbsorptionStep | null;
     // (undocumented)
     recordApplied(input: RecordAppliedOptions): void;
     replaceRestagedStory(input: ReplaceRestagedStoryOptions): void;
+    suggestionIds(): Set<string>;
 }
 
 // @public (undocumented)
