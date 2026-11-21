@@ -87,6 +87,28 @@ const SHAPES: readonly RepairShape[] = [
     repairs: [PARSE_WARNING_CODES.unpairedCommentRangeBoundary],
   },
   {
+    name: "a comment repeating its reference",
+    part: DOCUMENT_PART,
+    rewrite: (xml) =>
+      replaceOnce(
+        xml,
+        marker("commentReference", RESOLVED_COMMENT_ID),
+        `${marker("commentReference", RESOLVED_COMMENT_ID)}</w:r><w:r>${marker("commentReference", RESOLVED_COMMENT_ID)}`,
+      ),
+    repairs: [PARSE_WARNING_CODES.duplicateCommentReference],
+  },
+  {
+    name: "a range boundary between a table's rows and one between a row's cells, each without its partner",
+    part: DOCUMENT_PART,
+    rewrite: (xml) => {
+      const cell =
+        '<w:tc><w:tcPr><w:tcW w:w="2000" w:type="dxa"/></w:tcPr><w:p><w:r><w:t>Cell</w:t></w:r></w:p></w:tc>';
+      const table = `<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/></w:tblPr><w:tblGrid><w:gridCol w:w="2000"/></w:tblGrid><w:tr>${cell}</w:tr>${marker("commentRangeEnd", RESOLVED_COMMENT_ID)}<w:tr>${cell}${marker("commentRangeStart", "2")}</w:tr></w:tbl><w:p/>`;
+      return replaceOnce(xml, "<w:sectPr", `${table}<w:sectPr`);
+    },
+    repairs: [PARSE_WARNING_CODES.unpairedCommentRangeBoundary],
+  },
+  {
     name: "a comment repeating its own paragraph id",
     part: COMMENTS_PART,
     rewrite: (xml) => {

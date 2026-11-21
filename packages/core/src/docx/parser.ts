@@ -75,6 +75,7 @@ import {
 import { parseComments } from "./commentParser";
 import {
   DANGLING_COMMENT_REFERENCE_WARNING,
+  DUPLICATE_COMMENT_REFERENCE_WARNING,
   normalizeCommentReferences,
   UNBALANCED_COMMENT_RANGE_WARNING,
   UNPAIRED_COMMENT_RANGE_BOUNDARY_WARNING,
@@ -782,6 +783,12 @@ export async function parseDocxWithPreviewBudget(
       parseContext.warn({
         code: UNPAIRED_COMMENT_RANGE_BOUNDARY_WARNING,
         count: commentReferenceNormalization.droppedUnpairedBoundaries,
+      });
+    }
+    if (commentReferenceNormalization.droppedDuplicateReferences > 0) {
+      parseContext.warn({
+        code: DUPLICATE_COMMENT_REFERENCE_WARNING,
+        count: commentReferenceNormalization.droppedDuplicateReferences,
       });
     }
     const headerFooterReferenceNormalization = normalizeHeaderFooterReferences({

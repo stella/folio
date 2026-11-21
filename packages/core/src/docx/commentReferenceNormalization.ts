@@ -1,6 +1,6 @@
 import {
   PARSE_WARNING_CODES,
-  type PreservedChild,
+  type PreservedMarkup,
 } from "@stll/docx-core/model";
 import { preservedCommentRangeMarkersAt } from "@stll/docx-core/ops";
 
@@ -25,6 +25,8 @@ export const UNBALANCED_COMMENT_RANGE_WARNING: "unbalanced-comment-range" =
   PARSE_WARNING_CODES.unbalancedCommentRange;
 export const UNPAIRED_COMMENT_RANGE_BOUNDARY_WARNING: "unpaired-comment-range-boundary" =
   PARSE_WARNING_CODES.unpairedCommentRangeBoundary;
+export const DUPLICATE_COMMENT_REFERENCE_WARNING: "duplicate-comment-reference" =
+  PARSE_WARNING_CODES.duplicateCommentReference;
 
 type NormalizeCommentReferencesInput = {
   documentBody: DocumentBody;
@@ -40,6 +42,8 @@ type NormalizeCommentReferencesResult = {
   reanchoredUnbalancedRanges: number;
   /** Boundaries with no partner, dropped because a reference anchors their comment. */
   droppedUnpairedBoundaries: number;
+  /** References repeating one their comment already has, dropped. */
+  droppedDuplicateReferences: number;
 };
 
 /** Where a range marker sits, which decides how it can be repaired. */
@@ -48,7 +52,7 @@ const COMMENT_RANGE_MARKER_SITES = {
   inline: "inline",
   /** Between blocks: it can go back to the bytes it was, read by nobody. */
   block: "block",
-  /** Between a table's rows or a row's cells, as positioned markup: kept as written. */
+  /** Between a table's rows or a row's cells, as positioned markup: it can be removed. */
   positioned: "positioned",
 } as const;
 
@@ -63,12 +67,28 @@ type CommentRangeMarkerSite =
       blocks: BlockContent[];
       index: number;
     }
-  | { type: typeof COMMENT_RANGE_MARKER_SITES.positioned };
+  | {
+      type: typeof COMMENT_RANGE_MARKER_SITES.positioned;
+      /** The table or row whose positioned markup holds the boundary. */
+      owner: { preserved?: PreservedMarkup };
+      child: PreservedChildOf;
+    };
+
+type PreservedChildOf = NonNullable<PreservedMarkup["children"]>[number];
 
 type CommentRangeMarkerRef = {
   site: CommentRangeMarkerSite;
   id: number;
   type: "commentRangeStart" | "commentRangeEnd";
+  /** Its place among every comment anchor, in document order. */
+  order: number;
+};
+
+type CommentReferenceRef = {
+  content: ParagraphContent[];
+  index: number;
+  id: number;
+  order: number;
 };
 
 type BlockCommentRangeMarker = Extract<
@@ -86,9 +106,11 @@ export const normalizeCommentReferences = ({
 }: NormalizeCommentReferencesInput): NormalizeCommentReferencesResult => {
   const validCommentIds = new Set(comments.map((comment) => comment.id));
   const rangeMarkers: CommentRangeMarkerRef[] = [];
+  const references: CommentReferenceRef[] = [];
   const referencedIds = new Set<number>();
   const removals = new InlineContentRemovals();
   let removedDanglingReferences = 0;
+  let order = 0;
 
   // Reading, repairing and removing run as three passes because a removal
   // shifts every later index in its array: the indices collected here stay
@@ -100,12 +122,16 @@ export const normalizeCommentReferences = ({
         removedDanglingReferences += 1;
         return;
       }
-      if (item.type === "commentReference") referencedIds.add(item.id);
+      if (item.type === "commentReference") {
+        referencedIds.add(item.id);
+        references.push({ content, index, id: item.id, order: order++ });
+      }
       if (isCommentRangeMarker(item)) {
         rangeMarkers.push({
           site: { type: COMMENT_RANGE_MARKER_SITES.inline, content, index },
           id: item.id,
           type: item.type,
+          order: order++,
         });
       }
     });
@@ -116,40 +142,42 @@ export const normalizeCommentReferences = ({
   // in document order; without them a range that closes after the last row
   // looks unbalanced and its paragraph-side marker would be rewritten.
   const collectPositionedMarkers = (
-    children: readonly PreservedChild[] | undefined,
+    owner: { preserved?: PreservedMarkup },
     gap: { at: number; childCount: number },
   ): void => {
-    for (const { id, type } of preservedCommentRangeMarkersAt(children, gap)) {
-      if (validCommentIds.has(id))
-        rangeMarkers.push({
-          site: { type: COMMENT_RANGE_MARKER_SITES.positioned },
-          id,
-          type,
-        });
+    for (const child of owner.preserved?.children ?? []) {
+      // One child at a time, so each boundary keeps the markup it came from.
+      for (const { id, type } of preservedCommentRangeMarkersAt([child], gap)) {
+        if (validCommentIds.has(id))
+          rangeMarkers.push({
+            site: { type: COMMENT_RANGE_MARKER_SITES.positioned, owner, child },
+            id,
+            type,
+            order: order++,
+          });
+      }
     }
   };
 
   const normalizeTable = (table: Table): void => {
-    const tableChildren = table.preserved?.children;
     for (const [rowIndex, row] of table.rows.entries()) {
-      collectPositionedMarkers(tableChildren, {
+      collectPositionedMarkers(table, {
         at: rowIndex,
         childCount: table.rows.length,
       });
-      const rowChildren = row.preserved?.children;
       for (const [cellIndex, cell] of row.cells.entries()) {
-        collectPositionedMarkers(rowChildren, {
+        collectPositionedMarkers(row, {
           at: cellIndex,
           childCount: row.cells.length,
         });
         normalizeBlocks(cell.content);
       }
-      collectPositionedMarkers(rowChildren, {
+      collectPositionedMarkers(row, {
         at: row.cells.length,
         childCount: row.cells.length,
       });
     }
-    collectPositionedMarkers(tableChildren, {
+    collectPositionedMarkers(table, {
       at: table.rows.length,
       childCount: table.rows.length,
     });
@@ -168,6 +196,7 @@ export const normalizeCommentReferences = ({
             site: { type: COMMENT_RANGE_MARKER_SITES.block, blocks, index },
             id: block.id,
             type: block.type,
+            order: order++,
           });
         }
         return;
@@ -235,13 +264,53 @@ export const normalizeCommentReferences = ({
 
   const repaired = repairUnpairedCommentRanges(rangeMarkers, referencedIds);
   for (const slot of repaired.removed) removals.mark(slot);
+  const duplicates = duplicateReferences(references, repaired.kept);
+  for (const slot of duplicates) removals.mark(slot);
   removals.apply();
 
   return {
     removedDanglingReferences,
     reanchoredUnbalancedRanges: repaired.reanchored,
-    droppedUnpairedBoundaries: repaired.removed.length + repaired.unread,
+    droppedUnpairedBoundaries:
+      repaired.removed.length + repaired.unread + repaired.unpositioned,
+    droppedDuplicateReferences: duplicates.length,
   };
+};
+
+/**
+ * A comment's references after its first: each comment keeps one. Where it
+ * keeps one paired range, the reference it keeps is the first after that
+ * range's end, as a reference follows its range; otherwise its first.
+ */
+const duplicateReferences = (
+  references: readonly CommentReferenceRef[],
+  kept: readonly CommentRangeMarkerRef[],
+): CommentReferenceRef[] => {
+  const byId = new Map<number, CommentReferenceRef[]>();
+  for (const reference of references) {
+    const own = byId.get(reference.id);
+    if (own === undefined) byId.set(reference.id, [reference]);
+    else own.push(reference);
+  }
+  const ends = new Map<number, number[]>();
+  for (const marker of kept) {
+    if (marker.type !== "commentRangeEnd") continue;
+    const own = ends.get(marker.id);
+    if (own === undefined) ends.set(marker.id, [marker.order]);
+    else own.push(marker.order);
+  }
+  const dropped: CommentReferenceRef[] = [];
+  for (const [id, own] of byId) {
+    if (own.length < 2) continue;
+    const [end, ...more] = ends.get(id) ?? [];
+    const keeper =
+      (end !== undefined && more.length === 0
+        ? own.find(({ order: at }) => at > end)
+        : undefined) ?? own.at(0);
+    for (const reference of own)
+      if (reference !== keeper) dropped.push(reference);
+  }
+  return dropped;
 };
 
 /** A block-level range marker as the bytes it was, which no reader reads. */
@@ -260,15 +329,20 @@ type RepairUnpairedCommentRangesResult = {
   removed: { content: ParagraphContent[]; index: number }[];
   /** Boundaries between blocks turned back into the bytes they were. */
   unread: number;
+  /** Boundaries between a table's rows or a row's cells, removed. */
+  unpositioned: number;
+  /** The boundaries the repair leaves in place, in document order. */
+  kept: CommentRangeMarkerRef[];
 };
 
 /**
  * Leave each comment one reference and its paired range. A boundary with no
  * partner anchors its comment as a point when nothing else does: the first
  * inline one becomes the comment's reference. Every other such boundary is
- * dropped, the comment staying anchored by its reference; a boundary only
- * positioned markup holds stays as written. A comment no reference anchors
- * keeps its boundaries, so no comment loses its last anchor.
+ * dropped, the comment staying anchored by its reference, between a table's
+ * rows or a row's cells as much as inside a paragraph. A comment no
+ * reference anchors keeps its boundaries, so no comment loses its last
+ * anchor.
  */
 const repairUnpairedCommentRanges = (
   rangeMarkers: readonly CommentRangeMarkerRef[],
@@ -288,6 +362,8 @@ const repairUnpairedCommentRanges = (
     reanchored: 0,
     removed: [],
     unread: 0,
+    unpositioned: 0,
+    kept: [],
   };
   for (const [id, markers] of byId) {
     const unpaired = unpairedMarkers(markers);
@@ -296,10 +372,15 @@ const repairUnpairedCommentRanges = (
       point = unpaired.find(
         ({ site }) => site.type === COMMENT_RANGE_MARKER_SITES.inline,
       );
-      if (point?.site.type !== COMMENT_RANGE_MARKER_SITES.inline) continue;
+      if (point?.site.type !== COMMENT_RANGE_MARKER_SITES.inline) {
+        result.kept.push(...markers);
+        continue;
+      }
       point.site.content[point.site.index] = { type: "commentReference", id };
       result.reanchored += 1;
     }
+    const gone = new Set(unpaired);
+    result.kept.push(...markers.filter((marker) => !gone.has(marker)));
     for (const marker of unpaired) {
       if (marker !== point) dropUnpairedMarker(marker.site, result);
     }
@@ -345,8 +426,20 @@ const dropUnpairedMarker = (
       result.unread += 1;
       return;
     }
-    case COMMENT_RANGE_MARKER_SITES.positioned:
+    case COMMENT_RANGE_MARKER_SITES.positioned: {
+      const { owner, child } = site;
+      const children = owner.preserved?.children ?? [];
+      const at = children.indexOf(child);
+      if (at < 0) return;
+      children.splice(at, 1);
+      result.unpositioned += 1;
+      // An empty record is never written.
+      if (children.length > 0 || owner.preserved === undefined) return;
+      const { children: _empty, ...rest } = owner.preserved;
+      if (Reflect.ownKeys(rest).length === 0) delete owner.preserved;
+      else owner.preserved = rest;
       return;
+    }
     default: {
       const unhandled: never = site;
       return unhandled;

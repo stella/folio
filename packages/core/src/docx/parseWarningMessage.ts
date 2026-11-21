@@ -56,6 +56,8 @@ const PARSE_WARNING_MESSAGES = {
     `Re-anchored ${plural(warning.count, "unbalanced comment range marker")} as point comments.`,
   [PARSE_WARNING_CODES.unpairedCommentRangeBoundary]: (warning) =>
     `Dropped ${plural(warning.count, "unpaired comment range boundary", "unpaired comment range boundaries")}; each comment stays anchored at its reference.`,
+  [PARSE_WARNING_CODES.duplicateCommentReference]: (warning) =>
+    `Dropped ${plural(warning.count, "comment reference")} repeating one its comment already has.`,
   [PARSE_WARNING_CODES.repeatedCommentParagraphId]: (warning) =>
     `Gave ${plural(warning.count, "comment paragraph")} repeating an earlier paragraph's w14:paraId a minted id.`,
   [PARSE_WARNING_CODES.danglingHeaderReference]: (warning) =>
