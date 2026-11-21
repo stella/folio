@@ -273,6 +273,60 @@ export type BlockBoundary = Exclude<Boundary, CommentAnchor>;
 export const isBlockBoundary = (block: BlockContent): block is BlockBoundary =>
   Object.hasOwn(BOUNDARY_SIDES, block.type);
 
+/** Whether `blocks` holds a range boundary at `index`. */
+const blockBoundaryAt = (
+  blocks: readonly BlockContent[],
+  index: number,
+): boolean => {
+  const block = blocks[index];
+  return block !== undefined && isBlockBoundary(block);
+};
+
+/**
+ * The index of the block a resolution joining the paragraph `paragraph` at
+ * `index` of `blocks` joins it with: the next block, past the range
+ * boundaries standing between them unless the paragraph ends a section.
+ * They go into the joined paragraph where the two meet.
+ */
+export const joinFollowerIndex = (
+  blocks: readonly BlockContent[],
+  { paragraph, index }: { paragraph: Paragraph; index: number },
+): number => {
+  let follower = index + 1;
+  while (
+    paragraph.sectionProperties === undefined &&
+    blockBoundaryAt(blocks, follower)
+  )
+    follower += 1;
+  return follower;
+};
+
+/**
+ * The paragraph that resolving a pending change of a paragraph mark can
+ * join with the paragraph at `index` of `blocks`, on `side`: the one whose
+ * mark it is before it, the one its own mark joins after it. `undefined`
+ * when none can.
+ */
+export const joinNeighbour = (
+  blocks: readonly BlockContent[],
+  { index, side }: { index: number; side: "before" | "after" },
+): Paragraph | undefined => {
+  const paragraph = blocks[index];
+  if (paragraph?.type !== "paragraph") return undefined;
+  if (side === "after") {
+    const follower = blocks[joinFollowerIndex(blocks, { paragraph, index })];
+    return follower?.type === "paragraph" ? follower : undefined;
+  }
+  let previousAt = index - 1;
+  while (blockBoundaryAt(blocks, previousAt)) previousAt -= 1;
+  const previous = blocks[previousAt];
+  return previous?.type === "paragraph" &&
+    joinFollowerIndex(blocks, { paragraph: previous, index: previousAt }) ===
+      index
+    ? previous
+    : undefined;
+};
+
 /** Every range boundary in `content`, at any depth, in document order. */
 export const rangeBoundariesIn = (content: readonly InlineNode[]): Boundary[] =>
   content.flatMap((node) =>
