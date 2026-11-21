@@ -43,6 +43,7 @@ import {
   idKey,
   type IdLease,
   introducedDocumentIds,
+  isBlockBoundary,
   isCommentAnchorCarrierType,
   type LeasedId,
   leasedIdCensus,
@@ -2119,10 +2120,21 @@ const mergeIntentsAsItRuns = ({
   }
   if (!bindsToNext) return separatorAtEnd;
   const next = locations[at + 1];
+  // Range boundaries may stand between the two, where no section ends: the
+  // join crosses them as resolving a mark does.
+  const between = locateParagraphThroughTextBoxes(
+    document,
+    story,
+    join.blockId,
+  )?.blocks.slice(here.index + 1, next?.index ?? here.index + 1);
   const follows =
     next !== undefined &&
-    here.index + 1 === next.index &&
-    JSON.stringify(here.list) === JSON.stringify(next.list);
+    JSON.stringify(here.list) === JSON.stringify(next.list) &&
+    (here.index + 1 === next.index ||
+      (here.paragraph.sectionProperties === undefined &&
+        between !== undefined &&
+        between.length === next.index - here.index - 1 &&
+        between.every(isBlockBoundary)));
   const nextId = follows ? next.paragraph.paraId : undefined;
   if (nextId === undefined) return undefined;
   const boundToNext = (intent: EditorIntent): EditorIntent => {

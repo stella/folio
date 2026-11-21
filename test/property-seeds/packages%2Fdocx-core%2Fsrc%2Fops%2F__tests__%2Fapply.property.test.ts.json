@@ -29,6 +29,12 @@
       "path": "3475:0:0:0:0:0:0:4:3:3:3:3:3:3:3:3:3:3:3:3:3:3:5:1:1:1:1:1:1:1:1:4:6:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:9:7:9:9:9:9:9:9:9:9:20:13:23:23:23:23:23:24:24:24:24:24:24:25:25:25:25:25:25:25:25:25:25:25:25:25:25",
       "date": "2026-10-23",
       "note": "A replacement that removes the final note reference reports its equal but replaced survivor record as touched."
+    },
+    {
+      "seed": 479996386,
+      "path": "3326:0:0:0:0:0:0:4:3:3:3:3:3:3:3:4:4:4:4:4:4:4:4:4:4:14:10:4:16:16:19:18:17:19:17:17:18:17:17:17:18:17:17:17:17:17:17:17:17:17:18:17:18:17:17:17:18:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20",
+      "date": "2026-11-21",
+      "note": "A block-list rewrite keeps each range boundary's own record when an equal boundary stands beside it."
     }
   ],
   "coalesced formatting keeps the first baseline and latest author": [
