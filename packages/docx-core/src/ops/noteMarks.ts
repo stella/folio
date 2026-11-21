@@ -12,7 +12,12 @@ import type {
 import { storyParagraphs, updateBlockList } from "./blocks";
 import { type InlineNode, leafSpans, nestedRecords } from "./leaves";
 import { changedListBounds } from "./listSplice";
-import { documentStories, sameStory, storyBody } from "./stories";
+import {
+  documentStories,
+  findStoryBody,
+  sameStory,
+  storyBody,
+} from "./stories";
 import type { NoteStory } from "./types";
 
 export type NoteReferenceSpan = {
@@ -106,6 +111,79 @@ export const noteUsesCustomMark = (
 
 export const noteReferenceKey = (kind: NoteStory["kind"], id: number) =>
   `${kind}:${String(id)}`;
+
+export const noteReferenceKind = (
+  node: NoteReferenceSpan["node"],
+): NoteStory["kind"] => (node.type === "footnoteRef" ? "footnote" : "endnote");
+
+/** The deletion holding a reference, if one does: a reference no deletion holds is live. */
+const referenceDeletion = ({
+  ancestors,
+}: NoteReferenceSpan):
+  Extract<InlineNode, { type: "deletion" }> | undefined => {
+  const deletion = ancestors.find((ancestor) => ancestor.type === "deletion");
+  return deletion?.type === "deletion" ? deletion : undefined;
+};
+
+/** The notes paragraphs refer to through a reference no deletion holds. */
+export const liveNoteReferenceKeys = (
+  paragraphs: readonly { paragraph: Paragraph }[],
+): Set<string> => {
+  const live = new Set<string>();
+  for (const { paragraph } of paragraphs)
+    for (const span of noteReferenceSpans(paragraph.content))
+      if (referenceDeletion(span) === undefined)
+        live.add(noteReferenceKey(noteReferenceKind(span.node), span.node.id));
+  return live;
+};
+
+/** A note an edit left with no live reference, and the deletion holding one of its references. */
+export type NoteLosingLiveReference = {
+  story: NoteStory;
+  deletion: NonNullable<ReturnType<typeof referenceDeletion>>;
+};
+
+/**
+ * The notes `before` refers to through a live reference and `after` only
+ * through deleted ones, in any story. Only the top-level blocks an edit
+ * replaced are read for the references it took, and the whole document only
+ * when it took one.
+ */
+export const notesLosingLiveReferences = (
+  before: Document,
+  after: Document,
+): NoteLosingLiveReference[] => {
+  const lost = new Set<string>();
+  for (const story of documentStories(after)) {
+    const old = findStoryBody(before, story)?.content;
+    const now = storyBody(after, story).content;
+    if (old === undefined || old === now) continue;
+    const { start, previousEnd, end } = changedListBounds(old, now);
+    const was = liveNoteReferenceKeys(
+      storyParagraphs({ content: old.slice(start, previousEnd) }),
+    );
+    const is = liveNoteReferenceKeys(
+      storyParagraphs({ content: now.slice(start, end) }),
+    );
+    for (const key of was) if (!is.has(key)) lost.add(key);
+  }
+  if (lost.size === 0) return [];
+  const found = new Map<string, NoteLosingLiveReference>();
+  for (const story of documentStories(after))
+    for (const { paragraph } of storyParagraphs(storyBody(after, story)))
+      for (const span of noteReferenceSpans(paragraph.content)) {
+        const kind = noteReferenceKind(span.node);
+        const key = noteReferenceKey(kind, span.node.id);
+        if (!lost.has(key)) continue;
+        const deletion = referenceDeletion(span);
+        if (deletion === undefined) {
+          lost.delete(key);
+          found.delete(key);
+        } else if (!found.has(key))
+          found.set(key, { story: { kind, id: span.node.id }, deletion });
+      }
+  return [...found.values()];
+};
 
 /** The notes one paragraph references. */
 const paragraphNoteKeys = (paragraph: Paragraph): readonly string[] => {
