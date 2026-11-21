@@ -25,13 +25,6 @@ type KeptCutCarrier = Extract<InlineNode, { keptCut?: KeptCut }>;
 const carriesKeptCut = (node: InlineNode): node is KeptCutCarrier =>
   isBoundary(node);
 
-/** The sides a kept marker can name as its cut's piece. */
-export const KEPT_CUT_PIECES = {
-  before: "before",
-  after: "after",
-  both: "both",
-} as const satisfies { [Piece in KeptCutPiece]: Piece };
-
 /**
  * `node` marked as standing in `cut`, when it is a range marker. A marker
  * already standing in a cut keeps the revision it was first kept from and
@@ -314,15 +307,15 @@ const withKeptCutsFromChanges = (
     const across = before.find((group) => afterSeams.has(seamOf(group)));
     const group = across ?? after.at(0) ?? before.at(0);
     if (group?.keptFrom !== undefined) {
-      let piece: KeptCutPiece = KEPT_CUT_PIECES.before;
-      if (across !== undefined) piece = KEPT_CUT_PIECES.both;
-      else if (after.includes(group)) piece = KEPT_CUT_PIECES.after;
+      let piece: KeptCutPiece = "before";
+      if (across !== undefined) piece = "both";
+      else if (after.includes(group)) piece = "after";
       const cut = {
         keptFrom: group.keptFrom,
         depth: group.depth,
         count: group.keptCount ?? Number.POSITIVE_INFINITY,
       };
-      if (piece === KEPT_CUT_PIECES.after) mark(end - 1, -1, cut, piece);
+      if (piece === "after") mark(end - 1, -1, cut, piece);
       else mark(start, 1, cut, piece);
     }
     start = end;
@@ -342,6 +335,12 @@ const keptBoundaryCount = (node: InlineNode): number =>
   node.type === "deletion"
     ? node.content.reduce((sum, child) => sum + keptBoundaryCount(child), 0)
     : 1;
+
+const KEPT_CUT_PIECES = {
+  before: true,
+  after: true,
+  both: true,
+} as const satisfies Record<KeptCutPiece, true>;
 
 const KEPT_CUT_FIELDS = {
   depth: true,
