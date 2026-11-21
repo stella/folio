@@ -137,33 +137,21 @@ describe.each(SESSIONS)("%s session", (session) => {
       },
       { undefinedReferences: "refuse" },
     );
+    expect(result.applied.map(({ id }) => id)).toEqual(["tall"]);
+    expect(result.skipped).toEqual([
+      expect.objectContaining({ id: "short", reason: "unsupportedBlock" }),
+    ]);
     const reading = await readReviewerTables(direct);
     expect(tableReadingProblems(reading)).toEqual([]);
     const rightCells = reading.snapshot
       .at(0)
       ?.cells.filter(({ column }) => column === 2);
-    if (session === "legacy") {
-      // Legacy refuses the shorter merge rather than read shifted rows.
-      expect(result.applied.map(({ id }) => id)).toEqual(["tall"]);
-      expect(result.skipped).toEqual([
-        { id: "short", reason: "unsupportedBlock" },
-      ]);
-      expect(rightCells?.map(({ text, rowSpan }) => [text, rowSpan])).toEqual([
-        ["right-top", 1],
-        ["right-middle", 1],
-        ["", 1],
-        ["right-bottom", 1],
-      ]);
-    } else {
-      // Canonical addresses the shorter merge by its cells, so it merges the
-      // original rows 2..3; the emptied row 3 then closes as well.
-      expect(result.applied.map(({ id }) => id)).toEqual(["tall", "short"]);
-      expect(rightCells?.map(({ text, rowSpan }) => [text, rowSpan])).toEqual([
-        ["right-top", 1],
-        ["right-middle", 1],
-        ["right-bottom", 1],
-      ]);
-    }
+    expect(rightCells?.map(({ text, rowSpan }) => [text, rowSpan])).toEqual([
+      ["right-top", 1],
+      ["right-middle", 1],
+      ["", 1],
+      ["right-bottom", 1],
+    ]);
     for (const { text } of spec.cells) {
       if (text !== "") expect(reading.texts.join("\n")).toContain(text);
     }
@@ -286,6 +274,59 @@ describe.each(SESSIONS)("%s session", (session) => {
         expect(tableReadingProblems(reading)).toEqual([]);
       }
     });
+  });
+
+  describe("a split beside a merge that removes a row", () => {
+    /** `A1` merged down over two rows; `B1` over a blank `B2`. */
+    const SPLIT_AND_MERGE: TableSpec = {
+      rows: 2,
+      columns: 2,
+      cells: [
+        { row: 0, column: 0, rowSpan: 2, columnSpan: 1, text: "A1" },
+        { row: 0, column: 1, rowSpan: 1, columnSpan: 1, text: "B1" },
+        { row: 1, column: 1, rowSpan: 1, columnSpan: 1, text: "" },
+      ],
+    };
+
+    // Merging B1 over B2 leaves the second row nothing of its own, so the
+    // row goes and the cell the split names no longer spans it. The split
+    // is refused in both modes, whatever the order.
+    test.each(["direct", "tracked-changes"] as const)(
+      "is refused (%s)",
+      async (mode) => {
+        const reviewer = await open(await buildTableDocx(SPLIT_AND_MERGE));
+        const result = reviewer.applyDocumentOperations(
+          {
+            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+            mode,
+            operations: [
+              {
+                id: "split",
+                type: "splitTableCell",
+                blockId: blockId(reviewer, "A1"),
+              },
+              {
+                id: "merge",
+                type: "mergeTableCells",
+                blockId: blockId(reviewer, "B1"),
+                rowCount: 2,
+              },
+            ],
+          },
+          { undefinedReferences: "refuse" },
+        );
+        expect(result.skipped).toContainEqual(
+          expect.objectContaining({ id: "split", reason: "unsupportedBlock" }),
+        );
+        // Legacy refuses the merge too: it takes no merge and split in one
+        // table.
+        const reading =
+          mode === "direct" || result.applied.length === 0
+            ? await readReviewerTables(reviewer)
+            : await resolveTracked(reviewer, "accept");
+        expect(tableReadingProblems(reading)).toEqual([]);
+      },
+    );
   });
 
   describe("deleting the column beside a vertical merge", () => {
