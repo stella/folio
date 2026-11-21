@@ -812,7 +812,7 @@ export type KeptCut = WritableRecord & {
 };
 
 // @public
-export type KeptCutPiece = "before" | "after";
+export type KeptCutPiece = "before" | "after" | "both";
 
 // @public
 export const knownThemeColor: (value: DeepReadonly<ThemeColorValue>) => ThemeColor | undefined;
