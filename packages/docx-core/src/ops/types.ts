@@ -517,6 +517,8 @@ export const PROPERTY_REVIEW_POLICIES: Readonly<{
  * and `joinEnd` must be absent.
  * `propertyReview: "append"` coalesces an editor action into one pending review.
  * It retains the first baseline and records the latest formatter's metadata.
+ * A suggestion's patch of a run whose pending change is not that suggestion's
+ * is refused: rejecting the suggestion would discard the other change too.
  */
 export type SetRunPropsOp = {
   type: typeof DOCUMENT_OP_TYPES.SET_RUN_PROPS;
