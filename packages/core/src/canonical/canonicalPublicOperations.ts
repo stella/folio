@@ -85,6 +85,8 @@ import { compileMarkdownInsertion } from "../ai-edits/markdownInsertion";
 import { createBatchListMinter } from "../ai-edits/newListNumbering";
 import {
   cutsIntoNoteReference,
+  endsWithNoteReference,
+  noteReferenceEditsAllowed,
   type NoteReferenceLabels,
   noteReferenceSpansWithin,
   segmentsAroundNoteReferences,
@@ -1138,6 +1140,65 @@ type ProjectedParagraph = NonNullable<
  */
 type ListStartPlace = { blockId: string; position: number };
 
+type CleanTextChange = { start: number; end: number; text: string };
+
+type ChangesTakingWholeReferencesOptions = {
+  /** Disjoint, in order, as clean-text offsets of the paragraph. */
+  changes: readonly CleanTextChange[];
+  /** The paragraph's clean text. */
+  text: string;
+  /** The note references the replaced range holds, as clean-text spans. */
+  references: readonly { offset: number; length: number }[];
+};
+
+/**
+ * A comparison's replacement changes with each one that touches a note
+ * reference widened over the whole reference, so the reference is struck and
+ * its marker written again rather than cut; changes the widening makes meet
+ * become one.
+ */
+const changesTakingWholeReferences = ({
+  changes,
+  text,
+  references,
+}: ChangesTakingWholeReferencesOptions): CleanTextChange[] => {
+  const extent = ({ start, end }: CleanTextChange) => {
+    let from = start;
+    let to = end;
+    for (const { offset, length } of references) {
+      const touches =
+        from < offset + length &&
+        (to > offset || (from === to && from > offset));
+      if (!touches) continue;
+      from = Math.min(from, offset);
+      to = Math.max(to, offset + length);
+    }
+    return { from, to };
+  };
+  const regions: { from: number; to: number; members: CleanTextChange[] }[] =
+    [];
+  for (const change of changes) {
+    const { from, to } = extent(change);
+    const last = regions.at(-1);
+    if (last !== undefined && from <= last.to) {
+      last.to = Math.max(last.to, to);
+      last.members.push(change);
+      continue;
+    }
+    regions.push({ from, to, members: [change] });
+  }
+  return regions.map(({ from, to, members }) => {
+    let position = from;
+    let replacement = "";
+    for (const member of members) {
+      replacement += text.slice(position, member.start) + member.text;
+      position = member.end;
+    }
+    replacement += text.slice(position, to);
+    return { start: from, end: to, text: replacement };
+  });
+};
+
 type ResolveBlockInsertionOptions = {
   mintList: ReturnType<typeof createBatchListMinter>;
   operation: BlockInsertion;
@@ -1423,7 +1484,13 @@ const resolveBlockInsertion = ({
       "Canonical public emphasis replacements are unavailable.",
     );
   const inline = operation.lineBreakMode === "inline";
-  if (markdown === undefined && /\[\^(?:e)?\d+\]/u.test(text))
+  // A comparison writes the references its paragraph brings as their
+  // markers, which it turns back into references once the batch lands.
+  if (
+    markdown === undefined &&
+    !noteReferenceEditsAllowed() &&
+    /\[\^(?:e)?\d+\]/u.test(text)
+  )
     return refusal(
       "unsupportedBlock",
       "Canonical block insertion requires plain text.",
@@ -6294,11 +6361,23 @@ export class CanonicalPublicOperations {
     if (cutsIntoNoteReference(clean, start, end))
       return refusal("protectedReference");
     // Only a replacement rewrites the prose between references.
-    const segments = segmentsAroundNoteReferences(
+    const kept = segmentsAroundNoteReferences(
       clean.text.slice(start, end),
       replacesText ? text : clean.text.slice(start, end),
       references,
     );
+    // A comparison also removes references and writes new ones as their
+    // markers (turned back into references once the batch lands): its
+    // replacement is one piece, and a change touching a reference takes the
+    // whole reference.
+    const editsReferences =
+      kept === null && replacesText && noteReferenceEditsAllowed();
+    const segments = editsReferences
+      ? {
+          source: [{ offset: 0, text: clean.text.slice(start, end) }],
+          replacement: [text],
+        }
+      : kept;
     if (segments === null) return refusal("protectedReference");
     const prose = replacesText ? segments.replacement.join("") : "";
     if (stripInlineEmphasisMarkers(text) !== text)
@@ -6306,7 +6385,12 @@ export class CanonicalPublicOperations {
         "unsupportedBlock",
         "Canonical public emphasis replacements are unavailable.",
       );
-    if (/\[\^(?:e)?\d+\]/u.test(prose))
+    if (
+      (!editsReferences && /\[\^(?:e)?\d+\]/u.test(prose)) ||
+      // A tab or line feed is written as its element; a carriage return
+      // names no element of its own.
+      /\r/u.test(prose)
+    )
       return refusal(
         "unsupportedBlock",
         "Canonical public replacements require plain text.",
@@ -6508,24 +6592,34 @@ export class CanonicalPublicOperations {
         }
         if (pending) changes.push(pending);
       }
+      if (editsReferences)
+        changes.splice(
+          0,
+          changes.length,
+          ...changesTakingWholeReferences({
+            changes,
+            text: clean.text,
+            references: references.map(({ offset, length }) => ({
+              offset: start + offset,
+              length,
+            })),
+          }),
+        );
       // A tab the replacement repeats from the source is kept: a change that
-      // spans tabs changes the text between them, tab for tab. A tab or break
-      // the replacement adds would be written as text, so it is refused.
+      // spans as many tabs as it writes changes the text between them, tab
+      // for tab. Any other tab or break is written as its element.
       for (let index = changes.length - 1; index >= 0; index -= 1) {
         const change = changes[index];
-        if (change === undefined || !/[\t\r\n]/u.test(change.text)) continue;
+        if (change === undefined || !/[\t\n]/u.test(change.text)) continue;
         const sourceParts = clean.text
           .slice(change.start, change.end)
           .split("\t");
         const replacementParts = change.text.split("\t");
         if (
-          /[\r\n]/u.test(change.text) ||
+          /\n/u.test(change.text) ||
           sourceParts.length !== replacementParts.length
         )
-          return refusal(
-            "unsupportedBlock",
-            "Canonical public replacements require plain text.",
-          );
+          continue;
         const pieces: typeof changes = [];
         let position = change.start;
         for (const [part, sourcePart] of sourceParts.entries()) {
@@ -6551,9 +6645,11 @@ export class CanonicalPublicOperations {
             endOffset: change.end,
           });
           if (!gap) return undefined;
-          // Keep trailing references and struck text outside the replacement.
+          // Keep trailing references and struck text outside the replacement;
+          // a reference the change ends with goes with it whole.
           const lastCharacter =
-            change.end > change.start
+            change.end > change.start &&
+            !endsWithNoteReference(clean, change.start, change.end)
               ? clean.offsets[change.end - 1]
               : undefined;
           // A character an element reads as, such as a field's result, ends
