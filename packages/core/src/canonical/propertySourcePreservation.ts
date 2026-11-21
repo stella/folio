@@ -42,6 +42,16 @@ const collectParagraphs = (blocks: readonly BlockContent[]): Paragraph[] => {
   return paragraphs;
 };
 
+/** The words `node` holds, in order, at any depth. */
+const textOf = (node: unknown): string => {
+  if (Array.isArray(node)) return node.map(textOf).join("");
+  if (typeof node !== "object" || node === null) return "";
+  const text: unknown = Reflect.get(node, "text");
+  if (Reflect.get(node, "type") === "text" && typeof text === "string")
+    return text;
+  return textOf(Reflect.get(node, "content"));
+};
+
 /**
  * The copies that carry each original paragraph's sources onto the derived
  * paragraph with its id, or, for an original without one, onto the derived
@@ -75,10 +85,11 @@ const carriedCopies = (
     });
     if (carried !== next) replaced.set(next, carried);
   }
-  // A paragraph the edit made, as a split's new half, holds the properties
-  // of the paragraph before it as that paragraph had them: it takes that
-  // paragraph's sources too, so properties read from a list or a style stay
-  // read from there and are not written as its own.
+  // A split's new half holds the properties of the paragraph before it as
+  // that paragraph had them, and the words the split took from it: it takes
+  // that paragraph's sources too, so properties read from a list or a style
+  // stay read from there and are not written as its own. A paragraph the
+  // edit wrote from elsewhere keeps the sources it came with.
   const originalById = new Map(
     originalParagraphs.flatMap((paragraph) =>
       paragraph.paraId === undefined
@@ -96,8 +107,10 @@ const carriedCopies = (
         : undefined;
     if (
       source === undefined ||
+      before === undefined ||
       canonicalJson(paragraph.formatting ?? null) !==
-        canonicalJson(source.formatting ?? null)
+        canonicalJson(source.formatting ?? null) ||
+      textOf(source) !== textOf(before) + textOf(paragraph)
     )
       continue;
     const carried = carryParagraphPropertySource({
