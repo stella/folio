@@ -703,10 +703,15 @@ export const deleteBlocks = ({
     found.every(({ paragraph }) => paragraph.sectionProperties === undefined);
   const beforeTable =
     following?.type === "table" && list.at(-1)?.type === "paragraph";
-  const held = commentsHeldBy({
-    body,
-    paragraphs: found.map(({ paragraph }) => paragraph),
-  });
+  // A move carries its words, and their comments, to where it inserts them:
+  // no comment retires with its source.
+  const held =
+    op.move === true
+      ? new Set<number>()
+      : commentsHeldBy({
+          body,
+          paragraphs: found.map(({ paragraph }) => paragraph),
+        });
   if (
     owner !== undefined &&
     (beforeParagraph || beforeTable) &&

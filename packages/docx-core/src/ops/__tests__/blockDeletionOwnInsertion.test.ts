@@ -13,6 +13,7 @@ import type {
   Document,
   Paragraph,
   ParagraphFormatting,
+  Table,
 } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import {
@@ -223,4 +224,58 @@ test("a comment reaching past its own insertion keeps the insertion's words", ()
   const deletion = deleted(withComment.document, undefined);
   expect(deletion.document.package.document.comments).toHaveLength(1);
   expect(undo(deletion)).toStrictEqual(withComment.document);
+});
+
+// A move carries its words to where it inserts them; its source never
+// retires their comment. Before a table it is refused, as it was before
+// comments could retire with a retracted insertion.
+test("the source of a move of its own commented insertion before a table is refused, not stripped of its comment", () => {
+  const table: Table = {
+    type: "table",
+    rows: [
+      {
+        type: "tableRow",
+        cells: [
+          { type: "tableCell", content: [paragraph("00000020", "Cell.")] },
+        ],
+      },
+    ],
+  };
+  const insertion = apply(
+    {
+      package: {
+        document: {
+          content: [
+            paragraph("00000001", "First."),
+            table,
+            paragraph("00000002", "Last."),
+          ],
+        },
+      },
+    },
+    {
+      type: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+      story: OP_STORIES.MAIN,
+      at: { type: "after", blockId: "00000001" },
+      blocks: [paragraph(INSERTED_ID, TEXTS.words)],
+      revision: stampOf(10),
+      newIds: newIds(11),
+    },
+  );
+  const withComment = commented({
+    document: insertion.document,
+    from: { blockId: INSERTED_ID, offset: 0 },
+    to: { blockId: INSERTED_ID, offset: TEXTS.words.length },
+  });
+  const moved = applyDocumentOp(withComment.document, {
+    type: DOCUMENT_OP_TYPES.DELETE_BLOCKS,
+    story: OP_STORIES.MAIN,
+    blockIds: [INSERTED_ID],
+    revision: stampOf(30),
+    move: true,
+    newIds: newIds(31),
+  });
+  expect(moved.isErr() && moved.error.message).toBe(
+    "Deletion would overwrite a paragraph review record.",
+  );
 });
