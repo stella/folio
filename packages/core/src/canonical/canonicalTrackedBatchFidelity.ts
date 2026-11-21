@@ -17,6 +17,10 @@ import {
 import type { BlockContent, Document, Paragraph } from "../types/document";
 import type { createCanonicalBatchReview } from "./canonicalBatchReview";
 import { changedWindow } from "./canonicalSeedContent";
+import {
+  type IsolatedTextChange,
+  verifyWholeTextBatch,
+} from "./canonicalWholeTextFidelity";
 
 type CanonicalTrackedBatchFidelityOptions = {
   review: ReturnType<typeof createCanonicalBatchReview>;
@@ -88,13 +92,6 @@ const localRevisionIds = (paragraph: Paragraph): number[] | undefined => {
   return ids;
 };
 
-type IsolatedTextChange = {
-  before: Paragraph;
-  after: Paragraph;
-  beforeIds: number[];
-  afterIds: number[];
-};
-
 const isolatedTextChanges = (
   before: BlockContent[],
   after: BlockContent[],
@@ -133,13 +130,13 @@ const isolatedTextChanges = (
   return changes;
 };
 
-const resolveIsolatedParagraph = (
-  paragraph: Paragraph,
+const resolveIsolatedParagraphs = (
+  paragraphs: Paragraph[],
   revisionIds: readonly number[],
   decision: RevisionDecision,
 ) => {
   const document: Document = {
-    package: { document: { content: [paragraph] } },
+    package: { document: { content: paragraphs } },
   };
   if (revisionIds.length === 0) return document.package.document.content;
   const resolved = applyDocumentOps(document, [
@@ -159,16 +156,21 @@ const resolveIsolatedParagraph = (
 const checkIsolatedTextChanges = (
   changes: readonly IsolatedTextChange[],
 ): string | null | undefined => {
+  if (
+    verifyWholeTextBatch({ changes, resolve: resolveIsolatedParagraphs })
+      .type === "verified"
+  )
+    return null;
   for (const { before, after, beforeIds, afterIds } of changes) {
-    const original = resolveIsolatedParagraph(before, beforeIds, "reject");
-    const restored = resolveIsolatedParagraph(after, afterIds, "reject");
+    const original = resolveIsolatedParagraphs([before], beforeIds, "reject");
+    const restored = resolveIsolatedParagraphs([after], afterIds, "reject");
     if (original === undefined || restored === undefined) return undefined;
     if (!sameOriginalBlocks(original, restored, new Set())) {
       return "Reject All would change the original content or formatting.";
     }
     if (
-      resolveIsolatedParagraph(before, beforeIds, "accept") === undefined ||
-      resolveIsolatedParagraph(after, afterIds, "accept") === undefined
+      resolveIsolatedParagraphs([before], beforeIds, "accept") === undefined ||
+      resolveIsolatedParagraphs([after], afterIds, "accept") === undefined
     ) {
       return undefined;
     }
