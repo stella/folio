@@ -35,6 +35,7 @@ import {
   paragraphBlockRunInTarget,
   paragraphMarkOutcome,
   paragraphTableRunInBoundary,
+  sectionEndpointRemoval,
   type TableRunInTarget,
 } from "./blockDeletion";
 import {
@@ -4522,19 +4523,28 @@ const joinOps = (
         blocks,
         index: location.index,
       });
-      if (removal.type === "removed")
+      if (removal.type === "removed") {
+        // The mark goes with the break it carries: its section and the one
+        // after it become one under the later section's properties. The
+        // break is removed first, explicitly, so the structural removal and
+        // both inverses keep every other section as it stands.
+        const breakRemoval = sectionEndpointRemoval({ story, location });
         return paragraphMarkPlan(
           [
+            ...breakRemoval.ops,
             {
               type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
               story,
               blockId: anchor.paraId ?? "",
-              expected: blocks,
+              expected: blocks.map((block, index) =>
+                index === location.index ? breakRemoval.paragraph : block,
+              ),
               blocks: removal.blocks,
             },
           ],
           [...removal.effects],
         );
+      }
     } else if (blockTarget !== undefined) {
       // The paragraph goes from around the block, and the receiver, where it
       // stands inside the block, takes what it held.
