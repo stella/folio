@@ -1,6 +1,7 @@
 /**
- * A paragraph inserted beside a list item that a pending deletion takes whole
- * takes no numbering from it: once accepted, that list item is gone.
+ * A paragraph inserted beside a join into a list item that a pending deletion
+ * takes whole takes no numbering from it: once accepted, that list item is
+ * gone. One inserted beside the list item itself copies its numbering.
  */
 import { describe, expect, test } from "bun:test";
 
@@ -129,5 +130,38 @@ describe.each(["legacy", "canonical"] as const)(
           inserted?.kind === "heading" ? inserted.listReference : "missing",
         ).toBeUndefined();
       });
+
+    test("a heading inserted after a deleted list item copies its numbering", async () => {
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await numberedDocument(),
+        { session },
+      );
+      const clause = idOf(reviewer, "Numbered clause one");
+      for (const operation of [
+        { id: "delete", type: "deleteBlock", blockId: clause },
+        {
+          id: "insert",
+          type: "insertAfterBlock",
+          blockId: clause,
+          text: "Inserted heading.",
+          styleId: "Heading2",
+        },
+      ] as const)
+        expect(
+          reviewer.applyDocumentOperations(
+            { version: 1, mode: "tracked-changes", operations: [operation] },
+            { undefinedReferences: "refuse" },
+          ).skipped,
+        ).toEqual([]);
+      const inserted = reviewer
+        .getContent()
+        .find(({ text }) => text === "Inserted heading.");
+      expect(inserted?.kind).toBe("heading");
+      expect(
+        inserted?.kind === "heading"
+          ? inserted.listReference?.numId
+          : "missing",
+      ).toBe(7);
+    });
   },
 );

@@ -943,6 +943,8 @@ type PreparedOperation = {
      * own properties even when the batch joins it to the next one first.
      */
     followsAnchor: boolean;
+    /** The operation names this paragraph, not a paragraph a join reaches. */
+    namesSource: boolean;
     paragraphs: (formatting: ParagraphFormatting | undefined) => Paragraph[];
   };
 } & (
@@ -1187,6 +1189,8 @@ type ResolveBlockInsertionOptions = {
   listStart?: ListStartPlace;
   /** The paragraph the insertion goes beside. */
   paragraph: ProjectedParagraph;
+  /** The paragraph the operation names, which a pending join may move from. */
+  named: ProjectedParagraph;
   /** The paragraph whose stated properties the new paragraph copies. */
   formattingSource: ProjectedParagraph;
   projection: CanonicalProjection;
@@ -1397,6 +1401,28 @@ const isTakenWholeOnAcceptance = ({ pPrMark, content }: Paragraph) =>
     pPrMark?.deletion !== undefined) &&
   content.every(({ type }) => type === "deletion" || type === "moveFrom");
 
+type LentFormattingOptions = {
+  formatting: ParagraphFormatting | undefined;
+  source: Paragraph;
+  /** The operation names `source` itself, not a paragraph a join reaches. */
+  namesSource: boolean;
+};
+
+/**
+ * The properties an inserted paragraph copies from `source`. A paragraph a
+ * pending join reaches, which a pending deletion takes whole, lends no
+ * numbering: once accepted, the list item it was is gone. A paragraph the
+ * operation names lends all of them, as the default engine copies them.
+ */
+const lentFormatting = ({
+  formatting,
+  source,
+  namesSource,
+}: LentFormattingOptions): ParagraphFormatting | undefined =>
+  formatting !== undefined && !namesSource && isTakenWholeOnAcceptance(source)
+    ? withoutNumbering(formatting)
+    : formatting;
+
 /** Whether a pending deletion already takes `paragraph` whole, mark and words. */
 const goesWholeOnAcceptance = (paragraph: PMNode): boolean =>
   paragraph.type.name === "paragraph" &&
@@ -1457,6 +1483,7 @@ const resolveBlockInsertion = ({
   operation,
   listStart,
   paragraph,
+  named,
   formattingSource,
   projection,
   noteReferences,
@@ -1583,15 +1610,15 @@ const resolveBlockInsertion = ({
   const sourceFormatting = paragraphFormattingWithAuthoredIndentation(
     formattingSource.source,
   );
-  // A paragraph a pending deletion takes whole lends no numbering: once
-  // accepted, the list item it was is gone.
+  const namesSource = formattingSource.blockId === named.blockId;
   const paragraphs =
     markdownParagraphs ??
     paragraphsFrom(
-      sourceFormatting !== undefined &&
-        isTakenWholeOnAcceptance(formattingSource.source)
-        ? withoutNumbering(sourceFormatting)
-        : sourceFormatting,
+      lentFormatting({
+        formatting: sourceFormatting,
+        source: formattingSource.source,
+        namesSource,
+      }),
     );
   const place =
     listStart === undefined
@@ -1648,6 +1675,7 @@ const resolveBlockInsertion = ({
             followsAnchor:
               operation.type === "insertAfterBlock" &&
               formattingSource.blockId === paragraph.blockId,
+            namesSource,
             paragraphs: paragraphsFrom,
           },
         }
@@ -2150,12 +2178,11 @@ const insertionIntentsAsItRuns = ({
       source = next;
     }
   }
-  const formatting = paragraphFormattingWithAuthoredIndentation(source);
-  // A paragraph a pending deletion takes whole lends no numbering.
-  const lent =
-    formatting !== undefined && isTakenWholeOnAcceptance(source)
-      ? withoutNumbering(formatting)
-      : formatting;
+  const lent = lentFormatting({
+    formatting: paragraphFormattingWithAuthoredIndentation(source),
+    source,
+    namesSource: inheritsFrom.namesSource && source === at.paragraph,
+  });
   const copied: EditorIntent[] = [];
   for (const intent of intents)
     copied.push(
@@ -6285,6 +6312,7 @@ export class CanonicalPublicOperations {
         operation,
         listStart,
         paragraph,
+        named: paragraph,
         formattingSource: paragraph,
         projection: projection.value,
         noteReferences,
@@ -6346,6 +6374,7 @@ export class CanonicalPublicOperations {
       const inserted = resolveBlockInsertion({
         operation: insertion,
         paragraph: placed.place,
+        named: paragraph,
         formattingSource: placed.formattingSource,
         projection: projection.value,
         noteReferences,
