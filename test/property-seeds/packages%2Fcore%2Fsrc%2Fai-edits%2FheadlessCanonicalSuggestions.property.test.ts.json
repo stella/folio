@@ -25,6 +25,12 @@
       "date": "2026-11-21"
     },
     {
+      "seed": -350012016,
+      "path": "4:0:0:0:0:0:0:0:4:2:2:3:4:5:4:5:5:5:5:5:5:5:5:6:5:5:5:5:5:5:6:5:5:7:7:7:7:7:7:8:7:8:7:7:7:9:7:8:8:7:8:7:9:7:7:7:10:9:11:9:9:10:9:9:10:10:10:9:9:9:10:9:10:9:9:11:10:9:9:9:9:9:9:9:9:9",
+      "note": "A paragraph suggested after one whose pending join leaves a paragraph with no words of its own lands where the tracked insertion does, with the properties of the paragraph the join leaves.",
+      "date": "2026-11-21"
+    },
+    {
       "seed": -230391034,
       "path": "28:0:0:0:0:0:0:0:0:2:1:1:1:2:1:1:7:2:1:1:3:2:2:1:1:4:1:1:3:2:1:4:32:3:3:3:3:3:3:3:3",
       "note": "A suggested removal of an empty paragraph whose mark a pending deletion already took records nothing, so it is refused rather than applied unseen.",
