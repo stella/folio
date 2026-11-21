@@ -4,6 +4,11 @@
  * properties the joined one will have, and a block after it goes after the
  * paragraph the join leaves. Accepting gives what the same edits applied
  * directly give.
+ *
+ * The canonical session puts a paragraph after one whose break is pending
+ * deletion right after it, with its properties, while the paragraph the join
+ * leaves keeps words once accepted: accepting runs its words into the new
+ * paragraph and leaves the other one standing (`insertionAfterPendingBreak`).
  */
 
 import { describe, expect, test } from "bun:test";
@@ -12,15 +17,34 @@ import type { FolioDocumentOperation } from "../document-operations";
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import { FolioDocxReviewer } from "./headless";
 
 const MARKDOWN = "# Terms\n\n1. Numbered clause one\n\nUnnumbered body text.";
 
-const open = async () => {
-  const bytes = (await ensureParaIds(await createDocx(fromMarkdown(MARKDOWN))))
-    .docx;
-  return FolioDocxReviewer.fromBuffer(bytes, { author: "Test" });
-};
+const SESSIONS = [
+  "legacy",
+  "canonical",
+] as const satisfies readonly HeadlessReviewerSession[];
+
+/** Opens `bytes` on `session`, or on the reviewer's default without one. */
+const reviewerOf = (bytes: ArrayBuffer, session?: HeadlessReviewerSession) =>
+  FolioDocxReviewer.fromBuffer(bytes, {
+    author: "Test",
+    ...(session !== undefined && { session }),
+  });
+
+const openMarkdown = async (
+  markdown: string,
+  session?: HeadlessReviewerSession,
+) =>
+  reviewerOf(
+    (await ensureParaIds(await createDocx(fromMarkdown(markdown)))).docx,
+    session,
+  );
+
+const open = (session?: HeadlessReviewerSession) =>
+  openMarkdown(MARKDOWN, session);
 
 type MergedProperties = Extract<
   FolioDocumentOperation,
@@ -61,15 +85,41 @@ const insertions = {
 };
 
 type EditOptions = {
+  session: HeadlessReviewerSession;
   mode: "direct" | "tracked-changes";
   batched: boolean;
   merged: (numId: number) => MergedProperties;
   insertion: (blockId: string) => FolioDocumentOperation;
 };
 
+type BlockShape = Pick<
+  ReturnType<FolioDocxReviewer["snapshot"]>["blocks"][number],
+  "text" | "styleId" | "statedNumbering" | "listReference" | "table"
+>;
+
+const shapeOf = ({
+  text,
+  styleId,
+  statedNumbering,
+  listReference,
+  table,
+}: BlockShape): BlockShape => ({
+  text,
+  styleId,
+  statedNumbering,
+  listReference,
+  table,
+});
+
 /** Merge the heading into the list item, insert beside it, accept, and read. */
-const edit = async ({ mode, batched, merged, insertion }: EditOptions) => {
-  const reviewer = await open();
+const edit = async ({
+  session,
+  mode,
+  batched,
+  merged,
+  insertion,
+}: EditOptions) => {
+  const reviewer = await open(session);
   const [heading, item] = reviewer.snapshot().blocks;
   const numId = item?.listReference?.numId;
   if (!heading || numId === undefined) throw new Error("Missing fixture");
@@ -105,44 +155,44 @@ const edit = async ({ mode, batched, merged, insertion }: EditOptions) => {
     ]);
   }
   if (mode !== "direct") reviewer.acceptAll();
-  const reopened = await FolioDocxReviewer.fromBuffer(
-    await reviewer.toBuffer(),
-    {
-      author: "Test",
-    },
-  );
-  return reopened.snapshot().blocks.map((block) => ({
-    text: block.text,
-    styleId: block.styleId,
-    statedNumbering: block.statedNumbering,
-    listReference: block.listReference,
-    table: block.table,
-  }));
+  const reopened = await reviewerOf(await reviewer.toBuffer(), session);
+  return reopened.snapshot().blocks.map(shapeOf);
 };
 
 describe("an insertion beside a paragraph a tracked merge joins", () => {
-  for (const [placed, insertion] of Object.entries(insertions)) {
-    for (const [name, merged] of Object.entries(requests)) {
-      // One batch cannot both join a paragraph and place a block at its end.
-      for (const batched of placed.endsWith("before it")
-        ? [true, false]
-        : [false]) {
-        test(`reads as the joined paragraph (${placed}, ${name}, ${batched ? "one batch" : "two batches"})`, async () => {
-          const direct = await edit({
-            mode: "direct",
-            batched,
-            merged,
-            insertion,
+  for (const session of SESSIONS) {
+    for (const [placed, insertion] of Object.entries(insertions)) {
+      for (const [name, merged] of Object.entries(requests)) {
+        // One batch cannot both join a paragraph and place a block at its end.
+        for (const batched of placed.endsWith("before it")
+          ? [true, false]
+          : [false]) {
+          test(`reads as the joined paragraph (${placed}, ${name}, ${batched ? "one batch" : "two batches"}, ${session})`, async () => {
+            const options = { session, batched, merged, insertion };
+            const direct = await edit({ ...options, mode: "direct" });
+            expect(
+              direct.some(
+                ({ text }) => text.startsWith("Inserted") || text === "Term",
+              ),
+            ).toBe(true);
+            const tracked = await edit({ ...options, mode: "tracked-changes" });
+            if (session === "legacy" || placed !== "a paragraph after it") {
+              expect(tracked).toEqual(direct);
+              return;
+            }
+            // The heading's words run into the new paragraph, which has the
+            // heading's properties; the list item stays, with the properties
+            // the merge gave the joined paragraph.
+            const [joined, , ...rest] = direct;
+            const heading = (await open(session)).snapshot().blocks.at(0);
+            if (!joined || !heading) throw new Error("Missing fixture");
+            expect(tracked).toEqual([
+              { ...shapeOf(heading), text: "Terms Inserted clause." },
+              { ...joined, text: "Numbered clause one" },
+              ...rest,
+            ]);
           });
-          expect(
-            direct.some(
-              ({ text }) => text.startsWith("Inserted") || text === "Term",
-            ),
-          ).toBe(true);
-          expect(
-            await edit({ mode: "tracked-changes", batched, merged, insertion }),
-          ).toEqual(direct);
-        });
+        }
       }
     }
   }
@@ -208,92 +258,112 @@ describe("insertions on both sides of a pending join", () => {
       expect(sequential.indexOf("After.")).toBe(joined + 1);
     });
   }
-  test("after a join through a paragraph deleted whole goes where the direct edits put it", async () => {
-    const read = async (mode: "direct" | "tracked-changes") => {
-      const reviewer = await open();
-      const [heading, item] = reviewer.snapshot().blocks;
-      if (!heading || !item) throw new Error("Missing fixture");
-      const joinedIds = new Map<string, string>();
-      for (const operation of [
-        { id: "delete", type: "deleteBlock", blockId: item.id },
-        {
-          id: "merge",
-          type: "mergeBlockWithNext",
-          blockId: heading.id,
-          separator: " ",
-        },
-        {
-          id: "after",
-          type: "insertAfterBlock",
-          blockId: heading.id,
-          text: "After.",
-        },
-      ] satisfies FolioDocumentOperation[]) {
-        const result = reviewer.applyOperations(
-          [
-            {
-              ...operation,
-              blockId: joinedIds.get(operation.blockId) ?? operation.blockId,
-            },
-          ],
-          { mode },
-        );
-        expect(result.skipped).toEqual([]);
-        for (const { paragraphIdentity: joined } of result.applied) {
-          if (joined?.type === "joined")
-            joinedIds.set(joined.retiredBlockId, joined.blockId);
+  for (const session of SESSIONS)
+    test(`after a join through a paragraph deleted whole goes where the direct edits put it (${session})`, async () => {
+      const read = async (mode: "direct" | "tracked-changes") => {
+        const reviewer = await open(session);
+        const [heading, item] = reviewer.snapshot().blocks;
+        if (!heading || !item) throw new Error("Missing fixture");
+        const joinedIds = new Map<string, string>();
+        for (const operation of [
+          { id: "delete", type: "deleteBlock", blockId: item.id },
+          {
+            id: "merge",
+            type: "mergeBlockWithNext",
+            blockId: heading.id,
+            separator: " ",
+          },
+          {
+            id: "after",
+            type: "insertAfterBlock",
+            blockId: heading.id,
+            text: "After.",
+          },
+        ] satisfies FolioDocumentOperation[]) {
+          const result = reviewer.applyOperations(
+            [
+              {
+                ...operation,
+                blockId: joinedIds.get(operation.blockId) ?? operation.blockId,
+              },
+            ],
+            { mode },
+          );
+          expect(result.skipped).toEqual([]);
+          for (const { paragraphIdentity: joined } of result.applied) {
+            if (joined?.type === "joined")
+              joinedIds.set(joined.retiredBlockId, joined.blockId);
+          }
         }
-      }
-      if (mode !== "direct") reviewer.acceptAll();
-      return reviewer.snapshot().blocks.map(({ text }) => text);
-    };
-    const direct = await read("direct");
-    expect(direct).toEqual(["Terms Unnumbered body text.", "After."]);
-    expect(await read("tracked-changes")).toEqual(direct);
-  });
+        if (mode !== "direct") reviewer.acceptAll();
+        return reviewer.snapshot().blocks.map(({ text }) => text);
+      };
+      const direct = await read("direct");
+      expect(direct).toEqual(["Terms Unnumbered body text.", "After."]);
+      // On the canonical session the paragraph the join leaves keeps words, so
+      // the new one goes right after the heading and takes its words.
+      expect(await read("tracked-changes")).toEqual(
+        session === "canonical"
+          ? ["Terms After.", "Unnumbered body text."]
+          : direct,
+      );
+    });
 });
 
+// The canonical session puts it after the final paragraph, whose mark holds
+// the pending formatting change the deletion recorded: moving that change
+// onto a new final paragraph is refused.
+const FINAL_MARK_REFUSAL =
+  "A tracked insertion after a paragraph no paragraph follows needs the anchor's mark free of review records.";
+
 describe("an insertion after a paragraph whose break a final deletion retires", () => {
-  test("stays beside it: the emptied final paragraph has no words to join", async () => {
-    const reviewer = await open();
-    const blocks = reviewer.snapshot().blocks;
-    const [item, last] = [blocks.at(1), blocks.at(-1)];
-    if (!item || !last) throw new Error("Missing fixture");
-    reviewer.applyOperations(
-      [{ id: "delete", type: "deleteBlock", blockId: last.id }],
-      {
-        mode: "tracked-changes",
-      },
-    );
-    reviewer.applyOperations(
-      [
+  for (const session of SESSIONS)
+    test(`stays beside it: the emptied final paragraph has no words to join (${session})`, async () => {
+      const reviewer = await open(session);
+      const blocks = reviewer.snapshot().blocks;
+      const [item, last] = [blocks.at(1), blocks.at(-1)];
+      if (!item || !last) throw new Error("Missing fixture");
+      reviewer.applyOperations(
+        [{ id: "delete", type: "deleteBlock", blockId: last.id }],
         {
-          id: "after",
-          type: "insertAfterBlock",
-          blockId: item.id,
-          text: "After.",
+          mode: "tracked-changes",
         },
-      ],
-      { mode: "tracked-changes" },
-    );
-    const texts = reviewer.snapshot().blocks.map(({ text }) => text);
-    expect(texts.indexOf("After.")).toBe(texts.indexOf(item.text) + 1);
-  });
+      );
+      const before = reviewer.snapshot();
+      const { skipped } = reviewer.applyOperations(
+        [
+          {
+            id: "after",
+            type: "insertAfterBlock",
+            blockId: item.id,
+            text: "After.",
+          },
+        ],
+        { mode: "tracked-changes" },
+      );
+      if (session === "canonical") {
+        expect(skipped).toEqual([
+          expect.objectContaining({ id: "after", message: FINAL_MARK_REFUSAL }),
+        ]);
+        expect(reviewer.snapshot()).toEqual(before);
+        return;
+      }
+      expect(skipped).toEqual([]);
+      const texts = reviewer.snapshot().blocks.map(({ text }) => text);
+      expect(texts.indexOf("After.")).toBe(texts.indexOf(item.text) + 1);
+    });
 });
 
 describe("a block after a paragraph deleted whole that a join runs through", () => {
   /** "Alpha." merged into "Bravo.", "Bravo." deleted, then `insertion` after "Bravo.", tracked. */
   const joinThrough = async (
+    session: HeadlessReviewerSession,
     insertion: (blockId: string) => FolioDocumentOperation,
   ) => {
-    const bytes = (
-      await ensureParaIds(
-        await createDocx(fromMarkdown("Alpha.\n\nBravo.\n\nCharlie.")),
-      )
-    ).docx;
-    const reviewer = await FolioDocxReviewer.fromBuffer(bytes, {
-      author: "Test",
-    });
+    const reviewer = await openMarkdown(
+      "Alpha.\n\nBravo.\n\nCharlie.",
+      session,
+    );
     const [alpha, bravo] = reviewer.snapshot().blocks;
     if (!alpha || !bravo) throw new Error("Missing fixture");
     for (const operation of [
@@ -316,59 +386,64 @@ describe("a block after a paragraph deleted whole that a join runs through", () 
   const textsOf = (reviewer: FolioDocxReviewer) =>
     reviewer.snapshot().blocks.map(({ text }) => text);
 
-  for (const placed of ["a paragraph after it", "a table after it"] as const) {
-    const insertion = insertions[placed];
-    test(`takes ${placed} after the paragraph the join leaves`, async () => {
-      const reviewer = await joinThrough(insertion);
-      reviewer.acceptAll();
-      const texts = textsOf(reviewer);
-      const joined = texts.indexOf("Alpha. Charlie.");
-      expect(joined).toBe(0);
-      expect(texts.at(joined + 1)).toBe(
-        placed === "a table after it" ? "Term" : "Inserted clause.",
-      );
-    });
+  for (const session of SESSIONS)
+    for (const placed of [
+      "a paragraph after it",
+      "a table after it",
+    ] as const) {
+      const insertion = insertions[placed];
+      test(`takes ${placed} after the paragraph the join leaves (${session})`, async () => {
+        const reviewer = await joinThrough(session, insertion);
+        reviewer.acceptAll();
+        const texts = textsOf(reviewer);
+        const joined = texts.indexOf("Alpha. Charlie.");
+        expect(joined).toBe(0);
+        expect(texts.at(joined + 1)).toBe(
+          placed === "a table after it" ? "Term" : "Inserted clause.",
+        );
+      });
 
-    test(`rejects ${placed} to the document it started from`, async () => {
-      const reviewer = await joinThrough(insertion);
-      reviewer.rejectAll();
-      expect(textsOf(reviewer)).toEqual(["Alpha.", "Bravo.", "Charlie."]);
-    });
-  }
+      test(`rejects ${placed} to the document it started from (${session})`, async () => {
+        const reviewer = await joinThrough(session, insertion);
+        reviewer.rejectAll();
+        expect(textsOf(reviewer)).toEqual(["Alpha.", "Bravo.", "Charlie."]);
+      });
+    }
 });
 
 describe("a suggested paragraph beside a pending join", () => {
-  for (const type of ["insertBeforeBlock", "insertAfterBlock"] as const) {
-    test(`copies the paragraph it names as it stands (${type})`, async () => {
-      const reviewer = await open();
-      const item = reviewer.snapshot().blocks.at(1);
-      if (!item) throw new Error("Missing fixture");
-      expect(
-        reviewer.applyOperations(
-          [{ id: "delete", type: "deleteBlock", blockId: item.id }],
-          { mode: "tracked-changes" },
-        ).skipped,
-      ).toEqual([]);
-      // Rejecting the words alone leaves the break pending deletion: the list
-      // item now joins the plain paragraph after it.
-      const words = reviewer
-        .getChanges()
-        .find(({ type: kind }) => kind === "deletion");
-      if (!words) throw new Error("Missing deletion");
-      expect(reviewer.rejectChange(words)).toBe(true);
-      expect(
-        reviewer.applyOperations(
-          [{ id: "insert", type, blockId: item.id, text: "Inserted." }],
-          { mode: "suggested" },
-        ).skipped,
-      ).toEqual([]);
-      const inserted = reviewer
-        .snapshot()
-        .blocks.find(({ text }) => text === "Inserted.");
-      expect(inserted?.kind).toBe("listItem");
-      expect(inserted?.listReference?.numId).toBe(item.listReference?.numId);
-    });
-  }
+  for (const session of SESSIONS)
+    for (const type of ["insertBeforeBlock", "insertAfterBlock"] as const) {
+      test(`copies the paragraph it names as it stands (${type}, ${session})`, async () => {
+        const reviewer = await open(session);
+        const item = reviewer.snapshot().blocks.at(1);
+        if (!item) throw new Error("Missing fixture");
+        expect(
+          reviewer.applyOperations(
+            [{ id: "delete", type: "deleteBlock", blockId: item.id }],
+            { mode: "tracked-changes" },
+          ).skipped,
+        ).toEqual([]);
+        // Rejecting the words alone leaves the break pending deletion: the list
+        // item now joins the plain paragraph after it.
+        const words = reviewer
+          .getChanges()
+          .find(({ type: kind }) => kind === "deletion");
+        if (!words) throw new Error("Missing deletion");
+        expect(reviewer.rejectChange(words)).toBe(true);
+        expect(
+          reviewer.applyOperations(
+            [{ id: "insert", type, blockId: item.id, text: "Inserted." }],
+            { mode: "suggested" },
+          ).skipped,
+        ).toEqual([]);
+        const inserted = reviewer
+          .snapshot()
+          .blocks.find(({ text }) => text === "Inserted.");
+        expect(inserted?.kind).toBe("listItem");
+        expect(inserted?.listReference?.numId).toBe(item.listReference?.numId);
+      });
+    }
 });
 
 describe("a paragraph between a pending join and the table that stops it", () => {
@@ -378,15 +453,12 @@ describe("a paragraph between a pending join and the table that stops it", () =>
    */
   const beforeTable = async (
     order: "delete first" | "merge first" = "delete first",
+    session?: HeadlessReviewerSession,
   ) => {
-    const bytes = (
-      await ensureParaIds(
-        await createDocx(fromMarkdown("Alpha.\n\nBravo.\n\nCharlie.")),
-      )
-    ).docx;
-    const reviewer = await FolioDocxReviewer.fromBuffer(bytes, {
-      author: "Test",
-    });
+    const reviewer = await openMarkdown(
+      "Alpha.\n\nBravo.\n\nCharlie.",
+      session,
+    );
     const [alpha, bravo] = reviewer.snapshot().blocks;
     if (!alpha || !bravo) throw new Error("Missing fixture");
     expect(
@@ -419,29 +491,32 @@ describe("a paragraph between a pending join and the table that stops it", () =>
     return { reviewer, alpha: alpha.id, bravo: bravo.id, cell: cell.id };
   };
 
+  const refusedOn = (anchor: "bravo" | "cell") =>
+    anchor === "bravo" ? SESSIONS : [undefined];
   for (const mode of ["direct", "tracked-changes", "suggested"] as const) {
     for (const anchor of ["bravo", "cell"] as const) {
-      test(`is refused and changes nothing (${mode}, named by ${anchor})`, async () => {
-        const target = await beforeTable();
-        const before = target.reviewer.snapshot();
-        const result = target.reviewer.applyOperations(
-          [
-            {
-              id: "insert",
-              type:
-                anchor === "bravo" ? "insertAfterBlock" : "insertBeforeBlock",
-              blockId: target[anchor],
-              text: "Inserted.",
-            },
-          ],
-          { mode },
-        );
-        expect(result.applied).toEqual([]);
-        expect(result.skipped.map(({ reason }) => reason)).toEqual([
-          "pendingParagraphMarkDeletion",
-        ]);
-        expect(target.reviewer.snapshot()).toEqual(before);
-      });
+      for (const session of refusedOn(anchor))
+        test(`is refused and changes nothing (${mode}, named by ${anchor}${session === undefined ? "" : `, ${session}`})`, async () => {
+          const target = await beforeTable("delete first", session);
+          const before = target.reviewer.snapshot();
+          const result = target.reviewer.applyOperations(
+            [
+              {
+                id: "insert",
+                type:
+                  anchor === "bravo" ? "insertAfterBlock" : "insertBeforeBlock",
+                blockId: target[anchor],
+                text: "Inserted.",
+              },
+            ],
+            { mode },
+          );
+          expect(result.applied).toEqual([]);
+          expect(result.skipped.map(({ reason }) => reason)).toEqual([
+            "pendingParagraphMarkDeletion",
+          ]);
+          expect(target.reviewer.snapshot()).toEqual(before);
+        });
     }
   }
 
@@ -496,37 +571,53 @@ describe("a paragraph between a pending join and the table that stops it", () =>
   });
 
   describe("when the table's first cell is pending", () => {
-    const beforePendingTable = async () => {
-      const bytes = (
-        await ensureParaIds(
-          await createDocx(fromMarkdown("Alpha.\n\nBravo.\n\nCharlie.")),
-        )
-      ).docx;
-      const reviewer = await FolioDocxReviewer.fromBuffer(bytes, {
-        author: "Test",
-      });
+    const beforePendingTable = async (session: HeadlessReviewerSession) => {
+      const reviewer = await openMarkdown(
+        "Alpha.\n\nBravo.\n\nCharlie.",
+        session,
+      );
       const [alpha, bravo] = reviewer.snapshot().blocks;
       if (!alpha || !bravo) throw new Error("Missing fixture");
       for (const operation of [
         { id: "t", type: "insertTable", blockId: bravo.id, rows: [["Cell"]] },
         { id: "delete", type: "deleteBlock", blockId: bravo.id },
-        {
-          id: "merge",
-          type: "mergeBlockWithNext",
-          blockId: alpha.id,
-          separator: " ",
-        },
       ] satisfies FolioDocumentOperation[]) {
         expect(
           reviewer.applyOperations([operation], { mode: "tracked-changes" })
             .skipped,
         ).toEqual([]);
       }
-      return { reviewer, alpha: alpha.id, bravo: bravo.id };
+      const merged = reviewer.applyOperations(
+        [
+          {
+            id: "merge",
+            type: "mergeBlockWithNext",
+            blockId: alpha.id,
+            separator: " ",
+          },
+        ],
+        { mode: "tracked-changes" },
+      );
+      return { reviewer, alpha: alpha.id, bravo: bravo.id, merged };
     };
 
+    // The canonical session refuses a join through a deleted paragraph into
+    // a pending inserted table, so neither insertion has a join beside it.
+    test("refuses the join into the pending table on the canonical session", async () => {
+      const { reviewer, merged } = await beforePendingTable("canonical");
+      expect(merged.applied).toEqual([]);
+      expect(merged.skipped).toEqual([
+        expect.objectContaining({
+          id: "merge",
+          message: expect.stringContaining("would run it into the table"),
+        }),
+      ]);
+      expect(reviewer.snapshot().blocks.at(0)?.text).toBe("Alpha.");
+    });
+
     test("right after the words, it is applied and stands apart", async () => {
-      const { reviewer, alpha } = await beforePendingTable();
+      const { reviewer, alpha, merged } = await beforePendingTable("legacy");
+      expect(merged.skipped).toEqual([]);
       expect(
         reviewer.applyOperations(
           [
@@ -550,7 +641,8 @@ describe("a paragraph between a pending join and the table that stops it", () =>
     });
 
     test("past a paragraph going whole, it is refused", async () => {
-      const { reviewer, bravo } = await beforePendingTable();
+      const { reviewer, bravo, merged } = await beforePendingTable("legacy");
+      expect(merged.skipped).toEqual([]);
       expect(
         reviewer
           .applyOperations(
@@ -569,49 +661,52 @@ describe("a paragraph between a pending join and the table that stops it", () =>
     });
   });
 
-  test("is applied once the join is rejected", async () => {
-    const { reviewer, cell } = await beforeTable();
-    const join = reviewer
-      .getChanges()
-      .find(({ type }) => type === "paragraphMarkDeleted");
-    if (!join) throw new Error("Missing join");
-    expect(reviewer.rejectChange(join)).toBe(true);
-    expect(
-      reviewer.applyOperations(
-        [
-          {
-            id: "insert",
-            type: "insertBeforeBlock",
-            blockId: cell,
-            text: "Inserted.",
-          },
-        ],
-        { mode: "tracked-changes" },
-      ).skipped,
-    ).toEqual([]);
-    reviewer.acceptAll();
-    expect(reviewer.snapshot().blocks.map(({ text }) => text)).toContain(
-      "Inserted.",
-    );
-  });
+  for (const session of SESSIONS)
+    test(`is applied once the join is rejected (${session})`, async () => {
+      const { reviewer, cell } = await beforeTable("delete first", session);
+      const join = reviewer
+        .getChanges()
+        .find(({ type }) => type === "paragraphMarkDeleted");
+      if (!join) throw new Error("Missing join");
+      expect(reviewer.rejectChange(join)).toBe(true);
+      expect(
+        reviewer.applyOperations(
+          [
+            {
+              id: "insert",
+              type: "insertBeforeBlock",
+              blockId: cell,
+              text: "Inserted.",
+            },
+          ],
+          { mode: "tracked-changes" },
+        ).skipped,
+      ).toEqual([]);
+      reviewer.acceptAll();
+      expect(reviewer.snapshot().blocks.map(({ text }) => text)).toContain(
+        "Inserted.",
+      );
+    });
 });
 
 const EMPTY_SOURCE_MARKDOWN = "Alpha.\n\nBravo.\n\nCharlie.";
 
-/** An empty paragraph after "Alpha.", merged into "Bravo.", then `edit` in `mode`. */
-const fromEmptySource = async (
-  mode: "direct" | "tracked-changes",
+type FromEmptySourceOptions = {
+  session: HeadlessReviewerSession;
+  mode: "direct" | "tracked-changes";
   batches: (ids: {
     empty: string;
     bravo: string;
-  }) => FolioDocumentOperation[][],
-) => {
-  const bytes = (
-    await ensureParaIds(await createDocx(fromMarkdown(EMPTY_SOURCE_MARKDOWN)))
-  ).docx;
-  const reviewer = await FolioDocxReviewer.fromBuffer(bytes, {
-    author: "Test",
-  });
+  }) => FolioDocumentOperation[][];
+};
+
+/** An empty paragraph after "Alpha.", merged into "Bravo.", then `batches` in `mode`. */
+const fromEmptySource = async ({
+  session,
+  mode,
+  batches,
+}: FromEmptySourceOptions) => {
+  const reviewer = await openMarkdown(EMPTY_SOURCE_MARKDOWN, session);
   const alpha = reviewer.snapshot().blocks.at(0);
   if (!alpha) throw new Error("Missing fixture");
   reviewer.applyOperations(
@@ -642,58 +737,72 @@ const fromEmptySource = async (
 };
 
 describe("a pending join from an empty paragraph", () => {
-  for (const [placed, insertion] of Object.entries(insertions)) {
-    if (placed.endsWith("before it")) continue;
-    test(`takes ${placed} after the paragraph it leaves, as direct edits do`, async () => {
-      const batches = ({ empty }: { empty: string }) => [[insertion(empty)]];
-      const direct = await fromEmptySource("direct", batches);
-      const bravo = direct.indexOf("Bravo.");
-      const inserted = direct.findIndex(
-        (text) => text === "Inserted clause." || text === "Term",
-      );
-      expect(bravo).toBeGreaterThan(-1);
-      expect(inserted).toBeGreaterThan(-1);
-      expect(bravo).toBeLessThan(inserted);
-      expect(await fromEmptySource("tracked-changes", batches)).toEqual(direct);
-    });
-  }
-  for (const order of ["after first", "before first"] as const) {
-    test(`keeps insertions on both sides in a batch as one at a time (${order})`, async () => {
-      const operations = ({
-        empty,
-        bravo,
-      }: {
-        empty: string;
-        bravo: string;
-      }) => {
-        const after: FolioDocumentOperation = {
-          id: "after",
-          type: "insertAfterBlock",
-          blockId: empty,
-          text: "After.",
+  for (const session of SESSIONS) {
+    for (const [placed, insertion] of Object.entries(insertions)) {
+      if (placed.endsWith("before it")) continue;
+      test(`takes ${placed} after the paragraph it leaves, as direct edits do (${session})`, async () => {
+        const batches = ({ empty }: { empty: string }) => [[insertion(empty)]];
+        const direct = await fromEmptySource({
+          session,
+          mode: "direct",
+          batches,
+        });
+        const bravo = direct.indexOf("Bravo.");
+        const inserted = direct.findIndex(
+          (text) => text === "Inserted clause." || text === "Term",
+        );
+        expect(bravo).toBeGreaterThan(-1);
+        expect(inserted).toBeGreaterThan(-1);
+        expect(bravo).toBeLessThan(inserted);
+        expect(
+          await fromEmptySource({ session, mode: "tracked-changes", batches }),
+        ).toEqual(direct);
+      });
+    }
+    for (const order of ["after first", "before first"] as const) {
+      test(`keeps insertions on both sides in a batch as one at a time (${order}, ${session})`, async () => {
+        const operations = ({
+          empty,
+          bravo,
+        }: {
+          empty: string;
+          bravo: string;
+        }) => {
+          const after: FolioDocumentOperation = {
+            id: "after",
+            type: "insertAfterBlock",
+            blockId: empty,
+            text: "After.",
+          };
+          const before: FolioDocumentOperation = {
+            id: "before",
+            type: "insertBeforeBlock",
+            blockId: bravo,
+            text: "Before.",
+          };
+          return order === "after first" ? [after, before] : [before, after];
         };
-        const before: FolioDocumentOperation = {
-          id: "before",
-          type: "insertBeforeBlock",
-          blockId: bravo,
-          text: "Before.",
-        };
-        return order === "after first" ? [after, before] : [before, after];
-      };
-      const sequential = await fromEmptySource("tracked-changes", (ids) =>
-        operations(ids).map((operation) => [operation]),
-      );
-      expect(
-        await fromEmptySource("tracked-changes", (ids) => [operations(ids)]),
-      ).toEqual(sequential);
-      expect(sequential).toEqual([
-        "Alpha.",
-        "Before.",
-        "Bravo.",
-        "After.",
-        "Charlie.",
-      ]);
-    });
+        const sequential = await fromEmptySource({
+          session,
+          mode: "tracked-changes",
+          batches: (ids) => operations(ids).map((operation) => [operation]),
+        });
+        expect(
+          await fromEmptySource({
+            session,
+            mode: "tracked-changes",
+            batches: (ids) => [operations(ids)],
+          }),
+        ).toEqual(sequential);
+        expect(sequential).toEqual([
+          "Alpha.",
+          "Before.",
+          "Bravo.",
+          "After.",
+          "Charlie.",
+        ]);
+      });
+    }
   }
 });
 
@@ -720,13 +829,11 @@ type SplitFixture = {
 };
 
 /** The clause joining "Signed in two copies." as `source` makes it. */
-const openSplitFixture = async (source: JoinSource): Promise<SplitFixture> => {
-  const bytes = (
-    await ensureParaIds(await createDocx(fromMarkdown(SPLIT_MARKDOWN)))
-  ).docx;
-  const reviewer = await FolioDocxReviewer.fromBuffer(bytes, {
-    author: "Test",
-  });
+const openSplitFixture = async (
+  source: JoinSource,
+  session: HeadlessReviewerSession,
+): Promise<SplitFixture> => {
+  const reviewer = await openMarkdown(SPLIT_MARKDOWN, session);
   const [, clause, survivor] = reviewer.snapshot().blocks;
   if (!clause || survivor?.text !== SPLIT_SURVIVOR) {
     throw new Error("Missing fixture");
@@ -768,6 +875,7 @@ const splitInsertions = {
 };
 
 type SplitBatchOptions = {
+  session: HeadlessReviewerSession;
   source: JoinSource;
   insertion: (blockId: string) => FolioDocumentOperation;
   /** Whether the block is put after the joining clause or after the paragraph it joins. */
@@ -779,6 +887,7 @@ type SplitBatchOptions = {
 
 /** One batch: the block put after `anchor`, and the joined paragraph split at `offset`. */
 const splitBatch = async ({
+  session,
   source,
   insertion,
   anchor,
@@ -786,7 +895,7 @@ const splitBatch = async ({
   order,
   resolution,
 }: SplitBatchOptions): Promise<string[]> => {
-  const fixture = await openSplitFixture(source);
+  const fixture = await openSplitFixture(source, session);
   const insert = insertion(fixture[anchor]);
   const split: FolioDocumentOperation = {
     id: "split",
@@ -810,150 +919,172 @@ const splitBatch = async ({
 // paragraph it joins as the batch read it, even when the same batch splits
 // that paragraph, whichever it names first.
 describe("a block after a paragraph that joins one the batch splits", () => {
-  for (const [sourceName, source] of Object.entries(joinSources)) {
-    for (const [inserted, insertion] of Object.entries(splitInsertions)) {
-      for (const offset of [1, 14, SPLIT_SURVIVOR.length - 1]) {
-        for (const order of ["insertion first", "split first"] as const) {
-          const options = { source, insertion, offset, order };
-          test(`follows the whole joined paragraph, as one put after it does (${sourceName}, ${inserted}, split at ${offset}, ${order})`, async () => {
-            const accepted = await splitBatch({
-              ...options,
-              anchor: "clause",
-              resolution: "accept",
-            });
-            const first = accepted.findIndex(
-              (text) => text === "Inserted clause." || text === "Term",
-            );
-            expect(accepted.at(first - 1)).toBe(SPLIT_SURVIVOR.slice(offset));
-            expect(accepted).toEqual(
-              await splitBatch({
-                ...options,
-                anchor: "survivor",
-                resolution: "accept",
-              }),
-            );
-          });
-          test(`rejects to the document it started from (${sourceName}, ${inserted}, split at ${offset}, ${order})`, async () => {
-            const fixture = await openSplitFixture(source);
-            fixture.reviewer.rejectAll();
-            expect(
-              await splitBatch({
+  for (const session of SESSIONS)
+    for (const [sourceName, source] of Object.entries(joinSources)) {
+      for (const [inserted, insertion] of Object.entries(splitInsertions)) {
+        for (const offset of [1, 14, SPLIT_SURVIVOR.length - 1]) {
+          for (const order of ["insertion first", "split first"] as const) {
+            const options = { session, source, insertion, offset, order };
+            test(`follows the whole joined paragraph, as one put after it does (${sourceName}, ${inserted}, split at ${offset}, ${order}, ${session})`, async () => {
+              const accepted = await splitBatch({
                 ...options,
                 anchor: "clause",
-                resolution: "reject",
-              }),
-            ).toEqual(
-              fixture.reviewer.snapshot().blocks.map(({ text }) => text),
-            );
-          });
+                resolution: "accept",
+              });
+              // On the canonical session a paragraph after the clause, which
+              // keeps its words, goes right after it and takes them; the
+              // paragraph it joined stands, split as the batch splits it.
+              if (
+                session === "canonical" &&
+                source === "merge" &&
+                inserted === "a paragraph"
+              ) {
+                expect(accepted).toEqual([
+                  "Alpha.",
+                  "The Buyer pays each invoice within thirty days. Inserted clause.",
+                  SPLIT_SURVIVOR.slice(0, offset),
+                  SPLIT_SURVIVOR.slice(offset),
+                  "Charlie.",
+                ]);
+                return;
+              }
+              const first = accepted.findIndex(
+                (text) => text === "Inserted clause." || text === "Term",
+              );
+              expect(accepted.at(first - 1)).toBe(SPLIT_SURVIVOR.slice(offset));
+              expect(accepted).toEqual(
+                await splitBatch({
+                  ...options,
+                  anchor: "survivor",
+                  resolution: "accept",
+                }),
+              );
+            });
+            test(`rejects to the document it started from (${sourceName}, ${inserted}, split at ${offset}, ${order}, ${session})`, async () => {
+              const fixture = await openSplitFixture(source, session);
+              fixture.reviewer.rejectAll();
+              expect(
+                await splitBatch({
+                  ...options,
+                  anchor: "clause",
+                  resolution: "reject",
+                }),
+              ).toEqual(
+                fixture.reviewer.snapshot().blocks.map(({ text }) => text),
+              );
+            });
+          }
         }
       }
     }
-  }
 });
 
 describe("a block before a pending join whose first paragraph the batch deletes", () => {
-  const read = async (batched: boolean, resolution: "accept" | "reject") => {
-    const reviewer = await open();
-    const [heading, item] = reviewer.snapshot().blocks;
-    if (!heading || !item) throw new Error("Missing fixture");
-    reviewer.applyOperations(
-      [
+  for (const session of SESSIONS) {
+    const read = async (batched: boolean, resolution: "accept" | "reject") => {
+      const reviewer = await open(session);
+      const [heading, item] = reviewer.snapshot().blocks;
+      if (!heading || !item) throw new Error("Missing fixture");
+      reviewer.applyOperations(
+        [
+          {
+            id: "merge",
+            type: "mergeBlockWithNext",
+            blockId: heading.id,
+            separator: " ",
+          },
+        ],
+        { mode: "tracked-changes" },
+      );
+      // One at a time, the insertion runs first: it is stated further into the document.
+      const operations: FolioDocumentOperation[] = [
         {
-          id: "merge",
-          type: "mergeBlockWithNext",
-          blockId: heading.id,
-          separator: " ",
+          id: "before",
+          type: "insertBeforeBlock",
+          blockId: item.id,
+          text: "Before.",
         },
-      ],
-      { mode: "tracked-changes" },
-    );
-    // One at a time, the insertion runs first: it is stated further into the document.
-    const operations: FolioDocumentOperation[] = [
-      {
-        id: "before",
-        type: "insertBeforeBlock",
-        blockId: item.id,
-        text: "Before.",
-      },
-      { id: "delete", type: "deleteBlock", blockId: heading.id },
-    ];
-    for (const batch of batched
-      ? [operations]
-      : operations.map((operation) => [operation])) {
-      expect(
-        reviewer.applyOperations(batch, { mode: "tracked-changes" }).skipped,
-      ).toEqual([]);
-    }
-    if (resolution === "accept") reviewer.acceptAll();
-    else reviewer.rejectAll();
-    return reviewer.snapshot().blocks.map(({ text }) => text);
-  };
+        { id: "delete", type: "deleteBlock", blockId: heading.id },
+      ];
+      for (const batch of batched
+        ? [operations]
+        : operations.map((operation) => [operation])) {
+        expect(
+          reviewer.applyOperations(batch, { mode: "tracked-changes" }).skipped,
+        ).toEqual([]);
+      }
+      if (resolution === "accept") reviewer.acceptAll();
+      else reviewer.rejectAll();
+      return reviewer.snapshot().blocks.map(({ text }) => text);
+    };
 
-  test("rejects to the document it started from", async () => {
-    const original = (await open()).snapshot().blocks.map(({ text }) => text);
-    expect(await read(true, "reject")).toEqual(original);
-  });
+    test(`rejects to the document it started from (${session})`, async () => {
+      const original = (await open(session))
+        .snapshot()
+        .blocks.map(({ text }) => text);
+      expect(await read(true, "reject")).toEqual(original);
+    });
 
-  test("accepts in a batch as one at a time", async () => {
-    expect(await read(true, "accept")).toEqual(await read(false, "accept"));
-  });
+    test(`accepts in a batch as one at a time (${session})`, async () => {
+      expect(await read(true, "accept")).toEqual(await read(false, "accept"));
+    });
+  }
 });
 
 describe("a block after a pending join whose paragraph the batch splits, inside a comment", () => {
   // See "a block after a paragraph that joins one the batch splits".
-  test("carries the comments a block put after that paragraph carries", async () => {
-    const read = async (anchor: "heading" | "item") => {
-      const reviewer = await open();
-      const [heading, item] = reviewer.snapshot().blocks;
-      if (!heading || !item) throw new Error("Missing fixture");
-      for (const operation of [
-        {
-          id: "comment",
-          type: "commentOnBlock",
-          blockId: item.id,
-          comment: { text: "Review this clause." },
-        },
-        {
-          id: "merge",
-          type: "mergeBlockWithNext",
-          blockId: heading.id,
-          separator: " ",
-        },
-      ] satisfies FolioDocumentOperation[]) {
+  for (const session of SESSIONS)
+    test(`carries the comments a block put after that paragraph carries (${session})`, async () => {
+      const read = async (anchor: "heading" | "item") => {
+        const reviewer = await open(session);
+        const [heading, item] = reviewer.snapshot().blocks;
+        if (!heading || !item) throw new Error("Missing fixture");
+        for (const operation of [
+          {
+            id: "comment",
+            type: "commentOnBlock",
+            blockId: item.id,
+            comment: { text: "Review this clause." },
+          },
+          {
+            id: "merge",
+            type: "mergeBlockWithNext",
+            blockId: heading.id,
+            separator: " ",
+          },
+        ] satisfies FolioDocumentOperation[]) {
+          expect(
+            reviewer.applyOperations([operation], { mode: "tracked-changes" })
+              .skipped,
+          ).toEqual([]);
+        }
         expect(
-          reviewer.applyOperations([operation], { mode: "tracked-changes" })
-            .skipped,
+          reviewer.applyOperations(
+            [
+              { id: "split", type: "splitBlock", blockId: item.id, offset: 8 },
+              insertions["a table after it"](
+                anchor === "heading" ? heading.id : item.id,
+              ),
+            ],
+            { mode: "tracked-changes" },
+          ).skipped,
         ).toEqual([]);
-      }
-      expect(
-        reviewer.applyOperations(
-          [
-            { id: "split", type: "splitBlock", blockId: item.id, offset: 8 },
-            insertions["a table after it"](
-              anchor === "heading" ? heading.id : item.id,
-            ),
-          ],
-          { mode: "tracked-changes" },
-        ).skipped,
-      ).toEqual([]);
-      return reviewer.getComments().map(({ anchoredText }) => anchoredText);
-    };
-    const afterItem = await read("item");
-    expect(afterItem.length).toBeGreaterThan(0);
-    expect(await read("heading")).toEqual(afterItem);
-  });
+        return reviewer.getComments().map(({ anchoredText }) => anchoredText);
+      };
+      const afterItem = await read("item");
+      expect(afterItem.length).toBeGreaterThan(0);
+      expect(await read("heading")).toEqual(afterItem);
+    });
 });
 describe("a table and a paragraph inserted before a deleted final paragraph", () => {
-  const beforeFinal = async (mode: "direct" | "tracked-changes") => {
-    const bytes = (
-      await ensureParaIds(
-        await createDocx(fromMarkdown("Alpha.\n\nBravo.\n\nCharlie.")),
-      )
-    ).docx;
-    const reviewer = await FolioDocxReviewer.fromBuffer(bytes, {
-      author: "Test",
-    });
+  const beforeFinal = async (
+    mode: "direct" | "tracked-changes",
+    session?: HeadlessReviewerSession,
+  ) => {
+    const reviewer = await openMarkdown(
+      "Alpha.\n\nBravo.\n\nCharlie.",
+      session,
+    );
     const [, bravo, charlie] = reviewer.snapshot().blocks;
     if (!bravo || !charlie) throw new Error("Missing fixture");
     const joinedIds = new Map<string, string>();
@@ -1001,15 +1132,13 @@ describe("a table and a paragraph inserted before a deleted final paragraph", ()
     expect(textsOf(tracked)).toEqual(textsOf(direct));
   });
 
-  test("rejects to the document it started from, before and after a reopen", async () => {
-    const tracked = await beforeFinal("tracked-changes");
-    const reopened = await FolioDocxReviewer.fromBuffer(
-      await tracked.toBuffer(),
-      { author: "Test" },
-    );
-    for (const reviewer of [tracked, reopened]) {
-      reviewer.rejectAll();
-      expect(textsOf(reviewer)).toEqual(["Alpha.", "Bravo.", "Charlie."]);
-    }
-  });
+  for (const session of SESSIONS)
+    test(`rejects to the document it started from, before and after a reopen (${session})`, async () => {
+      const tracked = await beforeFinal("tracked-changes", session);
+      const reopened = await reviewerOf(await tracked.toBuffer(), session);
+      for (const reviewer of [tracked, reopened]) {
+        reviewer.rejectAll();
+        expect(textsOf(reviewer)).toEqual(["Alpha.", "Bravo.", "Charlie."]);
+      }
+    });
 });
