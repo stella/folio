@@ -1138,6 +1138,9 @@ export type ParagraphReviewFields = {
 };
 
 // @public
+export const paragraphStatesItsFormatting: (paragraph: Pick<Paragraph, "formatting">) => boolean;
+
+// @public
 export const paragraphsThroughTextBoxes: (document: Document_2, story: OpStory) => ParagraphLocation[];
 
 // @public
@@ -1213,6 +1216,9 @@ export const recordsCopyOrigin: (node: InlineNode) => boolean;
 
 // @public
 export const registerParagraphPropertySnapshot: (input: RegisterParagraphPropertySnapshotOptions) => void;
+
+// @public
+export const registerStatedParagraphFormatting: (paragraph: Pick<Paragraph, "formatting">) => void;
 
 // @public (undocumented)
 export const rejectCopyOriginAncestors: (origins: CopyOriginAncestorList | undefined, removedAddedAncestors: number) => RejectedCopyOriginAncestors;

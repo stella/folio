@@ -57,6 +57,7 @@ import {
   paragraphFormattingWithAuthoredIndentation,
   sameParagraphIndentationProjection,
   sealParagraphFacts,
+  withStatedIndentationBaseline,
 } from "./paragraphPropertySource";
 
 type CanonicalListNormalization = { document: Document; inverse: DocumentOp[] };
@@ -607,6 +608,11 @@ const normalizeBlock = (
     return rowsChanged ? { ...paragraph, rows } : paragraph;
   }
   if (paragraph.type !== "paragraph") return paragraph;
+  // Formatting an edit gave as stated, as a rejected property change
+  // restores it, takes a baseline that reads it as it stands.
+  const stated = withStatedIndentationBaseline(paragraph);
+  if (stated !== paragraph)
+    return normalizeBlock(stated, inputs, counters, observe);
   registerParagraphPropertySnapshot({
     paragraph,
     snapshot: paragraphFormattingWithAuthoredIndentation(paragraph),

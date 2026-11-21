@@ -45,7 +45,10 @@ import {
   startCursor,
 } from "./leaves";
 import { isTrackedChild } from "./offsets";
-import { getParagraphPropertySnapshot } from "./paragraphPropertySnapshot";
+import {
+  getParagraphPropertySnapshot,
+  transferParagraphPropertySnapshot,
+} from "./paragraphPropertySnapshot";
 import {
   DOCUMENT_OP_REFUSAL_REASONS,
   type DocumentOpRefusalReason,
@@ -309,7 +312,10 @@ export const reviewFieldsOf = (
   return fields;
 };
 
-/** The paragraph with exactly these review fields. */
+/**
+ * The paragraph with exactly these review fields. Review fields that carry a
+ * property snapshot give it to the paragraph with their formatting.
+ */
 export const withReviewFields = (
   paragraph: Paragraph,
   review: ParagraphReviewFields,
@@ -323,6 +329,7 @@ export const withReviewFields = (
   if (review.propertyChanges !== undefined)
     next.propertyChanges = review.propertyChanges;
   if (review.pPrMark !== undefined) next.pPrMark = review.pPrMark;
+  transferParagraphPropertySnapshot({ source: review, target: next });
   return next;
 };
 

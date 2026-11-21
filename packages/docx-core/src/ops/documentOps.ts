@@ -82,7 +82,9 @@ export {
 } from "./sectionReview";
 export {
   paragraphPropertySnapshotToken,
+  paragraphStatesItsFormatting,
   registerParagraphPropertySnapshot,
+  registerStatedParagraphFormatting,
 } from "./paragraphPropertySnapshot";
 export {
   applyDocumentOpEnvelope,
