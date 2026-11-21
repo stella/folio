@@ -148,6 +148,13 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
    */
   readonly PENDING_PARAGRAPH_MARK_INSERTION: "pendingParagraphMarkInsertion";
   /**
+   * A paragraph the operation would edit separately joins the next one
+   * through a mark pending deletion (deleted or moving away): accepting that
+   * deletion gives the joined paragraph the next paragraph's properties, so
+   * the edit would land on another paragraph or merge two named ones.
+   */
+  readonly PENDING_PARAGRAPH_JOIN: "pendingParagraphJoin";
+  /**
    * A suggested link change would leave a piece of a link holding only
    * bookmark or comment markers, or would copy content that names a record of
    * its own (preserved run markup, a marker inside a copied text box, or a
@@ -302,6 +309,13 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
    */
   PENDING_PARAGRAPH_MARK_INSERTION: "pendingParagraphMarkInsertion",
   /**
+   * A paragraph the operation would edit separately joins the next one
+   * through a mark pending deletion (deleted or moving away): accepting that
+   * deletion gives the joined paragraph the next paragraph's properties, so
+   * the edit would land on another paragraph or merge two named ones.
+   */
+  PENDING_PARAGRAPH_JOIN: "pendingParagraphJoin",
+  /**
    * A suggested link change would leave a piece of a link holding only
    * bookmark or comment markers, or would copy content that names a record of
    * its own (preserved run markup, a marker inside a copied text box, or a
@@ -376,6 +390,7 @@ export const DOCUMENT_OP_REFUSAL_SCOPES: Readonly<
   pendingBreakTakeover: TRACKED,
   pendingParagraphMarkDeletion: TRACKED,
   pendingParagraphMarkInsertion: TRACKED,
+  pendingParagraphJoin: ANY,
   unrecordableLinkSuggestion: TRACKED,
   missingBlockId: ANY,
   duplicateBlockId: ANY,
