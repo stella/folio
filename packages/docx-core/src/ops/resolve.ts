@@ -2019,26 +2019,19 @@ const resolveList = ({
       removesContent(node, resolution.decision) &&
       joins?.before === 0 &&
       joins.after === 0;
-    // New content joined to nothing either side that goes too is no piece
-    // of what the change cut, whatever it holds: the cut reaches past it.
     const goes = (candidate: InlineNode | undefined): boolean =>
+      reachesPast &&
       candidate !== undefined &&
       isTrackedWrapper(candidate) &&
       resolution.ids.has(candidate.info.id) &&
-      removesContent(candidate, resolution.decision) &&
-      (reachesPast ||
-        (isAddedRevision(candidate) &&
-          candidate.resolutionJoins !== undefined &&
-          candidate.resolutionJoins.before === 0 &&
-          candidate.resolutionJoins.after === 0 &&
-          candidate.resolutionJoins.remove === 0));
+      removesContent(candidate, resolution.decision);
     let beforeIndex = index - 1;
     while (beforeIndex >= 0 && goes(pending.at(beforeIndex))) beforeIndex -= 1;
     let afterIndex = index + 1;
     while (afterIndex < pending.length && goes(pending.at(afterIndex)))
       afterIndex += 1;
-    const before = beforeIndex >= 0 ? pending.at(beforeIndex) : undefined;
-    const after = pending.at(afterIndex);
+    let before = beforeIndex >= 0 ? pending.at(beforeIndex) : undefined;
+    let after = pending.at(afterIndex);
     // Every piece on one side goes with this resolution: no record of the
     // level it cut is left there to join.
     if (
@@ -2047,6 +2040,44 @@ const resolveList = ({
     )
       return 0;
     if (before === undefined || after === undefined) return depth;
+    // New content joined to nothing either side that goes too can stand
+    // between the change and the pieces it cut, which its own content
+    // continues: where such pieces stand beyond it on both sides, the cut
+    // reaches them.
+    const joinedToNothing = (candidate: InlineNode | undefined): boolean =>
+      candidate !== undefined &&
+      isTrackedWrapper(candidate) &&
+      isAddedRevision(candidate) &&
+      resolution.ids.has(candidate.info.id) &&
+      removesContent(candidate, resolution.decision) &&
+      candidate.resolutionJoins !== undefined &&
+      candidate.resolutionJoins.before === 0 &&
+      candidate.resolutionJoins.after === 0 &&
+      candidate.resolutionJoins.remove === 0;
+    let pastBefore = beforeIndex;
+    while (pastBefore >= 0 && joinedToNothing(pending.at(pastBefore)))
+      pastBefore -= 1;
+    let pastAfter = afterIndex;
+    while (pastAfter < pending.length && joinedToNothing(pending.at(pastAfter)))
+      pastAfter += 1;
+    const beyondBefore = pastBefore >= 0 ? pending.at(pastBefore) : undefined;
+    const beyondAfter = pending.at(pastAfter);
+    const first = node.content.at(0);
+    const last = node.content.at(-1);
+    if (
+      (pastBefore !== beforeIndex || pastAfter !== afterIndex) &&
+      beyondBefore !== undefined &&
+      beyondAfter !== undefined &&
+      first !== undefined &&
+      last !== undefined &&
+      !isTrackedWrapper(beyondBefore) &&
+      !isTrackedWrapper(beyondAfter) &&
+      sameOwnFields(beyondBefore, first) &&
+      sameOwnFields(last, beyondAfter)
+    ) {
+      before = beyondBefore;
+      after = beyondAfter;
+    }
     return cutReach({
       before: edgeChain(before, "end"),
       after: edgeChain(after, "start"),
