@@ -432,6 +432,7 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
     readonly REVISION_CONFLICT: "revisionConflict";
     readonly PENDING_RUN_PROPERTY_CHANGE: "pendingRunPropertyChange";
     readonly PENDING_PARAGRAPH_PROPERTY_CHANGE: "pendingParagraphPropertyChange";
+    readonly JOIN_INTO_PENDING_TABLE: "joinIntoPendingTable";
     readonly CONTAINER_FINAL_MARK: "containerFinalMark";
     readonly INSIDE_INLINE_CONTROL: "insideInlineControl";
     readonly UNTRACKABLE: "untrackable";

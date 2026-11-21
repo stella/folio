@@ -733,9 +733,12 @@ describe("a paragraph between a pending join and the table it reaches", () => {
       expect(merged.skipped).toEqual([
         expect.objectContaining({
           id: "merge",
+          reason: "pendingParagraphMarkDeletion",
           message: expect.stringContaining("would run it into the table"),
         }),
       ]);
+      // A deliberate refusal names no missing capability.
+      expect(merged.skipped.at(0)).not.toHaveProperty("canonicalRefusal");
       expect(reviewer.snapshot().blocks.at(0)?.text).toBe("Alpha.");
     });
 
