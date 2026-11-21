@@ -561,10 +561,43 @@ describe("a paragraph between a pending join and the table it reaches", () => {
       ]);
     });
 
-  test("is applied and stands apart once the paragraph the join runs into is deleted", async () => {
+  for (const mode of ["direct", "tracked-changes"] as const)
+    test(`after the paragraph the join runs into, once it is deleted, is refused: accepting runs the joined words into the table (${mode}, canonical)`, async () => {
+      // Deleting the merged paragraph deletes it whole, its break included
+      // (survivor ids option C), so the joined words run into the table.
+      const { reviewer, bravo } = await beforeTable("merge first", "canonical");
+      const before = reviewer.snapshot();
+      const result = reviewer.applyOperations(
+        [
+          {
+            id: "insert",
+            type: "insertAfterBlock",
+            blockId: bravo,
+            text: "Inserted.",
+          },
+        ],
+        { mode },
+      );
+      expect(result.skipped.map(({ reason }) => reason)).toEqual([
+        "pendingParagraphMarkDeletion",
+      ]);
+      expect(reviewer.snapshot()).toEqual(before);
+      reviewer.acceptAll();
+      expect(
+        reviewer.snapshot().blocks.map(({ text, table }) => ({
+          text,
+          inTable: table !== undefined,
+        })),
+      ).toEqual([
+        { text: "Alpha. Cell", inTable: true },
+        { text: "Charlie.", inTable: false },
+      ]);
+    });
+
+  test("is applied and stands apart once the paragraph the join runs into is deleted (legacy)", async () => {
     // Deleting the paragraph a join runs into keeps its break, the joined
     // paragraph's: nothing runs past it, so a paragraph after it stands.
-    const { reviewer, bravo } = await beforeTable("merge first");
+    const { reviewer, bravo } = await beforeTable("merge first", "legacy");
     expect(
       reviewer.applyOperations(
         [
