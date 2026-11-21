@@ -590,6 +590,10 @@ const columnEdit = ({
   grid,
 }: ColumnOptions): Result<Table, DocumentOpRefusal> => {
   const insert = op.type === DOCUMENT_OP_TYPES.INSERT_COLUMN;
+  const count =
+    op.type === DOCUMENT_OP_TYPES.INSERT_COLUMN ? (op.count ?? 1) : 1;
+  if (!Number.isSafeInteger(count) || count < 1)
+    return mismatch(op, "A column insertion inserts at least one column.");
   if (
     !Number.isSafeInteger(op.column) ||
     op.column < 0 ||
@@ -609,6 +613,21 @@ const columnEdit = ({
       reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
       message:
         "Indexed table markup must be relocated before changing columns.",
+    });
+  // A table records one previous grid (`w:tblGridChange`). A second tracked
+  // insertion would have to share the pending one's record, and rejecting
+  // either alone could not give back the grid without its own columns: the
+  // columns of one change are inserted by one operation (`count`).
+  if (
+    insert &&
+    op.revision !== undefined &&
+    table.formatting?.gridChange !== undefined
+  )
+    return refuse({
+      op,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_GRID_CHANGE,
+      message:
+        "The table's columns already have a pending change; insert every column of one change in one operation.",
     });
   // Another suggested column deletion may join pending ones: each keeps its
   // own cells and grid entry until it is resolved.
@@ -643,18 +662,31 @@ const columnEdit = ({
       message:
         "Resolve comments, moves and bookmarks reaching past the column before removing it.",
     });
-  const boundaryRows = grid.rows.filter((cells, row) => {
+  // The rows an insertion gives new cells: those with a cell boundary at the
+  // column (a cell spanning it widens instead).
+  const takesNewCells = (row: number) => {
     const { before, end } = rowExtent(table, grid, row);
     return (
+      insert &&
       op.column >= before &&
       op.column <= end &&
-      !cells.some((cell) => cell.start < op.column && op.column < cell.end)
+      !(grid.rows[row] ?? []).some(
+        (cell) => cell.start < op.column && op.column < cell.end,
+      )
     );
-  }).length;
+  };
+  const boundaryRows = grid.rows.filter((_cells, row) =>
+    takesNewCells(row),
+  ).length;
   const empty: TableCell[] = [];
   const fresh =
     op.type === DOCUMENT_OP_TYPES.INSERT_COLUMN
-      ? freshCells({ document, op, ids: op.newBlockIds, count: boundaryRows })
+      ? freshCells({
+          document,
+          op,
+          ids: op.newBlockIds,
+          count: boundaryRows * count,
+        })
       : Result.ok(empty);
   if (fresh.isErr()) return Result.err(fresh.error);
   // A suggested deletion keeps the grid while it is pending: the deleted
@@ -671,11 +703,16 @@ const columnEdit = ({
     const stated = table.rows[rowIndex]?.formatting?.gridAfter ?? 0;
     return insert ? op.column > end + stated : op.column >= end + stated;
   };
-  // Each row the edit changes takes a stamp; an edit besides a suggested
-  // deletion stamps the grid and table properties after them.
+  // Each row the edit changes takes a stamp, one per new cell where it gets
+  // new cells; an edit besides a suggested deletion stamps the grid and
+  // table properties after them.
   const stampedRows = new Map<number, number>();
-  for (const rowIndex of table.rows.keys())
-    if (!leavesRow(rowIndex)) stampedRows.set(rowIndex, stampedRows.size);
+  let rowStamps = 0;
+  for (const rowIndex of table.rows.keys()) {
+    if (leavesRow(rowIndex)) continue;
+    stampedRows.set(rowIndex, rowStamps);
+    rowStamps += takesNewCells(rowIndex) ? count : 1;
+  }
   if (trackedDeletion && stampedRows.size === 0)
     return refuse({
       op,
@@ -683,14 +720,36 @@ const columnEdit = ({
       message:
         "A suggested column deletion needs a cell in the column to mark.",
     });
-  const stamps = stampsFor(
-    op,
-    trackedDeletion ? stampedRows.size : stampedRows.size + 2,
-  );
+  const stamps = stampsFor(op, trackedDeletion ? rowStamps : rowStamps + 2);
   if (stamps.isErr()) return Result.err(stamps.error);
-  const rowStamp = (rowIndex: number) =>
-    stamps.value[stampedRows.get(rowIndex) ?? -1];
+  const rowStamp = (rowIndex: number, cell = 0) => {
+    const first = stampedRows.get(rowIndex);
+    return first === undefined ? undefined : stamps.value[first + cell];
+  };
   let freshIndex = 0;
+  /** The row's new cells, each recorded under a stamp of its own. */
+  const newCells = (
+    rowIndex: number,
+  ): Result<TableCell[], DocumentOpRefusal> => {
+    const cells: TableCell[] = [];
+    for (let column = 0; column < count; column++) {
+      const cell = fresh.value[freshIndex++];
+      if (cell === undefined) return mismatch(op, "A fresh cell is missing.");
+      const stamp = rowStamp(rowIndex, column);
+      cells.push(
+        stamp === undefined
+          ? cell
+          : {
+              ...cell,
+              structuralChange: {
+                type: "tableCellInsertion",
+                info: stampInfo(stamp),
+              },
+            },
+      );
+    }
+    return Result.ok(cells);
+  };
   const rows: TableRow[] = [];
   for (const [rowIndex, row] of table.rows.entries()) {
     const entries = grid.rows[rowIndex];
@@ -701,7 +760,11 @@ const columnEdit = ({
     }
     const { before, end } = rowExtent(table, grid, rowIndex);
     if (op.column < before) {
-      const next = withOmission(row, "gridBefore", before + (insert ? 1 : -1));
+      const next = withOmission(
+        row,
+        "gridBefore",
+        before + (insert ? count : -1),
+      );
       const stamp = rowStamp(rowIndex);
       if (stamp !== undefined)
         next.propertyChanges = [
@@ -720,7 +783,7 @@ const columnEdit = ({
       const next = withOmission(
         row,
         "gridAfter",
-        (row.formatting?.gridAfter ?? 0) + (insert ? 1 : -1),
+        (row.formatting?.gridAfter ?? 0) + (insert ? count : -1),
       );
       const stamp = rowStamp(rowIndex);
       if (stamp !== undefined)
@@ -740,25 +803,14 @@ const columnEdit = ({
     let inserted = false;
     for (const entry of entries) {
       if (insert && entry.start === op.column) {
-        const cell = fresh.value[freshIndex++];
-        if (cell === undefined) return mismatch(op, "A fresh cell is missing.");
-        const stamp = rowStamp(rowIndex);
-        cells.push(
-          stamp === undefined
-            ? cell
-            : {
-                ...cell,
-                structuralChange: {
-                  type: "tableCellInsertion",
-                  info: stampInfo(stamp),
-                },
-              },
-        );
+        const added = newCells(rowIndex);
+        if (added.isErr()) return Result.err(added.error);
+        cells.push(...added.value);
         inserted = true;
       }
       const hit = entry.start <= op.column && op.column < entry.end;
       if (insert && entry.start < op.column && hit) {
-        const next = withSpan(entry.cell, entry.end - entry.start + 1);
+        const next = withSpan(entry.cell, entry.end - entry.start + count);
         const stamp = rowStamp(rowIndex);
         if (stamp !== undefined)
           next.propertyChanges = [
@@ -821,20 +873,9 @@ const columnEdit = ({
       cells.push(entry.cell);
     }
     if (insert && !inserted) {
-      const cell = fresh.value[freshIndex++];
-      if (cell === undefined) return mismatch(op, "A fresh cell is missing.");
-      const stamp = rowStamp(rowIndex);
-      cells.push(
-        stamp === undefined
-          ? cell
-          : {
-              ...cell,
-              structuralChange: {
-                type: "tableCellInsertion",
-                info: stampInfo(stamp),
-              },
-            },
-      );
+      const added = newCells(rowIndex);
+      if (added.isErr()) return Result.err(added.error);
+      cells.push(...added.value);
     }
     // A row the deletion takes its only cells, or the only cells it
     // starts, from goes with them; a suggested deletion leaves it to go
@@ -847,13 +888,17 @@ const columnEdit = ({
     table.columnWidths === undefined ? undefined : [...table.columnWidths];
   if (columnWidths !== undefined) {
     if (op.type === DOCUMENT_OP_TYPES.INSERT_COLUMN)
-      columnWidths.splice(op.column, 0, op.width);
+      columnWidths.splice(
+        op.column,
+        0,
+        ...Array.from({ length: count }, () => op.width),
+      );
     else columnWidths.splice(op.column, 1);
   }
   const next = { ...table, rows };
   if (columnWidths !== undefined) next.columnWidths = columnWidths;
-  const gridStamp = stamps.value[stampedRows.size];
-  const propertyStamp = stamps.value[stampedRows.size + 1];
+  const gridStamp = stamps.value[rowStamps];
+  const propertyStamp = stamps.value[rowStamps + 1];
   if (
     op.revision !== undefined &&
     gridStamp !== undefined &&
@@ -1366,7 +1411,7 @@ export const tableEditParagraphDemand = (
               (cell) => cell.start < op.column && op.column < cell.end,
             )
           );
-        }).length,
+        }).length * (op.count ?? 1),
       );
     case DOCUMENT_OP_TYPES.MERGE_CELLS: {
       const selection = mergeSelection({ table, grid: grid.value, op });

@@ -695,7 +695,7 @@ export const createEditorIntentIdAllocator = ({
       if (located.isOk()) {
         switch (op.type) {
           case DOCUMENT_OP_TYPES.INSERT_COLUMN:
-            demand = located.value.table.rows.length + 2;
+            demand = located.value.table.rows.length * (op.count ?? 1) + 2;
             // Each new cell's content, as a fragment written into it.
             for (const paragraphs of intent.cellContent ?? []) {
               demand += 8;
