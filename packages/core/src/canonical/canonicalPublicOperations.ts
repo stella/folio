@@ -3587,6 +3587,11 @@ type ResolveBlockDeletionOptions = {
    */
   precedesInsertedTable: boolean;
   /**
+   * Whether the batch deletes the table standing right after this
+   * paragraph: with it gone, the paragraph no longer keeps two tables apart.
+   */
+  precedesDeletedTable: boolean;
+  /**
    * Whether the batch inserts a paragraph after the paragraph before this
    * one, which then stands between them when this deletion runs.
    */
@@ -4002,8 +4007,15 @@ type ResolveCanonicalPublicOperationOptions = {
 type BesideDeletions = {
   deleted: ReadonlySet<string>;
   insertedBeside: ReadonlySet<string>;
-  /** The blocks the batch puts a table after, and those it puts one before. */
-  tables: { after: ReadonlySet<string>; before: ReadonlySet<string> };
+  /**
+   * The blocks the batch puts a table after, those it puts one before, and
+   * the paragraphs naming the tables it deletes.
+   */
+  tables: {
+    after: ReadonlySet<string>;
+    before: ReadonlySet<string>;
+    deleted: ReadonlySet<string>;
+  };
   /** The blocks the batch puts a paragraph after. */
   paragraphsAfter: ReadonlySet<string>;
 };
@@ -4073,6 +4085,21 @@ const paragraphIdsIn = (block: PMNode): string[] => {
   return ids;
 };
 
+/**
+ * The ids of the paragraphs a table's own cells hold, which name it: a
+ * nested table's paragraphs name that one instead.
+ */
+const tableParagraphIds = (table: PMNode): string[] => {
+  const ids: string[] = [];
+  table.descendants((node) => {
+    if (node.type.name === "table") return false;
+    const id: unknown = node.attrs["paraId"];
+    if (node.type.name === "paragraph" && typeof id === "string") ids.push(id);
+    return node.type.name !== "paragraph";
+  });
+  return ids;
+};
+
 /** The blocks a batch's table insertions name, on `side` of them. */
 const tableAnchors = (
   operations: readonly FolioDocumentOperation[],
@@ -4091,7 +4118,7 @@ const tableAnchors = (
 const NO_BESIDE_DELETIONS: BesideDeletions = {
   deleted: new Set(),
   insertedBeside: new Set(),
-  tables: { after: new Set(), before: new Set() },
+  tables: { after: new Set(), before: new Set(), deleted: new Set() },
   paragraphsAfter: new Set(),
 };
 
@@ -4550,6 +4577,11 @@ export class CanonicalPublicOperations {
       tables: {
         after: tableAnchors(batch.operations, "after"),
         before: tableAnchors(batch.operations, "before"),
+        deleted: new Set(
+          batch.operations.flatMap((operation) =>
+            operation.type === "deleteTable" ? [operation.blockId] : [],
+          ),
+        ),
       },
       paragraphsAfter: new Set(
         batch.operations.flatMap((operation) =>
@@ -5992,6 +6024,7 @@ export class CanonicalPublicOperations {
     gainsFollower,
     followsInsertedTable,
     precedesInsertedTable,
+    precedesDeletedTable,
     previousGainsFollower,
     tableBeforeGainsFollower,
     deletedRun,
@@ -6056,10 +6089,13 @@ export class CanonicalPublicOperations {
     // with it, as the block deletion takes it.
     // Between two tables, the deletion takes the words and leaves the mark,
     // as the direct deletion empties the paragraph: accepting it keeps the
-    // tables apart.
-    const betweenTables =
+    // tables apart. When the batch deletes the table after it, nothing is
+    // left to keep apart: the paragraph goes whole, mark included, as before
+    // any other table, and that table's deletion runs first.
+    const keepsTablesApart =
       after?.type.name === "table" &&
-      (before?.type.name === "table" || followsInsertedTable);
+      (before?.type.name === "table" || followsInsertedTable) &&
+      !precedesDeletedTable;
     let holdsOriginalWords = false;
     paragraph.node.descendants((node) => {
       if (
@@ -6074,7 +6110,7 @@ export class CanonicalPublicOperations {
       tracked &&
       operation.moveId === undefined &&
       !gainsFollower &&
-      (betweenTables ||
+      (keepsTablesApart ||
         // A table after it, standing or put there by the batch first.
         ((after?.type.name === "table" || precedesInsertedTable) &&
           isInsertedPPrMark(paragraph.node.attrs["pPrMark"]) &&
@@ -6159,12 +6195,13 @@ export class CanonicalPublicOperations {
       // paragraph, it goes whole, as accepting its tracked deletion removes
       // it: the paragraph before it keeps its own mark, and with it any
       // section break. A section break of its own is resolved by the join
-      // below.
+      // below. So does one between two tables when the batch deletes the
+      // table after it.
       if (
         after !== null &&
         !followsInsertedTable &&
         (before === null ||
-          (before.type.name === "paragraph" &&
+          ((before.type.name === "paragraph" || precedesDeletedTable) &&
             paragraph.node.attrs["_sectionProperties"] == null))
       )
         return tracking({
@@ -6724,6 +6761,9 @@ export class CanonicalPublicOperations {
       const gainsFollower =
         !followed && besideDeletions.insertedBeside.has(blockId);
       const before = state.doc.resolve(paragraph.start - 1).nodeBefore;
+      const after = state.doc.resolve(
+        paragraph.start + paragraph.node.content.size + 1,
+      ).nodeAfter;
       const previousId: unknown =
         before?.type.name === "paragraph" ? before.attrs["paraId"] : undefined;
       const followsInsertedTable =
@@ -6754,6 +6794,11 @@ export class CanonicalPublicOperations {
         precedesInsertedTable:
           besideDeletions.tables.after.has(blockId) &&
           !besideDeletions.paragraphsAfter.has(blockId),
+        precedesDeletedTable:
+          after?.type.name === "table" &&
+          tableParagraphIds(after).some((id) =>
+            besideDeletions.tables.deleted.has(id),
+          ),
         // The paragraph before it is another when the deletion runs: the
         // batch puts one after it, or deletes it first.
         previousGainsFollower:
