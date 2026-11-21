@@ -14,6 +14,7 @@ import { ZipArchive } from "@stll/docx-core/zip";
 
 import type { Document } from "../types/document";
 import type { ReadonlyDocument } from "../types/documentModel";
+import { readPackageForSave } from "./mainDocumentPart";
 
 /** One part the opener rewrote: its bytes as the package held them. */
 type NormalizedSourcePart = {
@@ -63,8 +64,10 @@ export const keepNormalizedSourceParts = async ({
 }: KeepNormalizedSourcePartsOptions): Promise<void> => {
   const read = document.originalBuffer;
   if (read === undefined || read === source) return;
+  // Compare at the writer's part paths so a restored relationship or
+  // content type still names the relocated main document.
   const [sourceZip, readZip] = await Promise.all([
-    ZipArchive.read(source),
+    readPackageForSave(source),
     ZipArchive.read(read),
   ]);
   const parts = new Map<string, NormalizedSourcePart>();
