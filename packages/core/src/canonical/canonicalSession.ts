@@ -2738,18 +2738,6 @@ class CanonicalSession {
     const preSelection = projection.selectionAt(state);
     if (preSelection.isErr()) return preSelection;
     const inside = controlEdgesAt(state.doc, inputFrom, inputTo);
-    // A suggestion over a control's whole text would be recorded as the
-    // control's own deletion, which accepting would remove with the new text.
-    if (
-      this.mode.type === "suggesting" &&
-      text.length > 0 &&
-      inside.start === true &&
-      inside.end === true &&
-      state.doc.resolve(inputFrom).parent === state.doc.resolve(inputTo).parent
-    )
-      return refuse(
-        "A suggestion over a content control's whole text is unavailable in this session.",
-      );
     const intent = {
       type: "replaceText",
       from: start.value,

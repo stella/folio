@@ -6,6 +6,7 @@ import {
   type BlockContent,
   type BreakContent,
   type Document,
+  type InlineSdt,
   MAX_REVISION_ID,
   type NumberingInstance,
   type Paragraph,
@@ -14,6 +15,7 @@ import {
   type Table,
   type TableRow,
   type TextFormatting,
+  type TrackedRunContent,
 } from "../model/document";
 import { isNumberingLevel } from "../model/numberingLevel";
 import {
@@ -3333,6 +3335,14 @@ const compileInStory = (
           },
         });
         if (planned.isErr()) return Result.err(planned.error);
+        const struckInside = strikeInsideControl({
+          document,
+          planned: planned.value,
+          from,
+          inside: intent.inside,
+          text,
+        });
+        if (struckInside.isErr()) return Result.err(struckInside.error);
         // The typed text follows the tracked deletion, inside the content
         // controls and wrappers the direct replacement continues.
         const resumed =
@@ -3345,7 +3355,7 @@ const compileInStory = (
               })
             : undefined;
         ops = [];
-        for (const op of planned.value) {
+        for (const op of struckInside.value) {
           if (
             resumed === undefined ||
             op.type !== DOCUMENT_OP_TYPES.INSERT_CONTENT ||
@@ -4056,6 +4066,92 @@ type Continuation = {
   containers: readonly InlineNode[];
   openStart: number;
   openEnd: number;
+};
+
+type StrikeInsideControlOptions = {
+  document: Document;
+  planned: readonly DocumentOp[];
+  from: TextPosition;
+  inside: { start?: boolean; end?: boolean } | undefined;
+  text: string;
+};
+
+/** What a tracked deletion may hold: no other tracked insertion or deletion. */
+const isTrackedRunContent = (
+  node: InlineSdt["content"][number],
+): node is TrackedRunContent =>
+  node.type !== "insertion" &&
+  node.type !== "deletion" &&
+  node.type !== "moveFrom" &&
+  node.type !== "moveTo";
+
+/**
+ * A tracked replacement of exactly a content control's text, typed just
+ * inside both of its edges, strikes the text inside the control, which
+ * stays: the deletion holds only what the control held, as the reference
+ * word processor records it. The plan would wrap the control itself, which
+ * accepting removes together with the new text.
+ */
+const strikeInsideControl = ({
+  document,
+  planned,
+  from,
+  inside,
+  text,
+}: StrikeInsideControlOptions): Result<
+  readonly DocumentOp[],
+  DocumentOpRefusal
+> => {
+  if (inside?.start !== true || inside.end !== true || text === "")
+    return Result.ok(planned);
+  const split = planned.findIndex(
+    (op) => op.type === DOCUMENT_OP_TYPES.INSERT_CONTENT,
+  );
+  if (split <= 0) return Result.ok(planned);
+  const deletion = planned.slice(0, split);
+  const struck = new Set(
+    deletion.flatMap((op) =>
+      op.type === DOCUMENT_OP_TYPES.DELETE_RANGE && op.revision !== undefined
+        ? [op.revision.id]
+        : [],
+    ),
+  );
+  const applied = applyDocumentOps(document, deletion);
+  if (applied.isErr()) return Result.err(applied.error);
+  const paragraph = paragraphAt(applied.value.document, from);
+  if (paragraph?.paraId === undefined) return Result.ok(planned);
+  let swapped = false;
+  const content = paragraph.content.map((node): ParagraphContent => {
+    if (
+      node.type !== "deletion" ||
+      !struck.has(node.info.id) ||
+      node.content.length !== 1
+    )
+      return node;
+    const [control] = node.content;
+    if (
+      control?.type !== "inlineSdt" ||
+      !control.content.every(isTrackedRunContent)
+    )
+      return node;
+    swapped = true;
+    return {
+      ...control,
+      content: [{ ...node, content: control.content }],
+    };
+  });
+  if (!swapped) return Result.ok(planned);
+  return Result.ok([
+    ...deletion,
+    {
+      type: DOCUMENT_OP_TYPES.REPLACE_INLINE,
+      story: from.story,
+      blockId: paragraph.paraId,
+      expected: paragraph.content,
+      content,
+    },
+    ...planned.slice(split),
+  ]);
 };
 
 /**
