@@ -190,7 +190,10 @@ import {
 import { ensureParaIdsInDoc } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import { insertionGap } from "../prosemirror/insertionGaps";
 import { forEachAnnotationIdInDoc } from "../prosemirror/plugins/revisionIds";
-import { preservesReplacementCommentAlignment } from "../prosemirror/replacedAnnotations";
+import {
+  preservesReplacementCommentAlignment,
+  splitAtKeptCommentBoundaries,
+} from "../prosemirror/replacedAnnotations";
 import { createStyleResolver } from "../prosemirror/styles/styleResolver";
 import {
   insertedColumnWidth,
@@ -7645,6 +7648,19 @@ export class CanonicalPublicOperations {
         if (whole === undefined) return refusal("unsupportedBlock");
         replacementChanges = whole;
       }
+      const comments =
+        readModel(this.options.session.document).package.document.comments ??
+        [];
+      let retiredCommentIds: ReadonlySet<number> | undefined;
+      if (!tracked) {
+        const split = splitAtKeptCommentBoundaries({
+          doc: state.doc,
+          changes: replacementChanges,
+          comments,
+        });
+        replacementChanges = split.changes;
+        retiredCommentIds = split.retiredCommentIds;
+      }
       if (
         !preservesReplacementCommentAlignment({
           doc: state.doc,
@@ -7653,14 +7669,10 @@ export class CanonicalPublicOperations {
             to: paragraph.start + paragraph.node.content.size,
           },
           changes: replacementChanges,
+          retiredCommentIds,
           removal: tracked
             ? { type: suggested ? "suggested" : "tracked" }
-            : {
-                type: "direct",
-                comments:
-                  readModel(this.options.session.document).package.document
-                    .comments ?? [],
-              },
+            : { type: "direct", comments },
         })
       )
         return Result.err(

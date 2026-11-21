@@ -10,9 +10,9 @@ import type { Document, Run } from "../types/document";
 import { FolioDocxReviewer } from "./headless";
 
 // Whole-paragraph range fixtures missed comments beside unchanged prefix text.
-test(
-  "aligned comment coverage agrees between direct and accepted tracked replacements",
-  async () => {
+test.each(["legacy", "canonical"] as const)(
+  "aligned comment coverage agrees between direct and accepted tracked replacements in %s",
+  async (session) => {
     await assertProperty(
       fc.asyncProperty(
         fc.integer({ min: 0, max: 22 }),
@@ -66,8 +66,10 @@ test(
             },
           } satisfies Document;
           const bytes = await createDocx(model);
-          const direct = await FolioDocxReviewer.fromBuffer(bytes);
-          const tracked = await FolioDocxReviewer.fromBuffer(bytes);
+          const direct = await FolioDocxReviewer.fromBuffer(bytes, { session });
+          const tracked = await FolioDocxReviewer.fromBuffer(bytes, {
+            session,
+          });
           for (const [reviewer, mode] of [
             [direct, "direct"],
             [tracked, "tracked-changes"],
@@ -100,22 +102,36 @@ test(
               anchoredText,
             }));
           expect(comments(tracked)).toEqual(comments(direct));
-          expect(comments(direct)).toHaveLength(
-            replacement === "" ? 0 : ids.length,
-          );
+          // The legacy session lends a comment on replaced words to the new
+          // words; the canonical one takes a thread whose range lies wholly in
+          // a changed stretch, and direct and accepted agree on which.
+          if (session === "legacy" || replacement === "")
+            expect(comments(direct)).toHaveLength(
+              replacement === "" ? 0 : ids.length,
+            );
           const reopenedDirect = await FolioDocxReviewer.fromBuffer(
             await direct.toBuffer(),
+            {
+              session,
+            },
           );
           const reopenedTracked = await FolioDocxReviewer.fromBuffer(
             await tracked.toBuffer(),
+            {
+              session,
+            },
           );
           expect(comments(reopenedTracked)).toEqual(comments(reopenedDirect));
           expect(comments(reopenedDirect)).toEqual(comments(direct));
-          const individually = await FolioDocxReviewer.fromBuffer(pending);
+          const individually = await FolioDocxReviewer.fromBuffer(pending, {
+            session,
+          });
           for (const change of individually.getChanges())
             individually.acceptChange(change);
           expect(comments(individually)).toEqual(comments(direct));
-          const rejected = await FolioDocxReviewer.fromBuffer(pending);
+          const rejected = await FolioDocxReviewer.fromBuffer(pending, {
+            session,
+          });
           rejected.rejectAll();
           expect(rejected.getComments().at(0)?.anchoredText).toBe(
             source.slice(start, end),
