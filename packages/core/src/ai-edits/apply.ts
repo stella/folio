@@ -291,7 +291,7 @@ import {
 } from "./table-mutation-plan";
 import {
   applyTableColumnDeletion,
-  applyTableColumnInsertion,
+  applyTableColumnInsertions,
   applyTableRowDeletion,
   applyTableRowInsertion,
   describeUnplacedCellTexts,
@@ -6989,9 +6989,10 @@ const applyFolioAIEditOperationsInternal = ({
           continue;
         }
         const revision: TableStructureRevision | null = structuralRevision;
-        const result = applyTableColumnInsertion({
+        const result = applyTableColumnInsertions({
           tr,
           insertion,
+          columnCount: item.operation.columnCount ?? 1,
           cellTexts: item.operation.cellTexts,
           revision,
         });
@@ -7023,7 +7024,8 @@ const applyFolioAIEditOperationsInternal = ({
         const columnKey = getTableColumnCoordinateKey(insertion);
         insertedColumnCounts.set(
           columnKey,
-          (insertedColumnCounts.get(columnKey) ?? 0) + 1,
+          (insertedColumnCounts.get(columnKey) ?? 0) +
+            (item.operation.columnCount ?? 1),
         );
         break;
       }

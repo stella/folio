@@ -53,6 +53,7 @@ import {
   NO_NUMBERING_IDS_IN_USE,
   type NumberingIdsInUse,
 } from "./docx/numberingIds";
+import { MAX_TABLE_COLUMNS } from "./docx/tableParser";
 import { getSuggestions } from "./prosemirror/commands/comments";
 import { completeNumberingForDoc } from "./prosemirror/listInstanceReferences";
 import { outlineLevelFromAttrValue } from "./prosemirror/outlineLevelAttr";
@@ -1401,6 +1402,7 @@ const OPERATION_KEY_DECISIONS = {
   insertTableColumn: {
     ...COMMON_OPERATION_KEY_DECISIONS,
     position: true,
+    columnCount: true,
     cellTexts: true,
   },
   deleteTableColumn: COMMON_OPERATION_KEY_DECISIONS,
@@ -1970,6 +1972,19 @@ const parseDocumentOperation = (
         'expected "after" or "before" when provided',
       );
     }
+    const columnCount =
+      value["columnCount"] === undefined
+        ? undefined
+        : readNonNegativeInteger(value, "columnCount", path);
+    if (
+      columnCount !== undefined &&
+      (columnCount < 1 || columnCount > MAX_TABLE_COLUMNS)
+    ) {
+      return invalidBatch(
+        `${path}.columnCount`,
+        `expected an integer from 1 to ${MAX_TABLE_COLUMNS}`,
+      );
+    }
     const cellTexts = readOptionalStringArray(value, "cellTexts", path);
     return {
       ...operationMeta,
@@ -1977,6 +1992,7 @@ const parseDocumentOperation = (
       type,
       blockId,
       ...(position !== undefined && { position }),
+      ...(columnCount !== undefined && { columnCount }),
       ...(cellTexts !== undefined && { cellTexts }),
     };
   }

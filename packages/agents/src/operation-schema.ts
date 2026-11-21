@@ -1301,7 +1301,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
     {
       type: "object",
       description:
-        "Insert a column next to the column containing the anchor block.",
+        "Insert one or more adjacent columns next to the column containing the anchor block.",
       properties: {
         ...operationMetaProperties,
         ...suggestionIdProperty,
@@ -1313,10 +1313,17 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
           description:
             'Insert after the anchor column (default) or before it. Defaults to "after".',
         },
+        columnCount: {
+          type: "integer",
+          minimum: 1,
+          maximum: 63,
+          description:
+            "How many adjacent columns to insert (default 1). Tracked, they are one change: accepting or rejecting it resolves every one of them.",
+        },
         cellTexts: {
           type: "array",
           description:
-            "Initial text for newly created physical cells in row order.",
+            "Initial text for newly created physical cells in reading order: row by row, left to right within a row.",
           items: { type: "string" },
         },
       },
