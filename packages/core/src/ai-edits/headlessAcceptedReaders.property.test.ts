@@ -11,6 +11,12 @@ import fc from "fast-check";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
+import {
+  documentStories,
+  findStoryBody,
+  storyLacksClosingParagraph,
+} from "@stll/docx-core/ops";
+
 import { reviewerDocumentArbitrary } from "../../../../test/generators/reviewerDocumentArbitraries";
 import {
   assertProperty,
@@ -70,16 +76,19 @@ const open = (buffer: ArrayBuffer): Promise<FolioDocxReviewer> =>
     session: "canonical",
   });
 
-/** Each story's plain text, in story order. */
-const storyTexts = (document: Document): string[][] => [
-  collectBlockTexts(document.package.document.content),
-  ...[
-    ...(document.package.headers?.values() ?? []),
-    ...(document.package.footers?.values() ?? []),
-    ...(document.package.footnotes ?? []),
-    ...(document.package.endnotes ?? []),
-  ].map(({ content }) => collectBlockTexts(content)),
-];
+/**
+ * Each story's plain text, in story order, read as the session reads it: a
+ * story that ends in a table closes with an empty paragraph, which a save
+ * writes once the story is edited and leaves out while it is not.
+ */
+const storyTexts = (document: Document): string[][] =>
+  documentStories(document).map((story) => {
+    const texts = collectBlockTexts(
+      findStoryBody(document, story)?.content ?? [],
+    );
+    if (storyLacksClosingParagraph(document, story)) texts.push("");
+    return texts;
+  });
 
 type Outcome = "agreed" | "sessionRefused" | "acceptRefused";
 

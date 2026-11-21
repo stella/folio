@@ -6,10 +6,20 @@
  * the document agree on every paragraph, table and note it keeps.
  */
 
-import type { Document } from "../model/document";
+import {
+  type BlockContent,
+  type Document,
+  REVIEW_CARRIERS,
+} from "../model/document";
 import { applyDocumentOps } from "./apply";
+import { withBodyContent } from "./blocks";
 import { IDENTITY_SPACES, identityKeysIn, packageParagraphIds } from "./ids";
-import { documentStories, findStoryBody } from "./stories";
+import {
+  documentStories,
+  findStoryBody,
+  replaceStoryBody,
+  storyLacksClosingParagraph,
+} from "./stories";
 import {
   DOCUMENT_OP_TYPES,
   type OpStory,
@@ -187,6 +197,119 @@ const withDistinctRevisionIds = (document: Document): Document => {
   return pkg === document.package ? document : { ...document, package: pkg };
 };
 
+/** The closing paragraphs the view gave stories, by id. */
+type ClosingParagraphs = ReadonlyMap<string, OpStory>;
+
+/**
+ * `document` with the paragraph a story ends with given to every story in
+ * `stories` that lacks it, as a session reads such a story: resolution keeps
+ * a container's final paragraph, so a story that ends in a table resolves
+ * with one there.
+ */
+const withClosingParagraphs = (
+  document: Document,
+  stories: readonly OpStory[],
+): { document: Document; closing: ClosingParagraphs } => {
+  const closing = new Map<string, OpStory>();
+  let taken: Set<string> | undefined;
+  let next = 0x20000000;
+  let current = document;
+  for (const story of stories) {
+    const body = findStoryBody(current, story);
+    if (body === undefined || !storyLacksClosingParagraph(current, story))
+      continue;
+    taken ??= new Set(packageParagraphIds(document.package));
+    let paraId = next.toString(16).toUpperCase();
+    while (taken.has(paraId)) {
+      next += 1;
+      paraId = next.toString(16).toUpperCase();
+    }
+    next += 1;
+    closing.set(paraId, story);
+    current = replaceStoryBody({
+      document: current,
+      story,
+      body: withBodyContent(body, [
+        ...body.content,
+        { type: "paragraph", paraId, content: [] },
+      ]),
+    });
+  }
+  return { document: current, closing };
+};
+
+const isBareParagraph = (block: BlockContent | undefined): boolean =>
+  block?.type === "paragraph" &&
+  block.content.length === 0 &&
+  Object.keys(block).every(
+    (key) => key === "type" || key === "paraId" || key === "content",
+  );
+
+/**
+ * `document` with each closing paragraph the view gave a story taken out
+ * again where resolution left it as given, last and bare, after other
+ * blocks: the story keeps the ending it was read with. One that took
+ * content, or is all its story holds, stays.
+ */
+const withoutBareClosingParagraphs = (
+  document: Document,
+  closing: ClosingParagraphs,
+): Document => {
+  let current = document;
+  for (const [paraId, story] of closing) {
+    const body = findStoryBody(current, story);
+    if (body === undefined || body.content.length < 2) continue;
+    const last = body.content.at(-1);
+    if (last?.type !== "paragraph" || last.paraId !== paraId) continue;
+    if (!isBareParagraph(last)) continue;
+    current = replaceStoryBody({
+      document: current,
+      story,
+      body: withBodyContent(body, body.content.slice(0, -1)),
+    });
+  }
+  return current;
+};
+
+/**
+ * `document` with the terminal-table review carrier `story` ends with
+ * resolved by `decision`, once the story's changes are: the carrier stands in
+ * for the paragraph a story needs after a table shown deleted. Accepted, or
+ * holding content, it stays as a plain paragraph; rejected and empty, it goes
+ * and the story ends in its table again, unless it is all the story holds.
+ */
+const withTerminalTableCarrierResolved = ({
+  document,
+  story,
+  decision,
+}: {
+  document: Document;
+  story: OpStory;
+  decision: RevisionDecision;
+}): Document => {
+  const body = findStoryBody(document, story);
+  const carrier = body?.content.at(-1);
+  if (
+    body === undefined ||
+    carrier?.type !== "paragraph" ||
+    carrier.reviewCarrier !== REVIEW_CARRIERS.TERMINAL_TABLE
+  )
+    return document;
+  const { reviewCarrier: _carrier, ...plain } = carrier;
+  const kept =
+    decision === "accept" ||
+    carrier.content.length > 0 ||
+    body.content.length === 1;
+  return replaceStoryBody({
+    document,
+    story,
+    body: withBodyContent(
+      body,
+      kept ? [...body.content.slice(0, -1), plain] : body.content.slice(0, -1),
+    ),
+  });
+};
+
 const withoutParagraphIds = (
   document: Document,
   minted: MintedParagraphIds,
@@ -219,10 +342,13 @@ export const resolvedDocumentView = (
   decision: RevisionDecision,
 ): ResolvedDocumentView => {
   const stories = documentStories(document);
-  if (stories.every((story) => storyRevisionIds(document, story).length === 0))
-    return { document, unresolved: [] };
+  const revised = stories.filter(
+    (story) => storyRevisionIds(document, story).length > 0,
+  );
+  if (revised.length === 0) return { document, unresolved: [] };
   const identified = withParagraphIds(withDistinctRevisionIds(document));
-  let current = identified.document;
+  const closed = withClosingParagraphs(identified.document, revised);
+  let current = closed.document;
   const unresolved: OpStory[] = [];
   for (const story of stories) {
     const revisionIds = storyRevisionIds(current, story);
@@ -236,10 +362,20 @@ export const resolvedDocumentView = (
       },
     ]);
     if (resolved.isErr()) unresolved.push(story);
-    else current = resolved.value.document;
+    else
+      current = withTerminalTableCarrierResolved({
+        document: resolved.value.document,
+        story,
+        decision,
+      });
   }
+  const minted = new Map(identified.minted);
+  for (const paraId of closed.closing.keys()) minted.set(paraId, undefined);
   return {
-    document: withoutParagraphIds(current, identified.minted),
+    document: withoutParagraphIds(
+      withoutBareClosingParagraphs(current, closed.closing),
+      minted,
+    ),
     unresolved,
   };
 };

@@ -29,7 +29,11 @@ export {
   withParagraphRenderings,
 } from "./paragraphCopies";
 export { captureStoryParts, sectionPropertiesAt } from "./storyLifecycle";
-export { documentStories, replaceStoryBody } from "./stories";
+export {
+  documentStories,
+  replaceStoryBody,
+  storyLacksClosingParagraph,
+} from "./stories";
 export {
   locateParagraphThroughTextBoxes,
   paragraphsThroughTextBoxes,
