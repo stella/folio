@@ -703,7 +703,7 @@ describe("tracked whole table properties", () => {
                     },
                   ],
                 };
-                reason = DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT;
+                reason = DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK;
                 break;
               default: {
                 const unreachable: never = unsupported;

@@ -1251,7 +1251,7 @@ export const deleteBlocks = ({
     )
   ) {
     return refuse(
-      DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK,
       "Deletion would overwrite a paragraph review record.",
     );
   }

@@ -78,8 +78,9 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
   readonly EMPTY_BLOCK_LIST: "emptyBlockList";
   /**
    * The operation would record a tracked change over one the target already
-   * carries (a paragraph mark, a split that would drop a paragraph's property
-   * change), or would give a tracked split a mark of its own.
+   * carries (a table, row or cell record, a split that would drop a
+   * paragraph's property change), or would give a tracked split a mark of
+   * its own.
    */
   readonly REVISION_CONFLICT: "revisionConflict";
   /**
@@ -123,10 +124,12 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
    */
   readonly PENDING_BREAK_TAKEOVER: "pendingBreakTakeover";
   /**
-   * A tracked insertion after a container's final paragraph would take over
-   * that paragraph's mark while the mark is itself under review (inserted,
-   * deleted or moving): the container's new final paragraph keeps no record
-   * a pending change moves to it.
+   * A tracked operation would record a change of a paragraph mark that is
+   * already under review (inserted, deleted or moving), which holds one such
+   * record: joining or deleting through it, putting a table or row against
+   * it, or, after a container's final paragraph, taking it over, since the
+   * container's new final paragraph keeps no record a pending change moves
+   * to it.
    */
   readonly PENDING_PARAGRAPH_MARK: "pendingParagraphMark";
   /**
@@ -222,8 +225,9 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
   EMPTY_BLOCK_LIST: "emptyBlockList",
   /**
    * The operation would record a tracked change over one the target already
-   * carries (a paragraph mark, a split that would drop a paragraph's property
-   * change), or would give a tracked split a mark of its own.
+   * carries (a table, row or cell record, a split that would drop a
+   * paragraph's property change), or would give a tracked split a mark of
+   * its own.
    */
   REVISION_CONFLICT: "revisionConflict",
   /**
@@ -269,10 +273,12 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
    */
   PENDING_BREAK_TAKEOVER: "pendingBreakTakeover",
   /**
-   * A tracked insertion after a container's final paragraph would take over
-   * that paragraph's mark while the mark is itself under review (inserted,
-   * deleted or moving): the container's new final paragraph keeps no record
-   * a pending change moves to it.
+   * A tracked operation would record a change of a paragraph mark that is
+   * already under review (inserted, deleted or moving), which holds one such
+   * record: joining or deleting through it, putting a table or row against
+   * it, or, after a container's final paragraph, taking it over, since the
+   * container's new final paragraph keeps no record a pending change moves
+   * to it.
    */
   PENDING_PARAGRAPH_MARK: "pendingParagraphMark",
   /**
