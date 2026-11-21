@@ -11,6 +11,12 @@
       "path": "7:0:0:0:0:0:0:0:0:0:0:0:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:2:2:2",
       "date": "2026-11-21",
       "note": "The paragraph that closes a body after its final table carries an id minted on opening; a save that rewrites the body writes it, and the reopened package reads it as stable."
+    },
+    {
+      "seed": -1740293207,
+      "path": "20:0:0:0:0:0:0:0:0:3:2:2:2:2:2:2:2:2:2:2:2:2:2:1:1:1:1:1:1:1:1:1:2:2:2:2",
+      "note": "A save writes the minted id of the paragraph closing a final table in a body the edit rewrote; it reads stable after reopen.",
+      "date": "2026-11-21"
     }
   ]
 }

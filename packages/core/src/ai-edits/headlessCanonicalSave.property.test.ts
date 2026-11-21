@@ -16,6 +16,8 @@ import fc from "fast-check";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
+import { ZipArchive } from "@stll/docx-core/zip";
+
 import { reviewerDocumentArbitrary } from "../../../../test/generators/reviewerDocumentArbitraries";
 import {
   type OperationDraw,
@@ -83,48 +85,50 @@ const reads = (reviewer: Reviewer) => ({
   properties: { ...reviewer.getDocumentProperties(), modified: undefined },
 });
 
-/**
- * The ids `before` reads as positional that `after` reads with the same id as
- * stable: minted on opening (the paragraph that closes a story after its
- * final table), they are written into a part the save rewrites anyway.
- */
-const writtenMintedIds = (before: Reviewer, after: Reviewer): Set<string> => {
-  const stable = new Set(
-    after
-      .getContent()
-      .filter(({ idStability }) => idStability === undefined)
-      .map(({ id }) => id),
-  );
-  return new Set(
-    before
-      .getContent()
-      .filter(
-        ({ id, idStability }) => idStability === "positional" && stable.has(id),
-      )
-      .map(({ id }) => id),
-  );
+const PARAGRAPH_ID = /\bw14:paraId="([0-9A-Fa-f]{8})"/gu;
+
+/** Every paragraph id the package's XML parts hold, upper-cased. */
+const packageParagraphIds = async (
+  buffer: ArrayBuffer,
+): Promise<Set<string>> => {
+  const zip = await ZipArchive.read(buffer.slice(0));
+  const ids = new Set<string>();
+  for (const name of zip.paths()) {
+    if (!name.endsWith(".xml")) continue;
+    const xml = (await zip.entry(name)?.text()) ?? "";
+    for (const [, id = ""] of xml.matchAll(PARAGRAPH_ID))
+      ids.add(id.toUpperCase());
+  }
+  return ids;
 };
 
-/** `value` with the positional stability of the records naming `ids` dropped. */
-const asWritten = (value: unknown, ids: ReadonlySet<string>): unknown => {
-  if (Array.isArray(value)) return value.map((item) => asWritten(item, ids));
+/**
+ * The reads as a reopened package gives them: a minted id the save wrote is a
+ * package fact once written, so a paragraph holding one reads stable after
+ * the save. Only that stability may change; the id and every other read stay.
+ */
+const asSavedWith = (value: unknown, written: ReadonlySet<string>): unknown => {
+  if (Array.isArray(value))
+    return value.map((item) => asSavedWith(item, written));
+  // Only plain records hold ids; a date or other value stays as it is.
   if (
     typeof value !== "object" ||
     value === null ||
     Object.getPrototypeOf(value) !== Object.prototype
   )
     return value;
-  const out: Record<string, unknown> = {};
-  for (const [key, field] of Object.entries(value))
-    out[key] = asWritten(field, ids);
-  const id = out["id"];
+  const entries = Object.entries(value).map(
+    ([key, item]) => [key, asSavedWith(item, written)] as const,
+  );
+  const record = Object.fromEntries(entries);
+  const id = record["id"];
   if (
+    record["idStability"] === "positional" &&
     typeof id === "string" &&
-    ids.has(id) &&
-    out["idStability"] === "positional"
+    written.has(id.toUpperCase())
   )
-    delete out["idStability"];
-  return out;
+    delete record["idStability"];
+  return record;
 };
 
 /** The body once every change is resolved, or `null` when that refuses. */
@@ -173,13 +177,18 @@ const saveLaws = async (
   );
   if (result.applied.length === 0) return "refusedOperation";
 
-  const read = reads(reviewer);
+  const before = reads(reviewer);
   const saved = await reviewer.toBuffer();
   const reopened = await open(saved);
-  const before = asWritten(read, writtenMintedIds(reviewer, reopened));
-  expect(reads(reopened)).toEqual(before);
+  // Ids the save wrote that the opened package did not hold.
+  const sourceIds = await packageParagraphIds(buffer);
+  const written = new Set(
+    [...(await packageParagraphIds(saved))].filter((id) => !sourceIds.has(id)),
+  );
+  const expected = asSavedWith(before, written);
+  expect(reads(reopened)).toEqual(expected);
   // Saving the reopened package writes the same reads again.
-  expect(reads(await open(await reopened.toBuffer()))).toEqual(before);
+  expect(reads(await open(await reopened.toBuffer()))).toEqual(expected);
 
   // Resolving after the save gives what resolving before it gives.
   for (const resolution of ["accept", "reject"] as const) {
