@@ -1,5 +1,5 @@
 /** Semantic grid/cell/property edits; one exact, stale-checked table inverse. */
-import { Result } from "better-result";
+import { panic, Result } from "better-result";
 
 import {
   type Document,
@@ -25,19 +25,20 @@ import { idKey, isParaId, packageParagraphIds, paragraphIdsIn } from "./ids";
 import { applyFormattingPatch } from "./patch";
 import { relocatePositionedMarkers } from "./positionedMarkers";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
-import { stampInfo } from "./review";
+import { stampInfo, WRAP_KINDS } from "./review";
 import { replaceStoryBody } from "./stories";
 import {
   reachesPastRemovedCell,
   strandsABookmark,
 } from "./tableEditDependencies";
-import { type TableGrid, tableGrid } from "./tableGrid";
+import { editRemovesRow, type TableGrid, tableGrid } from "./tableGrid";
 import {
   locateTableRow,
   tableRowAnchor,
   type TableRowLocation,
 } from "./tableLocation";
 import { applyTableOp } from "./tables";
+import { trackTableRows } from "./tableTracking";
 import {
   DOCUMENT_OP_TYPES,
   type DocumentOpType,
@@ -478,6 +479,37 @@ const hasReview = (table: Table) =>
       ),
   );
 
+type HasReviewBlockingMergeOptions = {
+  table: Table;
+  /** The first row the merge changes. */
+  top: number;
+  /** The row after the last one the merge changes. */
+  bottom: number;
+};
+
+/**
+ * A review a cell merge cannot join: any but a row's own suggested insertion
+ * or deletion outside the rows the merge changes, which resolves apart from
+ * the merge, as the merge's rows resolve apart from it.
+ */
+const hasReviewBlockingMerge = ({
+  table,
+  top,
+  bottom,
+}: HasReviewBlockingMergeOptions) =>
+  table.formatting?.gridChange !== undefined ||
+  table.propertyChanges !== undefined ||
+  table.rows.some(
+    (row, index) =>
+      (row.structuralChange !== undefined && index >= top && index < bottom) ||
+      row.propertyChanges !== undefined ||
+      row.cells.some(
+        (cell) =>
+          cell.structuralChange !== undefined ||
+          cell.propertyChanges !== undefined,
+      ),
+  );
+
 /**
  * A review a column edit cannot join. A row's own suggested insertion or
  * deletion keeps its mark while the column gains or loses that row's cell;
@@ -845,9 +877,10 @@ const columnEdit = ({
       if (added.isErr()) return Result.err(added.error);
       cells.push(...added.value);
     }
-    // A row the deletion takes its only cells from goes with them; a
-    // suggested deletion leaves it to go when the suggestion is accepted.
-    if (cells.length === 0 && row.cells.length > 0) continue;
+    // A row the deletion takes its only cells, or the only cells it
+    // starts, from goes with them; a suggested deletion leaves it to go
+    // when the suggestion is accepted.
+    if (editRemovesRow({ before: row.cells, after: cells })) continue;
     rows.push({ ...row, cells });
   }
   if (trackedDeletion) return Result.ok({ ...table, rows });
@@ -959,6 +992,89 @@ const mergeSelection = ({ table, grid, op }: MergeSelectionOptions) => {
   return Result.ok({ selected, verticalOnly });
 };
 
+type ClosingRowsOptions = {
+  /** The table's rows before the merge. */
+  before: readonly TableRow[];
+  /** The rows the merge leaves, one for each of `before`. */
+  after: readonly TableRow[];
+};
+
+/**
+ * The rows the merge leaves nothing they start, only merges from above
+ * (`editRemovesRow`). A reader cannot hold such a row, so the merge removes
+ * it and closes over one row fewer.
+ */
+const closingRows = ({ before, after }: ClosingRowsOptions): Set<number> =>
+  new Set(
+    after.flatMap((row, index) =>
+      editRemovesRow({ before: before[index]?.cells ?? [], after: row.cells })
+        ? [index]
+        : [],
+    ),
+  );
+
+type TrackedClosingRowsOptions = {
+  document: Document;
+  op: Extract<TableEditOp, { type: "mergeCells" }>;
+  table: Table;
+  /** The merged rows, one for each of the table's. */
+  merged: readonly TableRow[];
+  closing: ReadonlySet<number>;
+  /** The revision ids the merge's own cell records take. */
+  used: number;
+};
+
+/**
+ * A suggested merge's rows, with the deletion of each row it closes
+ * recorded beside its cell's merge record: accepting removes the row, as the
+ * direct merge does, and rejecting keeps it as it was.
+ */
+const trackedClosingRows = ({
+  document,
+  op,
+  table,
+  merged,
+  closing,
+  used,
+}: TrackedClosingRowsOptions): Result<TableRow[], DocumentOpRefusal> => {
+  const stamps = stampsFor(op, used + 1);
+  if (stamps.isErr()) return Result.err(stamps.error);
+  const revision =
+    stamps.value.at(-1) ?? panic("A suggested merge lost its row stamp.");
+  const indexes = [...closing];
+  const tracked = trackTableRows({
+    document,
+    op,
+    rows: indexes.map(
+      (index) => table.rows[index] ?? panic("A closed row is missing."),
+    ),
+    revision,
+    newIds: {
+      ...op.newIds,
+      revision: (op.newIds?.revision ?? []).slice(used),
+    },
+    kind: WRAP_KINDS.DELETION,
+  });
+  if (tracked.isErr()) return Result.err(tracked.error);
+  const rows = [...merged];
+  for (const [position, index] of indexes.entries()) {
+    const deleted =
+      tracked.value[position] ?? panic("A suggested merge lost a row.");
+    const row = merged[index] ?? panic("A merged row is missing.");
+    const cells: TableCell[] = [];
+    for (const [cellIndex, cell] of deleted.cells.entries())
+      cells.push(
+        Object.assign(
+          {},
+          row.cells[cellIndex] ?? panic("A merged cell is missing."),
+          { content: cell.content },
+        ),
+      );
+    rows[index] = { ...deleted, cells };
+  }
+  return Result.ok(rows);
+};
+
 type MergeOptions = {
   document: Document;
   op: Extract<TableEditOp, { type: "mergeCells" }>;
@@ -977,7 +1093,7 @@ const merge = ({
       reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
       message: "Indexed table markup must be relocated before changing cells.",
     });
-  if (hasReview(table))
+  if (hasReviewBlockingMerge({ table, top: op.top, bottom: op.bottom }))
     return refuse({
       op,
       reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
@@ -1034,7 +1150,21 @@ const merge = ({
       cells[entry.index] = next;
       return { ...row, cells };
     });
-    return Result.ok({ ...table, rows });
+    const closing = closingRows({ before: table.rows, after: rows });
+    if (closing.size === 0) return Result.ok({ ...table, rows });
+    if (op.revision === undefined)
+      return Result.ok({
+        ...table,
+        rows: rows.filter((_row, index) => !closing.has(index)),
+      });
+    return trackedClosingRows({
+      document,
+      op,
+      table,
+      merged: rows,
+      closing,
+      used: selected.length * 2,
+    }).map((tracked) => Object.assign({}, table, { rows: tracked }));
   }
   if (op.revision !== undefined)
     return refuse({
@@ -1091,7 +1221,11 @@ const merge = ({
     cells.splice(leading.index, entries.length, { ...cell, formatting });
     return { ...row, cells };
   });
-  return Result.ok({ ...table, rows });
+  const closing = closingRows({ before: table.rows, after: rows });
+  return Result.ok({
+    ...table,
+    rows: rows.filter((_row, index) => !closing.has(index)),
+  });
 };
 
 type SplitOptions = {

@@ -17,7 +17,7 @@ import { relocatePositionedMarkers } from "./positionedMarkers";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import type { ApplyOps } from "./resolve";
 import { reviewFieldsOf } from "./review";
-import { tableGrid } from "./tableGrid";
+import { editRemovesRow, tableGrid } from "./tableGrid";
 import { locateTableRow, tableRowAnchor } from "./tableLocation";
 import { removalOrphansAMerge, rowsWithoutRow } from "./tableRowRemoval";
 import {
@@ -415,8 +415,8 @@ type GridRow = {
  * `gridBefore` and `gridAfter` columns, and those a row that ends early
  * leaves after it, keep theirs. Where other rows keep a removed cell's
  * columns, the cell before it in its row (the one after it when it starts the
- * row) widens over them. A row that loses every cell it has goes, and keeps
- * no column.
+ * row) widens over them. A row that loses every cell it has, or every cell
+ * it starts, goes, and keeps no column.
  */
 type ResolveCellColumnsOptions = {
   table: Table;
@@ -552,6 +552,10 @@ const resolveCellColumns = ({
       cells.push(widened);
     }
     if (carried > 0) return Result.err("unsupported");
+    // Accepting a deletion that leaves the row nothing it starts removes
+    // the row, as the direct deletion does.
+    if (!reject && editRemovesRow({ before: row.cells, after: cells }))
+      continue;
     rows.push({ ...row, cells });
   }
   if (rows.length === 0) return Result.err("unsupported");
@@ -623,7 +627,10 @@ const resolveCellChanges = ({
         }
         return [cell];
       });
-      return row.cells.length > 0 && cells.length === 0
+      // Accepting a deletion that leaves a row nothing it starts removes
+      // the row; rejecting gives back the rows the source had.
+      return (row.cells.length > 0 && cells.length === 0) ||
+        (!reject && editRemovesRow({ before: row.cells, after: cells }))
         ? []
         : [{ ...row, cells }];
     }),

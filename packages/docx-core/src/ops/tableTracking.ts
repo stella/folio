@@ -45,11 +45,17 @@ import {
   type DocumentOp,
   type InsertRowOp,
   type InsertTableOp,
+  type MergeCellsOp,
   type NewIds,
   type RevisionStamp,
 } from "./types";
 
-type TrackingOp = InsertRowOp | DeleteRowOp | InsertTableOp | DeleteTableOp;
+/**
+ * A merge tracks the deletion of a row it leaves only continuations, which
+ * accepting the merge removes as the direct merge does.
+ */
+type TrackingOp =
+  InsertRowOp | DeleteRowOp | InsertTableOp | DeleteTableOp | MergeCellsOp;
 type TrackingRefusalOptions = {
   op: TrackingOp;
   reason: DocumentOpRefusal["reason"];
@@ -298,7 +304,8 @@ export const trackTableRows = ({
   const outside = new Set(packageIdentityKeys(document.package));
   if (
     op.type === DOCUMENT_OP_TYPES.DELETE_ROW ||
-    op.type === DOCUMENT_OP_TYPES.DELETE_TABLE
+    op.type === DOCUMENT_OP_TYPES.DELETE_TABLE ||
+    op.type === DOCUMENT_OP_TYPES.MERGE_CELLS
   ) {
     for (const key of identityKeysIn(rows)) outside.delete(key);
   }

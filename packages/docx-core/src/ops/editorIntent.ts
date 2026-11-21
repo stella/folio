@@ -113,7 +113,11 @@ import { runsMergeable } from "./runMerge";
 import { identitySlots } from "./slots";
 import { tableEditParagraphDemand } from "./tableEdits";
 import { tableGrid } from "./tableGrid";
-import { locateTableRow, tableRowAnchor } from "./tableLocation";
+import {
+  locateTableRow,
+  tableRowAnchor,
+  type TableRowLocation,
+} from "./tableLocation";
 import { rowsWithoutRow } from "./tableRowRemoval";
 import {
   addressedTo,
@@ -758,6 +762,21 @@ export const createEditorIntentIdAllocator = ({
           }
           case DOCUMENT_OP_TYPES.MERGE_CELLS:
             demand = (op.bottom - op.top + 1) * 2;
+            // A row the merge leaves only continuations records its
+            // deletion: the row and each of its paragraphs.
+            for (const row of located.value.table.rows.slice(
+              op.top + 1,
+              op.bottom,
+            )) {
+              demand += 1;
+              for (const { paragraph } of storyParagraphs({
+                content: [{ type: "table", rows: [row] }],
+              })) {
+                demand += PARAGRAPH_REVISION_DEMAND;
+                for (const span of leafSpans(paragraph.content))
+                  demand += leafRevisionDemand(span.ancestors.length);
+              }
+            }
             break;
           case DOCUMENT_OP_TYPES.SPLIT_CELL:
             // A cell for each column of the span, and a merge change, in
@@ -1042,6 +1061,34 @@ const adjacentJoinRefusal = (
 
 const paragraphAt = (document: Document, at: TextPosition) =>
   findStoryParagraph(storyBody(document, at.story), at.blockId)?.paragraph;
+
+type MergedCellParagraphOptions = {
+  /** The document the merge left. */
+  document: Document;
+  op: Extract<TableEditOp, { type: "mergeCells" }>;
+  /** Where the merged table was before the merge. */
+  located: TableRowLocation;
+};
+
+/** The first paragraph of the cell a merge made, which keeps its place. */
+const mergedCellParagraph = ({
+  document,
+  op,
+  located,
+}: MergedCellParagraphOptions): string | undefined => {
+  const leading = tableGrid(located.table, op.type)
+    .map(({ rows }) => rows[op.top]?.find(({ start }) => start === op.left))
+    .unwrapOr(undefined);
+  const table = blockListAt(
+    storyBody(document, op.story).content,
+    located.list,
+  )[located.index];
+  if (leading === undefined || table?.type !== "table") return undefined;
+  const cell = table.rows[op.top]?.cells[leading.index];
+  return cell === undefined
+    ? undefined
+    : storyParagraphs({ content: cell.content }).at(0)?.paragraph.paraId;
+};
 
 /**
  * Zero-width markers and empty leaves never supply the formatting of typed
@@ -2739,6 +2786,25 @@ const compileInStory = (
           story: op.story,
         }),
       ];
+      // A merge drops an empty cell's paragraph, and a row it closes goes
+      // whole: a caret there moves to the merged cell.
+      if (
+        op.type === DOCUMENT_OP_TYPES.MERGE_CELLS &&
+        paragraphAt(applied.value.document, {
+          story: op.story,
+          blockId,
+          offset: 0,
+        }) === undefined
+      ) {
+        const merged = mergedCellParagraph({
+          document: applied.value.document,
+          op,
+          located: located.value,
+        });
+        if (merged === undefined)
+          panic("A merge keeps the paragraphs of its merged cell.");
+        blockId = merged;
+      }
       selection = { story: op.story, blockId, offset: 0 };
       if (intent.cellContent === undefined) break;
       if (
