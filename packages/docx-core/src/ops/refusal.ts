@@ -91,7 +91,9 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
   /**
    * A suggestion would fold into a paragraph's pending property change that
    * is not its own, for the same reason as
-   * {@link DOCUMENT_OP_REFUSAL_REASONS.PENDING_RUN_PROPERTY_CHANGE}.
+   * {@link DOCUMENT_OP_REFUSAL_REASONS.PENDING_RUN_PROPERTY_CHANGE}; or a
+   * tracked insertion after a container's final paragraph would take over
+   * the mark of one whose properties carry a pending change.
    */
   readonly PENDING_PARAGRAPH_PROPERTY_CHANGE: "pendingParagraphPropertyChange";
   /**
@@ -226,7 +228,9 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
   /**
    * A suggestion would fold into a paragraph's pending property change that
    * is not its own, for the same reason as
-   * {@link DOCUMENT_OP_REFUSAL_REASONS.PENDING_RUN_PROPERTY_CHANGE}.
+   * {@link DOCUMENT_OP_REFUSAL_REASONS.PENDING_RUN_PROPERTY_CHANGE}; or a
+   * tracked insertion after a container's final paragraph would take over
+   * the mark of one whose properties carry a pending change.
    */
   PENDING_PARAGRAPH_PROPERTY_CHANGE: "pendingParagraphPropertyChange",
   /**
