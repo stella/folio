@@ -582,7 +582,17 @@ export const insertBlocks = ({
           );
       }
       const following = list.at(located.value.index);
-      if (!list.some((block) => block.type === "paragraph"))
+      // After a table that ends a block content control's content, the
+      // paragraph stays in the control. Its mark joins nothing there:
+      // rejecting removes the emptied paragraph by an empty replacement,
+      // reinserted after the table, and never reaches past the control. A
+      // control that ends its container is refused below, as a container
+      // keeps a final paragraph.
+      const endsControl =
+        op.at.type === "afterTable" &&
+        following === undefined &&
+        located.value.list.at(-1)?.kind === "blockSdt";
+      if (!endsControl && !list.some((block) => block.type === "paragraph"))
         return refuse(
           DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
           "Tracked table-side insertion needs a surviving paragraph for its review inverse.",
@@ -600,6 +610,7 @@ export const insertBlocks = ({
             "Tracked table-side insertion needs a paragraph terminator after its table receiver.",
           );
       } else if (
+        !endsControl &&
         following?.type !== "paragraph" &&
         !isOpaqueFollower(following)
       )
