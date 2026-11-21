@@ -120,11 +120,13 @@ const deletedContent = (
   };
 };
 
+/** Whether `paragraph`'s own mark is pending deletion, as a move's source too. */
+const markPendingDeletion = ({ pPrMark }: Paragraph): boolean =>
+  pPrMark?.kind === "del" || pPrMark?.kind === "moveFrom";
+
 /** Whether accepting every change takes `paragraph`'s own mark. */
-const markGoes = ({ pPrMark }: Paragraph): boolean =>
-  pPrMark?.kind === "del" ||
-  pPrMark?.kind === "moveFrom" ||
-  pPrMark?.deletion !== undefined;
+const markGoes = (paragraph: Paragraph): boolean =>
+  markPendingDeletion(paragraph) || paragraph.pPrMark?.deletion !== undefined;
 
 /**
  * Whether `owner`'s pending insertion added `paragraph` whole: its mark
@@ -623,7 +625,7 @@ export const deleteBlocks = ({
       const block = list[candidate];
       if (
         block?.type !== "paragraph" ||
-        block.pPrMark?.kind !== "del" ||
+        !markPendingDeletion(block) ||
         block.sectionProperties !== undefined ||
         paragraphHoldsContentOnceAccepted(block)
       )
@@ -844,11 +846,14 @@ export const deleteBlocks = ({
       paragraphPropertiesOf(following.formatting),
       paragraphPropertiesOf(last.paragraph.formatting),
     );
-  // So does an added mark whose later deletion already took it.
+  // So does an added mark whose later deletion already took it. A move's
+  // source records its own paragraphs' marks moved, so one already taken is
+  // not; a paragraph a pending deletion takes whole between the last
+  // paragraph and the break the move retires keeps its record.
   const keepsDeletedMark = (paragraph: Paragraph) =>
-    op.move !== true &&
-    (paragraph.pPrMark?.kind === "del" ||
+    (markPendingDeletion(paragraph) ||
       paragraph.pPrMark?.deletion !== undefined) &&
+    !(op.move === true && selected.includes(paragraph)) &&
     !(finalTakeover && paragraph === last.paragraph);
   // Another owner's added mark the deletion takes keeps that insertion and
   // records the deletion beside it, as a later deletion of an insertion does;
