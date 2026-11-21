@@ -388,14 +388,27 @@ describe.each(SESSIONS)("%s session", (session) => {
    * - A split is the reverse, so only a vertical merge splits tracked.
    * - A column inserted through a horizontal merge widens it, and a column
    *   deleted through one narrows it: a `w:gridSpan` change has no tracked form.
+   * - A table holds one pending grid change (`w:tblGridChange`), so a column
+   *   edit beside another column the tracked batch edits in the same table may
+   *   be refused (the canonical engine refuses it; the legacy engine applies).
    */
   const trackedRefusalIsExpected = (
     planned: PlannedOperation,
     plan: OperationPlan,
+    trackedGridEdits: readonly PlannedOperation[],
   ): boolean => {
     const { anchor, other } = planned;
     const cell = anchor.cell;
     const siblings = anchor.siblings;
+    if (
+      (plan.kind === "insertTableColumn" ||
+        plan.kind === "deleteTableColumn") &&
+      trackedGridEdits.some(
+        (edit) =>
+          edit !== planned && edit.anchor.tableIndex === anchor.tableIndex,
+      )
+    )
+      return true;
     switch (plan.kind) {
       case "mergeTableCells": {
         const top = Math.min(cell.row, other.row);
@@ -510,6 +523,14 @@ describe.each(SESSIONS)("%s session", (session) => {
         ? []
         : [{ planned, plan: plans[index]! }],
     );
+    // The column edits tracked mode applied, each holding its table's one
+    // grid change.
+    const trackedGridEdits = tracked.planned.filter(
+      ({ operation }) =>
+        trackedApplied.has(operation.id) &&
+        (operation.type === "insertTableColumn" ||
+          operation.type === "deleteTableColumn"),
+    );
     if (disagreeing.length > 0) {
       // (b) Both modes agree on whether each operation is allowed, bar the
       // refusals the tracked vocabulary forces.
@@ -524,7 +545,7 @@ describe.each(SESSIONS)("%s session", (session) => {
             tracked.result.skipped.some(
               (skip) => skip.id === id && skip.reason === "unsupportedBlock",
             ) &&
-            trackedRefusalIsExpected(planned, plan),
+            trackedRefusalIsExpected(planned, plan, trackedGridEdits),
         }).toMatchObject({ expected: true });
       }
     }
