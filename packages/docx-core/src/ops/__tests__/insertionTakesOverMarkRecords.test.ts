@@ -284,7 +284,7 @@ test("a new final paragraph does not take a pending property change", () => {
     insertion(paragraph("00000002", "new")),
   );
   expect(refused.isErr() && refused.error.reason).toBe(
-    DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+    DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_PROPERTY_CHANGE,
   );
 });
 

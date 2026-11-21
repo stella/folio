@@ -609,10 +609,10 @@ test(
               mode: "suggested",
             },
           });
-          // After a story's final paragraph the new paragraph takes over its
-          // mark, and with it the "pending" suggestion's property change. The
-          // canonical session refuses to fold this suggestion into another's;
-          // the legacy engine applies it.
+          // After a story's final paragraph the new paragraph would take over
+          // its mark, and with it the "pending" suggestion's property change.
+          // The canonical session refuses that by the pending change; the
+          // legacy engine applies it.
           if (
             scenarioEngine() === "canonical" &&
             pre.liveRows.at(-1)?.id === anchor.id
@@ -627,7 +627,7 @@ test(
                 {
                   reason: "pendingParagraphPropertyChange",
                   message:
-                    "A suggestion cannot take over another pending paragraph property change.",
+                    "A tracked insertion after a paragraph no paragraph follows needs the anchor's properties free of a pending change.",
                   canonicalRefusal: undefined,
                 },
               ],
