@@ -1928,7 +1928,10 @@ export const publishCanonicalProjection = ({
  * save: no new edit, so a lock that arrived since does not refuse it, while
  * resolving the suggestion stays under the lock.
  */
-export const CANONICAL_ADMISSION = {
+export const CANONICAL_ADMISSION: {
+  readonly edit: "edit";
+  readonly restage: "restage";
+} = {
   edit: "edit",
   restage: "restage",
 } as const;
