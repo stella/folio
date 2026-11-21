@@ -455,10 +455,16 @@ const blocksOf = async (bytes: ArrayBuffer) => {
   );
 };
 
-/** The package pending, with every change accepted, and with every change rejected. */
+/**
+ * The package pending, with every change accepted, and with every change
+ * rejected by the legacy reviewer, whichever engine wrote it;
+ * `reviewedInSession` reads the canonical session's own review.
+ */
 const outcomes = async (bytes: ArrayBuffer) => {
   const resolved = async (decision: "accept" | "reject") => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice(0));
+    const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice(0), {
+      session: "legacy",
+    });
     if (decision === "accept") reviewer.acceptAll();
     else reviewer.rejectAll();
     return blocksOf(await reviewer.toBuffer());
@@ -521,13 +527,15 @@ type EngineRunOptions = {
   mode: Mode;
   resolveSuggestion?: "accept" | "reject";
 };
-const viaDefaultEngine = async ({
+const viaLegacyEngine = async ({
   source,
   operation,
   mode,
   resolveSuggestion,
 }: EngineRunOptions) => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(source.slice(0));
+  const reviewer = await FolioDocxReviewer.fromBuffer(source.slice(0), {
+    session: "legacy",
+  });
   const before = await reviewer.toBuffer();
   const snapshot = reviewer.snapshot();
   const result = reviewer.applyDocumentOperations(
@@ -733,7 +741,7 @@ const sameAsDefaultEngine =
     const build = operations[operation];
     if (build === undefined) throw new Error(`No operation ${operation}.`);
     const op = build(anchor, last);
-    const legacy = await viaDefaultEngine({
+    const legacy = await viaLegacyEngine({
       source,
       operation: op,
       mode: mode,
@@ -755,7 +763,7 @@ const sameAsDefaultEngine =
       legacy.skipped.length > 0 &&
       canonical.skipped.length === 0
     ) {
-      const direct = await viaDefaultEngine({
+      const direct = await viaLegacyEngine({
         source,
         operation: op,
         mode: "direct",
@@ -794,14 +802,16 @@ describe("table structure operations in the canonical session", () => {
     ] as const;
     for (const value of cases) {
       const source = await packageOf(value.body);
-      const reviewer = await FolioDocxReviewer.fromBuffer(source.slice(0));
+      const reviewer = await FolioDocxReviewer.fromBuffer(source.slice(0), {
+        session: "legacy",
+      });
       expect(reviewer.snapshot().anchors[value.anchor]).toBeDefined();
       for (const mode of ["direct", "tracked-changes", "suggested"] as const) {
         for (const type of TABLE_INSERTION_TYPES) {
           for (const side of ["before", "after"] as const) {
             const operation = INSERTIONS[`${type} ${side}`](value.anchor);
             const run = { source, operation, mode };
-            const legacy = await viaDefaultEngine(run);
+            const legacy = await viaLegacyEngine(run);
             const canonical = await viaCanonicalEngine(run);
             const supported = isFolioDocumentOperationModeSupported(type, mode);
             expect(
@@ -822,13 +832,13 @@ describe("table structure operations in the canonical session", () => {
               // later rejectAll keeps that table. Canonical ordinary tracked
               // adoption cannot represent this boundary yet.
               for (const resolveSuggestion of ["accept", "reject"] as const) {
-                const resolvedLegacy = await viaDefaultEngine({
+                const resolvedLegacy = await viaLegacyEngine({
                   ...run,
                   resolveSuggestion,
                 });
                 const expected =
                   resolveSuggestion === "accept"
-                    ? (await viaDefaultEngine({ ...run, mode: "direct" })).bytes
+                    ? (await viaLegacyEngine({ ...run, mode: "direct" })).bytes
                     : source;
                 expect(await outcomes(resolvedLegacy.bytes)).toEqual(
                   await outcomes(expected),
@@ -864,7 +874,7 @@ describe("table structure operations in the canonical session", () => {
           )
             ? "pendingParagraphMarkDeletion"
             : "unsupportedMode";
-          const legacy = await viaDefaultEngine({
+          const legacy = await viaLegacyEngine({
             source,
             operation: operation,
             mode: mode,
@@ -907,7 +917,7 @@ describe("table structure operations in the canonical session", () => {
           )
             ? "pendingParagraphMarkDeletion"
             : "unsupportedMode";
-          const legacy = await viaDefaultEngine({ source, operation, mode });
+          const legacy = await viaLegacyEngine({ source, operation, mode });
           const canonical = await viaCanonicalEngine({
             source,
             operation,
@@ -961,7 +971,7 @@ describe("table structure operations in the canonical session", () => {
     const accepted = await open();
     expect(accepted.acceptAll()).toEqual({ resolved: 3, skipped: [] });
     expect(accepted.getChanges()).toEqual([]);
-    const direct = await viaDefaultEngine({
+    const direct = await viaLegacyEngine({
       source,
       operation,
       mode: "direct",
@@ -1028,7 +1038,7 @@ describe("table structure operations in the canonical session", () => {
       const source = await packageOf("two tables touching");
       const op = INSERTIONS["insertTable after"]("10000002");
       const legacy = await outcomes(
-        (await viaDefaultEngine({ source, operation: op, mode: mode })).bytes,
+        (await viaLegacyEngine({ source, operation: op, mode: mode })).bytes,
       );
       const canonical = await viaCanonicalEngine({
         source,
@@ -1062,7 +1072,7 @@ describe("table structure operations in the canonical session", () => {
         async ({ body, anchor, operation }) => {
           const source = await packageOf(body);
           const op = OPERATIONS[operation](anchor);
-          const legacy = await viaDefaultEngine({
+          const legacy = await viaLegacyEngine({
             source,
             operation: op,
             mode: "tracked-changes",
