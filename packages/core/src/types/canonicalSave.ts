@@ -12,6 +12,16 @@ export type CanonicalSaveSnapshot = {
    */
   heldUnreferencedNotes: ReadonlySet<string>;
   /**
+   * Note paragraphs `touched` since the save baseline (or since the session
+   * opened, without one), and those whose content differs from the opened
+   * document. A note part is written against the opened package, so a note
+   * an edit and its undo left as it was is written as the source held it.
+   */
+  noteParagraphs: {
+    touched: readonly string[];
+    changedSinceSource: readonly string[];
+  };
+  /**
    * The package the session last saved, when it is the one this save
    * patches instead of the opened package.
    */

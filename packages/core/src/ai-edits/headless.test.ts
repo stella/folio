@@ -4653,6 +4653,57 @@ describe("headless docx review notes read surface", () => {
     ).toEqual(await partBytes(baseline, "word/endnotes.xml"));
   });
 
+  for (const session of ["canonical", "legacy"] as const)
+    for (const savedBetween of [false, true])
+      test(`${session}: an undone note edit leaves its part as the source held it, saved in between: ${savedBetween}`, async () => {
+        const baseline = await readNotesFixture();
+        const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+          author: "Reviewer",
+          session,
+        });
+        const edit = (
+          story: { type: "footnote" | "endnote"; noteId: number },
+          text: string,
+        ) => {
+          const snapshot =
+            reviewer.snapshotStory(story) ?? panic("The note story exists.");
+          const result = reviewer.applyDocumentOperationsToStory({
+            undefinedReferences: "refuse",
+            story,
+            snapshot,
+            batch: {
+              version: 1,
+              mode: "tracked-changes",
+              operations: [
+                {
+                  id: `${story.type}-replace`,
+                  type: "replaceInBlock",
+                  blockId: findBlock(snapshot.blocks, text).id,
+                  find: "Injected",
+                  replace: "Updated",
+                },
+              ],
+            },
+          });
+          expect(result.status).toBe("committed");
+          return result.undoHandle ?? panic("A committed batch can be undone.");
+        };
+        edit({ type: "footnote", noteId: 2 }, "Injected footnote body text.");
+        const endnote = edit(
+          { type: "endnote", noteId: 3 },
+          "Injected endnote body text.",
+        );
+        if (savedBetween) await reviewer.toBuffer();
+        expect(reviewer.undoDocumentOperations(endnote).status).toBe("undone");
+        const saved = await reviewer.toBuffer();
+        expect(await partBytes(saved, "word/endnotes.xml")).toEqual(
+          await partBytes(baseline, "word/endnotes.xml"),
+        );
+        const footnotes = await partText(saved, "word/footnotes.xml");
+        expect(footnotes).toContain("Updated");
+        expect(footnotes).toContain("<w:ins ");
+      });
+
   test("rejects a missing note story before applying operations", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await readNotesFixture(),

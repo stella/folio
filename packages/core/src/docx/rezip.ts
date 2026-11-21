@@ -3319,12 +3319,21 @@ async function serializeHeadersFootersToZip({
  * already has carries its own reference mark, or none, in the model; only a
  * note new to the part is given one.
  */
+/**
+ * What `newZip` holds before the notes are written: a copy of `originalZip`,
+ * whose unchanged note parts stay as they are, or another saved package,
+ * whose note parts the original holds are written from it, unchanged or not,
+ * and whose others are left alone.
+ */
+type NoteOutput = "originalCopy" | "otherPackage";
+
 type SerializeNotesToZipOptions = {
   doc: Document;
   originalZip: ZipArchive;
   newZip: ZipArchive;
   compressionLevel: number;
   changedNoteParaIds: ReadonlySet<string> | undefined;
+  output?: NoteOutput;
 };
 
 async function serializeNotesToZip({
@@ -3333,6 +3342,7 @@ async function serializeNotesToZip({
   newZip,
   compressionLevel,
   changedNoteParaIds,
+  output = "originalCopy",
 }: SerializeNotesToZipOptions): Promise<void> {
   const footnotes = doc.package.footnotes ?? [];
   // A part the model emptied is patched too: its notes went with their references.
@@ -3360,8 +3370,9 @@ async function serializeNotesToZip({
         originalZip,
         newZip,
         compressionLevel,
+        output,
       });
-    } else {
+    } else if (output === "originalCopy") {
       await materializeNewNotePart({
         contentType:
           "application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml",
@@ -3399,8 +3410,9 @@ async function serializeNotesToZip({
         originalZip,
         newZip,
         compressionLevel,
+        output,
       });
-    } else {
+    } else if (output === "originalCopy") {
       await materializeNewNotePart({
         contentType:
           "application/vnd.openxmlformats-officedocument.wordprocessingml.endnotes+xml",
@@ -4105,6 +4117,7 @@ type PatchNotePartIntoZipOptions = {
   originalZip: ZipArchive;
   newZip: ZipArchive;
   compressionLevel: number;
+  output: NoteOutput;
 };
 
 type NotePartXmlForOptions = {
@@ -4181,14 +4194,14 @@ async function patchNotePartIntoZip({
   originalZip,
   newZip,
   compressionLevel,
+  output,
 }: PatchNotePartIntoZipOptions): Promise<void> {
   const file = findNotePartEntry(originalZip, conventionalLowerPath);
   if (!file) {
     return;
   }
-  const originalXml = await file
-    .bytes()
-    .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
+  const originalBytes = await file.bytes();
+  const originalXml = decodeText(originalBytes, { ignoreBOM: true });
   const { baselineXml, replacementXml } = fromOriginal(originalXml);
   const effectiveChangedNoteParaIds =
     changedNoteParaIds ?? collectChangedNoteParaIds(baselineXml, currentXml);
@@ -4211,10 +4224,54 @@ async function patchNotePartIntoZip({
     partName: file.path,
   });
   if (patchedXml === null || patchedXml === originalXml) {
+    // Another package's part is replaced by the original's, byte for byte.
+    if (output === "otherPackage")
+      newZip.set(file.path, originalBytes, { level: compressionLevel });
     return;
   }
   newZip.set(file.path, patchedXml, { level: compressionLevel });
 }
+
+type WithNotePartsFromSourceOptions = {
+  document: Document;
+  /** The package whose note parts the notes are written against. */
+  source: ArrayBuffer;
+  /** A saved package, its note parts rewritten. */
+  saved: ArrayBuffer;
+  /** The note paragraphs whose content differs from the source's. */
+  changedNoteParaIds: ReadonlySet<string>;
+  compressionLevel?: number;
+};
+
+/**
+ * `saved` with each note part `source` holds written against the source
+ * part: the paragraphs `changedNoteParaIds` names from the model, every other
+ * note as the source holds it. A save that patched a later package writes its
+ * notes as a save of the source would.
+ */
+export const withNotePartsFromSource = async ({
+  document,
+  source,
+  saved,
+  changedNoteParaIds,
+  compressionLevel = 6,
+}: WithNotePartsFromSourceOptions): Promise<ArrayBuffer> => {
+  const [sourceZip, savedZip] = await Promise.all([
+    readPackageForSave(source),
+    readPackageForSave(saved),
+  ]);
+  await serializeNotesToZip({
+    doc: document,
+    originalZip: sourceZip,
+    newZip: savedZip,
+    compressionLevel,
+    changedNoteParaIds,
+    output: "otherPackage",
+  });
+  return savedZip
+    .generate({ level: compressionLevel })
+    .then((bytes) => bytes.buffer);
+};
 
 /** `word/Footnotes.xml` -> `word/_rels/Footnotes.xml.rels` (casing preserved). */
 export function notePartRelsPath(partPath: string): string {
