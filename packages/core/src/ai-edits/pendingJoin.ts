@@ -250,6 +250,49 @@ export const pendingJoinParagraphs = (
   return { first: before, last: after };
 };
 
+/** Where a paragraph put after one whose break is pending removal goes. */
+export type PendingBreakInsertion =
+  /**
+   * Right after that paragraph, with its properties: both it and the
+   * paragraph its join leaves keep words once accepted, and accepting runs
+   * its words into the new paragraph while the other stays its own, as a
+   * paragraph typed at its end records it.
+   */
+  | { type: "afterParagraph" }
+  /**
+   * After `survivor`, the paragraph the join leaves, with that one's
+   * properties, so accepting leaves one paragraph there and the new one
+   * after it, as the same edits applied directly do: the paragraph keeps
+   * words but the one its join leaves keeps none (a last-paragraph deletion
+   * took it over), or the paragraph keeps none and reads as one paragraph
+   * with the one its join leaves (`pendingJoinParagraphs`).
+   */
+  | { type: "afterJoin"; survivor: number };
+
+/**
+ * The place of a paragraph put after the paragraph at `paragraphPos`
+ * (`PendingBreakInsertion`). A paragraph whose break stays takes it right
+ * after itself.
+ */
+export const insertionAfterPendingBreak = (
+  options: PendingJoinBoundsOptions,
+): PendingBreakInsertion => {
+  const { doc, paragraphPos, noteReferences } = options;
+  if (!isDeletedPPrMark(doc.nodeAt(paragraphPos)?.attrs["pPrMark"]))
+    return { type: "afterParagraph" };
+  if (!keepsWords(options)) {
+    const { last } = pendingJoinParagraphs(options);
+    return last === paragraphPos
+      ? { type: "afterParagraph" }
+      : { type: "afterJoin", survivor: last };
+  }
+  const survivor = paragraphLeftAfter({ doc, paragraphPos });
+  return survivor === null ||
+    keepsWords({ doc, paragraphPos: survivor, noteReferences })
+    ? { type: "afterParagraph" }
+    : { type: "afterJoin", survivor };
+};
+
 /**
  * Where a block goes before and after the paragraph at `paragraphPos`, read
  * as the joined paragraph a pending join makes of it (`pendingJoinParagraphs`):

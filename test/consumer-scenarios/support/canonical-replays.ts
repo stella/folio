@@ -67,6 +67,11 @@ export const CANONICAL_VACUOUS_STEPS: Readonly<
   // rejects a cell mark rather than the deletion, "months" stays struck, and
   // step 5's replacement of it finds its block changed.
   "issue-1410-edit-in-a-row-pending-deletion.json": [5],
+  // The insertion follows a paragraph that goes whole with a join running
+  // through it, so it goes after the paragraph the join leaves; that
+  // paragraph stands before a table with review records on its mark, which a
+  // tracked insertion after it cannot take over: refused.
+  "issue-1757-blocks-after-deleted-paragraph-in-a-join.json": [3],
   "issue-1757-merge-across-deleted-note-paragraph-before-inserted-table.json": [
     0,
   ],

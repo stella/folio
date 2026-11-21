@@ -26,7 +26,7 @@ export const FINDINGS = {
   MARKDOWN_DROPS_TEXT_BOX:
     "docxToMarkdown writes nothing of a text box's paragraphs, which getContent() and read_document list as blocks (support/readers.ts leaves them out of the Markdown comparison until fixed)",
   LEGACY_INSERT_AFTER_EMPTIED_JOIN:
-    "legacy insertAfterBlock beside an emptied paragraph whose break is pending deletion puts the paragraph after the one the join leaves; it goes right after the emptied paragraph, with its properties, as the canonical session puts it",
+    "legacy insertAfterBlock after an emptied paragraph whose break is pending deletion puts the paragraph after the one the join leaves but with the emptied paragraph's properties; the canonical session gives it the properties of the paragraph the join leaves, which the joined paragraph has",
   LEGACY_REPLACEMENT_TAKES_COMMENT:
     "legacy replacement hands a comment over the words it replaces to the new words; they go past the end of that comment, which goes with its words, as the canonical session does (support/oracle.ts predicts where that comment goes on the canonical session only)",
 } as const;
@@ -91,7 +91,7 @@ export const FINDING_SYMPTOMS: Record<Finding, FailureSymptom> = {
     /legacy (?:setTabs|addTabStop|removeTabStop) serialization retains original paragraph tabs/u,
   MARKDOWN_DROPS_TEXT_BOX: /docxToMarkdown writes no text-box paragraph/u,
   LEGACY_INSERT_AFTER_EMPTIED_JOIN:
-    /the result is not what was asked \(insertAfterBlock\):\s+block texts differ/u,
+    /the result is not what was asked \(insertAfterBlock\):\s+"[^"]+": (?:kind|listLevel|numbering)/u,
   LEGACY_REPLACEMENT_TAKES_COMMENT:
     /legacy replacement keeps a comment over the words it replaced/u,
 };
