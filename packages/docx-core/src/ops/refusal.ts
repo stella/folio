@@ -103,6 +103,13 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
    */
   readonly PENDING_BREAK_TAKEOVER: "pendingBreakTakeover";
   /**
+   * A tracked column insertion in a table whose columns already carry a
+   * pending change. A table records one previous grid (`w:tblGridChange`), so
+   * a second insertion could not be rejected alone: the columns of one change
+   * go in one operation (`InsertColumnOp.count`).
+   */
+  readonly PENDING_GRID_CHANGE: "pendingGridChange";
+  /**
    * A suggested link change would leave a piece of a link holding only
    * bookmark or comment markers, or would copy content that names a record of
    * its own (preserved run markup, a marker inside a copied text box, or a
@@ -205,6 +212,8 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
    * properties, a join at a section break, a record inside a field.
    */
   UNTRACKABLE: "untrackable",
+  /** A second tracked column insertion beside a pending grid change. */
+  PENDING_GRID_CHANGE: "pendingGridChange",
   /**
    * A tracked paragraph would take over the mark of a paragraph whose break
    * is pending deletion or moving away. No placement of that record keeps
