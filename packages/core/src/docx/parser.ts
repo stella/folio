@@ -68,11 +68,19 @@ import {
   DUPLICATE_COMMENT_ID_WARNING,
   normalizeCommentIds,
 } from "./commentIdNormalization";
+import {
+  remintRepeatedCommentParagraphIds,
+  REPEATED_COMMENT_PARAGRAPH_ID_WARNING,
+} from "./commentParagraphIds";
 import { parseComments } from "./commentParser";
 import {
   DANGLING_COMMENT_REFERENCE_WARNING,
+  DROPPED_COMMENT_RANGE_WARNING,
+  DUPLICATE_COMMENT_REFERENCE_WARNING,
+  MISSING_COMMENT_REFERENCE_WARNING,
   normalizeCommentReferences,
   UNBALANCED_COMMENT_RANGE_WARNING,
+  UNPAIRED_COMMENT_RANGE_BOUNDARY_WARNING,
 } from "./commentReferenceNormalization";
 import { detectDocxConformanceClass } from "./conformance";
 import { parseCoreProperties } from "./corePropertiesParser";
@@ -84,6 +92,7 @@ import {
 } from "./documentParser";
 import { normalizeDrawingIds } from "./drawingIdNormalization";
 import { DocxEncryptionError } from "./encryption/errors";
+import { collectExistingParaIds } from "./ensureParaIds";
 import { parseFontTable } from "./fontTableParser";
 import { parseEndnotes, parseFootnotes } from "./footnoteParser";
 import { parseFooter, parseHeader } from "./headerFooterParser";
@@ -164,6 +173,7 @@ import {
   parseXmlDocument,
 } from "./xmlParser";
 
+const COMMENTS_PART = "word/comments.xml";
 const EMF_MIME_TYPE = "image/x-emf";
 const WMF_MIME_TYPES = new Set(["image/x-wmf", "image/wmf"]);
 const SVG_MIME_TYPE = "image/svg+xml";
@@ -678,7 +688,7 @@ export async function parseDocxWithPreviewBudget(
     // STAGE 9b: Parse comments (75-77%)
     // ========================================================================
     onProgress("Parsing comments...", 75);
-    const commentsContext = parseContext.scoped({ part: "word/comments.xml" });
+    const commentsContext = parseContext.scoped({ part: COMMENTS_PART });
     const comments = timeStage("comments", () =>
       parseComments(
         raw.commentsXml,
@@ -707,6 +717,23 @@ export async function parseDocxWithPreviewBudget(
         code: DUPLICATE_COMMENT_ID_WARNING,
         count: commentIdNormalization.droppedDuplicateComments,
       });
+    }
+    if (raw.commentsXml !== null && comments.length > 0) {
+      const taken = new Set<string>();
+      for (const xml of raw.allXml.values()) collectExistingParaIds(xml, taken);
+      for (const part of unnamedIds.values())
+        for (const id of part.byOrdinal.values()) taken.add(id);
+      const reminted = remintRepeatedCommentParagraphIds({
+        comments,
+        commentsXml: raw.commentsXml,
+        partPath: COMMENTS_PART,
+        taken,
+      });
+      if (reminted > 0)
+        commentsContext.warn({
+          code: REPEATED_COMMENT_PARAGRAPH_ID_WARNING,
+          count: reminted,
+        });
     }
     if (comments.length > 0) {
       setDocumentBodyComments(documentBody, comments);
@@ -752,6 +779,31 @@ export async function parseDocxWithPreviewBudget(
       parseContext.warn({
         code: UNBALANCED_COMMENT_RANGE_WARNING,
         count: commentReferenceNormalization.reanchoredUnbalancedRanges,
+      });
+    }
+    if (commentReferenceNormalization.droppedUnpairedBoundaries > 0) {
+      parseContext.warn({
+        code: UNPAIRED_COMMENT_RANGE_BOUNDARY_WARNING,
+        count: commentReferenceNormalization.droppedUnpairedBoundaries,
+      });
+    }
+    if (commentReferenceNormalization.droppedDuplicateReferences > 0) {
+      parseContext.warn({
+        code: DUPLICATE_COMMENT_REFERENCE_WARNING,
+        count: commentReferenceNormalization.droppedDuplicateReferences,
+      });
+    }
+    for (const { id, text } of commentReferenceNormalization.droppedRanges) {
+      parseContext.warn({
+        code: DROPPED_COMMENT_RANGE_WARNING,
+        at: `comment w:id ${String(id)}`,
+        value: text,
+      });
+    }
+    if (commentReferenceNormalization.completedReferences > 0) {
+      parseContext.warn({
+        code: MISSING_COMMENT_REFERENCE_WARNING,
+        count: commentReferenceNormalization.completedReferences,
       });
     }
     const headerFooterReferenceNormalization = normalizeHeaderFooterReferences({

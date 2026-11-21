@@ -138,6 +138,10 @@ describe("comment reference normalization", () => {
     expect(result).toEqual({
       removedDanglingReferences: 4,
       reanchoredUnbalancedRanges: 0,
+      droppedUnpairedBoundaries: 0,
+      droppedDuplicateReferences: 0,
+      completedReferences: 0,
+      droppedRanges: [],
     });
     const paragraph = documentBody.content.at(0);
     expect(paragraph?.type).toBe("paragraph");
@@ -189,6 +193,10 @@ describe("comment reference normalization", () => {
     expect(result).toEqual({
       removedDanglingReferences: 0,
       reanchoredUnbalancedRanges: 1,
+      droppedUnpairedBoundaries: 0,
+      droppedDuplicateReferences: 0,
+      completedReferences: 0,
+      droppedRanges: [],
     });
     const paragraph = documentBody.content.at(0);
     expect(paragraph?.type).toBe("paragraph");
@@ -201,7 +209,7 @@ describe("comment reference normalization", () => {
     });
   });
 
-  test("re-anchors out-of-order valid range markers as point comments", () => {
+  test("re-anchors out-of-order valid range markers as one point comment", () => {
     const documentBody: DocumentBody = {
       comments: [
         {
@@ -232,7 +240,11 @@ describe("comment reference normalization", () => {
 
     expect(result).toEqual({
       removedDanglingReferences: 0,
-      reanchoredUnbalancedRanges: 2,
+      reanchoredUnbalancedRanges: 1,
+      droppedUnpairedBoundaries: 1,
+      droppedDuplicateReferences: 0,
+      completedReferences: 0,
+      droppedRanges: [],
     });
     const paragraph = documentBody.content.at(0);
     expect(paragraph?.type).toBe("paragraph");
@@ -242,6 +254,77 @@ describe("comment reference normalization", () => {
     expect(paragraph.content.map((content) => content.type)).toEqual([
       "commentReference",
       "run",
+    ]);
+  });
+
+  test("reports at most a bounded sample of a dropped range's text", () => {
+    const comments: Comment[] = [{ id: 3, author: "Reviewer", content: [] }];
+    const long = "word ".repeat(200);
+    const documentBody: DocumentBody = {
+      comments,
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            { type: "commentRangeStart", id: 3 },
+            { type: "run", content: [{ type: "text", text: "Kept" }] },
+            { type: "commentRangeEnd", id: 3 },
+            { type: "commentReference", id: 3 },
+            { type: "commentRangeStart", id: 3 },
+            { type: "run", content: [{ type: "text", text: "" }] },
+            { type: "run", content: [{ type: "text", text: long }] },
+            { type: "commentRangeEnd", id: 3 },
+          ],
+        },
+      ],
+    };
+
+    const { droppedRanges } = normalizeCommentReferences({
+      documentBody,
+      comments,
+    });
+
+    expect(droppedRanges).toEqual([{ id: 3, text: long.trim().slice(0, 200) }]);
+  });
+
+  test("drops a lone boundary of a comment its reference anchors", () => {
+    const comments: Comment[] = [{ id: 7, author: "Reviewer", content: [] }];
+    const documentBody: DocumentBody = {
+      comments,
+      content: [
+        { type: "commentRangeStart", id: 7 },
+        {
+          type: "paragraph",
+          content: [
+            { type: "run", content: [{ type: "text", text: "Text" }] },
+            { type: "commentRangeEnd", id: 7 },
+            { type: "commentRangeEnd", id: 7 },
+            { type: "commentReference", id: 7 },
+          ],
+        },
+        { type: "commentRangeEnd", id: 7 },
+      ],
+    };
+
+    const result = normalizeCommentReferences({ documentBody, comments });
+
+    expect(result).toEqual({
+      removedDanglingReferences: 0,
+      reanchoredUnbalancedRanges: 0,
+      droppedUnpairedBoundaries: 2,
+      droppedDuplicateReferences: 0,
+      completedReferences: 0,
+      droppedRanges: [],
+    });
+    expect(documentBody.content.at(-1)).toEqual({
+      type: "preservedBlock",
+      xml: '<w:commentRangeEnd w:id="7"/>',
+    });
+    const paragraph = documentBody.content.at(1);
+    if (paragraph?.type !== "paragraph") throw new Error("expected paragraph");
+    expect(paragraph.content.map((content) => content.type)).toEqual([
+      "run",
+      "commentRangeEnd",
       "commentReference",
     ]);
   });

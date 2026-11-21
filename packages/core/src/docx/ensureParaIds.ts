@@ -195,7 +195,10 @@ const createEnsureParaIdsError = (
     ...(cause === undefined ? {} : { cause }),
   });
 
-const collectExistingParaIds = (xml: string, into: Set<string>): void => {
+export const collectExistingParaIds = (
+  xml: string,
+  into: Set<string>,
+): void => {
   for (const match of xml.matchAll(ANY_PARA_ID_PATTERN)) {
     // SAFETY: named group `id` always present when the pattern matches
     const id = match.groups!["id"]!;
@@ -350,7 +353,10 @@ const scanPartSpelling = (xml: string, partPath: string): PartSpelling => {
   };
 };
 
-const isWordprocessingElement = (element: XmlElement, localName: string) =>
+export const isWordprocessingElement = (
+  element: XmlElement,
+  localName: string,
+): boolean =>
   getLocalName(element.name ?? "") === localName &&
   WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(element) ?? "");
 
@@ -499,7 +505,7 @@ const collectFallbackParaIds = (
   }
 };
 
-type MintContext = {
+export type MintContext = {
   /** Every id in the document (all parts) plus every id minted so far. */
   taken: Set<string>;
 };
@@ -510,7 +516,9 @@ type MintContext = {
  * edit elsewhere in the part changes neither, so a paragraph it left as it
  * was is given the same id in both versions of the document.
  */
-const paragraphMintKeys = (xml: string): readonly string[] | undefined => {
+export const paragraphMintKeys = (
+  xml: string,
+): readonly string[] | undefined => {
   const parsed = parseStreamingXmlWithSourceRanges(xml);
   if (parsed.status !== "parsed") return undefined;
   const repeats = new Map<string, number>();
@@ -533,7 +541,7 @@ const paragraphMintKeys = (xml: string): readonly string[] | undefined => {
  * the part's {@link paragraphMintKeys}; a part they cannot be read for is
  * keyed on the ordinal alone.
  */
-const mintParaId = (
+export const mintParaId = (
   context: MintContext,
   partPath: string,
   ordinal: number,
