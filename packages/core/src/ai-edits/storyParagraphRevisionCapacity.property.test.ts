@@ -14,6 +14,7 @@ import {
   type FolioDocumentOperationBatch,
 } from "../document-operations";
 import { createDocx } from "../docx/rezip";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import type { Paragraph } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { type FolioDocumentStoryHandle, FolioDocxReviewer } from "./headless";
@@ -28,6 +29,17 @@ const STORIES = {
   FolioDocumentStoryHandle["type"],
   FolioDocumentStoryHandle
 >;
+
+const SESSIONS: readonly HeadlessReviewerSession[] = ["canonical", "legacy"];
+
+const SESSION_STORIES = SESSIONS.flatMap((session) =>
+  Object.values(STORIES).map(({ type }) => ({ session, type })),
+);
+
+const open = (
+  session: HeadlessReviewerSession,
+  bytes: Parameters<typeof FolioDocxReviewer.fromBuffer>[0],
+) => FolioDocxReviewer.fromBuffer(bytes, { session });
 
 const PARTS = {
   main: "word/document.xml",
@@ -173,6 +185,7 @@ const capacity = async ({
 };
 
 type CapacityCase = {
+  session: HeadlessReviewerSession;
   kind: keyof typeof STORIES;
   attempts: number;
   length: number;
@@ -181,6 +194,7 @@ type CapacityCase = {
 };
 
 const checkCapacity = async ({
+  session,
   kind,
   attempts,
   length,
@@ -188,7 +202,7 @@ const checkCapacity = async ({
   merge,
 }: CapacityCase) => {
   const story = STORIES[kind];
-  const reviewer = await FolioDocxReviewer.fromBuffer(await fixture(length));
+  const reviewer = await open(session, await fixture(length));
   // Deleted intermediate marks move the formatting destination beyond the next paragraph.
   for (let index = length - 2; index >= 1; index--) {
     expect(
@@ -220,7 +234,9 @@ const checkCapacity = async ({
         properties: { alignment: index % 2 === 0 ? "center" : "right" },
       },
     });
-    if (index === 0) {
+    // Canonical folds a later change by the same author into the pending
+    // one, which keeps the original properties; legacy refuses it.
+    if (index === 0 || session === "canonical") {
       expect(result.status).toBe("committed");
     } else {
       expect(result.skipped).toEqual([
@@ -259,7 +275,7 @@ const checkCapacity = async ({
         : {}),
     },
   });
-  const refused = attempts > 0 && merge === "explicit";
+  const refused = session === "legacy" && attempts > 0 && merge === "explicit";
   if (refused) {
     expect(result.status).toBe("rejected");
     expect(result.applied).toEqual([]);
@@ -275,11 +291,9 @@ const checkCapacity = async ({
   }
   await capacity({ reviewer, kind });
   const saved = await reviewer.toBuffer();
-  const rejecting = await FolioDocxReviewer.fromBuffer(saved);
+  const rejecting = await open(session, saved);
   rejecting.rejectAll();
-  const reopenedRejected = await FolioDocxReviewer.fromBuffer(
-    await rejecting.toBuffer(),
-  );
+  const reopenedRejected = await open(session, await rejecting.toBuffer());
   expect(
     reopenedRejected
       .snapshotStory(story)
@@ -297,11 +311,9 @@ const checkCapacity = async ({
       directAlignment: "left",
     })),
   );
-  const accepting = await FolioDocxReviewer.fromBuffer(saved);
+  const accepting = await open(session, saved);
   accepting.acceptAll();
-  const reopenedAccepted = await FolioDocxReviewer.fromBuffer(
-    await accepting.toBuffer(),
-  );
+  const reopenedAccepted = await open(session, await accepting.toBuffer());
   expect(
     reopenedAccepted.readReviewedStory({ story, view: "current-markup" })
       ?.changes,
@@ -309,9 +321,12 @@ const checkCapacity = async ({
   const aligned = reopenedAccepted
     .snapshotStory(story)
     ?.blocks.find(({ text }) => text.includes(`Clause ${targetIndex}.`));
+  // The last property change that applied: legacy applies only the first.
+  const pendingAlignment =
+    session === "legacy" || (attempts - 1) % 2 === 0 ? "center" : "right";
   let mergedAlignment = "left";
+  if (attempts > 0 && pendingAt === "first") mergedAlignment = pendingAlignment;
   if (merge === "explicit") mergedAlignment = "both";
-  if (attempts > 0 && pendingAt === "first") mergedAlignment = "center";
   expect(expectParagraphBlock(aligned).directAlignment).toBe(
     refused ? "center" : mergedAlignment,
   );
@@ -319,10 +334,11 @@ const checkCapacity = async ({
 
 // The old merge guard inspected only the first paragraph; its formatting writer
 // targeted the survivor. Vary both ownership and the number of attempted revisions.
-test.each(Object.values(STORIES))(
-  "formatting merge refuses the pending revision in a $type survivor",
-  async ({ type }) => {
+test.each(SESSION_STORIES)(
+  "$session: formatting merge refuses the pending revision in a $type survivor",
+  async ({ session, type }) => {
     await checkCapacity({
+      session,
       kind: type,
       attempts: 1,
       length: 2,
@@ -332,10 +348,11 @@ test.each(Object.values(STORIES))(
   },
 );
 
-test.each(Object.values(STORIES))(
-  "plain merge carries formatting using the pending $type survivor receipt",
-  async ({ type }) => {
+test.each(SESSION_STORIES)(
+  "$session: plain merge carries formatting using the pending $type survivor receipt",
+  async ({ session, type }) => {
     await checkCapacity({
+      session,
       kind: type,
       attempts: 1,
       length: 2,
@@ -345,9 +362,9 @@ test.each(Object.values(STORIES))(
   },
 );
 
-test.each(Object.values(STORIES))(
-  "$type formatting sequences preserve paragraph revision capacity",
-  async ({ type }) => {
+test.each(SESSION_STORIES)(
+  "$session: $type formatting sequences preserve paragraph revision capacity",
+  async ({ session, type }) => {
     await assertProperty(
       fc.asyncProperty(
         fc.integer({ min: 0, max: 8 }),
@@ -356,6 +373,7 @@ test.each(Object.values(STORIES))(
         fc.constantFrom("explicit" as const, "carried" as const),
         async (attempts, length, pendingAt, merge) => {
           await checkCapacity({
+            session,
             kind: type,
             attempts,
             length,
@@ -373,11 +391,11 @@ test.each(Object.values(STORIES))(
   propertyTestTimeout(120_000),
 );
 
-test.each(Object.values(STORIES))(
-  "equal-property plain merge preserves an occupied $type survivor revision",
-  async ({ type }) => {
+test.each(SESSION_STORIES)(
+  "$session: equal-property plain merge preserves an occupied $type survivor revision",
+  async ({ session, type }) => {
     const story = STORIES[type];
-    const reviewer = await FolioDocxReviewer.fromBuffer(await fixture(2));
+    const reviewer = await open(session, await fixture(2));
     const first = block({ reviewer, story, index: 0 });
     const survivor = block({ reviewer, story, index: 1 });
     expect(
@@ -424,20 +442,16 @@ test.each(Object.values(STORIES))(
     ).toBe("committed");
     await capacity({ reviewer, kind: type });
     const saved = await reviewer.toBuffer();
-    const accepting = await FolioDocxReviewer.fromBuffer(saved);
+    const accepting = await open(session, saved);
     accepting.acceptAll();
-    const accepted = await FolioDocxReviewer.fromBuffer(
-      await accepting.toBuffer(),
-    );
+    const accepted = await open(session, await accepting.toBuffer());
     expect(accepted.snapshotStory(story)?.blocks.at(0)).toMatchObject({
       text: "Clause 0. Clause 1.",
       directAlignment: "center",
     });
-    const rejecting = await FolioDocxReviewer.fromBuffer(saved);
+    const rejecting = await open(session, saved);
     rejecting.rejectAll();
-    const rejected = await FolioDocxReviewer.fromBuffer(
-      await rejecting.toBuffer(),
-    );
+    const rejected = await open(session, await rejecting.toBuffer());
     expect(
       rejected
         .snapshotStory(story)
@@ -450,11 +464,11 @@ test.each(Object.values(STORIES))(
   },
 );
 
-test.each(Object.values(STORIES))(
-  "plain merge retracts an inserted $type break with a pending property revision",
-  async ({ type }) => {
+test.each(SESSION_STORIES)(
+  "$session: plain merge retracts an inserted $type break with a pending property revision",
+  async ({ session, type }) => {
     const story = STORIES[type];
-    const reviewer = await FolioDocxReviewer.fromBuffer(await fixture(2));
+    const reviewer = await open(session, await fixture(2));
     expect(
       apply({
         reviewer,
@@ -495,13 +509,13 @@ test.each(Object.values(STORIES))(
     ).toBe("committed");
     await capacity({ reviewer, kind: type });
     const saved = await reviewer.toBuffer();
-    const accepting = await FolioDocxReviewer.fromBuffer(saved);
+    const accepting = await open(session, saved);
     accepting.acceptAll();
     expect(
       expectParagraphBlock(accepting.snapshotStory(story)?.blocks.at(0))
         .directAlignment,
     ).toBe("center");
-    const rejecting = await FolioDocxReviewer.fromBuffer(saved);
+    const rejecting = await open(session, saved);
     rejecting.rejectAll();
     expect(
       rejecting
@@ -521,13 +535,13 @@ test.each(Object.values(STORIES))(
   },
 );
 
-test.each(Object.values(STORIES))(
-  "explicit merge reserves a deferred inserted-break carry in a $type story",
-  async ({ type }) => {
+test.each(SESSION_STORIES)(
+  "$session: explicit merge reserves a deferred inserted-break carry in a $type story",
+  async ({ session, type }) => {
     const story = STORIES[type];
     const bytes = await fixture(2, "leading");
     const prepare = async () => {
-      const reviewer = await FolioDocxReviewer.fromBuffer(bytes);
+      const reviewer = await open(session, bytes);
       const sourceIndex = type === "main" ? 1 : 0;
       const source = block({ reviewer, story, index: sourceIndex });
       const survivor = block({ reviewer, story, index: sourceIndex + 1 });
@@ -597,16 +611,21 @@ test.each(Object.values(STORIES))(
       occupiedParaId: sequential.survivor.id,
     });
     const before = sequential.reviewer.snapshotStory(story);
+    // Canonical folds the merge's properties into the carried pending
+    // change; legacy refuses it.
+    const refusal =
+      session === "legacy"
+        ? [{ id: "explicit-merge", reason: "pendingParagraphPropertyChange" }]
+        : [];
     expect(
       apply({
         reviewer: sequential.reviewer,
         story,
         operation: sequentialOperations[1],
       }).skipped,
-    ).toEqual([
-      { id: "explicit-merge", reason: "pendingParagraphPropertyChange" },
-    ]);
-    expect(sequential.reviewer.snapshotStory(story)).toEqual(before);
+    ).toEqual(refusal);
+    if (session === "legacy")
+      expect(sequential.reviewer.snapshotStory(story)).toEqual(before);
     const result = batch.reviewer.applyDocumentOperationsToStory({
       undefinedReferences: "refuse",
       story,
@@ -616,9 +635,7 @@ test.each(Object.values(STORIES))(
         operations: operations(batch),
       },
     });
-    expect(result.skipped).toEqual([
-      { id: "explicit-merge", reason: "pendingParagraphPropertyChange" },
-    ]);
+    expect(result.skipped).toEqual(refusal);
     await capacity({ reviewer: batch.reviewer, kind: type });
     batch.reviewer.acceptAll();
     sequential.reviewer.acceptAll();
