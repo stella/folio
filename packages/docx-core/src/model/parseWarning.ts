@@ -42,6 +42,14 @@ export const PARSE_WARNING_CODES = {
   danglingCommentReference: "dangling-comment-reference",
   /** A comment range with no matching start or end, re-anchored as a point. */
   unbalancedCommentRange: "unbalanced-comment-range",
+  /** A comment range boundary with no partner, dropped: the comment's reference anchors it. */
+  unpairedCommentRangeBoundary: "unpaired-comment-range-boundary",
+  /** A comment reference repeating one its comment already has, dropped. */
+  duplicateCommentReference: "duplicate-comment-reference",
+  /** A comment's full range after its first, dropped: a comment holds one range. */
+  droppedCommentRange: "dropped-comment-range",
+  /** A `comments.xml` paragraph repeating an earlier one's `w14:paraId`, given a minted id. */
+  repeatedCommentParagraphId: "repeated-comment-paragraph-id",
   /** A `w:headerReference` naming a header part the package does not carry. */
   danglingHeaderReference: "dangling-header-reference",
   /** A `w:footerReference` naming a footer part the package does not carry. */
