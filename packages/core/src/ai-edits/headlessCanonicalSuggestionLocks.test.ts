@@ -19,6 +19,7 @@ import {
   type OpStory,
   pendingSuggestionIdsIn,
 } from "@stll/docx-core/ops";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import * as canonicalSession from "../canonical/canonicalSession";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
@@ -29,7 +30,7 @@ import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
 import { schema } from "../prosemirror/schema";
 import { CANONICAL_RULE } from "../types/canonicalCapabilities";
-import type { Paragraph } from "../types/document";
+import type { Document, Paragraph } from "../types/document";
 import { readModel } from "../types/documentModel";
 import { FolioDocxReviewer, getFolioDocxComparisonAccess } from "./headless";
 
@@ -157,6 +158,85 @@ const fixture = async (lock?: ContentControlLock) => {
     .slice().buffer;
 };
 
+/** `document` with the inline control in `entry`'s held paragraph content-locked. */
+const lockControl = (
+  document: Document,
+  { story, held }: (typeof STORIES)[number],
+) => {
+  const paragraph = findStoryBody(document, story)?.content.find(
+    (block) => block.type === "paragraph" && block.paraId === held,
+  );
+  if (paragraph?.type !== "paragraph")
+    panic("The parsed held paragraph must exist.");
+  const control = paragraph.content.find((item) => item.type === "inlineSdt");
+  if (control?.type !== "inlineSdt")
+    panic("The parsed held control must exist.");
+  return applyDocumentOp(document, {
+    type: "setContentControl",
+    story,
+    controlId:
+      control.properties.id ?? panic("A parsed control needs its actual id."),
+    blockIds: [held],
+    expected: control.properties,
+    properties: { ...control.properties, lock: "contentLocked" },
+  }).unwrap().document;
+};
+
+/** `document` with the inline control of every story content-locked. */
+const lockControls = (document: Document) => {
+  let locked = document;
+  for (const entry of STORIES) locked = lockControl(locked, entry);
+  return locked;
+};
+
+/**
+ * Fork `reviewer` with its pending suggestions while a package edit
+ * content-locks every control. A lock refuses a new edit inside it, so a
+ * proposal it holds is staged before the lock arrives.
+ */
+const lockedFork = (reviewer: FolioDocxReviewer) => {
+  const create = canonicalSession.createCanonicalSession;
+  const factory = spyOn(
+    canonicalSession,
+    "createCanonicalSession",
+  ).mockImplementationOnce((document, styles, options) =>
+    create(lockControls(readModel(document)), styles, options),
+  );
+  try {
+    return reviewer.fork();
+  } finally {
+    factory.mockRestore();
+  }
+};
+
+const LOCK_XML = '<w:lock w:val="contentLocked"/>';
+
+/**
+ * A saved package with every content lock lifted. A save drops pending
+ * suggestions; restaging re-applies each operation, which a content lock
+ * refuses inside it, so the held edit restages only once the lock is gone.
+ */
+const unlockControls = async (bytes: ArrayBuffer) => {
+  const zip = await ZipArchive.read(bytes);
+  for (const path of zip.paths().filter((name) => name.endsWith(".xml"))) {
+    const xml =
+      (await zip.entry(path)?.text()) ?? panic(`The package needs ${path}.`);
+    if (xml.includes(LOCK_XML)) zip.set(path, xml.replaceAll(LOCK_XML, ""));
+  }
+  return (await zip.generate({ compression: "store" })).slice().buffer;
+};
+
+/** A suggested insertion inside the held paragraph's control text. */
+const heldInsertion = (entry: (typeof STORIES)[number]) =>
+  ({
+    id: "held-insert",
+    suggestionId: PROPOSAL,
+    type: "replaceInBlock",
+    blockId: entry.held,
+    find: "CTRL",
+    replace: "CT proposed RL",
+  }) as const;
+
 /** Produce the proposal first; then another package edit locks one of its two changes. */
 const proposed = async (entry: (typeof STORIES)[number]) => {
   const bytes = await fixture();
@@ -204,24 +284,7 @@ const proposed = async (entry: (typeof STORIES)[number]) => {
       at: { story: entry.story, blockId: entry.free, offset: 0 },
     },
   }).unwrap().document;
-  const paragraph = findStoryBody(document, entry.story)?.content.find(
-    (block) => block.type === "paragraph" && block.paraId === entry.held,
-  );
-  if (paragraph?.type !== "paragraph")
-    panic("The parsed held paragraph must exist.");
-  const control = paragraph.content.find((item) => item.type === "inlineSdt");
-  if (control?.type !== "inlineSdt")
-    panic("The parsed held control must exist.");
-  const locked = applyDocumentOp(document, {
-    type: "setContentControl",
-    story: entry.story,
-    controlId:
-      control.properties.id ?? panic("A parsed control needs its actual id."),
-    blockIds: [entry.held],
-    expected: control.properties,
-    properties: { ...control.properties, lock: "contentLocked" },
-  }).unwrap().document;
-  return { bytes, unlocked: document, locked };
+  return { bytes, unlocked: document, locked: lockControl(document, entry) };
 };
 
 for (const entry of STORIES) {
@@ -378,8 +441,9 @@ for (const engine of ["canonical", "legacy"] as const)
   for (const [index, entry] of STORIES.entries())
     for (const placement of ["same", "other"] as const)
       test(`${engine} ${entry.handle.type} ${placement} story: a held public proposal survives bulk rejection and save/restage across stories`, async () => {
-        const reviewer = await FolioDocxReviewer.fromBuffer(
-          await fixture(engine === "canonical" ? "sdtLocked" : "contentLocked"),
+        // A canonical lock refuses staging the held edit; it locks a fork below.
+        let reviewer = await FolioDocxReviewer.fromBuffer(
+          await fixture(engine === "canonical" ? undefined : "contentLocked"),
           { session: engine },
         );
         const free =
@@ -420,13 +484,7 @@ for (const engine of ["canonical", "legacy"] as const)
           entry,
           "suggested",
           engine === "canonical"
-            ? {
-                id: "held-split",
-                suggestionId: PROPOSAL,
-                type: "splitBlock",
-                blockId: entry.held,
-                offset: CONTROL_PREFIX.length + 2,
-              }
+            ? heldInsertion(entry)
             : {
                 id: "held-delete",
                 suggestionId: PROPOSAL,
@@ -444,6 +502,10 @@ for (const engine of ["canonical", "legacy"] as const)
         });
         const records = reviewer.exportPendingSuggestions();
         expect(records).toHaveLength(2);
+        if (engine === "canonical") {
+          reviewer = lockedFork(reviewer);
+          expect(reviewer.exportPendingSuggestions()).toEqual(records);
+        }
         const changesByStory = () =>
           STORIES.map(
             ({ handle }) =>
@@ -513,8 +575,9 @@ for (const engine of ["canonical", "legacy"] as const)
           ).toEqual(commentSnapshots);
         expect(publicStoryBlocks(reviewer)).toEqual(beforeBlocks);
         expect(reviewer.exportPendingSuggestions()).toEqual(records);
+        const saved = await reviewer.toBuffer();
         const reopened = await FolioDocxReviewer.fromBuffer(
-          await reviewer.toBuffer(),
+          engine === "canonical" ? await unlockControls(saved) : saved,
           { session: engine },
         );
         const loaded = reopened.loadPendingSuggestions(records);
@@ -591,58 +654,58 @@ for (const engine of ["canonical", "legacy"] as const)
 
 for (const ordinary of ["present", "absent"] as const)
   test(`bulk rejection resolves a free final section beside a held cross-story proposal, ordinary change ${ordinary}`, async () => {
+    let reviewer = await FolioDocxReviewer.fromBuffer(await fixture(), {
+      session: "canonical",
+    });
+    const apply = (
+      story: (typeof STORIES)[number],
+      mode: "suggested" | "tracked-changes",
+      operation: Parameters<
+        typeof reviewer.applyDocumentOperationsToStory
+      >[0]["batch"]["operations"][number],
+    ) => {
+      const result = reviewer.applyDocumentOperationsToStory({
+        story: story.handle,
+        batch: {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode,
+          operations: [operation],
+        },
+        undefinedReferences: "refuse",
+      });
+      expect(result.skipped).toEqual([]);
+      expect(result.applied).toHaveLength(1);
+    };
+    apply(STORIES[0], "suggested", heldInsertion(STORIES[0]));
+    apply(STORIES[1], "suggested", {
+      id: "free-proposal",
+      suggestionId: PROPOSAL,
+      type: "insertAfterBlock",
+      blockId: STORIES[1].free,
+      text: "Free proposal.",
+      comment: { text: "Keep this proposal comment." },
+    });
+    const records = reviewer.exportPendingSuggestions();
+    expect(records).toHaveLength(2);
     const create = canonicalSession.createCanonicalSession;
     let owner: canonicalSession.CanonicalSession | undefined;
+    // The fork's session, the first created below, holds the locked document.
     const factory = spyOn(
       canonicalSession,
       "createCanonicalSession",
-    ).mockImplementation((...args) => {
-      const result = create(...args);
+    ).mockImplementation((document, styles, options) => {
+      const result = create(
+        owner === undefined ? lockControls(readModel(document)) : document,
+        styles,
+        options,
+      );
       if (result.isOk()) owner ??= result.value;
       return result;
     });
     try {
-      const reviewer = await FolioDocxReviewer.fromBuffer(
-        await fixture("sdtLocked"),
-        { session: "canonical" },
-      );
+      reviewer = reviewer.fork();
       if (!owner) panic("A canonical reviewer must own its source session.");
-      const apply = (
-        story: (typeof STORIES)[number],
-        mode: "suggested" | "tracked-changes",
-        operation: Parameters<
-          typeof reviewer.applyDocumentOperationsToStory
-        >[0]["batch"]["operations"][number],
-      ) => {
-        const result = reviewer.applyDocumentOperationsToStory({
-          story: story.handle,
-          batch: {
-            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-            mode,
-            operations: [operation],
-          },
-          undefinedReferences: "refuse",
-        });
-        expect(result.skipped).toEqual([]);
-        expect(result.applied).toHaveLength(1);
-      };
-      apply(STORIES[0], "suggested", {
-        id: "held-split",
-        suggestionId: PROPOSAL,
-        type: "splitBlock",
-        blockId: STORIES[0].held,
-        offset: CONTROL_PREFIX.length + 2,
-      });
-      apply(STORIES[1], "suggested", {
-        id: "free-proposal",
-        suggestionId: PROPOSAL,
-        type: "insertAfterBlock",
-        blockId: STORIES[1].free,
-        text: "Free proposal.",
-        comment: { text: "Keep this proposal comment." },
-      });
-      const records = reviewer.exportPendingSuggestions();
-      expect(records).toHaveLength(2);
+      expect(reviewer.exportPendingSuggestions()).toEqual(records);
       const proposedIds = publicChanges(reviewer)
         .map(({ id }) => id)
         .toSorted((left, right) => left - right);
@@ -731,7 +794,7 @@ for (const ordinary of ["present", "absent"] as const)
         ).unwrap().document,
       ).toStrictEqual(resolved);
       const reopened = await FolioDocxReviewer.fromBuffer(
-        await reviewer.toBuffer(),
+        await unlockControls(await reviewer.toBuffer()),
         { session: "canonical" },
       );
       expect(
@@ -757,8 +820,9 @@ for (const ordinary of ["present", "absent"] as const)
 for (const engine of ["canonical", "legacy"] as const)
   test(`${engine}: bulk rejection keeps an ordinary insertion that holds a fragment of a held proposal`, async () => {
     const entry = STORIES[0];
-    const reviewer = await FolioDocxReviewer.fromBuffer(
-      await fixture(engine === "canonical" ? "sdtLocked" : "contentLocked"),
+    // A canonical lock refuses staging the held edit; it locks a fork below.
+    let reviewer = await FolioDocxReviewer.fromBuffer(
+      await fixture(engine === "canonical" ? undefined : "contentLocked"),
       { session: engine },
     );
     const apply = (
@@ -802,13 +866,7 @@ for (const engine of ["canonical", "legacy"] as const)
     apply(
       "suggested",
       engine === "canonical"
-        ? {
-            id: "held-split",
-            suggestionId: PROPOSAL,
-            type: "splitBlock",
-            blockId: entry.held,
-            offset: CONTROL_PREFIX.length + 2,
-          }
+        ? heldInsertion(entry)
         : {
             id: "held-delete",
             suggestionId: PROPOSAL,
@@ -817,6 +875,10 @@ for (const engine of ["canonical", "legacy"] as const)
           },
     );
     const records = reviewer.exportPendingSuggestions();
+    if (engine === "canonical") {
+      reviewer = lockedFork(reviewer);
+      expect(reviewer.exportPendingSuggestions()).toEqual(records);
+    }
     // The ordinary paragraph's inserted mark holds the proposal's fragment.
     const enclosing = publicChanges(reviewer)
       .filter(
