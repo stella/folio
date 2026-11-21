@@ -163,9 +163,17 @@ test("a host model opens in a canonical session with the ids its package gets, a
         }
         const lead = `${LEAD.slice(0, offset)}${TYPED}${LEAD.slice(offset)}`;
         const editedParagraphs = paragraphsOf(edited);
-        expect(editedParagraphs.map(({ id }) => id)).toEqual(
-          ids.map(({ id }) => id),
-        );
+        // A body that ends in a table is closed by an empty paragraph in the
+        // session's model, with an id no paragraph held; the edit writes it.
+        const closes = blocks.at(-1)?.type === "table";
+        const editedIds = editedParagraphs.map(({ id }) => id);
+        expect(editedIds.slice(0, ids.length)).toEqual(ids.map(({ id }) => id));
+        expect(editedIds.length).toBe(ids.length + (closes ? 1 : 0));
+        if (closes) {
+          const closing = editedParagraphs.at(-1);
+          expect(closing?.text).toBe("");
+          expect(ids.some(({ id }) => id === closing?.id)).toBe(false);
+        }
         expect(editedParagraphs.at(0)?.text ?? panic("No lead")).toContain(
           TYPED,
         );
@@ -173,15 +181,14 @@ test("a host model opens in a canonical session with the ids its package gets, a
         const saved = await saveCanonicalHarnessDocument(edited);
         const reopened = await parsed(saved.bytes);
         const reopenedParagraphs = paragraphsOf(reopened);
-        expect(reopenedParagraphs.map(({ id }) => id)).toEqual(
-          ids.map(({ id }) => id),
-        );
+        expect(reopenedParagraphs.map(({ id }) => id)).toEqual(editedIds);
         // Typed text sits where the caret was in direct mode; a tracked
         // insertion reads the same, held in its revision.
         expect(reopenedParagraphs.at(0)?.text).toBe(lead);
-        expect(reopenedParagraphs.slice(1).map(({ text }) => text)).toEqual(
-          source.slice(1).map(({ text }) => text),
-        );
+        expect(reopenedParagraphs.slice(1).map(({ text }) => text)).toEqual([
+          ...source.slice(1).map(({ text }) => text),
+          ...(closes ? [""] : []),
+        ]);
         // Reopening, as a model or as bytes, establishes nothing new.
         expect((await prepareCanonicalDocumentInput(reopened)).unwrap()).toBe(
           reopened,
@@ -191,7 +198,7 @@ test("a host model opens in a canonical session with the ids its package gets, a
         ).unwrap();
         expect(
           paragraphsOf(await parsed(reopenedBytes)).map(({ id }) => id),
-        ).toEqual(ids.map(({ id }) => id));
+        ).toEqual(editedIds);
       },
     ),
     {
