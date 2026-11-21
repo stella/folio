@@ -49,9 +49,21 @@ const FIXTURES = {
 } as const;
 
 type Fixture = keyof typeof FIXTURES;
+
+/** What a mutated package must do on a session. */
+const CASE_OUTCOMES = {
+  /** Refuse with a typed error, or open, save and reopen. */
+  refusesOrRoundTrips: "refusesOrRoundTrips",
+  /** Open, save and reopen: the parse repairs the package for every session. */
+  opensOnEverySession: "opensOnEverySession",
+} as const;
+type CaseOutcome = (typeof CASE_OUTCOMES)[keyof typeof CASE_OUTCOMES];
+
 type MutationCase = {
   fixture: Fixture;
   part: string;
+  /** Unless named, {@link CASE_OUTCOMES.refusesOrRoundTrips}. */
+  outcome?: CaseOutcome;
 } & (
   | { layer: "zip"; mutation: ZipMutation }
   | { layer: "xml"; mutation: ParserXmlMutation }
@@ -93,6 +105,7 @@ const CASES = [
           mutation,
           fixture: "comments",
           part: "word/document.xml",
+          outcome: CASE_OUTCOMES.opensOnEverySession,
         };
       case "danglingFootnoteId":
         return {
@@ -141,12 +154,14 @@ const CASES = [
     mutation: "dropElement",
     fixture: "comments",
     part: "word/comments.xml",
+    outcome: CASE_OUTCOMES.opensOnEverySession,
   },
   {
     layer: "xml",
     mutation: "duplicateElement",
     fixture: "comments",
     part: "word/comments.xml",
+    outcome: CASE_OUTCOMES.opensOnEverySession,
   },
 ] satisfies MutationCase[];
 
@@ -227,7 +242,10 @@ const checkCase = async (
   const original = await fixtureBytes(entry.fixture);
   const mutated = await applyMutation(original, entry);
   assert.notDeepEqual(mutated, original, `${label}: mutation made no change`);
-  return assertSurvives(mutated, label, session);
+  const result = await assertSurvives(mutated, label, session);
+  if (entry.outcome === CASE_OUTCOMES.opensOnEverySession)
+    assert.equal(result, "opened", `${label}: refused a repairable package`);
+  return result;
 };
 
 test("parser mutation matrix covers every declared mutator", () => {
