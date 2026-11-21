@@ -20,11 +20,11 @@ import type { FolioAIInlineFormatting } from "./types";
 
 const SESSIONS = ["legacy", "canonical"] as const;
 
-/** How each engine reports the refusal. */
+/** How each engine reports the refusal: by the same reason. */
 const REFUSAL = {
   legacy: { reason: "pendingRunPropertyChange" },
   canonical: {
-    reason: "unsupportedBlock",
+    reason: "pendingRunPropertyChange",
     message:
       "A suggestion cannot take over another pending run property change.",
   },
@@ -106,6 +106,8 @@ describe.each(SESSIONS)(
       expect(result.skipped).toEqual([
         expect.objectContaining({ id: "italic", ...REFUSAL[session] }),
       ]);
+      // A deliberate refusal names no missing capability.
+      expect(result.skipped.at(0)).not.toHaveProperty("canonicalRefusal");
       expect(reviewer.getChanges()).toEqual([
         expect.objectContaining({
           id: 7,
@@ -141,6 +143,8 @@ describe.each(SESSIONS)(
       expect(second.skipped).toEqual([
         expect.objectContaining({ id: "italic", ...REFUSAL[session] }),
       ]);
+      // A deliberate refusal names no missing capability.
+      expect(second.skipped.at(0)).not.toHaveProperty("canonicalRefusal");
       // The first suggestion still owns its change, so rejecting it restores
       // the run.
       expect(reviewer.rejectSuggestion("bold")).toBe(true);

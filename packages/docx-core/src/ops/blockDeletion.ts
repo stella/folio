@@ -1311,7 +1311,10 @@ export const deleteBlocks = ({
     } else if (!sameParagraphProperties(next.formatting, survivor.formatting)) {
       const conflict = paragraphPropertyFoldConflict(paragraph, op.revision);
       if (conflict !== undefined)
-        return refuse(DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT, conflict);
+        return refuse(
+          DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_PROPERTY_CHANGE,
+          conflict,
+        );
       const review = reviewFieldsOf(next);
       delete review.formatting;
       if (survivor.formatting !== undefined)
