@@ -287,7 +287,7 @@ export type CreateCommentOp = {
 // @public
 export const createEditorIntentIdAllocator: (input?: {
     reservedBlockIds?: ReadonlySet<string>;
-}) => (document: Document_2, intent: EditorIntentAllocation, lease?: IdLease) => {
+}) => (document: Document_2, requested: EditorIntentAllocation, lease?: IdLease) => {
     revisionId: number;
     newBlockId: string;
     newIds: {
