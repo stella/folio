@@ -41,6 +41,7 @@ import {
   idKey,
   type IdLease,
   introducedDocumentIds,
+  isCommentAnchorCarrierType,
   type LeasedId,
   leasedIdCensus,
   locateParagraphThroughTextBoxes,
@@ -1734,9 +1735,11 @@ type TakenOverBreakRetractionOptions = {
  * it runs, that takes back this owner's (`author`, and `suggestionId` in a
  * suggestion) insertion after the paragraph before it: that paragraph holds
  * the insertion's new break (`survivor: "first"`) and the last one only its
- * words, under the former mark it took over. The block deletion rejects that
- * insertion, so the paragraph before keeps its identity and gets its mark and
- * properties back; a text range over the break would retire its identity.
+ * words, and the anchors of comments on them, under the former mark it took
+ * over. The block deletion rejects that insertion, so the paragraph before
+ * keeps its identity and gets its mark and properties back, and the comments
+ * it leaves nothing of retire; a text range over the break would retire its
+ * identity.
  */
 const takenOverBreakRetractionAsItRuns = ({
   document,
@@ -1758,7 +1761,9 @@ const takenOverBreakRetractionAsItRuns = ({
     paragraph.paraId === undefined ||
     idKey(paragraph.paraId) !== idKey(blockId) ||
     !paragraph.content.every(
-      (item) => item.type === "insertion" && owns(item.info),
+      (item) =>
+        (item.type === "insertion" && owns(item.info)) ||
+        isCommentAnchorCarrierType(item.type),
     ) ||
     previous?.type !== "paragraph" ||
     previous.pPrMark?.kind !== "ins" ||
@@ -1768,6 +1773,23 @@ const takenOverBreakRetractionAsItRuns = ({
   )
     return intents;
   return [{ type: "deleteParagraphs", story, blockIds: [paragraph.paraId] }];
+};
+
+/**
+ * The comment threads `before` holds that `after` no longer does: a tracked
+ * operation that takes back its own insertion retires the comments it leaves
+ * nothing of outright, as a direct deletion does.
+ */
+const commentsRetiredBetween = (
+  before: Document,
+  after: Document,
+): number[] => {
+  const kept = new Set(
+    (after.package.document.comments ?? []).map(({ id }) => id),
+  );
+  return (before.package.document.comments ?? []).flatMap(({ id, parentId }) =>
+    parentId === undefined && !kept.has(id) ? [id] : [],
+  );
 };
 
 type MergeIntentsAsItRunsOptions = {
@@ -4513,6 +4535,10 @@ export class CanonicalPublicOperations {
       }
       return {
         type: "prepared" as const,
+        retiredCommentIds:
+          batch.mode === "direct"
+            ? []
+            : commentsRetiredBetween(sourceDocument, nextDocument),
         // The intents as they ran, which name what this operation joined.
         intents: mappedIntents,
         document: nextDocument,
@@ -4556,7 +4582,8 @@ export class CanonicalPublicOperations {
           if (kept === idKey(absorbed)) survivorOf.set(gone, idKey(survivor));
         survivorOf.set(idKey(absorbed), idKey(survivor));
       }
-      const { commentId, suggestionId, revisionIds } = prepared;
+      const { commentId, suggestionId, revisionIds, retiredCommentIds } =
+        prepared;
       normalizations.push(...adjustments);
       recordColumnInsertion(resolvedOperation, insertedColumnCounts);
       document = prepared.document;
@@ -4577,6 +4604,7 @@ export class CanonicalPublicOperations {
         ...(joined === undefined ? {} : { paragraphIdentity: joined }),
         ...(revisionId === undefined ? {} : { revisionId, revisionIds }),
         ...(suggestionId === undefined ? {} : { suggestionId }),
+        ...(retiredCommentIds.length === 0 ? {} : { retiredCommentIds }),
       });
     };
     const inputOrder = new Map(

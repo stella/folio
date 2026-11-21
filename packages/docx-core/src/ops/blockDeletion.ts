@@ -4,6 +4,7 @@ import { Result } from "better-result";
 import type {
   BlockContent,
   Document,
+  DocumentBody,
   Paragraph,
   ParagraphContent,
   Table,
@@ -24,6 +25,7 @@ import {
   childNodes,
   type InlineNode,
   isCommentAnchor,
+  isCommentAnchorCarrierType,
 } from "./leaves";
 import { asMoveHalf } from "./moves";
 import {
@@ -126,19 +128,77 @@ const markGoes = ({ pPrMark }: Paragraph): boolean =>
   pPrMark?.kind === "moveFrom" ||
   pPrMark?.deletion !== undefined;
 
+/** How many anchors of each comment stand anywhere in `value`. */
+const commentAnchorCounts = (
+  value: unknown,
+  counts = new Map<number, number>(),
+): Map<number, number> => {
+  if (Array.isArray(value)) {
+    for (const item of value) commentAnchorCounts(item, counts);
+    return counts;
+  }
+  if (typeof value !== "object" || value === null) return counts;
+  const type: unknown = Reflect.get(value, "type");
+  const id: unknown = Reflect.get(value, "id");
+  if (
+    typeof type === "string" &&
+    isCommentAnchorCarrierType(type) &&
+    typeof id === "number"
+  )
+    counts.set(id, (counts.get(id) ?? 0) + 1);
+  for (const item of Object.values(value)) commentAnchorCounts(item, counts);
+  return counts;
+};
+
+type HeldCommentsOptions = {
+  body: DocumentBody;
+  paragraphs: readonly Paragraph[];
+};
+
+/**
+ * The comments every anchor of which stands in `paragraphs`: removing them
+ * leaves nothing of those comments, which retire with them, as a direct
+ * deletion retires the comments it covers whole.
+ */
+const commentsHeldBy = ({
+  body,
+  paragraphs,
+}: HeldCommentsOptions): ReadonlySet<number> => {
+  const everywhere = commentAnchorCounts(body.content);
+  return new Set(
+    [...commentAnchorCounts(paragraphs)].flatMap(([id, count]) =>
+      everywhere.get(id) === count ? [id] : [],
+    ),
+  );
+};
+
+/** Whether `node` is an anchor of one of the comments `held`. */
+const isHeldAnchor = (node: InlineNode, held: ReadonlySet<number>): boolean =>
+  isCommentAnchor(node) && held.has(node.id);
+
+type AddedWholeOptions = {
+  paragraph: Paragraph;
+  owner: RevisionOwner;
+  /** Comments wholly in the paragraphs removed: their anchors go too. */
+  held: ReadonlySet<number>;
+};
+
 /**
  * Whether `owner`'s pending insertion added `paragraph` whole: its mark
  * and every word, with no one else's suggestion in it and no range boundary
- * standing in it, which removing the paragraph would lose.
+ * standing in it, which removing the paragraph would lose, but the anchors
+ * of comments `held` in what is removed.
  */
-const addedWholeBy = (paragraph: Paragraph, owner: RevisionOwner): boolean =>
+const addedWholeBy = ({ paragraph, owner, held }: AddedWholeOptions): boolean =>
   paragraph.pPrMark?.kind === "ins" &&
   paragraph.pPrMark.deletion === undefined &&
   isOwnRecord(paragraph.pPrMark.info, owner) &&
   paragraph.content.every(
-    (item) => item.type === "insertion" && isOwnRecord(item.info, owner),
+    (item) =>
+      (item.type === "insertion" && isOwnRecord(item.info, owner)) ||
+      isHeldAnchor(item, held),
   ) &&
-  !holdsRangeBoundary(paragraph.content) &&
+  !holdsRangeBoundary(paragraph.content, held) &&
   recordedOnlyBy(paragraph, owner);
 
 type TakenOverBreakOptions = {
@@ -147,6 +207,8 @@ type TakenOverBreakOptions = {
   /** The paragraphs deleted, the last ones of their container. */
   paragraphs: readonly Paragraph[];
   owner: RevisionOwner;
+  /** Comments wholly in `paragraphs`: rejecting the insertion retires them. */
+  held: ReadonlySet<number>;
 };
 
 /**
@@ -163,6 +225,7 @@ const takenOverBreakRecords = ({
   broken,
   paragraphs,
   owner,
+  held,
 }: TakenOverBreakOptions): number[] | undefined => {
   const mark = broken.pPrMark;
   const last = paragraphs.at(-1);
@@ -175,7 +238,7 @@ const takenOverBreakRecords = ({
     broken.sectionProperties !== undefined ||
     !paragraphs
       .slice(0, -1)
-      .every((paragraph) => addedWholeBy(paragraph, owner))
+      .every((paragraph) => addedWholeBy({ paragraph, owner, held }))
   )
     return undefined;
   const { pPrMark: formerMark, ...words } = last;
@@ -183,9 +246,11 @@ const takenOverBreakRecords = ({
     (formerMark !== undefined &&
       (formerMark.kind !== "ins" || formerMark.deletion !== undefined)) ||
     !last.content.every(
-      (item) => item.type === "insertion" && isOwnRecord(item.info, owner),
+      (item) =>
+        (item.type === "insertion" && isOwnRecord(item.info, owner)) ||
+        isHeldAnchor(item, held),
     ) ||
-    holdsRangeBoundary(last.content) ||
+    holdsRangeBoundary(last.content, held) ||
     !recordedOnlyBy(words, owner)
   )
     return undefined;
@@ -201,10 +266,18 @@ const takenOverBreakRecords = ({
   return ids;
 };
 
-/** Whether a range boundary stands anywhere among `nodes`. */
-const holdsRangeBoundary = (nodes: readonly InlineNode[]): boolean =>
+/**
+ * Whether a range boundary stands anywhere among `nodes`, but an anchor of a
+ * comment `held` in what is removed.
+ */
+const holdsRangeBoundary = (
+  nodes: readonly InlineNode[],
+  held: ReadonlySet<number> = new Set(),
+): boolean =>
   nodes.some(
-    (node) => isBoundary(node) || holdsRangeBoundary(childNodes(node) ?? []),
+    (node) =>
+      (isBoundary(node) && !isHeldAnchor(node, held)) ||
+      holdsRangeBoundary(childNodes(node) ?? [], held),
   );
 
 /**
@@ -508,6 +581,59 @@ export const paragraphMarkOutcome = ({
   }
 };
 
+type ExhaustedCommentsOptions = {
+  before: Document;
+  edit: DocumentEdit;
+  applyOps: ApplyOps;
+};
+
+type ExhaustedCommentsRetirement = {
+  edit: DocumentEdit;
+  /** The paragraphs retiring the comments modified. */
+  modified: readonly string[];
+};
+
+/**
+ * `edit` with the comments it left nothing of retired, thread and all: those
+ * that still covered something `before` it.
+ */
+const withExhaustedCommentsRetired = ({
+  before,
+  edit,
+  applyOps,
+}: ExhaustedCommentsOptions): Result<
+  ExhaustedCommentsRetirement,
+  DocumentOpRefusal
+> => {
+  const exhaustedCommentIds = (before.package.document.comments ?? []).flatMap(
+    ({ id, parentId }) =>
+      parentId === undefined &&
+      !isCommentExhausted({ type: "document", document: before, id }) &&
+      isCommentExhausted({ type: "document", document: edit.document, id })
+        ? [id]
+        : [],
+  );
+  if (exhaustedCommentIds.length === 0)
+    return Result.ok({ edit, modified: [] });
+  const retired = applyOps(
+    edit.document,
+    exhaustedCommentIds.map((id) => ({
+      type: DOCUMENT_OP_TYPES.DELETE_COMMENT,
+      id,
+      scope: "thread" as const,
+    })),
+  );
+  if (retired.isErr()) return Result.err(retired.error);
+  return Result.ok({
+    edit: {
+      document: retired.value.document,
+      inverse: [...retired.value.inverse, ...edit.inverse],
+      touched: retired.value.touched,
+    },
+    modified: retired.value.touched.modified,
+  });
+};
+
 type SectionTransfer = {
   sectionDestination: "none" | "preceding" | "following";
 };
@@ -577,10 +703,14 @@ export const deleteBlocks = ({
     found.every(({ paragraph }) => paragraph.sectionProperties === undefined);
   const beforeTable =
     following?.type === "table" && list.at(-1)?.type === "paragraph";
+  const held = commentsHeldBy({
+    body,
+    paragraphs: found.map(({ paragraph }) => paragraph),
+  });
   if (
     owner !== undefined &&
     (beforeParagraph || beforeTable) &&
-    found.every(({ paragraph }) => addedWholeBy(paragraph, owner))
+    found.every(({ paragraph }) => addedWholeBy({ paragraph, owner, held }))
   ) {
     const removed = applyOps(document, [
       {
@@ -592,11 +722,18 @@ export const deleteBlocks = ({
     ]);
     if (removed.isErr())
       return refuse(removed.error.reason, removed.error.message);
+    const retired = withExhaustedCommentsRetired({
+      before: document,
+      edit: removed.value,
+      applyOps,
+    });
+    if (retired.isErr())
+      return refuse(retired.error.reason, retired.error.message);
     return Result.ok({
-      document: removed.value.document,
-      inverse: removed.value.inverse,
+      document: retired.value.edit.document,
+      inverse: retired.value.edit.inverse,
       touched: {
-        modified: [],
+        modified: retired.value.modified,
         inserted: [],
         removed: found.map(({ paragraph }) => paragraph.paraId ?? ""),
       },
@@ -612,6 +749,7 @@ export const deleteBlocks = ({
           broken,
           paragraphs: found.map(({ paragraph }) => paragraph),
           owner,
+          held,
         })
       : undefined;
   if (takenOver !== undefined) {
@@ -783,44 +921,18 @@ export const deleteBlocks = ({
     .filter((block) => replaced.get(idKey(block.paraId ?? "")) !== block)
     .map(({ paraId }) => paraId ?? "");
   if (op.revision === undefined) {
-    let edit = direct.value;
-    let retiredTouched: readonly string[] = [];
-    const exhaustedCommentIds = (
-      document.package.document.comments ?? []
-    ).flatMap(({ id, parentId }) =>
-      parentId === undefined &&
-      !isCommentExhausted({ type: "document", document, id }) &&
-      isCommentExhausted({
-        type: "document",
-        document: direct.value.document,
-        id,
-      })
-        ? [id]
-        : [],
-    );
-    if (exhaustedCommentIds.length > 0) {
-      const retired = applyOps(
-        direct.value.document,
-        exhaustedCommentIds.map((id) => ({
-          type: DOCUMENT_OP_TYPES.DELETE_COMMENT,
-          id,
-          scope: "thread" as const,
-        })),
-      );
-      if (retired.isErr())
-        return refuse(retired.error.reason, retired.error.message);
-      retiredTouched = retired.value.touched.modified;
-      edit = {
-        document: retired.value.document,
-        inverse: [...retired.value.inverse, ...direct.value.inverse],
-        touched: retired.value.touched,
-      };
-    }
+    const retired = withExhaustedCommentsRetired({
+      before: document,
+      edit: direct.value,
+      applyOps,
+    });
+    if (retired.isErr())
+      return refuse(retired.error.reason, retired.error.message);
     // Anchoring the inverse must not report an unchanged boundary as modified.
     return Result.ok({
-      ...edit,
+      ...retired.value.edit,
       touched: {
-        modified: [...new Set([...retiredTouched, ...directModified])],
+        modified: [...new Set([...retired.value.modified, ...directModified])],
         inserted: [],
         removed: affected
           .filter((paragraph) => !terminal || paragraph !== last.paragraph)

@@ -3,8 +3,9 @@
  * added takes that insertion back: the document is the one before it, ids
  * and paragraph properties included, after a paragraph another follows and
  * after the container's last paragraph, whose former mark the inserted
- * paragraph took over. No deletion of an addition is recorded. A deletion by
- * another suggestion is recorded beside the insertion instead.
+ * paragraph took over. No deletion of an addition is recorded; a comment it
+ * leaves nothing of retires with it, as a direct deletion's does. A deletion
+ * by another suggestion is recorded beside the insertion instead.
  */
 import { expect, test } from "bun:test";
 
@@ -169,3 +170,57 @@ for (const [place, anchor] of Object.entries(PLACES))
     });
     expect(both.document).toStrictEqual(original);
   });
+
+type CommentedOptions = {
+  document: Document;
+  from: { blockId: string; offset: number };
+  to: { blockId: string; offset: number };
+};
+
+const commented = ({ document, from, to }: CommentedOptions) =>
+  apply(document, {
+    type: DOCUMENT_OP_TYPES.CREATE_COMMENT,
+    comment: {
+      id: 5,
+      author: "Reader",
+      content: [paragraph("0000000C", "Why?")],
+    },
+    anchor: {
+      kind: "range",
+      from: { story: OP_STORIES.MAIN, ...from },
+      to: { story: OP_STORIES.MAIN, ...to },
+    },
+  });
+
+for (const [stampName, suggestionId] of Object.entries(STAMPS))
+  for (const [place, anchor] of Object.entries(PLACES))
+    test(`deleting its own ${stampName} insertion ${place} retires a comment held in it`, () => {
+      const insertion = inserted({ anchor, suggestionId });
+      const withComment = commented({
+        document: insertion.document,
+        from: { blockId: INSERTED_ID, offset: 0 },
+        to: { blockId: INSERTED_ID, offset: TEXTS.words.length },
+      });
+      const deletion = deleted(withComment.document, suggestionId);
+      // The comment part creating the comment added stays, empty.
+      expect(deletion.document.package.document.content).toStrictEqual(
+        original.package.document.content,
+      );
+      expect(deletion.document.package.document.comments ?? []).toEqual([]);
+      expect(undo(deletion)).toStrictEqual(withComment.document);
+    });
+
+test("a comment reaching past its own insertion keeps the insertion's words", () => {
+  const insertion = inserted({
+    anchor: PLACES["after a paragraph another follows"],
+    suggestionId: undefined,
+  });
+  const withComment = commented({
+    document: insertion.document,
+    from: { blockId: INSERTED_ID, offset: 0 },
+    to: { blockId: "00000002", offset: 2 },
+  });
+  const deletion = deleted(withComment.document, undefined);
+  expect(deletion.document.package.document.comments).toHaveLength(1);
+  expect(undo(deletion)).toStrictEqual(withComment.document);
+});

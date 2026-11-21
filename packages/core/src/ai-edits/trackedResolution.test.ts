@@ -282,47 +282,149 @@ describe("a tracked deletion of a paragraph that is a pending insertion", () => 
   }
 
   // A later suggestion is not the one that inserted the paragraph: on the
-  // canonical session its deletion stays beside the insertion, so rejecting
-  // that suggestion gives the paragraph back. The legacy session takes the
-  // insertion back outright.
-  for (const session of ["canonical", "legacy"] as const) {
-    test(`a later suggestion deleting it (${session})`, async () => {
-      const reviewer = await open(undefined, session);
-      const original = (
-        await open(await reviewer.toBuffer(), session)
-      ).getContent();
-      const apply = applier(reviewer, "suggested");
-      apply({
-        type: "insertAfterBlock",
-        blockId: idOf(reviewer, "The Buyer"),
-        text: "Inserted.",
-      });
-      const later = apply({
-        id: "2",
-        type: "deleteBlock",
-        blockId: idOf(reviewer, "Inserted."),
-      }).applied.at(0)?.suggestionId;
-      if (later === undefined) throw new Error("no suggestion");
-      const saved = await reopen(reviewer, session);
-      const accepted = await reopen(reviewer, session);
-      if (session === "canonical") {
-        expect(reviewer.getChanges().map(({ type }) => type)).toEqual([
-          "paragraphMarkInserted",
-          "paragraphMarkDeleted",
-          "insertion",
-          "deletion",
-        ]);
-        expect(reviewer.rejectSuggestion(later)).toBe(true);
-        expect(texts(reviewer)).toContain("Inserted.");
-      } else {
+  // canonical session its deletion stays beside the insertion and the two
+  // suggestions stay independent. Rejecting the deletion alone gives the
+  // paragraph back, rejecting the insertion alone leaves the document before
+  // both, and accepting both, in either order, removes the paragraph. The
+  // legacy session takes the insertion back outright.
+  const suggestedThenDeleted = async (session: HeadlessReviewerSession) => {
+    const reviewer = await open(undefined, session);
+    const original = (
+      await open(await reviewer.toBuffer(), session)
+    ).getContent();
+    const apply = applier(reviewer, "suggested");
+    const inserting = apply({
+      type: "insertAfterBlock",
+      blockId: idOf(reviewer, "The Buyer"),
+      text: "Inserted.",
+    }).applied.at(0)?.suggestionId;
+    const deleting = apply({
+      id: "2",
+      type: "deleteBlock",
+      blockId: idOf(reviewer, "Inserted."),
+    }).applied.at(0)?.suggestionId;
+    if (inserting === undefined || deleting === undefined)
+      throw new Error("no suggestion");
+    return { reviewer, original, inserting, deleting };
+  };
+
+  test("a later suggestion deleting it is recorded beside it (canonical)", async () => {
+    const { reviewer, original } = await suggestedThenDeleted("canonical");
+    expect(reviewer.getChanges().map(({ type }) => type)).toEqual([
+      "paragraphMarkInserted",
+      "paragraphMarkDeleted",
+      "insertion",
+      "deletion",
+    ]);
+    const accepted = await reopen(reviewer, "canonical");
+    accepted.acceptAll();
+    expect(accepted.getContent()).toEqual(original);
+    const rejected = await reopen(reviewer, "canonical");
+    rejected.rejectAll();
+    expect(rejected.getContent()).toEqual(original);
+  });
+
+  test("rejecting the later suggestion alone gives the paragraph back (canonical)", async () => {
+    const { reviewer, deleting } = await suggestedThenDeleted("canonical");
+    expect(reviewer.rejectSuggestion(deleting)).toBe(true);
+    expect(texts(reviewer)).toContain("Inserted.");
+    expect(reviewer.getChanges().map(({ type }) => type)).toEqual([
+      "paragraphMarkInserted",
+      "insertion",
+    ]);
+  });
+
+  test("rejecting the inserting suggestion alone leaves the document before both (canonical)", async () => {
+    const { reviewer, original, inserting, deleting } =
+      await suggestedThenDeleted("canonical");
+    expect(reviewer.rejectSuggestion(inserting)).toBe(true);
+    expect(reviewer.getContent()).toEqual(original);
+    expect(reviewer.getChanges()).toEqual([]);
+    expect(reviewer.acceptSuggestion(deleting)).toBe(false);
+  });
+
+  for (const order of ["inserting first", "deleting first"] as const) {
+    test(`accepting both suggestions, ${order}, removes the paragraph (canonical)`, async () => {
+      const { reviewer, original, inserting, deleting } =
+        await suggestedThenDeleted("canonical");
+      const sequence =
+        order === "inserting first"
+          ? [inserting, deleting]
+          : [deleting, inserting];
+      for (const suggestionId of sequence)
+        expect(reviewer.acceptSuggestion(suggestionId)).toBe(true);
+      reviewer.acceptAll();
+      expect(reviewer.getContent()).toEqual(original);
+      expect(reviewer.getChanges()).toEqual([]);
+    });
+  }
+
+  test("a later suggestion deleting it takes it back (legacy)", async () => {
+    const { reviewer, original, deleting } =
+      await suggestedThenDeleted("legacy");
+    expect(reviewer.getContent()).toEqual(original);
+    expect(reviewer.getChanges()).toEqual([]);
+    expect(reviewer.rejectSuggestion(deleting)).toBe(false);
+  });
+
+  // A comment the inserted paragraph alone carries retires with it, as a
+  // direct deletion of a commented paragraph retires its comment; the result
+  // reports it. The legacy session refuses the deletion.
+  for (const [where, anchor] of [
+    ["inside the story", "The Buyer"],
+    ["at its end", "Signed"],
+  ] as const) {
+    for (const session of ["canonical", "legacy"] as const) {
+      test(`retracting it ${where} retires its comment (${session})`, async () => {
+        const reviewer = await open(undefined, session);
+        const original = (
+          await open(await reviewer.toBuffer(), session)
+        ).getContent();
+        const commentId = applier(reviewer)({
+          type: "insertAfterBlock",
+          blockId: idOf(reviewer, anchor),
+          text: "Inserted.",
+          comment: { text: "Why?" },
+        }).applied.at(0)?.commentId;
+        if (commentId === undefined) throw new Error("no comment");
+        const commented = reviewer.getContent();
+        const deleted = reviewer.applyDocumentOperations(
+          {
+            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+            mode: "tracked-changes",
+            operations: [
+              {
+                id: "2",
+                type: "deleteBlock",
+                blockId: idOf(reviewer, "Inserted."),
+              },
+            ],
+          },
+          { undefinedReferences: "refuse" },
+        );
+        if (session === "legacy") {
+          expect(deleted.applied).toEqual([]);
+          expect(deleted.skipped.map(({ message }) => message)).toEqual([
+            "Accept All would lose a comment.",
+          ]);
+          expect(reviewer.getContent()).toEqual(commented);
+          return;
+        }
+        expect(deleted.applied.at(0)?.retiredCommentIds).toEqual([commentId]);
         expect(reviewer.getContent()).toEqual(original);
         expect(reviewer.getChanges()).toEqual([]);
-      }
-      accepted.acceptAll();
-      expect(accepted.getContent()).toEqual(original);
-      saved.rejectAll();
-      expect(saved.getContent()).toEqual(original);
-    });
+        expect(reviewer.getComments()).toEqual([]);
+        const saved = await reopen(reviewer, session);
+        expect(saved.getContent()).toEqual(original);
+        expect(saved.getComments()).toEqual([]);
+        const undoHandle = deleted.undoHandle;
+        if (undoHandle === null) throw new Error("no undo handle");
+        expect(reviewer.undoDocumentOperations(undoHandle).status).toBe(
+          "undone",
+        );
+        expect(reviewer.getComments().map(({ id }) => id)).toEqual([commentId]);
+      });
+    }
   }
 
   test("deleting the paragraph a split added a break to keeps its words deleted", async () => {
