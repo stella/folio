@@ -881,24 +881,6 @@ const validEnclosingHandoffs = (handoffs: unknown): boolean =>
       );
     }));
 
-/**
- * A count of kept boundaries goes with the date they were kept from and
- * names at least one of them.
- */
-const validKeptCount = ({
-  keptFrom,
-  keptCount,
-}: {
-  keptFrom?: unknown;
-  keptCount?: unknown;
-}): boolean =>
-  keptCount === undefined ||
-  (keptFrom !== undefined &&
-    typeof keptCount === "number" &&
-    Number.isInteger(keptCount) &&
-    keptCount >= 1 &&
-    keptCount <= MAX_REVISION_ID);
-
 /** Journal-supplied provenance must name actual source slots at its recorded depth. */
 const validRetainedIdentities = (node: InlineNode): boolean => {
   if (!isTrackedWrapper(node) || node.resolutionJoins === undefined)
@@ -935,9 +917,6 @@ const validRetainedIdentities = (node: InlineNode): boolean => {
         ) ||
         new Set(deferred.blockers).size !== deferred.blockers.length ||
         !deferred.blockers.includes(node.info.id) ||
-        (deferred.keptFrom !== undefined &&
-          typeof deferred.keptFrom !== "string") ||
-        !validKeptCount(deferred) ||
         // An insertion holds a seam it stands in; a deletion or move source
         // holds one at the edge where its piece meets it.
         (isAddedRevision(node)
@@ -950,9 +929,6 @@ const validRetainedIdentities = (node: InlineNode): boolean => {
       groupKeys.add(key);
     }
   }
-  if (joins.keptFrom !== undefined && typeof joins.keptFrom !== "string")
-    return false;
-  if (!validKeptCount(joins)) return false;
   if (!validEnclosingHandoffs(joins.retainedEnclosing)) return false;
   if (joins.retainedAfter === undefined) return true;
   if (!Array.isArray(joins.retainedAfter)) return false;
@@ -4059,9 +4035,9 @@ const resolveList = ({
     // Keep the seam on that insertion, at any depth, as a split seam is kept
     // on the insertions between its paragraphs: rejecting it later joins
     // the pieces it separated, accepting it keeps them apart.
-    // Boundaries floating at the seam that no piece took stand there, and the
-    // deferred join records the date of the revision they were kept from, so
-    // they land in the pieces as they would had the insertion gone first.
+    // Boundaries floating at the seam that no piece took stand there, each
+    // recording its cut and the revision it was kept from, so they land in
+    // the pieces as they would had the insertion gone first.
     // Pending insertions either side, alike down to the seam's depth, are the
     // pieces the removed content cut, not insertions standing between them:
     // the seam joins them now. Kept as blockers, removing them later would
