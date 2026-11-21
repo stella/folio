@@ -1728,6 +1728,13 @@ type FormattingIntentsAsItRunsOptions = {
   story: OpStory;
   /** Each paragraph the batch joined away, to the one it now lives in. */
   survivorOf: ReadonlyMap<string, string>;
+  /**
+   * Each paragraph a block deletion of the batch absorbed, such as the one
+   * that takes the final mark of a deleted run ending its container, to the
+   * one it now lives in. A join's absorbed half is not here: an insertion
+   * beside it keeps its own place.
+   */
+  deletionSurvivorOf: ReadonlyMap<string, string>;
   intents: readonly EditorIntent[];
 };
 
@@ -1735,13 +1742,15 @@ type FormattingIntentsAsItRunsOptions = {
  * Paragraph property edits and paragraph insertions bound to the paragraph
  * as the batch stands when they run: one an earlier operation joined away,
  * such as the first half of a split whose retraction joins it to the second,
- * or a paragraph that took the mark of the run the batch deleted after it, is
- * edited, or inserted beside, in the paragraph that now holds it.
+ * is edited in the paragraph that now holds it; one a block deletion
+ * absorbed, such as the paragraph that took the mark of the run the batch
+ * deleted after it, is also inserted beside there.
  */
 const formattingIntentsAsItRuns = ({
   document,
   story,
   survivorOf,
+  deletionSurvivorOf,
   intents,
 }: FormattingIntentsAsItRunsOptions): readonly EditorIntent[] => {
   if (survivorOf.size === 0) return intents;
@@ -1752,8 +1761,11 @@ const formattingIntentsAsItRuns = ({
     ),
   );
   // The paragraph's start, in the paragraph that now holds it.
-  const bound = (at: TextPosition): TextPosition => {
-    const survivor = survivorOf.get(idKey(at.blockId));
+  const bound = (
+    at: TextPosition,
+    survivors: ReadonlyMap<string, string> = survivorOf,
+  ): TextPosition => {
+    const survivor = survivors.get(idKey(at.blockId));
     return survivor === undefined || present.has(idKey(at.blockId))
       ? at
       : { story: at.story, blockId: survivor, offset: 0 };
@@ -1770,7 +1782,10 @@ const formattingIntentsAsItRuns = ({
       case "insertParagraphs": {
         const { at } = intent;
         if (at.type !== "before" && at.type !== "after") return intent;
-        const { blockId } = bound({ story, blockId: at.blockId, offset: 0 });
+        const { blockId } = bound(
+          { story, blockId: at.blockId, offset: 0 },
+          deletionSurvivorOf,
+        );
         return blockId === at.blockId
           ? intent
           : { ...intent, at: { type: at.type, blockId } };
@@ -4369,6 +4384,7 @@ export class CanonicalPublicOperations {
      * does one at a time after that operation.
      */
     const survivorOf = new Map<string, string>();
+    const deletionSurvivorOf = new Map<string, string>();
     // Preparation owns no session state: even comments and lock refusals are
     // facts until the batch chooses this attempt.
     const prepareOperation = ({
@@ -4388,6 +4404,7 @@ export class CanonicalPublicOperations {
         document: sourceDocument,
         story,
         survivorOf,
+        deletionSurvivorOf,
         intents: insertionIntentsAsItRuns({
           document: sourceDocument,
           story,
@@ -4771,10 +4788,16 @@ export class CanonicalPublicOperations {
         skip(operation.id, prepared.reason, prepared.message);
         return;
       }
+      const survivorMaps =
+        operation.type === "deleteBlock"
+          ? [survivorOf, deletionSurvivorOf]
+          : [survivorOf];
       for (const { absorbed, survivor } of prepared.absorbed) {
-        for (const [gone, kept] of survivorOf)
-          if (kept === idKey(absorbed)) survivorOf.set(gone, idKey(survivor));
-        survivorOf.set(idKey(absorbed), idKey(survivor));
+        for (const survivors of survivorMaps) {
+          for (const [gone, kept] of survivors)
+            if (kept === idKey(absorbed)) survivors.set(gone, idKey(survivor));
+          survivors.set(idKey(absorbed), idKey(survivor));
+        }
       }
       const { commentId, suggestionId, revisionIds } = prepared;
       normalizations.push(...adjustments);
