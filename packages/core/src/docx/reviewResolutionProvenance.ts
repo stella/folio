@@ -20,6 +20,7 @@ import type {
   Insertion,
   KeptCut,
   ParagraphMarkChange,
+  ParagraphPropertyChange,
   RecordField,
   RunPropertyChange,
 } from "../types/document";
@@ -30,10 +31,12 @@ const NAMESPACES: ReadonlySet<string> = new Set([
   FOLIO_REVIEW_HISTORY_NAMESPACE,
 ]);
 /**
- * The review history version folio writes. Version 2 records a kept range
- * marker's cut on the marker (`folio:keptCut`). Version 1 files carry no
- * marker cut: their changes name the kept markers instead, which the reader
- * translates onto the markers ({@link versionOneKeptMarkers}).
+ * The review history version folio writes. Version 2 adds the revision a
+ * paragraph property change belongs to (`folio:resolvesWith`) and records a
+ * kept range marker's cut on the marker (`folio:keptCut`). Version 1 files
+ * carry no such link and no marker cut: their changes name the kept markers
+ * instead, which the reader translates onto the markers
+ * ({@link versionOneKeptMarkers}).
  */
 export const REVIEW_HISTORY_VERSION = 2;
 /** Every version the reader understands. */
@@ -698,6 +701,33 @@ export const serializeSplitResolutionPiece = (
     valid: isSplitResolutionPiece,
   }) + serializeEnclosing(value.joins);
 
+const isRevisionId = (value: unknown): value is number =>
+  natural(value) && value <= MAX_REVISION_ID;
+
+/**
+ * The revision a paragraph property change belongs to (`folio:resolvesWith`
+ * on `w:pPrChange`): a tracked join's paragraph-mark deletion, decided with
+ * it. A reader that does not know it resolves the two records separately.
+ */
+export const parseParagraphPropertyChangeOwner = (
+  node: XmlElement,
+): Pick<ParagraphPropertyChange, "resolvesWith"> => {
+  const resolvesWith = parseAttribute({
+    node,
+    attribute: "resolvesWith",
+    valid: isRevisionId,
+  });
+  return resolvesWith === undefined ? {} : { resolvesWith };
+};
+export const serializeParagraphPropertyChangeOwner = (
+  change: ParagraphPropertyChange,
+): string =>
+  serializeAttribute({
+    attribute: "resolvesWith",
+    value: change.resolvesWith,
+    valid: isRevisionId,
+  });
+
 /** Every provenance attribute folio reads, with the shape its value must have. */
 const PROVENANCE_VALUE_SHAPES: Readonly<Record<string, ProvenanceShape>> = {
   resolutionJoins: isStoredJoinsOf,
@@ -709,6 +739,7 @@ const PROVENANCE_VALUE_SHAPES: Readonly<Record<string, ProvenanceShape>> = {
   splitResolutionJoins: isSplitPieceOf,
   [ENCLOSING_ATTRIBUTE]: enclosingHandoffs,
   [PARAGRAPH_MARK_FIELDS.survivor.attribute]: isParagraphMarkSurvivor,
+  resolvesWith: isRevisionId,
 };
 
 /**

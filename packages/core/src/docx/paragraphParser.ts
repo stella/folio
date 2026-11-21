@@ -118,6 +118,7 @@ import { type PreviewLedger, standalonePreviewLedger } from "./previewBudget";
 import { FOLIO_REVIEW_HISTORY_NAMESPACE } from "./reviewHistoryNamespace";
 import {
   parseParagraphMarkResolutionJoin,
+  parseParagraphPropertyChangeOwner,
   parseResolutionJoins,
   parseSplitResolutionPiece,
   type SplitResolutionPiece,
@@ -442,6 +443,8 @@ export function parseParagraphPropertyChanges(
       type: "paragraphPropertyChange",
       info: parsePropertyChangeInfo(changeElement),
     };
+    const { resolvesWith } = parseParagraphPropertyChangeOwner(changeElement);
+    if (resolvesWith !== undefined) change.resolvesWith = resolvesWith;
     if (previousFormatting !== undefined) {
       change.previousFormatting = previousFormatting;
     }

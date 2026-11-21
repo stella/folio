@@ -139,6 +139,7 @@ import {
   type RevisionStamp,
   type RunPropsPatch,
   SECTION_BOUNDARY_POLICIES,
+  type SetParagraphReviewOp,
   SPLIT_HALVES,
   type SplitHalf,
   type TableEditOp,
@@ -1491,6 +1492,71 @@ const joinParagraphPropertyAlignment = ({
         : EMPTY_PROPERTY_SETS.KEEP,
     ...(revision === undefined ? {} : { revision }),
   } as const;
+};
+
+type JoinPropertyChangeLinkOptions = {
+  /** The document before the operation that joined the paragraphs. */
+  before: Document;
+  /** The document after it. */
+  after: Document;
+  story: OpStory;
+  /** The paragraph whose mark the join deletes. */
+  blockId: string;
+  /** The paragraph the operation set the joined properties on. */
+  propertiesBlockId: string;
+};
+
+/**
+ * The review op that makes the property change an operation left on the
+ * paragraph its tracked join keeps belong to the paragraph-mark deletion the
+ * operation recorded, so accepting or rejecting the join decides both.
+ * `undefined` when the operation recorded no mark deletion (a mark already
+ * pending deletion, an own added mark taken back), the paragraph holds no
+ * change the operation made, or the change already belongs to a revision.
+ */
+export const joinPropertyChangeLink = ({
+  before,
+  after,
+  story,
+  blockId,
+  propertiesBlockId,
+}: JoinPropertyChangeLinkOptions): SetParagraphReviewOp | undefined => {
+  const markRevision = (document: Document) => {
+    const mark = findStoryParagraph(storyBody(document, story), blockId)
+      ?.paragraph.pPrMark;
+    return mark?.kind === "del" ? mark.info.id : mark?.deletion?.info.id;
+  };
+  const recorded = markRevision(after);
+  if (recorded === undefined || recorded === markRevision(before))
+    return undefined;
+  const paragraph = findStoryParagraph(
+    storyBody(after, story),
+    propertiesBlockId,
+  )?.paragraph;
+  const change = paragraph?.propertyChanges?.at(0);
+  if (
+    paragraph === undefined ||
+    change === undefined ||
+    change.resolvesWith !== undefined ||
+    findStoryParagraph(
+      storyBody(before, story),
+      propertiesBlockId,
+    )?.paragraph.propertyChanges?.some(
+      ({ info }) => info.id === change.info.id,
+    ) === true
+  )
+    return undefined;
+  const expected = reviewFieldsOf(paragraph);
+  return {
+    type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
+    story,
+    blockId: propertiesBlockId,
+    expected,
+    review: {
+      ...expected,
+      propertyChanges: [{ ...change, resolvesWith: recorded }],
+    },
+  };
 };
 
 const RUN_SEAM_POLICIES = {
@@ -3803,7 +3869,17 @@ const compileInStory = (
           const patched = plan.append(alignment);
           if (patched.isErr()) return Result.err(patched.error);
         }
-        ops = plan.ops;
+        const link =
+          alignment === undefined
+            ? undefined
+            : joinPropertyChangeLink({
+                before: document,
+                after: plan.document(),
+                story: intent.story,
+                blockId: intent.blockId,
+                propertiesBlockId: alignment.blockId,
+              });
+        ops = link === undefined ? plan.ops : [...plan.ops, link];
       } else {
         ops = [
           {

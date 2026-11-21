@@ -19,13 +19,29 @@ import { paragraphPropertiesSnapshot } from "../prosemirror/commands/propertyCha
 import { resolveStateStory } from "../prosemirror/markupViewProjection";
 import { FolioDocxReviewer } from "./headless";
 
-const open = async (markdown: string) => {
+const SESSIONS = ["legacy", "canonical"] as const;
+type Session = (typeof SESSIONS)[number];
+
+const open = async (markdown: string, session: Session) => {
   const bytes = (await ensureParaIds(await createDocx(fromMarkdown(markdown))))
     .docx;
-  return FolioDocxReviewer.fromBuffer(bytes, { author: "Test" });
+  return FolioDocxReviewer.fromBuffer(bytes, { author: "Test", session });
 };
-const reopen = async (reviewer: FolioDocxReviewer) =>
-  FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), { author: "Test" });
+const reopen = async (reviewer: FolioDocxReviewer, session: Session) =>
+  FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
+    author: "Test",
+    session,
+  });
+
+/** The test once on each engine. */
+const onEachEngine = (
+  name: string,
+  run: (session: Session) => Promise<void>,
+  timeout: number,
+) => {
+  for (const session of SESSIONS)
+    test(`${session}: ${name}`, () => run(session), timeout);
+};
 
 const paragraphProjection = (doc: PMNode) => {
   const rows: {
@@ -92,9 +108,9 @@ const propertyEdits = ({ blockId, text, properties }: PropertyEditsOptions) => {
   ];
 };
 
-test(
+onEachEngine(
   "separate patches on pending deleted paragraph marks refuse without changing any paragraph",
-  async () => {
+  async (session) => {
     await fc.assert(
       fc.asyncProperty(
         propertiesArbitrary,
@@ -111,7 +127,7 @@ test(
               [false, "delete-final"],
               [true, "delete-final"],
             ] as const) {
-              let reviewer = await open("# Heading\n\nBody clause.");
+              let reviewer = await open("# Heading\n\nBody clause.", session);
               const first = reviewer.getContent().at(0);
               if (!first) throw new Error("Missing heading");
               const original = reviewer.getContent();
@@ -136,7 +152,7 @@ test(
                 },
                 { undefinedReferences: "refuse" },
               );
-              if (saved) reviewer = await reopen(reviewer);
+              if (saved) reviewer = await reopen(reviewer, session);
               const current = reviewer
                 .getContent()
                 .find(({ id }) => id === first.id);
@@ -176,7 +192,7 @@ test(
             }
           }
           // The runtime guard also sees a mark created earlier within this batch.
-          const heading = (await open("# Heading\n\nBody clause."))
+          const heading = (await open("# Heading\n\nBody clause.", session))
             .getContent()
             .at(0);
           if (!heading) throw new Error("Missing heading");
@@ -185,7 +201,7 @@ test(
             text: heading.text,
             properties,
           })) {
-            const reviewer = await open("# Heading\n\nBody clause.");
+            const reviewer = await open("# Heading\n\nBody clause.", session);
             const original = reviewer.getContent();
             const result = reviewer.applyDocumentOperations(
               {
@@ -222,9 +238,9 @@ test(
   propertyTestTimeout(30_000),
 );
 
-test(
+onEachEngine(
   "atomic merge properties preserve accept-all previews and rejection ownership over generated chains",
-  async () => {
+  async (session) => {
     await fc.assert(
       fc.asyncProperty(
         propertiesArbitrary,
@@ -240,8 +256,9 @@ test(
             "reject-forward",
             "reject-reverse",
             "reject-first-merge",
+            "reject-first-merge-reopened",
           ] as const) {
-            const reviewer = await open(markdown);
+            let reviewer = await open(markdown, session);
             const heading = reviewer.getContent().at(0);
             if (!heading) throw new Error("Missing heading");
             const initialSpacing = reviewer.applyDocumentOperations(
@@ -292,7 +309,7 @@ test(
             );
             expect(result.skipped).toEqual([]);
             expect(result.applied).toHaveLength(operations.length);
-            const pending = await reopen(reviewer);
+            const pending = await reopen(reviewer, session);
             expect(
               paragraphProjection(
                 resolveStateStory(pending.state, "accept").resolved,
@@ -317,7 +334,14 @@ test(
                 : revisions.toReversed())
                 reviewer.rejectChange(id);
             }
-            if (resolution === "reject-first-merge") {
+            const rejectsFirstMerge =
+              resolution === "reject-first-merge" ||
+              resolution === "reject-first-merge-reopened";
+            // The merge's paragraph-mark deletion and the properties it gives
+            // are decided together, also once saved and reopened.
+            if (resolution === "reject-first-merge-reopened")
+              reviewer = pending;
+            if (rejectsFirstMerge) {
               const merge = result.applied.find(({ id }) => id === "merge-0");
               if (merge?.revisionId === undefined)
                 throw new Error("Missing merge revision");
@@ -342,7 +366,7 @@ test(
               expect(contentBlock.directSpacing).toEqual(
                 properties.spacing ?? undefined,
               );
-            } else if (resolution === "reject-first-merge") {
+            } else if (rejectsFirstMerge) {
               expect(reviewer.getContent()).toHaveLength(2);
               expect(
                 paragraphProjection(reviewer.state.doc).at(0)?.properties,
@@ -355,7 +379,7 @@ test(
                 paragraphProjection(reviewer.state.doc).at(1)?.properties,
               ).toEqual(originalParagraphs.at(1)?.properties);
             } else expect(reviewer.getContent()).toEqual(original);
-            expect((await reopen(reviewer)).getContent()).toEqual(
+            expect((await reopen(reviewer, session)).getContent()).toEqual(
               reviewer.getContent(),
             );
           }
