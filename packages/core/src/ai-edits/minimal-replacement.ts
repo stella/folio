@@ -57,6 +57,10 @@
  * applier maps each change onto the document.
  */
 
+import {
+  type NoteReferenceSpan,
+  planChangesAroundNoteReferences,
+} from "./note-references";
 import { tokenizeWords, type WordDiffSegment } from "./word-diff";
 
 /** Replace `source.slice(start, end)` with `text`; offsets index the source span. */
@@ -552,4 +556,135 @@ export const applyTextChanges = (
     cursor = change.end;
   }
   return result + source.slice(cursor);
+};
+
+/** The marks that give text a background: a highlight or run shading. */
+export const BACKGROUND_MARK_NAMES: ReadonlySet<string> = new Set([
+  "highlight",
+  "runShading",
+]);
+
+/** A matched span's characters, by span-local index, for {@link touchedBackgroundStretches}. */
+type BackgroundSpan = {
+  length: number;
+  hasBackground: (index: number) => boolean;
+};
+
+/**
+ * The span-local indices of every background (highlight or shading) stretch
+ * a change touches: the characters a change removes, or the two either side
+ * of a pure insertion, and each neighbour with a background of one with a
+ * background among them, within the span.
+ *
+ * Text written onto a highlighted value is new text, so the marker saying
+ * "fill this in" must not survive on it, and changing one digit of a
+ * highlighted amount still fills the whole amount. Background elsewhere in
+ * the match is left alone.
+ */
+export const touchedBackgroundStretches = (
+  changes: readonly TextChange[],
+  { length, hasBackground }: BackgroundSpan,
+): Set<number> => {
+  const touched = new Set<number>();
+  for (const { start, end } of changes) {
+    const from = start === end ? Math.max(start - 1, 0) : start;
+    const to = start === end ? Math.min(end + 1, length) : end;
+    for (let index = from; index < to; index++) {
+      if (touched.has(index) || !hasBackground(index)) {
+        continue;
+      }
+      touched.add(index);
+      for (let left = index - 1; left >= 0 && hasBackground(left); left--) {
+        touched.add(left);
+      }
+      for (
+        let right = index + 1;
+        right < length && hasBackground(right);
+        right++
+      ) {
+        touched.add(right);
+      }
+    }
+  }
+  return touched;
+};
+
+type PlanChanges = (
+  source: string,
+  replacement: string,
+) => readonly TextChange[];
+
+/** What {@link planReplacementChanges} plans over: one matched clean-text span. */
+type PlanReplacementChangesOptions = {
+  /** The matched clean text. */
+  source: string;
+  replacement: string;
+  /** The note references' markers lying wholly inside the match, relative to it. */
+  noteReferences: readonly NoteReferenceSpan[];
+  /**
+   * Whether the replacement may remove references and write new markers, as
+   * a comparison does: each reference is then one unit like a field result,
+   * and the changes are planned over the match whole.
+   */
+  editsReferences: boolean;
+  /** The block's field results, relative to the match. */
+  fields: readonly AtomicTextSpan[];
+  /** The changes from one piece of the match to its replacement, before widening. */
+  planChanges: PlanChanges;
+  /**
+   * Another plan of the same replacement whose untouched fields the changes
+   * must leave untouched too (see {@link keepAtomicSpans}).
+   */
+  keepFieldsOf?: PlanChanges;
+};
+
+/**
+ * A replacement's changes over its matched span, as either engine writes
+ * them: planned piece by piece between the note references the replacement
+ * keeps, widened so none cuts into a field result, and, given `keepFieldsOf`,
+ * cut around every field that plan keeps. `null` when the replacement neither
+ * keeps the references nor may edit them, or the changes do not produce the
+ * replacement.
+ */
+export const planReplacementChanges = ({
+  source,
+  replacement,
+  noteReferences,
+  editsReferences,
+  fields,
+  planChanges,
+  keepFieldsOf,
+}: PlanReplacementChangesOptions): TextChange[] | null => {
+  const atomicSpans = editsReferences
+    ? [...fields, ...noteReferences].toSorted(
+        (left, right) => left.offset - right.offset,
+      )
+    : fields;
+  const planPieces = (plan: PlanChanges): TextChange[] | null =>
+    editsReferences
+      ? [...plan(source, replacement)]
+      : planChangesAroundNoteReferences(
+          source,
+          replacement,
+          noteReferences,
+          plan,
+        );
+  const pieceChanges = planPieces(planChanges);
+  if (pieceChanges === null) {
+    return null;
+  }
+  const widened = widenChangesToAtomicSpans(source, pieceChanges, atomicSpans);
+  const keptPieces =
+    keepFieldsOf === undefined ? null : planPieces(keepFieldsOf);
+  const changes =
+    keptPieces === null
+      ? widened
+      : keepAtomicSpans(
+          source,
+          replacement,
+          widened,
+          widenChangesToAtomicSpans(source, keptPieces, atomicSpans),
+          atomicSpans,
+        );
+  return applyTextChanges(source, changes) === replacement ? changes : null;
 };
