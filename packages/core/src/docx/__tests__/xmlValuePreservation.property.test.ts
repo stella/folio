@@ -19,6 +19,7 @@ import fc from "fast-check";
 import { serializeDocumentToDocx } from "@stll/docx-core";
 
 import {
+  assertProperty,
   propertyConfig,
   propertyTestTimeout,
 } from "../../../../../test/property-testing";
@@ -170,7 +171,11 @@ const valuesIn = (parsed: Document): CarriedValues => {
     hyperlink?.type === "hyperlink"
       ? hyperlink.children
           .flatMap((child) => (child.type === "run" ? child.content : []))
-          .flatMap((child) => (child.type === "text" ? [child.text] : []))
+          .flatMap((child) => {
+            if (child.type === "text") return [child.text];
+            // A tab in `w:t` reads as a tab element.
+            return child.type === "tab" ? ["\t"] : [];
+          })
           .join("")
       : undefined;
   const comment = parsed.package.document.comments?.at(0);
@@ -202,7 +207,7 @@ describe("a value written into a package comes back out of it", () => {
       const base = await buildParagraphsDocx(["Original."]);
       const parsed = await parseDocx(base);
 
-      await fc.assert(
+      await assertProperty(
         fc.asyncProperty(hostileString, async (value) => {
           // A value that sanitises to nothing asks a different question — does
           // an empty attribute mean "empty" or "absent"? — that several of
@@ -218,7 +223,11 @@ describe("a value written into a package comes back out of it", () => {
           for (const [field, actual] of Object.entries(fields)) {
             expect({ field, value: actual }).toEqual({
               field,
-              value: expected,
+              // Text reads a CR, an LF or a CRLF pair in `w:t` as one space.
+              value:
+                field === "runText"
+                  ? expected.replaceAll(/\r\n|\r|\n/gu, " ")
+                  : expected,
             });
           }
           expect(commentInitials).toBe(`A${expected}`);
@@ -227,7 +236,10 @@ describe("a value written into a package comes back out of it", () => {
           // survives, which is what the escaper is answerable for.
           expect(commentAuthor).toBe(`A${expected}`.trim());
         }),
-        propertyConfig({ numRuns: 40 }),
+        {
+          numRuns: 40,
+          id: "every field folio writes preserves the value the boundary rule allows",
+        },
       );
     },
     propertyTestTimeout(60_000),
