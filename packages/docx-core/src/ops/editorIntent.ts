@@ -632,6 +632,9 @@ export const createEditorIntentIdAllocator = ({
           demand += 4 * (1 + span.ancestors.length);
       }
     }
+    const commentIds = new Set(
+      (document.package.document.comments ?? []).map(({ id }) => id),
+    );
     const fresh = (
       occupied: typeof census.revisions,
       count: number,
@@ -645,7 +648,13 @@ export const createEditorIntentIdAllocator = ({
           lease === undefined && count > 0
             ? occupied.occupiedPrefixEnd(ID_KIND_LIMITS[kind])
             : 1,
-        taken: (id) => occupied.has(id),
+        // Drawn from a lease, a revision id also passes over the document's
+        // comment ids: a comment the same batch made may hold a leased one.
+        taken: (id) =>
+          occupied.has(id) ||
+          (lease !== undefined &&
+            kind === ID_LEASE_KINDS.REVISION &&
+            commentIds.has(id)),
       });
     if (intent.type === "insertParagraphs") {
       // Each paragraph's mark and content wrappers, the anchor's mark, and
