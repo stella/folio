@@ -264,7 +264,9 @@ const noteReferenceDecisions = ({
           story: { kind, id: node.id },
           owner: {
             author: deletion.info.author,
-            suggestionId: deletion.info.suggestionId,
+            ...(deletion.info.suggestionId === undefined
+              ? {}
+              : { suggestionId: deletion.info.suggestionId }),
           },
           date: deletion.info.date,
         });
