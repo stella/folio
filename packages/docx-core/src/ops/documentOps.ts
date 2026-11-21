@@ -319,6 +319,7 @@ export {
   type SplitParagraphFields,
   type TextPosition,
   type ParagraphAbsorption,
+  type RevisionAbsorption,
   type TouchedBlocks,
 } from "./types";
 

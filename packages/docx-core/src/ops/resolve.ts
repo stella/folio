@@ -149,6 +149,7 @@ import {
   type ParagraphReviewFields,
   type ResolveRevisionOp,
   REVISION_DECISIONS,
+  type RevisionAbsorption,
   type RevisionDecision,
   SECTION_BOUNDARY_POLICIES,
 } from "./types";
@@ -510,6 +511,11 @@ type Resolution = {
    * between them. They reach that piece later in the same story.
    */
   outstanding: RetainedIdentity[];
+  /**
+   * Ids seam joins retired across this resolution's paragraphs, each with
+   * the id of the piece it merged into.
+   */
+  rejoined: Map<number, number>;
 };
 
 const createResolution = (
@@ -527,6 +533,7 @@ const createResolution = (
   keptDeletionPaths: NO_BOUNDARY_PATHS,
   relocated: noRelocatedBoundaries(),
   outstanding: [],
+  rejoined: new Map(),
 });
 
 const resolveRun = (run: Run, { ids, decision }: Resolution): Run => {
@@ -1852,9 +1859,9 @@ const rejoinedPieceIds = ({
 }: {
   left: InlineNode;
   right: InlineNode;
-  merged: InlineNode;
+  merged: readonly InlineNode[];
 }): [number, number][] => {
-  const kept = new Set(trackedWithin([merged]).map((node) => node.info.id));
+  const kept = new Set(trackedWithin(merged).map((node) => node.info.id));
   const leftChain = edgeChain(left, "end");
   return edgeChain(right, "start").flatMap((piece, level) => {
     const into = leftChain.at(level);
@@ -4647,8 +4654,14 @@ const resolveList = ({
     }
     if (met.length === 1) {
       const merged = met.at(0) ?? panic("A single merged record exists.");
-      for (const [id, into] of rejoinedPieceIds({ left, right, merged }))
+      for (const [id, into] of rejoinedPieceIds({
+        left,
+        right,
+        merged: [merged],
+      })) {
         retired.set(id, into);
+        resolution.rejoined.set(id, into);
+      }
       const outerEdges: CutEdges = {};
       const first = resolution.cutEdges.get(left)?.first;
       const last = resolution.cutEdges.get(right)?.last;
@@ -5093,6 +5106,8 @@ const joinOps = (
   ranInto: ReadonlySet<string> = new Set(),
   /** Paragraphs whose marks this resolution resolves after this one's. */
   joinsBefore: ReadonlySet<string> = new Set(),
+  /** Ids the joins retire, each with the id of the piece it merged into. */
+  rejoined: Map<number, number> = new Map(),
 ): Result<ParagraphMarkPlan, DocumentOpRefusal> => {
   const body = storyBody(document, story);
   const location = findStoryParagraph(body, paraId);
@@ -5192,6 +5207,15 @@ const joinOps = (
         merged = [...seam.left, ...seam.right];
       }
     }
+    const lastBefore = paragraph.content.at(-1);
+    const firstAfter = next.content.at(0);
+    if (lastBefore !== undefined && firstAfter !== undefined)
+      for (const [id, into] of rejoinedPieceIds({
+        left: lastBefore,
+        right: firstAfter,
+        merged,
+      }))
+        rejoined.set(id, into);
     const keepsFirst = paragraph.pPrMark?.survivor === "first";
     // A record left as it was keeps its identity through the merge; an emptied
     // one folded into its neighbour is rebuilt, and is no longer empty. The
@@ -6597,6 +6621,7 @@ const planSingleRecordResolution = (
   let current = rows.value.document;
   const ranInto = new Set<string>();
   const joinsBefore = new Set(joins.map(({ paraId }) => idKey(paraId)));
+  const rejoined = new Map(resolution.rejoined);
   const controlEnds: string[] = [];
   for (const join of joins.toReversed()) {
     joinsBefore.delete(idKey(join.paraId));
@@ -6607,7 +6632,14 @@ const planSingleRecordResolution = (
       record(unsectioned.value);
       current = unsectioned.value.document;
     }
-    const planned = joinOps(current, join, emptiedEnds, ranInto, joinsBefore);
+    const planned = joinOps(
+      current,
+      join,
+      emptiedEnds,
+      ranInto,
+      joinsBefore,
+      rejoined,
+    );
     if (planned.isErr()) {
       return Result.err(planned.error);
     }
@@ -6756,7 +6788,45 @@ const planSingleRecordResolution = (
       ...(absorbed === undefined ? {} : { absorbed }),
     };
   }
+  const absorbedRevisions = rejoinedRevisions({
+    rejoined,
+    present: storyIdentityKeys(current, op.story),
+  });
+  if (absorbedRevisions.length > 0)
+    edit.touched = { ...edit.touched, absorbedRevisions };
   return Result.ok({ edit, receiverEffects });
+};
+
+type RejoinedRevisionsOptions = {
+  /** Ids seam joins retired, each with the id of the piece it merged into. */
+  rejoined: ReadonlyMap<number, number>;
+  /** The identity keys the resolved story holds. */
+  present: ReadonlySet<string>;
+};
+
+/**
+ * Each change a resolution's joins retired, with the change that holds its
+ * content in the end: a piece merged into one a later join merged on names
+ * the last. A retired id the story still holds, or one whose survivor it
+ * does not, was no absorption.
+ */
+const rejoinedRevisions = ({
+  rejoined,
+  present,
+}: RejoinedRevisionsOptions): RevisionAbsorption[] => {
+  const holds = (id: number) =>
+    present.has(slotKey({ space: IDENTITY_SPACES.REVISION, id }));
+  const absorptions: RevisionAbsorption[] = [];
+  for (const absorbed of rejoined.keys()) {
+    let survivor = absorbed;
+    for (let next = rejoined.get(survivor); next !== undefined;) {
+      survivor = next;
+      next = rejoined.get(survivor);
+    }
+    if (!holds(absorbed) && holds(survivor))
+      absorptions.push({ absorbed, survivor });
+  }
+  return absorptions;
 };
 
 export const resolveRevision = (

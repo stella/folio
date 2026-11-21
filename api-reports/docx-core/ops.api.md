@@ -1317,6 +1317,12 @@ export const REVISION_DECISIONS: Readonly<{
 }>;
 
 // @public
+export type RevisionAbsorption = {
+    absorbed: number;
+    survivor: number;
+};
+
+// @public
 export type RevisionDecision = (typeof REVISION_DECISIONS)[keyof typeof REVISION_DECISIONS];
 
 // @public
@@ -1677,6 +1683,7 @@ export type TouchedBlocks = {
     inserted: readonly string[];
     removed: readonly string[];
     absorbed?: readonly ParagraphAbsorption[];
+    absorbedRevisions?: readonly RevisionAbsorption[];
 };
 
 // @public
