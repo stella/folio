@@ -44,6 +44,7 @@ import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
 import { readParagraphNumberingAttr } from "../prosemirror/numberingAttr";
 import type { Comment, ParagraphContent } from "../types/document";
 import { applyFolioAIEditOperations } from "./apply";
+import { FolioDocxReviewer } from "./headless";
 import {
   changesFromSegments,
   planTextChanges,
@@ -549,83 +550,113 @@ describe("an edit applied directly and the same edit accepted", () => {
     );
   });
 
-  test("checks disjoint comment fidelity across a saved tracked replacement", async () => {
-    const { content, comments } = paragraphOf([
-      { kind: "comment", text: "Seller " },
-      { kind: "field", result: "12" },
-      { kind: "comment", text: "Seller " },
-      { kind: "run", text: "Seller ", bold: false, italic: false },
-    ]);
-    const buffer = await paragraphsDocx([content], comments);
-    const direct = await openReviewer(buffer.slice(0));
-    const tracked = await openReviewer(buffer.slice(0));
-    const operation = {
-      id: "edit",
-      type: "replaceBlock",
-      blockId: direct.snapshot().blocks[0]?.id ?? "",
-      text: "s12Seller Seller ",
-    } as const;
-    const apply = (reviewer: typeof direct, mode: Mode) =>
-      reviewer.applyDocumentOperations(
-        {
-          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-          mode,
-          operations: [operation],
-        },
-        { undefinedReferences: "refuse" },
-      );
-    expect(apply(direct, "direct").applied).toHaveLength(1);
-    const before = tracked.toDocument();
-    const refused = apply(tracked, "tracked-changes");
-    expect(refused.applied).toEqual([]);
-    expect(refused.skipped).toEqual([
-      {
+  test.each(["legacy", "canonical"] as const)(
+    "checks disjoint comment fidelity across a saved tracked replacement (%s)",
+    async (session) => {
+      const { content, comments } = paragraphOf([
+        { kind: "comment", text: "Seller " },
+        { kind: "field", result: "12" },
+        { kind: "comment", text: "Seller " },
+        { kind: "run", text: "Seller ", bold: false, italic: false },
+      ]);
+      const buffer = await paragraphsDocx([content], comments);
+      const open = (bytes: ArrayBuffer) =>
+        FolioDocxReviewer.fromBuffer(bytes, { author: "Reviewer", session });
+      const reopen = async (reviewer: FolioDocxReviewer) =>
+        open(await reviewer.toBuffer());
+      const direct = await open(buffer.slice(0));
+      const tracked = await open(buffer.slice(0));
+      const operation = {
         id: "edit",
-        reason: "invalidResult",
-        message: "Reject All would change the original content or formatting.",
-      },
-    ]);
-    expect(tracked.toDocument()).toEqual(before);
+        type: "replaceBlock",
+        blockId: direct.snapshot().blocks[0]?.id ?? "",
+        text: "s12Seller Seller ",
+      } as const;
+      const apply = (reviewer: typeof direct, mode: Mode) =>
+        reviewer.applyDocumentOperations(
+          {
+            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+            mode,
+            operations: [operation],
+          },
+          { undefinedReferences: "refuse" },
+        );
+      expect(apply(direct, "direct").applied).toHaveLength(1);
+      const before = tracked.toDocument();
+      const result = apply(tracked, "tracked-changes");
+      const ranges = (reviewer: typeof tracked) =>
+        reviewer.getComments().map(({ anchoredText }) => anchoredText);
+      if (session === "canonical") {
+        expect(result.applied).toHaveLength(1);
+        expect(result.skipped).toEqual([]);
+        const source = await open(buffer.slice(0));
+        const rejected = await reopen(tracked);
+        expect(rejected.rejectAll().resolved).toBeGreaterThan(0);
+        const reopenedRejected = await reopen(rejected);
+        expect(ranges(reopenedRejected)).toEqual(["Seller ", "Seller "]);
+        expect(reviewerPresentation(reopenedRejected)).toEqual(
+          reviewerPresentation(source),
+        );
 
-    // Stage the unguarded replacement explicitly so a saved package still
-    // exercises native review of the two overlapping pending comment ranges.
-    const view = {
-      state: tracked.state,
-      dispatch: (transaction: Parameters<typeof tracked.state.apply>[0]) => {
-        view.state = view.state.apply(transaction);
-      },
-    };
-    const staged = applyFolioAIEditOperations({
-      view,
-      mode: "tracked-changes",
-      snapshot: tracked.snapshot(),
-      operations: [operation],
-      undefinedReferences: "refuse",
-      author: "Reviewer",
-    });
-    expect(staged.applied).toHaveLength(1);
-    const pendingParagraph = proseDocToBlocks(view.state.doc).at(0);
-    if (pendingParagraph?.type !== "paragraph") {
-      throw new Error("Expected the staged replacement paragraph");
-    }
-    const pending = await openReviewer(
-      await paragraphsDocx([pendingParagraph.content], comments),
-    );
-    expect(pending.getComments()).toHaveLength(2);
-    for (const comment of pending.getComments()) {
-      expect(comment.anchoredText).toContain("s12Seller");
-    }
-    const rejected = await reopened(pending);
-    expect(rejected.rejectAll().resolved).toBeGreaterThan(0);
-    const ranges = (reviewer: typeof tracked) =>
-      reviewer.getComments().map(({ anchoredText }) => anchoredText);
-    expect(ranges(tracked)).toEqual(["Seller ", "Seller "]);
-    expect(ranges(rejected).join("")).toContain("12");
-    expect(pending.acceptAll().resolved).toBeGreaterThan(0);
-    expect(reviewerPresentation(await reopened(pending))).toEqual(
-      reviewerPresentation(await reopened(direct)),
-    );
-  });
+        const accepted = await reopen(tracked);
+        expect(accepted.acceptAll().resolved).toBeGreaterThan(0);
+        const acceptedDocument = await reopen(accepted);
+        const reopenedDirect = await reopen(direct);
+        expect(ranges(acceptedDocument)).toEqual(ranges(reopenedDirect));
+        expect(reviewerPresentation(acceptedDocument)).toEqual(
+          reviewerPresentation(reopenedDirect),
+        );
+        return;
+      }
+      expect(result.applied).toEqual([]);
+      expect(result.skipped).toEqual([
+        {
+          id: "edit",
+          reason: "invalidResult",
+          message:
+            "Reject All would change the original content or formatting.",
+        },
+      ]);
+      expect(tracked.toDocument()).toEqual(before);
+
+      // Stage the unguarded replacement explicitly so a saved package still
+      // exercises native review of the two overlapping pending comment ranges.
+      const view = {
+        state: tracked.state,
+        dispatch: (transaction: Parameters<typeof tracked.state.apply>[0]) => {
+          view.state = view.state.apply(transaction);
+        },
+      };
+      const staged = applyFolioAIEditOperations({
+        view,
+        mode: "tracked-changes",
+        snapshot: tracked.snapshot(),
+        operations: [operation],
+        undefinedReferences: "refuse",
+        author: "Reviewer",
+      });
+      expect(staged.applied).toHaveLength(1);
+      const pendingParagraph = proseDocToBlocks(view.state.doc).at(0);
+      if (pendingParagraph?.type !== "paragraph") {
+        throw new Error("Expected the staged replacement paragraph");
+      }
+      const pending = await open(
+        await paragraphsDocx([pendingParagraph.content], comments),
+      );
+      expect(pending.getComments()).toHaveLength(2);
+      for (const comment of pending.getComments()) {
+        expect(comment.anchoredText).toContain("s12Seller");
+      }
+      const rejected = await reopen(pending);
+      expect(rejected.rejectAll().resolved).toBeGreaterThan(0);
+      expect(ranges(tracked)).toEqual(["Seller ", "Seller "]);
+      expect(ranges(rejected).join("")).toContain("12");
+      expect(pending.acceptAll().resolved).toBeGreaterThan(0);
+      expect(reviewerPresentation(await reopen(pending))).toEqual(
+        reviewerPresentation(await reopen(direct)),
+      );
+    },
+  );
 
   test(
     "leave the same text, formatting, links and comments",
