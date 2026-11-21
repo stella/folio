@@ -1752,6 +1752,19 @@ export const INSERTION_SEAM_POLICIES = {
   MERGE_PLAIN_RUNS: "merge-plain-runs",
 } as const;
 
+/**
+ * Whether an insertion marked as what its paragraph stands for had resolution
+ * joins of its own: without, its zero depths only carry the marker, and it
+ * resolves as an insertion with no joins.
+ */
+export const HELD_PARAGRAPH_JOINS = {
+  OWN: "own-joins",
+  NONE: "no-joins",
+} as const;
+
+type HeldParagraphJoins =
+  (typeof HELD_PARAGRAPH_JOINS)[keyof typeof HELD_PARAGRAPH_JOINS];
+
 /** Operation-created seams only; source OOXML has no such provenance. */
 type TrackedResolutionJoins = WritableRecord & {
   /** Editor text acceptance joins only the inserted payload's plain-run seams. */
@@ -1774,6 +1787,16 @@ type TrackedResolutionJoins = WritableRecord & {
    * container away, as accepting that content last does.
    */
   emptiedHolder?: true;
+  /**
+   * The paragraph this insertion stands in ends a block content control,
+   * and its added mark was rejected while the paragraph held only pending
+   * insertions: it stands only for them, as there was nothing in the control
+   * to join. Rejecting the last of them removes the paragraph, as rejecting
+   * the mark and them at once does. The value says whether the insertion
+   * had joins of its own when marked; resolving it reads it without the
+   * marker either way.
+   */
+  holdsParagraph?: HeldParagraphJoins;
   /**
    * This deletion is all its content control holds: it deleted exactly the
    * control's text. Accepting it leaves the control, emptied, as deleting
