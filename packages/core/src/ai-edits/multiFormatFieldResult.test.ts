@@ -69,7 +69,7 @@ describe.each(
   ),
 )(
   "a $kind field with a result in two formats ($session)",
-  ({ kind, field, session }) => {
+  ({ field, session }) => {
     test("reads as its result", async () => {
       expect(firstText(await open(field, session))).toBe(SOURCE);
     });
@@ -180,11 +180,7 @@ describe.each(
       expect(saved.getComments().at(0)?.anchoredText).toBe("2014");
     });
 
-    // The canonical projection cannot yet place a comment's mark transitions
-    // inside a simple field whose result is in more than one format.
-    const commenting =
-      session === "canonical" && kind === "simple" ? test.failing : test;
-    commenting("takes a comment over it", async () => {
+    test("takes a comment over it", async () => {
       const reviewer = await open(field, session);
       const content = reviewer.getContent().at(0);
       if (!content) throw new Error("The paragraph is missing");
