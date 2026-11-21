@@ -37,7 +37,10 @@ import type {
   ParagraphContent,
   ParagraphFormatting,
 } from "../types/document";
-import { commentAnchorIdsForNode } from "./comment-lifecycle";
+import {
+  commentAnchorIdsForNode,
+  ownCommentAnchorIds,
+} from "./comment-lifecycle";
 import { comparisonApplying, noteReferenceOf } from "./note-references";
 import { changedTopLevelWindow } from "./result-validation";
 
@@ -110,7 +113,11 @@ const resolutionWindow = (before: PMNode, after: PMNode) => {
   return { before: beforeWindow, after: afterWindow };
 };
 
-/** Comments added by an edit batch also exist outside its tracked revisions. */
+/**
+ * Comments added by an edit batch also exist outside its tracked revisions.
+ * Only the added comments' own anchors go; an older comment's reference
+ * inside an added comment's range stays, without the added comment's mark.
+ */
 const withoutAddedComments = (
   node: PMNode,
   added: ReadonlySet<number>,
@@ -118,7 +125,7 @@ const withoutAddedComments = (
   const name = node.type.name;
   if (
     (name === "commentReference" || name === "commentRangeBoundary") &&
-    commentAnchorIdsForNode(node).some((id) => added.has(id))
+    ownCommentAnchorIds(node).some((id) => added.has(id))
   ) {
     return null;
   }

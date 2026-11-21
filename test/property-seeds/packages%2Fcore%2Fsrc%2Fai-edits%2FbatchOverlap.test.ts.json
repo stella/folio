@@ -1,6 +1,12 @@
 {
   "refuses each conflict and applies the rest as one at a time would": [
     {
+      "seed": 1180871881,
+      "path": "78:1:4:7",
+      "note": "#3246: a tracked block comment over two comments on the same words keeps their references when checking Reject All",
+      "date": "2026-11-21"
+    },
+    {
       "seed": 19,
       "path": "678:4:5:5",
       "note": "A direct split and merge preserve the promised survivor of a final deletion; only a paired insertion retargets that final mark (path at factor 10).",

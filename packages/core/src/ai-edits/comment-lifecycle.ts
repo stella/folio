@@ -34,20 +34,31 @@ import { RANGE_ANCHOR_NODE_NAME } from "../prosemirror/extensions/nodes/RangeAnc
 import { readRangeAnchorAttrs } from "../prosemirror/rangeAnchorAttrs";
 import type { BlockContent, Comment } from "../types/document";
 
-/** Comment ids anchored by one editor node, regardless of anchor representation. */
-export const commentAnchorIdsForNode = (node: PMNode): readonly number[] => {
-  const ids: number[] = [];
+/**
+ * Comment ids whose own anchor one editor node is: a reference, range anchor
+ * or range boundary. Comment marks covering the node are not counted.
+ */
+export const ownCommentAnchorIds = (node: PMNode): readonly number[] => {
   if (node.type.name === COMMENT_REFERENCE_NODE_NAME) {
     const attrs = readCommentReferenceAttrs(node);
-    if (attrs.ok) ids.push(attrs.value.commentId);
-  } else if (node.type.name === RANGE_ANCHOR_NODE_NAME) {
-    const attrs = readRangeAnchorAttrs(node);
-    if (attrs.ok)
-      for (const marker of attrs.value.markers)
-        if (marker.type === "commentRangeStart") ids.push(marker.id);
-  } else if (node.type.name === COMMENT_RANGE_BOUNDARY_NODE_NAME) {
-    ids.push(expectCommentRangeBoundaryAttrs(node).marker.id);
+    return attrs.ok ? [attrs.value.commentId] : [];
   }
+  if (node.type.name === RANGE_ANCHOR_NODE_NAME) {
+    const attrs = readRangeAnchorAttrs(node);
+    return attrs.ok
+      ? attrs.value.markers.flatMap((marker) =>
+          marker.type === "commentRangeStart" ? [marker.id] : [],
+        )
+      : [];
+  }
+  if (node.type.name === COMMENT_RANGE_BOUNDARY_NODE_NAME)
+    return [expectCommentRangeBoundaryAttrs(node).marker.id];
+  return [];
+};
+
+/** Comment ids anchored by one editor node, regardless of anchor representation. */
+export const commentAnchorIdsForNode = (node: PMNode): readonly number[] => {
+  const ids = [...ownCommentAnchorIds(node)];
   for (const mark of node.marks) {
     const commentId = mark.attrs["commentId"];
     if (mark.type.name === "comment" && typeof commentId === "number")
