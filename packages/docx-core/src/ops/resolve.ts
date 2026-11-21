@@ -2458,6 +2458,13 @@ const resolveList = ({
        * cut by its own join: it takes them across from any record.
        */
       piece?: "before" | "after";
+      /**
+       * Set where the removal's cut came only from a seam deferred on it:
+       * that seam joins the pieces either side only where they are alike,
+       * and only then do they take the boundaries, as resolving the
+       * deferring change after the removal leaves them standing.
+       */
+      cut?: "deferred";
     }
   >();
   let changed = false;
@@ -2676,6 +2683,10 @@ const resolveList = ({
             // recorded container join on one side only. The other side's
             // authored record is not part of that cut container.
             ...(piece === undefined ? {} : { piece }),
+            ...(joins !== undefined &&
+              resolution.deferredOnlyRemovals.has(joins) && {
+                cut: "deferred" as const,
+              }),
           });
         }
         // A rejected insertion joined on one side only, made inside a piece of
@@ -3909,7 +3920,13 @@ const resolveList = ({
         !resolution.ids.has(node.info.id) &&
         kept.keptFrom !== undefined &&
         (node.info.date ?? "") > kept.keptFrom;
+      const unjoined =
+        kept.cut === "deferred" &&
+        (before === undefined ||
+          after === undefined ||
+          !sameOwnFields(before, after));
       const takes = (side: "before" | "after"): boolean =>
+        !unjoined &&
         !heldInRemoval(before) &&
         !heldInRemoval(after) &&
         !laterInsertion(side === "before" ? before : after) &&
