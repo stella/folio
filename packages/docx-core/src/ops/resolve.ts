@@ -2490,6 +2490,47 @@ const resolveList = ({
     );
     return depth > 0 ? depth : undefined;
   };
+  /**
+   * `piece`, a record this resolution empties away, was a piece of a record
+   * a pending insertion beside it cut, the other piece standing across the
+   * insertion: that cut is left with one piece. The insertion is marked as
+   * meeting no piece on the emptied side, so rejecting it later joins
+   * nothing there and keeps its boundaries in the piece across, as
+   * rejecting it before the resolution rejoins the pieces around them.
+   */
+  const closeCutsAtEmptiedPiece = (piece: InlineNode, index: number): void => {
+    const closed = (
+      node: InlineNode | undefined,
+      side: SourceOwnerSide,
+      across: InlineNode | undefined,
+    ): InlineNode | undefined => {
+      if (
+        node === undefined ||
+        !isAddedRevision(node) ||
+        resolution.ids.has(node.info.id) ||
+        node.resolutionJoins === undefined ||
+        node.resolutionJoins.remove === 0 ||
+        node.resolutionJoins.plainSides?.includes(side) === true ||
+        (side === "before"
+          ? alikeDepth(piece, across)
+          : alikeDepth(across, piece)) === 0
+      )
+        return undefined;
+      const marked = Object.assign({}, node, {
+        resolutionJoins: Object.assign({}, node.resolutionJoins, {
+          plainSides: [...(node.resolutionJoins.plainSides ?? []), side],
+        }),
+      });
+      carryResolutionState(resolution, node, marked);
+      return marked;
+    };
+    const next = closed(pending[index + 1], "before", pending[index + 2]);
+    if (next !== undefined) pending[index + 1] = next;
+    const previous = out.at(-1);
+    const before = closed(previous?.node, "after", out.at(-2)?.node);
+    if (previous !== undefined && before !== undefined)
+      out[out.length - 1] = occurrenceOf(before, previous);
+  };
   const appendUnowned = (items: readonly InlineNode[]): void => {
     out.push(...items.map((node) => ({ node, owner: undefined })));
   };
@@ -3544,6 +3585,7 @@ const resolveList = ({
       // Removing an unselected parent establishes no cut between its neighbours.
       // Fold only fragments this resolution emptied, preserving authored siblings.
       folds.push(out.length);
+      if (!isTrackedWrapper(node)) closeCutsAtEmptiedPiece(node, index);
       // Accepted new content beside it, as an edit made directly would be,
       // merges with the plain runs it now meets.
       if (
