@@ -92,7 +92,6 @@ import {
   firstParagraphJoiningTable,
   insertionAfterPendingBreak,
   isDeletedPPrMark,
-  joinsIn,
   joinStopsAtTableAfter,
   PENDING_JOIN_INSERTION_REFUSAL,
   pendingJoinParagraphs,
@@ -1350,10 +1349,10 @@ const goesWholeOnAcceptance = (paragraph: PMNode): boolean =>
  * the paragraph the join leaves, which the joined paragraph has. The batch's
  * other operations do not move it: a split of the paragraph the join leaves
  * puts the block after both halves, as one put after that paragraph goes.
- * Beside a paragraph whose own break is pending removal where no join reads
- * it (after it, when the join leaves no paragraph with words for the block to
- * follow; before it, when the paragraph goes whole), the block goes beside
- * the paragraph itself.
+ * Where no join reads the paragraph, `pendingJoinParagraphs` names the
+ * paragraph itself on that side, so the block goes beside it: one place
+ * decides, so a paragraph going whole that earlier words run into is placed
+ * before those words, as every other paragraph of the join is.
  */
 const besidePendingJoin = ({
   side,
@@ -1367,15 +1366,7 @@ const besidePendingJoin = ({
     noteReferences,
   };
   const join = pendingJoinParagraphs(options);
-  const breakGoes = isDeletedPPrMark(paragraph.node.attrs["pPrMark"]);
   const after = side === "after";
-  // Where no join reads the paragraph, the block goes beside the paragraph
-  // itself, as the default engine places it.
-  if (
-    breakGoes &&
-    (after ? join.last === options.paragraphPos : !joinsIn(options))
-  )
-    return besideAsItStands(paragraph);
   const at = (position: number) =>
     position === options.paragraphPos
       ? paragraph
