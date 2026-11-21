@@ -160,4 +160,61 @@ describe.each(SESSIONS)("%s session", (session) => {
       ]);
     },
   );
+
+  // A column deletion is named through a paragraph outside the column; the
+  // batch deletes that one, so another kept paragraph outside it names it.
+  test.each(["direct", "tracked-changes"] as const)(
+    "a %s column deletion named through a paragraph the batch deletes applies",
+    async (mode) => {
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await buildTableDocx({
+          rows: 1,
+          columns: 2,
+          cells: [
+            { row: 0, column: 0, rowSpan: 1, columnSpan: 1, text: "c0" },
+            {
+              row: 0,
+              column: 1,
+              rowSpan: 1,
+              columnSpan: 1,
+              text: "c1",
+              nested: {
+                rows: 1,
+                columns: 1,
+                cells: [
+                  { row: 0, column: 0, rowSpan: 1, columnSpan: 1, text: "n0" },
+                ],
+              },
+            },
+          ],
+        }),
+        { session },
+      );
+      const result = reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode,
+          operations: [
+            {
+              id: "delete-paragraph",
+              type: "deleteBlock",
+              blockId: cellBlockId(reviewer, 1),
+            },
+            {
+              id: "delete-column",
+              type: "deleteTableColumn",
+              blockId: cellBlockId(reviewer, 0),
+            },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      );
+
+      expect(result.skipped).toEqual([]);
+      expect(result.applied.map(({ id }) => id).sort()).toEqual([
+        "delete-column",
+        "delete-paragraph",
+      ]);
+    },
+  );
 });

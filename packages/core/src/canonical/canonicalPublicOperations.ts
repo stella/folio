@@ -2975,42 +2975,55 @@ const resolveTableInsertion = ({
 /** A paragraph of the table's own that addresses a table edit, by its id. */
 type KeptTableAddressOptions = {
   projection: CanonicalProjection;
-  /** The table or row the operation edits. */
+  /** The table, row or cell the operation edits. */
   scope: PMNode;
   /** The position just before `scope`. */
   scopePosition: number;
   /** Paragraphs the batch deletes, which run before the table edit. */
   deleted: ReadonlySet<string>;
+  /** Cells, by the position before them, the address may not stand in. */
+  skipsCell?: (cellPosition: number) => boolean;
 };
 
 /**
  * The first paragraph standing directly in the cells of `scope` that the
- * batch keeps: a table or row edit addressed by a paragraph the batch deletes
- * would find no paragraph once that deletion has run.
+ * batch keeps: a table, row or cell edit addressed by a paragraph the batch
+ * deletes would find no paragraph once that deletion has run.
  */
 const keptTableAddress = ({
   projection,
   scope,
   scopePosition,
   deleted,
+  skipsCell = () => false,
 }: KeptTableAddressOptions): string | undefined => {
-  const rows: { row: PMNode; position: number }[] = [];
-  if (scope.type.spec["tableRole"] === "row")
-    rows.push({ row: scope, position: scopePosition });
-  else
-    scope.forEach((row, offset) => {
-      if (row.type.spec["tableRole"] === "row")
-        rows.push({ row, position: scopePosition + 1 + offset });
-    });
+  const cells: { cell: PMNode; position: number }[] = [];
+  const collectCells = (row: PMNode, rowPosition: number) =>
+    row.forEach((cell, offset) =>
+      cells.push({ cell, position: rowPosition + 1 + offset }),
+    );
+  switch (scope.type.spec["tableRole"]) {
+    case "cell":
+      cells.push({ cell: scope, position: scopePosition });
+      break;
+    case "row":
+      collectCells(scope, scopePosition);
+      break;
+    default:
+      scope.forEach((row, offset) => {
+        if (row.type.spec["tableRole"] === "row")
+          collectCells(row, scopePosition + 1 + offset);
+      });
+  }
   // Each paragraph's first content position, in document order.
   const starts: number[] = [];
-  for (const { row, position } of rows)
-    row.forEach((cell, cellOffset) =>
-      cell.forEach((child, childOffset) => {
-        if (child.type.name === "paragraph")
-          starts.push(position + 1 + cellOffset + 1 + childOffset + 1);
-      }),
-    );
+  for (const { cell, position } of cells) {
+    if (skipsCell(position)) continue;
+    cell.forEach((child, childOffset) => {
+      if (child.type.name === "paragraph")
+        starts.push(position + 1 + childOffset + 1);
+    });
+  }
   for (const start of starts) {
     const addressed = projection.addressAt(start);
     if (addressed.isOk() && !deleted.has(addressed.value.blockId))
@@ -3208,16 +3221,37 @@ const resolveTableStructure = ({
   const blockFrom = paragraph.start - 1;
   const row = findEnclosingTableRow(doc, blockFrom);
   if (row === null) return notInTable();
+  const scopeOf = (scope: "cell" | "row" | "table") => {
+    switch (scope) {
+      case "table":
+        return { scope: row.table, scopePosition: row.tablePosition };
+      case "row":
+        return {
+          scope: row.table.child(row.rowIndex),
+          scopePosition: row.rowPosition,
+        };
+      case "cell": {
+        const cell = findEnclosingTableCell(doc, blockFrom);
+        const node = cell === null ? null : doc.nodeAt(cell.cellPosition);
+        return cell === null || node === null
+          ? undefined
+          : { scope: node, scopePosition: cell.cellPosition };
+      }
+      default: {
+        const unreachable: never = scope;
+        return unreachable;
+      }
+    }
+  };
   /** The operation's own paragraph, unless the batch deletes it first. */
-  const keptAddress = (scope: "row" | "table") =>
-    deleted.has(paragraph.blockId)
-      ? (keptTableAddress({
-          projection,
-          scope: scope === "row" ? row.table.child(row.rowIndex) : row.table,
-          scopePosition: scope === "row" ? row.rowPosition : row.tablePosition,
-          deleted,
-        }) ?? paragraph.blockId)
-      : paragraph.blockId;
+  const keptAddress = (scope: "cell" | "row" | "table") => {
+    if (!deleted.has(paragraph.blockId)) return paragraph.blockId;
+    const within = scopeOf(scope);
+    return (
+      (within && keptTableAddress({ projection, ...within, deleted })) ??
+      paragraph.blockId
+    );
+  };
   const resolved = (intent: EditorIntent, from: number, to: number) =>
     Result.ok({
       type: "plain" as const,
@@ -3317,13 +3351,25 @@ const resolveTableStructure = ({
       if (addressed === undefined || addressed.isErr())
         return refusal("unsupportedBlock");
       const address = addressed.value;
+      const blockId = deleted.has(address.blockId)
+        ? (keptTableAddress({
+            projection,
+            scope: row.table,
+            scopePosition: row.tablePosition,
+            deleted,
+            skipsCell: (cellPosition) => {
+              const rect = map.findCell(cellPosition - row.tableStart);
+              return rect.left <= column.left && column.left < rect.right;
+            },
+          }) ?? address.blockId)
+        : address.blockId;
       return resolved(
         {
           type: "table",
           operation: {
             type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
             story,
-            blockId: address.blockId,
+            blockId,
             column: cell.leftColumnIndex,
           },
         },
@@ -3489,7 +3535,7 @@ const resolveTableStructure = ({
           operation: {
             type: DOCUMENT_OP_TYPES.SPLIT_CELL,
             story,
-            blockId: paragraph.blockId,
+            blockId: keptAddress("cell"),
           },
         },
         row.tablePosition,
@@ -3537,7 +3583,7 @@ const resolveTableStructure = ({
           operation: {
             type: DOCUMENT_OP_TYPES.INSERT_ROW,
             story,
-            blockId: paragraph.blockId,
+            blockId: keptAddress("row"),
             at: index,
             row: plain,
           },
