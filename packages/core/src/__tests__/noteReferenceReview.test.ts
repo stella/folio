@@ -571,6 +571,7 @@ describe("a save keeps the notes the package held without a reference", () => {
                 structure: "stable",
                 heldUnreferencedNotes: heldUnreferencedNotes(opened),
                 noteParagraphs: { touched: [], changedSinceSource: [] },
+                restoredSinceSource: [],
               },
             });
             const reopened = await parseShapeDocument(
@@ -625,6 +626,7 @@ describe("a full canonical save writes the notes no edit touched as the package 
         structure: "changed",
         heldUnreferencedNotes: heldUnreferencedNotes(opened),
         noteParagraphs: { touched: [], changedSinceSource: [] },
+        restoredSinceSource: [],
       },
     });
     const written =

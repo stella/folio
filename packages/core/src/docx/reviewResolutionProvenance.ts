@@ -44,6 +44,7 @@ const JOIN_FIELDS = {
   acceptance: true,
   plainSides: true,
   emptiedHolder: true,
+  holdsControlText: true,
   retainedEnclosing: true,
   keptFrom: true,
   keptCount: true,
@@ -217,6 +218,8 @@ export const isResolutionJoins = (value: unknown): value is ResolutionJoins =>
   (!Object.hasOwn(value, "plainSides") ||
     isBoundaryJoins(value["plainSides"])) &&
   (!Object.hasOwn(value, "emptiedHolder") || value["emptiedHolder"] === true) &&
+  (!Object.hasOwn(value, "holdsControlText") ||
+    value["holdsControlText"] === true) &&
   (!Object.hasOwn(value, ENCLOSING_ATTRIBUTE) ||
     enclosingHandoffs(value[ENCLOSING_ATTRIBUTE]));
 

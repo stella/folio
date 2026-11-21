@@ -29,6 +29,7 @@ import {
 import { createContentControlWidgetsPlugin } from "../prosemirror/plugins/contentControlWidgets";
 import { createSuggestionModePlugin } from "../prosemirror/plugins/suggestionMode";
 import { schema } from "../prosemirror/schema";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import { FolioDocxReviewer } from "./headless";
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
@@ -96,15 +97,22 @@ const FIXTURES = [
 
 const MODES = ["tracked-changes", "suggested"] as const;
 
-const deleteControlText = async (
-  fixture: (typeof FIXTURES)[number],
-  mode: (typeof MODES)[number],
-) => {
+type DeleteControlTextOptions = {
+  fixture: (typeof FIXTURES)[number];
+  mode: (typeof MODES)[number];
+  session: HeadlessReviewerSession;
+};
+
+const deleteControlText = async ({
+  fixture,
+  mode,
+  session,
+}: DeleteControlTextOptions) => {
   const source = await createDocx(fixture.bodyXml);
   const original = await bodyOf(
-    await (await FolioDocxReviewer.fromBuffer(source)).toBuffer(),
+    await (await FolioDocxReviewer.fromBuffer(source, { session })).toBuffer(),
   );
-  const reviewer = await FolioDocxReviewer.fromBuffer(source);
+  const reviewer = await FolioDocxReviewer.fromBuffer(source, { session });
   const blockWithControl = reviewer
     .snapshot()
     .blocks.find((candidate) => candidate.text.includes(fixture.find));
@@ -130,90 +138,112 @@ const deleteControlText = async (
 const controlCount = (xml: string): number =>
   (xml.match(/<w:sdt>/gu) ?? []).length;
 
-describe("deleting all of a content control's text", () => {
-  for (const fixture of FIXTURES) {
-    for (const mode of MODES) {
-      test(`accepting leaves the ${fixture.kind} control, emptied (${mode})`, async () => {
-        const { reviewer, blockId } = await deleteControlText(fixture, mode);
-        if (mode === "suggested")
-          expect(reviewer.acceptSuggestion("empty")).toBe(true);
-        reviewer.acceptAll();
-        const accepted = await bodyOf(await reviewer.toBuffer());
-        expect(controlCount(accepted)).toBe(1);
-        expect(accepted).toContain('<w:alias w:val="Name"/>');
-        expect(accepted).toContain('<w:docPart w:val="DefaultPlaceholder"/>');
-        expect(accepted).not.toContain(fixture.find);
-        expect(
-          reviewer.snapshot().blocks.find((block) => block.id === blockId)
-            ?.text,
-        ).toBe(fixture.acceptedText);
+describe.each([
+  "legacy",
+  "canonical",
+] as const satisfies readonly HeadlessReviewerSession[])(
+  "deleting all of a content control's text (%s)",
+  (session) => {
+    for (const fixture of FIXTURES) {
+      for (const mode of MODES) {
+        test(`accepting leaves the ${fixture.kind} control, emptied (${mode})`, async () => {
+          const { reviewer, blockId } = await deleteControlText({
+            fixture: fixture,
+            mode: mode,
+            session,
+          });
+          if (mode === "suggested")
+            expect(reviewer.acceptSuggestion("empty")).toBe(true);
+          reviewer.acceptAll();
+          const accepted = await bodyOf(await reviewer.toBuffer());
+          expect(controlCount(accepted)).toBe(1);
+          expect(accepted).toContain('<w:alias w:val="Name"/>');
+          expect(accepted).toContain('<w:docPart w:val="DefaultPlaceholder"/>');
+          expect(accepted).not.toContain(fixture.find);
+          expect(
+            reviewer.snapshot().blocks.find((block) => block.id === blockId)
+              ?.text,
+          ).toBe(fixture.acceptedText);
+        });
+
+        test(`rejecting restores the ${fixture.kind} control (${mode})`, async () => {
+          const { reviewer, original } = await deleteControlText({
+            fixture: fixture,
+            mode: mode,
+            session,
+          });
+          reviewer.rejectAll();
+          expect(await bodyOf(await reviewer.toBuffer())).toBe(original);
+        });
+      }
+
+      test(`the saved redline keeps the ${fixture.kind} deletion inside the control`, async () => {
+        const { reviewer } = await deleteControlText({
+          fixture: fixture,
+          mode: "tracked-changes",
+          session,
+        });
+        const saved = await reviewer.toBuffer();
+        expect(await bodyOf(saved)).toMatch(
+          /<w:sdtContent>(?:<w:p\b[^>]*>)?<w:del /u,
+        );
+        const reopened = await FolioDocxReviewer.fromBuffer(saved, { session });
+        reopened.acceptAll();
+        expect(controlCount(await bodyOf(await reopened.toBuffer()))).toBe(1);
       });
-
-      test(`rejecting restores the ${fixture.kind} control (${mode})`, async () => {
-        const { reviewer, original } = await deleteControlText(fixture, mode);
-        reviewer.rejectAll();
-        expect(await bodyOf(await reviewer.toBuffer())).toBe(original);
-      });
     }
 
-    test(`the saved redline keeps the ${fixture.kind} deletion inside the control`, async () => {
-      const { reviewer } = await deleteControlText(fixture, "tracked-changes");
-      const saved = await reviewer.toBuffer();
-      expect(await bodyOf(saved)).toMatch(/<w:sdtContent>(?:<w:p>)?<w:del /u);
-      const reopened = await FolioDocxReviewer.fromBuffer(saved);
-      reopened.acceptAll();
-      expect(controlCount(await bodyOf(await reopened.toBuffer()))).toBe(1);
-    });
-  }
-
-  test("accepting one change by its id leaves the control too", async () => {
-    const { reviewer } = await deleteControlText(
-      FIXTURES[0],
-      "tracked-changes",
-    );
-    for (const change of reviewer.getChanges()) {
-      reviewer.acceptChange(change);
-    }
-    const accepted = await bodyOf(await reviewer.toBuffer());
-    expect(controlCount(accepted)).toBe(1);
-    expect(accepted).not.toContain("John");
-  });
-
-  test("a deleted paragraph takes its controls with it", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(
-      await createDocx(
-        FIXTURES[0].bodyXml + "<w:p><w:r><w:t>Next.</w:t></w:r></w:p>",
-      ),
-    );
-    const block = reviewer.snapshot().blocks.at(0);
-    if (!block) {
-      throw new Error("expected a block");
-    }
-    reviewer.applyOperations(
-      [{ id: "drop", type: "deleteBlock", blockId: block.id }],
-      {
-        undefinedReferences: "refuse",
+    test("accepting one change by its id leaves the control too", async () => {
+      const { reviewer } = await deleteControlText({
+        fixture: FIXTURES[0],
         mode: "tracked-changes",
-      },
-    );
-    const saved = await reviewer.toBuffer();
-    // The paragraph's deletion is written around the control, not inside it.
-    expect(await bodyOf(saved)).toContain(
-      "<w:sdtContent><w:r><w:delText>John</w:delText>",
-    );
-    for (const accepting of [
-      reviewer,
-      await FolioDocxReviewer.fromBuffer(saved),
-    ]) {
-      accepting.acceptAll();
-      const accepted = await bodyOf(await accepting.toBuffer());
-      expect(controlCount(accepted)).toBe(0);
-      expect(
-        accepting.snapshot().blocks.map((candidate) => candidate.text),
-      ).toEqual(["Next."]);
-    }
-  });
-});
+        session,
+      });
+      for (const change of reviewer.getChanges()) {
+        reviewer.acceptChange(change);
+      }
+      const accepted = await bodyOf(await reviewer.toBuffer());
+      expect(controlCount(accepted)).toBe(1);
+      expect(accepted).not.toContain("John");
+    });
+
+    test("a deleted paragraph takes its controls with it", async () => {
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await createDocx(
+          FIXTURES[0].bodyXml + "<w:p><w:r><w:t>Next.</w:t></w:r></w:p>",
+        ),
+        { session },
+      );
+      const block = reviewer.snapshot().blocks.at(0);
+      if (!block) {
+        throw new Error("expected a block");
+      }
+      reviewer.applyOperations(
+        [{ id: "drop", type: "deleteBlock", blockId: block.id }],
+        {
+          undefinedReferences: "refuse",
+          mode: "tracked-changes",
+        },
+      );
+      const saved = await reviewer.toBuffer();
+      // The paragraph's deletion is written around the control, not inside it.
+      expect(await bodyOf(saved)).toContain(
+        "<w:sdtContent><w:r><w:delText>John</w:delText>",
+      );
+      for (const accepting of [
+        reviewer,
+        await FolioDocxReviewer.fromBuffer(saved, { session }),
+      ]) {
+        accepting.acceptAll();
+        const accepted = await bodyOf(await accepting.toBuffer());
+        expect(controlCount(accepted)).toBe(0);
+        expect(
+          accepting.snapshot().blocks.map((candidate) => candidate.text),
+        ).toEqual(["Next."]);
+      }
+    });
+  },
+);
 
 describe("a tracked deletion typed in the editor", () => {
   const CONTROL_TEXT = "John";

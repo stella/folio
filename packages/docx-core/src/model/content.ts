@@ -1745,6 +1745,12 @@ type TrackedResolutionJoins = WritableRecord & {
    * container away, as accepting that content last does.
    */
   emptiedHolder?: true;
+  /**
+   * This deletion is all its content control holds: it deleted exactly the
+   * control's text. Accepting it leaves the control, emptied, as deleting
+   * that text directly does.
+   */
+  holdsControlText?: true;
   /** A split seam survives only while all intervening insertions await rejection. */
   deferredRemove?: readonly (WritableRecord & {
     depth: number;

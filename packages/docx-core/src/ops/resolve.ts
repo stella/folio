@@ -2578,9 +2578,19 @@ const resolveList = ({
     // accepting the same changes at once folds it into an alike neighbour.
     // So does a record a rejection empties of insertions an acceptance left
     // as all it held: accepting that content last would have emptied it.
+    // A content control a deletion of exactly its text emptied stays, as
+    // deleting that text directly leaves it, showing its placeholder.
+    const keepsEmptiedControl =
+      node.type === "inlineSdt" &&
+      children.some(
+        (child) =>
+          isTrackedWrapper(child) &&
+          child.resolutionJoins?.holdsControlText === true,
+      );
     if (
       (isTrackedWrapper(node) ||
-        resolution.decision === REVISION_DECISIONS.ACCEPT ||
+        (resolution.decision === REVISION_DECISIONS.ACCEPT &&
+          !keepsEmptiedControl) ||
         children.some(
           (child) =>
             isAddedRevision(child) &&
