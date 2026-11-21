@@ -16,6 +16,7 @@ import {
   PARAGRAPH_MARK_CHANGE_KINDS,
   REVIEW_CARRIERS,
 } from "@stll/docx-core/model";
+import { paragraphKeptCutsFromChanges } from "@stll/docx-core/ops";
 
 import type {
   BookmarkEnd,
@@ -85,6 +86,7 @@ import type { InlineWrapperElement } from "./inlineWrapperParser";
 import { preserveLinkedSdt } from "./linkedSdtPreservation";
 import {
   parseCopyOriginMarker,
+  parseKeptCutMarker,
   parseMarkupRangeMarker,
   parseMoveBookmarkMarker,
 } from "./markupRangeMarker";
@@ -119,6 +121,7 @@ import {
   parseResolutionJoins,
   parseSplitResolutionPiece,
   type SplitResolutionPiece,
+  versionOneKeptMarkers,
 } from "./reviewResolutionProvenance";
 import { consolidateParagraphContent } from "./runConsolidator";
 import { parseRun } from "./runParser";
@@ -1038,7 +1041,7 @@ type HoistedRevision = {
  * Delegates to bookmarkParser module.
  */
 function parseBookmarkStart(node: XmlElement): BookmarkStart {
-  return parseBookmarkStartFromModule(node);
+  return { ...parseBookmarkStartFromModule(node), ...parseKeptCutMarker(node) };
 }
 
 /**
@@ -1046,7 +1049,7 @@ function parseBookmarkStart(node: XmlElement): BookmarkStart {
  * Delegates to bookmarkParser module.
  */
 function parseBookmarkEnd(node: XmlElement): BookmarkEnd {
-  return parseBookmarkEndFromModule(node);
+  return { ...parseBookmarkEndFromModule(node), ...parseKeptCutMarker(node) };
 }
 
 /**
@@ -2319,6 +2322,7 @@ const PARAGRAPH_CONTENT_HANDLERS = {
     contents.push({
       type: "moveFromRangeStart",
       ...parseMoveBookmarkMarker(child),
+      ...parseKeptCutMarker(child),
     });
   },
   moveFromRangeEnd: (child, { contents }) => {
@@ -2326,12 +2330,14 @@ const PARAGRAPH_CONTENT_HANDLERS = {
       type: "moveFromRangeEnd",
       ...parseMarkupRangeMarker(child),
       ...parseCopyOriginMarker(child),
+      ...parseKeptCutMarker(child),
     });
   },
   moveToRangeStart: (child, { contents }) => {
     contents.push({
       type: "moveToRangeStart",
       ...parseMoveBookmarkMarker(child),
+      ...parseKeptCutMarker(child),
     });
   },
   moveToRangeEnd: (child, { contents }) => {
@@ -2339,6 +2345,7 @@ const PARAGRAPH_CONTENT_HANDLERS = {
       type: "moveToRangeEnd",
       ...parseMarkupRangeMarker(child),
       ...parseCopyOriginMarker(child),
+      ...parseKeptCutMarker(child),
     });
   },
 
@@ -2346,12 +2353,14 @@ const PARAGRAPH_CONTENT_HANDLERS = {
     contents.push({
       type: "commentRangeStart",
       ...parseMarkupRangeMarker(child),
+      ...parseKeptCutMarker(child),
     });
   },
   commentRangeEnd: (child, { contents }) => {
     contents.push({
       type: "commentRangeEnd",
       ...parseMarkupRangeMarker(child),
+      ...parseKeptCutMarker(child),
     });
   },
 
@@ -2730,10 +2739,14 @@ export function parseParagraph(
 
   // Text-box enrichment matches model runs to source w:r elements by position.
   // Its block parsers defer this merge until that source-dependent pass ends.
-  const consolidated = (content: ParagraphContent[]): ParagraphContent[] =>
-    options?.runConsolidation === "deferred"
-      ? content
-      : consolidateParagraphContent(content);
+  // Version 1 kept markers take their cuts here, on whichever content the
+  // paragraph keeps: the fold below reads the content as parsed.
+  const consolidated = (content: ParagraphContent[]): ParagraphContent[] => {
+    const cut = paragraphKeptCutsFromChanges(content, versionOneKeptMarkers);
+    return options?.runConsolidation === "deferred"
+      ? cut
+      : consolidateParagraphContent(cut);
+  };
   paragraph.content = consolidated(rawContent);
 
   // Compute list rendering if this is a list item.

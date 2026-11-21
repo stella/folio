@@ -48,7 +48,11 @@ const tracked = (): Document =>
       content: [link("x")],
       resolutionJoins: { before: 0, after: 2, remove: 0 },
     },
-    { type: "bookmarkEnd", id: 1 },
+    {
+      type: "bookmarkEnd",
+      id: 1,
+      keptCut: { depth: 2, keptFrom: "2026-03-04T05:00:02Z", piece: "after" },
+    },
     {
       type: "insertion",
       info: { id: 6, author: "A", date: "2026-03-04T05:00:03Z" },
@@ -57,9 +61,7 @@ const tracked = (): Document =>
         before: 0,
         after: 0,
         remove: 0,
-        deferredRemove: [
-          { depth: 2, blockers: [6], keptFrom: "2026-03-04T05:00:02Z" },
-        ],
+        deferredRemove: [{ depth: 2, blockers: [6] }],
       },
     },
     link("a"),
@@ -104,7 +106,7 @@ const resolved = (
   return current;
 };
 
-test("a deferred seam with its kept date survives a save and resolves as before, in every order", async () => {
+test("a deferred seam and its kept marker survive a save and resolves as before, in every order", async () => {
   const source = tracked();
   const saved = await createDocx(source);
   expect(await validateDocxPackage(new Uint8Array(saved))).toEqual({
@@ -113,13 +115,15 @@ test("a deferred seam with its kept date survives a save and resolves as before,
   const reopened = await parseDocx(saved, { preloadFonts: false });
   expect(paragraph(reopened)).toMatchObject([
     { type: "deletion", resolutionJoins: { before: 0, after: 2, remove: 0 } },
-    { type: "bookmarkEnd", id: 1 },
+    {
+      type: "bookmarkEnd",
+      id: 1,
+      keptCut: { depth: 2, keptFrom: "2026-03-04T05:00:02Z", piece: "after" },
+    },
     {
       type: "insertion",
       resolutionJoins: {
-        deferredRemove: [
-          { depth: 2, blockers: [6], keptFrom: "2026-03-04T05:00:02Z" },
-        ],
+        deferredRemove: [{ depth: 2, blockers: [6] }],
       },
     },
     { type: "hyperlink" },

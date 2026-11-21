@@ -42,6 +42,7 @@ import type {
   TrackedChangeInfo,
 } from "../../model/document";
 import { PARAGRAPH_ALIGNMENTS } from "../../model/ooxmlEnumerations.gen";
+import { isKeptCut } from "../keptCut";
 import type { PackageResourceMedia, SectionViewEntry } from "../types";
 
 export type Validator = (value: unknown) => boolean;
@@ -287,10 +288,13 @@ const runContentKinds = {
 
 const runContent = kinded(runContentKinds);
 
+/** Review state on a kept range marker: the model's own check of `KeptCut`. */
+const keptCut = optional(isKeptCut);
 const marker = {
   id: natural,
   displacedByCustomXml: boundedJson,
   copyOriginAncestors: boundedJson,
+  keptCut,
 } as const;
 const moveRangeStart = {
   type: string,
@@ -362,11 +366,13 @@ const inlineContentKinds = {
     type: string,
     id: natural,
     displacedByCustomXml: boundedJson,
+    keptCut,
   },
   commentRangeEnd: {
     type: string,
     id: natural,
     displacedByCustomXml: boundedJson,
+    keptCut,
   },
   commentReference: { type: string, id: natural },
   insertion: trackedRun,
