@@ -685,6 +685,25 @@ const resolveCellChanges = ({
   });
 };
 
+type RemovesEveryCellOptions = {
+  table: Table;
+  ids: ReadonlySet<number>;
+  reject: boolean;
+};
+/** Whether the decision removes every cell of the table: inserted ones rejected, deleted ones accepted. */
+const removesEveryCell = ({ table, ids, reject }: RemovesEveryCellOptions) =>
+  table.rows.every((row) =>
+    row.cells.every((cell) => {
+      const change = cell.structuralChange;
+      return (
+        change !== undefined &&
+        ids.has(change.info.id) &&
+        ((change.type === "tableCellInsertion" && reject) ||
+          (change.type === "tableCellDeletion" && !reject))
+      );
+    }),
+  ) && table.rows.some((row) => row.cells.length > 0);
+
 type ResolveTableRowsOptions = {
   document: Document;
   op: ResolveRevisionOp;
@@ -861,6 +880,23 @@ export const resolveTableRows = ({
     if (located.isErr()) return Result.err(located.error);
     const table = located.value.table;
     const reject = op.decision === REVISION_DECISIONS.REJECT;
+    // A decision that takes every cell away takes the table with them, as
+    // removing its last row does; no grid is left to describe.
+    if (removesEveryCell({ table, ids, reject })) {
+      const applied = applyOps(current, [
+        {
+          type: DOCUMENT_OP_TYPES.SET_TABLE_ROWS,
+          story: op.story,
+          blockId,
+          expected: table.rows,
+          rows: [],
+        },
+      ]);
+      if (applied.isErr()) return Result.err(applied.error);
+      edits.push(applied.value);
+      current = applied.value.document;
+      continue;
+    }
     const selectedGridChange =
       table.formatting?.gridChange !== undefined &&
       ids.has(table.formatting.gridChange.id);

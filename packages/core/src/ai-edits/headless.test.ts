@@ -982,111 +982,121 @@ describe("headless docx review round-trip", () => {
     expect(rejectedTable.rows).toHaveLength(1);
   });
 
-  test("preserves and resolves a tracked cell insertion", async () => {
-    const baseline = await buildTextBoxCellRevisionDocument({
-      type: "tableCellInsertion",
-      info: {
-        id: 91,
-        author: "Reviewer",
-        date: "2026-07-16T10:00:00.000Z",
-      },
+  for (const session of ["legacy", "canonical"] as const)
+    test(`${session}: preserves and resolves a tracked cell insertion`, async () => {
+      const baseline = await buildTextBoxCellRevisionDocument({
+        type: "tableCellInsertion",
+        info: {
+          id: 91,
+          author: "Reviewer",
+          date: "2026-07-16T10:00:00.000Z",
+        },
+      });
+      const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+        session,
+      });
+      const change = reviewer
+        .getChanges()
+        .find(({ type }) => type === "cellInserted");
+      if (!change) {
+        throw new Error("expected a tracked cell insertion");
+      }
+      expect(change.author).toBe("Reviewer");
+      expect(change.text).toContain("Cell value");
+
+      const pending = await reviewer.toBuffer();
+      expect(await partText(pending, "word/document.xml")).toContain(
+        "<w:cellIns ",
+      );
+      const reopened = await FolioDocxReviewer.fromBuffer(pending, { session });
+      const reopenedChange = reopened
+        .getChanges()
+        .find(({ type }) => type === "cellInserted");
+      if (!reopenedChange) {
+        throw new Error("expected the cell insertion after reopen");
+      }
+
+      expect(reopened.acceptChange(reopenedChange)).toBe(true);
+      const accepted = await reopened.toBuffer();
+      expect(await partText(accepted, "word/document.xml")).not.toContain(
+        "<w:cellIns ",
+      );
+      expect(reopened.getContentAsText()).toContain("Cell value");
+
+      const rejecting = await FolioDocxReviewer.fromBuffer(pending, {
+        session,
+      });
+      const rejectChange = rejecting
+        .getChanges()
+        .find(({ type }) => type === "cellInserted");
+      if (!rejectChange) {
+        throw new Error("expected the cell insertion before rejection");
+      }
+      expect(rejecting.rejectChange(rejectChange)).toBe(true);
+      const rejected = await rejecting.toBuffer();
+      expect(await partText(rejected, "word/document.xml")).not.toContain(
+        "<w:cellIns ",
+      );
+      expect(rejecting.getContentAsText()).not.toContain("Cell value");
     });
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
-    const change = reviewer
-      .getChanges()
-      .find(({ type }) => type === "cellInserted");
-    if (!change) {
-      throw new Error("expected a tracked cell insertion");
-    }
-    expect(change.author).toBe("Reviewer");
-    expect(change.text).toContain("Cell value");
 
-    const pending = await reviewer.toBuffer();
-    expect(await partText(pending, "word/document.xml")).toContain(
-      "<w:cellIns ",
-    );
-    const reopened = await FolioDocxReviewer.fromBuffer(pending);
-    const reopenedChange = reopened
-      .getChanges()
-      .find(({ type }) => type === "cellInserted");
-    if (!reopenedChange) {
-      throw new Error("expected the cell insertion after reopen");
-    }
+  for (const session of ["legacy", "canonical"] as const)
+    test(`${session}: preserves and resolves a tracked cell deletion`, async () => {
+      const baseline = await buildTextBoxCellRevisionDocument({
+        type: "tableCellDeletion",
+        info: {
+          id: 92,
+          author: "Reviewer",
+          date: "2026-07-16T10:30:00.000Z",
+        },
+      });
+      const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+        session,
+      });
+      const change = reviewer
+        .getChanges()
+        .find(({ type }) => type === "cellDeleted");
+      if (!change) {
+        throw new Error("expected a tracked cell deletion");
+      }
+      expect(change.author).toBe("Reviewer");
+      expect(change.text).toContain("Cell value");
 
-    expect(reopened.acceptChange(reopenedChange)).toBe(true);
-    const accepted = await reopened.toBuffer();
-    expect(await partText(accepted, "word/document.xml")).not.toContain(
-      "<w:cellIns ",
-    );
-    expect(reopened.getContentAsText()).toContain("Cell value");
+      const pending = await reviewer.toBuffer();
+      expect(await partText(pending, "word/document.xml")).toContain(
+        "<w:cellDel ",
+      );
+      const reopened = await FolioDocxReviewer.fromBuffer(pending, { session });
+      const reopenedChange = reopened
+        .getChanges()
+        .find(({ type }) => type === "cellDeleted");
+      if (!reopenedChange) {
+        throw new Error("expected the cell deletion after reopen");
+      }
 
-    const rejecting = await FolioDocxReviewer.fromBuffer(pending);
-    const rejectChange = rejecting
-      .getChanges()
-      .find(({ type }) => type === "cellInserted");
-    if (!rejectChange) {
-      throw new Error("expected the cell insertion before rejection");
-    }
-    expect(rejecting.rejectChange(rejectChange)).toBe(true);
-    const rejected = await rejecting.toBuffer();
-    expect(await partText(rejected, "word/document.xml")).not.toContain(
-      "<w:cellIns ",
-    );
-    expect(rejecting.getContentAsText()).not.toContain("Cell value");
-  });
+      expect(reopened.acceptChange(reopenedChange)).toBe(true);
+      const accepted = await reopened.toBuffer();
+      expect(await partText(accepted, "word/document.xml")).not.toContain(
+        "<w:cellDel ",
+      );
+      expect(reopened.getContentAsText()).not.toContain("Cell value");
 
-  test("preserves and resolves a tracked cell deletion", async () => {
-    const baseline = await buildTextBoxCellRevisionDocument({
-      type: "tableCellDeletion",
-      info: {
-        id: 92,
-        author: "Reviewer",
-        date: "2026-07-16T10:30:00.000Z",
-      },
+      const rejecting = await FolioDocxReviewer.fromBuffer(pending, {
+        session,
+      });
+      const rejectChange = rejecting
+        .getChanges()
+        .find(({ type }) => type === "cellDeleted");
+      if (!rejectChange) {
+        throw new Error("expected the cell deletion before rejection");
+      }
+      expect(rejecting.rejectChange(rejectChange)).toBe(true);
+      const rejected = await rejecting.toBuffer();
+      expect(await partText(rejected, "word/document.xml")).not.toContain(
+        "<w:cellDel ",
+      );
+      expect(rejecting.getContentAsText()).toContain("Cell value");
     });
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
-    const change = reviewer
-      .getChanges()
-      .find(({ type }) => type === "cellDeleted");
-    if (!change) {
-      throw new Error("expected a tracked cell deletion");
-    }
-    expect(change.author).toBe("Reviewer");
-    expect(change.text).toContain("Cell value");
-
-    const pending = await reviewer.toBuffer();
-    expect(await partText(pending, "word/document.xml")).toContain(
-      "<w:cellDel ",
-    );
-    const reopened = await FolioDocxReviewer.fromBuffer(pending);
-    const reopenedChange = reopened
-      .getChanges()
-      .find(({ type }) => type === "cellDeleted");
-    if (!reopenedChange) {
-      throw new Error("expected the cell deletion after reopen");
-    }
-
-    expect(reopened.acceptChange(reopenedChange)).toBe(true);
-    const accepted = await reopened.toBuffer();
-    expect(await partText(accepted, "word/document.xml")).not.toContain(
-      "<w:cellDel ",
-    );
-    expect(reopened.getContentAsText()).not.toContain("Cell value");
-
-    const rejecting = await FolioDocxReviewer.fromBuffer(pending);
-    const rejectChange = rejecting
-      .getChanges()
-      .find(({ type }) => type === "cellDeleted");
-    if (!rejectChange) {
-      throw new Error("expected the cell deletion before rejection");
-    }
-    expect(rejecting.rejectChange(rejectChange)).toBe(true);
-    const rejected = await rejecting.toBuffer();
-    expect(await partText(rejected, "word/document.xml")).not.toContain(
-      "<w:cellDel ",
-    );
-    expect(rejecting.getContentAsText()).toContain("Cell value");
-  });
 
   test("tracks, persists, accepts, and rejects an empty vertical cell merge", async () => {
     const baseline = await buildTextBoxVerticalMergeCandidateDocument();
