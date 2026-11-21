@@ -2115,23 +2115,32 @@ const saveBaselineOf = (saved: Document, buffer: ArrayBuffer): Document => {
   return baseline;
 };
 
+/** A note paragraph and the content of the note that holds it. */
+type NoteParagraph = {
+  paragraph: Paragraph;
+  note: readonly BlockContent[];
+};
+
 /** Every note paragraph of `document`, in its text boxes too, by its id's key. */
-const noteParagraphsOf = (document: Document): Map<string, Paragraph> => {
-  const paragraphs = new Map<string, Paragraph>();
+const noteParagraphsOf = (document: Document): Map<string, NoteParagraph> => {
+  const paragraphs = new Map<string, NoteParagraph>();
   const notes = [
-    ...(document.package.footnotes ?? []).map(({ id }) => ({
-      kind: "footnote" as const,
-      id,
+    ...(document.package.footnotes ?? []).map(({ id, content }) => ({
+      story: { kind: "footnote" as const, id },
+      content,
     })),
-    ...(document.package.endnotes ?? []).map(({ id }) => ({
-      kind: "endnote" as const,
-      id,
+    ...(document.package.endnotes ?? []).map(({ id, content }) => ({
+      story: { kind: "endnote" as const, id },
+      content,
     })),
   ];
-  for (const note of notes)
-    for (const { paragraph } of paragraphsThroughTextBoxes(document, note))
+  for (const { story, content } of notes)
+    for (const { paragraph } of paragraphsThroughTextBoxes(document, story))
       if (paragraph.paraId !== undefined)
-        paragraphs.set(paragraph.paraId.toUpperCase(), paragraph);
+        paragraphs.set(paragraph.paraId.toUpperCase(), {
+          paragraph,
+          note: content,
+        });
   return paragraphs;
 };
 
@@ -2503,6 +2512,7 @@ class CanonicalSession {
       cloneDocumentWithParagraphPropertySources(this.currentDocument),
       this.sourceRestores,
     );
+    const noteParagraphs = this.noteParagraphChanges();
     return {
       document,
       ...(this.saveBaseline === null
@@ -2520,8 +2530,12 @@ class CanonicalSession {
       structure: this.saveStructure,
       heldUnreferencedNotes: this.heldUnreferencedNotes,
       referencedHeaderFootersAtOpen: this.referencedHeaderFootersAtOpen,
-      noteParagraphs: this.noteParagraphChanges(),
-      restoredSinceSource: this.paragraphsRestoredSinceSource(),
+      noteParagraphs,
+      restoredSinceSource: this.paragraphsRestoredSinceSource(
+        new Set(
+          noteParagraphs.changedSinceSource.map((id) => id.toUpperCase()),
+        ),
+      ),
     };
   }
 
@@ -2530,9 +2544,12 @@ class CanonicalSession {
    * again what the opened document held, between the same neighbours: an
    * edit and its undo, or a change and its rejection, left them as they were.
    * A paragraph added or removed beside one is placed by it, so it stays a
-   * change.
+   * change, and so does a note paragraph in `changedNotes`, whose note
+   * changed around it.
    */
-  private paragraphsRestoredSinceSource(): readonly string[] {
+  private paragraphsRestoredSinceSource(
+    changedNotes: ReadonlySet<string>,
+  ): readonly string[] {
     if (this.touchedSinceOpen.size === 0) return [];
     const current = storyParagraphsOf(this.currentDocument);
     const opened = storyParagraphsOf(this.openedDocument);
@@ -2554,6 +2571,7 @@ class CanonicalSession {
       return (
         now !== undefined &&
         then !== undefined &&
+        !changedNotes.has(key) &&
         currentNeighbours.get(key) === openedNeighbours.get(key) &&
         (now === then || canonicalJson(now) === canonicalJson(then))
       );
@@ -2561,9 +2579,11 @@ class CanonicalSession {
   }
 
   /**
-   * The note paragraphs touched since the save baseline, and those whose
-   * content differs from the opened document among the ones touched since
-   * it opened: a note an edit and its undo left as it was is no change.
+   * The note paragraphs touched since the save baseline, and those that
+   * differ from the opened document among the ones touched since it opened:
+   * a note an edit and its undo left as it was is no change. A paragraph the
+   * edit left as it was still counts when its note changed around it (cells
+   * merged, a row's or cell's revision), which no paragraph records.
    */
   private noteParagraphChanges(): CanonicalSaveSnapshot["noteParagraphs"] {
     if (this.touchedSinceOpen.size === 0)
@@ -2572,17 +2592,26 @@ class CanonicalSession {
     const opened = noteParagraphsOf(this.openedDocument);
     const isNote = (id: string) =>
       current.has(id.toUpperCase()) || opened.has(id.toUpperCase());
+    const noteJson = new Map<readonly BlockContent[], string>();
+    const jsonOf = (note: readonly BlockContent[]): string => {
+      const known = noteJson.get(note);
+      if (known !== undefined) return known;
+      const json = canonicalJson(note);
+      noteJson.set(note, json);
+      return json;
+    };
     return {
       touched: [...this.saveTouched].filter(isNote),
       changedSinceSource: [...this.touchedSinceOpen].filter((id) => {
         const now = current.get(id.toUpperCase());
         const then = opened.get(id.toUpperCase());
-        if (now === then) return false;
-        return (
-          now === undefined ||
-          then === undefined ||
-          canonicalJson(now) !== canonicalJson(then)
-        );
+        if (now === undefined || then === undefined) return now !== then;
+        if (
+          now.paragraph !== then.paragraph &&
+          canonicalJson(now.paragraph) !== canonicalJson(then.paragraph)
+        )
+          return true;
+        return now.note !== then.note && jsonOf(now.note) !== jsonOf(then.note);
       }),
     };
   }
