@@ -91,6 +91,17 @@ const lists = (reviewer: Reviewer) => {
     });
 };
 
+const ONE_AT_A_TIME_ORDER = ["insert", "retention", "closing"] as const;
+
+const permutations = <T>(items: readonly T[]): T[][] => {
+  if (items.length <= 1) return [[...items]];
+  const orders: T[][] = [];
+  for (const [index, item] of items.entries())
+    for (const rest of permutations(items.toSpliced(index, 1)))
+      orders.push([item].concat(rest));
+  return orders;
+};
+
 /** The fixture with a whole list paragraph pending deletion. */
 const withPendingDeletion = async (): Promise<ArrayBuffer> => {
   const reviewer = await open(await listDocx());
@@ -421,50 +432,86 @@ describe("new-list placement", () => {
     ]);
   });
 
-  test("a tracked new list inserted before deleted closing paragraphs is that list once accepted", async () => {
-    const source = await withPendingDeletion();
-    const operations = (reviewer: Reviewer): FolioDocumentOperation[] => [
-      {
-        id: "retention",
-        type: "deleteBlock",
-        blockId: idOf(reviewer, "Retention after inspection"),
-      },
-      {
-        id: "insert",
-        type: "insertAfterBlock",
-        blockId: idOf(reviewer, "Balance on delivery"),
-        text: "Inserted bullet.",
-        numbering: { kind: "newList", format: "bullet" },
-      },
-      {
-        id: "closing",
-        type: "deleteBlock",
-        blockId: idOf(reviewer, "Closing remarks."),
-      },
-    ];
-    const tracked = await open(source);
-    expect(
-      apply(tracked, "tracked-changes", operations(tracked)).skipped,
-    ).toEqual([]);
-    const direct = await open(source);
-    expect(apply(direct, "direct", operations(direct)).skipped).toEqual([]);
-
-    const rejected = await open(await tracked.toBuffer());
-    tracked.acceptAll();
-    direct.acceptAll();
-    expect(lists(tracked)).toEqual(lists(direct));
-    expect(lists(tracked).at(-1)).toEqual({
-      text: "Inserted bullet.",
-      kind: "listItem",
-      label: "•",
-      list: 2,
-    });
-
-    rejected.rejectAll();
-    const original = await open(source);
-    original.rejectAll();
-    expect(lists(rejected)).toEqual(lists(original));
-  });
+  // In every order, as one batch, directly or tracked and then accepted, and
+  // as its operations one at a time in the order the batch runs them (the
+  // insertion, then the run of deletions up to the final paragraph): the
+  // closing paragraphs go and the new list ends the body. Other one-at-a-time
+  // orders meet the canonical session's refusals of a separate deletion of a
+  // paragraph whose break a final deletion took, and of a tracked insertion
+  // after a paragraph whose break is pending deletion.
+  for (const session of ["legacy", "canonical"] as const)
+    for (const order of permutations(ONE_AT_A_TIME_ORDER))
+      test(`a new list inserted before deleted closing paragraphs is that list once accepted (${order.join(", ")}, ${session} session)`, async () => {
+        const source = await withPendingDeletion();
+        const openOn = (buffer: ArrayBuffer) =>
+          FolioDocxReviewer.fromBuffer(buffer, { author: AUTHOR, session });
+        const operations = (
+          reviewer: Reviewer,
+          oneByOne = false,
+        ): FolioDocumentOperation[] => {
+          const byId = {
+            retention: {
+              id: "retention",
+              type: "deleteBlock",
+              blockId: idOf(reviewer, "Retention after inspection"),
+            },
+            insert: {
+              id: "insert",
+              type: "insertAfterBlock",
+              blockId: idOf(reviewer, "Balance on delivery"),
+              text: "Inserted bullet.",
+              numbering: { kind: "newList", format: "bullet" },
+            },
+            closing: {
+              id: "closing",
+              type: "deleteBlock",
+              blockId: idOf(reviewer, "Closing remarks."),
+            },
+          } as const satisfies Record<string, FolioDocumentOperation>;
+          return (oneByOne ? ONE_AT_A_TIME_ORDER : order).map((id) => byId[id]);
+        };
+        /** The operations one at a time, each naming a paragraph a join kept. */
+        const oneAtATime = (reviewer: Reviewer, mode: Mode) => {
+          const joined = new Map<string, string>();
+          for (const operation of operations(reviewer, true)) {
+            let blockId = operation.blockId;
+            while (joined.has(blockId)) blockId = joined.get(blockId) ?? "";
+            const result = apply(reviewer, mode, [{ ...operation, blockId }]);
+            expect(result.skipped).toEqual([]);
+            for (const { paragraphIdentity } of result.applied)
+              if (paragraphIdentity?.type === "joined")
+                joined.set(
+                  paragraphIdentity.retiredBlockId,
+                  paragraphIdentity.blockId,
+                );
+          }
+        };
+        const accepted: ReturnType<typeof lists>[] = [];
+        for (const mode of ["direct", "tracked-changes"] as const) {
+          const batch = await openOn(source);
+          expect(apply(batch, mode, operations(batch)).skipped).toEqual([]);
+          const single = await openOn(source);
+          oneAtATime(single, mode);
+          if (mode === "tracked-changes") {
+            const rejected = await openOn(await batch.toBuffer());
+            rejected.rejectAll();
+            const original = await openOn(source);
+            original.rejectAll();
+            expect(lists(rejected)).toEqual(lists(original));
+          }
+          batch.acceptAll();
+          single.acceptAll();
+          expect(lists(single)).toEqual(lists(batch));
+          accepted.push(lists(batch));
+        }
+        expect(accepted.at(0)).toEqual(accepted.at(1));
+        expect(accepted.at(0)?.at(-1)).toEqual({
+          text: "Inserted bullet.",
+          kind: "listItem",
+          label: "•",
+          list: 2,
+        });
+      });
 
   test("a new list inserted after a table ends the body when the batch deletes the closing paragraph", async () => {
     const bytes = (

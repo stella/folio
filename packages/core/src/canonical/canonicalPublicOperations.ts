@@ -3641,9 +3641,9 @@ type DeletedRunBeforeOptions = {
 
 /**
  * The paragraphs right before a container's final paragraph that the batch
- * deletes, as `finalBreakCarrier` reads them, or, tracked, `bounded`: a
- * block the batch inserts stands right before them once it runs (after the
- * kept paragraph before them, or before the first of them). The deletion is
+ * deletes, as `finalBreakCarrier` reads them, or `bounded`: a block the batch
+ * inserts stands right before them once it runs (after the kept paragraph
+ * before them, or, tracked, before the first of them). The deletion is
  * claimed from `claimFrom`, before that insertion and the run's deletions,
  * so it runs after them and retires the break before the run as it stands.
  */
@@ -3681,7 +3681,7 @@ const deletedRunBefore = ({
     // A block the batch puts after the kept paragraph stands between it and
     // the run instead: the break the deletion retires is that block's.
     if (!besideDeletions.deleted.has(id) && blockAfter)
-      return tracked && deleted > 0
+      return deleted > 0
         ? { type: "bounded", claimFrom: position + 1 }
         : { type: "none" };
     // So does one the batch puts before the first paragraph of the run.
@@ -5744,6 +5744,24 @@ export class CanonicalPublicOperations {
       // A paragraph the batch puts after the table before it stands before
       // it when the deletion runs: it joins that one then, as deleting it
       // after that insertion does.
+      // So does a paragraph the batch puts after the kept one before the run
+      // of paragraphs it deletes right before this one: claimed from before
+      // that insertion and the run's deletions, the deletion runs after them
+      // and joins that paragraph, as one at a time.
+      if (previous !== undefined && deletedRun.type === "bounded")
+        return tracking({
+          intents: [
+            {
+              type: "deleteParagraphs",
+              story: projectionStory,
+              blockIds: [paragraph.blockId],
+            },
+          ],
+          normalizations: [],
+          from: deletedRun.claimFrom,
+          to: end,
+          mayEndContainer: true,
+        });
       if (previous === undefined && after === null && tableBeforeGainsFollower)
         return tracking({
           intents: [
