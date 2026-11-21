@@ -227,7 +227,6 @@ export type TableBlockIntentOperation =
         }
     ));
 
-/** Positions use canonical physical offsets, including retained deleted content. */
 /**
  * Typed text as run content: a tab is a tab element and a line feed a line
  * break, each one offset wide as the character it stands for.
@@ -239,6 +238,7 @@ const typedRunContent = (text: string): RunContent[] =>
     return part === "" ? [] : [{ type: "text", text: part }];
   });
 
+/** Positions use canonical physical offsets, including retained deleted content. */
 export type EditorIntent =
   | HyperlinkEditorIntent
   | GenerateTOCIntent
