@@ -27,6 +27,7 @@ import { FOLIO_REVIEW_HISTORY_NAMESPACE } from "./reviewHistoryNamespace";
 import {
   parseCopyOriginAncestors,
   parseParagraphMarkResolutionJoin,
+  parseParagraphPropertyChangeOwner,
   parseResolutionJoins,
   parseSplitResolutionPiece,
   reviewProvenanceIssue,
@@ -34,6 +35,7 @@ import {
   serializeBoundaryJoins,
   serializeCopyOriginAncestors,
   serializeParagraphMarkResolutionJoin,
+  serializeParagraphPropertyChangeOwner,
   serializeResolutionJoins,
   serializeSplitResolutionPiece,
 } from "./reviewResolutionProvenance";
@@ -268,7 +270,7 @@ test("malformed and future provenance is dropped on read and reported", () => {
         value: { before: 0, after: 0, remove: 0, acceptance },
       }),
     ),
-    JSON.stringify({ version: 2, value: { before: 0, after: 0, remove: 0 } }),
+    JSON.stringify({ version: 3, value: { before: 0, after: 0, remove: 0 } }),
     JSON.stringify({ version: 1, value: { before: -1, after: 0, remove: 0 } }),
     JSON.stringify({
       version: 1,
@@ -302,7 +304,7 @@ test("malformed and future provenance is dropped on read and reported", () => {
 test("paragraph cut provenance validates private envelopes and typed projection attributes", () => {
   for (const encoded of [
     "not-json",
-    JSON.stringify({ version: 2, value: 0 }),
+    JSON.stringify({ version: 3, value: 0 }),
     JSON.stringify({ version: 1, value: -1 }),
     JSON.stringify({ version: 1, value: 0.5 }),
     JSON.stringify({ version: 1, value: MAX_REVISION_ID + 1 }),
@@ -390,7 +392,7 @@ test("a cut record's identity handoff has its own private attribute", () => {
       version: 1,
       value: [{ levels: 0, source: [], target: [] }],
     }),
-    JSON.stringify({ version: 2, value: joins.retainedEnclosing }),
+    JSON.stringify({ version: 3, value: joins.retainedEnclosing }),
     "levels",
   ]) {
     const attributes = `${serializeResolutionJoins(withoutHandoff)} folio:retainedEnclosing="${escapeXmlAttribute(encoded)}"`;
@@ -461,7 +463,7 @@ test("the paragraph a rejected mark keeps has its own private attribute", () => 
   // An unreadable value drops only the marker, and says so.
   for (const encoded of [
     JSON.stringify({ version: 1, value: "second" }),
-    JSON.stringify({ version: 2, value: "first" }),
+    JSON.stringify({ version: 3, value: "first" }),
     "first",
   ]) {
     const dropped = element(
@@ -474,7 +476,7 @@ test("the paragraph a rejected mark keeps has its own private attribute", () => 
 
 test("copy-origin ancestry uses the bounded versioned private envelope", () => {
   const encoded = serializeCopyOriginAncestors([0, 2, 4]);
-  expect(encoded).toBe(JSON.stringify({ version: 1, value: [0, 2, 4] }));
+  expect(encoded).toBe(JSON.stringify({ version: 2, value: [0, 2, 4] }));
   expect(
     parseCopyOriginAncestors(
       element(
@@ -492,7 +494,7 @@ test("copy-origin ancestry uses the bounded versioned private envelope", () => {
 
   const invalidEnvelopes = [
     "not-json",
-    JSON.stringify({ version: 2, value: [0] }),
+    JSON.stringify({ version: 3, value: [0] }),
     JSON.stringify({ version: 1, value: [] }),
     JSON.stringify({ version: 1, value: [0, 0] }),
     JSON.stringify({ version: 1, value: [1, 0] }),
@@ -958,4 +960,45 @@ test("hyperlink revision hoisting descends through transparent revision containe
   expect(xml).toContain('w:id="2"');
   expect(JSON.stringify(paragraph)).not.toContain('"type":"preservedInline"');
   expectNoHyperlinkInsideRevision(xml);
+});
+
+test("the merge a paragraph property change belongs to has its own private attribute", () => {
+  const change = {
+    type: "paragraphPropertyChange",
+    info: { id: 3, author: "Reviewer" },
+    resolvesWith: 2,
+  } as const;
+  const written = serializeParagraphPropertyChangeOwner(change);
+  expect(written).toBe(
+    ` folio:resolvesWith="${escapeXmlAttribute(JSON.stringify({ version: 2, value: 2 }))}"`,
+  );
+  expect(
+    parseParagraphPropertyChangeOwner(
+      element(`<r xmlns:folio="${FOLIO_REVIEW_HISTORY_NAMESPACE}"${written}/>`),
+    ),
+  ).toEqual({ resolvesWith: 2 });
+  const { resolvesWith: _owner, ...unlinked } = change;
+  expect(serializeParagraphPropertyChangeOwner(unlinked)).toBe("");
+  // An unreadable value drops only the link, and says so.
+  for (const encoded of [
+    JSON.stringify({ version: 2, value: -1 }),
+    JSON.stringify({ version: 2, value: MAX_REVISION_ID + 1 }),
+    JSON.stringify({ version: 3, value: 2 }),
+    "2",
+  ]) {
+    const dropped = element(
+      `<r xmlns:history="${FOLIO_REVIEW_HISTORY_NAMESPACE}" history:resolvesWith="${escapeXmlAttribute(encoded)}"/>`,
+    );
+    expect(parseParagraphPropertyChangeOwner(dropped)).toEqual({});
+    expect(reviewProvenanceIssue("resolvesWith", encoded)).toBeDefined();
+  }
+  // A version 1 file is still read.
+  const versionOne = JSON.stringify({ version: 1, value: 2 });
+  expect(
+    parseParagraphPropertyChangeOwner(
+      element(
+        `<r xmlns:folio="${FOLIO_REVIEW_HISTORY_NAMESPACE}" folio:resolvesWith="${escapeXmlAttribute(versionOne)}"/>`,
+      ),
+    ),
+  ).toEqual({ resolvesWith: 2 });
 });
