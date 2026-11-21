@@ -31,7 +31,7 @@
       ],
       "expectedRefusals": {
         "canonical": {
-          "code": "invalidResult",
+          "code": "unsupportedBlock",
           "message": "A tracked insertion after a paragraph no paragraph follows needs the anchor's mark free of review records."
         }
       }
