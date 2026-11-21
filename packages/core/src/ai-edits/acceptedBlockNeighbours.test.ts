@@ -3,16 +3,18 @@
  * the blocks accepting removes whole: applied as tracked changes and accepted,
  * it reads as the same edit applied directly.
  *
- * - A merge into a paragraph accepting removes, right before a table, ends
- *   there: the merged paragraph stays apart from the table in every mode,
- *   rather than running into its first cell when applied directly.
+ * - A merge into a paragraph accepting removes, right before a table: on the
+ *   legacy session it ends there, the merged paragraph apart from the table;
+ *   on the canonical session the merged words run into the table's first
+ *   cell. Either way, directly as tracked.
  * - Blocks put on either side of blocks accepting removes whole, tables and
  *   paragraphs, share one gap and keep the order the batch names them in, as
  *   they do once those blocks are removed directly.
  * - Removing what ends a pending join leaves the joined paragraph standing:
  *   deleting the paragraph the join runs into keeps its break, the joined
- *   paragraph's, and removing a table that stops the join keeps the words
- *   apart from what follows it, as accepting already left them.
+ *   paragraph's, and on the legacy session removing a table that stops the
+ *   join keeps the words apart from what follows it, as accepting already
+ *   left them.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -144,6 +146,8 @@ type MergeCase = {
   markdown: string;
   /** Paragraphs another author's pending change deletes. */
   pending: string[];
+  /** The table's first cell. */
+  cell: string;
   /** A batch before the merge, in the mode of the merge. */
   before?: (id: (text: string) => string) => FolioDocumentOperation[];
 };
@@ -154,16 +158,19 @@ const mergeCases: Record<string, MergeCase> = {
       "\n\n",
     ),
     pending: ["Gone item."],
+    cell: "Item",
   },
   "two deleted paragraphs, then a table": {
     markdown: ["Kept item.", "Gone item.", "Gone too.", TABLE, "End."].join(
       "\n\n",
     ),
     pending: ["Gone item.", "Gone too."],
+    cell: "Item",
   },
   "a table an earlier batch inserted": {
     markdown: ["Kept item.", "Gone item.", "End."].join("\n\n"),
     pending: ["Gone item."],
+    cell: "Term",
     before: (id) => [
       {
         id: "table",
@@ -179,28 +186,58 @@ describe("a merge into a paragraph accepting removes, before a table", () => {
   const replay = async (
     setup: MergeCase,
     mode: "direct" | "tracked-changes",
+    session: HeadlessReviewerSession,
   ) => {
     const { reviewer, id } = await withPendingDeletions({
       markdown: setup.markdown,
       texts: setup.pending,
+      session,
     });
     if (setup.before) {
       const before = apply(reviewer, mode, setup.before(id));
       expect(before.skipped).toEqual([]);
     }
     const result = apply(reviewer, mode, [merge(id("Kept item."))]);
-    expect(result.skipped).toEqual([]);
-    return accepted(reviewer);
+    return {
+      skipped: result.skipped,
+      accepted: await accepted(reviewer, session),
+    };
   };
   for (const [name, setup] of Object.entries(mergeCases)) {
-    test(`stays apart from the table, directly as tracked (${name})`, async () => {
-      const direct = await replay(setup, "direct");
-      expect(direct).toContainEqual({
+    test(`stays apart from the table, directly as tracked (${name}, legacy)`, async () => {
+      const direct = await replay(setup, "direct", "legacy");
+      expect(direct.skipped).toEqual([]);
+      expect(direct.accepted).toContainEqual({
         text: "Kept item. ",
         inTable: false,
         numbering: "reference",
       });
-      expect(await replay(setup, "tracked-changes")).toEqual(direct);
+      expect(await replay(setup, "tracked-changes", "legacy")).toEqual(direct);
+    });
+
+    // The merged words take the cell paragraph's mark, and its properties.
+    test(`runs into the table's first cell, directly as tracked (${name}, canonical)`, async () => {
+      const direct = await replay(setup, "direct", "canonical");
+      expect(direct.skipped).toEqual([]);
+      expect(direct.accepted).toContainEqual({
+        text: `Kept item. ${setup.cell}`,
+        inTable: true,
+        numbering: "inherit",
+      });
+      const tracked = await replay(setup, "tracked-changes", "canonical");
+      if (setup.before === undefined) {
+        expect(tracked).toEqual(direct);
+        return;
+      }
+      // A join through a deleted paragraph into a pending inserted table
+      // is refused.
+      expect(tracked.skipped).toEqual([
+        expect.objectContaining({
+          id: "merge",
+          message: expect.stringContaining("would run it into the table"),
+        }),
+      ]);
+      expect(tracked.accepted.at(0)?.text).toBe("Kept item.");
     });
   }
 });
@@ -497,22 +534,28 @@ describe("removing what ends a pending join", () => {
       ]);
     });
 
-    test(`keeps words a table stopped apart once it goes, directly as tracked (${name})`, async () => {
-      const run = async (mode: Mode, step: Step) => {
-        const { reviewer, id } = await withPendingDeletions({
-          markdown: ["Kept item.", "Gone item.", TABLE, "End."].join("\n\n"),
-          texts: ["Gone item."],
-        });
-        expect(
-          apply(reviewer, mode, [merge(id("Kept item."))]).skipped,
-        ).toEqual([]);
-        expect(apply(reviewer, mode, step(id)).skipped).toEqual([]);
-        return accepted(reviewer);
-      };
-      const direct = await run("direct", deleteTable);
-      expect(textsOf(direct)).toEqual(["Kept item. ", "End."]);
-      expect(await run("tracked-changes", removal)).toEqual(direct);
-    });
+    for (const session of SESSIONS)
+      test(`gives the words the join reached once the table goes, directly as tracked (${name}, ${session})`, async () => {
+        const run = async (mode: Mode, step: Step) => {
+          const { reviewer, id } = await withPendingDeletions({
+            markdown: ["Kept item.", "Gone item.", TABLE, "End."].join("\n\n"),
+            texts: ["Gone item."],
+            session,
+          });
+          expect(
+            apply(reviewer, mode, [merge(id("Kept item."))]).skipped,
+          ).toEqual([]);
+          expect(apply(reviewer, mode, step(id)).skipped).toEqual([]);
+          return accepted(reviewer, session);
+        };
+        const direct = await run("direct", deleteTable);
+        // The legacy session keeps the words a table stopped apart; on the
+        // canonical session the join runs on to what follows the table.
+        expect(textsOf(direct)).toEqual(
+          session === "legacy" ? ["Kept item. ", "End."] : ["Kept item. End."],
+        );
+        expect(await run("tracked-changes", removal)).toEqual(direct);
+      });
   }
 });
 
@@ -734,11 +777,45 @@ describe("blocks put on either side of blocks accepting removes whole", () => {
     });
   }
 
-  test("stop where a pending join reaches a paragraph accepting removes", async () => {
+  const reachedTable = async (session: HeadlessReviewerSession, mode: Mode) => {
+    const { reviewer, id } = await withPendingDeletions({
+      markdown: ["Kept item.", "Gone item.", TABLE, "End."].join("\n\n"),
+      texts: ["Gone item."],
+      session,
+    });
+    expect(apply(reviewer, mode, [merge(id("Kept item."))]).skipped).toEqual(
+      [],
+    );
+    return { reviewer, id };
+  };
+
+  // The join runs into the table's first cell: a table put before it would
+  // stand inside the joined paragraph.
+  for (const mode of ["direct", "tracked-changes"] as const)
+    test(`before a table a pending join runs into, is refused (${mode}, canonical)`, async () => {
+      const { reviewer, id } = await reachedTable("canonical", mode);
+      const before = reviewer.snapshot();
+      expect(
+        apply(reviewer, mode, [
+          {
+            id: "table",
+            type: "insertTable",
+            blockId: id("Widget"),
+            position: "before",
+            rows: ROWS,
+          },
+        ]).skipped.map(({ reason }) => reason),
+      ).toEqual(["pendingParagraphMarkDeletion"]);
+      expect(reviewer.snapshot()).toEqual(before);
+    });
+
+  test("stop where a pending join reaches a paragraph accepting removes (legacy)", async () => {
+    const session = "legacy";
     const replayReached = async (mode: Mode) => {
       const { reviewer, id } = await withPendingDeletions({
         markdown: ["Kept item.", "Gone item.", TABLE, "End."].join("\n\n"),
         texts: ["Gone item."],
+        session,
       });
       expect(apply(reviewer, mode, [merge(id("Kept item."))]).skipped).toEqual(
         [],
@@ -754,7 +831,7 @@ describe("blocks put on either side of blocks accepting removes whole", () => {
           },
         ]).skipped,
       ).toEqual([]);
-      return accepted(reviewer);
+      return accepted(reviewer, session);
     };
     const direct = await replayReached("direct");
     expect(direct[0]).toEqual({
