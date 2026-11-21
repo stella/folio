@@ -76,7 +76,7 @@ export const relocatePositionedMarkers = (
   const rowOrigins = originsOf(before.rows, after.rows);
   let rowsChanged = false;
   const rows = after.rows.map((row, index) => {
-    const origin = rowOrigins[index];
+    const origin = rowOrigins[index] ?? null;
     const source = origin === null ? undefined : before.rows[origin];
     if (row.bookmarks === undefined || source === undefined) return row;
     const markers = relocated(
