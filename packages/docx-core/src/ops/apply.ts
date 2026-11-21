@@ -182,13 +182,12 @@ import {
 } from "./refusal";
 import { type ApplyOps, resolveRevision } from "./resolve";
 import {
-  FOLD_INTO_OTHER_SUGGESTION_MESSAGE,
   foldedParagraphPropertyChange,
-  foldsIntoOtherSuggestion,
   isRemovedRevisionNode,
   namesMarkFormatting,
   paragraphPropertiesOf,
   paragraphPropertyChange,
+  paragraphPropertyFoldConflict,
   reviewFieldsOf,
   RUN_FOLD_INTO_OTHER_SUGGESTION_MESSAGE,
   sameMarkFormatting,
@@ -1645,11 +1644,12 @@ const setParagraphProps = (
     ),
   });
   if (revision !== undefined) {
-    if (foldsIntoOtherSuggestion(paragraph, revision))
+    const conflict = paragraphPropertyFoldConflict(paragraph, revision);
+    if (conflict !== undefined)
       return refuse(
         op,
         DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
-        FOLD_INTO_OTHER_SUGGESTION_MESSAGE,
+        conflict,
       );
     const authored = authoredParagraphFormatting(next);
     const pending = paragraph.propertyChanges;
@@ -1851,11 +1851,14 @@ const trackSplit = ({
     ...(madeSecond ? { survivor: "first" as const } : {}),
   };
   if (!sameParagraphProperties(made.formatting, paragraph.formatting)) {
-    if (madeSecond && foldsIntoOtherSuggestion(paragraph, stamp))
+    const conflict = madeSecond
+      ? paragraphPropertyFoldConflict(paragraph, stamp)
+      : undefined;
+    if (conflict !== undefined)
       return refusal(
         op,
         DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
-        FOLD_INTO_OTHER_SUGGESTION_MESSAGE,
+        conflict,
       );
     made.propertyChanges = [
       madeSecond
@@ -2140,15 +2143,25 @@ const trackJoin = ({
   // The editor intent compiler applies accepted-view group formatting.
   const formatting = joinedFormatting(leading, trailing);
   if (!sameParagraphProperties(formatting, trailing.formatting)) {
-    if (foldsIntoOtherSuggestion(trailing, stamp))
+    const conflict = paragraphPropertyFoldConflict(trailing, stamp);
+    if (conflict !== undefined)
       return refuse(
         op,
         DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
-        FOLD_INTO_OTHER_SUGGESTION_MESSAGE,
+        conflict,
       );
     second = withParagraphFormatting(trailing, formatting);
+    const change = foldedParagraphPropertyChange({
+      paragraph: trailing,
+      formatting,
+      stamp,
+    });
+    // A change the join makes belongs to its mark deletion: rejecting the
+    // join gives the paragraph its own properties back.
     second.propertyChanges = [
-      foldedParagraphPropertyChange({ paragraph: trailing, formatting, stamp }),
+      trailing.propertyChanges?.at(0) === undefined
+        ? { ...change, resolvesWith: stamp.id }
+        : change,
     ];
   }
   // Range boundaries standing between the two stay where they are: resolving

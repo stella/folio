@@ -1115,6 +1115,7 @@ export type ExhaustiveRunPropertyChangeReserved = ExhaustiveFields<
 export const PARAGRAPH_PROPERTY_CHANGE_RESERVED = {
   type: NO_RESERVED_VALUE,
   info: NO_RESERVED_VALUE,
+  resolvesWith: NO_RESERVED_VALUE,
   previousFormatting: NO_RESERVED_VALUE,
   currentFormatting: NO_RESERVED_VALUE,
 } satisfies Record<

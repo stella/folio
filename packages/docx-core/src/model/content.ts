@@ -2022,6 +2022,14 @@ export type ParagraphPropertyChange = WritableRecord & {
   type: "paragraphPropertyChange";
   /** Tracked change metadata */
   info: PropertyChangeInfo;
+  /**
+   * The revision this change belongs to: the paragraph-mark deletion of the
+   * tracked join that set these properties. Accepting or rejecting that
+   * revision resolves this change the same way; this change alone still
+   * resolves by its own id. Folio review history (`folio:resolvesWith`);
+   * omitted on an ordinary property change.
+   */
+  resolvesWith?: number;
   /** Paragraph properties before the tracked change */
   previousFormatting?: ParagraphFormatting;
   /** Paragraph properties after the tracked change (editor model convenience) */

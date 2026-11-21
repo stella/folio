@@ -45,9 +45,8 @@ import {
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import type { ApplyOps } from "./resolve";
 import {
-  FOLD_INTO_OTHER_SUGGESTION_MESSAGE,
   foldedParagraphPropertyChange,
-  foldsIntoOtherSuggestion,
+  paragraphPropertyFoldConflict,
   stampInfo,
   WRAP_KINDS,
   wrapTracked,
@@ -182,12 +181,13 @@ const takenOverPropertyChanges = ({
           : { previousFormatting: source.formatting }),
       },
     ]);
-  if (foldsIntoOtherSuggestion(source, revision))
+  const conflict = paragraphPropertyFoldConflict(source, revision);
+  if (conflict !== undefined)
     return Result.err(
       new DocumentOpRefusal({
         opType: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
         reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
-        message: FOLD_INTO_OTHER_SUGGESTION_MESSAGE,
+        message: conflict,
       }),
     );
   return Result.ok([

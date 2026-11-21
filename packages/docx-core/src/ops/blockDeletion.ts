@@ -44,11 +44,10 @@ import {
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import type { ApplyOps } from "./resolve";
 import {
-  FOLD_INTO_OTHER_SUGGESTION_MESSAGE,
   foldedParagraphPropertyChange,
-  foldsIntoOtherSuggestion,
   isRemovedRevisionNode,
   paragraphPropertiesOf,
+  paragraphPropertyFoldConflict,
   reviewFieldsOf,
   sameParagraphProperties,
   stampInfo,
@@ -1309,11 +1308,9 @@ export const deleteBlocks = ({
         },
       };
     } else if (!sameParagraphProperties(next.formatting, survivor.formatting)) {
-      if (foldsIntoOtherSuggestion(paragraph, op.revision))
-        return refuse(
-          DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
-          FOLD_INTO_OTHER_SUGGESTION_MESSAGE,
-        );
+      const conflict = paragraphPropertyFoldConflict(paragraph, op.revision);
+      if (conflict !== undefined)
+        return refuse(DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT, conflict);
       const review = reviewFieldsOf(next);
       delete review.formatting;
       if (survivor.formatting !== undefined)

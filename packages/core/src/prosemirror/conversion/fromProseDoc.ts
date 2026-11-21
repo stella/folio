@@ -61,6 +61,7 @@ import {
   isInlineSdtContent,
   isSimpleFieldContent,
 } from "../../docx/inlineWrapperContent";
+import { linkMergePropertyChanges } from "../../docx/mergePropertyChangeLinks";
 import {
   paragraphNumberingReferenceId,
   sameStatedParagraphNumbering,
@@ -1057,6 +1058,7 @@ export function fromProseDoc(
   const blocks = extractBlocks(pmDoc, "resolve", createStyleEngine(styles));
   joinCommentRangesAcrossParagraphs(blocks);
   joinBookmarkRangesAcrossParagraphs(blocks);
+  linkMergePropertyChanges(blocks);
   completeCommentReferences(blocks);
   const linkedSources = restoreLinkedParagraphPropertySources(blocks);
   if (tokenSources) {
@@ -7470,6 +7472,7 @@ export function proseDocToBlocks(
   );
   joinCommentRangesAcrossParagraphs(blocks);
   joinBookmarkRangesAcrossParagraphs(blocks);
+  linkMergePropertyChanges(blocks);
   completeCommentReferences(blocks);
   const linkedSources = restoreLinkedParagraphPropertySources(blocks);
   if (baseContent) {

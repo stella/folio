@@ -657,8 +657,78 @@ export const freshenIdentities = ({
         kind: "fresh",
         paragraphs: bindDeferredIdentities({
           before: after,
-          after: rebindRetainedIdentities({ before: after, after: paragraphs }),
+          after: rebindPropertyChangeOwners({
+            source: before,
+            draft: after,
+            freshened: rebindRetainedIdentities({
+              before: after,
+              after: paragraphs,
+            }),
+            elsewhere,
+          }),
         }),
       }
     : { kind: "invalidId", id: invalid };
+};
+
+type RebindPropertyChangeOwnersOptions = {
+  source: readonly Paragraph[];
+  draft: readonly Paragraph[];
+  freshened: Paragraph[];
+  elsewhere: KeyMembership;
+};
+
+/**
+ * A property change that belongs to a paragraph-mark deletion
+ * (`resolvesWith`) follows that deletion to the id freshening gave it.
+ */
+const rebindPropertyChangeOwners = ({
+  source,
+  draft,
+  freshened,
+  elsewhere,
+}: RebindPropertyChangeOwnersOptions): Paragraph[] => {
+  const ownerInfo = ({ pPrMark }: Paragraph) =>
+    pPrMark?.kind === "del" ? pPrMark.info : pPrMark?.deletion?.info;
+  const kept = new Set<number>();
+  const moved = new Map<number, number>();
+  for (const [index, paragraph] of draft.entries()) {
+    const old = ownerInfo(paragraph);
+    const next = ownerInfo(
+      freshened.at(index) ?? panic("Freshening preserves each paragraph."),
+    );
+    if (old === undefined || next === undefined) continue;
+    if (old.id === next.id) kept.add(old.id);
+    else moved.set(old.id, next.id);
+  }
+  if (moved.size === 0) return freshened;
+  const previousOwners = new Map<number, number>();
+  for (const paragraph of source) {
+    for (const { info, resolvesWith } of paragraph.propertyChanges ?? []) {
+      if (resolvesWith !== undefined) previousOwners.set(info.id, resolvesWith);
+    }
+  }
+  return freshened.map((paragraph) => {
+    if (paragraph.propertyChanges === undefined) return paragraph;
+    let changed = false;
+    const propertyChanges = paragraph.propertyChanges.map((change) => {
+      const { resolvesWith } = change;
+      if (resolvesWith === undefined) return change;
+      const owner = moved.get(resolvesWith);
+      if (owner === undefined) return change;
+      // When a copy gets fresh ids, the original property change still
+      // names the original mark, which can also be outside the edited range.
+      if (
+        previousOwners.get(change.info.id) === resolvesWith &&
+        (kept.has(resolvesWith) ||
+          elsewhere.has(
+            slotKey({ space: IDENTITY_SPACES.REVISION, id: resolvesWith }),
+          ))
+      )
+        return change;
+      changed = true;
+      return { ...change, resolvesWith: owner };
+    });
+    return changed ? { ...paragraph, propertyChanges } : paragraph;
+  });
 };
