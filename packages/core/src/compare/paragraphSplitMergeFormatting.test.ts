@@ -7,6 +7,7 @@ import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import type { FolioAIParagraphSpacing } from "../ai-edits/types";
 import { createDocx } from "../docx/rezip";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import type { Paragraph, ParagraphAlignment, Table } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { compareDocx } from "./compare";
@@ -21,6 +22,8 @@ type DirectParagraphFormatting = {
   alignment: ParagraphAlignment;
   spacing: FolioAIParagraphSpacing;
 };
+
+const SESSIONS: readonly HeadlessReviewerSession[] = ["canonical", "legacy"];
 
 const JOINED_FORMATTING = {
   styleId: "JoinedBody",
@@ -411,8 +414,15 @@ describe("paragraph split and merge formatting", () => {
     },
   );
 
-  test("refuses a formatting split when the source already has a pending pPrChange", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await joinedDocument());
+  // Legacy refuses the split; canonical folds its formatting into the
+  // pending change (same author), and rejecting restores the original.
+  test.each(SESSIONS)("%s: split over a pending pPrChange", async (session) => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await joinedDocument(),
+      {
+        session,
+      },
+    );
     const blockId = reviewer.snapshot().blocks.at(0)?.id;
     if (!blockId) {
       panic("expected a joined paragraph block id");
@@ -459,6 +469,20 @@ describe("paragraph split and merge formatting", () => {
       { undefinedReferences: "refuse" },
     );
 
+    if (session === "canonical") {
+      expect(outcome.status).toBe("committed");
+      const saved = await reviewer.toBuffer();
+      const rejecting = await FolioDocxReviewer.fromBuffer(saved, { session });
+      rejecting.rejectAll();
+      expect(projectedBlocks(rejecting)).toEqual(JOINED_PROJECTION);
+      const accepting = await FolioDocxReviewer.fromBuffer(saved, { session });
+      accepting.acceptAll();
+      expect(accepting.snapshot().blocks.map(({ text }) => text)).toEqual([
+        "Alpha",
+        "Beta",
+      ]);
+      return;
+    }
     expect(outcome.status).toBe("rejected");
     expect(outcome.applied).toEqual([]);
     expect(outcome.skipped).toEqual([
@@ -469,8 +493,12 @@ describe("paragraph split and merge formatting", () => {
     ]);
   });
 
-  test("refuses a formatting merge when the first paragraph has a pending pPrChange", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await splitDocument());
+  // Legacy refuses the merge; canonical folds its formatting into the
+  // pending change (same author), and rejecting restores the original.
+  test.each(SESSIONS)("%s: merge over a pending pPrChange", async (session) => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(await splitDocument(), {
+      session,
+    });
     const blockId = reviewer.snapshot().blocks.at(0)?.id;
     if (!blockId) {
       panic("expected a split paragraph block id");
@@ -511,6 +539,19 @@ describe("paragraph split and merge formatting", () => {
       { undefinedReferences: "refuse" },
     );
 
+    if (session === "canonical") {
+      expect(outcome.status).toBe("committed");
+      const saved = await reviewer.toBuffer();
+      const rejecting = await FolioDocxReviewer.fromBuffer(saved, { session });
+      rejecting.rejectAll();
+      expect(projectedBlocks(rejecting)).toEqual(SPLIT_PROJECTION);
+      const accepting = await FolioDocxReviewer.fromBuffer(saved, { session });
+      accepting.acceptAll();
+      expect(accepting.snapshot().blocks.map(({ text }) => text)).toEqual([
+        "Alpha Beta",
+      ]);
+      return;
+    }
     expect(outcome.status).toBe("rejected");
     expect(outcome.applied).toEqual([]);
     expect(outcome.skipped).toEqual([
