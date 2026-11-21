@@ -570,65 +570,89 @@ describe("resolving every suggestion headlessly", () => {
     ]);
   });
 
-  test("refuses suggestions anchored to a tracked deletion", async () => {
-    const writer = await FolioDocxReviewer.fromBuffer(await buildDocument(), {
-      author: "AI",
-    });
-    const first = writer.getContent()[0];
-    if (!first) throw new Error("fixture paragraph missing");
-    expect(
-      writer.applyDocumentOperations(
-        {
-          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-          mode: "tracked-changes",
-          operations: [
-            { id: "tracked", type: "deleteBlock", blockId: first.id },
-          ],
-        },
-        { undefinedReferences: "refuse" },
-      ).applied,
-    ).toHaveLength(1);
-    const bytes = await writer.toBuffer();
-    for (const type of ["insertAfterBlock", "insertBeforeBlock"] as const) {
-      const baseline = await FolioDocxReviewer.fromBuffer(bytes, {
+  // Beside a paragraph a tracked deletion takes whole, the legacy engine
+  // refuses a suggested block; the canonical session puts it there, as the
+  // `pendingDeletion` refusal's recovery says ("insert a new block next to
+  // it").
+  test.each(["legacy", "canonical"] as const)(
+    "a suggestion anchored to a tracked deletion (%s session)",
+    async (session) => {
+      const writer = await FolioDocxReviewer.fromBuffer(await buildDocument(), {
         author: "AI",
+        session,
       });
-      const staged = await FolioDocxReviewer.fromBuffer(bytes, {
-        author: "AI",
-      });
-      const blank = staged.getContent().find(({ text }) => text === "");
-      if (!blank) throw new Error("deleted paragraph missing");
-      const result = staged.applyDocumentOperations(
-        {
-          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-          mode: "suggested",
-          operations: [
-            { id: "pending", type, blockId: blank.id, text: "Added." },
-          ],
-        },
-        { undefinedReferences: "refuse" },
-      );
-      expect(result.applied).toEqual([]);
-      expect(result.skipped).toEqual([
-        { id: "pending", reason: "pendingDeletion" },
-      ]);
-      const beforeBulk = await FolioDocxReviewer.fromBuffer(
-        await staged.toBuffer(),
-      );
-      expect(beforeBulk.getContent()).toEqual(baseline.getContent());
-      baseline.acceptAll();
-      staged.acceptAll();
+      const first = writer.getContent()[0];
+      if (!first) throw new Error("fixture paragraph missing");
       expect(
-        (
-          await FolioDocxReviewer.fromBuffer(await staged.toBuffer())
-        ).getContent(),
-      ).toEqual(
-        (
-          await FolioDocxReviewer.fromBuffer(await baseline.toBuffer())
-        ).getContent(),
-      );
-    }
-  });
+        writer.applyDocumentOperations(
+          {
+            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+            mode: "tracked-changes",
+            operations: [
+              { id: "tracked", type: "deleteBlock", blockId: first.id },
+            ],
+          },
+          { undefinedReferences: "refuse" },
+        ).applied,
+      ).toHaveLength(1);
+      const bytes = await writer.toBuffer();
+      for (const type of ["insertAfterBlock", "insertBeforeBlock"] as const) {
+        const baseline = await FolioDocxReviewer.fromBuffer(bytes, {
+          author: "AI",
+          session,
+        });
+        const staged = await FolioDocxReviewer.fromBuffer(bytes, {
+          author: "AI",
+          session,
+        });
+        const blank = staged.getContent().find(({ text }) => text === "");
+        if (!blank) throw new Error("deleted paragraph missing");
+        const result = staged.applyDocumentOperations(
+          {
+            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+            mode: "suggested",
+            operations: [
+              { id: "pending", type, blockId: blank.id, text: "Added." },
+            ],
+          },
+          { undefinedReferences: "refuse" },
+        );
+        if (session === "canonical") {
+          expect(result.skipped).toEqual([]);
+          expect(result.applied.map(({ id }) => id)).toEqual(["pending"]);
+          staged.acceptAll();
+          expect(staged.getContent().map(({ text }) => text)).toContain(
+            "Added.",
+          );
+          continue;
+        }
+        expect(result.applied).toEqual([]);
+        expect(result.skipped).toEqual([
+          { id: "pending", reason: "pendingDeletion" },
+        ]);
+        const beforeBulk = await FolioDocxReviewer.fromBuffer(
+          await staged.toBuffer(),
+          { session },
+        );
+        expect(beforeBulk.getContent()).toEqual(baseline.getContent());
+        baseline.acceptAll();
+        staged.acceptAll();
+        expect(
+          (
+            await FolioDocxReviewer.fromBuffer(await staged.toBuffer(), {
+              session,
+            })
+          ).getContent(),
+        ).toEqual(
+          (
+            await FolioDocxReviewer.fromBuffer(await baseline.toBuffer(), {
+              session,
+            })
+          ).getContent(),
+        );
+      }
+    },
+  );
 
   test("suggested replacement and deletion preserve the saved heading", async () => {
     const doc = fromMarkdown(

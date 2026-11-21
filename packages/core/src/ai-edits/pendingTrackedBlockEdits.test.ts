@@ -64,10 +64,15 @@ const tableDocument = async (): Promise<ArrayBuffer> => {
   );
 };
 
-const open = (buffer: ArrayBuffer) =>
-  FolioDocxReviewer.fromBuffer(buffer, { author: "Reviewer" });
-const reopen = async (reviewer: FolioDocxReviewer) =>
-  open(await reviewer.toBuffer());
+type Session = "legacy" | "canonical";
+
+const open = (buffer: ArrayBuffer, session?: Session) =>
+  FolioDocxReviewer.fromBuffer(buffer, {
+    author: "Reviewer",
+    ...(session === undefined ? {} : { session }),
+  });
+const reopen = async (reviewer: FolioDocxReviewer, session?: Session) =>
+  open(await reviewer.toBuffer(), session);
 
 const apply = (
   reviewer: FolioDocxReviewer,
@@ -100,11 +105,12 @@ const blockId = (reviewer: FolioDocxReviewer, text: string): string => {
 const resolved = async (
   reviewer: FolioDocxReviewer,
   resolution: "accept" | "reject",
+  session?: Session,
 ) => {
-  const copy = await reopen(reviewer);
+  const copy = await reopen(reviewer, session);
   if (resolution === "accept") copy.acceptAll();
   else copy.rejectAll();
-  return textsOf(await reopen(copy));
+  return textsOf(await reopen(copy, session));
 };
 
 const MODES = ["direct", "tracked-changes", "suggested"] as const;
@@ -277,59 +283,95 @@ describe("suggested insertion admission uses the live anchor for every gap run",
     expect(xml).not.toContain("<w:moveTo ");
   });
 
-  for (const deletion of ["deleteBlock", "deleteTableRow"] as const) {
-    for (const count of [1, 2, 3]) {
-      for (const timing of ["same batch", "earlier batch", "saved"] as const) {
-        for (const type of ["insertBeforeBlock", "insertAfterBlock"] as const) {
-          // In the same batch the insertions address the target before the
-          // deletion removes it, as one at a time; that is covered below.
-          if (timing === "same batch") continue;
-          test(`${deletion}, ${count} ${type}, deletion in ${timing}`, async () => {
-            let reviewer = await open(
-              await (deletion === "deleteBlock"
-                ? plainDocument()
-                : tableDocument()),
-            );
-            const target = blockId(
-              reviewer,
-              deletion === "deleteBlock" ? SUPPLIER : "Goods",
-            );
-            const remove = { id: "delete", type: deletion, blockId: target };
-            if (timing !== "same batch") {
-              expect(
-                apply(reviewer, "tracked-changes", [remove]).applied,
-              ).toHaveLength(1);
-              if (timing === "saved") reviewer = await reopen(reviewer);
-            }
-            const insertions = Array.from({ length: count }, (_, index) => ({
-              id: `insert-${index}`,
-              type,
-              blockId: target,
-              text: `Added clause ${index}.`,
-            }));
-            const result = apply(reviewer, "suggested", [
-              ...(timing === "same batch" ? [remove] : []),
-              ...insertions,
-            ]);
-            expect(result.applied.map(({ id }) => id)).toEqual([]);
-            expect(result.skipped).toEqual(
-              expect.arrayContaining(
-                insertions.map(({ id }) => ({ id, reason: "pendingDeletion" })),
-              ),
-            );
-            expect(result.skipped).toHaveLength(count);
-            for (const resolution of ["accept", "reject"] as const) {
-              expect(
-                (await resolved(reviewer, resolution)).some((text) =>
-                  text.startsWith("Added clause"),
+  // Beside a block a tracked deletion takes whole, the legacy engine refuses
+  // a suggested block; the canonical session puts it there, as the
+  // `pendingDeletion` refusal's recovery says ("insert a new block next to
+  // it").
+  for (const session of ["legacy", "canonical"] as const)
+    for (const deletion of ["deleteBlock", "deleteTableRow"] as const) {
+      for (const count of [1, 2, 3]) {
+        for (const timing of [
+          "same batch",
+          "earlier batch",
+          "saved",
+        ] as const) {
+          for (const type of [
+            "insertBeforeBlock",
+            "insertAfterBlock",
+          ] as const) {
+            // In the same batch the insertions address the target before the
+            // deletion removes it, as one at a time; that is covered below.
+            if (timing === "same batch") continue;
+            test(`${deletion}, ${count} ${type}, deletion in ${timing} (${session})`, async () => {
+              let reviewer = await open(
+                await (deletion === "deleteBlock"
+                  ? plainDocument()
+                  : tableDocument()),
+                session,
+              );
+              const target = blockId(
+                reviewer,
+                deletion === "deleteBlock" ? SUPPLIER : "Goods",
+              );
+              const remove = { id: "delete", type: deletion, blockId: target };
+              if (timing !== "same batch") {
+                expect(
+                  apply(reviewer, "tracked-changes", [remove]).applied,
+                ).toHaveLength(1);
+                if (timing === "saved")
+                  reviewer = await reopen(reviewer, session);
+              }
+              const insertions = Array.from({ length: count }, (_, index) => ({
+                id: `insert-${index}`,
+                type,
+                blockId: target,
+                text: `Added clause ${index}.`,
+              }));
+              const result = apply(reviewer, "suggested", [
+                ...(timing === "same batch" ? [remove] : []),
+                ...insertions,
+              ]);
+              if (session === "canonical") {
+                expect(result.skipped).toEqual([]);
+                expect(result.applied.map(({ id }) => id).toSorted()).toEqual(
+                  insertions.map(({ id }) => id),
+                );
+                // The suggestions resolve on the reviewer that holds them.
+                const accepting = reviewer.fork();
+                accepting.acceptAll();
+                for (const { text } of insertions)
+                  expect(textsOf(accepting)).toContain(text);
+                const rejecting = reviewer.fork();
+                rejecting.rejectAll();
+                expect(
+                  textsOf(rejecting).some((text) =>
+                    text.startsWith("Added clause"),
+                  ),
+                ).toBe(false);
+                return;
+              }
+              expect(result.applied.map(({ id }) => id)).toEqual([]);
+              expect(result.skipped).toEqual(
+                expect.arrayContaining(
+                  insertions.map(({ id }) => ({
+                    id,
+                    reason: "pendingDeletion",
+                  })),
                 ),
-              ).toBe(false);
-            }
-          });
+              );
+              expect(result.skipped).toHaveLength(count);
+              for (const resolution of ["accept", "reject"] as const) {
+                expect(
+                  (await resolved(reviewer, resolution, session)).some((text) =>
+                    text.startsWith("Added clause"),
+                  ),
+                ).toBe(false);
+              }
+            });
+          }
         }
       }
     }
-  }
 
   for (const deletion of ["deleteBlock", "deleteTableRow"] as const) {
     for (const type of ["insertBeforeBlock", "insertAfterBlock"] as const) {
