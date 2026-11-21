@@ -11,6 +11,8 @@
  * - Final section properties: w:body/w:sectPr
  */
 
+import { panic } from "better-result";
+
 import type {
   BlockContent,
   DocumentBackground,
@@ -209,6 +211,29 @@ export function buildSections(
 
   return sections;
 }
+
+/**
+ * Rebuild a body's sections over its blocks once a normaliser removed some,
+ * as a reopen of the saved body reads them: a final section left holding
+ * nothing goes, as it does when a body ends with a section-ending paragraph.
+ */
+export const rebuildBodySections = (documentBody: DocumentBody): void => {
+  const { sections } = documentBody;
+  if (!sections) return;
+  const rebuilt = buildSections(
+    documentBody.content,
+    documentBody.finalSectionProperties,
+  );
+  // Removing blocks never ends a section, so each kept section keeps its own
+  // record and properties; only one left empty at the end can go.
+  if (rebuilt.length > sections.length)
+    panic("Removing blocks cannot add a section");
+  for (const [index, section] of rebuilt.entries()) {
+    const kept = sections[index];
+    if (kept) kept.content = section.content;
+  }
+  sections.length = rebuilt.length;
+};
 
 /**
  * Some producers place the body-level sectPr before all content. Consumers

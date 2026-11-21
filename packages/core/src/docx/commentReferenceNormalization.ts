@@ -1,5 +1,3 @@
-import { panic } from "better-result";
-
 import {
   PARSE_WARNING_CODES,
   type PreservedMarkup,
@@ -19,7 +17,7 @@ import type {
 } from "../types/document";
 import { sliceText } from "../utils/sliceText";
 import { completeCommentReferences } from "./commentReferenceCompletion";
-import { buildSections } from "./documentParser";
+import { rebuildBodySections } from "./documentParser";
 import { InlineContentRemovals } from "./inlineContentRemovals";
 import { visitInlineContentSlots } from "./paragraphTraversal";
 import { getRunText } from "./runParser";
@@ -503,16 +501,7 @@ const removeBlocks = (
     blocks.length = 0;
     for (const block of kept) blocks.push(block);
   }
-  if (!byBlocks.has(documentBody.content) || !documentBody.sections) return;
-  const rebuilt = buildSections(
-    documentBody.content,
-    documentBody.finalSectionProperties,
-  );
-  if (rebuilt.length !== documentBody.sections.length)
-    panic("Removing comment range boundaries changed the section count");
-  for (const [index, section] of documentBody.sections.entries())
-    section.content =
-      rebuilt.at(index)?.content ?? panic("Missing rebuilt section");
+  if (byBlocks.has(documentBody.content)) rebuildBodySections(documentBody);
 };
 
 /**

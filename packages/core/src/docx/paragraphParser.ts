@@ -871,8 +871,7 @@ const LINKED_WRAPPER_ELEMENTS: ReadonlySet<string> = new Set(
 const holdsFieldCharacter = (children: readonly XmlElement[]): boolean =>
   children.some((child) => {
     const name = getLocalName(child.name);
-    if (name === "r")
-      return findWordprocessingChild(child, "fldChar") !== undefined;
+    if (name === "r") return findWordprocessingChild(child, "fldChar") !== null;
     return (
       LINKED_WRAPPER_ELEMENTS.has(name) &&
       holdsFieldCharacter(getChildElements(child))

@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test";
 
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import type { Comment, DocumentBody, HeaderFooter } from "../types/document";
+import type {
+  BlockContent,
+  Comment,
+  DocumentBody,
+  HeaderFooter,
+} from "../types/document";
 import { visitCommentMarkers } from "./commentAnchorIndex";
 import { normalizeCommentReferences } from "./commentReferenceNormalization";
 
@@ -326,6 +331,33 @@ describe("comment reference normalization", () => {
       "run",
       "commentRangeEnd",
       "commentReference",
+    ]);
+  });
+
+  test("drops a lone boundary closing the body after a section-ending paragraph", () => {
+    const comments: Comment[] = [{ id: 7, author: "Reviewer", content: [] }];
+    const ending: BlockContent = {
+      type: "paragraph",
+      sectionProperties: { pageWidth: 11906 },
+      content: [{ type: "commentReference", id: 7 }],
+    };
+    const lone: BlockContent = { type: "commentRangeEnd", id: 7 };
+    const documentBody: DocumentBody = {
+      comments,
+      content: [ending, lone],
+      finalSectionProperties: { pageWidth: 12240 },
+      sections: [
+        { properties: { pageWidth: 11906 }, content: [ending] },
+        { properties: { pageWidth: 12240 }, content: [lone] },
+      ],
+    };
+
+    const result = normalizeCommentReferences({ documentBody, comments });
+
+    expect(result.droppedUnpairedBoundaries).toBe(1);
+    expect(documentBody.content).toEqual([ending]);
+    expect(documentBody.sections).toEqual([
+      { properties: { pageWidth: 11906 }, content: [ending] },
     ]);
   });
 
