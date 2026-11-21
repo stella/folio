@@ -6,11 +6,12 @@
 import { expect, test } from "bun:test";
 
 import type { BlockContent, Document, Paragraph } from "../../model/document";
-import { applyDocumentOp } from "../apply";
+import { applyDocumentOp, applyDocumentOps } from "../apply";
 import {
   DOCUMENT_OP_TYPES,
   type InsertBlocksOp,
   OP_STORIES,
+  type ResolveRevisionOp,
   REVISION_DECISIONS,
   type RevisionAbsorption,
   type RevisionDecision,
@@ -89,13 +90,18 @@ const revisionIdsOf = (document: Document): Set<number> => {
   return ids;
 };
 
+const resolveOp = (
+  id: number,
+  decision: RevisionDecision,
+): ResolveRevisionOp => ({
+  type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+  story: OP_STORIES.MAIN,
+  revisionIds: [id],
+  decision,
+});
+
 const resolve = (document: Document, id: number, decision: RevisionDecision) =>
-  applyDocumentOp(document, {
-    type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
-    story: OP_STORIES.MAIN,
-    revisionIds: [id],
-    decision,
-  }).unwrap();
+  applyDocumentOp(document, resolveOp(id, decision)).unwrap();
 
 test("rejecting the break between two inserted paragraphs reports the words that rejoin", () => {
   const applied = inserted("body", 2);
@@ -134,6 +140,13 @@ test("rejecting the break between two inserted paragraphs reports the words that
     },
     { paraId: "00000005" },
   ]);
+
+  const batch = applyDocumentOps(applied.document, [
+    resolveOp(breakId, REVISION_DECISIONS.REJECT),
+    resolveOp(firstWords.info.id, REVISION_DECISIONS.ACCEPT),
+  ]).unwrap();
+  expect(revisionIdsOf(batch.document).has(firstWords.info.id)).toBe(false);
+  expect(batch.touched.absorbedRevisions).toBeUndefined();
 });
 
 const orderings = (ids: readonly number[]): number[][] =>

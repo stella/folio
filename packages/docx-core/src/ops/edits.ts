@@ -4,7 +4,14 @@
  */
 
 import type { Document } from "../model/document";
-import { idKey, type KeyMembership, packageParagraphIdIndex } from "./ids";
+import {
+  IDENTITY_SPACES,
+  idKey,
+  type KeyMembership,
+  packageIdentityKeyIndex,
+  packageParagraphIdIndex,
+  slotKey,
+} from "./ids";
 import type {
   DocumentOp,
   ParagraphAbsorption,
@@ -70,7 +77,7 @@ export const combineEditEffects = (
         packageParagraphIdIndex(final.package),
       )
     : [];
-  const absorbedRevisions = combinedRevisionAbsorptions(edits);
+  const absorbedRevisions = combinedRevisionAbsorptions(final, edits);
   return {
     document: final,
     inverse: edits.toReversed().flatMap(({ inverse }) => inverse),
@@ -87,8 +94,10 @@ export const combineEditEffects = (
 /**
  * Revision absorptions made in turn, as one: a change joined into one that a
  * later edit joined on is reported against the change that holds both now.
+ * A later edit can also resolve that survivor, leaving no live destination.
  */
 const combinedRevisionAbsorptions = (
+  final: Document,
   edits: readonly DocumentEditEffects[],
 ): RevisionAbsorption[] => {
   const survivorOf = new Map<number, number>();
@@ -98,10 +107,15 @@ const combinedRevisionAbsorptions = (
         if (into === absorbed) survivorOf.set(earlier, survivor);
       survivorOf.set(absorbed, survivor);
     }
-  return [...survivorOf].map(([absorbed, survivor]) => ({
-    absorbed,
-    survivor,
-  }));
+  if (survivorOf.size === 0) return [];
+  const present = packageIdentityKeyIndex(final.package);
+  const holds = (id: number) =>
+    present.has(slotKey({ space: IDENTITY_SPACES.REVISION, id }));
+  const result: RevisionAbsorption[] = [];
+  for (const [absorbed, survivor] of survivorOf)
+    if (!holds(absorbed) && holds(survivor))
+      result.push({ absorbed, survivor });
+  return result;
 };
 
 /** Edits made in turn, starting from `document`, as one edit. */
