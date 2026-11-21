@@ -15,6 +15,7 @@ import {
   setDocumentBodyComments,
   type Table,
 } from "../model/document";
+import { maxOf } from "../model/extremes";
 import {
   type PreservedCommentRangeMarker,
   preservedCommentRangeMarker,
@@ -1066,11 +1067,11 @@ const reconcilePartRelationships = (
   const comments = document.package.document.comments ?? [];
   const relationships = new Map(document.package.relationships ?? []);
   let next =
-    Math.max(
-      0,
-      ...[...relationships.keys()].map((id) =>
+    maxOf(
+      [...relationships.keys()].map((id) =>
         Number(/^rId(\d+)$/u.exec(id)?.at(1) ?? 0),
       ),
+      0,
     ) + 1;
   const extended = comments.some(
     (comment) => comment.parentId !== undefined || comment.done !== undefined,

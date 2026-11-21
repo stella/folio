@@ -20,6 +20,7 @@ import { SEQUENCE_CHILDREN } from "@stll/docx-core/schema";
 import type { FolioDocxReviewer } from "@stll/folio-core/server";
 
 import { cliError, FOLIO_CLI_ERROR_CODES, type FolioCliError } from "./errors";
+import { maxOf } from "./extremes";
 import {
   attributeNamespace,
   childElements,
@@ -508,7 +509,10 @@ const tableElement = (
   block: Extract<ContentBlock, { type: "table" }>,
 ): XmlElement => {
   const table = createWElement(builder.body, "tbl");
-  const columns = Math.max(1, ...block.rows.map((row) => row.length));
+  const columns = maxOf(
+    block.rows.map((row) => row.length),
+    1,
+  );
   const width = Math.floor(builder.textWidth / columns);
   const style = builder.styles.get("table")?.style;
   const properties = createWElement(table, "tblPr");

@@ -1,3 +1,4 @@
+import { minOf } from "../../utils/extremes";
 import { hasPageBreakBefore } from "../keep-together";
 import {
   type MeasureOutcome,
@@ -1494,7 +1495,7 @@ export function measureBlocks(
 
   const adjustedZones: FloatingZoneWithAnchor[] = [...ownAnchorZones];
   for (const group of marginByTopY.values()) {
-    const minAnchor = Math.min(...group.map((z) => z.anchorBlockIndex));
+    const minAnchor = minOf(group.map((z) => z.anchorBlockIndex));
     for (const z of group) {
       adjustedZones.push({ ...z, anchorBlockIndex: minAnchor });
     }
