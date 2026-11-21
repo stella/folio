@@ -6125,13 +6125,22 @@ export class CanonicalPublicOperations {
         after === null &&
         !gainsFollower &&
         previous !== undefined &&
-        deletedRun !== "none";
+        !noDeletedRunBefore(deletedRun);
+      let from = paragraph.start;
+      if (retiresRun)
+        from =
+          deletedRun.type === "bounded" ? deletedRun.claimFrom : previous.start;
+      const runCarrier =
+        retiresRun &&
+        (deletedRun.type === "kept" || deletedRun.type === "runStart")
+          ? deletedRun.type
+          : undefined;
       return tracking({
         intents,
         normalizations: [],
-        from: retiresRun ? previous.start : paragraph.start,
+        from,
         to: end,
-        ...(retiresRun ? { retiresRunBreak: deletedRun } : {}),
+        ...(runCarrier === undefined ? {} : { retiresRunBreak: runCarrier }),
         ...(after === null && !gainsFollower
           ? {}
           : { removesParagraphBeforeBlock: true }),
