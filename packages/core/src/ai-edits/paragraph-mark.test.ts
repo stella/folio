@@ -16,11 +16,15 @@ import { FolioDocxReviewer } from "./headless";
 
 const STAMP = { date: "2024-03-01T00:00:00.000Z", idSeed: 500 };
 
+const SESSIONS = ["legacy", "canonical"] as const;
+type Session = (typeof SESSIONS)[number];
+
 const textsOf = async (
   buffer: ArrayBuffer,
   view: "original" | "final",
+  session: Session,
 ): Promise<string[]> => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
+  const reviewer = await FolioDocxReviewer.fromBuffer(buffer, { session });
   return (reviewer.readReviewedStory({ view })?.snapshot.blocks ?? []).map(
     ({ text }) => text,
   );
@@ -34,6 +38,7 @@ type RunOptions = {
   blockIndex: number;
   /** Put the paragraphs in one table cell, with a body paragraph after it. */
   inTableCell?: boolean;
+  session: Session;
 };
 
 /** Apply one operation to a generated document and hand back its two views. */
@@ -43,12 +48,13 @@ const run = async ({
   mode,
   blockIndex,
   inTableCell,
+  session,
 }: RunOptions) => {
   const reviewer = await FolioDocxReviewer.fromBuffer(
     await buildParagraphsDocx(paragraphs, {
       ...(inTableCell === true && { inTableCell }),
     }),
-    { author: "compare" },
+    { author: "compare", session },
   );
   const snapshot = reviewer.snapshot();
   const blockId = snapshot.blocks[blockIndex]?.id ?? "";
@@ -65,237 +71,253 @@ const run = async ({
   return {
     applied,
     skipped,
-    original: await textsOf(buffer, "original"),
-    final: await textsOf(buffer, "final"),
+    original: await textsOf(buffer, "original", session),
+    final: await textsOf(buffer, "final", session),
   };
 };
 
-describe("splitBlock", () => {
-  test("an inserted paragraph mark: accepting keeps the break, rejecting closes it", async () => {
-    const { skipped, original, final } = await run({
-      paragraphs: ["The buyer shall pay the seller.", "Delivery follows."],
-      operation: {
-        id: "split",
-        type: "splitBlock",
-        blockId: "",
-        offset: 15,
-        separator: " ",
-      },
-      blockIndex: 0,
-    });
-
-    expect(skipped).toEqual([]);
-    expect(original).toEqual([
-      "The buyer shall pay the seller.",
-      "Delivery follows.",
-    ]);
-    expect(final).toEqual([
-      "The buyer shall",
-      "pay the seller.",
-      "Delivery follows.",
-    ]);
-  });
-
-  test("without a separator the break keeps every character", async () => {
-    const { skipped, original, final } = await run({
-      paragraphs: ["The buyer shall pay the seller."],
-      operation: { id: "split", type: "splitBlock", blockId: "", offset: 16 },
-      blockIndex: 0,
-    });
-
-    expect(skipped).toEqual([]);
-    expect(original).toEqual(["The buyer shall pay the seller."]);
-    expect(final).toEqual(["The buyer shall ", "pay the seller."]);
-  });
-
-  test("direct mode splits without a revision", async () => {
-    const { skipped, original, final } = await run({
-      paragraphs: ["The buyer shall pay the seller."],
-      operation: {
-        id: "split",
-        type: "splitBlock",
-        blockId: "",
-        offset: 15,
-        separator: " ",
-      },
-      mode: "direct",
-      blockIndex: 0,
-    });
-
-    expect(skipped).toEqual([]);
-    expect(original).toEqual(["The buyer shall", "pay the seller."]);
-    expect(final).toEqual(["The buyer shall", "pay the seller."]);
-  });
-
-  test("a direct split of a paragraph whose mark is pending deletion keeps its new break", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(
-      await buildParagraphsDocx([
-        "The buyer shall pay the seller.",
-        "Delivery follows.",
-      ]),
-      { author: "compare" },
-    );
-    const blockId = reviewer.snapshot().blocks[0]?.id ?? "";
-    const merge = reviewer.applyOperations(
-      [{ id: "merge", type: "mergeBlockWithNext", blockId }],
-      {
-        undefinedReferences: "refuse",
-        mode: "tracked-changes",
-        snapshot: reviewer.snapshot(),
-        revisionStamp: STAMP,
-      },
-    );
-    expect(merge.skipped).toEqual([]);
-    const split = reviewer.applyOperations(
-      [
-        {
+describe.each(SESSIONS)("%s session", (session) => {
+  describe("splitBlock", () => {
+    test("an inserted paragraph mark: accepting keeps the break, rejecting closes it", async () => {
+      const { skipped, original, final } = await run({
+        session,
+        paragraphs: ["The buyer shall pay the seller.", "Delivery follows."],
+        operation: {
           id: "split",
           type: "splitBlock",
-          blockId,
+          blockId: "",
           offset: 15,
           separator: " ",
         },
-      ],
-      {
-        undefinedReferences: "refuse",
-        mode: "direct",
-        snapshot: reviewer.snapshot(),
-        revisionStamp: STAMP,
-      },
-    );
-    expect(split.skipped).toEqual([]);
-    const buffer = await reviewer.toBuffer();
-
-    // Accepting joins only the paragraph whose mark was pending deletion.
-    const final = await textsOf(buffer, "final");
-    expect(final).toHaveLength(2);
-    expect(final[0]).toBe("The buyer shall");
-    expect((await textsOf(buffer, "original")).slice(0, 2)).toEqual([
-      "The buyer shall",
-      "pay the seller.",
-    ]);
-  });
-
-  test("refuses a separator that is not there any more", async () => {
-    const { skipped } = await run({
-      paragraphs: ["The buyer shall pay the seller."],
-      operation: {
-        id: "split",
-        type: "splitBlock",
-        blockId: "",
-        offset: 4,
-        separator: " ",
-      },
-      blockIndex: 0,
-    });
-
-    expect(skipped).toEqual([{ id: "split", reason: "staleRange" }]);
-  });
-
-  test("refuses a split at either end, which is an insertion rather than a break", async () => {
-    for (const offset of [0, 31]) {
-      const { skipped } = await run({
-        paragraphs: ["The buyer shall pay the seller."],
-        operation: { id: "split", type: "splitBlock", blockId: "", offset },
         blockIndex: 0,
       });
-      expect(skipped).toEqual([{ id: "split", reason: "staleRange" }]);
-    }
-  });
-});
 
-describe("mergeBlockWithNext", () => {
-  test("a deleted paragraph mark: accepting closes the break, rejecting keeps it", async () => {
-    const { skipped, original, final } = await run({
-      paragraphs: ["The buyer shall", "pay the seller."],
-      operation: {
-        id: "merge",
-        type: "mergeBlockWithNext",
-        blockId: "",
-        separator: " ",
-      },
-      blockIndex: 0,
+      expect(skipped).toEqual([]);
+      expect(original).toEqual([
+        "The buyer shall pay the seller.",
+        "Delivery follows.",
+      ]);
+      expect(final).toEqual([
+        "The buyer shall",
+        "pay the seller.",
+        "Delivery follows.",
+      ]);
     });
 
-    expect(skipped).toEqual([]);
-    expect(original).toEqual(["The buyer shall", "pay the seller."]);
-    expect(final).toEqual(["The buyer shall pay the seller."]);
-  });
+    test("without a separator the break keeps every character", async () => {
+      const { skipped, original, final } = await run({
+        session,
+        paragraphs: ["The buyer shall pay the seller."],
+        operation: { id: "split", type: "splitBlock", blockId: "", offset: 16 },
+        blockIndex: 0,
+      });
 
-  test("direct mode joins without a revision", async () => {
-    const { skipped, final } = await run({
-      paragraphs: ["The buyer shall", "pay the seller."],
-      operation: {
-        id: "merge",
-        type: "mergeBlockWithNext",
-        blockId: "",
-        separator: " ",
-      },
-      mode: "direct",
-      blockIndex: 0,
+      expect(skipped).toEqual([]);
+      expect(original).toEqual(["The buyer shall pay the seller."]);
+      expect(final).toEqual(["The buyer shall ", "pay the seller."]);
     });
 
-    expect(skipped).toEqual([]);
-    expect(final).toEqual(["The buyer shall pay the seller."]);
-  });
+    test("direct mode splits without a revision", async () => {
+      const { skipped, original, final } = await run({
+        session,
+        paragraphs: ["The buyer shall pay the seller."],
+        operation: {
+          id: "split",
+          type: "splitBlock",
+          blockId: "",
+          offset: 15,
+          separator: " ",
+        },
+        mode: "direct",
+        blockIndex: 0,
+      });
 
-  test("refuses the last paragraph of the story, which has nothing to join with", async () => {
-    const { skipped } = await run({
-      paragraphs: ["The buyer shall", "pay the seller."],
-      operation: {
-        id: "merge",
-        type: "mergeBlockWithNext",
-        blockId: "",
-        separator: " ",
-      },
-      blockIndex: 1,
+      expect(skipped).toEqual([]);
+      expect(original).toEqual(["The buyer shall", "pay the seller."]);
+      expect(final).toEqual(["The buyer shall", "pay the seller."]);
     });
 
-    expect(skipped).toEqual([{ id: "merge", reason: "unsupportedBlock" }]);
-  });
+    test("a direct split of a paragraph whose mark is pending deletion keeps its new break", async () => {
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await buildParagraphsDocx([
+          "The buyer shall pay the seller.",
+          "Delivery follows.",
+        ]),
+        { author: "compare", session },
+      );
+      const blockId = reviewer.snapshot().blocks[0]?.id ?? "";
+      const merge = reviewer.applyOperations(
+        [{ id: "merge", type: "mergeBlockWithNext", blockId }],
+        {
+          undefinedReferences: "refuse",
+          mode: "tracked-changes",
+          snapshot: reviewer.snapshot(),
+          revisionStamp: STAMP,
+        },
+      );
+      expect(merge.skipped).toEqual([]);
+      const split = reviewer.applyOperations(
+        [
+          {
+            id: "split",
+            type: "splitBlock",
+            blockId,
+            offset: 15,
+            separator: " ",
+          },
+        ],
+        {
+          undefinedReferences: "refuse",
+          mode: "direct",
+          snapshot: reviewer.snapshot(),
+          revisionStamp: STAMP,
+        },
+      );
+      expect(split.skipped).toEqual([]);
+      const buffer = await reviewer.toBuffer();
 
-  test("refuses the last paragraph of a table cell, which has a sibling but not one it can join", async () => {
-    // A paragraph mark does not span a cell boundary. The paragraph after
-    // this one is the body paragraph following the table, so a naive "is
-    // there a next block" check would say yes and accepting the revision
-    // would then have to do something no OOXML consumer can express.
-    const { skipped } = await run({
-      paragraphs: ["The buyer shall", "pay the seller."],
-      operation: {
-        id: "merge",
-        type: "mergeBlockWithNext",
-        blockId: "",
-        separator: " ",
-      },
-      blockIndex: 1,
-      inTableCell: true,
+      // Accepting joins only the paragraph whose mark was pending deletion.
+      const final = await textsOf(buffer, "final", session);
+      expect(final).toHaveLength(2);
+      expect(final[0]).toBe("The buyer shall");
+      expect((await textsOf(buffer, "original", session)).slice(0, 2)).toEqual([
+        "The buyer shall",
+        "pay the seller.",
+      ]);
     });
 
-    expect(skipped).toEqual([{ id: "merge", reason: "unsupportedBlock" }]);
-  });
+    test("refuses a separator that is not there any more", async () => {
+      const { skipped } = await run({
+        session,
+        paragraphs: ["The buyer shall pay the seller."],
+        operation: {
+          id: "split",
+          type: "splitBlock",
+          blockId: "",
+          offset: 4,
+          separator: " ",
+        },
+        blockIndex: 0,
+      });
 
-  test("joins inside a table cell when there is a sibling paragraph in it", async () => {
-    const { skipped, original, final } = await run({
-      paragraphs: ["The buyer shall", "pay the seller."],
-      operation: {
-        id: "merge",
-        type: "mergeBlockWithNext",
-        blockId: "",
-        separator: " ",
-      },
-      blockIndex: 0,
-      inTableCell: true,
+      expect(skipped).toMatchObject([{ id: "split", reason: "staleRange" }]);
     });
 
-    expect(skipped).toEqual([]);
-    expect(original).toEqual([
-      "The buyer shall",
-      "pay the seller.",
-      "After the table.",
-    ]);
-    expect(final).toEqual([
-      "The buyer shall pay the seller.",
-      "After the table.",
-    ]);
+    test("refuses a split at either end, which is an insertion rather than a break", async () => {
+      for (const offset of [0, 31]) {
+        const { skipped } = await run({
+          session,
+          paragraphs: ["The buyer shall pay the seller."],
+          operation: { id: "split", type: "splitBlock", blockId: "", offset },
+          blockIndex: 0,
+        });
+        expect(skipped).toMatchObject([{ id: "split", reason: "staleRange" }]);
+      }
+    });
+  });
+
+  describe("mergeBlockWithNext", () => {
+    test("a deleted paragraph mark: accepting closes the break, rejecting keeps it", async () => {
+      const { skipped, original, final } = await run({
+        session,
+        paragraphs: ["The buyer shall", "pay the seller."],
+        operation: {
+          id: "merge",
+          type: "mergeBlockWithNext",
+          blockId: "",
+          separator: " ",
+        },
+        blockIndex: 0,
+      });
+
+      expect(skipped).toEqual([]);
+      expect(original).toEqual(["The buyer shall", "pay the seller."]);
+      expect(final).toEqual(["The buyer shall pay the seller."]);
+    });
+
+    test("direct mode joins without a revision", async () => {
+      const { skipped, final } = await run({
+        session,
+        paragraphs: ["The buyer shall", "pay the seller."],
+        operation: {
+          id: "merge",
+          type: "mergeBlockWithNext",
+          blockId: "",
+          separator: " ",
+        },
+        mode: "direct",
+        blockIndex: 0,
+      });
+
+      expect(skipped).toEqual([]);
+      expect(final).toEqual(["The buyer shall pay the seller."]);
+    });
+
+    test("refuses the last paragraph of the story, which has nothing to join with", async () => {
+      const { skipped } = await run({
+        session,
+        paragraphs: ["The buyer shall", "pay the seller."],
+        operation: {
+          id: "merge",
+          type: "mergeBlockWithNext",
+          blockId: "",
+          separator: " ",
+        },
+        blockIndex: 1,
+      });
+
+      expect(skipped).toMatchObject([
+        { id: "merge", reason: "unsupportedBlock" },
+      ]);
+    });
+
+    test("refuses the last paragraph of a table cell, which has a sibling but not one it can join", async () => {
+      // A paragraph mark does not span a cell boundary. The paragraph after
+      // this one is the body paragraph following the table, so a naive "is
+      // there a next block" check would say yes and accepting the revision
+      // would then have to do something no OOXML consumer can express.
+      const { skipped } = await run({
+        session,
+        paragraphs: ["The buyer shall", "pay the seller."],
+        operation: {
+          id: "merge",
+          type: "mergeBlockWithNext",
+          blockId: "",
+          separator: " ",
+        },
+        blockIndex: 1,
+        inTableCell: true,
+      });
+
+      expect(skipped).toMatchObject([
+        { id: "merge", reason: "unsupportedBlock" },
+      ]);
+    });
+
+    test("joins inside a table cell when there is a sibling paragraph in it", async () => {
+      const { skipped, original, final } = await run({
+        session,
+        paragraphs: ["The buyer shall", "pay the seller."],
+        operation: {
+          id: "merge",
+          type: "mergeBlockWithNext",
+          blockId: "",
+          separator: " ",
+        },
+        blockIndex: 0,
+        inTableCell: true,
+      });
+
+      expect(skipped).toEqual([]);
+      expect(original).toEqual([
+        "The buyer shall",
+        "pay the seller.",
+        "After the table.",
+      ]);
+      expect(final).toEqual([
+        "The buyer shall pay the seller.",
+        "After the table.",
+      ]);
+    });
   });
 });

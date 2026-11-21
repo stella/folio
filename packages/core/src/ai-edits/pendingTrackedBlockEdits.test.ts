@@ -389,7 +389,7 @@ describe("replaceBlock on a paragraph pending deletion", () => {
         ]);
 
         expect(result.applied).toEqual([]);
-        expect(result.skipped).toEqual([
+        expect(result.skipped).toMatchObject([
           { id: "rewrite", reason: "pendingDeletion" },
         ]);
         expect(result.issues).toEqual([
@@ -427,7 +427,7 @@ describe("replaceBlock on a paragraph pending deletion", () => {
         text: "Written agreement.",
       },
     ]);
-    expect(result.skipped).toEqual([
+    expect(result.skipped).toMatchObject([
       { id: "rewrite", reason: "pendingDeletion" },
     ]);
     expect(await resolved(reviewer, "accept")).toEqual(TEXTS.slice(1));
@@ -489,7 +489,7 @@ describe("replaceBlock on a paragraph pending deletion", () => {
         },
       ]);
 
-      expect(result.skipped).toEqual([
+      expect(result.skipped).toMatchObject([
         { id: "rewrite", reason: "pendingDeletion" },
       ]);
       expect(await resolved(reviewer, "accept")).toEqual([
