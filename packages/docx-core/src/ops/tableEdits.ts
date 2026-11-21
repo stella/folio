@@ -624,7 +624,7 @@ const restateChanges = <
     )
       return Result.err("earlierGrid");
     const next: Record<string, unknown> = { ...snapshot };
-    delete next.sourceXml;
+    Reflect.deleteProperty(next, "sourceXml");
     for (const field of rewritten) {
       const value: unknown =
         after === undefined ? undefined : Reflect.get(after, field);
@@ -860,8 +860,7 @@ const columnReviews = ({
       0,
       ...Array.from({ length: op.count ?? 1 }, () => width),
     );
-  }
-  else if (!columns.inserted.has(op.column)) columnWidths.splice(earlier, 1);
+  } else if (!columns.inserted.has(op.column)) columnWidths.splice(earlier, 1);
   return Result.ok({ ...gridChange, columnWidths });
 };
 
