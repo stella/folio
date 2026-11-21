@@ -300,16 +300,20 @@ describe("a block beside a paragraph that joins the next, in the canonical sessi
         });
 
   for (const source of JOIN_SOURCES)
-    test(`as a suggestion, goes beside the paragraph it names as it stands (${source})`, async () => {
+    test(`as a suggestion, goes after it where the tracked insertion does (${source})`, async () => {
       const joined = await fixture(source);
+      const tracked = await open(joined.bytes);
+      expect(
+        tracked.apply([insertion("after", joined.clause)], "tracked-changes")
+          .skipped,
+      ).toEqual([]);
       const editor = await open(joined.bytes);
       expect(
         editor.apply([insertion("after", joined.clause)], "suggested").skipped,
       ).toEqual([]);
-      const ids = editor.blocks().map(({ id }) => id);
-      expect(editor.blocks().at(ids.indexOf(joined.clause) + 1)?.text).toBe(
-        INSERTED,
-      );
+      const placed = (blocks: readonly Block[]) =>
+        blocks.map(({ text, styleId }) => ({ text, styleId }));
+      expect(placed(editor.blocks())).toEqual(placed(tracked.blocks()));
       editor.resolveAll("reject");
       expect(editor.blocks().map(({ text }) => text)).toEqual(
         await original(joined.bytes),

@@ -990,6 +990,8 @@ export type Model = {
   deletedContentIds: ReadonlySet<string>;
   /** Paragraphs of table rows pending insertion (`JoinSources`). */
   insertedRowIds: ReadonlySet<string>;
+  /** Live paragraphs whose mark accepting removes (`JoinSources`). */
+  joinSourceIds: ReadonlySet<string>;
   /**
    * The live document's numbering, for blocks the accepted package no longer
    * holds (a paragraph pending deletion): what such a block states is what a
@@ -1171,7 +1173,8 @@ const modelRow = (text: string, fields: Fields = {}, pre?: Row): ModelRow => {
  * paragraph with only deleted words goes whole. `assumed`: every one of them
  * (for hand-built rows with no package to read). `live`: the suggested model,
  * which reads the live rows themselves, so no block is missing from them and
- * none joins another; `goWhole` are the blank ones accepting removes whole.
+ * none joins another; `markDeletedIds` are the paragraphs whose mark is a
+ * pending deletion and `goWhole` the blank ones accepting removes whole.
  */
 export type JoinSources =
   | {
@@ -1190,10 +1193,30 @@ export type JoinSources =
        */
       insertedRowIds?: ReadonlySet<string>;
     }
-  | { type: "live"; goWhole: ReadonlySet<string> }
+  | {
+      type: "live";
+      markDeletedIds: ReadonlySet<string>;
+      goWhole: ReadonlySet<string>;
+    }
   | { type: "assumed" };
 
 const ASSUMED_JOIN_SOURCES: JoinSources = { type: "assumed" };
+
+/** The live paragraphs whose mark accepting removes. */
+const joinSourceIdsOf = (sources: JoinSources): ReadonlySet<string> => {
+  switch (sources.type) {
+    case "marked":
+      return sources.ids;
+    case "live":
+      return sources.markDeletedIds;
+    case "assumed":
+      return new Set();
+    default: {
+      const unhandled: never = sources;
+      throw new Error(`Unhandled join sources ${JSON.stringify(unhandled)}`);
+    }
+  }
+};
 
 const joinsOnAccept = (sources: JoinSources, id: string): boolean => {
   switch (sources.type) {
@@ -1318,6 +1341,7 @@ export const modelOf = (
       joinSources.type === "marked"
         ? (joinSources.insertedRowIds ?? new Set())
         : new Set(),
+    joinSourceIds: joinSourceIdsOf(joinSources),
     removedNoteStories: new Set(),
     uncertainNoteStories: new Set(),
     noteStoryByBlockId: new Map(),
@@ -2556,8 +2580,9 @@ const insertionAnchor = (
   // A paragraph put after one that keeps no words once accepted, whose break
   // a pending join removes, follows the paragraph the join leaves, with that
   // one's properties, as the same edits applied directly put it (the
-  // engine's `insertionAfterPendingBreak`); a suggested one goes right after
-  // the paragraph it names, as it stands. A table follows the paragraph a
+  // engine's `insertionAfterPendingBreak`); a suggested one, read against
+  // live rows that hold no join, goes right after the paragraph it names
+  // (`insertBlock` leaves one beside a pending join unmodelled). A table follows the paragraph a
   // join from an empty paragraph leaves.
   if (position === "after") {
     let joined = pastWordlessJoin(model, row);
@@ -2641,10 +2666,44 @@ const textBoxHolder = (model: Model, named: ModelRow): ModelRow | undefined =>
     ? named
     : undefined;
 
+/**
+ * Whether a suggestion put before `named` lands before a pending join rather
+ * than beside it: `named` or the paragraph a reader lists before it, past
+ * blank ones, has its mark pending deletion. It lands where the tracked
+ * insertion does, before the join, with the joined paragraph's properties,
+ * which the live rows a suggestion is read against do not say.
+ */
+const suggestedBeforePendingJoin = (model: Model, named: ModelRow): boolean => {
+  if (model.mode !== "suggested" || named.pre === undefined) return false;
+  if (model.joinSourceIds.has(named.pre.id)) return true;
+  const previous = model.rows
+    .slice(0, model.rows.indexOf(named))
+    .findLast((row) => row.text.length > 0);
+  return (
+    previous?.pre !== undefined && model.joinSourceIds.has(previous.pre.id)
+  );
+};
+
 const insertBlock =
   (position: "before" | "after"): Expect =>
   (model, operation) => {
     const named = target(model, operation["blockId"], { adjacent: true });
+    if (position === "before" && suggestedBeforePendingJoin(model, named))
+      throw new Unmodelled(
+        `a suggestion before block ${String(operation["blockId"])} lands before the pending join it is part of`,
+      );
+    // Put after a paragraph whose mark is pending deletion, a suggestion
+    // lands where the tracked insertion does (`insertionAfterPendingBreak`),
+    // which the live rows a suggestion is read against do not say.
+    if (
+      position === "after" &&
+      model.mode === "suggested" &&
+      named.pre !== undefined &&
+      model.joinSourceIds.has(named.pre.id)
+    )
+      throw new Unmodelled(
+        `a suggestion after block ${String(operation["blockId"])} lands where its pending join puts it`,
+      );
     const anchor = insertionAnchor(model, named, position, "paragraph");
     // Put after the paragraph a join leaves, it copies that paragraph.
     const copied =
@@ -4415,8 +4474,11 @@ export const capture = async (
       rows,
       resolvedStory: "present",
       liveRows: rows,
+      // The marks pending deletion still say where a block put before a
+      // paragraph lands.
       joinSources: {
         type: "live",
+        markDeletedIds: markDeletedIds(reviewer),
         goWhole: blanksGoingWhole(rows, markDeletedIds(reviewer)),
       },
       numberingSource: {

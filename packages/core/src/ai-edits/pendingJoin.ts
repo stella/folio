@@ -106,7 +106,7 @@ const keepsWords = ({
  * it keeps words, or it is empty. One whose words are all pending deletion
  * goes whole instead.
  */
-export const joinsIn = (options: PendingJoinBoundsOptions): boolean =>
+const joinsIn = (options: PendingJoinBoundsOptions): boolean =>
   options.doc.nodeAt(options.paragraphPos)?.content.size === 0 ||
   keepsWords(options);
 
