@@ -666,6 +666,9 @@ export const editorParagraphGroups: (document: Document_2, story: OpStory) => {
 }[];
 
 // @public
+export const editorParagraphGroupsThroughTextBoxes: (document: Document_2, story: OpStory) => ReturnType<typeof editorParagraphGroups>;
+
+// @public
 export const editorPositionAtPhysicalPosition: (document: Document_2, at: TextPosition) => TextPosition;
 
 // @public

@@ -107,6 +107,7 @@ export {
   paragraphVisibleText,
   physicalOffsetAtVisibleOffset,
   editorParagraphGroups,
+  editorParagraphGroupsThroughTextBoxes,
   editorPositionAtPhysicalPosition,
   physicalPositionAtEditorOffset,
   type EditorIntent,

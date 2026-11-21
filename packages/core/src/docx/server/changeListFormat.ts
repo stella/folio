@@ -16,7 +16,7 @@ import {
   type DocumentOpRefusalReason,
   documentStories,
   type EditorIntentMode,
-  editorParagraphGroups,
+  editorParagraphGroupsThroughTextBoxes,
   findStoryBody,
   idKey,
   OP_STORIES,
@@ -165,10 +165,14 @@ export const changeListFormat = (
       "Every selected paragraph must belong to the source list in the specified story.",
     );
   }
-  // A paragraph whose mark is pending deletion joins the next one: the mark
+  // A paragraph whose mark is pending deletion joins the next one, a box's
+  // paragraph the next one in its box, as the compiler groups them: the mark
   // that survives owns the joined paragraph's list properties, so this
   // paragraph's list format cannot change separately.
-  for (const { paragraphs } of editorParagraphGroups(document, story)) {
+  for (const { paragraphs } of editorParagraphGroupsThroughTextBoxes(
+    document,
+    story,
+  )) {
     for (const { paraId } of paragraphs.slice(0, -1)) {
       if (paraId === undefined || !levels.has(idKey(paraId))) continue;
       return refuse(
