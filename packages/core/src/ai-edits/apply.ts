@@ -10743,6 +10743,7 @@ const resolveOperationTarget = ({
         paragraphPos: placed.at,
         noteReferences,
         insertedBlock: "table",
+        joinBeforeTable: "stopsAtDeletedParagraph",
       })
     )
       return { type: "skip", ...PENDING_JOIN_INSERTION_REFUSAL };
@@ -11013,6 +11014,7 @@ const resolveOperationTarget = ({
         paragraphPos: placed.at,
         noteReferences,
         insertedBlock: "table",
+        joinBeforeTable: "stopsAtDeletedParagraph",
       })
     )
       return { type: "skip", ...PENDING_JOIN_INSERTION_REFUSAL };
