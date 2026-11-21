@@ -241,8 +241,9 @@ describe("an unbalanced inline range marker never refuses the document", () => {
             });
             return;
           }
-          // Every unmatched half is gone, deterministically: a comment range's
-          // half is rewritten as a point reference, a move range's is dropped.
+          // Every unmatched half is gone, deterministically: a comment with no
+          // reference takes its first unmatched half as its point reference and
+          // drops the others, a move range's half is dropped.
           expect({ kind, host, balance, starts, ends }).toEqual({
             kind,
             host,
@@ -253,7 +254,7 @@ describe("an unbalanced inline range marker never refuses the document", () => {
           if (kind === "commentRange") {
             expect(
               occurrences(saved, `<w:commentReference w:id="${id}"/>`),
-            ).toBe(halves.length);
+            ).toBe(1);
           }
         },
       ),
