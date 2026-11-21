@@ -37,99 +37,137 @@ const docx = async (body: string): Promise<ArrayBuffer> => {
 const texts = (reviewer: FolioDocxReviewer) =>
   reviewer.getContent().map(({ text }) => text);
 
+const SESSIONS = ["legacy", "canonical"] as const;
+
 const CASES = [
   {
     name: "a table that ends a content control",
     body: `${control(TABLE)}${paragraph("10000002", "Tail")}`,
     anchor: "10000001",
+    accepted: ["Cell", "Added", "Tail"],
+    sessions: SESSIONS,
   },
   {
     name: "a paragraph with a text box drawn in it, ending the body",
     body: `<w:p w14:paraId="10000003">${TEXT_BOX}<w:r><w:t>Host</w:t></w:r></w:p>`,
     anchor: "10000003",
+    accepted: ["Host", "Boxed", "Added"],
+    sessions: SESSIONS,
   },
+  // The canonical session keeps every story ending with a paragraph, so it
+  // refuses a tracked paragraph after a table that ends the body.
   {
     name: "a table that ends the body",
     body: `${paragraph("10000002", "Head")}${TABLE}`,
     anchor: "10000001",
+    accepted: ["Head", "Cell", "Added"],
+    sessions: ["legacy"],
   },
   {
     name: "a table that ends the body but for a text box drawn before it",
     body: `<w:p w14:paraId="10000003">${TEXT_BOX}<w:r><w:t>Host</w:t></w:r></w:p>${TABLE}`,
     anchor: "10000001",
+    accepted: ["Host", "Boxed", "Cell", "Added"],
+    sessions: ["legacy"],
   },
 ] as const;
 
-describe("rejecting a paragraph added after", () => {
-  for (const { name, body, anchor } of CASES) {
-    const edit = async () => {
-      const bytes = await docx(body);
-      const source = texts(await FolioDocxReviewer.fromBuffer(bytes.slice(0)));
-      const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice(0));
-      const result = reviewer.applyDocumentOperations(
-        {
-          version: 1,
-          mode: "tracked-changes",
-          operations: [
-            {
-              id: "add",
-              type: "insertAfterBlock",
-              blockId: anchor,
-              text: "Added",
-            },
-          ],
-        },
-        { undefinedReferences: "refuse" },
-      );
-      expect(result.applied).toHaveLength(1);
-      expect(texts(reviewer)).toContain("Added");
-      return { reviewer, source };
-    };
+for (const { name, body, anchor, accepted, sessions } of CASES)
+  describe.each(sessions)(
+    `on the %s session, a paragraph added after ${name}`,
+    (session) => {
+      const open = (bytes: ArrayBuffer) =>
+        FolioDocxReviewer.fromBuffer(bytes, { session });
+      const edit = async () => {
+        const bytes = await docx(body);
+        const source = texts(await open(bytes.slice(0)));
+        const reviewer = await open(bytes.slice(0));
+        const result = reviewer.applyDocumentOperations(
+          {
+            version: 1,
+            mode: "tracked-changes",
+            operations: [
+              {
+                id: "add",
+                type: "insertAfterBlock",
+                blockId: anchor,
+                text: "Added",
+              },
+            ],
+          },
+          { undefinedReferences: "refuse" },
+        );
+        expect(result.applied).toHaveLength(1);
+        expect(texts(reviewer)).toContain("Added");
+        return { reviewer, source, undoHandle: result.undoHandle };
+      };
 
-    test(`${name}: all at once`, async () => {
-      const { reviewer, source } = await edit();
-      reviewer.rejectAll();
-      expect(texts(reviewer)).toEqual(source);
-      const reopened = await FolioDocxReviewer.fromBuffer(
-        await reviewer.toBuffer(),
-      );
-      expect(texts(reopened)).toEqual(source);
-    });
+      test("rejecting all at once takes it out", async () => {
+        const { reviewer, source } = await edit();
+        reviewer.rejectAll();
+        expect(texts(reviewer)).toEqual(source);
+        const reopened = await open(await reviewer.toBuffer());
+        expect(texts(reopened)).toEqual(source);
+      });
 
-    test(`${name}: change by change`, async () => {
-      const { reviewer, source } = await edit();
-      // The words first: with them still there, a break with nothing to join
-      // to keeps its place.
-      const changes = reviewer.getChanges();
-      for (const change of changes.filter(({ type }) => type === "insertion")) {
-        reviewer.rejectChange(change);
-      }
-      for (const change of reviewer.getChanges()) {
-        reviewer.rejectChange(change);
-      }
-      expect(texts(reviewer)).toEqual(source);
-    });
+      test("rejecting change by change takes it out", async () => {
+        const { reviewer, source } = await edit();
+        // The words first: with them still there, a break with nothing to join
+        // to keeps its place.
+        const changes = reviewer.getChanges();
+        for (const change of changes.filter(
+          ({ type }) => type === "insertion",
+        )) {
+          reviewer.rejectChange(change);
+        }
+        for (const change of reviewer.getChanges()) {
+          reviewer.rejectChange(change);
+        }
+        expect(texts(reviewer)).toEqual(source);
+      });
 
-    test(`${name}: after a reopen`, async () => {
-      const { reviewer, source } = await edit();
-      const reopened = await FolioDocxReviewer.fromBuffer(
-        await reviewer.toBuffer(),
-      );
-      reopened.rejectAll();
-      expect(texts(reopened)).toEqual(source);
-    });
+      test("rejecting after a reopen takes it out", async () => {
+        const { reviewer, source } = await edit();
+        const reopened = await open(await reviewer.toBuffer());
+        reopened.rejectAll();
+        expect(texts(reopened)).toEqual(source);
+      });
 
-    test(`${name}: accepting keeps it`, async () => {
-      const { reviewer, source } = await edit();
-      reviewer.acceptAll();
-      expect(texts(reviewer)).toContain("Added");
-      for (const text of source) expect(texts(reviewer)).toContain(text);
-    });
-  }
-});
+      test("accepting keeps it as an ordinary paragraph", async () => {
+        const { reviewer } = await edit();
+        const saved = await reviewer.toBuffer();
+        reviewer.acceptAll();
+        expect(texts(reviewer)).toEqual([...accepted]);
+        const reopened = await open(await reviewer.toBuffer());
+        expect(texts(reopened)).toEqual([...accepted]);
+        expect(reopened.getChanges()).toEqual([]);
+        const acceptedAfterReopen = await open(saved);
+        acceptedAfterReopen.acceptAll();
+        expect(texts(acceptedAfterReopen)).toEqual([...accepted]);
+        expect(acceptedAfterReopen.getChanges()).toEqual([]);
+      });
+
+      test("undoing the edit restores the document", async () => {
+        const { reviewer, source, undoHandle } = await edit();
+        if (undoHandle === null) throw new Error("The edit has no undo handle");
+        expect(reviewer.undoDocumentOperations(undoHandle).status).toBe(
+          "undone",
+        );
+        expect(texts(reviewer)).toEqual(source);
+        expect(reviewer.getChanges()).toEqual([]);
+        const reopened = await open(await reviewer.toBuffer());
+        expect(texts(reopened)).toEqual(source);
+      });
+    },
+  );
+
+// The cases below hold the legacy reviewer to its outcomes; the canonical
+// session refuses a tracked paragraph after a table that ends the body.
+const openLegacy = (bytes: ArrayBuffer) =>
+  FolioDocxReviewer.fromBuffer(bytes, { session: "legacy" });
 
 test("an unrelated rejection leaves an added final paragraph alone", async () => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(
+  const reviewer = await openLegacy(
     await docx(`${paragraph("10000002", "Head")}${TABLE}`),
   );
   reviewer.applyDocumentOperations(
@@ -163,7 +201,7 @@ test("an unrelated rejection leaves an added final paragraph alone", async () =>
 });
 
 test("accepting an added final paragraph keeps it as an ordinary one", async () => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(
+  const reviewer = await openLegacy(
     await docx(`${paragraph("10000002", "Head")}${TABLE}`),
   );
   reviewer.applyDocumentOperations(
@@ -182,9 +220,7 @@ test("accepting an added final paragraph keeps it as an ordinary one", async () 
     { undefinedReferences: "refuse" },
   );
   reviewer.acceptAll();
-  const reopened = await FolioDocxReviewer.fromBuffer(
-    await reviewer.toBuffer(),
-  );
+  const reopened = await openLegacy(await reviewer.toBuffer());
   expect(texts(reopened)).toEqual(["Head", "Cell", "Added"]);
   expect(reopened.getChanges()).toEqual([]);
 });
@@ -192,15 +228,13 @@ test("accepting an added final paragraph keeps it as an ordinary one", async () 
 describe("a tracked removed break on a paragraph with a text box drawn in it", () => {
   const BODY = `<w:p w14:paraId="10000003"><w:pPr><w:rPr><w:del w:id="9" w:author="A" w:date="2026-01-01T00:00:00Z"/></w:rPr></w:pPr>${TEXT_BOX}<w:r><w:t>Host</w:t></w:r></w:p>${paragraph("10000004", "Next")}${paragraph("10000006", "Tail")}`;
 
-  const open = async () => FolioDocxReviewer.fromBuffer(await docx(BODY));
+  const open = async () => openLegacy(await docx(BODY));
 
   test("accepting joins the two, and the box follows", async () => {
     const reviewer = await open();
     reviewer.acceptAll();
     expect(texts(reviewer)).toEqual(["HostNext", "Boxed", "Tail"]);
-    const reopened = await FolioDocxReviewer.fromBuffer(
-      await reviewer.toBuffer(),
-    );
+    const reopened = await openLegacy(await reviewer.toBuffer());
     expect(texts(reopened)).toEqual(["HostNext", "Boxed", "Tail"]);
   });
 

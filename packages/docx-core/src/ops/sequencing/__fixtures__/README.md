@@ -33,6 +33,9 @@ by this operation-schema cutover.
 Tracked table-side insertion requires a surviving paragraph for its review
 inverse and a proved following boundary: a paragraph, a section-free table
 receiver with a paragraph terminator, or a section-free pending-review table.
+After a table that ends a block content control's content short of its
+container's end, the paragraph stays inside the control: rejecting removes it
+and leaves the control ending in its table.
 Section, ambiguous-structure, terminal, opaque and standing-range boundaries
 that cannot prove reversible review refuse before publication. Direct insertion
 and the existing paragraph-relative variants retain their behavior.

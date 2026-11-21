@@ -4457,11 +4457,21 @@ const joinOps = (
   let follows: "table" | "block" | "nothing" = "nothing";
   if (next?.type === "table") follows = "table";
   else if (followsBlock) follows = "block";
+  // Ending a block content control's content short of its container's end,
+  // the paragraph has no mark to join: what stays decides, as before a block.
+  const endsControl =
+    follows === "nothing" &&
+    !containerFinal &&
+    location.list.at(-1)?.kind === "blockSdt";
   // Before a block, what stays decides; resolving the marks one at a time
   // from the first joins the paragraphs before this one, whose marks this
   // resolution resolves too, into it first, so their content counts.
   const joining: Paragraph[] = [];
-  for (let index = location.index - 1; follows === "block"; index -= 1) {
+  for (
+    let index = location.index - 1;
+    follows === "block" || endsControl;
+    index -= 1
+  ) {
     const before = blocks[index];
     if (
       before?.type !== "paragraph" ||
@@ -4486,7 +4496,13 @@ const joinOps = (
         ? blocks.at(-1)?.type === "paragraph"
         : // Removing the final paragraph leaves the block before it last: in
           // a cell, that paragraph's mark becomes the cell's terminator.
-          containerFinal && blocks.at(location.index - 1)?.type === "paragraph",
+          (containerFinal &&
+            blocks.at(location.index - 1)?.type === "paragraph") ||
+          // After a table, with the paragraphs joining it: removing them
+          // leaves the control ending in its table and the container's end
+          // where it was.
+          (endsControl &&
+            blocks.at(location.index - 1 - joining.length)?.type === "table"),
     followingTableCanReceiveRunIn: tableTarget !== undefined,
     holdsContentOnceAccepted: paragraphHoldsContentOnceAccepted(chained),
     followingBlockCanReceiveRunIn: blockTarget !== undefined,
@@ -4623,6 +4639,22 @@ const joinOps = (
       blocks,
       index: location.index,
     });
+    // No other paragraph names the list, as in a content control holding a
+    // table and this paragraph: an empty replacement removes it, and its
+    // inverse inserts it back beside the block before it.
+    if (
+      anchor === undefined &&
+      removal.type === "removed" &&
+      removal.effects.length === 0
+    )
+      return paragraphMarkPlan([
+        {
+          type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+          story,
+          expected: [paragraph],
+          blocks: [],
+        },
+      ]);
     if (anchor !== undefined && removal.type === "removed") {
       return paragraphMarkPlan(
         [
