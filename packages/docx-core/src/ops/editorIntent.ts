@@ -11,6 +11,7 @@ import {
   type NumberingInstance,
   type Paragraph,
   type ParagraphContent,
+  type RunContent,
   type TabContent,
   type Table,
   type TableRow,
@@ -228,6 +229,17 @@ export type TableBlockIntentOperation =
           paragraphAfter?: never;
         }
     ));
+
+/**
+ * Typed text as run content: a tab is a tab element and a line feed a line
+ * break, each one offset wide as the character it stands for.
+ */
+const typedRunContent = (text: string): RunContent[] =>
+  text.split(/(\t|\n)/u).flatMap((part): RunContent[] => {
+    if (part === "\t") return [{ type: "tab" }];
+    if (part === "\n") return [{ type: "break" }];
+    return part === "" ? [] : [{ type: "text", text: part }];
+  });
 
 /** Positions use canonical physical offsets, including retained deleted content. */
 export type EditorIntent =
@@ -3331,7 +3343,7 @@ const compileInStory = (
               {
                 type: "run",
                 ...(runProps === undefined ? {} : { formatting: runProps }),
-                content: [{ type: "text", text }],
+                content: typedRunContent(text),
               },
             ]
       ) satisfies ParagraphContent[];
