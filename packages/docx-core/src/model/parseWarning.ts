@@ -48,6 +48,8 @@ export const PARSE_WARNING_CODES = {
   duplicateCommentReference: "duplicate-comment-reference",
   /** A comment's full range after its first, dropped: a comment holds one range. */
   droppedCommentRange: "dropped-comment-range",
+  /** A comment range no `w:commentReference` names, given one after its end. */
+  missingCommentReference: "missing-comment-reference",
   /** A `comments.xml` paragraph repeating an earlier one's `w14:paraId`, given a minted id. */
   repeatedCommentParagraphId: "repeated-comment-paragraph-id",
   /** A `w:headerReference` naming a header part the package does not carry. */

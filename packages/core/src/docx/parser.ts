@@ -77,6 +77,7 @@ import {
   DANGLING_COMMENT_REFERENCE_WARNING,
   DROPPED_COMMENT_RANGE_WARNING,
   DUPLICATE_COMMENT_REFERENCE_WARNING,
+  MISSING_COMMENT_REFERENCE_WARNING,
   normalizeCommentReferences,
   UNBALANCED_COMMENT_RANGE_WARNING,
   UNPAIRED_COMMENT_RANGE_BOUNDARY_WARNING,
@@ -797,6 +798,12 @@ export async function parseDocxWithPreviewBudget(
         code: DROPPED_COMMENT_RANGE_WARNING,
         at: `comment w:id ${String(id)}`,
         value: text,
+      });
+    }
+    if (commentReferenceNormalization.completedReferences > 0) {
+      parseContext.warn({
+        code: MISSING_COMMENT_REFERENCE_WARNING,
+        count: commentReferenceNormalization.completedReferences,
       });
     }
     const headerFooterReferenceNormalization = normalizeHeaderFooterReferences({

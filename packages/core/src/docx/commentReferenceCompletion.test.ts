@@ -1,24 +1,31 @@
 /**
  * Where a missing `w:commentReference` is filled in, and where it is not.
  *
- * `completeCommentReferences` runs from the ProseMirror conversion, so these
- * pin the boundary that placement depends on: an edit reaches it through that
- * conversion whichever surface drove the edit, markdown has no comment syntax
- * to arrive with a half-written comment through, and the save path leaves the
- * model as authored.
+ * Both engines read the repair at open: the parser adds the reference after
+ * the range end in the model and reports it. A save writes it only into a
+ * paragraph the save rewrites anyway, as with minted paragraph ids, so an
+ * unedited save stays byte-identical. Markdown has no comment syntax to arrive
+ * with a half-written comment through, and the serializer writes the model as
+ * authored.
  */
 
 import { describe, expect, test } from "bun:test";
 
+import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 import { ZipArchive } from "@stll/docx-core/zip";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { toMarkdown } from "../markdown";
 import { fromMarkdown } from "../markdown/fromMarkdown";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import type { Comment, Document, ParagraphContent } from "../types/document";
+import { openCanonicalDocx } from "./canonicalSessionInput";
+import { parseDocx } from "./parser";
 import { createDocx } from "./rezip";
 
 const COMMENT_ID = 0;
+const COMMENTED_TEXT = "Commented body text.";
+const OTHER_TEXT = "Second body paragraph.";
 
 const run = (text: string): ParagraphContent => ({
   type: "run",
@@ -44,19 +51,24 @@ const referencelessDocument = (): Document => ({
           paraId: "61000000",
           content: [
             { type: "commentRangeStart", id: COMMENT_ID },
-            run("Commented body text."),
+            run(COMMENTED_TEXT),
             { type: "commentRangeEnd", id: COMMENT_ID },
           ],
         },
         {
           type: "paragraph",
           paraId: "61000001",
-          content: [run("Second body paragraph.")],
+          content: [run(OTHER_TEXT)],
         },
       ],
     },
   },
 });
+
+const SESSIONS = [
+  "legacy",
+  "canonical",
+] as const satisfies readonly HeadlessReviewerSession[];
 
 const documentXml = async (buffer: ArrayBuffer): Promise<string> =>
   (await (await ZipArchive.read(buffer)).entry("word/document.xml")?.text()) ??
@@ -65,36 +77,96 @@ const documentXml = async (buffer: ArrayBuffer): Promise<string> =>
 const referenceCount = (xml: string): number =>
   xml.split("<w:commentReference").length - 1;
 
+/** The mark is painted where the reference sits, so it must follow the end. */
+const expectReferenceAfterEnd = (xml: string): void => {
+  expect(referenceCount(xml)).toBe(1);
+  expect(xml.indexOf("<w:commentReference")).toBeGreaterThan(
+    xml.indexOf("<w:commentRangeEnd"),
+  );
+};
+
+const replaceParagraph = async (
+  session: HeadlessReviewerSession,
+  text: string,
+): Promise<string> => {
+  const reviewer = await FolioDocxReviewer.fromBuffer(
+    await createDocx(referencelessDocument()),
+    { author: "Editor", session },
+  );
+  const target = reviewer
+    .snapshot()
+    .blocks.find((block) => block.text === text);
+  expect(target).toBeDefined();
+  const result = reviewer.applyOperations(
+    [
+      {
+        id: "edit",
+        type: "replaceInBlock",
+        blockId: target?.id ?? "",
+        find: text.slice(0, -1),
+        replace: "Superseded wording",
+      },
+    ],
+    { undefinedReferences: "refuse", mode: "direct" },
+  );
+  expect(result.applied).toHaveLength(1);
+  return documentXml(await reviewer.toBuffer());
+};
+
 describe("completing a missing comment reference", () => {
-  test("a headless edit gives the comment its mark back", async () => {
+  test("both engines add the reference at open and report it", async () => {
     const source = await createDocx(referencelessDocument());
     expect(referenceCount(await documentXml(source))).toBe(0);
 
-    const reviewer = await FolioDocxReviewer.fromBuffer(source, {
-      author: "Editor",
+    const legacy = await parseDocx(source, {
+      preloadFonts: false,
+      detectVariables: false,
     });
-    const target = reviewer.snapshot().blocks[1];
-    expect(target?.text).toBe("Second body paragraph.");
-    reviewer.applyOperations(
-      [
-        {
-          id: "edit",
-          type: "replaceInBlock",
-          blockId: target?.id ?? "",
-          find: "Second body paragraph.",
-          replace: "Superseded wording.",
-        },
-      ],
-      { undefinedReferences: "refuse", mode: "direct" },
-    );
-
-    const saved = await documentXml(await reviewer.toBuffer());
-    expect(referenceCount(saved)).toBe(1);
-    // Word paints the mark where the reference sits, so it must follow the end.
-    expect(saved.indexOf("<w:commentReference")).toBeGreaterThan(
-      saved.indexOf("<w:commentRangeEnd"),
-    );
+    const canonical = await openCanonicalDocx(source, {
+      preloadFonts: false,
+      detectVariables: false,
+    });
+    if (canonical.isErr()) throw canonical.error;
+    for (const parsed of [legacy, canonical.value.document]) {
+      expect(
+        parsed.parseWarnings?.filter(
+          ({ code }) => code === PARSE_WARNING_CODES.missingCommentReference,
+        ),
+      ).toEqual([expect.objectContaining({ count: 1 })]);
+      expect(parsed.package.document.content.at(0)).toMatchObject({
+        content: [
+          { type: "commentRangeStart", id: COMMENT_ID },
+          { type: "run" },
+          { type: "commentRangeEnd", id: COMMENT_ID },
+          { type: "commentReference", id: COMMENT_ID },
+        ],
+      });
+    }
   });
+
+  for (const session of SESSIONS) {
+    test(`${session}: an unedited save keeps the document part byte-identical`, async () => {
+      const source = await createDocx(referencelessDocument());
+      const reviewer = await FolioDocxReviewer.fromBuffer(source, { session });
+      expect(
+        reviewer.getComments().map(({ anchoredText }) => anchoredText),
+      ).toEqual([COMMENTED_TEXT]);
+      expect(await documentXml(await reviewer.toBuffer())).toBe(
+        await documentXml(source),
+      );
+    });
+
+    test(`${session}: editing the commented paragraph writes its reference`, async () => {
+      expectReferenceAfterEnd(await replaceParagraph(session, COMMENTED_TEXT));
+    });
+
+    // The commented paragraph is not rewritten, so it keeps its bytes.
+    test(`${session}: editing another paragraph leaves the commented one as authored`, async () => {
+      const saved = await replaceParagraph(session, OTHER_TEXT);
+      expect(referenceCount(saved)).toBe(0);
+      expect(saved).toContain('<w:commentRangeEnd w:id="0"/>');
+    });
+  }
 
   // The markdown reader has no comment production at all, so an import cannot
   // arrive with a range at all, let alone one missing its reference.
@@ -126,10 +198,8 @@ describe("completing a missing comment reference", () => {
     expect(JSON.stringify(imported.package)).not.toContain("commentRange");
   });
 
-  // The selective save keeps every paragraph an edit did not touch
-  // byte-for-byte, so a reference the save path minted would live in the model
-  // and never reach the package. Completion belongs to the conversion that
-  // knows where the reference goes, not to serialization.
+  // Completion belongs to the open, which reports it; the serializer writes
+  // the model it is given.
   test("the save path leaves an authored model as it found it", async () => {
     const authored = referencelessDocument();
     const saved = await documentXml(await createDocx(authored));

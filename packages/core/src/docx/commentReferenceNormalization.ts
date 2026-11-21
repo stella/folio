@@ -15,6 +15,7 @@ import type {
   ParagraphContent,
   Table,
 } from "../types/document";
+import { completeCommentReferences } from "./commentReferenceCompletion";
 import { InlineContentRemovals } from "./inlineContentRemovals";
 import { visitInlineContentSlots } from "./paragraphTraversal";
 import { getRunText } from "./runParser";
@@ -30,6 +31,8 @@ export const DUPLICATE_COMMENT_REFERENCE_WARNING: "duplicate-comment-reference" 
   PARSE_WARNING_CODES.duplicateCommentReference;
 export const DROPPED_COMMENT_RANGE_WARNING: "dropped-comment-range" =
   PARSE_WARNING_CODES.droppedCommentRange;
+export const MISSING_COMMENT_REFERENCE_WARNING: "missing-comment-reference" =
+  PARSE_WARNING_CODES.missingCommentReference;
 
 type NormalizeCommentReferencesInput = {
   documentBody: DocumentBody;
@@ -49,6 +52,8 @@ type NormalizeCommentReferencesResult = {
   droppedDuplicateReferences: number;
   /** Full ranges after a comment's first, dropped: a comment holds one range. */
   droppedRanges: DroppedCommentRange[];
+  /** References added after a kept range that no reference named. */
+  completedReferences: number;
 };
 
 /** A comment's later full range, dropped, and the text it covered. */
@@ -314,6 +319,15 @@ export const normalizeCommentReferences = ({
       placement.paragraph.content.unshift(reference);
     else placement.paragraph.content.push(reference);
   }
+  // Once every range left is one the comment keeps, a range no reference
+  // names gets its reference after the end, where a reference follows a range.
+  const completedReferences = completeCommentReferences(
+    documentBody.content,
+    ...[...(headers?.values() ?? [])].map(({ content }) => content),
+    ...[...(footers?.values() ?? [])].map(({ content }) => content),
+    ...(footnotes ?? []).map(({ content }) => content),
+    ...(endnotes ?? []).map(({ content }) => content),
+  );
 
   return {
     removedDanglingReferences,
@@ -324,6 +338,7 @@ export const normalizeCommentReferences = ({
       id,
       text: textBetween(tape, start, end),
     })),
+    completedReferences,
   };
 };
 

@@ -15,13 +15,14 @@
  * comment. This closes that gap once, for the whole story, by placing the
  * missing reference after the comment's last range end.
  *
- * The ProseMirror conversion calls it, and that conversion owns every story an
- * edit can produce: `fromProseDoc` for the body, `proseDocToBlocks` for a
- * header, footer or note. A headless edit arrives through the same conversion,
- * and markdown has no comment syntax to import one through. The save path
- * deliberately does not complete a reference of its own: it keeps the
- * paragraphs an edit did not touch byte-for-byte, so one minted there would
- * sit in the model and never reach the package.
+ * The parser calls it once at open, over every story, so both engines read
+ * the same repaired model. The ProseMirror conversion calls it too, for a
+ * model built without the parser: `fromProseDoc` for the body,
+ * `proseDocToBlocks` for a header, footer or note. Markdown has no comment
+ * syntax to import one through. The save path does not complete a reference
+ * of its own, and keeps the paragraphs an edit did not touch byte-for-byte:
+ * like a minted paragraph id, the repaired reference reaches the package only
+ * in a paragraph the save rewrites anyway.
  */
 
 import type { BlockContent, ParagraphContent } from "../types/document";
@@ -34,25 +35,31 @@ type LastRangeEnd = {
 
 /**
  * Give every comment that a `commentRangeEnd` closes but no `commentReference`
- * names a reference after its last end. Answers how many were added.
+ * names, in any of `stories`, a reference after its last end. Answers how
+ * many were added.
  */
 export const completeCommentReferences = (
-  blocks: readonly BlockContent[],
+  ...stories: readonly (readonly BlockContent[])[]
 ): number => {
   const lastRangeEnds = new Map<number, LastRangeEnd>();
   const referencedIds = new Set<number>();
 
-  visitCommentMarkers(blocks, (slot) => {
-    const { item } = slot;
-    if (item.type === "commentReference") {
-      referencedIds.add(item.id);
-      return;
-    }
-    // A reference is a run, so it follows the last end inside a paragraph.
-    if (item.type === "commentRangeEnd" && slot.level === "inline") {
-      lastRangeEnds.set(item.id, { content: slot.content, index: slot.index });
-    }
-  });
+  for (const blocks of stories) {
+    visitCommentMarkers(blocks, (slot) => {
+      const { item } = slot;
+      if (item.type === "commentReference") {
+        referencedIds.add(item.id);
+        return;
+      }
+      // A reference is a run, so it follows the last end inside a paragraph.
+      if (item.type === "commentRangeEnd" && slot.level === "inline") {
+        lastRangeEnds.set(item.id, {
+          content: slot.content,
+          index: slot.index,
+        });
+      }
+    });
+  }
 
   // Inserting shifts every later index in the same array, so the insertions
   // are applied per array from the back.

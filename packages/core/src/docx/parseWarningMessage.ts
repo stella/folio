@@ -60,6 +60,8 @@ const PARSE_WARNING_MESSAGES = {
     `Dropped ${plural(warning.count, "comment reference")} repeating one its comment already has.`,
   [PARSE_WARNING_CODES.droppedCommentRange]: (warning) =>
     `Dropped a further range${where(warning)} covering${quoted(warning.value)}; a comment keeps its first range.`,
+  [PARSE_WARNING_CODES.missingCommentReference]: (warning) =>
+    `Added ${plural(warning.count, "comment reference")} after a range that had none.`,
   [PARSE_WARNING_CODES.repeatedCommentParagraphId]: (warning) =>
     `Gave ${plural(warning.count, "comment paragraph")} repeating an earlier paragraph's w14:paraId a minted id.`,
   [PARSE_WARNING_CODES.danglingHeaderReference]: (warning) =>
