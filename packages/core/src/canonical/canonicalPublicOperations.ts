@@ -3987,6 +3987,22 @@ type DeletedRun =
   | { type: FinalBreakCarrier<unknown>["type"] }
   | { type: "bounded"; claimFrom: number };
 
+/** Whether the batch deletes none of the paragraphs right before. */
+const noDeletedRunBefore = ({ type }: DeletedRun): boolean => {
+  switch (type) {
+    case "none":
+      return true;
+    case "kept":
+    case "runStart":
+    case "bounded":
+      return false;
+    default: {
+      const unreachable: never = type;
+      return unreachable;
+    }
+  }
+};
+
 /**
  * The paragraphs right before the one starting at `paragraphStart` that the
  * batch deletes, putting nothing beside them, as `finalBreakCarrier` reads
@@ -6085,7 +6101,7 @@ export class CanonicalPublicOperations {
       operation.moveId === undefined &&
       !gainsFollower &&
       !previousGainsFollower &&
-      deletedRun === "none";
+      noDeletedRunBefore(deletedRun);
     if (
       !keepsSectionBreakBeforeBlock &&
       (next !== undefined ||
@@ -6316,7 +6332,7 @@ export class CanonicalPublicOperations {
       // paragraph before, the deletion runs after that insertion, as the
       // direct deletion's join does. A run the batch deletes before it is
       // `retiresRunBreak`'s.
-      if (previousGainsFollower && deletedRun.type === "none") {
+      if (previousGainsFollower && noDeletedRunBefore(deletedRun)) {
         const from = projection.addressAt(range.from);
         const to = projection.addressAt(end);
         if (from.isErr() || to.isErr()) return refusal("unsupportedBlock");
