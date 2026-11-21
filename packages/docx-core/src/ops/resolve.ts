@@ -72,6 +72,7 @@ import {
   keptCutFrom,
   keptCutPiece,
   pendingAtEdge,
+  settledParagraphKeptCuts,
   settleKeptCuts,
   standsInKeptCut,
   withEdgeKeptCutsWidened,
@@ -2898,8 +2899,10 @@ const resolveList = ({
         // join takes it, where an authored or accepted one blocks the join.
         // Placing it inside a piece clears the record unless a pending change
         // meets it there, as does a resolution that leaves none beside it.
+        // The cut is as deep as what this resolution leaves of it: removing
+        // the pieces it split first lowers the removal's cut alike.
         const cut = {
-          depth: Math.max(1, joins?.remove ?? 0),
+          depth: Math.max(1, cutLevelsOnceResolved(node, index)),
           keptFrom: node.info.date ?? "",
         };
         const kept = keptOf(removalContent).map((boundary) =>
@@ -6636,18 +6639,15 @@ const planSingleRecordResolution = (
   // Kept cuts are settled where the joins leave each marker, so a cut waits
   // on the same pending changes whichever order brought the pieces together.
   if ([...resolvedContents.values()].some(holdsKeptCut)) {
-    const settledCuts: DocumentOp[] = [];
-    for (const { paragraph } of storyParagraphs(storyBody(current, op.story))) {
-      const settled = settleKeptCuts(paragraph.content);
-      if (settled === paragraph.content) continue;
-      settledCuts.push({
-        type: DOCUMENT_OP_TYPES.REPLACE_INLINE,
-        story: op.story,
-        blockId: paragraph.paraId ?? "",
-        expected: paragraph.content,
-        content: asParagraphContent(settled),
-      });
-    }
+    const settledCuts = settledParagraphKeptCuts(
+      storyBody(current, op.story),
+    ).map(({ paragraph, content }) => ({
+      type: DOCUMENT_OP_TYPES.REPLACE_INLINE,
+      story: op.story,
+      blockId: paragraph.paraId ?? "",
+      expected: paragraph.content,
+      content: asParagraphContent(content),
+    }));
     if (settledCuts.length > 0) {
       const settled = applyOps(current, settledCuts);
       if (settled.isErr()) return Result.err(settled.error);
