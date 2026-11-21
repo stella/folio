@@ -33,14 +33,16 @@ const cellChanges = (reviewer: FolioDocxReviewer) =>
       blockId,
     }));
 
+const SESSIONS = ["legacy", "canonical"] as const;
+type Session = (typeof SESSIONS)[number];
+
 const build = async (
+  session: Session,
   type: (typeof TYPES)[number],
 ): Promise<FolioDocxReviewer> => {
   const reviewer = await FolioDocxReviewer.fromBuffer(
     await createDocx(fromMarkdown(MARKDOWN)),
-    {
-      author: "AI",
-    },
+    { author: "AI", session },
   );
   const blockId = reviewer
     .getContent()
@@ -60,23 +62,34 @@ const build = async (
     { undefinedReferences: "refuse" },
   );
   expect(result.skipped).toEqual([]);
-  expect(result.applied[0]?.revisionIds).toHaveLength(3);
+  // Each cell's change has an id of its own among the batch's. A column the
+  // canonical session inserts also records the grid and table properties it
+  // changes, with ids of their own.
+  const cellIds = reviewer
+    .getChanges()
+    .filter(isCellChange)
+    .map(({ id }) => id);
+  expect(new Set(cellIds).size).toBe(3);
+  expect(result.applied[0]?.revisionIds).toEqual(
+    expect.arrayContaining(cellIds),
+  );
   return reviewer;
 };
 
 const reopen = async (
+  session: Session,
   reviewer: FolioDocxReviewer,
 ): Promise<FolioDocxReviewer> =>
-  FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+  FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), { session });
 
-describe("tracked column changes", () => {
+describe.each(SESSIONS)("tracked column changes (%s)", (session) => {
   test.each(TYPES)(
     "%s lists one change per cell, the same after a save",
     async (type) => {
-      const reviewer = await build(type);
+      const reviewer = await build(session, type);
       const before = cellChanges(reviewer);
       expect(before).toHaveLength(3);
-      const reopened = await reopen(reviewer);
+      const reopened = await reopen(session, reviewer);
       expect(cellChanges(reopened)).toEqual(before);
       for (const current of [reviewer, reopened]) {
         const ids = current
@@ -91,8 +104,8 @@ describe("tracked column changes", () => {
   test.each(TYPES)(
     "%s: accepting one cell leaves the others pending",
     async (type) => {
-      const reviewer = await build(type);
-      const saved = await reopen(reviewer);
+      const reviewer = await build(session, type);
+      const saved = await reopen(session, reviewer);
       for (const current of [reviewer, saved]) {
         const first = current.getChanges().find(isCellChange);
         if (!first) throw new Error("no cell change");
