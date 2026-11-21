@@ -103,6 +103,26 @@ export const referencedHeaderFooters = (
   source: Document,
 ): ReadonlySet<string> => referencedParts(source);
 
+/**
+ * The `header:<rId>` and `footer:<rId>` keys of the parts `document` holds
+ * that the opened package referenced (`referencedAtOpen`, from
+ * {@link referencedHeaderFooters}) and no section names any more: the parts a
+ * resolution retired.
+ */
+export const retiredHeaderFooters = (
+  document: Document,
+  referencedAtOpen: ReadonlySet<string>,
+): ReadonlySet<string> => {
+  const retired = new Set<string>();
+  if (referencedAtOpen.size === 0) return retired;
+  const referenced = referencedParts(document);
+  for (const { part, relationshipId } of partsOf(document)) {
+    const key = partKey(part, relationshipId);
+    if (referencedAtOpen.has(key) && !referenced.has(key)) retired.add(key);
+  }
+  return retired;
+};
+
 /** Ids of the comments anchored anywhere in these stories. */
 const anchoredComments = (
   stories: readonly (readonly BlockContent[])[],
@@ -122,11 +142,10 @@ export const withoutUnreferencedHeaderFooters = (
   document: Document,
   referencedAtOpen: ReadonlySet<string>,
 ): Document => {
-  const referenced = referencedParts(document);
-  const keeps = (part: HeaderFooterPart, relationshipId: string) => {
-    const key = partKey(part, relationshipId);
-    return referenced.has(key) || !referencedAtOpen.has(key);
-  };
+  const retired = retiredHeaderFooters(document, referencedAtOpen);
+  if (retired.size === 0) return document;
+  const keeps = (part: HeaderFooterPart, relationshipId: string) =>
+    !retired.has(partKey(part, relationshipId));
   const parts = partsOf(document);
   const removed = parts.filter(
     ({ part, relationshipId }) => !keeps(part, relationshipId),
