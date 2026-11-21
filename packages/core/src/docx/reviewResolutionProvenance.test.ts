@@ -27,6 +27,7 @@ import { FOLIO_REVIEW_HISTORY_NAMESPACE } from "./reviewHistoryNamespace";
 import {
   parseCopyOriginAncestors,
   parseParagraphMarkResolutionJoin,
+  parseParagraphPropertyChangeOwner,
   parseResolutionJoins,
   parseSplitResolutionPiece,
   reviewProvenanceIssue,
@@ -34,6 +35,7 @@ import {
   serializeBoundaryJoins,
   serializeCopyOriginAncestors,
   serializeParagraphMarkResolutionJoin,
+  serializeParagraphPropertyChangeOwner,
   serializeResolutionJoins,
   serializeSplitResolutionPiece,
   versionOneKeptMarkers,
@@ -1006,4 +1008,45 @@ test("hyperlink revision hoisting descends through transparent revision containe
   expect(xml).toContain('w:id="2"');
   expect(JSON.stringify(paragraph)).not.toContain('"type":"preservedInline"');
   expectNoHyperlinkInsideRevision(xml);
+});
+
+test("the merge a paragraph property change belongs to has its own private attribute", () => {
+  const change = {
+    type: "paragraphPropertyChange",
+    info: { id: 3, author: "Reviewer" },
+    resolvesWith: 2,
+  } as const;
+  const written = serializeParagraphPropertyChangeOwner(change);
+  expect(written).toBe(
+    ` folio:resolvesWith="${escapeXmlAttribute(JSON.stringify({ version: 2, value: 2 }))}"`,
+  );
+  expect(
+    parseParagraphPropertyChangeOwner(
+      element(`<r xmlns:folio="${FOLIO_REVIEW_HISTORY_NAMESPACE}"${written}/>`),
+    ),
+  ).toEqual({ resolvesWith: 2 });
+  const { resolvesWith: _owner, ...unlinked } = change;
+  expect(serializeParagraphPropertyChangeOwner(unlinked)).toBe("");
+  // An unreadable value drops only the link, and says so.
+  for (const encoded of [
+    JSON.stringify({ version: 2, value: -1 }),
+    JSON.stringify({ version: 2, value: MAX_REVISION_ID + 1 }),
+    JSON.stringify({ version: 3, value: 2 }),
+    "2",
+  ]) {
+    const dropped = element(
+      `<r xmlns:history="${FOLIO_REVIEW_HISTORY_NAMESPACE}" history:resolvesWith="${escapeXmlAttribute(encoded)}"/>`,
+    );
+    expect(parseParagraphPropertyChangeOwner(dropped)).toEqual({});
+    expect(reviewProvenanceIssue("resolvesWith", encoded)).toBeDefined();
+  }
+  // A version 1 file is still read.
+  const versionOne = JSON.stringify({ version: 1, value: 2 });
+  expect(
+    parseParagraphPropertyChangeOwner(
+      element(
+        `<r xmlns:folio="${FOLIO_REVIEW_HISTORY_NAMESPACE}" folio:resolvesWith="${escapeXmlAttribute(versionOne)}"/>`,
+      ),
+    ),
+  ).toEqual({ resolvesWith: 2 });
 });

@@ -5892,6 +5892,33 @@ const settleTwoRecordMarks = (
 };
 
 /**
+ * The op with every paragraph property change that belongs to a revision it
+ * resolves (`resolvesWith`): a tracked join's property change is decided with
+ * the join's paragraph-mark deletion, so rejecting the join does not leave
+ * the properties it gave pending.
+ */
+const withBelongingPropertyChanges = (
+  document: Document,
+  op: ResolveRevisionOp,
+): ResolveRevisionOp => {
+  const ids = new Set(op.revisionIds);
+  const belonging: number[] = [];
+  for (const { paragraph } of storyParagraphs(storyBody(document, op.story)))
+    for (const { resolvesWith, info } of paragraph.propertyChanges ?? [])
+      if (
+        resolvesWith !== undefined &&
+        ids.has(resolvesWith) &&
+        !ids.has(info.id)
+      ) {
+        ids.add(info.id);
+        belonging.push(info.id);
+      }
+  return belonging.length === 0
+    ? op
+    : { ...op, revisionIds: [...op.revisionIds, ...belonging] };
+};
+
+/**
  * Resolve tracked changes by revision id, applied as the primitive
  * operations it expands to. An id no record in the story carries is
  * skipped; one carried by a record resolution does not reach yet (a table,
@@ -5900,9 +5927,11 @@ const settleTwoRecordMarks = (
 export const planRevisionResolution = (
   options: RevisionResolutionPlanOptions,
 ): Result<RevisionResolutionPlan, DocumentOpRefusal> => {
-  const { document, op, applyOps } = options;
+  const { document, applyOps } = options;
+  const op = withBelongingPropertyChanges(document, options.op);
   const sections = settleSectionRecords(document, op);
-  if (sections.ops.length === 0) return planMarkResolution(options);
+  if (sections.ops.length === 0)
+    return planMarkResolution({ document, op, applyOps });
   const settled = applyOps(document, sections.ops);
   if (settled.isErr()) return Result.err(settled.error);
   const rest = planMarkResolution({

@@ -2147,8 +2147,17 @@ const trackJoin = ({
         FOLD_INTO_OTHER_SUGGESTION_MESSAGE,
       );
     second = withParagraphFormatting(trailing, formatting);
+    const change = foldedParagraphPropertyChange({
+      paragraph: trailing,
+      formatting,
+      stamp,
+    });
+    // A change the join makes belongs to its mark deletion: rejecting the
+    // join gives the paragraph its own properties back.
     second.propertyChanges = [
-      foldedParagraphPropertyChange({ paragraph: trailing, formatting, stamp }),
+      trailing.propertyChanges === undefined
+        ? { ...change, resolvesWith: stamp.id }
+        : change,
     ];
   }
   // Range boundaries standing between the two stay where they are: resolving

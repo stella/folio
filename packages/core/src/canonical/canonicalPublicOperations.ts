@@ -45,6 +45,7 @@ import {
   introducedDocumentIds,
   isBlockBoundary,
   isCommentAnchorCarrierType,
+  joinPropertyChangeLink,
   type LeasedId,
   leasedIdCensus,
   locateParagraphThroughTextBoxes,
@@ -3644,6 +3645,47 @@ const allocatorLeaseForParagraphs = (paragraphLease: IdLease | undefined) =>
         ],
       };
 
+type PrimaryRevisionIdOptions = {
+  operation: FolioDocumentOperation;
+  /** The intents as the operation ran. */
+  intents: readonly EditorIntent[];
+  /** The document after the operation. */
+  document: Document;
+  revisionIds: readonly number[];
+};
+
+/**
+ * The revision an applied operation names as its own: a tracked merge's is
+ * the paragraph-mark deletion that is the merge, not the separator it types;
+ * any other operation's is its first record.
+ */
+const primaryRevisionId = ({
+  operation,
+  intents,
+  document,
+  revisionIds,
+}: PrimaryRevisionIdOptions): number | undefined => {
+  const join =
+    operation.type === "mergeBlockWithNext"
+      ? intents.find(
+          (
+            intent,
+          ): intent is Extract<EditorIntent, { type: "joinParagraphs" }> =>
+            intent.type === "joinParagraphs",
+        )
+      : undefined;
+  const mark =
+    join === undefined
+      ? undefined
+      : locateParagraphThroughTextBoxes(document, join.story, join.blockId)
+          ?.paragraph.pPrMark;
+  const deletion =
+    mark?.kind === "del" ? mark.info.id : mark?.deletion?.info.id;
+  return deletion !== undefined && revisionIds.includes(deletion)
+    ? deletion
+    : revisionIds.at(0);
+};
+
 const compilePublicIntents = ({
   document,
   intents,
@@ -3663,6 +3705,11 @@ const compilePublicIntents = ({
   const revisions: number[] = [];
   let verifiedOperation: VerifiedOperation | undefined;
   const absorbed: ParagraphAbsorption[] = [];
+  const source = document;
+  // The paragraph each tracked join of this operation deletes the mark of,
+  // by the paragraph it keeps: properties the operation sets there belong to
+  // that join.
+  const joinedInto = new Map<string, string>();
   // A split's new half takes the id allocated here, not the one it resolved
   // with: a later intent naming that half names the allocated one.
   const allocated = new Map<string, string>();
@@ -3768,6 +3815,24 @@ const compilePublicIntents = ({
     revisions.push(...applied.revisions);
     for (const id of applied.revisions)
       nextRevisionId = Math.max(nextRevisionId, id + 1);
+    if (mode === "direct") continue;
+    if (sourceIntent.type === "joinParagraphs")
+      joinedInto.set(idKey(sourceIntent.nextBlockId), sourceIntent.blockId);
+    if (intent.type !== "formatParagraph") continue;
+    const joined = joinedInto.get(idKey(intent.at.blockId));
+    if (joined === undefined) continue;
+    const link = joinPropertyChangeLink({
+      before: source,
+      after: document,
+      story: intent.at.story,
+      blockId: joined,
+      propertiesBlockId: intent.at.blockId,
+    });
+    if (link === undefined) continue;
+    const linked = applyDocumentOps(document, [link]);
+    if (linked.isErr()) return Result.err(linked.error);
+    document = readModel(linked.value.document);
+    ops.push(link);
   }
   return Result.ok({
     document,
@@ -5301,7 +5366,12 @@ export class CanonicalPublicOperations {
           prepared.verifiedOperation !== undefined &&
           operationStaging.append(prepared.verifiedOperation);
       nextRevisionId = Math.max(nextRevisionId, prepared.nextRevisionId);
-      const revisionId = revisionIds.at(0);
+      const revisionId = primaryRevisionId({
+        operation,
+        intents: prepared.intents,
+        document: prepared.document,
+        revisionIds,
+      });
       const joined =
         batch.mode === "direct"
           ? joinedParagraphsOf(operation.type, prepared.intents)
