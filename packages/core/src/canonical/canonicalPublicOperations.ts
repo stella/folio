@@ -59,6 +59,7 @@ import {
   revisionSpan,
   type RunPropsPatch,
   SPLIT_HALVES,
+  type TableInsertionPoint,
   type TextPosition,
 } from "@stll/docx-core/ops";
 
@@ -1087,14 +1088,15 @@ type ResolveBlockInsertionOptions = {
  * Where an insertion beside `paragraph` goes: beside the paragraph, or, for a
  * paragraph in a table cell, beside the outermost table, as the default
  * engine places it. The point names the paragraph on the far side of the
- * table; none stands there when the table starts or ends its container.
+ * table; where none stands there (the table starts its container, or a table
+ * or control stands beside it), it names the table itself.
  */
 const blockInsertionPlace = (
   operation: BlockInsertion,
   paragraph: NonNullable<ReturnType<CanonicalProjection["paragraph"]>>,
   projection: CanonicalProjection,
   noteReferences: NoteReferenceLabels,
-): { at: BlockInsertionPoint; position: number } | undefined => {
+): { at: TableInsertionPoint; position: number } | undefined => {
   const side = operation.type === "insertAfterBlock" ? "after" : "before";
   const table = findOutermostTableBoundary(projection.doc, paragraph.start - 1);
   if (table === null && side === "before") {
@@ -1155,18 +1157,33 @@ const blockInsertionPlace = (
   const position = table[side];
   const resolved = projection.doc.resolve(position);
   const beside = side === "after" ? resolved.nodeAfter : resolved.nodeBefore;
-  if (beside?.type.name !== "paragraph") return undefined;
-  const neighbour = projection.paragraphStartingAt(
-    side === "after" ? position : position - beside.nodeSize,
-  );
-  if (neighbour === undefined) return undefined;
+  const neighbour =
+    beside?.type.name === "paragraph"
+      ? projection.paragraphStartingAt(
+          side === "after" ? position : position - beside.nodeSize,
+        )
+      : undefined;
   // After the table is before the paragraph that follows it, and before it
   // is after the one it follows.
+  if (neighbour !== undefined)
+    return {
+      at: {
+        type: side === "after" ? "before" : "after",
+        blockId: neighbour.blockId,
+      },
+      position,
+    };
+  const outerTable = projection.doc.nodeAt(table.before);
+  const blockId =
+    outerTable === null
+      ? undefined
+      : tableBlockAddress(projection, {
+          table: outerTable,
+          tableStart: table.before + 1,
+        });
+  if (blockId === undefined) return undefined;
   return {
-    at: {
-      type: side === "after" ? "before" : "after",
-      blockId: neighbour.blockId,
-    },
+    at: { type: side === "after" ? "afterTable" : "beforeTable", blockId },
     position,
   };
 };
