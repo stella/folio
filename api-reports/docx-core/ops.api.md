@@ -978,6 +978,9 @@ export type NewListInstance = {
 // @public
 export const normalizeForOps: (document: Document_2) => Document_2;
 
+// @public
+export const noteDeletionOps: (input: NoteDeletionOpsOptions) => Result<NoteDeletion, DocumentOpRefusal>;
+
 // @public (undocumented)
 export type NoteStory = {
     kind: "footnote" | "endnote";

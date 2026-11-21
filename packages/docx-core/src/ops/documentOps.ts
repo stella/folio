@@ -16,6 +16,7 @@ export {
   rejectCopyOriginAncestors,
   shiftCopyOriginAncestors,
 } from "./copyOriginAncestors";
+export { noteDeletionOps } from "./noteDeletion";
 export { noteUsesCustomMark } from "./noteMarks";
 export {
   withParagraphCopies,

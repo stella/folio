@@ -483,23 +483,20 @@ describe("an edit operation that deletes a note reference", () => {
     });
   });
 
-  // Ratchet: a canonical tracked deletion leaves the note's text live; the
-  // legacy reviewer deletes it beside the operation.
-  for (const session of SESSIONS)
-    (session === "canonical" ? test.failing : test)(
-      `tracked (${session}), it deletes the note's text with the reference`,
-      async () => {
-        const { reviewer, result } = await deleteNotedParagraph(
-          "tracked-changes",
-          session,
-        );
-        expect(result.skipped).toEqual([]);
-        expect(noteState(await saved(reviewer), 1)).toEqual({
-          text: "The note text.",
-          deleted: true,
-        });
-      },
-    );
+  test.each(SESSIONS)(
+    "tracked (%s), it deletes the note's text with the reference",
+    async (session) => {
+      const { reviewer, result } = await deleteNotedParagraph(
+        "tracked-changes",
+        session,
+      );
+      expect(result.skipped).toEqual([]);
+      expect(noteState(await saved(reviewer), 1)).toEqual({
+        text: "The note text.",
+        deleted: true,
+      });
+    },
+  );
 
   test.each(SESSIONS)(
     "tracked and accepted, the note goes (%s)",

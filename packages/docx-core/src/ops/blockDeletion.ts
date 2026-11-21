@@ -80,7 +80,7 @@ import {
  * accepting the tracked deletion and deleting directly leave the same
  * document.
  */
-const deletedContent = (
+export const deletedContent = (
   paragraph: Paragraph,
   stamp: RevisionStamp,
   rangedComments: ReadonlySet<number>,
@@ -297,9 +297,9 @@ const liveReferencesAreRanged = (
   });
 
 /** The ids of the comments whose range ends somewhere in `value`. */
-const rangeEndIdsIn = (
+export const rangeEndIdsIn = (
   value: unknown,
-  ids = new Set<number>(),
+  ids: Set<number> = new Set(),
 ): Set<number> => {
   if (Array.isArray(value)) {
     for (const item of value) rangeEndIdsIn(item, ids);
