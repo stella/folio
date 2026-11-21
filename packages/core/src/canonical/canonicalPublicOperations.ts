@@ -6291,7 +6291,9 @@ export class CanonicalPublicOperations {
       );
     if (
       (!editsReferences && /\[\^(?:e)?\d+\]/u.test(prose)) ||
-      /[\t\r\n]/u.test(prose)
+      // A tab or line feed is written as its element; a carriage return
+      // names no element of its own.
+      /\r/u.test(prose)
     )
       return refusal(
         "unsupportedBlock",
