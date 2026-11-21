@@ -1,6 +1,12 @@
 {
   "generated suggestions save, restage, reject and accept as the laws say": [
     {
+      "seed": 2048066208,
+      "path": "107:0:0:0:0:0:0:0:2:2:2:2:2:2:2:3:2:2:2:2:3:2:2:4:2:4:2:4:3:3:3:3:4:2:2:3:4:3:11:8:15:3:3:3:3:3:3:3:3:3:3",
+      "note": "#2889: a suggested removal of a paragraph holding only an empty wrapper, whose mark a pending deletion already took, records nothing and is refused.",
+      "date": "2026-11-21"
+    },
+    {
       "seed": -230391034,
       "path": "28:0:0:0:0:0:0:0:0:2:1:1:1:2:1:1:7:2:1:1:3:2:2:1:1:4:1:1:3:2:1:4:32:3:3:3:3:3:3:3:3",
       "note": "A suggested removal of an empty paragraph whose mark a pending deletion already took records nothing, so it is refused rather than applied unseen.",
