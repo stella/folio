@@ -222,9 +222,28 @@ import { findCommentAnchorParagraph } from "./commentAnchorParagraph";
 import { controlEdgesAt } from "./controlEdges";
 import { indentationAsRead, spacingSidesAsRead } from "./paragraphPatchAsRead";
 
+/**
+ * The table row or column a deletion removes, as the batch read the table.
+ * Claims of one table's row (or column) deletions do not overlap, since each
+ * removes its own cells; a second deletion of the same row or column has
+ * nothing left of its own to remove and is a no-op, as in the default engine.
+ */
+type TableLineRemoval = {
+  axis: "row" | "column";
+  tablePosition: number;
+  index: number;
+};
+
+const tableLineRemovalKey = ({
+  axis,
+  tablePosition,
+  index,
+}: TableLineRemoval) => `${axis}:${tablePosition}:${index}`;
+
 type CanonicalBatchPlan = {
   claim: ReturnType<typeof snapshotBatchClaim>;
   address: BatchOrderAddress;
+  removes: TableLineRemoval | null;
   block: number;
   /**
    * The paragraph its edit is placed against as it runs: `block`, or the
@@ -277,6 +296,7 @@ const canonicalBatchPlan = ({
     block,
     placedAgainst: block,
     address: { type: "content", position, rank: 1, inputIndex },
+    removes: null,
     insertionRun: null,
   });
   /**
@@ -313,6 +333,7 @@ const canonicalBatchPlan = ({
         block,
         placedAgainst: block,
         address: { type: "annotation", position: from, inputIndex },
+        removes: null,
         insertionRun: null,
       };
     case "replaceBlock":
@@ -391,12 +412,19 @@ const canonicalBatchPlan = ({
     }
     case "deleteTableRow": {
       const target = row();
-      return content({
-        type: "deleteTableRow",
-        deletion: target,
-        row: target.table.child(target.rowIndex),
-        table: target.table,
-      });
+      return {
+        ...content({
+          type: "deleteTableRow",
+          deletion: target,
+          row: target.table.child(target.rowIndex),
+          table: target.table,
+        }),
+        removes: {
+          axis: "row",
+          tablePosition: target.tablePosition,
+          index: target.rowIndex,
+        },
+      };
     }
     case "deleteTableColumn": {
       const target = row();
@@ -413,6 +441,11 @@ const canonicalBatchPlan = ({
           columnIndex: column,
           insertion: false,
           inputIndex,
+        },
+        removes: {
+          axis: "column",
+          tablePosition: target.tablePosition,
+          index: column,
         },
       };
     }
@@ -4256,8 +4289,21 @@ export class CanonicalPublicOperations {
       );
       return true;
     };
+    const removedLines = new Set<string>();
+    /** Skip a row or column deletion an earlier one of the batch already makes. */
+    const skipsRepeatedRemoval = (
+      candidate: ReturnType<typeof planned>,
+    ): boolean => {
+      const { removes } = candidate.plan;
+      if (removes === null || !removedLines.has(tableLineRemovalKey(removes)))
+        return false;
+      skip(candidate.operation.id, "noopOperation");
+      return true;
+    };
     const admit = (candidate: ReturnType<typeof planned>) => {
       claims.add(candidate.operation.id, candidate.plan.claim);
+      const { removes } = candidate.plan;
+      if (removes !== null) removedLines.add(tableLineRemovalKey(removes));
       resolved.push(candidate);
     };
     for (const operation of batch.operations) {
@@ -4323,6 +4369,7 @@ export class CanonicalPublicOperations {
         continue;
       }
       const candidate = planned(compiled.value);
+      if (skipsRepeatedRemoval(candidate)) continue;
       if (refusesExistingRevision(candidate)) continue;
       if (skipsOverlap(candidate)) continue;
       admit(candidate);
