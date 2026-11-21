@@ -146,6 +146,9 @@ export type BlockInsertionPoint = {
 };
 
 // @public
+export const blockPastRangeBoundaries: (blocks: readonly BlockContent[], index: number) => BlockContent | undefined;
+
+// @public
 export type BoundaryOccurrence = {
     boundary: string;
     range: string;

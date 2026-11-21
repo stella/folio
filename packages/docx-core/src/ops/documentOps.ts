@@ -51,6 +51,7 @@ export { locateParagraphInBlockList } from "./paragraphLocator";
 export { blockControlHolding } from "./contentControls";
 export { paragraphMarkOutcome } from "./blockDeletion";
 export {
+  blockPastRangeBoundaries,
   type BoundaryOccurrence,
   planWellFormedRanges,
   type WellFormedRangePlan,

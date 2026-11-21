@@ -26,6 +26,7 @@ import {
   type AppliedDocumentOp,
   applyDocumentOp,
   applyDocumentOps,
+  blockPastRangeBoundaries,
   type ClientDocumentChange,
   combineEdits,
   compileEditorIntent,
@@ -805,11 +806,12 @@ class CanonicalProjection {
     const slot = this.index.get(blockId);
     if (slot === undefined || slot.paragraph < 0) return undefined;
     const paragraph = this.addressOf(slot.block, slot.paragraph);
-    // The block after it in its container, past the paragraphs of a text box
-    // the paragraph draws, which the projection lists after it.
+    // The block after it in its container, past the range boundaries standing
+    // between them and the paragraphs of a text box the paragraph draws,
+    // which the projection lists after it.
     const index = paragraph.container.indexOf(paragraph.source);
     if (index >= 0) {
-      const following = paragraph.container[index + 1];
+      const following = blockPastRangeBoundaries(paragraph.container, index);
       if (following?.type !== "paragraph" || following.paraId === undefined)
         return undefined;
       const address = this.paragraph(following.paraId);

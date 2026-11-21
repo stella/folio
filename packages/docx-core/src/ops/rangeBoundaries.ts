@@ -272,6 +272,47 @@ export type BlockBoundary = Exclude<Boundary, CommentAnchor>;
 export const isBlockBoundary = (block: BlockContent): block is BlockBoundary =>
   Object.hasOwn(BOUNDARY_SIDES, block.type);
 
+/** The block after a paragraph, past the range boundaries standing before it. */
+export type BlockFollower = {
+  /** The follower's index, or the list's length when none follows. */
+  index: number;
+  block: BlockContent | undefined;
+  /** The boundaries between the paragraph and its follower, in order. */
+  standing: BlockBoundary[];
+};
+
+/**
+ * What follows the block at `index` for adjacency. A range boundary standing
+ * between blocks marks a position, not content: it neither separates two
+ * paragraphs nor follows one, so the follower is the first block past it, and
+ * a paragraph with only boundaries after it ends its container.
+ */
+export const blockFollower = (
+  blocks: readonly BlockContent[],
+  index: number,
+): BlockFollower => {
+  const standing: BlockBoundary[] = [];
+  let next = index + 1;
+  for (; next < blocks.length; next += 1) {
+    const block = blocks[next] ?? panic("A block is listed.");
+    if (!isBlockBoundary(block)) break;
+    standing.push(block);
+  }
+  return { index: next, block: blocks[next], standing };
+};
+
+/** The block after the one at `index`, past range boundaries standing between them. */
+export const blockPastRangeBoundaries = (
+  blocks: readonly BlockContent[],
+  index: number,
+): BlockContent | undefined => blockFollower(blocks, index).block;
+
+/** The last block of a list that is not a range boundary standing there. */
+export const lastBlockPastBoundaries = (
+  blocks: readonly BlockContent[],
+): BlockContent | undefined =>
+  blocks.findLast((block) => !isBlockBoundary(block));
+
 /** Every range boundary in `content`, at any depth, in document order. */
 export const rangeBoundariesIn = (content: readonly InlineNode[]): Boundary[] =>
   content.flatMap((node) =>

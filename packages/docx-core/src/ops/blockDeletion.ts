@@ -1,5 +1,5 @@
 /** Whole-paragraph deletion within one block list, including its final paragraph. */
-import { Result } from "better-result";
+import { panic, Result } from "better-result";
 
 import type {
   BlockContent,
@@ -36,8 +36,10 @@ import {
   paragraphLength,
 } from "./offsets";
 import {
+  blockFollower,
   isBlockBoundary,
   isBoundary,
+  lastBlockPastBoundaries,
   withBoundariesOutsideDeletion,
 } from "./rangeBoundaries";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
@@ -398,7 +400,8 @@ export const markBeforeTableResolves = ({
   blocks: readonly BlockContent[];
   boundary: TableRunInBoundary;
 }): boolean =>
-  blocks.at(-1)?.type === "paragraph" && boundary.type === "receiver";
+  lastBlockPastBoundaries(blocks)?.type === "paragraph" &&
+  boundary.type === "receiver";
 
 /**
  * Whether `block`, following a paragraph, is a block that paragraph's mark
@@ -762,8 +765,12 @@ export const deleteBlocks = ({
     );
   }
   const list = blockListAt(body.content, first.list);
-  const following = list[last.index + 1];
-  const terminal = last.index === list.length - 1;
+  // Range boundaries standing after the paragraphs neither follow them nor
+  // keep them from ending their container.
+  const follower = blockFollower(list, last.index);
+  const following = follower.block;
+  const terminal = following === undefined;
+  const endsWithParagraph = lastBlockPastBoundaries(list)?.type === "paragraph";
   // Paragraphs the same author's pending insertion added whole, with no one
   // else's suggestion in them, go outright before a paragraph or a table, as
   // deleting over one's own insertion removes it; no deletion of an addition
@@ -775,8 +782,7 @@ export const deleteBlocks = ({
     following?.type === "paragraph" &&
     op.move !== true &&
     found.every(({ paragraph }) => paragraph.sectionProperties === undefined);
-  const beforeTable =
-    following?.type === "table" && list.at(-1)?.type === "paragraph";
+  const beforeTable = following?.type === "table" && endsWithParagraph;
   // A move carries its words, and their comments, to where it inserts them:
   // no comment retires with its source.
   const held =
@@ -860,7 +866,7 @@ export const deleteBlocks = ({
   const emptiedBeforeTableUnderReview =
     tableBoundary?.type === "blocked" &&
     tableBoundary.reason === "review" &&
-    list.at(-1)?.type === "paragraph";
+    endsWithParagraph;
   const trackedBeforeTable =
     op.revision !== undefined &&
     tableBoundary !== undefined &&
@@ -869,7 +875,7 @@ export const deleteBlocks = ({
   const trackedBeforeBlock =
     op.revision !== undefined &&
     isOpaqueFollower(following) &&
-    list.at(-1)?.type === "paragraph";
+    endsWithParagraph;
   // Directly, paragraphs a table or another block follows, with no table
   // before them, go whole, as accepting their tracked deletion removes them:
   // the container still ends with a paragraph, and no two tables meet.
@@ -877,7 +883,7 @@ export const deleteBlocks = ({
     op.revision === undefined &&
     following !== undefined &&
     following.type !== "paragraph" &&
-    list.at(-1)?.type === "paragraph" &&
+    endsWithParagraph &&
     (first.index === 0 || list[first.index - 1]?.type === "paragraph") &&
     found.every(({ paragraph }) => paragraph.sectionProperties === undefined);
   if (
@@ -916,9 +922,10 @@ export const deleteBlocks = ({
   // rejecting it keeps the section as it was.
   const expected =
     following?.type === "paragraph" ? [...selected, following] : affected;
-  const sectionBoundaries = expected.some(
+  const replacesSectionBreak = expected.some(
     ({ sectionProperties }) => sectionProperties !== undefined,
-  )
+  );
+  const sectionBoundaries = replacesSectionBreak
     ? { sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE }
     : {};
   const replacement = (blocks: readonly Paragraph[]) => ({
@@ -928,6 +935,45 @@ export const deleteBlocks = ({
     blocks,
     ...sectionBoundaries,
   });
+  // Paragraphs that join the following one across range boundaries standing
+  // between them take those boundaries in where they meet, so the list is
+  // rewritten from the first replaced paragraph through the following one.
+  const replacing = (
+    replaced: readonly Paragraph[],
+    blocks: readonly Paragraph[],
+  ): Result<DocumentOp, DocumentOpRefusal> => {
+    if (
+      follower.standing.length === 0 ||
+      following?.type !== "paragraph" ||
+      replaced.at(-1) !== following
+    )
+      return Result.ok({ ...replacement(blocks), expected: replaced });
+    if (blocks.at(-1) === following)
+      return Result.ok({
+        ...replacement(blocks.slice(0, -1)),
+        expected: replaced.slice(0, -1),
+      });
+    if (replacesSectionBreak)
+      return refuse(
+        DOCUMENT_OP_REFUSAL_REASONS.SECTION_BOUNDARY,
+        "A section break cannot join across range boundaries between blocks.",
+      );
+    const start = list.indexOf(
+      replaced.at(0) ?? panic("A replacement names its paragraphs."),
+    );
+    if (start < 0) panic("A replaced paragraph stands in its block list.");
+    return Result.ok({
+      type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+      story: op.story,
+      blockId: following.paraId ?? "",
+      expected: list,
+      blocks: [
+        ...list.slice(0, start),
+        ...blocks,
+        ...list.slice(follower.index + 1),
+      ],
+    });
+  };
   const finalReview = reviewFieldsOf(last.paragraph);
   if (previous !== undefined && paragraphLength(previous) > 0) {
     const formatting = withMarkFormatting(
@@ -978,9 +1024,12 @@ export const deleteBlocks = ({
   const directModified: string[] = [];
   if (outcome.kind === "join" && following?.type === "paragraph")
     directBlocks = [
-      kept.length === 0
+      kept.length === 0 && follower.standing.length === 0
         ? following
-        : { ...following, content: [...kept, ...following.content] },
+        : {
+            ...following,
+            content: [...kept, ...follower.standing, ...following.content],
+          },
     ];
   // A deletion is refused before a table and keeps the paragraph that ends
   // its container, so no outcome here removes the boundaries it kept: a
@@ -1013,7 +1062,9 @@ export const deleteBlocks = ({
       directModified.push(received.receiver.paraId ?? "");
     }
   }
-  directOps.push(replacement(directBlocks));
+  const directReplacement = replacing(expected, directBlocks);
+  if (directReplacement.isErr()) return Result.err(directReplacement.error);
+  directOps.push(directReplacement.value);
   const direct = applyOps(document, directOps);
   if (direct.isErr()) return refuse(direct.error.reason, direct.error.message);
   // A paragraph the direct deletion writes back is modified exactly when it
@@ -1058,7 +1109,9 @@ export const deleteBlocks = ({
     !terminal &&
     first.index > 0 &&
     last.paragraph.pPrMark?.kind === "del" &&
-    goesOnceAccepted(list.slice(last.index + 1))
+    goesOnceAccepted(
+      list.slice(last.index + 1).filter((block) => !isBlockBoundary(block)),
+    )
       ? breakRetiredBefore(list, first.index)
       : undefined;
   const retired = retiredIndex === undefined ? undefined : list[retiredIndex];
@@ -1101,7 +1154,7 @@ export const deleteBlocks = ({
   // paragraph nothing of this one reaches.
   const finalTakeover =
     following?.type === "paragraph" &&
-    last.index + 1 === list.length - 1 &&
+    blockFollower(list, follower.index).block === undefined &&
     paragraphHoldsContent(following) &&
     !paragraphHoldsContentOnceAccepted(following) &&
     (following.propertyChanges?.length ?? 0) > 0 &&
@@ -1281,10 +1334,16 @@ export const deleteBlocks = ({
           joining.push(paragraph.paraId ?? "");
           continue;
         }
+        // The following paragraph takes the boundaries standing before it
+        // in after what joins it.
+        const standing = paragraph === following ? follower.standing : [];
         const joined =
           carried === undefined
             ? paragraph
-            : { ...paragraph, content: [...carried, ...paragraph.content] };
+            : {
+                ...paragraph,
+                content: [...carried, ...standing, ...paragraph.content],
+              };
         if (carried !== undefined || changed[index] !== source)
           modified.add(joined.paraId ?? "");
         for (const id of joining)
@@ -1293,9 +1352,10 @@ export const deleteBlocks = ({
         carried = undefined;
         blocks.push(joined);
       }
-      const result = applyOps(document, [
-        { ...replacement(blocks), expected: original },
-      ]);
+      const trackedReplacement = replacing(original, blocks);
+      if (trackedReplacement.isErr())
+        return Result.err(trackedReplacement.error);
+      const result = applyOps(document, [trackedReplacement.value]);
       if (result.isErr())
         return refuse(result.error.reason, result.error.message);
       return Result.ok({
