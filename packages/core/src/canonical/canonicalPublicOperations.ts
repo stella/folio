@@ -3060,6 +3060,10 @@ type ResolveTableStructureOptions = {
     reason: FolioAIEditSkipReason,
     message: string,
   ) => Result<never, CanonicalPublicOperationResolutionError>;
+  /** A skip the tracked vocabulary forces: the operation applies directly. */
+  skipTracked: (
+    message: string,
+  ) => Result<never, CanonicalPublicOperationResolutionError>;
   /** The row a new row copies, when the batch hands one for this operation. */
   template: PMNode | undefined;
 };
@@ -3082,6 +3086,7 @@ const resolveTableStructure = ({
   paragraphOf,
   notInTable,
   skipAlike,
+  skipTracked,
   template,
 }: ResolveTableStructureOptions) => {
   const { doc } = projection;
@@ -3167,8 +3172,7 @@ const resolveTableStructure = ({
             Number(node?.attrs["colspan"] ?? 1) !== 1,
         )
       )
-        return skipAlike(
-          "unsupportedBlock",
+        return skipTracked(
           "A suggested column deletion cannot narrow a cell that spans other columns.",
         );
       // The table is addressed by a paragraph the deletion keeps, as the
@@ -3226,8 +3230,7 @@ const resolveTableStructure = ({
         tracked &&
         columnInsertionWidensCell(row.table, insertion.columnIndex)
       )
-        return skipAlike(
-          "unsupportedBlock",
+        return skipTracked(
           "A suggested column cannot widen a cell that spans other columns.",
         );
       const blockId = tableBlockAddress(projection, row);
@@ -3314,8 +3317,7 @@ const resolveTableStructure = ({
       // A suggestion records a merge down over empty cells; a merge that
       // moves content between cells has no tracked form.
       if (tracked && !mergesDownOverEmptyCells(row.table, map, rectangle))
-        return skipAlike(
-          "unsupportedBlock",
+        return skipTracked(
           "A suggested merge takes one column over empty cells.",
         );
       const blockId = tableBlockAddress(projection, row);
@@ -3348,8 +3350,7 @@ const resolveTableStructure = ({
       // A suggested split gives a merge down its rows back; a cell spanning
       // columns has no suggested split in either engine.
       if (tracked && cell.rightColumnIndex - cell.leftColumnIndex !== 1)
-        return skipAlike(
-          "unsupportedBlock",
+        return skipTracked(
           "A suggested split takes a cell merged down one column.",
         );
       // The cell is addressed by its own paragraph, the merge's first.
@@ -3781,6 +3782,12 @@ class CanonicalPublicOperationResolutionError extends CanonicalPublicOperationRe
    * as a row operation whose block is in no table.
    */
   gap?: CanonicalGap | null;
+  /**
+   * The modes the refusal holds in: `"trackedMode"` for an operation the
+   * tracked vocabulary has no record for, which applies directly. Absent, it
+   * holds in every mode.
+   */
+  refusedIn?: "everyMode" | "trackedMode";
 }> {}
 
 type MergeFormattingConflictOptions = {
@@ -4571,6 +4578,8 @@ export class CanonicalPublicOperations {
       if (removes !== null) removedLines.add(tableLineRemovalKey(removes));
       resolved.push(candidate);
     };
+    /** Refused, but claiming the target their direct form would. */
+    const claimedUnapplied: ReturnType<typeof planned>[] = [];
     for (const operation of batch.operations) {
       if (!state || projected.isErr() || session.isComposing) {
         skip(operation.id, "documentNotEditable");
@@ -4630,6 +4639,31 @@ export class CanonicalPublicOperations {
         besideDeletions,
       });
       if (compiled.isErr()) {
+        // An operation only the tracked vocabulary refuses still claims what
+        // it would edit directly, so whether a later operation of the batch
+        // overlaps it does not depend on the mode.
+        const direct =
+          compiled.error.refusedIn === "trackedMode"
+            ? this.resolve({
+                operation,
+                options,
+                state,
+                story,
+                diff,
+                tracked: false,
+                suggested: false,
+                mintList,
+                besideDeletions,
+              })
+            : undefined;
+        if (direct?.isOk()) {
+          const candidate = planned(direct.value);
+          if (skipsRepeatedRemoval(candidate)) continue;
+          if (refusesExistingRevision(candidate)) continue;
+          if (skipsOverlap(candidate)) continue;
+          claims.add(operation.id, candidate.plan.claim);
+          claimedUnapplied.push(candidate);
+        }
         refuseResolution(operation.id, compiled.error);
         continue;
       }
@@ -4663,7 +4697,7 @@ export class CanonicalPublicOperations {
       // Conditional resolution may retire an accepted claim; rebuild only at
       // this boundary, so its old target cannot reject the independent retry.
       claims = new BatchClaims();
-      for (const earlier of resolved)
+      for (const earlier of [...resolved, ...claimedUnapplied])
         claims.add(earlier.operation.id, earlier.plan.claim);
       const alone = this.resolve({
         operation,
@@ -6409,6 +6443,16 @@ export class CanonicalPublicOperations {
           gap: null,
         }),
       );
+    const skipTracked = (message: string) =>
+      Result.err(
+        new CanonicalPublicOperationResolutionError({
+          reason: "unsupportedBlock",
+          message,
+          detail: message,
+          gap: null,
+          refusedIn: "trackedMode",
+        }),
+      );
     const notInTable = () =>
       skipAlike("unsupportedBlock", "The block is not in a table.");
     switch (operation.type) {
@@ -6547,6 +6591,7 @@ export class CanonicalPublicOperations {
             : undefined,
         notInTable,
         skipAlike,
+        skipTracked,
         template: options.tableTemplates?.get(operation.id),
       });
     if (
