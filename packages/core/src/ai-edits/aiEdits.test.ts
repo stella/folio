@@ -6137,7 +6137,7 @@ describe("Folio AI edit operations", () => {
     expect(liveTable.child(1).attrs["trDel"]).toBeNull();
   });
 
-  test("tracked row deletion rejects a row with a pending structural revision", () => {
+  test("tracked row deletion refuses a row with a pending structural revision as pendingTableChange", () => {
     const table = schema.node("table", null, [
       schema.node(
         "tableRow",
@@ -6176,7 +6176,13 @@ describe("Folio AI edit operations", () => {
     expect(result).toEqual({
       nextRevisionId: expect.any(Number),
       applied: [],
-      skipped: [{ id: "delete-row", reason: "unsupportedBlock" }],
+      skipped: [
+        {
+          id: "delete-row",
+          reason: "pendingTableChange",
+          message: "A row already carries a structural revision.",
+        },
+      ],
     });
     expect(view.state.doc).toEqual(state.doc);
   });

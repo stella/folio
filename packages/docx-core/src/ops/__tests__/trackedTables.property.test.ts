@@ -639,7 +639,7 @@ describe("tracked whole table properties", () => {
                     },
                   ],
                 };
-                reason = DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT;
+                reason = DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE;
                 break;
               case "moveFrom":
               case "moveTo":

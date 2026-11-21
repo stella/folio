@@ -33,9 +33,10 @@ const R = DOCUMENT_OP_REFUSAL_REASONS;
 
 /**
  * Every compiler refusal reason's public disposition. A deliberate refusal
- * names its own reason, as the legacy engine reports one; `revisionConflict`
- * and `untrackable` still gather shapes the engine does not record yet, so
- * they report a gap until each deliberate site has a reason of its own.
+ * names its own reason, as the legacy engine reports one; `untrackable`
+ * gathers shapes the engine does not record yet, and `revisionConflict` a
+ * tracked split the compiler stated with records of its own, so both report
+ * a gap.
  */
 const COMPILER_REFUSAL_DISPOSITIONS = {
   [R.PENDING_RUN_PROPERTY_CHANGE]: typed("pendingRunPropertyChange"),
@@ -43,6 +44,7 @@ const COMPILER_REFUSAL_DISPOSITIONS = {
     "pendingParagraphPropertyChange",
   ),
   [R.JOIN_INTO_PENDING_TABLE]: typed("pendingTableInsertion"),
+  [R.PENDING_TABLE_CHANGE]: typed("pendingTableChange"),
   [R.PENDING_BREAK_TAKEOVER]: typed("pendingParagraphMarkDeletion"),
   [R.PENDING_PARAGRAPH_MARK]: typed("pendingParagraphMarkDeletion"),
   [R.UNSUPPORTED_SCHEMA]: UNSUPPORTED,

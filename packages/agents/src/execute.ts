@@ -732,6 +732,9 @@ const explainSkipReason = (reason: string): string => {
   if (reason === "pendingTableInsertion") {
     return "the merge would run the paragraph, through one whose mark is pending deletion, into a table that is pending insertion; nothing was applied. Resolve the table's insertion or that deletion first.";
   }
+  if (reason === "pendingTableChange") {
+    return "the table, row, cell or grid this operation changes already carries a pending tracked change (a row pending insertion or deletion, a property or grid change); nothing was applied. Resolve that change first.";
+  }
   if (reason === "existingRevisionConflict") {
     return "the edit touches another author's pending revision. Resolve that revision first or use existingRevisions: allow.";
   }

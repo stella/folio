@@ -544,7 +544,8 @@ export const applyTableColumnDeletion = ({
   insertedColumnCount,
   revision,
   emptiedRows,
-}: ApplyTableColumnDeletionOptions): TableRowColumnMutationResult => {
+}: ApplyTableColumnDeletionOptions):
+  TableRowColumnMutationResult | PendingTableChange => {
   const tablePosition = tr.mapping.map(deletion.tablePosition, 1);
   const table = tr.doc.nodeAt(tablePosition);
   if (!table || table.type.spec["tableRole"] !== "table") {
@@ -558,14 +559,28 @@ export const applyTableColumnDeletion = ({
   }
 
   if (revision) {
-    const cellPositions = getTableColumnDeletionCellPositions({
+    const cells = getTableColumnDeletionCellPositions({
       map,
       table,
       columnIndex,
     });
-    if (!cellPositions) {
-      return { type: "unsupported" };
+    switch (cells.type) {
+      case "unsupported":
+        return cells;
+      case "pendingTableChange":
+        return {
+          type: "pendingTableChange",
+          message:
+            "A cell of the column already carries a structural revision.",
+        };
+      case "cells":
+        break;
+      default: {
+        const unreachable: never = cells;
+        return unreachable;
+      }
     }
+    const cellPositions = cells.positions;
     for (const [index, cellPosition] of cellPositions.entries()) {
       tr.setNodeAttribute(tablePosition + 1 + cellPosition, "cellMarker", {
         kind: "del",
@@ -618,21 +633,31 @@ type ApplyTableRowDeletionOptions = {
   revision: TableStructureRevision | null;
 };
 
+/**
+ * A tracked row or column deletion over a row or cell already pending
+ * insertion or deletion reports that pending change: each holds one such
+ * record.
+ */
+type PendingTableChange = { type: "pendingTableChange"; message: string };
+
+type TableRowDeletionResult = TableRowColumnMutationResult | PendingTableChange;
+
 export const applyTableRowDeletion = ({
   tr,
   deletion,
   revision,
-}: ApplyTableRowDeletionOptions): TableRowColumnMutationResult => {
+}: ApplyTableRowDeletionOptions): TableRowDeletionResult => {
   if (revision) {
     const rowPosition = tr.mapping.map(deletion.rowPosition);
     const row = tr.doc.nodeAt(rowPosition);
-    if (
-      !row ||
-      row.type.spec["tableRole"] !== "row" ||
-      row.attrs["trIns"] != null ||
-      row.attrs["trDel"] != null
-    ) {
+    if (!row || row.type.spec["tableRole"] !== "row") {
       return { type: "unsupported" };
+    }
+    if (row.attrs["trIns"] != null || row.attrs["trDel"] != null) {
+      return {
+        type: "pendingTableChange",
+        message: "A row already carries a structural revision.",
+      };
     }
     tr.setNodeAttribute(rowPosition, "trDel", revision);
     markTableRowContent({ tr, rowPosition, kind: "deletion", revision });
@@ -1017,19 +1042,30 @@ type GetTableColumnDeletionCellPositionsOptions = {
   columnIndex: number;
 };
 
+/**
+ * The cells a tracked column deletion marks; a shape it cannot mark is
+ * unsupported, and a cell already pending insertion or deletion is a pending
+ * table change.
+ */
+type ColumnDeletionCells =
+  | { type: "cells"; positions: number[] }
+  | { type: "pendingTableChange" }
+  | { type: "unsupported" };
+
 const getTableColumnDeletionCellPositions = ({
   map,
   table,
   columnIndex,
-}: GetTableColumnDeletionCellPositionsOptions): number[] | null => {
+}: GetTableColumnDeletionCellPositionsOptions): ColumnDeletionCells => {
   if (columnIndex < 0 || columnIndex >= map.width) {
-    return null;
+    return { type: "unsupported" };
   }
   const positions = new Set<number>();
+  let pendingCellChange = false;
   for (let row = 0; row < map.height; row++) {
     const position = map.map[row * map.width + columnIndex];
     if (position === undefined) {
-      return null;
+      return { type: "unsupported" };
     }
     const cell = table.nodeAt(position);
     // A row that omits the column has nothing to mark: accepting takes the
@@ -1039,12 +1075,14 @@ const getTableColumnDeletionCellPositions = ({
     if (
       !cell ||
       (tableRole !== "cell" && tableRole !== "header_cell") ||
-      cell.attrs["colspan"] !== 1 ||
-      cell.attrs["cellMarker"] != null
+      cell.attrs["colspan"] !== 1
     ) {
-      return null;
+      return { type: "unsupported" };
     }
+    pendingCellChange ||= cell.attrs["cellMarker"] != null;
     positions.add(position);
   }
-  return [...positions];
+  return pendingCellChange
+    ? { type: "pendingTableChange" }
+    : { type: "cells", positions: [...positions] };
 };

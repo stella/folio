@@ -1201,7 +1201,16 @@ export type FolioAIEditSkipReason =
 * Nothing was applied. Resolve the table's insertion or the mark's
 * deletion first.
 */
-"pendingTableInsertion" | "existingRevisionConflict";
+"pendingTableInsertion" |
+/**
+* The table, row, cell or grid the operation would change already carries
+* a pending change of the kind a tracked operation records there (a row
+* pending insertion or deletion, a table, row or cell property change, a
+* grid change, cells suggested for deletion), or the table is under review
+* where its columns or cells would change. Nothing was applied. Resolve
+* that change first.
+*/
+"pendingTableChange" | "existingRevisionConflict";
 
 // @public
 export type FolioAIEditSnapshot = FolioContentSnapshot<FolioAIBlock> & {
