@@ -1,9 +1,17 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  setDefaultTimeout,
+  test,
+} from "bun:test";
 import { readFile } from "node:fs/promises";
 
 import { ZipArchive } from "@stll/docx-core/zip";
 import { FolioDocxReviewer } from "@stll/folio-core/server";
 
+import { DISK_SYNC_TEST_TIMEOUT_MS } from "../../../test/disk-sync-timeout";
 import { makeTempDir } from "./__tests__/fixtures";
 import { captureIo, dataOf, envelopeOf } from "./__tests__/io";
 import {
@@ -17,6 +25,8 @@ import { runFolioCli } from "./cli";
 import { openOoxmlPackage } from "./ooxml-package";
 import { runPackageRewrite } from "./package-rewrite";
 import { sanitizePackage } from "./sanitize";
+
+setDefaultTimeout(DISK_SYNC_TEST_TIMEOUT_MS);
 
 const W15 = "http://schemas.microsoft.com/office/word/2012/wordml";
 

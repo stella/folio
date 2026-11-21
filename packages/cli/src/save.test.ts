@@ -1,9 +1,17 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  setDefaultTimeout,
+  test,
+} from "bun:test";
 import { readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { FolioDocxReviewer } from "@stll/folio-core/server";
 
+import { DISK_SYNC_TEST_TIMEOUT_MS } from "../../../test/disk-sync-timeout";
 import {
   buildDocx,
   CONTRACT_PARAGRAPHS,
@@ -19,6 +27,8 @@ import { latestCommitFor, stagePathFor } from "./journal";
 import { acquireLease, readLease } from "./lock";
 import { listMcpTools } from "./mcp";
 import { saveDocumentBytes, type SaveDocumentOptions } from "./save";
+
+setDefaultTimeout(DISK_SYNC_TEST_TIMEOUT_MS);
 
 let dir = "";
 let cleanup: () => Promise<void> = () => Promise.resolve();
