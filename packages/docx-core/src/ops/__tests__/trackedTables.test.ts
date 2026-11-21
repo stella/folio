@@ -593,7 +593,7 @@ describe("tracked table refusals", () => {
               },
             ],
           },
-          reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+          reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK,
         },
         ...(["moveFrom", "moveTo"] as const).map((type) => ({
           value: {

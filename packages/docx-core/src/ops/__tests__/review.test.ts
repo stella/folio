@@ -952,7 +952,7 @@ describe("C9: Enter and Delete record paragraph marks", () => {
     ).toStrictEqual(document);
     // A mark already carrying a change is not overwritten.
     expect(refusalOf(tracked.document, { ...join, revision: stamp(3) })).toBe(
-      DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK,
     );
   });
 

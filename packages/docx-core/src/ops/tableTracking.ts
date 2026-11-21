@@ -290,7 +290,7 @@ export const trackTableRows = ({
   if ([...finals].some((paragraph) => paragraph.pPrMark !== undefined)) {
     return refused({
       op,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK,
       message: "A cell's final paragraph already carries a mark revision.",
     });
   }
