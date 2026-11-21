@@ -1922,8 +1922,23 @@ export const publishCanonicalProjection = ({
   return Result.ok(staged);
 };
 
+/**
+ * How a change is admitted against content-control locks. An edit is judged
+ * on its result. A restage rebuilds a pending suggestion recorded before the
+ * save: no new edit, so a lock that arrived since does not refuse it, while
+ * resolving the suggestion stays under the lock.
+ */
+export const CANONICAL_ADMISSION = {
+  edit: "edit",
+  restage: "restage",
+} as const;
+export type CanonicalAdmission =
+  (typeof CANONICAL_ADMISSION)[keyof typeof CANONICAL_ADMISSION];
+
 type StageOptions = {
   typing?: CanonicalTyping;
+  /** Defaults to an edit. */
+  admission?: CanonicalAdmission;
   state: EditorState;
   ops: readonly DocumentOp[];
   selection: CanonicalSelection;
@@ -1952,6 +1967,7 @@ type JournalledOpsOptions = {
   postSelection: CanonicalSelection;
   stagedApplied?: AppliedDocumentOp;
   semantic?: CanonicalInputSemantic;
+  admission?: CanonicalAdmission;
 };
 
 type StageableOperation = InsertBlocksOp | InsertContentOp | InsertTextOp;
@@ -3069,7 +3085,7 @@ class CanonicalSession {
   }
 
   /** Verify compiled insertions and stage only the chain this session applied. */
-  beginVerifiedOperationStaging(access: symbol) {
+  beginVerifiedOperationStaging(access: symbol, admission: CanonicalAdmission) {
     if (access !== canonicalOperationStagingAccess)
       panic(
         "Only the public-operation compiler may stage verified operations.",
@@ -3153,8 +3169,21 @@ class CanonicalSession {
           ops: [...ops],
           postSelection,
           stagedApplied: { ...combined, revisions },
+          admission,
         });
       },
+      /** Stage operations the compiler applied itself, under this admission. */
+      prepareOps: (
+        state: EditorState,
+        compiled: readonly DocumentOp[],
+        postSelection: CanonicalSelection,
+      ): Result<CanonicalCommit, CanonicalSessionError> =>
+        this.prepareJournalledOps({
+          state,
+          ops: compiled,
+          postSelection,
+          admission,
+        }),
     };
   }
 
@@ -3164,6 +3193,7 @@ class CanonicalSession {
     postSelection,
     stagedApplied,
     semantic = "structure",
+    admission,
   }: JournalledOpsOptions): Result<CanonicalCommit, CanonicalSessionError> {
     const story = postSelection.anchor.story;
     const projected = this.projectStory(story);
@@ -3181,6 +3211,7 @@ class CanonicalSession {
       origin: "input",
       history: "opened",
       ...(stagedApplied === undefined ? {} : { stagedApplied }),
+      ...(admission === undefined ? {} : { admission }),
       onPublish: (inverse, version, shown) => {
         const entry = {
           type: "applied",
@@ -3922,6 +3953,7 @@ class CanonicalSession {
     previousProjection,
     opId,
     typing,
+    admission = CANONICAL_ADMISSION.edit,
   }: StageOptions): Result<CanonicalCommit, CanonicalSessionError> {
     const previous =
       previousProjection === undefined
@@ -3938,10 +3970,10 @@ class CanonicalSession {
     if (applied.value.inverse.length === 0)
       return noChange("The intent makes no document change.");
     // Judged on the result, so every path into the session meets one rule.
-    const locked = lockViolationBetween(
-      this.currentDocument,
-      applied.value.document,
-    );
+    const locked =
+      admission === CANONICAL_ADMISSION.restage
+        ? null
+        : lockViolationBetween(this.currentDocument, applied.value.document);
     if (locked !== null) return lockRefusal(locked);
     if (propertySourceDocument !== undefined)
       applied.value.document = preservePropertySources({
