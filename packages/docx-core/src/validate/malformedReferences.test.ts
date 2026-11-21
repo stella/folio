@@ -52,8 +52,16 @@ const MALFORMED = [
   ["&#xFFFE;", "&#xFFFE;", "invalidCharacterReference"],
   ["&#x110000;", "&#x110000;", "invalidCharacterReference"],
   ["&#12ab;", "&#12ab;", "invalidCharacterReference"],
+  ["&#X41;", "&#X41;", "invalidCharacterReference"],
 ] as const;
-const ALLOWED = ["&#65;", "&#x9;", "&#x1F642;", "&#xFFFD;", "&amp;"] as const;
+const ALLOWED = [
+  "&#65;",
+  "&#x9;",
+  "&#x1F642;",
+  "&#xfffd;",
+  "&#xFFFD;",
+  "&amp;",
+] as const;
 
 describe("a reference XML refuses", () => {
   test.each(MALFORMED)(

@@ -6,18 +6,17 @@
  * accepts:
  *
  * - `ooxml`: the ordinary contract the DOCX readers parse with. The five
- *   built-in entities and character references are decoded; a DOCTYPE, any
- *   other entity, mismatched or unclosed markup, text outside the root and
- *   nesting past {@link FOLIO_XML_RESOURCE_LIMITS} are refused.
+ *   built-in entities and character references to characters XML admits are
+ *   decoded; a DOCTYPE, any other reference, mismatched or unclosed markup,
+ *   text outside the root and nesting past {@link FOLIO_XML_RESOURCE_LIMITS}
+ *   are refused.
  * - `well-formed`: XML 1.0 well-formedness on top of that, for validators. One
  *   root element, valid names, no repeated attribute, no `<` in an attribute
- *   value, references only to characters XML admits, comments and processing
- *   instructions in their lexical form, and no characters XML excludes.
- * - `tolerant`: `ooxml`, except that text outside the root is dropped and a
- *   character reference the `ooxml` reader refuses is read the way earlier
- *   folio releases read it. A named reference to anything but the five
- *   built-in entities is refused, as in `ooxml`: without a DTD nothing defines
- *   it.
+ *   value, comments and processing instructions in their lexical form, and no
+ *   characters XML excludes.
+ * - `tolerant`: `ooxml`, except that text outside the root is dropped and an
+ *   `&` that begins no reference is read as text. A reference XML refuses is
+ *   refused, as in `ooxml`.
  *
  * `references: "raw"` keeps each reference as written instead of decoding it,
  * for readers that compare or re-emit source spellings.
@@ -93,8 +92,8 @@ export type XmlRefusal =
  * Why XML refuses a reference: it names an entity no declaration defines
  * (`&nbsp;`, `&copy;`, any name but XML's five), or it is a character
  * reference XML refuses: to a character XML 1.0 does not allow (`&#0;`,
- * `&#x1;`, `&#xFFFE;`, a surrogate, past U+10FFFF), or with digits that are
- * not a number (`&#12ab;`).
+ * `&#x1;`, `&#xFFFE;`, a surrogate, past U+10FFFF), with a capital `X`
+ * (`&#X41;`), or with digits that are not a number (`&#12ab;`).
  */
 export type XmlMalformedReferenceKind =
   "undeclaredEntity" | "invalidCharacterReference";
@@ -227,17 +226,11 @@ const valueReaderFor = ({
             ? normalizeLineEndings(value)
             : null;
   }
-  const decodeReference =
-    conformance === "well-formed"
-      ? decodeWellFormedReference
-      : decodeOoxmlReference;
   return references === "decode"
-    ? (value) => decodeReferences(normalizeLineEndings(value), decodeReference)
+    ? (value) => decodeReferences(normalizeLineEndings(value))
     : (value) => {
         const normalized = normalizeLineEndings(value);
-        return decodeReferences(normalized, decodeReference) === null
-          ? null
-          : normalized;
+        return decodeReferences(normalized) === null ? null : normalized;
       };
 };
 
@@ -1081,18 +1074,13 @@ const isXmlCharacter = (codePoint: number): boolean =>
   (codePoint >= 0xe000 && codePoint <= 0xfffd) ||
   (codePoint >= 0x10000 && codePoint <= 0x10ffff);
 
-type ReferenceDecoder = (entity: string) => string | null;
-
 /**
  * Decode every reference in `value`; `null` when one is refused.
  *
- * The decoder answers for the text between `&` and `;`, and a `null` there
- * refuses the whole value.
+ * {@link decodeReference} answers for the text between `&` and `;`, and a
+ * `null` there refuses the whole value.
  */
-const decodeReferences = (
-  value: string,
-  decodeReference: ReferenceDecoder,
-): string | null => {
+const decodeReferences = (value: string): string | null => {
   const firstEntity = value.indexOf("&");
   if (firstEntity === -1) {
     return value;
@@ -1143,55 +1131,32 @@ const builtInEntity = (entity: string): string | null => {
   }
 };
 
-type CharacterReference = { codePoint: number; hexMarker: "x" | "X" | null };
-
-const parseCharacterReference = (entity: string): CharacterReference | null => {
+/**
+ * The character an `&#...;` body refers to, or `null`. XML 1.0 §4.1: decimal
+ * digits after `#`, or hexadecimal digits after a lower-case `#x` (`&#X41;`
+ * refers to nothing), to a character §2.2 admits.
+ */
+const parseCharacterReference = (entity: string): number | null => {
   if (entity.charCodeAt(0) !== 35) {
     return null;
   }
-  const marker = entity.charAt(1);
-  const hexMarker = marker === "x" || marker === "X" ? marker : null;
-  const digits = entity.slice(hexMarker === null ? 1 : 2);
-  if (digits.length === 0 || !hasOnlyDigits(digits, hexMarker !== null)) {
+  const hexadecimal = entity.charAt(1) === "x";
+  const digits = entity.slice(hexadecimal ? 2 : 1);
+  if (digits.length === 0 || !hasOnlyDigits(digits, hexadecimal)) {
     return null;
   }
-  return {
-    codePoint: Number.parseInt(digits, hexMarker === null ? 10 : 16),
-    hexMarker,
-  };
+  const codePoint = Number.parseInt(digits, hexadecimal ? 16 : 10);
+  return Number.isInteger(codePoint) && isXmlCharacter(codePoint)
+    ? codePoint
+    : null;
 };
 
-/**
- * The `ooxml` reader's references: the built-ins and a reference to any
- * character XML allows, `&#X` spelled either way.
- */
-const decodeOoxmlReference: ReferenceDecoder = (entity) => {
+/** The built-in entities and references to characters XML allows. */
+const decodeReference = (entity: string): string | null => {
   const builtIn = builtInEntity(entity);
   if (builtIn !== null) return builtIn;
-  const reference = parseCharacterReference(entity);
-  if (
-    reference === null ||
-    !Number.isInteger(reference.codePoint) ||
-    !isXmlCharacter(reference.codePoint)
-  )
-    return null;
-  return String.fromCodePoint(reference.codePoint);
-};
-
-/** XML 1.0 §4.1: `&#x` in lower case, and only characters §2.2 admits. */
-const decodeWellFormedReference: ReferenceDecoder = (entity) => {
-  const builtIn = builtInEntity(entity);
-  if (builtIn !== null) return builtIn;
-  const reference = parseCharacterReference(entity);
-  if (
-    reference === null ||
-    reference.hexMarker === "X" ||
-    !Number.isInteger(reference.codePoint) ||
-    !isXmlCharacter(reference.codePoint)
-  ) {
-    return null;
-  }
-  return String.fromCodePoint(reference.codePoint);
+  const codePoint = parseCharacterReference(entity);
+  return codePoint === null ? null : String.fromCodePoint(codePoint);
 };
 
 type MalformedReference = {
@@ -1216,15 +1181,15 @@ const describeMalformedReference = ({
   }
 };
 
+/** What a numeric reference spells: `#`, digits or letters, nothing else. */
+const NUMERIC_REFERENCE_SHAPE = /^#[0-9A-Za-z]+$/u;
+
 /**
  * The first reference in `value` XML refuses, or `null`: an `&Name;` naming
  * none of XML's five built-in entities, or an `&#...;` that is no reference to
  * a character XML 1.0 allows. An `&` that does not begin a syntactic
  * reference is neither.
  */
-/** What a numeric reference spells: `#`, digits or letters, nothing else. */
-const NUMERIC_REFERENCE_SHAPE = /^#[0-9A-Za-z]+$/u;
-
 const firstMalformedReference = (value: string): MalformedReference | null => {
   let cursor = value.indexOf("&");
   while (cursor !== -1) {
@@ -1232,14 +1197,9 @@ const firstMalformedReference = (value: string): MalformedReference | null => {
     if (end === -1) return null;
     const reference = value.slice(cursor + 1, end);
     if (reference.charCodeAt(0) === 35) {
-      const character = parseCharacterReference(reference);
       if (
         NUMERIC_REFERENCE_SHAPE.test(reference) &&
-        !(
-          character !== null &&
-          Number.isInteger(character.codePoint) &&
-          isXmlCharacter(character.codePoint)
-        )
+        parseCharacterReference(reference) === null
       )
         return { index: cursor, kind: "invalidCharacterReference", reference };
     } else if (builtInEntity(reference) === null && XML_NAME.test(reference))
@@ -1270,7 +1230,7 @@ const decodeTolerantReferences = (value: string): string => {
       continue;
     }
     const entity = value.slice(cursor + 1, end);
-    const decoded = entity.length === 0 ? null : decodeOoxmlReference(entity);
+    const decoded = entity.length === 0 ? null : decodeReference(entity);
     if (decoded === null) {
       cursor = value.indexOf("&", cursor + 1);
       continue;

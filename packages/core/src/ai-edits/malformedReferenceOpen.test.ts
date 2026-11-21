@@ -57,6 +57,18 @@ const CASES = {
     kind: "invalidCharacterReference",
     edit: (xml: string) => xml.replace("Plain words.", "Plain&#x1;words."),
   },
+  "a hexadecimal reference marked with a capital X": {
+    part: "word/document.xml",
+    reference: "#X41",
+    kind: "invalidCharacterReference",
+    edit: (xml: string) => xml.replace("Plain words.", "Plain&#X41;words."),
+  },
+  "a decimal reference with letters among its digits": {
+    part: "word/document.xml",
+    reference: "#12ab",
+    kind: "invalidCharacterReference",
+    edit: (xml: string) => xml.replace("Plain words.", "Plain&#12ab;words."),
+  },
   "a noncharacter in a styles attribute": {
     part: "word/styles.xml",
     reference: "#xFFFE",

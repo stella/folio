@@ -332,6 +332,7 @@ describe("parseStreamingXml", () => {
       ['<document v="x&custom;"/>', 14],
       ["<document>a&#0;b</document>", 11],
       ["<document>a&#12ab;</document>", 11],
+      ["<document>a&#X41;</document>", 11],
       ['<document v="x&#xFFFE;"/>', 14],
     ] as const) {
       expect(parseStreamingXml(refused).status).toBe("unsupported");
