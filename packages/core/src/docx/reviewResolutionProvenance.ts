@@ -65,6 +65,7 @@ const JOIN_FIELDS = {
   plainSides: true,
   emptiedHolder: true,
   holdsControlText: true,
+  closedHolder: true,
   retainedEnclosing: true,
 } as const satisfies Record<RecordField<ResolutionJoins>, true>;
 type EnclosingHandoff = NonNullable<
@@ -223,6 +224,8 @@ export const isResolutionJoins = (value: unknown): value is ResolutionJoins =>
   (!Object.hasOwn(value, "emptiedHolder") || value["emptiedHolder"] === true) &&
   (!Object.hasOwn(value, "holdsControlText") ||
     value["holdsControlText"] === true) &&
+  (!Object.hasOwn(value, "closedHolder") ||
+    isBoundaryJoins(value["closedHolder"])) &&
   (!Object.hasOwn(value, ENCLOSING_ATTRIBUTE) ||
     enclosingHandoffs(value[ENCLOSING_ATTRIBUTE]));
 
