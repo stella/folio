@@ -7,19 +7,23 @@ import {
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import { FolioDocxReviewer } from "./headless";
 
 const SOURCE_TEXT = "Source paragraph.";
 const ORIGINAL = [SOURCE_TEXT];
+const SESSIONS: readonly HeadlessReviewerSession[] = ["canonical", "legacy"];
 
-const open = async (bytes?: ArrayBuffer) => {
-  if (bytes) return FolioDocxReviewer.fromBuffer(bytes, { author: "Reviewer" });
+const open = async (session: HeadlessReviewerSession, bytes?: ArrayBuffer) => {
+  if (bytes)
+    return FolioDocxReviewer.fromBuffer(bytes, { author: "Reviewer", session });
   const document = fromMarkdown(SOURCE_TEXT);
   const { docx } = await ensureParaIds(
     new Uint8Array(await createDocx(document)),
   );
   return FolioDocxReviewer.fromBuffer(new Uint8Array(docx).buffer, {
     author: "Reviewer",
+    session,
   });
 };
 
@@ -42,46 +46,47 @@ const applyTracked = (
   expect(result.applied).toHaveLength(operations.length);
 };
 
-test("rejecting a comment on a paragraph inserted before a table restores the source", async () => {
-  const reviewer = await open();
-  const sourceId = reviewer.getContent().at(0)?.id;
-  if (!sourceId) throw new Error("Missing source paragraph id");
+for (const session of SESSIONS)
+  test(`${session}: rejecting a comment on a paragraph inserted before a table restores the source`, async () => {
+    const reviewer = await open(session);
+    const sourceId = reviewer.getContent().at(0)?.id;
+    if (!sourceId) throw new Error("Missing source paragraph id");
 
-  applyTracked(reviewer, [
-    {
-      id: "table",
-      type: "insertTable",
-      blockId: sourceId,
-      rows: [["Term", "Value"]],
-    },
-  ]);
-  applyTracked(reviewer, [
-    {
-      id: "paragraph",
-      type: "insertAfterBlock",
-      blockId: sourceId,
-      text: "Inserted clause.",
-    },
-  ]);
+    applyTracked(reviewer, [
+      {
+        id: "table",
+        type: "insertTable",
+        blockId: sourceId,
+        rows: [["Term", "Value"]],
+      },
+    ]);
+    applyTracked(reviewer, [
+      {
+        id: "paragraph",
+        type: "insertAfterBlock",
+        blockId: sourceId,
+        text: "Inserted clause.",
+      },
+    ]);
 
-  const insertedId = reviewer
-    .getContent()
-    .find(({ text }) => text === "Inserted clause.")?.id;
-  if (!insertedId) throw new Error("Missing inserted paragraph id");
-  applyTracked(reviewer, [
-    {
-      id: "comment",
-      type: "commentOnBlock",
-      blockId: insertedId,
-      quote: "Inserted",
-      comment: { text: "Comment on inserted text." },
-    },
-  ]);
+    const insertedId = reviewer
+      .getContent()
+      .find(({ text }) => text === "Inserted clause.")?.id;
+    if (!insertedId) throw new Error("Missing inserted paragraph id");
+    applyTracked(reviewer, [
+      {
+        id: "comment",
+        type: "commentOnBlock",
+        blockId: insertedId,
+        quote: "Inserted",
+        comment: { text: "Comment on inserted text." },
+      },
+    ]);
 
-  reviewer.rejectAll();
-  const actual = visibleBlocks(reviewer);
-  expect(actual).toEqual(ORIGINAL);
-  expect(visibleBlocks(await open(await reviewer.toBuffer()))).toEqual(
-    ORIGINAL,
-  );
-});
+    reviewer.rejectAll();
+    const actual = visibleBlocks(reviewer);
+    expect(actual).toEqual(ORIGINAL);
+    expect(
+      visibleBlocks(await open(session, await reviewer.toBuffer())),
+    ).toEqual(ORIGINAL);
+  });
