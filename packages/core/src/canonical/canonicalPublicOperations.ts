@@ -4475,10 +4475,10 @@ export class CanonicalPublicOperations {
       resolved.splice(resolved.indexOf(item), 1);
       skip(item.operation.id, "unsupportedBlock", ROW_SHIFTED_CELL_SHAPE);
     }
-    for (const item of rowClosingCellShapes({
-      items: resolved,
-      doc: projected.value.doc,
-    })) {
+    const rowClosing = projected.isOk()
+      ? rowClosingCellShapes({ items: resolved, doc: projected.value.doc })
+      : [];
+    for (const item of rowClosing) {
       resolved.splice(resolved.indexOf(item), 1);
       skip(item.operation.id, "unsupportedBlock", ROW_CLOSING_CELL_SHAPE);
     }
