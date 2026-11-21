@@ -88,6 +88,7 @@ import {
 } from "../docx/paragraphPropertySource";
 import { visitInlineContentSlots } from "../docx/paragraphTraversal";
 import { isCellMergeContinuation } from "../docx/tableParser";
+import { referencedHeaderFooters } from "../docx/unreferencedHeaderFooters";
 import { calculateRowSpans } from "../docx/verticalMergeProjection";
 import { canonicalOperationStagingAccess } from "../internal/canonicalOperationStaging";
 import {
@@ -2144,6 +2145,8 @@ class CanonicalSession {
   private readonly sourceRestores: readonly CanonicalSourceRestore[];
   /** Notes the opened package held without a reference: content, kept on save. */
   private readonly heldUnreferencedNotes: ReadonlySet<string>;
+  /** Headers and footers a section of the opened package referenced. */
+  private readonly referencedHeaderFootersAtOpen: ReadonlySet<string>;
   /** What earlier projections converted, reused by every later one. */
   private readonly caches: StoryProjectionCaches;
 
@@ -2164,6 +2167,7 @@ class CanonicalSession {
     this.sourceRestores = sourceRestores;
     this.caches = caches;
     this.heldUnreferencedNotes = notesHeldWithoutReference(document);
+    this.referencedHeaderFootersAtOpen = referencedHeaderFooters(document);
     this.openedDocument = document;
     this.currentDocument = document;
     this.currentProjection = projection;
@@ -2433,6 +2437,7 @@ class CanonicalSession {
       ),
       structure: this.saveStructure,
       heldUnreferencedNotes: this.heldUnreferencedNotes,
+      referencedHeaderFootersAtOpen: this.referencedHeaderFootersAtOpen,
       noteParagraphs: this.noteParagraphChanges(),
     };
   }
