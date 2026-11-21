@@ -123,29 +123,26 @@ const freshParaId = (used: Set<string>): string => {
   return panic("Every paragraph id is in use.");
 };
 
+/** The block a container ends with, as far as a story's closing paragraph goes. */
+type BlocksEnding = "paragraph" | "table" | "none";
+
 /**
- * Whether `blocks` end in a paragraph: their last paragraph or table, content
- * controls and custom XML read through, is a paragraph. Opaque markup and
- * bookmark markers are neither.
+ * What `blocks` end with: their last paragraph or table, content controls and
+ * custom XML read through. A control or wrapper that holds neither is passed
+ * over like opaque markup and bookmark markers, so the block before it
+ * decides.
  */
-const endsInParagraph = (blocks: readonly BlockContent[]): boolean => {
+const blocksEnding = (blocks: readonly BlockContent[]): BlocksEnding => {
   for (let index = blocks.length - 1; index >= 0; index -= 1) {
     const block = blocks[index];
-    if (block?.type === "paragraph") return true;
-    if (block?.type === "table") return false;
-    if (
-      (block?.type === "blockSdt" || block?.type === "blockCustomXml") &&
-      block.content.some(
-        ({ type }) =>
-          type === "paragraph" ||
-          type === "table" ||
-          type === "blockSdt" ||
-          type === "blockCustomXml",
-      )
-    )
-      return endsInParagraph(block.content);
+    if (block?.type === "paragraph") return "paragraph";
+    if (block?.type === "table") return "table";
+    if (block?.type === "blockSdt" || block?.type === "blockCustomXml") {
+      const ending = blocksEnding(block.content);
+      if (ending !== "none") return ending;
+    }
   }
-  return false;
+  return "none";
 };
 
 const isSeparatorNote = (document: Document, story: OpStory): boolean => {
@@ -179,7 +176,10 @@ export const normalizeCanonicalSource = (
     const minted: string[] = [];
     // A separator or continuation note is the application's own, not a story
     // a caret goes in; the session leaves it as read.
-    if (!endsInParagraph(content) && !isSeparatorNote(document, story)) {
+    if (
+      blocksEnding(content) !== "paragraph" &&
+      !isSeparatorNote(document, story)
+    ) {
       const paraId = freshParaId(takenIds());
       const paragraph: Paragraph = { type: "paragraph", paraId, content: [] };
       minted.push(paraId);
