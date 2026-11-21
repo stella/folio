@@ -214,6 +214,16 @@ export type TableBlockIntentOperation =
           separated?: never;
           paragraphAfter?: never;
         }
+      | {
+          /**
+           * Before the first block of the block list holding blockId, without
+           * added paragraphs: where no paragraph or table names the place.
+           */
+          anchor: "containerStart";
+          side?: never;
+          separated?: never;
+          paragraphAfter?: never;
+        }
     ));
 
 /** Positions use canonical physical offsets, including retained deleted content. */
@@ -2760,7 +2770,10 @@ const compileInStory = (
         const { story, blockId, table } = intent.operation;
         let separated = false;
         let trailing = false;
-        if (intent.operation.anchor !== "table") {
+        if (
+          intent.operation.anchor === undefined ||
+          intent.operation.anchor === "paragraph"
+        ) {
           separated = intent.operation.separated === true;
           trailing = intent.operation.paragraphAfter !== "none";
         }
@@ -2817,6 +2830,8 @@ const compileInStory = (
         let at: TableInsertionPoint;
         if (intent.operation.anchor === "table")
           at = { type: before ? "beforeTable" : "afterTable", blockId };
+        else if (intent.operation.anchor === "containerStart")
+          at = { type: "containerStart", blockId };
         else
           at = before
             ? { type: "before", blockId: paragraphId ?? blockId }

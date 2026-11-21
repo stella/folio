@@ -354,44 +354,63 @@ export const lifecycleWireCases = () => {
   return cases;
 };
 
-/** Actual table-side compiler output and its exact empty-replacement inverse. */
+/** A block content control the source leaves empty, as the first block. */
+const emptyControlFirst = {
+  package: {
+    document: {
+      content: [
+        { type: "blockSdt", properties: { sdtType: "richText" }, content: [] },
+        second,
+      ],
+    },
+  },
+} satisfies Document;
+
+/**
+ * Actual table-side and list-start compiler output and its exact
+ * empty-replacement inverse.
+ */
 export const tableBoundaryWireCases = () =>
-  (["beforeTable", "afterTable"] as const).flatMap((side) =>
+  (["beforeTable", "afterTable", "containerStart"] as const).flatMap((side) =>
     (["editing", "suggesting"] as const).map((mode) => {
-      const before = {
-        package: {
-          document: {
-            content: [
-              first,
-              {
-                type: "table",
-                rows: [
-                  {
-                    type: "tableRow",
-                    cells: [
-                      {
-                        type: "tableCell",
-                        content: [
-                          {
-                            type: "paragraph",
-                            paraId: "00000031",
-                            content: [],
-                          },
-                        ],
-                      },
-                    ],
-                  },
-                ],
+      const blockId = side === "containerStart" ? "00000002" : "00000031";
+      const before =
+        side === "containerStart"
+          ? emptyControlFirst
+          : ({
+              package: {
+                document: {
+                  content: [
+                    first,
+                    {
+                      type: "table",
+                      rows: [
+                        {
+                          type: "tableRow",
+                          cells: [
+                            {
+                              type: "tableCell",
+                              content: [
+                                {
+                                  type: "paragraph",
+                                  paraId: "00000031",
+                                  content: [],
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                    second,
+                  ],
+                },
               },
-              second,
-            ],
-          },
-        },
-      } satisfies Document;
+            } satisfies Document);
       const intent = {
         type: "insertParagraphs",
         story: OP_STORIES.MAIN,
-        at: { type: side, blockId: "00000031" },
+        at: { type: side, blockId },
         paragraphs: [
           {
             type: "paragraph",

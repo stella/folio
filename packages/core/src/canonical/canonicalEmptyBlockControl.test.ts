@@ -7,8 +7,12 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
+import type { BlockContent } from "@stll/docx-core/model";
+
 import { FolioDocxReviewer } from "../ai-edits/headless";
+import { createDocx } from "../docx/rezip";
 import { unzipDocx } from "../docx/unzip";
+import { fromMarkdown } from "../markdown/fromMarkdown";
 
 const FIXTURE = path.join(
   import.meta.dir,
@@ -135,29 +139,65 @@ test("a table inserted after an empty content control's filler follows the contr
   );
 });
 
-test("a paragraph before an empty content control that starts the body has no paragraph to follow (canonical)", async () => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(source(), {
-    session: "canonical",
-  });
-  const { skipped } = reviewer.applyOperations(
-    [
-      {
+const BEFORE_START = [
+  {
+    name: "a paragraph",
+    operation: (blockId: string) =>
+      ({
         id: "insert",
         type: "insertBeforeBlock",
-        blockId: fillerOf(reviewer).id,
+        blockId,
         text: INSERTED,
-      },
-    ],
-    { undefinedReferences: "refuse", mode: "direct" },
-  );
-  expect(skipped).toMatchObject([
-    {
-      id: "insert",
-      reason: "unsupportedBlock",
-      message: expect.stringContaining("empty content control"),
-    },
-  ]);
-});
+      }) as const,
+    inserted: INSERTED,
+  },
+  {
+    name: "a table",
+    operation: (blockId: string) =>
+      ({
+        id: "insert",
+        type: "insertTable",
+        blockId,
+        position: "before",
+        rows: [["Cell"]],
+      }) as const,
+    inserted: "Cell",
+  },
+] as const;
+
+for (const session of SESSIONS)
+  for (const mode of ["direct", "tracked-changes"] as const)
+    for (const { name, operation, inserted } of BEFORE_START)
+      test(`${name} inserted before an empty content control that starts the body goes before it (${session}, ${mode})`, async () => {
+        const reviewer = await FolioDocxReviewer.fromBuffer(source(), {
+          session,
+        });
+        const result = reviewer.applyOperations(
+          [operation(fillerOf(reviewer).id)],
+          { undefinedReferences: "refuse", mode },
+        );
+        expect(result.skipped).toEqual([]);
+        const expected = [inserted, "", "After empty sdt."];
+        expect(texts(reviewer)).toEqual(expected);
+        const saved = await reviewer.toBuffer();
+        expect(await controlsIn(saved)).toBe(await controlsIn(source()));
+        const reopened = await FolioDocxReviewer.fromBuffer(saved, {
+          session,
+        });
+        expect(texts(reopened)).toEqual(expected);
+        if (session === "canonical")
+          expect((await unzipDocx(saved)).documentXml).toMatch(
+            /<w:body>\s*<w:(p|tbl)[\s>](?:.|\s)*?<w:sdt\/>/u,
+          );
+        if (mode === "direct") return;
+        const rejected = await FolioDocxReviewer.fromBuffer(saved, {
+          session,
+        });
+        rejected.rejectAll();
+        expect(texts(rejected)).toEqual(["", "After empty sdt."]);
+        reopened.acceptAll();
+        expect(texts(reopened)).toEqual(expected);
+      });
 
 test("an edit of an empty content control's filler names why it is refused (canonical)", async () => {
   const reviewer = await FolioDocxReviewer.fromBuffer(source(), {
@@ -186,3 +226,103 @@ test("an edit of an empty content control's filler names why it is refused (cano
     expect(message).toContain("empty content control");
   expect(texts(reviewer)).toEqual(["", "After empty sdt."]);
 });
+
+for (const session of SESSIONS)
+  for (const mode of ["direct", "tracked-changes"] as const)
+    test(`blocks a batch inserts before an empty content control that starts the body keep the batch's order (${session}, ${mode})`, async () => {
+      const reviewer = await FolioDocxReviewer.fromBuffer(source(), {
+        session,
+      });
+      const blockId = fillerOf(reviewer).id;
+      const result = reviewer.applyOperations(
+        [
+          { id: "first", type: "insertBeforeBlock", blockId, text: "First." },
+          {
+            id: "table",
+            type: "insertTable",
+            blockId,
+            position: "before",
+            rows: [["Cell"]],
+          },
+          { id: "last", type: "insertBeforeBlock", blockId, text: "Last." },
+        ],
+        { undefinedReferences: "refuse", mode },
+      );
+      expect(result.skipped).toEqual([]);
+      const expected = ["First.", "Cell", "Last.", "", "After empty sdt."];
+      expect(texts(reviewer)).toEqual(expected);
+      const reopened = await FolioDocxReviewer.fromBuffer(
+        await reviewer.toBuffer(),
+        { session },
+      );
+      expect(texts(reopened)).toEqual(expected);
+    });
+
+/** A document from `markdown` with an empty content control put in by `place`. */
+const withEmptyControl = async (
+  markdown: string,
+  place: (content: BlockContent[], control: BlockContent) => void,
+) => {
+  const document = fromMarkdown(markdown);
+  place(document.package.document.content, {
+    type: "blockSdt",
+    properties: { sdtType: "richText" },
+    content: [],
+  });
+  return await createDocx(document);
+};
+
+const PLACES = [
+  {
+    name: "first in a table cell goes beside the table",
+    input: () =>
+      withEmptyControl("| H |\n|---|\n| A |\n\nAfter.", (content, control) => {
+        const table = content.find((block) => block.type === "table");
+        table?.rows.at(0)?.cells.at(0)?.content.unshift(control);
+      }),
+    expected: ["Heading", "", "H", "A", "After."],
+    // Tracked, rejecting the paragraph would run its mark into a cell that
+    // starts with a control, which docx-core refuses for any table.
+    modes: ["direct"],
+  },
+  {
+    name: "after a table goes between them",
+    input: () =>
+      withEmptyControl("| H |\n|---|\n| A |\n\nAfter.", (content, control) => {
+        content.splice(1, 0, control);
+      }),
+    expected: ["H", "A", "Heading", "", "After."],
+    modes: ["direct", "tracked-changes"],
+  },
+] as const;
+
+for (const session of SESSIONS)
+  for (const { name, input, expected, modes } of PLACES)
+    for (const mode of modes)
+      test(`a paragraph inserted before an empty content control ${name} (${session}, ${mode})`, async () => {
+        const reviewer = await FolioDocxReviewer.fromBuffer(await input(), {
+          session,
+        });
+        const filler = reviewer
+          .snapshot()
+          .blocks.find(({ text }) => text === "");
+        if (filler === undefined) throw new Error("Missing the filler");
+        const result = reviewer.applyOperations(
+          [
+            {
+              id: "insert",
+              type: "insertBeforeBlock",
+              blockId: filler.id,
+              text: "Heading",
+            },
+          ],
+          { undefinedReferences: "refuse", mode },
+        );
+        expect(result.skipped).toEqual([]);
+        expect(texts(reviewer)).toEqual([...expected]);
+        const reopened = await FolioDocxReviewer.fromBuffer(
+          await reviewer.toBuffer(),
+          { session },
+        );
+        expect(texts(reopened)).toEqual([...expected]);
+      });

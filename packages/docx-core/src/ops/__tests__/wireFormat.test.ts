@@ -337,9 +337,9 @@ test("clipboard package resources remain pinned in the schema-10 wire contract",
   expect(() => envelopes()).not.toThrow();
 });
 
-test("schema15 table boundaries and empty replacements roundtrip while schema14 envelopes remain refused", async () => {
+test("schema15 table boundaries, schema17 list starts and empty replacements roundtrip while schema14 envelopes remain refused", async () => {
   const cases = tableBoundaryWireCases();
-  expect(cases).toHaveLength(4);
+  expect(cases).toHaveLength(6);
   const first =
     cases.at(0) ?? panic("The boundary fixture needs its first real producer.");
   const seen = new Set<string>();
@@ -372,6 +372,8 @@ test("schema15 table boundaries and empty replacements roundtrip while schema14 
     "afterTable:tracked",
     "beforeTable:direct",
     "beforeTable:tracked",
+    "containerStart:direct",
+    "containerStart:tracked",
   ]);
   const historical: unknown = await Bun.file(
     new URL("./__fixtures__/ops-v14.json", import.meta.url),

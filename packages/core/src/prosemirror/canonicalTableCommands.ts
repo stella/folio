@@ -99,7 +99,14 @@ const targetBetween = (
 const firstParagraphPosition = (node: PMNode, position: number) => {
   let found: number | undefined;
   node.descendants((child, offset) => {
-    if (found !== undefined || child.type.name === "table") return false;
+    // A block the source leaves empty shows a filler paragraph no source
+    // names, so it cannot address the table.
+    if (
+      found !== undefined ||
+      child.type.name === "table" ||
+      child.attrs["_originallyEmpty"] === true
+    )
+      return false;
     if (child.isTextblock) {
       found = position + 1 + offset + 1;
       return false;

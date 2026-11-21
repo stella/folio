@@ -628,8 +628,8 @@ test("embedded records refuse undeclared fields, unknown kinds and malformed ids
     expect(validateDocumentBatch(withOp(withCell(content))).isErr()).toBe(true);
 });
 
-test("table-side insertion effects are validated by boundary variant without rewriting schema14", () => {
-  expect(tableBoundarySequencedFixtures).toHaveLength(4);
+test("table-side and list-start insertion effects are validated by boundary variant without rewriting schema14", () => {
+  expect(tableBoundarySequencedFixtures).toHaveLength(6);
   for (const sample of tableBoundarySequencedFixtures) {
     expect(validateSequencedBatch(sample).isOk()).toBe(true);
     const mismatched = {

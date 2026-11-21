@@ -94,6 +94,8 @@ type SectionViewChange = {
 /**
  * The operation schema this module reads and writes.
  *
+ * Version 17 adds the `containerStart` insertion point: paragraphs or a table
+ * before the first block of a block list, whatever kind that block is.
  * Version 16 adds `createdSince` to `restoreCommentState`: a restoration
  * rebased over concurrent comment creations keeps them.
  * Version 15 adds paragraph insertion beside tables and exact empty block
@@ -127,7 +129,7 @@ type SectionViewChange = {
  * and paragraph operations, and the review operations `setParagraphReview`,
  * `replaceInline` and `resolveRevision`.
  */
-export const DOCUMENT_OP_SCHEMA_VERSION = 16;
+export const DOCUMENT_OP_SCHEMA_VERSION = 17;
 
 /**
  * The main story has a fixed address; other editable parts use their stable
@@ -667,8 +669,9 @@ export type BlockInsertionPoint =
   { type: "before"; blockId: string } | { type: "after"; blockId: string };
 
 /**
- * Insert paragraphs beside an existing paragraph or table, with pre-minted ids.
- * A table is addressed by a paragraph of its own, as in TableInsertionPoint.
+ * Insert paragraphs beside an existing paragraph or table, or at the start of
+ * a block list, with pre-minted ids. A table is addressed by a paragraph of
+ * its own, and a list by a paragraph it holds, as in TableInsertionPoint.
  * Tracked table-side insertion refuses an earlier pending first-paragraph
  * source owner in the same containing block list.
  * Section-bearing paragraphs are refused. With `revision`, each inserted
@@ -988,12 +991,19 @@ export type SetSectionEndpointOp = {
 /**
  * Where a table goes: beside a paragraph, or beside the innermost table
  * holding the paragraph `blockId` names, in the block list holding that
- * table, touching it, where no paragraph stands on that side to name.
+ * table, touching it, where no paragraph stands on that side to name; or,
+ * with `containerStart`, before the first block of the block list (a story,
+ * cell, note, text box or block content control) that holds the paragraph
+ * `blockId` names directly, whatever kind that first block is: the one place
+ * no paragraph or table names when the list starts with a block that holds
+ * no paragraph, such as an empty content control. Every container ends with
+ * a paragraph, so one is always there to name the list by.
  */
 export type TableInsertionPoint =
   | BlockInsertionPoint
   | { type: "beforeTable"; blockId: string }
-  | { type: "afterTable"; blockId: string };
+  | { type: "afterTable"; blockId: string }
+  | { type: "containerStart"; blockId: string };
 
 /**
  * Insert a table before or after a paragraph, or beside a table. Tracking

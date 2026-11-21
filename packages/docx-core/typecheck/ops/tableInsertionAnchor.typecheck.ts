@@ -54,11 +54,25 @@ const separatedTable: TableBlockIntentOperation = separatedInput;
 // @ts-expect-error A table anchor cannot request a trailing paragraph.
 const trailingTable: TableBlockIntentOperation = trailingInput;
 
+const listStart = {
+  ...base,
+  anchor: "containerStart",
+} as const satisfies TableBlockIntentOperation;
+const sidedListStartInput = { ...listStart, side: "before" } as const;
+const separatedListStartInput = { ...listStart, separated: true } as const;
+// @ts-expect-error A list start is one place: it takes no side.
+const sidedListStart: TableBlockIntentOperation = sidedListStartInput;
+// @ts-expect-error A list start cannot request separating paragraphs.
+const separatedListStart: TableBlockIntentOperation = separatedListStartInput;
+
 void implicitParagraph;
 void explicitParagraph;
 void tableAnchor;
 void separatedTable;
 void trailingTable;
+void listStart;
+void sidedListStart;
+void separatedListStart;
 
 const tableSideParagraphs = {
   type: DOCUMENT_OP_TYPES.INSERT_BLOCKS,

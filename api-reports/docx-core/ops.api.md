@@ -435,7 +435,7 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
 }>;
 
 // @public
-export const DOCUMENT_OP_SCHEMA_VERSION = 16;
+export const DOCUMENT_OP_SCHEMA_VERSION = 17;
 
 // @public
 export const DOCUMENT_OP_TYPES: Readonly<{
@@ -1605,6 +1605,11 @@ export type TableBlockIntentOperation = Omit<DeleteTableOp, "revision" | "newIds
     anchor: "table";
     separated?: never;
     paragraphAfter?: never;
+} | {
+    anchor: "containerStart";
+    side?: never;
+    separated?: never;
+    paragraphAfter?: never;
 }));
 
 // @public (undocumented)
@@ -1616,6 +1621,9 @@ export type TableInsertionPoint = BlockInsertionPoint | {
     blockId: string;
 } | {
     type: "afterTable";
+    blockId: string;
+} | {
+    type: "containerStart";
     blockId: string;
 };
 

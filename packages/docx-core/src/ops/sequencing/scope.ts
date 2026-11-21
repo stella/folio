@@ -493,7 +493,9 @@ const tableParagraphIds = (
   if (
     (op.type === DOCUMENT_OP_TYPES.INSERT_TABLE ||
       op.type === DOCUMENT_OP_TYPES.INSERT_BLOCKS) &&
-    (op.at.type === "beforeTable" || op.at.type === "afterTable")
+    (op.at.type === "beforeTable" ||
+      op.at.type === "afterTable" ||
+      op.at.type === "containerStart")
   )
     targetId = op.at.blockId;
   if (targetId === undefined) return [];

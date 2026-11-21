@@ -340,6 +340,7 @@ export const sequencedEffectType = (
         return NO_SEQUENCED_EFFECT;
       case "beforeTable":
       case "afterTable":
+      case "containerStart":
         return "touchedBlocks";
       default: {
         const unreachable: never = op.at;
@@ -387,9 +388,18 @@ const idSet = object({
 const newIds = optional(idSet);
 const half = optional(literal("first", "second"));
 const whenEmpty = optional(literal("omit", "keep"));
-/** A table goes beside a paragraph, or beside the table holding one. */
+/**
+ * A table goes beside a paragraph, beside the table holding one, or at the
+ * start of the block list holding one.
+ */
 const tableAnchor = object({
-  type: literal("before", "after", "beforeTable", "afterTable"),
+  type: literal(
+    "before",
+    "after",
+    "beforeTable",
+    "afterTable",
+    "containerStart",
+  ),
   blockId,
 });
 const runProps = properties(runPropertyFields);

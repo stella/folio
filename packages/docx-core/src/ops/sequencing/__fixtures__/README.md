@@ -1,7 +1,18 @@
 # Sequencing wire fixtures
 
-`batches-v16.json` and `ops/__tests__/__fixtures__/ops-v16.json` pin the
-current semantic operation schema. Version 16 adds `createdSince` to
+`batches-v17.json` and `ops/__tests__/__fixtures__/ops-v17.json` pin the
+current semantic operation schema. Version 17 adds the `containerStart`
+insertion point: paragraphs or a table before the first block of the block
+list holding a named paragraph, where that block holds no paragraph to name
+it by (an empty content control). It records a block-scoped effect, like a
+table-side insertion. Tracked, it needs a following paragraph, a proven table
+boundary or a block its mark neither joins nor runs into. Its envelopes are
+otherwise those of version 16.
+
+Version 16 and older envelopes receive `unsupportedSchema`.
+
+`batches-v16.json` and `ops/__tests__/__fixtures__/ops-v16.json` pin version
+16. Version 16 adds `createdSince` to
 `restoreCommentState`: a restoration rebased over concurrent creations of
 comments anchored outside its paragraphs keeps them. Its envelopes are
 otherwise those of version 15.
