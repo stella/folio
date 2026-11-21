@@ -505,6 +505,7 @@ type PlannedOperation = {
   joinsParagraphBefore?: true;
   collapsesRunStart?: true;
   retiresRunBreak?: RunCarrier;
+  followsTableInsertion?: true;
 };
 
 /** What precedes a run of paragraphs a batch deletes (`finalBreakCarrier`). */
@@ -683,7 +684,8 @@ const orderCanonicalBatch = <T extends PlannedOperation>({
       rank: contentRank(operation, { hasDeletedSplit }),
     };
   };
-  const access = ({ operation, plan }: T): BatchBlockAccess<number> => {
+  const access = (item: T): BatchBlockAccess<number> => {
+    const { operation, plan } = item;
     const claim = plan.claim;
     if (claim.type === "merge")
       return {
@@ -751,7 +753,7 @@ const orderCanonicalBatch = <T extends PlannedOperation>({
     return {
       addresses: [],
       removes: [
-        ...(removes ? [plan.block] : []),
+        ...(removes || item.followsTableInsertion === true ? [plan.block] : []),
         ...(takesCarrierMark ? [markOf(carrier.paragraph)] : []),
       ],
     };
@@ -863,6 +865,12 @@ type PreparedOperation = {
    * put there.
    */
   retiresBreakBefore?: true;
+  /**
+   * A deletion of a container's final paragraph after a table the batch
+   * puts a paragraph after: that insertion runs first, and the deletion takes
+   * the paragraph it put there as the one before it.
+   */
+  followsTableInsertion?: true;
   /**
    * A direct deletion of a container's final paragraph whose batch deletes
    * every paragraph before it back to the container's start or another
@@ -3049,6 +3057,11 @@ type ResolveBlockDeletionOptions = {
    * one, which then stands between them when this deletion runs.
    */
   previousGainsFollower: boolean;
+  /**
+   * Whether the batch puts a paragraph after the table before this one,
+   * which then stands between them when this deletion runs.
+   */
+  tableBeforeGainsFollower: boolean;
   /** The run of paragraphs right before this one the batch deletes. */
   deletedRun: FinalBreakCarrier<unknown>["type"];
   refusal: (
@@ -5242,6 +5255,7 @@ export class CanonicalPublicOperations {
     followsInsertedTable,
     precedesInsertedTable,
     previousGainsFollower,
+    tableBeforeGainsFollower,
     deletedRun,
     refusal,
   }: ResolveBlockDeletionOptions) {
@@ -5411,6 +5425,24 @@ export class CanonicalPublicOperations {
                   ],
             );
       };
+      // A paragraph the batch puts after the table before it stands before
+      // it when the deletion runs: it joins that one then, as deleting it
+      // after that insertion does.
+      if (previous === undefined && after === null && tableBeforeGainsFollower)
+        return tracking({
+          intents: [
+            {
+              type: "deleteParagraphs",
+              story: projectionStory,
+              blockIds: [paragraph.blockId],
+            },
+          ],
+          normalizations: [],
+          from: paragraph.start,
+          to: end,
+          mayEndContainer: true,
+          followsTableInsertion: true,
+        });
       const cleared = own(paragraph.start, end);
       if (cleared.isErr()) return cleared;
       const intents: EditorIntent[] = [...cleared.value];
@@ -5523,6 +5555,23 @@ export class CanonicalPublicOperations {
     // words, as a tracked deletion of the whole paragraph leaves it and as
     // deleting it directly does.
     else {
+      // Unless the batch puts a paragraph after that table: standing before
+      // it when the deletion runs, that one's break is the one it retires.
+      if (after === null && tableBeforeGainsFollower) {
+        const from = projection.addressAt(paragraph.start);
+        const to = projection.addressAt(end);
+        if (from.isErr() || to.isErr()) return refusal("unsupportedBlock");
+        return tracking({
+          intents: [
+            { type: "replaceText", from: from.value, to: to.value, text: "" },
+          ],
+          normalizations: [],
+          from: paragraph.start,
+          to: end,
+          retiresBreakBefore: true,
+          followsTableInsertion: true,
+        });
+      }
       if (paragraph.node.content.size === 0) return refusal("noopOperation");
       range = { from: paragraph.start, to: end };
     }
@@ -5874,20 +5923,14 @@ export class CanonicalPublicOperations {
         (besideDeletions.tables.before.has(blockId) ||
           (typeof previousId === "string" &&
             besideDeletions.tables.after.has(previousId)));
-      // A paragraph the batch puts right after the table before it is the
-      // one a deletion of this paragraph would end the list on; the batch
-      // cannot read it yet, so the deletion waits for it.
-      if (
+      // A paragraph the batch puts right after the table before it runs
+      // first and stands before this one when the deletion runs.
+      const tableBeforeGainsFollower =
         !followed &&
         before !== null &&
         before.type.name !== "paragraph" &&
         paragraphIdsIn(before).some((id) =>
           besideDeletions.paragraphsAfter.has(id),
-        )
-      )
-        return refusal(
-          "unsupportedBlock",
-          "Canonical deletion of a paragraph after a table the batch puts a paragraph after is unavailable.",
         );
       const deleted = this.resolveBlockDeletion({
         operation,
@@ -5910,6 +5953,7 @@ export class CanonicalPublicOperations {
           typeof previousId === "string" &&
           (besideDeletions.paragraphsAfter.has(previousId) ||
             besideDeletions.deleted.has(previousId)),
+        tableBeforeGainsFollower,
         deletedRun: followed
           ? "none"
           : deletedRunBefore({

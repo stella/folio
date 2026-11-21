@@ -17,7 +17,13 @@ import {
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import { FolioDocxReviewer } from "./headless";
+
+const SESSIONS = [
+  "legacy",
+  "canonical",
+] as const satisfies readonly HeadlessReviewerSession[];
 
 type Reviewer = Awaited<ReturnType<typeof FolioDocxReviewer.fromBuffer>>;
 type Mode = "direct" | "tracked-changes";
@@ -50,14 +56,16 @@ const sourceOf = async (fixture: Fixture) => {
   return bytes;
 };
 
-const open = async (bytes: Uint8Array) =>
+const opener = (session: HeadlessReviewerSession) => (bytes: Uint8Array) =>
   FolioDocxReviewer.fromBuffer(
     bytes.buffer.slice(
       bytes.byteOffset,
       bytes.byteOffset + bytes.byteLength,
     ) as ArrayBuffer,
-    { author: "Test" },
+    { author: "Test", session },
   );
+
+type Open = ReturnType<typeof opener>;
 
 const idOf = (reviewer: Reviewer, text: string) => {
   const block = reviewer.snapshot().blocks.find((row) => row.text === text);
@@ -125,7 +133,7 @@ const apply = (
 type Row = { kind: string; text: string; inTable: boolean; styleId?: string };
 
 /** The body a reader is left with once every change is accepted. */
-const settled = async (reviewer: Reviewer): Promise<Row[]> => {
+const settled = async (open: Open, reviewer: Reviewer): Promise<Row[]> => {
   const saved = await open(new Uint8Array(await reviewer.toBuffer()));
   saved.acceptAll();
   const reopened = await open(new Uint8Array(await saved.toBuffer()));
@@ -142,7 +150,7 @@ const settled = async (reviewer: Reviewer): Promise<Row[]> => {
   });
 };
 
-const rejected = async (reviewer: Reviewer) => {
+const rejected = async (open: Open, reviewer: Reviewer) => {
   const saved = await open(new Uint8Array(await reviewer.toBuffer()));
   saved.rejectAll();
   return saved.snapshot().blocks.map(({ text }) => text);
@@ -165,57 +173,61 @@ const operationsFor = (
   return { insert: insertion.operation(ids), deletion };
 };
 
-describe("a batch deleting a container's last paragraph beside a gap insertion", () => {
-  for (const [name, insertion] of Object.entries(GAP_INSERTIONS)) {
-    for (const fixture of insertion.fixtures) {
-      test(`${name}, where ${fixture}`, async () => {
-        const source = await sourceOf(fixture);
-        const original = (await open(source))
-          .snapshot()
-          .blocks.map(({ text }) => text);
-        const outcomes: Row[][] = [];
-        for (const mode of ["direct", "tracked-changes"] as const) {
-          // The batch, in both stated orders.
-          for (const deletionFirst of [false, true]) {
+describe.each(SESSIONS)(
+  "a batch deleting a container's last paragraph beside a gap insertion (%s)",
+  (session) => {
+    const open = opener(session);
+    for (const [name, insertion] of Object.entries(GAP_INSERTIONS)) {
+      for (const fixture of insertion.fixtures) {
+        test(`${name}, where ${fixture}`, async () => {
+          const source = await sourceOf(fixture);
+          const original = (await open(source))
+            .snapshot()
+            .blocks.map(({ text }) => text);
+          const outcomes: Row[][] = [];
+          for (const mode of ["direct", "tracked-changes"] as const) {
+            // The batch, in both stated orders.
+            for (const deletionFirst of [false, true]) {
+              const reviewer = await open(source);
+              const { insert, deletion } = operationsFor(
+                reviewer,
+                fixture,
+                insertion,
+              );
+              apply(
+                reviewer,
+                mode,
+                deletionFirst ? [deletion, insert] : [insert, deletion],
+              );
+              if (mode === "tracked-changes") {
+                expect(await rejected(open, reviewer)).toEqual(original);
+              }
+              outcomes.push(await settled(open, reviewer));
+            }
+            // One at a time, with the insertion settled before the deletion.
             const reviewer = await open(source);
             const { insert, deletion } = operationsFor(
               reviewer,
               fixture,
               insertion,
             );
-            apply(
-              reviewer,
-              mode,
-              deletionFirst ? [deletion, insert] : [insert, deletion],
-            );
-            if (mode === "tracked-changes") {
-              expect(await rejected(reviewer)).toEqual(original);
-            }
-            outcomes.push(await settled(reviewer));
+            apply(reviewer, mode, [insert]);
+            apply(reviewer, mode, [deletion]);
+            outcomes.push(await settled(open, reviewer));
           }
-          // One at a time, with the insertion settled before the deletion.
-          const reviewer = await open(source);
-          const { insert, deletion } = operationsFor(
-            reviewer,
-            fixture,
-            insertion,
-          );
-          apply(reviewer, mode, [insert]);
-          apply(reviewer, mode, [deletion]);
-          outcomes.push(await settled(reviewer));
-        }
-        const [first, ...rest] = outcomes;
-        for (const outcome of rest) expect(outcome).toEqual(first);
+          const [first, ...rest] = outcomes;
+          for (const outcome of rest) expect(outcome).toEqual(first);
 
-        // The container still ends with a paragraph, and an emptied one only
-        // where nothing but a table precedes it.
-        const blocks = first ?? [];
-        const last = blocks.at(-1);
-        const beforeLast = blocks.at(-2);
-        expect(last?.inTable).toBe(false);
-        expect(blocks.some(({ text }) => text === CLOSING)).toBe(false);
-        expect(last?.text !== "" || beforeLast?.inTable === true).toBe(true);
-      });
+          // The container still ends with a paragraph, and an emptied one only
+          // where nothing but a table precedes it.
+          const blocks = first ?? [];
+          const last = blocks.at(-1);
+          const beforeLast = blocks.at(-2);
+          expect(last?.inTable).toBe(false);
+          expect(blocks.some(({ text }) => text === CLOSING)).toBe(false);
+          expect(last?.text !== "" || beforeLast?.inTable === true).toBe(true);
+        });
+      }
     }
-  }
-});
+  },
+);
