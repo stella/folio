@@ -1379,6 +1379,24 @@ const holdsStandingContent = (paragraph: PMNode): boolean => {
   return standing;
 };
 
+/** `formatting` with no numbering of its own or from its style. */
+const withoutNumbering = ({
+  numPr: _numPr,
+  numPrFromStyle: _numPrFromStyle,
+  ...formatting
+}: ParagraphFormatting): ParagraphFormatting => formatting;
+
+/**
+ * Whether accepting every pending change takes the paragraph whole: its break
+ * goes (deleted, or inserted and deleted since), and every record it holds is
+ * deleted or moved away.
+ */
+const isTakenWholeOnAcceptance = ({ pPrMark, content }: Paragraph) =>
+  (pPrMark?.kind === "del" ||
+    pPrMark?.kind === "moveFrom" ||
+    pPrMark?.deletion !== undefined) &&
+  content.every(({ type }) => type === "deletion" || type === "moveFrom");
+
 /** Whether a pending deletion already takes `paragraph` whole, mark and words. */
 const goesWholeOnAcceptance = (paragraph: PMNode): boolean =>
   paragraph.type.name === "paragraph" &&
@@ -1562,10 +1580,18 @@ const resolveBlockInsertion = ({
       };
     });
   };
+  const sourceFormatting = paragraphFormattingWithAuthoredIndentation(
+    formattingSource.source,
+  );
+  // A paragraph a pending deletion takes whole lends no numbering: once
+  // accepted, the list item it was is gone.
   const paragraphs =
     markdownParagraphs ??
     paragraphsFrom(
-      paragraphFormattingWithAuthoredIndentation(formattingSource.source),
+      sourceFormatting !== undefined &&
+        isTakenWholeOnAcceptance(formattingSource.source)
+        ? withoutNumbering(sourceFormatting)
+        : sourceFormatting,
     );
   const place =
     listStart === undefined
@@ -2124,14 +2150,18 @@ const insertionIntentsAsItRuns = ({
       source = next;
     }
   }
+  const formatting = paragraphFormattingWithAuthoredIndentation(source);
+  // A paragraph a pending deletion takes whole lends no numbering.
+  const lent =
+    formatting !== undefined && isTakenWholeOnAcceptance(source)
+      ? withoutNumbering(formatting)
+      : formatting;
   const copied: EditorIntent[] = [];
   for (const intent of intents)
     copied.push(
       intent.type === "insertParagraphs"
         ? Object.assign({}, intent, {
-            paragraphs: inheritsFrom.paragraphs(
-              paragraphFormattingWithAuthoredIndentation(source),
-            ),
+            paragraphs: inheritsFrom.paragraphs(lent),
           })
         : intent,
     );
