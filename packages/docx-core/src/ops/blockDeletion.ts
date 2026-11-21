@@ -11,6 +11,7 @@ import type {
 } from "../model/document";
 import {
   blockListAt,
+  type ParagraphLocation,
   sameBlockList,
   storyBody,
   storyParagraphs,
@@ -65,10 +66,13 @@ import {
   type DeleteBlocksOp,
   DOCUMENT_OP_TYPES,
   type DocumentOp,
+  OP_STORIES,
+  type OpStory,
   type ParagraphAbsorption,
   REVISION_DECISIONS,
   type RevisionStamp,
   SECTION_BOUNDARY_POLICIES,
+  type SetSectionEndpointOp,
 } from "./types";
 
 /**
@@ -400,6 +404,48 @@ export const markBeforeTableResolves = ({
 }): boolean =>
   blocks.at(-1)?.type === "paragraph" && boundary.type === "receiver";
 
+type SectionEndpointRemovalOptions = {
+  story: OpStory;
+  location: ParagraphLocation;
+};
+
+type SectionEndpointRemoval = {
+  ops: SetSectionEndpointOp[];
+  /** The paragraph once its break is gone. */
+  paragraph: Paragraph;
+};
+
+/**
+ * The section break a body paragraph's mark carries, removed on its own:
+ * the sections on either side become one under the later section's
+ * properties. A paragraph with no break, or one that is not directly in the
+ * main body, where no section ends, gets no operation.
+ */
+export const sectionEndpointRemoval = ({
+  story,
+  location: { list, paragraph },
+}: SectionEndpointRemovalOptions): SectionEndpointRemoval => {
+  if (
+    story !== OP_STORIES.MAIN ||
+    list.length > 0 ||
+    paragraph.paraId === undefined ||
+    paragraph.sectionProperties === undefined
+  )
+    return { ops: [], paragraph };
+  const { sectionProperties, ...withoutBreak } = paragraph;
+  return {
+    ops: [
+      {
+        type: DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT,
+        endpoint: { type: "paragraph", blockId: paragraph.paraId },
+        expected: { type: "present", value: sectionProperties },
+        properties: { type: "omitted" },
+      },
+    ],
+    paragraph: withoutBreak,
+  };
+};
+
 /**
  * Whether `block`, following a paragraph, is a block that paragraph's mark
  * neither joins nor runs into: a block content control, custom XML or a
@@ -504,10 +550,12 @@ export const paragraphMarkOutcome = ({
     case "table":
       // An accepted deletion that leaves the paragraph empty is no run-in
       // source either: it goes without crossing the table, wherever the
-      // story ends, as it does before a table that can receive words.
+      // story ends, as it does before a table that can receive words. A
+      // block before it, or a paragraph still ending the container after the
+      // table, anchors what its removal leaves.
       if (
         !tableRemovalIsTrackable &&
-        precededByBlock &&
+        (precededByBlock || containerStillEndsWithParagraph) &&
         !markWasAdded &&
         !holdsContent &&
         !needsFollowingCommentHost
@@ -837,24 +885,55 @@ export const deleteBlocks = ({
     following?.type === "table"
       ? paragraphTableRunInBoundary(last.paragraph, following)
       : undefined;
-  // Before a table whose first row is itself pending review, the words have
-  // nowhere to run in, but the deletion takes them all: accepting leaves the
-  // paragraph empty, and an empty paragraph goes without crossing the table,
-  // first in its container or after another block, as resolving its mark
-  // already does.
-  const emptiedBeforeTableUnderReview =
+  // Before a table whose first row is itself pending review, or from a
+  // paragraph whose mark ends a section, the words have nowhere to run in,
+  // but the deletion takes them all: accepting leaves the paragraph empty,
+  // and an empty paragraph goes without crossing the table, first in its
+  // container or after another block, as resolving its mark already does.
+  // A section break goes with its mark.
+  const emptiedBeforeBlockedTable =
     tableBoundary?.type === "blocked" &&
-    tableBoundary.reason === "review" &&
+    (tableBoundary.reason === "review" || tableBoundary.reason === "section") &&
     list.at(-1)?.type === "paragraph";
   const trackedBeforeTable =
     op.revision !== undefined &&
     tableBoundary !== undefined &&
     (markBeforeTableResolves({ blocks: list, boundary: tableBoundary }) ||
-      emptiedBeforeTableUnderReview);
+      emptiedBeforeBlockedTable);
   const trackedBeforeBlock =
     op.revision !== undefined &&
     isOpaqueFollower(following) &&
     list.at(-1)?.type === "paragraph";
+  // Directly, the breaks their marks carry go first, on their own, as
+  // accepting their tracked deletion takes them; the paragraphs then go as
+  // any others do.
+  if (
+    op.revision === undefined &&
+    following !== undefined &&
+    following.type !== "paragraph"
+  ) {
+    const breaks = found.filter(
+      ({ paragraph }) => paragraph.sectionProperties !== undefined,
+    );
+    const ops = breaks.flatMap(
+      (location) => sectionEndpointRemoval({ story: op.story, location }).ops,
+    );
+    if (breaks.length > 0 && ops.length === breaks.length) {
+      const dropped = applyOps(document, ops);
+      if (dropped.isErr())
+        return refuse(dropped.error.reason, dropped.error.message);
+      const removed = deleteBlocks({
+        document: dropped.value.document,
+        op,
+        applyOps,
+      });
+      if (removed.isErr()) return removed;
+      return Result.ok({
+        ...removed.value,
+        inverse: [...removed.value.inverse, ...dropped.value.inverse],
+      });
+    }
+  }
   // Directly, paragraphs a table or another block follows, with no table
   // before them, go whole, as accepting their tracked deletion removes them:
   // the container still ends with a paragraph, and no two tables meet.

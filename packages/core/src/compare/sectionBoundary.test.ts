@@ -164,16 +164,21 @@ const reopenResolved = async ({
 const expectResolvedTerminals = async (
   baseDocument: Document,
   targetDocument: Document,
+  session?: HeadlessReviewerSession,
 ) => {
   const [base, target] = await Promise.all([
     createDocx(baseDocument),
     createDocx(targetDocument),
   ]);
+  const sessionOptions = session === undefined ? {} : { session };
   const [baseReviewer, targetReviewer] = await Promise.all([
-    FolioDocxReviewer.fromBuffer(base),
-    FolioDocxReviewer.fromBuffer(target),
+    FolioDocxReviewer.fromBuffer(base, sessionOptions),
+    FolioDocxReviewer.fromBuffer(target, sessionOptions),
   ]);
-  const result = await compareDocx(base, target, OPTIONS);
+  const result = await compareDocx(base, target, {
+    ...OPTIONS,
+    ...sessionOptions,
+  });
   if (result.isErr()) {
     throw result.error;
   }
@@ -186,8 +191,8 @@ const expectResolvedTerminals = async (
   expect(pendingXml).toMatch(/<w:rPr><w:del\b[^>]*\/><\/w:rPr><w:sectPr>/u);
 
   const [accepted, rejected] = await Promise.all([
-    reopenResolved({ buffer: result.value.buffer, mode: "accept" }),
-    reopenResolved({ buffer: result.value.buffer, mode: "reject" }),
+    reopenResolved({ buffer: result.value.buffer, mode: "accept", session }),
+    reopenResolved({ buffer: result.value.buffer, mode: "reject", session }),
   ]);
   expect(storyProjection(accepted)).toEqual(storyProjection(targetReviewer));
   expect(storyProjection(rejected)).toEqual(storyProjection(baseReviewer));
@@ -400,19 +405,23 @@ describe("tracked section-boundary ownership", () => {
     expect(reopenedSecond.getChanges()).toHaveLength(0);
   });
 
-  test("accept removes an emptied endpoint before a table and reject restores it", async () => {
-    await expectResolvedTerminals(
-      documentWith([
-        paragraph("00000001", "Remove", SECTION_B),
-        table("Cell"),
-        paragraph("00000002", "Tail", FOLLOWING_SECTION),
-      ]),
-      documentWith([
-        table("Cell"),
-        paragraph("00000002", "Tail", FOLLOWING_SECTION),
-      ]),
-    );
-  });
+  test.each(["legacy", "canonical"] as const)(
+    "accept removes an emptied endpoint before a table and reject restores it (%s)",
+    async (session) => {
+      await expectResolvedTerminals(
+        documentWith([
+          paragraph("00000001", "Remove", SECTION_B),
+          table("Cell"),
+          paragraph("00000002", "Tail", FOLLOWING_SECTION),
+        ]),
+        documentWith([
+          table("Cell"),
+          paragraph("00000002", "Tail", FOLLOWING_SECTION),
+        ]),
+        session,
+      );
+    },
+  );
 });
 
 test.each(SESSIONS)(
