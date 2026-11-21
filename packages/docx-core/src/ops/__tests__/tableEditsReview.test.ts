@@ -338,12 +338,14 @@ describe("table edit review fixes", () => {
   });
 
   test("table intent allocates zero ids for empty vertical merge and rows minus one otherwise", () => {
+    // Each table keeps a column outside the merge, so every row still
+    // starts a cell of its own and stays.
     const emptyContinuation = documentOf({
       type: "table",
-      columnWidths: [100],
+      columnWidths: [100, 100],
       rows: [
-        { type: "tableRow", cells: [cell(100, "owner")] },
-        { type: "tableRow", cells: [cell(101, "")] },
+        { type: "tableRow", cells: [cell(100, "owner"), cell(102, "x")] },
+        { type: "tableRow", cells: [cell(101, ""), cell(103, "y")] },
       ],
     });
     const vertical = compileEditorIntent(emptyContinuation, {
@@ -386,10 +388,16 @@ describe("table edit review fixes", () => {
 
     const general = documentOf({
       type: "table",
-      columnWidths: [100, 100],
+      columnWidths: [100, 100, 100],
       rows: [
-        { type: "tableRow", cells: [cell(200, "a"), cell(201, "b")] },
-        { type: "tableRow", cells: [cell(202, "c"), cell(203, "d")] },
+        {
+          type: "tableRow",
+          cells: [cell(200, "a"), cell(201, "b"), cell(204, "e")],
+        },
+        {
+          type: "tableRow",
+          cells: [cell(202, "c"), cell(203, "d"), cell(205, "f")],
+        },
       ],
     });
     const rectangular = compileEditorIntent(general, {
