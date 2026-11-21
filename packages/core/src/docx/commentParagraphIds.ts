@@ -22,7 +22,12 @@ import {
   paragraphMintKeys,
   storyParagraphSlots,
 } from "./ensureParaIds";
-import { getAttribute, getChildElements, type XmlElement } from "./xmlParser";
+import {
+  getAttributeByNamespaceUri,
+  getChildElements,
+  WORDPROCESSINGML_NAMESPACE_URIS,
+  type XmlElement,
+} from "./xmlParser";
 
 /** The code this repair is reported under, owned here, not at the caller. */
 export const REPEATED_COMMENT_PARAGRAPH_ID_WARNING: "repeated-comment-paragraph-id" =
@@ -47,7 +52,11 @@ const commentParagraphOrdinals = (
   const byComment = new Map<number, number[]>();
   for (const comment of getChildElements(parsed.value)) {
     if (!isWordprocessingElement(comment, "comment")) continue;
-    const rawId = getAttribute(comment, "w", "id");
+    const rawId = getAttributeByNamespaceUri(
+      comment,
+      WORDPROCESSINGML_NAMESPACE_URIS,
+      "id",
+    );
     if (rawId === null || !DECIMAL_NUMBER.test(rawId)) continue;
     const id = Number.parseInt(rawId, 10);
     if (byComment.has(id)) continue;
