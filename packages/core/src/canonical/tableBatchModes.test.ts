@@ -111,4 +111,53 @@ describe.each(SESSIONS)("%s session", (session) => {
       ]);
     },
   );
+
+  // The row is named through the paragraph the batch deletes; the deletion
+  // runs first, so the row is found through a paragraph the batch keeps.
+  test.each(["direct", "tracked-changes"] as const)(
+    "a %s row deletion named through a paragraph the batch deletes applies",
+    async (mode) => {
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await buildTableDocx({
+          rows: 1,
+          columns: 1,
+          cells: [
+            {
+              row: 0,
+              column: 0,
+              rowSpan: 1,
+              columnSpan: 1,
+              text: "c0",
+              nested: {
+                rows: 1,
+                columns: 1,
+                cells: [
+                  { row: 0, column: 0, rowSpan: 1, columnSpan: 1, text: "n0" },
+                ],
+              },
+            },
+          ],
+        }),
+        { session },
+      );
+      const blockId = cellBlockId(reviewer, 0);
+      const result = reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode,
+          operations: [
+            { id: "delete-paragraph", type: "deleteBlock", blockId },
+            { id: "delete-row", type: "deleteTableRow", blockId },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      );
+
+      expect(result.skipped).toEqual([]);
+      expect(result.applied.map(({ id }) => id).sort()).toEqual([
+        "delete-paragraph",
+        "delete-row",
+      ]);
+    },
+  );
 });
