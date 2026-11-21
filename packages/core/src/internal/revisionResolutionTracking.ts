@@ -117,7 +117,7 @@ export const finalRevisionParagraphRanges = (result: Resolution): Range[] => {
         high = middle;
       }
     }
-    let table = low === 0 ? null : (itemBefore(tables, low) ?? null);
+    let table = itemBefore(tables, low) ?? null;
     while (table && range.to > table.position + table.sourceNodeSize) {
       table = table.parent;
     }
