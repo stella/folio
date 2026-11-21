@@ -28,10 +28,8 @@ export const compilerRefusalSkip = ({
     case DOCUMENT_OP_REFUSAL_REASONS.PENDING_RUN_PROPERTY_CHANGE:
     case DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_PROPERTY_CHANGE:
       return { reason, message };
-    // The paragraph whose mark is already going stands before a table under
-    // review: resolving that removed mark first lets the join through.
     case DOCUMENT_OP_REFUSAL_REASONS.JOIN_INTO_PENDING_TABLE:
-      return { reason: "pendingParagraphMarkDeletion", message };
+      return { reason: "pendingTableInsertion", message };
     case DOCUMENT_OP_REFUSAL_REASONS.UNSUPPORTED_SCHEMA:
     case DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND:
     case DOCUMENT_OP_REFUSAL_REASONS.INVALID_OPERATION:

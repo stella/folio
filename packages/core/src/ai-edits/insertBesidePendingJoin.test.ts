@@ -609,7 +609,7 @@ describe("a paragraph between a pending join and the table that stops it", () =>
       expect(merged.skipped).toEqual([
         expect.objectContaining({
           id: "merge",
-          reason: "pendingParagraphMarkDeletion",
+          reason: "pendingTableInsertion",
           message: expect.stringContaining("would run it into the table"),
         }),
       ]);
