@@ -119,6 +119,7 @@ export default library({
     "./.oxlint-plugins/folio-page-resources.ts",
     "./.oxlint-plugins/folio-base64.ts",
     "./.oxlint-plugins/folio-math-extremes.ts",
+    "./.oxlint-plugins/folio-at-wraparound.ts",
     "./.oxlint-plugins/folio-read-model.ts",
     "./.oxlint-plugins/folio-editor-commands.ts",
     "./.oxlint-plugins/folio-deletion-marks.ts",
@@ -541,6 +542,27 @@ export default library({
       files: ["packages/*/src/**/*.test.*", "packages/*/src/**/__tests__/**"],
       rules: {
         "folio-math-extremes/no-spread-arguments": "off",
+      },
+    },
+    {
+      // `.at()` counts a negative index from the end, so `list.at(index - 1)`
+      // at the list's start reads its last item; package source reads
+      // the item before an index through its `itemBefore` helper. Tests
+      // choose their indexes. See `.oxlint-plugins/folio-at-wraparound.ts` and
+      // the matching test at `scripts/at-wraparound-lint.test.ts`, which lints
+      // the `test/__fixtures__` files covered here.
+      files: [
+        "packages/*/src/**/*.{ts,tsx,js,jsx,vue}",
+        "test/__fixtures__/at-wraparound.*.ts",
+      ],
+      rules: {
+        "folio-at-wraparound/no-computed-negative-index": "error",
+      },
+    },
+    {
+      files: ["packages/*/src/**/*.test.*", "packages/*/src/**/__tests__/**"],
+      rules: {
+        "folio-at-wraparound/no-computed-negative-index": "off",
       },
     },
     {
