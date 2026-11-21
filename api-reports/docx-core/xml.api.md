@@ -9,6 +9,18 @@ import { TaggedErrorClass } from 'better-result';
 // @public
 export const getXmlSourceRange: (element: XmlElement) => XmlSourceRange | undefined;
 
+// @public
+export class MalformedXmlReferenceError extends MalformedXmlReferenceErrorBase<{
+    message: string;
+    kind: XmlMalformedReferenceKind;
+    part: string;
+    offset: number;
+    reference: string;
+}> {}
+
+// @public
+export const malformedXmlReferenceError: (part: string, xml: string) => MalformedXmlReferenceError | null;
+
 // @public (undocumented)
 export const parseStreamingXml: (xml: string, inheritedNamespaceScope?: XmlNamespaceScope) => ParseXmlResult;
 
@@ -48,21 +60,7 @@ export const scanStreamingXmlNumericIdAttributes: (xml: string, visitOpenTag: Op
 };
 
 // @public
-export class UndeclaredXmlEntityError extends UndeclaredXmlEntityErrorBase<{
-    message: string;
-    part: string;
-    offset: number;
-    entity: string;
-}> {}
-
-// @public
-export const undeclaredXmlEntityError: (part: string, xml: string) => UndeclaredXmlEntityError | null;
-
-// @public
-export const wellFormedXmlIssue: (xml: string, characterReferences?: XmlCharacterReferences) => string | null;
-
-// @public
-export type XmlCharacterReferences = "xml" | "syntactic";
+export const wellFormedXmlIssue: (xml: string) => string | null;
 
 // @public
 export type XmlConformance = "ooxml" | "well-formed" | "tolerant";
@@ -86,6 +84,9 @@ export type XmlElement = {
 };
 
 // @public
+export type XmlMalformedReferenceKind = "undeclaredEntity" | "invalidCharacterReference";
+
+// @public
 export type XmlNamespaceScope = {
     bindings: ReadonlyMap<string, string>;
     parent?: XmlNamespaceScope;
@@ -101,7 +102,6 @@ export class XmlReadError extends XmlReadErrorBase<{
 export type XmlReadOptions = {
     conformance: XmlConformance;
     references?: XmlReferenceHandling;
-    characterReferences?: XmlCharacterReferences;
     instructions?: "skip" | "retain";
     inheritedNamespaceScope?: XmlNamespaceScope;
 };
@@ -123,9 +123,10 @@ export type XmlReferenceHandling = "decode" | "raw";
 export type XmlRefusal = {
     type: "markup";
 } | {
-    type: "undeclaredEntity";
+    type: "malformedReference";
+    kind: XmlMalformedReferenceKind;
     offset: number;
-    name: string;
+    reference: string;
 };
 
 // (No @packageDocumentation comment for this package)

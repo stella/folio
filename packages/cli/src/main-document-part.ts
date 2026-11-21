@@ -147,7 +147,6 @@ const parseRoot = (xml: string): XmlElement | null => {
   const read = readXml(xml, {
     conformance: "well-formed",
     references: "raw",
-    characterReferences: "syntactic",
   });
   if (read.status === "rejected") return null;
   const [root] = elementsOf(read.value.elements ?? [], new Map());

@@ -31,8 +31,8 @@ import {
 } from "@stll/docx-core/model";
 import { isCommentExhausted, orphanRootCommentIds } from "@stll/docx-core/ops";
 import {
-  UndeclaredXmlEntityError,
-  undeclaredXmlEntityError,
+  MalformedXmlReferenceError,
+  malformedXmlReferenceError,
 } from "@stll/docx-core/xml";
 import { FOLIO_XML_RESOURCE_LIMITS } from "@stll/docx-core/xml/limits";
 
@@ -489,11 +489,12 @@ export async function parseDocxWithPreviewBudget(
     const raw = await timeStageAsync("unzip", () =>
       unzipDocx(buffer, { ...unzipLimits, password, extractAllXml: false }),
     );
-    // A part naming an entity nothing declares is not XML; it is refused
-    // whole, with its place, before any reader takes a guess at it.
+    // A part holding a reference XML refuses (an entity nothing declares, a
+    // character XML does not allow) is not XML; it is refused whole, with its
+    // place, before any reader takes a guess at it.
     for (const [part, xml] of raw.allXml) {
-      const undeclared = undeclaredXmlEntityError(part, xml);
-      if (undeclared !== null) throw undeclared;
+      const malformed = malformedXmlReferenceError(part, xml);
+      if (malformed !== null) throw malformed;
     }
     diagnoseImportedIdCollisions(raw.allXml, parseContext);
     diagnoseReviewProvenance(raw.allXml, parseContext);
@@ -1040,7 +1041,7 @@ export async function parseDocxWithPreviewBudget(
   } catch (error) {
     if (
       error instanceof DocxEncryptionError ||
-      error instanceof UndeclaredXmlEntityError
+      error instanceof MalformedXmlReferenceError
     ) {
       throw error;
     }

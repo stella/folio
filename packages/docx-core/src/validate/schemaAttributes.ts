@@ -143,12 +143,7 @@ const validateAttributes = (
  */
 export const schemaAttributeIssues = (xml: string): string[] => {
   const issues: string[] = [];
-  // The character references the engines read pass; an entity no
-  // declaration defines does not, since neither engine opens it.
-  const read = readXml(xml, {
-    conformance: "well-formed",
-    characterReferences: "syntactic",
-  });
+  const read = readXml(xml, { conformance: "well-formed" });
   if (read.status === "rejected") {
     return [
       /<!DOCTYPE/i.test(xml)

@@ -67,16 +67,6 @@ export type XmlConformance = "ooxml" | "well-formed" | "tolerant";
 /** Whether references are decoded or kept as written. */
 export type XmlReferenceHandling = "decode" | "raw";
 
-/**
- * The character references a well-formed read admits. `xml` is XML 1.0
- * (§4.1: characters §2.2 admits, `&#x` in lower case); `syntactic` admits
- * every reference written as one (`&#digits;`, `&#xhex;`) whatever character
- * it names, keeping one XML refuses as written, for checks that pass the
- * references the engines read. An entity no declaration defines is refused
- * either way: without a DTD only the five built-ins exist.
- */
-export type XmlCharacterReferences = "xml" | "syntactic";
-
 const XmlReadErrorBase: TaggedErrorClass<"XmlReadError"> =
   TaggedError("XmlReadError");
 
@@ -90,29 +80,41 @@ export class XmlReadError extends XmlReadErrorBase<{
 export type XmlRefusal =
   | { type: "markup" }
   | {
-      /** A named reference to an entity no declaration defines. */
-      type: "undeclaredEntity";
+      /** A reference XML refuses. */
+      type: "malformedReference";
+      kind: XmlMalformedReferenceKind;
       /** The `&`'s offset in the input, in UTF-16 code units. */
       offset: number;
-      /** The name between `&` and `;`. */
-      name: string;
+      /** What stands between `&` and `;`. */
+      reference: string;
     };
 
-const UndeclaredXmlEntityErrorBase: TaggedErrorClass<"UndeclaredXmlEntityError"> =
-  TaggedError("UndeclaredXmlEntityError");
+/**
+ * Why XML refuses a reference: it names an entity no declaration defines
+ * (`&nbsp;`, `&copy;`, any name but XML's five), or it is a character
+ * reference XML refuses: to a character XML 1.0 does not allow (`&#0;`,
+ * `&#x1;`, `&#xFFFE;`, a surrogate, past U+10FFFF), or with digits that are
+ * not a number (`&#12ab;`).
+ */
+export type XmlMalformedReferenceKind =
+  "undeclaredEntity" | "invalidCharacterReference";
+
+const MalformedXmlReferenceErrorBase: TaggedErrorClass<"MalformedXmlReferenceError"> =
+  TaggedError("MalformedXmlReferenceError");
 
 /**
- * A package part names an entity no declaration defines (`&nbsp;`, `&copy;`,
- * any name but XML's five), so it is not well-formed XML and is not opened.
+ * A package part holds a reference XML refuses, so it is not well-formed XML
+ * and is not opened.
  */
-export class UndeclaredXmlEntityError extends UndeclaredXmlEntityErrorBase<{
+export class MalformedXmlReferenceError extends MalformedXmlReferenceErrorBase<{
   message: string;
+  kind: XmlMalformedReferenceKind;
   /** The package part, e.g. `word/document.xml`. */
   part: string;
   /** The reference's offset in the part's text, in UTF-16 code units. */
   offset: number;
-  /** The name between `&` and `;`. */
-  entity: string;
+  /** What stands between `&` and `;`. */
+  reference: string;
 }> {}
 
 type AttributeValueSpan = { start: number; end: number };
@@ -143,15 +145,20 @@ type ValueRefusalOptions = {
   reason: string;
 };
 
-/** A refused text or attribute value, naming the entity it refers to when that is why. */
+/** A refused text or attribute value, naming the reference XML refuses when that is why. */
 const refuseValue = ({ raw, start, reason }: ValueRefusalOptions): Rejected => {
-  const reference = firstUndeclaredNamedReference(raw);
-  if (reference === null) return reject(reason);
-  const offset = start + reference.index;
+  const malformed = firstMalformedReference(raw);
+  if (malformed === null) return reject(reason);
+  const offset = start + malformed.index;
   return {
     status: "unsupported",
-    reason: `the undeclared entity &${reference.name}; at offset ${String(offset)}`,
-    refusal: { type: "undeclaredEntity", offset, name: reference.name },
+    reason: `${describeMalformedReference(malformed)} at offset ${String(offset)}`,
+    refusal: {
+      type: "malformedReference",
+      kind: malformed.kind,
+      offset,
+      reference: malformed.reference,
+    },
   };
 };
 
@@ -171,7 +178,6 @@ type StreamingXmlOptions = {
   inheritedNamespaceScope?: XmlNamespaceScope;
   conformance?: XmlConformance;
   references?: XmlReferenceHandling;
-  characterReferences?: XmlCharacterReferences;
   instructions?: "skip" | "retain";
 } & (
   | {
@@ -204,31 +210,27 @@ type ReadRules = {
 type ReadPolicy = {
   conformance: XmlConformance;
   references: XmlReferenceHandling;
-  characterReferences: XmlCharacterReferences;
 };
 
 const valueReaderFor = ({
   conformance,
   references,
-  characterReferences,
 }: ReadPolicy): ValueReader => {
   if (conformance === "tolerant") {
     return references === "decode"
       ? (value) =>
-          firstUndeclaredNamedReference(value) === null
+          firstMalformedReference(value) === null
             ? decodeTolerantReferences(normalizeLineEndings(value))
             : null
       : (value) =>
-          firstUndeclaredNamedReference(value) === null
+          firstMalformedReference(value) === null
             ? normalizeLineEndings(value)
             : null;
   }
-  let decodeReference = decodeOoxmlReference;
-  if (characterReferences === "syntactic") {
-    decodeReference = decodeSyntacticReference;
-  } else if (conformance === "well-formed") {
-    decodeReference = decodeWellFormedReference;
-  }
+  const decodeReference =
+    conformance === "well-formed"
+      ? decodeWellFormedReference
+      : decodeOoxmlReference;
   return references === "decode"
     ? (value) => decodeReferences(normalizeLineEndings(value), decodeReference)
     : (value) => {
@@ -253,18 +255,14 @@ const parseStreamingXmlInternal = (
 ): InternalParseXmlResult => {
   const { xml, inheritedNamespaceScope = EMPTY_NAMESPACE_SCOPE } = options;
   const rules =
-    options.conformance === undefined &&
-    options.references === undefined &&
-    options.characterReferences === undefined
+    options.conformance === undefined && options.references === undefined
       ? (defaultRules ??= readRulesFor({
           conformance: "ooxml",
           references: "decode",
-          characterReferences: "xml",
         }))
       : readRulesFor({
           conformance: options.conformance ?? "ooxml",
           references: options.references ?? "decode",
-          characterReferences: options.characterReferences ?? "xml",
         });
   const wellFormed = rules.conformance === "well-formed";
   const retainInstructions = options.instructions === "retain";
@@ -518,8 +516,6 @@ export type XmlReadOptions = {
   conformance: XmlConformance;
   /** Defaults to `"decode"`. */
   references?: XmlReferenceHandling;
-  /** For a well-formed read; defaults to `"xml"`. */
-  characterReferences?: XmlCharacterReferences;
   /**
    * `"retain"` keeps processing instructions, the XML declaration included,
    * as `{ type: "instruction", name, instruction }` nodes; comments are always
@@ -536,7 +532,6 @@ export const readXml = (
   {
     conformance,
     references = "decode",
-    characterReferences = "xml",
     instructions = "skip",
     inheritedNamespaceScope = EMPTY_NAMESPACE_SCOPE,
   }: XmlReadOptions,
@@ -546,7 +541,6 @@ export const readXml = (
     mode: "tree",
     conformance,
     references,
-    characterReferences,
     instructions,
     inheritedNamespaceScope,
   });
@@ -556,30 +550,34 @@ export const readXml = (
 };
 
 /**
- * The refusal for the first entity `xml` names that no declaration defines,
- * outside comments, CDATA sections and processing instructions, or `null`.
- * A part with none, or one refused first for its markup, answers `null`.
+ * The refusal for the first reference in `xml` XML refuses, outside comments,
+ * CDATA sections and processing instructions, or `null`. A part with none, or
+ * one refused first for its markup, answers `null`.
  */
-export const undeclaredXmlEntityError = (
+export const malformedXmlReferenceError = (
   part: string,
   xml: string,
-): UndeclaredXmlEntityError | null => {
-  // Most parts name no entity at all; only those that might are read.
-  if (firstUndeclaredNamedReference(xml) === null) return null;
+): MalformedXmlReferenceError | null => {
+  // Most parts hold no such reference; only those that might are read.
+  if (firstMalformedReference(xml) === null) return null;
   const parsed = parseStreamingXmlInternal({
     xml,
     mode: "verdict",
     conformance: "tolerant",
     references: "raw",
   });
-  if (parsed.status === "parsed" || parsed.refusal.type !== "undeclaredEntity")
+  if (
+    parsed.status === "parsed" ||
+    parsed.refusal.type !== "malformedReference"
+  )
     return null;
-  const { offset, name } = parsed.refusal;
-  return new UndeclaredXmlEntityError({
-    message: `${part} refers to the undeclared entity &${name}; at offset ${String(offset)}; it is not well-formed XML.`,
+  const { kind, offset, reference } = parsed.refusal;
+  return new MalformedXmlReferenceError({
+    message: `${part} refers to ${describeMalformedReference({ kind, reference })} at offset ${String(offset)}; it is not well-formed XML.`,
+    kind,
     part,
     offset,
-    entity: name,
+    reference,
   });
 };
 
@@ -592,16 +590,12 @@ export const undeclaredXmlEntityError = (
  * plain objects by name and refuses it too; a part this accepts is one they
  * can read.
  */
-export const wellFormedXmlIssue = (
-  xml: string,
-  characterReferences: XmlCharacterReferences = "xml",
-): string | null => {
+export const wellFormedXmlIssue = (xml: string): string | null => {
   const parsed = parseStreamingXmlInternal({
     xml,
     mode: "verdict",
     conformance: "well-formed",
     references: "raw",
-    characterReferences,
   });
   return parsed.status === "parsed" ? null : parsed.reason;
 };
@@ -1167,22 +1161,21 @@ const parseCharacterReference = (entity: string): CharacterReference | null => {
   };
 };
 
-/** The `ooxml` reader's references: the built-ins and any scalar value. */
+/**
+ * The `ooxml` reader's references: the built-ins and a reference to any
+ * character XML allows, `&#X` spelled either way.
+ */
 const decodeOoxmlReference: ReferenceDecoder = (entity) => {
   const builtIn = builtInEntity(entity);
   if (builtIn !== null) return builtIn;
   const reference = parseCharacterReference(entity);
-  if (reference === null) return null;
-  const { codePoint } = reference;
   if (
-    !Number.isInteger(codePoint) ||
-    codePoint <= 0 ||
-    codePoint > 0x10ffff ||
-    (codePoint >= 0xd800 && codePoint <= 0xdfff)
-  ) {
+    reference === null ||
+    !Number.isInteger(reference.codePoint) ||
+    !isXmlCharacter(reference.codePoint)
+  )
     return null;
-  }
-  return String.fromCodePoint(codePoint);
+  return String.fromCodePoint(reference.codePoint);
 };
 
 /** XML 1.0 §4.1: `&#x` in lower case, and only characters §2.2 admits. */
@@ -1201,40 +1194,56 @@ const decodeWellFormedReference: ReferenceDecoder = (entity) => {
   return String.fromCodePoint(reference.codePoint);
 };
 
-/**
- * A character reference that is syntactically one: decoded when XML defines
- * it, kept as written otherwise. A named reference is only a built-in.
- */
-const decodeSyntacticReference: ReferenceDecoder = (entity) => {
-  const decoded = decodeWellFormedReference(entity);
-  if (decoded !== null || entity.charCodeAt(0) !== 35) return decoded;
-  const reference = parseCharacterReference(entity);
-  return reference === null || reference.hexMarker === "X"
-    ? null
-    : `&${entity};`;
+type MalformedReference = {
+  index: number;
+  kind: XmlMalformedReferenceKind;
+  reference: string;
 };
 
-type UndeclaredReference = { index: number; name: string };
+const describeMalformedReference = ({
+  kind,
+  reference,
+}: Pick<MalformedReference, "kind" | "reference">): string => {
+  switch (kind) {
+    case "undeclaredEntity":
+      return `the undeclared entity &${reference};`;
+    case "invalidCharacterReference":
+      return `the character reference &${reference};, which XML does not allow,`;
+    default: {
+      const unreachable: never = kind;
+      return unreachable;
+    }
+  }
+};
 
 /**
- * The first `&Name;` in `value` that names none of XML's five built-in
- * entities, or `null`. Character references and an `&` that does not begin a
- * syntactic reference are not named references.
+ * The first reference in `value` XML refuses, or `null`: an `&Name;` naming
+ * none of XML's five built-in entities, or an `&#...;` that is no reference to
+ * a character XML 1.0 allows. An `&` that does not begin a syntactic
+ * reference is neither.
  */
-const firstUndeclaredNamedReference = (
-  value: string,
-): UndeclaredReference | null => {
+/** What a numeric reference spells: `#`, digits or letters, nothing else. */
+const NUMERIC_REFERENCE_SHAPE = /^#[0-9A-Za-z]+$/u;
+
+const firstMalformedReference = (value: string): MalformedReference | null => {
   let cursor = value.indexOf("&");
   while (cursor !== -1) {
     const end = value.indexOf(";", cursor + 1);
     if (end === -1) return null;
-    const name = value.slice(cursor + 1, end);
-    if (
-      name.charCodeAt(0) !== 35 &&
-      builtInEntity(name) === null &&
-      XML_NAME.test(name)
-    )
-      return { index: cursor, name };
+    const reference = value.slice(cursor + 1, end);
+    if (reference.charCodeAt(0) === 35) {
+      const character = parseCharacterReference(reference);
+      if (
+        NUMERIC_REFERENCE_SHAPE.test(reference) &&
+        !(
+          character !== null &&
+          Number.isInteger(character.codePoint) &&
+          isXmlCharacter(character.codePoint)
+        )
+      )
+        return { index: cursor, kind: "invalidCharacterReference", reference };
+    } else if (builtInEntity(reference) === null && XML_NAME.test(reference))
+      return { index: cursor, kind: "undeclaredEntity", reference };
     cursor = value.indexOf("&", cursor + 1);
   }
   return null;
@@ -1242,36 +1251,6 @@ const firstUndeclaredNamedReference = (
 
 /** The longest reference body earlier releases looked for a `;` within. */
 const LEGACY_REFERENCE_WINDOW = 32;
-
-/**
- * A character reference the `ooxml` reader refuses, read the way earlier
- * releases read it: one to a control character, a surrogate or U+0000 reads
- * as nothing, one beyond U+10FFFF stays as written, and its digits are read up
- * to the first that is not one.
- */
-const legacyReference = (entity: string): string | null => {
-  if (entity.charCodeAt(0) !== 35) return null;
-  const marker = entity.charAt(1);
-  const hexadecimal = marker === "x" || marker === "X";
-  const codePoint = Number.parseInt(
-    entity.slice(hexadecimal ? 2 : 1),
-    hexadecimal ? 16 : 10,
-  );
-  if (Number.isNaN(codePoint) || codePoint < 0 || codePoint > 0x10ffff) {
-    return null;
-  }
-  if (
-    codePoint === 0 ||
-    (codePoint >= 0xd800 && codePoint <= 0xdfff) ||
-    (codePoint < 0x20 &&
-      codePoint !== 0x09 &&
-      codePoint !== 0x0a &&
-      codePoint !== 0x0d)
-  ) {
-    return "";
-  }
-  return String.fromCodePoint(codePoint);
-};
 
 const decodeTolerantReferences = (value: string): string => {
   const parts: string[] = [];
@@ -1291,10 +1270,7 @@ const decodeTolerantReferences = (value: string): string => {
       continue;
     }
     const entity = value.slice(cursor + 1, end);
-    const decoded =
-      entity.length === 0
-        ? null
-        : (decodeOoxmlReference(entity) ?? legacyReference(entity));
+    const decoded = entity.length === 0 ? null : decodeOoxmlReference(entity);
     if (decoded === null) {
       cursor = value.indexOf("&", cursor + 1);
       continue;

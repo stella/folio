@@ -1,10 +1,11 @@
 /**
- * A part naming an entity no declaration defines is not XML. Both engines
- * refuse the package with one typed error naming the part and the place.
+ * A part holding a reference XML refuses (an entity no declaration defines, a
+ * character XML 1.0 does not allow) is not XML. Both engines refuse the
+ * package with one typed error naming the part, the place and the reference.
  */
 import { describe, expect, test } from "bun:test";
 
-import { UndeclaredXmlEntityError } from "@stll/docx-core/xml";
+import { MalformedXmlReferenceError } from "@stll/docx-core/xml";
 import { ZipArchive } from "@stll/docx-core/zip";
 
 import { createDocx } from "../docx/rezip";
@@ -25,34 +26,61 @@ const withPart = async ({ part, edit }: PartEdit) => {
 };
 
 const CASES = {
-  "text in the document": {
+  "an entity in the document's text": {
     part: "word/document.xml",
-    entity: "nbsp",
+    reference: "nbsp",
+    kind: "undeclaredEntity",
     edit: (xml: string) => xml.replace("Plain words.", "Plain&nbsp;words."),
   },
-  "an attribute in the document": {
+  "an entity in a document attribute": {
     part: "word/document.xml",
-    entity: "custom",
+    reference: "custom",
+    kind: "undeclaredEntity",
     edit: (xml: string) => xml.replace("<w:p>", '<w:p w:rsidR="a&custom;">'),
   },
-  "an attribute in the styles": {
+  "an entity in a styles attribute": {
     part: "word/styles.xml",
-    entity: "copy",
+    reference: "copy",
+    kind: "undeclaredEntity",
     edit: (xml: string) =>
       xml.replace('w:styleId="Normal"', 'w:styleId="Normal&copy;"'),
   },
+  "U+0000 in the document's text": {
+    part: "word/document.xml",
+    reference: "#0",
+    kind: "invalidCharacterReference",
+    edit: (xml: string) => xml.replace("Plain words.", "Plain&#0;words."),
+  },
+  "a control character in the document's text": {
+    part: "word/document.xml",
+    reference: "#x1",
+    kind: "invalidCharacterReference",
+    edit: (xml: string) => xml.replace("Plain words.", "Plain&#x1;words."),
+  },
+  "a noncharacter in a styles attribute": {
+    part: "word/styles.xml",
+    reference: "#xFFFE",
+    kind: "invalidCharacterReference",
+    edit: (xml: string) =>
+      xml.replace('w:styleId="Normal"', 'w:styleId="Normal&#xFFFE;"'),
+  },
 } as const;
 
-describe("opening a part with an undeclared entity", () => {
+describe("opening a part with a reference XML refuses", () => {
   for (const session of SESSIONS)
-    for (const [name, { part, entity, edit }] of Object.entries(CASES))
+    for (const [name, { part, reference, kind, edit }] of Object.entries(CASES))
       test(`${session}: ${name} refuses the package with its place`, async () => {
         const { bytes, xml } = await withPart({ part, edit });
-        const offset = xml.indexOf(`&${entity};`);
+        const offset = xml.indexOf(`&${reference};`);
         expect(offset).toBeGreaterThan(-1);
         const opened = FolioDocxReviewer.fromBuffer(bytes, { session });
-        await expect(opened).rejects.toBeInstanceOf(UndeclaredXmlEntityError);
-        await expect(opened).rejects.toMatchObject({ part, offset, entity });
+        await expect(opened).rejects.toBeInstanceOf(MalformedXmlReferenceError);
+        await expect(opened).rejects.toMatchObject({
+          part,
+          offset,
+          reference,
+          kind,
+        });
       });
 
   for (const session of SESSIONS)

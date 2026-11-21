@@ -326,18 +326,17 @@ describe("parseStreamingXml", () => {
     );
   });
 
-  test("parseXml reads the character references earlier releases read, and refuses undeclared entities and broken markup", () => {
-    const xml = "<document>a&#0;b&#12ab;</document>";
-    expect(parseStreamingXml(xml).status).toBe("unsupported");
-    expect(parseXml(xml).elements?.at(0)?.elements).toEqual([
-      { type: "text", text: "ab" },
-    ]);
-    for (const [named, offset] of [
+  test("parseXml refuses references XML refuses and broken markup", () => {
+    for (const [refused, offset] of [
       ["<document>a&nbsp;b</document>", 11],
       ['<document v="x&custom;"/>', 14],
+      ["<document>a&#0;b</document>", 11],
+      ["<document>a&#12ab;</document>", 11],
+      ['<document v="x&#xFFFE;"/>', 14],
     ] as const) {
-      expect(() => parseXml(named)).toThrow(XmlReadError);
-      expect(() => parseXml(named)).toThrow(`at offset ${String(offset)}`);
+      expect(parseStreamingXml(refused).status).toBe("unsupported");
+      expect(() => parseXml(refused)).toThrow(XmlReadError);
+      expect(() => parseXml(refused)).toThrow(`at offset ${String(offset)}`);
     }
     expect(() => parseXml("<document><body></document>")).toThrow(XmlReadError);
     expect(() => parseXml("<!DOCTYPE document><document/>")).toThrow(

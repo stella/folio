@@ -217,9 +217,7 @@ const checkChangedPart = async ({
   const xml = await entry
     .bytes()
     .then((partBytes) => decodeText(partBytes, { ignoreBOM: true }));
-  // A character reference XML refuses passes, as the engines read it; an
-  // entity no declaration defines does not, since neither engine opens it.
-  if (wellFormedXmlIssue(xml, "syntactic") !== null) {
+  if (wellFormedXmlIssue(xml) !== null) {
     return `${part} is not well-formed XML.`;
   }
   if (part.endsWith(".rels")) {
