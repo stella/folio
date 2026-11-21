@@ -4,7 +4,7 @@
  */
 
 import type { Document } from "../model/document";
-import { idKey, packageParagraphIds } from "./ids";
+import { idKey, type KeyMembership, packageParagraphIdIndex } from "./ids";
 import type { DocumentOp, ParagraphAbsorption, TouchedBlocks } from "./types";
 
 /** What applying operations produced: the document, its inverse, and the blocks it changed. */
@@ -59,10 +59,10 @@ export const combineEditEffects = (
     [...touched].flatMap(([id, value]) => (value === state ? [id] : []));
   const lists = edits.map(({ touched: { absorbed: list } }) => list ?? []);
   const absorbed = lists.some((list) => list.length > 0)
-    ? combinedAbsorptions(
+    ? combinedAbsorptionsIn(
         lists,
         new Set(ids("removed")),
-        new Set(packageParagraphIds(final.package)),
+        packageParagraphIdIndex(final.package),
       )
     : [];
   return {
@@ -95,6 +95,13 @@ export const combinedAbsorptions = (
   lists: readonly (readonly ParagraphAbsorption[])[],
   removed: ReadonlySet<string>,
   present: ReadonlySet<string>,
+): ParagraphAbsorption[] =>
+  combinedAbsorptionsIn(lists, removed, new Set([...present].map(idKey)));
+
+const combinedAbsorptionsIn = (
+  lists: readonly (readonly ParagraphAbsorption[])[],
+  removed: ReadonlySet<string>,
+  presentKeys: KeyMembership,
 ): ParagraphAbsorption[] => {
   // Walk backwards: the final destination of a survivor is already known
   // when an earlier paragraph joins it. A later reuse of the absorbed ID
@@ -111,7 +118,6 @@ export const combinedAbsorptions = (
     }
   }
   const removedKeys = new Set([...removed].map(idKey));
-  const presentKeys = new Set([...present].map(idKey));
   const result: ParagraphAbsorption[] = [];
   // Report in first-absorption order, with the spelling of the last record.
   for (const list of lists) {
