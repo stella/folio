@@ -47,6 +47,13 @@ const opStory = (value: unknown): boolean => {
     case "footnote":
     case "endnote":
       return typeof value["id"] === "number";
+    // An operation compiled in a text box's own story names the box.
+    case "textBox":
+      return (
+        opStory(value["host"]) &&
+        typeof value["blockId"] === "string" &&
+        typeof value["index"] === "number"
+      );
     default:
       return false;
   }
