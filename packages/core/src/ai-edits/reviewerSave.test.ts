@@ -293,39 +293,57 @@ describe("FolioDocxReviewer.save", () => {
     expect(result.type).toBe("selective");
   });
 
-  test("refuses or performs a full repack for a structural edit", async () => {
-    const source = await buildDocx(["First.", "Second."]);
-    const insert = async (): Promise<FolioDocxReviewer> => {
-      const reviewer = await FolioDocxReviewer.fromBuffer(source, {
-        author: "Reviewer",
+  // Legacy writes an inserted paragraph only by rebuilding the package; the
+  // canonical session writes it into the parts it rewrites anyway.
+  for (const session of ["legacy", "canonical"] as const) {
+    test(`${session}: saves a structural edit ${session === "legacy" ? "by a full repack, or refuses" : "selectively"}`, async () => {
+      const source = await buildDocx(["First.", "Second."]);
+      const insert = async (): Promise<FolioDocxReviewer> => {
+        const reviewer = await FolioDocxReviewer.fromBuffer(source, {
+          author: "Reviewer",
+          session,
+        });
+        const result = reviewer.applyOperations(
+          [
+            {
+              id: "insert",
+              type: "insertAfterBlock",
+              blockId: firstBlockId(reviewer),
+              text: "New.",
+            },
+          ],
+          { undefinedReferences: "refuse" },
+        );
+        expect(result.skipped).toEqual([]);
+        return reviewer;
+      };
+
+      const refused = await (await insert()).save({ repack: "refuse" });
+      const saved = await (await insert()).save();
+
+      if (session === "legacy") {
+        expect(refused).toEqual({
+          type: "repackRefused",
+          reason: "structuralChange",
+        });
+        expect(saved.type).toBe("full-repack");
+        if (saved.type !== "full-repack") return;
+        expect(saved.reason).toBe("structuralChange");
+      } else {
+        expect(refused.type).toBe("selective");
+        expect(saved.type).toBe("selective");
+      }
+      if (saved.type === "repackRefused") throw new Error(saved.reason);
+      const reopened = await FolioDocxReviewer.fromBuffer(saved.buffer, {
+        session,
       });
-      reviewer.applyOperations(
-        [
-          {
-            id: "insert",
-            type: "insertAfterBlock",
-            blockId: firstBlockId(reviewer),
-            text: "New.",
-          },
-        ],
-        { undefinedReferences: "refuse" },
-      );
-      return reviewer;
-    };
-
-    const refused = await (await insert()).save({ repack: "refuse" });
-    const repacked = await (await insert()).save();
-
-    expect(refused).toEqual({
-      type: "repackRefused",
-      reason: "structuralChange",
+      expect(reopened.getContent().map(({ text }) => text)).toEqual([
+        "First.",
+        "New.",
+        "Second.",
+      ]);
     });
-    expect(repacked.type).toBe("full-repack");
-    if (repacked.type !== "full-repack") return;
-    expect(repacked.reason).toBe("structuralChange");
-    const reopened = await FolioDocxReviewer.fromBuffer(repacked.buffer);
-    expect(reopened.getContent().map(({ text }) => text)).toContain("New.");
-  });
+  }
 
   test("stamps created comments and replies with the supplied date", async () => {
     const date = "2026-01-02T03:04:05Z";
