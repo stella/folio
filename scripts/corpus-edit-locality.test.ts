@@ -4,6 +4,7 @@ import { buildParagraphsDocx } from "@stll/folio-core/ai-edits/__fixtures__/para
 import { FolioDocxReviewer } from "@stll/folio-core/ai-edits/headless";
 import { buildBodySequenceDocx } from "@stll/folio-core/compare/__fixtures__/body-sequence";
 import { parseDocx } from "@stll/folio-core/docx/parser";
+import type { HeadlessReviewerSession } from "@stll/folio-core/types/canonicalCapabilities";
 
 import type { CorpusInvariantInput } from "./lib/corpus-invariants/contract";
 import {
@@ -24,8 +25,10 @@ const inputFor = async (
   budgetMs: 30_000,
 });
 
-const failuresFor = async (buffer: ArrayBuffer) =>
-  (await runEditLocalityInvariant(await inputFor(buffer))).failures;
+const failuresFor = async (
+  buffer: ArrayBuffer,
+  session?: HeadlessReviewerSession,
+) => (await runEditLocalityInvariant(await inputFor(buffer), session)).failures;
 
 /** Run the invariant's own edit so a test can read where it landed. */
 const editedBlockTexts = async (buffer: ArrayBuffer): Promise<string[]> => {
@@ -84,14 +87,17 @@ describe("edit locality", () => {
    * paragraph is re-serialized. The invariant used to report the whole part
    * changing here, and the minted ids being written to disk with it.
    */
-  test("an id-less package keeps the paragraphs the edit did not touch", async () => {
-    const buffer = await buildParagraphsDocx([
-      "First paragraph.",
-      "Second paragraph.",
-    ]);
+  test.each(["legacy", "canonical"] as const)(
+    "%s keeps the paragraphs an edit did not touch in an id-less package",
+    async (session) => {
+      const buffer = await buildParagraphsDocx([
+        "First paragraph.",
+        "Second paragraph.",
+      ]);
 
-    expect(await failuresFor(buffer)).toEqual([]);
-  });
+      expect(await failuresFor(buffer, session)).toEqual([]);
+    },
+  );
 
   test("a part path loses its per-package numbers", () => {
     expect(generalizePartPath("word/header12.xml")).toBe("word/headerN.xml");
