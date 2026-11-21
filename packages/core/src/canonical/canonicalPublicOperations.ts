@@ -2466,6 +2466,7 @@ const resolveTableInsertion = ({
     if (
       joinStopsAtTableAfter({
         insertedBlock: "table",
+        joinBeforeTable: "runsIntoFirstCell",
         doc: projection.doc,
         paragraphPos: outer[side],
         noteReferences,
@@ -2521,6 +2522,7 @@ const resolveTableInsertion = ({
   if (
     joinStopsAtTableAfter({
       insertedBlock: "table",
+      joinBeforeTable: "runsIntoFirstCell",
       doc: projection.doc,
       paragraphPos: gap,
       noteReferences,
