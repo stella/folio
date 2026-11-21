@@ -135,6 +135,9 @@ export const INVERSE_KINDS = {
     "replaceInline",
     "setParagraphReview",
     "restoreStoryParts",
+    // A direct join across range boundaries between the paragraphs gives the
+    // block list back whole.
+    "setContainerBlocks",
   ],
   replaceBlocks: [
     "replaceBlocks",
