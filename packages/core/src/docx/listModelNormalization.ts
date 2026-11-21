@@ -13,6 +13,7 @@ import {
   replaceStoryBody,
   reviewFieldsOf,
   storyBody,
+  textBoxContentsIn,
   withBodyContent,
   withParagraphRenderings,
 } from "@stll/docx-core/ops";
@@ -892,14 +893,50 @@ export const normalizeListModelRendering = (
       body,
     })),
   ];
-  // Each story's renderings replace its paragraphs in place: a document known
-  // to meet the operations contract still does.
+  /**
+   * The paragraphs of the text boxes drawn in a story that normalized to
+   * other ones, and those, as a reopen reads them. Each box starts fresh
+   * counters (a rendering holds no counter value); an inverse names the box
+   * paragraph through the package story, which routes it to the box.
+   */
+  const renderedInTextBoxes = (
+    target: Document,
+    story: OpStory,
+  ): Map<Paragraph, Paragraph> => {
+    const renderings = new Map<Paragraph, Paragraph>();
+    const inputs: BlockNormalizationInputs = { styles, story, recordInverse };
+    for (const content of textBoxContentsIn(target, story)) {
+      const counters = freshCounters(numbering);
+      for (const block of content)
+        for (const [paragraph, rendered] of renderedParagraphs(
+          block,
+          normalizeBlock(block, inputs, counters, () => {}),
+        )) {
+          const known = renderings.get(paragraph);
+          if (known !== undefined && known !== rendered)
+            panic("A text box paragraph stands at one place.");
+          renderings.set(paragraph, rendered);
+        }
+    }
+    return renderings;
+  };
+  // Each story's renderings replace its paragraphs in place, then those of
+  // its text boxes: a document known to meet the operations contract still
+  // does.
   let normalized = document;
   for (const { story, body } of stories) {
     const replaced = replacedIn(body, story);
     normalized = withReplaced(normalized, story, body, replaced);
     if (cache !== undefined && replaced.length > 0)
       cache.held(story, storyBody(normalized, story).content, replaced);
+    const boxRenderings = renderedInTextBoxes(normalized, story);
+    if (boxRenderings.size > 0)
+      normalized =
+        withParagraphRenderings({
+          document: normalized,
+          story,
+          renderings: boxRenderings,
+        }) ?? panic("A text box paragraph stands at one place.");
   }
   return { document: normalized, inverse };
 };

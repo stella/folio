@@ -1628,6 +1628,9 @@ export type TableIntentOperation = { [Kind in TableEditOp["type"]]: Omit<Extract
 export type TableRowIntentOperation = Omit<InsertRowOp, "revision" | "newIds"> | Omit<DeleteRowOp, "revision" | "newIds">;
 
 // @public
+export const textBoxContentsIn: (document: Document_2, story: OpStory) => readonly (readonly BlockContent[])[];
+
+// @public
 export type TextPosition = {
     story: OpStory;
     blockId: string;

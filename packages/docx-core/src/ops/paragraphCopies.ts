@@ -3,7 +3,7 @@ import { panic } from "better-result";
 import type { BlockContent, Document, Paragraph } from "../model/document";
 import { withBodyContent } from "./blocks";
 import { knownToMeetContract, meetsContract } from "./contract";
-import { replaceStoryBody, storyBody } from "./stories";
+import { replaceStoryBody, storyBody, textBoxStoriesIn } from "./stories";
 import type { OpStory } from "./types";
 
 /** Whether two paragraphs hold the same value under every own field. */
@@ -111,7 +111,10 @@ const sameBesidesRendering = (
 type WithParagraphCopiesOptions = {
   document: Document;
   story: OpStory;
-  /** Each paragraph of the story, at any depth, and the copy that takes its place. */
+  /**
+   * Each paragraph of the story, at any depth or in a text box drawn there,
+   * and the copy that takes its place.
+   */
   copies: ReadonlyMap<Paragraph, Paragraph>;
 };
 
@@ -141,7 +144,10 @@ export const withParagraphCopies = ({
 type WithParagraphRenderingsOptions = {
   document: Document;
   story: OpStory;
-  /** Each paragraph of the story, at any depth, and its list rendering normalized. */
+  /**
+   * Each paragraph of the story, at any depth or in a text box drawn there,
+   * and its list rendering normalized.
+   */
   renderings: ReadonlyMap<Paragraph, Paragraph>;
 };
 
@@ -171,9 +177,37 @@ export const withParagraphRenderings = ({
 };
 
 /**
+ * `document` with the paragraphs of the text boxes drawn in `story` that
+ * `replacements` names replaced, counting them as `withCopies` does. Text
+ * boxes hold no section views.
+ */
+const replacingInTextBoxes = (
+  document: Document,
+  story: OpStory,
+  replacements: ReadonlyMap<Paragraph, Paragraph>,
+  placed: Set<Paragraph>,
+  places: { count: number },
+): Document => {
+  if (placed.size === replacements.size) return document;
+  let result = document;
+  for (const box of textBoxStoriesIn(document, story)) {
+    const body = storyBody(result, box);
+    const content = withCopies(body.content, replacements, placed, places);
+    if (content !== body.content)
+      result = replaceStoryBody({
+        document: result,
+        story: box,
+        body: { ...body, ...withBodyContent(body, content) },
+      });
+  }
+  return result;
+};
+
+/**
  * `document` with the paragraphs `replacements` names replaced, its contract
- * mark kept. Section views take the replacement wherever they held the
- * replaced block ("held"), or are derived from the new body ("derived").
+ * mark kept, in the story or a text box drawn there. Section views take the
+ * replacement wherever they held the replaced block ("held"), or are derived
+ * from the new body ("derived").
  */
 const replacingParagraphs = (
   document: Document,
@@ -186,15 +220,21 @@ const replacingParagraphs = (
   const placed = new Set<Paragraph>();
   const places = { count: 0 };
   const content = withCopies(body.content, replacements, placed, places);
-  if (placed.size !== replacements.size)
-    panic("A paragraph replacement must replace a paragraph of its story.");
   if (views === "derived") {
-    if (places.count !== placed.size) return undefined;
-    const result = replaceStoryBody({
-      document,
+    const result = replacingInTextBoxes(
+      replaceStoryBody({
+        document,
+        story,
+        body: { ...body, ...withBodyContent(body, content) },
+      }),
       story,
-      body: { ...body, ...withBodyContent(body, content) },
-    });
+      replacements,
+      placed,
+      places,
+    );
+    if (placed.size !== replacements.size)
+      panic("A paragraph replacement must replace a paragraph of its story.");
+    if (places.count !== placed.size) return undefined;
     if (knownToMeetContract(document)) meetsContract(result);
     return result;
   }
@@ -211,15 +251,23 @@ const replacingParagraphs = (
       content: section.content.map((block) => replaced.get(block) ?? block),
     };
   });
-  const result = replaceStoryBody({
-    document,
+  const result = replacingInTextBoxes(
+    replaceStoryBody({
+      document,
+      story,
+      body: {
+        ...body,
+        content,
+        ...(sections === undefined ? {} : { sections }),
+      },
+    }),
     story,
-    body: {
-      ...body,
-      content,
-      ...(sections === undefined ? {} : { sections }),
-    },
-  });
+    replacements,
+    placed,
+    places,
+  );
+  if (placed.size !== replacements.size)
+    panic("A paragraph replacement must replace a paragraph of its story.");
   if (knownToMeetContract(document)) meetsContract(result);
   return result;
 };
