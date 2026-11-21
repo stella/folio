@@ -2530,7 +2530,7 @@ const resolveList = ({
     if (
       next !== undefined &&
       nextFacing !== undefined &&
-      handJoin(next, "before", nextFacing.join).takesKept
+      handJoin({ node: next, side: "before", depth: nextFacing.join }).takesKept
     )
       nameKeptPiece(
         out.length - recordsFrom(out.length - 1, -1, nextFacing.kept.count),
@@ -2542,7 +2542,11 @@ const resolveList = ({
     if (
       previous !== undefined &&
       previousFacing !== undefined &&
-      handJoin(previous.node, "after", previousFacing.join).takesKept
+      handJoin({
+        node: previous.node,
+        side: "after",
+        depth: previousFacing.join,
+      }).takesKept
     )
       nameKeptPiece(
         previousAt + 1,
@@ -3945,15 +3949,19 @@ const resolveList = ({
         Math.min(depth, 1)
     )
       return false;
-    const { node: joined } = handJoin(
-      holder.resolutionJoins === undefined
-        ? Object.assign({}, holder, {
-            resolutionJoins: { before: 0, after: 0, remove: 0 },
-          })
-        : holder,
+    const { node: joined, takesKept } = handJoin({
+      node:
+        holder.resolutionJoins === undefined
+          ? Object.assign({}, holder, {
+              resolutionJoins: { before: 0, after: 0, remove: 0 },
+            })
+          : holder,
       side,
       depth,
-    );
+    });
+    // A holder taking no piece of the record refuses the join: the seam is
+    // not handed over and stands as any other.
+    if (!takesKept) return false;
     carryResolutionState(resolution, holder, joined);
     out[holderAt] = occurrenceOf(joined, occurrence);
     changed = true;
@@ -4425,11 +4433,11 @@ const resolveList = ({
             })
           )
             return;
-          const { node, takesKept } = handJoin(
-            occurrence.node,
+          const { node, takesKept } = handJoin({
+            node: occurrence.node,
             side,
-            exactDepth,
-          );
+            depth: exactDepth,
+          });
           const tookKept =
             keptStand &&
             takesKept &&
