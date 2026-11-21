@@ -1193,7 +1193,15 @@ export type FolioAIEditSkipReason =
 */
 "pendingDeletion" |
 /** Resolve the removed paragraph mark before editing its properties separately, or before inserting a paragraph between it and a table. */
-"pendingParagraphMarkDeletion" | "existingRevisionConflict";
+"pendingParagraphMarkDeletion" |
+/**
+* A tracked join would run a paragraph, through one whose mark is
+* already pending deletion, into a table that is pending insertion (its
+* first row or cell is under review): that table cannot take the words.
+* Nothing was applied. Resolve the table's insertion or the mark's
+* deletion first.
+*/
+"pendingTableInsertion" | "existingRevisionConflict";
 
 // @public
 export type FolioAIEditSnapshot = FolioContentSnapshot<FolioAIBlock> & {
