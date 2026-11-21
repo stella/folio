@@ -1171,3 +1171,29 @@ describe("deleting a paragraph that ends a section", () => {
     expect(rejected.document).toStrictEqual(own);
   });
 });
+
+// A content control in a deleted paragraph is deleted whole with it: tracked,
+// the deletion holds it, accepting removes it as the direct deletion does, and
+// rejecting gives it back.
+test("a tracked deletion of a paragraph holding a content control meets the laws", () => {
+  const holder = {
+    type: "paragraph",
+    paraId: "00000002",
+    content: [
+      { type: "run", content: [{ type: "text", text: "Pay " }] },
+      {
+        type: "inlineSdt",
+        properties: { sdtType: "richText", id: 7, tag: "amount" },
+        content: [{ type: "run", content: [{ type: "text", text: "100" }] }],
+      },
+      { type: "run", content: [{ type: "text", text: " euros." }] },
+    ],
+  } satisfies Paragraph;
+  const document = documentOf([
+    paragraph("00000001", "Before."),
+    holder,
+    paragraph("00000003", "After."),
+  ]);
+  const { tracked } = assertLaws(document, deletion(["00000002"]));
+  expect(JSON.stringify(tracked.document)).toContain('"tag":"amount"');
+});

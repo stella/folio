@@ -18,12 +18,7 @@ import { isCommentExhausted } from "./comments";
 import type { DocumentEdit } from "./edits";
 import { structurallyEqual } from "./equality";
 import { freshenIdentities } from "./identity";
-import {
-  IDENTITY_SPACES,
-  identityKeysIn,
-  idKey,
-  packageIdentityKeys,
-} from "./ids";
+import { identityKeysIn, idKey, packageIdentityKeys } from "./ids";
 import {
   asParagraphContent,
   childNodes,
@@ -823,18 +818,8 @@ export const deleteBlocks = ({
     );
   }
   // Revisions in the content resolve as a tracked range deletion over them
-  // does; content controls keep their identity, which no deletion here
-  // carries.
-  if (
-    identityKeysIn(selected.map(({ content }) => ({ content }))).some(
-      (key) => !key.startsWith(`${IDENTITY_SPACES.REVISION}:`),
-    )
-  ) {
-    return refuse(
-      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      "Tracked paragraph deletion of identified review or content-control content is unsupported.",
-    );
-  }
+  // does; a content control is deleted whole, as one, keeping its identity,
+  // and accepting the deletion removes it.
   const selectedSet = new Set(selected);
   const tracked: Paragraph[] = [];
   for (const paragraph of affected) {
