@@ -233,3 +233,55 @@ describe("a comment reference put inside another comment's range", () => {
       }
     }
 });
+
+/** The ids of the tracked insertions and deletions anywhere in `value`. */
+const trackedIds = (value: unknown, ids = new Set<number>()): Set<number> => {
+  if (Array.isArray(value)) {
+    for (const item of value) trackedIds(item, ids);
+    return ids;
+  }
+  if (typeof value !== "object" || value === null) return ids;
+  const type: unknown = Reflect.get(value, "type");
+  const info: unknown = Reflect.get(value, "info");
+  if (
+    (type === "insertion" || type === "deletion") &&
+    typeof info === "object" &&
+    info !== null
+  ) {
+    const id: unknown = Reflect.get(info, "id");
+    if (typeof id === "number") ids.add(id);
+  }
+  for (const child of Object.values(value)) trackedIds(child, ids);
+  return ids;
+};
+
+test.each(SESSIONS)(
+  "past the highest id, a comment and a tracked edit of one batch take different ids (%s)",
+  async (session) => {
+    const { reviewer } = await nested(session, MAX_REVISION_ID - 1);
+    const other = reviewer.snapshot().blocks[1];
+    if (!other) throw new Error("Missing second paragraph");
+    apply(reviewer, "tracked-changes", [
+      {
+        id: "comment",
+        type: "commentOnBlock",
+        blockId: other.id,
+        comment: { text: "New" },
+      },
+      {
+        id: "edit",
+        type: "replaceInBlock",
+        blockId: other.id,
+        find: "Other",
+        replace: "Another",
+      },
+    ]);
+    const document = reviewer.toDocument();
+    const comments = new Set(
+      (document.package.document.comments ?? []).map(({ id }) => id),
+    );
+    const revisions = trackedIds(document.package.document.content);
+    expect(revisions.size).toBeGreaterThan(0);
+    expect([...revisions].filter((id) => comments.has(id))).toEqual([]);
+  },
+);
