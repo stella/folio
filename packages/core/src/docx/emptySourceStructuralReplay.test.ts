@@ -265,8 +265,16 @@ test("a refusal of the expanded body still reaches the original path", async () 
   const read = xmlReader.parseXmlDocument;
   // Reject only the full expanded body, as an output limit could. The compact
   // generated document and the individually validated fragments still read.
+  // Written for the source part, the generated document can spell the
+  // expanded body exactly; it is read first, so only later reads refuse it.
+  let generatedRead = false;
   const budget = spyOn(xmlReader, "parseXmlDocument").mockImplementation(
-    (value) => (value === baseline.xml ? null : read(value)),
+    (value) => {
+      if (value !== baseline.xml) return read(value);
+      if (generatedRead) return null;
+      generatedRead = true;
+      return read(value);
+    },
   );
   const replays = spyOn(replay, "buildDocumentBlockReplay");
   const patches = spyOn(structural, "buildStructuralDocumentPatch");

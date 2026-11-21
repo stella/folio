@@ -18,6 +18,7 @@ import {
 } from "./selectiveXmlPatch";
 import {
   materializeReplayFragment,
+  replayDestinationOf,
   type ReplayFragmentValidation,
   replayIgnorablePrefixes,
 } from "./storyBlockReplay";
@@ -434,6 +435,7 @@ export const buildStructuralDocumentPatch = ({
   if (canonicalJson(survivingBefore) !== canonicalJson(survivingAfter))
     return decline("structuralReorder");
 
+  const destination = replayDestinationOf(source.root, source.body);
   const fragmentFor = (block: BodyBlock) =>
     materializeReplayFragment({
       xml: serializedXml.slice(block.start, block.end),
@@ -441,6 +443,7 @@ export const buildStructuralDocumentPatch = ({
       sourceNamespace: getNamespaceUri(source.root) ?? "",
       generatedRoot: current.root,
       validation: fragmentValidation,
+      destination,
     });
   const splices: XmlSplice[] = [];
   for (const [key, block] of before) {
