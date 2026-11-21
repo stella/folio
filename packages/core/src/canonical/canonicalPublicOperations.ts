@@ -6158,26 +6158,88 @@ export class CanonicalPublicOperations {
         }
         if (pending) changes.push(pending);
       }
-      const replacementChanges = [];
-      for (const change of changes) {
-        const gap = resolveCleanTextRange({
-          cleanBlock: clean,
-          startOffset: change.start,
-          endOffset: change.end,
-        });
-        if (!gap) return refusal("unsupportedBlock");
-        // Keep trailing references and struck text outside the replacement.
-        const lastCharacter =
-          change.end > change.start ? clean.offsets[change.end - 1] : undefined;
-        replacementChanges.push({
-          ...change,
-          from: gap.from,
-          to:
+      const placeChanges = (
+        pieces: readonly { start: number; end: number; text: string }[],
+      ) => {
+        const placed = [];
+        for (const change of pieces) {
+          const gap = resolveCleanTextRange({
+            cleanBlock: clean,
+            startOffset: change.start,
+            endOffset: change.end,
+          });
+          if (!gap) return undefined;
+          // Keep trailing references and struck text outside the replacement.
+          const lastCharacter =
+            change.end > change.start
+              ? clean.offsets[change.end - 1]
+              : undefined;
+          // A character an element reads as, such as a field's result, ends
+          // where the element does.
+          const lastHolder =
             lastCharacter === undefined
-              ? gap.to
-              : Math.max(gap.from, Math.min(gap.to, lastCharacter + 1)),
-          markers: "retained" as const,
-        });
+              ? null
+              : paragraph.node.nodeAt(lastCharacter - paragraph.start);
+          const afterLast =
+            lastCharacter === undefined
+              ? undefined
+              : lastCharacter +
+                (lastHolder === null || lastHolder.isText
+                  ? 1
+                  : lastHolder.nodeSize);
+          placed.push({
+            ...change,
+            from: gap.from,
+            to:
+              afterLast === undefined
+                ? gap.to
+                : Math.max(gap.from, Math.min(gap.to, afterLast)),
+            markers: "retained" as const,
+          });
+        }
+        return placed;
+      };
+      const addressable = (
+        placed: readonly { from: number; to: number }[],
+      ): boolean =>
+        placed.every(
+          ({ from: changeFrom, to: changeTo }) =>
+            projection.value
+              .addressAt(
+                changeFrom,
+                changeFrom < changeTo ? "afterMarkers" : undefined,
+              )
+              .isOk() &&
+            projection.value
+              .addressAt(
+                changeTo,
+                changeFrom < changeTo ? "beforeMarkers" : undefined,
+              )
+              .isOk(),
+        );
+      let replacementChanges = placeChanges(changes);
+      if (replacementChanges === undefined) return refusal("unsupportedBlock");
+      // A change the word diff places inside an element edited only whole,
+      // such as a field whose result is in more than one format, replaces
+      // each piece of prose whole instead: the replaced text holds the
+      // element entirely, or the replacement is refused as cutting into it.
+      if (!addressable(replacementChanges)) {
+        const whole = placeChanges(
+          segments.source.flatMap((piece, index) => {
+            const replacement = segments.replacement[index] ?? "";
+            if (replacement === piece.text) return [];
+            const pieceStart = start + piece.offset;
+            return [
+              {
+                start: pieceStart,
+                end: pieceStart + piece.text.length,
+                text: replacement,
+              },
+            ];
+          }),
+        );
+        if (whole === undefined) return refusal("unsupportedBlock");
+        replacementChanges = whole;
       }
       if (
         !preservesReplacementCommentAlignment({
