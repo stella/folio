@@ -96,6 +96,7 @@ import {
   sameOwnFields,
   withFieldResult,
 } from "./leaves";
+import { itemBefore } from "./listItems";
 import { replaceNoteParts } from "./noteLifecycle";
 import {
   automaticNoteMarkRuns,
@@ -1465,23 +1466,27 @@ const placeAcceptedSeamKept = ({
   ].find(
     ({ index, records }) =>
       records > 0 &&
-      (blocker(out.at(index - 1)) || blocker(out.at(index + records))),
+      (blocker(itemBefore(out, index)) || blocker(out.at(index + records))),
   );
   if (placed === undefined) return false;
   const { index: start, records } = placed;
   // The cut's piece across the blockers must stand once they are resolved:
   // with nothing left of it, the cut has one side and they stand beside it,
   // as resolving its emptying first leaves them.
-  const far = start < first ? out.at(last + 1) : out.at(first - 1);
+  const far = start < first ? out.at(last + 1) : itemBefore(out, first);
   if (far === undefined || emptiedBy(far, fateOf)) return false;
   // The accepted blocker beside them stays between the pieces. Rejecting the
   // revision after accepting it puts them into the piece only when the
   // blocker's record facing them is alike the piece, or when the blocker's
   // own join there reaches deeper than the cut, so that it continues the
   // record the cut split; otherwise they stand beside it.
-  const blockerBefore = blocker(out.at(start - 1));
-  const beside = out.at(blockerBefore ? start - 1 : start + records);
-  const piece = out.at(blockerBefore ? start + records : start - 1);
+  const blockerBefore = blocker(itemBefore(out, start));
+  const beside = blockerBefore
+    ? itemBefore(out, start)
+    : out.at(start + records);
+  const piece = blockerBefore
+    ? out.at(start + records)
+    : itemBefore(out, start);
   const edgeRecord =
     beside === undefined
       ? undefined
@@ -2419,7 +2424,7 @@ const resolveList = ({
       pending[index + 1] = placed;
       out.splice(out.length - inside, inside);
     } else {
-      const previous = out.at(first - 1);
+      const previous = itemBefore(out, first);
       if (previous === undefined || !standsInside(previous.node)) return;
       const placed = withBoundariesAtEdge(
         previous.node,
@@ -3435,7 +3440,7 @@ const resolveList = ({
   for (const [index, { node, owner }] of out.entries()) {
     if (!isAddedRevision(node) || node.resolutionJoins === undefined) continue;
     if (node.resolutionJoins.remove === 0) continue;
-    const left = out.at(index - 1)?.node;
+    const left = itemBefore(out, index)?.node;
     const right = out.at(index + 1)?.node;
     const depths = [
       index > 0 && left !== undefined
@@ -3570,7 +3575,7 @@ const resolveList = ({
     changed = true;
   };
   for (const seam of plainSeams) {
-    const left = out.at(seam - 1)?.node;
+    const left = itemBefore(out, seam)?.node;
     const right = out.at(seam)?.node;
     if (
       seam > 0 &&
@@ -5362,7 +5367,8 @@ const joinOps = (
         ? blocks.at(-1)?.type === "paragraph"
         : // Removing the final paragraph leaves the block before it last: in
           // a cell, that paragraph's mark becomes the cell's terminator.
-          containerFinal && blocks.at(location.index - 1)?.type === "paragraph",
+          containerFinal &&
+          itemBefore(blocks, location.index)?.type === "paragraph",
     followingTableCanReceiveRunIn: tableTarget !== undefined,
     holdsContentOnceAccepted: paragraphHoldsContentOnceAccepted(chained),
     followingBlockCanReceiveRunIn: blockTarget !== undefined,
