@@ -4,11 +4,13 @@
  * and loses its words, whether the table stood there already or the same
  * batch puts it there; a paragraph before a table whose own mark is a pending
  * insertion keeps that mark and loses its words; so does a paragraph between
- * two tables, which keeps them apart.
+ * two tables, which keeps them apart, unless the same batch deletes the table
+ * after it (both sessions).
  */
 import { expect, test } from "bun:test";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
+import { buildBodySequenceDocx } from "../compare/__fixtures__/body-sequence";
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioDocumentOperation,
@@ -218,5 +220,70 @@ test.each([
       "[table]",
       "Closing.",
     ]);
+  },
+);
+
+test.each(
+  (["legacy", "canonical"] as const).flatMap((session) =>
+    (["direct", "tracked-changes"] as const).flatMap((mode) =>
+      (["Between words.", ""] as const).map(
+        (text) => [session, mode, text] as const,
+      ),
+    ),
+  ),
+)(
+  "a paragraph between two tables goes whole when the batch deletes the table after it (%s, %s, text %p)",
+  async (session, mode, text) => {
+    const source = await buildBodySequenceDocx([
+      { kind: "paragraph", text: "Opening words." },
+      { kind: "table", rows: [["Before row"]] },
+      { kind: "paragraph", text },
+      { kind: "table", rows: [["After row"]] },
+      { kind: "paragraph", text: "Closing." },
+    ]);
+    const reviewer = await FolioDocxReviewer.fromBuffer(source, {
+      author: "Editor",
+      session,
+    });
+    const blocks = reviewer.snapshot().blocks;
+    const between = blocks.find((block) => !block.table && block.text === text);
+    const table = blocks.find((block) => block.text === "After row");
+    if (between === undefined || table === undefined)
+      throw new Error("the fixture's blocks are missing");
+    const original = shape(reviewer);
+    const originalBody = reviewer.toDocument().package.document.content;
+    const kept = ["Opening words.", "[table]", "Closing."];
+    const deleted = reviewer.applyDocumentOperations(
+      batch(mode, [
+        { id: "delete", type: "deleteBlock", blockId: between.id },
+        { id: "table", type: "deleteTable", blockId: table.id },
+      ]),
+      { undefinedReferences: "refuse" },
+    );
+    expect(deleted.skipped).toEqual([]);
+    const saved = await reviewer.toBuffer();
+    if (mode === "direct") expect(shape(reviewer)).toEqual(kept);
+    else {
+      const rejected = await FolioDocxReviewer.fromBuffer(saved, {
+        author: "Editor",
+        session,
+      });
+      rejected.rejectAll();
+      expect(shape(rejected)).toEqual(original);
+      const accepted = await FolioDocxReviewer.fromBuffer(saved, {
+        author: "Editor",
+        session,
+      });
+      accepted.acceptAll();
+      expect(shape(accepted)).toEqual(kept);
+    }
+    if (deleted.undoHandle === undefined)
+      throw new Error("the batch has no undo handle");
+    expect(reviewer.undoDocumentOperations(deleted.undoHandle).status).toBe(
+      "undone",
+    );
+    expect(reviewer.toDocument().package.document.content).toEqual(
+      originalBody,
+    );
   },
 );
