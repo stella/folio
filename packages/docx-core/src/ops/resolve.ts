@@ -3488,6 +3488,42 @@ const resolveList = ({
     const kept = floating.get(seam);
     if (kept !== undefined) floating.set(seam, { ...kept, depth: reach });
   }
+  // A boundary already kept between pieces of a pending insertion still
+  // stands in that cut when a nested join reaches it. Carry the join's depth
+  // to the boundary, as rejecting its insertion with the nested change does.
+  for (const [index, { node: before }] of out.entries()) {
+    if (!isAddedRevision(before)) continue;
+    const first = index + 1;
+    let end = first;
+    while (keptFromAt(end) !== undefined) end += 1;
+    if (first === end) continue;
+    const after = out.at(end)?.node;
+    if (
+      after === undefined ||
+      !isAddedRevision(after) ||
+      !sameStamp(before, after)
+    )
+      continue;
+    const depth = Math.max(
+      resolution.cutEdges.get(before)?.last ?? 0,
+      resolution.cutEdges.get(after)?.first ?? 0,
+    );
+    if (depth === 0) continue;
+    for (let at = first; at < end; at += 1) {
+      const occurrence =
+        out.at(at) ?? panic("The kept run has this occurrence.");
+      const keptFrom =
+        keptFromAt(at) ?? panic("The kept run has cut provenance.");
+      out[at] = occurrenceOf(
+        withKeptCutsRecorded(
+          occurrence.node,
+          { depth, keptFrom },
+          resolution.relocated.nodes,
+        ),
+        occurrence,
+      );
+    }
+  }
   const edges: CutEdges = {};
   // Boundaries standing between the list's edge and a seam hold no piece of
   // the record it cut: the seam is still the edge's, and a join at that edge
