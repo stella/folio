@@ -13,7 +13,10 @@
 
 import { panic, Result } from "better-result";
 
-import { INSERTION_SEAM_POLICIES } from "../model/content";
+import {
+  HELD_PARAGRAPH_JOINS,
+  INSERTION_SEAM_POLICIES,
+} from "../model/content";
 import { MAX_REVISION_ID } from "../model/document";
 import type {
   BlockContent,
@@ -22,6 +25,7 @@ import type {
   DocumentBody,
   KeptCutPiece,
   Paragraph,
+  ParagraphContent,
   ParagraphMarkChangeKind,
   ParagraphPropertyChange,
   Run,
@@ -4863,6 +4867,8 @@ type JoinPlan = {
   depth: number | undefined;
   /** When the paragraph mark the join resolves was made. */
   splitDate: string | undefined;
+  /** Paragraphs standing only for their pending insertions. */
+  holders: ReadonlySet<string>;
 };
 
 /**
@@ -5041,6 +5047,102 @@ type ParagraphMarkPlan = {
    * empty paragraph after the control once every other join is done.
    */
   endsControl?: string;
+  /**
+   * The paragraph, ending a block content control, that the rejection of its
+   * added mark left standing only for its pending insertions.
+   */
+  holdsInsertions?: string;
+};
+
+/**
+ * Whether the paragraph stands only for its pending insertions: rejecting
+ * its added mark, which ended a block content control, left it in place.
+ */
+const standsForInsertions = (paragraph: Paragraph): boolean =>
+  paragraph.content.some(
+    (node) =>
+      node.type === "insertion" &&
+      node.resolutionJoins?.holdsParagraph !== undefined,
+  );
+
+/**
+ * `content` with each insertion marked as what its paragraph stands for, if
+ * it holds insertions and nothing else; `undefined` otherwise, as rejecting
+ * them would not empty it.
+ *
+ * The marker is kept on the insertions, in their resolution joins, rather
+ * than on the paragraph: accepting an insertion unwraps it and takes the
+ * marker with it, where a paragraph field would outlive the words it stands
+ * for, and the joins are saved with the record. An insertion with no joins
+ * carries the marker in zero joins, recorded as such, and resolving it reads
+ * it without them ({@link withoutResolvedHolderMarks}): zero joins merge no
+ * alike neighbour where no joins do.
+ */
+const holdingParagraph = (
+  content: readonly ParagraphContent[],
+): ParagraphContent[] | undefined => {
+  if (content.length === 0) return undefined;
+  const held: ParagraphContent[] = [];
+  for (const node of content) {
+    if (node.type !== "insertion") return undefined;
+    held.push(
+      node.resolutionJoins?.holdsParagraph !== undefined
+        ? node
+        : {
+            ...node,
+            resolutionJoins:
+              node.resolutionJoins === undefined
+                ? {
+                    before: 0,
+                    after: 0,
+                    remove: 0,
+                    holdsParagraph: HELD_PARAGRAPH_JOINS.NONE,
+                  }
+                : {
+                    ...node.resolutionJoins,
+                    holdsParagraph: HELD_PARAGRAPH_JOINS.OWN,
+                  },
+          },
+    );
+  }
+  return held;
+};
+
+/**
+ * `content` with the insertions `ids` selects as resolving them reads them:
+ * without the marker of what their paragraph stands for, and without the
+ * zero joins that only carried it, so each resolves as it did unmarked.
+ */
+const withoutResolvedHolderMarks = (
+  content: readonly ParagraphContent[],
+  ids: ReadonlySet<number>,
+): readonly ParagraphContent[] => {
+  if (
+    !content.some(
+      (node) =>
+        node.type === "insertion" &&
+        node.resolutionJoins?.holdsParagraph !== undefined &&
+        ids.has(node.info.id),
+    )
+  )
+    return content;
+  return content.map((node) => {
+    if (
+      node.type !== "insertion" ||
+      node.resolutionJoins?.holdsParagraph === undefined ||
+      !ids.has(node.info.id)
+    )
+      return node;
+    const { holdsParagraph, ...joins } = node.resolutionJoins;
+    if (
+      holdsParagraph === HELD_PARAGRAPH_JOINS.NONE &&
+      structurallyEqual(joins, { before: 0, after: 0, remove: 0 })
+    ) {
+      const { resolutionJoins: _marker, ...unmarked } = node;
+      return unmarked;
+    }
+    return { ...node, resolutionJoins: joins };
+  });
 };
 
 /**
@@ -5135,7 +5237,7 @@ const paragraphMarkPlan = (
 
 const joinOps = (
   document: Document,
-  { op, story, paraId, revisionId, added, depth, splitDate }: JoinPlan,
+  { op, story, paraId, revisionId, added, depth, splitDate, holders }: JoinPlan,
   ends: EmptiedEndsById,
   /** Table receivers a later paragraph of this resolution already ran into. */
   ranInto: ReadonlySet<string> = new Set(),
@@ -5192,10 +5294,17 @@ const joinOps = (
     const firstEnds = ends.get(idKey(paraId)) ?? NO_EMPTIED_ENDS;
     const nextId = idKey(next.paraId ?? "");
     const nextEnds = ends.get(nextId) ?? NO_EMPTIED_ENDS;
+    // Joining a paragraph that stands only for its pending insertions, this
+    // one's insertions stand for it too, as when its mark is rejected first:
+    // rejecting them all then removes the paragraph.
+    const incoming =
+      (added && holders.has(nextId)
+        ? holdingParagraph(paragraph.content)
+        : undefined) ?? paragraph.content;
     const emptied = new Set<InlineNode>();
     const marked: [readonly InlineNode[], "first" | "last", boolean][] = [
-      [paragraph.content, "first", firstEnds.first],
-      [paragraph.content, "last", firstEnds.last],
+      [incoming, "first", firstEnds.first],
+      [incoming, "last", firstEnds.last],
       [next.content, "first", nextEnds.first],
       [next.content, "last", nextEnds.last],
     ];
@@ -5206,20 +5315,20 @@ const joinOps = (
     let merged: InlineNode[];
     if (depth === undefined) {
       merged = added
-        ? mergedAtSeam(paragraph.content, next.content, emptied)
+        ? mergedAtSeam(incoming, next.content, emptied)
         : joinParagraphSeam(paragraph.content, next.content);
     } else {
       const seam = deferSplitSeam(
         depth > 0
           ? {
               ...withSeamBoundariesInside({
-                left: paragraph.content,
+                left: incoming,
                 right: next.content,
                 depth,
               }),
               depth,
             }
-          : { left: paragraph.content, right: next.content, depth },
+          : { left: incoming, right: next.content, depth },
       );
       // Markers kept from content made after the split stood in its seam:
       // they stand in the join's cut, as when the join was resolved first.
@@ -5379,11 +5488,11 @@ const joinOps = (
           // a cell, that paragraph's mark becomes the cell's terminator.
           (containerFinal &&
             blocks.at(location.index - 1)?.type === "paragraph") ||
-          // After a table, with the paragraphs joining it: removing them
-          // leaves the control ending in its table and the container's end
-          // where it was.
-          (endsControl &&
-            blocks.at(location.index - 1 - joining.length)?.type === "table"),
+          // Ending a control, with the paragraphs joining it: removing them
+          // leaves the control ending in whatever stands before them and the
+          // container's end where it was, so a rejected added mark takes its
+          // emptied paragraph whatever stands before it.
+          (endsControl && location.index - joining.length > 0),
     followingTableCanReceiveRunIn: tableTarget !== undefined,
     holdsContentOnceAccepted: paragraphHoldsContentOnceAccepted(chained),
     followingBlockCanReceiveRunIn: blockTarget !== undefined,
@@ -5571,17 +5680,39 @@ const joinOps = (
       review,
     },
   ];
+  // A rejected added mark ending a control, with pending insertions standing
+  // (its own or those joining it), keeps the paragraph only for them:
+  // rejecting them later removes it, as rejecting the mark with them does,
+  // where the control still ends with a block once it goes.
+  const leavesHolder =
+    added &&
+    op.decision === REVISION_DECISIONS.REJECT &&
+    endsControl &&
+    location.index - joining.length > 0;
+  const held = leavesHolder ? holdingParagraph(paragraph.content) : undefined;
+  if (held !== undefined)
+    markOps.push({
+      type: DOCUMENT_OP_TYPES.REPLACE_INLINE,
+      story,
+      blockId: paraId,
+      expected: paragraph.content,
+      content: held,
+    });
+  // Emptied here, it holds only what the paragraphs joining it bring.
+  const holds =
+    held !== undefined || (leavesHolder && paragraph.content.length === 0);
   // Ending a block content control, the paragraph joins the one after the
   // control: an empty one has nothing to bring in, and goes, once the other
   // joins have settled what follows the control.
-  return paragraphMarkPlan(
-    markOps,
-    [],
-    next === undefined &&
-      emptyParagraphAfterControl(body, location) !== undefined
-      ? paraId
-      : undefined,
-  );
+  return Result.ok({
+    ops: markOps,
+    receiverEffects: [],
+    ...(next === undefined &&
+    emptyParagraphAfterControl(body, location) !== undefined
+      ? { endsControl: paraId }
+      : {}),
+    ...(holds ? { holdsInsertions: paraId } : {}),
+  });
 };
 
 type DropAddedSectionOptions = {
@@ -5667,6 +5798,67 @@ const absorbControlFollower = ({
   return removed.isErr()
     ? Result.err(removed.error)
     : Result.ok({ edit: removed.value, receiver: absorbed.follower });
+};
+
+type RemoveEmptiedHolderOptions = {
+  document: Document;
+  story: OpStory;
+  paraId: string;
+  applyOps: ApplyOps;
+};
+
+/**
+ * Remove the paragraph `paraId` stood for its pending insertions
+ * ({@link standsForInsertions}) where this resolution rejected the last of
+ * them, as rejecting its mark with them at once does: only while it still
+ * ends its block content control short of the container's end, with a block
+ * before it, so the control keeps ending with that block.
+ */
+const removeEmptiedHolder = ({
+  document,
+  story,
+  paraId,
+  applyOps,
+}: RemoveEmptiedHolderOptions): Result<
+  DocumentEdit | undefined,
+  DocumentOpRefusal
+> => {
+  const body = storyBody(document, story);
+  const location = findStoryParagraph(body, paraId);
+  if (location === undefined) return Result.ok(undefined);
+  const { paragraph, list, index } = location;
+  const blocks = blockListAt(body.content, list);
+  if (
+    paragraph.content.length > 0 ||
+    paragraph.pPrMark !== undefined ||
+    paragraph.sectionProperties !== undefined ||
+    index === 0 ||
+    index !== blocks.length - 1 ||
+    list.at(-1)?.kind !== "blockSdt" ||
+    endsItsContainer(body, location)
+  )
+    return Result.ok(undefined);
+  const anchor = blocks.find(
+    (block, position): block is Paragraph =>
+      position !== index && block.type === "paragraph",
+  );
+  const removed = applyOps(document, [
+    anchor === undefined
+      ? {
+          type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+          story,
+          expected: [paragraph],
+          blocks: [],
+        }
+      : {
+          type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+          story,
+          blockId: anchor.paraId ?? "",
+          expected: blocks,
+          blocks: blocks.filter((_, position) => position !== index),
+        },
+  ]);
+  return removed.isErr() ? Result.err(removed.error) : Result.ok(removed.value);
 };
 
 /** The main story's own content: the body's blocks, without its comments or section view. */
@@ -6261,6 +6453,11 @@ const planSingleRecordResolution = (
 
   const inline: DocumentOp[] = [];
   const joins: JoinPlan[] = [];
+  const holders = new Set(
+    paragraphs.flatMap(({ paragraph }) =>
+      standsForInsertions(paragraph) ? [idKey(paragraph.paraId ?? "")] : [],
+    ),
+  );
   const receiverEffects: ResolutionReceiverEffect[] = [];
   const emptiedEnds: EmptiedEndsById = new Map();
   const resolvedContents = new Map<string, readonly InlineNode[]>();
@@ -6268,7 +6465,10 @@ const planSingleRecordResolution = (
   const prepareContents = () => {
     const prepared = paragraphs.map(({ paragraph }) => ({
       paragraph,
-      content: prepareDeferredRemovals(paragraph.content, resolution),
+      content: prepareDeferredRemovals(
+        withoutResolvedHolderMarks(paragraph.content, resolution.ids),
+        resolution,
+      ),
     }));
     // The pieces an inserted break split a change into face it with copies
     // of the change's far joins: closed where this resolution unwraps them.
@@ -6637,6 +6837,7 @@ const planSingleRecordResolution = (
         added,
         depth,
         splitDate: mark.info.date,
+        holders,
       });
     }
     let review = resolveParagraphReview(paragraph, resolution, keepsBreak);
@@ -6723,11 +6924,15 @@ const planSingleRecordResolution = (
     current = joined.value.document;
     // A paragraph ending a control that an earlier one now absorbs (a join
     // keeping the first) hands the control's end to that survivor.
-    for (const { absorbed, survivor } of absorbing.touched.absorbed ?? [])
+    for (const { absorbed, survivor } of absorbing.touched.absorbed ?? []) {
       for (const [index, end] of controlEnds.entries())
         if (idKey(end) === idKey(absorbed)) controlEnds[index] = survivor;
+      if (holders.has(idKey(absorbed))) holders.add(idKey(survivor));
+    }
     if (planned.value.endsControl !== undefined)
       controlEnds.push(planned.value.endsControl);
+    if (planned.value.holdsInsertions !== undefined)
+      holders.add(idKey(planned.value.holdsInsertions));
   }
   for (const paraId of controlEnds) {
     const absorbed = absorbControlFollower({
@@ -6764,6 +6969,18 @@ const planSingleRecordResolution = (
       record(settled.value);
       current = settled.value.document;
     }
+  }
+  for (const paraId of holders) {
+    const removed = removeEmptiedHolder({
+      document: current,
+      story: op.story,
+      paraId,
+      applyOps,
+    });
+    if (removed.isErr()) return Result.err(removed.error);
+    if (removed.value === undefined) continue;
+    record(removed.value);
+    current = removed.value.document;
   }
   // Notes whose last reference went are removed first: a comment anchored in
   // one of them is then exhausted too and retires below.

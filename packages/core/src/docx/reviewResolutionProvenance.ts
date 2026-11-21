@@ -67,6 +67,7 @@ const JOIN_FIELDS = {
   acceptance: true,
   plainSides: true,
   emptiedHolder: true,
+  holdsParagraph: true,
   holdsControlText: true,
   closedHolder: true,
   retainedEnclosing: true,
@@ -88,6 +89,14 @@ const ENCLOSING_ATTRIBUTE = "retainedEnclosing";
 const ACCEPTANCE_POLICIES = {
   "merge-plain-runs": true,
 } as const satisfies Record<NonNullable<ResolutionJoins["acceptance"]>, true>;
+
+const HELD_PARAGRAPH_JOINS = {
+  "own-joins": true,
+  "no-joins": true,
+} as const satisfies Record<
+  NonNullable<ResolutionJoins["holdsParagraph"]>,
+  true
+>;
 
 const PARAGRAPH_MARK_FIELDS = {
   kind: { type: "ooxml" },
@@ -225,6 +234,9 @@ export const isResolutionJoins = (value: unknown): value is ResolutionJoins =>
   (!Object.hasOwn(value, "plainSides") ||
     isBoundaryJoins(value["plainSides"])) &&
   (!Object.hasOwn(value, "emptiedHolder") || value["emptiedHolder"] === true) &&
+  (!Object.hasOwn(value, "holdsParagraph") ||
+    (typeof value["holdsParagraph"] === "string" &&
+      Object.hasOwn(HELD_PARAGRAPH_JOINS, value["holdsParagraph"]))) &&
   (!Object.hasOwn(value, "holdsControlText") ||
     value["holdsControlText"] === true) &&
   (!Object.hasOwn(value, "closedHolder") ||

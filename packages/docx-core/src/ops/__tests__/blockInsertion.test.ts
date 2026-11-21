@@ -773,11 +773,26 @@ for (const { name, after, markOwner } of followingTableCases)
         }
       });
 
+/** Room for resolving every order of up to six revisions one at a time. */
+const EVERY_ORDER_TIMEOUT_MS = 30_000;
+
+const orderings = (ids: readonly number[]): number[][] =>
+  ids.length <= 1
+    ? [[...ids]]
+    : ids.flatMap((id, index) =>
+        orderings(ids.filter((_, other) => other !== index)).map((rest) =>
+          [id].concat(rest),
+        ),
+      );
+
 test.each([
   { count: 1, tailText: "tail" },
   { count: 2, tailText: "tail" },
+  { count: 3, tailText: "tail" },
   // An empty paragraph after the control stays: nothing joins across it.
   { count: 1, tailText: "" },
+  { count: 2, tailText: "" },
+  { count: 3, tailText: "" },
 ])(
   "tracked insertion after a table that ends a content control stays in the control ($count paragraphs, tail $tailText)",
   ({ count, tailText }) => {
@@ -816,45 +831,299 @@ test.each([
         JSON.parse(JSON.stringify(applied.inverse)),
       ).unwrap().document,
     ).toStrictEqual(document);
-    // A break with nothing to join keeps its place while words or another
-    // paragraph stand before it in the control: one at a time, the words go
-    // first, then the breaks in document order.
+    // Each paragraph's words and break resolve one at a time in any order. A
+    // rejected break with words still standing has nothing in the control to
+    // join and keeps its place only for them: rejecting them removes it.
     const marks = held?.type === "blockSdt" ? held.content : [];
-    const markIds = marks.flatMap((block) =>
-      block.type === "paragraph" && block.pPrMark !== undefined
-        ? [block.pPrMark.info.id]
+    const pairs = marks.flatMap((block) =>
+      block.type === "paragraph" &&
+      block.pPrMark !== undefined &&
+      block.content[0]?.type === "insertion"
+        ? [{ mark: block.pPrMark.info.id, words: block.content[0].info.id }]
         : [],
     );
-    const wordIds = applied.revisions.filter((id) => !markIds.includes(id));
+    expect(pairs).toHaveLength(count);
+    const resolveInOrder = (
+      ids: readonly number[],
+      decision: RevisionDecision,
+    ) => {
+      let current = applied.document;
+      for (const id of ids) {
+        const step = apply(current, {
+          type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+          story: OP_STORIES.MAIN,
+          revisionIds: [id],
+          decision,
+        });
+        expect(undo(step)).toStrictEqual(current);
+        current = step.document;
+      }
+      return current;
+    };
     for (const decision of Object.values(REVISION_DECISIONS)) {
       const expected =
         decision === REVISION_DECISIONS.REJECT ? document : direct.document;
       const resolved = resolve(applied, decision);
       expect(resolved.document).toStrictEqual(expected);
       expect(undo(resolved)).toStrictEqual(applied.document);
-      const orders =
-        decision === REVISION_DECISIONS.REJECT
-          ? [
-              [...wordIds, ...markIds],
-              [...wordIds.toReversed(), ...markIds],
-            ]
-          : [applied.revisions, applied.revisions.toReversed()];
-      for (const ids of orders) {
+      for (const ids of orderings(applied.revisions))
+        expect(resolveInOrder(ids, decision)).toStrictEqual(expected);
+    }
+    // The breaks last, from the final one back: each emptied paragraph goes
+    // while another inserted one still stands before it.
+    expect(
+      resolveInOrder(
+        [
+          ...pairs.map(({ words }) => words),
+          ...pairs.map(({ mark }) => mark).toReversed(),
+        ],
+        REVISION_DECISIONS.REJECT,
+      ),
+    ).toStrictEqual(document);
+  },
+  EVERY_ORDER_TIMEOUT_MS,
+);
+
+test.each(
+  [1, 2, 3].flatMap((count) =>
+    (["rejected", "accepted", "pending"] as const).map((words) => ({
+      count,
+      words,
+    })),
+  ),
+)(
+  "the breaks of $count paragraphs inserted after a table that ends a content control resolve alike one at a time in any order and all at once (words $words)",
+  ({ count, words }) => {
+    const control: BlockContent = {
+      type: "blockSdt",
+      properties: { tag: "control" },
+      content: [inCell([makeParagraph("00000001", "cell")])],
+    };
+    const document = documentOf([control, makeParagraph("00000005", "tail")]);
+    const applied = apply(document, {
+      ...insertion(
+        Array.from({ length: count }, (_, index) =>
+          makeParagraph(
+            (16 + index).toString(16).padStart(8, "0"),
+            `new ${index}`,
+          ),
+        ),
+      ),
+      at: { type: "afterTable", blockId: "00000001" },
+    });
+    const [held] = applied.document.package.document.content;
+    const marks = (held?.type === "blockSdt" ? held.content : []).flatMap(
+      (block) =>
+        block.type === "paragraph" && block.pPrMark !== undefined
+          ? [block.pPrMark.info.id]
+          : [],
+    );
+    expect(marks).toHaveLength(count);
+    const wordIds = applied.revisions.filter((id) => !marks.includes(id));
+    const start =
+      words === "pending"
+        ? applied.document
+        : apply(applied.document, {
+            type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+            story: OP_STORIES.MAIN,
+            revisionIds: wordIds,
+            decision:
+              words === "accepted"
+                ? REVISION_DECISIONS.ACCEPT
+                : REVISION_DECISIONS.REJECT,
+          }).document;
+    const resolveSteps = (
+      steps: readonly { ids: readonly number[]; decision: RevisionDecision }[],
+    ) => {
+      let current = start;
+      for (const { ids, decision } of steps)
+        if (ids.length > 0)
+          current = apply(current, {
+            type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+            story: OP_STORIES.MAIN,
+            revisionIds: ids,
+            decision,
+          }).document;
+      return current;
+    };
+    for (let accepting = 0; accepting < 1 << count; accepting += 1) {
+      const decide = (id: number) =>
+        accepting & (1 << marks.indexOf(id))
+          ? REVISION_DECISIONS.ACCEPT
+          : REVISION_DECISIONS.REJECT;
+      const accepted = {
+        ids: marks.filter((id) => decide(id) === REVISION_DECISIONS.ACCEPT),
+        decision: REVISION_DECISIONS.ACCEPT,
+      };
+      const rejected = {
+        ids: marks.filter((id) => decide(id) === REVISION_DECISIONS.REJECT),
+        decision: REVISION_DECISIONS.REJECT,
+      };
+      const atOnce = resolveSteps([accepted, rejected]);
+      expect(resolveSteps([rejected, accepted])).toStrictEqual(atOnce);
+      for (const order of orderings(marks))
+        expect(
+          resolveSteps(
+            order.map((id) => ({ ids: [id], decision: decide(id) })),
+          ),
+        ).toStrictEqual(atOnce);
+    }
+  },
+);
+
+/** Every revision id a document's records carry. */
+const revisionIdsIn = (value: unknown, ids = new Set<number>()) => {
+  if (Array.isArray(value)) for (const item of value) revisionIdsIn(item, ids);
+  else if (typeof value === "object" && value !== null)
+    for (const [key, field] of Object.entries(value))
+      if (
+        key === "info" &&
+        typeof field === "object" &&
+        field !== null &&
+        "id" in field &&
+        typeof field.id === "number"
+      )
+        ids.add(field.id);
+      else revisionIdsIn(field, ids);
+  return ids;
+};
+
+test.each([1, 2, 3])(
+  "every decision on the words and breaks of %i paragraphs inserted after a table that ends a content control resolves alike one at a time in any order and all at once",
+  (count) => {
+    const control: BlockContent = {
+      type: "blockSdt",
+      properties: { tag: "control" },
+      content: [inCell([makeParagraph("00000001", "cell")])],
+    };
+    const document = documentOf([control, makeParagraph("00000005", "tail")]);
+    const applied = apply(document, {
+      ...insertion(
+        Array.from({ length: count }, (_, index) =>
+          makeParagraph(
+            (16 + index).toString(16).padStart(8, "0"),
+            `new ${index}`,
+          ),
+        ),
+      ),
+      at: { type: "afterTable", blockId: "00000001" },
+    });
+    const [held] = applied.document.package.document.content;
+    const pairs = (held?.type === "blockSdt" ? held.content : []).flatMap(
+      (block) =>
+        block.type === "paragraph" &&
+        block.pPrMark !== undefined &&
+        block.content[0]?.type === "insertion"
+          ? [{ mark: block.pPrMark.info.id, words: block.content[0].info.id }]
+          : [],
+    );
+    expect(pairs).toHaveLength(count);
+    const wordIds = pairs.map((pair) => pair.words);
+    const insertedIds = new Set(
+      (held?.type === "blockSdt" ? held.content : []).flatMap((block) =>
+        block.type === "paragraph" && block.pPrMark !== undefined
+          ? [block.paraId]
+          : [],
+      ),
+    );
+    const withInsertedIdsMasked = (resolved: Document): unknown =>
+      JSON.parse(
+        JSON.stringify(resolved, (key, value) =>
+          key === "paraId" && insertedIds.has(value) ? "inserted" : value,
+        ),
+      );
+    const revisions = pairs.flatMap(({ mark, words }) => [mark, words]);
+    // Three paragraphs take their breaks first to last and last to first,
+    // each paragraph's words before or after its own break.
+    const orders =
+      count < 3
+        ? orderings(revisions)
+        : [pairs, pairs.toReversed()].flatMap((sequence) =>
+            Array.from({ length: 1 << count }, (_, after) =>
+              sequence.flatMap(({ mark, words }, index) =>
+                after & (1 << index) ? [mark, words] : [words, mark],
+              ),
+            ),
+          );
+    const resolveBatch = (
+      current: Document,
+      ids: readonly number[],
+      decision: RevisionDecision,
+    ) =>
+      ids.length === 0
+        ? current
+        : apply(current, {
+            type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+            story: OP_STORIES.MAIN,
+            revisionIds: ids,
+            decision,
+          }).document;
+    let compared = 0;
+    for (let assignment = 0; assignment < 1 << revisions.length; assignment++) {
+      const decide = (id: number) =>
+        (assignment >> revisions.indexOf(id)) & 1
+          ? REVISION_DECISIONS.REJECT
+          : REVISION_DECISIONS.ACCEPT;
+      const accepted = revisions.filter(
+        (id) => decide(id) === REVISION_DECISIONS.ACCEPT,
+      );
+      const rejected = revisions.filter(
+        (id) => decide(id) === REVISION_DECISIONS.REJECT,
+      );
+      const atOnce = resolveBatch(
+        resolveBatch(applied.document, accepted, REVISION_DECISIONS.ACCEPT),
+        rejected,
+        REVISION_DECISIONS.REJECT,
+      );
+      expect(
+        resolveBatch(
+          resolveBatch(applied.document, rejected, REVISION_DECISIONS.REJECT),
+          accepted,
+          REVISION_DECISIONS.ACCEPT,
+        ),
+      ).toStrictEqual(atOnce);
+      orders: for (const order of orders) {
         let current = applied.document;
-        for (const id of ids) {
-          const step = apply(current, {
+        for (const [step, id] of order.entries()) {
+          const resolved = apply(current, {
             type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
             story: OP_STORIES.MAIN,
             revisionIds: [id],
-            decision,
+            decision: decide(id),
           });
-          expect(undo(step)).toStrictEqual(current);
-          current = step.document;
+          expect(undo(resolved)).toStrictEqual(current);
+          current = resolved.document;
+          // A rejected break rejoins its paragraph's pending words with the
+          // alike pending words it meets into one change, the first one's id
+          // standing for both, as a split's pieces rejoin. A later decision
+          // on that change decides both, so where the two were to be decided
+          // apart, single steps differ from deciding at once by design.
+          const present = revisionIdsIn(current.package.document.content);
+          const later = new Set(order.slice(step + 1));
+          const splitDecisions = wordIds.some((absorbed, index) => {
+            if (!later.has(absorbed) || present.has(absorbed)) return false;
+            const survivor = wordIds
+              .slice(0, index)
+              .findLast((other) => present.has(other));
+            return (
+              survivor !== undefined && decide(survivor) !== decide(absorbed)
+            );
+          });
+          if (splitDecisions) continue orders;
         }
-        expect(current).toStrictEqual(expected);
+        // Which inserted paragraph's id the control's last paragraph keeps
+        // follows the order: rejecting an emptied paragraph's break removes
+        // it while the one before it still waits, where at once that one
+        // joins into it. Everything else is the same.
+        expect(withInsertedIdsMasked(current)).toStrictEqual(
+          withInsertedIdsMasked(atOnce),
+        );
+        compared += 1;
       }
     }
+    expect(compared).toBeGreaterThan(0);
   },
+  EVERY_ORDER_TIMEOUT_MS,
 );
 
 test.each([
