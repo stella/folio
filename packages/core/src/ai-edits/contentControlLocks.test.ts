@@ -396,30 +396,11 @@ const open = async (placement: Placement, lock: Lock, session: Session) => {
 
 // KNOWN GAPS of the canonical session, each held by `test.failing` so a fix
 // shows as a failure to remove here:
-// - A tracked deletion of a paragraph holding a control is refused as
-//   untrackable before the lock is judged.
 // - Splitting a paragraph inside an inline control leaves two controls.
-const TRACKED_PARAGRAPH = "tracked paragraph deletion is untrackable";
 const CANONICAL_KNOWN_GAPS: ReadonlyMap<string, string> = new Map([
   [
     "inline sdtLocked, direct: splitting the paragraph inside it",
     "split leaves two controls",
-  ],
-  [
-    "inline sdtLocked, tracked-changes: deleting the paragraph holding it",
-    TRACKED_PARAGRAPH,
-  ],
-  [
-    "inline sdtLocked, suggested: deleting the paragraph holding it",
-    TRACKED_PARAGRAPH,
-  ],
-  [
-    "inline sdtContentLocked, tracked-changes: deleting the paragraph holding it",
-    TRACKED_PARAGRAPH,
-  ],
-  [
-    "inline sdtContentLocked, suggested: deleting the paragraph holding it",
-    TRACKED_PARAGRAPH,
   ],
 ]);
 
