@@ -5977,11 +5977,23 @@ export class CanonicalPublicOperations {
           blockIds: [paragraph.blockId],
         },
       ];
+      // A move's source ending its block list after paragraphs the batch
+      // deletes retires the break before them, as a plain deletion there
+      // does, and runs in the same order beside them.
+      const retiresRun =
+        tracked &&
+        operation.moveId !== undefined &&
+        next === undefined &&
+        after === null &&
+        !gainsFollower &&
+        previous !== undefined &&
+        deletedRun !== "none";
       return tracking({
         intents,
         normalizations: [],
-        from: paragraph.start,
+        from: retiresRun ? previous.start : paragraph.start,
         to: end,
+        ...(retiresRun ? { retiresRunBreak: deletedRun } : {}),
         ...(after === null && !gainsFollower
           ? {}
           : { removesParagraphBeforeBlock: true }),

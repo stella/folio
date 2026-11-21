@@ -29,7 +29,12 @@ import type {
   FolioAIInlineBooleanProperty,
 } from "../ai-edits/types";
 import { createDocx } from "../docx/rezip";
-import type { Table, TableCell, TextFormatting } from "../types/document";
+import type {
+  Paragraph,
+  Table,
+  TableCell,
+  TextFormatting,
+} from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { buildBodySequenceDocx } from "./__fixtures__/body-sequence";
 import { buildNestedTableDocx } from "./__fixtures__/nested-table";
@@ -487,6 +492,76 @@ describe("single-mutation probes", () => {
       await projectView(PROSE_BASE, "final"),
     );
   });
+
+  // The story's last two paragraphs both move away: the last one's source
+  // retires the break before both, so accepting leaves no moved words.
+  test.each(["legacy", "canonical"] as const)(
+    "move_clause: the story's last two paragraphs move earlier (%s)",
+    async (session) => {
+      const textsOf = (reviewer: FolioDocxReviewer) =>
+        reviewer.snapshot().blocks.map(({ text }) => text);
+      const template = createEmptyDocument();
+      const clause = (index: number): Paragraph => ({
+        type: "paragraph",
+        content: [
+          {
+            type: "run",
+            content: [
+              {
+                type: "text",
+                text: `Clause ${String(index)} sets out the agreed position.`,
+              },
+            ],
+          },
+        ],
+      });
+      const base = await createDocx({
+        ...template,
+        package: {
+          ...template.package,
+          document: {
+            ...template.package.document,
+            content: Array.from({ length: 6 }, (_unused, index) =>
+              clause(index),
+            ),
+          },
+        },
+      });
+      const scripted = await applyEditScript(base, [
+        { type: "moveParagraph", blockIndex: 5, beforeBlockIndex: 0 },
+        { type: "moveParagraph", blockIndex: 4, beforeBlockIndex: 2 },
+      ]);
+      if (scripted.isErr()) {
+        throw scripted.error;
+      }
+      const result = await compareDocx(base, scripted.value.buffer, {
+        ...OPTIONS,
+        session,
+      });
+      if (result.isErr()) {
+        throw result.error;
+      }
+      expect(result.value.verification).toEqual({ status: "verified" });
+      expect(result.value.changes.map(({ kind }) => kind)).toEqual([
+        "move",
+        "move",
+      ]);
+      const accepted = await FolioDocxReviewer.fromBuffer(result.value.buffer, {
+        session,
+      });
+      accepted.acceptAll();
+      const target = await FolioDocxReviewer.fromBuffer(scripted.value.buffer, {
+        session,
+      });
+      expect(textsOf(accepted)).toEqual(textsOf(target));
+      const rejected = await FolioDocxReviewer.fromBuffer(result.value.buffer, {
+        session,
+      });
+      rejected.rejectAll();
+      const original = await FolioDocxReviewer.fromBuffer(base, { session });
+      expect(textsOf(rejected)).toEqual(textsOf(original));
+    },
+  );
 
   test("add_list_item: an added item is one insert", async () => {
     const { kinds } = await probe(LIST_BASE, [

@@ -1071,45 +1071,61 @@ test("a tracked deletion of another author's inserted paragraph records its dele
   expect(undo.value.document).toStrictEqual(document);
 });
 
-test("a tracked deletion of the last paragraph after one a pending deletion takes whole retires the break before that one", () => {
-  const wholly: Paragraph = {
-    ...paragraph("00000002", ""),
-    content: [
-      {
-        type: "deletion",
-        info: { id: 5, author: "Other", date: "2026-01-02T03:04:05Z" },
-        content: [{ type: "run", content: [{ type: "text", text: "Gone" }] }],
+// The pending record taking the paragraph whole, and whether the final
+// deletion is a move's source.
+test.each(
+  (["del", "moveFrom"] as const).flatMap((earlier) =>
+    [false, true].map((move) => ({ earlier, move })),
+  ),
+)(
+  "a tracked deletion of the last paragraph after one a pending deletion takes whole retires the break before that one ($earlier before, move $move)",
+  ({ earlier, move }) => {
+    const wholly: Paragraph = {
+      ...paragraph("00000002", ""),
+      content: [
+        {
+          type: earlier === "del" ? "deletion" : "moveFrom",
+          info: { id: 5, author: "Other", date: "2026-01-02T03:04:05Z" },
+          content: [{ type: "run", content: [{ type: "text", text: "Gone" }] }],
+        },
+      ],
+      pPrMark: {
+        kind: earlier,
+        info: { id: 4, author: "Other", date: "2026-01-02T03:04:05Z" },
       },
-    ],
-    pPrMark: {
-      kind: "del",
-      info: { id: 4, author: "Other", date: "2026-01-02T03:04:05Z" },
-    },
-  };
-  const heading: Paragraph = {
-    ...paragraph("00000001", "Kept"),
-    formatting: { alignment: "center" },
-  };
-  const document = documentOf([heading, wholly, paragraph("00000003", "Last")]);
-  const tracked = apply(document, deletion(["00000003"]));
-  const marks = storyParagraphs(tracked.document.package.document).map(
-    ({ paragraph: located }) => located.pPrMark?.kind,
-  );
-  expect(marks).toEqual(["del", "del", undefined]);
-  const accepted = resolveTracked(
-    tracked.document,
-    [4, 5, ...tracked.revisions],
-    REVISION_DECISIONS.ACCEPT,
-  );
-  const [only, ...rest] = storyParagraphs(accepted.package.document);
-  expect(rest).toEqual([]);
-  expect(only?.paragraph.paraId).toBe("00000003");
-  expect(only?.paragraph.formatting?.alignment).toBe("center");
-  expect(JSON.stringify(only?.paragraph.content)).toContain("Kept");
-  const undo = applyDocumentOps(tracked.document, tracked.inverse);
-  if (undo.isErr()) throw undo.error;
-  expect(undo.value.document).toStrictEqual(document);
-});
+    };
+    const heading: Paragraph = {
+      ...paragraph("00000001", "Kept"),
+      formatting: { alignment: "center" },
+    };
+    const document = documentOf([
+      heading,
+      wholly,
+      paragraph("00000003", "Last"),
+    ]);
+    const tracked = apply(document, {
+      ...deletion(["00000003"]),
+      ...(move ? { move: true as const } : {}),
+    });
+    const marks = storyParagraphs(tracked.document.package.document).map(
+      ({ paragraph: located }) => located.pPrMark?.kind,
+    );
+    expect(marks).toEqual([move ? "moveFrom" : "del", earlier, undefined]);
+    const accepted = resolveTracked(
+      tracked.document,
+      [4, 5, ...tracked.revisions],
+      REVISION_DECISIONS.ACCEPT,
+    );
+    const [only, ...rest] = storyParagraphs(accepted.package.document);
+    expect(rest).toEqual([]);
+    expect(only?.paragraph.paraId).toBe("00000003");
+    expect(only?.paragraph.formatting?.alignment).toBe("center");
+    expect(JSON.stringify(only?.paragraph.content)).toContain("Kept");
+    const undo = applyDocumentOps(tracked.document, tracked.inverse);
+    if (undo.isErr()) throw undo.error;
+    expect(undo.value.document).toStrictEqual(document);
+  },
+);
 
 describe("deleting a paragraph that ends a section", () => {
   const sectioned = (paraId: string, text: string, pageWidth: number) =>
