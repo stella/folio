@@ -102,26 +102,28 @@ export const rangeEndAfterDeletion = ({
             .length,
         };
   const body = storyBody(after, from.story);
-  const sourceId = idKey(source.paraId ?? "");
   let holder: Paragraph | undefined;
   let target: Paragraph | undefined;
-  if (run.length === 1 && sourceId !== "") {
-    holder = source;
-    target = findLastStoryParagraph(body, sourceId)?.paragraph;
-  } else {
-    const current = new Map(
-      storyParagraphs(body).map(({ paragraph }) => [
-        idKey(paragraph.paraId ?? ""),
-        paragraph,
-      ]),
-    );
-    holder = run.findLast(({ paragraph }) =>
-      current.has(idKey(paragraph.paraId ?? "")),
-    )?.paragraph;
-    target =
-      holder === undefined
-        ? undefined
-        : current.get(idKey(holder.paraId ?? ""));
+  let checkedUnnamed = false;
+  for (let index = run.length - 1; index >= 0; index -= 1) {
+    const candidate = run.at(index)?.paragraph;
+    if (candidate === undefined) continue;
+    const key = idKey(candidate.paraId ?? "");
+    // The old story map kept the last physical occurrence, including unnamed
+    // paragraphs and duplicate IDs. The locator preserves that order for IDs.
+    if (key === "") {
+      if (checkedUnnamed) continue;
+      checkedUnnamed = true;
+      target = storyParagraphs(body).findLast(
+        ({ paragraph }) => (paragraph.paraId ?? "") === "",
+      )?.paragraph;
+    } else {
+      target = findLastStoryParagraph(body, key)?.paragraph;
+    }
+    if (target !== undefined) {
+      holder = candidate;
+      break;
+    }
   }
   if (holder === undefined || target === undefined)
     panic("A successful range deletion must retain a selected paragraph.");
