@@ -172,7 +172,11 @@ import {
 } from "./paragraphPropertySnapshot";
 import { paragraphSnapshotTransfers } from "./paragraphSnapshotTransfers";
 import { priorValues } from "./patch";
-import { insertsInvertedRange, rangeBoundariesIn } from "./rangeBoundaries";
+import {
+  insertsInvertedRange,
+  isBlockBoundary,
+  rangeBoundariesIn,
+} from "./rangeBoundaries";
 import {
   DOCUMENT_OP_REFUSAL_REASONS,
   DocumentOpRefusal,
@@ -2050,6 +2054,8 @@ type TrackJoinOptions = {
   op: JoinBlocksOp;
   stamp: RevisionStamp;
   at: ParagraphLocation;
+  /** The second paragraph: after `at`, or after range boundaries standing between them. */
+  nextAt: ParagraphLocation;
   leading: Paragraph;
   trailing: Paragraph;
 };
@@ -2065,6 +2071,7 @@ const trackJoin = ({
   op,
   stamp,
   at,
+  nextAt,
   leading,
   trailing,
 }: TrackJoinOptions): Applied => {
@@ -2113,7 +2120,7 @@ const trackJoin = ({
     trailingMark?.kind === "moveFrom" ||
     trailingMark?.deletion !== undefined;
   const list = blockListAt(storyBody(document, op.story).content, at.list);
-  const afterTrailing = list[at.index + 2];
+  const afterTrailing = list[nextAt.index + 1];
   if (
     trailingMarkGoes &&
     afterTrailing?.type === "table" &&
@@ -2151,15 +2158,20 @@ const trackJoin = ({
       foldedParagraphPropertyChange({ paragraph: trailing, formatting, stamp }),
     ];
   }
-  const committed = commit({
-    document,
-    op,
-    story: op.story,
-    at,
-    before: [leading, trailing],
-    after: [first, second],
-    newIds: op.newIds,
-  });
+  // Range boundaries standing between the two stay where they are: resolving
+  // the deleted mark joins across them.
+  const committed =
+    nextAt.index === at.index + 1
+      ? commit({
+          document,
+          op,
+          story: op.story,
+          at,
+          before: [leading, trailing],
+          after: [first, second],
+          newIds: op.newIds,
+        })
+      : commitApart({ document, op, at, nextAt, first, second });
   if (committed.isErr()) {
     return Result.err(committed.error);
   }
@@ -2178,7 +2190,59 @@ const trackJoin = ({
   });
 };
 
-const joinBlocks = (document: Document, op: JoinBlocksOp): Applied => {
+type CommitApartOptions = {
+  document: Document;
+  op: JoinBlocksOp;
+  at: ParagraphLocation;
+  nextAt: ParagraphLocation;
+  first: Paragraph;
+  second: Paragraph;
+};
+
+/** Both paragraphs of a join, committed in place, with what stands between them kept. */
+const commitApart = ({
+  document,
+  op,
+  at,
+  nextAt,
+  first,
+  second,
+}: CommitApartOptions): Result<Committed, DocumentOpRefusal> => {
+  const leading = commit({
+    document,
+    op,
+    story: op.story,
+    at,
+    before: [at.paragraph],
+    after: [first],
+    newIds: op.newIds,
+  });
+  if (leading.isErr()) return leading;
+  const trailing = commit({
+    document: leading.value.document,
+    op,
+    story: op.story,
+    at: nextAt,
+    before: [nextAt.paragraph],
+    after: [second],
+    newIds: op.newIds,
+  });
+  if (trailing.isErr()) return trailing;
+  return Result.ok({
+    document: trailing.value.document,
+    paragraphs: [...leading.value.paragraphs, ...trailing.value.paragraphs],
+    touched: touchedBetween(
+      [at.paragraph, nextAt.paragraph],
+      [...leading.value.paragraphs, ...trailing.value.paragraphs],
+    ),
+  });
+};
+
+const joinBlocks = (
+  document: Document,
+  op: JoinBlocksOp,
+  applyOps: ApplyOps,
+): Applied => {
   // An empty address historically selects the first idless paragraph.
   const unaddressed =
     op.blockId === "" || op.nextBlockId === ""
@@ -2196,9 +2260,20 @@ const joinBlocks = (document: Document, op: JoinBlocksOp): Applied => {
   if (next.isErr()) {
     return Result.err(next.error);
   }
+  const list = sameBlockList(first.value.list, next.value.list)
+    ? blockListAt(storyBody(document, op.story).content, first.value.list)
+    : [];
+  const standing = list.slice(first.value.index + 1, next.value.index);
+  // Only range boundaries may stand between the two, and only where no
+  // section ends and no inline merge reaches across them: resolving a mark
+  // joins across them the same way.
   if (
     !sameBlockList(first.value.list, next.value.list) ||
-    next.value.index !== first.value.index + 1
+    next.value.index <= first.value.index ||
+    !standing.every(isBlockBoundary) ||
+    (standing.length > 0 &&
+      (first.value.paragraph.sectionProperties !== undefined ||
+        (op.depth ?? 0) !== 0))
   ) {
     return refuse(
       op,
@@ -2208,6 +2283,30 @@ const joinBlocks = (document: Document, op: JoinBlocksOp): Applied => {
   }
   const leading = first.value.paragraph;
   const trailing = next.value.paragraph;
+  if (standing.length > 0 && op.revision === undefined) {
+    // Directly, the boundaries go into the joined paragraph where the two
+    // meet: first to the start of the second paragraph, then the join.
+    const gathered = applyOps(document, [
+      {
+        type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+        story: op.story,
+        blockId: trailing.paraId ?? "",
+        expected: list,
+        blocks: [
+          ...list.slice(0, first.value.index + 1),
+          { ...trailing, content: [...standing, ...trailing.content] },
+          ...list.slice(next.value.index + 1),
+        ],
+      },
+    ]);
+    if (gathered.isErr()) return Result.err(gathered.error);
+    const joined = joinBlocks(gathered.value.document, op, applyOps);
+    if (joined.isErr()) return joined;
+    return Result.ok({
+      ...joined.value,
+      inverse: [...joined.value.inverse, ...gathered.value.inverse],
+    });
+  }
   if (
     leading.sectionProperties !== undefined &&
     op.sectionBoundary !== SECTION_BOUNDARY_POLICIES.REMOVE
@@ -2260,6 +2359,7 @@ const joinBlocks = (document: Document, op: JoinBlocksOp): Applied => {
       op,
       stamp: op.revision,
       at: first.value,
+      nextAt: next.value,
       leading,
       trailing,
     });
@@ -2889,7 +2989,7 @@ const dispatchCore = ({ document, op, purpose }: DispatchOptions): Applied => {
     case DOCUMENT_OP_TYPES.SPLIT_BLOCK:
       return splitBlock(document, op);
     case DOCUMENT_OP_TYPES.JOIN_BLOCKS:
-      return joinBlocks(document, op);
+      return joinBlocks(document, op, applyOps);
     case DOCUMENT_OP_TYPES.REPLACE_BLOCKS:
       return replaceBlocks(document, op);
     case DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW:
