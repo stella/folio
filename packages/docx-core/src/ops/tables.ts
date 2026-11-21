@@ -320,11 +320,23 @@ const commitBlocks = ({
         }
       }
     });
+  // A block without a paragraph id (a range boundary, a captured block) is
+  // the record it already is when the list still holds it; otherwise it takes
+  // an equal record no other block kept, so two equal ones keep their own.
+  const unclaimed = new Set(before.filter((block) => !blocks.includes(block)));
+  const unclaimedRecord = (block: BlockContent): BlockContent | undefined => {
+    if (before.includes(block)) return block;
+    const equal = [...unclaimed].find((candidate) =>
+      structurallyEqual(candidate, block),
+    );
+    if (equal !== undefined) unclaimed.delete(equal);
+    return equal;
+  };
   const replacement = blocks.map((block) => {
     const id = paragraphIdsIn(block).at(0);
     const existing =
       id === undefined
-        ? before.find((candidate) => structurallyEqual(candidate, block))
+        ? unclaimedRecord(block)
         : beforeBlocksById.get(idKey(id));
     if (existing !== undefined && structurallyEqual(existing, block))
       return existing;
