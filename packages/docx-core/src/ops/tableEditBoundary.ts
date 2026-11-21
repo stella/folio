@@ -72,7 +72,10 @@ export const tableEditBoundaryRefusal = (
     case DOCUMENT_OP_TYPES.SPLIT_CELL:
       valid = strings(op.newBlockIds);
       if (op.type === DOCUMENT_OP_TYPES.INSERT_COLUMN)
-        valid &&= typeof op.column === "number" && typeof op.width === "number";
+        valid &&=
+          typeof op.column === "number" &&
+          typeof op.width === "number" &&
+          (op.count === undefined || typeof op.count === "number");
       if (op.type === DOCUMENT_OP_TYPES.MERGE_CELLS)
         valid &&= [op.top, op.bottom, op.left, op.right].every(
           (bound) => typeof bound === "number",
