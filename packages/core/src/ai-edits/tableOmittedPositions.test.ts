@@ -107,8 +107,11 @@ const savedColumns = async (buffer: ArrayBuffer) => {
   });
 };
 
-const open = (buffer: ArrayBuffer) =>
-  FolioDocxReviewer.fromBuffer(buffer.slice(0));
+const SESSIONS = ["legacy", "canonical"] as const;
+type Session = (typeof SESSIONS)[number];
+
+const open = (buffer: ArrayBuffer, session: Session) =>
+  FolioDocxReviewer.fromBuffer(buffer.slice(0), { session });
 
 const apply = (
   reviewer: FolioDocxReviewer,
@@ -131,7 +134,41 @@ const columnOf = (rows: readonly RowShape[], text: string) => {
   throw new Error(`No cell ${text}`);
 };
 
-describe.each(Object.entries(SHAPES))("a table with %s", (_name, shape) => {
+/**
+ * A suggested deletion of a column some row omits, accepted: the cells it
+ * marks go, with a row they leave empty, and the column stays for the rows
+ * omitting it. The cell before a removed one widens over it (the one after
+ * it, when it starts its row). Undefined when every row has a cell there.
+ */
+const acceptedDeletion = (rows: readonly RowShape[], column: number) => {
+  const reaches = ({ cells, before = 0 }: RowShape) =>
+    before <= column && column < before + cells.length;
+  if (rows.every(reaches)) return undefined;
+  return rows.flatMap(({ cells, before = 0 }) => {
+    const at = column - before;
+    if (at < 0 || at >= cells.length)
+      return [
+        Object.fromEntries(cells.map((text, index) => [text, before + index])),
+      ];
+    if (cells.length === 1) return [];
+    return [
+      Object.fromEntries(
+        cells.flatMap((text, index) => {
+          if (index === at) return [];
+          return [[text, at === 0 && index === 1 ? column : before + index]];
+        }),
+      ),
+    ];
+  });
+};
+
+describe.each(
+  SESSIONS.flatMap((session) =>
+    Object.entries(SHAPES).map(
+      ([name, shape]) => [name, session, shape] as const,
+    ),
+  ),
+)("a table with %s (%s)", (_name, session, shape) => {
   const { width, rows } = shape;
   const texts = rows.flatMap(({ cells }) => cells);
   const load = () => docxOf(width, rows);
@@ -145,7 +182,9 @@ describe.each(Object.entries(SHAPES))("a table with %s", (_name, shape) => {
     const map = TableMap.get(state.doc.child(0));
     expect(map.problems).toBeNull();
     expect(map.width).toBe(width);
-    const saved = await savedColumns(await (await open(buffer)).toBuffer());
+    const saved = await savedColumns(
+      await (await open(buffer, session)).toBuffer(),
+    );
     expect(flat(saved)).toEqual(
       Object.fromEntries(texts.map((text) => [text, columnOf(rows, text)])),
     );
@@ -158,38 +197,43 @@ describe.each(Object.entries(SHAPES))("a table with %s", (_name, shape) => {
     const expectAgreement = async (
       operation: Record<string, unknown>,
       expected: Record<string, number>,
+      acceptedRows?: readonly Record<string, number>[],
     ) => {
       const buffer = await load();
-      const source = await savedColumns(await (await open(buffer)).toBuffer());
+      const source = await savedColumns(
+        await (await open(buffer, session)).toBuffer(),
+      );
 
-      const direct = await open(buffer);
+      const direct = await open(buffer, session);
       expect(apply(direct, "direct", operation).applied).toHaveLength(1);
       const directSaved = await direct.toBuffer();
       const directColumns = await savedColumns(directSaved);
       expect(flat(directColumns)).toEqual(expected);
 
-      const tracked = await open(buffer);
+      const tracked = await open(buffer, session);
       expect(apply(tracked, "tracked-changes", operation).applied).toHaveLength(
         1,
       );
       const trackedSaved = await tracked.toBuffer();
 
-      const accepted = await open(trackedSaved);
+      const accepted = await open(trackedSaved, session);
       accepted.acceptAll();
       expect(await savedColumns(await accepted.toBuffer())).toEqual(
-        directColumns,
+        acceptedRows ?? directColumns,
       );
 
-      const live = await open(buffer);
+      const live = await open(buffer, session);
       apply(live, "tracked-changes", operation);
       live.acceptAll();
-      expect(await savedColumns(await live.toBuffer())).toEqual(directColumns);
+      expect(await savedColumns(await live.toBuffer())).toEqual(
+        acceptedRows ?? directColumns,
+      );
 
-      const rejected = await open(trackedSaved);
+      const rejected = await open(trackedSaved, session);
       rejected.rejectAll();
       expect(await savedColumns(await rejected.toBuffer())).toEqual(source);
 
-      const liveRejected = await open(buffer);
+      const liveRejected = await open(buffer, session);
       apply(liveRejected, "tracked-changes", operation);
       liveRejected.rejectAll();
       expect(await savedColumns(await liveRejected.toBuffer())).toEqual(source);
@@ -250,16 +294,21 @@ describe.each(Object.entries(SHAPES))("a table with %s", (_name, shape) => {
               return [text, column > sourceColumn ? column - 1 : column];
             }),
         ),
+        // The legacy engine's acceptance narrows the grid in its table
+        // model whatever the other rows omit.
+        session === "canonical"
+          ? acceptedDeletion(rows, sourceColumn)
+          : undefined,
       );
     });
   });
 });
 
-describe("merging across what a row omits", () => {
+describe.each(SESSIONS)("merging across what a row omits (%s)", (session) => {
   test("is refused, in either mode", async () => {
     const buffer = await docxOf(3, SHAPES["rows stopping short"]?.rows ?? []);
     for (const mode of ["direct", "tracked-changes"] as const) {
-      const reviewer = await open(buffer);
+      const reviewer = await open(buffer, session);
       const result = apply(reviewer, mode, {
         type: "mergeTableCells",
         blockId: idOf("c"),
@@ -271,7 +320,7 @@ describe("merging across what a row omits", () => {
 
   test("beside it works", async () => {
     const buffer = await docxOf(3, SHAPES["rows stopping short"]?.rows ?? []);
-    const reviewer = await open(buffer);
+    const reviewer = await open(buffer, session);
     const result = apply(reviewer, "direct", {
       type: "mergeTableCells",
       blockId: idOf("a"),
@@ -369,33 +418,36 @@ describe.each(Object.entries(SHAPES))(
   },
 );
 
-test("a grid wider than the rows keeps its widths through a column edit", async () => {
-  const zip = await ZipArchive.read(await createDocx(createEmptyDocument()));
-  zip.set(
-    "word/document.xml",
-    documentXml(2, [{ cells: ["a", "b"] }]).replace(
-      /<w:tblGrid>.*<\/w:tblGrid>/u,
-      '<w:tblGrid><w:gridCol w:w="1000"/><w:gridCol w:w="2000"/><w:gridCol w:w="3000"/></w:tblGrid>',
-    ),
-  );
-  const reviewer = await open((await zip.generate()).slice().buffer);
-  apply(reviewer, "direct", {
-    type: "insertTableColumn",
-    blockId: idOf("a"),
-    position: "after",
-  });
-  const xml =
-    (await (
-      await ZipArchive.read(await reviewer.toBuffer())
-    )
-      .entry("word/document.xml")
-      ?.text()) ?? "";
-  expect(
-    [...xml.matchAll(/<w:gridCol w:w="(\d+)"/gu)].map(([, width]) =>
-      Number(width),
-    ),
-  ).toEqual([1000, 1000, 2000, 3000]);
-});
+test.each(SESSIONS)(
+  "a grid wider than the rows keeps its widths through a column edit (%s)",
+  async (session) => {
+    const zip = await ZipArchive.read(await createDocx(createEmptyDocument()));
+    zip.set(
+      "word/document.xml",
+      documentXml(2, [{ cells: ["a", "b"] }]).replace(
+        /<w:tblGrid>.*<\/w:tblGrid>/u,
+        '<w:tblGrid><w:gridCol w:w="1000"/><w:gridCol w:w="2000"/><w:gridCol w:w="3000"/></w:tblGrid>',
+      ),
+    );
+    const reviewer = await open((await zip.generate()).slice().buffer, session);
+    apply(reviewer, "direct", {
+      type: "insertTableColumn",
+      blockId: idOf("a"),
+      position: "after",
+    });
+    const xml =
+      (await (
+        await ZipArchive.read(await reviewer.toBuffer())
+      )
+        .entry("word/document.xml")
+        ?.text()) ?? "";
+    expect(
+      [...xml.matchAll(/<w:gridCol w:w="(\d+)"/gu)].map(([, width]) =>
+        Number(width),
+      ),
+    ).toEqual([1000, 1000, 2000, 3000]);
+  },
+);
 
 describe("the editor's merge and split on a table with short rows", () => {
   const rows = SHAPES["rows stopping short"]?.rows ?? [];

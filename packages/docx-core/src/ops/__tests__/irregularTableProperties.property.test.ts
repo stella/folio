@@ -8,6 +8,7 @@ import {
 } from "../../../../../test/property-testing";
 import type { Document, Table } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
+import { tableGrid } from "../tableGrid";
 import { DOCUMENT_OP_TYPES } from "../types";
 
 const cellArbitrary = fc.record({
@@ -166,15 +167,17 @@ test(
                 applyDocumentOps(undo.document, undo.inverse).unwrap().document,
               ).toStrictEqual(applied.document);
             }
-          // A property edit never grants permission for a topology operation.
-          expect(
-            applyDocumentOp(source, {
-              type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
-              story: "main",
-              blockId: "00000001",
-              column: 0,
-            }).isErr(),
-          ).toBe(true);
+          // A property edit never grants permission for a topology operation
+          // on a table with no grid; rows that only end early have one.
+          if (tableGrid(active, DOCUMENT_OP_TYPES.DELETE_COLUMN).isErr())
+            expect(
+              applyDocumentOp(source, {
+                type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
+                story: "main",
+                blockId: "00000001",
+                column: 0,
+              }).isErr(),
+            ).toBe(true);
         }
       }),
       {

@@ -41,6 +41,7 @@ const authoredText = (reviewer: FolioDocxReviewer) =>
     .filter((text) => text !== "");
 
 const SOURCE = ["1", "2", "3", "4", "Tail"];
+const SESSIONS = ["legacy", "canonical"] as const;
 
 const savedRowCount = async (buffer: ArrayBuffer) => {
   const xml =
@@ -52,24 +53,34 @@ const savedRowCount = async (buffer: ArrayBuffer) => {
   return (xml.match(/<w:tr[ />]/gu) ?? []).length;
 };
 
-describe.each(Object.entries(ROWS))("a table row with %s", (_name, row) => {
+describe.each(
+  SESSIONS.flatMap((session) =>
+    Object.entries(ROWS).map(([name, row]) => [name, session, row] as const),
+  ),
+)("a table row with %s (%s)", (_name, session, row) => {
   test("opens", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await docx(row));
+    const reviewer = await FolioDocxReviewer.fromBuffer(await docx(row), {
+      session,
+    });
     expect(authoredText(reviewer)).toEqual(SOURCE);
   });
 
   test("saves untouched, and keeps its place", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await docx(row));
+    const reviewer = await FolioDocxReviewer.fromBuffer(await docx(row), {
+      session,
+    });
     const saved = await reviewer.toBuffer();
     expect(await savedRowCount(saved)).toBe(3);
-    const reopened = await FolioDocxReviewer.fromBuffer(saved);
+    const reopened = await FolioDocxReviewer.fromBuffer(saved, { session });
     expect(authoredText(reopened)).toEqual(SOURCE);
   });
 
   test.each(["direct", "tracked-changes"] as const)(
     "saves after edits around it (%s)",
     async (mode) => {
-      const reviewer = await FolioDocxReviewer.fromBuffer(await docx(row));
+      const reviewer = await FolioDocxReviewer.fromBuffer(await docx(row), {
+        session,
+      });
       const result = reviewer.applyDocumentOperations(
         {
           version: 1,
@@ -89,14 +100,16 @@ describe.each(Object.entries(ROWS))("a table row with %s", (_name, row) => {
       expect(result.applied).toHaveLength(1);
       const saved = await reviewer.toBuffer();
       expect(await savedRowCount(saved)).toBe(3);
-      const reopened = await FolioDocxReviewer.fromBuffer(saved);
+      const reopened = await FolioDocxReviewer.fromBuffer(saved, { session });
       reopened.acceptAll();
       expect(authoredText(reopened)).toEqual(["9", "2", "3", "4", "Tail"]);
     },
   );
 
   test("stays through a merge and a column edit elsewhere", async () => {
-    const merged = await FolioDocxReviewer.fromBuffer(await docx(row));
+    const merged = await FolioDocxReviewer.fromBuffer(await docx(row), {
+      session,
+    });
     expect(
       merged.applyDocumentOperations(
         {
@@ -116,7 +129,9 @@ describe.each(Object.entries(ROWS))("a table row with %s", (_name, row) => {
     ).toHaveLength(1);
     expect(await savedRowCount(await merged.toBuffer())).toBe(3);
 
-    const narrowed = await FolioDocxReviewer.fromBuffer(await docx(row));
+    const narrowed = await FolioDocxReviewer.fromBuffer(await docx(row), {
+      session,
+    });
     expect(
       narrowed.applyDocumentOperations(
         {

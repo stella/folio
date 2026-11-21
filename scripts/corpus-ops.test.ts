@@ -598,7 +598,6 @@ describe("corpus operation invariants", () => {
             DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
             DOCUMENT_OP_REFUSAL_REASONS.DEPENDENT_RECORDS,
             DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
-            DOCUMENT_OP_REFUSAL_REASONS.TABLE_ROW_EMPTY,
           ].some((allowedReason) => allowedReason === reason),
         ).toBe(true);
         refused.add(family);

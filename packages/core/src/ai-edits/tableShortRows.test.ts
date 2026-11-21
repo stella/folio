@@ -49,7 +49,7 @@ const savedRows = async (buffer: ArrayBuffer): Promise<string[][]> => {
   );
 };
 
-const open = async () => FolioDocxReviewer.fromBuffer(await shortRowsDocx());
+const SESSIONS = ["legacy", "canonical"] as const;
 
 const apply = (
   reviewer: FolioDocxReviewer,
@@ -64,123 +64,129 @@ const apply = (
 const MODES = ["direct", "tracked-changes"] as const;
 const SOURCE = [["1", "2", "3"], ["4"], ["5", "6"]];
 
-describe("a table with rows shorter than its width", () => {
-  test("opens as a rectangle, so the table map has no empty slot", async () => {
-    const state = createHarnessState(
-      await parseShapeDocument(new Uint8Array(await shortRowsDocx())),
-      "editing",
-    );
-    const map = TableMap.get(state.doc.child(0));
-    expect(map.problems).toBeNull();
-    expect(map.map).not.toContain(0);
-  });
+describe.each(SESSIONS)(
+  "a table with rows shorter than its width (%s)",
+  (session) => {
+    const open = async () =>
+      FolioDocxReviewer.fromBuffer(await shortRowsDocx(), { session });
 
-  test("lists no block for a position the row omits", async () => {
-    const reviewer = await open();
-    expect(reviewer.getContent().map(({ text }) => text)).toEqual([
-      "1",
-      "2",
-      "3",
-      "4",
-      "5",
-      "6",
-      "Tail",
-    ]);
-  });
-
-  test("saves untouched rows as it found them", async () => {
-    const reviewer = await open();
-    expect(await savedRows(await reviewer.toBuffer())).toEqual(SOURCE);
-  });
-
-  for (const mode of MODES) {
-    test(`keeps its rows through a text edit (${mode})`, async () => {
-      const reviewer = await open();
-      const result = apply(reviewer, mode, {
-        type: "insertAfterBlock",
-        blockId: block("1"),
-        text: "Added",
-      });
-      expect(result.applied).toHaveLength(1);
-      const rows = await savedRows(await reviewer.toBuffer());
-      // The added paragraph is in the first cell's row; nothing else moved.
-      expect(rows.slice(1)).toEqual(SOURCE.slice(1));
-      expect(rows[0]).toHaveLength(3);
-
-      reviewer.rejectAll();
-      expect(await savedRows(await reviewer.toBuffer())).toEqual(
-        mode === "direct" ? rows : SOURCE,
+    test("opens as a rectangle, so the table map has no empty slot", async () => {
+      const state = createHarnessState(
+        await parseShapeDocument(new Uint8Array(await shortRowsDocx())),
+        "editing",
       );
+      const map = TableMap.get(state.doc.child(0));
+      expect(map.problems).toBeNull();
+      expect(map.map).not.toContain(0);
     });
 
-    for (const anchor of ["1", "4", "5", "6"]) {
-      for (const position of ["before", "after"] as const) {
-        test(`takes a row ${position} cell ${anchor} (${mode})`, async () => {
-          const reviewer = await open();
-          const result = apply(reviewer, mode, {
-            type: "insertTableRow",
-            blockId: block(anchor),
-            position,
-            cellTexts: ["New"],
-          });
-          expect(result.applied).toHaveLength(1);
-          const rows = await savedRows(await reviewer.toBuffer());
-          expect(rows.filter((row) => row.includes("New"))).toEqual([
-            ["New", "", ""],
-          ]);
-          expect(rows.filter((row) => !row.includes("New"))).toEqual(SOURCE);
-        });
-      }
-    }
-  }
-
-  test("takes a column through a short row", async () => {
-    const reviewer = await open();
-    const result = apply(reviewer, "direct", {
-      type: "insertTableColumn",
-      blockId: block("1"),
-      position: "after",
-    });
-    expect(result.applied).toHaveLength(1);
-    expect(await savedRows(await reviewer.toBuffer())).toEqual([
-      ["1", "", "2", "3"],
-      ["4", ""],
-      ["5", "", "6"],
-    ]);
-  });
-
-  describe("losing the only cell a row has", () => {
-    const EXPECTED = [["2", "3"], ["6"]];
-
-    test("removes the row in a direct edit", async () => {
+    test("lists no block for a position the row omits", async () => {
       const reviewer = await open();
-      const result = apply(reviewer, "direct", {
-        type: "deleteTableColumn",
-        blockId: block("1"),
-      });
-      expect(result.applied).toHaveLength(1);
-      expect(await savedRows(await reviewer.toBuffer())).toEqual(EXPECTED);
+      expect(reviewer.getContent().map(({ text }) => text)).toEqual([
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "Tail",
+      ]);
     });
 
-    test("removes the row when the tracked deletion is accepted", async () => {
+    test("saves untouched rows as it found them", async () => {
       const reviewer = await open();
-      const result = apply(reviewer, "tracked-changes", {
-        type: "deleteTableColumn",
-        blockId: block("1"),
-      });
-      expect(result.applied).toHaveLength(1);
-      reviewer.acceptAll();
-      expect(await savedRows(await reviewer.toBuffer())).toEqual(EXPECTED);
-    });
-
-    test("restores it when the tracked deletion is rejected", async () => {
-      const reviewer = await open();
-      apply(reviewer, "tracked-changes", {
-        type: "deleteTableColumn",
-        blockId: block("1"),
-      });
-      reviewer.rejectAll();
       expect(await savedRows(await reviewer.toBuffer())).toEqual(SOURCE);
     });
-  });
-});
+
+    for (const mode of MODES) {
+      test(`keeps its rows through a text edit (${mode})`, async () => {
+        const reviewer = await open();
+        const result = apply(reviewer, mode, {
+          type: "insertAfterBlock",
+          blockId: block("1"),
+          text: "Added",
+        });
+        expect(result.applied).toHaveLength(1);
+        const rows = await savedRows(await reviewer.toBuffer());
+        // The added paragraph is in the first cell's row; nothing else moved.
+        expect(rows.slice(1)).toEqual(SOURCE.slice(1));
+        expect(rows[0]).toHaveLength(3);
+
+        reviewer.rejectAll();
+        expect(await savedRows(await reviewer.toBuffer())).toEqual(
+          mode === "direct" ? rows : SOURCE,
+        );
+      });
+
+      for (const anchor of ["1", "4", "5", "6"]) {
+        for (const position of ["before", "after"] as const) {
+          test(`takes a row ${position} cell ${anchor} (${mode})`, async () => {
+            const reviewer = await open();
+            const result = apply(reviewer, mode, {
+              type: "insertTableRow",
+              blockId: block(anchor),
+              position,
+              cellTexts: ["New"],
+            });
+            expect(result.applied).toHaveLength(1);
+            const rows = await savedRows(await reviewer.toBuffer());
+            expect(rows.filter((row) => row.includes("New"))).toEqual([
+              ["New", "", ""],
+            ]);
+            expect(rows.filter((row) => !row.includes("New"))).toEqual(SOURCE);
+          });
+        }
+      }
+    }
+
+    test("takes a column through a short row", async () => {
+      const reviewer = await open();
+      const result = apply(reviewer, "direct", {
+        type: "insertTableColumn",
+        blockId: block("1"),
+        position: "after",
+      });
+      expect(result.applied).toHaveLength(1);
+      expect(await savedRows(await reviewer.toBuffer())).toEqual([
+        ["1", "", "2", "3"],
+        ["4", ""],
+        ["5", "", "6"],
+      ]);
+    });
+
+    describe("losing the only cell a row has", () => {
+      const EXPECTED = [["2", "3"], ["6"]];
+
+      test("removes the row in a direct edit", async () => {
+        const reviewer = await open();
+        const result = apply(reviewer, "direct", {
+          type: "deleteTableColumn",
+          blockId: block("1"),
+        });
+        expect(result.applied).toHaveLength(1);
+        expect(await savedRows(await reviewer.toBuffer())).toEqual(EXPECTED);
+      });
+
+      test("removes the row when the tracked deletion is accepted", async () => {
+        const reviewer = await open();
+        const result = apply(reviewer, "tracked-changes", {
+          type: "deleteTableColumn",
+          blockId: block("1"),
+        });
+        expect(result.applied).toHaveLength(1);
+        reviewer.acceptAll();
+        expect(await savedRows(await reviewer.toBuffer())).toEqual(EXPECTED);
+      });
+
+      test("restores it when the tracked deletion is rejected", async () => {
+        const reviewer = await open();
+        apply(reviewer, "tracked-changes", {
+          type: "deleteTableColumn",
+          blockId: block("1"),
+        });
+        reviewer.rejectAll();
+        expect(await savedRows(await reviewer.toBuffer())).toEqual(SOURCE);
+      });
+    });
+  },
+);

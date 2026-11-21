@@ -528,6 +528,16 @@ const stampsFor = (
   );
 };
 
+/**
+ * Where a row's cells stand: after what it omits before them, up to where
+ * they end. A row may stop short of the grid by more than its `w:gridAfter`
+ * states; the columns after its cells are omitted either way.
+ */
+const rowExtent = (table: Table, grid: TableGrid, row: number) => {
+  const before = table.rows[row]?.formatting?.gridBefore ?? 0;
+  return { before, end: grid.rows[row]?.at(-1)?.end ?? before };
+};
+
 type ColumnOptions = {
   document: Document;
   op: Extract<TableEditOp, { type: "insertColumn" | "deleteColumn" }>;
@@ -595,11 +605,10 @@ const columnEdit = ({
         "Resolve comments, moves and bookmarks reaching past the column before removing it.",
     });
   const boundaryRows = grid.rows.filter((cells, row) => {
-    const before = table.rows[row]?.formatting?.gridBefore ?? 0;
-    const after = grid.width - (table.rows[row]?.formatting?.gridAfter ?? 0);
+    const { before, end } = rowExtent(table, grid, row);
     return (
       op.column >= before &&
-      op.column <= after &&
+      op.column <= end &&
       !cells.some((cell) => cell.start < op.column && op.column < cell.end)
     );
   }).length;
@@ -613,17 +622,22 @@ const columnEdit = ({
   // cells stay in their columns, and accepting removes them with their grid
   // entries.
   const trackedDeletion = !insert && op.revision !== undefined;
-  // A suggested deletion stamps only the rows whose cells it marks; another
-  // edit stamps every row, and the grid and table properties.
-  const markedRows = new Map<number, number>();
-  if (trackedDeletion)
-    for (const [rowIndex, row] of table.rows.entries()) {
-      const before = row.formatting?.gridBefore ?? 0;
-      const after = grid.width - (row.formatting?.gridAfter ?? 0);
-      if (op.column >= before && op.column < after)
-        markedRows.set(rowIndex, markedRows.size);
-    }
-  if (trackedDeletion && markedRows.size === 0)
+  // The rows the edit leaves as they are: for a suggested deletion, those
+  // with no cell in the column, which keep it for themselves when the
+  // deletion is accepted; for another edit, those stopping short of the
+  // column by more than they state.
+  const leavesRow = (rowIndex: number) => {
+    const { before, end } = rowExtent(table, grid, rowIndex);
+    if (trackedDeletion) return op.column < before || op.column >= end;
+    const stated = table.rows[rowIndex]?.formatting?.gridAfter ?? 0;
+    return insert ? op.column > end + stated : op.column >= end + stated;
+  };
+  // Each row the edit changes takes a stamp; an edit besides a suggested
+  // deletion stamps the grid and table properties after them.
+  const stampedRows = new Map<number, number>();
+  for (const rowIndex of table.rows.keys())
+    if (!leavesRow(rowIndex)) stampedRows.set(rowIndex, stampedRows.size);
+  if (trackedDeletion && stampedRows.size === 0)
     return refuse({
       op,
       reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
@@ -632,25 +646,24 @@ const columnEdit = ({
     });
   const stamps = stampsFor(
     op,
-    trackedDeletion ? markedRows.size : table.rows.length + 2,
+    trackedDeletion ? stampedRows.size : stampedRows.size + 2,
   );
   if (stamps.isErr()) return Result.err(stamps.error);
+  const rowStamp = (rowIndex: number) =>
+    stamps.value[stampedRows.get(rowIndex) ?? -1];
   let freshIndex = 0;
   const rows: TableRow[] = [];
   for (const [rowIndex, row] of table.rows.entries()) {
     const entries = grid.rows[rowIndex];
     if (entries === undefined) return mismatch(op, "The grid row is missing.");
-    const before = row.formatting?.gridBefore ?? 0;
-    const after = grid.width - (row.formatting?.gridAfter ?? 0);
-    if (trackedDeletion && (op.column < before || op.column >= after)) {
-      // The column is outside this row's cells; accepting narrows its
-      // omission with the grid.
+    if (leavesRow(rowIndex)) {
       rows.push(row);
       continue;
     }
+    const { before, end } = rowExtent(table, grid, rowIndex);
     if (op.column < before) {
       const next = withOmission(row, "gridBefore", before + (insert ? 1 : -1));
-      const stamp = stamps.value[rowIndex];
+      const stamp = rowStamp(rowIndex);
       if (stamp !== undefined)
         next.propertyChanges = [
           {
@@ -664,13 +677,13 @@ const columnEdit = ({
       rows.push(next);
       continue;
     }
-    if (op.column >= after && (!insert || op.column > after)) {
+    if (op.column >= end && (!insert || op.column > end)) {
       const next = withOmission(
         row,
         "gridAfter",
         (row.formatting?.gridAfter ?? 0) + (insert ? 1 : -1),
       );
-      const stamp = stamps.value[rowIndex];
+      const stamp = rowStamp(rowIndex);
       if (stamp !== undefined)
         next.propertyChanges = [
           {
@@ -690,7 +703,7 @@ const columnEdit = ({
       if (insert && entry.start === op.column) {
         const cell = fresh.value[freshIndex++];
         if (cell === undefined) return mismatch(op, "A fresh cell is missing.");
-        const stamp = stamps.value[rowIndex];
+        const stamp = rowStamp(rowIndex);
         cells.push(
           stamp === undefined
             ? cell
@@ -707,7 +720,7 @@ const columnEdit = ({
       const hit = entry.start <= op.column && op.column < entry.end;
       if (insert && entry.start < op.column && hit) {
         const next = withSpan(entry.cell, entry.end - entry.start + 1);
-        const stamp = stamps.value[rowIndex];
+        const stamp = rowStamp(rowIndex);
         if (stamp !== undefined)
           next.propertyChanges = [
             {
@@ -741,7 +754,7 @@ const columnEdit = ({
           });
         if (entry.end - entry.start > 1) {
           const next = withSpan(entry.cell, entry.end - entry.start - 1);
-          const stamp = stamps.value[rowIndex];
+          const stamp = rowStamp(rowIndex);
           if (stamp !== undefined)
             next.propertyChanges = [
               {
@@ -755,10 +768,7 @@ const columnEdit = ({
           cells.push(next);
           continue;
         }
-        const stamp =
-          stamps.value[
-            trackedDeletion ? (markedRows.get(rowIndex) ?? -1) : rowIndex
-          ];
+        const stamp = rowStamp(rowIndex);
         if (stamp !== undefined)
           cells.push({
             ...entry.cell,
@@ -774,7 +784,7 @@ const columnEdit = ({
     if (insert && !inserted) {
       const cell = fresh.value[freshIndex++];
       if (cell === undefined) return mismatch(op, "A fresh cell is missing.");
-      const stamp = stamps.value[rowIndex];
+      const stamp = rowStamp(rowIndex);
       cells.push(
         stamp === undefined
           ? cell
@@ -787,15 +797,9 @@ const columnEdit = ({
             },
       );
     }
-    if (
-      !cells.some((cell) => cell.structuralChange?.type !== "tableCellDeletion")
-    )
-      return refuse({
-        op,
-        reason: DOCUMENT_OP_REFUSAL_REASONS.TABLE_ROW_EMPTY,
-        message:
-          "Deleting this column would leave a row without an active cell.",
-      });
+    // A row the deletion takes its only cells from goes with them; a
+    // suggested deletion leaves it to go when the suggestion is accepted.
+    if (cells.length === 0 && row.cells.length > 0) continue;
     rows.push({ ...row, cells });
   }
   if (trackedDeletion) return Result.ok({ ...table, rows });
@@ -808,8 +812,8 @@ const columnEdit = ({
   }
   const next = { ...table, rows };
   if (columnWidths !== undefined) next.columnWidths = columnWidths;
-  const gridStamp = stamps.value[table.rows.length];
-  const propertyStamp = stamps.value[table.rows.length + 1];
+  const gridStamp = stamps.value[stampedRows.size];
+  const propertyStamp = stamps.value[stampedRows.size + 1];
   if (
     op.revision !== undefined &&
     gridStamp !== undefined &&
@@ -1178,16 +1182,16 @@ const split = ({
 };
 
 /**
- * The grid a column edit works on: one every row covers whole, with a width
- * for each column. A table whose rows end early is read with the columns they
- * imply, which no column edit decides for them.
+ * The grid a table edit works on: one the table's column widths name every
+ * column of. A row that ends early omits the columns after its cells, as a
+ * stated `w:gridAfter` does.
  */
 const statedGrid = (
   table: Table,
   op: { type: DocumentOpType },
 ): Result<TableGrid, DocumentOpRefusal> =>
   tableGrid(table, op.type).andThen((grid) =>
-    grid.stated
+    table.columnWidths === undefined || table.columnWidths.length === grid.width
       ? Result.ok(grid)
       : Result.err(
           new DocumentOpRefusal({
@@ -1213,11 +1217,10 @@ export const tableEditParagraphDemand = (
       return Result.ok(
         grid.value.rows.filter((cells, row) => {
           const before = table.rows[row]?.formatting?.gridBefore ?? 0;
-          const after =
-            grid.value.width - (table.rows[row]?.formatting?.gridAfter ?? 0);
+          const { end } = rowExtent(table, grid.value, row);
           return (
             op.column >= before &&
-            op.column <= after &&
+            op.column <= end &&
             !cells.some(
               (cell) => cell.start < op.column && op.column < cell.end,
             )
@@ -1446,10 +1449,17 @@ export const applyTableEdit = (
   }
   const grid = statedGrid(table, op);
   if (grid.isErr()) return Result.err(grid.error);
+  // Removing the column that holds every cell the table has, as its only
+  // column does, removes the table.
   if (
     op.type === DOCUMENT_OP_TYPES.DELETE_COLUMN &&
-    op.column === 0 &&
-    grid.value.width === 1
+    op.column >= 0 &&
+    op.column < grid.value.width &&
+    grid.value.rows.every((entries) =>
+      entries.every(
+        ({ start, end }) => start === op.column && end === op.column + 1,
+      ),
+    )
   ) {
     const cells = table.rows.flatMap((row) => row.cells);
     if (cells.some(reachesPastRemovedCell) || strandsABookmark(cells))
