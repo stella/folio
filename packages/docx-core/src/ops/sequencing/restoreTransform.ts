@@ -178,15 +178,26 @@ const gapOf = ({ offset, zeroWidthBefore }: TextPosition): Gap => ({
   zeroWidthBefore: zeroWidthBefore ?? 0,
 });
 
-type RestoreMapping = { span: RestoredSpan; emptyGap: Gap | undefined };
+type RestoreMapping = {
+  span: RestoredSpan;
+  emptyGap: Gap | undefined;
+  /**
+   * Of a span that is not empty, whether the restoration leaves the
+   * identified records across each of its edges as they were.
+   */
+  keptEdges: { from: boolean; to: boolean };
+};
 
 /**
  * A position outside a restoration moves past its span. At an empty span,
  * preserve the source gap's identified containers; refuse if neither edge does.
+ * At an edge of another span, the edge must keep its identified containers:
+ * a restoration that moves where an identified record starts or ends there
+ * changes that edge as well.
  */
 const pastSpan = (
   point: TextPosition,
-  { span, emptyGap }: RestoreMapping,
+  { span, emptyGap, keptEdges }: RestoreMapping,
 ): TextPosition | undefined => {
   const gap = gapOf(point);
   if (
@@ -194,8 +205,10 @@ const pastSpan = (
     compareGaps(span.from, span.to) === 0
   )
     return emptyGap === undefined ? undefined : { ...point, ...emptyGap };
+  if (compareGaps(gap, span.from) === 0 && !keptEdges.from) return undefined;
   if (compareGaps(gap, span.from) <= 0) return point;
   if (compareGaps(gap, span.to) < 0) return undefined;
+  if (compareGaps(gap, span.to) === 0 && !keptEdges.to) return undefined;
   if (gap.offset === span.to.offset)
     return {
       ...point,
@@ -341,16 +354,27 @@ const identitiesAcross = (
     identitySlots(record).map(slotKey),
   );
 
-/** Restoring content at an empty span must keep edits on the same side of an identified record. */
+/** Restoring content must keep edits at its span's edges on the same side of an identified record. */
 const restorationMapping = ({ expected, content }: Rewrite): RestoreMapping => {
   const span = restoredSpan(expected, content);
+  const kept = (source: Gap, target: Gap): boolean =>
+    structurallyEqual(
+      identitiesAcross(expected, source),
+      identitiesAcross(content, target),
+    );
   if (compareGaps(span.from, span.to) !== 0)
-    return { span, emptyGap: undefined };
-  const source = identitiesAcross(expected, span.from);
+    return {
+      span,
+      emptyGap: undefined,
+      keptEdges: {
+        from: kept(span.from, span.from),
+        to: kept(span.to, span.restoredTo),
+      },
+    };
   const emptyGap = [span.from, span.restoredTo].find((candidate) =>
-    structurallyEqual(source, identitiesAcross(content, candidate)),
+    kept(span.from, candidate),
   );
-  return { span, emptyGap };
+  return { span, emptyGap, keptEdges: { from: true, to: true } };
 };
 
 const rewriteOf = (op: DocumentOp, at: TextPosition): Rewrite | undefined => {

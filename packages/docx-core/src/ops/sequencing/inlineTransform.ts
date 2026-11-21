@@ -24,6 +24,7 @@
  */
 import { Result } from "better-result";
 
+import { identityKeysIn } from "../ids";
 import {
   type DeleteRangeOp,
   DOCUMENT_OP_TYPES,
@@ -151,6 +152,29 @@ const within = (
 };
 
 /**
+ * Whether a direct deletion removes content before a direct insertion's
+ * point while the insertion supplies new ids: the insertion may cut an
+ * identified record there, and a deletion reaching back from the cut to the
+ * record's start leaves the rest of the record its own id in one order and
+ * the second half's new id in the other.
+ */
+const deletesBeforeIdentifiedCut = (
+  deletion: DeleteRangeOp | SetRunPropsOp,
+  insertion: InsertContentOp,
+  place: { fromSide: -1 | 0 | 1; toSide: -1 | 0 | 1 },
+): boolean =>
+  deletion.type === DOCUMENT_OP_TYPES.DELETE_RANGE &&
+  deletion.revision === undefined &&
+  insertion.revision === undefined &&
+  ((insertion.newIds?.revision?.length ?? 0) > 0 ||
+    (insertion.newIds?.control?.length ?? 0) > 0) &&
+  place.fromSide > 0 &&
+  place.toSide <= 0;
+
+const IDENTIFIED_CUT_DELETION =
+  "Deleting up to an insertion that cuts an identified record needs explicit affinity.";
+
+/**
  * Move a range of one paragraph across an inline insertion in it. The range
  * keeps out of the inserted content at both ends, and is split around
  * content inserted strictly inside it.
@@ -181,6 +205,8 @@ const rangeOverInsertion = (
       over,
       "Tracked deletion and zero-width boundaries require an unchanged range.",
     );
+  if (deletesBeforeIdentifiedCut(op, over, place))
+    return refusal(op, over, IDENTIFIED_CUT_DELETION);
   // An empty range is a point: it moves past content inserted before it.
   if (comparePositions(op.from, op.to) === 0)
     return Result.ok([
@@ -272,6 +298,18 @@ const pointOverInsertion = (
     op.at.offset === over.at.offset &&
     compareGapsAtOffset(op.at, over.at) === 0;
   const seam = isSeamJoin(op);
+  // Two insertions putting in one identified record (an inverse and a redo
+  // of one removal) leave the record twice, or once under a fresh id taken
+  // by whichever applies second.
+  if (op.type === DOCUMENT_OP_TYPES.INSERT_CONTENT) {
+    const inserted = new Set(identityKeysIn(over.slice.content));
+    if (identityKeysIn(op.slice.content).some((key) => inserted.has(key)))
+      return refusal(
+        op,
+        over,
+        "Concurrent insertions of one identified record conflict.",
+      );
+  }
   // Text inheriting the run beside it, at the offset of content inserted
   // concurrently, takes other formatting and another place in the two orders.
   if (op.type === DOCUMENT_OP_TYPES.INSERT_TEXT && sameOffset(op.at, over.at))
@@ -356,6 +394,8 @@ const insertionOverRange = (
     return refuse(
       "Structural inverse preconditions require an unchanged range.",
     );
+  if (deletesBeforeIdentifiedCut(over, op, place))
+    return refuse(IDENTIFIED_CUT_DELETION);
   if (over.type === DOCUMENT_OP_TYPES.SET_RUN_PROPS)
     return inside && (!splittable(over) || op.at.zeroWidthBefore === undefined)
       ? refuse(
