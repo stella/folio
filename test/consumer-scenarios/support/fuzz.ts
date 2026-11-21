@@ -49,6 +49,7 @@ import {
   lineBreakDocument,
   openReviewer,
   pinnedParaIdsOf,
+  scenarioEngine,
   STORY_FIXTURES,
 } from "./documents.ts";
 import { normalizeAssertion } from "./failure-fingerprints.ts";
@@ -61,6 +62,7 @@ import {
 } from "./feature-coverage.ts";
 import {
   type Action,
+  type ExpectedRefusal,
   type FlowFile,
   type FlowKind,
   type FlowStep,
@@ -351,7 +353,21 @@ type Receipt = {
 };
 
 type BatchStepEffect =
-  { type: "batch"; applied: number } | { type: "expectedFidelityRefusal" };
+  | { type: "batch"; applied: number }
+  | { type: "expectedFidelityRefusal" }
+  | { type: "expectedRefusal" };
+
+/**
+ * The refusal the planned step expects on the engine this scenario runs on;
+ * indexing by `ReviewerEngine` keeps the flow format's engines covering it.
+ */
+const expectedRefusalOf = (flow: Flow): ExpectedRefusal | undefined =>
+  flow.planned?.expectedRefusals?.[scenarioEngine()];
+
+/** Whether the planned step needs the document as it was before it ran. */
+const keepsBefore = (flow: Flow): boolean =>
+  flow.planned?.expectedFidelityRefusal !== undefined ||
+  expectedRefusalOf(flow) !== undefined;
 
 type BatchEffectOptions = {
   flow: Flow;
@@ -366,6 +382,20 @@ const batchEffect = ({
   before,
   applied,
 }: BatchEffectOptions): BatchStepEffect => {
+  const refusal = expectedRefusalOf(flow);
+  if (refusal !== undefined) {
+    assert.equal(applied, 0, JSON.stringify(receipt));
+    assert.ok(
+      receipt?.issues.some(
+        (issue) =>
+          issue.code === refusal.code && issue.message === refusal.message,
+      ),
+      `Expected the ${refusal.code} refusal "${refusal.message}" in ${JSON.stringify(receipt)}`,
+    );
+    assert.deepEqual(receipt?.receipts, []);
+    assert.deepEqual(flow.reviewer.toDocument(), before);
+    return { type: "expectedRefusal" };
+  }
   const kind = flow.planned?.expectedFidelityRefusal;
   if (kind === undefined) return { type: "batch", applied };
   // An engine that can apply the edit so that rejecting everything still
@@ -444,10 +474,7 @@ const suggestChecked = async (
     flow,
     `${entry} ${JSON.stringify({ ...args, operations })}`,
   );
-  const before =
-    flow.planned?.expectedFidelityRefusal === undefined
-      ? undefined
-      : flow.reviewer.toDocument();
+  const before = keepsBefore(flow) ? flow.reviewer.toDocument() : undefined;
   const pre = await capture(flow.reviewer, flow.mode, { step: flow.session });
   const result = tool(flow, "suggest_changes", { ...args, operations });
   const receipt = result.ok ? (result.result as Receipt) : null;
@@ -515,10 +542,7 @@ const coreBatchStep = async (
     flow,
     `${entry} (atomic: ${batch.atomic}) ${JSON.stringify(operations)}`,
   );
-  const before =
-    flow.planned?.expectedFidelityRefusal === undefined
-      ? undefined
-      : flow.reviewer.toDocument();
+  const before = keepsBefore(flow) ? flow.reviewer.toDocument() : undefined;
   const pre = await capture(flow.reviewer, flow.mode, {
     story,
     step: flow.session,
@@ -593,6 +617,9 @@ const step = async (flow: Flow, planned?: FlowStep): Promise<StepEffect> => {
     ...(planned?.expectedFidelityRefusal === undefined
       ? {}
       : { expectedFidelityRefusal: planned.expectedFidelityRefusal }),
+    ...(planned?.expectedRefusals === undefined
+      ? {}
+      : { expectedRefusals: planned.expectedRefusals }),
   });
   const { random } = flow;
   switch (action) {
@@ -892,6 +919,7 @@ export const vacuousSteps = ({ effects }: FlowRun): number[] =>
       case "skipped":
         return [index];
       case "expectedFidelityRefusal":
+      case "expectedRefusal":
       case "mistake":
       case "ran":
         return [];
