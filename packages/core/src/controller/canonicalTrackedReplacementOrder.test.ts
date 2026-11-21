@@ -316,6 +316,7 @@ const viaCanonicalEngine = async (
   ).unwrap();
   let state = EditorState.create({ schema, doc: session.projection.doc });
   const executor = new CanonicalPublicOperations({
+    undoLimit: Number.POSITIVE_INFINITY,
     session,
     getState: () => state,
     publish: (commit: CanonicalCommit) => {

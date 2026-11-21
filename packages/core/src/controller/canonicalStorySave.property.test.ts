@@ -232,6 +232,7 @@ const edited = (
     return true;
   };
   const executor = new CanonicalPublicOperations({
+    undoLimit: Number.POSITIVE_INFINITY,
     session,
     getState: stateOf,
     publish,

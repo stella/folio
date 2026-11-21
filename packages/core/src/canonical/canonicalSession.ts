@@ -161,6 +161,7 @@ import {
   withUneditedSourceRestored,
 } from "./canonicalSourceNormalization";
 import { mapTocSelection } from "./canonicalTocSelection";
+import { controlEdgesAt } from "./controlEdges";
 import {
   ownedSourceCopies,
   preservePropertySources,
@@ -2704,8 +2705,10 @@ class CanonicalSession {
         document: this.currentDocument,
         from: start.value,
         to: end.value,
-        suggestingAuthor:
-          this.mode.type === "suggesting" ? this.mode.author : undefined,
+        suggesting:
+          this.mode.type === "suggesting"
+            ? { author: this.mode.author }
+            : undefined,
       });
       if (retirement.isErr()) return refuse(retirement.error.message);
       if (
@@ -2734,20 +2737,7 @@ class CanonicalSession {
     }
     const preSelection = projection.selectionAt(state);
     if (preSelection.isErr()) return preSelection;
-    // Just inside a content control's edge, the editor position, not the
-    // source gap, says the text belongs to the control.
-    const innerEdge = (position: number, side: "start" | "end") => {
-      const resolved = state.doc.resolve(position);
-      return (
-        resolved.parent.type.name === "sdt" &&
-        resolved.parentOffset ===
-          (side === "start" ? 0 : resolved.parent.content.size)
-      );
-    };
-    const inside = {
-      ...(innerEdge(inputFrom, "start") ? { start: true } : {}),
-      ...(innerEdge(inputTo, "end") ? { end: true } : {}),
-    };
+    const inside = controlEdgesAt(state.doc, inputFrom, inputTo);
     // A suggestion over a control's whole text would be recorded as the
     // control's own deletion, which accepting would remove with the new text.
     if (

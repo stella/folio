@@ -74,6 +74,7 @@ const setup = (source: string | Document = "alpha beta") => {
     return true;
   };
   const executor = new CanonicalPublicOperations({
+    undoLimit: Number.POSITIVE_INFINITY,
     session,
     getState: () => state,
     publish,

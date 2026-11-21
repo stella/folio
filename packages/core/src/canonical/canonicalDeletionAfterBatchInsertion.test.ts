@@ -106,10 +106,14 @@ test.each(["tracked-changes", "suggested"] as const)(
     };
     const apart = await run("apart");
     expect(await run("together")).toEqual(apart);
+    // Suggested, the deletion is a suggestion of its own, not the
+    // insertion's: it records the retired break beside the inserted one, and
+    // the closing paragraph it empties is still listed.
     expect(apart.texts).toEqual([
       "Opening words.",
       "Middle words.",
       "Added words.",
+      ...(mode === "suggested" ? [""] : []),
     ]);
   },
 );

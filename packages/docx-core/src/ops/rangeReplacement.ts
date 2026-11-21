@@ -27,6 +27,7 @@ import {
 } from "./plan";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { isRemovedRevisionNode } from "./review";
+import { isOwnRecord } from "./revisionOwner";
 import { identitySlots } from "./slots";
 import {
   DOCUMENT_OP_TYPES,
@@ -420,7 +421,7 @@ export const planTrackedReplace = (
     if (
       first !== undefined &&
       payload?.type === "insertion" &&
-      payload.info.author === revision.author &&
+      isOwnRecord(payload.info, revision) &&
       (payload.resolutionJoins?.remove ?? 0) < cutDepth
     ) {
       const recorded = plan.append({

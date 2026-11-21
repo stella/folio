@@ -145,6 +145,7 @@ test(
                       return true;
                     };
                     const executor = new CanonicalPublicOperations({
+                      undoLimit: Number.POSITIVE_INFINITY,
                       session,
                       getState: () => state,
                       publish,

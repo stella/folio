@@ -21,6 +21,7 @@ import {
   buildTextBoxTableDocument,
   findTextBoxShape,
 } from "../__tests__/textBoxTableDocument";
+import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { parseDocx } from "../docx/parser";
 import { createDocx, createEmptyDocx, repackDocx } from "../docx/rezip";
@@ -2672,67 +2673,69 @@ describe("headless docx review round-trip", () => {
     expect(reviewer.getChanges()).toEqual([]);
   });
 
-  test("atomic batches reject every operation without document or comment changes", async () => {
-    const baseline = await makeParaIdBaseline(readFixture());
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
-      author: "AI Reviewer",
-    });
-    const target = findBlock(reviewer.snapshot().blocks, "Heading");
-    const contentBefore = reviewer.getContentAsText();
+  for (const session of ["legacy", "canonical"] as const)
+    test(`${session}: atomic batches reject every operation without document or comment changes`, async () => {
+      const baseline = await makeParaIdBaseline(readFixture());
+      const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+        author: "AI Reviewer",
+        session,
+      });
+      const target = findBlock(reviewer.snapshot().blocks, "Heading");
+      const contentBefore = reviewer.getContentAsText();
 
-    const result = reviewer.applyDocumentOperations(
-      {
+      const result = reviewer.applyDocumentOperations(
+        {
+          version: 1,
+          atomic: true,
+          mode: "direct",
+          operations: [
+            {
+              id: "valid",
+              type: "replaceInBlock",
+              blockId: target.id,
+              find: "Heading",
+              replace: "Intro",
+              comment: { text: "Review this change." },
+            },
+            { id: "missing", type: "deleteBlock", blockId: "para-missing" },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      );
+
+      expect(result).toEqual({
+        nextRevisionId: expect.any(Number),
         version: 1,
-        atomic: true,
-        mode: "direct",
-        operations: [
-          {
-            id: "valid",
-            type: "replaceInBlock",
-            blockId: target.id,
-            find: "Heading",
-            replace: "Intro",
-            comment: { text: "Review this change." },
-          },
-          { id: "missing", type: "deleteBlock", blockId: "para-missing" },
+        status: "rejected",
+        applied: [],
+        skipped: [
+          { id: "valid", reason: "atomicBatchRejected" },
+          { id: "missing", reason: "missingBlock" },
         ],
-      },
-      { undefinedReferences: "refuse" },
-    );
-
-    expect(result).toEqual({
-      nextRevisionId: expect.any(Number),
-      version: 1,
-      status: "rejected",
-      applied: [],
-      skipped: [
-        { id: "valid", reason: "atomicBatchRejected" },
-        { id: "missing", reason: "missingBlock" },
-      ],
-      issues: [
-        {
-          operationId: "valid",
-          operationIndex: 0,
-          path: "$.operations[0]",
-          code: "atomicBatchRejected",
-          retryable: true,
-          recovery: "inspectBatch",
-        },
-        {
-          operationId: "missing",
-          operationIndex: 1,
-          path: "$.operations[1]",
-          code: "missingBlock",
-          retryable: true,
-          recovery: "refreshDocument",
-        },
-      ],
-      receipts: [],
-      undoHandle: null,
+        issues: [
+          {
+            operationId: "valid",
+            operationIndex: 0,
+            path: "$.operations[0]",
+            code: "atomicBatchRejected",
+            retryable: true,
+            recovery: "inspectBatch",
+          },
+          {
+            operationId: "missing",
+            operationIndex: 1,
+            path: "$.operations[1]",
+            code: "missingBlock",
+            retryable: true,
+            recovery: "refreshDocument",
+          },
+        ],
+        receipts: [],
+        undoHandle: null,
+      });
+      expect(reviewer.getContentAsText()).toBe(contentBefore);
+      expect(reviewer.getComments()).toEqual([]);
     });
-    expect(reviewer.getContentAsText()).toBe(contentBefore);
-    expect(reviewer.getComments()).toEqual([]);
-  });
 
   test("atomic batches commit all operations after a successful preflight", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
@@ -3227,54 +3230,56 @@ const insertionChange = (reviewer: FolioDocxReviewer): FolioReviewChange => {
 };
 
 describe("headless document-operation undo history", () => {
-  test("keeps the latest batches up to its limit, each undoable in turn", async () => {
-    const document = createEmptyDocument();
-    document.package.document.content = [
-      {
-        type: "paragraph",
-        paraId: "21000020",
-        content: [{ type: "run", content: [{ type: "text", text: "v0" }] }],
-      },
-    ];
-    const reviewer = await FolioDocxReviewer.fromBuffer(
-      await createDocx(document),
-    );
-    const blockId = findBlock(reviewer.snapshot().blocks, "v0").id;
-    const handles = [];
-    for (let step = 0; step <= FOLIO_DOCUMENT_OPERATION_UNDO_LIMIT; step++) {
-      const result = reviewer.applyDocumentOperations(
+  for (const session of ["legacy", "canonical"] as const)
+    test(`${session}: keeps the latest batches up to its limit, each undoable in turn`, async () => {
+      const document = createEmptyDocument();
+      document.package.document.content = [
         {
-          version: 1,
-          mode: "direct",
-          operations: [
-            {
-              id: `step-${step}`,
-              type: "replaceInBlock",
-              blockId,
-              find: `v${step}`,
-              replace: `v${step + 1}`,
-            },
-          ],
+          type: "paragraph",
+          paraId: "21000020",
+          content: [{ type: "run", content: [{ type: "text", text: "v0" }] }],
         },
-        { undefinedReferences: "refuse" },
+      ];
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await createDocx(document),
+        { session },
       );
-      if (result.undoHandle === null)
-        throw new Error("expected an undo handle");
-      handles.push(result.undoHandle);
-    }
+      const blockId = findBlock(reviewer.snapshot().blocks, "v0").id;
+      const handles = [];
+      for (let step = 0; step <= FOLIO_DOCUMENT_OPERATION_UNDO_LIMIT; step++) {
+        const result = reviewer.applyDocumentOperations(
+          {
+            version: 1,
+            mode: "direct",
+            operations: [
+              {
+                id: `step-${step}`,
+                type: "replaceInBlock",
+                blockId,
+                find: `v${step}`,
+                replace: `v${step + 1}`,
+              },
+            ],
+          },
+          { undefinedReferences: "refuse" },
+        );
+        if (result.undoHandle === null)
+          throw new Error("expected an undo handle");
+        handles.push(result.undoHandle);
+      }
 
-    const oldest = handles.shift();
-    for (const handle of handles.toReversed()) {
-      expect(reviewer.undoDocumentOperations(handle).status).toBe("undone");
-    }
-    expect(reviewer.getContentAsText()).toContain("v1");
-    if (oldest === undefined) throw new Error("expected the first handle");
-    expect(reviewer.undoDocumentOperations(oldest)).toEqual({
-      status: "rejected",
-      undoHandle: oldest,
-      reason: "unknownHandle",
+      const oldest = handles.shift();
+      for (const handle of handles.toReversed()) {
+        expect(reviewer.undoDocumentOperations(handle).status).toBe("undone");
+      }
+      expect(reviewer.getContentAsText()).toContain("v1");
+      if (oldest === undefined) throw new Error("expected the first handle");
+      expect(reviewer.undoDocumentOperations(oldest)).toEqual({
+        status: "rejected",
+        undoHandle: oldest,
+        reason: "unknownHandle",
+      });
     });
-  });
 });
 
 describe("headless docx review discovery + resolve", () => {
@@ -3292,11 +3297,15 @@ describe("headless docx review discovery + resolve", () => {
     };
     const sensitiveText = "privileged serialization expectation";
     const actualSensitiveText = "different serialized content";
+    // The legacy engine's save of a resolved story reopens the package and
+    // checks it against the story; the canonical session saves its model.
     const expectedReviewer = await FolioDocxReviewer.fromBuffer(
       await makeBaseline(sensitiveText, "21000010"),
+      { session: "legacy" },
     );
     const mismatchedReviewer = await FolioDocxReviewer.fromBuffer(
       await makeBaseline(actualSensitiveText, "21000011"),
+      { session: "legacy" },
     );
     expect(expectedReviewer.resolveReviewedStory({ view: "final" })).toBe(true);
 
@@ -4376,7 +4385,11 @@ describe("headless docx review notes read surface", () => {
       expect(savedNotesXml).not.toContain("<w:del ");
       expect(savedNotesXml).not.toContain("<w:moveFrom ");
       expect(savedNotesXml).not.toContain("<w:moveTo ");
-      expect(savedNotesXml).toContain(preservedParagraph);
+      // The canonical session writes the paragraph ids it minted at open
+      // into a part it saves; the paragraph is otherwise kept as it was.
+      expect(
+        savedNotesXml.replaceAll(/ w14:(?:paraId|textId)="[0-9A-F]{8}"/gu, ""),
+      ).toContain(preservedParagraph);
 
       const reopened = await FolioDocxReviewer.fromBuffer(saved);
       expect(
@@ -4508,7 +4521,11 @@ describe("headless docx review notes read surface", () => {
   );
 
   test("edits a footnote through story-scoped document operations", async () => {
-    const baseline = await readNotesFixture();
+    // A package whose paragraphs hold ids already: either engine saves an
+    // untouched part as it read it.
+    const baseline = (
+      await prepareCanonicalDocxInput(await readNotesFixture())
+    ).unwrap();
     const imported = await parseDocx(baseline, { preloadFonts: false });
     if (!imported.originalBuffer)
       panic("parser must retain the imported package");
@@ -4569,7 +4586,11 @@ describe("headless docx review notes read surface", () => {
   });
 
   test("tracks and undoes an endnote operation batch", async () => {
-    const baseline = await readNotesFixture();
+    // A package whose paragraphs hold ids already: either engine saves an
+    // untouched part as it read it.
+    const baseline = (
+      await prepareCanonicalDocxInput(await readNotesFixture())
+    ).unwrap();
     const story = { type: "endnote", noteId: 3 } as const;
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
       author: "Reviewer",

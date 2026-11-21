@@ -358,6 +358,7 @@ test("DOCX-produced nested control comments go with their words directly and sta
           expect(committed).toBe(0);
           expect(session.captureSaveSnapshot()).toEqual(snapshot);
           const executor = new CanonicalPublicOperations({
+            undoLimit: Number.POSITIVE_INFINITY,
             session,
             getState: () => state,
             publish: (commit) => {

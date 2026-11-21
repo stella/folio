@@ -24,8 +24,7 @@ export type TableGrid = {
   /**
    * Whether every row covers the whole grid and the table's column widths
    * name every grid column. A row that ends early is read with the empty
-   * columns it implies after it, as a trailing `gridAfter`; edits that add,
-   * remove or merge columns need a grid every row states.
+   * columns it implies after it, as a trailing `gridAfter`.
    */
   stated: boolean;
 };
@@ -98,7 +97,8 @@ export const tableGrid = (
       });
       position += span;
     }
-    if (cells.length === 0) return refuse();
+    // A row may hold no cells (`CT_Row` takes zero or more): it covers what
+    // it states it omits.
     covered.push(position + after);
     rows.push(cells);
     previous.clear();

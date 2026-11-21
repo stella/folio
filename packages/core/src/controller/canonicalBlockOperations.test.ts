@@ -296,6 +296,7 @@ const canonicalRun = async (
   ).unwrap();
   let state = EditorState.create({ schema, doc: session.projection.doc });
   const executor = new CanonicalPublicOperations({
+    undoLimit: Number.POSITIVE_INFINITY,
     session,
     getState: () => state,
     publish: (commit: CanonicalCommit) => {
@@ -859,6 +860,7 @@ describe("paragraph identities across undo", () => {
         ).unwrap();
         let state = EditorState.create({ schema, doc: session.projection.doc });
         const executor = new CanonicalPublicOperations({
+          undoLimit: Number.POSITIVE_INFINITY,
           session,
           getState: () => state,
           publish: (commit: CanonicalCommit) => {
@@ -1082,6 +1084,7 @@ describe("a move whose source a content lock keeps", () => {
       ).unwrap();
       let state = EditorState.create({ schema, doc: session.projection.doc });
       const executor = new CanonicalPublicOperations({
+        undoLimit: Number.POSITIVE_INFINITY,
         session,
         getState: () => state,
         publish: (commit: CanonicalCommit) => {

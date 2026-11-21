@@ -86,6 +86,7 @@ for (const leasing of ["unleased", "leased"] as const)
       const firstTable = id("T1"),
         secondTable = id("T2");
       const operations = new CanonicalPublicOperations({
+        undoLimit: Number.POSITIVE_INFINITY,
         session,
         getState: () => state,
         publish,

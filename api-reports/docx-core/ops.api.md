@@ -405,7 +405,6 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
     readonly UNSUPPORTED_SCHEMA: "unsupportedSchema";
     readonly BLOCK_NOT_FOUND: "blockNotFound";
     readonly INVALID_OPERATION: "invalidOperation";
-    readonly TABLE_ROW_EMPTY: "tableRowEmpty";
     readonly NO_CHANGE: "noChange";
     readonly DEPENDENT_RECORDS: "dependentRecords";
     readonly INVALID_OFFSET: "invalidOffset";

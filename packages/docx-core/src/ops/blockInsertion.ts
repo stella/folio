@@ -20,13 +20,24 @@ import {
   storyBody,
 } from "./blocks";
 import { validateOpsDocument } from "./contract";
-import type { DocumentEdit } from "./edits";
+import type { DocumentEdit, DocumentEditEffects } from "./edits";
 import { structurallyEqual } from "./equality";
 import { freshenIdentities } from "./identity";
-import { identityKeysIn, isParaId, packageIdentityKeyIndex } from "./ids";
+import {
+  type IdentityKeyIndex,
+  identityKeysIn,
+  idKey,
+  isParaId,
+  type KeyMembership,
+  packageIdentityKeyIndex,
+} from "./ids";
 import { asMoveHalf } from "./moves";
 import { paragraphLength } from "./offsets";
 import { findStoryParagraph } from "./paragraphLocator";
+import {
+  nonemptyBlockReplacementEffects,
+  validateBlockReplacement as validateReplacement,
+} from "./paragraphPrimitive";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import type { ApplyOps } from "./resolve";
 import { stampInfo, WRAP_KINDS, wrapTracked } from "./review";
@@ -95,6 +106,287 @@ export type ValidateBlockReplacement = (options: {
   op: ReplaceBlocksOp;
   before: readonly Paragraph[];
 }) => Result<void, DocumentOpRefusal>;
+
+const canonicalizeInsertedParagraph = (paragraph: Paragraph): Paragraph => {
+  if (finalizeParagraphFormatting(paragraph.formatting) !== undefined)
+    return paragraph;
+  const canonical = { ...paragraph };
+  delete canonical.formatting;
+  return canonical;
+};
+
+const paragraphReplacement =
+  ({
+    op,
+    before,
+    anchor,
+  }: {
+    op: InsertBlocksOp;
+    before: boolean;
+    anchor: Paragraph;
+  }) =>
+  (blocks: readonly Paragraph[], replacedAnchor = anchor): ReplaceBlocksOp => ({
+    type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+    story: op.story,
+    expected: [anchor],
+    blocks: before ? [...blocks, replacedAnchor] : [replacedAnchor, ...blocks],
+  });
+
+type TrackedParagraphReplacementOptions = {
+  op: InsertBlocksOp;
+  revision: RevisionStamp;
+  source: Paragraph;
+  anchor: Paragraph;
+  takesOverMark: boolean;
+  canonicalBlocks: readonly Paragraph[];
+  replacement: ReturnType<typeof paragraphReplacement>;
+  usedElsewhere: () => KeyMembership;
+};
+
+const trackedParagraphReplacement = ({
+  op,
+  revision,
+  source,
+  anchor,
+  takesOverMark,
+  canonicalBlocks,
+  replacement,
+  usedElsewhere,
+}: TrackedParagraphReplacementOptions): Result<
+  ReplaceBlocksOp,
+  DocumentOpRefusal
+> => {
+  const refuse = (reason: DocumentOpRefusal["reason"], message: string) =>
+    Result.err(new DocumentOpRefusal({ reason, message, opType: op.type }));
+  if (identityKeysIn(op.blocks).length > 0) {
+    return refuse(
+      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+      "Tracked insertion of identified review or content-control records is unsupported.",
+    );
+  }
+  // A move's destination marks its paragraphs moved to, not inserted.
+  const markKind = op.move === true ? "moveTo" : "ins";
+  const blocks: Paragraph[] = [];
+  for (const [index, paragraph] of canonicalBlocks.entries()) {
+    const wrapped = insertedContent({
+      paragraph,
+      revision,
+      move: op.move,
+    });
+    if (wrapped.isErr()) return wrapped;
+    const content = wrapped.value;
+    if (!takesOverMark || index < canonicalBlocks.length - 1) {
+      blocks.push({
+        ...paragraph,
+        content,
+        pPrMark: {
+          kind: markKind,
+          info: stampInfo(revision),
+          // After a final paragraph each new break is rejected into the
+          // paragraph before it, which ends up being the anchor, as the
+          // anchor's own new break is.
+          ...(takesOverMark ? { survivor: "first" as const } : {}),
+        },
+      });
+      continue;
+    }
+    // The anchor's former mark: its properties before are the anchor's.
+    const previous = source.formatting;
+    const current = finalizeParagraphFormatting(paragraph.formatting);
+    blocks.push({
+      ...paragraph,
+      content,
+      ...(sameFormatting(previous, current)
+        ? {}
+        : {
+            propertyChanges: [
+              {
+                type: "paragraphPropertyChange",
+                info: stampInfo(revision),
+                ...(previous === undefined
+                  ? {}
+                  : { previousFormatting: previous }),
+              },
+            ],
+          }),
+    });
+  }
+  const anchorBlocks: Paragraph[] = takesOverMark
+    ? [
+        {
+          ...source,
+          pPrMark: {
+            kind: markKind,
+            info: stampInfo(revision),
+            survivor: "first",
+          },
+        },
+      ]
+    : [];
+  // The anchor's own records are carried over and keep their ids; only the
+  // records this insertion creates take new ones.
+  const fresh = freshenIdentities({
+    before: takesOverMark ? [source] : [],
+    after: [...anchorBlocks, ...blocks],
+    newIds: op.newIds ?? {},
+    usedElsewhere,
+  });
+  switch (fresh.kind) {
+    case "needsIds":
+      return refuse(
+        DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
+        "Inserted paragraph review records need more revision ids.",
+      );
+    case "invalidId":
+      return refuse(
+        DOCUMENT_OP_REFUSAL_REASONS.INVALID_NEW_ID,
+        "An inserted review record has an invalid revision id.",
+      );
+    case "fresh": {
+      const [replacedAnchor, ...inserted] = takesOverMark
+        ? fresh.paragraphs
+        : [anchor, ...fresh.paragraphs];
+      return Result.ok(replacement(inserted, replacedAnchor));
+    }
+    default: {
+      const unreachable: never = fresh;
+      return unreachable;
+    }
+  }
+};
+
+type PrepareTrackedParagraphInsertionOptions = {
+  document: Document;
+  op: InsertBlocksOp;
+  /** Source record addressed by the operation and its next virtual neighbor. */
+  anchor: Paragraph;
+  /** Omitted at the end of the virtual main-story list. */
+  following?: Paragraph;
+  paragraphIds: Pick<IdentityKeyIndex, "count">;
+  recordIds: Pick<IdentityKeyIndex, "count">;
+};
+
+type PreparedTrackedParagraphInsertion =
+  | { type: "unsupported" }
+  | {
+      type: "replacement";
+      before: Paragraph;
+      operation: ReplaceBlocksOp;
+      effect: DocumentEditEffects;
+    };
+
+/**
+ * Prepare one step without splicing. The batch must prove that the virtual
+ * main story has a supported trailing section and that the source and its
+ * neighbor are adjacent top-level paragraphs (or the source is last).
+ */
+export const prepareTrackedParagraphInsertion = ({
+  document,
+  op,
+  anchor: source,
+  following,
+  paragraphIds,
+  recordIds,
+}: PrepareTrackedParagraphInsertionOptions): Result<
+  PreparedTrackedParagraphInsertion,
+  DocumentOpRefusal
+> => {
+  if (
+    op.story !== OP_STORIES.MAIN ||
+    op.revision === undefined ||
+    op.move === true ||
+    op.blocks.length !== 1 ||
+    (op.at.type !== "after" && op.at.type !== "before") ||
+    source.paraId === undefined ||
+    idKey(source.paraId) !== idKey(op.at.blockId) ||
+    (document.package.footnotes?.length ?? 0) > 0 ||
+    (document.package.endnotes?.length ?? 0) > 0
+  )
+    return Result.ok({ type: "unsupported" });
+  const incoming = op.blocks.at(0);
+  const takesOverMark = op.at.type === "after" && following === undefined;
+  const anchor = op.at.type === "after" ? (following ?? source) : source;
+  if (
+    incoming === undefined ||
+    anchor.paraId === undefined ||
+    !isParaId(anchor.paraId) ||
+    source.sectionProperties !== undefined ||
+    anchor.sectionProperties !== undefined ||
+    incoming.sectionProperties !== undefined ||
+    incoming.pPrMark !== undefined ||
+    incoming.propertyChanges !== undefined ||
+    incoming.reviewCarrier !== undefined ||
+    !incoming.content.every(
+      (node) =>
+        node.type === "run" &&
+        node.content.every((leaf) => leaf.type === "text"),
+    )
+  )
+    return Result.ok({ type: "unsupported" });
+  if (
+    takesOverMark &&
+    (source.pPrMark !== undefined ||
+      source.reviewCarrier !== undefined ||
+      (source.propertyChanges?.length ?? 0) > 0)
+  )
+    return Result.err(
+      new DocumentOpRefusal({
+        opType: op.type,
+        reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+        message:
+          "A tracked insertion after a paragraph no paragraph follows needs the anchor's mark free of review records.",
+      }),
+    );
+  const canonicalBlocks = [canonicalizeInsertedParagraph(incoming)];
+  const replacement = paragraphReplacement({
+    op,
+    before: !takesOverMark,
+    anchor,
+  });
+  const validate = (prepared: ReplaceBlocksOp) => {
+    const checked = validateReplacement({
+      document,
+      op: prepared,
+      before: [anchor],
+      paragraphIds,
+      recordIds,
+    });
+    if (checked.isOk()) return checked;
+    const { reason, message } = checked.error;
+    return Result.err(
+      new DocumentOpRefusal({ opType: op.type, reason, message }),
+    );
+  };
+  const draft = validate(replacement(canonicalBlocks));
+  if (draft.isErr()) return draft;
+  const prepared = trackedParagraphReplacement({
+    op,
+    revision: op.revision,
+    source,
+    anchor,
+    takesOverMark,
+    canonicalBlocks,
+    replacement,
+    usedElsewhere: () => ({ has: (key) => recordIds.count(key) > 0 }),
+  });
+  if (prepared.isErr()) return prepared;
+  const operation = prepared.value;
+  const validated = validate(operation);
+  if (validated.isErr()) return validated;
+  return Result.ok({
+    type: "replacement",
+    before: anchor,
+    operation,
+    effect: {
+      ...nonemptyBlockReplacementEffects(operation, [anchor]),
+      touched: {
+        modified: takesOverMark ? [source.paraId] : [],
+        inserted: incoming.paraId === undefined ? [] : [incoming.paraId],
+        removed: [],
+      },
+    },
+  });
+};
 
 export const insertBlocks = ({
   document,
@@ -329,22 +621,8 @@ export const insertBlocks = ({
       "A tracked insertion after a paragraph no paragraph follows needs the anchor's mark free of review records.",
     );
   }
-  const replacement = (
-    blocks: readonly Paragraph[],
-    replacedAnchor: Paragraph = anchor,
-  ) => ({
-    type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
-    story: op.story,
-    expected: [anchor],
-    blocks: before ? [...blocks, replacedAnchor] : [replacedAnchor, ...blocks],
-  });
-  const canonicalBlocks = op.blocks.map((paragraph) => {
-    if (finalizeParagraphFormatting(paragraph.formatting) !== undefined)
-      return paragraph;
-    const canonical = { ...paragraph };
-    delete canonical.formatting;
-    return canonical;
-  });
+  const replacement = paragraphReplacement({ op, before, anchor });
+  const canonicalBlocks = op.blocks.map(canonicalizeInsertedParagraph);
   // A direct paragraph after this pending break would be joined into its
   // anchor when the mark is rejected. Moving the break instead needs the
   // former mark's formatting snapshot and revision ids, which this direct
@@ -429,111 +707,25 @@ export const insertBlocks = ({
         panic("An ordinary insertion needs its direct edit.")),
       touched,
     });
-  if (identityKeysIn(op.blocks).length > 0) {
-    return refuse(
-      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      "Tracked insertion of identified review or content-control records is unsupported.",
-    );
-  }
-  const revision = op.revision;
-  // A move's destination marks its paragraphs moved to, not inserted.
-  const markKind = op.move === true ? "moveTo" : "ins";
-  const blocks: Paragraph[] = [];
-  for (const [index, paragraph] of canonicalBlocks.entries()) {
-    const wrapped = insertedContent({
-      paragraph,
-      revision: op.revision,
-      move: op.move,
-    });
-    if (wrapped.isErr()) return wrapped;
-    const content = wrapped.value;
-    if (!takesOverMark || index < canonicalBlocks.length - 1) {
-      blocks.push({
-        ...paragraph,
-        content,
-        pPrMark: {
-          kind: markKind,
-          info: stampInfo(revision),
-          // After a final paragraph each new break is rejected into the
-          // paragraph before it, which ends up being the anchor, as the
-          // anchor's own new break is.
-          ...(takesOverMark ? { survivor: "first" as const } : {}),
-        },
-      });
-      continue;
-    }
-    // The anchor's former mark: its properties before are the anchor's.
-    const previous = location.paragraph.formatting;
-    const current = finalizeParagraphFormatting(paragraph.formatting);
-    blocks.push({
-      ...paragraph,
-      content,
-      ...(sameFormatting(previous, current)
-        ? {}
-        : {
-            propertyChanges: [
-              {
-                type: "paragraphPropertyChange",
-                info: stampInfo(revision),
-                ...(previous === undefined
-                  ? {}
-                  : { previousFormatting: previous }),
-              },
-            ],
-          }),
-    });
-  }
-  const anchorBlocks: Paragraph[] = takesOverMark
-    ? [
-        {
-          ...location.paragraph,
-          pPrMark: {
-            kind: markKind,
-            info: stampInfo(revision),
-            survivor: "first",
-          },
-        },
-      ]
-    : [];
-  // The anchor's own records are carried over and keep their ids; only the
-  // records this insertion creates take new ones.
-  const fresh = freshenIdentities({
-    before: takesOverMark ? [location.paragraph] : [],
-    after: [...anchorBlocks, ...blocks],
-    newIds: op.newIds ?? {},
+  const prepared = trackedParagraphReplacement({
+    op,
+    revision: op.revision,
+    source: location.paragraph,
+    anchor,
+    takesOverMark,
+    canonicalBlocks,
+    replacement,
     usedElsewhere: () => packageIdentityKeyIndex(document.package),
   });
-  switch (fresh.kind) {
-    case "needsIds":
-      return refuse(
-        DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
-        "Inserted paragraph review records need more revision ids.",
-      );
-    case "invalidId":
-      return refuse(
-        DOCUMENT_OP_REFUSAL_REASONS.INVALID_NEW_ID,
-        "An inserted review record has an invalid revision id.",
-      );
-    case "fresh": {
-      const [replacedAnchor, ...inserted] = takesOverMark
-        ? fresh.paragraphs
-        : [anchor, ...fresh.paragraphs];
-      const tracked = applyOps(document, [
-        replacement(inserted, replacedAnchor),
-      ]);
-      return tracked.isErr()
-        ? Result.err(
-            new DocumentOpRefusal({
-              reason: tracked.error.reason,
-              message: tracked.error.message,
-              opType: op.type,
-            }),
-          )
-        : Result.ok({ ...tracked.value, touched });
-    }
-    default: {
-      const unreachable: never = fresh;
-      return unreachable;
-    }
-  }
+  if (prepared.isErr()) return prepared;
+  const tracked = applyOps(document, [prepared.value]);
+  return tracked.isErr()
+    ? Result.err(
+        new DocumentOpRefusal({
+          reason: tracked.error.reason,
+          message: tracked.error.message,
+          opType: op.type,
+        }),
+      )
+    : Result.ok({ ...tracked.value, touched });
 };

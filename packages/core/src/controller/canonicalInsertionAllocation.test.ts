@@ -48,6 +48,7 @@ const setup = (
   ).unwrap();
   let state = EditorState.create({ doc: session.projection.doc });
   const executor = new CanonicalPublicOperations({
+    undoLimit: Number.POSITIVE_INFINITY,
     session,
     getState: () => state,
     publish: (commit) => {

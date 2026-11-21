@@ -389,10 +389,19 @@ const withoutBoundaryHolders = ({
       content.length === 0
     );
   };
+  // A container keeps its last paragraph: a holder that is the only one
+  // left stands as the paragraph the container ends with.
+  const paragraphs = (list: readonly unknown[]): number =>
+    list.filter(
+      (item) =>
+        typeof item === "object" &&
+        item !== null &&
+        Reflect.get(item, "type") === "paragraph",
+    ).length;
   const visit = (value: unknown): void => {
     if (Array.isArray(value)) {
       for (let index = value.length - 1; index >= 0; index -= 1)
-        if (value.length > 1 && goes(value[index])) value.splice(index, 1);
+        if (paragraphs(value) > 1 && goes(value[index])) value.splice(index, 1);
       for (const item of value) visit(item);
       return;
     }
@@ -430,7 +439,8 @@ const boundaryHolders = (
  * they alone keep, which `expected` no longer has, goes with them: it stands
  * only to hold them where they were, as an empty paragraph after a content
  * control the rejection of its last paragraph's added mark takes in would
- * otherwise go.
+ * otherwise go. One that is its container's last paragraph stays: a
+ * container always ends with a paragraph.
  */
 const expectRejectedTo = ({
   rejected,

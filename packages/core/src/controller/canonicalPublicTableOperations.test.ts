@@ -578,6 +578,7 @@ const viaCanonicalEngine = async ({
   const versionBefore = session.version;
   let publications = 0;
   const executor = new CanonicalPublicOperations({
+    undoLimit: Number.POSITIVE_INFINITY,
     session,
     getState: () => state,
     publish: (commit: CanonicalCommit) => {

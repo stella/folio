@@ -242,6 +242,7 @@ export const viaCanonicalEngine = async (
   let state = EditorState.create({ schema, doc: session.projection.doc });
   const executor = new CanonicalPublicOperations({
     session,
+    undoLimit: Number.POSITIVE_INFINITY,
     getState: () => state,
     publish: (commit: CanonicalCommit) => {
       const published = publishCanonicalProjection({ state, commit, session });

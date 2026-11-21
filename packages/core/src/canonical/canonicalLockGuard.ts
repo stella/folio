@@ -6,9 +6,13 @@ import {
   locksControl,
 } from "@stll/docx-core/model";
 import {
+  applyDocumentOps,
+  DOCUMENT_OP_TYPES,
+  type DocumentOp,
   documentStories,
   findStoryBody,
   type OpStory,
+  REVISION_DECISIONS,
 } from "@stll/docx-core/ops";
 
 import type { Document } from "../types/document";
@@ -166,17 +170,11 @@ const lockedIn = (document: Document) => {
 export const hasLockedControls = (document: Document): boolean =>
   lockedIn(document).size > 0;
 
-/**
- * What a change from `before` to `after` does to a locked content control,
- * judged on the result rather than the steps that produced it, so every path
- * into the session meets the same rule.
- */
-export const lockViolationBetween = (
-  before: Document,
+/** What `after` does to the locked controls `locked` lists, read as it stands. */
+const violationIn = (
+  locked: ReadonlyMap<string, Control>,
   after: Document,
 ): LockedControlViolation | null => {
-  const locked = lockedIn(before);
-  if (locked.size === 0 || before === after) return null;
   const now = controlsOf(after);
   for (const [key, { lock, signature }] of locked) {
     if (lock === undefined) continue;
@@ -191,4 +189,76 @@ export const lockViolationBetween = (
       return { lock, change: "editContent" };
   }
   return null;
+};
+
+/** The ids of the revision records in one story. */
+const revisionIdsIn = (document: Document, story: OpStory): Set<number> => {
+  const ids = new Set<number>();
+  const visit = (value: unknown): void => {
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item);
+      return;
+    }
+    if (typeof value !== "object" || value === null) return;
+    if (
+      "info" in value &&
+      typeof value.info === "object" &&
+      value.info !== null &&
+      "id" in value.info &&
+      typeof value.info.id === "number" &&
+      "author" in value.info
+    )
+      ids.add(value.info.id);
+    for (const child of Object.values(value)) visit(child);
+  };
+  visit(findStoryBody(document, story)?.content);
+  return ids;
+};
+
+/**
+ * `after` with the revisions it records and `before` does not accepted: what
+ * a tracked change does once it is taken. `undefined` when it records none,
+ * or when the resolution refuses one, which leaves the change judged as it
+ * stands.
+ */
+const acceptedNewRevisions = (
+  before: Document,
+  after: Document,
+): Document | undefined => {
+  const ops: DocumentOp[] = [];
+  for (const story of documentStories(after)) {
+    const earlier = revisionIdsIn(before, story);
+    const added = [...revisionIdsIn(after, story)].filter(
+      (id) => !earlier.has(id),
+    );
+    if (added.length > 0)
+      ops.push({
+        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+        story,
+        revisionIds: added,
+        decision: REVISION_DECISIONS.ACCEPT,
+      });
+  }
+  if (ops.length === 0) return undefined;
+  const accepted = applyDocumentOps(after, ops);
+  return accepted.isOk() ? accepted.value.document : undefined;
+};
+
+/**
+ * What a change from `before` to `after` does to a locked content control,
+ * judged on the result rather than the steps that produced it, so every path
+ * into the session meets the same rule. A tracked change is judged as it
+ * stands and once accepted: a pending deletion of a control's text edits it,
+ * and one of the control removes it, when accepted.
+ */
+export const lockViolationBetween = (
+  before: Document,
+  after: Document,
+): LockedControlViolation | null => {
+  const locked = lockedIn(before);
+  if (locked.size === 0 || before === after) return null;
+  const standing = violationIn(locked, after);
+  if (standing !== null) return standing;
+  const accepted = acceptedNewRevisions(before, after);
+  return accepted === undefined ? null : violationIn(locked, accepted);
 };

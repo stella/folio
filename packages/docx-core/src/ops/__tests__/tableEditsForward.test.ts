@@ -551,7 +551,7 @@ describe("independent table forward oracles", () => {
   );
 
   test(
-    "nonrectangular merge selections and row-emptying deletion refuse their exact reasons",
+    "nonrectangular merge selections refuse their exact reasons, and a deletion taking every cell removes the table",
     () => {
       // A fixture with no omissions cannot detect clipped-grid merges; asymmetric rows and active omissions close that gap.
       assertProperty(
@@ -610,19 +610,24 @@ describe("independent table forward oracles", () => {
               },
             ],
           };
-          refused(
-            documentOf(sparse),
-            {
-              ...address(id(0x100)),
-              type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
-              column: 1,
-            },
-            DOCUMENT_OP_REFUSAL_REASONS.TABLE_ROW_EMPTY,
-          );
+          // The column holds every cell the table has: removing it removes
+          // the table.
+          const emptied = applyDocumentOp(documentOf(sparse), {
+            ...address(id(0x100)),
+            type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
+            column: 1,
+          });
+          expect(
+            emptied
+              .unwrap()
+              .document.package.document.content.some(
+                (block) => block.type === "table",
+              ),
+          ).toBe(false);
         }),
         {
           numRuns: NUM_RUNS,
-          id: "nonrectangular merge selections and row-emptying deletion refuse their exact reasons",
+          id: "nonrectangular merge selections refuse their exact reasons, and a deletion taking every cell removes the table",
         },
       );
     },
