@@ -23,6 +23,7 @@ import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document, Paragraph, ParagraphContent } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
+import { parseNumbering } from "./numberingParser";
 import { parseParagraph } from "./paragraphParser";
 import { parseDocx } from "./parser";
 import { FOLIO_REVIEW_HISTORY_NAMESPACE } from "./reviewHistoryNamespace";
@@ -318,7 +319,21 @@ describe("a review saved midway", () => {
 describe("a version 1 change naming its kept markers", () => {
   const R =
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
-  const read = (version: number): Paragraph => {
+  const LIST_NUMBER = [
+    '<w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr>',
+    '<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText> LISTNUM </w:instrText></w:r>',
+    '<w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>(a)</w:t></w:r>',
+    '<w:r><w:fldChar w:fldCharType="end"/></w:r><w:r><w:tab/></w:r>',
+  ].join("");
+  const NUMBERING = parseNumbering(
+    [
+      `<w:numbering xmlns:w="${W}">`,
+      '<w:abstractNum w:abstractNumId="1"><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/></w:lvl></w:abstractNum>',
+      '<w:num w:numId="1"><w:abstractNumId w:val="1"/></w:num>',
+      "</w:numbering>",
+    ].join(""),
+  );
+  const read = (version: number, listNumber?: "listNumber"): Paragraph => {
     const joins = {
       before: 1,
       after: 0,
@@ -329,6 +344,7 @@ describe("a version 1 change naming its kept markers", () => {
     const root = parseXmlDocument(
       [
         `<w:p xmlns:w="${W}" xmlns:r="${R}" xmlns:folio="${FOLIO_REVIEW_HISTORY_NAMESPACE}">`,
+        listNumber === undefined ? "" : LIST_NUMBER,
         '<w:bookmarkEnd w:id="1"/>',
         `<w:ins w:id="3" w:author="A" w:date="2026-03-04T05:00:03Z" folio:resolutionJoins="${escapeXmlAttribute(JSON.stringify({ version, value: joins }))}">`,
         '<w:hyperlink r:id="rId9"><w:r><w:t>x</w:t></w:r></w:hyperlink></w:ins>',
@@ -336,8 +352,26 @@ describe("a version 1 change naming its kept markers", () => {
       ].join(""),
     ) as XmlElement | null;
     if (!root) throw new Error("The paragraph parses.");
-    return parseParagraph(root, null, null, null, null, null);
+    return parseParagraph(
+      root,
+      null,
+      null,
+      listNumber === undefined ? null : NUMBERING,
+      null,
+      null,
+    );
   };
+
+  test("marks them as standing in its cut in a paragraph whose marker shows a LISTNUM field", () => {
+    const numbered = read(1, "listNumber");
+    // The field and its tab fold into the marker.
+    expect(numbered.listRendering?.foldedMarkerSuffix).toBe("(a)");
+    expect(numbered.content.at(-2)).toEqual({
+      type: "bookmarkEnd",
+      id: 1,
+      keptCut: { depth: 1, keptFrom: KEPT_FROM, piece: "after" },
+    });
+  });
 
   test("marks them as standing in its cut, its side the piece", () => {
     expect(read(1).content.at(0)).toEqual({
