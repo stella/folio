@@ -1,3 +1,4 @@
+import { itemBefore } from "../utils/listItems";
 /**
  * Markdown escaping. Only characters that would change the parsed structure
  * get escaped. Context-sensitive: pipes only matter inside table cells.
@@ -109,7 +110,7 @@ export const inlineBreaksToHtml = (text: string): string =>
       // A lone backslash is a break's own syntax: text backslashes are escaped.
       if (line === "\\") return "";
       let end = line.length;
-      while (end > 0 && line.at(end - 1) === " ") end--;
+      while (end > 0 && itemBefore(line, end) === " ") end--;
       return line.slice(0, end);
     })
     .join("<br>");

@@ -4,6 +4,7 @@
  */
 
 import { childNodes, type InlineNode } from "./leaves";
+import { itemBefore } from "./listItems";
 
 /** `node` and its last (`end`) or first (`start`) child, theirs, and so on. */
 export const edgeChain = (
@@ -34,7 +35,7 @@ export const edgeChainPastRemoved = (
   index: number,
   edge: "start" | "end",
 ): InlineNode[] | undefined => {
-  const parent = index > 0 ? chain.at(index - 1) : undefined;
+  const parent = itemBefore(chain, index);
   const removed = chain.at(index);
   if (parent === undefined || removed === undefined) return undefined;
   const siblings = childNodes(parent) ?? [];

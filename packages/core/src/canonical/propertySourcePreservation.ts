@@ -11,6 +11,7 @@ import {
 } from "../docx/paragraphPropertySource";
 import type { BlockContent, Document, Paragraph } from "../types/document";
 import { canonicalJson } from "../utils/canonicalJson";
+import { itemBefore } from "../utils/listItems";
 import { changedWindow } from "./canonicalSeedContent";
 
 /**
@@ -100,7 +101,7 @@ const carriedCopies = (
   for (const [index, paragraph] of derivedParagraphs.entries()) {
     if (paragraph.paraId === undefined || originalById.has(paragraph.paraId))
       continue;
-    const before = derivedParagraphs.at(index - 1);
+    const before = itemBefore(derivedParagraphs, index);
     const source =
       index > 0 && before?.paraId !== undefined
         ? originalById.get(before.paraId)
