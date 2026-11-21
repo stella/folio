@@ -22,6 +22,7 @@ import { sourceDocumentOf } from "../ai-edits/snapshot";
 import { fromMarkdown } from "../markdown";
 import { expectFootnoteRefMarkAttrs } from "../prosemirror/attrs";
 import { createDocx, ensureParaIds } from "../server";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import type {
   Endnote,
   Footnote,
@@ -87,27 +88,6 @@ const buildDocx = async (
   ) as ArrayBuffer;
 };
 
-const OPTIONS = { author: "Compare", timestamp: "2026-09-27T00:00:00.000Z" };
-
-const resolved = async (redlined: ArrayBuffer, view: "accept" | "reject") => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(redlined);
-  if (view === "accept") reviewer.acceptAll();
-  else reviewer.rejectAll();
-  return await reviewer.toBuffer();
-};
-
-const changesBetween = async (left: ArrayBuffer, right: ArrayBuffer) => {
-  const result = await compareDocx(left, right, OPTIONS);
-  if (result.isErr()) throw result.error;
-  return result.value.changes;
-};
-
-/** Each block's text with where its references sit, which literal marker text does not have. */
-const referencesOf = async (docx: ArrayBuffer) =>
-  (await FolioDocxReviewer.fromBuffer(docx))
-    .getContent()
-    .map(({ text, structuralBoundaries }) => ({ text, structuralBoundaries }));
-
 const BASE: readonly (readonly Piece[])[] = [
   ["Opening terms", { footnote: 30 }, " apply."],
   ["The seller delivers", { footnote: 10 }, " the goods", { endnote: 7 }, "."],
@@ -115,215 +95,263 @@ const BASE: readonly (readonly Piece[])[] = [
   ["Either party may terminate", { footnote: 40 }, " on notice."],
 ];
 
-type ExactComparisonPair = { base: ArrayBuffer; revised: ArrayBuffer };
+const SESSIONS: readonly HeadlessReviewerSession[] = ["canonical", "legacy"];
 
-const expectExactComparison = async ({
-  base,
-  revised,
-}: ExactComparisonPair) => {
-  const compared = await compareDocx(base, revised, OPTIONS);
-  if (compared.isErr()) throw compared.error;
-  const { buffer, changes } = compared.value;
-  expect(changes.length).toBeGreaterThan(0);
-  // Accepting returns the revised document and rejecting the base, compared
-  // with references read as references.
-  expect(
-    await changesBetween(revised, await resolved(buffer, "accept")),
-  ).toEqual([]);
-  expect(await changesBetween(base, await resolved(buffer, "reject"))).toEqual(
-    [],
-  );
-  // A reference written back as literal `[^1]` or as its bare note id reads
-  // as text, not as a reference.
-  expect(await referencesOf(await resolved(buffer, "accept"))).toEqual(
-    await referencesOf(revised),
-  );
+/** The comparison and its readers, all on one session. */
+const sessionHelpers = (session: HeadlessReviewerSession) => {
+  const OPTIONS = {
+    author: "Compare",
+    timestamp: "2026-09-27T00:00:00.000Z",
+    session,
+  };
+
+  const resolved = async (redlined: ArrayBuffer, view: "accept" | "reject") => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(redlined, { session });
+    if (view === "accept") reviewer.acceptAll();
+    else reviewer.rejectAll();
+    return await reviewer.toBuffer();
+  };
+
+  const changesBetween = async (left: ArrayBuffer, right: ArrayBuffer) => {
+    const result = await compareDocx(left, right, OPTIONS);
+    if (result.isErr()) throw result.error;
+    return result.value.changes;
+  };
+
+  /** Each block's text with where its references sit, which literal marker text does not have. */
+  const referencesOf = async (docx: ArrayBuffer) =>
+    (await FolioDocxReviewer.fromBuffer(docx, { session }))
+      .getContent()
+      .map(({ text, structuralBoundaries }) => ({
+        text,
+        structuralBoundaries,
+      }));
+
+  type ExactComparisonPair = { base: ArrayBuffer; revised: ArrayBuffer };
+
+  const expectExactComparison = async ({
+    base,
+    revised,
+  }: ExactComparisonPair) => {
+    const compared = await compareDocx(base, revised, OPTIONS);
+    if (compared.isErr()) throw compared.error;
+    const { buffer, changes } = compared.value;
+    expect(changes.length).toBeGreaterThan(0);
+    // Accepting returns the revised document and rejecting the base, compared
+    // with references read as references.
+    expect(
+      await changesBetween(revised, await resolved(buffer, "accept")),
+    ).toEqual([]);
+    expect(
+      await changesBetween(base, await resolved(buffer, "reject")),
+    ).toEqual([]);
+    // A reference written back as literal `[^1]` or as its bare note id reads
+    // as text, not as a reference.
+    expect(await referencesOf(await resolved(buffer, "accept"))).toEqual(
+      await referencesOf(revised),
+    );
+  };
+
+  const expectExactRedline = async (
+    target: readonly (readonly Piece[])[],
+    targetNotes: Notes = NOTES,
+  ) =>
+    expectExactComparison({
+      base: await buildDocx(BASE),
+      revised: await buildDocx(target, targetNotes),
+    });
+
+  const importedOccurrenceIds = async (buffer: ArrayBuffer) => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(buffer, { session });
+    const ids: string[] = [];
+    sourceDocumentOf(reviewer.snapshot()).descendants((node) => {
+      const mark = node.marks.find(({ type }) => type.name === "footnoteRef");
+      if (mark) ids.push(expectFootnoteRefMarkAttrs(mark).occurrenceId);
+    });
+    return new Set(ids);
+  };
+  return {
+    OPTIONS,
+    expectExactComparison,
+    expectExactRedline,
+    importedOccurrenceIds,
+  };
 };
 
-const expectExactRedline = async (
-  target: readonly (readonly Piece[])[],
-  targetNotes: Notes = NOTES,
-) =>
-  expectExactComparison({
-    base: await buildDocx(BASE),
-    revised: await buildDocx(target, targetNotes),
+describe.each(SESSIONS)("%s session", (session) => {
+  const {
+    OPTIONS,
+    expectExactComparison,
+    expectExactRedline,
+    importedOccurrenceIds,
+  } = sessionHelpers(session);
+
+  describe("comparing documents whose note references move", () => {
+    test("a moved paragraph carries its references", async () => {
+      await expectExactRedline([BASE[0]!, BASE[2]!, BASE[3]!, BASE[1]!]);
+    });
+
+    test("a copied paragraph repeats its references, and a removed one renumbers the rest", async () => {
+      await expectExactRedline([
+        ["A new clause cites", { footnote: 20 }, " again."],
+        BASE[0]!,
+        BASE[2]!,
+        ["Either party may terminate", { footnote: 40 }, " on written notice."],
+      ]);
+    });
+
+    test("a split paragraph and a merged one keep their references", async () => {
+      await expectExactRedline([
+        [
+          "Opening terms",
+          { footnote: 30 },
+          " apply. The seller delivers",
+          { footnote: 10 },
+          " the goods",
+          { endnote: 7 },
+          ".",
+        ],
+        ["Payment falls due", { footnote: 20 }, " on delivery."],
+        ["Within thirty days of it."],
+        BASE[3]!,
+      ]);
+    });
+
+    test("a paragraph the revision adds cites a note the base already has", async () => {
+      await expectExactRedline([
+        BASE[0]!,
+        BASE[1]!,
+        ["A new schedule, see", { endnote: 7 }, " and", { footnote: 30 }, "."],
+        BASE[2]!,
+        BASE[3]!,
+      ]);
+    });
   });
 
-const importedOccurrenceIds = async (buffer: ArrayBuffer) => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
-  const ids: string[] = [];
-  sourceDocumentOf(reviewer.snapshot()).descendants((node) => {
-    const mark = node.marks.find(({ type }) => type.name === "footnoteRef");
-    if (mark) ids.push(expectFootnoteRefMarkAttrs(mark).occurrenceId);
-  });
-  return new Set(ids);
-};
-
-describe("comparing documents whose note references move", () => {
-  test("a moved paragraph carries its references", async () => {
-    await expectExactRedline([BASE[0]!, BASE[2]!, BASE[3]!, BASE[1]!]);
-  });
-
-  test("a copied paragraph repeats its references, and a removed one renumbers the rest", async () => {
-    await expectExactRedline([
-      ["A new clause cites", { footnote: 20 }, " again."],
-      BASE[0]!,
-      BASE[2]!,
-      ["Either party may terminate", { footnote: 40 }, " on written notice."],
-    ]);
-  });
-
-  test("a split paragraph and a merged one keep their references", async () => {
-    await expectExactRedline([
-      [
-        "Opening terms",
-        { footnote: 30 },
-        " apply. The seller delivers",
-        { footnote: 10 },
-        " the goods",
-        { endnote: 7 },
-        ".",
-      ],
-      ["Payment falls due", { footnote: 20 }, " on delivery."],
-      ["Within thirty days of it."],
-      BASE[3]!,
-    ]);
-  });
-
-  test("a paragraph the revision adds cites a note the base already has", async () => {
-    await expectExactRedline([
-      BASE[0]!,
-      BASE[1]!,
-      ["A new schedule, see", { endnote: 7 }, " and", { footnote: 30 }, "."],
-      BASE[2]!,
-      BASE[3]!,
-    ]);
-  });
-});
-
-describe("comparing documents whose kept paragraphs gain or lose note references", () => {
-  test(
-    "restored references get result-owned identities across document-local import collisions",
-    async () => {
-      await assertProperty(
-        fc.asyncProperty(
-          fc.integer({ min: 0, max: BASE.length - 1 }),
-          fc.array(
-            fc.oneof(
-              fc
-                .constantFrom(...FOOTNOTE_IDS)
-                .map((footnote) => ({ footnote })),
-              fc.constantFrom(...ENDNOTE_IDS).map((endnote) => ({ endnote })),
+  describe("comparing documents whose kept paragraphs gain or lose note references", () => {
+    test(
+      "restored references get result-owned identities across document-local import collisions",
+      async () => {
+        await assertProperty(
+          fc.asyncProperty(
+            fc.integer({ min: 0, max: BASE.length - 1 }),
+            fc.array(
+              fc.oneof(
+                fc
+                  .constantFrom(...FOOTNOTE_IDS)
+                  .map((footnote) => ({ footnote })),
+                fc.constantFrom(...ENDNOTE_IDS).map((endnote) => ({ endnote })),
+              ),
+              { minLength: 1, maxLength: 3 },
             ),
-            { minLength: 1, maxLength: 3 },
+            async (blockIndex, references) => {
+              // Each independently imported document starts in the same local identity
+              // namespace. Vary which kept paragraph gains both kinds and repeated IDs.
+              const target = BASE.map((pieces, index) =>
+                index === blockIndex
+                  ? [
+                      ...pieces,
+                      " Additional references",
+                      ...references.flatMap((ref) => [" ", ref]),
+                    ]
+                  : pieces,
+              );
+              const base = await buildDocx(BASE);
+              const revised = await buildDocx(target);
+              const baseIds = await importedOccurrenceIds(base);
+              const targetIds = await importedOccurrenceIds(revised);
+              expect([...baseIds].some((id) => targetIds.has(id))).toBe(true);
+              await expectExactComparison({ base, revised });
+            },
           ),
-          async (blockIndex, references) => {
-            // Each independently imported document starts in the same local identity
-            // namespace. Vary which kept paragraph gains both kinds and repeated IDs.
-            const target = BASE.map((pieces, index) =>
-              index === blockIndex
-                ? [
-                    ...pieces,
-                    " Additional references",
-                    ...references.flatMap((ref) => [" ", ref]),
-                  ]
-                : pieces,
-            );
-            const base = await buildDocx(BASE);
-            const revised = await buildDocx(target);
-            const baseIds = await importedOccurrenceIds(base);
-            const targetIds = await importedOccurrenceIds(revised);
-            expect([...baseIds].some((id) => targetIds.has(id))).toBe(true);
-            await expectExactComparison({ base, revised });
+          {
+            numRuns: 20,
+            id: "restored references get result-owned identities across document-local import collisions",
           },
-        ),
-        {
-          numRuns: 20,
-          id: "restored references get result-owned identities across document-local import collisions",
-        },
-      );
-    },
-    propertyTestTimeout(30_000),
-  );
+        );
+      },
+      propertyTestTimeout(30_000),
+    );
 
-  test("a kept paragraph gains a footnote reference", async () => {
-    await expectExactRedline([
-      BASE[0]!,
-      BASE[1]!,
-      [
-        "Payment falls due",
-        { footnote: 20 },
-        " within thirty days",
-        { footnote: 30 },
-        ".",
-      ],
-      BASE[3]!,
-    ]);
-  });
-
-  test("a kept paragraph loses an endnote reference", async () => {
-    await expectExactRedline([
-      BASE[0]!,
-      ["The seller delivers", { footnote: 10 }, " the goods."],
-      BASE[2]!,
-      BASE[3]!,
-    ]);
-  });
-
-  test("one kept paragraph loses a reference and gains another", async () => {
-    await expectExactRedline([
-      BASE[0]!,
-      [
-        "The seller delivers the goods",
-        { endnote: 7 },
-        " and",
-        { footnote: 40 },
-        ".",
-      ],
-      BASE[2]!,
-      BASE[3]!,
-    ]);
-  });
-
-  test("a kept paragraph loses a reference and its words together", async () => {
-    await expectExactRedline([
-      ["Opening terms apply."],
-      BASE[1]!,
-      ["Payment falls due."],
-      BASE[3]!,
-    ]);
-  });
-
-  // The note part cannot yet take a note the base does not have (the save
-  // patches existing notes only), so the reference is refused by name rather
-  // than written as a reference to nothing, or as marker text that reads like
-  // one, even when an unverified redline is asked for.
-  test("a reference to a note only the revised document has is refused by name", async () => {
-    const base = await buildDocx(BASE);
-    const revised = await buildDocx(
-      [
+    test("a kept paragraph gains a footnote reference", async () => {
+      await expectExactRedline([
         BASE[0]!,
         BASE[1]!,
         [
           "Payment falls due",
           { footnote: 20 },
           " within thirty days",
-          { footnote: 50 },
+          { footnote: 30 },
           ".",
         ],
         BASE[3]!,
-      ],
-      { footnotes: [...FOOTNOTE_IDS, 50], endnotes: ENDNOTE_IDS },
-    );
-    for (const onUnverified of ["refuse", "emit"] as const) {
-      const compared = await compareDocx(base, revised, {
-        ...OPTIONS,
-        onUnverified,
-      });
-      if (compared.isOk())
-        throw new Error("the comparison wrote a reference to a missing note");
-      expect(compared.error._tag).toBe("CompareDocxRoundTripError");
-      expect(compared.error.message).toContain(MISSING_NOTE_DETAIL);
-    }
+      ]);
+    });
+
+    test("a kept paragraph loses an endnote reference", async () => {
+      await expectExactRedline([
+        BASE[0]!,
+        ["The seller delivers", { footnote: 10 }, " the goods."],
+        BASE[2]!,
+        BASE[3]!,
+      ]);
+    });
+
+    test("one kept paragraph loses a reference and gains another", async () => {
+      await expectExactRedline([
+        BASE[0]!,
+        [
+          "The seller delivers the goods",
+          { endnote: 7 },
+          " and",
+          { footnote: 40 },
+          ".",
+        ],
+        BASE[2]!,
+        BASE[3]!,
+      ]);
+    });
+
+    test("a kept paragraph loses a reference and its words together", async () => {
+      await expectExactRedline([
+        ["Opening terms apply."],
+        BASE[1]!,
+        ["Payment falls due."],
+        BASE[3]!,
+      ]);
+    });
+
+    // The note part cannot yet take a note the base does not have (the save
+    // patches existing notes only), so the reference is refused by name rather
+    // than written as a reference to nothing, or as marker text that reads like
+    // one, even when an unverified redline is asked for.
+    test("a reference to a note only the revised document has is refused by name", async () => {
+      const base = await buildDocx(BASE);
+      const revised = await buildDocx(
+        [
+          BASE[0]!,
+          BASE[1]!,
+          [
+            "Payment falls due",
+            { footnote: 20 },
+            " within thirty days",
+            { footnote: 50 },
+            ".",
+          ],
+          BASE[3]!,
+        ],
+        { footnotes: [...FOOTNOTE_IDS, 50], endnotes: ENDNOTE_IDS },
+      );
+      for (const onUnverified of ["refuse", "emit"] as const) {
+        const compared = await compareDocx(base, revised, {
+          ...OPTIONS,
+          onUnverified,
+        });
+        if (compared.isOk())
+          throw new Error("the comparison wrote a reference to a missing note");
+        expect(compared.error._tag).toBe("CompareDocxRoundTripError");
+        expect(compared.error.message).toContain(MISSING_NOTE_DETAIL);
+      }
+    });
   });
 });

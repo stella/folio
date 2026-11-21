@@ -172,6 +172,19 @@ export const cutsIntoNoteReference = (
       ),
   );
 
+/** Whether clean text `[start, end)` ends with a whole reference's marker. */
+export const endsWithNoteReference = (
+  { structuralBoundaries }: StructuralBoundaries,
+  start: number,
+  end: number,
+): boolean =>
+  structuralBoundaries.some(
+    (boundary) =>
+      boundary.type === "noteReference" &&
+      boundary.offset >= start &&
+      boundary.offset + boundary.length === end,
+  );
+
 let comparisonEditsNoteReferences = false;
 
 /**
