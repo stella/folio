@@ -104,12 +104,17 @@ export const noteUsesCustomMark = (
     ),
   );
 
+export const noteReferenceKey = (kind: NoteStory["kind"], id: number) =>
+  `${kind}:${String(id)}`;
+
 /** The notes one paragraph references. */
 const paragraphNoteKeys = (paragraph: Paragraph): readonly string[] => {
   const keys: string[] = [];
   for (const { node } of noteReferenceSpans(paragraph.content)) {
-    if (node.type === "footnoteRef") keys.push(`footnote:${String(node.id)}`);
-    if (node.type === "endnoteRef") keys.push(`endnote:${String(node.id)}`);
+    if (node.type === "footnoteRef")
+      keys.push(noteReferenceKey("footnote", node.id));
+    if (node.type === "endnoteRef")
+      keys.push(noteReferenceKey("endnote", node.id));
   }
   return keys;
 };
