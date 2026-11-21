@@ -589,7 +589,7 @@ describe("insertions at a gap where a record was cut", () => {
   });
 });
 
-describe("a direct deletion and a direct insertion cutting an identified record", () => {
+describe("concurrent edits meeting an identified record", () => {
   // "Pa" is a tracked deletion: inserting between "P" and "a" cuts it, its
   // second half taking the insertion's new id.
   const document: Document = {
@@ -642,6 +642,39 @@ describe("a direct deletion and a direct insertion cutting an identified record"
         expect(result.isErr()).toBe(true);
         if (result.isErr()) expect(result.error.message).toBe(message);
       }
+    }
+  });
+
+  test("two insertions of one identified record refuse in either order", () => {
+    const record = (offset: number) =>
+      ({
+        type: "insertContent",
+        at: { ...at(offset), zeroWidthBefore: 0 },
+        slice: {
+          content: [
+            {
+              type: "insertion",
+              info: { id: 7, author: "Actor", date: "2026-01-01T00:00:00Z" },
+              content: [
+                { type: "run", content: [{ type: "text", text: "y" }] },
+              ],
+            },
+          ],
+          openStart: 0,
+          openEnd: 0,
+        },
+      }) as const satisfies DocumentOp;
+    for (const [first, second] of [
+      [record(2), record(2)],
+      [record(2), record(4)],
+      [record(4), record(2)],
+    ] as const) {
+      const result = inOrder(first, second);
+      expect(result.isErr()).toBe(true);
+      if (result.isErr())
+        expect(result.error.message).toBe(
+          "Concurrent insertions of one identified record conflict.",
+        );
     }
   });
 

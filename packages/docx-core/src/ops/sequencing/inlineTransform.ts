@@ -24,6 +24,7 @@
  */
 import { Result } from "better-result";
 
+import { identityKeysIn } from "../ids";
 import {
   type DeleteRangeOp,
   DOCUMENT_OP_TYPES,
@@ -297,6 +298,18 @@ const pointOverInsertion = (
     op.at.offset === over.at.offset &&
     compareGapsAtOffset(op.at, over.at) === 0;
   const seam = isSeamJoin(op);
+  // Two insertions putting in one identified record (an inverse and a redo
+  // of one removal) leave the record twice, or once under a fresh id taken
+  // by whichever applies second.
+  if (op.type === DOCUMENT_OP_TYPES.INSERT_CONTENT) {
+    const inserted = new Set(identityKeysIn(over.slice.content));
+    if (identityKeysIn(op.slice.content).some((key) => inserted.has(key)))
+      return refusal(
+        op,
+        over,
+        "Concurrent insertions of one identified record conflict.",
+      );
+  }
   // Text inheriting the run beside it, at the offset of content inserted
   // concurrently, takes other formatting and another place in the two orders.
   if (op.type === DOCUMENT_OP_TYPES.INSERT_TEXT && sameOffset(op.at, over.at))

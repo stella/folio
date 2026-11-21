@@ -95,7 +95,7 @@
     {
       "seed": 568966595,
       "path": "2:5:4:4:3:3:10:10:10:11:16:13:13:22:22:25:25:26:25:25:10:1:6:7:7:7:7:7:7:7:7:7:7:7:7:12:12:18:16:16:16:18:16:16:16:16:16:18:20:21:20:5:12:14:14:14:14:14:15:15:15:15:15",
-      "note": "An undo restoring a paragraph meets a concurrent insertion at its span's edge, where the restoration moves a deletion across that edge: a span conflict",
+      "note": "A pending undo rebased over its dropped batch's inverse inserts the same tracked insertion as that inverse: the two insertions conflict",
       "date": "2026-11-21"
     },
     {
