@@ -123,6 +123,13 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
    */
   readonly PENDING_BREAK_TAKEOVER: "pendingBreakTakeover";
   /**
+   * A tracked insertion after a container's final paragraph would take over
+   * that paragraph's mark while the mark is itself under review (inserted,
+   * deleted or moving): the container's new final paragraph keeps no record
+   * a pending change moves to it.
+   */
+  readonly PENDING_PARAGRAPH_MARK: "pendingParagraphMark";
+  /**
    * A tracked column insertion in a table whose columns already carry a
    * pending change. A table records one previous grid (`w:tblGridChange`), so
    * a second insertion could not be rejected alone: the columns of one change
@@ -262,6 +269,13 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
    */
   PENDING_BREAK_TAKEOVER: "pendingBreakTakeover",
   /**
+   * A tracked insertion after a container's final paragraph would take over
+   * that paragraph's mark while the mark is itself under review (inserted,
+   * deleted or moving): the container's new final paragraph keeps no record
+   * a pending change moves to it.
+   */
+  PENDING_PARAGRAPH_MARK: "pendingParagraphMark",
+  /**
    * A suggested link change would leave a piece of a link holding only
    * bookmark or comment markers, or would copy content that names a record of
    * its own (preserved run markup, a marker inside a copied text box, or a
@@ -283,6 +297,72 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
 /** One of {@link DOCUMENT_OP_REFUSAL_REASONS}. */
 export type DocumentOpRefusalReason =
   (typeof DOCUMENT_OP_REFUSAL_REASONS)[keyof typeof DOCUMENT_OP_REFUSAL_REASONS];
+
+/** Which operations a refusal reason can refuse. */
+export const REFUSAL_SCOPES: Readonly<{
+  /** Any operation, direct or tracked. */
+  readonly ANY: "any";
+  /**
+   * Only a tracked one: a pending review record, or the tracked change
+   * itself, cannot take the edit, which applied directly may stand.
+   */
+  readonly TRACKED: "tracked";
+}> = Object.freeze({ ANY: "any", TRACKED: "tracked" } as const);
+
+/** One of {@link REFUSAL_SCOPES}. */
+export type RefusalScope = (typeof REFUSAL_SCOPES)[keyof typeof REFUSAL_SCOPES];
+
+const { ANY, TRACKED } = REFUSAL_SCOPES;
+
+/** The scope of every refusal reason. */
+export const DOCUMENT_OP_REFUSAL_SCOPES: Readonly<
+  Record<DocumentOpRefusalReason, RefusalScope>
+> = Object.freeze({
+  unsupportedSchema: ANY,
+  blockNotFound: ANY,
+  invalidOperation: ANY,
+  noChange: ANY,
+  dependentRecords: ANY,
+  invalidOffset: ANY,
+  crossBlockRange: ANY,
+  splitsSurrogatePair: ANY,
+  invalidText: ANY,
+  invalidBlockId: ANY,
+  idCollision: ANY,
+  notAdjacent: ANY,
+  sectionBoundary: ANY,
+  insideTrackedDeletion: ANY,
+  needsNewIds: ANY,
+  invalidNewId: ANY,
+  sharedId: ANY,
+  stale: ANY,
+  structureMismatch: ANY,
+  emptyContent: ANY,
+  emptyBlockList: ANY,
+  revisionConflict: TRACKED,
+  pendingRunPropertyChange: TRACKED,
+  pendingParagraphPropertyChange: TRACKED,
+  joinIntoPendingTable: TRACKED,
+  containerFinalMark: ANY,
+  insideInlineControl: ANY,
+  untrackable: TRACKED,
+  pendingBreakTakeover: TRACKED,
+  pendingParagraphMark: TRACKED,
+  unrecordableLinkSuggestion: TRACKED,
+  missingBlockId: ANY,
+  duplicateBlockId: ANY,
+  duplicateRecordId: ANY,
+  sectionsOutOfStep: ANY,
+  emptyRecord: ANY,
+} as const satisfies Record<DocumentOpRefusalReason, RefusalScope>);
+
+/** The reasons only a tracked operation is refused for. */
+export const TRACKED_REFUSAL_REASONS: readonly DocumentOpRefusalReason[] =
+  Object.freeze(
+    Object.values(DOCUMENT_OP_REFUSAL_REASONS).filter(
+      (reason) => DOCUMENT_OP_REFUSAL_SCOPES[reason] === TRACKED,
+    ),
+  );
 
 /** An operation the document cannot take as stated. */
 export class DocumentOpRefusal extends DocumentOpRefusalBase<{

@@ -451,6 +451,7 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
     readonly INSIDE_INLINE_CONTROL: "insideInlineControl";
     readonly UNTRACKABLE: "untrackable";
     readonly PENDING_BREAK_TAKEOVER: "pendingBreakTakeover";
+    readonly PENDING_PARAGRAPH_MARK: "pendingParagraphMark";
     readonly PENDING_GRID_CHANGE: "pendingGridChange";
     readonly UNRECORDABLE_LINK_SUGGESTION: "unrecordableLinkSuggestion";
     readonly MISSING_BLOCK_ID: "missingBlockId";
