@@ -95,3 +95,61 @@ for (const decision of Object.values(REVISION_DECISIONS)) {
     },
   );
 }
+
+test("rejecting a reference's deletion rejects the note deletions made with it", () => {
+  const stamp = { author: "Reviewer", date: "2026-01-01T00:00:00Z" };
+  const deleted = (id: number, info: { author: string; date: string }) => ({
+    type: "deletion" as const,
+    info: { id, ...info },
+    content: [text],
+  });
+  const document: Document = {
+    package: {
+      document: {
+        content: [
+          paragraph(11, [
+            text,
+            {
+              type: "deletion",
+              info: { id: 500, ...stamp },
+              content: [noteRef("footnoteRef", 1)],
+            },
+          ]),
+        ],
+      },
+      footnotes: [
+        {
+          type: "footnote",
+          id: 1,
+          content: [
+            {
+              ...paragraph(101, [
+                deleted(501, stamp),
+                deleted(502, { author: "Other", date: "2025-06-01T00:00:00Z" }),
+              ]),
+              pPrMark: { kind: "del", info: { id: 503, ...stamp } },
+            },
+          ],
+        },
+      ],
+    },
+  };
+  const edit = applyDocumentOp(document, {
+    type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+    story: OP_STORIES.MAIN,
+    revisionIds: [500],
+    decision: REVISION_DECISIONS.REJECT,
+  }).unwrap();
+  const note = edit.document.package.footnotes?.at(0)?.content.at(0);
+  if (note?.type !== "paragraph") throw new Error("Missing note paragraph");
+  expect(note.pPrMark).toBeUndefined();
+  // The other author's deletion is a change of its own and stays pending.
+  expect(
+    note.content.map((node) =>
+      node.type === "deletion" ? node.info.id : node.type,
+    ),
+  ).toEqual(["run", 502]);
+  expect(
+    applyDocumentOps(edit.document, edit.inverse).unwrap().document,
+  ).toEqual(document);
+});

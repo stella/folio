@@ -84,6 +84,7 @@ import { replaceNoteParts } from "./noteLifecycle";
 import {
   automaticNoteMarkRuns,
   noteReferenceKey,
+  type NoteReferenceSpan,
   noteReferenceSpans,
   referencedNoteKeys,
 } from "./noteMarks";
@@ -116,13 +117,16 @@ import {
   type TrackedWrapper,
   withMarkFormatting,
 } from "./review";
+import { isOwnRecord, type RevisionOwner } from "./revisionOwner";
 import { runsMergeable } from "./runMerge";
 import { resolveSectionChange, sectionResolutionPatch } from "./sectionReview";
 import { identitySlots, withInlineIdentity } from "./slots";
+import { findStoryBody } from "./stories";
 import { sectionEnds, storyLifecycleTouched } from "./storyLifecycle";
 import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
+  type NoteStory,
   OP_STORIES,
   type OpStory,
   type ParagraphReviewFields,
@@ -211,15 +215,61 @@ type RemovedNoteReferencesOptions = {
   ids: ReadonlySet<number>;
 };
 
-/** Note bodies whose selected reference revision is removed by this decision. */
-const removedNoteReferences = ({
+/** A note whose reference's deletion a rejection restores, and who deleted it when. */
+type RestoredNoteReference = {
+  story: NoteStory;
+  owner: RevisionOwner;
+  date: string | undefined;
+};
+
+type NoteReferenceDecisions = {
+  /** Note bodies whose selected reference revision is removed by this decision. */
+  removed: NoteReference[];
+  /**
+   * Notes whose every reference in the story is pending deletion and whose
+   * deletion this rejection selects: deleting a reference while tracking
+   * changes deletes its note's text too, so the reference coming back brings
+   * that text back.
+   */
+  restored: Map<string, RestoredNoteReference>;
+};
+
+const noteReferenceKind = (
+  node: NoteReferenceSpan["node"],
+): NoteStory["kind"] => (node.type === "footnoteRef" ? "footnote" : "endnote");
+
+/** What the decision does to the notes the story refers to, in one scan. */
+const noteReferenceDecisions = ({
   paragraphs,
   decision,
   ids,
-}: RemovedNoteReferencesOptions): NoteReference[] => {
+}: RemovedNoteReferencesOptions): NoteReferenceDecisions => {
   const references = new Map<string, NoteReference>();
+  const restored = new Map<string, RestoredNoteReference>();
+  const live = new Set<string>();
   for (const { paragraph } of paragraphs) {
     for (const { node, ancestors } of noteReferenceSpans(paragraph.content)) {
+      const kind = noteReferenceKind(node);
+      const key = noteReferenceKey(kind, node.id);
+      const deletion = ancestors.find(
+        (ancestor) => ancestor.type === "deletion",
+      );
+      if (deletion === undefined) live.add(key);
+      else if (
+        decision === REVISION_DECISIONS.REJECT &&
+        isTrackedWrapper(deletion) &&
+        ids.has(deletion.info.id)
+      )
+        restored.set(key, {
+          story: { kind, id: node.id },
+          owner: {
+            author: deletion.info.author,
+            ...(deletion.info.suggestionId === undefined
+              ? {}
+              : { suggestionId: deletion.info.suggestionId }),
+          },
+          date: deletion.info.date,
+        });
       const revision = ancestors.find(
         (ancestor) =>
           isTrackedWrapper(ancestor) &&
@@ -227,15 +277,65 @@ const removedNoteReferences = ({
           removesContent(ancestor, decision),
       );
       if (revision === undefined || !isTrackedWrapper(revision)) continue;
-      const reference = {
-        kind: node.type === "footnoteRef" ? "footnote" : "endnote",
+      references.set(key, {
+        kind,
         id: node.id,
         added: isAddedRevision(revision),
-      } as const;
-      references.set(noteReferenceKey(reference.kind, reference.id), reference);
+      });
     }
   }
-  return [...references.values()];
+  for (const key of live) restored.delete(key);
+  return { removed: [...references.values()], restored };
+};
+
+/** The notes a story refers to through a reference no deletion holds. */
+const liveNoteReferenceKeys = (
+  paragraphs: readonly ParagraphLocation[],
+): Set<string> => {
+  const live = new Set<string>();
+  for (const { paragraph } of paragraphs) {
+    for (const { node, ancestors } of noteReferenceSpans(paragraph.content)) {
+      if (!ancestors.some((ancestor) => ancestor.type === "deletion"))
+        live.add(noteReferenceKey(noteReferenceKind(node), node.id));
+    }
+  }
+  return live;
+};
+
+/**
+ * The revisions that deleted a note along with its reference: its text and
+ * its paragraph marks, deleted by the reference deletion's owner at its
+ * date. A deletion in the note made some other time is a change of its own,
+ * which resolving the reference leaves alone.
+ */
+const noteDeletionRevisionIds = (
+  body: DocumentBody,
+  { owner, date }: RestoredNoteReference,
+): number[] => {
+  const ids = new Set<number>();
+  const visit = (nodes: readonly InlineNode[]): void => {
+    for (const node of nodes) {
+      if (
+        node.type === "deletion" &&
+        isTrackedWrapper(node) &&
+        isOwnRecord(node.info, owner) &&
+        node.info.date === date
+      )
+        ids.add(node.info.id);
+      visit(childNodes(node) ?? []);
+    }
+  };
+  for (const { paragraph } of storyParagraphs(body)) {
+    const mark = paragraph.pPrMark;
+    if (
+      mark?.kind === "del" &&
+      isOwnRecord(mark.info, owner) &&
+      mark.info.date === date
+    )
+      ids.add(mark.info.id);
+    visit(paragraph.content);
+  }
+  return [...ids];
 };
 
 /** Check every removed reference against the same post-resolution document. */
@@ -5175,10 +5275,10 @@ const planSingleRecordResolution = (
     });
   }
   let resolution = createResolution(ids, op.decision);
-  const rejectedNoteReferences =
+  const rejectedNoteReferences: NoteReferenceDecisions =
     op.decision === REVISION_DECISIONS.REJECT
-      ? removedNoteReferences({ paragraphs, decision: op.decision, ids })
-      : [];
+      ? noteReferenceDecisions({ paragraphs, decision: op.decision, ids })
+      : { removed: [], restored: new Map() };
   const reachable = new Set([
     ...paragraphs.flatMap(({ paragraph }) => [...reachableIds(paragraph)]),
     ...reachableRowIds(document, op.story),
@@ -5390,8 +5490,9 @@ const planSingleRecordResolution = (
   }
   const noteReferences =
     op.decision === REVISION_DECISIONS.ACCEPT
-      ? removedNoteReferences({ paragraphs, decision: op.decision, ids })
-      : rejectedNoteReferences;
+      ? noteReferenceDecisions({ paragraphs, decision: op.decision, ids })
+          .removed
+      : rejectedNoteReferences.removed;
   // Boundaries kept from removed content can leave a range ending before it starts.
   const normalizedRangeContents = wellFormedRanges({
     contents: resolvedContents,
@@ -5739,6 +5840,30 @@ const planSingleRecordResolution = (
     if (removed.isErr()) return Result.err(removed.error);
     record(removed.value);
     current = removed.value.document;
+  }
+  // A note whose reference is back gets back the text deleted with it.
+  if (rejectedNoteReferences.restored.size > 0) {
+    const liveAfter = liveNoteReferenceKeys(
+      storyParagraphs(storyBody(current, op.story)),
+    );
+    for (const [key, reference] of rejectedNoteReferences.restored) {
+      if (!liveAfter.has(key)) continue;
+      const noteBody = findStoryBody(current, reference.story);
+      if (noteBody === undefined) continue;
+      const revisionIds = noteDeletionRevisionIds(noteBody, reference);
+      if (revisionIds.length === 0) continue;
+      const restored = applyOps(current, [
+        {
+          type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+          story: reference.story,
+          revisionIds,
+          decision: REVISION_DECISIONS.REJECT,
+        },
+      ]);
+      if (restored.isErr()) return Result.err(restored.error);
+      record(restored.value);
+      current = restored.value.document;
+    }
   }
   const exhausted = (document.package.document.comments ?? []).filter(
     ({ id, parentId }) =>
