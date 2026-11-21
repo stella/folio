@@ -266,6 +266,13 @@ export type EditorIntent =
       blockIds: readonly string[];
       /** A suggestion records the paragraphs as a move's source. */
       move?: true;
+      /**
+       * Tracked, what the deletion does with the paragraphs a pending join
+       * runs into the first one (`paragraphsJoinedInto`), read as the
+       * document stands when it compiles: `deleted`, they go with it, as the
+       * joined paragraph they make carries its id.
+       */
+      joinedWords?: "deleted";
     }
   | {
       type: "replaceFragment";
@@ -1598,6 +1605,35 @@ const replacementPreservesOutsideContent = ({
  * paragraph that follows them, or, when they end their container, in the
  * final paragraph that stays, where its predecessor's content ends.
  */
+/**
+ * The paragraphs right before `at` in its block list whose marks are pending
+ * deletion, first to last: a pending join runs their words into `at`, which
+ * ends it with its own mark. None when `at`'s own mark is pending deletion
+ * too, since the join then runs on past it.
+ */
+const paragraphsJoinedInto = (
+  document: Document,
+  at: { story: OpStory; blockId: string },
+): string[] => {
+  const body = storyBody(document, at.story);
+  const located = findStoryParagraph(body, at.blockId);
+  if (located === undefined || located.paragraph.pPrMark?.kind === "del")
+    return [];
+  const list = blockListAt(body.content, located.list);
+  const joined: string[] = [];
+  for (let index = located.index - 1; index >= 0; index -= 1) {
+    const block = list[index];
+    if (
+      block?.type !== "paragraph" ||
+      block.pPrMark?.kind !== "del" ||
+      block.paraId === undefined
+    )
+      break;
+    joined.push(block.paraId);
+  }
+  return joined.toReversed();
+};
+
 const directDeletionCaret = (
   document: Document,
   { story, blockIds }: { story: OpStory; blockIds: readonly string[] },
@@ -2767,12 +2803,19 @@ const compileInStory = (
             opType: DOCUMENT_OP_TYPES.DELETE_BLOCKS,
           }),
         );
+      const joined =
+        intent.joinedWords === "deleted" && mode.type !== "editing"
+          ? paragraphsJoinedInto(document, {
+              story: intent.story,
+              blockId: first,
+            })
+          : [];
       return Result.ok({
         ops: [
           {
             type: DOCUMENT_OP_TYPES.DELETE_BLOCKS,
             story: intent.story,
-            blockIds: intent.blockIds,
+            blockIds: [...joined, ...intent.blockIds],
             ...tracked,
             ...(mode.type === "suggesting" && intent.move === true
               ? { move: true as const }
