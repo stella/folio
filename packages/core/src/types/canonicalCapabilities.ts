@@ -20,7 +20,6 @@ export const CANONICAL_GAP = {
   publicComments: "publicOps.comments",
   publicUnsupportedInline: "publicOps.unsupportedInline",
   commentReplacementAlignment: "comment-replacement-alignment",
-  publicTableStructure: "publicOps.tableStructure",
   publicHeadlessSession: "publicOps.headlessSession",
 } as const;
 
@@ -221,13 +220,6 @@ export const CANONICAL_CAPABILITIES: {
     readonly adapters: readonly ["react", "vue"];
     readonly summary: "Unsupported public payloads refuse with a typed compiler capability gap.";
   };
-  readonly "publicOps.tableStructure": {
-    readonly owner: "document-operations";
-    readonly defaultSessionMutation: "pm-public-operations";
-    readonly kind: "refusal";
-    readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Canonical whole-table signature suggestions need direct acceptance semantics; direct signature and ordinary table placement compile.";
-  };
   readonly "comment-replacement-alignment": {
     readonly owner: "controller";
     readonly kind: "refusal";
@@ -370,14 +362,6 @@ export const CANONICAL_CAPABILITIES: {
     adapters: ["react", "vue"],
     summary:
       "Unsupported public payloads refuse with a typed compiler capability gap.",
-  },
-  [CANONICAL_GAP.publicTableStructure]: {
-    owner: "document-operations",
-    defaultSessionMutation: "pm-public-operations",
-    kind: "refusal",
-    adapters: ["react", "vue"],
-    summary:
-      "Canonical whole-table signature suggestions need direct acceptance semantics; direct signature and ordinary table placement compile.",
   },
   [CANONICAL_GAP.commentReplacementAlignment]: {
     owner: "controller",
