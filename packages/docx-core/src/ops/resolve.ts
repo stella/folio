@@ -49,7 +49,12 @@ import {
   rejectCopyOriginAncestorsInNodes,
 } from "./copyOriginAncestors";
 import { keptDeletionBoundaryPaths } from "./deletionBoundaries";
-import { combineEdits, type DocumentEdit } from "./edits";
+import {
+  combineEditEffects,
+  combineEdits,
+  type DocumentEdit,
+  type DocumentEditEffects,
+} from "./edits";
 import { structurallyEqual } from "./equality";
 import { canonicalDeferredGroups, deferredGroupKey } from "./identity";
 import {
@@ -85,6 +90,7 @@ import {
   paragraphHoldsContent,
   paragraphHoldsContentOnceAccepted,
 } from "./offsets";
+import { findStoryParagraph } from "./paragraphLocator";
 import {
   isBlockBoundary,
   isKeptBoundaryCarrier,
@@ -198,20 +204,26 @@ type NoteReference = {
   added: boolean;
 };
 
+type RemovedNoteReferencesOptions = {
+  paragraphs: readonly ParagraphLocation[];
+  decision: RevisionDecision;
+  ids: ReadonlySet<number>;
+};
+
 /** Note bodies whose selected reference revision is removed by this decision. */
-const removedNoteReferences = (
-  document: Document,
-  op: ResolveRevisionOp,
-  ids: ReadonlySet<number>,
-): NoteReference[] => {
+const removedNoteReferences = ({
+  paragraphs,
+  decision,
+  ids,
+}: RemovedNoteReferencesOptions): NoteReference[] => {
   const references = new Map<string, NoteReference>();
-  for (const { paragraph } of storyParagraphs(storyBody(document, op.story))) {
+  for (const { paragraph } of paragraphs) {
     for (const { node, ancestors } of noteReferenceSpans(paragraph.content)) {
       const revision = ancestors.find(
         (ancestor) =>
           isTrackedWrapper(ancestor) &&
           ids.has(ancestor.info.id) &&
-          removesContent(ancestor, op.decision),
+          removesContent(ancestor, decision),
       );
       if (revision === undefined || !isTrackedWrapper(revision)) continue;
       const reference = {
@@ -4174,9 +4186,7 @@ const joinOps = (
   joinsBefore: ReadonlySet<string> = new Set(),
 ): Result<ParagraphMarkPlan, DocumentOpRefusal> => {
   const body = storyBody(document, story);
-  const location = storyParagraphs(body).find(
-    ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(paraId),
-  );
+  const location = findStoryParagraph(body, paraId);
   if (location === undefined) {
     return Result.err(
       refusal(
@@ -4658,9 +4668,7 @@ const absorbControlFollower = ({
   DocumentOpRefusal
 > => {
   const body = storyBody(document, story);
-  const location = storyParagraphs(body).find(
-    ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(paraId),
-  );
+  const location = findStoryParagraph(body, paraId);
   if (location === undefined) return Result.ok(undefined);
   const absorbed = emptyParagraphAfterControl(body, location);
   const anchor = absorbed?.blocks.find(
@@ -4933,12 +4941,12 @@ type RevisionResolutionPlanOptions = {
  * - rejecting the deletion alone leaves the insertion pending.
  */
 const settleTwoRecordMarks = (
-  document: Document,
+  paragraphs: readonly ParagraphLocation[],
   op: ResolveRevisionOp,
 ): { ops: DocumentOp[]; ids: number[] } => {
   const ids = new Set(op.revisionIds);
   const ops: DocumentOp[] = [];
-  for (const { paragraph } of storyParagraphs(storyBody(document, op.story))) {
+  for (const { paragraph } of paragraphs) {
     const mark = paragraph.pPrMark;
     if (mark?.deletion === undefined) continue;
     const insertion = mark.info.id;
@@ -5037,15 +5045,20 @@ const planMarkResolution = (
   options: RevisionResolutionPlanOptions,
 ): Result<RevisionResolutionPlan, DocumentOpRefusal> => {
   const { document, op, applyOps } = options;
-  const settled = settleTwoRecordMarks(document, op);
-  if (settled.ops.length === 0) return planSingleRecordResolution(options);
+  const paragraphs = storyParagraphs(storyBody(document, op.story));
+  const settled = settleTwoRecordMarks(paragraphs, op);
+  if (settled.ops.length === 0)
+    return planSingleRecordResolution(options, paragraphs);
   const marks = applyOps(document, settled.ops);
   if (marks.isErr()) return Result.err(marks.error);
-  const rest = planSingleRecordResolution({
-    document: marks.value.document,
-    op: { ...op, revisionIds: settled.ids },
-    applyOps,
-  });
+  const rest = planSingleRecordResolution(
+    {
+      document: marks.value.document,
+      op: { ...op, revisionIds: settled.ids },
+      applyOps,
+    },
+    storyParagraphs(storyBody(marks.value.document, op.story)),
+  );
   if (rest.isErr()) return Result.err(rest.error);
   return Result.ok({
     edit: combineEdits(document, [marks.value, rest.value.edit]),
@@ -5053,14 +5066,10 @@ const planMarkResolution = (
   });
 };
 
-const planSingleRecordResolution = ({
-  document,
-  op,
-  applyOps,
-}: RevisionResolutionPlanOptions): Result<
-  RevisionResolutionPlan,
-  DocumentOpRefusal
-> => {
+const planSingleRecordResolution = (
+  { document, op, applyOps }: RevisionResolutionPlanOptions,
+  paragraphs: readonly ParagraphLocation[],
+): Result<RevisionResolutionPlan, DocumentOpRefusal> => {
   if (!Object.values(REVISION_DECISIONS).includes(op.decision)) {
     return Result.err(
       refusal(
@@ -5112,9 +5121,8 @@ const planSingleRecordResolution = ({
   let resolution = createResolution(ids, op.decision);
   const rejectedNoteReferences =
     op.decision === REVISION_DECISIONS.REJECT
-      ? removedNoteReferences(document, op, ids)
+      ? removedNoteReferences({ paragraphs, decision: op.decision, ids })
       : [];
-  const paragraphs = storyParagraphs(storyBody(document, op.story));
   const reachable = new Set([
     ...paragraphs.flatMap(({ paragraph }) => [...reachableIds(paragraph)]),
     ...reachableRowIds(document, op.story),
@@ -5326,7 +5334,7 @@ const planSingleRecordResolution = ({
   }
   const noteReferences =
     op.decision === REVISION_DECISIONS.ACCEPT
-      ? removedNoteReferences(document, op, ids)
+      ? removedNoteReferences({ paragraphs, decision: op.decision, ids })
       : rejectedNoteReferences;
   // Boundaries kept from removed content can leave a range ending before it starts.
   const normalizedRangeContents = wellFormedRanges({
@@ -5582,7 +5590,12 @@ const planSingleRecordResolution = ({
   });
   if (rows.isErr()) return Result.err(rows.error);
   const removedParagraphs = new Set(rows.value.touched.removed.map(idKey));
-  const edits: DocumentEdit[] = [staged.value, rows.value];
+  const effects: (DocumentEditEffects & { document?: never })[] = [];
+  const record = ({ inverse, touched }: DocumentEdit) => {
+    effects.push({ inverse, touched });
+  };
+  record(staged.value);
+  record(rows.value);
   let current = rows.value.document;
   const ranInto = new Set<string>();
   const joinsBefore = new Set(joins.map(({ paraId }) => idKey(paraId)));
@@ -5606,7 +5619,7 @@ const planSingleRecordResolution = ({
       joined.value,
       joinSurvivor(joined.value, join.paraId, planned.value.receiverEffects),
     );
-    edits.push(absorbing);
+    record(absorbing);
     current = joined.value.document;
     // A paragraph ending a control that an earlier one now absorbs (a join
     // keeping the first) hands the control's end to that survivor.
@@ -5627,7 +5640,7 @@ const planSingleRecordResolution = ({
     if (absorbed.value === undefined) continue;
     const { edit, receiver } = absorbed.value;
     receiverEffects.push({ type: "paragraph-join", receiver });
-    edits.push(withAbsorptions(edit, paraId));
+    record(withAbsorptions(edit, paraId));
     current = edit.document;
   }
   // Notes whose last reference went are removed first: a comment anchored in
@@ -5668,7 +5681,7 @@ const planSingleRecordResolution = ({
       applyOps,
     });
     if (removed.isErr()) return Result.err(removed.error);
-    edits.push(removed.value);
+    record(removed.value);
     current = removed.value.document;
   }
   const exhausted = (document.package.document.comments ?? []).filter(
@@ -5682,10 +5695,10 @@ const planSingleRecordResolution = ({
       { type: DOCUMENT_OP_TYPES.DELETE_COMMENT, id, scope: "thread" },
     ]);
     if (retired.isErr()) return Result.err(retired.error);
-    edits.push(retired.value);
+    record(retired.value);
     current = retired.value.document;
   }
-  const edit = combineEdits(document, edits);
+  const edit = combineEditEffects(current, effects);
   if (orphaned.length > 0) {
     const { absorbed } = edit.touched;
     edit.touched = {
