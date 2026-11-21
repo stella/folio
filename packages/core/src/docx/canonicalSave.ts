@@ -189,9 +189,14 @@ export const serializeCanonicalSave = async ({
   const unchangedNotes = new Set(
     noteChanges.touched.map(idKey).filter((id) => !sourceNoteChanges.has(id)),
   );
+  // So is a paragraph of any story that the session left as the source held
+  // it, which a save against the opened package writes as the source's bytes.
+  const restored = new Set(snapshot.restoredSinceSource.map(idKey));
   const changedBlockIds =
     snapshot.saveBaseline === undefined
-      ? snapshot.changedBlockIds.filter((id) => !unchangedNotes.has(idKey(id)))
+      ? snapshot.changedBlockIds.filter(
+          (id) => !unchangedNotes.has(idKey(id)) && !restored.has(idKey(id)),
+        )
       : snapshot.changedBlockIds;
   const changedNoteParaIds = new Set(
     snapshot.saveBaseline === undefined

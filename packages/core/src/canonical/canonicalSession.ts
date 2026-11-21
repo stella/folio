@@ -2092,6 +2092,16 @@ const noteParagraphsOf = (document: Document): Map<string, Paragraph> => {
   return paragraphs;
 };
 
+/** Every paragraph of `document`, in every story and text box, by its id's key. */
+const storyParagraphsOf = (document: Document): Map<string, Paragraph> => {
+  const paragraphs = new Map<string, Paragraph>();
+  for (const story of documentStories(document))
+    for (const { paragraph } of paragraphsThroughTextBoxes(document, story))
+      if (paragraph.paraId !== undefined)
+        paragraphs.set(paragraph.paraId.toUpperCase(), paragraph);
+  return paragraphs;
+};
+
 /** Immutable model authority with a journal staged independently of the PM view. */
 class CanonicalSession {
   private currentDocument: Document;
@@ -2434,7 +2444,43 @@ class CanonicalSession {
       structure: this.saveStructure,
       heldUnreferencedNotes: this.heldUnreferencedNotes,
       noteParagraphs: this.noteParagraphChanges(),
+      restoredSinceSource: this.paragraphsRestoredSinceSource(),
     };
+  }
+
+  /**
+   * The paragraphs an edit touched since the session opened whose content is
+   * again what the opened document held, between the same neighbours: an
+   * edit and its undo, or a change and its rejection, left them as they were.
+   * A paragraph added or removed beside one is placed by it, so it stays a
+   * change.
+   */
+  private paragraphsRestoredSinceSource(): readonly string[] {
+    if (this.touchedSinceOpen.size === 0) return [];
+    const current = storyParagraphsOf(this.currentDocument);
+    const opened = storyParagraphsOf(this.openedDocument);
+    const neighbours = (paragraphs: Map<string, Paragraph>) => {
+      const ids = [...paragraphs.keys()];
+      return new Map(
+        ids.map((id, index) => [
+          id,
+          `${ids[index - 1] ?? ""}|${ids[index + 1] ?? ""}`,
+        ]),
+      );
+    };
+    const currentNeighbours = neighbours(current);
+    const openedNeighbours = neighbours(opened);
+    return [...this.touchedSinceOpen].filter((id) => {
+      const key = id.toUpperCase();
+      const now = current.get(key);
+      const then = opened.get(key);
+      return (
+        now !== undefined &&
+        then !== undefined &&
+        currentNeighbours.get(key) === openedNeighbours.get(key) &&
+        (now === then || canonicalJson(now) === canonicalJson(then))
+      );
+    });
   }
 
   /**

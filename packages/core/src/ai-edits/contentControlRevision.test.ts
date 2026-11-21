@@ -166,25 +166,15 @@ describe.each([
           ).toBe(fixture.acceptedText);
         });
 
-        // The canonical save still rewrites a body paragraph an edit touched
-        // and the rejection restored; it is to write only a net change, as it
-        // does for a note.
-        const restoring =
-          session === "canonical" && fixture.kind === "inline"
-            ? test.failing
-            : test;
-        restoring(
-          `rejecting restores the ${fixture.kind} control (${mode})`,
-          async () => {
-            const { reviewer, original } = await deleteControlText({
-              fixture: fixture,
-              mode: mode,
-              session,
-            });
-            reviewer.rejectAll();
-            expect(await bodyOf(await reviewer.toBuffer())).toBe(original);
-          },
-        );
+        test(`rejecting restores the ${fixture.kind} control (${mode})`, async () => {
+          const { reviewer, original } = await deleteControlText({
+            fixture: fixture,
+            mode: mode,
+            session,
+          });
+          reviewer.rejectAll();
+          expect(await bodyOf(await reviewer.toBuffer())).toBe(original);
+        });
       }
 
       test(`the saved redline keeps the ${fixture.kind} deletion inside the control`, async () => {

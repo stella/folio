@@ -22,6 +22,12 @@ export type CanonicalSaveSnapshot = {
     changedSinceSource: readonly string[];
   };
   /**
+   * Paragraphs touched since the session opened whose content is again what
+   * the opened document held. A save against the opened package writes them
+   * as the source held them.
+   */
+  restoredSinceSource: readonly string[];
+  /**
    * The package the session last saved, when it is the one this save
    * patches instead of the opened package.
    */
