@@ -404,23 +404,31 @@ type FinalMarkTakeoverRefusal = {
 
 /**
  * Why a tracked insertion after a container's final paragraph cannot take
- * over that paragraph's mark: a pending property change alone is the one
- * change the paragraph may own, any other record is untrackable there.
+ * over that paragraph's mark, by the record it would move: a mark under
+ * review or a pending property change, each refused by its own reason. A
+ * review carrier's role does not move to another paragraph yet.
  */
 const finalMarkTakeoverRefusal = (
   paragraph: Paragraph,
-): FinalMarkTakeoverRefusal =>
-  paragraph.pPrMark === undefined && paragraph.reviewCarrier === undefined
-    ? {
-        reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_PROPERTY_CHANGE,
-        message:
-          "A tracked insertion after a paragraph no paragraph follows needs the anchor's properties free of a pending change.",
-      }
-    : {
-        reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-        message:
-          "A tracked insertion after a paragraph no paragraph follows needs the anchor's mark free of review records.",
-      };
+): FinalMarkTakeoverRefusal => {
+  if (paragraph.reviewCarrier !== undefined)
+    return {
+      reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+      message:
+        "A tracked insertion cannot take over the mark of a paragraph that carries a table's review.",
+    };
+  if (paragraph.pPrMark !== undefined)
+    return {
+      reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK,
+      message:
+        "A tracked insertion after a paragraph no paragraph follows needs the anchor's mark free of a pending change.",
+    };
+  return {
+    reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_PROPERTY_CHANGE,
+    message:
+      "A tracked insertion after a paragraph no paragraph follows needs the anchor's properties free of a pending change.",
+  };
+};
 
 export const prepareTrackedParagraphInsertion = ({
   document,

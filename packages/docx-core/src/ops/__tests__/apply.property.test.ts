@@ -85,6 +85,7 @@ import { isBlockBoundary } from "../rangeBoundaries";
 import {
   DOCUMENT_OP_REFUSAL_REASONS,
   type DocumentOpRefusalReason,
+  TRACKED_REFUSAL_REASONS,
 } from "../refusal";
 import { findStoryBody } from "../stories";
 import {
@@ -2945,8 +2946,7 @@ describe("document operations", () => {
 
   test("generated editor intents agree in direct and accepted tracked mode across structural shapes", () => {
     const expectedRefusals: readonly DocumentOpRefusalReason[] = [
-      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      ...TRACKED_REFUSAL_REASONS,
       DOCUMENT_OP_REFUSAL_REASONS.INSIDE_TRACKED_DELETION,
       DOCUMENT_OP_REFUSAL_REASONS.SECTION_BOUNDARY,
       DOCUMENT_OP_REFUSAL_REASONS.CONTAINER_FINAL_MARK,
