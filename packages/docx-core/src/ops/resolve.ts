@@ -3243,6 +3243,30 @@ const resolveList = ({
         });
         continue;
       }
+      const resolved = resolveList({
+        nodes: node.content,
+        resolution,
+        path: [...path, index],
+      });
+      const content =
+        isAddedRevision(node) &&
+        resolution.decision === REVISION_DECISIONS.ACCEPT
+          ? withPayloadEdgesClosed(
+              acceptCopyOriginAncestor(resolved.nodes),
+              node.resolutionJoins,
+              resolution,
+            )
+          : resolved.nodes;
+      // A kept change whose content this resolution removes leaves nothing
+      // for its joins to take: it goes as a tracked change the changes it
+      // held emptied goes when they are resolved first (below), and cuts
+      // nothing between its neighbours.
+      if (content.length === 0 && node.content.length > 0) {
+        folds.push(out.length);
+        if ((node.resolutionJoins?.plainSides?.length ?? 0) > 0)
+          plainSeams.add(out.length);
+        continue;
+      }
       if (node.resolutionJoins === undefined) seams.push(out.length);
       else if (node.resolutionJoins.plainSides?.includes("before") === true)
         plainSeams.add(out.length);
@@ -3261,20 +3285,6 @@ const resolveList = ({
         if (keptBefore !== undefined)
           exactKept.set(out.length, { ...keptBefore, piece: "after" });
       }
-      const resolved = resolveList({
-        nodes: node.content,
-        resolution,
-        path: [...path, index],
-      });
-      const content =
-        isAddedRevision(node) &&
-        resolution.decision === REVISION_DECISIONS.ACCEPT
-          ? withPayloadEdgesClosed(
-              acceptCopyOriginAncestor(resolved.nodes),
-              node.resolutionJoins,
-              resolution,
-            )
-          : resolved.nodes;
       if (resolved.edges?.first !== undefined)
         recordSourceSeam(out.length, resolved.edges.first);
       if (
@@ -5337,6 +5347,44 @@ const withAbsorptions = (
         },
       };
 
+/**
+ * `blocks` without the paragraph at `index`, whose mark this resolution takes
+ * and which has no content to keep it, as {@link planParagraphBoundaryRemoval}
+ * removes it. Where the paragraph before it is one whose mark this resolution
+ * also takes, that one takes all it holds, not only the markers a paragraph
+ * that goes leaves: resolving the marks one at a time from the first joins
+ * that paragraph into this one first, which keeps it all, empty inline
+ * containers too.
+ */
+const removalBesideJoin = ({
+  blocks,
+  index,
+  joinsBefore,
+}: {
+  blocks: readonly BlockContent[];
+  index: number;
+  joinsBefore: ReadonlySet<string>;
+}): ReturnType<typeof planParagraphBoundaryRemoval> => {
+  const paragraph = blocks[index];
+  const previous = blocks[index - 1];
+  if (
+    paragraph?.type !== "paragraph" ||
+    previous?.type !== "paragraph" ||
+    paragraph.content.length === 0 ||
+    !joinsBefore.has(idKey(previous.paraId ?? ""))
+  )
+    return planParagraphBoundaryRemoval({ blocks, index });
+  const host: Paragraph = {
+    ...previous,
+    content: joinParagraphSeam(previous.content, paragraph.content),
+  };
+  return {
+    type: "removed",
+    blocks: [...blocks.slice(0, index - 1), host, ...blocks.slice(index + 1)],
+    effects: [{ type: "retained-range-boundaries", receiver: previous }],
+  };
+};
+
 const paragraphMarkPlan = (
   ops: DocumentOp[],
   receiverEffects: ResolutionReceiverEffect[] = [],
@@ -5665,9 +5713,10 @@ const joinOps = (
       );
     }
     if (tableOutcome === "remove") {
-      const removal = planParagraphBoundaryRemoval({
+      const removal = removalBesideJoin({
         blocks,
         index: location.index,
+        joinsBefore,
       });
       if (removal.type === "removed") {
         // The mark goes with the break it carries: its section and the one
@@ -5744,9 +5793,10 @@ const joinOps = (
       (block, index): block is Paragraph =>
         index !== location.index && block.type === "paragraph",
     );
-    const removal = planParagraphBoundaryRemoval({
+    const removal = removalBesideJoin({
       blocks,
       index: location.index,
+      joinsBefore,
     });
     // No other paragraph names the list, as in a content control holding a
     // table and this paragraph: an empty replacement removes it, and its
@@ -6210,11 +6260,17 @@ type RevisionResolutionPlanOptions = {
   applyOps: ApplyOps;
 };
 
+/** When the split that made each break a resolution takes was made, by paragraph. */
+type SplitDates = ReadonlyMap<string, string | undefined>;
+
 /**
  * A mark holding an insertion and a later deletion of it, settled to the one
  * record resolution then decides, with the revision ids left to resolve:
  * - accepting the deletion takes the break, whatever becomes of the
- *   insertion: the mark is the deletion alone, which the resolution accepts;
+ *   insertion: the mark is the deletion alone, which the resolution accepts,
+ *   and the break goes as rejecting its insertion takes it, rejoining the
+ *   records its split cut (`splits`: the paragraphs whose join that is, with
+ *   when the split was made);
  * - accepting the insertion alone leaves the deletion pending;
  * - rejecting the insertion takes the break with its deletion: the mark is
  *   the insertion alone, which the resolution rejects;
@@ -6223,9 +6279,10 @@ type RevisionResolutionPlanOptions = {
 const settleTwoRecordMarks = (
   paragraphs: readonly ParagraphLocation[],
   op: ResolveRevisionOp,
-): { ops: DocumentOp[]; ids: number[] } => {
+): { ops: DocumentOp[]; ids: number[]; splits: SplitDates } => {
   const ids = new Set(op.revisionIds);
   const ops: DocumentOp[] = [];
+  const splits = new Map<string, string | undefined>();
   for (const { paragraph } of paragraphs) {
     const mark = paragraph.pPrMark;
     if (mark?.deletion === undefined) continue;
@@ -6234,7 +6291,13 @@ const settleTwoRecordMarks = (
     if (!ids.has(insertion) && !ids.has(deletion)) continue;
     const review = reviewFieldsOf(paragraph);
     if (op.decision === REVISION_DECISIONS.ACCEPT) {
-      review.pPrMark = { kind: "del", info: mark.deletion.info };
+      const takesSplit = ids.has(deletion) && mark.resolutionJoin !== undefined;
+      review.pPrMark = {
+        kind: "del",
+        info: mark.deletion.info,
+        ...(takesSplit ? { resolutionJoin: mark.resolutionJoin } : {}),
+      };
+      if (takesSplit) splits.set(idKey(paragraph.paraId ?? ""), mark.info.date);
       ids.delete(insertion);
     } else {
       const { deletion: _deleted, ...added } = mark;
@@ -6249,7 +6312,7 @@ const settleTwoRecordMarks = (
       review,
     });
   }
-  return { ops, ids: op.revisionIds.filter((id) => ids.has(id)) };
+  return { ops, ids: op.revisionIds.filter((id) => ids.has(id)), splits };
 };
 
 /**
@@ -6444,6 +6507,7 @@ const planMarkResolution = (
       applyOps,
     },
     storyParagraphs(storyBody(marks.value.document, op.story)),
+    settled.splits,
   );
   if (rest.isErr()) return Result.err(rest.error);
   return Result.ok({
@@ -6455,6 +6519,7 @@ const planMarkResolution = (
 const planSingleRecordResolution = (
   { document, op, applyOps }: RevisionResolutionPlanOptions,
   paragraphs: readonly ParagraphLocation[],
+  splits: SplitDates = new Map(),
 ): Result<RevisionResolutionPlan, DocumentOpRefusal> => {
   if (!Object.values(REVISION_DECISIONS).includes(op.decision)) {
     return Result.err(
@@ -6946,7 +7011,9 @@ const planSingleRecordResolution = (
         revisionId: mark.info.id,
         added,
         depth,
-        splitDate: mark.info.date,
+        splitDate: splits.has(idKey(paraId))
+          ? splits.get(idKey(paraId))
+          : mark.info.date,
         holders,
       });
     }
