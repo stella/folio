@@ -14,6 +14,7 @@ import { describe, expect, test } from "bun:test";
 import { ZipArchive } from "@stll/docx-core/zip";
 
 import { RELATIONSHIP_TYPES } from "../docx/relsParser";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import { FolioDocxReviewer } from "./headless";
 
 const XML_DECLARATION =
@@ -23,6 +24,8 @@ const HEADER_RELATIONSHIP_ID = "rId20";
 const FOOTER_RELATIONSHIP_ID = "rId21";
 const RELATIONSHIP_NAMESPACE =
   "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const PACKAGE_RELATIONSHIP_NAMESPACE =
+  "http://schemas.openxmlformats.org/package/2006/relationships";
 
 const complexField = (instruction: string, result: string) =>
   `<w:r><w:fldChar w:fldCharType="begin"/></w:r>` +
@@ -74,14 +77,14 @@ const createStoryDocx = async (): Promise<ArrayBuffer> => {
   zip.set(
     "_rels/.rels",
     `${XML_DECLARATION}
-<Relationships xmlns="${RELATIONSHIP_NAMESPACE}">
+<Relationships xmlns="${PACKAGE_RELATIONSHIP_NAMESPACE}">
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/>
 </Relationships>`,
   );
   zip.set(
     "word/_rels/document.xml.rels",
     `${XML_DECLARATION}
-<Relationships xmlns="${RELATIONSHIP_NAMESPACE}">
+<Relationships xmlns="${PACKAGE_RELATIONSHIP_NAMESPACE}">
   <Relationship Id="${HEADER_RELATIONSHIP_ID}" Type="${RELATIONSHIP_TYPES.header}" Target="header1.xml"/>
   <Relationship Id="${FOOTER_RELATIONSHIP_ID}" Type="${RELATIONSHIP_TYPES.footer}" Target="footer1.xml"/>
   <Relationship Id="rId30" Type="${RELATIONSHIP_TYPES.footnotes}" Target="footnotes.xml"/>
@@ -143,8 +146,11 @@ const createStoryDocx = async (): Promise<ArrayBuffer> => {
 /** Secondary stories only: the body has no unloaded projection to differ from. */
 const secondaryStoryTexts = async (
   load: boolean,
+  session: HeadlessReviewerSession,
 ): Promise<Map<string, string>> => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(await createStoryDocx());
+  const reviewer = await FolioDocxReviewer.fromBuffer(await createStoryDocx(), {
+    session,
+  });
   const handles = reviewer
     .listStories()
     .map(({ handle }) => handle)
@@ -162,30 +168,36 @@ const secondaryStoryTexts = async (
   );
 };
 
-describe("story text parity", () => {
-  test("reads a loaded story exactly as an unloaded one", async () => {
-    const unloaded = await secondaryStoryTexts(false);
-    const loaded = await secondaryStoryTexts(true);
+describe.each([
+  "legacy",
+  "canonical",
+] as const satisfies readonly HeadlessReviewerSession[])(
+  "story text parity (%s)",
+  (session) => {
+    test("reads a loaded story exactly as an unloaded one", async () => {
+      const unloaded = await secondaryStoryTexts(false, session);
+      const loaded = await secondaryStoryTexts(true, session);
 
-    expect([...loaded.keys()].toSorted()).toEqual([
-      "endnote",
-      "footer",
-      "footnote",
-      "header",
-    ]);
-    for (const [kind, text] of unloaded) {
-      expect(loaded.get(kind)).toBe(text);
-    }
-  });
+      expect([...loaded.keys()].toSorted()).toEqual([
+        "endnote",
+        "footer",
+        "footnote",
+        "header",
+      ]);
+      for (const [kind, text] of unloaded) {
+        expect(loaded.get(kind)).toBe(text);
+      }
+    });
 
-  test("keeps the separators a reader needs and hides a tracked deletion", async () => {
-    const unloaded = await secondaryStoryTexts(false);
+    test("keeps the separators a reader needs and hides a tracked deletion", async () => {
+      const unloaded = await secondaryStoryTexts(false, session);
 
-    // A tab and a break separate words rather than gluing them, the stored
-    // field result reads through, the result-less field adds nothing, and the
-    // accepted view drops the deleted run.
-    expect(unloaded.get("footnote")).toBe(
-      "footnote after tab after break nested page 7 of end",
-    );
-  });
-});
+      // A tab and a break separate words rather than gluing them, the stored
+      // field result reads through, the result-less field adds nothing, and the
+      // accepted view drops the deleted run.
+      expect(unloaded.get("footnote")).toBe(
+        "footnote after tab after break nested page 7 of end",
+      );
+    });
+  },
+);
