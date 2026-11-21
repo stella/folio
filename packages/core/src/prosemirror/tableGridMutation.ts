@@ -68,6 +68,51 @@ export const removeTableRow = (
   }
 };
 
+/**
+ * Remove the row at `rowPos` as rejecting its insertion does: through
+ * `removeTableRow`, so the vertical merges crossing it stay whole, or, for a
+ * table's only row, the table with it, leaving an empty paragraph where its
+ * container must keep a block.
+ */
+export const deleteTableRowAt = (tr: Transaction, rowPos: number): void => {
+  const resolved = tr.doc.resolve(rowPos);
+  const table = resolved.parent;
+  if (table.type.spec["tableRole"] !== "table") {
+    return;
+  }
+  const rowIndex = resolved.index();
+  if (table.childCount > 1) {
+    removeTableRow(
+      tr,
+      { map: TableMap.get(table), table, tableStart: resolved.start() },
+      rowIndex,
+    );
+    return;
+  }
+
+  const tablePosition = resolved.start() - 1;
+  const tableEnd = tablePosition + table.nodeSize;
+  const outerResolved = tr.doc.resolve(tablePosition);
+  const parent = outerResolved.parent;
+  const tableIndex = outerResolved.index();
+  if (parent.canReplace(tableIndex, tableIndex + 1)) {
+    tr.delete(tablePosition, tableEnd);
+    return;
+  }
+  const emptyParagraph = tr.doc.type.schema.nodes["paragraph"]?.createAndFill();
+  if (
+    emptyParagraph &&
+    parent.canReplaceWith(
+      tableIndex,
+      tableIndex + 1,
+      emptyParagraph.type,
+      emptyParagraph.marks,
+    )
+  ) {
+    tr.replaceWith(tablePosition, tableEnd, emptyParagraph);
+  }
+};
+
 /** A placeholder for an absent grid position is not a cell a row can keep. */
 export const rowHoldsNoCells = (row: PMNode, besides?: PMNode): boolean => {
   let holdsCell = false;

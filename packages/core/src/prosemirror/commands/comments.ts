@@ -109,11 +109,11 @@ import { sectionRecordCopyPositions } from "../sectionCarrier";
 import { getTableCellMergeChange } from "../tableCellMergeRevision";
 import { isTableCellRetainedInReviewView } from "../tableCellRevisionVisibility";
 import {
+  deleteTableRowAt,
   markRowEmptiedInBatch,
   reconcileOmittedGridSlots,
   reconcileTableGridAfterColumnRemoval,
   removeRowsWithoutCellsAfterBatch,
-  removeTableRow,
   rowHoldsNoCells,
   type RowsEmptiedInBatch,
 } from "../tableGridMutation";
@@ -1525,45 +1525,6 @@ function deleteTableCellAt(
     previousTable: table,
     removedColumn,
   });
-}
-
-function deleteTableRowAt(tr: Transaction, rowPos: number): void {
-  const resolved = tr.doc.resolve(rowPos);
-  const table = resolved.parent;
-  if (table.type.spec["tableRole"] !== "table") {
-    return;
-  }
-  const rowIndex = resolved.index();
-  if (table.childCount > 1) {
-    removeTableRow(
-      tr,
-      { map: TableMap.get(table), table, tableStart: resolved.start() },
-      rowIndex,
-    );
-    return;
-  }
-
-  const tablePosition = resolved.start() - 1;
-  const tableEnd = tablePosition + table.nodeSize;
-  const outerResolved = tr.doc.resolve(tablePosition);
-  const parent = outerResolved.parent;
-  const tableIndex = outerResolved.index();
-  if (parent.canReplace(tableIndex, tableIndex + 1)) {
-    tr.delete(tablePosition, tableEnd);
-    return;
-  }
-  const emptyParagraph = tr.doc.type.schema.nodes["paragraph"]?.createAndFill();
-  if (
-    emptyParagraph &&
-    parent.canReplaceWith(
-      tableIndex,
-      tableIndex + 1,
-      emptyParagraph.type,
-      emptyParagraph.marks,
-    )
-  ) {
-    tr.replaceWith(tablePosition, tableEnd, emptyParagraph);
-  }
 }
 
 export type ParagraphBoundaryChange = {

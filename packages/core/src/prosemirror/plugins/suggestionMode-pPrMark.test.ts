@@ -139,7 +139,7 @@ describe("suggestion mode — paragraph-mark keymap", () => {
     expect(view.state.doc.child(1).attrs["pPrMark"]).toBeNull();
   });
 
-  test("Enter does not overwrite an existing pPrMark on the source paragraph", () => {
+  test("Enter keeps an existing pPrMark on the break it belongs to, now ending the new paragraph", () => {
     const existing = {
       kind: "ins" as const,
       info: { id: 99, author: "Other", date: "2026-01-01" },
@@ -154,7 +154,11 @@ describe("suggestion mode — paragraph-mark keymap", () => {
       { key: "Enter" } as KeyboardEvent,
     );
 
-    expect(view.state.doc.child(0).attrs["pPrMark"]).toEqual(existing);
+    expect(view.state.doc.child(1).attrs["pPrMark"]).toEqual(existing);
+    expect(view.state.doc.child(0).attrs["pPrMark"]).toMatchObject({
+      kind: "ins",
+      info: { author: "Tester" },
+    });
   });
 
   test("Backspace at paragraph start sets pPrMark.kind='del' on the previous paragraph", () => {

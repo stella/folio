@@ -47,7 +47,11 @@ import type { ParagraphMarkChange } from "@stll/docx-core/model";
 
 import type { TrackedChangeInfo } from "../../types/document";
 import { addTrackedDeletionMark } from "../addTrackedDeletionMark";
-import { expectParagraphAttrs, expectTrackedChangeMarkAttrs } from "../attrs";
+import {
+  expectParagraphAttrs,
+  expectTableRowAttrs,
+  expectTrackedChangeMarkAttrs,
+} from "../attrs";
 import { clearIndentOnBackspace } from "../commands/clearParagraphIndent";
 import { paragraphJoinAfter } from "../commands/paragraphBookmarkJoin";
 import { paragraphPropertiesSnapshot } from "../commands/propertyChangeScope";
@@ -69,6 +73,7 @@ import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
 import { paragraphRunStyleContext } from "../runStyleFormatting";
 import type { ParagraphPropertyChangeAttrs } from "../schema/nodes";
 import { cellPasteRange, pasteTableCells } from "../tableCellPaste";
+import { deleteTableRowAt } from "../tableGridMutation";
 import {
   afterNativeCompositionFlush,
   formattingMarksBesideLockedControl,
@@ -262,15 +267,20 @@ function markRangeAsDeleted(
   // Breaks the current author inserted go now, as their inserted words do:
   // positions in `doc` of the paragraphs they end.
   const retractedBreaks: number[] = [];
+  // Rows the current author inserted go the same way: positions in `doc`.
+  const retractedRows: number[] = [];
   doc.nodesBetween(from, to, (node, pos) => {
     if (
       node.type.name === "tableRow" &&
       pos >= from &&
-      pos + node.nodeSize <= to &&
-      node.attrs["trIns"] == null &&
-      node.attrs["trDel"] == null
+      pos + node.nodeSize <= to
     ) {
-      tr.setNodeAttribute(pos, "trDel", delAttrs);
+      const { trIns, trDel } = expectTableRowAttrs(node);
+      if (trIns == null && trDel == null) {
+        tr.setNodeAttribute(pos, "trDel", delAttrs);
+      } else if (trIns?.author === pluginState.author) {
+        retractedRows.push(pos);
+      }
     }
     if (node.type.name !== "paragraph") {
       return;
@@ -363,6 +373,34 @@ function markRangeAsDeleted(
     stepsBeforeDoc,
     styleResolver: joinState ? getDocumentStyleResolver(joinState) : null,
   });
+  retractTableRows({ tr, positions: retractedRows, stepsBeforeDoc });
+}
+
+type RetractTableRowsOptions = {
+  tr: Transaction;
+  /** Positions, before `tr`'s steps since `stepsBeforeDoc`, of the rows that go. */
+  positions: readonly number[];
+  stepsBeforeDoc: number;
+};
+
+/**
+ * Remove the rows the current author inserted that a deletion spans whole:
+ * the suggestion is withdrawn, as rejecting it does (`deleteTableRowAt`), so
+ * a vertical merge crossing a row closes one row sooner and a table left with
+ * no row goes with it.
+ */
+function retractTableRows({
+  tr,
+  positions,
+  stepsBeforeDoc,
+}: RetractTableRowsOptions): void {
+  // Last first: removing a row moves nothing in front of it.
+  for (const position of positions.toReversed()) {
+    // oxlint-disable-next-line unicorn/no-array-method-this-argument -- ProseMirror Mapping.map(pos, assoc)
+    const rowPos = tr.mapping.slice(stepsBeforeDoc).map(position);
+    if (tr.doc.nodeAt(rowPos)?.type.name !== "tableRow") continue;
+    deleteTableRowAt(tr, rowPos);
+  }
 }
 
 type RetractParagraphBreaksOptions = {
@@ -804,12 +842,16 @@ export function handleSuggestionPaste(
   //    A table going in front of a container's last paragraph is placed
   //    first: struck before, the paragraphs it lands in front of would lose
   //    their struck marks' undo to the insertion at their position.
+  //    Select-all strikes from the document's start, so a table the document
+  //    starts with, which the text span inside its edges starts within, has
+  //    every row struck or withdrawn.
+  const struckFrom = selectsAll ? 0 : from;
   const tableFirst = endsContainer && !rotates;
   if (!tableFirst) {
     markRangeAsDeleted(
       tr,
       doc,
-      from,
+      struckFrom,
       wholeBlocks && !endsContainer ? $to.after() : to,
       deletionType,
       pluginState,
@@ -821,6 +863,14 @@ export function handleSuggestionPaste(
   // properties, under that break's revision, as a deletion across the break
   // does. Pasted words go in after, so they read in those properties as they
   // are; pasted paragraphs first, so the paragraph left is found past them.
+  // A break the current author inserted is withdrawn instead: the first
+  // paragraph runs on into the next and holds that one's properties, so it
+  // takes its own back: tracked when the break it now ends with is original,
+  // untracked when that break is the author's pending insertion as well.
+  const firstBreakRetracts = isCurrentAuthorParagraphInsertion(
+    $from.parent.attrs["pPrMark"],
+    pluginState.author,
+  );
   const carryAcross = () => {
     if (
       selectsAll ||
@@ -845,6 +895,19 @@ export function handleSuggestionPaste(
         survivorPos,
         mark.info,
       );
+    } else if (firstBreakRetracts) {
+      carryParagraphProperties({
+        tr,
+        position: firstPos,
+        source: $from.parent,
+        styleResolver: getDocumentStyleResolver(view.state),
+        numbering: getDocumentNumbering(view.state),
+        // A break the current author added goes on rejection, so the
+        // properties it holds have nothing to restore.
+        ...(isCurrentAuthorParagraphInsertion(mark, pluginState.author)
+          ? {}
+          : { revision: makeParagraphMarkInfo(pluginState) }),
+      });
     }
   };
   const inlineSlice = slice.content.firstChild?.isInline === true;
@@ -861,7 +924,9 @@ export function handleSuggestionPaste(
   if (rotates) {
     at = tr.mapping.map($to.after());
   } else if (tableFirst) {
-    at = $from.before();
+    // Before the first block struck: under select-all the document's start,
+    // ahead of a table the document starts with rather than inside its cell.
+    at = selectsAll ? 0 : $from.before();
   } else if (beforeStruck) {
     at = tr.mapping.map(from, -1);
   }
@@ -888,7 +953,7 @@ export function handleSuggestionPaste(
     markRangeAsDeleted(
       tr,
       tr.doc,
-      tr.mapping.map(from),
+      tr.mapping.map(struckFrom),
       tr.mapping.map(to),
       deletionType,
       pluginState,
@@ -927,15 +992,27 @@ export function handleSuggestionPaste(
   // marked inserted). Rejecting the inserted breaks leaves that part, so it
   // must record the end paragraph's properties even for a cross-paragraph
   // replacement. A carry onto the first pasted part cannot survive that join.
+  // The break keeps its own revision: a pasted paragraph that took the place
+  // of the end paragraph's node takes its pending mark along.
   if ($to.parent.type.name === "paragraph") {
     const $end = tr.doc.resolve(
       closedBlocks ? Math.max(insertFrom, insertTo - 1) : tr.mapping.map(to),
     );
-    if (
+    const endsPastFirst =
       $end.parent.type.name === "paragraph" &&
-      $end.before() !== tr.mapping.map($from.before()) &&
-      expectParagraphAttrs($end.parent).pPrMark?.kind !== "ins"
+      $end.before() !== tr.mapping.map($from.before());
+    const endMark = endsPastFirst
+      ? (expectParagraphAttrs($end.parent).pPrMark ??
+        expectParagraphAttrs($to.parent).pPrMark)
+      : null;
+    if (
+      endsPastFirst &&
+      endMark != null &&
+      $end.parent.attrs["pPrMark"] == null
     ) {
+      tr.setNodeAttribute($end.before(), "pPrMark", endMark);
+    }
+    if (endsPastFirst && endMark?.kind !== "ins") {
       recordReplacedParagraphProperties({
         tr,
         position: $end.before(),
@@ -1490,8 +1567,8 @@ export function suggestRangeDeletion(
  * actual splitting reuses `splitBlockClearBorders` so border/style/stored-mark
  * behavior stays identical to ordinary editing.
  *
- * If the source paragraph already carries a `pPrMark`, leave it alone — a
- * prior author's revision must not be silently overwritten.
+ * A `pPrMark` the source paragraph already carries belongs to its break, which
+ * now ends the new paragraph: it moves there, so no revision is lost.
  */
 export function handleSuggestionEnter(
   view: EditorView,
@@ -1549,28 +1626,35 @@ export function handleSuggestionEnter(
     tr.setStoredMarks(captured.tr.storedMarks);
   }
   tr.setMeta(SUGGESTION_META, true);
-  if (sourceAttrs["pPrMark"] == null) {
-    const sourceParagraph = tr.doc.nodeAt(sourcePos);
-    if (sourceParagraph?.type.name === "paragraph") {
-      const markInfo: ParagraphMarkAttr = {
-        kind: "ins",
-        info: makeParagraphMarkInfo(pluginState),
-      };
-      tr.setNodeAttribute(sourcePos, "pPrMark", markInfo);
-      // The new paragraph holds the source's break: rejecting the inserted
-      // one leaves it, so it records what the source read as.
-      const $caret = tr.selection.$from;
-      if (
-        $caret.parent.type.name === "paragraph" &&
-        $caret.before() !== sourcePos
-      ) {
-        recordReplacedParagraphProperties({
-          tr,
-          position: $caret.before(),
-          replaced: $from.parent,
-          revision: markInfo.info,
-        });
+  const sourceParagraph = tr.doc.nodeAt(sourcePos);
+  const $caret = tr.selection.$from;
+  const newPos =
+    $caret.parent.type.name === "paragraph" && $caret.before() !== sourcePos
+      ? $caret.before()
+      : null;
+  const sourceMark: unknown = sourceAttrs["pPrMark"];
+  if (
+    sourceParagraph?.type.name === "paragraph" &&
+    (sourceMark == null || newPos !== null)
+  ) {
+    const markInfo: ParagraphMarkAttr = {
+      kind: "ins",
+      info: makeParagraphMarkInfo(pluginState),
+    };
+    tr.setNodeAttribute(sourcePos, "pPrMark", markInfo);
+    // The new paragraph holds the source's break, with any revision it has:
+    // rejecting the inserted one leaves it, so it records what the source
+    // read as.
+    if (newPos !== null) {
+      if (sourceMark != null) {
+        tr.setNodeAttribute(newPos, "pPrMark", sourceMark);
       }
+      recordReplacedParagraphProperties({
+        tr,
+        position: newPos,
+        replaced: $from.parent,
+        revision: markInfo.info,
+      });
     }
   }
   view.dispatch(tr.scrollIntoView());
