@@ -196,7 +196,7 @@ const tracked = (): Document =>
         before: 0,
         after: 0,
         remove: 0,
-        deferredRemove: [{ depth: 2, blockers: [6], keptFrom: KEPT_FROM }],
+        deferredRemove: [{ depth: 2, blockers: [6] }],
       },
     },
     link([text("a")]),
@@ -345,8 +345,17 @@ describe("a version 1 change naming its kept markers", () => {
       id: 1,
       keptCut: { depth: 1, keptFrom: KEPT_FROM, piece: "after" },
     });
-    // Version 2 marks kept markers itself: an unmarked one was not kept.
+    // The model holds the joins without what version 1 said of the markers.
+    expect(read(1).content.at(1)).toMatchObject({
+      resolutionJoins: { before: 1, after: 0, remove: 0 },
+    });
+    expect(read(1).content.at(1)).not.toHaveProperty(
+      "resolutionJoins.keptFrom",
+    );
+    // Version 2 marks kept markers itself: an unmarked one was not kept, and
+    // joins naming markers are no version 2 joins.
     expect(read(2).content.at(0)).toEqual({ type: "bookmarkEnd", id: 1 });
+    expect(read(2).content.at(1)).not.toHaveProperty("resolutionJoins");
   });
 
   test("accepting the change places them inside its piece", () => {

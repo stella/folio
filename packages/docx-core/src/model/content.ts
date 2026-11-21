@@ -1779,36 +1779,12 @@ type TrackedResolutionJoins = WritableRecord & {
     depth: number;
     blockers: readonly number[];
     /**
-     * The date of the revision whose kept range boundaries stand at the seam,
-     * waiting for its pieces to meet: they are placed as of that revision.
-     */
-    keptFrom?: string;
-    /**
-     * How many of the range boundaries standing at the seam it kept, nearest
-     * the seam: boundaries other removals kept beside them stay where they
-     * are when the pieces meet.
-     */
-    keptCount?: number;
-    /**
      * On a pending deletion or move source that holds a piece of the cut
      * record: the edge of it where that piece meets the seam. Rejecting it
      * joins there; accepting it retires the seam.
      */
     edge?: "start" | "end";
   })[];
-  /**
-   * The date of the revision whose kept range boundaries stand at the seam
-   * this wrapper's removal joins, once a deferred seam settled on it, or
-   * that its join takes over from a removal's seam as a piece of the record
-   * that removal cut.
-   */
-  keptFrom?: string;
-  /**
-   * How many of the range boundaries standing at that seam were kept from
-   * that revision, nearest the seam: boundaries other removals kept beside
-   * them stay where they are when the join happens.
-   */
-  keptCount?: number;
   /** Source identities handed to the retained suffix when a deleted prefix goes. */
   retainedAfter?: readonly (WritableRecord & {
     depth: number;
