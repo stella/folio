@@ -16,7 +16,6 @@ import {
   type Deletion,
   MAX_REVISION_ID,
   type Paragraph,
-  type ParagraphPropertyChange,
 } from "../model/document";
 import {
   IDENTITY_SPACES,
@@ -659,11 +658,13 @@ export const freshenIdentities = ({
         paragraphs: bindDeferredIdentities({
           before: after,
           after: rebindPropertyChangeOwners({
-            before: after,
-            after: rebindRetainedIdentities({
+            source: before,
+            draft: after,
+            freshened: rebindRetainedIdentities({
               before: after,
               after: paragraphs,
             }),
+            elsewhere,
           }),
         }),
       }
@@ -671,8 +672,10 @@ export const freshenIdentities = ({
 };
 
 type RebindPropertyChangeOwnersOptions = {
-  before: readonly Paragraph[];
-  after: Paragraph[];
+  source: readonly Paragraph[];
+  draft: readonly Paragraph[];
+  freshened: Paragraph[];
+  elsewhere: KeyMembership;
 };
 
 /**
@@ -680,48 +683,52 @@ type RebindPropertyChangeOwnersOptions = {
  * (`resolvesWith`) follows that deletion to the id freshening gave it.
  */
 const rebindPropertyChangeOwners = ({
-  before,
-  after,
+  source,
+  draft,
+  freshened,
+  elsewhere,
 }: RebindPropertyChangeOwnersOptions): Paragraph[] => {
+  const ownerInfo = ({ pPrMark }: Paragraph) =>
+    pPrMark?.kind === "del" ? pPrMark.info : pPrMark?.deletion?.info;
+  const kept = new Set<number>();
   const moved = new Map<number, number>();
-  for (const [index, paragraph] of before.entries()) {
-    const mark = paragraph.pPrMark;
-    const next = after.at(index)?.pPrMark;
-    if (mark === undefined || next === undefined) continue;
-    if (mark.info.id !== next.info.id) moved.set(mark.info.id, next.info.id);
-    const deletion = mark.deletion?.info.id;
-    const nextDeletion = next.deletion?.info.id;
-    if (
-      deletion !== undefined &&
-      nextDeletion !== undefined &&
-      deletion !== nextDeletion
-    )
-      moved.set(deletion, nextDeletion);
+  for (const [index, paragraph] of draft.entries()) {
+    const old = ownerInfo(paragraph);
+    const next = ownerInfo(
+      freshened.at(index) ?? panic("Freshening preserves each paragraph."),
+    );
+    if (old === undefined || next === undefined) continue;
+    if (old.id === next.id) kept.add(old.id);
+    else moved.set(old.id, next.id);
   }
-  if (moved.size === 0) return after;
-  const out: Paragraph[] = [];
-  for (const paragraph of after) {
-    const changes = paragraph.propertyChanges;
-    if (
-      changes?.some(
-        ({ resolvesWith }) =>
-          resolvesWith !== undefined && moved.has(resolvesWith),
-      ) !== true
-    ) {
-      out.push(paragraph);
-      continue;
+  if (moved.size === 0) return freshened;
+  const previousOwners = new Map<number, number>();
+  for (const paragraph of source) {
+    for (const { info, resolvesWith } of paragraph.propertyChanges ?? []) {
+      if (resolvesWith !== undefined) previousOwners.set(info.id, resolvesWith);
     }
-    const rebound: ParagraphPropertyChange[] = [];
-    for (const change of changes) {
-      const owner =
-        change.resolvesWith === undefined
-          ? undefined
-          : moved.get(change.resolvesWith);
-      rebound.push(
-        owner === undefined ? change : { ...change, resolvesWith: owner },
-      );
-    }
-    out.push({ ...paragraph, propertyChanges: rebound });
   }
-  return out;
+  return freshened.map((paragraph) => {
+    if (paragraph.propertyChanges === undefined) return paragraph;
+    let changed = false;
+    const propertyChanges = paragraph.propertyChanges.map((change) => {
+      const { resolvesWith } = change;
+      if (resolvesWith === undefined) return change;
+      const owner = moved.get(resolvesWith);
+      if (owner === undefined) return change;
+      // When a copy gets fresh ids, the original property change still
+      // names the original mark, which can also be outside the edited range.
+      if (
+        previousOwners.get(change.info.id) === resolvesWith &&
+        (kept.has(resolvesWith) ||
+          elsewhere.has(
+            slotKey({ space: IDENTITY_SPACES.REVISION, id: resolvesWith }),
+          ))
+      )
+        return change;
+      changed = true;
+      return { ...change, resolvesWith: owner };
+    });
+    return changed ? { ...paragraph, propertyChanges } : paragraph;
+  });
 };

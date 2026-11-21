@@ -271,14 +271,20 @@ export const takesOverOtherSuggestion = (
   stamp.suggestionId !== undefined &&
   pending.info.suggestionId !== stamp.suggestionId;
 
-/** {@link takesOverOtherSuggestion} for the paragraph's pending property change. */
-export const foldsIntoOtherSuggestion = (
+/** Why a tracked edit cannot fold into this paragraph's pending change. */
+export const paragraphPropertyFoldConflict = (
   paragraph: Paragraph,
   stamp: RevisionStamp,
-): boolean => takesOverOtherSuggestion(paragraph.propertyChanges?.at(0), stamp);
-
-export const FOLD_INTO_OTHER_SUGGESTION_MESSAGE =
-  "A suggestion cannot take over another pending paragraph property change.";
+): string | undefined => {
+  const pending = paragraph.propertyChanges?.at(0);
+  if (takesOverOtherSuggestion(pending, stamp))
+    return "A suggestion cannot take over another pending paragraph property change.";
+  // A join's alignment can fold into its own record. A later edit cannot
+  // change its attribution while resolving the mark still decides it.
+  if (pending?.resolvesWith !== undefined && !carriesStamp(pending.info, stamp))
+    return "Resolve the pending paragraph join before tracking a different change to its properties.";
+  return undefined;
+};
 
 export const RUN_FOLD_INTO_OTHER_SUGGESTION_MESSAGE =
   "A suggestion cannot take over another pending run property change.";
