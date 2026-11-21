@@ -35,6 +35,7 @@ import { ensureParaIds } from "../docx/ensureParaIds";
 import { createDocx } from "../docx/rezip";
 import { paragraph, table } from "../docx/server/build";
 import { fromMarkdown } from "../markdown/fromMarkdown";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import { FolioDocxReviewer } from "./headless";
 import { createFolioAITextRangeHandle } from "./snapshot";
 
@@ -97,10 +98,19 @@ const baseDocument = async (): Promise<ArrayBuffer> => {
   return base;
 };
 
-const open = async (bytes?: ArrayBuffer): Promise<FolioDocxReviewer> =>
+const open = async (
+  bytes?: ArrayBuffer,
+  session?: HeadlessReviewerSession,
+): Promise<FolioDocxReviewer> =>
   FolioDocxReviewer.fromBuffer(bytes ?? (await baseDocument()), {
     author: "Reviewer",
+    ...(session !== undefined && { session }),
   });
+
+const SESSIONS = [
+  "legacy",
+  "canonical",
+] as const satisfies readonly HeadlessReviewerSession[];
 
 type Block = ReturnType<FolioDocxReviewer["getContent"]>[number];
 
@@ -113,7 +123,8 @@ const anchors = (reviewer: FolioDocxReviewer): string[] =>
 
 const reopen = async (
   reviewer: FolioDocxReviewer,
-): Promise<FolioDocxReviewer> => open(await reviewer.toBuffer());
+  session?: HeadlessReviewerSession,
+): Promise<FolioDocxReviewer> => open(await reviewer.toBuffer(), session);
 
 const words = (text: string) =>
   [...text.matchAll(/[A-Za-z]{3,}/gu)].map((match) => ({
@@ -424,122 +435,141 @@ test("reject restores heading properties when an insertion interrupts a pending 
   expect(read(saved)).toEqual(original);
 });
 
-test("a run inserted after a pending merge resolves both ways without moving properties", async () => {
-  const original = read(await open());
-  const edited = async () => {
-    const reviewer = await open();
-    const anchor = reviewer.getContent().at(1);
-    if (!anchor) throw new Error("Missing merge anchor");
-    expect(
-      apply(reviewer, "tracked-changes", {
-        type: "mergeBlockWithNext",
-        blockId: anchor.id,
-        separator: " ",
-      }),
-    ).toBe(true);
-    const result = reviewer.applyDocumentOperations(
-      {
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode: "tracked-changes",
-        operations: [
-          {
-            id: "heading",
-            type: "insertAfterBlock",
-            blockId: anchor.id,
-            text: "A second-level heading.",
-            styleId: "Heading2",
-          },
-          {
-            id: "bullet",
-            type: "insertAfterBlock",
-            blockId: anchor.id,
-            text: "A new bullet.",
-            numbering: { kind: "newList", format: "bullet" },
-          },
-        ],
-      },
-      { undefinedReferences: "refuse" },
-    );
-    expect(result.applied).toHaveLength(2);
-    return reviewer;
-  };
-
-  const rejecting = await edited();
-  rejecting.rejectAll();
-  expect(read(rejecting)).toEqual(original);
-  expect(read(await reopen(rejecting))).toEqual(original);
-
-  const accepting = await edited();
-  accepting.acceptAll();
-  const accepted = accepting.getContent();
-  expect(
-    accepted.find(({ text }) => text === "A second-level heading.")?.kind,
-  ).toBe("heading");
-  expect(
-    accepted
-      .find(({ text }) => text.startsWith("A new bullet."))
-      ?.text.startsWith("A new bullet."),
-  ).toBe(true);
-  expect(read(await reopen(accepting))).toEqual(read(accepting));
-});
-
-for (const tableDeletion of ["deleteTable", "deleteTableRow"] as const) {
-  test(`terminal paragraph deletions resolve like direct after ${tableDeletion}`, async () => {
-    const original = read(await open());
-    const edited = async (mode: Mode) => {
-      const reviewer = await open();
-      const blocks = reviewer.getContent();
-      const cell = blocks.find(
-        ({ table: cellTable }) => cellTable !== undefined,
-      );
-      if (!cell) throw new Error("Missing table deletion target");
+/**
+ * The legacy session puts the run after the paragraph the merge leaves; the
+ * canonical one right after the merged paragraph, whose words accepting runs
+ * into the run's first paragraph (`insertionAfterPendingBreak`).
+ */
+for (const session of SESSIONS)
+  test(`a run inserted after a pending merge resolves both ways without moving properties (${session})`, async () => {
+    const original = read(await open(undefined, session));
+    const edited = async () => {
+      const reviewer = await open(undefined, session);
+      const anchor = reviewer.getContent().at(1);
+      if (!anchor) throw new Error("Missing merge anchor");
       expect(
-        apply(reviewer, mode, { type: tableDeletion, blockId: cell.id }),
+        apply(reviewer, "tracked-changes", {
+          type: "mergeBlockWithNext",
+          blockId: anchor.id,
+          separator: " ",
+        }),
       ).toBe(true);
-      const joinedIds = new Map<string, string>();
-      for (const prefix of ["Prices exclude", "Signed", "The Buyer"]) {
-        const block = blocks.find(({ text }) => text.startsWith(prefix));
-        if (!block)
-          throw new Error("Missing terminal paragraph deletion target");
-        const result = reviewer.applyDocumentOperations(
-          {
-            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-            mode,
-            operations: [
-              {
-                id: prefix,
-                type: "deleteBlock",
-                blockId: joinedIds.get(block.id) ?? block.id,
-              },
-            ],
-          },
-          { undefinedReferences: "refuse" },
-        );
-        expect(result.applied).toHaveLength(1);
-        expect(result.skipped).toEqual([]);
-        for (const { paragraphIdentity } of result.applied) {
-          if (paragraphIdentity?.type === "joined")
-            joinedIds.set(
-              paragraphIdentity.retiredBlockId,
-              paragraphIdentity.blockId,
-            );
-        }
-      }
+      const result = reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode: "tracked-changes",
+          operations: [
+            {
+              id: "heading",
+              type: "insertAfterBlock",
+              blockId: anchor.id,
+              text: "A second-level heading.",
+              styleId: "Heading2",
+            },
+            {
+              id: "bullet",
+              type: "insertAfterBlock",
+              blockId: anchor.id,
+              text: "A new bullet.",
+              numbering: { kind: "newList", format: "bullet" },
+            },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      );
+      expect(result.applied).toHaveLength(2);
       return reviewer;
     };
-    const direct = await edited("direct");
-    const tracked = await edited("tracked-changes");
-    const rejecting = await reopen(tracked);
+
+    const rejecting = await edited();
     rejecting.rejectAll();
     expect(read(rejecting)).toEqual(original);
-    const savedPending = await reopen(tracked);
-    tracked.acceptAll();
-    expect(read(tracked)).toEqual(read(direct));
-    expect(read(await reopen(tracked))).toEqual(read(direct));
-    savedPending.acceptAll();
-    expect(read(savedPending)).toEqual(read(direct));
+    expect(read(await reopen(rejecting, session))).toEqual(original);
+
+    const accepting = await edited();
+    accepting.acceptAll();
+    const accepted = accepting.getContent();
+    const heading =
+      session === "canonical"
+        ? "This agreement is made between the parties named below. A second-level heading."
+        : "A second-level heading.";
+    expect(accepted.find(({ text }) => text === heading)?.kind).toBe("heading");
+    expect(
+      accepted
+        .find(({ text }) => text.startsWith("A new bullet."))
+        ?.text.startsWith("A new bullet."),
+    ).toBe(true);
+    expect(read(await reopen(accepting, session))).toEqual(read(accepting));
   });
-}
+
+for (const session of SESSIONS)
+  for (const tableDeletion of ["deleteTable", "deleteTableRow"] as const) {
+    test(`terminal paragraph deletions resolve like direct after ${tableDeletion} (${session})`, async () => {
+      const original = read(await open(undefined, session));
+      const edited = async (mode: Mode) => {
+        const reviewer = await open(undefined, session);
+        const blocks = reviewer.getContent();
+        const cell = blocks.find(
+          ({ table: cellTable }) => cellTable !== undefined,
+        );
+        if (!cell) throw new Error("Missing table deletion target");
+        expect(
+          apply(reviewer, mode, { type: tableDeletion, blockId: cell.id }),
+        ).toBe(true);
+        const joinedIds = new Map<string, string>();
+        for (const prefix of ["Prices exclude", "Signed", "The Buyer"]) {
+          const block = blocks.find(({ text }) => text.startsWith(prefix));
+          if (!block)
+            throw new Error("Missing terminal paragraph deletion target");
+          const result = reviewer.applyDocumentOperations(
+            {
+              version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+              mode,
+              operations: [
+                {
+                  id: prefix,
+                  type: "deleteBlock",
+                  blockId: joinedIds.get(block.id) ?? block.id,
+                },
+              ],
+            },
+            { undefinedReferences: "refuse" },
+          );
+          expect(result.applied).toHaveLength(1);
+          expect(result.skipped).toEqual([]);
+          for (const { paragraphIdentity } of result.applied) {
+            if (paragraphIdentity?.type === "joined")
+              joinedIds.set(
+                paragraphIdentity.retiredBlockId,
+                paragraphIdentity.blockId,
+              );
+          }
+        }
+        return reviewer;
+      };
+      const direct = await edited("direct");
+      const tracked = await edited("tracked-changes");
+      const rejecting = await reopen(tracked, session);
+      rejecting.rejectAll();
+      expect(read(rejecting)).toEqual(original);
+      const savedPending = await reopen(tracked, session);
+      // On the canonical session the table pending deletion stands before the
+      // last paragraphs when they are deleted: the last one keeps its mark and
+      // loses its words, so accepting leaves one empty final paragraph more
+      // than the direct edits (the stated table-before-final-paragraph shape).
+      const accepted = [
+        ...read(direct),
+        ...(session === "canonical" && tableDeletion === "deleteTable"
+          ? ["paragraph: "]
+          : []),
+      ];
+      tracked.acceptAll();
+      expect(read(tracked)).toEqual(accepted);
+      expect(read(await reopen(tracked, session))).toEqual(accepted);
+      savedPending.acceptAll();
+      expect(read(savedPending)).toEqual(accepted);
+    });
+  }
 
 test("reject removes tables inserted around an inserted terminal paragraph", async () => {
   const original = read(await open());
