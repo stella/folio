@@ -35,6 +35,23 @@ const REPAIRED_BEFORE =
   "earlier releases rebuilt a tree from broken markup; it is refused now";
 const UNDECLARED_ENTITY =
   "earlier releases read an HTML name or kept an unknown one; a name no declaration defines is refused now";
+/** Character references XML refuses, each with what earlier releases read. */
+const INVALID_CHARACTER_REFERENCES = {
+  "character references":
+    "earlier releases read `&#X` as `&#x`; XML spells the marker in lower case, so the reference is refused now",
+  "null character reference":
+    "earlier releases read a reference to U+0000 as nothing; XML refuses it now",
+  "C0 character reference":
+    "earlier releases read a reference to a C0 control; XML refuses it now",
+  "surrogate character reference":
+    "earlier releases read a reference to a surrogate; XML refuses it now",
+  "out-of-range character reference":
+    "earlier releases read a reference past U+10FFFF; XML refuses it now",
+  "lenient character reference":
+    "earlier releases read digits that are not a number; XML refuses them now",
+  "invalid character reference":
+    "earlier releases read a reference to U+0000 as nothing; XML refuses it now",
+};
 
 describe("parseXml", () => {
   test("reads every fixture part as before", () => {
@@ -88,6 +105,7 @@ describe("parseXml", () => {
         "unknown entity": UNDECLARED_ENTITY,
         "numeric identifier with HTML entity": UNDECLARED_ENTITY,
         "HTML entity": UNDECLARED_ENTITY,
+        ...INVALID_CHARACTER_REFERENCES,
       },
       reread: {
         "text before root":
