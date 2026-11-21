@@ -1,5 +1,6 @@
 {
   "core": {
-    "declarationBytes": 2800
+    "declarationBytes": 2800,
+    "declarationLines": 80
   }
 }
