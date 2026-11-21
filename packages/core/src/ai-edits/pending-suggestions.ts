@@ -12,6 +12,7 @@ import {
 import { getDocumentStyleResolver } from "../prosemirror/plugins/documentStyleState";
 import { getFolioParaIdFromBlockId } from "../types/block-id";
 import { canonicalJson } from "../utils/canonicalJson";
+import { persistedBlock } from "./block-identity";
 import type { FolioDocumentStoryHandle } from "./headless";
 import {
   createFolioAIEditSnapshotWithStyleResolver,
@@ -431,7 +432,7 @@ const fingerprintOf = (
     canonicalJson([
       story,
       snapshot.blocks.map((block) => [
-        block,
+        persistedBlock(block),
         snapshot.anchors[block.id]?.structuralBoundaryHash,
       ]),
     ]),
