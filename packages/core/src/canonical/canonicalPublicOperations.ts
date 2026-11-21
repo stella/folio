@@ -209,6 +209,7 @@ import {
 } from "./canonicalSession";
 import { canonicalTrackedBatchFidelityError } from "./canonicalTrackedBatchFidelity";
 import { findCommentAnchorParagraph } from "./commentAnchorParagraph";
+import { controlEdgesAt } from "./controlEdges";
 import { indentationAsRead, spacingSidesAsRead } from "./paragraphPatchAsRead";
 
 type CanonicalBatchPlan = {
@@ -5546,11 +5547,18 @@ export class CanonicalPublicOperations {
         const changeTo = projection.value.addressAt(gap.to, edges?.end);
         if (changeFrom.isErr() || changeTo.isErr())
           return refusal("unsupportedBlock");
+        // A direct replacement of exactly a content control's text goes in
+        // the control, as typing over it does. A tracked one is recorded as
+        // the control's own deletion, as a suggestion typed over it is.
+        const inside = tracked
+          ? {}
+          : controlEdgesAt(projection.value.doc, gap.from, gap.to);
         intents.push({
           type: "replaceText",
           from: changeFrom.value,
           to: changeTo.value,
           text: change.text,
+          ...(Object.keys(inside).length === 0 ? {} : { inside }),
           ...(intent.runPropsPatch === undefined
             ? {}
             : { runPropsPatch: intent.runPropsPatch }),
