@@ -5327,7 +5327,74 @@ export class CanonicalPublicOperations {
     });
   }
 
-  private resolve({
+  /**
+   * An operation resolved against its story. One naming the filler of a
+   * block the source leaves empty is first restated beside that block.
+   */
+  private resolve(options: ResolveCanonicalPublicOperationOptions) {
+    const operation = this.restatedBesideEmptyControl(options);
+    if (operation.isErr()) return Result.err(operation.error);
+    return this.resolveOperation({ ...options, operation: operation.value });
+  }
+
+  /**
+   * `operation`, or, where it names the filler of a block the source leaves
+   * empty (`emptyControlOfFiller`), the same insertion beside that block; any
+   * other operation on the filler is refused, as is one whose precondition
+   * the filler, which holds no words, does not meet.
+   */
+  private restatedBesideEmptyControl({
+    operation,
+    options,
+    state,
+    story,
+  }: ResolveCanonicalPublicOperationOptions): Result<
+    FolioDocumentOperation,
+    CanonicalPublicOperationResolutionError
+  > {
+    const blockId =
+      operation.type === "replaceRange" ||
+      operation.type === "formatRange" ||
+      operation.type === "commentOnRange"
+        ? operation.range.blockId
+        : operation.blockId;
+    const anchor = Object.hasOwn(options.snapshot.anchors, blockId)
+      ? options.snapshot.anchors[blockId]
+      : undefined;
+    const projection = this.options.session.projectStory(story);
+    if (
+      anchor === undefined ||
+      projection.isErr() ||
+      projection.value.paragraph(blockId) !== undefined
+    )
+      return Result.ok(operation);
+    const control = emptyControlOfFiller(state.doc, blockId);
+    if (control === undefined) return Result.ok(operation);
+    const refusal = (reason: FolioAIEditSkipReason, message?: string) =>
+      Result.err(
+        new CanonicalPublicOperationResolutionError({
+          reason,
+          message: message ?? `The operation was refused: ${reason}.`,
+        }),
+      );
+    const fillerHash = hashFolioAIBlockContent("");
+    if (
+      operation.precondition &&
+      fillerHash !== operation.precondition.blockTextHash
+    )
+      return refusal("preconditionFailed");
+    if (fillerHash !== anchor.textHash) return refusal("changedBlock");
+    const beside = besideEmptyControl({
+      operation,
+      control,
+      projection: projection.value,
+    });
+    return beside.type === "refused"
+      ? refusal("unsupportedBlock", beside.message)
+      : Result.ok(beside.operation);
+  }
+
+  private resolveOperation({
     operation,
     options,
     state,
@@ -5397,38 +5464,6 @@ export class CanonicalPublicOperations {
     const projection = this.options.session.projectStory(story);
     if (!anchor || projection.isErr()) return refusal("missingBlock");
     const paragraph = projection.value.paragraph(blockId);
-    const control =
-      paragraph === undefined
-        ? emptyControlOfFiller(state.doc, blockId)
-        : undefined;
-    if (control !== undefined) {
-      // The filler holds no words, whatever the batch asks of it.
-      const fillerHash = hashFolioAIBlockContent("");
-      if (
-        operation.precondition &&
-        fillerHash !== operation.precondition.blockTextHash
-      )
-        return refusal("preconditionFailed");
-      if (fillerHash !== anchor.textHash) return refusal("changedBlock");
-      const beside = besideEmptyControl({
-        operation,
-        control,
-        projection: projection.value,
-      });
-      if (beside.type === "refused")
-        return refusal("unsupportedBlock", beside.message);
-      return this.resolve({
-        operation: beside.operation,
-        options,
-        state,
-        story,
-        diff,
-        tracked,
-        suggested,
-        mintList,
-        besideDeletions,
-      });
-    }
     if (!paragraph)
       return holdsParagraph(state.doc, blockId)
         ? refusal(
