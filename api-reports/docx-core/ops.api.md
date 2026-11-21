@@ -426,6 +426,7 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
     readonly REVISION_CONFLICT: "revisionConflict";
     readonly CONTAINER_FINAL_MARK: "containerFinalMark";
     readonly UNTRACKABLE: "untrackable";
+    readonly PENDING_GRID_CHANGE: "pendingGridChange";
     readonly UNRECORDABLE_LINK_SUGGESTION: "unrecordableLinkSuggestion";
     readonly MISSING_BLOCK_ID: "missingBlockId";
     readonly DUPLICATE_BLOCK_ID: "duplicateBlockId";
@@ -822,6 +823,7 @@ export type InsertColumnOp = TableEditTarget & {
     type: typeof DOCUMENT_OP_TYPES.INSERT_COLUMN;
     column: number;
     width: number;
+    count?: number;
     newBlockIds: readonly string[];
 };
 
