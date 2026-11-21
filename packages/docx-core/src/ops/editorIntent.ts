@@ -518,7 +518,7 @@ export const createEditorIntentIdAllocator = ({
   };
   return (
     document: Document,
-    intent: EditorIntentAllocation,
+    requested: EditorIntentAllocation,
     lease?: IdLease,
   ): {
     revisionId: number;
@@ -528,6 +528,13 @@ export const createEditorIntentIdAllocator = ({
       control: number[];
     };
   } => {
+    // Demand is counted where the intent is compiled: an intent naming a text
+    // box's paragraphs through the story drawing it, in the box's own story.
+    const routed = textBoxOfIntent(document, requested);
+    const intent =
+      routed === undefined
+        ? requested
+        : addressedTo(requested, routed.story, routed.box);
     const census = packageIdOccupancy(document.package);
     const { story, fromId, toId, fromOffset, toOffset } =
       intentEndpoints(intent);
