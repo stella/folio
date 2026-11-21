@@ -108,6 +108,7 @@ import {
   paragraphHoldsContentOnceAccepted,
 } from "./offsets";
 import { findStoryParagraph } from "./paragraphLocator";
+import { registerStatedParagraphFormatting } from "./paragraphPropertySnapshot";
 import {
   isBlockBoundary,
   isKeptBoundaryCarrier,
@@ -4768,6 +4769,9 @@ const resolveParagraphReview = (
         } else {
           review.formatting = restored;
         }
+        // The restored properties are the recorded ones the paragraph
+        // states, never effective values a list level projected.
+        registerStatedParagraphFormatting(review);
       }
     }
     if (remaining.length > 0) {

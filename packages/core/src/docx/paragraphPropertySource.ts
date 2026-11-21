@@ -8,6 +8,11 @@ import type {
 import type { Transaction } from "prosemirror-state";
 
 import {
+  paragraphStatesItsFormatting,
+  transferParagraphPropertySnapshot,
+} from "@stll/docx-core/ops";
+
+import {
   type ModeledParagraphFormattingEmission,
   modelParagraphFormattingEmission,
 } from "../internal/paragraphFormattingSerialization";
@@ -550,8 +555,8 @@ const directFormattingBySource = new WeakMap<
   { formatting: ParagraphFormatting | undefined }
 >();
 
-/** Read authored indentation while preserving edits to the parsed effective values. */
-export const paragraphFormattingWithAuthoredIndentation = (
+/** The authored indentation the paragraph's baseline reads its values as. */
+const formattingWithBaselineIndentation = (
   paragraph: Paragraph,
 ): ParagraphFormatting | undefined => {
   const source = getParagraphPropertySource(paragraph);
@@ -588,6 +593,19 @@ export const paragraphFormattingWithAuthoredIndentation = (
   }
   return Object.keys(result).length === 0 ? undefined : result;
 };
+
+/**
+ * Read authored indentation while preserving edits to the parsed effective
+ * values. Formatting registered as stated, as a rejected property change
+ * restores it, is authored as it stands: an indentation baseline projected
+ * before no longer describes it, even where a value coincides.
+ */
+export const paragraphFormattingWithAuthoredIndentation = (
+  paragraph: Paragraph,
+): ParagraphFormatting | undefined =>
+  paragraphStatesItsFormatting(paragraph)
+    ? paragraph.formatting
+    : formattingWithBaselineIndentation(paragraph);
 
 /** Equal effective values must not replay a capture that lacks newly authored indentation. */
 export const paragraphPropertySourceMatchesAuthoredIndentation = (
@@ -699,6 +717,9 @@ const reopenParagraph = (paragraph: Paragraph): Paragraph => {
   const payload = decodedTableCellParagraphSourcePayloads.get(paragraph);
   if (payload !== undefined)
     decodedTableCellParagraphSourcePayloads.set(copy, payload);
+  // The copy states what its original states: a property change it records
+  // later records those properties, never the effective values over them.
+  transferParagraphPropertySnapshot({ source: paragraph, target: copy });
   return copy;
 };
 
@@ -905,6 +926,7 @@ export const cloneParagraphWithPropertySource = (
 ): Paragraph => {
   const cloned: Paragraph = { ...paragraph, ...overrides };
   copyParagraphPropertySource(cloned, paragraph);
+  transferParagraphPropertySnapshot({ source: paragraph, target: cloned });
   return cloned;
 };
 
@@ -917,6 +939,31 @@ export const cloneParagraphWithoutPropertySource = (
   keepHandle(cloned, paragraphPropertyCapture, undefined);
   keepHandle(cloned, paragraphIndentationProjection, undefined);
   return cloned;
+};
+
+/**
+ * `paragraph`, or a copy whose indentation baseline is the indentation it
+ * states, when its formatting is registered as stated and the baseline it
+ * carries reads that formatting otherwise. The registration names this
+ * paragraph object only; the copy keeps stating its formatting through any
+ * later edit.
+ */
+export const withStatedIndentationBaseline = (
+  paragraph: Paragraph,
+): Paragraph => {
+  if (
+    !paragraphStatesItsFormatting(paragraph) ||
+    canonicalJson(formattingWithBaselineIndentation(paragraph)) ===
+      canonicalJson(paragraph.formatting)
+  )
+    return paragraph;
+  const rebased = cloneParagraphWithPropertySource(paragraph, {});
+  assignParagraphIndentationProjection({
+    paragraph: rebased,
+    authored: paragraph.formatting,
+    inherited: {},
+  });
+  return rebased;
 };
 
 const paragraphsIn = (document: Document): Paragraph[] => {

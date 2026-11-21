@@ -19,7 +19,10 @@ import {
   relationshipIdOf,
   setDocumentBodyComments,
 } from "@stll/docx-core/model";
-import { survivingComments } from "@stll/docx-core/ops";
+import {
+  registerStatedParagraphFormatting,
+  survivingComments,
+} from "@stll/docx-core/ops";
 
 import { removeCommentMarkers } from "../../docx/commentAnchorIndex";
 import { expectNoteMarkerAttrs } from "../../internal/noteMarkerAttrs";
@@ -2373,24 +2376,26 @@ function convertPMParagraph(
   if (pFormatting) {
     paragraph.formatting = pFormatting;
   }
-  if (
+  const inheritedIndentation =
     effectiveParagraphNumbering(
       paragraphNumberingSourcesFromBoundary({
         numPr: attrs.numPr,
         numPrFromStyle: attrs.numPrFromStyle,
       }),
     )?.kind === "reference"
-  ) {
-    const inheritedIndentation = paragraphIndentationFromFormatting(
-      attrs._resolvedFormatting,
-    );
-    if (inheritedIndentation) {
-      assignParagraphIndentationProjection({
-        paragraph,
-        authored: pFormatting,
-        inherited: inheritedIndentation,
-      });
-    }
+      ? paragraphIndentationFromFormatting(attrs._resolvedFormatting)
+      : undefined;
+  if (inheritedIndentation) {
+    assignParagraphIndentationProjection({
+      paragraph,
+      authored: pFormatting,
+      inherited: inheritedIndentation,
+    });
+  } else {
+    // The attrs give the properties the paragraph states, and no list level
+    // projects onto them: a baseline its source paragraph was read with
+    // does not reinterpret them.
+    registerStatedParagraphFormatting(paragraph);
   }
   const listRendering = listRenderingFromAttrs(attrs);
   if (listRendering) {

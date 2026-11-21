@@ -6,16 +6,25 @@ import {
 } from "../model/document";
 import { structurallyEqual } from "./equality";
 
+/**
+ * Where a registered snapshot comes from: a projector that put effective
+ * values over the stated ones, or an edit that gave the paragraph exactly
+ * the properties it states.
+ */
+type SnapshotProvenance = "projected" | "stated";
+
 const snapshots = new WeakMap<
   object,
   {
     effective: ParagraphFormatting | undefined;
     snapshot: ParagraphFormatting | undefined;
+    provenance: SnapshotProvenance;
   }
 >();
 
 type RegisterParagraphPropertySnapshotOptions = {
-  paragraph: Paragraph;
+  /** A paragraph, or review fields an operation gives one. */
+  paragraph: Pick<Paragraph, "formatting">;
   snapshot: ParagraphFormatting | undefined;
 };
 
@@ -26,12 +35,31 @@ export const registerParagraphPropertySnapshot = ({
 }: RegisterParagraphPropertySnapshotOptions): void => {
   const current = snapshots.get(paragraph);
   if (
-    current !== undefined &&
+    current?.provenance === "projected" &&
     structurallyEqual(current.effective, paragraph.formatting) &&
     structurallyEqual(current.snapshot, snapshot)
   )
     return;
-  snapshots.set(paragraph, { effective: paragraph.formatting, snapshot });
+  snapshots.set(paragraph, {
+    effective: paragraph.formatting,
+    snapshot,
+    provenance: "projected",
+  });
+};
+
+/**
+ * Register `paragraph`'s formatting as exactly what it states, as a rejected
+ * property change restores the recorded properties: no list level or style
+ * projects a value onto it.
+ */
+export const registerStatedParagraphFormatting = (
+  paragraph: Pick<Paragraph, "formatting">,
+): void => {
+  snapshots.set(paragraph, {
+    effective: paragraph.formatting,
+    snapshot: paragraph.formatting,
+    provenance: "stated",
+  });
 };
 
 /**
@@ -67,6 +95,21 @@ export const getParagraphPropertySnapshot = (
     structurallyEqual(paragraph.formatting, registered.effective)
     ? registered.snapshot
     : paragraph.formatting;
+};
+
+/**
+ * Whether `paragraph`'s formatting is still the formatting an edit registered
+ * as stated. A projector that infers stated properties from the effective
+ * ones it projected before keeps every value such formatting holds.
+ */
+export const paragraphStatesItsFormatting = (
+  paragraph: Pick<Paragraph, "formatting">,
+): boolean => {
+  const registered = snapshots.get(paragraph);
+  return (
+    registered?.provenance === "stated" &&
+    structurallyEqual(paragraph.formatting, registered.effective)
+  );
 };
 
 /**
