@@ -30,7 +30,11 @@ import {
 } from "./ids";
 import { childNodes, type InlineNode } from "./leaves";
 import { paragraphLength } from "./offsets";
-import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
+import {
+  DOCUMENT_OP_REFUSAL_REASONS,
+  DocumentOpRefusal,
+  pendingParagraphMarkReason,
+} from "./refusal";
 import {
   carriesStamp,
   stampInfo,
@@ -287,10 +291,13 @@ export const trackTableRows = ({
         : "The rows contain an unsupported tracked structure.",
     });
   }
-  if ([...finals].some((paragraph) => paragraph.pPrMark !== undefined)) {
+  const reviewedFinalMark = [...finals].find(
+    (paragraph) => paragraph.pPrMark !== undefined,
+  )?.pPrMark;
+  if (reviewedFinalMark !== undefined) {
     return refused({
       op,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK,
+      reason: pendingParagraphMarkReason(reviewedFinalMark),
       message: "A cell's final paragraph already carries a mark revision.",
     });
   }

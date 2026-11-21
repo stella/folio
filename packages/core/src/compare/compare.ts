@@ -954,6 +954,7 @@ const COMPARE_SKIP_DISPOSITION = {
   emptyOperation: "unwritable",
   pendingParagraphPropertyChange: "unwritable",
   pendingParagraphMarkDeletion: "unwritable",
+  pendingParagraphMarkInsertion: "unwritable",
   pendingTableInsertion: "unwritable",
   pendingTableChange: "unwritable",
   existingRevisionConflict: "unwritable",

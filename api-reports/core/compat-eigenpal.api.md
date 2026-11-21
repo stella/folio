@@ -1191,8 +1191,22 @@ export type FolioAIEditSkipReason =
 * next to it.
 */
 "pendingDeletion" |
-/** Resolve the removed paragraph mark before editing its properties separately, or before inserting a paragraph between it and a table. */
+/**
+* Resolve the removed paragraph mark before editing its properties
+* separately, or before inserting a paragraph between it and a table.
+* A tracked operation that would record over a paragraph mark pending
+* deletion (a join or deletion through it, a row against it, an insertion
+* after a container's last paragraph) reports it too: resolve that
+* deletion first.
+*/
 "pendingParagraphMarkDeletion" |
+/**
+* A tracked operation would record over a paragraph mark that is pending
+* insertion (a join or deletion through it, a row against it, an insertion
+* after a container's last paragraph): the mark holds one tracked change.
+* Nothing was applied. Resolve that insertion first.
+*/
+"pendingParagraphMarkInsertion" |
 /**
 * A tracked join would run a paragraph, through one whose mark is
 * already pending deletion, into a table that is pending insertion (its

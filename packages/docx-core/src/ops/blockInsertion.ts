@@ -42,7 +42,11 @@ import {
   nonemptyBlockReplacementEffects,
   validateBlockReplacement as validateReplacement,
 } from "./paragraphPrimitive";
-import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
+import {
+  DOCUMENT_OP_REFUSAL_REASONS,
+  DocumentOpRefusal,
+  pendingParagraphMarkReason,
+} from "./refusal";
 import type { ApplyOps } from "./resolve";
 import {
   FOLD_INTO_OTHER_SUGGESTION_MESSAGE,
@@ -417,7 +421,7 @@ const finalMarkTakeoverRefusal = (
     };
   if (paragraph.pPrMark !== undefined)
     return {
-      reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK,
+      reason: pendingParagraphMarkReason(paragraph.pPrMark),
       message:
         "A tracked insertion after a paragraph no paragraph follows needs the anchor's mark free of a pending change.",
     };

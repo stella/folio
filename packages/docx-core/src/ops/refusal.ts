@@ -1,5 +1,6 @@
 import { TaggedError, type TaggedErrorClass } from "better-result";
 
+import type { ParagraphMarkChange } from "../model/content";
 import type { DocumentOpType } from "./types";
 
 const DocumentOpRefusalBase: TaggedErrorClass<"DocumentOpRefusal"> =
@@ -132,14 +133,20 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
    */
   readonly PENDING_BREAK_TAKEOVER: "pendingBreakTakeover";
   /**
-   * A tracked operation would record a change of a paragraph mark that is
-   * already under review (inserted, deleted or moving), which holds one such
-   * record: joining or deleting through it, putting a table or row against
-   * it, or, after a container's final paragraph, taking it over, since the
-   * container's new final paragraph keeps no record a pending change moves
-   * to it.
+   * A tracked operation would record a change of a paragraph mark whose
+   * break is pending deletion (deleted, moving away, or added and then
+   * deleted), which holds one such record: joining or deleting through it,
+   * putting a table or row against it, or, after a container's final
+   * paragraph, taking it over, since the container's new final paragraph
+   * keeps no record a pending change moves to it.
    */
-  readonly PENDING_PARAGRAPH_MARK: "pendingParagraphMark";
+  readonly PENDING_PARAGRAPH_MARK_DELETION: "pendingParagraphMarkDeletion";
+  /**
+   * As {@link DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_DELETION},
+   * for a paragraph mark whose break is pending insertion (inserted or moved
+   * here) and not deleted since.
+   */
+  readonly PENDING_PARAGRAPH_MARK_INSERTION: "pendingParagraphMarkInsertion";
   /**
    * A suggested link change would leave a piece of a link holding only
    * bookmark or comment markers, or would copy content that names a record of
@@ -280,14 +287,20 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
    */
   PENDING_BREAK_TAKEOVER: "pendingBreakTakeover",
   /**
-   * A tracked operation would record a change of a paragraph mark that is
-   * already under review (inserted, deleted or moving), which holds one such
-   * record: joining or deleting through it, putting a table or row against
-   * it, or, after a container's final paragraph, taking it over, since the
-   * container's new final paragraph keeps no record a pending change moves
-   * to it.
+   * A tracked operation would record a change of a paragraph mark whose
+   * break is pending deletion (deleted, moving away, or added and then
+   * deleted), which holds one such record: joining or deleting through it,
+   * putting a table or row against it, or, after a container's final
+   * paragraph, taking it over, since the container's new final paragraph
+   * keeps no record a pending change moves to it.
    */
-  PENDING_PARAGRAPH_MARK: "pendingParagraphMark",
+  PENDING_PARAGRAPH_MARK_DELETION: "pendingParagraphMarkDeletion",
+  /**
+   * As {@link DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_DELETION},
+   * for a paragraph mark whose break is pending insertion (inserted or moved
+   * here) and not deleted since.
+   */
+  PENDING_PARAGRAPH_MARK_INSERTION: "pendingParagraphMarkInsertion",
   /**
    * A suggested link change would leave a piece of a link holding only
    * bookmark or comment markers, or would copy content that names a record of
@@ -361,7 +374,8 @@ export const DOCUMENT_OP_REFUSAL_SCOPES: Readonly<
   insideInlineControl: ANY,
   untrackable: TRACKED,
   pendingBreakTakeover: TRACKED,
-  pendingParagraphMark: TRACKED,
+  pendingParagraphMarkDeletion: TRACKED,
+  pendingParagraphMarkInsertion: TRACKED,
   unrecordableLinkSuggestion: TRACKED,
   missingBlockId: ANY,
   duplicateBlockId: ANY,
@@ -377,6 +391,37 @@ export const TRACKED_REFUSAL_REASONS: readonly DocumentOpRefusalReason[] =
       (reason) => DOCUMENT_OP_REFUSAL_SCOPES[reason] === TRACKED,
     ),
   );
+
+/** A refusal reason naming what a paragraph mark under review has pending. */
+type PendingParagraphMarkReason =
+  | typeof DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_DELETION
+  | typeof DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_INSERTION;
+
+/**
+ * Why a tracked edit cannot record over `mark`, by what it has pending: a
+ * break that accepting every change takes (deleted, moving away, or added
+ * and then deleted) is a pending deletion; one only added is a pending
+ * insertion.
+ */
+export const pendingParagraphMarkReason = ({
+  kind,
+  deletion,
+}: ParagraphMarkChange): PendingParagraphMarkReason => {
+  switch (kind) {
+    case "del":
+    case "moveFrom":
+      return DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_DELETION;
+    case "ins":
+    case "moveTo":
+      return deletion === undefined
+        ? DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_INSERTION
+        : DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_DELETION;
+    default: {
+      const unreachable: never = kind;
+      return unreachable;
+    }
+  }
+};
 
 /** An operation the document cannot take as stated. */
 export class DocumentOpRefusal extends DocumentOpRefusalBase<{

@@ -729,6 +729,9 @@ const explainSkipReason = (reason: string): string => {
   if (reason === "pendingParagraphMarkDeletion") {
     return "a paragraph mark this operation depends on is pending tracked deletion; nothing was applied. Resolve that change first.";
   }
+  if (reason === "pendingParagraphMarkInsertion") {
+    return "a paragraph mark this operation would record over is pending tracked insertion; nothing was applied. Resolve that change first.";
+  }
   if (reason === "pendingTableInsertion") {
     return "the merge would run the paragraph, through one whose mark is pending deletion, into a table that is pending insertion; nothing was applied. Resolve the table's insertion or that deletion first.";
   }
