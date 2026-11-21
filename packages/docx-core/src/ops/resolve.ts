@@ -117,6 +117,7 @@ import {
   type TrackedWrapper,
   withMarkFormatting,
 } from "./review";
+import { isOwnRecord, type RevisionOwner } from "./revisionOwner";
 import { runsMergeable } from "./runMerge";
 import { resolveSectionChange, sectionResolutionPatch } from "./sectionReview";
 import { identitySlots, withInlineIdentity } from "./slots";
@@ -217,7 +218,7 @@ type RemovedNoteReferencesOptions = {
 /** A note whose reference's deletion a rejection restores, and who deleted it when. */
 type RestoredNoteReference = {
   story: NoteStory;
-  author: string;
+  owner: RevisionOwner;
   date: string | undefined;
 };
 
@@ -261,7 +262,10 @@ const noteReferenceDecisions = ({
       )
         restored.set(key, {
           story: { kind, id: node.id },
-          author: deletion.info.author,
+          owner: {
+            author: deletion.info.author,
+            suggestionId: deletion.info.suggestionId,
+          },
           date: deletion.info.date,
         });
       const revision = ancestors.find(
@@ -298,13 +302,13 @@ const liveNoteReferenceKeys = (
 
 /**
  * The revisions that deleted a note along with its reference: its text and
- * its paragraph marks, deleted by the reference deletion's author at its
+ * its paragraph marks, deleted by the reference deletion's owner at its
  * date. A deletion in the note made some other time is a change of its own,
  * which resolving the reference leaves alone.
  */
 const noteDeletionRevisionIds = (
   body: DocumentBody,
-  { author, date }: RestoredNoteReference,
+  { owner, date }: RestoredNoteReference,
 ): number[] => {
   const ids = new Set<number>();
   const visit = (nodes: readonly InlineNode[]): void => {
@@ -312,7 +316,7 @@ const noteDeletionRevisionIds = (
       if (
         node.type === "deletion" &&
         isTrackedWrapper(node) &&
-        node.info.author === author &&
+        isOwnRecord(node.info, owner) &&
         node.info.date === date
       )
         ids.add(node.info.id);
@@ -323,7 +327,7 @@ const noteDeletionRevisionIds = (
     const mark = paragraph.pPrMark;
     if (
       mark?.kind === "del" &&
-      mark.info.author === author &&
+      isOwnRecord(mark.info, owner) &&
       mark.info.date === date
     )
       ids.add(mark.info.id);
