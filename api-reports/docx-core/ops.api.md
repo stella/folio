@@ -426,6 +426,7 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
     readonly EMPTY_BLOCK_LIST: "emptyBlockList";
     readonly REVISION_CONFLICT: "revisionConflict";
     readonly CONTAINER_FINAL_MARK: "containerFinalMark";
+    readonly INSIDE_INLINE_CONTROL: "insideInlineControl";
     readonly UNTRACKABLE: "untrackable";
     readonly UNRECORDABLE_LINK_SUGGESTION: "unrecordableLinkSuggestion";
     readonly MISSING_BLOCK_ID: "missingBlockId";

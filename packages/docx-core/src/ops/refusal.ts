@@ -87,6 +87,11 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
   /** The operation would put a mark on a paragraph that ends its story body or table cell. */
   readonly CONTAINER_FINAL_MARK: "containerFinalMark";
   /**
+   * A paragraph break inside an inline content control: the control lives in
+   * one paragraph, so the break has no form.
+   */
+  readonly INSIDE_INLINE_CONTROL: "insideInlineControl";
+  /**
    * No tracked change can record the edit, or no resolution op can carry it
    * out yet: comment boundaries in a tracked range, the paragraph mark's run
    * properties, a join at a section break, a record inside a field.
@@ -186,6 +191,11 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
   REVISION_CONFLICT: "revisionConflict",
   /** The operation would put a mark on a paragraph that ends its story body or table cell. */
   CONTAINER_FINAL_MARK: "containerFinalMark",
+  /**
+   * A paragraph break inside an inline content control: the control lives in
+   * one paragraph, so the break has no form.
+   */
+  INSIDE_INLINE_CONTROL: "insideInlineControl",
   /**
    * No tracked change can record the edit, or no resolution op can carry it
    * out yet: comment boundaries in a tracked range, the paragraph mark's run
