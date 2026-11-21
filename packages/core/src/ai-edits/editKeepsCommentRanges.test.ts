@@ -23,6 +23,7 @@ import {
   propertyTestTimeout,
 } from "../../../../test/property-testing";
 import { createDocx } from "../docx/rezip";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import type {
   Comment,
   Document,
@@ -36,6 +37,10 @@ setDefaultTimeout(propertyTestTimeout(30_000));
 
 const COMMENT_IDS = [0, 1, 2, 3, 4] as const;
 const EDIT_MODES = ["direct", "tracked-changes"] as const;
+const SESSIONS = [
+  "legacy",
+  "canonical",
+] as const satisfies readonly HeadlessReviewerSession[];
 /** Paragraph each comment's range ends in; every range starts in paragraph 0. */
 const RANGE_END_PARAGRAPH = [1, 1, 2, 3, 3] as const;
 const FIRST_PARAGRAPH_TEXT = "First paragraph text.";
@@ -96,13 +101,12 @@ const markerIds = (xml: string, marker: string): number[] =>
   );
 
 const replaceFirstParagraph = async (
+  session: HeadlessReviewerSession,
   mode: "direct" | "tracked-changes",
 ): Promise<FolioDocxReviewer> => {
   const reviewer = await FolioDocxReviewer.fromBuffer(
     await createDocx(buildDocument()),
-    {
-      author: "Editor",
-    },
+    { author: "Editor", session },
   );
   const [target] = reviewer.snapshot().blocks;
   expect(target?.text).toBe(FIRST_PARAGRAPH_TEXT);
@@ -129,137 +133,174 @@ const commentEndAndReferenceOrder = (xml: string): string[] =>
     ),
   ].map(([, kind, id]) => `${kind}:${id}`);
 
-describe("replaceInBlock over a block that opens comment ranges", () => {
-  test.each(["direct", "tracked-changes"] as const)(
-    "keeps every range's start in %s mode",
-    async (mode) => {
-      const reviewer = await replaceFirstParagraph(mode);
-      const buffer = await reviewer.toBuffer();
-      const xml = await documentXml(buffer);
-      const authoredOrder = COMMENT_IDS.flatMap((id) => [
-        `commentRangeEnd:${id}`,
-        `commentReference:${id}`,
-      ]);
-      expect(commentEndAndReferenceOrder(xml)).toEqual(authoredOrder);
+describe.each(SESSIONS)(
+  "%s: replaceInBlock over a block that opens comment ranges",
+  (session) => {
+    test.each(["direct", "tracked-changes"] as const)(
+      "keeps every range's start in %s mode",
+      async (mode) => {
+        const reviewer = await replaceFirstParagraph(session, mode);
+        const buffer = await reviewer.toBuffer();
+        const xml = await documentXml(buffer);
+        const authoredOrder = COMMENT_IDS.flatMap((id) => [
+          `commentRangeEnd:${id}`,
+          `commentReference:${id}`,
+        ]);
+        expect(commentEndAndReferenceOrder(xml)).toEqual(authoredOrder);
 
-      expect(markerIds(xml, "commentRangeStart").toSorted()).toEqual([
-        ...COMMENT_IDS,
-      ]);
-      expect(markerIds(xml, "commentRangeEnd").toSorted()).toEqual([
-        ...COMMENT_IDS,
-      ]);
-      expect(markerIds(xml, "commentReference").toSorted()).toEqual([
-        ...COMMENT_IDS,
-      ]);
+        expect(markerIds(xml, "commentRangeStart").toSorted()).toEqual([
+          ...COMMENT_IDS,
+        ]);
+        expect(markerIds(xml, "commentRangeEnd").toSorted()).toEqual([
+          ...COMMENT_IDS,
+        ]);
+        expect(markerIds(xml, "commentReference").toSorted()).toEqual([
+          ...COMMENT_IDS,
+        ]);
 
-      // The starts move to the beginning of the replacement, which is still the
-      // first paragraph: every range covers the new text, as Word's does.
-      const [firstParagraph] = xml.split("</w:p>");
-      for (const id of COMMENT_IDS) {
-        expect(firstParagraph).toContain(`<w:commentRangeStart w:id="${id}"/>`);
-      }
-      expect(xml).toContain("Wholly different wording.");
-      if (mode === "tracked-changes") {
-        const reopened = await FolioDocxReviewer.fromBuffer(buffer);
-        reopened.rejectAll();
-        const rejectedXml = await documentXml(await reopened.toBuffer());
-        expect(rejectedXml).toContain(FIRST_PARAGRAPH_TEXT);
-        expect(commentEndAndReferenceOrder(rejectedXml)).toEqual(authoredOrder);
-      }
-    },
-  );
-});
-
-test("tracked replacement refuses to widen disjoint comment ranges on rejection", async () => {
-  await fc.assert(
-    fc.asyncProperty(
-      fc.array(fc.integer({ min: 1, max: 8 }), { minLength: 2, maxLength: 5 }),
-      async (lengths) => {
-        const content: ParagraphContent[] = [];
-        for (const [id, length] of lengths.entries()) {
-          content.push(
-            { type: "commentRangeStart", id },
-            run(String(id).repeat(length)),
-            { type: "commentRangeEnd", id },
-            { type: "commentReference", id },
-            run(" between "),
+        // The starts move to the beginning of the replacement, which is still the
+        // first paragraph: every range covers the new text, as Word's does.
+        const [firstParagraph] = xml.split("</w:p>");
+        for (const id of COMMENT_IDS) {
+          expect(firstParagraph).toContain(
+            `<w:commentRangeStart w:id="${id}"/>`,
           );
         }
-        const source = await createDocx({
-          package: {
-            document: {
-              comments: lengths.map((_, id) => comment(id)),
-              content: [{ type: "paragraph", paraId: "40000001", content }],
-            },
-          },
-        });
-        const anchors: Record<
-          (typeof EDIT_MODES)[number],
-          (string | undefined)[]
-        > = {
-          direct: [],
-          "tracked-changes": [],
-        };
-        for (const mode of EDIT_MODES) {
-          const reviewer = await FolioDocxReviewer.fromBuffer(source, {
-            author: "Editor",
+        expect(xml).toContain("Wholly different wording.");
+        if (mode === "tracked-changes") {
+          const reopened = await FolioDocxReviewer.fromBuffer(buffer, {
+            session,
           });
-          const target = reviewer.snapshot().blocks.at(0);
-          expect(target).toBeDefined();
-          const before = reviewer.toDocument();
-          const result = reviewer.applyOperations(
-            [
-              {
-                id: "replace",
-                type: "replaceBlock",
-                blockId: target?.id ?? "",
-                text: "New clause text.",
-              },
-            ],
-            { undefinedReferences: "refuse", mode },
+          reopened.rejectAll();
+          const rejectedXml = await documentXml(await reopened.toBuffer());
+          expect(rejectedXml).toContain(FIRST_PARAGRAPH_TEXT);
+          expect(commentEndAndReferenceOrder(rejectedXml)).toEqual(
+            authoredOrder,
           );
-          if (mode === "tracked-changes") {
-            expect(result.applied).toEqual([]);
-            expect(result.skipped).toEqual([
-              {
-                id: "replace",
-                reason: "invalidResult",
-                message:
-                  "Reject All would change the original content or formatting.",
-              },
-            ]);
-            expect(reviewer.toDocument()).toEqual(before);
-          } else {
-            expect(result.applied).toHaveLength(1);
-          }
-          const saved = await FolioDocxReviewer.fromBuffer(
-            await reviewer.toBuffer(),
-            {
-              author: "Editor",
-            },
-          );
-          saved.acceptAll();
-          const reopened = await FolioDocxReviewer.fromBuffer(
-            await saved.toBuffer(),
-            {
-              author: "Editor",
-            },
-          );
-          anchors[mode] = reopened
-            .getComments()
-            .map(({ anchoredText }) => anchoredText);
         }
-        expect(anchors.direct).toHaveLength(lengths.length);
-        expect(
-          anchors.direct.every((anchor) => anchor === "New clause text."),
-        ).toBe(true);
-        expect(anchors["tracked-changes"]).toEqual(
-          lengths.map((length, id) => String(id).repeat(length)),
-        );
       },
-    ),
-    propertyConfig({ numRuns: 12 }),
-  );
+    );
+  },
+);
+
+/**
+ * Replacing a block whose comments each cover their own words. Legacy widens
+ * every range over the direct replacement and refuses the tracked one, whose
+ * rejection would widen them. Canonical deletes the comments a direct
+ * replacement covers whole, as the tracked one does once accepted; rejecting
+ * it restores every range as authored.
+ */
+const DISJOINT_REPLACEMENT_OUTCOMES = {
+  legacy: { direct: "widened", tracked: "refused" },
+  canonical: { direct: "deleted", tracked: "applied" },
+} as const satisfies Record<
+  HeadlessReviewerSession,
+  { direct: "widened" | "deleted"; tracked: "refused" | "applied" }
+>;
+
+describe.each(SESSIONS)("%s", (session) => {
+  const outcome = DISJOINT_REPLACEMENT_OUTCOMES[session];
+  test("tracked replacement never widens disjoint comment ranges on rejection", async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.array(fc.integer({ min: 1, max: 8 }), {
+          minLength: 2,
+          maxLength: 5,
+        }),
+        async (lengths) => {
+          const content: ParagraphContent[] = [];
+          for (const [id, length] of lengths.entries()) {
+            content.push(
+              { type: "commentRangeStart", id },
+              run(String(id).repeat(length)),
+              { type: "commentRangeEnd", id },
+              { type: "commentReference", id },
+              run(" between "),
+            );
+          }
+          const source = await createDocx({
+            package: {
+              document: {
+                comments: lengths.map((_, id) => comment(id)),
+                content: [{ type: "paragraph", paraId: "40000001", content }],
+              },
+            },
+          });
+          const authored = lengths.map((length, id) =>
+            String(id).repeat(length),
+          );
+          const replaced = async (mode: (typeof EDIT_MODES)[number]) => {
+            const reviewer = await FolioDocxReviewer.fromBuffer(source, {
+              author: "Editor",
+              session,
+            });
+            const target = reviewer.snapshot().blocks.at(0);
+            expect(target).toBeDefined();
+            const before = reviewer.toDocument();
+            const result = reviewer.applyOperations(
+              [
+                {
+                  id: "replace",
+                  type: "replaceBlock",
+                  blockId: target?.id ?? "",
+                  text: "New clause text.",
+                },
+              ],
+              { undefinedReferences: "refuse", mode },
+            );
+            if (mode === "tracked-changes" && outcome.tracked === "refused") {
+              expect(result.applied).toEqual([]);
+              expect(result.skipped).toEqual([
+                {
+                  id: "replace",
+                  reason: "invalidResult",
+                  message:
+                    "Reject All would change the original content or formatting.",
+                },
+              ]);
+              expect(reviewer.toDocument()).toEqual(before);
+            } else {
+              expect(result.applied).toHaveLength(1);
+            }
+            return reviewer.toBuffer();
+          };
+          const resolvedAnchors = async (
+            buffer: ArrayBuffer,
+            resolution: "acceptAll" | "rejectAll",
+          ) => {
+            const saved = await FolioDocxReviewer.fromBuffer(buffer, {
+              author: "Editor",
+              session,
+            });
+            saved[resolution]();
+            const reopened = await FolioDocxReviewer.fromBuffer(
+              await saved.toBuffer(),
+              { author: "Editor", session },
+            );
+            return reopened
+              .getComments()
+              .map(({ anchoredText }) => anchoredText);
+          };
+
+          const direct = await resolvedAnchors(
+            await replaced("direct"),
+            "acceptAll",
+          );
+          expect(direct).toEqual(
+            outcome.direct === "widened"
+              ? lengths.map(() => "New clause text.")
+              : [],
+          );
+          const tracked = await replaced("tracked-changes");
+          expect(await resolvedAnchors(tracked, "rejectAll")).toEqual(authored);
+          expect(await resolvedAnchors(tracked, "acceptAll")).toEqual(
+            outcome.tracked === "refused" ? authored : direct,
+          );
+        },
+      ),
+      propertyConfig({ numRuns: 12 }),
+    );
+  });
 });
 
 test.each(["legacy", "canonical"] as const)(
