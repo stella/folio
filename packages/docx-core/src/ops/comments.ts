@@ -812,8 +812,9 @@ export const commentDocumentIssue = (
 
 /**
  * Allocate from the package's annotation domains without a hidden mutable
- * counter: one past every annotation id, or, for an author holding a lease,
- * the lowest leased comment id no annotation carries.
+ * counter: one past every annotation id, the lowest free one once the
+ * highest id is taken, or, for an author holding a lease, the lowest leased
+ * comment id no annotation carries.
  */
 export const freshCommentId = (
   document: Document,
@@ -859,15 +860,19 @@ export const freshCommentId = (
         )
       : Result.ok(leased);
   }
-  if (!Number.isInteger(maximum) || maximum >= MAX_REVISION_ID)
-    return Result.err(
-      new DocumentOpRefusal({
-        opType: DOCUMENT_OP_TYPES.CREATE_COMMENT,
-        reason: DOCUMENT_OP_REFUSAL_REASONS.INVALID_NEW_ID,
-        message: "The package annotation id space is exhausted.",
-      }),
-    );
-  return Result.ok(maximum + 1);
+  if (Number.isInteger(maximum) && maximum < MAX_REVISION_ID)
+    return Result.ok(maximum + 1);
+  // The highest id is taken: wrap to the lowest one nothing carries.
+  for (let id = 0; id <= MAX_REVISION_ID; id += 1) {
+    if (!taken.has(id)) return Result.ok(id);
+  }
+  return Result.err(
+    new DocumentOpRefusal({
+      opType: DOCUMENT_OP_TYPES.CREATE_COMMENT,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.INVALID_NEW_ID,
+      message: "The package annotation id space is exhausted.",
+    }),
+  );
 };
 
 const propertyPresence = (

@@ -14,6 +14,7 @@ import { setDocumentBodyComments } from "../../model/canonical";
 import {
   type Comment,
   type Document,
+  MAX_REVISION_ID,
   type Paragraph,
   PARAGRAPH_MARK_CHANGE_KINDS,
 } from "../../model/document";
@@ -1122,4 +1123,27 @@ test("a comment whose range opens between blocks is read, removed, replied to an
       status: "resolved",
     }).isOk(),
   ).toBe(true);
+});
+
+test("a fresh comment id wraps to the lowest free id once the highest is taken", () => {
+  expect(freshCommentId(seed("absent")).unwrap()).toBe(0);
+  assertProperty(
+    fc.property(
+      fc.uniqueArray(fc.integer({ min: 0, max: 40 }), { maxLength: 8 }),
+      (low) => {
+        const document = seed("absent");
+        const ids = [...low, MAX_REVISION_ID];
+        setDocumentBodyComments(
+          document.package.document,
+          ids.map((id, index) =>
+            comment(id, (index + 0x100).toString(16).padStart(8, "0"), "taken"),
+          ),
+        );
+        let lowestFree = 0;
+        while (ids.includes(lowestFree)) lowestFree += 1;
+        expect(freshCommentId(document).unwrap()).toBe(lowestFree);
+      },
+    ),
+    { numRuns: 30, id: "fresh comment id wraps to the lowest free id" },
+  );
 });
