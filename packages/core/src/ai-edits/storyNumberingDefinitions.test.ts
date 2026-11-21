@@ -46,13 +46,20 @@ const storyParts = async (buffer: ArrayBuffer) => {
   );
 };
 
-const openReviewer = async (bytes?: ArrayBuffer) =>
-  FolioDocxReviewer.fromBuffer((bytes ?? (await fixture())).slice(0));
+const SESSIONS = ["legacy", "canonical"] as const;
 
-describe("a list a note operation starts", () => {
+const openReviewer = async (
+  session: (typeof SESSIONS)[number],
+  bytes?: ArrayBuffer,
+) =>
+  FolioDocxReviewer.fromBuffer((bytes ?? (await fixture())).slice(0), {
+    session,
+  });
+
+describe.each(SESSIONS)("a list a note operation starts (%s)", (session) => {
   for (const mode of ["direct", "tracked-changes", "suggested"] as const)
     test(`is read in the note's numbering, ${mode}`, async () => {
-      const reviewer = await openReviewer();
+      const reviewer = await openReviewer(session);
       const before = reviewer.readNumberingDefinitions();
       const result = reviewer.applyDocumentOperationsToStory({
         story: NOTE,
@@ -94,18 +101,18 @@ describe("a list a note operation starts", () => {
 
   test("reading a note's numbering leaves the document as it was", async () => {
     const bytes = await fixture();
-    const read = await openReviewer(bytes);
+    const read = await openReviewer(session, bytes);
     expect(read.readNumberingDefinitions(NOTE)).toEqual(
       read.readNumberingDefinitions(),
     );
-    const unread = await openReviewer(bytes);
+    const unread = await openReviewer(session, bytes);
     expect(await storyParts(await read.toBuffer())).toEqual(
       await storyParts(await unread.toBuffer()),
     );
   });
 
   test("a story the document lacks has no numbering to read", async () => {
-    const reviewer = await openReviewer();
+    const reviewer = await openReviewer(session);
     expect(
       reviewer.readNumberingDefinitions({ type: "endnote", noteId: 9 }),
     ).toBeNull();

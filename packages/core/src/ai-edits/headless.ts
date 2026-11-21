@@ -183,7 +183,10 @@ import {
   hasUntrackedChanges,
 } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import { ensureParaIdsInDoc } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
-import { completeNumberingForDoc } from "../prosemirror/listInstanceReferences";
+import {
+  completeNumberingForDoc,
+  paragraphListReferences,
+} from "../prosemirror/listInstanceReferences";
 import { MAX_LIST_LEVEL } from "../prosemirror/listMarker";
 import { lockedControlSpans } from "../prosemirror/lockedControls";
 import {
@@ -1578,6 +1581,36 @@ const lockHeldChanges = (
     if (violation !== null) held.set(id, violation);
   }
   return held;
+};
+
+type StoryOwnNumberingOptions = {
+  /** The session's numbering, with every list its operations started. */
+  current: NumberingDefinitions | undefined;
+  /** The numbering the package was opened with. */
+  loaded: NumberingDefinitions | undefined;
+  doc: PMNode;
+};
+
+/**
+ * One story's reading of the numbering: the lists the package was opened
+ * with, and those started since that `doc`'s paragraphs name. A list another
+ * story started is defined in that story's reading, not in this one.
+ */
+const storyOwnNumbering = ({
+  current,
+  loaded,
+  doc,
+}: StoryOwnNumberingOptions): NumberingDefinitions | undefined => {
+  if (current === undefined) return undefined;
+  const kept = new Set((loaded?.nums ?? []).map(({ numId }) => numId));
+  doc.descendants((node) => {
+    for (const numId of paragraphListReferences(node)) kept.add(numId);
+    return !node.isTextblock;
+  });
+  return {
+    ...current,
+    nums: current.nums.filter(({ numId }) => kept.has(numId)),
+  };
 };
 
 /**
@@ -2981,10 +3014,18 @@ export class FolioDocxReviewer {
         ? this.state.doc
         : this.readSecondaryStoryDoc(story);
     if (!doc) return null;
-    // Including the lists operations started, which only their paragraphs define so far.
-    return numberingLevelsOf(
-      completeNumberingForDoc(this.baseDocument.package.numbering, doc),
-    ).toSorted(
+    // Including the lists operations started, which only their paragraphs
+    // define so far on the legacy engine. The session defines every list it
+    // started in the package; a story reads those its paragraphs name.
+    const numbering =
+      this.engine.type === "canonical"
+        ? storyOwnNumbering({
+            current: this.baseDocument.package.numbering,
+            loaded: this.loadedDocument.package.numbering,
+            doc,
+          })
+        : completeNumberingForDoc(this.baseDocument.package.numbering, doc);
+    return numberingLevelsOf(numbering).toSorted(
       (left, right) => left.numId - right.numId || left.level - right.level,
     );
   }
