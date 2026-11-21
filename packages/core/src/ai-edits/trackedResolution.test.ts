@@ -837,8 +837,15 @@ const anchorsOf = (reviewer: FolioDocxReviewer): string[] =>
   reviewer.getComments().map(({ anchoredText }) => anchoredText);
 
 describe("a comment on words a tracked replacement removes", () => {
-  const commentThenReplace = async (mode: FolioDocumentOperationMode) => {
-    const reviewer = await open();
+  // The canonical session keeps the comment on the deleted words only, so
+  // accepting the replacement retires it, as a direct replacement covering
+  // the whole comment deletes it. The legacy session extends it over the
+  // inserted replacement.
+  const commentThenReplace = async (
+    mode: FolioDocumentOperationMode,
+    session: HeadlessReviewerSession,
+  ) => {
+    const reviewer = await open(undefined, session);
     const start = SUPPLIER.indexOf("good order");
     applier(reviewer)({
       type: "commentOnRange",
@@ -861,51 +868,57 @@ describe("a comment on words a tracked replacement removes", () => {
     return reviewer;
   };
 
-  test("stays one stretch: it reads the same before and after a save", async () => {
-    const reviewer = await commentThenReplace("tracked-changes");
-    // The removed word and its complete aligned replacement span.
-    expect(anchorsOf(reviewer)).toEqual(["good promptly."]);
-    expect(anchorsOf(await reopen(reviewer))).toEqual(anchorsOf(reviewer));
-  });
+  for (const [session, replaced, continued] of [
+    ["canonical", "good", "order"],
+    ["legacy", "good promptly.", "ordershape"],
+  ] as const) {
+    test(`stays one stretch: it reads the same before and after a save (${session})`, async () => {
+      const reviewer = await commentThenReplace("tracked-changes", session);
+      expect(anchorsOf(reviewer)).toEqual([replaced]);
+      expect(anchorsOf(await reopen(reviewer, session))).toEqual(
+        anchorsOf(reviewer),
+      );
+    });
 
-  test("accepted, covers what the direct edit's comment covers", async () => {
-    const reviewer = await commentThenReplace("tracked-changes");
-    reviewer.acceptAll();
-    expect(anchorsOf(reviewer)).toEqual(
-      anchorsOf(await commentThenReplace("direct")),
-    );
-  });
+    test(`accepted, covers what the direct edit's comment covers (${session})`, async () => {
+      const reviewer = await commentThenReplace("tracked-changes", session);
+      reviewer.acceptAll();
+      expect(anchorsOf(reviewer)).toEqual(
+        anchorsOf(await commentThenReplace("direct", session)),
+      );
+    });
 
-  test("a replacement right after the comment still continues it", async () => {
-    const reviewer = await open();
-    const apply = applier(reviewer);
-    const start = SUPPLIER.indexOf("order");
-    apply({
-      type: "commentOnRange",
-      range: createFolioAITextRangeHandle({
+    test(`a replacement right after the comment (${session})`, async () => {
+      const reviewer = await open(undefined, session);
+      const apply = applier(reviewer);
+      const start = SUPPLIER.indexOf("order");
+      apply({
+        type: "commentOnRange",
+        range: createFolioAITextRangeHandle({
+          blockId: idOf(reviewer, "The Supplier"),
+          text: SUPPLIER,
+          startOffset: start,
+          endOffset: start + "order".length,
+        }),
+        comment: { text: "Which standard?" },
+      });
+      apply({
+        type: "replaceInBlock",
         blockId: idOf(reviewer, "The Supplier"),
-        text: SUPPLIER,
-        startOffset: start,
-        endOffset: start + "order".length,
-      }),
-      comment: { text: "Which standard?" },
-    });
-    apply({
-      type: "replaceInBlock",
-      blockId: idOf(reviewer, "The Supplier"),
-      find: "order",
-      replace: "shape",
-    });
-    const anchored = reviewer
-      .getComments()
-      .map(({ anchoredText }) => anchoredText);
-    expect(anchored).toEqual(["ordershape"]);
-    expect(
-      (await reopen(reviewer))
+        find: "order",
+        replace: "shape",
+      });
+      const anchored = reviewer
         .getComments()
-        .map(({ anchoredText }) => anchoredText),
-    ).toEqual(anchored);
-  });
+        .map(({ anchoredText }) => anchoredText);
+      expect(anchored).toEqual([continued]);
+      expect(
+        (await reopen(reviewer, session))
+          .getComments()
+          .map(({ anchoredText }) => anchoredText),
+      ).toEqual(anchored);
+    });
+  }
 });
 
 describe("resolving suggested paragraphs", () => {
