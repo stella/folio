@@ -412,38 +412,64 @@ describe("a block after a paragraph deleted whole that a join runs through", () 
 });
 
 describe("a suggested paragraph beside a pending join", () => {
-  for (const session of SESSIONS)
-    for (const type of ["insertBeforeBlock", "insertAfterBlock"] as const) {
-      test(`copies the paragraph it names as it stands (${type}, ${session})`, async () => {
-        const reviewer = await open(session);
-        const item = reviewer.snapshot().blocks.at(1);
-        if (!item) throw new Error("Missing fixture");
-        expect(
-          reviewer.applyOperations(
-            [{ id: "delete", type: "deleteBlock", blockId: item.id }],
-            { mode: "tracked-changes" },
-          ).skipped,
-        ).toEqual([]);
-        // Rejecting the words alone leaves the break pending deletion: the list
-        // item now joins the plain paragraph after it.
-        const words = reviewer
-          .getChanges()
-          .find(({ type: kind }) => kind === "deletion");
-        if (!words) throw new Error("Missing deletion");
-        expect(reviewer.rejectChange(words)).toBe(true);
-        expect(
-          reviewer.applyOperations(
-            [{ id: "insert", type, blockId: item.id, text: "Inserted." }],
-            { mode: "suggested" },
-          ).skipped,
-        ).toEqual([]);
-        const inserted = reviewer
-          .snapshot()
-          .blocks.find(({ text }) => text === "Inserted.");
-        expect(inserted?.kind).toBe("listItem");
-        expect(inserted?.listReference?.numId).toBe(item.listReference?.numId);
-      });
-    }
+  type Placed = {
+    kind: string | undefined;
+    sameList: boolean;
+    order: readonly string[];
+  };
+  /**
+   * A list item deleted, tracked, then its words' deletion rejected: the
+   * break stays pending deletion, so the item joins the plain paragraph after
+   * it. A paragraph put beside the item in `mode` lands as `Placed` says.
+   */
+  const placeBeside = async (
+    session: HeadlessReviewerSession,
+    type: "insertBeforeBlock" | "insertAfterBlock",
+    mode: "suggested" | "tracked-changes",
+  ): Promise<Placed> => {
+    const reviewer = await open(session);
+    const item = reviewer.snapshot().blocks.at(1);
+    if (!item) throw new Error("Missing fixture");
+    expect(
+      reviewer.applyOperations(
+        [{ id: "delete", type: "deleteBlock", blockId: item.id }],
+        { mode: "tracked-changes" },
+      ).skipped,
+    ).toEqual([]);
+    const words = reviewer
+      .getChanges()
+      .find(({ type: kind }) => kind === "deletion");
+    if (!words) throw new Error("Missing deletion");
+    expect(reviewer.rejectChange(words)).toBe(true);
+    expect(
+      reviewer.applyOperations(
+        [{ id: "insert", type, blockId: item.id, text: "Inserted." }],
+        { mode },
+      ).skipped,
+    ).toEqual([]);
+    const blocks = reviewer.snapshot().blocks;
+    const inserted = blocks.find(({ text }) => text === "Inserted.");
+    return {
+      kind: inserted?.kind,
+      sameList: inserted?.listReference?.numId === item.listReference?.numId,
+      order: blocks.map(({ text }) => text),
+    };
+  };
+
+  for (const type of ["insertBeforeBlock", "insertAfterBlock"] as const) {
+    test(`copies the paragraph it names as it stands (${type}, legacy)`, async () => {
+      const placed = await placeBeside("legacy", type, "suggested");
+      expect(placed.kind).toBe("listItem");
+      expect(placed.sameList).toBe(true);
+    });
+    // Tracked and suggested insertions agree: accepting the suggestion leaves
+    // what the tracked insertion's acceptance does.
+    test(`lands where the tracked insertion does (${type}, canonical)`, async () => {
+      expect(await placeBeside("canonical", type, "suggested")).toEqual(
+        await placeBeside("canonical", type, "tracked-changes"),
+      );
+    });
+  }
 });
 
 describe("a paragraph between a pending join and the table it reaches", () => {
