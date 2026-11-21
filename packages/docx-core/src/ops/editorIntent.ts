@@ -139,7 +139,9 @@ import {
   type RevisionStamp,
   type RunPropsPatch,
   SECTION_BOUNDARY_POLICIES,
+  type SetParagraphPropsOp,
   SPLIT_HALVES,
+  type SplitBlockOp,
   type SplitHalf,
   type TableEditOp,
   type TableInsertionPoint,
@@ -1128,7 +1130,7 @@ const splitAtOps = ({
   newBlockId,
   newHalf,
   fields,
-}: SplitAtOptions): DocumentOp[] => {
+}: SplitAtOptions): (SplitBlockOp | SetParagraphPropsOp)[] => {
   const split = {
     type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
     at,
