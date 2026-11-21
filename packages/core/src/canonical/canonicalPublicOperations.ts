@@ -204,6 +204,7 @@ import {
   type CanonicalSession,
 } from "./canonicalSession";
 import { canonicalTrackedBatchFidelityError } from "./canonicalTrackedBatchFidelity";
+import { findCommentAnchorParagraph } from "./commentAnchorParagraph";
 import { indentationAsRead, spacingSidesAsRead } from "./paragraphPatchAsRead";
 
 type CanonicalBatchPlan = {
@@ -3830,9 +3831,11 @@ export class CanonicalPublicOperations {
           // The anchor paragraph at any depth: in a table cell or a content
           // control as much as in the story's own block list.
           const anchorIn = (current: Document) =>
-            paragraphsThroughTextBoxes(current, story).find(
-              ({ paragraph }) => paragraph.paraId === comment.from.blockId,
-            )?.paragraph;
+            findCommentAnchorParagraph({
+              document: current,
+              story,
+              blockId: comment.from.blockId,
+            });
           const before = anchorIn(sourceDocument);
           const after = anchorIn(nextDocument);
           if (id.isErr() || before === undefined || after === undefined) {
