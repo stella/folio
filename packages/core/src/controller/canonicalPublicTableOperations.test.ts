@@ -564,6 +564,31 @@ const viaLegacyEngine = async ({
   };
 };
 
+/** The package a canonical reviewer saves once it resolves the suggestion. */
+const viaCanonicalReviewer = async ({
+  source,
+  operation,
+  mode,
+  resolveSuggestion,
+}: EngineRunOptions) => {
+  const reviewer = await FolioDocxReviewer.fromBuffer(source.slice(0), {
+    session: "canonical",
+  });
+  const result = reviewer.applyDocumentOperations(
+    { version: 1, mode, operations: [operation] },
+    { undefinedReferences: "refuse" },
+  );
+  expect(result.applied).toHaveLength(1);
+  for (const { suggestionId } of result.applied) {
+    if (suggestionId === undefined)
+      throw new Error("The signature insertion has a suggestion id.");
+    if (resolveSuggestion === "accept")
+      expect(reviewer.acceptSuggestion(suggestionId)).toBe(true);
+    else expect(reviewer.rejectSuggestion(suggestionId)).toBe(true);
+  }
+  return reviewer.toBuffer();
+};
+
 const viaCanonicalEngine = async ({
   source,
   operation,
@@ -785,7 +810,7 @@ const sameAsDefaultEngine =
   };
 
 describe("table structure operations in the canonical session", () => {
-  test("safe table placement honors published modes and the declared signature-suggestion gap", async () => {
+  test("safe table placement honors published modes on both engines", async () => {
     expect(new Set(TABLE_INSERTION_TYPES)).toEqual(
       new Set(Object.keys(TABLE_INSERTION_MODES)),
     );
@@ -819,39 +844,45 @@ describe("table structure operations in the canonical session", () => {
               JSON.stringify({ ...value, type, mode, side }),
             ).toEqual(supported ? [] : ["unsupportedMode"]);
             expect(legacy.applied).toHaveLength(supported ? 1 : 0);
-            if (type === "insertSignatureTable" && mode === "suggested") {
-              expect(canonical.skipped).toEqual(["unsupportedBlock"]);
-              expect(canonical.applied).toEqual([]);
-              expect(canonical.refusals).toEqual([
-                { gap: "publicOps.tableStructure" },
-              ]);
-              expect(await outcomes(canonical.bytes)).toEqual(
-                await outcomes(source),
-              );
-              // Legacy whole-table suggestions commit directly when accepted;
-              // later rejectAll keeps that table. Canonical ordinary tracked
-              // adoption cannot represent this boundary yet.
-              for (const resolveSuggestion of ["accept", "reject"] as const) {
-                const resolvedLegacy = await viaLegacyEngine({
-                  ...run,
-                  resolveSuggestion,
-                });
-                const expected =
-                  resolveSuggestion === "accept"
-                    ? (await viaLegacyEngine({ ...run, mode: "direct" })).bytes
-                    : source;
-                expect(await outcomes(resolvedLegacy.bytes)).toEqual(
-                  await outcomes(expected),
-                );
-              }
-              continue;
-            }
             expect(canonical.skipped).toEqual(legacy.skipped);
             expect(canonical.applied).toHaveLength(supported ? 1 : 0);
             expect(canonical.refusals).toEqual([]);
             expect(await outcomes(canonical.bytes)).toEqual(
               await outcomes(legacy.bytes),
             );
+            if (type !== "insertSignatureTable" || mode !== "suggested")
+              continue;
+            // Rejecting gives the source back on both engines. Accepting
+            // differs by design: the canonical engine adopts the suggestion
+            // as an ordinary tracked insertion, as `acceptSuggestion` states
+            // for every suggestion, which accepting or rejecting then
+            // resolves; the legacy engine commits the table directly.
+            const direct = await outcomes(
+              (await viaLegacyEngine({ ...run, mode: "direct" })).bytes,
+            );
+            const unchanged = await outcomes(source);
+            for (const resolveSuggestion of ["accept", "reject"] as const) {
+              const resolvedLegacy = await viaLegacyEngine({
+                ...run,
+                resolveSuggestion,
+              });
+              const resolvedCanonical = await viaCanonicalReviewer({
+                ...run,
+                resolveSuggestion,
+              });
+              expect(await outcomes(resolvedLegacy.bytes)).toEqual(
+                resolveSuggestion === "accept" ? direct : unchanged,
+              );
+              expect(await outcomes(resolvedCanonical)).toEqual(
+                resolveSuggestion === "accept"
+                  ? {
+                      pending: direct.pending,
+                      accepted: direct.accepted,
+                      rejected: unchanged.rejected,
+                    }
+                  : unchanged,
+              );
+            }
           }
         }
       }
@@ -888,15 +919,11 @@ describe("table structure operations in the canonical session", () => {
             legacy.skipped,
             `${operationType} ${mode} ${target.side} ${target.anchor}`,
           ).toEqual([reason]);
-          const gap =
-            operationType === "insertSignatureTable" && mode === "suggested";
           expect(
             canonical.skipped,
             `${operationType} ${mode} ${target.side} ${target.anchor}`,
-          ).toEqual([gap ? "unsupportedBlock" : reason]);
-          expect(canonical.refusals).toEqual(
-            gap ? [{ gap: "publicOps.tableStructure" }] : [],
-          );
+          ).toEqual([reason]);
+          expect(canonical.refusals).toEqual([]);
         }
       }
     }
@@ -926,14 +953,10 @@ describe("table structure operations in the canonical session", () => {
           expect(legacy.skipped, `${body} ${operationType} ${mode}`).toEqual([
             reason,
           ]);
-          const gap =
-            operationType === "insertSignatureTable" && mode === "suggested";
           expect(canonical.skipped, `${body} ${operationType} ${mode}`).toEqual(
-            [gap ? "unsupportedBlock" : reason],
+            [reason],
           );
-          expect(canonical.refusals).toEqual(
-            gap ? [{ gap: "publicOps.tableStructure" }] : [],
-          );
+          expect(canonical.refusals).toEqual([]);
         }
       }
     }
