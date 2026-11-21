@@ -23,6 +23,7 @@ import {
   propertyTestTimeout,
 } from "../../../../test/property-testing";
 import {
+  legacySessionState,
   openReviewer,
   OperationSession,
   paragraphsDocx,
@@ -502,13 +503,13 @@ describe("an edit applied directly and the same edit accepted", () => {
     const property = fc.asyncProperty(
       fc.integer({ min: 2, max: 6 }),
       async (count) => {
-        const base = await openReviewer(
-          await paragraphsDocx(
-            Array.from({ length: count }, (_, index) => [
-              textRun(`Anchor ${String(index)}`),
-            ]),
-          ),
+        const buffer = await paragraphsDocx(
+          Array.from({ length: count }, (_, index) => [
+            textRun(`Anchor ${String(index)}`),
+          ]),
         );
+        const base = await openReviewer(buffer);
+        const state = await legacySessionState(buffer);
         const operations = base.snapshot().blocks.map(({ id }, index) => ({
           id: `insert-${String(index)}`,
           type: "insertAfterBlock" as const,
@@ -516,8 +517,8 @@ describe("an edit applied directly and the same edit accepted", () => {
           text: `List ${String(index)}`,
           numbering: { kind: "newList" as const, format: "bullet" as const },
         }));
-        const direct = new OperationSession(base.state);
-        const tracked = new OperationSession(base.state);
+        const direct = new OperationSession(state);
+        const tracked = new OperationSession(state);
         expect(direct.apply("direct", operations).skipped).toEqual([]);
         expect(tracked.apply("tracked-changes", operations).skipped).toEqual(
           [],
@@ -638,16 +639,16 @@ describe("an edit applied directly and the same edit accepted", () => {
           const untouched = [textRun("Untouched paragraph.")];
           const paragraphs =
             placement === "first" ? [content, untouched] : [untouched, content];
-          const base = await openReviewer(
-            await paragraphsDocx(paragraphs, comments),
-          );
+          const buffer = await paragraphsDocx(paragraphs, comments);
+          const base = await openReviewer(buffer);
+          const state = await legacySessionState(buffer);
           const block = base.snapshot().blocks[placement === "first" ? 0 : 1];
           const operation = block && operationFor(edit, block.id, block.text);
           if (!block || !operation) {
             return;
           }
-          const direct = new OperationSession(base.state);
-          const tracked = new OperationSession(base.state);
+          const direct = new OperationSession(state);
+          const tracked = new OperationSession(state);
           const directResult = direct.apply("direct", [operation]);
           const trackedResult = tracked.apply("tracked-changes", [operation]);
           if (trackedResult.status === "rejected") {
@@ -657,7 +658,7 @@ describe("an edit applied directly and the same edit accepted", () => {
                 code: "invalidResult",
               }),
             ]);
-            expect(tracked.state).toBe(base.state);
+            expect(tracked.state).toBe(state);
             return;
           }
           expect(trackedResult.skipped).toEqual(directResult.skipped);
