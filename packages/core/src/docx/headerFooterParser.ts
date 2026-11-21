@@ -39,8 +39,10 @@ import type {
 } from "../types/document";
 import type { DeepReadonly } from "../types/documentModel";
 import { parseBlockContent } from "./blockContentParser";
+import type { UnnamedParagraphIds } from "./ensureParaIds";
 import { assignHeaderFooterVerbatimXml } from "./headerFooterVerbatim";
 import type { NumberingMap } from "./numberingParser";
+import { markUnnamedParagraphIds } from "./packageUnnamedParagraphIds";
 import { cloneParagraphWithPropertySource } from "./paragraphPropertySource";
 import { type PreviewLedger, standalonePreviewLedger } from "./previewBudget";
 import type { StyleMap } from "./styleParser";
@@ -103,6 +105,7 @@ export function parseHeader(
   rels: RelationshipMap | null = null,
   media: Map<string, MediaFile> | null = null,
   previews: PreviewLedger = standalonePreviewLedger(),
+  unnamedIds?: UnnamedParagraphIds,
 ): HeaderFooter {
   const result: HeaderFooter = {
     type: "header",
@@ -115,6 +118,7 @@ export function parseHeader(
   }
 
   const doc = parseXml(headerXml);
+  markUnnamedParagraphIds(doc, unnamedIds);
 
   // Find the root header element (w:hdr)
   const rootElement = doc.elements?.find(
@@ -194,6 +198,7 @@ export function parseFooter(
   rels: RelationshipMap | null = null,
   media: Map<string, MediaFile> | null = null,
   previews: PreviewLedger = standalonePreviewLedger(),
+  unnamedIds?: UnnamedParagraphIds,
 ): HeaderFooter {
   const result: HeaderFooter = {
     type: "footer",
@@ -206,6 +211,7 @@ export function parseFooter(
   }
 
   const doc = parseXml(footerXml);
+  markUnnamedParagraphIds(doc, unnamedIds);
 
   // Find the root footer element (w:ftr)
   const rootElement = doc.elements?.find(

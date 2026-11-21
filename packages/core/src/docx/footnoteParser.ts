@@ -29,7 +29,9 @@ import type {
   Theme,
 } from "../types/document";
 import type { DeepReadonly } from "../types/documentModel";
+import type { UnnamedParagraphIds } from "./ensureParaIds";
 import type { NumberingMap } from "./numberingParser";
+import { markUnnamedParagraphIds } from "./packageUnnamedParagraphIds";
 import { parseParagraph } from "./paragraphParser";
 import { enrichParagraphTextBoxes } from "./paragraphTextBoxEnrichment";
 import type { ParseContext } from "./parseContext";
@@ -293,6 +295,7 @@ export function parseFootnotes(
   media: Map<string, MediaFile> | null = null,
   context?: ParseContext,
   previews: PreviewLedger = standalonePreviewLedger(),
+  unnamedIds?: UnnamedParagraphIds,
 ): FootnoteMap {
   const byId = new Map<number, Footnote>();
   const footnotes: Footnote[] = [];
@@ -302,6 +305,7 @@ export function parseFootnotes(
   }
 
   const doc = parseXml(footnotesXml);
+  markUnnamedParagraphIds(doc, unnamedIds);
 
   // Find the root footnotes element
   const rootElement = doc.elements?.find(
@@ -437,6 +441,7 @@ export function parseEndnotes(
   media: Map<string, MediaFile> | null = null,
   context?: ParseContext,
   previews: PreviewLedger = standalonePreviewLedger(),
+  unnamedIds?: UnnamedParagraphIds,
 ): EndnoteMap {
   const byId = new Map<number, Endnote>();
   const endnotes: Endnote[] = [];
@@ -446,6 +451,7 @@ export function parseEndnotes(
   }
 
   const doc = parseXml(endnotesXml);
+  markUnnamedParagraphIds(doc, unnamedIds);
 
   // Find the root endnotes element
   const rootElement = doc.elements?.find(

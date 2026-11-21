@@ -13,6 +13,7 @@ import {
   setProseParagraphMarkupWithPropertySource,
   transferProseParagraphPropertySource,
 } from "../../../docx/paragraphPropertySource";
+import { prosePositionalParagraphId } from "../../../docx/unnamedParagraphIds";
 import { deterministicHexId, generateHexId } from "../../../utils/hexId";
 /**
  * ParaIdAllocator — assigns a stable `w14:paraId` to every paragraph.
@@ -427,11 +428,13 @@ const collectParagraphPropertySourceUpdates = (
  * This is the only load-time allocator. The live editor and the headless
  * reviewer both seed through it, so the same document gives the same block ids
  * on either side: an id read from the editor resolves when the edit is applied
- * headlessly, and re-parsing the same bytes mints the same ids. An id is
- * derived from the paragraph's text and its document ordinal, never drawn at
- * random. Authored ids are reserved first, so a minted id never takes one a
- * later paragraph owns; of a duplicated authored id, the first occurrence
- * keeps it.
+ * headlessly, and re-parsing the same bytes mints the same ids. A paragraph
+ * the package names no id for takes the id its place in the package gives it
+ * (the one `ensureParaIds` writes, so a canonical session agrees); one the
+ * parser could not place, such as a paragraph a host built, takes an id
+ * derived from its text and its document ordinal, never drawn at random.
+ * Authored ids are reserved first, so a minted id never takes one a later
+ * paragraph owns; of a duplicated authored id, the first occurrence keeps it.
  */
 const planLoadParaIds = (doc: PMNode): (string | null)[] => {
   const paragraphs: PMNode[] = [];
@@ -441,7 +444,10 @@ const planLoadParaIds = (doc: PMNode): (string | null)[] => {
     const id = node.attrs["paraId"];
     if (isUsableParaId(id)) {
       taken.add(id);
+      return;
     }
+    const positional = prosePositionalParagraphId(node);
+    if (positional !== undefined) taken.add(positional);
   });
 
   const kept = new Set<string>();
@@ -450,6 +456,13 @@ const planLoadParaIds = (doc: PMNode): (string | null)[] => {
     if (isUsableParaId(id) && !kept.has(id)) {
       kept.add(id);
       return null;
+    }
+    // The id the package's position gives it, as a canonical session reads
+    // the package, unless an authored id already holds it.
+    const positional = prosePositionalParagraphId(paragraph);
+    if (positional !== undefined && !kept.has(positional)) {
+      kept.add(positional);
+      return positional;
     }
     const seed = `${paragraph.textContent}:${String(index + 1)}`;
     let minted = deterministicHexId(seed);

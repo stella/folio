@@ -2,13 +2,15 @@
  * Resolving a story to its final view and saving, in a package that carries no
  * `w14:paraId`.
  *
- * folio mints an id for every paragraph that arrives without one, and the save
- * deliberately writes no minted id back: that is what keeps a package from
- * LibreOffice, Google Docs or python-docx id-less, and an edit to one local.
- * Because that id is derived from the paragraph's text and ordinal, resolving
- * the text can make the reopened paragraph derive a different id. The check
- * that the resolved story reached the package therefore cannot depend on that
- * id — it reported a story that persisted perfectly as one that had not.
+ * folio mints an id for every paragraph that arrives without one, keyed on
+ * the package and the paragraph's place in it, so a reopen of the same bytes
+ * mints it again and a save need not write it. The legacy save writes none,
+ * which keeps the package of a producer that writes no ids id-less;
+ * a canonical save writes them only into a part it rewrites. Resolving the
+ * story changes the package, so a reopened copy keys its ids on other content.
+ * The check that the resolved story reached the package therefore cannot
+ * depend on a minted id: it reported a story that persisted perfectly as one
+ * that had not.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -17,6 +19,7 @@ import { ZipArchive } from "@stll/docx-core/zip";
 
 import { createDocx } from "../docx/rezip";
 import { endnote, run } from "../docx/server/build";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import type { BlockContent, Document } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { FolioDocxReviewer } from "./headless";
@@ -65,8 +68,9 @@ const buildDocx = async (
 
 const resolveEveryStoryToFinal = async (
   source: ArrayBuffer,
+  session: HeadlessReviewerSession,
 ): Promise<ArrayBuffer> => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(source);
+  const reviewer = await FolioDocxReviewer.fromBuffer(source, { session });
   for (const { handle } of reviewer.listStories()) {
     expect(
       reviewer.resolveReviewedStory({ story: handle, view: "final" }),
@@ -75,68 +79,74 @@ const resolveEveryStoryToFinal = async (
   return await reviewer.toBuffer();
 };
 
-describe("a resolved story in a package with no authored paragraph ids", () => {
-  test("persists without asking the save to write an id it will not write", async () => {
-    const source = await buildDocx(() => [reviewedParagraph()]);
-    expect(await partText(source, "word/document.xml")).not.toContain(
-      "w14:paraId",
-    );
+describe.each([
+  "legacy",
+  "canonical",
+] as const satisfies readonly HeadlessReviewerSession[])(
+  "a resolved story in a package with no authored paragraph ids (%s)",
+  (session) => {
+    test("persists without asking the save to write an id it need not write", async () => {
+      const source = await buildDocx(() => [reviewedParagraph()]);
+      expect(await partText(source, "word/document.xml")).not.toContain(
+        "w14:paraId",
+      );
 
-    const saved = await resolveEveryStoryToFinal(source);
+      const saved = await resolveEveryStoryToFinal(source, session);
 
-    const xml = await partText(saved, "word/document.xml");
-    expect(xml).toContain(FINAL_TEXT);
-    expect(xml).not.toContain("deleted");
-    expect(xml).not.toContain("old-position");
-    expect(xml).not.toMatch(/<w:(?:ins|del|moveFrom|moveTo)\b/u);
-    // The package stays the author's: a minted id is not an authored one, and
-    // writing it here would upgrade an id-less document on every edit.
-    expect(xml).not.toContain("w14:paraId");
+      const xml = await partText(saved, "word/document.xml");
+      expect(xml).toContain(FINAL_TEXT);
+      expect(xml).not.toContain("deleted");
+      expect(xml).not.toContain("old-position");
+      expect(xml).not.toMatch(/<w:(?:ins|del|moveFrom|moveTo)\b/u);
+      // The legacy save keeps the package the author's: a minted id is not an
+      // authored one. A canonical save writes the ids into the part it rewrote.
+      if (session === "legacy") expect(xml).not.toContain("w14:paraId");
 
-    const reopened = await FolioDocxReviewer.fromBuffer(saved);
-    expect(
-      reopened.readReviewedStory({ view: "current-markup" })?.changes,
-    ).toEqual([]);
-    expect(reopened.readStory({ type: "main" })?.text).toEndWith(FINAL_TEXT);
-  });
+      const reopened = await FolioDocxReviewer.fromBuffer(saved, { session });
+      expect(
+        reopened.readReviewedStory({ view: "current-markup" })?.changes,
+      ).toEqual([]);
+      expect(reopened.readStory({ type: "main" })?.text).toEndWith(FINAL_TEXT);
+    });
 
-  test("persists a secondary story the same way", async () => {
-    const source = await buildDocx((document) => [
-      {
-        type: "paragraph",
-        content: [run("Body"), endnote(document, [reviewedParagraph()])],
-      },
-    ]);
-    expect(await partText(source, "word/endnotes.xml")).not.toContain(
-      "w14:paraId",
-    );
+    test("persists a secondary story the same way", async () => {
+      const source = await buildDocx((document) => [
+        {
+          type: "paragraph",
+          content: [run("Body"), endnote(document, [reviewedParagraph()])],
+        },
+      ]);
+      expect(await partText(source, "word/endnotes.xml")).not.toContain(
+        "w14:paraId",
+      );
 
-    const saved = await resolveEveryStoryToFinal(source);
+      const saved = await resolveEveryStoryToFinal(source, session);
 
-    const reopened = await FolioDocxReviewer.fromBuffer(saved);
-    const note = reopened
-      .listStories()
-      .find(({ handle }) => handle.type === "endnote");
-    expect(note).toMatchObject({ text: FINAL_TEXT });
-    expect(
-      note
-        ? reopened.readReviewedStory({
-            story: note.handle,
-            view: "current-markup",
-          })?.changes
-        : null,
-    ).toEqual([]);
-  });
+      const reopened = await FolioDocxReviewer.fromBuffer(saved, { session });
+      const note = reopened
+        .listStories()
+        .find(({ handle }) => handle.type === "endnote");
+      expect(note).toMatchObject({ text: FINAL_TEXT });
+      expect(
+        note
+          ? reopened.readReviewedStory({
+              story: note.handle,
+              view: "current-markup",
+            })?.changes
+          : null,
+      ).toEqual([]);
+    });
 
-  test("still compares an authored id, which the save does write", async () => {
-    const source = await buildDocx(() => [reviewedParagraph("1A2B3C4D")]);
+    test("still compares an authored id, which the save does write", async () => {
+      const source = await buildDocx(() => [reviewedParagraph("1A2B3C4D")]);
 
-    const xml = await partText(
-      await resolveEveryStoryToFinal(source),
-      "word/document.xml",
-    );
+      const xml = await partText(
+        await resolveEveryStoryToFinal(source, session),
+        "word/document.xml",
+      );
 
-    expect(xml).toContain(FINAL_TEXT);
-    expect(xml).toContain('w14:paraId="1A2B3C4D"');
-  });
-});
+      expect(xml).toContain(FINAL_TEXT);
+      expect(xml).toContain('w14:paraId="1A2B3C4D"');
+    });
+  },
+);

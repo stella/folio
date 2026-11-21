@@ -133,6 +133,7 @@ import {
   parsePropertyChangeInfo,
   parseTrackedChangeInfo,
 } from "./trackedChangeInfo";
+import { readUnnamedParagraphId } from "./unnamedParagraphIds";
 import { captureVerbatimXml } from "./verbatimCapture";
 import { isVmlPictParsedByRunParser } from "./vmlImageParser";
 import {
@@ -2652,6 +2653,8 @@ export function parseParagraph(
   const paraId = paraIdAttribute(node);
   if (paraId && isValidHexId(paraId)) {
     paragraph.paraId = paraIdInRange(paraId);
+  } else {
+    readUnnamedParagraphId(paragraph, node);
   }
 
   const textId = textIdAttribute(node);

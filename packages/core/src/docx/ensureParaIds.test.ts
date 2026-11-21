@@ -342,6 +342,21 @@ describe("ensureParaIds", () => {
     expect(result.deduplicated).toBe(1);
   });
 
+  test("a mc:Choice paragraph keeps the id its own mc:Fallback copy repeats", async () => {
+    const twin = PARA("Box text", ' w14:paraId="FEED0002"');
+    const input = await buildDocx({
+      "word/document.xml": documentXml(
+        `<w:p w14:paraId="FEED0001"><w:r><mc:AlternateContent><mc:Choice Requires="wps">${twin}</mc:Choice><mc:Fallback>${twin}</mc:Fallback></mc:AlternateContent></w:r></w:p>`,
+        ID_NS + MC_NS,
+      ),
+    });
+
+    const result = await ensureParaIds(input);
+
+    expect(result.alreadyComplete).toBe(true);
+    expect(result.deduplicated).toBe(0);
+  });
+
   test("covers headers, footers, footnotes, and endnotes with document-wide uniqueness", async () => {
     const headerXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:hdr ${W_NS}>${PARA("Header text")}</w:hdr>`;

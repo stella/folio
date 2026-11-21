@@ -1,7 +1,7 @@
 import {
   holdsUniqueSeedIds,
+  openCanonicalDocx,
   prepareCanonicalDocumentInput,
-  prepareCanonicalDocxInput,
 } from "../docx/canonicalSessionInput";
 /**
  * DocumentLoaderManager
@@ -180,17 +180,18 @@ export class DocumentLoaderManager {
       const parseStartedAt = performance.now();
       let doc: Document;
       try {
-        let input = buffer;
-        if (this.opensCanonicalSession()) {
-          const prepared = await prepareCanonicalDocxInput(buffer);
-          if (prepared.isErr()) throw prepared.error;
-          input = prepared.value;
-        }
-        doc = await parseDocx(input, {
+        const parseOptions = {
           detectVariables: false,
           preloadFonts: false,
           password: options.password,
-        });
+        };
+        if (this.opensCanonicalSession()) {
+          const opened = await openCanonicalDocx(buffer, parseOptions);
+          if (opened.isErr()) throw opened.error;
+          doc = opened.value.document;
+        } else {
+          doc = await parseDocx(buffer, parseOptions);
+        }
       } finally {
         recordDocumentLoadPhase(
           "docx-parse",

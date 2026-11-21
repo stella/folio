@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { ZipArchive } from "@stll/docx-core/zip";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const W14 = "http://schemas.microsoft.com/office/word/2010/wordml";
@@ -37,44 +38,67 @@ const packageWith = async (xml: string): Promise<ArrayBuffer> => {
   ) as ArrayBuffer;
 };
 
-describe("selective save with an aliased markup-compatibility prefix", () => {
-  for (const nestedRebinding of [false, true]) {
-    test(`one-character edit stays local with nested rebinding ${nestedRebinding}`, async () => {
-      const sourceXml = documentXml(nestedRebinding);
-      const reviewer = await FolioDocxReviewer.fromBuffer(
-        await packageWith(sourceXml),
-      );
-      const target = reviewer
-        .snapshot()
-        .blocks.find((block) => block.text === "Beta");
-      if (!target) throw new Error("Target paragraph missing");
-      const result = reviewer.applyOperations(
-        [
-          {
-            id: "edit",
-            type: "replaceInBlock",
-            blockId: target.id,
-            find: "Beta",
-            replace: "Beto",
-          },
-        ],
-        { undefinedReferences: "refuse", mode: "direct" },
-      );
-      expect(result.applied).toHaveLength(1);
+/** Each paragraph's content, without its own tag. */
+const paragraphContents = (xml: string): string[] =>
+  [...xml.matchAll(/<w:p\b[^>]*>([\s\S]*?)<\/w:p>/gu)].map(
+    ([, content]) => content ?? "",
+  );
 
-      const saved = await ZipArchive.read(await reviewer.toBuffer());
-      const savedXml = await saved.entry("word/document.xml")?.text();
-      expect(savedXml).toBeDefined();
-      expect(savedXml).toContain("Beto");
-      expect(savedXml).not.toContain("w14:paraId=");
-      const targetStart = sourceXml.indexOf("<w:p><w:r><w:t>Beta");
-      const targetEnd =
-        sourceXml.indexOf("</w:p>", targetStart) + "</w:p>".length;
-      expect(savedXml?.startsWith(sourceXml.slice(0, targetStart))).toBe(true);
-      expect(savedXml?.endsWith(sourceXml.slice(targetEnd))).toBe(true);
-      expect(await saved.entry("word/numbering.xml")?.text()).toBe(
-        NUMBERING_XML,
-      );
-    });
-  }
-});
+describe.each([
+  "legacy",
+  "canonical",
+] as const satisfies readonly HeadlessReviewerSession[])(
+  "selective save with an aliased markup-compatibility prefix (%s)",
+  (session) => {
+    for (const nestedRebinding of [false, true]) {
+      test(`one-character edit stays local with nested rebinding ${nestedRebinding}`, async () => {
+        const sourceXml = documentXml(nestedRebinding);
+        const reviewer = await FolioDocxReviewer.fromBuffer(
+          await packageWith(sourceXml),
+          { session },
+        );
+        const target = reviewer
+          .snapshot()
+          .blocks.find((block) => block.text === "Beta");
+        if (!target) throw new Error("Target paragraph missing");
+        const result = reviewer.applyOperations(
+          [
+            {
+              id: "edit",
+              type: "replaceInBlock",
+              blockId: target.id,
+              find: "Beta",
+              replace: "Beto",
+            },
+          ],
+          { undefinedReferences: "refuse", mode: "direct" },
+        );
+        expect(result.applied).toHaveLength(1);
+
+        const saved = await ZipArchive.read(await reviewer.toBuffer());
+        const savedXml = await saved.entry("word/document.xml")?.text();
+        expect(savedXml).toBeDefined();
+        expect(savedXml).toContain("Beto");
+        expect(await saved.entry("word/numbering.xml")?.text()).toBe(
+          NUMBERING_XML,
+        );
+        if (session === "canonical") {
+          // A canonical save writes the paragraph ids it minted into the part
+          // it rewrites; every other paragraph keeps its content as it was.
+          const [alpha, , gamma] = paragraphContents(sourceXml);
+          const written = paragraphContents(savedXml ?? "");
+          expect([written[0], written[2]]).toEqual([alpha, gamma]);
+          return;
+        }
+        expect(savedXml).not.toContain("w14:paraId=");
+        const targetStart = sourceXml.indexOf("<w:p><w:r><w:t>Beta");
+        const targetEnd =
+          sourceXml.indexOf("</w:p>", targetStart) + "</w:p>".length;
+        expect(savedXml?.startsWith(sourceXml.slice(0, targetStart))).toBe(
+          true,
+        );
+        expect(savedXml?.endsWith(sourceXml.slice(targetEnd))).toBe(true);
+      });
+    }
+  },
+);

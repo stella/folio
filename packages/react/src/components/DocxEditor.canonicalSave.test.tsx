@@ -16,6 +16,7 @@ import {
   withCanonicalParagraphIds,
 } from "@stll/folio-core/canonical/canonicalOperations";
 import { CanonicalSaveDiagnosticError } from "@stll/folio-core/docx/canonicalSave";
+import { openCanonicalDocx } from "@stll/folio-core/docx/canonicalSessionInput";
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { createDocx, validateDocx } from "@stll/folio-core/docx/rezip";
 import type { SaveDiagnostic } from "@stll/folio-core/docx/saveDiagnostics";
@@ -1241,10 +1242,14 @@ for (const mode of ["editing", "suggesting"] as const) {
           saved = await editor.current?.save();
         });
         if (!saved) panic("Expected canonical note save");
-        const reopened = await parseDocx(saved, {
+        // A canonical editor reopens the package with the paragraph ids it
+        // mints again for the part the save left as the package held it.
+        const opened = await openCanonicalDocx(saved, {
           preloadFonts: false,
           detectVariables: false,
         });
+        if (opened.isErr()) throw opened.error;
+        const reopened = opened.value.document;
         expect(reviewDifferences(after, reopened)).toEqual({
           messages: [],
           omitted: 0,
