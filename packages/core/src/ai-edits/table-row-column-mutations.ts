@@ -457,6 +457,78 @@ export const applyTableColumnInsertion = ({
   return applied(tr, revision, markedCells);
 };
 
+type ApplyTableColumnInsertionsOptions = ApplyTableColumnInsertionOptions & {
+  /** How many adjacent columns go in at the insertion, left to right. */
+  columnCount: number;
+};
+
+/**
+ * `columnCount` adjacent columns at `insertion`, each inserted right of the
+ * one before it, with revision ids of its own. `cellTexts` are in reading
+ * order: row by row, left to right within a row.
+ */
+export const applyTableColumnInsertions = ({
+  tr,
+  insertion,
+  columnCount,
+  cellTexts,
+  revision,
+}: ApplyTableColumnInsertionsOptions): TableColumnInsertionResult => {
+  if (columnCount === 1)
+    return applyTableColumnInsertion({ tr, insertion, cellTexts, revision });
+  const table = tr.doc.nodeAt(tr.mapping.map(insertion.tablePosition, 1));
+  if (!table || table.type.spec["tableRole"] !== "table") {
+    return { type: "unsupported" };
+  }
+  const map = TableMap.get(table);
+  if (insertion.columnIndex < 0 || insertion.columnIndex > map.width) {
+    return { type: "unsupported" };
+  }
+  const rows = getInsertedPhysicalColumnRows(
+    map,
+    table,
+    insertion.columnIndex,
+  ).length;
+  const overflow = describeUnplacedCellTexts({
+    cellTexts,
+    capacity: rows * columnCount,
+    target: "column",
+  });
+  if (overflow !== null) {
+    return { type: "payloadDoesNotFit", message: overflow };
+  }
+  const textsOf = (column: number) => {
+    if (cellTexts === undefined) return undefined;
+    const texts: string[] = [];
+    for (let row = 0; row < rows; row++) {
+      const text = cellTexts[row * columnCount + column];
+      if (text === undefined) break;
+      texts.push(text);
+    }
+    return texts;
+  };
+  let transaction = tr;
+  const revisionIds: number[] = [];
+  for (let column = 0; column < columnCount; column++) {
+    const result = applyTableColumnInsertion({
+      tr: transaction,
+      insertion: { ...insertion, columnIndex: insertion.columnIndex + column },
+      cellTexts: textsOf(column),
+      revision:
+        revision === null ? null : cellRevision(revision, revisionIds.length),
+    });
+    if (result.type !== "applied") return result;
+    transaction = result.transaction;
+    revisionIds.push(...result.revisionIds);
+  }
+  return {
+    type: "applied",
+    transaction,
+    revisionId: revisionIds.at(0) ?? null,
+    revisionIds,
+  };
+};
+
 type ApplyTableColumnDeletionOptions = {
   tr: Transaction;
   deletion: TableColumnDeletion;

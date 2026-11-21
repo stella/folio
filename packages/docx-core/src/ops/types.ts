@@ -1156,11 +1156,16 @@ type TableEditTarget = {
   newIds?: NewIds;
 };
 
-/** Insert before column (including the final boundary); fresh ids are in row order. */
+/**
+ * Insert `count` adjacent columns (one when absent), each `width` wide,
+ * before column (including the final boundary); fresh ids are in reading
+ * order, row by row. Tracked, the columns share one grid change.
+ */
 export type InsertColumnOp = TableEditTarget & {
   type: typeof DOCUMENT_OP_TYPES.INSERT_COLUMN;
   column: number;
   width: number;
+  count?: number;
   newBlockIds: readonly string[];
 };
 export type DeleteColumnOp = TableEditTarget & {

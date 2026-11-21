@@ -874,20 +874,16 @@ describe("table column pairing", () => {
       }),
     ];
 
+    // One operation, its cells in target order: tracked, a table records
+    // one pending grid change for both columns.
     expect(planOf(base, target).operations).toEqual([
       {
         id: "compare-1",
         type: "insertTableColumn",
         blockId: "b",
         position: "before",
-        cellTexts: ["Currency"],
-      },
-      {
-        id: "compare-2",
-        type: "insertTableColumn",
-        blockId: "b",
-        position: "before",
-        cellTexts: ["Region"],
+        columnCount: 2,
+        cellTexts: ["Currency", "Region"],
       },
     ]);
   });
