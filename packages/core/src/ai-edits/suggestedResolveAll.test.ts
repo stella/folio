@@ -5,13 +5,18 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
+import {
+  FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+  type FolioDocumentOperation,
+} from "../document-operations";
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { createDocx } from "../docx/rezip";
 import { paragraph } from "../docx/server/build";
 import { fromMarkdown } from "../markdown/fromMarkdown";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import { createEmptyDocument } from "../utils/createDocument";
 import { FolioDocxReviewer } from "./headless";
+import { hashFolioAIBlockText } from "./snapshot";
 
 const buildDocument = async (): Promise<ArrayBuffer> => {
   const document = createEmptyDocument();
@@ -70,6 +75,75 @@ const savedTexts = async (reviewer: FolioDocxReviewer): Promise<string[]> =>
     .map(({ text }) => text);
 
 const SESSIONS = ["legacy", "canonical"] as const;
+
+const documentOf = async (texts: readonly string[]): Promise<ArrayBuffer> => {
+  const document = createEmptyDocument();
+  document.package.document.content = texts.map((text) => paragraph(text));
+  const { docx } = await ensureParaIds(
+    new Uint8Array(await createDocx(document)),
+  );
+  return docx.buffer.slice(
+    docx.byteOffset,
+    docx.byteOffset + docx.byteLength,
+  ) as ArrayBuffer;
+};
+
+const applyOne = (
+  reviewer: FolioDocxReviewer,
+  mode: "suggested" | "tracked-changes",
+  operation: FolioDocumentOperation,
+): void => {
+  expect(
+    reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode,
+        operations: [operation],
+      },
+      { undefinedReferences: "refuse" },
+    ).applied,
+  ).toHaveLength(1);
+};
+
+/**
+ * A tracked edit and a suggestion, with the reviewer's private registry
+ * cleared: the document holds a suggestion no record describes.
+ */
+const withUnrecordedSuggestion = async (
+  session: HeadlessReviewerSession,
+): Promise<FolioDocxReviewer> => {
+  const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocument(), {
+    author: "AI",
+    session,
+  });
+  const [first, last] = reviewer.getContent();
+  if (!first || !last) throw new Error("fixture paragraphs missing");
+  applyOne(reviewer, "tracked-changes", {
+    id: "tracked",
+    type: "replaceInBlock",
+    blockId: first.id,
+    find: "First",
+    replace: "Opening",
+  });
+  applyOne(reviewer, "suggested", {
+    id: "pending",
+    type: "replaceInBlock",
+    blockId: last.id,
+    find: "two",
+    replace: "three",
+  });
+  const registry: unknown = Reflect.get(reviewer, "pendingSuggestions");
+  if (
+    typeof registry !== "object" ||
+    registry === null ||
+    !("clear" in registry) ||
+    typeof registry.clear !== "function"
+  ) {
+    throw new Error("the pending registry is missing");
+  }
+  registry.clear();
+  return reviewer;
+};
 
 describe("resolving every suggestion headlessly", () => {
   test("a save before resolving keeps the document as it was", async () => {
@@ -347,58 +421,10 @@ describe("resolving every suggestion headlessly", () => {
     },
   );
 
-  test("acceptAll fails without changing the document when a suggestion cannot be restaged", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocument(), {
-      author: "AI",
-    });
-    const [first, last] = reviewer.getContent();
-    if (!first || !last) throw new Error("fixture paragraphs missing");
-    expect(
-      reviewer.applyDocumentOperations(
-        {
-          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-          mode: "tracked-changes",
-          operations: [
-            {
-              id: "tracked",
-              type: "replaceInBlock",
-              blockId: first.id,
-              find: "First",
-              replace: "Opening",
-            },
-          ],
-        },
-        { undefinedReferences: "refuse" },
-      ).applied,
-    ).toHaveLength(1);
-    expect(
-      reviewer.applyDocumentOperations(
-        {
-          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-          mode: "suggested",
-          operations: [
-            {
-              id: "pending",
-              type: "replaceInBlock",
-              blockId: last.id,
-              find: "two",
-              replace: "three",
-            },
-          ],
-        },
-        { undefinedReferences: "refuse" },
-      ).applied,
-    ).toHaveLength(1);
-    const registry: unknown = Reflect.get(reviewer, "pendingSuggestions");
-    if (
-      typeof registry !== "object" ||
-      registry === null ||
-      !("clear" in registry) ||
-      typeof registry.clear !== "function"
-    ) {
-      throw new Error("the pending registry is missing");
-    }
-    registry.clear();
+  // Legacy bulk acceptance rejects every proposal, resolves, then restages
+  // each from its record; the session never restages.
+  test("legacy acceptAll fails without changing the document when a suggestion cannot be restaged", async () => {
+    const reviewer = await withUnrecordedSuggestion("legacy");
     const before = reviewer.getContent();
     const changes = reviewer.getChanges();
     expect(() => reviewer.acceptAll()).toThrow(
@@ -407,6 +433,18 @@ describe("resolving every suggestion headlessly", () => {
     expect(reviewer.getContent()).toEqual(before);
     expect(reviewer.getChanges()).toEqual(changes);
   });
+
+  for (const resolution of ["acceptAll", "rejectAll"] as const)
+    test(`canonical ${resolution} panics on a suggestion the registry does not record`, async () => {
+      const reviewer = await withUnrecordedSuggestion("canonical");
+      const before = reviewer.getContent();
+      const changes = reviewer.getChanges();
+      expect(() => reviewer[resolution]()).toThrow(
+        "A pending suggestion in the document has no record in the reviewer's registry",
+      );
+      expect(reviewer.getContent()).toEqual(before);
+      expect(reviewer.getChanges()).toEqual(changes);
+    });
 
   test("acceptAll refreshes multiple pending records after a separate tracked edit", async () => {
     const reviewer = await suggest();
@@ -516,44 +554,136 @@ describe("resolving every suggestion headlessly", () => {
     expect(reopened.acceptAll().resolved).toBe(0);
   });
 
-  test("bulk acceptance drops a proposal whose anchor was merged away", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocument());
-    const [first, last] = reviewer.getContent();
-    if (!first || !last) throw new Error("fixture paragraphs missing");
-    // Accepting the merge removes the first paragraph's mark, and the
-    // paragraph left is the one whose mark stays: the first is gone.
-    expect(
-      reviewer.applyDocumentOperations(
-        {
-          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-          mode: "suggested",
-          operations: [
-            {
-              id: "pending",
-              type: "replaceInBlock",
-              blockId: first.id,
-              find: "First",
-              replace: "Opening",
-            },
-          ],
-        },
-        { undefinedReferences: "refuse" },
-      ).applied,
-    ).toHaveLength(1);
-    expect(
-      reviewer.applyDocumentOperations(
-        {
-          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-          mode: "tracked-changes",
-          operations: [
-            { id: "merge", type: "mergeBlockWithNext", blockId: first.id },
-          ],
-        },
-        { undefinedReferences: "refuse" },
-      ).applied,
-    ).toHaveLength(1);
+  // Legacy bulk acceptance restages proposals on the paragraphs they were made
+  // on, so one whose paragraph was absorbed is lost (a legacy gap).
+  test("legacy bulk acceptance drops a proposal whose anchor was merged away", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocument(), {
+      session: "legacy",
+    });
+    const [first] = reviewer.getContent();
+    if (!first) throw new Error("fixture paragraphs missing");
+    applyOne(reviewer, "suggested", {
+      id: "pending",
+      type: "replaceInBlock",
+      blockId: first.id,
+      find: "First",
+      replace: "Opening",
+    });
+    applyOne(reviewer, "tracked-changes", {
+      id: "merge",
+      type: "mergeBlockWithNext",
+      blockId: first.id,
+    });
     expect(reviewer.acceptAll().resolved).toBeGreaterThan(0);
     expect(reviewer.exportPendingSuggestions()).toEqual([]);
+  });
+
+  // Accepting the merge removes the first paragraph's mark; the paragraph
+  // whose mark stays survives and holds the proposal, so its record names
+  // the survivor and restages on the saved package.
+  test("canonical bulk acceptance re-anchors a proposal whose anchor was merged away", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocument(), {
+      session: "canonical",
+    });
+    const [first, last] = reviewer.getContent();
+    if (!first || !last) throw new Error("fixture paragraphs missing");
+    applyOne(reviewer, "suggested", {
+      id: "pending",
+      type: "replaceInBlock",
+      blockId: first.id,
+      find: "First",
+      replace: "Opening",
+    });
+    applyOne(reviewer, "tracked-changes", {
+      id: "merge",
+      type: "mergeBlockWithNext",
+      blockId: first.id,
+    });
+    expect(reviewer.acceptAll().absorbedBlocks).toEqual([
+      { blockId: first.id, survivorBlockId: last.id },
+    ]);
+    const records = JSON.parse(
+      JSON.stringify(reviewer.exportPendingSuggestions()),
+    );
+    expect(records).toMatchObject([
+      {
+        suggestionId: "pending",
+        operation: { blockId: last.id },
+        anchor: { blockId: last.id, paraId: last.id },
+      },
+    ]);
+    const reopened = await FolioDocxReviewer.fromBuffer(
+      await reviewer.toBuffer(),
+      { session: "canonical" },
+    );
+    expect(reopened.loadPendingSuggestions(records)).toEqual([
+      { status: "restaged", suggestionId: "pending" },
+    ]);
+    for (const proposal of [reviewer, reopened]) {
+      expect(proposal.acceptSuggestion("pending")).toBe(true);
+      expect(await savedTexts(proposal)).toEqual([
+        "Opening clause.Signed in two copies.",
+      ]);
+    }
+  });
+
+  test("canonical bulk acceptance moves a range proposal by the text absorbed before it", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await documentOf(["Alpha one.", "Beta two.", "Gamma three."]),
+      { session: "canonical" },
+    );
+    const [alpha, beta, gamma] = reviewer.getContent();
+    if (!alpha || !beta || !gamma)
+      throw new Error("fixture paragraphs missing");
+    applyOne(reviewer, "suggested", {
+      id: "pending",
+      type: "replaceRange",
+      range: {
+        type: "textRange",
+        story: "main",
+        blockId: beta.id,
+        startOffset: 5,
+        endOffset: 8,
+        selectedTextHash: hashFolioAIBlockText("two"),
+      },
+      replace: "2",
+    });
+    for (const block of [alpha, beta])
+      applyOne(reviewer, "tracked-changes", {
+        id: `merge-${block.id}`,
+        type: "mergeBlockWithNext",
+        blockId: block.id,
+      });
+    reviewer.acceptAll();
+    const records = JSON.parse(
+      JSON.stringify(reviewer.exportPendingSuggestions()),
+    );
+    expect(records).toMatchObject([
+      {
+        operation: {
+          range: { blockId: gamma.id, startOffset: 15, endOffset: 18 },
+        },
+        anchor: {
+          blockId: gamma.id,
+          paraId: gamma.id,
+          startOffset: 15,
+          endOffset: 18,
+        },
+      },
+    ]);
+    const reopened = await FolioDocxReviewer.fromBuffer(
+      await reviewer.toBuffer(),
+      { session: "canonical" },
+    );
+    expect(reopened.loadPendingSuggestions(records)).toEqual([
+      { status: "restaged", suggestionId: "pending" },
+    ]);
+    for (const proposal of [reviewer, reopened]) {
+      expect(proposal.acceptSuggestion("pending")).toBe(true);
+      expect(await savedTexts(proposal)).toEqual([
+        "Alpha one.Beta 2.Gamma three.",
+      ]);
+    }
   });
 
   // As above: the canonical session records the suggested deletion beside the

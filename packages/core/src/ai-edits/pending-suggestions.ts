@@ -1,3 +1,4 @@
+import { panic } from "better-result";
 import type { EditorState } from "prosemirror-state";
 
 import {
@@ -96,6 +97,21 @@ type LoadPendingSuggestionsOptions = {
   activeSuggestionIds: () => ReadonlySet<string>;
 };
 
+type PrepareAbsorptionOptions = {
+  /** Absorbed paragraph id -> the paragraph that holds its content now. */
+  survivors: ReadonlyMap<string, string>;
+  activeSuggestionIds: ReadonlySet<string>;
+  sourceSnapshotForStory: (
+    story: FolioDocumentStoryHandle,
+  ) => FolioAIEditSnapshot | null;
+};
+
+type AbsorptionStep = (
+  sourceSnapshotForStory: (
+    story: FolioDocumentStoryHandle,
+  ) => FolioAIEditSnapshot | null,
+) => void;
+
 type ExportPendingSuggestionsOptions = {
   activeSuggestionIds: ReadonlySet<string>;
   snapshotForStory: (
@@ -155,6 +171,116 @@ const operationBlockId = (operation: FolioAIEditOperation): string => {
     default:
       return operation.blockId;
   }
+};
+
+/** `operation` addressed to `blockId`, its text range moved by `shift`. */
+const operationOnBlock = (
+  operation: FolioAIEditOperation,
+  blockId: string,
+  shift: number,
+): FolioAIEditOperation => {
+  switch (operation.type) {
+    case "replaceRange":
+    case "commentOnRange":
+    case "formatRange":
+      return {
+        ...operation,
+        range: {
+          ...operation.range,
+          blockId,
+          startOffset: operation.range.startOffset + shift,
+          endOffset: operation.range.endOffset + shift,
+        },
+      };
+    default:
+      return { ...operation, blockId };
+  }
+};
+
+/** The paragraph `paraId` ends in once every absorption is followed. */
+const finalSurvivor = (
+  survivors: ReadonlyMap<string, string>,
+  paraId: string,
+): string => {
+  let current = paraId;
+  const seen = new Set<string>();
+  for (
+    let next = survivors.get(current);
+    next !== undefined;
+    next = survivors.get(current)
+  ) {
+    if (seen.has(next))
+      return panic("Paragraph absorptions form a cycle", { paraId });
+    seen.add(current);
+    current = next;
+  }
+  return current;
+};
+
+type ReanchoredRecordOptions = {
+  record: FolioPendingSuggestionRecord;
+  survivors: ReadonlyMap<string, string>;
+  /** The record's story before the resolution, every proposal rejected. */
+  before: FolioAIEditSnapshot | null;
+  /** The same story after it. */
+  after: FolioAIEditSnapshot | null;
+};
+
+/**
+ * `record` anchored to the paragraph that absorbed its own. The survivor
+ * shows its members' text in document order (an absorption joins paragraphs
+ * and keeps every word they show), so a text range moves by the length of the
+ * members before the record's paragraph. A survivor showing other text is a
+ * resolution this rule does not describe: that panics.
+ */
+const reanchoredRecord = ({
+  record,
+  survivors,
+  before,
+  after,
+}: ReanchoredRecordOptions): FolioPendingSuggestionRecord => {
+  const { suggestionId, anchor: recorded } = record;
+  const { paraId } = recorded;
+  if (paraId === null)
+    return panic("Only a record with a paragraph id is absorbed", {
+      suggestionId,
+    });
+  const survivor = finalSurvivor(survivors, paraId);
+  let shift: number | null = null;
+  let text = "";
+  for (const { id } of before?.blocks ?? []) {
+    if (
+      id !== survivor &&
+      !(survivors.has(id) && finalSurvivor(survivors, id) === survivor)
+    )
+      continue;
+    if (id === paraId) shift = text.length;
+    text += before?.anchors[id]?.text ?? "";
+  }
+  const anchor = after?.anchors[survivor];
+  if (shift === null || !anchor || anchor.text !== text)
+    return panic(
+      "A pending suggestion's paragraph was absorbed, but the survivor does not show its text",
+      { suggestionId, paraId, survivor },
+    );
+  return {
+    ...record,
+    operation: operationOnBlock(record.operation, survivor, shift),
+    anchor: {
+      blockId: survivor,
+      paraId: survivor,
+      originalTextHash: anchor.textHash,
+      ...(recorded.selectedTextHash !== undefined && {
+        selectedTextHash: recorded.selectedTextHash,
+      }),
+      ...(recorded.startOffset !== undefined && {
+        startOffset: recorded.startOffset + shift,
+      }),
+      ...(recorded.endOffset !== undefined && {
+        endOffset: recorded.endOffset + shift,
+      }),
+    },
+  };
 };
 
 const storyFromUnknown = (value: unknown): FolioDocumentStoryHandle | null => {
@@ -305,6 +431,58 @@ export class FolioPendingSuggestionRegistry {
     for (const [key, fingerprint] of this.sourceFingerprints)
       copy.sourceFingerprints.set(key, fingerprint);
     return copy;
+  }
+
+  /** Every suggestion id a record names. */
+  suggestionIds(): Set<string> {
+    return new Set(
+      [...this.records.values()].map(({ suggestionId }) => suggestionId),
+    );
+  }
+
+  /**
+   * Prepare re-anchoring for a resolution that absorbs paragraphs: a live
+   * proposal anchored to an absorbed paragraph now lives in the survivor, so
+   * its record must name the survivor, never the absorbed id. Call before the
+   * resolution publishes, with snapshots of the story as it is; run the
+   * returned step after, with snapshots as the resolution leaves it. `null`
+   * when no live record is anchored to an absorbed paragraph.
+   */
+  prepareAbsorption({
+    survivors,
+    activeSuggestionIds,
+    sourceSnapshotForStory,
+  }: PrepareAbsorptionOptions): AbsorptionStep | null {
+    const affected = [...this.records].filter(
+      ([, { suggestionId, anchor }]) =>
+        activeSuggestionIds.has(suggestionId) &&
+        anchor.paraId !== null &&
+        survivors.has(anchor.paraId),
+    );
+    if (affected.length === 0) return null;
+    const before = new Map<string, FolioAIEditSnapshot | null>();
+    for (const [, { story }] of affected) {
+      const storyKey = canonicalJson(story);
+      if (!before.has(storyKey))
+        before.set(storyKey, sourceSnapshotForStory(story));
+    }
+    return (afterSnapshotForStory) => {
+      const after = new Map<string, FolioAIEditSnapshot | null>();
+      for (const [key, record] of affected) {
+        const storyKey = canonicalJson(record.story);
+        if (!after.has(storyKey))
+          after.set(storyKey, afterSnapshotForStory(record.story));
+        this.records.set(
+          key,
+          reanchoredRecord({
+            record,
+            survivors,
+            before: before.get(storyKey) ?? null,
+            after: after.get(storyKey) ?? null,
+          }),
+        );
+      }
+    };
   }
 
   recordApplied({

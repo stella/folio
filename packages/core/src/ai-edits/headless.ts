@@ -2646,16 +2646,28 @@ export class FolioDocxReviewer {
         return { resolved: false, reason: "lockHeld" };
       throw error;
     }
+    const absorptions = prepared.value.touched.absorbed ?? [];
+    // A live proposal on an absorbed paragraph now lives in the survivor, and
+    // its record follows it there (survivor ids, option C).
+    const absorption =
+      absorptions.length === 0
+        ? null
+        : this.pendingSuggestions.prepareAbsorption({
+            survivors: new Map(
+              absorptions.map(({ absorbed, survivor }) => [absorbed, survivor]),
+            ),
+            activeSuggestionIds: this.activeSuggestionIds(),
+            sourceSnapshotForStory: (story) => this.liveSuggestionSource(story),
+          });
     this.publishOnSession(prepared.value);
+    absorption?.((story) => this.liveSuggestionSource(story));
     return {
       resolved: true,
       lockHeld: prepared.value.lockHeld ?? [],
-      absorbedBlocks: (prepared.value.touched.absorbed ?? []).map(
-        ({ absorbed, survivor }) => ({
-          blockId: absorbed,
-          survivorBlockId: survivor,
-        }),
-      ),
+      absorbedBlocks: absorptions.map(({ absorbed, survivor }) => ({
+        blockId: absorbed,
+        survivorBlockId: survivor,
+      })),
     };
   }
 
@@ -2942,6 +2954,16 @@ export class FolioDocxReviewer {
     const state = this.getEditableStoryState(story);
     return state
       ? createPendingSuggestionSourceSnapshot(state, commentIds)
+      : null;
+  }
+
+  /** A story as the reviewer holds it, every pending suggestion rejected. */
+  private liveSuggestionSource(
+    story: FolioEditableDocumentStoryHandle,
+  ): FolioAIEditSnapshot | null {
+    const state = this.getEditableStoryState(story);
+    return state
+      ? createPendingSuggestionSourceSnapshot(state, new Set())
       : null;
   }
 
@@ -4458,6 +4480,16 @@ export class FolioDocxReviewer {
     session: CanonicalSession,
     resolution: "accept" | "reject",
   ): FolioReviewResolution {
+    // The session never restages proposals, so the registry is what exports
+    // them: a suggestion in the document without a record would be lost.
+    const recorded = this.pendingSuggestions.suggestionIds();
+    for (const suggestionId of this.activeSuggestionIds()) {
+      if (!recorded.has(suggestionId))
+        return panic(
+          "A pending suggestion in the document has no record in the reviewer's registry",
+          { suggestionId, resolution },
+        );
+    }
     // Rejections include proposals in the same commit as ordinary changes;
     // acceptance leaves proposals staged.
     const stories = this.storyResolutions(resolution);
@@ -4980,6 +5012,7 @@ export class FolioDocxReviewer {
       engine: { type: "canonical", session: created.value },
       positionalParaIds: this.positionalParaIds,
     });
+    copy.pendingSuggestions = this.pendingSuggestions.clone();
     const resolution = view === "final" ? copy.acceptAll() : copy.rejectAll();
     if (resolution.skipped.length > 0)
       throw new CanonicalSessionError({
