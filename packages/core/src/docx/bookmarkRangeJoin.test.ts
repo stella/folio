@@ -3,6 +3,12 @@ import { describe, expect, test } from "bun:test";
 import { ZipArchive } from "@stll/docx-core/zip";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
+
+const SESSIONS = [
+  "legacy",
+  "canonical",
+] as const satisfies readonly HeadlessReviewerSession[];
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const HEAD = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
@@ -26,12 +32,20 @@ const packageWith = async (paragraph: string): Promise<ArrayBuffer> => {
 };
 
 /** The bookmark markers of the saved body, in document order. */
-const markersAfterSplit = async (
-  paragraph: string,
-  mode: "direct" | "tracked-changes",
-) => {
+type MarkersAfterSplitOptions = {
+  paragraph: string;
+  mode: "direct" | "tracked-changes";
+  session: HeadlessReviewerSession;
+};
+
+const markersAfterSplit = async ({
+  paragraph,
+  mode,
+  session,
+}: MarkersAfterSplitOptions) => {
   const reviewer = await FolioDocxReviewer.fromBuffer(
     await packageWith(paragraph),
+    { session },
   );
   const blockId = reviewer.snapshot().blocks[0]?.id;
   if (blockId === undefined) throw new Error("the fixture has no paragraph");
@@ -57,22 +71,31 @@ const markersAfterSplit = async (
 };
 
 describe("a paragraph split keeps one range per bookmark", () => {
-  for (const mode of ["direct", "tracked-changes"] as const) {
-    test(`a start with no end in the source is written once, ${mode}`, async () => {
-      const { markers, text } = await markersAfterSplit(
-        '<w:p><w:r><w:t>Alpha beta gamma</w:t></w:r><w:bookmarkStart w:id="1" w:name="_GoBack"/></w:p>',
-        mode,
-      );
-      expect(markers).toEqual(["Start:1", "End:1"]);
-      expect(text).toBe("Alpha beta gammaTail");
-    });
+  for (const session of SESSIONS)
+    for (const mode of ["direct", "tracked-changes"] as const) {
+      // Legacy closes a start the source left open; the canonical session
+      // writes the start as the source has it. Neither writes it twice.
+      test(`${session}: a start with no end in the source is written once, ${mode}`, async () => {
+        const { markers, text } = await markersAfterSplit({
+          paragraph:
+            '<w:p><w:r><w:t>Alpha beta gamma</w:t></w:r><w:bookmarkStart w:id="1" w:name="_GoBack"/></w:p>',
+          mode,
+          session,
+        });
+        expect(markers).toEqual(
+          session === "legacy" ? ["Start:1", "End:1"] : ["Start:1"],
+        );
+        expect(text).toBe("Alpha beta gammaTail");
+      });
 
-    test(`a range inside the paragraph stays as it was, ${mode}`, async () => {
-      const { markers } = await markersAfterSplit(
-        '<w:p><w:r><w:t xml:space="preserve">Alpha beta </w:t></w:r><w:bookmarkStart w:id="1" w:name="mark"/><w:r><w:t>gamma</w:t></w:r><w:bookmarkEnd w:id="1"/></w:p>',
-        mode,
-      );
-      expect(markers).toEqual(["Start:1", "End:1"]);
-    });
-  }
+      test(`${session}: a range inside the paragraph stays as it was, ${mode}`, async () => {
+        const { markers } = await markersAfterSplit({
+          paragraph:
+            '<w:p><w:r><w:t xml:space="preserve">Alpha beta </w:t></w:r><w:bookmarkStart w:id="1" w:name="mark"/><w:r><w:t>gamma</w:t></w:r><w:bookmarkEnd w:id="1"/></w:p>',
+          mode,
+          session,
+        });
+        expect(markers).toEqual(["Start:1", "End:1"]);
+      });
+    }
 });
