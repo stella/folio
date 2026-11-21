@@ -14,7 +14,10 @@ import {
   applyDocumentOp,
   applyDocumentOps,
 } from "../apply";
-import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
+import {
+  DOCUMENT_OP_REFUSAL_REASONS,
+  type DocumentOpRefusalReason,
+} from "../refusal";
 import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
@@ -297,20 +300,27 @@ const endingWith = (anchor: Paragraph): Document => ({
 });
 
 test.each([
-  insertedMark,
-  { kind: "del", info: insertedMark.info },
-  { kind: "moveFrom", info: insertedMark.info },
-  { ...insertedMark, deletion: markDeletion },
-] satisfies ParagraphMarkChange[])(
-  "a new final paragraph does not take a mark under review ($kind)",
-  (pPrMark) => {
+  [insertedMark, DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_INSERTION],
+  [
+    { kind: "del", info: insertedMark.info },
+    DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_DELETION,
+  ],
+  [
+    { kind: "moveFrom", info: insertedMark.info },
+    DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_DELETION,
+  ],
+  [
+    { ...insertedMark, deletion: markDeletion },
+    DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_DELETION,
+  ],
+] satisfies [ParagraphMarkChange, DocumentOpRefusalReason][])(
+  "a new final paragraph does not take a mark under review (%o), refused by what it has pending",
+  (pPrMark, reason) => {
     const refused = applyDocumentOp(
       endingWith({ ...ANCHOR, pPrMark }),
       insertion(paragraph("00000002", "new")),
     );
-    expect(refused.isErr() && refused.error.reason).toBe(
-      DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK,
-    );
+    expect(refused.isErr() && refused.error.reason).toBe(reason);
   },
 );
 

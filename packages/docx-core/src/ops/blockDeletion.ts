@@ -41,7 +41,11 @@ import {
   isBoundary,
   withBoundariesOutsideDeletion,
 } from "./rangeBoundaries";
-import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
+import {
+  DOCUMENT_OP_REFUSAL_REASONS,
+  DocumentOpRefusal,
+  pendingParagraphMarkReason,
+} from "./refusal";
 import type { ApplyOps } from "./resolve";
 import {
   foldedParagraphPropertyChange,
@@ -1241,17 +1245,16 @@ export const deleteBlocks = ({
       paragraph.sectionProperties !== undefined ||
       (beforeInsertedTable && paragraph === last.paragraph)) &&
     !(finalTakeover && paragraph === last.paragraph);
-  if (
-    reviewed.some(
-      (paragraph) =>
-        paragraph.pPrMark !== undefined &&
-        !joinsNext.has(paragraph) &&
-        !keepsDeletedMark(paragraph) &&
-        !deletesAddedMark(paragraph),
-    )
-  ) {
+  const overwrittenMark = reviewed.find(
+    (paragraph) =>
+      paragraph.pPrMark !== undefined &&
+      !joinsNext.has(paragraph) &&
+      !keepsDeletedMark(paragraph) &&
+      !deletesAddedMark(paragraph),
+  )?.pPrMark;
+  if (overwrittenMark !== undefined) {
     return refuse(
-      DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK,
+      pendingParagraphMarkReason(overwrittenMark),
       "Deletion would overwrite a paragraph review record.",
     );
   }
