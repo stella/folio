@@ -29,6 +29,7 @@ import {
   CanonicalSessionError,
   createCanonicalSession,
 } from "../canonical/canonicalSession";
+import { normalizeCanonicalSource } from "../canonical/canonicalSourceNormalization";
 import {
   prepareCanonicalDocxInput,
   prepareCanonicalDocxSource,
@@ -368,6 +369,151 @@ const canonicalExpectation = ({
   };
 };
 
+type StoryHandle = ReviewerReads["stories"][number]["handle"];
+
+/** Whether a reviewer's story handle names the session's story `story`. */
+const namesStory = (
+  handle: StoryHandle,
+  story: ReturnType<
+    typeof normalizeCanonicalSource
+  >["normalized"][number]["story"],
+): boolean => {
+  if (story === "main") return handle.type === "main";
+  switch (story.kind) {
+    case "header":
+    case "footer":
+      return handle.type === story.kind && handle.relationshipId === story.rId;
+    case "footnote":
+    case "endnote":
+      return handle.type === story.kind && handle.noteId === story.id;
+    default: {
+      const unreachable: never = story;
+      return unreachable;
+    }
+  }
+};
+
+type Block = ReviewerReads["content"][number];
+
+/**
+ * The closing paragraph `canonical` reads with id `paraId`, last in
+ * `blocks`: an empty paragraph whose id no package names. Anything else is a
+ * difference the expectation does not state.
+ */
+const closingBlock = (blocks: readonly Block[], paraId: string): Block => {
+  const block = blocks.at(-1);
+  expect(block).toMatchObject({
+    id: paraId,
+    text: "",
+    idStability: "positional",
+  });
+  if (block === undefined) throw new Error("expected a closing paragraph");
+  return block;
+};
+
+type ClosingOptions = {
+  expected: ReviewerReads;
+  canonical: ReviewerReads;
+  parsed: Document;
+};
+
+/**
+ * The second canonical difference by design: a story whose content ends in
+ * a table reads one empty paragraph after it, the one the session's model
+ * closes the story with (`canonicalSourceNormalization.ts`), with an id no
+ * package names. Legacy holds no such paragraph. The paragraph is put into
+ * the expectation where a story's last block is a table, empty and
+ * positional, last in that story's blocks and anchors; every other read is
+ * held to the legacy reading as it is.
+ */
+const withClosingParagraphs = ({
+  expected,
+  canonical,
+  parsed,
+}: ClosingOptions): ReviewerReads => {
+  const closings = normalizeCanonicalSource(parsed).normalized.flatMap(
+    ({ story, minted }) =>
+      minted.map((paraId) => {
+        const index = expected.stories.findIndex(({ handle }) =>
+          namesStory(handle, story),
+        );
+        const read = canonical.snapshotStory[index];
+        if (index < 0 || !read) throw new Error("a closed story is read");
+        return {
+          story,
+          paraId,
+          index,
+          block: closingBlock(read.blocks, paraId),
+          anchor: read.anchors[paraId],
+        };
+      }),
+  );
+  type Closing = (typeof closings)[number];
+  // Blocks hashing alike count one occurrence more: the closing one.
+  const withAnchor = (
+    entries: StoryAnchors,
+    { paraId, anchor }: Closing,
+  ): StoryAnchors =>
+    anchor === undefined
+      ? entries
+      : {
+          ...Object.fromEntries(
+            Object.entries(entries).map(([key, entry]) => [
+              key,
+              entry.textHash === anchor.textHash
+                ? {
+                    ...entry,
+                    hashOccurrenceCount: entry.hashOccurrenceCount + 1,
+                  }
+                : entry,
+            ]),
+          ),
+          [paraId]: anchor,
+        };
+  const atIndex = new Map(closings.map((closing) => [closing.index, closing]));
+  const main = closings.find(({ story }) => story === "main");
+  const closed: ReviewerReads = {
+    ...expected,
+    snapshotStory: expected.snapshotStory.map((entry, at) => {
+      const closing = atIndex.get(at);
+      return closing === undefined || entry === null
+        ? entry
+        : {
+            blocks: [...entry.blocks, closing.block],
+            anchors: withAnchor(entry.anchors, closing),
+          };
+    }),
+    readReviewedStory: expected.readReviewedStory.map((entry, at) => {
+      const closing = atIndex.get(at);
+      return closing === undefined || entry === null
+        ? entry
+        : { ...entry, blocks: [...entry.blocks, closing.block] };
+    }),
+  };
+  if (main === undefined) return closed;
+  const closing = canonical.body.content?.at(-1);
+  expect(closing?.attrs?.["paraId"]).toBe(main.paraId);
+  expect(closing?.content ?? []).toEqual([]);
+  return {
+    ...closed,
+    snapshot: {
+      blocks: [...expected.snapshot.blocks, main.block],
+      anchors: withAnchor(expected.snapshot.anchors, main),
+    },
+    content: [
+      ...expected.content,
+      closingBlock(canonical.content, main.paraId),
+    ],
+    body: {
+      ...expected.body,
+      content: [
+        ...(expected.body.content ?? []),
+        ...(closing ? [closing] : []),
+      ],
+    },
+  };
+};
+
 type EngineOutcome =
   { type: "read"; reads: ReviewerReads } | { type: "refused"; error: unknown };
 
@@ -422,12 +568,14 @@ const compareEngines = async (stored: ArrayBuffer): Promise<ReadParity> => {
     });
     return "sessionRefused";
   }
-  const expected = canonicalExpectation({
-    legacy: legacy.reads,
-    parsed: await parseDocx(buffer.slice(0), {
-      detectVariables: false,
-      preloadFonts: false,
-    }),
+  const parsed = await parseDocx(buffer.slice(0), {
+    detectVariables: false,
+    preloadFonts: false,
+  });
+  const expected = withClosingParagraphs({
+    expected: canonicalExpectation({ legacy: legacy.reads, parsed }),
+    canonical: canonical.reads,
+    parsed,
   });
   const differing = (Object.keys(expected) as (keyof ReviewerReads)[]).filter(
     (read) => !Bun.deepEquals(canonical.reads[read], expected[read]),
