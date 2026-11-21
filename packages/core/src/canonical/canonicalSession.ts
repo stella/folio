@@ -88,7 +88,10 @@ import {
 } from "../docx/paragraphPropertySource";
 import { visitInlineContentSlots } from "../docx/paragraphTraversal";
 import { isCellMergeContinuation } from "../docx/tableParser";
-import { referencedHeaderFooters } from "../docx/unreferencedHeaderFooters";
+import {
+  referencedHeaderFooters,
+  retiredHeaderFooters,
+} from "../docx/unreferencedHeaderFooters";
 import { calculateRowSpans } from "../docx/verticalMergeProjection";
 import { canonicalOperationStagingAccess } from "../internal/canonicalOperationStaging";
 import {
@@ -2147,6 +2150,9 @@ class CanonicalSession {
   private readonly heldUnreferencedNotes: ReadonlySet<string>;
   /** Headers and footers a section of the opened package referenced. */
   private readonly referencedHeaderFootersAtOpen: ReadonlySet<string>;
+  /** {@link retiredHeaderFooters} of the document it was read from. */
+  private retiredHeaderFootersCache:
+    { document: Document; retired: ReadonlySet<string> } | undefined;
   /** What earlier projections converted, reused by every later one. */
   private readonly caches: StoryProjectionCaches;
 
@@ -2402,6 +2408,25 @@ class CanonicalSession {
       });
     return this.currentDocument;
   }
+
+  /**
+   * The `header:<rId>` and `footer:<rId>` parts a resolution retired: the
+   * opened package referenced them and no section names them now. A save
+   * drops them; a reader lists them no more.
+   */
+  retiredHeaderFooters(): ReadonlySet<string> {
+    const document = this.currentDocument;
+    if (this.retiredHeaderFootersCache?.document !== document)
+      this.retiredHeaderFootersCache = {
+        document,
+        retired: retiredHeaderFooters(
+          document,
+          this.referencedHeaderFootersAtOpen,
+        ),
+      };
+    return this.retiredHeaderFootersCache.retired;
+  }
+
   captureSaveSnapshot(): CanonicalSaveSnapshot {
     if (this.isComposing)
       throw new CanonicalSessionError({
