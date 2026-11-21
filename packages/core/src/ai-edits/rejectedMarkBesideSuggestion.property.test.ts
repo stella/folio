@@ -260,6 +260,100 @@ const operation: fc.Arbitrary<FolioDocumentOperation> = fc.oneof(
   },
 ) as fc.Arbitrary<FolioDocumentOperation>;
 
+type MixedReviewOptions = {
+  reviewer: FolioDocxReviewer;
+  batches: readonly Batch[];
+  picks: readonly number[];
+};
+
+const rejectMixedReview = async ({
+  reviewer,
+  batches,
+  picks,
+}: MixedReviewOptions) => {
+  const suggestions: string[] = [];
+  for (const [index, { mode, operation: op }] of batches.entries()) {
+    const id = `op-${String(index)}`;
+    const result = apply(reviewer, mode, [{ ...op, id }]);
+    if (mode === "suggested" && result.applied.length > 0) suggestions.push(id);
+  }
+  // One change or one suggestion at a time, in the order drawn.
+  for (const pick of picks) {
+    const changes = reviewer.getChanges();
+    if (changes.length === 0 && suggestions.length === 0) break;
+    if (pick % 2 === 0 && suggestions.length > 0) {
+      const [id] = suggestions.splice(pick % suggestions.length, 1);
+      if (id !== undefined) reviewer.rejectSuggestion(id);
+      continue;
+    }
+    const change = changes[pick % Math.max(changes.length, 1)];
+    if (change !== undefined) reviewer.rejectChange(change);
+  }
+  for (const id of suggestions) reviewer.rejectSuggestion(id);
+  reviewer.rejectAll();
+  expect(await textsOf(await reviewer.toBuffer())).toEqual(SOURCE_TEXTS);
+};
+
+test.each(["legacy", "canonical"] as const)(
+  "a suggested split remains rejectable after nearby tracked marks join its anchor (%s)",
+  async (session) => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(await source(), {
+      session,
+    });
+    await rejectMixedReview({
+      reviewer,
+      batches: [
+        {
+          mode: "suggested",
+          operation: {
+            id: "split",
+            type: "splitBlock",
+            blockId: "10000002",
+            offset: 2,
+          },
+        },
+        {
+          mode: "tracked-changes",
+          operation: {
+            id: "earlier",
+            type: "splitBlock",
+            blockId: "10000002",
+            offset: 1,
+          },
+        },
+        {
+          mode: "suggested",
+          operation: {
+            id: "suggested",
+            type: "insertAfterBlock",
+            blockId: "10000002",
+            text: "Payment due.",
+          },
+        },
+        {
+          mode: "tracked-changes",
+          operation: {
+            id: "tracked",
+            type: "insertAfterBlock",
+            blockId: "10000002",
+            text: "Payment due.",
+          },
+        },
+        {
+          mode: "tracked-changes",
+          operation: {
+            id: "opening",
+            type: "splitBlock",
+            blockId: "10000001",
+            offset: 1,
+          },
+        },
+      ],
+      picks: [5, 35_248_361, 2_147_483_645, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    });
+  },
+);
+
 test(
   "rejecting any mix of tracked and suggested changes, in any order, gives the source back",
   async () => {
@@ -279,30 +373,7 @@ test(
         fc.array(fc.nat(), { minLength: 12, maxLength: 12 }),
         async (batches, picks) => {
           const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice(0));
-          const suggestions: string[] = [];
-          for (const [index, { mode, operation: op }] of batches.entries()) {
-            const id = `op-${String(index)}`;
-            const result = apply(reviewer, mode, [{ ...op, id }]);
-            if (mode === "suggested" && result.applied.length > 0)
-              suggestions.push(id);
-          }
-          // One change or one suggestion at a time, in the order drawn.
-          for (const pick of picks) {
-            const changes = reviewer.getChanges();
-            if (changes.length === 0 && suggestions.length === 0) break;
-            if (pick % 2 === 0 && suggestions.length > 0) {
-              const [id] = suggestions.splice(pick % suggestions.length, 1);
-              if (id !== undefined) reviewer.rejectSuggestion(id);
-              continue;
-            }
-            const change = changes[pick % Math.max(changes.length, 1)];
-            if (change !== undefined) reviewer.rejectChange(change);
-          }
-          for (const id of suggestions) reviewer.rejectSuggestion(id);
-          reviewer.rejectAll();
-          expect(await textsOf(await reviewer.toBuffer())).toEqual(
-            SOURCE_TEXTS,
-          );
+          await rejectMixedReview({ reviewer, batches, picks });
         },
       ),
       { id: "rejected-mark-beside-suggestion-mixed-order", numRuns: 300 },

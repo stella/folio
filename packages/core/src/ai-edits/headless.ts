@@ -2650,8 +2650,11 @@ export class FolioDocxReviewer {
       throw error;
     }
     const absorptions = prepared.value.touched.absorbed ?? [];
+    const sourceSnapshotForStory = (story: FolioEditableDocumentStoryHandle) =>
+      this.pendingSuggestionSource(story, new Set());
     // A live proposal on an absorbed paragraph now lives in the survivor, and
-    // its record follows it there (survivor ids, option C).
+    // its record follows it there. Compare the session's saved snapshots:
+    // rejecting a suggestion in a different projection can keep another id.
     const absorption =
       absorptions.length === 0
         ? null
@@ -2660,11 +2663,11 @@ export class FolioDocxReviewer {
               absorptions.map(({ absorbed, survivor }) => [absorbed, survivor]),
             ),
             activeSuggestionIds: this.activeSuggestionIds(),
-            sourceSnapshotForStory: (story) => this.liveSuggestionSource(story),
+            sourceSnapshotForStory,
           });
     this.publishOnSession(prepared.value);
     absorption?.({
-      sourceSnapshotForStory: (story) => this.liveSuggestionSource(story),
+      sourceSnapshotForStory,
       activeSuggestionIds: this.activeSuggestionIds(),
     });
     // One whose paragraph the resolution removed whole stands beside the
@@ -2966,16 +2969,6 @@ export class FolioDocxReviewer {
     const state = this.getEditableStoryState(story);
     return state
       ? createPendingSuggestionSourceSnapshot(state, commentIds)
-      : null;
-  }
-
-  /** A story as the reviewer holds it, every pending suggestion rejected. */
-  private liveSuggestionSource(
-    story: FolioEditableDocumentStoryHandle,
-  ): FolioAIEditSnapshot | null {
-    const state = this.getEditableStoryState(story);
-    return state
-      ? createPendingSuggestionSourceSnapshot(state, new Set())
       : null;
   }
 
