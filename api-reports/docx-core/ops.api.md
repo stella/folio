@@ -1256,6 +1256,15 @@ export type ReplaceInlineOp = {
 export const replaceStoryBody: (input: ReplaceStoryBodyOptions) => Document_2;
 
 // @public
+export type ResolvedDocumentView = {
+    document: Document_2;
+    unresolved: readonly OpStory[];
+};
+
+// @public
+export const resolvedDocumentView: (document: Document_2, decision: RevisionDecision) => ResolvedDocumentView;
+
+// @public
 export type ResolveRevisionOp = {
     type: typeof DOCUMENT_OP_TYPES.RESOLVE_REVISION;
     story: OpStory;

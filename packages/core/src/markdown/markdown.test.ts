@@ -1119,9 +1119,10 @@ describe("toMarkdown — clean preset for skills", () => {
     expect(out).toBe("x[^c1]\n\n## Comments\n[^c1]: A: see link");
   });
 
-  const delMark = (): Paragraph["pPrMark"] => ({
+  // Each record carries its own revision id, as a package's records do.
+  const delMark = (id = 1): Paragraph["pPrMark"] => ({
     kind: "del",
-    info: { id: 1, author: "A" },
+    info: { id, author: "A" },
   });
 
   test("a deleted paragraph mark merges into the next paragraph on accept", () => {
@@ -1205,12 +1206,12 @@ describe("toMarkdown — clean preset for skills", () => {
     const b: Paragraph = {
       type: "paragraph",
       content: [run("B")],
-      pPrMark: delMark(),
+      pPrMark: delMark(2),
     };
     expect(md([a, b, para([run("C")])], clean)).toBe("ABC");
   });
 
-  test("a deleted mark before a table runs its words into the first cell", () => {
+  test("a deleted mark before a table keeps its paragraph, which cannot join into a table cell", () => {
     const para1: Paragraph = {
       type: "paragraph",
       content: [run("Lead")],
@@ -1231,8 +1232,7 @@ describe("toMarkdown — clean preset for skills", () => {
         },
       ],
     });
-    expect(md([para1, table(false)], clean)).toBe("| LeadX |\n| --- |");
-    // A pending row may not keep the cell: the paragraph keeps its place.
+    expect(md([para1, table(false)], clean)).toBe("Lead\n\n| X |\n| --- |");
     expect(md([para1, table(true)], clean)).toBe("Lead\n\n| X |\n| --- |");
     // Words before an emptied paragraph stop there; the emptied one goes.
     const emptied: Paragraph = {
@@ -1244,7 +1244,7 @@ describe("toMarkdown — clean preset for skills", () => {
           content: [run("Gone")],
         },
       ],
-      pPrMark: delMark(),
+      pPrMark: delMark(3),
     };
     expect(md([para1, emptied, table(false)], clean)).toBe(
       "Lead\n\n| X |\n| --- |",

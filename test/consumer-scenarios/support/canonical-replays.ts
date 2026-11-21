@@ -29,25 +29,14 @@ type ReplayGap = {
   symptom: RegExp;
 };
 
-const MARKDOWN_ACCEPTANCE: ReplayGap = {
-  reason: "clean Markdown still resolves with the default engine's acceptance",
-  symptom: /Markdown contains more text blocks than the source reader/u,
-};
-
 /** Checked-in flows the canonical session does not pass yet. */
 export const CANONICAL_REPLAY_GAPS: Readonly<Record<string, ReplayGap>> = {
-  "issue-1350-table-and-paragraph-before-deleted-final.json":
-    MARKDOWN_ACCEPTANCE,
   "issue-1356-48eb3fcfbb6a954d.json": {
     reason:
       "a tracked insertion after a paragraph that would take over the last paragraph's pending property change is refused, which the direct replay applies",
     symptom:
       /\[directTracked\] the flow's batches replayed tracked and accepted read otherwise than replayed direct/u,
   },
-  "issue-1757-7483271c36812e15.json": MARKDOWN_ACCEPTANCE,
-  "issue-1757-paragraph-before-table-after-pending-join.json":
-    MARKDOWN_ACCEPTANCE,
-  "issue-2904-merged-numbered-heading-emptied.json": MARKDOWN_ACCEPTANCE,
 };
 
 /**
