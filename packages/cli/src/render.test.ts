@@ -1,5 +1,12 @@
 import { Result } from "better-result";
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  setDefaultTimeout,
+  test,
+} from "bun:test";
 import { existsSync } from "node:fs";
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
@@ -7,6 +14,7 @@ import path from "node:path";
 
 import { ZipArchive } from "@stll/docx-core/zip";
 
+import { DISK_SYNC_TEST_TIMEOUT_MS } from "../../../test/disk-sync-timeout";
 import {
   CONTRACT_PARAGRAPHS,
   fourPageContract,
@@ -15,6 +23,8 @@ import {
 } from "./__tests__/fixtures";
 import { captureIo, dataOf, envelopeOf } from "./__tests__/io";
 import { runFolioCli } from "./cli";
+
+setDefaultTimeout(DISK_SYNC_TEST_TIMEOUT_MS);
 
 let dir = "";
 let cleanup: () => Promise<void> = () => Promise.resolve();
