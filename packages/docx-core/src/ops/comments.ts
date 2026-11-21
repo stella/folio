@@ -910,19 +910,48 @@ const capture = (
   };
 };
 
+type UnchangedAnchorDifference = Pick<
+  CommentState["anchors"][number],
+  "blockId" | "content"
+>;
+
+// Repeated paragraph keys can report many differences even on one list.
+const MAX_CACHED_ANCHOR_DIFFERENCES = 8;
+const unchangedAnchorDifferences = new WeakMap<
+  readonly BlockContent[],
+  readonly UnchangedAnchorDifference[]
+>();
+
 const changedAnchors = (
   before: Document,
   after: Document,
 ): CommentState["anchors"] => {
   const anchors: CommentState["anchors"][number][] = [];
   for (const story of documentStories(before)) {
+    const content = findStoryBody(before, story)?.content;
+    const unchanged =
+      content !== undefined && content === findStoryBody(after, story)?.content;
+    const known = unchanged
+      ? unchangedAnchorDifferences.get(content)
+      : undefined;
+    if (known !== undefined) {
+      for (const entry of known) anchors.push({ story, ...entry });
+      continue;
+    }
+    const previous = unchanged
+      ? paragraphsThroughTextBoxes(before, story)
+      : undefined;
     const next = new Map(
-      paragraphsThroughTextBoxes(after, story).map(({ paragraph }) => [
-        idKey(paragraph.paraId ?? ""),
-        paragraph,
-      ]),
+      (previous ?? paragraphsThroughTextBoxes(after, story)).map(
+        ({ paragraph }) => [idKey(paragraph.paraId ?? ""), paragraph],
+      ),
     );
-    for (const { paragraph } of paragraphsThroughTextBoxes(before, story)) {
+    // Identical lists can still report a difference when two unnamed
+    // paragraphs share the same key. Keep that exact self-comparison.
+    const sameListDifferences: UnchangedAnchorDifference[] | undefined =
+      unchanged ? [] : undefined;
+    for (const { paragraph } of previous ??
+      paragraphsThroughTextBoxes(before, story)) {
       const now = next.get(idKey(paragraph.paraId ?? ""));
       // A paragraph changed only inside its text boxes keeps its own anchors;
       // the boxes' paragraphs are listed on their own.
@@ -933,13 +962,22 @@ const changedAnchors = (
             contentOutsideTextBoxes(paragraph),
             contentOutsideTextBoxes(now),
           ))
-      )
-        anchors.push({
-          story,
-          blockId: paragraph.paraId ?? "",
-          content: paragraph.content,
-        });
+      ) {
+        const blockId = paragraph.paraId ?? "";
+        anchors.push({ story, blockId, content: paragraph.content });
+        if (
+          sameListDifferences !== undefined &&
+          sameListDifferences.length <= MAX_CACHED_ANCHOR_DIFFERENCES
+        )
+          sameListDifferences.push({ blockId, content: paragraph.content });
+      }
     }
+    if (
+      unchanged &&
+      sameListDifferences !== undefined &&
+      sameListDifferences.length <= MAX_CACHED_ANCHOR_DIFFERENCES
+    )
+      unchangedAnchorDifferences.set(content, sameListDifferences);
   }
   return anchors;
 };
