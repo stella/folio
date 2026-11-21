@@ -1221,6 +1221,9 @@ export const publishCanonicalImageResources = async ({
         !findZipEntryCaseInsensitive(zip, absolute.toLowerCase())
       ) {
         const media = document.package.media?.get(absolute);
+        // A binding the package already held to media it lacked stays as the
+        // package held it: the save adds no reference.
+        if (!media && desired === source) continue;
         if (!media)
           return refuse(
             "missingMedia",
