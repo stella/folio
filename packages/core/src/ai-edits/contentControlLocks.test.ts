@@ -118,6 +118,12 @@ const range = (
 type Case = {
   name: string;
   reach: Reach;
+  /**
+   * What the operation does to the control on the canonical session, where
+   * it differs: a range spanning the whole control, its boundaries
+   * included, removes it there; the legacy engine keeps it emptied.
+   */
+  canonicalReach?: Reach;
   /** The operation, against the block holding the control and its neighbours. */
   operation: (blocks: { holder: Block; before: Block }) => FolioAIEditOperation;
 };
@@ -196,9 +202,11 @@ const PLACEMENTS: readonly Placement[] = [
         }),
       },
       {
-        // The replacement rewrites the control's content; the control stays.
+        // The replacement spans the whole control: the legacy engine keeps it
+        // emptied, the canonical session removes it.
         name: "replacing text across all of it",
         reach: "content",
+        canonicalReach: "removal",
         operation: ({ holder }) => ({
           id: "op",
           type: "replaceInBlock",
@@ -228,6 +236,7 @@ const PLACEMENTS: readonly Placement[] = [
       {
         name: "rewriting the paragraph holding it",
         reach: "rewrite",
+        canonicalReach: "removal",
         operation: ({ holder }) => ({
           id: "op",
           type: "replaceBlock",
@@ -367,9 +376,13 @@ const controlsIn = async (saved: ArrayBuffer): Promise<string[]> => {
     );
 };
 
-const open = async (placement: Placement, lock: Lock) => {
+const SESSIONS = ["legacy", "canonical"] as const;
+type Session = (typeof SESSIONS)[number];
+
+const open = async (placement: Placement, lock: Lock, session: Session) => {
   const reviewer = await FolioDocxReviewer.fromBuffer(
     await createDocx(placement.bodyXml(lock)),
+    { session },
   );
   const blocks = reviewer.snapshot().blocks;
   const holderIndex = blocks.findIndex(
@@ -381,46 +394,104 @@ const open = async (placement: Placement, lock: Lock) => {
   return { reviewer, holder, before };
 };
 
+// KNOWN GAPS of the canonical session, each held by `test.failing` so a fix
+// shows as a failure to remove here:
+// - A tracked replacement of exactly a control's text is recorded as the
+//   control's own deletion, not as a change inside it.
+// - A tracked deletion of a paragraph holding a control is refused as
+//   untrackable before the lock is judged.
+// - Splitting a paragraph inside an inline control leaves two controls.
+const TRACKED_INSIDE = "tracked replacement deletes the control";
+const TRACKED_PARAGRAPH = "tracked paragraph deletion is untrackable";
+const CANONICAL_KNOWN_GAPS: ReadonlyMap<string, string> = new Map([
+  [
+    "inline sdtLocked, direct: splitting the paragraph inside it",
+    "split leaves two controls",
+  ],
+  ["inline sdtLocked, tracked-changes: replacing its text", TRACKED_INSIDE],
+  [
+    "inline sdtLocked, tracked-changes: deleting the paragraph holding it",
+    TRACKED_PARAGRAPH,
+  ],
+  ["inline sdtLocked, suggested: replacing its text", TRACKED_INSIDE],
+  [
+    "inline sdtLocked, suggested: deleting the paragraph holding it",
+    TRACKED_PARAGRAPH,
+  ],
+  ["inline contentLocked, tracked-changes: replacing its text", TRACKED_INSIDE],
+  ["inline contentLocked, suggested: replacing its text", TRACKED_INSIDE],
+  [
+    "inline sdtContentLocked, tracked-changes: deleting the paragraph holding it",
+    TRACKED_PARAGRAPH,
+  ],
+  [
+    "inline sdtContentLocked, suggested: deleting the paragraph holding it",
+    TRACKED_PARAGRAPH,
+  ],
+]);
+
 describe("content-control locks", () => {
-  for (const placement of PLACEMENTS)
-    for (const lock of LOCKS)
-      for (const mode of MODES)
-        for (const { name, reach, operation } of placement.cases) {
-          const refused = refuses(lock, reach);
-          test(`${placement.kind} ${String(lock)}, ${mode}: ${name} is ${refused ? "refused" : "allowed"}`, async () => {
-            const { reviewer, holder, before } = await open(placement, lock);
-            const original = await controlsIn(await reviewer.toBuffer());
-            expect(original).toEqual([placement.controlText]);
-            const result = reviewer.applyOperations(
-              [operation({ holder, before })],
-              { undefinedReferences: "refuse", mode },
+  for (const session of SESSIONS)
+    for (const placement of PLACEMENTS)
+      for (const lock of LOCKS)
+        for (const mode of MODES)
+          for (const {
+            name,
+            reach,
+            canonicalReach,
+            operation,
+          } of placement.cases) {
+            const refused = refuses(
+              lock,
+              session === "canonical" ? (canonicalReach ?? reach) : reach,
             );
-            const lockSkips = result.skipped.filter(
-              ({ reason }) => reason === "contentControlLock",
+            const known = `${placement.kind} ${String(lock)}, ${mode}: ${name}`;
+            const gap =
+              session === "canonical"
+                ? CANONICAL_KNOWN_GAPS.get(known)
+                : undefined;
+            const run = gap === undefined ? test : test.failing;
+            run(
+              `${session}: ${known} is ${refused ? "refused" : "allowed"}${gap === undefined ? "" : ` (known gap: ${gap})`}`,
+              async () => {
+                const { reviewer, holder, before } = await open(
+                  placement,
+                  lock,
+                  session,
+                );
+                const original = await controlsIn(await reviewer.toBuffer());
+                expect(original).toEqual([placement.controlText]);
+                const result = reviewer.applyOperations(
+                  [operation({ holder, before })],
+                  { undefinedReferences: "refuse", mode },
+                );
+                const lockSkips = result.skipped.filter(
+                  ({ reason }) => reason === "contentControlLock",
+                );
+                if (refused) {
+                  expect(result.applied).toEqual([]);
+                  expect(lockSkips).toHaveLength(1);
+                  expect(lockSkips[0]?.message).toContain(String(lock));
+                  expect(await controlsIn(await reviewer.toBuffer())).toEqual(
+                    original,
+                  );
+                  if (mode === "suggested")
+                    expect(reviewer.exportPendingSuggestions()).toEqual([]);
+                  return;
+                }
+                expect(lockSkips).toEqual([]);
+                if (mode === "suggested") return;
+                // Whatever applied leaves what the lock guards as it was, once
+                // every change is accepted.
+                reviewer.acceptAll();
+                const accepted = await controlsIn(await reviewer.toBuffer());
+                if (lock === "contentLocked" || lock === "sdtContentLocked")
+                  expect(
+                    accepted.every((text) => text === placement.controlText),
+                  ).toBe(true);
+                if (lock === "sdtLocked" || lock === "sdtContentLocked")
+                  expect(accepted).toHaveLength(1);
+              },
             );
-            if (refused) {
-              expect(result.applied).toEqual([]);
-              expect(lockSkips).toHaveLength(1);
-              expect(lockSkips[0]?.message).toContain(String(lock));
-              expect(await controlsIn(await reviewer.toBuffer())).toEqual(
-                original,
-              );
-              if (mode === "suggested")
-                expect(reviewer.exportPendingSuggestions()).toEqual([]);
-              return;
-            }
-            expect(lockSkips).toEqual([]);
-            if (mode === "suggested") return;
-            // Whatever applied leaves what the lock guards as it was, once
-            // every change is accepted.
-            reviewer.acceptAll();
-            const accepted = await controlsIn(await reviewer.toBuffer());
-            if (lock === "contentLocked" || lock === "sdtContentLocked")
-              expect(
-                accepted.every((text) => text === placement.controlText),
-              ).toBe(true);
-            if (lock === "sdtLocked" || lock === "sdtContentLocked")
-              expect(accepted).toHaveLength(1);
-          });
-        }
+          }
 });
