@@ -4,7 +4,12 @@
  * Accepting reads as the direct edit, and rejecting restores the source.
  */
 import { expect, test } from "bun:test";
-import { DOMParser } from "prosemirror-model";
+import {
+  DOMParser,
+  Fragment,
+  type Node as PMNode,
+  Slice,
+} from "prosemirror-model";
 import { AllSelection, TextSelection } from "prosemirror-state";
 
 import { acquireHarnessDom } from "../../../../test/harnessDom";
@@ -72,6 +77,14 @@ const TRACES = {
       pasteHtml(view, PASTED_PARAGRAPHS);
     },
   },
+  "a table pasted over everything from a pasted table": {
+    shape: "notes",
+    run: (view: HeadlessEditorView) => {
+      view.paste(PASTED_TABLE(view.state.doc));
+      selectAll(view);
+      view.paste(PASTED_TABLE(view.state.doc));
+    },
+  },
   "Enter after typing into a paragraph whose break is struck": {
     shape: "fields-links-bookmarks",
     run: (view: HeadlessEditorView) => {
@@ -137,3 +150,70 @@ for (const [name, trace] of Object.entries(TRACES))
         blocks(await read(new Uint8Array(await rejecting.toBuffer()))),
       ).toEqual(source);
     });
+
+/** A pasted table whose first cell spans down through the second row. */
+const SPANNING_TABLE = (schemaDoc: PMNode) => {
+  const { schema } = schemaDoc.type;
+  const cell = (text: string, rowspan = 1) =>
+    schema.node("tableCell", { rowspan }, [
+      schema.node("paragraph", null, schema.text(text)),
+    ]);
+  return new Slice(
+    Fragment.from(
+      schema.node("table", null, [
+        schema.node("tableRow", null, [cell("Tall", 2), cell("Top right")]),
+        schema.node("tableRow", null, [cell("Middle right")]),
+        schema.node("tableRow", null, [cell("Low left"), cell("Low right")]),
+      ]),
+    ),
+    0,
+    0,
+  );
+};
+
+test("withdrawing an own inserted row a merge crosses closes the merge a row sooner", async () => {
+  const base = await parseShapeDocument(
+    new Uint8Array(await shapeArrayBuffer("notes")),
+  );
+  const state = createHarnessState(base, "suggesting");
+  const view = new HeadlessEditorView(
+    state.apply(state.tr.setSelection(TextSelection.create(state.doc, 1))),
+  );
+  const releaseDom = acquireHarnessDom();
+  try {
+    view.paste(SPANNING_TABLE(view.state.doc));
+    view.dispatch(
+      view.state.tr.setSelection(
+        TextSelection.create(
+          view.state.doc,
+          textPosition(view, "Top right") + "Top".length,
+          textPosition(view, "Low left") + "Low".length,
+        ),
+      ),
+    );
+    view.pressKey("Backspace");
+  } finally {
+    releaseDom();
+  }
+  const table = view.state.doc.firstChild;
+  if (table?.type.spec["tableRole"] !== "table")
+    throw new Error("the pasted table is missing");
+  const rows: { text: string; rowspan: unknown }[][] = [];
+  table.forEach((row) => {
+    const cells: { text: string; rowspan: unknown }[] = [];
+    row.forEach((cell) =>
+      cells.push({ text: cell.textContent, rowspan: cell.attrs["rowspan"] }),
+    );
+    rows.push(cells);
+  });
+  expect(rows).toEqual([
+    [
+      { text: "Tall", rowspan: 1 },
+      { text: "Top", rowspan: 1 },
+    ],
+    [
+      { text: " left", rowspan: 1 },
+      { text: "Low right", rowspan: 1 },
+    ],
+  ]);
+});
