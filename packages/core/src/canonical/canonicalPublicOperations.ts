@@ -90,6 +90,7 @@ import { compileMarkdownInsertion } from "../ai-edits/markdownInsertion";
 import {
   BACKGROUND_MARK_NAMES,
   changesFromSegments,
+  cutAroundRepeatedSeparators,
   planReplacementChanges,
   planTextChanges,
   touchedBackgroundStretches,
@@ -6820,47 +6821,23 @@ export class CanonicalPublicOperations {
       // them, so a plan always exists and reproduces the replacement.
       if (planned === null)
         return panic("A replacement's planned changes must reproduce it.");
-      const changes = planned.map((change) => ({
+      // A tab or break is an element of its own, never text: a change keeps
+      // each one its text repeats in place, and one that adds, drops or
+      // reorders them is refused.
+      const separated = cutAroundRepeatedSeparators(
+        clean.text.slice(start, end),
+        planned,
+      );
+      if (separated === null)
+        return refusal(
+          "unsupportedBlock",
+          "Canonical public replacements require plain text.",
+        );
+      const changes = separated.map((change) => ({
         start: start + change.start,
         end: start + change.end,
         text: change.text,
       }));
-      // A tab or break the replacement repeats from the source is kept: a
-      // change that spans them changes the text between them, one for one. A
-      // tab or break the replacement adds would be written as text, so it is
-      // refused. Split on a capturing group, the separators stand at the odd
-      // indices.
-      for (let index = changes.length - 1; index >= 0; index -= 1) {
-        const change = changes[index];
-        if (change === undefined || !/[\t\r\n]/u.test(change.text)) continue;
-        const sourceParts = clean.text
-          .slice(change.start, change.end)
-          .split(/([\t\r\n])/u);
-        const replacementParts = change.text.split(/([\t\r\n])/u);
-        if (
-          sourceParts.length !== replacementParts.length ||
-          sourceParts.some(
-            (part, at) => at % 2 === 1 && part !== replacementParts[at],
-          )
-        )
-          return refusal(
-            "unsupportedBlock",
-            "Canonical public replacements require plain text.",
-          );
-        const pieces: typeof changes = [];
-        let position = change.start;
-        for (const [part, sourcePart] of sourceParts.entries()) {
-          const replacementPart = replacementParts[part] ?? "";
-          if (part % 2 === 0 && sourcePart !== replacementPart)
-            pieces.push({
-              start: position,
-              end: position + sourcePart.length,
-              text: replacementPart,
-            });
-          position += sourcePart.length;
-        }
-        changes.splice(index, 1, ...pieces);
-      }
       const placeChanges = (
         pieces: readonly { start: number; end: number; text: string }[],
       ) => {

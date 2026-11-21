@@ -688,3 +688,46 @@ export const planReplacementChanges = ({
         );
   return applyTextChanges(source, changes) === replacement ? changes : null;
 };
+
+/** A tab or a line break, captured, so a split keeps it at an odd index. */
+const SEPARATOR = /([\t\r\n])/u;
+
+/**
+ * `changes` cut around every tab and line break a change's text repeats from
+ * its source in place, so each stays standing and only the text between them
+ * changes, piece for piece. `null` when a change's text adds, drops or
+ * reorders one: a session that writes a tab or break as an element of its
+ * own, never as text, cannot write that change. A change whose text holds
+ * none may still remove them.
+ */
+export const cutAroundRepeatedSeparators = (
+  source: string,
+  changes: readonly TextChange[],
+): TextChange[] | null => {
+  const cut: TextChange[] = [];
+  for (const change of changes) {
+    if (!SEPARATOR.test(change.text)) {
+      cut.push(change);
+      continue;
+    }
+    const sourceParts = source.slice(change.start, change.end).split(SEPARATOR);
+    const textParts = change.text.split(SEPARATOR);
+    if (
+      sourceParts.length !== textParts.length ||
+      sourceParts.some(
+        (part, index) => index % 2 === 1 && part !== textParts[index],
+      )
+    ) {
+      return null;
+    }
+    let position = change.start;
+    for (const [index, part] of sourceParts.entries()) {
+      const text = textParts[index] ?? "";
+      if (index % 2 === 0 && part !== text) {
+        cut.push({ start: position, end: position + part.length, text });
+      }
+      position += part.length;
+    }
+  }
+  return cut;
+};

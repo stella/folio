@@ -55,6 +55,7 @@ import { buildCleanBlockText, type CleanBlockText } from "./clean-text";
 import { FolioDocxReviewer } from "./headless";
 import {
   changesFromSegments,
+  cutAroundRepeatedSeparators,
   keepAtomicSpans,
   planTextChanges,
   type TextChange,
@@ -799,14 +800,17 @@ const textFormattingOf = (marks: readonly Mark[]): string =>
  * Every inline node's type, and each character's text, run formatting and
  * other marks: what a paragraph says, whichever carrier states it.
  */
-const formattingOf = (paragraph: PMNode): string[] => {
+const formattingOf = (
+  session: HeadlessReviewerSession,
+  paragraph: PMNode,
+): string[] => {
   const nodes: string[] = [];
   paragraph.descendants((node) => {
     if (!node.isInline) {
       return true;
     }
     const formatting = textFormattingOf(node.marks);
-    const others = node.marks
+    const others = comparableMarks(session, node.marks)
       .filter((mark) => mark.type.spec.inclusive === false)
       .map((mark) => JSON.stringify([mark.type.name, mark.attrs]));
     for (const character of node.isText ? (node.text ?? "") : [""]) {
@@ -997,8 +1001,10 @@ describe.each(SESSIONS)(
               // The redline's changes are the diff's, cut around every field the
               // direct edit keeps: accepted, a field stays a field rather than
               // coming back as its displayed text, as when a reviewer types beside
-              // one. No change rewrites text to itself.
-              const changes = keepAtomicSpans(
+              // one. No change rewrites text to itself. The canonical session
+              // writes a tab or break as an element of its own, so there the
+              // changes also keep each one their text repeats in place.
+              const redline = keepAtomicSpans(
                 find,
                 replace,
                 widenChangesToAtomicSpans(
@@ -1026,6 +1032,10 @@ describe.each(SESSIONS)(
                 ),
                 fields,
               );
+              const changes =
+                session === "canonical"
+                  ? (cutAroundRepeatedSeparators(find, redline) ?? redline)
+                  : redline;
               for (const change of changes) {
                 expect({
                   change,
@@ -1181,8 +1191,8 @@ describe.each(SESSIONS)(
                   true,
                 );
               } else {
-                expect(formattingOf(rejected.node)).toEqual(
-                  formattingOf(before.node),
+                expect(formattingOf(session, rejected.node)).toEqual(
+                  formattingOf(session, before.node),
                 );
               }
 
