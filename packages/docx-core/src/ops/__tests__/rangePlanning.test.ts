@@ -749,3 +749,54 @@ test("intent identity demand excludes unrelated paragraph leaves", () => {
   expect(large.newIds.revision?.length).toBe(small.newIds.revision?.length);
   expect(large.newIds.control?.length).toBe(small.newIds.control?.length);
 });
+
+// A range boundary standing between two paragraphs separates neither: a
+// range over both joins them with the boundary where they meet, directly or
+// once its tracked deletion is accepted.
+test("a range across a range boundary between paragraphs joins them around it", () => {
+  const document = documentOf([
+    paragraph("00000001", "First"),
+    { type: "bookmarkEnd", id: 1 },
+    paragraph("00000002", "Second"),
+  ]);
+  const intent = {
+    type: "replaceText",
+    from: at("00000001", 2),
+    to: at("00000002", 3),
+    text: "",
+  } as const;
+  const allocation = allocateEditorIntentIds(document, intent);
+  const applied = (
+    mode: Parameters<typeof compileEditorIntent>[1]["mode"],
+  ): AppliedDocumentOp => {
+    const ops = compileEditorIntent(document, { intent, mode }).unwrap().ops;
+    const edit = applyDocumentOps(document, ops).unwrap();
+    expect(
+      applyDocumentOps(edit.document, edit.inverse).unwrap().document,
+    ).toStrictEqual(document);
+    return edit;
+  };
+  const direct = applied({ type: "editing", newIds: allocation.newIds });
+  expect(direct.document.package.document.content).toEqual([
+    {
+      ...paragraph("00000002", ""),
+      content: [run("Fi"), { type: "bookmarkEnd", id: 1 }, run("ond")],
+    },
+  ]);
+  const tracked = applied({
+    type: "suggesting",
+    revision: { ...revision, id: allocation.revisionId },
+    newIds: allocation.newIds,
+  });
+  for (const decision of Object.values(REVISION_DECISIONS))
+    expect(
+      applyDocumentOp(tracked.document, {
+        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+        story: OP_STORIES.MAIN,
+        revisionIds: tracked.revisions,
+        decision,
+      }).unwrap().document,
+    ).toStrictEqual(
+      decision === REVISION_DECISIONS.ACCEPT ? direct.document : document,
+    );
+});
