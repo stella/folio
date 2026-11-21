@@ -553,6 +553,53 @@ const threadsTakenBy = ({
   );
 };
 
+type DirectReplacementSplit<Change extends ReplacementChange> = {
+  changes: Change[];
+  /** Threads the unsplit replacement takes whole. */
+  retiredCommentIds: ReadonlySet<number>;
+};
+
+/**
+ * A direct replacement's changes cut at each boundary of a comment it keeps
+ * that stands inside a changed stretch: the words before the boundary go, and
+ * the new words follow every such boundary, where accepting the tracked
+ * replacement leaves them. A range ending in the stretch ends before the new
+ * words; one starting in it holds them.
+ */
+export const splitAtKeptCommentBoundaries = <Change extends ReplacementChange>({
+  doc,
+  changes,
+  comments,
+}: {
+  doc: PMNode;
+  changes: readonly Change[];
+  comments: readonly Comment[];
+}): DirectReplacementSplit<Change> => {
+  const retired = threadsTakenBy({ doc, changes, comments });
+  const split: Change[] = [];
+  for (const change of changes) {
+    const cuts: number[] = [];
+    doc.nodesBetween(change.from, change.to, (node, position) => {
+      if (
+        isCommentAnchorCarrier(node) &&
+        change.from < position &&
+        position < change.to &&
+        commentAnchorIdsForNode(node).some((id) => !retired.has(id)) &&
+        cuts.at(-1) !== position
+      )
+        cuts.push(position);
+      return !node.isLeaf && lendsMarks(node, "asAccepted");
+    });
+    let from = change.from;
+    for (const cut of cuts) {
+      split.push({ ...change, from, to: cut, text: "" });
+      from = cut;
+    }
+    split.push({ ...change, from });
+  }
+  return { changes: split, retiredCommentIds: retired };
+};
+
 /**
  * Whether source boundaries already express the replacement's aligned ranges.
  * A changed stretch lends no comment to its replacement: the new words go
