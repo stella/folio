@@ -77,7 +77,6 @@ import {
   withEdgeKeptCutsWidened,
   withKeptCutPieceConsumed,
   withKeptCutPieceRecorded,
-  withKeptCuts,
   withKeptCutsRecorded,
   withoutKeptCuts,
   withoutKeptCutsRecorded,
@@ -1203,7 +1202,8 @@ const settleDeferredRemovals = (
 
 /**
  * Whether resolving as `fateOf` says leaves nothing of `node`: a tracked
- * change whose content goes, or a record holding only such changes.
+ * change whose content goes, or a record or resolved change holding only
+ * such changes.
  */
 const emptiedBy = (
   node: InlineNode,
@@ -1211,7 +1211,13 @@ const emptiedBy = (
 ): boolean => {
   if (isTrackedWrapper(node)) {
     const fate = fateOf(node.info.id);
-    return isAddedRevision(node) ? fate === "removed" : fate === "accepted";
+    if (fate === "pending") return false;
+    const goes = isAddedRevision(node)
+      ? fate === "removed"
+      : fate === "accepted";
+    // A resolved change that keeps its content leaves what the changes it
+    // holds leave.
+    return goes || node.content.every((child) => emptiedBy(child, fateOf));
   }
   const children = childNodes(node);
   return (
@@ -4066,7 +4072,11 @@ const resolveList = ({
           for (let index = seam - kept.count; index < seam; index += 1) {
             const occurrence = out[index];
             if (occurrence === undefined) continue;
-            const marked = withKeptCuts(occurrence.node, { depth, keptFrom });
+            const marked = withKeptCutsRecorded(
+              occurrence.node,
+              { depth, keptFrom },
+              resolution.relocated.nodes,
+            );
             if (marked === occurrence.node) continue;
             out[index] = occurrenceOf(marked, occurrence);
             changed = true;
