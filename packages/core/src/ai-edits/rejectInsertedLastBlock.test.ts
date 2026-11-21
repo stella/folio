@@ -38,6 +38,9 @@ const texts = (reviewer: FolioDocxReviewer) =>
   reviewer.getContent().map(({ text }) => text);
 
 const SESSIONS = ["legacy", "canonical"] as const;
+// The canonical reader supplies a closing paragraph when the body's source
+// ends with a table. Editing the body writes that paragraph.
+const TABLE_BODY_END = { legacy: [], canonical: [""] } as const;
 
 const CASES = [
   {
@@ -45,35 +48,33 @@ const CASES = [
     body: `${control(TABLE)}${paragraph("10000002", "Tail")}`,
     anchor: "10000001",
     accepted: ["Cell", "Added", "Tail"],
-    sessions: SESSIONS,
+    bodyEnd: "paragraph",
   },
   {
     name: "a paragraph with a text box drawn in it, ending the body",
     body: `<w:p w14:paraId="10000003">${TEXT_BOX}<w:r><w:t>Host</w:t></w:r></w:p>`,
     anchor: "10000003",
     accepted: ["Host", "Boxed", "Added"],
-    sessions: SESSIONS,
+    bodyEnd: "paragraph",
   },
-  // The canonical session keeps every story ending with a paragraph, so it
-  // refuses a tracked paragraph after a table that ends the body.
   {
     name: "a table that ends the body",
     body: `${paragraph("10000002", "Head")}${TABLE}`,
     anchor: "10000001",
     accepted: ["Head", "Cell", "Added"],
-    sessions: ["legacy"],
+    bodyEnd: "table",
   },
   {
     name: "a table that ends the body but for a text box drawn before it",
     body: `<w:p w14:paraId="10000003">${TEXT_BOX}<w:r><w:t>Host</w:t></w:r></w:p>${TABLE}`,
     anchor: "10000001",
     accepted: ["Host", "Boxed", "Cell", "Added"],
-    sessions: ["legacy"],
+    bodyEnd: "table",
   },
 ] as const;
 
-for (const { name, body, anchor, accepted, sessions } of CASES)
-  describe.each(sessions)(
+for (const { name, body, anchor, accepted, bodyEnd } of CASES)
+  describe.each(SESSIONS)(
     `on the %s session, a paragraph added after ${name}`,
     (session) => {
       const open = (bytes: ArrayBuffer) =>
@@ -135,15 +136,19 @@ for (const { name, body, anchor, accepted, sessions } of CASES)
 
       test("accepting keeps it as an ordinary paragraph", async () => {
         const { reviewer } = await edit();
+        const expected =
+          bodyEnd === "table"
+            ? [...accepted, ...TABLE_BODY_END[session]]
+            : [...accepted];
         const saved = await reviewer.toBuffer();
         reviewer.acceptAll();
-        expect(texts(reviewer)).toEqual([...accepted]);
+        expect(texts(reviewer)).toEqual(expected);
         const reopened = await open(await reviewer.toBuffer());
-        expect(texts(reopened)).toEqual([...accepted]);
+        expect(texts(reopened)).toEqual(expected);
         expect(reopened.getChanges()).toEqual([]);
         const acceptedAfterReopen = await open(saved);
         acceptedAfterReopen.acceptAll();
-        expect(texts(acceptedAfterReopen)).toEqual([...accepted]);
+        expect(texts(acceptedAfterReopen)).toEqual(expected);
         expect(acceptedAfterReopen.getChanges()).toEqual([]);
       });
 
@@ -161,69 +166,85 @@ for (const { name, body, anchor, accepted, sessions } of CASES)
     },
   );
 
-// The cases below hold the legacy reviewer to its outcomes; the canonical
-// session refuses a tracked paragraph after a table that ends the body.
 const openLegacy = (bytes: ArrayBuffer) =>
   FolioDocxReviewer.fromBuffer(bytes, { session: "legacy" });
 
-test("an unrelated rejection leaves an added final paragraph alone", async () => {
-  const reviewer = await openLegacy(
-    await docx(`${paragraph("10000002", "Head")}${TABLE}`),
-  );
-  reviewer.applyDocumentOperations(
-    {
-      version: 1,
-      mode: "tracked-changes",
-      operations: [
-        {
-          id: "add",
-          type: "insertAfterBlock",
-          blockId: "10000001",
-          text: "Added",
-        },
-        {
-          id: "head",
-          type: "replaceInBlock",
-          blockId: "10000002",
-          find: "Head",
-          replace: "Top",
-        },
-      ],
-    },
-    { undefinedReferences: "refuse" },
-  );
-  const headChange = reviewer.getChanges().find(({ text }) => text === "Top");
-  if (!headChange) throw new Error("The heading change is missing");
-  reviewer.rejectChange(headChange);
-  expect(texts(reviewer)).toContain("Added");
-  reviewer.rejectAll();
-  expect(texts(reviewer)).toEqual(["Head", "Cell"]);
-});
+test.each(SESSIONS)(
+  "an unrelated rejection leaves an added final paragraph alone (%s)",
+  async (session) => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await docx(`${paragraph("10000002", "Head")}${TABLE}`),
+      { session },
+    );
+    reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "tracked-changes",
+        operations: [
+          {
+            id: "add",
+            type: "insertAfterBlock",
+            blockId: "10000001",
+            text: "Added",
+          },
+          {
+            id: "head",
+            type: "replaceInBlock",
+            blockId: "10000002",
+            find: "Head",
+            replace: "Top",
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
+    const headChange = reviewer.getChanges().find(({ text }) => text === "Top");
+    if (!headChange) throw new Error("The heading change is missing");
+    reviewer.rejectChange(headChange);
+    expect(texts(reviewer)).toContain("Added");
+    reviewer.rejectAll();
+    expect(texts(reviewer)).toEqual([
+      "Head",
+      "Cell",
+      ...TABLE_BODY_END[session],
+    ]);
+  },
+);
 
-test("accepting an added final paragraph keeps it as an ordinary one", async () => {
-  const reviewer = await openLegacy(
-    await docx(`${paragraph("10000002", "Head")}${TABLE}`),
-  );
-  reviewer.applyDocumentOperations(
-    {
-      version: 1,
-      mode: "tracked-changes",
-      operations: [
-        {
-          id: "add",
-          type: "insertAfterBlock",
-          blockId: "10000001",
-          text: "Added",
-        },
-      ],
-    },
-    { undefinedReferences: "refuse" },
-  );
-  reviewer.acceptAll();
-  const reopened = await openLegacy(await reviewer.toBuffer());
-  expect(texts(reopened)).toEqual(["Head", "Cell", "Added"]);
-  expect(reopened.getChanges()).toEqual([]);
-});
+test.each(SESSIONS)(
+  "accepting an added final paragraph keeps it as an ordinary one (%s)",
+  async (session) => {
+    const open = (bytes: ArrayBuffer) =>
+      FolioDocxReviewer.fromBuffer(bytes, { session });
+    const reviewer = await open(
+      await docx(`${paragraph("10000002", "Head")}${TABLE}`),
+    );
+    reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "tracked-changes",
+        operations: [
+          {
+            id: "add",
+            type: "insertAfterBlock",
+            blockId: "10000001",
+            text: "Added",
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
+    reviewer.acceptAll();
+    const reopened = await open(await reviewer.toBuffer());
+    expect(texts(reopened)).toEqual([
+      "Head",
+      "Cell",
+      "Added",
+      ...TABLE_BODY_END[session],
+    ]);
+    expect(reopened.getChanges()).toEqual([]);
+  },
+);
 
 describe("a tracked removed break on a paragraph with a text box drawn in it", () => {
   const BODY = `<w:p w14:paraId="10000003"><w:pPr><w:rPr><w:del w:id="9" w:author="A" w:date="2026-01-01T00:00:00Z"/></w:rPr></w:pPr>${TEXT_BOX}<w:r><w:t>Host</w:t></w:r></w:p>${paragraph("10000004", "Next")}${paragraph("10000006", "Tail")}`;
