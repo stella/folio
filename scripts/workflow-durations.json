@@ -2,8 +2,8 @@
   ".github/workflows/audit-image.yml": {
     "build": {
       "job": {
-        "p95Seconds": 315,
-        "samples": 44
+        "p95Seconds": 316,
+        "samples": 48
       }
     }
   },
@@ -18,144 +18,144 @@
   ".github/workflows/cancel-stale-merge-groups.yml": {
     "cancel": {
       "job": {
-        "p95Seconds": 7,
-        "samples": 19
+        "p95Seconds": 8,
+        "samples": 24
       }
     }
   },
   ".github/workflows/canonical-wasm.yml": {
     "canonical-wasm": {
       "job": {
-        "p95Seconds": 257,
-        "samples": 34
+        "p95Seconds": 253,
+        "samples": 50
       }
     }
   },
   ".github/workflows/ci.yml": {
     "browser-discovery": {
       "job": {
-        "p95Seconds": 40,
-        "samples": 11
+        "p95Seconds": 34,
+        "samples": 7
       }
     },
     "browser-input-pinned": {
       "job": {
-        "p95Seconds": 655,
-        "samples": 93
+        "p95Seconds": 637,
+        "samples": 82
       },
       "steps": {
         "Run only standing browser input regressions": {
-          "p95Seconds": 605,
-          "samples": 93
+          "p95Seconds": 596,
+          "samples": 82
         }
       }
     },
     "build-api": {
       "job": {
-        "p95Seconds": 418,
-        "samples": 34
+        "p95Seconds": 419,
+        "samples": 30
       }
     },
     "canonical-evaluation-regressions": {
       "job": {
-        "p95Seconds": 149,
-        "samples": 34
+        "p95Seconds": 136,
+        "samples": 31
       }
     },
     "changeset": {
       "job": {
-        "p95Seconds": 13,
-        "samples": 27
+        "p95Seconds": 15,
+        "samples": 18
       }
     },
     "ci-plan": {
       "job": {
-        "p95Seconds": 25,
-        "samples": 49
+        "p95Seconds": 20,
+        "samples": 44
       }
     },
     "ci-result": {
       "job": {
         "p95Seconds": 4,
-        "samples": 34
+        "samples": 31
       }
     },
     "consumer-scenarios": {
       "job": {
-        "p95Seconds": 605,
-        "samples": 30
+        "p95Seconds": 831,
+        "samples": 25
       }
     },
     "consumer-scenarios-minimum": {
       "job": {
-        "p95Seconds": 773,
-        "samples": 25
+        "p95Seconds": 1065,
+        "samples": 20
       }
     },
     "container-contract": {
       "job": {
-        "p95Seconds": 168,
-        "samples": 21
+        "p95Seconds": 164,
+        "samples": 20
       }
     },
     "dated-policies": {
       "job": {
-        "p95Seconds": 41,
-        "samples": 38
+        "p95Seconds": 34,
+        "samples": 32
       }
     },
     "dependency-audit": {
       "job": {
-        "p95Seconds": 34,
-        "samples": 38
+        "p95Seconds": 28,
+        "samples": 32
       }
     },
     "differential": {
       "job": {
-        "p95Seconds": 168,
-        "samples": 21
+        "p95Seconds": 156,
+        "samples": 20
       }
     },
     "docx-kernel": {
       "job": {
-        "p95Seconds": 921,
-        "samples": 13
+        "p95Seconds": 330,
+        "samples": 20
+      }
+    },
+    "exploration-base-replay": {
+      "job": {
+        "p95Seconds": 31,
+        "samples": 27
       }
     },
     "interactions": {
       "job": {
-        "p95Seconds": 788,
-        "samples": 20
+        "p95Seconds": 776,
+        "samples": 17
       }
     },
     "lint": {
       "job": {
-        "p95Seconds": 288,
-        "samples": 36
+        "p95Seconds": 291,
+        "samples": 27
       }
     },
     "packaged-consumer": {
       "job": {
-        "p95Seconds": 178,
-        "samples": 34
+        "p95Seconds": 174,
+        "samples": 31
       }
     },
     "tests": {
       "job": {
-        "p95Seconds": 856,
-        "samples": 202
+        "p95Seconds": 701,
+        "samples": 220
       }
     },
     "typecheck": {
       "job": {
-        "p95Seconds": 96,
-        "samples": 38
-      }
-    },
-    "warm-main-caches": {
-      "job": {
-        "p95Seconds": 30,
-        "samples": 1
+        "p95Seconds": 104,
+        "samples": 31
       }
     }
   },
@@ -171,31 +171,31 @@
     "consumer-fuzz": {
       "job": {
         "p95Seconds": 1559,
-        "samples": 7
+        "samples": 8
       },
       "steps": {
         "Fuzz for the budget": {
-          "p95Seconds": 1519,
-          "samples": 7
+          "p95Seconds": 1518,
+          "samples": 8
         }
       }
     },
     "property-fuzz": {
       "job": {
-        "p95Seconds": 1842,
-        "samples": 23
+        "p95Seconds": 1756,
+        "samples": 121
       },
       "steps": {
         "Property suite": {
-          "p95Seconds": 1820,
-          "samples": 23
+          "p95Seconds": 1736,
+          "samples": 121
         }
       }
     },
     "report": {
       "job": {
-        "p95Seconds": 60,
-        "samples": 14
+        "p95Seconds": 63,
+        "samples": 32
       }
     }
   },
@@ -240,7 +240,7 @@
   ".github/workflows/dependency-review.yml": {
     "dependency-review": {
       "job": {
-        "p95Seconds": 13,
+        "p95Seconds": 11,
         "samples": 50
       }
     }
@@ -262,24 +262,30 @@
   ".github/workflows/expiring-exceptions.yml": {
     "report": {
       "job": {
-        "p95Seconds": 12,
-        "samples": 4
+        "p95Seconds": 15,
+        "samples": 6
       }
     }
   },
   ".github/workflows/fuzz-ejection-replay.yml": {
     "exploration": {
       "job": {
-        "p95Seconds": 24,
-        "samples": 10
+        "p95Seconds": 22,
+        "samples": 14
+      }
+    },
+    "replay": {
+      "job": {
+        "p95Seconds": 9,
+        "samples": 1
       }
     }
   },
   ".github/workflows/fuzz-failure-report.yml": {
     "report": {
       "job": {
-        "p95Seconds": 57,
-        "samples": 213
+        "p95Seconds": 55,
+        "samples": 224
       }
     }
   },
@@ -291,35 +297,35 @@
           "samples": 50
         },
         "Random AI and human revision interleaving": {
-          "p95Seconds": 70,
+          "p95Seconds": 69,
           "samples": 50
         },
         "Run canonical session property flows": {
-          "p95Seconds": 10,
-          "samples": 2
+          "p95Seconds": 11,
+          "samples": 4
         },
         "Run nightly browser fuzzer": {
           "p95Seconds": 1870,
-          "samples": 44
+          "samples": 42
         }
       }
     },
     "interleaving-report": {
       "job": {
         "p95Seconds": 21,
-        "samples": 4
+        "samples": 3
       }
     },
     "report": {
       "job": {
-        "p95Seconds": 53,
-        "samples": 5
+        "p95Seconds": 20,
+        "samples": 4
       }
     },
     "report-host-api": {
       "job": {
-        "p95Seconds": 57,
-        "samples": 5
+        "p95Seconds": 20,
+        "samples": 3
       }
     }
   },
@@ -333,21 +339,21 @@
     "shard": {
       "job": {
         "p95Seconds": 1876,
-        "samples": 28
+        "samples": 20
       }
     },
     "tier2": {
       "job": {
         "p95Seconds": 2109,
-        "samples": 28
+        "samples": 20
       }
     }
   },
   ".github/workflows/nightly-long-fuzz.yml": {
     "long-fuzz": {
       "job": {
-        "p95Seconds": 3794,
-        "samples": 105
+        "p95Seconds": 4619,
+        "samples": 109
       }
     }
   },
@@ -355,13 +361,13 @@
     "cross-host-report": {
       "job": {
         "p95Seconds": 21,
-        "samples": 9
+        "samples": 7
       }
     },
     "parity-e2e": {
       "job": {
         "p95Seconds": 81,
-        "samples": 41
+        "samples": 43
       },
       "steps": {
         "Generated four-host differential": {
@@ -389,13 +395,13 @@
     "corpus-flows": {
       "job": {
         "p95Seconds": 97,
-        "samples": 27
+        "samples": 29
       }
     },
     "report": {
       "job": {
-        "p95Seconds": 53,
-        "samples": 4
+        "p95Seconds": 51,
+        "samples": 2
       }
     }
   },
@@ -403,7 +409,7 @@
     "report": {
       "job": {
         "p95Seconds": 80,
-        "samples": 7
+        "samples": 5
       }
     },
     "swarm": {
@@ -483,22 +489,22 @@
     "prune": {
       "job": {
         "p95Seconds": 21,
-        "samples": 25
+        "samples": 23
       }
     }
   },
   ".github/workflows/test-timing-refresh.yml": {
     "refresh": {
       "job": {
-        "p95Seconds": 269,
-        "samples": 30
+        "p95Seconds": 296,
+        "samples": 31
       }
     }
   },
   ".github/workflows/vscode-extension.yml": {
     "package": {
       "job": {
-        "p95Seconds": 101,
+        "p95Seconds": 98,
         "samples": 47
       }
     }
