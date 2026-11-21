@@ -4819,6 +4819,8 @@ type JoinPlan = {
   depth: number | undefined;
   /** When the paragraph mark the join resolves was made. */
   splitDate: string | undefined;
+  /** Paragraphs standing only for their pending insertions. */
+  holders: ReadonlySet<string>;
 };
 
 /**
@@ -5187,14 +5189,12 @@ const paragraphMarkPlan = (
 
 const joinOps = (
   document: Document,
-  { op, story, paraId, revisionId, added, depth, splitDate }: JoinPlan,
+  { op, story, paraId, revisionId, added, depth, splitDate, holders }: JoinPlan,
   ends: EmptiedEndsById,
   /** Table receivers a later paragraph of this resolution already ran into. */
   ranInto: ReadonlySet<string> = new Set(),
   /** Paragraphs whose marks this resolution resolves after this one's. */
   joinsBefore: ReadonlySet<string> = new Set(),
-  /** Paragraphs standing only for their pending insertions ({@link standsForInsertions}). */
-  holders: ReadonlySet<string> = new Set(),
 ): Result<ParagraphMarkPlan, DocumentOpRefusal> => {
   const body = storyBody(document, story);
   const location = findStoryParagraph(body, paraId);
@@ -6365,6 +6365,11 @@ const planSingleRecordResolution = (
 
   const inline: DocumentOp[] = [];
   const joins: JoinPlan[] = [];
+  const holders = new Set(
+    paragraphs.flatMap(({ paragraph }) =>
+      standsForInsertions(paragraph) ? [idKey(paragraph.paraId ?? "")] : [],
+    ),
+  );
   const receiverEffects: ResolutionReceiverEffect[] = [];
   const emptiedEnds: EmptiedEndsById = new Map();
   const resolvedContents = new Map<string, readonly InlineNode[]>();
@@ -6744,6 +6749,7 @@ const planSingleRecordResolution = (
         added,
         depth,
         splitDate: mark.info.date,
+        holders,
       });
     }
     let review = resolveParagraphReview(paragraph, resolution, keepsBreak);
@@ -6793,11 +6799,6 @@ const planSingleRecordResolution = (
   const ranInto = new Set<string>();
   const joinsBefore = new Set(joins.map(({ paraId }) => idKey(paraId)));
   const controlEnds: string[] = [];
-  const holders = new Set(
-    paragraphs.flatMap(({ paragraph }) =>
-      standsForInsertions(paragraph) ? [idKey(paragraph.paraId ?? "")] : [],
-    ),
-  );
   for (const join of joins.toReversed()) {
     joinsBefore.delete(idKey(join.paraId));
     if (removedParagraphs.has(idKey(join.paraId))) continue;
@@ -6807,14 +6808,7 @@ const planSingleRecordResolution = (
       record(unsectioned.value);
       current = unsectioned.value.document;
     }
-    const planned = joinOps(
-      current,
-      join,
-      emptiedEnds,
-      ranInto,
-      joinsBefore,
-      holders,
-    );
+    const planned = joinOps(current, join, emptiedEnds, ranInto, joinsBefore);
     if (planned.isErr()) {
       return Result.err(planned.error);
     }
