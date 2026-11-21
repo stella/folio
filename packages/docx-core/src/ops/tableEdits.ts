@@ -23,6 +23,7 @@ import type { DocumentEdit } from "./edits";
 import { equalForStaleness, structurallyEqual } from "./equality";
 import { idKey, isParaId, packageParagraphIds, paragraphIdsIn } from "./ids";
 import { applyFormattingPatch } from "./patch";
+import { relocatePositionedMarkers } from "./positionedMarkers";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { stampInfo } from "./review";
 import { replaceStoryBody } from "./stories";
@@ -304,8 +305,14 @@ const commitTable = ({
   document,
   op,
   location,
-  table,
+  table: edited,
 }: CommitTableOptions): Result<DocumentEdit, DocumentOpRefusal> => {
+  // An inverse restores the table exactly; an edit moves the bookmark markers
+  // beside rows and cells with the siblings it adds or removes.
+  const table =
+    op.type === DOCUMENT_OP_TYPES.SET_TABLE
+      ? edited
+      : relocatePositionedMarkers(location.table, edited);
   const preservesStructure =
     (isPropertyEdit(op) || op.type === DOCUMENT_OP_TYPES.SET_TABLE) &&
     structurallyEqual(

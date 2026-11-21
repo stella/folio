@@ -32,6 +32,10 @@ import {
 import { textsIn } from "./leaves";
 /** Row edits and their exact inverse, addressed through a paragraph in the row. */
 import { cloneModel } from "./modelClone";
+import {
+  holdsPositionedMarkers,
+  relocatePositionedMarkers,
+} from "./positionedMarkers";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { WRAP_KINDS } from "./review";
 import {
@@ -74,35 +78,35 @@ const paragraphsIn = (rows: readonly TableRow[]): Paragraph[] =>
     ({ paragraph }) => paragraph,
   );
 
-/** Indexed markup and shared row wrappers need a structural table operation. */
+/**
+ * Indexed markup and shared row wrappers need a structural table operation.
+ * Bookmark markers beside the rows move with them
+ * ({@link relocatePositionedMarkers}).
+ */
 const needsTableEdit = (table: Table): boolean =>
   table.preserved !== undefined ||
-  table.bookmarks !== undefined ||
   table.carrierStack !== undefined ||
   table.rows.some(
     (row) =>
       row.contentControls !== undefined || row.carrierStack !== undefined,
   );
 
-type WithRowsOptions = {
+type WithTableOptions = {
   document: Document;
   story: OpStory;
   location: TableRowLocation;
-  rows: TableRow[];
+  table: Table;
 };
-const withRows = ({
+const withTable = ({
   document,
   story,
   location,
-  rows,
-}: WithRowsOptions): Document => {
+  table,
+}: WithTableOptions): Document => {
   const body = storyBody(document, story);
   const content = updateBlockList(body.content, location.list, (blocks) => {
     const out = [...blocks];
-    out[location.index] = {
-      ...location.table,
-      rows,
-    };
+    out[location.index] = table;
     return out;
   });
   return replaceStoryBody({
@@ -260,11 +264,15 @@ const commitRows = ({
         "A row revision or content-control id is already used in the package.",
     });
   }
-  const next = withRows({
+  const table = relocatePositionedMarkers(location.table, {
+    ...location.table,
+    rows,
+  });
+  const next = withTable({
     document: document,
     story: op.story,
     location: location,
-    rows: rows,
+    table,
   });
   const valid = validateOpsDocument(next);
   if (valid.isErr()) {
@@ -293,14 +301,24 @@ const commitRows = ({
   }
   return Result.ok({
     document: next,
+    // Rows put back by themselves would not put the markers beside them back
+    // where they stood: the whole table restores them.
     inverse: [
-      {
-        type: DOCUMENT_OP_TYPES.SET_TABLE_ROWS,
-        story: op.story,
-        blockId: anchor,
-        expected: rows,
-        rows: before,
-      },
+      holdsPositionedMarkers(location.table)
+        ? {
+            type: DOCUMENT_OP_TYPES.SET_TABLE,
+            story: op.story,
+            blockId: anchor,
+            expected: table,
+            table: location.table,
+          }
+        : {
+            type: DOCUMENT_OP_TYPES.SET_TABLE_ROWS,
+            story: op.story,
+            blockId: anchor,
+            expected: rows,
+            rows: before,
+          },
     ],
     touched: {
       modified: beforeParagraphIds.filter(
