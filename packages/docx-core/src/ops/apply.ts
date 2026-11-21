@@ -2302,9 +2302,25 @@ const joinBlocks = (
     if (gathered.isErr()) return Result.err(gathered.error);
     const joined = joinBlocks(gathered.value.document, op, applyOps);
     if (joined.isErr()) return joined;
+    // One structural inverse gives the list back as it stood.
+    const survivorId =
+      (op.survivor ?? SPLIT_HALVES.SECOND) === SPLIT_HALVES.SECOND
+        ? trailing.paraId
+        : leading.paraId;
     return Result.ok({
       ...joined.value,
-      inverse: [...joined.value.inverse, ...gathered.value.inverse],
+      inverse: [
+        {
+          type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+          story: op.story,
+          blockId: survivorId ?? "",
+          expected: blockListAt(
+            storyBody(joined.value.document, op.story).content,
+            first.value.list,
+          ),
+          blocks: list,
+        },
+      ],
     });
   }
   if (
