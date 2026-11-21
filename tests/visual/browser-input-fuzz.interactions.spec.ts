@@ -722,13 +722,19 @@ const checkDefaultEditorTrace = async ({
   });
   if (edited.type !== "ready" || suggested.type !== "ready")
     throw new TypeError("The default editor unexpectedly refused activation.");
-  const accepting = await FolioDocxReviewer.fromBuffer(suggested.buffer);
+  // The baseline is docx-core resolution, not the legacy reviewer: the
+  // canonical session accepts and rejects what the default editor saved.
+  const accepting = await FolioDocxReviewer.fromBuffer(suggested.buffer, {
+    session: "canonical",
+  });
   accepting.acceptAll();
   expect(
     project(await reopenSaved(await accepting.toBuffer())),
     ACCEPTED_EQUALS_EDITED,
   ).toEqual(edited.blocks);
-  const rejecting = await FolioDocxReviewer.fromBuffer(suggested.buffer);
+  const rejecting = await FolioDocxReviewer.fromBuffer(suggested.buffer, {
+    session: "canonical",
+  });
   rejecting.rejectAll();
   expect(
     project(await reopenSaved(await rejecting.toBuffer())),
