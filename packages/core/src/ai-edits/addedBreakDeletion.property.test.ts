@@ -301,15 +301,9 @@ describe.each(SESSIONS)("%s session", (session) => {
     );
   });
 
-  // The canonical session joins paragraphs only with no range boundary
-  // standing between them so far.
-  const mergeAnchors =
-    session === "canonical"
-      ? (["none"] as const)
-      : (["none", "bookmark"] as const);
   test.each(
     (["ins", "moveTo"] as const).flatMap((kind) =>
-      mergeAnchors.map((anchors) => ({ kind, anchors })),
+      (["none", "bookmark"] as const).map((anchors) => ({ kind, anchors })),
     ),
   )(
     "merging an imported $kind paragraph ($anchors) with the next resolves alike in both modes",

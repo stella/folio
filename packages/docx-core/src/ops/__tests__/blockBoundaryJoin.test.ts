@@ -84,3 +84,68 @@ for (const [mark, decision] of [
     ]);
   });
 }
+
+// Joining the paragraphs directly does the same, and undoing it stands the
+// boundary between them again; tracked, the boundary stays until the join
+// resolves, accepting as the direct join does and rejecting as nothing did.
+test("joining paragraphs across a block-level bookmark start meets the laws", () => {
+  const document: Document = {
+    package: {
+      document: {
+        content: [
+          paragraph("00000001", "First"),
+          { type: "bookmarkStart", id: 1, name: "Clause" },
+          paragraph("00000002", "Second"),
+          { type: "bookmarkEnd", id: 1 },
+        ] satisfies BlockContent[],
+      },
+    },
+  };
+  const join = {
+    type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
+    story: OP_STORIES.MAIN,
+    blockId: "00000001",
+    nextBlockId: "00000002",
+  } as const;
+  const applied = (op: Parameters<typeof applyDocumentOp>[1]) => {
+    const result = applyDocumentOp(document, op);
+    if (result.isErr()) throw result.error;
+    const undo = applyDocumentOps(result.value.document, result.value.inverse);
+    if (undo.isErr()) throw undo.error;
+    expect(undo.value.document).toStrictEqual(document);
+    return result.value;
+  };
+  const direct = applied(join);
+  expect(direct.document.package.document.content).toEqual([
+    {
+      ...paragraph("00000002", "Second"),
+      content: [
+        ...paragraph("", "First").content,
+        { type: "bookmarkStart", id: 1, name: "Clause" },
+        ...paragraph("", "Second").content,
+      ],
+    },
+    { type: "bookmarkEnd", id: 1 },
+  ]);
+  const tracked = applied({
+    ...join,
+    revision: { id: 20, author: "B", date: "2026-01-03T00:00:00Z" },
+  });
+  expect(tracked.document.package.document.content.at(1)).toEqual({
+    type: "bookmarkStart",
+    id: 1,
+    name: "Clause",
+  });
+  for (const decision of Object.values(REVISION_DECISIONS)) {
+    const resolution = applyDocumentOp(tracked.document, {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds: [20],
+      decision,
+    });
+    if (resolution.isErr()) throw resolution.error;
+    expect(resolution.value.document).toStrictEqual(
+      decision === REVISION_DECISIONS.ACCEPT ? direct.document : document,
+    );
+  }
+});

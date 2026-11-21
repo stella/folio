@@ -20,6 +20,7 @@ import {
   type BatchBlockAccess,
   type BatchOrderAddress,
   type BlockInsertionPoint,
+  blockPastRangeBoundaries,
   compileEditorIntent,
   contentRank,
   createEditorIntentIdAllocator,
@@ -2119,12 +2120,14 @@ const mergeIntentsAsItRuns = ({
     );
   }
   if (!bindsToNext) return separatorAtEnd;
-  const next = locations[at + 1];
-  const follows =
-    next !== undefined &&
-    here.index + 1 === next.index &&
-    JSON.stringify(here.list) === JSON.stringify(next.list);
-  const nextId = follows ? next.paragraph.paraId : undefined;
+  // The paragraph after it in its block list, past range boundaries standing
+  // between them.
+  const placed = locateParagraphThroughTextBoxes(document, story, join.blockId);
+  const next =
+    placed === undefined
+      ? undefined
+      : blockPastRangeBoundaries(placed.blocks, placed.index);
+  const nextId = next?.type === "paragraph" ? next.paraId : undefined;
   if (nextId === undefined) return undefined;
   const boundToNext = (intent: EditorIntent): EditorIntent => {
     switch (intent.type) {

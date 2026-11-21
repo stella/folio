@@ -301,6 +301,21 @@ export const blockFollower = (
   return { index: next, block: blocks[next], standing };
 };
 
+/**
+ * The range boundaries standing between the blocks at `from` and `to` of one
+ * list, or undefined when another block stands there: two paragraphs only
+ * boundaries separate are adjacent.
+ */
+export const boundariesBetween = (
+  blocks: readonly BlockContent[],
+  from: number,
+  to: number,
+): BlockBoundary[] | undefined => {
+  if (to <= from) return undefined;
+  const between = blocks.slice(from + 1, to);
+  return between.every(isBlockBoundary) ? between : undefined;
+};
+
 /** The block after the one at `index`, past range boundaries standing between them. */
 export const blockPastRangeBoundaries = (
   blocks: readonly BlockContent[],

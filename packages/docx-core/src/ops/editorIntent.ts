@@ -95,6 +95,7 @@ import {
   selectedParagraphRuns,
   trimAppliedNewIds,
 } from "./plan";
+import { boundariesBetween } from "./rangeBoundaries";
 import {
   cutPieceHandoffs,
   planTrackedReplace,
@@ -994,7 +995,8 @@ const adjacentJoinRefusal = (
   document: Document,
   join: { story: OpStory; blockId: string; nextBlockId: string },
 ): DocumentOpRefusal | undefined => {
-  const paragraphs = storyParagraphs(storyBody(document, join.story));
+  const body = storyBody(document, join.story);
+  const paragraphs = storyParagraphs(body);
   const find = (blockId: string) =>
     paragraphs.find(
       ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(blockId),
@@ -1007,7 +1009,15 @@ const adjacentJoinRefusal = (
       message: `${first === undefined ? join.blockId : join.nextBlockId} does not exist.`,
       opType: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
     });
-  if (!sameBlockList(first.list, next.list) || next.index !== first.index + 1)
+  // Range boundaries standing between the two separate no paragraphs.
+  if (
+    !sameBlockList(first.list, next.list) ||
+    boundariesBetween(
+      blockListAt(body.content, first.list),
+      first.index,
+      next.index,
+    ) === undefined
+  )
     return new DocumentOpRefusal({
       reason: DOCUMENT_OP_REFUSAL_REASONS.NOT_ADJACENT,
       message: `${join.nextBlockId} does not directly follow ${join.blockId}.`,
