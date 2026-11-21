@@ -63,7 +63,7 @@ for (const texts of [
   ["one", "two", "three", "four"],
   ["one", "two", "three", ""],
 ] as const)
-  for (const count of [2, 3])
+  for (const count of texts.at(-1) === "" ? [2, 3] : [2, 3, 4])
     for (const order of permutations(
       Array.from({ length: count }, (_, index) => texts.length - count + index),
     ))
@@ -90,9 +90,10 @@ for (const texts of [
             revisionIds: revisions,
             decision,
           }).document;
-        // Deleted directly, the paragraphs before them are left.
+        // Deleted directly, the paragraphs before them are left; deleting
+        // every paragraph leaves the first, emptied, as the container's end.
         expect(words(resolve(REVISION_DECISIONS.ACCEPT))).toEqual(
-          texts.slice(0, texts.length - count),
+          count === texts.length ? [""] : texts.slice(0, texts.length - count),
         );
         expect(words(resolve(REVISION_DECISIONS.REJECT))).toEqual(
           words(original),

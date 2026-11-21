@@ -840,15 +840,16 @@ export const deleteBlocks = ({
   // paragraphs that keep nothing once accepted up to its container's end,
   // ends that container once accepted, as a range at its end does: its
   // deletion retires the break before it too, as it would had those
-  // paragraphs' deletions been accepted first.
+  // paragraphs' deletions been accepted first. A range opening its container
+  // has no break before it to retire.
   const retiredIndex =
     !terminal &&
+    first.index > 0 &&
     last.paragraph.pPrMark?.kind === "del" &&
     goesOnceAccepted(list.slice(last.index + 1))
       ? breakRetiredBefore(list, first.index)
       : undefined;
-  const retired =
-    retiredIndex === undefined ? undefined : list.at(retiredIndex);
+  const retired = retiredIndex === undefined ? undefined : list[retiredIndex];
   const reviewed =
     retiredIndex === undefined || retired?.type !== "paragraph"
       ? affected
