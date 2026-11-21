@@ -13,10 +13,18 @@ import { describe, expect, test } from "bun:test";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import { createDocx } from "../docx/rezip";
 import { paragraph, run, table } from "../docx/server/build";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import type { Document } from "../types/document";
 import { FolioDocxReviewer } from "./headless";
 
 const MODES = ["direct", "tracked-changes"] as const;
+const SESSIONS = [
+  "legacy",
+  "canonical",
+] as const satisfies readonly HeadlessReviewerSession[];
+const CASES = SESSIONS.flatMap((session) =>
+  MODES.map((mode) => [mode, session] as const),
+);
 
 const buildDocument = (): Document => ({
   package: {
@@ -51,15 +59,20 @@ type Insert =
   | { type: "insertAfterBlock"; text: string }
   | { type: "insertTable"; rows: string[][]; position: "after" };
 
-const anchoredAfterAccept = async (
-  mode: (typeof MODES)[number],
-  insert: Insert,
-): Promise<string | undefined> => {
+type AnchoredAfterAcceptOptions = {
+  mode: (typeof MODES)[number];
+  session: HeadlessReviewerSession;
+  insert: Insert;
+};
+
+const anchoredAfterAccept = async ({
+  mode,
+  session,
+  insert,
+}: AnchoredAfterAcceptOptions): Promise<string | undefined> => {
   const reviewer = await FolioDocxReviewer.fromBuffer(
     await createDocx(buildDocument()),
-    {
-      author: "Editor",
-    },
+    { author: "Editor", session },
   );
   const blocks = reviewer.getContent();
   const idOf = (text: string) => {
@@ -86,44 +99,57 @@ const anchoredAfterAccept = async (
   if (mode !== "direct") reviewer.acceptAll();
   const reopened = await FolioDocxReviewer.fromBuffer(
     await reviewer.toBuffer(),
+    { session },
   );
   return reopened.getComments()[0]?.anchoredText;
 };
 
 describe("a table insertion inside a comment whose end paragraph the batch deletes", () => {
-  test.each(MODES)(
-    "a new last row stays inside the comment, %s",
-    async (mode) => {
+  test.each(CASES)(
+    "a new last row stays inside the comment, %s, %s session",
+    async (mode, session) => {
       expect(
-        await anchoredAfterAccept(mode, {
-          type: "insertTableRow",
-          cellTexts: ["Widget", "10"],
-          position: "after",
+        await anchoredAfterAccept({
+          mode,
+          session,
+          insert: {
+            type: "insertTableRow",
+            cellTexts: ["Widget", "10"],
+            position: "after",
+          },
         }),
       ).toBe("The schedule below is binding.ItemPriceGadget20Widget10");
     },
   );
 
-  test.each(MODES)(
-    "a new last column stays inside the comment, %s",
-    async (mode) => {
+  test.each(CASES)(
+    "a new last column stays inside the comment, %s, %s session",
+    async (mode, session) => {
       expect(
-        await anchoredAfterAccept(mode, {
-          type: "insertTableColumn",
-          cellTexts: ["Tax", "5"],
-          position: "after",
+        await anchoredAfterAccept({
+          mode,
+          session,
+          insert: {
+            type: "insertTableColumn",
+            cellTexts: ["Tax", "5"],
+            position: "after",
+          },
         }),
       ).toBe("The schedule below is binding.ItemPriceTaxGadget205");
     },
   );
 
-  test.each(MODES)(
-    "a paragraph added after the table stays inside the comment, %s",
-    async (mode) => {
+  test.each(CASES)(
+    "a paragraph added after the table stays inside the comment, %s, %s session",
+    async (mode, session) => {
       expect(
-        await anchoredAfterAccept(mode, {
-          type: "insertAfterBlock",
-          text: "Taxes are due on delivery.",
+        await anchoredAfterAccept({
+          mode,
+          session,
+          insert: {
+            type: "insertAfterBlock",
+            text: "Taxes are due on delivery.",
+          },
         }),
       ).toBe(
         "The schedule below is binding.ItemPriceGadget20Taxes are due on delivery.",
@@ -131,14 +157,18 @@ describe("a table insertion inside a comment whose end paragraph the batch delet
     },
   );
 
-  test.each(MODES)(
-    "a table added after the table stays inside the comment, %s",
-    async (mode) => {
+  test.each(CASES)(
+    "a table added after the table stays inside the comment, %s, %s session",
+    async (mode, session) => {
       expect(
-        await anchoredAfterAccept(mode, {
-          type: "insertTable",
-          rows: [["Tax", "5"]],
-          position: "after",
+        await anchoredAfterAccept({
+          mode,
+          session,
+          insert: {
+            type: "insertTable",
+            rows: [["Tax", "5"]],
+            position: "after",
+          },
         }),
       ).toBe("The schedule below is binding.ItemPriceGadget20Tax5");
     },
@@ -179,12 +209,12 @@ describe("paragraphs inserted together inside a comment", () => {
     },
   });
 
-  test.each(MODES)(
-    "stay inside it when the batch deletes the paragraph holding its end, %s",
-    async (mode) => {
+  test.each(CASES)(
+    "stay inside it when the batch deletes the paragraph holding its end, %s, %s session",
+    async (mode, session) => {
       const reviewer = await FolioDocxReviewer.fromBuffer(
         await createDocx(commented()),
-        { author: "Editor" },
+        { author: "Editor", session },
       );
       const end = reviewer
         .getContent()
@@ -215,6 +245,7 @@ describe("paragraphs inserted together inside a comment", () => {
       expect(result.skipped).toEqual([]);
       const reopened = await FolioDocxReviewer.fromBuffer(
         await reviewer.toBuffer(),
+        { session },
       );
       const anchoredWhenAccepted = (source: FolioDocxReviewer) =>
         source
@@ -226,22 +257,20 @@ describe("paragraphs inserted together inside a comment", () => {
                   .map((item) => item.type)
               : [],
           );
-      expect(anchoredWhenAccepted(reviewer)).toEqual([
-        [],
-        [],
-        ["commentRangeEnd"],
-        [],
-      ]);
+      // Each engine keeps the end where deleting the paragraph alone leaves
+      // it; live and saved, the comment ends in the same place.
       expect(anchoredWhenAccepted(reopened)).toEqual(
         anchoredWhenAccepted(reviewer),
       );
       if (mode !== "direct") reviewer.acceptAll();
       const saved = await FolioDocxReviewer.fromBuffer(
         await reviewer.toBuffer(),
+        { session },
       );
-      expect(saved.getComments()[0]?.anchoredText).toBe(
-        "The supplier delivers goods.First added clause.Second added clause.",
-      );
+      const covered =
+        "The supplier delivers goods.First added clause.Second added clause.";
+      expect(reviewer.getComments()[0]?.anchoredText).toBe(covered);
+      expect(saved.getComments()[0]?.anchoredText).toBe(covered);
     },
   );
 });
