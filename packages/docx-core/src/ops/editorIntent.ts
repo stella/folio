@@ -374,9 +374,24 @@ export type EditorIntentMode = {
   | { type: "suggesting"; revision: RevisionStamp; newIds: NewIds }
 );
 
+/**
+ * Where text an intent adds takes its formatting from: the caret's, as typing
+ * continues the run it stands in, or the body text's, as an operation's text
+ * is body text and never continues a note reference.
+ */
+export const TYPED_TEXT_FORMATTING: Readonly<{
+  readonly CARET: "caret";
+  readonly BODY_TEXT: "bodyText";
+}> = Object.freeze({ CARET: "caret", BODY_TEXT: "bodyText" } as const);
+
+type TypedTextFormatting =
+  (typeof TYPED_TEXT_FORMATTING)[keyof typeof TYPED_TEXT_FORMATTING];
+
 type CompileEditorIntentOptions = {
   intent: EditorIntent;
   mode: EditorIntentMode;
+  /** By default the caret's. */
+  typedFormatting?: TypedTextFormatting;
   /** Lowest candidate for compiler-owned pasted block IDs, including retired session IDs. */
   firstBlockId?: number;
 };
@@ -1005,19 +1020,31 @@ const adjacentJoinRefusal = (
 const paragraphAt = (document: Document, at: TextPosition) =>
   findStoryParagraph(storyBody(document, at.story), at.blockId)?.paragraph;
 
-/** Zero-width markers and empty leaves never supply the formatting of typed content. */
-const visibleFormattingSpans = (paragraph: Paragraph) =>
+/**
+ * Zero-width markers and empty leaves never supply the formatting of typed
+ * content; for body text, neither does a note reference.
+ */
+const visibleFormattingSpans = (
+  paragraph: Paragraph,
+  typed: TypedTextFormatting,
+) =>
   leafSpans(paragraph.content).filter(
-    ({ ancestors, before, after }) =>
-      after.offset > before.offset && !ancestors.some(isRemovedRevisionNode),
+    ({ node, ancestors, before, after }) =>
+      after.offset > before.offset &&
+      !ancestors.some(isRemovedRevisionNode) &&
+      !(
+        typed === TYPED_TEXT_FORMATTING.BODY_TEXT &&
+        (node.type === "footnoteRef" || node.type === "endnoteRef")
+      ),
   );
 
 /** Capture authored formatting before deletion, using only visible runs. */
 const formattingAt = (
   paragraph: Paragraph,
   offset: number,
+  typed: TypedTextFormatting,
 ): TextFormatting | undefined => {
-  const spans = visibleFormattingSpans(paragraph);
+  const spans = visibleFormattingSpans(paragraph, typed);
   const span =
     spans.find(
       ({ before, after }) => before.offset <= offset && offset < after.offset,
@@ -1028,10 +1055,15 @@ const formattingAt = (
     ?.formatting;
 };
 
+type AuthoredFormattingOptions = {
+  from: TextPosition;
+  to: TextPosition;
+  typed: TypedTextFormatting;
+};
+
 const authoredFormatting = (
   document: Document,
-  from: TextPosition,
-  to: TextPosition,
+  { from, to, typed }: AuthoredFormattingOptions,
 ): TextFormatting | undefined => {
   const body = storyBody(document, from.story);
   const location = findStoryParagraph(body, from.blockId);
@@ -1041,11 +1073,11 @@ const authoredFormatting = (
     );
   const { paragraph } = location;
   const collapsed = from.blockId === to.blockId && from.offset === to.offset;
-  if (!collapsed) return formattingAt(paragraph, from.offset);
-  const left = visibleFormattingSpans(paragraph).some(
+  if (!collapsed) return formattingAt(paragraph, from.offset, typed);
+  const left = visibleFormattingSpans(paragraph, typed).some(
     ({ before }) => before.offset < from.offset,
   );
-  if (left) return formattingAt(paragraph, from.offset - 1);
+  if (left) return formattingAt(paragraph, from.offset - 1, typed);
   // A caret at the start can inherit from the preceding physical paragraphs
   // only while their removed breaks join them into this logical paragraph.
   const blocks = blockListAt(body.content, location.list);
@@ -1054,9 +1086,9 @@ const authoredFormatting = (
     if (previous?.type !== "paragraph" || !joinsFollowingParagraph(previous))
       break;
     if (paragraphVisibleText(previous) !== "")
-      return formattingAt(previous, paragraphLength(previous));
+      return formattingAt(previous, paragraphLength(previous), typed);
   }
-  return formattingAt(paragraph, from.offset);
+  return formattingAt(paragraph, from.offset, typed);
 };
 
 type IntentRunFormattingOptions = {
@@ -1069,8 +1101,10 @@ type IntentRunFormattingOptions = {
 const intentRunFormatting = (
   document: Document,
   { from, to, runProps, runPropsPatch }: IntentRunFormattingOptions,
+  typed: TypedTextFormatting,
 ) => {
-  const authored = runProps ?? authoredFormatting(document, from, to);
+  const authored =
+    runProps ?? authoredFormatting(document, { from, to, typed });
   return runPropsPatch === undefined
     ? authored
     : applyFormattingPatch(authored, runPropsPatch);
@@ -1845,7 +1879,12 @@ export const beginTrackedInsertionCompilation = ({
 
 const compileInStory = (
   document: Document,
-  { intent, mode, firstBlockId }: CompileEditorIntentOptions,
+  {
+    intent,
+    mode,
+    firstBlockId,
+    typedFormatting = TYPED_TEXT_FORMATTING.CARET,
+  }: CompileEditorIntentOptions,
 ): Result<CompiledEditorIntent, DocumentOpRefusal> => {
   if (
     firstBlockId !== undefined &&
@@ -3153,7 +3192,7 @@ const compileInStory = (
       break;
     }
     case "insertAtom": {
-      const formatting = intentRunFormatting(document, intent);
+      const formatting = intentRunFormatting(document, intent, typedFormatting);
       if (mode.type === "suggesting") {
         const planned = planTrackedReplace(document, {
           sourceContainerPolicy: "join",
@@ -3272,7 +3311,7 @@ const compileInStory = (
           to = from;
         }
       }
-      const runProps = intentRunFormatting(document, intent);
+      const runProps = intentRunFormatting(document, intent, typedFormatting);
       // Both modes insert the same authored run; source XML attributes belong
       // to the existing run rather than to newly typed text.
       const content = (

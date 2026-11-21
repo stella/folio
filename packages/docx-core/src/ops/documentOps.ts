@@ -100,6 +100,7 @@ export {
 export {
   beginTrackedInsertionCompilation,
   compileEditorIntent,
+  TYPED_TEXT_FORMATTING,
   createEditorIntentIdAllocator,
   paragraphVisibleText,
   physicalOffsetAtVisibleOffset,
