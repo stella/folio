@@ -801,6 +801,16 @@ class CanonicalProjection {
     const slot = this.index.get(blockId);
     if (slot === undefined || slot.paragraph < 0) return undefined;
     const paragraph = this.addressOf(slot.block, slot.paragraph);
+    // The block after it in its container, past the paragraphs of a text box
+    // the paragraph draws, which the projection lists after it.
+    const index = paragraph.container.indexOf(paragraph.source);
+    if (index >= 0) {
+      const following = paragraph.container[index + 1];
+      if (following?.type !== "paragraph" || following.paraId === undefined)
+        return undefined;
+      const address = this.paragraph(following.paraId);
+      return address?.container === paragraph.container ? address : undefined;
+    }
     let block = slot.block;
     let next = slot.paragraph + 1;
     while (

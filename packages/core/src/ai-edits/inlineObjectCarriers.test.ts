@@ -26,6 +26,7 @@ import { ensureParaIds } from "../docx/ensureParaIds";
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
 import { paragraph } from "../docx/server/build";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import type {
   Paragraph,
   ParagraphContent,
@@ -302,10 +303,11 @@ type Scenario = {
     placement: Placement,
   ) => readonly (readonly [string, "object" | null])[];
   /**
-   * Where the operation is refused instead. A text box is a block of its own
-   * after its paragraph, and a tracked break across it cannot be resolved:
-   * rejecting a split or accepting a merge joins two paragraphs, and the
-   * resolver joins only neighbours.
+   * Where the legacy session refuses the operation instead. It reads a text
+   * box as a block of its own after its paragraph, and a tracked break across
+   * it cannot be resolved: rejecting a split or accepting a merge joins two
+   * paragraphs, and its resolver joins only neighbours. A canonical session
+   * holds the box in its paragraph and applies them.
    */
   refused?: (kind: ObjectKind, placement: Placement, mode: Mode) => boolean;
 };
@@ -457,11 +459,18 @@ const objectDescription = (kind: ObjectKind): string => {
   return described;
 };
 
+const SESSIONS = [
+  "legacy",
+  "canonical",
+] as const satisfies readonly HeadlessReviewerSession[];
+
 const reopen = async (
   reviewer: FolioDocxReviewer,
+  session: HeadlessReviewerSession,
 ): Promise<FolioDocxReviewer> =>
   FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
     author: "Reviewer",
+    session,
   });
 
 const PLACEMENTS: readonly Placement[] = ["trailing", "leading"];
@@ -479,225 +488,245 @@ const acceptEachChange = (reviewer: FolioDocxReviewer): void => {
   throw new Error("accepting one change at a time did not converge");
 };
 
-describe("block operations on and next to an inline object's paragraph", () => {
-  for (const kind of Object.keys(OBJECT_KINDS) as ObjectKind[]) {
-    const object = objectDescription(kind);
-    for (const placement of PLACEMENTS) {
-      for (const scenario of SCENARIOS) {
-        for (const mode of MODES) {
-          test(`${kind}, ${placement}: ${scenario.name} (${mode})`, async () => {
-            const source = await buildPackage(kind, placement);
-            expect(await savedBody(source)).toEqual(
-              expectedBody(ORIGINAL, object),
-            );
-
-            const reviewer = await FolioDocxReviewer.fromBuffer(source, {
-              author: "Reviewer",
-            });
-            const operation = scenario.operation(reviewer);
-            const result = reviewer.applyDocumentOperations(
-              {
-                version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-                mode,
-                operations: [operation],
-              },
-              { undefinedReferences: "refuse" },
-            );
-            const reopened = await reopen(reviewer);
-            expect(readerOrder(reopened)).toEqual(readerOrder(reviewer));
-
-            if (scenario.refused?.(kind, placement, mode)) {
-              expect(result.skipped).toEqual([
-                { id: "op", reason: "unsupportedBlock" },
-              ]);
-              expect(result.applied).toEqual([]);
-              expect(await savedBody(await reviewer.toBuffer())).toEqual(
+describe.each(SESSIONS)(
+  "block operations on and next to an inline object's paragraph (%s)",
+  (session) => {
+    for (const kind of Object.keys(OBJECT_KINDS) as ObjectKind[]) {
+      const object = objectDescription(kind);
+      for (const placement of PLACEMENTS) {
+        for (const scenario of SCENARIOS) {
+          for (const mode of MODES) {
+            test(`${kind}, ${placement}: ${scenario.name} (${mode})`, async () => {
+              const source = await buildPackage(kind, placement);
+              expect(await savedBody(source)).toEqual(
                 expectedBody(ORIGINAL, object),
               );
-              return;
-            }
-            expect(result.skipped).toEqual([]);
-            expect(result.applied.map(({ id }) => id)).toEqual(["op"]);
 
-            const expected = expectedBody(scenario.expected(placement), object);
-            if (mode === "direct") {
-              const saved = await reviewer.toBuffer();
-              expect(await hasRevisions(saved)).toBe(false);
-              expect(await savedBody(saved)).toEqual(expected);
-              return;
-            }
+              const reviewer = await FolioDocxReviewer.fromBuffer(source, {
+                author: "Reviewer",
+                session,
+              });
+              const operation = scenario.operation(reviewer);
+              const result = reviewer.applyDocumentOperations(
+                {
+                  version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+                  mode,
+                  operations: [operation],
+                },
+                { undefinedReferences: "refuse" },
+              );
+              const reopened = await reopen(reviewer, session);
+              expect(readerOrder(reopened)).toEqual(readerOrder(reviewer));
 
-            const accepted = await reopen(reopened);
-            accepted.acceptAll();
-            reviewer.acceptAll();
-            expect(readerOrder(accepted)).toEqual(readerOrder(reviewer));
-            for (const resolved of [accepted, reviewer]) {
-              const acceptedBytes = await resolved.toBuffer();
-              expect(await hasRevisions(acceptedBytes)).toBe(false);
-              expect(await savedBody(acceptedBytes)).toEqual(expected);
-            }
+              if (
+                session === "legacy" &&
+                scenario.refused?.(kind, placement, mode)
+              ) {
+                expect(result.skipped).toEqual([
+                  { id: "op", reason: "unsupportedBlock" },
+                ]);
+                expect(result.applied).toEqual([]);
+                expect(await savedBody(await reviewer.toBuffer())).toEqual(
+                  expectedBody(ORIGINAL, object),
+                );
+                return;
+              }
+              expect(result.skipped).toEqual([]);
+              expect(result.applied.map(({ id }) => id)).toEqual(["op"]);
 
-            const acceptedOneByOne = await reopen(reopened);
-            acceptEachChange(acceptedOneByOne);
-            expect(await savedBody(await acceptedOneByOne.toBuffer())).toEqual(
-              expected,
-            );
+              const expected = expectedBody(
+                scenario.expected(placement),
+                object,
+              );
+              if (mode === "direct") {
+                const saved = await reviewer.toBuffer();
+                expect(await hasRevisions(saved)).toBe(false);
+                expect(await savedBody(saved)).toEqual(expected);
+                return;
+              }
 
-            const rejected = await reopen(reopened);
-            rejected.rejectAll();
-            const rejectedBytes = await rejected.toBuffer();
-            expect(await hasRevisions(rejectedBytes)).toBe(false);
-            expect(await savedBody(rejectedBytes)).toEqual(
-              expectedBody(ORIGINAL, object),
-            );
-          });
+              const accepted = await reopen(reopened, session);
+              accepted.acceptAll();
+              reviewer.acceptAll();
+              expect(readerOrder(accepted)).toEqual(readerOrder(reviewer));
+              for (const resolved of [accepted, reviewer]) {
+                const acceptedBytes = await resolved.toBuffer();
+                expect(await hasRevisions(acceptedBytes)).toBe(false);
+                expect(await savedBody(acceptedBytes)).toEqual(expected);
+              }
+
+              const acceptedOneByOne = await reopen(reopened, session);
+              acceptEachChange(acceptedOneByOne);
+              expect(
+                await savedBody(await acceptedOneByOne.toBuffer()),
+              ).toEqual(expected);
+
+              const rejected = await reopen(reopened, session);
+              rejected.rejectAll();
+              const rejectedBytes = await rejected.toBuffer();
+              expect(await hasRevisions(rejectedBytes)).toBe(false);
+              expect(await savedBody(rejectedBytes)).toEqual(
+                expectedBody(ORIGINAL, object),
+              );
+            });
+          }
         }
       }
     }
-  }
-});
+  },
+);
 
-describe("a paragraph holding a text box, first in the body", () => {
-  const BOX = "Box words.";
+describe.each(SESSIONS)(
+  "a paragraph holding a text box, first in the body (%s)",
+  (session) => {
+    const BOX = "Box words.";
 
-  const buildTextBoxCarrierFirst = async (): Promise<ArrayBuffer> => {
-    const document = createEmptyDocument();
-    document.package.document.content = [
-      {
-        type: "paragraph",
-        content: [
-          { type: "run", content: [{ type: "text", text: CARRIER }] },
-          {
-            type: "run",
-            content: [{ type: "shape", shape: textBoxShape(false) }],
-          },
-        ],
-      },
-      paragraph(TAIL),
-    ];
-    const { docx } = await ensureParaIds(
-      new Uint8Array(await createDocx(document)),
-    );
-    return toArrayBuffer(docx);
-  };
+    const buildTextBoxCarrierFirst = async (): Promise<ArrayBuffer> => {
+      const document = createEmptyDocument();
+      document.package.document.content = [
+        {
+          type: "paragraph",
+          content: [
+            { type: "run", content: [{ type: "text", text: CARRIER }] },
+            {
+              type: "run",
+              content: [{ type: "shape", shape: textBoxShape(false) }],
+            },
+          ],
+        },
+        paragraph(TAIL),
+      ];
+      const { docx } = await ensureParaIds(
+        new Uint8Array(await createDocx(document)),
+      );
+      return toArrayBuffer(docx);
+    };
 
-  const bodyXml = async (bytes: ArrayBuffer): Promise<string> => {
-    const zip = await ZipArchive.read(bytes);
-    const xml = await zip.entry("word/document.xml")?.text();
-    if (xml === undefined) {
-      throw new Error("the package has no main document part");
-    }
-    return xml;
-  };
+    const bodyXml = async (bytes: ArrayBuffer): Promise<string> => {
+      const zip = await ZipArchive.read(bytes);
+      const xml = await zip.entry("word/document.xml")?.text();
+      if (xml === undefined) {
+        throw new Error("the package has no main document part");
+      }
+      return xml;
+    };
 
-  const texts = (reviewer: FolioDocxReviewer): string[] =>
-    reviewer.getContent().map(({ text }) => text);
+    const texts = (reviewer: FolioDocxReviewer): string[] =>
+      reviewer.getContent().map(({ text }) => text);
 
-  test("deleting it directly deletes the box", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(
-      await buildTextBoxCarrierFirst(),
-    );
-    const result = reviewer.applyDocumentOperations(
-      {
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode: "direct",
-        operations: [
-          {
-            id: "delete",
-            type: "deleteBlock",
-            blockId: blockIdOf(reviewer, CARRIER),
-          },
-        ],
-      },
-      { undefinedReferences: "refuse" },
-    );
-
-    expect(result.applied.map(({ id }) => id)).toEqual(["delete"]);
-    expect(texts(reviewer)).toEqual([TAIL]);
-    const saved = await reviewer.toBuffer();
-    const xml = await bodyXml(saved);
-    expect(xml).not.toContain(BOX);
-    expect(xml).not.toContain("<w:drawing");
-    expect(texts(await FolioDocxReviewer.fromBuffer(saved))).toEqual([TAIL]);
-  });
-
-  test("review of a staged deletion resolves the box with its paragraph", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(
-      await buildTextBoxCarrierFirst(),
-      {
-        author: "Reviewer",
-      },
-    );
-    const staged = reviewer.applyDocumentOperations(
-      {
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode: "suggested",
-        operations: [
-          {
-            id: "delete",
-            type: "deleteBlock",
-            blockId: blockIdOf(reviewer, CARRIER),
-          },
-        ],
-      },
-      { undefinedReferences: "refuse" },
-    );
-    const suggestion = staged.applied.at(0)?.suggestionId;
-    expect(staged.skipped).toEqual([]);
-    if (suggestion === undefined) throw new Error("Expected a staged deletion");
-    expect(reviewer.acceptSuggestion(suggestion)).toBe(true);
-    const pending = await reviewer.toBuffer();
-    // The drawing run is inside the paragraph's deletion.
-    expect(await bodyXml(pending)).toMatch(
-      /<w:del [^>]*>(?:(?!<\/w:del>).)*<w:drawing/s,
-    );
-
-    const accepted = await FolioDocxReviewer.fromBuffer(pending);
-    accepted.acceptAll();
-    const acceptedXml = await bodyXml(await accepted.toBuffer());
-    expect(acceptedXml).not.toContain(BOX);
-    expect(acceptedXml).not.toContain(CARRIER);
-    expect(texts(accepted)).toEqual([TAIL]);
-
-    const rejected = await FolioDocxReviewer.fromBuffer(pending);
-    rejected.rejectAll();
-    expect(texts(rejected)).toEqual([CARRIER, BOX, TAIL]);
-    expect(await savedBody(await rejected.toBuffer())).toEqual([
-      { text: CARRIER, objects: [`box(${BOX})`] },
-      { text: TAIL, objects: [] },
-    ]);
-  });
-
-  for (const type of ["insertAfterBlock", "insertBeforeBlock"] as const) {
-    test(`${type} keeps the reader's order across a save`, async () => {
+    test("deleting it directly deletes the box", async () => {
       const reviewer = await FolioDocxReviewer.fromBuffer(
         await buildTextBoxCarrierFirst(),
+        { session },
       );
-      reviewer.applyDocumentOperations(
+      const result = reviewer.applyDocumentOperations(
         {
           version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
           mode: "direct",
           operations: [
             {
-              id: "insert",
-              type,
+              id: "delete",
+              type: "deleteBlock",
               blockId: blockIdOf(reviewer, CARRIER),
-              text: INSERTED,
             },
           ],
         },
         { undefinedReferences: "refuse" },
       );
 
-      expect(texts(reviewer)).toEqual(
-        type === "insertAfterBlock"
-          ? [CARRIER, BOX, INSERTED, TAIL]
-          : [INSERTED, CARRIER, BOX, TAIL],
-      );
-      const reopened = await FolioDocxReviewer.fromBuffer(
-        await reviewer.toBuffer(),
-      );
-      expect(readerOrder(reopened)).toEqual(readerOrder(reviewer));
+      expect(result.applied.map(({ id }) => id)).toEqual(["delete"]);
+      expect(texts(reviewer)).toEqual([TAIL]);
+      const saved = await reviewer.toBuffer();
+      const xml = await bodyXml(saved);
+      expect(xml).not.toContain(BOX);
+      expect(xml).not.toContain("<w:drawing");
+      expect(
+        texts(await FolioDocxReviewer.fromBuffer(saved, { session })),
+      ).toEqual([TAIL]);
     });
-  }
-});
+
+    test("review of a staged deletion resolves the box with its paragraph", async () => {
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await buildTextBoxCarrierFirst(),
+        {
+          author: "Reviewer",
+          session,
+        },
+      );
+      const staged = reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode: "suggested",
+          operations: [
+            {
+              id: "delete",
+              type: "deleteBlock",
+              blockId: blockIdOf(reviewer, CARRIER),
+            },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      );
+      const suggestion = staged.applied.at(0)?.suggestionId;
+      expect(staged.skipped).toEqual([]);
+      if (suggestion === undefined)
+        throw new Error("Expected a staged deletion");
+      expect(reviewer.acceptSuggestion(suggestion)).toBe(true);
+      const pending = await reviewer.toBuffer();
+      // The drawing run is inside the paragraph's deletion.
+      expect(await bodyXml(pending)).toMatch(
+        /<w:del [^>]*>(?:(?!<\/w:del>).)*<w:drawing/s,
+      );
+
+      const accepted = await FolioDocxReviewer.fromBuffer(pending, { session });
+      accepted.acceptAll();
+      const acceptedXml = await bodyXml(await accepted.toBuffer());
+      expect(acceptedXml).not.toContain(BOX);
+      expect(acceptedXml).not.toContain(CARRIER);
+      expect(texts(accepted)).toEqual([TAIL]);
+
+      const rejected = await FolioDocxReviewer.fromBuffer(pending, { session });
+      rejected.rejectAll();
+      expect(texts(rejected)).toEqual([CARRIER, BOX, TAIL]);
+      expect(await savedBody(await rejected.toBuffer())).toEqual([
+        { text: CARRIER, objects: [`box(${BOX})`] },
+        { text: TAIL, objects: [] },
+      ]);
+    });
+
+    for (const type of ["insertAfterBlock", "insertBeforeBlock"] as const) {
+      test(`${type} keeps the reader's order across a save`, async () => {
+        const reviewer = await FolioDocxReviewer.fromBuffer(
+          await buildTextBoxCarrierFirst(),
+          { session },
+        );
+        reviewer.applyDocumentOperations(
+          {
+            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+            mode: "direct",
+            operations: [
+              {
+                id: "insert",
+                type,
+                blockId: blockIdOf(reviewer, CARRIER),
+                text: INSERTED,
+              },
+            ],
+          },
+          { undefinedReferences: "refuse" },
+        );
+
+        expect(texts(reviewer)).toEqual(
+          type === "insertAfterBlock"
+            ? [CARRIER, BOX, INSERTED, TAIL]
+            : [INSERTED, CARRIER, BOX, TAIL],
+        );
+        const reopened = await FolioDocxReviewer.fromBuffer(
+          await reviewer.toBuffer(),
+          { session },
+        );
+        expect(readerOrder(reopened)).toEqual(readerOrder(reviewer));
+      });
+    }
+  },
+);
