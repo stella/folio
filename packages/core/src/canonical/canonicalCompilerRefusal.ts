@@ -48,6 +48,9 @@ const COMPILER_REFUSAL_DISPOSITIONS = {
   [R.PENDING_BREAK_TAKEOVER]: typed("pendingParagraphMarkDeletion"),
   [R.PENDING_PARAGRAPH_MARK_DELETION]: typed("pendingParagraphMarkDeletion"),
   [R.PENDING_PARAGRAPH_MARK_INSERTION]: typed("pendingParagraphMarkInsertion"),
+  // Both engines refuse a public property edit of such a paragraph with this
+  // reason (PENDING_PARAGRAPH_MARK_PROPERTY_REFUSAL).
+  [R.PENDING_PARAGRAPH_JOIN]: typed("pendingParagraphMarkDeletion"),
   [R.UNSUPPORTED_SCHEMA]: UNSUPPORTED,
   [R.BLOCK_NOT_FOUND]: UNSUPPORTED,
   [R.INVALID_OPERATION]: UNSUPPORTED,
