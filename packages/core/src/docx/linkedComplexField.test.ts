@@ -97,6 +97,23 @@ describe("a complex field inside a hyperlink", () => {
     expect(await bodyOf(edited)).toBe(ENTRY);
   });
 
+  test("is one child of a wrapper the link holds, and saves as it was read", async () => {
+    const body = `<w:p><w:hyperlink w:anchor="_Toc1" w:history="1"><w:dir w:val="rtl">${PAGE_REF}</w:dir></w:hyperlink></w:p>`;
+    const document = await parse(body);
+    const [wrapper] = linkOf(document).children;
+    expect(
+      wrapper?.type === "inlineWrapper" &&
+        wrapper.content.map(({ type }) => type),
+    ).toEqual(["complexField"]);
+    expect(await bodyOf(document)).toBe(body);
+    const edited = fromProseDoc(
+      toProseDoc(document, { styles: document.package.styles }),
+      document,
+      { stylesheetSource: { type: "package" } },
+    );
+    expect(await bodyOf(edited)).toBe(body);
+  });
+
   test("a field the link does not close stays as the runs it was read as", async () => {
     const body = `<w:p><w:hyperlink w:anchor="_Toc1" w:history="1">${text("Summary")}${begin}${instruction(" PAGEREF _Toc1 \\h ")}${separate}${text("2")}</w:hyperlink>${end}</w:p>`;
     const link = linkOf(await parse(body));

@@ -80,7 +80,10 @@ import {
   isSimpleFieldContent,
   isTrackedChangeWrapperChild,
 } from "./inlineWrapperContent";
-import { inlineWrapperOf } from "./inlineWrapperParser";
+import {
+  INLINE_WRAPPER_ELEMENTS,
+  inlineWrapperOf,
+} from "./inlineWrapperParser";
 import type { InlineWrapperElement } from "./inlineWrapperParser";
 import { preserveLinkedSdt } from "./linkedSdtPreservation";
 import {
@@ -854,6 +857,30 @@ const HYPERLINK_REVISION_HOISTING_HANDLERS = {
   moveTo: hoistRevision("moveTo"),
 } as const satisfies ChildHandlers<"w:hyperlink", HyperlinkRevisionWalk>;
 
+const LINKED_WRAPPER_ELEMENTS: ReadonlySet<string> = new Set(
+  INLINE_WRAPPER_ELEMENTS,
+);
+
+/** Whether a link's runs, directly or inside its transparent wrappers, hold a field character. */
+const holdsFieldCharacter = (children: readonly XmlElement[]): boolean =>
+  children.some((child) => {
+    const name = getLocalName(child.name);
+    if (name === "r")
+      return findWordprocessingChild(child, "fldChar") !== undefined;
+    return (
+      LINKED_WRAPPER_ELEMENTS.has(name) &&
+      holdsFieldCharacter(getChildElements(child))
+    );
+  });
+
+/** Whether link content holds a complex field, directly or inside its wrappers. */
+const holdsComplexField = (items: readonly ParagraphContent[]): boolean =>
+  items.some(
+    (item) =>
+      item.type === "complexField" ||
+      (item.type === "inlineWrapper" && holdsComplexField(item.content)),
+  );
+
 /**
  * A link holding a complex field, read with the paragraph's field scan so a
  * field whose `begin` and `end` are both inside the link is one child.
@@ -862,7 +889,9 @@ const HYPERLINK_REVISION_HOISTING_HANDLERS = {
  * a tab and the `PAGEREF` page number. The link reads its runs one at a time,
  * which would leave the page number's field characters as loose runs. A field
  * the link does not close stays as the loose runs it was read as, and so does
- * the whole link when the scan returns anything a link cannot hold.
+ * the whole link when the scan returns anything a link cannot hold. A field
+ * inside one of the link's transparent wrappers reads as a field too, as it
+ * does when a revision inside the link holds that wrapper.
  */
 const linkWithFields = (
   node: XmlElement,
@@ -874,14 +903,7 @@ const linkWithFields = (
   rootXmlns: Record<string, string>,
   previews: PreviewLedger,
 ): Hyperlink | undefined => {
-  if (
-    !children.some(
-      (child) =>
-        getLocalName(child.name) === "r" &&
-        findWordprocessingChild(child, "fldChar") !== undefined,
-    )
-  )
-    return undefined;
+  if (!holdsFieldCharacter(children)) return undefined;
   const contents = parseParagraphContents(
     node,
     styles,
@@ -898,7 +920,8 @@ const linkWithFields = (
   for (const item of contents) if (isHyperlinkContent(item)) linked.push(item);
   if (
     linked.length !== contents.length ||
-    !linked.some(({ type }) => type === "complexField")
+    linked.some(holdsUnlinkableContent) ||
+    !holdsComplexField(linked)
   ) {
     // The link is read the plain way instead: what this read built spends no
     // preview allowance.
