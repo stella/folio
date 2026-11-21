@@ -2175,24 +2175,41 @@ type InsertionAnchor =
  * put after an anchor whose mark is under review, with a table and no
  * paragraph after it, has no mark it can record its insertion on.
  */
-const gapAnchorBeforeFollower = (
-  anchor: InsertionAnchor,
-  projection: CanonicalProjection,
-): InsertionAnchor => {
+type GapAnchorBeforeFollowerOptions = {
+  anchor: InsertionAnchor;
+  projection: CanonicalProjection;
+  /** Paragraphs the batch removes outright before its insertions replay. */
+  removedBlockIds: ReadonlySet<string>;
+};
+
+/**
+ * An insertion after a paragraph, as one before the paragraph that follows
+ * it and stays: a follower the batch removes is gone by the time the
+ * insertion replays. With no paragraph staying after it, the anchor is kept.
+ */
+const gapAnchorBeforeFollower = ({
+  anchor,
+  projection,
+  removedBlockIds,
+}: GapAnchorBeforeFollowerOptions): InsertionAnchor => {
   if (anchor.type !== "paragraph" || anchor.at.type !== "after") return anchor;
   const paragraph = projection.paragraph(anchor.at.blockId);
   if (paragraph === undefined)
     return panic("An insertion anchor is missing from the projection.");
-  const position = paragraph.start - 1 + paragraph.node.nodeSize;
-  if (projection.doc.resolve(position).nodeAfter?.type.name !== "paragraph")
-    return anchor;
-  const follower = projection.paragraphStartingAt(position);
-  if (follower === undefined)
-    return panic("A following paragraph is missing from the projection.");
-  return {
-    type: "paragraph",
-    at: { type: "before", blockId: follower.blockId },
-  };
+  let position = paragraph.start - 1 + paragraph.node.nodeSize;
+  for (;;) {
+    const next = projection.doc.resolve(position).nodeAfter;
+    if (next?.type.name !== "paragraph") return anchor;
+    const follower = projection.paragraphStartingAt(position);
+    if (follower === undefined)
+      return panic("A following paragraph is missing from the projection.");
+    if (!removedBlockIds.has(follower.blockId))
+      return {
+        type: "paragraph",
+        at: { type: "before", blockId: follower.blockId },
+      };
+    position += next.nodeSize;
+  }
 };
 
 type InsertionGapOptions = {
@@ -5013,6 +5030,13 @@ export class CanonicalPublicOperations {
     const inputOrder = new Map(
       batch.operations.map(({ id }, index) => [id, index]),
     );
+    const batchRemovedBlockIds = new Set(
+      batch.mode === "direct"
+        ? resolved.flatMap(({ operation }) =>
+            operation.type === "deleteBlock" ? [operation.blockId] : [],
+          )
+        : [],
+    );
     const orderOf = ({ operation }: AdmittedOperation) => {
       const order = inputOrder.get(operation.id);
       if (order === undefined)
@@ -5070,10 +5094,11 @@ export class CanonicalPublicOperations {
       const group = groupOf.get(first);
       if (group?.length !== window.length) return false;
       const { type: side, blockId } = initial.at;
-      const { at: replayAt } = gapAnchorBeforeFollower(
-        { type: "paragraph", at: initial.at },
-        projected.value,
-      );
+      const { at: replayAt } = gapAnchorBeforeFollower({
+        anchor: { type: "paragraph", at: initial.at },
+        projection: projected.value,
+        removedBlockIds: batchRemovedBlockIds,
+      });
       if (replayAt.type !== side || replayAt.blockId !== blockId) return false;
       let previousOrder: number | undefined;
       for (const member of window) {
@@ -5261,10 +5286,11 @@ export class CanonicalPublicOperations {
         });
         if (firstPlace === undefined)
           panic("An admitted insertion lost its source placement.");
-        const anchor = gapAnchorBeforeFollower(
-          firstPlace.anchor,
-          projected.value,
-        );
+        const anchor = gapAnchorBeforeFollower({
+          anchor: firstPlace.anchor,
+          projection: projected.value,
+          removedBlockIds: batchRemovedBlockIds,
+        });
         const placed = partners.toSorted(
           (left, right) =>
             (orderOf(left.resolvedOperation) -
