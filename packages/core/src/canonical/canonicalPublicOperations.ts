@@ -97,6 +97,7 @@ import {
   joinsIn,
   joinStopsAtTableAfter,
   PENDING_JOIN_INSERTION_REFUSAL,
+  type PendingJoinParagraphs,
   pendingJoinParagraphs,
   pendingMarkEditOf,
   pendingMarkEditRefusal,
@@ -1357,11 +1358,62 @@ const placeAfter = ({
   }
 };
 
+type JoinAsTheBatchRunsOptions = {
+  join: PendingJoinParagraphs;
+  /** `BesidePendingJoinOptions.paragraphsAfterEarlier`, for a block put before. */
+  before: ReadonlySet<string> | undefined;
+  doc: PMNode;
+  noteReferences: NoteReferenceLabels;
+};
+
+/**
+ * A pending join as the batch reads it once its earlier operations ran: a
+ * paragraph one of them puts right after a paragraph of the join, taking its
+ * words, ends the join there, so the join a later block put before reads
+ * starts past it, as it does applied one at a time.
+ */
+const joinAsTheBatchRuns = ({
+  join,
+  before,
+  doc,
+  noteReferences,
+}: JoinAsTheBatchRunsOptions): PendingJoinParagraphs => {
+  if (before === undefined || before.size === 0) return join;
+  const at = doc.resolve(join.first);
+  let first = join.first;
+  let position = join.first;
+  for (let index = at.index(); index < at.parent.childCount; index++) {
+    const node = at.parent.child(index);
+    const next = position + node.nodeSize;
+    if (next > join.last) break;
+    const id: unknown = node.attrs["paraId"];
+    if (
+      node.type.name === "paragraph" &&
+      typeof id === "string" &&
+      before.has(id) &&
+      insertionAfterPendingBreak({
+        doc,
+        paragraphPos: position,
+        noteReferences,
+      }).type === "afterParagraph"
+    )
+      first = next;
+    position = next;
+  }
+  return { first, last: join.last };
+};
+
 type BesidePendingJoinOptions = {
   side: "before" | "after";
   paragraph: ProjectedParagraph;
   projection: CanonicalProjection;
   noteReferences: NoteReferenceLabels;
+  /**
+   * The paragraphs an earlier operation of the batch puts a paragraph after:
+   * where that paragraph goes right after one of the join, taking its words
+   * (`insertionAfterPendingBreak`), the join ends there as the batch runs.
+   */
+  paragraphsAfterEarlier?: ReadonlySet<string>;
 };
 
 /** Whether `paragraph` holds anything no pending deletion takes. */
@@ -1403,13 +1455,19 @@ const besidePendingJoin = ({
   paragraph,
   projection,
   noteReferences,
+  paragraphsAfterEarlier,
 }: BesidePendingJoinOptions): BesidePendingJoin => {
   const options = {
     doc: projection.doc,
     paragraphPos: paragraph.start - 1,
     noteReferences,
   };
-  const join = pendingJoinParagraphs(options);
+  const join = joinAsTheBatchRuns({
+    join: pendingJoinParagraphs(options),
+    before: side === "before" ? paragraphsAfterEarlier : undefined,
+    doc: projection.doc,
+    noteReferences,
+  });
   const breakGoes = isDeletedPPrMark(paragraph.node.attrs["pPrMark"]);
   const after = side === "after";
   // Where no join reads the paragraph, the block goes beside the paragraph
@@ -3690,6 +3748,8 @@ type BesideDeletions = {
   tables: { after: ReadonlySet<string>; before: ReadonlySet<string> };
   /** The blocks the batch puts a paragraph after. */
   paragraphsAfter: ReadonlySet<string>;
+  /** Those the operations before this one, in input order, put a paragraph after. */
+  paragraphsAfterEarlier: (operationId: string) => ReadonlySet<string>;
 };
 
 type DeletedRunBeforeOptions = {
@@ -3777,6 +3837,7 @@ const NO_BESIDE_DELETIONS: BesideDeletions = {
   insertedBeside: new Set(),
   tables: { after: new Set(), before: new Set() },
   paragraphsAfter: new Set(),
+  paragraphsAfterEarlier: () => new Set(),
 };
 
 /**
@@ -4230,6 +4291,18 @@ export class CanonicalPublicOperations {
           operation.type === "insertAfterBlock" ? [operation.blockId] : [],
         ),
       ),
+      paragraphsAfterEarlier: (operationId) => {
+        const index = batch.operations.findIndex(
+          ({ id }) => id === operationId,
+        );
+        return new Set(
+          batch.operations
+            .slice(0, Math.max(index, 0))
+            .flatMap((operation) =>
+              operation.type === "insertAfterBlock" ? [operation.blockId] : [],
+            ),
+        );
+      },
     };
     const inputIndices = new Map(
       batch.operations.map(({ id }, index) => [id, index]),
@@ -6294,6 +6367,9 @@ export class CanonicalPublicOperations {
               paragraph,
               projection: projection.value,
               noteReferences,
+              paragraphsAfterEarlier: besideDeletions.paragraphsAfterEarlier(
+                operation.id,
+              ),
             });
       // A block the join would run into the words before it, or into a
       // table after it, waits for the join to be resolved.
