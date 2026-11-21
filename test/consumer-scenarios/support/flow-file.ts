@@ -74,6 +74,13 @@ const FIDELITY_REFUSALS = [
 ] as const;
 type FidelityRefusal = (typeof FIDELITY_REFUSALS)[number];
 
+/** The engines a scenario replays on (support/documents.ts `ReviewerEngine`). */
+export const FLOW_ENGINES = ["legacy", "canonical"] as const;
+export type FlowEngine = (typeof FLOW_ENGINES)[number];
+
+/** A refusal a pinned batch must meet: the issue code and message it reports. */
+export type ExpectedRefusal = { code: string; message: string };
+
 export type FlowStep = {
   action: Action;
   /** The generator's position when the step starts drawing. */
@@ -92,6 +99,12 @@ export type FlowStep = {
    * rejectAll relation then holds to giving the original back.
    */
   expectedFidelityRefusal?: FidelityRefusal;
+  /**
+   * Engines on which this pinned batch is refused by design, each with the
+   * issue it reports; nothing applies and the document stays as it was. Any
+   * other outcome on that engine fails the step.
+   */
+  expectedRefusals?: Partial<Record<FlowEngine, ExpectedRefusal>>;
 };
 
 /** Replace a step's operations and keep operation-count assertions bound to that list. */
@@ -102,6 +115,7 @@ export const rebindStepOperations = (
   const {
     expectedApplied: _expectedApplied,
     expectedFidelityRefusal: _expectedFidelityRefusal,
+    expectedRefusals: _expectedRefusals,
     operations: _operations,
     ...rest
   } = step;
@@ -141,6 +155,35 @@ const isUint32 = (value: unknown): value is number =>
   Number.isInteger(value) &&
   value >= 0 &&
   value < 2 ** 32;
+
+const isExpectedRefusal = (value: unknown): value is ExpectedRefusal =>
+  isRecord(value) &&
+  Object.keys(value).length === 2 &&
+  typeof value["code"] === "string" &&
+  value["code"].length > 0 &&
+  typeof value["message"] === "string" &&
+  value["message"].length > 0;
+
+const parseExpectedRefusals = (
+  value: unknown,
+  index: number,
+): FlowStep["expectedRefusals"] => {
+  if (value === undefined) return undefined;
+  if (!isRecord(value) || Object.keys(value).length === 0)
+    throw new TypeError(
+      `flow step ${index}: expectedRefusals needs at least one engine`,
+    );
+  const refusals: Partial<Record<FlowEngine, ExpectedRefusal>> = {};
+  for (const [engine, refusal] of Object.entries(value)) {
+    const known = FLOW_ENGINES.find((candidate) => candidate === engine);
+    if (known === undefined || !isExpectedRefusal(refusal))
+      throw new TypeError(
+        `flow step ${index}: expectedRefusals.${engine} needs a known engine, a code and a message`,
+      );
+    refusals[known] = { code: refusal.code, message: refusal.message };
+  }
+  return refusals;
+};
 
 const parseStep = (value: unknown, index: number): FlowStep => {
   if (
@@ -210,7 +253,23 @@ const parseStep = (value: unknown, index: number): FlowStep => {
     throw new TypeError(
       `flow step ${index}: expectedFidelityRefusal needs a pinned batch and a fidelity refusal`,
     );
+  const expectedRefusals = parseExpectedRefusals(
+    value["expectedRefusals"],
+    index,
+  );
+  if (
+    expectedRefusals !== undefined &&
+    (expectedApplied !== undefined ||
+      expectedFidelityRefusal !== undefined ||
+      !BATCH_ACTIONS.has(action) ||
+      !Array.isArray(operations) ||
+      operations.length === 0)
+  )
+    throw new TypeError(
+      `flow step ${index}: expectedRefusals needs a pinned batch and no other expected outcome`,
+    );
   const batchOptions = {
+    ...(expectedRefusals === undefined ? {} : { expectedRefusals }),
     ...(expectedFidelityRefusal === undefined
       ? {}
       : { expectedFidelityRefusal }),
