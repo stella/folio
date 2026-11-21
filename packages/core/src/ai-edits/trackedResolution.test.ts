@@ -565,78 +565,111 @@ test("a blank final paragraph deletes like a direct edit and rejects to the blan
 });
 
 describe("inserting after a deleted final paragraph", () => {
-  for (const { deleted, anchor } of [
-    { deleted: ["Signed"], anchor: "The Buyer" },
-    { deleted: ["Signed", "The Buyer"], anchor: "The Supplier" },
-  ] as const) {
-    test(`${deleted.length} deleted final paragraph(s) before a table resolve like direct editing`, async () => {
-      const results: string[][] = [];
-      for (const mode of ["direct", "tracked-changes"] as const) {
-        const reviewer = await open();
-        const apply = applier(reviewer, mode);
-        for (const target of deleted) {
-          apply({ type: "deleteBlock", blockId: idOf(reviewer, target) });
-        }
-        apply({
-          type: "insertTable",
-          blockId: idOf(reviewer, anchor),
-          rows: [["Term", "Value"]],
-        });
-        if (mode === "tracked-changes") {
-          const rejecting = await reopen(reviewer);
-          rejecting.rejectAll();
-          expect(texts(await reopen(rejecting))).toEqual(ORIGINAL);
-          reviewer.acceptAll();
-        }
-        results.push(texts(await reopen(reviewer)));
-      }
-      expect(results[1]).toEqual(results[0]);
-    });
-  }
+  // The canonical session refuses a tracked table right after a paragraph
+  // whose break the final deletion retired, where accepting would run that
+  // paragraph's words into the table's first cell; the legacy session places
+  // the table after the deleted paragraph. Everything else resolves like
+  // direct editing on both.
+  const TABLE_AFTER_RETIRED_BREAK = {
+    reason: "pendingParagraphMarkDeletion",
+    message:
+      "Accepting the pending deletion of this paragraph's break would run its words into the inserted table. Resolve that change first, or insert the table elsewhere.",
+  };
 
-  for (const { deleted, anchor } of [
-    { deleted: ["Signed"], anchor: "The Buyer" },
-    { deleted: ["Signed", "The Buyer"], anchor: "The Supplier" },
-  ] as const) {
-    test(`${deleted.length} final deletion(s) and a table in one batch resolve like direct editing`, async () => {
-      const results: string[][] = [];
-      for (const mode of ["direct", "tracked-changes"] as const) {
-        const reviewer = await open();
-        const result = reviewer.applyDocumentOperations(
-          {
-            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-            mode,
-            operations: [
-              ...deleted.map((target, index) => ({
-                id: `delete-${index}`,
-                type: "deleteBlock" as const,
-                blockId: idOf(reviewer, target),
-              })),
+  for (const session of ["canonical", "legacy"] as const)
+    for (const { deleted, anchor } of [
+      { deleted: ["Signed"], anchor: "The Buyer" },
+      { deleted: ["Signed", "The Buyer"], anchor: "The Supplier" },
+    ] as const) {
+      test(`${deleted.length} deleted final paragraph(s) before a table (${session})`, async () => {
+        const results: string[][] = [];
+        for (const mode of ["direct", "tracked-changes"] as const) {
+          const reviewer = await open(undefined, session);
+          const apply = applier(reviewer, mode);
+          for (const target of deleted) {
+            apply({ type: "deleteBlock", blockId: idOf(reviewer, target) });
+          }
+          const table = {
+            type: "insertTable",
+            blockId: idOf(reviewer, anchor),
+            rows: [["Term", "Value"]],
+          };
+          if (mode === "tracked-changes" && session === "canonical") {
+            const before = reviewer.getContent();
+            const result = reviewer.applyDocumentOperations(
               {
-                id: "table",
-                type: "insertTable",
-                blockId: idOf(reviewer, anchor),
-                rows: [["Term", "Value"]],
+                version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+                mode,
+                operations: [{ id: "table", ...table }],
               },
-            ],
-          },
-          { undefinedReferences: "refuse" },
-        );
-        expect(result.applied).toHaveLength(deleted.length + 1);
-        if (mode === "tracked-changes") {
-          const rejecting = await reopen(reviewer);
-          rejecting.rejectAll();
-          expect(texts(await reopen(rejecting))).toEqual(ORIGINAL);
-          reviewer.acceptAll();
+              { undefinedReferences: "refuse" },
+            );
+            expect(result.applied).toEqual([]);
+            expect(result.skipped).toEqual([
+              { id: "table", ...TABLE_AFTER_RETIRED_BREAK },
+            ]);
+            expect(reviewer.getContent()).toEqual(before);
+            return;
+          }
+          apply(table);
+          if (mode === "tracked-changes") {
+            const rejecting = await reopen(reviewer, session);
+            rejecting.rejectAll();
+            expect(texts(await reopen(rejecting, session))).toEqual(ORIGINAL);
+            reviewer.acceptAll();
+          }
+          results.push(texts(await reopen(reviewer, session)));
         }
-        results.push(texts(await reopen(reviewer)));
-      }
-      expect(results[1]).toEqual(results[0]);
-      // The table lands before the deleted closing paragraph, which then
-      // stays emptied: the body still ends with a paragraph.
-      expect(results[0]?.slice(-3)).toEqual(["Term", "Value", ""]);
-    });
-  }
+        expect(results[1]).toEqual(results[0]);
+      });
+    }
+
+  // In one batch, a direct deletion that joins the anchor into the closing
+  // paragraph leaves the table after the paragraph that now holds it.
+  for (const session of ["canonical", "legacy"] as const)
+    for (const { deleted, anchor } of [
+      { deleted: ["Signed"], anchor: "The Buyer" },
+      { deleted: ["Signed", "The Buyer"], anchor: "The Supplier" },
+    ] as const) {
+      test(`${deleted.length} final deletion(s) and a table in one batch (${session})`, async () => {
+        const results: string[][] = [];
+        for (const mode of ["direct", "tracked-changes"] as const) {
+          const reviewer = await open(undefined, session);
+          const result = reviewer.applyDocumentOperations(
+            {
+              version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+              mode,
+              operations: [
+                ...deleted.map((target, index) => ({
+                  id: `delete-${index}`,
+                  type: "deleteBlock" as const,
+                  blockId: idOf(reviewer, target),
+                })),
+                {
+                  id: "table",
+                  type: "insertTable",
+                  blockId: idOf(reviewer, anchor),
+                  rows: [["Term", "Value"]],
+                },
+              ],
+            },
+            { undefinedReferences: "refuse" },
+          );
+          expect(result.applied).toHaveLength(deleted.length + 1);
+          if (mode === "tracked-changes") {
+            const rejecting = await reopen(reviewer, session);
+            rejecting.rejectAll();
+            expect(texts(await reopen(rejecting, session))).toEqual(ORIGINAL);
+            reviewer.acceptAll();
+          }
+          results.push(texts(await reopen(reviewer, session)));
+        }
+        expect(results[1]).toEqual(results[0]);
+        // The table lands before the deleted closing paragraph, which then
+        // stays emptied: the body still ends with a paragraph.
+        expect(results[0]?.slice(-3)).toEqual(["Term", "Value", ""]);
+      });
+    }
 
   test("rejecting a later insertion after the deleted paragraph restores the source", async () => {
     const reviewer = await open();
