@@ -15,6 +15,7 @@ import type {
   ParagraphContent,
   Table,
 } from "../types/document";
+import { sliceText } from "../utils/sliceText";
 import { completeCommentReferences } from "./commentReferenceCompletion";
 import { InlineContentRemovals } from "./inlineContentRemovals";
 import { visitInlineContentSlots } from "./paragraphTraversal";
@@ -459,7 +460,11 @@ const textBetween = (
     text += piece.text;
     if (text.trimStart().length > DROPPED_RANGE_TEXT_LIMIT) break;
   }
-  return text.trim().slice(0, DROPPED_RANGE_TEXT_LIMIT);
+  return sliceText({
+    text: text.trim(),
+    units: "codeUnits",
+    end: DROPPED_RANGE_TEXT_LIMIT,
+  });
 };
 
 /**
