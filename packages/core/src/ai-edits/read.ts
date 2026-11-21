@@ -26,6 +26,7 @@ import {
   runFormattingCarrierReviewText,
   runFormattingInlineAtomCleanText,
   runFormattingInlineAtomDisposition,
+  runFormattingInlineAtomResultText,
 } from "../prosemirror/runFormattingInlineCarriers";
 import { getTableCellMergeChange } from "../prosemirror/tableCellMergeRevision";
 import {
@@ -712,7 +713,6 @@ const getTrackedChangeGroupsFromProjectedDoc = (
       }
     }
 
-    const text = readerTextOf(node, noteReferences);
     const insertionMark = node.marks.find(
       (mark) => mark.type === insertionType,
     );
@@ -720,6 +720,13 @@ const getTrackedChangeGroupsFromProjectedDoc = (
     const mark = deletionMark ?? insertionMark;
     if (!mark || typeof mark.attrs["revisionId"] !== "number") {
       return undefined;
+    }
+    let text = readerTextOf(node, noteReferences);
+    if (deletionMark) {
+      text =
+        node.type.name === "structuredField"
+          ? node.textContent
+          : (runFormattingInlineAtomResultText(node) ?? text);
     }
     const attrs = expectTrackedChangeMarkAttrs(mark);
     // Live edits carry two marks; parsed nested revisions carry one mark
