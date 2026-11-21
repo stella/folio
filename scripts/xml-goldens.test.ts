@@ -51,6 +51,17 @@ const RESERVED = "names the reader reserves are refused";
 const NOT_WELL_FORMED = "not well-formed XML 1.0";
 const UNDECLARED_ENTITY =
   "a name no declaration defines is refused; the earlier parser read it";
+const INVALID_CHARACTER_REFERENCE =
+  "a character reference XML refuses is refused; the earlier parser read it";
+/** Edge inputs holding a character reference XML refuses. */
+const INVALID_CHARACTER_REFERENCES = [
+  "character references",
+  "null character reference",
+  "C0 character reference",
+  "surrogate character reference",
+  "out-of-range character reference",
+  "lenient character reference",
+];
 const UNDECLARED_ENTITIES = [
   "HTML entity in text",
   "HTML entity in attribute",
@@ -148,10 +159,15 @@ describe("prepareXmlPruning", () => {
         ...Object.fromEntries(
           UNDECLARED_ENTITIES.map((name) => [name, UNDECLARED_ENTITY]),
         ),
+        ...Object.fromEntries(
+          INVALID_CHARACTER_REFERENCES.map((name) => [
+            name,
+            INVALID_CHARACTER_REFERENCE,
+          ]),
+        ),
       },
       reread: Object.fromEntries(
         [
-          "character references",
           "CRLF and tab attribute",
           "comment and PI",
           "text before root",
@@ -210,6 +226,7 @@ describe("validateOoxmlPart", () => {
             "unclosed comment",
             "depth 150",
             ...UNDECLARED_ENTITIES,
+            ...INVALID_CHARACTER_REFERENCES,
           ].map((name) => [name, unreadable]),
         ),
       },

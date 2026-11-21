@@ -7,11 +7,7 @@ import { Result } from "better-result";
  */
 import path from "node:path";
 
-import {
-  readXml,
-  undeclaredXmlEntityError,
-  wellFormedXmlIssue,
-} from "@stll/docx-core/xml";
+import { readXml, wellFormedXmlIssue } from "@stll/docx-core/xml";
 import { ZipArchive, type ZipEntry } from "@stll/docx-core/zip";
 import { FolioDocxReviewer } from "@stll/folio-core/server";
 import { decodeText } from "@stll/folio-core/utils/textEncoding";
@@ -221,12 +217,7 @@ const checkChangedPart = async ({
   const xml = await entry
     .bytes()
     .then((partBytes) => decodeText(partBytes, { ignoreBOM: true }));
-  // A character reference XML refuses passes, as the engines read it; an
-  // entity no declaration defines does not, since neither engine opens it.
-  if (
-    wellFormedXmlIssue(xml, "accept") !== null ||
-    undeclaredXmlEntityError(part, xml) !== null
-  ) {
+  if (wellFormedXmlIssue(xml) !== null) {
     return `${part} is not well-formed XML.`;
   }
   if (part.endsWith(".rels")) {

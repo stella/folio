@@ -232,7 +232,6 @@ const validateDocumentXml = (xml: string): string | null => {
   const read = readXml(xml, {
     conformance: "well-formed",
     references: "raw",
-    undeclaredEntities: "accept",
     instructions: "retain",
   });
   if (read.status === "rejected") {

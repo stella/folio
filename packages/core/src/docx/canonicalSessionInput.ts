@@ -12,7 +12,7 @@ import {
   packageParagraphIds,
   paragraphsThroughTextBoxes,
 } from "@stll/docx-core/ops";
-import { UndeclaredXmlEntityError } from "@stll/docx-core/xml";
+import { MalformedXmlReferenceError } from "@stll/docx-core/xml";
 
 import type { Document } from "../types/document";
 import { type DocxInput, toArrayBuffer } from "../utils/docxInput";
@@ -35,14 +35,14 @@ export class CanonicalDocxInputError extends CanonicalDocxInputErrorBase<{
 
 /** Why a package cannot seed a canonical session. */
 export type CanonicalDocxInputFailure =
-  CanonicalDocxInputError | UndeclaredXmlEntityError;
+  CanonicalDocxInputError | MalformedXmlReferenceError;
 
-/** The undeclared entity a normalization step refused a part for, if that is why. */
-const undeclaredEntityCause = (
+/** The reference XML refuses that a normalization step refused a part for, if that is why. */
+const malformedReferenceCause = (
   cause: unknown,
-): UndeclaredXmlEntityError | undefined => {
+): MalformedXmlReferenceError | undefined => {
   for (let current = cause; current instanceof Error; current = current.cause) {
-    if (current instanceof UndeclaredXmlEntityError) return current;
+    if (current instanceof MalformedXmlReferenceError) return current;
   }
   return undefined;
 };
@@ -108,7 +108,7 @@ export const prepareCanonicalDocxSource = async (
       return { docx, mintedParaIds: new Set(paragraphs.mintedParaIds) };
     },
     catch: (cause): CanonicalDocxInputFailure =>
-      undeclaredEntityCause(cause) ??
+      malformedReferenceCause(cause) ??
       new CanonicalDocxInputError({
         message:
           cause instanceof Error

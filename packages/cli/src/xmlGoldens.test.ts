@@ -101,6 +101,10 @@ describe("checkPackageIntegrity", () => {
         "HTML entity in text": NOT_WELL_FORMED,
         "HTML entity in attribute": NOT_WELL_FORMED,
         "unknown entity": NOT_WELL_FORMED,
+        "null character reference": NOT_WELL_FORMED,
+        "C0 character reference": NOT_WELL_FORMED,
+        "surrogate character reference": NOT_WELL_FORMED,
+        "out-of-range character reference": NOT_WELL_FORMED,
       },
     });
   });

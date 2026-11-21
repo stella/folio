@@ -143,11 +143,7 @@ const validateAttributes = (
  */
 export const schemaAttributeIssues = (xml: string): string[] => {
   const issues: string[] = [];
-  // An entity no declaration defines stays as written, as it always has here.
-  const read = readXml(xml, {
-    conformance: "well-formed",
-    undeclaredEntities: "accept",
-  });
+  const read = readXml(xml, { conformance: "well-formed" });
   if (read.status === "rejected") {
     return [
       /<!DOCTYPE/i.test(xml)

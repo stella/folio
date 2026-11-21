@@ -65,10 +65,10 @@ import { Result, TaggedError, type TaggedErrorClass } from "better-result";
 
 import {
   getXmlSourceRange,
+  malformedXmlReferenceError,
   parseStreamingXmlWithSourceRanges,
   repairMissingDrawingNamespace,
   scanStreamingXmlElements,
-  undeclaredXmlEntityError,
 } from "@stll/docx-core/xml";
 import { resolveNamespaceUri } from "@stll/docx-core/xml/namespaces";
 import { ZipArchive } from "@stll/docx-core/zip";
@@ -298,15 +298,16 @@ const scanPartSpelling = (xml: string, partPath: string): PartSpelling => {
     },
   );
   if (scanned.status === "unsupported" || root === undefined) {
-    // An undeclared entity is named with its place, as every open path names it.
-    const undeclared =
+    // A reference XML refuses is named with its place, as every open path
+    // names it.
+    const malformed =
       scanned.status === "unsupported" &&
-      scanned.refusal.type === "undeclaredEntity"
-        ? undeclaredXmlEntityError(partPath, xml)
+      scanned.refusal.type === "malformedReference"
+        ? malformedXmlReferenceError(partPath, xml)
         : null;
-    throw undeclared === null
+    throw malformed === null
       ? createEnsureParaIdsError(`Malformed XML in ${partPath}`)
-      : createEnsureParaIdsError(undeclared.message, undeclared);
+      : createEnsureParaIdsError(malformed.message, malformed);
   }
   const rootElement = root;
   const prefixFor = (uri: string, preferred: string): string => {
