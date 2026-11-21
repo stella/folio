@@ -668,6 +668,14 @@ function resolveChangeUnguarded(
         markStructuralChange(tr);
       }
 
+      // Where a node this resolution reads stands now, or null once the
+      // removal of a block around it (a table, a row) took it: mapped on, its
+      // position would name whatever follows the removed block.
+      const standingAt = (position: number): number | null => {
+        const mapped = tr.mapping.mapResult(position, 1);
+        return mapped.deletedAcross ? null : mapped.pos;
+      };
+
       // Invariant: table rows and cells resolve BEFORE paragraph marks. A join
       // must see the sibling the resolved document has, so a table this
       // resolution removes cannot stand between a break and the paragraph it
@@ -675,7 +683,8 @@ function resolveChangeUnguarded(
       tableRowStructuralOps.sort((left, right) => right.rowPos - left.rowPos);
       let resolvedTableRowStructure = false;
       for (const op of tableRowStructuralOps) {
-        const mappedPos = tr.mapping.map(op.rowPos);
+        const mappedPos = standingAt(op.rowPos);
+        if (mappedPos === null) continue;
         const row = tr.doc.nodeAt(mappedPos);
         if (!row || row.type.name !== "tableRow") {
           continue;
@@ -708,7 +717,8 @@ function resolveChangeUnguarded(
       let failedTableCellMergeResolution = false;
       const emptiedTables: RowsEmptiedInBatch = { pending: false };
       for (const op of tableCellStructuralOps) {
-        const mappedPos = tr.mapping.map(op.cellPos);
+        const mappedPos = standingAt(op.cellPos);
+        if (mappedPos === null) continue;
         const cell = tr.doc.nodeAt(mappedPos);
         if (
           !cell ||
@@ -784,7 +794,8 @@ function resolveChangeUnguarded(
         displaced: AddedParagraphMark[];
       }[] = [];
       for (const op of pPrMarkOps) {
-        const mappedPos = tr.mapping.map(op.paragraphPos);
+        const mappedPos = standingAt(op.paragraphPos);
+        if (mappedPos === null) continue;
         const paragraph = tr.doc.nodeAt(mappedPos);
         if (!paragraph || paragraph.type.name !== "paragraph") {
           continue;
