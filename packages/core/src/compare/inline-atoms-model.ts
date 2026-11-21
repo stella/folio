@@ -304,6 +304,39 @@ const standsAsItsTextBoxes = (
 const removesMark = (paragraph: ReadonlyParagraph): boolean =>
   paragraph.pPrMark?.kind === "del" || paragraph.pPrMark?.kind === "moveFrom";
 
+/** Whether a block-list entry is content or a range boundary between blocks. */
+const BLOCK_ROLES = {
+  paragraph: "content",
+  table: "content",
+  blockSdt: "content",
+  blockCustomXml: "content",
+  preservedBlock: "content",
+  bookmarkStart: "boundary",
+  bookmarkEnd: "boundary",
+  commentRangeStart: "boundary",
+  commentRangeEnd: "boundary",
+  moveFromRangeStart: "boundary",
+  moveFromRangeEnd: "boundary",
+  moveToRangeStart: "boundary",
+  moveToRangeEnd: "boundary",
+} as const satisfies Record<BlockContent["type"], "content" | "boundary">;
+
+/**
+ * The block after `index` that accepting a removed mark joins: range
+ * boundaries standing between the two paragraphs go into the joined one, as
+ * the resolution moves them there.
+ */
+const blockJoinedAfter = (
+  list: readonly DeepReadonly<BlockContent>[],
+  index: number,
+): DeepReadonly<BlockContent> | undefined => {
+  for (let at = index + 1; at < list.length; at += 1) {
+    const block = list[at];
+    if (block && BLOCK_ROLES[block.type] === "content") return block;
+  }
+  return undefined;
+};
+
 const readStory = (blocks: readonly DeepReadonly<BlockContent>[]) => {
   const chains: AcceptedChain[] = [];
   const paragraphs: StoryParagraph[] = [];
@@ -330,11 +363,10 @@ const readStory = (blocks: readonly DeepReadonly<BlockContent>[]) => {
           const textBoxes = textBoxBlocksOf(leaves);
           if (!standsAsItsTextBoxes(block, leaves)) {
             pending.push(read);
-            const next = list[index + 1];
             const joins =
               removesMark(block) &&
               block.sectionProperties === undefined &&
-              next?.type === "paragraph";
+              blockJoinedAfter(list, index)?.type === "paragraph";
             if (!joins) {
               chains.push(pending);
               pending = [];
