@@ -202,6 +202,8 @@ export {
   type LeasedIdCensus,
 } from "./idLease";
 export {
+  BATCH_ANNOTATION_KINDS,
+  type BatchAnnotationKind,
   type BatchBlockAccess,
   compareBatchOrder,
   contentRank,

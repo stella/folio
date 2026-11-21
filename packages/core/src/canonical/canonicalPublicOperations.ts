@@ -19,6 +19,7 @@ import {
 } from "@stll/docx-core/model";
 import {
   applyDocumentOps,
+  BATCH_ANNOTATION_KINDS,
   type BatchBlockAccess,
   type BatchOrderAddress,
   type BlockInsertionPoint,
@@ -351,7 +352,15 @@ const canonicalBatchPlan = ({
         claim: claim({ type: "annotation", block, from, to }),
         block,
         placedAgainst: block,
-        address: { type: "annotation", position: from, inputIndex },
+        address: {
+          type: "annotation",
+          kind:
+            operation.type === "formatRange"
+              ? BATCH_ANNOTATION_KINDS.FORMATTING
+              : BATCH_ANNOTATION_KINDS.COMMENT,
+          position: from,
+          inputIndex,
+        },
         removes: null,
         insertionRun: null,
       };
@@ -4005,6 +4014,9 @@ const compilePublicIntents = ({
       verifiedOperation = verified.value;
       applied = verified.value;
     }
+    // An intent the document as it stands already satisfies changes nothing,
+    // as one at a time: an operation of nothing else is a no-op.
+    if (applied.document === document) continue;
     document = readModel(applied.document);
     ops.push(...compiled.value.ops);
     revisions.push(...applied.revisions);
