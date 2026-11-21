@@ -1719,7 +1719,7 @@ describe("tracked operations and their resolution", () => {
     const original = { ...keptJoinsModule };
     mock.module("../keptJoins", () => ({
       ...original,
-      handJoin: (node: Parameters<typeof original.handJoin>[0]) => ({
+      handJoin: ({ node }: Parameters<typeof original.handJoin>[0]) => ({
         node,
         takesKept: false,
       }),
@@ -1776,10 +1776,9 @@ describe("tracked operations and their resolution", () => {
     const original = { ...keptJoinsModule };
     mock.module("../keptJoins", () => ({
       ...original,
-      handJoin: (
-        ...[node, side, depth]: Parameters<typeof original.handJoin>
-      ) => {
-        const handed = original.handJoin(node, side, depth);
+      handJoin: (options: Parameters<typeof original.handJoin>[0]) => {
+        const { node, side, depth } = options;
+        const handed = original.handJoin(options);
         return isTrackedWrapper(node) &&
           (node.resolutionJoins?.[side] ?? 0) >= depth
           ? { node: handed.node, takesKept: false }
