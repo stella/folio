@@ -10,6 +10,7 @@ import {
   copyDocumentParagraphPropertySourceContract,
 } from "../docx/paragraphPropertySource";
 import type { BlockContent, Document, Paragraph } from "../types/document";
+import { canonicalJson } from "../utils/canonicalJson";
 import { changedWindow } from "./canonicalSeedContent";
 
 /**
@@ -39,6 +40,16 @@ const collectParagraphs = (blocks: readonly BlockContent[]): Paragraph[] => {
     }
   }
   return paragraphs;
+};
+
+/** The words `node` holds, in order, at any depth. */
+const textOf = (node: unknown): string => {
+  if (Array.isArray(node)) return node.map(textOf).join("");
+  if (typeof node !== "object" || node === null) return "";
+  const text: unknown = Reflect.get(node, "text");
+  if (Reflect.get(node, "type") === "text" && typeof text === "string")
+    return text;
+  return textOf(Reflect.get(node, "content"));
 };
 
 /**
@@ -73,6 +84,41 @@ const carriedCopies = (
       indentation,
     });
     if (carried !== next) replaced.set(next, carried);
+  }
+  // A split's new half holds the properties of the paragraph before it as
+  // that paragraph had them, and the words the split took from it: it takes
+  // that paragraph's sources too, so properties read from a list or a style
+  // stay read from there and are not written as its own. A paragraph the
+  // edit wrote from elsewhere keeps the sources it came with.
+  const originalById = new Map(
+    originalParagraphs.flatMap((paragraph) =>
+      paragraph.paraId === undefined
+        ? []
+        : [[paragraph.paraId, paragraph] as const],
+    ),
+  );
+  for (const [index, paragraph] of derivedParagraphs.entries()) {
+    if (paragraph.paraId === undefined || originalById.has(paragraph.paraId))
+      continue;
+    const before = derivedParagraphs.at(index - 1);
+    const source =
+      index > 0 && before?.paraId !== undefined
+        ? originalById.get(before.paraId)
+        : undefined;
+    if (
+      source === undefined ||
+      before === undefined ||
+      canonicalJson(paragraph.formatting ?? null) !==
+        canonicalJson(source.formatting ?? null) ||
+      textOf(source) !== textOf(before) + textOf(paragraph)
+    )
+      continue;
+    const carried = carryParagraphPropertySource({
+      target: replaced.get(paragraph) ?? paragraph,
+      source,
+      indentation,
+    });
+    if (carried !== paragraph) replaced.set(paragraph, carried);
   }
   return replaced;
 };
