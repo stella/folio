@@ -953,6 +953,8 @@ type PreparedOperation = {
      * own properties even when the batch joins it to the next one first.
      */
     followsAnchor: boolean;
+    /** The operation names this paragraph, not a paragraph a join reaches. */
+    namesSource: boolean;
     paragraphs: (formatting: ParagraphFormatting | undefined) => Paragraph[];
   };
 } & (
@@ -1256,6 +1258,8 @@ type ResolveBlockInsertionOptions = {
   listStart?: ListStartPlace;
   /** The paragraph the insertion goes beside. */
   paragraph: ProjectedParagraph;
+  /** The paragraph the operation names, which a pending join may move from. */
+  named: ProjectedParagraph;
   /** The paragraph whose stated properties the new paragraph copies. */
   formattingSource: ProjectedParagraph;
   projection: CanonicalProjection;
@@ -1448,6 +1452,46 @@ const holdsStandingContent = (paragraph: PMNode): boolean => {
   return standing;
 };
 
+/** `formatting` with no numbering of its own or from its style. */
+const withoutNumbering = ({
+  numPr: _numPr,
+  numPrFromStyle: _numPrFromStyle,
+  ...formatting
+}: ParagraphFormatting): ParagraphFormatting => formatting;
+
+/**
+ * Whether accepting every pending change takes the paragraph whole: its break
+ * goes (deleted, or inserted and deleted since), and every record it holds is
+ * deleted or moved away.
+ */
+const isTakenWholeOnAcceptance = ({ pPrMark, content }: Paragraph) =>
+  (pPrMark?.kind === "del" ||
+    pPrMark?.kind === "moveFrom" ||
+    pPrMark?.deletion !== undefined) &&
+  content.every(({ type }) => type === "deletion" || type === "moveFrom");
+
+type LentFormattingOptions = {
+  formatting: ParagraphFormatting | undefined;
+  source: Paragraph;
+  /** The operation names `source` itself, not a paragraph a join reaches. */
+  namesSource: boolean;
+};
+
+/**
+ * The properties an inserted paragraph copies from `source`. A paragraph a
+ * pending join reaches, which a pending deletion takes whole, lends no
+ * numbering: once accepted, the list item it was is gone. A paragraph the
+ * operation names lends all of them, as the default engine copies them.
+ */
+const lentFormatting = ({
+  formatting,
+  source,
+  namesSource,
+}: LentFormattingOptions): ParagraphFormatting | undefined =>
+  formatting !== undefined && !namesSource && isTakenWholeOnAcceptance(source)
+    ? withoutNumbering(formatting)
+    : formatting;
+
 /** Whether a pending deletion already takes `paragraph` whole, mark and words. */
 const goesWholeOnAcceptance = (paragraph: PMNode): boolean =>
   paragraph.type.name === "paragraph" &&
@@ -1508,6 +1552,7 @@ const resolveBlockInsertion = ({
   operation,
   listStart,
   paragraph,
+  named,
   formattingSource,
   projection,
   noteReferences,
@@ -1631,10 +1676,18 @@ const resolveBlockInsertion = ({
       };
     });
   };
+  const sourceFormatting = paragraphFormattingWithAuthoredIndentation(
+    formattingSource.source,
+  );
+  const namesSource = formattingSource.blockId === named.blockId;
   const paragraphs =
     markdownParagraphs ??
     paragraphsFrom(
-      paragraphFormattingWithAuthoredIndentation(formattingSource.source),
+      lentFormatting({
+        formatting: sourceFormatting,
+        source: formattingSource.source,
+        namesSource,
+      }),
     );
   const place =
     listStart === undefined
@@ -1691,6 +1744,7 @@ const resolveBlockInsertion = ({
             followsAnchor:
               operation.type === "insertAfterBlock" &&
               formattingSource.blockId === paragraph.blockId,
+            namesSource,
             paragraphs: paragraphsFrom,
           },
         }
@@ -2215,14 +2269,17 @@ const insertionIntentsAsItRuns = ({
       source = next;
     }
   }
+  const lent = lentFormatting({
+    formatting: paragraphFormattingWithAuthoredIndentation(source),
+    source,
+    namesSource: inheritsFrom.namesSource && source === at.paragraph,
+  });
   const copied: EditorIntent[] = [];
   for (const intent of intents)
     copied.push(
       intent.type === "insertParagraphs"
         ? Object.assign({}, intent, {
-            paragraphs: inheritsFrom.paragraphs(
-              paragraphFormattingWithAuthoredIndentation(source),
-            ),
+            paragraphs: inheritsFrom.paragraphs(lent),
           })
         : intent,
     );
@@ -6434,6 +6491,7 @@ export class CanonicalPublicOperations {
         operation,
         listStart,
         paragraph,
+        named: paragraph,
         formattingSource: paragraph,
         projection: projection.value,
         noteReferences,
@@ -6495,6 +6553,7 @@ export class CanonicalPublicOperations {
       const inserted = resolveBlockInsertion({
         operation: insertion,
         paragraph: placed.place,
+        named: paragraph,
         formattingSource: placed.formattingSource,
         projection: projection.value,
         noteReferences,
