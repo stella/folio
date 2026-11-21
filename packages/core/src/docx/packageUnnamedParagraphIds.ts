@@ -23,6 +23,29 @@ export type PackageUnnamedParagraphIds = ReadonlyMap<
 
 const MAIN_DOCUMENT_PART = "word/document.xml";
 
+/** A paragraph open tag, under any prefix. */
+const PARAGRAPH_OPEN_TAG = /<(?:[\w.-]+:)?p(?=[\s/>])[^>]*>/gu;
+/** An id the parser keeps: eight hex digits, not all zero. */
+const USABLE_PARA_ID = /:paraId\s*=\s*["'](?!0{8})[0-9A-Fa-f]{8}["']/u;
+/**
+ * A cell that may end without a paragraph, which it is then read with: one
+ * that is empty, or whose last block may be a table (markers aside).
+ */
+const CELL_WITHOUT_LAST_PARAGRAPH =
+  /<(?:[\w.-]+:)?tc(?:\s[^>]*)?\/>|<\/(?:[\w.-]+:)?(?:tbl|tcPr|sdt|customXml)>(?:\s*<(?:[\w.-]+:)?(?:bookmarkStart|bookmarkEnd|commentRangeStart|commentRangeEnd|permStart|permEnd|proofErr)\b[^>]*\/>)*\s*<\/(?:[\w.-]+:)?tc>|<(?:[\w.-]+:)?tc(?:\s[^>]*)?>\s*<\/(?:[\w.-]+:)?tc>/u;
+
+/**
+ * Whether a story part may hold a paragraph without a usable id: one whose
+ * open tag names none, or a cell whose paragraph is implied. A cheap
+ * overestimate that lets a fully named package skip the assignment.
+ */
+const holdsUnnamedParagraph = (xml: string): boolean => {
+  if (CELL_WITHOUT_LAST_PARAGRAPH.test(xml)) return true;
+  for (const [tag] of xml.matchAll(PARAGRAPH_OPEN_TAG))
+    if (!USABLE_PARA_ID.test(tag)) return true;
+  return false;
+};
+
 /**
  * The ids the package's unnamed story paragraphs take, from its parts as the
  * package holds them. A package the assignment refuses opens on neither
@@ -41,6 +64,12 @@ export const unnamedPackageParagraphIds = (
     documentRels,
     entries: [...allXml.keys()],
   });
+  // Most packages name every paragraph: then there is nothing to assign, and
+  // reading each story part is skipped.
+  const storyTexts = [...allXml].flatMap(([name, xml]) =>
+    name === documentPartName || isTargetPart(name) ? [xml] : [],
+  );
+  if (!storyTexts.some(holdsUnnamedParagraph)) return new Map();
   const assigned = Result.try({
     try: () =>
       assignPackageParaIds({

@@ -41,9 +41,11 @@ const EnsureParaIdsErrorBase: TaggedErrorClass<"EnsureParaIdsError"> =
  *   the editor). `w14:textId` is written alongside a newly minted `paraId`
  *   (same value) and never touched otherwise; it is a text-revision marker,
  *   not identity.
- * - Fresh ids are deterministic (`deterministicHexId` over document content,
- *   part path, and paragraph ordinal), so the pass is a pure function of the
- *   input bytes: retrying an ingest produces identical output.
+ * - Fresh ids are deterministic (`deterministicHexId` over the part path,
+ *   the paragraph's own markup, and how many earlier paragraphs of the part
+ *   repeat that markup), so the pass is a pure function of the input bytes:
+ *   retrying an ingest produces identical output. A paragraph an edit
+ *   elsewhere left as it was keeps its id in the edited version.
  * - Each patched part's root element gets `xmlns:w14` / `xmlns:mc`
  *   declarations and a `mc:Ignorable` listing `w14` when missing — non-Word
  *   producers declare neither, and absent `mc:Ignorable` handling is what
@@ -500,20 +502,45 @@ const collectFallbackParaIds = (
 type MintContext = {
   /** Every id in the document (all parts) plus every id minted so far. */
   taken: Set<string>;
-  /** `deterministicHexId` fingerprint of the original document.xml. */
-  docKey: string;
+};
+
+/**
+ * What a fresh id is keyed on for each paragraph of a part, by ordinal (from
+ * 1): its own markup, and how many earlier paragraphs repeat that markup. An
+ * edit elsewhere in the part changes neither, so a paragraph it left as it
+ * was is given the same id in both versions of the document.
+ */
+const paragraphMintKeys = (xml: string): readonly string[] | undefined => {
+  const parsed = parseStreamingXmlWithSourceRanges(xml);
+  if (parsed.status !== "parsed") return undefined;
+  const repeats = new Map<string, number>();
+  const keys: string[] = [];
+  for (const slot of storyParagraphSlots(parsed.value)) {
+    if (slot.type !== "paragraph") return undefined;
+    const range = getXmlSourceRange(slot.element);
+    if (range === undefined) return undefined;
+    const markup = xml.slice(range.start, range.end);
+    const repeat = repeats.get(markup) ?? 0;
+    repeats.set(markup, repeat + 1);
+    keys.push(`${repeat}:${markup}`);
+  }
+  return keys;
 };
 
 /**
  * Deterministic fresh id for the paragraph at `ordinal` in `partPath`,
- * salted past collisions with any id anywhere in the document.
+ * salted past collisions with any id anywhere in the document. `keys` are
+ * the part's {@link paragraphMintKeys}; a part they cannot be read for is
+ * keyed on the ordinal alone.
  */
 const mintParaId = (
   context: MintContext,
   partPath: string,
   ordinal: number,
+  keys: readonly string[] | undefined,
 ): string => {
-  const seed = `${context.docKey}:${partPath}:${ordinal}`;
+  const key = keys?.[ordinal - 1] ?? String(ordinal);
+  const seed = `${partPath}:${key}`;
   let id = deterministicHexId(seed);
   for (let salt = 1; context.taken.has(id); salt += 1) {
     id = deterministicHexId(`${seed}:${salt}`);
@@ -559,6 +586,12 @@ const scanPart = ({
   const minted: string[] = [];
   const unnamed = new Map<number, string>();
   const w14 = spelling.w14Prefix;
+  // Read once, at the first paragraph that takes a fresh id.
+  let keys: readonly string[] | undefined | null = null;
+  const mint = (ordinal: number): string => {
+    keys ??= paragraphMintKeys(spelling.xml);
+    return mintParaId(context, partPath, ordinal, keys);
+  };
   let assigned = 0;
   let deduplicated = 0;
   let ordinal = 0;
@@ -570,7 +603,7 @@ const scanPart = ({
     ordinal += 1;
 
     if (paraId === undefined) {
-      const id = mintParaId(context, partPath, ordinal);
+      const id = mint(ordinal);
       if (textId !== undefined) {
         edits.push({
           start: nameEnd,
@@ -601,7 +634,7 @@ const scanPart = ({
       continue;
     }
 
-    const id = mintParaId(context, partPath, ordinal);
+    const id = mint(ordinal);
     edits.push({ start: paraId.start, end: paraId.end, text: id });
     if (textId !== undefined) {
       edits.push({ start: textId.start, end: textId.end, text: id });
@@ -838,13 +871,9 @@ const scanPackageParaIds = ({
     collectExistingParaIds(text, taken);
   }
 
-  const documentXml = partTexts.get(documentPartName);
-  if (documentXml === undefined)
+  if (!partTexts.has(documentPartName))
     throw createEnsureParaIdsError("officeDocument part is unreadable");
-  const context: MintContext = {
-    taken,
-    docKey: deterministicHexId(documentXml),
-  };
+  const context: MintContext = { taken };
 
   // document.xml first so its paragraphs win the first-occurrence rule, then
   // the auxiliary parts in a deterministic order.
