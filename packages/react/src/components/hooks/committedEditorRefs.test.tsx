@@ -8,6 +8,8 @@ import { createRoot } from "react-dom/client";
 import { panic } from "better-result";
 import { afterAll, expect, spyOn, test } from "bun:test";
 
+import { createFolioEditorEmitter } from "@stll/folio-core/controller/folioEditorEvents";
+import type { Layout } from "@stll/folio-core/layout-engine/types";
 import type { Document } from "@stll/folio-core/types/document";
 import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
 import {
@@ -107,6 +109,7 @@ const ZoomHarness = ({ mounted }: { mounted: boolean }) => {
     scrollContainerRef,
     scrollContainer,
     pagedEditorRef,
+    editorController: null,
     initialZoom: 1,
   });
   return (
@@ -154,3 +157,100 @@ test("the committed scroll container attaches one listener without per-scroll re
     remove.mockRestore();
   }
 });
+
+type InitialFitHarnessProps = {
+  width: number;
+  editorController: NonNullable<
+    Parameters<typeof useZoomAndPageInfo>[0]["editorController"]
+  >;
+};
+
+const InitialFitHarness = ({
+  width,
+  editorController,
+}: InitialFitHarnessProps) => {
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const pagedEditorRef = useRef<PagedEditorRef>(null);
+  const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(
+    null,
+  );
+  const attach = useCallback(
+    (element: HTMLDivElement | null) => {
+      if (element) {
+        Object.defineProperties(element, {
+          clientWidth: { value: width, configurable: true },
+          offsetWidth: { value: width, configurable: true },
+        });
+      }
+      scrollContainerRef.current = element;
+      setScrollContainer(element);
+    },
+    [width],
+  );
+  const { zoom, isInitialFitPending } = useZoomAndPageInfo({
+    scrollContainerRef,
+    scrollContainer,
+    pagedEditorRef,
+    editorController,
+    initialZoom: "fit-width",
+  });
+
+  return <div ref={attach}>{isInitialFitPending ? "loading" : zoom}</div>;
+};
+
+const initialFitController = () => {
+  const events = createFolioEditorEmitter();
+  let currentLayout: Layout | null = null;
+  return {
+    getLayout: () => currentLayout,
+    on: events.on,
+    publishLayout: (layout: Layout) => {
+      currentLayout = layout;
+      events.emit("layoutComplete", layout);
+    },
+  };
+};
+
+test.each([
+  { width: 656, expectedZoom: 0.8 },
+  { width: 816, expectedZoom: 1 },
+])(
+  "a fit-width editor waits for the first fitted page at zoom $expectedZoom",
+  async ({ width, expectedZoom }) => {
+    const editorController = initialFitController();
+    const pageSize = { w: 800, h: 1000 };
+    const layout: Layout = {
+      pageSize,
+      pages: [
+        {
+          number: 1,
+          logicalNumber: 1,
+          size: pageSize,
+          margins: { top: 80, right: 80, bottom: 80, left: 80 },
+          fragments: [],
+        },
+      ],
+    };
+    const container = document.createElement("div");
+    const root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          <InitialFitHarness
+            width={width}
+            editorController={editorController}
+          />,
+        );
+      });
+      expect(container.textContent).toBe("loading");
+
+      await act(async () => {
+        editorController.publishLayout(layout);
+      });
+      expect(container.textContent).toBe(String(expectedZoom));
+    } finally {
+      await act(async () => root.unmount());
+    }
+  },
+);
