@@ -358,12 +358,44 @@ const linkReading = (xml: string) => {
   };
 };
 
+/** Replacements of all of the link's words, and of some of them. */
+const LINK_EDITS = [
+  {
+    name: "its text",
+    find: LINK_TEXT,
+    replace: REPLACED_LINK_TEXT,
+    replaced: REPLACED_LINK_TEXT,
+  },
+  {
+    name: "words inside it",
+    find: "standard",
+    replace: "revised",
+    replaced: "the revised terms",
+  },
+  {
+    name: "its last word",
+    find: "terms",
+    replace: "rules",
+    replaced: "the standard rules",
+  },
+] as const;
+
 describe.each(["legacy", "canonical"] as const)(
   "replaceInBlock over a block whose text is a hyperlink (%s)",
   (session) => {
-    test.each(["direct", "tracked-changes"] as const)(
-      "keeps the link on the new text in %s mode",
-      async (mode) => {
+    test.each(
+      (["direct", "tracked-changes"] as const).flatMap((mode) =>
+        LINK_EDITS.map(({ name, find, replace, replaced }) => ({
+          mode,
+          name,
+          find,
+          replace,
+          replaced,
+        })),
+      ),
+    )(
+      "keeps one link on the new text replacing $name in $mode mode",
+      async ({ mode, find, replace, replaced }) => {
         const reviewer = await FolioDocxReviewer.fromBuffer(
           await createDocx(buildLinkedDocument()),
           { author: "Editor", session },
@@ -376,8 +408,8 @@ describe.each(["legacy", "canonical"] as const)(
               id: "r1",
               type: "replaceInBlock",
               blockId: target?.id ?? "",
-              find: LINK_TEXT,
-              replace: REPLACED_LINK_TEXT,
+              find,
+              replace,
             },
           ],
           { undefinedReferences: "refuse", mode },
@@ -396,14 +428,17 @@ describe.each(["legacy", "canonical"] as const)(
         // The link still wraps the replacement, and still points where it
         // did; nothing outside a link carries the new text.
         const reading = linkReading(xml);
-        expect(reading.links.join("")).toContain(REPLACED_LINK_TEXT);
+        expect(reading.links.join("")).toContain(replace);
         expect(reading.outside).toBe("");
         expect(relationships).toContain(LINK_TARGET);
-        if (mode === "direct") return;
+        if (mode === "direct") {
+          expect(reading.links).toEqual([replaced]);
+          return;
+        }
 
-        // Accepting leaves the new text linked, rejecting the old.
+        // Accepting leaves the new text in the one link, rejecting the old.
         for (const [resolve, kept] of [
-          ["accept", REPLACED_LINK_TEXT],
+          ["accept", replaced],
           ["reject", LINK_TEXT],
         ] as const) {
           const reopened = await FolioDocxReviewer.fromBuffer(saved, {

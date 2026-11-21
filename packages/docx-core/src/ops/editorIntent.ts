@@ -98,6 +98,7 @@ import {
 } from "./plan";
 import {
   cutPieceHandoffs,
+  pastEndedComments,
   planTrackedReplace,
   rangeEndAfterDeletion,
 } from "./rangeReplacement";
@@ -3268,7 +3269,6 @@ const compileInStory = (
         insertionOnly && text !== ""
           ? continuation(paragraph.content, from, to, {
               ...(intent.inside === undefined ? {} : { inside: intent.inside }),
-              tracked: mode.type === "suggesting",
             })
           : undefined;
       const continuing =
@@ -4302,13 +4302,7 @@ const continuation = (
   {
     inside = {},
     struck = false,
-    tracked = struck,
-  }: {
-    inside?: { start?: boolean; end?: boolean };
-    struck?: boolean;
-    /** The text is recorded as a tracked insertion. */
-    tracked?: boolean;
-  } = {},
+  }: { inside?: { start?: boolean; end?: boolean }; struck?: boolean } = {},
 ): Continuation => {
   const spans = leafSpans(items);
   // A range starts where its deletion does: after the markers at its start
@@ -4351,9 +4345,11 @@ const continuation = (
   }
   // Text replacing words of one hyperlink, or typed between two of its
   // leaves, stays in the link; a range reaching past the link, or a caret at
-  // its edge, leaves the text outside. A tracked record cannot stand inside
-  // a link, and a range holding every leaf of the link leaves no piece of it
-  // to meet, so there the text takes a copy of the link, which meets none.
+  // its edge, leaves the text outside. A range holding every leaf of the
+  // link leaves no piece of it to meet, so there the text takes a copy of
+  // the link, which meets none. Tracked, the text continues the pieces of
+  // the link either side of it, the struck one included: a tracked record
+  // cannot stand inside a link, so the insertion records that it joins them.
   const link = caret
     ? left?.ancestors[containers.length]
     : last?.ancestors[containers.length];
@@ -4370,7 +4366,7 @@ const continuation = (
       : spans.filter(inRange).every(ofLink);
     if (keepsLink) {
       containers.push(link);
-      copiesLink = tracked || spans.filter(ofLink).every(covered);
+      copiesLink = spans.filter(ofLink).every(covered);
     }
   }
   // Each open end merges with the containers the source holds on that side;
@@ -4400,12 +4396,32 @@ const continuation = (
           // empty container standing alone.
           keepsLoneEmptyContainers: true,
         }).at(-1);
+  // The replacement goes past the ends of comments the range reached (see
+  // `pastEndedComments`): it meets the last of them and the leaf after it,
+  // so a link ending before them is one the text takes a copy of.
+  const passedCount =
+    caret || containers.length === 0
+      ? 0
+      : pastEndedComments(items, end.offset, end.zeroWidthBefore) -
+        end.zeroWidthBefore;
+  const passed =
+    passedCount === 0
+      ? undefined
+      : spans.find(
+          ({ before }) =>
+            before.offset === end.offset &&
+            before.zeroWidthBefore === end.zeroWidthBefore + passedCount - 1,
+        );
   return {
     containers,
     openStart: continued(
-      struck && last !== undefined ? last : (kept ?? outerLeft),
+      passed ?? (struck && last !== undefined ? last : (kept ?? outerLeft)),
     ),
-    openEnd: continued(outerRight),
+    openEnd: continued(
+      passed === undefined
+        ? outerRight
+        : spans.find(({ after }) => compareGaps(after, passed.after) > 0),
+    ),
   };
 };
 

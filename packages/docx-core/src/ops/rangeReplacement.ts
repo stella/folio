@@ -168,7 +168,7 @@ const sameContainers = (
  * closes the container the replacement continues stays after the new words,
  * which go into that container.
  */
-const pastEndedComments = (
+export const pastEndedComments = (
   content: readonly InlineNode[],
   offset: number,
   zeroWidthBefore: number,

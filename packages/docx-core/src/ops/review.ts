@@ -426,6 +426,8 @@ const mergeKeepsAnchorRemoval = (
 type Entry = {
   node: InlineNode;
   covered: boolean;
+  /** The first covered entry in document order: the wrap's start. */
+  first?: true;
   joinBefore?: number;
   joinAfter?: number;
   retainedAfter?: NonNullable<
@@ -437,6 +439,10 @@ type WrapState = {
   acceptance: NonNullable<TrackedWrapper["resolutionJoins"]>["acceptance"];
   gaps: readonly [Gap, Gap];
   resolutionJoin: number | undefined;
+  /** See {@link WrapOptions.startJoin}. */
+  startJoin: number;
+  /** Whether the wrap has met its first covered entry. */
+  started: boolean;
   depth: number;
   kind: WrapKind;
   stamp: RevisionStamp;
@@ -668,8 +674,12 @@ const groupCovered = (
         ? { type: "insertion", info, content }
         : { type: "deletion", info, content };
     if (state.resolutionJoin !== undefined && isTrackedWrapper(wrapper)) {
+      const opening = stretch.at(0);
       wrapper.resolutionJoins = {
-        before: stretch.at(0)?.joinBefore ?? 0,
+        before: Math.max(
+          opening?.joinBefore ?? 0,
+          opening?.first === true ? state.startJoin : 0,
+        ),
         after: stretch.at(-1)?.joinAfter ?? 0,
         remove: Math.max(0, state.resolutionJoin - state.depth),
       };
@@ -758,6 +768,11 @@ const wrapList = (
     state.recorded = true;
     return rebuildNode(node, copied);
   };
+  const firstCovered = (covered: boolean): { first?: true } => {
+    if (!covered || state.started) return {};
+    state.started = true;
+    return { first: true };
+  };
   const entries: Entry[] = [];
   for (const node of nodes) {
     const start: Cursor = { ...cursor };
@@ -765,7 +780,11 @@ const wrapList = (
     if (measured.min === measured.max) {
       const retained = retainSameStampCopyOwner(node);
       if (retained === undefined) return undefined;
-      entries.push({ node: retained, covered: measured.min === 1 });
+      entries.push({
+        node: retained,
+        covered: measured.min === 1,
+        ...firstCovered(measured.min === 1),
+      });
       continue;
     }
     const action = spanningAction(node, state.kind, state.stamp);
@@ -831,6 +850,7 @@ const wrapList = (
               node: part,
               ...(retainedAfter.length === 0 ? {} : { retainedAfter }),
               covered: region === 1,
+              ...firstCovered(region === 1),
               joinBefore:
                 region === 1
                   ? spanningRecords([node], [localGap(state.gaps[0])], 0, 1)
@@ -863,6 +883,13 @@ export type WrapOptions = {
   stamp: RevisionStamp;
   /** Exact top-level cut depth restored when this wrapper content is removed. */
   resolutionJoin?: number;
+  /**
+   * How many levels of the record before the wrap's start its first content
+   * continues beyond the records the wrap cuts there: those of a record
+   * whose piece a pending deletion holds. Kept, the wrapper joins that deep
+   * on its start side.
+   */
+  startJoin?: number;
   copiedBoundaries?: ReadonlySet<InlineNode>;
   /**
    * `"stand"`: a deletion of whole paragraphs leaves the bare comment range
@@ -897,6 +924,7 @@ export const wrapTracked = ({
   kind,
   stamp,
   resolutionJoin,
+  startJoin = 0,
   acceptance,
   copiedBoundaries,
   commentAnchors,
@@ -904,6 +932,8 @@ export const wrapTracked = ({
   const state: WrapState = {
     gaps: [from, to],
     resolutionJoin,
+    startJoin,
+    started: false,
     acceptance,
     depth: 0,
     kind,

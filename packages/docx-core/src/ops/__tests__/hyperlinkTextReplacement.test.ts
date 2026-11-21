@@ -1,9 +1,12 @@
 /**
- * Text replacing exactly a hyperlink's text keeps the link, edited directly
- * or tracked: the new text takes a copy of the link. A range reaching past
- * the link, or text typed at its outer edge, does not extend it. Accepting
- * the tracked replacement gives the direct edit; rejecting it gives the
- * source back.
+ * Text replacing words of a hyperlink, or typed between two of its leaves,
+ * keeps the link, edited directly or tracked. A range reaching past the
+ * link, or text typed at its outer edge, does not extend it. A tracked
+ * record cannot stand inside a link, so the tracked text stands in a copy of
+ * the link beside the struck one; accepting it gives the direct edit, one
+ * link, whichever order its revisions are resolved in, and rejecting it gives
+ * the source back. Bookmark and comment markers at the link's edges do not
+ * change that.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -17,6 +20,7 @@ import {
   type DocumentOp,
   OP_STORIES,
   REVISION_DECISIONS,
+  type RevisionDecision,
 } from "../types";
 
 const LINK = {
@@ -31,23 +35,23 @@ const run = (text: string): ParagraphContent => ({
   content: [{ type: "text", text }],
 });
 
-const source = normalizeForOps({
-  package: {
-    document: {
-      content: [
-        {
-          type: "paragraph",
-          paraId: "00000002",
-          content: [
-            run("See "),
-            { ...LINK, children: [run("the standard terms")] },
-            run(" now."),
-          ],
-        },
-      ],
+const sourceOf = (content: ParagraphContent[]) =>
+  normalizeForOps({
+    package: {
+      document: {
+        content: [{ type: "paragraph", paraId: "00000002", content }],
+        comments: [{ id: 7, author: "Owner", content: [] }],
+      },
     },
-  },
-} satisfies Document);
+  } satisfies Document);
+
+const TERMS = "the standard terms";
+
+const source = sourceOf([
+  run("See "),
+  { ...LINK, children: [run(TERMS)] },
+  run(" now."),
+]);
 
 const at = (offset: number) => ({
   story: OP_STORIES.MAIN,
@@ -62,7 +66,7 @@ const SUGGESTING: EditorIntentMode = {
   newIds: { revision: [3, 4, 5, 6], control: [] },
 };
 
-/** Apply a plan, checking that its inverse restores the source exactly. */
+/** Apply a plan, checking that its inverse restores the document exactly. */
 const applied = (document: Document, ops: readonly DocumentOp[]) => {
   const result = applyDocumentOps(document, ops).unwrap();
   expect(
@@ -71,13 +75,16 @@ const applied = (document: Document, ops: readonly DocumentOp[]) => {
   return result.document;
 };
 
+type Edit = { from: number; to: number; text: string };
+
 const replaced = (
-  { from, to, text }: { from: number; to: number; text: string },
+  { from, to, text }: Edit,
   mode: EditorIntentMode,
+  document = source,
 ) =>
   applied(
-    source,
-    compileEditorIntent(source, {
+    document,
+    compileEditorIntent(document, {
       intent: { type: "replaceText", from: at(from), to: at(to), text },
       mode,
     }).unwrap().ops,
@@ -114,18 +121,51 @@ const revisionIds = (document: Document): number[] =>
     node.type === "insertion" || node.type === "deletion" ? [node.info.id] : [],
   );
 
-const resolved = (document: Document, decision: "accept" | "reject") =>
+const resolved = (
+  document: Document,
+  decision: RevisionDecision,
+  ids = revisionIds(document),
+) =>
   applied(document, [
     {
       type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
       story: OP_STORIES.MAIN,
-      revisionIds: revisionIds(document),
-      decision:
-        decision === "accept"
-          ? REVISION_DECISIONS.ACCEPT
-          : REVISION_DECISIONS.REJECT,
+      revisionIds: ids,
+      decision,
     },
   ]);
+
+const DECISIONS = [REVISION_DECISIONS.ACCEPT, REVISION_DECISIONS.REJECT];
+
+/**
+ * Resolving the revisions one at a time gives the same document in either
+ * order, and what resolving them together gives when the decisions agree.
+ */
+const expectOrderFree = (tracked: Document) => {
+  const [first, second, ...rest] = revisionIds(tracked);
+  if (first === undefined || second === undefined) return;
+  expect(rest).toEqual([]);
+  for (const firstDecision of DECISIONS)
+    for (const secondDecision of DECISIONS) {
+      const forward = resolved(
+        resolved(tracked, firstDecision, [first]),
+        secondDecision,
+        [second],
+      );
+      const backward = resolved(
+        resolved(tracked, secondDecision, [second]),
+        firstDecision,
+        [first],
+      );
+      expect(paragraphContent(backward)).toStrictEqual(
+        paragraphContent(forward),
+      );
+      if (firstDecision === secondDecision)
+        expect(paragraphContent(forward)).toStrictEqual(
+          paragraphContent(resolved(tracked, firstDecision)),
+        );
+    }
+};
 
 describe.each([
   {
@@ -185,23 +225,149 @@ describe.each([
 
   test("tracked, accepting gives the direct edit and rejecting the source", () => {
     const tracked = replaced(edit, SUGGESTING);
-    expect(paragraphContent(resolved(tracked, "accept"))).toStrictEqual(
-      paragraphContent(replaced(edit, EDITING)),
-    );
-    expect(resolved(tracked, "reject")).toStrictEqual(source);
+    expect(
+      paragraphContent(resolved(tracked, REVISION_DECISIONS.ACCEPT)),
+    ).toStrictEqual(paragraphContent(replaced(edit, EDITING)));
+    expect(resolved(tracked, REVISION_DECISIONS.REJECT)).toStrictEqual(source);
+  });
+
+  test("tracked, its revisions resolve alike in either order", () => {
+    expectOrderFree(replaced(edit, SUGGESTING));
   });
 });
 
-test("the kept link is a copy of the source link", () => {
-  for (const mode of [EDITING, SUGGESTING]) {
-    const links = JSON.stringify(
-      paragraphContent(
-        replaced({ from: 4, to: 22, text: "the revised terms" }, mode),
-      ),
-    );
-    expect(links.match(/"rId":"rId9"/gu)?.length).toBe(
-      mode.type === "editing" ? 1 : 2,
-    );
-    expect(links).toContain('"tooltip":"Terms"');
-  }
+describe.each([
+  { name: "exactly the link's text", from: 4, to: 22 },
+  { name: "words strictly inside the link", from: 8, to: 16 },
+  { name: "the end of the link's text", from: 16, to: 22 },
+  { name: "a caret inside the link", from: 8, to: 8 },
+])("the link kept replacing $name", ({ from, to }) => {
+  test("is a copy of the source link in both modes", () => {
+    for (const mode of [EDITING, SUGGESTING]) {
+      const links = paragraphContent(
+        replaced({ from, to, text: "new" }, mode),
+      ).flatMap((node) =>
+        node.type === "insertion" || node.type === "deletion"
+          ? node.content
+          : [node],
+      );
+      for (const link of links)
+        if (link.type === "hyperlink")
+          expect(link).toMatchObject({ ...LINK, type: "hyperlink" });
+    }
+  });
 });
+
+const BOOKMARK_START = { type: "bookmarkStart", id: 1, name: "_Ref1" } as const;
+const BOOKMARK_END = { type: "bookmarkEnd", id: 1 } as const;
+const COMMENT_START = { type: "commentRangeStart", id: 7 } as const;
+const COMMENT_END = { type: "commentRangeEnd", id: 7 } as const;
+const COMMENT_REFERENCE = { type: "commentReference", id: 7 } as const;
+
+describe.each([
+  {
+    name: "a bookmark around the link's text inside it",
+    content: [
+      run("See "),
+      { ...LINK, children: [BOOKMARK_START, run(TERMS), BOOKMARK_END] },
+      run(" now."),
+    ],
+    exact: "See [the revised terms] now.",
+  },
+  {
+    name: "a bookmark starting inside the link",
+    content: [
+      run("See "),
+      { ...LINK, children: [BOOKMARK_START, run(TERMS)] },
+      BOOKMARK_END,
+      run(" now."),
+    ],
+    exact: "See [the revised terms] now.",
+  },
+  {
+    name: "a bookmark ending inside the link",
+    content: [
+      run("See "),
+      BOOKMARK_START,
+      { ...LINK, children: [run(TERMS), BOOKMARK_END] },
+      run(" now."),
+    ],
+    exact: "See [the revised terms] now.",
+  },
+  {
+    name: "a comment around the link's text inside it",
+    content: [
+      run("See "),
+      { ...LINK, children: [COMMENT_START, run(TERMS), COMMENT_END] },
+      COMMENT_REFERENCE,
+      run(" now."),
+    ],
+    exact: "See [the revised terms] now.",
+  },
+  {
+    // The new text goes past the end of the comment whose text it replaces,
+    // which is past the link's end: it takes a copy of the link there.
+    name: "a comment starting inside the link",
+    content: [
+      run("See "),
+      { ...LINK, children: [COMMENT_START, run(TERMS)] },
+      COMMENT_END,
+      COMMENT_REFERENCE,
+      run(" now."),
+    ],
+    exact: "See [][the revised terms] now.",
+  },
+  {
+    name: "a comment ending inside the link",
+    content: [
+      run("See "),
+      COMMENT_START,
+      { ...LINK, children: [run(TERMS), COMMENT_END] },
+      COMMENT_REFERENCE,
+      run(" now."),
+    ],
+    exact: "See [the revised terms] now.",
+  },
+] satisfies { name: string; content: ParagraphContent[]; exact: string }[])(
+  "with $name",
+  ({ content, exact }) => {
+    const marked = sourceOf(content);
+    describe.each([
+      {
+        name: "exactly the link's text",
+        edit: { from: 4, to: 22, text: "the revised terms" },
+        direct: exact,
+      },
+      {
+        name: "words strictly inside the link",
+        edit: { from: 8, to: 16, text: "revised" },
+        direct: "See [the revised terms] now.",
+      },
+    ])("replacing $name", ({ edit, direct }) => {
+      test("directly keeps the text in the link", () => {
+        const edited = replaced(edit, EDITING, marked);
+        expect(reading(edited)).toBe(direct);
+        expect(
+          JSON.stringify(paragraphContent(edited))
+            .match(/"type":"[a-zA-Z]+"/gu)
+            ?.filter((type) => /Start|End|Reference/u.test(type)),
+        ).toEqual(
+          JSON.stringify(content)
+            .match(/"type":"[a-zA-Z]+"/gu)
+            ?.filter((type) => /Start|End|Reference/u.test(type)),
+        );
+      });
+
+      test("tracked, accepting gives the direct edit and rejecting the source", () => {
+        const tracked = replaced(edit, SUGGESTING, marked);
+        expect(
+          paragraphContent(resolved(tracked, REVISION_DECISIONS.ACCEPT)),
+        ).toStrictEqual(paragraphContent(replaced(edit, EDITING, marked)));
+        expect(resolved(tracked, REVISION_DECISIONS.REJECT)).toStrictEqual(
+          marked,
+        );
+        expectOrderFree(tracked);
+      });
+    });
+  },
+);

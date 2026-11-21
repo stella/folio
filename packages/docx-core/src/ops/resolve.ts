@@ -2147,6 +2147,12 @@ const resolveList = ({
   };
   /** Seams a removed revision recorded between the source pieces around it. */
   const removalSeams = new Set<number>();
+  /**
+   * Seams where accepted editor text joins, by its own join, the piece of a
+   * record it continues: it merges with that piece as far as they are alike,
+   * its plain runs included, as the direct edit does.
+   */
+  const payloadJoinSeams = new Set<number>();
   /** Seams a kept revision's own joins recorded at its edges. */
   const keptJoinSeams = new Set<number>();
   /** The date of the earliest kept revision whose join recorded each seam. */
@@ -2560,6 +2566,9 @@ const resolveList = ({
       ) {
         plainSeams.add(out.length);
         plainSeams.add(out.length + content.length);
+        if (node.resolutionJoins.before > 0) payloadJoinSeams.add(out.length);
+        if (node.resolutionJoins.after > 0)
+          payloadJoinSeams.add(out.length + content.length);
       }
       const payload =
         isAddedRevision(node) &&
@@ -2916,6 +2925,9 @@ const resolveList = ({
       runsMergeable(left, right)
     )
       seams.push(seam);
+    // Text joined to a piece of a record is no plain new content there: a
+    // pending removal holding that record's other piece holds the seam.
+    else if (payloadJoinSeams.has(seam)) continue;
     else if (pendingRemoval(right)) acceptAsPlain(seam, "before");
     else if (seam > 0 && pendingRemoval(left)) acceptAsPlain(seam - 1, "after");
   }
@@ -3830,7 +3842,9 @@ const resolveList = ({
       leftOccurrence?.payload === true || rightOccurrence?.payload === true;
     if (
       merges.has(recorded) ||
-      (exactDepth !== undefined && removalSeams.has(recorded) && besidePayload)
+      (exactDepth !== undefined &&
+        (removalSeams.has(recorded) || payloadJoinSeams.has(recorded)) &&
+        besidePayload)
     ) {
       // Accepted new content merges with a plain neighbour it is alike, and
       // records no seam on a neighbour's pending review: it is no piece of it.
