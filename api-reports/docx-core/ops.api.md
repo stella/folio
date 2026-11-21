@@ -31,6 +31,7 @@ export type AppliedDocumentOp = {
     inverse: readonly DocumentOp[];
     touched: TouchedBlocks;
     revisions: readonly number[];
+    folded: readonly number[];
 };
 
 // @public
@@ -191,6 +192,9 @@ export type ClientNotice = {
 
 // @public
 export const combineEdits: (document: Document_2, edits: readonly DocumentEdit[]) => DocumentEdit;
+
+// @public
+export const combineRecordedRevisions: (steps: readonly RecordedRevisionIds[]) => RecordedRevisionIds;
 
 // @public
 export type CommentAnchor = {
@@ -1220,6 +1224,9 @@ export const PROPERTY_REVIEW_POLICIES: Readonly<{
 
 // @public
 export const reconcileDocumentPartRelationships: (document: Document_2) => Document_2;
+
+// @public
+export type RecordedRevisionIds = Pick<AppliedDocumentOp, "revisions" | "folded">;
 
 // @public
 export const recordsCopyOrigin: (node: InlineNode) => boolean;

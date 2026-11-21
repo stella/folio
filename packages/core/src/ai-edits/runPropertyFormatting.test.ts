@@ -1490,9 +1490,9 @@ describe("tracked run formatting", () => {
       await formatCarriersOverPendingTab("canonical");
     expect(result.skipped).toEqual([]);
     // The tab's change keeps its id: the transaction's new ids are the
-    // other five carriers'.
+    // other five carriers', and it reports the tab's change it now shares.
     expect(result.applied.at(0)?.revisionIds).toEqual([
-      900, 901, 902, 903, 904,
+      900, 901, 902, 903, 904, 899,
     ]);
     expect(result.nextRevisionId).toBe(905);
 
