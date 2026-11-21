@@ -10,11 +10,12 @@
  * - Blocks put on either side of blocks accepting removes whole, tables and
  *   paragraphs, share one gap and keep the order the batch names them in, as
  *   they do once those blocks are removed directly.
- * - Removing what ends a pending join leaves the joined paragraph standing:
- *   deleting the paragraph the join runs into keeps its break, the joined
- *   paragraph's, and on the legacy session removing a table that stops the
- *   join keeps the words apart from what follows it, as accepting already
- *   left them.
+ * - Deleting the paragraph a pending join runs into deletes the joined
+ *   paragraph, which carries its id: on the canonical session the words
+ *   joined into it go too, as deleting it directly after the join leaves
+ *   nothing of it; the legacy session keeps its break and the joined words.
+ *   On the legacy session removing a table that stops the join keeps the
+ *   words apart from what follows it, as accepting already left them.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -385,11 +386,15 @@ const tableRemovals: Record<string, Step> = {
 };
 
 describe("removing what ends a pending join", () => {
-  /** Each step a tracked batch; the texts once accepted. */
+  /**
+   * Each step a tracked batch; the texts once accepted. A step in `noops`
+   * finds nothing left to do: every operation in it reports so.
+   */
   const replay = async (
     markdown: string,
     steps: Step[],
     session?: HeadlessReviewerSession,
+    noops: ReadonlySet<Step> = new Set(),
   ) => {
     const reviewer = await open(markdown, session);
     const before = textsOf(reviewer.snapshot().blocks);
@@ -402,7 +407,11 @@ describe("removing what ends a pending join", () => {
       return block.id;
     };
     for (const step of steps) {
-      expect(apply(reviewer, "tracked-changes", step(id)).skipped).toEqual([]);
+      expect(
+        apply(reviewer, "tracked-changes", step(id)).skipped.map(
+          ({ reason }) => reason,
+        ),
+      ).toEqual(noops.has(step) ? step(id).map(() => "noopOperation") : []);
     }
     // Rejecting every change still gives the document before back.
     expect(await rejected(reviewer, session)).toEqual(before);
@@ -414,11 +423,20 @@ describe("removing what ends a pending join", () => {
     (id) => [deleteBlock(id("Joined."))],
   ];
 
-  test("keeps the break of the paragraph the join runs into", async () => {
-    expect(
-      await replay(["Opening.", "Joined.", "Closing."].join("\n\n"), joined),
-    ).toEqual(["Opening. ", "Closing."]);
-  });
+  /** What is left of the joined paragraph once accepted, on each session. */
+  const joinedLeft = (session: HeadlessReviewerSession): string[] =>
+    session === "legacy" ? ["Opening. "] : [];
+
+  for (const session of SESSIONS)
+    test(`deletes the paragraph the join runs into (${session})`, async () => {
+      expect(
+        await replay(
+          ["Opening.", "Joined.", "Closing."].join("\n\n"),
+          joined,
+          session,
+        ),
+      ).toEqual([...joinedLeft(session), "Closing."]);
+    });
 
   // The rest of a batch reads the joined paragraph where its deletion left
   // it, as after that deletion alone: a list item the join runs into.
@@ -443,12 +461,17 @@ describe("removing what ends a pending join", () => {
       apply(reviewer, "tracked-changes", [joinInto(opening)]).skipped,
     ).toEqual([]);
     const operations = [edit(() => opening), deleteBlock(joinedId)];
+    // The legacy session reads the rest of a batch as after the deletion
+    // alone; the canonical one runs a batch as its operations one at a time,
+    // in the order it names them.
+    const oneAtATime =
+      session === "legacy" ? operations.toReversed() : operations;
     const skipped = together
       ? apply(reviewer, "tracked-changes", operations).skipped
-      : [
-          ...apply(reviewer, "tracked-changes", [operations[1]!]).skipped,
-          ...apply(reviewer, "tracked-changes", [operations[0]!]).skipped,
-        ];
+      : oneAtATime.flatMap(
+          (operation) =>
+            apply(reviewer, "tracked-changes", [operation]).skipped,
+        );
     return {
       skipped: skipped.map(({ reason }) => reason),
       blocks: reviewer.snapshot().blocks.map(({ text, kind }) => ({
@@ -475,7 +498,7 @@ describe("removing what ends a pending join", () => {
 
   for (const session of SESSIONS) {
     for (const [name, edit] of Object.entries(editsOfTheSource)) {
-      test(`reads it in the same batch as after the deletion alone (${name}, ${session})`, async () => {
+      test(`reads it in the same batch as one at a time (${name}, ${session})`, async () => {
         expect(await afterDeletion({ session, edit, together: true })).toEqual(
           await afterDeletion({ session, edit, together: false }),
         );
@@ -499,15 +522,21 @@ describe("removing what ends a pending join", () => {
     });
 
     test(`lets that break go when a later batch deletes the joined words (${session})`, async () => {
+      const deleteOpening: Step = (id) => [
+        deleteBlock(id("Opening."), "opening"),
+      ];
       expect(
         await replay(
           ["Opening.", "Joined.", "Closing."].join("\n\n"),
           [
             (id) => [joinInto(id("Opening."))],
             (id) => [deleteBlock(id("Joined."), "joined")],
-            (id) => [deleteBlock(id("Opening."), "opening")],
+            deleteOpening,
           ],
           session,
+          // On the canonical session the deletion of the paragraph the join
+          // runs into already took the joined words.
+          new Set(session === "canonical" ? [deleteOpening] : []),
         ),
       ).toEqual(["Closing."]);
     });
@@ -515,24 +544,25 @@ describe("removing what ends a pending join", () => {
 
   const beforeTable = ["Opening.", "Joined.", TABLE, "Closing."].join("\n\n");
 
-  test("keeps it before a table", async () => {
-    expect(await replay(beforeTable, joined)).toEqual([
-      "Opening. ",
-      "Item",
-      "Price",
-      "Widget",
-      "10",
-      "Closing.",
-    ]);
-  });
-
-  for (const [name, removal] of Object.entries(tableRemovals)) {
-    test(`keeps it once that table goes (${name})`, async () => {
-      expect(await replay(beforeTable, [...joined, removal])).toEqual([
-        "Opening. ",
+  for (const session of SESSIONS)
+    test(`deletes it before a table (${session})`, async () => {
+      expect(await replay(beforeTable, joined, session)).toEqual([
+        ...joinedLeft(session),
+        "Item",
+        "Price",
+        "Widget",
+        "10",
         "Closing.",
       ]);
     });
+
+  for (const [name, removal] of Object.entries(tableRemovals)) {
+    for (const session of SESSIONS)
+      test(`deletes it before a table that goes (${name}, ${session})`, async () => {
+        expect(
+          await replay(beforeTable, [...joined, removal], session),
+        ).toEqual([...joinedLeft(session), "Closing."]);
+      });
 
     for (const session of SESSIONS)
       test(`gives the words the join reached once the table goes, directly as tracked (${name}, ${session})`, async () => {
@@ -742,40 +772,47 @@ describe("blocks put on either side of blocks accepting removes whole", () => {
       }
     }
 
-  for (const before of beforeClosing) {
-    test(`stop at a deleted paragraph whose break a pending join keeps (${before.name})`, async () => {
-      const replayJoin = async (mode: Mode) => {
-        const reviewer = await open(
-          ["Opening clause.", "Joined clause.", "Closing clause."].join("\n\n"),
-        );
-        const source = textsOf(reviewer.snapshot().blocks);
-        const joined = idOf(reviewer, "Joined clause.");
-        expect(
-          apply(reviewer, "tracked-changes", [
-            joinInto(idOf(reviewer, "Opening clause.")),
-          ]).skipped,
-        ).toEqual([]);
-        expect(
-          apply(reviewer, "tracked-changes", [deleteBlock(joined)]).skipped,
-        ).toEqual([]);
-        expect(
-          apply(reviewer, mode, [before.operation(reviewer)]).skipped,
-        ).toEqual([]);
-        if (mode === "tracked-changes") {
-          expect(await rejected(reviewer)).toEqual(source);
-        }
-        return accepted(reviewer);
-      };
-      const direct = await replayJoin("direct");
-      // The joined words keep that break, apart from the new block.
-      expect(direct[0]).toMatchObject({
-        text: "Opening clause. ",
-        inTable: false,
+  for (const session of SESSIONS)
+    for (const before of beforeClosing) {
+      test(`stand where a deleted paragraph a pending join runs into stood (${before.name}, ${session})`, async () => {
+        const replayJoin = async (mode: Mode) => {
+          const reviewer = await open(
+            ["Opening clause.", "Joined clause.", "Closing clause."].join(
+              "\n\n",
+            ),
+            session,
+          );
+          const source = textsOf(reviewer.snapshot().blocks);
+          const joined = idOf(reviewer, "Joined clause.");
+          expect(
+            apply(reviewer, "tracked-changes", [
+              joinInto(idOf(reviewer, "Opening clause.")),
+            ]).skipped,
+          ).toEqual([]);
+          expect(
+            apply(reviewer, "tracked-changes", [deleteBlock(joined)]).skipped,
+          ).toEqual([]);
+          expect(
+            apply(reviewer, mode, [before.operation(reviewer)]).skipped,
+          ).toEqual([]);
+          if (mode === "tracked-changes") {
+            expect(await rejected(reviewer, session)).toEqual(source);
+          }
+          return accepted(reviewer, session);
+        };
+        const direct = await replayJoin("direct");
+        // The legacy session keeps the joined words, apart from the new block;
+        // the canonical one deletes them with the paragraph they joined.
+        if (session === "legacy")
+          expect(direct[0]).toMatchObject({
+            text: "Opening clause. ",
+            inTable: false,
+          });
+        else expect(direct[0]?.text).toBe(before.marker);
+        expect(direct.at(-1)?.text).toBe("Closing clause.");
+        expect(await replayJoin("tracked-changes")).toEqual(direct);
       });
-      expect(direct.at(-1)?.text).toBe("Closing clause.");
-      expect(await replayJoin("tracked-changes")).toEqual(direct);
-    });
-  }
+    }
 
   const reachedTable = async (session: HeadlessReviewerSession, mode: Mode) => {
     const { reviewer, id } = await withPendingDeletions({
