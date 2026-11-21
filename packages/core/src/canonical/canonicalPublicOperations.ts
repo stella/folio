@@ -19,6 +19,7 @@ import {
 } from "@stll/docx-core/model";
 import {
   applyDocumentOps,
+  BATCH_ANNOTATION_KINDS,
   type BatchBlockAccess,
   type BatchOrderAddress,
   type BlockInsertionPoint,
@@ -351,7 +352,15 @@ const canonicalBatchPlan = ({
         claim: claim({ type: "annotation", block, from, to }),
         block,
         placedAgainst: block,
-        address: { type: "annotation", position: from, inputIndex },
+        address: {
+          type: "annotation",
+          kind:
+            operation.type === "formatRange"
+              ? BATCH_ANNOTATION_KINDS.FORMATTING
+              : BATCH_ANNOTATION_KINDS.COMMENT,
+          position: from,
+          inputIndex,
+        },
         removes: null,
         insertionRun: null,
       };
@@ -3992,6 +4001,8 @@ const compilePublicIntents = ({
       verifiedOperation = verified.value;
       applied = verified.value;
     }
+    // An intent the document already satisfies is a no-op.
+    if (applied.document === document) continue;
     // The notes whose last live reference the intent's tracked deletion
     // took go with it, as operations of their own beside the intent's. A
     // comparison states each note's own changes as a story of its own, as

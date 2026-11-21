@@ -692,9 +692,10 @@ describe("Folio AI edit operations", () => {
           },
         ],
       });
-      expect(result.applied.map(({ id }) => id)).toEqual(["italic"]);
+      // In input order: the italic would stack on the bold's pending change.
+      expect(result.applied.map(({ id }) => id)).toEqual(["bold"]);
       expect(result.skipped).toEqual([
-        { id: "bold", reason: "pendingRunPropertyChange" },
+        { id: "italic", reason: "pendingRunPropertyChange" },
       ]);
       expect(getTrackedChangesFromDoc(view.state.doc)).toHaveLength(1);
       return view;
@@ -703,7 +704,7 @@ describe("Folio AI edit operations", () => {
     const accepting = applyFormatting();
     acceptAllChanges()(accepting.state, accepting.dispatch);
     expect(collectMarksByText(accepting.state)).toEqual({
-      target: ["italic", "runFormattingOverride"],
+      target: ["bold", "runFormattingOverride"],
     });
 
     const rejecting = applyFormatting();
