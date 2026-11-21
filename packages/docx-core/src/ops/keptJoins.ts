@@ -14,6 +14,12 @@ import { isTrackedWrapper } from "./review";
  */
 export type HandedJoin = { node: InlineNode; takesKept: boolean };
 
+type HandJoinOptions = {
+  node: InlineNode;
+  side: "before" | "after";
+  depth: number;
+};
+
 /**
  * `node`, a pending tracked change, with its join on `side` at least `depth`
  * levels deep. A resolution keeping a piece of a record whose join meets a
@@ -25,13 +31,14 @@ export type HandedJoin = { node: InlineNode; takesKept: boolean };
  * their cut's piece, so the later join places them inside the record it
  * makes. An insertion whose join on that side is already as deep holds a
  * piece of that record, made inside it, and takes the markers all the same,
- * so accepting it places them inside its piece.
+ * so accepting it places them inside its piece. One that takes no piece of
+ * that record refuses the join (`takesKept: false`, `node` unchanged).
  */
-export const handJoin = (
-  node: InlineNode,
-  side: "before" | "after",
-  depth: number,
-): HandedJoin => {
+export const handJoin = ({
+  node,
+  side,
+  depth,
+}: HandJoinOptions): HandedJoin => {
   if (!isTrackedWrapper(node) || node.resolutionJoins === undefined)
     return panic("A blocking insertion is a pending change with joins.");
   const joins = node.resolutionJoins;
