@@ -4138,7 +4138,18 @@ const strikeInsideControl = ({
     swapped = true;
     return {
       ...control,
-      content: [{ ...node, content: control.content }],
+      content: [
+        text === ""
+          ? {
+              ...node,
+              content: control.content,
+              resolutionJoins: {
+                ...(node.resolutionJoins ?? { before: 0, after: 0, remove: 0 }),
+                holdsControlText: true,
+              },
+            }
+          : { ...node, content: control.content },
+      ],
     };
   });
   if (!swapped) return Result.ok(planned);
