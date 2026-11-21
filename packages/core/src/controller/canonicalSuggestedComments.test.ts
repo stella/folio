@@ -92,6 +92,7 @@ const canonicalHost = async (bytes: ArrayBuffer) => {
     return true;
   };
   const executor = new CanonicalPublicOperations({
+    undoLimit: Number.POSITIVE_INFINITY,
     session,
     getState: () => state,
     publish,
@@ -273,6 +274,7 @@ describe("an edit's attached comment covers the same text in both engines", () =
         ).unwrap();
         let state = EditorState.create({ doc: session.projection.doc });
         const executor = new CanonicalPublicOperations({
+          undoLimit: Number.POSITIVE_INFINITY,
           session,
           getState: () => state,
           publish: (commit) => {

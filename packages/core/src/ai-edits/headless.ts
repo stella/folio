@@ -2221,6 +2221,7 @@ export class FolioDocxReviewer {
       session,
       operations: new CanonicalPublicOperations({
         session,
+        undoLimit: FOLIO_DOCUMENT_OPERATION_UNDO_LIMIT,
         getState: (story) => {
           if (story === OP_STORIES.MAIN) return this.state;
           const projected = session.projectStory(story);

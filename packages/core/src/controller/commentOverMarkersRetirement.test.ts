@@ -121,6 +121,7 @@ test("the canonical session drops the comment from the save", async () => {
     return true;
   };
   const executor = new CanonicalPublicOperations({
+    undoLimit: Number.POSITIVE_INFINITY,
     session,
     getState: () => state,
     publish,
@@ -306,6 +307,7 @@ for (const shape of [
         return true;
       };
       const executor = new CanonicalPublicOperations({
+        undoLimit: Number.POSITIVE_INFINITY,
         session,
         getState: () => state,
         publish,

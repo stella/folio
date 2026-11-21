@@ -350,6 +350,7 @@ describe("block content controls in the canonical session", () => {
       const current = await session("contentLocked");
       let state = stateFor(current);
       const executor = new CanonicalPublicOperations({
+        undoLimit: Number.POSITIVE_INFINITY,
         session: current,
         getState: () => state,
         publish: (commit) => {
