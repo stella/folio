@@ -8,11 +8,19 @@ import {
   textRun,
 } from "../__tests__/operationBatchDocuments";
 import { createDocx } from "../docx/rezip";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import type { Paragraph } from "../types/document";
 import { withoutLostCommentThreads } from "./comment-lifecycle";
+import { FolioDocxReviewer } from "./headless";
+
+const SESSIONS = [
+  "legacy",
+  "canonical",
+] as const satisfies readonly HeadlessReviewerSession[];
 
 const expectSavedThreads = async (
-  reviewer: Awaited<ReturnType<typeof openReviewer>>,
+  reviewer: FolioDocxReviewer,
+  reopen: (buffer: ArrayBuffer) => Promise<FolioDocxReviewer> = openReviewer,
 ) => {
   const threads = (source: typeof reviewer) =>
     source.getComments().map(({ id, text, anchoredText, replies }) => ({
@@ -24,7 +32,7 @@ const expectSavedThreads = async (
         text: replyText,
       })),
     }));
-  const reopened = await openReviewer(await reviewer.toBuffer());
+  const reopened = await reopen(await reviewer.toBuffer());
   expect(threads(reopened)).toEqual(threads(reviewer));
   const comments = reopened.toDocument().package.document.comments ?? [];
   const ids = new Set(comments.map(({ id }) => id));
@@ -35,57 +43,77 @@ const expectSavedThreads = async (
   return comments;
 };
 
-test("retiring a replaced comment anchor also retires its newly created reply", async () => {
-  const reviewer = await openReviewer(
-    await paragraphsDocx(
-      [
+// Accepting a replacement of every word a comment covers retires the comment
+// on the canonical session (its anchor is the deleted words only, as a direct
+// replacement retires it); the legacy session keeps it on the inserted words
+// until rejecting the insertion empties the anchor.
+for (const session of SESSIONS) {
+  test(`${session}: retiring a replaced comment anchor also retires its newly created reply`, async () => {
+    const openSession = (buffer: ArrayBuffer) =>
+      FolioDocxReviewer.fromBuffer(buffer, { author: "Reviewer", session });
+    const reviewer = await openSession(
+      await paragraphsDocx(
         [
-          { type: "commentRangeStart", id: 0 },
-          textRun("Paragraph 0 of the agreement."),
-          { type: "commentRangeEnd", id: 0 },
-          { type: "commentReference", id: 0 },
+          [
+            { type: "commentRangeStart", id: 0 },
+            textRun("Paragraph 0 of the agreement."),
+            { type: "commentRangeEnd", id: 0 },
+            { type: "commentReference", id: 0 },
+          ],
         ],
+        [reviewComment(0, "A")],
+      ),
+    );
+    await expectSavedThreads(reviewer, openSession);
+    const block = reviewer.snapshot().blocks.at(0);
+    if (!block) panic("Expected the commented paragraph");
+    const applied = reviewer.applyOperations(
+      [
+        {
+          id: "replace",
+          type: "replaceInBlock",
+          blockId: block.id,
+          find: block.text,
+          replace: "Revised.",
+        },
       ],
-      [reviewComment(0, "A")],
-    ),
-  );
-  await expectSavedThreads(reviewer);
-  const block = reviewer.snapshot().blocks.at(0);
-  if (!block) panic("Expected the commented paragraph");
-  const applied = reviewer.applyOperations(
-    [
-      {
-        id: "replace",
-        type: "replaceInBlock",
-        blockId: block.id,
-        find: block.text,
-        replace: "Revised.",
-      },
-    ],
-    { undefinedReferences: "refuse", mode: "tracked-changes" },
-  );
-  expect(applied.skipped).toEqual([]);
-  await expectSavedThreads(reviewer);
-  const change = reviewer.getChanges().at(0);
-  if (!change) panic("Expected a tracked replacement change");
-  expect(reviewer.acceptChange(change)).toBe(true);
-  await expectSavedThreads(reviewer);
-  const comment = reviewer.getComments().at(0);
-  if (!comment) panic("Expected the surviving comment thread");
-  reviewer.replyTo(comment, { text: "Session reply." });
-  await expectSavedThreads(reviewer);
-  expect(
-    reviewer
-      .getComments()
-      .at(0)
-      ?.replies.map(({ text }) => text),
-  ).toEqual(["Session reply."]);
-  expect(reviewer.rejectAll().resolved).toBeGreaterThan(0);
-  await expectSavedThreads(reviewer);
-  const reopened = await openReviewer(await reviewer.toBuffer());
-  expect(reviewer.getComments()).toEqual([]);
-  expect(reopened.getComments()).toEqual([]);
-});
+      { undefinedReferences: "refuse", mode: "tracked-changes" },
+    );
+    expect(applied.skipped).toEqual([]);
+    await expectSavedThreads(reviewer, openSession);
+    const change = reviewer.getChanges().at(0);
+    if (!change) panic("Expected a tracked replacement change");
+    if (session === "canonical") {
+      const thread = reviewer.getComments().at(0);
+      if (!thread) panic("Expected the comment thread");
+      reviewer.replyTo(thread, { text: "Session reply." });
+      await expectSavedThreads(reviewer, openSession);
+      expect(reviewer.acceptChange(change)).toBe(true);
+      await expectSavedThreads(reviewer, openSession);
+      const reopened = await openSession(await reviewer.toBuffer());
+      expect(reviewer.getComments()).toEqual([]);
+      expect(reopened.getComments()).toEqual([]);
+      return;
+    }
+    expect(reviewer.acceptChange(change)).toBe(true);
+    await expectSavedThreads(reviewer, openSession);
+    const comment = reviewer.getComments().at(0);
+    if (!comment) panic("Expected the surviving comment thread");
+    reviewer.replyTo(comment, { text: "Session reply." });
+    await expectSavedThreads(reviewer, openSession);
+    expect(
+      reviewer
+        .getComments()
+        .at(0)
+        ?.replies.map(({ text }) => text),
+    ).toEqual(["Session reply."]);
+    expect(reviewer.rejectAll().resolved).toBeGreaterThan(0);
+    await expectSavedThreads(reviewer, openSession);
+    const reopened = await openSession(await reviewer.toBuffer());
+    expect(reviewer.getComments()).toEqual([]);
+    expect(reopened.getComments()).toEqual([]);
+  });
+}
 
 const anchoredParagraph = (id: number, text: string): Paragraph => ({
   type: "paragraph",
@@ -98,64 +126,74 @@ const anchoredParagraph = (id: number, text: string): Paragraph => ({
   ],
 });
 
-test("retiring a body thread preserves unrelated body, note and source-unanchored threads", async () => {
-  const target = anchoredParagraph(0, "Original.");
-  const other = anchoredParagraph(20, "Other story.");
-  const survivor = anchoredParagraph(7, "Survivor.");
-  survivor.content.push({
-    type: "run",
-    content: [{ type: "footnoteRef", id: 2 }],
-  });
-  const reviewer = await openReviewer(
-    await createDocx({
-      package: {
-        document: {
-          content: [target, survivor],
-          comments: [
-            reviewComment(0),
-            { ...reviewComment(1), parentId: 0 },
-            reviewComment(7),
-            reviewComment(20),
-            reviewComment(30),
-            { ...reviewComment(31), parentId: 30 },
-          ],
+for (const session of SESSIONS) {
+  test(`${session}: retiring a body thread preserves unrelated body, note and source-unanchored threads`, async () => {
+    const openSession = (buffer: ArrayBuffer) =>
+      FolioDocxReviewer.fromBuffer(buffer, { author: "Reviewer", session });
+    const target = anchoredParagraph(0, "Original.");
+    const other = anchoredParagraph(20, "Other story.");
+    const survivor = anchoredParagraph(7, "Survivor.");
+    survivor.content.push({
+      type: "run",
+      content: [{ type: "footnoteRef", id: 2 }],
+    });
+    const reviewer = await openSession(
+      await createDocx({
+        package: {
+          document: {
+            content: [target, survivor],
+            comments: [
+              reviewComment(0),
+              { ...reviewComment(1), parentId: 0 },
+              reviewComment(7),
+              reviewComment(20),
+              reviewComment(30),
+              { ...reviewComment(31), parentId: 30 },
+            ],
+          },
+          footnotes: [{ type: "footnote", id: 2, content: [other] }],
         },
-        footnotes: [{ type: "footnote", id: 2, content: [other] }],
-      },
-    }),
-  );
-  await expectSavedThreads(reviewer);
-  const block = reviewer.snapshot().blocks.at(0);
-  if (!block) panic("Expected the commented story block");
-  const result = reviewer.applyOperations(
-    [
+      }),
+    );
+    await expectSavedThreads(reviewer, openSession);
+    const block = reviewer.snapshot().blocks.at(0);
+    if (!block) panic("Expected the commented story block");
+    const result = reviewer.applyOperations(
+      [
+        {
+          id: "replace",
+          type: "replaceInBlock",
+          blockId: block.id,
+          find: block.text,
+          replace: "Revised.",
+        },
+      ],
       {
-        id: "replace",
-        type: "replaceInBlock",
-        blockId: block.id,
-        find: block.text,
-        replace: "Revised.",
+        undefinedReferences: "refuse",
+        mode: "tracked-changes",
       },
-    ],
-    {
-      undefinedReferences: "refuse",
-      mode: "tracked-changes",
-    },
-  );
-  expect(result.skipped).toEqual([]);
-  await expectSavedThreads(reviewer);
-  const change = reviewer.getChanges().at(0);
-  if (!change) panic("Expected a tracked story change");
-  expect(reviewer.acceptChange(change)).toBe(true);
-  await expectSavedThreads(reviewer);
-  expect(reviewer.replyTo(0, { text: "Session reply." })).not.toBeNull();
-  await expectSavedThreads(reviewer);
-  expect(reviewer.rejectAll().resolved).toBeGreaterThan(0);
-  const comments = await expectSavedThreads(reviewer);
-  expect(
-    comments.map(({ id }) => id).sort((left, right) => left - right),
-  ).toEqual([7, 20, 30, 31]);
-});
+    );
+    expect(result.skipped).toEqual([]);
+    await expectSavedThreads(reviewer, openSession);
+    const change = reviewer.getChanges().at(0);
+    if (!change) panic("Expected a tracked story change");
+    if (session === "canonical") {
+      expect(reviewer.replyTo(0, { text: "Session reply." })).not.toBeNull();
+      await expectSavedThreads(reviewer, openSession);
+    }
+    expect(reviewer.acceptChange(change)).toBe(true);
+    await expectSavedThreads(reviewer, openSession);
+    if (session === "legacy") {
+      expect(reviewer.replyTo(0, { text: "Session reply." })).not.toBeNull();
+      await expectSavedThreads(reviewer, openSession);
+      expect(reviewer.rejectAll().resolved).toBeGreaterThan(0);
+    }
+    const comments = await expectSavedThreads(reviewer, openSession);
+    expect(
+      comments.map(({ id }) => id).sort((left, right) => left - right),
+    ).toEqual([7, 20, 30, 31]);
+  });
+}
 
 const ANCHOR_TRANSITIONS = {
   retired: { before: [0, 100], now: [100], retainTarget: false },
