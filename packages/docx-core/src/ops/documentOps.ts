@@ -34,6 +34,7 @@ export {
   locateParagraphThroughTextBoxes,
   paragraphsThroughTextBoxes,
   textBoxContentsIn,
+  withTextBoxesClosed,
 } from "./textBoxRouting";
 
 // Callers name package stories; a text box's story is internal to applying
