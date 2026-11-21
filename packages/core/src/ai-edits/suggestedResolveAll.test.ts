@@ -1030,3 +1030,86 @@ describe("resolving every suggestion headlessly", () => {
     });
   }
 });
+
+// Reject All rejects proposals in the commit that takes a pending inserted
+// paragraph out again: a proposal on that paragraph ends with it and has no
+// survivor to follow. The registry follows survivors on the canonical session
+// only; the legacy one restages proposals instead.
+describe("rejecting all with a proposal on a pending inserted paragraph", () => {
+  const proposals = (blockId: string): FolioDocumentOperation[] => [
+    {
+      id: "replace",
+      type: "replaceInBlock",
+      blockId,
+      find: "are",
+      replace: "get",
+    },
+    {
+      id: "range",
+      type: "replaceRange",
+      range: {
+        type: "textRange",
+        story: "main",
+        blockId,
+        startOffset: 0,
+        endOffset: 6,
+        selectedTextHash: hashFolioAIBlockText("Stages"),
+      },
+      replace: "Parts",
+    },
+    {
+      id: "rewrite",
+      type: "replaceBlock",
+      blockId,
+      text: "Stages are billed.",
+    },
+    {
+      id: "comment",
+      type: "commentOnBlock",
+      blockId,
+      quote: "are",
+      comment: { text: "Check." },
+    },
+    {
+      id: "style",
+      type: "setBlockParagraphProperties",
+      blockId,
+      properties: { alignment: "center" },
+    },
+    {
+      id: "before",
+      type: "insertBeforeBlock",
+      blockId,
+      text: "Added clause.",
+    },
+  ];
+  for (const { id } of proposals("x"))
+    test(`${id} (canonical session)`, async () => {
+      const source = ["Payment happens in stages.", "Deposit on signature."];
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await documentOf(source),
+        { author: "Editor", session: "canonical" },
+      );
+      const [payment] = reviewer.getContent();
+      if (!payment) throw new Error("fixture paragraph missing");
+      applyOne(reviewer, "tracked-changes", {
+        id: "insert",
+        type: "insertAfterBlock",
+        blockId: payment.id,
+        text: "Stages are invoiced separately.",
+      });
+      const inserted = reviewer
+        .getContent()
+        .find(({ text }) => text === "Stages are invoiced separately.");
+      if (!inserted) throw new Error("inserted paragraph missing");
+      const proposal = proposals(inserted.id).find(
+        (candidate) => candidate.id === id,
+      );
+      if (!proposal) throw new Error("proposal missing");
+      applyOne(reviewer, "suggested", proposal);
+      reviewer.rejectAll();
+      expect(reviewer.getContent().map(({ text }) => text)).toEqual(source);
+      expect(reviewer.exportPendingSuggestions()).toEqual([]);
+      expect(await savedTexts(reviewer)).toEqual(source);
+    });
+});
