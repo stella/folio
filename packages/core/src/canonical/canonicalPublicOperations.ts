@@ -5956,7 +5956,7 @@ export class CanonicalPublicOperations {
         "unsupportedBlock",
         "Canonical public emphasis replacements are unavailable.",
       );
-    if (/\[\^(?:e)?\d+\]/u.test(prose) || /[\t\r\n]/u.test(prose))
+    if (/\[\^(?:e)?\d+\]/u.test(prose))
       return refusal(
         "unsupportedBlock",
         "Canonical public replacements require plain text.",
@@ -6157,6 +6157,38 @@ export class CanonicalPublicOperations {
           }
         }
         if (pending) changes.push(pending);
+      }
+      // A tab the replacement repeats from the source is kept: a change that
+      // spans tabs changes the text between them, tab for tab. A tab or break
+      // the replacement adds would be written as text, so it is refused.
+      for (let index = changes.length - 1; index >= 0; index -= 1) {
+        const change = changes[index];
+        if (change === undefined || !/[\t\r\n]/u.test(change.text)) continue;
+        const sourceParts = clean.text
+          .slice(change.start, change.end)
+          .split("\t");
+        const replacementParts = change.text.split("\t");
+        if (
+          /[\r\n]/u.test(change.text) ||
+          sourceParts.length !== replacementParts.length
+        )
+          return refusal(
+            "unsupportedBlock",
+            "Canonical public replacements require plain text.",
+          );
+        const pieces: typeof changes = [];
+        let position = change.start;
+        for (const [part, sourcePart] of sourceParts.entries()) {
+          const replacementPart = replacementParts[part] ?? "";
+          if (sourcePart !== replacementPart)
+            pieces.push({
+              start: position,
+              end: position + sourcePart.length,
+              text: replacementPart,
+            });
+          position += sourcePart.length + 1;
+        }
+        changes.splice(index, 1, ...pieces);
       }
       const placeChanges = (
         pieces: readonly { start: number; end: number; text: string }[],
