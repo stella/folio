@@ -95,7 +95,7 @@ for (const [kind, follower] of Object.entries(followers))
     });
 
 for (const session of ["legacy", "canonical"] as const)
-  test(`${session}: removing an empty added mark before an opaque block preserves its section owner`, async () => {
+  test(`${session}: removing an empty added mark before an opaque block takes its section with it`, async () => {
     for (const owner of [
       "unavailable",
       "available",
@@ -146,18 +146,17 @@ for (const session of ["legacy", "canonical"] as const)
             session,
           });
           const before = reviewer.toDocument().package.document;
-          const removable = tail && (owner === "available" || owner === "same");
+          // The added mark's section never stood in the original: it goes
+          // with the mark, and the paragraph before keeps its own.
           const expectedContent = before.content.flatMap((block) => {
-            if (block.type !== "paragraph") return [block];
-            if (block.paraId === "10000002") {
-              const { pPrMark: _resolved, ...unmarked } = block;
-              return removable ? [] : [unmarked];
-            }
-            return [
-              removable && block.paraId === "10000001"
-                ? { ...block, sectionProperties: section }
-                : block,
-            ];
+            if (block.type !== "paragraph" || block.paraId !== "10000002")
+              return [block];
+            const {
+              pPrMark: _resolved,
+              sectionProperties: _added,
+              ...unmarked
+            } = block;
+            return tail ? [] : [unmarked];
           });
           // Parse the independently stated resolved OOXML, including its
           // section grouping, rather than retaining the source's cached view.
