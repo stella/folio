@@ -260,6 +260,10 @@ const reanchoredRecord = ({
   const survivor = finalSurvivor(survivors, paraId);
   let shift: number | null = null;
   let text = "";
+  // The members' text without the record's paragraph: what the survivor
+  // shows when the resolution took that paragraph's words, as rejecting the
+  // insertion or move that brought them does.
+  let others = "";
   for (const { id } of before?.blocks ?? []) {
     if (
       id !== survivor &&
@@ -267,10 +271,14 @@ const reanchoredRecord = ({
     )
       continue;
     if (id === paraId) shift = text.length;
-    text += before?.anchors[id]?.text ?? "";
+    const shown = before?.anchors[id]?.text ?? "";
+    text += shown;
+    if (id !== paraId) others += shown;
   }
   const anchor = after?.anchors[survivor];
   if (!anchor) return null;
+  if (paraId !== survivor && anchor.text === others && others !== text)
+    return null;
   // The survivor's own record moves by the text absorbed before it, when the
   // survivor shows its members' text; it stays where it is when what joined
   // it is a paragraph only a proposal adds.
