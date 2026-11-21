@@ -302,21 +302,32 @@ for (const [name, fixture] of Object.entries(cases))
     const expectedIds = adapted.package.document.comments
       ?.map(({ id }) => id)
       .toSorted((a, b) => a - b);
+    const anchors = (document: Document) =>
+      commentAnchorsIn(document).map(({ node, blockId, before, after }) => ({
+        type: node.type,
+        id: node.id,
+        blockId,
+        from: before.offset,
+        to: after.offset,
+      }));
+    const ranges = (document: Document) =>
+      anchors(document)
+        .filter(({ type }) => type !== "commentReference")
+        .map(({ type, id }) => ({ type, id }));
+    // Opening gives a range no reference names its reference after the end,
+    // and keeps every range; a save then keeps what the open read.
+    const opened = await parseDocx(bytes.slice(0), {
+      detectVariables: false,
+      preloadFonts: false,
+    });
+    expect(ranges(opened)).toEqual(ranges(adapted));
     for (const reviewer of [legacy, canonical]) {
       const saved = await parseDocx(await reviewer.toBuffer(), {
         detectVariables: false,
         preloadFonts: false,
       });
       expect(commentDocumentIssue(saved, "all")).toBeUndefined();
-      const anchors = (document: Document) =>
-        commentAnchorsIn(document).map(({ node, blockId, before, after }) => ({
-          type: node.type,
-          id: node.id,
-          blockId,
-          from: before.offset,
-          to: after.offset,
-        }));
-      expect(anchors(saved)).toEqual(anchors(adapted));
+      expect(anchors(saved)).toEqual(anchors(opened));
       expect(
         saved.package.document.comments
           ?.map(({ id }) => id)
