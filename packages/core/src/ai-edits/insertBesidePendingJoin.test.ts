@@ -1211,7 +1211,18 @@ describe("a table and a paragraph inserted before a deleted final paragraph", ()
         ),
         { mode },
       );
-      expect(result.skipped).toEqual([]);
+      // A canonical tracked table after a paragraph whose break a pending
+      // final-paragraph deletion retired is refused, as a join into a pending
+      // inserted table is.
+      const refused =
+        session === "canonical" &&
+        mode === "tracked-changes" &&
+        operations.length > 1;
+      expect(result.skipped.map(({ id, reason }) => ({ id, reason }))).toEqual(
+        refused
+          ? [{ id: "table", reason: "pendingParagraphMarkDeletion" }]
+          : [],
+      );
       for (const { paragraphIdentity: joined } of result.applied) {
         if (joined?.type === "joined")
           joinedIds.set(joined.retiredBlockId, joined.blockId);
