@@ -6550,7 +6550,12 @@ export class CanonicalPublicOperations {
         "unsupportedBlock",
         "Canonical public emphasis replacements are unavailable.",
       );
-    if (!editsReferences && /\[\^(?:e)?\d+\]/u.test(prose))
+    if (
+      (!editsReferences && /\[\^(?:e)?\d+\]/u.test(prose)) ||
+      // A tab or line feed is written as its element; a carriage return
+      // names no element of its own.
+      /\r/u.test(prose)
+    )
       return refusal(
         "unsupportedBlock",
         "Canonical public replacements require plain text.",
@@ -6766,23 +6771,20 @@ export class CanonicalPublicOperations {
           }),
         );
       // A tab the replacement repeats from the source is kept: a change that
-      // spans tabs changes the text between them, tab for tab. A tab or break
-      // the replacement adds would be written as text, so it is refused.
+      // spans as many tabs as it writes changes the text between them, tab
+      // for tab. Any other tab or break is written as its element.
       for (let index = changes.length - 1; index >= 0; index -= 1) {
         const change = changes[index];
-        if (change === undefined || !/[\t\r\n]/u.test(change.text)) continue;
+        if (change === undefined || !/[\t\n]/u.test(change.text)) continue;
         const sourceParts = clean.text
           .slice(change.start, change.end)
           .split("\t");
         const replacementParts = change.text.split("\t");
         if (
-          /[\r\n]/u.test(change.text) ||
+          /\n/u.test(change.text) ||
           sourceParts.length !== replacementParts.length
         )
-          return refusal(
-            "unsupportedBlock",
-            "Canonical public replacements require plain text.",
-          );
+          continue;
         const pieces: typeof changes = [];
         let position = change.start;
         for (const [part, sourcePart] of sourceParts.entries()) {

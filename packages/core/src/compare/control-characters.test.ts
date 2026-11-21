@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { ZipArchive } from "@stll/docx-core/zip";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import { buildBodySequenceDocx } from "./__fixtures__/body-sequence";
 import { compareDocx } from "./compare";
 
@@ -48,15 +49,22 @@ const rawControlElements = async (buffer: ArrayBuffer): Promise<string[]> => {
   );
 };
 
-const firstBlockText = async (buffer: ArrayBuffer): Promise<string> => {
-  const block = (await FolioDocxReviewer.fromBuffer(buffer)).getContent().at(0);
+const SESSIONS: readonly HeadlessReviewerSession[] = ["canonical", "legacy"];
+
+const firstBlockText = async (
+  buffer: ArrayBuffer,
+  session: HeadlessReviewerSession,
+): Promise<string> => {
+  const block = (await FolioDocxReviewer.fromBuffer(buffer, { session }))
+    .getContent()
+    .at(0);
   if (!block) {
     throw new Error("Expected the synthetic DOCX fixture to produce a block.");
   }
   return block.text;
 };
 
-describe("comparison control characters", () => {
+describe.each(SESSIONS)("comparison control characters (%s)", (session) => {
   test("accept and reject preserve tabs and hard breaks in a replaced paragraph", async () => {
     const base = await documentWithParagraphs([
       "<w:r><w:t>alpha</w:t></w:r><w:r><w:tab/></w:r><w:r><w:t>base</w:t></w:r><w:r><w:br/></w:r><w:r><w:t>end</w:t></w:r>",
@@ -64,30 +72,41 @@ describe("comparison control characters", () => {
     const target = await documentWithParagraphs([
       "<w:r><w:t>alpha</w:t></w:r><w:r><w:tab/></w:r><w:r><w:t>target</w:t></w:r><w:r><w:br/></w:r><w:r><w:t>end</w:t></w:r>",
     ]);
-    const baseText = await firstBlockText(base);
-    const targetText = await firstBlockText(target);
+    const baseText = await firstBlockText(base, session);
+    const targetText = await firstBlockText(target, session);
     expect(baseText).toBe("alpha\tbase\nend");
     expect(targetText).toBe("alpha\ttarget\nend");
 
     const compared = await compareDocx(base, target, {
       author: "compare",
       timestamp: "2024-03-01T00:00:00.000Z",
+      session,
     });
     expect(compared.isErr()).toBe(false);
     if (compared.isErr()) {
       throw compared.error;
     }
 
-    const accepting = await FolioDocxReviewer.fromBuffer(compared.value.buffer);
+    const accepting = await FolioDocxReviewer.fromBuffer(
+      compared.value.buffer,
+      {
+        session,
+      },
+    );
     accepting.acceptAll();
     const accepted = await accepting.toBuffer();
-    expect(await firstBlockText(accepted)).toBe(targetText);
+    expect(await firstBlockText(accepted, session)).toBe(targetText);
     expect(await rawControlElements(accepted)).toEqual(["tab", "br"]);
 
-    const rejecting = await FolioDocxReviewer.fromBuffer(compared.value.buffer);
+    const rejecting = await FolioDocxReviewer.fromBuffer(
+      compared.value.buffer,
+      {
+        session,
+      },
+    );
     rejecting.rejectAll();
     const rejected = await rejecting.toBuffer();
-    expect(await firstBlockText(rejected)).toBe(baseText);
+    expect(await firstBlockText(rejected, session)).toBe(baseText);
     expect(await rawControlElements(rejected)).toEqual(["tab", "br"]);
   });
 
@@ -100,28 +119,39 @@ describe("comparison control characters", () => {
     const compared = await compareDocx(base, target, {
       author: "compare",
       timestamp: "2024-03-01T00:00:00.000Z",
+      session,
     });
     expect(compared.isErr()).toBe(false);
     if (compared.isErr()) {
       throw compared.error;
     }
 
-    const accepting = await FolioDocxReviewer.fromBuffer(compared.value.buffer);
+    const accepting = await FolioDocxReviewer.fromBuffer(
+      compared.value.buffer,
+      {
+        session,
+      },
+    );
     accepting.acceptAll();
     const accepted = await accepting.toBuffer();
-    expect(await firstBlockText(accepted)).toBe("anchor");
+    expect(await firstBlockText(accepted, session)).toBe("anchor");
     expect(
-      (await FolioDocxReviewer.fromBuffer(accepted))
+      (await FolioDocxReviewer.fromBuffer(accepted, { session }))
         .getContent()
         .map(({ text }) => text),
     ).toEqual(["anchor", "inserted\tvalue\nend"]);
     expect(await rawControlElements(accepted)).toEqual(["tab", "br"]);
 
-    const rejecting = await FolioDocxReviewer.fromBuffer(compared.value.buffer);
+    const rejecting = await FolioDocxReviewer.fromBuffer(
+      compared.value.buffer,
+      {
+        session,
+      },
+    );
     rejecting.rejectAll();
     const rejected = await rejecting.toBuffer();
     expect(
-      (await FolioDocxReviewer.fromBuffer(rejected))
+      (await FolioDocxReviewer.fromBuffer(rejected, { session }))
         .getContent()
         .map(({ text }) => text),
     ).toEqual(["anchor"]);
