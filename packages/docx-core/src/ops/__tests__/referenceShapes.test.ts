@@ -293,7 +293,8 @@ describe("Backspace at the start of a paragraph", () => {
         INTRO,
         { ...alpha, pPrMark: mark("del", 0) },
         paragraph("3B000003", [text("Bravo text.")], own, {
-          propertyChanges: [change(1, next, own)],
+          // Decided with the join's mark deletion.
+          propertyChanges: [{ ...change(1, next, own), resolvesWith: 0 }],
         }),
         TAIL,
       ]);
