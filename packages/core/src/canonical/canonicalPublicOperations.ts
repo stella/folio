@@ -3602,7 +3602,7 @@ type ResolveBlockDeletionOptions = {
    */
   tableBeforeGainsFollower: boolean;
   /** The run of paragraphs right before this one the batch deletes. */
-  deletedRun: FinalBreakCarrier<unknown>["type"];
+  deletedRun: DeletedRun;
   refusal: (
     reason: FolioAIEditSkipReason,
     message?: string,
@@ -4033,6 +4033,34 @@ type DeletedRunBeforeOptions = {
 };
 
 /**
+ * The paragraphs right before a container's final paragraph that the batch
+ * deletes, as `finalBreakCarrier` reads them, or, tracked, `bounded`: a
+ * block the batch inserts stands right before them once it runs (after the
+ * kept paragraph before them, or before the first of them). The deletion is
+ * claimed from `claimFrom`, before that insertion and the run's deletions,
+ * so it runs after them and retires the break before the run as it stands.
+ */
+type DeletedRun =
+  | { type: FinalBreakCarrier<unknown>["type"] }
+  | { type: "bounded"; claimFrom: number };
+
+/** Whether the batch deletes none of the paragraphs right before. */
+const noDeletedRunBefore = ({ type }: DeletedRun): boolean => {
+  switch (type) {
+    case "none":
+      return true;
+    case "kept":
+    case "runStart":
+    case "bounded":
+      return false;
+    default: {
+      const unreachable: never = type;
+      return unreachable;
+    }
+  }
+};
+
+/**
  * The paragraphs right before the one starting at `paragraphStart` that the
  * batch deletes, putting nothing beside them, as `finalBreakCarrier` reads
  * them: `kept` when a paragraph the batch keeps precedes them, `runStart`
@@ -4044,34 +4072,44 @@ const deletedRunBefore = ({
   paragraphStart,
   besideDeletions,
   tracked,
-}: DeletedRunBeforeOptions): FinalBreakCarrier<unknown>["type"] => {
+}: DeletedRunBeforeOptions): DeletedRun => {
   const at = doc.resolve(paragraphStart - 1);
   let deleted = 0;
+  let position = paragraphStart - 1;
   for (let index = at.index() - 1; index >= 0; index--) {
     const previous = at.parent.child(index);
+    position -= previous.nodeSize;
     if (previous.type.name !== "paragraph") break;
     if (tracked && goesWholeOnAcceptance(previous)) continue;
     const id: unknown = previous.attrs["paraId"];
+    if (typeof id !== "string")
+      return { type: deleted === 0 ? "none" : "kept" };
+    const blockAfter =
+      besideDeletions.paragraphsAfter.has(id) ||
+      besideDeletions.tables.after.has(id);
     // A block the batch puts after the kept paragraph stands between it and
     // the run instead: the break the deletion retires is that block's.
+    if (!besideDeletions.deleted.has(id) && blockAfter)
+      return tracked && deleted > 0
+        ? { type: "bounded", claimFrom: position + 1 }
+        : { type: "none" };
+    // So does one the batch puts before the first paragraph of the run.
+    const blockBefore =
+      !blockAfter &&
+      (besideDeletions.insertedBeside.has(id) ||
+        besideDeletions.tables.before.has(id));
+    if (tracked && besideDeletions.deleted.has(id) && blockBefore)
+      return { type: "bounded", claimFrom: position };
     if (
-      typeof id === "string" &&
-      !besideDeletions.deleted.has(id) &&
-      (besideDeletions.paragraphsAfter.has(id) ||
-        besideDeletions.tables.after.has(id))
-    )
-      return "none";
-    if (
-      typeof id !== "string" ||
       !besideDeletions.deleted.has(id) ||
       besideDeletions.insertedBeside.has(id) ||
       besideDeletions.tables.after.has(id) ||
       besideDeletions.tables.before.has(id)
     )
-      return deleted === 0 ? "none" : "kept";
+      return { type: deleted === 0 ? "none" : "kept" };
     deleted += 1;
   }
-  return deleted === 0 ? "none" : "runStart";
+  return { type: deleted === 0 ? "none" : "runStart" };
 };
 
 /** The ids of the paragraphs `block` holds, at any depth. */
@@ -6144,7 +6182,7 @@ export class CanonicalPublicOperations {
       operation.moveId === undefined &&
       !gainsFollower &&
       !previousGainsFollower &&
-      deletedRun === "none";
+      noDeletedRunBefore(deletedRun);
     if (
       !keepsSectionBreakBeforeBlock &&
       (next !== undefined ||
@@ -6168,13 +6206,22 @@ export class CanonicalPublicOperations {
         after === null &&
         !gainsFollower &&
         previous !== undefined &&
-        deletedRun !== "none";
+        !noDeletedRunBefore(deletedRun);
+      let from = paragraph.start;
+      if (retiresRun)
+        from =
+          deletedRun.type === "bounded" ? deletedRun.claimFrom : previous.start;
+      const runCarrier =
+        retiresRun &&
+        (deletedRun.type === "kept" || deletedRun.type === "runStart")
+          ? deletedRun.type
+          : undefined;
       return tracking({
         intents,
         normalizations: [],
-        from: retiresRun ? previous.start : paragraph.start,
+        from,
         to: end,
-        ...(retiresRun ? { retiresRunBreak: deletedRun } : {}),
+        ...(runCarrier === undefined ? {} : { retiresRunBreak: runCarrier }),
         ...(after === null && !gainsFollower
           ? {}
           : { removesParagraphBeforeBlock: true }),
@@ -6267,7 +6314,7 @@ export class CanonicalPublicOperations {
       // joins the run's paragraph before it, which keeps its identity and
       // properties until its own deletion.
       const collapsesRunStart =
-        previous !== undefined && deletedRun === "runStart";
+        previous !== undefined && deletedRun.type === "runStart";
       if (previous !== undefined)
         intents.push({
           type: "joinParagraphs",
@@ -6296,7 +6343,29 @@ export class CanonicalPublicOperations {
         to: end,
         ...joinOrder,
       });
-    } else if (previous !== undefined && deletedRun !== "none") {
+    } else if (previous !== undefined && deletedRun.type === "bounded") {
+      // The batch deletes the paragraphs right before it and inserts a block
+      // that then stands before them. Claimed from before that insertion and
+      // the run's deletions, the block deletion runs after them and retires
+      // the break before the run as it stands then: the inserted paragraph's,
+      // whose properties this paragraph takes, or none after a table, as one
+      // at a time.
+      return tracking({
+        intents: [
+          {
+            type: "deleteParagraphs",
+            story: projectionStory,
+            blockIds: [paragraph.blockId],
+          },
+        ],
+        normalizations: [],
+        from: deletedRun.claimFrom,
+        to: end,
+      });
+    } else if (
+      previous !== undefined &&
+      (deletedRun.type === "kept" || deletedRun.type === "runStart")
+    ) {
       // The batch deletes the paragraphs right before it. With a kept one
       // before them, it runs after their deletions and retires the break
       // before them; back to the container's start or a table, it runs
@@ -6313,7 +6382,7 @@ export class CanonicalPublicOperations {
         normalizations: [],
         from: previous.start,
         to: end,
-        retiresRunBreak: deletedRun,
+        retiresRunBreak: deletedRun.type,
       });
     } else if (previous !== undefined) {
       // Paragraphs a pending deletion already takes whole, words and mark,
@@ -6354,7 +6423,7 @@ export class CanonicalPublicOperations {
       // paragraph before, the deletion runs after that insertion, as the
       // direct deletion's join does. A run the batch deletes before it is
       // `retiresRunBreak`'s.
-      if (previousGainsFollower && deletedRun === "none") {
+      if (previousGainsFollower && noDeletedRunBefore(deletedRun)) {
         const from = projection.addressAt(range.from);
         const to = projection.addressAt(end);
         if (from.isErr() || to.isErr()) return refusal("unsupportedBlock");
@@ -6808,7 +6877,7 @@ export class CanonicalPublicOperations {
             besideDeletions.deleted.has(previousId)),
         tableBeforeGainsFollower,
         deletedRun: followed
-          ? "none"
+          ? { type: "none" }
           : deletedRunBefore({
               doc: state.doc,
               paragraphStart: paragraph.start,
