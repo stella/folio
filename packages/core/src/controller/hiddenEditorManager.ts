@@ -2196,6 +2196,8 @@ export const createHiddenEditorManager = (
     if (publicOperations?.session === session) return publicOperations.executor;
     const executor = new CanonicalPublicOperations({
       session,
+      // The editor's own history bounds its undo; every batch handle stays.
+      undoLimit: Number.POSITIVE_INFINITY,
       getState: (story) => {
         if (!view || deps.getReadOnly() || isDestroying) return null;
         if (story === OP_STORIES.MAIN) return view.state;

@@ -2890,6 +2890,8 @@ type CanonicalPublicOperationsOptions = {
   session: CanonicalSession;
   getState: (story: OpStory) => EditorState | null;
   publish: (commit: CanonicalCommit) => boolean;
+  /** How many batches stay undoable; older handles are `unknownHandle`. */
+  undoLimit: number;
 };
 
 type PublicOperationStaging = ReturnType<
@@ -3083,6 +3085,11 @@ const CanonicalPublicOperationResolutionErrorBase: TaggedErrorClass<"CanonicalPu
 class CanonicalPublicOperationResolutionError extends CanonicalPublicOperationResolutionErrorBase<{
   message: string;
   reason: FolioAIEditSkipReason;
+  /**
+   * What the skip tells the caller beyond its reason; `undefined` when the
+   * reason says it all, as the legacy engine reports such a skip.
+   */
+  detail: string | undefined;
   /**
    * The capability the refusal waits for, when it is not the compiler's
    * inline one; `null` for an operation the default engine skips alike, such
@@ -3404,7 +3411,10 @@ export class CanonicalPublicOperations {
   private readonly options: CanonicalPublicOperationsOptions;
   private readonly handles: {
     handle: FolioDocumentOperationUndoHandle;
+    /** The session version the batch's undo expects. */
     version: number;
+    /** The session version the batch started from. */
+    startVersion: number;
     story: OpStory;
   }[] = [];
   private nextHandle = 1;
@@ -3518,7 +3528,7 @@ export class CanonicalPublicOperations {
               ? CANONICAL_GAP.publicUnsupportedInline
               : undefined));
       if (gap !== undefined) refusals.set(id, { gap });
-      skip(id, error.reason, error.message);
+      skip(id, error.reason, error.detail);
     };
     const result = (
       applied: FolioDocumentOperationResult["applied"],
@@ -4827,6 +4837,7 @@ export class CanonicalPublicOperations {
       ];
     });
     if (batch.dryRun) return result(applied, null);
+    const startVersion = session.version;
     if (!this.options.publish(prepared.value)) {
       for (const { id } of applied) skip(id, "documentNotEditable");
       return result([], null);
@@ -4835,7 +4846,14 @@ export class CanonicalPublicOperations {
       type: "documentOperationUndo",
       id: `canonical-${this.handleNamespace}-${String(this.nextHandle++)}`,
     } as const;
-    this.handles.push({ handle, version: session.version, story });
+    this.handles.push({
+      handle,
+      version: session.version,
+      startVersion,
+      story,
+    });
+    const excess = this.handles.length - this.options.undoLimit;
+    if (excess > 0) this.handles.splice(0, excess);
     return result(applied, handle);
   }
 
@@ -4884,9 +4902,11 @@ export class CanonicalPublicOperations {
         reason: "documentNotEditable",
       };
     this.handles.pop();
-    // Undo advances the version while exposing the preceding unchanged journal group.
+    // Undo advances the version while exposing the preceding unchanged
+    // journal group: the batch before stays undoable when nothing came between
+    // it and the batch just undone.
     const previous = this.handles.at(-1);
-    if (previous && previous.version === entry.version - 1)
+    if (previous && previous.version === entry.startVersion)
       previous.version = session.version;
     return { status: "undone", undoHandle: handle };
   }
@@ -5188,6 +5208,7 @@ export class CanonicalPublicOperations {
         new CanonicalPublicOperationResolutionError({
           reason,
           message: message ?? `The operation was refused: ${reason}.`,
+          detail: message,
         }),
       );
     const skipAlike = (reason: FolioAIEditSkipReason, message: string) =>
@@ -5195,6 +5216,7 @@ export class CanonicalPublicOperations {
         new CanonicalPublicOperationResolutionError({
           reason,
           message,
+          detail: message,
           gap: null,
         }),
       );
@@ -5262,6 +5284,8 @@ export class CanonicalPublicOperations {
           reason: "unsupportedBlock",
           message:
             "Whole-table signature suggestions need direct acceptance semantics.",
+          detail:
+            "Whole-table signature suggestions need direct acceptance semantics.",
           gap: CANONICAL_GAP.publicTableStructure,
         }),
       );
@@ -5302,6 +5326,7 @@ export class CanonicalPublicOperations {
           message:
             pendingRefusal.message ??
             `The operation was refused: ${pendingRefusal.reason}.`,
+          detail: pendingRefusal.message,
           ...(pendingRefusal.canonicalRefusal === undefined
             ? {}
             : { gap: pendingRefusal.canonicalRefusal.gap }),
@@ -5825,6 +5850,8 @@ export class CanonicalPublicOperations {
             reason: "unsupportedBlock",
             gap: CANONICAL_GAP.commentReplacementAlignment,
             message:
+              "Canonical replacement cannot preserve the aligned comment ranges.",
+            detail:
               "Canonical replacement cannot preserve the aligned comment ranges.",
           }),
         );
