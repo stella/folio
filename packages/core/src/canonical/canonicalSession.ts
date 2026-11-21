@@ -28,6 +28,7 @@ import {
   applyDocumentOps,
   type ClientDocumentChange,
   combineEdits,
+  combineRecordedRevisions,
   compileEditorIntent,
   createEditorIntentIdAllocator,
   DOCUMENT_OP_REFUSAL_REASONS,
@@ -55,6 +56,7 @@ import {
   paragraphIdsIn,
   paragraphsThroughTextBoxes,
   planWholeParagraphReplacement,
+  type RecordedRevisionIds,
   sameStory,
   suggestedCommentIds,
   suggestionRevisionInfos,
@@ -2003,6 +2005,7 @@ type OperationEffect = Pick<AppliedDocumentOp, "inverse" | "touched">;
 type VerifiedOperation = {
   readonly document: ReadonlyDocument;
   readonly revisions: readonly number[];
+  readonly folded: readonly number[];
 };
 
 type CanonicalSessionSeedOptions = {
@@ -3201,7 +3204,7 @@ class CanonicalSession {
     }
     const stagedApplied = {
       ...combineEdits(this.currentDocument, edits),
-      revisions: edits.flatMap(({ revisions }) => revisions),
+      ...combineRecordedRevisions(edits),
     };
     return this.prepareJournalledOps({
       state,
@@ -3235,13 +3238,13 @@ class CanonicalSession {
         document: Document;
         op: StageableOperation;
         effect: OperationEffect;
-        revisions: readonly number[];
+        recorded: RecordedRevisionIds;
       }
     >();
     let document = base;
     const ops: DocumentOp[] = [];
     const effects: OperationEffect[] = [];
-    const revisions: number[] = [];
+    const recorded: RecordedRevisionIds[] = [];
 
     return {
       apply: (
@@ -3256,18 +3259,20 @@ class CanonicalSession {
             document: next,
             inverse,
             touched,
-            revisions: recorded,
+            revisions,
+            folded,
           } = applied;
           const view = Object.freeze({
             document: next,
-            revisions: Object.freeze([...recorded]),
+            revisions: Object.freeze([...revisions]),
+            folded: Object.freeze([...folded]),
           });
           verified.set(view, {
             before,
             document: next,
             op,
             effect: { inverse, touched },
-            revisions: recorded,
+            recorded: { revisions, folded },
           });
           return view;
         });
@@ -3279,7 +3284,7 @@ class CanonicalSession {
         document = step.document;
         ops.push(step.op);
         effects.push(step.effect);
-        revisions.push(...step.revisions);
+        recorded.push(step.recorded);
         return true;
       },
       prepare: (
@@ -3304,7 +3309,10 @@ class CanonicalSession {
           state,
           ops: [...ops],
           postSelection,
-          stagedApplied: { ...combined, revisions },
+          stagedApplied: {
+            ...combined,
+            ...combineRecordedRevisions(recorded),
+          },
           admission,
         });
       },

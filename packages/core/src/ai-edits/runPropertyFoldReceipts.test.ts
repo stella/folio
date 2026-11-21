@@ -1,10 +1,10 @@
 /**
  * Receipts and refusals of tracked formatting over a run's pending property
- * change. A fold over the whole run keeps the pending change's id, a piece
- * the patch cuts off takes a new one, and a batch never reports an id no
- * revision carries once it settles. A suggestion that would take over
- * another pending property change is refused by its own reason on both
- * engines.
+ * change. A fold over the whole run keeps the pending change's id and
+ * reports it, a piece the patch cuts off takes a new one, and a batch never
+ * reports an id no revision carries once it settles. A suggestion that would
+ * take over another pending property change is refused by its own reason on
+ * both engines.
  */
 import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
@@ -166,8 +166,14 @@ describe("canonical: ids of a folded run property change", () => {
     expect(result.skipped).toEqual([]);
     const saved = await savedRevisionIds(reviewer);
     expect(saved).toHaveLength(1);
-    // Every receipt names that one change.
-    expect(new Set(reportedIds(result))).toEqual(new Set(saved));
+    // Both operations report that one change: the italic shares it.
+    expect(result.applied).toEqual(
+      ["format-0", "format-1"].map((id) => ({
+        id,
+        revisionId: saved.at(0),
+        revisionIds: saved,
+      })),
+    );
   });
 
   test("a piece the patch cuts off takes a new id beside the kept one", async () => {
@@ -267,6 +273,97 @@ describe.each(SESSIONS)(
       expect(result.skipped).toEqual([
         ...PARAGRAPH_SUGGESTION[session].skipped,
       ]);
+    });
+  },
+);
+
+type ReceiptOutcome = Pick<FolioDocumentOperationResult, "applied" | "skipped">;
+
+/**
+ * A later batch's alignment and italic over the pending alignment and bold an
+ * earlier batch of the same author made, given that batch's receipts. The
+ * canonical session folds each edit into the pending change and reports the
+ * id it shares; legacy refuses both by their own reasons.
+ */
+const LATER_BATCH = {
+  legacy: () => ({
+    applied: [],
+    skipped: [
+      { id: "align-1", reason: "pendingParagraphPropertyChange" },
+      { id: "format-1", reason: "pendingRunPropertyChange" },
+    ],
+  }),
+  canonical: (earlier: ReceiptOutcome) => ({
+    applied: earlier.applied.map((receipt) => ({
+      ...receipt,
+      id: receipt.id.replace("-0", "-1"),
+    })),
+    skipped: [],
+  }),
+} as const satisfies Record<
+  HeadlessReviewerSession,
+  (earlier: ReceiptOutcome) => ReceiptOutcome
+>;
+
+type LaterBatchOptions = {
+  index: number;
+  alignment: "center" | "right";
+  formatting: FolioAIInlineFormattingPatch;
+};
+
+describe.each(SESSIONS)(
+  "%s: a later batch over the pending property changes an earlier one made",
+  (session) => {
+    test("reports the ids it shares, or is refused by its own reasons", async () => {
+      const reviewer = await FolioDocxReviewer.fromBuffer(await source(), {
+        author: "Reviewer",
+        session,
+      });
+      const block =
+        reviewer.snapshot().blocks.at(0) ?? panic("Expected a block");
+      const range =
+        createFolioAITextRangeHandle({
+          blockId: block.id,
+          text: block.text,
+          startOffset: 0,
+          endOffset: END,
+        }) ?? panic("Expected a range");
+      const batch = ({ index, alignment, formatting }: LaterBatchOptions) =>
+        reviewer.applyDocumentOperations(
+          {
+            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+            mode: "tracked-changes",
+            operations: [
+              {
+                id: `align-${index}`,
+                type: "setBlockParagraphProperties",
+                blockId: block.id,
+                properties: { alignment },
+              },
+              { id: `format-${index}`, type: "formatRange", range, formatting },
+            ],
+          },
+          {
+            undefinedReferences: "refuse",
+            revisionStamp: {
+              date: "2026-01-02T03:04:05.000Z",
+              idSeed: 10 + index * 100,
+            },
+          },
+        );
+      const earlier = batch({
+        index: 0,
+        alignment: "center",
+        formatting: BOLD,
+      });
+      expect(earlier.skipped).toEqual([]);
+      const later = batch({ index: 1, alignment: "right", formatting: ITALIC });
+      expect({
+        applied: later.applied,
+        skipped: later.skipped.map(({ id, reason }) => ({ id, reason })),
+      }).toEqual(LATER_BATCH[session](earlier));
+      const saved = new Set(await savedRevisionIds(reviewer));
+      expect(reportedIds(later).filter((id) => !saved.has(id))).toEqual([]);
     });
   },
 );

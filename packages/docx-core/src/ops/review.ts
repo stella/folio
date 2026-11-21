@@ -17,6 +17,7 @@ import {
   type ParagraphContent,
   type ParagraphFormatting,
   type ParagraphPropertyChange,
+  type RunPropertyChange,
   type TrackedChangeInfo,
   type TrackedRunContent,
 } from "../model/document";
@@ -32,6 +33,7 @@ import {
   alikeDepth,
   childNodes,
   type Cursor,
+  fieldResultOf,
   type Gap,
   type InlineNode,
   isCommentAnchor,
@@ -149,6 +151,86 @@ export const stampedRevisionIds = (
         out.push(info.id);
       }
     }
+  }
+  return out;
+};
+
+/** A pending property change and the properties its carrier states with it. */
+type RecordedProperties = {
+  change: RunPropertyChange | ParagraphPropertyChange;
+  formatting: object | undefined;
+};
+
+/** By revision id, what each pending property change of the paragraphs records. */
+const recordedPropertiesOf = (
+  paragraphs: readonly Paragraph[],
+): Map<number, RecordedProperties[]> => {
+  const out = new Map<number, RecordedProperties[]>();
+  const add = (id: number, recorded: RecordedProperties) => {
+    const list = out.get(id);
+    if (list === undefined) out.set(id, [recorded]);
+    else list.push(recorded);
+  };
+  const visit = (nodes: readonly InlineNode[]): void => {
+    for (const node of nodes) {
+      if (node.type === "run")
+        for (const change of node.propertyChanges ?? [])
+          add(change.info.id, { change, formatting: node.formatting });
+      visit(childNodes(node) ?? fieldResultOf(node) ?? []);
+    }
+  };
+  for (const paragraph of paragraphs) {
+    for (const change of paragraph.propertyChanges ?? [])
+      add(change.info.id, { change, formatting: paragraph.formatting });
+    visit(paragraph.content);
+  }
+  return out;
+};
+
+const sameRecordedSet = (
+  left: readonly RecordedProperties[],
+  right: readonly RecordedProperties[],
+): boolean => {
+  const covers = (
+    from: readonly RecordedProperties[],
+    into: readonly RecordedProperties[],
+  ) => from.every((one) => into.some((other) => structurallyEqual(one, other)));
+  return covers(left, right) && covers(right, left);
+};
+
+type FoldedRevisionIdsOptions = {
+  /** The paragraphs the operation replaced, as they were. */
+  before: readonly Paragraph[];
+  /** The paragraphs it left in their place. */
+  after: readonly Paragraph[];
+  stamp: RevisionStamp;
+  /** Slot keys of the ids the document held before the operation. */
+  known: KeyMembership;
+};
+
+/**
+ * The revision ids of pending property changes an operation folded its edit
+ * into, in document order: ids the document already held whose changes now
+ * carry the stamp and record other properties than before. Accepting or
+ * rejecting one of them accepts or rejects that edit too.
+ */
+export const foldedRevisionIds = ({
+  before,
+  after,
+  stamp,
+  known,
+}: FoldedRevisionIdsOptions): number[] => {
+  const prior = recordedPropertiesOf(before);
+  const out: number[] = [];
+  for (const [id, recorded] of recordedPropertiesOf(after)) {
+    const previous = prior.get(id);
+    if (
+      previous !== undefined &&
+      known.has(slotKey({ space: IDENTITY_SPACES.REVISION, id })) &&
+      recorded.some(({ change }) => carriesStamp(change.info, stamp)) &&
+      !sameRecordedSet(previous, recorded)
+    )
+      out.push(id);
   }
   return out;
 };
