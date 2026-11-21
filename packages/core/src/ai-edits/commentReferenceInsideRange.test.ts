@@ -23,9 +23,11 @@ import { FolioDocxReviewer } from "./headless";
 import { hashFolioAIBlockText } from "./snapshot";
 
 const MODES = ["direct", "tracked-changes"] as const;
+const SESSIONS = ["legacy", "canonical"] as const;
+type Session = (typeof SESSIONS)[number];
 
-const open = async (bytes: ArrayBuffer | Uint8Array) =>
-  FolioDocxReviewer.fromBuffer(bytes, { author: "Test" });
+const open = async (bytes: ArrayBuffer | Uint8Array, session: Session) =>
+  FolioDocxReviewer.fromBuffer(bytes, { author: "Test", session });
 
 const apply = (
   reviewer: FolioDocxReviewer,
@@ -68,7 +70,7 @@ const markers = (document: Document) =>
   );
 
 /** "Outer" covers the paragraph; "Inner" covers its first word only. */
-const nested = async (reservedId?: number) => {
+const nested = async (session: Session, reservedId?: number) => {
   const document = fromMarkdown(
     reservedId === undefined
       ? "Clause one tail."
@@ -105,6 +107,7 @@ const nested = async (reservedId?: number) => {
   }
   const reviewer = await open(
     (await ensureParaIds(await createDocx(document))).docx,
+    session,
   );
   const block = reviewer.snapshot().blocks[0];
   if (!block) throw new Error("Missing fixture");
@@ -165,52 +168,78 @@ const commentIdsByText = (reviewer: FolioDocxReviewer) => {
   );
 };
 
+// The legacy allocator starts at 1; the canonical one is one past every
+// annotation id, so a package without any starts at 0. Both wrap to the
+// lowest free id once the highest is taken.
+const FIRST_ID = { legacy: 1, canonical: 0 } as const satisfies Record<
+  Session,
+  number
+>;
+
+// Range starts at one position carry no order: the legacy session writes
+// them by id, the canonical session puts the newer comment's first.
+const startsOf = (session: Session, byId: readonly string[]) =>
+  session === "legacy" ? byId : ["Inner", "Outer"];
+
 const ID_ORDERS = [
   {
     name: "ascending IDs",
     reservedId: undefined,
-    outerId: 1,
-    innerId: 2,
+    outerId: (session: Session) => FIRST_ID[session],
+    innerId: (session: Session) => FIRST_ID[session] + 1,
     starts: ["Outer", "Inner"],
   },
   {
     name: "wrapped IDs",
     reservedId: MAX_REVISION_ID - 1,
-    outerId: MAX_REVISION_ID,
-    innerId: 1,
+    outerId: () => MAX_REVISION_ID,
+    innerId: (session: Session) => FIRST_ID[session],
     starts: ["Inner", "Outer"],
   },
 ] as const;
 
 describe("a comment reference put inside another comment's range", () => {
-  for (const mode of MODES) {
-    for (const { name, reservedId, outerId, innerId, starts } of ID_ORDERS) {
-      test(`stays inside it after removing the tail (${mode}, ${name})`, async () => {
-        const { reviewer, blockId } = await nested(reservedId);
-        const commentIds =
-          reservedId === undefined
-            ? { Outer: outerId, Inner: innerId }
-            : {
-                Outer: outerId,
-                Inner: innerId,
-                "Already occupied": reservedId,
-              };
-        expect(commentIdsByText(reviewer)).toEqual(commentIds);
-        const liveBeforeSave = markers(reviewer.toDocument());
-        const reopened = await open(await reviewer.toBuffer());
-        expect(markers(reviewer.toDocument())).toEqual(liveBeforeSave);
-        expect(commentIdsByText(reopened)).toEqual(commentIds);
-        const expected = [
-          ...starts.map((comment) => `commentRangeStart ${comment}`),
-          "Clause",
-          "commentRangeEnd Inner",
-          "commentReference Inner",
-          "commentRangeEnd Outer",
-          "commentReference Outer",
-        ];
-        expect(removeTail(reviewer, mode, blockId)).toEqual(expected);
-        expect(removeTail(reopened, mode, blockId)).toEqual(expected);
-      });
+  for (const session of SESSIONS)
+    for (const mode of MODES) {
+      for (const { name, reservedId, outerId, innerId, starts } of ID_ORDERS) {
+        // Ratchet: the canonical session's revision ids run one past every
+        // annotation id and do not wrap yet, so a tracked edit beside a comment
+        // holding the highest id is refused.
+        const ratchet =
+          session === "canonical" &&
+          mode === "tracked-changes" &&
+          reservedId !== undefined;
+        (ratchet ? test.failing : test)(
+          `stays inside it after removing the tail (${session}, ${mode}, ${name})`,
+          async () => {
+            const { reviewer, blockId } = await nested(session, reservedId);
+            const commentIds =
+              reservedId === undefined
+                ? { Outer: outerId(session), Inner: innerId(session) }
+                : {
+                    Outer: outerId(session),
+                    Inner: innerId(session),
+                    "Already occupied": reservedId,
+                  };
+            expect(commentIdsByText(reviewer)).toEqual(commentIds);
+            const liveBeforeSave = markers(reviewer.toDocument());
+            const reopened = await open(await reviewer.toBuffer(), session);
+            expect(markers(reviewer.toDocument())).toEqual(liveBeforeSave);
+            expect(commentIdsByText(reopened)).toEqual(commentIds);
+            const expected = [
+              ...startsOf(session, starts).map(
+                (comment) => `commentRangeStart ${comment}`,
+              ),
+              "Clause",
+              "commentRangeEnd Inner",
+              "commentReference Inner",
+              "commentRangeEnd Outer",
+              "commentReference Outer",
+            ];
+            expect(removeTail(reviewer, mode, blockId)).toEqual(expected);
+            expect(removeTail(reopened, mode, blockId)).toEqual(expected);
+          },
+        );
+      }
     }
-  }
 });
