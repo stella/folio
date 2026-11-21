@@ -551,7 +551,7 @@ describe("tracked table refusals", () => {
               },
             ],
           },
-          reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+          reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
         },
         {
           value: {

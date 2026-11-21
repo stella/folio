@@ -925,7 +925,7 @@ const columnEdit = ({
   )
     return refuse({
       op,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
       message: "Resolve table reviews before changing its columns.",
     });
   // The cells the column removes, now or when its suggestion is accepted,
@@ -1151,7 +1151,7 @@ const columnEdit = ({
         )
           return refuse({
             op,
-            reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+            reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
             message: "The column's cells are already suggested for deletion.",
           });
         if (trackedDeletion && entry.end - entry.start > 1)
@@ -1475,7 +1475,7 @@ const merge = ({
   )
     return refuse({
       op,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
       message: "Resolve table reviews before changing cells.",
     });
   const selection = mergeSelection({ table, grid, op });
@@ -1673,7 +1673,7 @@ const split = ({
   if (op.revision !== undefined && hasReview(table))
     return refuse({
       op,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
       message: "Resolve table reviews before changing cells.",
     });
   const group = grid.rows.flatMap((row) =>
@@ -1933,7 +1933,7 @@ const editProperties = ({
       if ((table.propertyChanges?.length ?? 0) > 1)
         return refuse({
           op,
-          reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+          reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
           message: "Resolve the existing table property revision.",
         });
       const pending = table.propertyChanges?.at(0);
@@ -1969,7 +1969,7 @@ const editProperties = ({
       if ((row.propertyChanges?.length ?? 0) > 1)
         return refuse({
           op,
-          reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+          reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
           message: "Resolve the existing row property revision.",
         });
       const pending = row.propertyChanges?.at(0);
@@ -2008,7 +2008,7 @@ const editProperties = ({
       if ((cell.propertyChanges?.length ?? 0) > 1)
         return refuse({
           op,
-          reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+          reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
           message: "Resolve the existing cell property revision.",
         });
       const pending = cell.propertyChanges?.at(0);
@@ -2152,7 +2152,7 @@ export const applyTableEdit = (
       if (table.formatting?.gridChange !== undefined)
         return refuse({
           op,
-          reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+          reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
           message: "Resolve the existing grid revision before resizing.",
         });
       if (op.revision !== undefined && table.columnWidths === undefined)
@@ -2164,7 +2164,7 @@ export const applyTableEdit = (
       if (table.propertyChanges !== undefined)
         return refuse({
           op,
-          reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+          reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
           message:
             "Resolve the table property history before resizing its grid.",
         });
