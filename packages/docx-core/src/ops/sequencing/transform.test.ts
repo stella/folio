@@ -589,6 +589,69 @@ describe("insertions at a gap where a record was cut", () => {
   });
 });
 
+describe("a direct deletion and a direct insertion cutting an identified record", () => {
+  // "Pa" is a tracked deletion: inserting between "P" and "a" cuts it, its
+  // second half taking the insertion's new id.
+  const document: Document = {
+    package: {
+      document: {
+        content: [
+          {
+            type: "paragraph",
+            paraId: "00000001",
+            content: [
+              {
+                type: "deletion",
+                info: { id: 5, author: "Actor", date: "2026-01-01T00:00:00Z" },
+                content: [
+                  { type: "run", content: [{ type: "text", text: "Pa" }] },
+                ],
+              },
+              { type: "run", content: [{ type: "text", text: "rest" }] },
+            ],
+          },
+        ],
+      },
+    },
+  };
+  const typed = {
+    type: "insertContent",
+    at: { ...at(1), zeroWidthBefore: 0 },
+    slice: {
+      content: [{ type: "run", content: [{ type: "text", text: "x" }] }],
+      openStart: 0,
+      openEnd: 0,
+    },
+    newIds: { revision: [12], control: [] },
+  } as const satisfies DocumentOp;
+  const inOrder = (first: DocumentOp, second: DocumentOp) => {
+    const applied = applyBatch(document, [first]);
+    if (applied.isErr()) throw applied.error;
+    return transformBatch(batch(second), [
+      { ...sequenced(first), effects: applied.value.effects },
+    ]);
+  };
+
+  test("a deletion reaching back from the cut refuses in either order", () => {
+    // Deleting "P" first leaves "a" deletion 5; cutting first leaves it 12.
+    for (const removed of [deletion(0, 1), deletion(0, 2)]) {
+      const message =
+        "Deleting up to an insertion that cuts an identified record needs explicit affinity.";
+      const refused = [inOrder(typed, removed), inOrder(removed, typed)];
+      for (const result of refused) {
+        expect(result.isErr()).toBe(true);
+        if (result.isErr()) expect(result.error.message).toBe(message);
+      }
+    }
+  });
+
+  test("a deletion starting at the cut passes in either order", () => {
+    const removed = deletion(1, 2);
+    expect(inOrder(typed, removed).isOk()).toBe(true);
+    expect(inOrder(removed, typed).isOk()).toBe(true);
+  });
+});
+
 describe("property and structural policies", () => {
   test("per-key paragraph and run property decisions converge", () => {
     for (const type of ["setParagraphProps", "setRunProps"] as const) {

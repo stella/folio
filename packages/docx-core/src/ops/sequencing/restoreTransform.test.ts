@@ -465,6 +465,35 @@ describe("a paragraph restoration and an edit of its paragraph", () => {
     expect(inOrder(base, typing, restore)).toBe(message);
   });
 
+  test("an insertion at an edge the restoration moves a deletion across conflicts with it in either order", () => {
+    // The restoration extends the deletion over "q": the gap after "r"
+    // ends the deletion before and lies inside it after.
+    const deleted = (value: string): ParagraphContent => ({
+      type: "deletion",
+      info: { id: 5, author: "Reviewer", date: "2026-01-02T00:00:00.000Z" },
+      content: [run([text(value)])],
+    });
+    const expected = [deleted("r"), run([text("q")]), run([text(" tail")])];
+    const base = PLACES.main.document(expected);
+    const restore = batchOf("restoration", {
+      type: DOCUMENT_OP_TYPES.REPLACE_INLINE,
+      story: OP_STORIES.MAIN,
+      blockId: BLOCK,
+      expected,
+      content: [deleted("rq"), run([text(" tail")])],
+    });
+    const insertion = batchOf("edit", {
+      type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
+      at: { ...position(OP_STORIES.MAIN, 1), zeroWidthBefore: 0 },
+      slice: { openStart: 0, openEnd: 0, content: [run([text("x")])] },
+      newIds: { revision: [], control: [] },
+    });
+    const message =
+      "A concurrent edit reached the content a restoration changes.";
+    expect(inOrder(base, restore, insertion)).toBe(message);
+    expect(inOrder(base, insertion, restore)).toBe(message);
+  });
+
   test("a restore transform that passes nothing is caught", () => {
     // The test-only break: every restoration conflicts with every edit of
     // its paragraph, as a block footprint alone decides.
