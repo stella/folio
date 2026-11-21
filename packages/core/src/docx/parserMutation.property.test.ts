@@ -22,6 +22,7 @@ import {
   propertyTestSeed,
 } from "../../../../test/property-testing";
 import { runChild, subprocessTestTimeout } from "../../../../test/subprocess";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import {
   mutateXml,
   PARSER_XML_MUTATIONS,
@@ -163,11 +164,22 @@ const CASE_RUNNER = join(
   "__tests__/parserMutationCase.ts",
 );
 
-const runCase = (mutated: Uint8Array, label: string): "opened" | "refused" => {
+type CaseOptions = {
+  mutated: Uint8Array;
+  label: string;
+  session: HeadlessReviewerSession;
+};
+
+const runCase = ({
+  mutated,
+  label,
+  session,
+}: CaseOptions): "opened" | "refused" => {
   const outcome = runChild([
     process.execPath,
     CASE_RUNNER,
     Buffer.from(mutated).toString("base64"),
+    session,
   ]);
   if (outcome.kind !== "exited") {
     assert.fail(
@@ -198,22 +210,24 @@ const applyMutation = (
 const assertSurvives = async (
   mutated: Uint8Array,
   label: string,
+  session: HeadlessReviewerSession = "legacy",
 ): Promise<"opened" | "refused"> => {
   assert.ok(
     mutated.byteLength <= MAX_MUTATED_BYTES,
     `${label}: mutation exceeded input budget`,
   );
-  return runCase(mutated, label);
+  return runCase({ mutated, label, session });
 };
 
 const checkCase = async (
   entry: MutationCase,
+  session: HeadlessReviewerSession,
 ): Promise<"opened" | "refused"> => {
-  const label = `${entry.layer}/${entry.mutation} on ${entry.fixture}:${entry.part}`;
+  const label = `${entry.layer}/${entry.mutation} on ${entry.fixture}:${entry.part} (${session})`;
   const original = await fixtureBytes(entry.fixture);
   const mutated = await applyMutation(original, entry);
   assert.notDeepEqual(mutated, original, `${label}: mutation made no change`);
-  return assertSurvives(mutated, label);
+  return assertSurvives(mutated, label, session);
 };
 
 test("parser mutation matrix covers every declared mutator", () => {
@@ -236,13 +250,18 @@ test("parser mutation matrix covers every declared mutator", () => {
 });
 
 for (const entry of CASES) {
-  test(
-    `${entry.layer}/${entry.mutation} on ${entry.fixture}:${entry.part} refuses or saves and reopens`,
-    async () => {
-      await checkCase(entry);
-    },
-    subprocessTestTimeout(),
-  );
+  for (const session of [
+    "legacy",
+    "canonical",
+  ] as const satisfies readonly HeadlessReviewerSession[]) {
+    test(
+      `${entry.layer}/${entry.mutation} on ${entry.fixture}:${entry.part} refuses or saves and reopens (${session})`,
+      async () => {
+        await checkCase(entry, session);
+      },
+      subprocessTestTimeout(),
+    );
+  }
 }
 
 test("a changed but valid package exercises the save/reopen oracle", async () => {
