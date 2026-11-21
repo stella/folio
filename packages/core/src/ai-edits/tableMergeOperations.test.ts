@@ -17,6 +17,7 @@ import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioDocumentOperation,
 } from "../document-operations";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import { FolioDocxReviewer } from "./headless";
 
 /** Two columns, three rows, `A1` merged down over the second row. */
@@ -34,8 +35,11 @@ const MERGED_LEFT: TableSpec = {
 
 type Mode = "direct" | "tracked-changes";
 
-const open = (bytes: ArrayBuffer) =>
-  FolioDocxReviewer.fromBuffer(bytes, { author: "Tester" });
+const open = (bytes: ArrayBuffer, session?: HeadlessReviewerSession) =>
+  FolioDocxReviewer.fromBuffer(bytes, {
+    author: "Tester",
+    ...(session === undefined ? {} : { session }),
+  });
 
 const blockId = (reviewer: FolioDocxReviewer, text: string): string => {
   const block = reviewer
@@ -68,8 +72,9 @@ const apply = async (
 const resolveTracked = async (
   reviewer: FolioDocxReviewer,
   resolution: "accept" | "reject",
+  session?: HeadlessReviewerSession,
 ): Promise<TableReading> => {
-  const reopened = await open(await reviewer.toBuffer());
+  const reopened = await open(await reviewer.toBuffer(), session);
   expect(
     (resolution === "accept" ? reopened.acceptAll() : reopened.rejectAll())
       .resolved,
@@ -324,64 +329,110 @@ describe("a column deletion in a nested table the same batch moves", () => {
   });
 });
 
-describe("a merge or split the batch requests before a row insertion in the same table", () => {
-  /** Two columns, three rows, nothing merged. */
-  const PLAIN: TableSpec = {
-    rows: 3,
-    columns: 2,
-    cells: ["A1", "B1", "A2", "B2", "A3", "B3"].map((text, index) => ({
-      row: Math.floor(index / 2),
-      column: index % 2,
-      rowSpan: 1,
-      columnSpan: 1,
-      text,
-    })),
-  };
+const SESSIONS: readonly HeadlessReviewerSession[] = ["canonical", "legacy"];
 
-  const applyBatch = async (
-    spec: TableSpec,
-    mode: Mode,
-    build: (reviewer: FolioDocxReviewer) => FolioDocumentOperation[],
-  ) => {
-    const reviewer = await open(await buildTableDocx(spec));
-    const result = reviewer.applyDocumentOperations(
-      {
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode,
-        operations: build(reviewer),
-      },
-      { undefinedReferences: "refuse" },
-    );
-    return { reviewer, result };
-  };
+describe.each(SESSIONS)(
+  "%s: a merge or split the batch requests beside a row insertion in the same table",
+  (session) => {
+    /** Two columns, three rows, nothing merged. */
+    const PLAIN: TableSpec = {
+      rows: 3,
+      columns: 2,
+      cells: ["A1", "B1", "A2", "B2", "A3", "B3"].map((text, index) => ({
+        row: Math.floor(index / 2),
+        column: index % 2,
+        rowSpan: 1,
+        columnSpan: 1,
+        text,
+      })),
+    };
 
-  /** The table as applied: a tracked result is read once accepted. */
-  const settle = (
-    reviewer: FolioDocxReviewer,
-    mode: Mode,
-  ): Promise<TableReading> =>
-    mode === "direct"
-      ? readReviewerTables(reviewer)
-      : resolveTracked(reviewer, "accept");
-
-  // `cellTexts` fills the row as the source grid has it: the cell-shape edit
-  // is refused whatever its place in the request, so it never runs first.
-  test.each(["direct", "tracked-changes"] as const)(
-    "a merge reaching over the boundary is refused and the row keeps its source cells (%s)",
-    async (mode) => {
-      const { reviewer, result } = await applyBatch(PLAIN, mode, (live) => [
+    const applyBatch = async (
+      spec: TableSpec,
+      mode: Mode,
+      build: (reviewer: FolioDocxReviewer) => FolioDocumentOperation[],
+    ) => {
+      const reviewer = await open(await buildTableDocx(spec), session);
+      const result = reviewer.applyDocumentOperations(
         {
-          id: "merge",
-          type: "mergeTableCells",
-          blockId: blockId(live, "A1"),
-          rowCount: 2,
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode,
+          operations: build(reviewer),
         },
+        { undefinedReferences: "refuse" },
+      );
+      return { reviewer, result };
+    };
+
+    /** The table as applied: a tracked result is read once accepted. */
+    const settle = (
+      reviewer: FolioDocxReviewer,
+      mode: Mode,
+    ): Promise<TableReading> =>
+      mode === "direct"
+        ? readReviewerTables(reviewer)
+        : resolveTracked(reviewer, "accept", session);
+
+    // `cellTexts` fills the row as the source grid has it: the cell-shape edit
+    // is refused whatever its place in the request, so it never runs first.
+    test.each(["direct", "tracked-changes"] as const)(
+      "a merge reaching over the boundary is refused and the row keeps its source cells (%s)",
+      async (mode) => {
+        const { reviewer, result } = await applyBatch(PLAIN, mode, (live) => [
+          {
+            id: "merge",
+            type: "mergeTableCells",
+            blockId: blockId(live, "A1"),
+            rowCount: 2,
+          },
+          {
+            id: "row",
+            type: "insertTableRow",
+            blockId: blockId(live, "A1"),
+            position: "after",
+            cellTexts: ["X", "Y"],
+          },
+        ]);
+
+        expect(result.applied.map(({ id }) => id)).toEqual(["row"]);
+        expect(result.issues).toEqual([
+          expect.objectContaining({
+            operationId: "merge",
+            code: "unsupportedBlock",
+          }),
+        ]);
+        const reading = await settle(reviewer, mode);
+        expect(tableReadingProblems(reading)).toEqual([]);
+        expect(cells(reading)).toEqual([
+          [
+            ["0:0", "1x1", "A1"],
+            ["0:1", "1x1", "B1"],
+            ["1:0", "1x1", "X"],
+            ["1:1", "1x1", "Y"],
+            ["2:0", "1x1", "A2"],
+            ["2:1", "1x1", "B2"],
+            ["3:0", "1x1", "A3"],
+            ["3:1", "1x1", "B3"],
+          ],
+        ]);
+      },
+    );
+
+    // Inserted above the merge, the row would move the cells it names.
+    test("a merge below a row the batch inserts is refused rather than shifted onto the new row", async () => {
+      const { reviewer, result } = await applyBatch(PLAIN, "direct", (live) => [
         {
           id: "row",
           type: "insertTableRow",
           blockId: blockId(live, "A1"),
           position: "after",
           cellTexts: ["X", "Y"],
+        },
+        {
+          id: "merge",
+          type: "mergeTableCells",
+          blockId: blockId(live, "A2"),
+          rowCount: 2,
         },
       ]);
 
@@ -392,63 +443,58 @@ describe("a merge or split the batch requests before a row insertion in the same
           code: "unsupportedBlock",
         }),
       ]);
-      const reading = await settle(reviewer, mode);
+      const reading = await settle(reviewer, "direct");
       expect(tableReadingProblems(reading)).toEqual([]);
-      expect(cells(reading)).toEqual([
-        [
-          ["0:0", "1x1", "A1"],
-          ["0:1", "1x1", "B1"],
-          ["1:0", "1x1", "X"],
-          ["1:1", "1x1", "Y"],
-          ["2:0", "1x1", "A2"],
-          ["2:1", "1x1", "B2"],
-          ["3:0", "1x1", "A3"],
-          ["3:1", "1x1", "B3"],
-        ],
-      ]);
-    },
-  );
-
-  test.each(["direct", "tracked-changes"] as const)(
-    "a split of the merge crossing the boundary is refused and the row keeps its source capacity (%s)",
-    async (mode) => {
-      const { reviewer, result } = await applyBatch(
-        MERGED_LEFT,
-        mode,
-        (live) => [
-          { id: "split", type: "splitTableCell", blockId: blockId(live, "A1") },
-          {
-            id: "row",
-            type: "insertTableRow",
-            blockId: blockId(live, "B1"),
-            position: "after",
-            cellTexts: ["X"],
-          },
-        ],
+      expect(cells(reading)[0]?.map(([, span]) => span)).toEqual(
+        Array.from({ length: 8 }, () => "1x1"),
       );
+    });
 
-      expect(result.applied.map(({ id }) => id)).toEqual(["row"]);
-      expect(result.issues).toEqual([
-        expect.objectContaining({
-          operationId: "split",
-          code: "unsupportedBlock",
-        }),
-      ]);
-      const reading = await settle(reviewer, mode);
-      expect(tableReadingProblems(reading)).toEqual([]);
-      expect(cells(reading)).toEqual([
-        [
-          ["0:0", "3x1", "A1"],
-          ["0:1", "1x1", "B1"],
-          ["1:1", "1x1", "X"],
-          ["2:1", "1x1", "B2"],
-          ["3:0", "1x1", "A3"],
-          ["3:1", "1x1", "B3"],
-        ],
-      ]);
-    },
-  );
-});
+    test.each(["direct", "tracked-changes"] as const)(
+      "a split of the merge crossing the boundary is refused and the row keeps its source capacity (%s)",
+      async (mode) => {
+        const { reviewer, result } = await applyBatch(
+          MERGED_LEFT,
+          mode,
+          (live) => [
+            {
+              id: "split",
+              type: "splitTableCell",
+              blockId: blockId(live, "A1"),
+            },
+            {
+              id: "row",
+              type: "insertTableRow",
+              blockId: blockId(live, "B1"),
+              position: "after",
+              cellTexts: ["X"],
+            },
+          ],
+        );
+
+        expect(result.applied.map(({ id }) => id)).toEqual(["row"]);
+        expect(result.issues).toEqual([
+          expect.objectContaining({
+            operationId: "split",
+            code: "unsupportedBlock",
+          }),
+        ]);
+        const reading = await settle(reviewer, mode);
+        expect(tableReadingProblems(reading)).toEqual([]);
+        expect(cells(reading)).toEqual([
+          [
+            ["0:0", "3x1", "A1"],
+            ["0:1", "1x1", "B1"],
+            ["1:1", "1x1", "X"],
+            ["2:1", "1x1", "B2"],
+            ["3:0", "1x1", "A3"],
+            ["3:1", "1x1", "B3"],
+          ],
+        ]);
+      },
+    );
+  },
+);
 
 describe("an edit inside a cell the same batch merges away", () => {
   /** Two rows; the right column is blank, so a tracked merge may fold it. */
