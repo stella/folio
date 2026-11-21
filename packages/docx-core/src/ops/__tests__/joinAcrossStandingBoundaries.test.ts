@@ -156,4 +156,17 @@ test("a section endpoint or an inline merge depth still needs the paragraphs to 
     { type: "bookmarkEnd", id: 2 },
   ]);
   expect(applyDocumentOp(unsectioned, join({ depth: 1 })).isErr()).toBe(true);
+  // Kept directly, the first paragraph would take the second's endpoint.
+  const endsSection = documentOf([
+    paragraph("00000001", "Alpha"),
+    { type: "bookmarkStart", id: 2, name: "Later" },
+    { ...paragraph("00000002", "Beta"), sectionProperties: { pageWidth: 1 } },
+    { type: "bookmarkEnd", id: 2 },
+    paragraph("00000003", "Tail"),
+  ]);
+  expect(
+    applyDocumentOp(endsSection, join({ survivor: "first" })).isErr(),
+  ).toBe(true);
+  const kept = applied(endsSection, join());
+  expect(undo(kept.document, kept.inverse)).toStrictEqual(endsSection);
 });
