@@ -9,6 +9,7 @@ import { Mark, type Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
 
+import { commentAuthorIssue, trackedChangeAuthorIssue } from "@stll/docx-core";
 import {
   CONTENT_CONTROL_LOCK,
   lockedControlMessage,
@@ -4620,6 +4621,17 @@ export class CanonicalPublicOperations {
       commentAllocation: admittedComment,
     }: PrepareOperationOptions) => {
       const { operation } = resolvedOperation;
+      // An author no save accepts is refused before it is recorded: on a
+      // tracked change, or on the comment the operation makes.
+      const authorIssue =
+        (batch.mode === "direct"
+          ? undefined
+          : trackedChangeAuthorIssue(options.author ?? "AI")) ??
+        (resolvedOperation.type === "commented"
+          ? commentAuthorIssue(options.author ?? "AI")
+          : undefined);
+      if (authorIssue !== undefined)
+        return declined({ reason: "invalidResult", message: authorIssue });
       const inserting = formattingIntentsAsItRuns({
         document: sourceDocument,
         story,

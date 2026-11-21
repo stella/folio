@@ -39,6 +39,9 @@ export type BreakContent = WritableRecord & ({
     clear?: "none" | "left" | "right" | "all";
 });
 
+// @public
+export const commentAuthorIssue: (author: string) => string | undefined;
+
 // @public (undocumented)
 export type CompiledLegalDocument = {
     document: Document_2;
@@ -480,6 +483,9 @@ export type TextContent = WritableRecord & {
     type: "text";
     text: string;
 };
+
+// @public
+export const trackedChangeAuthorIssue: (author: string) => string | undefined;
 
 // @public (undocumented)
 export const validateDocumentModel: (document: Document_2) => ValidateDocumentModelResult;
