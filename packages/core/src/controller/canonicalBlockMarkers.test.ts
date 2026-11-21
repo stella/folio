@@ -136,14 +136,16 @@ describe("bookmark markers between paragraphs in the canonical session", () => {
     expect(current.document).toEqual(before);
   });
 
-  test("a join across a marker refuses and leaves the document as it was", async () => {
+  test("a join across a marker puts it where the paragraphs meet, and undo is exact", async () => {
     const current = await session();
     const before = current.document;
     let state = stateFor(current);
     state = select(state, at(state, "After", 0));
-    // The engine joins only paragraphs adjacent in their block list.
-    const joined = current.prepareJoin(state, "backward");
-    expect(joined.isErr()).toBe(true);
-    expect(current.document).toBe(before);
+    state = accept(state, current.prepareJoin(state, "backward").unwrap());
+    const joined = ["Before", "bookmarkStart", "InsidebookmarkEndAfter"];
+    expect(outline(current.document)).toEqual(joined);
+    expect(outline(await reopened(current))).toEqual(joined);
+    state = accept(state, current.prepareUndo(state).unwrap());
+    expect(current.document).toEqual(before);
   });
 });

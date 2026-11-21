@@ -131,6 +131,9 @@ export type BatchSubmission = BatchAck | BatchReject;
 export const beginTrackedInsertionCompilation: (input: TrackedBatchOptions) => TrackedInsertionCompiler;
 
 // @public
+export type BlockBoundary = Exclude<Boundary, CommentAnchor$1>;
+
+// @public
 export const blockControlHolding: (blocks: readonly BlockContent[], blockId: string) => {
     control: BlockSdt;
     paragraphs: Paragraph[];
@@ -890,6 +893,9 @@ export const introducedIds: (before: LeasedIdCensus, after: LeasedIdCensus) => L
 
 // @public
 export const inverseMeetingDocument: (document: Document_2, inverse: readonly DocumentOp[]) => readonly DocumentOp[];
+
+// @public
+export const isBlockBoundary: (block: BlockContent) => block is BlockBoundary;
 
 // @public
 export const isCommentAnchorCarrierType: (type: string) => boolean;
