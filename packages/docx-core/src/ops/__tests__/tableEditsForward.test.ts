@@ -648,7 +648,7 @@ describe("independent table forward oracles", () => {
     propertyTestTimeout(30_000),
   );
 
-  test("indexed markup and existing reviews have consistent refusals across topology edits", () => {
+  test("indexed markup, and existing reviews beside a tracked edit, have consistent refusals across topology edits", () => {
     // Different op-specific guards can assign different reasons to the same cause; exercise every affected family.
     const counts = new Map<string, number>();
     for (const cause of ["markup", "review"] as const) {
@@ -706,8 +706,22 @@ describe("independent table forward oracles", () => {
           newBlockIds: [id(0xa000)],
         },
       ] as const satisfies readonly DocumentOp[];
+      // A direct edit keeps the existing reviews; a tracked one refuses.
       for (const op of operations) {
-        refused(document, op, reason);
+        refused(
+          document,
+          cause === "markup"
+            ? op
+            : {
+                ...op,
+                revision: {
+                  id: 0xb000,
+                  author: "Reviewer",
+                  date: "2026-10-02T10:00:00Z",
+                },
+              },
+          reason,
+        );
         counts.set(reason, (counts.get(reason) ?? 0) + 1);
       }
     }

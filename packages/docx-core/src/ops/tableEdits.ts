@@ -31,7 +31,12 @@ import {
   reachesPastRemovedCell,
   strandsABookmark,
 } from "./tableEditDependencies";
-import { editRemovesRow, type TableGrid, tableGrid } from "./tableGrid";
+import {
+  editRemovesRow,
+  type GridCell,
+  type TableGrid,
+  tableGrid,
+} from "./tableGrid";
 import {
   locateTableRow,
   tableRowAnchor,
@@ -532,6 +537,210 @@ const hasReviewBlockingColumns = (table: Table, suggestedDeletion: boolean) =>
       ),
   );
 
+/** The grid fields a cell merge or split rewrites, each with its unstated value. */
+const CELL_GRID_FIELDS = {
+  gridSpan: 1,
+  vMerge: undefined,
+  width: undefined,
+} as const;
+/** The cell field a column edit rewrites. */
+const CELL_SPAN_FIELDS = { gridSpan: 1 } as const;
+/** The row fields a column edit rewrites. */
+const ROW_GRID_FIELDS = { gridBefore: 0, gridAfter: 0 } as const;
+type GridFields =
+  typeof CELL_GRID_FIELDS | typeof CELL_SPAN_FIELDS | typeof ROW_GRID_FIELDS;
+
+const gridField = (
+  formatting: object | undefined,
+  field: string,
+  fields: GridFields,
+): unknown =>
+  (formatting === undefined ? undefined : Reflect.get(formatting, field)) ??
+  Reflect.get(fields, field);
+
+/** Whether every pending property snapshot states the element's own grid fields. */
+const statesOwnGrid = (
+  changes: readonly { previousFormatting?: object }[] | undefined,
+  formatting: object | undefined,
+  fields: GridFields,
+) =>
+  (changes ?? []).every(({ previousFormatting }) =>
+    Object.keys(fields).every((field) =>
+      structurallyEqual(
+        gridField(previousFormatting, field, fields),
+        gridField(formatting, field, fields),
+      ),
+    ),
+  );
+
+type RewrittenFieldsOptions = {
+  before: object | undefined;
+  after: object | undefined;
+  fields: GridFields;
+};
+const rewrittenFields = ({ before, after, fields }: RewrittenFieldsOptions) =>
+  Object.keys(fields).filter(
+    (field) =>
+      !structurallyEqual(
+        gridField(before, field, fields),
+        gridField(after, field, fields),
+      ),
+  );
+
+type RestateChangesOptions<C> = {
+  changes: readonly C[] | undefined;
+  before: object | undefined;
+  after: object | undefined;
+  fields: GridFields;
+};
+/**
+ * Pending property changes over a direct edit's new grid: each snapshot takes
+ * the span, merge, width or omission the edit gives the element, so resolving
+ * it changes only the other properties. A snapshot stating another value of a
+ * field the edit rewrites records an earlier grid: an error.
+ */
+const restateChanges = <
+  C extends { previousFormatting?: object; currentFormatting?: object },
+>({
+  changes,
+  before,
+  after,
+  fields,
+}: RestateChangesOptions<C>): Result<C[] | undefined, "earlierGrid"> => {
+  if (changes === undefined) return Result.ok(undefined);
+  const rewritten = rewrittenFields({ before, after, fields });
+  if (rewritten.length === 0) return Result.ok([...changes]);
+  const restate = (
+    snapshot: object | undefined,
+  ): Result<Record<string, unknown> | undefined, "earlierGrid"> => {
+    if (
+      rewritten.some(
+        (field) =>
+          !structurallyEqual(
+            gridField(snapshot, field, fields),
+            gridField(before, field, fields),
+          ),
+      )
+    )
+      return Result.err("earlierGrid");
+    const next: Record<string, unknown> = { ...snapshot };
+    Reflect.deleteProperty(next, "sourceXml");
+    for (const field of rewritten) {
+      const value: unknown =
+        after === undefined ? undefined : Reflect.get(after, field);
+      if (value === undefined) Reflect.deleteProperty(next, field);
+      else next[field] = value;
+    }
+    return Result.ok(
+      snapshot === undefined && Object.keys(next).length === 0
+        ? undefined
+        : next,
+    );
+  };
+  const restated: C[] = [];
+  for (const change of changes) {
+    const previous = restate(change.previousFormatting);
+    if (previous.isErr()) return Result.err(previous.error);
+    const next = { ...change };
+    delete next.previousFormatting;
+    if (previous.value !== undefined)
+      Object.assign(next, { previousFormatting: previous.value });
+    if (change.currentFormatting !== undefined) {
+      const current = restate(change.currentFormatting);
+      if (current.isErr()) return Result.err(current.error);
+      delete next.currentFormatting;
+      if (current.value !== undefined)
+        Object.assign(next, { currentFormatting: current.value });
+    }
+    restated.push(next);
+  }
+  return Result.ok(restated);
+};
+
+/** `after`, the direct edit of `before`, with `before`'s pending property changes restated. */
+const restatedCell = (
+  before: TableCell,
+  after: TableCell,
+  fields: GridFields,
+): Result<TableCell, "earlierGrid"> => {
+  const changes = before.propertyChanges;
+  if (changes === undefined) return Result.ok(after);
+  // A snapshot of the cell's own earlier insertion, deletion or merge would
+  // come back on the edited cell when rejected.
+  if (
+    changes.some(
+      ({ previousStructuralChange }) => previousStructuralChange !== undefined,
+    ) &&
+    rewrittenFields({
+      before: before.formatting,
+      after: after.formatting,
+      fields,
+    }).length > 0
+  )
+    return Result.err("earlierGrid");
+  return restateChanges({
+    changes,
+    before: before.formatting,
+    after: after.formatting,
+    fields,
+  }).map((propertyChanges) =>
+    propertyChanges === undefined
+      ? after
+      : Object.assign({}, after, { propertyChanges }),
+  );
+};
+
+/** `after`, the direct edit of `before`, with `before`'s pending property changes restated. */
+const restatedRow = (
+  before: TableRow,
+  after: TableRow,
+): Result<TableRow, "earlierGrid"> =>
+  restateChanges({
+    changes: before.propertyChanges,
+    before: before.formatting,
+    after: after.formatting,
+    fields: ROW_GRID_FIELDS,
+  }).map((propertyChanges) =>
+    propertyChanges === undefined
+      ? after
+      : Object.assign({}, after, { propertyChanges }),
+  );
+
+const isCellInsertionOrDeletion = (cell: TableCell) =>
+  cell.structuralChange?.type === "tableCellInsertion" ||
+  cell.structuralChange?.type === "tableCellDeletion";
+
+/**
+ * The grid columns a pending insertion or deletion takes whole: every cell
+ * standing in the column is a one-column cell under one kind of pending
+ * insertion or deletion. Undefined when such a change takes only part of a
+ * column, which leaves no column a direct edit can place itself against.
+ */
+const reviewColumns = (grid: TableGrid) => {
+  const inserted = new Set<number>();
+  for (let column = 0; column < grid.width; column += 1) {
+    const standing = grid.rows.flatMap((entries) =>
+      entries.filter(({ start, end }) => start <= column && column < end),
+    );
+    const kinds = new Set(
+      standing.map(({ cell, start, end }) =>
+        end - start === 1 && isCellInsertionOrDeletion(cell)
+          ? cell.structuralChange?.type
+          : undefined,
+      ),
+    );
+    if (kinds.size > 1) return undefined;
+    if (kinds.has("tableCellInsertion")) inserted.add(column);
+  }
+  const whole = grid.rows.every((entries) =>
+    entries.every(
+      ({ cell, start, end }) =>
+        !isCellInsertionOrDeletion(cell) || end - start === 1,
+    ),
+  );
+  return whole ? { inserted } : undefined;
+};
+
 /** Multiple physical review records always get distinct, explicitly supplied ids. */
 const stampsFor = (
   op: TableEditOp,
@@ -575,6 +784,84 @@ const stampsFor = (
 const rowExtent = (table: Table, grid: TableGrid, row: number) => {
   const before = table.rows[row]?.formatting?.gridBefore ?? 0;
   return { before, end: grid.rows[row]?.at(-1)?.end ?? before };
+};
+
+type ColumnReviewsOptions = {
+  op: Extract<TableEditOp, { type: "insertColumn" | "deleteColumn" }>;
+  table: Table;
+  grid: TableGrid;
+  /** Whether the edit leaves the row as it is. */
+  leavesRow: (row: number) => boolean;
+};
+/**
+ * Whether a direct column edit keeps the table's pending records, and the
+ * earlier grid a pending grid change holds with the edit applied to it, so
+ * rejecting the change restores the earlier widths around the edited column.
+ * A grid column stands in the earlier grid unless a pending insertion takes
+ * it whole.
+ */
+const columnReviews = ({
+  op,
+  table,
+  grid,
+  leavesRow,
+}: ColumnReviewsOptions): Result<
+  TableFormatting["gridChange"],
+  DocumentOpRefusal
+> => {
+  const conflict = (message: string) =>
+    refuse({
+      op,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      message,
+    });
+  const columns = reviewColumns(grid);
+  if (columns === undefined)
+    return conflict(
+      "Resolve the pending cell insertions and deletions that take part of a column before changing its columns.",
+    );
+  // A row whose pending changes record other spans or omissions stands on
+  // another grid when they are rejected.
+  if (
+    table.rows.some(
+      (row, rowIndex) =>
+        !leavesRow(rowIndex) &&
+        (!statesOwnGrid(row.propertyChanges, row.formatting, ROW_GRID_FIELDS) ||
+          row.cells.some(
+            (cell) =>
+              !statesOwnGrid(
+                cell.propertyChanges,
+                cell.formatting,
+                CELL_SPAN_FIELDS,
+              ),
+          )),
+    )
+  )
+    return conflict(
+      "Resolve the pending span changes of the rows the column crosses before changing its columns.",
+    );
+  const gridChange = table.formatting?.gridChange;
+  if (gridChange === undefined) return Result.ok(undefined);
+  if (gridChange.columnWidths.length !== grid.width - columns.inserted.size)
+    return conflict(
+      "Resolve the pending grid change before changing the table's columns.",
+    );
+  const earlier =
+    op.column -
+    [...columns.inserted].filter((column) => column < op.column).length;
+  const columnWidths = [...gridChange.columnWidths];
+  if (op.type === DOCUMENT_OP_TYPES.INSERT_COLUMN) {
+    // A grid stating no widths at all stays one.
+    const width = columnWidths.every((stated) => stated === undefined)
+      ? undefined
+      : op.width;
+    columnWidths.splice(
+      earlier,
+      0,
+      ...Array.from({ length: op.count ?? 1 }, () => width),
+    );
+  } else if (!columns.inserted.has(op.column)) columnWidths.splice(earlier, 1);
+  return Result.ok({ ...gridChange, columnWidths });
 };
 
 type ColumnOptions = {
@@ -632,7 +919,10 @@ const columnEdit = ({
   // Another suggested column deletion may join pending ones: each keeps its
   // own cells and grid entry until it is resolved.
   const suggestedDeletion = !insert && op.revision !== undefined;
-  if (hasReviewBlockingColumns(table, suggestedDeletion))
+  if (
+    op.revision !== undefined &&
+    hasReviewBlockingColumns(table, suggestedDeletion)
+  )
     return refuse({
       op,
       reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
@@ -703,6 +993,11 @@ const columnEdit = ({
     const stated = table.rows[rowIndex]?.formatting?.gridAfter ?? 0;
     return insert ? op.column > end + stated : op.column >= end + stated;
   };
+  const earlierGrid =
+    op.revision === undefined
+      ? columnReviews({ op, table, grid, leavesRow })
+      : Result.ok(undefined);
+  if (earlierGrid.isErr()) return Result.err(earlierGrid.error);
   // Each row the edit changes takes a stamp, one per new cell where it gets
   // new cells; an edit besides a suggested deletion stamps the grid and
   // table properties after them.
@@ -726,6 +1021,23 @@ const columnEdit = ({
     const first = stampedRows.get(rowIndex);
     return first === undefined ? undefined : stamps.value[first + cell];
   };
+  // A direct edit keeps the pending property changes of what it re-spans,
+  // over the spans and omissions it gives.
+  const earlierSpans = () =>
+    new DocumentOpRefusal({
+      opType: op.type,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      message:
+        "A pending change records another span than the column edit changes.",
+    });
+  const keptRow = (before: TableRow, after: TableRow) =>
+    op.revision === undefined
+      ? restatedRow(before, after).mapError(earlierSpans)
+      : Result.ok(after);
+  const keptCell = (before: TableCell, after: TableCell) =>
+    op.revision === undefined
+      ? restatedCell(before, after, CELL_SPAN_FIELDS).mapError(earlierSpans)
+      : Result.ok(after);
   let freshIndex = 0;
   /** The row's new cells, each recorded under a stamp of its own. */
   const newCells = (
@@ -776,7 +1088,9 @@ const columnEdit = ({
               : { previousFormatting: row.formatting }),
           },
         ];
-      rows.push(next);
+      const kept = keptRow(row, next);
+      if (kept.isErr()) return Result.err(kept.error);
+      rows.push(kept.value);
       continue;
     }
     if (op.column >= end && (!insert || op.column > end)) {
@@ -796,7 +1110,9 @@ const columnEdit = ({
               : { previousFormatting: row.formatting }),
           },
         ];
-      rows.push(next);
+      const kept = keptRow(row, next);
+      if (kept.isErr()) return Result.err(kept.error);
+      rows.push(kept.value);
       continue;
     }
     const cells: TableCell[] = [];
@@ -822,7 +1138,9 @@ const columnEdit = ({
                 : { previousFormatting: entry.cell.formatting }),
             },
           ];
-        cells.push(next);
+        const kept = keptCell(entry.cell, next);
+        if (kept.isErr()) return Result.err(kept.error);
+        cells.push(kept.value);
         inserted = true;
         continue;
       }
@@ -856,7 +1174,9 @@ const columnEdit = ({
                   : { previousFormatting: entry.cell.formatting }),
               },
             ];
-          cells.push(next);
+          const kept = keptCell(entry.cell, next);
+          if (kept.isErr()) return Result.err(kept.error);
+          cells.push(kept.value);
           continue;
         }
         const stamp = rowStamp(rowIndex);
@@ -897,6 +1217,8 @@ const columnEdit = ({
   }
   const next = { ...table, rows };
   if (columnWidths !== undefined) next.columnWidths = columnWidths;
+  if (earlierGrid.value !== undefined)
+    next.formatting = { ...table.formatting, gridChange: earlierGrid.value };
   const gridStamp = stamps.value[rowStamps];
   const propertyStamp = stamps.value[rowStamps + 1];
   if (
@@ -1075,6 +1397,60 @@ const trackedClosingRows = ({
   return Result.ok(rows);
 };
 
+type MergeReviewsOptions = {
+  op: Extract<TableEditOp, { type: "mergeCells" }>;
+  table: Table;
+  selected: readonly (readonly GridCell[])[];
+  verticalOnly: boolean;
+};
+/**
+ * Whether a direct merge keeps the table's pending records. The merged rows
+ * stand or go together: one pending insertion or deletion takes them all, or
+ * none does. A merged cell is under no pending insertion, deletion or merge of
+ * its own, and a cell the merge takes in records no other span, merge or
+ * width than it has.
+ */
+const mergeReviews = ({
+  op,
+  table,
+  selected,
+  verticalOnly,
+}: MergeReviewsOptions): Result<void, DocumentOpRefusal> => {
+  const conflict = (message: string) =>
+    refuse({
+      op,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      message,
+    });
+  const rows = table.rows.slice(op.top, op.bottom);
+  if (
+    rows.some(
+      (row) =>
+        !structurallyEqual(row.structuralChange, rows.at(0)?.structuralChange),
+    )
+  )
+    return conflict(
+      "Resolve the pending row insertions and deletions the merge crosses before merging.",
+    );
+  const cells = selected.flat();
+  if (cells.some(({ cell }) => cell.structuralChange !== undefined))
+    return conflict(
+      "Resolve the pending insertions, deletions and merges of the merged cells before merging.",
+    );
+  // A vertical merge keeps every cell; another keeps only the first.
+  const absorbed = verticalOnly ? [] : cells.slice(1);
+  if (
+    absorbed.some(
+      ({ cell }) =>
+        !statesOwnGrid(cell.propertyChanges, cell.formatting, CELL_GRID_FIELDS),
+    )
+  )
+    return conflict(
+      "Resolve the pending span and width changes of the merged cells before merging.",
+    );
+  return Result.ok(undefined);
+};
+
 type MergeOptions = {
   document: Document;
   op: Extract<TableEditOp, { type: "mergeCells" }>;
@@ -1093,7 +1469,10 @@ const merge = ({
       reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
       message: "Indexed table markup must be relocated before changing cells.",
     });
-  if (hasReviewBlockingMerge({ table, top: op.top, bottom: op.bottom }))
+  if (
+    op.revision !== undefined &&
+    hasReviewBlockingMerge({ table, top: op.top, bottom: op.bottom })
+  )
     return refuse({
       op,
       reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
@@ -1102,14 +1481,28 @@ const merge = ({
   const selection = mergeSelection({ table, grid, op });
   if (selection.isErr()) return Result.err(selection.error);
   const { selected, verticalOnly } = selection.value;
+  if (op.revision === undefined) {
+    const kept = mergeReviews({ op, table, selected, verticalOnly });
+    if (kept.isErr()) return Result.err(kept.error);
+  }
+  const earlierGrid = () =>
+    new DocumentOpRefusal({
+      opType: op.type,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      message: "A pending change records another span than the merge changes.",
+    });
   if (verticalOnly) {
     const fresh = freshCells({ document, op, ids: op.newBlockIds, count: 0 });
     if (fresh.isErr()) return Result.err(fresh.error);
     const stamps = stampsFor(op, selected.length * 2);
     if (stamps.isErr()) return Result.err(stamps.error);
-    const rows = table.rows.map((row, rowIndex) => {
+    const rows: TableRow[] = [];
+    for (const [rowIndex, row] of table.rows.entries()) {
       const entry = selected[rowIndex - op.top]?.at(0);
-      if (entry === undefined) return row;
+      if (entry === undefined) {
+        rows.push(row);
+        continue;
+      }
       const next: TableCell = {
         ...entry.cell,
         formatting: authored({
@@ -1146,10 +1539,17 @@ const merge = ({
               : { previousFormatting: entry.cell.formatting }),
           },
         ];
+      const kept =
+        op.revision === undefined
+          ? restatedCell(entry.cell, next, CELL_GRID_FIELDS).mapError(
+              earlierGrid,
+            )
+          : Result.ok(next);
+      if (kept.isErr()) return Result.err(kept.error);
       const cells = [...row.cells];
-      cells[entry.index] = next;
-      return { ...row, cells };
-    });
+      cells[entry.index] = kept.value;
+      rows.push({ ...row, cells });
+    }
     const closing = closingRows({ before: table.rows, after: rows });
     if (closing.size === 0) return Result.ok({ ...table, rows });
     if (op.revision === undefined)
@@ -1198,16 +1598,18 @@ const merge = ({
       "Selected cell widths must be nonnegative safe integer units.",
     );
   const width = mergedCellWidth.value;
-  const rows = table.rows.map((row, index) => {
+  const rows: TableRow[] = [];
+  for (const [index, row] of table.rows.entries()) {
     const entries = selected[index - op.top];
-    if (entries === undefined) return row;
-    const leading = entries.at(0);
-    if (leading === undefined) return row;
+    const leading = entries?.at(0);
     const base =
       index === op.top
         ? { ...first.cell, content }
         : fresh.value[index - op.top - 1];
-    if (base === undefined) return row;
+    if (entries === undefined || leading === undefined || base === undefined) {
+      rows.push(row);
+      continue;
+    }
     const cell = withSpan(base, op.right - op.left);
     const formatting = authored({ ...cell.formatting });
     if (index === op.top) {
@@ -1217,10 +1619,21 @@ const merge = ({
     if (op.bottom - op.top > 1)
       formatting.vMerge = index === op.top ? "restart" : "continue";
     else delete formatting.vMerge;
+    // The merged cell keeps the first cell's pending property changes; the
+    // cells it takes in go with their own.
+    const kept =
+      index === op.top
+        ? restatedCell(
+            first.cell,
+            { ...cell, formatting },
+            CELL_GRID_FIELDS,
+          ).mapError(earlierGrid)
+        : Result.ok({ ...cell, formatting });
+    if (kept.isErr()) return Result.err(kept.error);
     const cells = [...row.cells];
-    cells.splice(leading.index, entries.length, { ...cell, formatting });
-    return { ...row, cells };
-  });
+    cells.splice(leading.index, entries.length, kept.value);
+    rows.push({ ...row, cells });
+  }
   const closing = closingRows({ before: table.rows, after: rows });
   return Result.ok({
     ...table,
@@ -1257,7 +1670,7 @@ const split = ({
       reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
       message: "Indexed table markup must be relocated before changing cells.",
     });
-  if (hasReview(table))
+  if (op.revision !== undefined && hasReview(table))
     return refuse({
       op,
       reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
@@ -1278,6 +1691,32 @@ const split = ({
       op,
       reason: DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE,
       message: "A one-row, one-column cell has nothing to split.",
+    });
+  // A direct split keeps the pending records beside it; the split cell is
+  // under no pending insertion, deletion or merge of its own.
+  if (
+    op.revision === undefined &&
+    group.some(({ cell }) => cell.structuralChange !== undefined)
+  )
+    return refuse({
+      op,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      message:
+        "Resolve the pending insertions, deletions and merges of the split cell before splitting it.",
+    });
+  // The new cells of a span take the cell's properties; its pending property
+  // changes would need records of their own there, under ids a direct edit
+  // has none of.
+  if (
+    op.revision === undefined &&
+    span > 1 &&
+    group.some(({ cell }) => cell.propertyChanges !== undefined)
+  )
+    return refuse({
+      op,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      message:
+        "Resolve the pending property changes of the split cell before splitting its columns.",
     });
   if (
     group.some(({ cell }) => {
@@ -1307,9 +1746,13 @@ const split = ({
   if (stamps.isErr()) return Result.err(stamps.error);
   let stampIndex = 0;
   let freshIndex = 0;
-  const rows = table.rows.map((row, index) => {
+  const rows: TableRow[] = [];
+  for (const [index, row] of table.rows.entries()) {
     const entry = group.find((cell) => cell.row === index);
-    if (!entry) return row;
+    if (!entry) {
+      rows.push(row);
+      continue;
+    }
     const formatting = authored({ ...entry.cell.formatting });
     delete formatting.gridSpan;
     delete formatting.vMerge;
@@ -1347,7 +1790,20 @@ const split = ({
                 vMerge === CELL_VERTICAL_MERGES.RESTART ? "rest" : "continue",
             }),
       };
-    const replacement: TableCell[] = [original];
+    const kept =
+      op.revision === undefined
+        ? restatedCell(entry.cell, original, CELL_GRID_FIELDS).mapError(
+            () =>
+              new DocumentOpRefusal({
+                opType: op.type,
+                reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+                message:
+                  "A pending change records another span than the split changes.",
+              }),
+          )
+        : Result.ok(original);
+    if (kept.isErr()) return Result.err(kept.error);
+    const replacement: TableCell[] = [kept.value];
     for (let column = 1; column < span; column += 1) {
       const cell = fresh.value[freshIndex++];
       if (cell !== undefined) {
@@ -1362,8 +1818,8 @@ const split = ({
       }
     }
     cells.splice(entry.index, 1, ...replacement);
-    return { ...row, cells };
-  });
+    rows.push({ ...row, cells });
+  }
   return Result.ok({ ...table, rows });
 };
 
