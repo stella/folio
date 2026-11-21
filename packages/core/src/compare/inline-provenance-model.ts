@@ -154,7 +154,17 @@ export const inlineProvenanceOperations = ({
         ...(Object.keys(change.formatting).length > 0
           ? { formatting: change.formatting }
           : {}),
-        content: [{ type: "text", text: change.live.node.textContent }],
+        // The stretch is a slice of its text node: a node the comparison
+        // inserted whole can hold words either side of the link.
+        content: [
+          {
+            type: "text",
+            text: change.live.node.textContent.slice(
+              change.live.from - change.live.position,
+              change.live.to - change.live.position,
+            ),
+          },
+        ],
       };
       const link = hyperlinkLinkOf(change.target.node);
       const content = link === undefined ? run : linkOf(link, run);
