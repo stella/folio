@@ -127,6 +127,7 @@ import {
   patchRunsBetween,
   type RunDecoration,
   runsBetween,
+  sameRunFormatting,
   splitAt,
 } from "./inline";
 import {
@@ -1409,14 +1410,31 @@ const setRunProps = (document: Document, op: SetRunPropsOp): Applied => {
         if (node.type === "run" && original.type === "run") {
           const options = changes.get(original);
           if (options === undefined) return node;
+          const prior = Object.assign({}, node);
+          if (options.previous.propertyChanges !== undefined)
+            prior.propertyChanges = options.previous.propertyChanges;
+          const pending = getSingularRunPropertyChange(
+            options.previous.propertyChanges,
+          );
+          if (
+            pending !== undefined &&
+            sameRunFormatting(pending.previousFormatting, node.formatting)
+          ) {
+            // Back to the properties the pending change started from:
+            // nothing is left to review, so the change goes, and the run
+            // states them as rejecting it would.
+            const settled = Object.assign({}, node);
+            if (pending.previousFormatting === undefined)
+              delete settled.formatting;
+            else settled.formatting = pending.previousFormatting;
+            priorIdentities.set(settled, prior);
+            return settled;
+          }
           const change: RunPropertyChange = {
             type: "runPropertyChange",
             info: stampInfo(revision),
             boundaryJoins: options.boundaryJoins,
           };
-          const pending = getSingularRunPropertyChange(
-            options.previous.propertyChanges,
-          );
           const previousFormatting =
             pending === undefined
               ? options.previous.formatting
@@ -1437,9 +1455,6 @@ const setRunProps = (document: Document, op: SetRunPropsOp): Applied => {
           }
           const changed = Object.assign({}, node);
           changed.propertyChanges = [change];
-          const prior = Object.assign({}, node);
-          if (options.previous.propertyChanges !== undefined)
-            prior.propertyChanges = options.previous.propertyChanges;
           priorIdentities.set(changed, prior);
           return changed;
         }
