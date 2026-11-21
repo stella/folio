@@ -1204,8 +1204,28 @@ const settleDeferredRemovals = (
     out.push(next);
   }
   for (const group of acceptedKept.values())
-    changed = placeAcceptedSeamKept(out, group) || changed;
+    changed = placeAcceptedSeamKept({ out, group, fateOf }) || changed;
   return changed ? out : nodes;
+};
+
+/**
+ * Whether resolving as `fateOf` says leaves nothing of `node`: a tracked
+ * change whose content goes, or a record holding only such changes.
+ */
+const emptiedBy = (
+  node: InlineNode,
+  fateOf: DeferredRemovalSettlement["fateOf"],
+): boolean => {
+  if (isTrackedWrapper(node)) {
+    const fate = fateOf(node.info.id);
+    return isAddedRevision(node) ? fate === "removed" : fate === "accepted";
+  }
+  const children = childNodes(node);
+  return (
+    children !== undefined &&
+    children.length > 0 &&
+    children.every((child) => emptiedBy(child, fateOf))
+  );
 };
 
 /**
@@ -1217,10 +1237,15 @@ const settleDeferredRemovals = (
  * both, as their cut's piece. They stand where they are when no such piece
  * can hold them. `out` is changed in place; whether it changed.
  */
-const placeAcceptedSeamKept = (
-  out: InlineNode[],
-  group: DeferredRemovalGroup,
-): boolean => {
+const placeAcceptedSeamKept = ({
+  out,
+  group,
+  fateOf,
+}: {
+  out: InlineNode[];
+  group: DeferredRemovalGroup;
+  fateOf: DeferredRemovalSettlement["fateOf"];
+}): boolean => {
   const blocker = (node: InlineNode | undefined): boolean =>
     node !== undefined &&
     isTrackedWrapper(node) &&
@@ -1269,6 +1294,11 @@ const placeAcceptedSeamKept = (
   );
   if (placed === undefined) return false;
   const { index: start, records } = placed;
+  // The cut's piece across the blockers must stand once they are resolved:
+  // with nothing left of it, the cut has one side and they stand beside it,
+  // as resolving its emptying first leaves them.
+  const far = start < first ? out.at(last + 1) : out.at(first - 1);
+  if (far === undefined || emptiedBy(far, fateOf)) return false;
   const standing = out.slice(start, start + records);
   const keptFrom = standing
     .flatMap((node) => keptCutFrom(node) ?? [])
