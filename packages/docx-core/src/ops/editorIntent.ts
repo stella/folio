@@ -1032,7 +1032,7 @@ const intentRunFormatting = (
   const authored = runProps ?? authoredFormatting(document, from, to);
   return runPropsPatch === undefined
     ? authored
-    : (applyFormattingPatch(authored, runPropsPatch) ?? {});
+    : applyFormattingPatch(authored, runPropsPatch);
 };
 
 /** The ending physical mark owns one logical paragraph's properties. */
