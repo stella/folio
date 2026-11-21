@@ -19,13 +19,20 @@ const row = (...cells: string[]) => `<w:tr>${cells.map(cell).join("")}</w:tr>`;
 const mark = (id: number) =>
   `<w:bookmarkStart w:id="${id}" w:name="b${id}"/><w:bookmarkEnd w:id="${id}"/>`;
 
-const open = async (rows: string): Promise<FolioDocxReviewer> => {
+const SESSIONS = ["legacy", "canonical"] as const;
+
+const open = async (
+  session: (typeof SESSIONS)[number],
+  rows: string,
+): Promise<FolioDocxReviewer> => {
   const zip = await ZipArchive.read(await createDocx(createEmptyDocument()));
   zip.set(
     "word/document.xml",
     `<?xml version="1.0" encoding="UTF-8"?><w:document ${NS}><w:body><w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="1000"/><w:gridCol w:w="1000"/></w:tblGrid>${rows}</w:tbl><w:p w14:paraId="10000009"><w:r><w:t>Tail</w:t></w:r></w:p></w:body></w:document>`,
   );
-  return FolioDocxReviewer.fromBuffer((await zip.generate()).slice().buffer);
+  return FolioDocxReviewer.fromBuffer((await zip.generate()).slice().buffer, {
+    session,
+  });
 };
 
 const savedTable = async (reviewer: FolioDocxReviewer) => {
@@ -60,130 +67,135 @@ const BETWEEN_CELLS = `<w:tr>${cell("1")}${mark(1)}${cell("2")}${mark(2)}</w:tr>
 const REMOVE_ROW = { type: "deleteTableRow", blockId: "10000005" };
 const REMOVE_COLUMN = { type: "deleteTableColumn", blockId: "10000002" };
 
-describe("a bookmark between a table's rows", () => {
-  test("stays before the row that followed it when an earlier row goes", async () => {
-    const reviewer = await open(BETWEEN_ROWS);
-    apply(reviewer, "direct", { type: "deleteTableRow", blockId: "10000001" });
-    expect(await savedTable(reviewer)).toEqual([
-      "b1",
-      "3",
-      "4",
-      "5",
-      "6",
-      "b2",
-    ]);
-  });
-
-  test("survives losing the row after it", async () => {
-    const reviewer = await open(BETWEEN_ROWS);
-    apply(reviewer, "direct", REMOVE_ROW);
-    expect(await savedTable(reviewer)).toEqual([
-      "1",
-      "2",
-      "b1",
-      "3",
-      "4",
-      "b2",
-    ]);
-  });
-
-  test("survives an accepted row deletion, and a rejected one restores it", async () => {
-    const accepted = await open(BETWEEN_ROWS);
-    apply(accepted, "tracked-changes", REMOVE_ROW);
-    accepted.acceptAll();
-    expect(await savedTable(accepted)).toEqual([
-      "1",
-      "2",
-      "b1",
-      "3",
-      "4",
-      "b2",
-    ]);
-
-    const rejected = await open(BETWEEN_ROWS);
-    apply(rejected, "tracked-changes", REMOVE_ROW);
-    rejected.rejectAll();
-    expect(await savedTable(rejected)).toEqual([
-      "1",
-      "2",
-      "b1",
-      "3",
-      "4",
-      "5",
-      "6",
-      "b2",
-    ]);
-  });
-
-  test("keeps its neighbours when a row is added elsewhere", async () => {
-    const reviewer = await open(BETWEEN_ROWS);
-    apply(reviewer, "direct", {
-      type: "insertTableRow",
-      blockId: "10000001",
-      position: "before",
-      cellTexts: ["7", "8"],
+describe.each(SESSIONS)("%s session", (session) => {
+  describe("a bookmark between a table's rows", () => {
+    test("stays before the row that followed it when an earlier row goes", async () => {
+      const reviewer = await open(session, BETWEEN_ROWS);
+      apply(reviewer, "direct", {
+        type: "deleteTableRow",
+        blockId: "10000001",
+      });
+      expect(await savedTable(reviewer)).toEqual([
+        "b1",
+        "3",
+        "4",
+        "5",
+        "6",
+        "b2",
+      ]);
     });
-    expect(await savedTable(reviewer)).toEqual([
-      "7",
-      "8",
-      "1",
-      "2",
-      "b1",
-      "3",
-      "4",
-      "5",
-      "6",
-      "b2",
-    ]);
-  });
-});
 
-describe("a bookmark between a row's cells", () => {
-  test("survives losing the cell after it", async () => {
-    const reviewer = await open(BETWEEN_CELLS);
-    apply(reviewer, "direct", REMOVE_COLUMN);
-    expect(await savedTable(reviewer)).toEqual(["1", "b1", "b2", "3"]);
-  });
-
-  test("survives an accepted column deletion", async () => {
-    const reviewer = await open(BETWEEN_CELLS);
-    apply(reviewer, "tracked-changes", REMOVE_COLUMN);
-    reviewer.acceptAll();
-    expect(await savedTable(reviewer)).toEqual(["1", "b1", "b2", "3"]);
-  });
-});
-
-describe("a bookmark that opens in a cell and closes on the table or a row", () => {
-  const endsOf = async (reviewer: FolioDocxReviewer) => {
-    const xml =
-      (await (
-        await ZipArchive.read(await reviewer.toBuffer())
-      )
-        .entry("word/document.xml")
-        ?.text()) ?? "";
-    return [...xml.matchAll(/<w:bookmarkEnd w:id="7"\/>(.{0,7})/gu)].map(
-      ([, next]) => next,
-    );
-  };
-
-  const OPENING_CELL = `<w:tc><w:tcPr/><w:p w14:paraId="10000001"><w:bookmarkStart w:id="7" w:name="b7"/><w:r><w:t>1</w:t></w:r></w:p></w:tc>`;
-  test.each([
-    [
-      "on the table",
-      `<w:tr>${OPENING_CELL}${cell("2")}</w:tr>${row("3", "4")}<w:bookmarkEnd w:id="7"/>`,
-    ],
-    [
-      "on its own row",
-      `<w:tr>${OPENING_CELL}<w:bookmarkEnd w:id="7"/>${cell("2")}</w:tr>${row("3", "4")}`,
-    ],
-  ])("closing %s, an edit keeps its one end", async (_where, table) => {
-    const reviewer = await open(table);
-    apply(reviewer, "direct", {
-      type: "insertTableRow",
-      blockId: "10000001",
-      position: "after",
-      cellTexts: ["x", "y"],
+    test("survives losing the row after it", async () => {
+      const reviewer = await open(session, BETWEEN_ROWS);
+      apply(reviewer, "direct", REMOVE_ROW);
+      expect(await savedTable(reviewer)).toEqual([
+        "1",
+        "2",
+        "b1",
+        "3",
+        "4",
+        "b2",
+      ]);
     });
-    expect(await endsOf(reviewer)).toHaveLength(1);
+
+    test("survives an accepted row deletion, and a rejected one restores it", async () => {
+      const accepted = await open(session, BETWEEN_ROWS);
+      apply(accepted, "tracked-changes", REMOVE_ROW);
+      accepted.acceptAll();
+      expect(await savedTable(accepted)).toEqual([
+        "1",
+        "2",
+        "b1",
+        "3",
+        "4",
+        "b2",
+      ]);
+
+      const rejected = await open(session, BETWEEN_ROWS);
+      apply(rejected, "tracked-changes", REMOVE_ROW);
+      rejected.rejectAll();
+      expect(await savedTable(rejected)).toEqual([
+        "1",
+        "2",
+        "b1",
+        "3",
+        "4",
+        "5",
+        "6",
+        "b2",
+      ]);
+    });
+
+    test("keeps its neighbours when a row is added elsewhere", async () => {
+      const reviewer = await open(session, BETWEEN_ROWS);
+      apply(reviewer, "direct", {
+        type: "insertTableRow",
+        blockId: "10000001",
+        position: "before",
+        cellTexts: ["7", "8"],
+      });
+      expect(await savedTable(reviewer)).toEqual([
+        "7",
+        "8",
+        "1",
+        "2",
+        "b1",
+        "3",
+        "4",
+        "5",
+        "6",
+        "b2",
+      ]);
+    });
+  });
+
+  describe("a bookmark between a row's cells", () => {
+    test("survives losing the cell after it", async () => {
+      const reviewer = await open(session, BETWEEN_CELLS);
+      apply(reviewer, "direct", REMOVE_COLUMN);
+      expect(await savedTable(reviewer)).toEqual(["1", "b1", "b2", "3"]);
+    });
+
+    test("survives an accepted column deletion", async () => {
+      const reviewer = await open(session, BETWEEN_CELLS);
+      apply(reviewer, "tracked-changes", REMOVE_COLUMN);
+      reviewer.acceptAll();
+      expect(await savedTable(reviewer)).toEqual(["1", "b1", "b2", "3"]);
+    });
+  });
+
+  describe("a bookmark that opens in a cell and closes on the table or a row", () => {
+    const endsOf = async (reviewer: FolioDocxReviewer) => {
+      const xml =
+        (await (
+          await ZipArchive.read(await reviewer.toBuffer())
+        )
+          .entry("word/document.xml")
+          ?.text()) ?? "";
+      return [...xml.matchAll(/<w:bookmarkEnd w:id="7"\/>(.{0,7})/gu)].map(
+        ([, next]) => next,
+      );
+    };
+
+    const OPENING_CELL = `<w:tc><w:tcPr/><w:p w14:paraId="10000001"><w:bookmarkStart w:id="7" w:name="b7"/><w:r><w:t>1</w:t></w:r></w:p></w:tc>`;
+    test.each([
+      [
+        "on the table",
+        `<w:tr>${OPENING_CELL}${cell("2")}</w:tr>${row("3", "4")}<w:bookmarkEnd w:id="7"/>`,
+      ],
+      [
+        "on its own row",
+        `<w:tr>${OPENING_CELL}<w:bookmarkEnd w:id="7"/>${cell("2")}</w:tr>${row("3", "4")}`,
+      ],
+    ])("closing %s, an edit keeps its one end", async (_where, table) => {
+      const reviewer = await open(session, table);
+      apply(reviewer, "direct", {
+        type: "insertTableRow",
+        blockId: "10000001",
+        position: "after",
+        cellTexts: ["x", "y"],
+      });
+      expect(await endsOf(reviewer)).toHaveLength(1);
+    });
   });
 });

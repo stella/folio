@@ -12,6 +12,7 @@ import type {
 } from "../model/document";
 import { storyBody, storyParagraphs } from "./blocks";
 import { combineEdits, type DocumentEdit } from "./edits";
+import { relocatePositionedMarkers } from "./positionedMarkers";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import type { ApplyOps } from "./resolve";
 import { reviewFieldsOf } from "./review";
@@ -889,7 +890,11 @@ export const resolveTableRows = ({
           "The previous grid contains widths the table model cannot restore.",
         ),
       );
-    const nextTable = propertiesResolved.value;
+    // Cells the decision removes take no bookmark beside them with them.
+    const nextTable = relocatePositionedMarkers(
+      table,
+      propertiesResolved.value,
+    );
     const applied = applyOps(current, [
       {
         type: DOCUMENT_OP_TYPES.SET_TABLE,
