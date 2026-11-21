@@ -3268,6 +3268,7 @@ const compileInStory = (
         insertionOnly && text !== ""
           ? continuation(paragraph.content, from, to, {
               ...(intent.inside === undefined ? {} : { inside: intent.inside }),
+              tracked: mode.type === "suggesting",
             })
           : undefined;
       const continuing =
@@ -4301,7 +4302,13 @@ const continuation = (
   {
     inside = {},
     struck = false,
-  }: { inside?: { start?: boolean; end?: boolean }; struck?: boolean } = {},
+    tracked = struck,
+  }: {
+    inside?: { start?: boolean; end?: boolean };
+    struck?: boolean;
+    /** The text is recorded as a tracked insertion. */
+    tracked?: boolean;
+  } = {},
 ): Continuation => {
   const spans = leafSpans(items);
   // A range starts where its deletion does: after the markers at its start
@@ -4342,23 +4349,29 @@ const continuation = (
       break;
     containers.push(ancestor);
   }
-  // Text replacing exactly a hyperlink's text keeps the link. The range
-  // holds every leaf of the link and nothing beside it, so no piece of the
-  // link stays on either side to meet: the text takes a copy of it. A range
-  // reaching past the link, or a caret at its edge, leaves the text outside.
-  const link = caret ? undefined : last?.ancestors[containers.length];
+  // Text replacing words of one hyperlink, or typed between two of its
+  // leaves, stays in the link; a range reaching past the link, or a caret at
+  // its edge, leaves the text outside. A tracked record cannot stand inside
+  // a link, and a range holding every leaf of the link leaves no piece of it
+  // to meet, so there the text takes a copy of the link, which meets none.
+  const link = caret
+    ? left?.ancestors[containers.length]
+    : last?.ancestors[containers.length];
+  let copiesLink = false;
   if (link?.type === "hyperlink") {
-    const inRange = ({ before, after }: (typeof spans)[number]) =>
-      compareGaps(before, end) < 0 && compareGaps(after, start) > 0;
     const ofLink = ({ ancestors }: (typeof spans)[number]) =>
       ancestors.includes(link);
+    const inRange = ({ before, after }: (typeof spans)[number]) =>
+      compareGaps(before, end) < 0 && compareGaps(after, start) > 0;
     const covered = ({ before, after }: (typeof spans)[number]) =>
       compareGaps(start, before) <= 0 && compareGaps(after, end) <= 0;
-    if (
-      spans.filter(inRange).every(ofLink) &&
-      spans.filter(ofLink).every(covered)
-    )
+    const keepsLink = caret
+      ? right !== undefined && ofLink(right)
+      : spans.filter(inRange).every(ofLink);
+    if (keepsLink) {
       containers.push(link);
+      copiesLink = tracked || spans.filter(ofLink).every(covered);
+    }
   }
   // Each open end merges with the containers the source holds on that side;
   // at a container's own edge that side has none to meet, and a copied link
@@ -4367,7 +4380,7 @@ const continuation = (
     let depth = 0;
     while (
       depth < containers.length &&
-      containers[depth]?.type !== "hyperlink" &&
+      !(copiesLink && containers[depth]?.type === "hyperlink") &&
       side?.ancestors[depth] === containers[depth]
     )
       depth += 1;

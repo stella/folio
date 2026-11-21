@@ -134,6 +134,31 @@ describe.each([
     direct: "See [the revised terms] now.",
   },
   {
+    name: "words strictly inside the link",
+    edit: { from: 8, to: 16, text: "revised" },
+    direct: "See [the revised terms] now.",
+  },
+  {
+    name: "the start of the link's text",
+    edit: { from: 4, to: 8, text: "our " },
+    direct: "See [our standard terms] now.",
+  },
+  {
+    name: "the end of the link's text",
+    edit: { from: 16, to: 22, text: " rules" },
+    direct: "See [the standard rules] now.",
+  },
+  {
+    name: "a deletion strictly inside the link",
+    edit: { from: 8, to: 17, text: "" },
+    direct: "See [the terms] now.",
+  },
+  {
+    name: "a caret inside the link",
+    edit: { from: 8, to: 8, text: "new " },
+    direct: "See [the new standard terms] now.",
+  },
+  {
     name: "a range reaching past the link",
     edit: { from: 3, to: 23, text: "X" },
     direct: "SeeXnow.",
