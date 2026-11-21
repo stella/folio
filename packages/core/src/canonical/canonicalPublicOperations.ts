@@ -5374,9 +5374,18 @@ export class CanonicalPublicOperations {
     // the tracked deletion leaves it. With none before it, it only loses its
     // words.
     if (!tracked) {
-      // First in its container, before a table or another block, it goes
-      // whole, as accepting its tracked deletion removes it.
-      if (before === null && !followsInsertedTable && after !== null)
+      // Before a table or another block, first in its container or after a
+      // paragraph, it goes whole, as accepting its tracked deletion removes
+      // it: the paragraph before it keeps its own mark, and with it any
+      // section break. A section break of its own is resolved by the join
+      // below.
+      if (
+        after !== null &&
+        !followsInsertedTable &&
+        (before === null ||
+          (before.type.name === "paragraph" &&
+            paragraph.node.attrs["_sectionProperties"] == null))
+      )
         return tracking({
           intents: [
             {
