@@ -55,8 +55,48 @@ test("a paragraph inserted before a table a pending join runs into goes before t
   const heading = id("Price Schedule");
   const closing = id("The prices below apply.");
   const cell = id("Item");
-  // The heading's break goes, then the paragraph it joins goes whole: once
+  // The closing paragraph goes whole, then the heading's break goes: once
   // accepted, the heading's words run into the table's first cell.
+  tracked(reviewer, [{ id: "delete", type: "deleteBlock", blockId: closing }]);
+  tracked(reviewer, [
+    {
+      id: "merge",
+      type: "mergeBlockWithNext",
+      blockId: heading,
+      separator: " ",
+    },
+  ]);
+  tracked(reviewer, [
+    {
+      id: "insert",
+      type: "insertBeforeBlock",
+      blockId: cell,
+      text: "Clause words.",
+    },
+  ]);
+  const accepted = reviewer.acceptAll();
+  expect(accepted.skipped).toEqual([]);
+  expect(reviewer.getContent().map(({ text }) => text)).toEqual([
+    "Clause words.",
+    "Price Schedule Item",
+    "Price",
+    "Widget",
+    "10",
+    "Taxes are extra.",
+  ]);
+});
+
+test("deleting the paragraph a pending join runs into before a table takes the joined words too", async () => {
+  const reviewer = await open();
+  const id = (text: string) =>
+    reviewer.getContent().find((block) => block.text === text)?.id ??
+    panic(`The fixture lost "${text}".`);
+  const heading = id("Price Schedule");
+  const closing = id("The prices below apply.");
+  const cell = id("Item");
+  // The heading's break goes, then the paragraph it joins is deleted: the
+  // joined paragraph goes, the heading's words with it, so none run into
+  // the table's first cell.
   tracked(reviewer, [
     {
       id: "merge",
@@ -78,7 +118,7 @@ test("a paragraph inserted before a table a pending join runs into goes before t
   expect(accepted.skipped).toEqual([]);
   expect(reviewer.getContent().map(({ text }) => text)).toEqual([
     "Clause words.",
-    "Price Schedule Item",
+    "Item",
     "Price",
     "Widget",
     "10",
