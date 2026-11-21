@@ -49,6 +49,7 @@ import {
   propertyTestTimeout,
 } from "../../../../test/property-testing";
 import { CanonicalSessionError } from "../canonical/canonicalSession";
+import { normalizeCanonicalSource } from "../canonical/canonicalSourceNormalization";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
@@ -249,9 +250,12 @@ const viewLaws = async (
     return;
   }
   const before = canonical.toDocument();
+  // The rules resolve the model the session holds: the document read in the
+  // session's own form (a story that ends in a table closed by a paragraph).
+  const held = normalizeCanonicalSource(before).document;
   const ruled = {
-    original: resolvedByRules(before, "reject"),
-    final: resolvedByRules(before, "accept"),
+    original: resolvedByRules(held, "reject"),
+    final: resolvedByRules(held, "accept"),
   } satisfies Record<FolioResolvedReviewedView, unknown>;
   let read: ReturnType<typeof views>;
   try {
@@ -294,12 +298,28 @@ const viewLaws = async (
     original: await readerOf("original"),
     final: await readerOf("final"),
   } satisfies Record<FolioResolvedReviewedView, FolioDocxReviewer>;
+  // A paragraph the session closed a story with carries an id it minted,
+  // which reads as positional; the resolved package names it.
+  const minted = new Set(
+    normalizeCanonicalSource(before).normalized.flatMap(
+      ({ minted: ids }) => ids,
+    ),
+  );
+  const asMinted = (entry: ReturnType<typeof readView>) => ({
+    ...entry,
+    blocks:
+      entry.blocks?.map((block) =>
+        minted.has(block.id)
+          ? { ...block, idStability: "positional" as const }
+          : block,
+      ) ?? null,
+  });
   expect(read).toEqual(
     canonical
       .listStories()
       .flatMap(({ handle }) =>
         FOLIO_RESOLVED_REVIEWED_VIEWS.map((view) =>
-          readView(readers[view], handle, view),
+          asMinted(readView(readers[view], handle, view)),
         ),
       ),
   );
@@ -438,7 +458,7 @@ for (const kind of ["ins", "del"] as const)
     });
 
 test.each(["ins", "del"] as const)(
-  "a native final-table boundary independently explains the %s view refusal",
+  "a mark before a final table resolves once the session closes the body with a paragraph (%s)",
   async (kind) => {
     const buffer = await ingested(
       await createDocx({
@@ -478,24 +498,31 @@ test.each(["ins", "del"] as const)(
     );
     const reviewer = await open(buffer, "canonical");
     const before = reviewer.toDocument();
-    const native = applyDocumentOps(before, [
-      {
-        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
-        story: OP_STORIES.MAIN,
-        revisionIds: [1],
-        decision: kind === "ins" ? "reject" : "accept",
-      },
-    ]);
-    expect(native.isErr()).toBe(true);
-    if (native.isOk())
+    const resolve = (document: Document) =>
+      applyDocumentOps(document, [
+        {
+          type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+          story: OP_STORIES.MAIN,
+          revisionIds: [1],
+          decision: kind === "ins" ? "reject" : "accept",
+        },
+      ]);
+    // As the package states it, the table ends the body and the mark before
+    // it cannot go.
+    const asStated = resolve(before);
+    expect(asStated.isErr()).toBe(true);
+    if (asStated.isOk())
       return panic("The final table cannot end the resolved container.");
-    expect(native.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE);
-    expect(native.error.opType).toBe(DOCUMENT_OP_TYPES.RESOLVE_REVISION);
-    expect(native.error.message).toBe(
+    expect(asStated.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE);
+    expect(asStated.error.message).toBe(
       "Resolving the mark of 00000001 would leave its container without a final paragraph.",
     );
-    await expect(viewLaws(buffer)).rejects.toThrow(native.error.message);
-    await viewLaws(buffer, "known-input-boundaries");
+    // The session's model closes the body with a paragraph after the table,
+    // so the mark resolves, and the views read as the rules resolve it.
+    expect(resolve(normalizeCanonicalSource(before).document).isOk()).toBe(
+      true,
+    );
+    await viewLaws(buffer);
     expect(reviewer.toDocument()).toEqual(before);
   },
 );
