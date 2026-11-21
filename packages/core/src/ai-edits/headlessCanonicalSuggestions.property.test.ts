@@ -15,11 +15,11 @@
  *   paragraphs whose ids may differ: a paragraph the direct edit removes
  *   whole, accepting may join into, and a join keeps the second paragraph's
  *   id (docs/durable-block-ids.md).
- * - a paragraph put beside one whose break is pending removal lands in the
- *   same gap in every mode (`insertionGap`): after a paragraph, right after
- *   it as it stands, and before one, where the same tracked insertion goes,
- *   before the pending join that paragraph is part of. A paragraph named in
- *   a table cell has the new one beside its outermost table.
+ * - a paragraph put beside one whose break is pending removal lands where
+ *   the same tracked insertion goes, in every mode: after the paragraph its
+ *   pending join leaves (`insertionAfterPendingBreak`), or before the pending
+ *   join that paragraph is part of (`insertionGap`). A paragraph named in a
+ *   table cell has the new one beside its outermost table.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -131,11 +131,11 @@ const suggestionLaws = async (
   if (result.applied.length === 0) return "refusedOperation";
   const suggested = reads(reviewer);
   if (insertion !== null && besidePendingJoin) {
-    // After a paragraph, as it stands: the new paragraph is right after the
-    // one it names, or, for one in a table cell, after its outermost table.
-    // Before a paragraph, it lands where the same tracked insertion does, in
-    // the gap before the pending join that paragraph is part of; before a
-    // table, before the pending join that runs words into its first cell.
+    // Beside a paragraph, it lands where the same tracked insertion does:
+    // after the paragraph its pending join leaves, or in the gap before the
+    // pending join that paragraph is part of. For one in a table cell, it is
+    // beside the outermost table; before a table, before the pending join
+    // that runs words into its first cell.
     const joining = new Set(
       before.changes.flatMap(({ type, blockId }) =>
         type === "paragraphMarkDeleted" && blockId !== null ? [blockId] : [],
@@ -150,7 +150,7 @@ const suggestionLaws = async (
     const inTable = (index: number) =>
       table !== undefined && content[index]?.table?.outerTableIndex === table;
     const step = insertion.type === "insertBeforeBlock" ? -1 : 1;
-    if (table === undefined && step === -1) {
+    if (table === undefined) {
       const tracked = await open(buffer);
       expect(
         apply(tracked, operation, "tracked-changes").applied.length,

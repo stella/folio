@@ -2580,8 +2580,9 @@ const insertionAnchor = (
   // A paragraph put after one that keeps no words once accepted, whose break
   // a pending join removes, follows the paragraph the join leaves, with that
   // one's properties, as the same edits applied directly put it (the
-  // engine's `insertionAfterPendingBreak`); a suggested one goes right after
-  // the paragraph it names, as it stands. A table follows the paragraph a
+  // engine's `insertionAfterPendingBreak`); a suggested one, read against
+  // live rows that hold no join, goes right after the paragraph it names
+  // (`insertBlock` leaves one beside a pending join unmodelled). A table follows the paragraph a
   // join from an empty paragraph leaves.
   if (position === "after") {
     let joined = pastWordlessJoin(model, row);
@@ -2690,6 +2691,18 @@ const insertBlock =
     if (position === "before" && suggestedBeforePendingJoin(model, named))
       throw new Unmodelled(
         `a suggestion before block ${String(operation["blockId"])} lands before the pending join it is part of`,
+      );
+    // Put after a paragraph whose mark is pending deletion, a suggestion
+    // lands where the tracked insertion does (`insertionAfterPendingBreak`),
+    // which the live rows a suggestion is read against do not say.
+    if (
+      position === "after" &&
+      model.mode === "suggested" &&
+      named.pre !== undefined &&
+      model.joinSourceIds.has(named.pre.id)
+    )
+      throw new Unmodelled(
+        `a suggestion after block ${String(operation["blockId"])} lands where its pending join puts it`,
       );
     const anchor = insertionAnchor(model, named, position, "paragraph");
     // Put after the paragraph a join leaves, it copies that paragraph.

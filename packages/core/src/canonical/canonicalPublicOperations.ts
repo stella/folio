@@ -1276,22 +1276,18 @@ const besideAsItStands = (
   formattingSource: paragraph,
 });
 
-type PlaceAfterOptions = Omit<BesidePendingJoinOptions, "side"> & {
-  suggested: boolean;
-};
+type PlaceAfterOptions = Omit<BesidePendingJoinOptions, "side">;
 
 /**
  * Where a paragraph put after `paragraph` goes (`insertionAfterPendingBreak`):
- * right after it, or after the paragraph its pending join leaves. A
- * suggestion goes right after it.
+ * right after it, or after the paragraph its pending join leaves, in every
+ * mode, so a suggestion lands where the same tracked insertion does.
  */
 const placeAfter = ({
-  suggested,
   paragraph,
   projection,
   noteReferences,
 }: PlaceAfterOptions): BesidePendingJoin => {
-  if (suggested) return besideAsItStands(paragraph);
   const rule = insertionAfterPendingBreak({
     doc: projection.doc,
     paragraphPos: paragraph.start - 1,
@@ -5992,14 +5988,13 @@ export class CanonicalPublicOperations {
           ? { ...operation, type: "insertAfterBlock" }
           : operation;
       // A paragraph put after one whose break a pending join removes goes
-      // where `insertionAfterPendingBreak` puts it. One put before a
-      // paragraph goes before the join it is part of, in every mode
-      // (`insertionGap`): a suggestion lands where the same tracked insertion
-      // does, so accepting it leaves what the direct edit does.
+      // where `insertionAfterPendingBreak` puts it, and one put before a
+      // paragraph goes before the join it is part of, in every mode: a
+      // suggestion lands where the same tracked insertion does, so
+      // accepting it leaves what the direct edit does.
       const placed =
         insertion.type === "insertAfterBlock"
           ? placeAfter({
-              suggested,
               paragraph,
               projection: projection.value,
               noteReferences,
