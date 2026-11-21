@@ -730,7 +730,24 @@ export const deleteBlocks = ({
     );
   }
   const list = blockListAt(body.content, first.list);
-  const following = list[last.index + 1];
+  // Range boundaries the block list holds between the last paragraph and the
+  // next one stand where the two meet once its mark goes, as resolving that
+  // mark joins them: what stood before them stays before.
+  let followerIndex = last.index + 1;
+  const endsNoSection = found.every(
+    ({ paragraph }) => paragraph.sectionProperties === undefined,
+  );
+  for (
+    let block = list[followerIndex];
+    endsNoSection && block !== undefined && isBlockBoundary(block);
+    block = list[followerIndex]
+  )
+    followerIndex += 1;
+  const standing =
+    list[followerIndex]?.type === "paragraph"
+      ? list.slice(last.index + 1, followerIndex).filter(isBlockBoundary)
+      : [];
+  const following = list[standing.length > 0 ? followerIndex : last.index + 1];
   const terminal = last.index === list.length - 1;
   // Paragraphs the same author's pending insertion added whole, with no one
   // else's suggestion in them, go outright before a paragraph or a table, as
@@ -889,13 +906,35 @@ export const deleteBlocks = ({
   )
     ? { sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE }
     : {};
-  const replacement = (blocks: readonly Paragraph[]) => ({
-    type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
-    story: op.story,
-    expected,
-    blocks,
-    ...sectionBoundaries,
-  });
+  /** `blocks` in place of the paragraphs `replaced`, through the next one. */
+  const replacement = (
+    blocks: readonly BlockContent[],
+    replaced: readonly Paragraph[] = expected,
+  ): DocumentOp =>
+    following?.type === "paragraph" && standing.length > 0
+      ? {
+          // Boundaries between blocks are no paragraphs a replacement
+          // addresses: the list is set whole, around the paragraph after.
+          type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+          story: op.story,
+          blockId: following.paraId ?? "",
+          expected: list,
+          blocks: [
+            ...list.slice(0, list.indexOf(replaced.at(0) ?? following)),
+            ...blocks,
+            ...list.slice(followerIndex + 1),
+          ],
+        }
+      : {
+          type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+          story: op.story,
+          expected: replaced,
+          // With no boundaries standing, only paragraphs replace paragraphs.
+          blocks: blocks.filter(
+            (block): block is Paragraph => block.type === "paragraph",
+          ),
+          ...sectionBoundaries,
+        };
   const finalReview = reviewFieldsOf(last.paragraph);
   if (previous !== undefined && paragraphLength(previous) > 0) {
     const formatting = withMarkFormatting(
@@ -946,9 +985,12 @@ export const deleteBlocks = ({
   const directModified: string[] = [];
   if (outcome.kind === "join" && following?.type === "paragraph")
     directBlocks = [
-      kept.length === 0
+      kept.length === 0 && standing.length === 0
         ? following
-        : { ...following, content: [...kept, ...following.content] },
+        : {
+            ...following,
+            content: [...kept, ...standing, ...following.content],
+          },
     ];
   // A deletion is refused before a table and keeps the paragraph that ends
   // its container, so no outcome here removes the boundaries it kept: a
@@ -988,7 +1030,7 @@ export const deleteBlocks = ({
   // is not the block it replaces: the survivor, or the paragraph after the
   // deletion once it holds the boundaries the deleted paragraphs kept.
   const replaced = new Map(
-    replacement([]).expected.map((block) => [idKey(block.paraId ?? ""), block]),
+    expected.map((block) => [idKey(block.paraId ?? ""), block]),
   );
   directModified.push(
     ...directBlocks
@@ -1069,7 +1111,7 @@ export const deleteBlocks = ({
   // paragraph nothing of this one reaches.
   const finalTakeover =
     following?.type === "paragraph" &&
-    last.index + 1 === list.length - 1 &&
+    list.indexOf(following) === list.length - 1 &&
     paragraphHoldsContent(following) &&
     !paragraphHoldsContentOnceAccepted(following) &&
     (following.propertyChanges?.length ?? 0) > 0 &&
@@ -1195,7 +1237,7 @@ export const deleteBlocks = ({
   // paragraph alone in its container, recording nothing is that deletion.
   if (
     tracked.every((paragraph, index) => paragraph === reviewed[index]) &&
-    !structurallyEqual(directBlocks, replacement([]).expected)
+    !structurallyEqual(directBlocks, expected)
   )
     return refuse(
       DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
@@ -1235,7 +1277,7 @@ export const deleteBlocks = ({
         following?.type === "paragraph" ? [...tracked, following] : tracked;
       // Each paragraph whose mark went joins the one after it, which keeps
       // its own identity and properties.
-      const blocks: Paragraph[] = [];
+      const blocks: BlockContent[] = [];
       const removed: string[] = [];
       const absorbed: ParagraphAbsorption[] = [];
       const modified = new Set<string>();
@@ -1243,6 +1285,12 @@ export const deleteBlocks = ({
       let joining: string[] = [];
       for (const [index, paragraph] of marked.entries()) {
         const source = original[index];
+        // The boundaries standing before the following paragraph stay
+        // between the blocks, or join it with a paragraph that joins it.
+        if (source === following && standing.length > 0) {
+          if (carried === undefined) blocks.push(...standing);
+          else carried.push(...standing);
+        }
         if (source !== undefined && joinsNext.has(source)) {
           carried = [...(carried ?? []), ...paragraph.content];
           removed.push(paragraph.paraId ?? "");
@@ -1261,9 +1309,7 @@ export const deleteBlocks = ({
         carried = undefined;
         blocks.push(joined);
       }
-      const result = applyOps(document, [
-        { ...replacement(blocks), expected: original },
-      ]);
+      const result = applyOps(document, [replacement(blocks, original)]);
       if (result.isErr())
         return refuse(result.error.reason, result.error.message);
       return Result.ok({
