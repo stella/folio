@@ -5782,10 +5782,27 @@ export class CanonicalPublicOperations {
         to: end,
       });
     }
+    // Ending a section before a table or a content control, with a paragraph
+    // before it, the paragraph keeps its mark and with it its section break,
+    // as the direct deletion's join leaves it: tracked, the deletion takes
+    // its words and the mark of the paragraph before, which accepting joins
+    // into it, as it does for a container's final paragraph.
+    const keepsSectionBreakBeforeBlock =
+      tracked &&
+      after !== null &&
+      after.type.name !== "paragraph" &&
+      paragraph.node.attrs["_sectionProperties"] != null &&
+      previous !== undefined &&
+      previous.node.attrs["_sectionProperties"] == null &&
+      operation.moveId === undefined &&
+      !gainsFollower &&
+      !previousGainsFollower &&
+      deletedRun === "none";
     if (
-      next !== undefined ||
-      gainsFollower ||
-      (tracked && (after !== null || operation.moveId !== undefined))
+      !keepsSectionBreakBeforeBlock &&
+      (next !== undefined ||
+        gainsFollower ||
+        (tracked && (after !== null || operation.moveId !== undefined)))
     ) {
       const intents: EditorIntent[] = [
         {
@@ -5884,9 +5901,11 @@ export class CanonicalPublicOperations {
       const intents: EditorIntent[] = [...cleared.value];
       // The paragraph before it takes over: before a table or a content
       // control the deleted paragraph's mark goes with it, and the one before
-      // it keeps its identity (`directJoinSurvivor`). Collapsing a run the
-      // batch deletes back to its start, it joins the run's paragraph before
-      // it, which keeps its identity and properties until its own deletion.
+      // it keeps its identity (`directJoinSurvivor`), unless that mark ends a
+      // section: it stays with its break, as accepting the tracked deletion
+      // leaves it. Collapsing a run the batch deletes back to its start, it
+      // joins the run's paragraph before it, which keeps its identity and
+      // properties until its own deletion.
       const collapsesRunStart =
         previous !== undefined && deletedRun === "runStart";
       if (previous !== undefined)
@@ -5897,7 +5916,11 @@ export class CanonicalPublicOperations {
           nextBlockId: paragraph.blockId,
           survivor: collapsesRunStart
             ? SPLIT_HALVES.FIRST
-            : directJoinSurvivor({ laterMarkRemains: after === null }),
+            : directJoinSurvivor({
+                laterMarkRemains:
+                  after === null ||
+                  paragraph.node.attrs["_sectionProperties"] != null,
+              }),
         });
       if (intents.length === 0) return refusal("noopOperation");
       let joinOrder = {};
