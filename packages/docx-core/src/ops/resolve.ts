@@ -740,7 +740,13 @@ export const mergeAtSeam = (
   right: InlineNode,
   emptied: Emptied = NOTHING_EMPTIED,
 ): InlineNode[] => {
-  if (alikeDepth(left, right) > 0) {
+  // Two tracked changes stay two: merging them would retire one's id, and a
+  // later decision on the other would take both.
+  const distinctChanges =
+    isTrackedWrapper(left) &&
+    isTrackedWrapper(right) &&
+    left.info.id !== right.info.id;
+  if (!distinctChanges && alikeDepth(left, right) > 0) {
     const leftChildren = childNodes(left);
     const rightChildren = childNodes(right);
     return leftChildren === undefined || rightChildren === undefined
