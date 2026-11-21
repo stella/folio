@@ -24,9 +24,15 @@ import {
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import { FolioDocxReviewer } from "./headless";
 
 type Mode = "direct" | "tracked-changes";
+
+const SESSIONS = [
+  "legacy",
+  "canonical",
+] as const satisfies readonly HeadlessReviewerSession[];
 
 const TABLE = "| Item | Price |\n| --- | --- |\n| Widget | 10 |";
 const ROWS = [
@@ -34,11 +40,21 @@ const ROWS = [
   ["Period", "12 months"],
 ];
 
-const open = async (markdown: string): Promise<FolioDocxReviewer> => {
-  const bytes = (await ensureParaIds(await createDocx(fromMarkdown(markdown))))
-    .docx;
-  return FolioDocxReviewer.fromBuffer(bytes, { author: "Test" });
-};
+/** Opens `bytes` on `session`, or on the reviewer's default without one. */
+const reviewerOf = (bytes: ArrayBuffer, session?: HeadlessReviewerSession) =>
+  FolioDocxReviewer.fromBuffer(bytes, {
+    author: "Test",
+    ...(session !== undefined && { session }),
+  });
+
+const open = async (
+  markdown: string,
+  session?: HeadlessReviewerSession,
+): Promise<FolioDocxReviewer> =>
+  reviewerOf(
+    (await ensureParaIds(await createDocx(fromMarkdown(markdown)))).docx,
+    session,
+  );
 
 const idOf = (reviewer: FolioDocxReviewer, text: string): string => {
   const block = reviewer.snapshot().blocks.find((b) => b.text === text);
@@ -62,14 +78,12 @@ const apply = (
   );
 
 /** The blocks once every change is accepted, saved and reopened. */
-const accepted = async (reviewer: FolioDocxReviewer) => {
+const accepted = async (
+  reviewer: FolioDocxReviewer,
+  session?: HeadlessReviewerSession,
+) => {
   reviewer.acceptAll();
-  const reopened = await FolioDocxReviewer.fromBuffer(
-    await reviewer.toBuffer(),
-    {
-      author: "Test",
-    },
-  );
+  const reopened = await reviewerOf(await reviewer.toBuffer(), session);
   return reopened.snapshot().blocks.map((block) => ({
     text: block.text,
     inTable: block.table !== undefined,
@@ -77,12 +91,23 @@ const accepted = async (reviewer: FolioDocxReviewer) => {
   }));
 };
 
+type PendingDeletionsOptions = {
+  markdown: string;
+  /** The texts of the paragraphs deleted. */
+  texts: string[];
+  session?: HeadlessReviewerSession;
+};
+
 /**
  * Delete `texts` as tracked changes another author left pending; the ids of
  * every block, read before, since a reader shows a deleted one blank.
  */
-const withPendingDeletions = async (markdown: string, texts: string[]) => {
-  const reviewer = await open(markdown);
+const withPendingDeletions = async ({
+  markdown,
+  texts,
+  session,
+}: PendingDeletionsOptions) => {
+  const reviewer = await open(markdown, session);
   const ids = new Map(
     reviewer.snapshot().blocks.map((block) => [block.text, block.id]),
   );
@@ -96,12 +121,7 @@ const withPendingDeletions = async (markdown: string, texts: string[]) => {
     })),
   );
   expect(result.skipped).toEqual([]);
-  const reopened = await FolioDocxReviewer.fromBuffer(
-    await reviewer.toBuffer(),
-    {
-      author: "Test",
-    },
-  );
+  const reopened = await reviewerOf(await reviewer.toBuffer(), session);
   const id = (text: string): string => {
     const found = ids.get(text);
     if (found === undefined) throw new Error(`No block read "${text}"`);
@@ -160,10 +180,10 @@ describe("a merge into a paragraph accepting removes, before a table", () => {
     setup: MergeCase,
     mode: "direct" | "tracked-changes",
   ) => {
-    const { reviewer, id } = await withPendingDeletions(
-      setup.markdown,
-      setup.pending,
-    );
+    const { reviewer, id } = await withPendingDeletions({
+      markdown: setup.markdown,
+      texts: setup.pending,
+    });
     if (setup.before) {
       const before = apply(reviewer, mode, setup.before(id));
       expect(before.skipped).toEqual([]);
@@ -245,47 +265,50 @@ const beforeClosing: Insertion[] = [
 
 describe("blocks put on either side of a table accepting removes", () => {
   const markdown = ["Opening clause.", TABLE, "Closing clause."].join("\n\n");
-  const replay = async (
-    mode: "direct" | "tracked-changes",
-    operations: (reviewer: FolioDocxReviewer) => FolioDocumentOperation[],
-  ) => {
-    const reviewer = await open(markdown);
-    const removed = apply(reviewer, mode, [
-      { id: "table", type: "deleteTable", blockId: idOf(reviewer, "Widget") },
-    ]);
-    expect(removed.skipped).toEqual([]);
-    const result = apply(reviewer, mode, operations(reviewer));
-    expect(result.skipped).toEqual([]);
-    return accepted(reviewer);
-  };
-  for (const after of afterOpening) {
-    for (const before of beforeClosing) {
-      // Two new tables would meet once the deleted one goes: another rule.
-      if (after.name.includes("table") && before.name.includes("table"))
-        continue;
-      for (const order of ["after first", "before first"] as const) {
-        test(`share its gap in input order (${after.name}, ${before.name}, ${order})`, async () => {
-          const operations = (reviewer: FolioDocxReviewer) => {
-            const pair = [
-              after.operation(reviewer),
-              before.operation(reviewer),
-            ];
-            return order === "after first" ? pair : pair.toReversed();
-          };
-          const direct = await replay("direct", operations);
-          expect(direct.map(({ text }) => text)).not.toContain("Widget");
-          expect(await replay("tracked-changes", operations)).toEqual(direct);
-        });
+  for (const session of SESSIONS) {
+    const replay = async (
+      mode: "direct" | "tracked-changes",
+      operations: (reviewer: FolioDocxReviewer) => FolioDocumentOperation[],
+    ) => {
+      const reviewer = await open(markdown, session);
+      const removed = apply(reviewer, mode, [
+        { id: "table", type: "deleteTable", blockId: idOf(reviewer, "Widget") },
+      ]);
+      expect(removed.skipped).toEqual([]);
+      const result = apply(reviewer, mode, operations(reviewer));
+      expect(result.skipped).toEqual([]);
+      return accepted(reviewer, session);
+    };
+    for (const after of afterOpening) {
+      for (const before of beforeClosing) {
+        // Two new tables would meet once the deleted one goes: another rule.
+        if (after.name.includes("table") && before.name.includes("table"))
+          continue;
+        for (const order of ["after first", "before first"] as const) {
+          test(`share its gap in input order (${after.name}, ${before.name}, ${order}, ${session})`, async () => {
+            const operations = (reviewer: FolioDocxReviewer) => {
+              const pair = [
+                after.operation(reviewer),
+                before.operation(reviewer),
+              ];
+              return order === "after first" ? pair : pair.toReversed();
+            };
+            const direct = await replay("direct", operations);
+            expect(direct.map(({ text }) => text)).not.toContain("Widget");
+            expect(await replay("tracked-changes", operations)).toEqual(direct);
+          });
+        }
       }
     }
   }
 });
 
 /** The block texts once every change is rejected, from a saved copy. */
-const rejected = async (reviewer: FolioDocxReviewer): Promise<string[]> => {
-  const copy = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
-    author: "Test",
-  });
+const rejected = async (
+  reviewer: FolioDocxReviewer,
+  session?: HeadlessReviewerSession,
+): Promise<string[]> => {
+  const copy = await reviewerOf(await reviewer.toBuffer(), session);
   copy.rejectAll();
   return copy.snapshot().blocks.map((block) => block.text);
 };
@@ -326,8 +349,12 @@ const tableRemovals: Record<string, Step> = {
 
 describe("removing what ends a pending join", () => {
   /** Each step a tracked batch; the texts once accepted. */
-  const replay = async (markdown: string, steps: Step[]) => {
-    const reviewer = await open(markdown);
+  const replay = async (
+    markdown: string,
+    steps: Step[],
+    session?: HeadlessReviewerSession,
+  ) => {
+    const reviewer = await open(markdown, session);
     const before = textsOf(reviewer.snapshot().blocks);
     const ids = new Map(before.map((text, index) => [text, index]));
     const blocks = reviewer.snapshot().blocks;
@@ -341,8 +368,8 @@ describe("removing what ends a pending join", () => {
       expect(apply(reviewer, "tracked-changes", step(id)).skipped).toEqual([]);
     }
     // Rejecting every change still gives the document before back.
-    expect(await rejected(reviewer)).toEqual(before);
-    return textsOf(await accepted(reviewer));
+    expect(await rejected(reviewer, session)).toEqual(before);
+    return textsOf(await accepted(reviewer, session));
   };
 
   const joined: Step[] = [
@@ -361,11 +388,17 @@ describe("removing what ends a pending join", () => {
   const beforeListItem = ["- Opening clause.", "- Joined.", "Closing."].join(
     "\n\n",
   );
-  const afterDeletion = async (
-    edit: (id: IdOf) => FolioDocumentOperation,
-    together: boolean,
-  ) => {
-    const reviewer = await open(beforeListItem);
+  type AfterDeletionOptions = {
+    session: HeadlessReviewerSession;
+    edit: (id: IdOf) => FolioDocumentOperation;
+    together: boolean;
+  };
+  const afterDeletion = async ({
+    session,
+    edit,
+    together,
+  }: AfterDeletionOptions) => {
+    const reviewer = await open(beforeListItem, session);
     const id: IdOf = (text) => idOf(reviewer, text);
     const opening = id("Opening clause.");
     const joinedId = id("Joined.");
@@ -403,35 +436,45 @@ describe("removing what ends a pending join", () => {
       }),
     };
 
-  for (const [name, edit] of Object.entries(editsOfTheSource)) {
-    test(`reads it in the same batch as after the deletion alone (${name})`, async () => {
-      expect(await afterDeletion(edit, true)).toEqual(
-        await afterDeletion(edit, false),
-      );
+  for (const session of SESSIONS) {
+    for (const [name, edit] of Object.entries(editsOfTheSource)) {
+      test(`reads it in the same batch as after the deletion alone (${name}, ${session})`, async () => {
+        expect(await afterDeletion({ session, edit, together: true })).toEqual(
+          await afterDeletion({ session, edit, together: false }),
+        );
+      });
+    }
+
+    test(`lets that break go with the words joined into it (${session})`, async () => {
+      expect(
+        await replay(
+          ["Opening.", "Joined.", "Closing."].join("\n\n"),
+          [
+            (id) => [joinInto(id("Opening."))],
+            (id) => [
+              deleteBlock(id("Opening."), "opening"),
+              deleteBlock(id("Joined."), "joined"),
+            ],
+          ],
+          session,
+        ),
+      ).toEqual(["Closing."]);
+    });
+
+    test(`lets that break go when a later batch deletes the joined words (${session})`, async () => {
+      expect(
+        await replay(
+          ["Opening.", "Joined.", "Closing."].join("\n\n"),
+          [
+            (id) => [joinInto(id("Opening."))],
+            (id) => [deleteBlock(id("Joined."), "joined")],
+            (id) => [deleteBlock(id("Opening."), "opening")],
+          ],
+          session,
+        ),
+      ).toEqual(["Closing."]);
     });
   }
-
-  test("lets that break go with the words joined into it", async () => {
-    expect(
-      await replay(["Opening.", "Joined.", "Closing."].join("\n\n"), [
-        (id) => [joinInto(id("Opening."))],
-        (id) => [
-          deleteBlock(id("Opening."), "opening"),
-          deleteBlock(id("Joined."), "joined"),
-        ],
-      ]),
-    ).toEqual(["Closing."]);
-  });
-
-  test("lets that break go when a later batch deletes the joined words", async () => {
-    expect(
-      await replay(["Opening.", "Joined.", "Closing."].join("\n\n"), [
-        (id) => [joinInto(id("Opening."))],
-        (id) => [deleteBlock(id("Joined."), "joined")],
-        (id) => [deleteBlock(id("Opening."), "opening")],
-      ]),
-    ).toEqual(["Closing."]);
-  });
 
   const beforeTable = ["Opening.", "Joined.", TABLE, "Closing."].join("\n\n");
 
@@ -456,10 +499,10 @@ describe("removing what ends a pending join", () => {
 
     test(`keeps words a table stopped apart once it goes, directly as tracked (${name})`, async () => {
       const run = async (mode: Mode, step: Step) => {
-        const { reviewer, id } = await withPendingDeletions(
-          ["Kept item.", "Gone item.", TABLE, "End."].join("\n\n"),
-          ["Gone item."],
-        );
+        const { reviewer, id } = await withPendingDeletions({
+          markdown: ["Kept item.", "Gone item.", TABLE, "End."].join("\n\n"),
+          texts: ["Gone item."],
+        });
         expect(
           apply(reviewer, mode, [merge(id("Kept item."))]).skipped,
         ).toEqual([]);
@@ -561,14 +604,23 @@ describe("blocks put on either side of blocks accepting removes whole", () => {
    * The removal in `removalMode`, then the batch in `mode`: the texts the
    * source had, and the blocks once every change is accepted.
    */
-  const replay = async (
-    run: RemovedRun,
-    removalMode: Mode,
-    mode: Mode,
-    operations: (reviewer: FolioDocxReviewer) => FolioDocumentOperation[],
-  ) => {
+  type ReplayOptions = {
+    session: HeadlessReviewerSession;
+    run: RemovedRun;
+    removalMode: Mode;
+    mode: Mode;
+    operations: (reviewer: FolioDocxReviewer) => FolioDocumentOperation[];
+  };
+  const replay = async ({
+    session,
+    run,
+    removalMode,
+    mode,
+    operations,
+  }: ReplayOptions) => {
     const reviewer = await open(
       ["Opening clause.", ...run.between, "Closing clause."].join("\n\n"),
+      session,
     );
     const source = textsOf(reviewer.snapshot().blocks);
     const ids = new Map(
@@ -583,58 +635,69 @@ describe("blocks put on either side of blocks accepting removes whole", () => {
     expect(apply(reviewer, mode, operations(reviewer)).skipped).toEqual([]);
     if (removalMode === "tracked-changes" && mode === "tracked-changes") {
       // Rejecting every change still gives the source back.
-      expect(await rejected(reviewer)).toEqual(source);
+      expect(await rejected(reviewer, session)).toEqual(source);
     }
-    return accepted(reviewer);
+    return accepted(reviewer, session);
   };
-  for (const [runName, run] of Object.entries(removedRuns)) {
-    for (const after of everyAfterOpening) {
-      for (const before of everyBeforeClosing) {
-        // Two new tables would meet once the removed blocks go: another rule.
-        if (after.name.includes("table") && before.name.includes("table"))
-          continue;
-        for (const order of ["after first", "before first"] as const) {
-          test(`share their gap in input order (${runName}; ${after.name}, ${before.name}, ${order})`, async () => {
-            const operations = (reviewer: FolioDocxReviewer) => {
-              const pair = [
-                after.operation(reviewer),
-                before.operation(reviewer),
-              ];
-              return order === "after first" ? pair : pair.toReversed();
-            };
-            const direct = await replay(run, "direct", "direct", operations);
-            const texts = textsOf(direct);
-            expect(texts).not.toContain("Removed clause.");
-            // Between the two paragraphs, in the order the batch names them.
-            const indexOf = (marker: string): number =>
-              texts.findIndex((text) => text.includes(marker));
-            const [first, second] =
-              order === "after first" ? [after, before] : [before, after];
-            expect(indexOf("Opening clause.")).toBeLessThan(
-              indexOf(first.marker),
-            );
-            expect(indexOf(first.marker)).toBeLessThan(indexOf(second.marker));
-            expect(indexOf(second.marker)).toBeLessThan(
-              indexOf("Closing clause."),
-            );
-            if (!after.directOnly && !before.directOnly) {
+  for (const session of SESSIONS)
+    for (const [runName, run] of Object.entries(removedRuns)) {
+      for (const after of everyAfterOpening) {
+        for (const before of everyBeforeClosing) {
+          // Two new tables would meet once the removed blocks go: another rule.
+          if (after.name.includes("table") && before.name.includes("table"))
+            continue;
+          for (const order of ["after first", "before first"] as const) {
+            test(`share their gap in input order (${runName}; ${after.name}, ${before.name}, ${order}, ${session})`, async () => {
+              const operations = (reviewer: FolioDocxReviewer) => {
+                const pair = [
+                  after.operation(reviewer),
+                  before.operation(reviewer),
+                ];
+                return order === "after first" ? pair : pair.toReversed();
+              };
+              const options = { session, run, operations };
+              const direct = await replay({
+                ...options,
+                removalMode: "direct",
+                mode: "direct",
+              });
+              const texts = textsOf(direct);
+              expect(texts).not.toContain("Removed clause.");
+              // Between the two paragraphs, in the order the batch names them.
+              const indexOf = (marker: string): number =>
+                texts.findIndex((text) => text.includes(marker));
+              const [first, second] =
+                order === "after first" ? [after, before] : [before, after];
+              expect(indexOf("Opening clause.")).toBeLessThan(
+                indexOf(first.marker),
+              );
+              expect(indexOf(first.marker)).toBeLessThan(
+                indexOf(second.marker),
+              );
+              expect(indexOf(second.marker)).toBeLessThan(
+                indexOf("Closing clause."),
+              );
+              if (!after.directOnly && !before.directOnly) {
+                expect(
+                  await replay({
+                    ...options,
+                    removalMode: "tracked-changes",
+                    mode: "tracked-changes",
+                  }),
+                ).toEqual(direct);
+              }
               expect(
-                await replay(
-                  run,
-                  "tracked-changes",
-                  "tracked-changes",
-                  operations,
-                ),
+                await replay({
+                  ...options,
+                  removalMode: "tracked-changes",
+                  mode: "direct",
+                }),
               ).toEqual(direct);
-            }
-            expect(
-              await replay(run, "tracked-changes", "direct", operations),
-            ).toEqual(direct);
-          });
+            });
+          }
         }
       }
     }
-  }
 
   for (const before of beforeClosing) {
     test(`stop at a deleted paragraph whose break a pending join keeps (${before.name})`, async () => {
@@ -673,10 +736,10 @@ describe("blocks put on either side of blocks accepting removes whole", () => {
 
   test("stop where a pending join reaches a paragraph accepting removes", async () => {
     const replayReached = async (mode: Mode) => {
-      const { reviewer, id } = await withPendingDeletions(
-        ["Kept item.", "Gone item.", TABLE, "End."].join("\n\n"),
-        ["Gone item."],
-      );
+      const { reviewer, id } = await withPendingDeletions({
+        markdown: ["Kept item.", "Gone item.", TABLE, "End."].join("\n\n"),
+        texts: ["Gone item."],
+      });
       expect(apply(reviewer, mode, [merge(id("Kept item."))]).skipped).toEqual(
         [],
       );
@@ -712,48 +775,71 @@ describe("blocks put on either side of blocks accepting removes whole", () => {
 describe("a paragraph put before a block the batch restyles, past blocks accepting removes whole", () => {
   // The batch orders the insertion as at the restyled block, as it does with
   // nothing between them: the paragraph takes what the block had.
-  const inserted = async (pending: string[]) => {
-    const { reviewer, id } = await withPendingDeletions(
-      ["Opening clause.", "Gone clause.", "Closing clause."].join("\n\n"),
-      pending,
-    );
-    const result = apply(reviewer, "tracked-changes", [
-      {
-        id: "restyle",
-        type: "setBlockParagraphProperties",
-        blockId: id("Closing clause."),
-        properties: { styleId: "Heading2" },
-      },
-      {
-        id: "insert",
-        type: "insertBeforeBlock",
-        blockId: id("Closing clause."),
-        text: "Inserted clause.",
-      },
-    ]);
-    expect(result.skipped).toEqual([]);
-    const block = reviewer
-      .snapshot()
-      .blocks.find(({ text }) => text === "Inserted clause.");
-    return { kind: block?.kind, styleId: block?.styleId };
-  };
+  for (const session of SESSIONS) {
+    const inserted = async (pending: string[]) => {
+      const { reviewer, id } = await withPendingDeletions({
+        markdown: ["Opening clause.", "Gone clause.", "Closing clause."].join(
+          "\n\n",
+        ),
+        texts: pending,
+        session,
+      });
+      const result = apply(reviewer, "tracked-changes", [
+        {
+          id: "restyle",
+          type: "setBlockParagraphProperties",
+          blockId: id("Closing clause."),
+          properties: { styleId: "Heading2" },
+        },
+        {
+          id: "insert",
+          type: "insertBeforeBlock",
+          blockId: id("Closing clause."),
+          text: "Inserted clause.",
+        },
+      ]);
+      expect(result.skipped).toEqual([]);
+      const block = reviewer
+        .snapshot()
+        .blocks.find(({ text }) => text === "Inserted clause.");
+      return { kind: block?.kind, styleId: block?.styleId };
+    };
 
-  test("takes the same properties as with nothing between them", async () => {
-    const plain = await inserted([]);
-    expect(plain).toEqual({ kind: "paragraph", styleId: undefined });
-    expect(await inserted(["Gone clause."])).toEqual(plain);
-  });
+    test(`takes the same properties as with nothing between them (${session})`, async () => {
+      const plain = await inserted([]);
+      expect(plain).toEqual({ kind: "paragraph", styleId: undefined });
+      expect(await inserted(["Gone clause."])).toEqual(plain);
+    });
+  }
 });
+
+// The canonical session puts it after the final paragraph, whose mark holds
+// the pending formatting change the deletions recorded: moving that change
+// onto a new final paragraph is refused.
+const FINAL_MARK_REFUSAL =
+  "A tracked insertion after a paragraph no paragraph follows needs the anchor's mark free of review records.";
 
 describe("a paragraph put right after words whose break a pending change deletes", () => {
   // The words run, accepted, into the closing paragraph; a paragraph put
   // after them takes that deleted break, and the words keep their own. The
   // rest of the batch reads them so, as after that insertion alone.
-  const afterInsertion = async (together: boolean) => {
-    const { reviewer, id } = await withPendingDeletions(
-      ["- Opening clause.", "Middle clause.", "- Closing clause."].join("\n\n"),
-      ["Middle clause.", "Closing clause."],
-    );
+  type AfterInsertionOptions = {
+    session: HeadlessReviewerSession;
+    together: boolean;
+  };
+  const afterInsertion = async ({
+    session,
+    together,
+  }: AfterInsertionOptions) => {
+    const { reviewer, id } = await withPendingDeletions({
+      markdown: [
+        "- Opening clause.",
+        "Middle clause.",
+        "- Closing clause.",
+      ].join("\n\n"),
+      texts: ["Middle clause.", "Closing clause."],
+      session,
+    });
     const operations: FolioDocumentOperation[] = [
       {
         id: "insert",
@@ -775,19 +861,29 @@ describe("a paragraph put right after words whose break a pending change deletes
           (operation) =>
             apply(reviewer, "tracked-changes", [operation]).skipped,
         );
-    expect(skipped).toEqual([]);
+    expect(skipped).toEqual(
+      session === "canonical"
+        ? [
+            expect.objectContaining({
+              id: "insert",
+              message: FINAL_MARK_REFUSAL,
+            }),
+          ]
+        : [],
+    );
     return reviewer
       .snapshot()
       .blocks.map(({ text, kind, styleId }) => ({ text, kind, styleId }));
   };
 
-  test("the rest of the batch reads the words with their own properties", async () => {
-    const alone = await afterInsertion(false);
-    expect(alone.find(({ text }) => text === "Opening ")).toEqual({
-      text: "Opening ",
-      kind: "listItem",
-      styleId: undefined,
+  for (const session of SESSIONS)
+    test(`the rest of the batch reads the words with their own properties (${session})`, async () => {
+      const alone = await afterInsertion({ session, together: false });
+      expect(alone.find(({ text }) => text === "Opening ")).toEqual({
+        text: "Opening ",
+        kind: "listItem",
+        styleId: undefined,
+      });
+      expect(await afterInsertion({ session, together: true })).toEqual(alone);
     });
-    expect(await afterInsertion(true)).toEqual(alone);
-  });
 });
