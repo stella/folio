@@ -587,9 +587,16 @@ export type FolioAIEditOperation<Numbering = FolioAIListNumbering> =
           blockId: string;
           position?: "after" | "before";
           /**
-           * Initial text for newly created physical cells in row order. A
-           * horizontal merge the new column crosses widens instead of taking a
-           * cell, so more texts than new cells is refused as `payloadDoesNotFit`.
+           * How many adjacent columns to insert there (one when absent, at
+           * most 63). Tracked, they are one change: accepting or rejecting it
+           * resolves every one of them.
+           */
+          columnCount?: number;
+          /**
+           * Initial text for newly created physical cells in reading order:
+           * row by row, and left to right within a row. A horizontal merge the
+           * new columns cross widens instead of taking cells, so more texts
+           * than new cells is refused as `payloadDoesNotFit`.
            */
           cellTexts?: string[];
         }

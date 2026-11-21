@@ -419,6 +419,7 @@ export type FolioAIEditOperation<Numbering = FolioAIListNumbering> = FolioAIEdit
     type: "insertTableColumn";
     blockId: string;
     position?: "after" | "before";
+    columnCount?: number;
     cellTexts?: string[];
 } | {
     id: string;
