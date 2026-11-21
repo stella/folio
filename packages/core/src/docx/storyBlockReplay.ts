@@ -186,12 +186,54 @@ const effectiveBindings = (element: XmlElement): Map<string, string> => {
   return bindings;
 };
 
+/**
+ * What the part a fragment is replayed into already declares where the
+ * fragment goes: its in-scope namespace bindings and the namespaces its
+ * markup compatibility already ignores, by URI, as each declaration resolves.
+ */
+export type ReplayDestination = {
+  readonly bindings: ReadonlyMap<string, string>;
+  readonly ignorableUris: ReadonlySet<string>;
+};
+
+/** The {@link ReplayDestination} of the content of `element`. */
+export const replayDestinationOf = (
+  ...elements: readonly XmlElement[]
+): ReplayDestination => {
+  const markupCompatibilityUri =
+    "http://schemas.openxmlformats.org/markup-compatibility/2006";
+  const ignorableUris = new Set<string>();
+  for (const element of elements) {
+    const value = getAttributeByNamespaceUri(
+      element,
+      new Set([markupCompatibilityUri]),
+      "Ignorable",
+    );
+    const scope = effectiveBindings(element);
+    for (const prefix of replayIgnorablePrefixes(value ?? "")) {
+      const uri = scope.get(prefix);
+      if (uri !== undefined) ignorableUris.add(uri);
+    }
+  }
+  const innermost = elements.at(-1);
+  return {
+    bindings:
+      innermost === undefined ? new Map() : effectiveBindings(innermost),
+    ignorableUris,
+  };
+};
+
 type MaterializeReplayFragmentOptions = {
   xml: string;
   element: XmlElement;
   sourceNamespace: string;
   generatedRoot?: XmlElement;
   validation?: ReplayFragmentValidation | undefined;
+  /**
+   * Where the fragment goes. A declaration the destination already makes, or
+   * one for a prefix the fragment does not use, is left off it.
+   */
+  destination?: ReplayDestination | undefined;
 };
 
 const validationToken = Symbol("replay-fragment-validation");
@@ -201,6 +243,14 @@ type ReplayFragmentOpening = {
   ignorableAttribute: string | undefined;
   escapedIgnorable: string;
   compact: ReturnType<typeof prepareCompactReplaySuffix>;
+  /** The declarations `suffix` adds, one by one. */
+  bindings: readonly { prefix: string; uri: string }[];
+  /** The ignorable prefixes `suffix` adds an attribute for, if it adds one. */
+  addedIgnorable: readonly string[] | undefined;
+  /** Every prefix the bound fragment ignores, its own and the ones it inherits. */
+  ignorable: readonly string[];
+  /** The fragment's in-scope bindings once bound. */
+  scope: ReadonlyMap<string, string>;
 };
 type ReplayFragmentState = {
   readonly valid: Set<string>;
@@ -215,12 +265,81 @@ const fragmentStates = new WeakMap<
   ReplayFragmentState
 >();
 
+/**
+ * Whether a fragment names `prefix`: in an element or attribute name, a
+ * qualified value, or a list of prefixes such as `mc:Ignorable` or
+ * `mc:Choice/@Requires`. An overestimate, never an underestimate.
+ */
+const usesPrefix = (xml: string, prefix: string): boolean => {
+  const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+  return new RegExp(`(?:^|[<\\s"'/])${escaped}(?=[:\\s"'])`, "u").test(xml);
+};
+
+type NeedsIgnorableOptions = {
+  xml: string;
+  plan: ReplayFragmentOpening;
+  destination: ReplayDestination;
+  prefix: string;
+};
+
+/** Whether the fragment ignores `prefix` where its destination does not. */
+const needsIgnorable = ({
+  xml,
+  plan,
+  destination,
+  prefix,
+}: NeedsIgnorableOptions): boolean => {
+  if (!usesPrefix(xml, prefix)) return false;
+  const uri = plan.scope.get(prefix);
+  return uri === undefined || !destination.ignorableUris.has(uri);
+};
+
+/**
+ * The suffix the fragment needs where it goes: the declarations and ignorable
+ * prefixes it uses that the destination does not already make.
+ */
+const destinationSuffix = (
+  xml: string,
+  plan: ReplayFragmentOpening,
+  destination: ReplayDestination,
+): string => {
+  const additions: string[] = [];
+  const ignorable = plan.addedIgnorable?.filter((prefix) =>
+    needsIgnorable({ xml, plan, destination, prefix }),
+  );
+  const keepsIgnorable =
+    plan.ignorableAttribute !== undefined &&
+    ignorable !== undefined &&
+    ignorable.length > 0;
+  if (keepsIgnorable)
+    additions.push(
+      ` ${plan.ignorableAttribute}="${escapeXmlAttribute(ignorable.join(" "))}"`,
+    );
+  const compatibilityPrefix = keepsIgnorable
+    ? plan.ignorableAttribute?.slice(0, plan.ignorableAttribute.indexOf(":"))
+    : undefined;
+  for (const { prefix, uri } of plan.bindings) {
+    if (destination.bindings.get(prefix) === uri) continue;
+    if (
+      prefix !== "" &&
+      prefix !== compatibilityPrefix &&
+      !usesPrefix(xml, prefix) &&
+      !(ignorable ?? []).includes(prefix)
+    )
+      continue;
+    const name = prefix === "" ? "xmlns" : `xmlns:${prefix}`;
+    additions.push(` ${name}="${escapeXmlAttribute(uri)}"`);
+  }
+  return additions.join("");
+};
+
 type BindFragmentOpeningOptions = {
   xml: string;
   opening: string;
   plan: ReplayFragmentOpening;
   strict: boolean;
   state: ReplayFragmentState | undefined;
+  destination?: ReplayDestination | undefined;
 };
 const bindFragmentOpening = ({
   xml,
@@ -228,6 +347,7 @@ const bindFragmentOpening = ({
   plan,
   strict,
   state,
+  destination,
 }: BindFragmentOpeningOptions): string | null => {
   const { ignorableAttribute, escapedIgnorable, compact } = plan;
   const suffix = compact?.serialized ?? plan.suffix;
@@ -260,6 +380,32 @@ const bindFragmentOpening = ({
     if (!compactSafe && !isSafeCapturedXmlDocument(materialized)) return null;
     valid?.add(materialized);
   }
+  // The fragment, valid with every declaration, takes only those its
+  // destination lacks: it reads the same there, written as an author would.
+  if (!strict && destination !== undefined) {
+    const needed = plan.ignorable.filter((prefix) =>
+      needsIgnorable({ xml, plan, destination, prefix }),
+    );
+    const ownOpening =
+      replacedOpening === opening || needed.length === 0
+        ? opening
+        : opening.replace(
+            XML_ATTRIBUTE,
+            (match, name: string, assignment: string, quote: string) =>
+              name === ignorableAttribute
+                ? `${name}${assignment}${quote}${escapeXmlAttribute(needed.join(" "))}${quote}`
+                : match,
+          );
+    const ownClose = opening.endsWith("/>")
+      ? ownOpening.length - 2
+      : ownOpening.length - 1;
+    return (
+      ownOpening.slice(0, ownClose) +
+      destinationSuffix(xml, plan, destination) +
+      ownOpening.slice(ownClose) +
+      xml.slice(opening.length)
+    );
+  }
   if (!strict) return materialized;
   const parsed = parseStreamingXml(materialized);
   if (parsed.status !== "parsed") return null;
@@ -288,6 +434,7 @@ export const materializeReplayFragment = ({
   sourceNamespace,
   generatedRoot,
   validation,
+  destination,
 }: MaterializeReplayFragmentOptions): string | null => {
   const strict = TRANSITIONAL_NAMESPACE_BY_STRICT_URI.has(sourceNamespace);
   const first = XML_TOKEN.exec(xml);
@@ -318,6 +465,7 @@ export const materializeReplayFragment = ({
       plan: cached.plan,
       strict,
       state,
+      destination,
     });
   const additions = [];
   const bindings = effectiveBindings(element);
@@ -338,6 +486,7 @@ export const materializeReplayFragment = ({
   );
   let ignorableAttribute: string | undefined;
   let escapedIgnorable = "";
+  let addedIgnorable: readonly string[] | undefined;
   if (ignorable.length > 0) {
     const localAttribute = Object.keys(element.attributes ?? {}).find(
       (name) => {
@@ -361,19 +510,27 @@ export const materializeReplayFragment = ({
       return null;
     ignorableAttribute = `${compatibilityPrefix}:Ignorable`;
     escapedIgnorable = escapeXmlAttribute(ignorable.join(" "));
-    if (localIgnorable === null)
+    if (localIgnorable === null) {
       additions.push(` ${ignorableAttribute}="${escapedIgnorable}"`);
+      addedIgnorable = ignorable;
+    }
   }
+  const added: { prefix: string; uri: string }[] = [];
   for (const [prefix, uri] of bindings) {
     const name = prefix === "" ? "xmlns" : `xmlns:${prefix}`;
     if (element.attributes?.[name] !== undefined) continue;
     additions.push(` ${name}="${escapeXmlAttribute(uri)}"`);
+    added.push({ prefix, uri });
   }
   const suffix = additions.join("");
   const plan = {
     suffix,
     ignorableAttribute,
     escapedIgnorable,
+    bindings: added,
+    addedIgnorable,
+    ignorable,
+    scope: bindings,
     compact:
       sibling !== undefined && !strict
         ? prepareCompactReplaySuffix(suffix)
@@ -381,7 +538,14 @@ export const materializeReplayFragment = ({
   };
   if (sibling !== undefined)
     sibling.opening = { scope, root: generatedRoot, plan };
-  return bindFragmentOpening({ xml, opening, plan, strict, state });
+  return bindFragmentOpening({
+    xml,
+    opening,
+    plan,
+    strict,
+    state,
+    destination,
+  });
 };
 
 const paragraphIdentity = (value: BlockContent): string | undefined =>
@@ -500,6 +664,8 @@ type StoryReplayOptions = {
   currentContent: readonly BlockContent[];
   generatedRoot: XmlElement;
   validation?: ReplayFragmentValidation | undefined;
+  /** What the source story declares where its blocks go. */
+  destination: ReplayDestination;
 };
 
 /**
@@ -515,6 +681,7 @@ const replayStoryBlocks = ({
   currentContent,
   generatedRoot,
   validation,
+  destination,
 }: StoryReplayOptions): XmlSplice[] | null => {
   if (
     getLocalName(source.rootName) !== getLocalName(generated.root.name) ||
@@ -596,6 +763,7 @@ const replayStoryBlocks = ({
       sourceNamespace: source.namespace,
       generatedRoot,
       validation,
+      destination,
     });
     if (fragment === null) return null;
     fragments.push(fragment);
@@ -655,6 +823,7 @@ const replayBlocks = (
     baselineContent,
     currentContent,
     generatedRoot: scope?.generatedRoot ?? generated.root,
+    destination: replayDestinationOf(sourceStory.root),
   });
   return splices === null ? null : spliceXml(sourceXml, splices);
 };
@@ -975,6 +1144,7 @@ type SourceDocument = {
   readonly bodyRange: XmlRange;
   readonly bodyScope: XmlNamespaceScope | undefined;
   readonly story: SourceStory;
+  readonly destination: ReplayDestination;
 };
 
 // A source part is read once per captured baseline (null: it cannot be read or
@@ -1001,6 +1171,7 @@ const readSourceDocument = (
           bodyRange: source.range,
           bodyScope: source.body.namespaceScope,
           story,
+          destination: replayDestinationOf(source.document.root, source.body),
         }
       : null;
   sourceDocuments.set(baseline, { xml: sourceXml, read });
@@ -1052,6 +1223,7 @@ export const buildDocumentBlockReplay = ({
     currentContent: current.content,
     generatedRoot: generated.root,
     validation,
+    destination: source.destination,
   });
   if (bodySplices === null) return null;
   // The splices that change the source; the others copy a block's own bytes.

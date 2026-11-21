@@ -393,10 +393,23 @@ test("multiple compatibility aliases merge inherited and local Ignorable tokens"
     sourceXml: story(sourceParagraph("old")),
     baselineContent: [block(undefined, "old")],
     currentContent: [block(undefined, "new")],
-    serializedXml: `<w:hdr xmlns:w="${WORD}" xmlns:compat="${mc}" xmlns:a="urn:a" compat:Ignorable="a"><w:p xmlns:x="${mc}" xmlns:y="${mc}" xmlns:b="urn:b" y:Ignorable="b"><w:r><w:t>new</w:t></w:r></w:p></w:hdr>`,
+    serializedXml: `<w:hdr xmlns:w="${WORD}" xmlns:compat="${mc}" xmlns:a="urn:a" compat:Ignorable="a"><w:p xmlns:x="${mc}" xmlns:y="${mc}" xmlns:b="urn:b" y:Ignorable="b" a:mark="1" b:mark="1"><w:r><w:t>new</w:t></w:r></w:p></w:hdr>`,
   });
   expect(output).toContain(`y:Ignorable="a b"`);
   expect(output).toContain(`xmlns:a="urn:a"`);
+});
+
+test("a replayed block declares only what it uses and its story lacks", () => {
+  const mc = "http://schemas.openxmlformats.org/markup-compatibility/2006";
+  const output = buildStoryBlockReplay({
+    sourceXml: story(sourceParagraph("old")),
+    baselineContent: [block(undefined, "old")],
+    currentContent: [block(undefined, "new")],
+    serializedXml: `<w:hdr xmlns:w="${WORD}" xmlns:compat="${mc}" xmlns:a="urn:a" compat:Ignorable="a"><w:p><w:r><w:t>new</w:t></w:r></w:p></w:hdr>`,
+  });
+  expect(output).toContain("<w:p");
+  expect(output).not.toContain(`xmlns:a="urn:a"`);
+  expect(output).not.toContain("Ignorable");
 });
 
 const COMPAT = "http://schemas.openxmlformats.org/markup-compatibility/2006";

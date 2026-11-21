@@ -6,6 +6,8 @@
  * with proper tag depth counting (not regex) to handle nested elements.
  */
 
+import { Result } from "better-result";
+
 import { scanStreamingXmlElements } from "@stll/docx-core/xml";
 import { resolveNamespaceUri } from "@stll/docx-core/xml/namespaces";
 
@@ -1236,8 +1238,17 @@ export const spliceSupportsRootNamespaces = ({
     return true;
   };
 
+  // A fragment written for the part it goes into leaves off a declaration the
+  // part makes; one both roots make alike means the same in either.
+  const shared = new Map<string, string>();
+  for (const [prefix, uri] of originalBindings)
+    if (serializedBindings.get(prefix) === uri) shared.set(prefix, uri);
+  const sharedScope = { bindings: shared };
   for (const fragment of fragments) {
-    const parsed = parseXmlDocument(fragment);
+    const read = Result.try(() => parseXml(fragment, sharedScope));
+    const parsed = read.isOk()
+      ? getChildElements(read.value).find(({ type }) => type === "element")
+      : undefined;
     if (!parsed) return false;
     if (!visit(parsed, new Set())) return false;
   }
