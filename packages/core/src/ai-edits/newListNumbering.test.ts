@@ -214,27 +214,35 @@ describe("an operation that starts a new list", () => {
     expect(labels).toEqual(["Intro.", "• First", "• Second"]);
   });
 
-  test("allocates a batch in the same right-to-left order as one-at-a-time replay", async () => {
-    const batch = await reviewerOf("Left.\n\nMiddle.\n\nRight.");
-    const replay = await reviewerOf("Left.\n\nMiddle.\n\nRight.");
-    const operations = twoNewLists(batch);
-    batch.applyDocumentOperations(
-      { version: 1, mode: "direct", operations },
-      {},
-    );
-
-    const replayOperations = twoNewLists(replay);
-    for (const operation of [...replayOperations].reverse()) {
-      replay.applyDocumentOperations(
-        { version: 1, mode: "direct", operations: [operation] },
+  // Legacy applies a batch right to left; canonical runs it in batch order.
+  test.each([
+    { session: "legacy", order: "right-to-left" },
+    { session: "canonical", order: "batch" },
+  ] as const)(
+    "allocates a $session batch in the same $order order as one-at-a-time replay",
+    async ({ session, order }) => {
+      const batch = await reviewerOf("Left.\n\nMiddle.\n\nRight.", session);
+      const replay = await reviewerOf("Left.\n\nMiddle.\n\nRight.", session);
+      const operations = twoNewLists(batch);
+      batch.applyDocumentOperations(
+        { version: 1, mode: "direct", operations },
         {},
       );
-    }
 
-    expect(await listInstancesByText(batch)).toEqual(
-      await listInstancesByText(replay),
-    );
-  });
+      const replayOperations = twoNewLists(replay);
+      if (order === "right-to-left") replayOperations.reverse();
+      for (const operation of replayOperations) {
+        replay.applyDocumentOperations(
+          { version: 1, mode: "direct", operations: [operation] },
+          {},
+        );
+      }
+
+      expect(await listInstancesByText(batch)).toEqual(
+        await listInstancesByText(replay),
+      );
+    },
+  );
 
   test("allocates direct and accepted tracked batches alike after save and reopen", async () => {
     const direct = await reviewerOf("Left.\n\nMiddle.\n\nRight.");
