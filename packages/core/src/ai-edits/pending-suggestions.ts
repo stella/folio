@@ -109,11 +109,15 @@ type PrepareAbsorptionOptions = {
   ) => FolioAIEditSnapshot | null;
 };
 
-type AbsorptionStep = (
+type AbsorptionStepOptions = {
   sourceSnapshotForStory: (
     story: FolioDocumentStoryHandle,
-  ) => FolioAIEditSnapshot | null,
-) => void;
+  ) => FolioAIEditSnapshot | null;
+  /** The suggestions still live once the resolution publishes. */
+  activeSuggestionIds: ReadonlySet<string>;
+};
+
+type AbsorptionStep = (options: AbsorptionStepOptions) => void;
 
 type PlaceRemovedAnchorsOptions = {
   activeSuggestionIds: ReadonlySet<string>;
@@ -625,8 +629,11 @@ export class FolioPendingSuggestionRegistry {
    * its record must name the survivor, never the absorbed id; one anchored to
    * the survivor itself moves by the text absorbed before it. Call before the
    * resolution publishes, with snapshots of the story as it is; run the
-   * returned step after, with snapshots as the resolution leaves it. `null`
-   * when no live record is anchored to an absorbed paragraph.
+   * returned step after, with snapshots as the resolution leaves it and the
+   * suggestions still live then: a suggestion the same resolution ends (a
+   * Reject All rejects proposals in the commit that absorbs their
+   * paragraphs) has nothing to follow. `null` when no live record is
+   * anchored to an absorbed paragraph.
    */
   prepareAbsorption({
     survivors,
@@ -651,9 +658,13 @@ export class FolioPendingSuggestionRegistry {
       if (!before.has(storyKey))
         before.set(storyKey, sourceSnapshotForStory(story));
     }
-    return (afterSnapshotForStory) => {
+    return ({
+      sourceSnapshotForStory: afterSnapshotForStory,
+      activeSuggestionIds: liveAfter,
+    }) => {
       const after = new Map<string, FolioAIEditSnapshot | null>();
       for (const [key, record] of affected) {
+        if (!liveAfter.has(record.suggestionId)) continue;
         const storyKey = canonicalJson(record.story);
         if (!after.has(storyKey))
           after.set(storyKey, afterSnapshotForStory(record.story));
