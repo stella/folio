@@ -6765,8 +6765,17 @@ export class CanonicalPublicOperations {
         if (changeFrom.isErr() || changeTo.isErr())
           return refusal("unsupportedBlock");
         // A replacement of exactly a content control's text goes in the
-        // control, as typing over it does, tracked or not.
-        const inside = controlEdgesAt(projection.value.doc, gap.from, gap.to);
+        // control, as typing over it does, tracked or not. Text added at the
+        // control's edge goes in it only when the operation's range is the
+        // control's own: one that reaches past the control adds it beside.
+        let inside = controlEdgesAt(projection.value.doc, gap.from, gap.to);
+        if (
+          gap.from === gap.to &&
+          (inside.start === true || inside.end === true)
+        ) {
+          const edge = projection.value.doc.resolve(gap.from);
+          if (range.from < edge.start() || range.to > edge.end()) inside = {};
+        }
         intents.push({
           type: "replaceText",
           from: changeFrom.value,
