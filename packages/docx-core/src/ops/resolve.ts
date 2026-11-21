@@ -2349,13 +2349,20 @@ const resolveList = ({
     )
       return 0;
     if (before === undefined || after === undefined) return depth;
-    return cutReach({
+    const levels = cutReach({
       before: edgeChain(before, "end"),
       after: edgeChain(after, "start"),
       depth,
       spanning: trackedWithin(node.content),
       resolution,
     }).levels;
+    // Where the pieces it cut go with it, the records left beyond them meet
+    // only as far as they are alike: no level of the cut is left to join past
+    // that, as removing the pieces first leaves the change between them.
+    const piecesGo = beforeIndex < index - 1 || afterIndex > index + 1;
+    return piecesGo && !isTrackedWrapper(before) && !isTrackedWrapper(after)
+      ? Math.min(levels, alikeDepth(before, after))
+      : levels;
   };
   /**
    * The cut a pending insertion recorded, once this resolution is done (see
