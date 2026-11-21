@@ -38,9 +38,12 @@ const NAMESPACES: ReadonlySet<string> = new Set([
  * instead, which the reader translates onto the markers
  * ({@link versionOneKeptMarkers}).
  */
-const VERSION = 2;
+export const REVIEW_HISTORY_VERSION = 2;
 /** Every version the reader understands. */
-const READABLE_VERSIONS: ReadonlySet<unknown> = new Set([1, VERSION]);
+const READABLE_VERSIONS: ReadonlySet<unknown> = new Set([
+  1,
+  REVIEW_HISTORY_VERSION,
+]);
 type ResolutionJoins = NonNullable<Insertion["resolutionJoins"]>;
 type DeferredRemoval = NonNullable<ResolutionJoins["deferredRemove"]>[number];
 type BoundaryJoins = NonNullable<RunPropertyChange["boundaryJoins"]>;
@@ -360,7 +363,7 @@ const encodeAttribute = ({
       message: `Invalid or oversized ${attribute} review provenance.`,
     });
   }
-  const encoded = JSON.stringify({ version: VERSION, value });
+  const encoded = JSON.stringify({ version: REVIEW_HISTORY_VERSION, value });
   if (encoded.length > MAX_REVIEW_HISTORY_ATTRIBUTE_LENGTH) {
     throw new ReviewResolutionProvenanceError({
       attribute,
