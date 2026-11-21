@@ -937,6 +937,8 @@ describe("C9: Enter and Delete record paragraph marks", () => {
           {
             type: "paragraphPropertyChange",
             info: { id: 2, author: "Reviewer", date: DATE },
+            // Decided with the join's mark deletion.
+            resolvesWith: 1,
             previousFormatting: { alignment: "end" },
             currentFormatting: { styleId: "Heading1" },
           },
