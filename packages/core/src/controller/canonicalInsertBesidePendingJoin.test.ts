@@ -1,12 +1,15 @@
 /**
  * A paragraph or a table inserted beside a paragraph whose break a pending
- * join removes, in the canonical session. A paragraph put after the joining
- * paragraph goes right after it with its properties, as pressing Enter at its
- * end does, and the join then runs the joining paragraph into the new one,
- * directly as once the tracked insertion is accepted. A table put after it, and a block put before it, go beside the joined
- * paragraph as the batch read it, even when the same batch splits that
- * paragraph, and whether the joining paragraph keeps its words or was
- * emptied. Rejecting gives the document back.
+ * join removes, in the canonical session. A paragraph put after a joining
+ * paragraph that keeps its words goes right after it with its properties, as
+ * pressing Enter at its end does, and the join then runs the joining
+ * paragraph into the new one, directly as once the tracked insertion is
+ * accepted; after an emptied joining paragraph it goes after the paragraph
+ * the join leaves (`insertionAfterPendingBreak`). A table put after it, and a
+ * block put before it, go beside the joined paragraph as the batch read it,
+ * even when the same batch splits that paragraph, and whether the joining
+ * paragraph keeps its words or was emptied. Rejecting gives the document
+ * back.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -214,7 +217,11 @@ describe("a block beside a paragraph that joins the next, in the canonical sessi
             return { pending, accepted: editor.blocks() };
           };
 
-          if (kind === "a paragraph" && side === "after") {
+          if (
+            kind === "a paragraph" &&
+            side === "after" &&
+            source === "a tracked merge"
+          ) {
             test(`goes right after the joining paragraph with its properties ${name}`, async () => {
               const { pending, accepted } = await read("clause");
               const inserted = pending.findIndex(
@@ -226,9 +233,7 @@ describe("a block beside a paragraph that joins the next, in the canonical sessi
               expect(inserted).toBe(
                 pending.findIndex(({ text }) => text.endsWith(SURVIVOR)) - 1,
               );
-              expect(pending[inserted - 1]?.text).toBe(
-                source === "a tracked merge" ? `${CLAUSE} ` : "",
-              );
+              expect(pending[inserted - 1]?.text).toBe(`${CLAUSE} `);
               expect(pending[inserted]?.styleId).toBeUndefined();
               const texts = accepted.map(({ text }) => text);
               const survivor = texts.findIndex((text) =>
@@ -531,7 +536,15 @@ describe("a block beside a longer pending join, in the canonical session", () =>
               expect(result.skipped).toEqual([]);
               const pending = editor.blocks();
               const ids = pending.map(({ id }) => id);
-              expect(pending[ids.indexOf(anchor) + 1]?.text).toBe(INSERTED);
+              // After the emptied paragraph it goes after the paragraph the
+              // join leaves, as `insertionAfterPendingBreak` places it.
+              const placedAfter =
+                anchor === join.anchors["emptied"]
+                  ? join.anchors.survivor
+                  : anchor;
+              expect(pending[ids.indexOf(placedAfter) + 1]?.text).toBe(
+                INSERTED,
+              );
               if (reading === "pending") continue;
               editor.resolveAll("accept");
               const texts = editor.blocks().map(({ text }) => text);
@@ -539,7 +552,7 @@ describe("a block beside a longer pending join, in the canonical session", () =>
                 text.endsWith(INSERTED),
               );
               expect(inserted).toBeGreaterThan(-1);
-              if (anchor !== join.anchors.survivor)
+              if (placedAfter !== join.anchors.survivor)
                 expect(texts[inserted + 1]?.endsWith(SURVIVOR)).toBe(true);
               else expect(texts[inserted - 1]?.endsWith(SURVIVOR)).toBe(true);
             }
@@ -658,7 +671,7 @@ describe("a block after a paragraph that joins one the batch splits, in the cano
           const options = { source, block, offset, order };
           const name = `(${kind}, ${source}, split at ${offset}, ${order})`;
 
-          if (kind === "a paragraph")
+          if (kind === "a paragraph" && source === "a tracked merge")
             test(`stays right after the joining paragraph ${name}`, async () => {
               const { texts: accepted } = await splitBatch({
                 ...options,
@@ -745,4 +758,38 @@ describe("a table after a container's last paragraph, in the canonical session",
         await original(joined.bytes),
       );
     });
+});
+
+describe("a paragraph after one whose break a last-paragraph deletion took, in the canonical session", () => {
+  test("goes after the paragraph that deletion keeps, and accepting gives the direct result", async () => {
+    const texts: string[][] = [];
+    for (const mode of ["direct", "tracked-changes"] as const) {
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await createDocx(fromMarkdown("Alpha.\n\nBravo.\n\nClosing.")),
+        { author: "Test", session: "canonical" },
+      );
+      const closing = reviewer.snapshot().blocks.at(2);
+      if (closing?.text !== "Closing.") throw new Error("Missing fixture");
+      expect(
+        reviewer.applyOperations(
+          [{ id: "delete", type: "deleteBlock", blockId: closing.id }],
+          { mode },
+        ).skipped,
+      ).toEqual([]);
+      // The last survivor as it now stands: directly, the deletion joined it
+      // to the closing paragraph, which keeps its id.
+      const anchor = reviewer.snapshot().blocks.at(1);
+      if (anchor === undefined) throw new Error("Missing survivor");
+      expect(
+        reviewer.applyOperations([insertion("after", anchor.id)], { mode })
+          .skipped,
+      ).toEqual([]);
+      if (mode === "tracked-changes") reviewer.acceptAll();
+      texts.push(reviewer.snapshot().blocks.map(({ text }) => text));
+    }
+    expect(texts).toEqual([
+      ["Alpha.", "Bravo.", INSERTED],
+      ["Alpha.", "Bravo.", INSERTED],
+    ]);
+  });
 });

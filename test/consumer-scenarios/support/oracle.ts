@@ -2504,6 +2504,16 @@ const sameContainer = (left: Container, right: Container): boolean =>
       left.rowIndex === right.rowIndex &&
       left.cellIndex === right.cellIndex;
 
+/** The block after `row` that the resolved pre-state holds, in its container. */
+const nextInContainer = (model: Model, row: ModelRow): ModelRow | undefined => {
+  const next = model.rows
+    .slice(model.rows.indexOf(row) + 1)
+    .find((candidate) => candidate.outsidePreState !== true);
+  return next !== undefined && sameContainer(row.pre?.table, next.pre?.table)
+    ? next
+    : undefined;
+};
+
 /**
  * The paragraph a table inserted after `row` follows: the one a pending join
  * from an empty `row` leaves, when that paragraph keeps words of its own;
@@ -2512,14 +2522,24 @@ const sameContainer = (left: Container, right: Container): boolean =>
  */
 const pastEmptyJoin = (model: Model, row: ModelRow): ModelRow => {
   if (row.emptyJoinSource !== true) return row;
-  const next = model.rows
-    .slice(model.rows.indexOf(row) + 1)
-    .find((candidate) => candidate.outsidePreState !== true);
-  return next !== undefined &&
-    next.text.length > 0 &&
-    sameContainer(row.pre?.table, next.pre?.table)
-    ? next
-    : row;
+  const next = nextInContainer(model, row);
+  return next !== undefined && next.text.length > 0 ? next : row;
+};
+
+/**
+ * The paragraph a paragraph inserted after `row` follows: the one the
+ * pending join from `row` leaves, when `row` keeps no words once accepted and
+ * reads as one paragraph with it (it is empty, or goes whole with words
+ * joining on through it) and that one keeps words; `row` itself otherwise.
+ */
+const pastWordlessJoin = (model: Model, row: ModelRow): ModelRow => {
+  if (
+    row.emptyJoinSource !== true &&
+    !(row.pendingDeletion === true && row.pendingJoin === true)
+  )
+    return row;
+  const next = nextInContainer(model, row);
+  return next !== undefined && next.text.length > 0 ? next : row;
 };
 
 /**
@@ -2533,15 +2553,18 @@ const insertionAnchor = (
   position: "before" | "after",
   block: "paragraph" | "table" = "table",
 ): ModelRow => {
-  // A paragraph goes right after the emptied paragraph it names, with that
-  // paragraph's properties, as pressing Enter at its end does; the join then
-  // runs into the new paragraph. A table follows the paragraph the join
-  // leaves.
-  if (position === "after")
-    row = pastTextBoxes(
-      model,
-      block === "paragraph" ? row : pastEmptyJoin(model, row),
-    );
+  // A paragraph put after one that keeps no words once accepted, whose break
+  // a pending join removes, follows the paragraph the join leaves, with that
+  // one's properties, as the same edits applied directly put it (the
+  // engine's `insertionAfterPendingBreak`); a suggested one goes right after
+  // the paragraph it names, as it stands. A table follows the paragraph a
+  // join from an empty paragraph leaves.
+  if (position === "after") {
+    let joined = pastWordlessJoin(model, row);
+    if (block === "table") joined = pastEmptyJoin(model, row);
+    else if (model.mode === "suggested") joined = row;
+    row = pastTextBoxes(model, joined);
+  }
   const table = row.pre?.table;
   if (!table) return row;
   const rows = model.rows.filter(
@@ -2623,14 +2646,19 @@ const insertBlock =
   (model, operation) => {
     const named = target(model, operation["blockId"], { adjacent: true });
     const anchor = insertionAnchor(model, named, position, "paragraph");
+    // Put after the paragraph a join leaves, it copies that paragraph.
+    const copied =
+      position === "after" && model.mode !== "suggested"
+        ? pastWordlessJoin(model, named)
+        : named;
     const inherited =
       operation["inheritFormatting"] === false
         ? undefined
-        : liveParagraph(named);
+        : liveParagraph(copied);
     const { fields: requested, checks } = paragraphRequestForLiveRow({
       model,
       request: operation,
-      row: named,
+      row: copied,
       inherited,
       insertion: true,
     });
@@ -2654,7 +2682,7 @@ const insertBlock =
           model,
           request: operation,
           operationId: String(operation["id"]),
-          source: named,
+          source: copied,
           inheritsFormatting: operation["inheritFormatting"] !== false,
         });
       }

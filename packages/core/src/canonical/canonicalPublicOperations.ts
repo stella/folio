@@ -90,6 +90,7 @@ import {
 } from "../ai-edits/note-references";
 import {
   firstParagraphJoiningTable,
+  insertionAfterPendingBreak,
   isDeletedPPrMark,
   joinsIn,
   joinStopsAtTableAfter,
@@ -1201,6 +1202,43 @@ const besideAsItStands = (
   place: paragraph,
   formattingSource: paragraph,
 });
+
+type PlaceAfterOptions = Omit<BesidePendingJoinOptions, "side"> & {
+  suggested: boolean;
+};
+
+/**
+ * Where a paragraph put after `paragraph` goes (`insertionAfterPendingBreak`):
+ * right after it, or after the paragraph its pending join leaves. A
+ * suggestion goes right after it.
+ */
+const placeAfter = ({
+  suggested,
+  paragraph,
+  projection,
+  noteReferences,
+}: PlaceAfterOptions): BesidePendingJoin => {
+  if (suggested) return besideAsItStands(paragraph);
+  const rule = insertionAfterPendingBreak({
+    doc: projection.doc,
+    paragraphPos: paragraph.start - 1,
+    noteReferences,
+  });
+  switch (rule.type) {
+    case "afterParagraph":
+      return besideAsItStands(paragraph);
+    case "afterJoin": {
+      const survivor =
+        projection.paragraphStartingAt(rule.survivor) ??
+        panic("A pending join names a paragraph the projection lacks.");
+      return besideAsItStands(survivor);
+    }
+    default: {
+      const unreachable: never = rule;
+      return unreachable;
+    }
+  }
+};
 
 type BesidePendingJoinOptions = {
   side: "before" | "after";
@@ -5701,11 +5739,15 @@ export class CanonicalPublicOperations {
           ? { ...operation, type: "insertAfterBlock" }
           : operation;
       // A paragraph put after one whose break a pending join removes goes
-      // right after it with its properties, as pressing Enter at its end
-      // does: the join then runs the paragraph into the inserted one.
+      // where `insertionAfterPendingBreak` puts it.
       const placed =
         suggested || insertion.type === "insertAfterBlock"
-          ? besideAsItStands(paragraph)
+          ? placeAfter({
+              suggested,
+              paragraph,
+              projection: projection.value,
+              noteReferences,
+            })
           : besidePendingJoin({
               side: "before",
               paragraph,
