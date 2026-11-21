@@ -3177,6 +3177,14 @@ const CANONICAL_SUGGESTED_OPERATION_TYPES: ReadonlySet<
   "commentOnBlock",
 ]);
 
+/** The operations that only add marks over text: formatting and comments. */
+const ANNOTATING_OPERATION_TYPES: ReadonlySet<FolioDocumentOperation["type"]> =
+  new Set<FolioDocumentOperation["type"]>([
+    "formatRange",
+    "commentOnRange",
+    "commentOnBlock",
+  ]);
+
 /** A block operation without the move it names: a plain insertion or deletion. */
 const withoutMove = (
   operation: FolioDocumentOperation,
@@ -6359,10 +6367,13 @@ export class CanonicalPublicOperations {
         return unreachable;
       }
     }
+    // An annotation only adds marks, so it may meet a letter's combining mark
+    // or an emoji sequence's joiner; it never halves a surrogate pair. A text
+    // change or a break keeps every grapheme cluster whole.
     const characterSplit = describeCharacterSplit(
       clean.text,
       [start, end],
-      "grapheme",
+      ANNOTATING_OPERATION_TYPES.has(operation.type) ? "codePoint" : "grapheme",
     );
     if (characterSplit !== null)
       return refusal("splitsCharacter", characterSplit);
