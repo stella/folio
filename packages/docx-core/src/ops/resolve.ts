@@ -1292,6 +1292,8 @@ const settleDeferredRemovals = (
   const out: InlineNode[] = [];
   /** Seams whose every blocker is accepted, by key: see placeAcceptedSeamKept. */
   const acceptedKept = new Map<string, DeferredRemovalGroup>();
+  /** Accepted removals that held a piece of a seam: see placeKeptBesideRemovedPiece. */
+  const removedPieces: { index: number; group: DeferredRemovalGroup }[] = [];
   for (const node of nodes) {
     let next = node;
     if (
@@ -1317,6 +1319,11 @@ const settleDeferredRemovals = (
             fates.every((fate) => fate === "accepted")
           )
             acceptedKept.set(deferredGroupKey(group), group);
+          if (
+            group.edge !== undefined &&
+            fates.every((fate) => fate === "accepted")
+          )
+            removedPieces.push({ index: out.length, group });
           if (fates.includes("accepted")) continue;
           const remaining = group.blockers.filter(
             (_, index) => fates[index] === "pending",
@@ -1352,7 +1359,78 @@ const settleDeferredRemovals = (
   }
   for (const group of acceptedKept.values())
     changed = placeAcceptedSeamKept({ out, group, fateOf }) || changed;
+  // Later placements stand later in the list, so earlier indices still hold.
+  for (const { index, group } of removedPieces.toReversed())
+    changed =
+      placeKeptBesideRemovedPiece({ out, index, group, fateOf }) || changed;
   return changed ? out : nodes;
+};
+
+/**
+ * Kept markers beside a pending removal that holds a piece of the cut they
+ * stand in, naming its side as their cut's piece, once the removal is
+ * accepted: that piece goes, and they go into the piece across from them at
+ * its facing edge, as deep as the seam, where it continues the record the
+ * cut split, as rejecting the revision they were kept from after the removal
+ * places them. `out` is changed in place; whether it changed.
+ */
+const placeKeptBesideRemovedPiece = ({
+  out,
+  index,
+  group,
+  fateOf,
+}: {
+  out: InlineNode[];
+  index: number;
+  group: DeferredRemovalGroup;
+  fateOf: DeferredRemovalSettlement["fateOf"];
+}): boolean => {
+  const holder = out[index];
+  if (
+    holder === undefined ||
+    (holder.type !== "deletion" && holder.type !== "moveFrom") ||
+    group.edge === undefined
+  )
+    return false;
+  const atEnd = group.edge === "end";
+  const step = atEnd ? 1 : -1;
+  const named: KeptCutPiece = atEnd ? "before" : "after";
+  let records = 0;
+  for (let at = index + step; ; at += step) {
+    const node = at < 0 ? undefined : out[at];
+    const piece = node === undefined ? undefined : keptCutPiece(node);
+    if (
+      node === undefined ||
+      !standsInKeptCut(node) ||
+      (piece !== named && piece !== "both")
+    )
+      break;
+    records += 1;
+  }
+  if (records === 0) return false;
+  const pieceAt = index + step * (records + 1);
+  const piece = pieceAt < 0 ? undefined : out[pieceAt];
+  const edgeRecord = atEnd ? holder.content.at(-1) : holder.content.at(0);
+  const start = atEnd ? index + 1 : pieceAt + 1;
+  const standing = out.slice(start, start + records);
+  if (
+    piece === undefined ||
+    edgeRecord === undefined ||
+    isTrackedWrapper(piece) ||
+    isStandingBoundary(piece) ||
+    emptiedBy(piece, fateOf) ||
+    !sameOwnFields(edgeRecord, piece)
+  )
+    return false;
+  const placed = withBoundariesAtEdge(
+    piece,
+    standing.map((node) => withoutKeptCuts(node)),
+    group.depth,
+    atEnd ? "start" : "end",
+  );
+  if (placed === undefined) return false;
+  out.splice(Math.min(start, pieceAt), records + 1, placed);
+  return true;
 };
 
 /**
