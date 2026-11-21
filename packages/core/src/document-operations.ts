@@ -2345,6 +2345,7 @@ const recoveryByReason = {
   invalidResult: "refreshDocument",
   pendingDeletion: "resolveTrackedChange",
   pendingParagraphMarkDeletion: "resolveTrackedChange",
+  pendingParagraphMarkInsertion: "resolveTrackedChange",
   pendingTableInsertion: "resolveTrackedChange",
   pendingTableChange: "resolveTrackedChange",
   existingRevisionConflict: "resolveTrackedChange",
@@ -2376,6 +2377,7 @@ export const getFolioDocumentOperationIssues = (
         reason !== "pendingRunPropertyChange" &&
         reason !== "pendingDeletion" &&
         reason !== "pendingParagraphMarkDeletion" &&
+        reason !== "pendingParagraphMarkInsertion" &&
         reason !== "pendingTableInsertion" &&
         reason !== "pendingTableChange" &&
         reason !== "existingRevisionConflict" &&

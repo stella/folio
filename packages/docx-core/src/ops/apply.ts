@@ -182,6 +182,7 @@ import {
   DOCUMENT_OP_REFUSAL_REASONS,
   DocumentOpRefusal,
   type DocumentOpRefusalReason,
+  pendingParagraphMarkReason,
 } from "./refusal";
 import { type ApplyOps, resolveRevision } from "./resolve";
 import {
@@ -2131,7 +2132,7 @@ const trackJoin = ({
   if (mark !== undefined && !deletesAddedMark) {
     return refuse(
       op,
-      DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK,
+      pendingParagraphMarkReason(mark),
       `The mark of ${op.blockId} already carries a tracked change.`,
     );
   }
