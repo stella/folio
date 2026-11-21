@@ -2889,7 +2889,8 @@ const resolveList = ({
           resolution,
           path: [...path, index],
         }).nodes;
-        const keptFrom = node.resolutionJoins?.keptFrom ?? node.info.date ?? "";
+        // They float as of the revision their cut names they were kept from.
+        const keptFrom = keptCutFrom(node) ?? node.info.date ?? "";
         for (let offset = 0; offset < content.length; offset += 1)
           keptDates.set(out.length + offset, keptFrom);
         appendUnowned(content);
