@@ -100,7 +100,9 @@ import { equalForStaleness, structurallyEqual } from "./equality";
 import { resolveGap, type ZeroWidthDefault } from "./gaps";
 import { freshenIdentities, rebindRetainedIdentities } from "./identity";
 import {
+  countKeys,
   IDENTITY_SPACES,
+  identityKeysIn,
   idKey,
   isParaId,
   packageIdentityKeyIndex,
@@ -1393,7 +1395,7 @@ const setRunProps = (document: Document, op: SetRunPropsOp): Applied => {
     if (takesOverSuggestion)
       return refuse(
         op,
-        DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+        DOCUMENT_OP_REFUSAL_REASONS.PENDING_RUN_PROPERTY_CHANGE,
         RUN_FOLD_INTO_OTHER_SUGGESTION_MESSAGE,
       );
     if (tracked === undefined) {
@@ -1409,6 +1411,25 @@ const setRunProps = (document: Document, op: SetRunPropsOp): Applied => {
       newIds: op.newIds,
     });
     if (freshened.isErr()) return Result.err(freshened.error);
+    const sourceFresh =
+      freshened.value.at(0) ??
+      panic("Freshening removed the run patch's paragraph.");
+    // A pending change the patch folds whole keeps its id, as a paragraph's
+    // does; a piece the patch cuts off another record carrying that id takes
+    // the stamp's.
+    const carriedAfterPatch = countKeys(identityKeysIn([sourceFresh]));
+    const carriedOutside = identitiesOutside(document, [paragraph]);
+    const foldedInfo = (pending: RunPropertyChange | undefined) => {
+      const info = stampInfo(revision);
+      if (pending === undefined) return info;
+      const key = slotKey({
+        space: IDENTITY_SPACES.REVISION,
+        id: pending.info.id,
+      });
+      if (carriedOutside.has(key) || carriedAfterPatch.has(key)) return info;
+      info.id = pending.info.id;
+      return info;
+    };
     const priorIdentities = new WeakMap<InlineNode, InlineNode>();
     const appendChanges = (
       source: readonly InlineNode[],
@@ -1445,7 +1466,7 @@ const setRunProps = (document: Document, op: SetRunPropsOp): Applied => {
           }
           const change: RunPropertyChange = {
             type: "runPropertyChange",
-            info: stampInfo(revision),
+            info: foldedInfo(pending),
             boundaryJoins: options.boundaryJoins,
           };
           const previousFormatting =
@@ -1482,9 +1503,6 @@ const setRunProps = (document: Document, op: SetRunPropsOp): Applied => {
           : withNestedRecords(node, next);
       });
     };
-    const sourceFresh = freshened.value.at(0);
-    if (sourceFresh === undefined)
-      panic("Freshening removed the run patch's paragraph.");
     const content = asParagraphContent(
       appendChanges(tracked.content, sourceFresh.content),
     );
@@ -1679,7 +1697,7 @@ const setParagraphProps = (
     if (foldsIntoOtherSuggestion(paragraph, revision))
       return refuse(
         op,
-        DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+        DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_PROPERTY_CHANGE,
         FOLD_INTO_OTHER_SUGGESTION_MESSAGE,
       );
     const authored = authoredParagraphFormatting(next);
@@ -1885,7 +1903,7 @@ const trackSplit = ({
     if (madeSecond && foldsIntoOtherSuggestion(paragraph, stamp))
       return refusal(
         op,
-        DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+        DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_PROPERTY_CHANGE,
         FOLD_INTO_OTHER_SUGGESTION_MESSAGE,
       );
     made.propertyChanges = [
@@ -2171,7 +2189,7 @@ const trackJoin = ({
     if (foldsIntoOtherSuggestion(trailing, stamp))
       return refuse(
         op,
-        DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+        DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_PROPERTY_CHANGE,
         FOLD_INTO_OTHER_SUGGESTION_MESSAGE,
       );
     second = withParagraphFormatting(trailing, formatting);

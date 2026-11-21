@@ -317,6 +317,6 @@ test("a suggestion does not fold other properties into another's pending change"
     },
   );
   expect(refused.isErr() && refused.error.reason).toBe(
-    DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+    DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_PROPERTY_CHANGE,
   );
 });

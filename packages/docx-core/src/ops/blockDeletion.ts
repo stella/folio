@@ -1203,7 +1203,7 @@ export const deleteBlocks = ({
     } else if (!sameParagraphProperties(next.formatting, survivor.formatting)) {
       if (foldsIntoOtherSuggestion(paragraph, op.revision))
         return refuse(
-          DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+          DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_PROPERTY_CHANGE,
           FOLD_INTO_OTHER_SUGGESTION_MESSAGE,
         );
       const review = reviewFieldsOf(next);

@@ -186,7 +186,7 @@ const takenOverPropertyChanges = ({
     return Result.err(
       new DocumentOpRefusal({
         opType: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
-        reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+        reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_PROPERTY_CHANGE,
         message: FOLD_INTO_OTHER_SUGGESTION_MESSAGE,
       }),
     );

@@ -424,6 +424,8 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
     readonly EMPTY_CONTENT: "emptyContent";
     readonly EMPTY_BLOCK_LIST: "emptyBlockList";
     readonly REVISION_CONFLICT: "revisionConflict";
+    readonly PENDING_RUN_PROPERTY_CHANGE: "pendingRunPropertyChange";
+    readonly PENDING_PARAGRAPH_PROPERTY_CHANGE: "pendingParagraphPropertyChange";
     readonly CONTAINER_FINAL_MARK: "containerFinalMark";
     readonly INSIDE_INLINE_CONTROL: "insideInlineControl";
     readonly UNTRACKABLE: "untrackable";

@@ -82,6 +82,18 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
    * change), or would give a tracked split a mark of its own.
    */
   readonly REVISION_CONFLICT: "revisionConflict";
+  /**
+   * A suggestion would fold into a run's pending property change that is not
+   * its own. A run holds one property change and a suggestion is resolved by
+   * its id: rejecting it would discard the other change with its own.
+   */
+  readonly PENDING_RUN_PROPERTY_CHANGE: "pendingRunPropertyChange";
+  /**
+   * A suggestion would fold into a paragraph's pending property change that
+   * is not its own, for the same reason as
+   * {@link DOCUMENT_OP_REFUSAL_REASONS.PENDING_RUN_PROPERTY_CHANGE}.
+   */
+  readonly PENDING_PARAGRAPH_PROPERTY_CHANGE: "pendingParagraphPropertyChange";
   /** The operation would put a mark on a paragraph that ends its story body or table cell. */
   readonly CONTAINER_FINAL_MARK: "containerFinalMark";
   /**
@@ -192,6 +204,18 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
    * change), or would give a tracked split a mark of its own.
    */
   REVISION_CONFLICT: "revisionConflict",
+  /**
+   * A suggestion would fold into a run's pending property change that is not
+   * its own. A run holds one property change and a suggestion is resolved by
+   * its id: rejecting it would discard the other change with its own.
+   */
+  PENDING_RUN_PROPERTY_CHANGE: "pendingRunPropertyChange",
+  /**
+   * A suggestion would fold into a paragraph's pending property change that
+   * is not its own, for the same reason as
+   * {@link DOCUMENT_OP_REFUSAL_REASONS.PENDING_RUN_PROPERTY_CHANGE}.
+   */
+  PENDING_PARAGRAPH_PROPERTY_CHANGE: "pendingParagraphPropertyChange",
   /** The operation would put a mark on a paragraph that ends its story body or table cell. */
   CONTAINER_FINAL_MARK: "containerFinalMark",
   /**
