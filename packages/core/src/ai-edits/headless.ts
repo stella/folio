@@ -2660,7 +2660,10 @@ export class FolioDocxReviewer {
             sourceSnapshotForStory: (story) => this.liveSuggestionSource(story),
           });
     this.publishOnSession(prepared.value);
-    absorption?.((story) => this.liveSuggestionSource(story));
+    absorption?.({
+      sourceSnapshotForStory: (story) => this.liveSuggestionSource(story),
+      activeSuggestionIds: this.activeSuggestionIds(),
+    });
     // One whose paragraph the resolution removed whole stands beside the
     // paragraphs its suggestion added.
     this.pendingSuggestions.placeRemovedAnchors({
