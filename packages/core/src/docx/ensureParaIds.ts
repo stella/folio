@@ -195,13 +195,40 @@ const createEnsureParaIdsError = (
     ...(cause === undefined ? {} : { cause }),
   });
 
+const BUILT_IN_ENTITIES: Readonly<Record<string, string>> = {
+  amp: "&",
+  apos: "'",
+  gt: ">",
+  lt: "<",
+  quot: '"',
+};
+
+const ATTRIBUTE_REFERENCE = /&(?:#x([0-9A-Fa-f]+)|#([0-9]+)|([A-Za-z]+));/gu;
+
+/** An attribute value as the XML reader decodes it: references resolved. */
+const decodedAttributeValue = (raw: string): string =>
+  raw.replaceAll(
+    ATTRIBUTE_REFERENCE,
+    (reference, hexadecimal?: string, decimal?: string, name?: string) => {
+      if (name !== undefined) return BUILT_IN_ENTITIES[name] ?? reference;
+      const codePoint =
+        hexadecimal === undefined
+          ? Number.parseInt(decimal ?? "", 10)
+          : Number.parseInt(hexadecimal, 16);
+      return codePoint <= 0x10_ff_ff
+        ? String.fromCodePoint(codePoint)
+        : reference;
+    },
+  );
+
+/** Every paragraph id the part's XML holds, as the reader decodes it, upper-cased. */
 export const collectExistingParaIds = (
   xml: string,
   into: Set<string>,
 ): void => {
   for (const match of xml.matchAll(ANY_PARA_ID_PATTERN)) {
     // SAFETY: named group `id` always present when the pattern matches
-    const id = match.groups!["id"]!;
+    const id = decodedAttributeValue(match.groups!["id"]!);
     if (id.length > 0) {
       into.add(id.toUpperCase());
     }

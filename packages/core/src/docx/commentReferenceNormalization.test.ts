@@ -282,16 +282,52 @@ describe("comment reference normalization", () => {
       droppedDuplicateReferences: 0,
       droppedRanges: [],
     });
-    expect(documentBody.content.at(-1)).toEqual({
-      type: "preservedBlock",
-      xml: '<w:commentRangeEnd w:id="7"/>',
-    });
+    expect(documentBody.content.map(({ type }) => type)).toEqual([
+      "commentRangeStart",
+      "paragraph",
+    ]);
     const paragraph = documentBody.content.at(1);
     if (paragraph?.type !== "paragraph") throw new Error("expected paragraph");
     expect(paragraph.content.map((content) => content.type)).toEqual([
       "run",
       "commentRangeEnd",
       "commentReference",
+    ]);
+  });
+
+  test("drops a later range between blocks and reports its runs' text as written", () => {
+    const comments: Comment[] = [{ id: 7, author: "Reviewer", content: [] }];
+    const run = (text: string) => ({
+      type: "run" as const,
+      content: [{ type: "text" as const, text }],
+    });
+    const documentBody: DocumentBody = {
+      comments,
+      content: [
+        { type: "commentRangeStart", id: 7 },
+        { type: "paragraph", content: [run("First")] },
+        { type: "commentRangeEnd", id: 7 },
+        { type: "commentRangeStart", id: 7 },
+        { type: "paragraph", content: [run("  Total ")] },
+        { type: "paragraph", content: [run(" ")] },
+        { type: "commentRangeEnd", id: 7 },
+        {
+          type: "paragraph",
+          content: [{ type: "commentReference", id: 7 }],
+        },
+      ],
+    };
+
+    const result = normalizeCommentReferences({ documentBody, comments });
+
+    expect(result.droppedRanges).toEqual([{ id: 7, text: "  Total \n " }]);
+    expect(documentBody.content.map(({ type }) => type)).toEqual([
+      "commentRangeStart",
+      "paragraph",
+      "commentRangeEnd",
+      "paragraph",
+      "paragraph",
+      "paragraph",
     ]);
   });
 });
