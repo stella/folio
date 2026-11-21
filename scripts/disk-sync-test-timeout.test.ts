@@ -101,23 +101,50 @@ const declaredBudget = (file: string): string | undefined => {
   return undefined;
 };
 
-/** Per-test literal budgets (`test(name, fn, ms)`) shorter than the shared one. */
+const TEST_FUNCTIONS: ReadonlySet<string> = new Set(["test", "it"]);
+
+/**
+ * The function a call's callee chain starts from: `test` for `test(...)`,
+ * `test.only(...)`, `test.each(table)(...)` and `test.if(cond)(...)`.
+ */
+const rootName = (callee: Node): string | undefined => {
+  let node: Node = callee;
+  for (;;) {
+    if (node.type === "Identifier") return node.name;
+    if (node.type === "MemberExpression") node = node.object;
+    else if (node.type === "CallExpression") node = node.callee;
+    else return undefined;
+  }
+};
+
+/** A literal budget a test call states: `ms` or `{ timeout: ms }`. */
+const literalBudget = (argument: Node | undefined): number | undefined => {
+  if (argument?.type === "Literal" && typeof argument.value === "number")
+    return argument.value;
+  if (argument?.type !== "ObjectExpression") return undefined;
+  for (const property of argument.properties) {
+    if (
+      property.type === "Property" &&
+      !property.computed &&
+      property.key.type === "Identifier" &&
+      property.key.name === "timeout" &&
+      property.value.type === "Literal" &&
+      typeof property.value.value === "number"
+    )
+      return property.value.value;
+  }
+  return undefined;
+};
+
+/** Per-test literal budgets shorter than the shared one, in any test call form. */
 const shorterLiteralBudgets = (file: string): number[] => {
   const shorter: number[] = [];
   walkAst(programOf(file), (node: Node) => {
-    if (
-      node.type !== "CallExpression" ||
-      node.callee.type !== "Identifier" ||
-      (node.callee.name !== "test" && node.callee.name !== "it")
-    )
-      return;
-    const budget = node.arguments.at(2);
-    if (
-      budget?.type === "Literal" &&
-      typeof budget.value === "number" &&
-      budget.value < DISK_SYNC_TEST_TIMEOUT_MS
-    )
-      shorter.push(budget.value);
+    if (node.type !== "CallExpression") return;
+    if (!TEST_FUNCTIONS.has(rootName(node.callee) ?? "")) return;
+    const budget = literalBudget(node.arguments.at(2));
+    if (budget !== undefined && budget < DISK_SYNC_TEST_TIMEOUT_MS)
+      shorter.push(budget);
   });
   return shorter;
 };
@@ -156,13 +183,21 @@ test("the guard reads a planted unbudgeted syncing test", () => {
     file,
     parseSourceModule(
       file,
-      'import { test } from "bun:test";\nimport { saveTo } from "./journal";\ntest("x", () => {}, 5_000);\n',
+      [
+        'import { test } from "bun:test";',
+        'import { saveTo } from "./journal";',
+        'test("plain", () => {}, 5_000);',
+        'test.each([1])("each", () => {}, 4_000);',
+        'test("options", () => {}, { timeout: 3_000 });',
+        'test.only("long enough", () => {}, { timeout: 30_000 });',
+        'test.if(true)("long enough too", () => {}, 60_000);',
+      ].join("\n"),
     ),
   );
   try {
     expect(reachesSync(file)).toBe(true);
     expect(declaredBudget(file)).toBeUndefined();
-    expect(shorterLiteralBudgets(file)).toEqual([5_000]);
+    expect(shorterLiteralBudgets(file)).toEqual([5_000, 4_000, 3_000]);
   } finally {
     parsed.delete(file);
   }
