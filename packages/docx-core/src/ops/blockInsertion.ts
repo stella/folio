@@ -395,6 +395,31 @@ type PreparedTrackedParagraphInsertion =
  * main story has a supported trailing section and that the source and its
  * neighbor are adjacent top-level paragraphs (or the source is last).
  */
+type FinalMarkTakeoverRefusal = {
+  reason: DocumentOpRefusal["reason"];
+  message: string;
+};
+
+/**
+ * Why a tracked insertion after a container's final paragraph cannot take
+ * over that paragraph's mark: a pending property change alone is the one
+ * change the paragraph may own, any other record is untrackable there.
+ */
+const finalMarkTakeoverRefusal = (
+  paragraph: Paragraph,
+): FinalMarkTakeoverRefusal =>
+  paragraph.pPrMark === undefined && paragraph.reviewCarrier === undefined
+    ? {
+        reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_PROPERTY_CHANGE,
+        message:
+          "A tracked insertion after a paragraph no paragraph follows needs the anchor's properties free of a pending change.",
+      }
+    : {
+        reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+        message:
+          "A tracked insertion after a paragraph no paragraph follows needs the anchor's mark free of review records.",
+      };
+
 export const prepareTrackedParagraphInsertion = ({
   document,
   op,
@@ -447,9 +472,7 @@ export const prepareTrackedParagraphInsertion = ({
     return Result.err(
       new DocumentOpRefusal({
         opType: op.type,
-        reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-        message:
-          "A tracked insertion after a paragraph no paragraph follows needs the anchor's mark free of review records.",
+        ...finalMarkTakeoverRefusal(source),
       }),
     );
   const canonicalBlocks = [canonicalizeInsertedParagraph(incoming)];
@@ -759,10 +782,8 @@ export const insertBlocks = ({
         (location.paragraph.pPrMark !== undefined ||
           (location.paragraph.propertyChanges?.length ?? 0) > 0)))
   ) {
-    return refuse(
-      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      "A tracked insertion after a paragraph no paragraph follows needs the anchor's mark free of review records.",
-    );
+    const { reason, message } = finalMarkTakeoverRefusal(location.paragraph);
+    return refuse(reason, message);
   }
   const replacement = paragraphReplacement({ op, before, anchor });
   const canonicalBlocks = op.blocks.map(canonicalizeInsertedParagraph);
