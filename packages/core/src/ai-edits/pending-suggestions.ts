@@ -270,7 +270,13 @@ const reanchoredRecord = ({
     text += before?.anchors[id]?.text ?? "";
   }
   const anchor = after?.anchors[survivor];
-  if (!before?.anchors[paraId]?.text || !anchor) return null;
+  if (!anchor) return null;
+  // The survivor's own record moves by the text absorbed before it, when the
+  // survivor shows its members' text; it stays where it is when what joined
+  // it is a paragraph only a proposal adds.
+  if (paraId === survivor && (shift === null || anchor.text !== text))
+    return null;
+  if (paraId !== survivor && !before?.anchors[paraId]?.text) return null;
   if (shift === null || anchor.text !== text)
     return panic(
       "A pending suggestion's paragraph was absorbed, but the survivor does not show its text",
@@ -608,7 +614,8 @@ export class FolioPendingSuggestionRegistry {
   /**
    * Prepare re-anchoring for a resolution that absorbs paragraphs: a live
    * proposal anchored to an absorbed paragraph now lives in the survivor, so
-   * its record must name the survivor, never the absorbed id. Call before the
+   * its record must name the survivor, never the absorbed id; one anchored to
+   * the survivor itself moves by the text absorbed before it. Call before the
    * resolution publishes, with snapshots of the story as it is; run the
    * returned step after, with snapshots as the resolution leaves it. `null`
    * when no live record is anchored to an absorbed paragraph.
@@ -618,11 +625,16 @@ export class FolioPendingSuggestionRegistry {
     activeSuggestionIds,
     sourceSnapshotForStory,
   }: PrepareAbsorptionOptions): AbsorptionStep | null {
+    // A survivor's own records move too: the text absorbed before it shifts
+    // their ranges, and their paragraph's text changes.
+    const absorbing = new Set(
+      [...survivors.keys()].map((paraId) => finalSurvivor(survivors, paraId)),
+    );
     const affected = [...this.records].filter(
       ([, { suggestionId, anchor }]) =>
         activeSuggestionIds.has(suggestionId) &&
         anchor.paraId !== null &&
-        survivors.has(anchor.paraId),
+        (survivors.has(anchor.paraId) || absorbing.has(anchor.paraId)),
     );
     if (affected.length === 0) return null;
     const before = new Map<string, FolioAIEditSnapshot | null>();

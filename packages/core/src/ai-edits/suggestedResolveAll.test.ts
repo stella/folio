@@ -627,64 +627,67 @@ describe("resolving every suggestion headlessly", () => {
     }
   });
 
-  test("canonical bulk acceptance moves a range proposal by the text absorbed before it", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(
-      await documentOf(["Alpha one.", "Beta two.", "Gamma three."]),
-      { session: "canonical" },
-    );
-    const [alpha, beta, gamma] = reviewer.getContent();
-    if (!alpha || !beta || !gamma)
-      throw new Error("fixture paragraphs missing");
-    applyOne(reviewer, "suggested", {
-      id: "pending",
-      type: "replaceRange",
-      range: {
-        type: "textRange",
-        story: "main",
-        blockId: beta.id,
-        startOffset: 5,
-        endOffset: 8,
-        selectedTextHash: hashFolioAIBlockText("two"),
-      },
-      replace: "2",
-    });
-    for (const block of [alpha, beta])
-      applyOne(reviewer, "tracked-changes", {
-        id: `merge-${block.id}`,
-        type: "mergeBlockWithNext",
-        blockId: block.id,
+  // On an absorbed paragraph or on the survivor itself.
+  for (const [proposed, startOffset] of [
+    ["Beta", 5],
+    ["Gamma", 6],
+  ] as const)
+    test(`canonical bulk acceptance moves a range proposal on ${proposed} by the text absorbed before it`, async () => {
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await documentOf(["Alpha one.", "Beta two.", "Gamma three."]),
+        { session: "canonical" },
+      );
+      const [alpha, beta, gamma] = reviewer.getContent();
+      if (!alpha || !beta || !gamma)
+        throw new Error("fixture paragraphs missing");
+      const word = proposed === "Beta" ? "two" : "three";
+      applyOne(reviewer, "suggested", {
+        id: "pending",
+        type: "replaceRange",
+        range: {
+          type: "textRange",
+          story: "main",
+          blockId: proposed === "Beta" ? beta.id : gamma.id,
+          startOffset,
+          endOffset: startOffset + word.length,
+          selectedTextHash: hashFolioAIBlockText(word),
+        },
+        replace: "2",
       });
-    reviewer.acceptAll();
-    const records = JSON.parse(
-      JSON.stringify(reviewer.exportPendingSuggestions()),
-    );
-    expect(records).toMatchObject([
-      {
-        operation: {
-          range: { blockId: gamma.id, startOffset: 15, endOffset: 18 },
+      for (const block of [alpha, beta])
+        applyOne(reviewer, "tracked-changes", {
+          id: `merge-${block.id}`,
+          type: "mergeBlockWithNext",
+          blockId: block.id,
+        });
+      reviewer.acceptAll();
+      const records = JSON.parse(
+        JSON.stringify(reviewer.exportPendingSuggestions()),
+      );
+      const shifted = startOffset + (proposed === "Beta" ? 10 : 19);
+      const range = { startOffset: shifted, endOffset: shifted + word.length };
+      expect(records).toMatchObject([
+        {
+          operation: { range: { blockId: gamma.id, ...range } },
+          anchor: { blockId: gamma.id, paraId: gamma.id, ...range },
         },
-        anchor: {
-          blockId: gamma.id,
-          paraId: gamma.id,
-          startOffset: 15,
-          endOffset: 18,
-        },
-      },
-    ]);
-    const reopened = await FolioDocxReviewer.fromBuffer(
-      await reviewer.toBuffer(),
-      { session: "canonical" },
-    );
-    expect(reopened.loadPendingSuggestions(records)).toEqual([
-      { status: "restaged", suggestionId: "pending" },
-    ]);
-    for (const proposal of [reviewer, reopened]) {
-      expect(proposal.acceptSuggestion("pending")).toBe(true);
-      expect(await savedTexts(proposal)).toEqual([
-        "Alpha one.Beta 2.Gamma three.",
       ]);
-    }
-  });
+      const reopened = await FolioDocxReviewer.fromBuffer(
+        await reviewer.toBuffer(),
+        { session: "canonical" },
+      );
+      expect(reopened.loadPendingSuggestions(records)).toEqual([
+        { status: "restaged", suggestionId: "pending" },
+      ]);
+      for (const proposal of [reviewer, reopened]) {
+        expect(proposal.acceptSuggestion("pending")).toBe(true);
+        expect(await savedTexts(proposal)).toEqual([
+          proposed === "Beta"
+            ? "Alpha one.Beta 2.Gamma three."
+            : "Alpha one.Beta two.Gamma 2.",
+        ]);
+      }
+    });
 
   // As above: the canonical session records the suggested deletion beside the
   // tracked insertion, which stays as it was.
