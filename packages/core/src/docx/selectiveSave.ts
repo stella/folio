@@ -44,6 +44,7 @@ import {
   hasUnmaterializedHeaderFooter,
   hasUnmaterializedHyperlinkBindings,
   hasUnmaterializedInlineResources,
+  patchNotePartXml,
   planStyles,
   publishCanonicalImageResources,
   readRelsOrStub,
@@ -81,24 +82,42 @@ import { createReplayFragmentValidation } from "./storyBlockReplay";
 import { buildStructuralDocumentPatch } from "./structuralXmlPatch";
 
 /**
+ * How a note part takes its edits. `paragraphs` splices the edited paragraphs
+ * alone, which is faithful only when no note changed shape. `notes` is the
+ * repack's note patch: it also rewrites a note whose tables, rows, cell
+ * properties or row-level revisions changed, which sit outside every
+ * paragraph.
+ */
+type NoteSplice = "paragraphs" | "notes";
+
+type PatchNotePartsOptions = {
+  zip: ZipArchive;
+  doc: Document;
+  candidateIds: Set<string>;
+  updates: Map<string, string>;
+  splice: NoteSplice;
+};
+
+/**
  * Splice edited footnote/endnote paragraphs into their parts and return the
  * candidate ids that could NOT be routed to a note part (an id that is neither
  * a body nor a note paragraph — the caller bails on those).
  *
  * The document model only retains the normal notes, so this never rewrites a
  * whole note part (that would drop the separator notes the model omits): it
- * splices only the edited note paragraphs by `paraId` via
- * {@link buildPatchedNoteXml}, keeping separators and unedited notes byte-exact.
+ * splices the edited note paragraphs (or, under `notes`, the notes whose
+ * shape changed), keeping separators and unedited notes byte-exact.
  *
  * Returns null to signal the caller should bail to a full repack (a note
  * paragraph could not be spliced safely).
  */
-async function patchNoteParts(
-  zip: ZipArchive,
-  doc: Document,
-  candidateIds: Set<string>,
-  updates: Map<string, string>,
-): Promise<Set<string> | null> {
+async function patchNoteParts({
+  zip,
+  doc,
+  candidateIds,
+  updates,
+  splice,
+}: PatchNotePartsOptions): Promise<Set<string> | null> {
   const footnotes = doc.package.footnotes ?? [];
   const endnotes = doc.package.endnotes ?? [];
   const remainingIds = new Set(candidateIds);
@@ -125,10 +144,10 @@ async function patchNoteParts(
   };
 
   const patchPart = async (
-    conventionalLowerPath: string,
+    elementName: "footnote" | "endnote",
     serialize: () => string,
   ): Promise<boolean> => {
-    const file = findPart(conventionalLowerPath);
+    const file = findPart(`word/${elementName}s.xml`);
     if (!file) {
       return true;
     }
@@ -136,37 +155,74 @@ async function patchNoteParts(
       .bytes()
       .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
     const originalIds = collectParaIds(originalXml);
-    const partIds = new Set<string>();
-    for (const id of remainingIds) {
-      if (originalIds.has(id)) {
-        partIds.add(id);
+    switch (splice) {
+      case "paragraphs": {
+        const partIds = new Set<string>();
+        for (const id of remainingIds) {
+          if (originalIds.has(id)) {
+            partIds.add(id);
+          }
+        }
+        if (partIds.size === 0) {
+          return true;
+        }
+        const patched = buildPatchedNoteXml(originalXml, serialize(), partIds);
+        if (patched === null) {
+          return false;
+        }
+        updates.set(file.path, patched);
+        for (const id of partIds) {
+          remainingIds.delete(id);
+        }
+        return true;
+      }
+      case "notes": {
+        // A note paragraph is the part's when the source or the model holds
+        // it there: one an edit inserted or removed counts too.
+        const serializedIds = collectParaIds(serialize());
+        const partIds = new Set(
+          [...remainingIds].filter(
+            (id) => originalIds.has(id) || serializedIds.has(id),
+          ),
+        );
+        if (partIds.size === 0) {
+          return true;
+        }
+        const patch = patchNotePartXml({
+          doc,
+          elementName,
+          originalXml,
+          changedParaIds: partIds,
+        });
+        // A refusal is the repack's to resolve: it rewrites the note part
+        // from the model where a splice would break a comment range.
+        if (patch.type === "refused") {
+          return false;
+        }
+        if (patch.xml !== originalXml) {
+          updates.set(file.path, patch.xml);
+        }
+        for (const id of partIds) {
+          remainingIds.delete(id);
+        }
+        return true;
+      }
+      default: {
+        const unreachable: never = splice;
+        return unreachable;
       }
     }
-    if (partIds.size === 0) {
-      return true;
-    }
-    const patched = buildPatchedNoteXml(originalXml, serialize(), partIds);
-    if (patched === null) {
-      return false;
-    }
-    updates.set(file.path, patched);
-    for (const id of partIds) {
-      remainingIds.delete(id);
-    }
-    return true;
   };
 
   if (
     footnotes.length > 0 &&
-    !(await patchPart("word/footnotes.xml", () =>
-      serializeFootnotes(footnotes),
-    ))
+    !(await patchPart("footnote", () => serializeFootnotes(footnotes)))
   ) {
     return null;
   }
   if (
     endnotes.length > 0 &&
-    !(await patchPart("word/endnotes.xml", () => serializeEndnotes(endnotes)))
+    !(await patchPart("endnote", () => serializeEndnotes(endnotes)))
   ) {
     return null;
   }
@@ -733,12 +789,15 @@ async function writeChangedParts({
       }
 
       if (noteCandidateIds.size > 0) {
-        const unrouted = await patchNoteParts(
+        // A structural change may have changed a note's tables or rows, which
+        // a paragraph splice cannot carry.
+        const unrouted = await patchNoteParts({
           zip,
           doc,
-          noteCandidateIds,
+          candidateIds: noteCandidateIds,
           updates,
-        );
+          splice: structuralChange ? "notes" : "paragraphs",
+        });
         // A splice failure, or a changed id that is neither a body nor a note
         // paragraph, falls back to full repack — matching the prior safety when
         // buildPatchedDocumentXml met a paraId it could not resolve.
