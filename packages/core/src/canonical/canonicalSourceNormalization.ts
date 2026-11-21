@@ -29,6 +29,7 @@ import {
   packageParagraphIds,
   replaceStoryBody,
   withBodyContent,
+  withTextBoxesClosed,
 } from "@stll/docx-core/ops";
 
 import { canonicalJson } from "../utils/canonicalJson";
@@ -185,13 +186,29 @@ export const normalizeCanonicalSource = (
       minted.push(paraId);
       content = [...content, paragraph];
     }
-    if (content === body.content) continue;
-    normalized.push({ story, source: body.content, minted });
-    current = replaceStoryBody({
-      document: current,
+    let next =
+      content === body.content
+        ? current
+        : replaceStoryBody({
+            document: current,
+            story,
+            body: withBodyContent(body, [...content]),
+          });
+    // A text box drawn in the story is a container too, and ends with a
+    // paragraph the same way.
+    next = withTextBoxesClosed({
+      document: next,
       story,
-      body: withBodyContent(body, [...content]),
+      needsClosing: (blocks) => blocksEnding(blocks) !== "paragraph",
+      closing: () => {
+        const paraId = freshParaId(takenIds());
+        minted.push(paraId);
+        return { type: "paragraph", paraId, content: [] };
+      },
     });
+    if (next === current) continue;
+    normalized.push({ story, source: body.content, minted });
+    current = next;
   }
   return { document: current, normalized };
 };
