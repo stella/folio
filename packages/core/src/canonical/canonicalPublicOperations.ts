@@ -5960,11 +5960,6 @@ export class CanonicalPublicOperations {
         text = operation.type === "replaceRange" ? operation.replace : "";
         break;
       case "replaceBlock":
-        if (operation.preserveFormatting === false)
-          return refusal(
-            "unsupportedBlock",
-            "Canonical replacements that drop the paragraph's formatting are unavailable.",
-          );
         text = operation.text;
         break;
       case "splitBlock":
@@ -6011,6 +6006,22 @@ export class CanonicalPublicOperations {
     const references = noteReferenceSpansWithin(clean, start, end);
     if (cutsIntoNoteReference(clean, start, end))
       return refusal("protectedReference");
+    // Inline emphasis or dropped formatting rebuilds the replaced runs whole,
+    // the references among them included.
+    const dropsFormatting =
+      operation.type === "replaceBlock" &&
+      operation.preserveFormatting === false;
+    if (
+      replacesText &&
+      references.length > 0 &&
+      (dropsFormatting || stripInlineEmphasisMarkers(text) !== text)
+    )
+      return refusal("protectedReference");
+    if (dropsFormatting)
+      return refusal(
+        "unsupportedBlock",
+        "Canonical replacements that drop the paragraph's formatting are unavailable.",
+      );
     // Only a replacement rewrites the prose between references.
     const segments = segmentsAroundNoteReferences(
       clean.text.slice(start, end),
