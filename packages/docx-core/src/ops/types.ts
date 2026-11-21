@@ -516,7 +516,8 @@ export const PROPERTY_REVIEW_POLICIES: Readonly<{
  * formatting it started from. A tracked patch joins nothing, so `joinStart`
  * and `joinEnd` must be absent.
  * `propertyReview: "append"` coalesces an editor action into one pending review.
- * It retains the first baseline and records the latest formatter's metadata.
+ * It retains the first baseline and records the latest formatter's metadata;
+ * a run patched back to that baseline keeps no pending change.
  */
 export type SetRunPropsOp = {
   type: typeof DOCUMENT_OP_TYPES.SET_RUN_PROPS;
