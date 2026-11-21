@@ -61,9 +61,10 @@ type Case = {
   operation: (ids: { joined: string; blank: string }) => FolioDocumentOperation;
   /**
    * What the canonical reviewer reads where it departs from the default one:
-   * a paragraph inserted after one whose mark is pending deletion goes right
-   * after it, as pressing Enter at its end does, and the join then runs into
-   * it; the default engine puts it after the paragraph the join leaves.
+   * a paragraph inserted after one with words whose mark is pending deletion
+   * goes right after it, as pressing Enter at its end does, and the join then
+   * runs into it; the default engine puts it after the paragraph the join
+   * leaves (`insertionAfterPendingBreak`).
    */
   canonical?: (mode: FolioAIEditApplyMode) => unknown;
 };
@@ -170,22 +171,6 @@ const CASES: readonly Case[] = [
       blockId: blank,
       text: "Inserted after blank",
     }),
-    canonical: (mode) =>
-      insertedRightAfter(
-        mode,
-        [
-          "First words here",
-          "Second words",
-          "Inserted after blank",
-          "Closing words",
-        ],
-        [
-          "First words hereSecond words",
-          "Inserted after blank",
-          "Closing words",
-        ],
-        "Inserted after blank",
-      ),
   },
 ];
 

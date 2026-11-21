@@ -5,6 +5,8 @@ import {
   type Document,
   finalizeParagraphFormatting,
   type Paragraph,
+  type ParagraphMarkChange,
+  type ParagraphPropertyChange,
 } from "../model/document";
 import {
   markBeforeTableResolves,
@@ -30,6 +32,7 @@ import {
   isParaId,
   type KeyMembership,
   packageIdentityKeyIndex,
+  slotKey,
 } from "./ids";
 import { asMoveHalf } from "./moves";
 import { paragraphLength } from "./offsets";
@@ -40,7 +43,15 @@ import {
 } from "./paragraphPrimitive";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import type { ApplyOps } from "./resolve";
-import { stampInfo, WRAP_KINDS, wrapTracked } from "./review";
+import {
+  FOLD_INTO_OTHER_SUGGESTION_MESSAGE,
+  foldedParagraphPropertyChange,
+  foldsIntoOtherSuggestion,
+  stampInfo,
+  WRAP_KINDS,
+  wrapTracked,
+} from "./review";
+import { identitySlots } from "./slots";
 import { locateBlockInsertion } from "./tableLocation";
 import {
   DOCUMENT_OP_TYPES,
@@ -132,6 +143,101 @@ const paragraphReplacement =
     blocks: before ? [...blocks, replacedAnchor] : [replacedAnchor, ...blocks],
   });
 
+type TakenOverPropertyChangesOptions = {
+  /** The anchor whose mark the last new paragraph takes over. */
+  source: Paragraph;
+  /** The last new paragraph's properties. */
+  current: Paragraph["formatting"];
+  revision: RevisionStamp;
+};
+
+/**
+ * The property changes the paragraph that takes over `source`'s mark holds:
+ * `source`'s own pending one, with other properties folded into it (keeping
+ * its id and original properties, as a split's second half does), or a new
+ * one from `source`'s properties. A suggestion does not fold into another's
+ * change.
+ */
+const takenOverPropertyChanges = ({
+  source,
+  current,
+  revision,
+}: TakenOverPropertyChangesOptions): Result<
+  ParagraphPropertyChange[] | undefined,
+  DocumentOpRefusal
+> => {
+  const pending =
+    (source.propertyChanges?.length ?? 0) > 0
+      ? source.propertyChanges
+      : undefined;
+  if (sameFormatting(source.formatting, current)) return Result.ok(pending);
+  if (pending === undefined)
+    return Result.ok([
+      {
+        type: "paragraphPropertyChange",
+        info: stampInfo(revision),
+        ...(source.formatting === undefined
+          ? {}
+          : { previousFormatting: source.formatting }),
+      },
+    ]);
+  if (foldsIntoOtherSuggestion(source, revision))
+    return Result.err(
+      new DocumentOpRefusal({
+        opType: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+        reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+        message: FOLD_INTO_OTHER_SUGGESTION_MESSAGE,
+      }),
+    );
+  return Result.ok([
+    foldedParagraphPropertyChange({
+      paragraph: source,
+      formatting: current,
+      stamp: revision,
+    }),
+  ]);
+};
+
+type TakenOverMarksOptions = {
+  /** The mark of the anchor, when the last new paragraph takes it over. */
+  mark: ParagraphMarkChange | undefined;
+  /** The anchor's new mark, which this insertion adds. */
+  added: ParagraphMarkChange;
+};
+
+type TakenOverMarks = {
+  anchor: ParagraphMarkChange;
+  /** The mark of the paragraph that takes over the anchor's. */
+  taker: ParagraphMarkChange | undefined;
+};
+
+/**
+ * The marks of the anchor and of the paragraph that takes over its former
+ * one: an added mark goes with it. A break pending deletion or moving away
+ * does not: on the new paragraph, accepting would run that paragraph on
+ * instead of the anchor's words, and beside the anchor's new mark, rejecting
+ * the insertion alone would take the deletion with that mark.
+ */
+const takenOverMarks = ({
+  mark,
+  added,
+}: TakenOverMarksOptions): Result<TakenOverMarks, DocumentOpRefusal> => {
+  if (mark === undefined) return Result.ok({ anchor: added, taker: undefined });
+  if (
+    (mark.kind === "ins" || mark.kind === "moveTo") &&
+    mark.deletion === undefined
+  )
+    return Result.ok({ anchor: added, taker: mark });
+  return Result.err(
+    new DocumentOpRefusal({
+      opType: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+      message:
+        "A tracked insertion cannot take over the mark of a paragraph whose break is pending deletion or moving away.",
+    }),
+  );
+};
+
 type TrackedParagraphReplacementOptions = {
   op: InsertBlocksOp;
   revision: RevisionStamp;
@@ -166,6 +272,11 @@ const trackedParagraphReplacement = ({
   }
   // A move's destination marks its paragraphs moved to, not inserted.
   const markKind = op.move === true ? "moveTo" : "ins";
+  const marks = takenOverMarks({
+    mark: takesOverMark ? source.pPrMark : undefined,
+    added: { kind: markKind, info: stampInfo(revision), survivor: "first" },
+  });
+  if (marks.isErr()) return marks;
   const blocks: Paragraph[] = [];
   for (const [index, paragraph] of canonicalBlocks.entries()) {
     const wrapped = insertedContent({
@@ -190,46 +301,46 @@ const trackedParagraphReplacement = ({
       });
       continue;
     }
-    // The anchor's former mark: its properties before are the anchor's.
-    const previous = source.formatting;
-    const current = finalizeParagraphFormatting(paragraph.formatting);
+    // The anchor's former mark, with the review records it holds, as a
+    // split's second half takes them: its properties before are the
+    // anchor's, and other properties fold into a pending change of them.
+    const propertyChanges = takenOverPropertyChanges({
+      source,
+      current: finalizeParagraphFormatting(paragraph.formatting),
+      revision,
+    });
+    if (propertyChanges.isErr()) return propertyChanges;
     blocks.push({
       ...paragraph,
       content,
-      ...(sameFormatting(previous, current)
+      ...(propertyChanges.value === undefined
         ? {}
-        : {
-            propertyChanges: [
-              {
-                type: "paragraphPropertyChange",
-                info: stampInfo(revision),
-                ...(previous === undefined
-                  ? {}
-                  : { previousFormatting: previous }),
-              },
-            ],
-          }),
+        : { propertyChanges: propertyChanges.value }),
+      ...(marks.value.taker === undefined
+        ? {}
+        : { pPrMark: marks.value.taker }),
     });
   }
-  const anchorBlocks: Paragraph[] = takesOverMark
-    ? [
-        {
-          ...source,
-          pPrMark: {
-            kind: markKind,
-            info: stampInfo(revision),
-            survivor: "first",
-          },
-        },
-      ]
-    : [];
-  // The anchor's own records are carried over and keep their ids; only the
-  // records this insertion creates take new ones.
+  const anchorBlocks: Paragraph[] = [];
+  if (takesOverMark) {
+    // Its property changes went with its former mark.
+    const { propertyChanges: _moved, ...kept } = source;
+    anchorBlocks.push({ ...kept, pPrMark: marks.value.anchor });
+  }
+  // The anchor's own records are carried over and keep their ids, those of
+  // its mark on the paragraph that took the mark over; only the records this
+  // insertion creates take new ones.
+  const moved = new Set(
+    takesOverMark ? identitySlots(source).map(slotKey) : [],
+  );
   const fresh = freshenIdentities({
     before: takesOverMark ? [source] : [],
     after: [...anchorBlocks, ...blocks],
     newIds: op.newIds ?? {},
-    usedElsewhere,
+    usedElsewhere: () => {
+      const elsewhere = usedElsewhere();
+      return { has: (key) => !moved.has(key) && elsewhere.has(key) };
+    },
   });
   switch (fresh.kind) {
     case "needsIds":
@@ -610,11 +721,15 @@ export const insertBlocks = ({
         blocks: list,
         boundary: paragraphTableRunInBoundary(firstInserted, following),
       }));
+  // The last new paragraph takes the anchor's mark with its review records
+  // (`trackedParagraphReplacement`), except onto the container's new final
+  // paragraph, which keeps no record a pending change moves to it.
   if (
     takesOverMark &&
-    (location.paragraph.pPrMark !== undefined ||
-      location.paragraph.reviewCarrier !== undefined ||
-      (location.paragraph.propertyChanges?.length ?? 0) > 0)
+    (location.paragraph.reviewCarrier !== undefined ||
+      (following === undefined &&
+        (location.paragraph.pPrMark !== undefined ||
+          (location.paragraph.propertyChanges?.length ?? 0) > 0)))
   ) {
     return refuse(
       DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,

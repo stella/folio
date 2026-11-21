@@ -1,0 +1,322 @@
+import { expect, test } from "bun:test";
+
+import type {
+  BlockContent,
+  Document,
+  Paragraph,
+  ParagraphMarkChange,
+  ParagraphMarkDeletion,
+  ParagraphPropertyChange,
+} from "../../model/document";
+import {
+  type AppliedDocumentOp,
+  applyDocumentOp,
+  applyDocumentOps,
+} from "../apply";
+import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
+import {
+  DOCUMENT_OP_TYPES,
+  type DocumentOp,
+  type InsertBlocksOp,
+  OP_STORIES,
+  REVISION_DECISIONS,
+  type RevisionDecision,
+} from "../types";
+
+// A tracked paragraph put after a paragraph that stands before a table whose
+// first row is pending takes over that paragraph's mark, and the review
+// records on the mark go with it, as a tracked split's second half takes
+// them. A break pending deletion or moving away is not taken over.
+
+const OTHER = { author: "Other", date: "2026-01-01T00:00:00Z" };
+const stamp = { id: 100, author: "Reviewer", date: "2026-02-03T04:05:06Z" };
+const PENDING_CHANGE = 7;
+const PENDING_MARK = 8;
+const PENDING_MARK_DELETION = 9;
+const PENDING_TEXT = 11;
+const PENDING_ROW = 20;
+const PENDING_CELL = 21;
+const TABLE = [PENDING_ROW, PENDING_CELL];
+
+const run = (text: string) => ({
+  type: "run" as const,
+  content: [{ type: "text" as const, text }],
+});
+
+const paragraph = (paraId: string, text: string): Paragraph => ({
+  type: "paragraph",
+  paraId,
+  content: text === "" ? [] : [run(text)],
+});
+
+// A pending first row: the anchor's mark cannot run into the table, so the
+// new paragraph takes it over.
+const table: BlockContent = {
+  type: "table",
+  rows: [
+    {
+      type: "tableRow",
+      structuralChange: {
+        type: "tableRowInsertion",
+        info: { id: PENDING_ROW, ...OTHER },
+      },
+      cells: [
+        {
+          type: "tableCell",
+          content: [
+            {
+              ...paragraph("00000010", ""),
+              content: [
+                {
+                  type: "insertion",
+                  info: { id: PENDING_CELL, ...OTHER },
+                  content: [run("cell")],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+const propertyChange: ParagraphPropertyChange = {
+  type: "paragraphPropertyChange",
+  info: { id: PENDING_CHANGE, ...OTHER },
+  previousFormatting: { alignment: "start" },
+};
+
+const insertedMark: ParagraphMarkChange = {
+  kind: "ins",
+  info: { id: PENDING_MARK, ...OTHER },
+};
+
+const markDeletion: ParagraphMarkDeletion = {
+  info: { id: PENDING_MARK_DELETION, ...OTHER },
+};
+
+type AnchorCase = {
+  name: string;
+  anchor: Paragraph;
+  /** The anchor's own pending ids, which this insertion does not take. */
+  pending: readonly number[];
+  /** The mark of the paragraph that takes over the anchor's. */
+  taker?: ParagraphMarkChange;
+};
+
+const ANCHOR = {
+  ...paragraph("00000001", "kept"),
+  formatting: { alignment: "center" },
+} satisfies Paragraph;
+
+const ANCHORS: readonly AnchorCase[] = [
+  {
+    name: "a pending property change",
+    anchor: { ...ANCHOR, propertyChanges: [propertyChange] },
+    pending: [PENDING_CHANGE],
+  },
+  {
+    name: "a pending inserted break",
+    anchor: {
+      ...ANCHOR,
+      content: [
+        {
+          type: "insertion",
+          info: { id: PENDING_TEXT, ...OTHER },
+          content: [run("kept")],
+        },
+      ],
+      pPrMark: insertedMark,
+    },
+    pending: [PENDING_TEXT, PENDING_MARK],
+    taker: insertedMark,
+  },
+  {
+    name: "a pending property change and inserted break",
+    anchor: {
+      ...ANCHOR,
+      propertyChanges: [propertyChange],
+      pPrMark: insertedMark,
+    },
+    pending: [PENDING_CHANGE, PENDING_MARK],
+    taker: insertedMark,
+  },
+];
+
+const documentOf = (anchor: Paragraph): Document => ({
+  package: {
+    document: { content: [anchor, table, paragraph("00000004", "after")] },
+  },
+});
+
+const insertion = (inserted: Paragraph): InsertBlocksOp => ({
+  type: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+  story: OP_STORIES.MAIN,
+  at: { type: "after", blockId: "00000001" },
+  blocks: [inserted],
+  revision: stamp,
+  newIds: { revision: Array.from({ length: 32 }, (_, index) => 101 + index) },
+});
+
+const apply = (document: Document, op: DocumentOp) => {
+  const result = applyDocumentOp(document, op);
+  if (result.isErr()) throw result.error;
+  return result.value;
+};
+
+const resolve = (
+  document: Document,
+  revisionIds: readonly number[],
+  decision: RevisionDecision,
+) =>
+  apply(document, {
+    type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+    story: OP_STORIES.MAIN,
+    revisionIds,
+    decision,
+  }).document;
+
+const undo = (applied: AppliedDocumentOp) => {
+  const restored = applyDocumentOps(applied.document, applied.inverse);
+  if (restored.isErr()) throw restored.error;
+  return restored.value.document;
+};
+
+/**
+ * The document without its paragraph ids. Rejecting an added break the new
+ * paragraph took over together with the anchor's new one leaves the joined
+ * paragraph under the anchor's id or the next one's, by which goes first, as
+ * after a tracked split at the anchor's end.
+ */
+const withoutParagraphIds = (document: Document): unknown =>
+  JSON.parse(
+    JSON.stringify(document, (key, value: unknown) =>
+      key === "paraId" ? undefined : value,
+    ),
+  );
+
+const DECISIONS = Object.values(REVISION_DECISIONS);
+
+for (const { name, anchor, pending, taker } of ANCHORS)
+  for (const formatting of ["the anchor's", "other"] as const)
+    test(`a tracked paragraph after one before a table with ${name}, with ${formatting} properties, takes its mark's records`, () => {
+      const document = documentOf(anchor);
+      const inserted = {
+        ...paragraph("00000002", "new"),
+        formatting:
+          formatting === "other"
+            ? { alignment: "end" as const }
+            : ANCHOR.formatting,
+      } satisfies Paragraph;
+      const op = insertion(inserted);
+      const tracked = apply(document, op);
+      const [first, second] = tracked.document.package.document.content;
+      if (first?.type !== "paragraph" || second?.type !== "paragraph")
+        throw new Error("The anchor and the new paragraph stand first.");
+      // The anchor's mark is the new one; the new paragraph has its former
+      // mark and the records it held.
+      expect(first.pPrMark).toEqual({
+        kind: "ins",
+        info: { ...stamp, id: first.pPrMark?.info.id ?? -1 },
+        survivor: "first",
+      });
+      expect(first.propertyChanges).toBeUndefined();
+      expect(second.pPrMark).toEqual(taker);
+      const changes = second.propertyChanges;
+      if (anchor.propertyChanges === undefined)
+        expect(changes === undefined).toBe(formatting !== "other");
+      else
+        // One change from the anchor's original properties, under its id.
+        expect(
+          changes?.map(({ info, previousFormatting }) => [
+            info.id,
+            previousFormatting,
+          ]),
+        ).toEqual([[PENDING_CHANGE, { alignment: "start" }]]);
+      expect(undo(tracked)).toEqual(document);
+      const own = tracked.revisions.filter((id) => !pending.includes(id));
+      // Rejecting the insertion alone gives the anchor back with its
+      // records, unless other properties folded into its pending change.
+      if (formatting !== "other" || anchor.propertyChanges === undefined)
+        expect(
+          resolve(tracked.document, own, REVISION_DECISIONS.REJECT),
+        ).toEqual(document);
+      const direct = apply(document, { ...op, revision: undefined }).document;
+      const theirs = [...pending, ...TABLE];
+      const addedBreak = taker !== undefined;
+      for (const decision of DECISIONS) {
+        const accepting = decision === REVISION_DECISIONS.ACCEPT;
+        const expected = resolve(
+          accepting ? direct : document,
+          theirs,
+          decision,
+        );
+        const same = (resolved: Document) =>
+          accepting || !addedBreak
+            ? expect(resolved).toEqual(expected)
+            : expect(withoutParagraphIds(resolved)).toEqual(
+                withoutParagraphIds(expected),
+              );
+        // All at once, the anchor's records first, or the insertion first.
+        same(resolve(tracked.document, [...own, ...theirs], decision));
+        same(
+          resolve(resolve(tracked.document, theirs, decision), own, decision),
+        );
+        same(
+          resolve(resolve(tracked.document, own, decision), theirs, decision),
+        );
+      }
+    });
+
+test("a new final paragraph does not take a pending property change", () => {
+  const refused = applyDocumentOp(
+    {
+      package: {
+        document: {
+          content: [
+            paragraph("00000004", "before"),
+            { ...ANCHOR, propertyChanges: [propertyChange] },
+          ],
+        },
+      },
+    },
+    insertion(paragraph("00000002", "new")),
+  );
+  expect(refused.isErr() && refused.error.reason).toBe(
+    DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+  );
+});
+
+test.each([
+  { kind: "del", info: insertedMark.info },
+  { kind: "moveFrom", info: insertedMark.info },
+  { ...insertedMark, deletion: markDeletion },
+] satisfies ParagraphMarkChange[])(
+  "a break pending deletion or moving away is not taken over ($kind)",
+  (pPrMark) => {
+    const refused = applyDocumentOp(
+      documentOf({ ...ANCHOR, pPrMark }),
+      insertion(paragraph("00000002", "new")),
+    );
+    expect(refused.isErr() && refused.error.reason).toBe(
+      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+    );
+  },
+);
+
+test("a suggestion does not fold other properties into another's pending change", () => {
+  const refused = applyDocumentOp(
+    documentOf({ ...ANCHOR, propertyChanges: [propertyChange] }),
+    {
+      ...insertion({
+        ...paragraph("00000002", "new"),
+        formatting: { alignment: "end" },
+      }),
+      revision: { ...stamp, suggestionId: "suggestion" },
+    },
+  );
+  expect(refused.isErr() && refused.error.reason).toBe(
+    DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+  );
+});

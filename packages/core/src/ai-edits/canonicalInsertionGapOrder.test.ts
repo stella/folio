@@ -182,14 +182,9 @@ for (const mode of ["direct", "tracked-changes"] as const)
         }),
       );
       // Normal admission runs these same-anchor operations from the last
-      // input backwards. A tracked table takes the source mark, so earlier
-      // paragraph insertions still meet the native pending-mark refusal.
-      // Reordering admitted operations must not expand that capability.
-      const firstAdmitted = mode === "direct" ? 0 : kinds.indexOf("table");
-      const admittedIds = operations.slice(firstAdmitted).map(({ id }) => id);
-      const declinedIds = operations
-        .slice(0, firstAdmitted)
-        .map(({ id }) => id);
+      // input backwards. A tracked table takes the source mark, and a
+      // paragraph put after the source then takes that pending mark over.
+      const admittedIds = operations.map(({ id }) => id);
       const expectedLabels = ["Left", ...admittedIds];
       const apply = () => {
         const edited = reviewer.applyDocumentOperations(
@@ -201,15 +196,7 @@ for (const mode of ["direct", "tracked-changes"] as const)
           { undefinedReferences: "refuse" },
         );
         expect(edited.applied.map(({ id }) => id)).toEqual(admittedIds);
-        expect(edited.skipped).toEqual(
-          declinedIds.map((id) => ({
-            id,
-            reason: "unsupportedBlock",
-            message:
-              "A tracked insertion after a paragraph no paragraph follows needs the anchor's mark free of review records.",
-            canonicalRefusal: { gap: "publicOps.unsupportedInline" },
-          })),
-        );
+        expect(edited.skipped).toEqual([]);
         expect(edited.undoHandle).not.toBeNull();
         return (
           edited.undoHandle ??
