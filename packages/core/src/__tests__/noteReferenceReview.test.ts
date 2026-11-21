@@ -20,6 +20,7 @@ import {
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { serializeCanonicalSave } from "../docx/canonicalSave";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
+import { referencedHeaderFooters } from "../docx/unreferencedHeaderFooters";
 import {
   acceptAIEditRevision,
   rejectAIEditRevision,
@@ -572,6 +573,7 @@ describe("a save keeps the notes the package held without a reference", () => {
                 heldUnreferencedNotes: heldUnreferencedNotes(opened),
                 noteParagraphs: { touched: [], changedSinceSource: [] },
                 restoredSinceSource: [],
+                referencedHeaderFootersAtOpen: referencedHeaderFooters(opened),
               },
             });
             const reopened = await parseShapeDocument(
@@ -627,6 +629,7 @@ describe("a full canonical save writes the notes no edit touched as the package 
         heldUnreferencedNotes: heldUnreferencedNotes(opened),
         noteParagraphs: { touched: [], changedSinceSource: [] },
         restoredSinceSource: [],
+        referencedHeaderFootersAtOpen: referencedHeaderFooters(opened),
       },
     });
     const written =

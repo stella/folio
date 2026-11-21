@@ -31,6 +31,7 @@ import type { FolioSelectiveSaveFlags } from "./selectiveSaveFlags";
 import { resolveSelectiveSaveFlags } from "./selectiveSaveFlags";
 import type { TripwireResult } from "./selectiveSaveTripwire";
 import { withoutUnusedSessionLists } from "./sessionListPruning";
+import { withoutUnreferencedHeaderFooters } from "./unreferencedHeaderFooters";
 
 const CanonicalSaveDiagnosticErrorBase: TaggedErrorClass<"CanonicalSaveDiagnosticError"> =
   TaggedError("CanonicalSaveDiagnosticError");
@@ -193,9 +194,12 @@ export const serializeCanonicalSave = async ({
   const withoutSuggestions = withoutPendingSuggestions(snapshot.document);
   if (withoutSuggestions.isErr()) throw withoutSuggestions.error;
   const document = withoutUnusedSessionLists(
-    withoutUnreferencedNotes(
-      withoutSuggestions.value,
-      snapshot.heldUnreferencedNotes,
+    withoutUnreferencedHeaderFooters(
+      withoutUnreferencedNotes(
+        withoutSuggestions.value,
+        snapshot.heldUnreferencedNotes,
+      ),
+      snapshot.referencedHeaderFootersAtOpen,
     ),
   );
   // A paragraph a pending suggestion adds is not in the file, so it is no

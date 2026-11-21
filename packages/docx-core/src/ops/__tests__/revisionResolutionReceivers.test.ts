@@ -357,7 +357,7 @@ test("one validated nested target owns table eligibility and reconstruction", ()
   ]);
 });
 
-test("terminal removal declares both retained boundaries and its exact section recipient", () => {
+test("rejecting an added mark that ends a section declares no section recipient", () => {
   const document = normalizeForOps({
     package: {
       document: {
@@ -377,18 +377,24 @@ test("terminal removal declares both retained boundaries and its exact section r
             sectionProperties: { pageWidth: 11906 },
             pPrMark: { kind: "ins", info: { id: 1, author: "A" } },
           },
+          {
+            type: "paragraph",
+            paraId: "00000003",
+            content: [{ type: "run", content: [{ type: "text", text: "b" }] }],
+          },
         ],
       },
     },
   });
-  const { effects } = resolveWithReceivers(document, {
-    ...accept([1]),
-    decision: "reject",
-  });
+  const { applied, effects } = resolveWithReceivers(document, reject([1]));
   expect(effects.map(({ type, receiver }) => [type, receiver.paraId])).toEqual([
-    ["retained-range-boundaries", "00000001"],
-    ["section-transfer", "00000001"],
+    ["paragraph-join", "00000003"],
   ]);
+  expect(
+    applied.document.package.document.content.map((block) =>
+      block.type === "paragraph" ? block.sectionProperties : block.type,
+    ),
+  ).toEqual([undefined, undefined]);
 });
 
 const BLOCKERS = {

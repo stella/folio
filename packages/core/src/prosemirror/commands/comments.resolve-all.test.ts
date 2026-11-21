@@ -260,11 +260,11 @@ describe("resolve-all command equivalence", () => {
     propertyTestTimeout(30_000),
   );
 
-  test("records the paragraph that receives a rejected added mark's section", () => {
+  test("takes a rejected added mark's section with it", () => {
     // Rejecting an added mark that ends a section joins its paragraph into
-    // the next one and hands the section to the paragraph before it. That
-    // paragraph is changed: the tracker must see it, and the step must
-    // replay the change rather than only carry it in its cached result.
+    // the next one; the section never stood in the original and goes with
+    // the mark, so no paragraph receives it. The step must replay the change
+    // rather than only carry it in its cached result.
     for (const mark of ["ins", "moveTo"] as const) {
       const plain = {
         mark: "none",
@@ -295,12 +295,11 @@ describe("resolve-all command equivalence", () => {
       ).toBe(true);
       const [tr] = dispatched;
       if (!tr) throw new Error("Expected the resolution to dispatch.");
-      const receiver = tr.doc.child(2);
-      expect(receiver.attrs["paraId"]).toBe("00000002");
-      expect(receiver.attrs["_sectionProperties"] ?? null).not.toBeNull();
-      expect(
-        getChangeTrackerState(state.apply(tr))?.changedParaIds.has("00000002"),
-      ).toBe(true);
+      const sections: unknown[] = [];
+      tr.doc.forEach((child) => {
+        sections.push(child.attrs["_sectionProperties"] ?? null);
+      });
+      expect(sections).toEqual([null, null, null, null]);
 
       const [step] = tr.steps;
       expect(step).toBeInstanceOf(RevisionResolutionStep);

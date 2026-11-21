@@ -1108,21 +1108,18 @@ export const paragraphMarkOutcome: (input: {
     tableRemovalIsTrackable?: boolean;
     emptyInsertedTableBoundary?: "unavailable" | "pendingReview";
     precededByBlock?: boolean;
-    removedSectionProperties?: boolean;
-    precedingSectionOwner?: "unavailable" | "available" | "same" | "occupied";
-    followingHasSectionProperties?: boolean;
-}) => ({
+}) => {
     kind: "join";
-} & SectionTransfer) | ({
+} | {
     kind: "remove";
-} & SectionTransfer) | ({
+} | {
     kind: "run-in";
-} & SectionTransfer) | ({
+} | {
     kind: "keep";
-} & SectionTransfer) | ({
+} | {
     kind: "refuse";
     reason: "untrackable";
-} & SectionTransfer);
+};
 
 // @public
 export const paragraphPropertySnapshotToken: (paragraph: Paragraph) => object | undefined;
