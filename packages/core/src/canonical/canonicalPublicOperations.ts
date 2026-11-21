@@ -1076,27 +1076,6 @@ type ResolveBlockInsertionOptions = {
 };
 
 /**
- * A paragraph of the table at `before` whose innermost table it is: the
- * paragraph docx-core names that table by.
- */
-const tableOwnParagraph = (
-  projection: CanonicalProjection,
-  before: number,
-): ProjectedParagraph | undefined => {
-  const table = projection.doc.nodeAt(before);
-  if (table?.type.name !== "table") return undefined;
-  let own: ProjectedParagraph | undefined;
-  table.descendants((node, offset) => {
-    // A nested table's paragraphs name that table.
-    if (own !== undefined || node.type.name === "table") return false;
-    if (node.type.name !== "paragraph") return true;
-    own = projection.paragraphStartingAt(before + 1 + offset);
-    return false;
-  });
-  return own;
-};
-
-/**
  * Where an insertion beside `paragraph` goes: beside the paragraph, or, for a
  * paragraph in a table cell, beside the outermost table, as the default
  * engine places it. The point names the paragraph on the far side of the
@@ -1185,13 +1164,17 @@ const blockInsertionPlace = (
       },
       position,
     };
-  const own = tableOwnParagraph(projection, table.before);
-  if (own === undefined) return undefined;
+  const outerTable = projection.doc.nodeAt(table.before);
+  const blockId =
+    outerTable === null
+      ? undefined
+      : tableBlockAddress(projection, {
+          table: outerTable,
+          tableStart: table.before + 1,
+        });
+  if (blockId === undefined) return undefined;
   return {
-    at: {
-      type: side === "after" ? "afterTable" : "beforeTable",
-      blockId: own.blockId,
-    },
+    at: { type: side === "after" ? "afterTable" : "beforeTable", blockId },
     position,
   };
 };
