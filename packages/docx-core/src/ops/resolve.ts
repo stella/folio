@@ -753,6 +753,39 @@ export const mergeAtSeam = (
     : [folded];
 };
 
+/**
+ * How deep accepted editor text joins the piece of a record its own join
+ * names: through the containers its join reaches as far as they are alike,
+ * then the runs meeting inside them where they merge as plain runs, as the
+ * direct edit joins its typed run.
+ */
+const payloadJoinDepth = (
+  left: InlineNode,
+  right: InlineNode,
+  depth: number,
+): number => {
+  let leftEdge: InlineNode | undefined = left;
+  let rightEdge: InlineNode | undefined = right;
+  let level = 0;
+  while (
+    level < depth &&
+    leftEdge !== undefined &&
+    rightEdge !== undefined &&
+    leftEdge.type !== "run" &&
+    rightEdge.type !== "run" &&
+    sameOwnFields(leftEdge, rightEdge)
+  ) {
+    leftEdge = childNodes(leftEdge)?.at(-1);
+    rightEdge = childNodes(rightEdge)?.at(0);
+    level += 1;
+  }
+  return leftEdge?.type === "run" &&
+    rightEdge?.type === "run" &&
+    runsMergeable(leftEdge, rightEdge)
+    ? level + alikeDepth(leftEdge, rightEdge)
+    : level;
+};
+
 /** Two lists end to end, merged at the seam as {@link mergeAtSeam} merges. */
 const mergedAtSeam = (
   left: readonly InlineNode[],
@@ -1986,12 +2019,19 @@ const resolveList = ({
       removesContent(node, resolution.decision) &&
       joins?.before === 0 &&
       joins.after === 0;
+    // New content joined to nothing either side that goes too is no piece
+    // of what the change cut, whatever it holds: the cut reaches past it.
     const goes = (candidate: InlineNode | undefined): boolean =>
-      reachesPast &&
       candidate !== undefined &&
       isTrackedWrapper(candidate) &&
       resolution.ids.has(candidate.info.id) &&
-      removesContent(candidate, resolution.decision);
+      removesContent(candidate, resolution.decision) &&
+      (reachesPast ||
+        (isAddedRevision(candidate) &&
+          candidate.resolutionJoins !== undefined &&
+          candidate.resolutionJoins.before === 0 &&
+          candidate.resolutionJoins.after === 0 &&
+          candidate.resolutionJoins.remove === 0));
     let beforeIndex = index - 1;
     while (beforeIndex >= 0 && goes(pending.at(beforeIndex))) beforeIndex -= 1;
     let afterIndex = index + 1;
@@ -3792,6 +3832,50 @@ const resolveList = ({
           ),
           ...(rightHolder === undefined ? [] : [rightHolder]),
         ];
+        // Accepted text joined to a piece of a record continues that record
+        // across a pending removal holding its other piece, and nothing
+        // else stands between them: rejecting the removal joins that piece
+        // at its edge, and accepting it joins the text with what stands
+        // beyond its place, as resolving both at once does.
+        const holder = leftHolder ?? rightHolder;
+        const held = holder === undefined ? undefined : out[holder];
+        if (
+          holder !== undefined &&
+          held !== undefined &&
+          payloadJoinSeams.has(recorded) &&
+          blockerIndices.length === 1 &&
+          standingKept === 0 &&
+          isTrackedWrapper(held.node) &&
+          held.node.resolutionJoins !== undefined
+        ) {
+          const joins = held.node.resolutionJoins;
+          const edge = holder === leftHolder ? "after" : "before";
+          // The text across the seam, and what stands beyond the removal.
+          const text = out[edge === "after" ? rightStart : leftEnd]?.node;
+          const beyond = out[edge === "after" ? holder - 1 : holder + 1]?.node;
+          const piece =
+            edge === "after"
+              ? held.node.content.at(-1)
+              : held.node.content.at(0);
+          const joinWith = (record: InlineNode | undefined): number => {
+            if (record === undefined || text === undefined) return 0;
+            return edge === "after"
+              ? payloadJoinDepth(record, text, deferredDepth)
+              : payloadJoinDepth(text, record, deferredDepth);
+          };
+          // The removal now meets the text there, no source piece: kept or
+          // removed, it joins the text as the text's own join does.
+          out[holder] = occurrenceOf(
+            Object.assign({}, held.node, {
+              resolutionJoins: Object.assign({}, joins, {
+                [edge]: joinWith(piece),
+                remove: joinWith(beyond),
+              }),
+            }),
+            held,
+          );
+          continue;
+        }
         const blockers = blockerIndices.flatMap((index) => {
           const node = out[index]?.node;
           return node !== undefined && isTrackedWrapper(node)
@@ -3841,17 +3925,28 @@ const resolveList = ({
     const besidePayload =
       leftOccurrence?.payload === true || rightOccurrence?.payload === true;
     if (
+      exactDepth !== undefined &&
+      payloadJoinSeams.has(recorded) &&
+      besidePayload
+    )
+      exactDepth = payloadJoinDepth(left, right, exactDepth);
+    if (
       merges.has(recorded) ||
-      (exactDepth !== undefined &&
-        (removalSeams.has(recorded) || payloadJoinSeams.has(recorded)) &&
-        besidePayload)
+      (exactDepth !== undefined && removalSeams.has(recorded) && besidePayload)
     ) {
       // Accepted new content merges with a plain neighbour it is alike, and
       // records no seam on a neighbour's pending review: it is no piece of it.
-      met =
-        besidePayload && alikeDepth(left, right) === 0
-          ? [left, right]
-          : mergeAtSeam(left, right, resolution.emptied);
+      // Inside alike containers it meets, its runs merge as plain runs.
+      if (besidePayload && alikeDepth(left, right) === 0) met = [left, right];
+      else if (besidePayload && left.type !== "run" && right.type !== "run")
+        met =
+          mergeLists(
+            [left],
+            [right],
+            payloadJoinDepth(left, right, Number.POSITIVE_INFINITY),
+            { mode: "asFarAsAlike" },
+          ) ?? panic("An as-far-as-alike merge always returns its records.");
+      else met = mergeAtSeam(left, right, resolution.emptied);
     } else if (exactDepth === undefined) {
       met = foldAtSeam(left, right, resolution.emptied);
     } else {
