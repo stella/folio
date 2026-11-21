@@ -4,6 +4,8 @@ import fc from "fast-check";
 import {
   CANONICAL_CAPABILITIES,
   CANONICAL_GAP,
+  DEFAULT_HEADLESS_REVIEWER_SESSION,
+  headlessReviewerUsesCanonicalSession,
   usesCanonicalSession,
 } from "../packages/core/src/types/canonicalCapabilities";
 import { assertProperty, propertyTestTimeout } from "../test/property-testing";
@@ -37,8 +39,18 @@ describe("canonical cutover guard", () => {
     );
     for (const id of Object.values(CANONICAL_GAP)) {
       expect(usesCanonicalSession("canonical", id)).toBe(true);
-      expect(usesCanonicalSession(undefined, id)).toBe(false);
+      // The canonical session is the default; only "legacy" opts out.
+      expect(usesCanonicalSession(undefined, id)).toBe(true);
+      expect(usesCanonicalSession("legacy", id)).toBe(false);
     }
+  });
+
+  test("the headless reviewer defaults to the canonical session, as the editors do", () => {
+    expect(DEFAULT_HEADLESS_REVIEWER_SESSION).toBe("canonical");
+    expect(headlessReviewerUsesCanonicalSession()).toBe(true);
+    expect(headlessReviewerUsesCanonicalSession(undefined)).toBe(true);
+    expect(headlessReviewerUsesCanonicalSession("legacy")).toBe(false);
+    expect(headlessReviewerUsesCanonicalSession("canonical")).toBe(true);
   });
 
   test("every removed ledger reference becomes an orphan", () => {

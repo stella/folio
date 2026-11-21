@@ -23,7 +23,10 @@ import {
   type NoteStoryKey,
 } from "@stll/folio-core/controller/noteEditorManager";
 import { setSuggestionMode } from "@stll/folio-core/prosemirror/plugins/suggestionMode";
-import type { CanonicalRefusalGround } from "@stll/folio-core/types/canonicalCapabilities";
+import type {
+  CanonicalRefusalGround,
+  EditorSession,
+} from "@stll/folio-core/types/canonicalCapabilities";
 import type { StyleDefinitions, Theme } from "@stll/folio-core/types/document";
 import {
   type DeepReadonly,
@@ -44,7 +47,7 @@ export type NoteStoryEditorRef = {
 export type NoteStoryEditorProps = {
   /** The document model; the note editors only read it. */
   document: ReadonlyDocument | null;
-  experimentalSession?: "canonical";
+  experimentalSession?: EditorSession;
   getCanonicalApi?: () => HiddenEditorApi | null;
   /**
    * The canonical session's own document, read without a copy; null outside
