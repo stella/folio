@@ -510,7 +510,8 @@ describe("a block beside a longer pending join, in the canonical session", () =>
         /**
          * A tracked paragraph after a joining paragraph that a range boundary
          * separates from the next block has no paragraph for its own break
-         * to resolve against: refused, as one after the body's last is.
+         * to resolve against: refused, as one after the body's last is, by
+         * the joining paragraph's pending mark.
          */
         const refusedAfter = (anchor: string, join: LongerJoin) =>
           kind === "a paragraph" &&
@@ -529,7 +530,7 @@ describe("a block beside a longer pending join, in the canonical session", () =>
               );
               if (refusedAfter(anchor, join)) {
                 expect(result.skipped.map(({ reason }) => reason)).toEqual([
-                  "unsupportedBlock",
+                  "pendingParagraphMarkDeletion",
                 ]);
                 continue;
               }
