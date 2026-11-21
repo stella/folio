@@ -170,6 +170,7 @@ import {
   standaloneTableRowsFromProseMirror,
   tableAttrsToFormatting,
 } from "../prosemirror/conversion/fromProseDoc";
+import { ensureParaIdsInDoc } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import { insertionGap } from "../prosemirror/insertionGaps";
 import { maxAnnotationIdInDoc } from "../prosemirror/plugins/revisionIds";
 import { preservesReplacementCommentAlignment } from "../prosemirror/replacedAnnotations";
@@ -3381,6 +3382,140 @@ const holdsParagraph = (doc: PMNode, blockId: string): boolean => {
   return found;
 };
 
+/** Where a block the source leaves empty stands in the story's document. */
+type EmptyControlSpan = { before: number; after: number };
+
+/**
+ * The content control or custom XML element the source leaves empty whose
+ * filler paragraph `blockId` names, or `undefined`. The filler has no source
+ * and no id of its own: a snapshot names it by the positional id the legacy
+ * engine mints for it (`ensureParaIdsInDoc`), and positions in that copy are
+ * the document's.
+ */
+const emptyControlOfFiller = (
+  doc: PMNode,
+  blockId: string,
+): EmptyControlSpan | undefined => {
+  const minted = ensureParaIdsInDoc(doc);
+  if (minted === doc) return undefined;
+  let filler: number | undefined;
+  minted.descendants((node, position) => {
+    if (filler !== undefined) return false;
+    if (node.type.name !== "paragraph") return true;
+    if (node.attrs["paraId"] === blockId) filler = position;
+    return false;
+  });
+  if (filler === undefined || doc.nodeAt(filler)?.attrs["paraId"] != null)
+    return undefined;
+  const $filler = doc.resolve(filler);
+  const control = $filler.parent;
+  if (
+    (control.type.name !== "blockSdt" &&
+      control.type.name !== "blockCustomXml") ||
+    control.attrs["_originallyEmpty"] !== true
+  )
+    return undefined;
+  return { before: $filler.before(), after: $filler.after() };
+};
+
+type BesideEmptyControlOptions = {
+  operation: FolioDocumentOperation;
+  control: EmptyControlSpan;
+  projection: CanonicalProjection;
+};
+
+type BesideEmptyControl =
+  | { type: "beside"; operation: FolioDocumentOperation }
+  | { type: "refused"; message: string };
+
+/**
+ * An operation on the filler of a block the source leaves empty, restated
+ * beside the block: the paragraph or table it inserts goes in the gap before
+ * or after the block, named by the paragraph on that side of it, and the
+ * block stays as the source wrote it. The filler's properties are none, so
+ * an inserted paragraph inherits none. Every other operation would edit the
+ * filler, which holds nothing to edit.
+ */
+const besideEmptyControl = ({
+  operation,
+  control,
+  projection,
+}: BesideEmptyControlOptions): BesideEmptyControl => {
+  const { doc } = projection;
+  const neighbour = (side: "before" | "after") => {
+    const $gap = doc.resolve(control[side]);
+    const beside = side === "after" ? $gap.nodeAfter : $gap.nodeBefore;
+    if (beside?.type.name !== "paragraph") return undefined;
+    return projection.paragraphStartingAt(
+      side === "after" ? control.after : control.before - beside.nodeSize,
+    );
+  };
+  const noNeighbour = {
+    type: "refused",
+    message:
+      "Canonical insertion beside an empty content control needs a paragraph on that side of it.",
+  } as const;
+  switch (operation.type) {
+    case "insertAfterBlock":
+    case "insertBeforeBlock": {
+      const side = operation.type === "insertAfterBlock" ? "after" : "before";
+      const paragraph = neighbour(side);
+      if (paragraph === undefined) return noNeighbour;
+      const { precondition: _precondition, ...rest } = operation;
+      return {
+        type: "beside",
+        operation: {
+          ...rest,
+          type: side === "after" ? "insertBeforeBlock" : "insertAfterBlock",
+          blockId: paragraph.blockId,
+          inheritFormatting: false,
+        },
+      };
+    }
+    case "insertTable":
+    case "insertSignatureTable": {
+      const side = operation.position ?? "after";
+      const paragraph = neighbour(side);
+      if (paragraph === undefined) return noNeighbour;
+      const { precondition: _precondition, ...rest } = operation;
+      return {
+        type: "beside",
+        operation: {
+          ...rest,
+          blockId: paragraph.blockId,
+          position: side === "after" ? "before" : "after",
+        },
+      };
+    }
+    case "replaceInBlock":
+    case "replaceRange":
+    case "replaceBlock":
+    case "splitBlock":
+    case "formatRange":
+    case "mergeBlockWithNext":
+    case "commentOnRange":
+    case "commentOnBlock":
+    case "deleteBlock":
+    case "setBlockParagraphProperties":
+    case "deleteTable":
+    case "insertTableRow":
+    case "deleteTableRow":
+    case "insertTableColumn":
+    case "deleteTableColumn":
+    case "mergeTableCells":
+    case "splitTableCell":
+      return {
+        type: "refused",
+        message:
+          "The paragraph shown in an empty content control is not part of the document; insert a block before or after the control instead.",
+      };
+    default: {
+      const unreachable: never = operation;
+      return unreachable;
+    }
+  }
+};
+
 const canonicalPublicStory = (story: FolioDocumentOperationStory): OpStory => {
   if (story === "main") return story;
   switch (story.type) {
@@ -5262,6 +5397,38 @@ export class CanonicalPublicOperations {
     const projection = this.options.session.projectStory(story);
     if (!anchor || projection.isErr()) return refusal("missingBlock");
     const paragraph = projection.value.paragraph(blockId);
+    const control =
+      paragraph === undefined
+        ? emptyControlOfFiller(state.doc, blockId)
+        : undefined;
+    if (control !== undefined) {
+      // The filler holds no words, whatever the batch asks of it.
+      const fillerHash = hashFolioAIBlockContent("");
+      if (
+        operation.precondition &&
+        fillerHash !== operation.precondition.blockTextHash
+      )
+        return refusal("preconditionFailed");
+      if (fillerHash !== anchor.textHash) return refusal("changedBlock");
+      const beside = besideEmptyControl({
+        operation,
+        control,
+        projection: projection.value,
+      });
+      if (beside.type === "refused")
+        return refusal("unsupportedBlock", beside.message);
+      return this.resolve({
+        operation: beside.operation,
+        options,
+        state,
+        story,
+        diff,
+        tracked,
+        suggested,
+        mintList,
+        besideDeletions,
+      });
+    }
     if (!paragraph)
       return holdsParagraph(state.doc, blockId)
         ? refusal(
