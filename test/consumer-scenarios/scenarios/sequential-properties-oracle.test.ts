@@ -5,10 +5,17 @@ import { fromMarkdown } from "@stll/folio-core/markdown";
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioDocumentOperation,
+  FolioDocxReviewer,
 } from "@stll/folio-core/server";
 
 import { sequentialGroups } from "../support/batch-replay-order.ts";
-import { openReviewer, packDocument } from "../support/documents.ts";
+import {
+  AUTHOR,
+  openReviewer,
+  packDocument,
+  type ReviewerEngine,
+  toArrayBuffer,
+} from "../support/documents.ts";
 import { type Row, rowsOf } from "../support/oracle.ts";
 import { createParagraphIdentityRemapping } from "../support/paragraph-identity.ts";
 
@@ -260,12 +267,20 @@ const RUN_BEFORE = {
   start: [],
 } as const;
 
+const openOn = (bytes: Uint8Array, session: ReviewerEngine) =>
+  FolioDocxReviewer.fromBuffer(toArrayBuffer(bytes), {
+    author: AUTHOR,
+    session,
+  });
+
 /** What accepting leaves of a reviewer's body, ids aside. */
 const acceptedView = async (
   reviewer: Awaited<ReturnType<typeof openReviewer>>,
+  session: ReviewerEngine,
 ) => {
-  const accepted = await openReviewer(
+  const accepted = await openOn(
     new Uint8Array(await reviewer.toBuffer()),
+    session,
   );
   accepted.acceptAll();
   return rowsOf(accepted).map(({ id: _id, ...row }) => row);
@@ -274,89 +289,144 @@ const acceptedView = async (
 // #1356: a batch deleting the paragraphs after a table collapsed into the
 // run's first one, while the one-at-a-time replay deleted that paragraph
 // before the final one and kept the final paragraph's own numbering.
-test("a run deleted back to its container's start or a table settles on its first paragraph, batched and one at a time", async () => {
-  for (const [before, prefix] of Object.entries(RUN_BEFORE)) {
-    for (let length = 2; length <= RUN_PARAGRAPHS.length; length++) {
-      for (let shift = 0; shift < RUN_PARAGRAPHS.length; shift++) {
-        const run = Array.from(
-          { length },
-          (_, index) =>
-            RUN_PARAGRAPHS[(index + shift) % RUN_PARAGRAPHS.length] ?? "",
-        );
-        const fixture = await packDocument(
-          fromMarkdown([...prefix, ...run].join("\n\n")),
-        );
-        const preRows = rowsOf(await openReviewer(fixture));
-        const deletions = preRows
-          .filter(({ table }) => table === undefined)
-          .map(({ id }) => ({
-            id: `delete-${id}`,
-            type: "deleteBlock" as const,
-            blockId: id,
-          }));
-        assert.equal(deletions.length, length);
-        const outcomes = new Map<string, unknown>();
-        for (const operations of [deletions, deletions.toReversed()]) {
-          for (const mode of ["direct", "tracked-changes"] as const) {
-            const request = {
-              version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-              mode,
-              operations,
-            } as const satisfies Parameters<
-              Awaited<
-                ReturnType<typeof openReviewer>
-              >["applyDocumentOperations"]
-            >[0];
-            const context = `${before}, ${run.join(" | ")}, ${mode}, ${operations === deletions ? "forward" : "reversed"}`;
-            const batch = await openReviewer(fixture);
-            assert.equal(
-              batch.applyDocumentOperations(request, {
+//
+// Tracked on the canonical session, a run of two is the exception: the final
+// paragraph's deletion takes the break and the properties of the paragraph
+// right before it, and that paragraph's own deletion would then leave those
+// properties on a paragraph nothing of it reaches, which the session refuses,
+// batched and one at a time alike. The collapse equals the operations one at
+// a time only in that order (the final paragraph first); the other order
+// keeps the final paragraph's own properties, directly and tracked.
+const refusesRunStart = (options: {
+  session: ReviewerEngine;
+  mode: "direct" | "tracked-changes";
+  length: number;
+}): boolean =>
+  options.session === "canonical" &&
+  options.mode === "tracked-changes" &&
+  options.length === 2;
+
+for (const session of ["legacy", "canonical"] as const)
+  test(`a run deleted back to its container's start or a table settles on its first paragraph, batched and one at a time (${session} session)`, async () => {
+    for (const [before, prefix] of Object.entries(RUN_BEFORE)) {
+      for (let length = 2; length <= RUN_PARAGRAPHS.length; length++) {
+        for (let shift = 0; shift < RUN_PARAGRAPHS.length; shift++) {
+          const run = Array.from(
+            { length },
+            (_, index) =>
+              RUN_PARAGRAPHS[(index + shift) % RUN_PARAGRAPHS.length] ?? "",
+          );
+          const fixture = await packDocument(
+            fromMarkdown([...prefix, ...run].join("\n\n")),
+          );
+          const preRows = rowsOf(await openOn(fixture, session));
+          const deletions = preRows
+            .filter(({ table }) => table === undefined)
+            .map(({ id }) => ({
+              id: `delete-${id}`,
+              type: "deleteBlock" as const,
+              blockId: id,
+            }));
+          assert.equal(deletions.length, length);
+          const outcomes = new Map<string, unknown>();
+          for (const operations of [deletions, deletions.toReversed()]) {
+            for (const mode of ["direct", "tracked-changes"] as const) {
+              const request = {
+                version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+                mode,
+                operations,
+              } as const satisfies Parameters<
+                Awaited<
+                  ReturnType<typeof openReviewer>
+                >["applyDocumentOperations"]
+              >[0];
+              const context = `${before}, ${run.join(" | ")}, ${mode}, ${operations === deletions ? "forward" : "reversed"}`;
+              const refused = refusesRunStart({ session, mode, length });
+              // The deletion of the run's first paragraph, which the session
+              // refuses in that case.
+              const runStart = `delete-${deletions[0]?.id ?? ""}`;
+              const expectedSkips = (ids: readonly string[]) =>
+                refused && ids.includes(runStart)
+                  ? [
+                      {
+                        id: runStart,
+                        reason: "unsupportedBlock",
+                        message:
+                          "Deletion would overwrite a paragraph review record.",
+                      },
+                    ]
+                  : [];
+              const batch = await openOn(fixture, session);
+              const batched = batch.applyDocumentOperations(request, {
                 undefinedReferences: "refuse",
-              }).applied.length,
-              length,
-              context,
-            );
-            const sequential = await openReviewer(fixture);
-            const paragraphIdentities = createParagraphIdentityRemapping();
-            for (const group of sequentialGroups({
-              applied: operations,
-              preRows,
-              mode,
-            })) {
-              const result = sequential.applyDocumentOperations(
-                {
-                  ...request,
-                  operations: group.map(({ id }) => {
-                    const operation = operations.find(
-                      (candidate) => candidate.id === id,
-                    );
-                    assert.ok(operation, `${context}: ${id} is the batch's`);
-                    return {
-                      id: operation.id,
-                      type: operation.type,
-                      blockId: paragraphIdentities.resolve(
-                        operation.blockId,
-                        new Set(
-                          rowsOf(sequential).map(({ id: liveId }) => liveId),
-                        ),
-                      ),
-                    };
-                  }),
-                },
-                { undefinedReferences: "refuse" },
+              });
+              assert.equal(
+                batched.applied.length,
+                refused ? length - 1 : length,
+                context,
               );
-              paragraphIdentities.record({ applied: result.applied, mode });
-              assert.deepEqual(result.skipped, [], context);
+              assert.deepEqual(
+                batched.skipped.map(({ id, reason, message }) => ({
+                  id,
+                  reason,
+                  message,
+                })),
+                expectedSkips(operations.map(({ id }) => id)),
+                context,
+              );
+              const sequential = await openOn(fixture, session);
+              const paragraphIdentities = createParagraphIdentityRemapping();
+              for (const group of sequentialGroups({
+                applied: operations,
+                preRows,
+                mode,
+              })) {
+                const result = sequential.applyDocumentOperations(
+                  {
+                    ...request,
+                    operations: group.map(({ id }) => {
+                      const operation = operations.find(
+                        (candidate) => candidate.id === id,
+                      );
+                      assert.ok(operation, `${context}: ${id} is the batch's`);
+                      return {
+                        id: operation.id,
+                        type: operation.type,
+                        blockId: paragraphIdentities.resolve(
+                          operation.blockId,
+                          new Set(
+                            rowsOf(sequential).map(({ id: liveId }) => liveId),
+                          ),
+                        ),
+                      };
+                    }),
+                  },
+                  { undefinedReferences: "refuse" },
+                );
+                paragraphIdentities.record({ applied: result.applied, mode });
+                assert.deepEqual(
+                  result.skipped.map(({ id, reason, message }) => ({
+                    id,
+                    reason,
+                    message,
+                  })),
+                  expectedSkips(group.map(({ id }) => id)),
+                  context,
+                );
+              }
+              const outcome = await acceptedView(batch, session);
+              assert.deepEqual(
+                await acceptedView(sequential, session),
+                outcome,
+                context,
+              );
+              if (!refused) outcomes.set(context, outcome);
             }
-            const outcome = await acceptedView(batch);
-            assert.deepEqual(await acceptedView(sequential), outcome, context);
-            outcomes.set(context, outcome);
           }
+          // Direct and tracked, in either input order, leave one document.
+          const [first, ...rest] = outcomes.values();
+          for (const outcome of rest) assert.deepEqual(outcome, first);
         }
-        // Direct and tracked, in either input order, leave one document.
-        const [first, ...rest] = outcomes.values();
-        for (const outcome of rest) assert.deepEqual(outcome, first);
       }
     }
-  }
-});
+  });
