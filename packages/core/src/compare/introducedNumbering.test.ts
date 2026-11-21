@@ -527,55 +527,76 @@ test("rebinds a colliding marker-typography change even when its label is unchan
   ).toBeUndefined();
 });
 
-test("rebinds a colliding numbering definition in an inserted table row", async () => {
-  const result = await compareDocx(
-    await collisionTableDocument(false, "decimal"),
-    await collisionTableDocument(true, "lowerRoman"),
-    {
-      author: "compare",
-      timestamp: "2026-09-13T00:00:00.000Z",
-    },
-  );
-  if (result.isErr()) throw result.error;
-  expect(result.value.verification).toEqual({ status: "verified" });
+test.each(["legacy", "canonical"] as const)(
+  "rebinds a colliding numbering definition in an inserted table row (%s)",
+  async (session) => {
+    const result = await compareDocx(
+      await collisionTableDocument(false, "decimal"),
+      await collisionTableDocument(true, "lowerRoman"),
+      {
+        author: "compare",
+        timestamp: "2026-09-13T00:00:00.000Z",
+        session,
+      },
+    );
+    // The canonical session closes a body ending in a table with a paragraph.
+    const closing =
+      session === "canonical" ? [{ text: "", listReference: undefined }] : [];
+    if (result.isErr()) throw result.error;
+    expect(result.value.verification).toEqual({ status: "verified" });
 
-  const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
-  expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
-  const accepted = await FolioDocxReviewer.fromBuffer(
-    await accepting.toBuffer(),
-  );
-  expect(
-    paragraphBlocksOf(accepted).map(({ text, listReference }) => ({
-      text,
-      listReference,
-    })),
-  ).toEqual([
-    { text: "Shared table list item.", listReference: { numId: 6, level: 0 } },
-    {
-      text: "Inserted table list item.",
-      listReference: { numId: 6, level: 0 },
-    },
-  ]);
-  expect(
-    accepted
-      .readNumberingDefinitions()
-      .find(({ numId, level }) => numId === 6 && level === 0)?.format,
-  ).toBe("lowerRoman");
+    const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer, {
+      session,
+    });
+    expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
+    const accepted = await FolioDocxReviewer.fromBuffer(
+      await accepting.toBuffer(),
+      { session },
+    );
+    expect(
+      paragraphBlocksOf(accepted).map(({ text, listReference }) => ({
+        text,
+        listReference,
+      })),
+    ).toEqual([
+      {
+        text: "Shared table list item.",
+        listReference: { numId: 6, level: 0 },
+      },
+      {
+        text: "Inserted table list item.",
+        listReference: { numId: 6, level: 0 },
+      },
+      ...closing,
+    ]);
+    expect(
+      accepted
+        .readNumberingDefinitions()
+        .find(({ numId, level }) => numId === 6 && level === 0)?.format,
+    ).toBe("lowerRoman");
 
-  const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
-  expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
-  const rejected = await FolioDocxReviewer.fromBuffer(
-    await rejecting.toBuffer(),
-  );
-  expect(
-    paragraphBlocksOf(rejected).map(({ text, listReference }) => ({
-      text,
-      listReference,
-    })),
-  ).toEqual([
-    { text: "Shared table list item.", listReference: { numId: 5, level: 0 } },
-  ]);
-});
+    const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer, {
+      session,
+    });
+    expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
+    const rejected = await FolioDocxReviewer.fromBuffer(
+      await rejecting.toBuffer(),
+      { session },
+    );
+    expect(
+      paragraphBlocksOf(rejected).map(({ text, listReference }) => ({
+        text,
+        listReference,
+      })),
+    ).toEqual([
+      {
+        text: "Shared table list item.",
+        listReference: { numId: 5, level: 0 },
+      },
+      ...closing,
+    ]);
+  },
+);
 
 /**
  * A `w:numPr` whose `w:abstractNum` defines no such `w:ilvl` resolves to no
