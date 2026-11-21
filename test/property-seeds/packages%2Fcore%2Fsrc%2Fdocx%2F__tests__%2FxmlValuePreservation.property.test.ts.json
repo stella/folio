@@ -1,0 +1,10 @@
+{
+  "every field folio writes preserves the value the boundary rule allows": [
+    {
+      "seed": -178134252,
+      "path": "2:1:0:0:2",
+      "note": "A tab in run text reads back as a tab element, a CR or LF as one space.",
+      "date": "2026-11-21"
+    }
+  ]
+}

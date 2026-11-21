@@ -110,11 +110,15 @@ type PrepareAbsorptionOptions = {
   ) => FolioAIEditSnapshot | null;
 };
 
-type AbsorptionStep = (
+type AbsorptionStepOptions = {
   sourceSnapshotForStory: (
     story: FolioDocumentStoryHandle,
-  ) => FolioAIEditSnapshot | null,
-) => void;
+  ) => FolioAIEditSnapshot | null;
+  /** The suggestions still live once the resolution publishes. */
+  activeSuggestionIds: ReadonlySet<string>;
+};
+
+type AbsorptionStep = (options: AbsorptionStepOptions) => void;
 
 type PlaceRemovedAnchorsOptions = {
   activeSuggestionIds: ReadonlySet<string>;
@@ -261,6 +265,10 @@ const reanchoredRecord = ({
   const survivor = finalSurvivor(survivors, paraId);
   let shift: number | null = null;
   let text = "";
+  // The members' text without the record's paragraph: what the survivor
+  // shows when the resolution took that paragraph's words, as rejecting the
+  // insertion or move that brought them does.
+  let others = "";
   for (const { id } of before?.blocks ?? []) {
     if (
       id !== survivor &&
@@ -268,10 +276,14 @@ const reanchoredRecord = ({
     )
       continue;
     if (id === paraId) shift = text.length;
-    text += before?.anchors[id]?.text ?? "";
+    const shown = before?.anchors[id]?.text ?? "";
+    text += shown;
+    if (id !== paraId) others += shown;
   }
   const anchor = after?.anchors[survivor];
   if (!anchor) return null;
+  if (paraId !== survivor && anchor.text === others && others !== text)
+    return null;
   // The survivor's own record moves by the text absorbed before it, when the
   // survivor shows its members' text; it stays where it is when what joined
   // it is a paragraph only a proposal adds.
@@ -618,8 +630,11 @@ export class FolioPendingSuggestionRegistry {
    * its record must name the survivor, never the absorbed id; one anchored to
    * the survivor itself moves by the text absorbed before it. Call before the
    * resolution publishes, with snapshots of the story as it is; run the
-   * returned step after, with snapshots as the resolution leaves it. `null`
-   * when no live record is anchored to an absorbed paragraph.
+   * returned step after, with snapshots as the resolution leaves it and the
+   * suggestions still live then: a suggestion the same resolution ends (a
+   * Reject All rejects proposals in the commit that absorbs their
+   * paragraphs) has nothing to follow. `null` when no live record is
+   * anchored to an absorbed paragraph.
    */
   prepareAbsorption({
     survivors,
@@ -644,9 +659,13 @@ export class FolioPendingSuggestionRegistry {
       if (!before.has(storyKey))
         before.set(storyKey, sourceSnapshotForStory(story));
     }
-    return (afterSnapshotForStory) => {
+    return ({
+      sourceSnapshotForStory: afterSnapshotForStory,
+      activeSuggestionIds: liveAfter,
+    }) => {
       const after = new Map<string, FolioAIEditSnapshot | null>();
       for (const [key, record] of affected) {
+        if (!liveAfter.has(record.suggestionId)) continue;
         const storyKey = canonicalJson(record.story);
         if (!after.has(storyKey))
           after.set(storyKey, afterSnapshotForStory(record.story));

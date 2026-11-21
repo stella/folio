@@ -119,6 +119,11 @@ import {
 import { normalizeRawDocxNumericIds } from "./numericIdNormalization";
 import { countOpaqueRevisionWrappers } from "./opaqueCarrier";
 import {
+  MalformedPackageRelationshipsError,
+  PACKAGE_RELATIONSHIPS_PART,
+  packageRelationshipsRoot,
+} from "./packageRelationshipsRoot";
+import {
   markUnnamedParagraphIds,
   type PackageUnnamedParagraphIds,
   unnamedPackageParagraphIds,
@@ -501,6 +506,9 @@ export async function parseDocxWithPreviewBudget(
     for (const [part, xml] of raw.allXml) {
       const malformed = malformedXmlReferenceError(part, xml);
       if (malformed !== null) throw malformed;
+      if (part.toLowerCase() !== PACKAGE_RELATIONSHIPS_PART) continue;
+      const relationships = packageRelationshipsRoot(part, xml);
+      if (relationships.isErr()) throw relationships.error;
     }
     diagnoseImportedIdCollisions(raw.allXml, parseContext);
     diagnoseReviewProvenance(raw.allXml, parseContext);
@@ -1057,7 +1065,8 @@ export async function parseDocxWithPreviewBudget(
   } catch (error) {
     if (
       error instanceof DocxEncryptionError ||
-      error instanceof MalformedXmlReferenceError
+      error instanceof MalformedXmlReferenceError ||
+      error instanceof MalformedPackageRelationshipsError
     ) {
       throw error;
     }

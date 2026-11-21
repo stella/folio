@@ -7,10 +7,18 @@
 
 import { Client } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import {
+  afterAll,
+  beforeAll,
+  describe,
+  expect,
+  setDefaultTimeout,
+  test,
+} from "bun:test";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+import { DISK_SYNC_TEST_TIMEOUT_MS } from "../../../test/disk-sync-timeout";
 import {
   buildDocx,
   CONTRACT_PARAGRAPHS,
@@ -25,6 +33,8 @@ import {
 import { fileVersionOf } from "./document";
 import { listMcpTools } from "./mcp";
 import { FOLIO_FILE_TOOLS, toolAccess } from "./registry";
+
+setDefaultTimeout(DISK_SYNC_TEST_TIMEOUT_MS);
 
 const BIN = path.join(import.meta.dir, "bin.ts");
 

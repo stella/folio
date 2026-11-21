@@ -84,6 +84,7 @@ import { replaceNoteParts } from "./noteLifecycle";
 import {
   automaticNoteMarkRuns,
   noteReferenceKey,
+  type NoteReferenceSpan,
   noteReferenceSpans,
   referencedNoteKeys,
 } from "./noteMarks";
@@ -116,13 +117,16 @@ import {
   type TrackedWrapper,
   withMarkFormatting,
 } from "./review";
+import { isOwnRecord, type RevisionOwner } from "./revisionOwner";
 import { runsMergeable } from "./runMerge";
 import { resolveSectionChange, sectionResolutionPatch } from "./sectionReview";
 import { identitySlots, withInlineIdentity } from "./slots";
+import { findStoryBody } from "./stories";
 import { sectionEnds, storyLifecycleTouched } from "./storyLifecycle";
 import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
+  type NoteStory,
   OP_STORIES,
   type OpStory,
   type ParagraphReviewFields,
@@ -143,18 +147,6 @@ const refusal = (
   reason: DocumentOpRefusal["reason"],
   message: string,
 ) => new DocumentOpRefusal({ message, reason, opType: op.type });
-
-const precedingSectionOwner = (
-  previous: BlockContent | undefined,
-  paragraph: Paragraph,
-): "unavailable" | "available" | "same" | "occupied" => {
-  if (previous?.type !== "paragraph") return "unavailable";
-  if (previous.sectionProperties === undefined) return "available";
-  return JSON.stringify(previous.sectionProperties) ===
-    JSON.stringify(paragraph.sectionProperties)
-    ? "same"
-    : "occupied";
-};
 
 const runParagraphIntoTable = (
   paragraph: Paragraph,
@@ -211,15 +203,61 @@ type RemovedNoteReferencesOptions = {
   ids: ReadonlySet<number>;
 };
 
-/** Note bodies whose selected reference revision is removed by this decision. */
-const removedNoteReferences = ({
+/** A note whose reference's deletion a rejection restores, and who deleted it when. */
+type RestoredNoteReference = {
+  story: NoteStory;
+  owner: RevisionOwner;
+  date: string | undefined;
+};
+
+type NoteReferenceDecisions = {
+  /** Note bodies whose selected reference revision is removed by this decision. */
+  removed: NoteReference[];
+  /**
+   * Notes whose every reference in the story is pending deletion and whose
+   * deletion this rejection selects: deleting a reference while tracking
+   * changes deletes its note's text too, so the reference coming back brings
+   * that text back.
+   */
+  restored: Map<string, RestoredNoteReference>;
+};
+
+const noteReferenceKind = (
+  node: NoteReferenceSpan["node"],
+): NoteStory["kind"] => (node.type === "footnoteRef" ? "footnote" : "endnote");
+
+/** What the decision does to the notes the story refers to, in one scan. */
+const noteReferenceDecisions = ({
   paragraphs,
   decision,
   ids,
-}: RemovedNoteReferencesOptions): NoteReference[] => {
+}: RemovedNoteReferencesOptions): NoteReferenceDecisions => {
   const references = new Map<string, NoteReference>();
+  const restored = new Map<string, RestoredNoteReference>();
+  const live = new Set<string>();
   for (const { paragraph } of paragraphs) {
     for (const { node, ancestors } of noteReferenceSpans(paragraph.content)) {
+      const kind = noteReferenceKind(node);
+      const key = noteReferenceKey(kind, node.id);
+      const deletion = ancestors.find(
+        (ancestor) => ancestor.type === "deletion",
+      );
+      if (deletion === undefined) live.add(key);
+      else if (
+        decision === REVISION_DECISIONS.REJECT &&
+        isTrackedWrapper(deletion) &&
+        ids.has(deletion.info.id)
+      )
+        restored.set(key, {
+          story: { kind, id: node.id },
+          owner: {
+            author: deletion.info.author,
+            ...(deletion.info.suggestionId === undefined
+              ? {}
+              : { suggestionId: deletion.info.suggestionId }),
+          },
+          date: deletion.info.date,
+        });
       const revision = ancestors.find(
         (ancestor) =>
           isTrackedWrapper(ancestor) &&
@@ -227,15 +265,65 @@ const removedNoteReferences = ({
           removesContent(ancestor, decision),
       );
       if (revision === undefined || !isTrackedWrapper(revision)) continue;
-      const reference = {
-        kind: node.type === "footnoteRef" ? "footnote" : "endnote",
+      references.set(key, {
+        kind,
         id: node.id,
         added: isAddedRevision(revision),
-      } as const;
-      references.set(noteReferenceKey(reference.kind, reference.id), reference);
+      });
     }
   }
-  return [...references.values()];
+  for (const key of live) restored.delete(key);
+  return { removed: [...references.values()], restored };
+};
+
+/** The notes a story refers to through a reference no deletion holds. */
+const liveNoteReferenceKeys = (
+  paragraphs: readonly ParagraphLocation[],
+): Set<string> => {
+  const live = new Set<string>();
+  for (const { paragraph } of paragraphs) {
+    for (const { node, ancestors } of noteReferenceSpans(paragraph.content)) {
+      if (!ancestors.some((ancestor) => ancestor.type === "deletion"))
+        live.add(noteReferenceKey(noteReferenceKind(node), node.id));
+    }
+  }
+  return live;
+};
+
+/**
+ * The revisions that deleted a note along with its reference: its text and
+ * its paragraph marks, deleted by the reference deletion's owner at its
+ * date. A deletion in the note made some other time is a change of its own,
+ * which resolving the reference leaves alone.
+ */
+const noteDeletionRevisionIds = (
+  body: DocumentBody,
+  { owner, date }: RestoredNoteReference,
+): number[] => {
+  const ids = new Set<number>();
+  const visit = (nodes: readonly InlineNode[]): void => {
+    for (const node of nodes) {
+      if (
+        node.type === "deletion" &&
+        isTrackedWrapper(node) &&
+        isOwnRecord(node.info, owner) &&
+        node.info.date === date
+      )
+        ids.add(node.info.id);
+      visit(childNodes(node) ?? []);
+    }
+  };
+  for (const { paragraph } of storyParagraphs(body)) {
+    const mark = paragraph.pPrMark;
+    if (
+      mark?.kind === "del" &&
+      isOwnRecord(mark.info, owner) &&
+      mark.info.date === date
+    )
+      ids.add(mark.info.id);
+    visit(paragraph.content);
+  }
+  return [...ids];
 };
 
 /** Check every removed reference against the same post-resolution document. */
@@ -264,7 +352,6 @@ const joinedKeepingFirst = (
   paragraph: Paragraph,
   next: Paragraph,
   content: Paragraph["content"],
-  receivesSection: boolean,
 ): Paragraph => {
   const {
     paraId: _paraId,
@@ -274,11 +361,8 @@ const joinedKeepingFirst = (
     sectionProperties: _sectionProperties,
     ...marked
   } = next;
-  // A section the rejected mark ended moves into the joined paragraph;
-  // otherwise the section break is the one the staying mark ends.
-  const sectionProperties = receivesSection
-    ? paragraph.sectionProperties
-    : next.sectionProperties;
+  // The section break is the one the staying mark ends.
+  const { sectionProperties } = next;
   return {
     ...marked,
     content,
@@ -4082,8 +4166,7 @@ type ResolutionReceiverEffect = {
     | "paragraph-join"
     | "table-run-in"
     | "block-run-in"
-    | "retained-range-boundaries"
-    | "section-transfer";
+    | "retained-range-boundaries";
   receiver: Paragraph;
 };
 
@@ -4236,10 +4319,6 @@ const joinOps = (
       markWasAdded: added,
       containerStillEndsWithParagraph: true,
       followingTableCanReceiveRunIn: false,
-      removedSectionProperties:
-        added && paragraph.sectionProperties !== undefined,
-      precedingSectionOwner: precedingSectionOwner(previous, paragraph),
-      followingHasSectionProperties: next.sectionProperties !== undefined,
     });
     if (outcome.kind !== "join")
       return panic("A following paragraph always receives a join.");
@@ -4300,40 +4379,20 @@ const joinOps = (
       emptiedEndsOf(merged, emptied),
     );
     const mergedContent = asParagraphContent(merged);
-    const receivesSection = outcome.sectionDestination === "following";
+    // The joined paragraph ends with the staying mark and its section break;
+    // the one the resolved mark ended goes with it.
     let survivor: Paragraph;
     if (keepsFirst)
-      survivor = joinedKeepingFirst(
-        paragraph,
-        next,
-        mergedContent,
-        receivesSection,
-      );
-    // An unchanged follower that receives nothing keeps its identity.
-    else if (!receivesSection && structurallyEqual(mergedContent, next.content))
-      survivor = next;
-    else
-      survivor = {
-        ...next,
-        content: mergedContent,
-        ...(receivesSection
-          ? { sectionProperties: paragraph.sectionProperties }
-          : {}),
-      };
-    const transfersToPrevious =
-      outcome.sectionDestination === "preceding" &&
-      previous?.type === "paragraph";
+      survivor = joinedKeepingFirst(paragraph, next, mergedContent);
+    // An unchanged follower keeps its identity.
+    else if (structurallyEqual(mergedContent, next.content)) survivor = next;
+    else survivor = { ...next, content: mergedContent };
     const receiver =
       standing.length > 0 && follower?.type === "paragraph" ? follower : next;
     const receiverEffects: ResolutionReceiverEffect[] = [
       { type: "paragraph-join", receiver },
     ];
-    if (transfersToPrevious)
-      receiverEffects.push({ type: "section-transfer", receiver: previous });
-    if (receivesSection)
-      receiverEffects.push({ type: "section-transfer", receiver });
     if (standing.length > 0) {
-      const start = transfersToPrevious ? location.index - 1 : location.index;
       return paragraphMarkPlan(
         [
           {
@@ -4343,15 +4402,7 @@ const joinOps = (
             blockId: survivor.paraId ?? paraId,
             expected: blocks,
             blocks: [
-              ...blocks.slice(0, start),
-              ...(transfersToPrevious
-                ? [
-                    {
-                      ...previous,
-                      sectionProperties: paragraph.sectionProperties,
-                    },
-                  ]
-                : []),
+              ...blocks.slice(0, location.index),
               survivor,
               ...blocks.slice(followerIndex + 1),
             ],
@@ -4365,15 +4416,8 @@ const joinOps = (
         {
           type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
           story,
-          expected: transfersToPrevious
-            ? [previous, paragraph, next]
-            : [paragraph, next],
-          blocks: transfersToPrevious
-            ? [
-                { ...previous, sectionProperties: paragraph.sectionProperties },
-                survivor,
-              ]
-            : [survivor],
+          expected: [paragraph, next],
+          blocks: [survivor],
           ...(paragraph.sectionProperties === undefined
             ? {}
             : { sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE }),
@@ -4413,11 +4457,21 @@ const joinOps = (
   let follows: "table" | "block" | "nothing" = "nothing";
   if (next?.type === "table") follows = "table";
   else if (followsBlock) follows = "block";
+  // Ending a block content control's content short of its container's end,
+  // the paragraph has no mark to join: what stays decides, as before a block.
+  const endsControl =
+    follows === "nothing" &&
+    !containerFinal &&
+    location.list.at(-1)?.kind === "blockSdt";
   // Before a block, what stays decides; resolving the marks one at a time
   // from the first joins the paragraphs before this one, whose marks this
   // resolution resolves too, into it first, so their content counts.
   const joining: Paragraph[] = [];
-  for (let index = location.index - 1; follows === "block"; index -= 1) {
+  for (
+    let index = location.index - 1;
+    follows === "block" || endsControl;
+    index -= 1
+  ) {
     const before = blocks[index];
     if (
       before?.type !== "paragraph" ||
@@ -4442,7 +4496,13 @@ const joinOps = (
         ? blocks.at(-1)?.type === "paragraph"
         : // Removing the final paragraph leaves the block before it last: in
           // a cell, that paragraph's mark becomes the cell's terminator.
-          containerFinal && blocks.at(location.index - 1)?.type === "paragraph",
+          (containerFinal &&
+            blocks.at(location.index - 1)?.type === "paragraph") ||
+          // After a table, with the paragraphs joining it: removing them
+          // leaves the control ending in its table and the container's end
+          // where it was.
+          (endsControl &&
+            blocks.at(location.index - 1 - joining.length)?.type === "table"),
     followingTableCanReceiveRunIn: tableTarget !== undefined,
     holdsContentOnceAccepted: paragraphHoldsContentOnceAccepted(chained),
     followingBlockCanReceiveRunIn: blockTarget !== undefined,
@@ -4465,10 +4525,6 @@ const joinOps = (
         ? "pendingReview"
         : "unavailable",
     precededByBlock: location.index > 0,
-    removedSectionProperties:
-      added && paragraph.sectionProperties !== undefined,
-    precedingSectionOwner: precedingSectionOwner(previous, paragraph),
-    followingHasSectionProperties: false,
   });
   if (outcome.kind === "refuse") {
     return Result.err(
@@ -4490,17 +4546,8 @@ const joinOps = (
     paragraph.content.length > 0 &&
     ranInto.has(idKey(runInReceiver.paraId ?? ""));
   const tableOutcome = continuesRunIn ? "run-in" : outcome.kind;
-  // An added endpoint may retire under the preceding mark, including when
-  // that mark already states the same section. Explicit replacement owns the
-  // endpoint removal; structural table inverses must preserve every section.
-  const precedingKeepsSection =
-    outcome.sectionDestination === "preceding" ||
-    (added &&
-      paragraph.sectionProperties !== undefined &&
-      precedingSectionOwner(previous, paragraph) === "same");
   if (
     (tableOutcome === "remove" || tableOutcome === "run-in") &&
-    !(tableOutcome === "remove" && precedingKeepsSection) &&
     blocks.length > 1 &&
     (next?.type === "table" || followsBlock)
   ) {
@@ -4592,32 +4639,23 @@ const joinOps = (
       blocks,
       index: location.index,
     });
+    // No other paragraph names the list, as in a content control holding a
+    // table and this paragraph: an empty replacement removes it, and its
+    // inverse inserts it back beside the block before it.
+    if (
+      anchor === undefined &&
+      removal.type === "removed" &&
+      removal.effects.length === 0
+    )
+      return paragraphMarkPlan([
+        {
+          type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+          story,
+          expected: [paragraph],
+          blocks: [],
+        },
+      ]);
     if (anchor !== undefined && removal.type === "removed") {
-      const replacementBlocks = removal.blocks;
-      const preceding = replacementBlocks[location.index - 1];
-      const receiverEffects: ResolutionReceiverEffect[] = [...removal.effects];
-      if (precedingKeepsSection && preceding?.type === "paragraph") {
-        const survivor = {
-          ...preceding,
-          sectionProperties: paragraph.sectionProperties,
-        };
-        const receiver = blocks[location.index - 1];
-        if (receiver?.type !== "paragraph")
-          panic("A section transfer retains its preceding paragraph.");
-        receiverEffects.push({ type: "section-transfer", receiver });
-        return paragraphMarkPlan(
-          [
-            {
-              type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
-              story,
-              expected: [receiver, paragraph],
-              blocks: [survivor],
-              sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE,
-            },
-          ],
-          receiverEffects,
-        );
-      }
       return paragraphMarkPlan(
         [
           {
@@ -4625,10 +4663,10 @@ const joinOps = (
             story,
             blockId: anchor.paraId ?? "",
             expected: blocks,
-            blocks: replacementBlocks,
+            blocks: removal.blocks,
           },
         ],
-        receiverEffects,
+        [...removal.effects],
       );
     }
   }
@@ -4654,6 +4692,45 @@ const joinOps = (
       ? paraId
       : undefined,
   );
+};
+
+type DropAddedSectionOptions = {
+  document: Document;
+  join: JoinPlan;
+  applyOps: ApplyOps;
+};
+
+/**
+ * Take off the section break that the added mark `join` rejects ended: the
+ * original never had it, so it goes with the mark rather than moving to a
+ * paragraph that stays. The mark then resolves as any other does.
+ * `undefined` where the mark was not added or ends no section.
+ */
+const dropAddedSection = ({
+  document,
+  join: { story, paraId, added },
+  applyOps,
+}: DropAddedSectionOptions): Result<
+  DocumentEdit | undefined,
+  DocumentOpRefusal
+> => {
+  if (!added) return Result.ok(undefined);
+  const paragraph = findStoryParagraph(
+    storyBody(document, story),
+    paraId,
+  )?.paragraph;
+  if (paragraph?.sectionProperties === undefined) return Result.ok(undefined);
+  const { sectionProperties: _section, ...unsectioned } = paragraph;
+  const dropped = applyOps(document, [
+    {
+      type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+      story,
+      expected: [paragraph],
+      blocks: [unsectioned],
+      sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE,
+    },
+  ]);
+  return dropped.isErr() ? Result.err(dropped.error) : Result.ok(dropped.value);
 };
 
 type AbsorbControlFollowerOptions = {
@@ -5038,6 +5115,26 @@ const resolveSectionRecords = ({
 };
 
 /**
+ * A paragraph's section record that states nothing. A `w:sectPrChange` whose
+ * previous record is empty is how an added section is stored, so rejecting it
+ * leaves no section rather than one with default page settings.
+ */
+const isEmptySectionRecord = (properties: SectionProperties): boolean =>
+  Object.keys(properties).length === 0;
+
+/** `paragraph` without the section it ends. */
+const withoutSection = (story: OpStory, paragraph: Paragraph): DocumentOp => {
+  const { sectionProperties: _section, ...unsectioned } = paragraph;
+  return {
+    type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+    story,
+    expected: [paragraph],
+    blocks: [unsectioned],
+    sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE,
+  };
+};
+
+/**
  * The records of the sections the ids select, resolved through the section
  * calculation every reviewer applies, with the revision ids left to resolve.
  * A section's records travel on the paragraph that ends it; the final
@@ -5054,24 +5151,32 @@ const settleSectionRecords = (
   const ids = new Set(op.revisionIds);
   const ops: DocumentOp[] = [];
   if (op.story === OP_STORIES.MAIN) {
-    for (const [sectionIndex, { properties }] of sectionEnds(
-      document.package.document,
+    const body = document.package.document;
+    for (const [sectionIndex, { index, properties }] of sectionEnds(
+      body,
     ).entries()) {
       const resolved = resolveSectionRecords({
         properties,
         ids,
         decision: op.decision,
       });
-      if (resolved !== properties)
-        ops.push({
-          type: DOCUMENT_OP_TYPES.SET_SECTION_PROPS,
-          sectionIndex,
-          patch: sectionResolutionPatch({
-            current: properties,
-            next: resolved,
-          }),
-        });
+      if (resolved === properties) continue;
+      const paragraph = body.content[index];
+      if (isEmptySectionRecord(resolved) && paragraph?.type === "paragraph") {
+        ops.push(withoutSection(op.story, paragraph));
+        continue;
+      }
+      ops.push({
+        type: DOCUMENT_OP_TYPES.SET_SECTION_PROPS,
+        sectionIndex,
+        patch: sectionResolutionPatch({
+          current: properties,
+          next: resolved,
+        }),
+      });
     }
+    // A removed section renumbers the sections after it: settle those first.
+    ops.reverse();
   } else {
     for (const { paragraph } of storyParagraphs(
       storyBody(document, op.story),
@@ -5083,14 +5188,18 @@ const settleSectionRecords = (
         ids,
         decision: op.decision,
       });
-      if (resolved !== properties)
-        ops.push({
-          type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
-          story: op.story,
-          expected: [paragraph],
-          blocks: [{ ...paragraph, sectionProperties: resolved }],
-          sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE,
-        });
+      if (resolved === properties) continue;
+      ops.push(
+        isEmptySectionRecord(resolved)
+          ? withoutSection(op.story, paragraph)
+          : {
+              type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+              story: op.story,
+              expected: [paragraph],
+              blocks: [{ ...paragraph, sectionProperties: resolved }],
+              sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE,
+            },
+      );
     }
   }
   return { ops, ids: op.revisionIds.filter((id) => ids.has(id)) };
@@ -5175,10 +5284,10 @@ const planSingleRecordResolution = (
     });
   }
   let resolution = createResolution(ids, op.decision);
-  const rejectedNoteReferences =
+  const rejectedNoteReferences: NoteReferenceDecisions =
     op.decision === REVISION_DECISIONS.REJECT
-      ? removedNoteReferences({ paragraphs, decision: op.decision, ids })
-      : [];
+      ? noteReferenceDecisions({ paragraphs, decision: op.decision, ids })
+      : { removed: [], restored: new Map() };
   const reachable = new Set([
     ...paragraphs.flatMap(({ paragraph }) => [...reachableIds(paragraph)]),
     ...reachableRowIds(document, op.story),
@@ -5390,8 +5499,9 @@ const planSingleRecordResolution = (
   }
   const noteReferences =
     op.decision === REVISION_DECISIONS.ACCEPT
-      ? removedNoteReferences({ paragraphs, decision: op.decision, ids })
-      : rejectedNoteReferences;
+      ? noteReferenceDecisions({ paragraphs, decision: op.decision, ids })
+          .removed
+      : rejectedNoteReferences.removed;
   // Boundaries kept from removed content can leave a range ending before it starts.
   const normalizedRangeContents = wellFormedRanges({
     contents: resolvedContents,
@@ -5659,6 +5769,12 @@ const planSingleRecordResolution = (
   for (const join of joins.toReversed()) {
     joinsBefore.delete(idKey(join.paraId));
     if (removedParagraphs.has(idKey(join.paraId))) continue;
+    const unsectioned = dropAddedSection({ document: current, join, applyOps });
+    if (unsectioned.isErr()) return Result.err(unsectioned.error);
+    if (unsectioned.value !== undefined) {
+      record(unsectioned.value);
+      current = unsectioned.value.document;
+    }
     const planned = joinOps(current, join, emptiedEnds, ranInto, joinsBefore);
     if (planned.isErr()) {
       return Result.err(planned.error);
@@ -5739,6 +5855,30 @@ const planSingleRecordResolution = (
     if (removed.isErr()) return Result.err(removed.error);
     record(removed.value);
     current = removed.value.document;
+  }
+  // A note whose reference is back gets back the text deleted with it.
+  if (rejectedNoteReferences.restored.size > 0) {
+    const liveAfter = liveNoteReferenceKeys(
+      storyParagraphs(storyBody(current, op.story)),
+    );
+    for (const [key, reference] of rejectedNoteReferences.restored) {
+      if (!liveAfter.has(key)) continue;
+      const noteBody = findStoryBody(current, reference.story);
+      if (noteBody === undefined) continue;
+      const revisionIds = noteDeletionRevisionIds(noteBody, reference);
+      if (revisionIds.length === 0) continue;
+      const restored = applyOps(current, [
+        {
+          type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+          story: reference.story,
+          revisionIds,
+          decision: REVISION_DECISIONS.REJECT,
+        },
+      ]);
+      if (restored.isErr()) return Result.err(restored.error);
+      record(restored.value);
+      current = restored.value.document;
+    }
   }
   const exhausted = (document.package.document.comments ?? []).filter(
     ({ id, parentId }) =>

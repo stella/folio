@@ -127,6 +127,7 @@ import {
   patchRunsBetween,
   type RunDecoration,
   runsBetween,
+  sameRunFormatting,
   splitAt,
 } from "./inline";
 import {
@@ -188,10 +189,12 @@ import {
   paragraphPropertiesOf,
   paragraphPropertyChange,
   reviewFieldsOf,
+  RUN_FOLD_INTO_OTHER_SUGGESTION_MESSAGE,
   sameMarkFormatting,
   sameParagraphProperties,
   stampedRevisionIds,
   stampInfo,
+  takesOverOtherSuggestion,
   withMarkFormatting,
   withReviewFields,
   WRAP_KINDS,
@@ -1359,9 +1362,14 @@ const setRunProps = (document: Document, op: SetRunPropsOp): Applied => {
   if (revision !== undefined) {
     // Editor actions update the pending review; low-level patches retain its authorship.
     const changes = new Map<Run, Parameters<RunDecoration>[0]>();
+    let takesOverSuggestion = false;
     const recordChange: RunDecoration = (options) => {
       const { patched: patchedRun, previous } = options;
       const pending = getSingularRunPropertyChange(previous.propertyChanges);
+      if (takesOverOtherSuggestion(pending, revision)) {
+        takesOverSuggestion = true;
+        return patchedRun;
+      }
       if (
         pending !== undefined &&
         op.propertyReview !== PROPERTY_REVIEW_POLICIES.APPEND
@@ -1382,6 +1390,12 @@ const setRunProps = (document: Document, op: SetRunPropsOp): Applied => {
       op.whenEmpty,
       recordChange,
     );
+    if (takesOverSuggestion)
+      return refuse(
+        op,
+        DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+        RUN_FOLD_INTO_OTHER_SUGGESTION_MESSAGE,
+      );
     if (tracked === undefined) {
       return unchanged(document);
     }
@@ -1409,14 +1423,31 @@ const setRunProps = (document: Document, op: SetRunPropsOp): Applied => {
         if (node.type === "run" && original.type === "run") {
           const options = changes.get(original);
           if (options === undefined) return node;
+          const prior = Object.assign({}, node);
+          if (options.previous.propertyChanges !== undefined)
+            prior.propertyChanges = options.previous.propertyChanges;
+          const pending = getSingularRunPropertyChange(
+            options.previous.propertyChanges,
+          );
+          if (
+            pending !== undefined &&
+            sameRunFormatting(pending.previousFormatting, node.formatting)
+          ) {
+            // Back to the properties the pending change started from:
+            // nothing is left to review, so the change goes, and the run
+            // states them as rejecting it would.
+            const settled = Object.assign({}, node);
+            if (pending.previousFormatting === undefined)
+              delete settled.formatting;
+            else settled.formatting = pending.previousFormatting;
+            priorIdentities.set(settled, prior);
+            return settled;
+          }
           const change: RunPropertyChange = {
             type: "runPropertyChange",
             info: stampInfo(revision),
             boundaryJoins: options.boundaryJoins,
           };
-          const pending = getSingularRunPropertyChange(
-            options.previous.propertyChanges,
-          );
           const previousFormatting =
             pending === undefined
               ? options.previous.formatting
@@ -1437,9 +1468,6 @@ const setRunProps = (document: Document, op: SetRunPropsOp): Applied => {
           }
           const changed = Object.assign({}, node);
           changed.propertyChanges = [change];
-          const prior = Object.assign({}, node);
-          if (options.previous.propertyChanges !== undefined)
-            prior.propertyChanges = options.previous.propertyChanges;
           priorIdentities.set(changed, prior);
           return changed;
         }

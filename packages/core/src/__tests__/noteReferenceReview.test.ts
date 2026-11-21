@@ -20,6 +20,7 @@ import {
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { serializeCanonicalSave } from "../docx/canonicalSave";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
+import { referencedHeaderFooters } from "../docx/unreferencedHeaderFooters";
 import {
   acceptAIEditRevision,
   rejectAIEditRevision,
@@ -38,6 +39,8 @@ import type { Document } from "../types/document";
 import { createHarnessState, parseShapeDocument } from "./editorHarness";
 
 type Fixture = { body: string; footnotes?: string; header?: string };
+const SESSIONS = ["legacy", "canonical"] as const;
+type Session = (typeof SESSIONS)[number];
 const reference = JSON.parse(
   readFileSync(
     path.join(
@@ -319,25 +322,29 @@ describe("a note goes with its reference", () => {
     });
   });
 
-  for (const mode of ["accept", "reject"] as const) {
-    test(`the reviewer resolving only the reference's deletion (${mode}) resolves the note too`, async () => {
-      const bytes = await packageOf(fixture);
-      const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice().buffer);
-      const state = createHarnessState(await open(fixture), "editing");
-      const id = referenceDeletion(state.doc);
-      expect(
-        mode === "accept"
-          ? reviewer.acceptChange(id)
-          : reviewer.rejectChange(id),
-      ).toBe(true);
-      const saved = await parseShapeDocument(
-        new Uint8Array(await reviewer.toBuffer()),
-      );
-      expect(noteState(saved, 1)).toEqual(
-        mode === "accept" ? null : { text: "The note text.", deleted: false },
-      );
-    });
-  }
+  for (const session of SESSIONS)
+    for (const mode of ["accept", "reject"] as const) {
+      test(`the reviewer resolving only the reference's deletion (${session}, ${mode}) resolves the note too`, async () => {
+        const bytes = await packageOf(fixture);
+        const reviewer = await FolioDocxReviewer.fromBuffer(
+          bytes.slice().buffer,
+          { session },
+        );
+        const state = createHarnessState(await open(fixture), "editing");
+        const id = referenceDeletion(state.doc);
+        expect(
+          mode === "accept"
+            ? reviewer.acceptChange(id)
+            : reviewer.rejectChange(id),
+        ).toBe(true);
+        const saved = await parseShapeDocument(
+          new Uint8Array(await reviewer.toBuffer()),
+        );
+        expect(noteState(saved, 1)).toEqual(
+          mode === "accept" ? null : { text: "The note text.", deleted: false },
+        );
+      });
+    }
 });
 
 describe("a note shared with other revisions and other stories", () => {
@@ -370,20 +377,28 @@ describe("a note shared with other revisions and other stories", () => {
     return text.trim();
   };
 
-  test("the reviewer rejecting the reference's deletion keeps the note's other deletion", async () => {
-    const bytes = await packageOf(withEarlierDeletion);
-    const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice().buffer);
-    const state = createHarnessState(
-      await open(withEarlierDeletion),
-      "editing",
-    );
-    expect(reviewer.rejectChange(referenceDeletion(state.doc))).toBe(true);
-    const saved = await parseShapeDocument(
-      new Uint8Array(await reviewer.toBuffer()),
-    );
-    expect(noteState(saved, 1)?.text).toBe("The note text. Struck earlier.");
-    expect(deletedText(saved, 1)).toBe("Struck earlier.");
-  });
+  test.each(SESSIONS)(
+    "the reviewer (%s) rejecting the reference's deletion keeps the note's other deletion",
+    async (session) => {
+      const bytes = await packageOf(withEarlierDeletion);
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        bytes.slice().buffer,
+        {
+          session,
+        },
+      );
+      const state = createHarnessState(
+        await open(withEarlierDeletion),
+        "editing",
+      );
+      expect(reviewer.rejectChange(referenceDeletion(state.doc))).toBe(true);
+      const saved = await parseShapeDocument(
+        new Uint8Array(await reviewer.toBuffer()),
+      );
+      expect(noteState(saved, 1)?.text).toBe("The note text. Struck earlier.");
+      expect(deletedText(saved, 1)).toBe("Struck earlier.");
+    },
+  );
 
   test("an editor rejecting the reference's deletion keeps the note's other deletion", async () => {
     const document = await open(withEarlierDeletion);
@@ -434,9 +449,13 @@ describe("an edit operation that deletes a note reference", () => {
     footnotes: liveNote,
   };
 
-  const deleteNotedParagraph = async (mode: "direct" | "tracked-changes") => {
+  const deleteNotedParagraph = async (
+    mode: "direct" | "tracked-changes",
+    session: Session,
+  ) => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       (await packageOf(live)).slice().buffer,
+      { session },
     );
     const block = reviewer
       .getContent()
@@ -464,49 +483,81 @@ describe("an edit operation that deletes a note reference", () => {
     });
   });
 
-  test("tracked, it deletes the note's text with the reference", async () => {
-    const { reviewer, result } = await deleteNotedParagraph("tracked-changes");
-    expect(result.skipped).toEqual([]);
-    expect(noteState(await saved(reviewer), 1)).toEqual({
-      text: "The note text.",
-      deleted: true,
-    });
-  });
-
-  test("tracked and accepted, the note goes", async () => {
-    const { reviewer } = await deleteNotedParagraph("tracked-changes");
-    expect(reviewer.acceptAll().resolved).toBeGreaterThan(0);
-    expect(noteState(await saved(reviewer), 1)).toBeNull();
-  });
-
-  test("tracked and rejected, the note keeps its text", async () => {
-    const { reviewer } = await deleteNotedParagraph("tracked-changes");
-    expect(reviewer.rejectAll().resolved).toBeGreaterThan(0);
-    expect(noteState(await saved(reviewer), 1)).toEqual({
-      text: "The note text.",
-      deleted: false,
-    });
-  });
-
-  test("tracked and undone, the note keeps its text", async () => {
-    const { reviewer, before, result } =
-      await deleteNotedParagraph("tracked-changes");
-    if (!result.undoHandle) throw new Error("no undo handle");
-    expect(reviewer.undoDocumentOperations(result.undoHandle).status).toBe(
-      "undone",
+  // Ratchet: a canonical tracked deletion leaves the note's text live; the
+  // legacy reviewer deletes it beside the operation.
+  for (const session of SESSIONS)
+    (session === "canonical" ? test.failing : test)(
+      `tracked (${session}), it deletes the note's text with the reference`,
+      async () => {
+        const { reviewer, result } = await deleteNotedParagraph(
+          "tracked-changes",
+          session,
+        );
+        expect(result.skipped).toEqual([]);
+        expect(noteState(await saved(reviewer), 1)).toEqual({
+          text: "The note text.",
+          deleted: true,
+        });
+      },
     );
-    expect(structuredClone(reviewer.toDocument())).toEqual(before);
-    expect(noteState(await saved(reviewer), 1)).toEqual({
-      text: "The note text.",
-      deleted: false,
-    });
-  });
 
-  test("direct, the note goes with its reference", async () => {
-    const { reviewer, result } = await deleteNotedParagraph("direct");
-    expect(result.skipped).toEqual([]);
-    expect(noteState(await saved(reviewer), 1)).toBeNull();
-  });
+  test.each(SESSIONS)(
+    "tracked and accepted, the note goes (%s)",
+    async (session) => {
+      const { reviewer } = await deleteNotedParagraph(
+        "tracked-changes",
+        session,
+      );
+      expect(reviewer.acceptAll().resolved).toBeGreaterThan(0);
+      expect(noteState(await saved(reviewer), 1)).toBeNull();
+    },
+  );
+
+  test.each(SESSIONS)(
+    "tracked and rejected, the note keeps its text (%s)",
+    async (session) => {
+      const { reviewer } = await deleteNotedParagraph(
+        "tracked-changes",
+        session,
+      );
+      expect(reviewer.rejectAll().resolved).toBeGreaterThan(0);
+      expect(noteState(await saved(reviewer), 1)).toEqual({
+        text: "The note text.",
+        deleted: false,
+      });
+    },
+  );
+
+  test.each(SESSIONS)(
+    "tracked and undone, the note keeps its text (%s)",
+    async (session) => {
+      const { reviewer, before, result } = await deleteNotedParagraph(
+        "tracked-changes",
+        session,
+      );
+      if (!result.undoHandle) throw new Error("no undo handle");
+      expect(reviewer.undoDocumentOperations(result.undoHandle).status).toBe(
+        "undone",
+      );
+      expect(structuredClone(reviewer.toDocument())).toEqual(before);
+      expect(noteState(await saved(reviewer), 1)).toEqual({
+        text: "The note text.",
+        deleted: false,
+      });
+    },
+  );
+
+  test.each(SESSIONS)(
+    "direct (%s), the note goes with its reference",
+    async (session) => {
+      const { reviewer, result } = await deleteNotedParagraph(
+        "direct",
+        session,
+      );
+      expect(result.skipped).toEqual([]);
+      expect(noteState(await saved(reviewer), 1)).toBeNull();
+    },
+  );
 });
 
 /**
@@ -572,6 +623,7 @@ describe("a save keeps the notes the package held without a reference", () => {
                 heldUnreferencedNotes: heldUnreferencedNotes(opened),
                 noteParagraphs: { touched: [], changedSinceSource: [] },
                 restoredSinceSource: [],
+                referencedHeaderFootersAtOpen: referencedHeaderFooters(opened),
               },
             });
             const reopened = await parseShapeDocument(
@@ -627,6 +679,7 @@ describe("a full canonical save writes the notes no edit touched as the package 
         heldUnreferencedNotes: heldUnreferencedNotes(opened),
         noteParagraphs: { touched: [], changedSinceSource: [] },
         restoredSinceSource: [],
+        referencedHeaderFootersAtOpen: referencedHeaderFooters(opened),
       },
     });
     const written =

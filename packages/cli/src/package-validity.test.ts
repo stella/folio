@@ -10,10 +10,18 @@
  * the day it is added.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import {
+  afterAll,
+  beforeAll,
+  describe,
+  expect,
+  setDefaultTimeout,
+  test,
+} from "bun:test";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+import { DISK_SYNC_TEST_TIMEOUT_MS } from "../../../test/disk-sync-timeout";
 import {
   buildDocx,
   CONTRACT_PARAGRAPHS,
@@ -32,6 +40,8 @@ import {
   INVALID_PACKAGE_REASONS,
 } from "./main-document-part";
 import { listCommands } from "./registry";
+
+setDefaultTimeout(DISK_SYNC_TEST_TIMEOUT_MS);
 
 let dir = "";
 let cleanup: () => Promise<void> = () => Promise.resolve();

@@ -79,6 +79,7 @@ import {
   isCommentAnchorCarrier,
 } from "../ai-edits/comment-lifecycle";
 import type { Comment } from "../types/document";
+import { minOf } from "../utils/extremes";
 import {
   expectParagraphAttrs,
   expectTableCellAttrs,
@@ -973,7 +974,7 @@ export const placeTrackedInsertion = (
     if (own.length === 0) {
       return undefined;
     }
-    const start = Math.min(...own.map(([, stretch]) => stretch.start));
+    const start = minOf(own.map(([, stretch]) => stretch.start));
     // After the removed text first, as the redline reads; before it only when
     // nothing after it is next to every comment.
     const ascending = (left: number, right: number) => left - right;
@@ -997,7 +998,7 @@ export const placeTrackedInsertion = (
     // leaves each comment on the new text with its reference after that text.
     // The later comments reach it across removed text they did not cover, and
     // `joinCommentStretches` makes them cover it, as a saved range does.
-    return { start, end: Math.min(...own.map(([, stretch]) => stretch.end)) };
+    return { start, end: minOf(own.map(([, stretch]) => stretch.end)) };
   };
   const anchored = pieces.map(stretchOf);
   const positions: number[] = [];

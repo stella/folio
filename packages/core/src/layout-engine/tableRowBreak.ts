@@ -15,6 +15,7 @@
  * modeled here yet (a separate follow-up); each row uses its own cells' content.
  */
 
+import { minOf } from "../utils/extremes";
 import { measuredLineAdvance } from "./lineFlow";
 import { measureParagraph } from "./measure";
 import {
@@ -411,7 +412,7 @@ const continuationSkipAfter = (
   ) {
     return 0;
   }
-  return Math.min(...skips);
+  return minOf(skips);
 };
 
 /** Precomputed break geometry for a table. */

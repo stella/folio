@@ -4,6 +4,7 @@ import type {
   PreviewShape,
   RelationshipMap,
 } from "../types/document";
+import { maxOf, minOf } from "../utils/extremes";
 import { decodeText } from "../utils/textEncoding";
 import { MAX_PREVIEW_POINTS, MAX_PREVIEW_SHAPES } from "./diagramPreview";
 import { RELATIONSHIP_TYPES, resolveRelativePath } from "./relsParser";
@@ -221,10 +222,8 @@ const barShapes = (
     (getAttribute(child(chart, "grouping"), null, "val") ?? "clustered") ===
     "stacked";
   const points = series.at(0)?.values.length ?? 0;
-  const magnitude = Math.max(
-    ...series.flatMap((item) =>
-      item.values.map((value) => Math.abs(value ?? 0)),
-    ),
+  const magnitude = maxOf(
+    series.flatMap((item) => item.values.map((value) => Math.abs(value ?? 0))),
   );
   if (!(magnitude > 0)) return [];
   const normalized = series.map((item) =>
@@ -236,9 +235,7 @@ const barShapes = (
           (sum, values) => sum + Math.max(0, values[point] ?? 0),
           0,
         )
-      : Math.max(
-          ...normalized.map((values) => Math.max(0, values[point] ?? 0)),
-        ),
+      : maxOf(normalized.map((values) => Math.max(0, values[point] ?? 0))),
   );
   const negatives = Array.from({ length: points }, (_, point) =>
     stacked
@@ -246,12 +243,10 @@ const barShapes = (
           (sum, values) => sum + Math.min(0, values[point] ?? 0),
           0,
         )
-      : Math.min(
-          ...normalized.map((values) => Math.min(0, values[point] ?? 0)),
-        ),
+      : minOf(normalized.map((values) => Math.min(0, values[point] ?? 0))),
   );
-  const maximum = Math.max(0, ...positives);
-  const minimum = Math.min(0, ...negatives);
+  const maximum = maxOf(positives, 0);
+  const minimum = minOf(negatives, 0);
   const range = maximum - minimum;
   if (!(range > 0) || points === 0) return [];
   for (let point = 0; point < points; point++) {
@@ -306,7 +301,7 @@ const lineShapes = (
   const values = series
     .flatMap((item) => item.values)
     .filter((value) => value !== undefined);
-  const magnitude = Math.max(...values.map(Math.abs));
+  const magnitude = maxOf(values.map(Math.abs));
   if (!(magnitude > 0)) return [];
   const normalizedSeries = series.map((item) =>
     item.values.map((value) => value && value / magnitude),
@@ -314,8 +309,8 @@ const lineShapes = (
   const normalizedValues = normalizedSeries
     .flatMap((seriesValues) => seriesValues)
     .filter((value) => value !== undefined);
-  const minimum = Math.min(...normalizedValues);
-  const maximum = Math.max(...normalizedValues);
+  const minimum = minOf(normalizedValues);
+  const maximum = maxOf(normalizedValues);
   const range = maximum - minimum || 1;
   const shapes: PreviewShape[] = [];
   const seriesElements = getChildElements(chart).filter((item) =>
@@ -389,7 +384,7 @@ const pieShapes = (
 ): PreviewShape[] => {
   const values = series.at(0)?.values ?? [];
   if (values.some((value) => value !== undefined && value < 0)) return [];
-  const magnitude = Math.max(...values.map((value) => Math.abs(value ?? 0)));
+  const magnitude = maxOf(values.map((value) => Math.abs(value ?? 0)));
   if (!(magnitude > 0)) return [];
   const normalized = values.map((value) => value && value / magnitude);
   let total = 0;

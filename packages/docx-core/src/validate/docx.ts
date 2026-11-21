@@ -1024,13 +1024,24 @@ const validateHyperlinkChild = (
   panic(`Unsupported hyperlink child: ${JSON.stringify(unsupported)}`);
 };
 
+/** Why a save refuses `author` on a tracked change, if it does. */
+export const trackedChangeAuthorIssue = (author: string): string | undefined =>
+  author.trim() === "" ? "Tracked change author is empty." : undefined;
+
+/** Why a save refuses `author` on a comment, if it does: an empty one is allowed. */
+export const commentAuthorIssue = (author: string): string | undefined =>
+  author !== "" && author.trim() === ""
+    ? "Comment author cannot be whitespace-only."
+    : undefined;
+
 const validateTrackedRunChange = (
   change: TrackedRunChange,
   path: string,
   ctx: ValidationContext,
 ): void => {
-  if (change.info.author.trim() === "") {
-    addError(ctx, `${path}.info.author`, "Tracked change author is empty.");
+  const authorIssue = trackedChangeAuthorIssue(change.info.author);
+  if (authorIssue !== undefined) {
+    addError(ctx, `${path}.info.author`, authorIssue);
   }
 
   for (const [index, child] of change.content.entries()) {
@@ -1287,12 +1298,9 @@ const validateComments = (
     }
     seen.add(comment.id);
 
-    if (comment.author !== "" && comment.author.trim() === "") {
-      addError(
-        ctx,
-        `${path}.author`,
-        "Comment author cannot be whitespace-only.",
-      );
+    const authorIssue = commentAuthorIssue(comment.author);
+    if (authorIssue !== undefined) {
+      addError(ctx, `${path}.author`, authorIssue);
     }
 
     if (

@@ -321,9 +321,15 @@ describe("hyperlink nesting", () => {
 });
 
 describe("determinism", () => {
-  test.each(["without", "with"] as const)(
-    "loaded maximum revisions use bounded deterministic ids, %s a retained section revision",
-    async (sectionRevision) => {
+  test.each(
+    (["legacy", "canonical"] as const).flatMap((session) =>
+      (["without", "with"] as const).map(
+        (sectionRevision) => [session, sectionRevision] as const,
+      ),
+    ),
+  )(
+    "%s: loaded maximum revisions use bounded deterministic ids, %s a section revision in the base",
+    async (session, sectionRevision) => {
       const zip = await ZipArchive.read(
         await buildBodySequenceDocx([
           { kind: "paragraph", text: "alpha beta gamma" },
@@ -343,13 +349,15 @@ describe("determinism", () => {
       const target = await buildBodySequenceDocx([
         { kind: "paragraph", text: "alpha BETA gamma" },
       ]);
-      // A pending input section change is an established verification gap; inspect
-      // emitted markup while requiring the comparison to report that limitation.
+      // The legacy reviewer keeps a pending input section change, a known
+      // verification gap: inspect the emitted markup while requiring the
+      // comparison to report that limitation. The canonical session compares
+      // the base's accepted view, section included, like every other revision.
+      const retainsSection = session === "legacy" && sectionRevision === "with";
       const options = {
         ...OPTIONS,
-        ...(sectionRevision === "with"
-          ? { onUnverified: "emit" as const }
-          : {}),
+        session,
+        ...(retainsSection ? { onUnverified: "emit" as const } : {}),
       };
       const [first, second] = await Promise.all([
         compareDocx(base, target, options),
@@ -363,7 +371,7 @@ describe("determinism", () => {
       const savedZip = await ZipArchive.read(first.value.buffer);
       const savedXml = await savedZip.entry("word/document.xml")?.text();
       if (savedXml === undefined) panic("Comparison has no document part");
-      if (sectionRevision === "with") {
+      if (retainsSection) {
         expect(savedXml).toContain('<w:sectPrChange w:id="1"');
         expect(first.value.verification.status).toBe("unverified");
         if (first.value.verification.status === "unverified") {
@@ -376,13 +384,14 @@ describe("determinism", () => {
           ).toBe(true);
         }
       } else {
+        expect(savedXml).not.toContain("<w:sectPrChange");
         expect(first.value.verification.status).toBe("verified");
       }
       const emittedIds = revisionIdsOf(savedXml).map(Number);
       expect(emittedIds.length).toBeGreaterThan(0);
       for (const id of emittedIds) {
         expect(Number.isInteger(id)).toBe(true);
-        expect(id).toBeGreaterThan(sectionRevision === "with" ? 1 : 0);
+        expect(id).toBeGreaterThan(retainsSection ? 1 : 0);
         expect(id).toBeLessThanOrEqual(MAX_REVISION_ID);
       }
     },

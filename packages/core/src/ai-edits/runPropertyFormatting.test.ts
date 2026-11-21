@@ -12,6 +12,7 @@ import {
 } from "../prosemirror/commands/comments";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { schema } from "../prosemirror/schema";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import type {
   Document,
   Paragraph,
@@ -597,6 +598,23 @@ const applyRevisionDecision = (
 const countXmlElements = (xml: string, localName: string): number =>
   xml.match(new RegExp(`<w:${localName}(?:[\\s/>])`, "gu"))?.length ?? 0;
 
+/** The content of each run in `xml`. */
+const runContents = (xml: string): string[] =>
+  [...xml.matchAll(/<w:r(?:\s[^>]*)?>([\s\S]*?)<\/w:r>/gu)].map(
+    ([, content]) => content ?? "",
+  );
+
+/** The carriers of the mixed inline-carrier fixtures, however many runs hold them. */
+const MIXED_CARRIER_ELEMENTS = { t: 3, tab: 1, br: 1, sym: 1 } as const;
+
+const expectMixedCarriers = (xml: string): void => {
+  for (const [localName, count] of Object.entries(MIXED_CARRIER_ELEMENTS))
+    expect({ localName, count: countXmlElements(xml, localName) }).toEqual({
+      localName,
+      count,
+    });
+};
+
 const assertSingularRunPropertyChanges = (
   xml: string,
   expectedRunCount: number,
@@ -609,6 +627,48 @@ const assertSingularRunPropertyChanges = (
     expect(countXmlElements(content ?? "", "rPrChange")).toBe(1);
   }
 };
+
+const HEADLESS_REVIEWER_SESSIONS = [
+  "legacy",
+  "canonical",
+] as const satisfies readonly HeadlessReviewerSession[];
+
+/** The run holding the word "Formatting", with its properties. */
+const formattingOwnerRun = (xml: string): string | undefined =>
+  runContents(xml).find((run) => run.includes("<w:t>Formatting</w:t>"));
+
+/** The properties the first run states, without its pending change. */
+const firstRunProperties = (xml: string): string =>
+  xml.match(
+    /<w:r>(?:<w:rPr>(.*?)(?:<w:rPrChange\b.*?<\/w:rPrChange>)?<\/w:rPr>)?<w:t\b/su,
+  )?.[1] ?? "";
+
+/**
+ * Bold, then italic, on one unformatted run in one tracked batch. Legacy
+ * refuses the edit that would give the run a second pending change; the
+ * canonical session folds it into the run's one change, which still starts
+ * from the original properties, so accepting gives both and rejecting
+ * neither.
+ */
+const TWO_EDITS_OF_ONE_RUN = {
+  legacy: {
+    applied: ["italic"],
+    skipped: [{ id: "bold", reason: "pendingRunPropertyChange" }],
+    properties: "<w:i/>",
+  },
+  canonical: {
+    applied: ["bold", "italic"],
+    skipped: [],
+    properties: "<w:b/><w:i/>",
+  },
+} as const satisfies Record<
+  HeadlessReviewerSession,
+  {
+    applied: readonly string[];
+    skipped: readonly { id: string; reason: string }[];
+    properties: string;
+  }
+>;
 
 describe("tracked run formatting", () => {
   test("public snapshots distinguish direct formatting from paragraph and character styles", async () => {
@@ -881,247 +941,345 @@ describe("tracked run formatting", () => {
     expect(rejectedXml).not.toContain("<w:b/>");
   });
 
-  test("never serializes two unresolved formatting revisions on one run", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(
-      await createFormattingBaseline(),
-      {
-        author: "Reviewer",
-      },
-    );
-    const block = reviewer.snapshot().blocks.at(0);
-    const range = block
-      ? createFolioAITextRangeHandle({
-          blockId: block.id,
-          text: block.text,
-          startOffset: 0,
-          endOffset: "Formatting".length,
-        })
-      : null;
-    if (!range) {
-      throw new Error("expected a formatting range");
-    }
+  test.each(HEADLESS_REVIEWER_SESSIONS)(
+    "%s: never serializes two unresolved formatting revisions on one run",
+    async (session) => {
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await createFormattingBaseline(),
+        { author: "Reviewer", session },
+      );
+      const block = reviewer.snapshot().blocks.at(0);
+      const range = block
+        ? createFolioAITextRangeHandle({
+            blockId: block.id,
+            text: block.text,
+            startOffset: 0,
+            endOffset: "Formatting".length,
+          })
+        : null;
+      if (!range) {
+        throw new Error("expected a formatting range");
+      }
 
-    const result = reviewer.applyOperations(
-      [
-        { id: "bold", type: "formatRange", range, formatting: { bold: true } },
-        {
-          id: "italic",
-          type: "formatRange",
-          range,
-          formatting: { italic: true },
-        },
-      ],
-      { undefinedReferences: "refuse" },
-    );
-    expect(result.applied.map(({ id }) => id)).toEqual(["italic"]);
-    expect(result.skipped).toEqual([
-      { id: "bold", reason: "pendingRunPropertyChange" },
-    ]);
-
-    const tracked = await reviewer.toBuffer();
-    const trackedXml = await documentXml(tracked);
-    expect(trackedXml.match(/<w:rPrChange /gu)).toHaveLength(1);
-    expect(trackedXml).toContain("<w:i/>");
-    expect(trackedXml).not.toContain("<w:b/>");
-
-    const accepting = await FolioDocxReviewer.fromBuffer(tracked);
-    accepting.acceptAll();
-    const acceptedXml = await documentXml(await accepting.toBuffer());
-    expect(acceptedXml).not.toContain("<w:rPrChange ");
-    expect(acceptedXml).toContain("<w:i/>");
-
-    const rejecting = await FolioDocxReviewer.fromBuffer(tracked);
-    rejecting.rejectAll();
-    const rejectedXml = await documentXml(await rejecting.toBuffer());
-    expect(rejectedXml).not.toContain("<w:rPrChange ");
-    expect(rejectedXml).not.toContain("<w:i/>");
-  });
-
-  test("a reopened formatting owner refuses replacement without side effects", async () => {
-    const baseline = await createFormattingBaseline({
-      formatting: { highlight: "yellow" },
-    });
-    const first = await FolioDocxReviewer.fromBuffer(baseline, {
-      author: "Reviewer",
-    });
-    const firstBlock = first.snapshot().blocks.at(0);
-    const firstRange = firstBlock
-      ? createFolioAITextRangeHandle({
-          blockId: firstBlock.id,
-          text: firstBlock.text,
-          startOffset: 0,
-          endOffset: "Formatting".length,
-        })
-      : null;
-    if (!firstRange) {
-      throw new Error("expected an initial formatting range");
-    }
-    const firstResult = first.applyDocumentOperations(
-      {
-        version: 1,
-        mode: "tracked-changes",
-        operations: [
+      const result = reviewer.applyOperations(
+        [
           {
             id: "bold",
             type: "formatRange",
-            range: firstRange,
+            range,
             formatting: { bold: true },
           },
-        ],
-      },
-      {
-        undefinedReferences: "refuse",
-        revisionStamp: { date: "2026-01-02T03:04:05.000Z", idSeed: 700 },
-      },
-    );
-    expect(firstResult.nextRevisionId).toBe(701);
-
-    const tracked = await first.toBuffer();
-    const reopened = await FolioDocxReviewer.fromBuffer(tracked, {
-      author: "Reviewer",
-    });
-    const beforeRefusal = await reopened.toBuffer();
-    const snapshotBeforeRefusal = reopened.snapshot();
-    const reopenedBlock = reopened.snapshot().blocks.at(0);
-    if (!reopenedBlock) {
-      throw new Error("expected a reopened formatting block");
-    }
-    const replacementResult = reopened.applyDocumentOperations(
-      {
-        version: 1,
-        mode: "tracked-changes",
-        operations: [
-          {
-            id: "replace",
-            type: "replaceInBlock",
-            blockId: reopenedBlock.id,
-            find: "Formatting",
-            // Keeps the highlighted word, so clearing its background would
-            // give the formatted run a second property change.
-            replace: "Formatting, changed",
-            comment: { text: "Explain this replacement." },
-          },
-        ],
-      },
-      {
-        undefinedReferences: "refuse",
-        revisionStamp: { date: "2026-01-02T03:04:06.000Z", idSeed: 701 },
-      },
-    );
-
-    expect(replacementResult.status).toBe("committed");
-    expect(replacementResult.applied).toEqual([]);
-    expect(replacementResult.skipped).toEqual([
-      { id: "replace", reason: "pendingRunPropertyChange" },
-    ]);
-    expect(replacementResult.nextRevisionId).toBe(701);
-    expect(reopened.getComments()).toEqual([]);
-    expect(reopened.snapshot()).toEqual(snapshotBeforeRefusal);
-    const afterRefusal = await reopened.toBuffer();
-    expect(await documentXml(afterRefusal)).toBe(
-      await documentXml(beforeRefusal),
-    );
-    expect(await packagePart(afterRefusal, "word/comments.xml")).toBe(
-      await packagePart(beforeRefusal, "word/comments.xml"),
-    );
-
-    const followupBlock = reopened.snapshot().blocks.at(0);
-    const followupRange = followupBlock
-      ? createFolioAITextRangeHandle({
-          blockId: followupBlock.id,
-          text: followupBlock.text,
-          startOffset: "Formatting ".length,
-          endOffset: "Formatting target".length,
-        })
-      : null;
-    if (!followupRange) {
-      throw new Error("expected a follow-up formatting range");
-    }
-    const followupResult = reopened.applyDocumentOperations(
-      {
-        version: 1,
-        mode: "tracked-changes",
-        operations: [
           {
             id: "italic",
             type: "formatRange",
-            range: followupRange,
+            range,
             formatting: { italic: true },
           },
         ],
-      },
-      {
-        undefinedReferences: "refuse",
-        revisionStamp: { date: "2026-01-02T03:04:07.000Z", idSeed: 701 },
-      },
-    );
-    expect(followupResult.applied.at(0)?.revisionIds).toEqual([701]);
-    expect(followupResult.nextRevisionId).toBe(702);
+        { undefinedReferences: "refuse" },
+      );
+      const outcome = TWO_EDITS_OF_ONE_RUN[session];
+      expect(result.applied.map(({ id }) => id)).toEqual([...outcome.applied]);
+      expect(result.skipped).toEqual([...outcome.skipped]);
 
-    const accepting = await FolioDocxReviewer.fromBuffer(
-      await reopened.toBuffer(),
-    );
-    accepting.acceptAll();
-    const acceptedBuffer = await accepting.toBuffer();
-    const accepted = await FolioDocxReviewer.fromBuffer(acceptedBuffer);
-    const acceptedXml = await documentXml(acceptedBuffer);
-    expect(acceptedXml).toContain("<w:b/>");
-    expect(acceptedXml).toContain("<w:i/>");
-    expect(acceptedXml).not.toContain("<w:rPrChange ");
-    expect(accepted.getChanges()).toEqual([]);
-
-    const rejecting = await FolioDocxReviewer.fromBuffer(
-      await reopened.toBuffer(),
-    );
-    rejecting.rejectAll();
-    const rejectedBuffer = await rejecting.toBuffer();
-    const rejected = await FolioDocxReviewer.fromBuffer(rejectedBuffer);
-    const rejectedXml = await documentXml(rejectedBuffer);
-    expect(rejectedXml).not.toContain("<w:b/>");
-    expect(rejectedXml).not.toContain("<w:i/>");
-    expect(rejectedXml).not.toContain("<w:rPrChange ");
-    expect(rejected.getChanges()).toEqual([]);
-  });
-
-  test("enumerates and resolves formatting revisions across mixed inline carriers", async () => {
-    const source = await createDocx(
-      createMixedInlineCarrierFormattingDocument(),
-    );
-    const reviewer = await FolioDocxReviewer.fromBuffer(source);
-    const symbol = decodeOoxmlSymbolCharacter("F06F");
-    if (!symbol) {
-      throw new Error("expected a decodable symbol fixture");
-    }
-    expect(reviewer.getChanges()).toEqual(
-      ["A", "\t", "\n", symbol, "1", "field"].map((text, index) =>
-        expect.objectContaining({ id: 93 + index, type: "formatting", text }),
-      ),
-    );
-
-    const saved = await reviewer.toBuffer();
-    assertSingularRunPropertyChanges(await documentXml(saved), 6);
-    expect((await FolioDocxReviewer.fromBuffer(saved)).getChanges()).toEqual(
-      reviewer.getChanges(),
-    );
-
-    for (const mode of ["accept", "reject"] as const) {
-      const resolving = await FolioDocxReviewer.fromBuffer(saved);
-      for (const { id } of resolving.getChanges()) {
-        expect(
-          mode === "accept"
-            ? resolving.acceptChange(id)
-            : resolving.rejectChange(id),
-        ).toBe(true);
-      }
-      const resolved = await resolving.toBuffer();
+      const tracked = await reviewer.toBuffer();
+      const trackedXml = await documentXml(tracked);
+      expect(trackedXml.match(/<w:rPrChange /gu)).toHaveLength(1);
+      // The one change starts from the run's original, unformatted properties.
+      expect(trackedXml).toContain("<w:rPr/></w:rPrChange>");
+      expect(firstRunProperties(trackedXml)).toBe(outcome.properties);
       expect(
-        (await FolioDocxReviewer.fromBuffer(resolved)).getChanges(),
-      ).toEqual([]);
-      const xml = await documentXml(resolved);
-      expect(xml).not.toContain("<w:rPrChange ");
-      expect(countXmlElements(xml, "b")).toBe(mode === "accept" ? 6 : 0);
-    }
-  });
+        (await FolioDocxReviewer.fromBuffer(tracked, { session })).getChanges(),
+      ).toEqual([
+        expect.objectContaining({ type: "formatting", text: "Formatting" }),
+      ]);
+
+      const accepting = await FolioDocxReviewer.fromBuffer(tracked, {
+        session,
+      });
+      accepting.acceptAll();
+      const acceptedXml = await documentXml(await accepting.toBuffer());
+      expect(acceptedXml).not.toContain("<w:rPrChange ");
+      expect(firstRunProperties(acceptedXml)).toBe(outcome.properties);
+
+      const rejecting = await FolioDocxReviewer.fromBuffer(tracked, {
+        session,
+      });
+      rejecting.rejectAll();
+      const rejectedXml = await documentXml(await rejecting.toBuffer());
+      expect(rejectedXml).not.toContain("<w:rPrChange ");
+      expect(rejectedXml).not.toContain("<w:rPr");
+      expect(rejecting.snapshot().blocks.at(0)?.text).toBe("Formatting target");
+    },
+  );
+
+  test.each(HEADLESS_REVIEWER_SESSIONS)(
+    "%s: a replacement keeping a reopened formatting owner leaves its change as it was",
+    async (session) => {
+      const baseline = await createFormattingBaseline({
+        formatting: { highlight: "yellow" },
+      });
+      const first = await FolioDocxReviewer.fromBuffer(baseline, {
+        author: "Reviewer",
+        session,
+      });
+      const firstBlock = first.snapshot().blocks.at(0);
+      const firstRange = firstBlock
+        ? createFolioAITextRangeHandle({
+            blockId: firstBlock.id,
+            text: firstBlock.text,
+            startOffset: 0,
+            endOffset: "Formatting".length,
+          })
+        : null;
+      if (!firstRange) {
+        throw new Error("expected an initial formatting range");
+      }
+      const firstResult = first.applyDocumentOperations(
+        {
+          version: 1,
+          mode: "tracked-changes",
+          operations: [
+            {
+              id: "bold",
+              type: "formatRange",
+              range: firstRange,
+              formatting: { bold: true },
+            },
+          ],
+        },
+        {
+          undefinedReferences: "refuse",
+          revisionStamp: { date: "2026-01-02T03:04:05.000Z", idSeed: 700 },
+        },
+      );
+      expect(firstResult.nextRevisionId).toBe(701);
+
+      const tracked = await first.toBuffer();
+      const reopened = await FolioDocxReviewer.fromBuffer(tracked, {
+        author: "Reviewer",
+        session,
+      });
+      const beforeReplacement = await reopened.toBuffer();
+      const ownerRun = formattingOwnerRun(await documentXml(beforeReplacement));
+      expect(ownerRun).toContain('<w:rPrChange w:id="700" ');
+      const snapshotBeforeReplacement = reopened.snapshot();
+      const reopenedBlock = reopened.snapshot().blocks.at(0);
+      if (!reopenedBlock) {
+        throw new Error("expected a reopened formatting block");
+      }
+      const replacementResult = reopened.applyDocumentOperations(
+        {
+          version: 1,
+          mode: "tracked-changes",
+          operations: [
+            {
+              id: "replace",
+              type: "replaceInBlock",
+              blockId: reopenedBlock.id,
+              find: "Formatting",
+              // Keeps the highlighted word, so clearing its background would
+              // give the formatted run a second property change.
+              replace: "Formatting, changed",
+              comment: { text: "Explain this replacement." },
+            },
+          ],
+        },
+        {
+          undefinedReferences: "refuse",
+          revisionStamp: { date: "2026-01-02T03:04:06.000Z", idSeed: 701 },
+        },
+      );
+
+      expect(replacementResult.status).toBe("committed");
+      const afterReplacement = await reopened.toBuffer();
+      switch (session) {
+        case "legacy": {
+          // Legacy clears the background across the whole found text, which
+          // would give the formatted run a second property change, so it
+          // refuses without side effects.
+          expect(replacementResult.applied).toEqual([]);
+          expect(replacementResult.skipped).toEqual([
+            { id: "replace", reason: "pendingRunPropertyChange" },
+          ]);
+          expect(replacementResult.nextRevisionId).toBe(701);
+          expect(reopened.getComments()).toEqual([]);
+          expect(reopened.snapshot()).toEqual(snapshotBeforeReplacement);
+          expect(await documentXml(afterReplacement)).toBe(
+            await documentXml(beforeReplacement),
+          );
+          expect(await packagePart(afterReplacement, "word/comments.xml")).toBe(
+            await packagePart(beforeReplacement, "word/comments.xml"),
+          );
+          break;
+        }
+        case "canonical": {
+          // The canonical session inserts only the added words, so the kept
+          // word's run, with its one pending change, is untouched.
+          expect(replacementResult.skipped).toEqual([]);
+          expect(replacementResult.applied).toEqual([
+            {
+              id: "replace",
+              revisionId: 701,
+              revisionIds: [701],
+              commentId: 702,
+            },
+          ]);
+          expect(replacementResult.nextRevisionId).toBe(703);
+          expect(formattingOwnerRun(await documentXml(afterReplacement))).toBe(
+            ownerRun,
+          );
+          expect(reopened.getChanges()).toEqual([
+            expect.objectContaining({ id: 700, type: "formatting" }),
+            expect.objectContaining({
+              id: 701,
+              type: "insertion",
+              text: ", changed",
+            }),
+          ]);
+          expect(reopened.getComments()).toEqual([
+            expect.objectContaining({ id: 702, anchoredText: ", changed" }),
+          ]);
+          break;
+        }
+        default: {
+          const unreachable: never = session;
+          throw new Error(`Unknown session ${unreachable}`);
+        }
+      }
+
+      const followupBlock = reopened.snapshot().blocks.at(0);
+      const followupRange = followupBlock
+        ? createFolioAITextRangeHandle({
+            blockId: followupBlock.id,
+            text: followupBlock.text,
+            startOffset: followupBlock.text.length - "target".length,
+            endOffset: followupBlock.text.length,
+          })
+        : null;
+      if (!followupRange) {
+        throw new Error("expected a follow-up formatting range");
+      }
+      const followupResult = reopened.applyDocumentOperations(
+        {
+          version: 1,
+          mode: "tracked-changes",
+          operations: [
+            {
+              id: "italic",
+              type: "formatRange",
+              range: followupRange,
+              formatting: { italic: true },
+            },
+          ],
+        },
+        {
+          undefinedReferences: "refuse",
+          revisionStamp: {
+            date: "2026-01-02T03:04:07.000Z",
+            idSeed: replacementResult.nextRevisionId,
+          },
+        },
+      );
+      expect(followupResult.applied.at(0)?.revisionIds).toEqual([
+        replacementResult.nextRevisionId,
+      ]);
+      expect(followupResult.nextRevisionId).toBe(
+        replacementResult.nextRevisionId + 1,
+      );
+      const followedUp = await reopened.toBuffer();
+      expect(formattingOwnerRun(await documentXml(followedUp))).toBe(ownerRun);
+
+      const accepting = await FolioDocxReviewer.fromBuffer(followedUp, {
+        session,
+      });
+      accepting.acceptAll();
+      const acceptedBuffer = await accepting.toBuffer();
+      const accepted = await FolioDocxReviewer.fromBuffer(acceptedBuffer, {
+        session,
+      });
+      const acceptedXml = await documentXml(acceptedBuffer);
+      expect(acceptedXml).toContain("<w:b/>");
+      expect(acceptedXml).toContain("<w:i/>");
+      expect(acceptedXml).not.toContain("<w:rPrChange ");
+      expect(accepted.getChanges()).toEqual([]);
+      expect(accepted.snapshot().blocks.at(0)?.text).toBe(
+        session === "legacy"
+          ? "Formatting target"
+          : "Formatting, changed target",
+      );
+
+      const rejecting = await FolioDocxReviewer.fromBuffer(followedUp, {
+        session,
+      });
+      rejecting.rejectAll();
+      const rejectedBuffer = await rejecting.toBuffer();
+      const rejected = await FolioDocxReviewer.fromBuffer(rejectedBuffer, {
+        session,
+      });
+      const rejectedXml = await documentXml(rejectedBuffer);
+      expect(rejectedXml).not.toContain("<w:b/>");
+      expect(rejectedXml).not.toContain("<w:i/>");
+      expect(rejectedXml).not.toContain("<w:rPrChange ");
+      expect(rejected.getChanges()).toEqual([]);
+      expect(rejected.snapshot().blocks.at(0)?.text).toBe("Formatting target");
+      expect(firstRunProperties(rejectedXml)).toBe(
+        '<w:highlight w:val="yellow"/>',
+      );
+    },
+  );
+
+  test.each(HEADLESS_REVIEWER_SESSIONS)(
+    "%s: enumerates and resolves formatting revisions across mixed inline carriers",
+    async (session) => {
+      const source = await createDocx(
+        createMixedInlineCarrierFormattingDocument(),
+      );
+      const reviewer = await FolioDocxReviewer.fromBuffer(source, { session });
+      const symbol = decodeOoxmlSymbolCharacter("F06F");
+      if (!symbol) {
+        throw new Error("expected a decodable symbol fixture");
+      }
+      expect(reviewer.getChanges()).toEqual(
+        ["A", "\t", "\n", symbol, "1", "field"].map((text, index) =>
+          expect.objectContaining({ id: 93 + index, type: "formatting", text }),
+        ),
+      );
+
+      const saved = await reviewer.toBuffer();
+      assertSingularRunPropertyChanges(await documentXml(saved), 6);
+      expect(
+        (await FolioDocxReviewer.fromBuffer(saved, { session })).getChanges(),
+      ).toEqual(reviewer.getChanges());
+
+      for (const mode of ["accept", "reject"] as const) {
+        const resolving = await FolioDocxReviewer.fromBuffer(saved, {
+          session,
+        });
+        for (const { id } of resolving.getChanges()) {
+          expect(
+            mode === "accept"
+              ? resolving.acceptChange(id)
+              : resolving.rejectChange(id),
+          ).toBe(true);
+        }
+        const resolved = await resolving.toBuffer();
+        expect(
+          (
+            await FolioDocxReviewer.fromBuffer(resolved, { session })
+          ).getChanges(),
+        ).toEqual([]);
+        const xml = await documentXml(resolved);
+        expect(xml).not.toContain("<w:rPrChange ");
+        expectMixedCarriers(xml);
+        // Resolving may join runs the decisions leave alike, so every run
+        // states the outcome rather than a count of property sets.
+        expect(
+          runContents(xml).map((run) => countXmlElements(run, "b")),
+        ).toEqual(runContents(xml).map(() => (mode === "accept" ? 1 : 0)));
+      }
+    },
+  );
 
   test("treats mixed same-id carriers and a structured result as one review change", async () => {
     const symbol = decodeOoxmlSymbolCharacter("F06F");
@@ -1266,13 +1424,13 @@ describe("tracked run formatting", () => {
     },
   );
 
-  test("a pending owner on one inline carrier refuses the whole formatting transaction", async () => {
-    const baseline = await createDocx(
-      createMixedInlineCarrierDocumentWithPendingTab(),
+  const formatCarriersOverPendingTab = async (
+    session: HeadlessReviewerSession,
+  ) => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await createDocx(createMixedInlineCarrierDocumentWithPendingTab()),
+      { author: "Reviewer", session },
     );
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
-      author: "Reviewer",
-    });
     const before = await reviewer.toBuffer();
     const snapshot = reviewer.snapshot();
     const block = snapshot.blocks.at(0);
@@ -1306,6 +1464,12 @@ describe("tracked run formatting", () => {
         revisionStamp: { date: "2026-09-09T00:00:00.000Z", idSeed: 900 },
       },
     );
+    return { reviewer, before, snapshot, result };
+  };
+
+  test("legacy: a pending owner on one inline carrier refuses the whole formatting transaction", async () => {
+    const { reviewer, before, snapshot, result } =
+      await formatCarriersOverPendingTab("legacy");
 
     expect(result.applied).toEqual([]);
     expect(result.skipped).toEqual([
@@ -1319,6 +1483,60 @@ describe("tracked run formatting", () => {
     expect(reviewer.getChanges()).toEqual([
       expect.objectContaining({ id: 899, type: "formatting", text: "\t" }),
     ]);
+  });
+
+  test("canonical: a pending owner on one inline carrier folds into the formatting transaction", async () => {
+    const { reviewer, result } =
+      await formatCarriersOverPendingTab("canonical");
+    expect(result.skipped).toEqual([]);
+    expect(result.applied.at(0)?.revisionIds).toEqual([
+      900, 901, 902, 903, 904, 905,
+    ]);
+    expect(result.nextRevisionId).toBe(906);
+
+    const tracked = await reviewer.toBuffer();
+    const trackedXml = await documentXml(tracked);
+    // The tab's pending bold folds into its one change, which keeps the
+    // properties the tab had before either edit.
+    assertSingularRunPropertyChanges(trackedXml, 6);
+    expect(trackedXml).not.toContain('w:id="899"');
+    expect(trackedXml).toContain(
+      '<w:r><w:rPr><w:b/><w:i/><w:rPrChange w:id="901" w:author="Reviewer" w:date="2026-09-09T00:00:00.000Z"><w:rPr/></w:rPrChange></w:rPr><w:tab/></w:r>',
+    );
+    const symbol = decodeOoxmlSymbolCharacter("F06F");
+    if (!symbol) {
+      throw new Error("expected a decodable symbol fixture");
+    }
+    expect((await FolioDocxReviewer.fromBuffer(tracked)).getChanges()).toEqual(
+      ["A", "\t", "\n", symbol, "1", "field"].map((text, index) =>
+        expect.objectContaining({ id: 900 + index, type: "formatting", text }),
+      ),
+    );
+
+    for (const decision of ["accept", "reject"] as const) {
+      const resolving = await FolioDocxReviewer.fromBuffer(tracked, {
+        session: "canonical",
+      });
+      if (decision === "accept") resolving.acceptAll();
+      else resolving.rejectAll();
+      const resolved = await resolving.toBuffer();
+      expect(
+        (await FolioDocxReviewer.fromBuffer(resolved)).getChanges(),
+      ).toEqual([]);
+      const xml = await documentXml(resolved);
+      expect(xml).not.toContain("<w:rPrChange ");
+      expectMixedCarriers(xml);
+      const runs = runContents(xml);
+      if (decision === "reject") {
+        expect(countXmlElements(xml, "i")).toBe(0);
+        expect(countXmlElements(xml, "b")).toBe(0);
+        continue;
+      }
+      expect(runs.every((run) => countXmlElements(run, "i") === 1)).toBe(true);
+      expect(runs.filter((run) => countXmlElements(run, "b") === 1)).toEqual([
+        "<w:rPr><w:b/><w:i/></w:rPr><w:tab/>",
+      ]);
+    }
   });
 
   test("uses the same operation in a secondary document story", async () => {
