@@ -6499,17 +6499,6 @@ export class CanonicalPublicOperations {
       )
     )
       return refusal("unsupportedMode");
-    if (operation.type === "insertSignatureTable" && suggested)
-      return Result.err(
-        new CanonicalPublicOperationResolutionError({
-          reason: "unsupportedBlock",
-          message:
-            "Whole-table signature suggestions need direct acceptance semantics.",
-          detail:
-            "Whole-table signature suggestions need direct acceptance semantics.",
-          gap: CANONICAL_GAP.publicTableStructure,
-        }),
-      );
     const noteReferences = collectNoteReferenceLabels(state.doc);
     const clean = buildCleanBlockText(paragraph.node, paragraph.start - 1, {
       fieldResults: "text",

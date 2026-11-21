@@ -2839,7 +2839,6 @@ export const applyFolioDocumentOperationsInPackage = ({
     const commentIds: number[] = [];
     // canonical-gap: publicOps.comments
     // canonical-gap: publicOps.unsupportedInline
-    // canonical-gap: publicOps.tableStructure
     // canonical-gap: pm-document-operations
     const outcome = applyFolioAIEditOperationsInPackage({
       ...common,
