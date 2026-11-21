@@ -1271,6 +1271,7 @@ export const paragraphNumberingSlots: (numbering: ParagraphNumberingOverride) =>
 export type ParagraphPropertyChange = WritableRecord & {
     type: "paragraphPropertyChange";
     info: PropertyChangeInfo;
+    resolvesWith?: number;
     previousFormatting?: ParagraphFormatting;
     currentFormatting?: ParagraphFormatting;
 };

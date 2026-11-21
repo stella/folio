@@ -926,6 +926,9 @@ export type JoinInlineOp = {
 };
 
 // @public
+export const joinPropertyChangeLink: (input: JoinPropertyChangeLinkOptions) => SetParagraphReviewOp | undefined;
+
+// @public
 export type LeasedId = {
     readonly kind: IdLeaseKind;
     readonly id: number;
