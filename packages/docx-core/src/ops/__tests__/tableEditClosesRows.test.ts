@@ -214,3 +214,50 @@ describe("a table edit that leaves a row only merges from above", () => {
     expectLaws(MERGED_LEFT, outcome);
   });
 });
+
+describe("a merge beside a pending row insertion", () => {
+  const info = (revision: number) => ({
+    id: revision,
+    author: "Other",
+    date: REVISION.date,
+  });
+  /** `B1` over a blank `B2`, and a third row pending insertion. */
+  const PENDING_ROW = documentOf({
+    type: "table",
+    columnWidths: [900, 900],
+    rows: [
+      { type: "tableRow", cells: [cell(0x100, "A1"), cell(0x110, "B1")] },
+      { type: "tableRow", cells: [cell(0x101, "A2"), cell(0x111, "")] },
+      {
+        type: "tableRow",
+        structuralChange: { type: "tableRowInsertion", info: info(60) },
+        cells: [0x102, 0x112].map((value) => ({
+          type: "tableCell",
+          content: [
+            {
+              ...paragraph(value, ""),
+              pPrMark: { kind: "ins", info: info(value) },
+            },
+          ],
+        })),
+      },
+    ],
+  });
+
+  test("resolves apart from it, directly and suggested", () => {
+    // The merge's own records accept to the direct merge and reject to the
+    // table as it was, the row still pending.
+    expectLaws(
+      PENDING_ROW,
+      outcomes(PENDING_ROW, {
+        ...address,
+        blockId: id(0x110),
+        type: DOCUMENT_OP_TYPES.MERGE_CELLS,
+        top: 0,
+        bottom: 2,
+        left: 1,
+        right: 2,
+      }),
+    );
+  });
+});

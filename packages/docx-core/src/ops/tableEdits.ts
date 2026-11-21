@@ -479,6 +479,37 @@ const hasReview = (table: Table) =>
       ),
   );
 
+type HasReviewBlockingMergeOptions = {
+  table: Table;
+  /** The first row the merge changes. */
+  top: number;
+  /** The row after the last one the merge changes. */
+  bottom: number;
+};
+
+/**
+ * A review a cell merge cannot join: any but a row's own suggested insertion
+ * or deletion outside the rows the merge changes, which resolves apart from
+ * the merge, as the merge's rows resolve apart from it.
+ */
+const hasReviewBlockingMerge = ({
+  table,
+  top,
+  bottom,
+}: HasReviewBlockingMergeOptions) =>
+  table.formatting?.gridChange !== undefined ||
+  table.propertyChanges !== undefined ||
+  table.rows.some(
+    (row, index) =>
+      (row.structuralChange !== undefined && index >= top && index < bottom) ||
+      row.propertyChanges !== undefined ||
+      row.cells.some(
+        (cell) =>
+          cell.structuralChange !== undefined ||
+          cell.propertyChanges !== undefined,
+      ),
+  );
+
 /**
  * A review a column edit cannot join. A row's own suggested insertion or
  * deletion keeps its mark while the column gains or loses that row's cell;
@@ -1017,7 +1048,7 @@ const merge = ({
       reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
       message: "Indexed table markup must be relocated before changing cells.",
     });
-  if (hasReview(table))
+  if (hasReviewBlockingMerge({ table, top: op.top, bottom: op.bottom }))
     return refuse({
       op,
       reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
