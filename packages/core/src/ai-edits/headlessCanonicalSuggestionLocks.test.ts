@@ -182,48 +182,62 @@ const lockControl = (
   }).unwrap().document;
 };
 
-/** `document` with the inline control of every story content-locked. */
-const lockControls = (document: Document) => {
-  let locked = document;
-  for (const entry of STORIES) locked = lockControl(locked, entry);
-  return locked;
-};
-
-/**
- * Fork `reviewer` with its pending suggestions while a package edit
- * content-locks every control. A lock refuses a new edit inside it, so a
- * proposal it holds is staged before the lock arrives.
- */
-const lockedFork = (reviewer: FolioDocxReviewer) => {
-  const create = canonicalSession.createCanonicalSession;
-  const factory = spyOn(
-    canonicalSession,
-    "createCanonicalSession",
-  ).mockImplementationOnce((document, styles, options) =>
-    create(lockControls(readModel(document)), styles, options),
-  );
-  try {
-    return reviewer.fork();
-  } finally {
-    factory.mockRestore();
-  }
-};
-
 const LOCK_XML = '<w:lock w:val="contentLocked"/>';
+const CONTROL_ID = /(<w:sdtPr>(?:(?!<\/w:sdtPr>).)*?<w:id w:val="[^"]*"\/>)/gu;
 
-/**
- * A saved package with every content lock lifted. A save drops pending
- * suggestions; restaging re-applies each operation, which a content lock
- * refuses inside it, so the held edit restages only once the lock is gone.
- */
-const unlockControls = async (bytes: ArrayBuffer) => {
+/** How many content locks the package's parts spell. */
+const lockCount = async (bytes: ArrayBuffer) => {
+  const zip = await ZipArchive.read(bytes);
+  let count = 0;
+  for (const path of zip.paths().filter((name) => name.endsWith(".xml")))
+    count += ((await zip.entry(path)?.text()) ?? "").split(LOCK_XML).length - 1;
+  return count;
+};
+
+/** A saved package with every inline control content-locked by another producer. */
+const lockedPackage = async (bytes: ArrayBuffer) => {
   const zip = await ZipArchive.read(bytes);
   for (const path of zip.paths().filter((name) => name.endsWith(".xml"))) {
     const xml =
       (await zip.entry(path)?.text()) ?? panic(`The package needs ${path}.`);
-    if (xml.includes(LOCK_XML)) zip.set(path, xml.replaceAll(LOCK_XML, ""));
+    const locked = xml.replaceAll(CONTROL_ID, `$1${LOCK_XML}`);
+    if (locked !== xml) zip.set(path, locked);
   }
-  return (await zip.generate({ compression: "store" })).slice().buffer;
+  const locked = (await zip.generate({ compression: "store" })).slice().buffer;
+  expect(await lockCount(locked)).toBe(STORIES.length);
+  return locked;
+};
+
+type PendingRecords = ReturnType<FolioDocxReviewer["exportPendingSuggestions"]>;
+
+/**
+ * The locked package reopened with `records` restaged under its locks. A lock
+ * refuses a new edit inside it, so a held proposal is staged before the lock
+ * arrives; restaging rebuilds it and is no new edit.
+ */
+const restagedOn = async (bytes: ArrayBuffer, records: PendingRecords) => {
+  const locked = await FolioDocxReviewer.fromBuffer(bytes, {
+    session: "canonical",
+  });
+  expect(locked.loadPendingSuggestions(records)).toEqual(
+    records.map(() => ({ status: "restaged", suggestionId: PROPOSAL })),
+  );
+  expect(locked.exportPendingSuggestions()).toEqual(records);
+  return locked;
+};
+
+/** `reviewer`'s package saved, locked by another producer and restaged. */
+const relocked = async (reviewer: FolioDocxReviewer) =>
+  restagedOn(
+    await lockedPackage(await reviewer.toBuffer()),
+    reviewer.exportPendingSuggestions(),
+  );
+
+/** A save keeps every lock the package holds. */
+const savedLocked = async (reviewer: FolioDocxReviewer) => {
+  const saved = await reviewer.toBuffer();
+  expect(await lockCount(saved)).toBe(STORIES.length);
+  return saved;
 };
 
 /** A suggested insertion inside the held paragraph's control text. */
@@ -441,7 +455,7 @@ for (const engine of ["canonical", "legacy"] as const)
   for (const [index, entry] of STORIES.entries())
     for (const placement of ["same", "other"] as const)
       test(`${engine} ${entry.handle.type} ${placement} story: a held public proposal survives bulk rejection and save/restage across stories`, async () => {
-        // A canonical lock refuses staging the held edit; it locks a fork below.
+        // A canonical lock refuses staging the held edit; it arrives below.
         let reviewer = await FolioDocxReviewer.fromBuffer(
           await fixture(engine === "canonical" ? undefined : "contentLocked"),
           { session: engine },
@@ -502,10 +516,7 @@ for (const engine of ["canonical", "legacy"] as const)
         });
         const records = reviewer.exportPendingSuggestions();
         expect(records).toHaveLength(2);
-        if (engine === "canonical") {
-          reviewer = lockedFork(reviewer);
-          expect(reviewer.exportPendingSuggestions()).toEqual(records);
-        }
+        if (engine === "canonical") reviewer = await relocked(reviewer);
         const changesByStory = () =>
           STORIES.map(
             ({ handle }) =>
@@ -575,9 +586,10 @@ for (const engine of ["canonical", "legacy"] as const)
           ).toEqual(commentSnapshots);
         expect(publicStoryBlocks(reviewer)).toEqual(beforeBlocks);
         expect(reviewer.exportPendingSuggestions()).toEqual(records);
-        const saved = await reviewer.toBuffer();
         const reopened = await FolioDocxReviewer.fromBuffer(
-          engine === "canonical" ? await unlockControls(saved) : saved,
+          engine === "canonical"
+            ? await savedLocked(reviewer)
+            : await reviewer.toBuffer(),
           { session: engine },
         );
         const loaded = reopened.loadPendingSuggestions(records);
@@ -687,25 +699,21 @@ for (const ordinary of ["present", "absent"] as const)
     });
     const records = reviewer.exportPendingSuggestions();
     expect(records).toHaveLength(2);
+    const locked = await lockedPackage(await reviewer.toBuffer());
     const create = canonicalSession.createCanonicalSession;
     let owner: canonicalSession.CanonicalSession | undefined;
-    // The fork's session, the first created below, holds the locked document.
+    // The locked package's session, the first created below.
     const factory = spyOn(
       canonicalSession,
       "createCanonicalSession",
-    ).mockImplementation((document, styles, options) => {
-      const result = create(
-        owner === undefined ? lockControls(readModel(document)) : document,
-        styles,
-        options,
-      );
+    ).mockImplementation((...args) => {
+      const result = create(...args);
       if (result.isOk()) owner ??= result.value;
       return result;
     });
     try {
-      reviewer = reviewer.fork();
+      reviewer = await restagedOn(locked, records);
       if (!owner) panic("A canonical reviewer must own its source session.");
-      expect(reviewer.exportPendingSuggestions()).toEqual(records);
       const proposedIds = publicChanges(reviewer)
         .map(({ id }) => id)
         .toSorted((left, right) => left - right);
@@ -794,7 +802,7 @@ for (const ordinary of ["present", "absent"] as const)
         ).unwrap().document,
       ).toStrictEqual(resolved);
       const reopened = await FolioDocxReviewer.fromBuffer(
-        await unlockControls(await reviewer.toBuffer()),
+        await savedLocked(reviewer),
         { session: "canonical" },
       );
       expect(
@@ -820,7 +828,7 @@ for (const ordinary of ["present", "absent"] as const)
 for (const engine of ["canonical", "legacy"] as const)
   test(`${engine}: bulk rejection keeps an ordinary insertion that holds a fragment of a held proposal`, async () => {
     const entry = STORIES[0];
-    // A canonical lock refuses staging the held edit; it locks a fork below.
+    // A canonical lock refuses staging the held edit; it arrives below.
     let reviewer = await FolioDocxReviewer.fromBuffer(
       await fixture(engine === "canonical" ? undefined : "contentLocked"),
       { session: engine },
@@ -875,10 +883,7 @@ for (const engine of ["canonical", "legacy"] as const)
           },
     );
     const records = reviewer.exportPendingSuggestions();
-    if (engine === "canonical") {
-      reviewer = lockedFork(reviewer);
-      expect(reviewer.exportPendingSuggestions()).toEqual(records);
-    }
+    if (engine === "canonical") reviewer = await relocked(reviewer);
     // The ordinary paragraph's inserted mark holds the proposal's fragment.
     const enclosing = publicChanges(reviewer)
       .filter(
