@@ -2131,7 +2131,7 @@ const trackJoin = ({
   if (mark !== undefined && !deletesAddedMark) {
     return refuse(
       op,
-      DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK,
       `The mark of ${op.blockId} already carries a tracked change.`,
     );
   }
