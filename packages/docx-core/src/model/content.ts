@@ -1757,7 +1757,10 @@ export const INSERTION_SEAM_POLICIES = {
  * joins of its own: without, its zero depths only carry the marker, and it
  * resolves as an insertion with no joins.
  */
-export const HELD_PARAGRAPH_JOINS = {
+export const HELD_PARAGRAPH_JOINS: {
+  readonly OWN: "own-joins";
+  readonly NONE: "no-joins";
+} = {
   OWN: "own-joins",
   NONE: "no-joins",
 } as const;
