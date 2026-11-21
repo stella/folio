@@ -117,8 +117,9 @@ describe("the id of a folded run property change", () => {
     expect(paragraph.content).toMatchObject([
       { propertyChanges: [{ info: { id: 1, author: "B" } }] },
     ]);
-    // The kept id is no new revision.
+    // The kept id is no new revision; the patch reports it as folded.
     expect(applied.revisions).toEqual([]);
+    expect(applied.folded).toEqual([1]);
   });
 
   test("a piece the patch cuts off takes the stamp's id; the rest keeps the change", () => {
@@ -142,5 +143,13 @@ describe("the id of a folded run property change", () => {
       },
     ]);
     expect(applied.revisions).toEqual([2]);
+    // Change 1 still records what it did on the rest: nothing folded in.
+    expect(applied.folded).toEqual([]);
+  });
+
+  test("a change the patch settles away is reported by neither list", () => {
+    const { applied } = patched({ from: 0, to: 2, patch: { bold: null } });
+    expect(applied.revisions).toEqual([]);
+    expect(applied.folded).toEqual([]);
   });
 });

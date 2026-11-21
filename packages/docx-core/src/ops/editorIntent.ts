@@ -28,6 +28,7 @@ import {
   type AppliedDocumentOp,
   applyDocumentOp,
   applyDocumentOps,
+  combineRecordedRevisions,
 } from "./apply";
 import {
   blockListAt,
@@ -3611,7 +3612,7 @@ const compileInStory = (
             ops: [...ops],
             result: {
               ...combineEdits(document, steps),
-              revisions: steps.flatMap(({ revisions }) => revisions),
+              ...combineRecordedRevisions(steps),
             },
           };
           selection = replacementCaret(at, text);
@@ -4288,7 +4289,7 @@ const compileInStory = (
         ops: [...compact],
         result: {
           ...combineEdits(document, steps),
-          revisions: steps.flatMap(({ revisions }) => revisions),
+          ...combineRecordedRevisions(steps),
         },
       };
     if (paragraphAt(current, selection) === undefined)

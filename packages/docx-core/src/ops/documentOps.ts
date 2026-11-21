@@ -101,8 +101,10 @@ export {
   applyDocumentOpEnvelope,
   applyDocumentOp,
   applyDocumentOps,
+  combineRecordedRevisions,
   inverseMeetingDocument,
   type AppliedDocumentOp,
+  type RecordedRevisionIds,
 } from "./apply";
 export {
   formattingEquals,

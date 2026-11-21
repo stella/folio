@@ -23,6 +23,7 @@ import {
   type BatchBlockAccess,
   type BatchOrderAddress,
   type BlockInsertionPoint,
+  combineRecordedRevisions,
   compileEditorIntent,
   contentRank,
   createEditorIntentIdAllocator,
@@ -62,6 +63,7 @@ import {
   type ParagraphPropsPatch,
   paragraphsThroughTextBoxes,
   pendingSuggestionIdsIn,
+  type RecordedRevisionIds,
   revisionSpan,
   type RunPropsPatch,
   SPLIT_HALVES,
@@ -3897,7 +3899,7 @@ const compilePublicIntents = ({
   verifyOperation,
 }: CompilePublicIntentsOptions) => {
   const ops: DocumentOp[] = [];
-  const revisions: number[] = [];
+  const recorded: RecordedRevisionIds[] = [];
   let verifiedOperation: VerifiedOperation | undefined;
   const absorbed: ParagraphAbsorption[] = [];
   const source = document;
@@ -4035,7 +4037,7 @@ const compilePublicIntents = ({
     }
     document = after;
     ops.push(...compiled.value.ops, ...(notes?.ops ?? []));
-    revisions.push(...appliedRevisions);
+    recorded.push({ revisions: appliedRevisions, folded: applied.folded });
     for (const id of appliedRevisions)
       nextRevisionId = Math.max(nextRevisionId, id + 1);
     if (mode === "direct") continue;
@@ -4060,7 +4062,7 @@ const compilePublicIntents = ({
   return Result.ok({
     document,
     ops,
-    revisions,
+    ...combineRecordedRevisions(recorded),
     nextRevisionId,
     allocations,
     verifiedOperation,
@@ -5632,7 +5634,8 @@ export class CanonicalPublicOperations {
           compiled.value.nextRevisionId,
           (commentId ?? -1) + 1,
         ),
-        revisionIds: compiled.value.revisions,
+        // A fold into a pending property change shares that change's id.
+        revisionIds: [...compiled.value.revisions, ...compiled.value.folded],
         absorbed: compiled.value.absorbed,
         commentId,
         suggestionId,
