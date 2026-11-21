@@ -67,6 +67,7 @@ import {
 import {
   type DeleteBlocksOp,
   DOCUMENT_OP_TYPES,
+  type DocumentOp,
   type ParagraphAbsorption,
   type RevisionStamp,
   SECTION_BOUNDARY_POLICIES,
@@ -456,6 +457,37 @@ type SectionTransfer = {
   sectionDestination: "none" | "preceding" | "following";
 };
 
+type DirectRemovalReceiverOptions = {
+  before: BlockContent | undefined;
+  following: BlockContent | undefined;
+  kept: readonly ParagraphContent[];
+};
+
+/**
+ * The paragraph that takes the boundaries of paragraphs a direct deletion
+ * removes before a block, with its content once it holds them: the one
+ * before them, at its end, else the block's first paragraph, at its start.
+ */
+const directRemovalReceiver = ({
+  before,
+  following,
+  kept,
+}: DirectRemovalReceiverOptions):
+  { receiver: Paragraph; content: ParagraphContent[] } | undefined => {
+  if (before?.type === "paragraph")
+    return { receiver: before, content: [...before.content, ...kept] };
+  if (following === undefined) return undefined;
+  const carrier: Paragraph = { type: "paragraph", content: [...kept] };
+  let receiver: Paragraph | undefined;
+  if (following.type === "table") {
+    const boundary = paragraphTableRunInBoundary(carrier, following);
+    if (boundary.type === "receiver") receiver = boundary.target.receiver;
+  } else receiver = paragraphBlockRunInTarget(carrier, following)?.receiver;
+  return receiver === undefined
+    ? undefined
+    : { receiver, content: [...kept, ...receiver.content] };
+};
+
 export const deleteBlocks = ({
   document,
   op,
@@ -563,11 +595,22 @@ export const deleteBlocks = ({
     op.revision !== undefined &&
     isOpaqueFollower(following) &&
     list.at(-1)?.type === "paragraph";
+  // Directly, paragraphs a table or another block follows, with no table
+  // before them, go whole, as accepting their tracked deletion removes them:
+  // the container still ends with a paragraph, and no two tables meet.
+  const directBeforeBlock =
+    op.revision === undefined &&
+    following !== undefined &&
+    following.type !== "paragraph" &&
+    list.at(-1)?.type === "paragraph" &&
+    (first.index === 0 || list[first.index - 1]?.type === "paragraph") &&
+    found.every(({ paragraph }) => paragraph.sectionProperties === undefined);
   if (
     following?.type !== "paragraph" &&
     !terminal &&
     !trackedBeforeTable &&
-    !trackedBeforeBlock
+    !trackedBeforeBlock &&
+    !directBeforeBlock
   ) {
     return refuse(
       DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
@@ -670,6 +713,7 @@ export const deleteBlocks = ({
     followingTableCanReceiveRunIn: false,
   });
   let directBlocks: Paragraph[] = [];
+  const directModified: string[] = [];
   if (outcome.kind === "join" && following?.type === "paragraph")
     directBlocks = [
       kept.length === 0
@@ -681,7 +725,34 @@ export const deleteBlocks = ({
   // removal, were one decided, keeps the survivor holding them.
   if (outcome.kind === "keep" || outcome.kind === "remove")
     directBlocks = [survivor];
-  const direct = applyOps(document, [replacement(directBlocks)]);
+  const directOps: DocumentOp[] = [];
+  // Removed before a block, they go whole, as accepting their tracked
+  // deletion removes them: the boundaries they kept go to the end of the
+  // paragraph before them, else run into the block's first paragraph.
+  if (directBeforeBlock) {
+    directBlocks = [];
+    if (kept.length > 0) {
+      const received = directRemovalReceiver({
+        before: list[first.index - 1],
+        following,
+        kept,
+      });
+      if (received === undefined)
+        return refuse(
+          DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+          "Deletion requires a following paragraph or a container-final paragraph.",
+        );
+      directOps.push({
+        type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+        story: op.story,
+        expected: [received.receiver],
+        blocks: [{ ...received.receiver, content: received.content }],
+      });
+      directModified.push(received.receiver.paraId ?? "");
+    }
+  }
+  directOps.push(replacement(directBlocks));
+  const direct = applyOps(document, directOps);
   if (direct.isErr()) return refuse(direct.error.reason, direct.error.message);
   // A paragraph the direct deletion writes back is modified exactly when it
   // is not the block it replaces: the survivor, or the paragraph after the
@@ -689,9 +760,11 @@ export const deleteBlocks = ({
   const replaced = new Map(
     replacement([]).expected.map((block) => [idKey(block.paraId ?? ""), block]),
   );
-  const directModified = directBlocks
-    .filter((block) => replaced.get(idKey(block.paraId ?? "")) !== block)
-    .map(({ paraId }) => paraId ?? "");
+  directModified.push(
+    ...directBlocks
+      .filter((block) => replaced.get(idKey(block.paraId ?? "")) !== block)
+      .map(({ paraId }) => paraId ?? ""),
+  );
   if (op.revision === undefined) {
     let edit = direct.value;
     let retiredTouched: readonly string[] = [];
