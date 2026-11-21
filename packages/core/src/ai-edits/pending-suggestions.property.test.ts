@@ -168,12 +168,10 @@ describe("host-persisted pending suggestions", () => {
             );
             // A restaged insertion mints its paragraphs afresh.
             const texts = (x: FolioDocxReviewer) =>
-              x
-                .snapshot()
-                .blocks.map((block) => ({
-                  kind: block.kind,
-                  text: block.text,
-                }));
+              x.snapshot().blocks.map((block) => ({
+                kind: block.kind,
+                text: block.text,
+              }));
             const before = texts(reviewer);
             const reopened = await open(await reviewer.toBuffer());
             expect(reopened.loadPendingSuggestions(records)).toEqual([

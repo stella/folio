@@ -30,10 +30,11 @@ export const folioAIBlockIdStability = ({
  * the package's: a save writes a minted id into a paragraph it rewrites, so the
  * same paragraph reads as stated once reopened.
  */
-export const persistedBlock = ({
-  idStability: _idStability,
-  ...block
-}: FolioAIBlock): Omit<FolioAIBlock, "idStability"> => block;
+export const persistedBlock = (block: FolioAIBlock): FolioAIBlock => {
+  const persisted = { ...block };
+  delete persisted.idStability;
+  return persisted;
+};
 
 export const stripBlockIdentityAttrs = (
   attrs: Record<string, unknown>,
