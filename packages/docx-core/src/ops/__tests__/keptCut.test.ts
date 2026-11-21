@@ -85,6 +85,36 @@ describe("a kept range marker's cut", () => {
     expect(inner(settleKeptCuts([link("b"), holding()]))).toEqual([]);
   });
 
+  test("a piece stays named while the pending change meeting the markers stands at the near edge of a record beside them", () => {
+    const pending: InlineNode = {
+      type: "insertion",
+      info: { id: 4, author: "C", date: "2026-03-04T05:00:02Z" },
+      content: [{ type: "run", content: [{ type: "text", text: "x" }] }],
+    };
+    const holding: ParagraphContent = {
+      type: "hyperlink",
+      rId: "rId9",
+      href: "https://example.org",
+      children: [
+        pending,
+        { type: "run", content: [{ type: "text", text: "a" }] },
+      ],
+    };
+    const marker = (piece: "before" | "after"): InlineNode => ({
+      type: "bookmarkEnd",
+      id: 1,
+      keptCut: { ...CUT, piece },
+    });
+    // The cut and its piece wait on the same change.
+    expect(cuts(settleKeptCuts([link("b"), marker("after"), holding]))).toEqual(
+      [{ ...CUT, piece: "after" }],
+    );
+    // A piece naming a side where no change waits is consumed.
+    expect(
+      cuts(settleKeptCuts([link("b"), marker("before"), holding])),
+    ).toEqual([CUT]);
+  });
+
   test("markers standing together while a change waits stand in the deepest cut any records", () => {
     const pending: InlineNode = {
       type: "insertion",
