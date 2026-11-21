@@ -419,7 +419,7 @@ export const usesCanonicalSession = (
 export type HeadlessReviewerSession = "legacy" | "canonical";
 
 /** Every host keeps the legacy reviewer until it opts in. */
-export const DEFAULT_HEADLESS_REVIEWER_SESSION = "legacy";
+export const DEFAULT_HEADLESS_REVIEWER_SESSION = "canonical";
 
 /**
  * Whether a headless reviewer runs on the canonical session: the one place
