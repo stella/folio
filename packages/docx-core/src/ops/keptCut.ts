@@ -204,22 +204,37 @@ export const withoutKeptCutsRecorded = (
   changeStandingMarkers(node, keepingRecord(withoutKeptCut, known));
 
 type SeamJoins = NonNullable<TrackedWrapper["resolutionJoins"]>;
-type SeamGroup = NonNullable<SeamJoins["deferredRemove"]>[number];
+
+/**
+ * Kept markers a change's joins name in review history version 1: the
+ * revision they were kept from and how many boundaries they are, nearest
+ * the seam (all of those standing there when no count is given).
+ */
+export type VersionOneKeptMarkers = { keptFrom: string; keptCount?: number };
+
+/**
+ * What review history version 1 wrote on a change about kept markers: those
+ * its own joins name (`change`), and those each of its deferred seam groups
+ * names, by the group's place in `deferredRemove`.
+ */
+export type VersionOneKept = {
+  change?: VersionOneKeptMarkers;
+  groups: readonly (VersionOneKeptMarkers | undefined)[];
+};
 
 /**
  * `nodes` with the kept markers that pending changes' joins name, as review
- * history version 1 wrote them (`keptFrom`, `keptCount` on the change or on
- * a deferred seam's group, no cut on the marker), marked as the version that
- * follows marks them: the markers standing nearest each side the change
- * joins, or beside the group's blockers, as many boundaries as it counts,
- * stand in that cut, naming the change's side (the blockers', or both) as
- * its piece.
- * `writtenOnChange` says which joins were written so. Markers already
- * standing in a cut keep it.
+ * history version 1 wrote them (on the change or on a deferred seam's group,
+ * no cut on the marker), marked as the version that follows marks them: the
+ * markers standing nearest each side the change joins, or beside the group's
+ * blockers, as many boundaries as it counts, stand in that cut, naming the
+ * change's side (the blockers', or both) as its piece.
+ * `writtenOnChange` gives what version 1 wrote on a change's joins.
+ * Markers already standing in a cut keep it.
  */
 const withKeptCutsFromChanges = (
   nodes: readonly InlineNode[],
-  writtenOnChange: (joins: SeamJoins) => boolean,
+  writtenOnChange: (joins: SeamJoins) => VersionOneKept | undefined,
 ): readonly InlineNode[] => {
   const out = nodes.map((node) => {
     const children = childNodes(node);
@@ -253,44 +268,46 @@ const withKeptCutsFromChanges = (
   };
   for (const [index, node] of nodes.entries()) {
     const joins = isTrackedWrapper(node) ? node.resolutionJoins : undefined;
-    if (
-      joins === undefined ||
-      joins.keptFrom === undefined ||
-      !writtenOnChange(joins)
-    )
-      continue;
-    const count = joins.keptCount ?? Number.POSITIVE_INFINITY;
+    const kept =
+      joins === undefined ? undefined : writtenOnChange(joins)?.change;
+    if (joins === undefined || kept === undefined) continue;
+    const count = kept.keptCount ?? Number.POSITIVE_INFINITY;
     if (joins.before > 0)
       mark(
         index - 1,
         -1,
-        { keptFrom: joins.keptFrom, depth: joins.before, count },
+        { keptFrom: kept.keptFrom, depth: joins.before, count },
         "after",
       );
     if (joins.after > 0)
       mark(
         index + 1,
         1,
-        { keptFrom: joins.keptFrom, depth: joins.after, count },
+        { keptFrom: kept.keptFrom, depth: joins.after, count },
         "before",
       );
   }
-  // A deferred seam's group dates the boundaries kept standing at the seam
-  // (`keptFrom`, `keptCount`): the run of unmarked markers its blockers
-  // stand beside, naming the blockers' side, or both, as its piece.
-  const keptGroups = (node: InlineNode | undefined): readonly SeamGroup[] => {
+  // A deferred seam's group dates the boundaries kept standing at the seam:
+  // the run of unmarked markers its blockers stand beside, naming the
+  // blockers' side, or both, as its piece.
+  type KeptGroup = VersionOneKeptMarkers & {
+    depth: number;
+    blockers: readonly number[];
+  };
+  const keptGroups = (node: InlineNode | undefined): readonly KeptGroup[] => {
     const joins =
       node !== undefined && isTrackedWrapper(node)
         ? node.resolutionJoins
         : undefined;
-    return joins === undefined || !writtenOnChange(joins)
-      ? []
-      : (joins.deferredRemove ?? []).filter(
-          (group) => group.keptFrom !== undefined,
-        );
+    const written = joins === undefined ? undefined : writtenOnChange(joins);
+    if (joins === undefined || written === undefined) return [];
+    return (joins.deferredRemove ?? []).flatMap(({ depth, blockers }, at) => {
+      const kept = written.groups[at];
+      return kept === undefined ? [] : [{ ...kept, depth, blockers }];
+    });
   };
-  const seamOf = ({ depth, blockers, keptFrom }: SeamGroup): string =>
-    `${depth}:${blockers.join(",")}:${keptFrom ?? ""}`;
+  const seamOf = ({ depth, blockers, keptFrom }: KeptGroup): string =>
+    `${depth}:${blockers.join(",")}:${keptFrom}`;
   const unmarked = (node: InlineNode | undefined): boolean =>
     node !== undefined && isKeptBoundaryCarrier(node) && !holdsKeptCut([node]);
   let start = 0;
@@ -306,7 +323,7 @@ const withKeptCutsFromChanges = (
     const afterSeams = new Set(after.map(seamOf));
     const across = before.find((group) => afterSeams.has(seamOf(group)));
     const group = across ?? after.at(0) ?? before.at(0);
-    if (group?.keptFrom !== undefined) {
+    if (group !== undefined) {
       let piece: KeptCutPiece = "before";
       if (across !== undefined) piece = "both";
       else if (after.includes(group)) piece = "after";
@@ -326,7 +343,7 @@ const withKeptCutsFromChanges = (
 /** {@link withKeptCutsFromChanges} over a paragraph's content. */
 export const paragraphKeptCutsFromChanges = (
   content: readonly ParagraphContent[],
-  writtenOnChange: (joins: SeamJoins) => boolean,
+  writtenOnChange: (joins: SeamJoins) => VersionOneKept | undefined,
 ): ParagraphContent[] =>
   asParagraphContent(withKeptCutsFromChanges(content, writtenOnChange));
 

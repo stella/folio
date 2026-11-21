@@ -38,6 +38,7 @@ import {
   serializeParagraphPropertyChangeOwner,
   serializeResolutionJoins,
   serializeSplitResolutionPiece,
+  versionOneKeptMarkers,
 } from "./reviewResolutionProvenance";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
 import { serializePartElement } from "./serializer/partNamespaces";
@@ -68,7 +69,6 @@ for (const wordNamespace of WORDPROCESSINGML_NAMESPACE_URIS) {
             before: fc.integer({ min: 0, max: 3 }),
             after: fc.integer({ min: 0, max: 3 }),
             remove: fc.integer({ min: 0, max: 3 }),
-            keptFrom: fc.constantFrom("2026-03-04T05:00:01Z", ""),
           },
           { requiredKeys: ["before", "after", "remove"] },
         ),
@@ -84,7 +84,6 @@ for (const wordNamespace of WORDPROCESSINGML_NAMESPACE_URIS) {
             fc.record(
               {
                 depth: fc.integer({ min: 0, max: 4 }),
-                keptFrom: fc.constantFrom("2026-03-04T05:00:02Z", ""),
                 blockers: fc.uniqueArray(
                   fc.oneof(
                     fc.constant(0),
@@ -133,13 +132,10 @@ for (const wordNamespace of WORDPROCESSINGML_NAMESPACE_URIS) {
             ...(deferredRemove === undefined
               ? {}
               : {
-                  deferredRemove: deferredRemove.map(
-                    ({ depth, blockers, keptFrom }) => ({
-                      depth,
-                      blockers,
-                      ...(keptFrom === undefined ? {} : { keptFrom }),
-                    }),
-                  ),
+                  deferredRemove: deferredRemove.map(({ depth, blockers }) => ({
+                    depth,
+                    blockers,
+                  })),
                 }),
             retainedAfter: [
               {
@@ -271,6 +267,24 @@ test("malformed and future provenance is dropped on read and reported", () => {
       }),
     ),
     JSON.stringify({ version: 3, value: { before: 0, after: 0, remove: 0 } }),
+    // Only version 1 names kept markers on a change.
+    JSON.stringify({
+      version: 2,
+      value: { before: 1, after: 0, remove: 0, keptFrom: "2026-03-04" },
+    }),
+    JSON.stringify({
+      version: 2,
+      value: {
+        before: 0,
+        after: 0,
+        remove: 0,
+        deferredRemove: [{ depth: 1, blockers: [1], keptFrom: "2026-03-04" }],
+      },
+    }),
+    JSON.stringify({
+      version: 1,
+      value: { before: 1, after: 0, remove: 0, keptCount: 1 },
+    }),
     JSON.stringify({ version: 1, value: { before: -1, after: 0, remove: 0 } }),
     JSON.stringify({
       version: 1,
@@ -299,6 +313,40 @@ test("malformed and future provenance is dropped on read and reported", () => {
       ),
     ),
   ).toBeUndefined();
+});
+
+test("version 1 joins naming kept markers are read without those names", () => {
+  const encoded = JSON.stringify({
+    version: 1,
+    value: {
+      before: 1,
+      after: 0,
+      remove: 0,
+      keptFrom: "2026-03-04T05:00:01Z",
+      keptCount: 2,
+      deferredRemove: [
+        { depth: 1, blockers: [1], keptFrom: "2026-03-04T05:00:01Z" },
+        { depth: 1, blockers: [1], keptFrom: "2026-03-04T05:00:02Z" },
+      ],
+    },
+  });
+  const read = parseResolutionJoins(
+    element(
+      `<r xmlns:history="${FOLIO_REVIEW_HISTORY_NAMESPACE}" history:resolutionJoins="${escapeXmlAttribute(encoded)}"/>`,
+    ),
+  );
+  // Groups only their kept dates told apart are one seam.
+  expect(read).toEqual({
+    before: 1,
+    after: 0,
+    remove: 0,
+    deferredRemove: [{ depth: 1, blockers: [1] }],
+  });
+  expect(read === undefined ? undefined : versionOneKeptMarkers(read)).toEqual({
+    change: { keptFrom: "2026-03-04T05:00:01Z", keptCount: 2 },
+    groups: [{ keptFrom: "2026-03-04T05:00:01Z" }],
+  });
+  expect(reviewProvenanceIssue("resolutionJoins", encoded)).toBeUndefined();
 });
 
 test("paragraph cut provenance validates private envelopes and typed projection attributes", () => {
