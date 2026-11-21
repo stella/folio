@@ -74,13 +74,16 @@ import {
 import { joinParagraphSeam } from "./inline";
 import {
   holdsKeptCut,
+  KEPT_CUT_EDGES,
   keptCutFrom,
   keptCutPiece,
+  type KeptRunSides,
   pendingAtEdge,
   settledParagraphKeptCuts,
   settleKeptCuts,
   standsInKeptCut,
   withEdgeKeptCutsWidened,
+  withKeptCutBesideRemoved,
   withKeptCutPieceConsumed,
   withKeptCutPieceRecorded,
   withKeptCutsRecorded,
@@ -119,6 +122,7 @@ import { registerStatedParagraphFormatting } from "./paragraphPropertySnapshot";
 import {
   isBlockBoundary,
   isKeptBoundaryCarrier,
+  joinFollowerIndex,
   noRelocatedBoundaries,
   pairedCommentRanges,
   paragraphRemains,
@@ -2118,6 +2122,55 @@ const cutReach = ({
   return reach;
 };
 
+/**
+ * Each kept marker of `pending` whose run the changes `resolution` removes
+ * with their content leave with no record on one side, with the sides that
+ * go. Its cut then reaches no record of the level it cut on that side, as
+ * a removal's own cut reads (see `cutLevelsOnceResolved` in
+ * {@link resolveList}), and a piece named on a side that goes is consumed
+ * with the change that took the seam: removing those changes with the
+ * revision the markers were kept from, or after it, records the same cut.
+ */
+const keptRunsEmptiedBeside = (
+  pending: readonly InlineNode[],
+  resolution: Resolution,
+): Map<InlineNode, KeptRunSides> => {
+  const runs = new Map<InlineNode, KeptRunSides>();
+  const resolved = (node: InlineNode | undefined): boolean =>
+    node !== undefined &&
+    isTrackedWrapper(node) &&
+    resolution.ids.has(node.info.id);
+  const inRun = (node: InlineNode | undefined): node is InlineNode =>
+    node !== undefined && standsInKeptCut(node) && !resolved(node);
+  const goes = (node: InlineNode | undefined): boolean =>
+    node !== undefined &&
+    resolved(node) &&
+    isTrackedWrapper(node) &&
+    !standsInKeptCut(node) &&
+    removesContent(node, resolution.decision);
+  let start = 0;
+  while (start < pending.length) {
+    if (!inRun(pending[start])) {
+      start += 1;
+      continue;
+    }
+    let end = start + 1;
+    while (inRun(pending[end])) end += 1;
+    let beforeAt = start - 1;
+    while (goes(pending[beforeAt])) beforeAt -= 1;
+    let afterAt = end;
+    while (goes(pending[afterAt])) afterAt += 1;
+    const gone = { before: beforeAt < start - 1, after: afterAt > end };
+    if (
+      (gone.before && beforeAt < 0) ||
+      (gone.after && afterAt >= pending.length)
+    )
+      for (const node of pending.slice(start, end)) runs.set(node, gone);
+    start = end;
+  }
+  return runs;
+};
+
 type ResolveListOptions = {
   nodes: readonly InlineNode[];
   resolution: Resolution;
@@ -2189,9 +2242,21 @@ const withRemovedPiecesMet = (
         first.resolutionJoins?.after ?? 0,
         second.resolutionJoins?.before ?? 0,
       ) - 1;
+    // The pieces their cut waited on go: the markers keep no deeper cut and
+    // no piece of it, so removing the record they now stand in records the
+    // cut removing them with the revision they were kept from leaves.
+    const markers = source()
+      .slice(index + 1, end)
+      .map((node) =>
+        withKeptCutBesideRemoved(node, {
+          depth: 1,
+          gone: { before: true, after: true },
+          known: resolution.relocated.nodes,
+        }),
+      );
     const seam = withSeamBoundariesInside({
       left: first.content,
-      right: [...source().slice(index + 1, end), ...second.content],
+      right: [...markers, ...second.content],
       depth,
     });
     const content =
@@ -2785,6 +2850,7 @@ const resolveList = ({
       cut?: "deferred";
     }
   >();
+  const emptiedBeside = keptRunsEmptiedBeside(pending, resolution);
   let changed = false;
   const enclosing: EnclosingHandoff[] = [];
   for (const [index, node] of pending.entries()) {
@@ -4772,6 +4838,23 @@ const resolveList = ({
     for (const [index, node] of rejoined.entries())
       out[index] = occurrenceOf(node, out[index]);
   }
+  // Kept markers the changes this resolution removed left with nothing on
+  // one side keep one level of cut, wherever the removal's seam put them.
+  for (const [index, occurrence] of out.entries()) {
+    const gone =
+      occurrence.source === undefined
+        ? undefined
+        : emptiedBeside.get(occurrence.source);
+    if (gone === undefined) continue;
+    const node = withKeptCutBesideRemoved(occurrence.node, {
+      depth: 1,
+      gone,
+      known: resolution.relocated.nodes,
+    });
+    if (node === occurrence.node) continue;
+    out[index] = occurrenceOf(node, occurrence);
+    changed = true;
+  }
   // Boundaries standing at the list's edge hold no piece of a nested cut: the
   // edge is the first piece's beyond them, as the source edges above are.
   let firstAt = 0;
@@ -4793,6 +4876,9 @@ const resolveList = ({
   return {
     // A paragraph's own list is settled once the joins stand: one can put a
     // pending change beside a marker its paragraph leaves waiting on nothing.
+    // So are a nested list's edges: what meets them from outside, as the
+    // paragraph mark beside the record's edge, is only known there, so the
+    // markers at them keep their cut until then.
     nodes:
       path.length === 0
         ? resolvedNodes
@@ -4800,6 +4886,10 @@ const resolveList = ({
             ...settleKeptCuts(resolvedNodes, {
               known: resolution.relocated.nodes,
               rebuilt: (from, to) => carryResolutionState(resolution, from, to),
+              outside: {
+                start: KEPT_CUT_EDGES.UNSETTLED,
+                end: KEPT_CUT_EDGES.UNSETTLED,
+              },
             }),
           ],
     changed,
@@ -5279,13 +5369,10 @@ const joinOps = (
   // Range boundaries the block list holds between this paragraph and the
   // next one go into the joined paragraph where the two meet: what stood
   // before them stays before, what stood after stays after.
-  let followerIndex = location.index + 1;
-  while (
-    paragraph.sectionProperties === undefined &&
-    blocks[followerIndex] !== undefined &&
-    isBlockBoundary(blocks[followerIndex] ?? panic("A block is listed."))
-  )
-    followerIndex += 1;
+  const followerIndex = joinFollowerIndex(blocks, {
+    paragraph,
+    index: location.index,
+  });
   const follower = blocks[followerIndex];
   const standing =
     follower?.type === "paragraph"
