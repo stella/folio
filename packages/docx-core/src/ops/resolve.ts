@@ -1276,6 +1276,30 @@ const placeAcceptedSeamKept = ({
   // as resolving its emptying first leaves them.
   const far = start < first ? out.at(last + 1) : out.at(first - 1);
   if (far === undefined || emptiedBy(far, fateOf)) return false;
+  // The accepted blocker beside them stays between the pieces. Rejecting the
+  // revision after accepting it puts them into the piece only when the
+  // blocker's record facing them is alike the piece, or when the blocker's
+  // own join there reaches deeper than the cut, so that it continues the
+  // record the cut split; otherwise they stand beside it.
+  const blockerBefore = blocker(out.at(start - 1));
+  const beside = out.at(blockerBefore ? start - 1 : start + records);
+  const piece = out.at(blockerBefore ? start + records : start - 1);
+  const edgeRecord =
+    beside === undefined
+      ? undefined
+      : childNodes(beside)?.at(blockerBefore ? -1 : 0);
+  const besideJoins =
+    beside !== undefined && isTrackedWrapper(beside)
+      ? beside.resolutionJoins
+      : undefined;
+  const ownJoin =
+    (blockerBefore ? besideJoins?.after : besideJoins?.before) ?? 0;
+  const continuesPiece =
+    ownJoin > group.depth ||
+    (edgeRecord !== undefined &&
+      piece !== undefined &&
+      sameOwnFields(edgeRecord, piece));
+  if (!continuesPiece) return false;
   const standing = out.slice(start, start + records);
   const keptFrom = standing
     .flatMap((node) => keptCutFrom(node) ?? [])
