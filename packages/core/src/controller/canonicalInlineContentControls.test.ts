@@ -240,19 +240,34 @@ describe("inline content controls in the canonical session", () => {
     return [...new Set(ids)];
   };
 
-  test("a suggestion over the control's whole text refuses and changes nothing", async () => {
-    const current = await session(undefined, "suggesting");
-    const before = current.document;
-    let state = stateFor(current);
-    const { open, close } = edges(state);
-    state = select(state, open + 1, close - 1);
-    expect(
-      current
-        .prepareReplace(state, { from: open + 1, to: close - 1, text: "New" })
-        .isErr(),
-    ).toBe(true);
-    expect(current.document).toBe(before);
-  });
+  // The suggestion strikes and inserts inside the control, which stays.
+  for (const resolution of ["accept", "reject"] as const)
+    test(`a suggestion over the control's whole text stays in the control, and ${resolution}ing it keeps the control`, async () => {
+      const current = await session(undefined, "suggesting");
+      const source = parts(current);
+      let state = stateFor(current);
+      const { open, close } = edges(state);
+      state = select(state, open + 1, close - 1);
+      state = accept(
+        state,
+        current
+          .prepareReplace(state, { from: open + 1, to: close - 1, text: "New" })
+          .unwrap(),
+      );
+      expect(parts(current).split("[")).toHaveLength(2);
+      accept(
+        state,
+        current
+          .prepareResolve(state, {
+            revisionIds: revisionIds(current),
+            resolution,
+          })
+          .unwrap(),
+      );
+      expect(parts(current)).toBe(
+        resolution === "accept" ? "Before [New] after" : source,
+      );
+    });
 
   test("replacing all of the control's text in editing mode keeps the new text in it", async () => {
     const current = await session(undefined, "editing");
