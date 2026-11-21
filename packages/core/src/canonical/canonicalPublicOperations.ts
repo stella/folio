@@ -4944,6 +4944,16 @@ export class CanonicalPublicOperations {
         panic("A resolved insertion lost its batch order.");
       return order;
     };
+    /**
+     * Where an insertion stands among those at its gap: in batch order, but a
+     * paragraph put before one the direct batch deletes, placed after it
+     * instead (`besideDeletion`), still goes ahead of the blocks put after it.
+     */
+    const placementOrderOf = (member: AdmittedOperation) =>
+      member.besideDeletion === true &&
+      member.operation.type === "insertAfterBlock"
+        ? orderOf(member) - batch.operations.length
+        : orderOf(member);
     const gaps = new Map<number, AdmittedOperation[]>();
     for (const member of executionOrder) {
       if (!placesBlock(member.operation)) continue;
@@ -5017,7 +5027,7 @@ export class CanonicalPublicOperations {
           intent.at.blockId !== blockId
         )
           return false;
-        const order = orderOf(member);
+        const order = placementOrderOf(member);
         if (
           previousOrder !== undefined &&
           (side === "before" ? order <= previousOrder : order >= previousOrder)
@@ -5192,8 +5202,8 @@ export class CanonicalPublicOperations {
         );
         const placed = partners.toSorted(
           (left, right) =>
-            (orderOf(left.resolvedOperation) -
-              orderOf(right.resolvedOperation)) *
+            (placementOrderOf(left.resolvedOperation) -
+              placementOrderOf(right.resolvedOperation)) *
             (anchor.at.type === "before" ? 1 : -1),
         );
         for (const [index, partner] of placed.entries()) {
