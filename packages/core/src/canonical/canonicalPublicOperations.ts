@@ -4002,12 +4002,13 @@ const compilePublicIntents = ({
     }
     // The notes whose last live reference the intent's tracked deletion
     // took go with it, as operations of their own beside the intent's.
+    let after = readModel(applied.document);
     const noteDeletion =
       mode === "direct"
         ? undefined
         : noteDeletionOps({
             before: document,
-            after: applied.document,
+            after,
             stamp: {
               id: idLease === undefined ? firstRevisionId : ids.revisionId,
               author,
@@ -4018,7 +4019,6 @@ const compilePublicIntents = ({
           });
     if (noteDeletion?.isErr() === true) return Result.err(noteDeletion.error);
     const notes = noteDeletion?.unwrap();
-    let after = applied.document;
     const appliedRevisions = [...applied.revisions];
     if (notes !== undefined && notes.ops.length > 0) {
       const noted = applyDocumentOps(after, notes.ops);
@@ -4028,7 +4028,7 @@ const compilePublicIntents = ({
       after = noted.value.document;
       appliedRevisions.push(...notes.revisions);
     }
-    document = readModel(after);
+    document = after;
     ops.push(...compiled.value.ops, ...(notes?.ops ?? []));
     revisions.push(...appliedRevisions);
     for (const id of appliedRevisions)
