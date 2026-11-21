@@ -169,6 +169,7 @@ import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioDocumentOperation,
   type FolioDocumentOperationBatch,
+  type FolioDocumentOperationMode,
   type FolioDocumentOperationResult,
   type FolioDocumentOperationStory,
   type FolioDocumentOperationUndoHandle,
@@ -702,6 +703,7 @@ const rowClosingCellShapes = <
 type CanonicalBatchOrderOptions<T extends PlannedOperation> = {
   items: readonly T[];
   doc: PMNode;
+  mode: FolioDocumentOperationMode;
 };
 
 /**
@@ -716,6 +718,7 @@ const RUN_START_COLLAPSE_RANK = -1;
 const orderCanonicalBatch = <T extends PlannedOperation>({
   items,
   doc,
+  mode,
 }: CanonicalBatchOrderOptions<T>): T[] => {
   const deletionOf = new Map(
     items.flatMap((item) =>
@@ -903,11 +906,20 @@ const orderCanonicalBatch = <T extends PlannedOperation>({
       carrier.type === "kept" &&
       plan.address.type === "content" &&
       plan.address.position < plan.block;
+    // Tracked, it takes the paragraphs a pending join runs into it too
+    // (`joinedWords`): an edit of them runs first, as one at a time.
+    const joined: number[] = [];
+    if (mode !== "direct" && !isDeletedPPrMark(paragraph.attrs["pPrMark"]))
+      for (const { paragraph: previous } of before) {
+        if (!isDeletedPPrMark(doc.nodeAt(previous)?.attrs["pPrMark"])) break;
+        joined.push(previous);
+      }
     return {
       addresses: [],
       removes: [
         ...(removes || item.followsTableInsertion === true ? [plan.block] : []),
         ...(takesCarrierMark ? [markOf(carrier.paragraph)] : []),
+        ...joined,
       ],
     };
   };
@@ -1597,6 +1609,27 @@ const lentFormatting = ({
   formatting !== undefined && !namesSource && isTakenWholeOnAcceptance(source)
     ? withoutNumbering(formatting)
     : formatting;
+
+/**
+ * The ids of the paragraphs right before the one at `paragraphPos` whose
+ * marks are pending deletion: a pending join runs them into it.
+ */
+const joinedBefore = (doc: PMNode, paragraphPos: number): string[] => {
+  const at = doc.resolve(paragraphPos);
+  const ids: string[] = [];
+  for (let index = at.index() - 1; index >= 0; index--) {
+    const previous = at.parent.child(index);
+    const id: unknown = previous.attrs["paraId"];
+    if (
+      previous.type.name !== "paragraph" ||
+      !isDeletedPPrMark(previous.attrs["pPrMark"]) ||
+      typeof id !== "string"
+    )
+      break;
+    ids.push(id);
+  }
+  return ids;
+};
 
 /** Whether a pending deletion already takes `paragraph` whole, mark and words. */
 const goesWholeOnAcceptance = (paragraph: PMNode): boolean =>
@@ -3738,6 +3771,8 @@ type ResolveBlockDeletionOptions = {
   tableBeforeGainsFollower: boolean;
   /** The run of paragraphs right before this one the batch deletes. */
   deletedRun: DeletedRun;
+  /** The paragraphs the batch deletes, by id. */
+  deletedByBatch: ReadonlySet<string>;
   refusal: (
     reason: FolioAIEditSkipReason,
     message?: string,
@@ -5152,6 +5187,7 @@ export class CanonicalPublicOperations {
     const executionOrder = orderCanonicalBatch({
       items: resolved,
       doc: projected.value.doc,
+      mode: batch.mode,
     });
     let document = readModel(session.document);
     // The batch's comments run before its edits, each adding a reference
@@ -6330,12 +6366,17 @@ export class CanonicalPublicOperations {
     previousGainsFollower,
     tableBeforeGainsFollower,
     deletedRun,
+    deletedByBatch,
     refusal,
   }: ResolveBlockDeletionOptions) {
     // A direct deletion leaves no text for a comment to cover, as the default
     // engine finds; a tracked one covers the deleted words.
     if (operation.comment !== undefined && !tracked)
       return refusal("unsupportedBlock");
+    // A pending deletion already takes it whole, mark and words, as one of
+    // the joined paragraph a deletion of the paragraph it joins took.
+    if (tracked && goesWholeOnAcceptance(paragraph.node))
+      return refusal("noopOperation");
     const end = paragraph.start + paragraph.node.content.size;
     const after = doc.resolve(end + 1).nodeAfter;
     const before = doc.resolve(paragraph.start - 1).nodeBefore;
@@ -6458,6 +6499,17 @@ export class CanonicalPublicOperations {
           type: "deleteParagraphs",
           story: projectionStory,
           blockIds: [paragraph.blockId],
+          // With survivor ids option C the joined paragraph a pending join
+          // makes of it carries its id: tracked, the words joined into it go
+          // too, as deleting it directly after the join leaves nothing. A
+          // paragraph of that join the batch deletes itself goes by its own
+          // deletion.
+          ...(tracked &&
+          !joinedBefore(doc, paragraph.start - 1).some((id) =>
+            deletedByBatch.has(id),
+          )
+            ? { joinedWords: "deleted" as const }
+            : {}),
         },
       ];
       // A move's source ending its block list after paragraphs the batch
@@ -7154,6 +7206,7 @@ export class CanonicalPublicOperations {
           (besideDeletions.paragraphsAfter.has(previousId) ||
             besideDeletions.deleted.has(previousId)),
         tableBeforeGainsFollower,
+        deletedByBatch: besideDeletions.deleted,
         deletedRun: followed
           ? { type: "none" }
           : deletedRunBefore({
