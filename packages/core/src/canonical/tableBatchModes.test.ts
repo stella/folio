@@ -112,6 +112,47 @@ describe.each(SESSIONS)("%s session", (session) => {
     },
   );
 
+  // A column inserted beside a merge down still moves the grid columns the
+  // merge names, so the merge is refused whichever side the column lands on.
+  test.each(["direct", "tracked-changes"] as const)(
+    "a %s merge down beside a column the batch inserts is refused",
+    async (mode) => {
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await buildTableDocx({
+          rows: 2,
+          columns: 1,
+          cells: [
+            { row: 0, column: 0, rowSpan: 1, columnSpan: 1, text: "top" },
+            { row: 1, column: 0, rowSpan: 1, columnSpan: 1, text: "" },
+          ],
+        }),
+        { session },
+      );
+      const blockId = cellBlockId(reviewer, 0);
+      const result = reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode,
+          operations: [
+            { id: "merge", type: "mergeTableCells", blockId, rowCount: 2 },
+            {
+              id: "insert-column",
+              type: "insertTableColumn",
+              blockId,
+              position: "before",
+            },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      );
+
+      expect(result.applied.map(({ id }) => id)).toEqual(["insert-column"]);
+      expect(result.skipped.map(({ id, reason }) => ({ id, reason }))).toEqual([
+        { id: "merge", reason: "unsupportedBlock" },
+      ]);
+    },
+  );
+
   // The row is named through the paragraph the batch deletes; the deletion
   // runs first, so the row is found through a paragraph the batch keeps.
   test.each(["direct", "tracked-changes"] as const)(
