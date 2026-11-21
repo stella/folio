@@ -565,37 +565,53 @@ describe("single-mutation probes", () => {
     );
   });
 
-  test("multiple table columns round-trip in one comparison", async () => {
-    const base = await buildColumnTableDocx([
-      [{ text: "Account" }, { text: "Status" }],
-      [{ text: "Fees" }, { text: "Open" }],
-    ]);
-    const target = await buildColumnTableDocx([
-      [
-        { text: "Account" },
-        { text: "Currency" },
-        { text: "Region" },
-        { text: "Status" },
-      ],
-      [{ text: "Fees" }, { text: "EUR" }, { text: "EMEA" }, { text: "Open" }],
-    ]);
+  // Adjacent new columns are one operation, so a tracked comparison records
+  // them under the table's one pending grid change.
+  test.each(
+    (["legacy", "canonical"] as const).flatMap((session) =>
+      (["middle", "end"] as const).map((place) => ({ session, place })),
+    ),
+  )(
+    "adjacent new table columns ($place) round-trip in one comparison ($session)",
+    async ({ session, place }) => {
+      const base = await buildColumnTableDocx([
+        [{ text: "Account" }, { text: "Status" }],
+        [{ text: "Fees" }, { text: "Open" }],
+      ]);
+      const added = [
+        [{ text: "Currency" }, { text: "Region" }, { text: "Desk" }],
+        [{ text: "EUR" }, { text: "EMEA" }, { text: "" }],
+      ];
+      const target = await buildColumnTableDocx(
+        place === "middle"
+          ? [
+              [{ text: "Account" }, ...(added[0] ?? []), { text: "Status" }],
+              [{ text: "Fees" }, ...(added[1] ?? []), { text: "Open" }],
+            ]
+          : [
+              [{ text: "Account" }, { text: "Status" }, ...(added[0] ?? [])],
+              [{ text: "Fees" }, { text: "Open" }, ...(added[1] ?? [])],
+            ],
+      );
 
-    const result = await compareDocx(base, target, OPTIONS);
-    if (result.isErr()) {
-      throw result.error;
-    }
-    expect(result.value.verification).toEqual({ status: "verified" });
-    expect(result.value.changes.map(({ kind }) => kind)).toEqual([
-      "table-column-insert",
-      "table-column-insert",
-    ]);
-    expect(await projectView(result.value.buffer, "final")).toEqual(
-      await projectView(target, "final"),
-    );
-    expect(await projectView(result.value.buffer, "original")).toEqual(
-      await projectView(base, "final"),
-    );
-  });
+      const result = await compareDocx(base, target, { ...OPTIONS, session });
+      if (result.isErr()) {
+        throw result.error;
+      }
+      expect(result.value.verification).toEqual({ status: "verified" });
+      expect(result.value.changes.map(({ kind }) => kind)).toEqual([
+        "table-column-insert",
+        "table-column-insert",
+        "table-column-insert",
+      ]);
+      expect(await projectView(result.value.buffer, "final")).toEqual(
+        await projectView(target, "final"),
+      );
+      expect(await projectView(result.value.buffer, "original")).toEqual(
+        await projectView(base, "final"),
+      );
+    },
+  );
 
   /**
    * The story's last block sits in a table inside a table, so the appended
