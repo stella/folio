@@ -4622,70 +4622,79 @@ describe("headless docx review notes read surface", () => {
     },
   );
 
-  test("edits a footnote through story-scoped document operations", async () => {
-    // A package whose paragraphs hold ids already: either engine saves an
-    // untouched part as it read it.
-    const baseline = (
-      await prepareCanonicalDocxInput(await readNotesFixture())
-    ).unwrap();
-    const imported = await parseDocx(baseline, { preloadFonts: false });
-    if (!imported.originalBuffer)
-      panic("parser must retain the imported package");
-    const story = { type: "footnote", noteId: 2 } as const;
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
-      author: "Reviewer",
+  for (const session of ["canonical", "legacy"] as const)
+    test(`${session}: edits a footnote through story-scoped document operations`, async () => {
+      // A package whose paragraphs hold ids already.
+      const baseline = (
+        await prepareCanonicalDocxInput(await readNotesFixture())
+      ).unwrap();
+      const story = { type: "footnote", noteId: 2 } as const;
+      const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+        author: "Reviewer",
+        session,
+      });
+      // The legacy session saves an untouched part as its parser normalized it
+      // (an out-of-range comment id renumbered); the canonical one as read.
+      const imported = await parseDocx(baseline, { preloadFonts: false });
+      if (!imported.originalBuffer)
+        panic("parser must retain the imported package");
+      const untouched =
+        session === "legacy" ? imported.originalBuffer : baseline;
+      const snapshot = reviewer.snapshotStory(story);
+      if (!snapshot) {
+        throw new Error("expected the footnote story");
+      }
+      const target = findBlock(snapshot.blocks, "Injected footnote body text.");
+
+      const result = reviewer.applyDocumentOperationsToStory({
+        undefinedReferences: "refuse",
+        story,
+        snapshot,
+        batch: {
+          version: 1,
+          mode: "direct",
+          operations: [
+            {
+              id: "footnote-replace",
+              type: "replaceInBlock",
+              blockId: target.id,
+              find: "Injected footnote",
+              replace: "Updated footnote",
+            },
+          ],
+        },
+      });
+
+      expect(result.status).toBe("committed");
+      expect(result.receipts.at(0)?.affected.at(0)).toEqual({
+        type: "block",
+        story,
+        blockId: target.id,
+        effect: "updated",
+      });
+      expect(reviewer.readStory(story)?.text).toBe(
+        "Updated footnote body text.",
+      );
+      expect(reviewer.getNotesAsText()).toContain(
+        "[footnote #2] Updated footnote body text.",
+      );
+
+      const saved = await reviewer.toBuffer();
+      expect(await partText(saved, "word/footnotes.xml")).toContain(
+        "Updated footnote",
+      );
+      expect(await partBytes(saved, "word/document.xml")).toEqual(
+        await partBytes(untouched, "word/document.xml"),
+      );
+      expect(await partBytes(saved, "word/endnotes.xml")).toEqual(
+        await partBytes(untouched, "word/endnotes.xml"),
+      );
+
+      const reopened = await FolioDocxReviewer.fromBuffer(saved, { session });
+      expect(reopened.readStory(story)?.text).toBe(
+        "Updated footnote body text.",
+      );
     });
-    const snapshot = reviewer.snapshotStory(story);
-    if (!snapshot) {
-      throw new Error("expected the footnote story");
-    }
-    const target = findBlock(snapshot.blocks, "Injected footnote body text.");
-
-    const result = reviewer.applyDocumentOperationsToStory({
-      undefinedReferences: "refuse",
-      story,
-      snapshot,
-      batch: {
-        version: 1,
-        mode: "direct",
-        operations: [
-          {
-            id: "footnote-replace",
-            type: "replaceInBlock",
-            blockId: target.id,
-            find: "Injected footnote",
-            replace: "Updated footnote",
-          },
-        ],
-      },
-    });
-
-    expect(result.status).toBe("committed");
-    expect(result.receipts.at(0)?.affected.at(0)).toEqual({
-      type: "block",
-      story,
-      blockId: target.id,
-      effect: "updated",
-    });
-    expect(reviewer.readStory(story)?.text).toBe("Updated footnote body text.");
-    expect(reviewer.getNotesAsText()).toContain(
-      "[footnote #2] Updated footnote body text.",
-    );
-
-    const saved = await reviewer.toBuffer();
-    expect(await partText(saved, "word/footnotes.xml")).toContain(
-      "Updated footnote",
-    );
-    expect(await partBytes(saved, "word/document.xml")).toEqual(
-      await partBytes(imported.originalBuffer, "word/document.xml"),
-    );
-    expect(await partBytes(saved, "word/endnotes.xml")).toEqual(
-      await partBytes(imported.originalBuffer, "word/endnotes.xml"),
-    );
-
-    const reopened = await FolioDocxReviewer.fromBuffer(saved);
-    expect(reopened.readStory(story)?.text).toBe("Updated footnote body text.");
-  });
 
   for (const session of ["canonical", "legacy"] as const)
     test(`${session}: tracks and undoes an endnote operation batch`, async () => {
