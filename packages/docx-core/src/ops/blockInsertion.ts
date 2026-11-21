@@ -377,6 +377,8 @@ type PrepareTrackedParagraphInsertionOptions = {
   anchor: Paragraph;
   /** Omitted at the end of the virtual main-story list. */
   following?: Paragraph;
+  /** A neighbor in the already validated virtual document represented by both indexes. */
+  validatedNeighbor?: Paragraph;
   paragraphIds: Pick<IdentityKeyIndex, "count">;
   recordIds: Pick<IdentityKeyIndex, "count">;
 };
@@ -400,6 +402,7 @@ export const prepareTrackedParagraphInsertion = ({
   op,
   anchor: source,
   following,
+  validatedNeighbor,
   paragraphIds,
   recordIds,
 }: PrepareTrackedParagraphInsertionOptions): Result<
@@ -459,10 +462,20 @@ export const prepareTrackedParagraphInsertion = ({
     anchor,
   });
   const validate = (prepared: ReplaceBlocksOp) => {
+    // An unchanged, validated neighbor contributes no removals. Its ids stay
+    // occupied in both virtual indexes, so an inserted copy still collides.
+    const [added, retained] = prepared.blocks;
+    const includesValidatedNeighbor =
+      validatedNeighbor === anchor &&
+      retained === anchor &&
+      prepared.blocks.length === 2 &&
+      added !== undefined;
     const checked = validateReplacement({
       document,
-      op: prepared,
-      before: [anchor],
+      op: includesValidatedNeighbor
+        ? { ...prepared, blocks: [added], expected: [] }
+        : prepared,
+      before: includesValidatedNeighbor ? [] : [anchor],
       paragraphIds,
       recordIds,
     });
