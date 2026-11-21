@@ -202,6 +202,10 @@ stay exported for validation-only paths.
   column, so the row has fewer cells there; more `cellTexts` than cells is
   refused as `payloadDoesNotFit` (the issue's `message` names the texts), never
   truncated. The same holds for `insertTableColumn` across a horizontal merge.
+- `insertTableColumn` with `columnCount` inserts that many adjacent columns as
+  one change; its `cellTexts` fill the new cells row by row, left to right.
+  Insert every column of one change in one operation: a second tracked column
+  insertion in a table whose columns already have a pending change is refused.
 - A `queued` list in a `suggest_changes` result means the host parked those
   operations in its own review queue; treat it like `applied` for the purpose
   of "the edit has been proposed", never as a failure.
