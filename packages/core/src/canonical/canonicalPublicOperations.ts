@@ -3591,10 +3591,12 @@ const compilePublicIntents = ({
       applied = verified.value;
     }
     // The notes whose last live reference the intent's tracked deletion
-    // took go with it, as operations of their own beside the intent's.
+    // took go with it, as operations of their own beside the intent's. A
+    // comparison states each note's own changes as a story of its own, as
+    // the legacy reviewer does.
     let after = readModel(applied.document);
     const noteDeletion =
-      mode === "direct"
+      mode === "direct" || noteReferenceEditsAllowed()
         ? undefined
         : noteDeletionOps({
             before: document,
