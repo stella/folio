@@ -161,6 +161,47 @@ for (const { name, body, anchor, accepted, sessions } of CASES)
     },
   );
 
+describe.each(SESSIONS)(
+  "on the %s session, two paragraphs added after a table that ends a content control",
+  (session) => {
+    test("rejecting the words, then the breaks from the last back, takes them out", async () => {
+      const open = (bytes: ArrayBuffer) =>
+        FolioDocxReviewer.fromBuffer(bytes, { session });
+      const bytes = await docx(
+        `${control(TABLE)}${paragraph("10000002", "Tail")}`,
+      );
+      const source = texts(await open(bytes.slice(0)));
+      const reviewer = await open(bytes.slice(0));
+      const result = reviewer.applyDocumentOperations(
+        {
+          version: 1,
+          mode: "tracked-changes",
+          operations: [
+            {
+              id: "add",
+              type: "insertAfterBlock",
+              blockId: "10000001",
+              text: "First\nSecond",
+            },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      );
+      expect(result.applied).toHaveLength(1);
+      const changes = reviewer.getChanges();
+      for (const change of changes.filter(({ type }) => type === "insertion"))
+        reviewer.rejectChange(change);
+      const breaks = reviewer.getChanges();
+      expect(breaks).toHaveLength(2);
+      for (const change of breaks.toReversed()) reviewer.rejectChange(change);
+      expect(reviewer.getChanges()).toEqual([]);
+      expect(texts(reviewer)).toEqual(source);
+      const reopened = await open(await reviewer.toBuffer());
+      expect(texts(reopened)).toEqual(source);
+    });
+  },
+);
+
 // The cases below hold the legacy reviewer to its outcomes; the canonical
 // session refuses a tracked paragraph after a table that ends the body.
 const openLegacy = (bytes: ArrayBuffer) =>

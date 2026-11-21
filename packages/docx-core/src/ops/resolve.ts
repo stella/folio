@@ -5320,11 +5320,11 @@ const joinOps = (
           // a cell, that paragraph's mark becomes the cell's terminator.
           (containerFinal &&
             blocks.at(location.index - 1)?.type === "paragraph") ||
-          // After a table, with the paragraphs joining it: removing them
-          // leaves the control ending in its table and the container's end
-          // where it was.
-          (endsControl &&
-            blocks.at(location.index - 1 - joining.length)?.type === "table"),
+          // Ending a control, with the paragraphs joining it: removing them
+          // leaves the control ending in whatever stands before them and the
+          // container's end where it was, so a rejected added mark takes its
+          // emptied paragraph whatever stands before it.
+          (endsControl && location.index - joining.length > 0),
     followingTableCanReceiveRunIn: tableTarget !== undefined,
     holdsContentOnceAccepted: paragraphHoldsContentOnceAccepted(chained),
     followingBlockCanReceiveRunIn: blockTarget !== undefined,

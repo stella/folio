@@ -1,7 +1,9 @@
 /**
- * Resolving away the mark of the paragraph that ends a block content control
- * joins it with the paragraph after the control: an empty one has nothing to
- * bring into the control and goes; one with content stays where it is.
+ * Accepting the deleted mark of the paragraph that ends a block content
+ * control joins it with the paragraph after the control: an empty one has
+ * nothing to bring into the control and goes; one with content stays where it
+ * is. Rejecting the added mark of an empty paragraph there takes that
+ * paragraph, which the insertion added, whatever follows the control.
  */
 import { expect, test } from "bun:test";
 
@@ -72,37 +74,58 @@ const outline = (blocks: readonly BlockContent[]): unknown[] =>
     return block.type === "paragraph" ? block.paraId : block.type;
   });
 
-for (const [mark, decision] of [
-  ["ins", REVISION_DECISIONS.REJECT],
-  ["del", REVISION_DECISIONS.ACCEPT],
-] as const) {
-  test(`${decision}ing the control's last mark takes the empty paragraph after it`, () => {
-    expect(
-      outline(
-        resolved(
-          documentOf(
-            [paragraph("00000004", ""), paragraph("00000005", "Five")],
-            mark,
-          ),
-          decision,
+test("accepting the control's last deleted mark takes the empty paragraph after it", () => {
+  expect(
+    outline(
+      resolved(
+        documentOf(
+          [paragraph("00000004", ""), paragraph("00000005", "Five")],
+          "del",
         ),
+        REVISION_DECISIONS.ACCEPT,
       ),
-    ).toStrictEqual(["00000001", ["00000002", "00000003"], "00000005"]);
-  });
+    ),
+  ).toStrictEqual(["00000001", ["00000002", "00000003"], "00000005"]);
+});
 
-  test(`${decision}ing the control's last mark takes an empty final paragraph`, () => {
-    expect(
-      outline(
-        resolved(documentOf([paragraph("00000004", "")], mark), decision),
+test("accepting the control's last deleted mark takes an empty final paragraph", () => {
+  expect(
+    outline(
+      resolved(
+        documentOf([paragraph("00000004", "")], "del"),
+        REVISION_DECISIONS.ACCEPT,
       ),
-    ).toStrictEqual(["00000001", ["00000002", "00000003"]]);
-  });
+    ),
+  ).toStrictEqual(["00000001", ["00000002", "00000003"]]);
+});
 
-  test(`${decision}ing the control's last mark keeps a paragraph with content after it`, () => {
-    expect(
-      outline(
-        resolved(documentOf([paragraph("00000004", "Four")], mark), decision),
+test("accepting the control's last deleted mark keeps a paragraph with content after it", () => {
+  expect(
+    outline(
+      resolved(
+        documentOf([paragraph("00000004", "Four")], "del"),
+        REVISION_DECISIONS.ACCEPT,
       ),
-    ).toStrictEqual(["00000001", ["00000002", "00000003"], "00000004"]);
-  });
-}
+    ),
+  ).toStrictEqual(["00000001", ["00000002", "00000003"], "00000004"]);
+});
+
+test.each([
+  {
+    name: "an empty paragraph",
+    after: [paragraph("00000004", ""), paragraph("00000005", "Five")],
+  },
+  { name: "an empty final paragraph", after: [paragraph("00000004", "")] },
+  { name: "a paragraph with content", after: [paragraph("00000004", "Four")] },
+])(
+  "rejecting the control's last added mark takes its empty paragraph before $name",
+  ({ after }) => {
+    expect(
+      outline(resolved(documentOf(after, "ins"), REVISION_DECISIONS.REJECT)),
+    ).toStrictEqual([
+      "00000001",
+      ["00000002"],
+      ...after.map(({ paraId }) => paraId),
+    ]);
+  },
+);
