@@ -350,32 +350,35 @@ describe("folio writes both halves of a row revision", () => {
     });
   }
 
-  test("resolving one revision clears the row marker and the run marks together", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(
-      await buildTableDocx([{ texts: ["Alpha"] }, { texts: ["Beta"] }]),
-      { author: "Reviewer" },
-    );
-    reviewer.applyOperations(
-      [
-        {
-          id: "delete-row",
-          type: "deleteTableRow",
-          blockId: await findRowBlock(reviewer, "Beta"),
-        },
-      ],
-      { undefinedReferences: "refuse" },
-    );
-    const change = reviewer.getChanges().at(0);
-    if (!change) {
-      throw new Error("expected a pending row deletion");
-    }
+  test.each(["legacy", "canonical"] as const)(
+    "resolving one revision clears the row marker and the run marks together (%s)",
+    async (session) => {
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await buildTableDocx([{ texts: ["Alpha"] }, { texts: ["Beta"] }]),
+        { author: "Reviewer", session },
+      );
+      reviewer.applyOperations(
+        [
+          {
+            id: "delete-row",
+            type: "deleteTableRow",
+            blockId: await findRowBlock(reviewer, "Beta"),
+          },
+        ],
+        { undefinedReferences: "refuse" },
+      );
+      const change = reviewer.getChanges().at(0);
+      if (!change) {
+        throw new Error("expected a pending row deletion");
+      }
 
-    expect(reviewer.rejectChange(change)).toBe(true);
-    expect(reviewer.getChanges()).toEqual([]);
-    const xml = await documentXml(await reviewer.toBuffer());
-    expect(xml).not.toContain("<w:del ");
-    expect(xml).not.toContain("<w:delText");
-  });
+      expect(reviewer.rejectChange(change)).toBe(true);
+      expect(reviewer.getChanges()).toEqual([]);
+      const xml = await documentXml(await reviewer.toBuffer());
+      expect(xml).not.toContain("<w:del ");
+      expect(xml).not.toContain("<w:delText");
+    },
+  );
 });
 
 describe("row insert/delete round trips through the reviewed views", () => {
