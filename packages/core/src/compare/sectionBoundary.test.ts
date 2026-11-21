@@ -105,11 +105,25 @@ const storyProjection = (reviewer: FolioDocxReviewer) => ({
     .package.document.content.map(({ type }) => type),
 });
 
-const reopenResolved = async (
-  buffer: ArrayBuffer,
-  mode: "accept" | "reject",
-): Promise<FolioDocxReviewer> => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
+type Session = "legacy" | "canonical";
+
+type ReopenResolvedOptions = {
+  buffer: ArrayBuffer;
+  mode: "accept" | "reject";
+  session?: Session;
+};
+
+const reopenResolved = async ({
+  buffer,
+  mode,
+  session,
+}: ReopenResolvedOptions): Promise<FolioDocxReviewer> => {
+  const open = (bytes: ArrayBuffer) =>
+    FolioDocxReviewer.fromBuffer(
+      bytes,
+      session === undefined ? {} : { session },
+    );
+  const reviewer = await open(buffer);
   if (mode === "accept") {
     reviewer.acceptAll();
   } else {
@@ -133,10 +147,10 @@ const reopenResolved = async (
     reopenedConcurrentFirst,
     reopenedConcurrentSecond,
   ] = await Promise.all([
-    FolioDocxReviewer.fromBuffer(first),
-    FolioDocxReviewer.fromBuffer(second),
-    FolioDocxReviewer.fromBuffer(concurrentFirst),
-    FolioDocxReviewer.fromBuffer(concurrentSecond),
+    open(first),
+    open(second),
+    open(concurrentFirst),
+    open(concurrentSecond),
   ]);
   const expectedProjection = storyProjection(reopenedFirst);
   expect(storyProjection(reopenedSecond)).toEqual(expectedProjection);
@@ -148,16 +162,21 @@ const reopenResolved = async (
 const expectResolvedTerminals = async (
   baseDocument: Document,
   targetDocument: Document,
+  session?: Session,
 ) => {
   const [base, target] = await Promise.all([
     createDocx(baseDocument),
     createDocx(targetDocument),
   ]);
+  const sessionOptions = session === undefined ? {} : { session };
   const [baseReviewer, targetReviewer] = await Promise.all([
-    FolioDocxReviewer.fromBuffer(base),
-    FolioDocxReviewer.fromBuffer(target),
+    FolioDocxReviewer.fromBuffer(base, sessionOptions),
+    FolioDocxReviewer.fromBuffer(target, sessionOptions),
   ]);
-  const result = await compareDocx(base, target, OPTIONS);
+  const result = await compareDocx(base, target, {
+    ...OPTIONS,
+    ...sessionOptions,
+  });
   if (result.isErr()) {
     throw result.error;
   }
@@ -170,8 +189,8 @@ const expectResolvedTerminals = async (
   expect(pendingXml).toMatch(/<w:rPr><w:del\b[^>]*\/><\/w:rPr><w:sectPr>/u);
 
   const [accepted, rejected] = await Promise.all([
-    reopenResolved(result.value.buffer, "accept"),
-    reopenResolved(result.value.buffer, "reject"),
+    reopenResolved({ buffer: result.value.buffer, mode: "accept", session }),
+    reopenResolved({ buffer: result.value.buffer, mode: "reject", session }),
   ]);
   expect(storyProjection(accepted)).toEqual(storyProjection(targetReviewer));
   expect(storyProjection(rejected)).toEqual(storyProjection(baseReviewer));
@@ -203,8 +222,8 @@ const expectPendingTerminals = async ({
   );
 
   const [resolvedAccepted, resolvedRejected] = await Promise.all([
-    reopenResolved(pending, "accept"),
-    reopenResolved(pending, "reject"),
+    reopenResolved({ buffer: pending, mode: "accept" }),
+    reopenResolved({ buffer: pending, mode: "reject" }),
   ]);
   expect(storyProjection(resolvedAccepted)).toEqual(
     storyProjection(acceptedReviewer),
@@ -366,19 +385,23 @@ describe("tracked section-boundary ownership", () => {
     expect(reopenedSecond.getChanges()).toHaveLength(0);
   });
 
-  test("accept removes an emptied endpoint before a table and reject restores it", async () => {
-    await expectResolvedTerminals(
-      documentWith([
-        paragraph("00000001", "Remove", SECTION_B),
-        table("Cell"),
-        paragraph("00000002", "Tail", FOLLOWING_SECTION),
-      ]),
-      documentWith([
-        table("Cell"),
-        paragraph("00000002", "Tail", FOLLOWING_SECTION),
-      ]),
-    );
-  });
+  test.each(["legacy", "canonical"] as const)(
+    "accept removes an emptied endpoint before a table and reject restores it (%s)",
+    async (session) => {
+      await expectResolvedTerminals(
+        documentWith([
+          paragraph("00000001", "Remove", SECTION_B),
+          table("Cell"),
+          paragraph("00000002", "Tail", FOLLOWING_SECTION),
+        ]),
+        documentWith([
+          table("Cell"),
+          paragraph("00000002", "Tail", FOLLOWING_SECTION),
+        ]),
+        session,
+      );
+    },
+  );
 });
 
 test("an inserted section imports its header part and keeps the rejected body unchanged", async () => {
@@ -412,7 +435,10 @@ test("an inserted section imports its header part and keeps the rejected body un
   );
   if (result.isErr()) throw result.error;
   expect(result.value.verification).toEqual({ status: "verified" });
-  const accepted = await reopenResolved(result.value.buffer, "accept");
+  const accepted = await reopenResolved({
+    buffer: result.value.buffer,
+    mode: "accept",
+  });
   const endpoint = accepted
     .toDocument()
     .package.document.content.find(
@@ -426,7 +452,10 @@ test("an inserted section imports its header part and keeps the rejected body un
   expect(
     accepted.readStory({ type: "header", relationshipId: reference.rId })?.text,
   ).toBe("Section heading");
-  const rejected = await reopenResolved(result.value.buffer, "reject");
+  const rejected = await reopenResolved({
+    buffer: result.value.buffer,
+    mode: "reject",
+  });
   const original = await FolioDocxReviewer.fromBuffer(baseBuffer);
   expect(storyProjection(rejected)).toEqual(storyProjection(original));
   expect(
