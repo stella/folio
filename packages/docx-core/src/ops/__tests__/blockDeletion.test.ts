@@ -1213,3 +1213,69 @@ test("a tracked deletion of a paragraph holding a content control meets the laws
   const { tracked } = assertLaws(document, deletion(["00000002"]));
   expect(JSON.stringify(tracked.document)).toContain('"tag":"amount"');
 });
+
+// A range boundary standing after the deleted paragraph is no block after
+// it: the paragraph past it follows, or the paragraph ends its container,
+// and a paragraph that joins the follower takes the boundary in where the
+// two meet.
+describe("deleting a paragraph before a range boundary standing between blocks", () => {
+  const bookmarked = (mark?: Paragraph["pPrMark"]) =>
+    ({
+      ...paragraph("00000002", ""),
+      content: [
+        { type: "bookmarkStart", id: 11, name: "Clause" },
+        { type: "run", content: [{ type: "text", text: "Deleted." }] },
+      ],
+      ...(mark === undefined ? {} : { pPrMark: mark }),
+    }) satisfies Paragraph;
+  const boundaryOrder = (document: Document) =>
+    JSON.stringify(document).match(
+      /bookmarkStart|bookmarkEnd|Deleted|Closing/gu,
+    );
+
+  test.each(["paragraph", "table", "end"] as const)(
+    "before a %s meets the laws",
+    (follower) => {
+      const document = documentOf([
+        paragraph("00000001", "Opening."),
+        bookmarked(),
+        { type: "bookmarkEnd", id: 11 },
+        ...(follower === "table"
+          ? [cell([paragraph("00000003", "Cell.")])]
+          : []),
+        ...(follower === "end" ? [] : [paragraph("00000004", "Closing.")]),
+      ]);
+      const { direct } = assertLaws(document, deletion(["00000002"]));
+      expect(boundaryOrder(direct.document)).toEqual([
+        "bookmarkStart",
+        "bookmarkEnd",
+        ...(follower === "end" ? [] : ["Closing"]),
+      ]);
+    },
+  );
+
+  // Taking back one's own added break joins the paragraph to the next one
+  // physically, with the boundary inside where they meet.
+  test("one's own added break joins the next paragraph around the boundary", () => {
+    const document = documentOf([
+      paragraph("00000001", "Opening."),
+      bookmarked({
+        kind: "ins",
+        info: { id: 5, author: "Reviewer", date: "2026-01-01T00:00:00Z" },
+      }),
+      { type: "bookmarkEnd", id: 11 },
+      paragraph("00000004", "Closing."),
+    ]);
+    const tracked = apply(document, deletion(["00000002"]));
+    expect(tracked.document.package.document.content).toHaveLength(2);
+    expect(boundaryOrder(tracked.document)).toEqual([
+      "bookmarkStart",
+      "Deleted",
+      "bookmarkEnd",
+      "Closing",
+    ]);
+    const undo = applyDocumentOps(tracked.document, tracked.inverse);
+    if (undo.isErr()) throw undo.error;
+    expect(undo.value.document).toStrictEqual(document);
+  });
+});

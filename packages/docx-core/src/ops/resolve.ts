@@ -110,8 +110,10 @@ import {
 import { findStoryParagraph } from "./paragraphLocator";
 import { registerStatedParagraphFormatting } from "./paragraphPropertySnapshot";
 import {
+  blockFollower,
   isBlockBoundary,
   isKeptBoundaryCarrier,
+  lastBlockPastBoundaries,
   noRelocatedBoundaries,
   pairedCommentRanges,
   paragraphRemains,
@@ -5108,24 +5110,23 @@ const joinOps = (
   const blocks = blockListAt(body.content, location.list);
   const previous = blocks[location.index - 1];
   // Range boundaries the block list holds between this paragraph and the
-  // next one go into the joined paragraph where the two meet: what stood
-  // before them stays before, what stood after stays after.
-  let followerIndex = location.index + 1;
-  while (
-    paragraph.sectionProperties === undefined &&
-    blocks[followerIndex] !== undefined &&
-    isBlockBoundary(blocks[followerIndex] ?? panic("A block is listed."))
-  )
-    followerIndex += 1;
-  const follower = blocks[followerIndex];
-  const standing =
-    follower?.type === "paragraph"
-      ? blocks.slice(location.index + 1, followerIndex).filter(isBlockBoundary)
-      : [];
+  // next block stand at a position, not between two blocks: the block past
+  // them follows this paragraph. A paragraph there joins this one with them
+  // inside, where the two meet: what stood before them stays before, what
+  // stood after stays after.
+  const across =
+    paragraph.sectionProperties === undefined
+      ? blockFollower(blocks, location.index)
+      : {
+          index: location.index + 1,
+          block: blocks[location.index + 1],
+          standing: [],
+        };
+  const { index: followerIndex, block: follower, standing } = across;
   const next =
     standing.length > 0 && follower?.type === "paragraph"
       ? { ...follower, content: [...standing, ...follower.content] }
-      : blocks[location.index + 1];
+      : follower;
   if (next?.type === "paragraph") {
     const outcome = paragraphMarkOutcome({
       follows: "paragraph",
@@ -5248,8 +5249,12 @@ const joinOps = (
     );
   }
   // Fail closed: content resolved across a range boundary standing between
-  // blocks would move into or out of its range.
-  if (next !== undefined && isBlockBoundary(next)) {
+  // blocks, or after the container's last paragraph, would move into or out
+  // of its range.
+  if (
+    (next !== undefined && isBlockBoundary(next)) ||
+    (follower === undefined && standing.length > 0)
+  ) {
     return Result.err(
       new DocumentOpRefusal({
         opType: op.type,
@@ -5314,7 +5319,7 @@ const joinOps = (
     markWasAdded: added,
     containerStillEndsWithParagraph:
       follows !== "nothing"
-        ? blocks.at(-1)?.type === "paragraph"
+        ? lastBlockPastBoundaries(blocks)?.type === "paragraph"
         : // Removing the final paragraph leaves the block before it last: in
           // a cell, that paragraph's mark becomes the cell's terminator.
           (containerFinal &&
@@ -5339,7 +5344,7 @@ const joinOps = (
           // this mark leaves its end as it was, only the run-in crosses.
           (!location.list.some((step) => step.kind === "tableCell") &&
             location.index > 0 &&
-            blocks.at(-1)?.type === "table" &&
+            lastBlockPastBoundaries(blocks)?.type === "table" &&
             tableBoundary.type === "receiver"))),
     emptyInsertedTableBoundary:
       tableBoundary?.type === "blocked" && tableBoundary.reason === "review"
@@ -5367,6 +5372,17 @@ const joinOps = (
     paragraph.content.length > 0 &&
     ranInto.has(idKey(runInReceiver.paraId ?? ""));
   const tableOutcome = continuesRunIn ? "run-in" : outcome.kind;
+  // Fail closed: content run into the next block across range boundaries
+  // standing before it would move out of their ranges.
+  if (standing.length > 0 && tableOutcome === "run-in")
+    return Result.err(
+      new DocumentOpRefusal({
+        opType: op.type,
+        reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+        message: `A range boundary stands between ${paraId} and the next block.`,
+        blockedParagraphMarkRevisionId: revisionId,
+      }),
+    );
   if (
     (tableOutcome === "remove" || tableOutcome === "run-in") &&
     blocks.length > 1 &&

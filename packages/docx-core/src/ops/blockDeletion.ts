@@ -36,8 +36,10 @@ import {
   paragraphLength,
 } from "./offsets";
 import {
+  blockFollower,
   isBlockBoundary,
   isBoundary,
+  lastBlockPastBoundaries,
   withBoundariesOutsideDeletion,
 } from "./rangeBoundaries";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
@@ -735,22 +737,16 @@ export const deleteBlocks = ({
   // Range boundaries the block list holds between the last paragraph and the
   // next one stand where the two meet once its mark goes, as resolving that
   // mark joins them: what stood before them stays before.
-  let followerIndex = last.index + 1;
   const endsNoSection = found.every(
     ({ paragraph }) => paragraph.sectionProperties === undefined,
   );
-  for (
-    let block = list[followerIndex];
-    endsNoSection && block !== undefined && isBlockBoundary(block);
-    block = list[followerIndex]
-  )
-    followerIndex += 1;
-  const standing =
-    list[followerIndex]?.type === "paragraph"
-      ? list.slice(last.index + 1, followerIndex).filter(isBlockBoundary)
-      : [];
-  const following = list[standing.length > 0 ? followerIndex : last.index + 1];
-  const terminal = last.index === list.length - 1;
+  const follower = endsNoSection
+    ? blockFollower(list, last.index)
+    : { index: last.index + 1, block: list[last.index + 1], standing: [] };
+  const { index: followerIndex, block: following } = follower;
+  const standing = following?.type === "paragraph" ? follower.standing : [];
+  const terminal = following === undefined;
+  const endsWithParagraph = lastBlockPastBoundaries(list)?.type === "paragraph";
   // Paragraphs the same author's pending insertion added whole, with no one
   // else's suggestion in them, go outright before a paragraph or a table, as
   // deleting over one's own insertion removes it; no deletion of an addition
@@ -759,11 +755,8 @@ export const deleteBlocks = ({
   // decides.
   const owner = op.revision;
   const beforeParagraph =
-    following?.type === "paragraph" &&
-    op.move !== true &&
-    found.every(({ paragraph }) => paragraph.sectionProperties === undefined);
-  const beforeTable =
-    following?.type === "table" && list.at(-1)?.type === "paragraph";
+    following?.type === "paragraph" && op.move !== true && endsNoSection;
+  const beforeTable = following?.type === "table" && endsWithParagraph;
   // A move carries its words, and their comments, to where it inserts them:
   // no comment retires with its source.
   const held =
@@ -847,7 +840,7 @@ export const deleteBlocks = ({
   const emptiedBeforeTableUnderReview =
     tableBoundary?.type === "blocked" &&
     tableBoundary.reason === "review" &&
-    list.at(-1)?.type === "paragraph";
+    endsWithParagraph;
   const trackedBeforeTable =
     op.revision !== undefined &&
     tableBoundary !== undefined &&
@@ -856,7 +849,7 @@ export const deleteBlocks = ({
   const trackedBeforeBlock =
     op.revision !== undefined &&
     isOpaqueFollower(following) &&
-    list.at(-1)?.type === "paragraph";
+    endsWithParagraph;
   // Directly, paragraphs a table or another block follows, with no table
   // before them, go whole, as accepting their tracked deletion removes them:
   // the container still ends with a paragraph, and no two tables meet.
@@ -864,9 +857,9 @@ export const deleteBlocks = ({
     op.revision === undefined &&
     following !== undefined &&
     following.type !== "paragraph" &&
-    list.at(-1)?.type === "paragraph" &&
+    endsWithParagraph &&
     (first.index === 0 || list[first.index - 1]?.type === "paragraph") &&
-    found.every(({ paragraph }) => paragraph.sectionProperties === undefined);
+    endsNoSection;
   if (
     following?.type !== "paragraph" &&
     !terminal &&
@@ -1070,7 +1063,9 @@ export const deleteBlocks = ({
     !terminal &&
     first.index > 0 &&
     markPendingDeletion(last.paragraph) &&
-    goesOnceAccepted(list.slice(last.index + 1))
+    goesOnceAccepted(
+      list.slice(last.index + 1).filter((block) => !isBlockBoundary(block)),
+    )
       ? breakRetiredBefore(list, first.index)
       : undefined;
   const retired = retiredIndex === undefined ? undefined : list[retiredIndex];
@@ -1113,7 +1108,7 @@ export const deleteBlocks = ({
   // paragraph nothing of this one reaches.
   const finalTakeover =
     following?.type === "paragraph" &&
-    list.indexOf(following) === list.length - 1 &&
+    blockFollower(list, followerIndex).block === undefined &&
     paragraphHoldsContent(following) &&
     !paragraphHoldsContentOnceAccepted(following) &&
     (following.propertyChanges?.length ?? 0) > 0 &&
