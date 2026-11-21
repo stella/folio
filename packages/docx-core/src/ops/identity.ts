@@ -16,6 +16,7 @@ import {
   type Deletion,
   MAX_REVISION_ID,
   type Paragraph,
+  type ParagraphPropertyChange,
 } from "../model/document";
 import {
   IDENTITY_SPACES,
@@ -657,8 +658,70 @@ export const freshenIdentities = ({
         kind: "fresh",
         paragraphs: bindDeferredIdentities({
           before: after,
-          after: rebindRetainedIdentities({ before: after, after: paragraphs }),
+          after: rebindPropertyChangeOwners({
+            before: after,
+            after: rebindRetainedIdentities({
+              before: after,
+              after: paragraphs,
+            }),
+          }),
         }),
       }
     : { kind: "invalidId", id: invalid };
+};
+
+type RebindPropertyChangeOwnersOptions = {
+  before: readonly Paragraph[];
+  after: Paragraph[];
+};
+
+/**
+ * A property change that belongs to a paragraph-mark deletion
+ * (`resolvesWith`) follows that deletion to the id freshening gave it.
+ */
+const rebindPropertyChangeOwners = ({
+  before,
+  after,
+}: RebindPropertyChangeOwnersOptions): Paragraph[] => {
+  const moved = new Map<number, number>();
+  for (const [index, paragraph] of before.entries()) {
+    const mark = paragraph.pPrMark;
+    const next = after.at(index)?.pPrMark;
+    if (mark === undefined || next === undefined) continue;
+    if (mark.info.id !== next.info.id) moved.set(mark.info.id, next.info.id);
+    const deletion = mark.deletion?.info.id;
+    const nextDeletion = next.deletion?.info.id;
+    if (
+      deletion !== undefined &&
+      nextDeletion !== undefined &&
+      deletion !== nextDeletion
+    )
+      moved.set(deletion, nextDeletion);
+  }
+  if (moved.size === 0) return after;
+  const out: Paragraph[] = [];
+  for (const paragraph of after) {
+    const changes = paragraph.propertyChanges;
+    if (
+      changes?.some(
+        ({ resolvesWith }) =>
+          resolvesWith !== undefined && moved.has(resolvesWith),
+      ) !== true
+    ) {
+      out.push(paragraph);
+      continue;
+    }
+    const rebound: ParagraphPropertyChange[] = [];
+    for (const change of changes) {
+      const owner =
+        change.resolvesWith === undefined
+          ? undefined
+          : moved.get(change.resolvesWith);
+      rebound.push(
+        owner === undefined ? change : { ...change, resolvesWith: owner },
+      );
+    }
+    out.push({ ...paragraph, propertyChanges: rebound });
+  }
+  return out;
 };

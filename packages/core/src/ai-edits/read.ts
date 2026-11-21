@@ -13,6 +13,7 @@ import { panic } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
 
 import {
+  expectParagraphAttrs,
   expectRunPropertyChangeMarkAttrs,
   expectTrackedChangeMarkAttrs,
 } from "../prosemirror/attrs";
@@ -961,11 +962,44 @@ export const listedRevisionGroups = (doc: PMNode) => {
   }));
 };
 
-/** Physical revision ids behind an inline change split by markup. */
+/**
+ * The paragraph property changes that belong to one of `ids` (a tracked
+ * merge's property change, decided with its paragraph-mark deletion).
+ */
+const belongingPropertyChangeIds = (
+  doc: PMNode,
+  ids: readonly number[],
+): number[] => {
+  const owners = new Set(ids);
+  const out: number[] = [];
+  doc.descendants((node) => {
+    if (node.type.name !== "paragraph") return true;
+    for (const { info, resolvesWith } of expectParagraphAttrs(node)
+      ._propertyChanges ?? [])
+      if (
+        resolvesWith !== undefined &&
+        owners.has(resolvesWith) &&
+        !owners.has(info.id)
+      ) {
+        owners.add(info.id);
+        out.push(info.id);
+      }
+    return false;
+  });
+  return out;
+};
+
+/**
+ * Physical revision ids behind an inline change split by markup, with the
+ * property changes that belong to it.
+ */
 export const getTrackedChangeGroupIdsFromDoc = (
   doc: PMNode,
   id: number,
-): number[] => getTrackedChangeGroupsForIds(doc, [id]).at(0) ?? [id];
+): number[] => {
+  const group = getTrackedChangeGroupsForIds(doc, [id]).at(0) ?? [id];
+  return [...group, ...belongingPropertyChangeIds(doc, group)];
+};
 
 /** @internal Read revision statistics without paying for an unrelated block projection. */
 export const getTrackedChangeStatsFromDoc = (

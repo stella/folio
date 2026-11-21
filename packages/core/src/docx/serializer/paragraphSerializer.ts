@@ -57,6 +57,7 @@ import {
 import {
   paragraphMarkResolutionJoinAttributes,
   serializeParagraphMarkResolutionJoin,
+  serializeParagraphPropertyChangeOwner,
   serializeResolutionJoins,
   serializeSplitResolutionPiece,
 } from "../reviewResolutionProvenance";
@@ -570,7 +571,7 @@ function serializeParagraphPropertyChange(
     previousPPrInner.length > 0
       ? `<w:pPr>${previousPPrInner}</w:pPr>`
       : "<w:pPr/>";
-  return `<w:pPrChange ${serializeTrackedChangeAttributes(change.info)}>${normalizedPreviousPPr}</w:pPrChange>`;
+  return `<w:pPrChange ${serializeTrackedChangeAttributes(change.info)}${serializeParagraphPropertyChangeOwner(change)}>${normalizedPreviousPPr}</w:pPrChange>`;
 }
 
 // ============================================================================
