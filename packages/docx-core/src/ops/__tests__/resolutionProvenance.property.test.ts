@@ -903,8 +903,13 @@ test("malformed journal resolution provenance refuses atomically", () => {
 // Rebinding must follow its exact cut pieces across paragraph boundaries.
 test("generated pending deletion splits preserve resolution order and exact histories", () => {
   const refusals = new Map<DocumentOpRefusalReason, number>();
+  // A paragraph break inside an inline content control is refused
+  // (`insideInlineControl`): the split stands outside one.
+  const outsideControls = shapeArbitrary.filter(
+    ({ wrapper }) => wrapper !== "control" && wrapper !== "nested",
+  );
   assertProperty(
-    fc.property(shapeArbitrary, (shape) => {
+    fc.property(outsideControls, (shape) => {
       const original = fixture(Object.assign({}, shape, { priorReview: true }));
       const unit = shape.token === "😀" ? 2 : 1;
       const first = compile({

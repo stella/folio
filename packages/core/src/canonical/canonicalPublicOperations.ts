@@ -210,6 +210,7 @@ import {
 import { addJoinedParagraphReceipts } from "./canonicalJoinedReceipts";
 import { lockViolationBetween } from "./canonicalLockGuard";
 import {
+  CANONICAL_ADMISSION,
   type CanonicalCommit,
   type CanonicalProjection,
   type CanonicalSession,
@@ -3885,6 +3886,12 @@ export class CanonicalPublicOperations {
   ): FolioDocumentOperationResult {
     const { session } = this.options;
     const parsed = parseFolioDocumentOperationBatch(options.batch);
+    if (options.restagesSuggestions === true && parsed.mode !== "suggested")
+      panic("Only a suggested batch restages pending suggestions.");
+    const lockAdmission =
+      options.restagesSuggestions === true
+        ? CANONICAL_ADMISSION.restage
+        : CANONICAL_ADMISSION.edit;
     // A suggested operation never folds into a suggestion already pending,
     // here or in the host's other stories.
     const batch =
@@ -4295,6 +4302,7 @@ export class CanonicalPublicOperations {
     const ops: DocumentOp[] = [];
     const operationStaging = session.beginVerifiedOperationStaging(
       canonicalOperationStagingAccess,
+      lockAdmission,
     );
     let reuseStaging = true;
     const appliedById = new Map<
@@ -4704,7 +4712,10 @@ export class CanonicalPublicOperations {
       }
       // An operation a content-control lock refuses is skipped on its own,
       // as the document's rule; the rest of the batch still applies.
-      const locked = lockViolationBetween(sourceDocument, nextDocument);
+      const locked =
+        lockAdmission === CANONICAL_ADMISSION.restage
+          ? null
+          : lockViolationBetween(sourceDocument, nextDocument);
       if (locked !== null) {
         return declined({
           reason: CONTENT_CONTROL_LOCK,
@@ -5183,7 +5194,7 @@ export class CanonicalPublicOperations {
       .andThen((selection) =>
         reuseStaging
           ? operationStaging.prepare(state, selection)
-          : session.prepareOps(state, ops, selection),
+          : operationStaging.prepareOps(state, ops, selection),
       );
     if (prepared.isErr()) {
       // A batch that changes nothing is a no-op, not a capability gap.

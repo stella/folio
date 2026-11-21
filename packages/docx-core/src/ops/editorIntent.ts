@@ -3622,6 +3622,18 @@ const compileInStory = (
       break;
     }
     case "splitParagraph": {
+      const breaksControl = inlineControlAround(
+        document,
+        intent.to ?? intent.at,
+      );
+      if (breaksControl !== undefined)
+        return Result.err(
+          new DocumentOpRefusal({
+            reason: DOCUMENT_OP_REFUSAL_REASONS.INSIDE_INLINE_CONTROL,
+            message: `A paragraph break cannot go inside the content control ${breaksControl}: it lives in one paragraph.`,
+            opType: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+          }),
+        );
       if (intent.to === undefined) {
         const split = {
           type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
@@ -4109,6 +4121,27 @@ type Continuation = {
   containers: readonly InlineNode[];
   openStart: number;
   openEnd: number;
+};
+
+/**
+ * The name of the inline content control a position stands inside, with its
+ * text on both sides: its alias, tag or id. `undefined` at a control's edge
+ * or outside every control.
+ */
+const inlineControlAround = (
+  document: Document,
+  at: TextPosition,
+): string | undefined => {
+  const paragraph = paragraphAt(document, at);
+  if (paragraph === undefined) return undefined;
+  const control = continuation(paragraph.content, at, at).containers.findLast(
+    (container) => container.type === "inlineSdt",
+  );
+  if (control?.type !== "inlineSdt") return undefined;
+  const { alias, tag, id } = control.properties;
+  if (alias !== undefined) return `"${alias}"`;
+  if (tag !== undefined) return `tagged "${tag}"`;
+  return id === undefined ? "here" : `with id ${String(id)}`;
 };
 
 type StrikeInsideControlOptions = {

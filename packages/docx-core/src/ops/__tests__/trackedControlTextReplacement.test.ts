@@ -10,6 +10,7 @@ import { expect, test } from "bun:test";
 import type { Document, ParagraphContent } from "../../model/document";
 import { applyDocumentOps } from "../apply";
 import { compileEditorIntent } from "../editorIntent";
+import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import {
   DOCUMENT_OP_TYPES,
   OP_STORIES,
@@ -123,3 +124,24 @@ for (const [decision, kept] of DECISIONS)
       outside: "Pay  euros.",
     });
   });
+
+// An inline control lives in one paragraph: a break inside its text is
+// refused, naming it; one at its edge goes beside it.
+test("a paragraph break inside the control is refused, one at its edge is not", () => {
+  const split = (offset: number) =>
+    compileEditorIntent(document, {
+      intent: {
+        type: "splitParagraph",
+        at: at(offset),
+        newBlockId: "00000009",
+      },
+      mode: { type: "editing" },
+    });
+  const inside = split(5);
+  expect(inside.isErr() && inside.error.reason).toBe(
+    DOCUMENT_OP_REFUSAL_REASONS.INSIDE_INLINE_CONTROL,
+  );
+  expect(inside.isErr() && inside.error.message).toContain('"amount"');
+  expect(split(4).isOk()).toBe(true);
+  expect(split(7).isOk()).toBe(true);
+});

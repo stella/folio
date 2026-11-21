@@ -11,6 +11,7 @@ import {
 import { canonicalOperationStagingAccess } from "../internal/canonicalOperationStaging";
 import { readModel } from "../types/documentModel";
 import {
+  CANONICAL_ADMISSION,
   createCanonicalSession,
   publishCanonicalProjection,
 } from "./canonicalSession";
@@ -46,6 +47,7 @@ test("insertion staging owns the verified operation and rejects foreign or stale
   ).toThrow("Only the public-operation compiler");
   const staging = session.beginVerifiedOperationStaging(
     canonicalOperationStagingAccess,
+    CANONICAL_ADMISSION.edit,
   );
   expect(staging.apply(source, op).isErr()).toBe(true);
   block.paraId = "001ABCDE";
