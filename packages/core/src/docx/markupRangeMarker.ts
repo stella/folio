@@ -16,7 +16,10 @@ import type {
   MarkupRangeMarker,
   MoveFromRangeStart,
 } from "../types/document";
-import { parseCopyOriginAncestors } from "./reviewResolutionProvenance";
+import {
+  parseCopyOriginAncestors,
+  parseKeptCut,
+} from "./reviewResolutionProvenance";
 import {
   getAttribute,
   parseNumericAttribute,
@@ -53,6 +56,18 @@ export const parseCopyOriginMarker = (
 ): Pick<BookmarkStart, "copyOriginAncestors"> => {
   const copyOriginAncestors = parseCopyOriginAncestors(node);
   return copyOriginAncestors === undefined ? {} : { copyOriginAncestors };
+};
+
+/**
+ * The cut a kept marker stands in, as folio's review history records it.
+ * Only a marker inside a paragraph stands in a cut, so only the inline
+ * readers take it; a block marker never carries one.
+ */
+export const parseKeptCutMarker = (
+  node: XmlElement,
+): Pick<MarkupRangeMarker, "keptCut"> => {
+  const keptCut = parseKeptCut(node);
+  return keptCut === undefined ? {} : { keptCut };
 };
 
 export const parseBookmarkRangeMarker = (
