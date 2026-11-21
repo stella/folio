@@ -591,7 +591,12 @@ export const withEdgeKeptCutsWidened = (
 };
 
 /** What meets a list's edge from outside, as kept cuts at that edge read it. */
-export const KEPT_CUT_EDGES = {
+export const KEPT_CUT_EDGES: Readonly<{
+  readonly NOTHING: "nothing";
+  readonly PENDING_MARK: "pendingMark";
+  readonly PENDING_CHANGE: "pendingChange";
+  readonly UNSETTLED: "unsettled";
+}> = Object.freeze({
   /** Nothing pending: a cut there waits on nothing. */
   NOTHING: "nothing",
   /**
@@ -607,7 +612,7 @@ export const KEPT_CUT_EDGES = {
    * settlement reads once the joins stand. Its markers keep what they have.
    */
   UNSETTLED: "unsettled",
-} as const;
+} as const);
 
 type KeptCutEdge = (typeof KEPT_CUT_EDGES)[keyof typeof KEPT_CUT_EDGES];
 
