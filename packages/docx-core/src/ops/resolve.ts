@@ -2292,7 +2292,10 @@ const resolveList = ({
    * The boundaries a removed one-sided insertion kept, moved into the source
    * piece its join names: the record after it, not yet resolved, or the one
    * `out` holds before them. They stay standing where that record is a
-   * tracked change or no piece of the record the edge one is.
+   * tracked change or no piece of the record the edge one is. Their cuts go
+   * with them, naming no piece: settling the list keeps a cut only while a
+   * pending change still stands beside them, as placing them by accepting
+   * that piece later does.
    */
   const placeOneSidedKept = ({
     index,
@@ -2315,7 +2318,7 @@ const resolveList = ({
         piece === "after" ? out.length : first + inside,
       )
       .map(({ node }) =>
-        withoutKeptCutsRecorded(node, resolution.relocated.nodes),
+        withKeptCutPieceConsumed(node, resolution.relocated.nodes),
       );
     if (piece === "after") {
       const next = pending.at(index + 1);
@@ -2401,15 +2404,21 @@ const resolveList = ({
       if (date < kept.from) return { join, kept };
       const count = inEdgeRecords[side === "before" ? "last" : "first"];
       // A piece of that record across the boundaries meets the insertion's
-      // join around them: the seam places them, not the insertion alone.
+      // join around them: the seam places them, not the insertion alone. A
+      // pending insertion there, joined to nothing, holds no such piece.
       const own = recordAt(node, side === "before" ? "start" : "end");
-      const across =
-        side === "before"
-          ? recordAt(out[previousAt]?.node, "end")
-          : recordAt(pending[index + 1], "start");
+      const acrossNode =
+        side === "before" ? out[previousAt]?.node : pending[index + 1];
+      const across = recordAt(acrossNode, side === "before" ? "end" : "start");
       const pieceAcross =
         own !== undefined &&
         across !== undefined &&
+        !(
+          acrossNode !== undefined &&
+          isAddedRevision(acrossNode) &&
+          !resolution.ids.has(acrossNode.info.id) &&
+          acrossNode.resolutionJoins === undefined
+        ) &&
         childNodes(own) !== undefined &&
         childNodes(across) !== undefined &&
         sameOwnFields(own, across);
@@ -4239,13 +4248,28 @@ const resolveList = ({
         const keptStand =
           standingKept > 0 &&
           keptFromIn(seam - standingKept, seam) !== undefined;
+        const facingJoinAt = (index: number, side: "before" | "after") => {
+          const node = out[index]?.node;
+          return node !== undefined && isTrackedWrapper(node)
+            ? (node.resolutionJoins?.[side] ?? 0)
+            : 0;
+        };
+        // An insertion joined to nothing on the seam's side takes the join
+        // only as the edge of the pieces: where the insertion facing it
+        // across the seam is joined there, made inside the record, that one
+        // takes the kept markers, as it does once the first is resolved.
+        const joinedFacing = {
+          after: leftEnd !== keptEnd && facingJoinAt(keptEnd, "after") > 0,
+          before: rightStart !== seam && facingJoinAt(seam, "before") > 0,
+        };
         const facing = (index: number, side: "before" | "after"): void => {
           const occurrence = out[index];
           if (occurrence === undefined)
             panic("A blocking insertion stands in the list.");
-          const facingJoin = isTrackedWrapper(occurrence.node)
-            ? (occurrence.node.resolutionJoins?.[side] ?? 0)
-            : 0;
+          const facingJoin = facingJoinAt(index, side);
+          const yieldsKept =
+            facingJoin === 0 &&
+            joinedFacing[side === "after" ? "before" : "after"];
           if (
             !seamHandsOver({
               seam: keptJoinHandsOver ? "keptJoin" : "removal",
@@ -4262,6 +4286,7 @@ const resolveList = ({
           const tookKept =
             keptStand &&
             takesKept &&
+            !yieldsKept &&
             nameKeptPiece(
               seam - standingKept,
               seam,
@@ -4312,6 +4337,45 @@ const resolveList = ({
         holdsPiece(rightStart, "start")
           ? rightStart
           : undefined;
+      // Insertions whose own removal joins nothing become a join only by
+      // waiting on the seam: they wait only with records beyond them that
+      // are pieces of the record it cut, alike, as rejecting them joins
+      // those. Boundaries standing there are none; with no alike pieces
+      // beyond them the facing insertion holds the join. Insertions cutting
+      // a record themselves wait to take the seam's depth into that cut.
+      const pieceBeyond = (from: number, step: 1 | -1) => {
+        let index = from;
+        while (isStandingBoundary(out[index]?.node)) index += step;
+        return out[index]?.node;
+      };
+      const beyondLeft = leftEnd < 0 ? undefined : pieceBeyond(leftEnd, -1);
+      const beyondRight = pieceBeyond(rightStart, 1);
+      const cutsOwn = [
+        ...Array.from(
+          { length: keptEnd - leftEnd },
+          (_, offset) => leftEnd + 1 + offset,
+        ),
+        ...Array.from(
+          { length: rightStart - seam },
+          (_, offset) => seam + offset,
+        ),
+      ].every((index) => {
+        const node = out[index]?.node;
+        return (
+          node !== undefined &&
+          isTrackedWrapper(node) &&
+          (node.resolutionJoins?.remove ?? 0) > 0
+        );
+      });
+      const mayWait =
+        cutsOwn ||
+        leftHolder !== undefined ||
+        rightHolder !== undefined ||
+        (beyondLeft !== undefined &&
+          beyondRight !== undefined &&
+          !isTrackedWrapper(beyondLeft) &&
+          !isTrackedWrapper(beyondRight) &&
+          sameOwnFields(beyondLeft, beyondRight));
       // A kept revision's join belongs to the record that revision cut,
       // counting that record's own tracked wrapper as its first level.
       // Insertions made before the revision there are no changes made inside
@@ -4347,6 +4411,7 @@ const resolveList = ({
           rightStart !== seam ||
           leftHolder !== undefined ||
           rightHolder !== undefined) &&
+        mayWait &&
         deferredDepth > 0 &&
         leftEnd >= 0 &&
         rightStart < out.length
