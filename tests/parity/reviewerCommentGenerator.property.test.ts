@@ -177,7 +177,7 @@ test(
   propertyTestTimeout(15_000),
 );
 
-test("the unadapted duplicate-reference source remains outside native comment activation", async () => {
+test("an unadapted duplicate-reference source opens with one reference on both sessions", async () => {
   const raw = rawDuplicate();
   expect(commentDocumentIssue(raw, "all")).toBe(
     "Comment anchors are unbalanced or duplicated.",
@@ -185,21 +185,18 @@ test("the unadapted duplicate-reference source remains outside native comment ac
   const bytes = (await prepareCanonicalDocxInput(await createDocx(raw)))
     .unwrap()
     .slice().buffer;
+  // Opening drops the repeated reference and says so.
   const parsed = await parseDocx(bytes, {
     detectVariables: false,
     preloadFonts: false,
   });
-  expect(commentDocumentIssue(parsed, "all")).toBe(
-    "Comment anchors are unbalanced or duplicated.",
+  expect(commentDocumentIssue(parsed, "all")).toBeUndefined();
+  expect(parsed.parseWarnings?.map(({ code }) => code)).toContain(
+    "duplicate-comment-reference",
   );
-  // This is a native activation precondition, not a claim that the legacy reader rejects OOXML.
-  await FolioDocxReviewer.fromBuffer(bytes.slice(0), { session: "legacy" });
-  await expect(
-    FolioDocxReviewer.fromBuffer(bytes.slice(0), { session: "canonical" }),
-  ).rejects.toMatchObject({
-    reason: "refused",
-    message: "Comment anchors are unbalanced or duplicated.",
-  });
+  for (const session of ["legacy", "canonical"] as const)
+    // oxlint-disable-next-line no-await-in-loop -- one session after the other
+    await FolioDocxReviewer.fromBuffer(bytes.slice(0), { session });
 });
 
 const cases = {
