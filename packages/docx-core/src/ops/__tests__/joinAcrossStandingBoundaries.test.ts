@@ -156,7 +156,7 @@ test("a section endpoint or an inline merge depth still needs the paragraphs to 
     { type: "bookmarkEnd", id: 2 },
   ]);
   expect(applyDocumentOp(unsectioned, join({ depth: 1 })).isErr()).toBe(true);
-  // Kept directly, the first paragraph would take the second's endpoint.
+  // Kept, the first paragraph would take the second's mark and endpoint.
   const endsSection = documentOf([
     paragraph("00000001", "Alpha"),
     { type: "bookmarkStart", id: 2, name: "Later" },

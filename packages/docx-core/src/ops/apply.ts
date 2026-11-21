@@ -2274,10 +2274,9 @@ const joinBlocks = (
     (standing.length > 0 &&
       (first.value.paragraph.sectionProperties !== undefined ||
         (op.depth ?? 0) !== 0 ||
-        // The first paragraph would take the second's section endpoint.
-        (op.revision === undefined &&
-          op.survivor === SPLIT_HALVES.FIRST &&
-          next.value.paragraph.sectionProperties !== undefined)))
+        // Kept directly, the first paragraph would take the second's mark
+        // and section endpoint across them.
+        op.survivor === SPLIT_HALVES.FIRST))
   ) {
     return refuse(
       op,
