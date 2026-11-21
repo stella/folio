@@ -145,6 +145,7 @@ export default library({
     "./.oxlint-plugins/folio-test-dom.ts",
     "./.oxlint-plugins/folio-painted-positions.ts",
     "./.oxlint-plugins/folio-subprocess-bounds.ts",
+    "./.oxlint-plugins/folio-story-paragraphs.ts",
   ],
   ignorePatterns: [
     // Module-augmentation files must use `interface` for declaration merging;
@@ -224,6 +225,25 @@ export default library({
       rules: {
         "folio-painted-positions/position-attribute-owner": "off",
       },
+    },
+    {
+      // Canonical session code reads a story's paragraphs together with those
+      // of its text boxes, which the session names through the story. The
+      // fixtures verify the rule.
+      files: [
+        "packages/core/src/canonical/**/*.ts",
+        "packages/core/src/**/canonical*.ts",
+        "test/__fixtures__/story-paragraphs.*.ts",
+      ],
+      rules: { "folio-story-paragraphs/through-text-boxes": "error" },
+    },
+    {
+      // Tests state the story structure they build.
+      files: [
+        "packages/core/src/**/*.test.*",
+        "packages/core/src/**/__tests__/**",
+      ],
+      rules: { "folio-story-paragraphs/through-text-boxes": "off" },
     },
     {
       files: [
