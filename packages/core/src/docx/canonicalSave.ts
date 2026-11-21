@@ -4,7 +4,6 @@ import type { Document } from "@stll/docx-core";
 import {
   idKey,
   packageParagraphIds,
-  paragraphsThroughTextBoxes,
   withoutPendingSuggestions,
 } from "@stll/docx-core/ops";
 
@@ -174,7 +173,31 @@ export const serializeCanonicalSave = async ({
     )
       diagnostics.push(diagnostic);
   };
-  const { repackDocx, createDocx } = await import("./rezip");
+  const { repackDocx, createDocx, withNotePartsFromSource } =
+    await import("./rezip");
+  // Which note paragraphs changed is the session's journal, as for the body,
+  // never a diff of the notes' re-serialization: a note the session never
+  // touched (one the package held without a reference, say) is written as the
+  // package held it, even where the model cannot spell its source markup.
+  // Every paragraph of a note counts, at any depth, and one in a text box
+  // drawn in a note is the note's too. Note parts are written against the
+  // opened package: a note paragraph an edit and its undo left as the source
+  // held it is no change. Against a later save it is one, so such a save
+  // writes its note parts against the opened package once it is made.
+  const noteChanges = snapshot.noteParagraphs;
+  const sourceNoteChanges = new Set(noteChanges.changedSinceSource.map(idKey));
+  const unchangedNotes = new Set(
+    noteChanges.touched.map(idKey).filter((id) => !sourceNoteChanges.has(id)),
+  );
+  const changedBlockIds =
+    snapshot.saveBaseline === undefined
+      ? snapshot.changedBlockIds.filter((id) => !unchangedNotes.has(idKey(id)))
+      : snapshot.changedBlockIds;
+  const changedNoteParaIds = new Set(
+    snapshot.saveBaseline === undefined
+      ? noteChanges.changedSinceSource
+      : noteChanges.touched,
+  );
   const useSelective =
     flags.selectiveSave && options?.mode !== FOLIO_DOCX_SERIALIZATION_MODE.full;
   let selectiveBuffer: ArrayBuffer | null = null;
@@ -183,7 +206,7 @@ export const serializeCanonicalSave = async ({
     selectiveBuffer = await attemptSelectiveSave(written, baseline, {
       bodyAuthority: "canonical",
       changedParaIds: new Set(
-        snapshot.changedBlockIds.filter((id) => !heldBack.has(idKey(id))),
+        changedBlockIds.filter((id) => !heldBack.has(idKey(id))),
       ),
       structuralChange: snapshot.structure === "changed",
       hasUntrackedChanges: false,
@@ -198,32 +221,6 @@ export const serializeCanonicalSave = async ({
     throw new CanonicalSaveRepackRefusedError({
       message: "The save needs a repack of the package, which was refused.",
     });
-  // Which note paragraphs changed is the session's journal, as for the body,
-  // never a diff of the notes' re-serialization: a note the session never
-  // touched (one the package held without a reference, say) is written as the
-  // package held it, even where the model cannot spell its source markup.
-  // Every paragraph of a note counts, at any depth: one in a table cell or a
-  // content control is as much the note's as one at its top level.
-  const touched = new Set(snapshot.changedBlockIds.map(idKey));
-  const changedNoteParaIds = new Set<string>();
-  // A text box drawn in a note is the note's too.
-  const notes = [
-    ...(document.package.footnotes ?? []).map(({ id }) => ({
-      kind: "footnote" as const,
-      id,
-    })),
-    ...(document.package.endnotes ?? []).map(({ id }) => ({
-      kind: "endnote" as const,
-      id,
-    })),
-  ];
-  for (const note of notes)
-    for (const { paragraph } of paragraphsThroughTextBoxes(document, note))
-      if (
-        paragraph.paraId !== undefined &&
-        touched.has(idKey(paragraph.paraId))
-      )
-        changedNoteParaIds.add(paragraph.paraId);
   const repack = () => {
     if (baseline && getDocumentSourceBaseline(written).type === "missing")
       onDiagnostic({
@@ -254,6 +251,19 @@ export const serializeCanonicalSave = async ({
     });
     if (full.isOk()) fullBuffer = full.value;
   }
+  const path = fullBuffer === buffer ? "full-repack" : "selective";
+  const source = document.originalBuffer;
+  if (
+    snapshot.saveBaseline !== undefined &&
+    source !== undefined &&
+    noteChanges.touched.length > 0
+  )
+    buffer = await withNotePartsFromSource({
+      document: written,
+      source,
+      saved: buffer,
+      changedNoteParaIds: new Set(noteChanges.changedSinceSource),
+    });
   let tripwireResult = null;
   if (flags.selectiveSaveTripwire && fullBuffer) {
     const { compareSelectiveVsFull } = await import("./selectiveSaveTripwire");
@@ -265,7 +275,6 @@ export const serializeCanonicalSave = async ({
     if (compared.isOk()) tripwireResult = compared.value;
   }
   for (const diagnostic of diagnostics) options?.onDiagnostic?.(diagnostic);
-  const path = fullBuffer === buffer ? "full-repack" : "selective";
   options?.onSerializationPath?.(path);
   return {
     buffer,

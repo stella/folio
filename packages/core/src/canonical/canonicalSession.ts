@@ -52,6 +52,7 @@ import {
   type OpStory,
   packageParagraphIds,
   paragraphIdsIn,
+  paragraphsThroughTextBoxes,
   planWholeParagraphReplacement,
   sameStory,
   suggestedCommentIds,
@@ -2071,6 +2072,26 @@ const saveBaselineOf = (saved: Document, buffer: ArrayBuffer): Document => {
   return baseline;
 };
 
+/** Every note paragraph of `document`, in its text boxes too, by its id's key. */
+const noteParagraphsOf = (document: Document): Map<string, Paragraph> => {
+  const paragraphs = new Map<string, Paragraph>();
+  const notes = [
+    ...(document.package.footnotes ?? []).map(({ id }) => ({
+      kind: "footnote" as const,
+      id,
+    })),
+    ...(document.package.endnotes ?? []).map(({ id }) => ({
+      kind: "endnote" as const,
+      id,
+    })),
+  ];
+  for (const note of notes)
+    for (const { paragraph } of paragraphsThroughTextBoxes(document, note))
+      if (paragraph.paraId !== undefined)
+        paragraphs.set(paragraph.paraId.toUpperCase(), paragraph);
+  return paragraphs;
+};
+
 /** Immutable model authority with a journal staged independently of the PM view. */
 class CanonicalSession {
   private currentDocument: Document;
@@ -2078,6 +2099,10 @@ class CanonicalSession {
   private readonly sourceBlockIds: ReadonlySet<string>;
   private currentVersion = 0;
   private saveTouched = new Set<string>();
+  /** Every paragraph an edit touched since the session opened, undo and redo included. */
+  private readonly touchedSinceOpen = new Set<string>();
+  /** The document as the session opened it, which note parts are written against. */
+  private readonly openedDocument: Document;
   private saveStructure: CanonicalSaveSnapshot["structure"] = "stable";
   /**
    * The package a save wrote, parsed, once it is the baseline later saves
@@ -2139,6 +2164,7 @@ class CanonicalSession {
     this.sourceRestores = sourceRestores;
     this.caches = caches;
     this.heldUnreferencedNotes = notesHeldWithoutReference(document);
+    this.openedDocument = document;
     this.currentDocument = document;
     this.currentProjection = projection;
     const blockIds = packageParagraphIds(document.package);
@@ -2407,6 +2433,34 @@ class CanonicalSession {
       ),
       structure: this.saveStructure,
       heldUnreferencedNotes: this.heldUnreferencedNotes,
+      noteParagraphs: this.noteParagraphChanges(),
+    };
+  }
+
+  /**
+   * The note paragraphs touched since the save baseline, and those whose
+   * content differs from the opened document among the ones touched since
+   * it opened: a note an edit and its undo left as it was is no change.
+   */
+  private noteParagraphChanges(): CanonicalSaveSnapshot["noteParagraphs"] {
+    if (this.touchedSinceOpen.size === 0)
+      return { touched: [], changedSinceSource: [] };
+    const current = noteParagraphsOf(this.currentDocument);
+    const opened = noteParagraphsOf(this.openedDocument);
+    const isNote = (id: string) =>
+      current.has(id.toUpperCase()) || opened.has(id.toUpperCase());
+    return {
+      touched: [...this.saveTouched].filter(isNote),
+      changedSinceSource: [...this.touchedSinceOpen].filter((id) => {
+        const now = current.get(id.toUpperCase());
+        const then = opened.get(id.toUpperCase());
+        if (now === then) return false;
+        return (
+          now === undefined ||
+          then === undefined ||
+          canonicalJson(now) !== canonicalJson(then)
+        );
+      }),
     };
   }
 
@@ -4173,6 +4227,7 @@ class CanonicalSession {
         ]) {
           for (const id of ids) {
             this.saveTouched.add(id);
+            this.touchedSinceOpen.add(id);
             pending?.touched.add(id);
           }
         }

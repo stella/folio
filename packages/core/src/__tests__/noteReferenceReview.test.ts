@@ -570,6 +570,7 @@ describe("a save keeps the notes the package held without a reference", () => {
                 changedBlockIds: [],
                 structure: "stable",
                 heldUnreferencedNotes: heldUnreferencedNotes(opened),
+                noteParagraphs: { touched: [], changedSinceSource: [] },
               },
             });
             const reopened = await parseShapeDocument(
@@ -623,6 +624,7 @@ describe("a full canonical save writes the notes no edit touched as the package 
         // A structural change takes the full repack path.
         structure: "changed",
         heldUnreferencedNotes: heldUnreferencedNotes(opened),
+        noteParagraphs: { touched: [], changedSinceSource: [] },
       },
     });
     const written =
