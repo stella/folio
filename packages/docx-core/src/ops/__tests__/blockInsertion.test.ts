@@ -772,3 +772,119 @@ for (const { name, after, markOwner } of followingTableCases)
           }
         }
       });
+
+test.each([
+  { count: 1, tailText: "tail" },
+  { count: 2, tailText: "tail" },
+  // An empty paragraph after the control stays: nothing joins across it.
+  { count: 1, tailText: "" },
+])(
+  "tracked insertion after a table that ends a content control stays in the control ($count paragraphs, tail $tailText)",
+  ({ count, tailText }) => {
+    const control = (content: BlockContent[]): BlockContent => ({
+      type: "blockSdt",
+      properties: { tag: "control" },
+      content,
+    });
+    const table = inCell([makeParagraph("00000001", "cell")]);
+    const tail = makeParagraph("00000005", tailText);
+    const document = documentOf([control([table]), tail]);
+    const blocks = Array.from({ length: count }, (_, index) =>
+      makeParagraph((16 + index).toString(16).padStart(8, "0"), `new ${index}`),
+    );
+    const op = {
+      ...insertion(blocks),
+      at: { type: "afterTable", blockId: "00000001" },
+    } satisfies InsertBlocksOp;
+    const applied = apply(document, op);
+    const direct = apply(document, { ...op, revision: undefined });
+    expect(direct.document).toStrictEqual(
+      documentOf([control([table, ...blocks]), tail]),
+    );
+    const [held, after] = applied.document.package.document.content;
+    expect(after).toStrictEqual(tail);
+    expect(
+      held?.type === "blockSdt" &&
+        held.content.map((block) =>
+          block.type === "paragraph" ? block.pPrMark?.kind : block.type,
+        ),
+    ).toStrictEqual(["table", ...blocks.map(() => "ins")]);
+    expect(undo(applied)).toStrictEqual(document);
+    expect(
+      applyDocumentOps(
+        applied.document,
+        JSON.parse(JSON.stringify(applied.inverse)),
+      ).unwrap().document,
+    ).toStrictEqual(document);
+    // A break with nothing to join keeps its place while words or another
+    // paragraph stand before it in the control: one at a time, the words go
+    // first, then the breaks in document order.
+    const marks = held?.type === "blockSdt" ? held.content : [];
+    const markIds = marks.flatMap((block) =>
+      block.type === "paragraph" && block.pPrMark !== undefined
+        ? [block.pPrMark.info.id]
+        : [],
+    );
+    const wordIds = applied.revisions.filter((id) => !markIds.includes(id));
+    for (const decision of Object.values(REVISION_DECISIONS)) {
+      const expected =
+        decision === REVISION_DECISIONS.REJECT ? document : direct.document;
+      const resolved = resolve(applied, decision);
+      expect(resolved.document).toStrictEqual(expected);
+      expect(undo(resolved)).toStrictEqual(applied.document);
+      const orders =
+        decision === REVISION_DECISIONS.REJECT
+          ? [
+              [...wordIds, ...markIds],
+              [...wordIds.toReversed(), ...markIds],
+            ]
+          : [applied.revisions, applied.revisions.toReversed()];
+      for (const ids of orders) {
+        let current = applied.document;
+        for (const id of ids) {
+          const step = apply(current, {
+            type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+            story: OP_STORIES.MAIN,
+            revisionIds: [id],
+            decision,
+          });
+          expect(undo(step)).toStrictEqual(current);
+          current = step.document;
+        }
+        expect(current).toStrictEqual(expected);
+      }
+    }
+  },
+);
+
+test.each([
+  {
+    name: "ends the body",
+    content: (control: BlockContent) => [control],
+  },
+  {
+    name: "ends a cell",
+    content: (control: BlockContent) => [
+      inCell([control]),
+      makeParagraph("00000005", "tail"),
+    ],
+  },
+])(
+  "tracked insertion after a table in a content control that $name keeps its container's final paragraph",
+  ({ content }) => {
+    const document = documentOf(
+      content({
+        type: "blockSdt",
+        properties: {},
+        content: [inCell([makeParagraph("00000001", "cell")])],
+      }),
+    );
+    const result = applyDocumentOp(document, {
+      ...insertion([makeParagraph("00000010", "new")]),
+      at: { type: "afterTable", blockId: "00000001" },
+    });
+    expect(result.isErr() && result.error.reason).toBe(
+      DOCUMENT_OP_REFUSAL_REASONS.CONTAINER_FINAL_MARK,
+    );
+  },
+);
