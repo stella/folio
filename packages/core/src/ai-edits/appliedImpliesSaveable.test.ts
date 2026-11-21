@@ -4,7 +4,8 @@
  *
  * Every public operation that removes, merges, splits or rewrites a paragraph
  * is applied to every body paragraph of a three-section package (first and
- * even headers, a table, section breaks on paragraph marks), in every mode.
+ * even headers, a table, section breaks on paragraph marks), in every mode,
+ * on both engines.
  * Whatever the batch reports as applied must then:
  *
  * - save with a full repack and reopen;
@@ -102,11 +103,16 @@ const project = (reviewer: FolioDocxReviewer): Projection => {
   };
 };
 
+const SESSIONS = ["legacy", "canonical"] as const;
+type Session = (typeof SESSIONS)[number];
+
 const saveAndReopen = async (
   reviewer: FolioDocxReviewer,
+  session: Session,
 ): Promise<FolioDocxReviewer> =>
   await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
     author: "Reviewer",
+    session,
   });
 
 type Transform = (
@@ -304,10 +310,10 @@ const MODES: readonly FolioAIEditApplyMode[] = [
 
 const source = await buildSectionsDocx();
 
-const open = async (): Promise<FolioDocxReviewer> =>
-  await FolioDocxReviewer.fromBuffer(source, { author: "Reviewer" });
+const open = async (session: Session): Promise<FolioDocxReviewer> =>
+  await FolioDocxReviewer.fromBuffer(source, { author: "Reviewer", session });
 
-const original = project(await open());
+const original = project(await open("legacy"));
 
 const apply = (
   reviewer: FolioDocxReviewer,
@@ -358,76 +364,90 @@ const acceptApplied = (
   reviewer.acceptAll();
 };
 
-describe("an applied operation saves as requested", () => {
-  test("the fixture has three sections, two of them ended by paragraphs", () => {
-    expect(
-      original.blocks.filter(
-        (block) => block.kind === "paragraph" && block.ends,
-      ),
-    ).toHaveLength(2);
-    expect(original.final).not.toBe("");
-  });
+describe.each(SESSIONS)(
+  "%s: an applied operation saves as requested",
+  (session) => {
+    test("the fixture has three sections, two of them ended by paragraphs", () => {
+      expect(
+        original.blocks.filter(
+          (block) => block.kind === "paragraph" && block.ends,
+        ),
+      ).toHaveLength(2);
+      expect(original.final).not.toBe("");
+    });
 
-  for (const testCase of CASES) {
-    for (const mode of MODES) {
-      test(`${testCase.name}, ${mode}`, async () => {
-        const reviewer = await open();
-        const { applied, expected: blocks } = apply(reviewer, testCase, mode);
-        const expected = { blocks, final: original.final };
+    for (const testCase of CASES) {
+      for (const mode of MODES) {
+        test(`${testCase.name}, ${mode}`, async () => {
+          const reviewer = await open(session);
+          const { applied, expected: blocks } = apply(reviewer, testCase, mode);
+          const expected = { blocks, final: original.final };
 
-        if (!applied || mode === "direct") {
-          expect(project(await saveAndReopen(reviewer))).toEqual(expected);
-          return;
-        }
+          if (!applied || mode === "direct") {
+            expect(project(await saveAndReopen(reviewer, session))).toEqual(
+              expected,
+            );
+            return;
+          }
 
-        if (mode === "tracked-changes") {
-          const pending = await saveAndReopen(reviewer);
-          const rejecting = await FolioDocxReviewer.fromBuffer(
-            await pending.toBuffer(),
+          if (mode === "tracked-changes") {
+            const pending = await saveAndReopen(reviewer, session);
+            const rejecting = await FolioDocxReviewer.fromBuffer(
+              await pending.toBuffer(),
+              { session },
+            );
+            pending.acceptAll();
+            expect(project(await saveAndReopen(pending, session))).toEqual(
+              expected,
+            );
+            rejecting.rejectAll();
+            expect(project(await saveAndReopen(rejecting, session))).toEqual(
+              original,
+            );
+          } else {
+            // A suggestion stays out of the package until someone accepts it.
+            expect(project(await saveAndReopen(reviewer, session))).toEqual(
+              original,
+            );
+          }
+          acceptApplied(reviewer, mode);
+          expect(project(await saveAndReopen(reviewer, session))).toEqual(
+            expected,
           );
-          pending.acceptAll();
-          expect(project(await saveAndReopen(pending))).toEqual(expected);
-          rejecting.rejectAll();
-          expect(project(await saveAndReopen(rejecting))).toEqual(original);
-        } else {
-          // A suggestion stays out of the package until someone accepts it.
-          expect(project(await saveAndReopen(reviewer))).toEqual(original);
-        }
-        acceptApplied(reviewer, mode);
-        expect(project(await saveAndReopen(reviewer))).toEqual(expected);
-      });
-
-      test(`${testCase.name}, ${mode}, then a later edit`, async () => {
-        const reviewer = await open();
-        const { applied, expected } = apply(reviewer, testCase, mode);
-        if (!applied) return;
-        acceptApplied(reviewer, mode);
-        const [first] = reviewer.getContent();
-        if (!first) throw new Error("no first block");
-        const later = reviewer.applyDocumentOperations(
-          {
-            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-            mode: "direct",
-            operations: [
-              {
-                id: "lead",
-                type: "insertBeforeBlock",
-                blockId: first.id,
-                text: "Lead.",
-              },
-            ],
-          },
-          { undefinedReferences: "refuse" },
-        );
-        expect(later.applied).toHaveLength(1);
-        expect(project(await saveAndReopen(reviewer))).toEqual({
-          blocks: [
-            { kind: "paragraph", text: "Lead.", ends: null },
-            ...expected,
-          ],
-          final: original.final,
         });
-      });
+
+        test(`${testCase.name}, ${mode}, then a later edit`, async () => {
+          const reviewer = await open(session);
+          const { applied, expected } = apply(reviewer, testCase, mode);
+          if (!applied) return;
+          acceptApplied(reviewer, mode);
+          const [first] = reviewer.getContent();
+          if (!first) throw new Error("no first block");
+          const later = reviewer.applyDocumentOperations(
+            {
+              version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+              mode: "direct",
+              operations: [
+                {
+                  id: "lead",
+                  type: "insertBeforeBlock",
+                  blockId: first.id,
+                  text: "Lead.",
+                },
+              ],
+            },
+            { undefinedReferences: "refuse" },
+          );
+          expect(later.applied).toHaveLength(1);
+          expect(project(await saveAndReopen(reviewer, session))).toEqual({
+            blocks: [
+              { kind: "paragraph", text: "Lead.", ends: null },
+              ...expected,
+            ],
+            final: original.final,
+          });
+        });
+      }
     }
-  }
-});
+  },
+);
