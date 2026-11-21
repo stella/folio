@@ -4586,72 +4586,74 @@ describe("headless docx review notes read surface", () => {
   });
 
   for (const session of ["canonical", "legacy"] as const)
-  test(`${session}: tracks and undoes an endnote operation batch`, async () => {
-    // A package whose paragraphs hold ids already: either engine saves an
-    // untouched part as it read it.
-    const baseline = (
-      await prepareCanonicalDocxInput(await readNotesFixture())
-    ).unwrap();
-    const story = { type: "endnote", noteId: 3 } as const;
-    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
-      author: "Reviewer",
-      session,
-    });
-    const snapshot = reviewer.snapshotStory(story);
-    if (!snapshot) {
-      throw new Error("expected the endnote story");
-    }
-    const target = findBlock(snapshot.blocks, "Injected endnote body text.");
+    test(`${session}: tracks and undoes an endnote operation batch`, async () => {
+      // A package whose paragraphs hold ids already: either engine saves an
+      // untouched part as it read it.
+      const baseline = (
+        await prepareCanonicalDocxInput(await readNotesFixture())
+      ).unwrap();
+      const story = { type: "endnote", noteId: 3 } as const;
+      const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
+        author: "Reviewer",
+        session,
+      });
+      const snapshot = reviewer.snapshotStory(story);
+      if (!snapshot) {
+        throw new Error("expected the endnote story");
+      }
+      const target = findBlock(snapshot.blocks, "Injected endnote body text.");
 
-    const result = reviewer.applyDocumentOperationsToStory({
-      undefinedReferences: "refuse",
-      story,
-      snapshot,
-      batch: {
-        version: 1,
-        mode: "tracked-changes",
-        operations: [
-          {
-            id: "endnote-replace",
-            type: "replaceInBlock",
-            blockId: target.id,
-            find: "Injected endnote",
-            replace: "Updated endnote",
-          },
-        ],
-      },
-    });
+      const result = reviewer.applyDocumentOperationsToStory({
+        undefinedReferences: "refuse",
+        story,
+        snapshot,
+        batch: {
+          version: 1,
+          mode: "tracked-changes",
+          operations: [
+            {
+              id: "endnote-replace",
+              type: "replaceInBlock",
+              blockId: target.id,
+              find: "Injected endnote",
+              replace: "Updated endnote",
+            },
+          ],
+        },
+      });
 
-    expect(result.status).toBe("committed");
-    expect(
-      reviewer.readReviewedStory({ story, view: "original" })?.text,
-    ).toContain("Injected endnote body text.");
-    expect(
-      reviewer.readReviewedStory({ story, view: "current-markup" })?.text,
-    ).toContain('<ins author="Reviewer">Updated</ins>');
-    expect(
-      reviewer.readReviewedStory({ story, view: "final" })?.text,
-    ).toContain("Updated endnote body text.");
-    const saved = await reviewer.toBuffer();
-    const endnotesXml = await partText(saved, "word/endnotes.xml");
-    expect(endnotesXml).toContain("Updated");
-    expect(endnotesXml).toContain("endnote body text.");
-    expect(endnotesXml).toContain("<w:ins ");
-    expect(endnotesXml).toContain("<w:del ");
-    expect(endnotesXml).toContain('w:author="Reviewer"');
+      expect(result.status).toBe("committed");
+      expect(
+        reviewer.readReviewedStory({ story, view: "original" })?.text,
+      ).toContain("Injected endnote body text.");
+      expect(
+        reviewer.readReviewedStory({ story, view: "current-markup" })?.text,
+      ).toContain('<ins author="Reviewer">Updated</ins>');
+      expect(
+        reviewer.readReviewedStory({ story, view: "final" })?.text,
+      ).toContain("Updated endnote body text.");
+      const saved = await reviewer.toBuffer();
+      const endnotesXml = await partText(saved, "word/endnotes.xml");
+      expect(endnotesXml).toContain("Updated");
+      expect(endnotesXml).toContain("endnote body text.");
+      expect(endnotesXml).toContain("<w:ins ");
+      expect(endnotesXml).toContain("<w:del ");
+      expect(endnotesXml).toContain('w:author="Reviewer"');
 
-    if (!result.undoHandle) {
-      throw new Error("expected an undo handle");
-    }
-    expect(reviewer.undoDocumentOperations(result.undoHandle)).toEqual({
-      status: "undone",
-      undoHandle: result.undoHandle,
+      if (!result.undoHandle) {
+        throw new Error("expected an undo handle");
+      }
+      expect(reviewer.undoDocumentOperations(result.undoHandle)).toEqual({
+        status: "undone",
+        undoHandle: result.undoHandle,
+      });
+      expect(reviewer.readStory(story)?.text).toBe(
+        "Injected endnote body text.",
+      );
+      expect(
+        await partBytes(await reviewer.toBuffer(), "word/endnotes.xml"),
+      ).toEqual(await partBytes(baseline, "word/endnotes.xml"));
     });
-    expect(reviewer.readStory(story)?.text).toBe("Injected endnote body text.");
-    expect(
-      await partBytes(await reviewer.toBuffer(), "word/endnotes.xml"),
-    ).toEqual(await partBytes(baseline, "word/endnotes.xml"));
-  });
 
   for (const session of ["canonical", "legacy"] as const)
     for (const savedBetween of [false, true])
