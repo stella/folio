@@ -134,6 +134,7 @@ import type {
 } from "../types/document";
 import type { DeepReadonly, ReadonlyDocument } from "../types/documentModel";
 import { canonicalJson } from "../utils/canonicalJson";
+import { itemBefore } from "../utils/listItems";
 import { CanonicalIdLease } from "./canonicalIdLease";
 import {
   canonicalNativeCells,
@@ -4580,8 +4581,9 @@ export const deletionRange = (
   const from = physicalStarts.at(
     direction === "backward" ? boundary : visibleOffset,
   );
-  const to = physicalEnds.at(
-    (direction === "backward" ? visibleOffset : boundary) - 1,
+  const to = itemBefore(
+    physicalEnds,
+    direction === "backward" ? visibleOffset : boundary,
   );
   if (from === undefined || to === undefined)
     panic("Canonical deletion lost a grapheme boundary.");

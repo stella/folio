@@ -1,4 +1,5 @@
 import { paintsCssBorder } from "../../utils/borderCss";
+import { itemBefore } from "../../utils/listItems";
 import type {
   CellBorderSpec,
   TableBlock,
@@ -38,7 +39,7 @@ export const tableFragmentBottomBorders = ({
   if (fragment.continuesOnNext !== true || fragment.bottomClip === undefined)
     return [];
 
-  const splitRow = block.rows.at(fragment.toRow - 1);
+  const splitRow = itemBefore(block.rows, fragment.toRow);
   if (!splitRow) return [];
   const placements =
     suppliedPlacements ??

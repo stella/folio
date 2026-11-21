@@ -78,6 +78,7 @@ import {
   spanningRecords,
   zeroWidthLeavesAt,
 } from "./leaves";
+import { itemBefore } from "./listItems";
 import { cloneModel } from "./modelClone";
 import {
   isRangeBoundary,
@@ -1587,7 +1588,7 @@ const runSeamDepth = ({
 }: RunSeamDepthOptions): number => {
   const spans = leafSpans(paragraph.content);
   for (const [index, right] of spans.entries()) {
-    const left = spans.at(index - 1);
+    const left = itemBefore(spans, index);
     if (
       index === 0 ||
       left === undefined ||

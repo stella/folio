@@ -80,6 +80,7 @@ import {
   sameOwnFields,
   withFieldResult,
 } from "./leaves";
+import { itemBefore } from "./listItems";
 import { replaceNoteParts } from "./noteLifecycle";
 import {
   automaticNoteMarkRuns,
@@ -1366,7 +1367,7 @@ const placeAcceptedSeamKept = (
   ].find(
     ({ index, records }) =>
       records !== undefined &&
-      (blocker(out.at(index - 1)) || blocker(out.at(index + records))),
+      (blocker(itemBefore(out, index)) || blocker(out.at(index + records))),
   );
   const records = placed?.records;
   if (placed === undefined || records === undefined) return false;
@@ -1385,7 +1386,7 @@ const placeAcceptedSeamKept = (
       (node.info.date ?? "") > group.keptFrom
     );
   const after = out.at(start + records);
-  const before = start > 0 ? out.at(start - 1) : undefined;
+  const before = itemBefore(out, start);
   const intoAfter = takes(after)
     ? withBoundariesAtEdge(
         after,
@@ -2041,7 +2042,7 @@ const resolveList = ({
     node: TrackedWrapper,
     index: number,
   ): { depth: number; date: string } | undefined => {
-    const before = index > 0 ? pending.at(index - 1) : undefined;
+    const before = itemBefore(pending, index);
     const after = pending.at(index + 1);
     if (
       before === undefined ||
@@ -2122,7 +2123,7 @@ const resolveList = ({
       pending[index + 1] = placed;
       out.splice(out.length - inside, inside);
     } else {
-      const previous = out.at(first - 1);
+      const previous = itemBefore(out, first);
       if (previous === undefined || !standsInside(previous.node)) return;
       const placed = withBoundariesAtEdge(
         previous.node,
@@ -2234,7 +2235,7 @@ const resolveList = ({
           const before =
             index === 0
               ? undefined
-              : (sourceOwners.at(index - 1) ??
+              : (itemBefore(sourceOwners, index) ??
                 panic("A preceding source occurrence has an owner."));
           const after = sourceOwners.at(index + 1);
           removedOwner.state = {
@@ -2262,7 +2263,7 @@ const resolveList = ({
           // New content joined to nothing either side is no piece of a
           // record: removing it, the records either side meet across its
           // place, so a seam beyond it reaches them as deep as it goes.
-          const before = index === 0 ? undefined : sourceOwners.at(index - 1);
+          const before = itemBefore(sourceOwners, index);
           const after = sourceOwners.at(index + 1);
           const through = (owner: SourceOwner | undefined) =>
             owner === undefined
@@ -2391,7 +2392,7 @@ const resolveList = ({
           floating.set(at, {
             count: inside,
             depth: Math.max(own, enclosingCut?.depth ?? 0),
-            before: index > 0 ? sourceOwners.at(index - 1) : undefined,
+            before: itemBefore(sourceOwners, index),
             after: sourceOwners.at(index + 1),
             spanning: trackedWithin(node.content),
             keptFrom: enclosingCut?.date ?? node.info.date ?? "",
@@ -2451,7 +2452,7 @@ const resolveList = ({
           floating.set(far === "after" ? out.length : out.length - inside, {
             count: beyond,
             depth: node.resolutionJoins?.remove ?? 0,
-            before: index > 0 ? sourceOwners.at(index - 1) : undefined,
+            before: itemBefore(sourceOwners, index),
             after: sourceOwners.at(index + 1),
             spanning: trackedWithin(node.content),
             keptFrom: node.info.date ?? "",
@@ -2503,7 +2504,7 @@ const resolveList = ({
         floating.set(out.length, {
           count: content.length,
           depth: held,
-          before: index > 0 ? sourceOwners.at(index - 1) : undefined,
+          before: itemBefore(sourceOwners, index),
           after: sourceOwners.at(index + 1),
           spanning: [],
           keptFrom,
@@ -2772,7 +2773,7 @@ const resolveList = ({
   for (const [index, { node, owner }] of out.entries()) {
     if (!isAddedRevision(node) || node.resolutionJoins === undefined) continue;
     if (node.resolutionJoins.remove === 0) continue;
-    const left = out.at(index - 1)?.node;
+    const left = itemBefore(out, index)?.node;
     const right = out.at(index + 1)?.node;
     const depths = [
       index > 0 && left !== undefined
@@ -2907,7 +2908,7 @@ const resolveList = ({
     changed = true;
   };
   for (const seam of plainSeams) {
-    const left = out.at(seam - 1)?.node;
+    const left = itemBefore(out, seam)?.node;
     const right = out.at(seam)?.node;
     if (
       seam > 0 &&
@@ -4542,7 +4543,8 @@ const joinOps = (
         ? blocks.at(-1)?.type === "paragraph"
         : // Removing the final paragraph leaves the block before it last: in
           // a cell, that paragraph's mark becomes the cell's terminator.
-          containerFinal && blocks.at(location.index - 1)?.type === "paragraph",
+          containerFinal &&
+          itemBefore(blocks, location.index)?.type === "paragraph",
     followingTableCanReceiveRunIn: tableTarget !== undefined,
     holdsContentOnceAccepted: paragraphHoldsContentOnceAccepted(chained),
     followingBlockCanReceiveRunIn: blockTarget !== undefined,

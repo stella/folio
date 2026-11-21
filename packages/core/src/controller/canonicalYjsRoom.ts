@@ -12,6 +12,7 @@ import {
 } from "@stll/docx-core/ops";
 
 import type { Document } from "../types/document";
+import { itemBefore } from "../utils/listItems";
 import type { CanonicalPresenceChannel } from "./canonicalPresence";
 import {
   type CanonicalRoomRecord,
@@ -446,7 +447,7 @@ export const openCanonicalYjsRoom = ({
         if (record.type === "leased") continue;
         const { batch } = record;
         const known =
-          sequenced.at(batch.revision - 1) ?? waiting.get(batch.revision);
+          itemBefore(sequenced, batch.revision) ?? waiting.get(batch.revision);
         if (known !== undefined) {
           if (known.opId !== batch.opId)
             fail(

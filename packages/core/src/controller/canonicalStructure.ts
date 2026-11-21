@@ -55,6 +55,7 @@ import type {
 import { readModel } from "../types/documentModel";
 import { maxOf } from "../utils/extremes";
 import { collectHeadings } from "../utils/headingCollector";
+import { itemBefore } from "../utils/listItems";
 import { prepareContentControlValue } from "./canonicalContentControlValue";
 
 const DEFAULT_TOC_PAGE_WIDTH_TWIPS = 12240;
@@ -234,10 +235,7 @@ const numberingIntent = (
   const container = positions.at(0)?.container ?? [];
   const first = positions.at(0)?.index ?? 0;
   const last = positions.at(-1)?.index ?? first;
-  const neighbors = [
-    first > 0 ? container.at(first - 1) : undefined,
-    container.at(last + 1),
-  ];
+  const neighbors = [itemBefore(container, first), container.at(last + 1)];
   const neighbor = neighbors.find((item) => {
     // A paragraph on its way out is no neighbour once the change is accepted.
     if (

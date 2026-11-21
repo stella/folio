@@ -1,5 +1,7 @@
 import type { StepMap } from "prosemirror-transform";
 
+import { itemBefore } from "../utils/listItems";
+
 /** StepMap.map scans its ranges; index them once for many paragraph lookups. */
 export const indexedPositionMap = (
   map: StepMap,
@@ -44,7 +46,7 @@ export const indexedPositionMap = (
         deletedAcross: position > change.oldStart && position < change.oldEnd,
       };
     }
-    const previous = low === 0 ? undefined : changes.at(low - 1);
+    const previous = itemBefore(changes, low);
     return {
       pos: position + (previous ? previous.newEnd - previous.oldEnd : 0),
       deletedAcross: false,

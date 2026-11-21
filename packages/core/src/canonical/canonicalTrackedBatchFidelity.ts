@@ -15,6 +15,7 @@ import {
   sameOriginalBlocks,
 } from "../ai-edits/tracked-batch-fidelity";
 import type { BlockContent, Document, Paragraph } from "../types/document";
+import { itemBefore } from "../utils/listItems";
 import type { createCanonicalBatchReview } from "./canonicalBatchReview";
 import { changedWindow } from "./canonicalSeedContent";
 import {
@@ -110,8 +111,8 @@ const isolatedTextChanges = (
     }
     if (
       index > 0 &&
-      (before.at(index - 1) !== after.at(index - 1) ||
-        !isStableNeighbor(before.at(index - 1)))
+      (itemBefore(before, index) !== itemBefore(after, index) ||
+        !isStableNeighbor(itemBefore(before, index)))
     ) {
       return undefined;
     }
