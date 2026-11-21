@@ -179,16 +179,15 @@ type PropertyTableOptions = {
   keepsGrid?: boolean;
 };
 /** The grid columns the first row covers, or undefined when the rows differ. */
+const coveredBy = (row: TableRow): number =>
+  (row.formatting?.gridBefore ?? 0) +
+  (row.formatting?.gridAfter ?? 0) +
+  row.cells.reduce((sum, cell) => sum + (cell.formatting?.gridSpan ?? 1), 0);
+
 const rowCoverage = (table: Table): number | undefined => {
   let coverage: number | undefined;
   for (const row of table.rows) {
-    const covered =
-      (row.formatting?.gridBefore ?? 0) +
-      (row.formatting?.gridAfter ?? 0) +
-      row.cells.reduce(
-        (sum, cell) => sum + (cell.formatting?.gridSpan ?? 1),
-        0,
-      );
+    const covered = coveredBy(row);
     if (coverage !== undefined && covered !== coverage) return undefined;
     coverage = covered;
   }
@@ -198,6 +197,14 @@ const rowCoverage = (table: Table): number | undefined => {
 /** Every row covers the same number of grid columns. */
 const coversEvenly = (table: Table): boolean =>
   rowCoverage(table) !== undefined;
+
+/**
+ * The rows imply a grid this wide: the widest covers it, and a row that ends
+ * early leaves the columns after it.
+ */
+const impliesWidth = (table: Table, width: number): boolean =>
+  table.rows.length > 0 &&
+  Math.max(...table.rows.map((row) => coveredBy(row))) === width;
 
 const propertyTable = ({
   table,
@@ -393,7 +400,12 @@ const propertyCell = ({
 };
 
 type GridCell = { cell: TableCell; start: number; end: number };
-type GridRow = { cells: GridCell[]; before: number; cellsEnd: number };
+type GridRow = {
+  cells: GridCell[];
+  before: number;
+  cellsEnd: number;
+  emptied: boolean;
+};
 
 /**
  * Remove the selected tracked inserted (rejected) or deleted (accepted) cells.
@@ -401,7 +413,8 @@ type GridRow = { cells: GridCell[]; before: number; cellsEnd: number };
  * `gridBefore` and `gridAfter` columns, and those a row that ends early
  * leaves after it, keep theirs. Where other rows keep a removed cell's
  * columns, the cell before it in its row (the one after it when it starts the
- * row) widens over them.
+ * row) widens over them. A row that loses every cell it has goes, and keeps
+ * no column.
  */
 type ResolveCellColumnsOptions = {
   table: Table;
@@ -431,7 +444,13 @@ const resolveCellColumns = ({
       : undefined;
   const gridRows: GridRow[] = [];
   const ends: number[] = [];
+  const losesEveryCell = (row: TableRow) =>
+    row.cells.length > 0 && row.cells.every(removes);
   for (const row of table.rows) {
+    if (losesEveryCell(row)) {
+      gridRows.push({ cells: [], before: 0, cellsEnd: 0, emptied: true });
+      continue;
+    }
     const before = row.formatting?.gridBefore ?? 0;
     const after = row.formatting?.gridAfter ?? 0;
     if (
@@ -450,7 +469,7 @@ const resolveCellColumns = ({
       cells.push({ cell, start: cursor, end: cursor + span });
       cursor += span;
     }
-    gridRows.push({ cells, before, cellsEnd: cursor });
+    gridRows.push({ cells, before, cellsEnd: cursor, emptied: false });
     ends.push(cursor + after);
   }
   const gridWidth = Math.max(columnWidths?.length ?? 0, ...ends);
@@ -460,13 +479,14 @@ const resolveCellColumns = ({
   const removable = new Set<number>();
   for (let slot = 0; slot < gridWidth; slot++) {
     const kept = gridRows.some(
-      ({ cells, before, cellsEnd }) =>
-        slot < before ||
-        slot >= cellsEnd ||
-        cells.some(
-          ({ cell, start, end: cellEnd }) =>
-            slot >= start && slot < cellEnd && !removes(cell),
-        ),
+      ({ cells, before, cellsEnd, emptied }) =>
+        !emptied &&
+        (slot < before ||
+          slot >= cellsEnd ||
+          cells.some(
+            ({ cell, start, end: cellEnd }) =>
+              slot >= start && slot < cellEnd && !removes(cell),
+          )),
     );
     if (!kept) removable.add(slot);
   }
@@ -481,6 +501,7 @@ const resolveCellColumns = ({
   for (const [rowIndex, row] of table.rows.entries()) {
     const layout = gridRows[rowIndex];
     if (layout === undefined) return Result.err("unsupported");
+    if (layout.emptied) continue;
     const cells: TableCell[] = [];
     // Columns a removed cell held that other rows keep, waiting for the
     // next kept cell when nothing before it in the row can take them.
@@ -528,9 +549,10 @@ const resolveCellColumns = ({
       carried = 0;
       cells.push(widened);
     }
-    if (carried > 0 || cells.length === 0) return Result.err("unsupported");
+    if (carried > 0) return Result.err("unsupported");
     rows.push({ ...row, cells });
   }
+  if (rows.length === 0) return Result.err("unsupported");
   const next: Table = { ...table, rows };
   if (columnWidths !== undefined) {
     const nextWidths = columnWidths.filter(
@@ -564,11 +586,11 @@ const resolveCellChanges = ({
       cells: row.cells.map((cell) => propertyCell({ cell, ids, reject })),
     })),
   });
+  // A row whose every cell goes, goes with them.
   const resolveStructure = (source: Table): Table => ({
     ...source,
-    rows: source.rows.map((row) => ({
-      ...row,
-      cells: row.cells.flatMap((cell) => {
+    rows: source.rows.flatMap((row) => {
+      const cells = row.cells.flatMap((cell) => {
         const change = cell.structuralChange;
         if (change === undefined || !ids.has(change.info.id)) return [cell];
         if (change.type === "tableCellMerge") {
@@ -598,8 +620,11 @@ const resolveCellChanges = ({
           return [copy];
         }
         return [cell];
-      }),
-    })),
+      });
+      return row.cells.length > 0 && cells.length === 0
+        ? []
+        : [{ ...row, cells }];
+    }),
   });
 
   const propertiesResolved = properties(table);
@@ -632,7 +657,15 @@ const resolveCellChanges = ({
         tableGrid(table, DOCUMENT_OP_TYPES.SET_TABLE)
           .map(({ width }) => width)
           .unwrapOr(restored.value.width)) ||
-    (selectedGridChange && coversEvenly(structureResolved))
+    (selectedGridChange &&
+      (coversEvenly(structureResolved) ||
+        impliesWidth(
+          structureResolved,
+          (reject
+            ? table.formatting?.gridChange?.columnWidths
+            : table.columnWidths
+          )?.length ?? 0,
+        )))
   ) {
     return Result.ok({ table: structureResolved, holdsRemovedColumns: false });
   }

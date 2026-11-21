@@ -2337,13 +2337,17 @@ const resolveTableStructure = ({
       };
       // A suggestion marks whole cells deleted; a cell spanning the column
       // and another has no suggested form narrower than itself, in either
-      // engine.
+      // engine. What a row omits holds no cell to mark.
       if (
         tracked &&
         Array.from({ length: map.height }, (_, rowIndex) => {
           const position = map.map[rowIndex * map.width + column.left];
           return position === undefined ? null : row.table.nodeAt(position);
-        }).some((node) => Number(node?.attrs["colspan"] ?? 1) !== 1)
+        }).some(
+          (node) =>
+            node?.attrs["_omittedGridSlot"] == null &&
+            Number(node?.attrs["colspan"] ?? 1) !== 1,
+        )
       )
         return skipAlike(
           "unsupportedBlock",
