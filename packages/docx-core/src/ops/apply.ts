@@ -3356,20 +3356,25 @@ const applyAddressedOp = ({
     const restore = captureSectionView(beforeSections);
     const expected = captureSectionView(afterSections);
     if (!structurallyEqual(restore, expected)) {
-      const first = edit.inverse.at(0);
-      if (first === undefined) panic("A section edit produced no inverse.");
-      switch (first.type) {
-        case DOCUMENT_OP_TYPES.SPLIT_BLOCK:
-        case DOCUMENT_OP_TYPES.JOIN_BLOCKS:
-        case DOCUMENT_OP_TYPES.REPLACE_BLOCKS:
-          edit.inverse = [
-            { ...first, sectionView: { expected, restore } },
-            ...edit.inverse.slice(1),
-          ];
-          break;
-        default:
-          panic("A section edit produced a non-structural inverse.");
-      }
+      if (edit.inverse.length === 0)
+        panic("A section edit produced no inverse.");
+      // Story parts the edit removed (a note it took with its reference) are
+      // restored by their own inverse ops first; the structural one restores
+      // the blocks and the sections with them.
+      let carried = false;
+      edit.inverse = edit.inverse.map((inverse) => {
+        if (carried) return inverse;
+        switch (inverse.type) {
+          case DOCUMENT_OP_TYPES.SPLIT_BLOCK:
+          case DOCUMENT_OP_TYPES.JOIN_BLOCKS:
+          case DOCUMENT_OP_TYPES.REPLACE_BLOCKS:
+            carried = true;
+            return { ...inverse, sectionView: { expected, restore } };
+          default:
+            return inverse;
+        }
+      });
+      if (!carried) panic("A section edit produced a non-structural inverse.");
     }
   }
   // Check all operation outputs before trusting them, including caller-supplied block/review records.
