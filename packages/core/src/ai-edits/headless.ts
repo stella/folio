@@ -2190,10 +2190,21 @@ export class FolioDocxReviewer {
     });
   }
 
-  /** A legacy reviewer over a parsed or resolved document. */
+  /**
+   * A legacy reviewer over a parsed or resolved document. A resolved one names
+   * the ids its source read as positional, which its model now spells as ids.
+   */
   private static legacyOver(
     baseDocument: Document,
-    { originalBuffer, author }: { originalBuffer: ArrayBuffer; author: string },
+    {
+      originalBuffer,
+      author,
+      positionalParaIds,
+    }: {
+      originalBuffer: ArrayBuffer;
+      author: string;
+      positionalParaIds?: ReadonlySet<string>;
+    },
   ): FolioDocxReviewer {
     // The change tracker feeds selective save, and the paraId allocator hands
     // inserted paragraphs stable ids. Editor history and collaboration are
@@ -2227,6 +2238,7 @@ export class FolioDocxReviewer {
       state,
       author,
       engine: { type: "legacy" },
+      ...(positionalParaIds === undefined ? {} : { positionalParaIds }),
     });
   }
 
@@ -5032,7 +5044,30 @@ export class FolioDocxReviewer {
     return FolioDocxReviewer.legacyOver(rendered, {
       originalBuffer: this.originalBuffer,
       author: this.author,
+      positionalParaIds: this.storyPositionalParaIds(),
     });
+  }
+
+  /**
+   * The paragraph ids this reviewer's stories read as positional: ids it
+   * minted where the package named none, which `toDocument` writes as ids.
+   */
+  private storyPositionalParaIds(): Set<string> {
+    const ids = new Set(this.positionalParaIds);
+    const states = [
+      this.state,
+      ...[...this.secondaryStoryStates.values()].map(({ state }) => state),
+    ];
+    for (const { doc } of states)
+      doc.descendants((node) => {
+        const paraId: unknown = node.attrs["paraId"];
+        if (
+          node.attrs["idStability"] === "positional" &&
+          typeof paraId === "string"
+        )
+          ids.add(paraId);
+      });
+    return ids;
   }
 
   /**
