@@ -69,6 +69,8 @@ const savedTexts = async (reviewer: FolioDocxReviewer): Promise<string[]> =>
     .getContent()
     .map(({ text }) => text);
 
+const SESSIONS = ["legacy", "canonical"] as const;
+
 describe("resolving every suggestion headlessly", () => {
   test("a save before resolving keeps the document as it was", async () => {
     expect(await savedTexts(await suggest())).toEqual([
@@ -108,49 +110,62 @@ describe("resolving every suggestion headlessly", () => {
     expect(await savedTexts(reviewer)).toEqual(["Signed in two copies."]);
   });
 
-  test("a suggested deletion cannot retract an ordinary tracked split", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocument(), {
-      author: "AI",
-    });
-    const target = reviewer
-      .getContent()
-      .find(({ text }) => text === "Signed in two copies.");
-    if (!target) throw new Error("fixture paragraph missing");
-    const split = reviewer.applyDocumentOperations(
-      {
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode: "tracked-changes",
-        operations: [
-          { id: "split", type: "splitBlock", blockId: target.id, offset: 10 },
-        ],
-      },
-      { undefinedReferences: "refuse" },
-    );
-    expect(split.applied).toHaveLength(1);
-    const firstHalf = reviewer
-      .getContent()
-      .find(({ text }) => text === "Signed in ");
-    if (!firstHalf) throw new Error("split paragraph missing");
-    const deletion = reviewer.applyDocumentOperations(
-      {
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode: "suggested",
-        operations: [
-          { id: "delete", type: "deleteBlock", blockId: firstHalf.id },
-        ],
-      },
-      { undefinedReferences: "refuse" },
-    );
-    expect(deletion.applied).toEqual([]);
-    expect(deletion.skipped).toEqual([
-      { id: "delete", reason: "unsupportedMode" },
-    ]);
-    expect(await savedTexts(reviewer)).toEqual([
-      "First clause.",
-      "Signed in ",
-      "two copies.",
-    ]);
-  });
+  // The legacy engine refuses a suggested deletion over an ordinary tracked
+  // record; the canonical session records the deletion as the suggestion's
+  // own, beside the record it leaves alone (a pending record is taken back
+  // only by its own author and suggestion).
+  test.each(SESSIONS)(
+    "a suggested deletion leaves an ordinary tracked split pending (%s session)",
+    async (session) => {
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await buildDocument(),
+        { author: "AI", session },
+      );
+      const target = reviewer
+        .getContent()
+        .find(({ text }) => text === "Signed in two copies.");
+      if (!target) throw new Error("fixture paragraph missing");
+      const split = reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode: "tracked-changes",
+          operations: [
+            { id: "split", type: "splitBlock", blockId: target.id, offset: 10 },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      );
+      expect(split.applied).toHaveLength(1);
+      const firstHalf = reviewer
+        .getContent()
+        .find(({ text }) => text === "Signed in ");
+      if (!firstHalf) throw new Error("split paragraph missing");
+      const deletion = reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode: "suggested",
+          operations: [
+            { id: "delete", type: "deleteBlock", blockId: firstHalf.id },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      );
+      if (session === "legacy") {
+        expect(deletion.applied).toEqual([]);
+        expect(deletion.skipped).toEqual([
+          { id: "delete", reason: "unsupportedMode" },
+        ]);
+      } else {
+        expect(deletion.applied.map(({ id }) => id)).toEqual(["delete"]);
+        expect(deletion.skipped).toEqual([]);
+      }
+      expect(await savedTexts(reviewer)).toEqual([
+        "First clause.",
+        "Signed in ",
+        "two copies.",
+      ]);
+    },
+  );
 
   test("acceptAll leaves suggested edits staged and out of the saved package", async () => {
     const reviewer = await suggest();
@@ -260,61 +275,77 @@ describe("resolving every suggestion headlessly", () => {
     ]);
   });
 
-  test("a suggested deletion cannot overwrite a tracked paragraph revision", async () => {
-    const document = fromMarkdown(
-      "# Delivery Terms\n\nThe following apply to every order.",
-    );
-    const { docx } = await ensureParaIds(
-      new Uint8Array(await createDocx(document)),
-    );
-    const reviewer = await FolioDocxReviewer.fromBuffer(docx, { author: "AI" });
-    const [first, last] = reviewer.getContent();
-    if (!first || !last) throw new Error("fixture paragraphs missing");
-    expect(
-      reviewer.applyDocumentOperations(
+  // As above: the canonical session records the suggested deletion beside the
+  // tracked replacement, which stays as it was.
+  test.each(SESSIONS)(
+    "a suggested deletion leaves a tracked paragraph revision pending (%s session)",
+    async (session) => {
+      const document = fromMarkdown(
+        "# Delivery Terms\n\nThe following apply to every order.",
+      );
+      const { docx } = await ensureParaIds(
+        new Uint8Array(await createDocx(document)),
+      );
+      const reviewer = await FolioDocxReviewer.fromBuffer(docx, {
+        author: "AI",
+        session,
+      });
+      const [first, last] = reviewer.getContent();
+      if (!first || !last) throw new Error("fixture paragraphs missing");
+      expect(
+        reviewer.applyDocumentOperations(
+          {
+            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+            mode: "tracked-changes",
+            operations: [
+              {
+                id: "tracked",
+                type: "replaceInBlock",
+                blockId: last.id,
+                find: "every",
+                replace: "each",
+              },
+            ],
+          },
+          { undefinedReferences: "refuse" },
+        ).applied,
+      ).toHaveLength(1);
+      const result = reviewer.applyDocumentOperations(
         {
           version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-          mode: "tracked-changes",
+          mode: "suggested",
           operations: [
             {
-              id: "tracked",
+              id: "pending",
               type: "replaceInBlock",
-              blockId: last.id,
-              find: "every",
-              replace: "each",
+              blockId: first.id,
+              find: "Delivery",
+              replace: "revised",
             },
+            { id: "delete", type: "deleteBlock", blockId: last.id },
           ],
         },
         { undefinedReferences: "refuse" },
-      ).applied,
-    ).toHaveLength(1);
-    const result = reviewer.applyDocumentOperations(
-      {
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode: "suggested",
-        operations: [
-          {
-            id: "pending",
-            type: "replaceInBlock",
-            blockId: first.id,
-            find: "Delivery",
-            replace: "revised",
-          },
-          { id: "delete", type: "deleteBlock", blockId: last.id },
-        ],
-      },
-      { undefinedReferences: "refuse" },
-    );
-    expect(result.applied.map(({ id }) => id)).toEqual(["pending"]);
-    expect(result.skipped).toEqual([
-      { id: "delete", reason: "unsupportedMode" },
-    ]);
-    reviewer.acceptAll();
-    expect(await savedTexts(reviewer)).toEqual([
-      "Delivery Terms",
-      "The following apply to each order.",
-    ]);
-  });
+      );
+      if (session === "legacy") {
+        expect(result.applied.map(({ id }) => id)).toEqual(["pending"]);
+        expect(result.skipped).toEqual([
+          { id: "delete", reason: "unsupportedMode" },
+        ]);
+      } else {
+        expect(result.applied.map(({ id }) => id)).toEqual([
+          "pending",
+          "delete",
+        ]);
+        expect(result.skipped).toEqual([]);
+      }
+      reviewer.acceptAll();
+      expect(await savedTexts(reviewer)).toEqual([
+        "Delivery Terms",
+        "The following apply to each order.",
+      ]);
+    },
+  );
 
   test("acceptAll fails without changing the document when a suggestion cannot be restaged", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocument(), {
@@ -525,50 +556,63 @@ describe("resolving every suggestion headlessly", () => {
     expect(reviewer.exportPendingSuggestions()).toEqual([]);
   });
 
-  test("refuses a suggestion that would retract a tracked insertion", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocument(), {
-      author: "AI",
-    });
-    const first = reviewer.getContent()[0];
-    if (!first) throw new Error("the fixture paragraph is missing");
-    expect(
-      reviewer.applyDocumentOperations(
+  // As above: the canonical session records the suggested deletion beside the
+  // tracked insertion, which stays as it was.
+  test.each(SESSIONS)(
+    "a suggested deletion leaves a tracked insertion pending (%s session)",
+    async (session) => {
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await buildDocument(),
+        { author: "AI", session },
+      );
+      const first = reviewer.getContent()[0];
+      if (!first) throw new Error("the fixture paragraph is missing");
+      expect(
+        reviewer.applyDocumentOperations(
+          {
+            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+            mode: "tracked-changes",
+            operations: [
+              {
+                id: "tracked",
+                type: "insertAfterBlock",
+                blockId: first.id,
+                text: "Added.",
+              },
+            ],
+          },
+          { undefinedReferences: "refuse" },
+        ).applied,
+      ).toHaveLength(1);
+      const added = reviewer.getContent().find(({ text }) => text === "Added.");
+      if (!added) throw new Error("the tracked insertion is missing");
+      const deletion = reviewer.applyDocumentOperations(
         {
           version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-          mode: "tracked-changes",
+          mode: "suggested",
           operations: [
-            {
-              id: "tracked",
-              type: "insertAfterBlock",
-              blockId: first.id,
-              text: "Added.",
-            },
+            { id: "delete", type: "deleteBlock", blockId: added.id },
           ],
         },
         { undefinedReferences: "refuse" },
-      ).applied,
-    ).toHaveLength(1);
-    const added = reviewer.getContent().find(({ text }) => text === "Added.");
-    if (!added) throw new Error("the tracked insertion is missing");
-    const result = reviewer.applyDocumentOperations(
-      {
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode: "suggested",
-        operations: [{ id: "pending", type: "deleteBlock", blockId: added.id }],
-      },
-      { undefinedReferences: "refuse" },
-    );
-    expect(result.applied).toEqual([]);
-    expect(result.skipped).toEqual([
-      { id: "pending", reason: "unsupportedMode" },
-    ]);
-    reviewer.acceptAll();
-    expect(await savedTexts(reviewer)).toEqual([
-      "First clause.",
-      "Added.",
-      "Signed in two copies.",
-    ]);
-  });
+      );
+      if (session === "legacy") {
+        expect(deletion.applied).toEqual([]);
+        expect(deletion.skipped).toEqual([
+          { id: "delete", reason: "unsupportedMode" },
+        ]);
+      } else {
+        expect(deletion.applied.map(({ id }) => id)).toEqual(["delete"]);
+        expect(deletion.skipped).toEqual([]);
+      }
+      reviewer.acceptAll();
+      expect(await savedTexts(reviewer)).toEqual([
+        "First clause.",
+        "Added.",
+        "Signed in two copies.",
+      ]);
+    },
+  );
 
   // Beside a paragraph a tracked deletion takes whole, the legacy engine
   // refuses a suggested block; the canonical session puts it there, as the
