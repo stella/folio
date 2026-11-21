@@ -697,6 +697,7 @@ const operationFields = {
     ...tableTarget,
     column: natural,
     width: number,
+    count: optional(natural),
     newBlockIds: array(blockId),
   } satisfies OperationFields<"insertColumn">,
   deleteColumn: {
