@@ -1970,10 +1970,9 @@ const formattingIntentsAsItRuns = ({
           operation: {
             ...operation,
             blockId,
-            paragraphAfter:
-              operation.side === "after" && ends
-                ? "empty"
-                : operation.paragraphAfter,
+            ...(operation.side === "after" && ends
+              ? { paragraphAfter: "empty" as const }
+              : {}),
           },
         };
       }
