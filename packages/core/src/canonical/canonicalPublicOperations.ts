@@ -1720,6 +1720,56 @@ const ownMarkBeforeInsertedTableAsItRuns = ({
   return [{ type: "deleteParagraphs", story, blockIds: [paragraph.paraId] }];
 };
 
+type TakenOverBreakRetractionOptions = {
+  document: Document;
+  story: OpStory;
+  blockId: string;
+  author: string;
+  suggestionId: string | undefined;
+  intents: readonly EditorIntent[];
+};
+
+/**
+ * A tracked deletion of the body's last paragraph, as the batch stands when
+ * it runs, that takes back this owner's (`author`, and `suggestionId` in a
+ * suggestion) insertion after the paragraph before it: that paragraph holds
+ * the insertion's new break (`survivor: "first"`) and the last one only its
+ * words, under the former mark it took over. The block deletion rejects that
+ * insertion, so the paragraph before keeps its identity and gets its mark and
+ * properties back; a text range over the break would retire its identity.
+ */
+const takenOverBreakRetractionAsItRuns = ({
+  document,
+  story,
+  blockId,
+  author,
+  suggestionId,
+  intents,
+}: TakenOverBreakRetractionOptions): readonly EditorIntent[] => {
+  const blocks = findStoryBody(document, story)?.content ?? [];
+  const paragraph = blocks.at(-1);
+  const previous = blocks.at(-2);
+  const owns = (info: {
+    author?: string | undefined;
+    suggestionId?: string | undefined;
+  }) => info.author === author && info.suggestionId === suggestionId;
+  if (
+    paragraph?.type !== "paragraph" ||
+    paragraph.paraId === undefined ||
+    idKey(paragraph.paraId) !== idKey(blockId) ||
+    !paragraph.content.every(
+      (item) => item.type === "insertion" && owns(item.info),
+    ) ||
+    previous?.type !== "paragraph" ||
+    previous.pPrMark?.kind !== "ins" ||
+    previous.pPrMark.deletion !== undefined ||
+    previous.pPrMark.survivor !== "first" ||
+    !owns(previous.pPrMark.info)
+  )
+    return intents;
+  return [{ type: "deleteParagraphs", story, blockIds: [paragraph.paraId] }];
+};
+
 type MergeIntentsAsItRunsOptions = {
   document: Document;
   story: OpStory;
@@ -4144,19 +4194,34 @@ export class CanonicalPublicOperations {
         resolvedOperation.mayEndContainer === true
           ? finalDeletionIntentsAsItRuns(sourceDocument, story, retired)
           : retired;
+      // A suggested operation's records are one suggestion: its own id, or the
+      // one it names.
+      const suggestionId =
+        batch.mode === "suggested"
+          ? (("suggestionId" in operation
+              ? operation.suggestionId
+              : undefined) ?? operation.id)
+          : undefined;
       const retracting =
         operation.type === "deleteBlock" &&
         batch.mode !== "direct" &&
         operation.moveId === undefined
-          ? ownMarkBeforeInsertedTableAsItRuns({
+          ? takenOverBreakRetractionAsItRuns({
               document: sourceDocument,
               story,
               blockId: operation.blockId,
               author: options.author ?? "AI",
-              gainsFollower: (id) =>
-                besideDeletions.tables.after.has(id) ||
-                besideDeletions.paragraphsAfter.has(id),
-              intents: deleting,
+              suggestionId,
+              intents: ownMarkBeforeInsertedTableAsItRuns({
+                document: sourceDocument,
+                story,
+                blockId: operation.blockId,
+                author: options.author ?? "AI",
+                gainsFollower: (id) =>
+                  besideDeletions.tables.after.has(id) ||
+                  besideDeletions.paragraphsAfter.has(id),
+                intents: deleting,
+              }),
             })
           : deleting;
       const joining =
@@ -4186,14 +4251,6 @@ export class CanonicalPublicOperations {
           message: livePropertyRefusal.message,
           refusal: livePropertyRefusal.canonicalRefusal,
         });
-      // A suggested operation's records are one suggestion: its own id, or the
-      // one it names.
-      const suggestionId =
-        batch.mode === "suggested"
-          ? (("suggestionId" in operation
-              ? operation.suggestionId
-              : undefined) ?? operation.id)
-          : undefined;
       const column = resolvedOperation.plan.address;
       const mappedIntents =
         column.type === "column" && operation.type === "deleteTableColumn"

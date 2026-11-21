@@ -63,6 +63,7 @@ import {
   type DeleteBlocksOp,
   DOCUMENT_OP_TYPES,
   type ParagraphAbsorption,
+  REVISION_DECISIONS,
   type RevisionStamp,
   SECTION_BOUNDARY_POLICIES,
 } from "./types";
@@ -139,6 +140,66 @@ const addedWholeBy = (paragraph: Paragraph, owner: RevisionOwner): boolean =>
   ) &&
   !holdsRangeBoundary(paragraph.content) &&
   recordedOnlyBy(paragraph, owner);
+
+type TakenOverBreakOptions = {
+  /** The paragraph right before `paragraphs`. */
+  broken: Paragraph;
+  /** The paragraphs deleted, the last ones of their container. */
+  paragraphs: readonly Paragraph[];
+  owner: RevisionOwner;
+};
+
+/**
+ * The records whose rejection takes back `owner`'s insertion after the
+ * container's last paragraph, if `paragraphs` are what it added: it gave the
+ * paragraph before them (`broken`) a new break of its own, rejected into the
+ * paragraph after it (`survivor: "first"`), each paragraph but the last an
+ * added one, and the last one the words, with the former mark taken over.
+ * Deleting them is rejecting those records, as deleting one's own insertion
+ * removes it: `broken` keeps its identity and gets that mark and its
+ * properties back. A record the former mark already carried stays on it.
+ */
+const takenOverBreakRecords = ({
+  broken,
+  paragraphs,
+  owner,
+}: TakenOverBreakOptions): number[] | undefined => {
+  const mark = broken.pPrMark;
+  const last = paragraphs.at(-1);
+  if (
+    last === undefined ||
+    mark?.kind !== "ins" ||
+    mark.deletion !== undefined ||
+    mark.survivor !== "first" ||
+    !isOwnRecord(mark.info, owner) ||
+    broken.sectionProperties !== undefined ||
+    !paragraphs
+      .slice(0, -1)
+      .every((paragraph) => addedWholeBy(paragraph, owner))
+  )
+    return undefined;
+  const { pPrMark: formerMark, ...words } = last;
+  if (
+    (formerMark !== undefined &&
+      (formerMark.kind !== "ins" || formerMark.deletion !== undefined)) ||
+    !last.content.every(
+      (item) => item.type === "insertion" && isOwnRecord(item.info, owner),
+    ) ||
+    holdsRangeBoundary(last.content) ||
+    !recordedOnlyBy(words, owner)
+  )
+    return undefined;
+  const ids = [mark.info.id];
+  for (const paragraph of paragraphs) {
+    if (paragraph !== last && paragraph.pPrMark !== undefined)
+      ids.push(paragraph.pPrMark.info.id);
+    for (const item of paragraph.content)
+      if (item.type === "insertion") ids.push(item.info.id);
+    for (const change of paragraph.propertyChanges ?? [])
+      ids.push(change.info.id);
+  }
+  return ids;
+};
 
 /** Whether a range boundary stands anywhere among `nodes`. */
 const holdsRangeBoundary = (nodes: readonly InlineNode[]): boolean =>
@@ -504,13 +565,21 @@ export const deleteBlocks = ({
   const following = list[last.index + 1];
   const terminal = last.index === list.length - 1;
   // Paragraphs the same author's pending insertion added whole, with no one
-  // else's suggestion in them, go outright before a table, as deleting over
-  // one's own insertion removes it; no deletion of an addition is recorded.
+  // else's suggestion in them, go outright before a paragraph or a table, as
+  // deleting over one's own insertion removes it; no deletion of an addition
+  // is recorded. Before a paragraph, an added mark that ends a section is not
+  // taken back here: where its break goes is what rejecting the insertion
+  // decides.
   const owner = op.revision;
+  const beforeParagraph =
+    following?.type === "paragraph" &&
+    op.move !== true &&
+    found.every(({ paragraph }) => paragraph.sectionProperties === undefined);
+  const beforeTable =
+    following?.type === "table" && list.at(-1)?.type === "paragraph";
   if (
     owner !== undefined &&
-    following?.type === "table" &&
-    list.at(-1)?.type === "paragraph" &&
+    (beforeParagraph || beforeTable) &&
     found.every(({ paragraph }) => addedWholeBy(paragraph, owner))
   ) {
     const removed = applyOps(document, [
@@ -532,6 +601,32 @@ export const deleteBlocks = ({
         removed: found.map(({ paragraph }) => paragraph.paraId ?? ""),
       },
     });
+  }
+  const broken = list[first.index - 1];
+  const takenOver =
+    owner !== undefined &&
+    terminal &&
+    op.move !== true &&
+    broken?.type === "paragraph"
+      ? takenOverBreakRecords({
+          broken,
+          paragraphs: found.map(({ paragraph }) => paragraph),
+          owner,
+        })
+      : undefined;
+  if (takenOver !== undefined) {
+    const rejected = applyOps(document, [
+      {
+        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+        story: op.story,
+        revisionIds: takenOver,
+        decision: REVISION_DECISIONS.REJECT,
+      },
+    ]);
+    if (rejected.isErr())
+      return refuse(rejected.error.reason, rejected.error.message);
+    const { document: retracted, inverse, touched } = rejected.value;
+    return Result.ok({ document: retracted, inverse, touched });
   }
   // Tracked, a paragraph a table or another block follows loses its words
   // and its own mark, as the default editor records it; accepting removes

@@ -13,6 +13,7 @@ import {
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import { FolioDocxReviewer } from "./headless";
 import { createFolioAITextRangeHandle } from "./snapshot";
 
@@ -26,9 +27,12 @@ const ORIGINAL = [
   SIGNED,
 ];
 
-const open = async (bytes?: ArrayBuffer): Promise<FolioDocxReviewer> => {
+const open = async (
+  bytes?: ArrayBuffer,
+  session?: HeadlessReviewerSession,
+): Promise<FolioDocxReviewer> => {
   if (bytes) {
-    return FolioDocxReviewer.fromBuffer(bytes, { author: "Reviewer" });
+    return FolioDocxReviewer.fromBuffer(bytes, { author: "Reviewer", session });
   }
   const document = fromMarkdown(
     ["# Service Agreement", ...ORIGINAL.slice(1)].join("\n\n"),
@@ -41,13 +45,14 @@ const open = async (bytes?: ArrayBuffer): Promise<FolioDocxReviewer> => {
       docx.byteOffset,
       docx.byteOffset + docx.byteLength,
     ) as ArrayBuffer,
-    { author: "Reviewer" },
+    { author: "Reviewer", session },
   );
 };
 
 const reopen = async (
   reviewer: FolioDocxReviewer,
-): Promise<FolioDocxReviewer> => open(await reviewer.toBuffer());
+  session?: HeadlessReviewerSession,
+): Promise<FolioDocxReviewer> => open(await reviewer.toBuffer(), session);
 
 const texts = (reviewer: FolioDocxReviewer): string[] =>
   reviewer.getContent().map(({ text }) => text);
@@ -75,7 +80,7 @@ const applier =
     reviewer: FolioDocxReviewer,
     mode: FolioDocumentOperationMode = "tracked-changes",
   ) =>
-  (operation: Record<string, unknown>): void => {
+  (operation: Record<string, unknown>) => {
     const result = reviewer.applyDocumentOperations(
       {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -85,6 +90,7 @@ const applier =
       { undefinedReferences: "refuse" },
     );
     expect(result.applied).toHaveLength(1);
+    return result;
   };
 
 describe("a tracked merge of a break that is itself a pending insertion", () => {
@@ -222,26 +228,101 @@ describe("a tracked merge of a break that is itself a pending insertion", () => 
 });
 
 describe("a tracked deletion of a paragraph that is a pending insertion", () => {
-  for (const mode of ["tracked-changes", "suggested"] as const) {
-    for (const [where, anchor] of [
-      ["inside the story", "The Buyer"],
-      ["at its end", "Signed"],
-    ] as const) {
-      test(`retracts it ${where} (${mode})`, async () => {
-        const reviewer = await open();
-        const apply = applier(reviewer, mode);
-        apply({
-          type: "insertAfterBlock",
-          blockId: idOf(reviewer, anchor),
-          text: "Inserted.",
-        });
-        apply({ type: "deleteBlock", blockId: idOf(reviewer, "Inserted.") });
-        expect(texts(reviewer)).toEqual(ORIGINAL);
-        expect(reviewer.getChanges()).toEqual([]);
-        reviewer.acceptAll();
-        expect(texts(await reopen(reviewer))).toEqual(ORIGINAL);
-      });
+  // Deleting one's own inserted paragraph takes the insertion back: the
+  // document is the one before it, ids and paragraph properties included,
+  // live, saved, resolved and undone.
+  for (const session of ["canonical", "legacy"] as const) {
+    for (const mode of ["tracked-changes", "suggested"] as const) {
+      for (const [where, anchor] of [
+        ["inside the story", "The Buyer"],
+        ["at its end", "Signed"],
+      ] as const) {
+        for (const styleId of [undefined, "Heading2"] as const) {
+          test(`retracts it ${where}${styleId === undefined ? "" : " restyled"} (${session}, ${mode})`, async () => {
+            const reviewer = await open(undefined, session);
+            const original = (
+              await open(await reviewer.toBuffer(), session)
+            ).getContent();
+            const apply = applier(reviewer, mode);
+            const inserted = apply({
+              type: "insertAfterBlock",
+              blockId: idOf(reviewer, anchor),
+              text: "Inserted.",
+              ...(styleId === undefined ? {} : { styleId }),
+            });
+            // A suggestion takes back only its own records: the deletion
+            // joins the insertion's suggestion.
+            const suggestionId = inserted.applied.at(0)?.suggestionId;
+            const deleted = apply({
+              id: "2",
+              type: "deleteBlock",
+              blockId: idOf(reviewer, "Inserted."),
+              ...(suggestionId === undefined ? {} : { suggestionId }),
+            });
+            expect(reviewer.getContent()).toEqual(original);
+            expect(reviewer.getChanges()).toEqual([]);
+            const saved = await reopen(reviewer, session);
+            expect(saved.getContent()).toEqual(original);
+            expect(saved.getChanges()).toEqual([]);
+            saved.rejectAll();
+            expect(saved.getContent()).toEqual(original);
+            const accepted = await reopen(reviewer, session);
+            accepted.acceptAll();
+            expect(accepted.getContent()).toEqual(original);
+            const undoHandle = deleted.undoHandle;
+            if (undoHandle === null) throw new Error("no undo handle");
+            expect(reviewer.undoDocumentOperations(undoHandle).status).toBe(
+              "undone",
+            );
+            expect(texts(reviewer)).toContain("Inserted.");
+          });
+        }
+      }
     }
+  }
+
+  // A later suggestion is not the one that inserted the paragraph: on the
+  // canonical session its deletion stays beside the insertion, so rejecting
+  // that suggestion gives the paragraph back. The legacy session takes the
+  // insertion back outright.
+  for (const session of ["canonical", "legacy"] as const) {
+    test(`a later suggestion deleting it (${session})`, async () => {
+      const reviewer = await open(undefined, session);
+      const original = (
+        await open(await reviewer.toBuffer(), session)
+      ).getContent();
+      const apply = applier(reviewer, "suggested");
+      apply({
+        type: "insertAfterBlock",
+        blockId: idOf(reviewer, "The Buyer"),
+        text: "Inserted.",
+      });
+      const later = apply({
+        id: "2",
+        type: "deleteBlock",
+        blockId: idOf(reviewer, "Inserted."),
+      }).applied.at(0)?.suggestionId;
+      if (later === undefined) throw new Error("no suggestion");
+      const saved = await reopen(reviewer, session);
+      const accepted = await reopen(reviewer, session);
+      if (session === "canonical") {
+        expect(reviewer.getChanges().map(({ type }) => type)).toEqual([
+          "paragraphMarkInserted",
+          "paragraphMarkDeleted",
+          "insertion",
+          "deletion",
+        ]);
+        expect(reviewer.rejectSuggestion(later)).toBe(true);
+        expect(texts(reviewer)).toContain("Inserted.");
+      } else {
+        expect(reviewer.getContent()).toEqual(original);
+        expect(reviewer.getChanges()).toEqual([]);
+      }
+      accepted.acceptAll();
+      expect(accepted.getContent()).toEqual(original);
+      saved.rejectAll();
+      expect(saved.getContent()).toEqual(original);
+    });
   }
 
   test("deleting the paragraph a split added a break to keeps its words deleted", async () => {
