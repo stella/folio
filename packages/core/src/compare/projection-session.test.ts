@@ -7,6 +7,7 @@ import {
 } from "../ai-edits/headless";
 import { sourceDocumentOf } from "../ai-edits/snapshot";
 import { createDocx } from "../docx/rezip";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import type { HeaderFooter, Paragraph } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { applyComparison, parseComparison, planComparison } from "./compare";
@@ -15,6 +16,7 @@ const OPTIONS = {
   author: "compare",
   timestamp: "2026-09-11T00:00:00.000Z",
 } as const;
+const SESSIONS: readonly HeadlessReviewerSession[] = ["canonical", "legacy"];
 const HEADER_RELATIONSHIP_ID = "rId_projection_header";
 const FOOTER_RELATIONSHIP_ID = "rId_projection_footer";
 
@@ -100,9 +102,12 @@ const instrumentStoryTraversals = (
   return counters;
 };
 
-test("comparison projection avoids a separate nested-revision scan", async () => {
+// The counters instrument the reviewed-story documents the legacy projection
+// walks; the canonical session projects its stories from the model instead.
+test("legacy comparison projection avoids a separate nested-revision scan", async () => {
   const baseReviewer = await FolioDocxReviewer.fromBuffer(
     await storyMatrixDocx("before"),
+    { session: "legacy" },
   );
   const baseTraversals = instrumentStoryTraversals(baseReviewer);
   const baseProjection = getFolioDocxComparisonAccess(
@@ -118,6 +123,7 @@ test("comparison projection avoids a separate nested-revision scan", async () =>
 
   const targetReviewer = await FolioDocxReviewer.fromBuffer(
     await storyMatrixDocx("after"),
+    { session: "legacy" },
   );
   const targetTraversals = instrumentStoryTraversals(targetReviewer);
   const targetProjection = getFolioDocxComparisonAccess(
@@ -132,26 +138,29 @@ test("comparison projection avoids a separate nested-revision scan", async () =>
   expect(targetTraversals.map((read) => read())).toEqual([1, 1, 1, 1, 1]);
 });
 
-test("comparison consumes the retained story projections through apply verification", async () => {
-  const parsed = await parseComparison(
-    await storyMatrixDocx("before"),
-    await storyMatrixDocx("after"),
-    OPTIONS,
-  );
-  if (parsed.isErr()) {
-    throw parsed.error;
-  }
-  expect(parsed.value.pairs).toHaveLength(5);
+test.each(SESSIONS)(
+  "%s: comparison consumes the retained story projections through apply verification",
+  async (session) => {
+    const parsed = await parseComparison(
+      await storyMatrixDocx("before"),
+      await storyMatrixDocx("after"),
+      { ...OPTIONS, session },
+    );
+    if (parsed.isErr()) {
+      throw parsed.error;
+    }
+    expect(parsed.value.pairs).toHaveLength(5);
 
-  const planned = planComparison(parsed.value);
-  if (planned.isErr()) {
-    throw planned.error;
-  }
-  expect(planned.value).toHaveLength(5);
-  const applied = applyComparison(parsed.value, planned.value);
-  if (applied.isErr()) {
-    throw applied.error;
-  }
+    const planned = planComparison(parsed.value);
+    if (planned.isErr()) {
+      throw planned.error;
+    }
+    expect(planned.value).toHaveLength(5);
+    const applied = applyComparison(parsed.value, planned.value);
+    if (applied.isErr()) {
+      throw applied.error;
+    }
 
-  expect(applied.value.verification).toEqual({ status: "verified" });
-});
+    expect(applied.value.verification).toEqual({ status: "verified" });
+  },
+);
