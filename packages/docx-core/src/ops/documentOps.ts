@@ -105,6 +105,7 @@ export {
   physicalOffsetAtVisibleOffset,
   editorParagraphGroups,
   editorPositionAtPhysicalPosition,
+  joinPropertyChangeLink,
   physicalPositionAtEditorOffset,
   type EditorIntent,
   type NewListInstance,

@@ -25,7 +25,7 @@ const JOINS = { before: 0, after: 0, remove: 0 };
 
 /** Provenance values an older or newer folio, or a damaged file, may carry. */
 const UNREADABLE = {
-  "a later version": envelope({ version: 2, value: JOINS }),
+  "a later version": envelope({ version: 3, value: JOINS }),
   "an unknown envelope field": envelope({
     version: 1,
     value: JOINS,

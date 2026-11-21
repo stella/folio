@@ -11,6 +11,7 @@ import { MAX_REVIEW_HISTORY_ATTRIBUTE_LENGTH } from "../reviewHistoryLimits";
 import type {
   Insertion,
   ParagraphMarkChange,
+  ParagraphPropertyChange,
   RecordField,
   RunPropertyChange,
 } from "../types/document";
@@ -20,7 +21,14 @@ import { getAttributeByNamespaceUri, type XmlElement } from "./xmlParser";
 const NAMESPACES: ReadonlySet<string> = new Set([
   FOLIO_REVIEW_HISTORY_NAMESPACE,
 ]);
-const VERSION = 1;
+/**
+ * The review history version folio writes. Version 2 adds the revision a
+ * paragraph property change belongs to (`folio:resolvesWith`). Version 1
+ * files carry no such link and are read as they are.
+ */
+const VERSION = 2;
+/** Every version the reader understands. */
+const READABLE_VERSIONS: ReadonlySet<unknown> = new Set([1, VERSION]);
 type ResolutionJoins = NonNullable<Insertion["resolutionJoins"]>;
 type DeferredRemoval = NonNullable<ResolutionJoins["deferredRemove"]>[number];
 type BoundaryJoins = NonNullable<RunPropertyChange["boundaryJoins"]>;
@@ -306,7 +314,7 @@ const decodeProvenance = (
     Object.keys(decoded).some((key) => key !== "version" && key !== "value")
   )
     return { status: "dropped", reason: "invalid" };
-  if (decoded["version"] !== VERSION)
+  if (!READABLE_VERSIONS.has(decoded["version"]))
     return { status: "dropped", reason: "unsupportedVersion" };
   const value = decoded["value"];
   if (!valid(value)) return { status: "dropped", reason: "invalid" };
@@ -546,6 +554,33 @@ export const serializeSplitResolutionPiece = (
     valid: isSplitResolutionPiece,
   }) + serializeEnclosing(value.joins);
 
+const isRevisionId = (value: unknown): value is number =>
+  natural(value) && value <= MAX_REVISION_ID;
+
+/**
+ * The revision a paragraph property change belongs to (`folio:resolvesWith`
+ * on `w:pPrChange`): a tracked join's paragraph-mark deletion, decided with
+ * it. A reader that does not know it resolves the two records separately.
+ */
+export const parseParagraphPropertyChangeOwner = (
+  node: XmlElement,
+): Pick<ParagraphPropertyChange, "resolvesWith"> => {
+  const resolvesWith = parseAttribute({
+    node,
+    attribute: "resolvesWith",
+    valid: isRevisionId,
+  });
+  return resolvesWith === undefined ? {} : { resolvesWith };
+};
+export const serializeParagraphPropertyChangeOwner = (
+  change: ParagraphPropertyChange,
+): string =>
+  serializeAttribute({
+    attribute: "resolvesWith",
+    value: change.resolvesWith,
+    valid: isRevisionId,
+  });
+
 /** Every provenance attribute folio reads, with the shape its value must have. */
 const PROVENANCE_VALUE_SHAPES: Readonly<
   Record<string, (value: unknown) => boolean>
@@ -558,6 +593,7 @@ const PROVENANCE_VALUE_SHAPES: Readonly<
   splitResolutionJoins: isSplitResolutionPiece,
   [ENCLOSING_ATTRIBUTE]: enclosingHandoffs,
   [PARAGRAPH_MARK_FIELDS.survivor.attribute]: isParagraphMarkSurvivor,
+  resolvesWith: isRevisionId,
 };
 
 /**
