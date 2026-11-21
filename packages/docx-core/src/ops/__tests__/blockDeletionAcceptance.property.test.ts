@@ -286,7 +286,7 @@ const checkCase = (sample: Case, exercised: Set<string>): void => {
   if (direct.isOk()) {
     expect(accepted.document).toStrictEqual(direct.value.document);
   } else {
-    // No direct deletion applies before a table: every boundary of a
+    // Where no direct deletion applies before a table, every boundary of a
     // range that survives stays, in order.
     const surviving = new Set(
       (accepted.document.package.document.comments ?? []).map(({ id }) =>
@@ -335,7 +335,7 @@ test("accepting a tracked deletion of whole paragraphs equals deleting them dire
   const required = [
     "paragraph:direct",
     "nothing:direct",
-    "table:kept",
+    "table:direct",
     ...FAMILIES.flatMap((family) =>
       RELATIONS.map((relation) => `${family}:${relation}`),
     ),
@@ -346,7 +346,7 @@ test("accepting a tracked deletion of whole paragraphs equals deleting them dire
 test("accepting the deletion of a paragraph before a table hands its bookmark pair to the paragraph before it", () => {
   const exercised = new Set<string>();
   checkCase(BEFORE_TABLE, exercised);
-  expect(exercised.has("table:kept")).toBe(true);
+  expect(exercised.has("table:direct")).toBe(true);
   const tracked = applyDocumentOp(
     documentOf(BEFORE_TABLE),
     deletionOf(BEFORE_TABLE),

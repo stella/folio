@@ -640,7 +640,7 @@ describe("paragraphMarkOutcome", () => {
   );
 });
 
-test("deleting a bookmark-only paragraph directly before a table is refused and keeps the bookmark", () => {
+test("deleting a bookmark-only paragraph directly before a table runs the bookmark into the table", () => {
   const paragraph: Paragraph = {
     type: "paragraph",
     paraId: "00000001",
@@ -659,8 +659,31 @@ test("deleting a bookmark-only paragraph directly before a table is refused and 
     blockIds: ["00000001"],
   });
 
-  expect(result.isErr()).toBe(true);
-  expect(document.package.document.content[0]).toBe(paragraph);
+  // As accepting its tracked deletion does: the paragraph goes and the
+  // table's first paragraph takes what it held.
+  expect(result.unwrap().document.package.document.content).toEqual([
+    {
+      ...table,
+      rows: [
+        {
+          ...table.rows[0],
+          cells: [
+            {
+              ...table.rows[0].cells[0],
+              content: [
+                {
+                  type: "paragraph",
+                  paraId: "00000002",
+                  content: paragraph.content,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    finalParagraph,
+  ]);
 });
 
 test("resolving a mark across a range boundary standing before a table is refused, the document unchanged", () => {

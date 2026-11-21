@@ -5268,6 +5268,22 @@ export class CanonicalPublicOperations {
     // the tracked deletion leaves it. With none before it, it only loses its
     // words.
     if (!tracked) {
+      // First in its container, before a table or another block, it goes
+      // whole, as accepting its tracked deletion removes it.
+      if (before === null && !followsInsertedTable && after !== null)
+        return tracking({
+          intents: [
+            {
+              type: "deleteParagraphs",
+              story: projectionStory,
+              blockIds: [paragraph.blockId],
+            },
+          ],
+          normalizations: [],
+          from: paragraph.start,
+          to: end,
+          removesParagraphBeforeBlock: true,
+        });
       const own = (
         from: number,
         to: number,
