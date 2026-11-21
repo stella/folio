@@ -118,6 +118,12 @@ const range = (
 type Case = {
   name: string;
   reach: Reach;
+  /**
+   * What the operation does to the control on the canonical session, where
+   * it differs: a range spanning the whole control, its boundaries
+   * included, removes it there; the legacy engine keeps it emptied.
+   */
+  canonicalReach?: Reach;
   /** The operation, against the block holding the control and its neighbours. */
   operation: (blocks: { holder: Block; before: Block }) => FolioAIEditOperation;
 };
@@ -196,9 +202,11 @@ const PLACEMENTS: readonly Placement[] = [
         }),
       },
       {
-        // The replacement rewrites the control's content; the control stays.
+        // The replacement spans the whole control: the legacy engine keeps it
+        // emptied, the canonical session removes it.
         name: "replacing text across all of it",
         reach: "content",
+        canonicalReach: "removal",
         operation: ({ holder }) => ({
           id: "op",
           type: "replaceInBlock",
@@ -228,6 +236,7 @@ const PLACEMENTS: readonly Placement[] = [
       {
         name: "rewriting the paragraph holding it",
         reach: "rewrite",
+        canonicalReach: "removal",
         operation: ({ holder }) => ({
           id: "op",
           type: "replaceBlock",
@@ -387,14 +396,11 @@ const open = async (placement: Placement, lock: Lock, session: Session) => {
 
 // KNOWN GAPS of the canonical session, each held by `test.failing` so a fix
 // shows as a failure to remove here:
-// - A deletion or replacement across a whole inline control removes it,
-//   where the legacy engine keeps it emptied (open decision).
 // - A tracked replacement of exactly a control's text is recorded as the
 //   control's own deletion, not as a change inside it.
 // - A tracked deletion of a paragraph holding a control is refused as
 //   untrackable before the lock is judged.
 // - Splitting a paragraph inside an inline control leaves two controls.
-const ACROSS = "removes the control a deletion spans";
 const TRACKED_INSIDE = "tracked replacement deletes the control";
 const TRACKED_PARAGRAPH = "tracked paragraph deletion is untrackable";
 const CANONICAL_KNOWN_GAPS: ReadonlyMap<string, string> = new Map([
@@ -402,39 +408,18 @@ const CANONICAL_KNOWN_GAPS: ReadonlyMap<string, string> = new Map([
     "inline sdtLocked, direct: splitting the paragraph inside it",
     "split leaves two controls",
   ],
-  ["inline sdtLocked, direct: replacing text across all of it", ACROSS],
   ["inline sdtLocked, tracked-changes: replacing its text", TRACKED_INSIDE],
-  [
-    "inline sdtLocked, tracked-changes: replacing text across all of it",
-    ACROSS,
-  ],
   [
     "inline sdtLocked, tracked-changes: deleting the paragraph holding it",
     TRACKED_PARAGRAPH,
   ],
   ["inline sdtLocked, suggested: replacing its text", TRACKED_INSIDE],
-  ["inline sdtLocked, suggested: replacing text across all of it", ACROSS],
   [
     "inline sdtLocked, suggested: deleting the paragraph holding it",
     TRACKED_PARAGRAPH,
   ],
-  ["inline contentLocked, direct: replacing text across all of it", ACROSS],
-  ["inline contentLocked, direct: rewriting the paragraph holding it", ACROSS],
   ["inline contentLocked, tracked-changes: replacing its text", TRACKED_INSIDE],
-  [
-    "inline contentLocked, tracked-changes: replacing text across all of it",
-    ACROSS,
-  ],
-  [
-    "inline contentLocked, tracked-changes: rewriting the paragraph holding it",
-    ACROSS,
-  ],
   ["inline contentLocked, suggested: replacing its text", TRACKED_INSIDE],
-  ["inline contentLocked, suggested: replacing text across all of it", ACROSS],
-  [
-    "inline contentLocked, suggested: rewriting the paragraph holding it",
-    ACROSS,
-  ],
   [
     "inline sdtContentLocked, tracked-changes: deleting the paragraph holding it",
     TRACKED_PARAGRAPH,
@@ -450,8 +435,16 @@ describe("content-control locks", () => {
     for (const placement of PLACEMENTS)
       for (const lock of LOCKS)
         for (const mode of MODES)
-          for (const { name, reach, operation } of placement.cases) {
-            const refused = refuses(lock, reach);
+          for (const {
+            name,
+            reach,
+            canonicalReach,
+            operation,
+          } of placement.cases) {
+            const refused = refuses(
+              lock,
+              session === "canonical" ? (canonicalReach ?? reach) : reach,
+            );
             const known = `${placement.kind} ${String(lock)}, ${mode}: ${name}`;
             const gap =
               session === "canonical"
