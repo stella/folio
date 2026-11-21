@@ -219,6 +219,12 @@ type CanonicalBatchPlan = {
   claim: ReturnType<typeof snapshotBatchClaim>;
   address: BatchOrderAddress;
   block: number;
+  /**
+   * The paragraph its edit is placed against as it runs: `block`, or the
+   * paragraph an insertion lands beside instead (after a table, the
+   * paragraph after it).
+   */
+  placedAgainst: number;
   insertionRun: number | null;
 };
 
@@ -262,6 +268,7 @@ const canonicalBatchPlan = ({
   ): CanonicalBatchPlan => ({
     claim: claim(item),
     block,
+    placedAgainst: block,
     address: { type: "content", position, rank: 1, inputIndex },
     insertionRun: null,
   });
@@ -297,6 +304,7 @@ const canonicalBatchPlan = ({
       return {
         claim: claim({ type: "annotation", block, from, to }),
         block,
+        placedAgainst: block,
         address: { type: "annotation", position: from, inputIndex },
         insertionRun: null,
       };
@@ -342,8 +350,21 @@ const canonicalBatchPlan = ({
       const hasComment = operation.comment !== undefined;
       const emptyPageBreak =
         tracked && operation.pageBreakBefore === true && operation.text === "";
+      // Put after a table, it is placed before the paragraph that follows.
+      const placement = intents.find(
+        (intent) => intent.type === "insertParagraphs",
+      )?.at;
+      const placed =
+        placement?.type === "before" || placement?.type === "after"
+          ? projection.paragraph(placement.blockId)
+          : paragraph;
+      if (placed === undefined)
+        return panic("A resolved insertion lost its placement paragraph", {
+          id: operation.id,
+        });
       return {
         ...plan,
+        placedAgainst: placed.start - 1,
         insertionRun: hasComment || emptyPageBreak ? null : from,
       };
     }
@@ -641,8 +662,16 @@ const orderCanonicalBatch = <T extends PlannedOperation>({
     // An edit of a paragraph's properties addresses its mark too.
     if (claim.type === "paragraphProperties")
       return { addresses: [plan.block, markOf(plan.block)], removes: [] };
+    // An insertion needs the paragraph it is placed against, as well as the
+    // one it names, still standing when it runs.
     if (claim.type !== "deleteBlock")
-      return { addresses: [plan.block], removes: [] };
+      return {
+        addresses:
+          plan.placedAgainst === plan.block
+            ? [plan.block]
+            : [plan.block, plan.placedAgainst],
+        removes: [],
+      };
     const at = doc.resolve(plan.block);
     const paragraph =
       doc.nodeAt(plan.block) ??
