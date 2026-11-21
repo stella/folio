@@ -265,90 +265,100 @@ describe("folio writes both halves of a row revision", () => {
     expect(/<w:ins [^>]*>\s*<w:r>/u.test(xml)).toBe(true);
   });
 
-  test("a tracked table deletion over a pending inserted row is refused, and the table saves", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(
-      await buildTableDocx([
-        { texts: ["Alpha"] },
-        { texts: ["Beta"], revision: "insertion" },
-      ]),
-      { author: "Reviewer" },
-    );
-    const result = reviewer.applyOperations(
-      [
-        {
-          id: "delete-table",
-          type: "deleteTable",
-          blockId: await findRowBlock(reviewer, "Alpha"),
-        },
-      ],
-      { undefinedReferences: "refuse" },
-    );
-
-    expect(result.applied).toEqual([]);
-    expect(result.skipped).toEqual([
-      { id: "delete-table", reason: "unsupportedBlock" },
-    ]);
-    expect(rowTexts(await tableRows(await reviewer.toBuffer()))).toEqual([
-      ["Alpha"],
-      ["Beta"],
-    ]);
-  });
-
-  for (const mode of ["tracked-changes", "suggested"] as const) {
-    test(`a row deletion over a pending insertion reads, accepts and rejects as one (${mode})`, async () => {
-      const source = await buildTableDocx([
-        { texts: ["Alpha"] },
-        { texts: ["Beta"] },
-      ]);
-      const edited = async () => {
-        const reviewer = await FolioDocxReviewer.fromBuffer(source, {
-          author: "Reviewer",
-        });
-        const blockId = await findRowBlock(reviewer, "Beta");
-        for (const operation of [
+  test.each(["legacy", "canonical"] as const)(
+    "a tracked table deletion over a pending inserted row is refused, and the table saves (%s)",
+    async (session) => {
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await buildTableDocx([
+          { texts: ["Alpha"] },
+          { texts: ["Beta"], revision: "insertion" },
+        ]),
+        { author: "Reviewer", session },
+      );
+      const result = reviewer.applyOperations(
+        [
           {
-            id: "word",
-            type: "replaceInBlock",
-            blockId,
-            find: "Beta",
-            replace: "Gamma",
+            id: "delete-table",
+            type: "deleteTable",
+            blockId: await findRowBlock(reviewer, "Alpha"),
           },
-          { id: "row", type: "deleteTableRow", blockId },
-        ] as const) {
-          expect(
-            reviewer.applyOperations([operation], {
-              undefinedReferences: "refuse",
-              mode,
-            }).applied,
-          ).toHaveLength(1);
-        }
-        return reviewer;
-      };
+        ],
+        { undefinedReferences: "refuse" },
+      );
 
-      // The row reads as a paragraph pending deletion does: blank, the
-      // inserted word with it.
-      const reading = await edited();
-      expect(reading.getContent().map(({ text }) => text)).toEqual([
-        "Alpha",
-        "",
+      expect(result.applied).toEqual([]);
+      expect(result.skipped).toEqual([
+        expect.objectContaining({
+          id: "delete-table",
+          reason: "unsupportedBlock",
+        }),
       ]);
-      expect(reading.getContentAsText()).not.toContain("Gamma");
-
-      const accepting = await edited();
-      if (mode === "suggested")
-        expect(accepting.acceptSuggestion("row")).toBe(true);
-      accepting.acceptAll();
-      expect(rowTexts(await tableRows(await accepting.toBuffer()))).toEqual([
-        ["Alpha"],
-      ]);
-      const rejecting = await edited();
-      rejecting.rejectAll();
-      expect(rowTexts(await tableRows(await rejecting.toBuffer()))).toEqual([
+      expect(rowTexts(await tableRows(await reviewer.toBuffer()))).toEqual([
         ["Alpha"],
         ["Beta"],
       ]);
-    });
-  }
+    },
+  );
+
+  for (const session of ["legacy", "canonical"] as const)
+    for (const mode of ["tracked-changes", "suggested"] as const) {
+      test(`a row deletion over a pending insertion reads, accepts and rejects as one (${session}, ${mode})`, async () => {
+        const source = await buildTableDocx([
+          { texts: ["Alpha"] },
+          { texts: ["Beta"] },
+        ]);
+        const edited = async () => {
+          const reviewer = await FolioDocxReviewer.fromBuffer(source, {
+            author: "Reviewer",
+            session,
+          });
+          const blockId = await findRowBlock(reviewer, "Beta");
+          for (const operation of [
+            {
+              id: "word",
+              type: "replaceInBlock",
+              blockId,
+              find: "Beta",
+              replace: "Gamma",
+            },
+            { id: "row", type: "deleteTableRow", blockId },
+          ] as const) {
+            expect(
+              reviewer.applyOperations([operation], {
+                undefinedReferences: "refuse",
+                mode,
+              }).applied,
+            ).toHaveLength(1);
+          }
+          return reviewer;
+        };
+
+        // The row reads as a paragraph pending deletion does: blank, the
+        // inserted word with it. The canonical session reads the paragraph it
+        // closes a body ending in a table with.
+        const reading = await edited();
+        expect(reading.getContent().map(({ text }) => text)).toEqual([
+          "Alpha",
+          "",
+          ...(session === "canonical" ? [""] : []),
+        ]);
+        expect(reading.getContentAsText()).not.toContain("Gamma");
+
+        const accepting = await edited();
+        if (mode === "suggested")
+          expect(accepting.acceptSuggestion("row")).toBe(true);
+        accepting.acceptAll();
+        expect(rowTexts(await tableRows(await accepting.toBuffer()))).toEqual([
+          ["Alpha"],
+        ]);
+        const rejecting = await edited();
+        rejecting.rejectAll();
+        expect(rowTexts(await tableRows(await rejecting.toBuffer()))).toEqual([
+          ["Alpha"],
+          ["Beta"],
+        ]);
+      });
+    }
 
   test.each(["legacy", "canonical"] as const)(
     "resolving one revision clears the row marker and the run marks together (%s)",
