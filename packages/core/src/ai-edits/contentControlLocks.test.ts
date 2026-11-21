@@ -124,6 +124,11 @@ type Case = {
    * included, removes it there; the legacy engine keeps it emptied.
    */
   canonicalReach?: Reach;
+  /**
+   * A paragraph break inside the control, which the canonical session refuses
+   * whatever the lock: the control lives in one paragraph.
+   */
+  breaksControl?: true;
   /** The operation, against the block holding the control and its neighbours. */
   operation: (blocks: { holder: Block; before: Block }) => FolioAIEditOperation;
 };
@@ -194,6 +199,7 @@ const PLACEMENTS: readonly Placement[] = [
       {
         name: "splitting the paragraph inside it",
         reach: "content",
+        breaksControl: true,
         operation: ({ holder }) => ({
           id: "op",
           type: "splitBlock",
@@ -394,16 +400,6 @@ const open = async (placement: Placement, lock: Lock, session: Session) => {
   return { reviewer, holder, before };
 };
 
-// KNOWN GAPS of the canonical session, each held by `test.failing` so a fix
-// shows as a failure to remove here:
-// - Splitting a paragraph inside an inline control leaves two controls.
-const CANONICAL_KNOWN_GAPS: ReadonlyMap<string, string> = new Map([
-  [
-    "inline sdtLocked, direct: splitting the paragraph inside it",
-    "split leaves two controls",
-  ],
-]);
-
 describe("content-control locks", () => {
   for (const session of SESSIONS)
     for (const placement of PLACEMENTS)
@@ -413,59 +409,62 @@ describe("content-control locks", () => {
             name,
             reach,
             canonicalReach,
+            breaksControl,
             operation,
           } of placement.cases) {
             const refused = refuses(
               lock,
               session === "canonical" ? (canonicalReach ?? reach) : reach,
             );
-            const known = `${placement.kind} ${String(lock)}, ${mode}: ${name}`;
-            const gap =
-              session === "canonical"
-                ? CANONICAL_KNOWN_GAPS.get(known)
-                : undefined;
-            const run = gap === undefined ? test : test.failing;
-            run(
-              `${session}: ${known} is ${refused ? "refused" : "allowed"}${gap === undefined ? "" : ` (known gap: ${gap})`}`,
-              async () => {
-                const { reviewer, holder, before } = await open(
-                  placement,
-                  lock,
-                  session,
+            const breaks = session === "canonical" && breaksControl === true;
+            test(`${session}: ${placement.kind} ${String(lock)}, ${mode}: ${name} is ${refused || breaks ? "refused" : "allowed"}`, async () => {
+              const { reviewer, holder, before } = await open(
+                placement,
+                lock,
+                session,
+              );
+              const original = await controlsIn(await reviewer.toBuffer());
+              expect(original).toEqual([placement.controlText]);
+              const result = reviewer.applyOperations(
+                [operation({ holder, before })],
+                { undefinedReferences: "refuse", mode },
+              );
+              const lockSkips = result.skipped.filter(
+                ({ reason }) => reason === "contentControlLock",
+              );
+              if (breaks) {
+                expect(result.applied).toEqual([]);
+                expect(result.skipped.at(0)?.message).toContain(
+                  'content control "Guarded"',
                 );
-                const original = await controlsIn(await reviewer.toBuffer());
-                expect(original).toEqual([placement.controlText]);
-                const result = reviewer.applyOperations(
-                  [operation({ holder, before })],
-                  { undefinedReferences: "refuse", mode },
+                expect(await controlsIn(await reviewer.toBuffer())).toEqual(
+                  original,
                 );
-                const lockSkips = result.skipped.filter(
-                  ({ reason }) => reason === "contentControlLock",
+                return;
+              }
+              if (refused) {
+                expect(result.applied).toEqual([]);
+                expect(lockSkips).toHaveLength(1);
+                expect(lockSkips[0]?.message).toContain(String(lock));
+                expect(await controlsIn(await reviewer.toBuffer())).toEqual(
+                  original,
                 );
-                if (refused) {
-                  expect(result.applied).toEqual([]);
-                  expect(lockSkips).toHaveLength(1);
-                  expect(lockSkips[0]?.message).toContain(String(lock));
-                  expect(await controlsIn(await reviewer.toBuffer())).toEqual(
-                    original,
-                  );
-                  if (mode === "suggested")
-                    expect(reviewer.exportPendingSuggestions()).toEqual([]);
-                  return;
-                }
-                expect(lockSkips).toEqual([]);
-                if (mode === "suggested") return;
-                // Whatever applied leaves what the lock guards as it was, once
-                // every change is accepted.
-                reviewer.acceptAll();
-                const accepted = await controlsIn(await reviewer.toBuffer());
-                if (lock === "contentLocked" || lock === "sdtContentLocked")
-                  expect(
-                    accepted.every((text) => text === placement.controlText),
-                  ).toBe(true);
-                if (lock === "sdtLocked" || lock === "sdtContentLocked")
-                  expect(accepted).toHaveLength(1);
-              },
-            );
+                if (mode === "suggested")
+                  expect(reviewer.exportPendingSuggestions()).toEqual([]);
+                return;
+              }
+              expect(lockSkips).toEqual([]);
+              if (mode === "suggested") return;
+              // Whatever applied leaves what the lock guards as it was, once
+              // every change is accepted.
+              reviewer.acceptAll();
+              const accepted = await controlsIn(await reviewer.toBuffer());
+              if (lock === "contentLocked" || lock === "sdtContentLocked")
+                expect(
+                  accepted.every((text) => text === placement.controlText),
+                ).toBe(true);
+              if (lock === "sdtLocked" || lock === "sdtContentLocked")
+                expect(accepted).toHaveLength(1);
+            });
           }
 });

@@ -199,25 +199,20 @@ describe("inline content controls in the canonical session", () => {
     expect(parts(current)).toBe("Bef[use] after");
   });
 
-  test("Enter inside the control splits it, the second half under a fresh id, and undo is exact", async () => {
-    const current = await session();
-    const before = current.document;
-    let state = stateFor(current);
-    state = select(state, at(state, "Clause", 3));
-    state = accept(state, current.prepareSplit(state).unwrap());
-    const ids = current.document.package.document.content.flatMap((block) =>
-      block.type === "paragraph"
-        ? block.content.flatMap((item) =>
-            item.type === "inlineSdt" ? [item.properties.id] : [],
-          )
-        : [],
-    );
-    expect(ids).toHaveLength(2);
-    expect(ids[0]).toBe(7);
-    expect(new Set(ids).size).toBe(2);
-    state = accept(state, current.prepareUndo(state).unwrap());
-    expect(current.document).toEqual(before);
-  });
+  // The control lives in one paragraph: a break inside it has no form.
+  for (const mode of ["editing", "suggesting"] as const)
+    test(`Enter inside the control in ${mode} mode refuses, naming it, and changes nothing`, async () => {
+      const current = await session(undefined, mode);
+      const before = current.document;
+      let state = stateFor(current);
+      state = select(state, at(state, "Clause", 3));
+      const split = current.prepareSplit(state);
+      expect(split.isErr()).toBe(true);
+      expect(split.isErr() && split.error.message).toContain(
+        "inside the content control",
+      );
+      expect(current.document).toBe(before);
+    });
 
   /** Every tracked change id in the session's main story. */
   const revisionIds = (current: CanonicalSession): number[] => {
