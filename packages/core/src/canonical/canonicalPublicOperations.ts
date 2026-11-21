@@ -2961,9 +2961,56 @@ const resolveTableInsertion = ({
 };
 
 /** A paragraph of the table's own that addresses a table edit, by its id. */
+type KeptTableAddressOptions = {
+  projection: CanonicalProjection;
+  /** The table or row the operation edits. */
+  scope: PMNode;
+  /** The position just before `scope`. */
+  scopePosition: number;
+  /** Paragraphs the batch deletes, which run before the table edit. */
+  deleted: ReadonlySet<string>;
+};
+
+/**
+ * The first paragraph standing directly in the cells of `scope` that the
+ * batch keeps: a table or row edit addressed by a paragraph the batch deletes
+ * would find no paragraph once that deletion has run.
+ */
+const keptTableAddress = ({
+  projection,
+  scope,
+  scopePosition,
+  deleted,
+}: KeptTableAddressOptions): string | undefined => {
+  const rows: { row: PMNode; position: number }[] = [];
+  if (scope.type.spec["tableRole"] === "row")
+    rows.push({ row: scope, position: scopePosition });
+  else
+    scope.forEach((row, offset) => {
+      if (row.type.spec["tableRole"] === "row")
+        rows.push({ row, position: scopePosition + 1 + offset });
+    });
+  // Each paragraph's first content position, in document order.
+  const starts: number[] = [];
+  for (const { row, position } of rows)
+    row.forEach((cell, cellOffset) =>
+      cell.forEach((child, childOffset) => {
+        if (child.type.name === "paragraph")
+          starts.push(position + 1 + cellOffset + 1 + childOffset + 1);
+      }),
+    );
+  for (const start of starts) {
+    const addressed = projection.addressAt(start);
+    if (addressed.isOk() && !deleted.has(addressed.value.blockId))
+      return addressed.value.blockId;
+  }
+  return undefined;
+};
+
 const tableBlockAddress = (
   projection: CanonicalProjection,
   row: { table: PMNode; tableStart: number },
+  deleted: ReadonlySet<string> = new Set(),
 ): string | undefined => {
   const at = tableAnchor({
     map: TableMap.get(row.table),
@@ -2975,8 +3022,14 @@ const tableBlockAddress = (
     bottom: 0,
   });
   const addressed = at === undefined ? undefined : projection.addressAt(at);
-  return addressed === undefined || addressed.isErr()
-    ? undefined
+  if (addressed === undefined || addressed.isErr()) return undefined;
+  return deleted.has(addressed.value.blockId)
+    ? (keptTableAddress({
+        projection,
+        scope: row.table,
+        scopePosition: row.tableStart - 1,
+        deleted,
+      }) ?? addressed.value.blockId)
     : addressed.value.blockId;
 };
 
@@ -3111,6 +3164,8 @@ type ResolveTableStructureOptions = {
   skipTracked: (
     message: string,
   ) => Result<never, CanonicalPublicOperationResolutionError>;
+  /** Paragraphs the batch deletes, which no table edit may be addressed by. */
+  deleted: ReadonlySet<string>;
   /** The row a new row copies, when the batch hands one for this operation. */
   template: PMNode | undefined;
 };
@@ -3134,12 +3189,23 @@ const resolveTableStructure = ({
   notInTable,
   skipAlike,
   skipTracked,
+  deleted,
   template,
 }: ResolveTableStructureOptions) => {
   const { doc } = projection;
   const blockFrom = paragraph.start - 1;
   const row = findEnclosingTableRow(doc, blockFrom);
   if (row === null) return notInTable();
+  /** The operation's own paragraph, unless the batch deletes it first. */
+  const keptAddress = (scope: "row" | "table") =>
+    deleted.has(paragraph.blockId)
+      ? (keptTableAddress({
+          projection,
+          scope: scope === "row" ? row.table.child(row.rowIndex) : row.table,
+          scopePosition: scope === "row" ? row.rowPosition : row.tablePosition,
+          deleted,
+        }) ?? paragraph.blockId)
+      : paragraph.blockId;
   const resolved = (intent: EditorIntent, from: number, to: number) =>
     Result.ok({
       type: "plain" as const,
@@ -3157,7 +3223,7 @@ const resolveTableStructure = ({
           operation: {
             type: DOCUMENT_OP_TYPES.DELETE_TABLE,
             story,
-            blockId: paragraph.blockId,
+            blockId: keptAddress("table"),
           },
         },
         row.tablePosition,
@@ -3170,7 +3236,7 @@ const resolveTableStructure = ({
           operation: {
             type: DOCUMENT_OP_TYPES.DELETE_ROW,
             story,
-            blockId: paragraph.blockId,
+            blockId: keptAddress("row"),
           },
         },
         // The whole row: an edit inside it in the same batch overlaps.
@@ -3195,7 +3261,7 @@ const resolveTableStructure = ({
             operation: {
               type: DOCUMENT_OP_TYPES.DELETE_TABLE,
               story,
-              blockId: paragraph.blockId,
+              blockId: keptAddress("table"),
             },
           },
           table.from,
@@ -3280,7 +3346,7 @@ const resolveTableStructure = ({
         return skipTracked(
           "A suggested column cannot widen a cell that spans other columns.",
         );
-      const blockId = tableBlockAddress(projection, row);
+      const blockId = tableBlockAddress(projection, row, deleted);
       if (blockId === undefined) return refusal("unsupportedBlock");
       const intent: EditorIntent = {
         type: "table",
@@ -3367,7 +3433,7 @@ const resolveTableStructure = ({
         return skipTracked(
           "A suggested merge takes one column over empty cells.",
         );
-      const blockId = tableBlockAddress(projection, row);
+      const blockId = tableBlockAddress(projection, row, deleted);
       if (blockId === undefined) return refusal("unsupportedBlock");
       return resolved(
         {
@@ -6655,6 +6721,7 @@ export class CanonicalPublicOperations {
         notInTable,
         skipAlike,
         skipTracked,
+        deleted: besideDeletions.deleted,
         template: options.tableTemplates?.get(operation.id),
       });
     if (
