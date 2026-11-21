@@ -2169,17 +2169,22 @@ const trackJoin = ({
     trailingMark?.deletion !== undefined;
   const list = blockListAt(storyBody(document, op.story).content, at.list);
   const afterTrailing = list[at.index + 2];
+  const boundary =
+    afterTrailing?.type === "table"
+      ? paragraphTableRunInBoundary(trailing, afterTrailing)
+      : undefined;
   if (
     trailingMarkGoes &&
-    afterTrailing?.type === "table" &&
-    !markBeforeTableResolves({
-      blocks: list,
-      boundary: paragraphTableRunInBoundary(trailing, afterTrailing),
-    })
+    boundary !== undefined &&
+    !markBeforeTableResolves({ blocks: list, boundary })
   ) {
+    // Only a table under review is a refusal of its own; a section break or
+    // a shape with no receiving paragraph is one no tracked join records yet.
     return refuse(
       op,
-      DOCUMENT_OP_REFUSAL_REASONS.JOIN_INTO_PENDING_TABLE,
+      boundary.type === "blocked" && boundary.reason === "review"
+        ? DOCUMENT_OP_REFUSAL_REASONS.JOIN_INTO_PENDING_TABLE
+        : DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
       `Joining ${op.blockId} would run it into the table after ${op.nextBlockId}.`,
     );
   }
