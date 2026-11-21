@@ -46,7 +46,64 @@ const replaceOnce = (xml: string, find: string, replace: string): string => {
 const marker = (type: string, id: string): string =>
   `<w:${type} w:id="${id}"/>`;
 
+/** The resolved comment's text, and the words its range covers. */
+const RESOLVED_COMMENT_TEXT = "Thirty days is long.";
+const RESOLVED_COMMENT_WORDS =
+  "The Buyer pays each invoice within thirty days.";
+const EARLIER_WORDS = "This agreement is made between the parties named below.";
+const LATER_WORDS = "Signed in two copies.";
+
+const runOf = (text: string): string => `<w:r><w:rPr/><w:t>${text}</w:t></w:r>`;
+
+const LONE_START_BEFORE_RANGE: RepairShape = {
+  name: "a lone range start before the comment's full range",
+  part: DOCUMENT_PART,
+  rewrite: (xml) =>
+    replaceOnce(
+      xml,
+      runOf(EARLIER_WORDS),
+      `${marker("commentRangeStart", RESOLVED_COMMENT_ID)}${runOf(EARLIER_WORDS)}`,
+    ),
+  repairs: [PARSE_WARNING_CODES.unpairedCommentRangeBoundary],
+};
+
+const SECOND_FULL_RANGE: RepairShape = {
+  name: "a comment with a second full range",
+  part: DOCUMENT_PART,
+  rewrite: (xml) =>
+    replaceOnce(
+      xml,
+      runOf(LATER_WORDS),
+      `${marker("commentRangeStart", RESOLVED_COMMENT_ID)}${runOf(LATER_WORDS)}${marker("commentRangeEnd", RESOLVED_COMMENT_ID)}`,
+    ),
+  repairs: [PARSE_WARNING_CODES.droppedCommentRange],
+};
+
+const TABLE_CELL =
+  '<w:tc><w:tcPr><w:tcW w:w="2000" w:type="dxa"/></w:tcPr><w:p><w:r><w:t>Cell</w:t></w:r></w:p></w:tc>';
+const NEXT_ROW_WORDS = "Next row";
+
+const ONLY_ANCHOR_BETWEEN_ROWS: RepairShape = {
+  name: "a comment whose only anchor is a lone boundary between a table's rows",
+  part: DOCUMENT_PART,
+  rewrite: (xml) => {
+    let changed = xml;
+    for (const type of [
+      "commentRangeStart",
+      "commentRangeEnd",
+      "commentReference",
+    ])
+      changed = replaceOnce(changed, marker(type, RESOLVED_COMMENT_ID), "");
+    const table = `<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/></w:tblPr><w:tblGrid><w:gridCol w:w="2000"/></w:tblGrid><w:tr>${TABLE_CELL}</w:tr>${marker("commentRangeEnd", RESOLVED_COMMENT_ID)}<w:tr>${TABLE_CELL.replace("Cell", NEXT_ROW_WORDS)}</w:tr></w:tbl><w:p/>`;
+    return replaceOnce(changed, "<w:sectPr", `${table}<w:sectPr`);
+  },
+  repairs: [PARSE_WARNING_CODES.unbalancedCommentRange],
+};
+
 const SHAPES: readonly RepairShape[] = [
+  LONE_START_BEFORE_RANGE,
+  SECOND_FULL_RANGE,
+  ONLY_ANCHOR_BETWEEN_ROWS,
   {
     name: "a range start naming no comment",
     part: DOCUMENT_PART,
@@ -240,5 +297,66 @@ describe("comment packages repaired on open", () => {
         expect(commentRead(again)).toEqual(before);
       });
     }
+  }
+});
+
+describe("comment repairs that keep as much of the anchor as the format allows", () => {
+  const resolvedAnchor = (reviewer: FolioDocxReviewer): string | undefined =>
+    reviewer.getComments().find(({ text }) => text === RESOLVED_COMMENT_TEXT)
+      ?.anchoredText;
+
+  for (const session of SESSIONS) {
+    test(`${session}: a lone start before a full range does not widen the range`, async () => {
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await rewritten(LONE_START_BEFORE_RANGE),
+        { session },
+      );
+      expect(resolvedAnchor(reviewer)).toBe(RESOLVED_COMMENT_WORDS);
+    });
+
+    test(`${session}: a second full range is dropped and its text reported`, async () => {
+      const bytes = await rewritten(SECOND_FULL_RANGE);
+      const reviewer = await FolioDocxReviewer.fromBuffer(bytes, { session });
+      expect(resolvedAnchor(reviewer)).toBe(RESOLVED_COMMENT_WORDS);
+      const parsed = await parseDocx(bytes, {
+        preloadFonts: false,
+        detectVariables: false,
+      });
+      expect(
+        parsed.parseWarnings?.filter(
+          ({ code }) => code === PARSE_WARNING_CODES.droppedCommentRange,
+        ),
+      ).toEqual([
+        expect.objectContaining({
+          value: LATER_WORDS,
+          location: expect.objectContaining({
+            at: `comment w:id ${RESOLVED_COMMENT_ID}`,
+          }),
+        }),
+      ]);
+    });
+  }
+});
+
+test("a lone boundary between rows becomes a point at the next cell's start, on both engines", async () => {
+  const bytes = await rewritten(ONLY_ANCHOR_BETWEEN_ROWS);
+  const options = { preloadFonts: false, detectVariables: false };
+  const canonical = await openCanonicalDocx(bytes, options);
+  if (canonical.isErr()) throw canonical.error;
+  for (const document of [
+    await parseDocx(bytes, options),
+    canonical.value.document,
+  ]) {
+    const table = document.package.document.content.find(
+      (block) => block.type === "table",
+    );
+    if (table?.type !== "table") throw new Error("fixture has no table");
+    expect(JSON.stringify(table.preserved ?? {})).not.toContain("commentRange");
+    const nextRow = table.rows.at(1)?.cells.at(0)?.content.at(0);
+    if (nextRow?.type !== "paragraph") throw new Error("no next-row paragraph");
+    expect(nextRow.content.at(0)).toEqual({
+      type: "commentReference",
+      id: Number(RESOLVED_COMMENT_ID),
+    });
   }
 });

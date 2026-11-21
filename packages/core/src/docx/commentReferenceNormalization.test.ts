@@ -140,6 +140,7 @@ describe("comment reference normalization", () => {
       reanchoredUnbalancedRanges: 0,
       droppedUnpairedBoundaries: 0,
       droppedDuplicateReferences: 0,
+      droppedRanges: [],
     });
     const paragraph = documentBody.content.at(0);
     expect(paragraph?.type).toBe("paragraph");
@@ -193,6 +194,7 @@ describe("comment reference normalization", () => {
       reanchoredUnbalancedRanges: 1,
       droppedUnpairedBoundaries: 0,
       droppedDuplicateReferences: 0,
+      droppedRanges: [],
     });
     const paragraph = documentBody.content.at(0);
     expect(paragraph?.type).toBe("paragraph");
@@ -239,6 +241,7 @@ describe("comment reference normalization", () => {
       reanchoredUnbalancedRanges: 1,
       droppedUnpairedBoundaries: 1,
       droppedDuplicateReferences: 0,
+      droppedRanges: [],
     });
     const paragraph = documentBody.content.at(0);
     expect(paragraph?.type).toBe("paragraph");
@@ -277,6 +280,7 @@ describe("comment reference normalization", () => {
       reanchoredUnbalancedRanges: 0,
       droppedUnpairedBoundaries: 2,
       droppedDuplicateReferences: 0,
+      droppedRanges: [],
     });
     expect(documentBody.content.at(-1)).toEqual({
       type: "preservedBlock",

@@ -75,6 +75,7 @@ import {
 import { parseComments } from "./commentParser";
 import {
   DANGLING_COMMENT_REFERENCE_WARNING,
+  DROPPED_COMMENT_RANGE_WARNING,
   DUPLICATE_COMMENT_REFERENCE_WARNING,
   normalizeCommentReferences,
   UNBALANCED_COMMENT_RANGE_WARNING,
@@ -789,6 +790,13 @@ export async function parseDocxWithPreviewBudget(
       parseContext.warn({
         code: DUPLICATE_COMMENT_REFERENCE_WARNING,
         count: commentReferenceNormalization.droppedDuplicateReferences,
+      });
+    }
+    for (const { id, text } of commentReferenceNormalization.droppedRanges) {
+      parseContext.warn({
+        code: DROPPED_COMMENT_RANGE_WARNING,
+        at: `comment w:id ${String(id)}`,
+        value: text,
       });
     }
     const headerFooterReferenceNormalization = normalizeHeaderFooterReferences({

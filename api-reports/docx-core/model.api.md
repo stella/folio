@@ -1281,6 +1281,7 @@ export const PARSE_WARNING_CODES: {
     readonly unbalancedCommentRange: "unbalanced-comment-range";
     readonly unpairedCommentRangeBoundary: "unpaired-comment-range-boundary";
     readonly duplicateCommentReference: "duplicate-comment-reference";
+    readonly droppedCommentRange: "dropped-comment-range";
     readonly repeatedCommentParagraphId: "repeated-comment-paragraph-id";
     readonly danglingHeaderReference: "dangling-header-reference";
     readonly danglingFooterReference: "dangling-footer-reference";
