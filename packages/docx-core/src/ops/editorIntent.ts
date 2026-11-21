@@ -83,6 +83,7 @@ import {
   isRangeBoundary,
   paragraphLength,
   paragraphLogicalText,
+  withChildren,
 } from "./offsets";
 import { findStoryParagraph } from "./paragraphLocator";
 import { applyFormattingPatch } from "./patch";
@@ -4341,12 +4342,32 @@ const continuation = (
       break;
     containers.push(ancestor);
   }
+  // Text replacing exactly a hyperlink's text keeps the link. The range
+  // holds every leaf of the link and nothing beside it, so no piece of the
+  // link stays on either side to meet: the text takes a copy of it. A range
+  // reaching past the link, or a caret at its edge, leaves the text outside.
+  const link = caret ? undefined : last?.ancestors[containers.length];
+  if (link?.type === "hyperlink") {
+    const inRange = ({ before, after }: (typeof spans)[number]) =>
+      compareGaps(before, end) < 0 && compareGaps(after, start) > 0;
+    const ofLink = ({ ancestors }: (typeof spans)[number]) =>
+      ancestors.includes(link);
+    const covered = ({ before, after }: (typeof spans)[number]) =>
+      compareGaps(start, before) <= 0 && compareGaps(after, end) <= 0;
+    if (
+      spans.filter(inRange).every(ofLink) &&
+      spans.filter(ofLink).every(covered)
+    )
+      containers.push(link);
+  }
   // Each open end merges with the containers the source holds on that side;
-  // at a container's own edge that side has none to meet.
+  // at a container's own edge that side has none to meet, and a copied link
+  // meets none.
   const continued = (side: (typeof spans)[number] | undefined) => {
     let depth = 0;
     while (
       depth < containers.length &&
+      containers[depth]?.type !== "hyperlink" &&
       side?.ancestors[depth] === containers[depth]
     )
       depth += 1;
@@ -4387,6 +4408,9 @@ const continuedSlice = (
       case "inlineSdt":
       case "inlineWrapper":
         wrapped = [{ ...container, content: wrapped }];
+        break;
+      case "hyperlink":
+        wrapped = [withChildren(container, wrapped)];
         break;
       default:
         return undefined;
