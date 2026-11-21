@@ -36,8 +36,6 @@ const MARKDOWN_ACCEPTANCE: ReplayGap = {
 
 /** Checked-in flows the canonical session does not pass yet. */
 export const CANONICAL_REPLAY_GAPS: Readonly<Record<string, ReplayGap>> = {
-  "issue-1350-table-and-paragraph-before-deleted-final.json":
-    MARKDOWN_ACCEPTANCE,
   "issue-1757-7483271c36812e15.json": MARKDOWN_ACCEPTANCE,
   "issue-1757-paragraph-before-table-after-pending-join.json":
     MARKDOWN_ACCEPTANCE,

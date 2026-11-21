@@ -103,6 +103,7 @@ import {
   isDeletedPPrMark,
   joinsIn,
   joinStopsAtTableAfter,
+  PENDING_BREAK_TABLE_REFUSAL,
   PENDING_JOIN_INSERTION_REFUSAL,
   pendingJoinParagraphs,
   pendingMarkEditOf,
@@ -194,6 +195,7 @@ import {
   insertedColumnWidth,
   omittedSlotTakingColumn,
 } from "../prosemirror/tableGridMutation";
+import { paragraphGoes } from "../prosemirror/tableRunIn";
 import {
   CANONICAL_GAP,
   type CanonicalGap,
@@ -1981,14 +1983,18 @@ type FormattingIntentsAsItRunsOptions = {
 };
 
 /**
- * Paragraph property edits and paragraph insertions bound to the paragraph
- * as the batch stands when they run: one an earlier operation joined away,
- * such as the first half of a split whose retraction joins it to the second,
- * or a paragraph that took the mark of the run a block deletion of the
- * batch deleted after it, is edited, or inserted beside, in the paragraph
- * that now holds it; a join's absorbed half keeps its own place for an
- * insertion, except that a paragraph put before it goes before the
- * paragraph its words open, as a merge into the next paragraph leaves them.
+ * Paragraph property edits, tables and paragraph insertions beside a
+ * paragraph, bound to the paragraph as the batch stands when they run: one
+ * an earlier operation joined away, such as the first half of a split whose
+ * retraction joins it to the second, a paragraph a direct deletion of the
+ * paragraphs after it joined into the last one, or a paragraph that took the
+ * mark of the run a block deletion of the batch deleted after it, is edited,
+ * or has its table or insertion beside it, in the paragraph that now holds
+ * it; a join's absorbed half keeps its own place for an insertion, except
+ * that a paragraph put before it goes before the paragraph its words open,
+ * as a merge into the next paragraph leaves them. A table after it then
+ * writes the empty paragraph the container ends with when that paragraph
+ * ends its block list.
  */
 const formattingIntentsAsItRuns = ({
   document,
@@ -2017,6 +2023,33 @@ const formattingIntentsAsItRuns = ({
   };
   return intents.map((intent) => {
     switch (intent.type) {
+      case "tableBlock": {
+        const { operation } = intent;
+        if (
+          operation.type !== DOCUMENT_OP_TYPES.INSERT_TABLE ||
+          operation.anchor !== "paragraph"
+        )
+          return intent;
+        const { blockId } = bound({
+          story: operation.story,
+          blockId: operation.blockId,
+          offset: 0,
+        });
+        if (blockId === operation.blockId) return intent;
+        const here = locateParagraphThroughTextBoxes(document, story, blockId);
+        const ends =
+          here !== undefined && here.index === here.blocks.length - 1;
+        return {
+          ...intent,
+          operation: {
+            ...operation,
+            blockId,
+            ...(operation.side === "after" && ends
+              ? { paragraphAfter: "empty" as const }
+              : {}),
+          },
+        };
+      }
       case "formatParagraph":
         return { ...intent, at: bound(intent.at) };
       case "setList":
@@ -2916,6 +2949,18 @@ const resolveTableInsertion = ({
     return refusal(
       PENDING_JOIN_INSERTION_REFUSAL.reason,
       PENDING_JOIN_INSERTION_REFUSAL.message,
+    );
+  // Right after a paragraph whose break is pending deletion, accepting that
+  // deletion would run the paragraph's words into the table's first cell;
+  // one that goes whole leaves nothing to run in.
+  if (
+    side === "after" &&
+    isDeletedPPrMark(place.node.attrs["pPrMark"]) &&
+    !paragraphGoes(place.node, "accept")
+  )
+    return refusal(
+      PENDING_BREAK_TABLE_REFUSAL.reason,
+      PENDING_BREAK_TABLE_REFUSAL.message,
     );
   // After a container's last paragraph the container still ends with one.
   return inserted({
