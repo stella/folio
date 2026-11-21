@@ -3479,6 +3479,18 @@ const compileInStory = (
             parentId === undefined && anchorKind !== "range",
         );
       if (replacesWholeParagraph) {
+        // Text replacing a paragraph whose words are exactly a hyperlink's
+        // takes a copy of the link, as the exact-text rule gives it.
+        const words = paragraph.content.filter(
+          (node) => !isRangeBoundary(node) && node.type !== "commentReference",
+        );
+        const [link] = words;
+        const linked =
+          words.length === 1 &&
+          link?.type === "hyperlink" &&
+          link.children.every((child) => child.type === "run")
+            ? [withChildren(link, content)]
+            : content;
         ops = [
           {
             type: DOCUMENT_OP_TYPES.REPLACE_INLINE,
@@ -3489,7 +3501,7 @@ const compileInStory = (
               ...paragraph.content.filter(
                 (node) => isParagraphContent(node) && isRangeBoundary(node),
               ),
-              ...content,
+              ...linked,
               ...paragraph.content.filter(
                 (node) =>
                   isParagraphContent(node) && node.type === "commentReference",
@@ -4361,9 +4373,13 @@ const continuation = (
       compareGaps(before, end) < 0 && compareGaps(after, start) > 0;
     const covered = ({ before, after }: (typeof spans)[number]) =>
       compareGaps(start, before) <= 0 && compareGaps(after, end) <= 0;
+    // A range marker the range takes beside the link's text is no text
+    // outside it: the deletion keeps it standing where it was.
+    const marker = ({ node }: (typeof spans)[number]) =>
+      isParagraphContent(node) && isRangeBoundary(node);
     const keepsLink = caret
       ? right !== undefined && ofLink(right)
-      : spans.filter(inRange).every(ofLink);
+      : spans.filter(inRange).every((span) => ofLink(span) || marker(span));
     if (keepsLink) {
       containers.push(link);
       copiesLink = spans.filter(ofLink).every(covered);

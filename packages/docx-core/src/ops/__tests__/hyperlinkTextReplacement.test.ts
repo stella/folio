@@ -35,12 +35,22 @@ const run = (text: string): ParagraphContent => ({
   content: [{ type: "text", text }],
 });
 
-const sourceOf = (content: ParagraphContent[]) =>
+const sourceOf = (
+  content: ParagraphContent[],
+  anchorKind?: "point" | "range",
+) =>
   normalizeForOps({
     package: {
       document: {
         content: [{ type: "paragraph", paraId: "00000002", content }],
-        comments: [{ id: 7, author: "Owner", content: [] }],
+        comments: [
+          {
+            id: 7,
+            author: "Owner",
+            ...(anchorKind === undefined ? {} : { anchorKind }),
+            content: [],
+          },
+        ],
       },
     },
   } satisfies Document);
@@ -371,3 +381,74 @@ describe.each([
     });
   },
 );
+
+test("a range taking a bookmark start just before the link keeps the text in it", () => {
+  const marked = sourceOf([
+    run("See "),
+    BOOKMARK_START,
+    { ...LINK, children: [run(TERMS)] },
+    BOOKMARK_END,
+    run(" now."),
+  ]);
+  const intent = {
+    type: "replaceText",
+    from: { ...at(4), zeroWidthBefore: 0 },
+    to: at(16),
+    text: "the revised",
+  } as const;
+  for (const mode of [EDITING, SUGGESTING]) {
+    const edited = applied(
+      marked,
+      compileEditorIntent(marked, { intent, mode }).unwrap().ops,
+    );
+    const accepted =
+      mode.type === "editing"
+        ? edited
+        : resolved(edited, REVISION_DECISIONS.ACCEPT);
+    expect(reading(accepted)).toBe("See [the revised terms] now.");
+  }
+});
+
+describe("replacing a paragraph whose words are exactly a link's, after a comment start", () => {
+  const whole = normalizeForOps({
+    package: {
+      document: {
+        content: [
+          {
+            type: "paragraph",
+            paraId: "00000002",
+            content: [COMMENT_START, { ...LINK, children: [run(TERMS)] }],
+          },
+          {
+            type: "paragraph",
+            paraId: "00000003",
+            content: [run("Next."), COMMENT_END, COMMENT_REFERENCE],
+          },
+        ],
+        comments: [
+          { id: 7, author: "Owner", anchorKind: "range", content: [] },
+        ],
+      },
+    },
+  } satisfies Document);
+  const intent = {
+    type: "replaceText",
+    from: { ...at(0), zeroWidthBefore: 1 },
+    to: at(18),
+    text: "the revised terms",
+  } as const;
+  const edited = (mode: EditorIntentMode) =>
+    applied(whole, compileEditorIntent(whole, { intent, mode }).unwrap().ops);
+
+  test("directly keeps the link on the new text", () => {
+    expect(reading(edited(EDITING))).toBe("[the revised terms]");
+  });
+
+  test("tracked, accepting gives the direct edit and rejecting the source", () => {
+    const tracked = edited(SUGGESTING);
+    expect(
+      paragraphContent(resolved(tracked, REVISION_DECISIONS.ACCEPT)),
+    ).toStrictEqual(paragraphContent(edited(EDITING)));
+    expect(resolved(tracked, REVISION_DECISIONS.REJECT)).toStrictEqual(whole);
+  });
+});
