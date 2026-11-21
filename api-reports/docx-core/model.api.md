@@ -805,6 +805,16 @@ export const isSchemeColorValue: (value: string) => value is SchemeColorValue;
 export const isThemeColor: (value: string) => value is ThemeColor;
 
 // @public
+export type KeptCut = WritableRecord & {
+    depth: number;
+    keptFrom: string;
+    piece?: KeptCutPiece;
+};
+
+// @public
+export type KeptCutPiece = "before" | "after" | "both";
+
+// @public
 export const knownThemeColor: (value: DeepReadonly<ThemeColorValue>) => ThemeColor | undefined;
 
 // @public
@@ -923,6 +933,7 @@ export const locksControl: (lock: ContentControlLock | null | undefined) => lock
 export type MarkupRangeMarker = WritableRecord & {
     id: number;
     displacedByCustomXml?: DisplacedByCustomXml;
+    keptCut?: KeptCut;
 };
 
 // @public

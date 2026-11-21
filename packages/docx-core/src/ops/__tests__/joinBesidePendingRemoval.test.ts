@@ -88,9 +88,10 @@ for (const removal of ["deletion", "moveFrom"] as const)
       ]);
   });
 
-test("a kept move range start stands between pending deletion pieces nested in an insertion in any order", () => {
-  // The deletion sits inside another reviewer's insertion: the insertion's
-  // pieces join around the boundary, the deletion's stay apart.
+test("a kept move range start stands between pending insertion pieces holding deletions in any order", () => {
+  // The deletion sits inside another reviewer's insertion: a kept boundary
+  // never goes inside a pending change, so it stands between the insertion's
+  // pieces, each holding a piece of the deletion.
   const source: Document = {
     package: {
       document: {
@@ -153,13 +154,22 @@ test("a kept move range start stands between pending deletion pieces nested in a
           {
             type: "insertion",
             info: { id: 1 },
-            content: [
-              { type: "deletion", info: { id: 4 } },
-              { type: "moveToRangeStart", id: 1 },
-              { type: "deletion" },
-            ],
+            content: [{ type: "deletion", info: { id: 4 } }],
           },
+          {
+            type: "moveToRangeStart",
+            id: 1,
+            // The split cut the insertion four levels deep; the boundary,
+            // inserted after it, stands in that cut.
+            keptCut: { depth: 4, keptFrom: "2026-03-04T05:00:02Z" },
+          },
+          { type: "insertion", content: [{ type: "deletion" }] },
         ],
       },
     ]);
+  // Where it stands, and in what cut, is the same in every order.
+  const [first, ...rest] = results.map(
+    ({ package: { document } }) => document.content,
+  );
+  for (const content of rest) expect(content).toEqual(first ?? []);
 });

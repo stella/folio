@@ -72,26 +72,17 @@ for (const [kind, follower] of Object.entries(followers))
                 },
               },
             } satisfies Document;
-            const removable =
-              content === "" &&
-              tail &&
-              (!ownSection || owner === "available" || owner === "same");
+            // An added mark's section never stood in the original: it goes
+            // with the mark, and no other paragraph receives it.
+            const removable = content === "" && tail;
             const { pPrMark: _resolved, ...unmarked } = target;
+            const { sectionProperties: _added, ...rejected } = unmarked;
             const expected = {
               package: {
                 document: {
                   content: [
-                    ...(owner === "unavailable"
-                      ? []
-                      : [
-                          {
-                            ...preceding,
-                            ...(removable && ownSection
-                              ? { sectionProperties: section }
-                              : {}),
-                          },
-                        ]),
-                    ...(removable ? [] : [unmarked]),
+                    ...(owner === "unavailable" ? [] : [preceding]),
+                    ...(removable ? [] : [rejected]),
                     follower,
                     ...ending,
                   ],

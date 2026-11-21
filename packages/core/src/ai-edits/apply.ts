@@ -5003,6 +5003,9 @@ const buildInsertedParagraphs = ({
           // A new paragraph inherits the anchor's formatting, not the
           // revision carriers that explain how the anchor reached it, nor the
           // source attributes (revision session ids) of the `w:p` it is not.
+          // Nor the anchor's section break: the break stays on the anchor's
+          // own mark, so rejecting the new paragraph's mark keeps it.
+          _sectionProperties: null,
           _preservedAttributes: null,
           _propertyChanges: null,
           pPrMark: null,
@@ -10743,6 +10746,7 @@ const resolveOperationTarget = ({
         paragraphPos: placed.at,
         noteReferences,
         insertedBlock: "table",
+        joinBeforeTable: "stopsAtDeletedParagraph",
       })
     )
       return { type: "skip", ...PENDING_JOIN_INSERTION_REFUSAL };
@@ -11013,6 +11017,7 @@ const resolveOperationTarget = ({
         paragraphPos: placed.at,
         noteReferences,
         insertedBlock: "table",
+        joinBeforeTable: "stopsAtDeletedParagraph",
       })
     )
       return { type: "skip", ...PENDING_JOIN_INSERTION_REFUSAL };

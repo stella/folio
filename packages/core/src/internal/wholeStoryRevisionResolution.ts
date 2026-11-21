@@ -406,19 +406,6 @@ const removedEndpoint = (node: PMNode, context: StructuralContext): void => {
 const ownsSection = (paragraph: PMNode): boolean =>
   expectParagraphAttrs(paragraph)._sectionProperties != null;
 
-const precedingSectionOwner = (
-  preceding: PMNode | null | undefined,
-  properties: ReturnType<typeof expectParagraphAttrs>["_sectionProperties"],
-): "unavailable" | "available" | "same" | "occupied" => {
-  if (preceding?.type.name !== "paragraph") return "unavailable";
-  if (!ownsSection(preceding)) return "available";
-  const precedingProperties =
-    expectParagraphAttrs(preceding)._sectionProperties;
-  return JSON.stringify(precedingProperties) === JSON.stringify(properties)
-    ? "same"
-    : "occupied";
-};
-
 type ParagraphChain = {
   node: PMNode;
   /** The surviving paragraph: the chain's last, whose mark stays. */
@@ -622,30 +609,8 @@ const resolveStructure = ({
     if (joins && entries[index + 1]?.node?.type.name === "textBox")
       context.textBoxesStandInJoins = true;
     if (joins && chain) {
-      const properties = expectParagraphAttrs(paragraph)._sectionProperties;
-      const preceding = entries[index - 1]?.node;
-      const outcome = paragraphMarkOutcome({
-        follows: "paragraph",
-        holdsContent: paragraphContentOf(paragraph),
-        markWasAdded,
-        containerStillEndsWithParagraph: true,
-        followingTableCanReceiveRunIn: false,
-        removedSectionProperties: markWasAdded && ownsSection(paragraph),
-        precedingSectionOwner: precedingSectionOwner(preceding, properties),
-        followingHasSectionProperties: ownsSection(chain.node),
-      });
-      if (
-        outcome.sectionDestination === "preceding" &&
-        preceding?.type.name === "paragraph"
-      ) {
-        entries[index - 1]!.node = rebuild(preceding, {
-          attrs: { ...preceding.attrs, _sectionProperties: properties },
-        });
-      } else if (outcome.sectionDestination === "following") {
-        chain.node = rebuild(chain.node, {
-          attrs: { ...chain.node.attrs, _sectionProperties: properties },
-        });
-      }
+      // The section break the mark ended goes with it: the joined paragraph
+      // ends with the chain's own.
       const boundaries = pendingBookmarks.toReversed();
       let bookmarks = Fragment.empty;
       if (boundaries.length > 0) {
@@ -715,12 +680,6 @@ const resolveStructure = ({
       markWasAdded,
       containerStillEndsWithParagraph,
       followingTableCanReceiveRunIn: false,
-      removedSectionProperties: markWasAdded && ownsSection(paragraph),
-      precedingSectionOwner: precedingSectionOwner(
-        entries[index - 1]?.node,
-        expectParagraphAttrs(paragraph)._sectionProperties,
-      ),
-      followingHasSectionProperties: chain !== null && ownsSection(chain.node),
     });
     // A paragraph that goes leaves its range boundaries and comment anchors
     // to the paragraph before it, and with none there to take them it stays.
@@ -739,7 +698,6 @@ const resolveStructure = ({
       remains !== undefined &&
       (toPrevious.length === 0 || commentHost?.type.name === "paragraph")
     ) {
-      const properties = expectParagraphAttrs(paragraph)._sectionProperties;
       const hostEntry = entries[index - 1];
       if (toPrevious.length > 0 && commentHost && hostEntry) {
         const comments = Fragment.fromArray(toPrevious);
@@ -753,19 +711,6 @@ const resolveStructure = ({
           slice: new Slice(comments, 0, 0),
         });
       }
-      const preceding = entries[index - 1]?.node;
-      if (
-        outcome.sectionDestination === "preceding" &&
-        preceding?.type.name === "paragraph"
-      ) {
-        entries[index - 1]!.node = rebuild(preceding, {
-          attrs: { ...preceding.attrs, _sectionProperties: properties },
-        });
-      } else if (outcome.sectionDestination === "following" && chain) {
-        chain.node = rebuild(chain.node, {
-          attrs: { ...chain.node.attrs, _sectionProperties: properties },
-        });
-      }
       context.replacements.push({
         from: entry.position,
         to: entry.position + entry.original.nodeSize,
@@ -774,8 +719,18 @@ const resolveStructure = ({
       removedEndpoint(paragraph, context);
       continue;
     }
+    // A section break an added mark ended never stood in the original: it
+    // goes with the mark, even where the paragraph stays.
+    const dropsSection = joins && markWasAdded && ownsSection(paragraph);
+    if (dropsSection) removedEndpoint(paragraph, context);
     const resolved: PMNode = marker
-      ? rebuild(paragraph, { attrs: { ...paragraph.attrs, pPrMark: null } })
+      ? rebuild(paragraph, {
+          attrs: {
+            ...paragraph.attrs,
+            pPrMark: null,
+            ...(dropsSection ? { _sectionProperties: null } : {}),
+          },
+        })
       : paragraph;
     chain = {
       node: resolved,

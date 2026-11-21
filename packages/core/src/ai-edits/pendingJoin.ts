@@ -348,9 +348,19 @@ export const holdsOnlyDeletedContent = (paragraph: PMNode): boolean => {
   return whollyDeleted;
 };
 
-type PendingJoinInsertionOptions = PendingJoinBoundsOptions & {
-  insertedBlock: "paragraph" | "table";
-};
+/**
+ * How accepting a join that reaches a table through a paragraph going whole
+ * ends: the legacy engine keeps the incoming paragraph's break at that
+ * paragraph, so its words stop before the table; the canonical engine runs
+ * them on into the table's first cell.
+ */
+export type JoinBeforeTable = "stopsAtDeletedParagraph" | "runsIntoFirstCell";
+
+type PendingJoinInsertionOptions = PendingJoinBoundsOptions &
+  (
+    | { insertedBlock: "paragraph" }
+    | { insertedBlock: "table"; joinBeforeTable: JoinBeforeTable }
+  );
 /**
  * Whether the join a pending mark deletion makes stops at a table after the
  * paragraph, so a block placed there would run into it.
@@ -361,11 +371,13 @@ export const joinStopsAtTableAfter = (
   if (!joinRunsWordsInto(options)) return false;
   const $place = options.doc.resolve(options.paragraphPos);
   const before = $place.nodeBefore;
-  // A deleted paragraph stood at the end of this join: accepting its
-  // removal keeps the incoming paragraph's break, so its words stop here.
-  // An inserted paragraph instead extends the join past that stopping mark.
+  // A deleted paragraph stood at the end of this join: on the legacy engine
+  // accepting its removal keeps the incoming paragraph's break, so its words
+  // stop here. An inserted paragraph instead extends the join past that
+  // stopping mark. On the canonical engine the words run on past it.
   if (
     options.insertedBlock === "table" &&
+    options.joinBeforeTable === "stopsAtDeletedParagraph" &&
     before !== null &&
     paragraphGoes(before, "accept")
   )

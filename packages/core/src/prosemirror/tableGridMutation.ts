@@ -3,6 +3,7 @@ import type { Node as PMNode } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
 import { removeColumn, TableMap } from "prosemirror-tables";
 
+import { maxOf } from "../utils/extremes";
 import { expectTableAttrs, mergeTableAttrs } from "./attrs";
 
 type RemoveTableRowOptions = {
@@ -131,7 +132,7 @@ export const reconcileOmittedGridSlots = (
     });
   });
   if (!omits) return;
-  const width = Math.max(...reached);
+  const width = maxOf(reached);
   const previousMap = TableMap.get(previousTable);
   const rowPositions: number[] = [];
   table.forEach((_row, offset) =>

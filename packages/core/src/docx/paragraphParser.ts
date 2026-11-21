@@ -16,6 +16,7 @@ import {
   PARAGRAPH_MARK_CHANGE_KINDS,
   REVIEW_CARRIERS,
 } from "@stll/docx-core/model";
+import { paragraphKeptCutsFromChanges } from "@stll/docx-core/ops";
 
 import type {
   BookmarkEnd,
@@ -85,6 +86,7 @@ import type { InlineWrapperElement } from "./inlineWrapperParser";
 import { preserveLinkedSdt } from "./linkedSdtPreservation";
 import {
   parseCopyOriginMarker,
+  parseKeptCutMarker,
   parseMarkupRangeMarker,
   parseMoveBookmarkMarker,
 } from "./markupRangeMarker";
@@ -119,6 +121,7 @@ import {
   parseResolutionJoins,
   parseSplitResolutionPiece,
   type SplitResolutionPiece,
+  versionOneKeptMarkers,
 } from "./reviewResolutionProvenance";
 import { consolidateParagraphContent } from "./runConsolidator";
 import { parseRun } from "./runParser";
@@ -1038,7 +1041,7 @@ type HoistedRevision = {
  * Delegates to bookmarkParser module.
  */
 function parseBookmarkStart(node: XmlElement): BookmarkStart {
-  return parseBookmarkStartFromModule(node);
+  return { ...parseBookmarkStartFromModule(node), ...parseKeptCutMarker(node) };
 }
 
 /**
@@ -1046,7 +1049,7 @@ function parseBookmarkStart(node: XmlElement): BookmarkStart {
  * Delegates to bookmarkParser module.
  */
 function parseBookmarkEnd(node: XmlElement): BookmarkEnd {
-  return parseBookmarkEndFromModule(node);
+  return { ...parseBookmarkEndFromModule(node), ...parseKeptCutMarker(node) };
 }
 
 /**
@@ -1185,7 +1188,7 @@ const SIMPLE_FIELD_CHILD_HANDLERS = {
     );
     // Unlike an inline wrapper, SimpleField cannot hold the point reference
     // lifted from its run. Preserve that run instead of losing the reference.
-    if (getCommentReferenceId(child) !== null) {
+    if (commentReferenceIdsOf(child).length > 0) {
       push({ ...preserveInlineChild(child), text: getRunText(run) });
       return;
     }
@@ -1835,7 +1838,7 @@ const PARAGRAPH_CONTENT_HANDLERS = {
       inScopeXmlns,
       previews,
     );
-    const commentReferenceId = getCommentReferenceId(runElement);
+    const commentReferenceIds = commentReferenceIdsOf(runElement);
 
     // Look for field characters
     let hasFieldBegin = false;
@@ -1939,7 +1942,7 @@ const PARAGRAPH_CONTENT_HANDLERS = {
       );
       // A comment reference inside a field run is also an item beside the
       // field, so the run's markup would write it a second time.
-      if (commentReferenceId !== null || trackedContext === "deletion") {
+      if (commentReferenceIds.length > 0 || trackedContext === "deletion") {
         scan.complexFieldSourceRuns = null;
       } else {
         scan.complexFieldSourceRuns?.push(runElement);
@@ -2092,15 +2095,12 @@ const PARAGRAPH_CONTENT_HANDLERS = {
           fieldSourceElements.set(complexField, scan.complexFieldSourceRuns);
         }
         contents.push(complexField);
-        if (commentReferenceId !== null) {
-          contents.push({
-            type: "commentReference",
-            id: commentReferenceId,
-          });
+        for (const id of commentReferenceIds) {
+          contents.push({ type: "commentReference", id });
         }
         scan.inComplexField = false;
       }
-    } else if (commentReferenceId !== null) {
+    } else if (commentReferenceIds.length > 0) {
       // A run whose only payload is `<w:commentReference>` parses to an
       // empty run plus the reference node. The empty run is a vestigial
       // artifact — the reference serializer re-emits its own run, so a lone
@@ -2109,10 +2109,9 @@ const PARAGRAPH_CONTENT_HANDLERS = {
       if (runHoldsPayload(run)) {
         contents.push(withLooseFieldMarkupPreserved(run, runElement));
       }
-      contents.push({
-        type: "commentReference",
-        id: commentReferenceId,
-      });
+      for (const id of commentReferenceIds) {
+        contents.push({ type: "commentReference", id });
+      }
     } else if (isHiddenByOpenFieldCode(scan)) {
       // A run positioned inside some other, still-open field's instruction
       // region that this walk could not assemble into that field's own
@@ -2323,6 +2322,7 @@ const PARAGRAPH_CONTENT_HANDLERS = {
     contents.push({
       type: "moveFromRangeStart",
       ...parseMoveBookmarkMarker(child),
+      ...parseKeptCutMarker(child),
     });
   },
   moveFromRangeEnd: (child, { contents }) => {
@@ -2330,12 +2330,14 @@ const PARAGRAPH_CONTENT_HANDLERS = {
       type: "moveFromRangeEnd",
       ...parseMarkupRangeMarker(child),
       ...parseCopyOriginMarker(child),
+      ...parseKeptCutMarker(child),
     });
   },
   moveToRangeStart: (child, { contents }) => {
     contents.push({
       type: "moveToRangeStart",
       ...parseMoveBookmarkMarker(child),
+      ...parseKeptCutMarker(child),
     });
   },
   moveToRangeEnd: (child, { contents }) => {
@@ -2343,6 +2345,7 @@ const PARAGRAPH_CONTENT_HANDLERS = {
       type: "moveToRangeEnd",
       ...parseMarkupRangeMarker(child),
       ...parseCopyOriginMarker(child),
+      ...parseKeptCutMarker(child),
     });
   },
 
@@ -2350,12 +2353,14 @@ const PARAGRAPH_CONTENT_HANDLERS = {
     contents.push({
       type: "commentRangeStart",
       ...parseMarkupRangeMarker(child),
+      ...parseKeptCutMarker(child),
     });
   },
   commentRangeEnd: (child, { contents }) => {
     contents.push({
       type: "commentRangeEnd",
       ...parseMarkupRangeMarker(child),
+      ...parseKeptCutMarker(child),
     });
   },
 
@@ -2575,18 +2580,19 @@ const isTrackedRunChange = (item: ParagraphContent): item is TrackedRunChange =>
   item.type === "moveFrom" ||
   item.type === "moveTo";
 
-function getCommentReferenceId(runElement: XmlElement): number | null {
-  const commentReference = findChild(runElement, "w", "commentReference");
-  if (!commentReference) {
-    return null;
-  }
-
-  const id = Number.parseInt(
-    getAttribute(commentReference, "w", "id") ?? "",
-    10,
-  );
-  return Number.isFinite(id) ? id : null;
-}
+/**
+ * The comments a run's `<w:commentReference>` children name, in source
+ * order: one run may carry several, and each anchors its own comment.
+ */
+const commentReferenceIdsOf = (runElement: XmlElement): number[] =>
+  findChildrenByNamespaceUri(
+    runElement,
+    WORDPROCESSINGML_NAMESPACE_URIS,
+    "commentReference",
+  ).flatMap((reference) => {
+    const id = Number.parseInt(getAttribute(reference, "w", "id") ?? "", 10);
+    return Number.isFinite(id) ? [id] : [];
+  });
 
 // ============================================================================
 // MAIN PARAGRAPH PARSER
@@ -2733,10 +2739,14 @@ export function parseParagraph(
 
   // Text-box enrichment matches model runs to source w:r elements by position.
   // Its block parsers defer this merge until that source-dependent pass ends.
-  const consolidated = (content: ParagraphContent[]): ParagraphContent[] =>
-    options?.runConsolidation === "deferred"
-      ? content
-      : consolidateParagraphContent(content);
+  // Version 1 kept markers take their cuts here, on whichever content the
+  // paragraph keeps: the fold below reads the content as parsed.
+  const consolidated = (content: ParagraphContent[]): ParagraphContent[] => {
+    const cut = paragraphKeptCutsFromChanges(content, versionOneKeptMarkers);
+    return options?.runConsolidation === "deferred"
+      ? cut
+      : consolidateParagraphContent(cut);
+  };
   paragraph.content = consolidated(rawContent);
 
   // Compute list rendering if this is a list item.

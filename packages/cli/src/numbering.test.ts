@@ -1,9 +1,17 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  setDefaultTimeout,
+  test,
+} from "bun:test";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { FolioDocxReviewer } from "@stll/folio-core/server";
 
+import { DISK_SYNC_TEST_TIMEOUT_MS } from "../../../test/disk-sync-timeout";
 import { makeTempDir } from "./__tests__/fixtures";
 import { captureIo, dataOf } from "./__tests__/io";
 import {
@@ -13,6 +21,8 @@ import {
 } from "./__tests__/package-fixtures";
 import { runFolioCli } from "./cli";
 import { runPackageRewrite } from "./package-rewrite";
+
+setDefaultTimeout(DISK_SYNC_TEST_TIMEOUT_MS);
 
 const numbered = (id: string, text: string, numPr = "", style = ""): string =>
   `<w:p w14:paraId="${id}" w14:textId="77777777"><w:pPr>${style === "" ? "" : `<w:pStyle w:val="${style}"/>`}${numPr}</w:pPr>` +

@@ -11,6 +11,7 @@ import {
   type NumberingInstance,
   type Paragraph,
   type ParagraphContent,
+  type RunContent,
   type TabContent,
   type Table,
   type TableRow,
@@ -83,6 +84,7 @@ import {
   isRangeBoundary,
   paragraphLength,
   paragraphLogicalText,
+  withChildren,
 } from "./offsets";
 import { findStoryParagraph } from "./paragraphLocator";
 import { applyFormattingPatch } from "./patch";
@@ -143,7 +145,9 @@ import {
   type RevisionStamp,
   type RunPropsPatch,
   SECTION_BOUNDARY_POLICIES,
+  type SetParagraphPropsOp,
   SPLIT_HALVES,
+  type SplitBlockOp,
   type SplitHalf,
   type TableEditOp,
   type TableInsertionPoint,
@@ -229,6 +233,17 @@ export type TableBlockIntentOperation =
           paragraphAfter?: never;
         }
     ));
+
+/**
+ * Typed text as run content: a tab is a tab element and a line feed a line
+ * break, each one offset wide as the character it stands for.
+ */
+const typedRunContent = (text: string): RunContent[] =>
+  text.split(/(\t|\n)/u).flatMap((part): RunContent[] => {
+    if (part === "\t") return [{ type: "tab" }];
+    if (part === "\n") return [{ type: "break" }];
+    return part === "" ? [] : [{ type: "text", text: part }];
+  });
 
 /** Positions use canonical physical offsets, including retained deleted content. */
 export type EditorIntent =
@@ -634,6 +649,9 @@ export const createEditorIntentIdAllocator = ({
           demand += 4 * (1 + span.ancestors.length);
       }
     }
+    const commentIds = new Set(
+      (document.package.document.comments ?? []).map(({ id }) => id),
+    );
     const fresh = (
       occupied: typeof census.revisions,
       count: number,
@@ -647,7 +665,13 @@ export const createEditorIntentIdAllocator = ({
           lease === undefined && count > 0
             ? occupied.occupiedPrefixEnd(ID_KIND_LIMITS[kind])
             : 1,
-        taken: (id) => occupied.has(id),
+        // Drawn from a lease, a revision id also passes over the document's
+        // comment ids: a comment the same batch made may hold a leased one.
+        taken: (id) =>
+          occupied.has(id) ||
+          (lease !== undefined &&
+            kind === ID_LEASE_KINDS.REVISION &&
+            commentIds.has(id)),
       });
     if (intent.type === "insertParagraphs") {
       // Each paragraph's mark and content wrappers, the anchor's mark, and
@@ -1183,6 +1207,70 @@ const splitParagraphFields = (document: Document, at: TextPosition) => {
   return survivor?.formatting === undefined
     ? {}
     : { formatting: survivor.formatting };
+};
+
+type SplitAtOptions = {
+  document: Document;
+  at: TextPosition;
+  newBlockId: string;
+  newHalf: SplitHalf;
+  /** The revision and identity fields of the split and of the first half's properties. */
+  fields: { revision?: RevisionStamp; newIds?: NewIds };
+};
+
+/**
+ * The ops of a split at `at`. The mark the split creates ends the first half,
+ * which starts a logical paragraph of its own and takes the surviving mark's
+ * properties; the paragraph's own mark ends the second, which keeps its
+ * properties. Where the second half is the new paragraph, the first keeps
+ * the paragraph's id, so it takes the surviving mark's properties by a
+ * property change of its own. They differ from the paragraph's only where
+ * its mark is pending deletion and a later paragraph's mark survives it.
+ */
+const splitAtOps = ({
+  document,
+  at,
+  newBlockId,
+  newHalf,
+  fields,
+}: SplitAtOptions): (SplitBlockOp | SetParagraphPropsOp)[] => {
+  const split = {
+    type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+    at,
+    newBlockId,
+    newHalf,
+    ...fields,
+  } as const;
+  if (newHalf === SPLIT_HALVES.FIRST)
+    return [{ ...split, newParagraph: splitParagraphFields(document, at) }];
+  const paragraph = paragraphAt(document, at);
+  const survivor = createParagraphMarkOwnerLookup(document)(at);
+  const own = paragraph?.formatting;
+  const madeSecond = {
+    ...split,
+    newParagraph: own === undefined ? {} : { formatting: own },
+  };
+  const existing = paragraphPropertiesOf(own);
+  const desired = paragraphPropertiesOf(survivor?.formatting);
+  if (survivor === undefined || structurallyEqual(existing, desired))
+    return [madeSecond];
+  return [
+    madeSecond,
+    {
+      type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
+      story: at.story,
+      blockId: at.blockId,
+      patch: Object.fromEntries([
+        ...Object.keys(existing ?? {}).map((key) => [key, null]),
+        ...Object.entries(desired ?? {}),
+      ]),
+      whenEmpty:
+        survivor.formatting === undefined
+          ? EMPTY_PROPERTY_SETS.OMIT
+          : EMPTY_PROPERTY_SETS.KEEP,
+      ...(fields.revision === undefined ? {} : { revision: fields.revision }),
+    },
+  ];
 };
 
 /** A compound intent consumes one identity pool across its sequential plans. */
@@ -3321,7 +3409,7 @@ const compileInStory = (
               {
                 type: "run",
                 ...(runProps === undefined ? {} : { formatting: runProps }),
-                content: [{ type: "text", text }],
+                content: typedRunContent(text),
               },
             ]
       ) satisfies ParagraphContent[];
@@ -3739,25 +3827,27 @@ const compileInStory = (
             opType: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
           }),
         );
+      const newHalf = intent.newHalf ?? SPLIT_HALVES.FIRST;
       if (intent.to === undefined) {
-        const split = {
-          type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+        const split = splitAtOps({
+          document,
           at: intent.at,
           newBlockId: intent.newBlockId,
-          newHalf: intent.newHalf ?? SPLIT_HALVES.FIRST,
-          newParagraph: splitParagraphFields(document, intent.at),
-          ...tracked,
-        } as const;
+          newHalf,
+          fields: tracked,
+        });
         if (mode.type === "suggesting") {
           const plan = createTrackedPlan({
             document,
             revision: mode.revision,
             newIds: mode.newIds,
           });
-          const appended = plan.append(split);
-          if (appended.isErr()) return Result.err(appended.error);
+          for (const op of split) {
+            const appended = plan.append(op);
+            if (appended.isErr()) return Result.err(appended.error);
+          }
           ops = plan.ops;
-        } else ops = [split];
+        } else ops = split;
         selection = { ...intent.at, offset: 0, zeroWidthBefore: 0 };
         break;
       }
@@ -3784,16 +3874,16 @@ const compileInStory = (
           from: intent.at,
           to: intent.to,
         });
-        const split = plan.append({
-          type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+        for (const op of splitAtOps({
+          document: plan.document(),
           at,
           newBlockId: intent.newBlockId,
-          newHalf: intent.newHalf ?? SPLIT_HALVES.FIRST,
-          newParagraph: splitParagraphFields(plan.document(), at),
-          newIds: mode.newIds,
-          revision: mode.revision,
-        });
-        if (split.isErr()) return Result.err(split.error);
+          newHalf,
+          fields: { newIds: mode.newIds, revision: mode.revision },
+        })) {
+          const split = plan.append(op);
+          if (split.isErr()) return Result.err(split.error);
+        }
         ops = plan.ops;
         selection = { ...at, offset: 0, zeroWidthBefore: 0 };
         break;
@@ -3812,17 +3902,13 @@ const compileInStory = (
       if (deleted.isErr()) return Result.err(deleted.error);
       ops = [
         ...deletion.value.ops,
-        {
-          type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+        ...splitAtOps({
+          document: deleted.value.document,
           at: deletion.value.selection,
           newBlockId: intent.newBlockId,
-          newHalf: intent.newHalf ?? SPLIT_HALVES.FIRST,
-          newParagraph: splitParagraphFields(
-            deleted.value.document,
-            deletion.value.selection,
-          ),
-          ...allocationFields,
-        },
+          newHalf,
+          fields: allocationFields,
+        }),
       ];
       selection = {
         ...deletion.value.selection,
@@ -4407,12 +4493,32 @@ const continuation = (
       break;
     containers.push(ancestor);
   }
+  // Text replacing exactly a hyperlink's text keeps the link. The range
+  // holds every leaf of the link and nothing beside it, so no piece of the
+  // link stays on either side to meet: the text takes a copy of it. A range
+  // reaching past the link, or a caret at its edge, leaves the text outside.
+  const link = caret ? undefined : last?.ancestors[containers.length];
+  if (link?.type === "hyperlink") {
+    const inRange = ({ before, after }: (typeof spans)[number]) =>
+      compareGaps(before, end) < 0 && compareGaps(after, start) > 0;
+    const ofLink = ({ ancestors }: (typeof spans)[number]) =>
+      ancestors.includes(link);
+    const covered = ({ before, after }: (typeof spans)[number]) =>
+      compareGaps(start, before) <= 0 && compareGaps(after, end) <= 0;
+    if (
+      spans.filter(inRange).every(ofLink) &&
+      spans.filter(ofLink).every(covered)
+    )
+      containers.push(link);
+  }
   // Each open end merges with the containers the source holds on that side;
-  // at a container's own edge that side has none to meet.
+  // at a container's own edge that side has none to meet, and a copied link
+  // meets none.
   const continued = (side: (typeof spans)[number] | undefined) => {
     let depth = 0;
     while (
       depth < containers.length &&
+      containers[depth]?.type !== "hyperlink" &&
       side?.ancestors[depth] === containers[depth]
     )
       depth += 1;
@@ -4453,6 +4559,9 @@ const continuedSlice = (
       case "inlineSdt":
       case "inlineWrapper":
         wrapped = [{ ...container, content: wrapped }];
+        break;
+      case "hyperlink":
+        wrapped = [withChildren(container, wrapped)];
         break;
       default:
         return undefined;

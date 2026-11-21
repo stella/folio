@@ -9,9 +9,11 @@ import { Mark, type Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
 
+import { commentAuthorIssue, trackedChangeAuthorIssue } from "@stll/docx-core";
 import {
   CONTENT_CONTROL_LOCK,
   lockedControlMessage,
+  MAX_REVISION_ID,
   paragraphNumberingReference,
   type Table,
 } from "@stll/docx-core/model";
@@ -80,7 +82,10 @@ import {
   createExistingRevisionGuard,
   EXISTING_REVISION_CONFLICT_MESSAGE,
 } from "../ai-edits/existingRevisions";
-import { stripInlineEmphasisMarkers } from "../ai-edits/inline-emphasis";
+import {
+  parseInlineEmphasisRuns,
+  stripInlineEmphasisMarkers,
+} from "../ai-edits/inline-emphasis";
 import { compileMarkdownInsertion } from "../ai-edits/markdownInsertion";
 import { createBatchListMinter } from "../ai-edits/newListNumbering";
 import {
@@ -181,7 +186,7 @@ import {
 } from "../prosemirror/conversion/fromProseDoc";
 import { ensureParaIdsInDoc } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import { insertionGap } from "../prosemirror/insertionGaps";
-import { maxAnnotationIdInDoc } from "../prosemirror/plugins/revisionIds";
+import { forEachAnnotationIdInDoc } from "../prosemirror/plugins/revisionIds";
 import { preservesReplacementCommentAlignment } from "../prosemirror/replacedAnnotations";
 import { createStyleResolver } from "../prosemirror/styles/styleResolver";
 import {
@@ -1021,6 +1026,8 @@ type PreparedOperation = {
      * own properties even when the batch joins it to the next one first.
      */
     followsAnchor: boolean;
+    /** The operation names this paragraph, not a paragraph a join reaches. */
+    namesSource: boolean;
     paragraphs: (formatting: ParagraphFormatting | undefined) => Paragraph[];
   };
 } & (
@@ -1324,6 +1331,8 @@ type ResolveBlockInsertionOptions = {
   listStart?: ListStartPlace;
   /** The paragraph the insertion goes beside. */
   paragraph: ProjectedParagraph;
+  /** The paragraph the operation names, which a pending join may move from. */
+  named: ProjectedParagraph;
   /** The paragraph whose stated properties the new paragraph copies. */
   formattingSource: ProjectedParagraph;
   projection: CanonicalProjection;
@@ -1516,6 +1525,46 @@ const holdsStandingContent = (paragraph: PMNode): boolean => {
   return standing;
 };
 
+/** `formatting` with no numbering of its own or from its style. */
+const withoutNumbering = ({
+  numPr: _numPr,
+  numPrFromStyle: _numPrFromStyle,
+  ...formatting
+}: ParagraphFormatting): ParagraphFormatting => formatting;
+
+/**
+ * Whether accepting every pending change takes the paragraph whole: its break
+ * goes (deleted, or inserted and deleted since), and every record it holds is
+ * deleted or moved away.
+ */
+const isTakenWholeOnAcceptance = ({ pPrMark, content }: Paragraph) =>
+  (pPrMark?.kind === "del" ||
+    pPrMark?.kind === "moveFrom" ||
+    pPrMark?.deletion !== undefined) &&
+  content.every(({ type }) => type === "deletion" || type === "moveFrom");
+
+type LentFormattingOptions = {
+  formatting: ParagraphFormatting | undefined;
+  source: Paragraph;
+  /** The operation names `source` itself, not a paragraph a join reaches. */
+  namesSource: boolean;
+};
+
+/**
+ * The properties an inserted paragraph copies from `source`. A paragraph a
+ * pending join reaches, which a pending deletion takes whole, lends no
+ * numbering: once accepted, the list item it was is gone. A paragraph the
+ * operation names lends all of them, as the default engine copies them.
+ */
+const lentFormatting = ({
+  formatting,
+  source,
+  namesSource,
+}: LentFormattingOptions): ParagraphFormatting | undefined =>
+  formatting !== undefined && !namesSource && isTakenWholeOnAcceptance(source)
+    ? withoutNumbering(formatting)
+    : formatting;
+
 /** Whether a pending deletion already takes `paragraph` whole, mark and words. */
 const goesWholeOnAcceptance = (paragraph: PMNode): boolean =>
   paragraph.type.name === "paragraph" &&
@@ -1576,6 +1625,7 @@ const resolveBlockInsertion = ({
   operation,
   listStart,
   paragraph,
+  named,
   formattingSource,
   projection,
   noteReferences,
@@ -1596,11 +1646,6 @@ const resolveBlockInsertion = ({
       ? operation.numbering
       : ({ kind: "newList", format: markdown.listKind } as const);
   const stated = statedNumbering(requested, mintList);
-  if (markdown === undefined && stripInlineEmphasisMarkers(text) !== text)
-    return refusal(
-      "unsupportedBlock",
-      "Canonical public emphasis replacements are unavailable.",
-    );
   const inline = operation.lineBreakMode === "inline";
   // A comparison writes the references its paragraph brings as their
   // markers, which it turns back into references once the batch lands.
@@ -1693,8 +1738,7 @@ const resolveBlockInsertion = ({
             ],
           },
         ];
-      else if (line !== "")
-        content = [{ type: "run", content: inlineText(line) }];
+      else if (line !== "") content = emphasisRuns(line);
       return {
         type: "paragraph",
         content,
@@ -1705,10 +1749,18 @@ const resolveBlockInsertion = ({
       };
     });
   };
+  const sourceFormatting = paragraphFormattingWithAuthoredIndentation(
+    formattingSource.source,
+  );
+  const namesSource = formattingSource.blockId === named.blockId;
   const paragraphs =
     markdownParagraphs ??
     paragraphsFrom(
-      paragraphFormattingWithAuthoredIndentation(formattingSource.source),
+      lentFormatting({
+        formatting: sourceFormatting,
+        source: formattingSource.source,
+        namesSource,
+      }),
     );
   const place =
     listStart === undefined
@@ -1765,6 +1817,7 @@ const resolveBlockInsertion = ({
             followsAnchor:
               operation.type === "insertAfterBlock" &&
               formattingSource.blockId === paragraph.blockId,
+            namesSource,
             paragraphs: paragraphsFrom,
           },
         }
@@ -1916,22 +1969,32 @@ type FormattingIntentsAsItRunsOptions = {
   survivorOf: ReadonlyMap<string, string>;
   /** Those of them whose words open the paragraph they now live in. */
   openingSurvivorOf: ReadonlyMap<string, string>;
+  /**
+   * Each paragraph a block deletion of the batch absorbed, such as the one
+   * that takes the final mark of a deleted run ending its container, to the
+   * one it now lives in. A join's absorbed half is not here: an insertion
+   * beside it keeps its own place.
+   */
+  deletionSurvivorOf: ReadonlyMap<string, string>;
   intents: readonly EditorIntent[];
 };
 
 /**
- * Paragraph property edits and paragraphs put before a paragraph, bound to
- * the paragraph as the batch stands when they run: one an earlier operation
- * joined away, such as the first half of a split whose retraction joins it
- * to the second, is edited in the paragraph that now holds it, and a
- * paragraph put before it goes before that one when its words open it, as
- * a merge into the next paragraph leaves them.
+ * Paragraph property edits and paragraph insertions bound to the paragraph
+ * as the batch stands when they run: one an earlier operation joined away,
+ * such as the first half of a split whose retraction joins it to the second,
+ * or a paragraph that took the mark of the run a block deletion of the
+ * batch deleted after it, is edited, or inserted beside, in the paragraph
+ * that now holds it; a join's absorbed half keeps its own place for an
+ * insertion, except that a paragraph put before it goes before the
+ * paragraph its words open, as a merge into the next paragraph leaves them.
  */
 const formattingIntentsAsItRuns = ({
   document,
   story,
   survivorOf,
   openingSurvivorOf,
+  deletionSurvivorOf,
   intents,
 }: FormattingIntentsAsItRunsOptions): readonly EditorIntent[] => {
   if (survivorOf.size === 0) return intents;
@@ -1942,8 +2005,11 @@ const formattingIntentsAsItRuns = ({
     ),
   );
   // The paragraph's start, in the paragraph that now holds it.
-  const bound = (at: TextPosition): TextPosition => {
-    const survivor = survivorOf.get(idKey(at.blockId));
+  const bound = (
+    at: TextPosition,
+    survivors: ReadonlyMap<string, string> = survivorOf,
+  ): TextPosition => {
+    const survivor = survivors.get(idKey(at.blockId));
     return survivor === undefined || present.has(idKey(at.blockId))
       ? at
       : { story: at.story, blockId: survivor, offset: 0 };
@@ -1959,12 +2025,21 @@ const formattingIntentsAsItRuns = ({
         };
       case "insertParagraphs": {
         const { at } = intent;
-        if (at.type !== "before" || present.has(idKey(at.blockId)))
-          return intent;
-        const survivor = openingSurvivorOf.get(idKey(at.blockId));
-        return survivor === undefined
+        if (at.type !== "before" && at.type !== "after") return intent;
+        if (present.has(idKey(at.blockId))) return intent;
+        const opening =
+          at.type === "before"
+            ? openingSurvivorOf.get(idKey(at.blockId))
+            : undefined;
+        if (opening !== undefined)
+          return { ...intent, at: { type: "before", blockId: opening } };
+        const { blockId } = bound(
+          { story, blockId: at.blockId, offset: 0 },
+          deletionSurvivorOf,
+        );
+        return blockId === at.blockId
           ? intent
-          : { ...intent, at: { type: "before", blockId: survivor } };
+          : { ...intent, at: { type: at.type, blockId } };
       }
       default:
         return intent;
@@ -2267,14 +2342,17 @@ const insertionIntentsAsItRuns = ({
       source = next;
     }
   }
+  const lent = lentFormatting({
+    formatting: paragraphFormattingWithAuthoredIndentation(source),
+    source,
+    namesSource: inheritsFrom.namesSource && source === at.paragraph,
+  });
   const copied: EditorIntent[] = [];
   for (const intent of intents)
     copied.push(
       intent.type === "insertParagraphs"
         ? Object.assign({}, intent, {
-            paragraphs: inheritsFrom.paragraphs(
-              paragraphFormattingWithAuthoredIndentation(source),
-            ),
+            paragraphs: inheritsFrom.paragraphs(lent),
           })
         : intent,
     );
@@ -2761,6 +2839,7 @@ const resolveTableInsertion = ({
     if (
       joinStopsAtTableAfter({
         insertedBlock: "table",
+        joinBeforeTable: "runsIntoFirstCell",
         doc: projection.doc,
         paragraphPos: outer[side],
         noteReferences,
@@ -2816,6 +2895,7 @@ const resolveTableInsertion = ({
   if (
     joinStopsAtTableAfter({
       insertedBlock: "table",
+      joinBeforeTable: "runsIntoFirstCell",
       doc: projection.doc,
       paragraphPos: gap,
       noteReferences,
@@ -3359,6 +3439,14 @@ const CANONICAL_SUGGESTED_OPERATION_TYPES: ReadonlySet<
   "commentOnBlock",
 ]);
 
+/** The operations that only add marks over text: formatting and comments. */
+const ANNOTATING_OPERATION_TYPES: ReadonlySet<FolioDocumentOperation["type"]> =
+  new Set<FolioDocumentOperation["type"]>([
+    "formatRange",
+    "commentOnRange",
+    "commentOnBlock",
+  ]);
+
 /** A block operation without the move it names: a plain insertion or deletion. */
 const withoutMove = (
   operation: FolioDocumentOperation,
@@ -3385,6 +3473,28 @@ const blockMoveId = (operation: FolioDocumentOperation): string | undefined =>
  * A line's text with each tab and line break as the element it is; CRLF, CR
  * and LF are each one line break.
  */
+/**
+ * A line as runs: paired `**bold**` and `***bold italic***` markers state
+ * that emphasis on their words, as the default engine reads them; the rest
+ * states no run property, so the paragraph's style formats it.
+ */
+const emphasisRuns = (line: string): Run[] =>
+  parseInlineEmphasisRuns(line).flatMap(({ text, bold, italic }): Run[] => {
+    const content = inlineText(text);
+    if (content.length === 0) return [];
+    if (!bold && !italic) return [{ type: "run", content }];
+    return [
+      {
+        type: "run",
+        content,
+        formatting: {
+          ...(bold ? { bold } : {}),
+          ...(italic ? { italic } : {}),
+        },
+      },
+    ];
+  });
+
 const inlineText = (line: string): Run["content"] =>
   line.split(/(\t|\r\n|\r|\n)/u).flatMap((part): Run["content"] => {
     if (part === "\t") return [{ type: "tab" }];
@@ -3473,6 +3583,32 @@ type CompilePublicIntentsOptions = {
 
 // Bound the generic allocator's prospective paragraph lookup and keep
 // the unrestricted revision/control ranges of an unleased editor.
+/**
+ * Room past the highest revision or annotation id below which a batch draws
+ * its revision ids from the free ones instead: more than any one batch asks.
+ */
+const REVISION_ID_WRAP_HEADROOM = 1 << 16;
+
+/**
+ * A lease of every id, but for revisions only the ones no revision record or
+ * annotation holds, lowest first.
+ */
+const wrappedRevisionLease = (taken: ReadonlySet<number>): IdLease => {
+  const blocks: IdBlock[] = Object.values(ID_LEASE_KINDS)
+    .filter((kind) => kind !== ID_LEASE_KINDS.REVISION)
+    .map((kind) => ({ kind, start: 1, end: ID_KIND_LIMITS[kind] }));
+  let start = 1;
+  for (const id of [...taken].toSorted((left, right) => left - right)) {
+    if (id < start) continue;
+    if (id > start)
+      blocks.push({ kind: ID_LEASE_KINDS.REVISION, start, end: id });
+    start = id + 1;
+  }
+  const end = ID_KIND_LIMITS[ID_LEASE_KINDS.REVISION];
+  if (start < end) blocks.push({ kind: ID_LEASE_KINDS.REVISION, start, end });
+  return { blocks };
+};
+
 const allocatorLeaseForParagraphs = (paragraphLease: IdLease | undefined) =>
   paragraphLease === undefined
     ? undefined
@@ -4254,19 +4390,29 @@ export class CanonicalPublicOperations {
     const mintList = createBatchListMinter(() => readModel(session.document));
     const { diff } = wordDiffSessionFromOptions(options.wordDiff);
     let nextRevisionId = options.revisionStamp?.idSeed ?? 1;
+    let batchLease = session.idLease;
     if (!session.isComposing && options.revisionStamp === undefined) {
       // Past every revision id the package holds, records the projection
       // does not show (a table's grid change, say) included.
-      for (const id of leasedIdCensus(readModel(session.document)).revision)
-        nextRevisionId = Math.max(nextRevisionId, id + 1);
+      const taken = new Set(
+        leasedIdCensus(readModel(session.document)).revision,
+      );
       for (const currentStory of documentStories(readModel(session.document))) {
         const currentProjection = session.projectStory(currentStory);
         if (currentProjection.isOk())
-          nextRevisionId = Math.max(
-            nextRevisionId,
-            maxAnnotationIdInDoc(currentProjection.value.doc) + 1,
+          forEachAnnotationIdInDoc(currentProjection.value.doc, (id) =>
+            taken.add(id),
           );
       }
+      for (const id of taken) nextRevisionId = Math.max(nextRevisionId, id + 1);
+      // With little room left past the highest id, the batch draws its
+      // revision ids from the lowest ones no record or annotation holds, as
+      // a lease does, so a package holding the largest id still takes edits.
+      if (
+        batchLease === undefined &&
+        MAX_REVISION_ID + 1 - nextRevisionId < REVISION_ID_WRAP_HEADROOM
+      )
+        batchLease = wrappedRevisionLease(taken);
     }
     const skip = (
       id: string,
@@ -4685,6 +4831,7 @@ export class CanonicalPublicOperations {
     const survivorOf = new Map<string, string>();
     /** Those whose words open the paragraph they now live in. */
     const openingSurvivorOf = new Map<string, string>();
+    const deletionSurvivorOf = new Map<string, string>();
     // Preparation owns no session state: even comments and lock refusals are
     // facts until the batch chooses this attempt.
     const prepareOperation = ({
@@ -4692,7 +4839,7 @@ export class CanonicalPublicOperations {
       resolvedOperation,
       columnInsertions,
       nextRevisionId: firstRevisionId,
-      idLease = session.idLease,
+      idLease = batchLease,
       paragraphAllocationLease,
       allocations,
       reservedBlockIds = session.reservedBlockIds,
@@ -4700,11 +4847,23 @@ export class CanonicalPublicOperations {
       commentAllocation: admittedComment,
     }: PrepareOperationOptions) => {
       const { operation } = resolvedOperation;
+      // An author no save accepts is refused before it is recorded: on a
+      // tracked change, or on the comment the operation makes.
+      const authorIssue =
+        (batch.mode === "direct"
+          ? undefined
+          : trackedChangeAuthorIssue(options.author ?? "AI")) ??
+        (resolvedOperation.type === "commented"
+          ? commentAuthorIssue(options.author ?? "AI")
+          : undefined);
+      if (authorIssue !== undefined)
+        return declined({ reason: "invalidResult", message: authorIssue });
       const inserting = formattingIntentsAsItRuns({
         document: sourceDocument,
         story,
         survivorOf,
         openingSurvivorOf,
+        deletionSurvivorOf,
         intents: insertionIntentsAsItRuns({
           document: sourceDocument,
           story,
@@ -4872,6 +5031,9 @@ export class CanonicalPublicOperations {
       }
       let commentId: number | undefined;
       let commentAllocation: PrepareOperationOptions["commentAllocation"];
+      // A lease the batch takes only for its revision ids leaves comments to
+      // their own allocator.
+      const commentLease = session.idLease === undefined ? undefined : idLease;
       switch (resolvedOperation.type) {
         case "plain":
           break;
@@ -4879,7 +5041,7 @@ export class CanonicalPublicOperations {
           const { comment } = resolvedOperation;
           const id =
             admittedComment === undefined
-              ? freshCommentId(nextDocument, idLease)
+              ? freshCommentId(nextDocument, commentLease)
               : Result.ok(admittedComment.id);
           // A suggested operation's comment is proposed with it: pending,
           // never saved, accepted and rejected with the suggestion.
@@ -4893,7 +5055,7 @@ export class CanonicalPublicOperations {
             });
             const commentContent =
               admittedComment?.content ??
-              canonicalCommentBody(nextDocument, comment.text, idLease);
+              canonicalCommentBody(nextDocument, comment.text, commentLease);
             const commented =
               id.isErr() ||
               firstAdded?.paraId === undefined ||
@@ -4992,7 +5154,7 @@ export class CanonicalPublicOperations {
                 };
           const commentContent =
             admittedComment?.content ??
-            canonicalCommentBody(nextDocument, comment.text, idLease);
+            canonicalCommentBody(nextDocument, comment.text, commentLease);
           const commented = compileCanonicalComments({
             document: nextDocument,
             idLease: idLease,
@@ -5089,17 +5251,23 @@ export class CanonicalPublicOperations {
         skip(operation.id, prepared.reason, prepared.message);
         return;
       }
+      const survivorMaps =
+        operation.type === "deleteBlock"
+          ? [survivorOf, deletionSurvivorOf]
+          : [survivorOf];
       for (const absorption of prepared.absorbed) {
         const { absorbed, survivor } = absorption;
         const opens = opensSurvivor({ document, story, absorption });
-        for (const [gone, kept] of survivorOf)
-          if (kept === idKey(absorbed)) survivorOf.set(gone, idKey(survivor));
+        for (const survivors of survivorMaps) {
+          for (const [gone, kept] of survivors)
+            if (kept === idKey(absorbed)) survivors.set(gone, idKey(survivor));
+          survivors.set(idKey(absorbed), idKey(survivor));
+        }
         for (const [gone, kept] of openingSurvivorOf) {
           if (kept !== idKey(absorbed)) continue;
           if (opens) openingSurvivorOf.set(gone, idKey(survivor));
           else openingSurvivorOf.delete(gone);
         }
-        survivorOf.set(idKey(absorbed), idKey(survivor));
         if (opens) openingSurvivorOf.set(idKey(absorbed), idKey(survivor));
       }
       const { commentId, suggestionId, revisionIds, retiredCommentIds } =
@@ -5143,6 +5311,16 @@ export class CanonicalPublicOperations {
         panic("A resolved insertion lost its batch order.");
       return order;
     };
+    /**
+     * Where an insertion stands among those at its gap: in batch order, but a
+     * paragraph put before one the direct batch deletes, placed after it
+     * instead (`besideDeletion`), still goes ahead of the blocks put after it.
+     */
+    const placementOrderOf = (member: AdmittedOperation) =>
+      member.besideDeletion === true &&
+      member.operation.type === "insertAfterBlock"
+        ? orderOf(member) - batch.operations.length
+        : orderOf(member);
     const gaps = new Map<number, AdmittedOperation[]>();
     for (const member of executionOrder) {
       if (!placesBlock(member.operation)) continue;
@@ -5217,7 +5395,7 @@ export class CanonicalPublicOperations {
           intent.at.blockId !== blockId
         )
           return false;
-        const order = orderOf(member);
+        const order = placementOrderOf(member);
         if (
           previousOrder !== undefined &&
           (side === "before" ? order <= previousOrder : order >= previousOrder)
@@ -5236,7 +5414,7 @@ export class CanonicalPublicOperations {
         panic("An insertion admission window lost its first operation.");
       const window = executionOrder.slice(interval.first, interval.last + 1);
       if (
-        session.idLease === undefined &&
+        batchLease === undefined &&
         batch.mode !== "suggested" &&
         alreadyInReplayOrder(window)
       )
@@ -5284,11 +5462,11 @@ export class CanonicalPublicOperations {
       let admissionCensus:
         | { type: "paragraphs"; ids: Set<number> | undefined }
         | { type: "package" } =
-        session.idLease === undefined
+        batchLease === undefined
           ? { type: "paragraphs", ids: undefined }
           : { type: "package" };
       const rejectParagraphWindow = () => {
-        if (session.idLease !== undefined) return "lease";
+        if (batchLease !== undefined) return "lease";
         if (batch.mode === "suggested") return "suggestion";
         if (!window.every(isPlainInsertion)) return "windowShape";
         return undefined;
@@ -5393,8 +5571,8 @@ export class CanonicalPublicOperations {
         });
         const placed = partners.toSorted(
           (left, right) =>
-            (orderOf(left.resolvedOperation) -
-              orderOf(right.resolvedOperation)) *
+            (placementOrderOf(left.resolvedOperation) -
+              placementOrderOf(right.resolvedOperation)) *
             (anchor.at.type === "before" ? 1 : -1),
         );
         for (const [index, partner] of placed.entries()) {
@@ -5434,10 +5612,10 @@ export class CanonicalPublicOperations {
         );
       for (const { member, operation: replayOperation } of ordered) {
         const idLease =
-          session.idLease === undefined
+          batchLease === undefined
             ? undefined
             : insertionMemberIdLease({
-                lease: session.idLease,
+                lease: batchLease,
                 siblings: admitted
                   .filter((other) => other !== member)
                   .map(({ ids }) => ids),
@@ -5850,10 +6028,27 @@ export class CanonicalPublicOperations {
         to: end,
       });
     }
+    // Ending a section before a table or a content control, with a paragraph
+    // before it, the paragraph keeps its mark and with it its section break,
+    // as the direct deletion's join leaves it: tracked, the deletion takes
+    // its words and the mark of the paragraph before, which accepting joins
+    // into it, as it does for a container's final paragraph.
+    const keepsSectionBreakBeforeBlock =
+      tracked &&
+      after !== null &&
+      after.type.name !== "paragraph" &&
+      paragraph.node.attrs["_sectionProperties"] != null &&
+      previous !== undefined &&
+      previous.node.attrs["_sectionProperties"] == null &&
+      operation.moveId === undefined &&
+      !gainsFollower &&
+      !previousGainsFollower &&
+      deletedRun === "none";
     if (
-      next !== undefined ||
-      gainsFollower ||
-      (tracked && (after !== null || operation.moveId !== undefined))
+      !keepsSectionBreakBeforeBlock &&
+      (next !== undefined ||
+        gainsFollower ||
+        (tracked && (after !== null || operation.moveId !== undefined)))
     ) {
       const intents: EditorIntent[] = [
         {
@@ -5952,9 +6147,11 @@ export class CanonicalPublicOperations {
       const intents: EditorIntent[] = [...cleared.value];
       // The paragraph before it takes over: before a table or a content
       // control the deleted paragraph's mark goes with it, and the one before
-      // it keeps its identity (`directJoinSurvivor`). Collapsing a run the
-      // batch deletes back to its start, it joins the run's paragraph before
-      // it, which keeps its identity and properties until its own deletion.
+      // it keeps its identity (`directJoinSurvivor`), unless that mark ends a
+      // section: it stays with its break, as accepting the tracked deletion
+      // leaves it. Collapsing a run the batch deletes back to its start, it
+      // joins the run's paragraph before it, which keeps its identity and
+      // properties until its own deletion.
       const collapsesRunStart =
         previous !== undefined && deletedRun === "runStart";
       if (previous !== undefined)
@@ -5965,7 +6162,11 @@ export class CanonicalPublicOperations {
           nextBlockId: paragraph.blockId,
           survivor: collapsesRunStart
             ? SPLIT_HALVES.FIRST
-            : directJoinSurvivor({ laterMarkRemains: after === null }),
+            : directJoinSurvivor({
+                laterMarkRemains:
+                  after === null ||
+                  paragraph.node.attrs["_sectionProperties"] != null,
+              }),
         });
       if (intents.length === 0) return refusal("noopOperation");
       let joinOrder = {};
@@ -6370,6 +6571,7 @@ export class CanonicalPublicOperations {
         operation,
         listStart,
         paragraph,
+        named: paragraph,
         formattingSource: paragraph,
         projection: projection.value,
         noteReferences,
@@ -6431,6 +6633,7 @@ export class CanonicalPublicOperations {
       const inserted = resolveBlockInsertion({
         operation: insertion,
         paragraph: placed.place,
+        named: paragraph,
         formattingSource: placed.formattingSource,
         projection: projection.value,
         noteReferences,
@@ -6569,10 +6772,13 @@ export class CanonicalPublicOperations {
         return unreachable;
       }
     }
+    // An annotation only adds marks, so it may meet a letter's combining mark
+    // or an emoji sequence's joiner; it never halves a surrogate pair. A text
+    // change or a break keeps every grapheme cluster whole.
     const characterSplit = describeCharacterSplit(
       clean.text,
       [start, end],
-      "grapheme",
+      ANNOTATING_OPERATION_TYPES.has(operation.type) ? "codePoint" : "grapheme",
     );
     if (characterSplit !== null)
       return refusal("splitsCharacter", characterSplit);
@@ -6630,7 +6836,12 @@ export class CanonicalPublicOperations {
         "unsupportedBlock",
         "Canonical public emphasis replacements are unavailable.",
       );
-    if (!editsReferences && /\[\^(?:e)?\d+\]/u.test(prose))
+    if (
+      (!editsReferences && /\[\^(?:e)?\d+\]/u.test(prose)) ||
+      // A tab or line feed is written as its element; a carriage return
+      // names no element of its own.
+      /\r/u.test(prose)
+    )
       return refusal(
         "unsupportedBlock",
         "Canonical public replacements require plain text.",
@@ -6846,23 +7057,20 @@ export class CanonicalPublicOperations {
           }),
         );
       // A tab the replacement repeats from the source is kept: a change that
-      // spans tabs changes the text between them, tab for tab. A tab or break
-      // the replacement adds would be written as text, so it is refused.
+      // spans as many tabs as it writes changes the text between them, tab
+      // for tab. Any other tab or break is written as its element.
       for (let index = changes.length - 1; index >= 0; index -= 1) {
         const change = changes[index];
-        if (change === undefined || !/[\t\r\n]/u.test(change.text)) continue;
+        if (change === undefined || !/[\t\n]/u.test(change.text)) continue;
         const sourceParts = clean.text
           .slice(change.start, change.end)
           .split("\t");
         const replacementParts = change.text.split("\t");
         if (
-          /[\r\n]/u.test(change.text) ||
+          /\n/u.test(change.text) ||
           sourceParts.length !== replacementParts.length
         )
-          return refusal(
-            "unsupportedBlock",
-            "Canonical public replacements require plain text.",
-          );
+          continue;
         const pieces: typeof changes = [];
         let position = change.start;
         for (const [part, sourcePart] of sourceParts.entries()) {

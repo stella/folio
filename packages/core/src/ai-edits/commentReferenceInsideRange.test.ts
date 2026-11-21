@@ -202,44 +202,86 @@ describe("a comment reference put inside another comment's range", () => {
   for (const session of SESSIONS)
     for (const mode of MODES) {
       for (const { name, reservedId, outerId, innerId, starts } of ID_ORDERS) {
-        // Ratchet: the canonical session's revision ids run one past every
-        // annotation id and do not wrap yet, so a tracked edit beside a comment
-        // holding the highest id is refused.
-        const ratchet =
-          session === "canonical" &&
-          mode === "tracked-changes" &&
-          reservedId !== undefined;
-        (ratchet ? test.failing : test)(
-          `stays inside it after removing the tail (${session}, ${mode}, ${name})`,
-          async () => {
-            const { reviewer, blockId } = await nested(session, reservedId);
-            const commentIds =
-              reservedId === undefined
-                ? { Outer: outerId(session), Inner: innerId(session) }
-                : {
-                    Outer: outerId(session),
-                    Inner: innerId(session),
-                    "Already occupied": reservedId,
-                  };
-            expect(commentIdsByText(reviewer)).toEqual(commentIds);
-            const liveBeforeSave = markers(reviewer.toDocument());
-            const reopened = await open(await reviewer.toBuffer(), session);
-            expect(markers(reviewer.toDocument())).toEqual(liveBeforeSave);
-            expect(commentIdsByText(reopened)).toEqual(commentIds);
-            const expected = [
-              ...startsOf(session, starts).map(
-                (comment) => `commentRangeStart ${comment}`,
-              ),
-              "Clause",
-              "commentRangeEnd Inner",
-              "commentReference Inner",
-              "commentRangeEnd Outer",
-              "commentReference Outer",
-            ];
-            expect(removeTail(reviewer, mode, blockId)).toEqual(expected);
-            expect(removeTail(reopened, mode, blockId)).toEqual(expected);
-          },
-        );
+        test(`stays inside it after removing the tail (${session}, ${mode}, ${name})`, async () => {
+          const { reviewer, blockId } = await nested(session, reservedId);
+          const commentIds =
+            reservedId === undefined
+              ? { Outer: outerId(session), Inner: innerId(session) }
+              : {
+                  Outer: outerId(session),
+                  Inner: innerId(session),
+                  "Already occupied": reservedId,
+                };
+          expect(commentIdsByText(reviewer)).toEqual(commentIds);
+          const liveBeforeSave = markers(reviewer.toDocument());
+          const reopened = await open(await reviewer.toBuffer(), session);
+          expect(markers(reviewer.toDocument())).toEqual(liveBeforeSave);
+          expect(commentIdsByText(reopened)).toEqual(commentIds);
+          const expected = [
+            ...startsOf(session, starts).map(
+              (comment) => `commentRangeStart ${comment}`,
+            ),
+            "Clause",
+            "commentRangeEnd Inner",
+            "commentReference Inner",
+            "commentRangeEnd Outer",
+            "commentReference Outer",
+          ];
+          expect(removeTail(reviewer, mode, blockId)).toEqual(expected);
+          expect(removeTail(reopened, mode, blockId)).toEqual(expected);
+        });
       }
     }
 });
+
+/** The ids of the tracked insertions and deletions anywhere in `value`. */
+const trackedIds = (value: unknown, ids = new Set<number>()): Set<number> => {
+  if (Array.isArray(value)) {
+    for (const item of value) trackedIds(item, ids);
+    return ids;
+  }
+  if (typeof value !== "object" || value === null) return ids;
+  const type: unknown = Reflect.get(value, "type");
+  const info: unknown = Reflect.get(value, "info");
+  if (
+    (type === "insertion" || type === "deletion") &&
+    typeof info === "object" &&
+    info !== null
+  ) {
+    const id: unknown = Reflect.get(info, "id");
+    if (typeof id === "number") ids.add(id);
+  }
+  for (const child of Object.values(value)) trackedIds(child, ids);
+  return ids;
+};
+
+test.each(SESSIONS)(
+  "past the highest id, a comment and a tracked edit of one batch take different ids (%s)",
+  async (session) => {
+    const { reviewer } = await nested(session, MAX_REVISION_ID - 1);
+    const other = reviewer.snapshot().blocks[1];
+    if (!other) throw new Error("Missing second paragraph");
+    apply(reviewer, "tracked-changes", [
+      {
+        id: "comment",
+        type: "commentOnBlock",
+        blockId: other.id,
+        comment: { text: "New" },
+      },
+      {
+        id: "edit",
+        type: "replaceInBlock",
+        blockId: other.id,
+        find: "Other",
+        replace: "Another",
+      },
+    ]);
+    const document = reviewer.toDocument();
+    const comments = new Set(
+      (document.package.document.comments ?? []).map(({ id }) => id),
+    );
+    const revisions = trackedIds(document.package.document.content);
+    expect(revisions.size).toBeGreaterThan(0);
+    expect([...revisions].filter((id) => comments.has(id))).toEqual([]);
+  },
+);

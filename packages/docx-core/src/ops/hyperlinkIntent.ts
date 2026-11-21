@@ -11,6 +11,7 @@ import type {
   Run,
   TrackedRunChange,
 } from "../model/document";
+import { maxOf } from "../model/extremes";
 import { applyDocumentOps } from "./apply";
 import { type CompileIntent, nextCompoundMode } from "./compoundIntent";
 import type { EditorIntentMode } from "./editorIntent";
@@ -370,10 +371,15 @@ const copiedNotes = (
   const copies: (Footnote | Endnote)[] = [];
   const next = {
     footnote:
-      Math.max(0, ...(document.package.footnotes ?? []).map(({ id }) => id)) +
-      1,
+      maxOf(
+        (document.package.footnotes ?? []).map(({ id }) => id),
+        0,
+      ) + 1,
     endnote:
-      Math.max(0, ...(document.package.endnotes ?? []).map(({ id }) => id)) + 1,
+      maxOf(
+        (document.package.endnotes ?? []).map(({ id }) => id),
+        0,
+      ) + 1,
   };
   for (const reference of references) {
     const kind = reference.type === "footnoteRef" ? "footnote" : "endnote";

@@ -11,6 +11,7 @@ import type {
   Page,
 } from "../layout-engine/types";
 import type { NumberFormat } from "../types/document";
+import { maxOf } from "../utils/extremes";
 import { evaluateField } from "./evaluateField";
 import type { FieldContext } from "./fieldContext";
 
@@ -206,7 +207,7 @@ function widestFormattedCount(
 ): number {
   const format = getFormatSwitch(parsed)?.toUpperCase();
   if (format !== "ROMAN" && format !== "ALPHABETIC") {
-    return Math.max(...counts, 1);
+    return maxOf(counts, 1);
   }
 
   const first = counts.at(0) ?? 1;

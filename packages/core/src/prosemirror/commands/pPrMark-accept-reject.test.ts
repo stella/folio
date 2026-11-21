@@ -764,7 +764,7 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
       });
     });
 
-    test("reject removes an inserted endpoint and retains the following paragraph", () => {
+    test("reject removes an inserted endpoint with its section and retains the following paragraph", () => {
       const state = EditorState.create({
         schema,
         doc: schema.node("doc", null, [
@@ -787,9 +787,8 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
       expect(view.state.doc.child(0).textContent).toBe(
         "inserted sectionfollowing section",
       );
-      expect(view.state.doc.child(0).attrs["_sectionProperties"]).toEqual({
-        columns: 2,
-      });
+      // The inserted break's section never stood in the original.
+      expect(view.state.doc.child(0).attrs["_sectionProperties"]).toBeNull();
     });
 
     test("authorizes only the exact endpoint-removal direction", () => {

@@ -46,6 +46,7 @@ import type { EditorView } from "prosemirror-view";
 import type { ParagraphMarkChange } from "@stll/docx-core/model";
 
 import type { TrackedChangeInfo } from "../../types/document";
+import { maxOf, minOf } from "../../utils/extremes";
 import { addTrackedDeletionMark } from "../addTrackedDeletionMark";
 import { expectParagraphAttrs, expectTrackedChangeMarkAttrs } from "../attrs";
 import { clearIndentOnBackspace } from "../commands/clearParagraphIndent";
@@ -577,8 +578,8 @@ function pasteEndsDocumentWithBlock(
   if (placed.length === 0) {
     return false;
   }
-  const insertFrom = Math.min(...placed.map((range) => range.from));
-  const insertTo = Math.max(...placed.map((range) => range.to));
+  const insertFrom = minOf(placed.map((range) => range.from));
+  const insertTo = maxOf(placed.map((range) => range.to));
   const final = paragraphType.createAndFill();
   if (!final) {
     return false;
@@ -880,9 +881,9 @@ export function handleSuggestionPaste(
     return ranges;
   });
   let insertFrom =
-    placed.length === 0 ? at : Math.min(...placed.map((range) => range.from));
+    placed.length === 0 ? at : minOf(placed.map((range) => range.from));
   let insertTo =
-    placed.length === 0 ? at : Math.max(...placed.map((range) => range.to));
+    placed.length === 0 ? at : maxOf(placed.map((range) => range.to));
   if (tableFirst) {
     const struck = tr.steps.length;
     markRangeAsDeleted(

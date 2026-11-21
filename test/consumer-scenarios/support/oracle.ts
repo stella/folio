@@ -2689,9 +2689,58 @@ const insertBlock =
       if (holder) row.inTextBoxOf = holder;
       return row;
     });
+    const first = rows.at(0);
+    const shown =
+      inherited === undefined
+        ? undefined
+        : inheritedListFields(model, inherited);
+    if (
+      first !== undefined &&
+      shown?.kind === "listItem" &&
+      "numbering" in operation &&
+      first.fields.listLevel === undefined &&
+      takesFinalMarkWhileSuggested(model, named, position)
+    ) {
+      // The paragraph takes the anchor's final mark, its stated numbering a
+      // pending change from the anchor's. A pending change that shows no
+      // marker of its own still shows the one it takes away, as for any
+      // pending numbering removal.
+      first.fields = {
+        ...first.fields,
+        ...(first.fields.kind === "heading" ? {} : { kind: shown.kind }),
+        listLevel: shown.listLevel,
+      };
+      first.listLineage = currentLineage(model, copied);
+    }
     pushBesideBlocks(model, anchor, position, rows);
     addComment(model, operation);
   };
+
+/**
+ * Whether a suggested paragraph put `position` of `named` takes its mark: on
+ * the canonical engine, one put after the last paragraph of its story or
+ * table cell carries that container's final mark from then on, with its own
+ * properties pending over the anchor's. The legacy engine keeps the anchor's
+ * mark and adds a paragraph with its own properties.
+ */
+const takesFinalMarkWhileSuggested = (
+  model: Model,
+  named: ModelRow,
+  position: "before" | "after",
+): boolean => {
+  if (
+    model.engine !== "canonical" ||
+    model.mode !== "suggested" ||
+    position !== "after" ||
+    named.pre === undefined ||
+    named.after.length > 0
+  )
+    return false;
+  const rows = model.rows.flatMap(({ pre }) =>
+    pre === undefined ? [] : [pre],
+  );
+  return endsContainer(rows, named.pre.id);
+};
 
 /**
  * Add `cells`, new blocks of a table, to the gap on `side` of one of its
