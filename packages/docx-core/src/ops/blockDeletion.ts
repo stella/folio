@@ -961,7 +961,10 @@ export const deleteBlocks = ({
           type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
           story: op.story,
           expected: replaced,
-          blocks,
+          // With no boundaries standing, only paragraphs replace paragraphs.
+          blocks: blocks.filter(
+            (block): block is Paragraph => block.type === "paragraph",
+          ),
           ...sectionBoundaries,
         };
   const finalReview = reviewFieldsOf(last.paragraph);
