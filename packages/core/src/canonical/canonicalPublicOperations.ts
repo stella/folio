@@ -5375,6 +5375,7 @@ export class CanonicalPublicOperations {
         new CanonicalPublicOperationResolutionError({
           reason,
           message: message ?? `The operation was refused: ${reason}.`,
+          detail: message,
         }),
       );
     const fillerHash = hashFolioAIBlockContent("");
