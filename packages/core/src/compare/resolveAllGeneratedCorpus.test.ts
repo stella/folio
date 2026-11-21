@@ -88,91 +88,97 @@ const run = (state: EditorState, command: Command) => {
   return { handled, transaction, doc: transaction?.doc ?? state.doc };
 };
 
-test("generated compare corpus resolves every parsed story like the full-range commands", async () => {
-  let configurations = 0;
-  let stories = 0;
-  let changedStories = 0;
-  for (const documentClass of DOCUMENT_CLASSES) {
-    for (const variant of EDIT_VARIANTS) {
-      const parts = buildDocumentPackage({ documentClass, size: "s" });
-      const targetParts = applyVariant({ parts, variant });
-      if (!targetParts) continue;
-      const id = `${documentClass}/s/${variant}`;
-      let compared;
-      try {
-        compared = await compareDocx(
-          await zipPackage(parts),
-          await zipPackage(targetParts),
-          OPTIONS,
-        );
-      } catch (error) {
-        throw new Error(`${id}: comparison threw`, { cause: error });
-      }
-      if (compared.isErr()) throw new Error(`${id}: ${compared.error.message}`);
-      const parsed = await parseDocx(compared.value.buffer, {
-        detectVariables: false,
-        preloadFonts: false,
-      });
-      const reviewer = await FolioDocxReviewer.fromBuffer(
-        compared.value.buffer,
-      );
-      configurations += 1;
-      for (const { handle } of reviewer.listStories()) {
-        const doc = storyDoc(parsed, handle);
-        const state = EditorState.create({
-          schema,
-          doc,
-          plugins: [
-            createDocumentStylesPlugin(parsed.package.styles),
-            createDocumentNumberingPlugin(parsed.package.numbering),
-          ],
+test.each(["legacy", "canonical"] as const)(
+  "generated compare corpus resolves every parsed story like the full-range commands (%s)",
+  async (session) => {
+    let configurations = 0;
+    let stories = 0;
+    let changedStories = 0;
+    for (const documentClass of DOCUMENT_CLASSES) {
+      for (const variant of EDIT_VARIANTS) {
+        const parts = buildDocumentPackage({ documentClass, size: "s" });
+        const targetParts = applyVariant({ parts, variant });
+        if (!targetParts) continue;
+        const id = `${documentClass}/s/${variant}`;
+        let compared;
+        try {
+          compared = await compareDocx(
+            await zipPackage(parts),
+            await zipPackage(targetParts),
+            { ...OPTIONS, session },
+          );
+        } catch (error) {
+          throw new Error(`${id}: comparison threw`, { cause: error });
+        }
+        if (compared.isErr())
+          throw new Error(`${id}: ${compared.error.message}`);
+        const parsed = await parseDocx(compared.value.buffer, {
+          detectVariables: false,
+          preloadFonts: false,
         });
-        stories += 1;
-        for (const mode of ["accept", "reject"] as const) {
-          const bulk = run(
-            state,
-            mode === "accept" ? acceptAllChanges() : rejectAllChanges(),
-          );
-          const full = run(
-            state,
-            mode === "accept"
-              ? acceptChange(0, doc.content.size)
-              : rejectChange(0, doc.content.size),
-          );
-          const label = `${id} ${JSON.stringify(handle)} ${mode}`;
-          if (
-            bulk.handled !== full.handled ||
-            JSON.stringify(bulk.doc.toJSON()) !==
-              JSON.stringify(full.doc.toJSON())
-          ) {
-            throw new Error(
-              `${label}: bulk resolution differs from full-range resolution`,
+        const reviewer = await FolioDocxReviewer.fromBuffer(
+          compared.value.buffer,
+          { session },
+        );
+        configurations += 1;
+        for (const { handle } of reviewer.listStories()) {
+          const doc = storyDoc(parsed, handle);
+          const state = EditorState.create({
+            schema,
+            doc,
+            plugins: [
+              createDocumentStylesPlugin(parsed.package.styles),
+              createDocumentNumberingPlugin(parsed.package.numbering),
+            ],
+          });
+          stories += 1;
+          for (const mode of ["accept", "reject"] as const) {
+            const bulk = run(
+              state,
+              mode === "accept" ? acceptAllChanges() : rejectAllChanges(),
             );
-          }
-          if (!bulk.transaction) continue;
-          changedStories += 1;
-          if (bulk.transaction.steps.length !== 1) {
-            throw new Error(
-              `${label}: bulk resolution used ${String(bulk.transaction.steps.length)} steps`,
+            const full = run(
+              state,
+              mode === "accept"
+                ? acceptChange(0, doc.content.size)
+                : rejectChange(0, doc.content.size),
             );
-          }
-          const step = bulk.transaction.steps.at(0);
-          if (!step) throw new Error(`${label}: missing resolution step`);
-          const replay = Step.fromJSON(schema, step.toJSON()).apply(doc);
-          if (
-            !replay.doc ||
-            JSON.stringify(replay.doc.toJSON()) !==
-              JSON.stringify(bulk.doc.toJSON())
-          ) {
-            throw new Error(
-              `${label}: serialized resolution step differs from cached result: ${replay.failed ?? "document mismatch"}`,
-            );
+            const label = `${id} ${JSON.stringify(handle)} ${mode}`;
+            if (
+              bulk.handled !== full.handled ||
+              JSON.stringify(bulk.doc.toJSON()) !==
+                JSON.stringify(full.doc.toJSON())
+            ) {
+              throw new Error(
+                `${label}: bulk resolution differs from full-range resolution`,
+              );
+            }
+            if (!bulk.transaction) continue;
+            changedStories += 1;
+            if (bulk.transaction.steps.length !== 1) {
+              throw new Error(
+                `${label}: bulk resolution used ${String(bulk.transaction.steps.length)} steps`,
+              );
+            }
+            const step = bulk.transaction.steps.at(0);
+            if (!step) throw new Error(`${label}: missing resolution step`);
+            const replay = Step.fromJSON(schema, step.toJSON()).apply(doc);
+            if (
+              !replay.doc ||
+              JSON.stringify(replay.doc.toJSON()) !==
+                JSON.stringify(bulk.doc.toJSON())
+            ) {
+              throw new Error(
+                `${label}: serialized resolution step differs from cached result: ${replay.failed ?? "document mismatch"}`,
+              );
+            }
           }
         }
       }
     }
-  }
-  expect(configurations).toBeGreaterThan(0);
-  expect(stories).toBeGreaterThan(configurations);
-  expect(changedStories).toBeGreaterThan(0);
-}, 120_000);
+    expect(configurations).toBeGreaterThan(0);
+    expect(stories).toBeGreaterThan(configurations);
+    expect(changedStories).toBeGreaterThan(0);
+  },
+  120_000,
+);

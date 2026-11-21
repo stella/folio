@@ -29,6 +29,7 @@ import type {
   FolioAIInlineBooleanProperty,
 } from "../ai-edits/types";
 import { createDocx } from "../docx/rezip";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import type { Table, TableCell, TextFormatting } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { buildBodySequenceDocx } from "./__fixtures__/body-sequence";
@@ -60,6 +61,8 @@ const OPTIONS = {
   author: "compare",
   timestamp: "2024-03-01T00:00:00.000Z",
 } as const;
+
+const SESSIONS = ["legacy", "canonical"] as const;
 
 const PROSE_BASE = readFixture("upstream-styled-content.docx");
 const TABLE_BASE = readFixture("upstream-with-tables.docx");
@@ -270,11 +273,20 @@ const blocksOf = async (buffer: ArrayBuffer): Promise<FolioAIBlock[]> =>
 
 type BlockProjection = { text: string; table: FolioAIBlock["table"] | null };
 
+/**
+ * The blocks of one view, read on `session` where a probe's expectation
+ * depends on the reader (the canonical session reads a body that ends with a
+ * table with the paragraph that closes it), else on the default one.
+ */
 const projectView = async (
   buffer: ArrayBuffer,
   view: "original" | "final",
+  session?: HeadlessReviewerSession,
 ): Promise<BlockProjection[]> => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
+  const reviewer = await FolioDocxReviewer.fromBuffer(
+    buffer,
+    session === undefined ? {} : { session },
+  );
   const story = reviewer.readReviewedStory({ view });
   return (story?.snapshot.blocks ?? []).map((block) => ({
     text: block.text,
@@ -1196,109 +1208,155 @@ describe("single-mutation probes", () => {
     expect(deleted.at(0)).not.toMatch(/<w:pPr>[\s\S]*<w:rPr>[\s\S]*<w:del\s/u);
   });
 
-  test("delete_table_before_terminal_carrier: final paragraph mark remains untracked", async () => {
-    // A body may not end with a table, so a package that does carries a
-    // paragraph after it. A deletion on that paragraph's mark cannot resolve:
-    // there is no next body paragraph to join it to.
-    const keptTable = { kind: "table", rows: [["Kept row"]] } as const;
-    const base = await buildBodySequenceDocx([
-      keptTable,
-      { kind: "paragraph", text: "" },
-      { kind: "table", rows: [["Removed row"]] },
-    ]);
-    const target = await buildBodySequenceDocx([keptTable]);
+  test.each(SESSIONS)(
+    "delete_table_before_terminal_carrier: final paragraph mark remains untracked (%s)",
+    async (session) => {
+      // A body may not end with a table, so a package that does carries a
+      // paragraph after it. A deletion on that paragraph's mark cannot resolve:
+      // there is no next body paragraph to join it to.
+      const keptTable = { kind: "table", rows: [["Kept row"]] } as const;
+      const base = await buildBodySequenceDocx([
+        keptTable,
+        { kind: "paragraph", text: "" },
+        { kind: "table", rows: [["Removed row"]] },
+      ]);
+      const target = await buildBodySequenceDocx([keptTable]);
 
-    const result = await compareDocx(base, target, OPTIONS);
-    if (result.isErr()) {
-      throw result.error;
-    }
+      const result = await compareDocx(base, target, { ...OPTIONS, session });
+      if (result.isErr()) {
+        throw result.error;
+      }
 
-    expect(result.value.changes.map(({ kind }) => kind)).toEqual([
-      "delete",
-      "table-delete",
-    ]);
-    const terminalParagraph = paragraphsOf(
-      await documentPartOf(result.value.buffer),
-    ).at(-1);
-    expect(terminalParagraph).toBeDefined();
-    expect(terminalParagraph).not.toMatch(
-      /<w:pPr>[\s\S]*<w:rPr>[\s\S]*<w:del\b/u,
-    );
-    expect(await projectView(result.value.buffer, "final")).toEqual(
-      await projectView(target, "final"),
-    );
-    expect(await projectView(result.value.buffer, "original")).toEqual(
-      await projectView(base, "final"),
-    );
-  });
+      expect(result.value.verification).toEqual({ status: "verified" });
+      expect(result.value.changes.map(({ kind }) => kind)).toEqual([
+        "delete",
+        "table-delete",
+      ]);
+      const terminalParagraph = paragraphsOf(
+        await documentPartOf(result.value.buffer),
+      ).at(-1);
+      expect(terminalParagraph).toBeDefined();
+      expect(terminalParagraph).not.toMatch(
+        /<w:pPr>[\s\S]*<w:rPr>[\s\S]*<w:del\b/u,
+      );
+      expect(await projectView(result.value.buffer, "final", session)).toEqual(
+        await projectView(target, "final", session),
+      );
+      expect(
+        await projectView(result.value.buffer, "original", session),
+      ).toEqual(await projectView(base, "final", session));
+      for (const mode of ["accept", "reject"] as const) {
+        const reviewer = await FolioDocxReviewer.fromBuffer(
+          result.value.buffer,
+          {
+            session,
+          },
+        );
+        if (mode === "accept") reviewer.acceptAll();
+        else reviewer.rejectAll();
+        expect(
+          await projectView(await reviewer.toBuffer(), "final", session),
+        ).toEqual(
+          await projectView(
+            mode === "accept" ? target : base,
+            "final",
+            session,
+          ),
+        );
+      }
+    },
+  );
 
-  test("replace_terminal_table: the base carrier owns the deletion before the target table", async () => {
-    const base = await buildBodySequenceDocx([
-      { kind: "table", rows: [["Source terminal table"]] },
-      { kind: "paragraph", text: "" },
-    ]);
-    const target = await withoutTerminalBodyParagraph(
-      await buildBodySequenceDocx([
-        {
-          kind: "table",
-          rows: [[{ content: "Target terminal table", gridSpan: 2 }]],
-        },
-      ]),
-    );
-    expect(await projectView(base, "final")).toHaveLength(2);
-    expect(await projectView(target, "final")).toHaveLength(1);
-    expect(await documentPartOf(target)).toMatch(/<\/w:tbl><w:sectPr>/u);
+  test.each(SESSIONS)(
+    "replace_terminal_table: the base carrier owns the deletion before the target table (%s)",
+    async (session) => {
+      const base = await buildBodySequenceDocx([
+        { kind: "table", rows: [["Source terminal table"]] },
+        { kind: "paragraph", text: "" },
+      ]);
+      const target = await withoutTerminalBodyParagraph(
+        await buildBodySequenceDocx([
+          {
+            kind: "table",
+            rows: [[{ content: "Target terminal table", gridSpan: 2 }]],
+          },
+        ]),
+      );
+      expect(await projectView(base, "final", session)).toHaveLength(2);
+      // The canonical session reads the target's body with the paragraph that
+      // closes it after the final table.
+      expect(await projectView(target, "final", session)).toHaveLength(
+        session === "canonical" ? 2 : 1,
+      );
+      expect(await documentPartOf(target)).toMatch(/<\/w:tbl><w:sectPr>/u);
 
-    const result = await compareDocx(base, target, OPTIONS);
-    if (result.isErr()) {
-      throw result.error;
-    }
+      const result = await compareDocx(base, target, { ...OPTIONS, session });
+      if (result.isErr()) {
+        throw result.error;
+      }
 
-    expect(result.value.changes.map(({ kind }) => kind)).toEqual([
-      "table-delete",
-      "table-insert",
-      "delete",
-    ]);
-    const pendingXml = await documentPartOf(result.value.buffer);
-    expect(pendingXml).toMatch(
-      /<w:tbl>[\s\S]*?<w:trPr><w:del\b[^>]*\/><\/w:trPr>[\s\S]*?Source terminal table/u,
-    );
-    expect(pendingXml).toMatch(
-      /Source terminal table[\s\S]*?<\/w:tbl><w:p\b[^>]*><w:pPr><w:rPr><w:del\b[\s\S]*?<\/w:p><w:tbl>[\s\S]*?Target terminal table/u,
-    );
-    expect(pendingXml).toMatch(
-      /<w:tbl>[\s\S]*?<w:trPr><w:ins\b[^>]*\/><\/w:trPr>[\s\S]*?Target terminal table/u,
-    );
-    expect(pendingXml).toMatch(/<\/w:tbl><w:sectPr>/u);
+      // The canonical session reads both bodies as ending with a paragraph, so
+      // the paragraph after the source table stays as the target's closing one:
+      // only the tables change, and the body keeps ending with that paragraph.
+      const closesBody = session === "canonical";
+      expect(result.value.verification).toEqual({ status: "verified" });
+      expect(result.value.changes.map(({ kind }) => kind)).toEqual(
+        closesBody
+          ? ["table-delete", "table-insert"]
+          : ["table-delete", "table-insert", "delete"],
+      );
+      const pendingXml = await documentPartOf(result.value.buffer);
+      expect(pendingXml).toMatch(
+        /<w:tbl>[\s\S]*?<w:trPr><w:del\b[^>]*\/><\/w:trPr>[\s\S]*?Source terminal table/u,
+      );
+      expect(pendingXml).toMatch(
+        closesBody
+          ? /Source terminal table[\s\S]*?<\/w:tbl><w:tbl>[\s\S]*?Target terminal table[\s\S]*?<\/w:tbl><w:p\b[^>]*><\/w:p><w:sectPr>/u
+          : /Source terminal table[\s\S]*?<\/w:tbl><w:p\b[^>]*><w:pPr><w:rPr><w:del\b[\s\S]*?<\/w:p><w:tbl>[\s\S]*?Target terminal table[\s\S]*?<\/w:tbl><w:sectPr>/u,
+      );
+      expect(pendingXml).toMatch(
+        /<w:tbl>[\s\S]*?<w:trPr><w:ins\b[^>]*\/><\/w:trPr>[\s\S]*?Target terminal table/u,
+      );
 
-    const acceptedReviewer = await FolioDocxReviewer.fromBuffer(
-      result.value.buffer,
-    );
-    acceptedReviewer.acceptAll();
-    const accepted = await acceptedReviewer.toBuffer();
-    const rejectedReviewer = await FolioDocxReviewer.fromBuffer(
-      result.value.buffer,
-    );
-    rejectedReviewer.rejectAll();
-    const rejected = await rejectedReviewer.toBuffer();
+      const acceptedReviewer = await FolioDocxReviewer.fromBuffer(
+        result.value.buffer,
+        { session },
+      );
+      acceptedReviewer.acceptAll();
+      const accepted = await acceptedReviewer.toBuffer();
+      const rejectedReviewer = await FolioDocxReviewer.fromBuffer(
+        result.value.buffer,
+        { session },
+      );
+      rejectedReviewer.rejectAll();
+      const rejected = await rejectedReviewer.toBuffer();
 
-    const acceptedReopened = await FolioDocxReviewer.fromBuffer(accepted);
-    const rejectedReopened = await FolioDocxReviewer.fromBuffer(rejected);
-    expect(
-      acceptedReopened.readReviewedStory({ view: "current-markup" })?.changes,
-    ).toEqual([]);
-    expect(
-      rejectedReopened.readReviewedStory({ view: "current-markup" })?.changes,
-    ).toEqual([]);
-    expect(await projectView(accepted, "final")).toEqual(
-      await projectView(target, "final"),
-    );
-    expect(await projectView(rejected, "final")).toEqual(
-      await projectView(base, "final"),
-    );
-    expect(await documentPartOf(accepted)).toMatch(/<\/w:tbl><w:sectPr>/u);
-    expect(await documentPartOf(rejected)).toMatch(/<\/w:p><w:sectPr>/u);
-  });
+      const acceptedReopened = await FolioDocxReviewer.fromBuffer(accepted, {
+        session,
+      });
+      const rejectedReopened = await FolioDocxReviewer.fromBuffer(rejected, {
+        session,
+      });
+      expect(
+        acceptedReopened.readReviewedStory({ view: "current-markup" })?.changes,
+      ).toEqual([]);
+      expect(
+        rejectedReopened.readReviewedStory({ view: "current-markup" })?.changes,
+      ).toEqual([]);
+      expect(await projectView(accepted, "final", session)).toEqual(
+        await projectView(target, "final", session),
+      );
+      expect(await projectView(rejected, "final", session)).toEqual(
+        await projectView(base, "final", session),
+      );
+      expect(await documentPartOf(accepted)).toMatch(
+        closesBody
+          ? /<\/w:tbl><w:p\b[^>]*><\/w:p><w:sectPr>/u
+          : /<\/w:tbl><w:sectPr>/u,
+      );
+      expect(await documentPartOf(rejected)).toMatch(/<\/w:p><w:sectPr>/u);
+    },
+  );
 
   /**
    * Four paragraphs become one: the first is edited and the three after it are
@@ -1600,11 +1658,14 @@ describe("single-mutation probes", () => {
       else reviewer.rejectAll();
       const resolved = await reviewer.toBuffer();
       // Rejected, the base comes back with the paragraph the session closes
-      // its body with after the final table, which the comparison wrote.
-      expect(await projectView(resolved, "final")).toEqual(
-        mode === "accept"
-          ? await projectView(target, "final")
-          : [...(await projectView(base, "final")), { text: "", table: null }],
+      // its body with after the final table, which the comparison wrote and
+      // the canonical session reads in the base too.
+      expect(await projectView(resolved, "final", "canonical")).toEqual(
+        await projectView(
+          mode === "accept" ? target : base,
+          "final",
+          "canonical",
+        ),
       );
     }
   });
