@@ -17,6 +17,7 @@ import { describe, expect, test } from "bun:test";
 import { ZipArchive } from "@stll/docx-core/zip";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 
 const XML_DECLARATION =
   '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
@@ -101,45 +102,62 @@ const documentPartOf = async (docx: ArrayBuffer): Promise<string> => {
   return entry.text();
 };
 
-describe("a body edit beside a text box with a Fallback", () => {
-  for (const coverage of ["authored", "none"] as const) {
-    test(`keeps every other paragraph byte-exact (paraIds: ${coverage})`, async () => {
-      const source = documentXml(coverage);
-      const reviewer = await FolioDocxReviewer.fromBuffer(
-        await buildPackage(source),
-      );
-      const target = reviewer.snapshot().blocks[0];
-      if (!target) {
-        throw new Error("fixture has no first block");
-      }
-      const applied = reviewer.applyOperations(
-        [
-          {
-            id: "edit",
-            type: "replaceInBlock",
-            blockId: target.id,
-            find: target.text,
-            replace: `${target.text}${MARKER}`,
-          },
-        ],
-        { undefinedReferences: "refuse", mode: "direct" },
-      );
-      expect(applied.applied.length).toBe(1);
+/**
+ * A part as it reads without paragraph ids: a canonical save writes the ids it
+ * minted into a part it rewrites, so only an id the source names is the
+ * source's.
+ */
+const withoutParagraphIds = (xml: string): string =>
+  xml.replaceAll(/ w14:(?:paraId|textId)="[0-9A-F]{8}"/gu, "");
 
-      const saved = await documentPartOf(await reviewer.toBuffer());
+describe.each([
+  "legacy",
+  "canonical",
+] as const satisfies readonly HeadlessReviewerSession[])(
+  "a body edit beside a text box with a Fallback (%s)",
+  (session) => {
+    for (const coverage of ["authored", "none"] as const) {
+      test(`keeps every other paragraph byte-exact (paraIds: ${coverage})`, async () => {
+        const source = documentXml(coverage);
+        const reviewer = await FolioDocxReviewer.fromBuffer(
+          await buildPackage(source),
+          { session },
+        );
+        const target = reviewer.snapshot().blocks[0];
+        if (!target) {
+          throw new Error("fixture has no first block");
+        }
+        const applied = reviewer.applyOperations(
+          [
+            {
+              id: "edit",
+              type: "replaceInBlock",
+              blockId: target.id,
+              find: target.text,
+              replace: `${target.text}${MARKER}`,
+            },
+          ],
+          { undefinedReferences: "refuse", mode: "direct" },
+        );
+        expect(applied.applied.length).toBe(1);
 
-      // Everything from the host paragraph on — the text box, its Fallback
-      // and the trailing paragraph — is the source's own bytes.
-      const hostStart = source.indexOf("<w:p", source.indexOf("</w:p>"));
-      const tail = source.slice(hostStart);
-      expect(saved.endsWith(tail)).toBe(true);
-      // So is everything before the edited paragraph.
-      const head = source.slice(0, source.indexOf("<w:p"));
-      expect(saved.startsWith(head)).toBe(true);
-      // And the edited paragraph carries the edit, with no id the source lacked.
-      const edited = saved.slice(head.length, saved.length - tail.length);
-      expect(edited).toContain(`Before the box${MARKER}`);
-      expect(edited.includes("w14:paraId")).toBe(coverage === "authored");
-    });
-  }
-});
+        const written = await documentPartOf(await reviewer.toBuffer());
+        const minted = session === "canonical" && coverage === "none";
+        const saved = minted ? withoutParagraphIds(written) : written;
+
+        // Everything from the host paragraph on — the text box, its Fallback
+        // and the trailing paragraph — is the source's own bytes.
+        const hostStart = source.indexOf("<w:p", source.indexOf("</w:p>"));
+        const tail = source.slice(hostStart);
+        expect(saved.endsWith(tail)).toBe(true);
+        // So is everything before the edited paragraph.
+        const head = source.slice(0, source.indexOf("<w:p"));
+        expect(saved.startsWith(head)).toBe(true);
+        // And the edited paragraph carries the edit, with no id the source lacked.
+        const edited = saved.slice(head.length, saved.length - tail.length);
+        expect(edited).toContain(`Before the box${MARKER}`);
+        expect(edited.includes("w14:paraId")).toBe(coverage === "authored");
+      });
+    }
+  },
+);

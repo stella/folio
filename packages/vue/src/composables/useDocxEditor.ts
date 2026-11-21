@@ -97,8 +97,8 @@ import {
 } from "@stll/folio-core/docx/canonicalSave";
 import {
   holdsUniqueParagraphIds,
+  openCanonicalDocx,
   prepareCanonicalDocumentInput,
-  prepareCanonicalDocxInput,
 } from "@stll/folio-core/docx/canonicalSessionInput";
 import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
 import { withHostCommentThreads } from "@stll/folio-core/docx/hostCommentThreads";
@@ -1499,13 +1499,16 @@ export function useDocxEditor(
     parseError.value = null;
     isReady.value = false;
     try {
-      let source = buffer;
+      let doc: Document;
       if (isCanonicalSession()) {
-        const prepared = await prepareCanonicalDocxInput(buffer);
-        if (prepared.isErr()) throw prepared.error;
-        source = prepared.value;
+        const opened = await openCanonicalDocx(buffer, {
+          password: toValue(password),
+        });
+        if (opened.isErr()) throw opened.error;
+        doc = opened.value.document;
+      } else {
+        doc = await parseDocx(buffer, { password: toValue(password) });
       }
-      const doc = await parseDocx(source, { password: toValue(password) });
       heldNotes = heldUnreferencedNotes(doc);
       docModel.value = doc;
       remountForNewDocument();

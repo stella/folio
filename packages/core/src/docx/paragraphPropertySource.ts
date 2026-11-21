@@ -28,8 +28,14 @@ import {
   copyHeaderFooterBaselineHandles,
   copyHeaderFooterPackageBaselines,
 } from "./headerFooterVerbatim";
+import { copyNormalizedSourceParts } from "./normalizedSourceParts";
 import { parseParagraphProperties } from "./paragraphProperties";
 import { visitDocxParagraphs } from "./paragraphTraversal";
+import {
+  copyPositionalParagraphId,
+  copyProsePositionalParagraphId,
+  linkProsePositionalParagraphId,
+} from "./unnamedParagraphIds";
 import { parseXmlDocument } from "./xmlParser";
 
 /**
@@ -654,6 +660,7 @@ export const copyParagraphPropertySource = (
   source: Paragraph,
 ): void => {
   copyParagraphPropertyCapture(target, source);
+  copyPositionalParagraphId(target, source);
   const transferId = paragraphPropertySourceTransferIds.get(source);
   if (transferId) {
     paragraphPropertySourceTransferIds.set(target, transferId);
@@ -953,6 +960,7 @@ export const cloneDocumentWithParagraphPropertySources = (
   copyDocumentParagraphPropertySourceContract(cloned, document);
   copyHeaderFooterBaselineHandles(cloned, document);
   copyHeaderFooterPackageBaselines(cloned, document);
+  copyNormalizedSourceParts(cloned, document);
   return cloned;
 };
 
@@ -2016,6 +2024,7 @@ export const createProseParagraphWithPropertySource = (
     options.marks,
   );
   linkProseParagraphPropertySource(paragraph, sourceParagraph);
+  linkProsePositionalParagraphId(paragraph, sourceParagraph);
   return paragraph;
 };
 
@@ -2101,6 +2110,7 @@ const copyProseParagraphPropertySource = (
   if (target.type.name !== "paragraph" || source.type.name !== "paragraph") {
     return;
   }
+  copyProsePositionalParagraphId(target, source);
   const sourceOwner = proseParagraphSourceOwners.get(source);
   if (sourceOwner) {
     proseParagraphSourceOwners.set(target, sourceOwner);

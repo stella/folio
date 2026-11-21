@@ -24,6 +24,7 @@ import {
   copyHeaderFooterBaselineHandles,
   getDocumentSourceBaseline,
 } from "./headerFooterVerbatim";
+import { withNormalizedSourceParts } from "./normalizedSourceParts";
 import type { SaveDiagnostic } from "./saveDiagnostics";
 import type { FolioSelectiveSaveFlags } from "./selectiveSaveFlags";
 import { resolveSelectiveSaveFlags } from "./selectiveSaveFlags";
@@ -277,7 +278,9 @@ export const serializeCanonicalSave = async ({
   for (const diagnostic of diagnostics) options?.onDiagnostic?.(diagnostic);
   options?.onSerializationPath?.(path);
   return {
-    buffer,
+    // A part the session left as it read it is written as the package held
+    // it, without the ids normalizing the package gave it.
+    buffer: await withNormalizedSourceParts(buffer, snapshot.document),
     path,
     document,
     version: snapshot.version,

@@ -118,6 +118,12 @@ import {
 } from "./numberingReferenceNormalization";
 import { normalizeRawDocxNumericIds } from "./numericIdNormalization";
 import { countOpaqueRevisionWrappers } from "./opaqueCarrier";
+import {
+  markUnnamedParagraphIds,
+  type PackageUnnamedParagraphIds,
+  unnamedPackageParagraphIds,
+  unnamedPartParagraphIds,
+} from "./packageUnnamedParagraphIds";
 import { assignDocumentParagraphPropertySourceContract } from "./paragraphPropertySource";
 import { createParseWarningCollector, type ParseContext } from "./parseContext";
 import { formatParseWarnings } from "./parseWarningMessage";
@@ -498,6 +504,9 @@ export async function parseDocxWithPreviewBudget(
     }
     diagnoseImportedIdCollisions(raw.allXml, parseContext);
     diagnoseReviewProvenance(raw.allXml, parseContext);
+    // Read before any normalization, from the parts as the package holds
+    // them, as `ensureParaIds` reads them for a canonical session.
+    const unnamedIds = unnamedPackageParagraphIds(raw.allXml, raw.documentRels);
     await replaceRawDocxXmlParts(
       raw,
       normalizeBookmarkIdsInXmlParts(raw.allXml),
@@ -589,8 +598,13 @@ export async function parseDocxWithPreviewBudget(
 
     timeStage("documentBody", () => {
       if (raw.documentXml) {
+        const doc = repairedDocumentTree ?? parseXml(raw.documentXml);
+        markUnnamedParagraphIds(
+          doc,
+          unnamedPartParagraphIds(unnamedIds, "word/document.xml"),
+        );
         documentBody = parseDocumentBodyTree({
-          doc: repairedDocumentTree ?? parseXml(raw.documentXml),
+          doc,
           styles,
           theme,
           numbering,
@@ -622,6 +636,7 @@ export async function parseDocxWithPreviewBudget(
           rels,
           media,
           previews.ledger,
+          unnamedIds,
         ),
       );
       headers = hf.headers;
@@ -649,6 +664,7 @@ export async function parseDocxWithPreviewBudget(
           media,
           parseContext,
           previews.ledger,
+          unnamedIds,
         ),
       );
       footnotes = notes.footnotes;
@@ -1335,6 +1351,7 @@ function parseHeadersAndFooters(
   rels: RelationshipMap,
   media: Map<string, MediaFile>,
   previews: PreviewLedger,
+  unnamedIds: PackageUnnamedParagraphIds,
 ): { headers: Map<string, HeaderFooter>; footers: Map<string, HeaderFooter> } {
   const headers = new Map<string, HeaderFooter>();
   const footers = new Map<string, HeaderFooter>();
@@ -1370,6 +1387,7 @@ function parseHeadersAndFooters(
           headerRels,
           media,
           previews,
+          unnamedPartParagraphIds(unnamedIds, partPath),
         );
         // Anchor a picture watermark to the package-absolute media path so
         // cross-header propagation can rebind it against a stable target (the
@@ -1422,6 +1440,7 @@ function parseHeadersAndFooters(
           footerRels,
           media,
           previews,
+          unnamedPartParagraphIds(unnamedIds, partPath),
         );
         footers.set(rId, footer);
       }
@@ -1443,6 +1462,7 @@ function parseNotesContent(
   media: Map<string, MediaFile>,
   context: ParseContext,
   previews: PreviewLedger,
+  unnamedIds: PackageUnnamedParagraphIds,
 ): { footnotes: Footnote[]; endnotes: Endnote[] } {
   // Note parts own their relationships (word/_rels/footnotes.xml.rels); fall
   // back to the document rels only when the part has none.
@@ -1462,6 +1482,7 @@ function parseNotesContent(
     media,
     context.scoped({ part: "word/footnotes.xml" }),
     previews,
+    unnamedPartParagraphIds(unnamedIds, "word/footnotes.xml"),
   );
 
   const endnoteMap = parseEndnotes(
@@ -1473,6 +1494,7 @@ function parseNotesContent(
     media,
     context.scoped({ part: "word/endnotes.xml" }),
     previews,
+    unnamedPartParagraphIds(unnamedIds, "word/endnotes.xml"),
   );
 
   // Separator and continuation notes are parsed but never reach the model.

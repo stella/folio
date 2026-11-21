@@ -110,6 +110,7 @@ import {
   percentageSpelling,
   transitionalSlotEncoding,
 } from "./transitionalSpelling";
+import { readUnnamedParagraphId } from "./unnamedParagraphIds";
 import { captureVerbatimXml } from "./verbatimCapture";
 import {
   cloneElement,
@@ -1935,7 +1936,9 @@ const parseCellChildren = ({
   if (requireTrailingParagraph) {
     const lastBlock = findLastFlowBlock(modelled);
     if (lastBlock?.type !== "paragraph") {
-      modelled.push({ type: "paragraph", content: [] });
+      const implied: Paragraph = { type: "paragraph", content: [] };
+      readUnnamedParagraphId(implied, element);
+      modelled.push(implied);
     }
   }
 

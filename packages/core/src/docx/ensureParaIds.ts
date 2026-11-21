@@ -207,6 +207,8 @@ type AttributeSpan = { start: number; end: number; value: string };
 type ParagraphOpenTag = {
   nameEnd: number;
   inFallback: boolean;
+  /** The innermost `mc:AlternateContent` the paragraph is drawn in, if any. */
+  alternateContent: XmlElement | undefined;
   paraId: AttributeSpan | undefined;
   textId: AttributeSpan | undefined;
 };
@@ -228,6 +230,7 @@ const scanPartSpelling = (xml: string, partPath: string): PartSpelling => {
   let ignorable: AttributeSpan | undefined;
   const paragraphs: ParagraphOpenTag[] = [];
   const fallbacks = new WeakSet<XmlElement>();
+  const alternateContents = new WeakMap<XmlElement, XmlElement>();
   const bindings = new Map<string, Set<string>>();
   const scanned = scanStreamingXmlElements(
     xml,
@@ -267,6 +270,12 @@ const scanPartSpelling = (xml: string, partPath: string): PartSpelling => {
         (getLocalName(element.name ?? "") === "Fallback" &&
           getNamespaceUri(element) === MC_NAMESPACE_URI);
       if (inFallback) fallbacks.add(element);
+      const alternateContent =
+        getLocalName(element.name ?? "") === "AlternateContent" &&
+        getNamespaceUri(element) === MC_NAMESPACE_URI
+          ? element
+          : parent && alternateContents.get(parent);
+      if (alternateContent) alternateContents.set(element, alternateContent);
       let paraId: AttributeSpan | undefined;
       let textId: AttributeSpan | undefined;
       for (const [name, span] of spans) {
@@ -294,7 +303,13 @@ const scanPartSpelling = (xml: string, partPath: string): PartSpelling => {
         getLocalName(element.name ?? "") === "p" &&
         WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(element) ?? "")
       )
-        paragraphs.push({ nameEnd, inFallback, paraId, textId });
+        paragraphs.push({
+          nameEnd,
+          inFallback,
+          alternateContent,
+          paraId,
+          textId,
+        });
     },
   );
   if (scanned.status === "unsupported" || root === undefined) {
@@ -365,6 +380,40 @@ const lastFlowBlock = (
   return undefined;
 };
 
+/** A place in a story part that holds a paragraph. */
+export type StoryParagraphSlot =
+  | { type: "paragraph"; element: XmlElement }
+  /** The empty paragraph a cell that ends without one is read with. */
+  | { type: "impliedCellParagraph"; cell: XmlElement };
+
+/**
+ * A story part's paragraphs in the order {@link ensureParaIds} numbers them:
+ * every `w:p` outside `mc:Fallback` in document order, and after a cell's
+ * content the paragraph the cell implies when it ends in a table or holds
+ * none. A fallback branch is another rendering of content read elsewhere.
+ */
+export const storyParagraphSlots = (root: XmlElement): StoryParagraphSlot[] => {
+  const slots: StoryParagraphSlot[] = [];
+  const visit = (element: XmlElement): void => {
+    if (
+      getLocalName(element.name ?? "") === "Fallback" &&
+      getNamespaceUri(element) === MC_NAMESPACE_URI
+    )
+      return;
+    if (isWordprocessingElement(element, "p"))
+      slots.push({ type: "paragraph", element });
+    const children = getChildElements(element);
+    for (const child of children) visit(child);
+    if (
+      isWordprocessingElement(element, "tc") &&
+      lastFlowBlock(children) !== "paragraph"
+    )
+      slots.push({ type: "impliedCellParagraph", cell: element });
+  };
+  visit(root);
+  return slots;
+};
+
 /**
  * A cell must end in a paragraph. One that ends in a table, or holds none,
  * is read with the empty paragraph it implies there; that paragraph is
@@ -375,37 +424,25 @@ const withImpliedCellParagraphs = (xml: string): string => {
   const parsed = parseStreamingXmlWithSourceRanges(xml);
   if (parsed.status !== "parsed") return xml;
   const edits: { start: number; end: number; text: string }[] = [];
-  const visit = (element: XmlElement): void => {
-    // A fallback branch is another rendering of content read elsewhere.
-    if (
-      getLocalName(element.name ?? "") === "Fallback" &&
-      getNamespaceUri(element) === MC_NAMESPACE_URI
-    )
-      return;
-    const children = getChildElements(element);
-    if (
-      isWordprocessingElement(element, "tc") &&
-      lastFlowBlock(children) !== "paragraph"
-    ) {
-      const range = getXmlSourceRange(element);
-      const name = element.name ?? "";
-      const separator = name.indexOf(":");
-      const paragraph = `<${separator < 0 ? "" : name.slice(0, separator + 1)}p/>`;
-      if (range !== undefined && xml.slice(range.end - 2, range.end) === "/>")
-        edits.push({
-          start: range.start,
-          end: range.end,
-          text: `${xml.slice(range.start, range.end - 2).trimEnd()}>${paragraph}</${name}>`,
-        });
-      else if (range !== undefined) {
-        const close = xml.lastIndexOf("</", range.end - 1);
-        if (close > range.start)
-          edits.push({ start: close, end: close, text: paragraph });
-      }
+  for (const slot of storyParagraphSlots(parsed.value)) {
+    if (slot.type !== "impliedCellParagraph") continue;
+    const { cell } = slot;
+    const range = getXmlSourceRange(cell);
+    const name = cell.name ?? "";
+    const separator = name.indexOf(":");
+    const paragraph = `<${separator < 0 ? "" : name.slice(0, separator + 1)}p/>`;
+    if (range !== undefined && xml.slice(range.end - 2, range.end) === "/>")
+      edits.push({
+        start: range.start,
+        end: range.end,
+        text: `${xml.slice(range.start, range.end - 2).trimEnd()}>${paragraph}</${name}>`,
+      });
+    else if (range !== undefined) {
+      const close = xml.lastIndexOf("</", range.end - 1);
+      if (close > range.start)
+        edits.push({ start: close, end: close, text: paragraph });
     }
-    for (const child of children) visit(child);
-  };
-  visit(parsed.value);
+  }
   if (edits.length === 0) return xml;
   return (
     spliceXml(
@@ -432,12 +469,31 @@ const partSpelling = (xml: string, partPath: string): PartSpelling => {
   throw error;
 };
 
+/**
+ * The ids `mc:Fallback` paragraphs hold. A fallback renders its
+ * `mc:Choice` again, and a producer that regenerates it repeats the choice's
+ * paragraph ids, so an id the choice of the same `mc:AlternateContent` holds
+ * is the choice paragraph's own, not a fallback id it repeats.
+ */
 const collectFallbackParaIds = (
   spelling: PartSpelling,
   into: Set<string>,
 ): void => {
-  for (const { inFallback, paraId } of spelling.paragraphs) {
-    if (inFallback && paraId?.value) into.add(paraId.value.toUpperCase());
+  const choiceIds = new Map<XmlElement, Set<string>>();
+  for (const { inFallback, alternateContent, paraId } of spelling.paragraphs) {
+    if (inFallback || !alternateContent || !paraId?.value) continue;
+    let ids = choiceIds.get(alternateContent);
+    if (ids === undefined) {
+      ids = new Set();
+      choiceIds.set(alternateContent, ids);
+    }
+    ids.add(paraId.value.toUpperCase());
+  }
+  for (const { inFallback, alternateContent, paraId } of spelling.paragraphs) {
+    if (!inFallback || !paraId?.value) continue;
+    const id = paraId.value.toUpperCase();
+    if (alternateContent && choiceIds.get(alternateContent)?.has(id)) continue;
+    into.add(id);
   }
 };
 
@@ -469,6 +525,13 @@ const mintParaId = (
 type PartScanResult = {
   edits: SpliceEdit[];
   minted: string[];
+  /**
+   * The id minted for each paragraph the package names no usable id for, by
+   * its ordinal among the part's {@link storyParagraphSlots} (from 1).
+   */
+  unnamed: Map<number, string>;
+  /** The part's paragraphs outside `mc:Fallback`, implied ones included. */
+  paragraphs: number;
   assigned: number;
   deduplicated: number;
 };
@@ -494,6 +557,7 @@ const scanPart = ({
 }: ScanPartOptions): PartScanResult => {
   const edits: SpliceEdit[] = [];
   const minted: string[] = [];
+  const unnamed = new Map<number, string>();
   const w14 = spelling.w14Prefix;
   let assigned = 0;
   let deduplicated = 0;
@@ -523,6 +587,7 @@ const scanPart = ({
       }
       assigned += 1;
       minted.push(id);
+      unnamed.set(ordinal, id);
       seen.add(id);
       continue;
     }
@@ -549,6 +614,7 @@ const scanPart = ({
     }
     if (unassigned) {
       assigned += 1;
+      unnamed.set(ordinal, id);
     } else {
       deduplicated += 1;
     }
@@ -556,7 +622,14 @@ const scanPart = ({
     seen.add(id);
   }
 
-  return { edits, minted, assigned, deduplicated };
+  return {
+    edits,
+    minted,
+    unnamed,
+    paragraphs: ordinal,
+    assigned,
+    deduplicated,
+  };
 };
 
 /**
@@ -704,6 +777,179 @@ const hasDigitalSignatureParts = (zip: ZipArchive): boolean =>
       path.toLowerCase().startsWith(DIGITAL_SIGNATURE_PART_PREFIX),
     );
 
+type PackageStoryPartsOptions = {
+  documentPartName: string;
+  /** The main part's relationships part, when the package has one. */
+  documentRels: string | null;
+  entries: readonly string[];
+};
+
+type PackageStoryParts = {
+  storyParts: ReadonlySet<string>;
+  isTargetPart: (name: string) => boolean;
+};
+
+/** The parts besides the main one whose paragraphs get ids. */
+export const packageStoryParts = ({
+  documentPartName,
+  documentRels,
+  entries,
+}: PackageStoryPartsOptions): PackageStoryParts => {
+  const storyParts = relatedStoryParts(
+    documentRels,
+    relationshipsPathFor(documentPartName),
+    entries,
+  );
+  return {
+    storyParts,
+    isTargetPart: (name) =>
+      name !== documentPartName &&
+      (storyParts.has(name) || matchesTargetPattern(name)),
+  };
+};
+
+/** What {@link assignPackageParaIds} reads: a package's XML parts by name. */
+type AssignPackageParaIdsOptions = {
+  partTexts: ReadonlyMap<string, string>;
+  documentPartName: string;
+  /** Whether a part other than the main one holds stories whose paragraphs get ids. */
+  isTargetPart: (name: string) => boolean;
+};
+
+/** One story part as it scanned, and what the scan gave its paragraphs. */
+type PartParaIdScan = {
+  /** The part as it scanned, with the empty paragraphs its cells imply. */
+  spelling: PartSpelling;
+  scan: PartScanResult;
+};
+
+/**
+ * The paragraph ids a package's story parts take: the one assignment behind
+ * {@link ensureParaIds}, which writes them, and {@link assignPackageParaIds},
+ * which names them. Story parts in the order their paragraphs are numbered.
+ */
+const scanPackageParaIds = ({
+  partTexts,
+  documentPartName,
+  isTargetPart,
+}: AssignPackageParaIdsOptions): ReadonlyMap<string, PartParaIdScan> => {
+  const taken = new Set<string>();
+  for (const text of partTexts.values()) {
+    collectExistingParaIds(text, taken);
+  }
+
+  const documentXml = partTexts.get(documentPartName);
+  if (documentXml === undefined)
+    throw createEnsureParaIdsError("officeDocument part is unreadable");
+  const context: MintContext = {
+    taken,
+    docKey: deterministicHexId(documentXml),
+  };
+
+  // document.xml first so its paragraphs win the first-occurrence rule, then
+  // the auxiliary parts in a deterministic order.
+  const targetParts = [
+    documentPartName,
+    ...[...partTexts.keys()]
+      .filter((name) => isTargetPart(name))
+      .sort((a, b) => a.localeCompare(b)),
+  ];
+
+  // IDs in parts or fallback branches that this pass deliberately leaves
+  // untouched own their values. Seed duplicate resolution with them so an
+  // editable paragraph cannot preserve a conflicting ID.
+  const spellings = new Map<string, PartSpelling>();
+  const seen = new Set<string>();
+  for (const [partPath, xml] of partTexts) {
+    if (partPath === documentPartName || isTargetPart(partPath)) {
+      const spelling = partSpelling(withImpliedCellParagraphs(xml), partPath);
+      spellings.set(partPath, spelling);
+      collectFallbackParaIds(spelling, seen);
+    } else {
+      collectExistingParaIds(xml, seen);
+    }
+  }
+
+  const parts = new Map<string, PartParaIdScan>();
+  for (const partPath of targetParts) {
+    // SAFETY: every target part was given a spelling above
+    const spelling = spellings.get(partPath)!;
+    parts.set(partPath, {
+      spelling,
+      scan: scanPart({ partPath, spelling, context, seen }),
+    });
+  }
+  return parts;
+};
+
+/** The ids a story part's paragraphs take where the package names none. */
+export type UnnamedParagraphIds = {
+  /** Each such paragraph's id, by its ordinal among the part's {@link storyParagraphSlots} (from 1). */
+  byOrdinal: ReadonlyMap<number, string>;
+  /** How many slots the part has, as the assignment counted them. */
+  paragraphs: number;
+};
+
+/**
+ * The id {@link ensureParaIds} writes for each story paragraph the package
+ * names no usable id for, by part, without writing it: a package opened as
+ * bytes on either engine so gives each paragraph the same id. A fresh id is
+ * keyed on the main part's content, the part, and the paragraph's ordinal in
+ * it. A repeated authored id is left for its readers to judge.
+ */
+export const assignPackageParaIds = (
+  options: AssignPackageParaIdsOptions,
+): ReadonlyMap<string, UnnamedParagraphIds> => {
+  const assigned = new Map<string, UnnamedParagraphIds>();
+  for (const [partPath, { scan }] of scanPackageParaIds(options))
+    assigned.set(partPath, {
+      byOrdinal: scan.unnamed,
+      paragraphs: scan.paragraphs,
+    });
+  return assigned;
+};
+
+type PackageParaIdUpdates = {
+  updates: ReadonlyMap<string, string>;
+  mintedParaIds: readonly string[];
+  assigned: number;
+  deduplicated: number;
+};
+
+/** The part texts that write an assignment's ids, and the ids written. */
+const packageParaIdUpdates = (
+  partTexts: ReadonlyMap<string, string>,
+  parts: ReadonlyMap<string, PartParaIdScan>,
+): PackageParaIdUpdates => {
+  const updates = new Map<string, string>();
+  const mintedParaIds: string[] = [];
+  let assigned = 0;
+  let deduplicated = 0;
+  for (const [partPath, { spelling, scan }] of parts) {
+    if (scan.edits.length === 0) {
+      if (spelling.xml !== partTexts.get(partPath))
+        updates.set(partPath, spelling.xml);
+      continue;
+    }
+    assigned += scan.assigned;
+    deduplicated += scan.deduplicated;
+    // One push per id: spreading a large part's ids as arguments can exceed
+    // the engine's argument limit.
+    for (const id of scan.minted) {
+      mintedParaIds.push(id);
+    }
+    updates.set(
+      partPath,
+      applySplices(
+        spelling.xml,
+        [...scan.edits, ...ensureRootNamespaces(spelling)],
+        partPath,
+      ),
+    );
+  }
+  return { updates, mintedParaIds, assigned, deduplicated };
+};
+
 /**
  * Backfill `w14:paraId` on every paragraph of a `.docx` buffer. See the
  * module doc for the exact contract. Throws {@link EnsureParaIdsError} when
@@ -732,16 +978,14 @@ const ensureParaIdsInternal = async (
   const documentRelsName = archive.entries.find(
     (name) => name.toLowerCase() === documentRelsPath.toLowerCase(),
   );
-  const storyParts = relatedStoryParts(
-    documentRelsName === undefined
-      ? null
-      : await archive.readEntryString(documentRelsName),
-    documentRelsPath,
-    archive.entries,
-  );
-  const isTargetPart = (name: string): boolean =>
-    name !== documentPartName &&
-    (storyParts.has(name) || matchesTargetPattern(name));
+  const { storyParts, isTargetPart } = packageStoryParts({
+    documentPartName,
+    documentRels:
+      documentRelsName === undefined
+        ? null
+        : await archive.readEntryString(documentRelsName),
+    entries: archive.entries,
+  });
   const xmlPartNames = archive.entries.filter(
     (name) =>
       name.toLowerCase().endsWith(".xml") ||
@@ -758,74 +1002,11 @@ const ensureParaIdsInternal = async (
     }
   }
 
-  const taken = new Set<string>();
-  for (const text of partTexts.values()) {
-    collectExistingParaIds(text, taken);
-  }
-
-  const documentXml = partTexts.get(documentPartName);
-  if (documentXml === undefined)
-    throw createEnsureParaIdsError("officeDocument part is unreadable");
-  const context: MintContext = {
-    taken,
-    docKey: deterministicHexId(documentXml),
-  };
-
-  // document.xml first so its paragraphs win the first-occurrence rule, then
-  // the auxiliary parts in a deterministic order.
-  const targetParts = [
-    documentPartName,
-    ...xmlPartNames
-      .filter((name) => isTargetPart(name))
-      .sort((a, b) => a.localeCompare(b)),
-  ];
-
-  // IDs in parts or fallback branches that this pass deliberately leaves
-  // untouched own their values. Seed duplicate resolution with them so an
-  // editable paragraph cannot preserve a conflicting ID.
-  const spellings = new Map<string, PartSpelling>();
-  const seen = new Set<string>();
-  for (const [partPath, xml] of partTexts) {
-    if (partPath === documentPartName || isTargetPart(partPath)) {
-      const spelling = partSpelling(withImpliedCellParagraphs(xml), partPath);
-      spellings.set(partPath, spelling);
-      collectFallbackParaIds(spelling, seen);
-    } else {
-      collectExistingParaIds(xml, seen);
-    }
-  }
-
-  const updates = new Map<string, string>();
-  const mintedParaIds: string[] = [];
-  let assigned = 0;
-  let deduplicated = 0;
-
-  for (const partPath of targetParts) {
-    // SAFETY: every target part name came out of partTexts' key set, and
-    // every target part was given a spelling above
-    const sourceXml = partTexts.get(partPath)!;
-    const spelling = spellings.get(partPath)!;
-    const scan = scanPart({ partPath, spelling, context, seen });
-    if (scan.edits.length === 0) {
-      if (spelling.xml !== sourceXml) updates.set(partPath, spelling.xml);
-      continue;
-    }
-    assigned += scan.assigned;
-    deduplicated += scan.deduplicated;
-    // One push per id: spreading a large part's ids as arguments can exceed
-    // the engine's argument limit.
-    for (const id of scan.minted) {
-      mintedParaIds.push(id);
-    }
-    updates.set(
-      partPath,
-      applySplices(
-        spelling.xml,
-        [...scan.edits, ...ensureRootNamespaces(spelling)],
-        partPath,
-      ),
+  const { updates, mintedParaIds, assigned, deduplicated } =
+    packageParaIdUpdates(
+      partTexts,
+      scanPackageParaIds({ partTexts, documentPartName, isTargetPart }),
     );
-  }
 
   if (updates.size === 0) {
     return {

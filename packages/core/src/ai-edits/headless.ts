@@ -84,7 +84,7 @@ import {
   CanonicalSaveRepackRefusedError,
   serializeCanonicalSave,
 } from "../docx/canonicalSave";
-import { prepareCanonicalDocxSource } from "../docx/canonicalSessionInput";
+import { openCanonicalDocx } from "../docx/canonicalSessionInput";
 import { removeCommentMarkers } from "../docx/commentAnchorIndex";
 import { applyReplyThreadMarkers } from "../docx/commentReplyMarkers";
 /**
@@ -2222,12 +2222,12 @@ export class FolioDocxReviewer {
     buffer: ArrayBuffer,
     options: FolioDocxReviewerOptions,
   ): Promise<FolioDocxReviewer> {
-    const prepared = await prepareCanonicalDocxSource(buffer);
-    if (prepared.isErr()) throw prepared.error;
-    const parsed = await parseDocx(prepared.value.docx, {
+    const opened = await openCanonicalDocx(buffer, {
       detectVariables: false,
       preloadFonts: false,
     });
+    if (opened.isErr()) throw opened.error;
+    const { document: parsed, mintedParaIds } = opened.value;
     const created = createCanonicalSession(parsed, parsed.package.styles);
     if (created.isErr()) throw created.error;
     const session = created.value;
@@ -2239,7 +2239,7 @@ export class FolioDocxReviewer {
       state: canonicalReviewerState(session),
       author: options.author ?? "AI",
       engine: { type: "canonical", session },
-      positionalParaIds: prepared.value.mintedParaIds,
+      positionalParaIds: mintedParaIds,
     });
   }
 

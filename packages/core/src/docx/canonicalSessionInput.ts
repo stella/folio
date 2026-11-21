@@ -23,7 +23,8 @@ import {
 import { ensureParaIds } from "./ensureParaIds";
 import { ensureUniqueControlIds } from "./ensureUniqueControlIds";
 import { ensureUniqueRevisionIds } from "./ensureUniqueRevisionIds";
-import { parseDocx } from "./parser";
+import { keepNormalizedSourceParts } from "./normalizedSourceParts";
+import { parseDocx, type ParseOptions } from "./parser";
 
 const CanonicalDocxInputErrorBase: TaggedErrorClass<"CanonicalDocxInputError"> =
   TaggedError("CanonicalDocxInputError");
@@ -117,6 +118,39 @@ export const prepareCanonicalDocxSource = async (
         cause,
       }),
   });
+};
+
+/** A package read for a canonical session. */
+export type CanonicalDocx = {
+  document: Document;
+  /** The paragraph ids normalizing the package minted. */
+  mintedParaIds: ReadonlySet<string>;
+};
+
+/**
+ * Read a package for a canonical session: normalize it
+ * ({@link prepareCanonicalDocxSource}) and parse the result. A save of the
+ * document writes each part the session leaves as read with the package's
+ * own bytes, so normalizing changes no part an edit does not reach.
+ */
+export const openCanonicalDocx = async (
+  input: DocxInput,
+  options: ParseOptions = {},
+): Promise<Result<CanonicalDocx, CanonicalDocxInputFailure>> => {
+  const bytes = await Result.tryPromise({
+    try: () => toArrayBuffer(input),
+    catch: (cause) =>
+      new CanonicalDocxInputError({
+        message: "Cannot read canonical document bytes.",
+        cause,
+      }),
+  });
+  if (bytes.isErr()) return Result.err(bytes.error);
+  const prepared = await prepareCanonicalDocxSource(bytes.value);
+  if (prepared.isErr()) return Result.err(prepared.error);
+  const document = await parseDocx(prepared.value.docx, options);
+  await keepNormalizedSourceParts({ source: bytes.value, document });
+  return Result.ok({ document, mintedParaIds: prepared.value.mintedParaIds });
 };
 
 /**
