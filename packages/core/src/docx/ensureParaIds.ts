@@ -77,6 +77,10 @@ import { ZipArchive } from "@stll/docx-core/zip";
 
 import { deterministicHexId, isValidHexId } from "../utils/hexId";
 import { resolvePackageRelationshipTarget } from "./packageParts";
+import {
+  PACKAGE_RELATIONSHIPS_PART,
+  packageRelationshipsRoot,
+} from "./packageRelationshipsRoot";
 import { spliceXml } from "./selectiveXmlPatch";
 import { loadDocxArchive } from "./server/boundedArchive";
 import {
@@ -705,14 +709,20 @@ const ensureRootNamespaces = ({
   return edits;
 };
 
-const mainDocumentPart = (rels: string, entries: readonly string[]): string => {
-  const root = parseXmlDocument(rels);
-  if (
-    root === null ||
-    getLocalName(root.name ?? "") !== "Relationships" ||
-    getNamespaceUri(root) !== PACKAGE_RELATIONSHIP_URI
-  )
-    throw createEnsureParaIdsError("Malformed package relationships");
+type MainDocumentPartOptions = {
+  rels: string;
+  relsPath: string;
+  entries: readonly string[];
+};
+
+const mainDocumentPart = ({
+  rels,
+  relsPath,
+  entries,
+}: MainDocumentPartOptions): string => {
+  const parsed = packageRelationshipsRoot(relsPath, rels);
+  if (parsed.isErr()) throw parsed.error;
+  const root = parsed.value;
   const documents = getChildElements(root).filter((element) => {
     if (
       getLocalName(element.name ?? "") !== "Relationship" ||
@@ -996,13 +1006,17 @@ const ensureParaIdsInternal = async (
   const archive = await loadDocxArchive(docx);
 
   const relsPath = archive.entries.find(
-    (name) => name.toLowerCase() === "_rels/.rels",
+    (name) => name.toLowerCase() === PACKAGE_RELATIONSHIPS_PART,
   );
   const rels =
     relsPath === undefined ? null : await archive.readEntryString(relsPath);
   if (rels === null)
     throw createEnsureParaIdsError("Package relationships not found");
-  const documentPartName = mainDocumentPart(rels, archive.entries);
+  const documentPartName = mainDocumentPart({
+    rels,
+    relsPath: relsPath ?? PACKAGE_RELATIONSHIPS_PART,
+    entries: archive.entries,
+  });
   const documentRelsPath = relationshipsPathFor(documentPartName);
   const documentRelsName = archive.entries.find(
     (name) => name.toLowerCase() === documentRelsPath.toLowerCase(),
