@@ -618,30 +618,18 @@ export const isKeptBoundaryCarrier = (node: InlineNode): boolean =>
     node.content.every(isKeptBoundaryCarrier));
 
 /**
- * Which kept boundaries each container may hold, as its model declares. */
+ * Which kept boundaries each container may hold, as its model declares. A
+ * tracked change holds none: a kept boundary never lands inside a pending
+ * change, it stands beside it, so the change is resolved without taking
+ * away or adding a boundary it never held.
+ */
 const HOLDS: Partial<
   Record<InlineNode["type"], (boundary: Boundary) => boolean>
 > = {
   inlineSdt: () => true,
   hyperlink: isHyperlinkChild,
   inlineWrapper: () => true,
-  insertion: () => true,
-  deletion: () => true,
-  moveFrom: () => true,
-  moveTo: () => true,
 };
-
-/**
- * Whether a pending deletion or move source covered content of a revision
- * dated `keptFrom`: only one made after that revision can have. Content
- * inserted later beside or between its pieces was never in it, so a boundary
- * kept from that content stays out of it: accepting the deletion must not
- * take away what it never deleted.
- */
-const coveredBy = (node: InlineNode, keptFrom: string | undefined): boolean =>
-  keptFrom === undefined ||
-  (node.type !== "deletion" && node.type !== "moveFrom") ||
-  (node.info.date ?? "") >= keptFrom;
 
 /**
  * `node` with `boundaries` at its start or end, as deep as `depth` containers
@@ -655,11 +643,8 @@ export const withBoundariesAtEdge = (
   boundaries: readonly InlineNode[],
   depth: number,
   edge: "start" | "end",
-  /** The date of the revision the boundaries were kept from, when known. */
-  keptFrom?: string,
 ): InlineNode | undefined => {
-  if (depth <= 0 || boundaries.length === 0 || !coveredBy(node, keptFrom))
-    return undefined;
+  if (depth <= 0 || boundaries.length === 0) return undefined;
   const children = childNodes(node);
   const holds = HOLDS[node.type];
   const holdsKept = (kept: InlineNode): boolean => {
@@ -668,8 +653,6 @@ export const withBoundariesAtEdge = (
     return (
       kept.type === "deletion" &&
       isKeptBoundaryCarrier(kept) &&
-      node.type !== "deletion" &&
-      node.type !== "moveFrom" &&
       (node.type !== "hyperlink" || isHyperlinkChild(kept)) &&
       kept.content.every(holdsKept)
     );
@@ -680,7 +663,7 @@ export const withBoundariesAtEdge = (
   const inner = edge === "start" ? children.at(0) : children.at(-1);
   const nested =
     depth > 1 && inner !== undefined
-      ? withBoundariesAtEdge(inner, boundaries, depth - 1, edge, keptFrom)
+      ? withBoundariesAtEdge(inner, boundaries, depth - 1, edge)
       : undefined;
   if (nested !== undefined)
     return rebuildNode(

@@ -175,7 +175,9 @@ const tableOf = (text: string): Table => ({
   ],
 });
 
-test("rejecting an empty inserted paragraph between tables keeps its section", async () => {
+// An inserted break's section never stood in the original: rejecting the
+// break takes the section with it.
+test("rejecting an empty inserted paragraph between tables takes it and its section away", async () => {
   const reopened = await rejectAndReopen(
     documentOf([
       tableOf("first"),
@@ -191,18 +193,14 @@ test("rejecting an empty inserted paragraph between tables keeps its section", a
 
   expect(reopened.package.document.content.map(({ type }) => type)).toEqual([
     "table",
-    "paragraph",
     "table",
     "paragraph",
   ]);
-  const kept = reopened.package.document.content.at(1) as Paragraph;
-  expect(kept.pPrMark).toBeUndefined();
-  expect(kept.sectionProperties?.headerReferences).toEqual([
-    { type: "default", rId: headerId },
-  ]);
+  const after = reopened.package.document.content.at(2) as Paragraph;
+  expect(after.sectionProperties).toBeUndefined();
 });
 
-test("rejecting an empty inserted final paragraph moves its section to the preceding paragraph", async () => {
+test("rejecting an empty inserted final paragraph takes its section with it", async () => {
   const document = documentOf([
     {
       type: "paragraph",
@@ -217,12 +215,7 @@ test("rejecting an empty inserted final paragraph moves its section to the prece
   expect(reopened.package.document.content).toHaveLength(1);
   const survivor = reopened.package.document.content.at(0) as Paragraph;
   expect(survivor.paraId).toBe("70000003");
-  expect(survivor.sectionProperties?.headerReferences).toEqual([
-    { type: "default", rId: headerId },
-  ]);
-  expect(survivor.sectionProperties?.footerReferences).toEqual([
-    { type: "even", rId: footerId },
-  ]);
+  expect(survivor.sectionProperties).toBeUndefined();
 });
 
 test("clearing properties and removing the same paragraph mark counts one endpoint", async () => {

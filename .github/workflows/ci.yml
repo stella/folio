@@ -644,9 +644,6 @@ jobs:
       # fail (test/property-exploration.ts).
       FOLIO_FUZZ_EXPLORATION: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'report' || 'fail' }}
       FOLIO_FUZZ_EXPLORATION_DIR: ${{ github.workspace }}/test-results/fuzz-exploration
-      # The property files the change adds or changes fail on any generated
-      # case; the diff against this base names them.
-      FOLIO_FUZZ_EXPLORATION_BASE: ${{ (github.event_name == 'pull_request' && github.event.pull_request.base.sha) || (github.event_name == 'merge_group' && github.event.merge_group.base_sha) || '' }}
       TEST_SHARD: ${{ matrix.shard }}
       TEST_SHARDS: ${{ strategy.job-total }}
     steps:
@@ -654,6 +651,10 @@ jobs:
         with:
           fetch-depth: 0 # fast-depth selection diffs the PR merge base
           persist-credentials: false
+
+      # The commit generated property failures are compared with: the
+      # change's own property files fail on any generated case.
+      - uses: ./.github/actions/exploration-base
 
       - uses: ./.github/actions/bun
         with:
@@ -716,13 +717,15 @@ jobs:
     if: needs.ci-plan.outputs.code_required == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
-    env:
-      FOLIO_FUZZ_EXPLORATION_BASE: ${{ (github.event_name == 'pull_request' && github.event.pull_request.base.sha) || (github.event_name == 'merge_group' && github.event.merge_group.base_sha) || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # the base commit is checked out beside the change
           persist-credentials: false
+
+      # The commit generated property failures are compared with: the
+      # change's own property files fail on any generated case.
+      - uses: ./.github/actions/exploration-base
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -803,14 +806,15 @@ jobs:
       # regressions and every other test still fail.
       FOLIO_FUZZ_EXPLORATION: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'report' || 'fail' }}
       FOLIO_FUZZ_EXPLORATION_DIR: ${{ github.workspace }}/test-results/fuzz-exploration
-      # The property files the change adds or changes fail on any generated
-      # case; the diff against this base names them.
-      FOLIO_FUZZ_EXPLORATION_BASE: ${{ (github.event_name == 'pull_request' && github.event.pull_request.base.sha) || (github.event_name == 'merge_group' && github.event.merge_group.base_sha) || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # the exploration step diffs the change's merge base
           persist-credentials: false
+
+      # The commit generated property failures are compared with: the
+      # change's own property files fail on any generated case.
+      - uses: ./.github/actions/exploration-base
 
       - uses: ./.github/actions/bun
         with:

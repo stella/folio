@@ -1,8 +1,16 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  setDefaultTimeout,
+  test,
+} from "bun:test";
 import { readFile } from "node:fs/promises";
 
 import { FolioDocxReviewer } from "@stll/folio-core/server";
 
+import { DISK_SYNC_TEST_TIMEOUT_MS } from "../../../test/disk-sync-timeout";
 import { makeTempDir } from "./__tests__/fixtures";
 import { captureIo, dataOf, envelopeOf } from "./__tests__/io";
 import {
@@ -15,6 +23,8 @@ import {
 import { runFolioCli } from "./cli";
 import { openOoxmlPackage } from "./ooxml-package";
 import { setProofingLanguage } from "./proofing-language";
+
+setDefaultTimeout(DISK_SYNC_TEST_TIMEOUT_MS);
 
 /** An English template with one German run and a stated paragraph-mark language. */
 const ENGLISH: PackageFixture = {

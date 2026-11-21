@@ -8,13 +8,11 @@ import { panic } from "better-result";
 import type { InlineNode } from "./leaves";
 import { isTrackedWrapper } from "./review";
 
-/** The range boundaries a removal kept standing at its seam. */
-export type KeptAtSeam = {
-  /** The date of the revision whose content they were kept from. */
-  from: string;
-  /** How many of the boundaries standing at the seam they are. */
-  count: number;
-};
+/**
+ * A pending tracked change handed a seam's join (see {@link handJoin}), and
+ * whether it takes the kept range markers standing at that seam.
+ */
+export type HandedJoin = { node: InlineNode; takesKept: boolean };
 
 /**
  * `node`, a pending tracked change, with its join on `side` at least `depth`
@@ -22,18 +20,18 @@ export type KeptAtSeam = {
  * pending insertion made inside that record hands the join to the
  * insertion: accepting the insertion later joins its content with the piece
  * as deep as accepting both at once does. A rejection removing content made
- * inside the record hands its seam on the same way, with `kept`, the range
- * boundaries that content kept standing at the seam: the later join places
- * them inside the record it makes. An insertion whose join on that side is
- * already as deep holds a piece of that record, made inside it, and takes
- * the boundaries all the same, so accepting it places them inside its piece.
+ * inside the record hands its seam on the same way, with the range markers
+ * that content kept standing at the seam: they name the insertion's side as
+ * their cut's piece, so the later join places them inside the record it
+ * makes. An insertion whose join on that side is already as deep holds a
+ * piece of that record, made inside it, and takes the markers all the same,
+ * so accepting it places them inside its piece.
  */
-export const withJoinAtLeast = (
+export const handJoin = (
   node: InlineNode,
   side: "before" | "after",
   depth: number,
-  kept?: KeptAtSeam,
-): InlineNode => {
+): HandedJoin => {
   if (!isTrackedWrapper(node) || node.resolutionJoins === undefined)
     return panic("A blocking insertion is a pending change with joins.");
   const joins = node.resolutionJoins;
@@ -44,25 +42,18 @@ export const withJoinAtLeast = (
     joins.acceptance !== undefined ||
     joins.plainSides?.includes(side) === true
   )
-    return node;
-  const keptAt =
-    kept === undefined || joins.keptFrom !== undefined
-      ? undefined
-      : { keptFrom: kept.from, keptCount: kept.count };
-  if (joins[side] >= depth)
-    return keptAt === undefined
-      ? node
-      : Object.assign({}, node, {
-          resolutionJoins: Object.assign({}, joins, keptAt),
-        });
-  return Object.assign({}, node, {
-    resolutionJoins: Object.assign(
-      {},
-      joins,
-      side === "before" ? { before: depth } : { after: depth },
-      keptAt ?? {},
-    ),
-  });
+    return { node, takesKept: false };
+  if (joins[side] >= depth) return { node, takesKept: true };
+  return {
+    node: Object.assign({}, node, {
+      resolutionJoins: Object.assign(
+        {},
+        joins,
+        side === "before" ? { before: depth } : { after: depth },
+      ),
+    }),
+    takesKept: true,
+  };
 };
 
 /**
@@ -86,3 +77,25 @@ export const seamHandsOver = ({
   piecesBeyond: boolean;
   facingJoin: number;
 }): boolean => seam === "keptJoin" || facingJoin > 0 || !piecesBeyond;
+
+/**
+ * `node`, a pending tracked change, with no join on `side`: the content it
+ * faced there, made inside its piece, was rejected, so the join has nothing
+ * left to take.
+ */
+export const withJoinRetired = (
+  node: InlineNode,
+  side: "before" | "after",
+): InlineNode => {
+  if (!isTrackedWrapper(node) || node.resolutionJoins === undefined)
+    return panic("A facing insertion is a pending change with joins.");
+  const joins = node.resolutionJoins;
+  if (joins[side] === 0) return node;
+  return Object.assign({}, node, {
+    resolutionJoins: Object.assign(
+      {},
+      joins,
+      side === "before" ? { before: 0 } : { after: 0 },
+    ),
+  });
+};

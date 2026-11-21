@@ -2,6 +2,7 @@
 import { Result } from "better-result";
 
 import type { Table, TableCell } from "../model/document";
+import { maxOf } from "../model/extremes";
 import {
   TABLE_CELL_VERTICAL_MERGES,
   tableCellVerticalMerge,
@@ -104,7 +105,7 @@ export const tableGrid = (
     previous.clear();
     for (const cell of cells) previous.set(cell.start, cell);
   }
-  const width = Math.max(table.columnWidths?.length ?? 0, ...covered);
+  const width = maxOf(covered, table.columnWidths?.length ?? 0);
   if (width === 0) return refuse();
   const stated =
     covered.every((columns) => columns === width) &&

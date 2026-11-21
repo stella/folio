@@ -26,7 +26,9 @@ const sectionPropertiesOf = (reviewer: Reviewer) => {
   ];
 };
 
-test("rejecting an added adjacent boundary keeps both sections after save and reopen", async () => {
+// The added boundary's section never stood in the original, so rejecting its
+// mark removes that section rather than moving it to a neighbour.
+test("rejecting an added adjacent boundary removes its section after save and reopen", async () => {
   const reviewer = await openReviewer(await adjacentSectionRevisionDocument());
 
   reviewer.rejectAll();
@@ -39,7 +41,7 @@ test("rejecting an added adjacent boundary keeps both sections after save and re
     sectionPropertiesOf(reopened).map(
       ({ properties }) => properties?.pageWidth,
     ),
-    [10_000, 12_000, 14_000],
+    [10_000, 14_000],
   );
 });
 

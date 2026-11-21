@@ -10,6 +10,7 @@ import type {
   TableRow,
   TableStructuralChangeInfo,
 } from "../model/document";
+import { maxOf } from "../model/extremes";
 import { storyBody, storyParagraphs } from "./blocks";
 import { combineEdits, type DocumentEdit } from "./edits";
 import { relocatePositionedMarkers } from "./positionedMarkers";
@@ -205,7 +206,7 @@ const coversEvenly = (table: Table): boolean =>
  */
 const impliesWidth = (table: Table, width: number): boolean =>
   table.rows.length > 0 &&
-  Math.max(...table.rows.map((row) => coveredBy(row))) === width;
+  maxOf(table.rows.map((row) => coveredBy(row))) === width;
 
 const propertyTable = ({
   table,
@@ -473,7 +474,7 @@ const resolveCellColumns = ({
     gridRows.push({ cells, before, cellsEnd: cursor, emptied: false });
     ends.push(cursor + after);
   }
-  const gridWidth = Math.max(columnWidths?.length ?? 0, ...ends);
+  const gridWidth = maxOf(ends, columnWidths?.length ?? 0);
   if (gridWidth === 0) return Result.err("unsupported");
 
   // A slot goes when no row keeps anything in it.

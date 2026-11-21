@@ -650,7 +650,8 @@ test("reject removes orphan comment references before resolving paragraph marks"
   expect(fixedPoint.resolved.eq(result.resolved)).toBe(true);
 });
 
-test("rejecting an inserted boundary after a table keeps its section on the joined paragraph", () => {
+// An inserted break's section never stood in the original: it goes with it.
+test("rejecting an inserted boundary after a table takes its section with it", () => {
   const sectionProperties = { sectionStart: "nextPage", pageWidth: 10_000 };
   const doc = schema.node("doc", null, [
     table([row([cell("cell")])]),
@@ -671,9 +672,7 @@ test("rejecting an inserted boundary after a table keeps its section on the join
 
   expect(result.failed).toBe(false);
   expect(result.resolved.lastChild?.textContent).toBe("beforeafter");
-  expect(result.resolved.lastChild?.attrs["_sectionProperties"]).toEqual(
-    sectionProperties,
-  );
+  expect(result.resolved.lastChild?.attrs["_sectionProperties"]).toBeNull();
 });
 
 test("rejecting an empty inserted final paragraph in a cell leaves the paragraph before it last", () => {

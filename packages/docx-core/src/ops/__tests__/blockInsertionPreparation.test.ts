@@ -13,6 +13,7 @@ import {
   paragraphIdsIn,
 } from "../ids";
 import * as primitives from "../paragraphPrimitive";
+import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import { DOCUMENT_OP_TYPES, type InsertBlocksOp, OP_STORIES } from "../types";
 import { captureDocumentOp } from "../wire";
 
@@ -159,14 +160,16 @@ test.each(["tail", "afterWithFollower", "before"])(
 
 test("the pure seam leaves unsupported work to native insertion and retains collision precedence", () => {
   const anchor = paragraph(1);
-  const baseline = checkout([anchor, paragraph(2)]);
+  const follower = paragraph(2);
+  const baseline = checkout([anchor, follower]);
   const paragraphIds = packageParagraphIdIndex(baseline.package);
   const recordIds = packageIdentityKeyIndex(baseline.package);
-  const prepare = (op: InsertBlocksOp) =>
+  const prepare = (op: InsertBlocksOp, following?: Paragraph) =>
     prepareTrackedParagraphInsertion({
       document: baseline,
       op,
       anchor,
+      ...(following === undefined ? {} : { following }),
       paragraphIds,
       recordIds,
     });
@@ -184,8 +187,11 @@ test("the pure seam leaves unsupported work to native insertion and retains coll
   expect(fallbacks).toBe(1);
   const colliding = insertion(1, 2);
   const native = applyDocumentOp(baseline, colliding);
-  const planned = prepare(colliding);
-  expect(planned.isErr() && native.isErr()).toBe(true);
+  const planned = prepare(colliding, follower);
+  expect(planned.isErr() && planned.error.reason).toBe(
+    DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
+  );
+  expect(native.isErr()).toBe(true);
   if (planned.isErr() && native.isErr())
     expect(planned.error).toEqual(native.error);
 });

@@ -1,5 +1,6 @@
 import type { VerticalAlign } from "@stll/docx-core/model";
 
+import { maxOf } from "../utils/extremes";
 import type { Fragment, Layout, Page } from "./types";
 
 const isFlowFragment = (fragment: Fragment): boolean => {
@@ -48,8 +49,8 @@ const alignPage = (page: Page, alignment: VerticalAlign | undefined): Page => {
 
   const contentBottom =
     page.size.h - page.margins.bottom - (page.footnoteReservedHeight ?? 0);
-  const occupiedBottom = Math.max(
-    ...flow.map((fragment) => fragment.y + fragment.height),
+  const occupiedBottom = maxOf(
+    flow.map((fragment) => fragment.y + fragment.height),
   );
   const offset = alignedOffset(
     alignment,

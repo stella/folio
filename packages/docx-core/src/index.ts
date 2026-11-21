@@ -67,8 +67,10 @@ export {
 export { requiresXmlSpacePreserve } from "./serialize/textWhitespace";
 export {
   assertValidDocumentModel,
+  commentAuthorIssue,
   DOCX_PACKAGE_ISSUE_CODES,
   listDocxPackageIssues,
+  trackedChangeAuthorIssue,
   validateDocxPackage,
   validateDocumentModel,
 } from "./validate/docx";

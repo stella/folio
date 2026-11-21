@@ -773,8 +773,6 @@ describe("CI plan", () => {
     expect(env["FOLIO_FUZZ_EXPLORATION_DIR"]).toBe(
       "${{ github.workspace }}/test-results/fuzz-exploration",
     );
-    // The change's own property files fail on generated cases.
-    expect(env["FOLIO_FUZZ_EXPLORATION_BASE"]).toBe(EXPLORATION_BASE);
     const exploration = uploads.find(
       (step) =>
         isRecord(step["with"]) &&
@@ -1590,8 +1588,39 @@ describe("CI plan", () => {
   });
 });
 
-const EXPLORATION_BASE =
-  "${{ (github.event_name == 'pull_request' && github.event.pull_request.base.sha) || (github.event_name == 'merge_group' && github.event.merge_group.base_sha) || '' }}";
+const EXPLORATION_BASE_ACTION = "./.github/actions/exploration-base";
+
+// A pull request's generated failures are compared with the main side of the
+// merge commit under test; the event's base.sha can trail main by many
+// commits, so a failure main brought would read as the change's.
+test("every job reading the exploration base sets it from the tested merge", () => {
+  const workflow = readWorkflow("ci.yml");
+  if (!isRecord(workflow["jobs"])) throw new Error("ci.yml has no jobs");
+  const readers = Object.entries(workflow["jobs"]).filter(
+    ([, job]) =>
+      isRecord(job) &&
+      (JSON.stringify(job).includes("FOLIO_FUZZ_EXPLORATION_BASE") ||
+        (isRecord(job["env"]) && "FOLIO_FUZZ_EXPLORATION" in job["env"])),
+  );
+  expect(readers.map(([id]) => id).toSorted()).toEqual(
+    ["docx-kernel", "exploration-base-replay", "tests"].toSorted(),
+  );
+  for (const [id, job] of readers) {
+    if (!isRecord(job) || !Array.isArray(job["steps"]))
+      throw new Error(`Missing steps for ${id}`);
+    const steps = job["steps"].filter(isRecord);
+    if (isRecord(job["env"]))
+      expect(job["env"]["FOLIO_FUZZ_EXPLORATION_BASE"]).toBeUndefined();
+    const checkout = steps.findIndex(
+      (step) =>
+        typeof step["uses"] === "string" &&
+        step["uses"].startsWith("actions/checkout@"),
+    );
+    expect(steps[checkout + 1]?.["uses"]).toBe(EXPLORATION_BASE_ACTION);
+    const options = steps[checkout]?.["with"];
+    expect(isRecord(options) && options["fetch-depth"]).toBe(0);
+  }
+});
 
 // Checked-in proptest regressions block; generated cases report on pull
 // requests and merge groups (scripts/rust-property-exploration.ts).
@@ -1617,7 +1646,6 @@ test("the kernel job splits proptest regressions from exploration", () => {
     "bun scripts/rust-property-exploration.ts --package stella-docx-kernel",
   );
   expect(String(exploration?.["run"])).not.toContain("|| true");
-  expect(job["env"]["FOLIO_FUZZ_EXPLORATION_BASE"]).toBe(EXPLORATION_BASE);
   expect(String(exploration?.["run"])).toContain(
     '--base "$FOLIO_FUZZ_EXPLORATION_BASE"',
   );

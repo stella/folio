@@ -234,6 +234,9 @@ const assertSourceOwnership = ({
     }
   };
   visit(paragraphOf(partial).content);
+  // The kept marker stands beside the pending source fragments, never
+  // inside one.
+  expect(sourceFragments.length).toBeGreaterThan(0);
   expect(
     sourceFragments.some((node) =>
       rangeBoundariesIn(childNodes(node) ?? []).some(
@@ -241,12 +244,21 @@ const assertSourceOwnership = ({
           boundary.type === marker.type && boundary.id === marker.id,
       ),
     ),
-  ).toBe(true);
+  ).toBe(false);
   const reverse = reject(partial, idsForDate(second, FIRST_DATE));
   expect(projectReview({ document: batch, projection: "π′" })).toEqual(
     projectReview({ document: reverse, projection: "π′" }),
   );
-  expect(paragraphOf(batch).content).toEqual([foreign, marker]);
+  // Beside a pending change, the kept marker records the cut it stands in.
+  expect(paragraphOf(batch).content).toEqual([
+    foreign,
+    isTrackedWrapper(foreign)
+      ? {
+          ...marker,
+          keptCut: { depth: expect.any(Number), keptFrom: SECOND_DATE },
+        }
+      : marker,
+  ]);
 };
 
 const standing = { type: "bookmarkEnd", id: 3 } satisfies ParagraphContent;

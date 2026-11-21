@@ -84,7 +84,13 @@ for (const [name, container] of Object.entries(containers))
               document: { content: container.blocks([before, target]) },
             },
           } satisfies Document;
-          const { pPrMark: _resolved, ...unmarked } = target;
+          const { pPrMark: _resolved, ...marked } = target;
+          // A rejected added mark takes the section it ended with it.
+          const { sectionProperties: _added, ...unsectioned } = marked;
+          const unmarked =
+            decision === "reject" && (kind === "ins" || kind === "moveTo")
+              ? unsectioned
+              : marked;
           const expected = {
             package: {
               document: { content: container.blocks([before, unmarked]) },
@@ -139,7 +145,17 @@ for (const [name, container] of Object.entries(containers))
             );
             expect(changed).toEqual(beforeStale);
           } else {
-            expect(ordinary.isOk() && ordinary.value.document).toEqual(source);
+            // Setting the mark back restores it, not a section it took.
+            expect(ordinary.isOk() && ordinary.value.document).toEqual({
+              package: {
+                document: {
+                  content: container.blocks([
+                    before,
+                    { ...unmarked, pPrMark: target.pPrMark },
+                  ]),
+                },
+              },
+            });
           }
         }
   });

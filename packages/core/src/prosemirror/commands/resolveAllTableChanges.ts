@@ -12,6 +12,7 @@ import {
   isTableCellMergeRevisionValue,
 } from "../../docx/tableParser";
 import type { TableCell } from "../../types/document";
+import { maxOf } from "../../utils/extremes";
 import { expectTableAttrs, mergeTableAttrs } from "../attrs";
 import {
   nodePropertyRevisionSites,
@@ -720,7 +721,7 @@ const resolvePureTableMerges = ({
       ({ node }) => node.attrs["_omittedGridSlot"] != null,
     );
 
-  currentWidth = Math.max(0, ...rowOccupancy);
+  currentWidth = maxOf(rowOccupancy, 0);
 
   const changeRowWidth = (rowIndex: number, nextWidth: number): void => {
     if (!elementAt(activeRows, rowIndex)) return;

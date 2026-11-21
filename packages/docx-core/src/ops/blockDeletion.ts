@@ -123,11 +123,13 @@ const deletedContent = (
   };
 };
 
+/** Whether `paragraph`'s own mark is pending deletion, as a move's source too. */
+const markPendingDeletion = ({ pPrMark }: Paragraph): boolean =>
+  pPrMark?.kind === "del" || pPrMark?.kind === "moveFrom";
+
 /** Whether accepting every change takes `paragraph`'s own mark. */
-const markGoes = ({ pPrMark }: Paragraph): boolean =>
-  pPrMark?.kind === "del" ||
-  pPrMark?.kind === "moveFrom" ||
-  pPrMark?.deletion !== undefined;
+const markGoes = (paragraph: Paragraph): boolean =>
+  markPendingDeletion(paragraph) || paragraph.pPrMark?.deletion !== undefined;
 
 /** How many anchors of each comment stand anywhere in `value`. */
 const commentAnchorCounts = (
@@ -463,9 +465,6 @@ export const paragraphMarkOutcome = ({
   tableRemovalIsTrackable = true,
   emptyInsertedTableBoundary = "unavailable",
   precededByBlock = false,
-  removedSectionProperties = false,
-  precedingSectionOwner = "unavailable",
-  followingHasSectionProperties = false,
 }: {
   /** `block` is a follower {@link isOpaqueFollower} admits. */
   follows: "paragraph" | "table" | "block" | "nothing";
@@ -495,31 +494,15 @@ export const paragraphMarkOutcome = ({
   emptyInsertedTableBoundary?: "unavailable" | "pendingReview";
   /** Whether a block stays before the paragraph to anchor what its removal leaves. */
   precededByBlock?: boolean;
-  removedSectionProperties?: boolean;
-  precedingSectionOwner?: "unavailable" | "available" | "same" | "occupied";
-  followingHasSectionProperties?: boolean;
 }):
-  | ({ kind: "join" } & SectionTransfer)
-  | ({ kind: "remove" } & SectionTransfer)
-  | ({ kind: "run-in" } & SectionTransfer)
-  | ({ kind: "keep" } & SectionTransfer)
-  | ({ kind: "refuse"; reason: "untrackable" } & SectionTransfer) => {
-  let sectionDestination: SectionTransfer["sectionDestination"] = "none";
-  if (removedSectionProperties && precedingSectionOwner === "available") {
-    sectionDestination = "preceding";
-  } else if (
-    removedSectionProperties &&
-    precedingSectionOwner !== "same" &&
-    !followingHasSectionProperties
-  ) {
-    sectionDestination = "following";
-  }
-  // Only a join has a following paragraph mark. A removal whose section could
-  // only move forward keeps the paragraph instead, so its section survives.
-  const removalWouldDropSection = sectionDestination === "following";
+  | { kind: "join" }
+  | { kind: "remove" }
+  | { kind: "run-in" }
+  | { kind: "keep" }
+  | { kind: "refuse"; reason: "untrackable" } => {
   switch (follows) {
     case "paragraph":
-      return { kind: "join", sectionDestination };
+      return { kind: "join" };
     case "table":
       // An accepted deletion that leaves the paragraph empty is no run-in
       // source either: it goes without crossing the table, wherever the
@@ -531,9 +514,7 @@ export const paragraphMarkOutcome = ({
         !holdsContent &&
         !needsFollowingCommentHost
       )
-        return removalWouldDropSection
-          ? { kind: "keep", sectionDestination: "none" }
-          : { kind: "remove", sectionDestination };
+        return { kind: "remove" };
       // A rejected insertion owns an empty paragraph, not a run-in source.
       // Its mark can go without crossing the table when no comment host is
       // retained; existing marks and content still require a trackable boundary.
@@ -547,38 +528,31 @@ export const paragraphMarkOutcome = ({
         return {
           kind: "refuse",
           reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-          sectionDestination,
         };
       if (!holdsContent) {
-        if (removalWouldDropSection)
-          return { kind: "keep", sectionDestination: "none" };
         return needsFollowingCommentHost && followingTableCanReceiveRunIn
-          ? { kind: "run-in", sectionDestination }
-          : { kind: "remove", sectionDestination };
+          ? { kind: "run-in" }
+          : { kind: "remove" };
       }
       return followingTableCanReceiveRunIn
-        ? { kind: "run-in", sectionDestination }
-        : { kind: "keep", sectionDestination };
+        ? { kind: "run-in" }
+        : { kind: "keep" };
     case "block":
       // A resolved-away empty mark may go only while the container still
       // ends with a paragraph. Rejecting an added mark keeps standing words;
       // an accepted deletion may run its still-pending words into the block.
-      if (removalWouldDropSection)
-        return { kind: "keep", sectionDestination: "none" };
       if (!holdsContent)
         return containerStillEndsWithParagraph
-          ? { kind: "remove", sectionDestination }
-          : { kind: "keep", sectionDestination };
-      if (markWasAdded) return { kind: "keep", sectionDestination };
+          ? { kind: "remove" }
+          : { kind: "keep" };
+      if (markWasAdded) return { kind: "keep" };
       return !holdsContentOnceAccepted && followingBlockCanReceiveRunIn
-        ? { kind: "run-in", sectionDestination }
-        : { kind: "keep", sectionDestination };
+        ? { kind: "run-in" }
+        : { kind: "keep" };
     case "nothing":
-      if (removalWouldDropSection)
-        return { kind: "keep", sectionDestination: "none" };
       return !holdsContent && markWasAdded && containerStillEndsWithParagraph
-        ? { kind: "remove", sectionDestination }
-        : { kind: "keep", sectionDestination };
+        ? { kind: "remove" }
+        : { kind: "keep" };
   }
 };
 
@@ -635,10 +609,6 @@ const withExhaustedCommentsRetired = ({
   });
 };
 
-type SectionTransfer = {
-  sectionDestination: "none" | "preceding" | "following";
-};
-
 type DirectRemovalReceiverOptions = {
   before: BlockContent | undefined;
   following: BlockContent | undefined;
@@ -685,7 +655,7 @@ const breakRetiredBefore = (
     const block = list[candidate];
     if (
       block?.type !== "paragraph" ||
-      block.pPrMark?.kind !== "del" ||
+      !markPendingDeletion(block) ||
       block.sectionProperties !== undefined ||
       paragraphHoldsContentOnceAccepted(block)
     )
@@ -709,7 +679,7 @@ const goesOnceAccepted = (blocks: readonly BlockContent[]): boolean =>
       block.type === "paragraph" &&
       block.sectionProperties === undefined &&
       !paragraphHoldsContentOnceAccepted(block) &&
-      (index === blocks.length - 1 || block.pPrMark?.kind === "del"),
+      (index === blocks.length - 1 || markPendingDeletion(block)),
   );
 
 export const deleteBlocks = ({
@@ -762,7 +732,24 @@ export const deleteBlocks = ({
     );
   }
   const list = blockListAt(body.content, first.list);
-  const following = list[last.index + 1];
+  // Range boundaries the block list holds between the last paragraph and the
+  // next one stand where the two meet once its mark goes, as resolving that
+  // mark joins them: what stood before them stays before.
+  let followerIndex = last.index + 1;
+  const endsNoSection = found.every(
+    ({ paragraph }) => paragraph.sectionProperties === undefined,
+  );
+  for (
+    let block = list[followerIndex];
+    endsNoSection && block !== undefined && isBlockBoundary(block);
+    block = list[followerIndex]
+  )
+    followerIndex += 1;
+  const standing =
+    list[followerIndex]?.type === "paragraph"
+      ? list.slice(last.index + 1, followerIndex).filter(isBlockBoundary)
+      : [];
+  const following = list[standing.length > 0 ? followerIndex : last.index + 1];
   const terminal = last.index === list.length - 1;
   // Paragraphs the same author's pending insertion added whole, with no one
   // else's suggestion in them, go outright before a paragraph or a table, as
@@ -921,13 +908,35 @@ export const deleteBlocks = ({
   )
     ? { sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE }
     : {};
-  const replacement = (blocks: readonly Paragraph[]) => ({
-    type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
-    story: op.story,
-    expected,
-    blocks,
-    ...sectionBoundaries,
-  });
+  /** `blocks` in place of the paragraphs `replaced`, through the next one. */
+  const replacement = (
+    blocks: readonly BlockContent[],
+    replaced: readonly Paragraph[] = expected,
+  ): DocumentOp =>
+    following?.type === "paragraph" && standing.length > 0
+      ? {
+          // Boundaries between blocks are no paragraphs a replacement
+          // addresses: the list is set whole, around the paragraph after.
+          type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+          story: op.story,
+          blockId: following.paraId ?? "",
+          expected: list,
+          blocks: [
+            ...list.slice(0, list.indexOf(replaced.at(0) ?? following)),
+            ...blocks,
+            ...list.slice(followerIndex + 1),
+          ],
+        }
+      : {
+          type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+          story: op.story,
+          expected: replaced,
+          // With no boundaries standing, only paragraphs replace paragraphs.
+          blocks: blocks.filter(
+            (block): block is Paragraph => block.type === "paragraph",
+          ),
+          ...sectionBoundaries,
+        };
   const finalReview = reviewFieldsOf(last.paragraph);
   if (previous !== undefined && paragraphLength(previous) > 0) {
     const formatting = withMarkFormatting(
@@ -978,9 +987,12 @@ export const deleteBlocks = ({
   const directModified: string[] = [];
   if (outcome.kind === "join" && following?.type === "paragraph")
     directBlocks = [
-      kept.length === 0
+      kept.length === 0 && standing.length === 0
         ? following
-        : { ...following, content: [...kept, ...following.content] },
+        : {
+            ...following,
+            content: [...kept, ...standing, ...following.content],
+          },
     ];
   // A deletion is refused before a table and keeps the paragraph that ends
   // its container, so no outcome here removes the boundaries it kept: a
@@ -1020,7 +1032,7 @@ export const deleteBlocks = ({
   // is not the block it replaces: the survivor, or the paragraph after the
   // deletion once it holds the boundaries the deleted paragraphs kept.
   const replaced = new Map(
-    replacement([]).expected.map((block) => [idKey(block.paraId ?? ""), block]),
+    expected.map((block) => [idKey(block.paraId ?? ""), block]),
   );
   directModified.push(
     ...directBlocks
@@ -1057,7 +1069,7 @@ export const deleteBlocks = ({
   const retiredIndex =
     !terminal &&
     first.index > 0 &&
-    last.paragraph.pPrMark?.kind === "del" &&
+    markPendingDeletion(last.paragraph) &&
     goesOnceAccepted(list.slice(last.index + 1))
       ? breakRetiredBefore(list, first.index)
       : undefined;
@@ -1101,7 +1113,7 @@ export const deleteBlocks = ({
   // paragraph nothing of this one reaches.
   const finalTakeover =
     following?.type === "paragraph" &&
-    last.index + 1 === list.length - 1 &&
+    list.indexOf(following) === list.length - 1 &&
     paragraphHoldsContent(following) &&
     !paragraphHoldsContentOnceAccepted(following) &&
     (following.propertyChanges?.length ?? 0) > 0 &&
@@ -1109,11 +1121,14 @@ export const deleteBlocks = ({
       paragraphPropertiesOf(following.formatting),
       paragraphPropertiesOf(last.paragraph.formatting),
     );
-  // So does an added mark whose later deletion already took it.
+  // So does an added mark whose later deletion already took it. A move's
+  // source records its own paragraphs' marks moved, so one already taken is
+  // not; a paragraph a pending deletion takes whole between the last
+  // paragraph and the break the move retires keeps its record.
   const keepsDeletedMark = (paragraph: Paragraph) =>
-    op.move !== true &&
-    (paragraph.pPrMark?.kind === "del" ||
+    (markPendingDeletion(paragraph) ||
       paragraph.pPrMark?.deletion !== undefined) &&
+    !(op.move === true && selected.includes(paragraph)) &&
     !(finalTakeover && paragraph === last.paragraph);
   // Another owner's added mark the deletion takes keeps that insertion and
   // records the deletion beside it, as a later deletion of an insertion does;
@@ -1227,7 +1242,7 @@ export const deleteBlocks = ({
   // paragraph alone in its container, recording nothing is that deletion.
   if (
     tracked.every((paragraph, index) => paragraph === reviewed[index]) &&
-    !structurallyEqual(directBlocks, replacement([]).expected)
+    !structurallyEqual(directBlocks, expected)
   )
     return refuse(
       DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
@@ -1267,7 +1282,7 @@ export const deleteBlocks = ({
         following?.type === "paragraph" ? [...tracked, following] : tracked;
       // Each paragraph whose mark went joins the one after it, which keeps
       // its own identity and properties.
-      const blocks: Paragraph[] = [];
+      const blocks: BlockContent[] = [];
       const removed: string[] = [];
       const absorbed: ParagraphAbsorption[] = [];
       const modified = new Set<string>();
@@ -1275,6 +1290,12 @@ export const deleteBlocks = ({
       let joining: string[] = [];
       for (const [index, paragraph] of marked.entries()) {
         const source = original[index];
+        // The boundaries standing before the following paragraph stay
+        // between the blocks, or join it with a paragraph that joins it.
+        if (source === following && standing.length > 0) {
+          if (carried === undefined) blocks.push(...standing);
+          else carried.push(...standing);
+        }
         if (source !== undefined && joinsNext.has(source)) {
           carried = [...(carried ?? []), ...paragraph.content];
           removed.push(paragraph.paraId ?? "");
@@ -1293,9 +1314,7 @@ export const deleteBlocks = ({
         carried = undefined;
         blocks.push(joined);
       }
-      const result = applyOps(document, [
-        { ...replacement(blocks), expected: original },
-      ]);
+      const result = applyOps(document, [replacement(blocks, original)]);
       if (result.isErr())
         return refuse(result.error.reason, result.error.message);
       return Result.ok({

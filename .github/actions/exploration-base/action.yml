@@ -1,0 +1,22 @@
+name: Exploration base
+description: >-
+  Sets FOLIO_FUZZ_EXPLORATION_BASE, the commit a change's generated property
+  failures are compared with. On a pull request it is the main side of the
+  merge commit under test, not the event's base.sha, which can trail main by
+  many commits; in a merge group it is the group's base. Needs the checkout's
+  history (fetch-depth: 0).
+
+runs:
+  using: composite
+  steps:
+    - name: Read the base the change is tested against
+      shell: bash
+      env:
+        MERGE_GROUP_BASE: ${{ github.event.merge_group.base_sha }}
+      run: |
+        case "$GITHUB_EVENT_NAME" in
+          pull_request) base=$(git rev-parse HEAD^1) ;;
+          merge_group) base="$MERGE_GROUP_BASE" ;;
+          *) base="" ;;
+        esac
+        echo "FOLIO_FUZZ_EXPLORATION_BASE=$base" >> "$GITHUB_ENV"

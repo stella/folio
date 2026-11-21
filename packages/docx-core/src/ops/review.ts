@@ -255,25 +255,30 @@ type FoldParagraphPropertyChangeOptions = {
 };
 
 /**
- * Whether folding a suggestion's stamp into the paragraph's pending property
- * change would take over a record outside that suggestion. A paragraph holds
- * one property change, and a suggestion is resolved by its id: rejecting it
- * would discard the other change with its own.
+ * Whether folding a suggestion's stamp into a pending property change would
+ * take over a record outside that suggestion. A paragraph or a run holds one
+ * property change, and a suggestion is resolved by its id: rejecting it would
+ * discard the other change with its own.
  */
+export const takesOverOtherSuggestion = (
+  pending: { info: TrackedChangeInfo } | undefined,
+  stamp: RevisionStamp,
+): boolean =>
+  pending !== undefined &&
+  stamp.suggestionId !== undefined &&
+  pending.info.suggestionId !== stamp.suggestionId;
+
+/** {@link takesOverOtherSuggestion} for the paragraph's pending property change. */
 export const foldsIntoOtherSuggestion = (
   paragraph: Paragraph,
   stamp: RevisionStamp,
-): boolean => {
-  const existing = paragraph.propertyChanges?.at(0);
-  return (
-    existing !== undefined &&
-    stamp.suggestionId !== undefined &&
-    existing.info.suggestionId !== stamp.suggestionId
-  );
-};
+): boolean => takesOverOtherSuggestion(paragraph.propertyChanges?.at(0), stamp);
 
 export const FOLD_INTO_OTHER_SUGGESTION_MESSAGE =
   "A suggestion cannot take over another pending paragraph property change.";
+
+export const RUN_FOLD_INTO_OTHER_SUGGESTION_MESSAGE =
+  "A suggestion cannot take over another pending run property change.";
 
 /** Fold paragraph formatting into one review, retaining its id and original baseline. */
 export const foldedParagraphPropertyChange = ({
