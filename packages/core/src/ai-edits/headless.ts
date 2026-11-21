@@ -2239,7 +2239,10 @@ export class FolioDocxReviewer {
       state: canonicalReviewerState(session),
       author: options.author ?? "AI",
       engine: { type: "canonical", session },
-      positionalParaIds: mintedParaIds,
+      positionalParaIds: new Set([
+        ...mintedParaIds,
+        ...session.sourceMintedParaIds,
+      ]),
     });
   }
 

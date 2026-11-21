@@ -1,0 +1,10 @@
+{
+  "a host model opens in a canonical session with the ids its package gets, and keeps them through an edit, a save and a reopen": [
+    {
+      "seed": 104053871,
+      "path": "3:0:1:1:1:1:1",
+      "note": "A body that ends in a table: the edited session's model closes it with an empty paragraph whose id no paragraph held, and the save writes it.",
+      "date": "2026-11-20"
+    }
+  ]
+}

@@ -6,9 +6,11 @@
  *
  * - A literal tab character in `w:t`, which a reader shows as a tab: the
  *   session's model spells a tab as `w:tab`, so the text is split around it.
- * - A story with no blocks (a header or a footer holding nothing): a story
- *   ends with a paragraph, the one a caret goes in, so the session gives it an
- *   empty one.
+ * - A story with no blocks (a header or a footer holding nothing), or one
+ *   that ends in a table: a story ends with a paragraph, the one a caret goes
+ *   in and the one a reader shows after a final table, so the session gives
+ *   it an empty one: the body, headers, footers and notes alike (a table
+ *   cell already reads the paragraph it implies).
  *
  * Both are the session's model only. Each normalized story keeps the blocks it
  * was read with, and a save of that story while it still holds what the
@@ -35,6 +37,8 @@ import { canonicalJson } from "../utils/canonicalJson";
 type NormalizedStory = {
   story: OpStory;
   source: readonly BlockContent[];
+  /** The ids of the paragraphs the session added, which no package names. */
+  minted: readonly string[];
 };
 
 /** A normalized story, with what it held when the session opened. */
@@ -119,6 +123,28 @@ const freshParaId = (used: Set<string>): string => {
   return panic("Every paragraph id is in use.");
 };
 
+/** The block a container ends with, as far as a story's closing paragraph goes. */
+type BlocksEnding = "paragraph" | "table" | "none";
+
+/**
+ * What `blocks` end with: their last paragraph or table, content controls and
+ * custom XML read through. A control or wrapper that holds neither is passed
+ * over like opaque markup and bookmark markers, so the block before it
+ * decides.
+ */
+const blocksEnding = (blocks: readonly BlockContent[]): BlocksEnding => {
+  for (let index = blocks.length - 1; index >= 0; index -= 1) {
+    const block = blocks[index];
+    if (block?.type === "paragraph") return "paragraph";
+    if (block?.type === "table") return "table";
+    if (block?.type === "blockSdt" || block?.type === "blockCustomXml") {
+      const ending = blocksEnding(block.content);
+      if (ending !== "none") return ending;
+    }
+  }
+  return "none";
+};
+
 const isSeparatorNote = (document: Document, story: OpStory): boolean => {
   if (story === OP_STORIES.MAIN) return false;
   if (story.kind !== "footnote" && story.kind !== "endnote") return false;
@@ -147,18 +173,20 @@ export const normalizeCanonicalSource = (
     const body = findStoryBody(current, story);
     if (body === undefined) continue;
     let content = withRunTabElements(body.content);
+    const minted: string[] = [];
     // A separator or continuation note is the application's own, not a story
     // a caret goes in; the session leaves it as read.
-    if (content.length === 0 && !isSeparatorNote(document, story)) {
-      const paragraph: Paragraph = {
-        type: "paragraph",
-        paraId: freshParaId(takenIds()),
-        content: [],
-      };
-      content = [paragraph];
+    if (
+      blocksEnding(content) !== "paragraph" &&
+      !isSeparatorNote(document, story)
+    ) {
+      const paraId = freshParaId(takenIds());
+      const paragraph: Paragraph = { type: "paragraph", paraId, content: [] };
+      minted.push(paraId);
+      content = [...content, paragraph];
     }
     if (content === body.content) continue;
-    normalized.push({ story, source: body.content });
+    normalized.push({ story, source: body.content, minted });
     current = replaceStoryBody({
       document: current,
       story,
