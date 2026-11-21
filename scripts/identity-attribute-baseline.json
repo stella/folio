@@ -4,7 +4,7 @@
   "packages/core/src/docx/fontTableParser.ts": 2,
   "packages/core/src/docx/groupDrawingParser.ts": 2,
   "packages/core/src/docx/headerFooterRefParser.ts": 1,
-  "packages/core/src/docx/hyperlinkParser.ts": 4,
+  "packages/core/src/docx/hyperlinkParser.ts": 1,
   "packages/core/src/docx/imageParser.ts": 2,
   "packages/core/src/docx/markupRangeMarker.ts": 2,
   "packages/core/src/docx/paragraphParser.ts": 1,
