@@ -6,6 +6,7 @@ import {
   propertyTestTimeout,
 } from "../../../../../test/property-testing";
 import type {
+  BlockContent,
   Document,
   HeaderFooter,
   Paragraph,
@@ -15,9 +16,25 @@ import { paragraphNumberingReference } from "../../model/paragraphNumbering";
 import { serializeDocumentToDocx } from "../../serialize/docx";
 import { ZipArchive } from "../../zip/archive";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
-import { captureSectionView, captureSectionViewState } from "../blocks";
+import {
+  captureSectionView,
+  captureSectionViewState,
+  rebuildSections,
+  replaceParagraphs,
+  sectionsInStep,
+} from "../blocks";
 import { contractViolation } from "../contract";
-import { DOCUMENT_OP_TYPES, SECTION_BOUNDARY_POLICIES } from "../types";
+import {
+  countKeys,
+  packageReservedKeyIndex,
+  reservedIdentityKeysIn,
+} from "../ids";
+import { changedListBounds, listKey, sourceSplice } from "../listSplice";
+import {
+  DOCUMENT_OP_TYPES,
+  OP_STORIES,
+  SECTION_BOUNDARY_POLICIES,
+} from "../types";
 import type { DocumentOp, SectionPropertiesState } from "../types";
 import { documentArbitrary } from "./documentArbitraries";
 
@@ -30,6 +47,206 @@ const paragraph: Paragraph = {
 };
 
 const base: Document = { package: { document: { content: [paragraph] } } };
+
+test("ordinary paragraph splices reuse the checked trailing section", () => {
+  let untouchedBoundaryReads = 0;
+  const untouched: Paragraph = {
+    ...paragraph,
+    get sectionProperties() {
+      untouchedBoundaryReads += 1;
+      return undefined;
+    },
+  };
+  const editable = { ...paragraph, paraId: "00000002" };
+  const content = [untouched, editable];
+  const properties = {};
+  const document = {
+    package: {
+      document: {
+        content,
+        finalSectionProperties: properties,
+        sections: [{ content, properties }],
+      },
+    },
+  } satisfies Document;
+  const splice = (current: Document, replacement: readonly Paragraph[]) => {
+    const result = replaceParagraphs({
+      document: current,
+      story: OP_STORIES.MAIN,
+      at: { list: [], index: 1 },
+      count: 1,
+      replacement,
+    });
+    if (result.isErr()) throw result.error;
+    return result.value;
+  };
+  const checked = splice(document, [editable]);
+  expect(untouchedBoundaryReads).toBeGreaterThan(0);
+  const section = checked.package.document.sections?.at(0);
+  if (!section) throw new Error("The splice must retain the trailing section");
+
+  untouchedBoundaryReads = 0;
+  expect(splice(checked, [editable]).package.document.sections?.at(0)).toBe(
+    section,
+  );
+  const edited = splice(checked, [
+    editable,
+    { ...paragraph, paraId: "00000003" },
+  ]).package.document;
+  expect(untouchedBoundaryReads).toBe(0);
+
+  const rebuilt = rebuildSections({
+    document: checked,
+    content: edited.content,
+    previous: [section],
+  });
+  if (rebuilt.isErr()) throw rebuilt.error;
+  expect(edited.sections).toStrictEqual(rebuilt.value);
+  expect(sectionsInStep(edited)).toBe(true);
+});
+
+test.each([16, 64])(
+  "reserved indexing does not read the unchanged trailing section prefix (%i)",
+  (length) => {
+    const content = Array.from({ length }, (_, index) => ({
+      ...paragraph,
+      paraId: (0x10000000 + index).toString(16),
+    }));
+    const properties = {};
+    const seed: Document = {
+      package: {
+        document: {
+          content,
+          finalSectionProperties: properties,
+          sections: [{ content: content.slice(), properties }],
+        },
+      },
+    };
+    const splice = (document: Document, replacement: Paragraph[]) => {
+      const result = replaceParagraphs({
+        document,
+        story: OP_STORIES.MAIN,
+        at: { list: [], index: document.package.document.content.length },
+        count: 0,
+        replacement,
+      });
+      if (result.isErr()) throw result.error;
+      return result.value;
+    };
+    let current = splice(seed, []);
+    const readCounts: number[] = [];
+    for (let step = 1; step <= 8; step += 1) {
+      const section = current.package.document.sections?.at(0);
+      if (section === undefined) throw new Error("Expected a section");
+      const reads = { count: 0 };
+      for (let index = 0; index < length; index += 1) {
+        const block = section.content.at(index);
+        if (block === undefined) throw new Error("Expected an unchanged block");
+        Object.defineProperty(section.content, index, {
+          configurable: true,
+          enumerable: true,
+          get: () => {
+            reads.count += 1;
+            return block;
+          },
+        });
+      }
+      packageReservedKeyIndex(current.package);
+      const next = splice(current, [
+        {
+          type: "paragraph",
+          paraId: (0x20000000 + step).toString(16),
+          content: [
+            {
+              type: "insertion",
+              info: { id: step, author: "Author" },
+              content: paragraph.content,
+              resolutionJoins: {
+                before: 0,
+                after: 0,
+                remove: 0,
+                retainedAfter: [
+                  {
+                    source: [{ space: "revision", id: 100 + step }],
+                    target: [],
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ]);
+      const body = next.package.document;
+      expect(body.sections?.at(0)?.content).not.toBe(body.content);
+      reads.count = 0;
+      const indexed = packageReservedKeyIndex(next.package);
+      const key = `revision:${100 + step}`;
+      expect(indexed.count(key)).toBe(2);
+      readCounts.push(reads.count);
+      expect(indexed.counts()).toEqual(
+        countKeys(reservedIdentityKeysIn(next.package)),
+      );
+      current = next;
+    }
+    expect(readCounts).toEqual(Array.from({ length: 8 }, () => 0));
+  },
+);
+
+test("nested paragraph splices retain the changed outer block and section bounds", () => {
+  const nested = { ...paragraph, paraId: "00000002" };
+  const trailing = { ...paragraph, paraId: "00000003" };
+  const blocks = [
+    paragraph,
+    { type: "blockSdt", properties: {}, content: [nested] },
+    trailing,
+  ] satisfies BlockContent[];
+  const properties = {};
+  const seed: Document = {
+    package: {
+      document: {
+        content: blocks,
+        finalSectionProperties: properties,
+        sections: [{ content: blocks.slice(), properties }],
+      },
+    },
+  };
+  const checked = replaceParagraphs({
+    document: seed,
+    story: OP_STORIES.MAIN,
+    at: { list: [], index: 0 },
+    count: 1,
+    replacement: [paragraph],
+  }).unwrap();
+  const previous = checked.package.document.sections?.at(0)?.content;
+  if (!previous) throw new Error("Expected a checked section");
+  const {
+    package: { document: body },
+  } = replaceParagraphs({
+    document: checked,
+    story: OP_STORIES.MAIN,
+    at: { list: [{ kind: "blockSdt", block: 1 }], index: 0 },
+    count: 1,
+    replacement: [nested, { ...paragraph, paraId: "00000004" }],
+  }).unwrap();
+  const current = body.sections?.at(0)?.content;
+  if (!current) throw new Error("Expected a changed section");
+  expect(current).not.toBe(body.content);
+  expect(current.at(0)).toBe(paragraph);
+  expect(current.at(1)).toBe(body.content.at(1));
+  expect(current.at(2)).toBe(trailing);
+  expect(sourceSplice(current)?.previous).toBe(listKey(previous));
+  expect(changedListBounds(previous, current)).toMatchObject({
+    start: 1,
+    previousEnd: 2,
+    end: 2,
+  });
+  expect(changedListBounds(current, previous)).toMatchObject({
+    start: 1,
+    previousEnd: 2,
+    end: 2,
+  });
+  expect(sectionsInStep(body)).toBe(true);
+});
 
 test("numbering instance creation and its inverse preserve absent numbering and exact ids", () => {
   fc.assert(

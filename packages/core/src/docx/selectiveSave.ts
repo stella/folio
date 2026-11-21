@@ -77,6 +77,7 @@ import {
 } from "./serializer/noteSerializer";
 import { serializeNumberingXml } from "./serializer/numberingSerializer";
 import { readRootNamespaceBindings } from "./serializer/partNamespaces";
+import { createReplayFragmentValidation } from "./storyBlockReplay";
 import { buildStructuralDocumentPatch } from "./structuralXmlPatch";
 
 /**
@@ -659,6 +660,10 @@ async function writeChangedParts({
       // when the source part is asked, and the save bails to a full repack on
       // every edit. What a changed id names is a body paragraph exactly when
       // the body serializes it.
+      const fragmentValidation =
+        structuralChange && options.bodyAuthority === "canonical"
+          ? createReplayFragmentValidation()
+          : undefined;
       const serializedDocument = serializeDocumentPart(
         doc,
         readRootNamespaceBindings(originalDocXml),
@@ -666,6 +671,8 @@ async function writeChangedParts({
           xml: originalDocXml,
           bodyAuthority: options.bodyAuthority,
           onDiagnostic: collectDiagnostic,
+          fragmentValidation,
+          structuralReplay: structuralChange ? "empty-source" : undefined,
         },
       );
       const serializedDocXml = serializedDocument.xml;
@@ -743,11 +750,14 @@ async function writeChangedParts({
       if (bodyChangedIds.size > 0 || structuralChange) {
         let patchedDocXml: string | null;
         if (structuralChange) {
-          const structural = buildStructuralDocumentPatch({
-            originalXml: originalDocXml,
-            serializedXml: serializedDocXml,
-            changedIds: bodyChangedIds,
-          });
+          const structural =
+            serializedDocument.structuralPatch ??
+            buildStructuralDocumentPatch({
+              originalXml: originalDocXml,
+              serializedXml: serializedDocXml,
+              changedIds: bodyChangedIds,
+              fragmentValidation,
+            });
           if (structural.type === "declined")
             return decline({
               scope: "part",

@@ -25,6 +25,7 @@ import { idKey, isParaId, packageParagraphIds, paragraphIdsIn } from "./ids";
 import { applyFormattingPatch } from "./patch";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { stampInfo } from "./review";
+import { replaceStoryBody } from "./stories";
 import {
   reachesPastRemovedCell,
   strandsABookmark,
@@ -38,6 +39,7 @@ import {
 import { applyTableOp } from "./tables";
 import {
   DOCUMENT_OP_TYPES,
+  type DocumentOpType,
   type RevisionStamp,
   type SetTableOp,
   type TableEditOp,
@@ -355,10 +357,11 @@ const commitTable = ({
     next[location.index] = table;
     return next;
   });
-  const next = {
-    ...document,
-    package: { ...document.package, document: withBodyContent(body, content) },
-  };
+  const next = replaceStoryBody({
+    document,
+    story: op.story,
+    body: withBodyContent(body, content),
+  });
   const valid = validateOpsDocument(next);
   if (valid.isErr())
     return refuse({
@@ -1174,6 +1177,28 @@ const split = ({
   return Result.ok({ ...table, rows });
 };
 
+/**
+ * The grid a column edit works on: one every row covers whole, with a width
+ * for each column. A table whose rows end early is read with the columns they
+ * imply, which no column edit decides for them.
+ */
+const statedGrid = (
+  table: Table,
+  op: { type: DocumentOpType },
+): Result<TableGrid, DocumentOpRefusal> =>
+  tableGrid(table, op.type).andThen((grid) =>
+    grid.stated
+      ? Result.ok(grid)
+      : Result.err(
+          new DocumentOpRefusal({
+            opType: op.type,
+            reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+            message:
+              "Column edits need every row to cover the table's column widths.",
+          }),
+        ),
+  );
+
 /** Count identities from the same topology/selection decisions the operation applies. */
 export const tableEditParagraphDemand = (
   location: TableRowLocation,
@@ -1181,7 +1206,7 @@ export const tableEditParagraphDemand = (
 ): Result<number, DocumentOpRefusal> => {
   if (isPropertyEdit(op)) return Result.ok(0);
   const table = location.table;
-  const grid = tableGrid(table, op.type);
+  const grid = statedGrid(table, op);
   if (grid.isErr()) return Result.err(grid.error);
   switch (op.type) {
     case DOCUMENT_OP_TYPES.INSERT_COLUMN:
@@ -1419,7 +1444,7 @@ export const applyTableEdit = (
       return commitTable({ document, op, location, table: next });
     });
   }
-  const grid = tableGrid(table, op.type);
+  const grid = statedGrid(table, op);
   if (grid.isErr()) return Result.err(grid.error);
   if (
     op.type === DOCUMENT_OP_TYPES.DELETE_COLUMN &&

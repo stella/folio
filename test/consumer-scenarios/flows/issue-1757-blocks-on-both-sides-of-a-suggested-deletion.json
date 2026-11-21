@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "title": "PINNED #1757, reported seed 1683636232: blocks put after one paragraph and before the next across a suggested whole-paragraph deletion share one gap, in batch order",
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "directNumbered",
+  "mode": "suggested",
+  "seed": 1683636232,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 2187589508,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "3CEFFC83"
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 3955214124,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "31617F9A",
+          "text": "Agreement schedule warranty payment buyer payment."
+        },
+        {
+          "type": "insertAfterBlock",
+          "blockId": "412DDC7F",
+          "text": "Agreement supplier payment clause party."
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from random flow seed 1683636232"
+}

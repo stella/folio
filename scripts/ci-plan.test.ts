@@ -69,6 +69,13 @@ const AREA_OUTPUT =
 const GATE =
   /^needs\.ci-plan\.outputs\.([a-z][a-z0-9_]*_required) == '(true|false)'(?: && needs\.ci-plan\.outputs\.suite_depth == 'full')?$/u;
 const PR_SCOPED_JOBS = new Set(["browser-discovery"]);
+// Jobs that read another job's results wait for it as well as the plan.
+const JOB_PREDECESSORS: Readonly<Record<string, readonly string[]>> = {
+  // Runs the consumer scenarios again under the oldest supported Node.
+  "consumer-scenarios-minimum": [PLAN_JOB, "consumer-scenarios"],
+  // Replays the generated failures the test shards reported.
+  "exploration-base-replay": [PLAN_JOB, "tests"],
+};
 const PROPERTY_AREAS_CONDITION =
   "github.event_name == 'pull_request' && github.event.pull_request.draft != true && ";
 
@@ -776,7 +783,7 @@ describe("CI plan", () => {
     if (!isRecord(exploration) || !isRecord(exploration["with"]))
       throw new Error(`Missing exploration upload for ${id}`);
     expect(exploration["if"]).toBe(
-      "always() && github.event_name == 'merge_group'",
+      "always() && (github.event_name == 'pull_request' || github.event_name == 'merge_group')",
     );
     expect(exploration["with"]["path"]).toBe("test-results/fuzz-exploration");
     const upload = uploads.find(
@@ -1553,12 +1560,7 @@ describe("CI plan", () => {
     const gated = new Set<string>();
     for (const [id, job] of Object.entries(jobs)) {
       if (UNPLANNED_JOBS.has(id)) continue;
-      expect([id, job.needs]).toEqual([
-        id,
-        id === "consumer-scenarios-minimum"
-          ? [PLAN_JOB, "consumer-scenarios"]
-          : PLAN_JOB,
-      ]);
+      expect([id, job.needs]).toEqual([id, JOB_PREDECESSORS[id] ?? PLAN_JOB]);
       const condition = job.if;
       if (PR_SCOPED_JOBS.has(id)) {
         expect(

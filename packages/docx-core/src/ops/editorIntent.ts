@@ -53,9 +53,9 @@ import {
 } from "./idLease";
 import {
   IDENTITY_SPACES,
+  type IdentitySpace,
   idKey,
   packageIdentityKeys,
-  packageParagraphIds,
   packageReservedIdentityKeys,
 } from "./ids";
 import { deleteBetween, gapAfterInserted } from "./inline";
@@ -125,10 +125,12 @@ import {
   type DocumentOp,
   EMPTY_PROPERTY_SETS,
   type InlineSlice,
+  type InsertBlocksOp,
   type InsertContentOp,
   type InsertRowOp,
   type JoinInlineOp,
   type NewIds,
+  OP_STORIES,
   type OpStory,
   type ParagraphPropsPatch,
   PROPERTY_REVIEW_POLICIES,
@@ -474,6 +476,12 @@ const intentEndpoints = (intent: EditorIntentAllocation) => {
 const PARAGRAPH_REVISION_DEMAND = 3;
 const leafRevisionDemand = (ancestorCount: number) => 4 * (1 + ancestorCount);
 
+type AllocationRange = {
+  body: ReturnType<typeof storyBody>;
+  fromKey: string;
+  toKey: string;
+};
+
 /**
  * Cache only immutable document versions; never retain a retired version
  * strongly. A new paragraph identity avoids `reservedBlockIds`, the ones
@@ -487,6 +495,25 @@ export const createEditorIntentIdAllocator = ({
     ReturnType<typeof storyBody>,
     ReturnType<typeof storyParagraphs>
   >();
+  const paragraphsBetween = ({ body, fromKey, toKey }: AllocationRange) => {
+    // An empty endpoint also matches a paragraph with no id in the story walk.
+    if (fromKey !== "" && fromKey === toKey) {
+      const location = findStoryParagraph(body, fromKey);
+      return location === undefined ? [] : [location];
+    }
+    let locations = storyLocations.get(body);
+    if (locations === undefined) {
+      locations = storyParagraphs(body);
+      storyLocations.set(body, locations);
+    }
+    const first = locations.findIndex(
+      ({ paragraph }) => idKey(paragraph.paraId ?? "") === fromKey,
+    );
+    const last = locations.findIndex(
+      ({ paragraph }) => idKey(paragraph.paraId ?? "") === toKey,
+    );
+    return first < 0 || last < first ? [] : locations.slice(first, last + 1);
+  };
   return (
     document: Document,
     intent: EditorIntentAllocation,
@@ -503,34 +530,28 @@ export const createEditorIntentIdAllocator = ({
     const { story, fromId, toId, fromOffset, toOffset } =
       intentEndpoints(intent);
     const body = storyBody(document, story);
-    let locations = storyLocations.get(body);
-    if (locations === undefined) {
-      locations = storyParagraphs(body);
-      storyLocations.set(body, locations);
-    }
-    const first = locations.findIndex(
-      ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(fromId),
-    );
-    const last = locations.findIndex(
-      ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(toId),
-    );
+    const fromKey = idKey(fromId);
+    const toKey = idKey(toId);
     // Every selected leaf may start a deletion segment; ancestors may be cut
-    // at both endpoints. Each paragraph adds join/mark/property stamps.
+    // at both endpoints. Table and whole-paragraph insertion demand is
+    // computed below from the table or inserted paragraphs.
     let demand = 1;
     const selected =
-      first < 0 || last < first ? [] : locations.slice(first, last + 1);
-    for (const { paragraph } of intent.type === "table" ? [] : selected) {
+      intent.type === "table" || intent.type === "insertParagraphs"
+        ? []
+        : paragraphsBetween({ body, fromKey, toKey });
+    for (const { paragraph } of selected) {
       demand += PARAGRAPH_REVISION_DEMAND;
       const blockId = idKey(paragraph.paraId ?? "");
       for (const span of leafSpans(paragraph.content)) {
         if (
-          blockId === idKey(fromId) &&
+          blockId === fromKey &&
           fromOffset !== undefined &&
           span.after.offset < fromOffset
         )
           continue;
         if (
-          blockId === idKey(toId) &&
+          blockId === toKey &&
           toOffset !== undefined &&
           span.before.offset > toOffset
         )
@@ -576,7 +597,7 @@ export const createEditorIntentIdAllocator = ({
       }
     }
     const fresh = (
-      occupied: { has: (id: number) => boolean },
+      occupied: typeof census.revisions,
       count: number,
       kind: IdLeaseKind,
     ) =>
@@ -584,6 +605,10 @@ export const createEditorIntentIdAllocator = ({
         lease,
         kind,
         count,
+        from:
+          lease === undefined && count > 0
+            ? occupied.occupiedPrefixEnd(ID_KIND_LIMITS[kind])
+            : 1,
         taken: (id) => occupied.has(id),
       });
     if (intent.type === "insertParagraphs") {
@@ -693,6 +718,10 @@ export const createEditorIntentIdAllocator = ({
       lease,
       kind: ID_LEASE_KINDS.PARAGRAPH,
       count: 1,
+      from:
+        lease === undefined
+          ? census.paragraphs.occupiedPrefixEnd(ID_KIND_LIMITS.paragraph)
+          : 1,
       taken: (id) => taken(formatParaId(id)),
     }).at(0);
     const newBlockId = formatParaId(paragraph ?? ID_KIND_LIMITS.paragraph);
@@ -776,6 +805,9 @@ const visibleOffsetAtPhysicalOffset = (
   return visible;
 };
 
+const joinsFollowingParagraph = (paragraph: Paragraph): boolean =>
+  paragraph.pPrMark?.kind === "del" || paragraph.pPrMark?.kind === "moveFrom";
+
 /** Deleted paragraph marks concatenate physical paragraphs in the editing view. */
 export const editorParagraphGroups = (
   document: Document,
@@ -806,11 +838,7 @@ export const editorParagraphGroups = (
     }
     previous = location;
     pending.push(paragraph);
-    if (
-      paragraph.pPrMark?.kind === "del" ||
-      paragraph.pPrMark?.kind === "moveFrom"
-    )
-      continue;
+    if (joinsFollowingParagraph(paragraph)) continue;
     groups.push({
       blockId: paragraph.paraId ?? "",
       paragraphs: pending,
@@ -964,33 +992,30 @@ const authoredFormatting = (
   from: TextPosition,
   to: TextPosition,
 ): TextFormatting | undefined => {
-  const paragraph = paragraphAt(document, from);
-  if (paragraph === undefined)
+  const body = storyBody(document, from.story);
+  const location = findStoryParagraph(body, from.blockId);
+  if (location === undefined)
     panic(
       "A validated input paragraph must exist when reading authored formatting.",
     );
+  const { paragraph } = location;
   const collapsed = from.blockId === to.blockId && from.offset === to.offset;
   if (!collapsed) return formattingAt(paragraph, from.offset);
   const left = visibleFormattingSpans(paragraph).some(
     ({ before }) => before.offset < from.offset,
   );
   if (left) return formattingAt(paragraph, from.offset - 1);
-  const group = editorParagraphGroups(document, from.story).find(
-    ({ paragraphs }) =>
-      paragraphs.some(
-        ({ paraId }) => idKey(paraId ?? "") === idKey(from.blockId),
-      ),
-  );
-  const index =
-    group?.paragraphs.findIndex(
-      ({ paraId }) => idKey(paraId ?? "") === idKey(from.blockId),
-    ) ?? 0;
-  const previous = group?.paragraphs
-    .slice(0, index)
-    .findLast((item) => paragraphVisibleText(item) !== "");
-  return previous === undefined
-    ? formattingAt(paragraph, from.offset)
-    : formattingAt(previous, paragraphLength(previous));
+  // A caret at the start can inherit from the preceding physical paragraphs
+  // only while their removed breaks join them into this logical paragraph.
+  const blocks = blockListAt(body.content, location.list);
+  for (let index = location.index - 1; index >= 0; index -= 1) {
+    const previous = blocks[index];
+    if (previous?.type !== "paragraph" || !joinsFollowingParagraph(previous))
+      break;
+    if (paragraphVisibleText(previous) !== "")
+      return formattingAt(previous, paragraphLength(previous));
+  }
+  return formattingAt(paragraph, from.offset);
 };
 
 type IntentRunFormattingOptions = {
@@ -1125,20 +1150,16 @@ const identifyClipboardParagraphs = ({
   DocumentOpRefusal
 > => {
   const copy = cloneModel([...paragraphs]);
-  const occupied = new Set(
-    packageIdentityKeys(document.package).concat(
-      packageReservedIdentityKeys(document.package),
-    ),
-  );
-  for (const id of mode.newIds?.revision ?? [])
-    occupied.add(`${IDENTITY_SPACES.REVISION}:${id}`);
-  for (const id of mode.newIds?.control ?? [])
-    occupied.add(`${IDENTITY_SPACES.CONTROL}:${id}`);
+  let occupancy: ReturnType<typeof packageIdOccupancy> | undefined;
+  const packageOccupancy = () =>
+    (occupancy ??= packageIdOccupancy(document.package));
+  const assignedIds = {
+    [IDENTITY_SPACES.REVISION]: new Set(mode.newIds?.revision),
+    [IDENTITY_SPACES.CONTROL]: new Set(mode.newIds?.control),
+  };
   if (mode.type === "suggesting")
-    occupied.add(`${IDENTITY_SPACES.REVISION}:${mode.revision.id}`);
-  const blockIds = new Set(packageParagraphIds(document.package).map(idKey));
-  const markers = new Set<number>();
-  const names = new Set<string>();
+    assignedIds[IDENTITY_SPACES.REVISION].add(mode.revision.id);
+  const blockIds = new Set<string>();
   const renamedBookmarks = new Map<string, string>();
   const visit = (value: unknown, callback: (value: object) => void): void => {
     if (typeof value !== "object" || value === null) return;
@@ -1149,21 +1170,29 @@ const identifyClipboardParagraphs = ({
     callback(value);
     for (const field of Object.values(value)) visit(field, callback);
   };
-  visit(document.package, (value) => {
-    if (
-      "type" in value &&
-      "id" in value &&
-      typeof value.id === "number" &&
-      isCopiedRangeMarker(value)
-    )
-      markers.add(value.id);
-    if (
-      isCopiedRangeStart(value) &&
-      "name" in value &&
-      typeof value.name === "string"
-    )
-      names.add(value.name);
-  });
+  let destinationMarkers: { ids: Set<number>; names: Set<string> } | undefined;
+  const markersInDestination = () => {
+    if (destinationMarkers !== undefined) return destinationMarkers;
+    const ids = new Set<number>();
+    const names = new Set<string>();
+    visit(document.package, (value) => {
+      if (
+        "type" in value &&
+        "id" in value &&
+        typeof value.id === "number" &&
+        isCopiedRangeMarker(value)
+      )
+        ids.add(value.id);
+      if (
+        isCopiedRangeStart(value) &&
+        "name" in value &&
+        typeof value.name === "string"
+      )
+        names.add(value.name);
+    });
+    destinationMarkers = { ids, names };
+    return destinationMarkers;
+  };
   visit(copy, (value) => {
     if (
       !isCopiedRangeStart(value) ||
@@ -1177,6 +1206,7 @@ const identifyClipboardParagraphs = ({
       value.name = renamed;
       return;
     }
+    const { names } = markersInDestination();
     let name = original;
     let suffix = 1;
     while (names.has(name)) {
@@ -1196,7 +1226,10 @@ const identifyClipboardParagraphs = ({
       kind: ID_LEASE_KINDS.PARAGRAPH,
       count: 1,
       from: nextBlock,
-      taken: (candidate) => blockIds.has(formatParaId(candidate)),
+      taken: (candidate) => {
+        const key = formatParaId(candidate);
+        return blockIds.has(key) || packageOccupancy().paragraphs.has(key);
+      },
     }).at(0);
     if (fresh === undefined) return undefined;
     const id = formatParaId(fresh);
@@ -1206,10 +1239,19 @@ const identifyClipboardParagraphs = ({
   };
   // A leased author mints revision and content-control ids from its lease.
   let leaseExhausted = false;
-  const freshId = (space: string, oldId: number) => {
+  const freshId = (space: IdentitySpace | "bookmark", oldId: number) => {
     const key = `${space}:${oldId}`;
     const existing = remapped.get(key);
     if (existing !== undefined) return existing;
+    const assigned =
+      space === "bookmark" ? markersInDestination().ids : assignedIds[space];
+    const taken = (candidate: number) =>
+      assigned.has(candidate) ||
+      (space !== "bookmark" &&
+        (space === IDENTITY_SPACES.REVISION
+          ? packageOccupancy().revisions
+          : packageOccupancy().controls
+        ).has(candidate));
     let id = nextInSpace.get(space) ?? 1;
     if (
       mode.idLease !== undefined &&
@@ -1223,17 +1265,13 @@ const identifyClipboardParagraphs = ({
             : ID_LEASE_KINDS.CONTROL,
         count: 1,
         from: id,
-        taken: (candidate) => occupied.has(`${space}:${candidate}`),
+        taken,
       }).at(0);
       if (leased === undefined) leaseExhausted = true;
       id = leased ?? MAX_REVISION_ID + 1;
     }
-    while (
-      space === "bookmark" ? markers.has(id) : occupied.has(`${space}:${id}`)
-    )
-      id += 1;
-    if (space === "bookmark") markers.add(id);
-    else occupied.add(`${space}:${id}`);
+    while (taken(id)) id += 1;
+    assigned.add(id);
     remapped.set(key, id);
     nextInSpace.set(space, id + 1);
     return id;
@@ -1571,6 +1609,132 @@ export const compileEditorIntent = (
       inverse: applied.inverse.map(namingPackageStories),
     };
   return Result.ok(named);
+};
+
+type InsertParagraphsIntent = Extract<
+  EditorIntent,
+  { type: "insertParagraphs" }
+>;
+
+type BuildParagraphInsertionOptions = {
+  intent: InsertParagraphsIntent;
+  ids: readonly string[];
+  tracked: Pick<InsertBlocksOp, "revision" | "newIds">;
+  mode: EditorIntentMode["type"];
+};
+const buildParagraphInsertion = ({
+  intent,
+  ids,
+  tracked,
+  mode,
+}: BuildParagraphInsertionOptions): Result<
+  { op: InsertBlocksOp; selection: TextPosition },
+  DocumentOpRefusal
+> => {
+  const blocks = intent.paragraphs.map((paragraph, index) => ({
+    ...paragraph,
+    paraId: ids[index] ?? panic("A fresh paragraph id is missing."),
+  }));
+  const first = blocks.at(0);
+  if (first === undefined)
+    return Result.err(
+      new DocumentOpRefusal({
+        reason: DOCUMENT_OP_REFUSAL_REASONS.EMPTY_BLOCK_LIST,
+        message: "No paragraphs to insert.",
+        opType: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+      }),
+    );
+  return Result.ok({
+    op: {
+      type: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+      story: intent.story,
+      at: intent.at,
+      blocks,
+      ...tracked,
+      ...(mode === "suggesting" && intent.move === true
+        ? { move: true as const }
+        : {}),
+    },
+    selection: { story: intent.story, blockId: first.paraId, offset: 0 },
+  });
+};
+
+type TrackedBatchOptions = {
+  document: Document;
+  count: number;
+  reservedBlockIds?: ReadonlySet<string>;
+};
+type TrackedMemberOptions = {
+  index: number;
+  intent: InsertParagraphsIntent;
+  mode: EditorIntentMode;
+};
+type TrackedInsertionCompilation =
+  { type: "unsupported" } | { type: "operation"; op: InsertBlocksOp };
+type TrackedInsertionCompiler =
+  | { type: "unsupported" }
+  | {
+      type: "ready";
+      compile: (
+        options: TrackedMemberOptions,
+      ) => Result<TrackedInsertionCompilation, DocumentOpRefusal>;
+    };
+
+/**
+ * Reserve the selection of fresh paragraph IDs for a private monotone run.
+ * The caller uses each index once, in order, and discards the whole run if
+ * any step fails or changes the original class of operations.
+ */
+export const beginTrackedInsertionCompilation = ({
+  document,
+  count,
+  reservedBlockIds,
+}: TrackedBatchOptions): TrackedInsertionCompiler => {
+  if (
+    !Number.isSafeInteger(count) ||
+    count <= 0 ||
+    count >= ID_KIND_LIMITS.paragraph
+  )
+    return { type: "unsupported" };
+  const ids = takeParagraphIds({
+    document,
+    count,
+    reserved: reservedBlockIds,
+    lease: undefined,
+  });
+  if (ids === undefined) return { type: "unsupported" };
+  const newParagraphIds = new Set(ids);
+  let nextIndex = 0;
+  return {
+    type: "ready",
+    compile: ({ index, intent, mode }) => {
+      const id = ids[nextIndex];
+      if (
+        index !== nextIndex ||
+        id === undefined ||
+        intent.story !== OP_STORIES.MAIN ||
+        (intent.at.type !== "before" && intent.at.type !== "after") ||
+        (!newParagraphIds.has(idKey(intent.at.blockId)) &&
+          textBoxOfIntent(document, intent) !== undefined) ||
+        intent.paragraphs.length !== 1 ||
+        intent.move === true ||
+        intent.newList !== undefined ||
+        mode.type !== "suggesting" ||
+        mode.idLease !== undefined ||
+        mode.reservedBlockIds !== reservedBlockIds
+      )
+        return Result.ok({ type: "unsupported" });
+      return buildParagraphInsertion({
+        intent,
+        ids: [id],
+        tracked: { revision: mode.revision, newIds: mode.newIds },
+        mode: mode.type,
+      }).map(({ op }) => {
+        nextIndex += 1;
+        return { type: "operation" as const, op };
+      });
+    },
+  };
 };
 
 const compileInStory = (
@@ -2551,35 +2715,15 @@ const compileInStory = (
         opType: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
       });
       if (fresh.isErr()) return Result.err(fresh.error);
-      const blocks = intent.paragraphs.map((paragraph, index) => ({
-        ...paragraph,
-        paraId: fresh.value[index] ?? panic("A fresh paragraph id is missing."),
+      return buildParagraphInsertion({
+        intent,
+        ids: fresh.value,
+        tracked,
+        mode: mode.type,
+      }).map(({ op, selection: caret }) => ({
+        ops: [...newListOps(intent.newList), op],
+        selection: caret,
       }));
-      const first = blocks[0];
-      if (first === undefined)
-        return Result.err(
-          new DocumentOpRefusal({
-            reason: DOCUMENT_OP_REFUSAL_REASONS.EMPTY_BLOCK_LIST,
-            message: "No paragraphs to insert.",
-            opType: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
-          }),
-        );
-      return Result.ok({
-        ops: [
-          ...newListOps(intent.newList),
-          {
-            type: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
-            story: intent.story,
-            at: intent.at,
-            blocks,
-            ...tracked,
-            ...(mode.type === "suggesting" && intent.move === true
-              ? { move: true as const }
-              : {}),
-          },
-        ],
-        selection: { story: intent.story, blockId: first.paraId, offset: 0 },
-      });
     }
     case "tableBlock": {
       if (intent.operation.type === DOCUMENT_OP_TYPES.INSERT_TABLE) {

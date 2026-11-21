@@ -23,6 +23,10 @@ export {
 } from "./paragraphCopies";
 export { captureStoryParts, sectionPropertiesAt } from "./storyLifecycle";
 export { documentStories, replaceStoryBody } from "./stories";
+export {
+  locateParagraphThroughTextBoxes,
+  paragraphsThroughTextBoxes,
+} from "./textBoxRouting";
 
 // Callers name package stories; a text box's story is internal to applying
 // an operation (`textBoxRouting.ts`).
@@ -42,6 +46,7 @@ export const sameStory: (left: OpStory, right: OpStory) => boolean =
  */
 
 export { storyParagraphs, withBodyContent } from "./blocks";
+export { locateParagraphInBlockList } from "./paragraphLocator";
 export { blockControlHolding } from "./contentControls";
 export { paragraphMarkOutcome } from "./blockDeletion";
 export {
@@ -69,6 +74,12 @@ export { packageResourcesOpOf } from "./packageResources";
 export { combineEdits } from "./edits";
 export { reviewFieldsOf } from "./review";
 export {
+  resolveSectionChange,
+  resolveSectionChanges,
+  sectionRejectProperties,
+  sectionResolutionPatch,
+} from "./sectionReview";
+export {
   paragraphPropertySnapshotToken,
   registerParagraphPropertySnapshot,
 } from "./paragraphPropertySnapshot";
@@ -86,6 +97,7 @@ export {
   mergeRunContent,
 } from "./runMerge";
 export {
+  beginTrackedInsertionCompilation,
   compileEditorIntent,
   createEditorIntentIdAllocator,
   paragraphVisibleText,
@@ -164,6 +176,7 @@ export {
   ID_LEASE_KINDS,
   idLeaseHolds,
   idLeaseRemaining,
+  introducedDocumentIds,
   introducedIds,
   leasedIdCensus,
   trimIdLease,

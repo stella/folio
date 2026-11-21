@@ -6,6 +6,7 @@ import type {
   TableCell,
   TableRow,
 } from "../model/document";
+import { listKey, sourceSplice } from "./listSplice";
 
 const DocumentOpsContractErrorBase: TaggedErrorClass<"DocumentOpsContractError"> =
   TaggedError("DocumentOpsContractError");
@@ -70,17 +71,22 @@ const holdsEmptyRecord = (nodes: readonly InlineNode[]): boolean =>
   );
 
 // Operation documents and their block lists are immutable once validated.
-const MULTIPLE_PROPERTY_CHANGES = new WeakMap<
-  readonly BlockContent[],
-  boolean
->();
+const MULTIPLE_PROPERTY_CHANGES = new WeakMap<object, boolean>();
 
 const blocksHaveMultiplePropertyChanges = (
   blocks: readonly BlockContent[],
 ): boolean => {
-  const cached = MULTIPLE_PROPERTY_CHANGES.get(blocks);
+  const key = listKey(blocks);
+  const cached = MULTIPLE_PROPERTY_CHANGES.get(key);
   if (cached !== undefined) return cached;
-  const found = blocks.some((block) => {
+  const splice = sourceSplice(blocks);
+  // A previously clean list can only acquire a violation in the replacement.
+  const candidates =
+    splice !== undefined &&
+    MULTIPLE_PROPERTY_CHANGES.get(splice.previous) === false
+      ? blocks.slice(splice.start, splice.end)
+      : blocks;
+  const found = candidates.some((block) => {
     switch (block.type) {
       case "paragraph":
         return (block.propertyChanges?.length ?? 0) > 1;
@@ -109,7 +115,7 @@ const blocksHaveMultiplePropertyChanges = (
       }
     }
   });
-  MULTIPLE_PROPERTY_CHANGES.set(blocks, found);
+  MULTIPLE_PROPERTY_CHANGES.set(key, found);
   return found;
 };
 

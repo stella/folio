@@ -68,6 +68,7 @@ import {
   parseStreamingXmlWithSourceRanges,
   repairMissingDrawingNamespace,
   scanStreamingXmlElements,
+  undeclaredXmlEntityError,
 } from "@stll/docx-core/xml";
 import { resolveNamespaceUri } from "@stll/docx-core/xml/namespaces";
 import { ZipArchive } from "@stll/docx-core/zip";
@@ -296,8 +297,17 @@ const scanPartSpelling = (xml: string, partPath: string): PartSpelling => {
         paragraphs.push({ nameEnd, inFallback, paraId, textId });
     },
   );
-  if (scanned.status === "unsupported" || root === undefined)
-    throw createEnsureParaIdsError(`Malformed XML in ${partPath}`);
+  if (scanned.status === "unsupported" || root === undefined) {
+    // An undeclared entity is named with its place, as every open path names it.
+    const undeclared =
+      scanned.status === "unsupported" &&
+      scanned.refusal.type === "undeclaredEntity"
+        ? undeclaredXmlEntityError(partPath, xml)
+        : null;
+    throw undeclared === null
+      ? createEnsureParaIdsError(`Malformed XML in ${partPath}`)
+      : createEnsureParaIdsError(undeclared.message, undeclared);
+  }
   const rootElement = root;
   const prefixFor = (uri: string, preferred: string): string => {
     for (const [prefix, boundUri] of rootElement.namespaceScope?.bindings ??

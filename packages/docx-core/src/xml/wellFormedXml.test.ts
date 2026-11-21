@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 
 import { readXml, wellFormedXmlIssue } from "./streamingXmlParser";
 import { FOLIO_XML_RESOURCE_LIMITS } from "./xmlResourceLimits";
@@ -53,4 +53,30 @@ describe("the nesting limit", () => {
       ).toBe("rejected");
     }
   });
+});
+
+test("quoted attribute width does not add JavaScript character probes", () => {
+  const read = (width: number) => {
+    const left = 'text>"'.repeat(width);
+    const right = "text>'".repeat(width);
+    const xml = `<p left='${left}' right="${right}"><t/></p>`;
+    const probes = spyOn(String.prototype, "charCodeAt");
+    try {
+      const parsed = readXml(xml, { conformance: "ooxml" });
+      const work = probes.mock.calls.length;
+      expect(parsed.status).toBe("parsed");
+      if (parsed.status === "parsed") {
+        const root = parsed.value.elements?.at(0);
+        expect(root?.attributes).toEqual({ left, right });
+        expect(root?.elements?.at(0)?.name).toBe("t");
+      }
+      return work;
+    } finally {
+      probes.mockRestore();
+    }
+  };
+  expect(read(1024)).toBe(read(1));
+  for (const xml of ['<p a="unclosed>text</p>', "<p a='unclosed>text</p>"]) {
+    expect(readXml(xml, { conformance: "ooxml" }).status).toBe("rejected");
+  }
 });

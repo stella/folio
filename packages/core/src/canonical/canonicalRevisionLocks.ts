@@ -8,7 +8,7 @@ import {
 } from "@stll/docx-core/ops";
 
 import type { Document } from "../types/document";
-import { lockViolationBetween } from "./canonicalLockGuard";
+import { hasLockedControls, lockViolationBetween } from "./canonicalLockGuard";
 
 type CanonicalRevisionLocksOptions = {
   document: Document;
@@ -25,6 +25,8 @@ export const canonicalRevisionLocks = ({
 }: CanonicalRevisionLocksOptions) => {
   const held: { ids: readonly number[]; violation: LockedControlViolation }[] =
     [];
+  if (groups.length === 0 || !hasLockedControls(document))
+    return { held, unlocked: groups.slice() };
   const unlocked: (readonly number[])[] = [];
   for (const ids of groups) {
     const alone = applyDocumentOps(document, [

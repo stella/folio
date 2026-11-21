@@ -328,28 +328,11 @@ const viewLaws = async (
 
 // These malformed corpus documents fail session construction. Every other
 // corpus document and every generated supported document must actually read.
-const IMPORT_REFUSALS = new Map([
-  [
-    "sdt-self-closing.docx",
-    {
-      reason: "refused",
-      ground: { gap: CANONICAL_GAP.storyContentProjection },
-      message: "The projection changed paragraph structure.",
-    },
-  ],
-]);
-
 describe("a canonical reviewer's resolved views", () => {
   test.each(FIXTURE_FILES)(
     "%s reads its resolved views as the review rules resolve it",
     async (filename) => {
-      const buffer = await ingested(readFixture(filename));
-      const refused = IMPORT_REFUSALS.get(filename);
-      if (refused !== undefined) {
-        await expect(open(buffer, "canonical")).rejects.toMatchObject(refused);
-        return;
-      }
-      await viewLaws(buffer);
+      await viewLaws(await ingested(readFixture(filename)));
     },
     propertyTestTimeout(30_000),
   );

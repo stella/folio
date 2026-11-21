@@ -1,3 +1,5 @@
+import { spliceItems } from "./listSplice";
+
 const SectionViewErrorBase: TaggedErrorClass<"SectionViewError"> =
   TaggedError("SectionViewError");
 
@@ -31,6 +33,7 @@ import { structurallyEqual } from "./equality";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "./refusal";
 import { replaceStoryBody, type StoryAddress, storyBody } from "./stories";
 import {
+  OP_STORIES,
   type SectionMapState,
   type SectionViewEntry,
   type SectionViewState,
@@ -655,6 +658,14 @@ type ReplaceParagraphsOptions = {
   restoreSections?: readonly SectionViewEntry[];
 };
 
+/** Immutable bodies with one checked trailing section and canonical block identities. */
+const checkedTrailingSections = new WeakSet<DocumentBody>();
+
+/** A top-level main splice with no inserted section break needs no section repair. */
+export const canSpliceMainBodyWithoutSectionRepair = (
+  body: DocumentBody,
+): boolean => body.sections === undefined || checkedTrailingSections.has(body);
+
 /** The document with `count` paragraphs from `at` replaced. */
 export const replaceParagraphs = ({
   document,
@@ -665,12 +676,62 @@ export const replaceParagraphs = ({
   restoreSections,
 }: ReplaceParagraphsOptions): Result<Document, SectionViewError> => {
   const body = storyBody(document, story);
-  const content = updateBlockList(body.content, at.list, (blocks) => {
-    const out = [...blocks];
-    out.splice(at.index, count, ...replacement);
-    return out;
-  });
+  const content = updateBlockList(body.content, at.list, (blocks) =>
+    spliceItems({ items: blocks, start: at.index, count, replacement }),
+  );
   const nextBody: DocumentBody = { ...body, content };
+  const onlySection =
+    body.sections?.length === 1 ? body.sections.at(0) : undefined;
+  if (
+    story === OP_STORIES.MAIN &&
+    restoreSections === undefined &&
+    checkedTrailingSections.has(body) &&
+    onlySection !== undefined &&
+    (at.list.length > 0 || !replacement.some(breaksSection))
+  ) {
+    // The checked body has no top-level section break. A nested splice keeps
+    // the containing block's kind, and a top-level splice inserts no breaks,
+    // so the new blocks still form exactly one trailing section.
+    const sameBlocks =
+      at.list.length === 0 &&
+      count === replacement.length &&
+      replacement.every(
+        (paragraph, offset) => paragraph === body.content[at.index + offset],
+      );
+    if (sameBlocks) {
+      nextBody.sections = [onlySection];
+    } else {
+      const outer = at.list.at(0);
+      // The checked section has the same blocks as the body, in its own
+      // array. Record the same splice so indexes can skip the shared blocks.
+      const sectionContent =
+        outer === undefined
+          ? spliceItems({
+              items: onlySection.content,
+              start: at.index,
+              count,
+              replacement,
+            })
+          : spliceItems({
+              items: onlySection.content,
+              start: outer.block,
+              count: 1,
+              replacement: [
+                content[outer.block] ??
+                  panic("A nested splice retains its top-level block."),
+              ],
+            });
+      nextBody.sections = [
+        {
+          ...onlySection,
+          properties: body.finalSectionProperties ?? onlySection.properties,
+          content: sectionContent,
+        },
+      ];
+    }
+    checkedTrailingSections.add(nextBody);
+    return Result.ok(replaceStoryBody({ document, story, body: nextBody }));
+  }
   if (restoreSections !== undefined) {
     const restored = restoreSectionView(content, restoreSections);
     if (restored.isErr()) return restored;
@@ -688,5 +749,12 @@ export const replaceParagraphs = ({
     return sectionFailure(
       "The restored section metadata conflicts with its canonical boundaries.",
     );
+  const last = content.at(-1);
+  if (
+    story === OP_STORIES.MAIN &&
+    nextBody.sections?.length === 1 &&
+    (last === undefined || !breaksSection(last))
+  )
+    checkedTrailingSections.add(nextBody);
   return Result.ok(replaceStoryBody({ document, story, body: nextBody }));
 };

@@ -1,10 +1,17 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 
-import { parseStreamingXmlWithSourceRanges } from "@stll/docx-core/xml";
+import * as docx from "@stll/docx-core";
+import * as xml from "@stll/docx-core/xml";
+import * as xmlLimits from "@stll/docx-core/xml/limits";
 
 import type { BlockContent } from "../types/document";
 import { parseHeader } from "./headerFooterParser";
-import { buildStoryBlockReplay } from "./storyBlockReplay";
+import {
+  buildStoryBlockReplay,
+  createReplayFragmentValidation,
+  materializeReplayFragment,
+} from "./storyBlockReplay";
+import * as capture from "./verbatimCapture";
 import { getChildElements, getNamespaceUri } from "./xmlParser";
 
 const WORD = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
@@ -34,6 +41,39 @@ const sourceParagraph = (text: string) =>
   `<q:p><q:r><q:t>${text}</q:t></q:r></q:p>`;
 const emittedParagraph = (text: string) =>
   `<w:p><w:r><w:t>${text}</w:t></w:r></w:p>`;
+
+test("materializing a Strict fragment needs neither a full token list nor source ranges", () => {
+  const fragment = '<w:p example="a > b"><w:r><w:t>changed</w:t></w:r></w:p>';
+  const parsed = xml.parseStreamingXmlWithSourceRanges(emitted(fragment));
+  if (parsed.status !== "parsed") throw new Error("Expected a generated story");
+  const root = getChildElements(parsed.value).at(0);
+  const element = getChildElements(root).at(0);
+  if (!element) throw new Error("Expected a generated paragraph");
+
+  const matchAll = String.prototype.matchAll;
+  let fragmentTokenScans = 0;
+  const tokens = spyOn(String.prototype, "matchAll").mockImplementation(
+    function (this: string, ...args: Parameters<typeof matchAll>) {
+      if (String(this) === fragment) fragmentTokenScans += 1;
+      return matchAll.apply(this, args);
+    },
+  );
+  const readsWithRanges = spyOn(xml, "parseStreamingXmlWithSourceRanges");
+  try {
+    const materialized = materializeReplayFragment({
+      xml: fragment,
+      element,
+      sourceNamespace: STRICT_WORD,
+    });
+    expect(materialized).toContain(`xmlns:w="${STRICT_WORD}"`);
+    expect(materialized).toContain("<w:t>changed</w:t>");
+    expect(fragmentTokenScans).toBe(0);
+    expect(readsWithRanges).toHaveBeenCalledTimes(0);
+  } finally {
+    readsWithRanges.mockRestore();
+    tokens.mockRestore();
+  }
+});
 
 test("moves paragraphs with identical text by stable identity without reusing a source range", () => {
   const first = block("11111111", "same");
@@ -147,7 +187,7 @@ test("changed fragments bind generated aliases locally and map namespace declara
       `<q:hdr xmlns:q='${STRICT_WORD}' xmlns:w="urn:foreign">`,
     ),
   ).toBe(true);
-  const parsed = parseStreamingXmlWithSourceRanges(output ?? "");
+  const parsed = xml.parseStreamingXmlWithSourceRanges(output ?? "");
   expect(parsed.status).toBe("parsed");
   if (parsed.status !== "parsed") return;
   const root = getChildElements(parsed.value).at(0);
@@ -357,4 +397,244 @@ test("multiple compatibility aliases merge inherited and local Ignorable tokens"
   });
   expect(output).toContain(`y:Ignorable="a b"`);
   expect(output).toContain(`xmlns:a="urn:a"`);
+});
+
+const COMPAT = "http://schemas.openxmlformats.org/markup-compatibility/2006";
+const escapedNamespace = "urn:attributes?a=1&amp;b=2";
+
+test("materialize replay escapes a shared sibling suffix once and validates every distinct fragment", () => {
+  const fragments = Array.from(
+    { length: 64 },
+    (_, index) =>
+      `<w:p data="${index} > 0"><w:r><w:t>${index}</w:t></w:r></w:p>`,
+  );
+  const parsed = xml.parseStreamingXmlWithSourceRanges(
+    `<w:hdr xmlns:w="${WORD}" xmlns:mc="${COMPAT}" xmlns:x="${escapedNamespace}" mc:Ignorable="x x">${fragments.join("")}</w:hdr>`,
+  );
+  if (parsed.status !== "parsed")
+    throw new Error("Expected generated siblings");
+  const root = getChildElements(parsed.value).at(0);
+  if (root === undefined) throw new Error("Expected generated root");
+  const children = getChildElements(root);
+  expect(children).toHaveLength(fragments.length);
+  expect(new Set(children.map((child) => child.namespaceScope)).size).toBe(1);
+  const validation = createReplayFragmentValidation();
+  const escapes = spyOn(docx, "escapeXmlAttribute");
+  const checks = spyOn(capture, "isSafeCapturedXmlDocument");
+  try {
+    for (const [index, fragment] of fragments.entries()) {
+      const element = children[index];
+      if (!element) throw new Error("Expected matching generated child");
+      const result = materializeReplayFragment({
+        xml: fragment,
+        element,
+        sourceNamespace: WORD,
+        generatedRoot: root,
+        validation,
+      });
+      const suffix = ` mc:Ignorable="x" xmlns:w="${WORD}" xmlns:mc="${COMPAT}" xmlns:x="${escapedNamespace}"`;
+      expect(result).toBe(fragment.replace(' > 0">', ` > 0"${suffix}>`));
+    }
+    expect(escapes).toHaveBeenCalledTimes(4);
+    expect(checks).toHaveBeenCalledTimes(fragments.length);
+    const element = children.at(0);
+    if (!element) throw new Error("Expected generated child");
+    expect(
+      materializeReplayFragment({
+        xml: "<w:p><w:r></w:p>",
+        element,
+        sourceNamespace: WORD,
+        generatedRoot: root,
+        validation,
+      }),
+    ).toBeNull();
+    expect(escapes).toHaveBeenCalledTimes(4);
+    expect(checks).toHaveBeenCalledTimes(fragments.length + 1);
+  } finally {
+    checks.mockRestore();
+    escapes.mockRestore();
+  }
+});
+
+test.each([WORD, STRICT_WORD])(
+  "replay suffix preserves local scopes, exact lexical compatibility, and root changes (%s)",
+  (sourceNamespace) => {
+    const fragments = [
+      "<w:p/>",
+      '<w:p xmlns:x="urn:shadow" mc:Ignorable="x y"/>',
+      '<w:p mc:Ignorable="y"/>',
+      "<w:p data='tail'/>",
+    ];
+    const parse = (ignorable: string) => {
+      const parsed = xml.parseStreamingXmlWithSourceRanges(
+        `<w:hdr xmlns:w="${WORD}" xmlns:alt="${COMPAT}" xmlns:mc="${COMPAT}" xmlns:x="${escapedNamespace}" xmlns:y="urn:y" alt:Ignorable="${ignorable}">${fragments.join("")}</w:hdr>`,
+      );
+      if (parsed.status !== "parsed")
+        throw new Error("Expected generated story");
+      const root = getChildElements(parsed.value).at(0);
+      if (root === undefined) throw new Error("Expected generated root");
+      return root;
+    };
+    const firstRoot = parse("x x");
+    const secondRoot = parse("y");
+    const validation = createReplayFragmentValidation();
+    const children = getChildElements(firstRoot);
+    const entries = fragments.map((raw, index) => ({
+      raw,
+      index,
+      root: firstRoot,
+    }));
+    // Separate raw bytes still take the original lexical rewrite, even when
+    // the element supplied by the caller has no own Ignorable attribute.
+    entries.push({
+      raw: "<w:p alt:Ignorable='old'/>",
+      index: 0,
+      root: firstRoot,
+    });
+    entries.push({ raw: fragments[0] ?? "", index: 0, root: secondRoot });
+    entries.push({ raw: fragments[0] ?? "", index: 0, root: firstRoot });
+    const escapes = spyOn(docx, "escapeXmlAttribute");
+    try {
+      const expectedEscapeCounts = [6, 5, 6, 0, 0, 6, 6];
+      for (const [caseIndex, { raw, index, root }] of entries.entries()) {
+        const element = children[index];
+        if (!element) throw new Error("Expected generated child");
+        const options = {
+          xml: raw,
+          element,
+          sourceNamespace,
+          generatedRoot: root,
+        };
+        const expected = materializeReplayFragment(options);
+        const before = escapes.mock.calls.length;
+        expect(materializeReplayFragment({ ...options, validation })).toBe(
+          expected,
+        );
+        if (!raw.includes("old")) expect(expected).not.toBeNull();
+        if (sourceNamespace === WORD)
+          expect(escapes.mock.calls.length - before).toBe(
+            expectedEscapeCounts[caseIndex],
+          );
+      }
+    } finally {
+      escapes.mockRestore();
+    }
+  },
+);
+
+test("compact replay reads shared namespace markup once and still checks raw siblings", () => {
+  const fragments = Array.from(
+    { length: 64 },
+    (_, index) => `<w:p z="${index}"><w:r><w:t>${index}</w:t></w:r></w:p>`,
+  );
+  const parsed = xml.parseStreamingXmlWithSourceRanges(
+    `<w:hdr xmlns:w="${WORD}" xmlns:mc="${COMPAT}" xmlns:x="urn:example" mc:Ignorable="x">${fragments.join("")}</w:hdr>`,
+  );
+  if (parsed.status !== "parsed")
+    throw new Error("Expected generated siblings");
+  const generatedRoot = getChildElements(parsed.value).at(0);
+  if (!generatedRoot) throw new Error("Expected story root");
+  const children = getChildElements(generatedRoot);
+  const validation = createReplayFragmentValidation();
+  const compact = spyOn(capture, "isSafeCompactReplayFragment");
+  const full = spyOn(capture, "isSafeCapturedXmlDocument");
+  const reader = spyOn(xml, "readXml");
+  try {
+    for (const [index, fragment] of fragments.entries()) {
+      const element = children[index];
+      if (!element) throw new Error("Expected generated child");
+      expect(
+        materializeReplayFragment({
+          xml: fragment,
+          element,
+          sourceNamespace: WORD,
+          generatedRoot,
+          validation,
+        }),
+      ).toBe(
+        fragment.replace(
+          ` z="${index}">`,
+          ` z="${index}" mc:Ignorable="x" xmlns:w="${WORD}" xmlns:mc="${COMPAT}" xmlns:x="urn:example">`,
+        ),
+      );
+    }
+    expect(compact).toHaveBeenCalledTimes(fragments.length);
+    expect(full).toHaveBeenCalledTimes(0);
+    expect(reader).toHaveBeenCalledTimes(fragments.length + 1);
+    const reads = reader.mock.calls.map(([raw]) => raw);
+    expect(reads.at(0)).toContain(' xmlns:x="urn:example"');
+    expect(reads.slice(1)).toEqual(fragments);
+
+    const element = children.at(0);
+    if (!element) throw new Error("Expected generated child");
+    for (const [raw, accepted] of [
+      ["<w:p><w:r></w:p>", false],
+      ["<w:p><no:unbound/></w:p>", false],
+      ["<w:p><w:bad:name/></w:p>", false],
+      ['<w:p xmlns:other="urn:other"><other:p/></w:p>', true],
+      [`<w:p xmlns:w="${WORD}"/>`, false],
+      ['<w:p mc:Ignorable="x"/>', false],
+      ["<w:p>&amp;</w:p>", true],
+      ["<w:p><?named harmless?></w:p>", true],
+      ["<w:p>".repeat(100) + "</w:p>".repeat(100), false],
+    ] as const) {
+      const options = {
+        xml: raw,
+        element,
+        sourceNamespace: WORD,
+        generatedRoot,
+      };
+      const expected = materializeReplayFragment(options);
+      expect(expected !== null).toBe(accepted);
+      const before = full.mock.calls.length;
+      expect(materializeReplayFragment({ ...options, validation })).toBe(
+        expected,
+      );
+      expect(full.mock.calls.length - before).toBe(1);
+    }
+  } finally {
+    reader.mockRestore();
+    full.mockRestore();
+    compact.mockRestore();
+  }
+});
+
+test("compact proof charges suffix UTF-8 bytes and its validated attribute count", () => {
+  const namespace = ` xmlns:w="${WORD}" xmlns:other="urn:é"`;
+  const suffix = capture.prepareCompactReplaySuffix(namespace);
+  if (suffix === undefined) throw new Error("Expected prepared replay suffix");
+  const raw = '<w:p data="é"/>';
+  const options = { xml: raw, suffix };
+  const scanner = xmlLimits.assertXmlResourceLimits;
+  const resources = spyOn(xmlLimits, "assertXmlResourceLimits");
+  try {
+    expect(capture.isSafeCompactReplayFragment(options)).toBe(true);
+    expect(resources.mock.calls).toEqual([
+      [
+        {
+          xml: raw,
+          limits: {
+            ...xmlLimits.FOLIO_XML_RESOURCE_LIMITS,
+            maxBytes:
+              xmlLimits.FOLIO_XML_RESOURCE_LIMITS.maxBytes -
+              new TextEncoder().encode(namespace).length,
+            maxAttributesPerPart:
+              xmlLimits.FOLIO_XML_RESOURCE_LIMITS.maxAttributesPerPart - 2,
+          },
+        },
+      ],
+    ]);
+    resources.mockImplementation((input) =>
+      scanner({
+        ...input,
+        limits: {
+          ...xmlLimits.FOLIO_XML_RESOURCE_LIMITS,
+          maxAttributesPerPart: 0,
+        },
+      }),
+    );
+    expect(capture.isSafeCompactReplayFragment(options)).toBe(false);
+  } finally {
+    resources.mockRestore();
+  }
 });

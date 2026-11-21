@@ -32,8 +32,6 @@ import type {
   BorderSpec,
   CellMargins,
   ParagraphFormatting,
-  SectionProperties,
-  SectionPropertyChange,
   TableCellFormatting,
   TableFormatting,
   TablePropertyExceptionFormatting,
@@ -471,37 +469,6 @@ export function paragraphRejectOriginalFormatting(
   // from a stored ParagraphFormatting (or an attr-shaped snapshot whose
   // overlapping keys share the same value shapes).
   return result;
-}
-
-/**
- * Rejected section properties: the stored old sectPr wholesale, preserving
- * the live header/footer references — `EG_HdrFtrReferences` is not part of
- * the `CT_SectPrBase` payload a `w:sectPrChange` stores (ECMA-376
- * §17.13.5.32), so those children survive a native reject. An explicit Folio reference
- * history replaces that selection, including restoring its absence. The
- * caller re-attaches whatever `propertyChanges` remain unresolved.
- */
-type SectionRejectPropertiesOptions = {
-  live: SectionProperties;
-  previousProperties: SectionProperties | undefined;
-  previousReferences?: SectionPropertyChange["previousReferences"];
-};
-
-export function sectionRejectProperties({
-  live,
-  previousProperties,
-  previousReferences,
-}: SectionRejectPropertiesOptions): SectionProperties {
-  const restored: SectionProperties = { ...previousProperties };
-  delete restored.propertyChanges;
-  const references = previousReferences ?? live;
-  if (references.headerReferences)
-    restored.headerReferences = references.headerReferences;
-  else delete restored.headerReferences;
-  if (references.footerReferences)
-    restored.footerReferences = references.footerReferences;
-  else delete restored.footerReferences;
-  return restored;
 }
 
 /**

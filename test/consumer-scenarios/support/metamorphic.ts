@@ -13,6 +13,9 @@
  *   for the flow. A comment one of whose ends a pending deletion held when a
  *   later batch inserted content is no longer compared: directly that end
  *   had moved, so the insertion lies inside the comment in one replay only.
+ *   One stated difference is allowed: a body's last paragraph after a table
+ *   pending deletion stays, empty, in the tracked replay
+ *   (`finalAfterDeletedTable`).
  * - `rejectAll`: the tracked replay, and a `suggested` one, with every change
  *   rejected read as the fixture with every change rejected.
  * - `saveIdempotent`: saving the reopened package gives the same package
@@ -52,7 +55,11 @@ import {
   type FolioDocumentStoryHandle,
 } from "@stll/folio-core/server";
 
-import { pendingJoinTargets, sequentialGroups } from "./batch-replay-order.ts";
+import {
+  blanksGoingWhole,
+  pendingJoinTargets,
+  sequentialGroups,
+} from "./batch-replay-order.ts";
 import { openReviewer } from "./documents.ts";
 import {
   projectCommentIdentities,
@@ -64,7 +71,12 @@ import { holdsPendingSuggestions } from "./invariants.ts";
 import type { Finding } from "./known-issues.ts";
 import { comparableMarkdown } from "./markdown-comparison.ts";
 import type { Mode } from "./operations.ts";
-import { intentResolutionScope, resolvedState, type Row } from "./oracle.ts";
+import {
+  intentResolutionScope,
+  markDeletedIds,
+  resolvedState,
+  type Row,
+} from "./oracle.ts";
 import { createParagraphIdentityRemapping } from "./paragraph-identity.ts";
 import { createRandom, type Random } from "./random.ts";
 import { type Relation, RELATIONS } from "./relation-contract.ts";
@@ -978,6 +990,43 @@ const replayInto = (
 type ShadowCheck = "directTracked" | "rejectTracked" | "rejectSuggested";
 
 /**
+ * The id of the body's last paragraph when the block before it is a table
+ * whose every row is pending deletion and the paragraph's own mark stays.
+ *
+ * Tracked, deleting that paragraph deletes its words and keeps its mark: the
+ * markup cannot fold it into the paragraph before the table, because deleting
+ * that paragraph's mark runs it into the table once accepted. So, accepted,
+ * the tracked replay holds exactly one empty final paragraph more than the
+ * direct one, which folds once the table is gone; `directTracked` allows that
+ * difference in this shape alone.
+ */
+const finalAfterDeletedTable = (
+  reviewer: Reviewer,
+  story: Story,
+): string | undefined => {
+  if (story.type !== "main") return undefined;
+  const blocks = reviewer.toDocument().package.document.content;
+  const last = blocks.at(-1);
+  const before = blocks.at(-2);
+  if (last?.type !== "paragraph" || before?.type !== "table") return undefined;
+  if (
+    before.rows.length === 0 ||
+    !before.rows.every(
+      (row) => row.structuralChange?.type === "tableRowDeletion",
+    )
+  )
+    return undefined;
+  const mark = last.pPrMark;
+  if (
+    mark?.kind === "del" ||
+    mark?.kind === "moveFrom" ||
+    mark?.deletion !== undefined
+  )
+    return undefined;
+  return last.paraId;
+};
+
+/**
  * Where the replays break `check`; null when they cannot be compared (direct
  * refused what tracked applied). `rejectSuggested` rejects the suggestions
  * in place.
@@ -1003,13 +1052,14 @@ const shadowProblems = async (
         // deletion frees, and a split half that outlives a join can be another
         // block than directly, so neither side's ids or block ids line up.
         // Which paragraphs share a list, and how it renders, is the outcome.
-        const accepted = async (reviewer: Reviewer) => {
-          const state = await resolvedState({
+        const acceptedState = async (reviewer: Reviewer) =>
+          resolvedState({
             bytes: await save(reviewer),
             resolution: "accept",
             scope: { type: "document", story },
           });
-          return withoutHeldComments(
+        const view = (state: Awaited<ReturnType<typeof resolvedState>>) =>
+          withoutHeldComments(
             settledView({
               rows: nameStartedLists({
                 rows: state.rows,
@@ -1020,10 +1070,24 @@ const shadowProblems = async (
             }),
             shadows.heldComments,
           );
-        };
+        const finalId = finalAfterDeletedTable(shadows.tracked, story);
+        const direct = await acceptedState(shadows.direct);
+        const tracked = await acceptedState(shadows.tracked);
+        // The one difference `finalAfterDeletedTable` states: the tracked
+        // replay ends with that paragraph, empty, and holds one block more.
+        const extra = tracked.rows.at(-1);
+        const allowed =
+          finalId !== undefined &&
+          tracked.rows.length === direct.rows.length + 1 &&
+          extra !== undefined &&
+          extra.table === undefined &&
+          extra.text === "" &&
+          extra.id.toUpperCase() === finalId.toUpperCase();
         found = tolerantDifferences<BlocksView>(
-          await accepted(shadows.direct),
-          await accepted(shadows.tracked),
+          view(direct),
+          view(
+            allowed ? { ...tracked, rows: tracked.rows.slice(0, -1) } : tracked,
+          ),
           [],
         );
         break;
@@ -1313,14 +1377,9 @@ export const startRelations = async ({
     const listsBefore = definedListIds(pre);
     const problems: string[] = [];
     // A paragraph whose mark is pending deletion joins the next one once
-    // accepted; the batch places a block put after it after that one.
-    const joinSources = new Set(
-      pre
-        .getChanges()
-        .flatMap(({ type, blockId }) =>
-          type === "paragraphMarkDeleted" && blockId !== null ? [blockId] : [],
-        ),
-    );
+    // accepted; the batch places a block put after it after that one. A blank
+    // one goes whole, and its two sides are one gap.
+    const joinSources = markDeletedIds(pre);
     for (const group of sequentialGroups({
       applied,
       preRows,
@@ -1329,6 +1388,7 @@ export const startRelations = async ({
         batchMode === "suggested"
           ? new Map()
           : pendingJoinTargets(preRows, joinSources),
+      goWhole: blanksGoingWhole(preRows, joinSources),
     })) {
       const snapshot =
         story.type === "main"

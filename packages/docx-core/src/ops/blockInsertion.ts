@@ -1,5 +1,5 @@
 /** Paragraph insertion, isolated from the inline and table operation implementations. */
-import { Result } from "better-result";
+import { panic, Result } from "better-result";
 
 import {
   type Document,
@@ -13,23 +13,20 @@ import {
 import {
   blockListAt,
   blockListEndsInParagraph,
+  canSpliceMainBodyWithoutSectionRepair,
+  endsItsContainer,
   hasContainerFinalParagraphMark,
   replaceParagraphs,
   storyBody,
-  storyParagraphs,
 } from "./blocks";
 import { validateOpsDocument } from "./contract";
 import type { DocumentEdit } from "./edits";
 import { structurallyEqual } from "./equality";
 import { freshenIdentities } from "./identity";
-import {
-  identityKeysIn,
-  idKey,
-  isParaId,
-  packageIdentityKeyIndex,
-} from "./ids";
+import { identityKeysIn, isParaId, packageIdentityKeyIndex } from "./ids";
 import { asMoveHalf } from "./moves";
 import { paragraphLength } from "./offsets";
+import { findStoryParagraph } from "./paragraphLocator";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import type { ApplyOps } from "./resolve";
 import { stampInfo, WRAP_KINDS, wrapTracked } from "./review";
@@ -37,6 +34,8 @@ import { locateBlockInsertion } from "./tableLocation";
 import {
   DOCUMENT_OP_TYPES,
   type InsertBlocksOp,
+  OP_STORIES,
+  type ReplaceBlocksOp,
   type RevisionStamp,
 } from "./types";
 
@@ -88,12 +87,20 @@ type BlockInsertionOptions = {
   document: Document;
   op: InsertBlocksOp;
   applyOps: ApplyOps;
+  validateBlockReplacement: ValidateBlockReplacement;
 };
+
+export type ValidateBlockReplacement = (options: {
+  document: Document;
+  op: ReplaceBlocksOp;
+  before: readonly Paragraph[];
+}) => Result<void, DocumentOpRefusal>;
 
 export const insertBlocks = ({
   document,
   op,
   applyOps,
+  validateBlockReplacement,
 }: BlockInsertionOptions): Result<DocumentEdit, DocumentOpRefusal> => {
   const refuse = (reason: DocumentOpRefusal["reason"], message: string) =>
     Result.err(new DocumentOpRefusal({ reason, message, opType: op.type }));
@@ -268,9 +275,7 @@ export const insertBlocks = ({
     );
   }
   const body = storyBody(document, op.story);
-  const location = storyParagraphs(body).find(
-    ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(op.at.blockId),
-  );
+  const location = findStoryParagraph(body, op.at.blockId);
   if (location === undefined) {
     return refuse(
       DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
@@ -355,8 +360,34 @@ export const insertBlocks = ({
       "Insertion after a pending paragraph mark needs its former formatting snapshot and revision ids.",
     );
   }
-  // Validate incoming identities and model records before creating any review records.
-  const direct = applyOps(document, [replacement(canonicalBlocks)]);
+  // A draft ordinary insertion has no other work when its main-body splice
+  // has no section or note repair and cannot add inline stories or review
+  // records. The tracked replacement below still runs full validation.
+  const draft = replacement(canonicalBlocks);
+  const direct =
+    op.revision !== undefined &&
+    op.story === OP_STORIES.MAIN &&
+    location.list.length === 0 &&
+    anchor.paraId !== undefined &&
+    isParaId(anchor.paraId) &&
+    canSpliceMainBodyWithoutSectionRepair(body) &&
+    (document.package.footnotes?.length ?? 0) === 0 &&
+    (document.package.endnotes?.length ?? 0) === 0 &&
+    canonicalBlocks.every(
+      ({ pPrMark, propertyChanges, reviewCarrier, content }) =>
+        pPrMark === undefined &&
+        propertyChanges === undefined &&
+        reviewCarrier === undefined &&
+        content.every(
+          (node) =>
+            node.type === "run" &&
+            node.content.every((leaf) => leaf.type === "text"),
+        ),
+    )
+      ? validateBlockReplacement({ document, op: draft, before: [anchor] }).map(
+          () => undefined,
+        )
+      : applyOps(document, [draft]);
   if (direct.isErr())
     return Result.err(
       new DocumentOpRefusal({
@@ -365,25 +396,22 @@ export const insertBlocks = ({
         opType: op.type,
       }),
     );
-  const insertedIds = new Set(
-    canonicalBlocks.map(({ paraId }) => idKey(paraId ?? "")),
-  );
-  const finalMarks = storyParagraphs(
-    storyBody(direct.value.document, op.story),
-  ).some(
-    (at) =>
-      insertedIds.has(idKey(at.paragraph.paraId ?? "")) &&
-      hasContainerFinalParagraphMark(
-        storyBody(direct.value.document, op.story),
-        at,
-      ),
-  );
-  if (finalMarks) {
+  // Every other insertion is followed by another inserted paragraph or the
+  // unchanged anchor in this block list.
+  const lastInserted = canonicalBlocks.at(-1);
+  if (
+    direct.value !== undefined &&
+    !before &&
+    lastInserted?.pPrMark !== undefined &&
+    endsItsContainer(storyBody(direct.value.document, op.story), {
+      list: location.list,
+      index: location.index + canonicalBlocks.length,
+    })
+  )
     return refuse(
       DOCUMENT_OP_REFUSAL_REASONS.CONTAINER_FINAL_MARK,
       "Insertion would leave a tracked mark on a container-final paragraph.",
     );
-  }
   const touched = {
     // The anchor's mark becomes the inserted one when it takes over.
     modified:
@@ -395,7 +423,12 @@ export const insertBlocks = ({
     ),
     removed: [],
   };
-  if (op.revision === undefined) return Result.ok({ ...direct.value, touched });
+  if (op.revision === undefined)
+    return Result.ok({
+      ...(direct.value ??
+        panic("An ordinary insertion needs its direct edit.")),
+      touched,
+    });
   if (identityKeysIn(op.blocks).length > 0) {
     return refuse(
       DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,

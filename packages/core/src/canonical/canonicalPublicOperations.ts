@@ -34,23 +34,28 @@ import {
   formatParaId,
   freshCommentId,
   groupInsertionRuns,
+  ID_KIND_LIMITS,
+  ID_LEASE_KINDS,
   type IdBlock,
   idKey,
   type IdLease,
-  introducedIds,
+  introducedDocumentIds,
   type LeasedId,
   leasedIdCensus,
+  locateParagraphThroughTextBoxes,
   type NewListInstance,
+  OP_STORIES,
   type OpStory,
   orderAddressingBeforeRemoval,
   orderBatchOperations,
   packageResourcesOpOf,
+  paragraphIdsIn as modelParagraphIdsIn,
   paragraphLength,
   type ParagraphPropsPatch,
+  paragraphsThroughTextBoxes,
   pendingSuggestionIdsIn,
   revisionSpan,
   type RunPropsPatch,
-  storyParagraphs,
   type TextPosition,
 } from "@stll/docx-core/ops";
 
@@ -134,9 +139,9 @@ import type {
   FolioAIParagraphSpacing,
 } from "../ai-edits/types";
 import {
+  createOperationHeadingStyles,
   findUndefinedOperationReference,
   styleDefinitionLookup,
-  withOperationHeadingStyles,
 } from "../ai-edits/undefinedReferences";
 import { wordDiffSessionFromOptions } from "../ai-edits/word-diff";
 import type { FolioContentStatedNumbering } from "../compare/content-types";
@@ -154,6 +159,7 @@ import {
   parseFolioDocumentOperationBatch,
   withDistinctSuggestionIds,
 } from "../document-operations";
+import { canonicalOperationStagingAccess } from "../internal/canonicalOperationStaging";
 import { expectTableAttrs } from "../prosemirror/attrs";
 import { tableAnchor } from "../prosemirror/canonicalTableCommands";
 import { paragraphEndsItsContainer } from "../prosemirror/containerFinalParagraph";
@@ -190,6 +196,11 @@ import {
   canonicalCommentBody,
   compileCanonicalComments,
 } from "./canonicalComments";
+import {
+  planReplayParagraphIds,
+  startParagraphAdmissionCursor,
+} from "./canonicalInsertionReplayIds";
+import { addJoinedParagraphReceipts } from "./canonicalJoinedReceipts";
 import { lockViolationBetween } from "./canonicalLockGuard";
 import {
   type CanonicalCommit,
@@ -197,6 +208,7 @@ import {
   type CanonicalSession,
 } from "./canonicalSession";
 import { canonicalTrackedBatchFidelityError } from "./canonicalTrackedBatchFidelity";
+import { findCommentAnchorParagraph } from "./commentAnchorParagraph";
 import { indentationAsRead, spacingSidesAsRead } from "./paragraphPatchAsRead";
 
 type CanonicalBatchPlan = {
@@ -461,6 +473,7 @@ const canonicalBatchPlan = ({
 type PlannedOperation = {
   operation: FolioDocumentOperation;
   plan: CanonicalBatchPlan;
+  joinsParagraphBefore?: true;
 };
 
 type CanonicalBatchOrderOptions<T extends PlannedOperation> = {
@@ -508,21 +521,54 @@ const orderCanonicalBatch = <T extends PlannedOperation>({
         : [];
     }),
   );
+  /**
+   * The batch's deletion of the first of the paragraphs it deletes in a row
+   * right before the paragraph at `block`, if it deletes the one before it
+   * and a paragraph it keeps stands before the run to take the break. A run
+   * back to the container's start or a table collapses right to left instead
+   * (`finalBreakCarrier`'s `runStart`).
+   */
+  const firstDeletedBefore = (block: number): T | undefined => {
+    const at = doc.resolve(block);
+    let position = block;
+    let first: T | undefined;
+    for (let index = at.index() - 1; index >= 0; index--) {
+      const previous = at.parent.child(index);
+      position -= previous.nodeSize;
+      const deletion = deletionOf.get(position);
+      if (deletion === undefined)
+        return previous.type.name === "paragraph" ? first : undefined;
+      first = deletion;
+    }
+    return undefined;
+  };
   const address = (item: T): BatchOrderAddress => {
     const { operation, plan } = item;
     if (plan.address.type !== "content") return plan.address;
-    // A direct merge into a paragraph the batch deletes runs right after
-    // that deletion, joining across it to what then follows.
+    const planned = plan.address;
+    /** This operation's address right after `deletion`, `steps` ranks on. */
+    const following = (deletion: T, steps: number): BatchOrderAddress => {
+      const before = address(deletion);
+      return before.type === "content"
+        ? { ...planned, position: before.position, rank: before.rank + steps }
+        : planned;
+    };
+    // A direct merge into a paragraph the batch deletes runs after that
+    // deletion, and after a deletion of the container's last paragraph that
+    // joins across it, so it joins what then follows.
     const deletion =
       plan.claim.type === "merge" && plan.claim.joinsNow
         ? deletionOf.get(plan.claim.next)
         : undefined;
-    if (deletion !== undefined) {
-      const after = address(deletion);
-      return after.type === "content"
-        ? { ...plan.address, position: after.position, rank: after.rank + 1 }
-        : plan.address;
-    }
+    if (deletion !== undefined) return following(deletion, 2);
+    // A direct deletion that joins the paragraph before it as it runs goes
+    // after the batch's deletions of the paragraphs right before it, so it
+    // joins the one that stays.
+    const run =
+      item.joinsParagraphBefore === true && operation.type === "deleteBlock"
+        ? firstDeletedBefore(plan.block)
+        : undefined;
+    if (run !== undefined) return following(run, 1);
     const hasDeletedSplit = deletedSplits.has(plan.block);
     return {
       ...plan.address,
@@ -1337,77 +1383,150 @@ const deletionIntentsAsItRuns = (
   story: OpStory,
   intents: readonly EditorIntent[],
 ): readonly EditorIntent[] => {
-  const body = findStoryBody(document, story);
-  if (body === undefined) return intents;
-  const locations = storyParagraphs(body);
   return intents.map((intent) => {
     if (intent.type !== "joinParagraphs") return intent;
-    const key = idKey(intent.nextBlockId);
-    const at = locations.findIndex(
-      ({ paragraph }) => idKey(paragraph.paraId ?? "") === key,
+    // A text box's paragraphs are named through the story drawing it.
+    const here = locateParagraphThroughTextBoxes(
+      document,
+      story,
+      intent.nextBlockId,
     );
-    const here = locations[at];
-    const before = locations[at - 1];
+    const before = here?.blocks[here.index - 1];
     if (
-      here === undefined ||
-      before === undefined ||
-      before.index + 1 !== here.index ||
-      JSON.stringify(before.list) !== JSON.stringify(here.list) ||
-      before.paragraph.paraId === undefined ||
-      idKey(before.paragraph.paraId) === idKey(intent.blockId)
+      before?.type !== "paragraph" ||
+      before.paraId === undefined ||
+      idKey(before.paraId) === idKey(intent.blockId)
     )
       return intent;
-    return { ...intent, blockId: before.paragraph.paraId };
+    return { ...intent, blockId: before.paraId };
   });
 };
 
+type OwnMarkBeforeInsertedTableOptions = {
+  document: Document;
+  story: OpStory;
+  blockId: string;
+  author: string;
+  /** Whether the batch puts a block right after the paragraph `id`. */
+  gainsFollower: (id: string) => boolean;
+  intents: readonly EditorIntent[];
+};
+
 /**
- * A direct merge's join bound to the paragraph after the first one in
- * `document`, the batch as it stands when the merge runs: a paragraph the
- * batch deleted first is no longer there, so the merge joins across it to
- * the paragraph that now follows, as merging after that deletion does.
- * `undefined` when no paragraph follows any more.
+ * A tracked deletion of a body paragraph whose break is `author`'s own
+ * pending insertion, right before a table whose rows are all pending
+ * insertion, as the batch stands when it runs: the block deletion records
+ * the deletion beside that insertion and takes the words, so accepting
+ * removes the paragraph as the direct deletion does. Read as it runs, it is
+ * the same whether that table, or that insertion, came before the batch or
+ * from it.
  */
-const mergeIntentsAsItRuns = (
-  document: Document,
-  story: OpStory,
-  intents: readonly EditorIntent[],
-): readonly EditorIntent[] | undefined => {
+const ownMarkBeforeInsertedTableAsItRuns = ({
+  document,
+  story,
+  blockId,
+  author,
+  gainsFollower,
+  intents,
+}: OwnMarkBeforeInsertedTableOptions): readonly EditorIntent[] => {
+  const blocks = findStoryBody(document, story)?.content ?? [];
+  const index = blocks.findIndex(
+    (block) =>
+      block.type === "paragraph" &&
+      idKey(block.paraId ?? "") === idKey(blockId),
+  );
+  const paragraph = blocks[index];
+  const following = blocks[index + 1];
+  const previous = blocks[index - 1];
+  // A paragraph before it whose mark goes would run into the table once both
+  // are accepted: the deletion then takes the words only. A block the batch
+  // puts after that paragraph stands between them instead.
+  const previousJoins =
+    previous?.type === "paragraph" &&
+    !gainsFollower(previous.paraId ?? "") &&
+    (previous.pPrMark?.kind === "del" ||
+      previous.pPrMark?.kind === "moveFrom" ||
+      previous.pPrMark?.deletion !== undefined);
+  if (
+    previousJoins ||
+    paragraph?.type !== "paragraph" ||
+    paragraph.paraId === undefined ||
+    paragraph.pPrMark?.kind !== "ins" ||
+    paragraph.pPrMark.deletion !== undefined ||
+    paragraph.pPrMark.info.author !== author ||
+    following?.type !== "table" ||
+    following.rows.length === 0 ||
+    !following.rows.every(
+      (row) => row.structuralChange?.type === "tableRowInsertion",
+    )
+  )
+    return intents;
+  return [{ type: "deleteParagraphs", story, blockIds: [paragraph.paraId] }];
+};
+
+type MergeIntentsAsItRunsOptions = {
+  document: Document;
+  story: OpStory;
+  intents: readonly EditorIntent[];
+  mode: FolioDocumentOperationBatch["mode"];
+};
+
+/**
+ * A merge's intents as the batch stands in `document` when the merge runs.
+ * The separator goes in at the first paragraph's end as it now stands: an
+ * edit of that paragraph the batch ran first, a comment's reference among
+ * them, may have changed its length. Direct, the join also binds to the
+ * paragraph that now follows: a paragraph the batch deleted first is no
+ * longer there, so the merge joins across it, as merging after that deletion
+ * does; `undefined` when no paragraph follows any more. Tracked, a deleted
+ * paragraph stays, and the join keeps it.
+ */
+const mergeIntentsAsItRuns = ({
+  document,
+  story,
+  intents,
+  mode,
+}: MergeIntentsAsItRunsOptions): readonly EditorIntent[] | undefined => {
   const join = intents.find(
     (intent): intent is Extract<EditorIntent, { type: "joinParagraphs" }> =>
       intent.type === "joinParagraphs",
   );
-  const body = findStoryBody(document, story);
-  if (join === undefined || body === undefined) return intents;
-  const locations = storyParagraphs(body);
+  if (join === undefined || findStoryBody(document, story) === undefined)
+    return intents;
+  // A text box's paragraphs are named through the story drawing it.
+  const locations = paragraphsThroughTextBoxes(document, story);
   const key = idKey(join.blockId);
   const at = locations.findIndex(
     ({ paragraph }) => idKey(paragraph.paraId ?? "") === key,
   );
   const here = locations[at];
+  if (here === undefined) return mode === "direct" ? undefined : intents;
+  const end = paragraphLength(here.paragraph);
+  const separatorAtEnd: EditorIntent[] = [];
+  for (const intent of intents) {
+    separatorAtEnd.push(
+      intent.type === "replaceText" &&
+        idKey(intent.from.blockId) === key &&
+        intent.from.offset === intent.to.offset
+        ? {
+            ...intent,
+            from: { ...intent.from, offset: end },
+            to: { ...intent.to, offset: end },
+          }
+        : intent,
+    );
+  }
+  if (mode !== "direct") return separatorAtEnd;
   const next = locations[at + 1];
   const follows =
-    here !== undefined &&
     next !== undefined &&
     here.index + 1 === next.index &&
     JSON.stringify(here.list) === JSON.stringify(next.list);
   const nextId = follows ? next.paragraph.paraId : undefined;
-  if (here === undefined || nextId === undefined) return undefined;
+  if (nextId === undefined) return undefined;
   const was = idKey(join.nextBlockId);
-  // The separator goes in at the first paragraph's end as it now stands: an
-  // edit of that paragraph the batch ran first may have changed its length.
-  const end = paragraphLength(here.paragraph);
-  return intents.map((intent) => {
+  const boundToNext = (intent: EditorIntent): EditorIntent => {
     switch (intent.type) {
-      case "replaceText":
-        return idKey(intent.from.blockId) === key &&
-          intent.from.offset === intent.to.offset
-          ? {
-              ...intent,
-              from: { ...intent.from, offset: end },
-              to: { ...intent.to, offset: end },
-            }
-          : intent;
       case "joinParagraphs":
         return idKey(intent.nextBlockId) === was
           ? { ...intent, nextBlockId: nextId }
@@ -1428,7 +1547,8 @@ const mergeIntentsAsItRuns = (
       default:
         return intent;
     }
-  });
+  };
+  return separatorAtEnd.map(boundToNext);
 };
 
 type InsertionIntentsAsItRunsOptions = {
@@ -1450,33 +1570,24 @@ const insertionIntentsAsItRuns = ({
 }: InsertionIntentsAsItRunsOptions): readonly EditorIntent[] => {
   const { intents, inheritsFrom } = resolvedOperation;
   if (inheritsFrom === undefined) return intents;
-  const body = findStoryBody(document, story);
-  if (body === undefined) return intents;
-  const locations = storyParagraphs(body);
-  const key = idKey(inheritsFrom.blockId);
-  let at = locations.findIndex(
-    ({ paragraph }) => idKey(paragraph.paraId ?? "") === key,
+  // A text box's paragraphs are named through the story drawing it.
+  const at = locateParagraphThroughTextBoxes(
+    document,
+    story,
+    inheritsFrom.blockId,
   );
-  if (at === -1) return intents;
-  // A join the batch made of the paragraph is pending now: the joined
-  // paragraph has the properties of the paragraph the join leaves, as an
-  // insertion beside a join already pending copies them.
-  if (!inheritsFrom.markDeleted && !inheritsFrom.followsAnchor)
-    for (;;) {
-      const here = locations[at];
-      const next = locations[at + 1];
-      if (
-        here === undefined ||
-        next === undefined ||
-        !isDeletedPPrMark(here.paragraph.pPrMark) ||
-        next.index !== here.index + 1 ||
-        JSON.stringify(next.list) !== JSON.stringify(here.list)
-      )
-        break;
-      at += 1;
+  if (at === undefined) return intents;
+  let source = at.paragraph;
+  // A pending deletion takes its formatting from the surviving paragraph in
+  // this block list. A table or wrapper ends the chain.
+  if (!inheritsFrom.markDeleted && !inheritsFrom.followsAnchor) {
+    let index = at.index;
+    while (isDeletedPPrMark(source.pPrMark)) {
+      const next = at.blocks[++index];
+      if (next?.type !== "paragraph") break;
+      source = next;
     }
-  const source = locations[at]?.paragraph;
-  if (source === undefined) return intents;
+  }
   const copied: EditorIntent[] = [];
   for (const intent of intents)
     copied.push(
@@ -1710,6 +1821,66 @@ const droppedInsertionCarrier = ({
 type MemberIdLeaseOptions = {
   lease: IdLease;
   siblings: readonly (readonly LeasedId[])[];
+};
+
+/** A paragraph-side insertion keeps its anchor and introduces only these paragraph IDs. */
+const plainInsertedParagraphIds = (
+  ops: readonly DocumentOp[],
+): number[] | undefined => {
+  const [op] = ops;
+  if (
+    ops.length !== 1 ||
+    op?.type !== DOCUMENT_OP_TYPES.INSERT_BLOCKS ||
+    (op.at.type !== "before" && op.at.type !== "after") ||
+    op.move === true
+  )
+    return undefined;
+  const ids: number[] = [];
+  for (const { paraId } of op.blocks) {
+    if (paraId === undefined) return undefined;
+    const id = Number.parseInt(paraId, 16);
+    if (!Number.isSafeInteger(id) || formatParaId(id) !== paraId)
+      return undefined;
+    ids.push(id);
+  }
+  if (modelParagraphIdsIn(op.blocks).length !== ids.length) return undefined;
+  return ids.sort((left, right) => left - right);
+};
+
+type ReplayOperation = {
+  type: string;
+  operation: FolioDocumentOperation;
+  intents: readonly EditorIntent[];
+};
+
+const isPlainInsertion = ({
+  type,
+  operation,
+  intents,
+}: ReplayOperation): boolean => {
+  const intent = intents.at(0);
+  return (
+    type === "plain" &&
+    (operation.type === "insertBeforeBlock" ||
+      operation.type === "insertAfterBlock") &&
+    operation.moveId === undefined &&
+    intents.length === 1 &&
+    intent?.type === "insertParagraphs" &&
+    intent.story === OP_STORIES.MAIN &&
+    (intent.at.type === "before" || intent.at.type === "after") &&
+    intent.move === undefined &&
+    intent.newList === undefined &&
+    intent.paragraphs.length === 1 &&
+    intent.paragraphs.every(
+      (paragraph) =>
+        paragraph.sectionProperties === undefined &&
+        paragraph.content.every(
+          (node) =>
+            node.type === "run" &&
+            node.content.every(({ type: leaf }) => leaf === "text"),
+        ),
+    )
+  );
 };
 
 /** A replay cannot spend identities admitted to another operation. */
@@ -2498,6 +2669,11 @@ type ResolveBlockDeletionOptions = {
    */
   followsInsertedTable: boolean;
   /**
+   * Whether the batch puts a table right after this paragraph, which then
+   * stands before the table when this deletion runs.
+   */
+  precedesInsertedTable: boolean;
+  /**
    * Whether the batch inserts a paragraph after the paragraph before this
    * one, which then stands between them when this deletion runs.
    */
@@ -2513,6 +2689,11 @@ type CanonicalPublicOperationsOptions = {
   getState: (story: OpStory) => EditorState | null;
   publish: (commit: CanonicalCommit) => boolean;
 };
+
+type PublicOperationStaging = ReturnType<
+  CanonicalSession["beginVerifiedOperationStaging"]
+>;
+type VerifiedOperation = Parameters<PublicOperationStaging["append"]>[0];
 
 type CompilePublicIntentsOptions = {
   document: Document;
@@ -2531,10 +2712,34 @@ type CompilePublicIntentsOptions = {
    * come from the allocator's leased ones rather than one contiguous range.
    */
   idLease: IdLease | undefined;
+  /** A window-owned paragraph allocation, independent of the session revision lease. */
+  paragraphAllocationLease?: IdLease;
   allocations?: readonly ReturnType<
     ReturnType<typeof createEditorIntentIdAllocator>
   >[];
+  verifyOperation?: PublicOperationStaging["apply"];
 };
+
+// Bound the generic allocator's prospective paragraph lookup and keep
+// the unrestricted revision/control ranges of an unleased editor.
+const allocatorLeaseForParagraphs = (paragraphLease: IdLease | undefined) =>
+  paragraphLease === undefined
+    ? undefined
+    : {
+        blocks: [
+          ...paragraphLease.blocks,
+          {
+            kind: ID_LEASE_KINDS.REVISION,
+            start: 1,
+            end: ID_KIND_LIMITS.revision,
+          },
+          {
+            kind: ID_LEASE_KINDS.CONTROL,
+            start: 1,
+            end: ID_KIND_LIMITS.control,
+          },
+        ],
+      };
 
 const compilePublicIntents = ({
   document,
@@ -2547,10 +2752,13 @@ const compilePublicIntents = ({
   allocate,
   reservedBlockIds,
   idLease,
+  paragraphAllocationLease,
   allocations: admittedAllocations,
+  verifyOperation,
 }: CompilePublicIntentsOptions) => {
   const ops: DocumentOp[] = [];
   const revisions: number[] = [];
+  let verifiedOperation: VerifiedOperation | undefined;
   // A split's new half takes the id allocated here, not the one it resolved
   // with: a later intent naming that half names the allocated one.
   const allocated = new Map<string, string>();
@@ -2558,13 +2766,23 @@ const compilePublicIntents = ({
     ReturnType<typeof createEditorIntentIdAllocator>
   >[] = [];
   for (const [intentIndex, sourceIntent] of intents.entries()) {
+    const paragraphLease =
+      sourceIntent.type === "insertParagraphs"
+        ? paragraphAllocationLease
+        : undefined;
     const ids =
       admittedAllocations === undefined
-        ? allocate(document, sourceIntent, idLease)
+        ? allocate(
+            document,
+            sourceIntent,
+            idLease ?? allocatorLeaseForParagraphs(paragraphLease),
+          )
         : admittedAllocations.at(intentIndex);
     if (ids === undefined) panic("An admitted intent lost its allocation.");
     allocations.push(ids);
-    const leased = idLease === undefined ? {} : { idLease };
+    const compilerLease = idLease ?? paragraphLease;
+    const leased =
+      compilerLease === undefined ? {} : { idLease: compilerLease };
     let intent: EditorIntent = sourceIntent;
     if (sourceIntent.type === "splitParagraph") {
       allocated.set(sourceIntent.newBlockId, ids.newBlockId);
@@ -2615,15 +2833,38 @@ const compilePublicIntents = ({
             },
     });
     if (compiled.isErr()) return Result.err(compiled.error);
-    const applied = applyDocumentOps(document, compiled.value.ops);
+    const [only] = compiled.value.ops;
+    const verified =
+      verifyOperation !== undefined &&
+      intents.length === 1 &&
+      compiled.value.ops.length === 1 &&
+      ((sourceIntent.type === "insertParagraphs" &&
+        only?.type === DOCUMENT_OP_TYPES.INSERT_BLOCKS) ||
+        (sourceIntent.type === "replaceText" &&
+          (only?.type === DOCUMENT_OP_TYPES.INSERT_CONTENT ||
+            only?.type === DOCUMENT_OP_TYPES.INSERT_TEXT)))
+        ? verifyOperation(document, only)
+        : undefined;
+    if (verified !== undefined) {
+      if (verified.isErr()) return Result.err(verified.error);
+      verifiedOperation = verified.value;
+    }
+    const applied = verified ?? applyDocumentOps(document, compiled.value.ops);
     if (applied.isErr()) return Result.err(applied.error);
-    document = applied.value.document;
+    document = readModel(applied.value.document);
     ops.push(...compiled.value.ops);
     revisions.push(...applied.value.revisions);
     for (const id of applied.value.revisions)
       nextRevisionId = Math.max(nextRevisionId, id + 1);
   }
-  return Result.ok({ document, ops, revisions, nextRevisionId, allocations });
+  return Result.ok({
+    document,
+    ops,
+    revisions,
+    nextRevisionId,
+    allocations,
+    verifiedOperation,
+  });
 };
 
 const CanonicalPublicOperationResolutionErrorBase: TaggedErrorClass<"CanonicalPublicOperationResolutionError"> =
@@ -2641,8 +2882,9 @@ class CanonicalPublicOperationResolutionError extends CanonicalPublicOperationRe
 }> {}
 
 type MergeFormattingConflictOptions = {
-  before: NonNullable<ReturnType<typeof findStoryBody>>;
-  after: NonNullable<ReturnType<typeof findStoryBody>>;
+  before: Document;
+  after: Document;
+  story: OpStory;
   ops: readonly DocumentOp[];
   author: string;
 };
@@ -2651,6 +2893,7 @@ type MergeFormattingConflictOptions = {
 const overwritesForeignMergeFormatting = ({
   before,
   after,
+  story,
   ops,
   author,
 }: MergeFormattingConflictOptions): boolean => {
@@ -2663,15 +2906,17 @@ const overwritesForeignMergeFormatting = ({
   const foreignChanges = (paragraph: Paragraph) =>
     paragraph.propertyChanges?.filter(({ info }) => info.author !== author) ??
     [];
-  const pending = storyParagraphs(before).flatMap(({ paragraph }) => {
-    if (paragraph.paraId === undefined || !targets.has(paragraph.paraId))
-      return [];
-    const changes = foreignChanges(paragraph);
-    return changes.length === 0 ? [] : [[paragraph.paraId, changes] as const];
-  });
+  const pending = paragraphsThroughTextBoxes(before, story).flatMap(
+    ({ paragraph }) => {
+      if (paragraph.paraId === undefined || !targets.has(paragraph.paraId))
+        return [];
+      const changes = foreignChanges(paragraph);
+      return changes.length === 0 ? [] : [[paragraph.paraId, changes] as const];
+    },
+  );
   if (pending.length === 0) return false;
   const survivors = new Map(
-    storyParagraphs(after).map(({ paragraph }) => [
+    paragraphsThroughTextBoxes(after, story).map(({ paragraph }) => [
       paragraph.paraId,
       paragraph,
     ]),
@@ -2706,13 +2951,9 @@ const batchPropertyRefusal = ({
     default:
       return undefined;
   }
-  const body = findStoryBody(document, story);
-  const paragraph =
-    body === undefined
-      ? undefined
-      : storyParagraphs(body).find(
-          (entry) => entry.paragraph.paraId === operation.blockId,
-        )?.paragraph;
+  const paragraph = paragraphsThroughTextBoxes(document, story).find(
+    (entry) => entry.paragraph.paraId === operation.blockId,
+  )?.paragraph;
   if (
     operation.type === "replaceBlock" &&
     operation.styleId === (paragraph?.formatting?.styleId ?? null)
@@ -2959,6 +3200,18 @@ export class CanonicalPublicOperations {
       };
       return definedReferences;
     };
+    const headingStyles = createOperationHeadingStyles();
+    const headingLookups = new WeakMap<
+      StyleDefinitions,
+      ReturnType<typeof styleDefinitionLookup>
+    >();
+    const headingLookup = (definitions: StyleDefinitions) => {
+      const existing = headingLookups.get(definitions);
+      if (existing !== undefined) return existing;
+      const lookup = styleDefinitionLookup(createStyleResolver(definitions));
+      headingLookups.set(definitions, lookup);
+      return lookup;
+    };
     const mintList = createBatchListMinter(() => readModel(session.document));
     const { diff } = wordDiffSessionFromOptions(options.wordDiff);
     let nextRevisionId = options.revisionStamp?.idSeed ?? 1;
@@ -3140,14 +3393,14 @@ export class CanonicalPublicOperations {
       const headings =
         options.undefinedReferences === "keep"
           ? referenceSet.definitions
-          : withOperationHeadingStyles(referenceSet.definitions, [operation]);
+          : headingStyles(referenceSet.definitions, operation);
       const undefinedReference = findUndefinedOperationReference({
         operation,
         numberingInstanceIds: referenceSet.numberingInstanceIds,
         styles:
-          headings === referenceSet.definitions
+          headings === undefined || headings === referenceSet.definitions
             ? referenceSet.styles
-            : styleDefinitionLookup(createStyleResolver(headings)),
+            : headingLookup(headings),
         undefinedReferences: options.undefinedReferences,
       });
       if (undefinedReference !== undefined) {
@@ -3306,6 +3559,10 @@ export class CanonicalPublicOperations {
     const beforeBatch = document;
     let annotated: Document | undefined;
     const ops: DocumentOp[] = [];
+    const operationStaging = session.beginVerifiedOperationStaging(
+      canonicalOperationStagingAccess,
+    );
+    let reuseStaging = true;
     const appliedById = new Map<
       string,
       FolioDocumentOperationResult["applied"][number]
@@ -3331,8 +3588,10 @@ export class CanonicalPublicOperations {
       columnInsertions: ReadonlyMap<string, number>;
       nextRevisionId: number;
       idLease?: IdLease;
+      paragraphAllocationLease?: IdLease;
       allocations?: CompilePublicIntentsOptions["allocations"];
       reservedBlockIds?: ReadonlySet<string>;
+      verifyOperation?: PublicOperationStaging["apply"];
       commentAllocation?: {
         id: number;
         content: ReturnType<typeof canonicalCommentBody>;
@@ -3361,8 +3620,10 @@ export class CanonicalPublicOperations {
       columnInsertions,
       nextRevisionId: firstRevisionId,
       idLease = session.idLease,
+      paragraphAllocationLease,
       allocations,
       reservedBlockIds = session.reservedBlockIds,
+      verifyOperation,
       commentAllocation: admittedComment,
     }: PrepareOperationOptions) => {
       const { operation } = resolvedOperation;
@@ -3387,10 +3648,30 @@ export class CanonicalPublicOperations {
         resolvedOperation.joinsParagraphBefore === true
           ? deletionIntentsAsItRuns(sourceDocument, story, shifted)
           : shifted;
-      const joining =
-        operation.type === "mergeBlockWithNext" && batch.mode === "direct"
-          ? mergeIntentsAsItRuns(sourceDocument, story, deleting)
+      const retracting =
+        operation.type === "deleteBlock" &&
+        batch.mode !== "direct" &&
+        operation.moveId === undefined
+          ? ownMarkBeforeInsertedTableAsItRuns({
+              document: sourceDocument,
+              story,
+              blockId: operation.blockId,
+              author: options.author ?? "AI",
+              gainsFollower: (id) =>
+                besideDeletions.tables.after.has(id) ||
+                besideDeletions.paragraphsAfter.has(id),
+              intents: deleting,
+            })
           : deleting;
+      const joining =
+        operation.type === "mergeBlockWithNext"
+          ? mergeIntentsAsItRuns({
+              document: sourceDocument,
+              story,
+              intents: retracting,
+              mode: batch.mode,
+            })
+          : retracting;
       if (joining === undefined)
         return declined({
           reason: "missingBlock",
@@ -3437,9 +3718,7 @@ export class CanonicalPublicOperations {
       const headings =
         options.undefinedReferences === "keep"
           ? sourceDocument.package.styles
-          : withOperationHeadingStyles(sourceDocument.package.styles, [
-              operation,
-            ]);
+          : headingStyles(sourceDocument.package.styles, operation);
       const withHeadings =
         headings === undefined || headings === sourceDocument.package.styles
           ? sourceDocument
@@ -3453,12 +3732,20 @@ export class CanonicalPublicOperations {
         allocate,
         reservedBlockIds,
         idLease: idLease,
+        ...(paragraphAllocationLease === undefined
+          ? {}
+          : { paragraphAllocationLease }),
         nextRevisionId: firstRevisionId,
         mode: batch.mode === "direct" ? "direct" : "tracked-changes",
         suggestionId,
         author: options.author ?? "AI",
         date,
         ...(allocations === undefined ? {} : { allocations }),
+        ...(withHeadings === sourceDocument &&
+        resolvedOperation.type === "plain" &&
+        verifyOperation !== undefined
+          ? { verifyOperation }
+          : {}),
       });
       if (compiled.isErr()) {
         return declined({
@@ -3473,14 +3760,11 @@ export class CanonicalPublicOperations {
         operation.type === "mergeBlockWithNext" &&
         conflictsWithRevision !== undefined
       ) {
-        const beforeStory = findStoryBody(sourceDocument, story);
-        const afterStory = findStoryBody(nextDocument, story);
         if (
-          beforeStory !== undefined &&
-          afterStory !== undefined &&
           overwritesForeignMergeFormatting({
-            before: beforeStory,
-            after: afterStory,
+            before: sourceDocument,
+            after: nextDocument,
+            story,
             ops: operationOps,
             author: options.author ?? "AI",
           })
@@ -3509,12 +3793,10 @@ export class CanonicalPublicOperations {
             // The comment covers every paragraph the operation inserted, at
             // any depth: in a content control or a table cell as much as in
             // the story's own block list.
-            const paragraphsIn = (current: Document) => {
-              const body = findStoryBody(current, story);
-              return body === undefined
-                ? []
-                : storyParagraphs(body).map(({ paragraph }) => paragraph);
-            };
+            const paragraphsIn = (current: Document) =>
+              paragraphsThroughTextBoxes(current, story).map(
+                ({ paragraph }) => paragraph,
+              );
             const known = new Set(
               paragraphsIn(sourceDocument).flatMap(({ paraId }) =>
                 paraId === undefined ? [] : [paraId],
@@ -3579,14 +3861,12 @@ export class CanonicalPublicOperations {
           }
           // The anchor paragraph at any depth: in a table cell or a content
           // control as much as in the story's own block list.
-          const anchorIn = (current: Document) => {
-            const body = findStoryBody(current, story);
-            return body === undefined
-              ? undefined
-              : storyParagraphs(body).find(
-                  ({ paragraph }) => paragraph.paraId === comment.from.blockId,
-                )?.paragraph;
-          };
+          const anchorIn = (current: Document) =>
+            findCommentAnchorParagraph({
+              document: current,
+              story,
+              blockId: comment.from.blockId,
+            });
           const before = anchorIn(sourceDocument);
           const after = anchorIn(nextDocument);
           if (id.isErr() || before === undefined || after === undefined) {
@@ -3702,6 +3982,7 @@ export class CanonicalPublicOperations {
         suggestionId,
         allocations: compiled.value.allocations,
         commentAllocation,
+        verifiedOperation: compiled.value.verifiedOperation,
       };
     };
     type OperationAttempt = ReturnType<typeof prepareOperation>;
@@ -3721,6 +4002,10 @@ export class CanonicalPublicOperations {
       recordColumnInsertion(resolvedOperation, insertedColumnCounts);
       document = prepared.document;
       ops.push(...prepared.ops);
+      if (reuseStaging)
+        reuseStaging =
+          prepared.verifiedOperation !== undefined &&
+          operationStaging.append(prepared.verifiedOperation);
       nextRevisionId = Math.max(nextRevisionId, prepared.nextRevisionId);
       const revisionId = revisionIds.at(0);
       const joined =
@@ -3783,15 +4068,65 @@ export class CanonicalPublicOperations {
         previous.last = Math.max(previous.last, interval.last);
       else merged.push({ ...interval });
     }
+    const alreadyInReplayOrder = (window: readonly AdmittedOperation[]) => {
+      const first = window.at(0);
+      const initial = first?.intents.at(0);
+      if (
+        first === undefined ||
+        initial?.type !== "insertParagraphs" ||
+        (initial.at.type !== "before" && initial.at.type !== "after")
+      )
+        return false;
+      const group = groupOf.get(first);
+      if (group?.length !== window.length) return false;
+      const { type: side, blockId } = initial.at;
+      const { at: replayAt } = gapAnchorBeforeFollower(
+        { type: "paragraph", at: initial.at },
+        projected.value,
+      );
+      if (replayAt.type !== side || replayAt.blockId !== blockId) return false;
+      let previousOrder: number | undefined;
+      for (const member of window) {
+        const { operation, intents } = member;
+        const intent = intents.at(0);
+        if (
+          groupOf.get(member) !== group ||
+          member.type !== "plain" ||
+          !isBlockInsertion(operation) ||
+          operation.moveId !== undefined ||
+          intents.length !== 1 ||
+          intent?.type !== "insertParagraphs" ||
+          intent.move !== undefined ||
+          intent.newList !== undefined ||
+          intent.at.type !== side ||
+          intent.at.blockId !== blockId
+        )
+          return false;
+        const order = orderOf(member);
+        if (
+          previousOrder !== undefined &&
+          (side === "before" ? order <= previousOrder : order >= previousOrder)
+        )
+          return false;
+        previousOrder = order;
+      }
+      // These insertions only add paragraph IDs. Later siblings cannot take
+      // any of the IDs an earlier member already selected from the free space.
+      return true;
+    };
     const windows = new Map<AdmittedOperation, readonly AdmittedOperation[]>();
     for (const interval of merged) {
       const first = executionOrder.at(interval.first);
       if (first === undefined)
         panic("An insertion admission window lost its first operation.");
-      windows.set(
-        first,
-        executionOrder.slice(interval.first, interval.last + 1),
-      );
+      const window = executionOrder.slice(interval.first, interval.last + 1);
+      if (
+        session.idLease === undefined &&
+        batch.mode !== "suggested" &&
+        alreadyInReplayOrder(window)
+      )
+        continue;
+      windows.set(first, window);
     }
     const completed = new Set<string>();
     for (const resolvedOperation of executionOrder) {
@@ -3808,6 +4143,9 @@ export class CanonicalPublicOperations {
             resolvedOperation,
             nextRevisionId,
             columnInsertions: insertedColumnCounts,
+            ...(reuseStaging
+              ? { verifyOperation: operationStaging.apply }
+              : {}),
           }),
         );
         continue;
@@ -3815,7 +4153,7 @@ export class CanonicalPublicOperations {
       type AdmittedMember = {
         resolvedOperation: AdmittedOperation;
         firstRevisionId: number;
-        ids: ReturnType<typeof introducedIds>;
+        ids: LeasedId[];
         ops: readonly DocumentOp[];
         allocations: NonNullable<CompilePublicIntentsOptions["allocations"]>;
         commentAllocation: PrepareOperationOptions["commentAllocation"];
@@ -3828,29 +4166,76 @@ export class CanonicalPublicOperations {
       const admissionColumns = new Map(insertedColumnCounts);
       let admissionDocument = document;
       let admissionRevisionId = nextRevisionId;
+      let admissionCensus:
+        | { type: "paragraphs"; ids: Set<number> | undefined }
+        | { type: "package" } =
+        session.idLease === undefined
+          ? { type: "paragraphs", ids: undefined }
+          : { type: "package" };
+      const rejectParagraphWindow = () => {
+        if (session.idLease !== undefined) return "lease";
+        if (batch.mode === "suggested") return "suggestion";
+        if (!window.every(isPlainInsertion)) return "windowShape";
+        return undefined;
+      };
+      const paragraphWindowRejection = rejectParagraphWindow();
+      const cursor = startParagraphAdmissionCursor(paragraphWindowRejection);
       for (const member of window) {
         completed.add(member.operation.id);
-        const prepared = prepareOperation({
+        const admissionOptions = {
           document: admissionDocument,
           columnInsertions: admissionColumns,
           resolvedOperation: member,
           nextRevisionId: admissionRevisionId,
+        };
+        const nextLease = cursor.nextLease();
+        let prepared = prepareOperation({
+          ...admissionOptions,
+          ...(nextLease.type === "bounded"
+            ? { paragraphAllocationLease: nextLease.lease }
+            : {}),
         });
+        // An allocation or validator refusal is still determined by the
+        // ordinary compiler, with its original exhaustion diagnostics.
+        if (nextLease.type === "bounded" && prepared.type === "declined")
+          prepared = prepareOperation(admissionOptions);
         if (prepared.type === "declined") {
           declinedMembers.push({ resolvedOperation: member, prepared });
           continue;
         }
         recordColumnInsertion(member, admissionColumns);
+        const paragraphs =
+          admissionCensus.type === "paragraphs"
+            ? plainInsertedParagraphIds(prepared.ops)
+            : undefined;
+        cursor.commit(paragraphs);
+        let ids: LeasedId[];
+        if (admissionCensus.type === "paragraphs" && paragraphs !== undefined) {
+          // Without a lease replay reserves only sibling paragraph IDs. Seed
+          // the numeric set from the full census to preserve legacy spellings.
+          admissionCensus.ids ??= new Set(
+            leasedIdCensus(admissionDocument).paragraph,
+          );
+          ids = [];
+          for (const id of paragraphs) {
+            if (admissionCensus.ids.has(id)) continue;
+            admissionCensus.ids.add(id);
+            ids.push({ kind: ID_LEASE_KINDS.PARAGRAPH, id });
+          }
+        } else {
+          ids = introducedDocumentIds({
+            before: admissionDocument,
+            after: prepared.document,
+          });
+          admissionCensus = { type: "package" };
+        }
         admitted.push({
           resolvedOperation: member,
           firstRevisionId: admissionRevisionId,
           allocations: prepared.allocations,
           ops: prepared.ops,
           commentAllocation: prepared.commentAllocation,
-          ids: introducedIds(
-            leasedIdCensus(admissionDocument),
-            leasedIdCensus(prepared.document),
-          ),
+          ids,
         });
         admissionDocument = prepared.document;
         admissionRevisionId = prepared.nextRevisionId;
@@ -3911,6 +4296,21 @@ export class CanonicalPublicOperations {
           });
         }
       }
+      const paragraphRejection =
+        paragraphWindowRejection ??
+        (ordered.every(({ operation }) => isPlainInsertion(operation))
+          ? undefined
+          : "windowShape");
+      const paragraphReplay = planReplayParagraphIds(
+        paragraphRejection,
+        paragraphRejection === undefined
+          ? ordered.map(({ member, operation }) => ({
+              id: operation.operation.id,
+              ops: member.ops,
+              ids: member.ids,
+            }))
+          : [],
+      );
       for (const declinedMember of declinedMembers)
         commitOperation(
           declinedMember.resolvedOperation,
@@ -3926,26 +4326,41 @@ export class CanonicalPublicOperations {
                   .filter((other) => other !== member)
                   .map(({ ids }) => ids),
               });
-        const reservedBlockIds = new Set(session.reservedBlockIds);
-        for (const other of admitted) {
-          if (other === member) continue;
-          for (const { kind, id } of other.ids) {
-            if (kind === "paragraph") reservedBlockIds.add(formatParaId(id));
+        let reservedBlockIds = session.reservedBlockIds;
+        let paragraphAllocationLease: IdLease | undefined;
+        if (paragraphReplay.type === "admitted") {
+          paragraphAllocationLease = paragraphReplay.leases.get(
+            replayOperation.operation.id,
+          );
+          if (paragraphAllocationLease === undefined)
+            panic("An admitted insertion lost its paragraph replay lease.");
+        } else {
+          const reserved = new Set(session.reservedBlockIds);
+          for (const other of admitted) {
+            if (other === member) continue;
+            for (const { kind, id } of other.ids) {
+              if (kind === "paragraph") reserved.add(formatParaId(id));
+            }
           }
+          const droppedCarrier = droppedInsertionCarrier({
+            admitted: member.resolvedOperation.intents,
+            replayed: replayOperation.intents,
+            ops: member.ops,
+          });
+          if (droppedCarrier !== undefined) reserved.add(droppedCarrier);
+          reservedBlockIds = reserved;
         }
-        const droppedCarrier = droppedInsertionCarrier({
-          admitted: member.resolvedOperation.intents,
-          replayed: replayOperation.intents,
-          ops: member.ops,
-        });
-        if (droppedCarrier !== undefined) reservedBlockIds.add(droppedCarrier);
         const prepared = prepareOperation({
           document,
           columnInsertions: insertedColumnCounts,
           resolvedOperation: replayOperation,
           nextRevisionId: member.firstRevisionId,
           reservedBlockIds,
+          ...(paragraphAllocationLease === undefined
+            ? {}
+            : { paragraphAllocationLease }),
           allocations: member.allocations,
+          ...(reuseStaging ? { verifyOperation: operationStaging.apply } : {}),
           ...(member.commentAllocation === undefined
             ? {}
             : { commentAllocation: member.commentAllocation }),
@@ -4004,10 +4419,13 @@ export class CanonicalPublicOperations {
       return result([], null);
     }
     if (ops.length === 0) return result([], null);
-    const selection = projected.value.selectionAt(state);
-    const prepared = selection.isErr()
-      ? selection
-      : session.prepareOps(state, ops, selection.value);
+    const prepared = projected.value
+      .selectionAt(state)
+      .andThen((selection) =>
+        reuseStaging
+          ? operationStaging.prepare(state, selection)
+          : session.prepareOps(state, ops, selection),
+      );
     if (prepared.isErr()) {
       // A batch that changes nothing is a no-op, not a capability gap.
       const noChange = prepared.error.reason === "noChange";
@@ -4024,34 +4442,19 @@ export class CanonicalPublicOperations {
       }
       return result([], null);
     }
-    // A paragraph the commit joined into another names its survivor, in
-    // every mode: a tracked deletion of one's own inserted paragraph joins it
-    // now, as a direct join does. The operation names either paragraph: the
-    // one it removed, or the one left holding both.
-    for (const { absorbed, survivor } of prepared.value.touched.absorbed ??
-      []) {
-      for (const operation of batch.operations) {
-        const entry = appliedById.get(operation.id);
-        if (
-          entry === undefined ||
-          entry.paragraphIdentity !== undefined ||
-          !("blockId" in operation) ||
-          (operation.blockId !== absorbed && operation.blockId !== survivor)
-        )
-          continue;
-        entry.paragraphIdentity = {
-          type: "joined",
-          blockId: survivor,
-          retiredBlockId: absorbed,
-        };
-      }
-    }
+    addJoinedParagraphReceipts({
+      absorptions: prepared.value.touched.absorbed,
+      operations: batch.operations,
+      applied: appliedById,
+    });
     if (batch.mode === "direct") {
       const finalBody = findStoryBody(prepared.value.document, story);
       if (finalBody === undefined)
         panic("A committed public operation lost its story.");
       const finalIds = new Set(
-        storyParagraphs(finalBody).map(({ paragraph }) => paragraph.paraId),
+        paragraphsThroughTextBoxes(prepared.value.document, story).map(
+          ({ paragraph }) => paragraph.paraId,
+        ),
       );
       for (const operation of batch.operations) {
         const entry = appliedById.get(operation.id);
@@ -4219,6 +4622,7 @@ export class CanonicalPublicOperations {
     tracked,
     gainsFollower,
     followsInsertedTable,
+    precedesInsertedTable,
     previousGainsFollower,
     refusal,
   }: ResolveBlockDeletionOptions) {
@@ -4279,6 +4683,12 @@ export class CanonicalPublicOperations {
     // takes its words only, and rejecting the insertion later runs them into
     // the table as it would have. A paragraph the insertion added whole goes
     // with it, as the block deletion takes it.
+    // Between two tables, the deletion takes the words and leaves the mark,
+    // as the direct deletion empties the paragraph: accepting it keeps the
+    // tables apart.
+    const betweenTables =
+      after?.type.name === "table" &&
+      (before?.type.name === "table" || followsInsertedTable);
     let holdsOriginalWords = false;
     paragraph.node.descendants((node) => {
       if (
@@ -4293,10 +4703,13 @@ export class CanonicalPublicOperations {
       tracked &&
       operation.moveId === undefined &&
       !gainsFollower &&
-      after?.type.name === "table" &&
-      isInsertedPPrMark(paragraph.node.attrs["pPrMark"]) &&
-      holdsOriginalWords
+      (betweenTables ||
+        // A table after it, standing or put there by the batch first.
+        ((after?.type.name === "table" || precedesInsertedTable) &&
+          isInsertedPPrMark(paragraph.node.attrs["pPrMark"]) &&
+          holdsOriginalWords))
     ) {
+      if (paragraph.start === end) return refusal("noopOperation");
       const from = projection.addressAt(paragraph.start);
       const to = projection.addressAt(end);
       if (from.isErr() || to.isErr()) return refusal("unsupportedBlock");
@@ -4723,10 +5136,18 @@ export class CanonicalPublicOperations {
         tracked,
         gainsFollower,
         followsInsertedTable,
+        // The table stands right after it only when no paragraph the batch
+        // inserts after it lands there too.
+        precedesInsertedTable:
+          besideDeletions.tables.after.has(blockId) &&
+          !besideDeletions.paragraphsAfter.has(blockId),
+        // The paragraph before it is another when the deletion runs: the
+        // batch puts one after it, or deletes it first.
         previousGainsFollower:
           !followed &&
           typeof previousId === "string" &&
-          besideDeletions.paragraphsAfter.has(previousId),
+          (besideDeletions.paragraphsAfter.has(previousId) ||
+            besideDeletions.deleted.has(previousId)),
         refusal,
       });
       return gainsFollower && deleted.isOk()
@@ -4908,7 +5329,13 @@ export class CanonicalPublicOperations {
         break;
       case "mergeBlockWithNext": {
         const next = projection.value.nextParagraphInContainer(blockId);
-        if (next === undefined) return refusal("missingBlock");
+        // The block exists; it ends its container, so there is nothing to
+        // merge it with.
+        if (next === undefined)
+          return skipAlike(
+            "unsupportedBlock",
+            "The block ends its container; no paragraph follows it there.",
+          );
         // The merged paragraph is the one whose mark remains, the second,
         // as accepting the tracked merge leaves it.
         intent = {
@@ -5058,7 +5485,14 @@ export class CanonicalPublicOperations {
             to: paragraph.start + paragraph.node.content.size,
           },
           changes: replacementChanges,
-          deletionsKeepComments: tracked && !suggested,
+          removal: tracked
+            ? { type: suggested ? "suggested" : "tracked" }
+            : {
+                type: "direct",
+                comments:
+                  readModel(this.options.session.document).package.document
+                    .comments ?? [],
+              },
         })
       )
         return Result.err(

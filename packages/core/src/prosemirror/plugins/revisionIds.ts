@@ -220,6 +220,14 @@ const visitAnnotationIds = (
 export const maxAnnotationIdInDoc = (doc: PmNode): number =>
   visitAnnotationIds(doc, () => {});
 
+/** Visit every id in `doc` from any part of the annotation space. */
+export const forEachAnnotationIdInDoc = (
+  doc: PmNode,
+  visit: (id: number) => void,
+): void => {
+  visitAnnotationIds(doc, visit);
+};
+
 /**
  * Raise the counter above every annotation id already present in `doc`.
  * Called from the suggestion-mode plugin's `state.init`.

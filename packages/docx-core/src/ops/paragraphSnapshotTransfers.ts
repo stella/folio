@@ -8,6 +8,7 @@ import { storyParagraphs } from "./blocks";
 import type { DocumentEdit } from "./edits";
 import { structurallyEqual } from "./equality";
 import { idKey } from "./ids";
+import { changedListBounds } from "./listSplice";
 import {
   documentStories,
   findStoryBody,
@@ -83,23 +84,10 @@ export const paragraphSnapshotTransfers = (
     if (previous === undefined || previous === next) continue;
     const old = previous.content;
     const now = next.content;
-    let start = 0;
-    while (
-      start < old.length &&
-      start < now.length &&
-      old[start] === now[start]
-    )
-      start += 1;
-    let after = 0;
-    while (
-      after < old.length - start &&
-      after < now.length - start &&
-      old[old.length - 1 - after] === now[now.length - 1 - after]
-    )
-      after += 1;
+    const { start, previousEnd, end } = changedListBounds(old, now);
     transfersBetween(
-      paragraphsOf(old.slice(start, old.length - after)),
-      paragraphsOf(now.slice(start, now.length - after)),
+      paragraphsOf(old.slice(start, previousEnd)),
+      paragraphsOf(now.slice(start, end)),
       modified,
       transfers,
     );

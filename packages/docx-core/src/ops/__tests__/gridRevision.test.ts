@@ -55,11 +55,28 @@ test("accepting a grid revision clears its historical snapshot", () => {
   expect(table.formatting?.gridChange).toBeUndefined();
 });
 
+// A previous grid wider than the rows restores: the rows end early, read with
+// the columns they imply after them, as a row that ends early always is.
+test("rejecting restores a previous grid wider than the rows", () => {
+  const result = applyDocumentOp(documentOf(100, [2400, 1200]), {
+    type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+    story: OP_STORIES.MAIN,
+    revisionIds: [100],
+    decision: REVISION_DECISIONS.REJECT,
+  });
+  if (result.isErr()) throw result.error;
+  const table = result.value.document.package.document.content.at(0);
+  if (table?.type !== "table") throw new Error("The table remains present.");
+  expect(table.columnWidths).toEqual([2400, 1200]);
+  expect(table.formatting?.gridChange).toBeUndefined();
+  expect(table.rows.map(({ cells }) => cells.length)).toEqual([1]);
+});
+
 test.each([
   [[undefined, 1000], DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE],
-  [[2400, 1200], DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH],
+  [[1000, undefined], DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE],
 ] as const)(
-  "rejecting an unrepresentable or inconsistent previous grid refuses atomically",
+  "rejecting an unrepresentable previous grid refuses atomically",
   (widths, reason) => {
     const document = documentOf(100, widths);
     const before = structuredClone(document);

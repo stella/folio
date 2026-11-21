@@ -2,14 +2,13 @@ import { describe, expect, test } from "bun:test";
 
 import { createEmptyDocument } from "@stll/folio-core";
 import { validateFolioDocumentModel } from "@stll/folio-core/docx/modelValidation";
+import { createCommentIdAllocator } from "@stll/folio-core/prosemirror/commentIdAllocator";
 import type { Comment } from "@stll/folio-core/types/content";
 
 import {
-  allocateCommentId,
   collectCommentIdsFromSources,
   createComment,
   pruneOrphanedComments,
-  seedCommentIdAbove,
 } from "./commentsHelpers";
 
 // OOXML decimal IDs must fit the signed 32-bit range consumers read.
@@ -260,15 +259,18 @@ describe("pruneOrphanedComments", () => {
 
 /**
  * Adopting an externally-assigned OOXML comment id (ports upstream docx-editor
- * 05f2ab84, adapted to folio's `createComment` factory). folio's allocator is a
- * process-global monotonic counter, so absolute ids aren't fixed; the invariant
- * is that a comment can adopt a supplied id AND that the counter is seeded above
- * it so a later mint can never re-issue it.
+ * 05f2ab84, adapted to folio's `createComment` factory). A comment can adopt a
+ * supplied id, and the document's ids are seeded above it so a later mint can
+ * never re-issue it.
  */
 describe("createComment: document model", () => {
   test("creates a comment the document model accepts, so it saves", () => {
     const document = createEmptyDocument({ initialText: "Clause." });
-    const comment = createComment("Review this paragraph", "Reviewer");
+    const comment = createComment({
+      commentIds: createCommentIdAllocator(),
+      text: "Review this paragraph",
+      author: "Reviewer",
+    });
     document.package.document.comments = [comment];
 
     expect(validateFolioDocumentModel(document).issues).toEqual([]);
@@ -278,10 +280,16 @@ describe("createComment: document model", () => {
 
 describe("createComment: external comment id adoption", () => {
   test("creates bounded IDs outside adopted IDs at the upper boundary", () => {
-    createComment("Existing maximum", "Reviewer", undefined, MAX_COMMENT_ID);
+    const commentIds = createCommentIdAllocator();
+    createComment({
+      commentIds,
+      text: "Existing maximum",
+      author: "Reviewer",
+      id: MAX_COMMENT_ID,
+    });
     const ids = Array.from(
       { length: 12 },
-      () => createComment("Note", "Reviewer").id,
+      () => createComment({ commentIds, text: "Note", author: "Reviewer" }).id,
     );
     expect(new Set(ids).size).toBe(ids.length);
     for (const id of ids) {
@@ -291,32 +299,33 @@ describe("createComment: external comment id adoption", () => {
     }
   });
   test("adopts a supplied commentId instead of minting one", () => {
-    const comment = createComment(
-      "Please confirm the carve-out.",
-      "CLM",
-      undefined,
-      9999,
-    );
+    const comment = createComment({
+      commentIds: createCommentIdAllocator(),
+      text: "Please confirm the carve-out.",
+      author: "CLM",
+      id: 9999,
+    });
     expect(comment.id).toBe(9999);
   });
 
-  test("still mints a fresh, monotonically increasing id when none is supplied", () => {
-    const first = createComment("a", "CLM").id;
-    const second = createComment("b", "CLM").id;
-    expect(second).toBe(first + 1);
+  test("mints the document's next ids when none is supplied", () => {
+    const commentIds = createCommentIdAllocator();
+    const first = createComment({ commentIds, text: "a", author: "CLM" }).id;
+    const second = createComment({ commentIds, text: "b", author: "CLM" }).id;
+    expect([first, second]).toEqual([1, 2]);
   });
 
-  test("seeds the allocator above an adopted id that exceeds the counter", () => {
-    const base = allocateCommentId();
-    const adopted = base + 5000;
-    createComment("note", "CLM", undefined, adopted);
-    // The next fresh mint must clear the adopted id, not collide with it.
-    expect(allocateCommentId()).toBe(adopted + 1);
+  test("seeds the document's ids above an adopted id", () => {
+    const commentIds = createCommentIdAllocator();
+    createComment({ commentIds, text: "note", author: "CLM", id: 5000 });
+    expect(commentIds.next()).toBe(5001);
   });
 
-  test("seedCommentIdAbove is a no-op for an id below the current counter", () => {
-    const a = allocateCommentId();
-    seedCommentIdAbove(a - 1000);
-    expect(allocateCommentId()).toBe(a + 1);
+  test("a document's ids do not depend on another document's", () => {
+    const other = createCommentIdAllocator();
+    other.seedAbove(MAX_COMMENT_ID - 1);
+    other.next();
+    const commentIds = createCommentIdAllocator();
+    expect(createComment({ commentIds, text: "a", author: "CLM" }).id).toBe(1);
   });
 });

@@ -124,6 +124,12 @@ const deletedContent = (
   };
 };
 
+/** Whether accepting every change takes `paragraph`'s own mark. */
+const markGoes = ({ pPrMark }: Paragraph): boolean =>
+  pPrMark?.kind === "del" ||
+  pPrMark?.kind === "moveFrom" ||
+  pPrMark?.deletion !== undefined;
+
 /**
  * Whether `owner`'s pending insertion added `paragraph` whole: its mark
  * and every word, with no one else's suggestion in it and no range boundary
@@ -778,7 +784,19 @@ export const deleteBlocks = ({
     !(finalTakeover && paragraph === last.paragraph);
   // Another owner's added mark the deletion takes keeps that insertion and
   // records the deletion beside it, as a later deletion of an insertion does;
-  // so does one's own that ends a section.
+  // so does one's own that ends a section, and one's own on the last
+  // paragraph before a table whose rows are all pending insertion: it has no
+  // paragraph to join, and accepting both records removes it without running
+  // into the table. Not where the paragraph before it loses its own mark:
+  // accepting would run that one into the table instead.
+  const before = list[first.index - 1];
+  const beforeInsertedTable =
+    !(before?.type === "paragraph" && markGoes(before)) &&
+    following?.type === "table" &&
+    following.rows.length > 0 &&
+    following.rows.every(
+      (row) => row.structuralChange?.type === "tableRowInsertion",
+    );
   const deletesAddedMark = (paragraph: Paragraph) =>
     op.move !== true &&
     losesMark(paragraph) &&
@@ -787,7 +805,8 @@ export const deleteBlocks = ({
       paragraph.pPrMark?.kind === "moveTo") &&
     paragraph.pPrMark.deletion === undefined &&
     (!isOwnRecord(paragraph.pPrMark.info, revision) ||
-      paragraph.sectionProperties !== undefined) &&
+      paragraph.sectionProperties !== undefined ||
+      (beforeInsertedTable && paragraph === last.paragraph)) &&
     !(finalTakeover && paragraph === last.paragraph);
   if (
     affected.some(

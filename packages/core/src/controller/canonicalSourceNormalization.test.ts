@@ -129,9 +129,9 @@ describe("source spellings the canonical session reads in its own form", () => {
       source.document,
       source.normalized,
     );
+    // The parser already reads a literal tab as a tab element, so only the
+    // empty footer is the session's own spelling.
     expect(restores.map(({ story }) => story)).toEqual([
-      "main",
-      { kind: "header", rId: "rId20" },
       { kind: "footer", rId: "rId21" },
     ]);
     const footer = source.document.package.footers?.get("rId21");

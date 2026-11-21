@@ -314,6 +314,12 @@
       "path": "88:4:3:3:3:3:4:5:4:5:5:5:5:5:7:7:7:9:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7",
       "date": "2026-11-19",
       "note": "A direct replacement keeps an empty content control standing alone in the range, as the accepted suggestion does."
+    },
+    {
+      "seed": -569180152,
+      "path": "43:0:0:0:0:0:0:0:4:2:6:6:5:6:6:6:6:7:7:7:7:7:7:7:7:7:6:34:34:34:34:34:34:34:34",
+      "note": "Comment ends at a bidi wrapper end all close it: a direct replacement goes before them inside the one wrapper, as the accepted tracked one does, instead of between them in a second wrapper.",
+      "date": "2026-11-20"
     }
   ],
   "the same operation on equal documents gives equal results": [

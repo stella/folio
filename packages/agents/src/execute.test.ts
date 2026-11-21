@@ -543,7 +543,11 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
   });
 
   test("suggest_changes explains how to resolve a pending paragraph-format change", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    // Only the legacy engine refuses a second paragraph-format change; the
+    // canonical engine folds it into the pending one.
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture(), {
+      session: "legacy",
+    });
     const bridge = createReviewerBridge(reviewer);
     const block = reviewer.snapshot().blocks.at(0);
     if (!block) {

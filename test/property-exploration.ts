@@ -18,6 +18,11 @@
  * or changes (or whose pinned seeds it changes), listed as a JSON array in
  * `FOLIO_FUZZ_EXPLORATION_OWNED` by scripts/ci-test-shards.ts, fails on any
  * failure, so a new property that fails cannot land as a report.
+ *
+ * A reported failure is then replayed alone on the change's base commit
+ * (scripts/exploration-base-replay.ts): one the base passes came with the
+ * change, which fails, so a change cannot break a property it does not own
+ * and land on the report.
  */
 
 export const EXPLORATION_ENV = "FOLIO_FUZZ_EXPLORATION";

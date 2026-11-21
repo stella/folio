@@ -14,6 +14,7 @@ import {
   openCanonicalEditor,
 } from "./parity-fixture";
 import type { AdapterFixture } from "./parity-fixture";
+import { PLAYGROUND_HOSTS } from "./playgroundHosts";
 
 // The former React-only assertion used toBeVisible(), which accepts elements
 // outside an overflow viewport. Assert actual viewport overlap and scrollTop:
@@ -224,7 +225,7 @@ test("host scroll in Vue ready event survives the next paint [vue]", async ({
 }) => {
   const adapter = {
     name: "vue",
-    baseUrl: `http://localhost:${Number(process.env["FOLIO_PLAYGROUND_VUE_PORT"]) || 4201}`,
+    baseUrl: PLAYGROUND_HOSTS.vue,
   } as const;
   const bytes = await buildScrollRootDocument();
   await page.route("**/fixtures/scroll-root.docx", (route) =>

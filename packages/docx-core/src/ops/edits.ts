@@ -4,7 +4,7 @@
  */
 
 import type { Document } from "../model/document";
-import { idKey, packageParagraphIds } from "./ids";
+import { idKey, type KeyMembership, packageParagraphIdIndex } from "./ids";
 import type { DocumentOp, ParagraphAbsorption, TouchedBlocks } from "./types";
 
 /** What applying operations produced: the document, its inverse, and the blocks it changed. */
@@ -33,10 +33,12 @@ const TOUCH_TRANSITIONS = {
   Record<TouchedState, TouchedState | undefined>
 >;
 
-/** Edits made in turn, starting from `document`, as one edit. */
-export const combineEdits = (
-  document: Document,
-  edits: readonly DocumentEdit[],
+export type DocumentEditEffects = Pick<DocumentEdit, "inverse" | "touched">;
+
+/** Effects of edits made in turn, with their final document. */
+export const combineEditEffects = (
+  final: Document,
+  edits: readonly DocumentEditEffects[],
 ): DocumentEdit => {
   const touched = new Map<string, TouchedState>();
   for (const edit of edits) {
@@ -55,13 +57,12 @@ export const combineEdits = (
   }
   const ids = (state: TouchedState): string[] =>
     [...touched].flatMap(([id, value]) => (value === state ? [id] : []));
-  const final = edits.at(-1)?.document ?? document;
   const lists = edits.map(({ touched: { absorbed: list } }) => list ?? []);
   const absorbed = lists.some((list) => list.length > 0)
-    ? combinedAbsorptions(
+    ? combinedAbsorptionsIn(
         lists,
         new Set(ids("removed")),
-        new Set(packageParagraphIds(final.package)),
+        packageParagraphIdIndex(final.package),
       )
     : [];
   return {
@@ -76,6 +77,13 @@ export const combineEdits = (
   };
 };
 
+/** Edits made in turn, starting from `document`, as one edit. */
+export const combineEdits = (
+  document: Document,
+  edits: readonly DocumentEdit[],
+): DocumentEdit =>
+  combineEditEffects(edits.at(-1)?.document ?? document, edits);
+
 /**
  * Absorptions made in turn, as one: a paragraph joined into one that a later
  * edit joined on is reported against the paragraph that holds both now. Only
@@ -87,23 +95,44 @@ export const combinedAbsorptions = (
   lists: readonly (readonly ParagraphAbsorption[])[],
   removed: ReadonlySet<string>,
   present: ReadonlySet<string>,
+): ParagraphAbsorption[] =>
+  combinedAbsorptionsIn(lists, removed, new Set([...present].map(idKey)));
+
+const combinedAbsorptionsIn = (
+  lists: readonly (readonly ParagraphAbsorption[])[],
+  removed: ReadonlySet<string>,
+  presentKeys: KeyMembership,
 ): ParagraphAbsorption[] => {
-  const into = new Map<string, ParagraphAbsorption>();
-  for (const list of lists) {
-    for (const { absorbed, survivor } of list) {
+  // Walk backwards: the final destination of a survivor is already known
+  // when an earlier paragraph joins it. A later reuse of the absorbed ID
+  // replaces its own report, but earlier joins still follow their own path.
+  const finalDestination = new Map<string, string>();
+  const latest = new Map<string, ParagraphAbsorption>();
+  for (const list of lists.toReversed()) {
+    for (const { absorbed, survivor } of list.toReversed()) {
       const key = idKey(absorbed);
-      for (const [earlier, held] of into)
-        if (idKey(held.survivor) === key)
-          into.set(earlier, { absorbed: held.absorbed, survivor });
-      into.set(key, { absorbed, survivor });
+      const destination = finalDestination.get(idKey(survivor)) ?? survivor;
+      finalDestination.set(key, destination);
+      if (!latest.has(key))
+        latest.set(key, { absorbed, survivor: destination });
     }
   }
   const removedKeys = new Set([...removed].map(idKey));
-  const presentKeys = new Set([...present].map(idKey));
-  return [...into.values()].filter(
-    ({ absorbed, survivor }) =>
-      removedKeys.has(idKey(absorbed)) &&
-      !presentKeys.has(idKey(absorbed)) &&
-      presentKeys.has(idKey(survivor)),
-  );
+  const result: ParagraphAbsorption[] = [];
+  // Report in first-absorption order, with the spelling of the last record.
+  for (const list of lists) {
+    for (const { absorbed } of list) {
+      const key = idKey(absorbed);
+      const entry = latest.get(key);
+      if (entry === undefined) continue;
+      latest.delete(key);
+      if (
+        removedKeys.has(key) &&
+        !presentKeys.has(key) &&
+        presentKeys.has(idKey(entry.survivor))
+      )
+        result.push(entry);
+    }
+  }
+  return result;
 };

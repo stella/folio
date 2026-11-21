@@ -1,7 +1,7 @@
 import { panic } from "better-result";
 import fc from "fast-check";
 
-import { NUM_RUNS_FACTOR_ENV, numRunsFactor } from "./property-run-factor";
+import { numRunsFactor } from "./property-run-factor";
 
 export { propertyTestTimeout } from "./property-timeout";
 import {
@@ -34,6 +34,13 @@ import {
   pinnedReplayPath,
   type SeedSource,
 } from "./property-exploration";
+import {
+  CASE_ENV,
+  counterexampleDigest,
+  formatReplayCommand,
+  PATH_ENV,
+  SEED_ENV,
+} from "./replay-command";
 
 /**
  * Shared fast-check configuration for the repo's property tests. Every
@@ -61,7 +68,11 @@ import {
  *     `PROPERTY_TEST_SEED` pins the seed for every property in the run (a seed
  *     sweep iterates it); `PROPERTY_TEST_PATH` jumps straight to a
  *     counterexample of the property running under that seed. A property that
- *     pins its own `seed` keeps it.
+ *     pins its own `seed` keeps it. With both set, the run replays that one
+ *     case and skips the property's pinned seeds. The replay line also
+ *     carries `PROPERTY_TEST_CASE`, the counterexample's digest
+ *     (test/replay-command.ts): a replay whose path leads to another case,
+ *     because the generator changed, fails as stale instead of passing.
  *
  *  4. Pinned regression seeds. Each test/property-seeds/ file maps
  *     explicit property IDs to seeds. Readers join `<repo-relative file>::<id>`
@@ -90,8 +101,6 @@ import {
  *     says how many ran.
  */
 
-const SEED_ENV = "PROPERTY_TEST_SEED";
-const PATH_ENV = "PROPERTY_TEST_PATH";
 const SEED_SALT_ENV = "PROPERTY_TEST_SEED_SALT";
 
 /** fast-check's own default when a property does not specify `numRuns`. */
@@ -360,9 +369,6 @@ const packageDirOf = (absolute: string): string => {
   return REPO_ROOT;
 };
 
-const shellQuote = (text: string): string =>
-  `'${text.replaceAll("'", `'\\''`)}'`;
-
 /** A `bun test -t` pattern for a title as written: `${…}` matches anything. */
 export const titlePattern = (title: string): string =>
   title
@@ -370,30 +376,32 @@ export const titlePattern = (title: string): string =>
     .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
     .join(".*");
 
-type Replay = { seed: number; path: string | null };
+type Replay = { seed: number; path: string | null; counterexample?: unknown };
 
 const replayCommand = (identity: PropertyIdentity, replay: Replay): string => {
-  const env = [`${SEED_ENV}=${String(replay.seed)}`];
-  if (replay.path !== null && replay.path !== "") {
-    env.push(`${PATH_ENV}=${shellQuote(replay.path)}`);
-  }
-  const factor = numRunsFactor();
-  if (factor !== 1) {
-    env.push(`${NUM_RUNS_FACTOR_ENV}=${String(factor)}`);
-  }
   const { site, title } = identity;
-  if (site === undefined) {
-    return `${env.join(" ")} bun test`;
-  }
-  const packageDir = packageDirOf(site.absolute);
-  const file = path.relative(packageDir, site.absolute).replaceAll("\\", "/");
-  const cd =
-    packageDir === REPO_ROOT
-      ? ""
-      : `cd ${path.relative(REPO_ROOT, packageDir).replaceAll("\\", "/")} && `;
-  const filter =
-    title === undefined ? "" : ` -t ${shellQuote(titlePattern(title))}`;
-  return `${cd}${env.join(" ")} bun test ./${file}${filter}`;
+  const packageDir =
+    site === undefined ? undefined : packageDirOf(site.absolute);
+  return formatReplayCommand({
+    dir:
+      packageDir === undefined || packageDir === REPO_ROOT
+        ? ""
+        : path.relative(REPO_ROOT, packageDir).replaceAll("\\", "/"),
+    ...(site === undefined || packageDir === undefined
+      ? {}
+      : {
+          file: path.relative(packageDir, site.absolute).replaceAll("\\", "/"),
+        }),
+    ...(site === undefined || title === undefined
+      ? {}
+      : { pattern: titlePattern(title) }),
+    seed: replay.seed,
+    path: replay.path,
+    ...(replay.counterexample === undefined || replay.counterexample === null
+      ? {}
+      : { digest: counterexampleDigest(replay.counterexample) }),
+    factor: numRunsFactor(),
+  });
 };
 
 const truncate = (text: string, max: number): string =>
@@ -553,6 +561,47 @@ const shrinkBounded = <Ts>(
   return bounded;
 };
 
+/** A replay whose path no longer leads to the recorded counterexample. */
+class StaleReplayError extends Error {
+  constructor(expected: string, replayed: string) {
+    super(
+      `Stale replay: ${PATH_ENV} leads to a case with digest ${replayed}, not the recorded counterexample's ${expected} (${CASE_ENV}). The generator changed since the failure was recorded, so this replay proves nothing: run the property without ${PATH_ENV}, or record the failure again.`,
+    );
+    this.name = "StaleReplayError";
+  }
+}
+
+/** The recorded counterexample's digest, when this run replays the case the environment names. */
+const namedCaseDigest = (
+  seed: number | undefined,
+  replayPath: string | undefined,
+): string | undefined => {
+  const expected = process.env[CASE_ENV];
+  return expected !== undefined &&
+    expected !== "" &&
+    namedCaseReplay() &&
+    seed === propertyTestSeed() &&
+    replayPath === process.env[PATH_ENV]
+    ? expected
+    : undefined;
+};
+
+/**
+ * The error a replay of the case the environment names throws when the case
+ * it ran first is not the recorded counterexample, whether it passed or not.
+ */
+const staleReplay = <Ts>(
+  details: fc.RunDetails<Ts>,
+): StaleReplayError | undefined => {
+  const expected = namedCaseDigest(details.seed, details.runConfiguration.path);
+  const first = details.executionSummary.at(0);
+  if (expected === undefined || first === undefined) return undefined;
+  const replayed = counterexampleDigest(first.value);
+  return replayed === expected
+    ? undefined
+    : new StaleReplayError(expected, replayed);
+};
+
 /**
  * A reporter that throws what fast-check would, plus the replay line and, for
  * a property with no pinned entry for this seed, the per-file seed entry
@@ -569,6 +618,8 @@ const replayReporter =
     const registryFile = identity.site
       ? seedFileFor(identity.site.file)
       : PROPERTY_SEEDS_FILE;
+    const stale = staleReplay(details);
+    if (stale !== undefined) throw stale;
     const health = classifyFuzzRun(details);
     reportFuzzHealth(health);
     // Interrupted without a counterexample (fast-check marks it failed when no case passed).
@@ -598,6 +649,7 @@ const replayReporter =
         repro: replayCommand(identity, {
           seed: details.seed,
           path: details.counterexamplePath,
+          counterexample: details.counterexample,
         }),
         failure: details.errorInstance,
       });
@@ -615,6 +667,7 @@ const replayReporter =
     const replay = replayCommand(identity, {
       seed: details.seed,
       path: counterexamplePath,
+      counterexample: details.counterexample,
     });
     const pinPath =
       counterexamplePath === null
@@ -755,6 +808,14 @@ const envReplayPath = (
   return applies ? envPath : own;
 };
 
+/**
+ * Whether this process replays the one recorded case `PROPERTY_TEST_SEED`
+ * and `PROPERTY_TEST_PATH` name. Such a replay runs that case alone: the
+ * property's pinned seeds are checked by every other run.
+ */
+const namedCaseReplay = (): boolean =>
+  propertyTestSeed() !== undefined && (process.env[PATH_ENV] ?? "") !== "";
+
 /** The seed a run starts from and what chose it. */
 const seedOf = <Ts>(
   params: fc.Parameters<Ts>,
@@ -810,6 +871,10 @@ const buildConfig = <Ts>(
     ...params,
     ...(seed === undefined ? {} : { seed }),
     ...(replayPath === undefined ? {} : { path: replayPath }),
+    // The stale-replay check reads the case the replay ran first.
+    ...(namedCaseDigest(seed, replayPath) === undefined
+      ? {}
+      : { verbose: fc.VerbosityLevel.VeryVerbose }),
     ...(own
       ? { reporter: replayReporter<Ts>(identity, pinned, exploration, budget) }
       : {}),
@@ -887,7 +952,7 @@ export function assertProperty<Ts>(
   { id, ...params }: PropertyParameters<Ts>,
 ): Promise<void> | void {
   const identity = identifyProperty(id);
-  const pinned = pinnedFor(identity.key);
+  const pinned = namedCaseReplay() ? [] : pinnedFor(identity.key);
   // Examples run in the generated pass; including them in a pinned replay
   // shifts fast-check's path indices away from the recorded counterexample.
   const replays = pinned.map((entry) =>
@@ -972,8 +1037,8 @@ export function assertKnownProperty<Ts>(
       );
     }
   };
-  const replays = pinnedFor(identity.key).map((entry) =>
-    buildConfig({ ...params, examples: [] }, identity, entry),
+  const replays = (namedCaseReplay() ? [] : pinnedFor(identity.key)).map(
+    (entry) => buildConfig({ ...params, examples: [] }, identity, entry),
   );
   if (property.isAsync()) {
     return (async () => {

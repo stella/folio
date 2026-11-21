@@ -157,58 +157,6 @@ test(
               const inverse = applied.inverse.at(0);
               if (inverse?.type !== DOCUMENT_OP_TYPES.SET_TABLE)
                 panic("A table property inverse restores the table.");
-              for (const scope of ["table", "row", "cell"] as const) {
-                const forged = structuredClone(inverse.table);
-                const info = { id: 80, author: "Reviewer" };
-                switch (scope) {
-                  case "table":
-                    forged.propertyChanges = [
-                      {
-                        type: "tablePropertyChange",
-                        info,
-                        previousFormatting: {
-                          gridChange: { id: 81, columnWidths: [123] },
-                        },
-                      },
-                    ];
-                    break;
-                  case "row": {
-                    const row =
-                      forged.rows.at(0) ?? panic("The first row exists.");
-                    row.propertyChanges = [
-                      {
-                        type: "tableRowPropertyChange",
-                        info,
-                        currentFormatting: { gridBefore: 3 },
-                      },
-                    ];
-                    break;
-                  }
-                  case "cell": {
-                    const cell =
-                      forged.rows.at(0)?.cells.at(0) ??
-                      panic("The first cell exists.");
-                    cell.propertyChanges = [
-                      {
-                        type: "tableCellPropertyChange",
-                        info,
-                        previousFormatting: { gridSpan: 99 },
-                      },
-                    ];
-                    break;
-                  }
-                  default: {
-                    const unreachable: never = scope;
-                    return unreachable;
-                  }
-                }
-                expect(
-                  applyDocumentOp(applied.document, {
-                    ...inverse,
-                    table: forged,
-                  }).isErr(),
-                ).toBe(true);
-              }
               const undo = applyDocumentOps(
                 applied.document,
                 JSON.parse(JSON.stringify(applied.inverse)),

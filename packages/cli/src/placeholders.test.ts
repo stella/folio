@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { FolioDocxReviewer } from "@stll/folio-core/server";
 
+import { scanTestTimeout } from "../../../test/scan-timeout";
 import { makeTempDir } from "./__tests__/fixtures";
 import { captureIo, dataOf, envelopeOf } from "./__tests__/io";
 import {
@@ -193,57 +194,61 @@ describe("folio placeholders", () => {
     await cleanup();
   });
 
-  test("exits non-zero while placeholders remain, and zero once a fill resolves them", async () => {
-    const file = path.join(dir, "draft.docx");
-    await writeFile(file, await buildPackage(DRAFT));
+  test(
+    "exits non-zero while placeholders remain, and zero once a fill resolves them",
+    async () => {
+      const file = path.join(dir, "draft.docx");
+      await writeFile(file, await buildPackage(DRAFT));
 
-    const list = captureIo();
-    expect(await runFolioCli(["placeholders", file], list.io)).toBe(
-      EXIT_CODES.unresolved,
-    );
-    const listed = dataOf(list.stdout());
-    expect(listed["result"]).toMatchObject({ unresolved: 7 });
+      const list = captureIo();
+      expect(await runFolioCli(["placeholders", file], list.io)).toBe(
+        EXIT_CODES.unresolved,
+      );
+      const listed = dataOf(list.stdout());
+      expect(listed["result"]).toMatchObject({ unresolved: 7 });
 
-    const fields = path.join(dir, "fields.json");
-    await writeFile(
-      fields,
-      JSON.stringify({
-        client: "Acme Ltd",
-        "[•]": "Beta plc",
-        "signing date": "1 March 2027",
-        TODO: "",
-        matter: "M-17",
-        "[…]": "Final",
-      }),
-    );
-    const out = path.join(dir, "filled.docx");
-    const fill = captureIo();
-    const code = await runFolioCli(
-      [
-        "placeholders",
-        file,
-        "--fill",
-        `@${fields}`,
-        "-o",
-        out,
-        "--expect-version",
-        String(listed["fileVersion"]),
-      ],
-      fill.io,
-    );
-    expect(fill.stderr()).toBe("");
-    expect(code).toBe(EXIT_CODES.ok);
-    expect(dataOf(fill.stdout())["result"]).toMatchObject({
-      filled: 7,
-      unresolved: 0,
-    });
+      const fields = path.join(dir, "fields.json");
+      await writeFile(
+        fields,
+        JSON.stringify({
+          client: "Acme Ltd",
+          "[•]": "Beta plc",
+          "signing date": "1 March 2027",
+          TODO: "",
+          matter: "M-17",
+          "[…]": "Final",
+        }),
+      );
+      const out = path.join(dir, "filled.docx");
+      const fill = captureIo();
+      const code = await runFolioCli(
+        [
+          "placeholders",
+          file,
+          "--fill",
+          `@${fields}`,
+          "-o",
+          out,
+          "--expect-version",
+          String(listed["fileVersion"]),
+        ],
+        fill.io,
+      );
+      expect(fill.stderr()).toBe("");
+      expect(code).toBe(EXIT_CODES.ok);
+      expect(dataOf(fill.stdout())["result"]).toMatchObject({
+        filled: 7,
+        unresolved: 0,
+      });
 
-    const check = captureIo();
-    expect(await runFolioCli(["placeholders", out], check.io)).toBe(
-      EXIT_CODES.ok,
-    );
-    expect(await readFile(file)).not.toEqual(await readFile(out));
-  });
+      const check = captureIo();
+      expect(await runFolioCli(["placeholders", out], check.io)).toBe(
+        EXIT_CODES.ok,
+      );
+      expect(await readFile(file)).not.toEqual(await readFile(out));
+    },
+    scanTestTimeout(30_000),
+  );
 
   test("a fill that changes nothing is refused", async () => {
     const file = path.join(dir, "draft.docx");

@@ -7,10 +7,11 @@ import type { CanonicalHyperlinkAction } from "../parity/canonicalBridge";
 import type {} from "../parity/canonicalFuzzErrors";
 import { evaluateCanonicalLoad } from "../parity/canonicalLoadEvaluation";
 import { test } from "../parity/canonicalTest";
+import { PLAYGROUND_PORTS } from "../parity/playgroundHosts";
 
 const MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
-const reactPort = Number(process.env["FOLIO_PLAYGROUND_PORT"]) || 4200;
-const vuePort = Number(process.env["FOLIO_PLAYGROUND_VUE_PORT"]) || 4201;
+const reactPort = PLAYGROUND_PORTS.react;
+const vuePort = PLAYGROUND_PORTS.vue;
 
 const snapshot = (page: Page) =>
   page.evaluate(() => globalThis.__folioCanonical?.snapshot());

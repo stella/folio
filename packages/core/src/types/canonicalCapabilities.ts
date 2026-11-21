@@ -219,7 +219,7 @@ export const CANONICAL_CAPABILITIES: {
     readonly defaultSessionMutation: "pm-public-operations";
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Unsupported public payloads refuse with a typed compiler capability gap, as does typing in a text box, whose paragraphs belong to its shape.";
+    readonly summary: "Unsupported public payloads refuse with a typed compiler capability gap.";
   };
   readonly "publicOps.tableStructure": {
     readonly owner: "document-operations";
@@ -369,7 +369,7 @@ export const CANONICAL_CAPABILITIES: {
     kind: "refusal",
     adapters: ["react", "vue"],
     summary:
-      "Unsupported public payloads refuse with a typed compiler capability gap, as does typing in a text box, whose paragraphs belong to its shape.",
+      "Unsupported public payloads refuse with a typed compiler capability gap.",
   },
   [CANONICAL_GAP.publicTableStructure]: {
     owner: "document-operations",

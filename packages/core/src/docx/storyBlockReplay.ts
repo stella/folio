@@ -2,6 +2,7 @@ import { escapeXmlAttribute } from "@stll/docx-core";
 import { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
 import {
   getXmlSourceRange,
+  parseStreamingXml,
   parseStreamingXmlWithSourceRanges,
 } from "@stll/docx-core/xml";
 
@@ -15,7 +16,10 @@ import {
 import { TRANSITIONAL_NAMESPACE_BY_STRICT_URI } from "./strictValueEncodings.gen";
 import {
   captureSourceProfileXml,
+  hasReplayOpeningDeclarations,
   isSafeCapturedXmlDocument,
+  isSafeCompactReplayFragment,
+  prepareCompactReplaySuffix,
 } from "./verbatimCapture";
 import {
   getAttributeByNamespaceUri,
@@ -110,10 +114,10 @@ const modelMatchesElement = ({
     normalize(getNamespaceUri(root)) === normalize(getNamespaceUri(element))
   );
 };
-// Each complete XML token includes quoted delimiters; text, comments and CDATA
-// never participate in namespace rewriting.
+// The first XML token includes quoted delimiters. Materializing only changes
+// the opening tag, so there is no need to scan or collect the remaining tokens.
 const XML_TOKEN =
-  /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<\?[\s\S]*?\?>|<(?:"[^"]*"|'[^']*'|[^'">])*>/gu;
+  /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<\?[\s\S]*?\?>|<(?:"[^"]*"|'[^']*'|[^'">])*>/u;
 const XML_ATTRIBUTE = /([^\s=<>/]+)(\s*=\s*)(["'])(.*?)\3/gsu;
 
 type XmlRange = { readonly start: number; readonly end: number };
@@ -187,7 +191,95 @@ type MaterializeReplayFragmentOptions = {
   element: XmlElement;
   sourceNamespace: string;
   generatedRoot?: XmlElement;
+  validation?: ReplayFragmentValidation | undefined;
 };
+
+const validationToken = Symbol("replay-fragment-validation");
+export type ReplayFragmentValidation = { readonly [validationToken]: true };
+type ReplayFragmentOpening = {
+  suffix: string;
+  ignorableAttribute: string | undefined;
+  escapedIgnorable: string;
+  compact: ReturnType<typeof prepareCompactReplaySuffix>;
+};
+type ReplayFragmentState = {
+  readonly valid: Set<string>;
+  opening?: {
+    scope: XmlNamespaceScope | undefined;
+    root: XmlElement | undefined;
+    plan: ReplayFragmentOpening;
+  };
+};
+const fragmentStates = new WeakMap<
+  ReplayFragmentValidation,
+  ReplayFragmentState
+>();
+
+type BindFragmentOpeningOptions = {
+  xml: string;
+  opening: string;
+  plan: ReplayFragmentOpening;
+  strict: boolean;
+  state: ReplayFragmentState | undefined;
+};
+const bindFragmentOpening = ({
+  xml,
+  opening,
+  plan,
+  strict,
+  state,
+}: BindFragmentOpeningOptions): string | null => {
+  const { ignorableAttribute, escapedIgnorable, compact } = plan;
+  const suffix = compact?.serialized ?? plan.suffix;
+  // The raw fragment may be supplied separately from its parsed source scope.
+  const replacedOpening =
+    ignorableAttribute !== undefined && opening.includes(ignorableAttribute)
+      ? opening.replace(
+          XML_ATTRIBUTE,
+          (match, name: string, assignment: string, quote: string) =>
+            name === ignorableAttribute
+              ? `${name}${assignment}${quote}${escapedIgnorable}${quote}`
+              : match,
+        )
+      : opening;
+  const close = opening.endsWith("/>")
+    ? replacedOpening.length - 2
+    : replacedOpening.length - 1;
+  const materialized =
+    replacedOpening.slice(0, close) +
+    suffix +
+    replacedOpening.slice(close) +
+    xml.slice(opening.length);
+  const valid = state?.valid;
+  if (valid?.has(materialized) !== true) {
+    const compactSafe =
+      !strict &&
+      compact !== undefined &&
+      replacedOpening === opening &&
+      isSafeCompactReplayFragment({ xml, suffix: compact });
+    if (!compactSafe && !isSafeCapturedXmlDocument(materialized)) return null;
+    valid?.add(materialized);
+  }
+  if (!strict) return materialized;
+  const parsed = parseStreamingXml(materialized);
+  if (parsed.status !== "parsed") return null;
+  const root = getChildElements(parsed.value).at(0);
+  return root === undefined
+    ? null
+    : captureSourceProfileXml(root, DOCX_CONFORMANCE_CLASSES.STRICT);
+};
+
+/** Validation shared by both replay passes of a single save. */
+export const createReplayFragmentValidation = (): ReplayFragmentValidation => {
+  const token = Object.freeze({ [validationToken]: true } as const);
+  fragmentStates.set(token, { valid: new Set() });
+  return token;
+};
+
+/** Keep the authored order of markup compatibility prefixes. */
+export const replayIgnorablePrefixes = (value: string): string[] => [
+  ...new Set(value.trim().split(/\s+/u).filter(Boolean)),
+];
 
 /** Bind a replay fragment once, retaining existing local declarations and compatibility tokens. */
 export const materializeReplayFragment = ({
@@ -195,10 +287,10 @@ export const materializeReplayFragment = ({
   element,
   sourceNamespace,
   generatedRoot,
+  validation,
 }: MaterializeReplayFragmentOptions): string | null => {
   const strict = TRANSITIONAL_NAMESPACE_BY_STRICT_URI.has(sourceNamespace);
-  const tokens = [...xml.matchAll(XML_TOKEN)];
-  const first = tokens.at(0);
+  const first = XML_TOKEN.exec(xml);
   if (
     !first ||
     first.index !== 0 ||
@@ -207,6 +299,26 @@ export const materializeReplayFragment = ({
   )
     return null;
   const opening = first[0];
+  const state =
+    validation === undefined ? undefined : fragmentStates.get(validation);
+  const sibling =
+    state === undefined || hasReplayOpeningDeclarations(element)
+      ? undefined
+      : state;
+  const scope = element.namespaceScope;
+  const cached = sibling?.opening;
+  if (
+    cached !== undefined &&
+    cached.scope === scope &&
+    cached.root === generatedRoot
+  )
+    return bindFragmentOpening({
+      xml,
+      opening,
+      plan: cached.plan,
+      strict,
+      state,
+    });
   const additions = [];
   const bindings = effectiveBindings(element);
   const markupCompatibilityUri =
@@ -221,15 +333,11 @@ export const materializeReplayFragment = ({
     ignorableUris,
     "Ignorable",
   );
-  const ignorable = [
-    ...new Set(
-      `${inheritedIgnorable ?? ""} ${localIgnorable ?? ""}`
-        .trim()
-        .split(/\s+/u)
-        .filter(Boolean),
-    ),
-  ];
+  const ignorable = replayIgnorablePrefixes(
+    `${inheritedIgnorable ?? ""} ${localIgnorable ?? ""}`,
+  );
   let ignorableAttribute: string | undefined;
+  let escapedIgnorable = "";
   if (ignorable.length > 0) {
     const localAttribute = Object.keys(element.attributes ?? {}).find(
       (name) => {
@@ -252,39 +360,28 @@ export const materializeReplayFragment = ({
     )
       return null;
     ignorableAttribute = `${compatibilityPrefix}:Ignorable`;
+    escapedIgnorable = escapeXmlAttribute(ignorable.join(" "));
     if (localIgnorable === null)
-      additions.push(
-        ` ${ignorableAttribute}="${escapeXmlAttribute(ignorable.join(" "))}"`,
-      );
+      additions.push(` ${ignorableAttribute}="${escapedIgnorable}"`);
   }
   for (const [prefix, uri] of bindings) {
     const name = prefix === "" ? "xmlns" : `xmlns:${prefix}`;
     if (element.attributes?.[name] !== undefined) continue;
     additions.push(` ${name}="${escapeXmlAttribute(uri)}"`);
   }
-  let replacedOpening = opening.replace(
-    XML_ATTRIBUTE,
-    (match, name: string, assignment: string, quote: string) =>
-      name === ignorableAttribute
-        ? `${name}${assignment}${quote}${escapeXmlAttribute(ignorable.join(" "))}${quote}`
-        : match,
-  );
-  const close = opening.endsWith("/>")
-    ? replacedOpening.length - 2
-    : replacedOpening.length - 1;
-  replacedOpening =
-    replacedOpening.slice(0, close) +
-    additions.join("") +
-    replacedOpening.slice(close);
-  const materialized = replacedOpening + xml.slice(opening.length);
-  if (!isSafeCapturedXmlDocument(materialized)) return null;
-  if (!strict) return materialized;
-  const parsed = parseStreamingXmlWithSourceRanges(materialized);
-  if (parsed.status !== "parsed") return null;
-  const root = getChildElements(parsed.value).at(0);
-  return root === undefined
-    ? null
-    : captureSourceProfileXml(root, DOCX_CONFORMANCE_CLASSES.STRICT);
+  const suffix = additions.join("");
+  const plan = {
+    suffix,
+    ignorableAttribute,
+    escapedIgnorable,
+    compact:
+      sibling !== undefined && !strict
+        ? prepareCompactReplaySuffix(suffix)
+        : undefined,
+  };
+  if (sibling !== undefined)
+    sibling.opening = { scope, root: generatedRoot, plan };
+  return bindFragmentOpening({ xml, opening, plan, strict, state });
 };
 
 const paragraphIdentity = (value: BlockContent): string | undefined =>
@@ -402,6 +499,7 @@ type StoryReplayOptions = {
   baselineContent: readonly BlockContent[];
   currentContent: readonly BlockContent[];
   generatedRoot: XmlElement;
+  validation?: ReplayFragmentValidation | undefined;
 };
 
 /**
@@ -416,6 +514,7 @@ const replayStoryBlocks = ({
   baselineContent,
   currentContent,
   generatedRoot,
+  validation,
 }: StoryReplayOptions): XmlSplice[] | null => {
   if (
     getLocalName(source.rootName) !== getLocalName(generated.root.name) ||
@@ -496,6 +595,7 @@ const replayStoryBlocks = ({
       element: replacement.element,
       sourceNamespace: source.namespace,
       generatedRoot,
+      validation,
     });
     if (fragment === null) return null;
     fragments.push(fragment);
@@ -509,11 +609,9 @@ const replayStoryBlocks = ({
         : (fragments[index] ?? ""),
   }));
   if (source.blocks.length === 0 && fragments.length > 0) {
-    const opening = [
-      ...sourceXml
-        .slice(source.range.start, source.range.end)
-        .matchAll(XML_TOKEN),
-    ].at(0)?.[0];
+    const opening = XML_TOKEN.exec(
+      sourceXml.slice(source.range.start, source.range.end),
+    )?.[0];
     if (!opening || !source.rootName) return null;
     if (opening.endsWith("/>")) {
       splices.push({
@@ -920,6 +1018,7 @@ type DocumentBlockReplayOptions = {
   serializedXml: string;
   baseline: DocumentBody;
   current: DocumentBody;
+  validation?: ReplayFragmentValidation | undefined;
 };
 
 /**
@@ -935,6 +1034,7 @@ export const buildDocumentBlockReplay = ({
   serializedXml,
   baseline,
   current,
+  validation,
 }: DocumentBlockReplayOptions): SerializedPart | null => {
   const source = readSourceDocument(sourceXml, baseline);
   const generatedStory = readDocumentStory(serializedXml);
@@ -951,6 +1051,7 @@ export const buildDocumentBlockReplay = ({
     baselineContent: baseline.content,
     currentContent: current.content,
     generatedRoot: generated.root,
+    validation,
   });
   if (bodySplices === null) return null;
   // The splices that change the source; the others copy a block's own bytes.
@@ -1006,7 +1107,7 @@ export const buildDocumentBlockReplay = ({
     if (!next) return xml;
     const insertion =
       name === "background"
-        ? ([...xml.matchAll(XML_TOKEN)].at(0)?.[0].length ?? -1)
+        ? (XML_TOKEN.exec(xml)?.[0].length ?? -1)
         : xml.lastIndexOf("</");
     if (insertion < 0) return null;
     return spliceXml(xml, [

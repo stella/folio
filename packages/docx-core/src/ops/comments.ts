@@ -6,6 +6,7 @@ import {
   type Comment,
   COMMENT_PART_RELATIONSHIPS,
   type Document,
+  type DocumentBody,
   MAX_REVISION_ID,
   type Paragraph,
   type ParagraphContent,
@@ -18,7 +19,7 @@ import {
   type PreservedCommentRangeMarker,
   preservedCommentRangeMarker,
 } from "../xml/preservedCommentRangeMarkers";
-import { replaceParagraphs, storyParagraphs } from "./blocks";
+import { replaceParagraphs, sameBlockList, storyParagraphs } from "./blocks";
 import {
   captureCommentBoundaries,
   restoreCommentBoundaries,
@@ -55,6 +56,7 @@ import {
 } from "./leaves";
 import { cloneModel } from "./modelClone";
 import { isRangeBoundary } from "./offsets";
+import { findStoryParagraph } from "./paragraphLocator";
 import { applyFormattingPatch } from "./patch";
 import {
   DOCUMENT_OP_REFUSAL_REASONS,
@@ -910,19 +912,48 @@ const capture = (
   };
 };
 
+type UnchangedAnchorDifference = Pick<
+  CommentState["anchors"][number],
+  "blockId" | "content"
+>;
+
+// Repeated paragraph keys can report many differences even on one list.
+const MAX_CACHED_ANCHOR_DIFFERENCES = 8;
+const unchangedAnchorDifferences = new WeakMap<
+  readonly BlockContent[],
+  readonly UnchangedAnchorDifference[]
+>();
+
 const changedAnchors = (
   before: Document,
   after: Document,
 ): CommentState["anchors"] => {
   const anchors: CommentState["anchors"][number][] = [];
   for (const story of documentStories(before)) {
+    const content = findStoryBody(before, story)?.content;
+    const unchanged =
+      content !== undefined && content === findStoryBody(after, story)?.content;
+    const known = unchanged
+      ? unchangedAnchorDifferences.get(content)
+      : undefined;
+    if (known !== undefined) {
+      for (const entry of known) anchors.push({ story, ...entry });
+      continue;
+    }
+    const previous = unchanged
+      ? paragraphsThroughTextBoxes(before, story)
+      : undefined;
     const next = new Map(
-      paragraphsThroughTextBoxes(after, story).map(({ paragraph }) => [
-        idKey(paragraph.paraId ?? ""),
-        paragraph,
-      ]),
+      (previous ?? paragraphsThroughTextBoxes(after, story)).map(
+        ({ paragraph }) => [idKey(paragraph.paraId ?? ""), paragraph],
+      ),
     );
-    for (const { paragraph } of paragraphsThroughTextBoxes(before, story)) {
+    // Identical lists can still report a difference when two unnamed
+    // paragraphs share the same key. Keep that exact self-comparison.
+    const sameListDifferences: UnchangedAnchorDifference[] | undefined =
+      unchanged ? [] : undefined;
+    for (const { paragraph } of previous ??
+      paragraphsThroughTextBoxes(before, story)) {
       const now = next.get(idKey(paragraph.paraId ?? ""));
       // A paragraph changed only inside its text boxes keeps its own anchors;
       // the boxes' paragraphs are listed on their own.
@@ -933,13 +964,22 @@ const changedAnchors = (
             contentOutsideTextBoxes(paragraph),
             contentOutsideTextBoxes(now),
           ))
-      )
-        anchors.push({
-          story,
-          blockId: paragraph.paraId ?? "",
-          content: paragraph.content,
-        });
+      ) {
+        const blockId = paragraph.paraId ?? "";
+        anchors.push({ story, blockId, content: paragraph.content });
+        if (
+          sameListDifferences !== undefined &&
+          sameListDifferences.length <= MAX_CACHED_ANCHOR_DIFFERENCES
+        )
+          sameListDifferences.push({ blockId, content: paragraph.content });
+      }
     }
+    if (
+      unchanged &&
+      sameListDifferences !== undefined &&
+      sameListDifferences.length <= MAX_CACHED_ANCHOR_DIFFERENCES
+    )
+      unchangedAnchorDifferences.set(content, sameListDifferences);
   }
   return anchors;
 };
@@ -1552,6 +1592,42 @@ const remainingIds = (document: Document, ids: NewIds | undefined): NewIds => {
   };
 };
 
+type CommentRange = { from: TextPosition; to: TextPosition };
+
+const orderedCommentBoundaries = (body: DocumentBody, range: CommentRange) => {
+  const fromKey = idKey(range.from.blockId);
+  const toKey = idKey(range.to.blockId);
+  if (fromKey !== "" && toKey !== "") {
+    const from = findStoryParagraph(body, fromKey);
+    const to = findStoryParagraph(body, toKey);
+    if (from === undefined || to === undefined) return undefined;
+    if (sameBlockList(from.list, to.list))
+      return {
+        fromParagraph: from.paragraph,
+        toParagraph: to.paragraph,
+        order: from.index - to.index,
+      };
+  }
+  // Unnamed endpoints can match a missing paraId. Endpoints in different
+  // lists still need the story's full physical order.
+  const paragraphs = storyParagraphs(body);
+  const fromIndex = paragraphs.findIndex(
+    ({ paragraph }) => idKey(paragraph.paraId ?? "") === fromKey,
+  );
+  const toIndex = paragraphs.findIndex(
+    ({ paragraph }) => idKey(paragraph.paraId ?? "") === toKey,
+  );
+  const from = paragraphs[fromIndex];
+  const to = paragraphs[toIndex];
+  return from === undefined || to === undefined
+    ? undefined
+    : {
+        fromParagraph: from.paragraph,
+        toParagraph: to.paragraph,
+        order: fromIndex - toIndex,
+      };
+};
+
 const create = (
   document: Document,
   op: CreateCommentOp,
@@ -1594,7 +1670,7 @@ const create = (
     /** The thread's marker a reply's goes beside, and on which side. */
     beside?: { leaf: LeafSpan; side: "after" | "before" } | undefined;
   }[] = [];
-  let range: { from: TextPosition; to: TextPosition } | undefined;
+  let range: CommentRange | undefined;
   switch (op.anchor.kind) {
     case "reply": {
       const parentId = op.anchor.parentId;
@@ -1804,21 +1880,14 @@ const create = (
         "The comment story does not exist.",
         DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
       );
-    const paragraphs = storyParagraphs(body).map(({ paragraph }) => paragraph);
-    const fromIndex = paragraphs.findIndex(
-      ({ paraId }) => idKey(paraId ?? "") === idKey(range.from.blockId),
-    );
-    const toIndex = paragraphs.findIndex(
-      ({ paraId }) => idKey(paraId ?? "") === idKey(range.to.blockId),
-    );
-    const fromParagraph = paragraphs.at(fromIndex);
-    const toParagraph = paragraphs.at(toIndex);
-    if (fromIndex < 0 || toIndex < 0 || !fromParagraph || !toParagraph)
+    const boundaries = orderedCommentBoundaries(body, range);
+    if (boundaries === undefined)
       return fail(
         op,
         "A comment boundary paragraph does not exist.",
         DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
       );
+    const { fromParagraph, toParagraph, order } = boundaries;
     const fromGap =
       range.from.zeroWidthBefore === undefined
         ? defaultInsertionGap(fromParagraph.content, range.from.offset)
@@ -1833,10 +1902,7 @@ const create = (
             offset: range.to.offset,
             zeroWidthBefore: range.to.zeroWidthBefore,
           };
-    if (
-      fromIndex > toIndex ||
-      (fromIndex === toIndex && compareGaps(fromGap, toGap) > 0)
-    )
+    if (order > 0 || (order === 0 && compareGaps(fromGap, toGap) > 0))
       return fail(
         op,
         "A comment range cannot run backwards.",

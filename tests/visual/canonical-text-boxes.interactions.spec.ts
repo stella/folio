@@ -46,7 +46,7 @@ const positionIn = (json: unknown, text: string, offset: number) => {
   return found;
 };
 
-test("a text box opens read-only: typing inside it changes nothing, typing beside it edits", async ({
+test("typing inside a text box edits the box, and typing beside it edits its story", async ({
   page,
 }) => {
   test.setTimeout(60_000);
@@ -59,24 +59,19 @@ test("a text box opens read-only: typing inside it changes nothing, typing besid
     await expectNoRefusals(page);
     const opened = await snapshot(page);
     expect(opened?.text).toBe("HostInsideNext");
-    const content = JSON.stringify(opened?.document?.package.document.content);
 
-    // The box's text is not part of the story the session edits, so the
-    // keystroke reaches no paragraph and changes nothing.
+    // The box's paragraphs are a story of their own, edited in place.
     await select(page, positionIn(opened?.projectionJSON, "Inside", 3));
     await page.keyboard.type("x");
-    const untouched = await snapshot(page);
-    expect(untouched?.text).toBe("HostInsideNext");
-    expect(untouched?.projectionMatchesCanonical).toBe(true);
-    expect(JSON.stringify(untouched?.document?.package.document.content)).toBe(
-      content,
-    );
+    const inside = await snapshot(page);
+    expect(inside?.text).toBe("HostInsxideNext");
+    expect(inside?.projectionMatchesCanonical).toBe(true);
+    await expectNoRefusals(page);
 
-    await clearRefusals(page);
-    await select(page, positionIn(opened?.projectionJSON, "Next", 4));
+    await select(page, positionIn(inside?.projectionJSON, "Next", 4));
     await page.keyboard.type("!");
     const typed = await snapshot(page);
-    expect(typed?.text).toBe("HostInsideNext!");
+    expect(typed?.text).toBe("HostInsxideNext!");
     expect(typed?.projectionMatchesCanonical).toBe(true);
     await expectNoRefusals(page);
     const saved = await page.evaluate(async () => {
@@ -90,7 +85,12 @@ test("a text box opens read-only: typing inside it changes nothing, typing besid
       )
         .entry("word/document.xml")
         ?.text()) ?? "";
-    expect(xml).toContain(`<w:txbxContent>${BOX_TEXT}</w:txbxContent>`);
+    const box = xml.slice(
+      xml.indexOf("<w:txbxContent>"),
+      xml.indexOf("</w:txbxContent>"),
+    );
+    expect(box).toContain('w14:paraId="20000001"');
+    expect(box).toContain("<w:t>Insxide</w:t>");
     expect(xml).toContain("Next!");
   }
 });

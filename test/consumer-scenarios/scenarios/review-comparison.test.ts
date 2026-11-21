@@ -18,7 +18,7 @@ import { RELATIONSHIP_TYPES } from "@stll/folio-core/docx/relsParser";
 import { fromMarkdown } from "@stll/folio-core/markdown";
 import { createDocx, paragraph } from "@stll/folio-core/server";
 
-import { openReviewer } from "../support/documents.ts";
+import { openReviewer, scenarioEngine } from "../support/documents.ts";
 import {
   assertReviewRoundTrip,
   assertRevisionCoverage,
@@ -933,7 +933,36 @@ test("a simple DATE field in a deleted paragraph keeps its resolved model and un
   )
     .entry("word/document.xml")
     ?.text();
-  assert.equal(unchangedXml, originalXml);
+  const engine = scenarioEngine();
+  switch (engine) {
+    case "legacy":
+      assert.equal(unchangedXml, originalXml);
+      break;
+    // The canonical session saves the package it opened, whose paragraphs
+    // all carry ids: the ones the source named none for gain the ids minted
+    // on opening, and nothing else changes.
+    case "canonical": {
+      const minted = [
+        ...(unchangedXml ?? "").matchAll(
+          / w14:paraId="([0-9A-F]{8})" w14:textId="\1"/g,
+        ),
+      ];
+      assert.deepEqual(
+        minted.map(([, id]) => id),
+        reviewer.getContent().map(({ id }) => id),
+      );
+      assert.equal(
+        unchangedXml?.replaceAll(
+          / w14:paraId="([0-9A-F]{8})" w14:textId="\1"/g,
+          "",
+        ),
+        originalXml,
+      );
+      break;
+    }
+    default:
+      throw new Error(`Unhandled engine: ${engine satisfies never}`);
+  }
   const block = reviewer.getContent().at(0);
   if (!block) throw new Error("Expected field block");
   const batch = {

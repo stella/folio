@@ -11,6 +11,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { admit, loadCorpus, prune } from "./corpus.ts";
+import { scenarioEngine } from "./documents.ts";
 import {
   failureMarker,
   type FailureRecord,
@@ -33,6 +34,11 @@ import {
   runFlow,
   runFlowFile,
 } from "./fuzz.ts";
+import {
+  type Finding,
+  logRecordedFinding,
+  recordedFindingOf,
+} from "./known-issues.ts";
 import { createRandom } from "./random.ts";
 import {
   consumerScenarioReplay,
@@ -221,6 +227,8 @@ export type LoopResult = {
   corpus: number;
   minimized: number;
   failures: { record: FailureRecord; count: number }[];
+  /** Failures that reproduce a recorded finding, by finding: reported, not filed. */
+  recordedFindings: Map<Finding, number>;
 };
 
 /** Fuzz until the budget runs out; see the module comment. */
@@ -246,6 +254,7 @@ export const fuzzFor = async (options: LoopOptions): Promise<LoopResult> => {
     corpus: 0,
     minimized: 0,
     failures: [],
+    recordedFindings: new Map(),
   };
   log(
     `continuous fuzz: ${options.seconds}s from seed ${options.seed}, corpus of ${corpus.entries.length} flows`,
@@ -309,6 +318,21 @@ export const fuzzFor = async (options: LoopOptions): Promise<LoopResult> => {
       }
     } catch (error) {
       if (!(error instanceof FlowError)) throw error;
+      const finding = recordedFindingOf(error, scenarioEngine());
+      if (finding !== undefined) {
+        log(`~ ${label}: the recorded finding ${finding}\n  Replay: ${repro}`);
+        logRecordedFinding(finding, {
+          test: flowTestName(error.flow),
+          seed,
+          repro,
+        });
+        result.recordedFindings.set(
+          finding,
+          (result.recordedFindings.get(finding) ?? 0) + 1,
+        );
+        result.completedCases += 1;
+        continue;
+      }
       const fingerprint = fingerprintOf(error.flow, error);
       const seen = failures.get(fingerprint);
       log(`✗ ${label} (fingerprint ${fingerprint})\n  Replay: ${repro}`);

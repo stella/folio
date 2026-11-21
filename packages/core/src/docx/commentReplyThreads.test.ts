@@ -19,6 +19,7 @@ import {
   propertyConfig,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
+import { createCommentIdAllocator } from "../prosemirror/commentIdAllocator";
 import type {
   BlockContent,
   Comment,
@@ -449,11 +450,14 @@ describe("comment reply threads — create-reply API", () => {
             }));
             const parentId = ids.at(0) ?? panic("Expected a loaded comment");
             const issued = new Set(ids);
+            const commentIds = createCommentIdAllocator();
             for (let batch = 0; batch < 4; batch += 1) {
               const reply =
-                createReply(comments, parentId, {
-                  author: "Reviewer",
-                  text: "Reply",
+                createReply({
+                  comments,
+                  parentCommentId: parentId,
+                  input: { author: "Reviewer", text: "Reply" },
+                  commentIds,
                 }) ?? panic("Expected a reply");
               expect(Number.isInteger(reply.id)).toBe(true);
               expect(reply.id).toBeGreaterThan(0);

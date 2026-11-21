@@ -11,6 +11,7 @@ import type {
 } from "../model/document";
 import { storyParagraphs, updateBlockList } from "./blocks";
 import { type InlineNode, leafSpans, nestedRecords } from "./leaves";
+import { changedListBounds } from "./listSplice";
 import { documentStories, sameStory, storyBody } from "./stories";
 import type { NoteStory } from "./types";
 
@@ -103,12 +104,17 @@ export const noteUsesCustomMark = (
     ),
   );
 
+export const noteReferenceKey = (kind: NoteStory["kind"], id: number) =>
+  `${kind}:${String(id)}`;
+
 /** The notes one paragraph references. */
 const paragraphNoteKeys = (paragraph: Paragraph): readonly string[] => {
   const keys: string[] = [];
   for (const { node } of noteReferenceSpans(paragraph.content)) {
-    if (node.type === "footnoteRef") keys.push(`footnote:${String(node.id)}`);
-    if (node.type === "endnoteRef") keys.push(`endnote:${String(node.id)}`);
+    if (node.type === "footnoteRef")
+      keys.push(noteReferenceKey("footnote", node.id));
+    if (node.type === "endnoteRef")
+      keys.push(noteReferenceKey("endnote", node.id));
   }
   return keys;
 };
@@ -183,22 +189,9 @@ export const sameNoteReferences = (
     const old = storyBody(before, story).content;
     const now = storyBody(after, story).content;
     if (old === now) continue;
-    let start = 0;
-    while (
-      start < old.length &&
-      start < now.length &&
-      old[start] === now[start]
-    )
-      start += 1;
-    let end = 0;
-    while (
-      end < old.length - start &&
-      end < now.length - start &&
-      old[old.length - 1 - end] === now[now.length - 1 - end]
-    )
-      end += 1;
-    const removed = noteKeysIn(old.slice(start, old.length - end));
-    const added = noteKeysIn(now.slice(start, now.length - end));
+    const { start, previousEnd, end } = changedListBounds(old, now);
+    const removed = noteKeysIn(old.slice(start, previousEnd));
+    const added = noteKeysIn(now.slice(start, end));
     if (
       removed.length !== added.length ||
       removed.some((key, index) => added[index] !== key)
