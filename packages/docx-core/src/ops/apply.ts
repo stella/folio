@@ -188,10 +188,12 @@ import {
   paragraphPropertiesOf,
   paragraphPropertyChange,
   reviewFieldsOf,
+  RUN_FOLD_INTO_OTHER_SUGGESTION_MESSAGE,
   sameMarkFormatting,
   sameParagraphProperties,
   stampedRevisionIds,
   stampInfo,
+  takesOverOtherSuggestion,
   withMarkFormatting,
   withReviewFields,
   WRAP_KINDS,
@@ -1359,9 +1361,14 @@ const setRunProps = (document: Document, op: SetRunPropsOp): Applied => {
   if (revision !== undefined) {
     // Editor actions update the pending review; low-level patches retain its authorship.
     const changes = new Map<Run, Parameters<RunDecoration>[0]>();
+    let takesOverSuggestion = false;
     const recordChange: RunDecoration = (options) => {
       const { patched: patchedRun, previous } = options;
       const pending = getSingularRunPropertyChange(previous.propertyChanges);
+      if (takesOverOtherSuggestion(pending, revision)) {
+        takesOverSuggestion = true;
+        return patchedRun;
+      }
       if (
         pending !== undefined &&
         op.propertyReview !== PROPERTY_REVIEW_POLICIES.APPEND
@@ -1382,6 +1389,12 @@ const setRunProps = (document: Document, op: SetRunPropsOp): Applied => {
       op.whenEmpty,
       recordChange,
     );
+    if (takesOverSuggestion)
+      return refuse(
+        op,
+        DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+        RUN_FOLD_INTO_OTHER_SUGGESTION_MESSAGE,
+      );
     if (tracked === undefined) {
       return unchanged(document);
     }
