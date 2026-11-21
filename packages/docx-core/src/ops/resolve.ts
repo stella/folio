@@ -82,12 +82,7 @@ import {
   withoutKeptCuts,
   withoutKeptCutsRecorded,
 } from "./keptCut";
-import {
-  type KeptAtSeam,
-  seamHandsOver,
-  withJoinAtLeast,
-  withJoinRetired,
-} from "./keptJoins";
+import { handJoin, seamHandsOver, withJoinRetired } from "./keptJoins";
 import {
   alikeDepth,
   asParagraphContent,
@@ -1163,6 +1158,12 @@ const keptBoundaryCount = (nodes: readonly InlineNode[]): number =>
       sum + (node.type === "deletion" ? keptBoundaryCount(node.content) : 1),
     0,
   );
+
+/**
+ * Kept markers standing at a seam: the earliest revision they were kept from
+ * and how many boundaries they stand for.
+ */
+type KeptAtSeam = { from: string; count: number };
 
 /** Kept records standing in a row, and the boundaries they stand for. */
 type KeptRun = { records: number; boundaries: number };
@@ -2253,34 +2254,29 @@ const resolveList = ({
   /**
    * The kept markers `out` holds from `start` to `end` naming `piece` as the
    * side whose record is a piece of their cut: a pending change there took
-   * their seam.
+   * their seam. A marker already naming a piece keeps it: the first change
+   * to take its seam holds it. Whether any marker took the name.
    */
   const nameKeptPiece = (
     start: number,
     end: number,
     piece: KeptCutPiece,
-  ): void => {
+  ): boolean => {
+    let named = false;
     for (let index = start; index < end; index += 1) {
       const occurrence = out[index];
       if (occurrence === undefined) continue;
-      const named = withKeptCutPieceRecorded(
+      const next = withKeptCutPieceRecorded(
         occurrence.node,
         piece,
         resolution.relocated.nodes,
       );
-      if (named !== occurrence.node)
-        out[index] = occurrenceOf(named, occurrence);
+      if (next === occurrence.node) continue;
+      out[index] = occurrenceOf(next, occurrence);
+      named = true;
     }
+    return named;
   };
-  /**
-   * Whether handing a seam to the pending change `facing` made it, as
-   * `handed`, take the kept boundaries standing there.
-   */
-  const tookKept = (facing: InlineNode, handed: InlineNode): boolean =>
-    isTrackedWrapper(facing) &&
-    isTrackedWrapper(handed) &&
-    facing.resolutionJoins?.keptFrom === undefined &&
-    handed.resolutionJoins?.keptFrom !== undefined;
   type PlaceOneSidedKeptOptions = {
     /** The removed insertion's place in `pending`. */
     index: number;
@@ -2355,10 +2351,10 @@ const resolveList = ({
    * kept from. One made before the content cut the record the content was
    * made in, which holds every boundary the content kept; one made later,
    * inside the content's record at that edge, cut only that record, which
-   * holds the boundaries kept from inside it, nearest the seam. A seam
-   * meeting such an insertion hands it the same (see {@link withJoinAtLeast}),
-   * so accepting the insertion later places them inside that record, as
-   * accepting it before this rejection does.
+   * holds the boundaries kept from inside it, nearest the seam. They name
+   * its side as their cut's piece, as a seam meeting such an insertion does
+   * (see {@link handJoin}), so accepting the insertion later places them
+   * inside that record, as accepting it before this rejection does.
    */
   const handKeptToFacingJoins = ({
     index,
@@ -2368,6 +2364,10 @@ const resolveList = ({
   }: {
     /** The removed content's place in `pending`. */
     index: number;
+    /**
+     * The date of the revision they were kept from, and how many boundaries
+     * they stand for.
+     */
     kept: KeptAtSeam;
     /** How many records the kept boundaries are, the last ones `out` holds. */
     standing: number;
@@ -2427,33 +2427,23 @@ const resolveList = ({
       keptRun({ at: (at) => out[at]?.node, from, step, limit: count }).records;
     const next = pending[index + 1];
     const nextFacing = facing(next, "before");
-    if (next !== undefined && nextFacing !== undefined) {
-      const handed = withJoinAtLeast(
-        next,
-        "before",
-        nextFacing.join,
-        nextFacing.kept,
+    if (
+      next !== undefined &&
+      nextFacing !== undefined &&
+      handJoin(next, "before", nextFacing.join).takesKept
+    )
+      nameKeptPiece(
+        out.length - recordsFrom(out.length - 1, -1, nextFacing.kept.count),
+        out.length,
+        "after",
       );
-      pending[index + 1] = handed;
-      if (tookKept(next, handed))
-        nameKeptPiece(
-          out.length - recordsFrom(out.length - 1, -1, nextFacing.kept.count),
-          out.length,
-          "after",
-        );
-    }
     const previous = out[previousAt];
     const previousFacing = facing(previous?.node, "after");
-    if (previous === undefined || previousFacing === undefined) return;
-    const handed = withJoinAtLeast(
-      previous.node,
-      "after",
-      previousFacing.join,
-      previousFacing.kept,
-    );
-    carryResolutionState(resolution, previous.node, handed);
-    out[previousAt] = occurrenceOf(handed, previous);
-    if (tookKept(previous.node, handed))
+    if (
+      previous !== undefined &&
+      previousFacing !== undefined &&
+      handJoin(previous.node, "after", previousFacing.join).takesKept
+    )
       nameKeptPiece(
         previousAt + 1,
         previousAt +
@@ -3794,7 +3784,7 @@ const resolveList = ({
         Math.min(depth, 1)
     )
       return false;
-    const joined = withJoinAtLeast(
+    const { node: joined } = handJoin(
       holder.resolutionJoins === undefined
         ? Object.assign({}, holder, {
             resolutionJoins: { before: 0, after: 0, remove: 0 },
@@ -4237,11 +4227,6 @@ const resolveList = ({
       // Boundaries this seam kept that no piece took stand just before it;
       // the pieces lie beyond them and beyond any insertion standing there.
       const keptEnd = seam - 1 - standingKept;
-      // Counted as the boundaries they stand for, so the count holds once
-      // a pending deletion among them is rejected and leaves them standing.
-      const standingBoundaries = keptBoundaryCount(
-        out.slice(seam - standingKept, seam).map(({ node }) => node),
-      );
       let leftEnd = keptEnd;
       while (leftEnd >= 0 && blocking(leftEnd)) leftEnd -= 1;
       let rightStart = seam;
@@ -4261,10 +4246,7 @@ const resolveList = ({
       const keptJoinHandsOver =
         keptJoinSeams.has(recorded) && standingKept === 0;
       if (keptJoinHandsOver || removalSeams.has(recorded)) {
-        const keptAt =
-          standingKept > 0 && kept?.keptFrom !== undefined
-            ? { from: kept.keptFrom, count: standingBoundaries }
-            : undefined;
+        const keptStand = standingKept > 0 && kept?.keptFrom !== undefined;
         const facing = (index: number, side: "before" | "after"): void => {
           const occurrence = out[index];
           if (occurrence === undefined)
@@ -4280,21 +4262,22 @@ const resolveList = ({
             })
           )
             return;
-          const node = withJoinAtLeast(
+          const { node, takesKept } = handJoin(
             occurrence.node,
             side,
             exactDepth,
-            keptAt,
           );
-          if (node === occurrence.node) return;
-          out[index] = occurrenceOf(node, occurrence);
-          handedOver.add(index);
-          if (tookKept(occurrence.node, node))
+          const tookKept =
+            keptStand &&
+            takesKept &&
             nameKeptPiece(
               seam - standingKept,
               seam,
               side === "after" ? "before" : "after",
             );
+          if (node === occurrence.node && !tookKept) return;
+          out[index] = occurrenceOf(node, occurrence);
+          handedOver.add(index);
         };
         if (leftEnd !== keptEnd) facing(keptEnd, "after");
         if (rightStart !== seam) facing(seam, "before");
