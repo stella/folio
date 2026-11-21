@@ -214,9 +214,12 @@ type TakenOverMarks = {
 /**
  * The marks of the anchor and of the paragraph that takes over its former
  * one: an added mark goes with it. A break pending deletion or moving away
- * does not: on the new paragraph, accepting would run that paragraph on
- * instead of the anchor's words, and beside the anchor's new mark, rejecting
- * the insertion alone would take the deletion with that mark.
+ * is refused (`PENDING_BREAK_TAKEOVER`), the stated boundary of taking over
+ * a mark: no placement of its record keeps both laws. On the new paragraph,
+ * accepting would run that paragraph on instead of the anchor's words, so
+ * accepting differs from the direct edit; beside the anchor's new mark,
+ * rejecting the insertion alone would take the deletion with that mark, so
+ * the original does not come back.
  */
 const takenOverMarks = ({
   mark,
@@ -231,7 +234,7 @@ const takenOverMarks = ({
   return Result.err(
     new DocumentOpRefusal({
       opType: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_BREAK_TAKEOVER,
       message:
         "A tracked insertion cannot take over the mark of a paragraph whose break is pending deletion or moving away.",
     }),
