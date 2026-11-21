@@ -83,6 +83,50 @@ const reads = (reviewer: Reviewer) => ({
   properties: { ...reviewer.getDocumentProperties(), modified: undefined },
 });
 
+/**
+ * The ids `before` reads as positional that `after` reads with the same id as
+ * stable: minted on opening (the paragraph that closes a story after its
+ * final table), they are written into a part the save rewrites anyway.
+ */
+const writtenMintedIds = (before: Reviewer, after: Reviewer): Set<string> => {
+  const stable = new Set(
+    after
+      .getContent()
+      .filter(({ idStability }) => idStability === undefined)
+      .map(({ id }) => id),
+  );
+  return new Set(
+    before
+      .getContent()
+      .filter(
+        ({ id, idStability }) => idStability === "positional" && stable.has(id),
+      )
+      .map(({ id }) => id),
+  );
+};
+
+/** `value` with the positional stability of the records naming `ids` dropped. */
+const asWritten = (value: unknown, ids: ReadonlySet<string>): unknown => {
+  if (Array.isArray(value)) return value.map((item) => asWritten(item, ids));
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    Object.getPrototypeOf(value) !== Object.prototype
+  )
+    return value;
+  const out: Record<string, unknown> = {};
+  for (const [key, field] of Object.entries(value))
+    out[key] = asWritten(field, ids);
+  const id = out["id"];
+  if (
+    typeof id === "string" &&
+    ids.has(id) &&
+    out["idStability"] === "positional"
+  )
+    delete out["idStability"];
+  return out;
+};
+
 /** The body once every change is resolved, or `null` when that refuses. */
 const resolvedBody = (
   reviewer: Reviewer,
@@ -129,9 +173,10 @@ const saveLaws = async (
   );
   if (result.applied.length === 0) return "refusedOperation";
 
-  const before = reads(reviewer);
+  const read = reads(reviewer);
   const saved = await reviewer.toBuffer();
   const reopened = await open(saved);
+  const before = asWritten(read, writtenMintedIds(reviewer, reopened));
   expect(reads(reopened)).toEqual(before);
   // Saving the reopened package writes the same reads again.
   expect(reads(await open(await reopened.toBuffer()))).toEqual(before);
