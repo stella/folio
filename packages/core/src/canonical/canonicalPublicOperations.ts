@@ -598,6 +598,36 @@ const rowShiftedCellShapes = <
   );
 };
 
+const COLUMN_EDITED_CELL_SHAPE =
+  "The batch inserts or deletes a column in the table this merges or splits.";
+
+/**
+ * The merges and splits in a table the batch inserts or deletes a column of,
+ * whatever their order in the request. They name their cells by grid column
+ * as the batch read the table, and a column edit moves every column after it
+ * and the cells it runs through, so, as `planTableMutations` refuses them on
+ * the legacy engine, they are refused in either mode.
+ */
+const columnEditedCellShapes = <T extends PlannedOperation>(
+  items: readonly T[],
+): T[] => {
+  const tables = new Set(
+    items.flatMap(({ plan: { claim } }) =>
+      claim.type === "tableStructure" && claim.axis === "column"
+        ? [claim.table]
+        : [],
+    ),
+  );
+  if (tables.size === 0) return [];
+  return items.filter(
+    ({ operation, plan: { address } }) =>
+      (operation.type === "mergeTableCells" ||
+        operation.type === "splitTableCell") &&
+      address.type === "cell" &&
+      tables.has(address.tablePosition),
+  );
+};
+
 const ROW_CLOSING_CELL_SHAPE =
   "Another merge the batch makes in this table removes a row, which would move the cells this merges or splits.";
 
@@ -2971,9 +3001,69 @@ const resolveTableInsertion = ({
 };
 
 /** A paragraph of the table's own that addresses a table edit, by its id. */
+type KeptTableAddressOptions = {
+  projection: CanonicalProjection;
+  /** The table, row or cell the operation edits. */
+  scope: PMNode;
+  /** The position just before `scope`. */
+  scopePosition: number;
+  /** Paragraphs the batch deletes, which run before the table edit. */
+  deleted: ReadonlySet<string>;
+  /** Cells, by the position before them, the address may not stand in. */
+  skipsCell?: (cellPosition: number) => boolean;
+};
+
+/**
+ * The first paragraph standing directly in the cells of `scope` that the
+ * batch keeps: a table, row or cell edit addressed by a paragraph the batch
+ * deletes would find no paragraph once that deletion has run.
+ */
+const keptTableAddress = ({
+  projection,
+  scope,
+  scopePosition,
+  deleted,
+  skipsCell = () => false,
+}: KeptTableAddressOptions): string | undefined => {
+  const cells: { cell: PMNode; position: number }[] = [];
+  const collectCells = (row: PMNode, rowPosition: number) =>
+    row.forEach((cell, offset) =>
+      cells.push({ cell, position: rowPosition + 1 + offset }),
+    );
+  switch (scope.type.spec["tableRole"]) {
+    case "cell":
+      cells.push({ cell: scope, position: scopePosition });
+      break;
+    case "row":
+      collectCells(scope, scopePosition);
+      break;
+    default:
+      scope.forEach((row, offset) => {
+        if (row.type.spec["tableRole"] === "row")
+          collectCells(row, scopePosition + 1 + offset);
+      });
+  }
+  // Each paragraph's first content position, in document order.
+  const starts: number[] = [];
+  for (const { cell, position } of cells) {
+    if (skipsCell(position)) continue;
+    cell.forEach((child, childOffset) => {
+      if (child.type.name === "paragraph")
+        starts.push(position + 1 + childOffset + 1);
+    });
+  }
+  for (const start of starts) {
+    const addressed = projection.addressAt(start);
+    if (addressed.isOk() && !deleted.has(addressed.value.blockId))
+      return addressed.value.blockId;
+  }
+  return undefined;
+};
+
 const tableBlockAddress = (
   projection: CanonicalProjection,
   row: { table: PMNode; tableStart: number },
+  deleted: ReadonlySet<string> = new Set(),
 ): string | undefined => {
   const at = tableAnchor({
     map: TableMap.get(row.table),
@@ -2985,8 +3075,14 @@ const tableBlockAddress = (
     bottom: 0,
   });
   const addressed = at === undefined ? undefined : projection.addressAt(at);
-  return addressed === undefined || addressed.isErr()
-    ? undefined
+  if (addressed === undefined || addressed.isErr()) return undefined;
+  return deleted.has(addressed.value.blockId)
+    ? (keptTableAddress({
+        projection,
+        scope: row.table,
+        scopePosition: row.tableStart - 1,
+        deleted,
+      }) ?? addressed.value.blockId)
     : addressed.value.blockId;
 };
 
@@ -3117,6 +3213,12 @@ type ResolveTableStructureOptions = {
     reason: FolioAIEditSkipReason,
     message: string,
   ) => Result<never, CanonicalPublicOperationResolutionError>;
+  /** A skip the tracked vocabulary forces: the operation applies directly. */
+  skipTracked: (
+    message: string,
+  ) => Result<never, CanonicalPublicOperationResolutionError>;
+  /** Paragraphs the batch deletes, which no table edit may be addressed by. */
+  deleted: ReadonlySet<string>;
   /** The row a new row copies, when the batch hands one for this operation. */
   template: PMNode | undefined;
 };
@@ -3139,12 +3241,45 @@ const resolveTableStructure = ({
   paragraphOf,
   notInTable,
   skipAlike,
+  skipTracked,
+  deleted,
   template,
 }: ResolveTableStructureOptions) => {
   const { doc } = projection;
   const blockFrom = paragraph.start - 1;
   const row = findEnclosingTableRow(doc, blockFrom);
   if (row === null) return notInTable();
+  const scopeOf = (scope: "cell" | "row" | "table") => {
+    switch (scope) {
+      case "table":
+        return { scope: row.table, scopePosition: row.tablePosition };
+      case "row":
+        return {
+          scope: row.table.child(row.rowIndex),
+          scopePosition: row.rowPosition,
+        };
+      case "cell": {
+        const cell = findEnclosingTableCell(doc, blockFrom);
+        const node = cell === null ? null : doc.nodeAt(cell.cellPosition);
+        return cell === null || node === null
+          ? undefined
+          : { scope: node, scopePosition: cell.cellPosition };
+      }
+      default: {
+        const unreachable: never = scope;
+        return unreachable;
+      }
+    }
+  };
+  /** The operation's own paragraph, unless the batch deletes it first. */
+  const keptAddress = (scope: "cell" | "row" | "table") => {
+    if (!deleted.has(paragraph.blockId)) return paragraph.blockId;
+    const within = scopeOf(scope);
+    return (
+      (within && keptTableAddress({ projection, ...within, deleted })) ??
+      paragraph.blockId
+    );
+  };
   const resolved = (intent: EditorIntent, from: number, to: number) =>
     Result.ok({
       type: "plain" as const,
@@ -3162,7 +3297,7 @@ const resolveTableStructure = ({
           operation: {
             type: DOCUMENT_OP_TYPES.DELETE_TABLE,
             story,
-            blockId: paragraph.blockId,
+            blockId: keptAddress("table"),
           },
         },
         row.tablePosition,
@@ -3175,7 +3310,7 @@ const resolveTableStructure = ({
           operation: {
             type: DOCUMENT_OP_TYPES.DELETE_ROW,
             story,
-            blockId: paragraph.blockId,
+            blockId: keptAddress("row"),
           },
         },
         // The whole row: an edit inside it in the same batch overlaps.
@@ -3200,7 +3335,7 @@ const resolveTableStructure = ({
             operation: {
               type: DOCUMENT_OP_TYPES.DELETE_TABLE,
               story,
-              blockId: paragraph.blockId,
+              blockId: keptAddress("table"),
             },
           },
           table.from,
@@ -3224,8 +3359,7 @@ const resolveTableStructure = ({
             Number(node?.attrs["colspan"] ?? 1) !== 1,
         )
       )
-        return skipAlike(
-          "unsupportedBlock",
+        return skipTracked(
           "A suggested column deletion cannot narrow a cell that spans other columns.",
         );
       // The table is addressed by a paragraph the deletion keeps, as the
@@ -3245,13 +3379,25 @@ const resolveTableStructure = ({
       if (addressed === undefined || addressed.isErr())
         return refusal("unsupportedBlock");
       const address = addressed.value;
+      const blockId = deleted.has(address.blockId)
+        ? (keptTableAddress({
+            projection,
+            scope: row.table,
+            scopePosition: row.tablePosition,
+            deleted,
+            skipsCell: (cellPosition) => {
+              const rect = map.findCell(cellPosition - row.tableStart);
+              return rect.left <= column.left && column.left < rect.right;
+            },
+          }) ?? address.blockId)
+        : address.blockId;
       return resolved(
         {
           type: "table",
           operation: {
             type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
             story,
-            blockId: address.blockId,
+            blockId,
             column: cell.leftColumnIndex,
           },
         },
@@ -3285,11 +3431,10 @@ const resolveTableStructure = ({
         tracked &&
         columnInsertionWidensCell(row.table, insertion.columnIndex)
       )
-        return skipAlike(
-          "unsupportedBlock",
+        return skipTracked(
           "A suggested column cannot widen a cell that spans other columns.",
         );
-      const blockId = tableBlockAddress(projection, row);
+      const blockId = tableBlockAddress(projection, row, deleted);
       if (blockId === undefined) return refusal("unsupportedBlock");
       const intent: EditorIntent = {
         type: "table",
@@ -3375,11 +3520,10 @@ const resolveTableStructure = ({
       // A suggestion records a merge down over empty cells; a merge that
       // moves content between cells has no tracked form.
       if (tracked && !mergesDownOverEmptyCells(row.table, map, rectangle))
-        return skipAlike(
-          "unsupportedBlock",
+        return skipTracked(
           "A suggested merge takes one column over empty cells.",
         );
-      const blockId = tableBlockAddress(projection, row);
+      const blockId = tableBlockAddress(projection, row, deleted);
       if (blockId === undefined) return refusal("unsupportedBlock");
       return resolved(
         {
@@ -3409,8 +3553,7 @@ const resolveTableStructure = ({
       // A suggested split gives a merge down its rows back; a cell spanning
       // columns has no suggested split in either engine.
       if (tracked && cell.rightColumnIndex - cell.leftColumnIndex !== 1)
-        return skipAlike(
-          "unsupportedBlock",
+        return skipTracked(
           "A suggested split takes a cell merged down one column.",
         );
       // The cell is addressed by its own paragraph, the merge's first.
@@ -3420,7 +3563,7 @@ const resolveTableStructure = ({
           operation: {
             type: DOCUMENT_OP_TYPES.SPLIT_CELL,
             story,
-            blockId: paragraph.blockId,
+            blockId: keptAddress("cell"),
           },
         },
         row.tablePosition,
@@ -3468,7 +3611,7 @@ const resolveTableStructure = ({
           operation: {
             type: DOCUMENT_OP_TYPES.INSERT_ROW,
             story,
-            blockId: paragraph.blockId,
+            blockId: keptAddress("row"),
             at: index,
             row: plain,
           },
@@ -3847,6 +3990,12 @@ class CanonicalPublicOperationResolutionError extends CanonicalPublicOperationRe
    * as a row operation whose block is in no table.
    */
   gap?: CanonicalGap | null;
+  /**
+   * The modes the refusal holds in: `"trackedMode"` for an operation the
+   * tracked vocabulary has no record for, which applies directly. Absent, it
+   * holds in every mode.
+   */
+  refusedIn?: "everyMode" | "trackedMode";
 }> {}
 
 type MergeFormattingConflictOptions = {
@@ -4702,6 +4851,8 @@ export class CanonicalPublicOperations {
       if (removes !== null) removedLines.add(tableLineRemovalKey(removes));
       resolved.push(candidate);
     };
+    /** Refused, but claiming the target their direct form would. */
+    const claimedUnapplied: ReturnType<typeof planned>[] = [];
     for (const operation of batch.operations) {
       if (!state || projected.isErr() || session.isComposing) {
         skip(operation.id, "documentNotEditable");
@@ -4761,6 +4912,31 @@ export class CanonicalPublicOperations {
         besideDeletions,
       });
       if (compiled.isErr()) {
+        // An operation only the tracked vocabulary refuses still claims what
+        // it would edit directly, so whether a later operation of the batch
+        // overlaps it does not depend on the mode.
+        const direct =
+          compiled.error.refusedIn === "trackedMode"
+            ? this.resolve({
+                operation,
+                options,
+                state,
+                story,
+                diff,
+                tracked: false,
+                suggested: false,
+                mintList,
+                besideDeletions,
+              })
+            : undefined;
+        if (direct?.isOk()) {
+          const candidate = planned(direct.value);
+          if (skipsRepeatedRemoval(candidate)) continue;
+          if (refusesExistingRevision(candidate)) continue;
+          if (skipsOverlap(candidate)) continue;
+          claims.add(operation.id, candidate.plan.claim);
+          claimedUnapplied.push(candidate);
+        }
         refuseResolution(operation.id, compiled.error);
         continue;
       }
@@ -4794,7 +4970,7 @@ export class CanonicalPublicOperations {
       // Conditional resolution may retire an accepted claim; rebuild only at
       // this boundary, so its old target cannot reject the independent retry.
       claims = new BatchClaims();
-      for (const earlier of resolved)
+      for (const earlier of [...resolved, ...claimedUnapplied])
         claims.add(earlier.operation.id, earlier.plan.claim);
       const alone = this.resolve({
         operation,
@@ -4875,6 +5051,10 @@ export class CanonicalPublicOperations {
     for (const item of rowShiftedCellShapes(resolved)) {
       resolved.splice(resolved.indexOf(item), 1);
       skip(item.operation.id, "unsupportedBlock", ROW_SHIFTED_CELL_SHAPE);
+    }
+    for (const item of columnEditedCellShapes(resolved)) {
+      resolved.splice(resolved.indexOf(item), 1);
+      skip(item.operation.id, "unsupportedBlock", COLUMN_EDITED_CELL_SHAPE);
     }
     const rowClosing = projected.isOk()
       ? rowClosingCellShapes({ items: resolved, doc: projected.value.doc })
@@ -6592,6 +6772,16 @@ export class CanonicalPublicOperations {
           gap: null,
         }),
       );
+    const skipTracked = (message: string) =>
+      Result.err(
+        new CanonicalPublicOperationResolutionError({
+          reason: "unsupportedBlock",
+          message,
+          detail: message,
+          gap: null,
+          refusedIn: "trackedMode",
+        }),
+      );
     const notInTable = () =>
       skipAlike("unsupportedBlock", "The block is not in a table.");
     switch (operation.type) {
@@ -6719,6 +6909,8 @@ export class CanonicalPublicOperations {
             : undefined,
         notInTable,
         skipAlike,
+        skipTracked,
+        deleted: besideDeletions.deleted,
         template: options.tableTemplates?.get(operation.id),
       });
     if (
