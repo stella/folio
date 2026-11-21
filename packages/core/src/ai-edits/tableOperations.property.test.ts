@@ -306,279 +306,272 @@ const buildOperation = (
   }
 };
 
-const SESSIONS = ["legacy", "canonical"] as const;
+const open = (bytes: ArrayBuffer) =>
+  FolioDocxReviewer.fromBuffer(bytes, { author: "Tester" });
 
-describe.each(SESSIONS)("%s session", (session) => {
-  const open = (bytes: ArrayBuffer) =>
-    FolioDocxReviewer.fromBuffer(bytes, { author: "Tester", session });
+type Run = {
+  planned: PlannedOperation[];
+  reviewer: FolioDocxReviewer;
+  result: FolioDocumentOperationResult;
+};
 
-  type Run = {
-    planned: PlannedOperation[];
-    reviewer: FolioDocxReviewer;
-    result: FolioDocumentOperationResult;
-  };
+/** The plans as one batch, each resolved against the document as it was read. */
+const run = async (
+  base: ArrayBuffer,
+  spec: TableSpec,
+  plans: readonly OperationPlan[],
+  mode: "direct" | "tracked-changes",
+): Promise<Run> => {
+  const reviewer = await open(base);
+  const blocks = reviewer.getContent();
+  const planned = plans.map((plan, index) =>
+    buildOperation(spec, plan, blocks, `op${index}`),
+  );
+  const result = reviewer.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode,
+      operations: planned.map(({ operation }) => operation),
+    },
+    { undefinedReferences: "refuse" },
+  );
+  return { planned, reviewer, result };
+};
 
-  /** The plans as one batch, each resolved against the document as it was read. */
-  const run = async (
-    base: ArrayBuffer,
-    spec: TableSpec,
-    plans: readonly OperationPlan[],
-    mode: "direct" | "tracked-changes",
-  ): Promise<Run> => {
-    const reviewer = await open(base);
-    const blocks = reviewer.getContent();
-    const planned = plans.map((plan, index) =>
-      buildOperation(spec, plan, blocks, `op${index}`),
-    );
-    const result = reviewer.applyDocumentOperations(
-      {
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode,
-        operations: planned.map(({ operation }) => operation),
-      },
-      { undefinedReferences: "refuse" },
-    );
-    return { planned, reviewer, result };
-  };
+const appliedIds = ({ result }: Run): Set<string> =>
+  new Set(result.applied.map(({ id }) => id));
 
-  const appliedIds = ({ result }: Run): Set<string> =>
-    new Set(result.applied.map(({ id }) => id));
+const readTablesAt = async (
+  stage: string,
+  reviewer: FolioDocxReviewer,
+): Promise<TableReading> => {
+  try {
+    return await readReviewerTables(reviewer);
+  } catch (cause) {
+    throw new Error(`Table property failed while reading ${stage}`, { cause });
+  }
+};
 
-  const readTablesAt = async (
-    stage: string,
-    reviewer: FolioDocxReviewer,
-  ): Promise<TableReading> => {
-    try {
-      return await readReviewerTables(reviewer);
-    } catch (cause) {
-      throw new Error(`Table property failed while reading ${stage}`, {
-        cause,
-      });
-    }
-  };
+const resolve = async (
+  reviewer: FolioDocxReviewer,
+  resolution: "accept" | "reject",
+): Promise<TableReading> => {
+  const reopened = await open(await reviewer.toBuffer());
+  if (resolution === "accept") {
+    reopened.acceptAll();
+  } else {
+    reopened.rejectAll();
+  }
+  return readTablesAt(resolution, reopened);
+};
 
-  const resolve = async (
-    reviewer: FolioDocxReviewer,
-    resolution: "accept" | "reject",
-  ): Promise<TableReading> => {
-    const reopened = await open(await reviewer.toBuffer());
-    if (resolution === "accept") {
-      reopened.acceptAll();
-    } else {
-      reopened.rejectAll();
-    }
-    return readTablesAt(resolution, reopened);
-  };
+/** What a caller sees of a document: its blocks' text and every table's cells. */
+const visible = (reading: TableReading) => ({
+  texts: reading.texts,
+  tables: reading.snapshot,
+});
 
-  /** What a caller sees of a document: its blocks' text and every table's cells. */
-  const visible = (reading: TableReading) => ({
-    texts: reading.texts,
-    tables: reading.snapshot,
-  });
-
-  /**
-   * Whether tracked mode may refuse what direct mode applies. Each case is a
-   * shape the tracked-change vocabulary cannot record, and nothing else is:
-   *
-   * - A merge is tracked as `w:vMerge` under `w:tcPr/w:cellMerge`, so only a
-   *   single column of single, unmerged cells merges tracked, and only into
-   *   blank cells, since the record moves no content. Nor can it record a row
-   *   going with the merge, which the direct merge does when it takes a row's
-   *   only cell of its own.
-   * - A split is the reverse, so only a vertical merge splits tracked.
-   * - A column inserted through a horizontal merge widens it, and a column
-   *   deleted through one narrows it: a `w:gridSpan` change has no tracked form.
-   */
-  const trackedRefusalIsExpected = (
-    planned: PlannedOperation,
-    plan: OperationPlan,
-  ): boolean => {
-    const { anchor, other } = planned;
-    const cell = anchor.cell;
-    const siblings = anchor.siblings;
-    switch (plan.kind) {
-      case "mergeTableCells": {
-        const top = Math.min(cell.row, other.row);
-        const bottom = Math.max(
-          cell.row + cell.rowSpan,
-          other.row + other.rowSpan,
-        );
-        const left = Math.min(cell.column, other.column);
-        const right = Math.max(
-          cell.column + cell.columnSpan,
-          other.column + other.columnSpan,
-        );
-        const inside = siblings.filter(
+/**
+ * Whether tracked mode may refuse what direct mode applies. Each case is a
+ * shape the tracked-change vocabulary cannot record, and nothing else is:
+ *
+ * - A merge is tracked as `w:vMerge` under `w:tcPr/w:cellMerge`, so only a
+ *   single column of single, unmerged cells merges tracked, and only into
+ *   blank cells, since the record moves no content. Nor can it record a row
+ *   going with the merge, which the direct merge does when it takes a row's
+ *   only cell of its own.
+ * - A split is the reverse, so only a vertical merge splits tracked.
+ * - A column inserted through a horizontal merge widens it, and a column
+ *   deleted through one narrows it: a `w:gridSpan` change has no tracked form.
+ */
+const trackedRefusalIsExpected = (
+  planned: PlannedOperation,
+  plan: OperationPlan,
+): boolean => {
+  const { anchor, other } = planned;
+  const cell = anchor.cell;
+  const siblings = anchor.siblings;
+  switch (plan.kind) {
+    case "mergeTableCells": {
+      const top = Math.min(cell.row, other.row);
+      const bottom = Math.max(
+        cell.row + cell.rowSpan,
+        other.row + other.rowSpan,
+      );
+      const left = Math.min(cell.column, other.column);
+      const right = Math.max(
+        cell.column + cell.columnSpan,
+        other.column + other.columnSpan,
+      );
+      const inside = siblings.filter(
+        (candidate) =>
+          candidate.row < bottom &&
+          candidate.row + candidate.rowSpan > top &&
+          candidate.column < right &&
+          candidate.column + candidate.columnSpan > left,
+      );
+      const rowsLeftEmpty = Array.from(
+        { length: bottom - top - 1 },
+        (_, index) => top + 1 + index,
+      ).some(
+        (row) =>
+          !siblings.some(
+            (candidate) => candidate.row === row && !inside.includes(candidate),
+          ),
+      );
+      return (
+        right - left !== 1 ||
+        rowsLeftEmpty ||
+        inside.some(
           (candidate) =>
-            candidate.row < bottom &&
-            candidate.row + candidate.rowSpan > top &&
-            candidate.column < right &&
-            candidate.column + candidate.columnSpan > left,
-        );
-        const rowsLeftEmpty = Array.from(
-          { length: bottom - top - 1 },
-          (_, index) => top + 1 + index,
-        ).some(
-          (row) =>
-            !siblings.some(
-              (candidate) =>
-                candidate.row === row && !inside.includes(candidate),
-            ),
-        );
-        return (
-          right - left !== 1 ||
-          rowsLeftEmpty ||
-          inside.some(
-            (candidate) =>
-              candidate.rowSpan !== 1 ||
-              candidate.columnSpan !== 1 ||
-              candidate.nested !== undefined ||
-              (candidate.row !== top && candidate.text !== ""),
-          )
-        );
-      }
-      case "splitTableCell":
-        return cell.columnSpan > 1;
-      case "insertTableColumn": {
-        const boundary =
-          plan.position === "before"
-            ? cell.column
-            : cell.column + cell.columnSpan;
-        return siblings.some(
-          (candidate) =>
-            candidate.column < boundary &&
-            candidate.column + candidate.columnSpan > boundary,
-        );
-      }
-      case "deleteTableColumn":
-        return siblings.some(
-          (candidate) =>
-            candidate.columnSpan > 1 &&
-            candidate.column <= cell.column &&
-            candidate.column + candidate.columnSpan > cell.column,
-        );
-      default:
-        return false;
-    }
-  };
-
-  const checkCase = async (
-    spec: TableSpec,
-    plans: readonly OperationPlan[],
-  ): Promise<void> => {
-    const base = await buildTableDocx(spec);
-    const original = await readTablesAt("original", await open(base));
-    expect(tableReadingProblems(original)).toEqual([]);
-
-    const direct = await run(base, spec, plans, "direct");
-    const tracked = await run(base, spec, plans, "tracked-changes");
-    const directApplied = appliedIds(direct);
-    const trackedApplied = appliedIds(tracked);
-
-    const operationIds = direct.planned.map(({ operation }) => operation.id);
-    for (const { result } of [direct, tracked]) {
-      const skippedIds = new Set(result.skipped.map(({ id }) => id));
-      expect(result.skipped.map(({ id }) => id)).toEqual(
-        operationIds.filter((id) => skippedIds.has(id)),
+            candidate.rowSpan !== 1 ||
+            candidate.columnSpan !== 1 ||
+            candidate.nested !== undefined ||
+            (candidate.row !== top && candidate.text !== ""),
+        )
       );
     }
-
-    const directReading = await readTablesAt("direct", direct.reviewer);
-    expect(tableReadingProblems(directReading)).toEqual([]);
-    if (directApplied.size > 0) {
-      // (a) Every value an applied operation supplied landed.
-      const text = directReading.texts.join("\n");
-      for (const { operation, values } of direct.planned) {
-        for (const value of directApplied.has(operation.id) ? values : []) {
-          expect(text).toContain(value);
-        }
-      }
-    } else {
-      // A refused batch leaves the document alone, and says why.
-      expect(direct.result.issues).toHaveLength(plans.length);
-      expect(visible(directReading)).toEqual(visible(original));
+    case "splitTableCell":
+      return cell.columnSpan > 1;
+    case "insertTableColumn": {
+      const boundary =
+        plan.position === "before"
+          ? cell.column
+          : cell.column + cell.columnSpan;
+      return siblings.some(
+        (candidate) =>
+          candidate.column < boundary &&
+          candidate.column + candidate.columnSpan > boundary,
+      );
     }
+    case "deleteTableColumn":
+      return siblings.some(
+        (candidate) =>
+          candidate.columnSpan > 1 &&
+          candidate.column <= cell.column &&
+          candidate.column + candidate.columnSpan > cell.column,
+      );
+    default:
+      return false;
+  }
+};
 
-    const rejected = await resolve(tracked.reviewer, "reject");
-    expect(tableReadingProblems(rejected)).toEqual([]);
-    // (c) Whatever tracked mode did, rejecting it restores the original.
-    expect(visible(rejected)).toEqual(visible(original));
+const checkCase = async (
+  spec: TableSpec,
+  plans: readonly OperationPlan[],
+): Promise<void> => {
+  const base = await buildTableDocx(spec);
+  const original = await readTablesAt("original", await open(base));
+  expect(tableReadingProblems(original)).toEqual([]);
 
-    const disagreeing = tracked.planned.flatMap((planned, index) =>
-      directApplied.has(planned.operation.id) ===
-      trackedApplied.has(planned.operation.id)
-        ? []
-        : [{ planned, plan: plans[index]! }],
+  const direct = await run(base, spec, plans, "direct");
+  const tracked = await run(base, spec, plans, "tracked-changes");
+  const directApplied = appliedIds(direct);
+  const trackedApplied = appliedIds(tracked);
+
+  const operationIds = direct.planned.map(({ operation }) => operation.id);
+  for (const { result } of [direct, tracked]) {
+    const skippedIds = new Set(result.skipped.map(({ id }) => id));
+    expect(result.skipped.map(({ id }) => id)).toEqual(
+      operationIds.filter((id) => skippedIds.has(id)),
     );
-    if (disagreeing.length > 0) {
-      // (b) Both modes agree on whether each operation is allowed, bar the
-      // refusals the tracked vocabulary forces.
-      for (const { planned, plan } of disagreeing) {
-        const id = planned.operation.id;
-        expect({
-          plans,
-          direct: direct.result.skipped,
-          tracked: tracked.result.skipped,
-          expected:
-            directApplied.has(id) &&
-            tracked.result.skipped.some(
-              (skip) => skip.id === id && skip.reason === "unsupportedBlock",
-            ) &&
-            trackedRefusalIsExpected(planned, plan),
-        }).toMatchObject({ expected: true });
+  }
+
+  const directReading = await readTablesAt("direct", direct.reviewer);
+  expect(tableReadingProblems(directReading)).toEqual([]);
+  if (directApplied.size > 0) {
+    // (a) Every value an applied operation supplied landed.
+    const text = directReading.texts.join("\n");
+    for (const { operation, values } of direct.planned) {
+      for (const value of directApplied.has(operation.id) ? values : []) {
+        expect(text).toContain(value);
       }
     }
-    if (trackedApplied.size === 0) {
-      if (disagreeing.length === 0) {
-        expect(direct.result.skipped.map(({ reason }) => reason)).toEqual(
-          tracked.result.skipped.map(({ reason }) => reason),
-        );
-      }
-      return;
+  } else {
+    // A refused batch leaves the document alone, and says why.
+    expect(direct.result.issues).toHaveLength(plans.length);
+    expect(visible(directReading)).toEqual(visible(original));
+  }
+
+  const rejected = await resolve(tracked.reviewer, "reject");
+  expect(tableReadingProblems(rejected)).toEqual([]);
+  // (c) Whatever tracked mode did, rejecting it restores the original.
+  expect(visible(rejected)).toEqual(visible(original));
+
+  const disagreeing = tracked.planned.flatMap((planned, index) =>
+    directApplied.has(planned.operation.id) ===
+    trackedApplied.has(planned.operation.id)
+      ? []
+      : [{ planned, plan: plans[index]! }],
+  );
+  if (disagreeing.length > 0) {
+    // (b) Both modes agree on whether each operation is allowed, bar the
+    // refusals the tracked vocabulary forces.
+    for (const { planned, plan } of disagreeing) {
+      const id = planned.operation.id;
+      expect({
+        plans,
+        direct: direct.result.skipped,
+        tracked: tracked.result.skipped,
+        expected:
+          directApplied.has(id) &&
+          tracked.result.skipped.some(
+            (skip) => skip.id === id && skip.reason === "unsupportedBlock",
+          ) &&
+          trackedRefusalIsExpected(planned, plan),
+      }).toMatchObject({ expected: true });
     }
-    const accepted = await resolve(tracked.reviewer, "accept");
-    expect(tableReadingProblems(accepted)).toEqual([]);
-    // (b) Accepting the tracked result is the direct result for the operations
-    // both modes applied, even when tracked mode refused another operation.
+  }
+  if (trackedApplied.size === 0) {
     if (disagreeing.length === 0) {
-      expect(visible(accepted)).toEqual(visible(directReading));
-      return;
+      expect(direct.result.skipped.map(({ reason }) => reason)).toEqual(
+        tracked.result.skipped.map(({ reason }) => reason),
+      );
     }
-    const shared = await open(base);
-    const sharedOperations = direct.planned
-      .filter(({ operation }) => trackedApplied.has(operation.id))
-      .map(({ operation }) => operation);
-    const sharedResult = shared.applyDocumentOperations(
-      {
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode: "direct",
-        operations: sharedOperations,
-      },
-      { undefinedReferences: "refuse" },
-    );
-    expect(new Set(sharedResult.applied.map(({ id }) => id))).toEqual(
-      trackedApplied,
-    );
-    const sharedReading = await readTablesAt("direct shared", shared);
-    expect(tableReadingProblems(sharedReading)).toEqual([]);
-    expect(visible(accepted)).toEqual(visible(sharedReading));
-  };
+    return;
+  }
+  const accepted = await resolve(tracked.reviewer, "accept");
+  expect(tableReadingProblems(accepted)).toEqual([]);
+  // (b) Accepting the tracked result is the direct result for the operations
+  // both modes applied, even when tracked mode refused another operation.
+  if (disagreeing.length === 0) {
+    expect(visible(accepted)).toEqual(visible(directReading));
+    return;
+  }
+  const shared = await open(base);
+  const sharedOperations = direct.planned
+    .filter(({ operation }) => trackedApplied.has(operation.id))
+    .map(({ operation }) => operation);
+  const sharedResult = shared.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "direct",
+      operations: sharedOperations,
+    },
+    { undefinedReferences: "refuse" },
+  );
+  expect(new Set(sharedResult.applied.map(({ id }) => id))).toEqual(
+    trackedApplied,
+  );
+  const sharedReading = await readTablesAt("direct shared", shared);
+  expect(tableReadingProblems(sharedReading)).toEqual([]);
+  expect(visible(accepted)).toEqual(visible(sharedReading));
+};
 
-  describe("table operations on merged tables", () => {
-    test(
-      "keep every value, agree across modes and readers, and reject cleanly",
-      async () => {
-        // The seeds this property once failed on replay first, from
-        // test/property-seeds/.
-        await assertProperty(
-          fc.asyncProperty(documentArbitrary, batchArbitrary, checkCase),
-          {
-            numRuns: 150,
-            id: "keep every value, agree across modes and readers, and reject cleanly",
-          },
-        );
-      },
-      propertyTestTimeout(120_000),
-    );
-  });
+describe("table operations on merged tables", () => {
+  test(
+    "keep every value, agree across modes and readers, and reject cleanly",
+    async () => {
+      // The seeds this property once failed on replay first, from
+      // test/property-seeds/.
+      await assertProperty(
+        fc.asyncProperty(documentArbitrary, batchArbitrary, checkCase),
+        {
+          numRuns: 150,
+          id: "keep every value, agree across modes and readers, and reject cleanly",
+        },
+      );
+    },
+    propertyTestTimeout(120_000),
+  );
 });

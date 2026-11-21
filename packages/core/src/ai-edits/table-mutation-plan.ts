@@ -155,7 +155,7 @@ type MergesRemoveRowOptions = {
  * tracked merging cannot record that removal. Keep a row-removing merge alone
  * and refuse the later merge when their combined folded cells empty a row.
  */
-const mergesRemoveRow = ({
+export const mergesRemoveRow = ({
   doc,
   tablePosition,
   rectangles,
