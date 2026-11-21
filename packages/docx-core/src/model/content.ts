@@ -1780,6 +1780,13 @@ type TrackedResolutionJoins = WritableRecord & {
    * that text directly does.
    */
   holdsControlText?: true;
+  /**
+   * Edges of the container this change stands in where accepted content
+   * meets it that its insertion joined to nothing there. A resolution that
+   * empties the container leaves it standing there, emptied, as resolving
+   * the change before that acceptance does.
+   */
+  closedHolder?: readonly ("before" | "after")[];
   /** A split seam survives only while all intervening insertions await rejection. */
   deferredRemove?: readonly (WritableRecord & {
     depth: number;

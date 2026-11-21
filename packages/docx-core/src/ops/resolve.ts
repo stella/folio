@@ -491,7 +491,11 @@ const removePropertyChanges = <Change extends PropertyChange>(
 };
 
 /** Records resolution emptied, as distinct from ones that held nothing before it. */
-type Emptied = { has: (node: InlineNode) => boolean };
+type Emptied = {
+  has: (node: InlineNode) => boolean;
+  /** Emptied records that fold into nothing across that edge. */
+  closed?: Record<SourceOwnerSide, { has: (node: InlineNode) => boolean }>;
+};
 
 const NOTHING_EMPTIED: Emptied = { has: () => false };
 
@@ -500,6 +504,8 @@ type Resolution = {
   decision: RevisionDecision;
   /** The containers this resolution has emptied so far. */
   emptied: WeakSet<InlineNode>;
+  /** Emptied containers that fold into nothing across that edge. */
+  closedEmptied: Record<SourceOwnerSide, WeakSet<InlineNode>>;
   /** Actual payload edges accepted after source identities were restored. */
   acceptedClosed: Record<"first" | "last", WeakSet<InlineNode>>;
   /** Unconsumed source-cut edges on the actual rebuilt container. */
@@ -527,6 +533,7 @@ const createResolution = (
   ids,
   decision,
   emptied: new WeakSet(),
+  closedEmptied: { before: new WeakSet(), after: new WeakSet() },
   acceptedClosed: { first: new WeakSet(), last: new WeakSet() },
   cutEdges: new WeakMap(),
   deferredOnlyRemovals: new WeakSet(),
@@ -607,12 +614,20 @@ const resolveFieldRuns = (
  * the other holds something or was emptied too (two emptied pieces are one
  * piece, whichever emptied first). A container that held nothing before (an
  * empty content control or hyperlink) is markup of its own and is never merged.
+ * Nor is one across an edge closed to it (`side`: its edge facing the other).
  */
-const emptyPieceOf = (
-  empty: InlineNode,
-  other: InlineNode,
-  emptied: Emptied,
-): boolean => {
+type EmptyPieceOptions = {
+  empty: InlineNode;
+  other: InlineNode;
+  emptied: Emptied;
+  side: SourceOwnerSide;
+};
+const emptyPieceOf = ({
+  empty,
+  other,
+  emptied,
+  side,
+}: EmptyPieceOptions): boolean => {
   const emptyChildren = childNodes(empty);
   const otherChildren = childNodes(other);
   return (
@@ -622,6 +637,7 @@ const emptyPieceOf = (
     emptyChildren.length === 0 &&
     (otherChildren.length > 0 || emptied.has(other)) &&
     emptied.has(empty) &&
+    emptied.closed?.[side].has(empty) !== true &&
     sameOwnFields(empty, other)
   );
 };
@@ -636,8 +652,9 @@ const foldedPiece = (
   right: InlineNode,
   emptied: Emptied,
 ): InlineNode | undefined => {
-  if (emptyPieceOf(right, left, emptied)) return left;
-  if (emptyPieceOf(left, right, emptied))
+  if (emptyPieceOf({ empty: right, other: left, emptied, side: "before" }))
+    return left;
+  if (emptyPieceOf({ empty: left, other: right, emptied, side: "after" }))
     return rebuildNode(left, childNodes(right) ?? []);
   return undefined;
 };
@@ -1214,6 +1231,64 @@ const withEmptiedHolder = (
   });
 };
 
+/**
+ * A container that accepted content meets at its `side` edge, the content's
+ * insertion joined to nothing there, with the pending changes it holds
+ * marked: emptied by resolving them later, it folds into nothing across that
+ * edge, as resolving them before the acceptance leaves it. The marks go down
+ * the chain of containers at that edge, which a fold would reach through.
+ */
+const withHolderClosed = (
+  record: InlineNode,
+  side: SourceOwnerSide,
+  resolution: Resolution,
+): InlineNode => {
+  if (record.type === "run" || isTrackedWrapper(record)) return record;
+  const children = childNodes(record);
+  if (children === undefined || children.length === 0) return record;
+  const edgeAt = side === "after" ? children.length - 1 : 0;
+  let changed = false;
+  const marked = children.map((child, at) => {
+    if (isTrackedWrapper(child)) {
+      const joins = child.resolutionJoins;
+      if (
+        resolution.ids.has(child.info.id) ||
+        joins === undefined ||
+        joins.closedHolder?.includes(side) === true
+      )
+        return child;
+      changed = true;
+      const closed = Object.assign({}, child, {
+        resolutionJoins: Object.assign({}, joins, {
+          closedHolder: [...(joins.closedHolder ?? []), side],
+        }),
+      });
+      carryResolutionState(resolution, child, closed);
+      return closed;
+    }
+    if (at !== edgeAt) return child;
+    const inner = withHolderClosed(child, side, resolution);
+    if (inner !== child) changed = true;
+    return inner;
+  });
+  if (!changed) return record;
+  const rebuilt = rebuildNode(record, marked);
+  carryResolutionState(resolution, record, rebuilt);
+  return rebuilt;
+};
+
+/** The edges a container's pending changes mark as closed to a fold. */
+const closedHolderSides = (
+  children: readonly InlineNode[],
+): ReadonlySet<SourceOwnerSide> =>
+  new Set(
+    children.flatMap((child) =>
+      isTrackedWrapper(child)
+        ? (child.resolutionJoins?.closedHolder ?? [])
+        : [],
+    ),
+  );
+
 /** What has become of a deferred seam's blocker. */
 type BlockerFate = "pending" | "accepted" | "removed";
 
@@ -1544,6 +1619,12 @@ const withoutCommentAnchors = (
  * A list with its tracked changes resolved. Where a change was resolved,
  * the records left meeting are merged as far as they are alike.
  */
+/** The records a resolution emptied, with the edges closed to their fold. */
+const emptiedIn = (resolution: Resolution): Emptied => ({
+  has: (node) => resolution.emptied.has(node),
+  closed: resolution.closedEmptied,
+});
+
 /** What a resolution knows about `from`, now about `to`, its rebuilt copy. */
 const carryResolutionState = (
   resolution: Resolution,
@@ -1553,6 +1634,9 @@ const carryResolutionState = (
   const edges = resolution.cutEdges.get(from);
   if (edges !== undefined) resolution.cutEdges.set(to, edges);
   if (resolution.emptied.has(from)) resolution.emptied.add(to);
+  for (const side of ["before", "after"] as const)
+    if (resolution.closedEmptied[side].has(from))
+      resolution.closedEmptied[side].add(to);
   if (resolution.acceptedClosed.first.has(from))
     resolution.acceptedClosed.first.add(to);
   if (resolution.acceptedClosed.last.has(from))
@@ -2463,34 +2547,48 @@ const resolveList = ({
       );
   };
   /**
-   * Rejecting new content made inside a piece of an earlier pending
-   * insertion (joined to it on that side) cancels that insertion's join
-   * facing it. Accepting the insertion first leaves its join nothing to
-   * take once the content goes; rejecting the content first must not leave
-   * the join to reach past its place, so the result does not depend on the
-   * order.
+   * Rejecting an insertion cancels a pending insertion's join facing it:
+   * that of an earlier insertion the rejected content was made inside a
+   * piece of (joined to it on that side), and, when the rejection keeps
+   * nothing there, that of later content made inside a piece of the
+   * rejected one. Accepting the joined insertion first leaves its join
+   * nothing to take once the other content goes; rejecting that content
+   * first must not leave the join to reach past its place, so the result
+   * does not depend on the order. Boundaries the rejection keeps are a
+   * piece the later content's join still takes.
    */
-  const retireFacingJoins = (index: number, node: TrackedWrapper): void => {
+  const retireFacingJoins = (
+    index: number,
+    node: TrackedWrapper,
+    made: "earlier" | "later",
+  ): void => {
     const joins = node.resolutionJoins;
-    if (joins === undefined) return;
+    const date = node.info.date ?? "";
     const facesNode = (
       neighbour: InlineNode | undefined,
       side: "before" | "after",
-    ): neighbour is TrackedWrapper =>
-      neighbour !== undefined &&
-      isTrackedWrapper(neighbour) &&
-      isAddedRevision(neighbour) &&
-      !resolution.ids.has(neighbour.info.id) &&
-      (neighbour.info.date ?? "") < (node.info.date ?? "") &&
-      (neighbour.resolutionJoins?.[side] ?? 0) > 0;
+    ): neighbour is TrackedWrapper => {
+      if (
+        neighbour === undefined ||
+        !isTrackedWrapper(neighbour) ||
+        !isAddedRevision(neighbour) ||
+        resolution.ids.has(neighbour.info.id) ||
+        (neighbour.resolutionJoins?.[side] ?? 0) === 0
+      )
+        return false;
+      const neighbourDate = neighbour.info.date ?? "";
+      if (made === "later") return neighbourDate > date;
+      const own = side === "after" ? joins?.before : joins?.after;
+      return neighbourDate < date && (own ?? 0) > 0;
+    };
     const previous = out.at(-1);
-    if (joins.before > 0 && facesNode(previous?.node, "after")) {
+    if (facesNode(previous?.node, "after")) {
       const retired = withJoinRetired(previous.node, "after");
       carryResolutionState(resolution, previous.node, retired);
       out[out.length - 1] = occurrenceOf(retired, previous);
     }
     const next = pending[index + 1];
-    if (joins.after > 0 && facesNode(next, "before"))
+    if (facesNode(next, "before"))
       pending[index + 1] = withJoinRetired(next, "before");
   };
   const recordExactSeam = (index: number, depth: number): void => {
@@ -2680,7 +2778,7 @@ const resolveList = ({
           resolution.decision === REVISION_DECISIONS.REJECT &&
           isAddedRevision(node)
         )
-          retireFacingJoins(index, node);
+          retireFacingJoins(index, node, "earlier");
         const removedDepth = joins?.remove ?? 0;
         // A one-sided prefix or suffix still belongs to the piece its join
         // names, even when removing it joins no records across its place.
@@ -2825,6 +2923,12 @@ const resolveList = ({
             ? withKeptCutsRecorded(boundary, cut, resolution.relocated.nodes)
             : boundary,
         );
+        if (
+          kept.length === 0 &&
+          resolution.decision === REVISION_DECISIONS.REJECT &&
+          isAddedRevision(node)
+        )
+          retireFacingJoins(index, node, "later");
         const keptStart = out.length;
         appendUnowned(kept);
         // Kept boundaries float at the seam until the pieces either side are
@@ -3086,6 +3190,27 @@ const resolveList = ({
           resolution.acceptedClosed.first.add(first);
         if (node.resolutionJoins.before === 0 && last !== undefined)
           resolution.acceptedClosed.last.add(last);
+        // A container the content meets across an edge the insertion joins
+        // to nothing (and no other join records a seam at) stays apart from
+        // it, emptied or not.
+        const previous = out.at(-1);
+        if (
+          node.resolutionJoins.before === 0 &&
+          (exactSeams.get(out.length) ?? 0) === 0 &&
+          previous !== undefined &&
+          content.length > 0
+        ) {
+          const closed = withHolderClosed(previous.node, "after", resolution);
+          if (closed !== previous.node)
+            out[out.length - 1] = occurrenceOf(closed, previous);
+        }
+        const next = pending[index + 1];
+        if (
+          node.resolutionJoins.after === 0 &&
+          next !== undefined &&
+          content.length > 0
+        )
+          pending[index + 1] = withHolderClosed(next, "before", resolution);
       }
       if (
         resolution.decision === REVISION_DECISIONS.ACCEPT &&
@@ -3285,8 +3410,12 @@ const resolveList = ({
     const ends =
       inner.nodes.length === 0
         ? { first: true, last: true }
-        : emptiedEndsOf(inner.nodes, resolution.emptied);
-    if (inner.nodes.length === 0) resolution.emptied.add(rebuilt);
+        : emptiedEndsOf(inner.nodes, emptiedIn(resolution));
+    if (inner.nodes.length === 0) {
+      resolution.emptied.add(rebuilt);
+      for (const side of closedHolderSides(children))
+        resolution.closedEmptied[side].add(rebuilt);
+    }
     if (ends.first) folds.push(out.length);
     if (ends.last) folds.push(out.length + 1);
     if (inner.edges !== undefined) {
@@ -4499,9 +4628,9 @@ const resolveList = ({
       met =
         besidePayload && alikeDepth(left, right) === 0
           ? [left, right]
-          : mergeAtSeam(left, right, resolution.emptied);
+          : mergeAtSeam(left, right, emptiedIn(resolution));
     } else if (exactDepth === undefined) {
-      met = foldAtSeam(left, right, resolution.emptied);
+      met = foldAtSeam(left, right, emptiedIn(resolution));
     } else {
       // A resolution, this one or an earlier, can empty an original cut
       // fragment. Its surviving identity folds back before measuring the
@@ -4510,7 +4639,7 @@ const resolveList = ({
         left,
         right,
         depth: exactDepth,
-        emptied: resolution.emptied,
+        emptied: emptiedIn(resolution),
       });
       if (folded.length === 1) met = folded;
       else {
@@ -4734,8 +4863,14 @@ const emptiedEndsOf = (
   const first = edgeRecord(nodes, "first");
   const last = edgeRecord(nodes, "last");
   return {
-    first: first !== undefined && emptied.has(first),
-    last: last !== undefined && emptied.has(last),
+    first:
+      first !== undefined &&
+      emptied.has(first) &&
+      emptied.closed?.before.has(first) !== true,
+    last:
+      last !== undefined &&
+      emptied.has(last) &&
+      emptied.closed?.after.has(last) !== true,
   };
 };
 
@@ -6212,7 +6347,7 @@ const planSingleRecordResolution = (
     if (resolvedChanged.has(idKey(paraId))) {
       emptiedEnds.set(
         idKey(paraId),
-        emptiedEndsOf(resolvedNodes, resolution.emptied),
+        emptiedEndsOf(resolvedNodes, emptiedIn(resolution)),
       );
       inline.push({
         type: DOCUMENT_OP_TYPES.REPLACE_INLINE,
