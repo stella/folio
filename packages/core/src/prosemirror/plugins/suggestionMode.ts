@@ -73,6 +73,7 @@ import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
 import { paragraphRunStyleContext } from "../runStyleFormatting";
 import type { ParagraphPropertyChangeAttrs } from "../schema/nodes";
 import { cellPasteRange, pasteTableCells } from "../tableCellPaste";
+import { deleteTableRowAt } from "../tableGridMutation";
 import {
   afterNativeCompositionFlush,
   formattingMarksBesideLockedControl,
@@ -384,8 +385,9 @@ type RetractTableRowsOptions = {
 
 /**
  * Remove the rows the current author inserted that a deletion spans whole:
- * the suggestion is withdrawn, as their inserted words are. A table left with
- * no row goes with them, where its container keeps a block without it.
+ * the suggestion is withdrawn, as rejecting it does (`deleteTableRowAt`), so
+ * a vertical merge crossing a row closes one row sooner and a table left with
+ * no row goes with it.
  */
 function retractTableRows({
   tr,
@@ -396,20 +398,8 @@ function retractTableRows({
   for (const position of positions.toReversed()) {
     // oxlint-disable-next-line unicorn/no-array-method-this-argument -- ProseMirror Mapping.map(pos, assoc)
     const rowPos = tr.mapping.slice(stepsBeforeDoc).map(position);
-    const row = tr.doc.nodeAt(rowPos);
-    if (row?.type.name !== "tableRow") continue;
-    const $row = tr.doc.resolve(rowPos);
-    const table = $row.parent;
-    if (table.childCount > 1) {
-      tr.delete(rowPos, rowPos + row.nodeSize);
-      continue;
-    }
-    const tablePos = $row.before();
-    const $table = tr.doc.resolve(tablePos);
-    const index = $table.index();
-    if ($table.parent.canReplace(index, index + 1)) {
-      tr.delete(tablePos, tablePos + table.nodeSize);
-    }
+    if (tr.doc.nodeAt(rowPos)?.type.name !== "tableRow") continue;
+    deleteTableRowAt(tr, rowPos);
   }
 }
 
@@ -852,14 +842,16 @@ export function handleSuggestionPaste(
   //    A table going in front of a container's last paragraph is placed
   //    first: struck before, the paragraphs it lands in front of would lose
   //    their struck marks' undo to the insertion at their position.
-  //    Select-all also takes the rows of a table the document starts with,
-  //    which the text span inside the document's edges starts within.
+  //    Select-all strikes from the document's start, so a table the document
+  //    starts with, which the text span inside its edges starts within, has
+  //    every row struck or withdrawn.
+  const struckFrom = selectsAll ? 0 : from;
   const tableFirst = endsContainer && !rotates;
   if (!tableFirst) {
     markRangeAsDeleted(
       tr,
       doc,
-      selectsAll ? 0 : from,
+      struckFrom,
       wholeBlocks && !endsContainer ? $to.after() : to,
       deletionType,
       pluginState,
@@ -932,7 +924,9 @@ export function handleSuggestionPaste(
   if (rotates) {
     at = tr.mapping.map($to.after());
   } else if (tableFirst) {
-    at = $from.before();
+    // Before the first block struck: under select-all the document's start,
+    // ahead of a table the document starts with rather than inside its cell.
+    at = selectsAll ? 0 : $from.before();
   } else if (beforeStruck) {
     at = tr.mapping.map(from, -1);
   }
@@ -959,7 +953,7 @@ export function handleSuggestionPaste(
     markRangeAsDeleted(
       tr,
       tr.doc,
-      tr.mapping.map(from),
+      tr.mapping.map(struckFrom),
       tr.mapping.map(to),
       deletionType,
       pluginState,
