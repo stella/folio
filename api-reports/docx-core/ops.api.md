@@ -128,6 +128,9 @@ export type BatchRejectionReason = (typeof BATCH_REJECTION_REASONS)[keyof typeof
 export type BatchSubmission = BatchAck | BatchReject;
 
 // @public
+export const beginTrackedInsertionCompilation: (input: TrackedBatchOptions) => TrackedInsertionCompiler;
+
+// @public
 export const blockControlHolding: (blocks: readonly BlockContent[], blockId: string) => {
     control: BlockSdt;
     paragraphs: Paragraph[];
@@ -871,6 +874,12 @@ export type InsertTextOp = {
 };
 
 // @public
+export const introducedDocumentIds: (input: {
+    before: Document_2;
+    after: Document_2;
+}) => LeasedId[];
+
+// @public
 export const introducedIds: (before: LeasedIdCensus, after: LeasedIdCensus) => LeasedId[];
 
 // @public
@@ -930,6 +939,9 @@ export const locateParagraphInBlockList: (body: DocumentBody, blockId: string) =
     blocks: readonly BlockContent[];
     index: number;
 } | undefined;
+
+// @public
+export const locateParagraphThroughTextBoxes: (document: Document_2, story: OpStory, blockId: string) => ReturnType<typeof locateParagraphInBlockList>;
 
 // @public
 export const mapTocBookmarkPosition: (position: TextPosition, ops: readonly DocumentOp[]) => TextPosition;
@@ -1125,6 +1137,9 @@ export type ParagraphReviewFields = {
 };
 
 // @public
+export const paragraphsThroughTextBoxes: (document: Document_2, story: OpStory) => ParagraphLocation[];
+
+// @public
 export const paragraphVisibleText: (paragraph: Paragraph) => string;
 
 // @public
@@ -1248,6 +1263,12 @@ export type ResolveRevisionOp = {
     decision: RevisionDecision;
 };
 
+// @public
+export const resolveSectionChange: (input: ResolveSectionChangeOptions) => SectionProperties | null;
+
+// @public
+export const resolveSectionChanges: (current: SectionProperties, decision: RevisionDecision) => SectionProperties | null;
+
 // @public (undocumented)
 export type RestoreCommentStateOp = {
     type: typeof DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE;
@@ -1334,6 +1355,12 @@ export type SectionPropertiesState = {
     type: "present";
     value: SectionProperties;
 };
+
+// @public
+export const sectionRejectProperties: (input: SectionRejectPropertiesOptions) => SectionProperties;
+
+// @public
+export const sectionResolutionPatch: (input: SectionResolutionPatchOptions) => FormattingPatch<SectionProperties>;
 
 // @public
 export type SectionViewEntry = {

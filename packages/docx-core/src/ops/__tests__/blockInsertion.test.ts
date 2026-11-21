@@ -11,7 +11,7 @@ import {
   applyDocumentOp,
   applyDocumentOps,
 } from "../apply";
-import { storyParagraphs } from "../blocks";
+import * as blockOperations from "../blocks";
 import * as identityKeys from "../ids";
 import { revisionIdDemand } from "../plan";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
@@ -95,6 +95,71 @@ const insertion = (blocks: Paragraph[]): InsertBlocksOp => ({
   revision: stamp,
   newIds: { revision: Array.from({ length: 32 }, (_, index) => 101 + index) },
 });
+
+test.each(["before", "after"] as const)(
+  "tracked insertion %s a main paragraph validates without a draft splice",
+  (type) => {
+    const op = {
+      ...insertion([
+        makeParagraph("00000003", "first"),
+        makeParagraph("00000004", "second"),
+      ]),
+      at: { type, blockId: "00000001" },
+    } satisfies InsertBlocksOp;
+    const splice = spyOn(blockOperations, "replaceParagraphs");
+    const gate = spyOn(
+      blockOperations,
+      "canSpliceMainBodyWithoutSectionRepair",
+    );
+    try {
+      const validated = apply(baseDocument, op);
+      expect(splice).toHaveBeenCalledTimes(1);
+      gate.mockReturnValue(false);
+      const materialized = apply(baseDocument, op);
+      expect(splice).toHaveBeenCalledTimes(3);
+      expect(validated).toStrictEqual(materialized);
+      expect(undo(validated)).toStrictEqual(baseDocument);
+    } finally {
+      gate.mockRestore();
+      splice.mockRestore();
+    }
+  },
+);
+
+test.each([
+  {
+    paragraph: {
+      type: "paragraph",
+      paraId: "bad",
+      content: [{ type: "run", content: [] }],
+    },
+    reason: DOCUMENT_OP_REFUSAL_REASONS.EMPTY_CONTENT,
+  },
+  {
+    paragraph: makeParagraph("00000001", "duplicate"),
+    reason: DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
+  },
+] satisfies { paragraph: Paragraph; reason: string }[])(
+  "local preflight preserves $reason before tracked ID demand",
+  ({ paragraph, reason }) => {
+    const op = { ...insertion([paragraph]), newIds: { revision: [] } };
+    const local = applyDocumentOp(baseDocument, op);
+    const gate = spyOn(
+      blockOperations,
+      "canSpliceMainBodyWithoutSectionRepair",
+    ).mockReturnValue(false);
+    try {
+      const materialized = applyDocumentOp(baseDocument, op);
+      expect(local.isErr() && local.error.reason).toBe(reason);
+      expect(local.isErr() && local.error.message).toBe(
+        materialized.isErr() && materialized.error.message,
+      );
+      expect(materialized.isErr() && materialized.error.reason).toBe(reason);
+    } finally {
+      gate.mockRestore();
+    }
+  },
+);
 
 test.each(["after", "afterTable"] as const)(
   "tracked insertions at %s do not repeat package identity censuses",
@@ -181,9 +246,9 @@ test.each(["", "kept"])(
       document,
       insertion([makeParagraph("00000002", "new")]),
     );
-    const finalAfter = storyParagraphs(tracked.document.package.document).find(
-      ({ paragraph }) => paragraph.paraId === final.paraId,
-    );
+    const finalAfter = blockOperations
+      .storyParagraphs(tracked.document.package.document)
+      .find(({ paragraph }) => paragraph.paraId === final.paraId);
     expect(finalAfter?.paragraph).toBe(final);
     expect(finalAfter?.paragraph.pPrMark).toBeUndefined();
     expect(resolve(tracked, REVISION_DECISIONS.REJECT).document).toEqual(
@@ -309,6 +374,34 @@ test("insertion validates identities, review conflicts and section boundaries", 
   );
 });
 
+test("a direct insertion keeps a supplied mark only before its container end", () => {
+  const anchor = makeParagraph("0abcdef1", "anchor");
+  const wrapper = {
+    type: "blockSdt",
+    properties: {},
+    content: [anchor],
+  } satisfies BlockContent;
+  const marked = {
+    ...makeParagraph("00000002", "marked"),
+    pPrMark: { kind: "ins", info: { id: 9, author: "A" } },
+  } satisfies Paragraph;
+  const op = {
+    ...insertion([marked]),
+    at: { type: "after", blockId: "0ABCDEF1" },
+    revision: undefined,
+  } as const;
+  const terminal = applyDocumentOp(documentOf([wrapper]), op);
+  expect(terminal.isErr() && terminal.error.reason).toBe(
+    DOCUMENT_OP_REFUSAL_REASONS.CONTAINER_FINAL_MARK,
+  );
+  const tail = makeParagraph("00000003", "tail");
+  const nonterminal = apply(documentOf([wrapper, tail]), op);
+  expect(nonterminal.document.package.document.content).toEqual([
+    { ...wrapper, content: [anchor, marked] },
+    tail,
+  ]);
+});
+
 test.each([
   ["no paragraph follows", [] as BlockContent[]],
   ["a paragraph follows", [makeParagraph("00000004", "after")]],
@@ -351,12 +444,14 @@ test.each([
     );
     const accepted = resolve(applied, REVISION_DECISIONS.ACCEPT).document;
     expect(
-      storyParagraphs(accepted.package.document).map(({ paragraph }) =>
-        paragraph.content
-          .flatMap((node) => (node.type === "run" ? node.content : []))
-          .map((leaf) => (leaf.type === "text" ? leaf.text : ""))
-          .join(""),
-      ),
+      blockOperations
+        .storyParagraphs(accepted.package.document)
+        .map(({ paragraph }) =>
+          paragraph.content
+            .flatMap((node) => (node.type === "run" ? node.content : []))
+            .map((leaf) => (leaf.type === "text" ? leaf.text : ""))
+            .join(""),
+        ),
     ).toEqual(["kept", "first", "second", ...after.map(() => "after")]);
     for (const id of applied.revisions)
       for (const decision of Object.values(REVISION_DECISIONS)) {
@@ -440,9 +535,9 @@ test.each(["body", "cell"] as const)(
       at: { type: "after", blockId: "00000001" },
     });
     const paragraphsOf = (edited: Document) =>
-      storyParagraphs(edited.package.document).map(
-        ({ paragraph }) => paragraph,
-      );
+      blockOperations
+        .storyParagraphs(edited.package.document)
+        .map(({ paragraph }) => paragraph);
     const [first, second, third] = paragraphsOf(applied.document);
     const anchorMark = first?.pPrMark?.info.id;
     const insertedMark = second?.pPrMark?.info.id;

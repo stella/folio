@@ -1,5 +1,7 @@
 import type { Node as PMNode } from "prosemirror-model";
 
+import { sectionRejectProperties } from "@stll/docx-core/ops";
+
 import type { NumberingMap } from "../../docx/numberingParser";
 import { resolveParagraphNumbering } from "../../docx/numberingReference";
 import type { SectionProperties } from "../../types/document";
@@ -22,7 +24,6 @@ import {
   paragraphRejectAttrPatch,
   paragraphRejectOriginalFormatting,
   removeParagraphPropertyChanges,
-  sectionRejectProperties,
 } from "./propertyChangeScope";
 
 type ResolveParagraphPropertiesOptions = {

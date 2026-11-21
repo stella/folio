@@ -12,13 +12,18 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { after, test } from "node:test";
 
+import { scenarioEngine } from "../support/documents.ts";
 import {
   failureMarker,
   logFailureMarker,
   reportScenarioFailure,
 } from "../support/failure-fingerprints.ts";
 import { describeFlow, type FlowKind, runFlow } from "../support/fuzz.ts";
-import { KNOWN_FAILING_FLOWS } from "../support/known-issues.ts";
+import {
+  KNOWN_FAILING_FLOWS,
+  logRecordedFinding,
+  recordedFindingOf,
+} from "../support/known-issues.ts";
 import { ENABLED_RELATIONS, relationSummary } from "../support/metamorphic.ts";
 import {
   consumerScenarioReplay,
@@ -85,7 +90,7 @@ const generatedFlowTest = (kind: FlowKind, run: number, seed: number) => {
   test(
     `${label} run ${run} (seed ${seed}): ${fixture} / ${mode}, ${STEPS} steps`,
     known ? { skip: `${known.reason}; runs in known-issues.test.ts` } : {},
-    async () => {
+    async (t) => {
       const sampleIndex = kind === "random" ? run : RUNS + run;
       const shouldSave = sampleIndex < SAVE_SAMPLE;
       let saved: Uint8Array | undefined;
@@ -100,6 +105,13 @@ const generatedFlowTest = (kind: FlowKind, run: number, seed: number) => {
           repro,
           failure: error,
         };
+        // A recorded finding is reported as itself, not filed again.
+        const finding = recordedFindingOf(error, scenarioEngine());
+        if (finding !== undefined) {
+          logRecordedFinding(finding, failure);
+          t.skip(`reproduces the recorded finding ${finding}`);
+          return;
+        }
         if (REPORT_ONLY) {
           logFailureMarker(failureMarker(failure));
           console.warn(

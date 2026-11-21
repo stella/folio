@@ -695,15 +695,66 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
-      # Filed by fuzz-ejection-replay.yml once the group's run completes.
-      - name: Keep the exploration findings of a merge group
-        if: always() && github.event_name == 'merge_group'
+      # Replayed on the base by exploration-base-replay; a merge group's are
+      # filed by fuzz-ejection-replay.yml once the group's run completes.
+      - name: Keep the exploration findings
+        if: always() && (github.event_name == 'pull_request' || github.event_name == 'merge_group')
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: fuzz-exploration-${{ matrix.shard }}
           path: test-results/fuzz-exploration
           retention-days: 7
           if-no-files-found: ignore
+
+  # A generated property failure in a file the change does not own reports
+  # instead of failing. Each one is replayed alone on the base commit: one the
+  # base passes came with the change and fails the run; one the base shares
+  # is filed as a finding (scripts/exploration-base-replay.ts).
+  exploration-base-replay:
+    name: Generated failures the base passes
+    needs: [ci-plan, tests]
+    if: needs.ci-plan.outputs.code_required == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      FOLIO_FUZZ_EXPLORATION_BASE: ${{ (github.event_name == 'pull_request' && github.event.pull_request.base.sha) || (github.event_name == 'merge_group' && github.event.merge_group.base_sha) || '' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the base commit is checked out beside the change
+          persist-credentials: false
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: fuzz-exploration-*
+          path: exploration
+
+      - name: Any generated failure
+        id: records
+        run: |
+          if [ -n "$(find exploration -name '*.json' -not -name '*.flow.json' -print -quit 2>/dev/null)" ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "No generated property failure was reported."
+          fi
+
+      - uses: ./.github/actions/bun
+        if: steps.records.outputs.found == 'true'
+        with:
+          package-json: "package.json"
+          install-cache: actions
+
+      - name: Install the change and its base
+        if: steps.records.outputs.found == 'true'
+        run: |
+          bun install --frozen-lockfile
+          git worktree add --detach base "$FOLIO_FUZZ_EXPLORATION_BASE"
+          (cd base && bun install --frozen-lockfile)
+
+      - name: Replay generated failures on the base
+        if: steps.records.outputs.found == 'true'
+        run: bun scripts/exploration-base-replay.ts --records exploration --base base
 
   container-contract:
     name: Container contract and survival census
@@ -1262,6 +1313,7 @@ jobs:
       - build-api
       - browser-discovery
       - tests
+      - exploration-base-replay
       - container-contract
       - docx-kernel
       - browser-input-pinned
@@ -1296,6 +1348,7 @@ jobs:
             "typecheck":{"area":"code_required"},
             "build-api":{"area":"api_required"},
             "tests":{"area":"code_required"},
+            "exploration-base-replay":{"area":"code_required"},
             "container-contract":{"area":"container_contract_required","depth":"full"},
             "docx-kernel":{"area":"docx_kernel_required","depth":"full"},
             "browser-input-pinned":{"area":"interactions_required"},

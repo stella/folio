@@ -22,9 +22,14 @@ const UntranslatableStrictNamespaceErrorBase: TaggedErrorClass<"UntranslatableSt
 import { panic, TaggedError, type TaggedErrorClass } from "better-result";
 
 import { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
-import { assertXmlResourceLimits } from "@stll/docx-core/xml/limits";
+import { readXml } from "@stll/docx-core/xml";
+import {
+  assertXmlResourceLimits,
+  FOLIO_XML_RESOURCE_LIMITS,
+} from "@stll/docx-core/xml/limits";
 
 import type { DocxConformanceClass } from "../types/document";
+import { encodeUtf8 } from "../utils/textEncoding";
 import {
   type SlotEncoding,
   TRANSITIONAL_NAMESPACE_BY_STRICT_URI,
@@ -53,7 +58,7 @@ import {
   type XmlElement,
   type XmlNamespaceScope,
 } from "./xmlParser";
-import { getDocxXmlSafetyIssue } from "./xmlSafety";
+import { getDocxXmlLexicalIssue, getDocxXmlSafetyIssue } from "./xmlSafety";
 
 /** A Strict fragment uses a namespace that has no Transitional counterpart. */
 export class UntranslatableStrictNamespaceError extends UntranslatableStrictNamespaceErrorBase<{
@@ -579,6 +584,127 @@ const hasBoundNamespaces = (root: XmlElement): boolean => {
   return true;
 };
 
+type ReplayLimits = NonNullable<
+  Parameters<typeof assertXmlResourceLimits>[0]["limits"]
+>;
+
+type ReadCompactReplayRootOptions = {
+  xml: string;
+  limits?: ReplayLimits;
+  inheritedNamespaceScope?: XmlNamespaceScope;
+};
+const readCompactReplayRoot = ({
+  xml,
+  limits,
+  inheritedNamespaceScope,
+}: ReadCompactReplayRootOptions) => {
+  try {
+    const resources = assertXmlResourceLimits({
+      xml,
+      ...(limits === undefined ? {} : { limits }),
+    });
+    if (getDocxXmlLexicalIssue(xml) !== null) return undefined;
+    const parsed = readXml(xml, {
+      conformance: "well-formed",
+      ...(inheritedNamespaceScope === undefined
+        ? {}
+        : { inheritedNamespaceScope }),
+    });
+    if (parsed.status !== "parsed") return undefined;
+    const root = getChildElements(parsed.value).at(0);
+    return root === undefined ? undefined : { root, resources };
+  } catch {
+    return undefined;
+  }
+};
+
+const isNamespaceAttribute = (name: string): boolean =>
+  name === "xmlns" || name.startsWith("xmlns:");
+
+export const hasReplayOpeningDeclarations = ({
+  attributes,
+}: XmlElement): boolean =>
+  attributes !== undefined &&
+  Object.keys(attributes).some(
+    (name) => isNamespaceAttribute(name) || getLocalName(name) === "Ignorable",
+  );
+
+const compactSuffixToken = Symbol("compact-replay-suffix");
+type ReplaySuffix = {
+  readonly [compactSuffixToken]: true;
+  readonly serialized: string;
+  readonly inherited: XmlNamespaceScope;
+  readonly limits: Readonly<ReplayLimits>;
+};
+
+/** Prepare the exact namespace and compatibility attributes the replay writer adds. */
+export const prepareCompactReplaySuffix = (
+  suffix: string,
+): ReplaySuffix | undefined => {
+  if (
+    !suffix.startsWith(" ") ||
+    suffix.includes("<") ||
+    suffix.includes(">") ||
+    suffix.includes("&")
+  )
+    return undefined;
+  const envelope = `<folio-replay-suffix${suffix}/>`;
+  const checked = readCompactReplayRoot({ xml: envelope });
+  if (checked === undefined || checked.resources.elements !== 1)
+    return undefined;
+  const { root, resources } = checked;
+  if (root.namespaceScope === undefined || !hasBoundNamespaces(root))
+    return undefined;
+  const compatibility = Object.keys(root.attributes ?? {}).filter(
+    (name) => !isNamespaceAttribute(name),
+  );
+  const ignorable = compatibility.at(0);
+  if (
+    compatibility.length > 1 ||
+    (ignorable !== undefined &&
+      (getLocalName(ignorable) !== "Ignorable" ||
+        resolveAttributeNamespaceUri(root, ignorable) !== NAMESPACES.mc))
+  )
+    return undefined;
+  return Object.freeze({
+    [compactSuffixToken]: true as const,
+    serialized: suffix,
+    inherited: root.namespaceScope,
+    limits: Object.freeze({
+      ...FOLIO_XML_RESOURCE_LIMITS,
+      maxBytes:
+        FOLIO_XML_RESOURCE_LIMITS.maxBytes - encodeUtf8(suffix).byteLength,
+      maxAttributesPerPart:
+        FOLIO_XML_RESOURCE_LIMITS.maxAttributesPerPart - resources.attributes,
+    }),
+  });
+};
+
+type ReplayInput = {
+  xml: string;
+  suffix: ReplaySuffix;
+};
+
+/** Prove that the compact tree has the same bounds and namespace meaning after binding. */
+export const isSafeCompactReplayFragment = ({
+  xml,
+  suffix,
+}: ReplayInput): boolean => {
+  if (!xml.startsWith("<") || xml.includes("&") || xml.includes("<?"))
+    return false;
+  const checked = readCompactReplayRoot({
+    xml,
+    limits: suffix.limits,
+    inheritedNamespaceScope: suffix.inherited,
+  });
+  if (checked === undefined) return false;
+  return (
+    checked.resources.maxDepth < FOLIO_XML_RESOURCE_LIMITS.maxDepth &&
+    !hasReplayOpeningDeclarations(checked.root) &&
+    hasBoundNamespaces(checked.root)
+  );
+};
+
 const parsedReplayEnvelope = (
   xml: string,
   inheritedNamespaceScope: XmlNamespaceScope,
@@ -611,12 +737,11 @@ const parsedReplayEnvelope = (
   return root;
 };
 
-const withinXmlResourceLimits = (xml: string): boolean => {
+const xmlResourceCounts = (xml: string) => {
   try {
-    assertXmlResourceLimits({ xml });
-    return true;
+    return assertXmlResourceLimits({ xml });
   } catch {
-    return false;
+    return undefined;
   }
 };
 
@@ -625,13 +750,26 @@ const EMPTY_NAMESPACE_SCOPE: XmlNamespaceScope = { bindings: new Map() };
 /** Validate a complete XML part immediately before package output. */
 export const isSafeCapturedXmlDocument = (xml: string): boolean => {
   const trimmed = xml.trim();
-  if (
-    trimmed === "" ||
-    !withinXmlResourceLimits(xml) ||
-    getDocxXmlSafetyIssue(xml) !== null
-  ) {
-    return false;
+  if (trimmed === "") return false;
+  const resources = xmlResourceCounts(xml);
+  if (resources === undefined) return false;
+  // The replay envelope occupies one level in the existing reader. An
+  // entity-free element can supply both the syntax verdict and the same
+  // decoded namespace tree in a single read.
+  if (xml.startsWith("<") && !xml.includes("&") && !xml.includes("<?")) {
+    if (
+      resources.maxDepth >= FOLIO_XML_RESOURCE_LIMITS.maxDepth ||
+      getDocxXmlLexicalIssue(xml) !== null
+    )
+      return false;
+    const parsed = readXml(xml, { conformance: "well-formed" });
+    const root =
+      parsed.status === "parsed"
+        ? getChildElements(parsed.value).at(0)
+        : undefined;
+    return root !== undefined && hasBoundNamespaces(root);
   }
+  if (getDocxXmlSafetyIssue(xml) !== null) return false;
   const root = parsedReplayEnvelope(trimmed, EMPTY_NAMESPACE_SCOPE);
   return root !== null && hasBoundNamespaces(root);
 };
@@ -713,7 +851,10 @@ const sanitizeCapturedXmlElement = (
   if (!trimmed) {
     return null;
   }
-  if (!withinXmlResourceLimits(xml) || getDocxXmlSafetyIssue(xml) !== null) {
+  if (
+    xmlResourceCounts(xml) === undefined ||
+    getDocxXmlSafetyIssue(xml) !== null
+  ) {
     return null;
   }
 

@@ -1,7 +1,8 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import { EditorState } from "prosemirror-state";
 
 import { type IdLease, normalizeForOps } from "@stll/docx-core/ops";
+import * as documentOperations from "@stll/docx-core/ops";
 
 import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
 import { CanonicalPublicOperations } from "../canonical/canonicalPublicOperations";
@@ -9,7 +10,10 @@ import {
   createCanonicalSession,
   publishCanonicalProjection,
 } from "../canonical/canonicalSession";
-import type { FolioDocumentOperation } from "../document-operations";
+import type {
+  FolioDocumentOperation,
+  FolioDocumentOperationMode,
+} from "../document-operations";
 import { readModel } from "../types/documentModel";
 
 const source = normalizeForOps({
@@ -33,7 +37,10 @@ const source = normalizeForOps({
   },
 });
 
-const setup = (lease?: IdLease) => {
+const setup = (
+  lease?: IdLease,
+  mode: FolioDocumentOperationMode = "direct",
+) => {
   const session = createCanonicalSession(
     source,
     undefined,
@@ -53,7 +60,7 @@ const setup = (lease?: IdLease) => {
   const apply = (operations: readonly FolioDocumentOperation[]) =>
     executor.apply({
       snapshot: createFolioAIEditSnapshot(state.doc),
-      batch: { version: 1, mode: "direct", operations },
+      batch: { version: 1, mode, operations },
       undefinedReferences: "refuse",
       revisionStamp: { idSeed: 1, date: "2026-01-02T03:04:05Z" },
     });
@@ -83,6 +90,59 @@ test("gap planning preserves scarce normal-order admission and leaves discarded 
     { kind: "paragraph", start: 0x20000001, end: 0x20000003 },
   ]);
 });
+
+test.each([
+  ["direct", 4],
+  ["direct", 8],
+  ["tracked-changes", 4],
+  ["tracked-changes", 8],
+] as const)(
+  "leased admission avoids a package census per reordered insertion (%s, %i)",
+  (mode, count) => {
+    const first = 0x20000001;
+    const lease = {
+      blocks: [
+        { kind: "paragraph", start: first, end: first + count },
+        { kind: "revision", start: 1, end: 1 + 4 * count },
+      ],
+    } satisfies IdLease;
+    const editor = setup(lease, mode);
+    const operations = Array.from(
+      { length: count },
+      (_, index) =>
+        ({
+          id: `insert-${index}`,
+          type: "insertBeforeBlock",
+          blockId: "10000002",
+          text: `Added ${index}`,
+        }) satisfies FolioDocumentOperation,
+    );
+    const census = spyOn(documentOperations, "leasedIdCensus");
+    try {
+      const result = editor.apply(operations);
+      expect(result.skipped).toEqual([]);
+      expect(result.applied.map(({ id }) => id)).toEqual(
+        operations.map(({ id }) => id),
+      );
+      expect(census).toHaveBeenCalledTimes(1);
+      if (mode === "tracked-changes")
+        expect(
+          result.applied.every(({ revisionId }) => revisionId !== undefined),
+        ).toBe(true);
+      expect(editor.session.reservedBlockIds).toEqual(
+        new Set([
+          "10000001",
+          "10000002",
+          ...Array.from({ length: count }, (_, offset) =>
+            documentOperations.formatParaId(first + offset),
+          ),
+        ]),
+      );
+    } finally {
+      census.mockRestore();
+    }
+  },
+);
 
 test("reordered insertions retain normal-order paragraph and attached-comment allocation ownership", () => {
   const beforeRight = {

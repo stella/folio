@@ -8,6 +8,8 @@
 
 import { describe, expect, test } from "bun:test";
 
+import { MAX_REVISION_ID } from "@stll/docx-core/model";
+
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioDocumentOperation,
@@ -47,7 +49,7 @@ const commentText = (document: Document, id: number): string =>
 
 /** The commented paragraph's words and comment markers, named by comment text. */
 const markers = (document: Document) =>
-  document.package.document.content.flatMap((block) =>
+  document.package.document.content.slice(0, 1).flatMap((block) =>
     block.type === "paragraph"
       ? block.content.flatMap((child) => {
           if (child.type === "run")
@@ -66,10 +68,43 @@ const markers = (document: Document) =>
   );
 
 /** "Outer" covers the paragraph; "Inner" covers its first word only. */
-const nested = async () => {
+const nested = async (reservedId?: number) => {
+  const document = fromMarkdown(
+    reservedId === undefined
+      ? "Clause one tail."
+      : "Clause one tail.\n\nOther paragraph.",
+  );
+  if (reservedId !== undefined) {
+    const other = document.package.document.content.at(1);
+    if (other?.type !== "paragraph") throw new Error("Missing allocator seed");
+    other.content = [
+      { type: "commentRangeStart", id: reservedId },
+      ...other.content,
+      { type: "commentRangeEnd", id: reservedId },
+      { type: "run", content: [{ type: "commentReference", id: reservedId }] },
+    ];
+    document.package.document.comments = [
+      {
+        id: reservedId,
+        author: "Test",
+        date: "2026-01-01T00:00:00Z",
+        anchorKind: "range",
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              {
+                type: "run",
+                content: [{ type: "text", text: "Already occupied" }],
+              },
+            ],
+          },
+        ],
+      },
+    ];
+  }
   const reviewer = await open(
-    (await ensureParaIds(await createDocx(fromMarkdown("Clause one tail."))))
-      .docx,
+    (await ensureParaIds(await createDocx(document))).docx,
   );
   const block = reviewer.snapshot().blocks[0];
   if (!block) throw new Error("Missing fixture");
@@ -120,23 +155,62 @@ const removeTail = (
   );
 };
 
+const commentIdsByText = (reviewer: FolioDocxReviewer) => {
+  const document = reviewer.toDocument();
+  return Object.fromEntries(
+    (document.package.document.comments ?? []).map(({ id }) => [
+      commentText(document, id),
+      id,
+    ]),
+  );
+};
+
+const ID_ORDERS = [
+  {
+    name: "ascending IDs",
+    reservedId: undefined,
+    outerId: 1,
+    innerId: 2,
+    starts: ["Outer", "Inner"],
+  },
+  {
+    name: "wrapped IDs",
+    reservedId: MAX_REVISION_ID - 1,
+    outerId: MAX_REVISION_ID,
+    innerId: 1,
+    starts: ["Inner", "Outer"],
+  },
+] as const;
+
 describe("a comment reference put inside another comment's range", () => {
   for (const mode of MODES) {
-    test(`stays inside it once the text after it goes, saved or not (${mode})`, async () => {
-      const live = await nested();
-      const saved = await nested();
-      const reopened = await open(await saved.reviewer.toBuffer());
-      const expected = removeTail(reopened, mode, saved.blockId);
-      expect(removeTail(live.reviewer, mode, live.blockId)).toEqual(expected);
-      expect(expected).toEqual([
-        "commentRangeStart Outer",
-        "commentRangeStart Inner",
-        "Clause",
-        "commentRangeEnd Inner",
-        "commentReference Inner",
-        "commentRangeEnd Outer",
-        "commentReference Outer",
-      ]);
-    });
+    for (const { name, reservedId, outerId, innerId, starts } of ID_ORDERS) {
+      test(`stays inside it after removing the tail (${mode}, ${name})`, async () => {
+        const { reviewer, blockId } = await nested(reservedId);
+        const commentIds =
+          reservedId === undefined
+            ? { Outer: outerId, Inner: innerId }
+            : {
+                Outer: outerId,
+                Inner: innerId,
+                "Already occupied": reservedId,
+              };
+        expect(commentIdsByText(reviewer)).toEqual(commentIds);
+        const liveBeforeSave = markers(reviewer.toDocument());
+        const reopened = await open(await reviewer.toBuffer());
+        expect(markers(reviewer.toDocument())).toEqual(liveBeforeSave);
+        expect(commentIdsByText(reopened)).toEqual(commentIds);
+        const expected = [
+          ...starts.map((comment) => `commentRangeStart ${comment}`),
+          "Clause",
+          "commentRangeEnd Inner",
+          "commentReference Inner",
+          "commentRangeEnd Outer",
+          "commentReference Outer",
+        ];
+        expect(removeTail(reviewer, mode, blockId)).toEqual(expected);
+        expect(removeTail(reopened, mode, blockId)).toEqual(expected);
+      });
+    }
   }
 });

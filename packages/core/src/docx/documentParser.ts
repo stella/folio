@@ -42,6 +42,8 @@ import {
   findChildByNamespaceUri,
   getAttributeByNamespaceUri,
   getLocalName,
+  getNamespaceUri,
+  NAMESPACES,
   parseXml,
   WORDPROCESSINGML_NAMESPACE_URIS,
 } from "./xmlParser";
@@ -253,7 +255,7 @@ function canonicalizeLeadingBodySectionProperties(
 }
 
 /** Read the page background declared directly under `w:document`. */
-function parseDocumentBackground(
+export function parseDocumentBackground(
   documentEl: XmlElement,
   context: ParseContext | undefined,
 ): DocumentBackground | undefined {
@@ -318,6 +320,55 @@ function parseDocumentBackground(
   }
   return background;
 }
+
+// In this narrow shape the body model contains only paragraphs. Its paragraph
+// reader cannot apply a section break, capture a preserved child, or allocate
+// a preview. The XML reader still applies all of its document limits.
+type PlainChildren = { readonly [name: string]: PlainChildren };
+const NO_CHILDREN: PlainChildren = {};
+const TEXT_RUN: PlainChildren = {
+  rPr: NO_CHILDREN,
+  t: NO_CHILDREN,
+  delText: NO_CHILDREN,
+};
+const REVISION_RUNS: PlainChildren = { r: TEXT_RUN };
+const MARK_PROPERTIES: PlainChildren = { ins: NO_CHILDREN, del: NO_CHILDREN };
+const PLAIN_PARAGRAPH: PlainChildren = {
+  pPr: { rPr: MARK_PROPERTIES },
+  r: TEXT_RUN,
+  ins: REVISION_RUNS,
+  del: REVISION_RUNS,
+};
+const matchesPlainChildren = (
+  parent: XmlElement,
+  shape: PlainChildren,
+): boolean => {
+  for (const child of parent.elements ?? []) {
+    if (child.type !== "element") continue;
+    if (getNamespaceUri(child) !== NAMESPACES.w) return false;
+    const name = getLocalName(child.name);
+    const children = Object.hasOwn(shape, name) ? shape[name] : undefined;
+    if (children === undefined || !matchesPlainChildren(child, children))
+      return false;
+  }
+  return true;
+};
+
+/** A Word paragraph that cannot change body metadata or contribute a barrier. */
+export const isPlainDocumentMetadataParagraph = (
+  paragraph: XmlElement,
+): boolean =>
+  getNamespaceUri(paragraph) === NAMESPACES.w &&
+  matchesPlainChildren(paragraph, PLAIN_PARAGRAPH);
+
+/** Read the section properties attached to the body itself. */
+export const parseFinalBodySectionProperties = (
+  body: XmlElement,
+  context?: ParseContext,
+): SectionProperties | undefined => {
+  const finalSectPr = findChild(body, "w", "sectPr");
+  return finalSectPr ? parseSectionProperties(finalSectPr, context) : undefined;
+};
 
 // ============================================================================
 // MAIN PARSER
@@ -423,13 +474,12 @@ export const parseDocumentBodyTree = ({
   );
 
   // Parse final section properties (w:body/w:sectPr)
-  const finalSectPr = findChild(bodyEl, "w", "sectPr");
-  if (finalSectPr) {
-    result.finalSectionProperties = parseSectionProperties(
-      finalSectPr,
-      context,
-    );
-  }
+  const finalSectionProperties = parseFinalBodySectionProperties(
+    bodyEl,
+    context,
+  );
+  if (finalSectionProperties !== undefined)
+    result.finalSectionProperties = finalSectionProperties;
 
   canonicalizeLeadingBodySectionProperties(bodyEl, result);
 

@@ -36,6 +36,21 @@ const tableSnapshot = (value: unknown): boolean => {
       ),
   );
 };
+/** A story an operation can address: the body, a header or footer, a note. */
+const opStory = (value: unknown): boolean => {
+  if (value === "main") return true;
+  if (!isRecord(value)) return false;
+  switch (value["kind"]) {
+    case "header":
+    case "footer":
+      return typeof value["rId"] === "string";
+    case "footnote":
+    case "endnote":
+      return typeof value["id"] === "number";
+    default:
+      return false;
+  }
+};
 const strings = (value: unknown): boolean =>
   Array.isArray(value) &&
   Array.from(value).every((id) => typeof id === "string");
@@ -77,7 +92,7 @@ export const tableEditBoundaryRefusal = (
   }
   const fail = (reason: DocumentOpRefusal["reason"], message: string) =>
     new DocumentOpRefusal({ opType: op.type, reason, message });
-  if (!valid || typeof op.blockId !== "string" || op.story !== "main")
+  if (!valid || typeof op.blockId !== "string" || !opStory(op.story))
     return fail(
       DOCUMENT_OP_REFUSAL_REASONS.INVALID_OPERATION,
       "The table operation is missing required fields or has invalid field shapes.",

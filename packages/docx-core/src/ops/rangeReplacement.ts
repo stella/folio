@@ -1,7 +1,7 @@
 /** Tracked replacement fragments share deletion's validation and physical-id pool. */
 import { panic, Result } from "better-result";
 
-import type { Document, Paragraph } from "../model/document";
+import type { Document, DocumentBody, Paragraph } from "../model/document";
 import { storyBody, storyParagraphs } from "./blocks";
 import { identityKeysIn, idKey, slotKey } from "./ids";
 import { gapAfterInserted } from "./inline";
@@ -18,6 +18,7 @@ import {
   zeroWidthLeavesAt,
 } from "./leaves";
 import { paragraphLength } from "./offsets";
+import { findLastStoryParagraph, findStoryParagraph } from "./paragraphLocator";
 import {
   appendTrackedDeletion,
   createTrackedPlan,
@@ -41,6 +42,13 @@ import {
 type RetainedEnclosing = NonNullable<
   NonNullable<Extract<InlineNode, { type: "deletion" }>["resolutionJoins"]>
 >["retainedEnclosing"];
+
+const rangeParagraph = (body: DocumentBody, blockId: string) =>
+  blockId === ""
+    ? storyParagraphs(body).find(
+        ({ paragraph }) => (paragraph.paraId ?? "") === "",
+      )
+    : findStoryParagraph(body, blockId);
 
 type RangeEndAfterDeletionOptions = {
   before: Document;
@@ -93,17 +101,30 @@ export const rangeEndAfterDeletion = ({
           zeroWidthBefore: zeroWidthLeavesAt(source.content, sourceLength)
             .length,
         };
-  const current = new Map(
-    storyParagraphs(storyBody(after, from.story)).map(({ paragraph }) => [
-      idKey(paragraph.paraId ?? ""),
-      paragraph,
-    ]),
-  );
-  const holder = run.findLast(({ paragraph }) =>
-    current.has(idKey(paragraph.paraId ?? "")),
-  )?.paragraph;
-  const target =
-    holder === undefined ? undefined : current.get(idKey(holder.paraId ?? ""));
+  const body = storyBody(after, from.story);
+  let holder: Paragraph | undefined;
+  let target: Paragraph | undefined;
+  let checkedUnnamed = false;
+  for (let index = run.length - 1; index >= 0; index -= 1) {
+    const candidate = run.at(index)?.paragraph;
+    if (candidate === undefined) continue;
+    const key = idKey(candidate.paraId ?? "");
+    // The old story map kept the last physical occurrence, including unnamed
+    // paragraphs and duplicate IDs. The locator preserves that order for IDs.
+    if (key === "") {
+      if (checkedUnnamed) continue;
+      checkedUnnamed = true;
+      target = storyParagraphs(body).findLast(
+        ({ paragraph }) => (paragraph.paraId ?? "") === "",
+      )?.paragraph;
+    } else {
+      target = findLastStoryParagraph(body, key)?.paragraph;
+    }
+    if (target !== undefined) {
+      holder = candidate;
+      break;
+    }
+  }
   if (holder === undefined || target === undefined)
     panic("A successful range deletion must retain a selected paragraph.");
   const offset = paragraphLength(target) - (sourceLength - end.offset);
@@ -315,9 +336,9 @@ export const planTrackedReplace = (
   });
   for (const paragraph of replacement.paragraphs) {
     const sourceBlockId = at.blockId;
-    const source = storyParagraphs(storyBody(plan.document(), from.story)).find(
-      ({ paragraph: sourceParagraph }) =>
-        idKey(sourceParagraph.paraId ?? "") === idKey(sourceBlockId),
+    const source = rangeParagraph(
+      storyBody(plan.document(), from.story),
+      sourceBlockId,
     );
     if (source === undefined)
       return refuse("The replacement's source paragraph does not exist.");
@@ -367,10 +388,11 @@ export const planTrackedReplace = (
   // range's end. The first fragment records that cut as an insertion made
   // there would, so rejecting the changes in any order rejoins the pieces.
   const leadingFragment = replacement.paragraphs.at(0);
-  const toParagraph = storyParagraphs(storyBody(document, from.story)).find(
-    ({ paragraph }) =>
-      idKey(paragraph.paraId ?? "") === idKey(options.to.blockId),
-  )?.paragraph;
+  const toParagraph =
+    leadingFragment === undefined || leadingFragment.content.length === 0
+      ? undefined
+      : rangeParagraph(storyBody(document, from.story), options.to.blockId)
+          ?.paragraph;
   const cutDepth =
     toParagraph === undefined
       ? 0
@@ -390,9 +412,9 @@ export const planTrackedReplace = (
     leadingFragment !== undefined &&
     leadingFragment.content.length > 0
   ) {
-    const first = storyParagraphs(storyBody(plan.document(), from.story)).find(
-      ({ paragraph }) =>
-        idKey(paragraph.paraId ?? "") === idKey(leadingFragment.paraId ?? ""),
+    const first = rangeParagraph(
+      storyBody(plan.document(), from.story),
+      leadingFragment.paraId ?? "",
     )?.paragraph;
     const payload = first?.content.at(-1);
     if (

@@ -10,6 +10,11 @@ import type { Document } from "../../model/document";
 import { applyDocumentOp } from "../apply";
 import { packageIdOccupancy } from "../editorIntentCensus";
 import {
+  introducedDocumentIds,
+  introducedIds,
+  leasedIdCensus,
+} from "../idLease";
+import {
   countKeys,
   IDENTITY_SPACES,
   packageIdentityKeyIndex,
@@ -63,6 +68,77 @@ const step = fc.record({
   latest: fc.boolean(),
   tracked: fc.boolean(),
   seed: opSeedArbitrary,
+});
+
+const checkIntroduced = (before: Document, after: Document) => {
+  expect(introducedDocumentIds({ before, after })).toEqual(
+    introducedIds(leasedIdCensus(before), leasedIdCensus(after)),
+  );
+};
+
+test("lease differences preserve numeric aliases and compare comment identities", () => {
+  const version = (paraId: string, commentIds: number[]): Document => ({
+    package: {
+      document: {
+        content: [{ type: "paragraph", paraId, content: [] }],
+        comments: commentIds.map((id) => ({
+          id,
+          author: "Author",
+          content: [],
+        })),
+      },
+    },
+  });
+  const old = version("a", [4, 9]);
+  const next = version("0000000A", [8, 4, 2]);
+  expect(introducedDocumentIds({ before: old, after: next })).toEqual([
+    { kind: "comment", id: 2 },
+    { kind: "comment", id: 8 },
+  ]);
+  checkIntroduced(old, next);
+  checkIntroduced(next, old);
+  checkIntroduced(version("ﬀ", []), version("000000FF", []));
+});
+
+test("lease differences retain the full census for stacked row identities", () => {
+  const control = { sdtType: "richText", id: 137 } as const;
+  const withRows = (count: number): Document => ({
+    package: {
+      document: {
+        content: [
+          {
+            type: "table",
+            rows: Array.from({ length: count }, (_, index) => ({
+              type: "tableRow",
+              contentControls: [control],
+              cells: [
+                {
+                  type: "tableCell",
+                  content: [
+                    {
+                      type: "paragraph",
+                      paraId: (0x10000000 + index).toString(16),
+                      content: [],
+                    },
+                  ],
+                },
+              ],
+            })),
+          },
+        ],
+      },
+    },
+  });
+  const empty = withRows(0);
+  const held = withRows(2);
+  const added = withRows(3);
+  expect(introducedDocumentIds({ before: held, after: added })).toEqual([
+    { kind: "paragraph", id: 0x10000002 },
+  ]);
+  checkIntroduced(empty, held);
+  checkIntroduced(held, empty);
+  checkIntroduced(held, added);
+  checkIntroduced(added, held);
 });
 
 describe("identity counts across documents", () => {
@@ -137,6 +213,11 @@ describe("identity counts across documents", () => {
             const applied = applyDocumentOp(base, op);
             await check(base);
             if (applied.isErr()) continue;
+            checkIntroduced(base, applied.value.document);
+            checkIntroduced(applied.value.document, base);
+            const other = histories[(index + 1) % histories.length]?.at(-1);
+            if (other !== undefined)
+              checkIntroduced(other, applied.value.document);
             history.push(applied.value.document);
             await check(applied.value.document);
           }

@@ -18,12 +18,25 @@ export type GridCell = {
   ownerRow: number;
   ownerIndex: number;
 };
-export type TableGrid = { width: number; rows: GridCell[][] };
+export type TableGrid = {
+  width: number;
+  rows: GridCell[][];
+  /**
+   * Whether every row covers the whole grid and the table's column widths
+   * name every grid column. A row that ends early is read with the empty
+   * columns it implies after it, as a trailing `gridAfter`; edits that add,
+   * remove or merge columns need a grid every row states.
+   */
+  stated: boolean;
+};
 
 const nonnegative = (value: number) =>
   Number.isSafeInteger(value) && value >= 0;
 
-/** Each row covers one common grid; continuations exactly match the preceding span. */
+/**
+ * Each row covers one common grid, as wide as the widest row or the table's
+ * column widths; continuations exactly match the preceding span.
+ */
 export const tableGrid = (
   table: Table,
   opType: DocumentOpType,
@@ -39,7 +52,7 @@ export const tableGrid = (
     );
   if (table.rows.length === 0) return refuse();
   const rows: GridCell[][] = [];
-  let width = table.columnWidths?.length;
+  const covered: number[] = [];
   const previous = new Map<number, GridCell>();
   for (const [rowIndex, row] of table.rows.entries()) {
     let position = row.formatting?.gridBefore ?? 0;
@@ -85,13 +98,16 @@ export const tableGrid = (
       });
       position += span;
     }
-    const covered = position + after;
-    width ??= covered;
-    if (covered !== width || width === 0 || cells.length === 0) return refuse();
+    if (cells.length === 0) return refuse();
+    covered.push(position + after);
     rows.push(cells);
     previous.clear();
     for (const cell of cells) previous.set(cell.start, cell);
   }
-  if (width === undefined) return refuse();
-  return Result.ok({ width, rows });
+  const width = Math.max(table.columnWidths?.length ?? 0, ...covered);
+  if (width === 0) return refuse();
+  const stated =
+    covered.every((columns) => columns === width) &&
+    (table.columnWidths === undefined || table.columnWidths.length === width);
+  return Result.ok({ width, rows, stated });
 };

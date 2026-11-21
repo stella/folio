@@ -5,7 +5,7 @@ import {
   type TaggedErrorClass,
 } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
-import { EditorState } from "prosemirror-state";
+import { EditorState, Selection, TextSelection } from "prosemirror-state";
 import type { Command, Plugin, Transaction } from "prosemirror-state";
 
 import {
@@ -27,6 +27,9 @@ import {
   packageResourcesOpOf,
   pendingSuggestionIdsIn,
   reconcileDocumentPartRelationships,
+  resolveSectionChange,
+  resolveSectionChanges,
+  sectionResolutionPatch,
   type StoryParts,
   withoutPendingSuggestions,
 } from "@stll/docx-core/ops";
@@ -152,9 +155,10 @@ import {
   resolveAllChangesInHeadlessState,
   revisionResolutionLockViolation,
   suggestionIdOfRevision,
+  suggestionOwnersByRevision,
 } from "../prosemirror/commands/comments";
 import {
-  allocateCommentId,
+  type CommentIdAllocator,
   createCommentIdAllocator,
   seedCommentAllocator,
 } from "../prosemirror/commentIdAllocator";
@@ -242,12 +246,7 @@ import {
   coveredCommentIdsInProseDoc,
   withoutLostCommentThreads,
 } from "./comment-lifecycle";
-import {
-  finalSectionResolutionPatch,
-  resolveFinalSectionChange,
-  resolveFinalSectionChanges,
-  stagedFinalSectionProperties,
-} from "./finalSectionReview";
+import { stagedFinalSectionProperties } from "./finalSectionReview";
 import { noteReferenceEditsAllowed } from "./note-references";
 import { noteStoryInventory } from "./note-story-inventory";
 import {
@@ -268,6 +267,7 @@ import {
   getTrackedChangesFromDoc,
   getTrackedChangesFromSnapshot,
   getTrackedChangeStatsFromDoc,
+  listedRevisionGroups,
 } from "./read";
 import { classifyResourceReference } from "./referenceClassification";
 import {
@@ -400,17 +400,45 @@ type FolioReviewerEngine =
  * holds anything the session does not.
  */
 const canonicalReviewerState = (session: CanonicalSession): EditorState =>
-  canonicalStoryState(session, session.projection.doc);
+  canonicalStoryState(session, session.projection.doc, session.projection);
+
+/** The projection a story state reads its addresses from. */
+type AddressedProjection = Pick<CanonicalSession["projection"], "addressAt">;
+
+/**
+ * The caret a story state starts at: the start of the story, or where the
+ * session first holds an address when it holds none there, as in the filler
+ * paragraph of a content control the source leaves empty.
+ */
+const startingSelection = (
+  doc: PMNode,
+  projection: AddressedProjection | undefined,
+): Selection | undefined => {
+  const start = Selection.atStart(doc);
+  if (projection === undefined || projection.addressAt(start.from).isOk())
+    return undefined;
+  let found: number | undefined;
+  doc.descendants((node, position) => {
+    if (found !== undefined) return false;
+    if (!node.isTextblock) return true;
+    if (projection.addressAt(position + 1).isOk()) found = position + 1;
+    return false;
+  });
+  return found === undefined ? undefined : TextSelection.create(doc, found);
+};
 
 /** A story's state over `doc`, with the session document's numbering and styles. */
 const canonicalStoryState = (
   session: CanonicalSession,
   doc: PMNode,
+  projection?: AddressedProjection,
 ): EditorState => {
   const document = readModel(session.document);
+  const selection = startingSelection(doc, projection);
   return EditorState.create({
     schema,
     doc,
+    ...(selection === undefined ? {} : { selection }),
     plugins: [
       createDocumentNumberingPlugin(document.package.numbering),
       // The session's projection owns formatting: the style context gives
@@ -1093,12 +1121,14 @@ const createHeadlessPlugins = (
   createDocumentStylesPlugin(styles),
 ];
 
+/** A state's snapshot, of `doc` when it names the state's document otherwise spelled. */
 const createStateSnapshot = (
   state: EditorState,
   positionalParaIds: ReadonlySet<string>,
+  doc: PMNode = state.doc,
 ): FolioAIEditSnapshot =>
   createReviewerSnapshot({
-    doc: state.doc,
+    doc,
     styleResolver: getDocumentStyleResolver(state),
     numbering: getDocumentNumbering(state),
     positionalParaIds,
@@ -1567,6 +1597,22 @@ const lockHeldChanges = (
  */
 
 export class FolioDocxReviewer {
+  /**
+   * A state's snapshot. On the canonical session a paragraph with no id (the
+   * filler of a content control its source leaves empty) is named by the
+   * positional id the legacy engine mints for it, so both engines name it
+   * alike; a legacy state already holds every id.
+   */
+  private snapshotOf(state: EditorState): FolioAIEditSnapshot {
+    return this.engine.type === "canonical"
+      ? createStateSnapshot(
+          state,
+          this.positionalParaIds,
+          ensureParaIdsInDoc(state.doc),
+        )
+      : createStateSnapshot(state, this.positionalParaIds);
+  }
+
   /** Default author for tracked changes and comments. */
   readonly author: string;
   /** The legacy reviewer's parsed model; a canonical one reads its session's. */
@@ -1616,6 +1662,8 @@ export class FolioDocxReviewer {
    */
   private readonly resolvedOverrides = new Map<number, boolean>();
   private readonly engine: FolioReviewerEngine;
+  /** This document's comment ids: loaded, created, and never reissued. */
+  private readonly commentIds: CommentIdAllocator;
 
   private constructor(args: {
     baseDocument: Document;
@@ -1626,6 +1674,8 @@ export class FolioDocxReviewer {
     loadedMainCommentIds?: ReadonlySet<number>;
     /** Paragraph ids minted when the document was opened. */
     positionalParaIds?: ReadonlySet<string>;
+    /** The comment ids of the document this reviewer copies. */
+    commentIds?: CommentIdAllocator;
   }) {
     this.loadedDocument = args.baseDocument;
     this.positionalParaIds = args.positionalParaIds ?? new Set();
@@ -1636,8 +1686,9 @@ export class FolioDocxReviewer {
       args.engine.type === "legacy"
         ? args.engine
         : this.canonicalEngine(args.engine.session);
+    this.commentIds = args.commentIds?.clone() ?? createCommentIdAllocator();
     seedCommentAllocator(
-      createCommentIdAllocator(),
+      this.commentIds,
       args.baseDocument.package.document.comments,
       {
         state: args.state,
@@ -2175,7 +2226,11 @@ export class FolioDocxReviewer {
           const projected = session.projectStory(story);
           return projected.isErr()
             ? null
-            : canonicalStoryState(session, projected.value.doc);
+            : canonicalStoryState(
+                session,
+                projected.value.doc,
+                projected.value,
+              );
         },
         publish: (commit) => this.publishOnSession(commit),
       }),
@@ -2218,6 +2273,7 @@ export class FolioDocxReviewer {
       author: this.author,
       engine: { type: "legacy" },
       loadedMainCommentIds: this.loadedMainCommentIds,
+      commentIds: this.commentIds,
     });
     copy.restoreReviewerState(snapshot);
     copy.pendingSuggestions = this.pendingSuggestions.clone();
@@ -2578,7 +2634,7 @@ export class FolioDocxReviewer {
     if (!current || !next) return null;
     return createCanonicalSectionPropertiesOperation(
       this.baseDocument,
-      finalSectionResolutionPatch({ current, next }),
+      sectionResolutionPatch({ current, next }),
     );
   }
 
@@ -2600,18 +2656,16 @@ export class FolioDocxReviewer {
         const state = this.getEditableStoryState(handle);
         if (!state) return [];
         const story = canonicalOpStory(handle);
-        const changes = getTrackedChangesFromDoc(state.doc)
-          // Bulk acceptance leaves pending proposals staged.
-          .filter(
-            ({ id }) =>
-              resolution === "reject" ||
-              suggestionIdOfRevision(state, id) === null,
-          )
-          .map(({ id }) => ({
-            id,
-            suggestionId: suggestionIdOfRevision(state, id),
-            groupIds: getTrackedChangeGroupIdsFromDoc(state.doc, id),
-          }));
+        const listed = listedRevisionGroups(state.doc);
+        if (listed.length === 0) return [];
+        const owners = suggestionOwnersByRevision(state);
+        // Bulk acceptance leaves pending proposals staged.
+        const changes = listed.flatMap(({ id, groupIds }) => {
+          const suggestionId = owners.get(id) ?? null;
+          return resolution === "accept" && suggestionId !== null
+            ? []
+            : [{ id, groupIds, suggestionId }];
+        });
         const locks = canonicalRevisionLocks({
           document: this.baseDocument,
           story,
@@ -2697,8 +2751,7 @@ export class FolioDocxReviewer {
   private snapshotOnSession(
     story: FolioEditableDocumentStoryHandle,
   ): FolioAIEditSnapshot {
-    if (story.type === "main")
-      return createStateSnapshot(this.state, this.positionalParaIds);
+    if (story.type === "main") return this.snapshotOf(this.state);
     const snapshot = this.snapshotStory(story);
     if (!snapshot)
       throw new FolioDocumentStoryNotFoundError({
@@ -2765,7 +2818,7 @@ export class FolioDocxReviewer {
    * the anchor map the apply layer resolves operations against.
    */
   snapshot(): FolioAIEditSnapshot {
-    return createStateSnapshot(this.state, this.positionalParaIds);
+    return this.snapshotOf(this.state);
   }
 
   /**
@@ -2960,7 +3013,7 @@ export class FolioDocxReviewer {
     story: FolioEditableDocumentStoryHandle,
   ): FolioAIEditSnapshot | null {
     const state = this.getEditableStoryState(story);
-    return state ? createStateSnapshot(state, this.positionalParaIds) : null;
+    return state ? this.snapshotOf(state) : null;
   }
 
   private snapshotReviewedStoryInternal(
@@ -2982,10 +3035,7 @@ export class FolioDocxReviewer {
       ).snapshotReviewedStoryInternal({ story, view: "current-markup" });
     const sourceState = this.getEditableStoryState(story);
     return sourceState
-      ? createStateSnapshot(
-          resolveReviewedState(sourceState, view),
-          this.positionalParaIds,
-        )
+      ? this.snapshotOf(resolveReviewedState(sourceState, view))
       : null;
   }
 
@@ -3172,7 +3222,7 @@ export class FolioDocxReviewer {
     }
     const resolvedState = resolveReviewedState(sourceState, view);
     this.setEditableStoryState(story, resolvedState);
-    const snapshot = createStateSnapshot(resolvedState, this.positionalParaIds);
+    const snapshot = this.snapshotOf(resolvedState);
     const minted = mintedBlockOrdinals(snapshot);
     this.resolvedStoryExpectations.set(editableStoryKey(story), {
       story,
@@ -3309,8 +3359,7 @@ export class FolioDocxReviewer {
     const validatedBatch = parseFolioDocumentOperationBatch(batch);
     const beforeState = this.requireEditableStoryState(story);
     const operationAuthor = author ?? this.author;
-    const sourceSnapshot =
-      snapshot ?? createStateSnapshot(beforeState, this.positionalParaIds);
+    const sourceSnapshot = snapshot ?? this.snapshotOf(beforeState);
     const createdCommentsLengthBefore = this.createdComments.length;
     const beforeStyles = this.importedStyles;
     const definitions = beforeStyles ?? this.loadedDocument.package.styles;
@@ -3817,11 +3866,16 @@ export class FolioDocxReviewer {
     if (this.engine.type === "canonical")
       return this.replyOnSession(this.engine.session, parentId, input);
     const existing = this.currentCommentDefinitions();
-    const reply = createReply(existing, parentId, {
-      author: input.author ?? this.author,
-      text: input.text,
-      ...(input.initials !== undefined ? { initials: input.initials } : {}),
-      ...(input.date !== undefined && { date: input.date }),
+    const reply = createReply({
+      comments: existing,
+      parentCommentId: parentId,
+      input: {
+        author: input.author ?? this.author,
+        text: input.text,
+        ...(input.initials !== undefined ? { initials: input.initials } : {}),
+        ...(input.date !== undefined && { date: input.date }),
+      },
+      commentIds: this.commentIds,
     });
     if (!reply) {
       return null;
@@ -4113,7 +4167,7 @@ export class FolioDocxReviewer {
   ): number {
     const current = this.currentFinalSectionProperties();
     const resolved =
-      current && resolveFinalSectionChange({ current, mode, id });
+      current && resolveSectionChange({ current, decision: mode, id });
     if (!resolved) return 0;
     this.finalSectionPropertiesOverride = resolved;
     return 1;
@@ -4317,7 +4371,7 @@ export class FolioDocxReviewer {
       if (!adopted || resolution === "reject") return adopted;
     }
     const section = this.finalSectionOperation((current) =>
-      resolveFinalSectionChange({ current, mode: resolution, id }),
+      resolveSectionChange({ current, decision: resolution, id }),
     );
     const prepared = session.prepareResolve(this.state, {
       revisionIds: [id],
@@ -4370,7 +4424,7 @@ export class FolioDocxReviewer {
       this.currentFinalSectionProperties()?.propertyChanges ?? []
     ).map(({ info }) => info.id);
     const section = this.finalSectionOperation((current) =>
-      resolveFinalSectionChanges(current, resolution),
+      resolveSectionChanges(current, resolution),
     );
     const proposedComments =
       resolution === "reject"
@@ -4477,7 +4531,7 @@ export class FolioDocxReviewer {
 
   private resolveEveryFinalSectionChange(mode: "accept" | "reject"): number {
     const current = this.currentFinalSectionProperties();
-    const resolved = current && resolveFinalSectionChanges(current, mode);
+    const resolved = current && resolveSectionChanges(current, mode);
     if (!resolved) return 0;
     this.finalSectionPropertiesOverride = resolved;
     return current?.propertyChanges?.length ?? 0;
@@ -4780,7 +4834,7 @@ export class FolioDocxReviewer {
       author: string;
     }[] = [];
     for (const record of records) {
-      const snapshot = createStateSnapshot(resolved, this.positionalParaIds);
+      const snapshot = this.snapshotOf(resolved);
       const view = {
         state: resolved,
         dispatch: (transaction: Transaction) => {
@@ -4925,19 +4979,18 @@ export class FolioDocxReviewer {
     const section =
       story.type === "main"
         ? this.finalSectionOperation((current) =>
-            resolveFinalSectionChanges(current, resolution),
+            resolveSectionChanges(current, resolution),
           )
         : null;
-    const ids = getTrackedChangesFromDoc(state.doc).flatMap(({ id }) =>
-      getTrackedChangeGroupIdsFromDoc(state.doc, id),
+    const groups = listedRevisionGroups(state.doc).map(
+      ({ groupIds }) => groupIds,
     );
+    const ids = groups.flat();
     if (ids.length === 0 && section === null) return true;
     const locks = canonicalRevisionLocks({
       document: this.baseDocument,
       story: canonicalOpStory(story),
-      groups: getTrackedChangesFromDoc(state.doc).map(({ id }) =>
-        getTrackedChangeGroupIdsFromDoc(state.doc, id),
-      ),
+      groups,
       decision: resolution,
     });
     const firstHeld = locks.held.at(0);
@@ -5491,8 +5544,15 @@ export class FolioDocxReviewer {
     // Nothing is held for a canonical story: its state is the session's
     // projection at every read.
     if (this.engine.type === "canonical") {
-      const doc = this.secondaryStoryDoc(story);
-      return doc && canonicalStoryState(this.engine.session, doc);
+      const projected = this.engine.session.projectStory(
+        canonicalOpStory(story),
+      );
+      if (projected.isErr()) throw projected.error;
+      return canonicalStoryState(
+        this.engine.session,
+        projected.value.doc,
+        projected.value,
+      );
     }
     const key = secondaryStoryKey(story);
     const existing = this.secondaryStoryStates.get(key);
@@ -6151,7 +6211,7 @@ export class FolioDocxReviewer {
 
   /** Allocate outside every parsed or newly-created comment and reply id. */
   private nextCommentId(): number {
-    return allocateCommentId();
+    return this.commentIds.next();
   }
 
   /**

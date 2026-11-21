@@ -1,3 +1,4 @@
+import { hasIllegalXmlCharacters } from "@stll/docx-core";
 import { wellFormedXmlIssue } from "@stll/docx-core/xml";
 
 const DOCTYPE_PATTERN = /<!DOCTYPE(?:\s|>)/iu;
@@ -85,16 +86,6 @@ const isValidQName = (name: string): boolean => {
   return parts.length <= 2 && parts.every((part) => NCNAME.test(part));
 };
 
-const containsOnlyXmlCharacters = (xml: string): boolean => {
-  for (const character of xml) {
-    const codePoint = character.codePointAt(0);
-    if (codePoint === undefined || !isXmlCharacter(codePoint)) {
-      return false;
-    }
-  }
-  return true;
-};
-
 const isWhitespace = (character: string | undefined): boolean =>
   character === " " ||
   character === "\t" ||
@@ -125,7 +116,7 @@ const scanName = (xml: string, start: number): ScannedName | null => {
  * tree parser: structural nesting remains the reader's job.
  */
 const hasInvalidXmlLexicalForm = (xml: string): boolean => {
-  if (!containsOnlyXmlCharacters(xml)) {
+  if (hasIllegalXmlCharacters(xml)) {
     return true;
   }
   const byteOrderMark = xml.indexOf(BYTE_ORDER_MARK);
@@ -279,7 +270,7 @@ const hasInvalidXmlLexicalForm = (xml: string): boolean => {
   return false;
 };
 
-export const getDocxXmlSafetyIssue = (
+export const getDocxXmlLexicalIssue = (
   xml: string,
 ): DocxXmlSafetyIssue | null => {
   if (DOCTYPE_PATTERN.test(xml)) {
@@ -291,5 +282,9 @@ export const getDocxXmlSafetyIssue = (
   if (hasInvalidXmlLexicalForm(xml)) {
     return "not-well-formed";
   }
-  return wellFormedXmlIssue(xml) === null ? null : "not-well-formed";
+  return null;
 };
+
+export const getDocxXmlSafetyIssue = (xml: string): DocxXmlSafetyIssue | null =>
+  getDocxXmlLexicalIssue(xml) ??
+  (wellFormedXmlIssue(xml) === null ? null : "not-well-formed");

@@ -19,6 +19,7 @@ import type {
  * - Document body: w:body
  * - Section properties: w:sectPr
  */
+import { canonicalJson } from "../../utils/canonicalJson";
 import { getDocumentSourceBaseline } from "../headerFooterVerbatim";
 import type { SaveDiagnosticOptions } from "../saveDiagnostics";
 import type { SerializedPart } from "../selectiveXmlPatch";
@@ -27,6 +28,10 @@ import {
   canReplayDocumentSource,
   type ReplayFragmentValidation,
 } from "../storyBlockReplay";
+import {
+  buildStructuralDocumentPatch,
+  type StructuralPatchResult,
+} from "../structuralXmlPatch";
 import { serializeBlockCustomXml } from "./blockCustomXmlSerializer";
 import { serializeBlockSdt } from "./blockSdtSerializer";
 import {
@@ -205,7 +210,12 @@ type DocumentSourceOptions = SaveDiagnosticOptions &
   DocumentBodyAuthorityOptions & {
     xml?: string | undefined;
     fragmentValidation?: ReplayFragmentValidation | undefined;
+    structuralReplay?: "empty-source" | undefined;
   };
+
+type SerializedDocumentPart = SerializedPart & {
+  structuralPatch?: Extract<StructuralPatchResult, { type: "patched" }>;
+};
 
 export function serializeDocument(
   doc: Document,
@@ -224,7 +234,7 @@ export function serializeDocumentPart(
   doc: Document,
   sourceBindings?: ReadonlyMap<string, string>,
   source?: DocumentSourceOptions,
-): SerializedPart {
+): SerializedDocumentPart {
   // Reset for every pass, including complete source replay.
   resetAutoIdCounter();
   const baseline =
@@ -272,6 +282,33 @@ export function serializeDocumentPart(
   const generated = { xml: serializedXml, replay: undefined };
   if (baseline.type === "missing") return generated;
   if (baseline.type === "captured" && sourceMatches) {
+    const current = doc.package.document;
+    const currentSection = current.finalSectionProperties;
+    if (
+      source?.structuralReplay === "empty-source" &&
+      source.xml === baseline.xml &&
+      baseline.body.content.length === 0 &&
+      baseline.body.background === undefined &&
+      current.background === undefined &&
+      currentSection !== undefined &&
+      current.content.length > 0 &&
+      current.content.every(({ type }) => type === "paragraph") &&
+      canonicalJson(baseline.body.finalSectionProperties) ===
+        canonicalJson(currentSection) &&
+      canReplayDocumentSource(baseline.xml, baseline.body)
+    ) {
+      const structuralPatch = buildStructuralDocumentPatch({
+        originalXml: baseline.xml,
+        serializedXml,
+        changedIds: new Set(),
+        fragmentValidation: source.fragmentValidation,
+        emptySourceParagraphCount: current.content.length,
+      });
+      // Keep routing and all outer write gates on the expanded final XML,
+      // exactly as when the serializer first replays the empty source.
+      if (structuralPatch.type === "patched")
+        return { xml: structuralPatch.xml, replay: undefined, structuralPatch };
+    }
     const replay = buildDocumentBlockReplay({
       sourceXml: baseline.xml,
       baseline: baseline.body,

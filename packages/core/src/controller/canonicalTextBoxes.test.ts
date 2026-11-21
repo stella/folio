@@ -82,7 +82,7 @@ const savedXml = async (current: CanonicalSession) => {
 };
 const boxCount = (xml: string) => xml.split("<w:txbxContent>").length - 1;
 
-describe("text boxes in the canonical session are read-only", () => {
+describe("text boxes in the canonical session", () => {
   for (const host of ["inline", "standalone"] as const) {
     test(`a box ${host === "inline" ? "beside text" : "on its own"} opens, and typing beside it saves the box as it was`, async () => {
       const current = await session(host);
@@ -101,21 +101,38 @@ describe("text boxes in the canonical session are read-only", () => {
       expect(xml).toContain(`<w:txbxContent>${BOX_TEXT}</w:txbxContent>`);
     });
 
-    test(`typing inside a box ${host === "inline" ? "beside text" : "on its own"} refuses and changes nothing`, async () => {
-      const current = await session(host);
-      const before = current.document;
-      let state = stateFor(current);
-      const inside = at(state, "Inside", 3);
-      state = select(state, inside);
-      const typed = current.prepareReplace(state, {
-        from: inside,
-        to: inside,
-        text: "x",
+    for (const mode of ["editing", "suggesting"] as const)
+      test(`typing inside a box ${host === "inline" ? "beside text" : "on its own"} in ${mode} mode saves into the box, and undo is exact`, async () => {
+        const current = await session(host, mode);
+        const before = current.document;
+        let state = stateFor(current);
+        const inside = at(state, "Inside", 3);
+        state = select(state, inside);
+        state = accept(
+          state,
+          current
+            .prepareReplace(state, { from: inside, to: inside, text: "x" })
+            .unwrap(),
+        );
+        expect(state.doc.eq(current.projection.doc)).toBe(true);
+        const xml = await savedXml(current);
+        expect(boxCount(xml)).toBe(1);
+        const box = xml.slice(
+          xml.indexOf("<w:txbxContent>"),
+          xml.indexOf("</w:txbxContent>"),
+        );
+        expect(box).toContain('w14:paraId="20000001"');
+        if (mode === "editing") expect(box).toContain("<w:t>Insxide</w:t>");
+        else {
+          expect(box).toContain("<w:ins ");
+          expect(box).toContain("<w:t>x</w:t>");
+        }
+        state = accept(state, current.prepareUndo(state).unwrap());
+        expect(current.document).toEqual(before);
       });
-      expect(typed.isErr()).toBe(true);
-      expect(current.document).toEqual(before);
-    });
 
+    // A box is a story of its own: no selection runs between it and the
+    // story drawing it.
     test(`a selection reaching into a box ${host === "inline" ? "beside text" : "on its own"} refuses`, async () => {
       const current = await session(host);
       const before = current.document;

@@ -95,6 +95,16 @@ if (BUDGET === 0) {
         ),
       );
     }
+    if (result.recordedFindings.size > 0) {
+      console.log(
+        [
+          "recorded findings, not failing the run:",
+          ...[...result.recordedFindings].map(
+            ([finding, count]) => `  ${finding} ×${count}`,
+          ),
+        ].join("\n"),
+      );
+    }
     const fresh = result.failures.filter((failure) => !isKnown(failure));
     const completed = result.completedCases;
     if (completed === 0) {

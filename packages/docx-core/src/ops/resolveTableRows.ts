@@ -10,15 +10,17 @@ import type {
   TableRow,
   TableStructuralChangeInfo,
 } from "../model/document";
-import { storyBody } from "./blocks";
+import { storyBody, storyParagraphs } from "./blocks";
 import { combineEdits, type DocumentEdit } from "./edits";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import type { ApplyOps } from "./resolve";
+import { reviewFieldsOf } from "./review";
 import { tableGrid } from "./tableGrid";
 import { locateTableRow, tableRowAnchor } from "./tableLocation";
 import { removalOrphansAMerge, rowsWithoutRow } from "./tableRowRemoval";
 import {
   DOCUMENT_OP_TYPES,
+  type DocumentOp,
   type OpStory,
   type ResolveRevisionOp,
   REVISION_DECISIONS,
@@ -391,14 +393,15 @@ const propertyCell = ({
 };
 
 type GridCell = { cell: TableCell; start: number; end: number };
-type GridRow = { cells: GridCell[]; before: number; after: number };
+type GridRow = { cells: GridCell[]; before: number; cellsEnd: number };
 
 /**
  * Remove the selected tracked inserted (rejected) or deleted (accepted) cells.
- * A grid column only goes when every row loses what covers it; where other
- * rows keep a cell in a removed cell's columns, the cell before it in its row
- * (the one after it when it starts the row) widens over them, so every row
- * still covers the one grid.
+ * A grid column only goes when every row loses what covers it; a row's
+ * `gridBefore` and `gridAfter` columns, and those a row that ends early
+ * leaves after it, keep theirs. Where other rows keep a removed cell's
+ * columns, the cell before it in its row (the one after it when it starts the
+ * row) widens over them.
  */
 type ResolveCellColumnsOptions = {
   table: Table;
@@ -427,7 +430,7 @@ const resolveCellColumns = ({
       ? table.columnWidths
       : undefined;
   const gridRows: GridRow[] = [];
-  let width = columnWidths?.length;
+  const ends: number[] = [];
   for (const row of table.rows) {
     const before = row.formatting?.gridBefore ?? 0;
     const after = row.formatting?.gridAfter ?? 0;
@@ -447,23 +450,22 @@ const resolveCellColumns = ({
       cells.push({ cell, start: cursor, end: cursor + span });
       cursor += span;
     }
-    width ??= cursor + after;
-    if (cursor + after !== width) return Result.err("unsupported");
-    gridRows.push({ cells, before, after });
+    gridRows.push({ cells, before, cellsEnd: cursor });
+    ends.push(cursor + after);
   }
-  if (width === undefined || width === 0) return Result.err("unsupported");
-  const gridWidth = width;
+  const gridWidth = Math.max(columnWidths?.length ?? 0, ...ends);
+  if (gridWidth === 0) return Result.err("unsupported");
 
   // A slot goes when no row keeps anything in it.
   const removable = new Set<number>();
   for (let slot = 0; slot < gridWidth; slot++) {
     const kept = gridRows.some(
-      ({ cells, before, after }) =>
-        slot >= before &&
-        slot < gridWidth - after &&
+      ({ cells, before, cellsEnd }) =>
+        slot < before ||
+        slot >= cellsEnd ||
         cells.some(
-          ({ cell, start, end }) =>
-            slot >= start && slot < end && !removes(cell),
+          ({ cell, start, end: cellEnd }) =>
+            slot >= start && slot < cellEnd && !removes(cell),
         ),
     );
     if (!kept) removable.add(slot);
@@ -527,21 +529,7 @@ const resolveCellColumns = ({
       cells.push(widened);
     }
     if (carried > 0 || cells.length === 0) return Result.err("unsupported");
-    const nextRow: TableRow = { ...row, cells };
-    const removedBefore = removedIn(0, layout.before);
-    const removedAfter = removedIn(gridWidth - layout.after, gridWidth);
-    if (removedBefore > 0 || removedAfter > 0) {
-      const formatting = { ...row.formatting };
-      const before = layout.before - removedBefore;
-      const after = layout.after - removedAfter;
-      if (before === 0) delete formatting.gridBefore;
-      else formatting.gridBefore = before;
-      if (after === 0) delete formatting.gridAfter;
-      else formatting.gridAfter = after;
-      if (Object.keys(formatting).length === 0) delete nextRow.formatting;
-      else nextRow.formatting = formatting;
-    }
-    rows.push(nextRow);
+    rows.push({ ...row, cells });
   }
   const next: Table = { ...table, rows };
   if (columnWidths !== undefined) {
@@ -633,9 +621,17 @@ const resolveCellChanges = ({
 
   // Cell insertions used by horizontal/vertical splits restore the owner's span
   // or merge state. Keep the grid when that restored topology covers it
-  // exactly, or when the grid the selection restores will.
+  // exactly, or when the grid the selection restores will. Removing cells
+  // never narrows the grid by itself: a row that then ends early is resolved
+  // by the column rule below.
+  const restored = tableGrid(structureResolved, DOCUMENT_OP_TYPES.SET_TABLE);
   if (
-    tableGrid(structureResolved, DOCUMENT_OP_TYPES.SET_TABLE).isOk() ||
+    (restored.isOk() &&
+      restored.value.stated &&
+      restored.value.width ===
+        tableGrid(table, DOCUMENT_OP_TYPES.SET_TABLE)
+          .map(({ width }) => width)
+          .unwrapOr(restored.value.width)) ||
     (selectedGridChange && coversEvenly(structureResolved))
   ) {
     return Result.ok({ table: structureResolved, holdsRemovedColumns: false });
@@ -667,6 +663,53 @@ const refusal = (op: ResolveRevisionOp, message: string) =>
     message,
   });
 
+/**
+ * The paragraph marks still pending in rows and cells this decision removes,
+ * resolved away first: the paragraphs go with their row or cell, so no mark
+ * of theirs is left pending in a structure that goes, which the inverse
+ * restoring it could not state (a cell's final mark would be pending there).
+ */
+const marksInRemovedStructure = (
+  document: Document,
+  op: ResolveRevisionOp,
+): DocumentOp[] => {
+  const ids = new Set(op.revisionIds);
+  const removes = (change: TableStructuralChangeInfo | undefined): boolean => {
+    if (change === undefined || !ids.has(change.info.id)) return false;
+    if (op.decision === REVISION_DECISIONS.REJECT)
+      return (
+        change.type === "tableRowInsertion" ||
+        change.type === "tableCellInsertion"
+      );
+    return (
+      change.type === "tableRowDeletion" || change.type === "tableCellDeletion"
+    );
+  };
+  const ops: DocumentOp[] = [];
+  for (const table of tablesIn(document, op.story))
+    for (const row of table.rows)
+      for (const cell of row.cells) {
+        if (!removes(row.structuralChange) && !removes(cell.structuralChange))
+          continue;
+        for (const { paragraph } of storyParagraphs({
+          content: cell.content,
+        })) {
+          if (paragraph.pPrMark === undefined || paragraph.paraId === undefined)
+            continue;
+          const review = reviewFieldsOf(paragraph);
+          delete review.pPrMark;
+          ops.push({
+            type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
+            story: op.story,
+            blockId: paragraph.paraId,
+            expected: reviewFieldsOf(paragraph),
+            review,
+          });
+        }
+      }
+  return ops;
+};
+
 export const resolveTableRows = ({
   document,
   op,
@@ -675,6 +718,14 @@ export const resolveTableRows = ({
   const ids = new Set(op.revisionIds);
   let current = document;
   const edits: DocumentEdit[] = [];
+
+  const settled = marksInRemovedStructure(document, op);
+  if (settled.length > 0) {
+    const applied = applyOps(document, settled);
+    if (applied.isErr()) return Result.err(applied.error);
+    edits.push(applied.value);
+    current = applied.value.document;
+  }
 
   // Keep row insertion/deletion on its established primitive, which also
   // removes an emptied table. Table property and cell changes use setTable.

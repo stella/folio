@@ -1,9 +1,6 @@
 import { getCommentParentId } from "@stll/folio-core/docx/hostCommentThreads";
 import { findBodyPmAnchors } from "@stll/folio-core/layout-bridge/dom/findBodyPmSpans";
-import {
-  allocateCommentId,
-  seedCommentIdAbove,
-} from "@stll/folio-core/prosemirror/commentIdAllocator";
+import type { CommentIdAllocator } from "@stll/folio-core/prosemirror/commentIdAllocator";
 import type { Comment } from "@stll/folio-core/types/content";
 
 /** Pseudo-id for the comment mark applied while the add-comment form is open. */
@@ -15,7 +12,6 @@ export const EMPTY_ANCHOR_POSITIONS: Map<string, number> = new Map<
   number
 >();
 
-export { allocateCommentId, seedCommentIdAbove };
 export {
   getCommentParentId,
   pruneOrphanedComments,
@@ -76,26 +72,37 @@ export function getFallbackCommentYPosition(
   );
 }
 
+export type CreateCommentOptions = {
+  /** The document's comment ids. */
+  commentIds: CommentIdAllocator;
+  text: string;
+  author: string;
+  parentId?: number;
+  /** An OOXML comment id to adopt instead of allocating one. */
+  id?: number;
+};
+
 /**
- * Build a Comment. By default the id is freshly allocated; pass `id` to adopt a
+ * Build a Comment. By default the id is the document's next; pass `id` to adopt a
  * specific OOXML comment id (e.g. one an external source-of-truth model already
- * assigned) so the preview mirrors the comment under the SAME id — the counter
- * is then seeded above it so later mints never collide. Ports upstream
+ * assigned) so the preview mirrors the comment under the SAME id — the document's
+ * ids are then seeded above it so later mints never collide. Ports upstream
  * docx-editor `feat(ref): proposeChange/addComment can adopt an external OOXML
  * id` (05f2ab84), adapted to folio's `createComment` factory.
  */
-export function createComment(
-  text: string,
-  authorName: string,
-  parentId?: number,
-  id?: number,
-): Comment {
+export function createComment({
+  commentIds,
+  text,
+  author,
+  parentId,
+  id,
+}: CreateCommentOptions): Comment {
   if (id !== undefined) {
-    seedCommentIdAbove(id);
+    commentIds.seedAbove(id);
   }
   return {
-    id: id ?? allocateCommentId(),
-    author: authorName,
+    id: id ?? commentIds.next(),
+    author,
     date: new Date().toISOString(),
     // The model's canonical paragraph has no formatting rather than an empty
     // one; a save refuses the empty form.

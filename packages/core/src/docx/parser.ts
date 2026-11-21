@@ -30,6 +30,10 @@ import {
   setDocumentBodyComments,
 } from "@stll/docx-core/model";
 import { isCommentExhausted, orphanRootCommentIds } from "@stll/docx-core/ops";
+import {
+  UndeclaredXmlEntityError,
+  undeclaredXmlEntityError,
+} from "@stll/docx-core/xml";
 import { FOLIO_XML_RESOURCE_LIMITS } from "@stll/docx-core/xml/limits";
 
 import type {
@@ -485,6 +489,12 @@ export async function parseDocxWithPreviewBudget(
     const raw = await timeStageAsync("unzip", () =>
       unzipDocx(buffer, { ...unzipLimits, password, extractAllXml: false }),
     );
+    // A part naming an entity nothing declares is not XML; it is refused
+    // whole, with its place, before any reader takes a guess at it.
+    for (const [part, xml] of raw.allXml) {
+      const undeclared = undeclaredXmlEntityError(part, xml);
+      if (undeclared !== null) throw undeclared;
+    }
     diagnoseImportedIdCollisions(raw.allXml, parseContext);
     diagnoseReviewProvenance(raw.allXml, parseContext);
     await replaceRawDocxXmlParts(
@@ -1028,7 +1038,10 @@ export async function parseDocxWithPreviewBudget(
     captureDocumentSourceBaseline(document, raw.documentXml ?? undefined);
     return document;
   } catch (error) {
-    if (error instanceof DocxEncryptionError) {
+    if (
+      error instanceof DocxEncryptionError ||
+      error instanceof UndeclaredXmlEntityError
+    ) {
       throw error;
     }
     const message = error instanceof Error ? error.message : String(error);

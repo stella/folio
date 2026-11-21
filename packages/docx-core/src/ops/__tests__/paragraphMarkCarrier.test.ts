@@ -90,47 +90,87 @@ test("rejecting an empty inserted final paragraph after a table keeps it", () =>
   ]);
 });
 
-test("rejecting an empty inserted final paragraph in a cell keeps the cell terminator", () => {
+describe("rejecting an inserted cell-final paragraph mark", () => {
   const info = { id: 7, author: "Reviewer", date: "2026-10-19" };
-  const kept = {
+  const kept: Paragraph = {
     type: "paragraph",
     paraId: "00000002",
     content: [{ type: "run", content: [{ type: "text", text: "kept" }] }],
-  } as const;
-  const cell = (content: readonly Paragraph[]) => ({
-    type: "table",
-    rows: [{ type: "tableRow", cells: [{ type: "tableCell", content }] }],
-  });
-  const document = {
+  };
+  const insertedFinal: Paragraph = {
+    type: "paragraph",
+    paraId: "00000004",
+    content: [],
+    pPrMark: { kind: "ins", info },
+  };
+  const inCell = (content: Paragraph[]): Document => ({
     package: {
       document: {
         content: [
-          cell([
-            kept,
-            {
-              type: "paragraph",
-              paraId: "00000004",
-              content: [],
-              pPrMark: { kind: "ins", info },
-            },
-          ]),
+          {
+            type: "table",
+            rows: [
+              { type: "tableRow", cells: [{ type: "tableCell", content }] },
+            ],
+          },
           finalParagraph,
         ],
       },
     },
-  } as Document;
-  const result = applyDocumentOp(document, {
-    type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
-    story: OP_STORIES.MAIN,
-    revisionIds: [7],
-    decision: REVISION_DECISIONS.REJECT,
   });
-  if (result.isErr()) throw result.error;
+  const rejected = (document: Document, revisionIds: number[]): Document => {
+    const result = applyDocumentOp(document, {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds,
+      decision: REVISION_DECISIONS.REJECT,
+    });
+    if (result.isErr()) throw result.error;
+    return result.value.document;
+  };
 
-  expect(result.value.document.package.document.content).toEqual([
-    cell([kept, { type: "paragraph", paraId: "00000004", content: [] }]),
-    finalParagraph,
-  ]);
+  test("leaves the paragraph before it to end the cell", () => {
+    expect(rejected(inCell([kept, insertedFinal]), [7])).toEqual(
+      inCell([kept]),
+    );
+  });
+
+  test("restores a cell whose paragraph a later one replaced", () => {
+    // The cell's text deleted, its mark handed to an inserted paragraph.
+    const replaced: Paragraph = {
+      type: "paragraph",
+      paraId: "00000002",
+      content: [
+        {
+          type: "deletion",
+          info: { ...info, id: 8 },
+          content: [{ type: "run", content: [{ type: "text", text: "kept" }] }],
+        },
+      ],
+      pPrMark: { kind: "del", info: { ...info, id: 9 } },
+    };
+    const replacement: Paragraph = {
+      ...insertedFinal,
+      content: [
+        {
+          type: "insertion",
+          info: { ...info, id: 10 },
+          content: [
+            { type: "run", content: [{ type: "text", text: "added" }] },
+          ],
+        },
+      ],
+    };
+    expect(rejected(inCell([replaced, replacement]), [7, 8, 9, 10])).toEqual(
+      inCell([kept]),
+    );
+  });
+
+  test("keeps a cell's only paragraph as its terminator", () => {
+    expect(rejected(inCell([insertedFinal]), [7])).toEqual(
+      inCell([{ type: "paragraph", paraId: "00000004", content: [] }]),
+    );
+  });
 });
 
 test("accepting a mark deletion before a table hands the bookmark the paragraph held to its first cell", () => {

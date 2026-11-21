@@ -64,9 +64,10 @@ export const CANONICAL_VACUOUS_STEPS: Readonly<
   "issue-1757-merge-across-deleted-note-paragraph-before-inserted-table.json": [
     0,
   ],
+  // The deleted paragraph's own inserted break goes with it before the
+  // inserted table, so the merge would run into that table: refused.
+  "issue-1757-merge-across-deleted-paragraph-before-inserted-table.json": [0],
   "issue-2222-styled-insert-after-undefined-numbering-level.json": [2],
-  "issue-2236-new-list-in-header-after-other-stories-direct.json": [0],
-  "issue-2316-c14cd1e28851babe.json": [0, 1],
   "undefined-numbering-level-projection.json": [1],
 };
 

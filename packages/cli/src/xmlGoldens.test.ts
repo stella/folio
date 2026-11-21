@@ -98,6 +98,9 @@ describe("checkPackageIntegrity", () => {
         "CDATA terminator in text": NOT_WELL_FORMED,
         "double hyphen in comment": NOT_WELL_FORMED,
         "declaration inside the root": NOT_WELL_FORMED,
+        "HTML entity in text": NOT_WELL_FORMED,
+        "HTML entity in attribute": NOT_WELL_FORMED,
+        "unknown entity": NOT_WELL_FORMED,
       },
     });
   });

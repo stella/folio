@@ -174,5 +174,19 @@
       "run": "set -o pipefail\nmkdir -p test-results\nbun scripts/ci-test-shards.ts --shard \"$TEST_SHARD\" --shards \"$TEST_SHARDS\" --depth full 2>&1 | tee test-results/full-test-suite.log\n",
       "if": "needs.ci-plan.outputs.suite_depth == 'full'"
     }
+  ],
+  "exploration-base-replay": [
+    {
+      "run": "if [ -n \"$(find exploration -name '*.json' -not -name '*.flow.json' -print -quit 2>/dev/null)\" ]; then\n  echo \"found=true\" >> \"$GITHUB_OUTPUT\"\nelse\n  echo \"found=false\" >> \"$GITHUB_OUTPUT\"\n  echo \"No generated property failure was reported.\"\nfi\n",
+      "if": null
+    },
+    {
+      "run": "bun install --frozen-lockfile\ngit worktree add --detach base \"$FOLIO_FUZZ_EXPLORATION_BASE\"\n(cd base && bun install --frozen-lockfile)\n",
+      "if": "steps.records.outputs.found == 'true'"
+    },
+    {
+      "run": "bun scripts/exploration-base-replay.ts --records exploration --base base",
+      "if": "steps.records.outputs.found == 'true'"
+    }
   ]
 }

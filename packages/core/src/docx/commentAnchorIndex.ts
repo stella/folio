@@ -19,6 +19,7 @@ import type {
   InlineSdt,
   Paragraph,
   ParagraphContent,
+  ShapeContent,
   SimpleField,
   Table,
   TableCell,
@@ -330,6 +331,52 @@ export const positionedCommentGaps = (
     });
   }
   return { before, after };
+};
+
+/** `removeCommentMarkers`, in the text boxes the blocks draw as well. */
+export const removeCommentMarkersThroughTextBoxes = (
+  blocks: readonly BlockContent[],
+  commentIds: ReadonlySet<number>,
+): BlockContent[] => {
+  if (commentIds.size === 0) return blocks.slice();
+  const strip = (value: unknown): unknown => {
+    if (Array.isArray(value)) {
+      let changed = false;
+      const items = value.map((item: unknown) => {
+        const next = strip(item);
+        changed ||= next !== item;
+        return next;
+      });
+      return changed ? items : value;
+    }
+    if (typeof value !== "object" || value === null) return value;
+    const record = value as Record<string, unknown>;
+    if (record["type"] === "shape") {
+      const content = value as ShapeContent;
+      const textBody = content.shape.textBody;
+      if (textBody === undefined) return value;
+      const stripped = removeCommentMarkersThroughTextBoxes(
+        textBody.content,
+        commentIds,
+      );
+      return {
+        ...content,
+        shape: {
+          ...content.shape,
+          textBody: { ...textBody, content: stripped },
+        },
+      };
+    }
+    let changed = false;
+    const out: Record<string, unknown> = {};
+    for (const [key, child] of Object.entries(record)) {
+      const next = strip(child);
+      changed ||= next !== child;
+      out[key] = next;
+    }
+    return changed ? out : value;
+  };
+  return removeCommentMarkers(strip(blocks) as BlockContent[], commentIds);
 };
 
 /** Remove every serialized anchor record for comments whose definitions are retired. */

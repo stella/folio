@@ -78,8 +78,10 @@ describe("headless comment IDs", () => {
             },
           ];
           const buffer = await createDocx(document);
-          const issued = new Set(ids);
           const issuedRevisions = new Set(ids);
+          // Comment ids belong to the document: a second reviewer making the
+          // same edits to it allocates the same ones.
+          const commentIdsByReviewer: number[][] = [];
           for (let reviewerIndex = 0; reviewerIndex < 2; reviewerIndex += 1) {
             const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
             const block =
@@ -132,6 +134,7 @@ describe("headless comment IDs", () => {
                 )
                 .map(({ id }) => id) ?? [];
             expect(newIds).toHaveLength(4);
+            const issued = new Set(ids);
             for (const id of newIds) {
               expect(Number.isInteger(id)).toBe(true);
               expect(id).toBeGreaterThan(0);
@@ -139,6 +142,7 @@ describe("headless comment IDs", () => {
               expect(issued.has(id)).toBe(false);
               issued.add(id);
             }
+            commentIdsByReviewer.push(newIds);
             const saved = await reviewer.toBuffer();
             const reopened = await parseDocx(saved, { preloadFonts: false });
             const reopenedReviewer = await FolioDocxReviewer.fromBuffer(saved);
@@ -149,6 +153,9 @@ describe("headless comment IDs", () => {
               new Set(reopened.package.document.comments?.map(({ id }) => id)),
             ).toEqual(new Set([...ids, ...newIds]));
           }
+          expect(commentIdsByReviewer.at(1)).toEqual(
+            commentIdsByReviewer.at(0),
+          );
         }),
         {
           numRuns: 12,
