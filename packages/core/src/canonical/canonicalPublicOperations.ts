@@ -1780,12 +1780,13 @@ type FormattingIntentsAsItRunsOptions = {
 };
 
 /**
- * Paragraph property edits and paragraphs put before a paragraph, bound to
- * the paragraph as the batch stands when they run: one an earlier operation
- * joined away, such as the first half of a split whose retraction joins it
- * to the second, is edited in the paragraph that now holds it, and a
- * paragraph put before it goes before that one when its words open it, as
- * a merge into the next paragraph leaves them.
+ * Paragraph property edits and paragraph insertions bound to the paragraph
+ * as the batch stands when they run: one an earlier operation joined away,
+ * such as the first half of a split whose retraction joins it to the second,
+ * or a paragraph that took the mark of the run the batch deleted after it, is
+ * edited, or inserted beside, in the paragraph that now holds it; a
+ * paragraph put before it goes before that one when its words open it, as a
+ * merge into the next paragraph leaves them.
  */
 const formattingIntentsAsItRuns = ({
   document,
@@ -1819,12 +1820,18 @@ const formattingIntentsAsItRuns = ({
         };
       case "insertParagraphs": {
         const { at } = intent;
-        if (at.type !== "before" || present.has(idKey(at.blockId)))
-          return intent;
-        const survivor = openingSurvivorOf.get(idKey(at.blockId));
-        return survivor === undefined
+        if (at.type !== "before" && at.type !== "after") return intent;
+        if (present.has(idKey(at.blockId))) return intent;
+        const opening =
+          at.type === "before"
+            ? openingSurvivorOf.get(idKey(at.blockId))
+            : undefined;
+        if (opening !== undefined)
+          return { ...intent, at: { type: "before", blockId: opening } };
+        const { blockId } = bound({ story, blockId: at.blockId, offset: 0 });
+        return blockId === at.blockId
           ? intent
-          : { ...intent, at: { type: "before", blockId: survivor } };
+          : { ...intent, at: { type: at.type, blockId } };
       }
       default:
         return intent;
