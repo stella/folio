@@ -1666,6 +1666,9 @@ export type TouchedBlocks = {
 };
 
 // @public
+export const transferParagraphPropertySnapshot: (input: TransferParagraphPropertySnapshotOptions) => void;
+
+// @public
 export const transformBatch: (batch: DocumentBatch, over: readonly SequencedBatch[], options?: TransformOptions) => Result<DocumentBatch, BatchRejection>;
 
 // @public

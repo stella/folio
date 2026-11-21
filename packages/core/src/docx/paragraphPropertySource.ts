@@ -7,7 +7,10 @@ import type {
 } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
 
-import { paragraphStatesItsFormatting } from "@stll/docx-core/ops";
+import {
+  paragraphStatesItsFormatting,
+  transferParagraphPropertySnapshot,
+} from "@stll/docx-core/ops";
 
 import {
   type ModeledParagraphFormattingEmission,
@@ -714,6 +717,9 @@ const reopenParagraph = (paragraph: Paragraph): Paragraph => {
   const payload = decodedTableCellParagraphSourcePayloads.get(paragraph);
   if (payload !== undefined)
     decodedTableCellParagraphSourcePayloads.set(copy, payload);
+  // The copy states what its original states: a property change it records
+  // later records those properties, never the effective values over them.
+  transferParagraphPropertySnapshot({ source: paragraph, target: copy });
   return copy;
 };
 
@@ -920,6 +926,7 @@ export const cloneParagraphWithPropertySource = (
 ): Paragraph => {
   const cloned: Paragraph = { ...paragraph, ...overrides };
   copyParagraphPropertySource(cloned, paragraph);
+  transferParagraphPropertySnapshot({ source: paragraph, target: cloned });
   return cloned;
 };
 

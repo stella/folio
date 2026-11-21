@@ -85,6 +85,7 @@ export {
   paragraphStatesItsFormatting,
   registerParagraphPropertySnapshot,
   registerStatedParagraphFormatting,
+  transferParagraphPropertySnapshot,
 } from "./paragraphPropertySnapshot";
 export {
   applyDocumentOpEnvelope,
