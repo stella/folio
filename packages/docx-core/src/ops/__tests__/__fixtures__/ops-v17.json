@@ -9241,29 +9241,6 @@
                 ]
               }
             ]
-          },
-          {
-            "type": "tableRow",
-            "formatting": {
-              "header": false,
-              "cantSplit": true
-            },
-            "cells": [
-              {
-                "type": "tableCell",
-                "content": [
-                  {
-                    "type": "paragraph",
-                    "paraId": "00000202",
-                    "content": []
-                  }
-                ],
-                "formatting": {
-                  "gridSpan": 2,
-                  "vMerge": "continue"
-                }
-              }
-            ]
           }
         ]
       },

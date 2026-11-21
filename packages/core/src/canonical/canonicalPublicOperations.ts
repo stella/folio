@@ -113,7 +113,10 @@ import {
   snapshotBatchClaim,
   type SnapshotBatchOperation,
 } from "../ai-edits/snapshotBatchFacts";
-import type { TableRectangle } from "../ai-edits/table-mutation-plan";
+import {
+  mergesRemoveRow,
+  type TableRectangle,
+} from "../ai-edits/table-mutation-plan";
 import {
   applyTableRowInsertion,
   describeUnplacedCellTexts,
@@ -579,6 +582,76 @@ const rowShiftedCellShapes = <
         )
       : false,
   );
+};
+
+const ROW_CLOSING_CELL_SHAPE =
+  "Another merge the batch makes in this table removes a row, which would move the cells this merges or splits.";
+
+type RowClosingCellShapesOptions<T> = {
+  /** The batch's operations, in the order it requests them. */
+  items: readonly T[];
+  doc: PMNode;
+};
+
+/**
+ * The merges and splits whose cells a merge of the batch in their table
+ * would move. A merge that leaves a row nothing it starts removes the row,
+ * and the batch names every merge and split by row as it read the table, so
+ * as `planTableMutations` does: the first merge stays, a later one whose
+ * cells and the earlier ones' would empty a row is refused, and so is a
+ * split in a table whose merges empty a row, whatever the order.
+ */
+const rowClosingCellShapes = <
+  T extends PlannedOperation & { intents: readonly EditorIntent[] },
+>({
+  items,
+  doc,
+}: RowClosingCellShapesOptions<T>): T[] => {
+  const kept = new Map<number, TableRectangle[]>();
+  const refused: T[] = [];
+  for (const item of items) {
+    const { operation, intents, plan } = item;
+    if (operation.type !== "mergeTableCells" || plan.address.type !== "cell")
+      continue;
+    const merge = intents.find(
+      (intent) =>
+        intent.type === "table" &&
+        intent.operation.type === DOCUMENT_OP_TYPES.MERGE_CELLS,
+    );
+    if (
+      merge?.type !== "table" ||
+      merge.operation.type !== DOCUMENT_OP_TYPES.MERGE_CELLS
+    )
+      return panic("A resolved cell merge lost its rectangle");
+    const { left, top, right, bottom } = merge.operation;
+    const table = plan.address.tablePosition;
+    const earlier = kept.get(table) ?? [];
+    const rectangles = [...earlier, { left, top, right, bottom }];
+    if (
+      earlier.length > 0 &&
+      mergesRemoveRow({ doc, tablePosition: table, rectangles })
+    ) {
+      refused.push(item);
+      continue;
+    }
+    kept.set(table, rectangles);
+  }
+  for (const item of items) {
+    const { address } = item.plan;
+    if (item.operation.type !== "splitTableCell" || address.type !== "cell")
+      continue;
+    const merges = kept.get(address.tablePosition);
+    if (
+      merges !== undefined &&
+      mergesRemoveRow({
+        doc,
+        tablePosition: address.tablePosition,
+        rectangles: merges,
+      })
+    )
+      refused.push(item);
+  }
+  return refused;
 };
 
 type CanonicalBatchOrderOptions<T extends PlannedOperation> = {
@@ -4414,6 +4487,13 @@ export class CanonicalPublicOperations {
     for (const item of rowShiftedCellShapes(resolved)) {
       resolved.splice(resolved.indexOf(item), 1);
       skip(item.operation.id, "unsupportedBlock", ROW_SHIFTED_CELL_SHAPE);
+    }
+    const rowClosing = projected.isOk()
+      ? rowClosingCellShapes({ items: resolved, doc: projected.value.doc })
+      : [];
+    for (const item of rowClosing) {
+      resolved.splice(resolved.indexOf(item), 1);
+      skip(item.operation.id, "unsupportedBlock", ROW_CLOSING_CELL_SHAPE);
     }
     if (batch.atomic && skipped.length > 0) {
       for (const { operation } of resolved)
