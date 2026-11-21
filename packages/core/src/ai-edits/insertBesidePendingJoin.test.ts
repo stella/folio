@@ -199,6 +199,7 @@ describe("an insertion beside a paragraph a tracked merge joins", () => {
 });
 
 type AroundOptions = {
+  session: HeadlessReviewerSession;
   /** Which of the two insertions comes first. */
   order: "after first" | "before first";
   batched: boolean;
@@ -208,8 +209,8 @@ type AroundOptions = {
  * After a tracked merge, insert after the joined heading and before the
  * paragraph it joins, accept, and read the texts.
  */
-const around = async ({ order, batched }: AroundOptions) => {
-  const reviewer = await open();
+const around = async ({ session, order, batched }: AroundOptions) => {
+  const reviewer = await open(session);
   const [heading, item] = reviewer.snapshot().blocks;
   if (!heading || !item) throw new Error("Missing fixture");
   reviewer.applyOperations(
@@ -247,15 +248,39 @@ const around = async ({ order, batched }: AroundOptions) => {
   return reviewer.snapshot().blocks.map(({ text }) => text);
 };
 
+// The canonical session puts the paragraph after the heading right after it,
+// taking its words, which ends the join there; a paragraph put before the
+// item while the join stands goes before the heading. A batch reads the join
+// as it runs, as its operations one at a time in the order it names them.
+const CANONICAL_AROUND = {
+  "after first": ["Terms After.", "Before.", "Numbered clause one"],
+  "before first": ["Before.", "Terms After.", "Numbered clause one"],
+} as const satisfies Record<AroundOptions["order"], readonly string[]>;
+
 describe("insertions on both sides of a pending join", () => {
   for (const order of ["after first", "before first"] as const) {
-    test(`leave the joined words together, in a batch as one at a time (${order})`, async () => {
-      const sequential = await around({ order, batched: false });
-      expect(await around({ order, batched: true })).toEqual(sequential);
+    test(`leave the joined words together, in a batch as one at a time (${order}, legacy)`, async () => {
+      const session = "legacy";
+      const sequential = await around({ session, order, batched: false });
+      expect(await around({ session, order, batched: true })).toEqual(
+        sequential,
+      );
       const joined = sequential.indexOf("Terms Numbered clause one");
       expect(joined).toBeGreaterThan(-1);
       expect(sequential.indexOf("Before.")).toBe(joined - 1);
       expect(sequential.indexOf("After.")).toBe(joined + 1);
+    });
+
+    test(`read the join as the batch runs, in a batch as one at a time (${order}, canonical)`, async () => {
+      const session = "canonical";
+      const sequential = await around({ session, order, batched: false });
+      expect(sequential).toEqual([
+        ...CANONICAL_AROUND[order],
+        "Unnumbered body text.",
+      ]);
+      expect(await around({ session, order, batched: true })).toEqual(
+        sequential,
+      );
     });
   }
   for (const session of SESSIONS)
@@ -670,7 +695,9 @@ describe("a paragraph between a pending join and the table it reaches", () => {
     ]);
   });
 
-  for (const mode of ["direct", "tracked-changes"] as const)
+  // A suggestion stands beside the paragraph it names, but waits wherever a
+  // tracked insertion would.
+  for (const mode of ["direct", "tracked-changes", "suggested"] as const)
     test(`right after the words, is refused: accepting runs them into the table (${mode}, canonical)`, async () => {
       const { reviewer, alpha } = await beforeTable(
         "delete first",
@@ -1203,7 +1230,7 @@ describe("a block after a pending join whose paragraph the batch splits, inside 
 describe("a table and a paragraph inserted before a deleted final paragraph", () => {
   const beforeFinal = async (
     mode: "direct" | "tracked-changes",
-    session?: HeadlessReviewerSession,
+    session: HeadlessReviewerSession,
   ) => {
     const reviewer = await openMarkdown(
       "Alpha.\n\nBravo.\n\nCharlie.",
@@ -1259,13 +1286,20 @@ describe("a table and a paragraph inserted before a deleted final paragraph", ()
   const textsOf = (reviewer: FolioDocxReviewer) =>
     reviewer.snapshot().blocks.map(({ text }) => text);
 
-  test("leaves no empty paragraph once accepted, as direct edits leave none", async () => {
-    const direct = await beforeFinal("direct");
-    const tracked = await beforeFinal("tracked-changes");
-    tracked.acceptAll();
-    expect(textsOf(direct)).toEqual(["Alpha.", "Bravo.", "Cell", "After."]);
-    expect(textsOf(tracked)).toEqual(textsOf(direct));
-  });
+  test.each(SESSIONS)(
+    "accepting leaves no empty paragraph (%s)",
+    async (session) => {
+      const direct = await beforeFinal("direct", session);
+      const tracked = await beforeFinal("tracked-changes", session);
+      tracked.acceptAll();
+      const directTexts = ["Alpha.", "Bravo.", "Cell", "After."];
+      expect(textsOf(direct)).toEqual(directTexts);
+      // The canonical tracked step refuses the table and keeps the paragraph.
+      expect(textsOf(tracked)).toEqual(
+        session === "canonical" ? ["Alpha.", "Bravo.", "After."] : directTexts,
+      );
+    },
+  );
 
   for (const session of SESSIONS)
     test(`rejects to the document it started from, before and after a reopen (${session})`, async () => {
