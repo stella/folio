@@ -2269,12 +2269,20 @@ const trackJoin = ({
 };
 
 const joinBlocks = (document: Document, op: JoinBlocksOp): Applied => {
-  const paragraphs = storyParagraphs(storyBody(document, op.story));
-  const first = findParagraph(op, paragraphs, op.blockId);
+  // An empty address historically selects the first idless paragraph.
+  const unaddressed =
+    op.blockId === "" || op.nextBlockId === ""
+      ? storyParagraphs(storyBody(document, op.story))
+      : undefined;
+  const endpoint = (id: string) =>
+    unaddressed === undefined
+      ? locate(document, op, op.story, id)
+      : findParagraph(op, unaddressed, id);
+  const first = endpoint(op.blockId);
   if (first.isErr()) {
     return Result.err(first.error);
   }
-  const next = findParagraph(op, paragraphs, op.nextBlockId);
+  const next = endpoint(op.nextBlockId);
   if (next.isErr()) {
     return Result.err(next.error);
   }

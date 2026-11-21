@@ -40,7 +40,10 @@ import {
   zeroWidthLeavesAt,
 } from "./leaves";
 import { isRangeBoundary, paragraphLength } from "./offsets";
-import { findStoryParagraph } from "./paragraphLocator";
+import {
+  findStoryParagraph,
+  locateParagraphInBlockList,
+} from "./paragraphLocator";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import {
   isAddedRevision,
@@ -817,16 +820,34 @@ export const selectedParagraphRuns = (
       "A text range stays in one story.",
     );
   const body = storyBody(document, from.story);
+  const missingEndpoint = () =>
+    refuse(
+      DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
+      "A range endpoint does not exist.",
+    );
+  const reversedRange = () =>
+    refuse(
+      DOCUMENT_OP_REFUSAL_REASONS.NOT_ADJACENT,
+      "Range endpoints must be in document order.",
+    );
   const start = idKey(from.blockId);
   const end = idKey(to.blockId);
-  if (start !== "" && start === end) {
-    const at = findStoryParagraph(body, start);
-    return at === undefined
-      ? refuse(
-          DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
-          "A range endpoint does not exist.",
-        )
-      : Result.ok([[at]]);
+  if (start !== "" && end !== "") {
+    const left = findStoryParagraph(body, start);
+    const right = start === end ? left : findStoryParagraph(body, end);
+    if (left === undefined || right === undefined) return missingEndpoint();
+    if (left === right) return Result.ok([[left]]);
+    if (sameBlockList(left.list, right.list)) {
+      if (left.index > right.index) return reversedRange();
+      const list = blockListAt(body.content, left.list);
+      const run: ParagraphLocation[] = [];
+      for (let index = left.index; index <= right.index; index += 1) {
+        const paragraph = list[index];
+        if (paragraph?.type !== "paragraph") break;
+        run.push({ list: left.list, index, paragraph });
+      }
+      if (run.length === right.index - left.index + 1) return Result.ok([run]);
+    }
   }
   const locations = storyParagraphs(body);
   const first = locations.findIndex(
@@ -835,16 +856,8 @@ export const selectedParagraphRuns = (
   const last = locations.findIndex(
     ({ paragraph }) => idKey(paragraph.paraId ?? "") === end,
   );
-  if (first < 0 || last < 0)
-    return refuse(
-      DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
-      "A range endpoint does not exist.",
-    );
-  if (first > last)
-    return refuse(
-      DOCUMENT_OP_REFUSAL_REASONS.NOT_ADJACENT,
-      "Range endpoints must be in document order.",
-    );
+  if (first < 0 || last < 0) return missingEndpoint();
+  if (first > last) return reversedRange();
   const runs: ParagraphLocation[][] = [];
   let previous: ParagraphLocation | undefined;
   for (const location of locations.slice(first, last + 1)) {
@@ -1039,9 +1052,9 @@ export const appendTrackedDeletion = ({
         "A planned join has no endpoint.",
       );
     const currentBody = storyBody(plan.document(), from.story);
-    const currentLeading = storyParagraphs(currentBody).find(
-      ({ paragraph }) =>
-        idKey(paragraph.paraId ?? "") === idKey(leading.at.blockId),
+    const currentLeading = locateParagraphInBlockList(
+      currentBody,
+      leading.at.blockId,
     );
     if (currentLeading === undefined)
       return refuse(
@@ -1050,9 +1063,7 @@ export const appendTrackedDeletion = ({
       );
     const mark = currentLeading.paragraph.pPrMark;
     if (mark?.kind === "del" || mark?.kind === "moveFrom") continue;
-    const next = blockListAt(currentBody.content, currentLeading.list).at(
-      currentLeading.index + 1,
-    );
+    const next = currentLeading.blocks.at(currentLeading.index + 1);
     if (next?.type !== "paragraph")
       return refuse(
         DOCUMENT_OP_REFUSAL_REASONS.NOT_ADJACENT,
@@ -1068,18 +1079,16 @@ export const appendTrackedDeletion = ({
     const appended = plan.join(join);
     if (appended.isErr()) return Result.err(appended.error);
     const directBody = storyBody(direct, from.story);
-    const directLeading = storyParagraphs(directBody).find(
-      ({ paragraph }) =>
-        idKey(paragraph.paraId ?? "") === idKey(leading.at.blockId),
+    const directLeading = locateParagraphInBlockList(
+      directBody,
+      leading.at.blockId,
     );
     if (directLeading === undefined)
       return refuse(
         DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
         "A simulated join lost its leading paragraph.",
       );
-    const directNext = blockListAt(directBody.content, directLeading.list).at(
-      directLeading.index + 1,
-    );
+    const directNext = directLeading.blocks.at(directLeading.index + 1);
     if (directNext?.type !== "paragraph")
       return refuse(
         DOCUMENT_OP_REFUSAL_REASONS.NOT_ADJACENT,
@@ -1092,13 +1101,13 @@ export const appendTrackedDeletion = ({
     if (simulated.isErr()) return Result.err(simulated.error);
     direct = simulated.value.document;
   }
-  const survivor = storyParagraphs(storyBody(direct, from.story)).find(
-    ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(to.blockId),
+  const survivor = locateParagraphInBlockList(
+    storyBody(direct, from.story),
+    to.blockId,
   );
-  const trackedSurvivor = storyParagraphs(
+  const trackedSurvivor = locateParagraphInBlockList(
     storyBody(plan.document(), from.story),
-  ).find(
-    ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(to.blockId),
+    to.blockId,
   );
   if (survivor === undefined || trackedSurvivor === undefined)
     return refuse(
