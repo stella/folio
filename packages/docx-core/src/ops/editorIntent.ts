@@ -646,6 +646,27 @@ export const createEditorIntentIdAllocator = ({
         }
       }
     }
+    if (intent.type === "tableRow") {
+      // A tracked row records itself, and each of its paragraphs its mark
+      // and content: the new row's, or the deleted one's.
+      const op = intent.operation;
+      const row =
+        op.type === DOCUMENT_OP_TYPES.INSERT_ROW
+          ? op.row
+          : locateTableRow(document, op)
+              .map(({ table, rowIndex }) => table.rows.at(rowIndex))
+              .unwrapOr(undefined);
+      if (row !== undefined) {
+        demand = 2 + PARAGRAPH_REVISION_DEMAND;
+        for (const { paragraph } of storyParagraphs({
+          content: [{ type: "table", rows: [row] }],
+        })) {
+          demand += PARAGRAPH_REVISION_DEMAND;
+          for (const span of leafSpans(paragraph.content))
+            demand += leafRevisionDemand(span.ancestors.length);
+        }
+      }
+    }
     if (intent.type === "table") {
       const op = intent.operation;
       const located = locateTableRow(document, op);

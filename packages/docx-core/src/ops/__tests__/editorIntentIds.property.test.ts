@@ -7,7 +7,14 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../../test/property-testing";
-import type { Document, Paragraph, Run } from "../../model/document";
+import type {
+  Document,
+  Paragraph,
+  Run,
+  TableCell,
+  TableRow,
+} from "../../model/document";
+import { applyDocumentOps } from "../apply";
 import { storyParagraphs } from "../blocks";
 import {
   allocateEditorIntentIds,
@@ -411,5 +418,99 @@ describe("editor intent identity allocation", () => {
     const exercised = new Set<string>();
     checkCoverageSample(law(exercised), COVERAGE_RUNS);
     expect([...exercised].sort()).toEqual([...kinds].sort());
+  });
+
+  test("a suggested row insertion or deletion gets the ids its row records take, whatever its anchor holds", () => {
+    const paraIdOf = (index: number) =>
+      (0x100 + index).toString(16).padStart(8, "0").toUpperCase();
+    const cellOf = (index: number, runs: number): TableCell => ({
+      type: "tableCell",
+      content: [
+        {
+          type: "paragraph",
+          paraId: paraIdOf(index),
+          content: Array.from({ length: runs }, (_, run) => ({
+            type: "run",
+            formatting: run % 2 === 0 ? {} : { bold: true },
+            content: [{ type: "text", text: `v${run}` }],
+          })),
+        },
+      ],
+    });
+    assertProperty(
+      fc.property(
+        fc.array(fc.integer({ min: 0, max: 3 }), {
+          minLength: 1,
+          maxLength: 6,
+        }),
+        fc.constantFrom(
+          DOCUMENT_OP_TYPES.INSERT_ROW,
+          DOCUMENT_OP_TYPES.DELETE_ROW,
+        ),
+        (runs, type) => {
+          // The anchor is the first cell's empty paragraph; the row deleted
+          // is the filled one below it.
+          const anchor: TableRow = {
+            type: "tableRow",
+            cells: runs.map((_, index) => cellOf(index, 0)),
+          };
+          const filled: TableRow = {
+            type: "tableRow",
+            cells: runs.map((count, index) =>
+              cellOf(runs.length + index, count),
+            ),
+          };
+          const document: Document = {
+            package: {
+              document: {
+                content: [
+                  { type: "table", rows: [anchor, filled] },
+                  paragraph(0),
+                ],
+              },
+            },
+          };
+          const intent =
+            type === DOCUMENT_OP_TYPES.INSERT_ROW
+              ? ({
+                  type: "tableRow",
+                  operation: {
+                    type,
+                    story: OP_STORIES.MAIN,
+                    blockId: paraIdOf(0),
+                    at: 1,
+                    row: {
+                      type: "tableRow",
+                      cells: runs.map((count, index) =>
+                        cellOf(2 * runs.length + index, count),
+                      ),
+                    },
+                  },
+                } as const)
+              : ({
+                  type: "tableRow",
+                  operation: {
+                    type,
+                    story: OP_STORIES.MAIN,
+                    blockId: paraIdOf(runs.length),
+                  },
+                } as const);
+          const ids = allocateEditorIntentIds(document, intent);
+          const compiled = compileEditorIntent(document, {
+            intent,
+            mode: {
+              type: "suggesting",
+              revision: { id: ids.revisionId, author: "Editor" },
+              newIds: ids.newIds,
+            },
+          }).unwrap();
+          expect(applyDocumentOps(document, compiled.ops).isOk()).toBe(true);
+        },
+      ),
+      {
+        numRuns: 100,
+        id: "a suggested row insertion or deletion gets the ids its row records take",
+      },
+    );
   });
 });
