@@ -1,3 +1,5 @@
+import { panic } from "better-result";
+
 import {
   PARSE_WARNING_CODES,
   type PreservedMarkup,
@@ -17,6 +19,7 @@ import type {
 } from "../types/document";
 import { sliceText } from "../utils/sliceText";
 import { completeCommentReferences } from "./commentReferenceCompletion";
+import { buildSections } from "./documentParser";
 import { InlineContentRemovals } from "./inlineContentRemovals";
 import { visitInlineContentSlots } from "./paragraphTraversal";
 import { getRunText } from "./runParser";
@@ -64,7 +67,7 @@ export type DroppedCommentRange = { id: number; text: string };
 const COMMENT_RANGE_MARKER_SITES = {
   /** Inside a paragraph: a reference can replace it, or it can be removed. */
   inline: "inline",
-  /** Between blocks: it can go back to the bytes it was, read by nobody. */
+  /** Between blocks: it can be removed from the blocks that hold it. */
   block: "block",
   /** Between a table's rows or a row's cells, as positioned markup: it can be removed. */
   positioned: "positioned",
@@ -97,8 +100,15 @@ type CommentRangeMarkerSite =
  */
 type PointPlacement = { paragraph: Paragraph; at: "start" | "end" };
 
-/** A run of text in document order, placed among the comment anchors. */
-type TextPiece = { order: number; text: string };
+/**
+ * A run's text in document order, placed among the comment anchors, or the
+ * line break that joins two paragraphs.
+ */
+type TextPiece = {
+  order: number;
+  kind: "run" | "paragraphBreak";
+  text: string;
+};
 
 type PreservedChildOf = NonNullable<PreservedMarkup["children"]>[number];
 
@@ -143,11 +153,12 @@ export const normalizeCommentReferences = ({
   // shifts every later index in its array: the indices collected here stay
   // valid until `removals.apply()` below.
   const normalizeParagraph = (paragraph: Paragraph): void => {
-    if (tape.length > 0) tape.push({ order, text: "\n" });
+    if (tape.length > 0)
+      tape.push({ order, kind: "paragraphBreak", text: "\n" });
     visitInlineContentSlots(paragraph, ({ content, index, item }) => {
       if (item.type === "run") {
         const text = getRunText(item);
-        if (text !== "") tape.push({ order, text });
+        if (text !== "") tape.push({ order, kind: "run", text });
         return;
       }
       if (isCommentMarker(item) && !validCommentIds.has(item.id)) {
@@ -282,8 +293,8 @@ export const normalizeCommentReferences = ({
       normalizeBlock(blocks, index);
     }
     // A marker between blocks for a comment the package does not define names
-    // no comment folio can show, so it goes back to the bytes it was: kept in
-    // place, read by nobody.
+    // no comment folio can show, so it goes back to the bytes it was, kept in
+    // place: the next open reads it the same way.
     for (const [index, block] of blocks.entries()) {
       if (
         (block.type === "commentRangeStart" ||
@@ -319,6 +330,7 @@ export const normalizeCommentReferences = ({
   const duplicates = duplicateReferences(references, repaired.kept);
   for (const slot of duplicates) removals.mark(slot);
   removals.apply();
+  removeBlocks(repaired.removedBlocks, documentBody);
   // Points go in once removals have run, so no index they hold shifts.
   for (const { id, placement } of repaired.placed) {
     const reference: ParagraphContent = { type: "commentReference", id };
@@ -431,14 +443,12 @@ const paragraphAtEdge = (
   }
 };
 
-/** At most this much of a dropped range's text is reported. */
+/** At most this many UTF-16 code units of a dropped range are reported. */
 const DROPPED_RANGE_TEXT_LIMIT = 200;
 
 /**
- * The text read between two anchors, paragraphs joined by a line break, up to
- * {@link DROPPED_RANGE_TEXT_LIMIT} characters. The tape is in document order
- * and holds no empty piece, so the first piece is found by bisection and the
- * walk stops at the limit.
+ * Read the runs as written, joining paragraphs with line breaks between them.
+ * Binary search locates the first piece, and only the bounded prefix is read.
  */
 const textBetween = (
   tape: readonly TextPiece[],
@@ -454,17 +464,55 @@ const textBetween = (
     else low = middle + 1;
   }
   let text = "";
+  let breaks = 0;
   for (let index = low; index < tape.length; index += 1) {
     const piece = tape[index];
     if (piece === undefined || piece.order > end) break;
+    if (piece.kind === "paragraphBreak") {
+      if (text !== "") breaks += 1;
+      continue;
+    }
+    text += "\n".repeat(
+      Math.min(breaks, DROPPED_RANGE_TEXT_LIMIT - text.length),
+    );
     text += piece.text;
-    if (text.trimStart().length > DROPPED_RANGE_TEXT_LIMIT) break;
+    if (text.length >= DROPPED_RANGE_TEXT_LIMIT) break;
+    breaks = 0;
   }
-  return sliceText({
-    text: text.trim(),
-    units: "codeUnits",
-    end: DROPPED_RANGE_TEXT_LIMIT,
-  });
+  return sliceText({ text, units: "codeUnits", end: DROPPED_RANGE_TEXT_LIMIT });
+};
+
+type BlockRemoval = { blocks: BlockContent[]; index: number };
+
+/**
+ * Remove each listed block once every marker has been read. The body's
+ * sections partition its blocks, so they are rebuilt over what remains.
+ */
+const removeBlocks = (
+  removals: readonly BlockRemoval[],
+  documentBody: DocumentBody,
+): void => {
+  const byBlocks = new Map<BlockContent[], Set<number>>();
+  for (const { blocks, index } of removals) {
+    const indexes = byBlocks.get(blocks);
+    if (indexes === undefined) byBlocks.set(blocks, new Set([index]));
+    else indexes.add(index);
+  }
+  for (const [blocks, indexes] of byBlocks) {
+    const kept = blocks.filter((_, index) => !indexes.has(index));
+    blocks.length = 0;
+    for (const block of kept) blocks.push(block);
+  }
+  if (!byBlocks.has(documentBody.content) || !documentBody.sections) return;
+  const rebuilt = buildSections(
+    documentBody.content,
+    documentBody.finalSectionProperties,
+  );
+  if (rebuilt.length !== documentBody.sections.length)
+    panic("Removing comment range boundaries changed the section count");
+  for (const [index, section] of documentBody.sections.entries())
+    section.content =
+      rebuilt.at(index)?.content ?? panic("Missing rebuilt section");
 };
 
 /**
@@ -503,7 +551,7 @@ const duplicateReferences = (
   return dropped;
 };
 
-/** A block-level range marker as the bytes it was, which no reader reads. */
+/** A block-level range marker of an undefined comment, as the bytes it was. */
 const unreadBlockMarker = (block: BlockCommentRangeMarker): BlockContent => ({
   type: "preservedBlock",
   xml: `<w:${block.type} w:id="${String(block.id)}"${
@@ -523,6 +571,8 @@ type RepairUnpairedCommentRangesResult = {
   droppedBoundaries: number;
   /** Inline boundaries to remove once every marker has been read. */
   removed: { content: ParagraphContent[]; index: number }[];
+  /** Boundaries between blocks to remove once every marker has been read. */
+  removedBlocks: BlockRemoval[];
   /** The boundaries the repair leaves in place, in document order. */
   kept: CommentRangeMarkerRef[];
 };
@@ -558,6 +608,7 @@ const repairUnpairedCommentRanges = (
     droppedRanges: [],
     droppedBoundaries: 0,
     removed: [],
+    removedBlocks: [],
     kept: [],
   };
   for (const [id, markers] of byId) {
@@ -662,8 +713,9 @@ const pairedRanges = (
 };
 
 /**
- * Take a boundary out: an inline one once every marker has been read, one
- * between blocks back to the bytes it was, a positioned one from its markup.
+ * Take a boundary out: an inline one or one between blocks once every marker
+ * has been read, a positioned one from its markup. A dropped boundary leaves
+ * the package, so a save does not write it back for the next open to repair.
  */
 const removeMarker = (
   site: CommentRangeMarkerSite,
@@ -673,16 +725,9 @@ const removeMarker = (
     case COMMENT_RANGE_MARKER_SITES.inline:
       result.removed.push({ content: site.content, index: site.index });
       return;
-    case COMMENT_RANGE_MARKER_SITES.block: {
-      const block = site.blocks[site.index];
-      if (
-        block?.type !== "commentRangeStart" &&
-        block?.type !== "commentRangeEnd"
-      )
-        return;
-      site.blocks[site.index] = unreadBlockMarker(block);
+    case COMMENT_RANGE_MARKER_SITES.block:
+      result.removedBlocks.push({ blocks: site.blocks, index: site.index });
       return;
-    }
     case COMMENT_RANGE_MARKER_SITES.positioned: {
       const { owner, child } = site;
       const children = owner.preserved?.children ?? [];

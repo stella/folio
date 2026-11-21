@@ -14,6 +14,7 @@ import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { isSequentialFolioBlockId } from "../types/block-id";
 import {
+  collectExistingParaIds,
   ENSURE_PARA_IDS_REASONS,
   ensureParaIds,
   EnsureParaIdsError,
@@ -632,4 +633,13 @@ describe("ensureParaIds", () => {
     expect(error.message).toContain("Failed to normalize paragraph IDs");
     expect(error.cause).toBeInstanceOf(Error);
   });
+});
+
+test("reserves a paragraph id spelled with character references as the reader decodes it", () => {
+  const taken = new Set<string>();
+  collectExistingParaIds(
+    "<w:p w14:paraId=\"&#x31;2345&#54;7a\"/><w:p w14:paraId='&#x41;BCDEF0&amp;'/>",
+    taken,
+  );
+  expect([...taken]).toEqual(["1234567A", "ABCDEF0&"]);
 });

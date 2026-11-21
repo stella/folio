@@ -15,8 +15,10 @@ import { ZipArchive } from "@stll/docx-core/zip";
 import { commentDocument } from "../../../../test/consumer-scenarios/support/documents";
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
+import type { Document } from "../types/document";
 import { openCanonicalDocx } from "./canonicalSessionInput";
 import { parseDocx } from "./parser";
+import { repackDocx } from "./rezip";
 
 const DOCUMENT_PART = "word/document.xml";
 const COMMENTS_PART = "word/comments.xml";
@@ -79,6 +81,26 @@ const SECOND_FULL_RANGE: RepairShape = {
   repairs: [PARSE_WARNING_CODES.droppedCommentRange],
 };
 
+const LATER_PARAGRAPH = new RegExp(
+  `<w:p\\b[^>]*>(?:(?!<w:p\\b)[\\s\\S])*?${LATER_WORDS.replace(".", "\\.")}[\\s\\S]*?</w:p>`,
+  "u",
+);
+
+const SECOND_RANGE_BETWEEN_BLOCKS: RepairShape = {
+  name: "a comment with a second full range between blocks",
+  part: DOCUMENT_PART,
+  rewrite: (xml) => {
+    const paragraph = LATER_PARAGRAPH.exec(xml)?.[0];
+    if (paragraph === undefined) throw new Error("fixture has no paragraph");
+    return replaceOnce(
+      xml,
+      paragraph,
+      `${marker("commentRangeStart", RESOLVED_COMMENT_ID)}${paragraph}${marker("commentRangeEnd", RESOLVED_COMMENT_ID)}`,
+    );
+  },
+  repairs: [PARSE_WARNING_CODES.droppedCommentRange],
+};
+
 const TABLE_CELL =
   '<w:tc><w:tcPr><w:tcW w:w="2000" w:type="dxa"/></w:tcPr><w:p><w:r><w:t>Cell</w:t></w:r></w:p></w:tc>';
 const NEXT_ROW_WORDS = "Next row";
@@ -103,6 +125,7 @@ const ONLY_ANCHOR_BETWEEN_ROWS: RepairShape = {
 const SHAPES: readonly RepairShape[] = [
   LONE_START_BEFORE_RANGE,
   SECOND_FULL_RANGE,
+  SECOND_RANGE_BETWEEN_BLOCKS,
   ONLY_ANCHOR_BETWEEN_ROWS,
   {
     name: "a range start naming no comment",
@@ -336,6 +359,28 @@ describe("comment repairs that keep as much of the anchor as the format allows",
       ]);
     });
   }
+});
+
+test("a dropped range between blocks leaves the saved package", async () => {
+  const options = { preloadFonts: false, detectVariables: false };
+  const dropped = (document: Document) =>
+    (document.parseWarnings ?? []).filter(
+      ({ code }) => code === PARSE_WARNING_CODES.droppedCommentRange,
+    );
+  const opened = await parseDocx(
+    await rewritten(SECOND_RANGE_BETWEEN_BLOCKS),
+    options,
+  );
+  expect(dropped(opened)).toEqual([
+    expect.objectContaining({ value: LATER_WORDS }),
+  ]);
+  const saved = await repackDocx(opened, { updateModifiedDate: false });
+  const xml =
+    (await (await ZipArchive.read(saved)).entry(DOCUMENT_PART)?.text()) ?? "";
+  expect(
+    xml.split(marker("commentRangeStart", RESOLVED_COMMENT_ID)).length - 1,
+  ).toBe(1);
+  expect(dropped(await parseDocx(saved, options))).toEqual([]);
 });
 
 test("a lone boundary between rows becomes a point at the next cell's start, on both engines", async () => {
