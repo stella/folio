@@ -13,7 +13,14 @@ import {
 } from "../__tests__/operationBatchDocuments";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import { createDocx } from "../docx/rezip";
-import type { Document, ParagraphContent, RunContent } from "../types/document";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
+import type {
+  Document,
+  Footnote,
+  ParagraphContent,
+  RunContent,
+} from "../types/document";
+import { FolioDocxReviewer } from "./headless";
 
 const COMMENT_ID = 7;
 const PNG_DATA_URL =
@@ -38,11 +45,81 @@ const atomContent = {
     content: [],
   },
   tab: { type: "run", content: [{ type: "tab" }] },
-  noteMarker: {
-    type: "run",
-    content: [{ type: "noteMarker", kind: "footnote" }],
-  },
 } as const satisfies Record<string, ParagraphContent>;
+
+type Survivor = keyof typeof atomContent | "text" | "noteReference";
+
+/**
+ * A note's automatic number mark belongs inside its note, so a note survives
+ * in the body as its reference; `noteParagraphsDocx` adds the note.
+ */
+const survivorContent = (kind: Survivor, index: number): ParagraphContent => {
+  switch (kind) {
+    case "text":
+      return textRun(`survivor${String(index)}`);
+    case "noteReference":
+      return { type: "run", content: [{ type: "footnoteRef", id: index + 1 }] };
+    case "image":
+    case "field":
+    case "tab":
+      return atomContent[kind];
+    default: {
+      const unreachable: never = kind;
+      return unreachable;
+    }
+  }
+};
+
+const referencedFootnote = (id: number): Footnote => ({
+  type: "footnote",
+  id,
+  noteType: "normal",
+  content: [
+    {
+      type: "paragraph",
+      content: [
+        { type: "run", content: [{ type: "noteMarker", kind: "footnote" }] },
+        textRun(` Note ${String(id)}`),
+      ],
+    },
+  ],
+});
+
+/** One commented paragraph, with a footnote for every reference it holds. */
+const noteParagraphsDocx = (covered: readonly ParagraphContent[]) => {
+  const footnotes = covered.flatMap((item) =>
+    item.type === "run"
+      ? item.content.flatMap((content) =>
+          content.type === "footnoteRef"
+            ? [referencedFootnote(content.id)]
+            : [],
+        )
+      : [],
+  );
+  return createDocx({
+    package: {
+      document: {
+        content: [
+          {
+            type: "paragraph",
+            paraId: "10000000",
+            content: commentedParagraph(covered),
+          },
+        ],
+        comments: [reviewComment(COMMENT_ID)],
+      },
+      ...(footnotes.length > 0 && { footnotes }),
+    },
+  });
+};
+
+const openSessionReviewer = async (
+  buffer: ArrayBuffer,
+  session: HeadlessReviewerSession | undefined,
+): Promise<FolioDocxReviewer> =>
+  session === undefined
+    ? openReviewer(buffer)
+    : FolioDocxReviewer.fromBuffer(buffer, { author: "Reviewer", session });
 
 const commentedParagraph = (
   covered: readonly ParagraphContent[],
@@ -59,6 +136,7 @@ type DeleteGoneOptions = {
   resolution?: "all" | "single";
   deleted?: readonly string[];
   expectRefusal?: boolean;
+  session?: HeadlessReviewerSession;
 };
 
 const deleteGone = async (
@@ -68,13 +146,12 @@ const deleteGone = async (
     resolution = "all",
     deleted = ["gone"],
     expectRefusal = false,
+    session,
   }: DeleteGoneOptions,
 ) => {
-  const reviewer = await openReviewer(
-    await paragraphsDocx(
-      [commentedParagraph(covered)],
-      [reviewComment(COMMENT_ID)],
-    ),
+  const reviewer = await openSessionReviewer(
+    await noteParagraphsDocx(covered),
+    session,
   );
   const blockId = reviewer.snapshot().blocks.at(0)?.id;
   if (!blockId) throw new Error("Expected a paragraph block");
@@ -116,25 +193,27 @@ const deleteGone = async (
       expect(reviewer.acceptChange(change!)).toBe(true);
     }
   }
-  const reopened = await openReviewer(await reviewer.toBuffer());
+  const reopened = await openSessionReviewer(
+    await reviewer.toBuffer(),
+    session,
+  );
   return reopened.getComments().some(({ id }) => id === COMMENT_ID);
 };
 
-const rejectInserted = async (survivors: readonly ParagraphContent[]) => {
-  const reviewer = await openReviewer(
-    await paragraphsDocx(
-      [
-        commentedParagraph([
-          {
-            type: "insertion",
-            info: { id: 19, author: "Reviewer" },
-            content: [textRun("gone")],
-          },
-          ...survivors,
-        ]),
-      ],
-      [reviewComment(COMMENT_ID)],
-    ),
+const rejectInserted = async (
+  survivors: readonly ParagraphContent[],
+  session: HeadlessReviewerSession,
+) => {
+  const reviewer = await openSessionReviewer(
+    await noteParagraphsDocx([
+      {
+        type: "insertion",
+        info: { id: 19, author: "Reviewer" },
+        content: [textRun("gone")],
+      },
+      ...survivors,
+    ]),
+    session,
   );
   expect(reviewer.rejectAll().resolved).toBeGreaterThan(0);
   return reviewer.getComments().some(({ id }) => id === COMMENT_ID);
@@ -233,17 +312,15 @@ describe("accepted deletion comment anchors", () => {
     expect(await deleteGone([textRun("gone")], { mode: "direct" })).toBe(false);
   });
 
-  test(
-    "a range survives exactly when covered non-carrier content survives",
-    async () => {
+  test.each(["legacy", "canonical"] as const)(
+    "a range survives exactly when covered non-carrier content survives in %s",
+    async (session) => {
       const property = fc.asyncProperty(
         fc.record({
           deletedTextCount: fc.integer({ min: 1, max: 4 }),
           survivors: fc.array(
-            fc.constantFrom("text", "image", "field", "tab", "noteMarker"),
-            {
-              maxLength: 6,
-            },
+            fc.constantFrom("text", "image", "field", "tab", "noteReference"),
+            { maxLength: 6 },
           ),
         }),
         async ({ deletedTextCount, survivors }) => {
@@ -254,34 +331,22 @@ describe("accepted deletion comment anchors", () => {
             covered.push(textRun(value));
             deleted.push(value);
           }
-          for (const [index, kind] of survivors.entries()) {
-            covered.push(
-              kind === "text"
-                ? textRun(`survivor${String(index)}`)
-                : atomContent[kind],
-            );
-          }
+          const surviving = survivors.map(survivorContent);
+          covered.push(...surviving);
           const expected = survivors.length > 0;
-          expect(await deleteGone(covered, { mode: "direct", deleted })).toBe(
-            expected,
-          );
+          expect(
+            await deleteGone(covered, { mode: "direct", deleted, session }),
+          ).toBe(expected);
           const expectRefusal = !expected && deletedTextCount > 1;
           expect(
             await deleteGone(covered, {
               mode: "tracked-changes",
               deleted,
               expectRefusal,
+              session,
             }),
           ).toBe(expected || expectRefusal);
-          expect(
-            await rejectInserted(
-              survivors.map((kind, index) =>
-                kind === "text"
-                  ? textRun(`survivor${String(index)}`)
-                  : atomContent[kind],
-              ),
-            ),
-          ).toBe(expected);
+          expect(await rejectInserted(surviving, session)).toBe(expected);
         },
       );
       await fc.assert(property, propertyConfig({ numRuns: 40, seed: 1958 }));
