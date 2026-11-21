@@ -382,51 +382,86 @@ const buildLinkedDocument = (): Document => ({
   },
 });
 
-describe("replaceInBlock over a block whose text is a hyperlink", () => {
-  test.each(["direct", "tracked-changes"] as const)(
-    "keeps the link on the new text in %s mode",
-    async (mode) => {
-      const reviewer = await FolioDocxReviewer.fromBuffer(
-        await createDocx(buildLinkedDocument()),
-        {
-          author: "Editor",
-        },
-      );
-      const [target] = reviewer.snapshot().blocks;
-      expect(target?.text).toBe(LINK_TEXT);
-      reviewer.applyOperations(
-        [
-          {
-            id: "r1",
-            type: "replaceInBlock",
-            blockId: target?.id ?? "",
-            find: LINK_TEXT,
-            replace: REPLACED_LINK_TEXT,
-          },
-        ],
-        { undefinedReferences: "refuse", mode },
-      );
+/** The text of each hyperlink in a saved body, and the text outside every link. */
+const linkReading = (xml: string) => {
+  const texts = (part: string) =>
+    [...part.matchAll(/<w:(?:t|delText)\b[^>]*>([^<]*)<\/w:(?:t|delText)>/gu)]
+      .map(([, text]) => text ?? "")
+      .join("");
+  const links = [
+    ...xml.matchAll(/<w:hyperlink\b[^>]*>([\s\S]*?)<\/w:hyperlink>/gu),
+  ].map(([, inside]) => texts(inside ?? ""));
+  return {
+    links,
+    outside: texts(
+      xml.replaceAll(/<w:hyperlink\b[^>]*>[\s\S]*?<\/w:hyperlink>/gu, ""),
+    ),
+  };
+};
 
-      const saved = await reviewer.toBuffer();
-      const xml = await documentXml(saved);
-      const relationships = await (async () => {
-        const zip = await ZipArchive.read(saved);
-        return (await zip.entry("word/_rels/document.xml.rels")?.text()) ?? "";
-      })();
+describe.each(["legacy", "canonical"] as const)(
+  "replaceInBlock over a block whose text is a hyperlink (%s)",
+  (session) => {
+    test.each(["direct", "tracked-changes"] as const)(
+      "keeps the link on the new text in %s mode",
+      async (mode) => {
+        const reviewer = await FolioDocxReviewer.fromBuffer(
+          await createDocx(buildLinkedDocument()),
+          { author: "Editor", session },
+        );
+        const [target] = reviewer.snapshot().blocks;
+        expect(target?.text).toBe(LINK_TEXT);
+        const receipt = reviewer.applyOperations(
+          [
+            {
+              id: "r1",
+              type: "replaceInBlock",
+              blockId: target?.id ?? "",
+              find: LINK_TEXT,
+              replace: REPLACED_LINK_TEXT,
+            },
+          ],
+          { undefinedReferences: "refuse", mode },
+        );
+        expect(receipt.skipped).toEqual([]);
 
-      // The link still wraps the replacement, and still points where it did.
-      const linked = [
-        ...xml.matchAll(/<w:hyperlink\b[^>]*>([\s\S]*?)<\/w:hyperlink>/gu),
-      ].map(([, inside]) => inside ?? "");
-      expect(linked.some((inside) => inside.includes(REPLACED_LINK_TEXT))).toBe(
-        true,
-      );
-      expect(relationships).toContain(LINK_TARGET);
-      // Nothing outside a link carries the new text: the replacement did not
-      // escape the hyperlink it replaced.
-      expect(
-        xml.replaceAll(/<w:hyperlink\b[^>]*>[\s\S]*?<\/w:hyperlink>/gu, ""),
-      ).not.toContain(REPLACED_LINK_TEXT);
-    },
-  );
-});
+        const saved = await reviewer.toBuffer();
+        const xml = await documentXml(saved);
+        const relationships = await (async () => {
+          const zip = await ZipArchive.read(saved);
+          return (
+            (await zip.entry("word/_rels/document.xml.rels")?.text()) ?? ""
+          );
+        })();
+
+        // The link still wraps the replacement, and still points where it
+        // did; nothing outside a link carries the new text.
+        const reading = linkReading(xml);
+        expect(reading.links.join("")).toContain(REPLACED_LINK_TEXT);
+        expect(reading.outside).toBe("");
+        expect(relationships).toContain(LINK_TARGET);
+        if (mode === "direct") return;
+
+        // Accepting leaves the new text linked, rejecting the old.
+        for (const [resolve, kept] of [
+          ["accept", REPLACED_LINK_TEXT],
+          ["reject", LINK_TEXT],
+        ] as const) {
+          const reopened = await FolioDocxReviewer.fromBuffer(saved, {
+            session,
+          });
+          if (resolve === "accept") reopened.acceptAll();
+          else reopened.rejectAll();
+          const resolved = await FolioDocxReviewer.fromBuffer(
+            await reopened.toBuffer(),
+            { session },
+          );
+          expect(resolved.getChanges()).toEqual([]);
+          expect(
+            linkReading(await documentXml(await resolved.toBuffer())),
+          ).toEqual({ links: [kept], outside: "" });
+        }
+      },
+    );
+  },
+);
