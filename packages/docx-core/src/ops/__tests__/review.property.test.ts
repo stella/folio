@@ -69,7 +69,7 @@ import {
   paragraphIdsIn,
 } from "../ids";
 import { gapAfterInserted } from "../inline";
-import { settleKeptCuts } from "../keptCut";
+import { settledParagraphKeptCuts } from "../keptCut";
 import * as keptJoinsModule from "../keptJoins";
 import {
   childNodes,
@@ -589,8 +589,7 @@ const expectSettled = (document: Document): void => {
     visit(paragraph.content);
   for (const group of groups)
     expect(group.blockers.filter((id) => !pending.has(id))).toEqual([]);
-  for (const { paragraph } of storyParagraphs(document.package.document))
-    expect(settleKeptCuts(paragraph.content)).toEqual(paragraph.content);
+  expect(settledParagraphKeptCuts(document.package.document)).toEqual([]);
 };
 
 /**
