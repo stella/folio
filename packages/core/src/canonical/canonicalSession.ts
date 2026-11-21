@@ -47,6 +47,7 @@ import {
   type InsertContentOp,
   type InsertTextOp,
   inverseMeetingDocument,
+  isBlockBoundary,
   normalizeForOps,
   OP_STORIES,
   type OpStory,
@@ -805,7 +806,16 @@ class CanonicalProjection {
     // the paragraph draws, which the projection lists after it.
     const index = paragraph.container.indexOf(paragraph.source);
     if (index >= 0) {
-      const following = paragraph.container[index + 1];
+      // Range boundaries standing between the blocks are no blocks a merge
+      // stops at, unless the paragraph ends a section.
+      let at = index + 1;
+      while (
+        paragraph.source.sectionProperties === undefined &&
+        paragraph.container[at] !== undefined &&
+        isBlockBoundary(paragraph.container[at] ?? panic("A block is listed."))
+      )
+        at += 1;
+      const following = paragraph.container[at];
       if (following?.type !== "paragraph" || following.paraId === undefined)
         return undefined;
       const address = this.paragraph(following.paraId);
