@@ -46,6 +46,10 @@ const OPTIONS = {
   timestamp: "2026-09-08T00:00:00.000Z",
 } as const;
 const REVISION_STAMP = { date: OPTIONS.timestamp, idSeed: 1 } as const;
+const SESSIONS = ["legacy", "canonical"] as const;
+/** Revision ids are an allocation detail; the engines number them apart. */
+const withoutRevisionIds = (xml: string): string =>
+  xml.replace(/ w:id="\d+"/gu, "");
 const TEXT = "The agreement remains effective for the stated term.";
 const STYLE_ID = "AlignedBody";
 const NEXT_STYLE_ID = "NextAlignedBody";
@@ -903,25 +907,31 @@ describe("paragraph alignment comparison", () => {
     },
   );
 
-  test.each([
-    {
-      label: "direct to absent",
-      baseDirectAlignment: "center",
-      targetDirectAlignment: undefined,
-    },
-    {
-      label: "absent to direct",
-      baseDirectAlignment: undefined,
-      targetDirectAlignment: "both",
-    },
-  ] as const)(
-    "rejects an append after an empty final carrier whose alignment changed: $label",
-    async ({ baseDirectAlignment, targetDirectAlignment }) => {
+  test.each(
+    (
+      [
+        {
+          label: "direct to absent",
+          baseDirectAlignment: "center",
+          targetDirectAlignment: undefined,
+        },
+        {
+          label: "absent to direct",
+          baseDirectAlignment: undefined,
+          targetDirectAlignment: "both",
+        },
+      ] as const
+    ).flatMap((transition) =>
+      SESSIONS.map((session) => ({ ...transition, session })),
+    ),
+  )(
+    "rejects an append after an empty final carrier whose alignment changed: $label ($session)",
+    async ({ baseDirectAlignment, targetDirectAlignment, session }) => {
       const { base, target } = await emptyFinalCarrierInsertionDocuments({
         baseDirectAlignment,
         targetDirectAlignment,
       });
-      const result = await compareDocx(base, target, OPTIONS);
+      const result = await compareDocx(base, target, { ...OPTIONS, session });
       if (result.isErr()) {
         throw result.error;
       }
@@ -935,14 +945,22 @@ describe("paragraph alignment comparison", () => {
       const pendingParagraphs = paragraphXmls(pendingXml);
       expect(pendingParagraphs).toHaveLength(2);
       expect(pendingXml.match(/<w:pPrChange\b/gu)).toHaveLength(2);
-      expect(
-        trackedParagraphPropertyPartsFromParagraph(
-          pendingParagraphs.at(0) ?? "",
-        ),
-      ).toEqual({
+      // The appended words take the carrier's final mark; the carrier's new
+      // inserted mark names which paragraph a rejection keeps (canonical).
+      const survivor =
+        session === "canonical"
+          ? ' folio:rejectionSurvivor="{&quot;version&quot;:1,&quot;value&quot;:&quot;first&quot;}"'
+          : "";
+      const carrierParts = trackedParagraphPropertyPartsFromParagraph(
+        pendingParagraphs.at(0) ?? "",
+      );
+      expect({
+        ...carrierParts,
+        current: withoutRevisionIds(carrierParts.current),
+      }).toEqual({
         current:
           expectedParagraphProperties(targetDirectAlignment) +
-          `<w:rPr><w:ins w:id="2" w:author="${OPTIONS.author}" w:date="${OPTIONS.timestamp}"/></w:rPr>`,
+          `<w:rPr><w:ins w:author="${OPTIONS.author}" w:date="${OPTIONS.timestamp}"${survivor}/></w:rPr>`,
         previous: expectedParagraphProperties(baseDirectAlignment),
       });
       expect(
@@ -955,7 +973,10 @@ describe("paragraph alignment comparison", () => {
       });
       expect(pendingXml).not.toContain("w:hanging");
 
-      const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+      const accepting = await FolioDocxReviewer.fromBuffer(
+        result.value.buffer,
+        { session },
+      );
       expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
       expect(accepting.getChanges()).toEqual([]);
       expect(
@@ -972,14 +993,19 @@ describe("paragraph alignment comparison", () => {
         expectedParagraphProperties(targetDirectAlignment),
         expectedParagraphProperties(targetDirectAlignment),
       ]);
-      const reopenedAccepted = await FolioDocxReviewer.fromBuffer(accepted);
+      const reopenedAccepted = await FolioDocxReviewer.fromBuffer(accepted, {
+        session,
+      });
       expect(
         paragraphBlocksOf(reopenedAccepted).map(
           ({ directAlignment }) => directAlignment,
         ),
       ).toEqual([targetDirectAlignment, targetDirectAlignment]);
 
-      const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+      const rejecting = await FolioDocxReviewer.fromBuffer(
+        result.value.buffer,
+        { session },
+      );
       expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
       expect(rejecting.getChanges()).toEqual([]);
       expect(
@@ -994,7 +1020,9 @@ describe("paragraph alignment comparison", () => {
       expect(untrackedParagraphProperties(rejectedXml)).toBe(
         expectedParagraphProperties(baseDirectAlignment),
       );
-      const reopenedRejected = await FolioDocxReviewer.fromBuffer(rejected);
+      const reopenedRejected = await FolioDocxReviewer.fromBuffer(rejected, {
+        session,
+      });
       expect(
         paragraphBlocksOf(reopenedRejected).map(
           ({ directAlignment }) => directAlignment,
@@ -1065,73 +1093,90 @@ describe("paragraph alignment comparison", () => {
     ).toEqual(["center"]);
   });
 
-  test("carries direct alignment on an inserted body paragraph before its anchor", async () => {
-    const { base, target } = await bodyInsertionDocuments({
-      inheritedAlignment: "right",
-      anchorDirectAlignment: "center",
-      insertedDirectAlignment: "left",
-      position: "before",
-    });
-    const result = await compareDocx(base, target, OPTIONS);
-    if (result.isErr()) {
-      throw result.error;
-    }
+  test.each(SESSIONS)(
+    "carries direct alignment on an inserted body paragraph before its anchor (%s)",
+    async (session) => {
+      const { base, target } = await bodyInsertionDocuments({
+        inheritedAlignment: "right",
+        anchorDirectAlignment: "center",
+        insertedDirectAlignment: "left",
+        position: "before",
+      });
+      const result = await compareDocx(base, target, { ...OPTIONS, session });
+      if (result.isErr()) {
+        throw result.error;
+      }
 
-    expect(result.value.verification).toEqual({ status: "verified" });
-    expect(result.value.changes).toEqual([
-      expect.objectContaining({
-        kind: "insert",
-        after: "The added paragraph keeps its authored alignment.",
-      }),
-    ]);
-    const pendingXml = await mainDocumentXml(result.value.buffer);
-    expect(pendingXml).not.toContain("<w:pPrChange");
-    const pendingInsertedParagraph = paragraphXmls(pendingXml).at(0) ?? "";
-    expectDirectAlignmentXml(pendingInsertedParagraph, "left");
-    expect(untrackedParagraphProperties(pendingInsertedParagraph)).toBe(
-      `${expectedParagraphProperties("left")}<w:rPr><w:ins w:id="2" w:author="${OPTIONS.author}" w:date="${OPTIONS.timestamp}"/></w:rPr>`,
-    );
+      expect(result.value.verification).toEqual({ status: "verified" });
+      expect(result.value.changes).toEqual([
+        expect.objectContaining({
+          kind: "insert",
+          after: "The added paragraph keeps its authored alignment.",
+        }),
+      ]);
+      const pendingXml = await mainDocumentXml(result.value.buffer);
+      expect(pendingXml).not.toContain("<w:pPrChange");
+      const pendingInsertedParagraph = paragraphXmls(pendingXml).at(0) ?? "";
+      expectDirectAlignmentXml(pendingInsertedParagraph, "left");
+      expect(
+        withoutRevisionIds(
+          untrackedParagraphProperties(pendingInsertedParagraph),
+        ),
+      ).toBe(
+        `${expectedParagraphProperties("left")}<w:rPr><w:ins w:author="${OPTIONS.author}" w:date="${OPTIONS.timestamp}"/></w:rPr>`,
+      );
 
-    const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
-    expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
-    expect(
-      paragraphBlocksOf(accepting).map(
-        ({ directAlignment }) => directAlignment,
-      ),
-    ).toEqual(["left", "center"]);
-    const accepted = await accepting.toBuffer();
-    const acceptedXml = await mainDocumentXml(accepted);
-    expect(acceptedXml).not.toContain("<w:pPrChange");
-    expect(
-      untrackedParagraphProperties(paragraphXmls(acceptedXml).at(0) ?? ""),
-    ).toBe(expectedParagraphProperties("left"));
-    const reopenedAccepted = await FolioDocxReviewer.fromBuffer(accepted);
-    expect(
-      paragraphBlocksOf(reopenedAccepted).map(
-        ({ directAlignment }) => directAlignment,
-      ),
-    ).toEqual(["left", "center"]);
+      const accepting = await FolioDocxReviewer.fromBuffer(
+        result.value.buffer,
+        { session },
+      );
+      expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
+      expect(
+        paragraphBlocksOf(accepting).map(
+          ({ directAlignment }) => directAlignment,
+        ),
+      ).toEqual(["left", "center"]);
+      const accepted = await accepting.toBuffer();
+      const acceptedXml = await mainDocumentXml(accepted);
+      expect(acceptedXml).not.toContain("<w:pPrChange");
+      expect(
+        untrackedParagraphProperties(paragraphXmls(acceptedXml).at(0) ?? ""),
+      ).toBe(expectedParagraphProperties("left"));
+      const reopenedAccepted = await FolioDocxReviewer.fromBuffer(accepted, {
+        session,
+      });
+      expect(
+        paragraphBlocksOf(reopenedAccepted).map(
+          ({ directAlignment }) => directAlignment,
+        ),
+      ).toEqual(["left", "center"]);
 
-    const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
-    expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
-    expect(
-      paragraphBlocksOf(rejecting).map(
-        ({ directAlignment }) => directAlignment,
-      ),
-    ).toEqual(["center"]);
-    const rejected = await rejecting.toBuffer();
-    const rejectedXml = await mainDocumentXml(rejected);
-    expect(rejectedXml).not.toContain("<w:pPrChange");
-    expect(untrackedParagraphProperties(firstParagraphXml(rejectedXml))).toBe(
-      expectedParagraphProperties("center"),
-    );
-    const reopenedRejected = await FolioDocxReviewer.fromBuffer(rejected);
-    expect(
-      paragraphBlocksOf(reopenedRejected).map(
-        ({ directAlignment }) => directAlignment,
-      ),
-    ).toEqual(["center"]);
-  });
+      const rejecting = await FolioDocxReviewer.fromBuffer(
+        result.value.buffer,
+        { session },
+      );
+      expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
+      expect(
+        paragraphBlocksOf(rejecting).map(
+          ({ directAlignment }) => directAlignment,
+        ),
+      ).toEqual(["center"]);
+      const rejected = await rejecting.toBuffer();
+      const rejectedXml = await mainDocumentXml(rejected);
+      expect(rejectedXml).not.toContain("<w:pPrChange");
+      expect(untrackedParagraphProperties(firstParagraphXml(rejectedXml))).toBe(
+        expectedParagraphProperties("center"),
+      );
+      const reopenedRejected = await FolioDocxReviewer.fromBuffer(rejected, {
+        session,
+      });
+      expect(
+        paragraphBlocksOf(reopenedRejected).map(
+          ({ directAlignment }) => directAlignment,
+        ),
+      ).toEqual(["center"]);
+    },
+  );
 
   test.each([
     {
