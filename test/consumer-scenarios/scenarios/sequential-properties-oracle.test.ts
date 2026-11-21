@@ -344,9 +344,9 @@ for (const session of ["legacy", "canonical"] as const)
               const refused = refusesRunStart({ session, mode, length });
               // The deletion of the run's first paragraph, which the session
               // refuses in that case.
-              const runStart = `delete-${deletions[0]?.id ?? ""}`;
+              const runStart = deletions[0]?.id;
               const expectedSkips = (ids: readonly string[]) =>
-                refused && ids.includes(runStart)
+                refused && runStart !== undefined && ids.includes(runStart)
                   ? [
                       {
                         id: runStart,
