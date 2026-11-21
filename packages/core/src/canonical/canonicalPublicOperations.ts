@@ -1771,19 +1771,24 @@ type FormattingIntentsAsItRunsOptions = {
   story: OpStory;
   /** Each paragraph the batch joined away, to the one it now lives in. */
   survivorOf: ReadonlyMap<string, string>;
+  /** Those of them whose words open the paragraph they now live in. */
+  openingSurvivorOf: ReadonlyMap<string, string>;
   intents: readonly EditorIntent[];
 };
 
 /**
- * Paragraph property edits bound to the paragraph as the batch stands when
- * they run: one an earlier operation joined away, such as the first half of
- * a split whose retraction joins it to the second, is edited in the
- * paragraph that now holds it.
+ * Paragraph property edits and paragraphs put before a paragraph, bound to
+ * the paragraph as the batch stands when they run: one an earlier operation
+ * joined away, such as the first half of a split whose retraction joins it
+ * to the second, is edited in the paragraph that now holds it, and a
+ * paragraph put before it goes before that one when its words open it, as
+ * a merge into the next paragraph leaves them.
  */
 const formattingIntentsAsItRuns = ({
   document,
   story,
   survivorOf,
+  openingSurvivorOf,
   intents,
 }: FormattingIntentsAsItRunsOptions): readonly EditorIntent[] => {
   if (survivorOf.size === 0) return intents;
@@ -1809,10 +1814,45 @@ const formattingIntentsAsItRuns = ({
           ...intent,
           items: intent.items.map((item) => ({ ...item, at: bound(item.at) })),
         };
+      case "insertParagraphs": {
+        const { at } = intent;
+        if (at.type !== "before" || present.has(idKey(at.blockId)))
+          return intent;
+        const survivor = openingSurvivorOf.get(idKey(at.blockId));
+        return survivor === undefined
+          ? intent
+          : { ...intent, at: { type: "before", blockId: survivor } };
+      }
       default:
         return intent;
     }
   });
+};
+
+type OpensSurvivorOptions = {
+  /** The document before the operation that joined the paragraph away. */
+  document: Document;
+  story: OpStory;
+  absorption: ParagraphAbsorption;
+};
+
+/**
+ * Whether the absorbed paragraph's words open the survivor: it stood
+ * before it in the same block list.
+ */
+const opensSurvivor = ({
+  document,
+  story,
+  absorption: { absorbed, survivor },
+}: OpensSurvivorOptions): boolean => {
+  const gone = locateParagraphThroughTextBoxes(document, story, absorbed);
+  const kept = locateParagraphThroughTextBoxes(document, story, survivor);
+  return (
+    gone !== undefined &&
+    kept !== undefined &&
+    gone.blocks === kept.blocks &&
+    gone.index < kept.index
+  );
 };
 
 type OwnMarkBeforeInsertedTableOptions = {
@@ -2045,6 +2085,8 @@ const mergeIntentsAsItRuns = ({
 type InsertionIntentsAsItRunsOptions = {
   document: Document;
   story: OpStory;
+  /** Each paragraph the batch joined away, to the one it now lives in. */
+  survivorOf: ReadonlyMap<string, string>;
   resolvedOperation: PreparedOperation;
 };
 
@@ -2052,21 +2094,24 @@ type InsertionIntentsAsItRunsOptions = {
  * A block insertion's intents with the properties it copies read from
  * `document`, the batch as it stands when the insertion runs: an edit of
  * the copied paragraph the batch order runs first is in the copy, as the
- * default engine copies it.
+ * default engine copies it, and a paragraph the batch joined away is copied
+ * as the paragraph that now holds it.
  */
 const insertionIntentsAsItRuns = ({
   document,
   story,
+  survivorOf,
   resolvedOperation,
 }: InsertionIntentsAsItRunsOptions): readonly EditorIntent[] => {
   const { intents, inheritsFrom } = resolvedOperation;
   if (inheritsFrom === undefined) return intents;
   // A text box's paragraphs are named through the story drawing it.
-  const at = locateParagraphThroughTextBoxes(
-    document,
-    story,
-    inheritsFrom.blockId,
-  );
+  const locate = (blockId: string) =>
+    locateParagraphThroughTextBoxes(document, story, blockId);
+  const survivor = survivorOf.get(idKey(inheritsFrom.blockId));
+  const at =
+    locate(inheritsFrom.blockId) ??
+    (survivor === undefined ? undefined : locate(survivor));
   if (at === undefined) return intents;
   let source = at.paragraph;
   // A pending deletion takes its formatting from the surviving paragraph in
@@ -4495,6 +4540,8 @@ export class CanonicalPublicOperations {
      * does one at a time after that operation.
      */
     const survivorOf = new Map<string, string>();
+    /** Those whose words open the paragraph they now live in. */
+    const openingSurvivorOf = new Map<string, string>();
     // Preparation owns no session state: even comments and lock refusals are
     // facts until the batch chooses this attempt.
     const prepareOperation = ({
@@ -4514,9 +4561,11 @@ export class CanonicalPublicOperations {
         document: sourceDocument,
         story,
         survivorOf,
+        openingSurvivorOf,
         intents: insertionIntentsAsItRuns({
           document: sourceDocument,
           story,
+          survivorOf,
           resolvedOperation,
         }),
       });
@@ -4908,10 +4957,18 @@ export class CanonicalPublicOperations {
         skip(operation.id, prepared.reason, prepared.message);
         return;
       }
-      for (const { absorbed, survivor } of prepared.absorbed) {
+      for (const absorption of prepared.absorbed) {
+        const { absorbed, survivor } = absorption;
+        const opens = opensSurvivor({ document, story, absorption });
         for (const [gone, kept] of survivorOf)
           if (kept === idKey(absorbed)) survivorOf.set(gone, idKey(survivor));
+        for (const [gone, kept] of openingSurvivorOf) {
+          if (kept !== idKey(absorbed)) continue;
+          if (opens) openingSurvivorOf.set(gone, idKey(survivor));
+          else openingSurvivorOf.delete(gone);
+        }
         survivorOf.set(idKey(absorbed), idKey(survivor));
+        if (opens) openingSurvivorOf.set(idKey(absorbed), idKey(survivor));
       }
       const { commentId, suggestionId, revisionIds, retiredCommentIds } =
         prepared;
