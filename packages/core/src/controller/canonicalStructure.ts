@@ -53,6 +53,7 @@ import type {
   Paragraph,
 } from "../types/document";
 import { readModel } from "../types/documentModel";
+import { maxOf } from "../utils/extremes";
 import { collectHeadings } from "../utils/headingCollector";
 import { prepareContentControlValue } from "./canonicalContentControlValue";
 
@@ -283,12 +284,11 @@ const numberingIntent = (
     numId = unused;
     target = { type: "existing", numId };
   } else {
-    numId =
-      Math.max(0, ...(definitions?.nums.map((num) => num.numId) ?? [])) + 1;
+    numId = maxOf(definitions?.nums.map((num) => num.numId) ?? [], 0) + 1;
     const abstractNumId =
-      Math.max(
+      maxOf(
+        definitions?.abstractNums.map((num) => num.abstractNumId) ?? [],
         -1,
-        ...(definitions?.abstractNums.map((num) => num.abstractNumId) ?? []),
       ) + 1;
     const levels = Array.from({ length: 9 }, (_, level): ListLevel => ({
       ilvl: level,
@@ -855,7 +855,10 @@ export const prepareCanonicalCommands = (
           if (original === undefined)
             return refuse("The numbering instance does not exist.");
           targetId =
-            Math.max(0, ...definitions.nums.map((num) => num.numId)) + 1;
+            maxOf(
+              definitions.nums.map((num) => num.numId),
+              0,
+            ) + 1;
           const level = numPr.ilvl ?? 0;
           target = {
             type: "new",

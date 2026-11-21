@@ -135,13 +135,12 @@ test("nonempty block replacement shares validation and its section-aware inverse
 test("stale inline content is refused before inspecting its invalid replacement", () => {
   const original = paragraph(1, "text");
   const document = documentOf([original]);
-  const invalid = [{ type: "run", content: [] }] as const;
   const op: ReplaceInlineOp = {
     type: DOCUMENT_OP_TYPES.REPLACE_INLINE,
     story: OP_STORIES.MAIN,
     blockId: "00000001",
     expected: [],
-    content: [...invalid],
+    content: [{ type: "run", content: [] }],
   };
   const planned = primitives.prepareResolutionParagraphOp({
     document,

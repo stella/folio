@@ -853,6 +853,23 @@ describe("table structure operations in the canonical session", () => {
               }
               continue;
             }
+            // On the canonical session accepting runs the joined words into
+            // the table's first cell: a table put before that table would
+            // take them, so it waits for the join to be resolved.
+            if (
+              supported &&
+              side === "before" &&
+              value.body ===
+                "a pending join into a deleted paragraph before a table"
+            ) {
+              expect(canonical.skipped).toEqual([
+                "pendingParagraphMarkDeletion",
+              ]);
+              expect(await outcomes(canonical.bytes)).toEqual(
+                await outcomes(source),
+              );
+              continue;
+            }
             expect(canonical.skipped).toEqual(legacy.skipped);
             expect(canonical.applied).toHaveLength(supported ? 1 : 0);
             expect(canonical.refusals).toEqual([]);

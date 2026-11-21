@@ -180,6 +180,9 @@ export type ClientNotice = {
 };
 
 // @public
+export const combineEditEffects: (final: Document_2, edits: readonly DocumentEditEffects[]) => DocumentEdit;
+
+// @public
 export const combineEdits: (document: Document_2, edits: readonly DocumentEdit[]) => DocumentEdit;
 
 // @public
@@ -896,6 +899,9 @@ export const isCommentExhausted: (input: CommentExhaustionInput) => boolean;
 export const isCopyOriginAncestors: (value: unknown) => value is CopyOriginAncestorList;
 
 // @public
+export const isKeptCut: (cut: unknown) => cut is KeptCut;
+
+// @public
 export function isTextOnlyRun(run: Run): boolean;
 
 // @public
@@ -1090,6 +1096,9 @@ export const paragraphContentVerdict: (input: {
 export const paragraphIdsIn: (value: unknown) => string[];
 
 // @public
+export const paragraphKeptCutsFromChanges: (content: readonly ParagraphContent[], writtenOnChange: (joins: SeamJoins) => VersionOneKept | undefined) => ParagraphContent[];
+
+// @public
 export const paragraphLength: (paragraph: Paragraph) => number;
 
 // @public
@@ -1108,21 +1117,18 @@ export const paragraphMarkOutcome: (input: {
     tableRemovalIsTrackable?: boolean;
     emptyInsertedTableBoundary?: "unavailable" | "pendingReview";
     precededByBlock?: boolean;
-    removedSectionProperties?: boolean;
-    precedingSectionOwner?: "unavailable" | "available" | "same" | "occupied";
-    followingHasSectionProperties?: boolean;
-}) => ({
+}) => {
     kind: "join";
-} & SectionTransfer) | ({
+} | {
     kind: "remove";
-} & SectionTransfer) | ({
+} | {
     kind: "run-in";
-} & SectionTransfer) | ({
+} | {
     kind: "keep";
-} & SectionTransfer) | ({
+} | {
     kind: "refuse";
     reason: "untrackable";
-} & SectionTransfer);
+};
 
 // @public
 export const paragraphPropertySnapshotToken: (paragraph: Paragraph) => object | undefined;
@@ -1669,6 +1675,9 @@ export const transformPosition: (position: TextPosition, over: readonly Sequence
 export const trimIdLease: (lease: IdLease, ids: readonly LeasedId[]) => IdLease;
 
 // @public
+export const tryTrackedInsertionGroup: (input: TrackedInsertionGroupOptions) => TrackedInsertionGroupResult;
+
+// @public
 export const TYPED_TEXT_FORMATTING: Readonly<{
     readonly CARET: "caret";
     readonly BODY_TEXT: "bodyText";
@@ -1690,6 +1699,18 @@ export const validateOpsDocument: (document: Document_2) => Result<Document_2, D
 
 // @public
 export const validateSequencedBatch: (value: unknown) => Result<SequencedBatch, BatchRejection>;
+
+// @public
+export type VersionOneKept = {
+    change?: VersionOneKeptMarkers;
+    groups: readonly (VersionOneKeptMarkers | undefined)[];
+};
+
+// @public
+export type VersionOneKeptMarkers = {
+    keptFrom: string;
+    keptCount?: number;
+};
 
 // @public
 export type WellFormedRangePlan = {

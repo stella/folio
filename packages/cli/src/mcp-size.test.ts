@@ -6,12 +6,15 @@
  */
 
 import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
-import { afterAll, beforeAll, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, setDefaultTimeout, test } from "bun:test";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
+import { DISK_SYNC_TEST_TIMEOUT_MS } from "../../../test/disk-sync-timeout";
 import { fourPageContract, makeTempDir, writeDocx } from "./__tests__/fixtures";
 import { createFolioMcpServer } from "./mcp";
+
+setDefaultTimeout(DISK_SYNC_TEST_TIMEOUT_MS);
 
 let cleanup: () => Promise<void> = () => Promise.resolve();
 let root = "";

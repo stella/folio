@@ -1,9 +1,17 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  setDefaultTimeout,
+  test,
+} from "bun:test";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { FolioDocxReviewer } from "@stll/folio-core/server";
 
+import { DISK_SYNC_TEST_TIMEOUT_MS } from "../../../test/disk-sync-timeout";
 import { scanTestTimeout } from "../../../test/scan-timeout";
 import { makeTempDir } from "./__tests__/fixtures";
 import { captureIo, dataOf, envelopeOf } from "./__tests__/io";
@@ -15,6 +23,8 @@ import {
 import { runFolioCli } from "./cli";
 import { EXIT_CODES } from "./errors";
 import { fillPlaceholders, inspectPlaceholders } from "./placeholders";
+
+setDefaultTimeout(DISK_SYNC_TEST_TIMEOUT_MS);
 
 const paragraph = (id: string, runs: string): string =>
   `<w:p w14:paraId="${id}" w14:textId="77777777">${runs}</w:p>`;

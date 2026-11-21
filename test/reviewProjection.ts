@@ -293,15 +293,20 @@ const PARAGRAPH_IDENTITY_KEYS = new Set([
   "preservedAttributes",
 ]);
 
+/** Whether the cut a kept range marker records is compared or dropped. */
+export const KEPT_CUTS = { DROPPED: "dropped", COMPARED: "compared" } as const;
+
 type ProjectReviewOptions = {
   document: Document;
   projection?: "π" | "π′";
+  keptCuts?: (typeof KEPT_CUTS)[keyof typeof KEPT_CUTS];
 };
 
 /** The existing ops-law projection; L8 uses canonicalReviewBlocks to preserve ids. */
 export const projectReview = ({
   document,
   projection = "π",
+  keptCuts = KEPT_CUTS.DROPPED,
 }: ProjectReviewOptions): unknown => {
   const ids = new Map<string, number>();
   const number = (key: string): number => {
@@ -318,6 +323,9 @@ export const projectReview = ({
     for (const [key, field] of Object.entries(value)) {
       // Optional undefined fields serialize exactly as absent fields.
       if (field === undefined) continue;
+      // Review state a kept marker carries is no content of the document;
+      // the review laws compare it, as every order must leave the same cut.
+      if (key === "keptCut" && keptCuts === KEPT_CUTS.DROPPED) continue;
       if (paragraph && projection === "π′" && PARAGRAPH_IDENTITY_KEYS.has(key))
         continue;
       out[key] = walk(field);

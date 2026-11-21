@@ -377,6 +377,8 @@ type PrepareTrackedParagraphInsertionOptions = {
   anchor: Paragraph;
   /** Omitted at the end of the virtual main-story list. */
   following?: Paragraph;
+  /** A neighbor in the already validated virtual document represented by both indexes. */
+  validatedNeighbor?: Paragraph;
   paragraphIds: Pick<IdentityKeyIndex, "count">;
   recordIds: Pick<IdentityKeyIndex, "count">;
 };
@@ -400,6 +402,7 @@ export const prepareTrackedParagraphInsertion = ({
   op,
   anchor: source,
   following,
+  validatedNeighbor,
   paragraphIds,
   recordIds,
 }: PrepareTrackedParagraphInsertionOptions): Result<
@@ -459,10 +462,20 @@ export const prepareTrackedParagraphInsertion = ({
     anchor,
   });
   const validate = (prepared: ReplaceBlocksOp) => {
+    // An unchanged, validated neighbor contributes no removals. Its ids stay
+    // occupied in both virtual indexes, so an inserted copy still collides.
+    const [added, retained] = prepared.blocks;
+    const includesValidatedNeighbor =
+      validatedNeighbor === anchor &&
+      retained === anchor &&
+      prepared.blocks.length === 2 &&
+      added !== undefined;
     const checked = validateReplacement({
       document,
-      op: prepared,
-      before: [anchor],
+      op: includesValidatedNeighbor
+        ? { ...prepared, blocks: [added], expected: [] }
+        : prepared,
+      before: includesValidatedNeighbor ? [] : [anchor],
       paragraphIds,
       recordIds,
     });
@@ -582,7 +595,17 @@ export const insertBlocks = ({
           );
       }
       const following = list.at(located.value.index);
-      if (!list.some((block) => block.type === "paragraph"))
+      // After a table that ends a block content control's content, the
+      // paragraph stays in the control. Its mark joins nothing there:
+      // rejecting removes the emptied paragraph by an empty replacement,
+      // reinserted after the table, and never reaches past the control. A
+      // control that ends its container is refused below, as a container
+      // keeps a final paragraph.
+      const endsControl =
+        op.at.type === "afterTable" &&
+        following === undefined &&
+        located.value.list.at(-1)?.kind === "blockSdt";
+      if (!endsControl && !list.some((block) => block.type === "paragraph"))
         return refuse(
           DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
           "Tracked table-side insertion needs a surviving paragraph for its review inverse.",
@@ -600,6 +623,7 @@ export const insertBlocks = ({
             "Tracked table-side insertion needs a paragraph terminator after its table receiver.",
           );
       } else if (
+        !endsControl &&
         following?.type !== "paragraph" &&
         !isOpaqueFollower(following)
       )

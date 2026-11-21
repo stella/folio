@@ -25,6 +25,17 @@ export const folioAIBlockIdStability = ({
   idStability ??
   (getFolioParaIdFromBlockId(id) === null ? "positional" : "stable");
 
+/**
+ * A block as the package holds it. `idStability` is the reading's fact, not
+ * the package's: a save writes a minted id into a paragraph it rewrites, so the
+ * same paragraph reads as stated once reopened.
+ */
+export const persistedBlock = (block: FolioAIBlock): FolioAIBlock => {
+  const persisted = { ...block };
+  delete persisted.idStability;
+  return persisted;
+};
+
 export const stripBlockIdentityAttrs = (
   attrs: Record<string, unknown>,
 ): Record<string, unknown> => {

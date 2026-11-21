@@ -16,6 +16,12 @@ export {
   rejectCopyOriginAncestors,
   shiftCopyOriginAncestors,
 } from "./copyOriginAncestors";
+export {
+  isKeptCut,
+  paragraphKeptCutsFromChanges,
+  type VersionOneKept,
+  type VersionOneKeptMarkers,
+} from "./keptCut";
 export { noteUsesCustomMark } from "./noteMarks";
 export {
   withParagraphCopies,
@@ -72,8 +78,9 @@ export {
 } from "./leaves";
 export { mapTocBookmarkPosition } from "./tocIntent";
 export { packageResourcesOpOf } from "./packageResources";
-export { combineEdits } from "./edits";
+export { combineEditEffects, combineEdits } from "./edits";
 export { reviewFieldsOf } from "./review";
+export { tryTrackedInsertionGroup } from "./trackedInsertionGroup";
 export {
   resolveSectionChange,
   resolveSectionChanges,

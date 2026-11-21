@@ -836,24 +836,7 @@ function resolveChangeUnguarded(
         else if (nextNode !== null && nextNode.type.name !== "textBox")
           follows = "block";
         const resolved = tr.doc.resolve(mappedPos);
-        const sectionProperties =
-          expectParagraphAttrs(paragraph)._sectionProperties;
         const preceding = resolved.parent.maybeChild(resolved.index() - 1);
-        const precedingProperties =
-          preceding?.type.name === "paragraph"
-            ? expectParagraphAttrs(preceding)._sectionProperties
-            : undefined;
-        let precedingSectionOwner:
-          "unavailable" | "available" | "same" | "occupied" = "unavailable";
-        if (preceding?.type.name === "paragraph") {
-          if (precedingProperties == null) precedingSectionOwner = "available";
-          else if (
-            JSON.stringify(precedingProperties) ===
-            JSON.stringify(sectionProperties)
-          )
-            precedingSectionOwner = "same";
-          else precedingSectionOwner = "occupied";
-        }
         const retainedBoundaries = paragraphRemainsOf(paragraph);
         const outcome = paragraphMarkOutcome({
           follows,
@@ -879,12 +862,6 @@ function resolveChangeUnguarded(
             follows === "table" &&
             preceding?.type.name !== "paragraph" &&
             retainedBoundaries.length > 0,
-          removedSectionProperties:
-            op.markWasAdded && sectionProperties != null,
-          precedingSectionOwner,
-          followingHasSectionProperties:
-            nextNode?.type.name === "paragraph" &&
-            ownsSectionEndpoint(nextNode),
         });
         const ranIn =
           outcome.kind === "run-in"
@@ -922,9 +899,8 @@ function resolveChangeUnguarded(
           // A container must contain a paragraph either way, so its parent's
           // only child stays blank whatever its mark says.
           //
-          // Section properties live on the removed paragraph mark. The shared
-          // paragraph-mark rule decides whether the preceding mark inherits
-          // them, as it does for a join.
+          // Section properties live on the removed paragraph mark and go
+          // with it, as they do for a join.
           //
           // What the paragraph held that is no content goes to the
           // paragraph before it (the engine's `paragraphRemains`), as
@@ -937,22 +913,18 @@ function resolveChangeUnguarded(
             remains !== null &&
             (toPrevious.length === 0 || preceding?.type.name === "paragraph")
           ) {
-            if (
-              outcome.sectionDestination === "preceding" &&
-              preceding?.type.name === "paragraph"
-            ) {
-              tr.setNodeAttribute(
-                mappedPos - preceding.nodeSize,
-                "_sectionProperties",
-                sectionProperties,
-              );
-            }
             countRemovedSectionEndpoint(paragraph);
             tr.delete(mappedPos, mappedPos + paragraph.nodeSize);
             if (toPrevious.length > 0) tr.insert(mappedPos - 1, toPrevious);
             continue;
           }
           tr.setNodeAttribute(mappedPos, "pPrMark", null);
+          // A section break an added mark ended never stood in the original:
+          // it goes with the mark, even where the paragraph stays.
+          if (op.markWasAdded && ownsSectionEndpoint(paragraph)) {
+            countRemovedSectionEndpoint(paragraph);
+            tr.setNodeAttribute(mappedPos, "_sectionProperties", null);
+          }
           continue;
         }
         // The paragraph the reader is left with is the NEXT one, whether this
@@ -963,26 +935,9 @@ function resolveChangeUnguarded(
         // The next paragraph's own `pPrMark` travels with its attrs: it is a
         // different revision, and resolving this one must not resolve it.
         //
-        // Section properties live on the removed paragraph mark. The shared
-        // paragraph-mark rule chooses the surviving mark that inherits them.
+        // Section properties live on the removed paragraph mark and go with
+        // it: the joined paragraph ends with the next one's section break.
         try {
-          if (
-            outcome.sectionDestination === "preceding" &&
-            preceding?.type.name === "paragraph"
-          ) {
-            const precedingPos = mappedPos - preceding.nodeSize;
-            tr.setNodeAttribute(
-              precedingPos,
-              "_sectionProperties",
-              sectionProperties,
-            );
-          } else if (outcome.sectionDestination === "following") {
-            tr.setNodeAttribute(
-              nextPos,
-              "_sectionProperties",
-              sectionProperties,
-            );
-          }
           const destination = tr.doc.nodeAt(nextPos);
           const next =
             destination?.type.name === "paragraph" ? destination : nextNode;

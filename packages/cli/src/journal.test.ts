@@ -1,4 +1,11 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  setDefaultTimeout,
+  test,
+} from "bun:test";
 import {
   appendFile,
   mkdir,
@@ -9,6 +16,7 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 
+import { DISK_SYNC_TEST_TIMEOUT_MS } from "../../../test/disk-sync-timeout";
 import {
   buildDocx,
   CONTRACT_PARAGRAPHS,
@@ -23,6 +31,8 @@ import {
   recoverStages,
   stagePathFor,
 } from "./journal";
+
+setDefaultTimeout(DISK_SYNC_TEST_TIMEOUT_MS);
 
 let dir = "";
 let cleanup: () => Promise<void> = () => Promise.resolve();

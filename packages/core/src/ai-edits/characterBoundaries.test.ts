@@ -29,11 +29,12 @@ import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioDocumentOperation,
 } from "../document-operations";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import {
   splitsGraphemeCluster,
   splitsSurrogatePair,
 } from "./character-boundaries";
-import type { FolioDocxReviewer } from "./headless";
+import { FolioDocxReviewer } from "./headless";
 import { createFolioAITextRangeHandle, hashFolioAIBlockText } from "./snapshot";
 import type { FolioAITextRangeHandle } from "./types";
 
@@ -41,6 +42,13 @@ setDefaultTimeout(propertyTestTimeout(60_000));
 
 type Mode = "direct" | "tracked-changes";
 const MODES: readonly Mode[] = ["direct", "tracked-changes"];
+const SESSIONS = [
+  "legacy",
+  "canonical",
+] as const satisfies readonly HeadlessReviewerSession[];
+
+const openOn = (buffer: ArrayBuffer, session: HeadlessReviewerSession) =>
+  FolioDocxReviewer.fromBuffer(buffer, { author: "Reviewer", session });
 
 /** A range handle as a caller may build one by hand, bypassing the helper's checks. */
 const handle = (
@@ -200,21 +208,25 @@ describe("an offset inside a grapheme cluster", () => {
     },
   );
 
-  test("still lets a comment start at a combining mark the document formats apart", async () => {
-    const text = "Café";
-    const reviewer = await openReviewer(
-      await paragraphsDocx([[textRun(text)]]),
-    );
-    const blockId = reviewer.snapshot().blocks[0]?.id ?? "";
-    const result = applyOne(reviewer, "direct", {
-      id: "comment",
-      type: "commentOnRange",
-      range: handle(blockId, text, 4, 5),
-      comment: { text: "Accent." },
-    });
-    expect(result.skipped).toEqual([]);
-    expect(blockTexts(await reopened(reviewer))).toEqual([text]);
-  });
+  test.each(SESSIONS)(
+    "still lets a comment start at a combining mark the document formats apart (%s)",
+    async (session) => {
+      const text = "Café";
+      const reviewer = await openOn(
+        await paragraphsDocx([[textRun(text)]]),
+        session,
+      );
+      const blockId = reviewer.snapshot().blocks[0]?.id ?? "";
+      const result = applyOne(reviewer, "direct", {
+        id: "comment",
+        type: "commentOnRange",
+        range: handle(blockId, text, 4, 5),
+        comment: { text: "Accent." },
+      });
+      expect(result.skipped).toEqual([]);
+      expect(blockTexts(await reopened(reviewer))).toEqual([text]);
+    },
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -280,11 +292,13 @@ describe("an offset-taking operation at any offset", () => {
           fc.nat(),
           fc.nat(),
           fc.constantFrom(...MODES),
-          async (text, type, first, second, mode) => {
+          fc.constantFrom(...SESSIONS),
+          async (text, type, first, second, mode, session) => {
             const start = 1 + (first % (text.length - 1));
             const end = Math.min(text.length, start + 1 + (second % 4));
-            const reviewer = await openReviewer(
+            const reviewer = await openOn(
               await paragraphsDocx([[textRun(text)], [textRun("Untouched.")]]),
+              session,
             );
             const blockId = reviewer.snapshot().blocks[0]?.id ?? "";
             const selected = text.slice(start, end);

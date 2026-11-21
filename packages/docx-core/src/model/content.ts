@@ -390,7 +390,34 @@ export type MarkupRangeMarker = WritableRecord & {
   /** Pairs a start with its end (`w:id`). */
   id: number;
   displacedByCustomXml?: DisplacedByCustomXml;
+  /**
+   * Review state, never written: a resolution kept this marker from removed
+   * content and it stands between pieces of a record that content cut,
+   * waiting for them to meet.
+   */
+  keptCut?: KeptCut;
 };
+
+/**
+ * The cut a kept range marker stands in: how many container levels the
+ * removed content cut there, counted from the list the marker stands in, the
+ * date of the revision it was kept from, and, where only one side of it is a
+ * piece of that cut (`piece`), that side: its record, or the pending change
+ * beside the marker once resolved, takes the marker with no alike record
+ * across from it.
+ */
+export type KeptCut = WritableRecord & {
+  depth: number;
+  keptFrom: string;
+  piece?: KeptCutPiece;
+};
+
+/**
+ * The side of a kept marker whose record, or the pending change that took
+ * its seam, is a piece of its cut; `both` where pending changes either side
+ * took it.
+ */
+export type KeptCutPiece = "before" | "after" | "both";
 
 /** Added-revision ancestors that own a copied bookmark or move boundary. */
 type CopyOriginAncestorOrdinals = readonly [number, ...number[]];
@@ -1735,8 +1762,10 @@ type TrackedResolutionJoins = WritableRecord & {
   /** Exact join depth when the wrapper is removed. */
   remove: number;
   /**
-   * Sides where the wrapper now meets accepted new content rather than a
-   * source piece: resolving it joins plain runs there and nothing else.
+   * Sides where the wrapper meets no source piece of its cut: accepted new
+   * content beside it, or, at the edge of accepted content it stands in,
+   * whatever lies beyond that content. Resolving it joins plain runs there
+   * and nothing else.
    */
   plainSides?: readonly ("before" | "after")[];
   /**
@@ -1751,21 +1780,17 @@ type TrackedResolutionJoins = WritableRecord & {
    * that text directly does.
    */
   holdsControlText?: true;
+  /**
+   * Edges of the container this change stands in where accepted content
+   * meets it that its insertion joined to nothing there. A resolution that
+   * empties the container leaves it standing there, emptied, as resolving
+   * the change before that acceptance does.
+   */
+  closedHolder?: readonly ("before" | "after")[];
   /** A split seam survives only while all intervening insertions await rejection. */
   deferredRemove?: readonly (WritableRecord & {
     depth: number;
     blockers: readonly number[];
-    /**
-     * The date of the revision whose kept range boundaries stand at the seam,
-     * waiting for its pieces to meet: they are placed as of that revision.
-     */
-    keptFrom?: string;
-    /**
-     * How many of the range boundaries standing at the seam it kept, nearest
-     * the seam: boundaries other removals kept beside them stay where they
-     * are when the pieces meet.
-     */
-    keptCount?: number;
     /**
      * On a pending deletion or move source that holds a piece of the cut
      * record: the edge of it where that piece meets the seam. Rejecting it
@@ -1773,19 +1798,6 @@ type TrackedResolutionJoins = WritableRecord & {
      */
     edge?: "start" | "end";
   })[];
-  /**
-   * The date of the revision whose kept range boundaries stand at the seam
-   * this wrapper's removal joins, once a deferred seam settled on it, or
-   * that its join takes over from a removal's seam as a piece of the record
-   * that removal cut.
-   */
-  keptFrom?: string;
-  /**
-   * How many of the range boundaries standing at that seam were kept from
-   * that revision, nearest the seam: boundaries other removals kept beside
-   * them stay where they are when the join happens.
-   */
-  keptCount?: number;
   /** Source identities handed to the retained suffix when a deleted prefix goes. */
   retainedAfter?: readonly (WritableRecord & {
     depth: number;

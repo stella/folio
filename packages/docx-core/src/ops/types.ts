@@ -510,6 +510,9 @@ export const PROPERTY_REVIEW_POLICIES: Readonly<{
  * levels once the patch is applied, as {@link JoinInlineOp} does; the inverse
  * of a patch that cut runs uses them.
  *
+ * Under `propertyReview: "append"`, a run patched back to the formatting its
+ * pending change started from keeps no pending change.
+ *
  * With `revision`, every run the patch changes records a tracked property
  * change (`w:rPrChange`) whose previous formatting is the run's own property
  * set before the patch. A run already carrying one keeps it, and with it the
@@ -517,6 +520,8 @@ export const PROPERTY_REVIEW_POLICIES: Readonly<{
  * and `joinEnd` must be absent.
  * `propertyReview: "append"` coalesces an editor action into one pending review.
  * It retains the first baseline and records the latest formatter's metadata.
+ * A suggestion's patch of a run whose pending change is not that suggestion's
+ * is refused: rejecting the suggestion would discard the other change too.
  */
 export type SetRunPropsOp = {
   type: typeof DOCUMENT_OP_TYPES.SET_RUN_PROPS;

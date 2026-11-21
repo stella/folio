@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 
 import {
@@ -6,10 +6,13 @@ import {
   FolioDocxReviewer,
 } from "@stll/folio-core/server";
 
+import { DISK_SYNC_TEST_TIMEOUT_MS } from "../../../test/disk-sync-timeout";
 import { makeTempDir } from "./__tests__/fixtures";
 import { captureIo, dataOf, envelopeOf } from "./__tests__/io";
 import { packageTexts, writePackage } from "./__tests__/package-fixtures";
 import { runFolioCli } from "./cli";
+
+setDefaultTimeout(DISK_SYNC_TEST_TIMEOUT_MS);
 
 const header = { type: "header", relationshipId: "rIdHeader" } as const;
 const footer = { type: "footer", relationshipId: "rIdFooter" } as const;

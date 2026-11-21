@@ -2,9 +2,9 @@
  * A boundary a rejection keeps goes as deep as the cut it stands at joins,
  * whether the changes around it are rejected at once or one after another.
  *
- * - A boundary inserted inside a pending insertion cuts it in two. Rejected
- *   first, it stays inside that insertion, and rejecting the insertion
- *   floats it into the link the insertion's cut split.
+ * - A boundary inserted inside a pending insertion cuts it in two. Rejected,
+ *   it never goes inside that pending insertion: it stands between its
+ *   pieces, whether the new text around it goes first or with it.
  * - A boundary kept beside a removal's seam, with a container beyond it
  *   whose inner cut continues the seam, goes into the record that inner cut
  *   rejoins.
@@ -100,7 +100,7 @@ const insertAt = (
     revision: revision(id, second),
   });
 
-test("a boundary kept inside a rejected insertion goes into the link its cut split, at once or in turn", () => {
+test("a boundary kept inside a rejected insertion stands between the pieces of the pending insertion its cut split, at once or in turn", () => {
   const source: Document = {
     package: {
       document: {
@@ -151,6 +151,8 @@ test("a boundary kept inside a rejected insertion goes into the link its cut spl
     [...boundary, ...insertedText],
     REVISION_DECISIONS.REJECT,
   );
+  // It never goes inside the pending insertion: it stands between its
+  // pieces, recording the cut it stands in.
   for (const rejected of [inTurn, atOnce])
     expect(rejected.package.document.content).toEqual([
       {
@@ -160,9 +162,17 @@ test("a boundary kept inside a rejected insertion goes into the link its cut spl
           {
             type: "insertion",
             info: { id: 2, author: "A" },
-            content: [
-              link([text("a"), { type: "bookmarkEnd", id: 1 }, text("d")]),
-            ],
+            content: [link([text("a")])],
+          },
+          {
+            type: "bookmarkEnd",
+            id: 1,
+            keptCut: { depth: 4, keptFrom: "2026-03-04T05:00:01Z" },
+          },
+          {
+            type: "insertion",
+            info: { id: 700, author: "A" },
+            content: [link([text("d")])],
           },
         ],
       },

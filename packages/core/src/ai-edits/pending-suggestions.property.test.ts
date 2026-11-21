@@ -108,6 +108,89 @@ describe("host-persisted pending suggestions", () => {
     propertyTestTimeout(30_000),
   );
 
+  test(
+    "a story whose paragraphs name no ids restages after a save on both engines",
+    async () => {
+      const operations = {
+        paragraph: (blockId: string) => ({
+          id: "proposal-1",
+          type: "insertAfterBlock" as const,
+          blockId,
+          text: "Added clause.",
+        }),
+        signature: (blockId: string) => ({
+          id: "proposal-1",
+          type: "insertSignatureTable" as const,
+          blockId,
+          parties: [{ name: "Party" }],
+        }),
+      };
+      await fc.assert(
+        fc.asyncProperty(
+          fc.constantFrom("legacy" as const, "canonical" as const),
+          fc.constantFrom(...Object.keys(operations)),
+          fc.boolean(),
+          fc.stringMatching(/^[A-Za-z]{3,12}$/u),
+          async (session, kind, statesIds, word) => {
+            // Canonical has no suggested signature table yet.
+            fc.pre(session === "legacy" || kind === "paragraph");
+            const document = createEmptyDocument();
+            document.package.document.content = [
+              {
+                ...paragraph(FIRST_TEXT),
+                ...(statesIds && { paraId: FIRST_ID }),
+              },
+              {
+                ...paragraph(`Clause ${word}.`),
+                ...(statesIds && { paraId: SECOND_ID }),
+              },
+            ];
+            const open = async (bytes: ArrayBuffer) =>
+              FolioDocxReviewer.fromBuffer(bytes, { session });
+            const reviewer = await open(await createDocx(document));
+            const anchor = reviewer.snapshot().blocks.at(0)?.id ?? "";
+            const operation =
+              kind === "signature"
+                ? operations.signature(anchor)
+                : operations.paragraph(anchor);
+            expect(
+              reviewer.applyDocumentOperations(
+                {
+                  version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+                  mode: "suggested",
+                  operations: [operation],
+                },
+                { undefinedReferences: "refuse" },
+              ).applied,
+            ).toHaveLength(1);
+            const records = JSON.parse(
+              JSON.stringify(reviewer.exportPendingSuggestions()),
+            );
+            // A restaged insertion mints its paragraphs afresh.
+            const texts = (x: FolioDocxReviewer) =>
+              x.snapshot().blocks.map((block) => ({
+                kind: block.kind,
+                text: block.text,
+              }));
+            const before = texts(reviewer);
+            const reopened = await open(await reviewer.toBuffer());
+            expect(reopened.loadPendingSuggestions(records)).toEqual([
+              { status: "restaged", suggestionId: "proposal-1" },
+            ]);
+            expect(texts(reopened)).toEqual(before);
+            expect(reopened.rejectSuggestion("proposal-1")).toBe(true);
+            expect(reopened.snapshot().blocks.map(({ text }) => text)).toEqual([
+              FIRST_TEXT,
+              `Clause ${word}.`,
+            ]);
+          },
+        ),
+        propertyConfig({ numRuns: 16, seed: 1940273 }),
+      );
+    },
+    propertyTestTimeout(60_000),
+  );
+
   test("changed text and deleted anchors stay inert", async () => {
     const { records } = await stage("Second clause.", "Revised clause.");
     const changed = await FolioDocxReviewer.fromBuffer(
