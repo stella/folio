@@ -117,7 +117,10 @@ export const noteReferenceKind = (
 ): NoteStory["kind"] => (node.type === "footnoteRef" ? "footnote" : "endnote");
 
 /** The deletion holding a reference, if one does: a reference no deletion holds is live. */
-const referenceDeletion = ({ ancestors }: NoteReferenceSpan) => {
+const referenceDeletion = ({
+  ancestors,
+}: NoteReferenceSpan):
+  Extract<InlineNode, { type: "deletion" }> | undefined => {
   const deletion = ancestors.find((ancestor) => ancestor.type === "deletion");
   return deletion?.type === "deletion" ? deletion : undefined;
 };

@@ -14,6 +14,10 @@ import { parseDocx } from "./parser";
 import { createDocx, repackDocx } from "./rezip";
 
 const revision = { id: 41, author: "Reviewer", date: "2026-11-17T00:00:00Z" };
+// The note's text goes with its sole reference, under ids of its own.
+const NOTE_IDS = {
+  revision: Array.from({ length: 16 }, (_, index) => 42 + index),
+};
 for (const kind of ["footnote", "endnote"] as const)
   for (const anchor of ["point", "range"] as const) {
     test(`${kind} ${anchor} comment retirement survives parsed save, reopen and exact inverse`, async () => {
@@ -50,7 +54,7 @@ for (const kind of ["footnote", "endnote"] as const)
             mode === "direct"
               ? [deletion]
               : [
-                  { ...deletion, revision },
+                  { ...deletion, revision, newIds: NOTE_IDS },
                   {
                     type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
                     story: OP_STORIES.MAIN,

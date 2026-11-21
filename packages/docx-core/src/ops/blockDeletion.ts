@@ -165,7 +165,7 @@ const liveReferencesAreRanged = (
 /** The ids of the comments whose range ends somewhere in `value`. */
 export const rangeEndIdsIn = (
   value: unknown,
-  ids = new Set<number>(),
+  ids: Set<number> = new Set(),
 ): Set<number> => {
   if (Array.isArray(value)) {
     for (const item of value) rangeEndIdsIn(item, ids);
