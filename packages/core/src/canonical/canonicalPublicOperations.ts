@@ -80,7 +80,10 @@ import {
   createExistingRevisionGuard,
   EXISTING_REVISION_CONFLICT_MESSAGE,
 } from "../ai-edits/existingRevisions";
-import { stripInlineEmphasisMarkers } from "../ai-edits/inline-emphasis";
+import {
+  parseInlineEmphasisRuns,
+  stripInlineEmphasisMarkers,
+} from "../ai-edits/inline-emphasis";
 import { compileMarkdownInsertion } from "../ai-edits/markdownInsertion";
 import { createBatchListMinter } from "../ai-edits/newListNumbering";
 import {
@@ -1417,11 +1420,6 @@ const resolveBlockInsertion = ({
       ? operation.numbering
       : ({ kind: "newList", format: markdown.listKind } as const);
   const stated = statedNumbering(requested, mintList);
-  if (markdown === undefined && stripInlineEmphasisMarkers(text) !== text)
-    return refusal(
-      "unsupportedBlock",
-      "Canonical public emphasis replacements are unavailable.",
-    );
   const inline = operation.lineBreakMode === "inline";
   if (markdown === undefined && /\[\^(?:e)?\d+\]/u.test(text))
     return refusal(
@@ -1508,8 +1506,7 @@ const resolveBlockInsertion = ({
             ],
           },
         ];
-      else if (line !== "")
-        content = [{ type: "run", content: inlineText(line) }];
+      else if (line !== "") content = emphasisRuns(line);
       return {
         type: "paragraph",
         content,
@@ -3162,6 +3159,28 @@ const blockMoveId = (operation: FolioDocumentOperation): string | undefined =>
  * A line's text with each tab and line break as the element it is; CRLF, CR
  * and LF are each one line break.
  */
+/**
+ * A line as runs: paired `**bold**` and `***bold italic***` markers state
+ * that emphasis on their words, as the default engine reads them; the rest
+ * states no run property, so the paragraph's style formats it.
+ */
+const emphasisRuns = (line: string): Run[] =>
+  parseInlineEmphasisRuns(line).flatMap(({ text, bold, italic }): Run[] => {
+    const content = inlineText(text);
+    if (content.length === 0) return [];
+    if (!bold && !italic) return [{ type: "run", content }];
+    return [
+      {
+        type: "run",
+        content,
+        formatting: {
+          ...(bold ? { bold } : {}),
+          ...(italic ? { italic } : {}),
+        },
+      },
+    ];
+  });
+
 const inlineText = (line: string): Run["content"] =>
   line.split(/(\t|\r\n|\r|\n)/u).flatMap((part): Run["content"] => {
     if (part === "\t") return [{ type: "tab" }];
