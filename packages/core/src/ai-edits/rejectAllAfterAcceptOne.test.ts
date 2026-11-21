@@ -12,8 +12,8 @@
  *   rejected one.
  * - The saved package, reopened and rejected, reads as the live reviewer
  *   rejected. Deleting the last paragraph and accepting its deleted break
- *   leaves a suggested paragraph holding another suggestion's break; the
- *   save rejects both, so the accepted join is in the package too.
+ *   keeps that accepted join in the package; which break it is depends on
+ *   where the engine puts the paragraphs inserted before the last one.
  * - Saving with suggestions pending writes them rejected: a paragraph that
  *   rejection runs another paragraph's words into is written too.
  */
@@ -416,39 +416,56 @@ describe("reject all after accepting one of several suggestions", () => {
     },
   );
 
-  test("an accepted deleted last break is in the saved package", async () => {
-    const flow = await open(await fixture());
-    const last = idOf(flow, LINES[4]);
-    apply({
-      reviewer: flow,
-      mode: "suggested",
-      operations: [
-        { id: "delete", type: "deleteBlock", blockId: last },
-        {
-          id: "first",
-          type: "insertBeforeBlock",
-          blockId: last,
-          text: "First added clause.",
-        },
-        {
-          id: "second",
-          type: "insertBeforeBlock",
-          blockId: last,
-          text: "Second added clause.",
-        },
-      ],
-    });
-    const deletedBreak = flow
-      .getChanges()
-      .find((change) => change.type === "paragraphMarkDeleted");
-    if (deletedBreak === undefined) throw new Error("no deleted break");
-    expect(flow.acceptChange(deletedBreak)).toBe(true);
-    const saved = await open(await flow.toBuffer());
-    const live = await rejected(flow);
-    expect(await rejected(saved)).toEqual(live);
-    expect(live.blocks.map(({ text }) => text)).toEqual([
-      ...LINES.slice(0, 3),
-      `${LINES[3]}${LINES[4]}`,
-    ]);
-  });
+  // Deleting the last paragraph deletes the break before it. The default
+  // engine inserts the two paragraphs at the end of the paragraph before, so
+  // "Second added clause." holds that paragraph's own break, and accepting its
+  // deletion joins the two original paragraphs. The canonical engine inserts
+  // them as typed at the last paragraph's start, so the break before it is
+  // "Second added clause."'s own added break: accepting its deletion joins
+  // that suggested paragraph into the last one, and rejecting the suggestion
+  // then takes it out, leaving the original paragraphs apart.
+  const lastBreakJoin = {
+    legacy: [...LINES.slice(0, 3), `${LINES[3]}${LINES[4]}`],
+    canonical: [...LINES],
+  } as const satisfies Record<HeadlessReviewerSession, readonly string[]>;
+
+  test.each(SESSIONS)(
+    "an accepted deleted last break is in the saved package (%s)",
+    async (session) => {
+      const flow = await open(await fixture(session), session);
+      const last = idOf(flow, LINES[4]);
+      apply({
+        reviewer: flow,
+        mode: "suggested",
+        operations: [
+          { id: "delete", type: "deleteBlock", blockId: last },
+          {
+            id: "first",
+            type: "insertBeforeBlock",
+            blockId: last,
+            text: "First added clause.",
+          },
+          {
+            id: "second",
+            type: "insertBeforeBlock",
+            blockId: last,
+            text: "Second added clause.",
+          },
+        ],
+      });
+      const deletedBreak = flow
+        .getChanges()
+        .find((change) => change.type === "paragraphMarkDeleted");
+      if (deletedBreak === undefined) throw new Error("no deleted break");
+      if (session === "canonical")
+        expect(deletedBreak.text).toBe("Second added clause.");
+      expect(flow.acceptChange(deletedBreak)).toBe(true);
+      const saved = await open(await flow.toBuffer(), session);
+      const live = await rejected(flow, session);
+      expect(await rejected(saved, session)).toEqual(live);
+      expect(live.blocks.map(({ text }) => text)).toEqual(
+        lastBreakJoin[session],
+      );
+    },
+  );
 });
