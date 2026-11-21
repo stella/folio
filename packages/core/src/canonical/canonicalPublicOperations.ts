@@ -162,6 +162,7 @@ import {
   parseFolioDocumentOperationBatch,
   withDistinctSuggestionIds,
 } from "../document-operations";
+import { paragraphFormattingWithAuthoredIndentation } from "../docx/paragraphPropertySource";
 import { canonicalOperationStagingAccess } from "../internal/canonicalOperationStaging";
 import { expectTableAttrs } from "../prosemirror/attrs";
 import { tableAnchor } from "../prosemirror/canonicalTableCommands";
@@ -1381,7 +1382,10 @@ const resolveBlockInsertion = ({
     });
   };
   const paragraphs =
-    markdownParagraphs ?? paragraphsFrom(formattingSource.source.formatting);
+    markdownParagraphs ??
+    paragraphsFrom(
+      paragraphFormattingWithAuthoredIndentation(formattingSource.source),
+    );
   const place = blockInsertionPlace(
     operation,
     paragraph,
@@ -1789,7 +1793,9 @@ const insertionIntentsAsItRuns = ({
     copied.push(
       intent.type === "insertParagraphs"
         ? Object.assign({}, intent, {
-            paragraphs: inheritsFrom.paragraphs(source.formatting),
+            paragraphs: inheritsFrom.paragraphs(
+              paragraphFormattingWithAuthoredIndentation(source),
+            ),
           })
         : intent,
     );

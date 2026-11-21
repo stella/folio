@@ -8,22 +8,32 @@ import { fromMarkdown } from "../markdown/fromMarkdown";
 import { FolioDocxReviewer } from "./headless";
 import { isFolioAIContentBlock } from "./snapshot";
 
-const CASES = (["direct", "tracked-changes"] as const).flatMap((mode) =>
-  (
-    ["set-properties", "insert", "remove-properties", "insert-removed"] as const
-  ).flatMap((operation) =>
-    (["inherited", "zero", "explicit"] as const).flatMap((source) =>
-      (["preserve", "clear", "zero"] as const).flatMap((indentation) =>
-        (operation === "remove-properties" || operation === "insert-removed"
-          ? [false, true]
-          : [true]
-        ).map((withStyle) => ({
-          mode,
-          operation,
-          source,
-          indentation,
-          withStyle,
-        })),
+const SESSIONS = ["canonical", "legacy"] as const;
+
+const CASES = SESSIONS.flatMap((session) =>
+  (["direct", "tracked-changes"] as const).flatMap((mode) =>
+    (
+      [
+        "set-properties",
+        "insert",
+        "remove-properties",
+        "insert-removed",
+      ] as const
+    ).flatMap((operation) =>
+      (["inherited", "zero", "explicit"] as const).flatMap((source) =>
+        (["preserve", "clear", "zero"] as const).flatMap((indentation) =>
+          (operation === "remove-properties" || operation === "insert-removed"
+            ? [false, true]
+            : [true]
+          ).map((withStyle) => ({
+            session,
+            mode,
+            operation,
+            source,
+            indentation,
+            withStyle,
+          })),
+        ),
       ),
     ),
   ),
@@ -32,8 +42,8 @@ const CASES = (["direct", "tracked-changes"] as const).flatMap((mode) =>
 // Separate style and numbering examples missed their combined write order:
 // the later style patch replaced the numbering-derived provenance.
 test.each(CASES)(
-  "$operation $source/$indentation indentation survives numbering (style=$withStyle) in $mode",
-  async ({ mode, operation, source, indentation, withStyle }) => {
+  "$operation $source/$indentation indentation survives numbering (style=$withStyle) in $mode ($session)",
+  async ({ session, mode, operation, source, indentation, withStyle }) => {
     const document = fromMarkdown("1. Anchor");
     const paragraph = document.package.document.content.at(0);
     const definition = document.package.numbering?.abstractNums.at(0);
@@ -81,6 +91,7 @@ test.each(CASES)(
     };
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await createDocx(document),
+      { session },
     );
     const anchor = reviewer.getContent().find(({ text }) => text === "Anchor");
     if (!anchor) throw new TypeError("Combined list fixture lost its anchor.");
@@ -164,23 +175,31 @@ test.each(CASES)(
     const review = mode === "tracked-changes" ? "pending" : "settled";
     assertContent(reviewer, review);
     assertContent(
-      await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer()),
+      await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
+        session,
+      }),
       review,
     );
     if (mode === "tracked-changes") {
       expect(reviewer.acceptAll().resolved).toBeGreaterThan(0);
       assertContent(reviewer, "settled");
       assertContent(
-        await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer()),
+        await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
+          session,
+        }),
         "settled",
       );
     }
   },
 );
 
-test.each([2, 3, 4, 5, 6, 7, 8])(
-  "undefined numbering level %i omits a redundant false hanging indent",
-  async (ilvl) => {
+test.each(
+  SESSIONS.flatMap((session) =>
+    [2, 3, 4, 5, 6, 7, 8].map((ilvl) => ({ session, ilvl })),
+  ),
+)(
+  "undefined numbering level $ilvl omits a redundant false hanging indent ($session)",
+  async ({ session, ilvl }) => {
     const document = fromMarkdown(
       [
         "# Agreement",
@@ -236,6 +255,7 @@ test.each([2, 3, 4, 5, 6, 7, 8])(
 
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await createDocx(document),
+      { session },
     );
     const closing = reviewer
       .getContent()
@@ -273,8 +293,9 @@ test.each([2, 3, 4, 5, 6, 7, 8])(
           },
           { undefinedReferences: "refuse" },
         )
-        .applied.map(({ id }) => id),
-    ).toEqual(["styled-insertion", "list-insertion"]);
+        .applied.map(({ id }) => id)
+        .toSorted(),
+    ).toEqual(["list-insertion", "styled-insertion"]);
     const styledInsertion = reviewer
       .getContent()
       .find(({ text }) => text === "Supplier agreement.");
@@ -302,6 +323,7 @@ test.each([2, 3, 4, 5, 6, 7, 8])(
     expect(result.applied.map(({ id }) => id)).toEqual(["undefined-level"]);
     const expectedReviewer = await FolioDocxReviewer.fromBuffer(
       await reviewer.toBuffer(),
+      { session },
     );
     const expectedDocument = expectedReviewer.toResolvedDocument("accept");
     const expectedInserted = expectedDocument.package.document.content.find(
