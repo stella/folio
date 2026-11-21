@@ -85,11 +85,12 @@ const carriedCopies = (
     });
     if (carried !== next) replaced.set(next, carried);
   }
-  // A split's new half holds the properties of the paragraph before it as
-  // that paragraph had them, and the words the split took from it: it takes
-  // that paragraph's sources too, so properties read from a list or a style
-  // stay read from there and are not written as its own. A paragraph the
-  // edit wrote from elsewhere keeps the sources it came with.
+  // A split's new halves hold the properties of the paragraph they came from
+  // as that paragraph had them, and the words the splits took from it: they
+  // take that paragraph's sources too, so properties read from a list or a
+  // style stay read from there and are not written as their own. The halves
+  // one commit makes of a paragraph follow it, and with it hold its words.
+  // A paragraph the edit wrote from elsewhere keeps the sources it came with.
   const originalById = new Map(
     originalParagraphs.flatMap((paragraph) =>
       paragraph.paraId === undefined
@@ -97,29 +98,40 @@ const carriedCopies = (
         : [[paragraph.paraId, paragraph] as const],
     ),
   );
-  for (const [index, paragraph] of derivedParagraphs.entries()) {
-    if (paragraph.paraId === undefined || originalById.has(paragraph.paraId))
+  const carryOntoHalves = (source: Paragraph, chain: readonly Paragraph[]) => {
+    if (chain.length < 2) return;
+    if (textOf(source) !== chain.map(textOf).join("")) return;
+    for (const paragraph of chain.slice(1)) {
+      if (
+        canonicalJson(paragraph.formatting ?? null) !==
+        canonicalJson(source.formatting ?? null)
+      )
+        continue;
+      const carried = carryParagraphPropertySource({
+        target: replaced.get(paragraph) ?? paragraph,
+        source,
+        indentation,
+      });
+      if (carried !== paragraph) replaced.set(paragraph, carried);
+    }
+  };
+  // The paragraph an original's id is on, then the new paragraphs after it.
+  let source: Paragraph | undefined;
+  let chain: Paragraph[] = [];
+  for (const paragraph of derivedParagraphs) {
+    const original =
+      paragraph.paraId === undefined
+        ? undefined
+        : originalById.get(paragraph.paraId);
+    if (paragraph.paraId !== undefined && original === undefined) {
+      chain.push(paragraph);
       continue;
-    const before = derivedParagraphs.at(index - 1);
-    const source =
-      index > 0 && before?.paraId !== undefined
-        ? originalById.get(before.paraId)
-        : undefined;
-    if (
-      source === undefined ||
-      before === undefined ||
-      canonicalJson(paragraph.formatting ?? null) !==
-        canonicalJson(source.formatting ?? null) ||
-      textOf(source) !== textOf(before) + textOf(paragraph)
-    )
-      continue;
-    const carried = carryParagraphPropertySource({
-      target: replaced.get(paragraph) ?? paragraph,
-      source,
-      indentation,
-    });
-    if (carried !== paragraph) replaced.set(paragraph, carried);
+    }
+    if (source !== undefined) carryOntoHalves(source, chain);
+    source = original;
+    chain = [paragraph];
   }
+  if (source !== undefined) carryOntoHalves(source, chain);
   return replaced;
 };
 
