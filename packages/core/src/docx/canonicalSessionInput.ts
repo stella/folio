@@ -24,6 +24,7 @@ import { ensureParaIds } from "./ensureParaIds";
 import { ensureUniqueControlIds } from "./ensureUniqueControlIds";
 import { ensureUniqueRevisionIds } from "./ensureUniqueRevisionIds";
 import { keepNormalizedSourceParts } from "./normalizedSourceParts";
+import { MalformedPackageRelationshipsError } from "./packageRelationshipsRoot";
 import { parseDocx, type ParseOptions } from "./parser";
 
 const CanonicalDocxInputErrorBase: TaggedErrorClass<"CanonicalDocxInputError"> =
@@ -36,14 +37,27 @@ export class CanonicalDocxInputError extends CanonicalDocxInputErrorBase<{
 
 /** Why a package cannot seed a canonical session. */
 export type CanonicalDocxInputFailure =
-  CanonicalDocxInputError | MalformedXmlReferenceError;
+  | CanonicalDocxInputError
+  | MalformedXmlReferenceError
+  | MalformedPackageRelationshipsError;
 
-/** The reference XML refuses that a normalization step refused a part for, if that is why. */
-const malformedReferenceCause = (
+/**
+ * The malformation a normalization step refused a part for, if that is why:
+ * a reference XML refuses, or package relationships that are not. Both
+ * engines refuse a package with these errors.
+ */
+const malformedPartCause = (
   cause: unknown,
-): MalformedXmlReferenceError | undefined => {
+):
+  | MalformedXmlReferenceError
+  | MalformedPackageRelationshipsError
+  | undefined => {
   for (let current = cause; current instanceof Error; current = current.cause) {
-    if (current instanceof MalformedXmlReferenceError) return current;
+    if (
+      current instanceof MalformedXmlReferenceError ||
+      current instanceof MalformedPackageRelationshipsError
+    )
+      return current;
   }
   return undefined;
 };
@@ -109,7 +123,7 @@ export const prepareCanonicalDocxSource = async (
       return { docx, mintedParaIds: new Set(paragraphs.mintedParaIds) };
     },
     catch: (cause): CanonicalDocxInputFailure =>
-      malformedReferenceCause(cause) ??
+      malformedPartCause(cause) ??
       new CanonicalDocxInputError({
         message:
           cause instanceof Error
