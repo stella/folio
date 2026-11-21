@@ -275,6 +275,11 @@ export const createReplayFragmentValidation = (): ReplayFragmentValidation => {
   return token;
 };
 
+/** Keep the authored order of markup compatibility prefixes. */
+export const replayIgnorablePrefixes = (value: string): string[] => [
+  ...new Set(value.trim().split(/\s+/u).filter(Boolean)),
+];
+
 /** Bind a replay fragment once, retaining existing local declarations and compatibility tokens. */
 export const materializeReplayFragment = ({
   xml,
@@ -327,14 +332,9 @@ export const materializeReplayFragment = ({
     ignorableUris,
     "Ignorable",
   );
-  const ignorable = [
-    ...new Set(
-      `${inheritedIgnorable ?? ""} ${localIgnorable ?? ""}`
-        .trim()
-        .split(/\s+/u)
-        .filter(Boolean),
-    ),
-  ];
+  const ignorable = replayIgnorablePrefixes(
+    `${inheritedIgnorable ?? ""} ${localIgnorable ?? ""}`,
+  );
   let ignorableAttribute: string | undefined;
   let escapedIgnorable = "";
   if (ignorable.length > 0) {
