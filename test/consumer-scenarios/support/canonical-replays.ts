@@ -38,12 +38,6 @@ const MARKDOWN_ACCEPTANCE: ReplayGap = {
 export const CANONICAL_REPLAY_GAPS: Readonly<Record<string, ReplayGap>> = {
   "issue-1350-table-and-paragraph-before-deleted-final.json":
     MARKDOWN_ACCEPTANCE,
-  "issue-1356-48eb3fcfbb6a954d.json": {
-    reason:
-      "a tracked insertion after a paragraph that would take over the last paragraph's pending property change is refused, which the direct replay applies",
-    symptom:
-      /\[directTracked\] the flow's batches replayed tracked and accepted read otherwise than replayed direct/u,
-  },
   "issue-1757-7483271c36812e15.json": MARKDOWN_ACCEPTANCE,
   "issue-1757-paragraph-before-table-after-pending-join.json":
     MARKDOWN_ACCEPTANCE,

@@ -791,6 +791,13 @@ type PreparedOperation = {
    */
   joinsParagraphBefore?: true;
   /**
+   * A tracked deletion of a paragraph no paragraph follows, which retires
+   * the break before it: the break of the paragraph before it when the
+   * deletion runs, which an insertion the batch order runs first may have
+   * put there.
+   */
+  retiresBreakBefore?: true;
+  /**
    * A direct deletion of a container's final paragraph whose batch deletes
    * every paragraph before it back to the container's start or another
    * block (`finalBreakCarrier`'s `runStart`): it runs first there, while the
@@ -1460,6 +1467,44 @@ const resolveBlockInsertion = ({
       inserted: true as const,
     },
     ...resolved,
+  });
+};
+
+/**
+ * A tracked deletion of the paragraph that ends its block list, retiring the
+ * break of the paragraph before it in `document`, the batch as it stands
+ * when the deletion runs: an insertion the order ran first, right before the
+ * deleted paragraph, is the paragraph whose break it retires, as deleting it
+ * after that insertion does.
+ */
+const retiredBreakAsItRuns = (
+  document: Document,
+  story: OpStory,
+  intents: readonly EditorIntent[],
+): readonly EditorIntent[] => {
+  return intents.map((intent) => {
+    if (intent.type !== "replaceText") return intent;
+    // A text box's paragraphs are named through the story drawing it.
+    const here = locateParagraphThroughTextBoxes(
+      document,
+      story,
+      intent.to.blockId,
+    );
+    const before = here?.blocks[here.index - 1];
+    if (
+      before?.type !== "paragraph" ||
+      before.paraId === undefined ||
+      idKey(before.paraId) === idKey(intent.from.blockId)
+    )
+      return intent;
+    return {
+      ...intent,
+      from: {
+        story: intent.from.story,
+        blockId: before.paraId,
+        offset: paragraphLength(before),
+      },
+    };
   });
 };
 
@@ -4074,10 +4119,14 @@ export class CanonicalPublicOperations {
         resolvedOperation.joinsParagraphBefore === true
           ? deletionIntentsAsItRuns(sourceDocument, story, shifted)
           : shifted;
+      const retired =
+        resolvedOperation.retiresBreakBefore === true
+          ? retiredBreakAsItRuns(sourceDocument, story, rebound)
+          : rebound;
       const deleting =
         resolvedOperation.mayEndContainer === true
-          ? finalDeletionIntentsAsItRuns(sourceDocument, story, rebound)
-          : rebound;
+          ? finalDeletionIntentsAsItRuns(sourceDocument, story, retired)
+          : retired;
       const retracting =
         operation.type === "deleteBlock" &&
         batch.mode !== "direct" &&
@@ -5310,6 +5359,25 @@ export class CanonicalPublicOperations {
         from: previous.start + previous.node.content.size,
         to: end,
       };
+      // A paragraph the batch puts right after the one before it is the one
+      // whose break this deletion retires: claimed from the start of the
+      // paragraph before, the deletion runs after that insertion, as the
+      // direct deletion's join does. A run the batch deletes before it is
+      // `retiresRunBreak`'s.
+      if (previousGainsFollower && deletedRun === "none") {
+        const from = projection.addressAt(range.from);
+        const to = projection.addressAt(end);
+        if (from.isErr() || to.isErr()) return refusal("unsupportedBlock");
+        return tracking({
+          intents: [
+            { type: "replaceText", from: from.value, to: to.value, text: "" },
+          ],
+          normalizations: [],
+          from: previous.start,
+          to: end,
+          retiresBreakBefore: true,
+        });
+      }
     }
     // After a table, or as the only paragraph of its container, the
     // paragraph ends its block list for good: it keeps its mark and loses its
