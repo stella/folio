@@ -1732,10 +1732,11 @@ type FormattingIntentsAsItRunsOptions = {
 };
 
 /**
- * Paragraph property edits bound to the paragraph as the batch stands when
- * they run: one an earlier operation joined away, such as the first half of
- * a split whose retraction joins it to the second, is edited in the
- * paragraph that now holds it.
+ * Paragraph property edits and paragraph insertions bound to the paragraph
+ * as the batch stands when they run: one an earlier operation joined away,
+ * such as the first half of a split whose retraction joins it to the second,
+ * or a paragraph that took the mark of the run the batch deleted after it, is
+ * edited, or inserted beside, in the paragraph that now holds it.
  */
 const formattingIntentsAsItRuns = ({
   document,
@@ -1766,6 +1767,14 @@ const formattingIntentsAsItRuns = ({
           ...intent,
           items: intent.items.map((item) => ({ ...item, at: bound(item.at) })),
         };
+      case "insertParagraphs": {
+        const { at } = intent;
+        if (at.type !== "before" && at.type !== "after") return intent;
+        const { blockId } = bound({ story, blockId: at.blockId, offset: 0 });
+        return blockId === at.blockId
+          ? intent
+          : { ...intent, at: { type: at.type, blockId } };
+      }
       default:
         return intent;
     }
