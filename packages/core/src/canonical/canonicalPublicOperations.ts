@@ -595,6 +595,53 @@ const rowShiftedCellShapes = <
   );
 };
 
+const COLUMN_SHIFTED_CELL_SHAPE =
+  "The batch inserts a column inside the cells this merges.";
+
+/**
+ * The merges whose cells a column the batch inserts in their table would
+ * cut, whatever their order in the request: the column runs through the
+ * cells the merge names as the batch read the table, so the merge would take
+ * the column's new cells with them. The legacy engine refuses such a merge
+ * after placing the column; so does this one.
+ */
+const columnShiftedCellShapes = <
+  T extends PlannedOperation & { intents: readonly EditorIntent[] },
+>(
+  items: readonly T[],
+): T[] => {
+  const boundaries = items.flatMap(({ plan: { claim }, intents }) =>
+    claim.type === "tableStructure" && claim.axis === "column"
+      ? intents.flatMap((intent) =>
+          intent.type === "table" &&
+          intent.operation.type === DOCUMENT_OP_TYPES.INSERT_COLUMN
+            ? [{ table: claim.table, at: intent.operation.column }]
+            : [],
+        )
+      : [],
+  );
+  if (boundaries.length === 0) return [];
+  return items.filter(({ operation, plan: { address }, intents }) => {
+    if (operation.type !== "mergeTableCells" || address.type !== "cell")
+      return false;
+    const merge = intents.find(
+      (intent) =>
+        intent.type === "table" &&
+        intent.operation.type === DOCUMENT_OP_TYPES.MERGE_CELLS,
+    );
+    if (
+      merge?.type !== "table" ||
+      merge.operation.type !== DOCUMENT_OP_TYPES.MERGE_CELLS
+    )
+      return panic("A resolved cell merge lost its rectangle");
+    const { left, right } = merge.operation;
+    return boundaries.some(
+      ({ table, at }) =>
+        table === address.tablePosition && left < at && at < right,
+    );
+  });
+};
+
 const ROW_CLOSING_CELL_SHAPE =
   "Another merge the batch makes in this table removes a row, which would move the cells this merges or splits.";
 
@@ -4778,6 +4825,10 @@ export class CanonicalPublicOperations {
     for (const item of rowShiftedCellShapes(resolved)) {
       resolved.splice(resolved.indexOf(item), 1);
       skip(item.operation.id, "unsupportedBlock", ROW_SHIFTED_CELL_SHAPE);
+    }
+    for (const item of columnShiftedCellShapes(resolved)) {
+      resolved.splice(resolved.indexOf(item), 1);
+      skip(item.operation.id, "unsupportedBlock", COLUMN_SHIFTED_CELL_SHAPE);
     }
     const rowClosing = projected.isOk()
       ? rowClosingCellShapes({ items: resolved, doc: projected.value.doc })

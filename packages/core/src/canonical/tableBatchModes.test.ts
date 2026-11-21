@@ -70,4 +70,45 @@ describe.each(SESSIONS)("%s session", (session) => {
       ]);
     },
   );
+
+  // The column lands between the cells the merge names as the batch read
+  // the table, so the merge would take the column's new cell with it.
+  test.each(["direct", "tracked-changes"] as const)(
+    "a %s merge across a column the batch inserts is refused",
+    async (mode) => {
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await buildTableDocx(ONE_ROW),
+        { session },
+      );
+      const blockId = cellBlockId(reviewer, 0);
+      const operations: FolioDocumentOperation[] = [
+        {
+          id: "insert-column",
+          type: "insertTableColumn",
+          blockId,
+          position: "after",
+          cellTexts: ["new"],
+        },
+        {
+          id: "merge",
+          type: "mergeTableCells",
+          blockId,
+          endBlockId: cellBlockId(reviewer, 1),
+        },
+      ];
+      const result = reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode,
+          operations,
+        },
+        { undefinedReferences: "refuse" },
+      );
+
+      expect(result.applied.map(({ id }) => id)).toEqual(["insert-column"]);
+      expect(result.skipped.map(({ id, reason }) => ({ id, reason }))).toEqual([
+        { id: "merge", reason: "unsupportedBlock" },
+      ]);
+    },
+  );
 });
