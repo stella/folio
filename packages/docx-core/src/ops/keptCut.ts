@@ -459,10 +459,19 @@ export const pendingAtEdge = (
 
 /** The deepest kept cut among the markers `node` stands for; 0 for none. */
 const deepestKeptCut = (node: InlineNode): number => {
-  if (node.type === "deletion")
-    return Math.max(0, ...node.content.map(deepestKeptCut));
+  if (node.type === "deletion") return deepestKeptCutOf(node.content);
   if (!carriesKeptCut(node)) return 0;
   return node.keptCut?.depth ?? 0;
+};
+
+/**
+ * The deepest kept cut among the markers `nodes` stand for; 0 for none. A
+ * loop, not an argument spread: a run of markers has no size limit.
+ */
+const deepestKeptCutOf = (nodes: readonly InlineNode[]): number => {
+  let deepest = 0;
+  for (const node of nodes) deepest = Math.max(deepest, deepestKeptCut(node));
+  return deepest;
 };
 
 /**
@@ -595,7 +604,7 @@ export const settleKeptCuts = (
     // Markers standing together stand in one cut: the deepest any of them
     // records. Whether removals met at one seam at once or one after another,
     // each keeps that depth.
-    const depth = Math.max(0, ...run.map(deepestKeptCut));
+    const depth = deepestKeptCutOf(run);
     // A marker names a side as its cut's piece only while the pending change
     // that took its seam stands there: resolving that change consumes it.
     const facing = {
