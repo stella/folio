@@ -292,8 +292,12 @@ export const addRetiredCommentReceipts = ({
     if (ids === undefined) byOperation.set(owner, [commentId]);
     else ids.push(commentId);
   }
+  // An operation may already have retired comments outright.
   for (const entry of applied) {
     const ids = byOperation.get(entry.id);
-    if (ids !== undefined) entry.retiredCommentIds = ids.sort((a, b) => a - b);
+    if (ids !== undefined)
+      entry.retiredCommentIds = [
+        ...new Set([...(entry.retiredCommentIds ?? []), ...ids]),
+      ].sort((a, b) => a - b);
   }
 };

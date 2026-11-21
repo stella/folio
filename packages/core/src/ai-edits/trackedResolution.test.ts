@@ -13,6 +13,7 @@ import {
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import { FolioDocxReviewer } from "./headless";
 import { createFolioAITextRangeHandle } from "./snapshot";
 
@@ -26,9 +27,12 @@ const ORIGINAL = [
   SIGNED,
 ];
 
-const open = async (bytes?: ArrayBuffer): Promise<FolioDocxReviewer> => {
+const open = async (
+  bytes?: ArrayBuffer,
+  session?: HeadlessReviewerSession,
+): Promise<FolioDocxReviewer> => {
   if (bytes) {
-    return FolioDocxReviewer.fromBuffer(bytes, { author: "Reviewer" });
+    return FolioDocxReviewer.fromBuffer(bytes, { author: "Reviewer", session });
   }
   const document = fromMarkdown(
     ["# Service Agreement", ...ORIGINAL.slice(1)].join("\n\n"),
@@ -41,13 +45,14 @@ const open = async (bytes?: ArrayBuffer): Promise<FolioDocxReviewer> => {
       docx.byteOffset,
       docx.byteOffset + docx.byteLength,
     ) as ArrayBuffer,
-    { author: "Reviewer" },
+    { author: "Reviewer", session },
   );
 };
 
 const reopen = async (
   reviewer: FolioDocxReviewer,
-): Promise<FolioDocxReviewer> => open(await reviewer.toBuffer());
+  session?: HeadlessReviewerSession,
+): Promise<FolioDocxReviewer> => open(await reviewer.toBuffer(), session);
 
 const texts = (reviewer: FolioDocxReviewer): string[] =>
   reviewer.getContent().map(({ text }) => text);
@@ -75,7 +80,7 @@ const applier =
     reviewer: FolioDocxReviewer,
     mode: FolioDocumentOperationMode = "tracked-changes",
   ) =>
-  (operation: Record<string, unknown>): void => {
+  (operation: Record<string, unknown>) => {
     const result = reviewer.applyDocumentOperations(
       {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -85,6 +90,7 @@ const applier =
       { undefinedReferences: "refuse" },
     );
     expect(result.applied).toHaveLength(1);
+    return result;
   };
 
 describe("a tracked merge of a break that is itself a pending insertion", () => {
@@ -222,24 +228,201 @@ describe("a tracked merge of a break that is itself a pending insertion", () => 
 });
 
 describe("a tracked deletion of a paragraph that is a pending insertion", () => {
-  for (const mode of ["tracked-changes", "suggested"] as const) {
-    for (const [where, anchor] of [
-      ["inside the story", "The Buyer"],
-      ["at its end", "Signed"],
-    ] as const) {
-      test(`retracts it ${where} (${mode})`, async () => {
-        const reviewer = await open();
-        const apply = applier(reviewer, mode);
-        apply({
+  // Deleting one's own inserted paragraph takes the insertion back: the
+  // document is the one before it, ids and paragraph properties included,
+  // live, saved, resolved and undone.
+  for (const session of ["canonical", "legacy"] as const) {
+    for (const mode of ["tracked-changes", "suggested"] as const) {
+      for (const [where, anchor] of [
+        ["inside the story", "The Buyer"],
+        ["at its end", "Signed"],
+      ] as const) {
+        for (const styleId of [undefined, "Heading2"] as const) {
+          test(`retracts it ${where}${styleId === undefined ? "" : " restyled"} (${session}, ${mode})`, async () => {
+            const reviewer = await open(undefined, session);
+            const original = (
+              await open(await reviewer.toBuffer(), session)
+            ).getContent();
+            const apply = applier(reviewer, mode);
+            const inserted = apply({
+              type: "insertAfterBlock",
+              blockId: idOf(reviewer, anchor),
+              text: "Inserted.",
+              ...(styleId === undefined ? {} : { styleId }),
+            });
+            // A suggestion takes back only its own records: the deletion
+            // joins the insertion's suggestion.
+            const suggestionId = inserted.applied.at(0)?.suggestionId;
+            const deleted = apply({
+              id: "2",
+              type: "deleteBlock",
+              blockId: idOf(reviewer, "Inserted."),
+              ...(suggestionId === undefined ? {} : { suggestionId }),
+            });
+            expect(reviewer.getContent()).toEqual(original);
+            expect(reviewer.getChanges()).toEqual([]);
+            const saved = await reopen(reviewer, session);
+            expect(saved.getContent()).toEqual(original);
+            expect(saved.getChanges()).toEqual([]);
+            saved.rejectAll();
+            expect(saved.getContent()).toEqual(original);
+            const accepted = await reopen(reviewer, session);
+            accepted.acceptAll();
+            expect(accepted.getContent()).toEqual(original);
+            const undoHandle = deleted.undoHandle;
+            if (undoHandle === null) throw new Error("no undo handle");
+            expect(reviewer.undoDocumentOperations(undoHandle).status).toBe(
+              "undone",
+            );
+            expect(texts(reviewer)).toContain("Inserted.");
+          });
+        }
+      }
+    }
+  }
+
+  // A later suggestion is not the one that inserted the paragraph: on the
+  // canonical session its deletion stays beside the insertion and the two
+  // suggestions stay independent. Rejecting the deletion alone gives the
+  // paragraph back, rejecting the insertion alone leaves the document before
+  // both, and accepting both, in either order, removes the paragraph. The
+  // legacy session takes the insertion back outright.
+  const suggestedThenDeleted = async (session: HeadlessReviewerSession) => {
+    const reviewer = await open(undefined, session);
+    const original = (
+      await open(await reviewer.toBuffer(), session)
+    ).getContent();
+    const apply = applier(reviewer, "suggested");
+    const inserting = apply({
+      type: "insertAfterBlock",
+      blockId: idOf(reviewer, "The Buyer"),
+      text: "Inserted.",
+    }).applied.at(0)?.suggestionId;
+    const deleting = apply({
+      id: "2",
+      type: "deleteBlock",
+      blockId: idOf(reviewer, "Inserted."),
+    }).applied.at(0)?.suggestionId;
+    if (inserting === undefined || deleting === undefined)
+      throw new Error("no suggestion");
+    return { reviewer, original, inserting, deleting };
+  };
+
+  test("a later suggestion deleting it is recorded beside it (canonical)", async () => {
+    const { reviewer, original } = await suggestedThenDeleted("canonical");
+    expect(reviewer.getChanges().map(({ type }) => type)).toEqual([
+      "paragraphMarkInserted",
+      "paragraphMarkDeleted",
+      "insertion",
+      "deletion",
+    ]);
+    const accepted = await reopen(reviewer, "canonical");
+    accepted.acceptAll();
+    expect(accepted.getContent()).toEqual(original);
+    const rejected = await reopen(reviewer, "canonical");
+    rejected.rejectAll();
+    expect(rejected.getContent()).toEqual(original);
+  });
+
+  test("rejecting the later suggestion alone gives the paragraph back (canonical)", async () => {
+    const { reviewer, deleting } = await suggestedThenDeleted("canonical");
+    expect(reviewer.rejectSuggestion(deleting)).toBe(true);
+    expect(texts(reviewer)).toContain("Inserted.");
+    expect(reviewer.getChanges().map(({ type }) => type)).toEqual([
+      "paragraphMarkInserted",
+      "insertion",
+    ]);
+  });
+
+  test("rejecting the inserting suggestion alone leaves the document before both (canonical)", async () => {
+    const { reviewer, original, inserting, deleting } =
+      await suggestedThenDeleted("canonical");
+    expect(reviewer.rejectSuggestion(inserting)).toBe(true);
+    expect(reviewer.getContent()).toEqual(original);
+    expect(reviewer.getChanges()).toEqual([]);
+    expect(reviewer.acceptSuggestion(deleting)).toBe(false);
+  });
+
+  for (const order of ["inserting first", "deleting first"] as const) {
+    test(`accepting both suggestions, ${order}, removes the paragraph (canonical)`, async () => {
+      const { reviewer, original, inserting, deleting } =
+        await suggestedThenDeleted("canonical");
+      const sequence =
+        order === "inserting first"
+          ? [inserting, deleting]
+          : [deleting, inserting];
+      for (const suggestionId of sequence)
+        expect(reviewer.acceptSuggestion(suggestionId)).toBe(true);
+      reviewer.acceptAll();
+      expect(reviewer.getContent()).toEqual(original);
+      expect(reviewer.getChanges()).toEqual([]);
+    });
+  }
+
+  test("a later suggestion deleting it takes it back (legacy)", async () => {
+    const { reviewer, original, deleting } =
+      await suggestedThenDeleted("legacy");
+    expect(reviewer.getContent()).toEqual(original);
+    expect(reviewer.getChanges()).toEqual([]);
+    expect(reviewer.rejectSuggestion(deleting)).toBe(false);
+  });
+
+  // A comment the inserted paragraph alone carries retires with it, as a
+  // direct deletion of a commented paragraph retires its comment; the result
+  // reports it. The legacy session refuses the deletion.
+  for (const [where, anchor] of [
+    ["inside the story", "The Buyer"],
+    ["at its end", "Signed"],
+  ] as const) {
+    for (const session of ["canonical", "legacy"] as const) {
+      test(`retracting it ${where} retires its comment (${session})`, async () => {
+        const reviewer = await open(undefined, session);
+        const original = (
+          await open(await reviewer.toBuffer(), session)
+        ).getContent();
+        const commentId = applier(reviewer)({
           type: "insertAfterBlock",
           blockId: idOf(reviewer, anchor),
           text: "Inserted.",
-        });
-        apply({ type: "deleteBlock", blockId: idOf(reviewer, "Inserted.") });
-        expect(texts(reviewer)).toEqual(ORIGINAL);
+          comment: { text: "Why?" },
+        }).applied.at(0)?.commentId;
+        if (commentId === undefined) throw new Error("no comment");
+        const commented = reviewer.getContent();
+        const deleted = reviewer.applyDocumentOperations(
+          {
+            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+            mode: "tracked-changes",
+            operations: [
+              {
+                id: "2",
+                type: "deleteBlock",
+                blockId: idOf(reviewer, "Inserted."),
+              },
+            ],
+          },
+          { undefinedReferences: "refuse" },
+        );
+        if (session === "legacy") {
+          expect(deleted.applied).toEqual([]);
+          expect(deleted.skipped.map(({ message }) => message)).toEqual([
+            "Accept All would lose a comment.",
+          ]);
+          expect(reviewer.getContent()).toEqual(commented);
+          return;
+        }
+        expect(deleted.applied.at(0)?.retiredCommentIds).toEqual([commentId]);
+        expect(reviewer.getContent()).toEqual(original);
         expect(reviewer.getChanges()).toEqual([]);
-        reviewer.acceptAll();
-        expect(texts(await reopen(reviewer))).toEqual(ORIGINAL);
+        expect(reviewer.getComments()).toEqual([]);
+        const saved = await reopen(reviewer, session);
+        expect(saved.getContent()).toEqual(original);
+        expect(saved.getComments()).toEqual([]);
+        const undoHandle = deleted.undoHandle;
+        if (undoHandle === null) throw new Error("no undo handle");
+        expect(reviewer.undoDocumentOperations(undoHandle).status).toBe(
+          "undone",
+        );
+        expect(reviewer.getComments().map(({ id }) => id)).toEqual([commentId]);
       });
     }
   }

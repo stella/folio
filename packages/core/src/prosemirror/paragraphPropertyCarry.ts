@@ -212,7 +212,18 @@ export const recordReplacedParagraphProperties = ({
   }
   const pending = expectParagraphAttrs(replaced)._propertyChanges;
   if (hasSerializableParagraphPropertyChange(pending)) {
-    tr.setNodeAttribute(position, "_propertyChanges", pending);
+    // A pending change recording the properties this paragraph reads with
+    // records nothing here, as when a retraction gives back the mark that
+    // the inserted paragraph took over.
+    const current = recordedFormatting(target);
+    if (
+      pending?.some(
+        ({ previousFormatting }) =>
+          previousFormatting === undefined ||
+          paragraphPropertySnapshotsDiffer(previousFormatting, current),
+      ) === true
+    )
+      tr.setNodeAttribute(position, "_propertyChanges", pending);
     return false;
   }
   const previousFormatting = recordedFormatting(replaced);
