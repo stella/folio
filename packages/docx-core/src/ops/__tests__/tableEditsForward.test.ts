@@ -93,6 +93,19 @@ const independentSlots = (table: Table) => {
     return result;
   });
 };
+// A row an edit leaves nothing of its own to start, only merges from above,
+// goes with the edit: no reader can hold a row of continuations.
+const startsACell = (row: readonly (TableCell | null)[]) =>
+  row.some(
+    (value) => value !== null && value.formatting?.vMerge !== "continue",
+  );
+const withoutClosedRows = (
+  before: readonly (TableCell | null)[][],
+  after: (TableCell | null)[][],
+) =>
+  after.filter(
+    (row, index) => !startsACell(before.at(index) ?? []) || startsACell(row),
+  );
 const payloads = (slots: (TableCell | null)[][]) =>
   slots.map((row) => row.map((value) => value?.content ?? null));
 const check = (document: Document) => {
@@ -227,8 +240,10 @@ describe("independent table forward oracles", () => {
           const table = tableOf(document);
           const width = table.columnWidths?.length ?? 0;
           const column = seed % width;
-          const expected = independentSlots(table);
-          for (const row of expected) row.splice(column, 1);
+          const original = independentSlots(table);
+          const spliced = independentSlots(table);
+          for (const row of spliced) row.splice(column, 1);
+          const expected = withoutClosedRows(original, spliced);
           const deletion = applied(document, {
             ...address(targetOf(table)),
             type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
@@ -345,7 +360,10 @@ describe("independent table forward oracles", () => {
                       (row.cells.at(-1)?.formatting?.gridSpan ?? 1) > 1,
                   );
                   if (rowCanDelete && width > 2) {
-                    for (const row of expected) row.splice(column, 1);
+                    const unchanged = independentSlots(table);
+                    const spliced = independentSlots(table);
+                    for (const row of spliced) row.splice(column, 1);
+                    expected = payloads(withoutClosedRows(unchanged, spliced));
                     op = {
                       ...target,
                       type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
@@ -409,11 +427,13 @@ describe("independent table forward oracles", () => {
       // A merge that drops continuation/nested content passes snapshot restoration. Pin every moved block and new empty slot.
       assertProperty(
         fc.property(geometry, (shape) => {
+          // The merge leaves each row its last column, so every row keeps a
+          // cell it starts and stays.
           const document = fixture({ ...shape, vertical: true });
           const table = tableOf(document);
           const left = Number(shape.before);
           const content = table.rows.flatMap((row) =>
-            row.cells.flatMap((value) => value.content),
+            row.cells.slice(0, -1).flatMap((value) => value.content),
           );
           const merged = applied(document, {
             ...address(targetOf(table)),
@@ -421,7 +441,7 @@ describe("independent table forward oracles", () => {
             top: 0,
             bottom: shape.rows,
             left,
-            right: left + 3,
+            right: left + 2,
             newBlockIds: Array.from({ length: shape.rows - 1 }, (_, index) =>
               id(0x5000 + index),
             ),
@@ -442,7 +462,7 @@ describe("independent table forward oracles", () => {
               ...Array.from({ length: left }, () => null),
               blocks,
               blocks,
-              blocks,
+              table.rows.at(rowIndex)?.cells.at(-1)?.content ?? [],
               ...Array.from({ length: Number(shape.after) }, () => null),
             ];
           });
@@ -450,8 +470,8 @@ describe("independent table forward oracles", () => {
             mergeExpected,
           );
           for (const [rowIndex, row] of mergedTable.rows.entries()) {
-            expect(row.cells.length).toBe(1);
-            expect(row.cells.at(0)?.formatting?.gridSpan).toBe(3);
+            expect(row.cells.length).toBe(2);
+            expect(row.cells.at(0)?.formatting?.gridSpan).toBe(2);
             expect(row.cells.at(0)?.formatting?.vMerge).toBe(
               rowIndex === 0 ? "restart" : "continue",
             );
@@ -465,7 +485,7 @@ describe("independent table forward oracles", () => {
             applied(merged.document, {
               ...address(owner.paraId),
               type: DOCUMENT_OP_TYPES.SPLIT_CELL,
-              newBlockIds: Array.from({ length: shape.rows * 2 }, (_, index) =>
+              newBlockIds: Array.from({ length: shape.rows }, (_, index) =>
                 id(0x7000 + index),
               ),
             }).document,
@@ -477,17 +497,11 @@ describe("independent table forward oracles", () => {
                 [
                   {
                     type: "paragraph",
-                    paraId: id(0x7000 + rowIndex * 2),
+                    paraId: id(0x7000 + rowIndex),
                     content: [],
                   },
                 ],
-                [
-                  {
-                    type: "paragraph",
-                    paraId: id(0x7000 + rowIndex * 2 + 1),
-                    content: [],
-                  },
-                ],
+                row.cells.at(1)?.content ?? [],
               ],
               Array.from({ length: Number(shape.after) }, () => null),
             ),

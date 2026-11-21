@@ -111,3 +111,29 @@ export const tableGrid = (
     (table.columnWidths === undefined || table.columnWidths.length === width);
   return Result.ok({ width, rows, stated });
 };
+
+/** Whether a row starts a cell of its own rather than only continuing merges. */
+const startsCell = (cells: readonly TableCell[]) =>
+  cells.some(
+    (cell) =>
+      tableCellVerticalMerge(cell.formatting?.vMerge) !==
+      TABLE_CELL_VERTICAL_MERGES.CONTINUE,
+  );
+
+type EditRemovesRowOptions = {
+  /** The row's cells before the edit. */
+  before: readonly TableCell[];
+  /** What the edit leaves of them. */
+  after: readonly TableCell[];
+};
+
+/**
+ * Whether an edit that leaves a row with `after` removes the row: it took
+ * every cell the row had, or every cell the row started, which would leave
+ * a row of nothing but merges from above. A reader cannot hold such a row:
+ * it splits the merge apart to give the row a cell. The merges above close
+ * over one row fewer.
+ */
+export const editRemovesRow = ({ before, after }: EditRemovesRowOptions) =>
+  (before.length > 0 && after.length === 0) ||
+  (startsCell(before) && !startsCell(after));
