@@ -85,7 +85,7 @@ describe.each(Object.entries(operations))("%s", (_, operation) => {
       operation(stamp("s1")),
     );
     expect(tracked.isErr() && tracked.error.reason).toBe(
-      DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_PROPERTY_CHANGE,
     );
   });
 
@@ -95,7 +95,7 @@ describe.each(Object.entries(operations))("%s", (_, operation) => {
       operation(stamp("s1")),
     );
     expect(tracked.isErr() && tracked.error.reason).toBe(
-      DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_PROPERTY_CHANGE,
     );
   });
 
@@ -180,7 +180,7 @@ describe("a run property change", () => {
       italicizeRun(stamp("s1")),
     );
     expect(tracked.isErr() && tracked.error.reason).toBe(
-      DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      DOCUMENT_OP_REFUSAL_REASONS.PENDING_RUN_PROPERTY_CHANGE,
     );
   });
 
@@ -190,7 +190,7 @@ describe("a run property change", () => {
       italicizeRun(stamp("s1")),
     );
     expect(tracked.isErr() && tracked.error.reason).toBe(
-      DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      DOCUMENT_OP_REFUSAL_REASONS.PENDING_RUN_PROPERTY_CHANGE,
     );
   });
 

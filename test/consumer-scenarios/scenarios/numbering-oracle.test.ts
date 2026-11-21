@@ -664,15 +664,17 @@ test(
           // rejecting either would discard both. The legacy engine folds them.
           if (scenarioEngine() === "canonical") {
             assert.deepEqual(
-              restyled.skipped.map(({ reason, message }) => ({
+              restyled.skipped.map(({ reason, message, canonicalRefusal }) => ({
                 reason,
                 message,
+                canonicalRefusal,
               })),
               [
                 {
-                  reason: "unsupportedBlock",
+                  reason: "pendingParagraphPropertyChange",
                   message:
                     "A suggestion cannot take over another pending paragraph property change.",
+                  canonicalRefusal: undefined,
                 },
               ],
             );

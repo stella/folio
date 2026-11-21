@@ -1489,27 +1489,37 @@ describe("tracked run formatting", () => {
     const { reviewer, result } =
       await formatCarriersOverPendingTab("canonical");
     expect(result.skipped).toEqual([]);
+    // The tab's change keeps its id: the transaction's new ids are the
+    // other five carriers'.
     expect(result.applied.at(0)?.revisionIds).toEqual([
-      900, 901, 902, 903, 904, 905,
+      900, 901, 902, 903, 904,
     ]);
-    expect(result.nextRevisionId).toBe(906);
+    expect(result.nextRevisionId).toBe(905);
 
     const tracked = await reviewer.toBuffer();
     const trackedXml = await documentXml(tracked);
-    // The tab's pending bold folds into its one change, which keeps the
-    // properties the tab had before either edit.
+    // The tab's pending bold folds into its one change, which keeps its id
+    // and the properties the tab had before either edit.
     assertSingularRunPropertyChanges(trackedXml, 6);
-    expect(trackedXml).not.toContain('w:id="899"');
     expect(trackedXml).toContain(
-      '<w:r><w:rPr><w:b/><w:i/><w:rPrChange w:id="901" w:author="Reviewer" w:date="2026-09-09T00:00:00.000Z"><w:rPr/></w:rPrChange></w:rPr><w:tab/></w:r>',
+      '<w:r><w:rPr><w:b/><w:i/><w:rPrChange w:id="899" w:author="Reviewer" w:date="2026-09-09T00:00:00.000Z"><w:rPr/></w:rPrChange></w:rPr><w:tab/></w:r>',
     );
     const symbol = decodeOoxmlSymbolCharacter("F06F");
     if (!symbol) {
       throw new Error("expected a decodable symbol fixture");
     }
     expect((await FolioDocxReviewer.fromBuffer(tracked)).getChanges()).toEqual(
-      ["A", "\t", "\n", symbol, "1", "field"].map((text, index) =>
-        expect.objectContaining({ id: 900 + index, type: "formatting", text }),
+      (
+        [
+          ["A", 900],
+          ["\t", 899],
+          ["\n", 901],
+          [symbol, 902],
+          ["1", 903],
+          ["field", 904],
+        ] as const
+      ).map(([text, id]) =>
+        expect.objectContaining({ id, type: "formatting", text }),
       ),
     );
 

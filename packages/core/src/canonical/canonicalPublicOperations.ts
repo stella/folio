@@ -218,6 +218,7 @@ import {
   canonicalCommentBody,
   compileCanonicalComments,
 } from "./canonicalComments";
+import { compilerRefusalSkip } from "./canonicalCompilerRefusal";
 import {
   insertedCommentRange,
   plainInsertedParagraphIds,
@@ -228,6 +229,7 @@ import {
 } from "./canonicalInsertionReplayIds";
 import { addJoinedParagraphReceipts } from "./canonicalJoinedReceipts";
 import { lockViolationBetween } from "./canonicalLockGuard";
+import { keepStandingRevisionReceipts } from "./canonicalRevisionReceipts";
 import {
   CANONICAL_ADMISSION,
   type CanonicalCommit,
@@ -5381,13 +5383,8 @@ export class CanonicalPublicOperations {
           ? { verifyOperation }
           : {}),
       });
-      if (compiled.isErr()) {
-        return declined({
-          reason: "unsupportedBlock",
-          message: compiled.error.message,
-          refusal: { gap: CANONICAL_GAP.publicUnsupportedInline },
-        });
-      }
+      if (compiled.isErr())
+        return declined(compilerRefusalSkip(compiled.error));
       let nextDocument = compiled.value.document;
       const operationOps = [...compiled.value.ops];
       if (
@@ -6203,6 +6200,10 @@ export class CanonicalPublicOperations {
         return result([], null, "refused");
       }
     }
+    keepStandingRevisionReceipts({
+      document: prepared.value.document,
+      applied: appliedById,
+    });
     const applied = batch.operations.flatMap(({ id }) => {
       const entry = appliedById.get(id);
       if (entry === undefined) return [];

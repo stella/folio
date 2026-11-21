@@ -106,3 +106,41 @@ describe("a tracked run patch over a pending property change", () => {
     ]);
   });
 });
+
+describe("the id of a folded run property change", () => {
+  test("a fold over the whole run keeps the pending change's id", () => {
+    const { paragraph, applied } = patched({
+      from: 0,
+      to: 2,
+      patch: { italic: true },
+    });
+    expect(paragraph.content).toMatchObject([
+      { propertyChanges: [{ info: { id: 1, author: "B" } }] },
+    ]);
+    // The kept id is no new revision.
+    expect(applied.revisions).toEqual([]);
+  });
+
+  test("a piece the patch cuts off takes the stamp's id; the rest keeps the change", () => {
+    const { paragraph, applied } = patched({
+      from: 0,
+      to: 1,
+      patch: { italic: true },
+    });
+    expect(paragraph.content).toMatchObject([
+      {
+        content: [{ type: "text", text: "a" }],
+        formatting: { bold: true, italic: true },
+        propertyChanges: [
+          { info: { id: 2, author: "B" }, previousFormatting: {} },
+        ],
+      },
+      {
+        content: [{ type: "text", text: "b" }],
+        formatting: { bold: true },
+        propertyChanges: [{ info: { id: 1, author: "A" } }],
+      },
+    ]);
+    expect(applied.revisions).toEqual([2]);
+  });
+});
