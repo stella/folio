@@ -15,6 +15,7 @@
  * operation's outcome survives, and in tracked mode accepting everything gives
  * the direct outcome. Comments are checked the same way through
  * `getComments()`, whose anchors must come from the story that holds them.
+ * Every case runs on both reviewer sessions.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -29,6 +30,7 @@ import {
 } from "../document-operations";
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { createDocx } from "../docx/rezip";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import type { Paragraph, Table } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import {
@@ -37,6 +39,11 @@ import {
 } from "./headless";
 import { createFolioAITextRangeHandle } from "./snapshot";
 import type { FolioAIBlock, FolioAIParagraphBlock } from "./types";
+
+const SESSIONS = [
+  "legacy",
+  "canonical",
+] as const satisfies readonly HeadlessReviewerSession[];
 
 const HEADER_ID = "rIdStoryHeader";
 const FOOTER_ID = "rIdStoryFooter";
@@ -271,11 +278,18 @@ const apply = (
     },
   });
 
+const open = async (
+  session: HeadlessReviewerSession,
+): Promise<FolioDocxReviewer> =>
+  FolioDocxReviewer.fromBuffer(await seed(), { author: "Story test", session });
+
 const reopen = async (
   reviewer: FolioDocxReviewer,
+  session: HeadlessReviewerSession,
 ): Promise<FolioDocxReviewer> =>
   FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
     author: "Story test",
+    session,
   });
 
 const ORIGINAL: StoryShape = {
@@ -289,6 +303,18 @@ const ORIGINAL: StoryShape = {
 };
 
 /**
+ * The paragraphs a story reads after a table is inserted after its last
+ * paragraph. The canonical session ends every container with a paragraph, so
+ * an empty one follows the table; the legacy one leaves the table last.
+ */
+const PARAGRAPHS_AFTER_TABLE_AT_STORY_END = {
+  legacy: ORIGINAL.paragraphs,
+  canonical: [...ORIGINAL.paragraphs, ""],
+} as const satisfies Record<HeadlessReviewerSession, readonly string[]>;
+
+type Expected = StoryShape | "second table";
+
+/**
  * One operation and the story it should leave behind once applied (and, in
  * tracked mode, accepted). `target` names the block text the operation
  * anchors on; `build` receives the resolved block ids.
@@ -298,11 +324,11 @@ type OperationCase = {
   label: string;
   build: (ids: (text: string) => string) => FolioDocumentOperation;
   /**
-   * The story after the operation, or `"second table"` where only a new
-   * table's presence is asserted. In tracked mode, accepting everything must
-   * give the same story as the direct operation.
+   * The story after the operation on each session, or `"second table"` where
+   * only a new table's presence is asserted. In tracked mode, accepting
+   * everything must give the same story as the direct operation.
    */
-  expected: StoryShape | "second table";
+  expected: (session: HeadlessReviewerSession) => Expected;
   /** Modes this operation supports; tracked is omitted where it reports `unsupportedMode`. */
   modes: readonly Mode[];
 };
@@ -320,10 +346,10 @@ const OPERATION_CASES: readonly OperationCase[] = [
       find: "one",
       replace: "uno",
     }),
-    expected: {
+    expected: () => ({
       ...ORIGINAL,
       paragraphs: ["Alpha uno.", "Bravo two.", "Charlie end."],
-    },
+    }),
     modes: BOTH,
   },
   {
@@ -335,7 +361,7 @@ const OPERATION_CASES: readonly OperationCase[] = [
       range: rangeOf(ids("B2"), "B2", 0, 2),
       replace: "Z9",
     }),
-    expected: {
+    expected: () => ({
       ...ORIGINAL,
       tables: [
         [
@@ -343,7 +369,7 @@ const OPERATION_CASES: readonly OperationCase[] = [
           ["A2", "Z9"],
         ],
       ],
-    },
+    }),
     modes: BOTH,
   },
   {
@@ -355,10 +381,10 @@ const OPERATION_CASES: readonly OperationCase[] = [
       range: rangeOf(ids("Bravo two."), "Bravo two.", 0, 5),
       formatting: { bold: true },
     }),
-    expected: {
+    expected: () => ({
       ...ORIGINAL,
       paragraphs: ["Alpha one.", "**Bravo** two.", "Charlie end."],
-    },
+    }),
     modes: BOTH,
   },
   {
@@ -370,10 +396,10 @@ const OPERATION_CASES: readonly OperationCase[] = [
       blockId: ids("Alpha one."),
       text: "Inserted.",
     }),
-    expected: {
+    expected: () => ({
       ...ORIGINAL,
       paragraphs: ["Alpha one.", "Inserted.", "Bravo two.", "Charlie end."],
-    },
+    }),
     modes: BOTH,
   },
   {
@@ -385,10 +411,10 @@ const OPERATION_CASES: readonly OperationCase[] = [
       blockId: ids("Alpha one."),
       text: "Inserted.",
     }),
-    expected: {
+    expected: () => ({
       ...ORIGINAL,
       paragraphs: ["Inserted.", "Alpha one.", "Bravo two.", "Charlie end."],
-    },
+    }),
     modes: BOTH,
   },
   {
@@ -400,10 +426,10 @@ const OPERATION_CASES: readonly OperationCase[] = [
       blockId: ids("Bravo two."),
       text: "Bravo rewritten.",
     }),
-    expected: {
+    expected: () => ({
       ...ORIGINAL,
       paragraphs: ["Alpha one.", "Bravo rewritten.", "Charlie end."],
-    },
+    }),
     modes: BOTH,
   },
   {
@@ -414,7 +440,10 @@ const OPERATION_CASES: readonly OperationCase[] = [
       type: "deleteBlock",
       blockId: ids("Alpha one."),
     }),
-    expected: { ...ORIGINAL, paragraphs: ["Bravo two.", "Charlie end."] },
+    expected: () => ({
+      ...ORIGINAL,
+      paragraphs: ["Bravo two.", "Charlie end."],
+    }),
     modes: BOTH,
   },
   {
@@ -427,10 +456,10 @@ const OPERATION_CASES: readonly OperationCase[] = [
       offset: 5,
       separator: " ",
     }),
-    expected: {
+    expected: () => ({
       ...ORIGINAL,
       paragraphs: ["Alpha", "one.", "Bravo two.", "Charlie end."],
-    },
+    }),
     modes: BOTH,
   },
   {
@@ -442,10 +471,10 @@ const OPERATION_CASES: readonly OperationCase[] = [
       blockId: ids("Alpha one."),
       separator: " ",
     }),
-    expected: {
+    expected: () => ({
       ...ORIGINAL,
       paragraphs: ["Alpha one. Bravo two.", "Charlie end."],
-    },
+    }),
     modes: BOTH,
   },
   {
@@ -457,10 +486,10 @@ const OPERATION_CASES: readonly OperationCase[] = [
       blockId: ids("Bravo two."),
       properties: { alignment: "center" },
     }),
-    expected: {
+    expected: () => ({
       ...ORIGINAL,
       paragraphs: ["Alpha one.", "Bravo two. [center]", "Charlie end."],
-    },
+    }),
     modes: BOTH,
   },
   {
@@ -472,14 +501,17 @@ const OPERATION_CASES: readonly OperationCase[] = [
       blockId: ids("Charlie end."),
       rows: [["N1", "N2"]],
     }),
-    expected: { ...ORIGINAL, tables: [...ORIGINAL.tables, [["N1", "N2"]]] },
+    expected: (session) => ({
+      paragraphs: [...PARAGRAPHS_AFTER_TABLE_AT_STORY_END[session]],
+      tables: [...ORIGINAL.tables, [["N1", "N2"]]],
+    }),
     modes: BOTH,
   },
   {
     type: "deleteTable",
     label: "delete the table",
     build: (ids) => ({ id: "op", type: "deleteTable", blockId: ids("A1") }),
-    expected: { ...ORIGINAL, tables: [] },
+    expected: () => ({ ...ORIGINAL, tables: [] }),
     modes: BOTH,
   },
   {
@@ -493,7 +525,7 @@ const OPERATION_CASES: readonly OperationCase[] = [
     }),
     // The signature block's spacer and rule paragraphs are the template's to
     // decide; the story must show a second table led by the party's name.
-    expected: "second table",
+    expected: () => "second table",
     modes: ["direct"],
   },
   {
@@ -505,7 +537,7 @@ const OPERATION_CASES: readonly OperationCase[] = [
       blockId: ids("A1"),
       cellTexts: ["R1", "R2"],
     }),
-    expected: {
+    expected: () => ({
       ...ORIGINAL,
       tables: [
         [
@@ -514,14 +546,14 @@ const OPERATION_CASES: readonly OperationCase[] = [
           ["A2", "B2"],
         ],
       ],
-    },
+    }),
     modes: BOTH,
   },
   {
     type: "deleteTableRow",
     label: "delete a row",
     build: (ids) => ({ id: "op", type: "deleteTableRow", blockId: ids("A1") }),
-    expected: { ...ORIGINAL, tables: [[["A2", "B2"]]] },
+    expected: () => ({ ...ORIGINAL, tables: [[["A2", "B2"]]] }),
     modes: BOTH,
   },
   {
@@ -533,7 +565,7 @@ const OPERATION_CASES: readonly OperationCase[] = [
       blockId: ids("A1"),
       cellTexts: ["C1", "C2"],
     }),
-    expected: {
+    expected: () => ({
       ...ORIGINAL,
       tables: [
         [
@@ -541,7 +573,7 @@ const OPERATION_CASES: readonly OperationCase[] = [
           ["A2", "C2", "B2"],
         ],
       ],
-    },
+    }),
     modes: BOTH,
   },
   {
@@ -552,7 +584,7 @@ const OPERATION_CASES: readonly OperationCase[] = [
       type: "deleteTableColumn",
       blockId: ids("A1"),
     }),
-    expected: { ...ORIGINAL, tables: [[["B1"], ["B2"]]] },
+    expected: () => ({ ...ORIGINAL, tables: [[["B1"], ["B2"]]] }),
     modes: BOTH,
   },
   {
@@ -564,10 +596,10 @@ const OPERATION_CASES: readonly OperationCase[] = [
       blockId: ids("A1"),
       endBlockId: ids("B1"),
     }),
-    expected: {
+    expected: () => ({
       ...ORIGINAL,
       tables: [[["A1\nB1"], ["A2", "B2"]]],
-    },
+    }),
     modes: ["direct"],
   },
 ];
@@ -593,31 +625,42 @@ describe("every public operation has a story-dimension case", () => {
   });
 });
 
-const expectOutcome = (
-  shape: StoryShape,
-  expected: OperationCase["expected"],
-): void => {
+type ExpectOutcomeOptions = {
+  shape: StoryShape;
+  expected: Expected;
+  session: HeadlessReviewerSession;
+};
+
+const expectOutcome = ({
+  shape,
+  expected,
+  session,
+}: ExpectOutcomeOptions): void => {
   if (expected !== "second table") {
     expect(shape).toEqual(expected);
     return;
   }
-  expect(shape.paragraphs).toEqual(ORIGINAL.paragraphs);
+  expect(shape.paragraphs).toEqual([
+    ...PARAGRAPHS_AFTER_TABLE_AT_STORY_END[session],
+  ]);
   expect(shape.tables[0]).toEqual(ORIGINAL.tables[0]);
   expect(shape.tables[1]?.[0]?.[0]?.split("\n")[0]).toBe("Party");
 };
 
-describe.each(STORIES)(
-  "operations in the $name story survive save and reopen",
-  (storyCase) => {
-    const { story } = storyCase;
+const STORY_SESSIONS = STORIES.flatMap(({ name, story }) =>
+  SESSIONS.map((session) => ({ name, story, session })),
+);
+
+describe.each(STORY_SESSIONS)(
+  "operations in the $name story survive save and reopen ($session)",
+  ({ story, session }) => {
     const cases = OPERATION_CASES.flatMap((operation) =>
       operation.modes.map((mode) => ({ ...operation, mode })),
     );
 
     test.each(cases)("$label ($mode)", async (operation) => {
-      const reviewer = await FolioDocxReviewer.fromBuffer(await seed(), {
-        author: "Story test",
-      });
+      const reviewer = await open(session);
+      const expected = operation.expected(session);
       const ids = (text: string) => blockWithText(reviewer, story, text).id;
       const result = apply(
         reviewer,
@@ -628,24 +671,21 @@ describe.each(STORIES)(
       expect(result.issues).toEqual([]);
       expect(result.applied.map(({ id }) => id)).toEqual(["op"]);
 
-      const reopened = await reopen(reviewer);
+      const reopened = await reopen(reviewer, session);
+      const outcome = (shape: StoryShape) =>
+        expectOutcome({ shape, expected, session });
       if (operation.mode === "direct") {
-        expectOutcome(storyShape(reviewer, story), operation.expected);
-        expectOutcome(storyShape(reopened, story), operation.expected);
+        outcome(storyShape(reviewer, story));
+        outcome(storyShape(reopened, story));
         return;
       }
       reopened.acceptAll();
-      expectOutcome(storyShape(reopened, story), operation.expected);
-      expectOutcome(
-        storyShape(await reopen(reopened), story),
-        operation.expected,
-      );
+      outcome(storyShape(reopened, story));
+      outcome(storyShape(await reopen(reopened, session), story));
     });
 
     test("a split cell comes back split after a merge", async () => {
-      const reviewer = await FolioDocxReviewer.fromBuffer(await seed(), {
-        author: "Story test",
-      });
+      const reviewer = await open(session);
       const ids = (text: string) => blockWithText(reviewer, story, text).id;
       apply(reviewer, story, "direct", {
         id: "merge",
@@ -653,7 +693,7 @@ describe.each(STORIES)(
         blockId: ids("A1"),
         endBlockId: ids("B1"),
       });
-      const merged = await reopen(reviewer);
+      const merged = await reopen(reviewer, session);
       const result = apply(merged, story, "direct", {
         id: "op",
         type: "splitTableCell",
@@ -663,15 +703,15 @@ describe.each(STORIES)(
       expect(result.applied.map(({ id }) => id)).toEqual(["op"]);
       const expected = storyShape(merged, story);
       expect(expected.tables[0]?.[0]?.length).toBe(2);
-      expect(storyShape(await reopen(merged), story)).toEqual(expected);
+      expect(storyShape(await reopen(merged, session), story)).toEqual(
+        expected,
+      );
     });
 
     test.each(["commentOnBlock", "commentOnRange"] as const)(
       "%s anchors are read back from the story",
       async (type) => {
-        const reviewer = await FolioDocxReviewer.fromBuffer(await seed(), {
-          author: "Story test",
-        });
+        const reviewer = await open(session);
         const block = blockWithText(reviewer, story, "Bravo two.");
         const operation: FolioDocumentOperation =
           type === "commentOnBlock"
@@ -701,7 +741,7 @@ describe.each(STORIES)(
             }),
           );
         expect(pick(reviewer.getComments())).toEqual([expected]);
-        const reopened = await reopen(reviewer);
+        const reopened = await reopen(reviewer, session);
         expect(pick(reopened.getComments())).toEqual([
           {
             ...expected,
@@ -713,7 +753,7 @@ describe.each(STORIES)(
   },
 );
 
-const NOTES = STORIES.filter(
+const NOTES = STORY_SESSIONS.filter(
   ({ story }) => story.type === "footnote" || story.type === "endnote",
 );
 const NOTE_PART = {
@@ -738,14 +778,12 @@ const notePartXml = async (
  * back from the part itself, not only from a reopened reader.
  */
 describe.each(NOTES)(
-  "the $name part records what an edit removed",
-  ({ story }) => {
+  "the $name part records what an edit removed ($session)",
+  ({ story, session }) => {
     const type = story.type === "endnote" ? "endnote" : "footnote";
 
     test("a deleted paragraph with no other edit is gone from the saved part", async () => {
-      const reviewer = await FolioDocxReviewer.fromBuffer(await seed(), {
-        author: "Story test",
-      });
+      const reviewer = await open(session);
       const deleted = blockWithText(reviewer, story, "Alpha one.");
       apply(reviewer, story, "direct", {
         id: "op",
@@ -760,15 +798,13 @@ describe.each(NOTES)(
     });
 
     test("a tracked table deletion keeps its row revisions through save", async () => {
-      const reviewer = await FolioDocxReviewer.fromBuffer(await seed(), {
-        author: "Story test",
-      });
+      const reviewer = await open(session);
       apply(reviewer, story, "tracked-changes", {
         id: "op",
         type: "deleteTable",
         blockId: blockWithText(reviewer, story, "A1").id,
       });
-      const pending = await reopen(reviewer);
+      const pending = await reopen(reviewer, session);
       const changes =
         pending.readReviewedStory({ story, view: "current-markup" })?.changes ??
         [];

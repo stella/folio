@@ -120,6 +120,7 @@ import {
   numberingNumIdsTaken,
 } from "../docx/numberingIds";
 import { getCachedNumberingMap } from "../docx/numberingParser";
+import { cloneDocumentWithParagraphPropertySources } from "../docx/paragraphPropertySource";
 import { visitDocxParagraphs } from "../docx/paragraphTraversal";
 import { parseDocx } from "../docx/parser";
 import { createReply } from "../docx/replyToComment";
@@ -5138,8 +5139,11 @@ export class FolioDocxReviewer {
       if (model.isErr()) throw model.error;
       // The package relationships the save writes for the parts the model
       // holds, a numbering part a new list started included, as the legacy
-      // model states them.
-      return reconcileDocumentPartRelationships(model.value);
+      // model states them. The caller owns the copy: the session's operations
+      // remember the packages they made, so a change to one would reach them.
+      return cloneDocumentWithParagraphPropertySources(
+        reconcileDocumentPartRelationships(model.value),
+      );
     }
     const document = this.documentFromStateSnapshot(
       this.captureReviewerState(),

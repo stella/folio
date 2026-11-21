@@ -3339,6 +3339,79 @@ type SerializeNotesToZipOptions = {
   output?: NoteOutput;
 };
 
+type NotePartSerializations = Pick<
+  PatchNotePartIntoZipOptions,
+  "currentXml" | "fromOriginal"
+>;
+
+/** The model's notes of one kind as a note part, and the source part's baseline. */
+const notePartSerializations = (
+  doc: Document,
+  elementName: "footnote" | "endnote",
+): NotePartSerializations => {
+  if (elementName === "footnote") {
+    const footnotes = doc.package.footnotes ?? [];
+    return {
+      currentXml: serializeFootnotes(footnotes),
+      fromOriginal: (xml) => {
+        const source = parseFootnotes(xml).getNormalFootnotes();
+        return {
+          baselineXml: serializeFootnotes(source),
+          replacementXml: serializeNewFootnotesPart(footnotes, {
+            document: doc,
+            sourceNoteIds: new Set(source.map(({ id }) => id)),
+          }),
+        };
+      },
+    };
+  }
+  const endnotes = doc.package.endnotes ?? [];
+  return {
+    currentXml: serializeEndnotes(endnotes),
+    fromOriginal: (xml) => {
+      const source = parseEndnotes(xml).getNormalEndnotes();
+      return {
+        baselineXml: serializeEndnotes(source),
+        replacementXml: serializeNewEndnotesPart(endnotes, {
+          document: doc,
+          sourceNoteIds: new Set(source.map(({ id }) => id)),
+        }),
+      };
+    },
+  };
+};
+
+type PatchNotePartXmlOptions = {
+  doc: Document;
+  elementName: "footnote" | "endnote";
+  originalXml: string;
+  changedParaIds: ReadonlySet<string>;
+};
+
+/**
+ * The source note part patched from the model as a repack patches it: changed
+ * paragraphs spliced, a note whose shape changed (a table, a row, a cell's
+ * properties, a row-level revision) rewritten whole, every other note
+ * byte-exact. See {@link buildPatchedNotePartXml}.
+ */
+export const patchNotePartXml = ({
+  doc,
+  elementName,
+  originalXml,
+  changedParaIds,
+}: PatchNotePartXmlOptions): NotePartPatch => {
+  const { currentXml, fromOriginal } = notePartSerializations(doc, elementName);
+  const { baselineXml, replacementXml } = fromOriginal(originalXml);
+  return buildPatchedNotePartXml({
+    originalXml,
+    baselineXml,
+    serializedXml: currentXml,
+    replacementXml,
+    elementName,
+    changedParaIds,
+  });
+};
+
 async function serializeNotesToZip({
   doc,
   originalZip,
@@ -3357,17 +3430,7 @@ async function serializeNotesToZip({
     if (originalFootnotes) {
       await patchNotePartIntoZip({
         conventionalLowerPath: "word/footnotes.xml",
-        currentXml: serializeFootnotes(footnotes),
-        fromOriginal: (xml) => {
-          const source = parseFootnotes(xml).getNormalFootnotes();
-          return {
-            baselineXml: serializeFootnotes(source),
-            replacementXml: serializeNewFootnotesPart(footnotes, {
-              document: doc,
-              sourceNoteIds: new Set(source.map(({ id }) => id)),
-            }),
-          };
-        },
+        ...notePartSerializations(doc, "footnote"),
         elementName: "footnote",
         changedNoteParaIds,
         originalZip,
@@ -3397,17 +3460,7 @@ async function serializeNotesToZip({
     if (originalEndnotes) {
       await patchNotePartIntoZip({
         conventionalLowerPath: "word/endnotes.xml",
-        currentXml: serializeEndnotes(endnotes),
-        fromOriginal: (xml) => {
-          const source = parseEndnotes(xml).getNormalEndnotes();
-          return {
-            baselineXml: serializeEndnotes(source),
-            replacementXml: serializeNewEndnotesPart(endnotes, {
-              document: doc,
-              sourceNoteIds: new Set(source.map(({ id }) => id)),
-            }),
-          };
-        },
+        ...notePartSerializations(doc, "endnote"),
         elementName: "endnote",
         changedNoteParaIds,
         originalZip,
