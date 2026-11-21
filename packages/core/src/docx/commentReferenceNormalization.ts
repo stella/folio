@@ -86,7 +86,7 @@ type CommentRangeMarkerSite =
       owner: { preserved?: PreservedMarkup };
       child: PreservedChildOf;
       /** The nearest paragraph a point can take the boundary's place in. */
-      nearest: PointPlacement | undefined;
+      nearest: () => PointPlacement | undefined;
     };
 
 /**
@@ -145,7 +145,8 @@ export const normalizeCommentReferences = ({
     if (tape.length > 0) tape.push({ order, text: "\n" });
     visitInlineContentSlots(paragraph, ({ content, index, item }) => {
       if (item.type === "run") {
-        tape.push({ order, text: getRunText(item) });
+        const text = getRunText(item);
+        if (text !== "") tape.push({ order, text });
         return;
       }
       if (isCommentMarker(item) && !validCommentIds.has(item.id)) {
@@ -198,19 +199,24 @@ export const normalizeCommentReferences = ({
 
   const normalizeTable = (table: Table): void => {
     const cells = table.rows.flatMap((row) => row.cells);
+    // Placements are read only for a boundary a gap holds, and once per
+    // table, so a table with no positioned boundary costs nothing more.
+    let points: ((following: number) => PointPlacement | undefined) | undefined;
+    const nearestAfter = (following: number) => () =>
+      (points ??= nearestPoints(cells))(following);
     // The cells before a gap, counted in document order.
     let passed = 0;
     for (const [rowIndex, row] of table.rows.entries()) {
       collectPositionedMarkers({
         owner: table,
         gap: { at: rowIndex, childCount: table.rows.length },
-        nearest: nearestPoint(cells, passed),
+        nearest: nearestAfter(passed),
       });
       for (const [cellIndex, cell] of row.cells.entries()) {
         collectPositionedMarkers({
           owner: row,
           gap: { at: cellIndex, childCount: row.cells.length },
-          nearest: nearestPoint(cells, passed),
+          nearest: nearestAfter(passed),
         });
         normalizeBlocks(cell.content);
         passed += 1;
@@ -218,13 +224,13 @@ export const normalizeCommentReferences = ({
       collectPositionedMarkers({
         owner: row,
         gap: { at: row.cells.length, childCount: row.cells.length },
-        nearest: nearestPoint(cells, passed),
+        nearest: nearestAfter(passed),
       });
     }
     collectPositionedMarkers({
       owner: table,
       gap: { at: table.rows.length, childCount: table.rows.length },
-      nearest: nearestPoint(cells, passed),
+      nearest: nearestAfter(passed),
     });
   };
 
@@ -345,27 +351,34 @@ export const normalizeCommentReferences = ({
 type CollectPositionedMarkersOptions = {
   owner: { preserved?: PreservedMarkup };
   gap: { at: number; childCount: number };
-  nearest: PointPlacement | undefined;
+  nearest: () => PointPlacement | undefined;
 };
 
 /**
  * The point placement for a gap before cell `following` of `cells` (in
  * document order): the start of the first paragraph from that cell on, else
- * the end of the last paragraph before it.
+ * the end of the last paragraph before it. Every gap's answer is read off two
+ * passes over the cells.
  */
-const nearestPoint = (
+const nearestPoints = (
   cells: readonly Table["rows"][number]["cells"][number][],
-  following: number,
-): PointPlacement | undefined => {
-  for (const cell of cells.slice(following)) {
-    const paragraph = edgeParagraph(cell.content, "first");
-    if (paragraph !== undefined) return { paragraph, at: "start" };
-  }
-  for (const cell of cells.slice(0, following).toReversed()) {
-    const paragraph = edgeParagraph(cell.content, "last");
-    if (paragraph !== undefined) return { paragraph, at: "end" };
-  }
-  return undefined;
+): ((following: number) => PointPlacement | undefined) => {
+  const firstFrom: (Paragraph | undefined)[] = [];
+  firstFrom[cells.length] = undefined;
+  for (let index = cells.length - 1; index >= 0; index -= 1)
+    firstFrom[index] =
+      edgeParagraph(cells[index]?.content ?? [], "first") ??
+      firstFrom[index + 1];
+  const lastBefore: (Paragraph | undefined)[] = [undefined];
+  for (const [index, cell] of cells.entries())
+    lastBefore[index + 1] =
+      edgeParagraph(cell.content, "last") ?? lastBefore[index];
+  return (following) => {
+    const first = firstFrom[following];
+    if (first !== undefined) return { paragraph: first, at: "start" };
+    const last = lastBefore[following];
+    return last === undefined ? undefined : { paragraph: last, at: "end" };
+  };
 };
 
 /** The first or last paragraph of `blocks`, looking inside tables and controls. */
@@ -417,17 +430,37 @@ const paragraphAtEdge = (
   }
 };
 
-/** The text read between two anchors, paragraphs joined by a line break. */
+/** At most this much of a dropped range's text is reported. */
+const DROPPED_RANGE_TEXT_LIMIT = 200;
+
+/**
+ * The text read between two anchors, paragraphs joined by a line break, up to
+ * {@link DROPPED_RANGE_TEXT_LIMIT} characters. The tape is in document order
+ * and holds no empty piece, so the first piece is found by bisection and the
+ * walk stops at the limit.
+ */
 const textBetween = (
   tape: readonly TextPiece[],
   start: number,
   end: number,
-): string =>
-  tape
-    .filter(({ order }) => order > start && order <= end)
-    .map(({ text }) => text)
-    .join("")
-    .trim();
+): string => {
+  let low = 0;
+  let high = tape.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if ((tape[middle]?.order ?? Number.POSITIVE_INFINITY) > start)
+      high = middle;
+    else low = middle + 1;
+  }
+  let text = "";
+  for (let index = low; index < tape.length; index += 1) {
+    const piece = tape[index];
+    if (piece === undefined || piece.order > end) break;
+    text += piece.text;
+    if (text.trimStart().length > DROPPED_RANGE_TEXT_LIMIT) break;
+  }
+  return text.trim().slice(0, DROPPED_RANGE_TEXT_LIMIT);
+};
 
 /**
  * A comment's references after its first: each comment keeps one. Where it
@@ -495,7 +528,7 @@ type RepairUnpairedCommentRangesResult = {
  * since a comment holds one range. A boundary with no partner anchors its
  * comment as a point when nothing else does: the first inline one becomes
  * the comment's reference, and one between a table's rows or a row's cells
- * becomes a reference in the nearest paragraph (see {@link nearestPoint}).
+ * becomes a reference in the nearest paragraph (see {@link nearestPoints}).
  * Every other such boundary is dropped, the comment staying anchored by its
  * reference. A comment left with no anchor keeps its boundaries, so no
  * comment loses its last anchor.
@@ -579,7 +612,7 @@ const pointFor = ({
   if (range !== undefined) return undefined;
   for (const marker of lone) {
     if (marker.site.type !== COMMENT_RANGE_MARKER_SITES.positioned) continue;
-    const placement = marker.site.nearest;
+    const placement = marker.site.nearest();
     if (placement === undefined) continue;
     removeMarker(marker.site, result);
     result.placed.push({ id, placement });
