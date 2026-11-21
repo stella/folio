@@ -545,7 +545,7 @@ describe("table row review", () => {
         revision,
         newIds,
       },
-      DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
     );
   });
 
@@ -599,7 +599,7 @@ describe("table row review", () => {
     expectRefusalWithoutMutation(
       documentOf(tableOf(shared, makeRow("00000020"))),
       op,
-      DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
     );
   });
 

@@ -226,7 +226,7 @@ export const trackTableRows = ({
   if (rows.some((row) => row.structuralChange !== undefined)) {
     return refused({
       op,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
       message: "A row already carries a structural revision.",
     });
   }

@@ -7057,6 +7057,14 @@ const applyFolioAIEditOperationsInternal = ({
           revision,
           emptiedRows,
         });
+        if (result.type === "pendingTableChange") {
+          skipped.push({
+            id: item.operation.id,
+            reason: "pendingTableChange",
+            message: result.message,
+          });
+          continue;
+        }
         if (result.type === "unsupported") {
           skipped.push({
             id: item.operation.id,
@@ -7184,6 +7192,14 @@ const applyFolioAIEditOperationsInternal = ({
         }
         const revision: TableStructureRevision | null = structuralRevision;
         const result = applyTableRowDeletion({ tr, deletion, revision });
+        if (result.type === "pendingTableChange") {
+          skipped.push({
+            id: item.operation.id,
+            reason: "pendingTableChange",
+            message: result.message,
+          });
+          continue;
+        }
         if (result.type === "unsupported") {
           skipped.push({
             id: item.operation.id,
@@ -7804,7 +7820,11 @@ const applyFolioAIEditOperationsInternal = ({
         // model refuses the pair at save), so a table holding an inserted row
         // is refused, as `deleteTableRow` refuses that row.
         if (holdsPendingInsertedRow) {
-          skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
+          skipped.push({
+            id: item.operation.id,
+            reason: "pendingTableChange",
+            message: "A row already carries a structural revision.",
+          });
           continue;
         }
         if (rowPositions.length === 0) {

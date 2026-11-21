@@ -77,12 +77,20 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
   /** A replacement names no paragraph to replace, or none to put in its place. */
   readonly EMPTY_BLOCK_LIST: "emptyBlockList";
   /**
-   * The operation would record a tracked change over one the target already
-   * carries (a table, row or cell record, a split that would drop a
-   * paragraph's property change), or would give a tracked split a mark of
-   * its own.
+   * The operation would give a tracked split a mark or property change of
+   * its own, or would put a pasted paragraph's review over the review the
+   * destination already carries.
    */
   readonly REVISION_CONFLICT: "revisionConflict";
+  /**
+   * The operation would change a table, row, cell or grid that already
+   * carries a pending change of the kind it would record: a row pending
+   * insertion or deletion, a table, row or cell property change, a grid
+   * change, or cells already suggested for deletion; or would change the
+   * columns or cells of a table under review. Each element holds one record
+   * of a kind: resolve the pending one first.
+   */
+  readonly PENDING_TABLE_CHANGE: "pendingTableChange";
   /**
    * A suggestion would fold into a run's pending property change that is not
    * its own. A run holds one property change and a suggestion is resolved by
@@ -217,12 +225,20 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
   /** A replacement names no paragraph to replace, or none to put in its place. */
   EMPTY_BLOCK_LIST: "emptyBlockList",
   /**
-   * The operation would record a tracked change over one the target already
-   * carries (a table, row or cell record, a split that would drop a
-   * paragraph's property change), or would give a tracked split a mark of
-   * its own.
+   * The operation would give a tracked split a mark or property change of
+   * its own, or would put a pasted paragraph's review over the review the
+   * destination already carries.
    */
   REVISION_CONFLICT: "revisionConflict",
+  /**
+   * The operation would change a table, row, cell or grid that already
+   * carries a pending change of the kind it would record: a row pending
+   * insertion or deletion, a table, row or cell property change, a grid
+   * change, or cells already suggested for deletion; or would change the
+   * columns or cells of a table under review. Each element holds one record
+   * of a kind: resolve the pending one first.
+   */
+  PENDING_TABLE_CHANGE: "pendingTableChange",
   /**
    * A suggestion would fold into a run's pending property change that is not
    * its own. A run holds one property change and a suggestion is resolved by
@@ -337,6 +353,7 @@ export const DOCUMENT_OP_REFUSAL_SCOPES: Readonly<
   emptyContent: ANY,
   emptyBlockList: ANY,
   revisionConflict: TRACKED,
+  pendingTableChange: TRACKED,
   pendingRunPropertyChange: TRACKED,
   pendingParagraphPropertyChange: TRACKED,
   joinIntoPendingTable: TRACKED,

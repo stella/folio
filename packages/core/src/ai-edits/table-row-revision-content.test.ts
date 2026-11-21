@@ -265,7 +265,7 @@ describe("folio writes both halves of a row revision", () => {
     expect(/<w:ins [^>]*>\s*<w:r>/u.test(xml)).toBe(true);
   });
 
-  test("a tracked table deletion over a pending inserted row is refused, and the table saves", async () => {
+  test("a tracked table deletion over a pending inserted row is refused as pendingTableChange, and the table saves", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await buildTableDocx([
         { texts: ["Alpha"] },
@@ -286,7 +286,11 @@ describe("folio writes both halves of a row revision", () => {
 
     expect(result.applied).toEqual([]);
     expect(result.skipped).toEqual([
-      { id: "delete-table", reason: "unsupportedBlock" },
+      {
+        id: "delete-table",
+        reason: "pendingTableChange",
+        message: "A row already carries a structural revision.",
+      },
     ]);
     expect(rowTexts(await tableRows(await reviewer.toBuffer()))).toEqual([
       ["Alpha"],

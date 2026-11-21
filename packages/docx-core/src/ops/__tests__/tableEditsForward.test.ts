@@ -651,7 +651,7 @@ describe("independent table forward oracles", () => {
       const reason =
         cause === "markup"
           ? DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE
-          : DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT;
+          : DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE;
       if (cause === "markup")
         table.bookmarks = [
           {
@@ -698,7 +698,9 @@ describe("independent table forward oracles", () => {
       }
     }
     expect(counts.get(DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE)).toBe(4);
-    expect(counts.get(DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT)).toBe(4);
+    expect(counts.get(DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE)).toBe(
+      4,
+    );
     expect(counts.size).toBe(2);
   });
 

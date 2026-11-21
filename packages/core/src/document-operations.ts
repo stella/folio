@@ -2330,6 +2330,7 @@ const recoveryByReason = {
   pendingDeletion: "resolveTrackedChange",
   pendingParagraphMarkDeletion: "resolveTrackedChange",
   pendingTableInsertion: "resolveTrackedChange",
+  pendingTableChange: "resolveTrackedChange",
   existingRevisionConflict: "resolveTrackedChange",
   contentControlLock: "changeTarget",
 } as const satisfies Record<
@@ -2360,6 +2361,7 @@ export const getFolioDocumentOperationIssues = (
         reason !== "pendingDeletion" &&
         reason !== "pendingParagraphMarkDeletion" &&
         reason !== "pendingTableInsertion" &&
+        reason !== "pendingTableChange" &&
         reason !== "existingRevisionConflict" &&
         // A lock refuses the same change to the same control every time.
         reason !== "contentControlLock" &&
