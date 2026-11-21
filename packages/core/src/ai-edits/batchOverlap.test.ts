@@ -24,6 +24,7 @@ import {
 } from "../../../../test/property-testing";
 import {
   blockTexts,
+  legacySessionState,
   openReviewer,
   OperationSession,
   paragraphsDocx,
@@ -467,9 +468,7 @@ const freshSession = async (): Promise<OperationSession> => {
     Array.from({ length: BLOCK_COUNT }, (_, block) => [
       textRun(blockText(block)),
     ]),
-  )
-    .then(openReviewer)
-    .then((reviewer) => reviewer.state);
+  ).then(legacySessionState);
   return new OperationSession(await tokenDocument);
 };
 

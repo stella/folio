@@ -214,10 +214,24 @@ export const reviewerPresentation = (
 };
 
 /**
- * A document held in memory and edited through the same applier the reviewer
- * uses, without a package round trip per batch: what a test running hundreds
- * of batches needs. Comments are remembered by the text they were created
- * with.
+ * The state an {@link OperationSession} starts from: the legacy reviewer's
+ * reading of the package, since the session edits with the legacy applier.
+ */
+export const legacySessionState = async (
+  buffer: ArrayBuffer,
+): Promise<EditorState> =>
+  (
+    await FolioDocxReviewer.fromBuffer(buffer, {
+      author: "Reviewer",
+      session: "legacy",
+    })
+  ).state;
+
+/**
+ * A document held in memory and edited through the same applier the legacy
+ * reviewer uses, without a package round trip per batch: what a test running
+ * hundreds of batches needs. Comments are remembered by the text they were
+ * created with.
  */
 export class OperationSession {
   state: EditorState;
