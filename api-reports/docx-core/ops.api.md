@@ -1668,6 +1668,12 @@ export const transformPosition: (position: TextPosition, over: readonly Sequence
 // @public
 export const trimIdLease: (lease: IdLease, ids: readonly LeasedId[]) => IdLease;
 
+// @public
+export const TYPED_TEXT_FORMATTING: Readonly<{
+    readonly CARET: "caret";
+    readonly BODY_TEXT: "bodyText";
+}>;
+
 // @public (undocumented)
 export type UpdateCommentContentOp = {
     type: typeof DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT;

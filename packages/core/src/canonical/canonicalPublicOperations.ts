@@ -62,6 +62,7 @@ import {
   SPLIT_HALVES,
   type TableInsertionPoint,
   type TextPosition,
+  TYPED_TEXT_FORMATTING,
 } from "@stll/docx-core/ops";
 
 import {
@@ -3373,6 +3374,8 @@ const compilePublicIntents = ({
     const firstRevisionId = nextRevisionId;
     const compiled = compileEditorIntent(document, {
       intent,
+      // An operation's text is body text: it never continues a note reference.
+      typedFormatting: TYPED_TEXT_FORMATTING.BODY_TEXT,
       mode:
         mode === "direct"
           ? {
