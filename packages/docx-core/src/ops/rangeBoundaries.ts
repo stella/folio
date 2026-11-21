@@ -268,7 +268,10 @@ export const removedContentBoundaries = ({
 /** A boundary a block list holds between its blocks. */
 export type BlockBoundary = Exclude<Boundary, CommentAnchor>;
 
-// A block list holds no comment anchor, so every boundary in it is one of these.
+/**
+ * Whether a block-list entry is a range boundary standing between blocks. A
+ * block list holds no comment anchor, so every boundary in it is one of these.
+ */
 export const isBlockBoundary = (block: BlockContent): block is BlockBoundary =>
   Object.hasOwn(BOUNDARY_SIDES, block.type);
 

@@ -81,6 +81,7 @@ import {
 } from "../offsets";
 import { packageResourcesOf, packageResourcesOpOf } from "../packageResources";
 import { applyFormattingPatch } from "../patch";
+import { isBlockBoundary } from "../rangeBoundaries";
 import {
   DOCUMENT_OP_REFUSAL_REASONS,
   type DocumentOpRefusalReason,
@@ -284,6 +285,40 @@ const orderedIds = (document: Document): string[] =>
   storyParagraphs(document.package.document).map(
     ({ paragraph }) => paragraph.paraId ?? "",
   );
+
+type CarriedBoundariesOptions = {
+  document: Document;
+  next: Document;
+  touched: ReadonlySet<string>;
+};
+
+/** Top-level range boundaries between touched paragraphs that `next` no longer holds between blocks. */
+const carriedBoundaries = ({
+  document,
+  next,
+  touched,
+}: CarriedBoundariesOptions): ReadonlySet<BlockContent> => {
+  const content = document.package.document.content;
+  const kept = new Set(next.package.document.content);
+  const carried = new Set<BlockContent>();
+  for (const [index, block] of content.entries()) {
+    if (!isBlockBoundary(block) || kept.has(block)) continue;
+    const before = content
+      .slice(0, index)
+      .findLast((candidate) => !isBlockBoundary(candidate));
+    const after = content
+      .slice(index + 1)
+      .find((candidate) => !isBlockBoundary(candidate));
+    if (
+      before !== undefined &&
+      after !== undefined &&
+      blockHolds(before, touched) &&
+      blockHolds(after, touched)
+    )
+      carried.add(block);
+  }
+  return carried;
+};
 
 const blockHolds = (block: BlockContent, ids: ReadonlySet<string>): boolean => {
   switch (block.type) {
@@ -3300,9 +3335,13 @@ describe("document operations", () => {
           untouchedOrder(orderedIds(document)),
         );
 
+        // Range boundaries standing between two paragraphs the operation
+        // touched, and gone from between the blocks, moved into the paragraph
+        // that holds what they bounded: they are touched with it.
+        const carried = carriedBoundaries({ document, next, touched });
         const untouchedBlocks = (target: Document) =>
           target.package.document.content.filter(
-            (block) => !blockHolds(block, touched),
+            (block) => !blockHolds(block, touched) && !carried.has(block),
           );
         const beforeBlocks = untouchedBlocks(document);
         const afterBlocks = untouchedBlocks(next);
