@@ -24,7 +24,7 @@ const open = async () => {
   const zip = await ZipArchive.read(await createDocx(createEmptyDocument()));
   zip.set(
     "word/header1.xml",
-    `<?xml version="1.0" encoding="UTF-8"?><w:hdr ${NS}><w:p>${PICTURE("rIdGone")}</w:p></w:hdr>`,
+    `<?xml version="1.0" encoding="UTF-8"?><w:hdr ${NS}><w:p w14:paraId="10000003">${PICTURE("rIdGone")}</w:p></w:hdr>`,
   );
   zip.set(
     "word/_rels/header1.xml.rels",
@@ -57,12 +57,20 @@ const open = async () => {
 const part = async (buffer: ArrayBuffer, path: string) =>
   (await (await ZipArchive.read(buffer)).entry(path)?.text()) ?? "";
 
-describe.each(["direct", "tracked-changes"] as const)(
-  "an edit elsewhere in a package with dangling references (%s)",
-  (mode) => {
+const SESSIONS = ["canonical", "legacy"] as const;
+
+describe.each(
+  SESSIONS.flatMap((session) =>
+    (["direct", "tracked-changes"] as const).map((mode) => ({ session, mode })),
+  ),
+)(
+  "an edit elsewhere in a package with dangling references ($mode, $session)",
+  ({ mode, session }) => {
     const edited = async () => {
       const source = await open();
-      const reviewer = await FolioDocxReviewer.fromBuffer(source.slice(0));
+      const reviewer = await FolioDocxReviewer.fromBuffer(source.slice(0), {
+        session,
+      });
       const result = reviewer.applyDocumentOperations(
         {
           version: 1,
@@ -107,42 +115,46 @@ describe.each(["direct", "tracked-changes"] as const)(
   },
 );
 
-test("a relationship to an entry that keeps its name's escapes is not dangling", async () => {
-  const zip = await ZipArchive.read(await open());
-  zip.set("word/media/my%20image.png", new Uint8Array([1, 2, 3]));
-  const relationships =
-    (await zip.entry("word/_rels/document.xml.rels")?.text()) ?? "";
-  zip.set(
-    "word/_rels/document.xml.rels",
-    relationships.replace(
-      "</Relationships>",
-      `<Relationship Id="rIdEscaped" Type="${RELATIONSHIPS}/image" Target="media/my%20image.png"/></Relationships>`,
-    ),
-  );
-  const reviewer = await FolioDocxReviewer.fromBuffer(
-    (await zip.generate()).slice().buffer,
-  );
-  reviewer.applyDocumentOperations(
-    {
-      version: 1,
-      mode: "direct",
-      operations: [
-        {
-          id: "edit",
-          type: "insertAfterBlock",
-          blockId: "10000001",
-          text: "Added",
-          numbering: { kind: "newList", format: "numbered" },
-        },
-      ],
-    },
-    { undefinedReferences: "refuse" },
-  );
-  const saved = await reviewer.toBuffer();
-  expect(await part(saved, "word/_rels/document.xml.rels")).toContain(
-    "my%20image.png",
-  );
-  expect((await ZipArchive.read(saved)).has("word/media/my%20image.png")).toBe(
-    true,
-  );
-});
+test.each(SESSIONS)(
+  "a relationship to an entry that keeps its name's escapes is not dangling (%s)",
+  async (session) => {
+    const zip = await ZipArchive.read(await open());
+    zip.set("word/media/my%20image.png", new Uint8Array([1, 2, 3]));
+    const relationships =
+      (await zip.entry("word/_rels/document.xml.rels")?.text()) ?? "";
+    zip.set(
+      "word/_rels/document.xml.rels",
+      relationships.replace(
+        "</Relationships>",
+        `<Relationship Id="rIdEscaped" Type="${RELATIONSHIPS}/image" Target="media/my%20image.png"/></Relationships>`,
+      ),
+    );
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      (await zip.generate()).slice().buffer,
+      { session },
+    );
+    reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "direct",
+        operations: [
+          {
+            id: "edit",
+            type: "insertAfterBlock",
+            blockId: "10000001",
+            text: "Added",
+            numbering: { kind: "newList", format: "numbered" },
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
+    const saved = await reviewer.toBuffer();
+    expect(await part(saved, "word/_rels/document.xml.rels")).toContain(
+      "my%20image.png",
+    );
+    expect(
+      (await ZipArchive.read(saved)).has("word/media/my%20image.png"),
+    ).toBe(true);
+  },
+);
