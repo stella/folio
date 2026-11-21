@@ -6306,7 +6306,7 @@ export class CanonicalPublicOperations {
         "unsupportedBlock",
         "Canonical public emphasis replacements are unavailable.",
       );
-    if (/\[\^(?:e)?\d+\]/u.test(prose) || /[\t\r\n]/u.test(prose))
+    if (/\[\^(?:e)?\d+\]/u.test(prose))
       return refusal(
         "unsupportedBlock",
         "Canonical public replacements require plain text.",
@@ -6508,26 +6508,120 @@ export class CanonicalPublicOperations {
         }
         if (pending) changes.push(pending);
       }
-      const replacementChanges = [];
-      for (const change of changes) {
-        const gap = resolveCleanTextRange({
-          cleanBlock: clean,
-          startOffset: change.start,
-          endOffset: change.end,
-        });
-        if (!gap) return refusal("unsupportedBlock");
-        // Keep trailing references and struck text outside the replacement.
-        const lastCharacter =
-          change.end > change.start ? clean.offsets[change.end - 1] : undefined;
-        replacementChanges.push({
-          ...change,
-          from: gap.from,
-          to:
+      // A tab the replacement repeats from the source is kept: a change that
+      // spans tabs changes the text between them, tab for tab. A tab or break
+      // the replacement adds would be written as text, so it is refused.
+      for (let index = changes.length - 1; index >= 0; index -= 1) {
+        const change = changes[index];
+        if (change === undefined || !/[\t\r\n]/u.test(change.text)) continue;
+        const sourceParts = clean.text
+          .slice(change.start, change.end)
+          .split("\t");
+        const replacementParts = change.text.split("\t");
+        if (
+          /[\r\n]/u.test(change.text) ||
+          sourceParts.length !== replacementParts.length
+        )
+          return refusal(
+            "unsupportedBlock",
+            "Canonical public replacements require plain text.",
+          );
+        const pieces: typeof changes = [];
+        let position = change.start;
+        for (const [part, sourcePart] of sourceParts.entries()) {
+          const replacementPart = replacementParts[part] ?? "";
+          if (sourcePart !== replacementPart)
+            pieces.push({
+              start: position,
+              end: position + sourcePart.length,
+              text: replacementPart,
+            });
+          position += sourcePart.length + 1;
+        }
+        changes.splice(index, 1, ...pieces);
+      }
+      const placeChanges = (
+        pieces: readonly { start: number; end: number; text: string }[],
+      ) => {
+        const placed = [];
+        for (const change of pieces) {
+          const gap = resolveCleanTextRange({
+            cleanBlock: clean,
+            startOffset: change.start,
+            endOffset: change.end,
+          });
+          if (!gap) return undefined;
+          // Keep trailing references and struck text outside the replacement.
+          const lastCharacter =
+            change.end > change.start
+              ? clean.offsets[change.end - 1]
+              : undefined;
+          // A character an element reads as, such as a field's result, ends
+          // where the element does.
+          const lastHolder =
             lastCharacter === undefined
-              ? gap.to
-              : Math.max(gap.from, Math.min(gap.to, lastCharacter + 1)),
-          markers: "retained" as const,
-        });
+              ? null
+              : paragraph.node.nodeAt(lastCharacter - paragraph.start);
+          const afterLast =
+            lastCharacter === undefined
+              ? undefined
+              : lastCharacter +
+                (lastHolder === null || lastHolder.isText
+                  ? 1
+                  : lastHolder.nodeSize);
+          placed.push({
+            ...change,
+            from: gap.from,
+            to:
+              afterLast === undefined
+                ? gap.to
+                : Math.max(gap.from, Math.min(gap.to, afterLast)),
+            markers: "retained" as const,
+          });
+        }
+        return placed;
+      };
+      const addressable = (
+        placed: readonly { from: number; to: number }[],
+      ): boolean =>
+        placed.every(
+          ({ from: changeFrom, to: changeTo }) =>
+            projection.value
+              .addressAt(
+                changeFrom,
+                changeFrom < changeTo ? "afterMarkers" : undefined,
+              )
+              .isOk() &&
+            projection.value
+              .addressAt(
+                changeTo,
+                changeFrom < changeTo ? "beforeMarkers" : undefined,
+              )
+              .isOk(),
+        );
+      let replacementChanges = placeChanges(changes);
+      if (replacementChanges === undefined) return refusal("unsupportedBlock");
+      // A change the word diff places inside an element edited only whole,
+      // such as a field whose result is in more than one format, replaces
+      // each piece of prose whole instead: the replaced text holds the
+      // element entirely, or the replacement is refused as cutting into it.
+      if (!addressable(replacementChanges)) {
+        const whole = placeChanges(
+          segments.source.flatMap((piece, index) => {
+            const replacement = segments.replacement[index] ?? "";
+            if (replacement === piece.text) return [];
+            const pieceStart = start + piece.offset;
+            return [
+              {
+                start: pieceStart,
+                end: pieceStart + piece.text.length,
+                text: replacement,
+              },
+            ];
+          }),
+        );
+        if (whole === undefined) return refusal("unsupportedBlock");
+        replacementChanges = whole;
       }
       if (
         !preservesReplacementCommentAlignment({
