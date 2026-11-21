@@ -1576,6 +1576,9 @@ export type SplitParagraphFields = Omit<Paragraph, "type" | "paraId" | "content"
 export const storyBody: (document: Document_2, story: OpStory) => DocumentBody;
 
 // @public
+export const storyLacksClosingParagraph: (document: Document_2, story: OpStory) => boolean;
+
+// @public
 export const storyParagraphs: (body: DocumentBody) => ParagraphLocation[];
 
 // @public

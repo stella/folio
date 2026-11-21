@@ -1211,7 +1211,7 @@ describe("toMarkdown — clean preset for skills", () => {
     expect(md([a, b, para([run("C")])], clean)).toBe("ABC");
   });
 
-  test("a deleted mark before a table keeps its paragraph, which cannot join into a table cell", () => {
+  test("a deleted mark before a table runs its words into the first cell", () => {
     const para1: Paragraph = {
       type: "paragraph",
       content: [run("Lead")],
@@ -1232,9 +1232,11 @@ describe("toMarkdown — clean preset for skills", () => {
         },
       ],
     });
-    expect(md([para1, table(false)], clean)).toBe("Lead\n\n| X |\n| --- |");
-    expect(md([para1, table(true)], clean)).toBe("Lead\n\n| X |\n| --- |");
-    // Words before an emptied paragraph stop there; the emptied one goes.
+    expect(md([para1, table(false)], clean)).toBe("| LeadX |\n| --- |");
+    // A pending row is accepted with the mark, so its cell receives them too.
+    expect(md([para1, table(true)], clean)).toBe("| LeadX |\n| --- |");
+    // Words before an emptied paragraph join it and run on with it; the
+    // emptied one leaves nothing of its own.
     const emptied: Paragraph = {
       type: "paragraph",
       content: [
@@ -1247,7 +1249,7 @@ describe("toMarkdown — clean preset for skills", () => {
       pPrMark: delMark(3),
     };
     expect(md([para1, emptied, table(false)], clean)).toBe(
-      "Lead\n\n| X |\n| --- |",
+      "| LeadX |\n| --- |",
     );
   });
 });
