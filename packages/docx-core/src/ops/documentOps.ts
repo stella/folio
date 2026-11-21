@@ -120,6 +120,7 @@ export {
   paragraphVisibleText,
   physicalOffsetAtVisibleOffset,
   editorParagraphGroups,
+  editorParagraphGroupsThroughTextBoxes,
   editorPositionAtPhysicalPosition,
   joinPropertyChangeLink,
   physicalPositionAtEditorOffset,

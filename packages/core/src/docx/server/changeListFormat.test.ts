@@ -6,10 +6,11 @@ import {
   DOCUMENT_OP_REFUSAL_REASONS,
   DOCUMENT_OP_TYPES,
   OP_STORIES,
+  paragraphsThroughTextBoxes,
   storyParagraphs,
 } from "@stll/docx-core/ops";
 
-import type { Document, Paragraph } from "../../types/document";
+import type { Document, Paragraph, ShapeContent } from "../../types/document";
 import { createEmptyDocument } from "../../utils/createDocument";
 import { normalizeListModelRendering } from "../listModelNormalization";
 import {
@@ -212,6 +213,117 @@ describe.each(Object.entries(MODES))("%s", (_, mode) => {
       mode,
     });
     expect(changed.isOk()).toBe(true);
+  });
+});
+
+const PENDING_DELETION = {
+  kind: "del",
+  info: { id: 5, author: "Other", date: "2026-01-01T00:00:00Z" },
+} as const;
+
+/**
+ * A main-story list member drawing a text box that holds list members of
+ * its own; `boxed` states the box's paragraphs.
+ */
+const boxedFixture = (boxed: readonly Paragraph[]) => {
+  const document = fixture();
+  const textBox: ShapeContent = {
+    type: "shape",
+    shape: {
+      type: "shape",
+      shapeType: "textBox",
+      id: "1",
+      size: { width: 2_000_000, height: 800_000 },
+      textBody: { content: [...boxed] },
+    },
+  };
+  document.package.document.content = [
+    {
+      ...item("10000001", 1, 0),
+      content: [
+        { type: "run", content: [{ type: "text", text: "Host " }, textBox] },
+      ],
+    },
+    item("10000004", 2, 0),
+  ];
+  return document;
+};
+
+const boxBindings = (document: Document) =>
+  paragraphsThroughTextBoxes(document, OP_STORIES.MAIN).map(({ paragraph }) => [
+    paragraph.paraId,
+    paragraph.formatting?.numPr,
+  ]);
+
+describe.each(Object.entries(MODES))("%s, in a text box", (_, mode) => {
+  test.each([
+    [
+      "joining the next member of its box",
+      [
+        { ...item("20000001", 1, 0), pPrMark: PENDING_DELETION },
+        item("20000002", 1, 0),
+      ],
+      ["20000001", "20000002"],
+    ],
+    [
+      "joining a box paragraph of another list, beside a main-story member",
+      [
+        { ...item("20000001", 1, 0), pPrMark: PENDING_DELETION },
+        item("20000002", 2, 0),
+      ],
+      undefined,
+    ],
+  ] as const)(
+    "refuses a member %s as pendingParagraphJoin",
+    (_shape, boxed, paragraphIds) => {
+      const document = boxedFixture(boxed);
+      const before = structuredClone(document);
+      const refused = changeListFormat(document, {
+        sourceNumId: 1,
+        level: 0,
+        numFmt: "upperRoman",
+        mode,
+        ...(paragraphIds === undefined ? {} : { paragraphIds }),
+      });
+      if (refused.isOk()) throw new Error("Expected a pending join refusal");
+      expect(refused.error.reason).toBe(
+        DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_JOIN,
+      );
+      expect(refused.error.message).toBe(
+        "Resolve the pending paragraph mark deletion of 20000001 before changing its list format.",
+      );
+      expect(document).toEqual(before);
+    },
+  );
+
+  test("changes box members without a pending join with the story's", () => {
+    const document = boxedFixture([
+      item("20000001", 1, 0),
+      item("20000002", 2, 0),
+    ]);
+    const original = boxBindings(document);
+    const applied = changeListFormat(document, {
+      sourceNumId: 1,
+      level: 0,
+      numFmt: "upperRoman",
+      mode,
+    }).unwrap();
+    const changed =
+      mode.type === "editing"
+        ? applied.document
+        : applyDocumentOps(applied.document, [
+            {
+              type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+              story: OP_STORIES.MAIN,
+              revisionIds: applied.revisions,
+              decision: "accept",
+            },
+          ]).unwrap().document;
+    const [host, unrelated, boxedMember, boxedOther] = boxBindings(changed);
+    expect(host?.[1]).toEqual(boxedMember?.[1]);
+    expect(host?.[1]).not.toEqual(original[0]?.[1]);
+    expect(boxedOther).toEqual(original[3]);
+    expect(unrelated).toEqual(original[1]);
   });
 });
 
