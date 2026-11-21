@@ -9,6 +9,7 @@ import {
 } from "../../../../test/property-testing";
 import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import { FolioDocxReviewer } from "./headless";
 
 const TITLE = "Heading text";
@@ -22,6 +23,7 @@ const generatedCase = fc.record({
   italic: fc.boolean(),
   styleNumbered: fc.boolean(),
   mode: fc.constantFrom("direct", "tracked-changes", "suggested"),
+  session: fc.constantFrom("canonical", "legacy"),
   levels: fc.array(fc.integer({ min: 0, max: 8 }), {
     minLength: 1,
     maxLength: 3,
@@ -47,10 +49,12 @@ const headingState = (reviewer: FolioDocxReviewer, text: string) => {
 const expectReopenedHeading = async (
   reviewer: FolioDocxReviewer,
   text: string,
+  session: HeadlessReviewerSession,
 ) => {
   const before = headingState(reviewer, text);
   const reopened = await FolioDocxReviewer.fromBuffer(
     await reviewer.toBuffer(),
+    { session },
   );
   expect(headingState(reopened, text)).toEqual(before);
 };
@@ -101,6 +105,7 @@ test(
           await createDocx(model),
           {
             author: "Editor",
+            session: entry.session,
           },
         );
         const block = reviewer.getContent().find(({ text }) => text === TITLE);
@@ -113,6 +118,7 @@ test(
           { text: TITLE, bold: entry.bold, italic: entry.italic },
         ]);
 
+        let previous: number | undefined;
         for (const level of entry.levels) {
           const result = reviewer.applyDocumentOperations(
             {
@@ -131,12 +137,19 @@ test(
             },
             { undefinedReferences: "refuse" },
           );
-          expect(result.skipped).toEqual([]);
+          // Canonical reports a level the heading already has as a no-op.
+          expect(result.skipped.map(({ reason }) => reason)).toEqual(
+            entry.session === "canonical" && level === previous
+              ? ["noopOperation"]
+              : [],
+          );
+          previous = level;
           expect(headingState(reviewer, TITLE)).toEqual(expected);
           // Pending suggestions are excluded from the package, but numbering
           // must leave the heading's level and text formatting equal either way.
-          await expectReopenedHeading(reviewer, TITLE);
-          if (entry.mode === "suggested") reviewer.acceptSuggestion("level");
+          await expectReopenedHeading(reviewer, TITLE, entry.session);
+          if (entry.mode === "suggested" && result.applied.length > 0)
+            reviewer.acceptSuggestion("level");
           reviewer.acceptAll();
           expect(headingState(reviewer, TITLE)).toEqual(expected);
         }
@@ -165,8 +178,8 @@ test(
           ...expected,
           runs: [{ text: INSERTED, bold: entry.bold, italic: entry.italic }],
         });
-        await expectReopenedHeading(reviewer, TITLE);
-        await expectReopenedHeading(reviewer, INSERTED);
+        await expectReopenedHeading(reviewer, TITLE, entry.session);
+        await expectReopenedHeading(reviewer, INSERTED, entry.session);
       }),
       propertyConfig({ numRuns: 30 }),
     );
