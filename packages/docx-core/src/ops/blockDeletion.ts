@@ -465,9 +465,6 @@ export const paragraphMarkOutcome = ({
   tableRemovalIsTrackable = true,
   emptyInsertedTableBoundary = "unavailable",
   precededByBlock = false,
-  removedSectionProperties = false,
-  precedingSectionOwner = "unavailable",
-  followingHasSectionProperties = false,
 }: {
   /** `block` is a follower {@link isOpaqueFollower} admits. */
   follows: "paragraph" | "table" | "block" | "nothing";
@@ -497,31 +494,15 @@ export const paragraphMarkOutcome = ({
   emptyInsertedTableBoundary?: "unavailable" | "pendingReview";
   /** Whether a block stays before the paragraph to anchor what its removal leaves. */
   precededByBlock?: boolean;
-  removedSectionProperties?: boolean;
-  precedingSectionOwner?: "unavailable" | "available" | "same" | "occupied";
-  followingHasSectionProperties?: boolean;
 }):
-  | ({ kind: "join" } & SectionTransfer)
-  | ({ kind: "remove" } & SectionTransfer)
-  | ({ kind: "run-in" } & SectionTransfer)
-  | ({ kind: "keep" } & SectionTransfer)
-  | ({ kind: "refuse"; reason: "untrackable" } & SectionTransfer) => {
-  let sectionDestination: SectionTransfer["sectionDestination"] = "none";
-  if (removedSectionProperties && precedingSectionOwner === "available") {
-    sectionDestination = "preceding";
-  } else if (
-    removedSectionProperties &&
-    precedingSectionOwner !== "same" &&
-    !followingHasSectionProperties
-  ) {
-    sectionDestination = "following";
-  }
-  // Only a join has a following paragraph mark. A removal whose section could
-  // only move forward keeps the paragraph instead, so its section survives.
-  const removalWouldDropSection = sectionDestination === "following";
+  | { kind: "join" }
+  | { kind: "remove" }
+  | { kind: "run-in" }
+  | { kind: "keep" }
+  | { kind: "refuse"; reason: "untrackable" } => {
   switch (follows) {
     case "paragraph":
-      return { kind: "join", sectionDestination };
+      return { kind: "join" };
     case "table":
       // An accepted deletion that leaves the paragraph empty is no run-in
       // source either: it goes without crossing the table, wherever the
@@ -533,9 +514,7 @@ export const paragraphMarkOutcome = ({
         !holdsContent &&
         !needsFollowingCommentHost
       )
-        return removalWouldDropSection
-          ? { kind: "keep", sectionDestination: "none" }
-          : { kind: "remove", sectionDestination };
+        return { kind: "remove" };
       // A rejected insertion owns an empty paragraph, not a run-in source.
       // Its mark can go without crossing the table when no comment host is
       // retained; existing marks and content still require a trackable boundary.
@@ -549,38 +528,31 @@ export const paragraphMarkOutcome = ({
         return {
           kind: "refuse",
           reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-          sectionDestination,
         };
       if (!holdsContent) {
-        if (removalWouldDropSection)
-          return { kind: "keep", sectionDestination: "none" };
         return needsFollowingCommentHost && followingTableCanReceiveRunIn
-          ? { kind: "run-in", sectionDestination }
-          : { kind: "remove", sectionDestination };
+          ? { kind: "run-in" }
+          : { kind: "remove" };
       }
       return followingTableCanReceiveRunIn
-        ? { kind: "run-in", sectionDestination }
-        : { kind: "keep", sectionDestination };
+        ? { kind: "run-in" }
+        : { kind: "keep" };
     case "block":
       // A resolved-away empty mark may go only while the container still
       // ends with a paragraph. Rejecting an added mark keeps standing words;
       // an accepted deletion may run its still-pending words into the block.
-      if (removalWouldDropSection)
-        return { kind: "keep", sectionDestination: "none" };
       if (!holdsContent)
         return containerStillEndsWithParagraph
-          ? { kind: "remove", sectionDestination }
-          : { kind: "keep", sectionDestination };
-      if (markWasAdded) return { kind: "keep", sectionDestination };
+          ? { kind: "remove" }
+          : { kind: "keep" };
+      if (markWasAdded) return { kind: "keep" };
       return !holdsContentOnceAccepted && followingBlockCanReceiveRunIn
-        ? { kind: "run-in", sectionDestination }
-        : { kind: "keep", sectionDestination };
+        ? { kind: "run-in" }
+        : { kind: "keep" };
     case "nothing":
-      if (removalWouldDropSection)
-        return { kind: "keep", sectionDestination: "none" };
       return !holdsContent && markWasAdded && containerStillEndsWithParagraph
-        ? { kind: "remove", sectionDestination }
-        : { kind: "keep", sectionDestination };
+        ? { kind: "remove" }
+        : { kind: "keep" };
   }
 };
 
@@ -635,10 +607,6 @@ const withExhaustedCommentsRetired = ({
     },
     modified: retired.value.touched.modified,
   });
-};
-
-type SectionTransfer = {
-  sectionDestination: "none" | "preceding" | "following";
 };
 
 type DirectRemovalReceiverOptions = {
