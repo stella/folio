@@ -232,13 +232,17 @@ type ReanchoredRecordOptions = {
  * and keeps every word they show), so a text range moves by the length of the
  * members before the record's paragraph. A survivor showing other text is a
  * resolution this rule does not describe: that panics.
+ *
+ * `null` when nothing of the record's paragraph lives in a saved paragraph:
+ * it showed no text (a paragraph removed whole), or the survivor is a
+ * paragraph only a proposal adds. The record keeps its anchor.
  */
 const reanchoredRecord = ({
   record,
   survivors,
   before,
   after,
-}: ReanchoredRecordOptions): FolioPendingSuggestionRecord => {
+}: ReanchoredRecordOptions): FolioPendingSuggestionRecord | null => {
   const { suggestionId, anchor: recorded } = record;
   const { paraId } = recorded;
   if (paraId === null)
@@ -258,7 +262,8 @@ const reanchoredRecord = ({
     text += before?.anchors[id]?.text ?? "";
   }
   const anchor = after?.anchors[survivor];
-  if (shift === null || !anchor || anchor.text !== text)
+  if (!before?.anchors[paraId]?.text || !anchor) return null;
+  if (shift === null || anchor.text !== text)
     return panic(
       "A pending suggestion's paragraph was absorbed, but the survivor does not show its text",
       { suggestionId, paraId, survivor },
@@ -472,15 +477,13 @@ export class FolioPendingSuggestionRegistry {
         const storyKey = canonicalJson(record.story);
         if (!after.has(storyKey))
           after.set(storyKey, afterSnapshotForStory(record.story));
-        this.records.set(
-          key,
-          reanchoredRecord({
-            record,
-            survivors,
-            before: before.get(storyKey) ?? null,
-            after: after.get(storyKey) ?? null,
-          }),
-        );
+        const reanchored = reanchoredRecord({
+          record,
+          survivors,
+          before: before.get(storyKey) ?? null,
+          after: after.get(storyKey) ?? null,
+        });
+        if (reanchored) this.records.set(key, reanchored);
       }
     };
   }
