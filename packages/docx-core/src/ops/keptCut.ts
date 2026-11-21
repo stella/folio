@@ -561,10 +561,6 @@ export const settleKeptCuts = (
     index === nodes.length - 1
       ? outside.end
       : pendingAtEdge(nodes[index + 1], "start");
-  const trackedAt = (index: number): boolean => {
-    const node = nodes[index];
-    return node !== undefined && isTrackedWrapper(node);
-  };
   let start = 0;
   while (start < nodes.length) {
     const first = nodes[start];
@@ -608,11 +604,9 @@ export const settleKeptCuts = (
     // A marker names a side as its cut's piece only while the pending change
     // that took its seam stands there: resolving that change consumes it.
     const facing = {
-      before: start === 0 ? outside.start : trackedAt(start - 1),
-      after: end === nodes.length ? outside.end : trackedAt(end),
-      both:
-        (start === 0 ? outside.start : trackedAt(start - 1)) ||
-        (end === nodes.length ? outside.end : trackedAt(end)),
+      before: pendingBefore(start),
+      after: pendingAfter(end - 1),
+      both: pendingBefore(start) || pendingAfter(end - 1),
     } as const satisfies Record<KeptCutPiece, boolean>;
     for (const [offset, node] of run.entries()) {
       const settled = waiting
