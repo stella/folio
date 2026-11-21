@@ -510,6 +510,41 @@ type PlannedOperation = {
 /** What precedes a run of paragraphs a batch deletes (`finalBreakCarrier`). */
 type RunCarrier = Exclude<FinalBreakCarrier<unknown>["type"], "none">;
 
+const ROW_SHIFTED_CELL_SHAPE =
+  "The batch inserts a row above the last row of the cells this merges or splits.";
+
+/**
+ * The merges and splits whose cells a row the batch inserts in their table
+ * would shift or cut, whatever their order in the request. A merge or split
+ * names its cells by row as the batch read the table, and runs after the
+ * batch's row insertions, so a row inserted above its last row would move
+ * the cells it names.
+ */
+const rowShiftedCellShapes = <
+  T extends PlannedOperation & { intents: readonly EditorIntent[] },
+>(
+  items: readonly T[],
+): T[] => {
+  const boundaries = items.flatMap(({ plan: { claim }, intents }) =>
+    claim.type === "tableStructure" && claim.axis === "row"
+      ? intents.flatMap((intent) =>
+          intent.type === "tableRow" &&
+          intent.operation.type === DOCUMENT_OP_TYPES.INSERT_ROW
+            ? [{ table: claim.table, at: intent.operation.at }]
+            : [],
+        )
+      : [],
+  );
+  return items.filter(({ plan: { address } }) =>
+    address.type === "cell"
+      ? boundaries.some(
+          ({ table, at }) =>
+            table === address.tablePosition && at < address.bottom,
+        )
+      : false,
+  );
+};
+
 type CanonicalBatchOrderOptions<T extends PlannedOperation> = {
   items: readonly T[];
   doc: PMNode;
@@ -4085,6 +4120,10 @@ export class CanonicalPublicOperations {
             : intent,
         );
       resolved[index] = { ...item, intents };
+    }
+    for (const item of rowShiftedCellShapes(resolved)) {
+      resolved.splice(resolved.indexOf(item), 1);
+      skip(item.operation.id, "unsupportedBlock", ROW_SHIFTED_CELL_SHAPE);
     }
     if (batch.atomic && skipped.length > 0) {
       for (const { operation } of resolved)
