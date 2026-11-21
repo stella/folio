@@ -5465,7 +5465,11 @@ export class FolioDocxReviewer {
     if (expectations.length === 0) {
       return;
     }
-    const reopened = await FolioDocxReviewer.fromBuffer(buffer);
+    // The expectations are this engine's reading of its own save, so the
+    // save is read back on the same engine, whatever the default.
+    const reopened = await FolioDocxReviewer.fromBuffer(buffer, {
+      session: "legacy",
+    });
     for (const { story, text, blocks, minted } of expectations) {
       const serialized = reopened.readReviewedStory({
         story,
