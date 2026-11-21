@@ -2661,6 +2661,12 @@ export class FolioDocxReviewer {
           });
     this.publishOnSession(prepared.value);
     absorption?.((story) => this.liveSuggestionSource(story));
+    // One whose paragraph the resolution removed whole stands beside the
+    // paragraphs its suggestion added.
+    this.pendingSuggestions.placeRemovedAnchors({
+      activeSuggestionIds: this.activeSuggestionIds(),
+      stateForStory: (story) => this.getEditableStoryState(story),
+    });
     return {
       resolved: true,
       lockHeld: prepared.value.lockHeld ?? [],

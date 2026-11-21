@@ -101,6 +101,22 @@ const blockId = (reviewer: FolioDocxReviewer, text: string): string => {
   return block.id;
 };
 
+/** `texts` with each run of added clauses, one gap's, in sorted order. */
+const byGap = (texts: readonly string[]): string[] => {
+  const ordered: string[] = [];
+  let run: string[] = [];
+  for (const text of texts) {
+    if (text.startsWith("Added clause")) {
+      run.push(text);
+      continue;
+    }
+    ordered.push(...run.toSorted(), text);
+    run = [];
+  }
+  ordered.push(...run.toSorted());
+  return ordered;
+};
+
 /** Every change accepted, or rejected, in a copy saved and reopened from `reviewer`. */
 const resolved = async (
   reviewer: FolioDocxReviewer,
@@ -341,6 +357,26 @@ describe("suggested insertion admission uses the live anchor for every gap run",
                 accepting.acceptAll();
                 for (const { text } of insertions)
                   expect(textsOf(accepting)).toContain(text);
+                // Accepting removes the target whole: no record names it.
+                // Each stands beside the paragraphs its suggestion added, and
+                // restages in that gap. (Restaging adds one record at a time,
+                // so the order inside one gap is its own.)
+                const records = JSON.parse(
+                  JSON.stringify(accepting.exportPendingSuggestions()),
+                );
+                const shown = accepting.getContent().map(({ id }) => id);
+                expect(shown).not.toContain(target);
+                for (const { anchor } of records)
+                  expect(shown).toContain(anchor.blockId);
+                const restaging = await reopen(accepting, session);
+                expect(
+                  restaging
+                    .loadPendingSuggestions(records)
+                    .map(({ status }) => status),
+                ).toEqual(insertions.map(() => "restaged"));
+                expect(byGap(textsOf(restaging))).toEqual(
+                  byGap(textsOf(accepting)),
+                );
                 const rejecting = reviewer.fork();
                 rejecting.rejectAll();
                 expect(

@@ -5,7 +5,10 @@ import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   parseFolioDocumentOperationBatch,
 } from "../document-operations";
-import { rejectEverySuggestion } from "../prosemirror/commands/comments";
+import {
+  getSuggestions,
+  rejectEverySuggestion,
+} from "../prosemirror/commands/comments";
 import { getDocumentStyleResolver } from "../prosemirror/plugins/documentStyleState";
 import { getFolioParaIdFromBlockId } from "../types/block-id";
 import { canonicalJson } from "../utils/canonicalJson";
@@ -111,6 +114,11 @@ type AbsorptionStep = (
     story: FolioDocumentStoryHandle,
   ) => FolioAIEditSnapshot | null,
 ) => void;
+
+type PlaceRemovedAnchorsOptions = {
+  activeSuggestionIds: ReadonlySet<string>;
+  stateForStory: (story: FolioDocumentStoryHandle) => EditorState | null;
+};
 
 type ExportPendingSuggestionsOptions = {
   activeSuggestionIds: ReadonlySet<string>;
@@ -235,7 +243,7 @@ type ReanchoredRecordOptions = {
  *
  * `null` when nothing of the record's paragraph lives in a saved paragraph:
  * it showed no text (a paragraph removed whole), or the survivor is a
- * paragraph only a proposal adds. The record keeps its anchor.
+ * paragraph only a proposal adds. {@link placedRecord} then anchors it.
  */
 const reanchoredRecord = ({
   record,
@@ -284,6 +292,106 @@ const reanchoredRecord = ({
       ...(recorded.endOffset !== undefined && {
         endOffset: recorded.endOffset + shift,
       }),
+    },
+  };
+};
+
+/** The block list `block` stands in: its containers, and its table cell. */
+const containerKey = ({
+  containerPath = [],
+  table,
+}: FolioAIEditSnapshot["blocks"][number]): string =>
+  canonicalJson({
+    containerPath,
+    cell:
+      table === undefined
+        ? null
+        : [table.tableIndex, table.rowIndex, table.cellIndex],
+  });
+
+type PlacedRecordOptions = {
+  record: FolioPendingSuggestionRecord;
+  /** The record's story as it is, every proposal shown. */
+  live: FolioAIEditSnapshot;
+  /** The same story, every proposal rejected: the paragraphs a save holds. */
+  saved: FolioAIEditSnapshot;
+  /** The document ranges the record's suggestion covers in `live`. */
+  ranges: readonly { from: number; to: number }[];
+};
+
+/**
+ * `record`, a block insertion whose anchor paragraph is gone, anchored where
+ * its paragraphs stand: before the next saved paragraph beside them, or,
+ * when none follows, after the previous one. A record of another kind, or
+ * one with no saved paragraph beside its own, is a state the rules that
+ * remove paragraphs never leave: that panics.
+ */
+const placedRecord = ({
+  record,
+  live,
+  saved,
+  ranges,
+}: PlacedRecordOptions): FolioPendingSuggestionRecord => {
+  const { operation, suggestionId } = record;
+  if (
+    operation.type !== "insertAfterBlock" &&
+    operation.type !== "insertBeforeBlock"
+  )
+    return panic(
+      "A pending suggestion's paragraph is gone, and only a block insertion keeps a place without it",
+      { suggestionId, type: operation.type },
+    );
+  const savedIds = new Set(saved.blocks.map(({ id }) => id));
+  // The first paragraph the suggestion adds.
+  const index = live.blocks.findIndex(({ id }) => {
+    const anchor = live.anchors[id];
+    return (
+      !savedIds.has(id) &&
+      anchor !== undefined &&
+      ranges.some(({ from, to }) => from <= anchor.to && anchor.from <= to)
+    );
+  });
+  const placed = live.blocks.at(index);
+  if (index < 0 || placed === undefined)
+    return panic("A pending block insertion shows no paragraph of its own", {
+      suggestionId,
+    });
+  const container = containerKey(placed);
+  // The nearest saved paragraph in `step`'s direction, if it stands in the
+  // same container: a table or another container between them is no place
+  // beside it.
+  const besideIn = (step: 1 | -1) => {
+    for (
+      let at = index + step;
+      at >= 0 && at < live.blocks.length;
+      at += step
+    ) {
+      const block = live.blocks.at(at);
+      if (block === undefined || !savedIds.has(block.id)) continue;
+      return containerKey(block) === container ? block : undefined;
+    }
+    return undefined;
+  };
+  const next = besideIn(1);
+  const neighbour = next ?? besideIn(-1);
+  const anchor =
+    neighbour === undefined ? undefined : saved.anchors[neighbour.id];
+  if (neighbour === undefined || anchor === undefined)
+    return panic(
+      "A pending block insertion whose anchor is gone has no saved paragraph beside it",
+      { suggestionId },
+    );
+  return {
+    ...record,
+    operation: {
+      ...operation,
+      type: next === undefined ? "insertAfterBlock" : "insertBeforeBlock",
+      blockId: neighbour.id,
+    },
+    anchor: {
+      blockId: neighbour.id,
+      paraId: neighbour.id,
+      originalTextHash: anchor.textHash,
     },
   };
 };
@@ -443,6 +551,58 @@ export class FolioPendingSuggestionRegistry {
     return new Set(
       [...this.records.values()].map(({ suggestionId }) => suggestionId),
     );
+  }
+
+  /**
+   * Anchor every live record whose paragraph is gone from its story, a
+   * resolution or an edit having removed it, beside the paragraphs its
+   * suggestion added ({@link placedRecord}): a record never names a removed
+   * or absorbed paragraph. Run after the change publishes.
+   */
+  placeRemovedAnchors({
+    activeSuggestionIds,
+    stateForStory,
+  }: PlaceRemovedAnchorsOptions): void {
+    const views = new Map<
+      string,
+      { state: EditorState; live: FolioAIEditSnapshot } | null
+    >();
+    for (const [key, record] of this.records) {
+      const { suggestionId, story, anchor } = record;
+      if (!activeSuggestionIds.has(suggestionId) || anchor.paraId === null)
+        continue;
+      const storyKey = canonicalJson(story);
+      let view = views.get(storyKey);
+      if (view === undefined) {
+        const state = stateForStory(story);
+        view =
+          state === null
+            ? null
+            : {
+                state,
+                live: createFolioAIEditSnapshotWithStyleResolver(
+                  state.doc,
+                  getDocumentStyleResolver(state),
+                ),
+              };
+        views.set(storyKey, view);
+      }
+      if (view === null || view.live.anchors[anchor.paraId] !== undefined)
+        continue;
+      const ranges =
+        getSuggestions(view.state).find(
+          (entry) => entry.suggestionId === suggestionId,
+        )?.ranges ?? [];
+      this.records.set(
+        key,
+        placedRecord({
+          record,
+          live: view.live,
+          saved: createPendingSuggestionSourceSnapshot(view.state, new Set()),
+          ranges,
+        }),
+      );
+    }
   }
 
   /**
