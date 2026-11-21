@@ -5,12 +5,20 @@
  */
 
 import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import {
+  afterAll,
+  beforeAll,
+  describe,
+  expect,
+  setDefaultTimeout,
+  test,
+} from "bun:test";
 import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { ZipArchive } from "@stll/docx-core/zip";
 
+import { DISK_SYNC_TEST_TIMEOUT_MS } from "../../../test/disk-sync-timeout";
 import {
   type FixtureBlock,
   makeTempDir,
@@ -18,6 +26,8 @@ import {
 } from "./__tests__/fixtures";
 import { fileVersionOf } from "./document";
 import { blockLines, createFolioMcpServer } from "./mcp";
+
+setDefaultTimeout(DISK_SYNC_TEST_TIMEOUT_MS);
 
 let cleanup: () => Promise<void> = () => Promise.resolve();
 let root = "";

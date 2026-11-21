@@ -8,7 +8,9 @@
  * later one's: they leave the later paragraph's identity. A paragraph deleted
  * directly before a table or a content control, with a paragraph before it,
  * takes its own mark with it: no later mark remains, and the earlier
- * paragraph keeps its identity. Both engines read this one rule.
+ * paragraph keeps its identity. On canonical, one whose mark ends a section
+ * keeps that mark, break and all, and with it its identity. Both engines
+ * read this one rule.
  */
 
 import { SPLIT_HALVES, type SplitHalf } from "@stll/docx-core/ops";

@@ -1,7 +1,15 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  setDefaultTimeout,
+  test,
+} from "bun:test";
 import { readdir, writeFile } from "node:fs/promises";
 import { request } from "node:http";
 
+import { DISK_SYNC_TEST_TIMEOUT_MS } from "../../../test/disk-sync-timeout";
 import {
   buildDocx,
   CONTRACT_PARAGRAPHS,
@@ -9,6 +17,8 @@ import {
   writeDocx,
 } from "./__tests__/fixtures";
 import { type PreviewServer, startPreviewServer } from "./serve";
+
+setDefaultTimeout(DISK_SYNC_TEST_TIMEOUT_MS);
 
 let dir = "";
 let cleanup: () => Promise<void> = () => Promise.resolve();

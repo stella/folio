@@ -446,10 +446,13 @@ describe("a suggested paragraph beside a pending join", () => {
     }
 });
 
-describe("a paragraph between a pending join and the table that stops it", () => {
+describe("a paragraph between a pending join and the table it reaches", () => {
   /**
    * "Bravo." deleted and "Alpha." then merged into it, tracked, before a
-   * table: the join runs into a paragraph going whole, and the table stops it.
+   * table: the join runs into a paragraph going whole. The legacy session
+   * stops it at the table; on the canonical session accepting runs the
+   * joined words into the table's first cell, so a paragraph put before
+   * that cell goes before the whole join.
    */
   const beforeTable = async (
     order: "delete first" | "merge first" = "delete first",
@@ -492,11 +495,11 @@ describe("a paragraph between a pending join and the table that stops it", () =>
   };
 
   const refusedOn = (anchor: "bravo" | "cell") =>
-    anchor === "bravo" ? SESSIONS : [undefined];
+    anchor === "bravo" ? SESSIONS : (["legacy"] as const);
   for (const mode of ["direct", "tracked-changes", "suggested"] as const) {
     for (const anchor of ["bravo", "cell"] as const) {
       for (const session of refusedOn(anchor))
-        test(`is refused and changes nothing (${mode}, named by ${anchor}${session === undefined ? "" : `, ${session}`})`, async () => {
+        test(`is refused and changes nothing (${mode}, named by ${anchor}, ${session})`, async () => {
           const target = await beforeTable("delete first", session);
           const before = target.reviewer.snapshot();
           const result = target.reviewer.applyOperations(
@@ -520,10 +523,81 @@ describe("a paragraph between a pending join and the table that stops it", () =>
     }
   }
 
-  test("is applied and stands apart once the paragraph the join runs into is deleted", async () => {
+  for (const mode of ["direct", "tracked-changes"] as const)
+    test(`named by the cell, goes before the join, whose words run into the cell (${mode}, canonical)`, async () => {
+      const { reviewer, cell } = await beforeTable("delete first", "canonical");
+      expect(
+        reviewer.applyOperations(
+          [
+            {
+              id: "insert",
+              type: "insertBeforeBlock",
+              blockId: cell,
+              text: "Inserted.",
+            },
+          ],
+          { mode },
+        ).skipped,
+      ).toEqual([]);
+      const rejected = await reviewerOf(await reviewer.toBuffer(), "canonical");
+      rejected.rejectAll();
+      expect(rejected.snapshot().blocks.map(({ text }) => text)).toEqual([
+        ...(mode === "direct" ? ["Inserted."] : []),
+        "Alpha.",
+        "Bravo.",
+        "Cell",
+        "Charlie.",
+      ]);
+      reviewer.acceptAll();
+      expect(
+        reviewer.snapshot().blocks.map(({ text, table }) => ({
+          text,
+          inTable: table !== undefined,
+        })),
+      ).toEqual([
+        { text: "Inserted.", inTable: false },
+        { text: "Alpha. Cell", inTable: true },
+        { text: "Charlie.", inTable: false },
+      ]);
+    });
+
+  for (const mode of ["direct", "tracked-changes"] as const)
+    test(`after the paragraph the join runs into, once it is deleted, is refused: accepting runs the joined words into the table (${mode}, canonical)`, async () => {
+      // Deleting the merged paragraph deletes it whole, its break included
+      // (survivor ids option C), so the joined words run into the table.
+      const { reviewer, bravo } = await beforeTable("merge first", "canonical");
+      const before = reviewer.snapshot();
+      const result = reviewer.applyOperations(
+        [
+          {
+            id: "insert",
+            type: "insertAfterBlock",
+            blockId: bravo,
+            text: "Inserted.",
+          },
+        ],
+        { mode },
+      );
+      expect(result.skipped.map(({ reason }) => reason)).toEqual([
+        "pendingParagraphMarkDeletion",
+      ]);
+      expect(reviewer.snapshot()).toEqual(before);
+      reviewer.acceptAll();
+      expect(
+        reviewer.snapshot().blocks.map(({ text, table }) => ({
+          text,
+          inTable: table !== undefined,
+        })),
+      ).toEqual([
+        { text: "Alpha. Cell", inTable: true },
+        { text: "Charlie.", inTable: false },
+      ]);
+    });
+
+  test("is applied and stands apart once the paragraph the join runs into is deleted (legacy)", async () => {
     // Deleting the paragraph a join runs into keeps its break, the joined
     // paragraph's: nothing runs past it, so a paragraph after it stands.
-    const { reviewer, bravo } = await beforeTable("merge first");
+    const { reviewer, bravo } = await beforeTable("merge first", "legacy");
     expect(
       reviewer.applyOperations(
         [
@@ -546,8 +620,8 @@ describe("a paragraph between a pending join and the table that stops it", () =>
     ]);
   });
 
-  test("is applied and stands apart with a paragraph going whole before the table", async () => {
-    const { reviewer, alpha } = await beforeTable();
+  test("is applied and stands apart with a paragraph going whole before the table (legacy)", async () => {
+    const { reviewer, alpha } = await beforeTable("delete first", "legacy");
     expect(
       reviewer.applyOperations(
         [
@@ -569,6 +643,30 @@ describe("a paragraph between a pending join and the table that stops it", () =>
       "Charlie.",
     ]);
   });
+
+  for (const mode of ["direct", "tracked-changes"] as const)
+    test(`right after the words, is refused: accepting runs them into the table (${mode}, canonical)`, async () => {
+      const { reviewer, alpha } = await beforeTable(
+        "delete first",
+        "canonical",
+      );
+      const before = reviewer.snapshot();
+      const result = reviewer.applyOperations(
+        [
+          {
+            id: "insert",
+            type: "insertAfterBlock",
+            blockId: alpha,
+            text: "Inserted.",
+          },
+        ],
+        { mode },
+      );
+      expect(result.skipped.map(({ reason }) => reason)).toEqual([
+        "pendingParagraphMarkDeletion",
+      ]);
+      expect(reviewer.snapshot()).toEqual(before);
+    });
 
   describe("when the table's first cell is pending", () => {
     const beforePendingTable = async (session: HeadlessReviewerSession) => {

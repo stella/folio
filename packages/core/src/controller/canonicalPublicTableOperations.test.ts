@@ -697,12 +697,17 @@ const endsTheBody = (body: Body, anchor: string): boolean =>
   ALL_BODIES[body].xml.at(-1)?.startsWith(`<w:p w14:paraId="${anchor}"`) ??
   false;
 
+/** Whether the body ends in a table. */
+const endsInTable = (body: keyof typeof PACKAGE_BODIES): boolean =>
+  PACKAGE_BODIES[body].xml.at(-1)?.startsWith("<w:tbl") ?? false;
+
 type Outcomes = Awaited<ReturnType<typeof outcomes>>;
 
 /**
- * A table put after the body's last paragraph: a body that ended with a
- * paragraph still ends with one, an empty paragraph after the table, where
- * the default engine lets the table end the body. Nothing else differs.
+ * A table put after the body's last paragraph, or any edit of a body that
+ * ends in a table: the canonical session's body ends with a paragraph, an
+ * empty one after the table, where the default engine lets the table end the
+ * body. Nothing else differs.
  */
 const closedOutcomes = (outcome: Outcomes): Outcomes => {
   const closed = (blocks: Outcomes["pending"]): Outcomes["pending"] => {
@@ -752,7 +757,9 @@ const sameAsDefaultEngine =
       mode: mode,
     });
     expect(canonical.refusals).toEqual([]);
-    const closes = operation.endsWith(" after") && endsTheBody(body, anchor);
+    const closes =
+      (operation.endsWith(" after") && endsTheBody(body, anchor)) ||
+      endsInTable(body);
     const asCanonicalCloses = (outcome: Outcomes) =>
       closes ? closedOutcomes(outcome) : outcome;
     // A suggestion the default engine cannot record, such as a split or a
@@ -846,11 +853,31 @@ describe("table structure operations in the canonical session", () => {
               }
               continue;
             }
+            // On the canonical session accepting runs the joined words into
+            // the table's first cell: a table put before that table would
+            // take them, so it waits for the join to be resolved.
+            if (
+              supported &&
+              side === "before" &&
+              value.body ===
+                "a pending join into a deleted paragraph before a table"
+            ) {
+              expect(canonical.skipped).toEqual([
+                "pendingParagraphMarkDeletion",
+              ]);
+              expect(await outcomes(canonical.bytes)).toEqual(
+                await outcomes(source),
+              );
+              continue;
+            }
             expect(canonical.skipped).toEqual(legacy.skipped);
             expect(canonical.applied).toHaveLength(supported ? 1 : 0);
             expect(canonical.refusals).toEqual([]);
+            const expected = await outcomes(legacy.bytes);
             expect(await outcomes(canonical.bytes)).toEqual(
-              await outcomes(legacy.bytes),
+              supported && endsInTable(value.body)
+                ? closedOutcomes(expected)
+                : expected,
             );
           }
         }

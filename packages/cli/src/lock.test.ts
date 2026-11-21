@@ -1,9 +1,17 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  setDefaultTimeout,
+  test,
+} from "bun:test";
 import { readdir, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
+import { DISK_SYNC_TEST_TIMEOUT_MS } from "../../../test/disk-sync-timeout";
 import { makeTempDir } from "./__tests__/fixtures";
 import {
   acquireLease,
@@ -14,6 +22,8 @@ import {
   readLease,
   TRANSACTION_LEASE_MS,
 } from "./lock";
+
+setDefaultTimeout(DISK_SYNC_TEST_TIMEOUT_MS);
 
 let dir = "";
 let cleanup: () => Promise<void> = () => Promise.resolve();

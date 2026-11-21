@@ -574,14 +574,18 @@ const ownFormatting = (run: ReadonlyRun | undefined) =>
     ? run.formatting
     : undefined;
 
-/** A picture's document facts: not the drawing id, which only numbers it. */
+/**
+ * A picture's document facts: not the drawing id, which only numbers it, nor
+ * the name of the media part holding its bytes, which a package chooses (a
+ * comparison copying a picture in names its own part).
+ */
 const drawingKey = (
   drawing: ReadonlyDrawing,
   run: ReadonlyRun | undefined,
 ): string =>
   canonicalJson({
     type: "image",
-    image: { ...drawing.image, id: undefined },
+    image: { ...drawing.image, id: undefined, filename: undefined },
     rawXml:
       drawing.rawXml === undefined
         ? undefined

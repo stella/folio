@@ -4,7 +4,7 @@ import {
   TaggedError,
   type TaggedErrorClass,
 } from "better-result";
-import type { Node as PMNode } from "prosemirror-model";
+import type { Mark, Node as PMNode } from "prosemirror-model";
 
 import { hasIllegalXmlCharacters } from "@stll/docx-core";
 import {
@@ -15,6 +15,7 @@ import {
 
 import { readNoteMarkerAttrs } from "../internal/noteMarkerAttrs";
 import {
+  expectFieldAttrs,
   readCommentMarkAttrs,
   readFootnoteRefMarkAttrs,
   readPreservedXmlAttrs,
@@ -27,6 +28,7 @@ import { readCommentRangeBoundaryAttrs } from "../prosemirror/commentRangeBounda
 import { HYPHEN_TEXT_CARRIERS } from "../prosemirror/conversion/hyphenTextCarriers";
 import { COMMENT_RANGE_BOUNDARY_NODE_NAME } from "../prosemirror/extensions/nodes/CommentRangeBoundaryExtension";
 import { RENDERED_PAGE_BREAK_NODE_NAME } from "../prosemirror/extensions/nodes/RenderedPageBreakExtension";
+import { fieldCommentCoverage } from "../prosemirror/fieldRepresentation";
 import { readMoveRangeBoundaryAttrs } from "../prosemirror/moveRangeBoundaryAttrs";
 import { readRangeAnchorAttrs } from "../prosemirror/rangeAnchorAttrs";
 import { PRESERVED_XML_LEVELS } from "../prosemirror/schema/nodes";
@@ -546,6 +548,24 @@ type CommentMarkTransitionsArgs = Pick<
   "source" | "paragraph" | "commentContext"
 > & { explicitCommentIds: ReadonlySet<number> };
 
+/** A structured field whose result's children carry its comment marks. */
+const fieldCoveredByChildren = (node: PMNode): boolean =>
+  node.type.name === "structuredField" &&
+  node.childCount > 0 &&
+  fieldCommentCoverage(expectFieldAttrs(node).fieldKind) === "children";
+
+const commentMarkIds = (marks: readonly Mark[]): string =>
+  marks
+    .filter(({ type }) => type.name === "comment")
+    .map((mark) => String(mark.attrs["commentId"]))
+    .sort()
+    .join(",");
+
+const sameCommentMarks = (
+  left: readonly Mark[],
+  right: readonly Mark[],
+): boolean => commentMarkIds(left) === commentMarkIds(right);
+
 /** Marks carry nonempty ranges; explicit range anchors carry empty ranges. */
 const commentMarkTransitions = ({
   source,
@@ -592,8 +612,24 @@ const commentMarkTransitions = ({
       node.forEach((child, offset) => visit(child, position + 1 + offset));
       return;
     }
+    // A field whose comment coverage is on its result's children is still
+    // one native unit: what they all carry is the unit's coverage, and a
+    // comment edge inside it has no native gap.
+    let marks = node.marks;
+    if (fieldCoveredByChildren(node)) {
+      marks = node.child(0).marks;
+      let shared = true;
+      node.forEach((child) => {
+        if (!sameCommentMarks(child.marks, marks)) shared = false;
+      });
+      if (!shared) {
+        issue =
+          "Canonical editing cannot place a comment boundary inside a field result.";
+        return;
+      }
+    }
     const current = new Set<number>();
-    for (const mark of node.marks) {
+    for (const mark of marks) {
       if (mark.type.name !== "comment") continue;
       const attrs = readCommentMarkAttrs(mark);
       if (!attrs.ok) {

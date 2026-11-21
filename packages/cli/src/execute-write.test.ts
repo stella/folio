@@ -1,5 +1,12 @@
 import { panic } from "better-result";
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  setDefaultTimeout,
+  test,
+} from "bun:test";
 import {
   link,
   mkdir,
@@ -14,6 +21,7 @@ import path from "node:path";
 import { ZipArchive } from "@stll/docx-core/zip";
 import { FolioDocxReviewer } from "@stll/folio-core/server";
 
+import { DISK_SYNC_TEST_TIMEOUT_MS } from "../../../test/disk-sync-timeout";
 import {
   CONTRACT_PARAGRAPHS,
   makeTempDir,
@@ -26,6 +34,8 @@ import { stagePathFor } from "./journal";
 import { acquireLease } from "./lock";
 import { findFileTool } from "./registry";
 import { pruneBackups } from "./transaction";
+
+setDefaultTimeout(DISK_SYNC_TEST_TIMEOUT_MS);
 
 let dir = "";
 let cleanup: () => Promise<void> = () => Promise.resolve();

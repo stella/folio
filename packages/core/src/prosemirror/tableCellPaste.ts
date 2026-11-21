@@ -41,6 +41,7 @@ import {
   transportTableCellsWithParagraphPropertySources,
 } from "../docx/paragraphPropertySource";
 import type { TableCell } from "../types/document";
+import { maxOf } from "../utils/extremes";
 import { expectTableAttrs, mergeTableAttrs } from "./attrs";
 
 /** A rectangular block of cells, one fragment of cells per row. */
@@ -123,7 +124,10 @@ const ensureRectangular = (schema: Schema, rows: Fragment[]): PastedCells => {
       }
     }
   }
-  const width = Math.max(0, ...widths.map((value) => value ?? 0));
+  const width = maxOf(
+    widths.map((value) => value ?? 0),
+    0,
+  );
   for (let index = 0; index < widths.length; index++) {
     if (index >= rows.length) {
       rows.push(Fragment.empty);

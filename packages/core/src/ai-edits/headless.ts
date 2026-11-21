@@ -2239,7 +2239,10 @@ export class FolioDocxReviewer {
       state: canonicalReviewerState(session),
       author: options.author ?? "AI",
       engine: { type: "canonical", session },
-      positionalParaIds: mintedParaIds,
+      positionalParaIds: new Set([
+        ...mintedParaIds,
+        ...session.sourceMintedParaIds,
+      ]),
     });
   }
 
@@ -2660,7 +2663,10 @@ export class FolioDocxReviewer {
             sourceSnapshotForStory: (story) => this.liveSuggestionSource(story),
           });
     this.publishOnSession(prepared.value);
-    absorption?.((story) => this.liveSuggestionSource(story));
+    absorption?.({
+      sourceSnapshotForStory: (story) => this.liveSuggestionSource(story),
+      activeSuggestionIds: this.activeSuggestionIds(),
+    });
     // One whose paragraph the resolution removed whole stands beside the
     // paragraphs its suggestion added.
     this.pendingSuggestions.placeRemovedAnchors({
@@ -3698,11 +3704,15 @@ export class FolioDocxReviewer {
         handles.push({ type: "endnote", noteId: endnote.id });
       }
     }
+    // On the session, a part a resolution retired is gone, as a save drops it.
+    const retired =
+      this.engine.type === "canonical"
+        ? this.engine.session.retiredHeaderFooters()
+        : undefined;
     return handles.filter((handle) => {
       if (handle.type === "header" || handle.type === "footer") {
-        return !this.removedHeaderFooterStories.has(
-          headerFooterStoryKey(handle),
-        );
+        const key = headerFooterStoryKey(handle);
+        return !this.removedHeaderFooterStories.has(key) && !retired?.has(key);
       }
       return true;
     });

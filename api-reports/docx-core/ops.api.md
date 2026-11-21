@@ -183,6 +183,9 @@ export type ClientNotice = {
 };
 
 // @public
+export const combineEditEffects: (final: Document_2, edits: readonly DocumentEditEffects[]) => DocumentEdit;
+
+// @public
 export const combineEdits: (document: Document_2, edits: readonly DocumentEdit[]) => DocumentEdit;
 
 // @public
@@ -1114,21 +1117,18 @@ export const paragraphMarkOutcome: (input: {
     tableRemovalIsTrackable?: boolean;
     emptyInsertedTableBoundary?: "unavailable" | "pendingReview";
     precededByBlock?: boolean;
-    removedSectionProperties?: boolean;
-    precedingSectionOwner?: "unavailable" | "available" | "same" | "occupied";
-    followingHasSectionProperties?: boolean;
-}) => ({
+}) => {
     kind: "join";
-} & SectionTransfer) | ({
+} | {
     kind: "remove";
-} & SectionTransfer) | ({
+} | {
     kind: "run-in";
-} & SectionTransfer) | ({
+} | {
     kind: "keep";
-} & SectionTransfer) | ({
+} | {
     kind: "refuse";
     reason: "untrackable";
-} & SectionTransfer);
+};
 
 // @public
 export const paragraphPropertySnapshotToken: (paragraph: Paragraph) => object | undefined;
@@ -1673,6 +1673,9 @@ export const transformPosition: (position: TextPosition, over: readonly Sequence
 
 // @public
 export const trimIdLease: (lease: IdLease, ids: readonly LeasedId[]) => IdLease;
+
+// @public
+export const tryTrackedInsertionGroup: (input: TrackedInsertionGroupOptions) => TrackedInsertionGroupResult;
 
 // @public
 export const TYPED_TEXT_FORMATTING: Readonly<{
