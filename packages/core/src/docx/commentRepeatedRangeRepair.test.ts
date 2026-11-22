@@ -401,10 +401,13 @@ describe("a package repeating a comment's range", () => {
           { session },
         );
         replaceWords(reviewer, EDITED_WORDS, "Payment is due at once.");
-        const reopened = await FolioDocxReviewer.fromBuffer(
-          await reviewer.toBuffer(),
-          { session },
-        );
+        const saved = await reviewer.toBuffer();
+        expect(modelAnchors(await opened(saved, session))).toEqual({
+          starts: 1,
+          ends: 1,
+          references: 1,
+        });
+        const reopened = await FolioDocxReviewer.fromBuffer(saved, { session });
         expect(
           reopened.getComments().map(({ anchoredText }) => anchoredText),
         ).toEqual([shape.kept]);
@@ -481,10 +484,14 @@ describe("a package repeating a comment's range", () => {
           undefinedReferences: "refuse",
         });
         expect(skipped).toEqual([]);
-        const parts = await storyParts(await reviewer.toBuffer());
-        const saved = [...parts.values()].join("");
+        const bytes = await reviewer.toBuffer();
+        const saved = [...(await storyParts(bytes)).values()].join("");
         expect(countOf(saved, start)).toBe(1);
         expect(countOf(saved, end)).toBe(1);
+        const reopened = await FolioDocxReviewer.fromBuffer(bytes, { session });
+        expect(
+          reopened.getComments().map(({ anchoredText }) => anchoredText),
+        ).toEqual([shape.kept]);
       });
   }
 });
