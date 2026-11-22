@@ -32,6 +32,8 @@
  * glyphs needs the font binary, which only the PDF backend has.
  */
 
+import type { StrokeDashCycle } from "../utils/repeatingStrokeGradient";
+
 /**
  * Straight sRGB. `r`, `g` and `b` are integers in 0..255 and `a` is a fraction
  * in 0..1; a producer that emits a fractional channel produces CSS a backend
@@ -72,10 +74,7 @@ export type DisplayStroke = {
   readonly thicknessPx: number;
   readonly pattern: DisplayStrokePattern;
   /** For dashed strokes, one explicit cycle of alternating ink and gaps in CSS pixels. */
-  readonly dashArrayPx?:
-    | readonly [number, number]
-    | readonly [number, number, number, number]
-    | readonly [number, number, number, number, number, number];
+  readonly dashArrayPx?: StrokeDashCycle;
 };
 
 /**

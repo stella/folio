@@ -1,3 +1,4 @@
+import type { StrokeDashCycle } from "../../utils/repeatingStrokeGradient";
 import { pointsToPixels } from "../../utils/units";
 import type { CellBorderSpec } from "../types";
 
@@ -99,8 +100,14 @@ function compoundEdge(border: CellBorderSpec | undefined) {
   return { firstPx, lastPx, gapPx, color, widthPx: firstPx + gapPx + lastPx };
 }
 
-/** Dash segments alternate between ink and clear, scaled by the authored width. */
-export function tableCellBorderDash(border: CellBorderSpec | undefined) {
+type TableCellBorderDash = {
+  widthPx: number;
+  dashArrayPx: StrokeDashCycle;
+};
+
+export function tableCellBorderDash(
+  border: CellBorderSpec | undefined,
+): TableCellBorderDash | undefined {
   if (!border) return undefined;
   const widthPx = border.width ?? 1;
   if (!(widthPx > 0) || !Number.isFinite(widthPx)) return undefined;
@@ -108,12 +115,12 @@ export function tableCellBorderDash(border: CellBorderSpec | undefined) {
   switch (border.authoredStyle) {
     case "dashed": {
       const length = widthPx * DASH_WIDTH_FACTOR;
-      return { widthPx, dashArrayPx: [length, length] as const };
+      return { widthPx, dashArrayPx: [length, length] };
     }
     case "dashSmallGap":
       return {
         widthPx,
-        dashArrayPx: [widthPx * DASH_WIDTH_FACTOR, widthPx] as const,
+        dashArrayPx: [widthPx * DASH_WIDTH_FACTOR, widthPx],
       };
     case "dotDash": {
       const shortPx = widthPx * DOT_DASH_DOT_WIDTH_FACTOR;
@@ -124,7 +131,7 @@ export function tableCellBorderDash(border: CellBorderSpec | undefined) {
           shortPx,
           shortPx,
           shortPx,
-        ] as const,
+        ],
       };
     }
     case "dotDotDash": {
@@ -138,7 +145,7 @@ export function tableCellBorderDash(border: CellBorderSpec | undefined) {
           shortPx,
           shortPx,
           shortPx,
-        ] as const,
+        ],
       };
     }
     default:

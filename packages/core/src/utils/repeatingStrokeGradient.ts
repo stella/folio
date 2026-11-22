@@ -1,11 +1,15 @@
+export type StrokeDashCycle =
+  | readonly [number, number]
+  | readonly [number, number, number, number]
+  | readonly [number, number, number, number, number, number];
+
 type RepeatingStrokeGradientOptions = {
   color: string;
   direction: string;
-  /** Lengths of alternating painted and clear segments in CSS pixels. */
-  dashArrayPx: readonly number[];
+  dashArrayPx: StrokeDashCycle;
 };
 
-/** Paint one repeating cycle with hard stops between ink and gaps. */
+// Paint one cycle with hard stops between ink and gaps.
 export function repeatingStrokeGradient({
   color,
   direction,
