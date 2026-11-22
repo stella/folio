@@ -6313,6 +6313,22 @@ const joinOps = (
           ...paragraph,
           content: [...joining, paragraph].flatMap(({ content }) => content),
         };
+  // A rejected added mark before a block takes its emptied paragraph where
+  // the container still ends with a paragraph, range boundaries standing after
+  // that paragraph included, and a paragraph stays to anchor the removal: one
+  // this resolution joins into it goes with it.
+  const goesBeforeBlock =
+    follows === "block" &&
+    added &&
+    blockListEndsInParagraph(
+      blocks.filter((block) => !isBlockBoundary(block)),
+    ) &&
+    blocks.some(
+      (block) =>
+        block.type === "paragraph" &&
+        block !== paragraph &&
+        !joining.includes(block),
+    );
   const outcome = paragraphMarkOutcome({
     follows,
     holdsContent: paragraphHoldsContent(chained),
@@ -6321,22 +6337,8 @@ const joinOps = (
       follows !== "nothing"
         ? // Before a table, a control ending the container ends it with
           // its own final paragraph: this resolution leaves that end as it was.
-          // So does a rejected added mark before a block, range boundaries
-          // standing after that paragraph included, where a paragraph stays
-          // to anchor the removal: one this resolution joins into it goes
-          // with it.
           (follows === "table" && blockListEndsInParagraph(blocks)) ||
-          (follows === "block" &&
-            added &&
-            blockListEndsInParagraph(
-              blocks.filter((block) => !isBlockBoundary(block)),
-            ) &&
-            blocks.some(
-              (block) =>
-                block.type === "paragraph" &&
-                block !== paragraph &&
-                !joining.includes(block),
-            )) ||
+          goesBeforeBlock ||
           lastBlockPastBoundaries(blocks)?.type === "paragraph"
         : // Removing the final paragraph leaves the block before it last: in
           // a cell, that paragraph's mark becomes the cell's terminator.
@@ -6556,15 +6558,14 @@ const joinOps = (
       review,
     },
   ];
-  // A rejected added mark ending a control, with pending insertions standing
-  // (its own or those joining it), keeps the paragraph only for them:
-  // rejecting them later removes it, as rejecting the mark with them does,
-  // where the control still ends with a block once it goes.
+  // A rejected added mark ending a control or before a block, with pending
+  // insertions standing (its own or those joining it), keeps the paragraph
+  // only for them: rejecting them later removes it, as rejecting the mark
+  // with them does, where the container still ends as it must once it goes.
   const leavesHolder =
     added &&
     op.decision === REVISION_DECISIONS.REJECT &&
-    endsControl &&
-    standsAfterBlock;
+    ((endsControl && standsAfterBlock) || goesBeforeBlock);
   const held = leavesHolder ? holdingParagraph(paragraph.content) : undefined;
   if (held !== undefined)
     markOps.push({
@@ -6688,7 +6689,8 @@ type RemoveEmptiedHolderOptions = {
  * ({@link standsForInsertions}) where this resolution rejected the last of
  * them, as rejecting its mark with them at once does: only while it still
  * ends its block content control short of the container's end, with a block
- * before it, so the control keeps ending with that block.
+ * before it, so the control keeps ending with that block, or still stands
+ * before a block in a list that ends with a paragraph.
  */
 const removeEmptiedHolder = ({
   document,
@@ -6707,17 +6709,23 @@ const removeEmptiedHolder = ({
   if (
     paragraph.content.length > 0 ||
     paragraph.pPrMark !== undefined ||
-    paragraph.sectionProperties !== undefined ||
-    index === 0 ||
-    index !== blocks.length - 1 ||
-    list.at(-1)?.kind !== "blockSdt" ||
-    endsItsContainer(body, location)
+    paragraph.sectionProperties !== undefined
   )
     return Result.ok(undefined);
   const anchor = blocks.find(
     (block, position): block is Paragraph =>
       position !== index && block.type === "paragraph",
   );
+  const endsControl =
+    index > 0 &&
+    index === blocks.length - 1 &&
+    list.at(-1)?.kind === "blockSdt" &&
+    !endsItsContainer(body, location);
+  const standsBeforeBlock =
+    anchor !== undefined &&
+    isOpaqueFollower(blockFollower(blocks, index).block) &&
+    blockListEndsInParagraph(blocks.filter((block) => !isBlockBoundary(block)));
+  if (!endsControl && !standsBeforeBlock) return Result.ok(undefined);
   const removed = applyOps(document, [
     anchor === undefined
       ? {

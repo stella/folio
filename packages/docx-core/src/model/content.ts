@@ -1788,10 +1788,10 @@ type TrackedResolutionJoins = WritableRecord & {
    */
   emptiedHolder?: true;
   /**
-   * The paragraph this insertion stands in ends a block content control,
-   * and its added mark was rejected while the paragraph held only pending
-   * insertions: it stands only for them, as there was nothing in the control
-   * to join. Rejecting the last of them removes the paragraph, as rejecting
+   * The paragraph this insertion stands in ends a block content control or
+   * stands before a block it cannot join, and its added mark was rejected
+   * while the paragraph held only pending insertions: it stands only for
+   * them, as there was nothing to join. Rejecting the last of them removes the paragraph, as rejecting
    * the mark and them at once does. The value says whether the insertion
    * had joins of its own when marked; resolving it reads it without the
    * marker either way.
