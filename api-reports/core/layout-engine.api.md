@@ -522,6 +522,10 @@ export type MeasuredLine = {
     ascent: number;
     descent: number;
     lineHeight: number;
+    characterFillBand?: {
+        topPx: number;
+        heightPx: number;
+    };
     justificationPaint?: {
         type: "space-contraction";
         contractionPx: number;
