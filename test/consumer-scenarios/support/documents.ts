@@ -190,7 +190,7 @@ export const scenarioEngine = (): ReviewerEngine => {
  * fixture's bytes, and the block ids flows pin in them, do not depend on the
  * engine a scenario runs on.
  */
-const openFixtureBuilder = (
+export const openFixtureBuilder = (
   bytes: Uint8Array,
   author = AUTHOR,
 ): Promise<Reviewer> =>

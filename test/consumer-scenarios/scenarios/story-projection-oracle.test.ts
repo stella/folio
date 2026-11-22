@@ -7,7 +7,11 @@ import {
   FolioDocxReviewer,
 } from "@stll/folio-core/server";
 
-import { notesDocument, openReviewer } from "../support/documents.ts";
+import {
+  notesDocument,
+  openFixtureBuilder,
+  openReviewer,
+} from "../support/documents.ts";
 import {
   assertRequestedOutcome,
   capture,
@@ -17,12 +21,12 @@ import {
   rowsOf,
 } from "../support/oracle.ts";
 
-const pendingReference = async (
-  kind: "footnote" | "endnote",
-  bytes = notesDocument(),
-) => {
-  const reviewer = await openReviewer(await bytes);
-  const reference = reviewer
+const pendingReference = async (kind: "footnote" | "endnote") => {
+  // Import a pending reference deletion whose note body has no pending
+  // deletion of its own. The note's independent edits are the subject of
+  // these scenarios.
+  const fixture = await openFixtureBuilder(await notesDocument());
+  const reference = fixture
     .getContent()
     .find(
       (block) =>
@@ -39,18 +43,24 @@ const pendingReference = async (
       { id: "delete-reference", type: "deleteBlock", blockId: reference.id },
     ],
   } as const;
-  const applied = reviewer.applyDocumentOperations(
+  const applied = fixture.applyDocumentOperations(
     { ...batch, mode: "tracked-changes" },
     { undefinedReferences: "refuse" },
   );
   assert.equal(applied.applied.length, 1, JSON.stringify(applied));
   assert.deepEqual(applied.skipped, []);
+  const reviewer = await openReviewer(new Uint8Array(await fixture.toBuffer()));
   assert.ok(reviewer.getChanges().length > 0);
   const story = { type: kind, noteId: 1 };
+  const reviewed = reviewer.readReviewedStory({
+    story,
+    view: "current-markup",
+  });
   assert.ok(
-    reviewer.readStory(story),
+    reviewed,
     "Pending reference deletion must leave its note editable",
   );
+  assert.equal(reviewed.changes.length, 0);
   return { reviewer, story };
 };
 
