@@ -11,6 +11,7 @@ import {
   type NumberingInstance,
   type Paragraph,
   type ParagraphContent,
+  type ParagraphFormatting,
   type RunContent,
   type TabContent,
   type Table,
@@ -32,6 +33,7 @@ import {
 } from "./apply";
 import {
   blockListAt,
+  type ParagraphLocation,
   sameBlockList,
   storyBody,
   storyParagraphs,
@@ -87,15 +89,16 @@ import {
   noteReferenceKind,
   noteReferenceSpans,
 } from "./noteMarks";
-import {
-  isRangeBoundary,
-  paragraphLength,
-  paragraphLogicalText,
-  withChildren,
-} from "./offsets";
+import { isRangeBoundary, paragraphLength, withChildren } from "./offsets";
 import { findStoryParagraph } from "./paragraphLocator";
 import { authoredParagraphFormatting } from "./paragraphPropertySnapshot";
 import { applyFormattingPatch } from "./patch";
+import {
+  joinedPropertiesSource,
+  joinsFollowingParagraph,
+  paragraphPropertiesSetting,
+  paragraphVisibleText,
+} from "./pendingJoins";
 import {
   appendTrackedDeletion,
   createTrackedPlan,
@@ -178,6 +181,7 @@ type SplitParagraphIntent = {
    */
   newHalf?: SplitHalf;
 };
+export { paragraphVisibleText } from "./pendingJoins";
 export type { TableIntentOperation } from "./types";
 
 /**
@@ -911,15 +915,6 @@ export const allocateEditorIntentIds: (
   };
 } = createEditorIntentIdAllocator();
 
-/** Accepted-view text without changing the canonical paragraph or its offset space. */
-export const paragraphVisibleText = (paragraph: Paragraph): string => {
-  const text = paragraphLogicalText(paragraph);
-  return leafSpans(paragraph.content)
-    .filter(({ ancestors }) => !ancestors.some(isRemovedRevisionNode))
-    .map(({ before, after }) => text.slice(before.offset, after.offset))
-    .join("");
-};
-
 /**
  * Right-affine translation: a visible gap follows retained deleted content at
  * that gap, so a new insertion never lands inside a deletion wrapper.
@@ -961,9 +956,6 @@ const visibleOffsetAtPhysicalOffset = (
   }
   return visible;
 };
-
-const joinsFollowingParagraph = (paragraph: Paragraph): boolean =>
-  paragraph.pPrMark?.kind === "del" || paragraph.pPrMark?.kind === "moveFrom";
 
 type EditorParagraphGroup = {
   blockId: string;
@@ -1700,25 +1692,68 @@ const joinParagraphPropertyAlignment = ({
     panic("An applied join must keep the paragraph it names as kept.");
   // Stated properties, as the join gives them: what a list level or style
   // supplies the survivor inherits again from its own numbering.
-  const desired = paragraphPropertiesOf(
-    source === undefined ? undefined : authoredParagraphFormatting(source),
-  );
-  const existing = paragraphPropertiesOf(authoredParagraphFormatting(survivor));
-  if (structurallyEqual(existing, desired)) return undefined;
-  return {
-    type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
+  const setting = paragraphPropertiesSetting({
     story: intent.story,
     blockId: survivorId,
-    patch: Object.fromEntries([
-      ...Object.keys(existing ?? {}).map((key) => [key, null]),
-      ...Object.entries(desired ?? {}),
-    ]),
-    whenEmpty:
-      source?.formatting === undefined
-        ? EMPTY_PROPERTY_SETS.OMIT
-        : EMPTY_PROPERTY_SETS.KEEP,
-    ...(revision === undefined ? {} : { revision }),
-  } as const;
+    from: authoredParagraphFormatting(survivor),
+    to: source === undefined ? undefined : authoredParagraphFormatting(source),
+  });
+  return setting === undefined
+    ? undefined
+    : {
+        ...setting,
+        whenEmpty:
+          source?.formatting === undefined
+            ? EMPTY_PROPERTY_SETS.OMIT
+            : EMPTY_PROPERTY_SETS.KEEP,
+        ...(revision === undefined ? {} : { revision }),
+      };
+};
+
+type JoinedRunPropertiesOptions = {
+  document: Document;
+  /** The operations so far: the run's selected content deleted, none of its paragraphs joined. */
+  ops: readonly DocumentOp[];
+  story: OpStory;
+  run: readonly ParagraphLocation[];
+};
+
+/**
+ * The paragraph properties a directly joined run of paragraphs has where
+ * pending mark deletions join paragraphs to it, and the paragraph kept, which
+ * takes them; none where joining the run's paragraphs gives them.
+ */
+const joinedRunProperties = ({
+  document,
+  ops,
+  story,
+  run,
+}: JoinedRunPropertiesOptions): Result<
+  { blockId: string; formatting: ParagraphFormatting | undefined } | undefined,
+  DocumentOpRefusal
+> => {
+  const first = run.at(0);
+  const last = run.at(-1);
+  if (first === undefined || last === undefined || first === last)
+    return Result.ok(undefined);
+  const sourceIn = (source: Document) =>
+    joinedPropertiesSource({
+      blocks: blockListAt(storyBody(source, story).content, first.list),
+      first: first.index,
+      last: last.index,
+    });
+  if (sourceIn(document) === undefined) return Result.ok(undefined);
+  const deleted = applyDocumentOps(document, ops);
+  if (deleted.isErr()) return Result.err(deleted.error);
+  const source = sourceIn(deleted.value.document);
+  return Result.ok(
+    source === undefined
+      ? undefined
+      : {
+          blockId: last.paragraph.paraId ?? "",
+          formatting: authoredParagraphFormatting(source),
+        },
+  );
 };
 
 type JoinPropertyChangeLinkOptions = {
@@ -3848,6 +3883,10 @@ const compileInStory = (
       }
       ops = [];
       let survivorId = from.blockId;
+      const joinedProperties: {
+        blockId: string;
+        formatting: ParagraphFormatting | undefined;
+      }[] = [];
       const deletes =
         from.blockId !== to.blockId ||
         from.offset !== to.offset ||
@@ -3914,6 +3953,15 @@ const compileInStory = (
               });
             }
           }
+          const properties = joinedRunProperties({
+            document,
+            ops,
+            story: from.story,
+            run,
+          });
+          if (properties.isErr()) return Result.err(properties.error);
+          if (properties.value !== undefined)
+            joinedProperties.push(properties.value);
           for (const { paragraph: item } of run.slice(0, -1).toReversed()) {
             ops.push({
               type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
@@ -3939,6 +3987,19 @@ const compileInStory = (
         const deleted = applyDocumentOps(document, ops);
         if (deleted.isErr()) return Result.err(deleted.error);
         let afterDeletion = deleted.value.document;
+        for (const { blockId, formatting } of joinedProperties) {
+          const setting = paragraphPropertiesSetting({
+            story: from.story,
+            blockId,
+            from: paragraphAt(afterDeletion, { ...from, blockId })?.formatting,
+            to: formatting,
+          });
+          if (setting === undefined) continue;
+          const set = applyDocumentOp(afterDeletion, setting);
+          if (set.isErr()) return Result.err(set.error);
+          ops.push(setting);
+          afterDeletion = set.value.document;
+        }
         const retirement =
           text === ""
             ? Result.ok(null)

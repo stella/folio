@@ -1,6 +1,18 @@
 {
   "generated suggestions save, restage, reject and accept as the laws say": [
     {
+      "seed": 1129960259,
+      "path": "57:0:0:0:0:0:0:1:1:1:1:1:1:1:1:4:3:4:5:4:6:5:5:6:6:6:6:6:6:6:7:6:6:6:6:6:6:7:8:7:7:7:7:9:9:9:9:9:10:9:9:12:12:10:9:10:10:12:12:9:10:9:10:12:10:11:10:10:13:13:11:22:10:10:10:10:10:10:13:10:10:20:0:11:15",
+      "note": "#2891: a suggested removal of a last paragraph, after an empty one that a pending join runs words into, keeps that one's properties when accepted, as the direct edit does.",
+      "date": "2026-11-22"
+    },
+    {
+      "seed": -51161644,
+      "path": "17:0:0:0:0:0:0:0:0:0:5:4:4:4:4:4:4:4:5:5:5:5:5:5:5:5:5:5:5:5:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:0:5:5:5:5:5:5:5:8:1:4:4:4:4:4:3:4:3:1:13:9:9:9",
+      "note": "#2905: a paragraph suggested before a block content control ending the body goes whole when rejected, so the saved document is the original and the suggestion restages with the same id.",
+      "date": "2026-11-22"
+    },
+    {
       "seed": -1095049717,
       "path": "4:0:0:0:0:0:0:0:0:2:1:1:1:1:1:2:1:1:3:3:3:3:3:3:3:3:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:14:5:5:5:5:5:18:7:8:7:7:7:8:9:7:8:12:7:7:8:8:9:8:8:7:7:7:7:7:7:7:0:2:4:4:4",
       "note": "A paragraph suggested before a table, in a body that ends with a block content control, rejects back to the original, as the tracked insertion does.",

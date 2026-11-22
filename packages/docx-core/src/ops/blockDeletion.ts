@@ -37,6 +37,7 @@ import {
   paragraphHoldsContentOnceAccepted,
   paragraphLength,
 } from "./offsets";
+import { pendingJoinsRunWordsInto } from "./pendingJoins";
 import {
   blockFollower,
   isBlockBoundary,
@@ -752,6 +753,28 @@ const goesOnceAccepted = (blocks: readonly BlockContent[]): boolean =>
       (index === blocks.length - 1 || markPendingDeletion(block)),
   );
 
+const paragraphsIn = (blocks: readonly BlockContent[]): Paragraph[] =>
+  blocks.filter((block): block is Paragraph => block.type === "paragraph");
+
+/**
+ * Whether the paragraph `list[index]` gives its properties to its container's
+ * last one when a deletion retires its break: it holds words, its own or those
+ * that pending mark deletions before it run into it. Not once its own mark is
+ * pending deletion: the two already are one paragraph, with the last one's
+ * properties.
+ */
+const givesProperties = (
+  list: readonly BlockContent[],
+  index: number,
+): boolean => {
+  const paragraph = list[index];
+  return (
+    paragraph?.type === "paragraph" &&
+    !markPendingDeletion(paragraph) &&
+    (paragraphLength(paragraph) > 0 || pendingJoinsRunWordsInto(list, index))
+  );
+};
+
 export const deleteBlocks = ({
   document,
   op,
@@ -1030,7 +1053,7 @@ export const deleteBlocks = ({
           ...sectionBoundaries,
         };
   const finalReview = reviewFieldsOf(last.paragraph);
-  if (previous !== undefined && paragraphLength(previous) > 0) {
+  if (previous !== undefined && givesProperties(list, previousIndex)) {
     const formatting = withMarkFormatting(
       paragraphPropertiesOf(previous.formatting),
       last.paragraph.formatting,
@@ -1168,19 +1191,36 @@ export const deleteBlocks = ({
       ? breakRetiredBefore(list, first.index)
       : undefined;
   const retired = retiredIndex === undefined ? undefined : list[retiredIndex];
-  const reviewed =
-    retiredIndex === undefined || retired?.type !== "paragraph"
-      ? affected
-      : [
-          retired,
-          ...list
-            .slice(retiredIndex + 1, first.index)
-            .filter((block): block is Paragraph => block.type === "paragraph"),
-          ...selected,
-        ];
+  // The paragraphs after the range, when its container's last one takes the
+  // properties of the paragraph whose break is retired, as a deleted last
+  // paragraph does.
+  const trailing: Paragraph[] = [];
+  let endFormatting = survivor.formatting;
+  let reviewed = affected;
+  if (retiredIndex !== undefined && retired?.type === "paragraph") {
+    const ending = list.at(-1);
+    if (
+      ending?.type === "paragraph" &&
+      givesProperties(list, retiredIndex) &&
+      !sameParagraphProperties(retired.formatting, ending.formatting)
+    ) {
+      trailing.push(...paragraphsIn(list.slice(last.index + 1)));
+      endFormatting = withMarkFormatting(
+        paragraphPropertiesOf(retired.formatting),
+        ending.formatting,
+      );
+    }
+    reviewed = [
+      retired,
+      ...paragraphsIn(list.slice(retiredIndex + 1, first.index)),
+      ...selected,
+      ...trailing,
+    ];
+  }
+  const endsContainer = trailing.at(-1) ?? (terminal ? last.paragraph : null);
   // The paragraphs whose own mark the tracked deletion records deleted.
   const losesMark = (paragraph: Paragraph) =>
-    !terminal || paragraph !== last.paragraph;
+    paragraph !== endsContainer && !trailing.includes(paragraph);
   // A mark the same author's pending insertion or move added goes outright,
   // joining its paragraph to the next one, as deleting over one's own
   // insertion removes it; no deletion of an addition is recorded. Before a
@@ -1253,6 +1293,7 @@ export const deleteBlocks = ({
   const overwrittenMark = reviewed.find(
     (paragraph) =>
       paragraph.pPrMark !== undefined &&
+      !trailing.includes(paragraph) &&
       !joinsNext.has(paragraph) &&
       !keepsDeletedMark(paragraph) &&
       !deletesAddedMark(paragraph),
@@ -1315,7 +1356,10 @@ export const deleteBlocks = ({
           info: stampInfo(op.revision),
         },
       };
-    } else if (!sameParagraphProperties(next.formatting, survivor.formatting)) {
+    } else if (
+      paragraph === endsContainer &&
+      !sameParagraphProperties(next.formatting, endFormatting)
+    ) {
       const conflict = paragraphPropertyFoldConflict(paragraph, op.revision);
       if (conflict !== undefined)
         return refuse(
@@ -1324,12 +1368,11 @@ export const deleteBlocks = ({
         );
       const review = reviewFieldsOf(next);
       delete review.formatting;
-      if (survivor.formatting !== undefined)
-        review.formatting = survivor.formatting;
+      if (endFormatting !== undefined) review.formatting = endFormatting;
       review.propertyChanges = [
         foldedParagraphPropertyChange({
           paragraph,
-          formatting: survivor.formatting,
+          formatting: endFormatting,
           stamp: op.revision,
         }),
       ];
@@ -1373,14 +1416,13 @@ export const deleteBlocks = ({
         "Paragraph deletion received an invalid revision id.",
       );
     case "fresh": {
-      const marked =
-        following?.type === "paragraph"
-          ? [...fresh.paragraphs, following]
-          : fresh.paragraphs;
-      const original =
-        following?.type === "paragraph" ? [...reviewed, following] : reviewed;
-      const changed =
-        following?.type === "paragraph" ? [...tracked, following] : tracked;
+      const next =
+        following?.type === "paragraph" && trailing.length === 0
+          ? [following]
+          : [];
+      const marked = [...fresh.paragraphs, ...next];
+      const original = [...reviewed, ...next];
+      const changed = [...tracked, ...next];
       // Each paragraph whose mark went joins the one after it, which keeps
       // its own identity and properties.
       const blocks: BlockContent[] = [];
