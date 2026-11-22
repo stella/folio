@@ -8,7 +8,9 @@ import { gapAfterInserted } from "./inline";
 import {
   asParagraphContent,
   childNodes,
+  compareGaps,
   defaultInsertionGap,
+  type Gap,
   type InlineNode,
   isParagraphContent,
   leafSpans,
@@ -134,13 +136,11 @@ export const rangeEndAfterDeletion = ({
     zeroWidthLeavesAt(source.content, end.offset).length - end.zeroWidthBefore;
   const zeroWidthBefore =
     zeroWidthLeavesAt(target.content, offset).length - following;
+  const gap = { offset, zeroWidthBefore };
   return {
     story: from.story,
     blockId: holder.paraId ?? to.blockId,
-    offset,
-    zeroWidthBefore: caret
-      ? zeroWidthBefore
-      : pastEndedComments(target.content, offset, zeroWidthBefore),
+    ...(caret ? gap : pastEndedComments(target.content, gap)),
   };
 };
 
@@ -148,31 +148,27 @@ export const rangeEndAfterDeletion = ({
  * Where what replaces a range goes among the zero-width leaves at the gap:
  * past the ends of comments the range reached, so the new words never extend
  * a comment whose end the range took, and past the ends of other ranges
- * standing before such a comment end: they do not change what the range
- * covers. A comment starting at the gap keeps the new words, as it does when
+ * standing before such a comment end, including references interleaved with
+ * those ends. A comment starting at the gap keeps the new words, as it does when
  * a tracked replacement is accepted. The new words continue the containers
  * the range's text stood in across the ends they pass (see `continuation`).
  */
 export const pastEndedComments = (
   content: readonly InlineNode[],
-  offset: number,
-  zeroWidthBefore: number,
-): number => {
+  gap: Gap,
+): Gap => {
   const spans = leafSpans(content);
-  // The zero-width leaves at one offset are consecutive leaves.
-  const first = spans.findIndex(
-    ({ before }) =>
-      before.offset === offset && before.zeroWidthBefore === zeroWidthBefore,
-  );
-  if (first === -1) return zeroWidthBefore;
-  let passed = 0;
+  const first = spans.findIndex(({ before }) => compareGaps(before, gap) === 0);
+  if (first === -1) return gap;
+  let passed = gap;
   for (let index = first; index < spans.length; index += 1) {
-    const node = spans[index]?.node;
-    if (node === undefined || !isParagraphContent(node)) break;
-    if (node.type === "commentRangeEnd") passed = index - first + 1;
-    else if (!isClosingMarker(node)) break;
+    const span = spans[index];
+    if (span === undefined || !isParagraphContent(span.node)) break;
+    const { node } = span;
+    if (node.type === "commentRangeEnd") passed = span.after;
+    else if (node.type !== "commentReference" && !isClosingMarker(node)) break;
   }
-  return zeroWidthBefore + passed;
+  return passed;
 };
 
 /**

@@ -23,6 +23,18 @@
       "path": "33:1:0:5:5:5:5:5:5:5:5:5:5:10",
       "note": "A standing note reference keeps a range when its paragraph's prose is replaced.",
       "date": "2026-11-22"
+    },
+    {
+      "seed": 1869671687,
+      "path": "28:2:2:2:2:6:6:6:6:5:5:5:5:5:5:5:5:5:6:6",
+      "note": "A reference between two comment endings does not keep the thread whose entire text was replaced.",
+      "date": "2026-11-22"
+    },
+    {
+      "seed": 1869671687,
+      "path": "28:2:2:2:2:6:6:6:6:5:5:5:5:5:5:5:5:5:6:6:3",
+      "note": "Passing a reference between endings uses a physical gap that remains valid when both threads survive.",
+      "date": "2026-11-22"
     }
   ]
 }
