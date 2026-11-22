@@ -1329,29 +1329,54 @@ type DeferredRemovalSettlement = {
 /**
  * The kept markers beside the blockers of a seam their acceptance retires,
  * left where they stand: those naming both sides as their cut's piece named
- * the seam, and name none once it goes. `out` is changed in place; whether
- * it changed.
+ * the seam, and name none once it goes. Those between such a blocker and one
+ * another seam still waits on wait with that seam, and keep their name. `out`
+ * is changed in place; whether it changed.
  */
 const consumeSeamNames = (
   out: InlineNode[],
   { blockers }: DeferredRemovalGroup,
   known: WeakMap<InlineNode, string>,
 ): boolean => {
+  const waitedOn = new Set(
+    out.flatMap((node) =>
+      isTrackedWrapper(node)
+        ? (node.resolutionJoins?.deferredRemove ?? []).flatMap(
+            (group) => group.blockers,
+          )
+        : [],
+    ),
+  );
   let changed = false;
   for (const [index, node] of out.entries()) {
     if (!isTrackedWrapper(node) || !blockers.includes(node.info.id)) continue;
-    for (const step of [-1, 1])
+    for (const step of [-1, 1]) {
+      const run: number[] = [];
+      let beyond: InlineNode | undefined;
       for (let at = index + step; at >= 0; at += step) {
-        const marker = out[at];
+        beyond = out[at];
         if (
-          marker === undefined ||
-          !standsInKeptCut(marker) ||
-          keptCutPiece(marker) !== "both"
+          beyond === undefined ||
+          !standsInKeptCut(beyond) ||
+          keptCutPiece(beyond) !== "both"
         )
           break;
+        run.push(at);
+        beyond = undefined;
+      }
+      if (
+        beyond !== undefined &&
+        isTrackedWrapper(beyond) &&
+        waitedOn.has(beyond.info.id)
+      )
+        continue;
+      for (const at of run) {
+        const marker = out[at];
+        if (marker === undefined) continue;
         out[at] = withKeptCutPieceConsumed(marker, known);
         changed = true;
       }
+    }
   }
   return changed;
 };
@@ -1372,7 +1397,8 @@ const settleDeferredRemovals = (
   /** Seams whose every blocker is accepted, by key: see placeAcceptedSeamKept. */
   const acceptedKept = new Map<string, DeferredRemovalGroup>();
   /** Accepted removals that held a piece of a seam: see placeKeptBesideRemovedPiece. */
-  const removedPieces: { index: number; group: DeferredRemovalGroup }[] = [];
+  const removedPieces: { holder: InlineNode; group: DeferredRemovalGroup }[] =
+    [];
   /**
    * Whether the insertion `id` joins what it stands between `depth` levels
    * deep on both sides: accepted, it continues the record the seam cut
@@ -1407,6 +1433,7 @@ const settleDeferredRemovals = (
     );
   for (const node of nodes) {
     let next = node;
+    const removedGroups: DeferredRemovalGroup[] = [];
     if (
       isTrackedWrapper(node) &&
       node.resolutionJoins?.deferredRemove !== undefined
@@ -1435,7 +1462,7 @@ const settleDeferredRemovals = (
             group.edge !== undefined &&
             fates.every((fate) => fate === "accepted")
           )
-            removedPieces.push({ index: out.length, group });
+            removedGroups.push(group);
           if (
             fates.every((fate) => fate === "accepted") ||
             retires(group, fates)
@@ -1472,17 +1499,23 @@ const settleDeferredRemovals = (
       next = rebuildNode(next, settled ?? []);
     changed ||= next !== node;
     out.push(next);
+    for (const group of removedGroups)
+      removedPieces.push({ holder: next, group });
   }
   for (const group of acceptedKept.values())
     changed =
       placeAcceptedSeamKept({ out, group, fateOf, known }) ||
       consumeSeamNames(out, group, known) ||
       changed;
-  // Later placements stand later in the list, so earlier indices still hold.
-  for (const { index, group } of removedPieces.toReversed())
+  // The placements above and each one here move what stands after them, so a
+  // holder is found where it stands when its own placement runs.
+  for (const { holder, group } of removedPieces.toReversed()) {
+    const index = out.indexOf(holder);
+    if (index === -1) continue;
     changed =
       placeKeptBesideRemovedPiece({ out, index, group, fateOf, known }) ||
       changed;
+  }
   return changed ? out : nodes;
 };
 
@@ -7792,8 +7825,21 @@ const planSingleRecordResolution = (
     record(withAbsorptions(edit, paraId));
     current = edit.document;
   }
-  // Kept cuts are settled where the joins leave each marker, so a cut waits
-  // on the same pending changes whichever order brought the pieces together.
+  for (const paraId of holders) {
+    const removed = removeEmptiedHolder({
+      document: current,
+      story: op.story,
+      paraId,
+      applyOps,
+    });
+    if (removed.isErr()) return Result.err(removed.error);
+    if (removed.value === undefined) continue;
+    record(removed.value);
+    current = removed.value.document;
+  }
+  // Kept cuts are settled where the joins and removals leave each marker, so
+  // a cut waits on the same pending changes whichever order brought the
+  // pieces together, and on a pending mark only where a paragraph follows it.
   if ([...resolvedContents.values()].some(holdsKeptCut)) {
     const settledCuts = settledParagraphKeptCuts(
       storyBody(current, op.story),
@@ -7810,18 +7856,6 @@ const planSingleRecordResolution = (
       record(settled.value);
       current = settled.value.document;
     }
-  }
-  for (const paraId of holders) {
-    const removed = removeEmptiedHolder({
-      document: current,
-      story: op.story,
-      paraId,
-      applyOps,
-    });
-    if (removed.isErr()) return Result.err(removed.error);
-    if (removed.value === undefined) continue;
-    record(removed.value);
-    current = removed.value.document;
   }
   // Notes whose last reference went are removed first: a comment anchored in
   // one of them is then exhausted too and retires below.
