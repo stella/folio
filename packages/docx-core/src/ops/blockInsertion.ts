@@ -2,6 +2,7 @@
 import { panic, Result } from "better-result";
 
 import {
+  type BlockContent,
   type Document,
   finalizeParagraphFormatting,
   type Paragraph,
@@ -11,6 +12,7 @@ import {
 import {
   isOpaqueFollower,
   markBeforeTableResolves,
+  markGoes,
   paragraphTableRunInBoundary,
 } from "./blockDeletion";
 import {
@@ -552,6 +554,52 @@ export const prepareTrackedParagraphInsertion = ({
   });
 };
 
+/**
+ * Whether a paragraph before `index` in `blocks` owns the paragraph its
+ * pending mark joins. Independent review can carry such a mark across the
+ * blocks between, and an insertion cannot record that conditional ownership.
+ */
+const followsFirstParagraphOwner = (
+  blocks: readonly BlockContent[],
+  index: number,
+): boolean =>
+  blocks
+    .slice(0, index)
+    .some(
+      (block) =>
+        block.type === "paragraph" && block.pPrMark?.survivor === "first",
+    );
+
+type InsertedMarkBeforeTableOptions = {
+  blocks: readonly BlockContent[];
+  /** The paragraph the new one goes after. */
+  source: Paragraph;
+  /** Where the table stands in `blocks`, which the new paragraph goes before. */
+  index: number;
+  boundary: ReturnType<typeof paragraphTableRunInBoundary>;
+};
+
+/**
+ * Whether a paragraph added right before the table at `index` can hold its
+ * own inserted mark: one the table can receive, or, before a table itself
+ * under review, one whose rejection removes the emptied paragraph without
+ * crossing the table. The place reads alike named from the paragraph before
+ * it or from the table, and each insertion there resolves on its own. After a
+ * break that goes, the new paragraph would receive the words before it.
+ */
+const insertedMarkResolvesBeforeTable = ({
+  blocks,
+  source,
+  index,
+  boundary,
+}: InsertedMarkBeforeTableOptions): boolean =>
+  markBeforeTableResolves({ blocks, boundary }) ||
+  (boundary.type === "blocked" &&
+    boundary.reason === "review" &&
+    !markGoes(source) &&
+    blockListEndsInParagraph(blocks) &&
+    !followsFirstParagraphOwner(blocks, index));
+
 export const insertBlocks = ({
   document,
   op,
@@ -617,19 +665,11 @@ export const insertBlocks = ({
         storyBody(document, op.story).content,
         located.value.list,
       );
-      // Independent review can carry an earlier first-source mark across
-      // intervening blocks. Insertion cannot record that conditional ownership.
-      for (let index = 0; index < located.value.index; index += 1) {
-        const previous = list[index];
-        if (
-          previous?.type === "paragraph" &&
-          previous.pPrMark?.survivor === "first"
-        )
-          return refuse(
-            DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-            "Tracked table-side insertion cannot cross an earlier pending first-paragraph owner.",
-          );
-      }
+      if (followsFirstParagraphOwner(list, located.value.index))
+        return refuse(
+          DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+          "Tracked table-side insertion cannot cross an earlier pending first-paragraph owner.",
+        );
       const following = list.at(located.value.index);
       // After a table that ends a block content control's content, the
       // paragraph stays in the control. Its mark joins nothing there:
@@ -794,9 +834,10 @@ export const insertBlocks = ({
   // new paragraph holds the mark the anchor had, with the anchor's paragraph
   // properties as its prior ones. Rejecting removes the new text and the
   // anchor's mark, which leaves the anchor as it was; accepting leaves both.
-  // Before a table the new paragraph's own mark can be inserted only when
-  // the shared resolution owner admits it. Otherwise keep the source mark
-  // on the new last paragraph, so rejecting joins back into the anchor.
+  // Before a table the new paragraph's own mark is inserted where it
+  // resolves there (`insertedMarkResolvesBeforeTable`). Otherwise keep the
+  // source mark on the new last paragraph, so rejecting joins back into the
+  // anchor.
   // At the end of the list, before a range boundary between blocks that no
   // resolution may carry content across, or before any other block, such as
   // a content control, there is no mark after the new paragraph's for it to
@@ -805,8 +846,10 @@ export const insertBlocks = ({
     op.revision !== undefined &&
     !before &&
     (following?.type !== "table" ||
-      !markBeforeTableResolves({
+      !insertedMarkResolvesBeforeTable({
         blocks: list,
+        source: location.paragraph,
+        index: location.index + 1,
         boundary: paragraphTableRunInBoundary(firstInserted, following),
       }));
   // The last new paragraph takes the anchor's mark with its review records
