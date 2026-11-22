@@ -28,7 +28,6 @@ import {
   OperationSession,
   paragraphsDocx,
   reopened,
-  reopenedAccepted,
   reviewComment,
   reviewerPresentation,
   textRun,
