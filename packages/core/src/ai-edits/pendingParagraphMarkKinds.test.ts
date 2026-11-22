@@ -62,12 +62,15 @@ const CANONICAL_REASON = {
 
 type MarkKind = ParagraphMarkChangeKind;
 
+const FINAL_MARK_MESSAGE =
+  "A tracked insertion after a paragraph no paragraph follows needs the anchor's mark free of a pending change.";
+
 type Shape = {
   content: (kind: MarkKind) => BlockContent[];
   /** The pending mark kinds the shape refuses by what is pending. */
   kinds: readonly MarkKind[];
   operation: FolioAIEditOperation;
-  message: string;
+  message: (kind: MarkKind) => string;
 };
 
 const SHAPES = {
@@ -83,8 +86,7 @@ const SHAPES = {
       blockId: "00000002",
       text: "New.",
     },
-    message:
-      "A tracked insertion after a paragraph no paragraph follows needs the anchor's mark free of a pending change.",
+    message: () => FINAL_MARK_MESSAGE,
   },
   "a table after a story's last paragraph": {
     content: (kind) => [
@@ -99,8 +101,10 @@ const SHAPES = {
       position: "after",
       rows: [["Cell"]],
     },
-    message:
-      "A tracked insertion after a paragraph no paragraph follows needs the anchor's mark free of a pending change.",
+    message: (kind) =>
+      CANONICAL_REASON[kind] === "pendingParagraphMarkDeletion"
+        ? "Accepting the pending deletion of this paragraph's break would run its words into the inserted table. Resolve that change first, or insert the table elsewhere."
+        : FINAL_MARK_MESSAGE,
   },
   "a row deletion over a cell whose final paragraph's mark is pending": {
     content: (kind) => [
@@ -120,7 +124,7 @@ const SHAPES = {
     // A moving mark in a cell is a shape tracked rows do not record yet.
     kinds: ["ins", "del"],
     operation: { id: "op", type: "deleteTableRow", blockId: "00000012" },
-    message: "A cell's final paragraph already carries a mark revision.",
+    message: () => "A cell's final paragraph already carries a mark revision.",
   },
 } satisfies Record<string, Shape>;
 
@@ -183,7 +187,7 @@ describe.each(SESSIONS)(
           })),
         }).toEqual(outcome(session, kind));
         expect(result.skipped.map(({ message: said }) => said)).toEqual(
-          session === "canonical" ? [message] : [],
+          session === "canonical" ? [message(kind)] : [],
         );
       },
     );
