@@ -108,6 +108,7 @@ import {
   packageParagraphIdIndex,
   packageReservedKeyIndex,
   paragraphIdsIn,
+  slotKey,
 } from "./ids";
 import {
   concatIds,
