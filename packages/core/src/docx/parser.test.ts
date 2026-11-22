@@ -77,6 +77,10 @@ async function createEmptyEaThemeFixture(): Promise<ArrayBuffer> {
         <w:t>日本語</w:t>
       </w:r>
     </w:p>
+    <w:p><w:pPr><w:rPr><w:rFonts w:ascii="Mark Face"/></w:rPr></w:pPr></w:p>
+    <w:tbl><w:tr><w:tc>
+      <w:p><w:pPr><w:rPr><w:rFonts w:hAnsi="Cell Mark Face"/></w:rPr></w:pPr></w:p>
+    </w:tc></w:tr></w:tbl>
   </w:body>
 </w:document>`,
   );
@@ -105,6 +109,18 @@ describe("parseDocx — w:themeFontLang resolves empty EastAsian theme slots", (
     expect(run.formatting?.fontFamily?.eastAsia).toBe("ＭＳ 明朝");
     expect(run.formatting?.fontFamily?.eastAsiaTheme).toBe("minorEastAsia");
   });
+});
+
+test("discovers the font used by an empty paragraph mark", async () => {
+  const buffer = await createEmptyEaThemeFixture();
+  const doc = await parseDocx(buffer, { preloadFonts: false });
+
+  expect(doc.package.document.content.at(1)).toMatchObject({
+    type: "paragraph",
+    formatting: { runProperties: { fontFamily: { ascii: "Mark Face" } } },
+  });
+  expect(doc.requiredFonts).toContain("Mark Face");
+  expect(doc.requiredFonts).toContain("Cell Mark Face");
 });
 
 test("summary and variable readers retain their document-body parser", async () => {

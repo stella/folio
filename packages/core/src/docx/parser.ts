@@ -139,6 +139,10 @@ import {
   unnamedPartParagraphIds,
 } from "./packageUnnamedParagraphIds";
 import { assignDocumentParagraphPropertySourceContract } from "./paragraphPropertySource";
+import {
+  type DocxParagraphSurfaces,
+  visitDocxParagraphs,
+} from "./paragraphTraversal";
 import { createParseWarningCollector, type ParseContext } from "./parseContext";
 import { formatParseWarnings } from "./parseWarningMessage";
 import {
@@ -930,7 +934,11 @@ export async function parseDocxWithPreviewBudget(
     // ========================================================================
     onProgress("Extracting fonts...", 80);
     const requiredFonts = timeStage("fontExtract", () =>
-      extractDocumentFontNames(theme, styleDefinitions, documentBody),
+      extractDocumentFontNames({
+        theme,
+        styleDefinitions,
+        surfaces: { documentBody, headers, footers, footnotes, endnotes },
+      }),
     );
     onProgress("Extracted fonts", 90);
 
@@ -1570,15 +1578,21 @@ function parseNotesContent(
   return { footnotes, endnotes };
 }
 
+type ExtractDocumentFontNamesOptions = {
+  theme: DeepReadonly<Theme> | null;
+  styleDefinitions: StyleDefinitions | undefined;
+  surfaces: DocxParagraphSurfaces;
+};
+
 /**
  * Extract all font family names referenced in the document (synchronous, no network).
  * Returns a deduplicated array suitable for passing to `loadFontsWithMapping`.
  */
-function extractDocumentFontNames(
-  theme: DeepReadonly<Theme> | null,
-  styleDefinitions: StyleDefinitions | undefined,
-  documentBody: DocumentBody,
-): string[] {
+function extractDocumentFontNames({
+  theme,
+  styleDefinitions,
+  surfaces,
+}: ExtractDocumentFontNamesOptions): string[] {
   const docxFonts = new Set<string>();
 
   // Extract fonts from theme
@@ -1610,7 +1624,7 @@ function extractDocumentFontNames(
   }
 
   // Extract fonts from document content (inline run formatting)
-  for (const block of documentBody.content) {
+  for (const block of surfaces.documentBody.content) {
     if (block.type === "paragraph") {
       for (const item of block.content) {
         if (item.type === "run" && item.formatting?.fontFamily) {
@@ -1624,6 +1638,15 @@ function extractDocumentFontNames(
       }
     }
   }
+
+  visitDocxParagraphs(surfaces, (paragraph) => {
+    // The mark supplies the Western face used to measure an empty line.
+    const markFonts = paragraph.formatting?.runProperties?.fontFamily;
+    const family = markFonts?.ascii ?? markFonts?.hAnsi;
+    if (family) {
+      docxFonts.add(family);
+    }
+  });
 
   return Array.from(docxFonts);
 }
