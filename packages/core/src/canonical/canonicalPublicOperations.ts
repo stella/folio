@@ -744,6 +744,30 @@ const markOf = (block: number): number => -block - 1;
 /** Below every `contentRank`, so it runs first at its position. */
 const RUN_START_COLLAPSE_RANK = -1;
 
+/**
+ * The paragraphs that go with the row or table a deletion naming the one at
+ * `block` removes, those of its nested tables included.
+ */
+const removedTableParagraphs = (
+  doc: PMNode,
+  type: "deleteTable" | "deleteTableRow",
+  block: number,
+): number[] => {
+  const row = findEnclosingTableRow(doc, block);
+  if (row === null) return panic("A planned table deletion lost its row");
+  const removed =
+    type === "deleteTable"
+      ? { node: row.table, position: row.tablePosition }
+      : { node: row.table.child(row.rowIndex), position: row.rowPosition };
+  const blocks: number[] = [];
+  removed.node.descendants((child, offset) => {
+    if (child.type.name !== "paragraph") return true;
+    blocks.push(removed.position + 1 + offset);
+    return false;
+  });
+  return blocks;
+};
+
 const orderCanonicalBatch = <T extends PlannedOperation>({
   items,
   doc,
@@ -880,7 +904,10 @@ const orderCanonicalBatch = <T extends PlannedOperation>({
           : [claim.next],
       };
     if (operation.type === "deleteTable" || operation.type === "deleteTableRow")
-      return { addresses: [], removes: [plan.block] };
+      return {
+        addresses: [],
+        removes: removedTableParagraphs(doc, operation.type, plan.block),
+      };
     if (plan.address.type === "column" || plan.address.type === "cell")
       return { addresses: [], removes: [] };
     if (operation.type === "insertBeforeBlock" && joinedAway.has(plan.block))
@@ -3079,7 +3106,7 @@ type KeptTableAddressOptions = {
   /** The position just before `scope`. */
   scopePosition: number;
   /** Paragraphs the batch deletes, which run before the table edit. */
-  deleted: ReadonlySet<string>;
+  deleted: Pick<ReadonlySet<string>, "has">;
   /** Cells, by the position before them, the address may not stand in. */
   skipsCell?: (cellPosition: number) => boolean;
 };
@@ -3129,6 +3156,67 @@ const keptTableAddress = ({
       return addressed.value.blockId;
   }
   return undefined;
+};
+
+type TableIntentsAsItRunsOptions = {
+  /** The batch as it stands when the operation runs. */
+  document: Document;
+  story: OpStory;
+  /** The document as the batch read it. */
+  projection: CanonicalProjection;
+  plan: CanonicalBatchPlan;
+  intents: readonly EditorIntent[];
+};
+
+/**
+ * A table edit's intents, addressed by a paragraph that stands when it runs:
+ * an earlier operation of the batch may have removed the one it was addressed
+ * by, with the column or cell holding it. Any other paragraph of the table as
+ * the batch read it names the same table; one a column deletion removes
+ * itself only where no other stands.
+ */
+const tableIntentsAsItRuns = ({
+  document,
+  story,
+  projection,
+  plan: { address },
+  intents,
+}: TableIntentsAsItRunsOptions): readonly EditorIntent[] => {
+  if (address.type !== "column" && address.type !== "cell") return intents;
+  const stands = (blockId: string): boolean =>
+    locateParagraphThroughTextBoxes(document, story, blockId) !== undefined;
+  return intents.map((intent): EditorIntent => {
+    if (intent.type !== "table" || stands(intent.operation.blockId))
+      return intent;
+    const table = projection.doc.nodeAt(address.tablePosition);
+    if (table === null) return intent;
+    const map = TableMap.get(table);
+    const standing = (
+      skipsCell?: KeptTableAddressOptions["skipsCell"],
+    ): string | undefined =>
+      keptTableAddress({
+        projection,
+        scope: table,
+        scopePosition: address.tablePosition,
+        deleted: { has: (blockId) => !stands(blockId) },
+        ...(skipsCell === undefined ? {} : { skipsCell }),
+      });
+    const { operation } = intent;
+    const blockId =
+      operation.type === DOCUMENT_OP_TYPES.DELETE_COLUMN &&
+      address.type === "column"
+        ? (standing((cellPosition) => {
+            const rect = map.findCell(cellPosition - address.tablePosition - 1);
+            return (
+              rect.left <= address.columnIndex &&
+              address.columnIndex < rect.right
+            );
+          }) ?? standing())
+        : standing();
+    return blockId === undefined
+      ? intent
+      : { ...intent, operation: { ...operation, blockId } };
+  });
 };
 
 const tableBlockAddress = (
@@ -5232,21 +5320,33 @@ export class CanonicalPublicOperations {
         );
       resolved[index] = { ...item, intents };
     }
-    for (const item of rowShiftedCellShapes(resolved)) {
-      resolved.splice(resolved.indexOf(item), 1);
-      skip(item.operation.id, "unsupportedBlock", ROW_SHIFTED_CELL_SHAPE);
-    }
-    for (const item of columnEditedCellShapes(resolved)) {
-      resolved.splice(resolved.indexOf(item), 1);
-      skip(item.operation.id, "unsupportedBlock", COLUMN_EDITED_CELL_SHAPE);
-    }
-    const rowClosing = projected.isOk()
-      ? rowClosingCellShapes({ items: resolved, doc: projected.value.doc })
-      : [];
-    for (const item of rowClosing) {
-      resolved.splice(resolved.indexOf(item), 1);
-      skip(item.operation.id, "unsupportedBlock", ROW_CLOSING_CELL_SHAPE);
-    }
+    // What an operation only the tracked vocabulary refuses would edit directly
+    // counts here too, so whether another is refused does not depend on the
+    // mode.
+    const shaping = [...resolved, ...claimedUnapplied].toSorted(
+      (left, right) =>
+        (inputIndices.get(left.operation.id) ?? 0) -
+        (inputIndices.get(right.operation.id) ?? 0),
+    );
+    const refuseShapes = (
+      items: readonly ReturnType<typeof planned>[],
+      message: string,
+    ): void => {
+      for (const item of items) {
+        shaping.splice(shaping.indexOf(item), 1);
+        const index = resolved.indexOf(item);
+        if (index < 0) continue;
+        resolved.splice(index, 1);
+        skip(item.operation.id, "unsupportedBlock", message);
+      }
+    };
+    refuseShapes(rowShiftedCellShapes(shaping), ROW_SHIFTED_CELL_SHAPE);
+    refuseShapes(columnEditedCellShapes(shaping), COLUMN_EDITED_CELL_SHAPE);
+    if (projected.isOk())
+      refuseShapes(
+        rowClosingCellShapes({ items: shaping, doc: projected.value.doc }),
+        ROW_CLOSING_CELL_SHAPE,
+      );
     if (batch.atomic && skipped.length > 0) {
       for (const { operation } of resolved)
         skip(operation.id, "atomicBatchRejected");
@@ -5453,7 +5553,7 @@ export class CanonicalPublicOperations {
           refusal: livePropertyRefusal.canonicalRefusal,
         });
       const column = resolvedOperation.plan.address;
-      const mappedIntents =
+      const columnIntents =
         column.type === "column" && operation.type === "deleteTableColumn"
           ? mapColumnDeletionIntents({
               intents,
@@ -5469,6 +5569,13 @@ export class CanonicalPublicOperations {
                 ) ?? 0,
             })
           : intents;
+      const mappedIntents = tableIntentsAsItRuns({
+        document: sourceDocument,
+        story,
+        projection: projected.value,
+        plan: resolvedOperation.plan,
+        intents: columnIntents,
+      });
       const headings =
         options.undefinedReferences === "keep"
           ? sourceDocument.package.styles

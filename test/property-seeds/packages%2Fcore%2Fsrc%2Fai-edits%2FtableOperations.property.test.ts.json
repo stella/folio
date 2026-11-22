@@ -1,6 +1,42 @@
 {
   "keep every value, agree across modes and readers, and reject cleanly": [
     {
+      "seed": -101770239,
+      "path": "12:2:1:0:1:2:2:3:3:4:3:31:32",
+      "note": "#3411: column deletions of one table all apply directly, whichever removes the paragraph another is addressed by.",
+      "date": "2026-11-22"
+    },
+    {
+      "seed": -705753488,
+      "path": "78:2:1:3:3:3:3:3:4:0:2:1:3:2:2:2:6:2:3:4:2:3:2:6:5:5:5:5:5:6:6:6",
+      "note": "#3411: so does a column deletion after a merge that took its paragraph.",
+      "date": "2026-11-22"
+    },
+    {
+      "seed": 58022172,
+      "path": "321:3:8:6:6:6:7:7:7:9:7:3:2:2:2:5:9:8:12:13:13",
+      "note": "#3411: a row insertion runs before the deletion of the row it is addressed in, whichever cell names that row (path at factor 4).",
+      "date": "2026-11-22"
+    },
+    {
+      "seed": -652330778,
+      "path": "133:2:3:4:6:5:5:6:5:2:5:7:8:4:9:9:6:7:1:2:7:6:6:6:7:6:6:6:6:6:6:6:6:7:6:6:7:6:6:9:6:6:6:6:8:8:8:19:8:8:2:2:8:12:13:9:10:10",
+      "note": "#3411: a split beside a merge that would close its row is refused in either mode, though tracked refuses the merge itself.",
+      "date": "2026-11-22"
+    },
+    {
+      "seed": 609599866,
+      "path": "137:4:4:3:3:3:3:3:3:4:4:5:5:5:5:1:5:5:4:4:5:4:4:4:4:4:4:4:4:4:9:4:4:4:4:4:4:4:4:6:6",
+      "note": "#3411: the same beside a merge of the cell the split names.",
+      "date": "2026-11-22"
+    },
+    {
+      "seed": 1864229608,
+      "path": "117:0:0:0:6:5:5:5:5:3:3:3:3:5:5:4:4:4:4:6:7:4:4:6:4:5:5:6:4:4:4:6:5:5:5:5:5:5:9:5:6:5:5:5:5:9:5:6:5:5:5:5:7:21:19:7:9:10:10",
+      "note": "#3411: the same in a nested table.",
+      "date": "2026-11-22"
+    },
+    {
       "seed": 1349464030,
       "path": "12:7:6:6:7:7:11:8:8:8:6:6:8:12:10:7:6:8:6:7:7:7:6:6:7:6:6:8:6:7:6:7:8:7:6:13:22:18:18:10:7:6:6:14:10:17:10",
       "note": "A tracked split beside an inserted row reports the pending table review.",
