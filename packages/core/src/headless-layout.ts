@@ -75,6 +75,7 @@ import { preloadHyphenationDictionaries } from "./layout-engine/measure/hyphenat
 import { measureBlocks } from "./layout-engine/measure/measureBlocks";
 import { getMeasureProvider } from "./layout-engine/measure/measureProvider";
 import { columnBalancingForCompatibility } from "./layout-engine/noColumnBalanceCompatibility";
+import { resolveBodyTableLeadingSpacing } from "./layout-engine/paragraphSpacing";
 import { tableHeaderGroupStartForCompatibility } from "./layout-engine/tableHeaderCompatibility";
 import { FOOTNOTE_ENTRY_MARGIN_BOTTOM } from "./layout-engine/types";
 import type {
@@ -592,10 +593,11 @@ export const layoutDocxHeadless = async (
       const endnoteTexts = formatEndnoteTexts(endnoteNumbers, (displayNumber) =>
         formatOoxmlCounter(displayNumber, endnoteNumberFormat),
       );
-      const blocks = remapNoteMarkerText(authored, {
+      const numbered = remapNoteMarkerText(authored, {
         footnoteNumbers,
         endnoteTexts,
       });
+      const blocks = resolveBodyTableLeadingSpacing(numbered);
 
       const measures = measureBlocks(blocks, contentWidth);
 

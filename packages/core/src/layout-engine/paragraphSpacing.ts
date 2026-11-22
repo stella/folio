@@ -103,6 +103,42 @@ export const paragraphsShareStyle = (
   current: ParagraphBlock,
 ): boolean => previous.attrs?.styleId === current.attrs?.styleId;
 
+const tablesWithoutLeadingSpace = new WeakMap<TableBlock, TableBlock>();
+
+/** Resolve the first cell's contextual space before measuring the body story. */
+export const resolveBodyTableLeadingSpacing = (
+  blocks: FlowBlock[],
+): FlowBlock[] => {
+  let changed = false;
+  const resolved = blocks.map((block, index) => {
+    const lead = blocks[index - 1];
+    if (block.kind !== "table" || lead?.kind !== "paragraph") {
+      return block;
+    }
+    const paragraph = block.rows.at(0)?.cells.at(0)?.blocks.at(0);
+    if (
+      paragraph?.kind !== "paragraph" ||
+      paragraph.attrs?.contextualSpacing !== true ||
+      !paragraph.attrs.spacing?.before ||
+      !paragraphsShareStyle(lead, paragraph)
+    ) {
+      return block;
+    }
+
+    changed = true;
+    // Every matching lead gives the same variant. It has its own measurement
+    // identity, since the table can also follow a lead in a different style.
+    const cached = tablesWithoutLeadingSpace.get(block);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const table = resolveTableSpacing(block, lead);
+    tablesWithoutLeadingSpace.set(block, table);
+    return table;
+  });
+  return changed ? resolved : blocks;
+};
+
 type SequenceSpacingContext = {
   blocks: readonly FlowBlock[];
   index: number;
@@ -192,13 +228,19 @@ const resolveTextBoxContentSpacing = (
 };
 
 /** Derive the effective paragraph spacing of every cell story in a table. */
-export const resolveTableSpacing = (block: TableBlock): TableBlock => {
+export const resolveTableSpacing = (
+  block: TableBlock,
+  bodyLead?: ParagraphBlock,
+): TableBlock => {
   let changed = false;
-  const rows = block.rows.map((row) => {
+  const rows = block.rows.map((row, rowIndex) => {
     let rowChanged = false;
     const cells = row.cells.map((cell, index) => {
       const blocks = resolveEffectiveParagraphSpacingTree(cell.blocks, {
-        previous: row.cells[index - 1]?.blocks.at(-1),
+        previous:
+          rowIndex === 0 && index === 0
+            ? bodyLead
+            : row.cells[index - 1]?.blocks.at(-1),
         next: row.cells[index + 1]?.blocks.at(0),
       });
       if (blocks === cell.blocks) {
@@ -215,8 +257,10 @@ export const resolveTableSpacing = (block: TableBlock): TableBlock => {
   });
   if (!changed) return block;
   const resolved = { ...block, rows };
-  // Derived from the table alone, so it measures as the table does.
-  noteTableOrigin(resolved, block);
+  if (bodyLead === undefined) {
+    // Derived from the table alone, so it measures as the table does.
+    noteTableOrigin(resolved, block);
+  }
   return resolved;
 };
 

@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
+import { withFakeTextMeasure } from "./measure/__tests__/fakeTextMeasure";
+import { measureBlocks } from "./measure/measureBlocks";
 import {
   collapseParagraphSpacing,
+  resolveBodyTableLeadingSpacing,
   resolveEffectiveParagraphSpacing,
   resolveEffectiveParagraphSpacingTree,
 } from "./paragraphSpacing";
@@ -167,6 +170,58 @@ describe("resolveEffectiveParagraphSpacingTree", () => {
       );
     },
   );
+
+  test("resolves a table's leading contextual spacing against the current lead style", () => {
+    withFakeTextMeasure(() => {
+      const first = paragraph("first", {
+        styleId: "A",
+        contextualSpacing: true,
+        spacing: { before: 6 },
+      });
+      const table: TableBlock = {
+        kind: "table",
+        id: "table",
+        rows: [{ id: "row", cells: [{ id: "cell", blocks: [first] }] }],
+      };
+
+      const layoutWithLeadStyle = (styleId: string) => {
+        const lead = paragraph("lead", {
+          styleId,
+          contextualSpacing: true,
+          spacing: { after: 7 },
+        });
+        const blocks = resolveBodyTableLeadingSpacing([lead, table]);
+        const [resolvedLead, resolvedTable] = blocks;
+        if (
+          resolvedLead?.kind !== "paragraph" ||
+          resolvedTable?.kind !== "table"
+        ) {
+          throw new Error("Expected lead paragraph and table");
+        }
+        const cellStart = resolvedTable.rows.at(0)?.cells.at(0)?.blocks.at(0);
+        const measure = measureBlocks(blocks, 220).at(1);
+        if (cellStart?.kind !== "paragraph" || measure?.kind !== "table") {
+          throw new Error("Expected a measured table with a cell paragraph");
+        }
+        expect(resolvedLead.attrs?.spacing?.after).toBe(7);
+        return {
+          before: cellStart.attrs?.spacing?.before,
+          height: measure.totalHeight,
+        };
+      };
+
+      const firstMatch = layoutWithLeadStyle("A");
+      const different = layoutWithLeadStyle("B");
+      const secondMatch = layoutWithLeadStyle("A");
+
+      expect([firstMatch.before, different.before, secondMatch.before]).toEqual(
+        [0, 6, 0],
+      );
+      expect(different.height - firstMatch.height).toBeCloseTo(6);
+      expect(secondMatch.height).toBe(firstMatch.height);
+      expect(first.attrs?.spacing?.before).toBe(6);
+    });
+  });
 
   test("resolves nested table and text-box stories with structural sharing", () => {
     const tableFirst = paragraph("table-first", {
