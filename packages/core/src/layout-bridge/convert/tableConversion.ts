@@ -141,13 +141,17 @@ function convertTableCell(
       ? node.firstChild
       : undefined;
   const pageBreaks: PageBreakRunProjection[] = [];
+  const paragraphOptions = {
+    ...options,
+    paragraphContext: "tableCell",
+  } as const;
 
   const convertCellChild = (child: PMNode, childStart: number): void => {
     if (child.type.name === "paragraph") {
       const block = convertParagraph(
         child,
         childStart,
-        options,
+        paragraphOptions,
         child === leadingParagraph ? pageBreaks : undefined,
       );
       blocks.push(block);

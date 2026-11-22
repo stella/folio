@@ -129,6 +129,8 @@ export type ToFlowBlocksOptions = {
 
 export type FlowConversionOptions = ToFlowBlocksOptions & {
   firstPageBreakRunPosition: (node: PMNode) => number | undefined;
+  /** Column breaks remain in the editor model and are omitted from cell flow. */
+  paragraphContext?: "tableCell";
   /** `w:doNotUseIndentAsNumberingTabStop`, read from the document node. */
   numberingTabIgnoresIndent: boolean;
   listCounterStreams: ListCounterStreams;

@@ -18,6 +18,7 @@ import type {
 } from "../../layout-engine/types";
 import {
   expectFieldAttrs,
+  expectHardBreakAttrs,
   expectImageAttrs,
   expectMathAttrs,
   expectParagraphAttrs,
@@ -334,6 +335,12 @@ export function paragraphToRuns(
       return;
     }
     if (child.type.name === "hardBreak") {
+      if (
+        _options.paragraphContext === "tableCell" &&
+        expectHardBreakAttrs(child).breakType === "column"
+      ) {
+        return;
+      }
       runs.push({
         kind: "lineBreak",
         pmStart: childPos,
