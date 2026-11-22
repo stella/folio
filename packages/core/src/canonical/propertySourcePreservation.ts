@@ -8,6 +8,7 @@ import {
 import {
   carryParagraphPropertySource,
   copyDocumentParagraphPropertySourceContract,
+  deriveParagraphPropertySource,
 } from "../docx/paragraphPropertySource";
 import type { BlockContent, Document, Paragraph } from "../types/document";
 import { canonicalJson } from "../utils/canonicalJson";
@@ -114,7 +115,7 @@ const carriedCopies = (
       textOf(source) !== textOf(before) + textOf(paragraph)
     )
       continue;
-    const carried = carryParagraphPropertySource({
+    const carried = deriveParagraphPropertySource({
       target: replaced.get(paragraph) ?? paragraph,
       source,
       indentation,
