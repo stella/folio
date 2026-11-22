@@ -1706,6 +1706,28 @@ const goesWholeOnAcceptance = (paragraph: PMNode): boolean =>
   !holdsStandingContent(paragraph);
 
 /**
+ * Whether the blocks after `position` in its container are paragraphs that
+ * hold nothing once accepted, each before the last with its break pending
+ * deletion, and no section break among them, as the docx-core block deletion
+ * reads a container's end.
+ */
+const followersGoOnAcceptance = (doc: PMNode, position: number): boolean => {
+  const at = doc.resolve(position);
+  const { parent } = at;
+  for (let index = at.index(); index < parent.childCount; index += 1) {
+    const block = parent.child(index);
+    if (
+      block.type.name !== "paragraph" ||
+      block.attrs["_sectionProperties"] != null ||
+      holdsStandingContent(block) ||
+      (index < parent.childCount - 1 && !goesWholeOnAcceptance(block))
+    )
+      return false;
+  }
+  return at.index() < parent.childCount;
+};
+
+/**
  * Where an insertion beside `paragraph` goes, read as the joined paragraph a
  * pending join makes of it in the document the batch read
  * (`pendingJoinParagraphs`, which the default engine places by too): after
@@ -3840,6 +3862,11 @@ type ResolveBlockDeletionOptions = {
    * one, which then stands between them when this deletion runs.
    */
   previousGainsFollower: boolean;
+  /**
+   * Whether, tracked, only paragraphs that pending deletions already take
+   * follow this one, so that it ends its container once accepted.
+   */
+  endsOnceAccepted: boolean;
   /**
    * Whether the batch puts a paragraph after the table before this one,
    * which then stands between them when this deletion runs.
@@ -6459,6 +6486,7 @@ export class CanonicalPublicOperations {
     precedesDeletedTable,
     previousGainsFollower,
     tableBeforeGainsFollower,
+    endsOnceAccepted,
     deletedRun,
     deletedByBatch,
     refusal,
@@ -6608,19 +6636,24 @@ export class CanonicalPublicOperations {
       ];
       // A move's source ending its block list after paragraphs the batch
       // deletes retires the break before them, as a plain deletion there
-      // does, and runs in the same order beside them.
-      const retiresRun =
+      // does, and runs in the same order beside them. So does a deletion with
+      // only paragraphs after it that pending deletions already take.
+      const retiresBefore =
         tracked &&
-        operation.moveId !== undefined &&
-        next === undefined &&
-        after === null &&
+        ((operation.moveId !== undefined &&
+          next === undefined &&
+          after === null) ||
+          endsOnceAccepted) &&
         !gainsFollower &&
-        previous !== undefined &&
-        !noDeletedRunBefore(deletedRun);
+        previous !== undefined;
+      const retiresRun = retiresBefore && !noDeletedRunBefore(deletedRun);
       let from = paragraph.start;
       if (retiresRun)
         from =
           deletedRun.type === "bounded" ? deletedRun.claimFrom : previous.start;
+      // It retires the break of a paragraph the batch puts right before it.
+      else if (retiresBefore && endsOnceAccepted && previousGainsFollower)
+        from = previous.start;
       const runCarrier =
         retiresRun &&
         (deletedRun.type === "kept" || deletedRun.type === "runStart")
@@ -7260,6 +7293,16 @@ export class CanonicalPublicOperations {
       const after = state.doc.resolve(
         paragraph.start + paragraph.node.content.size + 1,
       ).nodeAfter;
+      // Tracked, only paragraphs that pending deletions already take follow
+      // it: it ends its container as accepting leaves it, and retires the
+      // break before it as a final paragraph's deletion does.
+      const endsOnceAccepted =
+        tracked &&
+        operation.moveId === undefined &&
+        followersGoOnAcceptance(
+          state.doc,
+          paragraph.start + paragraph.node.content.size + 1,
+        );
       const previousId: unknown =
         before?.type.name === "paragraph" ? before.attrs["paraId"] : undefined;
       const followsInsertedTable =
@@ -7299,20 +7342,22 @@ export class CanonicalPublicOperations {
         // The paragraph before it is another when the deletion runs: the
         // batch puts one after it, or deletes it first.
         previousGainsFollower:
-          !followed &&
+          (!followed || endsOnceAccepted) &&
           typeof previousId === "string" &&
           (besideDeletions.paragraphsAfter.has(previousId) ||
             besideDeletions.deleted.has(previousId)),
         tableBeforeGainsFollower,
+        endsOnceAccepted,
         deletedByBatch: besideDeletions.deleted,
-        deletedRun: followed
-          ? { type: "none" }
-          : deletedRunBefore({
-              doc: state.doc,
-              paragraphStart: paragraph.start,
-              besideDeletions,
-              tracked,
-            }),
+        deletedRun:
+          followed && !endsOnceAccepted
+            ? { type: "none" }
+            : deletedRunBefore({
+                doc: state.doc,
+                paragraphStart: paragraph.start,
+                besideDeletions,
+                tracked,
+              }),
         refusal,
       });
       return gainsFollower && deleted.isOk()
