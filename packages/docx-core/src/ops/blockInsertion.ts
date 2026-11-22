@@ -63,6 +63,7 @@ import {
   OP_STORIES,
   type ReplaceBlocksOp,
   type RevisionStamp,
+  SECTION_BOUNDARY_POLICIES,
 } from "./types";
 
 const sameFormatting = (
@@ -841,7 +842,19 @@ export const insertBlocks = ({
   // A draft ordinary insertion has no other work when its main-body splice
   // has no section or note repair and cannot add inline stories or review
   // records. The tracked replacement below still runs full validation.
-  const draft = replacement(canonicalBlocks);
+  // Directly after a paragraph that ends a section, with a block after it,
+  // the new paragraphs open the section that block is in: the break stays on
+  // its paragraph, with what it ended. A tracked insertion would take that
+  // paragraph's mark over, break and all, and is refused.
+  const draft: ReplaceBlocksOp = {
+    ...replacement(canonicalBlocks),
+    ...(op.revision === undefined &&
+    !before &&
+    following !== undefined &&
+    anchor.sectionProperties !== undefined
+      ? { sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE }
+      : {}),
+  };
   const direct =
     op.revision !== undefined &&
     op.story === OP_STORIES.MAIN &&
