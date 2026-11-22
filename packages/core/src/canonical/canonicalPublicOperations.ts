@@ -1301,30 +1301,33 @@ type ListStartPlace = { blockId: string; position: number };
 
 type CleanTextChange = { start: number; end: number; text: string };
 
-type ChangesTakingWholeReferencesOptions = {
+type ChangesTakingWholeSpansOptions = {
   /** Disjoint, in order, as clean-text offsets of the paragraph. */
   changes: readonly CleanTextChange[];
   /** The paragraph's clean text. */
   text: string;
-  /** The note references the replaced range holds, as clean-text spans. */
-  references: readonly { offset: number; length: number }[];
+  /**
+   * Spans edited only whole, as clean-text offsets: note references, field
+   * results.
+   */
+  spans: readonly { offset: number; length: number }[];
 };
 
 /**
- * A comparison's replacement changes with each one that touches a note
- * reference widened over the whole reference, so the reference is struck and
- * its marker written again rather than cut; changes the widening makes meet
- * become one.
+ * Replacement changes with each one that cuts into a span widened over the
+ * whole span, so the span is struck and its text written again rather than
+ * cut (a note reference's marker, a field's result); changes the widening
+ * makes meet become one.
  */
-const changesTakingWholeReferences = ({
+const changesTakingWholeSpans = ({
   changes,
   text,
-  references,
-}: ChangesTakingWholeReferencesOptions): CleanTextChange[] => {
+  spans,
+}: ChangesTakingWholeSpansOptions): CleanTextChange[] => {
   const extent = ({ start, end }: CleanTextChange) => {
     let from = start;
     let to = end;
-    for (const { offset, length } of references) {
+    for (const { offset, length } of spans) {
       const touches =
         from < offset + length &&
         (to > offset || (from === to && from > offset));
@@ -7489,13 +7492,30 @@ export class CanonicalPublicOperations {
         changes.splice(
           0,
           changes.length,
-          ...changesTakingWholeReferences({
+          ...changesTakingWholeSpans({
             changes,
             text: clean.text,
-            references: references.map(({ offset, length }) => ({
+            spans: references.map(({ offset, length }) => ({
               offset: start + offset,
               length,
             })),
+          }),
+        );
+      // A field result is edited whole: a change the word diff places inside
+      // one replaces the whole field with its text, so the field goes as a
+      // tracked deletion and the edited words come in as text. A change that
+      // only meets a field at its edge stays as it is.
+      const fields = clean.structuralBoundaries.filter(
+        (boundary) => boundary.type === "field",
+      );
+      if (fields.length > 0)
+        changes.splice(
+          0,
+          changes.length,
+          ...changesTakingWholeSpans({
+            changes,
+            text: clean.text,
+            spans: fields,
           }),
         );
       // A tab the replacement repeats from the source is kept: a change that
