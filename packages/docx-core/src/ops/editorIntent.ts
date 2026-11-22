@@ -3675,6 +3675,29 @@ const compileInStory = (
           to,
           inside: intent.inside,
         });
+        // The plan strikes the control's contents before the outside tail.
+        // Write at the end of that retained control, while its struck text
+        // still stands there and can receive the opened slice.
+        const startControl =
+          text === ""
+            ? undefined
+            : controls.ranges.find(
+                ({ start }) =>
+                  start.offset === from.offset &&
+                  start.zeroWidthBefore ===
+                    (from.zeroWidthBefore ??
+                      zeroWidthLeavesAt(paragraph.content, from.offset).length),
+              );
+        const controlSlice =
+          startControl === undefined
+            ? undefined
+            : continuedSlice(
+                continuation(paragraph.content, from, startControl.end, {
+                  inside: { start: true, end: true },
+                  struck: true,
+                }),
+                content,
+              );
         const planned = planTrackedReplacement(document, {
           sourceContainerPolicy: "join",
           cuts: controls.cuts,
@@ -3688,6 +3711,14 @@ const compileInStory = (
                       ...options,
                       controls: controls.ids,
                     }),
+                },
+              }),
+          ...(startControl === undefined || controlSlice === undefined
+            ? {}
+            : {
+                retainedControlInsertion: {
+                  at: startControl.end,
+                  slice: controlSlice,
                 },
               }),
           from,

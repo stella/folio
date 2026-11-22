@@ -10123,10 +10123,13 @@ const applyMinimalTrackedReplacement = ({
       if (first === undefined || last === undefined || styleSource === null) {
         panic("A planned replacement lost the characters it removes");
       }
-      // After the removed text, which reads first in the redline, formatted
-      // as the text it replaces, carrying the links over it and the comments
-      // whose range it continues.
+      // The redline writes after the struck text, inside the starting
+      // control when the direct edit would write there. A struck tail
+      // outside that control still disappears on acceptance.
       at = last.to;
+      const sourceHolder = doc.resolve(first.from);
+      if (sourceHolder.parent.type.name === "sdt" && at > sourceHolder.after())
+        at = sourceHolder.end();
       removedFrom = first.from;
       marks = addCarriedMarks(
         inheritedReplacementMarks(doc, styleSource.from, styleSource.to),

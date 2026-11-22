@@ -1481,6 +1481,28 @@ describe.each(SESSIONS)("direct replacement examples (%s)", (session) => {
     expect(countNodes(after, "sdt")).toBe(1);
     expect(after.firstChild?.type.name).toBe("sdt");
     expect(after.firstChild?.textContent).toBe(" and");
+    const tracked = await replaceFirst(paragraph, {
+      session,
+      replace: () => " and",
+      mode: "tracked-changes",
+      granularity: "character",
+    });
+    const saved = await tracked.reviewer.toBuffer();
+    const reopened = await FolioDocxReviewer.fromBuffer(saved, { session });
+    reopened.acceptAll();
+    const accepted = firstParagraph(reopened).node;
+    expect(countNodes(accepted, "sdt")).toBe(1);
+    expect(accepted.firstChild?.type.name).toBe("sdt");
+    expect(accepted.firstChild?.attrs["id"]).toBe(
+      after.firstChild?.attrs["id"],
+    );
+    expect(accepted.firstChild?.textContent).toBe(" and");
+
+    const rejected = await FolioDocxReviewer.fromBuffer(saved, { session });
+    rejected.rejectAll();
+    expect(await savedFirstParagraph(await rejected.toBuffer(), session)).toBe(
+      tracked.control,
+    );
   });
 
   test("a field survives when its text does; it becomes text when its text changes", async () => {

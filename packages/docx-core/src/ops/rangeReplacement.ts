@@ -197,6 +197,7 @@ export type PlanTrackedReplaceOptions = PlanTrackedDeletionOptions & {
 
 type PlanTrackedReplacementOptions = PlanTrackedReplaceOptions & {
   cuts?: readonly TextPosition[];
+  retainedControlInsertion?: { at: TextPosition; slice: InlineSlice };
   retainControls?: {
     ranges: readonly { start: TextPosition; end: TextPosition }[];
     moveInside: (options: {
@@ -466,8 +467,8 @@ export const planTrackedReplacement = (
   if (replacement.tail.content.length > 0) {
     const inserted = plan.append({
       type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
-      at,
-      slice: replacement.tail,
+      at: options.retainedControlInsertion?.at ?? at,
+      slice: options.retainedControlInsertion?.slice ?? replacement.tail,
       ...(options.seamPolicy === undefined
         ? {}
         : { seamPolicy: options.seamPolicy }),
