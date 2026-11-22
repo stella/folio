@@ -112,9 +112,11 @@ const acceptedViewLaws = async (buffer: ArrayBuffer): Promise<Outcome> => {
   }
   const accepted = reviewer.toDocument();
   expect(read.markdown).toBe(toMarkdownResult(accepted, CLEAN).markdown);
-  expect(read.warnings).not.toContain(
-    "Some tracked structural changes could not be resolved.",
-  );
+  expect(
+    read.warnings.filter((warning) =>
+      warning.includes("could not be resolved"),
+    ),
+  ).toEqual([]);
   // Notes Accept All removes leave the story list; the rest read alike.
   if (
     (accepted.package.footnotes?.length ?? 0) ===

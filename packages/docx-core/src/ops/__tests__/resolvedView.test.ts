@@ -192,3 +192,26 @@ for (const decision of ["accept", "reject"] as const)
     );
     expect(JSON.stringify(view.document)).not.toContain("reviewCarrier");
   });
+
+test("a refused story keeps the blocks it was read with, shared revision ids included", () => {
+  // One paragraph object two stories hold keeps one id in both, which the
+  // resolution refuses.
+  const content = (): Paragraph[] => [
+    text("00000001", "Kept"),
+    inserted,
+    text("00000003", "Tail"),
+  ];
+  const source: Document = {
+    package: {
+      document: { content: content() },
+      headers: new Map([
+        ["rId1", { type: "header", hdrFtrType: "default", content: content() }],
+      ]),
+    },
+  };
+  const view = resolvedDocumentView(source, "accept");
+  expect(view.unresolved).toContainEqual({ kind: "header", rId: "rId1" });
+  expect(view.document.package.headers?.get("rId1")?.content).toEqual(
+    content(),
+  );
+});

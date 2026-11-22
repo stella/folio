@@ -11,6 +11,7 @@ import {
   type Document,
   REVIEW_CARRIERS,
 } from "../model/document";
+import { maxOf } from "../model/extremes";
 import { applyDocumentOps } from "./apply";
 import { withBodyContent } from "./blocks";
 import { IDENTITY_SPACES, identityKeysIn, packageParagraphIds } from "./ids";
@@ -178,7 +179,7 @@ const withDistinctRevisionIds = (document: Document): Document => {
     isRevisionRecord,
   );
   if (new Set(ids).size === ids.length) return document;
-  let next = Math.max(...ids) + 1;
+  let next = maxOf(ids) + 1;
   const seen = new Set<number>();
   const pkg = mapRecords(
     document.package,
@@ -371,11 +372,19 @@ export const resolvedDocumentView = (
   }
   const minted = new Map(identified.minted);
   for (const paraId of closed.closing.keys()) minted.set(paraId, undefined);
-  return {
-    document: withoutParagraphIds(
-      withoutBareClosingParagraphs(current, closed.closing),
-      minted,
-    ),
-    unresolved,
-  };
+  let resolvedDocument = withoutParagraphIds(
+    withoutBareClosingParagraphs(current, closed.closing),
+    minted,
+  );
+  // A refused story keeps the blocks it was read with, revision ids included.
+  for (const story of unresolved) {
+    const body = findStoryBody(document, story);
+    if (body !== undefined)
+      resolvedDocument = replaceStoryBody({
+        document: resolvedDocument,
+        story,
+        body,
+      });
+  }
+  return { document: resolvedDocument, unresolved };
 };

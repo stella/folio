@@ -22,7 +22,11 @@
  * live outside `document.content`, which is the only block stream walked here.
  */
 
-import { resolvedDocumentView } from "@stll/docx-core/ops";
+import {
+  OP_STORIES,
+  type OpStory,
+  resolvedDocumentView,
+} from "@stll/docx-core/ops";
 
 import { withoutExhaustedComments } from "../docx/commentRangeIntegrity";
 import type { Document } from "../types/document";
@@ -62,6 +66,23 @@ export function toMarkdownResult(
   return renderDocument(doc, opts);
 }
 
+/** A story as a warning names it. */
+const storyName = (story: OpStory): string => {
+  if (story === OP_STORIES.MAIN) return "the body";
+  switch (story.kind) {
+    case "header":
+    case "footer":
+      return `${story.kind} ${story.rId}`;
+    case "footnote":
+    case "endnote":
+      return `${story.kind} ${story.id}`;
+    default: {
+      const unreachable: never = story;
+      return unreachable;
+    }
+  }
+};
+
 function renderDocument(
   doc: Document,
   opts: MarkdownOptions = {},
@@ -71,10 +92,10 @@ function renderDocument(
   // Clean Markdown is the accepted view, resolved as Accept All resolves it.
   if (ctx.opts.trackedChanges === "clean") {
     const view = resolvedDocumentView(doc, "accept");
-    if (view.unresolved.length > 0)
+    for (const story of view.unresolved)
       pushWarning(
         ctx,
-        "Some tracked structural changes could not be resolved.",
+        `The tracked structural changes of ${storyName(story)} could not be resolved.`,
       );
     doc = view.document;
   }
