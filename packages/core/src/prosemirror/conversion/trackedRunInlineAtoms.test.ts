@@ -143,15 +143,22 @@ const roundTripThroughEditorModel = (
 
 const resolveAll = async (
   buffer: ArrayBuffer,
-  decision: "accept" | "reject",
-  expectedType: "insertion" | "deletion",
+  {
+    decision,
+    type,
+    text = "",
+  }: {
+    decision: "accept" | "reject";
+    type: "insertion" | "deletion";
+    text?: string;
+  },
 ): Promise<ArrayBuffer> => {
   const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
   expect(reviewer.getChanges()).toEqual([
     expect.objectContaining({
       id: REVISION_INFO.id,
-      type: expectedType,
-      text: "",
+      type,
+      text,
     }),
   ]);
   expect(
@@ -282,10 +289,10 @@ describe("tracked run inline atom ownership", () => {
         expect(hasUnderline(pendingXml)).toBe(true);
 
         const acceptedXml = await documentXml(
-          await resolveAll(pending, "accept", type),
+          await resolveAll(pending, { decision: "accept", type }),
         );
         const rejectedXml = await documentXml(
-          await resolveAll(pending, "reject", type),
+          await resolveAll(pending, { decision: "reject", type }),
         );
         expect(elementCount(acceptedXml, xmlTag)).toBe(
           type === "insertion" ? 1 : 0,
@@ -354,12 +361,24 @@ describe("tracked run inline atom ownership", () => {
     expect(fieldBeginCount(pendingXml)).toBe(1);
     expect(
       fieldBeginCount(
-        await documentXml(await resolveAll(pending, "accept", "deletion")),
+        await documentXml(
+          await resolveAll(pending, {
+            decision: "accept",
+            type: "deletion",
+            text: "1",
+          }),
+        ),
       ),
     ).toBe(0);
     expect(
       fieldBeginCount(
-        await documentXml(await resolveAll(pending, "reject", "deletion")),
+        await documentXml(
+          await resolveAll(pending, {
+            decision: "reject",
+            type: "deletion",
+            text: "1",
+          }),
+        ),
       ),
     ).toBe(1);
   });
@@ -393,12 +412,12 @@ describe("tracked run inline atom ownership", () => {
     expect(pendingXml).toContain(mathXml);
 
     const acceptedXml = await documentXml(
-      await resolveAll(pending, "accept", "deletion"),
+      await resolveAll(pending, { decision: "accept", type: "deletion" }),
     );
     expect(acceptedXml).not.toContain("<m:oMathPara");
 
     const rejectedXml = await documentXml(
-      await resolveAll(pending, "reject", "deletion"),
+      await resolveAll(pending, { decision: "reject", type: "deletion" }),
     );
     expect(rejectedXml).toContain(mathXml);
   });

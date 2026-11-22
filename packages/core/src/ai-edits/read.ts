@@ -374,6 +374,13 @@ const getTrackedChangeGroupsFromProjectedDoc = (
   // Innermost enclosing marked row first: a table nested in a marked row can
   // carry a marked row of its own.
   const rowRevisionScopes: RowRevisionScope[] = [];
+  const deletedFieldScopes: {
+    end: number;
+    layers: readonly {
+      kind: "insertion" | "deletion";
+      revision: { id: number };
+    }[];
+  }[] = [];
   // Revision ids an entry stands for beyond its own: the run marks a row
   // folds, the content of continuation cells, a table's grid revision.
   // Resolving the entry reaches them.
@@ -425,6 +432,11 @@ const getTrackedChangeGroupsFromProjectedDoc = (
     }
     while (pos >= (rowRevisionScopes.at(-1)?.end ?? Number.POSITIVE_INFINITY)) {
       rowRevisionScopes.pop();
+    }
+    while (
+      pos >= (deletedFieldScopes.at(-1)?.end ?? Number.POSITIVE_INFINITY)
+    ) {
+      deletedFieldScopes.pop();
     }
     const nodeRevisionCarriers = getFolioNodeRevisionCarriers(node, pos);
     if (nodeRevisionCarriers.length > 0) {
@@ -721,12 +733,12 @@ const getTrackedChangeGroupsFromProjectedDoc = (
     if (!mark || typeof mark.attrs["revisionId"] !== "number") {
       return undefined;
     }
+    const deletedField = deletionMark && node.type.name === "structuredField";
     let text = readerTextOf(node, noteReferences);
     if (deletionMark) {
-      text =
-        node.type.name === "structuredField"
-          ? node.textContent
-          : (runFormattingInlineAtomResultText(node) ?? text);
+      text = deletedField
+        ? node.textContent
+        : (runFormattingInlineAtomResultText(node) ?? text);
     }
     const attrs = expectTrackedChangeMarkAttrs(mark);
     // Live edits carry two marks; parsed nested revisions carry one mark
@@ -754,6 +766,18 @@ const getTrackedChangeGroupsFromProjectedDoc = (
       layerIndex,
       { kind: layerKind, revision },
     ] of layers.entries()) {
+      // Live marks are applied to the field and its result runs. The field
+      // already contributes the whole result for those same revisions.
+      if (
+        deletedFieldScopes.some(({ layers: enclosingLayers }) =>
+          enclosingLayers.some(
+            (layer) =>
+              layer.kind === layerKind && layer.revision.id === revision.id,
+          ),
+        )
+      ) {
+        continue;
+      }
       const rowScope = rowRevisionScopes.at(-1);
       if (
         rowScope?.kind === layerKind &&
@@ -815,6 +839,9 @@ const getTrackedChangeGroupsFromProjectedDoc = (
         text,
         blockId: currentBlockId,
       });
+    }
+    if (deletedField) {
+      deletedFieldScopes.push({ end: pos + node.nodeSize, layers });
     }
     return undefined;
   });

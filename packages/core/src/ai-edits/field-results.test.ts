@@ -47,6 +47,7 @@ const createFieldDocx = async (): Promise<ArrayBuffer> => {
     <w:p><w:r><w:t xml:space="preserve">see Clause </w:t></w:r>${referenceField("3.6(a)")}<w:r><w:t xml:space="preserve"> above</w:t></w:r></w:p>
     <w:p><w:r><w:t xml:space="preserve">see Clause </w:t></w:r>${referenceField("")}<w:r><w:t xml:space="preserve"> above</w:t></w:r></w:p>
     <w:p><w:r><w:t xml:space="preserve">dated </w:t></w:r><w:fldSimple w:instr=" DOCPROPERTY Signed "><w:r><w:t>1 March</w:t></w:r></w:fldSimple></w:p>
+    <w:p><w:r><w:t xml:space="preserve">received </w:t></w:r><w:fldSimple w:instr=" DOCPROPERTY Received "><w:r><w:rPr><w:b/></w:rPr><w:t>2</w:t></w:r><w:r><w:t xml:space="preserve"> March</w:t></w:r></w:fldSimple></w:p>
     <w:p><w:r><w:t>Closing paragraph.</w:t></w:r></w:p>
     <w:sectPr><w:pgSz w:w="12240" w:h="15840"/></w:sectPr>
   </w:body>
@@ -91,7 +92,11 @@ describe("field results in AI block text", () => {
   describe.each(["legacy", "canonical"] as const)(
     "%s review text",
     (session) => {
-      test.each(["see Clause 3.6(a) above", "dated 1 March"])(
+      test.each([
+        "see Clause 3.6(a) above",
+        "dated 1 March",
+        "received 2 March",
+      ])(
         "reports the displayed field result when deleting %s",
         async (text) => {
           const reviewer = await FolioDocxReviewer.fromBuffer(
