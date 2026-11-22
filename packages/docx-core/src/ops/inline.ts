@@ -18,7 +18,9 @@ import type {
 } from "../model/document";
 import { structurallyEqual } from "./equality";
 import {
+  alikeDepth,
   asParagraphContent,
+  childNodes,
   compareGaps,
   fieldResultOf,
   type Gap,
@@ -28,7 +30,9 @@ import {
   leafPlaces,
   mergeLists,
   partitionContent,
+  rebuildNode,
   runAndFieldGaps,
+  sameOwnFields,
   spanningRecords,
   withFieldResult,
   zeroWidthLeavesAt,
@@ -138,16 +142,12 @@ export const deleteBetween = (
   };
 };
 
-/**
- * Cut the content at a gap and put a slice in, merging its open ends with the
- * halves; `undefined` when an open end does not match the record it meets.
- */
-export const insertSliceAt = (
-  items: readonly ParagraphContent[],
-  at: Gap,
+/** A slice between the two halves of cut content, its open ends merged with them. */
+const sliceBetween = (
+  before: readonly InlineNode[],
+  after: readonly InlineNode[],
   slice: InlineSlice,
 ): ParagraphContent[] | undefined => {
-  const [before = [], after = []] = partitionContent(items, [at]);
   const withStart = mergeLists(before, slice.content, slice.openStart, {
     mode: "exact",
     fields: "source",
@@ -162,6 +162,133 @@ export const insertSliceAt = (
           fields: "source",
         });
   return whole === undefined ? undefined : asParagraphContent(whole);
+};
+
+/**
+ * Cut the content at a gap and put a slice in, merging its open ends with the
+ * halves; `undefined` when an open end does not match the record it meets.
+ */
+export const insertSliceAt = (
+  items: readonly ParagraphContent[],
+  at: Gap,
+  slice: InlineSlice,
+): ParagraphContent[] | undefined => {
+  const [before = [], after = []] = partitionContent(items, [at]);
+  return sliceBetween(before, after, slice);
+};
+
+export type SliceAfterDeletion = {
+  content: ParagraphContent[];
+  /** How many levels deep the slice's start continues the struck record's piece. */
+  join: number;
+};
+
+/** The records `levels` down a list's edge: its last ones, or with `"first"` its first. */
+const edgeAt = (
+  list: readonly InlineNode[],
+  levels: number,
+  edge: "first" | "last",
+): InlineNode | undefined => {
+  let node = edge === "first" ? list.at(0) : list.at(-1);
+  for (let level = 0; level < levels && node !== undefined; level += 1) {
+    const children = childNodes(node);
+    node = edge === "first" ? children?.at(0) : children?.at(-1);
+  }
+  return node;
+};
+
+/** `list` with the record `levels` down its last edge replaced. */
+const withLastAt = (
+  list: readonly InlineNode[],
+  levels: number,
+  node: InlineNode,
+): InlineNode[] => {
+  const last = list.at(-1) ?? panic("A list edge holds a record.");
+  return [
+    ...list.slice(0, -1),
+    levels === 0
+      ? node
+      : rebuildNode(
+          last,
+          withLastAt(
+            childNodes(last) ?? panic("A list edge record has children."),
+            levels - 1,
+            node,
+          ),
+        ),
+  ];
+};
+
+export type InsertSliceAfterDeletionOptions = {
+  items: readonly ParagraphContent[];
+  at: Gap;
+  slice: InlineSlice;
+  /** Editor text: its plain runs merge with the alike runs they meet. */
+  mergesPlainRuns: boolean;
+};
+
+/**
+ * A tracked insertion's slice put in where its open start continues a record
+ * whose piece ends a pending deletion just before the gap, as a tracked
+ * replacement follows the text it struck inside a hyperlink, which holds no
+ * tracked change. The levels inside the deletion are closed: the slice's
+ * records there stand as new pieces of that record beside the deletion, and
+ * `join` says how deep they continue it (editor text continuing its plain
+ * run too). Removing a deletion holding the one piece joins the piece it was
+ * cut from before it with them as deep. `undefined` when no such deletion
+ * stands at the gap or the slice does not fit.
+ */
+export const insertSliceAfterDeletion = ({
+  items,
+  at,
+  slice,
+  mergesPlainRuns,
+}: InsertSliceAfterDeletionOptions): SliceAfterDeletion | undefined => {
+  const [before = [], after = []] = partitionContent(items, [at]);
+  for (let outer = slice.openStart - 1; outer >= 0; outer -= 1) {
+    const deletion = edgeAt(before, outer, "last");
+    if (deletion?.type !== "deletion" || deletion.resolutionJoins === undefined)
+      continue;
+    const closed = slice.openStart - outer;
+    // The slice's first records at the closed levels continue the
+    // deletion's last ones.
+    let held = edgeAt(deletion.content, 0, "last");
+    let continuing = edgeAt(slice.content, outer, "first");
+    for (let level = 0; level < closed; level += 1) {
+      if (
+        held === undefined ||
+        continuing === undefined ||
+        !sameOwnFields(held, continuing)
+      )
+        return undefined;
+      held = childNodes(held)?.at(-1);
+      continuing = childNodes(continuing)?.at(0);
+    }
+    const join =
+      mergesPlainRuns &&
+      held?.type === "run" &&
+      continuing?.type === "run" &&
+      runsMergeable(held, continuing)
+        ? closed + alikeDepth(held, continuing)
+        : closed;
+    const joins = deletion.resolutionJoins;
+    const remove =
+      deletion.content.length === 1
+        ? Math.max(joins.remove, Math.min(join, joins.before))
+        : joins.remove;
+    const content = sliceBetween(
+      remove === joins.remove
+        ? before
+        : withLastAt(before, outer, {
+            ...deletion,
+            resolutionJoins: { ...joins, remove },
+          }),
+      after,
+      { ...slice, openStart: outer },
+    );
+    return content === undefined ? undefined : { content, join };
+  }
+  return undefined;
 };
 
 /** The gap after inserted content: its trailing zero-width leaves come before it. */

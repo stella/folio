@@ -125,6 +125,30 @@
       "path": "1:0:0:0:0:1:1:0:0:1",
       "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
       "date": "2026-10-03"
+    },
+    {
+      "seed": 1875006934,
+      "path": "6:0:1:2:1:1:1:2:2",
+      "note": "A replacement inside a link whose deletion seam is closed: accepting the insertion first still joins the link's pieces.",
+      "date": "2026-11-21"
+    },
+    {
+      "seed": -97210375,
+      "path": "2:0:0:1:1:3:1:2",
+      "note": "A replacement at a run boundary inside a link resolves alike in either order.",
+      "date": "2026-11-21"
+    },
+    {
+      "seed": 1076048462,
+      "path": "26:2:3:3:2",
+      "note": "A replacement inside a link over runs with formatting reviews records no review seam against the new text in either order.",
+      "date": "2026-11-21"
+    },
+    {
+      "seed": -1288675609,
+      "path": "2:0:0:2:2:2:2:2",
+      "note": "A replacement at a link's start over runs with formatting reviews resolves alike in either order.",
+      "date": "2026-11-21"
     }
   ],
   "generated paragraph cut depths preserve authored wrappers and deferred split seams": [
@@ -290,6 +314,18 @@
       "path": "11:0:0:0:1:3:3:3:3:5",
       "note": "#2628: a rejected insertion whose neighbours are later insertions the same resolution removes joins the source pieces beyond them.",
       "date": "2026-11-12"
+    },
+    {
+      "seed": -1072655838,
+      "path": "72:0:1:1:3:2:3:4:4:5:8:8:8",
+      "note": "Text typed in a link's piece beside insertions joined to nothing: rejecting them all rejoins the link's pieces beyond them.",
+      "date": "2026-11-21"
+    },
+    {
+      "seed": -986521076,
+      "path": "309:3:3:5:4:5:12:12:12:12",
+      "note": "Text typed in a link's piece beside insertions joined to nothing: rejecting them all rejoins the link's pieces beyond them.",
+      "date": "2026-11-21"
     }
   ],
   "overlapping formatting rejection preserves authored runs in either resolution order": [

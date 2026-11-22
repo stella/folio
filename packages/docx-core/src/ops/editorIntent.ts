@@ -36,7 +36,7 @@ import {
   storyBody,
   storyParagraphs,
 } from "./blocks";
-import { isCommentExhausted } from "./comments";
+import { isCommentExhausted, linksEmptiedByRetirement } from "./comments";
 import { packageIdOccupancy } from "./editorIntentCensus";
 import { combineEdits } from "./edits";
 import { structurallyEqual } from "./equality";
@@ -107,12 +107,15 @@ import {
 } from "./plan";
 import {
   cutPieceHandoffs,
+  pastEndedComments,
   planTrackedReplace,
+  planTrackedReplacement,
   rangeEndAfterDeletion,
 } from "./rangeReplacement";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import {
   isRemovedRevisionNode,
+  isTrackedWrapper,
   paragraphPropertiesOf,
   reviewFieldsOf,
 } from "./review";
@@ -3745,8 +3748,58 @@ const compileInStory = (
         // The grouped stamp keeps this edit's id, so only its record's
         // metadata changes; the plan applies the deletion with it, so the
         // typed text takes a fresh id whenever the deletion makes a record.
-        const planned = planTrackedReplace(document, {
+        const controls = selectedControlText({
+          paragraph,
+          from,
+          to,
+          inside: intent.inside,
+        });
+        // The plan strikes the control's contents before the outside tail.
+        // Write at the end of that retained control, while its struck text
+        // still stands there and can receive the opened slice.
+        const startControl =
+          text === ""
+            ? undefined
+            : controls.ranges.find(
+                ({ start }) =>
+                  start.offset === from.offset &&
+                  start.zeroWidthBefore ===
+                    (from.zeroWidthBefore ??
+                      zeroWidthLeavesAt(paragraph.content, from.offset).length),
+              );
+        const controlSlice =
+          startControl === undefined
+            ? undefined
+            : continuedSlice(
+                continuation(paragraph.content, from, startControl.end, {
+                  inside: { start: true, end: true },
+                  struck: true,
+                }),
+                content,
+              );
+        const planned = planTrackedReplacement(document, {
           sourceContainerPolicy: "join",
+          cuts: controls.cuts,
+          ...(controls.cuts.length === 0
+            ? {}
+            : {
+                retainControls: {
+                  ranges: controls.ranges,
+                  moveInside: (options) =>
+                    controlDeletionPatch({
+                      ...options,
+                      controls: controls.ids,
+                    }),
+                },
+              }),
+          ...(startControl === undefined || controlSlice === undefined
+            ? {}
+            : {
+                retainedControlInsertion: {
+                  at: startControl.end,
+                  slice: controlSlice,
+                },
+              }),
           from,
           to,
           revision: text === "" ? struck : mode.revision,
@@ -3769,7 +3822,7 @@ const compileInStory = (
           document,
           planned: planned.value,
           from,
-          inside: intent.inside,
+          controls: controls.ids,
           text,
         });
         if (struckInside.isErr()) return Result.err(struckInside.error);
@@ -3825,6 +3878,18 @@ const compileInStory = (
             parentId === undefined && anchorKind !== "range",
         );
       if (replacesWholeParagraph) {
+        // Text replacing a paragraph whose words are exactly a hyperlink's
+        // takes a copy of the link, as the exact-text rule gives it.
+        const words = paragraph.content.filter(
+          (node) => !isRangeBoundary(node) && node.type !== "commentReference",
+        );
+        const [link] = words;
+        const linked =
+          words.length === 1 &&
+          link?.type === "hyperlink" &&
+          link.children.every((child) => child.type === "run")
+            ? [withChildren(link, content)]
+            : content;
         ops = [
           {
             type: DOCUMENT_OP_TYPES.REPLACE_INLINE,
@@ -3835,7 +3900,7 @@ const compileInStory = (
               ...paragraph.content.filter(
                 (node) => isParagraphContent(node) && isRangeBoundary(node),
               ),
-              ...content,
+              ...linked,
               ...paragraph.content.filter(
                 (node) =>
                   isParagraphContent(node) && node.type === "commentReference",
@@ -3935,6 +4000,23 @@ const compileInStory = (
           from.zeroWidthBefore ??
           defaultInsertionGap(paragraph.content, from.offset).zeroWidthBefore,
       };
+      const inside = intent.inside;
+      const resumed =
+        text !== "" && idKey(from.blockId) === idKey(to.blockId)
+          ? continuation(paragraph.content, from, to, {
+              ...(inside === undefined ? {} : { inside }),
+            })
+          : undefined;
+      const insertion =
+        text === ""
+          ? undefined
+          : ((resumed === undefined
+              ? undefined
+              : continuedSlice(resumed, content)) ?? {
+              openStart: 0,
+              openEnd: 0,
+              content,
+            });
       if (deletes) {
         const deleted = applyDocumentOps(document, ops);
         if (deleted.isErr()) return Result.err(deleted.error);
@@ -3988,21 +4070,37 @@ const compileInStory = (
           from,
           to,
         });
+        if (text === "") {
+          const remaining = paragraphAt(afterDeletion, at);
+          if (remaining !== undefined) {
+            const { selections } = selectedControlText({
+              paragraph,
+              from,
+              to,
+              inside,
+            });
+            for (const control of selections.toReversed()) {
+              const slice = emptiedControlSlice({
+                source: paragraph,
+                remaining,
+                control,
+              });
+              if (slice !== undefined)
+                ops.push({
+                  type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
+                  at,
+                  slice,
+                  ...allocationFields,
+                });
+            }
+          }
+        }
       }
-      if (text !== "")
+      if (insertion !== undefined)
         ops.push({
           type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
           at,
-          slice: (idKey(from.blockId) === idKey(to.blockId)
-            ? continuedSlice(
-                continuation(paragraph.content, from, to, {
-                  ...(intent.inside === undefined
-                    ? {}
-                    : { inside: intent.inside }),
-                }),
-                content,
-              )
-            : undefined) ?? { openStart: 0, openEnd: 0, content },
+          slice: insertion,
           ...allocationFields,
         });
       selection = replacementCaret(at, text);
@@ -4331,6 +4429,18 @@ const compileInStory = (
       current = retired.value.document;
       retiredIds.add(id);
     }
+    for (const removal of linksEmptiedByRetirement({
+      before: beforeRetirement,
+      after: current,
+      story,
+      retired: retiredIds,
+    })) {
+      const removed = applyDocumentOp(current, removal);
+      if (removed.isErr()) return Result.err(removed.error);
+      compact.push(removal);
+      steps.push(removed.value);
+      current = removed.value.document;
+    }
     // The caret stands after the leaves before it; the retired threads'
     // markers among them are gone.
     const caretParagraph =
@@ -4543,8 +4653,125 @@ type StrikeInsideControlOptions = {
   document: Document;
   planned: readonly DocumentOp[];
   from: TextPosition;
-  inside: { start?: boolean; end?: boolean } | undefined;
+  controls: ReadonlySet<number>;
   text: string;
+};
+
+type SelectedControlTextOptions = {
+  paragraph: Paragraph;
+  from: TextPosition;
+  to: TextPosition;
+  inside: { start?: boolean; end?: boolean } | undefined;
+};
+
+type SelectedControl = {
+  id: number;
+  start: TextPosition;
+  end: TextPosition;
+};
+
+/** The fully selected controls whose outer boundaries the selection leaves in place. */
+const selectedControlText = ({
+  paragraph,
+  from,
+  to,
+  inside,
+}: SelectedControlTextOptions) => {
+  const ids = new Set<number>();
+  const selections: SelectedControl[] = [];
+  const ranges: { start: TextPosition; end: TextPosition }[] = [];
+  if (inside === undefined || idKey(from.blockId) !== idKey(to.blockId))
+    return { ids, cuts: [], ranges, selections };
+  const cuts: Gap[] = [];
+  const start = {
+    offset: from.offset,
+    zeroWidthBefore:
+      from.zeroWidthBefore ??
+      zeroWidthLeavesAt(paragraph.content, from.offset).length,
+  };
+  const end = { offset: to.offset, zeroWidthBefore: to.zeroWidthBefore ?? 0 };
+  const spans = leafSpans(paragraph.content);
+  const first = spans.find(({ after }) => compareGaps(after, start) > 0);
+  const last = spans.findLast(({ before }) => compareGaps(before, end) < 0);
+  const edgeControl = (span: (typeof spans)[number] | undefined) =>
+    span?.ancestors.findLast((node) => node.type === "inlineSdt");
+  const atStart = inside.start === true ? edgeControl(first) : undefined;
+  const atEnd = inside.end === true ? edgeControl(last) : undefined;
+  for (const control of new Set([atStart, atEnd])) {
+    if (control?.properties.id === undefined) continue;
+    const inControl = ({ ancestors }: (typeof spans)[number]) =>
+      ancestors.includes(control);
+    const controlStart = spans.find(inControl)?.before;
+    const controlEnd = spans.findLast(inControl)?.after;
+    if (
+      controlStart === undefined ||
+      controlEnd === undefined ||
+      compareGaps(start, controlStart) > 0 ||
+      compareGaps(controlEnd, end) > 0
+    )
+      continue;
+    ids.add(control.properties.id);
+    const selected = {
+      id: control.properties.id,
+      start: { ...from, ...controlStart },
+      end: { ...from, ...controlEnd },
+    };
+    selections.push(selected);
+    const cut = control === atStart ? controlEnd : controlStart;
+    if (compareGaps(start, cut) >= 0 || compareGaps(cut, end) >= 0) continue;
+    // Stage this piece first only if it cannot retract any already-added
+    // content, which would shift the source positions of the other pieces.
+    if (
+      spans.some(
+        (span) => inControl(span) && span.ancestors.some(isTrackedWrapper),
+      )
+    )
+      continue;
+    ranges.push(selected);
+    if (!cuts.some((existing) => compareGaps(existing, cut) === 0))
+      cuts.push(cut);
+  }
+  return {
+    ids,
+    cuts: cuts.toSorted(compareGaps).map((cut) => Object.assign({}, from, cut)),
+    ranges,
+    selections,
+  };
+};
+
+type EmptiedControlSliceOptions = {
+  source: Paragraph;
+  remaining: Paragraph;
+  control: SelectedControl;
+};
+
+/** Restore only a control that the deletion emptied and whose edge was kept. */
+const emptiedControlSlice = ({
+  source,
+  remaining,
+  control,
+}: EmptiedControlSliceOptions) => {
+  const sameControl = (node: InlineNode) =>
+    node.type === "inlineSdt" && node.properties.id === control.id;
+  if (
+    leafSpans(remaining.content).some(
+      ({ node, ancestors }) => sameControl(node) || ancestors.some(sameControl),
+    )
+  )
+    return undefined;
+  const resumed = continuation(source.content, control.start, control.end, {
+    inside: { start: true, end: true },
+  });
+  const index = resumed.containers.findIndex(sameControl);
+  if (index < 0) return undefined;
+  return continuedSlice(
+    {
+      containers: resumed.containers.slice(0, index + 1),
+      openStart: Math.min(resumed.openStart, index),
+      openEnd: Math.min(resumed.openEnd, index),
+    },
+    [],
+  );
 };
 
 /** What a tracked deletion may hold: no other tracked insertion or deletion. */
@@ -4557,23 +4784,21 @@ const isTrackedRunContent = (
   node.type !== "moveTo";
 
 /**
- * A tracked replacement of exactly a content control's text, typed just
- * inside both of its edges, strikes the text inside the control, which
- * stays: the deletion holds only what the control held, as the reference
- * word processor records it. The plan would wrap the control itself, which
- * accepting removes together with the new text.
+ * A tracked replacement that selects the text from inside a control's edge
+ * strikes that text inside the control. A range that takes both outer edges
+ * leaves the control inside the deletion.
  */
 const strikeInsideControl = ({
   document,
   planned,
   from,
-  inside,
+  controls,
   text,
 }: StrikeInsideControlOptions): Result<
   readonly DocumentOp[],
   DocumentOpRefusal
 > => {
-  if (inside?.start !== true || inside.end !== true) return Result.ok(planned);
+  if (controls.size === 0) return Result.ok(planned);
   // A deletion is the whole plan; a replacement's text follows it.
   const split =
     text === ""
@@ -4581,28 +4806,62 @@ const strikeInsideControl = ({
       : planned.findIndex((op) => op.type === DOCUMENT_OP_TYPES.INSERT_CONTENT);
   if (split <= 0) return Result.ok(planned);
   const deletion = planned.slice(0, split);
+  const applied = applyDocumentOps(document, deletion);
+  if (applied.isErr()) return Result.err(applied.error);
+  const patch = controlDeletionPatch({
+    document: applied.value.document,
+    start: from,
+    controls,
+    operations: deletion,
+  });
+  return Result.ok(
+    patch === undefined
+      ? planned
+      : [...deletion, patch, ...planned.slice(split)],
+  );
+};
+
+type ControlDeletionPatchOptions = {
+  document: Document;
+  start: TextPosition;
+  operations: readonly DocumentOp[];
+  controls: ReadonlySet<number>;
+};
+
+const controlDeletionPatch = ({
+  document,
+  start,
+  operations,
+  controls,
+}: ControlDeletionPatchOptions) => {
   const struck = new Set(
-    deletion.flatMap((op) =>
+    operations.flatMap((op) =>
       op.type === DOCUMENT_OP_TYPES.DELETE_RANGE && op.revision !== undefined
         ? [op.revision.id]
         : [],
     ),
   );
-  const applied = applyDocumentOps(document, deletion);
-  if (applied.isErr()) return Result.err(applied.error);
-  const paragraph = paragraphAt(applied.value.document, from);
-  if (paragraph?.paraId === undefined) return Result.ok(planned);
+  const paragraph = paragraphAt(document, start);
+  if (paragraph?.paraId === undefined) return undefined;
   let swapped = false;
-  const content = paragraph.content.map((node): ParagraphContent => {
+  const markControlText = (node: InlineNode): InlineNode => {
     if (
       node.type !== "deletion" ||
       !struck.has(node.info.id) ||
       node.content.length !== 1
-    )
-      return node;
+    ) {
+      const children = childNodes(node);
+      if (children === undefined) return node;
+      const next = children.map(markControlText);
+      return next.some((child, index) => child !== children.at(index))
+        ? rebuildNode(node, next)
+        : node;
+    }
     const [control] = node.content;
     if (
       control?.type !== "inlineSdt" ||
+      control.properties.id === undefined ||
+      !controls.has(control.properties.id) ||
       !control.content.every(isTrackedRunContent)
     )
       return node;
@@ -4610,31 +4869,27 @@ const strikeInsideControl = ({
     return {
       ...control,
       content: [
-        text === ""
-          ? {
-              ...node,
-              content: control.content,
-              resolutionJoins: {
-                ...(node.resolutionJoins ?? { before: 0, after: 0, remove: 0 }),
-                holdsControlText: true,
-              },
-            }
-          : { ...node, content: control.content },
+        {
+          ...node,
+          content: control.content,
+          resolutionJoins: {
+            ...(node.resolutionJoins ?? { before: 0, after: 0, remove: 0 }),
+            holdsControlText: true,
+          },
+        },
       ],
     };
-  });
-  if (!swapped) return Result.ok(planned);
-  return Result.ok([
-    ...deletion,
-    {
-      type: DOCUMENT_OP_TYPES.REPLACE_INLINE,
-      story: from.story,
-      blockId: paragraph.paraId,
-      expected: paragraph.content,
-      content,
-    },
-    ...planned.slice(split),
-  ]);
+  };
+  const content = asParagraphContent(paragraph.content.map(markControlText));
+  return swapped
+    ? ({
+        type: DOCUMENT_OP_TYPES.REPLACE_INLINE,
+        story: start.story,
+        blockId: paragraph.paraId,
+        expected: paragraph.content,
+        content,
+      } satisfies DocumentOp)
+    : undefined;
 };
 
 /**
@@ -4697,23 +4952,35 @@ const continuation = (
       break;
     containers.push(ancestor);
   }
-  // Text replacing exactly a hyperlink's text keeps the link. The range
-  // holds every leaf of the link and nothing beside it, so no piece of the
-  // link stays on either side to meet: the text takes a copy of it. A range
-  // reaching past the link, or a caret at its edge, leaves the text outside.
-  const link = caret ? undefined : last?.ancestors[containers.length];
+  // Text replacing words of one hyperlink, or typed between two of its
+  // leaves, stays in the link; a range reaching past the link, or a caret at
+  // its edge, leaves the text outside. A range holding every leaf of the
+  // link leaves no piece of it to meet, so there the text takes a copy of
+  // the link, which meets none. Tracked, the text continues the pieces of
+  // the link either side of it, the struck one included: a tracked record
+  // cannot stand inside a link, so the insertion records that it joins them.
+  const link = caret
+    ? left?.ancestors[containers.length]
+    : last?.ancestors[containers.length];
+  let copiesLink = false;
   if (link?.type === "hyperlink") {
-    const inRange = ({ before, after }: (typeof spans)[number]) =>
-      compareGaps(before, end) < 0 && compareGaps(after, start) > 0;
     const ofLink = ({ ancestors }: (typeof spans)[number]) =>
       ancestors.includes(link);
+    const inRange = ({ before, after }: (typeof spans)[number]) =>
+      compareGaps(before, end) < 0 && compareGaps(after, start) > 0;
     const covered = ({ before, after }: (typeof spans)[number]) =>
       compareGaps(start, before) <= 0 && compareGaps(after, end) <= 0;
-    if (
-      spans.filter(inRange).every(ofLink) &&
-      spans.filter(ofLink).every(covered)
-    )
+    // A range marker the range takes beside the link's text is no text
+    // outside it: the deletion keeps it standing where it was.
+    const marker = ({ node }: (typeof spans)[number]) =>
+      isParagraphContent(node) && isRangeBoundary(node);
+    const keepsLink = caret
+      ? right !== undefined && ofLink(right)
+      : spans.filter(inRange).every((span) => ofLink(span) || marker(span));
+    if (keepsLink) {
       containers.push(link);
+      copiesLink = spans.filter(ofLink).every(covered);
+    }
   }
   // Each open end merges with the containers the source holds on that side;
   // at a container's own edge that side has none to meet, and a copied link
@@ -4722,7 +4989,7 @@ const continuation = (
     let depth = 0;
     while (
       depth < containers.length &&
-      containers[depth]?.type !== "hyperlink" &&
+      !(copiesLink && containers[depth]?.type === "hyperlink") &&
       side?.ancestors[depth] === containers[depth]
     )
       depth += 1;
@@ -4742,12 +5009,34 @@ const continuation = (
           // empty container standing alone.
           keepsLoneEmptyContainers: true,
         }).at(-1);
+  // The replacement goes past the ends of comments the range reached (see
+  // `pastEndedComments`): it meets the last of them and the leaf after it,
+  // so a link ending before them is one the text takes a copy of. The
+  // comment goes with the words a direct edit took, and with it the link
+  // piece holding only its start (`linksEmptiedByRetirement`).
+  const passedCount =
+    caret || containers.length === 0
+      ? 0
+      : pastEndedComments(items, end.offset, end.zeroWidthBefore) -
+        end.zeroWidthBefore;
+  const passed =
+    passedCount === 0
+      ? undefined
+      : spans.find(
+          ({ before }) =>
+            before.offset === end.offset &&
+            before.zeroWidthBefore === end.zeroWidthBefore + passedCount - 1,
+        );
   return {
     containers,
     openStart: continued(
-      struck && last !== undefined ? last : (kept ?? outerLeft),
+      passed ?? (struck && last !== undefined ? last : (kept ?? outerLeft)),
     ),
-    openEnd: continued(outerRight),
+    openEnd: continued(
+      passed === undefined
+        ? outerRight
+        : spans.find(({ after }) => compareGaps(after, passed.after) > 0),
+    ),
   };
 };
 

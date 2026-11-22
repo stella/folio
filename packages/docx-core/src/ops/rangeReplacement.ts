@@ -10,14 +10,15 @@ import {
   childNodes,
   defaultInsertionGap,
   type InlineNode,
-  type LeafSpan,
+  isParagraphContent,
   leafSpans,
   rebuildNode,
   sameOwnFields,
   spanningRecords,
   zeroWidthLeavesAt,
 } from "./leaves";
-import { paragraphLength } from "./offsets";
+import { itemBefore } from "./listItems";
+import { isClosingMarker, paragraphLength } from "./offsets";
 import { findLastStoryParagraph, findStoryParagraph } from "./paragraphLocator";
 import {
   appendTrackedDeletion,
@@ -143,32 +144,16 @@ export const rangeEndAfterDeletion = ({
   };
 };
 
-/** The records holding a leaf other than its run, outermost first. */
-const containersOf = (span: LeafSpan): readonly InlineNode[] =>
-  span.ancestors.filter((ancestor) => ancestor.type !== "run");
-
-/** Whether `span` sits in exactly `containers`. */
-const sameContainers = (
-  span: LeafSpan | undefined,
-  containers: readonly InlineNode[],
-): boolean => {
-  if (span === undefined) return false;
-  const own = containersOf(span);
-  return (
-    own.length === containers.length &&
-    own.every((node, depth) => node === containers[depth])
-  );
-};
-
 /**
  * Where what replaces a range goes among the zero-width leaves at the gap:
  * past the ends of comments the range reached, so the new words never extend
- * a comment whose end the range took. A comment starting at the gap keeps the
- * new words, as it does when a tracked replacement is accepted. An end that
- * closes the container the replacement continues stays after the new words,
- * which go into that container.
+ * a comment whose end the range took, and past the ends of other ranges
+ * standing before such a comment end: they do not change what the range
+ * covers. A comment starting at the gap keeps the new words, as it does when
+ * a tracked replacement is accepted. The new words continue the containers
+ * the range's text stood in across the ends they pass (see `continuation`).
  */
-const pastEndedComments = (
+export const pastEndedComments = (
   content: readonly InlineNode[],
   offset: number,
   zeroWidthBefore: number,
@@ -180,28 +165,14 @@ const pastEndedComments = (
       before.offset === offset && before.zeroWidthBefore === zeroWidthBefore,
   );
   if (first === -1) return zeroWidthBefore;
-  let index = first;
-  while (spans[index]?.node.type === "commentRangeEnd") {
-    const end = spans[index];
-    if (end === undefined) break;
-    const containers = containersOf(end);
-    // Further ends in the same containers close them with this one: the leaf
-    // after them decides whether this end closes its container.
-    let ahead = index + 1;
-    while (
-      spans[ahead]?.node.type === "commentRangeEnd" &&
-      sameContainers(spans[ahead], containers)
-    )
-      ahead += 1;
-    const next = spans[ahead];
-    const within =
-      next === undefined
-        ? containers.length === 0
-        : sameContainers(next, containers);
-    if (!within) break;
-    index += 1;
+  let passed = 0;
+  for (let index = first; index < spans.length; index += 1) {
+    const node = spans[index]?.node;
+    if (node === undefined || !isParagraphContent(node)) break;
+    if (node.type === "commentRangeEnd") passed = index - first + 1;
+    else if (!isClosingMarker(node)) break;
   }
-  return zeroWidthBefore + index - first;
+  return zeroWidthBefore + passed;
 };
 
 /**
@@ -224,16 +195,28 @@ export type PlanTrackedReplaceOptions = PlanTrackedDeletionOptions & {
   };
 };
 
+type PlanTrackedReplacementOptions = PlanTrackedReplaceOptions & {
+  cuts?: readonly TextPosition[];
+  retainedControlInsertion?: { at: TextPosition; slice: InlineSlice };
+  retainControls?: {
+    ranges: readonly { start: TextPosition; end: TextPosition }[];
+    moveInside: (options: {
+      document: Document;
+      start: TextPosition;
+      operations: readonly DocumentOp[];
+    }) => ReplaceInlineOp | undefined;
+  };
+};
+
 /**
- * Plan a tracked replacement of a same-list range: the range's tracked
- * deletion followed by the replacement fragment as tracked insertions.
- * All physical revision ids come from one pool for the complete batch.
+ * Plan the replacement with its deletion cut at the supplied source gaps.
+ * Every piece draws revision ids from the same pool.
  */
-export const planTrackedReplace = (
+export const planTrackedReplacement = (
   document: Document,
-  options: PlanTrackedReplaceOptions,
+  options: PlanTrackedReplacementOptions,
 ): Result<DocumentOp[], DocumentOpRefusal> => {
-  const { replacement, from, revision, newIds } = options;
+  const { replacement, from, revision, newIds, cuts = [] } = options;
   const refuse = (message: string) =>
     Result.err(
       new DocumentOpRefusal({
@@ -262,8 +245,46 @@ export const planTrackedReplace = (
       ? {}
       : { deletionRevision: options.deletionRevision }),
   });
-  const deleted = appendTrackedDeletion({ document, options, plan });
-  if (deleted.isErr()) return Result.err(deleted.error);
+  const edges = [from, ...cuts, options.to];
+  const sameGap = (left: TextPosition, right: TextPosition) =>
+    left.offset === right.offset &&
+    (left.zeroWidthBefore ?? 0) === (right.zeroWidthBefore ?? 0);
+  const pieces = [];
+  for (let index = edges.length - 1; index > 0; index -= 1) {
+    const start = itemBefore(edges, index);
+    const end = edges.at(index);
+    if (start === undefined || end === undefined)
+      panic("A replacement deletion has both endpoints.");
+    const retainsControl =
+      options.retainControls?.ranges.some(
+        (range) => sameGap(start, range.start) && sameGap(end, range.end),
+      ) === true;
+    pieces.push({ start, end, retainsControl });
+  }
+  // Move the control's deletion inside it before the neighbouring pieces
+  // can join its record. These pieces only stage tracked deletions, so the
+  // following source positions are unchanged.
+  for (const { start, end, retainsControl } of pieces.toSorted(
+    (left, right) => Number(right.retainsControl) - Number(left.retainsControl),
+  )) {
+    const operationStart = plan.ops.length;
+    const deleted = appendTrackedDeletion({
+      document: plan.document(),
+      options: { ...options, from: start, to: end },
+      plan,
+    });
+    if (deleted.isErr()) return Result.err(deleted.error);
+    if (!retainsControl) continue;
+    const move = options.retainControls?.moveInside({
+      document: plan.document(),
+      start,
+      operations: plan.ops.slice(operationStart),
+    });
+    if (move !== undefined) {
+      const moved = plan.append(move);
+      if (moved.isErr()) return Result.err(moved.error);
+    }
+  }
   if (
     options.sourceContainerPolicy === "separate" &&
     (replacement.tail.content.length > 0 ||
@@ -446,8 +467,8 @@ export const planTrackedReplace = (
   if (replacement.tail.content.length > 0) {
     const inserted = plan.append({
       type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
-      at,
-      slice: replacement.tail,
+      at: options.retainedControlInsertion?.at ?? at,
+      slice: options.retainedControlInsertion?.slice ?? replacement.tail,
       ...(options.seamPolicy === undefined
         ? {}
         : { seamPolicy: options.seamPolicy }),
@@ -457,6 +478,13 @@ export const planTrackedReplace = (
   }
   return Result.ok(plan.ops);
 };
+
+/** Plan a same-list range deletion followed by tracked replacement insertions. */
+export const planTrackedReplace = (
+  document: Document,
+  options: PlanTrackedReplaceOptions,
+): Result<DocumentOp[], DocumentOpRefusal> =>
+  planTrackedReplacement(document, options);
 
 type CutPieceHandoffsOptions = {
   before: Document;

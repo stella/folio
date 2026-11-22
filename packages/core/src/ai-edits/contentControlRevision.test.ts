@@ -99,7 +99,7 @@ const MODES = ["tracked-changes", "suggested"] as const;
 
 type DeleteControlTextOptions = {
   fixture: (typeof FIXTURES)[number];
-  mode: (typeof MODES)[number];
+  mode: (typeof MODES)[number] | "direct";
   session: HeadlessReviewerSession;
 };
 
@@ -138,6 +138,44 @@ const deleteControlText = async ({
 const controlCount = (xml: string): number =>
   (xml.match(/<w:sdt>/gu) ?? []).length;
 
+test.each(["legacy", "canonical"] as const)(
+  "tracked text replacement starting inside an inline control keeps it (%s)",
+  async (session) => {
+    const source = await createDocx(
+      `<w:p><w:sdt>${CONTROL_PROPERTIES}<w:sdtContent><w:r><w:t xml:space="preserve">Seller </w:t></w:r></w:sdtContent></w:sdt>` +
+        '<w:hyperlink w:anchor="target"><w:r><w:t xml:space="preserve">Seller </w:t></w:r></w:hyperlink></w:p>',
+    );
+    const reviewer = await FolioDocxReviewer.fromBuffer(source, { session });
+    const block = reviewer.snapshot().blocks.at(0);
+    if (block === undefined) throw new Error("Expected the control paragraph");
+    const result = reviewer.applyOperations(
+      [
+        {
+          id: "replace",
+          type: "replaceInBlock",
+          blockId: block.id,
+          find: "Seller S",
+          replace: "XS",
+        },
+      ],
+      {
+        mode: "tracked-changes",
+        wordDiff: { granularity: "word" },
+        undefinedReferences: "refuse",
+      },
+    );
+    expect(result.skipped).toEqual([]);
+    const reopened = await FolioDocxReviewer.fromBuffer(
+      await reviewer.toBuffer(),
+      { session },
+    );
+    expect(reopened.acceptAll().resolved).toBeGreaterThan(0);
+    expect(reopened.getChanges()).toEqual([]);
+    expect(reopened.snapshot().blocks.at(0)?.text).toBe("XSeller ");
+    expect(controlCount(await bodyOf(await reopened.toBuffer()))).toBe(1);
+  },
+);
+
 describe.each([
   "legacy",
   "canonical",
@@ -145,6 +183,18 @@ describe.each([
   "deleting all of a content control's text (%s)",
   (session) => {
     for (const fixture of FIXTURES) {
+      test(`a direct text deletion leaves the ${fixture.kind} control, emptied`, async () => {
+        const { reviewer } = await deleteControlText({
+          fixture,
+          mode: "direct",
+          session,
+        });
+        const saved = await bodyOf(await reviewer.toBuffer());
+        expect(controlCount(saved)).toBe(1);
+        expect(saved).toContain('<w:docPart w:val="DefaultPlaceholder"/>');
+        expect(saved).not.toContain(fixture.find);
+      });
+
       for (const mode of MODES) {
         test(`accepting leaves the ${fixture.kind} control, emptied (${mode})`, async () => {
           const { reviewer, blockId } = await deleteControlText({

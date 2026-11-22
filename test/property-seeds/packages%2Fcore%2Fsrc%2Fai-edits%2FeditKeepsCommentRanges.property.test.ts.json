@@ -11,6 +11,18 @@
       "path": "17:0:0:0:0:0:0:0:0",
       "note": "#3007: a tracked deletion of a paragraph holding a note reference applies; Accept All removes the note with it.",
       "date": "2026-11-20"
+    },
+    {
+      "seed": 857823135,
+      "path": "23:4:3:3:3:3:3:3:3:3:5:5:5:6",
+      "note": "A bookmark ending before a comment's end in the replaced block does not keep the comment a direct replacement of the block's words takes.",
+      "date": "2026-11-21"
+    },
+    {
+      "seed": 2095656944,
+      "path": "33:1:0:5:5:5:5:5:5:5:5:5:5:10",
+      "note": "A standing note reference keeps a range when its paragraph's prose is replaced.",
+      "date": "2026-11-22"
     }
   ]
 }
