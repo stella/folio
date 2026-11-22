@@ -45,6 +45,7 @@ import {
 } from "./blockDeletion";
 import {
   blockListAt,
+  blockListEndsInParagraph,
   endsItsContainer,
   type ParagraphLocation,
   storyBody,
@@ -5480,7 +5481,7 @@ const joinOps = (
     markWasAdded: added,
     containerStillEndsWithParagraph:
       follows !== "nothing"
-        ? blocks.at(-1)?.type === "paragraph"
+        ? blockListEndsInParagraph(blocks)
         : // Removing the final paragraph leaves the block before it last: in
           // a cell, that paragraph's mark becomes the cell's terminator.
           (containerFinal &&

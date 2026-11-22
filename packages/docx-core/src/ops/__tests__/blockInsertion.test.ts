@@ -1157,3 +1157,41 @@ test.each([
     );
   },
 );
+
+test.each(["paragraph", "control"] as const)(
+  "a tracked paragraph before a table in a body ending with a %s resolves either way",
+  (ending) => {
+    const final = makeParagraph("00000003", "");
+    const original = documentOf([
+      inCell([makeParagraph("00000001", "")]),
+      makeParagraph("00000002", ""),
+      ending === "paragraph"
+        ? final
+        : {
+            type: "blockSdt",
+            properties: { sdtType: "group", id: 1 },
+            content: [final],
+          },
+    ]);
+    const applied = apply(original, {
+      ...insertion([makeParagraph("00000004", "revised")]),
+      at: { type: "beforeTable", blockId: "00000001" },
+    });
+    expect(
+      applied.document.package.document.content.map(({ type }) => type),
+    ).toStrictEqual([
+      "paragraph",
+      "table",
+      "paragraph",
+      ending === "paragraph" ? "paragraph" : "blockSdt",
+    ]);
+    expect(resolve(applied, REVISION_DECISIONS.REJECT).document).toStrictEqual(
+      original,
+    );
+    expect(
+      resolve(applied, REVISION_DECISIONS.ACCEPT).document.package.document
+        .content[0],
+    ).toMatchObject({ paraId: "00000004", content: [{ type: "run" }] });
+    expect(undo(applied)).toStrictEqual(original);
+  },
+);

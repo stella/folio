@@ -11,6 +11,7 @@ import type {
 } from "../model/document";
 import {
   blockListAt,
+  blockListEndsInParagraph,
   type ParagraphLocation,
   sameBlockList,
   storyBody,
@@ -399,9 +400,10 @@ export const paragraphTableRunInBoundary = (
 
 /**
  * Whether the mark of `paragraph`, which `table` follows in `blocks`, can be
- * resolved away: the block list goes on ending with a paragraph, and the
- * table has a paragraph to receive what runs in. A tracked deletion before a
- * table is admitted only where this holds, so each decision on it resolves.
+ * resolved away: the block list goes on ending with a paragraph, through a
+ * block content control that ends it, and the table has a paragraph to
+ * receive what runs in. A tracked deletion before a table is admitted only
+ * where this holds, so each decision on it resolves.
  */
 export const markBeforeTableResolves = ({
   blocks,
@@ -409,8 +411,7 @@ export const markBeforeTableResolves = ({
 }: {
   blocks: readonly BlockContent[];
   boundary: TableRunInBoundary;
-}): boolean =>
-  blocks.at(-1)?.type === "paragraph" && boundary.type === "receiver";
+}): boolean => blockListEndsInParagraph(blocks) && boundary.type === "receiver";
 
 type SectionEndpointRemovalOptions = {
   story: OpStory;
@@ -902,7 +903,7 @@ export const deleteBlocks = ({
   const emptiedBeforeBlockedTable =
     tableBoundary?.type === "blocked" &&
     (tableBoundary.reason === "review" || tableBoundary.reason === "section") &&
-    list.at(-1)?.type === "paragraph";
+    blockListEndsInParagraph(list);
   const trackedBeforeTable =
     op.revision !== undefined &&
     tableBoundary !== undefined &&
@@ -911,7 +912,7 @@ export const deleteBlocks = ({
   const trackedBeforeBlock =
     op.revision !== undefined &&
     isOpaqueFollower(following) &&
-    list.at(-1)?.type === "paragraph";
+    blockListEndsInParagraph(list);
   // Directly, the breaks their marks carry go first, on their own, as
   // accepting their tracked deletion takes them; the paragraphs then go as
   // any others do.
