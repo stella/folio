@@ -42,47 +42,59 @@ describe("a main document at another path", () => {
     ]);
   });
 
-  for (const mode of ["direct", "tracked-changes"] as const) {
-    test(`saves an edit where the package says the document is (${mode})`, async () => {
-      const reviewer = await FolioDocxReviewer.fromBuffer(
-        await packageWithMainAt("word/document2.xml"),
-      );
-      const result = reviewer.applyDocumentOperations(
-        {
-          version: 1,
-          mode,
-          operations: [
-            {
-              id: "edit",
-              type: "insertAfterBlock",
-              blockId: "10000001",
-              text: "Added",
-              numbering: { kind: "newList", format: "numbered" },
-            },
-          ],
-        },
-        { undefinedReferences: "refuse" },
-      );
-      expect(result.applied).toHaveLength(1);
-      const saved = await ZipArchive.read(await reviewer.toBuffer());
-      const packageRelationships =
-        (await saved.entry("_rels/.rels")?.text()) ?? "";
-      const named =
-        /officeDocument"[^>]*Target="([^"]+)"|Target="([^"]+)"[^>]*officeDocument"/u.exec(
-          packageRelationships,
+  describe.each(["legacy", "canonical"] as const)("%s", (session) => {
+    test.each(["direct", "tracked-changes"] as const)(
+      "saves an edit where the package says the document is (%s)",
+      async (mode) => {
+        const reviewer = await FolioDocxReviewer.fromBuffer(
+          await packageWithMainAt("word/document2.xml"),
+          { session },
         );
-      const main = (named?.[1] ?? named?.[2] ?? "").replace(/^\//u, "");
-      expect(main).toBe("word/document.xml");
-      expect(saved.has("word/document2.xml")).toBe(false);
-      expect(await saved.entry(main)?.text()).toContain("Added");
-      const contentTypes =
-        (await saved.entry("[Content_Types].xml")?.text()) ?? "";
-      expect(contentTypes).toContain(
-        `PartName="/word/document.xml" ContentType="${MAIN_TYPE}"`,
-      );
-      expect(contentTypes).not.toContain("document2.xml");
-    });
-  }
+        const result = reviewer.applyDocumentOperations(
+          {
+            version: 1,
+            mode,
+            operations: [
+              {
+                id: "edit",
+                type: "insertAfterBlock",
+                blockId: "10000001",
+                text: "Added",
+                numbering: { kind: "newList", format: "numbered" },
+              },
+            ],
+          },
+          { undefinedReferences: "refuse" },
+        );
+        expect(result.applied).toHaveLength(1);
+        const savedBytes = await reviewer.toBuffer();
+        const saved = await ZipArchive.read(savedBytes);
+        const packageRelationships =
+          (await saved.entry("_rels/.rels")?.text()) ?? "";
+        const named =
+          /officeDocument"[^>]*Target="([^"]+)"|Target="([^"]+)"[^>]*officeDocument"/u.exec(
+            packageRelationships,
+          );
+        const main = (named?.[1] ?? named?.[2] ?? "").replace(/^\//u, "");
+        expect(main).toBe("word/document.xml");
+        expect(saved.has("word/document2.xml")).toBe(false);
+        expect(await saved.entry(main)?.text()).toContain("Added");
+        const contentTypes =
+          (await saved.entry("[Content_Types].xml")?.text()) ?? "";
+        expect(contentTypes).toContain(
+          `PartName="/word/document.xml" ContentType="${MAIN_TYPE}"`,
+        );
+        expect(contentTypes).not.toContain("document2.xml");
+        const reopened = await FolioDocxReviewer.fromBuffer(savedBytes, {
+          session,
+        });
+        expect(reopened.getContent().map(({ text }) => text)).toEqual([
+          "Authored text",
+          "Added",
+        ]);
+      },
+    );
+  });
 
   test("keeps a part the relationship does not name out of the way", async () => {
     const zip = await ZipArchive.read(
