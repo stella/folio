@@ -17,9 +17,9 @@ import {
 import { measureParagraph } from "../layout-engine/measure";
 import {
   type TableBorderSide,
-  tableCellBorderBevel,
+  tableCellBorderBands,
   tableCellBorderWidth,
-} from "../layout-engine/measure/tableBorderBevel";
+} from "../layout-engine/measure/tableBorderBands";
 import {
   buildTableCellFloatingZones,
   getTableCellContentWidth,
@@ -666,21 +666,26 @@ function applyBorder(
     el.style[props.border] = "none";
     return;
   }
-  const bevel = tableCellBorderBevel(border);
-  if (!bevel) {
+  const strokeBand = tableCellBorderBands(border);
+  if (!strokeBand) {
     el.style[props.border] = borderStrokeToCss(border);
     return;
   }
   const horizontal = side === "top" || side === "bottom";
-  const bands = bevel.bands.map(
-    ({ color, offsetPx, widthPx }) =>
-      `rgb(${color.r}, ${color.g}, ${color.b}) ${offsetPx}px ${offsetPx + widthPx}px`,
-  );
-  const gradient = `linear-gradient(to ${horizontal ? "bottom" : "right"}, ${bands.join(", ")})`;
-  // CSS rounds border widths, so reserve the precise bevel extent in the
+  const stops = [];
+  let endPx = 0;
+  for (const { color, offsetPx, widthPx } of strokeBand.bands) {
+    if (offsetPx > endPx) stops.push(`transparent ${endPx}px ${offsetPx}px`);
+    endPx = offsetPx + widthPx;
+    stops.push(
+      `rgb(${color.r}, ${color.g}, ${color.b}) ${offsetPx}px ${endPx}px`,
+    );
+  }
+  const gradient = `linear-gradient(to ${horizontal ? "bottom" : "right"}, ${stops.join(", ")})`;
+  // CSS rounds border widths, so reserve the precise stroke band in the
   // border box with padding and paint the strokes on top of the cell fill.
   el.style[props.border] = "none";
-  el.style[props.padding] = `${paddingPx + bevel.widthPx}px`;
+  el.style[props.padding] = `${paddingPx + strokeBand.widthPx}px`;
   el.style.backgroundOrigin = "border-box";
   el.style.backgroundClip = "border-box";
   el.style.backgroundRepeat = "no-repeat";
@@ -694,7 +699,9 @@ function applyBorder(
   );
   el.style.backgroundSize = prependBackgroundLayer(
     el.style.backgroundSize,
-    horizontal ? `100% ${bevel.widthPx}px` : `${bevel.widthPx}px 100%`,
+    horizontal
+      ? `100% ${strokeBand.widthPx}px`
+      : `${strokeBand.widthPx}px 100%`,
   );
 }
 

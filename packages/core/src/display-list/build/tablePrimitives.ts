@@ -15,8 +15,8 @@
 
 import {
   type TableBorderSide,
-  tableCellBorderBevel,
-} from "../../layout-engine/measure/tableBorderBevel";
+  tableCellBorderBands,
+} from "../../layout-engine/measure/tableBorderBands";
 import {
   createTableCellFlowState,
   placeTableCellBlock,
@@ -117,12 +117,12 @@ function paintBorderEdge(
     label = `table cell ${side} border`,
   }: PaintBorderEdgeOptions,
 ): number {
-  const bevel = tableCellBorderBevel(border);
+  const strokeBand = tableCellBorderBands(border);
   const bands = [];
   let width: number;
-  if (bevel) {
-    width = bevel.widthPx;
-    for (const { offsetPx, widthPx, color } of bevel.bands) {
+  if (strokeBand) {
+    width = strokeBand.widthPx;
+    for (const { offsetPx, widthPx, color } of strokeBand.bands) {
       bands.push({
         offsetPx,
         stroke: { color, pattern: "solid" as const, thicknessPx: widthPx },

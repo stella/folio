@@ -1,7 +1,7 @@
 import { paintsCssBorder } from "../../utils/borderCss";
 import type { TableBlock, TableCell, TableRow } from "../types";
 import { resolveTableCellPadding } from "../types";
-import { tableCellBorderWidth } from "./tableBorderBevel";
+import { tableCellBorderWidth } from "./tableBorderBands";
 
 export type TableCellGrid = {
   occupiedColumnsByRow: ReadonlyMap<number, ReadonlySet<number>>;

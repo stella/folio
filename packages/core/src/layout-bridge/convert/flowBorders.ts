@@ -4,7 +4,8 @@
 
 import { statesNoBorder } from "@stll/docx-core/model";
 
-import type { BorderStyle } from "../../layout-engine/types";
+import { hasCompoundTableBorderBands } from "../../layout-engine/measure/tableBorderBands";
+import type { BorderStyle, CellBorderSpec } from "../../layout-engine/types";
 import type { BorderStyleValue, ColorValue, Theme } from "../../types/document";
 import type { DeepReadonly } from "../../types/documentModel";
 import { cssBorderStyle } from "../../utils/borderCss";
@@ -47,4 +48,17 @@ export function convertBorderSpecToLayout(
     result.space = pointsToPixels(border.space);
   }
   return result;
+}
+
+/** Keep the authored order of unequal compound bands on table cell edges. */
+export function convertCellBorderSpecToLayout(
+  border: ConvertibleBorder,
+  theme?: DeepReadonly<Theme> | null,
+): CellBorderSpec | undefined {
+  const converted = convertBorderSpecToLayout(border, theme);
+  if (!converted) return undefined;
+  const { style } = border;
+  if (hasCompoundTableBorderBands(style))
+    return { ...converted, authoredStyle: style };
+  return converted;
 }

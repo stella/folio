@@ -1,12 +1,55 @@
+import { pointsToPixels } from "../../utils/units";
 import type { CellBorderSpec } from "../types";
 
-const BEVEL_COLOR = /^#[\da-f]{6}$/iu;
+const TABLE_BORDER_COLOR = /^#[\da-f]{6}$/iu;
 const BLACK = "#000000";
 const LARGE_BEVEL_WIDTH_PX = 4;
 const MAX_CHANNEL = 255;
 const LIGHTNESS_STEPS = 240;
 const MIDDLE_TONE_DROP = 70;
 const DARK_TONE_DROP = 80;
+
+const THIN_COMPOUND_STROKE_PX = 1;
+const THICK_COMPOUND_STROKE_PX = 2;
+const MIN_SMALL_GAP_STROKE_PX = pointsToPixels(0.25);
+
+type CompoundStyle = Extract<
+  CellBorderSpec["authoredStyle"],
+  `${"thinThick" | "thickThin"}${string}`
+>;
+type CompoundSegment = number | "authored" | "authoredStroke";
+
+const COMPOUND_SEGMENTS = {
+  thinThickSmallGap: [
+    "authoredStroke",
+    THIN_COMPOUND_STROKE_PX,
+    THIN_COMPOUND_STROKE_PX,
+  ],
+  thickThinSmallGap: [
+    THIN_COMPOUND_STROKE_PX,
+    THIN_COMPOUND_STROKE_PX,
+    "authoredStroke",
+  ],
+  thinThickLargeGap: [
+    THICK_COMPOUND_STROKE_PX,
+    "authored",
+    THIN_COMPOUND_STROKE_PX,
+  ],
+  thickThinLargeGap: [
+    THIN_COMPOUND_STROKE_PX,
+    "authored",
+    THICK_COMPOUND_STROKE_PX,
+  ],
+} as const satisfies Record<
+  CompoundStyle,
+  readonly [CompoundSegment, CompoundSegment, CompoundSegment]
+>;
+
+export function hasCompoundTableBorderBands(
+  style: unknown,
+): style is CompoundStyle {
+  return typeof style === "string" && Object.hasOwn(COMPOUND_SEGMENTS, style);
+}
 
 export type TableBorderSide = "top" | "right" | "bottom" | "left";
 
@@ -15,15 +58,47 @@ function beveledEdge(border: CellBorderSpec | undefined) {
   if (border?.style !== "ridge" && border?.style !== "groove") return undefined;
   const width = border.width ?? 1;
   const color = border.color ?? BLACK;
-  if (!(width > 0) || !Number.isFinite(width) || !BEVEL_COLOR.test(color))
+  if (
+    !(width > 0) ||
+    !Number.isFinite(width) ||
+    !TABLE_BORDER_COLOR.test(color)
+  )
     return undefined;
   const shoulder = width >= LARGE_BEVEL_WIDTH_PX ? 2 : 1;
   return { width, shoulder, color, recessed: border.style === "groove" };
 }
 
+function compoundEdge(border: CellBorderSpec | undefined) {
+  const style = border?.authoredStyle;
+  if (!border || !hasCompoundTableBorderBands(style)) return undefined;
+
+  const width = border.width ?? 1;
+  const color = border.color ?? BLACK;
+  if (
+    !(width > 0) ||
+    !Number.isFinite(width) ||
+    !TABLE_BORDER_COLOR.test(color)
+  )
+    return undefined;
+
+  const segmentWidth = (segment: CompoundSegment): number => {
+    if (segment === "authored") return width;
+    if (segment === "authoredStroke")
+      return Math.max(width, MIN_SMALL_GAP_STROKE_PX);
+    return segment;
+  };
+  const [first, gap, last] = COMPOUND_SEGMENTS[style];
+  const firstPx = segmentWidth(first);
+  const gapPx = segmentWidth(gap);
+  const lastPx = segmentWidth(last);
+  return { firstPx, lastPx, gapPx, color, widthPx: firstPx + gapPx + lastPx };
+}
+
 export function tableCellBorderWidth(
   border: CellBorderSpec | undefined,
 ): number {
+  const compound = compoundEdge(border);
+  if (compound) return compound.widthPx;
   const edge = beveledEdge(border);
   return edge ? edge.width + edge.shoulder * 2 : (border?.width ?? 0);
 }
@@ -34,14 +109,21 @@ function gray(channel: number): Tone {
   return { r: channel, g: channel, b: channel, a: 1 };
 }
 
+function rgbTone(hex: string): Tone {
+  return {
+    r: Number.parseInt(hex.slice(0, 2), 16),
+    g: Number.parseInt(hex.slice(2, 4), 16),
+    b: Number.parseInt(hex.slice(4, 6), 16),
+    a: 1,
+  };
+}
+
 function embossTones(color: string): readonly [Tone, Tone, Tone] {
   const hex = color.slice(1).toLowerCase();
   if (hex === "000000") return [gray(192), gray(96), gray(0)];
   if (hex === "ffffff") return [gray(255), gray(160), gray(128)];
 
-  const r = Number.parseInt(hex.slice(0, 2), 16);
-  const g = Number.parseInt(hex.slice(2, 4), 16);
-  const b = Number.parseInt(hex.slice(4, 6), 16);
+  const { r, g, b } = rgbTone(hex);
   const low = Math.min(r, g, b);
   const high = Math.max(r, g, b);
   const chroma = high - low;
@@ -69,7 +151,19 @@ function embossTones(color: string): readonly [Tone, Tone, Tone] {
   ];
 }
 
-export function tableCellBorderBevel(border: CellBorderSpec | undefined) {
+export function tableCellBorderBands(border: CellBorderSpec | undefined) {
+  const compound = compoundEdge(border);
+  if (compound) {
+    const { firstPx, gapPx, lastPx, widthPx } = compound;
+    const color = rgbTone(compound.color.slice(1));
+    return {
+      widthPx,
+      bands: [
+        { offsetPx: 0, widthPx: firstPx, color },
+        { offsetPx: firstPx + gapPx, widthPx: lastPx, color },
+      ],
+    };
+  }
   const edge = beveledEdge(border);
   if (!edge) return undefined;
   const { width, shoulder, color, recessed } = edge;
