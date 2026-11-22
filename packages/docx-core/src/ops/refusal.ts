@@ -106,7 +106,7 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
   /**
    * A tracked join would run a paragraph, through one whose own mark is
    * already going, into the table after it while that table's first row or
-   * cell is under review: the table cannot receive what runs in.
+   * cell has a pending insertion and cannot receive what runs in.
    */
   readonly JOIN_INTO_PENDING_TABLE: "joinIntoPendingTable";
   /** The operation would put a mark on a paragraph that ends its story body or table cell. */

@@ -365,7 +365,8 @@ export type TableRunInTarget = {
 
 type TableRunInBoundary =
   | { type: "receiver"; target: TableRunInTarget }
-  | { type: "blocked"; reason: "section" | "review" | "structure" };
+  | { type: "blocked"; reason: "review"; review: "insertion" | "other" }
+  | { type: "blocked"; reason: "section" | "structure" };
 
 /** The first-cell path, including why it cannot receive paragraph content. */
 export const paragraphTableRunInBoundary = (
@@ -376,24 +377,32 @@ export const paragraphTableRunInBoundary = (
     return { type: "blocked", reason: "section" };
   const tables: Table[] = [];
   let current = table;
-  let review: "clear" | "pending" = "clear";
+  let review: "clear" | "insertion" | "other" = "clear";
   for (;;) {
     const row = current.rows.at(0),
       cell = row?.cells.at(0);
     if (row === undefined || cell === undefined)
       return { type: "blocked", reason: "structure" };
     if (
-      row.structuralChange?.type === "tableRowInsertion" ||
       row.structuralChange?.type === "tableRowDeletion" ||
-      cell.structuralChange !== undefined
-    )
-      review = "pending";
+      (cell.structuralChange !== undefined &&
+        cell.structuralChange.type !== "tableCellInsertion")
+    ) {
+      review = "other";
+    } else if (
+      review === "clear" &&
+      (row.structuralChange?.type === "tableRowInsertion" ||
+        cell.structuralChange?.type === "tableCellInsertion")
+    ) {
+      review = "insertion";
+    }
     tables.push(current);
     const target = cell.content.at(0);
     if (target?.type === "paragraph") {
       if (target.sectionProperties !== undefined)
         return { type: "blocked", reason: "section" };
-      if (review === "pending") return { type: "blocked", reason: "review" };
+      if (review !== "clear")
+        return { type: "blocked", reason: "review", review };
       return { type: "receiver", target: { receiver: target, tables } };
     }
     if (target?.type !== "table")

@@ -274,6 +274,10 @@ export const revisionIdsIn = (value: unknown, ids = new Set<number>()) => {
     for (const item of value) revisionIdsIn(item, ids);
     return ids;
   }
+  if (value instanceof Map) {
+    for (const item of value.values()) revisionIdsIn(item, ids);
+    return ids;
+  }
   if (!isRecord(value)) return ids;
   for (const [key, field] of Object.entries(value)) {
     if (key === "sourceXml" || key === "gridSourceXml") continue;

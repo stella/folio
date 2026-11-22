@@ -266,6 +266,16 @@ export const trackTableRows = ({
       finals.add(final.paragraph);
     }
   }
+  const reviewedFinalMark = [...finals].find(
+    (paragraph) => paragraph.pPrMark !== undefined,
+  )?.pPrMark;
+  if (!missingFinalParagraph && reviewedFinalMark !== undefined) {
+    return refused({
+      op,
+      reason: pendingParagraphMarkReason(reviewedFinalMark),
+      message: "A cell's final paragraph already carries a mark revision.",
+    });
+  }
   if (
     missingFinalParagraph ||
     rows.some(
@@ -295,16 +305,6 @@ export const trackTableRows = ({
       )
         ? "A suggestion cannot record a nested table that holds captured markup or review records."
         : "The rows contain an unsupported tracked structure.",
-    });
-  }
-  const reviewedFinalMark = [...finals].find(
-    (paragraph) => paragraph.pPrMark !== undefined,
-  )?.pPrMark;
-  if (reviewedFinalMark !== undefined) {
-    return refused({
-      op,
-      reason: pendingParagraphMarkReason(reviewedFinalMark),
-      message: "A cell's final paragraph already carries a mark revision.",
     });
   }
   const before = paragraphsIn(rows);

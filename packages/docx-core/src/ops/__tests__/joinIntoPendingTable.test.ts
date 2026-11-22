@@ -64,18 +64,21 @@ const joinReason = (table: Table) => {
 };
 
 describe("a tracked join that would run into the table after it", () => {
-  test("is refused by its own reason when the table's first row is under review", () => {
+  test.each([
+    ["tableRowInsertion", DOCUMENT_OP_REFUSAL_REASONS.JOIN_INTO_PENDING_TABLE],
+    ["tableRowDeletion", DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE],
+  ] as const)("reports the refusal for %s", (type, reason) => {
     expect(
       joinReason(
         tableOf({
           ...cellRow(paragraph("00000003", "cell")),
           structuralChange: {
-            type: "tableRowInsertion",
+            type,
             info: { id: 6, ...OTHER },
           },
         }),
       ),
-    ).toBe(DOCUMENT_OP_REFUSAL_REASONS.JOIN_INTO_PENDING_TABLE);
+    ).toBe(reason);
   });
 
   test("is untrackable when the table's first paragraph ends a section", () => {

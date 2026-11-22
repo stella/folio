@@ -573,7 +573,30 @@ describe("tracked table refusals", () => {
           },
           reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
         },
-        {
+        ...(
+          [
+            [
+              { kind: "ins", info: foreign },
+              DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_INSERTION,
+            ],
+            [
+              { kind: "moveFrom", info: foreign },
+              DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_DELETION,
+            ],
+            [
+              { kind: "moveTo", info: foreign },
+              DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_INSERTION,
+            ],
+            [
+              {
+                kind: "moveTo",
+                info: foreign,
+                deletion: { info: { ...foreign, id: 51 } },
+              },
+              DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_DELETION,
+            ],
+          ] as const
+        ).map(([pPrMark, reason]) => ({
           value: {
             ...source,
             rows: [
@@ -585,7 +608,7 @@ describe("tracked table refusals", () => {
                     content: [
                       {
                         ...makeParagraph("00000010"),
-                        pPrMark: { kind: "ins", info: foreign },
+                        pPrMark,
                       },
                     ],
                   },
@@ -593,8 +616,8 @@ describe("tracked table refusals", () => {
               },
             ],
           },
-          reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_INSERTION,
-        },
+          reason,
+        })),
         ...(["moveFrom", "moveTo"] as const).map((type) => ({
           value: {
             ...source,

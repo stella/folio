@@ -2156,13 +2156,16 @@ const trackJoin = ({
     boundary !== undefined &&
     !markBeforeTableResolves({ blocks: list, boundary })
   ) {
-    // Only a table under review is a refusal of its own; a section break or
-    // a shape with no receiving paragraph is one no tracked join records yet.
+    let reason: DocumentOpRefusalReason =
+      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE;
+    if (boundary.type === "blocked" && boundary.reason === "review")
+      reason =
+        boundary.review === "insertion"
+          ? DOCUMENT_OP_REFUSAL_REASONS.JOIN_INTO_PENDING_TABLE
+          : DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE;
     return refuse(
       op,
-      boundary.type === "blocked" && boundary.reason === "review"
-        ? DOCUMENT_OP_REFUSAL_REASONS.JOIN_INTO_PENDING_TABLE
-        : DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+      reason,
       `Joining ${op.blockId} would run it into the table after ${op.nextBlockId}.`,
     );
   }

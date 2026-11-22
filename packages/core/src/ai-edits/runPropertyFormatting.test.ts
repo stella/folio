@@ -1549,87 +1549,98 @@ describe("tracked run formatting", () => {
     }
   });
 
-  test("uses the same operation in a secondary document story", async () => {
-    const story = {
-      type: "header" as const,
-      relationshipId: HEADER_RELATIONSHIP_ID,
-    };
-    const reviewer = await FolioDocxReviewer.fromBuffer(
-      await createHeaderFormattingBaseline(),
-      {
-        author: "Reviewer",
-      },
-    );
-    const snapshot = reviewer.snapshotStory(story);
-    const block = snapshot?.blocks.at(0);
-    const range = block
-      ? createFolioAITextRangeHandle({
-          blockId: block.id,
-          text: block.text,
-          startOffset: 0,
-          endOffset: "Header".length,
-        })
-      : null;
-    if (!snapshot || !range) {
-      throw new Error("expected a header formatting range");
-    }
-    expect(snapshot.blocks.at(0)?.previewRuns).toEqual([
-      {
-        text: "Header target",
-        bold: true,
-        fontFamily: "Arial",
-        fontSizePt: 20,
-      },
-    ]);
+  test.each(HEADLESS_REVIEWER_SESSIONS)(
+    "formats a header in %s",
+    async (session) => {
+      const story = {
+        type: "header" as const,
+        relationshipId: HEADER_RELATIONSHIP_ID,
+      };
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await createHeaderFormattingBaseline(),
+        {
+          author: "Reviewer",
+          session,
+        },
+      );
+      const snapshot = reviewer.snapshotStory(story);
+      const block = snapshot?.blocks.at(0);
+      const range = block
+        ? createFolioAITextRangeHandle({
+            blockId: block.id,
+            text: block.text,
+            startOffset: 0,
+            endOffset: "Header".length,
+          })
+        : null;
+      if (!snapshot || !range) {
+        throw new Error("expected a header formatting range");
+      }
+      expect(snapshot.blocks.at(0)?.previewRuns).toEqual([
+        {
+          text: "Header target",
+          bold: true,
+          fontFamily: "Arial",
+          fontSizePt: 20,
+        },
+      ]);
 
-    const result = reviewer.applyDocumentOperationsToStory({
-      undefinedReferences: "refuse",
-      story,
-      batch: {
-        version: 1,
-        mode: "tracked-changes",
-        operations: [
-          {
-            id: "format-header",
-            type: "formatRange",
-            range,
-            formatting: { italic: true },
-          },
-        ],
-      },
-      snapshot,
-    });
-    expect(result.skipped).toEqual([]);
-    expect(
-      reviewer
-        .readReviewedStory({ story, view: "final" })
-        ?.snapshot.blocks.at(0)?.previewRuns,
-    ).toEqual([
-      {
-        text: "Header",
-        bold: true,
-        italic: true,
-        fontFamily: "Arial",
-        fontSizePt: 20,
-        directFormatting: { italic: true },
-      },
-      {
-        text: " target",
-        bold: true,
-        fontFamily: "Arial",
-        fontSizePt: 20,
-      },
-    ]);
+      const result = reviewer.applyDocumentOperationsToStory({
+        undefinedReferences: "refuse",
+        story,
+        batch: {
+          version: 1,
+          mode: "tracked-changes",
+          operations: [
+            {
+              id: "format-header",
+              type: "formatRange",
+              range,
+              formatting: { italic: true },
+            },
+          ],
+        },
+        snapshot,
+      });
+      expect(result.skipped).toEqual([]);
+      expect(
+        reviewer
+          .readReviewedStory({ story, view: "final" })
+          ?.snapshot.blocks.at(0)?.previewRuns,
+      ).toEqual([
+        {
+          text: "Header",
+          bold: true,
+          italic: true,
+          fontFamily: "Arial",
+          fontSizePt: 20,
+          directFormatting: { italic: true },
+        },
+        {
+          text: " target",
+          bold: true,
+          fontFamily: "Arial",
+          fontSizePt: 20,
+        },
+      ]);
 
-    const reopened = await FolioDocxReviewer.fromBuffer(
-      await reviewer.toBuffer(),
-    );
-    expect(
-      reopened.readReviewedStory({ story, view: "current-markup" })?.changes,
-    ).toEqual([
-      expect.objectContaining({ type: "formatting", text: "Header" }),
-    ]);
-  });
+      const revisionId = result.applied.at(0)?.revisionId;
+      expect(revisionId).toBeNumber();
+      const reopened = await FolioDocxReviewer.fromBuffer(
+        await reviewer.toBuffer(),
+        { session },
+      );
+      expect(
+        reopened.readReviewedStory({ story, view: "current-markup" })?.changes,
+      ).toEqual([
+        expect.objectContaining({
+          id: revisionId,
+          type: "formatting",
+          text: "Header",
+        }),
+      ]);
+    },
+  );
 
   test("tracks target font face, size, and color through save and reopen", async () => {
     const tracked = await applyTrackedFormatting({
