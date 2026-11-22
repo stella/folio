@@ -151,7 +151,11 @@ const storyParagraph = (text: string, paraId: string): Paragraph => ({
   content: [{ type: "run", content: [{ type: "text", text }] }],
 });
 
-const buildTableCellDocxBuffer = (text: string): Promise<ArrayBuffer> => {
+/** A body of one table, its cell reading `text`, then `closing`. */
+const buildTableCellDocxBuffer = (
+  text: string,
+  closing: readonly Paragraph[],
+): Promise<ArrayBuffer> => {
   const template = createEmptyDocument();
   const table: Table = {
     type: "table",
@@ -173,7 +177,7 @@ const buildTableCellDocxBuffer = (text: string): Promise<ArrayBuffer> => {
       ...template.package,
       document: {
         ...template.package.document,
-        content: [table],
+        content: [table, ...closing],
       },
     },
   });
@@ -1111,35 +1115,69 @@ describe("compareDocxVersions: move detection", () => {
 });
 
 describe("compareDocxVersions: neutral structural classification", () => {
-  test("does not pair identical stable-id text across body and table containers", async () => {
-    const text = "Payment is due within thirty days.";
-    const [base, revised] = await Promise.all([
-      buildDocxBuffer([{ text, paraId: "00000001" }]),
-      buildTableCellDocxBuffer(text),
-    ]);
-    const [baseReviewer, revisedReviewer] = await Promise.all([
-      FolioDocxReviewer.fromBuffer(base),
-      FolioDocxReviewer.fromBuffer(revised),
-    ]);
-    const neutral = compareContent({
-      base: { blocks: baseReviewer.snapshot().blocks },
-      revised: { blocks: revisedReviewer.snapshot().blocks },
-    });
-    if (neutral.isErr()) {
-      throw neutral.error;
-    }
-    const neutralChanges = neutral.value.events
-      .filter(({ type }) => type !== "unchanged")
-      .map(({ type }) => (type === "inserted" ? "added" : type));
+  test.each(SESSIONS)(
+    "does not pair identical stable-id text across body and table containers (%s)",
+    async (session) => {
+      const text = "Payment is due within thirty days.";
+      const closing = { text: "", paraId: "00000002" };
+      const [base, revised] = await Promise.all([
+        buildDocxBuffer([{ text, paraId: "00000001" }, closing]),
+        buildTableCellDocxBuffer(text, [
+          storyParagraph(closing.text, closing.paraId),
+        ]),
+      ]);
+      const [baseReviewer, revisedReviewer] = await Promise.all([
+        FolioDocxReviewer.fromBuffer(base, { session }),
+        FolioDocxReviewer.fromBuffer(revised, { session }),
+      ]);
+      const neutral = compareContent({
+        base: { blocks: baseReviewer.snapshot().blocks },
+        revised: { blocks: revisedReviewer.snapshot().blocks },
+      });
+      if (neutral.isErr()) {
+        throw neutral.error;
+      }
+      const neutralChanges = neutral.value.events
+        .filter(({ type }) => type !== "unchanged")
+        .map(({ type }) => (type === "inserted" ? "added" : type));
 
-    expect(neutralChanges).toEqual(["deleted", "added"]);
-    const versionDiff = await compareDocxVersions(base, revised);
-    expect(versionDiff.changes.map(({ type }) => type)).toEqual(neutralChanges);
-    expect(versionDiff.summaryCounts).toMatchObject({
-      added: 1,
-      deleted: 1,
-      unchanged: 0,
-    });
+      expect(neutralChanges).toEqual(["deleted", "added"]);
+      const versionDiff = await compareDocxVersions(base, revised, { session });
+      expect(versionDiff.changes.map(({ type }) => type)).toEqual(
+        neutralChanges,
+      );
+      expect(versionDiff.summaryCounts).toMatchObject({
+        added: 1,
+        deleted: 1,
+        modified: 0,
+        unchanged: 1,
+      });
+    },
+  );
+
+  test("reads a body ending with a table as closed by an empty paragraph (canonical)", async () => {
+    const text = "Payment is due within thirty days.";
+    const base = await buildDocxBuffer([{ text, paraId: "00000001" }]);
+    const changesAgainst = async (closing: readonly Paragraph[]) => {
+      const { changes } = await compareDocxVersions(
+        base,
+        await buildTableCellDocxBuffer(text, closing),
+        { session: "canonical" },
+      );
+      return changes.map((change) =>
+        change.type === "modified"
+          ? { type: change.type, segments: change.segments }
+          : { type: change.type, text: "text" in change ? change.text : null },
+      );
+    };
+    const unclosed = await changesAgainst([]);
+    expect(unclosed).toEqual(
+      await changesAgainst([{ type: "paragraph", content: [] }]),
+    );
+    expect(unclosed).toEqual([
+      { type: "added", text },
+      { type: "modified", segments: [{ type: "del", text }] },
+    ]);
   });
 });
 
