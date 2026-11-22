@@ -311,6 +311,42 @@ export const lastBlockPastBoundaries = (
 ): BlockContent | undefined =>
   blocks.findLast((block) => !isBlockBoundary(block));
 
+/**
+ * The paragraph that resolving a pending change of a paragraph mark can
+ * join with the paragraph at `index` of `blocks`, on `side`: the one whose
+ * mark it is before it, the one its own mark joins after it. `undefined`
+ * when none can.
+ */
+export const joinNeighbour = (
+  blocks: readonly BlockContent[],
+  { index, side }: { index: number; side: "before" | "after" },
+): Paragraph | undefined => {
+  /** The paragraph whose mark joins it with the one it returns. */
+  const follower = (at: number): BlockContent | undefined => {
+    const paragraph = blocks[at];
+    if (paragraph?.type !== "paragraph") return undefined;
+    return paragraph.sectionProperties === undefined
+      ? blockFollower(blocks, at).block
+      : blocks[at + 1];
+  };
+  const own = blocks[index];
+  if (own?.type !== "paragraph") return undefined;
+  if (side === "after") {
+    const next = follower(index);
+    return next?.type === "paragraph" ? next : undefined;
+  }
+  let previousAt = index - 1;
+  for (let block = blocks[previousAt]; block !== undefined;) {
+    if (!isBlockBoundary(block)) break;
+    previousAt -= 1;
+    block = blocks[previousAt];
+  }
+  const previous = blocks[previousAt];
+  return previous?.type === "paragraph" && follower(previousAt) === own
+    ? previous
+    : undefined;
+};
+
 /** Every range boundary in `content`, at any depth, in document order. */
 export const rangeBoundariesIn = (content: readonly InlineNode[]): Boundary[] =>
   content.flatMap((node) =>
