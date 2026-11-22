@@ -1030,6 +1030,10 @@ export type TableCell = {
     colSpan?: number;
     rowSpan?: number;
     width?: number;
+    preferredWidth?: {
+        type: TableWidthType;
+        value: number;
+    };
     verticalAlign?: "top" | "center" | "bottom";
     textDirection?: NonNullable<TableCellFormatting["textDirection"]>;
     background?: string;
