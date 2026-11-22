@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
-import type { BlockContent, Document, Paragraph } from "../../model/document";
+import type {
+  BlockContent,
+  Document,
+  Paragraph,
+  ParagraphContent,
+} from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { storyParagraphs } from "../blocks";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
@@ -1057,8 +1062,90 @@ test.each(["body", "cell"] as const)(
     );
     const { tracked, direct } = assertLaws(document, deletion(["00000001"]));
     expect(tracked.revisions).toEqual([]);
-    expect(tracked.document).toStrictEqual(document);
-    expect(direct.document).toStrictEqual(document);
+    expect(tracked.document).toBe(document);
+    expect(direct.document).toBe(document);
+    expect(tracked.inverse).toEqual([]);
+    expect(direct.inverse).toEqual([]);
+  },
+);
+
+const ZERO_WIDTH_CONTENTS: Record<string, readonly ParagraphContent[]> = {
+  nothing: [],
+  "a bookmark's end": [{ type: "bookmarkEnd", id: 1 }],
+  "a comment's range": [
+    { type: "commentRangeStart", id: 8 },
+    { type: "commentRangeEnd", id: 8 },
+  ],
+  "a comment's range and a bookmark's end": [
+    { type: "commentRangeStart", id: 8 },
+    { type: "commentRangeEnd", id: 8 },
+    { type: "bookmarkEnd", id: 1 },
+  ],
+  "a bookmark's end and an empty link": [
+    { type: "bookmarkEnd", id: 1 },
+    { type: "hyperlink", href: "https://example.org", children: [] },
+  ],
+};
+
+const AFTER_DELETED: Record<string, readonly BlockContent[]> = {
+  "nothing after it": [],
+  "a bookmark after it": [
+    { type: "bookmarkStart", id: 90, name: "_GoBack" },
+    { type: "bookmarkEnd", id: 90 },
+  ],
+  "a paragraph after it": [paragraph("00000002", "After.")],
+};
+
+test.each(
+  Object.entries(ZERO_WIDTH_CONTENTS).flatMap(([held, content]) =>
+    Object.entries(AFTER_DELETED).flatMap(([place, after]) =>
+      [false, true].map((pending) => ({
+        held,
+        content,
+        place,
+        after,
+        pending,
+      })),
+    ),
+  ),
+)(
+  "a deletion of a paragraph holding $held, $place, records a change, changes nothing or is refused (mark pending deletion: $pending)",
+  ({ content, after, pending }) => {
+    const document = documentOf([
+      {
+        type: "paragraph",
+        paraId: "00000001",
+        content: [...content],
+        ...(pending
+          ? {
+              pPrMark: {
+                kind: "del",
+                info: { id: 5, author: "Other", date: "2026-01-02T03:04:05Z" },
+              } as const,
+            }
+          : {}),
+      },
+      ...after,
+    ]);
+    const op = deletion(["00000001"]);
+    const direct = apply(document, { ...op, revision: undefined });
+    const tracked = applyDocumentOp(document, op);
+    if (tracked.isErr()) {
+      // Nothing to record, where the direct deletion still changes something.
+      expect(tracked.error.reason).toBe(
+        DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+      );
+      expect(direct.document).not.toBe(document);
+      return;
+    }
+    expect(tracked.value.document === document).toBe(
+      tracked.value.revisions.length === 0,
+    );
+    for (const edit of [direct, tracked.value]) {
+      if (edit.document !== document)
+        expect(edit.document).not.toStrictEqual(document);
+      expect(edit.inverse.length === 0).toBe(edit.document === document);
+    }
   },
 );
 

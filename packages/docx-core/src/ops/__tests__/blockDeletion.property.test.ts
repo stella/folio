@@ -255,7 +255,15 @@ const expectDirectRange = (
   });
 };
 
-const expectStaleInverse = (applied: AppliedDocumentOp) => {
+/**
+ * The inverse of a deletion that changed the `original` refuses a document
+ * changed since; a deletion that changed nothing has no inverse.
+ */
+const expectStaleInverse = (applied: AppliedDocumentOp, original: Document) => {
+  if (applied.document === original) {
+    expect(applied.inverse).toEqual([]);
+    return;
+  }
   const replacement = applied.inverse.find(
     (op) => op.type === DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
   );
@@ -333,7 +341,7 @@ test("block deletion satisfies L1–L7, exact id demand and stale inverses", () 
           expectInverse(applied, document); // L4
           expectLocality(document, applied); // L6
           expectFinalMarks(applied.document); // L7
-          expectStaleInverse(applied);
+          expectStaleInverse(applied, document);
         }
         expectInverse(accepted, tracked.document);
         expectInverse(rejected, tracked.document);
