@@ -6655,6 +6655,18 @@ export class CanonicalPublicOperations {
       after?.type.name === "table" &&
       (before?.type.name === "table" || followsInsertedTable) &&
       !precedesDeletedTable;
+    // With survivor ids option C the joined paragraph a pending join makes of
+    // it carries its id: tracked, the words joined into it go too, as deleting
+    // it directly after the join leaves nothing. A paragraph of that join the
+    // batch deletes itself goes by its own deletion.
+    const joined = deletesJoinedWords
+      ? joinedBefore(doc, paragraph.start - 1)
+      : [];
+    const takesJoinedWords =
+      deletesJoinedWords && !joined.some((id) => deletedByBatch.has(id));
+    const opening = takesJoinedWords ? joined.at(-1) : undefined;
+    const joinedWordsStart =
+      opening === undefined ? undefined : projection.paragraph(opening)?.start;
     let holdsOriginalWords = false;
     paragraph.node.descendants((node) => {
       if (
@@ -6676,7 +6688,9 @@ export class CanonicalPublicOperations {
           holdsOriginalWords))
     ) {
       if (paragraph.start === end) return refusal("noopOperation");
-      const from = projection.addressAt(paragraph.start);
+      // Words a pending join runs into it go with its own, as below.
+      const start = joinedWordsStart ?? paragraph.start;
+      const from = projection.addressAt(start);
       const to = projection.addressAt(end);
       if (from.isErr() || to.isErr()) return refusal("unsupportedBlock");
       return tracking({
@@ -6684,7 +6698,7 @@ export class CanonicalPublicOperations {
           { type: "replaceText", from: from.value, to: to.value, text: "" },
         ],
         normalizations: [],
-        from: paragraph.start,
+        from: start,
         to: end,
       });
     }
@@ -6704,11 +6718,6 @@ export class CanonicalPublicOperations {
       !gainsFollower &&
       !previousGainsFollower &&
       noDeletedRunBefore(deletedRun);
-    const joined = deletesJoinedWords
-      ? joinedBefore(doc, paragraph.start - 1)
-      : [];
-    const takesJoinedWords =
-      deletesJoinedWords && !joined.some((id) => deletedByBatch.has(id));
     // At a final join destination, the range fallback starts after the
     // joined words. Use the block deletion to take those words while the
     // destination still supplies the container's last mark.
@@ -6733,11 +6742,6 @@ export class CanonicalPublicOperations {
           type: "deleteParagraphs",
           story: projectionStory,
           blockIds: [paragraph.blockId],
-          // With survivor ids option C the joined paragraph a pending join
-          // makes of it carries its id: tracked, the words joined into it go
-          // too, as deleting it directly after the join leaves nothing. A
-          // paragraph of that join the batch deletes itself goes by its own
-          // deletion.
           ...(takesJoinedWords ? { joinedWords: "deleted" as const } : {}),
         },
       ];

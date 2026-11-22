@@ -1932,8 +1932,9 @@ const replacementPreservesOutsideContent = ({
 /**
  * The paragraphs right before `at` in its block list whose marks are pending
  * deletion, first to last: a pending join runs their words into `at`, which
- * ends it with its own mark. None when `at`'s own mark is pending deletion
- * too, since the join then runs on past it.
+ * ends it with its own mark. None when `at`'s own mark goes too, pending
+ * deletion (beside its insertion or not) or a move away, since the join then
+ * runs on past it.
  */
 const paragraphsJoinedInto = (
   document: Document,
@@ -1941,7 +1942,11 @@ const paragraphsJoinedInto = (
 ): string[] => {
   const body = storyBody(document, at.story);
   const located = findStoryParagraph(body, at.blockId);
-  if (located === undefined || located.paragraph.pPrMark?.kind === "del")
+  if (
+    located === undefined ||
+    joinsFollowingParagraph(located.paragraph) ||
+    located.paragraph.pPrMark?.deletion !== undefined
+  )
     return [];
   const list = blockListAt(body.content, located.list);
   const joined: string[] = [];
@@ -1949,7 +1954,7 @@ const paragraphsJoinedInto = (
     const block = list[index];
     if (
       block?.type !== "paragraph" ||
-      block.pPrMark?.kind !== "del" ||
+      !joinsFollowingParagraph(block) ||
       block.paraId === undefined
     )
       break;
