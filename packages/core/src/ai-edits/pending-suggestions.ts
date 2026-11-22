@@ -5,6 +5,7 @@ import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   parseFolioDocumentOperationBatch,
 } from "../document-operations";
+import { expectParagraphAttrs } from "../prosemirror/attrs";
 import {
   getSuggestions,
   rejectEverySuggestion,
@@ -46,6 +47,10 @@ export type FolioPendingSuggestionRecord = {
   provenance: "suggested";
   sourceDocumentFingerprint: string;
   commentId?: number;
+};
+
+type StoredSuggestion = FolioPendingSuggestionRecord & {
+  splitRevisionId?: number;
 };
 
 export type FolioPendingSuggestionStaleReason =
@@ -123,10 +128,14 @@ type AbsorptionStep = (options: AbsorptionStepOptions) => void;
 type PlaceRemovedAnchorsOptions = {
   activeSuggestionIds: ReadonlySet<string>;
   stateForStory: (story: FolioDocumentStoryHandle) => EditorState | null;
+  savedSplitSource?: (
+    story: FolioDocumentStoryHandle,
+  ) => FolioAIEditSnapshot | null;
 };
 
 type ExportPendingSuggestionsOptions = {
   activeSuggestionIds: ReadonlySet<string>;
+  stateForStory?: PlaceRemovedAnchorsOptions["stateForStory"];
   snapshotForStory: (
     story: FolioDocumentStoryHandle,
     commentIds: ReadonlySet<number>,
@@ -205,6 +214,8 @@ const operationOnBlock = (
           endOffset: operation.range.endOffset + shift,
         },
       };
+    case "splitBlock":
+      return { ...operation, blockId, offset: operation.offset + shift };
     default:
       return { ...operation, blockId };
   }
@@ -231,7 +242,7 @@ const finalSurvivor = (
 };
 
 type ReanchoredRecordOptions = {
-  record: FolioPendingSuggestionRecord;
+  record: StoredSuggestion;
   survivors: ReadonlyMap<string, string>;
   /** The record's story before the resolution, every proposal rejected. */
   before: FolioAIEditSnapshot | null;
@@ -255,7 +266,7 @@ const reanchoredRecord = ({
   survivors,
   before,
   after,
-}: ReanchoredRecordOptions): FolioPendingSuggestionRecord | null => {
+}: ReanchoredRecordOptions): StoredSuggestion | null => {
   const { suggestionId, anchor: recorded } = record;
   const { paraId } = recorded;
   if (paraId === null)
@@ -328,8 +339,59 @@ const containerKey = ({
         : [table.tableIndex, table.rowIndex, table.cellIndex],
   });
 
+const suggestionSnapshot = (state: EditorState) =>
+  createFolioAIEditSnapshotWithStyleResolver(
+    state.doc,
+    getDocumentStyleResolver(state),
+  );
+
+type CurrentSplitOptions = {
+  record: StoredSuggestion;
+  live: FolioAIEditSnapshot;
+  saved: FolioAIEditSnapshot;
+};
+
+/** A split follows its own paragraph mark as edits move it through the story. */
+const currentSplitRecord = ({
+  record,
+  live,
+  saved,
+}: CurrentSplitOptions): StoredSuggestion | null => {
+  const { operation, suggestionId, splitRevisionId } = record;
+  if (operation.type !== "splitBlock" || splitRevisionId === undefined)
+    return null;
+  const doc = sourceDocumentOf(live);
+  for (const carrier of Object.values(live.anchors)) {
+    const paragraph = doc.nodeAt(carrier.from);
+    if (paragraph?.type.name !== "paragraph") continue;
+    const mark = expectParagraphAttrs(paragraph).pPrMark;
+    if (
+      mark?.kind !== "ins" ||
+      mark.info.id !== splitRevisionId ||
+      mark.info.suggestionId !== suggestionId
+    )
+      continue;
+    const anchor = saved.anchors[carrier.id];
+    if (!anchor?.text.startsWith(carrier.text)) return null;
+    return {
+      ...record,
+      operation: {
+        ...operation,
+        blockId: carrier.id,
+        offset: carrier.text.length,
+      },
+      anchor: {
+        blockId: carrier.id,
+        paraId: getFolioParaIdFromBlockId(carrier.id),
+        originalTextHash: anchor.textHash,
+      },
+    };
+  }
+  return null;
+};
+
 type PlacedRecordOptions = {
-  record: FolioPendingSuggestionRecord;
+  record: StoredSuggestion;
   /** The record's story as it is, every proposal shown. */
   live: FolioAIEditSnapshot;
   /** The same story, every proposal rejected: the paragraphs a save holds. */
@@ -350,7 +412,7 @@ const placedRecord = ({
   live,
   saved,
   ranges,
-}: PlacedRecordOptions): FolioPendingSuggestionRecord => {
+}: PlacedRecordOptions): StoredSuggestion => {
   const { operation, suggestionId } = record;
   if (
     operation.type !== "insertAfterBlock" &&
@@ -547,7 +609,7 @@ const parseRecord = (value: unknown): FolioPendingSuggestionRecord | null => {
 
 /** Tracks only operations that successfully staged in `suggested` mode. */
 export class FolioPendingSuggestionRegistry {
-  private readonly records = new Map<string, FolioPendingSuggestionRecord>();
+  private readonly records = new Map<string, StoredSuggestion>();
   private readonly sourceFingerprints = new Map<string, string>();
 
   clear(): void {
@@ -581,6 +643,7 @@ export class FolioPendingSuggestionRegistry {
   placeRemovedAnchors({
     activeSuggestionIds,
     stateForStory,
+    savedSplitSource,
   }: PlaceRemovedAnchorsOptions): void {
     const views = new Map<
       string,
@@ -599,15 +662,22 @@ export class FolioPendingSuggestionRegistry {
             ? null
             : {
                 state,
-                live: createFolioAIEditSnapshotWithStyleResolver(
-                  state.doc,
-                  getDocumentStyleResolver(state),
-                ),
+                live: suggestionSnapshot(state),
               };
         views.set(storyKey, view);
       }
       if (view === null || view.live.anchors[anchor.paraId] !== undefined)
         continue;
+      if (record.splitRevisionId !== undefined) {
+        const saved = savedSplitSource?.(story);
+        const split = saved
+          ? currentSplitRecord({ record, live: view.live, saved })
+          : null;
+        if (split !== null) {
+          this.records.set(key, split);
+          continue;
+        }
+      }
       const ranges =
         getSuggestions(view.state).find(
           (entry) => entry.suggestionId === suggestionId,
@@ -723,7 +793,7 @@ export class FolioPendingSuggestionRegistry {
         outcome.suggestionId === (operation.suggestionId ?? operation.id)
           ? operation
           : { ...operation, suggestionId: outcome.suggestionId };
-      const record: FolioPendingSuggestionRecord = {
+      const record: StoredSuggestion = {
         version: FOLIO_PENDING_SUGGESTION_VERSION,
         suggestionId: outcome.suggestionId,
         operation: structuredClone(recorded),
@@ -744,6 +814,10 @@ export class FolioPendingSuggestionRegistry {
         ...(outcome.commentId !== undefined && {
           commentId: outcome.commentId,
         }),
+        ...(recorded.type === "splitBlock" &&
+          outcome.revisionId !== undefined && {
+            splitRevisionId: outcome.revisionId,
+          }),
       };
       this.records.set(recordKey(record), record);
     }
@@ -778,9 +852,14 @@ export class FolioPendingSuggestionRegistry {
   exportPendingSuggestions({
     activeSuggestionIds,
     snapshotForStory,
+    stateForStory,
   }: ExportPendingSuggestionsOptions): FolioPendingSuggestionRecord[] {
     const pending: FolioPendingSuggestionRecord[] = [];
-    const fingerprints = new Map<string, string>();
+    const savedStories = new Map<
+      string,
+      { snapshot: FolioAIEditSnapshot; fingerprint: string }
+    >();
+    const liveStories = new Map<string, FolioAIEditSnapshot | null>();
     const commentIdsByStory = new Map<string, Set<number>>();
     for (const record of this.records.values()) {
       if (
@@ -796,24 +875,47 @@ export class FolioPendingSuggestionRegistry {
     for (const [key, record] of this.records) {
       if (activeSuggestionIds.has(record.suggestionId)) {
         const storyKey = canonicalJson(record.story);
-        let fingerprint = fingerprints.get(storyKey);
-        if (fingerprint === undefined) {
+        let saved = savedStories.get(storyKey);
+        if (saved === undefined) {
           const snapshot = snapshotForStory(
             record.story,
             commentIdsByStory.get(storyKey) ?? new Set<number>(),
           );
           if (!snapshot) continue;
-          fingerprint = fingerprintOf(snapshot, record.story);
-          fingerprints.set(storyKey, fingerprint);
+          saved = {
+            snapshot,
+            fingerprint: fingerprintOf(snapshot, record.story),
+          };
+          savedStories.set(storyKey, saved);
         }
-        const current = { ...record, sourceDocumentFingerprint: fingerprint };
+        let updated = record;
+        if (
+          record.splitRevisionId !== undefined &&
+          stateForStory !== undefined
+        ) {
+          let live = liveStories.get(storyKey);
+          if (live === undefined) {
+            const state = stateForStory(record.story);
+            live = state === null ? null : suggestionSnapshot(state);
+            liveStories.set(storyKey, live);
+          }
+          if (live !== null)
+            updated =
+              currentSplitRecord({ record, live, saved: saved.snapshot }) ??
+              record;
+        }
+        const current = {
+          ...updated,
+          sourceDocumentFingerprint: saved.fingerprint,
+        };
         this.records.set(key, current);
-        pending.push(structuredClone(current));
+        const { splitRevisionId: _, ...external } = current;
+        pending.push(structuredClone(external));
       } else {
         this.records.delete(key);
       }
     }
-    for (const [storyKey, fingerprint] of fingerprints) {
+    for (const [storyKey, { fingerprint }] of savedStories) {
       this.sourceFingerprints.set(storyKey, fingerprint);
     }
     if (pending.length === 0) this.sourceFingerprints.clear();

@@ -260,6 +260,188 @@ const operation: fc.Arbitrary<FolioDocumentOperation> = fc.oneof(
   },
 ) as fc.Arbitrary<FolioDocumentOperation>;
 
+type MixedReviewOptions = {
+  reviewer: FolioDocxReviewer;
+  batches: readonly Batch[];
+  picks: readonly number[];
+};
+
+const rejectMixedReview = async ({
+  reviewer,
+  batches,
+  picks,
+}: MixedReviewOptions) => {
+  const suggestions: string[] = [];
+  for (const [index, { mode, operation: op }] of batches.entries()) {
+    const id = `op-${String(index)}`;
+    const result = apply(reviewer, mode, [{ ...op, id }]);
+    if (mode === "suggested" && result.applied.length > 0) suggestions.push(id);
+  }
+  // One change or one suggestion at a time, in the order drawn.
+  for (const pick of picks) {
+    const changes = reviewer.getChanges();
+    if (changes.length === 0 && suggestions.length === 0) break;
+    if (pick % 2 === 0 && suggestions.length > 0) {
+      const [id] = suggestions.splice(pick % suggestions.length, 1);
+      if (id !== undefined) reviewer.rejectSuggestion(id);
+      continue;
+    }
+    const change = changes[pick % Math.max(changes.length, 1)];
+    if (change !== undefined) reviewer.rejectChange(change);
+  }
+  for (const id of suggestions) reviewer.rejectSuggestion(id);
+  reviewer.rejectAll();
+  expect(await textsOf(await reviewer.toBuffer())).toEqual(SOURCE_TEXTS);
+};
+
+test.each(["legacy", "canonical"] as const)(
+  "a suggested split remains rejectable after nearby tracked marks join its anchor (%s)",
+  async (session) => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(await source(), {
+      session,
+    });
+    await rejectMixedReview({
+      reviewer,
+      batches: [
+        {
+          mode: "suggested",
+          operation: {
+            id: "split",
+            type: "splitBlock",
+            blockId: "10000002",
+            offset: 2,
+          },
+        },
+        {
+          mode: "tracked-changes",
+          operation: {
+            id: "earlier",
+            type: "splitBlock",
+            blockId: "10000002",
+            offset: 1,
+          },
+        },
+        {
+          mode: "suggested",
+          operation: {
+            id: "suggested",
+            type: "insertAfterBlock",
+            blockId: "10000002",
+            text: "Payment due.",
+          },
+        },
+        {
+          mode: "tracked-changes",
+          operation: {
+            id: "tracked",
+            type: "insertAfterBlock",
+            blockId: "10000002",
+            text: "Payment due.",
+          },
+        },
+        {
+          mode: "tracked-changes",
+          operation: {
+            id: "opening",
+            type: "splitBlock",
+            blockId: "10000001",
+            offset: 1,
+          },
+        },
+      ],
+      picks: [5, 35_248_361, 2_147_483_645, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    });
+  },
+);
+
+test.each([1, 2])(
+  "proposed splits follow their own marks through absorption (%i splits)",
+  async (splitCount) => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(await source(), {
+      session: "canonical",
+    });
+    const proposed = [
+      {
+        id: "middle",
+        suggestionId: "proposal",
+        type: "splitBlock",
+        blockId: "10000002",
+        offset: 2,
+      },
+      {
+        id: "closing",
+        suggestionId: "proposal",
+        type: "splitBlock",
+        blockId: "10000003",
+        offset: 3,
+      },
+    ] satisfies FolioDocumentOperation[];
+    const staged = proposed.slice(0, splitCount);
+    expect(apply(reviewer, "suggested", staged).skipped).toEqual([]);
+    expect(
+      apply(reviewer, "tracked-changes", [
+        { id: "split", type: "splitBlock", blockId: "10000002", offset: 1 },
+      ]).skipped,
+    ).toEqual([]);
+    const deletedBlock = apply(reviewer, "tracked-changes", [
+      { id: "delete", type: "deleteBlock", blockId: "10000002" },
+    ]);
+    expect(deletedBlock.skipped).toEqual([]);
+
+    const checkRestage = async (offset: number) => {
+      const records = reviewer.exportPendingSuggestions();
+      expect(records).toHaveLength(splitCount);
+      const middle = records.find(
+        ({ operation: pending }) => pending.id === "middle",
+      );
+      expect(middle?.operation).toMatchObject({ type: "splitBlock", offset });
+      expect(middle?.anchor.paraId).not.toBe("10000002");
+      expect(middle).not.toHaveProperty("splitRevisionId");
+      if (splitCount === 2)
+        expect(
+          records.find(({ operation: pending }) => pending.id === "closing")
+            ?.operation,
+        ).toMatchObject({ type: "splitBlock", blockId: "10000003", offset: 3 });
+      const reopened = await FolioDocxReviewer.fromBuffer(
+        await reviewer.toBuffer(),
+        {
+          session: "canonical",
+        },
+      );
+      expect(reopened.loadPendingSuggestions(records)).toEqual(
+        staged.map(() => ({
+          status: "restaged",
+          suggestionId: "proposal",
+        })),
+      );
+    };
+    // Reject a tracked deletion with the proposal still live on the successor.
+    const deleted = reviewer
+      .getChanges()
+      .find(({ type }) => type === "deletion");
+    expect(deleted).toBeDefined();
+    // Check resolution even when the host has not previously exported records.
+    const withRestoredText = reviewer.fork();
+    const deletionInFork = withRestoredText
+      .getChanges()
+      .find(({ type }) => type === "deletion");
+    expect(
+      deletionInFork !== undefined &&
+        withRestoredText.rejectChange(deletionInFork),
+    ).toBe(true);
+    expect(withRestoredText.rejectSuggestion("proposal")).toBe(true);
+    expect(await textsOf(await withRestoredText.toBuffer())).toEqual(
+      SOURCE_TEXTS,
+    );
+
+    await checkRestage(1);
+    expect(deleted !== undefined && reviewer.rejectChange(deleted)).toBe(true);
+    await checkRestage(2);
+    expect(reviewer.rejectSuggestion("proposal")).toBe(true);
+    expect(await textsOf(await reviewer.toBuffer())).toEqual(SOURCE_TEXTS);
+  },
+);
+
 test(
   "rejecting any mix of tracked and suggested changes, in any order, gives the source back",
   async () => {
@@ -279,30 +461,7 @@ test(
         fc.array(fc.nat(), { minLength: 12, maxLength: 12 }),
         async (batches, picks) => {
           const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice(0));
-          const suggestions: string[] = [];
-          for (const [index, { mode, operation: op }] of batches.entries()) {
-            const id = `op-${String(index)}`;
-            const result = apply(reviewer, mode, [{ ...op, id }]);
-            if (mode === "suggested" && result.applied.length > 0)
-              suggestions.push(id);
-          }
-          // One change or one suggestion at a time, in the order drawn.
-          for (const pick of picks) {
-            const changes = reviewer.getChanges();
-            if (changes.length === 0 && suggestions.length === 0) break;
-            if (pick % 2 === 0 && suggestions.length > 0) {
-              const [id] = suggestions.splice(pick % suggestions.length, 1);
-              if (id !== undefined) reviewer.rejectSuggestion(id);
-              continue;
-            }
-            const change = changes[pick % Math.max(changes.length, 1)];
-            if (change !== undefined) reviewer.rejectChange(change);
-          }
-          for (const id of suggestions) reviewer.rejectSuggestion(id);
-          reviewer.rejectAll();
-          expect(await textsOf(await reviewer.toBuffer())).toEqual(
-            SOURCE_TEXTS,
-          );
+          await rejectMixedReview({ reviewer, batches, picks });
         },
       ),
       { id: "rejected-mark-beside-suggestion-mixed-order", numRuns: 300 },
