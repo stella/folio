@@ -1,4 +1,4 @@
-import type { StrokeDashCycle } from "../../utils/repeatingStrokeGradient";
+import type { StrokeDashCycle } from "../../display-list/types";
 import { pointsToPixels } from "../../utils/units";
 import type { CellBorderSpec } from "../types";
 

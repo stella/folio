@@ -1,7 +1,4 @@
-export type StrokeDashCycle =
-  | readonly [number, number]
-  | readonly [number, number, number, number]
-  | readonly [number, number, number, number, number, number];
+import type { StrokeDashCycle } from "../display-list/types";
 
 type RepeatingStrokeGradientOptions = {
   color: string;
