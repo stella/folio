@@ -50,7 +50,7 @@ export function convertBorderSpecToLayout(
   return result;
 }
 
-/** Keep the authored order of unequal compound bands on table cell edges. */
+/** Preserve authored table cell edge styles that CSS cannot distinguish. */
 export function convertCellBorderSpecToLayout(
   border: ConvertibleBorder,
   theme?: DeepReadonly<Theme> | null,
@@ -58,7 +58,13 @@ export function convertCellBorderSpecToLayout(
   const converted = convertBorderSpecToLayout(border, theme);
   if (!converted) return undefined;
   const { style } = border;
-  if (hasCompoundTableBorderBands(style))
+  if (
+    hasCompoundTableBorderBands(style) ||
+    style === "dotDash" ||
+    style === "dashSmallGap" ||
+    style === "dotDotDash" ||
+    style === "dashed"
+  )
     return { ...converted, authoredStyle: style };
   return converted;
 }

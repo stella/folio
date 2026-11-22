@@ -61,6 +61,11 @@ export type DisplayRect = {
 export type DisplayStrokePattern =
   "solid" | "dashed" | "dotted" | "double" | "wavy";
 
+export type StrokeDashCycle =
+  | readonly [number, number]
+  | readonly [number, number, number, number]
+  | readonly [number, number, number, number, number, number];
+
 /**
  * A stroke is centred on its path: half the thickness falls on each side.
  * Stated because the backends default differently (a CSS border sits inside
@@ -71,6 +76,8 @@ export type DisplayStroke = {
   readonly color: DisplayColor;
   readonly thicknessPx: number;
   readonly pattern: DisplayStrokePattern;
+  /** For dashed strokes, one explicit cycle of alternating ink and gaps in CSS pixels. */
+  readonly dashArrayPx?: StrokeDashCycle;
 };
 
 /**

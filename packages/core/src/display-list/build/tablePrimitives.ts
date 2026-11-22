@@ -16,6 +16,7 @@
 import {
   type TableBorderSide,
   tableCellBorderBands,
+  tableCellBorderDash,
 } from "../../layout-engine/measure/tableBorderBands";
 import {
   createTableCellFlowState,
@@ -129,8 +130,17 @@ function paintBorderEdge(
       });
     }
   } else {
-    const stroke = strokeFor(border, context, label);
+    let stroke = strokeFor(border, context, label);
     if (!stroke) return 0;
+    const dash = tableCellBorderDash(border);
+    if (dash) {
+      stroke = {
+        color: stroke.color,
+        thicknessPx: dash.widthPx,
+        pattern: "dashed",
+        dashArrayPx: dash.dashArrayPx,
+      };
+    }
     width = stroke.thicknessPx;
     bands.push({ offsetPx: 0, stroke });
   }

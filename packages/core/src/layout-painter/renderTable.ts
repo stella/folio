@@ -18,6 +18,7 @@ import { measureParagraph } from "../layout-engine/measure";
 import {
   type TableBorderSide,
   tableCellBorderBands,
+  tableCellBorderDash,
   tableCellBorderWidth,
 } from "../layout-engine/measure/tableBorderBands";
 import {
@@ -74,6 +75,7 @@ import {
   writePaintedRange,
   writePaintedTableStart,
 } from "../utils/paintedPositions";
+import { repeatingStrokeGradient } from "../utils/repeatingStrokeGradient";
 import { applySanitizedImageSrc } from "../utils/sanitizeImageSrc";
 import { emuToPixels } from "../utils/units";
 import {
@@ -657,21 +659,20 @@ const BORDER_BOX_SIDES = {
 const prependBackgroundLayer = (existing: string, layer: string): string =>
   existing ? `${layer}, ${existing}` : layer;
 
-function applyBorder(
-  el: HTMLElement,
-  { side, border, paddingPx = 0 }: CellBorderPaintOptions,
-): void {
-  const props = BORDER_BOX_SIDES[side];
-  if (!border || !paintsCssBorder(border.style)) {
-    el.style[props.border] = "none";
-    return;
+function authoredEdgeBackground(border: CellBorderSpec, horizontal: boolean) {
+  const dash = tableCellBorderDash(border);
+  if (dash) {
+    return {
+      widthPx: dash.widthPx,
+      gradient: repeatingStrokeGradient({
+        color: border.color ?? "#000000",
+        direction: horizontal ? "to right" : "to bottom",
+        dashArrayPx: dash.dashArrayPx,
+      }),
+    };
   }
   const strokeBand = tableCellBorderBands(border);
-  if (!strokeBand) {
-    el.style[props.border] = borderStrokeToCss(border);
-    return;
-  }
-  const horizontal = side === "top" || side === "bottom";
+  if (!strokeBand) return undefined;
   const stops = [];
   let endPx = 0;
   for (const { color, offsetPx, widthPx } of strokeBand.bands) {
@@ -681,11 +682,32 @@ function applyBorder(
       `rgb(${color.r}, ${color.g}, ${color.b}) ${offsetPx}px ${endPx}px`,
     );
   }
-  const gradient = `linear-gradient(to ${horizontal ? "bottom" : "right"}, ${stops.join(", ")})`;
+  return {
+    widthPx: strokeBand.widthPx,
+    gradient: `linear-gradient(to ${horizontal ? "bottom" : "right"}, ${stops.join(", ")})`,
+  };
+}
+
+function applyBorder(
+  el: HTMLElement,
+  { side, border, paddingPx = 0 }: CellBorderPaintOptions,
+): void {
+  const props = BORDER_BOX_SIDES[side];
+  if (!border || !paintsCssBorder(border.style)) {
+    el.style[props.border] = "none";
+    return;
+  }
+  const horizontal = side === "top" || side === "bottom";
+  const background = authoredEdgeBackground(border, horizontal);
+  if (!background) {
+    el.style[props.border] = borderStrokeToCss(border);
+    return;
+  }
+  const { widthPx, gradient } = background;
   // CSS rounds border widths, so reserve the precise stroke band in the
   // border box with padding and paint the strokes on top of the cell fill.
   el.style[props.border] = "none";
-  el.style[props.padding] = `${paddingPx + strokeBand.widthPx}px`;
+  el.style[props.padding] = `${paddingPx + widthPx}px`;
   el.style.backgroundOrigin = "border-box";
   el.style.backgroundClip = "border-box";
   el.style.backgroundRepeat = "no-repeat";
@@ -699,9 +721,7 @@ function applyBorder(
   );
   el.style.backgroundSize = prependBackgroundLayer(
     el.style.backgroundSize,
-    horizontal
-      ? `100% ${strokeBand.widthPx}px`
-      : `${strokeBand.widthPx}px 100%`,
+    horizontal ? `100% ${widthPx}px` : `${widthPx}px 100%`,
   );
 }
 
