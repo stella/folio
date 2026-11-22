@@ -113,16 +113,21 @@ type ConvertedTableCell = {
   breakBefore?: "page";
 };
 
-function convertTableCell(
-  node: PMNode,
-  startPos: number,
-  options: FlowConversionOptions,
-  tableCellMargins?: {
+type TableRowConversionContext = {
+  cellMargins?: {
     top?: number;
     bottom?: number;
     left?: number;
     right?: number;
-  },
+  };
+  preserveSoleHiddenMark?: true;
+};
+
+function convertTableCell(
+  node: PMNode,
+  startPos: number,
+  options: FlowConversionOptions,
+  { cellMargins, preserveSoleHiddenMark }: TableRowConversionContext,
 ): ConvertedTableCell {
   const blocks: FlowBlock[] = [];
   let offset = startPos + 1; // +1 for opening tag
@@ -152,7 +157,7 @@ function convertTableCell(
       );
       blocks.push(block);
     } else if (child.type.name === "table") {
-      blocks.push(convertTable(child, childStart, options));
+      blocks.push(convertTable({ node: child, startPos: childStart, options }));
     } else if (child.type.name === "textBox") {
       blocks.push(convertTextBoxNode(child, childStart, options));
     } else if (child.type.name === "preservedBlock") {
@@ -199,7 +204,7 @@ function convertTableCell(
   const attrs = expectTableCellAttrs(node);
   if (
     attrs.hideMark &&
-    blocks.length > 1 &&
+    (blocks.length > 1 || !preserveSoleHiddenMark) &&
     trailingBlock?.kind === "paragraph" &&
     trailingBlock.runs.every(
       (run) => run.kind === "text" && run.text.length === 0,
@@ -228,14 +233,10 @@ function convertTableCell(
     return twipsToPixels(DEFAULT_TABLE_CELL_MARGIN_TWIPS[side]);
   };
   const padding = {
-    top: resolvePaddingSide("top", margins?.top, tableCellMargins?.top),
-    right: resolvePaddingSide("right", margins?.right, tableCellMargins?.right),
-    bottom: resolvePaddingSide(
-      "bottom",
-      margins?.bottom,
-      tableCellMargins?.bottom,
-    ),
-    left: resolvePaddingSide("left", margins?.left, tableCellMargins?.left),
+    top: resolvePaddingSide("top", margins?.top, cellMargins?.top),
+    right: resolvePaddingSide("right", margins?.right, cellMargins?.right),
+    bottom: resolvePaddingSide("bottom", margins?.bottom, cellMargins?.bottom),
+    left: resolvePaddingSide("left", margins?.left, cellMargins?.left),
   };
 
   const cell: TableCell = {
@@ -309,20 +310,11 @@ const resolveTablePlacement = (
 /**
  * Convert a table row node.
  */
-type TableRowConversionContext = {
-  cellMargins?: {
-    top?: number;
-    bottom?: number;
-    left?: number;
-    right?: number;
-  };
-};
-
 function convertTableRow(
   node: PMNode,
   startPos: number,
   options: FlowConversionOptions,
-  { cellMargins }: TableRowConversionContext,
+  context: TableRowConversionContext,
 ): TableRow {
   const cells: TableCell[] = [];
   let offset = startPos + 1; // +1 for opening tag
@@ -333,7 +325,7 @@ function convertTableRow(
     if (child.type.name === "tableCell" || child.type.name === "tableHeader") {
       const attrs = expectTableCellAttrs(child);
       if (!attrs._omittedGridSlot) {
-        const converted = convertTableCell(child, offset, options, cellMargins);
+        const converted = convertTableCell(child, offset, options, context);
         if (converted.breakBefore !== undefined) {
           breakBefore = converted.breakBefore;
         }
@@ -384,14 +376,20 @@ function convertTableRow(
   return row;
 }
 
-/**
- * Convert a table node to a TableBlock.
- */
-export function convertTable(
-  node: PMNode,
-  startPos: number,
-  options: FlowConversionOptions,
-): TableBlock {
+type ConvertTableOptions = {
+  node: PMNode;
+  startPos: number;
+  options: FlowConversionOptions;
+  opensStory?: boolean;
+};
+
+/** Convert a table node to a TableBlock. */
+export function convertTable({
+  node,
+  startPos,
+  options,
+  opensStory = false,
+}: ConvertTableOptions): TableBlock {
   const rows: TableRow[] = [];
   let offset = startPos + 1; // +1 for opening tag
   const attrs = expectTableAttrs(node);
@@ -402,11 +400,16 @@ export function convertTable(
       ? {}
       : { cellMargins: attrs.cellMargins }),
   };
+  // The first row of a story-opening table keeps a line for a sole end mark.
+  const firstRowContext: TableRowConversionContext = opensStory
+    ? { ...rowContext, preserveSoleHiddenMark: true }
+    : rowContext;
 
   // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
   node.forEach((child) => {
     if (child.type.name === "tableRow") {
-      rows.push(convertTableRow(child, offset, options, rowContext));
+      const context = rows.length === 0 ? firstRowContext : rowContext;
+      rows.push(convertTableRow(child, offset, options, context));
     }
     offset += child.nodeSize;
   });
@@ -582,7 +585,9 @@ export function convertTextBoxNode(
           contentBlocks.push(convertParagraph(child, childPos, opts));
           break;
         case "table":
-          contentBlocks.push(convertTable(child, childPos, opts));
+          contentBlocks.push(
+            convertTable({ node: child, startPos: childPos, options: opts }),
+          );
           break;
         case "preservedBlock":
           contentBlocks.push(

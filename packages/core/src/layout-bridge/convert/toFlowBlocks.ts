@@ -713,7 +713,14 @@ export function toFlowBlocks(
       }
 
       case "table":
-        trackedPush(convertTable(node, pos, opts));
+        trackedPush(
+          convertTable({
+            node,
+            startPos: pos,
+            options: opts,
+            opensStory: blocks.length === 0,
+          }),
+        );
         break;
 
       case "image": {
@@ -862,7 +869,9 @@ export function toFlowBlocks(
       keptAt !== undefined &&
       previous !== undefined &&
       !convertsWithOtherNodes(node) &&
-      startsFrom(previous.before)
+      startsFrom(previous.before) &&
+      (previous.openedStoryWithTable === true) ===
+        (blocks.length === 0 && previous.blocks.at(0)?.kind === "table")
     ) {
       if (previous.pos === pos && previous.firstSdt === sdtSeq) {
         // The node converts as it did: the same blocks.
@@ -944,6 +953,9 @@ export function toFlowBlocks(
       sdts: sdtSeq - firstSdt,
       before,
       blocks: projected,
+      ...(firstBlock === 0 && projected.at(0)?.kind === "table"
+        ? { openedStoryWithTable: true }
+        : {}),
       ...(projectedMarker !== undefined &&
       node.type.name === "paragraph" &&
       projected.length === 1 &&
