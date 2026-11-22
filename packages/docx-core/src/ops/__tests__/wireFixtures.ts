@@ -1147,6 +1147,30 @@ export const envelopes = (): DocumentOpEnvelope[] => {
     for (const inverse of result.inverse) out.push(toOpEnvelope(inverse));
   }
 
+  // A pasted copy of a commented point carries the thread; its anchor takes
+  // a fresh comment id (`comments`, `newCommentIds`).
+  const pastedCopy: DocumentOp = {
+    type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
+    at: at("00000002", 0),
+    slice: {
+      content: [{ type: "commentReference", id: 501 }],
+      openStart: 0,
+      openEnd: 0,
+    },
+    comments: [
+      {
+        id: 501,
+        author: "Reviewer",
+        anchorKind: "point",
+        content: [{ type: "paragraph", paraId: "00002101", content: [] }],
+      },
+    ],
+    newCommentIds: [503],
+  };
+  const pasted = applyDocumentOp(commented.document, pastedCopy).unwrap();
+  out.push(toOpEnvelope(pastedCopy));
+  for (const inverse of pasted.inverse) out.push(toOpEnvelope(inverse));
+
   return out;
 };
 

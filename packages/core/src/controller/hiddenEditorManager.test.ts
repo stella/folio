@@ -2,6 +2,7 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { panic } from "better-result";
 import { describe, expect, spyOn, test } from "bun:test";
 import fc from "fast-check";
+import { history, undo } from "prosemirror-history";
 import { Fragment, type Node as PMNode, Slice } from "prosemirror-model";
 import {
   AllSelection,
@@ -36,6 +37,7 @@ import {
 import { withCanonicalCommand } from "../prosemirror/canonicalCommands";
 import { pasteWithoutFormatting } from "../prosemirror/commands/pastePlainText";
 import { expectCommentRangeBoundaryAttrs } from "../prosemirror/commentRangeBoundaryAttrs";
+import { commentRecordsOf } from "../prosemirror/commentRecords";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { HyperlinkRemovalRefusal } from "../prosemirror/hyperlinkRemoval";
 import { insertTableOfContentsInView } from "../prosemirror/insertOperations";
@@ -43,6 +45,7 @@ import {
   NoteReferenceEditRefusal,
   NoteReferenceReplayDefect,
 } from "../prosemirror/noteReferenceOccurrences";
+import { createSuggestionModePlugin } from "../prosemirror/plugins/suggestionMode";
 import { singletonManager } from "../prosemirror/schema";
 import { FolioYjsNoteReferenceSchemaError } from "../prosemirror/yjsDocumentMetadata";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
@@ -569,6 +572,162 @@ for (const session of ["legacy", "canonical"] as const) {
         expect(spies["onReadOnlyEditAttempt"].calls).toBe(readOnly ? 2 : 0);
         // An editable view takes the paste; a read-only one refuses it.
         expect(view.state.doc.textContent).toBe(readOnly ? "Start" : "xStart");
+      } finally {
+        manager.destroyView();
+        host.remove();
+        releaseDom();
+      }
+    });
+  }
+}
+
+/** "Hello" under comment 1, then " world". */
+const commentedDocument = () => {
+  const source = createEmptyDocument({ initialText: "" });
+  const paragraph = source.package.document.content.at(0);
+  if (paragraph?.type !== "paragraph") panic("Expected paragraph fixture");
+  paragraph.paraId = "12345678";
+  const textRun = (text: string): ParagraphContent => ({
+    type: "run",
+    content: [{ type: "text", text }],
+  });
+  paragraph.content = [
+    { type: "commentRangeStart", id: 1 },
+    textRun("Hello"),
+    { type: "commentRangeEnd", id: 1 },
+    { type: "commentReference", id: 1 },
+    textRun(" world"),
+  ];
+  source.package.document.comments = [
+    {
+      id: 1,
+      author: "Reviewer",
+      anchorKind: "range",
+      content: [
+        {
+          type: "paragraph",
+          paraId: "12345679",
+          content: [textRun("Check this.")],
+        },
+      ],
+    },
+  ];
+  return source;
+};
+
+/** The text each comment's mark covers, by comment id. */
+const commentedText = (doc: PMNode): Map<unknown, string> => {
+  const commented = new Map<unknown, string>();
+  doc.descendants((node) => {
+    for (const { type, attrs } of node.marks)
+      if (type.name === "comment" && node.isText)
+        commented.set(
+          attrs["commentId"],
+          (commented.get(attrs["commentId"]) ?? "") + (node.text ?? ""),
+        );
+  });
+  return commented;
+};
+
+for (const move of [true, false])
+  test(`legacy dropped ${move ? "move keeps its comment" : "copy takes a copy of its comment"}`, () => {
+    const releaseDom = acquireHarnessDom();
+    const host = document.createElement("div");
+    document.body.append(host);
+    const source = commentedDocument();
+    const { deps } = makeDeps({
+      getHost: () => host,
+      getDocument: () => source,
+      getDocumentContext: () => source,
+      getExperimentalSession: () => "legacy",
+      getExternalPlugins: () => [history()],
+    });
+    const manager = createHiddenEditorManager(deps);
+    try {
+      manager.ensureView();
+      const view = manager.getView() ?? panic("Expected a body view");
+      const before = view.state;
+      manager.api.setSelection(1, 6);
+      view.dragging = { slice: view.state.selection.content(), move };
+      const coordinates = spyOn(view, "posAtCoords").mockReturnValue({
+        pos: view.state.doc.content.size - 1,
+        inside: 0,
+      });
+      const event = new Event("drop", { bubbles: true, cancelable: true });
+      Object.defineProperties(event, {
+        dataTransfer: { value: { types: [], files: [], getData: () => "" } },
+        clientX: { value: 10 },
+        clientY: { value: 10 },
+        // The copy modifier of either platform.
+        altKey: { value: !move },
+        ctrlKey: { value: !move },
+      });
+      view.dom.dispatchEvent(event);
+      coordinates.mockRestore();
+      expect(view.state.doc.textContent).toBe(
+        move ? " worldHello" : "Hello worldHello",
+      );
+      expect(commentedText(view.state.doc)).toEqual(
+        new Map(
+          move
+            ? [[1, "Hello"]]
+            : [
+                [1, "Hello"],
+                [2, "Hello"],
+              ],
+        ),
+      );
+      const records = commentRecordsOf(view.state);
+      expect(records?.map(({ id }) => id)).toEqual(move ? [1] : [1, 2]);
+      expect(undo(view.state, view.dispatch)).toBe(true);
+      expect(view.state.doc.eq(before.doc)).toBe(true);
+      expect(commentRecordsOf(view.state)?.map(({ id }) => id)).toEqual([1]);
+    } finally {
+      manager.destroyView();
+      host.remove();
+      releaseDom();
+    }
+  });
+
+for (const session of ["legacy", "canonical"] as const) {
+  for (const mode of ["editing", "suggesting"] as const) {
+    test(`${session} ${mode} plain text pasted inside a comment joins its range`, () => {
+      const releaseDom = acquireHarnessDom();
+      const host = document.createElement("div");
+      document.body.append(host);
+      const source = commentedDocument();
+      const reasons: string[] = [];
+      const { deps } = makeDeps({
+        getHost: () => host,
+        getDocument: () => source,
+        getDocumentContext: () => source,
+        getExperimentalSession: () => session,
+        getExternalPlugins: () =>
+          session === "legacy"
+            ? [createSuggestionModePlugin(mode === "suggesting", "Author")]
+            : [],
+        getEditingMode: () => mode,
+        onSessionRefusal: (reason) => reasons.push(reason),
+      });
+      const manager = createHiddenEditorManager(deps);
+      try {
+        manager.ensureView();
+        const view = manager.getView() ?? panic("Expected a body view");
+        manager.api.setSelection(4);
+        const event = new Event("paste", { bubbles: true, cancelable: true });
+        Object.defineProperty(event, "clipboardData", {
+          value: {
+            types: ["text/plain"],
+            files: [],
+            getData: (type: string) => (type === "text/plain" ? "XX" : ""),
+          },
+        });
+        view.dom.dispatchEvent(event);
+        expect(reasons).toEqual([]);
+        expect(view.state.doc.textContent).toBe("HelXXlo world");
+        expect(commentedText(view.state.doc)).toEqual(
+          new Map([[1, "HelXXlo"]]),
+        );
       } finally {
         manager.destroyView();
         host.remove();

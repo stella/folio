@@ -49,6 +49,7 @@ import {
   applyDocumentOps,
 } from "../apply";
 import { sameBlockList, storyBody, storyParagraphs } from "../blocks";
+import { commentAnchorsIn } from "../comments";
 import { contractViolation, normalizeForOps } from "../contract";
 import {
   allocateEditorIntentIds,
@@ -65,9 +66,13 @@ import {
 } from "../ids";
 import { sameRunFormatting } from "../inline";
 import {
+  childNodes,
   compareGaps,
+  type InlineNode,
   isCommentAnchor,
+  isParagraphContent,
   leafSpans,
+  rebuildNode,
   zeroWidthLeavesAt,
 } from "../leaves";
 import { removedNoteStories } from "../noteMarks";
@@ -3402,7 +3407,7 @@ describe("document operations", () => {
   });
 
   test("operations change logical text and run properties as defined", () => {
-    fc.assert(
+    assertProperty(
       fc.property(documentArbitrary, opSeedArbitrary, (document, seed) => {
         const op = opFor(document, seed);
         const applied = applyDocumentOp(document, op);
@@ -3448,9 +3453,29 @@ describe("document operations", () => {
           case DOCUMENT_OP_TYPES.INSERT_CONTENT: {
             const { blockId, offset } = op.at;
             const old = textOf(before, blockId);
+            // A comment owns one range: an anchor of a kind its comment has
+            // standing already, or repeated in the slice, is left out.
+            const standing = new Set(
+              commentAnchorsIn(document).flatMap(({ node }) =>
+                isCommentAnchor(node) ? [`${node.type}:${node.id}`] : [],
+              ),
+            );
+            const kept = (nodes: readonly InlineNode[]): InlineNode[] =>
+              nodes.flatMap((node) => {
+                if (isCommentAnchor(node)) {
+                  const key = `${node.type}:${node.id}`;
+                  if (standing.has(key)) return [];
+                  standing.add(key);
+                  return [node];
+                }
+                const children = childNodes(node);
+                return children === undefined
+                  ? [node]
+                  : [rebuildNode(node, kept(children))];
+              });
             const added = paragraphLogicalText({
               type: "paragraph",
-              content: [...op.slice.content],
+              content: kept(op.slice.content).filter(isParagraphContent),
             });
             expect(textOf(after, blockId)).toBe(
               old.slice(0, offset) + added + old.slice(offset),
@@ -3552,7 +3577,10 @@ describe("document operations", () => {
           }
         }
       }),
-      propertyConfig({ numRuns: NUM_RUNS }),
+      {
+        numRuns: NUM_RUNS,
+        id: "operations change logical text and run properties as defined",
+      },
     );
   });
 });

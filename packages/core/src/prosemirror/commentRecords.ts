@@ -37,6 +37,17 @@ import {
 import { readCommentReferenceAttrs } from "./commentReferenceAttrs";
 import { COMMENT_REFERENCE_NODE_NAME } from "./commentReferenceIntegrity";
 import { RANGE_ANCHOR_NODE_NAME } from "./extensions/nodes/RangeAnchorExtension";
+import {
+  type PastedComments,
+  settleDroppedComments,
+  settlePastedComments,
+  settlePlacedComments,
+} from "./pastedCommentCopies";
+import {
+  mapPlacedRanges,
+  pastedRepeatsOf,
+  type PlacedRange,
+} from "./pastePlacement";
 import { createPluginKeyOwner } from "./pluginKeyOwner";
 import { SUGGESTION_BYPASS_META } from "./plugins/suggestionMode";
 import { readRangeAnchorAttrs } from "./rangeAnchorAttrs";
@@ -134,6 +145,69 @@ type CommentRecordsListener = (
 
 const listeners = new WeakMap<EditorView, Set<CommentRecordsListener>>();
 
+/** What a paste or a drop leaves for its transaction. */
+type PendingPaste =
+  // Its slice carries these comments, settled where it is placed.
+  | { type: "pasted"; comments: PastedComments }
+  // Its slice is being dragged, and is settled where it is dropped.
+  | { type: "dragged" };
+
+/** Where content stands whose comments own no other range. */
+type PlacedComments = {
+  ranges: readonly PlacedRange[];
+  /** The comments placed there; all of them when absent. */
+  only?: ReadonlySet<number>;
+};
+
+const isDrop = (transaction: Transaction): boolean =>
+  transaction.getMeta("paste") === true ||
+  transaction.getMeta("uiEvent") === "drop";
+
+const stepMaps = (transactions: readonly Transaction[]): StepMap[] =>
+  transactions.flatMap(({ mapping }) => mapping.maps);
+
+/** Where a transaction's steps put content, in its resulting document. */
+const insertedRanges = ({ mapping }: Transaction): PlacedRange[] => {
+  const inserted = mapping.maps.flatMap((map, index) => {
+    const ranges: PlacedRange[] = [];
+    // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror StepMap.forEach
+    map.forEach((_oldFrom, _oldTo, from, to) => {
+      if (from < to) ranges.push({ from, to });
+    });
+    return mapPlacedRanges(ranges, mapping.maps.slice(index + 1));
+  });
+  // A later step may put content inside what an earlier one did.
+  const merged: PlacedRange[] = [];
+  for (const range of inserted.toSorted((a, b) => a.from - b.from)) {
+    const last = merged.at(-1);
+    if (last === undefined || last.to < range.from) merged.push({ ...range });
+    else last.to = Math.max(last.to, range.to);
+  }
+  return merged;
+};
+
+/** Where `transactions` drop content, after them; undefined when none do. */
+const droppedRanges = (
+  transactions: readonly Transaction[],
+): PlacedRange[] | undefined => {
+  const at = transactions.findIndex(isDrop);
+  const drop = transactions[at];
+  return drop === undefined
+    ? undefined
+    : mapPlacedRanges(
+        insertedRanges(drop),
+        stepMaps(transactions.slice(at + 1)),
+      );
+};
+
+/** Where `transactions` pasted the same content again, after them. */
+const pastedRepeats = (transactions: readonly Transaction[]): PlacedRange[][] =>
+  transactions.flatMap((transaction, index) =>
+    pastedRepeatsOf(transaction).map((repeat) =>
+      mapPlacedRanges(repeat, stepMaps(transactions.slice(index + 1))),
+    ),
+  );
+
 /**
  * The plugin that holds a session's comment records, starting from `initial`
  * (the loaded document's comments).
@@ -141,8 +215,91 @@ const listeners = new WeakMap<EditorView, Set<CommentRecordsListener>>();
 export function createCommentRecordsPlugin(
   initial: CommentRecords,
 ): Plugin<CommentRecordsPluginState> {
+  // A comment owns one range: a paste waits here, by the state it goes into,
+  // to add its threads to the records in its own undo step.
+  const pending = new WeakMap<EditorState, PendingPaste>();
+  // A plugin may put back what a placement removed, a tracked deletion say:
+  // its comments wait here, by its transaction, for what is appended to it.
+  const placed = new WeakMap<Transaction, PlacedComments>();
+  const settleDropped = (
+    newState: EditorState,
+    root: Transaction,
+    comments: PlacedComments,
+  ): Transaction | null => {
+    const records = commentRecordsOf(newState);
+    const transaction = newState.tr;
+    const copies = settleDroppedComments(transaction, { ...comments, records });
+    if (copies === null) {
+      placed.set(root, comments);
+      return null;
+    }
+    if (records !== null && copies.length > 0)
+      stepCommentRecords(newState, transaction, [...records, ...copies]);
+    return transaction;
+  };
   return new Plugin<CommentRecordsPluginState>({
     key: commentRecordsOwner.createKey(),
+    props: {
+      transformPasted(slice, view, plain) {
+        // What was not placed after all leaves nothing for the next one.
+        pending.delete(view.state);
+        // Plain text holds no comment: it takes the marks at the caret.
+        if (plain) return slice;
+        if (view.dragging) {
+          pending.set(view.state, { type: "dragged" });
+          return slice;
+        }
+        const settled = settlePastedComments(slice, {
+          doc: view.state.doc,
+          records: commentRecordsOf(view.state),
+          named: commentIdsNamedIn(view.state.doc),
+        });
+        if (settled.comments !== null)
+          pending.set(view.state, {
+            type: "pasted",
+            comments: settled.comments,
+          });
+        return settled.slice;
+      },
+    },
+    appendTransaction: (transactions, oldState, newState) => {
+      const [first] = transactions;
+      if (first === undefined) return null;
+      const appendedTo: Transaction | undefined = first.getMeta(
+        "appendedTransaction",
+      );
+      const root = appendedTo ?? first;
+      const standing = placed.get(root);
+      if (standing !== undefined) {
+        placed.delete(root);
+        return settleDropped(newState, root, {
+          ...standing,
+          ranges: mapPlacedRanges(standing.ranges, stepMaps(transactions)),
+        });
+      }
+      const paste = pending.get(oldState);
+      if (paste === undefined) return null;
+      pending.delete(oldState);
+      if (paste.type === "dragged") {
+        const ranges = droppedRanges(transactions);
+        return ranges === undefined
+          ? null
+          : settleDropped(newState, root, { ranges });
+      }
+      const records = commentRecordsOf(newState);
+      if (records === null) return null;
+      const transaction = newState.tr;
+      const { copies, kept } = settlePlacedComments(transaction, {
+        comments: paste.comments,
+        records,
+        repeats: pastedRepeats(transactions),
+      });
+      if (kept.ranges.length > 0)
+        placed.set(root, { ranges: kept.ranges, only: kept.ids });
+      if (copies.length > 0)
+        stepCommentRecords(newState, transaction, [...records, ...copies]);
+      return transaction.steps.length > 0 ? transaction : null;
+    },
     state: {
       init: () => ({ records: initial, origin: "sync" }),
       apply: (transaction, value) => {

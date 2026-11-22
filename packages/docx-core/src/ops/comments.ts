@@ -1059,12 +1059,57 @@ const normalizedWithoutAnchors = ({
 const isCommentRelationship = (type: string): boolean =>
   Object.values(COMMENT_PART_RELATIONSHIPS).some((part) => part.type === type);
 
-/** Keep the same part ids as the packager: numeric rId maximum plus one. */
-const reconcilePartRelationships = (
-  document: Document,
-  scope: "comments" | "document",
-): Document => {
+type CommentPart = keyof typeof COMMENT_PART_RELATIONSHIPS;
+const COMMENT_PARTS = [
+  "comments",
+  "commentsExtended",
+] as const satisfies readonly CommentPart[];
+
+/** The comment parts a document's comments are written in. */
+const neededCommentParts = (document: Document): Set<CommentPart> => {
   const comments = document.package.document.comments ?? [];
+  const needed = new Set<CommentPart>();
+  if (comments.length > 0) needed.add("comments");
+  if (
+    comments.some(
+      (comment) => comment.parentId !== undefined || comment.done !== undefined,
+    )
+  )
+    needed.add("commentsExtended");
+  return needed;
+};
+
+/** The comment parts a package has no relationship to. */
+const unrelatedCommentParts = (document: Document): Set<CommentPart> => {
+  const types = new Set(
+    [...(document.package.relationships?.values() ?? [])].map(
+      ({ type }) => type,
+    ),
+  );
+  return new Set(
+    COMMENT_PARTS.filter(
+      (part) => !types.has(COMMENT_PART_RELATIONSHIPS[part].type),
+    ),
+  );
+};
+
+type ReconcilePartRelationshipsOptions = {
+  document: Document;
+  scope: "comments" | "document";
+  /** The comment parts not to add a relationship to. */
+  without?: ReadonlySet<CommentPart>;
+  /** Leave a comment part relationship nothing needs where it is. */
+  keepUnneeded?: boolean;
+};
+
+/** Keep the same part ids as the packager: numeric rId maximum plus one. */
+const reconcilePartRelationships = ({
+  document,
+  scope,
+  without,
+  keepUnneeded = false,
+}: ReconcilePartRelationshipsOptions): Document => {
+  const neededParts = neededCommentParts(document);
   const relationships = new Map(document.package.relationships ?? []);
   let next =
     maxOf(
@@ -1073,9 +1118,6 @@ const reconcilePartRelationships = (
       ),
       0,
     ) + 1;
-  const extended = comments.some(
-    (comment) => comment.parentId !== undefined || comment.done !== undefined,
-  );
   const numbering = document.package.numbering;
   const parts = {
     numbering: {
@@ -1085,26 +1127,29 @@ const reconcilePartRelationships = (
         scope === "document" &&
         ((numbering?.abstractNums.length ?? 0) > 0 ||
           (numbering?.nums.length ?? 0) > 0),
+      adds: true,
     },
     comments: {
       ...COMMENT_PART_RELATIONSHIPS.comments,
-      needed: comments.length > 0,
+      needed: neededParts.has("comments"),
+      adds: without?.has("comments") !== true,
     },
     commentsExtended: {
       ...COMMENT_PART_RELATIONSHIPS.commentsExtended,
-      needed: extended,
+      needed: neededParts.has("commentsExtended"),
+      adds: without?.has("commentsExtended") !== true,
     },
   };
   for (const [kind, part] of Object.entries(parts)) {
-    const { needed } = part;
+    const { needed, adds } = part;
     const matching = [...relationships].filter(
       ([, relationship]) => relationship.type === part.type,
     );
-    if (needed && matching.length === 0) {
+    if (needed && adds && matching.length === 0) {
       const id = `rId${next++}`;
       relationships.set(id, { id, type: part.type, target: part.target });
     }
-    if (kind === "commentsExtended" && !needed)
+    if (kind === "commentsExtended" && !needed && !keepUnneeded)
       for (const [id] of matching) relationships.delete(id);
   }
   if (
@@ -1120,7 +1165,56 @@ const reconcilePartRelationships = (
 /** Reconcile modeled comment and numbering parts with their document relationships. */
 export const reconcileDocumentPartRelationships = (
   document: Document,
-): Document => reconcilePartRelationships(document, "document");
+): Document => reconcilePartRelationships({ document, scope: "document" });
+
+/**
+ * `after` with the comment parts an edit of `before` made needed: a part the
+ * comments there needed already is left as the package had it, so taking the
+ * edit back finds its relationships as they were.
+ */
+const withNewlyNeededParts = (before: Document, after: Document): Document =>
+  reconcilePartRelationships({
+    document: after,
+    scope: "comments",
+    without: neededCommentParts(before),
+  });
+
+/**
+ * `document` with comment records added, each before the first comment with
+ * a greater id as a creation places it, and the restoration taking them out
+ * again. The records' anchors are the caller's: the restoration applies once
+ * they are gone.
+ */
+export const withAddedCommentRecords = (
+  document: Document,
+  records: readonly Comment[],
+): { document: Document; inverse: RestoreCommentStateOp } => {
+  const ids = new Set(records.map(({ id }) => id));
+  let comments = [...(document.package.document.comments ?? [])];
+  for (const record of records) {
+    const following = comments.findIndex(({ id }) => id > record.id);
+    comments =
+      following < 0
+        ? [...comments, record]
+        : comments.toSpliced(following, 0, record);
+  }
+  const after = withNewlyNeededParts(
+    document,
+    withComments(document, comments),
+  );
+  const prior = capture(document, ids, []);
+  const next = capture(after, ids, []);
+  return {
+    document: after,
+    inverse: {
+      type: DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE,
+      ids: [...ids],
+      scaffoldIds: scaffoldDelta(prior, next),
+      expected: cloneModel(next),
+      state: cloneModel(prior),
+    },
+  };
+};
 
 /** Replies restore with their exhausted root, never as unrelated orphan threads. */
 const restoresExhaustedThreads = (
@@ -1152,7 +1246,7 @@ const edited = (
   ids: ReadonlySet<number>,
 ): Result<DocumentEdit, DocumentOpRefusal> => {
   if (op.type !== DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE)
-    after = reconcilePartRelationships(after, "comments");
+    after = withNewlyNeededParts(before, after);
   const restoresExhaustedState =
     op.type === DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE &&
     restoresExhaustedThreads(after, ids);
@@ -1510,8 +1604,21 @@ const restore = (
       delete pkg.relationships;
       break;
   }
+  // A part the restoration would take away stays where a comment it does not
+  // own was made since and needs it.
+  const unrelated = unrelatedCommentParts(document);
   if (since.created.length === 0)
-    return edited(document, { ...restored, package: pkg }, op, ids);
+    return edited(
+      document,
+      reconcilePartRelationships({
+        document: { ...restored, package: pkg },
+        scope: "comments",
+        without: unrelated,
+        keepUnneeded: true,
+      }),
+      op,
+      ids,
+    );
   // Each comment created since takes its place as its creation does: before
   // the first comment with a greater id, its part relationship reconciled.
   let kept = [...comments];
@@ -1524,10 +1631,11 @@ const restore = (
   }
   return edited(
     document,
-    reconcilePartRelationships(
-      withComments({ ...restored, package: pkg }, kept),
-      "comments",
-    ),
+    reconcilePartRelationships({
+      document: withComments({ ...restored, package: pkg }, kept),
+      scope: "comments",
+      without: unrelated,
+    }),
     op,
     ids,
   );

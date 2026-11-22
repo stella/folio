@@ -94,6 +94,9 @@ type SectionViewChange = {
 /**
  * The operation schema this module reads and writes.
  *
+ * Version 18 adds `comments` and `newCommentIds` to `insertContent`: a
+ * pasted copy of a standing comment's anchors takes a fresh comment id and a
+ * copy of the thread the paste carries, or is left out without one.
  * Version 17 adds the `containerStart` insertion point: paragraphs or a table
  * before the first block of a block list, whatever kind that block is.
  * Version 16 adds `createdSince` to `restoreCommentState`: a restoration
@@ -129,7 +132,7 @@ type SectionViewChange = {
  * and paragraph operations, and the review operations `setParagraphReview`,
  * `replaceInline` and `resolveRevision`.
  */
-export const DOCUMENT_OP_SCHEMA_VERSION = 17;
+export const DOCUMENT_OP_SCHEMA_VERSION = 18;
 
 /**
  * The main story has a fixed address; other editable parts use their stable
@@ -415,6 +418,15 @@ export type InsertTextOp = {
  * {@link InsertTextOp}. It is refused inside tracked-removed content, and
  * when it holds a comment boundary or reference, which no tracked change can
  * hold.
+ *
+ * A comment owns one range. A comment anchor of the slice whose kind its
+ * comment already has standing in the document is a copy: when `comments`
+ * carries that comment's thread and the slice holds the comment's range (or
+ * point) whole, the thread's anchors take the ids `newCommentIds` lists and
+ * the thread is copied under them; otherwise those anchors are left out. An
+ * anchor completing a comment's range goes in as it is, a repeated one is
+ * left out, and a carried thread none of whose anchors stand joins the
+ * records unless they hold it. A thread it adds belongs to its suggestion.
  */
 export type InsertContentOp = {
   type: typeof DOCUMENT_OP_TYPES.INSERT_CONTENT;
@@ -423,6 +435,17 @@ export type InsertContentOp = {
   seamPolicy?: typeof INSERTION_SEAM_POLICIES.MERGE_PLAIN_RUNS;
   newIds?: NewIds;
   revision?: RevisionStamp;
+  /**
+   * The comment threads the slice carries, as a paste copies them: each
+   * root names, by its id, anchors of the slice; replies follow their root.
+   * Their paragraphs need ids the package does not use.
+   */
+  comments?: readonly Comment[];
+  /**
+   * Fresh comment ids for the carried threads a paste copies, one per
+   * comment of each copied thread, in carried order. Unused ones are left.
+   */
+  newCommentIds?: readonly number[];
 };
 
 /**
