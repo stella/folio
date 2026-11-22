@@ -1343,6 +1343,30 @@ const settleDeferredRemovals = (
   const acceptedKept = new Map<string, DeferredRemovalGroup>();
   /** Accepted removals that held a piece of a seam: see placeKeptBesideRemovedPiece. */
   const removedPieces: { index: number; group: DeferredRemovalGroup }[] = [];
+  /**
+   * Whether the insertion `id` joins what it stands between `depth` levels
+   * deep on both sides: accepted, it continues the record the seam cut
+   * instead of keeping its pieces apart.
+   */
+  let joinedAcross: Map<number, number> | undefined;
+  const joinsAcross = (id: number, depth: number): boolean => {
+    joinedAcross ??= new Map(
+      nodes.flatMap((node) =>
+        isAddedRevision(node) && node.resolutionJoins !== undefined
+          ? [
+              [
+                node.info.id,
+                Math.min(
+                  node.resolutionJoins.before,
+                  node.resolutionJoins.after,
+                ),
+              ],
+            ]
+          : [],
+      ),
+    );
+    return (joinedAcross.get(id) ?? 0) >= depth;
+  };
   for (const node of nodes) {
     let next = node;
     if (
@@ -1373,7 +1397,14 @@ const settleDeferredRemovals = (
             fates.every((fate) => fate === "accepted")
           )
             removedPieces.push({ index: out.length, group });
-          if (fates.includes("accepted")) continue;
+          if (
+            fates.every((fate) => fate === "accepted") ||
+            group.blockers.some(
+              (id, at) =>
+                fates[at] === "accepted" && !joinsAcross(id, group.depth),
+            )
+          )
+            continue;
           const remaining = group.blockers.filter(
             (_, index) => fates[index] === "pending",
           );
@@ -4015,35 +4046,55 @@ const resolveList = ({
       isTrackedWrapper(node) && !standsInKeptCut(node) ? [node.info.id] : [],
     );
     if (blockers.length === 0) return undefined;
-    const deferred = (node: InlineNode): InlineNode => {
+    const deferred = (
+      node: InlineNode,
+      facing: "before" | "after",
+      alone: boolean,
+    ): InlineNode => {
       if (standsInKeptCut(node)) return node;
       if (!isTrackedWrapper(node) || node.resolutionJoins === undefined)
         return panic(
           "A deferring seam blocker is a pending change with joins.",
         );
       const joins = node.resolutionJoins;
+      // Made at the edge of the piece beyond it, joined to that piece as deep
+      // as the rest of the seam goes, it takes the seam's join too.
+      const far = facing === "before" ? joins.after : joins.before;
       const next = Object.assign({}, node, {
-        resolutionJoins: Object.assign({}, joins, {
-          deferredRemove: canonicalDeferredGroups([
-            ...(joins.deferredRemove ?? []),
-            { depth: depth - 1, blockers },
-          ]),
-        }),
+        resolutionJoins: Object.assign(
+          {},
+          joins,
+          alone && far >= depth - 1 ? { [facing]: depth - 1 } : {},
+          {
+            deferredRemove: canonicalDeferredGroups([
+              ...(joins.deferredRemove ?? []),
+              { depth: depth - 1, blockers },
+            ]),
+          },
+        ),
       });
       carryResolutionState(resolution, node, next);
       return next;
     };
+    const leftBlockers = leftChildren.slice(leftEnd + 1);
+    const rightBlockers = rightChildren.slice(0, rightStart);
+    const isAlone = (waiting: readonly InlineNode[]): boolean =>
+      waiting.filter((node) => !standsInKeptCut(node)).length === 1;
     return [
       leftEnd === leftChildren.length - 1
         ? left
         : rebuildNode(left, [
             ...leftChildren.slice(0, leftEnd + 1),
-            ...leftChildren.slice(leftEnd + 1).map(deferred),
+            ...leftBlockers.map((node) =>
+              deferred(node, "after", isAlone(leftBlockers)),
+            ),
           ]),
       rightStart === 0
         ? right
         : rebuildNode(right, [
-            ...rightChildren.slice(0, rightStart).map(deferred),
+            ...rightBlockers.map((node) =>
+              deferred(node, "before", isAlone(rightBlockers)),
+            ),
             ...rightChildren.slice(rightStart),
           ]),
     ];
@@ -4781,8 +4832,18 @@ const resolveList = ({
           (node.info.date ?? "") < keptJoinFrom
         );
       };
+      const seamDepth = exactDepth;
+      // An insertion made at the edge of the piece beyond it, joined to that
+      // piece as deep as the seam goes, is part of it: the seam waits on it,
+      // and its content takes the seam's join, so accepting it joins the
+      // pieces as rejecting the revision after accepting it does.
+      const edgeOfPiece = (index: number, side: "before" | "after"): boolean =>
+        piecesBeyond &&
+        facingJoinAt(index, side) === 0 &&
+        facingJoinAt(index, side === "before" ? "after" : "before") >=
+          seamDepth &&
+        (side === "before" ? rightStart === seam + 1 : leftEnd === keptEnd - 1);
       if (keptJoinHandsOver || removalSeams.has(recorded)) {
-        const seamDepth = exactDepth;
         // An insertion joined to nothing on the seam's side takes the join
         // only as the edge of the pieces: where the insertion facing it
         // across the seam is joined there, made inside the record, that one
@@ -4804,7 +4865,8 @@ const resolveList = ({
               seam: keptJoinHandsOver ? "keptJoin" : "removal",
               piecesBeyond,
               facingJoin,
-            })
+            }) &&
+            !edgeOfPiece(index, side)
           )
             return;
           const { node, takesKept } = handJoin({

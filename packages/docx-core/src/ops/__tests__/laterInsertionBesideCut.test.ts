@@ -140,6 +140,29 @@ test("a marker kept between two pieces of a pending insertion joins them once ac
   );
 });
 
+test("an insertion at the edge of a cut record's piece joins the pieces once accepted", () => {
+  const document = documentOf({
+    content: [
+      link([text("a")]),
+      insertion(1, "1", [BOOKMARK_END], { before: 0, after: 0, remove: 3 }),
+      insertion(2, "2", [link([text("x")])], {
+        before: 0,
+        after: 3,
+        remove: 0,
+      }),
+      link([text("b")]),
+    ],
+  });
+  const acceptedFirst = contentOf(rejected(accepted(document, [2]), [1]));
+  expect(acceptedFirst).toEqual([link([text("a"), BOOKMARK_END, text("xb")])]);
+  expect(contentOf(accepted(rejected(document, [1]), [2]))).toEqual(
+    acceptedFirst,
+  );
+  expect(contentOf(rejected(rejected(document, [1]), [2]))).toEqual(
+    contentOf(rejected(document, [1, 2])),
+  );
+});
+
 test("a marker kept from outside the record a later insertion was made in stays beside it", () => {
   const document = documentOf({
     content: [
