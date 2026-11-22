@@ -69,3 +69,33 @@ test("fresh identity equivalence preserves original slots and uses a single bije
     }),
   ).toThrow();
 });
+
+test("fresh identities follow allocation order within one operation of a plan", () => {
+  const options = {
+    original: fixture([7]),
+    allocated: { revision: [2, 3, 4] },
+    actual: fixture([7, 4, 2, 3]),
+    expected: fixture([7, 2, 3, 4]),
+  };
+  const one = [new Set(["revision:2", "revision:3", "revision:4"])];
+  const two = [new Set(["revision:2", "revision:3"]), new Set(["revision:4"])];
+  expect(() =>
+    assertFreshIdentityEquivalent({
+      ...options,
+      minted: { actual: two, expected: one },
+    }),
+  ).not.toThrow();
+  expect(() =>
+    assertFreshIdentityEquivalent({
+      ...options,
+      minted: { actual: one, expected: one },
+    }),
+  ).toThrow();
+  expect(() =>
+    assertFreshIdentityEquivalent({
+      ...options,
+      actual: fixture([7, 4, 3, 2]),
+      minted: { actual: two, expected: one },
+    }),
+  ).toThrow();
+});

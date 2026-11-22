@@ -121,7 +121,10 @@ import {
   opFor,
   opSeedArbitrary,
 } from "./documentArbitraries";
-import { assertFreshIdentityEquivalent } from "./freshIdentityOracle";
+import {
+  assertFreshIdentityEquivalent,
+  mintedByOperation,
+} from "./freshIdentityOracle";
 import {
   assertOutsideRunReviewCoverage,
   resolvePendingRunFormatting,
@@ -3213,6 +3216,10 @@ describe("document operations", () => {
             ),
             original: document,
             allocated: allocation.newIds,
+            minted: {
+              actual: mintedByOperation(document, tracked.value.ops),
+              expected: mintedByOperation(document, direct.value.ops),
+            },
           });
           const directUndo = applyDocumentOps(
             directEdit.value.document,

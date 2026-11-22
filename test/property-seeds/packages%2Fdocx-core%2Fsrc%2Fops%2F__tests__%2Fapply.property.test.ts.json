@@ -326,6 +326,12 @@
       "path": "43:0:0:0:0:0:0:0:4:2:6:6:5:6:6:6:6:7:7:7:7:7:7:7:7:7:6:34:34:34:34:34:34:34:34",
       "note": "Comment ends at a bidi wrapper end all close it: a direct replacement goes before them inside the one wrapper, as the accepted tracked one does, instead of between them in a second wrapper.",
       "date": "2026-11-20"
+    },
+    {
+      "seed": -593183008,
+      "path": "390:2:1:1:1:1:7:6:8:8:9:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8",
+      "note": "A tracked replacement inside a pending insertion takes its ids operation by operation, each in document order.",
+      "date": "2026-11-22"
     }
   ],
   "the same operation on equal documents gives equal results": [
