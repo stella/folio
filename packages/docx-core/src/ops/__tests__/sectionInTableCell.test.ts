@@ -1,7 +1,8 @@
 /**
  * A section ends at a paragraph outside every table. No operation puts one on
- * a paragraph in a cell; a document that entered with one keeps its edits and
- * their exact inverses.
+ * a paragraph in a cell, whether it makes, moves, copies or restores it; one
+ * a document arrived with stays where it stands. The answer depends on the
+ * document's content and the operation alone.
  */
 
 import { panic } from "better-result";
@@ -17,7 +18,7 @@ import type {
 } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { storyParagraphs } from "../blocks";
-import { hasSectionInTableCell } from "../contract";
+import { hasSectionInTableCell } from "../cellSections";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import {
   DOCUMENT_OP_TYPES,
@@ -221,6 +222,39 @@ describe("an operation that would end a section in a table cell", () => {
     });
   });
 
+  test("drawing a text box that holds one is refused", () => {
+    refused(bodyDocument(), {
+      type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
+      at: { story, blockId: "00000003", offset: 0 },
+      slice: {
+        openStart: 0,
+        openEnd: 0,
+        content: [
+          {
+            type: "run",
+            content: [
+              {
+                type: "shape",
+                shape: {
+                  type: "shape",
+                  shapeType: "textBox",
+                  id: "1",
+                  size: { width: 2_000_000, height: 800_000 },
+                  textBody: {
+                    content: [
+                      tableOf(rowOf([ending(paragraph("0000000A", "box"))])),
+                      paragraph("0000000B", "end"),
+                    ],
+                  },
+                },
+              },
+            ],
+          },
+        ],
+      },
+    });
+  });
+
   test("restoring a body that holds one is refused", () => {
     const document = bodyDocument();
     const { content } = document.package.document;
@@ -240,45 +274,215 @@ describe("an operation that would end a section in a table cell", () => {
   });
 });
 
-describe("a document that entered with a section in a table cell", () => {
-  const entered = (): Document => cellDocument([ending(inner), beside]);
+/** A row of two cells, the first holding the section, and rows around it. */
+const ROWS: readonly TableRow[] = [
+  rowOf([paragraph("00000010", "first")]),
+  {
+    type: "tableRow",
+    cells: [
+      { type: "tableCell", content: [ending(inner), beside] },
+      { type: "tableCell", content: [paragraph("00000011", "other")] },
+    ],
+  },
+  rowOf([paragraph("00000012", "last")]),
+];
 
-  test("keeps it through an edit beside it, undone exactly", () => {
-    const document = entered();
-    const before = structuredClone(document);
-    const applied = applyDocumentOp(document, {
-      type: DOCUMENT_OP_TYPES.INSERT_TEXT,
-      at: { story, blockId: "00000004", offset: 0 },
-      text: "x",
-      runProps: {},
-    }).unwrap();
-    expect(hasSectionInTableCell(applied.document)).toBe(true);
-    const undone = applyDocumentOps(
-      applied.document,
-      journaled(applied.inverse),
-    ).unwrap();
-    assertExactModel(undone.document, before);
+const arrived = (): Document =>
+  structuredClone(
+    documentOf([
+      paragraph("00000001", "before"),
+      { type: "table", columnWidths: [2400, 2400], rows: [...ROWS] },
+      paragraph("00000009", "after"),
+    ]),
+  );
+
+const rowsSet = (rows: readonly TableRow[]): DocumentOp => ({
+  type: DOCUMENT_OP_TYPES.SET_TABLE_ROWS,
+  story,
+  blockId: "00000003",
+  expected: ROWS,
+  rows,
+});
+
+const rowWith = (...cells: BlockContent[][]): TableRow => ({
+  type: "tableRow",
+  cells: cells.map((content) => ({ type: "tableCell", content })),
+});
+
+const [firstRow, sectionRow, lastRow] = ROWS;
+if (firstRow === undefined || sectionRow === undefined || lastRow === undefined)
+  panic("The fixture has its three rows.");
+
+const typed = (blockId: string): DocumentOp => ({
+  type: DOCUMENT_OP_TYPES.INSERT_TEXT,
+  at: { story, blockId, offset: 0 },
+  text: "x",
+  runProps: {},
+});
+
+const removal: DocumentOp = {
+  type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+  story,
+  expected: [ending(inner)],
+  blocks: [inner],
+  sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE,
+};
+
+const LEAVES: Record<string, DocumentOp> = {
+  "typing in its paragraph": typed("00000003"),
+  "typing beside it": typed("00000004"),
+  "typing outside the table": typed("00000009"),
+  "changing the section's own properties": {
+    type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+    story,
+    expected: [ending(inner)],
+    blocks: [{ ...inner, sectionProperties: { pageWidth: 16_838 } }],
+    sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE,
+  },
+  "splitting its paragraph before its mark": {
+    type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+    at: { story, blockId: "00000003", offset: 2 },
+    newBlockId: "0000000A",
+  },
+  "inserting a paragraph before the table": {
+    type: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+    story,
+    at: { type: "before", blockId: "00000001" },
+    blocks: [paragraph("0000000A", "new")],
+  },
+  "inserting a row above": {
+    type: DOCUMENT_OP_TYPES.INSERT_ROW,
+    story,
+    blockId: "00000003",
+    at: 0,
+    row: rowOf([paragraph("0000000A", "new")]),
+  },
+  "deleting the row above": {
+    type: DOCUMENT_OP_TYPES.DELETE_ROW,
+    story,
+    blockId: "00000010",
+  },
+  "splitting the paragraph beside it": {
+    type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+    at: { story, blockId: "00000004", offset: 2 },
+    newBlockId: "0000000A",
+  },
+  "merging another cell into its cell": rowsSet([
+    firstRow,
+    rowWith([ending(inner), beside, paragraph("00000011", "other")]),
+    lastRow,
+  ]),
+};
+
+const GAINS: Record<string, DocumentOp> = {
+  "moving it to another cell": rowsSet([
+    firstRow,
+    rowWith([beside], [ending(inner), paragraph("00000011", "other")]),
+    lastRow,
+  ]),
+  "merging its cell into another": rowsSet([
+    firstRow,
+    rowWith([paragraph("00000011", "other"), ending(inner), beside]),
+    lastRow,
+  ]),
+  "moving its row": rowsSet([sectionRow, firstRow, lastRow]),
+  "moving it past the paragraph beside it": rowsSet([
+    firstRow,
+    rowWith([beside, ending(inner)], [paragraph("00000011", "other")]),
+    lastRow,
+  ]),
+  "moving it to the paragraph beside it": rowsSet([
+    firstRow,
+    rowWith([inner, ending(beside)], [paragraph("00000011", "other")]),
+    lastRow,
+  ]),
+  "moving it to a new paragraph": {
+    type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+    at: { story, blockId: "00000003", offset: 5 },
+    newBlockId: "0000000A",
+  },
+  "copying it into its cell": rowsSet([
+    firstRow,
+    rowWith(
+      [ending(inner), beside, ending(paragraph("0000000A", "inner"))],
+      [paragraph("00000011", "other")],
+    ),
+    lastRow,
+  ]),
+  "copying it into another cell": {
+    type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+    story,
+    expected: [paragraph("00000011", "other")],
+    blocks: [ending(paragraph("00000011", "other"))],
+    sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE,
+  },
+};
+
+/** The same content as a fresh value, as JSON reads it back, and after an edit that was undone. */
+const sameContent = (document: Document): Document[] => {
+  const edited = applyDocumentOp(document, typed("00000009")).unwrap();
+  return [
+    document,
+    structuredClone(document),
+    JSON.parse(JSON.stringify(document)),
+    applyDocumentOps(edited.document, edited.inverse).unwrap().document,
+  ];
+};
+
+describe("a document that arrived with a section in a table cell", () => {
+  for (const [title, op] of Object.entries(LEAVES))
+    test(`${title} applies and is undone exactly`, () => {
+      for (const document of sameContent(arrived())) {
+        const before = structuredClone(document);
+        const applied = applyDocumentOp(document, op).unwrap();
+        expect(hasSectionInTableCell(applied.document)).toBe(true);
+        const undone = applyDocumentOps(
+          applied.document,
+          journaled(applied.inverse),
+        ).unwrap();
+        assertExactModel(undone.document, before);
+      }
+    });
+
+  for (const [title, op] of Object.entries(GAINS))
+    test(`${title} is refused`, () => {
+      for (const document of sameContent(arrived())) refused(document, op);
+    });
+
+  test("deleting its table is refused", () => {
+    for (const document of sameContent(arrived()))
+      refused(document, {
+        type: DOCUMENT_OP_TYPES.DELETE_TABLE,
+        story,
+        blockId: "00000003",
+      });
   });
 
-  test("loses it in an edit, and has it back when that is undone", () => {
-    const document = entered();
-    const before = structuredClone(document);
-    const removed = applyDocumentOp(document, {
-      type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
-      story,
-      expected: [ending(inner)],
-      blocks: [inner],
-      sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE,
+  test("an edit that removes it applies, and its undo is refused", () => {
+    for (const document of sameContent(arrived())) {
+      const removed = applyDocumentOp(document, removal).unwrap();
+      expect(hasSectionInTableCell(removed.document)).toBe(false);
+      const [undo] = journaled(removed.inverse);
+      if (undo === undefined) panic("The removal has an inverse.");
+      for (const without of sameContent(removed.document))
+        refused(without, undo);
+    }
+  });
+
+  test("a removal that also refers to a kept note applies", () => {
+    const document = arrived();
+    document.package.footnotes = [
+      { type: "footnote", id: 2, content: [paragraph("000000F0", "note")] },
+    ];
+    const noted: Paragraph = {
+      ...inner,
+      content: [{ type: "run", content: [{ type: "footnoteRef", id: 2 }] }],
+    };
+    const applied = applyDocumentOp(document, {
+      ...removal,
+      blocks: [noted],
     }).unwrap();
-    expect(hasSectionInTableCell(removed.document)).toBe(false);
-    const undone = applyDocumentOps(
-      removed.document,
-      journaled(removed.inverse),
-    ).unwrap();
-    assertExactModel(undone.document, before);
-    const [first] = removed.inverse;
-    if (first === undefined) panic("The removal has an inverse.");
-    // The same content entered without one: the same operation is refused.
-    refused(structuredClone(removed.document), first);
+    expect(hasSectionInTableCell(applied.document)).toBe(false);
+    expect(applied.document.package.footnotes).toHaveLength(1);
   });
 });

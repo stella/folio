@@ -40,6 +40,7 @@ import { sectionPropertiesOf } from "../../sectionCarrier";
 import { sectionMarkEditsOf } from "../../sectionMarkEdits";
 import { createExtension } from "../create";
 import type { Extension, ExtensionRuntime } from "../types";
+import { droppedCellSections } from "./pastedCellSections";
 
 export const paragraphChangeTrackerKey: Readonly<{
   key: string;
@@ -855,9 +856,10 @@ const sectionEditTransaction = (
   }
   const base = paragraphChangeTrackerKey.getState(oldState);
   if (!base) return null;
+  const dropped = droppedCellSections(transactions, oldState.doc, newState.doc);
   // With no existing section break, this edit cannot remove one. The regular
   // state update still records any section break the edit added.
-  if (base.sectionRecords.size === 0) return null;
+  if (base.sectionRecords.size === 0 && dropped.length === 0) return null;
 
   const edits = sectionMarkEditsOf(transactions, newState.doc);
   const tr = newState.tr;
@@ -875,6 +877,8 @@ const sectionEditTransaction = (
       tr.setNodeAttribute(position, "_sectionProperties", record);
     }
   }
+  for (const position of dropped)
+    tr.setNodeAttribute(position, "_sectionProperties", null);
   const after = countDocumentStructure(tr.doc);
   if (holdsTheSameSections(base, after)) {
     return tr.docChanged

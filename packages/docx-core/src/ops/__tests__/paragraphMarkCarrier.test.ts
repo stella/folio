@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import type { Document, Paragraph } from "../../model/document";
+import type { Document, Paragraph, Table } from "../../model/document";
 import { applyDocumentOp } from "../apply";
 import { paragraphMarkOutcome } from "../blockDeletion";
 import { paragraphContentVerdict, paragraphHoldsContent } from "../offsets";
@@ -493,21 +493,39 @@ test("the one paragraph-content rule counts width, not positions or layout cache
   ).toBe(false);
 });
 
-test("refuses one owned reason when an empty mark precedes a section-ending table cell", () => {
+test("refuses one owned reason when an empty mark precedes a table cell that starts with a content control", () => {
   const paragraph: Paragraph = {
     type: "paragraph",
     paraId: "00000001",
     content: [],
     pPrMark: { kind: "ins", info: { id: 7, author: "Reviewer" } },
   };
-  const sectionTable = structuredClone(table);
-  const target = sectionTable.rows[0]?.cells[0]?.content[0];
-  if (target?.type !== "paragraph")
-    throw new Error("The fixture has a first-cell paragraph.");
-  target.sectionProperties = { pageWidth: 11_906 };
+  const controlTable: Table = {
+    type: "table",
+    rows: [
+      {
+        type: "tableRow",
+        cells: [
+          {
+            type: "tableCell",
+            content: [
+              {
+                type: "blockSdt",
+                properties: { sdtType: "richText", id: 20 },
+                content: [
+                  { type: "paragraph", paraId: "00000002", content: [] },
+                ],
+              },
+              { type: "paragraph", paraId: "00000004", content: [] },
+            ],
+          },
+        ],
+      },
+    ],
+  };
   const document: Document = {
     package: {
-      document: { content: [paragraph, sectionTable, finalParagraph] },
+      document: { content: [paragraph, controlTable, finalParagraph] },
     },
   };
 

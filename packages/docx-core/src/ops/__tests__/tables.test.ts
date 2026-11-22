@@ -368,33 +368,6 @@ describe("whole table operations", () => {
     );
   });
 
-  test("deletion preserves section-bearing cell paragraphs", () => {
-    const value: Table = {
-      type: "table",
-      rows: [
-        {
-          type: "tableRow",
-          cells: [
-            {
-              type: "tableCell",
-              content: [{ ...paragraph("00000010"), sectionProperties: {} }],
-            },
-          ],
-        },
-      ],
-    };
-    const document = documentOf([value, paragraph("00000001")]);
-    refused(
-      document,
-      {
-        type: DOCUMENT_OP_TYPES.DELETE_TABLE,
-        story: OP_STORIES.MAIN,
-        blockId: "00000010",
-      },
-      DOCUMENT_OP_REFUSAL_REASONS.SECTION_BOUNDARY,
-    );
-  });
-
   test("malformed table rows and cells are refused", () => {
     const document = documentOf([paragraph("00000001")]);
     const malformed: Table[] = [

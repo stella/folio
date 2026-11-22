@@ -81,15 +81,25 @@ describe("a tracked join that would run into the table after it", () => {
     ).toBe(reason);
   });
 
-  test("is untrackable when the table's first paragraph ends a section", () => {
+  test("is untrackable when the table's first cell starts with a content control", () => {
     expect(
       joinReason(
-        tableOf(
-          cellRow({
-            ...paragraph("00000003", "cell"),
-            sectionProperties: { pageWidth: 11906 },
-          }),
-        ),
+        tableOf({
+          type: "tableRow",
+          cells: [
+            {
+              type: "tableCell",
+              content: [
+                {
+                  type: "blockSdt",
+                  properties: { sdtType: "richText", id: 20 },
+                  content: [paragraph("00000003", "cell")],
+                },
+                paragraph("00000005", "end"),
+              ],
+            },
+          ],
+        }),
       ),
     ).toBe(DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE);
   });

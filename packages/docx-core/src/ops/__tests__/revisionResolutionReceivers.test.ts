@@ -96,21 +96,27 @@ const cellReceiver = {
   paraId: "00000100",
   content: [],
 } satisfies Paragraph;
-const sectionSibling = {
+const cellSibling = {
   type: "paragraph",
   paraId: "00000101",
   content: [],
-  sectionProperties: { pageWidth: 11906 },
 } satisfies Paragraph;
 const receivingTable = {
   type: "table",
   rows: [
     {
       type: "tableRow",
-      cells: [{ type: "tableCell", content: [cellReceiver, sectionSibling] }],
+      cells: [{ type: "tableCell", content: [cellReceiver, cellSibling] }],
     },
   ],
 } satisfies Table;
+/** A paragraph after the table that ends a section, which no receiver takes over. */
+const sectionSibling = {
+  type: "paragraph",
+  paraId: "00000201",
+  content: [],
+  sectionProperties: { pageWidth: 11906 },
+} satisfies Paragraph;
 const tail = {
   type: "paragraph",
   paraId: "00000200",
@@ -154,6 +160,7 @@ test("resolution declares the transitive table receiver after retiring an empty 
             pPrMark: { kind: "del", info: { id: 4, author: "A" } },
           },
           receivingTable,
+          sectionSibling,
           tail,
         ],
       },
@@ -174,9 +181,10 @@ test("resolution declares the transitive table receiver after retiring an empty 
   expect(paragraphAt(applied.document, cellReceiver.paraId).content).toEqual([
     { type: "run", content: [{ type: "text", text: "a" }] },
   ]);
-  expect(paragraphAt(applied.document, sectionSibling.paraId)).toBe(
-    paragraphAt(document, sectionSibling.paraId),
-  );
+  for (const sibling of [cellSibling, sectionSibling])
+    expect(paragraphAt(applied.document, sibling.paraId)).toBe(
+      paragraphAt(document, sibling.paraId),
+    );
   expect(paragraphAt(applied.document, tail.paraId)).toBe(
     paragraphAt(document, tail.paraId),
   );
@@ -268,7 +276,13 @@ test("compiled chains declare their actual receiver across containers and select
         }));
         let document = normalizeForOps({
           package: {
-            document: { content: wrap([...paragraphs, receivingTable, tail]) },
+            document: {
+              // No section ends in a cell: it ends after the container.
+              content: [
+                ...wrap([...paragraphs, receivingTable, tail]),
+                sectionSibling,
+              ],
+            },
           },
         });
         const ids: number[] = selectLast ? [1] : [];
@@ -308,9 +322,10 @@ test("compiled chains declare their actual receiver across containers and select
         expect(
           new Set(tableEffects.map(({ receiver }) => receiver.paraId)),
         ).toEqual(new Set(selectLast ? [cellReceiver.paraId] : []));
-        expect(paragraphAt(applied.document, sectionSibling.paraId)).toBe(
-          paragraphAt(document, sectionSibling.paraId),
-        );
+        for (const sibling of [cellSibling, sectionSibling])
+          expect(paragraphAt(applied.document, sibling.paraId)).toBe(
+            paragraphAt(document, sibling.paraId),
+          );
         exercised.add(container);
       }
     }
@@ -399,7 +414,7 @@ test("rejecting an added mark that ends a section declares no section recipient"
 
 const BLOCKERS = {
   source: { sourceSection: { pageWidth: 11906 } },
-  receiver: { receiverSection: { pageWidth: 11906 } },
+  receiver: { receiverControl: { sdtType: "richText", id: 20 } },
   row: {
     rowChange: {
       type: "tableRowInsertion",
@@ -446,16 +461,17 @@ test("blocked receiver classes refuse without inventing effects or changing the 
                       ...("cellChange" in blocker
                         ? { structuralChange: blocker.cellChange }
                         : {}),
-                      content: [
-                        {
-                          type: "paragraph",
-                          paraId: "00000100",
-                          content: [],
-                          ...("receiverSection" in blocker
-                            ? { sectionProperties: blocker.receiverSection }
-                            : {}),
-                        },
-                      ],
+                      content:
+                        "receiverControl" in blocker
+                          ? [
+                              {
+                                type: "blockSdt",
+                                properties: blocker.receiverControl,
+                                content: [cellReceiver],
+                              },
+                              cellSibling,
+                            ]
+                          : [cellReceiver],
                     },
                   ],
                 },
