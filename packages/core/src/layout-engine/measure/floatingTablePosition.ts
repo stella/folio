@@ -1,5 +1,5 @@
 /**
- * Horizontal placement of a `w:tblpPr` positioned table.
+ * Placement of a `w:tblpPr` positioned table.
  *
  * Wrap-zone extraction and final floating-table placement must agree on X.
  * Resolution order per `w:tblpPr` (§17.4.57): a `tblpXSpec` keyword supersedes
@@ -92,4 +92,70 @@ export function resolveFloatingTablePageX({
     resolveFloatingTableX(anchor, justification, tableWidth, frameWidth);
   const maxX = Math.max(0, pageWidth - tableWidth);
   return Math.max(0, Math.min(resolvedX, maxX));
+}
+
+type FloatingTableYOptions = {
+  anchor: FloatingTablePosition | undefined;
+  tableHeight: number;
+  pageHeight: number;
+  marginTop: number;
+  marginBottom: number;
+};
+
+type FloatingTableY = {
+  frame: "anchor" | "page";
+  top: number;
+};
+
+/**
+ * Resolve body table Y for measurement and pagination. A vertical alignment
+ * supersedes a numeric offset. Text-relative alignments pin to the anchor
+ * paragraph's top. With no explicit position the table follows the cursor.
+ */
+export function resolveFloatingTableY({
+  anchor,
+  tableHeight,
+  pageHeight,
+  marginTop,
+  marginBottom,
+}: FloatingTableYOptions): FloatingTableY | undefined {
+  if (!anchor) {
+    return undefined;
+  }
+
+  const spec = anchor.tblpYSpec;
+  const frameTop = anchor.vertAnchor === "page" ? 0 : marginTop;
+  if (spec === undefined) {
+    const offset = anchor.tblpY;
+    if (offset === undefined) {
+      return undefined;
+    }
+    return anchor.vertAnchor === "text"
+      ? { frame: "anchor", top: offset }
+      : { frame: "page", top: frameTop + offset };
+  }
+
+  if (anchor.vertAnchor === "text") {
+    return { frame: "anchor", top: 0 };
+  }
+
+  const contentHeight = Math.max(0, pageHeight - marginTop - marginBottom);
+  switch (spec) {
+    case "top":
+      return { frame: "page", top: frameTop };
+    case "center":
+      return {
+        frame: "page",
+        top: frameTop + (contentHeight - tableHeight) / 2,
+      };
+    case "bottom":
+      return { frame: "page", top: frameTop + contentHeight - tableHeight };
+    case "inside":
+    case "outside":
+    case "inline":
+      return { frame: "anchor", top: 0 };
+    default:
+      spec satisfies never;
+      return spec;
+  }
 }
