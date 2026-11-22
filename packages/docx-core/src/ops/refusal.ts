@@ -400,6 +400,7 @@ export const DOCUMENT_OP_REFUSAL_SCOPES: Readonly<
   pendingParagraphMarkDeletion: TRACKED,
   pendingParagraphMarkInsertion: TRACKED,
   pendingParagraphJoin: ANY,
+  pendingGridChange: TRACKED,
   unrecordableLinkSuggestion: TRACKED,
   missingBlockId: ANY,
   duplicateBlockId: ANY,

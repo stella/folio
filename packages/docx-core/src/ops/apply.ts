@@ -3290,7 +3290,7 @@ export const stampOf = (op: DocumentOp): RevisionStamp | undefined => {
 const changedRevisionBlocks = (
   previous: readonly BlockContent[] | undefined,
   current: BlockContent[],
-): { before: readonly BlockContent[]; after: BlockContent[] } => {
+): { before: BlockContent[]; after: BlockContent[] } => {
   if (previous === current) return { before: [], after: [] };
   if (previous === undefined) return { before: [], after: current };
   const { start, previousEnd, end } = changedListBounds(previous, current);
