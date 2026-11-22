@@ -189,22 +189,24 @@ const examples: [Case][] = MODES.flatMap((mode) => [
   ],
 ]);
 
-describe.each(SESSIONS)("%s: a batch of formatting", (session) => {
+describe("a batch of formatting", () => {
   test(
     "equals its operations applied one at a time in input order",
     async () => {
       await assertProperty(
         fc.asyncProperty(caseArbitrary, async ({ mode, formats }) => {
-          const batch = await run({ session, mode, batches: [formats] });
-          const oneAtATime = await run({
-            session,
-            mode,
-            batches: formats.map((format) => [format]),
-          });
-          expect(batch).toEqual(oneAtATime);
+          for (const session of SESSIONS) {
+            const batch = await run({ session, mode, batches: [formats] });
+            const oneAtATime = await run({
+              session,
+              mode,
+              batches: formats.map((format) => [format]),
+            });
+            expect(batch).toEqual(oneAtATime);
+          }
         }),
         {
-          id: `${session}: a batch of formatting equals its operations one at a time`,
+          id: "a batch of formatting equals its operations one at a time on both sessions",
           numRuns: 40,
           examples,
         },

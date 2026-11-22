@@ -1,8 +1,11 @@
 /** What an annotation adds: run formatting, or a comment's anchor. */
-export const BATCH_ANNOTATION_KINDS = {
+export const BATCH_ANNOTATION_KINDS: Readonly<{
+  FORMATTING: "formatting";
+  COMMENT: "comment";
+}> = {
   FORMATTING: "formatting",
   COMMENT: "comment",
-} as const;
+};
 
 export type BatchAnnotationKind =
   (typeof BATCH_ANNOTATION_KINDS)[keyof typeof BATCH_ANNOTATION_KINDS];
