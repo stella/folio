@@ -3,6 +3,7 @@
     "declarationBytes": 1300
   },
   "core": {
-    "declarationBytes": 1700
+    "declarationBytes": 2700,
+    "declarationLines": 60
   }
 }
