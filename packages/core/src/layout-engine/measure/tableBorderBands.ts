@@ -13,7 +13,7 @@ const THIN_COMPOUND_STROKE_PX = 1;
 const THICK_COMPOUND_STROKE_PX = 2;
 const DOT_DASH_DASH_WIDTH_FACTOR = 7;
 const DOT_DASH_DOT_WIDTH_FACTOR = 3;
-const SMALL_GAP_DASH_WIDTH_FACTOR = 4;
+const DASH_WIDTH_FACTOR = 4;
 const DOT_DOT_DASH_DASH_WIDTH_FACTOR = 6;
 const DOT_DOT_DASH_DOT_WIDTH_FACTOR = 2;
 const MIN_SMALL_GAP_STROKE_PX = pointsToPixels(0.25);
@@ -106,10 +106,14 @@ export function tableCellBorderDash(border: CellBorderSpec | undefined) {
   if (!(widthPx > 0) || !Number.isFinite(widthPx)) return undefined;
 
   switch (border.authoredStyle) {
+    case "dashed": {
+      const length = widthPx * DASH_WIDTH_FACTOR;
+      return { widthPx, dashArrayPx: [length, length] as const };
+    }
     case "dashSmallGap":
       return {
         widthPx,
-        dashArrayPx: [widthPx * SMALL_GAP_DASH_WIDTH_FACTOR, widthPx] as const,
+        dashArrayPx: [widthPx * DASH_WIDTH_FACTOR, widthPx] as const,
       };
     case "dotDash": {
       const shortPx = widthPx * DOT_DASH_DOT_WIDTH_FACTOR;

@@ -28,6 +28,7 @@ function dashStops(gradient: string) {
 }
 
 test.each([
+  { style: "dashed", dashArray: [8, 8] },
   { style: "dotDash", dashArray: [14, 6, 6, 6] },
   { style: "dashSmallGap", dashArray: [8, 2] },
   { style: "dotDotDash", dashArray: [12, 4, 4, 4, 4, 4] },

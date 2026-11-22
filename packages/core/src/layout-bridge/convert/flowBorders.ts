@@ -62,7 +62,8 @@ export function convertCellBorderSpecToLayout(
     hasCompoundTableBorderBands(style) ||
     style === "dotDash" ||
     style === "dashSmallGap" ||
-    style === "dotDotDash"
+    style === "dotDotDash" ||
+    style === "dashed"
   )
     return { ...converted, authoredStyle: style };
   return converted;
