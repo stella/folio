@@ -29,14 +29,17 @@ type TableCellFlowPosition =
 
 const TABLE_CELL_TRAILING_SPACING_TYPE = {
   none: "none",
-  authored: "authored",
-  automatic: "automatic",
+  retained: "retained",
+  suppressedAtCellEnd: "suppressedAtCellEnd",
 } as const;
 
 type TableCellTrailingSpacing =
   | { type: typeof TABLE_CELL_TRAILING_SPACING_TYPE.none }
-  | { type: typeof TABLE_CELL_TRAILING_SPACING_TYPE.authored; value: number }
-  | { type: typeof TABLE_CELL_TRAILING_SPACING_TYPE.automatic; value: number };
+  | { type: typeof TABLE_CELL_TRAILING_SPACING_TYPE.retained; value: number }
+  | {
+      type: typeof TABLE_CELL_TRAILING_SPACING_TYPE.suppressedAtCellEnd;
+      value: number;
+    };
 
 export type TableCellFlowState = {
   height: number;
@@ -56,8 +59,8 @@ const trailingSpacingValue = (spacing: TableCellTrailingSpacing): number => {
   switch (spacing.type) {
     case TABLE_CELL_TRAILING_SPACING_TYPE.none:
       return 0;
-    case TABLE_CELL_TRAILING_SPACING_TYPE.authored:
-    case TABLE_CELL_TRAILING_SPACING_TYPE.automatic:
+    case TABLE_CELL_TRAILING_SPACING_TYPE.retained:
+    case TABLE_CELL_TRAILING_SPACING_TYPE.suppressedAtCellEnd:
       return spacing.value;
     default: {
       const unhandled: never = spacing;
@@ -67,10 +70,9 @@ const trailingSpacingValue = (spacing: TableCellTrailingSpacing): number => {
 };
 
 export const finishTableCellFlow = (state: TableCellFlowState): number => {
-  // Automatic HTML paragraph spacing is suppressed at a table-cell boundary;
-  // authored spacing remains part of the cell box.
   if (
-    state.trailingSpacing.type === TABLE_CELL_TRAILING_SPACING_TYPE.automatic
+    state.trailingSpacing.type ===
+    TABLE_CELL_TRAILING_SPACING_TYPE.suppressedAtCellEnd
   ) {
     return state.height;
   }
@@ -151,7 +153,7 @@ export const placeTableCellBlock = (
 
   const spacing = paragraphSpacing(block, measure);
   const empty = isEmptyParagraph(block);
-  // Apply the same boundary rule to the first visible paragraph in the cell.
+  // The first visible paragraph in the cell drops automatic space before.
   const before =
     state.position === TABLE_CELL_FLOW_POSITION.start &&
     block.attrs?.automaticSpacing?.before === true
@@ -166,15 +168,15 @@ export const placeTableCellBlock = (
   state.height = contentTop + contentHeight;
   state.position = TABLE_CELL_FLOW_POSITION.interior;
   state.previousParagraphWasEmpty = empty;
-  state.trailingSpacing =
-    block.attrs?.automaticSpacing?.after === true
-      ? {
-          type: TABLE_CELL_TRAILING_SPACING_TYPE.automatic,
-          value: spacing.after,
-        }
-      : {
-          type: TABLE_CELL_TRAILING_SPACING_TYPE.authored,
-          value: spacing.after,
-        };
+  // Numbered lists keep their automatic trailing margin at the cell edge.
+  const suppressAfterAtCellEnd =
+    block.attrs?.automaticSpacing?.after === true &&
+    block.attrs.numPr?.kind !== "reference";
+  state.trailingSpacing = {
+    type: suppressAfterAtCellEnd
+      ? TABLE_CELL_TRAILING_SPACING_TYPE.suppressedAtCellEnd
+      : TABLE_CELL_TRAILING_SPACING_TYPE.retained,
+    value: spacing.after,
+  };
   return { top, contentTop, contentHeight, leadingSpacing };
 };

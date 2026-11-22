@@ -284,6 +284,27 @@ describe("table cell block flow", () => {
     expect(finishTableCellFlow(state)).toBe(10);
   });
 
+  test("keeps automatic space after the final numbered paragraph in a cell", () => {
+    const plain = paragraph("plain", "Plain text", { after: 14 });
+    plain.attrs = { ...plain.attrs, automaticSpacing: { after: true } };
+    const numbered: ParagraphBlock = {
+      ...plain,
+      id: "numbered",
+      attrs: {
+        ...plain.attrs,
+        numPr: { kind: "reference", numId: 4, ilvl: 0 },
+      },
+    };
+    const plainFlow = createTableCellFlowState();
+    const numberedFlow = createTableCellFlowState();
+
+    placeTableCellBlock(plainFlow, plain, measure(10, 14));
+    placeTableCellBlock(numberedFlow, numbered, measure(10, 14));
+
+    expect(finishTableCellFlow(plainFlow)).toBe(10);
+    expect(finishTableCellFlow(numberedFlow)).toBe(24);
+  });
+
   test("preserves automatic paragraph spacing inside a table cell", () => {
     const state = createTableCellFlowState();
     const first = paragraph("first", "first", { after: 14 });
