@@ -1462,6 +1462,7 @@ const settleDeferredRemovals = (
     const at = nodes.findIndex(
       (node) => isTrackedWrapper(node) && node.info.id === id,
     );
+    if (at === -1) return undefined;
     for (const facing of ["before", "after"] as const) {
       const step = facing === "before" ? -1 : 1;
       const between: TrackedWrapper[] = [];

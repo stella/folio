@@ -532,6 +532,29 @@ const cutShapes: Record<string, Shape> = {
       embedded([text("v")]),
     ],
   },
+  "boundaries kept on both sides of content made inside a deeper cut": {
+    content: [
+      clause(1, [link([text("w")])]),
+      insertion(1, 1, [link([text("b"), start(1)])], {
+        before: 0,
+        after: 0,
+        remove: 3,
+      }),
+      insertion(2, 2, [link([bold("x")])], { before: 2, after: 2, remove: 4 }),
+      insertion(3, 1, [link([text("a")]), end(1)], {
+        before: 0,
+        after: 0,
+        remove: 3,
+      }),
+      clause(2, [link([text("v")])]),
+    ],
+    groups: [reject(1, 3), accept(2)],
+    left: [
+      clause(1, [link([text("w")])]),
+      link([start(1), bold("x")]),
+      clause(2, [link([end(1), text("v")])]),
+    ],
+  },
   "boundaries kept from a piece, and beyond the other, of rejected content": {
     content: [
       clause(1, [text("w")]),
