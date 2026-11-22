@@ -2399,7 +2399,6 @@ const withRemovedPiecesMet = (
     while (keptAt(end)) end += 1;
     const second = source()[end];
     if (
-      end === index + 1 ||
       !removedPiece(second) ||
       (second.resolutionJoins?.before ?? 0) === 0 ||
       !sameStamp(first, second)
@@ -3170,6 +3169,35 @@ const resolveList = ({
     }
   >();
   const emptiedBeside = keptRunsEmptiedBeside(pending, resolution);
+  /**
+   * How deep the content of a change this resolution keeps joins what stands
+   * on `side` of it. The join two pieces of one insertion record toward each
+   * other, kept markers between them, counts the insertion's own wrapper
+   * first: accepting both takes that level away.
+   */
+  const keptJoinDepth = (
+    node: TrackedWrapper,
+    index: number,
+    side: SourceOwnerSide,
+  ): number => {
+    const depth = node.resolutionJoins?.[side] ?? 0;
+    if (depth === 0 || !isAddedRevision(node)) return depth;
+    const step = side === "before" ? -1 : 1;
+    let at = index + step;
+    for (let kept = pending[at]; kept !== undefined; kept = pending[at]) {
+      if (!standsInKeptCut(kept)) break;
+      at += step;
+    }
+    const other = pending[at];
+    const opposite = side === "before" ? "after" : "before";
+    return other !== undefined &&
+      isTrackedWrapper(other) &&
+      resolution.ids.has(other.info.id) &&
+      sameStamp(node, other) &&
+      (other.resolutionJoins?.[opposite] ?? 0) > 0
+      ? depth - 1
+      : depth;
+  };
   let changed = false;
   const enclosing: EnclosingHandoff[] = [];
   for (const [index, node] of pending.entries()) {
@@ -3381,10 +3409,14 @@ const resolveList = ({
                   keptOf(removalContent.slice(lastRecord, lastRecord + 1)),
                 ),
         });
+        // A cut closed on the other side was made across the whole content,
+        // which stood inside the record it cut.
         let inside = kept.length;
-        if (piece === "before" && firstRecord !== undefined)
+        const joinedTo = (side: SourceOwnerSide): boolean =>
+          piece === side && (joins?.[side] ?? 0) > 0;
+        if (joinedTo("before") && firstRecord !== undefined)
           inside = keptOf(removalContent.slice(0, firstRecord + 1)).length;
-        else if (piece === "after" && lastRecord !== undefined)
+        else if (joinedTo("after") && lastRecord !== undefined)
           inside =
             kept.length - keptOf(removalContent.slice(0, lastRecord)).length;
         if (
@@ -3601,15 +3633,16 @@ const resolveList = ({
       else if (node.resolutionJoins.plainSides?.includes("before") === true)
         plainSeams.add(out.length);
       else {
-        recordSourceSeam(out.length, node.resolutionJoins.before);
-        if (node.resolutionJoins.before > 0) {
+        const joined = keptJoinDepth(node, index, "before");
+        recordSourceSeam(out.length, joined);
+        if (joined > 0) {
           recordKeptJoin(out.length, node);
           if (isRemovedRevisionNode(node)) ownContentAfter.add(out.length);
         }
         // Kept markers standing before it whose cut names this side take
         // the seam its join records: this insertion's content is the piece.
         const keptBefore =
-          node.resolutionJoins.before > 0
+          joined > 0
             ? keptByPiece((at) => out[at]?.node, out.length - 1, -1, "after")
             : undefined;
         if (keptBefore !== undefined)
@@ -3671,13 +3704,14 @@ const resolveList = ({
       else if (node.resolutionJoins.plainSides?.includes("after") === true)
         plainSeams.add(out.length);
       else {
-        recordSourceSeam(out.length, node.resolutionJoins.after);
-        if (node.resolutionJoins.after > 0) {
+        const joined = keptJoinDepth(node, index, "after");
+        recordSourceSeam(out.length, joined);
+        if (joined > 0) {
           recordKeptJoin(out.length, node);
           if (isRemovedRevisionNode(node)) ownContentBefore.add(out.length);
         }
         const keptAfter =
-          node.resolutionJoins.after > 0
+          joined > 0
             ? keptByPiece((at) => pending[at], index + 1, 1, "before")
             : undefined;
         if (keptAfter !== undefined)
