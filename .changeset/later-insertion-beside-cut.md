@@ -2,4 +2,4 @@
 "@stll/docx-core": patch
 ---
 
-A pending insertion's cut is read between the records its own pieces stand between, past insertions made after it, so resolving those records first or with it leaves the same cut. Two pieces of a pending insertion with only kept range markers between them join once accepted, whatever stands beyond them. A range marker kept from outside the record a later insertion was made in stays beside that insertion once accepted.
+Resolving tracked insertions that split one another gives the same records in any order. A pending insertion's cut is read between the records its own pieces stand between, past insertions made after it. Two pieces of an insertion meet once accepted or rejected, whatever stands beyond them, and as deep as their own records go. Range markers kept from a later insertion beside a cut stand in it with the cut's own; one kept from outside the record a later insertion was made in stays beside that insertion. An accepted deletion of one piece leaves a cut with the other piece, and content made inside a rejected insertion keeps the join that insertion had beyond it.

@@ -263,6 +263,29 @@ test("an accepted deletion of one piece leaves the cut with the other piece", ()
   );
 });
 
+test("content made inside a rejected insertion keeps the join that insertion had beyond it", () => {
+  const document = documentOf({
+    content: [
+      insertion(2, "2", [link([text("x")])], {
+        before: 0,
+        after: 4,
+        remove: 0,
+      }),
+      insertion(1, "1", [link([text("y")])], {
+        before: 0,
+        after: 3,
+        remove: 0,
+      }),
+      link([text("a")]),
+    ],
+  });
+  const acceptedFirst = contentOf(rejected(accepted(document, [2]), [1]));
+  expect(acceptedFirst).toEqual([link([text("xa")])]);
+  expect(contentOf(accepted(rejected(document, [1]), [2]))).toEqual(
+    acceptedFirst,
+  );
+});
+
 test("markers kept from a later insertion just after a cut's stand in the cut with them", () => {
   const later: ParagraphContent = { type: "bookmarkStart", id: 2, name: "_B" };
   const document = documentOf({

@@ -3034,15 +3034,35 @@ const resolveList = ({
       const own = side === "after" ? joins?.before : joins?.after;
       return neighbourDate < date && (own ?? 0) > 0;
     };
+    // Content made inside the rejected one stands in the record it was joined
+    // to beyond it, and keeps that join, without the rejected one's wrapper.
+    const beyond = (
+      neighbour: TrackedWrapper,
+      side: SourceOwnerSide,
+    ): number =>
+      made === "later"
+        ? Math.min(
+            (neighbour.resolutionJoins?.[side] ?? 0) - 1,
+            joins?.[side] ?? 0,
+          )
+        : 0;
     const previous = out.at(-1);
     if (facesNode(previous?.node, "after")) {
-      const retired = withJoinRetired(previous.node, "after");
+      const retired = withJoinRetired(
+        previous.node,
+        "after",
+        beyond(previous.node, "after"),
+      );
       carryResolutionState(resolution, previous.node, retired);
       out[out.length - 1] = occurrenceOf(retired, previous);
     }
     const next = pending[index + 1];
     if (facesNode(next, "before"))
-      pending[index + 1] = withJoinRetired(next, "before");
+      pending[index + 1] = withJoinRetired(
+        next,
+        "before",
+        beyond(next, "before"),
+      );
   };
   const recordExactSeam = (index: number, depth: number): void => {
     if (depth > 0)
