@@ -153,7 +153,7 @@ type Outcome =
 const APPLIES = { type: "applies" } as const satisfies Outcome;
 const refusedAs = (
   message: string,
-  reason: string = DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+  reason: string = DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
 ) => ({ type: "refused", reason, message }) as const satisfies Outcome;
 
 type Shape = { table: Table; outcome: Record<OpName, Outcome> };

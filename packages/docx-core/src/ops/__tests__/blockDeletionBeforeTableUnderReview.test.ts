@@ -16,6 +16,7 @@ import type {
 } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { storyParagraphs } from "../blocks";
+import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import {
   type DeleteBlocksOp,
   DOCUMENT_OP_TYPES,
@@ -247,7 +248,7 @@ test.each([
       newIds: { revision: [101, 102, 103] },
     });
     expect(joined.isErr() ? joined.error.reason : "applied").toBe(
-      "untrackable",
+      DOCUMENT_OP_REFUSAL_REASONS.JOIN_INTO_PENDING_TABLE,
     );
   },
 );

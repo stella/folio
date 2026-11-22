@@ -84,12 +84,9 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
    */
   readonly REVISION_CONFLICT: "revisionConflict";
   /**
-   * The operation would change a table, row, cell or grid that already
-   * carries a pending change of the kind it would record: a row pending
-   * insertion or deletion, a table, row or cell property change, a grid
-   * change, or cells already suggested for deletion; or would change the
-   * columns or cells of a table under review. Each element holds one record
-   * of a kind: resolve the pending one first.
+   * The operation cannot preserve an existing table, row, cell or grid
+   * review, or would overwrite one of the same kind. Resolve it before
+   * changing the table.
    */
   readonly PENDING_TABLE_CHANGE: "pendingTableChange";
   /**
@@ -389,7 +386,7 @@ export const DOCUMENT_OP_REFUSAL_SCOPES: Readonly<
   emptyContent: ANY,
   emptyBlockList: ANY,
   revisionConflict: TRACKED,
-  pendingTableChange: TRACKED,
+  pendingTableChange: ANY,
   pendingRunPropertyChange: TRACKED,
   pendingParagraphPropertyChange: TRACKED,
   joinIntoPendingTable: TRACKED,

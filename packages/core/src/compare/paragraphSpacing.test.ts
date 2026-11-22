@@ -1170,7 +1170,7 @@ describe("paragraph spacing comparison", () => {
     ).toEqual([
       expect.objectContaining({
         id: "insert-spaced",
-        reason: "unsupportedBlock",
+        reason: "pendingParagraphPropertyChange",
       }),
     ]);
     expect(await mainDocumentXml(await reviewer.toBuffer())).toBe(

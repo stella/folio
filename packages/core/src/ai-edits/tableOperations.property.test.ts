@@ -395,20 +395,10 @@ describe.each(SESSIONS)("%s session", (session) => {
   const trackedRefusalIsExpected = (
     planned: PlannedOperation,
     plan: OperationPlan,
-    trackedGridEdits: readonly PlannedOperation[],
   ): boolean => {
     const { anchor, other } = planned;
     const cell = anchor.cell;
     const siblings = anchor.siblings;
-    if (
-      (plan.kind === "insertTableColumn" ||
-        plan.kind === "deleteTableColumn") &&
-      trackedGridEdits.some(
-        (edit) =>
-          edit !== planned && edit.anchor.tableIndex === anchor.tableIndex,
-      )
-    )
-      return true;
     switch (plan.kind) {
       case "mergeTableCells": {
         const top = Math.min(cell.row, other.row);
@@ -536,6 +526,13 @@ describe.each(SESSIONS)("%s session", (session) => {
       // refusals the tracked vocabulary forces.
       for (const { planned, plan } of disagreeing) {
         const id = planned.operation.id;
+        const pendingGrid =
+          session === "canonical" &&
+          (plan.kind === "insertTableColumn" ||
+            plan.kind === "deleteTableColumn") &&
+          trackedGridEdits.some(
+            (edit) => edit.anchor.tableIndex === planned.anchor.tableIndex,
+          );
         expect({
           plans,
           direct: direct.result.skipped,
@@ -543,9 +540,12 @@ describe.each(SESSIONS)("%s session", (session) => {
           expected:
             directApplied.has(id) &&
             tracked.result.skipped.some(
-              (skip) => skip.id === id && skip.reason === "unsupportedBlock",
-            ) &&
-            trackedRefusalIsExpected(planned, plan, trackedGridEdits),
+              (skip) =>
+                skip.id === id &&
+                ((skip.reason === "pendingTableChange" && pendingGrid) ||
+                  (skip.reason === "unsupportedBlock" &&
+                    trackedRefusalIsExpected(planned, plan))),
+            ),
         }).toMatchObject({ expected: true });
       }
     }

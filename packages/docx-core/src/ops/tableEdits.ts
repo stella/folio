@@ -812,7 +812,7 @@ const columnReviews = ({
   const conflict = (message: string) =>
     refuse({
       op,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
       message,
     });
   const columns = reviewColumns(grid);
@@ -1026,7 +1026,7 @@ const columnEdit = ({
   const earlierSpans = () =>
     new DocumentOpRefusal({
       opType: op.type,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
       message:
         "A pending change records another span than the column edit changes.",
     });
@@ -1419,7 +1419,7 @@ const mergeReviews = ({
   const conflict = (message: string) =>
     refuse({
       op,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
       message,
     });
   const rows = table.rows.slice(op.top, op.bottom);
@@ -1488,7 +1488,7 @@ const merge = ({
   const earlierGrid = () =>
     new DocumentOpRefusal({
       opType: op.type,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
       message: "A pending change records another span than the merge changes.",
     });
   if (verticalOnly) {
@@ -1700,7 +1700,7 @@ const split = ({
   )
     return refuse({
       op,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
       message:
         "Resolve the pending insertions, deletions and merges of the split cell before splitting it.",
     });
@@ -1714,7 +1714,7 @@ const split = ({
   )
     return refuse({
       op,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
       message:
         "Resolve the pending property changes of the split cell before splitting its columns.",
     });
@@ -1796,7 +1796,7 @@ const split = ({
             () =>
               new DocumentOpRefusal({
                 opType: op.type,
-                reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+                reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
                 message:
                   "A pending change records another span than the split changes.",
               }),
