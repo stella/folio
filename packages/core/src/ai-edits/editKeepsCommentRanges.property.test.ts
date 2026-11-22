@@ -453,14 +453,17 @@ describe("an edit leaves every comment and bookmark range balanced and anchored"
               )
                 .map((index) => survivingParagraphs.get(index))
                 .filter((offsets) => offsets !== undefined && offsets !== null);
-              // The canonical session's direct replacement takes a comment whose
-              // whole range it replaces; the legacy one keeps it on the new text.
-              const replacedWhole =
+              // Canonical retires a comment whose text is fully replaced. A
+              // surviving note reference still gives the range content.
+              const replacedCoveredParagraph =
                 session === "canonical" &&
                 generated.edit.kind === "replaceInBlock" &&
                 generated.edit.mode === "direct" &&
                 first === generated.edit.blockIndex &&
                 last === generated.edit.blockIndex;
+              const replacedWhole =
+                replacedCoveredParagraph &&
+                generated.noteRefParagraph !== first;
               if (covered.length === 0 || replacedWhole) {
                 // Every character the comment covered is gone, and the comment
                 // with it: no definition, no marker; its reference run went with
@@ -491,6 +494,17 @@ describe("an edit leaves every comment and bookmark range balanced and anchored"
 
               // The range still reaches the surviving ends of its original span.
               const span = commentSpans.get(id);
+              if (replacedCoveredParagraph) {
+                const paragraph = covered.at(0);
+                if (paragraph === undefined)
+                  throw new Error("The edited paragraph must remain.");
+                const reference = xml.indexOf(
+                  "<w:footnoteReference",
+                  paragraph.start,
+                );
+                expect(reference).toBeGreaterThan(span?.first ?? Infinity);
+                expect(reference).toBeLessThan(span?.last ?? -1);
+              }
               expect({
                 id,
                 opensInTime:

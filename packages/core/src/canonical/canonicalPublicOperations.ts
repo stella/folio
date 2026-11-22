@@ -7515,7 +7515,7 @@ export class CanonicalPublicOperations {
       // and keeps every field the direct edit keeps. Each piece of prose
       // between kept references changes on its own, so no change reaches a
       // reference; one that edits references takes each it touches whole.
-      const planned = planReplacementChanges({
+      const replacementSource = {
         source: clean.text.slice(start, end),
         replacement: text,
         noteReferences: references,
@@ -7525,11 +7525,33 @@ export class CanonicalPublicOperations {
             ? [{ offset: boundary.offset - start, length: boundary.length }]
             : [],
         ),
+      };
+      let planned = planReplacementChanges({
+        ...replacementSource,
         planChanges: tracked
           ? (source, target) => changesFromSegments(diff(source, target))
           : planTextChanges,
         ...(tracked ? { keepFieldsOf: planTextChanges } : {}),
       });
+      // A word diff can strike unchanged text at a comment edge and then
+      // reinsert it outside the range. Use the direct cuts when source text
+      // under review also determines standing comment coverage.
+      if (
+        tracked &&
+        planned?.some((change) =>
+          clean.offsets
+            .slice(start + change.start, start + change.end)
+            .some((position) =>
+              paragraph.node
+                .nodeAt(position - paragraph.start)
+                ?.marks.some((mark) => mark.type.name === "comment"),
+            ),
+        )
+      )
+        planned = planReplacementChanges({
+          ...replacementSource,
+          planChanges: planTextChanges,
+        });
       // The segments above keep the references, or the replacement edits
       // them, so a plan always exists and reproduces the replacement.
       if (planned === null)
@@ -7537,7 +7559,7 @@ export class CanonicalPublicOperations {
       // Keep repeated tabs and breaks in place. A replacement that changes
       // the separators passes them to the editor as inline elements.
       const separated = cutAroundRepeatedSeparators(
-        clean.text.slice(start, end),
+        replacementSource.source,
         planned,
       );
       const changes = separated.map((change) => ({
