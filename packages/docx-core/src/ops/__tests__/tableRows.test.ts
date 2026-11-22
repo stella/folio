@@ -317,8 +317,8 @@ describe("table row review", () => {
   test.each([
     ["ins", DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_INSERTION],
     ["del", DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_DELETION],
-    ["moveFrom", DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE],
-    ["moveTo", DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE],
+    ["moveFrom", DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_DELETION],
+    ["moveTo", DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_INSERTION],
   ] as const)(
     "a pre-existing cell-final %s mark refuses a tracked row operation",
     (kind, reason) => {
