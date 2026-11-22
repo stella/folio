@@ -11,6 +11,8 @@ const DARK_TONE_DROP = 80;
 
 const THIN_COMPOUND_STROKE_PX = 1;
 const THICK_COMPOUND_STROKE_PX = 2;
+const DOT_DASH_DASH_WIDTH_FACTOR = 7;
+const DOT_DASH_DOT_WIDTH_FACTOR = 3;
 const MIN_SMALL_GAP_STROKE_PX = pointsToPixels(0.25);
 
 type CompoundStyle = Extract<
@@ -92,6 +94,23 @@ function compoundEdge(border: CellBorderSpec | undefined) {
   const gapPx = segmentWidth(gap);
   const lastPx = segmentWidth(last);
   return { firstPx, lastPx, gapPx, color, widthPx: firstPx + gapPx + lastPx };
+}
+
+/** Dot-dash lengths follow the authored stroke width, alternating ink and gap. */
+export function tableCellBorderDash(border: CellBorderSpec | undefined) {
+  if (border?.authoredStyle !== "dotDash") return undefined;
+  const widthPx = border.width ?? 1;
+  if (!(widthPx > 0) || !Number.isFinite(widthPx)) return undefined;
+  const shortPx = widthPx * DOT_DASH_DOT_WIDTH_FACTOR;
+  return {
+    widthPx,
+    dashArrayPx: [
+      widthPx * DOT_DASH_DASH_WIDTH_FACTOR,
+      shortPx,
+      shortPx,
+      shortPx,
+    ] as const,
+  };
 }
 
 export function tableCellBorderWidth(

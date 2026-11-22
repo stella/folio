@@ -94,6 +94,10 @@ const applyStrokeState = (
 ) => {
   stream.setStrokeColor(stroke.color);
   stream.setLineWidth(widthPx);
+  if (stroke.pattern === "dashed" && stroke.dashArrayPx !== undefined) {
+    stream.setDash(stroke.dashArrayPx, 0);
+    return;
+  }
   const dash = STROKE_DASH_FACTORS[stroke.pattern];
   if (dash !== null) {
     stream.setDash(

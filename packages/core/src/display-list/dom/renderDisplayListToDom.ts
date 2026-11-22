@@ -39,6 +39,7 @@ import { bytesToDataUrl } from "../../utils/base64";
 import { cssString } from "../../utils/cssString";
 import { imageLuminanceFilter } from "../../utils/imageLuminance";
 import { writePaintedRange } from "../../utils/paintedPositions";
+import { repeatingStrokeGradient } from "../../utils/repeatingStrokeGradient";
 import { applyTextAdvanceGaps } from "../../utils/textAdvanceGapsDom";
 import { anchorTargetAttrs } from "../../utils/urlSecurity";
 import { retainObjectUrl } from "../pageResourceOwnership";
@@ -310,6 +311,13 @@ const repeatingBars = (
 
 const strokeBackground = (stroke: DisplayStroke, axes: BarAxes) => {
   const color = cssColor(stroke.color);
+  if (stroke.pattern === "dashed" && stroke.dashArrayPx !== undefined) {
+    return repeatingStrokeGradient({
+      color,
+      direction: axes.main,
+      dashArrayPx: stroke.dashArrayPx,
+    });
+  }
   switch (stroke.pattern) {
     case "solid":
       return color;
