@@ -16,16 +16,10 @@
  * construction and prove nothing.
  *
  * The baseline it compares against is a CONTROL SAVE, not the input bytes.
- * Every save re-normalises `w:id` revision ids and `w14:paraId` ranges over
- * every `word/*.xml` part and rewrites `AppVersion` in `docProps/app.xml`,
- * including parts the save did not otherwise touch, because those id spaces are
- * package-wide facts no single serializer can bound. Comparing an edited save
- * against the original bytes would therefore report that normalisation as a
- * locality defect on every file. Saving the same document twice, once with the
- * edit and once without, pays the normalisation on both sides, so what survives
- * is the edit's own reach and nothing else. A no-edit save can still come back
- * byte for byte, when the package needs no normalisation at all; the residue is
- * then whatever the edit forced folio to rewrite, which is the finding.
+ * The no-edit save accounts for normalization common to both saves. Canonical
+ * saves can also stamp the paragraph ids assigned on open into the edited
+ * document part. Compare that part against the same assignment, and continue
+ * comparing unrelated parts against the unmodified control save.
  *
  * The edited paragraph is located after the fact, by the character it gained:
  * the block ids the editor works in and the body indices the model uses are
@@ -42,8 +36,13 @@ import type {
   FolioAIBlock,
   FolioAIEditOperation,
 } from "@stll/folio-core/ai-edits/types";
+import { ensureParaIds } from "@stll/folio-core/docx/ensureParaIds";
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { unzipDocx } from "@stll/folio-core/docx/unzip";
+import {
+  type HeadlessReviewerSession,
+  headlessReviewerUsesCanonicalSession,
+} from "@stll/folio-core/types/canonicalCapabilities";
 import type { Document } from "@stll/folio-core/types/document";
 
 import {
@@ -287,17 +286,23 @@ const changedPartPaths = (
   return [...changed].toSorted((left, right) => (left < right ? -1 : 1));
 };
 
-const parse = (buffer: ArrayBuffer): Promise<Document> =>
+const parse = (buffer: ArrayBuffer | Uint8Array): Promise<Document> =>
   parseDocx(buffer, { preloadFonts: false });
 
-export const runEditLocalityInvariant = async ({
-  buffer,
-}: CorpusInvariantInput): Promise<CorpusEvaluatedOutcome> => {
+export const runEditLocalityInvariant = async (
+  { buffer }: CorpusInvariantInput,
+  session?: HeadlessReviewerSession,
+): Promise<CorpusEvaluatedOutcome> => {
   const timings: StageTimings = {};
+  const open = () =>
+    FolioDocxReviewer.fromBuffer(
+      buffer,
+      session === undefined ? {} : { session },
+    );
 
   const opened = await timeStage(timings, "open", () =>
     Result.tryPromise({
-      try: () => FolioDocxReviewer.fromBuffer(buffer),
+      try: open,
       catch: (cause: unknown) => cause,
     }),
   );
@@ -365,7 +370,7 @@ export const runEditLocalityInvariant = async ({
 
   const controlSave = await timeStage(timings, "control-save", () =>
     Result.tryPromise({
-      try: async () => (await FolioDocxReviewer.fromBuffer(buffer)).toBuffer(),
+      try: async () => (await open()).toBuffer(),
       catch: (cause: unknown) => cause,
     }),
   );
@@ -382,7 +387,9 @@ export const runEditLocalityInvariant = async ({
       try: () =>
         Promise.all([
           parse(editedSave.value),
-          parse(controlSave.value),
+          headlessReviewerUsesCanonicalSession(session)
+            ? ensureParaIds(controlSave.value).then(({ docx }) => parse(docx))
+            : parse(controlSave.value),
           readUnrelatedParts(editedSave.value),
           readUnrelatedParts(controlSave.value),
         ]),

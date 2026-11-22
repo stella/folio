@@ -17,6 +17,7 @@ import { ZipArchive } from "@stll/docx-core/zip";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import {
   buildSectionsDocx,
+  SECTIONS_FIXTURE_PARTS,
   SECTIONS_FIXTURE_TEXT,
 } from "./__fixtures__/sections";
 import { FolioDocxReviewer } from "./headless";
@@ -146,41 +147,57 @@ describe("deleting the paragraph that ends a section", () => {
     );
   });
 
-  test("merges its section into the next one and saves, in direct mode", async () => {
-    const reviewer = await open(await buildSectionsDocx());
+  test.each(["legacy", "canonical"] as const)(
+    "%s merges its section into the next one and saves in direct mode",
+    async (session) => {
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await buildSectionsDocx(),
+        { author: "Reviewer", session },
+      );
 
-    const result = deleteBlock(
-      reviewer,
-      SECTIONS_FIXTURE_TEXT.oneCloses,
-      "direct",
-    );
-    expect(result.applied).toHaveLength(1);
-    expect(result.issues).toEqual([]);
+      const result = deleteBlock(
+        reviewer,
+        SECTIONS_FIXTURE_TEXT.oneCloses,
+        "direct",
+      );
+      expect(result.applied).toHaveLength(1);
+      expect(result.issues).toEqual([]);
 
-    const saved = await reviewer.save();
-    expect(saved.type).toBe("full-repack");
-    if (saved.type === "repackRefused") throw new Error("refused");
-    const xml = await documentXml(saved.buffer);
-    // Two section records left: the landscape one, and the body's own.
-    expect(xml.match(/<w:sectPr\b/gu)).toHaveLength(2);
-    // The merged section's own header references went with its record.
-    expect(xml).not.toContain("rIdHeaderOneDefault");
+      const saved = await reviewer.save();
+      expect(saved.type).toBe("full-repack");
+      if (saved.type === "repackRefused") throw new Error("refused");
+      const xml = await documentXml(saved.buffer);
+      // Two section records left: the landscape one, and the body's own.
+      expect(xml.match(/<w:sectPr\b/gu)).toHaveLength(2);
+      // The merged section's own header references went with its record.
+      expect(xml).not.toContain("rIdHeaderOneDefault");
 
-    const reopened = await open(saved.buffer);
-    expect(reviewer.getNotesAsText()).toBe(reopened.getNotesAsText());
-    // Removing a section reference retains the package's stored parts.
-    expect(reviewer.getNotesAsText()).toContain("Header one default.");
-    expect(reviewer.getNotesAsText()).toContain("Footer one default.");
-    // This header is still referenced by the final section.
-    expect(reviewer.getNotesAsText()).toContain("Header one first.");
-    expect(sectionsOf(reopened)).toEqual([
-      { text: SECTIONS_FIXTURE_TEXT.oneOpens, endsSection: false },
-      { text: SECTIONS_FIXTURE_TEXT.twoOpens, endsSection: false },
-      { text: SECTIONS_FIXTURE_TEXT.twoCloses, endsSection: true },
-      { text: SECTIONS_FIXTURE_TEXT.threeOpens, endsSection: false },
-      { text: SECTIONS_FIXTURE_TEXT.threeCloses, endsSection: false },
-    ]);
-  });
+      const reopened = await FolioDocxReviewer.fromBuffer(saved.buffer, {
+        author: "Reviewer",
+        session,
+      });
+      const notes = reviewer.getNotesAsText();
+      expect(notes).toBe(reopened.getNotesAsText());
+      // Canonical retires a header or footer whose last section reference goes.
+      const savedZip = await ZipArchive.read(saved.buffer);
+      for (const { file, text } of [
+        SECTIONS_FIXTURE_PARTS.rIdHeaderOneDefault,
+        SECTIONS_FIXTURE_PARTS.rIdFooterOneDefault,
+      ]) {
+        expect(savedZip.has(`word/${file}`)).toBe(session === "legacy");
+        expect(notes.includes(text)).toBe(session === "legacy");
+      }
+      // This header is still referenced by the final section.
+      expect(notes).toContain("Header one first.");
+      expect(sectionsOf(reopened)).toEqual([
+        { text: SECTIONS_FIXTURE_TEXT.oneOpens, endsSection: false },
+        { text: SECTIONS_FIXTURE_TEXT.twoOpens, endsSection: false },
+        { text: SECTIONS_FIXTURE_TEXT.twoCloses, endsSection: true },
+        { text: SECTIONS_FIXTURE_TEXT.threeOpens, endsSection: false },
+        { text: SECTIONS_FIXTURE_TEXT.threeCloses, endsSection: false },
+      ]);
+    },
+  );
 
   test("reaches the same document as accepting the tracked and suggested deletion", async () => {
     const source = await buildSectionsDocx();
