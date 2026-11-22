@@ -87,7 +87,7 @@ const NO_WRAP_MEASURE_WIDTH = 1_000_000;
 export type MeasureBlocksOptions = {
   /** Header/footer tabs may be authored in the page margin, beyond body width. */
   allowEndTabOverflow?: boolean;
-  /** Paragraph-local exclusions found from a provisional page layout. */
+  // Paragraph-local exclusions found from a provisional page layout.
   raisedTableWrap?: RaisedTableWrapInputs;
 };
 

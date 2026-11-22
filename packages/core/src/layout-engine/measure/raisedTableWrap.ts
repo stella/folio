@@ -127,7 +127,7 @@ type SettleRaisedTableWrapOptions = {
   measure: (inputs: RaisedTableWrapInputs) => Measure[];
 };
 
-/** Find a layout whose earlier wraps agree with its actual floating table placements. */
+// Find a layout whose earlier wraps agree with its actual floating table placements.
 export function settleRaisedTableWrap({
   blocks,
   measures,
