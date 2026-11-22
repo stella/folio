@@ -325,6 +325,8 @@ export type ImageRun = {
   contrast?: number;
   /** Position for floating/anchored images */
   position?: ImageRunPosition;
+  /** Inline picture displacement from the text baseline in CSS pixels. Positive values raise it. */
+  baselineOffsetPx?: number;
   /** Whether a table-cell anchor uses the cell as its positioning scope. Undefined defaults true. */
   layoutInCell?: boolean;
   /** Wrap type from DOCX (inline, square, tight, through, topAndBottom, etc.) */

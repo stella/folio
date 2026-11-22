@@ -91,6 +91,48 @@ const buildOversizedInlinePicture = (
 };
 
 describe("inline picture paper clipping", () => {
+  test("moves a positioned picture on an exact line without moving the text baseline", () => {
+    withFakeTextMeasure(() => {
+      const geometryFor = (baselineOffsetPx: number) => {
+        const block: ParagraphBlock = {
+          kind: "paragraph",
+          id: "fixed-picture-baseline",
+          attrs: { spacing: { line: 48, lineUnit: "px", lineRule: "exact" } },
+          runs: [
+            { kind: "text", text: "Label" },
+            {
+              kind: "image",
+              src: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+              width: 24,
+              height: 20,
+              baselineOffsetPx,
+            },
+          ],
+        };
+        const primitives = pagePrimitives([block]);
+        const glyph = primitives.find(({ kind }) => kind === "glyphRun");
+        const clip = primitives.find(({ kind }) => kind === "clipGroup");
+        const image = clip?.children.find(({ kind }) => kind === "image");
+        if (!glyph || !image) {
+          throw new Error(
+            "Expected a mixed line containing text and a picture",
+          );
+        }
+        return { baseline: glyph.baselineYPx, pictureTop: image.rect.yPx };
+      };
+
+      const unshifted = geometryFor(0);
+      expect(geometryFor(8)).toEqual({
+        baseline: unshifted.baseline,
+        pictureTop: unshifted.pictureTop - 8,
+      });
+      expect(geometryFor(-8)).toEqual({
+        baseline: unshifted.baseline,
+        pictureTop: unshifted.pictureTop + 8,
+      });
+    }, fakeMeasure);
+  });
+
   test("keeps authored advance while clipping body paint at the paper edge", () => {
     withFakeTextMeasure(() => {
       const built = buildOversizedInlinePicture(800);

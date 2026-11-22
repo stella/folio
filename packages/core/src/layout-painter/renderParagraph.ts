@@ -11,6 +11,7 @@ import { ommlToMathml } from "../docx/mathToMathml";
 import { parseXmlDocument } from "../docx/xmlParser";
 import { evaluateFieldInstruction } from "../fields/evaluateField";
 import type { FieldContext } from "../fields/fieldContext";
+import { measuredLineBaseline } from "../layout-engine/measure";
 import {
   automaticRunGap,
   automaticTextSpacingGaps,
@@ -3023,6 +3024,38 @@ export function renderLine(
     options?.inlineImageLineStartX === undefined
       ? (options?.imageOriginX ?? 0) + currentX
       : options.inlineImageLineStartX + currentX - imageFlowStartX;
+  const fixedLineHeight = block.attrs?.spacing?.lineRule === "exact";
+  const onlyImage = onlyRun !== undefined && isImageRun(onlyRun);
+  const renderLineImage = (run: ImageRun): HTMLElement => {
+    const element = renderImageRun({
+      run,
+      doc,
+      ...(options?.context === undefined ? {} : { context: options.context }),
+      sizing: inlinePictureSizingForParagraph(block, options?.context),
+      imageLeft: imageLeftAtCurrentX(),
+    });
+    const offset = run.baselineOffsetPx;
+    if (!offset) return element;
+
+    if (onlyImage) {
+      lineEl.style.alignItems = "flex-start";
+      const top =
+        measuredLineBaseline(line) -
+        inlineImageBoundingBox(run).height -
+        offset;
+      element.style.position = "relative";
+      element.style.top = `${top - (run.distTop ?? 0)}px`;
+    } else if (fixedLineHeight) {
+      element.style.position = "relative";
+      element.style.top = `${-offset}px`;
+    } else {
+      // A mixed line is a flex row with a shared baseline. Redistributing
+      // its margins raises or lowers the picture relative to that baseline.
+      element.style.marginTop = `${(run.distTop ?? 0) + offset}px`;
+      element.style.marginBottom = `${(run.distBottom ?? 0) - offset}px`;
+    }
+    return element;
+  };
 
   // Render each run
   for (let i = 0; i < runsForLine.length; i++) {
@@ -3183,20 +3216,7 @@ export function renderLine(
             const imageKey = getInlineImageRunKey(next);
             if (!options?.renderedInlineImageKeys?.has(imageKey)) {
               options?.renderedInlineImageKeys?.add(imageKey);
-              lineEl.append(
-                renderImageRun({
-                  run: next,
-                  doc,
-                  ...(options?.context === undefined
-                    ? {}
-                    : { context: options.context }),
-                  sizing: inlinePictureSizingForParagraph(
-                    block,
-                    options?.context,
-                  ),
-                  imageLeft: imageLeftAtCurrentX(),
-                }),
-              );
+              lineEl.append(renderLineImage(next));
             }
           } else {
             lineEl.append(
@@ -3321,14 +3341,7 @@ export function renderLine(
       }
       options?.renderedInlineImageKeys?.add(imageKey);
       // Inline or block image - render in the text flow
-      const runEl = renderImageRun({
-        run,
-        doc,
-        ...(options?.context === undefined ? {} : { context: options.context }),
-        sizing: inlinePictureSizingForParagraph(block, options?.context),
-        imageLeft: imageLeftAtCurrentX(),
-      });
-      lineEl.append(runEl);
+      lineEl.append(renderLineImage(run));
       // Block images don't contribute to horizontal position. Rotated inline
       // images advance by their axis-aligned bbox width — the wrapper span
       // the painter emits has that width, so currentX must agree to keep

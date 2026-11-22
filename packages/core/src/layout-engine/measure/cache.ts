@@ -313,6 +313,7 @@ let paragraphCacheBytes = 0;
 
 type ImageMeasureCacheField =
   | "kind"
+  | "baselineOffsetPx"
   | "width"
   | "height"
   | "transform"
@@ -363,6 +364,7 @@ type ExhaustivelyClassifiedImageRun = [
 /** Keep image payloads bounded while classifying every field as measured or intentionally ignored. */
 const imageMeasureCacheInput = (run: ExhaustivelyClassifiedImageRun) => ({
   kind: run.kind,
+  baselineOffsetPx: run.baselineOffsetPx,
   width: run.width,
   height: run.height,
   transform: run.transform,
