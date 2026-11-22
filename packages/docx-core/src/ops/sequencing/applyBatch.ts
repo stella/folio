@@ -1,7 +1,7 @@
 import { panic, Result } from "better-result";
 
 import type { Document } from "../../model/document";
-import { applyDocumentOps } from "../apply";
+import { applyDocumentOps, inspectDocumentOps } from "../apply";
 import { storyBody, storyParagraphs } from "../blocks";
 import { IDENTITY_SPACES, identityKeysIn, idKey, slotKey } from "../ids";
 import { compareGaps, type Gap, leafSpans, spanningRecords } from "../leaves";
@@ -164,6 +164,26 @@ const keptMark = (document: Document, op: DeleteRangeOp): Gap | undefined => {
 export const applyBatch = (
   document: Document,
   ops: readonly DocumentOp[],
+): Result<AppliedBatch, DocumentOpRefusal> =>
+  batchWith(applyDocumentOps, document, ops);
+
+/**
+ * {@link applyBatch} for a rebase, whose batches may take a pending edit back
+ * by its inverse: what the batch leaves, without an inverse of its own, since
+ * an inspection repairs none.
+ */
+export const inspectBatch = (
+  document: Document,
+  ops: readonly DocumentOp[],
+): Result<Omit<AppliedBatch, "inverse">, DocumentOpRefusal> =>
+  batchWith(inspectDocumentOps, document, ops).map(
+    ({ document: left, effects }) => ({ document: left, effects }),
+  );
+
+const batchWith = (
+  applyOps: typeof applyDocumentOps,
+  document: Document,
+  ops: readonly DocumentOp[],
 ): Result<AppliedBatch, DocumentOpRefusal> => {
   let current = document;
   const inverses: (readonly DocumentOp[])[] = [];
@@ -198,7 +218,7 @@ export const applyBatch = (
         };
       }
     }
-    const applied = applyDocumentOps(current, [op]);
+    const applied = applyOps(current, [op]);
     if (applied.isErr()) {
       return Result.err(applied.error);
     }

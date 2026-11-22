@@ -13,7 +13,7 @@ import {
   type DocumentOp,
 } from "../types";
 import { captureDocumentOp, restoreDocumentOp } from "../wire";
-import { applyBatch } from "./applyBatch";
+import { applyBatch, inspectBatch } from "./applyBatch";
 import {
   BATCH_REJECTION_REASONS,
   BatchRejection,
@@ -129,7 +129,7 @@ export const createClient = (
       ...sequenced,
       ...entries.flatMap(({ batch }) => batch.ops),
     ];
-    const applied = applyBatch(previous, ops);
+    const applied = inspectBatch(previous, ops);
     if (applied.isErr())
       return panic(
         "Pending inverses, sequenced ops and survivors must replay in order.",
@@ -156,7 +156,7 @@ export const createClient = (
     previous: Document,
     change: SequencedBatch,
   ): "exact" | "offsets" | "elsewhere" => {
-    const applied = applyBatch(previous, change.ops);
+    const applied = inspectBatch(previous, change.ops);
     if (applied.isErr()) return "elsewhere";
     if (equalForStaleness(applied.value.document, current)) return "exact";
     return sameOffsets(applied.value.document, current)
@@ -171,7 +171,7 @@ export const createClient = (
   ): Document | undefined => {
     let cursor = start;
     for (const { ops } of batches) {
-      const applied = applyBatch(cursor, ops);
+      const applied = inspectBatch(cursor, ops);
       if (applied.isErr()) return undefined;
       cursor = applied.value.document;
     }
@@ -216,8 +216,8 @@ export const createClient = (
     for (const lead of leading) {
       const past = transformBatch(lead, [carriedMine], { order: "before" });
       const next = transformBatch(carriedMine, [lead]);
-      const afterMine = applyBatch(cursor, carriedMine.ops);
-      const afterLead = applyBatch(cursor, lead.ops);
+      const afterMine = inspectBatch(cursor, carriedMine.ops);
+      const afterLead = inspectBatch(cursor, lead.ops);
       if (
         past.isErr() ||
         next.isErr() ||
@@ -225,8 +225,14 @@ export const createClient = (
         afterLead.isErr()
       )
         break;
-      const pastApplied = applyBatch(afterMine.value.document, past.value.ops);
-      const nextApplied = applyBatch(afterLead.value.document, next.value.ops);
+      const pastApplied = inspectBatch(
+        afterMine.value.document,
+        past.value.ops,
+      );
+      const nextApplied = inspectBatch(
+        afterLead.value.document,
+        next.value.ops,
+      );
       if (pastApplied.isErr() || nextApplied.isErr()) break;
       carried.push({
         ...past.value,
@@ -253,7 +259,7 @@ export const createClient = (
       return panic(
         "Pending batch must replay in its original coordinate space.",
       );
-    const undone = applyBatch(made.value.document, entry.inverse);
+    const undone = inspectBatch(made.value.document, entry.inverse);
     if (undone.isErr())
       return panic("Recorded inverse must apply after its batch.");
     return Result.ok({
@@ -348,7 +354,7 @@ export const createClient = (
         const before = new Set(packageIdentityKeys(cursor.package));
         for (const key of packageIdentityKeys(made.value.document.package))
           if (!before.has(key)) droppedIdentities.add(key);
-        const undone = applyBatch(made.value.document, entry.inverse);
+        const undone = inspectBatch(made.value.document, entry.inverse);
         if (undone.isErr())
           return panic("Recorded inverse must apply after its batch.");
         carried = [

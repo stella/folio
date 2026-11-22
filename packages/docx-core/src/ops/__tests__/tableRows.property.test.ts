@@ -92,7 +92,13 @@ const makeParagraph = (
 const rowFor = (shape: Shape, rowIndex: number, firstId: number): TableRow => ({
   type: "tableRow",
   formatting: rowIndex % 2 === 0 ? { cantSplit: true } : { header: true },
-  preservedAttributes: [{ name: "rsidTr", value: "00ABCDEF" }],
+  preservedAttributes: [
+    {
+      namespace: "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+      name: "rsidTr",
+      value: "00ABCDEF",
+    },
+  ],
   cells: Array.from(
     { length: 1 + ((shape.cells + rowIndex) % 3) },
     (_, cellIndex) => {

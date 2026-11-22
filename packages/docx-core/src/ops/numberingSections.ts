@@ -32,6 +32,7 @@ import {
   rebuildSections,
   restoreSectionViewState,
   sectionsInStep,
+  storyParagraphs,
 } from "./blocks";
 import type { DocumentEdit } from "./edits";
 import { structurallyEqual } from "./equality";
@@ -459,12 +460,27 @@ const applySectionEndpoint = (document: Document, op: SetSectionEndpointOp) => {
       : undefined;
   const endpointParagraph = target?.type === "paragraph" ? target : undefined;
   const record = endpoint.type === "final" ? body : endpointParagraph;
-  if (record === undefined)
-    return failed(
-      op,
-      DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
-      "The section endpoint paragraph does not exist.",
-    );
+  if (record === undefined) {
+    const inTableCell =
+      endpoint.type === "paragraph" &&
+      storyParagraphs(body).some(
+        ({ paragraph, list }) =>
+          paragraph.paraId !== undefined &&
+          idKey(paragraph.paraId) === idKey(endpoint.blockId) &&
+          list.some((step) => step.kind === "tableCell"),
+      );
+    return inTableCell
+      ? failed(
+          op,
+          DOCUMENT_OP_REFUSAL_REASONS.SECTION_BOUNDARY,
+          "A section cannot end inside a table cell.",
+        )
+      : failed(
+          op,
+          DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
+          "The section endpoint paragraph does not exist.",
+        );
+  }
   const key =
     endpoint.type === "final" ? "finalSectionProperties" : "sectionProperties";
   const previous = captureSectionProperties({ record, key });

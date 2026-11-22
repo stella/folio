@@ -31,8 +31,6 @@ import {
   storyBody,
   storyParagraphs,
 } from "./blocks";
-import { applyCommentOp, withAddedCommentRecords } from "./comments";
-import { setContentControl } from "./contentControls";
 /**
  * Apply a document operation and record its exact inverse.
  *
@@ -77,6 +75,9 @@ import { setContentControl } from "./contentControls";
  * stale. An inverse that cuts records apart again names the ids its forward
  * operation retired.
  */
+import { gainsSectionInTableCell } from "./cellSections";
+import { applyCommentOp, withAddedCommentRecords } from "./comments";
+import { setContentControl } from "./contentControls";
 import {
   hasMultipleParagraphPropertyChanges,
   meetsContract,
@@ -3681,6 +3682,17 @@ const applyAddressedOp = ({
       ),
     );
   }
+  // An inspection replays the inverse of an edit only to read what it would
+  // leave; whether that inverse applies is asked when it is applied.
+  if (purpose === "apply" && gainsSectionInTableCell(document, edit.document)) {
+    return Result.err(
+      refusal(
+        op,
+        DOCUMENT_OP_REFUSAL_REASONS.SECTION_BOUNDARY,
+        "A section cannot end inside a table cell.",
+      ),
+    );
+  }
   // The contract keeps paragraph ids unique: an edit that would repeat one,
   // however its operation came by it, is refused here, where it is owned.
   const repeatedId = repeatedParagraphId(edit.document);
@@ -3817,3 +3829,14 @@ export const applyDocumentOps = (
   ops: readonly DocumentOp[],
 ): Result<AppliedDocumentOp, DocumentOpRefusal> =>
   applyDocumentOpsForPurpose({ document, ops, purpose: "apply" });
+
+/**
+ * Apply operations to read what they leave, as a rebase takes back a pending
+ * edit by its recorded inverse: an inverse that as an operation of its own
+ * would be refused for what it restores still says what was there.
+ */
+export const inspectDocumentOps = (
+  document: Document,
+  ops: readonly DocumentOp[],
+): Result<AppliedDocumentOp, DocumentOpRefusal> =>
+  applyDocumentOpsForPurpose({ document, ops, purpose: "inspect-inverse" });

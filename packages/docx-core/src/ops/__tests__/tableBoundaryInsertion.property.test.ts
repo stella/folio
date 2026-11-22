@@ -30,7 +30,6 @@ import {
   INHERIT_RUN_PROPS,
   OP_STORIES,
   REVISION_DECISIONS,
-  SECTION_BOUNDARY_POLICIES,
   toOpEnvelope,
 } from "../types";
 
@@ -436,8 +435,8 @@ test("empty replacement refuses leaving a table as its cell terminator", () => {
 });
 
 for (const boundary of [
-  "section",
-  "review-section",
+  "nested-structure",
+  "review-structure",
   "structure",
   "terminal",
   "range",
@@ -447,17 +446,33 @@ for (const boundary of [
     let before = structuredClone(source("body"));
     const target = before.package.document.content.at(2);
     if (target?.type !== "table") panic("The source target table is required.");
-    const cell = target.rows.at(0)?.cells.at(0),
-      receiver = cell?.content.at(0);
-    if (cell === undefined || receiver?.type !== "paragraph")
+    const cell = target.rows.at(0)?.cells.at(0);
+    if (cell?.content.at(0)?.type !== "paragraph")
       panic("The typed source table needs its receiver.");
-    if (boundary === "section")
-      receiver.sectionProperties = { pageWidth: 11906 };
-    if (boundary === "structure")
+    const control = {
+      type: "blockSdt",
+      properties: { sdtType: "richText", id: 88 },
+      content: [paragraph({ paraId: "10000030", text: "Nested" })],
+    } satisfies BlockContent;
+    if (boundary === "structure" || boundary === "review-structure")
+      cell.content.unshift(control);
+    if (boundary === "nested-structure")
       cell.content.unshift({
-        type: "blockSdt",
-        properties: { sdtType: "richText", id: 88 },
-        content: [paragraph({ paraId: "10000030", text: "Nested" })],
+        type: "table",
+        rows: [
+          {
+            type: "tableRow",
+            cells: [
+              {
+                type: "tableCell",
+                content: [
+                  control,
+                  paragraph({ paraId: "10000031", text: "End" }),
+                ],
+              },
+            ],
+          },
+        ],
       });
     if (boundary === "terminal") before.package.document.content.pop();
     if (boundary === "range")
@@ -469,7 +484,7 @@ for (const boundary of [
       before.package.document.content = before.package.document.content.filter(
         (block) => block.type === "table",
       );
-    if (boundary === "review-section")
+    if (boundary === "review-structure")
       before = applyDocumentOp(before, {
         type: DOCUMENT_OP_TYPES.DELETE_TABLE,
         story: OP_STORIES.MAIN,
@@ -479,20 +494,6 @@ for (const boundary of [
           revision: Array.from({ length: 20 }, (_, index) => index + 11),
         },
       }).unwrap().document;
-    if (boundary === "review-section") {
-      const marked = storyParagraphs(before.package.document).find(
-        ({ paragraph: item }) => item.paraId === "10000022",
-      )?.paragraph;
-      if (marked === undefined)
-        panic("The actual row producer needs its section receiver.");
-      before = applyDocumentOp(before, {
-        type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
-        story: OP_STORIES.MAIN,
-        expected: [marked],
-        blocks: [{ ...marked, sectionProperties: { pageWidth: 11906 } }],
-        sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE,
-      }).unwrap().document;
-    }
     const original = structuredClone(before);
     const at = {
       type:

@@ -6,7 +6,7 @@ import type {
   TableCell,
   TableRow,
 } from "../model/document";
-import { listKey, sourceSplice } from "./listSplice";
+import { blockListCheck } from "./blockListCheck";
 
 const DocumentOpsContractErrorBase: TaggedErrorClass<"DocumentOpsContractError"> =
   TaggedError("DocumentOpsContractError");
@@ -71,54 +71,9 @@ const holdsEmptyRecord = (nodes: readonly InlineNode[]): boolean =>
     (node) => isEmptyRecord(node) || holdsEmptyRecord(childNodes(node) ?? []),
   );
 
-// Operation documents and their block lists are immutable once validated.
-const MULTIPLE_PROPERTY_CHANGES = new WeakMap<object, boolean>();
-
-const blocksHaveMultiplePropertyChanges = (
-  blocks: readonly BlockContent[],
-): boolean => {
-  const key = listKey(blocks);
-  const cached = MULTIPLE_PROPERTY_CHANGES.get(key);
-  if (cached !== undefined) return cached;
-  const splice = sourceSplice(blocks);
-  // A previously clean list can only acquire a violation in the replacement.
-  const candidates =
-    splice !== undefined &&
-    MULTIPLE_PROPERTY_CHANGES.get(splice.previous) === false
-      ? blocks.slice(splice.start, splice.end)
-      : blocks;
-  const found = candidates.some((block) => {
-    switch (block.type) {
-      case "paragraph":
-        return (block.propertyChanges?.length ?? 0) > 1;
-      case "table":
-        return block.rows.some((row) =>
-          row.cells.some((cell) =>
-            blocksHaveMultiplePropertyChanges(cell.content),
-          ),
-        );
-      case "blockSdt":
-      case "blockCustomXml":
-        return blocksHaveMultiplePropertyChanges(block.content);
-      case "preservedBlock":
-      case "bookmarkStart":
-      case "bookmarkEnd":
-      case "commentRangeStart":
-      case "commentRangeEnd":
-      case "moveFromRangeStart":
-      case "moveFromRangeEnd":
-      case "moveToRangeStart":
-      case "moveToRangeEnd":
-        return false;
-      default: {
-        const unreachable: never = block;
-        return unreachable;
-      }
-    }
-  });
-  MULTIPLE_PROPERTY_CHANGES.set(key, found);
-  return found;
-};
+const blocksHaveMultiplePropertyChanges = blockListCheck({
+  paragraph: ({ propertyChanges }) => (propertyChanges?.length ?? 0) > 1,
+});
 
 /** Check every editable story and nested block container, reusing unchanged lists. */
 export const hasMultipleParagraphPropertyChanges = (

@@ -2572,7 +2572,10 @@ export type Paragraph = WritableRecord & {
   listRendering?: ListRendering;
   /** Word's cached layout says this paragraph started on a new rendered page. */
   renderedPageBreakBefore?: boolean;
-  /** Section properties (if this paragraph ends a section) */
+  /**
+   * Section properties, if this paragraph ends a section. A section ends
+   * outside every table: no operation puts one on a paragraph in a cell.
+   */
   sectionProperties?: SectionProperties | undefined;
   /**
    * Attributes `w:p` carried that this record has no field for.

@@ -61,7 +61,10 @@ for (const [name, container] of Object.entries(containers))
   test(`${name}: imported mark inverses restore exact source without permitting a new terminal mark`, () => {
     for (const kind of ["ins", "del", "moveTo", "moveFrom"] as const)
       for (const decision of ["accept", "reject"] as const)
-        for (const endpoint of ["plain", "section"] as const) {
+        // No section ends in a cell.
+        for (const endpoint of container.terminal === "cell"
+          ? (["plain"] as const)
+          : (["plain", "section"] as const)) {
           const before = {
             type: "paragraph",
             paraId: "00000001",
