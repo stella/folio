@@ -286,6 +286,18 @@ const shapes: Record<string, Shape> = {
       groups: [reject(1, 3), accept(2)],
       left: [embedded([tab]), text("x"), embedded([start(1), text("a")])],
     },
+  "markers kept from inside rejected new content stand where it was": {
+    content: [
+      insertion(1, 1, [text("a")]),
+      insertion(2, 2, [start(1)], { before: 0, after: 0, remove: 3 }),
+      insertion(3, 3, [text("x")], { before: 1, after: 1, remove: 1 }),
+      insertion(4, 2, [tab], { before: 0, after: 0, remove: 3 }),
+      insertion(5, 1, [text("a")]),
+      link([text("b")]),
+    ],
+    groups: [reject(1, 5), reject(2, 4), reject(3)],
+    left: [start(1), link([text("b")])],
+  },
   "boundaries with no record of their own go into the piece they join": {
     content: [
       insertion(1, 3, [link([text("x")])], { before: 0, after: 5, remove: 0 }),

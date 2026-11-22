@@ -2800,6 +2800,37 @@ const resolveList = ({
     return side === undefined ? undefined : { depth: outer[side], side };
   };
   /**
+   * Whether the pieces the removed change at `index` was made between are of
+   * one insertion of new content, joined to nothing, that goes with it: no
+   * record beyond them is a piece of its cut.
+   */
+  const madeInNewContent = (node: TrackedWrapper, index: number): boolean => {
+    const made = node.info.date ?? "";
+    const piece = (step: 1 | -1): TrackedWrapper | undefined => {
+      for (let at = index + step; ; at += step) {
+        const candidate = at < 0 ? undefined : pending[at];
+        if (candidate === undefined || !isAddedRevision(candidate))
+          return undefined;
+        if ((candidate.info.date ?? "") < made)
+          return isTrackedWrapper(candidate) ? candidate : undefined;
+      }
+    };
+    const before = piece(-1);
+    const after = piece(1);
+    return (
+      before !== undefined &&
+      after !== undefined &&
+      sameStamp(before, after) &&
+      [before, after].every(
+        ({ info, resolutionJoins }) =>
+          resolution.ids.has(info.id) &&
+          resolutionJoins?.before === 0 &&
+          resolutionJoins.after === 0 &&
+          resolutionJoins.remove === 0,
+      )
+    );
+  };
+  /**
    * A record this resolution empties away, or a deletion it accepts, held at
    * its edge (`first`, `last`) a piece of a record a pending insertion beside
    * it cut, the other piece standing across the insertion: that cut is left
@@ -3793,42 +3824,52 @@ const resolveList = ({
             piece === "before"
               ? out.length - (kept.length - inside)
               : out.length;
-          const own = node.resolutionJoins?.remove ?? 0;
           const enclosingCut = enclosingRecordCut(node, index);
           // A side meeting no piece of the cut has no record to take them.
           const closedOn = (side: SourceOwnerSide): boolean =>
             node.resolutionJoins?.plainSides?.includes(side) === true;
-          floating.set(at, {
-            count: inside,
-            // The piece its own join names holds them as deep as that join.
-            depth: Math.max(
-              own,
-              enclosingCut?.depth ?? 0,
-              piece === undefined || joins === undefined
-                ? 0
-                : recordJoin(joins, piece),
-            ),
-            before:
-              index > 0 && !closedOn("before")
-                ? itemBefore(sourceOwners, index)
-                : undefined,
-            after: closedOn("after") ? undefined : sourceOwners.at(index + 1),
-            spanning: trackedWithin(node.content),
-            ...(isAddedRevision(node) && {
-              inEdgeRecords: keptInEdgeRecords(),
-            }),
-            // Accepting content beside this removed piece can leave its
-            // recorded container join on one side only. The other side's
-            // authored record is not part of that cut container.
-            ...(piece === undefined ? {} : { piece }),
-            ...(piece === undefined && enclosingCut?.side !== undefined
-              ? { piece: enclosingCut.side }
-              : {}),
-            ...(joins !== undefined &&
-              resolution.deferredOnlyRemovals.has(joins) && {
-                cut: "deferred" as const,
+          // Its cut goes with new content it was made in, joined to nothing:
+          // those it kept stand where it was, as they do once it is rejected
+          // first. Otherwise the pieces around it route them to the record
+          // the cut reaches, and the piece its own join names holds them as
+          // deep as that join.
+          const cutGoes =
+            piece === undefined &&
+            enclosingCut === undefined &&
+            madeInNewContent(node, index) &&
+            cutLevelsOnceResolved(node, index) === 0;
+          const depth = Math.max(
+            node.resolutionJoins?.remove ?? 0,
+            enclosingCut?.depth ?? 0,
+            piece === undefined || joins === undefined
+              ? 0
+              : recordJoin(joins, piece),
+          );
+          if (!cutGoes)
+            floating.set(at, {
+              count: inside,
+              depth,
+              before:
+                index > 0 && !closedOn("before")
+                  ? itemBefore(sourceOwners, index)
+                  : undefined,
+              after: closedOn("after") ? undefined : sourceOwners.at(index + 1),
+              spanning: trackedWithin(node.content),
+              ...(isAddedRevision(node) && {
+                inEdgeRecords: keptInEdgeRecords(),
               }),
-          });
+              // Accepting content beside this removed piece can leave its
+              // recorded container join on one side only. The other side's
+              // authored record is not part of that cut container.
+              ...(piece === undefined ? {} : { piece }),
+              ...(piece === undefined && enclosingCut?.side !== undefined
+                ? { piece: enclosingCut.side }
+                : {}),
+              ...(joins !== undefined &&
+                resolution.deferredOnlyRemovals.has(joins) && {
+                  cut: "deferred" as const,
+                }),
+            });
         }
         // A rejected insertion joined on one side only, made inside a piece of
         // the record there, cuts nothing across its place: the boundaries it
