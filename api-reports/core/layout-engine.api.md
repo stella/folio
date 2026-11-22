@@ -377,6 +377,7 @@ export type ImageRun = {
     brightness?: number;
     contrast?: number;
     position?: ImageRunPosition;
+    baselineOffsetPx?: number;
     layoutInCell?: boolean;
     wrapType?: ImageWrap["type"];
     displayMode?: "inline" | "block" | "float";
