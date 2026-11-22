@@ -200,6 +200,124 @@ describe.each(Object.entries(EMPTY_CONTAINERS))(
       },
     );
 
+    // Deleted content and the edge of an insertion part the records a deletion
+    // is written in, so a container past one shares no record with the text.
+    test.each([
+      [
+        "past a pending deletion",
+        (): ParagraphContent[] => [
+          { type: "run", content: [{ type: "text", text: "a" }] },
+          {
+            type: "deletion",
+            info: { id: 7, author: "Other", date: STAMP.date },
+            content: [{ type: "run", content: [{ type: "text", text: "d" }] }],
+          },
+        ],
+      ],
+      [
+        "past a pending move",
+        (): ParagraphContent[] => [
+          { type: "run", content: [{ type: "text", text: "a" }] },
+          {
+            type: "moveFrom",
+            info: { id: 7, author: "Other", date: STAMP.date },
+            content: [{ type: "run", content: [{ type: "text", text: "d" }] }],
+          },
+        ],
+      ],
+      [
+        "past another author's insertion",
+        (): ParagraphContent[] => [
+          { type: "run", content: [{ type: "text", text: "a" }] },
+          {
+            type: "insertion",
+            info: { id: 7, author: "Other", date: STAMP.date },
+            content: [{ type: "run", content: [{ type: "text", text: "i" }] }],
+          },
+        ],
+      ],
+      [
+        "past the suggesting author's own insertion",
+        (): ParagraphContent[] => [
+          { type: "run", content: [{ type: "text", text: "a" }] },
+          {
+            type: "insertion",
+            info: { id: 7, author: STAMP.author, date: STAMP.date },
+            content: [{ type: "run", content: [{ type: "text", text: "i" }] }],
+          },
+        ],
+      ],
+      [
+        "past the suggesting author's own insertion and a pending deletion",
+        (): ParagraphContent[] => [
+          {
+            type: "insertion",
+            info: { id: 8, author: STAMP.author, date: STAMP.date },
+            content: [{ type: "run", content: [{ type: "text", text: "i" }] }],
+          },
+          {
+            type: "deletion",
+            info: { id: 7, author: "Other", date: STAMP.date },
+            content: [{ type: "run", content: [{ type: "text", text: "d" }] }],
+          },
+        ],
+      ],
+    ])(
+      "a replacement of text around it keeps it in both modes %s",
+      (_where, before) => {
+        const document = documentOf([
+          ...before(),
+          container,
+          { type: "bookmarkStart", id: 1, name: "_Mark" },
+          { type: "run", content: [{ type: "text", text: "b" }] },
+          { type: "bookmarkEnd", id: 1 },
+        ]);
+        const intent = {
+          type: "replaceText",
+          from: gap(0, 0),
+          to: gap(3, 0),
+          text: "edited",
+        } as const;
+        const direct = compileEditorIntent(document, {
+          intent,
+          mode: { type: "editing" },
+        });
+        const tracked = compileEditorIntent(document, {
+          intent,
+          mode: {
+            type: "suggesting",
+            revision: STAMP,
+            newIds: { revision: [3, 4, 5, 6], control: [] },
+          },
+        });
+        if (direct.isErr()) throw direct.error;
+        if (tracked.isErr()) throw tracked.error;
+        const edited = applyDocumentOps(document, direct.value.ops);
+        const suggested = applyDocumentOps(document, tracked.value.ops);
+        if (edited.isErr()) throw edited.error;
+        if (suggested.isErr()) throw suggested.error;
+        const accepted = applyDocumentOp(suggested.value.document, {
+          type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+          story: OP_STORIES.MAIN,
+          revisionIds: suggested.value.revisions,
+          decision: REVISION_DECISIONS.ACCEPT,
+        });
+        if (accepted.isErr()) throw accepted.error;
+        expect(accepted.value.document).toStrictEqual(edited.value.document);
+        const [, suggestedParagraph] =
+          suggested.value.document.package.document.content;
+        if (suggestedParagraph?.type !== "paragraph")
+          throw new Error("Expected a paragraph");
+        expect(suggestedParagraph.content).toContainEqual(container);
+        const undone = applyDocumentOps(
+          suggested.value.document,
+          suggested.value.inverse,
+        );
+        if (undone.isErr()) throw undone.error;
+        expect(undone.value.document).toStrictEqual(document);
+      },
+    );
+
     test("a direct deletion of nothing but it still removes it", () => {
       const document = documentOf([container]);
       const compiled = compileEditorIntent(document, {

@@ -332,6 +332,12 @@
       "path": "390:2:1:1:1:1:7:6:8:8:9:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8",
       "note": "A tracked replacement inside a pending insertion takes its ids operation by operation, each in document order.",
       "date": "2026-11-22"
+    },
+    {
+      "seed": -303931408,
+      "path": "71:0:0:0:0:0:0:7:5:5:5:8:8:9:8:9:9:9:9:9:11:11:11:11:14:13:14:15:15:15:15:15:15:15:15:15:15:15:15:15:15:15:15:15:15:15:15:15:16:16:16:16:15:15:15:15:18:16:15:16:16:15:17:15:17:17:17:17:17:17:17:17",
+      "note": "An empty wrapper between a pending move and a bookmark start stays in a direct replacement and in an accepted tracked one.",
+      "date": "2026-11-22"
     }
   ],
   "the same operation on equal documents gives equal results": [

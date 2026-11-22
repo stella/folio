@@ -31,6 +31,7 @@ import {
 import {
   compareGaps,
   type Gap,
+  type InlineNode,
   isCommentAnchor,
   isEmptyContainer,
   isParagraphContent,
@@ -423,6 +424,17 @@ type Segment = {
   plan: "direct" | "tracked";
   from: Gap;
   to: Gap;
+};
+
+/** Consecutive leaves of a range that one record of its deletion would hold. */
+type DeletionPiece = {
+  plan: "direct" | "tracked" | "untouched";
+  from: Gap;
+  to: Gap;
+  /** The insertion or move the leaves stand in, where their records stand too. */
+  added: InlineNode | undefined;
+  /** Whether it stands against the piece before it, with no boundary between. */
+  continues: boolean;
   records: boolean;
 };
 
@@ -433,9 +445,10 @@ const earlierGap = (left: Gap, right: Gap): Gap =>
 
 /**
  * The stretches of a range to delete directly and with tracking, in document
- * order. A retained range or comment anchor ends a stretch; a tracked stretch runs across
- * deleted content, which it leaves alone, and one holding nothing else is
- * dropped.
+ * order. A retained range or comment anchor ends a stretch, and so does an
+ * empty container no record of the deletion would hold with other content; a
+ * tracked stretch runs across deleted content, which it leaves alone, and one
+ * holding nothing else is dropped.
  */
 type ReplacementDeletionSegmentsOptions = {
   spans: readonly LeafSpan[];
@@ -445,9 +458,10 @@ type ReplacementDeletionSegmentsOptions = {
     | {
         type: "editing";
         /**
-         * Whether a stretch holding only empty containers is dropped, as a
-         * tracked one is. A direct edit drops it when its tracked counterpart
-         * records something else and so keeps the containers. (default: false)
+         * Whether empty containers that would stand alone in a tracked record
+         * are left out, as a suggestion leaves them. A direct edit leaves them
+         * when its tracked counterpart records something else and so keeps
+         * the containers. (default: false)
          */
         keepsLoneEmptyContainers?: boolean;
       }
@@ -462,44 +476,71 @@ export const replacementDeletionSegments = ({
 }: ReplacementDeletionSegmentsOptions): Segment[] => {
   const keepsLoneEmptyContainers =
     mode.type === "editing" && mode.keepsLoneEmptyContainers === true;
-  const out: Segment[] = [];
-  let open: Segment | undefined;
+  // An empty container marks nothing tracked: a record of nothing else would
+  // be one no file or reader shows. Deleted content and the edges of
+  // insertions part the records of a deletion, so a piece between them that
+  // holds only empty containers is left out. A suggestion leaves it out inside
+  // the author's own insertion too, so that a direct edit, which knows no
+  // author, can keep it the same way wherever it stands.
+  const pieces: DeletionPiece[] = [];
+  let continues = false;
   for (const span of spans) {
     const start = laterGap(span.before, from);
     const end = earlierGap(span.after, to);
     if (compareGaps(start, end) >= 0) continue;
     if (isParagraphContent(span.node) && isRangeBoundary(span.node)) {
-      open = undefined;
+      continues = false;
       continue;
     }
     let plan: LeafPlan = isCommentAnchor(span.node) ? "anchor" : "direct";
     if (mode.type === "suggesting") plan = leafPlan(span, mode.owner);
     else if (span.ancestors.some(isRemovedRevisionNode)) plan = "untouched";
     if (plan === "anchor") {
-      open = undefined;
+      continues = false;
       continue;
     }
-    const segmentPlan = plan === "untouched" ? "tracked" : plan;
-    // An empty container marks nothing tracked: a stretch holding nothing
-    // else is dropped, as one over deleted content is. A suggestion drops it
-    // inside the author's own insertion too, so that a direct edit, which
-    // knows no author, can keep it the same way wherever it stands.
     const records =
       plan !== "untouched" &&
       !(
         (mode.type === "suggesting" || keepsLoneEmptyContainers) &&
         isEmptyContainer(span.node)
       );
+    const added = span.ancestors.findLast(
+      (ancestor) => isTrackedWrapper(ancestor) && isAddedRevision(ancestor),
+    );
+    const open = continues ? pieces.at(-1) : undefined;
     if (
       open !== undefined &&
-      open.plan === segmentPlan &&
+      open.plan === plan &&
+      open.added === added &&
       compareGaps(open.to, start) === 0
     ) {
       open.to = end;
       open.records ||= records;
       continue;
     }
-    open = { plan: segmentPlan, from: start, to: end, records };
+    pieces.push({ plan, from: start, to: end, added, continues, records });
+    continues = true;
+  }
+  const out: (Segment & { records: boolean })[] = [];
+  let open: (typeof out)[number] | undefined;
+  for (const piece of pieces) {
+    if (!piece.continues) open = undefined;
+    if (piece.plan !== "untouched" && !piece.records) {
+      open = undefined;
+      continue;
+    }
+    const plan = piece.plan === "untouched" ? "tracked" : piece.plan;
+    if (
+      open !== undefined &&
+      open.plan === plan &&
+      compareGaps(open.to, piece.from) === 0
+    ) {
+      open.to = piece.to;
+      open.records ||= piece.records;
+      continue;
+    }
+    open = { plan, from: piece.from, to: piece.to, records: piece.records };
     out.push(open);
   }
   return out.filter(({ records }) => records);
