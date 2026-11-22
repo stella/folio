@@ -23,6 +23,7 @@ import {
   rejectChange,
 } from "../prosemirror/commands/comments";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import { FolioDocxReviewer } from "./headless";
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
@@ -130,67 +131,88 @@ const documentXml = async (reviewer: FolioDocxReviewer): Promise<string> =>
     .entry("word/document.xml")
     ?.text()) ?? "";
 
+// A save writes minted paragraph ids into the paragraphs of a part it
+// rewrites; they are no content a lock holds.
 const controlXml = (xml: string): string | undefined =>
-  xml.match(/<w:sdt>.*?<\/w:sdt>/u)?.[0];
+  xml
+    .match(/<w:sdt>.*?<\/w:sdt>/u)?.[0]
+    .replaceAll(/ w14:(?:paraId|textId)="[0-9A-F]{8}"/gu, "");
 
-const open = async (fixture: Fixture, lock: string | null) =>
-  FolioDocxReviewer.fromBuffer(await createDocx(fixture.body(lock)));
+const SESSIONS = [
+  "legacy",
+  "canonical",
+] as const satisfies readonly HeadlessReviewerSession[];
+
+type OpenOptions = {
+  fixture: Fixture;
+  lock: string | null;
+  session: HeadlessReviewerSession;
+};
+
+const open = async ({ fixture, lock, session }: OpenOptions) =>
+  FolioDocxReviewer.fromBuffer(await createDocx(fixture.body(lock)), {
+    session,
+  });
 
 describe("resolving tracked changes in a locked content control", () => {
-  for (const fixture of FIXTURES)
-    for (const lock of LOCKS)
-      for (const mode of ["accept", "reject"] as const) {
-        const held = fixture.holds(lock, mode);
-        const label = `${fixture.name}, ${String(lock)}: ${mode}`;
+  for (const session of SESSIONS)
+    for (const fixture of FIXTURES)
+      for (const lock of LOCKS)
+        for (const mode of ["accept", "reject"] as const) {
+          const held = fixture.holds(lock, mode);
+          const label = `${session}: ${fixture.name}, ${String(lock)}: ${mode}`;
 
-        test(`${label} all ${held ? "leaves them pending" : "resolves them"}`, async () => {
-          const reviewer = await open(fixture, lock);
-          const before = controlXml(await documentXml(reviewer));
-          const result =
-            mode === "accept" ? reviewer.acceptAll() : reviewer.rejectAll();
-          const remaining = reviewer.getChanges().map(({ id }) => id);
-          const xml = await documentXml(reviewer);
-          // The free paragraph's insertion resolves either way.
-          expect(remaining).not.toContain(9);
-          expect(xml).toContain(mode === "accept" ? "addition" : "Free");
-          if (held) {
-            expect(result.skipped.map(({ id }) => id).toSorted()).toEqual([
-              ...fixture.heldIds,
-            ]);
+          test(`${label} all ${held ? "leaves them pending" : "resolves them"}`, async () => {
+            const reviewer = await open({ fixture, lock, session });
+            const before = controlXml(await documentXml(reviewer));
+            const result =
+              mode === "accept" ? reviewer.acceptAll() : reviewer.rejectAll();
+            const remaining = reviewer.getChanges().map(({ id }) => id);
+            const xml = await documentXml(reviewer);
+            // The free paragraph's insertion resolves either way.
+            expect(remaining).not.toContain(9);
+            expect(xml).toContain(mode === "accept" ? "addition" : "Free");
+            if (held) {
+              expect(result.skipped.map(({ id }) => id).toSorted()).toEqual([
+                ...fixture.heldIds,
+              ]);
+              expect(
+                result.skipped.every(
+                  ({ reason, message }) =>
+                    reason === "contentControlLock" &&
+                    message.includes(String(lock)),
+                ),
+              ).toBe(true);
+              expect(remaining.toSorted()).toEqual([...fixture.heldIds]);
+              expect(controlXml(xml)).toBe(before);
+            } else {
+              expect(result.skipped).toEqual([]);
+              expect(remaining).toEqual([]);
+            }
+          });
+
+          test(`${label} one by one ${held ? "returns false" : "resolves it"}`, async () => {
+            const reviewer = await open({ fixture, lock, session });
+            const before = await documentXml(reviewer);
+            const [first] = fixture.heldIds;
+            if (first === undefined) throw new Error("expected a held id");
+            const resolved =
+              mode === "accept"
+                ? reviewer.acceptChange(first)
+                : reviewer.rejectChange(first);
+            expect(resolved).toBe(!held);
+            if (held)
+              expect(controlXml(await documentXml(reviewer))).toBe(
+                controlXml(before),
+              );
+            // A change the lock does not reach still resolves.
             expect(
-              result.skipped.every(
-                ({ reason, message }) =>
-                  reason === "contentControlLock" &&
-                  message.includes(String(lock)),
-              ),
+              mode === "accept"
+                ? reviewer.acceptChange(9)
+                : reviewer.rejectChange(9),
             ).toBe(true);
-            expect(remaining.toSorted()).toEqual([...fixture.heldIds]);
-            expect(controlXml(xml)).toBe(before);
-          } else {
-            expect(result.skipped).toEqual([]);
-            expect(remaining).toEqual([]);
-          }
-        });
-
-        test(`${label} one by one ${held ? "returns false" : "resolves it"}`, async () => {
-          const reviewer = await open(fixture, lock);
-          const before = await documentXml(reviewer);
-          const [first] = fixture.heldIds;
-          if (first === undefined) throw new Error("expected a held id");
-          const resolved =
-            mode === "accept"
-              ? reviewer.acceptChange(first)
-              : reviewer.rejectChange(first);
-          expect(resolved).toBe(!held);
-          if (held) expect(await documentXml(reviewer)).toBe(before);
-          // A change the lock does not reach still resolves.
-          expect(
-            mode === "accept"
-              ? reviewer.acceptChange(9)
-              : reviewer.rejectChange(9),
-          ).toBe(true);
-        });
-      }
+          });
+        }
 });
 
 describe("the change at a caret inside a locked inline control", () => {

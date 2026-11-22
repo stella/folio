@@ -17,7 +17,55 @@ import {
 
 import type { Document } from "../types/document";
 
-type Control = { lock: ContentControlLock | undefined; signature: string };
+/** A revision wrapper a control stands inside, outermost first. */
+type StandingRevision = { kind: string; id: number };
+
+type Control = {
+  lock: ContentControlLock | undefined;
+  signature: string;
+  /** The revisions around the control: resolving one changes what it holds. */
+  standing: readonly StandingRevision[];
+};
+
+const REVISION_WRAPPERS: ReadonlySet<string> = new Set([
+  "insertion",
+  "deletion",
+  "moveFrom",
+  "moveTo",
+]);
+/** The wrappers that, standing newly around a control, remove it once taken. */
+const PENDING_REMOVALS: ReadonlySet<string> = new Set(["deletion", "moveFrom"]);
+
+/** `standing`, with `node` added when it is a revision wrapper. */
+const standingWithin = (
+  node: { type?: unknown; info?: { id?: unknown } },
+  standing: readonly StandingRevision[],
+): readonly StandingRevision[] =>
+  typeof node.type === "string" &&
+  REVISION_WRAPPERS.has(node.type) &&
+  typeof node.info?.id === "number"
+    ? [...standing, { kind: node.type, id: node.info.id }]
+    : standing;
+
+/**
+ * Whether a control kept by a change stands as it did: under the same
+ * revisions, or newly under a pending removal, which is judged once taken.
+ * Resolving a revision around it changes what its content is.
+ */
+const standsAsBefore = (
+  before: readonly StandingRevision[],
+  now: readonly StandingRevision[],
+): boolean => {
+  const same = (left: StandingRevision, right: StandingRevision) =>
+    left.kind === right.kind && left.id === right.id;
+  if (!before.every((revision) => now.some((held) => same(held, revision))))
+    return false;
+  return now.every(
+    (revision) =>
+      before.some((held) => same(held, revision)) ||
+      PENDING_REMOVALS.has(revision.kind),
+  );
+};
 
 /** Comment marks, anchors and identities: what a lock does not hold still. */
 const IGNORED_KEYS = new Set(["paraId", "textId"]);
@@ -57,14 +105,19 @@ const storyKey = (story: OpStory) => {
 type ControlEntry = { id: number | undefined; control: Control };
 
 /** The content controls inside one value, in document order. */
-const collectControls = (value: unknown, into: ControlEntry[]): void => {
+const collectControls = (
+  value: unknown,
+  into: ControlEntry[],
+  standing: readonly StandingRevision[] = [],
+): void => {
   if (Array.isArray(value)) {
-    for (const item of value) collectControls(item, into);
+    for (const item of value) collectControls(item, into, standing);
     return;
   }
   if (typeof value !== "object" || value === null) return;
   const node = value as {
     type?: unknown;
+    info?: { id?: unknown };
     properties?: { id?: number; lock?: ContentControlLock };
     content?: unknown;
   };
@@ -74,9 +127,12 @@ const collectControls = (value: unknown, into: ControlEntry[]): void => {
       control: {
         lock: node.properties?.lock,
         signature: signatureOf(node.content),
+        standing,
       },
     });
-  for (const child of Object.values(value)) collectControls(child, into);
+  const within = standingWithin(node, standing);
+  for (const child of Object.values(value))
+    collectControls(child, into, within);
 };
 
 // An operation leaves every block it does not name the same object, and never
@@ -126,14 +182,18 @@ export const controlsOfWholeDocument = (
     const body = findStoryBody(document, story);
     if (body === undefined) continue;
     let anonymous = 0;
-    const visit = (value: unknown): void => {
+    const visit = (
+      value: unknown,
+      standing: readonly StandingRevision[] = [],
+    ): void => {
       if (Array.isArray(value)) {
-        for (const item of value) visit(item);
+        for (const item of value) visit(item, standing);
         return;
       }
       if (typeof value !== "object" || value === null) return;
       const node = value as {
         type?: unknown;
+        info?: { id?: unknown };
         properties?: { id?: number; lock?: ContentControlLock };
         content?: unknown;
       };
@@ -143,9 +203,11 @@ export const controlsOfWholeDocument = (
         controls.set(key, {
           lock: node.properties?.lock,
           signature: signatureOf(node.content),
+          standing,
         });
       }
-      for (const child of Object.values(value)) visit(child);
+      const within = standingWithin(node, standing);
+      for (const child of Object.values(value)) visit(child, within);
     };
     visit(body.content);
   }
@@ -176,14 +238,15 @@ const violationIn = (
   after: Document,
 ): LockedControlViolation | null => {
   const now = controlsOf(after);
-  for (const [key, { lock, signature }] of locked) {
+  for (const [key, { lock, signature, standing }] of locked) {
     if (lock === undefined) continue;
     const kept = now.get(key);
     if (kept === undefined) {
       if (!contentControlLockAllows(lock, "removeControl"))
         return { lock, change: "removeControl" };
     } else if (
-      kept.signature !== signature &&
+      (kept.signature !== signature ||
+        !standsAsBefore(standing, kept.standing)) &&
       !contentControlLockAllows(lock, "editContent")
     )
       return { lock, change: "editContent" };
