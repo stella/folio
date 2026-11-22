@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test";
 
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import type { Comment, DocumentBody, HeaderFooter } from "../types/document";
+import type {
+  BlockContent,
+  Comment,
+  DocumentBody,
+  HeaderFooter,
+} from "../types/document";
 import { visitCommentMarkers } from "./commentAnchorIndex";
 import { normalizeCommentReferences } from "./commentReferenceNormalization";
 
@@ -316,16 +321,83 @@ describe("comment reference normalization", () => {
       completedReferences: 0,
       droppedRanges: [],
     });
-    expect(documentBody.content.at(-1)).toEqual({
-      type: "preservedBlock",
-      xml: '<w:commentRangeEnd w:id="7"/>',
-    });
+    expect(documentBody.content.map(({ type }) => type)).toEqual([
+      "commentRangeStart",
+      "paragraph",
+    ]);
     const paragraph = documentBody.content.at(1);
     if (paragraph?.type !== "paragraph") throw new Error("expected paragraph");
     expect(paragraph.content.map((content) => content.type)).toEqual([
       "run",
       "commentRangeEnd",
       "commentReference",
+    ]);
+  });
+
+  test("drops a lone boundary closing the body after a section-ending paragraph", () => {
+    const comments: Comment[] = [{ id: 7, author: "Reviewer", content: [] }];
+    const ending: BlockContent = {
+      type: "paragraph",
+      sectionProperties: { pageWidth: 11906 },
+      content: [{ type: "commentReference", id: 7 }],
+    };
+    const lone: BlockContent = { type: "commentRangeEnd", id: 7 };
+    const documentBody: DocumentBody = {
+      comments,
+      content: [ending, lone],
+      finalSectionProperties: { pageWidth: 12240 },
+      sections: [
+        { properties: { pageWidth: 11906 }, content: [ending] },
+        { properties: { pageWidth: 12240 }, content: [lone] },
+      ],
+    };
+
+    const result = normalizeCommentReferences({ documentBody, comments });
+
+    expect(result.droppedUnpairedBoundaries).toBe(1);
+    expect(documentBody.content).toEqual([ending]);
+    expect(documentBody.sections).toEqual([
+      { properties: { pageWidth: 11906 }, content: [ending] },
+    ]);
+  });
+
+  test("drops a later range between blocks and reports its runs' text as written", () => {
+    const comments: Comment[] = [{ id: 7, author: "Reviewer", content: [] }];
+    const run = (text: string) => ({
+      type: "run" as const,
+      content: [{ type: "text" as const, text }],
+    });
+    const documentBody: DocumentBody = {
+      comments,
+      content: [
+        { type: "commentRangeStart", id: 7 },
+        { type: "paragraph", content: [run("First")] },
+        { type: "commentRangeEnd", id: 7 },
+        { type: "commentRangeStart", id: 7 },
+        { type: "paragraph", content: [run("  Total ")] },
+        { type: "paragraph", content: [] },
+        { type: "paragraph", content: [run(" ")] },
+        { type: "paragraph", content: [] },
+        { type: "commentRangeEnd", id: 7 },
+        {
+          type: "paragraph",
+          content: [{ type: "commentReference", id: 7 }],
+        },
+      ],
+    };
+
+    const result = normalizeCommentReferences({ documentBody, comments });
+
+    expect(result.droppedRanges).toEqual([{ id: 7, text: "  Total \n\n " }]);
+    expect(documentBody.content.map(({ type }) => type)).toEqual([
+      "commentRangeStart",
+      "paragraph",
+      "commentRangeEnd",
+      "paragraph",
+      "paragraph",
+      "paragraph",
+      "paragraph",
+      "paragraph",
     ]);
   });
 });

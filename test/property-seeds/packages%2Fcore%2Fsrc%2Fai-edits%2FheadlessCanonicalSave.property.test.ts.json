@@ -11,6 +11,18 @@
       "path": "7:0:0:0:0:0:0:0:0:0:0:0:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:2:2:2",
       "date": "2026-11-21",
       "note": "The paragraph that closes a body after its final table carries an id minted on opening; a save that rewrites the body writes it, and the reopened package reads it as stable."
+    },
+    {
+      "seed": -1740293207,
+      "path": "20:0:0:0:0:0:0:0:0:3:2:2:2:2:2:2:2:2:2:2:2:2:2:1:1:1:1:1:1:1:1:1:2:2:2:2",
+      "note": "A save writes the minted id of the paragraph closing a final table in a body the edit rewrote; it reads stable after reopen.",
+      "date": "2026-11-21"
+    },
+    {
+      "seed": -1532228517,
+      "path": "28:0:0:0:0:0:0:0:0:2:1:1:1:1:1:1:1:1:1:6:6:10:9:9:9:9:9:9:9:9:9:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:9:9:9:9:9:9:9:9:9:9:9:9:9:9:19:14:14:10:10:0:16:16:16",
+      "note": "A complex field inside a link's bidi wrapper reads as one field whether or not a tracked deletion inside the link holds the wrapper.",
+      "date": "2026-11-21"
     }
   ]
 }

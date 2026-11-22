@@ -498,7 +498,11 @@ describe("parseParagraph empty-run normalization", () => {
       ),
     ).toBe(false);
 
-    const serialized = serializeParagraph(paragraph);
+    // Read back in the namespace the part's root declares, as a package does.
+    const serialized = serializeParagraph(paragraph).replace(
+      /^<w:p\b/u,
+      '<w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"',
+    );
     expect(parseParagraphXml(serialized)).toEqual(paragraph);
   });
 });

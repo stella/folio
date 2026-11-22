@@ -9,7 +9,7 @@ import type {
   Footnote,
   HeaderFooter,
 } from "../types/document";
-import { buildSections } from "./documentParser";
+import { rebuildBodySections } from "./documentParser";
 import { InlineContentRemovals } from "./inlineContentRemovals";
 import {
   type DocxContentSlot,
@@ -138,22 +138,8 @@ const removeUnbalancedMoveRangeMarkers = ({
     content.push(...kept);
   }
 
-  if (blockRemovals.has(documentBody.content) && documentBody.sections) {
-    const rebuiltSections = buildSections(
-      documentBody.content,
-      documentBody.finalSectionProperties,
-    );
-    if (rebuiltSections.length !== documentBody.sections.length) {
-      panic("Removing move range markers changed the document section count");
-    }
-    for (const [index, section] of documentBody.sections.entries()) {
-      const rebuilt = rebuiltSections.at(index);
-      if (!rebuilt) {
-        panic("Missing rebuilt section after move range normalization");
-      }
-      section.content = rebuilt.content;
-    }
-  }
+  if (blockRemovals.has(documentBody.content))
+    rebuildBodySections(documentBody);
 
   return { removedUnbalancedMoveRangeMarkers };
 };
