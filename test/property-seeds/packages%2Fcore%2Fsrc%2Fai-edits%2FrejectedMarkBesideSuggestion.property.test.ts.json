@@ -59,6 +59,12 @@
       "path": "57:3:5:7:7:8:8:5:5:5:5:5:5:5:5:5:5:5:5",
       "note": "A proposed deletion of a whole half keeps to its own words once the half is joined",
       "date": "2026-11-22"
+    },
+    {
+      "seed": -27182818,
+      "path": "168:3:5:4:4:5:6:8:8:6:6:6:6:6:6:6:6:6:6",
+      "note": "A proposed replacement of a block that tracked splits cut into several paragraphs",
+      "date": "2026-11-22"
     }
   ]
 }
