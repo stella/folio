@@ -5187,7 +5187,7 @@ export class CanonicalPublicOperations {
     const executionOrder = orderCanonicalBatch({
       items: resolved,
       doc: projected.value.doc,
-      mode: batch.mode,
+      mode: batch.mode ?? "tracked-changes",
     });
     let document = readModel(session.document);
     // The batch's comments run before its edits, each adding a reference
