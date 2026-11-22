@@ -5070,6 +5070,13 @@ const resolveList = ({
           (node.info.date ?? "") < keptJoinFrom
         );
       };
+      // Of those, one that cut a record itself, or holds only boundaries,
+      // which no join runs into, stands for a piece of that record; content
+      // inserted whole beside it joins as deep as the seam goes.
+      const isPieceOfCutRecord = (node: InlineNode): boolean =>
+        isTrackedWrapper(node) &&
+        ((node.resolutionJoins?.remove ?? 0) > 0 ||
+          (childNodes(node) ?? []).every(isStandingBoundary));
       const seamDepth = exactDepth;
       // An insertion made at the edge of the piece beyond it, joined to that
       // piece as deep as the seam goes, is part of it: the seam waits on it,
@@ -5110,7 +5117,10 @@ const resolveList = ({
           const { node, takesKept } = handJoin({
             node: occurrence.node,
             side,
-            depth: earlier(index) ? seamDepth - 1 : seamDepth,
+            depth:
+              earlier(index) && isPieceOfCutRecord(occurrence.node)
+                ? seamDepth - 1
+                : seamDepth,
           });
           let tookKept = false;
           if (
