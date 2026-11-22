@@ -38,12 +38,14 @@ import type {
   Theme,
 } from "../types/document";
 import type { DeepReadonly } from "../types/documentModel";
+import { markMisplacedAutomaticNoteMarks } from "./automaticNoteMarkImport";
 import { parseBlockContent } from "./blockContentParser";
 import type { UnnamedParagraphIds } from "./ensureParaIds";
 import { assignHeaderFooterVerbatimXml } from "./headerFooterVerbatim";
 import type { NumberingMap } from "./numberingParser";
 import { markUnnamedParagraphIds } from "./packageUnnamedParagraphIds";
 import { cloneParagraphWithPropertySource } from "./paragraphPropertySource";
+import type { ParseContext } from "./parseContext";
 import { type PreviewLedger, standalonePreviewLedger } from "./previewBudget";
 import type { StyleMap } from "./styleParser";
 import { parseWatermark } from "./watermarkParser";
@@ -106,6 +108,7 @@ export function parseHeader(
   media: Map<string, MediaFile> | null = null,
   previews: PreviewLedger = standalonePreviewLedger(),
   unnamedIds?: UnnamedParagraphIds,
+  context?: ParseContext,
 ): HeaderFooter {
   const result: HeaderFooter = {
     type: "header",
@@ -129,6 +132,7 @@ export function parseHeader(
   if (!rootElement) {
     return result;
   }
+  markMisplacedAutomaticNoteMarks({ root: rootElement, context });
 
   // Watermark detection runs independently from regular block parsing. The
   // run-level VML / DrawingML is owned by `watermarkParser`, while its hosting
@@ -199,6 +203,7 @@ export function parseFooter(
   media: Map<string, MediaFile> | null = null,
   previews: PreviewLedger = standalonePreviewLedger(),
   unnamedIds?: UnnamedParagraphIds,
+  context?: ParseContext,
 ): HeaderFooter {
   const result: HeaderFooter = {
     type: "footer",
@@ -222,6 +227,7 @@ export function parseFooter(
   if (!rootElement) {
     return result;
   }
+  markMisplacedAutomaticNoteMarks({ root: rootElement, context });
 
   result.content = parseBlockContent(
     rootElement,

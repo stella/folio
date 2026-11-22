@@ -26,6 +26,7 @@ import type {
   Theme,
 } from "../types/document";
 import type { DeepReadonly } from "../types/documentModel";
+import { markMisplacedAutomaticNoteMarks } from "./automaticNoteMarkImport";
 import { parseBlockContent } from "./blockContentParser";
 import type { NumberingMap } from "./numberingParser";
 import { getParagraphText } from "./paragraphParser";
@@ -480,6 +481,7 @@ export const parseDocumentBodyTree = ({
   if (!bodyEl) {
     return result;
   }
+  markMisplacedAutomaticNoteMarks({ root: bodyEl, context });
 
   // Parse all block content (paragraphs, tables). The root `xmlns:*`
   // declarations travel with it so a captured VML `w:pict` replay stays

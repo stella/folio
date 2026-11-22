@@ -660,6 +660,7 @@ export async function parseDocxWithPreviewBudget(
           media,
           previews.ledger,
           unnamedIds,
+          parseContext,
         ),
       );
       headers = hf.headers;
@@ -1435,6 +1436,7 @@ function parseHeadersAndFooters(
   media: Map<string, MediaFile>,
   previews: PreviewLedger,
   unnamedIds: PackageUnnamedParagraphIds,
+  context: ParseContext,
 ): { headers: Map<string, HeaderFooter>; footers: Map<string, HeaderFooter> } {
   const headers = new Map<string, HeaderFooter>();
   const footers = new Map<string, HeaderFooter>();
@@ -1471,6 +1473,7 @@ function parseHeadersAndFooters(
           media,
           previews,
           unnamedPartParagraphIds(unnamedIds, partPath),
+          context.scoped({ part: partPath }),
         );
         // Anchor a picture watermark to the package-absolute media path so
         // cross-header propagation can rebind it against a stable target (the
@@ -1524,6 +1527,7 @@ function parseHeadersAndFooters(
           media,
           previews,
           unnamedPartParagraphIds(unnamedIds, partPath),
+          context.scoped({ part: partPath }),
         );
         footers.set(rId, footer);
       }

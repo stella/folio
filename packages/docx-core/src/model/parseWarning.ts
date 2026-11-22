@@ -38,6 +38,8 @@ export const PARSE_WARNING_CODES = {
   missingCommentId: "missing-comment-id",
   /** A later `w:footnote`/`w:endnote` repeating an id an earlier one defines. */
   duplicateNoteId: "duplicate-note-id",
+  /** An automatic note mark outside its matching note story, kept verbatim. */
+  misplacedNoteMark: "misplaced-note-mark",
   /** A comment marker naming a comment `comments.xml` never defines. */
   danglingCommentReference: "dangling-comment-reference",
   /** A comment range with no matching start or end, re-anchored as a point. */

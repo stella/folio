@@ -1,14 +1,19 @@
 import { panic } from "better-result";
 import { expect, test } from "bun:test";
 
+import { ZipArchive } from "@stll/docx-core/zip";
+
+import { FolioDocxReviewer } from "../ai-edits/headless";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { BlockContent, Hyperlink } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
+import { markMisplacedAutomaticNoteMarks } from "./automaticNoteMarkImport";
 import {
   hasNoteReferenceMark,
   withNoteReferenceMark,
 } from "./noteReferenceMark";
+import { createParseWarningCollector } from "./parseContext";
 import { parseDocx } from "./parser";
 import { createDocx } from "./rezip";
 import { parseRun } from "./runParser";
@@ -17,10 +22,96 @@ import {
   serializeNewFootnotesPart,
 } from "./serializer/noteSerializer";
 import { serializeRun } from "./serializer/runSerializer";
-import { getChildElements, parseXmlDocument } from "./xmlParser";
+import { findAllDeep, getChildElements, parseXmlDocument } from "./xmlParser";
 
 const TRANSITIONAL =
   "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+
+test("a note only reads matching marks in its own story", () => {
+  const note =
+    parseXmlDocument(
+      `<n:footnote xmlns:n="${TRANSITIONAL}" xmlns:foreign="urn:foreign">` +
+        "<n:p><n:r><n:footnoteRef/><n:endnoteRef/><foreign:footnoteRef/></n:r></n:p>" +
+        "<n:txbxContent><n:p><n:r><n:footnoteRef/></n:r></n:p></n:txbxContent>" +
+        "</n:footnote>",
+    ) ?? panic("Expected the note XML");
+  const { context, warnings } =
+    createParseWarningCollector("word/footnotes.xml");
+  markMisplacedAutomaticNoteMarks({ root: note, note: "footnote", context });
+  const runs = findAllDeep(note, "w", "r").map((run) =>
+    parseRun(run, null, null),
+  );
+  expect(runs.map((run) => run.content.map(({ type }) => type))).toEqual([
+    ["noteMarker", "preservedXml", "preservedXml"],
+    ["preservedXml"],
+  ]);
+  expect(
+    warnings().map(({ code, location }) => [code, location.element]),
+  ).toEqual([
+    ["misplaced-note-mark", "n:endnoteRef"],
+    ["misplaced-note-mark", "n:footnoteRef"],
+  ]);
+});
+
+for (const session of ["legacy", "canonical"] as const) {
+  for (const kind of ["footnote", "endnote"] as const) {
+    test(`${session} preserves a misplaced ${kind} mark on an edited save`, async () => {
+      const document = createEmptyDocument();
+      document.package.document.content = [
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "run",
+              content: [
+                { type: "text", text: "Before" },
+                { type: "noteMarker", kind },
+                { type: "text", text: " after." },
+              ],
+            },
+          ],
+        },
+      ];
+      const bytes = await createDocx(document);
+      const reviewer = await FolioDocxReviewer.fromBuffer(bytes, { session });
+      expect(
+        reviewer
+          .toDocument()
+          .parseWarnings?.filter(({ code }) => code === "misplaced-note-mark"),
+      ).toEqual([
+        {
+          code: "misplaced-note-mark",
+          location: { part: "word/document.xml", element: `w:${kind}Ref` },
+          count: 1,
+        },
+      ]);
+      const block =
+        reviewer.getContent().at(0) ?? panic("Expected the body paragraph");
+      expect(block.text).toBe("Before after.");
+      const applied = reviewer.applyOperations(
+        [
+          {
+            id: "edit",
+            type: "replaceInBlock",
+            blockId: block.id,
+            find: "Before",
+            replace: "Updated",
+          },
+        ],
+        { mode: "direct", undefinedReferences: "refuse" },
+      );
+      expect(applied.skipped).toEqual([]);
+      const saved = await ZipArchive.read(await reviewer.toBuffer());
+      const xml = await saved.entry("word/document.xml")?.text();
+      const updated = xml?.indexOf("Updated") ?? -1;
+      const mark = xml?.indexOf(`<w:${kind}Ref`) ?? -1;
+      const after = xml?.indexOf(" after.") ?? -1;
+      expect(updated).toBeGreaterThanOrEqual(0);
+      expect(mark).toBeGreaterThan(updated);
+      expect(after).toBeGreaterThan(mark);
+    });
+  }
+}
 for (const namespace of [
   TRANSITIONAL,
   "http://purl.oclc.org/ooxml/wordprocessingml/main",
