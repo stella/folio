@@ -16,7 +16,7 @@ export const isAutoWidthNoWrapCell = (cell: TableCell): boolean =>
   cell.noWrap === true &&
   readTableWidthKind(cell.preferredWidth?.type) === "automatic";
 
-/** An authored dxa noWrap holds the width and lets the text wrap. */
+// A fixed authored cell width takes precedence over noWrap.
 export const tableCellKeepsNoWrap = (
   table: TableBlock,
   cell: TableCell,
