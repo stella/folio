@@ -580,11 +580,12 @@ describe("canonical replacement comments from the public producer", () => {
         ).not.toBeNull();
       }
       const bytes = await producer.toBuffer();
+      // The whole source goes, including the suffix comment's final period.
       const operation = {
         id: "replace",
         type: "replaceBlock",
         blockId: block.id,
-        text: REPLACEMENT,
+        text: "REVISED!",
       } as const;
       const direct = await open(bytes, "canonical");
       const tracked = await open(bytes, "canonical");

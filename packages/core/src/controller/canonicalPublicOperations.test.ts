@@ -217,7 +217,8 @@ describe("canonical public operation batches", () => {
           fc.constantFrom("direct", "tracked-changes", "suggested"),
           (start, length, mode) => {
             const source = "abcdefghijklmnopqrst";
-            const replacement = "replacement";
+            // Every character goes, including the last one inside the comment.
+            const replacement = "REVISED!";
             const editor = setup(source);
             const quote = source.slice(start, start + length);
             expect(
