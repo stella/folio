@@ -26,7 +26,9 @@ import {
 } from "../../prosemirror/attrs";
 import { directionIsRtl } from "../../prosemirror/paragraphDirection";
 import { displayOoxmlSymbolCharacter } from "../../utils/ooxmlSymbol";
+import { isInlinePictureRun } from "../../utils/paragraphInlineLayout";
 import { tableOfContentsStyleLevel } from "../../utils/tableOfContentsStyle";
+import { halfPointsToPixels } from "../../utils/units";
 import type { CounterFreeFlowConversionOptions } from "./flowConversionShared";
 import {
   buildImageRun,
@@ -383,7 +385,7 @@ export function paragraphToRuns(
       // Lift tracked-change marks off the image node so an inserted/deleted
       // picture paints in the revision colour and resolves with the rest of
       // the change. eigenpal #641.
-      const trackedFmt = extractRunFormatting(
+      const imageRunFormatting = extractRunFormatting(
         effectiveMarks,
         theme,
         fontAlternates,
@@ -393,10 +395,27 @@ export function paragraphToRuns(
         constrained,
         childPos,
         childPos + child.nodeSize,
-        trackedFmt,
+        imageRunFormatting,
         _options.forceAnchorLayoutInCell,
       );
-      runs.push(run);
+      if (!isInlinePictureRun(run)) {
+        runs.push(run);
+        return;
+      }
+      // A picture without run boundary marks carries its authored rPr on
+      // the node. Keep reading live marks when the run has those too.
+      const authored = attrs._docxRunFormatting;
+      const positionHalfPoints =
+        authored?.position ??
+        _options.styleResolver.getRunStyleOwnProperties(authored?.styleId)
+          ?.position;
+      const baselineOffsetPx =
+        imageRunFormatting.positionPx ??
+        (positionHalfPoints === undefined
+          ? paraDefaults.positionPx
+          : halfPointsToPixels(positionHalfPoints));
+      const layoutImage = baselineOffsetPx ? { ...run, baselineOffsetPx } : run;
+      runs.push(layoutImage);
       return;
     }
     if (child.type.name === "structuredField") {

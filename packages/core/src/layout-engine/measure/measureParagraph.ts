@@ -487,11 +487,36 @@ export function measureParagraph(
     // line height, the line grows to fit it. The reference layout seats these inline objects
     // as tall glyphs on the text baseline.
     const finalTypography = { ...typography };
+    const imageBounds = line.inlineImageBounds;
+    const shiftedImages = imageBounds?.hasOffset ? imageBounds : undefined;
     const inlineObjectHeight = Math.max(
       line.maxImageHeightPx,
       line.maxMathHeightPx,
     );
-    if (inlineObjectHeight > finalTypography.lineHeight) {
+    if (shiftedImages && spacing?.lineRule !== "exact") {
+      const soleRun =
+        line.fromRun === line.toRun ? runs[line.fromRun] : undefined;
+      if (soleRun && isImageRun(soleRun)) {
+        finalTypography.ascent = shiftedImages.ascent;
+        finalTypography.descent = shiftedImages.descent;
+        finalTypography.lineHeight =
+          finalTypography.ascent + finalTypography.descent;
+      } else {
+        finalTypography.ascent = Math.max(
+          typography.ascent,
+          shiftedImages.ascent,
+          line.maxMathHeightPx,
+        );
+        finalTypography.descent = Math.max(
+          typography.descent,
+          shiftedImages.descent,
+        );
+        finalTypography.lineHeight = Math.max(
+          typography.lineHeight,
+          finalTypography.ascent + finalTypography.descent,
+        );
+      }
+    } else if (inlineObjectHeight > finalTypography.lineHeight) {
       const objectHeight = inlineObjectHeight;
       const buffer = finalTypography.descent;
       // An image-only line uses the authored image footprint directly. There
@@ -527,17 +552,21 @@ export function measureParagraph(
 
     // The picture and the text descent are the natural content at the
     // baseline. Spacing and the document grid may reserve more room.
-    const pictureHeight = line.maxImageHeightPx;
+    const pictureAscent = shiftedImages?.ascent ?? line.maxImageHeightPx;
+    const pictureDescent = shiftedImages?.descent ?? 0;
     if (
       line.fromRun === line.toRun ||
-      pictureHeight <= 0 ||
-      pictureHeight <=
+      pictureAscent + pictureDescent <= 0 ||
+      pictureAscent + pictureDescent <=
         calculateTypographyMetrics(fontSize, undefined, metrics).lineHeight
     )
       return placed;
     const baseline = measuredLineBaseline(placed);
-    const topPx = Math.max(0, baseline - pictureHeight);
-    const bottomPx = Math.min(placed.lineHeight, baseline + typography.descent);
+    const topPx = Math.max(0, baseline - pictureAscent);
+    const bottomPx = Math.min(
+      placed.lineHeight,
+      baseline + Math.max(typography.descent, pictureDescent),
+    );
     if (bottomPx <= topPx) return placed;
     return {
       ...placed,
@@ -962,6 +991,21 @@ export function measureParagraph(
       if (imageFootprintPx > currentLine.maxImageHeightPx) {
         currentLine.maxImageHeightPx = imageFootprintPx;
       }
+      const offset = run.baselineOffsetPx ?? 0;
+      const imageBounds = (currentLine.inlineImageBounds ??= {
+        ascent: 0,
+        descent: 0,
+        hasOffset: false,
+      });
+      imageBounds.ascent = Math.max(
+        imageBounds.ascent,
+        imageHeight + (run.distTop ?? 0) + offset,
+      );
+      imageBounds.descent = Math.max(
+        imageBounds.descent,
+        (run.distBottom ?? 0) - offset,
+      );
+      imageBounds.hasOffset ||= offset !== 0;
       if (
         run.exactLineHeight === true &&
         imageFootprintPx > currentLine.maxExactImageHeightPx

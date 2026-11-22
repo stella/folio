@@ -8,6 +8,8 @@
  * from `../types` and emit `Measure` / zone descriptors.
  */
 
+export { measuredLineBaseline } from "../lineFlow";
+
 export {
   getFontMetrics,
   measureTextWidth,

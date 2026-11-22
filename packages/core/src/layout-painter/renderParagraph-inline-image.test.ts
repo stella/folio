@@ -103,6 +103,41 @@ const TEST_EXPLICIT_BLACK_COLOR = " #000000 ";
 const TEST_EXPLICIT_TEXT_COLOR = "#C00000";
 
 describe("renderLine inline image handling", () => {
+  test("reserves a raised inline picture's offset in a mixed line", () => {
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "raised-inline-picture",
+      runs: [
+        { kind: "text", text: "Caption" },
+        {
+          kind: "image",
+          src: "data:image/png;base64,",
+          width: 24,
+          height: 40,
+          baselineOffsetPx: 8,
+        },
+      ],
+    };
+    const line: MeasuredLine = {
+      fromRun: 0,
+      fromChar: 0,
+      toRun: 1,
+      toChar: 1,
+      width: 58,
+      ascent: 48,
+      descent: 4,
+      lineHeight: 52,
+    };
+    const lineEl = renderLine(block, line, undefined, fakeDocument);
+    const imageEl = Array.from(lineEl.children).find(
+      (element) => element.tagName === "img",
+    );
+    expect(lineEl.style.alignItems).toBe("baseline");
+    expect(imageEl).toMatchObject({
+      style: { marginTop: "8px", marginBottom: "-8px" },
+    });
+  });
+
   test("hides an unpaintable image while preserving its authored line box", () => {
     const imageRun: ImageRun = {
       kind: "image",

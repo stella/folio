@@ -3003,7 +3003,7 @@ function runContentKey(run: Run): string {
     return "rpb";
   }
   if (run.kind === "image") {
-    return `img:${paintedImageSource(run)}|${run.width}x${run.height}${run.transform ? `|tr:${run.transform}` : ""}`;
+    return `img:${paintedImageSource(run)}|${run.width}x${run.height}${run.transform ? `|tr:${run.transform}` : ""}${run.baselineOffsetPx === undefined ? "" : `|pos:${run.baselineOffsetPx}`}`;
   }
 
   // Remaining kinds (text, tab, field, math) all carry RunFormatting.

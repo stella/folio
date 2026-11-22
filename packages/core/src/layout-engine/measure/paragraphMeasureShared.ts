@@ -77,6 +77,12 @@ export type LineState = {
   maxTabFontMetrics: FontMetrics | null;
   /** Maximum inline image height in pixels (already in px, not points) */
   maxImageHeightPx: number;
+  /** Baseline bounds for inline pictures when one has an authored offset. */
+  inlineImageBounds?: {
+    ascent: number;
+    descent: number;
+    hasOffset: boolean;
+  };
   /** Maximum exact-height embedded-object preview on the line. */
   maxExactImageHeightPx: number;
   /** Maximum inline math height in pixels (already in px, not points) */

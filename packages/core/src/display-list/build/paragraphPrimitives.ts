@@ -1351,7 +1351,10 @@ const paintLine = ({
         // Word seats an inline image as a tall glyph on the text baseline.
         const imageRect = {
           xPx: paintXOf(),
-          yPx: geometry.baselineYPx - boundingBox.height,
+          yPx:
+            geometry.baselineYPx -
+            boundingBox.height -
+            (run.baselineOffsetPx ?? 0),
           widthPx: boundingBox.width,
           heightPx: boundingBox.height,
         };
