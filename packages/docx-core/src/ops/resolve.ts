@@ -5275,10 +5275,20 @@ const joinOps = (
     follower?.type === "paragraph"
       ? blocks.slice(location.index + 1, followerIndex).filter(isBlockBoundary)
       : [];
-  const next =
-    standing.length > 0 && follower?.type === "paragraph"
-      ? { ...follower, content: [...standing, ...follower.content] }
-      : blocks[location.index + 1];
+  // Before a block content control or custom XML, the boundaries stand
+  // where they are when the paragraph goes, and go into the paragraph the
+  // mark runs into where the two meet, as they do into a joined paragraph.
+  const standingBeforeBlock =
+    followerIndex > location.index + 1 && isOpaqueFollower(follower)
+      ? blocks.slice(location.index + 1, followerIndex).filter(isBlockBoundary)
+      : [];
+  const nextBlock = () => {
+    if (standing.length > 0 && follower?.type === "paragraph")
+      return { ...follower, content: [...standing, ...follower.content] };
+    if (standingBeforeBlock.length > 0) return follower;
+    return blocks[location.index + 1];
+  };
+  const next = nextBlock();
   if (next?.type === "paragraph") {
     const outcome = paragraphMarkOutcome({
       follows: "paragraph",
@@ -5585,6 +5595,10 @@ const joinOps = (
       // The paragraph goes from around the block, and the receiver, where it
       // stands inside the block, takes what it held.
       const { receiver } = blockTarget;
+      // Boundaries standing before the block go in with the content, after
+      // it: what stood after them stays after.
+      const kept =
+        standingBeforeBlock.length > 0 ? followerIndex : location.index + 1;
       return paragraphMarkPlan(
         [
           {
@@ -5592,7 +5606,9 @@ const joinOps = (
             story,
             blockId: anchor.paraId ?? "",
             expected: blocks,
-            blocks: blocks.filter((_, index) => index !== location.index),
+            blocks: blocks.filter(
+              (_, index) => index < location.index || index >= kept,
+            ),
           },
           {
             type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
@@ -5601,7 +5617,10 @@ const joinOps = (
             blocks: [
               {
                 ...receiver,
-                content: joinParagraphSeam(paragraph.content, receiver.content),
+                content: joinParagraphSeam(paragraph.content, [
+                  ...standingBeforeBlock,
+                  ...receiver.content,
+                ]),
               },
             ],
           },
