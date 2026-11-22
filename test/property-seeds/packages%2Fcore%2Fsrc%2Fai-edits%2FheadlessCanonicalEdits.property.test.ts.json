@@ -1,6 +1,18 @@
 {
   "generated documents undo, reject and accept as the laws say": [
     {
+      "seed": 1288317224,
+      "path": "91:0:0:0:0:0:0:0:3:2:2:2:2:2:2:2:2:2:2:5:5:5:5:5:7:7:7:7:7:7:7:8:7:7:7:7:7:7:7:9:8:8:8:8:8:8:8:8:8:11:15:8:6:10:5:5:5:8:5:5:5:7",
+      "note": "#2768: a direct removal of a paragraph between one ending a section and a content control undoes.",
+      "date": "2026-11-22"
+    },
+    {
+      "seed": 156513175,
+      "path": "25:0:0:0:0:0:3:2:2:2:2:2:5:5:5:5:5:5:5:5:5:5:7:7:7:7:7:7:7:27:14:10:9:14:14:14:14:14:14:14:14:14:19:19",
+      "note": "#2768: so does one before a preserved block.",
+      "date": "2026-11-22"
+    },
+    {
       "seed": -501211973,
       "path": "1:0:0:0:0:0:0:0:0:3:2:2:2:2:2:2:2:2:2:4:4:4:4:4:4:7:10:9:9:9:9:9:9:9:9:9:9:9:9:10:10:10:10:10:10:10:10:17:10:18:10:18:12:12",
       "note": "#3174: a block replacement taking a section break and a note's only reference carries its section view on the structural inverse",
