@@ -87,6 +87,7 @@ import {
 import { forgetTableMeasures } from "../layout-engine/measure/tableMeasureMemo";
 import { columnBalancingForCompatibility } from "../layout-engine/noColumnBalanceCompatibility";
 import { resolveEffectiveParagraphSpacingTree } from "../layout-engine/paragraphSpacing";
+import { tableHeaderGroupStartForCompatibility } from "../layout-engine/tableHeaderCompatibility";
 import { resolveTableIndentCompatibility } from "../layout-engine/tableIndentCompatibility";
 import type {
   FlowBlock,
@@ -1194,6 +1195,9 @@ function runLayoutPipelineMeasured<THfPMs>(
         mirrorMargins,
         columnBalancing: columnBalancingForCompatibility(
           document?.package.settings?.noColumnBalance,
+          document?.package.settings?.compatibilityMode,
+        ),
+        tableHeaderGroupStart: tableHeaderGroupStartForCompatibility(
           document?.package.settings?.compatibilityMode,
         ),
       };

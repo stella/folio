@@ -40,7 +40,7 @@ import {
 } from "./layout-engine/measure/measureProvider";
 import type { Measure } from "./layout-engine/types";
 import { getPageTextFromLayout } from "./paged-layout/pageText";
-import type { Paragraph } from "./types/document";
+import type { Paragraph, TableRow } from "./types/document";
 import { createEmptyDocument } from "./utils/createDocument";
 
 const FIXTURE = new URL(
@@ -223,6 +223,95 @@ describe("layoutDocxHeadless", () => {
       page.size.h - page.margins.bottom - (paragraph.y - page.margins.top),
     );
   });
+
+  test.each([
+    [
+      14,
+      [450, 450],
+      [
+        [0, 1],
+        [0, 1, 2],
+      ],
+    ],
+    [15, [450, 450], [[], [0, 1, 2]]],
+    [14, [600, 600], [[0], [1, 2]]],
+    [15, [600, 600], [[], [0, 1, 2]]],
+    [14, [750, 750, 750], [[0], [1, 2, 3]]],
+    [15, [750, 750, 750], [[], [0, 1], [2, 3]]],
+  ] as const)(
+    "admits leading table headers in compatibility mode %i at row heights %j",
+    async (mode, headerHeights, expected) => {
+      installFixedWidthProvider();
+      const document = createEmptyDocument();
+      document.package.settings = { compatibilityMode: mode };
+      // A 120px body with 70px remaining below the leading paragraph.
+      document.package.document.finalSectionProperties = {
+        pageWidth: 4_500,
+        pageHeight: 2_100,
+        marginTop: 150,
+        marginRight: 150,
+        marginBottom: 150,
+        marginLeft: 150,
+      };
+      const row = (height: number, header: boolean): TableRow => ({
+        type: "tableRow",
+        formatting: {
+          height: { value: height, type: "dxa" },
+          heightRule: "exact",
+          ...(header ? { header: true } : {}),
+        },
+        cells: [
+          {
+            type: "tableCell",
+            content: [{ type: "paragraph", content: [] }],
+          },
+        ],
+      });
+      document.package.document.content = [
+        {
+          type: "paragraph",
+          formatting: {
+            spaceBefore: 0,
+            spaceAfter: 0,
+            lineSpacing: 750,
+            lineSpacingRule: "exact",
+          },
+          content: [{ type: "run", content: [{ type: "text", text: "Lead" }] }],
+        },
+        {
+          type: "table",
+          columnWidths: [2_400],
+          rows: [
+            ...headerHeights.map((height) => row(height, true)),
+            row(300, false),
+          ],
+        },
+      ];
+
+      const result = await layoutDocxHeadless(await createDocx(document));
+      if (result.isErr()) {
+        throw result.error;
+      }
+      const rowsByPage = result.value.layout.pages.map(({ fragments }) =>
+        fragments.flatMap((fragment) => {
+          if (fragment.kind !== "table") {
+            return [];
+          }
+          const repeated = Array.from(
+            { length: fragment.headerRowCount ?? 0 },
+            (_, index) => index,
+          );
+          const original = Array.from(
+            { length: fragment.toRow - fragment.fromRow },
+            (_, index) => fragment.fromRow + index,
+          );
+          return [...repeated, ...original];
+        }),
+      );
+
+      expect(rowsByPage).toEqual(expected);
+    },
+  );
 
   test("forwards styles through top-level header, footer, and footnote layout", async () => {
     installFixedWidthProvider();
