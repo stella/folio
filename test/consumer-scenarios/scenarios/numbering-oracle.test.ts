@@ -1114,7 +1114,7 @@ test(
     } satisfies Parameters<typeof runFlow>[3];
     if (scenarioEngine() === "canonical") {
       // The tracked placement used by a suggestion reaches a final mark
-      // with pending review. Pin the batch to check that refusal and its
+      // whose paragraph properties are under review. Pin the refusal and
       // atomic rollback before exercising persistence on the saved baseline.
       const { flow } = await runFlow(1873083933, 16, "collisions", {
         generation: options.generation,
@@ -1127,9 +1127,9 @@ test(
         ...insertion,
         expectedRefusals: {
           canonical: {
-            code: "unsupportedBlock",
+            code: "pendingParagraphPropertyChange",
             message:
-              "A tracked insertion after a paragraph no paragraph follows needs the anchor's mark free of review records.",
+              "A tracked insertion after a paragraph no paragraph follows needs the anchor's properties free of a pending change.",
           },
         },
       });
