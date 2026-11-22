@@ -143,16 +143,22 @@ export type NoteLosingLiveReference = {
   deletion: NonNullable<ReturnType<typeof referenceDeletion>>;
 };
 
+type LostNoteReferenceOptions = {
+  before: Document;
+  after: Document;
+  ownsDeletion: (deletion: NoteLosingLiveReference["deletion"]) => boolean;
+};
+
 /**
  * The notes `before` refers to through a live reference and `after` only
- * through deleted ones, in any story. Only the top-level blocks an edit
- * replaced are read for the references it took, and the whole document only
- * when it took one.
+ * through deleted ones, in any story. Select a deletion the current edit
+ * owns. Scan the whole document for any remaining live reference.
  */
-export const notesLosingLiveReferences = (
-  before: Document,
-  after: Document,
-): NoteLosingLiveReference[] => {
+export const notesLosingLiveReferences = ({
+  before,
+  after,
+  ownsDeletion,
+}: LostNoteReferenceOptions): NoteLosingLiveReference[] => {
   const lost = new Set<string>();
   for (const story of documentStories(after)) {
     const old = findStoryBody(before, story)?.content;
@@ -179,7 +185,7 @@ export const notesLosingLiveReferences = (
         if (deletion === undefined) {
           lost.delete(key);
           found.delete(key);
-        } else if (!found.has(key))
+        } else if (!found.has(key) && ownsDeletion(deletion))
           found.set(key, { story: { kind, id: span.node.id }, deletion });
       }
   return [...found.values()];

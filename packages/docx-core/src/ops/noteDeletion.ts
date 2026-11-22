@@ -24,25 +24,40 @@ import {
 
 type NoteContentDeletion = { before: Paragraph[]; after: Paragraph[] };
 
+const refuseNoteDeletion = (
+  reason: DocumentOpRefusal["reason"],
+  message: string,
+) =>
+  Result.err(
+    new DocumentOpRefusal({
+      reason,
+      message,
+      opType: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+    }),
+  );
+
 /**
  * Every paragraph of a note deleted under `stamp`: its content wrapped in a
  * deletion, and its mark deleted where it records no other change.
- * `undefined` when the note holds nothing a deletion could record, or what a
- * tracked deletion cannot hold.
+ * A missing note or no change gives an empty result.
  */
 const deletedNoteContent = (
   document: Document,
   story: NoteStory,
   stamp: RevisionStamp,
-): NoteContentDeletion | undefined => {
+): Result<NoteContentDeletion | undefined, DocumentOpRefusal> => {
   const body = findStoryBody(document, story);
-  if (body === undefined) return undefined;
+  if (body === undefined) return Result.ok(undefined);
   const rangedComments = rangeEndIdsIn(body.content);
   const before: Paragraph[] = [];
   const after: Paragraph[] = [];
   for (const { paragraph } of storyParagraphs(body)) {
     const form = deletedContent(paragraph, stamp, rangedComments);
-    if (form.kind === "refused") return undefined;
+    if (form.kind === "refused")
+      return refuseNoteDeletion(
+        form.reason,
+        "The last reference cannot be deleted with its note because the note contains content this deletion cannot track.",
+      );
     let next =
       form.kind === "deleted"
         ? { ...paragraph, content: form.content }
@@ -53,7 +68,7 @@ const deletedNoteContent = (
     before.push(paragraph);
     after.push(next);
   }
-  return after.length === 0 ? undefined : { before, after };
+  return Result.ok(after.length === 0 ? undefined : { before, after });
 };
 
 type NoteDeletionOpsOptions = {
@@ -93,9 +108,11 @@ export const noteDeletionOps = ({
   revisionIds,
 }: NoteDeletionOpsOptions): Result<NoteDeletion, DocumentOpRefusal> => {
   if (stamp.suggestionId !== undefined) return Result.ok(NO_NOTE_DELETION);
-  const notes = notesLosingLiveReferences(before, after).filter(
-    ({ deletion }) => carriesStamp(deletion.info, stamp),
-  );
+  const notes = notesLosingLiveReferences({
+    before,
+    after,
+    ownsDeletion: ({ info }) => carriesStamp(info, stamp),
+  });
   if (notes.length === 0) return Result.ok(NO_NOTE_DELETION);
   const used = packageIdentityKeyIndex(after.package);
   const taken = new Set<string>();
@@ -107,10 +124,12 @@ export const noteDeletionOps = ({
   for (const { story, deletion } of notes) {
     // The records take the reference deletion's id first, which the
     // reference holds: every one of them takes a fresh id.
-    const deleted = deletedNoteContent(after, story, {
+    const result = deletedNoteContent(after, story, {
       ...stamp,
       id: deletion.info.id,
     });
+    if (result.isErr()) return Result.err(result.error);
+    const deleted = result.value;
     if (deleted === undefined) continue;
     const beforeKeys = new Set(identityKeysIn(deleted.before));
     const fresh = freshenIdentities({
@@ -124,22 +143,14 @@ export const noteDeletionOps = ({
           ),
         ),
     });
-    const refuse = (reason: DocumentOpRefusal["reason"], message: string) =>
-      Result.err(
-        new DocumentOpRefusal({
-          reason,
-          message,
-          opType: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
-        }),
-      );
     switch (fresh.kind) {
       case "needsIds":
-        return refuse(
+        return refuseNoteDeletion(
           DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
           "Deleting a note with its reference needs more revision ids.",
         );
       case "invalidId":
-        return refuse(
+        return refuseNoteDeletion(
           DOCUMENT_OP_REFUSAL_REASONS.INVALID_NEW_ID,
           "Deleting a note with its reference received an invalid revision id.",
         );

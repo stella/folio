@@ -212,6 +212,47 @@ describe("a tracked deletion of a note's last live reference", () => {
     expect(noteOps.unwrap().ops).toEqual([]);
   });
 
+  test("follows the last live reference past another author's earlier deletion", () => {
+    const first = deleteReference({ ...STAMP, id: 19, author: "Earlier" });
+    const before = applyDocumentOps(documentOf(true), [first]).unwrap()
+      .document;
+    const at = { story: OP_STORIES.MAIN, blockId: formatParaId(2) } as const;
+    const after = applyDocumentOps(before, [
+      {
+        type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+        from: { ...at, offset: "Again".length },
+        to: { ...at, offset: "Again".length + 1 },
+        revision: STAMP,
+      },
+    ]).unwrap().document;
+    const result = noteDeletionOps({
+      before,
+      after,
+      stamp: STAMP,
+      revisionIds: NEW_IDS,
+    }).unwrap();
+    expect(result.ops).toHaveLength(2);
+    const edit = applyDocumentOps(after, result.ops).unwrap();
+    expect(noteDeletions(edit.document)).toMatchObject({
+      live: false,
+      deletions: [{ author: STAMP.author }, { author: STAMP.author }],
+    });
+  });
+
+  test("refuses to track the note removal when the note holds a point comment", () => {
+    const document = documentOf(false);
+    document.package.document.comments = [
+      { id: 12, author: "Reviewer", anchorKind: "point", content: [] },
+    ];
+    noteParagraphs(document)
+      .at(0)
+      ?.content.push({ type: "commentReference", id: 12 });
+    const { noteOps } = deleteWithNote(document, STAMP);
+    expect(noteOps.isErr() && noteOps.error.reason).toBe(
+      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+    );
+  });
+
   test("leaves the note of a suggestion, which stays its author's until accepted", () => {
     const { noteOps } = deleteWithNote(documentOf(false), {
       ...STAMP,
