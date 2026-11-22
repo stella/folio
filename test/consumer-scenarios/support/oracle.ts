@@ -965,6 +965,8 @@ export type Model = {
     {
       sources: readonly Row[];
       destination: Row;
+      /** Live sources still proved to reach the destination during this batch. */
+      deletionSources: readonly { row: Row; from: number }[] | undefined;
       /** Source coordinates remain known when an applied effect defeats destination prediction. */
       destinationPrediction:
         { type: "exact" } | { type: "unknown"; operationType: string };
@@ -984,6 +986,11 @@ export type Model = {
   sourceRows: readonly Row[];
   /** Live blocks explicitly deleted by applied operations, including pending joins. */
   deletedBlockIds: Set<string>;
+  /** Source text consumed by a canonical tracked deletion of its join destination. */
+  deletedJoinRuns: Map<
+    string,
+    { destination: string; from: number; text: string }
+  >;
   /** Live blocks whose whole text an applied replaceBlock replaced, with the new text. */
   replacedBlocks: Map<string, string>;
   /** Live paragraphs whose every word is a pending deletion (`JoinSources`). */
@@ -1332,6 +1339,7 @@ export const modelOf = (
     liveTextById: new Map(live.map(({ id, text }) => [id, text])),
     sourceRows: live,
     deletedBlockIds: new Set(),
+    deletedJoinRuns: new Map(),
     replacedBlocks: new Map(),
     deletedContentIds:
       joinSources.type === "marked"
@@ -1359,7 +1367,7 @@ export const modelOf = (
   // Blocks whose mark accepting removes, waiting for the block they run into.
   let joining = false;
   let joiningSources: Row[] = [];
-  for (const row of live) {
+  for (const [liveIndex, row] of live.entries()) {
     if (known.has(row.id)) {
       // The paragraph left by a join is the one whose mark stays: the block
       // the joined ones run into, which keeps its identity.
@@ -1375,9 +1383,22 @@ export const modelOf = (
         };
         if (joining) {
           survivor.pendingJoin = true;
+          const sources = joiningSources;
           model.pendingJoins.set(survivor, {
-            sources: joiningSources,
+            sources,
             destination: row,
+            deletionSources:
+              joinSources.type === "marked" &&
+              !joinSources.ids.has(row.id) &&
+              sources.every(
+                (source, index) =>
+                  live.at(liveIndex - sources.length + index) === source &&
+                  sameParagraphContainer(source, row),
+              ) &&
+              survivor.pre.text ===
+                [...sources, row].map(({ text }) => text).join("")
+                ? sources.map((source) => ({ row: source, from: 0 }))
+                : undefined,
             destinationPrediction: { type: "exact" },
           });
         }
@@ -3307,6 +3328,70 @@ const expireJoinedDestinationPrediction = ({
       ownership.destinationPrediction = { type: "unknown", operationType };
 };
 
+type RecordJoinedDeletionOptions = {
+  model: Model;
+  operation: Operation;
+  footprint: ReturnType<typeof sourceOperationFootprint> | undefined;
+};
+
+/** Follow the pieces that still join a tracked deletion's named paragraph. */
+const recordJoinedDeletion = ({
+  model,
+  operation,
+  footprint,
+}: RecordJoinedDeletionOptions) => {
+  if (model.engine !== "canonical" || model.mode !== "tracked-changes") return;
+  const blockId = operation["blockId"];
+  for (const join of model.pendingJoins.values()) {
+    const sources = join.deletionSources;
+    if (sources === undefined) continue;
+    if (operation.type === "deleteBlock" && blockId === join.destination.id) {
+      for (const [index, { row: source, from }] of sources.entries()) {
+        model.deletedJoinRuns.set(source.id, {
+          destination: join.destination.id,
+          from,
+          text:
+            source.text +
+            sources
+              .slice(index + 1)
+              .map(({ row }) => row.text)
+              .join("") +
+            join.destination.text,
+        });
+      }
+      join.deletionSources = undefined;
+      continue;
+    }
+    if (operation.type === "splitBlock") {
+      const index = sources.findIndex(({ row }) => row.id === blockId);
+      const source = index < 0 ? undefined : sources.at(index);
+      const offset = operation["offset"];
+      if (
+        source !== undefined &&
+        source.from === 0 &&
+        typeof offset === "number" &&
+        offset > 0 &&
+        offset < source.row.text.length &&
+        (operation["separator"] === undefined || operation["separator"] === "")
+      ) {
+        // The leading half ends at the inserted break. Any earlier sources
+        // now join that half, while the trailing half keeps the pending join.
+        join.deletionSources = [
+          { row: source.row, from: offset },
+          ...sources.slice(index + 1),
+        ];
+        continue;
+      }
+    }
+    if (
+      footprint?.type !== "known" ||
+      footprint.ids.has(join.destination.id) ||
+      sources.some(({ row }) => footprint.ids.has(row.id))
+    )
+      join.deletionSources = undefined;
+  }
+};
+
 /** Apply one applied operation's expectation to `model`. */
 export const expectOperation = (model: Model, operation: Operation): void => {
   const footprint =
@@ -3320,6 +3405,7 @@ export const expectOperation = (model: Model, operation: Operation): void => {
               [...sources, destination].map(({ id }) => id),
           ),
         });
+  recordJoinedDeletion({ model, operation, footprint });
   if (
     operation.type === "deleteBlock" &&
     typeof operation["blockId"] === "string"
@@ -3823,6 +3909,25 @@ const quotePlacements = ({
   return starts;
 };
 
+/** Prove the accepted quote lies wholly in the consumed part of a live join. */
+const joinedDeletionTakesComment = (
+  model: Model,
+  accepted: Comment,
+  live: Comment | undefined,
+): boolean => {
+  if (live === undefined || live.blockId === null || accepted.anchor === "")
+    return false;
+  const run = model.deletedJoinRuns.get(live.blockId);
+  if (run === undefined || run.destination !== accepted.blockId) return false;
+  const starts = quotePlacements({
+    text: run.text,
+    quote: accepted.anchor,
+    first: 0,
+    limit: model.liveTextById.get(live.blockId)?.length ?? 0,
+  });
+  return starts.length > 0 && starts.every((start) => start >= run.from);
+};
+
 /**
  * Decide whether the model removed the anchor, accounting for repeated text.
  * `acceptedAnchor` is the comment's quote in the accepted document: a live
@@ -4067,7 +4172,7 @@ export const compareComments = (
   const problems: string[] = [];
   const remaining = [...after];
   const kept: { entry: Comment; located: Comment }[] = [];
-  const gone: { entry: Comment; located: Comment }[] = [];
+  const gone: { entry: Comment; located: Comment; mustRetire: boolean }[] = [];
   const storyBlockIds = new Set(
     model.rows.flatMap((row) => (row.pre === undefined ? [] : [row.pre.id])),
   );
@@ -4097,6 +4202,10 @@ export const compareComments = (
       mode === "suggested"
         ? "kept"
         : anchorDisposition(model, located, entry.anchor);
+    const mustRetire =
+      mode === "tracked-changes" &&
+      joinedDeletionTakesComment(model, entry, live);
+    if (mustRetire) disposition = "removed";
     // A suggested removal stays pending and rejectable, so its comments stay.
     if (
       mode !== "suggested" &&
@@ -4117,7 +4226,7 @@ export const compareComments = (
       )
     )
       disposition = "ambiguous";
-    if (disposition === "removed") gone.push({ entry, located });
+    if (disposition === "removed") gone.push({ entry, located, mustRetire });
     else if (disposition === "kept") kept.push({ entry, located });
   }
   for (const { entry: comment, located } of kept) {
@@ -4190,7 +4299,7 @@ export const compareComments = (
   }
   // Only what no expectation claimed can be the removed comment itself.
   const survivingBlockIds = new Set(afterRows.map(({ id }) => id));
-  for (const { entry, located } of gone) {
+  for (const { entry, located, mustRetire } of gone) {
     const survivor = remaining.find(({ id }) => id === entry.id);
     const view = paragraphTextProjection(model, located.blockId);
     // A block id locates the first paragraph containing an anchor; it does not
@@ -4203,7 +4312,8 @@ export const compareComments = (
     // retaining the removed quote there is not a move to a surviving range.
     if (
       survivor &&
-      (survivor.blockId === located.blockId ||
+      (mustRetire ||
+        survivor.blockId === located.blockId ||
         (view.type === "pending-join" &&
           view.destinationPrediction.type === "exact" &&
           survivor.blockId === view.row.pre?.id) ||
