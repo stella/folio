@@ -574,11 +574,12 @@ test("generated later property rejection retains earlier cut provenance", () => 
           mode: "suggesting",
           refusals,
         });
+        const firstIds = [...first.revisions, ...first.folded];
         expect(
           resolvePendingRunFormatting(
             resolve({
               document: first.document,
-              revisionIds: first.revisions,
+              revisionIds: firstIds,
               decision: REVISION_DECISIONS.ACCEPT,
             }),
             "accept",
@@ -600,9 +601,7 @@ test("generated later property rejection retains earlier cut provenance", () => 
           panic("The fixture must retain its paragraph.");
         const recordedIds = [...second.revisions, ...second.folded];
         expect(recordedIds.length).toBeGreaterThan(0);
-        expect(second.folded.every((id) => first.revisions.includes(id))).toBe(
-          true,
-        );
+        expect(second.folded.every((id) => firstIds.includes(id))).toBe(true);
         const recorded = runsIn(paragraph.content)
           .flatMap((run) => run.propertyChanges ?? [])
           .filter((record) => recordedIds.includes(record.info.id));
@@ -614,7 +613,7 @@ test("generated later property rejection retains earlier cut provenance", () => 
         ).toBe(true);
         const rejectedFirst = resolve({
           document: second.document,
-          revisionIds: first.revisions,
+          revisionIds: firstIds,
           decision: REVISION_DECISIONS.REJECT,
         });
         expect(
