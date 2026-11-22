@@ -19,6 +19,7 @@ import { ZipArchive } from "@stll/docx-core/zip";
 
 import { assertExactModel } from "../../../../test/exactModel";
 import { propertyTestTimeout } from "../../../../test/property-testing";
+import { FolioDocxReviewer } from "../ai-edits/headless";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document, Paragraph, ParagraphContent } from "../types/document";
@@ -27,6 +28,7 @@ import { parseNumbering } from "./numberingParser";
 import { parseParagraph } from "./paragraphParser";
 import { parseDocx } from "./parser";
 import { FOLIO_REVIEW_HISTORY_NAMESPACE } from "./reviewHistoryNamespace";
+import { reviewProvenanceIssue } from "./reviewResolutionProvenance";
 import { createDocx } from "./rezip";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
 import { parseXmlDocument, type XmlElement } from "./xmlParser";
@@ -34,7 +36,7 @@ import { parseXmlDocument, type XmlElement } from "./xmlParser";
 setDefaultTimeout(propertyTestTimeout(30_000));
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-const CUT = { depth: 2, keptFrom: "2026-03-04T05:00:01Z" };
+const CUT = { keptFrom: "2026-03-04T05:00:01Z" };
 
 type LinkChildren = Extract<
   ParagraphContent,
@@ -111,19 +113,34 @@ describe("a kept range marker's cut", () => {
     expect(keptCuts(reopened)).toEqual(keptCuts(paragraph));
   });
 
-  test.each([
-    ["no level deep", { ...CUT, depth: 0 }],
-    ["naming no side as its piece", { ...CUT, piece: "inside" }],
-  ])("an unreadable cut (%s) is dropped and the marker kept", (_, value) => {
+  const readMarker = (value: unknown): Paragraph["content"] => {
     const encoded = escapeXmlAttribute(JSON.stringify({ version: 2, value }));
     const root = parseXmlDocument(
       `<w:p xmlns:w="${W}" xmlns:folio="${FOLIO_REVIEW_HISTORY_NAMESPACE}"><w:bookmarkEnd w:id="1" folio:keptCut="${encoded}"/></w:p>`,
     ) as XmlElement | null;
     if (!root) throw new Error("The paragraph parses.");
-    expect(parseParagraph(root, null, null, null, null, null).content).toEqual([
-      { type: "bookmarkEnd", id: 1 },
-    ]);
+    return parseParagraph(root, null, null, null, null, null).content;
+  };
+
+  test.each([
+    ["kept from no revision", { piece: "before" }],
+    ["naming no side as its piece", { ...CUT, piece: "inside" }],
+  ])("an unreadable cut (%s) is dropped and the marker kept", (_, value) => {
+    expect(readMarker(value)).toEqual([{ type: "bookmarkEnd", id: 1 }]);
   });
+
+  test.each([3, 0])(
+    "a cut saved with a depth (%s) is read without it",
+    (depth) => {
+      const value = { depth, ...CUT, piece: "before" };
+      expect(readMarker(value)).toEqual([
+        { type: "bookmarkEnd", id: 1, keptCut: { ...CUT, piece: "before" } },
+      ]);
+      expect(
+        reviewProvenanceIssue("keptCut", JSON.stringify({ version: 2, value })),
+      ).toBeUndefined();
+    },
+  );
 
   test("a bookmark inside a link is read as one outside it", () => {
     const inLink: Paragraph = {
@@ -187,7 +204,7 @@ const tracked = (): Document =>
     {
       type: "bookmarkEnd",
       id: 1,
-      keptCut: { depth: 2, keptFrom: KEPT_FROM, piece: "after" },
+      keptCut: { keptFrom: KEPT_FROM, piece: "after" },
     },
     {
       type: "insertion",
@@ -289,6 +306,26 @@ describe("a review saved midway", () => {
     expect(cutsSaved).toBeGreaterThan(0);
   });
 
+  test.each(["legacy", "canonical"] as const)(
+    "a file whose cut was saved with a depth opens, and saves unedited as it is (%s)",
+    async (session) => {
+      const zip = await ZipArchive.read(await createDocx(tracked()));
+      const xml = (await zip.entry("word/document.xml")?.text()) ?? "";
+      const cut = { keptFrom: KEPT_FROM, piece: "after" };
+      const encoded = (value: object) =>
+        escapeXmlAttribute(JSON.stringify({ version: 2, value }));
+      const older = xml.replace(encoded(cut), encoded({ depth: 2, ...cut }));
+      expect(older).not.toBe(xml);
+      zip.set("word/document.xml", older);
+      const file = (await zip.generate({ compression: "store" })).buffer;
+      const reopened = await parseDocx(file, { preloadFonts: false });
+      expect(keptCuts(paragraphOf(reopened))).toEqual([cut]);
+      const reviewer = await FolioDocxReviewer.fromBuffer(file, { session });
+      const saved = await ZipArchive.read(await reviewer.toBuffer());
+      expect(await saved.entry("word/document.xml")?.text()).toBe(older);
+    },
+  );
+
   test("a version 1 file reopens and resolves as the review it was saved from", async () => {
     const zip = await ZipArchive.read(await createDocx(tracked()));
     const xml = (await zip.entry("word/document.xml")?.text()) ?? "";
@@ -369,7 +406,7 @@ describe("a version 1 change naming its kept markers", () => {
     expect(numbered.content.at(-2)).toEqual({
       type: "bookmarkEnd",
       id: 1,
-      keptCut: { depth: 1, keptFrom: KEPT_FROM, piece: "after" },
+      keptCut: { keptFrom: KEPT_FROM, piece: "after" },
     });
   });
 
@@ -377,7 +414,7 @@ describe("a version 1 change naming its kept markers", () => {
     expect(read(1).content.at(0)).toEqual({
       type: "bookmarkEnd",
       id: 1,
-      keptCut: { depth: 1, keptFrom: KEPT_FROM, piece: "after" },
+      keptCut: { keptFrom: KEPT_FROM, piece: "after" },
     });
     // The model holds the joins without what version 1 said of the markers.
     expect(read(1).content.at(1)).toMatchObject({

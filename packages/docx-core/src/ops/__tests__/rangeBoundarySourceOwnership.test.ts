@@ -255,7 +255,7 @@ const assertSourceOwnership = ({
     isTrackedWrapper(foreign)
       ? {
           ...marker,
-          keptCut: { depth: expect.any(Number), keptFrom: SECOND_DATE },
+          keptCut: { keptFrom: SECOND_DATE },
         }
       : marker,
   ]);

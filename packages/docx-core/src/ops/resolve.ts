@@ -81,7 +81,6 @@ import {
   pendingAtEdge,
   settleKeptCuts,
   standsInKeptCut,
-  withEdgeKeptCutsWidened,
   withKeptCutPieceConsumed,
   withKeptCutPieceRecorded,
   withKeptCutsRecorded,
@@ -3076,10 +3075,7 @@ const resolveList = ({
         // join takes it, where an authored or accepted one blocks the join.
         // Placing it inside a piece clears the record unless a pending change
         // meets it there, as does a resolution that leaves none beside it.
-        const cut = {
-          depth: Math.max(1, joins?.remove ?? 0),
-          keptFrom: node.info.date ?? "",
-        };
+        const cut = { keptFrom: node.info.date ?? "" };
         const kept = keptOf(removalContent).map((boundary) =>
           isKeptBoundaryCarrier(boundary)
             ? withKeptCutsRecorded(boundary, cut, resolution.relocated.nodes)
@@ -3293,7 +3289,7 @@ const resolveList = ({
             : content.map((child) =>
                 withKeptCutsRecorded(
                   child,
-                  { depth: held, keptFrom },
+                  { keptFrom },
                   resolution.relocated.nodes,
                 ),
               ),
@@ -4483,7 +4479,7 @@ const resolveList = ({
             if (occurrence === undefined) continue;
             const marked = withKeptCutsRecorded(
               occurrence.node,
-              { depth, keptFrom },
+              { keptFrom },
               resolution.relocated.nodes,
             );
             if (marked === occurrence.node) continue;
@@ -5090,8 +5086,6 @@ type JoinPlan = {
   revisionId: number;
   added: boolean;
   depth: number | undefined;
-  /** When the paragraph mark the join resolves was made. */
-  splitDate: string | undefined;
   /** Paragraphs standing only for their pending insertions. */
   holders: ReadonlySet<string>;
 };
@@ -5500,7 +5494,7 @@ const paragraphMarkPlan = (
 
 const joinOps = (
   document: Document,
-  { op, story, paraId, revisionId, added, depth, splitDate, holders }: JoinPlan,
+  { op, story, paraId, revisionId, added, depth, holders }: JoinPlan,
   ends: EmptiedEndsById,
   /** Table receivers a later paragraph of this resolution already ran into. */
   ranInto: ReadonlySet<string> = new Set(),
@@ -5591,13 +5585,6 @@ const joinOps = (
             }
           : { left: incoming, right: next.content, depth },
       );
-      // Markers kept from content made after the split stood in its seam:
-      // they stand in the join's cut, as when the join was resolved first.
-      if (depth > 0 && splitDate !== undefined) {
-        const cut = { depth, after: splitDate };
-        seam.left = withEdgeKeptCutsWidened(seam.left, "end", cut);
-        seam.right = withEdgeKeptCutsWidened(seam.right, "start", cut);
-      }
       const left = seam.left.at(-1);
       const right = seam.right.at(0);
       if (depth > 0 && left !== undefined && right !== undefined) {
@@ -7146,7 +7133,6 @@ const planSingleRecordResolution = (
         revisionId: mark.info.id,
         added,
         depth,
-        splitDate: splitDateOf(mark),
         holders,
       });
     }

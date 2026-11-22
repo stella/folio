@@ -5,7 +5,7 @@ import { contractViolation } from "../contract";
 import { isKeptCut, settleKeptCuts } from "../keptCut";
 import type { InlineNode } from "../leaves";
 
-const CUT = { depth: 2, keptFrom: "2026-03-04T05:00:01Z" };
+const CUT = { keptFrom: "2026-03-04T05:00:01Z" };
 
 const link = (text: string) =>
   ({
@@ -29,15 +29,16 @@ const cuts = (nodes: readonly InlineNode[]): unknown[] =>
   );
 
 describe("a kept range marker's cut", () => {
-  test("the contract admits a cut at least one level deep and refuses another", () => {
-    const marked = (depth: number) =>
+  test("the contract admits a cut with exactly its fields and refuses another", () => {
+    const marked = (cut: typeof CUT) =>
       documentWith([
         link("a"),
-        { type: "bookmarkEnd", id: 1, keptCut: { ...CUT, depth } },
+        { type: "bookmarkEnd", id: 1, keptCut: cut },
         link("b"),
       ]);
-    expect(contractViolation(marked(2))).toBeUndefined();
-    expect(contractViolation(marked(0))).toBeDefined();
+    expect(contractViolation(marked(CUT))).toBeUndefined();
+    const other = { ...CUT, side: "before" };
+    expect(contractViolation(marked(other))).toBeDefined();
   });
 
   test("a cut names one side as its piece, or none", () => {
@@ -115,23 +116,23 @@ describe("a kept range marker's cut", () => {
     ).toEqual([CUT]);
   });
 
-  test("markers standing together while a change waits stand in the deepest cut any records", () => {
+  test("markers standing together while a change waits keep the revision each was kept from", () => {
     const pending: InlineNode = {
       type: "insertion",
       info: { id: 4, author: "C", date: "2026-03-04T05:00:02Z" },
       content: [link("x")],
     };
-    const shallow = { depth: 1, keptFrom: "2026-03-04T05:00:03Z" };
+    const later = { keptFrom: "2026-03-04T05:00:03Z" };
     const settled = settleKeptCuts([
       pending,
       { type: "bookmarkStart", id: 1, name: "b", keptCut: CUT },
-      { type: "bookmarkEnd", id: 1, keptCut: shallow },
+      { type: "bookmarkEnd", id: 1, keptCut: later },
       { type: "bookmarkEnd", id: 2 },
     ]);
-    // Each keeps the revision it was kept from; the authored marker gains no cut.
+    // The authored marker gains no cut.
     expect(settled.slice(1)).toEqual([
       { type: "bookmarkStart", id: 1, name: "b", keptCut: CUT },
-      { type: "bookmarkEnd", id: 1, keptCut: { ...shallow, depth: CUT.depth } },
+      { type: "bookmarkEnd", id: 1, keptCut: later },
       { type: "bookmarkEnd", id: 2 },
     ]);
   });

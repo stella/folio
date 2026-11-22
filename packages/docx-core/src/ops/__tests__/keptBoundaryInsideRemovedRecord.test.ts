@@ -167,7 +167,7 @@ test("a boundary kept inside a rejected insertion stands between the pieces of t
           {
             type: "bookmarkEnd",
             id: 1,
-            keptCut: { depth: 4, keptFrom: "2026-03-04T05:00:01Z" },
+            keptCut: { keptFrom: "2026-03-04T05:00:01Z" },
           },
           {
             type: "insertion",

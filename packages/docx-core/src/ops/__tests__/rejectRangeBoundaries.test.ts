@@ -684,7 +684,7 @@ describe("a split seam with nothing left on one side joins nothing", () => {
     expect(atOnce?.[0]).toEqual({
       type: "bookmarkEnd",
       id: 1,
-      keptCut: { depth: 1, keptFrom: "2026-03-04T05:00:03Z" },
+      keptCut: { keptFrom: "2026-03-04T05:00:03Z" },
     });
   });
 });
@@ -740,7 +740,7 @@ describe("a pending deletion nested in a rejected insertion keeps its boundaries
         content: [
           {
             ...bookmark,
-            keptCut: { depth: 1, keptFrom: "2026-03-04T05:00:01Z" },
+            keptCut: { keptFrom: "2026-03-04T05:00:01Z" },
           },
         ],
       },
@@ -974,7 +974,7 @@ describe("a seam joins only pieces that stand, whatever the order", () => {
           expect.objectContaining({ type: removal }),
           {
             ...bookmarkEnd,
-            keptCut: { depth: 1, keptFrom: "2026-03-04T05:00:02Z" },
+            keptCut: { keptFrom: "2026-03-04T05:00:02Z" },
           },
           link("a"),
         ],
