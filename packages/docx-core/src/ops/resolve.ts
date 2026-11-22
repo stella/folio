@@ -26,6 +26,7 @@ import type {
   KeptCutPiece,
   Paragraph,
   ParagraphContent,
+  ParagraphMarkChange,
   ParagraphMarkChangeKind,
   ParagraphPropertyChange,
   Run,
@@ -387,6 +388,14 @@ const joinedKeepingFirst = (
 /** Whether a mark of this kind recorded a break being added. */
 const markWasAdded = (kind: ParagraphMarkChangeKind): boolean =>
   kind === "ins" || kind === "moveTo";
+
+/**
+ * When the split whose cut a mark's `resolutionJoin` records was made: an
+ * added mark's own date, and for a deleted mark, which holds the cut of the
+ * inserted break it deletes, that split's date, not the deletion's.
+ */
+const splitDateOf = (mark: ParagraphMarkChange): string | undefined =>
+  markWasAdded(mark.kind) ? mark.info.date : mark.splitDate;
 
 type PropertyChange = RunPropertyChange | ParagraphPropertyChange;
 
@@ -1293,6 +1302,8 @@ const settleDeferredRemovals = (
   const out: InlineNode[] = [];
   /** Seams whose every blocker is accepted, by key: see placeAcceptedSeamKept. */
   const acceptedKept = new Map<string, DeferredRemovalGroup>();
+  /** Accepted removals that held a piece of a seam: see placeKeptBesideRemovedPiece. */
+  const removedPieces: { index: number; group: DeferredRemovalGroup }[] = [];
   for (const node of nodes) {
     let next = node;
     if (
@@ -1318,6 +1329,11 @@ const settleDeferredRemovals = (
             fates.every((fate) => fate === "accepted")
           )
             acceptedKept.set(deferredGroupKey(group), group);
+          if (
+            group.edge !== undefined &&
+            fates.every((fate) => fate === "accepted")
+          )
+            removedPieces.push({ index: out.length, group });
           if (fates.includes("accepted")) continue;
           const remaining = group.blockers.filter(
             (_, index) => fates[index] === "pending",
@@ -1353,7 +1369,78 @@ const settleDeferredRemovals = (
   }
   for (const group of acceptedKept.values())
     changed = placeAcceptedSeamKept({ out, group, fateOf }) || changed;
+  // Later placements stand later in the list, so earlier indices still hold.
+  for (const { index, group } of removedPieces.toReversed())
+    changed =
+      placeKeptBesideRemovedPiece({ out, index, group, fateOf }) || changed;
   return changed ? out : nodes;
+};
+
+/**
+ * Kept markers beside a pending removal that holds a piece of the cut they
+ * stand in, naming its side as their cut's piece, once the removal is
+ * accepted: that piece goes, and they go into the piece across from them at
+ * its facing edge, as deep as the seam, where it continues the record the
+ * cut split, as rejecting the revision they were kept from after the removal
+ * places them. `out` is changed in place; whether it changed.
+ */
+const placeKeptBesideRemovedPiece = ({
+  out,
+  index,
+  group,
+  fateOf,
+}: {
+  out: InlineNode[];
+  index: number;
+  group: DeferredRemovalGroup;
+  fateOf: DeferredRemovalSettlement["fateOf"];
+}): boolean => {
+  const holder = out[index];
+  if (
+    holder === undefined ||
+    (holder.type !== "deletion" && holder.type !== "moveFrom") ||
+    group.edge === undefined
+  )
+    return false;
+  const atEnd = group.edge === "end";
+  const step = atEnd ? 1 : -1;
+  const named: KeptCutPiece = atEnd ? "before" : "after";
+  let records = 0;
+  for (let at = index + step; ; at += step) {
+    const node = at < 0 ? undefined : out[at];
+    const piece = node === undefined ? undefined : keptCutPiece(node);
+    if (
+      node === undefined ||
+      !standsInKeptCut(node) ||
+      (piece !== named && piece !== "both")
+    )
+      break;
+    records += 1;
+  }
+  if (records === 0) return false;
+  const pieceAt = index + step * (records + 1);
+  const piece = pieceAt < 0 ? undefined : out[pieceAt];
+  const edgeRecord = atEnd ? holder.content.at(-1) : holder.content.at(0);
+  const start = atEnd ? index + 1 : pieceAt + 1;
+  const standing = out.slice(start, start + records);
+  if (
+    piece === undefined ||
+    edgeRecord === undefined ||
+    isTrackedWrapper(piece) ||
+    isStandingBoundary(piece) ||
+    emptiedBy(piece, fateOf) ||
+    !sameOwnFields(edgeRecord, piece)
+  )
+    return false;
+  const placed = withBoundariesAtEdge(
+    piece,
+    standing.map((node) => withoutKeptCuts(node)),
+    group.depth,
+    atEnd ? "start" : "end",
+  );
+  if (placed === undefined) return false;
+  out.splice(Math.min(start, pieceAt), records + 1, placed);
+  return true;
 };
 
 /**
@@ -3142,6 +3229,30 @@ const resolveList = ({
         });
         continue;
       }
+      const resolved = resolveList({
+        nodes: node.content,
+        resolution,
+        path: [...path, index],
+      });
+      const content =
+        isAddedRevision(node) &&
+        resolution.decision === REVISION_DECISIONS.ACCEPT
+          ? withPayloadEdgesClosed(
+              acceptCopyOriginAncestor(resolved.nodes),
+              node.resolutionJoins,
+              resolution,
+            )
+          : resolved.nodes;
+      // A kept change whose content this resolution removes leaves nothing
+      // for its joins to take: it goes as a tracked change the changes it
+      // held emptied goes when they are resolved first (below), and cuts
+      // nothing between its neighbours.
+      if (content.length === 0 && node.content.length > 0) {
+        folds.push(out.length);
+        if ((node.resolutionJoins?.plainSides?.length ?? 0) > 0)
+          plainSeams.add(out.length);
+        continue;
+      }
       if (node.resolutionJoins === undefined) seams.push(out.length);
       else if (node.resolutionJoins.plainSides?.includes("before") === true)
         plainSeams.add(out.length);
@@ -3160,20 +3271,6 @@ const resolveList = ({
         if (keptBefore !== undefined)
           exactKept.set(out.length, { ...keptBefore, piece: "after" });
       }
-      const resolved = resolveList({
-        nodes: node.content,
-        resolution,
-        path: [...path, index],
-      });
-      const content =
-        isAddedRevision(node) &&
-        resolution.decision === REVISION_DECISIONS.ACCEPT
-          ? withPayloadEdgesClosed(
-              acceptCopyOriginAncestor(resolved.nodes),
-              node.resolutionJoins,
-              resolution,
-            )
-          : resolved.nodes;
       if (resolved.edges?.first !== undefined)
         recordSourceSeam(out.length, resolved.edges.first);
       if (
@@ -5208,6 +5305,44 @@ const withAbsorptions = (
         },
       };
 
+/**
+ * `blocks` without the paragraph at `index`, whose mark this resolution takes
+ * and which has no content to keep it, as {@link planParagraphBoundaryRemoval}
+ * removes it. Where the paragraph before it is one whose mark this resolution
+ * also takes, that one takes all it holds, not only the markers a paragraph
+ * that goes leaves: resolving the marks one at a time from the first joins
+ * that paragraph into this one first, which keeps it all, empty inline
+ * containers too.
+ */
+const removalBesideJoin = ({
+  blocks,
+  index,
+  joinsBefore,
+}: {
+  blocks: readonly BlockContent[];
+  index: number;
+  joinsBefore: ReadonlySet<string>;
+}): ReturnType<typeof planParagraphBoundaryRemoval> => {
+  const paragraph = blocks[index];
+  const previous = blocks[index - 1];
+  if (
+    paragraph?.type !== "paragraph" ||
+    previous?.type !== "paragraph" ||
+    paragraph.content.length === 0 ||
+    !joinsBefore.has(idKey(previous.paraId ?? ""))
+  )
+    return planParagraphBoundaryRemoval({ blocks, index });
+  const host: Paragraph = {
+    ...previous,
+    content: joinParagraphSeam(previous.content, paragraph.content),
+  };
+  return {
+    type: "removed",
+    blocks: [...blocks.slice(0, index - 1), host, ...blocks.slice(index + 1)],
+    effects: [{ type: "retained-range-boundaries", receiver: previous }],
+  };
+};
+
 const paragraphMarkPlan = (
   ops: DocumentOp[],
   receiverEffects: ResolutionReceiverEffect[] = [],
@@ -5553,9 +5688,10 @@ const joinOps = (
       );
     }
     if (tableOutcome === "remove") {
-      const removal = planParagraphBoundaryRemoval({
+      const removal = removalBesideJoin({
         blocks,
         index: location.index,
+        joinsBefore,
       });
       if (removal.type === "removed") {
         // The mark goes with the break it carries: its section and the one
@@ -5641,9 +5777,10 @@ const joinOps = (
       (block, index): block is Paragraph =>
         index !== location.index && block.type === "paragraph",
     );
-    const removal = planParagraphBoundaryRemoval({
+    const removal = removalBesideJoin({
       blocks,
       index: location.index,
+      joinsBefore,
     });
     // No other paragraph names the list, as in a content control holding a
     // table and this paragraph: an empty replacement removes it, and its
@@ -6111,8 +6248,12 @@ type RevisionResolutionPlanOptions = {
  * A mark holding an insertion and a later deletion of it, settled to the one
  * record resolution then decides, with the revision ids left to resolve:
  * - accepting the deletion takes the break, whatever becomes of the
- *   insertion: the mark is the deletion alone, which the resolution accepts;
- * - accepting the insertion alone leaves the deletion pending;
+ *   insertion: the mark is the deletion alone, which the resolution accepts,
+ *   and the break goes as rejecting its insertion takes it, rejoining the
+ *   records its split cut;
+ * - accepting the insertion alone leaves the deletion pending, holding the
+ *   split's cut and when the split was made, so accepting it later rejoins
+ *   the same records as accepting both at once;
  * - rejecting the insertion takes the break with its deletion: the mark is
  *   the insertion alone, which the resolution rejects;
  * - rejecting the deletion alone leaves the insertion pending.
@@ -6131,7 +6272,18 @@ const settleTwoRecordMarks = (
     if (!ids.has(insertion) && !ids.has(deletion)) continue;
     const review = reviewFieldsOf(paragraph);
     if (op.decision === REVISION_DECISIONS.ACCEPT) {
-      review.pPrMark = { kind: "del", info: mark.deletion.info };
+      review.pPrMark = {
+        kind: "del",
+        info: mark.deletion.info,
+        ...(mark.resolutionJoin === undefined
+          ? {}
+          : {
+              resolutionJoin: mark.resolutionJoin,
+              ...(mark.info.date === undefined
+                ? {}
+                : { splitDate: mark.info.date }),
+            }),
+      };
       ids.delete(insertion);
     } else {
       const { deletion: _deleted, ...added } = mark;
@@ -6736,12 +6888,10 @@ const planSingleRecordResolution = (
   for (const location of paragraphs) {
     const paragraph = location.paragraph;
     const mark = paragraph.pPrMark;
-    if (
-      mark === undefined ||
-      !markWasAdded(mark.kind) ||
-      mark.resolutionJoin === undefined
-    )
-      continue;
+    // A deleted mark holding a cut holds its inserted break's: an accepted
+    // change at its edge retires it as it retires the inserted mark's.
+    if (mark === undefined || mark.resolutionJoin === undefined) continue;
+    const splitDate = splitDateOf(mark);
     const trailing = acceptedClosedBoundary({
       nodes:
         resolvedContents.get(idKey(paragraph.paraId ?? "")) ??
@@ -6771,7 +6921,7 @@ const planSingleRecordResolution = (
             right: next.content,
             depth: mark.resolutionJoin,
             resolution,
-            splitDate: mark.info.date,
+            splitDate,
           })
         : 0;
     let depth = Math.max(
@@ -6788,7 +6938,7 @@ const planSingleRecordResolution = (
       nodes: paragraph.content,
       edge: "last",
       resolution,
-      splitDate: mark.info.date,
+      splitDate,
     });
     const removedLeading =
       next?.type === "paragraph"
@@ -6796,7 +6946,7 @@ const planSingleRecordResolution = (
             nodes: next.content,
             edge: "first",
             resolution,
-            splitDate: mark.info.date,
+            splitDate,
           })
         : undefined;
     if (removedTrailing !== undefined && removedLeading !== undefined)
@@ -6843,7 +6993,7 @@ const planSingleRecordResolution = (
         revisionId: mark.info.id,
         added,
         depth,
-        splitDate: mark.info.date,
+        splitDate: splitDateOf(mark),
         holders,
       });
     }

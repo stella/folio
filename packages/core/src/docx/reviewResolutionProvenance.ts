@@ -106,6 +106,9 @@ const PARAGRAPH_MARK_FIELDS = {
   // a field of another: a reader that does not know it drops only the
   // marker, and joins the paragraphs as any rejected mark.
   survivor: { type: "private", attribute: "rejectionSurvivor" },
+  // When the split whose cut a deleted mark holds was made. Its own
+  // attribute: a reader that does not know it joins at the deletion's date.
+  splitDate: { type: "private", attribute: "splitDate" },
   // A later deletion of an added mark is its own w:del beside it.
   deletion: { type: "ooxml" },
 } as const satisfies Record<
@@ -572,14 +575,20 @@ const isParagraphMarkSurvivor = (
   value: unknown,
 ): value is NonNullable<ParagraphMarkChange["survivor"]> => value === "first";
 
+const isParagraphMarkSplitDate = (
+  value: unknown,
+): value is NonNullable<ParagraphMarkChange["splitDate"]> =>
+  typeof value === "string";
+
 /**
  * A paragraph mark's private review provenance: its rejection join depth
- * (null carries an owned undefined depth) and the paragraph rejecting it
- * keeps. A missing attribute carries no field.
+ * (null carries an owned undefined depth), the paragraph rejecting it keeps,
+ * and when the split whose cut a deleted mark holds was made. A missing
+ * attribute carries no field.
  */
 export const parseParagraphMarkResolutionJoin = (
   node: XmlElement,
-): Pick<ParagraphMarkChange, "resolutionJoin" | "survivor"> => {
+): Pick<ParagraphMarkChange, "resolutionJoin" | "survivor" | "splitDate"> => {
   const value = parseAttribute({
     node,
     attribute: PARAGRAPH_MARK_FIELDS.resolutionJoin.attribute,
@@ -590,11 +599,17 @@ export const parseParagraphMarkResolutionJoin = (
     attribute: PARAGRAPH_MARK_FIELDS.survivor.attribute,
     valid: isParagraphMarkSurvivor,
   });
+  const splitDate = parseAttribute({
+    node,
+    attribute: PARAGRAPH_MARK_FIELDS.splitDate.attribute,
+    valid: isParagraphMarkSplitDate,
+  });
   return {
     ...(value === undefined
       ? {}
       : { resolutionJoin: value === null ? undefined : value }),
     ...(survivor === undefined ? {} : { survivor }),
+    ...(splitDate === undefined ? {} : { splitDate }),
   };
 };
 
@@ -604,6 +619,14 @@ const paragraphMarkSurvivorOptions = (
   attribute: PARAGRAPH_MARK_FIELDS.survivor.attribute,
   value: mark.survivor,
   valid: isParagraphMarkSurvivor,
+});
+
+const paragraphMarkSplitDateOptions = (
+  mark: ParagraphMarkChange,
+): SerializeAttributeOptions => ({
+  attribute: PARAGRAPH_MARK_FIELDS.splitDate.attribute,
+  value: mark.splitDate,
+  valid: isParagraphMarkSplitDate,
 });
 
 const paragraphMarkResolutionJoinOptions = (
@@ -620,7 +643,8 @@ export const serializeParagraphMarkResolutionJoin = (
   mark: ParagraphMarkChange,
 ): string =>
   serializeAttribute(paragraphMarkResolutionJoinOptions(mark)) +
-  serializeAttribute(paragraphMarkSurvivorOptions(mark));
+  serializeAttribute(paragraphMarkSurvivorOptions(mark)) +
+  serializeAttribute(paragraphMarkSplitDateOptions(mark));
 
 /** Captured paragraph properties compose the same envelopes into a parsed XML element. */
 export const paragraphMarkResolutionJoinAttributes = (
@@ -630,6 +654,7 @@ export const paragraphMarkResolutionJoinAttributes = (
   for (const options of [
     paragraphMarkResolutionJoinOptions(mark),
     paragraphMarkSurvivorOptions(mark),
+    paragraphMarkSplitDateOptions(mark),
   ]) {
     const encoded = encodeAttribute(options);
     if (encoded !== undefined)
@@ -751,6 +776,7 @@ const PROVENANCE_VALUE_SHAPES: Readonly<Record<string, ProvenanceShape>> = {
   splitResolutionJoins: isSplitPieceOf,
   [ENCLOSING_ATTRIBUTE]: enclosingHandoffs,
   [PARAGRAPH_MARK_FIELDS.survivor.attribute]: isParagraphMarkSurvivor,
+  [PARAGRAPH_MARK_FIELDS.splitDate.attribute]: isParagraphMarkSplitDate,
   resolvesWith: isRevisionId,
 };
 
