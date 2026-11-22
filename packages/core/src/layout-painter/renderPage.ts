@@ -26,6 +26,7 @@ import type {
 } from "../layout-engine/measure";
 import { DEFAULT_FONT_FAMILY } from "../layout-engine/measure/measureHelpers";
 import { MIN_WRAP_SEGMENT_WIDTH } from "../layout-engine/measure/measureParagraph";
+import { hasSettledRaisedTableWrap } from "../layout-engine/measure/raisedTableWrap";
 import { resolveTableInlineOffset } from "../layout-engine/measure/tableInlinePlacement";
 import { tableCellKeepsNoWrap } from "../layout-engine/measure/tableNoWrapWidths";
 import {
@@ -2111,7 +2112,10 @@ export function renderPage(
           scopedFloatingZones,
           i,
         );
-        if (fragmentFloatingZones.length > 0) {
+        if (
+          fragmentFloatingZones.length > 0 &&
+          !hasSettledRaisedTableWrap(paragraphMeasure)
+        ) {
           paragraphMeasure = measureParagraph(paragraphBlock, contentWidth, {
             floatingZones: fragmentFloatingZones,
             paragraphYOffset: fragmentContentY,
@@ -2858,6 +2862,17 @@ function computePageFingerprintInternal(
       const block = entry?.block;
       if (frag.kind === "table" && entry?.measure.kind === "table") {
         fp += `,cw:${entry.measure.columnWidths.join(",")}`;
+      } else if (
+        frag.kind === "paragraph" &&
+        entry?.measure.kind === "paragraph" &&
+        hasSettledRaisedTableWrap(entry.measure)
+      ) {
+        for (const line of entry.measure.lines.slice(
+          frag.fromLine,
+          frag.toLine,
+        )) {
+          fp += `,f:${line.leftOffset ?? 0},${line.rightOffset ?? 0}`;
+        }
       }
       const annotationFingerprint = block
         ? computeAnnotationFingerprint(block, options.includePmPositions)

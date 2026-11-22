@@ -49,6 +49,7 @@ import {
   MIN_WRAP_SEGMENT_WIDTH,
 } from "./measureParagraph";
 import type { FloatingImageZone } from "./measureParagraph";
+import type { RaisedTableWrapInputs } from "./raisedTableWrap";
 import {
   buildTableCellFloatingZones,
   getTableCellFloatingImages,
@@ -86,6 +87,8 @@ const NO_WRAP_MEASURE_WIDTH = 1_000_000;
 export type MeasureBlocksOptions = {
   /** Header/footer tabs may be authored in the page margin, beyond body width. */
   allowEndTabOverflow?: boolean;
+  /** Paragraph-local exclusions found from a provisional page layout. */
+  raisedTableWrap?: RaisedTableWrapInputs;
 };
 
 /**
@@ -1161,7 +1164,7 @@ function projectFloatingTablePageRect({
   };
 }
 
-function isUndecoratedParagraphMark(block: FlowBlock): boolean {
+export function isUndecoratedParagraphMark(block: FlowBlock): boolean {
   if (block.kind !== "paragraph") return false;
   const attrs = block.attrs;
   return (
@@ -1623,6 +1626,16 @@ export function measureBlocks(
         contentWidth: blockWidth,
       }),
     );
+    const earlierTableZones = options?.raisedTableWrap?.get(block.id);
+    if (earlierTableZones) {
+      for (const zone of earlierTableZones) {
+        projectedTableZones.push({
+          ...zone,
+          topY: zone.topY + cumulativeY,
+          bottomY: zone.bottomY + cumulativeY,
+        });
+      }
+    }
     const zones =
       activeZones.length > 0 || projectedTableZones.length > 0
         ? [...activeZones, ...projectedTableZones]
