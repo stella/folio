@@ -16,9 +16,13 @@ import {
 import { ZipArchive } from "@stll/docx-core/zip";
 import { RELATIONSHIP_TYPES } from "@stll/folio-core/docx/relsParser";
 import { fromMarkdown } from "@stll/folio-core/markdown";
-import { createDocx, paragraph } from "@stll/folio-core/server";
+import {
+  createDocx,
+  FolioDocxReviewer,
+  paragraph,
+} from "@stll/folio-core/server";
 
-import { openReviewer, scenarioEngine } from "../support/documents.ts";
+import { AUTHOR, openReviewer, toArrayBuffer } from "../support/documents.ts";
 import {
   assertReviewRoundTrip,
   assertRevisionCoverage,
@@ -921,67 +925,40 @@ test("a simple DATE field in a deleted paragraph keeps its resolved model and un
     },
   ];
   const bytes = new Uint8Array(await createDocx(model));
-  const reviewer = await openReviewer(bytes);
   const originalXml = await (
     await ZipArchive.read(bytes)
   )
     .entry("word/document.xml")
     ?.text();
   assert.ok(originalXml?.includes("fldSimple"));
-  const unchangedXml = await (
-    await ZipArchive.read(await reviewer.toBuffer())
-  )
-    .entry("word/document.xml")
-    ?.text();
-  const engine = scenarioEngine();
-  switch (engine) {
-    case "legacy":
-      assert.equal(unchangedXml, originalXml);
-      break;
-    // The canonical session saves the package it opened, whose paragraphs
-    // all carry ids: the ones the source named none for gain the ids minted
-    // on opening, and nothing else changes.
-    case "canonical": {
-      const minted = [
-        ...(unchangedXml ?? "").matchAll(
-          / w14:paraId="([0-9A-F]{8})" w14:textId="\1"/g,
-        ),
-      ];
-      assert.deepEqual(
-        minted.map(([, id]) => id),
-        reviewer.getContent().map(({ id }) => id),
-      );
-      assert.equal(
-        unchangedXml?.replaceAll(
-          / w14:paraId="([0-9A-F]{8})" w14:textId="\1"/g,
-          "",
-        ),
-        originalXml,
-      );
-      break;
-    }
-    default:
-      throw new Error(`Unhandled engine: ${engine satisfies never}`);
+  for (const session of ["legacy", "canonical"] as const) {
+    const open = (buffer: ArrayBuffer) =>
+      FolioDocxReviewer.fromBuffer(buffer, { author: AUTHOR, session });
+    const reviewer = await open(toArrayBuffer(bytes));
+    const unchangedXml = await (
+      await ZipArchive.read(await reviewer.toBuffer())
+    )
+      .entry("word/document.xml")
+      ?.text();
+    assert.equal(unchangedXml, originalXml, session);
+
+    const block = reviewer.getContent().at(0);
+    if (!block) throw new Error("Expected field block");
+    const applied = reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "tracked-changes",
+        operations: [{ id: "delete", type: "deleteBlock", blockId: block.id }],
+      },
+      { undefinedReferences: "refuse" },
+    );
+    assert.equal(applied.applied.length, 1, JSON.stringify(applied));
+    assert.deepEqual(applied.skipped, []);
+    assert.ok(reviewer.getChanges().length > 0);
+    await assertReviewRoundTrip({
+      live: reviewer,
+      reopened: await open(await reviewer.toBuffer()),
+      context: `tracked DATE field (${session})`,
+    });
   }
-  const block = reviewer.getContent().at(0);
-  if (!block) throw new Error("Expected field block");
-  const batch = {
-    version: 1,
-    operations: [{ id: "delete", type: "deleteBlock", blockId: block.id }],
-  } as const;
-  const applied = reviewer.applyDocumentOperations(
-    { ...batch, mode: "tracked-changes" },
-    { undefinedReferences: "refuse" },
-  );
-  assert.equal(applied.applied.length, 1, JSON.stringify(applied));
-  assert.deepEqual(applied.skipped, []);
-  assert.ok(reviewer.getChanges().length > 0);
-  const reopened = await openReviewer(
-    new Uint8Array(await reviewer.toBuffer()),
-  );
-  await assertReviewRoundTrip({
-    live: reviewer,
-    reopened,
-    context: "tracked DATE field",
-  });
 });
