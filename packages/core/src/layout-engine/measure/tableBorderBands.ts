@@ -13,7 +13,10 @@ const THIN_COMPOUND_STROKE_PX = 1;
 const THICK_COMPOUND_STROKE_PX = 2;
 const MIN_SMALL_GAP_STROKE_PX = pointsToPixels(0.25);
 
-type CompoundStyle = NonNullable<CellBorderSpec["authoredStyle"]>;
+type CompoundStyle = Extract<
+  CellBorderSpec["authoredStyle"],
+  `${"thinThick" | "thickThin"}${string}`
+>;
 type CompoundSegment = number | "authored" | "authoredStroke";
 
 const COMPOUND_SEGMENTS = {
@@ -43,9 +46,9 @@ const COMPOUND_SEGMENTS = {
 >;
 
 export function hasCompoundTableBorderBands(
-  style: string | undefined,
+  style: unknown,
 ): style is CompoundStyle {
-  return style !== undefined && Object.hasOwn(COMPOUND_SEGMENTS, style);
+  return typeof style === "string" && Object.hasOwn(COMPOUND_SEGMENTS, style);
 }
 
 export type TableBorderSide = "top" | "right" | "bottom" | "left";
@@ -67,7 +70,7 @@ function beveledEdge(border: CellBorderSpec | undefined) {
 
 function compoundEdge(border: CellBorderSpec | undefined) {
   const style = border?.authoredStyle;
-  if (!border || style === undefined) return undefined;
+  if (!border || !hasCompoundTableBorderBands(style)) return undefined;
 
   const width = border.width ?? 1;
   const color = border.color ?? BLACK;
