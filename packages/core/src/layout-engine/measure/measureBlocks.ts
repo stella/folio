@@ -6,7 +6,11 @@ import {
   recordMeasureOutcome,
 } from "../layoutInstrumentation";
 import { getParagraphFrame, isParagraphFrameTextBox } from "../paragraphFrame";
-import { resolveTableSpacing } from "../paragraphSpacing";
+import {
+  getParagraphSpacingBefore,
+  resolveFloatingTableAnchorContextualSpacing,
+  resolveTableSpacing,
+} from "../paragraphSpacing";
 import { sectionStartAdvanceOf } from "../section-breaks";
 import type { SectionStartAdvance } from "../section-breaks";
 import {
@@ -38,6 +42,7 @@ import type {
 } from "../types";
 import { getCachedParagraphMeasure, setCachedParagraphMeasure } from "./cache";
 import {
+  isTextAnchoredTable,
   resolveFloatingTablePageX,
   resolveFloatingTableY,
 } from "./floatingTablePosition";
@@ -1416,6 +1421,7 @@ export function measureBlocks(
   fieldValues?: ReadonlyMap<number, string>,
   options?: MeasureBlocksOptions,
 ): Measure[] {
+  blocks = resolveFloatingTableAnchorContextualSpacing(blocks);
   const defaultWidth = Array.isArray(contentWidth)
     ? (contentWidth[0] ?? 0)
     : contentWidth;
@@ -1618,14 +1624,30 @@ export function measureBlocks(
         bandOnlyAnchor || activeTablePageRects.length > 0 ? pageRelativeY : 0;
     }
 
-    const projectedTableZones = activeTablePageRects.map((rect) =>
-      projectFloatingTablePageRect({
+    const anchorSpaceBefore =
+      block.kind === "paragraph" && isTextAnchoredTable(blocks[blockIndex - 1])
+        ? getParagraphSpacingBefore(block)
+        : 0;
+    const projectedTableZones = activeTablePageRects.map((rect) => {
+      const zone = projectFloatingTablePageRect({
         rect,
         contentLeft: blockContentLeft,
         contentTop: blockContentTop,
         contentWidth: blockWidth,
-      }),
-    );
+      });
+      // Side wraps compare the first line after its before-spacing with the
+      // table at the anchor box's top. A full-width clearance keeps the
+      // paragraph's before-spacing below the exclusion.
+      if (
+        anchorSpaceBefore === 0 ||
+        blockWidth - zone.leftMargin - zone.rightMargin < MIN_WRAP_SEGMENT_WIDTH
+      ) {
+        return zone;
+      }
+      zone.topY -= anchorSpaceBefore;
+      zone.bottomY -= anchorSpaceBefore;
+      return zone;
+    });
     const earlierTableZones = options?.raisedTableWrap?.get(block.id);
     if (earlierTableZones) {
       for (const zone of earlierTableZones) {
