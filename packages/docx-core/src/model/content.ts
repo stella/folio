@@ -1778,7 +1778,8 @@ type TrackedResolutionJoins = WritableRecord & {
    * Sides where the wrapper meets no source piece of its cut: accepted new
    * content beside it, or, at the edge of accepted content it stands in,
    * whatever lies beyond that content. Resolving it joins plain runs there
-   * and nothing else.
+   * and nothing else; a join recorded there takes the kept range markers that
+   * name its side inside the content, as deep as it says.
    */
   plainSides?: readonly ("before" | "after")[];
   /**

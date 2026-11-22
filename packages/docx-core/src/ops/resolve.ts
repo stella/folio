@@ -1712,8 +1712,18 @@ const placeAcceptedSeamKept = ({
     (edgeRecord !== undefined &&
       piece !== undefined &&
       sameOwnFields(edgeRecord, piece));
-  if (!continuesPiece) return false;
   const standing = out.slice(start, start + records);
+  // Blockers on one side of them only, joined to the seam, name both sides
+  // of those kept from beyond the record the insertion was made in: they
+  // stood in the cut itself, and go into its piece beyond them.
+  const stoodInCut =
+    ownJoin > 0 &&
+    standing.every((node) => keptCutPiece(node) === "both") &&
+    !blocker(piece) &&
+    piece !== undefined &&
+    childNodes(piece) !== undefined &&
+    sameOwnFields(far, piece);
+  if (!continuesPiece && !stoodInCut) return false;
   const keptFrom = standing
     .flatMap((node) => keptCutFrom(node) ?? [])
     .toSorted()
@@ -1865,6 +1875,15 @@ const carryResolutionState = (
 type SourceOwnerSide = "before" | "after";
 
 /**
+ * How deep `joins` join the record on `side`: a join on a side closed to
+ * records (`plainSides`) takes only the kept boundaries that name it.
+ */
+const recordJoin = (
+  joins: NonNullable<TrackedWrapper["resolutionJoins"]>,
+  side: SourceOwnerSide,
+): number => (joins.plainSides?.includes(side) === true ? 0 : joins[side]);
+
+/**
  * A recorded join on one side identifies the surviving piece of this cut, as
  * does a removal cut that meets no piece on its other side (see
  * {@link withPayloadEdgesClosed}).
@@ -1873,12 +1892,24 @@ const oneSidedKeptPiece = (
   joins: TrackedWrapper["resolutionJoins"],
 ): SourceOwnerSide | undefined => {
   if (joins === undefined) return undefined;
-  if (joins.before === 0 && joins.after > 0) return "after";
-  if (joins.after === 0 && joins.before > 0) return "before";
+  const before = recordJoin(joins, "before");
+  const after = recordJoin(joins, "after");
+  if (before === 0 && after > 0) return "after";
+  if (after === 0 && before > 0) return "before";
   const plain = joins.plainSides ?? [];
   if (joins.remove === 0 || plain.length !== 1) return undefined;
   return plain.includes("after") ? "before" : "after";
 };
+
+/**
+ * Whether the join of `node` on `side` is the one a seam waiting on it handed
+ * it, as part of the piece on its other side, and not one it was made with.
+ */
+const holdsSeamJoin = (node: TrackedWrapper, side: SourceOwnerSide): boolean =>
+  node.resolutionJoins?.deferredRemove?.some(
+    ({ depth, edge }) =>
+      edge === undefined && depth === node.resolutionJoins?.[side],
+  ) === true;
 
 /**
  * The content an accepted insertion leaves, with a pending change at an edge
@@ -1915,14 +1946,16 @@ const withPayloadEdgesClosed = (
   };
   let out: InlineNode[] | undefined;
   const first =
-    joins.before === 0 ? closed(content.at(0), "before") : undefined;
+    recordJoin(joins, "before") === 0
+      ? closed(content.at(0), "before")
+      : undefined;
   if (first !== undefined) {
     out = [...content];
     out[0] = first;
   }
   const lastAt = content.length - 1;
   const last =
-    joins.after === 0
+    recordJoin(joins, "after") === 0
       ? closed((out ?? content).at(lastAt), "after")
       : undefined;
   if (last !== undefined) {
@@ -2595,16 +2628,17 @@ const resolveList = ({
       isTrackedWrapper(candidate) &&
       resolution.ids.has(candidate.info.id) &&
       removesContent(candidate, resolution.decision);
-    // A change left pending cut the records its own pieces stand between: an
-    // insertion made after it, inside its content or beside it, is no piece
-    // of them.
+    // A change cut the records its own pieces stand between: an insertion
+    // made after it, inside its content or beside it, is no piece of them.
+    // One this resolution removes with the change leaves the cut to those
+    // standing between its pieces until both go.
     const removed = resolution.ids.has(node.info.id);
     const besideCut = (candidate: InlineNode | undefined): boolean =>
-      !removed &&
       candidate !== undefined &&
       isAddedRevision(candidate) &&
-      ((candidate.info.date ?? "") > (node.info.date ?? "") ||
-        sameStamp(candidate, node));
+      (sameStamp(candidate, node) ||
+        (!(removed && resolution.ids.has(candidate.info.id)) &&
+          (candidate.info.date ?? "") > (node.info.date ?? "")));
     const past = (candidate: InlineNode | undefined): boolean =>
       goes(candidate) || besideCut(candidate);
     let beforeIndex = index - 1;
@@ -2616,15 +2650,23 @@ const resolveList = ({
     let after = pending.at(afterIndex);
     // Every piece on one side goes with this resolution: no record of the
     // level it cut is left there to join.
-    const piecesGo =
-      removed && (beforeIndex < index - 1 || afterIndex > index + 1);
-    if (
-      piecesGo &&
-      ((before === undefined && beforeIndex < index - 1) ||
-        (after === undefined && afterIndex > index + 1))
-    )
+    const goBefore = pending.slice(beforeIndex + 1, index).some(goes);
+    const goAfter = pending.slice(index + 1, afterIndex).some(goes);
+    const piecesGo = goBefore || goAfter;
+    if ((before === undefined && goBefore) || (after === undefined && goAfter))
       return 0;
-    if (before === undefined || after === undefined) return depth;
+    // An insertion made before the change, holding a piece of its cut, had
+    // the change made inside it: rejected, it takes the piece and every level
+    // of the cut, whatever accepted content stands on the other side.
+    const takesCut = (candidate: InlineNode | undefined): boolean =>
+      candidate !== undefined &&
+      isAddedRevision(candidate) &&
+      resolution.ids.has(candidate.info.id) &&
+      removesContent(candidate, resolution.decision) &&
+      (candidate.info.date ?? "") < (node.info.date ?? "");
+    if (before === undefined || after === undefined)
+      return !removed && (takesCut(before) || takesCut(after)) ? 0 : depth;
+    if (takesCut(before) || takesCut(after)) return 0;
     // New content joined to nothing either side that goes too can stand
     // between the change and the pieces it cut, which its own content
     // continues: where such pieces stand beyond it on both sides, the cut
@@ -2758,6 +2800,37 @@ const resolveList = ({
     return side === undefined ? undefined : { depth: outer[side], side };
   };
   /**
+   * Whether the pieces the removed change at `index` was made between are of
+   * one insertion of new content, joined to nothing, that goes with it: no
+   * record beyond them is a piece of its cut.
+   */
+  const madeInNewContent = (node: TrackedWrapper, index: number): boolean => {
+    const made = node.info.date ?? "";
+    const piece = (step: 1 | -1): TrackedWrapper | undefined => {
+      for (let at = index + step; ; at += step) {
+        const candidate = at < 0 ? undefined : pending[at];
+        if (candidate === undefined || !isAddedRevision(candidate))
+          return undefined;
+        if ((candidate.info.date ?? "") < made)
+          return isTrackedWrapper(candidate) ? candidate : undefined;
+      }
+    };
+    const before = piece(-1);
+    const after = piece(1);
+    return (
+      before !== undefined &&
+      after !== undefined &&
+      sameStamp(before, after) &&
+      [before, after].every(
+        ({ info, resolutionJoins }) =>
+          resolution.ids.has(info.id) &&
+          resolutionJoins?.before === 0 &&
+          resolutionJoins.after === 0 &&
+          resolutionJoins.remove === 0,
+      )
+    );
+  };
+  /**
    * A record this resolution empties away, or a deletion it accepts, held at
    * its edge (`first`, `last`) a piece of a record a pending insertion beside
    * it cut, the other piece standing across the insertion: that cut is left
@@ -2863,7 +2936,8 @@ const resolveList = ({
    * The boundaries a removed one-sided insertion kept, moved into the source
    * piece its join names: the record after it, not yet resolved, or the one
    * `out` holds before them. They stay standing where that record is a
-   * tracked change or no piece of the record the edge one is. Their cuts go
+   * tracked change or no piece of the record the edge one is; content that
+   * held boundaries only has no edge record to differ from it. Their cuts go
    * with them, naming no piece: settling the list keeps a cut only while a
    * pending change still stands beside them, as placing them by accepting
    * that piece later does.
@@ -2878,10 +2952,9 @@ const resolveList = ({
   }: PlaceOneSidedKeptOptions): void => {
     const standsInside = (record: InlineNode | undefined): boolean =>
       record !== undefined &&
-      edge !== undefined &&
       !isTrackedWrapper(record) &&
       childNodes(record) !== undefined &&
-      sameOwnFields(edge, record);
+      (edge === undefined || sameOwnFields(edge, record));
     const first = out.length - kept;
     const boundaries = out
       .slice(
@@ -2923,13 +2996,17 @@ const resolveList = ({
    * holds the boundaries kept from inside it, nearest the seam. They name
    * its side as their cut's piece, as a seam meeting such an insertion does
    * (see {@link handJoin}), so accepting the insertion later places them
-   * inside that record, as accepting it before this rejection does.
+   * inside that record, as accepting it before this rejection does. The
+   * record ends where the content does: a later insertion's join takes them
+   * and nothing beyond, a level less deep for the rejected wrapper, and none
+   * where the content kept none from that record.
    */
   const handKeptToFacingJoins = ({
     index,
     kept,
     standing,
     inEdgeRecords,
+    boundariesOnly,
   }: {
     /** The removed content's place in `pending`. */
     index: number;
@@ -2945,12 +3022,16 @@ const resolveList = ({
      * content its record at that edge held.
      */
     inEdgeRecords: Record<"first" | "last", number>;
+    /** Whether the removed content held nothing but boundaries. */
+    boundariesOnly: boolean;
   }): void => {
     const previousAt = out.length - standing - 1;
     const facing = (
       node: InlineNode | undefined,
       side: "before" | "after",
-    ): { join: number; kept: KeptAtSeam } | undefined => {
+    ):
+      | { join: number; kept: KeptAtSeam; made: "earlier" | "later" }
+      | undefined => {
       if (
         node === undefined ||
         !isTrackedWrapper(node) ||
@@ -2960,61 +3041,81 @@ const resolveList = ({
         return undefined;
       const join = node.resolutionJoins?.[side] ?? 0;
       const date = node.info.date ?? "";
-      if (join === 0) return undefined;
-      if (date < kept.from) return { join, kept };
-      const count = inEdgeRecords[side === "before" ? "last" : "first"];
-      // A piece of that record across the boundaries meets the insertion's
-      // join around them: the seam places them, not the insertion alone. A
-      // pending insertion there, joined to nothing, holds no such piece.
-      const own = recordAt(node, side === "before" ? "start" : "end");
+      if (join === 0 || holdsSeamJoin(node, side)) return undefined;
+      if (date < kept.from) return { join, kept, made: "earlier" };
+      if (date === kept.from) return undefined;
       const acrossNode =
         side === "before" ? out[previousAt]?.node : pending[index + 1];
       const facingSide = side === "before" ? "after" : "before";
+      const acrossJoin =
+        acrossNode !== undefined &&
+        isAddedRevision(acrossNode) &&
+        !resolution.ids.has(acrossNode.info.id)
+          ? {
+              depth: acrossNode.resolutionJoins?.[facingSide] ?? 0,
+              date: acrossNode.info.date ?? "",
+            }
+          : { depth: 0, date: "" };
       // An earlier insertion still owns its facing join. Once accepted it
       // hands the join to the rejected record, so this marker stays at the
       // seam whichever is resolved first.
-      if (
-        acrossNode !== undefined &&
-        isAddedRevision(acrossNode) &&
-        !resolution.ids.has(acrossNode.info.id) &&
-        (acrossNode.info.date ?? "") < kept.from &&
-        (acrossNode.resolutionJoins?.[facingSide] ?? 0) > 0
-      )
-        return undefined;
-      const across = recordAt(acrossNode, side === "before" ? "end" : "start");
-      const pieceAcross =
-        own !== undefined &&
-        across !== undefined &&
-        !(
-          acrossNode !== undefined &&
-          isAddedRevision(acrossNode) &&
-          !resolution.ids.has(acrossNode.info.id) &&
-          acrossNode.resolutionJoins === undefined
-        ) &&
-        childNodes(own) !== undefined &&
-        childNodes(across) !== undefined &&
-        sameOwnFields(own, across);
-      return date > kept.from && count > 0 && !pieceAcross
-        ? { join, kept: { from: kept.from, count } }
-        : undefined;
+      if (acrossJoin.depth > 0 && acrossJoin.date < kept.from) return undefined;
+      // Made inside the content's record at that edge, it takes the
+      // boundaries kept from inside it, unless another insertion made inside
+      // that record faces them too: they stand between the two then.
+      const count =
+        acrossJoin.depth > 1
+          ? 0
+          : inEdgeRecords[side === "before" ? "last" : "first"];
+      return { join, kept: { from: kept.from, count }, made: "later" };
+    };
+    /**
+     * `node`, made inside the removed content, whose join on `side` takes the
+     * boundaries kept from its record, `inside` of them, and nothing beyond:
+     * the content itself was joined to nothing there.
+     */
+    const closedToward = (
+      node: InlineNode,
+      side: SourceOwnerSide,
+      inside: number,
+    ): InlineNode => {
+      if (!isTrackedWrapper(node) || node.resolutionJoins === undefined)
+        return panic("A facing insertion is a pending change with joins.");
+      const join = node.resolutionJoins[side];
+      if (boundariesOnly && join > 1) return node;
+      const depth = join - 1;
+      if (inside === 0 || depth === 0) return withJoinRetired(node, side, 0);
+      return Object.assign({}, withJoinRetired(node, side, depth), {
+        resolutionJoins: Object.assign({}, node.resolutionJoins, {
+          [side]: depth,
+          plainSides: [...(node.resolutionJoins.plainSides ?? []), side],
+        }),
+      });
     };
     /** How many records the `count` kept boundaries nearest an edge are. */
     const recordsFrom = (from: number, step: 1 | -1, count: number): number =>
       keptRun({ at: (at) => out[at]?.node, from, step, limit: count }).records;
     const next = pending[index + 1];
     const nextFacing = facing(next, "before");
+    const previous = out[previousAt];
+    const previousFacing = facing(previous?.node, "after");
     if (
       next !== undefined &&
       nextFacing !== undefined &&
       handJoin({ node: next, side: "before", depth: nextFacing.join }).takesKept
-    )
+    ) {
       nameKeptPiece(
         out.length - recordsFrom(out.length - 1, -1, nextFacing.kept.count),
         out.length,
         "after",
       );
-    const previous = out[previousAt];
-    const previousFacing = facing(previous?.node, "after");
+      if (nextFacing.made === "later")
+        pending[index + 1] = closedToward(
+          next,
+          "before",
+          nextFacing.kept.count,
+        );
+    }
     if (
       previous !== undefined &&
       previousFacing !== undefined &&
@@ -3023,7 +3124,7 @@ const resolveList = ({
         side: "after",
         depth: previousFacing.join,
       }).takesKept
-    )
+    ) {
       nameKeptPiece(
         previousAt + 1,
         previousAt +
@@ -3031,6 +3132,44 @@ const resolveList = ({
           recordsFrom(previousAt + 1, 1, previousFacing.kept.count),
         "before",
       );
+      if (previousFacing.made === "later") {
+        const closed = closedToward(
+          previous.node,
+          "after",
+          previousFacing.kept.count,
+        );
+        carryResolutionState(resolution, previous.node, closed);
+        out[previousAt] = occurrenceOf(closed, previous);
+      }
+    }
+  };
+  /**
+   * The boundaries a removed insertion kept, the last `kept` records `out`
+   * holds, where a seam that waited on it still waits on an insertion beside
+   * them: that insertion's side is their cut's piece, or both sides where one
+   * stands on each.
+   */
+  const nameKeptWaitedOn = (
+    groups: readonly DeferredRemovalGroup[],
+    kept: number,
+    index: number,
+  ): void => {
+    const first = out.length - kept;
+    const waitedOn = (
+      node: InlineNode | undefined,
+      facing: SourceOwnerSide,
+    ): boolean =>
+      node !== undefined &&
+      isTrackedWrapper(node) &&
+      isAddedRevision(node) &&
+      node.resolutionJoins?.[facing] === 0 &&
+      groups.some(({ blockers }) => blockers.includes(node.info.id));
+    const before = waitedOn(itemBefore(out, first)?.node, "after");
+    const after = waitedOn(pending[index + 1], "before");
+    if (!before && !after) return;
+    let piece: KeptCutPiece = before ? "before" : "after";
+    if (before && after) piece = "both";
+    nameKeptPiece(first, out.length, piece);
   };
   /**
    * Rejecting an insertion cancels a pending insertion's join facing it:
@@ -3041,12 +3180,13 @@ const resolveList = ({
    * nothing to take once the other content goes; rejecting that content
    * first must not leave the join to reach past its place, so the result
    * does not depend on the order. Boundaries the rejection keeps are a
-   * piece the later content's join still takes.
+   * piece the later content's join still takes, unless that join counts the
+   * rejected wrapper alone (`laterInWrapper`): they stood inside it.
    */
   const retireFacingJoins = (
     index: number,
     node: TrackedWrapper,
-    made: "earlier" | "later",
+    made: "earlier" | "later" | "laterInWrapper",
   ): void => {
     const joins = node.resolutionJoins;
     const date = node.info.date ?? "";
@@ -3059,11 +3199,14 @@ const resolveList = ({
         !isTrackedWrapper(neighbour) ||
         !isAddedRevision(neighbour) ||
         resolution.ids.has(neighbour.info.id) ||
-        (neighbour.resolutionJoins?.[side] ?? 0) === 0
+        (neighbour.resolutionJoins?.[side] ?? 0) === 0 ||
+        (made !== "earlier" && holdsSeamJoin(neighbour, side))
       )
         return false;
       const neighbourDate = neighbour.info.date ?? "";
       if (made === "later") return neighbourDate > date;
+      if (made === "laterInWrapper")
+        return neighbourDate > date && neighbour.resolutionJoins?.[side] === 1;
       const own = side === "after" ? joins?.before : joins?.after;
       return neighbourDate < date && (own ?? 0) > 0;
     };
@@ -3076,7 +3219,7 @@ const resolveList = ({
       made === "later"
         ? Math.min(
             (neighbour.resolutionJoins?.[side] ?? 0) - 1,
-            joins?.[side] ?? 0,
+            joins === undefined ? 0 : recordJoin(joins, side),
           )
         : 0;
     const previous = out.at(-1);
@@ -3130,6 +3273,10 @@ const resolveList = ({
   const ownContentAfter = new Set<number>();
   /** Those of them a removed insertion or move destination recorded. */
   const addedRemovalSeams = new Set<number>();
+  /** The date of the earliest removed insertion that recorded each of them. */
+  const removalDates = new Map<number, string>();
+  /** The joins of the last removed insertion that recorded each of them. */
+  const removalJoins = new Map<number, Record<SourceOwnerSide, number>>();
   const recordSourceSeam = (index: number, depth: number): void => {
     recordExactSeam(index, depth);
     if (depth > 0)
@@ -3281,6 +3428,66 @@ const resolveList = ({
   >();
   const emptiedBeside = keptRunsEmptiedBeside(pending, resolution);
   /**
+   * The kept markers between the removal at `index`, joining nothing across
+   * its place, and another piece of it, both accepted: the seam that waited
+   * on the pieces goes with them, and the markers name none. The record the
+   * pieces held was where they stood, so where it was itself a piece of the
+   * record on one side they go into that one, as an insertion left standing
+   * between the pieces keeps its boundaries once rejected.
+   */
+  const placeBetweenRemovedPieces = (
+    node: TrackedWrapper,
+    index: number,
+  ): void => {
+    let otherAt = index - 1;
+    for (
+      let between = pending[otherAt];
+      between !== undefined && standsInKeptCut(between);
+      between = pending[otherAt]
+    )
+      otherAt -= 1;
+    const other = itemBefore(pending, otherAt + 1);
+    if (
+      other === undefined ||
+      !isTrackedWrapper(other) ||
+      !sameStamp(other, node) ||
+      !resolution.ids.has(other.info.id) ||
+      !removesContent(other, resolution.decision)
+    )
+      return;
+    let count = 0;
+    for (
+      let last = out.at(-1);
+      last !== undefined &&
+      standsInKeptCut(last.node) &&
+      keptCutPiece(last.node) === "both";
+      last = itemBefore(out, out.length - count)
+    ) {
+      count += 1;
+      out[out.length - count] = occurrenceOf(
+        withKeptCutPieceConsumed(last.node, resolution.relocated.nodes),
+        last,
+      );
+    }
+    if (count === 0) return;
+    const outer = {
+      before: other.resolutionJoins?.before ?? 0,
+      after: node.resolutionJoins?.after ?? 0,
+      remove: 0,
+    };
+    const side = oneSidedKeptPiece(outer);
+    if (side === undefined) return;
+    floating.set(out.length, {
+      count,
+      depth: outer[side],
+      before: side === "before" ? itemBefore(sourceOwners, otherAt) : undefined,
+      after: side === "after" ? sourceOwners.at(index + 1) : undefined,
+      spanning: [],
+      piece: side,
+    });
+    folds.push(out.length);
+  };
+  /**
    * How deep the content of a change this resolution keeps joins what stands
    * on `side` of it. The join two pieces of one insertion record toward each
    * other, kept markers between them, counts the insertion's own wrapper
@@ -3311,7 +3518,81 @@ const resolveList = ({
   };
   let changed = false;
   const enclosing: EnclosingHandoff[] = [];
+  /** Kept markers already placed inside the content accepted before them. */
+  const placedInside = new Set<number>();
+  /**
+   * The content of the accepted insertion at `index` with the kept boundaries
+   * standing beside it that its join takes inside its own record, on a side
+   * that join meets no record on: those naming its side, as deep as the join.
+   */
+  const withNamedKept = (
+    content: readonly InlineNode[],
+    joins: TrackedWrapper["resolutionJoins"],
+    index: number,
+  ): readonly InlineNode[] => {
+    if (joins === undefined) return content;
+    const takenInto = (
+      record: InlineNode | undefined,
+      markers: readonly InlineNode[],
+      side: SourceOwnerSide,
+    ): InlineNode | undefined => {
+      const placed =
+        record === undefined || isTrackedWrapper(record)
+          ? undefined
+          : withBoundariesAtEdge(
+              record,
+              markers.map((marker) =>
+                withKeptCutPieceConsumed(marker, resolution.relocated.nodes),
+              ),
+              joins[side],
+              side === "before" ? "start" : "end",
+            );
+      if (record !== undefined && placed !== undefined)
+        carryResolutionState(resolution, record, placed);
+      return placed;
+    };
+    const names = (
+      node: InlineNode | undefined,
+      piece: KeptCutPiece,
+    ): node is InlineNode =>
+      node !== undefined &&
+      standsInKeptCut(node) &&
+      keptCutPiece(node) === piece;
+    let taking = [...content];
+    if (joins.plainSides?.includes("before") === true) {
+      let start = out.length;
+      while (names(itemBefore(out, start)?.node, "after")) start -= 1;
+      const placed = takenInto(
+        taking.at(0),
+        out.slice(start).map(({ node }) => node),
+        "before",
+      );
+      // A seam recorded among them stands where they do.
+      const seamAmong = [...exactSeams.keys(), ...seams, ...folds].some(
+        (at) => at > start,
+      );
+      if (placed !== undefined && !seamAmong) {
+        out.splice(start);
+        taking = [placed, ...taking.slice(1)];
+      }
+    }
+    if (joins.plainSides?.includes("after") === true) {
+      let end = index + 1;
+      while (names(pending[end], "before")) end += 1;
+      const placed = takenInto(
+        taking.at(-1),
+        pending.slice(index + 1, end),
+        "after",
+      );
+      if (placed !== undefined) {
+        for (let at = index + 1; at < end; at += 1) placedInside.add(at);
+        taking = [...taking.slice(0, -1), placed];
+      }
+    }
+    return taking;
+  };
   for (const [index, node] of pending.entries()) {
+    if (placedInside.has(index)) continue;
     if (isTrackedWrapper(node) && resolution.ids.has(node.info.id)) {
       changed = true;
       if (removesContent(node, resolution.decision)) {
@@ -3341,9 +3622,11 @@ const resolveList = ({
         // names, even when removing it joins no records across its place.
         let beforeDepth = removedDepth;
         let afterDepth = removedDepth;
-        if (removedDepth === 0) {
-          beforeDepth = joins?.after === 0 ? joins.before : 0;
-          afterDepth = joins?.before === 0 ? joins.after : 0;
+        if (joins !== undefined && removedDepth === 0) {
+          const before = recordJoin(joins, "before");
+          const after = recordJoin(joins, "after");
+          beforeDepth = after === 0 ? before : 0;
+          afterDepth = before === 0 ? after : 0;
         }
         if (
           resolution.decision === REVISION_DECISIONS.REJECT &&
@@ -3478,11 +3761,14 @@ const resolveList = ({
             : boundary,
         );
         if (
-          kept.length === 0 &&
           resolution.decision === REVISION_DECISIONS.REJECT &&
           isAddedRevision(node)
         )
-          retireFacingJoins(index, node, "later");
+          retireFacingJoins(
+            index,
+            node,
+            kept.length === 0 ? "later" : "laterInWrapper",
+          );
         const keptStart = out.length;
         appendUnowned(kept);
         // Kept boundaries float at the seam until the pieces either side are
@@ -3540,35 +3826,52 @@ const resolveList = ({
             piece === "before"
               ? out.length - (kept.length - inside)
               : out.length;
-          const own = node.resolutionJoins?.remove ?? 0;
           const enclosingCut = enclosingRecordCut(node, index);
           // A side meeting no piece of the cut has no record to take them.
           const closedOn = (side: SourceOwnerSide): boolean =>
             node.resolutionJoins?.plainSides?.includes(side) === true;
-          floating.set(at, {
-            count: inside,
-            depth: Math.max(own, enclosingCut?.depth ?? 0),
-            before:
-              index > 0 && !closedOn("before")
-                ? itemBefore(sourceOwners, index)
-                : undefined,
-            after: closedOn("after") ? undefined : sourceOwners.at(index + 1),
-            spanning: trackedWithin(node.content),
-            ...(isAddedRevision(node) && {
-              inEdgeRecords: keptInEdgeRecords(),
-            }),
-            // Accepting content beside this removed piece can leave its
-            // recorded container join on one side only. The other side's
-            // authored record is not part of that cut container.
-            ...(piece === undefined ? {} : { piece }),
-            ...(piece === undefined && enclosingCut?.side !== undefined
-              ? { piece: enclosingCut.side }
-              : {}),
-            ...(joins !== undefined &&
-              resolution.deferredOnlyRemovals.has(joins) && {
-                cut: "deferred" as const,
+          // Its cut goes with new content it was made in, joined to nothing:
+          // those it kept stand where it was, as they do once it is rejected
+          // first. Otherwise the pieces around it route them to the record
+          // the cut reaches, and the piece its own join names holds them as
+          // deep as that join.
+          const cutGoes =
+            piece === undefined &&
+            enclosingCut === undefined &&
+            madeInNewContent(node, index) &&
+            cutLevelsOnceResolved(node, index) === 0;
+          const depth = Math.max(
+            node.resolutionJoins?.remove ?? 0,
+            enclosingCut?.depth ?? 0,
+            piece === undefined || joins === undefined
+              ? 0
+              : recordJoin(joins, piece),
+          );
+          if (!cutGoes)
+            floating.set(at, {
+              count: inside,
+              depth,
+              before:
+                index > 0 && !closedOn("before")
+                  ? itemBefore(sourceOwners, index)
+                  : undefined,
+              after: closedOn("after") ? undefined : sourceOwners.at(index + 1),
+              spanning: trackedWithin(node.content),
+              ...(isAddedRevision(node) && {
+                inEdgeRecords: keptInEdgeRecords(),
               }),
-          });
+              // Accepting content beside this removed piece can leave its
+              // recorded container join on one side only. The other side's
+              // authored record is not part of that cut container.
+              ...(piece === undefined ? {} : { piece }),
+              ...(piece === undefined && enclosingCut?.side !== undefined
+                ? { piece: enclosingCut.side }
+                : {}),
+              ...(joins !== undefined &&
+                resolution.deferredOnlyRemovals.has(joins) && {
+                  cut: "deferred" as const,
+                }),
+            });
         }
         // A rejected insertion joined on one side only, made inside a piece of
         // the record there, cuts nothing across its place: the boundaries it
@@ -3609,7 +3912,10 @@ const resolveList = ({
             },
             standing: kept.length,
             inEdgeRecords: keptInEdgeRecords(),
+            boundariesOnly: records.length === 0,
           });
+        if (kept.length > 0 && joins?.before === 0 && joins.after === 0)
+          nameKeptWaitedOn(joins.deferredRemove ?? [], kept.length, index);
         // Those beyond the record that piece continues stand at the removed
         // content's other edge: they go into the piece there where it is a
         // piece of the record the removal's seam cut, whose other piece
@@ -3650,6 +3956,7 @@ const resolveList = ({
           // boundaries it kept still go into the piece on its other side.
           for (let at = out.length - kept.length; at <= out.length; at += 1)
             if (floating.has(at)) folds.push(at);
+          takeKeptBeside(index, keptStart, false);
         } else {
           // Pieces of the cut this resolution also removes take that level
           // of it with them: the cut joins only what remains of what it split,
@@ -3664,14 +3971,30 @@ const resolveList = ({
           if (around?.side !== undefined) folds.push(out.length);
           recordSourceSeam(out.length, removalCut);
           if (removalCut > 0) removalSeams.add(out.length);
-          if (removalCut > 0 && isAddedRevision(node))
+          if (removalCut > 0 && isAddedRevision(node)) {
             addedRemovalSeams.add(out.length);
+            const made = node.info.date ?? "";
+            const known = removalDates.get(out.length);
+            if (known === undefined || made < known)
+              removalDates.set(out.length, made);
+            if (joins !== undefined)
+              removalJoins.set(out.length, {
+                before: recordJoin(joins, "before"),
+                after: recordJoin(joins, "after"),
+              });
+          }
           // The kept markers beside it naming its side (or both) as their
           // cut's piece stood at a seam it took: they are kept there, and
           // its removal consumes the name.
           const beside = takeKeptBeside(index, keptStart, removalCut > 0);
           if (removalCut > 0 && beside !== undefined)
             exactKept.set(out.length, beside);
+          if (
+            removalCut === 0 &&
+            kept.length === 0 &&
+            isRemovedRevisionNode(node)
+          )
+            placeBetweenRemovedPieces(node, index);
         }
         continue;
       }
@@ -3724,10 +4047,14 @@ const resolveList = ({
       const content =
         isAddedRevision(node) &&
         resolution.decision === REVISION_DECISIONS.ACCEPT
-          ? withPayloadEdgesClosed(
-              acceptCopyOriginAncestor(resolved.nodes),
+          ? withNamedKept(
+              withPayloadEdgesClosed(
+                acceptCopyOriginAncestor(resolved.nodes),
+                node.resolutionJoins,
+                resolution,
+              ),
               node.resolutionJoins,
-              resolution,
+              index,
             )
           : resolved.nodes;
       // A kept change whose content this resolution removes leaves nothing
@@ -3768,16 +4095,18 @@ const resolveList = ({
       ) {
         const first = content.at(0);
         const last = content.at(-1);
-        if (node.resolutionJoins.after === 0 && first !== undefined)
+        const closedBefore = recordJoin(node.resolutionJoins, "before") === 0;
+        const closedAfter = recordJoin(node.resolutionJoins, "after") === 0;
+        if (closedAfter && first !== undefined)
           resolution.acceptedClosed.first.add(first);
-        if (node.resolutionJoins.before === 0 && last !== undefined)
+        if (closedBefore && last !== undefined)
           resolution.acceptedClosed.last.add(last);
         // A container the content meets across an edge the insertion joins
         // to nothing (and no other join records a seam at) stays apart from
         // it, emptied or not.
         const previous = out.at(-1);
         if (
-          node.resolutionJoins.before === 0 &&
+          closedBefore &&
           (exactSeams.get(out.length) ?? 0) === 0 &&
           previous !== undefined &&
           content.length > 0
@@ -3787,11 +4116,7 @@ const resolveList = ({
             out[out.length - 1] = occurrenceOf(closed, previous);
         }
         const next = pending[index + 1];
-        if (
-          node.resolutionJoins.after === 0 &&
-          next !== undefined &&
-          content.length > 0
-        )
+        if (closedAfter && next !== undefined && content.length > 0)
           pending[index + 1] = withHolderClosed(next, "before", resolution);
       }
       if (
@@ -5088,28 +5413,27 @@ const resolveList = ({
       // counting that record's own tracked wrapper as its first level.
       // Insertions made before the revision there are no changes made inside
       // that record but pieces of it: resolving them takes that wrapper away,
-      // so the join they take is one level less deep, as is the seam they
-      // defer between the pieces beyond them, and they take and defer none
-      // when that wrapper was all the revision cut.
+      // so the join they take is one level less deep, and they take none when
+      // that wrapper was all the revision cut. One holding only boundaries
+      // has no record for a deeper join to run into: that join goes past it,
+      // counting no level of it.
       const keptJoinFrom = removalSeams.has(recorded)
         ? undefined
         : keptJoinDates.get(recorded);
-      const earlier = (index: number): boolean => {
+      const takesLevel = (
+        index: number,
+        depth: number,
+        from = keptJoinFrom,
+      ): boolean => {
         const node = out[index]?.node;
         return (
-          keptJoinFrom !== undefined &&
+          from !== undefined &&
           node !== undefined &&
           isTrackedWrapper(node) &&
-          (node.info.date ?? "") < keptJoinFrom
+          (node.info.date ?? "") < from &&
+          (depth === 1 || !node.content.every(isStandingBoundary))
         );
       };
-      // Of those, one that cut a record itself, or holds only boundaries,
-      // which no join runs into, stands for a piece of that record; content
-      // inserted whole beside it joins as deep as the seam goes.
-      const isPieceOfCutRecord = (node: InlineNode): boolean =>
-        isTrackedWrapper(node) &&
-        ((node.resolutionJoins?.remove ?? 0) > 0 ||
-          (childNodes(node) ?? []).every(isStandingBoundary));
       const seamDepth = exactDepth;
       // An insertion made at the edge of the piece beyond it, joined to that
       // piece as deep as the seam goes, is part of it: the seam waits on it,
@@ -5147,13 +5471,31 @@ const resolveList = ({
             !edgeOfPiece(index, side)
           )
             return;
+          // A removed insertion whose join on one side was cancelled hands no
+          // seam across it: not to the piece it was made beside there, nor to
+          // content made inside it later on the side it is joined on.
+          const toward = side === "after" ? "before" : "after";
+          const removedJoins = keptJoinHandsOver
+            ? undefined
+            : removalJoins.get(recorded);
+          const removedFrom = removalDates.get(recorded);
+          if (
+            removedJoins !== undefined &&
+            removedFrom !== undefined &&
+            facingJoin === 0 &&
+            ((removedJoins[toward] === 0 &&
+              removedJoins[side] > 0 &&
+              takesLevel(index, seamDepth, removedFrom)) ||
+              (removedJoins[side] === 0 &&
+                removedJoins[toward] > 0 &&
+                isTrackedWrapper(occurrence.node) &&
+                (occurrence.node.info.date ?? "") > removedFrom))
+          )
+            return;
           const { node, takesKept } = handJoin({
             node: occurrence.node,
             side,
-            depth:
-              earlier(index) && isPieceOfCutRecord(occurrence.node)
-                ? seamDepth - 1
-                : seamDepth,
+            depth: takesLevel(index, seamDepth) ? seamDepth - 1 : seamDepth,
           });
           let tookKept = false;
           if (
@@ -5273,18 +5615,28 @@ const resolveList = ({
           !isTrackedWrapper(beyondLeft) &&
           !isTrackedWrapper(beyondRight) &&
           sameOwnFields(beyondLeft, beyondRight));
-      const piecesOnly =
-        leftHolder === undefined &&
-        rightHolder === undefined &&
-        Array.from(
-          { length: keptEnd - leftEnd },
-          (_, offset) => leftEnd + 1 + offset,
-        ).every(earlier) &&
-        Array.from(
-          { length: rightStart - seam },
-          (_, offset) => seam + offset,
-        ).every(earlier);
-      const deferredDepth = piecesOnly ? exactDepth - 1 : exactDepth;
+      // A piece of the record a kept revision or a removed insertion cut
+      // passes the seam on beyond it as deep as it is itself joined there, its
+      // own wrapper gone, as content made inside it keeps its join once the
+      // piece is rejected first. What stands beyond one joined to nothing is
+      // no piece of the record, and the seam waits on it for nothing.
+      const passedOn = (
+        depth: number,
+        index: number,
+        far: SourceOwnerSide,
+      ): number => {
+        const node = out[index]?.node;
+        return node !== undefined &&
+          isTrackedWrapper(node) &&
+          takesLevel(index, depth, keptJoinFrom ?? removalDates.get(recorded))
+          ? Math.min(depth - 1, node.resolutionJoins?.[far] ?? 0)
+          : depth;
+      };
+      let deferredDepth = exactDepth;
+      for (let index = keptEnd; index > leftEnd; index -= 1)
+        deferredDepth = passedOn(deferredDepth, index, "before");
+      for (let index = seam; index < rightStart; index += 1)
+        deferredDepth = passedOn(deferredDepth, index, "after");
       if (
         (leftEnd !== keptEnd ||
           rightStart !== seam ||
@@ -5729,6 +6081,9 @@ type DeferredSplitSeamOptions = {
   right: readonly InlineNode[];
   depth: number;
 };
+const standingInKeptCut = (node: InlineNode | undefined): boolean =>
+  node !== undefined && standsInKeptCut(node);
+
 /** Preserve the recorded source seam when later pending insertions stand at it. */
 const deferSplitSeam = ({
   left,
@@ -5797,11 +6152,26 @@ const deferSplitSeam = ({
       ...left.slice(leftEnd + 1),
       ...right.slice(0, rightStart),
     ].flatMap((node) => (isTrackedWrapper(node) ? [node.info.id] : []));
-    const deferred = (node: InlineNode): InlineNode => {
+    const piecesBeyond = leftEnd >= 0 && rightStart < right.length;
+    const deferred = (
+      node: InlineNode,
+      facing: SourceOwnerSide,
+      alone: boolean,
+    ): InlineNode => {
       if (!isTrackedWrapper(node) || node.resolutionJoins === undefined)
         panic(
           "Only a provenance-bearing pending insertion blocks this split seam.",
         );
+      const far = facing === "before" ? "after" : "before";
+      // Made at the edge of the piece beyond it, joined to that piece as deep
+      // as the seam goes, it is part of it: its content takes the seam's
+      // join, so accepting it joins the pieces as the split's rejection after
+      // accepting it does.
+      const edgeOfPiece =
+        alone &&
+        piecesBeyond &&
+        node.resolutionJoins[facing] === 0 &&
+        node.resolutionJoins[far] >= depth;
       const groups = [...(node.resolutionJoins.deferredRemove ?? [])];
       if (
         !groups.some(
@@ -5813,19 +6183,32 @@ const deferSplitSeam = ({
       )
         groups.push({ depth, blockers });
       return Object.assign({}, node, {
-        resolutionJoins: Object.assign({}, node.resolutionJoins, {
-          deferredRemove: groups,
-        }),
+        resolutionJoins: Object.assign(
+          {},
+          node.resolutionJoins,
+          edgeOfPiece ? { [facing]: depth } : {},
+          { deferredRemove: groups },
+        ),
       });
     };
-    return {
-      left: left.map((node, index) =>
-        index > leftEnd ? deferred(node) : node,
-      ),
-      right: right.map((node, index) =>
-        index < rightStart ? deferred(node) : node,
-      ),
+    // Kept markers standing at the seam wait with the insertions beside them,
+    // whose side is their cut's piece.
+    let keptFrom = leftEnd;
+    while (keptFrom >= 0 && standingInKeptCut(left.at(keptFrom))) keptFrom -= 1;
+    let keptTo = rightStart;
+    while (standingInKeptCut(right.at(keptTo))) keptTo += 1;
+    const named = (node: InlineNode, piece: KeptCutPiece): InlineNode =>
+      withKeptCutPieceRecorded(node, piece, new WeakMap());
+    const atLeft = (node: InlineNode, index: number): InlineNode => {
+      if (index > leftEnd)
+        return deferred(node, "after", leftEnd === left.length - 2);
+      return index > keptFrom ? named(node, "after") : node;
     };
+    const atRight = (node: InlineNode, index: number): InlineNode => {
+      if (index < rightStart) return deferred(node, "before", rightStart === 1);
+      return index < keptTo ? named(node, "before") : node;
+    };
+    return { left: left.map(atLeft), right: right.map(atRight) };
   }
   return { left, right };
 };
@@ -6073,6 +6456,31 @@ const paragraphMarkPlan = (
     ...(endsControl === undefined ? {} : { endsControl }),
   });
 
+/**
+ * Whether the cut a rejected added mark records, `depth` containers deep, goes
+ * on at the pending mark `onto`: one a later split left beside an empty
+ * paragraph, which holds neither piece of the cut.
+ */
+const cutGoesOn = ({
+  mark,
+  depth,
+  onto,
+}: {
+  mark: ParagraphMarkChange | undefined;
+  depth: number | undefined;
+  onto: ParagraphMarkChange;
+}): boolean => {
+  const madeAt = mark === undefined ? undefined : splitDateOf(mark);
+  const laterAt = splitDateOf(onto);
+  return (
+    madeAt !== undefined &&
+    laterAt !== undefined &&
+    laterAt > madeAt &&
+    depth !== undefined &&
+    depth > (onto.resolutionJoin ?? 0)
+  );
+};
+
 const joinOps = (
   document: Document,
   { op, story, paraId, revisionId, added, depth, holders }: JoinPlan,
@@ -6206,6 +6614,19 @@ const joinOps = (
     // An unchanged follower keeps its identity.
     else if (structurallyEqual(mergedContent, next.content)) survivor = next;
     else survivor = { ...next, content: mergedContent };
+    // An empty paragraph split off in the cut later holds none of its pieces:
+    // the cut goes on past it, and rejecting its own mark joins them.
+    if (
+      added &&
+      follower?.type === "paragraph" &&
+      follower.content.length === 0 &&
+      survivor.pPrMark !== undefined &&
+      cutGoesOn({ mark: paragraph.pPrMark, depth, onto: survivor.pPrMark })
+    )
+      survivor = {
+        ...survivor,
+        pPrMark: { ...survivor.pPrMark, resolutionJoin: depth },
+      };
     const receiver =
       standing.length > 0 && follower?.type === "paragraph" ? follower : next;
     const receiverEffects: ResolutionReceiverEffect[] = [
