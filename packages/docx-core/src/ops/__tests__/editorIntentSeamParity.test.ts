@@ -407,11 +407,13 @@ test("a direct replacement continues the wrapper the range boundaries it keeps s
     }).unwrap();
     const first = (edited: Document) =>
       storyParagraphs(edited.package.document).at(0)?.paragraph.content;
+    // The new words go past the end of the comment the range reached, still
+    // inside the wrapper.
     expect(first(direct.document)).toStrictEqual([
       wrapper([
         ...boundaries,
-        { type: "run", content: [{ type: "text", text: "edited" }] },
         { type: "commentRangeEnd", id: 7 },
+        { type: "run", content: [{ type: "text", text: "edited" }] },
       ]),
     ]);
     expect(first(accepted.document)).toStrictEqual(first(direct.document));
@@ -501,14 +503,21 @@ test("a direct replacement continues the container the comment anchors its delet
       const first = (result: Document) =>
         storyParagraphs(result.package.document).at(0)?.paragraph.content;
       // The retained reference stays where it was, and the text follows it
-      // inside the same container in both modes.
+      // inside the same container in both modes, past the end of a comment
+      // the range reached.
       const edited: Content[number] = {
         type: "run",
         content: [{ type: "text", text: "edited" }],
       };
       expect({ name, content: first(direct.document) }).toStrictEqual({
         name,
-        content: [container([reference, edited, follower])],
+        content: [
+          container(
+            follower.type === "commentRangeEnd"
+              ? [reference, follower, edited]
+              : [reference, edited, follower],
+          ),
+        ],
       });
       assertExactModel(first(accepted.document), first(direct.document));
       checked += 1;

@@ -1,5 +1,5 @@
 /** Semantic comment definitions and anchors, with narrow exact-state inverses. */
-import { Result } from "better-result";
+import { panic, Result } from "better-result";
 
 import {
   type BlockContent,
@@ -38,6 +38,7 @@ import {
   packageIdentityKeys,
 } from "./ids";
 import {
+  alikeDepth,
   asParagraphContent,
   childNodes,
   type CommentAnchorCarrier,
@@ -65,6 +66,7 @@ import {
   type DocumentOpRefusalReason,
 } from "./refusal";
 import type { ApplyOps } from "./resolve";
+import { isTrackedWrapper } from "./review";
 import {
   contentOutsideTextBoxes,
   documentStories,
@@ -85,6 +87,7 @@ import {
   type NewIds,
   OP_STORIES,
   type OpStory,
+  type ReplaceInlineOp,
   type RestoreCommentStateOp,
   type TextPosition,
 } from "./types";
@@ -672,6 +675,92 @@ export const isCommentExhausted = (input: CommentExhaustionInput): boolean => {
   });
 };
 
+type LinksEmptiedByRetirementOptions = {
+  /** The story before the retirement. */
+  before: Document;
+  /** The same story once the threads went. */
+  after: Document;
+  story: OpStory;
+  /** The comment ids the retirement removed. */
+  retired: ReadonlySet<number>;
+};
+
+/**
+ * Hyperlinks that held nothing but markers of the threads a retirement
+ * removed: a link left with no content goes with those markers, as one
+ * whose text an edit took. One inline replacement per paragraph holding one.
+ */
+export const linksEmptiedByRetirement = ({
+  before,
+  after,
+  story,
+  retired,
+}: LinksEmptiedByRetirementOptions): ReplaceInlineOp[] => {
+  const ops: ReplaceInlineOp[] = [];
+  if (retired.size === 0) return ops;
+  const sources = storyParagraphs(storyBody(before, story));
+  const targets = storyParagraphs(storyBody(after, story));
+  // Retiring a thread removes only its markers, so the paragraphs, and the
+  // links in each, stand in the same order on both sides.
+  if (sources.length !== targets.length)
+    return panic("A comment retirement must keep every paragraph.");
+  for (const [index, { paragraph: source }] of sources.entries()) {
+    const target = targets[index]?.paragraph;
+    if (target === undefined || target.paraId === undefined) continue;
+    const emptied: boolean[] = [];
+    const visit = (nodes: readonly InlineNode[]): void => {
+      for (const node of nodes) {
+        if (node.type === "hyperlink")
+          emptied.push(
+            node.children.length > 0 &&
+              node.children.every(
+                (child) => isCommentAnchor(child) && retired.has(child.id),
+              ),
+          );
+        if (node.type === "run") continue;
+        const children = childNodes(node);
+        if (children !== undefined) visit(children);
+      }
+    };
+    visit(source.content);
+    if (!emptied.includes(true)) continue;
+    let link = 0;
+    const without = (nodes: readonly InlineNode[]): readonly InlineNode[] => {
+      const kept: InlineNode[] = [];
+      let changed = false;
+      for (const node of nodes) {
+        if (node.type === "hyperlink") {
+          const goes = emptied[link] === true && node.children.length === 0;
+          link += 1;
+          if (goes) {
+            changed = true;
+            continue;
+          }
+        }
+        const children = node.type === "run" ? undefined : childNodes(node);
+        const rebuilt = children === undefined ? children : without(children);
+        if (rebuilt === children) {
+          kept.push(node);
+          continue;
+        }
+        kept.push(rebuildNode(node, rebuilt ?? []));
+        changed = true;
+      }
+      return changed ? kept : nodes;
+    };
+    const content = without(target.content);
+    if (content === target.content) continue;
+    ops.push({
+      type: DOCUMENT_OP_TYPES.REPLACE_INLINE,
+      story,
+      blockId: target.paraId,
+      expected: target.content,
+      content: asParagraphContent(content),
+    });
+  }
+  return ops;
+};
+
 /** Comment definitions whose root remains covered or projected, with replies. */
 export const survivingComments = (
   document: Document,
@@ -1052,6 +1141,52 @@ const normalizedWithoutAnchors = ({
       normalized = mergeAlike(normalized, [normalizedNode]);
     else normalized.push(normalizedNode);
     position += leafSpans([normalizedNode]).at(-1)?.after.offset ?? 0;
+  }
+  return withSeamsAcrossInsertions({ normalized, seams, start });
+};
+
+type SeamsAcrossInsertionsOptions = {
+  normalized: InlineNode[];
+  seams: ReadonlySet<number>;
+  start: number;
+};
+
+/**
+ * A pending insertion standing at a seam the removed anchors opened keeps
+ * apart the records that seam would have merged. Removing it later joins
+ * them as far as they are alike, as removing it before the anchors went
+ * would have let the seam merge them: resolution stays order-free.
+ */
+const withSeamsAcrossInsertions = ({
+  normalized,
+  seams,
+  start,
+}: SeamsAcrossInsertionsOptions): InlineNode[] => {
+  let position = start;
+  for (const [index, node] of normalized.entries()) {
+    const from = position;
+    position += leafSpans([node]).at(-1)?.after.offset ?? 0;
+    if (
+      node.type !== "insertion" ||
+      node.resolutionJoins === undefined ||
+      !(seams.has(from) || seams.has(position))
+    )
+      continue;
+    const left = normalized[index - 1];
+    const right = normalized[index + 1];
+    if (
+      left === undefined ||
+      right === undefined ||
+      isTrackedWrapper(left) ||
+      isTrackedWrapper(right)
+    )
+      continue;
+    const depth = alikeDepth(left, right);
+    if (depth <= node.resolutionJoins.remove) continue;
+    normalized[index] = {
+      ...node,
+      resolutionJoins: { ...node.resolutionJoins, remove: depth },
+    };
   }
   return normalized;
 };

@@ -10,14 +10,14 @@ import {
   childNodes,
   defaultInsertionGap,
   type InlineNode,
-  type LeafSpan,
+  isParagraphContent,
   leafSpans,
   rebuildNode,
   sameOwnFields,
   spanningRecords,
   zeroWidthLeavesAt,
 } from "./leaves";
-import { paragraphLength } from "./offsets";
+import { isClosingMarker, paragraphLength } from "./offsets";
 import { findLastStoryParagraph, findStoryParagraph } from "./paragraphLocator";
 import {
   appendTrackedDeletion,
@@ -143,32 +143,16 @@ export const rangeEndAfterDeletion = ({
   };
 };
 
-/** The records holding a leaf other than its run, outermost first. */
-const containersOf = (span: LeafSpan): readonly InlineNode[] =>
-  span.ancestors.filter((ancestor) => ancestor.type !== "run");
-
-/** Whether `span` sits in exactly `containers`. */
-const sameContainers = (
-  span: LeafSpan | undefined,
-  containers: readonly InlineNode[],
-): boolean => {
-  if (span === undefined) return false;
-  const own = containersOf(span);
-  return (
-    own.length === containers.length &&
-    own.every((node, depth) => node === containers[depth])
-  );
-};
-
 /**
  * Where what replaces a range goes among the zero-width leaves at the gap:
  * past the ends of comments the range reached, so the new words never extend
- * a comment whose end the range took. A comment starting at the gap keeps the
- * new words, as it does when a tracked replacement is accepted. An end that
- * closes the container the replacement continues stays after the new words,
- * which go into that container.
+ * a comment whose end the range took, and past the ends of other ranges
+ * standing before such a comment end: they do not change what the range
+ * covers. A comment starting at the gap keeps the new words, as it does when
+ * a tracked replacement is accepted. The new words continue the containers
+ * the range's text stood in across the ends they pass (see `continuation`).
  */
-const pastEndedComments = (
+export const pastEndedComments = (
   content: readonly InlineNode[],
   offset: number,
   zeroWidthBefore: number,
@@ -180,28 +164,14 @@ const pastEndedComments = (
       before.offset === offset && before.zeroWidthBefore === zeroWidthBefore,
   );
   if (first === -1) return zeroWidthBefore;
-  let index = first;
-  while (spans[index]?.node.type === "commentRangeEnd") {
-    const end = spans[index];
-    if (end === undefined) break;
-    const containers = containersOf(end);
-    // Further ends in the same containers close them with this one: the leaf
-    // after them decides whether this end closes its container.
-    let ahead = index + 1;
-    while (
-      spans[ahead]?.node.type === "commentRangeEnd" &&
-      sameContainers(spans[ahead], containers)
-    )
-      ahead += 1;
-    const next = spans[ahead];
-    const within =
-      next === undefined
-        ? containers.length === 0
-        : sameContainers(next, containers);
-    if (!within) break;
-    index += 1;
+  let passed = 0;
+  for (let index = first; index < spans.length; index += 1) {
+    const node = spans[index]?.node;
+    if (node === undefined || !isParagraphContent(node)) break;
+    if (node.type === "commentRangeEnd") passed = index - first + 1;
+    else if (!isClosingMarker(node)) break;
   }
-  return zeroWidthBefore + index - first;
+  return zeroWidthBefore + passed;
 };
 
 /**

@@ -1,5 +1,6 @@
 import { panic, Result } from "better-result";
 
+import { INSERTION_SEAM_POLICIES } from "../model/content";
 import {
   type BlockContent,
   type Document,
@@ -113,6 +114,7 @@ import {
   emptySetSpelling,
   gapAfterInserted,
   insertionInverse,
+  insertSliceAfterDeletion,
   insertSliceAt,
   insertTextInContent,
   joinAt,
@@ -607,6 +609,11 @@ type InsertedOptions = {
   newIds: NewIds | undefined;
   revision: RevisionStamp | undefined;
   copiedBoundaries?: ReadonlySet<InlineNode>;
+  /**
+   * The levels of a record whose piece the pending deletion before the start
+   * holds that the content continues (see `insertSliceAfterDeletion`).
+   */
+  startJoin?: number;
 };
 
 type Wrapped = Result<Paragraph["content"] | undefined, DocumentOpRefusal>;
@@ -624,6 +631,7 @@ const wrappedContent = (
     kind: WrapKind;
     stamp: RevisionStamp;
     resolutionJoin?: number;
+    startJoin?: number;
     acceptance?: NonNullable<Insertion["resolutionJoins"]>["acceptance"];
     copiedBoundaries?: ReadonlySet<InlineNode>;
   },
@@ -693,6 +701,9 @@ const inserted = (options: InsertedOptions): Applied => {
       stamp: revision,
       resolutionJoin:
         inverse.join + spanningRecords(content, [start, end], 0, 2).length,
+      ...(options.startJoin === undefined
+        ? {}
+        : { startJoin: options.startJoin }),
       ...(options.copiedBoundaries === undefined
         ? {}
         : { copiedBoundaries: options.copiedBoundaries }),
@@ -717,7 +728,9 @@ const inserted = (options: InsertedOptions): Applied => {
       inserted: recordsBetween(content, start, end),
     },
     (result) => {
+      // Continuing a record through a deletion changes that deletion's joins.
       if (
+        options.startJoin !== undefined ||
         cutHasResolutionProvenance({
           content: location.paragraph.content,
           gaps: [start],
@@ -874,10 +887,23 @@ const insertContent = (document: Document, op: InsertContentOp): Applied => {
           ),
         );
   const copiedBoundaries = copiedSlice.copiedBoundaries;
-  const content = insertSliceAt(location.paragraph.content, gap, {
+  const placed = insertSliceAt(location.paragraph.content, gap, {
     ...slice,
     content: copiedSlice.content,
   });
+  // A tracked insertion can continue a record whose piece a pending deletion
+  // before it holds: a hyperlink holds no tracked change.
+  const afterDeletion =
+    placed === undefined && op.revision !== undefined
+      ? insertSliceAfterDeletion({
+          items: location.paragraph.content,
+          at: gap,
+          slice: { ...slice, content: copiedSlice.content },
+          mergesPlainRuns:
+            op.seamPolicy === INSERTION_SEAM_POLICIES.MERGE_PLAIN_RUNS,
+        })
+      : undefined;
+  const content = placed ?? afterDeletion?.content;
   if (content === undefined) {
     return refuse(
       op,
@@ -910,6 +936,7 @@ const insertContent = (document: Document, op: InsertContentOp): Applied => {
     newIds: op.newIds,
     revision: op.revision,
     copiedBoundaries,
+    ...(afterDeletion === undefined ? {} : { startJoin: afterDeletion.join }),
   });
 };
 
