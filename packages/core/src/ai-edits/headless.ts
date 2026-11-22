@@ -2681,7 +2681,7 @@ export class FolioDocxReviewer {
     this.pendingSuggestions.placeRemovedAnchors({
       activeSuggestionIds: this.activeSuggestionIds(),
       stateForStory: (story) => this.getEditableStoryState(story),
-      savedSplitSource: sourceSnapshotForStory,
+      savedSource: sourceSnapshotForStory,
     });
     return {
       resolved: true,

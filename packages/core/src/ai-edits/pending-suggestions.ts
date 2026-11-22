@@ -5,18 +5,25 @@ import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   parseFolioDocumentOperationBatch,
 } from "../document-operations";
-import { expectParagraphAttrs } from "../prosemirror/attrs";
+import {
+  expectParagraphAttrs,
+  expectTrackedChangeMarkAttrs,
+} from "../prosemirror/attrs";
 import {
   getSuggestions,
   rejectEverySuggestion,
+  rejectEverySuggestionMapped,
 } from "../prosemirror/commands/comments";
 import { getDocumentStyleResolver } from "../prosemirror/plugins/documentStyleState";
 import { getFolioParaIdFromBlockId } from "../types/block-id";
 import { canonicalJson } from "../utils/canonicalJson";
 import { persistedBlock } from "./block-identity";
+import { buildCleanBlockText, isOmittedFromCleanView } from "./clean-text";
 import type { FolioDocumentStoryHandle } from "./headless";
+import { noteReferenceOf } from "./note-references";
 import {
   createFolioAIEditSnapshotWithStyleResolver,
+  createFolioAITextRangeHandle,
   hashFolioAIBlockText,
   sourceDocumentOf,
 } from "./snapshot";
@@ -128,9 +135,7 @@ type AbsorptionStep = (options: AbsorptionStepOptions) => void;
 type PlaceRemovedAnchorsOptions = {
   activeSuggestionIds: ReadonlySet<string>;
   stateForStory: (story: FolioDocumentStoryHandle) => EditorState | null;
-  savedSplitSource?: (
-    story: FolioDocumentStoryHandle,
-  ) => FolioAIEditSnapshot | null;
+  savedSource?: (story: FolioDocumentStoryHandle) => FolioAIEditSnapshot | null;
 };
 
 type ExportPendingSuggestionsOptions = {
@@ -390,6 +395,197 @@ const currentSplitRecord = ({
   return null;
 };
 
+type RangeProposalOptions = {
+  record: StoredSuggestion;
+  blockId: string;
+  /** The block's anchor as a save reads it. */
+  saved: FolioAIEditSnapshot["anchors"][string];
+  from: number;
+  to: number;
+  replace: string;
+};
+
+/** `record` as the text replacement of `from` to `to` in a saved block. */
+const rangeProposal = ({
+  record,
+  blockId,
+  saved: { text, textHash },
+  from,
+  to,
+  replace,
+}: RangeProposalOptions): StoredSuggestion | null => {
+  const { operation } = record;
+  const common = {
+    id: operation.id,
+    ...(operation.suggestionId === undefined
+      ? {}
+      : { suggestionId: operation.suggestionId }),
+    ...(operation.severity === undefined
+      ? {}
+      : { severity: operation.severity }),
+    ...(operation.area === undefined ? {} : { area: operation.area }),
+    ...(operation.type === "replaceBlock" && operation.comment !== undefined
+      ? { comment: operation.comment }
+      : {}),
+  };
+  const anchor = {
+    blockId,
+    paraId: getFolioParaIdFromBlockId(blockId),
+    originalTextHash: textHash,
+  };
+  if (text === "")
+    return {
+      ...record,
+      operation: { ...common, type: "replaceBlock", blockId, text: replace },
+      anchor,
+    };
+  // A proposal that only adds text names the character beside it, as a range
+  // holds at least one.
+  let start = from;
+  let end = to;
+  let written = replace;
+  if (start === end && start > 0) {
+    const before = Array.from(text.slice(0, start)).at(-1) ?? "";
+    start -= before.length;
+    written = before + written;
+  } else if (start === end) {
+    const [after = ""] = text.slice(end);
+    end += after.length;
+    written += after;
+  }
+  const range = createFolioAITextRangeHandle({
+    blockId,
+    text,
+    startOffset: start,
+    endOffset: end,
+  });
+  if (range === null) return null;
+  return {
+    ...record,
+    operation: { ...common, type: "replaceRange", range, replace: written },
+    anchor: {
+      ...anchor,
+      selectedTextHash: range.selectedTextHash,
+      startOffset: start,
+      endOffset: end,
+    },
+  };
+};
+
+type CurrentTextOptions = {
+  record: StoredSuggestion;
+  /** The record's story as it is, every proposal shown. */
+  state: EditorState;
+  /** The same story as a save writes it, every proposal rejected. */
+  saved: FolioAIEditSnapshot;
+};
+
+/** The text of a whole block a record proposes, when its operation does. */
+const proposesBlockText = ({ type }: FolioAIEditOperation): boolean =>
+  type === "replaceBlock" || type === "deleteBlock";
+
+/**
+ * A proposal over a block's text, whose block is gone, as the range of saved
+ * text its own records cover: the block's words stand in a longer paragraph
+ * now, and the proposal still changes only them.
+ *
+ * `null` when the record proposes something else, or when its records are no
+ * one range of a saved paragraph's text.
+ */
+const currentTextRecord = ({
+  record,
+  state,
+  saved,
+}: CurrentTextOptions): StoredSuggestion | null => {
+  const { operation, suggestionId } = record;
+  if (!proposesBlockText(operation)) return null;
+  const rejected = rejectEverySuggestionMapped(state);
+  /** What a saved package holds of the node at `from` to `to`. */
+  const savedNode = (from: number, to: number) => {
+    const at = rejected.mapping.map(from, 1);
+    return at < rejected.mapping.map(to, -1)
+      ? rejected.state.doc.nodeAt(at)
+      : null;
+  };
+  const pieces: {
+    from: number;
+    to: number;
+    text: string;
+    owner: "insertion" | "deletion" | null;
+  }[] = [];
+  state.doc.descendants((node, from) => {
+    if (!node.isInline) return true;
+    const owned = new Set(node.marks.flatMap((mark) => {
+      const { name } = mark.type;
+      return (name === "insertion" || name === "deletion") &&
+        expectTrackedChangeMarkAttrs(mark).suggestionId === suggestionId
+        ? [name]
+        : [];
+    }));
+    let owner: (typeof pieces)[number]["owner"] = null;
+    if (owned.has("deletion")) owner = "deletion";
+    else if (owned.has("insertion")) owner = "insertion";
+    pieces.push({
+      from,
+      to: from + node.nodeSize,
+      text: node.isText ? (node.text ?? "") : "",
+      owner,
+    });
+    return false;
+  });
+  const first = pieces.findIndex(({ owner }) => owner !== null);
+  const last = pieces.findLastIndex(({ owner }) => owner !== null);
+  const start = pieces[first];
+  const end = pieces[last];
+  if (start === undefined || end === undefined) return null;
+  const $start = rejected.state.doc.resolve(
+    rejected.mapping.map(start.from, 1),
+  );
+  const $end = rejected.state.doc.resolve(rejected.mapping.map(end.to, -1));
+  if (!$start.sameParent($end) || $start.parent.type.name !== "paragraph")
+    return null;
+  // The saved package may name the paragraph otherwise; both read alike.
+  const settled = createFolioAIEditSnapshotWithStyleResolver(
+    rejected.state.doc,
+    getDocumentStyleResolver(rejected.state),
+  );
+  const index = settled.blocks.findIndex(
+    ({ id }) => settled.anchors[id]?.from === $start.before(),
+  );
+  const block = saved.blocks[index];
+  const anchor = block === undefined ? undefined : saved.anchors[block.id];
+  const clean = buildCleanBlockText($start.parent, $start.before(), {
+    fieldResults: "text",
+  });
+  if (block === undefined || anchor === undefined || anchor.text !== clean.text)
+    return null;
+  const offsetAt = (position: number) => {
+    const offset = clean.offsets.findIndex((at) => at >= position);
+    return offset < 0 ? clean.text.length : offset;
+  };
+  const from = offsetAt($start.pos);
+  const to = offsetAt($end.pos);
+  if (to < from) return null;
+  let replace = "";
+  for (const piece of pieces.slice(first, last + 1)) {
+    if (piece.owner === "insertion") replace += piece.text;
+    if (piece.owner !== null) continue;
+    const kept = savedNode(piece.from, piece.to);
+    if (kept === null || isOmittedFromCleanView(kept)) continue;
+    // Only text can be written back by a text proposal.
+    if (!kept.isText || noteReferenceOf(kept) !== null) return null;
+    replace += piece.text;
+  }
+  return rangeProposal({
+    record,
+    blockId: block.id,
+    saved: anchor,
+    from,
+    to,
+    replace,
+  });
+};
+
 type PlacedRecordOptions = {
   record: StoredSuggestion;
   /** The record's story as it is, every proposal shown. */
@@ -643,7 +839,7 @@ export class FolioPendingSuggestionRegistry {
   placeRemovedAnchors({
     activeSuggestionIds,
     stateForStory,
-    savedSplitSource,
+    savedSource,
   }: PlaceRemovedAnchorsOptions): void {
     const views = new Map<
       string,
@@ -668,13 +864,13 @@ export class FolioPendingSuggestionRegistry {
       }
       if (view === null || view.live.anchors[anchor.paraId] !== undefined)
         continue;
-      if (record.splitRevisionId !== undefined) {
-        const saved = savedSplitSource?.(story);
-        const split = saved
-          ? currentSplitRecord({ record, live: view.live, saved })
-          : null;
-        if (split !== null) {
-          this.records.set(key, split);
+      const saved = savedSource?.(story) ?? null;
+      if (saved !== null) {
+        const current =
+          currentSplitRecord({ record, live: view.live, saved }) ??
+          currentTextRecord({ record, state: view.state, saved });
+        if (current !== null) {
+          this.records.set(key, current);
           continue;
         }
       }

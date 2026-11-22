@@ -442,6 +442,67 @@ test.each([1, 2])(
   },
 );
 
+// The first half of a split paragraph, replaced or deleted whole by a
+// proposal, with a paragraph proposed after it. Rejecting the split and that
+// paragraph leaves the half in a paragraph of another id, and the proposal
+// still covers only the half.
+test.each([
+  {
+    proposed: { type: "replaceBlock", blockId: "10000002", text: "New term" },
+    accepted: "New termigned in two copies.",
+  },
+  {
+    proposed: { type: "deleteBlock", blockId: "10000002" },
+    accepted: "igned in two copies.",
+  },
+] as const)(
+  "a proposal over a whole half ($proposed.type) keeps to its own words once the half is joined",
+  async ({ proposed, accepted }) => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(await source(), {
+      session: "canonical",
+    });
+    const operations: FolioDocumentOperation[] = [
+      { id: "split", type: "splitBlock", blockId: "10000002", offset: 1 },
+      {
+        id: "beside",
+        type: "insertAfterBlock",
+        blockId: "10000002",
+        text: "Payment due.",
+      },
+      { ...proposed, id: "proposal" },
+    ];
+    for (const pending of operations)
+      expect(apply(reviewer, "suggested", [pending]).skipped).toEqual([]);
+    expect(reviewer.rejectSuggestion("split")).toBe(true);
+    expect(reviewer.rejectSuggestion("beside")).toBe(true);
+
+    const records = reviewer.exportPendingSuggestions();
+    expect(records.map(({ operation: { type } }) => type)).toEqual([
+      "replaceRange",
+    ]);
+    const bytes = await reviewer.toBuffer();
+    expect(await textsOf(bytes)).toEqual(SOURCE_TEXTS);
+    const restaged = await FolioDocxReviewer.fromBuffer(bytes, {
+      session: "canonical",
+    });
+    expect(restaged.loadPendingSuggestions(records)).toEqual([
+      { status: "restaged", suggestionId: "proposal" },
+    ]);
+    for (const live of [reviewer, restaged]) {
+      const rejected = live.fork();
+      expect(rejected.rejectSuggestion("proposal")).toBe(true);
+      expect(await textsOf(await rejected.toBuffer())).toEqual(SOURCE_TEXTS);
+      expect(live.acceptSuggestion("proposal")).toBe(true);
+      live.acceptAll();
+      expect(await textsOf(await live.toBuffer())).toEqual([
+        SOURCE_TEXTS[0] ?? "",
+        accepted,
+        SOURCE_TEXTS[2] ?? "",
+      ]);
+    }
+  },
+);
+
 test(
   "rejecting any mix of tracked and suggested changes, in any order, gives the source back",
   async () => {
