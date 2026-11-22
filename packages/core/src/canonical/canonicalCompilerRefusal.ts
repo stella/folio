@@ -45,6 +45,7 @@ const COMPILER_REFUSAL_DISPOSITIONS = {
   ),
   [R.JOIN_INTO_PENDING_TABLE]: typed("pendingTableInsertion"),
   [R.PENDING_TABLE_CHANGE]: typed("pendingTableChange"),
+  [R.PENDING_GRID_CHANGE]: typed("pendingTableChange"),
   [R.PENDING_BREAK_TAKEOVER]: typed("pendingParagraphMarkDeletion"),
   [R.PENDING_PARAGRAPH_MARK_DELETION]: typed("pendingParagraphMarkDeletion"),
   [R.PENDING_PARAGRAPH_MARK_INSERTION]: typed("pendingParagraphMarkInsertion"),
