@@ -388,9 +388,8 @@ describe.each(SESSIONS)("%s session", (session) => {
    * - A split is the reverse, so only a vertical merge splits tracked.
    * - A column inserted through a horizontal merge widens it, and a column
    *   deleted through one narrows it: a `w:gridSpan` change has no tracked form.
-   * - A table holds one pending grid change (`w:tblGridChange`), so a column
-   *   edit beside another column the tracked batch edits in the same table may
-   *   be refused (the canonical engine refuses it; the legacy engine applies).
+   * Pending table reviews also block edits that could overwrite their record
+   * or give it a different effect. Those refusals use a separate typed reason.
    */
   const trackedRefusalIsExpected = (
     planned: PlannedOperation,
@@ -513,26 +512,47 @@ describe.each(SESSIONS)("%s session", (session) => {
         ? []
         : [{ planned, plan: plans[index]! }],
     );
-    // The column edits tracked mode applied, each holding its table's one
-    // grid change.
-    const trackedGridEdits = tracked.planned.filter(
-      ({ operation }) =>
-        trackedApplied.has(operation.id) &&
-        (operation.type === "insertTableColumn" ||
-          operation.type === "deleteTableColumn"),
-    );
     if (disagreeing.length > 0) {
       // (b) Both modes agree on whether each operation is allowed, bar the
       // refusals the tracked vocabulary forces.
       for (const { planned, plan } of disagreeing) {
         const id = planned.operation.id;
-        const pendingGrid =
+        const pendingTableReview =
           session === "canonical" &&
-          (plan.kind === "insertTableColumn" ||
-            plan.kind === "deleteTableColumn") &&
-          trackedGridEdits.some(
-            (edit) => edit.anchor.tableIndex === planned.anchor.tableIndex,
-          );
+          tracked.planned.some((edit) => {
+            const { operation } = edit;
+            if (
+              !trackedApplied.has(operation.id) ||
+              edit.anchor.tableIndex !== planned.anchor.tableIndex
+            )
+              return false;
+            const type = operation.type;
+            const column =
+              type === "insertTableColumn" || type === "deleteTableColumn";
+            const cell =
+              type === "splitTableCell" || type === "mergeTableCells";
+            if (
+              plan.kind === "insertTableColumn" ||
+              plan.kind === "deleteTableColumn"
+            )
+              return column || cell;
+            const row = type === "insertTableRow" || type === "deleteTableRow";
+            if (plan.kind === "splitTableCell") return column || cell || row;
+            if (plan.kind !== "mergeTableCells") return false;
+            if (column || cell) return true;
+            if (!row) return false;
+            const top = Math.min(planned.anchor.cell.row, planned.other.row);
+            const bottom = Math.max(
+              planned.anchor.cell.row + planned.anchor.cell.rowSpan,
+              planned.other.row + planned.other.rowSpan,
+            );
+            const anchorRow = edit.anchor.cell.row;
+            if (type === "deleteTableRow")
+              return anchorRow >= top && anchorRow < bottom;
+            const insertedAt =
+              anchorRow + (operation.position === "after" ? 1 : 0);
+            return insertedAt > top && insertedAt < bottom;
+          });
         expect({
           plans,
           direct: direct.result.skipped,
@@ -542,7 +562,7 @@ describe.each(SESSIONS)("%s session", (session) => {
             tracked.result.skipped.some(
               (skip) =>
                 skip.id === id &&
-                ((skip.reason === "pendingTableChange" && pendingGrid) ||
+                ((skip.reason === "pendingTableChange" && pendingTableReview) ||
                   (skip.reason === "unsupportedBlock" &&
                     trackedRefusalIsExpected(planned, plan))),
             ),
