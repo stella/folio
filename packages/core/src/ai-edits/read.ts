@@ -945,14 +945,21 @@ export const getOwnedRevisionRanges = (doc: PMNode): OwnedRevisionRange[] => {
   return ranges;
 };
 
-/** Repeated physical ids belong to the first listed group that carries them. */
-const firstGroupById = (groups: readonly TrackedChangeGroup[]) => {
-  const first = new Map<number, number[]>();
+/**
+ * The members each physical id resolves with. A decision takes every record
+ * under an id, so groups sharing one (a change a content control interrupts is
+ * listed on both sides of it) are decided together.
+ */
+const membersById = (groups: readonly TrackedChangeGroup[]) => {
+  const byId = new Map<number, number[]>();
   for (const { ids } of groups) {
-    const members = [...new Set(ids)];
-    for (const id of members) if (!first.has(id)) first.set(id, members);
+    const [known] = ids.map((id) => byId.get(id));
+    if (known !== undefined && ids.every((id) => byId.get(id) === known))
+      continue;
+    const members = [...new Set(ids.flatMap((id) => byId.get(id) ?? [id]))];
+    for (const id of members) byId.set(id, members);
   }
-  return first;
+  return byId;
 };
 
 /**
@@ -971,17 +978,14 @@ export const getTrackedChangeGroupsForIds = (
     doc,
     blockStartIdsFromDoc(doc),
   );
-  const first = ids.length > 1 ? firstGroupById(groups) : undefined;
+  const byId = membersById(groups);
   const out: number[][] = [];
   const taken = new Set<number>();
   for (const id of ids) {
     if (taken.has(id)) continue;
-    const members = (first
-      ? first.get(id)
-      : groups.find((group) => group.ids.includes(id))?.ids) ?? [id];
-    const fresh = [...new Set(members)].filter((member) => !taken.has(member));
-    for (const member of fresh) taken.add(member);
-    out.push(fresh);
+    const members = byId.get(id) ?? [id];
+    for (const member of members) taken.add(member);
+    out.push([...members]);
   }
   return out;
 };
@@ -992,11 +996,10 @@ export const listedRevisionGroups = (doc: PMNode) => {
     doc,
     blockStartIdsFromDoc(doc),
   );
-  const firstGroup = firstGroupById(groups);
+  const byId = membersById(groups);
   return groups.map(({ change: { id } }) => ({
     id,
-    groupIds:
-      firstGroup.get(id) ?? panic("A listed revision must carry its own id."),
+    groupIds: byId.get(id) ?? panic("A listed revision must carry its own id."),
   }));
 };
 
