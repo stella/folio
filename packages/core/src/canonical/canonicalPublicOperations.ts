@@ -103,7 +103,6 @@ import {
   firstParagraphJoiningTable,
   insertionAfterPendingBreak,
   isDeletedPPrMark,
-  joinsIn,
   joinStopsAtTableAfter,
   PENDING_BREAK_TABLE_REFUSAL,
   PENDING_JOIN_INSERTION_REFUSAL,
@@ -1496,7 +1495,7 @@ type BesidePendingJoin = {
   formattingSource: ProjectedParagraph;
 };
 
-/** A suggestion reads the document as it stands: beside the paragraph it names. */
+/** Beside the paragraph an insertion names as it stands, with its properties. */
 const besideAsItStands = (
   paragraph: ProjectedParagraph,
 ): BesidePendingJoin => ({
@@ -1504,22 +1503,18 @@ const besideAsItStands = (
   formattingSource: paragraph,
 });
 
-type PlaceAfterOptions = Omit<BesidePendingJoinOptions, "side"> & {
-  suggested: boolean;
-};
+type PlaceAfterOptions = Omit<BesidePendingJoinOptions, "side">;
 
 /**
  * Where a paragraph put after `paragraph` goes (`insertionAfterPendingBreak`):
- * right after it, or after the paragraph its pending join leaves. A
- * suggestion goes right after it.
+ * right after it, or after the paragraph its pending join leaves, in every
+ * mode, so a suggestion lands where the same tracked insertion does.
  */
 const placeAfter = ({
-  suggested,
   paragraph,
   projection,
   noteReferences,
 }: PlaceAfterOptions): BesidePendingJoin => {
-  if (suggested) return besideAsItStands(paragraph);
   const rule = insertionAfterPendingBreak({
     doc: projection.doc,
     paragraphPos: paragraph.start - 1,
@@ -1617,10 +1612,10 @@ const goesWholeOnAcceptance = (paragraph: PMNode): boolean =>
  * the paragraph the join leaves, which the joined paragraph has. The batch's
  * other operations do not move it: a split of the paragraph the join leaves
  * puts the block after both halves, as one put after that paragraph goes.
- * Beside a paragraph whose own break is pending removal where no join reads
- * it (after it, when the join leaves no paragraph with words for the block to
- * follow; before it, when the paragraph goes whole), the block goes beside
- * the paragraph itself.
+ * Where no join reads the paragraph, `pendingJoinParagraphs` names the
+ * paragraph itself on that side, so the block goes beside it: one place
+ * decides, so a paragraph going whole that earlier words run into is placed
+ * before those words, as every other paragraph of the join is.
  */
 const besidePendingJoin = ({
   side,
@@ -1634,15 +1629,7 @@ const besidePendingJoin = ({
     noteReferences,
   };
   const join = pendingJoinParagraphs(options);
-  const breakGoes = isDeletedPPrMark(paragraph.node.attrs["pPrMark"]);
   const after = side === "after";
-  // Where no join reads the paragraph, the block goes beside the paragraph
-  // itself, as the default engine places it.
-  if (
-    breakGoes &&
-    (after ? join.last === options.paragraphPos : !joinsIn(options))
-  )
-    return besideAsItStands(paragraph);
   const at = (position: number) =>
     position === options.paragraphPos
       ? paragraph
@@ -4237,10 +4224,7 @@ type ResolveCanonicalPublicOperationOptions = {
   diff: ReturnType<typeof wordDiffSessionFromOptions>["diff"];
   /** Whether the batch records its edits as revisions. */
   tracked: boolean;
-  /**
-   * Whether the batch records its edits as suggestions, which read the
-   * document as it stands rather than as accepting leaves it.
-   */
+  /** Whether the batch records its edits as suggestions. */
   suggested: boolean;
   /** A new list of one kind for this operation, minted after the batch's earlier ones. */
   mintList: ReturnType<typeof createBatchListMinter>;
@@ -7061,11 +7045,13 @@ export class CanonicalPublicOperations {
           ? { ...operation, type: "insertAfterBlock" }
           : operation;
       // A paragraph put after one whose break a pending join removes goes
-      // where `insertionAfterPendingBreak` puts it.
+      // where `insertionAfterPendingBreak` puts it, and one put before a
+      // paragraph goes before the join it is part of, in every mode: a
+      // suggestion lands where the same tracked insertion does, so
+      // accepting it leaves what the direct edit does.
       const placed =
-        suggested || insertion.type === "insertAfterBlock"
+        insertion.type === "insertAfterBlock"
           ? placeAfter({
-              suggested,
               paragraph,
               projection: projection.value,
               noteReferences,
