@@ -159,9 +159,8 @@ test("a kept move range start stands between pending insertion pieces holding de
           {
             type: "moveToRangeStart",
             id: 1,
-            // The split cut the insertion four levels deep; the boundary,
-            // inserted after it, stands in that cut.
-            keptCut: { depth: 4, keptFrom: "2026-03-04T05:00:02Z" },
+            // The boundary, inserted after the split, stands in its cut.
+            keptCut: { keptFrom: "2026-03-04T05:00:02Z" },
           },
           { type: "insertion", content: [{ type: "deletion" }] },
         ],

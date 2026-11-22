@@ -539,9 +539,23 @@ export const parseCopyOriginAncestors = (
     attribute: "copyOriginAncestors",
     valid: isCopyOriginAncestors,
   });
+/**
+ * A kept cut a file holds, without the `depth` that files saved before the
+ * cut lost it carry, whatever it says.
+ */
+const storedKeptCut = (value: unknown): unknown => {
+  if (!record(value)) return value;
+  const { depth: _ignored, ...cut } = value;
+  return cut;
+};
+const isStoredKeptCut = (value: unknown): boolean =>
+  isKeptCut(storedKeptCut(value));
 /** The cut a kept range marker stands in (`folio:keptCut`). */
-export const parseKeptCut = (node: XmlElement): KeptCut | undefined =>
-  parseAttribute({ node, attribute: "keptCut", valid: isKeptCut });
+export const parseKeptCut = (node: XmlElement): KeptCut | undefined => {
+  const decoded = decodeAttribute(node, "keptCut", isStoredKeptCut);
+  const cut = storedKeptCut(decoded?.value);
+  return isKeptCut(cut) ? cut : undefined;
+};
 export const serializeKeptCut = (
   value: KeptCut | undefined,
 ): string | undefined =>
@@ -772,7 +786,7 @@ const PROVENANCE_VALUE_SHAPES: Readonly<Record<string, ProvenanceShape>> = {
   [PARAGRAPH_MARK_FIELDS.resolutionJoin.attribute]:
     isEncodedParagraphMarkResolutionJoin,
   copyOriginAncestors: isCopyOriginAncestors,
-  keptCut: isKeptCut,
+  keptCut: isStoredKeptCut,
   splitResolutionJoins: isSplitPieceOf,
   [ENCLOSING_ATTRIBUTE]: enclosingHandoffs,
   [PARAGRAPH_MARK_FIELDS.survivor.attribute]: isParagraphMarkSurvivor,

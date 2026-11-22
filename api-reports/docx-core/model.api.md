@@ -806,7 +806,6 @@ export const isThemeColor: (value: string) => value is ThemeColor;
 
 // @public
 export type KeptCut = WritableRecord & {
-    depth: number;
     keptFrom: string;
     piece?: KeptCutPiece;
 };
