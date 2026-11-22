@@ -310,6 +310,13 @@ export type DisplayRectPrimitive = {
   readonly stroke?: DisplayStroke;
 };
 
+/** A repeating diagonal stroke pattern, with slot pitch measured along the edge. */
+export type DiagonalHatchPattern = {
+  readonly pitchPx: number;
+  readonly lineWidthPx: number;
+  readonly slots: readonly boolean[];
+};
+
 /**
  * A stroked segment. Borders, rules, column separators, table diagonals and
  * text decorations are all this one primitive, so a dashed underline and a
@@ -322,6 +329,8 @@ export type DisplayLine = {
   readonly x2Px: number;
   readonly y2Px: number;
   readonly stroke: DisplayStroke;
+  /** Diagonal marks clipped to the stroke's full axis-aligned band. */
+  readonly hatch?: DiagonalHatchPattern;
 };
 
 /** A closed, solid-filled polygon. */

@@ -24,6 +24,7 @@ import {
 import type {
   DisplayGlyphRun,
   DisplayImagePrimitive,
+  DisplayLine,
   DisplayPage,
   DisplayPolyline,
   DisplayPrimitive,
@@ -217,6 +218,44 @@ const paintSegment = (
   }
   stream.restore();
 };
+
+function paintHatchedEdge(context: PaintContext, line: DisplayLine): void {
+  const { x1Px, y1Px, x2Px, y2Px, stroke, hatch } = line;
+  if (!hatch) return;
+  const horizontal = y1Px === y2Px;
+  const vertical = x1Px === x2Px;
+  if (!horizontal && !vertical) return;
+
+  const halfBand = stroke.thicknessPx / 2;
+  const x = horizontal ? Math.min(x1Px, x2Px) : x1Px - halfBand;
+  const y = horizontal ? y1Px - halfBand : Math.min(y1Px, y2Px);
+  const width = horizontal ? Math.abs(x2Px - x1Px) : stroke.thicknessPx;
+  const height = horizontal ? stroke.thicknessPx : Math.abs(y2Px - y1Px);
+  const projection = width + height;
+  const { pitchPx, lineWidthPx, slots } = hatch;
+  if (!(width > 0 && height > 0 && pitchPx > 0 && lineWidthPx > 0)) return;
+  if (!Number.isFinite(projection / pitchPx) || slots.length === 0) return;
+
+  beginPrimitive(context, context.alpha * stroke.color.a);
+  const { stream } = context;
+  stream.appendRect(x, y, width, height);
+  stream.clipToCurrentPath();
+  stream.setStrokeColor(stroke.color);
+  stream.setLineWidth(lineWidthPx);
+  // A hatch line has x + y = offset in band-local coordinates. Centre
+  // the stroke half an ink width past the corresponding gradient stop.
+  const inkCenter = lineWidthPx / Math.SQRT2;
+  for (let slot = 0; slot * pitchPx < projection; slot += 1) {
+    if (!slots[slot % slots.length]) continue;
+    const offset = slot * pitchPx + inkCenter;
+    const start = Math.max(0, offset - height) - lineWidthPx;
+    const end = Math.min(width, offset) + lineWidthPx;
+    stream.moveTo(x + start, y + offset - start);
+    stream.lineTo(x + end, y + offset - end);
+  }
+  stream.stroke();
+  stream.restore();
+}
 
 const paintPolyline = (context: PaintContext, primitive: DisplayPolyline) => {
   const first = primitive.points.at(0);
@@ -555,6 +594,10 @@ const paintPrimitive = (context: PaintContext, primitive: DisplayPrimitive) => {
       paintRect(context, primitive);
       return;
     case "line":
+      if (primitive.hatch) {
+        paintHatchedEdge(context, primitive);
+        return;
+      }
       paintSegment(context, primitive.stroke, {
         x1Px: primitive.x1Px,
         y1Px: primitive.y1Px,

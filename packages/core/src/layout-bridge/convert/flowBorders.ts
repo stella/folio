@@ -63,7 +63,8 @@ export function convertCellBorderSpecToLayout(
     style === "dotDash" ||
     style === "dashSmallGap" ||
     style === "dotDotDash" ||
-    style === "dashed"
+    style === "dashed" ||
+    style === "dashDotStroked"
   )
     return { ...converted, authoredStyle: style };
   return converted;
