@@ -660,6 +660,45 @@ test.each(["canonical", "legacy"] as const)(
   },
 );
 
+test.each(
+  (["canonical", "legacy"] as const).flatMap((session) =>
+    (
+      [
+        ["heading", "plain"],
+        ["plain", "heading", "plain"],
+        ["centered", "heading", "plain"],
+      ] satisfies Look[][]
+    ).map((looks) => ({ session, looks, name: looks.join(", ") })),
+  ),
+)(
+  "separate suggestions ahead of a removed table keep their own properties ($session: $name)",
+  async ({ session, looks }) => {
+    const setup: Case = {
+      anchorIsLast: false,
+      table: "removed",
+      nextRemoved: false,
+      mode: "suggested",
+      batches: looks.map((look) => ({
+        insertions: [{ kind: "paragraph", side: "beforeNext", look }],
+        deletesAnchor: false,
+      })),
+      between: looks.map(() => "nothing"),
+    };
+    const reviewed = await replay(setup, "suggested", session);
+    expect(labelsOf(reviewed.accepted)).toEqual(label(reviewed.requested));
+    expect(
+      reviewed.looks.map(({ heading, centered }) => ({ heading, centered })),
+    ).toEqual(
+      looks.map((look) => ({
+        heading: look === "heading",
+        centered: look === "centered",
+      })),
+    );
+    const direct = await replay(setup, "direct", session);
+    expect(direct.accepted).toEqual(reviewed.accepted);
+  },
+);
+
 test.each(["delete", "insert"] as const)(
   "replaces a table pending deletion in one direct batch (%s first)",
   async (first) => {
