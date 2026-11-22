@@ -2443,12 +2443,21 @@ const resolveList = ({
     // pending change beyond them is no piece of the record they were.
     const piecesGo = beforeIndex < index - 1 || afterIndex > index + 1;
     if (!piecesGo) return levels;
+    // Only pieces made before it are the records it was made inside; later
+    // changes beside it are edits beside the cut, read past as above.
+    const madeBefore = (candidate: InlineNode | undefined) =>
+      candidate !== undefined &&
+      isTrackedWrapper(candidate) &&
+      (candidate.info.date ?? "") < (node.info.date ?? "");
     const nearBefore = index > 0 ? pending.at(index - 1) : undefined;
     const nearAfter = pending.at(index + 1);
     const besideLevels =
-      nearBefore === undefined || nearAfter === undefined
-        ? levels
-        : reach(nearBefore, nearAfter);
+      nearBefore !== undefined &&
+      nearAfter !== undefined &&
+      madeBefore(nearBefore) &&
+      madeBefore(nearAfter)
+        ? reach(nearBefore, nearAfter)
+        : levels;
     return !isTrackedWrapper(before) && !isTrackedWrapper(after)
       ? Math.min(levels, besideLevels, alikeDepth(before, after))
       : Math.min(levels, besideLevels);
