@@ -1768,6 +1768,9 @@ export const withParagraphCopies: (input: WithParagraphCopiesOptions) => Documen
 export const withParagraphRenderings: (input: WithParagraphRenderingsOptions) => Document_2 | undefined;
 
 // @public
+export const withTextBoxesClosed: (input: CloseTextBoxesOptions) => Document_2;
+
+// @public
 export type ZeroWidthItem = keyof typeof ZERO_WIDTH_ITEMS_HOLD_CONTENT;
 
 // @public
