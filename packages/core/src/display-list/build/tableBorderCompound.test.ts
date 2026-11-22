@@ -4,6 +4,10 @@ import { convertCellBorderSpecToLayout } from "../../layout-bridge/convert/flowB
 import { layoutDocument } from "../../layout-engine/index";
 import { withFakeTextMeasure } from "../../layout-engine/measure/__tests__/fakeTextMeasure";
 import { measureBlocks } from "../../layout-engine/measure/measureBlocks";
+import {
+  tableCellBorderBands,
+  tableCellBorderWidth,
+} from "../../layout-engine/measure/tableBorderBands";
 import type { TableBlock } from "../../layout-engine/types";
 import { fakeDocument } from "../../layout-painter/__tests__/fakeDom";
 import { computePageFingerprint } from "../../layout-painter/renderPage";
@@ -130,3 +134,25 @@ test("large-gap compound table borders reverse the two stroke widths", () => {
     );
   });
 });
+
+test.each([
+  ["thinThickSmallGap", 2 / 3, 1],
+  ["thickThinSmallGap", 1, 2 / 3],
+] as const)(
+  "retains the small-gap band and authored width for %s",
+  (style, first, last) => {
+    const compound = convertCellBorderSpecToLayout({ style, size: 4 });
+    const single = convertCellBorderSpecToLayout({ style: "single", size: 12 });
+    if (!compound || !single) throw new Error("Expected two visible borders");
+
+    expect(compound.width).toBeCloseTo(2 / 3);
+    expect(single.width).toBe(2);
+    expect(tableCellBorderWidth(compound)).toBeCloseTo(8 / 3);
+    const bands = tableCellBorderBands(compound)?.bands;
+    expect(bands).toHaveLength(2);
+    expect(bands?.at(0)?.offsetPx).toBe(0);
+    expect(bands?.at(0)?.widthPx).toBeCloseTo(first);
+    expect(bands?.at(1)?.offsetPx).toBeCloseTo(first + 1);
+    expect(bands?.at(1)?.widthPx).toBeCloseTo(last);
+  },
+);

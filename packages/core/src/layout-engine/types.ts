@@ -716,7 +716,11 @@ export type CellBorderSpec = {
   // CSS `border-style`, mapped from OOXML by the bridge; see BorderStyle.style.
   style?: CssBorderStyle;
   /** Authored OOXML variants whose geometry the CSS keyword cannot express. */
-  authoredStyle?: "thinThickLargeGap" | "thickThinLargeGap";
+  authoredStyle?:
+    | "thinThickSmallGap"
+    | "thickThinSmallGap"
+    | "thinThickLargeGap"
+    | "thickThinLargeGap";
 };
 
 /**

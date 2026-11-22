@@ -4,6 +4,7 @@
 
 import { statesNoBorder } from "@stll/docx-core/model";
 
+import { hasCompoundTableBorderBands } from "../../layout-engine/measure/tableBorderBands";
 import type { BorderStyle, CellBorderSpec } from "../../layout-engine/types";
 import type { BorderStyleValue, ColorValue, Theme } from "../../types/document";
 import type { DeepReadonly } from "../../types/documentModel";
@@ -57,7 +58,7 @@ export function convertCellBorderSpecToLayout(
   const converted = convertBorderSpecToLayout(border, theme);
   if (!converted) return undefined;
   const { style } = border;
-  if (style === "thinThickLargeGap" || style === "thickThinLargeGap")
+  if (hasCompoundTableBorderBands(style))
     return { ...converted, authoredStyle: style };
   return converted;
 }

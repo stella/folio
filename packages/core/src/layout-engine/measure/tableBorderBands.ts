@@ -1,3 +1,4 @@
+import { pointsToPixels } from "../../utils/units";
 import type { CellBorderSpec } from "../types";
 
 const TABLE_BORDER_COLOR = /^#[\da-f]{6}$/iu;
@@ -10,6 +11,42 @@ const DARK_TONE_DROP = 80;
 
 const THIN_COMPOUND_STROKE_PX = 1;
 const THICK_COMPOUND_STROKE_PX = 2;
+const MIN_SMALL_GAP_STROKE_PX = pointsToPixels(0.25);
+
+type CompoundStyle = NonNullable<CellBorderSpec["authoredStyle"]>;
+type CompoundSegment = number | "authored" | "authoredStroke";
+
+const COMPOUND_SEGMENTS = {
+  thinThickSmallGap: [
+    "authoredStroke",
+    THIN_COMPOUND_STROKE_PX,
+    THIN_COMPOUND_STROKE_PX,
+  ],
+  thickThinSmallGap: [
+    THIN_COMPOUND_STROKE_PX,
+    THIN_COMPOUND_STROKE_PX,
+    "authoredStroke",
+  ],
+  thinThickLargeGap: [
+    THICK_COMPOUND_STROKE_PX,
+    "authored",
+    THIN_COMPOUND_STROKE_PX,
+  ],
+  thickThinLargeGap: [
+    THIN_COMPOUND_STROKE_PX,
+    "authored",
+    THICK_COMPOUND_STROKE_PX,
+  ],
+} as const satisfies Record<
+  CompoundStyle,
+  readonly [CompoundSegment, CompoundSegment, CompoundSegment]
+>;
+
+export function hasCompoundTableBorderBands(
+  style: string | undefined,
+): style is CompoundStyle {
+  return style !== undefined && Object.hasOwn(COMPOUND_SEGMENTS, style);
+}
 
 export type TableBorderSide = "top" | "right" | "bottom" | "left";
 
@@ -28,35 +65,36 @@ function beveledEdge(border: CellBorderSpec | undefined) {
   return { width, shoulder, color, recessed: border.style === "groove" };
 }
 
-function largeGapCompoundEdge(border: CellBorderSpec | undefined) {
-  if (!border) return undefined;
-  const style = border.authoredStyle;
-  if (style !== "thinThickLargeGap" && style !== "thickThinLargeGap")
-    return undefined;
-  const gapPx = border.width ?? 1;
+function compoundEdge(border: CellBorderSpec | undefined) {
+  const style = border?.authoredStyle;
+  if (!border || style === undefined) return undefined;
+
+  const width = border.width ?? 1;
   const color = border.color ?? BLACK;
   if (
-    !(gapPx > 0) ||
-    !Number.isFinite(gapPx) ||
+    !(width > 0) ||
+    !Number.isFinite(width) ||
     !TABLE_BORDER_COLOR.test(color)
   )
     return undefined;
 
-  // These two styles swap the physical strokes. The gap takes w:sz.
-  const firstIsThick = style === "thinThickLargeGap";
-  const firstPx = firstIsThick
-    ? THICK_COMPOUND_STROKE_PX
-    : THIN_COMPOUND_STROKE_PX;
-  const lastPx = firstIsThick
-    ? THIN_COMPOUND_STROKE_PX
-    : THICK_COMPOUND_STROKE_PX;
+  const segmentWidth = (segment: CompoundSegment): number => {
+    if (segment === "authored") return width;
+    if (segment === "authoredStroke")
+      return Math.max(width, MIN_SMALL_GAP_STROKE_PX);
+    return segment;
+  };
+  const [first, gap, last] = COMPOUND_SEGMENTS[style];
+  const firstPx = segmentWidth(first);
+  const gapPx = segmentWidth(gap);
+  const lastPx = segmentWidth(last);
   return { firstPx, lastPx, gapPx, color, widthPx: firstPx + gapPx + lastPx };
 }
 
 export function tableCellBorderWidth(
   border: CellBorderSpec | undefined,
 ): number {
-  const compound = largeGapCompoundEdge(border);
+  const compound = compoundEdge(border);
   if (compound) return compound.widthPx;
   const edge = beveledEdge(border);
   return edge ? edge.width + edge.shoulder * 2 : (border?.width ?? 0);
@@ -111,7 +149,7 @@ function embossTones(color: string): readonly [Tone, Tone, Tone] {
 }
 
 export function tableCellBorderBands(border: CellBorderSpec | undefined) {
-  const compound = largeGapCompoundEdge(border);
+  const compound = compoundEdge(border);
   if (compound) {
     const { firstPx, gapPx, lastPx, widthPx } = compound;
     const color = rgbTone(compound.color.slice(1));
