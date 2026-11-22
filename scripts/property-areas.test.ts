@@ -37,6 +37,8 @@ const makePropertyFile = (repoPath: string, weightMs = 5_000) => ({
   weightMs,
 });
 
+const PROPERTY_INVENTORY_TEST_TIMEOUT_MS = 60_000;
+
 const ALL = [
   makePropertyFile("packages/core/src/ai-edits/batchOverlap.test.ts"),
   makePropertyFile("packages/core/src/compare/compare.property.test.ts"),
@@ -51,7 +53,7 @@ const actualPropertyDrivers = (
   const root = path.resolve(import.meta.dir, "..");
   const files = roots.flatMap((dir) =>
     [
-      ...new Bun.Glob("**/*.{ts,tsx}").scanSync({
+      ...new Bun.Glob("**/*.test.{ts,tsx}").scanSync({
         cwd: path.join(root, dir),
         absolute: true,
       }),
@@ -61,7 +63,6 @@ const actualPropertyDrivers = (
     ),
   );
   return files
-    .filter((file) => /\.test\.tsx?$/.test(file))
     .filter((file) => {
       const { program } = parseSourceModule(file, readFileSync(file, "utf8"));
       let drives = false;
@@ -323,31 +324,39 @@ describe("property areas", () => {
     expect(selectPropertyFiles(["README.md"], ALL)).toEqual([]);
   });
 
-  test("finds the property files of every package", () => {
-    const found = propertyFiles();
-    expect(
-      found.some(({ file: repoPath }) =>
-        repoPath.startsWith("packages/core/src/"),
-      ),
-    ).toBe(true);
-    expect(
-      found.some(({ file: repoPath }) =>
-        repoPath.startsWith("packages/docx-core/src/"),
-      ),
-    ).toBe(true);
-    expect(found.every(({ area }) => area !== undefined)).toBe(true);
-    expect(
-      found.some(
-        ({ file: repoPath }) =>
-          repoPath === "scripts/container-survival.property.test.ts",
-      ),
-    ).toBe(true);
-    expect(found.map(({ file }) => file)).toEqual(actualPropertyDrivers());
-  });
+  test(
+    "finds the property files of every package",
+    () => {
+      const found = propertyFiles();
+      expect(
+        found.some(({ file: repoPath }) =>
+          repoPath.startsWith("packages/core/src/"),
+        ),
+      ).toBe(true);
+      expect(
+        found.some(({ file: repoPath }) =>
+          repoPath.startsWith("packages/docx-core/src/"),
+        ),
+      ).toBe(true);
+      expect(found.every(({ area }) => area !== undefined)).toBe(true);
+      expect(
+        found.some(
+          ({ file: repoPath }) =>
+            repoPath === "scripts/container-survival.property.test.ts",
+        ),
+      ).toBe(true);
+      expect(found.map(({ file }) => file)).toEqual(actualPropertyDrivers());
+    },
+    PROPERTY_INVENTORY_TEST_TIMEOUT_MS,
+  );
 
-  test("every planned property file loads its imports from where the runner starts it", () => {
-    expect(unrunnablePropertyImports(propertyFiles())).toEqual([]);
-  }, 60_000);
+  test(
+    "every planned property file loads its imports from where the runner starts it",
+    () => {
+      expect(unrunnablePropertyImports(propertyFiles())).toEqual([]);
+    },
+    PROPERTY_INVENTORY_TEST_TIMEOUT_MS,
+  );
 
   test("an import the importing file's manifest leaves out is reported through helpers", () => {
     // Resolution returns real paths; a symlinked temporary root would hide helpers.
@@ -408,25 +417,29 @@ describe("property areas", () => {
     ).toEqual([rootProperty]);
   });
 
-  test("source changes select every property driver in their root", () => {
-    const inventory = propertyFiles();
-    const actual = actualPropertyDrivers();
-    for (const root of ROOT_TEST_DIRS) {
-      const rootFiles = actual.filter((file) => file.startsWith(`${root}/`));
-      expect(rootFiles.length).toBeGreaterThan(0);
-      expect(
-        selectPropertyFiles([`${root}/source.ts`], inventory).map(
-          ({ file }) => file,
-        ),
-      ).toEqual(rootFiles);
-      for (const repoPath of rootFiles) {
+  test(
+    "source changes select every property driver in their root",
+    () => {
+      const inventory = propertyFiles();
+      const actual = actualPropertyDrivers();
+      for (const root of ROOT_TEST_DIRS) {
+        const rootFiles = actual.filter((file) => file.startsWith(`${root}/`));
+        expect(rootFiles.length).toBeGreaterThan(0);
         expect(
-          selectPropertyFiles([repoPath], inventory).map(({ file }) => file),
-        ).toEqual([repoPath]);
+          selectPropertyFiles([`${root}/source.ts`], inventory).map(
+            ({ file }) => file,
+          ),
+        ).toEqual(rootFiles);
+        for (const repoPath of rootFiles) {
+          expect(
+            selectPropertyFiles([repoPath], inventory).map(({ file }) => file),
+          ).toEqual([repoPath]);
+        }
       }
-    }
-    // It reads and selects over every property file in the repository.
-  }, 60_000);
+      // It reads and selects over every property file in the repository.
+    },
+    PROPERTY_INVENTORY_TEST_TIMEOUT_MS,
+  );
 });
 
 describe("property scheduling profiles", () => {

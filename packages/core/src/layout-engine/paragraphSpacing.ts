@@ -1,3 +1,4 @@
+import { isTextAnchoredTable } from "./measure/floatingTablePosition";
 import {
   buildTableCellGrid,
   getSourceCellAt,
@@ -29,6 +30,12 @@ export const collapseParagraphSpacing = ({
   before,
   after,
 }: CollapseParagraphSpacingOptions): number => Math.max(before, after);
+
+/** At the start of a later column, flow omits leading paragraph spacing. */
+export const isAtFollowingColumnStart = (
+  columnIndex: number,
+  isAtRegionStart: boolean,
+): boolean => columnIndex > 0 && isAtRegionStart;
 
 /** Whether a paragraph has no visible run content. */
 export function isEmptyParagraph(block: ParagraphBlock): boolean {
@@ -94,6 +101,7 @@ export const resolveEffectiveParagraphSpacingTree = (
   blocks: FlowBlock[],
   cellEdges?: CellEdgeNeighbors,
 ): FlowBlock[] => {
+  blocks = resolveFloatingTableAnchorContextualSpacing(blocks);
   let changed = false;
   const resolved = blocks.map((block, index) => {
     const next = resolveBlockSpacing({ blocks, index, cellEdges });
@@ -109,6 +117,50 @@ export const paragraphsShareStyle = (
   previous: ParagraphBlock,
   current: ParagraphBlock,
 ): boolean => previous.attrs?.styleId === current.attrs?.styleId;
+
+/** Resolve contextual paragraph spacing across text-anchored tables. */
+export const resolveFloatingTableAnchorContextualSpacing = (
+  blocks: FlowBlock[],
+): FlowBlock[] => {
+  let result = blocks;
+  for (let index = 1; index < blocks.length; index++) {
+    if (!isTextAnchoredTable(blocks[index])) {
+      continue;
+    }
+    const leadIndex = index - 1;
+    do {
+      index += 1;
+    } while (isTextAnchoredTable(blocks[index]));
+
+    const lead = result[leadIndex];
+    const anchor = result[index];
+    if (
+      lead?.kind !== "paragraph" ||
+      anchor?.kind !== "paragraph" ||
+      !paragraphsShareStyle(lead, anchor)
+    ) {
+      continue;
+    }
+    if (lead.attrs?.contextualSpacing && lead.attrs.spacing?.after) {
+      if (result === blocks) result = blocks.slice();
+      result[leadIndex] = {
+        ...lead,
+        attrs: { ...lead.attrs, spacing: { ...lead.attrs.spacing, after: 0 } },
+      };
+    }
+    if (anchor.attrs?.contextualSpacing && anchor.attrs.spacing?.before) {
+      if (result === blocks) result = blocks.slice();
+      result[index] = {
+        ...anchor,
+        attrs: {
+          ...anchor.attrs,
+          spacing: { ...anchor.attrs.spacing, before: 0 },
+        },
+      };
+    }
+  }
+  return result;
+};
 
 const tablesWithoutLeadingSpace = new WeakMap<TableBlock, TableBlock>();
 

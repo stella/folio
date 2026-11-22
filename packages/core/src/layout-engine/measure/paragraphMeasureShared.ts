@@ -10,12 +10,14 @@ import type {
   LineBreakRun,
   MathRun,
   MeasuredLine,
+  ParagraphBlock,
   Run,
   TabRun,
   TextRun,
 } from "../types";
 import { isFloatingImageRun } from "../types";
 import type { FloatingLineSegmentZone } from "./floatingZones";
+import { getListMarkerInlineWidth } from "./listMarkerWidth";
 import { buildRunFontStyle, DEFAULT_FONT_FAMILY } from "./measureHelpers";
 import type { FontMetrics, FontStyle } from "./measureTypes";
 
@@ -26,6 +28,59 @@ export const DEFAULT_LINE_HEIGHT_MULTIPLIER = 1; // OOXML spec default: single s
 // Floating-point tolerance for line breaking (0.5px)
 // Prevents premature line breaks due to measurement rounding
 export const WIDTH_TOLERANCE = 0.5;
+
+/** Text widths before floating exclusions, with the first line's marker budget. */
+export const getParagraphLineGeometry = (
+  block: ParagraphBlock,
+  maxWidth: number,
+) => {
+  // Handle indentation
+  const indent = block.attrs?.indent;
+  const indentLeft = indent?.left ?? 0;
+  const indentRight = indent?.right ?? 0;
+  const firstLineOffset = (indent?.firstLine ?? 0) - (indent?.hanging ?? 0);
+
+  // Calculate base available widths
+  const bodyContentWidth = Math.max(1, maxWidth - indentLeft - indentRight);
+  // First line offset: positive = first-line indent (less space), negative = hanging (more space)
+  // Subtracting gives correct width in both cases
+  let baseFirstLineWidth = Math.max(1, bodyContentWidth - firstLineOffset);
+
+  // List marker on the first line: the marker renders as an inline-block
+  // span that's *not* in the run list, so the run-based line breaker
+  // doesn't see it. The first line's content area spans from the marker's
+  // start to the right margin — for a hanging list that's
+  // `bodyContentWidth + hanging` (already widened via `firstLineOffset`);
+  // for a first-line indent it's `bodyContentWidth − firstLine`. Subtract
+  // the marker's actual painted footprint (`getListMarkerInlineWidth`) so
+  // the line breaker sees the same text room the painter leaves.
+  //
+  // The subtraction is unconditional:
+  //
+  // - Hanging + `w:suff="tab"` (fitting): markerInlineWidth = hanging, so
+  //   the subtraction exactly cancels the `+ hanging` widening and the
+  //   text budget reduces to bodyContentWidth (matches body wrap).
+  // - Hanging + tab overflow: markerInlineWidth > hanging, subtracting
+  //   yields bodyContentWidth − overflow (text budget shrinks past the
+  //   body wrap column, matching Word's advance to next tab stop).
+  // - Hanging + `w:suff="space"|"nothing"`: markerInlineWidth < hanging,
+  //   so the budget is bodyContentWidth + (hanging − markerInlineWidth) —
+  //   first line is wider than subsequent lines, matching the painter
+  //   which starts body before indentLeft.
+  // - First-line indent (no hanging): subtract the full marker width.
+  const markerInlineWidth = getListMarkerInlineWidth(block);
+  if (markerInlineWidth > 0) {
+    baseFirstLineWidth = Math.max(1, baseFirstLineWidth - markerInlineWidth);
+  }
+
+  return {
+    indentLeft,
+    firstLineOffset,
+    bodyContentWidth,
+    baseFirstLineWidth,
+    markerInlineWidth,
+  };
+};
 
 /** Grid a finished line's width snaps to: 1/1024 px, exact in binary floating point. */
 const LINE_WIDTH_GRID = 1024;

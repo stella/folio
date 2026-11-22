@@ -12,7 +12,10 @@
  * @packageDocumentation
  */
 
-import type { FloatingTablePosition, TableBlock } from "../types";
+import type { FloatingTablePosition, FlowBlock, TableBlock } from "../types";
+
+export const isTextAnchoredTable = (block: FlowBlock | undefined): boolean =>
+  block?.kind === "table" && block.floating?.vertAnchor === "text";
 
 type FloatingTablePageXOptions = {
   anchor: FloatingTablePosition;

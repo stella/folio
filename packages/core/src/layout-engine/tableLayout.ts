@@ -831,6 +831,13 @@ export function layoutFloatingTable(
   const tableWidth = measure.totalWidth;
   const tableHeight = measure.totalHeight;
 
+  if (floating?.vertAnchor === "text") {
+    // The lead's after-spacing belongs above the anchor box. The anchor's own
+    // before-spacing remains to be placed inside that box.
+    state.cursorY += state.trailingSpacing;
+    state.trailingSpacing = 0;
+  }
+
   // Determine X position
   let x = paginator.getColumnX(state.columnIndex);
   if (floating) {

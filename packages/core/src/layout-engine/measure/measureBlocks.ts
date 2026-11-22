@@ -6,7 +6,12 @@ import {
   recordMeasureOutcome,
 } from "../layoutInstrumentation";
 import { getParagraphFrame, isParagraphFrameTextBox } from "../paragraphFrame";
-import { resolveTableSpacing } from "../paragraphSpacing";
+import {
+  getParagraphSpacingBefore,
+  isAtFollowingColumnStart,
+  resolveFloatingTableAnchorContextualSpacing,
+  resolveTableSpacing,
+} from "../paragraphSpacing";
 import { sectionStartAdvanceOf } from "../section-breaks";
 import type { SectionStartAdvance } from "../section-breaks";
 import {
@@ -38,9 +43,11 @@ import type {
 } from "../types";
 import { getCachedParagraphMeasure, setCachedParagraphMeasure } from "./cache";
 import {
+  isTextAnchoredTable,
   resolveFloatingTablePageX,
   resolveFloatingTableY,
 } from "./floatingTablePosition";
+import { getFloatingAvailableWidth } from "./floatingZones";
 import { getHyphenationDictionaryMisses } from "./hyphenationDictionaries";
 import { getListMarkerInlineWidth } from "./listMarkerWidth";
 import {
@@ -49,6 +56,7 @@ import {
   MIN_WRAP_SEGMENT_WIDTH,
 } from "./measureParagraph";
 import type { FloatingImageZone } from "./measureParagraph";
+import { getParagraphLineGeometry } from "./paragraphMeasureShared";
 import type { RaisedTableWrapInputs } from "./raisedTableWrap";
 import {
   buildTableCellFloatingZones,
@@ -1416,6 +1424,7 @@ export function measureBlocks(
   fieldValues?: ReadonlyMap<number, string>,
   options?: MeasureBlocksOptions,
 ): Measure[] {
+  blocks = resolveFloatingTableAnchorContextualSpacing(blocks);
   const defaultWidth = Array.isArray(contentWidth)
     ? (contentWidth[0] ?? 0)
     : contentWidth;
@@ -1618,34 +1627,56 @@ export function measureBlocks(
         bandOnlyAnchor || activeTablePageRects.length > 0 ? pageRelativeY : 0;
     }
 
-    const projectedTableZones = activeTablePageRects.map((rect) =>
-      projectFloatingTablePageRect({
-        rect,
-        contentLeft: blockContentLeft,
-        contentTop: blockContentTop,
-        contentWidth: blockWidth,
-      }),
-    );
-    const earlierTableZones = options?.raisedTableWrap?.get(block.id);
-    if (earlierTableZones) {
-      for (const zone of earlierTableZones) {
-        projectedTableZones.push({
-          ...zone,
-          topY: zone.topY + cumulativeY,
-          bottomY: zone.bottomY + cumulativeY,
-        });
-      }
-    }
-    const zones =
-      activeZones.length > 0 || projectedTableZones.length > 0
-        ? [...activeZones, ...projectedTableZones]
-        : undefined;
-
     // Reported after the recovery below, so an instrumentation callback that
     // throws cannot turn a block measured well into the fallback.
     let outcome: MeasureOutcome;
     let measure: Measure;
     try {
+      const anchorSpaceBefore =
+        activeTablePageRects.length > 0 &&
+        block.kind === "paragraph" &&
+        isTextAnchoredTable(blocks[blockIndex - 1]) &&
+        !isAtFollowingColumnStart(blockColumnIndex, pageRelativeY === 0)
+          ? getParagraphSpacingBefore(block)
+          : 0;
+      const firstLineWidth =
+        anchorSpaceBefore !== 0 && block.kind === "paragraph"
+          ? getParagraphLineGeometry(block, blockWidth).baseFirstLineWidth
+          : blockWidth;
+      const projectedTableZones = activeTablePageRects.map((rect) => {
+        const zone = projectFloatingTablePageRect({
+          rect,
+          contentLeft: blockContentLeft,
+          contentTop: blockContentTop,
+          contentWidth: blockWidth,
+        });
+        // A side wrap starts after the paragraph's before-spacing. A line
+        // that has to clear the table keeps that spacing below the exclusion.
+        if (
+          anchorSpaceBefore === 0 ||
+          getFloatingAvailableWidth(zone, firstLineWidth) <
+            MIN_WRAP_SEGMENT_WIDTH
+        ) {
+          return zone;
+        }
+        zone.topY -= anchorSpaceBefore;
+        zone.bottomY -= anchorSpaceBefore;
+        return zone;
+      });
+      const earlierTableZones = options?.raisedTableWrap?.get(block.id);
+      if (earlierTableZones) {
+        for (const zone of earlierTableZones) {
+          projectedTableZones.push({
+            ...zone,
+            topY: zone.topY + cumulativeY,
+            bottomY: zone.bottomY + cumulativeY,
+          });
+        }
+      }
+      const zones =
+        activeZones.length > 0 || projectedTableZones.length > 0
+          ? [...activeZones, ...projectedTableZones]
+          : undefined;
       const blockZones = isUndecoratedParagraphMark(block)
         ? zones?.filter((zone) => zone.source !== "floatingTable")
         : zones;
