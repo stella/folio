@@ -223,11 +223,7 @@ const FORMATTINGS = ["the anchor's", "other"] as const;
 
 test.each(
   FOLLOWERS.flatMap((place) =>
-    // An anchor inserted whole stays or goes by its own words too, which is
-    // not about the mark a new paragraph takes over.
-    ANCHORS.filter(
-      ({ pending }) => !place.takesOver || !pending.includes(PENDING_TEXT),
-    ).flatMap((source) =>
+    ANCHORS.flatMap((source) =>
       FORMATTINGS.map((formatting) => ({
         name: `before ${place.name}, after one with ${source.name}, with ${formatting} properties,`,
         place,
