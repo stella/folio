@@ -28,7 +28,7 @@ import {
   tableDocument,
   toArrayBuffer,
 } from "../support/documents.ts";
-import { runFlow } from "../support/fuzz.ts";
+import { runFlow, runFlowFile } from "../support/fuzz.ts";
 import {
   applyChecked,
   capture,
@@ -929,7 +929,7 @@ test(
   { timeout: 30_000 },
   async () => {
     let checked = false;
-    await runFlow(1873083933, 16, "collisions", {
+    const options = {
       generation: "targeted",
       checks: [
         {
@@ -942,8 +942,6 @@ test(
             const inserted = rowsOf(flow.reviewer).find(
               (row) => row.text === text,
             );
-            assert.ok(inserted);
-            assert.deepEqual(inserted.listReference, expected);
             const records = flow.reviewer.exportPendingSuggestions();
             const proposal = records.find(
               ({ operation }) =>
@@ -951,7 +949,31 @@ test(
                   operation.type === "insertBeforeBlock") &&
                 operation.text === text,
             );
-            assert.ok(proposal);
+            if (scenarioEngine() === "canonical") {
+              assert.equal(inserted, undefined);
+              assert.equal(proposal, undefined);
+            } else {
+              assert.ok(inserted);
+              assert.deepEqual(inserted.listReference, expected);
+              assert.ok(proposal);
+            }
+            const attempted = flow.trace
+              .at(-1)
+              ?.operations?.find(
+                (item) =>
+                  item["type"] === "insertAfterBlock" && item["text"] === text,
+              );
+            assert.ok(typeof attempted?.["blockId"] === "string");
+            assert.equal(attempted["styleId"], "Heading2");
+            const operation =
+              proposal?.operation ??
+              ({
+                type: "insertAfterBlock",
+                blockId: attempted["blockId"],
+                text,
+                styleId: "Heading2",
+              } as const);
+            assert.equal(operation.type, "insertAfterBlock");
             const { bytes } = await saved();
             const reopened = await openReviewer(bytes);
             // Proposals are host-owned, outside DOCX until explicitly accepted.
@@ -972,8 +994,6 @@ test(
             // The live anchor inherits list numbering only through a pending deletion
             // that the saved baseline does not contain, so anchor the control on the
             // nearest saved paragraph that carries the same numbering.
-            const { operation } = proposal;
-            assert.ok(operation.type === "insertAfterBlock");
             const savedRows = rowsOf(await openReviewer(bytes));
             const liveAnchorAt = savedRows.findIndex(
               (row) => row.id === operation.blockId,
@@ -1091,7 +1111,32 @@ test(
           },
         },
       ],
-    });
+    } satisfies Parameters<typeof runFlow>[3];
+    if (scenarioEngine() === "canonical") {
+      // The tracked placement used by a suggestion reaches a final mark
+      // whose paragraph properties are under review. Pin the refusal and
+      // atomic rollback before exercising persistence on the saved baseline.
+      const { flow } = await runFlow(1873083933, 16, "collisions", {
+        generation: options.generation,
+      });
+      const insertion = flow.steps.at(14);
+      assert.equal(insertion?.action, "story batch");
+      assert.equal(insertion.atomic, true);
+      assert.equal(insertion.operations?.length, 2);
+      const steps = flow.steps.with(14, {
+        ...insertion,
+        expectedRefusals: {
+          canonical: {
+            code: "pendingParagraphPropertyChange",
+            message:
+              "A tracked insertion after a paragraph no paragraph follows needs the anchor's properties free of a pending change.",
+          },
+        },
+      });
+      await runFlowFile({ ...flow, steps }, options);
+    } else {
+      await runFlow(1873083933, 16, "collisions", options);
+    }
     assert.equal(
       checked,
       true,
