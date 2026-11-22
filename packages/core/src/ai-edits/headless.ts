@@ -235,7 +235,7 @@ import type {
   SectionProperties,
   StyleDefinitions,
 } from "../types/document";
-import { readModel } from "../types/documentModel";
+import { readModel, type ReadonlyDocument } from "../types/documentModel";
 import { canonicalJson } from "../utils/canonicalJson";
 import type {
   FolioReplacementBackground,
@@ -1695,6 +1695,11 @@ export class FolioDocxReviewer {
    * types its inputs `readonly Comment[]`).
    */
   private readonly resolvedOverrides = new Map<number, boolean>();
+  /** The resolved copies {@link resolvedSessionReader} last read, by view. */
+  private readonly resolvedSessionReaders = new Map<
+    FolioResolvedReviewedView,
+    WeakRef<{ document: ReadonlyDocument; reviewer: FolioDocxReviewer }>
+  >();
   private readonly engine: FolioReviewerEngine;
   /** This document's comment ids: loaded, created, and never reissued. */
   private readonly commentIds: CommentIdAllocator;
@@ -3106,7 +3111,7 @@ export class FolioDocxReviewer {
     }
     // A resolved view is read from a second session resolved that way.
     if (this.engine.type === "canonical" && view !== "current-markup")
-      return this.resolvedSessionCopy(
+      return this.resolvedSessionReader(
         this.engine.session,
         view,
       ).snapshotReviewedStoryInternal({ story, view: "current-markup" });
@@ -3176,7 +3181,7 @@ export class FolioDocxReviewer {
       });
     }
     if (this.engine.type === "canonical" && view !== "current-markup")
-      return this.resolvedSessionCopy(this.engine.session, view).storyTables({
+      return this.resolvedSessionReader(this.engine.session, view).storyTables({
         story,
         view: "current-markup",
       });
@@ -5006,6 +5011,23 @@ export class FolioDocxReviewer {
     if (decision === "accept") copy.acceptAll();
     else copy.rejectAll();
     return copy.toDocument();
+  }
+
+  /**
+   * The {@link resolvedSessionCopy} a reader takes one story of: the stories
+   * of one document share it until a commit replaces the document. Held
+   * weakly, so a reviewer does not keep the copy's session alive.
+   */
+  private resolvedSessionReader(
+    session: CanonicalSession,
+    view: FolioResolvedReviewedView,
+  ): FolioDocxReviewer {
+    const { document } = session;
+    const held = this.resolvedSessionReaders.get(view)?.deref();
+    if (held?.document === document) return held.reviewer;
+    const reviewer = this.resolvedSessionCopy(session, view);
+    this.resolvedSessionReaders.set(view, new WeakRef({ document, reviewer }));
+    return reviewer;
   }
 
   /**

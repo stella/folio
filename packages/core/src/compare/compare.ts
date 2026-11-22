@@ -1139,13 +1139,18 @@ export const applyComparison = (
   let remainingProvenanceRanges =
     MAX_COMPARE_OPERATIONS - plannedOperationCount - finalSectionOperationCount;
   const wordDiff = createScopedWordDiffOptions({ granularity });
+  const edited: {
+    pair: PlannedStoryComparison["pair"];
+    plan: PlannedStoryComparison["plan"];
+    rawBaseSnapshot: FolioAIEditSnapshot;
+    baseBeforeGeometry: ReturnType<typeof projectTableGeometry>;
+  }[] = [];
   for (const { pair, plan } of planned) {
     changes.push(...plan.changes);
     failures.push(...plan.verificationFailures);
     // Retained before anything lands: this is the document the redline is
     // written against, and rejecting every revision has to return to it.
     const rawBaseSnapshot = pair.rawBaseSnapshot ?? pair.baseSnapshot;
-    const baseBefore = rawBaseSnapshot.blocks;
     const baseBeforeGeometry = projectTableGeometry(
       storyTablesOf(rawBaseSnapshot),
     );
@@ -1440,7 +1445,12 @@ export const applyComparison = (
     ) {
       continue;
     }
+    edited.push({ pair, plan, rawBaseSnapshot, baseBeforeGeometry });
+  }
 
+  // Read once every story is edited: the redline handed back is the one each
+  // story is checked in, and the stories share one resolved copy of it.
+  for (const { pair, plan, rawBaseSnapshot, baseBeforeGeometry } of edited) {
     const acceptedSnapshot = comparisonAccess.snapshotReviewedStory({
       story: pair.baseStory,
       view: "final",
@@ -1522,7 +1532,7 @@ export const applyComparison = (
       invariant: "reject-reproduces-base",
       story: pair.baseStory,
       actual: rejectedSnapshot?.blocks ?? [],
-      expected: baseBefore,
+      expected: rawBaseSnapshot.blocks,
     });
     if (rejectFailure) {
       failures.push(rejectFailure);
