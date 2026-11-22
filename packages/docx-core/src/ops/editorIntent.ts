@@ -113,6 +113,7 @@ import {
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import {
   isRemovedRevisionNode,
+  isTrackedWrapper,
   paragraphPropertiesOf,
   reviewFieldsOf,
 } from "./review";
@@ -3677,6 +3678,18 @@ const compileInStory = (
         const planned = planTrackedReplacement(document, {
           sourceContainerPolicy: "join",
           cuts: controls.cuts,
+          ...(controls.cuts.length === 0
+            ? {}
+            : {
+                retainControls: {
+                  ranges: controls.ranges,
+                  moveInside: (options) =>
+                    controlDeletionPatch({
+                      ...options,
+                      controls: controls.ids,
+                    }),
+                },
+              }),
           from,
           to,
           revision: text === "" ? struck : mode.revision,
@@ -4558,8 +4571,9 @@ const selectedControlText = ({
   inside,
 }: SelectedControlTextOptions) => {
   const ids = new Set<number>();
+  const ranges: { start: TextPosition; end: TextPosition }[] = [];
   if (inside === undefined || idKey(from.blockId) !== idKey(to.blockId))
-    return { ids, cuts: [] };
+    return { ids, cuts: [], ranges };
   const cuts: Gap[] = [];
   const start = {
     offset: from.offset,
@@ -4590,16 +4604,26 @@ const selectedControlText = ({
       continue;
     ids.add(control.properties.id);
     const cut = control === atStart ? controlEnd : controlStart;
+    if (compareGaps(start, cut) >= 0 || compareGaps(cut, end) >= 0) continue;
+    // Stage this piece first only if it cannot retract any already-added
+    // content, which would shift the source positions of the other pieces.
     if (
-      compareGaps(start, cut) < 0 &&
-      compareGaps(cut, end) < 0 &&
-      !cuts.some((existing) => compareGaps(existing, cut) === 0)
+      spans.some(
+        (span) => inControl(span) && span.ancestors.some(isTrackedWrapper),
+      )
     )
+      continue;
+    ranges.push({
+      start: { ...from, ...controlStart },
+      end: { ...from, ...controlEnd },
+    });
+    if (!cuts.some((existing) => compareGaps(existing, cut) === 0))
       cuts.push(cut);
   }
   return {
     ids,
     cuts: cuts.toSorted(compareGaps).map((cut) => Object.assign({}, from, cut)),
+    ranges,
   };
 };
 
@@ -4635,17 +4659,43 @@ const strikeInsideControl = ({
       : planned.findIndex((op) => op.type === DOCUMENT_OP_TYPES.INSERT_CONTENT);
   if (split <= 0) return Result.ok(planned);
   const deletion = planned.slice(0, split);
+  const applied = applyDocumentOps(document, deletion);
+  if (applied.isErr()) return Result.err(applied.error);
+  const patch = controlDeletionPatch({
+    document: applied.value.document,
+    start: from,
+    controls,
+    operations: deletion,
+  });
+  return Result.ok(
+    patch === undefined
+      ? planned
+      : [...deletion, patch, ...planned.slice(split)],
+  );
+};
+
+type ControlDeletionPatchOptions = {
+  document: Document;
+  start: TextPosition;
+  operations: readonly DocumentOp[];
+  controls: ReadonlySet<number>;
+};
+
+const controlDeletionPatch = ({
+  document,
+  start,
+  operations,
+  controls,
+}: ControlDeletionPatchOptions) => {
   const struck = new Set(
-    deletion.flatMap((op) =>
+    operations.flatMap((op) =>
       op.type === DOCUMENT_OP_TYPES.DELETE_RANGE && op.revision !== undefined
         ? [op.revision.id]
         : [],
     ),
   );
-  const applied = applyDocumentOps(document, deletion);
-  if (applied.isErr()) return Result.err(applied.error);
-  const paragraph = paragraphAt(applied.value.document, from);
-  if (paragraph?.paraId === undefined) return Result.ok(planned);
+  const paragraph = paragraphAt(document, start);
+  if (paragraph?.paraId === undefined) return undefined;
   let swapped = false;
   const markControlText = (node: InlineNode): InlineNode => {
     if (
@@ -4684,18 +4734,15 @@ const strikeInsideControl = ({
     };
   };
   const content = asParagraphContent(paragraph.content.map(markControlText));
-  if (!swapped) return Result.ok(planned);
-  return Result.ok([
-    ...deletion,
-    {
-      type: DOCUMENT_OP_TYPES.REPLACE_INLINE,
-      story: from.story,
-      blockId: paragraph.paraId,
-      expected: paragraph.content,
-      content,
-    },
-    ...planned.slice(split),
-  ]);
+  return swapped
+    ? ({
+        type: DOCUMENT_OP_TYPES.REPLACE_INLINE,
+        story: start.story,
+        blockId: paragraph.paraId,
+        expected: paragraph.content,
+        content,
+      } satisfies DocumentOp)
+    : undefined;
 };
 
 /**

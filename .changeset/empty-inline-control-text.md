@@ -3,4 +3,4 @@
 "@stll/folio-core": patch
 ---
 
-Retain an inline content control when a text replacement starts or ends inside it and removes all its text.
+Keep an inline content control after an exact text deletion. Track its selected text separately from adjacent text when the selection starts or ends inside the control.

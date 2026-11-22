@@ -197,6 +197,14 @@ export type PlanTrackedReplaceOptions = PlanTrackedDeletionOptions & {
 
 type PlanTrackedReplacementOptions = PlanTrackedReplaceOptions & {
   cuts?: readonly TextPosition[];
+  retainControls?: {
+    ranges: readonly { start: TextPosition; end: TextPosition }[];
+    moveInside: (options: {
+      document: Document;
+      start: TextPosition;
+      operations: readonly DocumentOp[];
+    }) => ReplaceInlineOp | undefined;
+  };
 };
 
 /**
@@ -237,17 +245,44 @@ export const planTrackedReplacement = (
       : { deletionRevision: options.deletionRevision }),
   });
   const edges = [from, ...cuts, options.to];
+  const sameGap = (left: TextPosition, right: TextPosition) =>
+    left.offset === right.offset &&
+    (left.zeroWidthBefore ?? 0) === (right.zeroWidthBefore ?? 0);
+  const pieces = [];
   for (let index = edges.length - 1; index > 0; index -= 1) {
     const start = itemBefore(edges, index);
     const end = edges.at(index);
     if (start === undefined || end === undefined)
       panic("A replacement deletion has both endpoints.");
+    const retainsControl =
+      options.retainControls?.ranges.some(
+        (range) => sameGap(start, range.start) && sameGap(end, range.end),
+      ) === true;
+    pieces.push({ start, end, retainsControl });
+  }
+  // Move the control's deletion inside it before the neighbouring pieces
+  // can join its record. These pieces only stage tracked deletions, so the
+  // following source positions are unchanged.
+  for (const { start, end, retainsControl } of pieces.toSorted(
+    (left, right) => Number(right.retainsControl) - Number(left.retainsControl),
+  )) {
+    const operationStart = plan.ops.length;
     const deleted = appendTrackedDeletion({
       document: plan.document(),
       options: { ...options, from: start, to: end },
       plan,
     });
     if (deleted.isErr()) return Result.err(deleted.error);
+    if (!retainsControl) continue;
+    const move = options.retainControls?.moveInside({
+      document: plan.document(),
+      start,
+      operations: plan.ops.slice(operationStart),
+    });
+    if (move !== undefined) {
+      const moved = plan.append(move);
+      if (moved.isErr()) return Result.err(moved.error);
+    }
   }
   if (
     options.sourceContainerPolicy === "separate" &&
