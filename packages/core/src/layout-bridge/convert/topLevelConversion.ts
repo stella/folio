@@ -57,6 +57,8 @@ export type TopLevelConversion = {
   readonly before: ConversionCheckpoint;
   /** The blocks the node projected, before the passes over the whole list. */
   readonly blocks: readonly FlowBlock[];
+  /** The first block of this node was a table and opened the story. */
+  readonly openedStoryWithTable?: true;
   /** For a node that converted to one paragraph block: the marker it had. */
   readonly paragraphMarker?: { readonly marker: ParagraphListMarker };
 };

@@ -27,6 +27,7 @@ import {
 } from "../../types/documentEnumValues";
 import { AUTO_PARAGRAPH_SPACING_PX } from "../../utils/units";
 import { HYPERLINK_ATTRIBUTE_CHANGES } from "./__fixtures__/hyperlinkAttributeChanges";
+import { ParagraphBlockCache } from "./paragraphBlockCache";
 import { toFlowBlocks } from "./toFlowBlocks";
 
 describe("toFlowBlocks paragraph formatting", () => {
@@ -3401,6 +3402,38 @@ describe("toFlowBlocks table cell formatting", () => {
     expect(
       ordinaryParagraph.attrs?.suppressEmptyParagraphHeight,
     ).toBeUndefined();
+  });
+
+  test("collapses a sole hidden cell end mark after the table stops opening the story", () => {
+    const table = schema.node("table", null, [
+      schema.node("tableRow", null, [
+        schema.node("tableCell", { hideMark: true }, [
+          schema.node("paragraph"),
+        ]),
+      ]),
+    ]);
+    const opening = schema.node("doc", null, [table]);
+    const later = schema.node("doc", null, [
+      schema.node("paragraph", null, [schema.text("Lead")]),
+      table,
+    ]);
+    const paragraphBlocks = new ParagraphBlockCache();
+    const terminalMark = (doc: typeof opening) => {
+      const flow = toFlowBlocks(doc, { paragraphBlocks }).find(
+        (block) => block.kind === "table",
+      );
+      const mark = flow?.rows.at(0)?.cells.at(0)?.blocks.at(0);
+      if (mark?.kind !== "paragraph") {
+        panic("Expected a cell end paragraph");
+      }
+      return mark.attrs?.suppressEmptyParagraphHeight ?? false;
+    };
+
+    expect([
+      terminalMark(opening),
+      terminalMark(later),
+      terminalMark(opening),
+    ]).toEqual([false, true, false]);
   });
 
   test("threads the cell text direction into the engine TableCell", () => {
