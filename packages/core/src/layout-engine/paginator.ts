@@ -8,7 +8,10 @@
 import { panic } from "better-result";
 
 import { columnPictureClipViewportForColumn } from "../utils/paragraphInlineLayout";
-import { collapseParagraphSpacing } from "./paragraphSpacing";
+import {
+  collapseParagraphSpacing,
+  isAtFollowingColumnStart,
+} from "./paragraphSpacing";
 import type {
   ColumnLayout,
   Fragment,
@@ -621,6 +624,12 @@ export function createPaginator(options: PaginatorOptions): {
     return createNewPage();
   }
 
+  const isAtFreshColumnRegion = (state: PageState): boolean =>
+    isAtFollowingColumnStart(
+      state.columnIndex,
+      state.cursorY === columnRegionTop,
+    );
+
   /**
    * Ensure content of given height can fit.
    * Advances column or creates new page if needed.
@@ -651,10 +660,9 @@ export function createPaginator(options: PaginatorOptions): {
       freshColumnHeight > 0
         ? freshColumnHeight
         : safeHeight;
-    let heightToFit =
-      state.columnIndex > 0 && state.cursorY === columnRegionTop
-        ? safeFreshColumnHeight
-        : safeHeight;
+    let heightToFit = isAtFreshColumnRegion(state)
+      ? safeFreshColumnHeight
+      : safeHeight;
 
     // Keep advancing until we have space
     while (!fits(heightToFit, state)) {
@@ -677,10 +685,9 @@ export function createPaginator(options: PaginatorOptions): {
         return state;
       }
       state = advanceColumn(state);
-      heightToFit =
-        state.columnIndex > 0 && state.cursorY === columnRegionTop
-          ? safeFreshColumnHeight
-          : safeHeight;
+      heightToFit = isAtFreshColumnRegion(state)
+        ? safeFreshColumnHeight
+        : safeHeight;
     }
 
     return state;
@@ -719,7 +726,7 @@ export function createPaginator(options: PaginatorOptions): {
     let actualSpaceBefore = isSameFlowRegion
       ? effectiveSpaceBefore
       : spaceBefore;
-    if (state.columnIndex > 0 && state.cursorY === columnRegionTop) {
+    if (isAtFreshColumnRegion(state)) {
       actualSpaceBefore = 0;
     }
 
@@ -1120,7 +1127,7 @@ export function createPaginator(options: PaginatorOptions): {
     ensureFits,
     isAtFreshColumnRegion: (): boolean => {
       const state = getCurrentState();
-      return state.columnIndex > 0 && state.cursorY === columnRegionTop;
+      return isAtFreshColumnRegion(state);
     },
     /** Add a fragment to current page. */
     addFragment,

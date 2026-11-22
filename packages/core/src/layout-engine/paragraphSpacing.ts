@@ -31,6 +31,12 @@ export const collapseParagraphSpacing = ({
   after,
 }: CollapseParagraphSpacingOptions): number => Math.max(before, after);
 
+/** At the start of a later column, flow omits leading paragraph spacing. */
+export const isAtFollowingColumnStart = (
+  columnIndex: number,
+  isAtRegionStart: boolean,
+): boolean => columnIndex > 0 && isAtRegionStart;
+
 /** Whether a paragraph has no visible run content. */
 export function isEmptyParagraph(block: ParagraphBlock): boolean {
   if (block.runs.length === 0) {
