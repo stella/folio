@@ -41,9 +41,8 @@ type BorderInput = {
 /**
  * Every CSS `border-style` folio paints, as a display-list pattern.
  *
- * The bevelled keywords have no display-list pattern, and Word draws
- * `threeDEmboss`/`threeDEngrave` as a plain line where the shading is
- * unavailable, so they stroke solid.
+ * Callers that paint a bevel emit its parallel strokes before using this
+ * table. Otherwise the bevelled keywords fall back to a plain line.
  */
 export const CSS_BORDER_STROKE_PATTERNS: {
   readonly none: "none";

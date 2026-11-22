@@ -16,6 +16,11 @@ import {
 
 import { measureParagraph } from "../layout-engine/measure";
 import {
+  type TableBorderSide,
+  tableCellBorderBevel,
+  tableCellBorderWidth,
+} from "../layout-engine/measure/tableBorderBevel";
+import {
   buildTableCellFloatingZones,
   getTableCellContentWidth,
   getTableCellFloatingImages,
@@ -635,19 +640,61 @@ export function renderNestedTable(
 /**
  * Apply a single border to an element.
  */
+type CellBorderPaintOptions = {
+  side: TableBorderSide;
+  border: CellBorderSpec | undefined;
+  paddingPx?: number;
+};
+
+const BORDER_BOX_SIDES = {
+  top: { border: "borderTop", padding: "paddingTop" },
+  right: { border: "borderRight", padding: "paddingRight" },
+  bottom: { border: "borderBottom", padding: "paddingBottom" },
+  left: { border: "borderLeft", padding: "paddingLeft" },
+} as const;
+
+const prependBackgroundLayer = (existing: string, layer: string): string =>
+  existing ? `${layer}, ${existing}` : layer;
+
 function applyBorder(
   el: HTMLElement,
-  side: "top" | "right" | "bottom" | "left",
-  border: CellBorderSpec | undefined,
+  { side, border, paddingPx = 0 }: CellBorderPaintOptions,
 ): void {
-  const styleProp = `border${side.charAt(0).toUpperCase() + side.slice(1)}` as
-    "borderTop" | "borderRight" | "borderBottom" | "borderLeft";
-
+  const props = BORDER_BOX_SIDES[side];
   if (!border || !paintsCssBorder(border.style)) {
-    el.style[styleProp] = "none";
-  } else {
-    el.style[styleProp] = borderStrokeToCss(border);
+    el.style[props.border] = "none";
+    return;
   }
+  const bevel = tableCellBorderBevel(border);
+  if (!bevel) {
+    el.style[props.border] = borderStrokeToCss(border);
+    return;
+  }
+  const horizontal = side === "top" || side === "bottom";
+  const bands = bevel.bands.map(
+    ({ color, offsetPx, widthPx }) =>
+      `rgb(${color.r}, ${color.g}, ${color.b}) ${offsetPx}px ${offsetPx + widthPx}px`,
+  );
+  const gradient = `linear-gradient(to ${horizontal ? "bottom" : "right"}, ${bands.join(", ")})`;
+  // CSS rounds border widths, so reserve the precise bevel extent in the
+  // border box with padding and paint the strokes on top of the cell fill.
+  el.style[props.border] = "none";
+  el.style[props.padding] = `${paddingPx + bevel.widthPx}px`;
+  el.style.backgroundOrigin = "border-box";
+  el.style.backgroundClip = "border-box";
+  el.style.backgroundRepeat = "no-repeat";
+  el.style.backgroundImage = prependBackgroundLayer(
+    el.style.backgroundImage,
+    gradient,
+  );
+  el.style.backgroundPosition = prependBackgroundLayer(
+    el.style.backgroundPosition,
+    side,
+  );
+  el.style.backgroundSize = prependBackgroundLayer(
+    el.style.backgroundSize,
+    horizontal ? `100% ${bevel.widthPx}px` : `${bevel.widthPx}px 100%`,
+  );
 }
 
 type CellDiagonalDirection =
@@ -785,15 +832,31 @@ function renderTableCell({
     // own the shared edge. This also preserves partial boxes that begin inside
     // a table instead of limiting those sides to the table perimeter.
     if (borderFlags.drawTop) {
-      applyBorder(cellEl, "top", cell.borders.top);
+      applyBorder(cellEl, {
+        side: "top",
+        border: cell.borders.top,
+        paddingPx: padTop,
+      });
     }
-    applyBorder(cellEl, "right", cell.borders.right);
     if (borderFlags.drawBottom) {
-      applyBorder(cellEl, "bottom", cell.borders.bottom);
+      applyBorder(cellEl, {
+        side: "bottom",
+        border: cell.borders.bottom,
+        paddingPx: padBottom,
+      });
     }
     if (borderFlags.drawLeft) {
-      applyBorder(cellEl, "left", cell.borders.left);
+      applyBorder(cellEl, {
+        side: "left",
+        border: cell.borders.left,
+        paddingPx: padLeft,
+      });
     }
+    applyBorder(cellEl, {
+      side: "right",
+      border: cell.borders.right,
+      paddingPx: padRight,
+    });
   }
   // No default border - cells without explicit borders should be borderless
 
@@ -852,7 +915,7 @@ function renderTableCell({
     (cell.verticalAlign === "center" || cell.verticalAlign === "bottom");
   const topBorderHeight =
     borderFlags.drawTop && hasVisibleBorder(cell.borders?.top)
-      ? (cell.borders?.top?.width ?? 0)
+      ? tableCellBorderWidth(cell.borders?.top)
       : 0;
   const contentBand =
     visibleBand && cellTextRotation === 0 && !contentMovesInCell
@@ -1194,7 +1257,10 @@ function renderTableRow({
       bottomBorderEl.style.boxSizing = "border-box";
       bottomBorderEl.style.pointerEvents = "none";
       bottomBorderEl.style.zIndex = "1";
-      applyBorder(bottomBorderEl, "bottom", cell.borders?.bottom);
+      applyBorder(bottomBorderEl, {
+        side: "bottom",
+        border: cell.borders?.bottom,
+      });
       rowEl.append(bottomBorderEl);
     }
   }
@@ -1451,7 +1517,7 @@ export function renderTableFragment(
     borderEl.style.boxSizing = "border-box";
     borderEl.style.pointerEvents = "none";
     borderEl.style.zIndex = "1";
-    applyBorder(borderEl, "bottom", border);
+    applyBorder(borderEl, { side: "bottom", border });
     tableEl.append(borderEl);
   }
 
