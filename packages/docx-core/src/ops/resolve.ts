@@ -5536,13 +5536,9 @@ const joinOps = (
       receiverEffects,
     );
   }
-  // Fail closed: content resolved across a range boundary standing between
-  // blocks, or after the container's last paragraph, would move into or out
-  // of its range.
-  if (
-    (next !== undefined && isBlockBoundary(next)) ||
-    (follower === undefined && standing.length > 0)
-  ) {
+  // A section-ending mark cannot move contents across a range boundary.
+  // A boundary at the end stays in place while the last mark resolves.
+  if (next !== undefined && isBlockBoundary(next)) {
     return Result.err(
       new DocumentOpRefusal({
         opType: op.type,
