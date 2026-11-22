@@ -721,7 +721,9 @@ export type CellBorderSpec = {
     | "thickThinSmallGap"
     | "thinThickLargeGap"
     | "thickThinLargeGap"
-    | "dotDash";
+    | "dotDash"
+    | "dashSmallGap"
+    | "dotDotDash";
 };
 
 /**

@@ -71,8 +71,11 @@ export type DisplayStroke = {
   readonly color: DisplayColor;
   readonly thicknessPx: number;
   readonly pattern: DisplayStrokePattern;
-  /** For dashed strokes, one explicit cycle of ink, gap, ink and gap in CSS pixels. */
-  readonly dashArrayPx?: readonly [number, number, number, number];
+  /** For dashed strokes, one explicit cycle of alternating ink and gaps in CSS pixels. */
+  readonly dashArrayPx?:
+    | readonly [number, number]
+    | readonly [number, number, number, number]
+    | readonly [number, number, number, number, number, number];
 };
 
 /**

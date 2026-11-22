@@ -2,4 +2,4 @@
 "@stll/folio-core": patch
 ---
 
-Draw dot-dash table borders with their authored width and alternating dash and dot pattern.
+Draw compact dashed and dot-dash table borders with their authored stroke width and repeating pattern.

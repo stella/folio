@@ -58,7 +58,12 @@ export function convertCellBorderSpecToLayout(
   const converted = convertBorderSpecToLayout(border, theme);
   if (!converted) return undefined;
   const { style } = border;
-  if (hasCompoundTableBorderBands(style) || style === "dotDash")
+  if (
+    hasCompoundTableBorderBands(style) ||
+    style === "dotDash" ||
+    style === "dashSmallGap" ||
+    style === "dotDotDash"
+  )
     return { ...converted, authoredStyle: style };
   return converted;
 }
