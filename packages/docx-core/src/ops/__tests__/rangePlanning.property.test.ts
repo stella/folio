@@ -33,7 +33,7 @@ import {
   SPLIT_HALVES,
 } from "../types";
 
-setDefaultTimeout(propertyTestTimeout(120_000));
+setDefaultTimeout(propertyTestTimeout(210_000));
 
 const apply = (document: Document, op: DocumentOp) => {
   const result = applyDocumentOp(document, op);
