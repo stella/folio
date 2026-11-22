@@ -35,7 +35,7 @@ import {
   storyBody,
   storyParagraphs,
 } from "./blocks";
-import { isCommentExhausted } from "./comments";
+import { isCommentExhausted, linksEmptiedByRetirement } from "./comments";
 import { packageIdOccupancy } from "./editorIntentCensus";
 import { combineEdits } from "./edits";
 import { structurallyEqual } from "./equality";
@@ -105,6 +105,7 @@ import {
 } from "./plan";
 import {
   cutPieceHandoffs,
+  pastEndedComments,
   planTrackedReplace,
   rangeEndAfterDeletion,
 } from "./rangeReplacement";
@@ -3746,6 +3747,18 @@ const compileInStory = (
             parentId === undefined && anchorKind !== "range",
         );
       if (replacesWholeParagraph) {
+        // Text replacing a paragraph whose words are exactly a hyperlink's
+        // takes a copy of the link, as the exact-text rule gives it.
+        const words = paragraph.content.filter(
+          (node) => !isRangeBoundary(node) && node.type !== "commentReference",
+        );
+        const [link] = words;
+        const linked =
+          words.length === 1 &&
+          link?.type === "hyperlink" &&
+          link.children.every((child) => child.type === "run")
+            ? [withChildren(link, content)]
+            : content;
         ops = [
           {
             type: DOCUMENT_OP_TYPES.REPLACE_INLINE,
@@ -3756,7 +3769,7 @@ const compileInStory = (
               ...paragraph.content.filter(
                 (node) => isParagraphContent(node) && isRangeBoundary(node),
               ),
-              ...content,
+              ...linked,
               ...paragraph.content.filter(
                 (node) =>
                   isParagraphContent(node) && node.type === "commentReference",
@@ -4252,6 +4265,18 @@ const compileInStory = (
       current = retired.value.document;
       retiredIds.add(id);
     }
+    for (const removal of linksEmptiedByRetirement({
+      before: beforeRetirement,
+      after: current,
+      story,
+      retired: retiredIds,
+    })) {
+      const removed = applyDocumentOp(current, removal);
+      if (removed.isErr()) return Result.err(removed.error);
+      compact.push(removal);
+      steps.push(removed.value);
+      current = removed.value.document;
+    }
     // The caret stands after the leaves before it; the retired threads'
     // markers among them are gone.
     const caretParagraph =
@@ -4618,23 +4643,35 @@ const continuation = (
       break;
     containers.push(ancestor);
   }
-  // Text replacing exactly a hyperlink's text keeps the link. The range
-  // holds every leaf of the link and nothing beside it, so no piece of the
-  // link stays on either side to meet: the text takes a copy of it. A range
-  // reaching past the link, or a caret at its edge, leaves the text outside.
-  const link = caret ? undefined : last?.ancestors[containers.length];
+  // Text replacing words of one hyperlink, or typed between two of its
+  // leaves, stays in the link; a range reaching past the link, or a caret at
+  // its edge, leaves the text outside. A range holding every leaf of the
+  // link leaves no piece of it to meet, so there the text takes a copy of
+  // the link, which meets none. Tracked, the text continues the pieces of
+  // the link either side of it, the struck one included: a tracked record
+  // cannot stand inside a link, so the insertion records that it joins them.
+  const link = caret
+    ? left?.ancestors[containers.length]
+    : last?.ancestors[containers.length];
+  let copiesLink = false;
   if (link?.type === "hyperlink") {
-    const inRange = ({ before, after }: (typeof spans)[number]) =>
-      compareGaps(before, end) < 0 && compareGaps(after, start) > 0;
     const ofLink = ({ ancestors }: (typeof spans)[number]) =>
       ancestors.includes(link);
+    const inRange = ({ before, after }: (typeof spans)[number]) =>
+      compareGaps(before, end) < 0 && compareGaps(after, start) > 0;
     const covered = ({ before, after }: (typeof spans)[number]) =>
       compareGaps(start, before) <= 0 && compareGaps(after, end) <= 0;
-    if (
-      spans.filter(inRange).every(ofLink) &&
-      spans.filter(ofLink).every(covered)
-    )
+    // A range marker the range takes beside the link's text is no text
+    // outside it: the deletion keeps it standing where it was.
+    const marker = ({ node }: (typeof spans)[number]) =>
+      isParagraphContent(node) && isRangeBoundary(node);
+    const keepsLink = caret
+      ? right !== undefined && ofLink(right)
+      : spans.filter(inRange).every((span) => ofLink(span) || marker(span));
+    if (keepsLink) {
       containers.push(link);
+      copiesLink = spans.filter(ofLink).every(covered);
+    }
   }
   // Each open end merges with the containers the source holds on that side;
   // at a container's own edge that side has none to meet, and a copied link
@@ -4643,7 +4680,7 @@ const continuation = (
     let depth = 0;
     while (
       depth < containers.length &&
-      containers[depth]?.type !== "hyperlink" &&
+      !(copiesLink && containers[depth]?.type === "hyperlink") &&
       side?.ancestors[depth] === containers[depth]
     )
       depth += 1;
@@ -4663,12 +4700,34 @@ const continuation = (
           // empty container standing alone.
           keepsLoneEmptyContainers: true,
         }).at(-1);
+  // The replacement goes past the ends of comments the range reached (see
+  // `pastEndedComments`): it meets the last of them and the leaf after it,
+  // so a link ending before them is one the text takes a copy of. The
+  // comment goes with the words a direct edit took, and with it the link
+  // piece holding only its start (`linksEmptiedByRetirement`).
+  const passedCount =
+    caret || containers.length === 0
+      ? 0
+      : pastEndedComments(items, end.offset, end.zeroWidthBefore) -
+        end.zeroWidthBefore;
+  const passed =
+    passedCount === 0
+      ? undefined
+      : spans.find(
+          ({ before }) =>
+            before.offset === end.offset &&
+            before.zeroWidthBefore === end.zeroWidthBefore + passedCount - 1,
+        );
   return {
     containers,
     openStart: continued(
-      struck && last !== undefined ? last : (kept ?? outerLeft),
+      passed ?? (struck && last !== undefined ? last : (kept ?? outerLeft)),
     ),
-    openEnd: continued(outerRight),
+    openEnd: continued(
+      passed === undefined
+        ? outerRight
+        : spans.find(({ after }) => compareGaps(after, passed.after) > 0),
+    ),
   };
 };
 

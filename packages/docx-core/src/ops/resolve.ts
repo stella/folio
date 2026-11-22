@@ -52,7 +52,7 @@ import {
   storyBody,
   storyParagraphs,
 } from "./blocks";
-import { isCommentExhausted } from "./comments";
+import { isCommentExhausted, linksEmptiedByRetirement } from "./comments";
 import {
   acceptCopyOriginAncestor,
   rejectCopyOriginAncestorsInNodes,
@@ -776,6 +776,39 @@ export const mergeAtSeam = (
   return folded === undefined
     ? deferRunReviewSeam({ left, right, depth: Number.POSITIVE_INFINITY })
     : [folded];
+};
+
+/**
+ * How deep accepted editor text joins the piece of a record its own join
+ * names: through the containers its join reaches as far as they are alike,
+ * then the runs meeting inside them where they merge as plain runs, as the
+ * direct edit joins its typed run.
+ */
+const payloadJoinDepth = (
+  left: InlineNode,
+  right: InlineNode,
+  depth: number,
+): number => {
+  let leftEdge: InlineNode | undefined = left;
+  let rightEdge: InlineNode | undefined = right;
+  let level = 0;
+  while (
+    level < depth &&
+    leftEdge !== undefined &&
+    rightEdge !== undefined &&
+    leftEdge.type !== "run" &&
+    rightEdge.type !== "run" &&
+    sameOwnFields(leftEdge, rightEdge)
+  ) {
+    leftEdge = childNodes(leftEdge)?.at(-1);
+    rightEdge = childNodes(rightEdge)?.at(0);
+    level += 1;
+  }
+  return leftEdge?.type === "run" &&
+    rightEdge?.type === "run" &&
+    runsMergeable(leftEdge, rightEdge)
+    ? level + alikeDepth(leftEdge, rightEdge)
+    : level;
 };
 
 /** Two lists end to end, merged at the seam as {@link mergeAtSeam} merges. */
@@ -2342,8 +2375,8 @@ const resolveList = ({
     let afterIndex = index + 1;
     while (afterIndex < pending.length && goes(pending.at(afterIndex)))
       afterIndex += 1;
-    const before = beforeIndex >= 0 ? pending.at(beforeIndex) : undefined;
-    const after = pending.at(afterIndex);
+    let before = beforeIndex >= 0 ? pending.at(beforeIndex) : undefined;
+    let after = pending.at(afterIndex);
     // Every piece on one side goes with this resolution: no record of the
     // level it cut is left there to join.
     if (
@@ -2352,6 +2385,44 @@ const resolveList = ({
     )
       return 0;
     if (before === undefined || after === undefined) return depth;
+    // New content joined to nothing either side that goes too can stand
+    // between the change and the pieces it cut, which its own content
+    // continues: where such pieces stand beyond it on both sides, the cut
+    // reaches them.
+    const joinedToNothing = (candidate: InlineNode | undefined): boolean =>
+      candidate !== undefined &&
+      isTrackedWrapper(candidate) &&
+      isAddedRevision(candidate) &&
+      resolution.ids.has(candidate.info.id) &&
+      removesContent(candidate, resolution.decision) &&
+      candidate.resolutionJoins !== undefined &&
+      candidate.resolutionJoins.before === 0 &&
+      candidate.resolutionJoins.after === 0 &&
+      candidate.resolutionJoins.remove === 0;
+    let pastBefore = beforeIndex;
+    while (pastBefore >= 0 && joinedToNothing(pending.at(pastBefore)))
+      pastBefore -= 1;
+    let pastAfter = afterIndex;
+    while (pastAfter < pending.length && joinedToNothing(pending.at(pastAfter)))
+      pastAfter += 1;
+    const beyondBefore = pastBefore >= 0 ? pending.at(pastBefore) : undefined;
+    const beyondAfter = pending.at(pastAfter);
+    const first = node.content.at(0);
+    const last = node.content.at(-1);
+    if (
+      (pastBefore !== beforeIndex || pastAfter !== afterIndex) &&
+      beyondBefore !== undefined &&
+      beyondAfter !== undefined &&
+      first !== undefined &&
+      last !== undefined &&
+      !isTrackedWrapper(beyondBefore) &&
+      !isTrackedWrapper(beyondAfter) &&
+      sameOwnFields(beyondBefore, first) &&
+      sameOwnFields(last, beyondAfter)
+    ) {
+      before = beyondBefore;
+      after = beyondAfter;
+    }
     return cutReach({
       before: edgeChain(before, "end"),
       after: edgeChain(after, "start"),
@@ -2680,6 +2751,12 @@ const resolveList = ({
   };
   /** Seams a removed revision recorded between the source pieces around it. */
   const removalSeams = new Set<number>();
+  /**
+   * Seams where accepted editor text joins, by its own join, the piece of a
+   * record it continues: it merges with that piece as far as they are alike,
+   * its plain runs included, as the direct edit does.
+   */
+  const payloadJoinSeams = new Set<number>();
   /** Seams a kept revision's own joins recorded at its edges. */
   const keptJoinSeams = new Set<number>();
   /** The date of the earliest kept revision whose join recorded each seam. */
@@ -3316,6 +3393,9 @@ const resolveList = ({
       ) {
         plainSeams.add(out.length);
         plainSeams.add(out.length + content.length);
+        if (node.resolutionJoins.before > 0) payloadJoinSeams.add(out.length);
+        if (node.resolutionJoins.after > 0)
+          payloadJoinSeams.add(out.length + content.length);
       }
       const payload =
         isAddedRevision(node) &&
@@ -3673,6 +3753,9 @@ const resolveList = ({
       runsMergeable(left, right)
     )
       seams.push(seam);
+    // Text joined to a piece of a record is no plain new content there: a
+    // pending removal holding that record's other piece holds the seam.
+    else if (payloadJoinSeams.has(seam)) continue;
     else if (pendingRemoval(right)) acceptAsPlain(seam, "before");
     else if (seam > 0 && pendingRemoval(left)) acceptAsPlain(seam - 1, "after");
   }
@@ -4683,6 +4766,50 @@ const resolveList = ({
           ),
           ...(rightHolder === undefined ? [] : [rightHolder]),
         ];
+        // Accepted text joined to a piece of a record continues that record
+        // across a pending removal holding its other piece, and nothing
+        // else stands between them: rejecting the removal joins that piece
+        // at its edge, and accepting it joins the text with what stands
+        // beyond its place, as resolving both at once does.
+        const holder = leftHolder ?? rightHolder;
+        const held = holder === undefined ? undefined : out[holder];
+        if (
+          holder !== undefined &&
+          held !== undefined &&
+          payloadJoinSeams.has(recorded) &&
+          blockerIndices.length === 1 &&
+          standingKept === 0 &&
+          isTrackedWrapper(held.node) &&
+          held.node.resolutionJoins !== undefined
+        ) {
+          const joins = held.node.resolutionJoins;
+          const edge = holder === leftHolder ? "after" : "before";
+          // The text across the seam, and what stands beyond the removal.
+          const text = out[edge === "after" ? rightStart : leftEnd]?.node;
+          const beyond = out[edge === "after" ? holder - 1 : holder + 1]?.node;
+          const piece =
+            edge === "after"
+              ? held.node.content.at(-1)
+              : held.node.content.at(0);
+          const joinWith = (record: InlineNode | undefined): number => {
+            if (record === undefined || text === undefined) return 0;
+            return edge === "after"
+              ? payloadJoinDepth(record, text, deferredDepth)
+              : payloadJoinDepth(text, record, deferredDepth);
+          };
+          // The removal now meets the text there, no source piece: kept or
+          // removed, it joins the text as the text's own join does.
+          out[holder] = occurrenceOf(
+            Object.assign({}, held.node, {
+              resolutionJoins: Object.assign({}, joins, {
+                [edge]: joinWith(piece),
+                remove: joinWith(beyond),
+              }),
+            }),
+            held,
+          );
+          continue;
+        }
         const blockers = blockerIndices.flatMap((index) => {
           const node = out[index]?.node;
           return node !== undefined && isTrackedWrapper(node)
@@ -4736,15 +4863,28 @@ const resolveList = ({
     const besidePayload =
       leftOccurrence?.payload === true || rightOccurrence?.payload === true;
     if (
+      exactDepth !== undefined &&
+      payloadJoinSeams.has(recorded) &&
+      besidePayload
+    )
+      exactDepth = payloadJoinDepth(left, right, exactDepth);
+    if (
       merges.has(recorded) ||
       (exactDepth !== undefined && removalSeams.has(recorded) && besidePayload)
     ) {
       // Accepted new content merges with a plain neighbour it is alike, and
       // records no seam on a neighbour's pending review: it is no piece of it.
-      met =
-        besidePayload && alikeDepth(left, right) === 0
-          ? [left, right]
-          : mergeAtSeam(left, right, emptiedIn(resolution));
+      // Inside alike containers it meets, its runs merge as plain runs.
+      if (besidePayload && alikeDepth(left, right) === 0) met = [left, right];
+      else if (besidePayload && left.type !== "run" && right.type !== "run")
+        met =
+          mergeLists(
+            [left],
+            [right],
+            payloadJoinDepth(left, right, Number.POSITIVE_INFINITY),
+            { mode: "asFarAsAlike" },
+          ) ?? panic("An as-far-as-alike merge always returns its records.");
+      else met = mergeAtSeam(left, right, emptiedIn(resolution));
     } else if (exactDepth === undefined) {
       met = foldAtSeam(left, right, emptiedIn(resolution));
     } else {
@@ -7211,6 +7351,7 @@ const planSingleRecordResolution = (
       !isCommentExhausted({ type: "document", document, id }) &&
       isCommentExhausted({ type: "document", document: current, id }),
   );
+  const beforeRetirement = current;
   for (const { id } of exhausted) {
     const retired = applyOps(current, [
       { type: DOCUMENT_OP_TYPES.DELETE_COMMENT, id, scope: "thread" },
@@ -7218,6 +7359,18 @@ const planSingleRecordResolution = (
     if (retired.isErr()) return Result.err(retired.error);
     record(retired.value);
     current = retired.value.document;
+  }
+  const emptiedLinks = linksEmptiedByRetirement({
+    before: beforeRetirement,
+    after: current,
+    story: op.story,
+    retired: new Set(exhausted.map(({ id }) => id)),
+  });
+  if (emptiedLinks.length > 0) {
+    const removed = applyOps(current, emptiedLinks);
+    if (removed.isErr()) return Result.err(removed.error);
+    record(removed.value);
+    current = removed.value.document;
   }
   const edit = combineEditEffects(current, effects);
   if (orphaned.length > 0) {

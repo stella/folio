@@ -15,6 +15,7 @@ import {
   type LeafSpan,
   leafSpans,
   rebuildNode,
+  sameOwnFields,
 } from "./leaves";
 import { carriesStamp, isTrackedWrapper, type TrackedWrapper } from "./review";
 import { isOwnRecord } from "./revisionOwner";
@@ -124,6 +125,28 @@ export const ownInsertionSlice = ({
     if (record === undefined || span.ancestors[continued.length] !== record)
       continue;
     const chain = [...continued, record];
+    // A hyperlink inside the insertion holds the typed text too where the
+    // gap is inside it, or where the insertion joins it to the piece of the
+    // link standing across the gap: a tracked record cannot stand inside a
+    // link, so the inserted text stands in a piece of it.
+    const across = span === before ? after : before;
+    const facing = span === before ? "after" : "before";
+    for (
+      let depth = chain.length;
+      span.ancestors[depth]?.type === "hyperlink";
+      depth += 1
+    ) {
+      const link = span.ancestors[depth];
+      const piece = across?.ancestors[depth - 1];
+      const joined =
+        link !== undefined &&
+        piece?.type === "hyperlink" &&
+        sameOwnFields(piece, link) &&
+        (record.resolutionJoins?.[facing] ?? 0) >= depth - continued.length;
+      if (link === undefined || (across?.ancestors[depth] !== link && !joined))
+        break;
+      chain.push(link);
+    }
     const open = (side: LeafSpan | undefined) => {
       let depth = 0;
       while (depth < chain.length && side?.ancestors[depth] === chain[depth])
