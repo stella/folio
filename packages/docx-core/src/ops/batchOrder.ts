@@ -84,7 +84,9 @@ export const compareBatchOrder = (
     const phase = ANNOTATION_PHASE[left.kind] - ANNOTATION_PHASE[right.kind];
     if (phase !== 0) return phase;
     if (left.kind === BATCH_ANNOTATION_KINDS.FORMATTING)
-      return left.inputIndex - right.inputIndex;
+      return (
+        left.inputIndex - right.inputIndex || right.position - left.position
+      );
   }
   if (
     (left.type === "annotation" || left.type === "content") &&
