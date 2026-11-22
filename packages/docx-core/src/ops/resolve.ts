@@ -3275,6 +3275,8 @@ const resolveList = ({
   const addedRemovalSeams = new Set<number>();
   /** The date of the earliest removed insertion that recorded each of them. */
   const removalDates = new Map<number, string>();
+  /** The joins of the last removed insertion that recorded each of them. */
+  const removalJoins = new Map<number, Record<SourceOwnerSide, number>>();
   const recordSourceSeam = (index: number, depth: number): void => {
     recordExactSeam(index, depth);
     if (depth > 0)
@@ -3975,6 +3977,11 @@ const resolveList = ({
             const known = removalDates.get(out.length);
             if (known === undefined || made < known)
               removalDates.set(out.length, made);
+            if (joins !== undefined)
+              removalJoins.set(out.length, {
+                before: recordJoin(joins, "before"),
+                after: recordJoin(joins, "after"),
+              });
           }
           // The kept markers beside it naming its side (or both) as their
           // cut's piece stood at a seam it took: they are kept there, and
@@ -5462,6 +5469,27 @@ const resolveList = ({
               facingJoin,
             }) &&
             !edgeOfPiece(index, side)
+          )
+            return;
+          // A removed insertion whose join on one side was cancelled hands no
+          // seam across it: not to the piece it was made beside there, nor to
+          // content made inside it later on the side it is joined on.
+          const toward = side === "after" ? "before" : "after";
+          const removedJoins = keptJoinHandsOver
+            ? undefined
+            : removalJoins.get(recorded);
+          const removedFrom = removalDates.get(recorded);
+          if (
+            removedJoins !== undefined &&
+            removedFrom !== undefined &&
+            facingJoin === 0 &&
+            ((removedJoins[toward] === 0 &&
+              removedJoins[side] > 0 &&
+              takesLevel(index, seamDepth, removedFrom)) ||
+              (removedJoins[side] === 0 &&
+                removedJoins[toward] > 0 &&
+                isTrackedWrapper(occurrence.node) &&
+                (occurrence.node.info.date ?? "") > removedFrom))
           )
             return;
           const { node, takesKept } = handJoin({

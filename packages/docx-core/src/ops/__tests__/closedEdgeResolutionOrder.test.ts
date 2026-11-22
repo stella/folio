@@ -286,6 +286,29 @@ const shapes: Record<string, Shape> = {
       groups: [reject(1, 3), accept(2)],
       left: [embedded([tab]), text("x"), embedded([start(1), text("a")])],
     },
+  "a cancelled join hands nothing on when its insertion goes": {
+    content: [
+      insertion(1, 1, [link([embedded([end(1)])])]),
+      insertion(4, 4, [link([embedded([text("z")])])], {
+        before: 0,
+        after: 5,
+        remove: 0,
+      }),
+      insertion(2, 2, [link([embedded([text("x")])])], {
+        before: 3,
+        after: 3,
+        remove: 3,
+      }),
+      insertion(3, 3, [link([embedded([text("y")])])], {
+        before: 5,
+        after: 0,
+        remove: 0,
+      }),
+      insertion(5, 1, [link([embedded([text("a")])])]),
+    ],
+    groups: [reject(1, 5), reject(2), accept(3), reject(4)],
+    left: [end(1), link([embedded([text("y")])])],
+  },
   "markers kept from inside rejected new content stand where it was": {
     content: [
       insertion(1, 1, [text("a")]),
