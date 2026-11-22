@@ -1,6 +1,18 @@
 {
   "generated suggestions save, restage, reject and accept as the laws say": [
     {
+      "seed": -2030187668,
+      "path": "10:0:0:0:0:0:0:1:3:3:3:3:4:3:3:3:3:4:4:4:4:4:4:4:4:4:5:6:4:5:4:4:4:4:11:4:5:4:6:4:4:5:6:5:6:5:5:9:5:5:5:5:6:5:5:7:5:5:6:6:6:5:5:5:5:5:5:5:5:5",
+      "note": "#2889: a suggested removal of a paragraph holding only a comment's range and a bookmark's end, whose mark a pending deletion already took, records nothing and is refused.",
+      "date": "2026-11-22"
+    },
+    {
+      "seed": 1781268924,
+      "path": "2:1:1:1:1:1:0:0:0:1:1:1:1:1:1:1:1:1:1:1:1:1",
+      "note": "#2889: a suggested removal of the only, empty paragraph of a body, before a bookmark, changes nothing and is a no-op.",
+      "date": "2026-11-22"
+    },
+    {
       "seed": 1129960259,
       "path": "57:0:0:0:0:0:0:1:1:1:1:1:1:1:1:4:3:4:5:4:6:5:5:6:6:6:6:6:6:6:7:6:6:6:6:6:6:7:8:7:7:7:7:9:9:9:9:9:10:9:9:12:12:10:9:10:10:12:12:9:10:9:10:12:10:11:10:10:13:13:11:22:10:10:10:10:10:10:13:10:10:20:0:11:15",
       "note": "#2891: a suggested removal of a last paragraph, after an empty one that a pending join runs words into, keeps that one's properties when accepted, as the direct edit does.",

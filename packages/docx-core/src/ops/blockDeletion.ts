@@ -28,6 +28,7 @@ import {
   type InlineNode,
   isCommentAnchor,
   isCommentAnchorCarrierType,
+  isEmptyContainer,
 } from "./leaves";
 import { asMoveHalf } from "./moves";
 import {
@@ -133,13 +134,29 @@ export const deletedContent = (
     wrapped.content,
     created,
   );
+  const stands = standingIn(nodes, new Set(standing), created);
+  // What the deletion records is judged once the boundaries left it: a
+  // paragraph holding nothing else gets no record.
+  const records = nodesWhere(nodes, created);
+  if (records.length === 0) return { kind: "unchanged", standing: stands };
   return {
     kind: "deleted",
     content: asParagraphContent(nodes),
-    standing: standingIn(nodes, new Set(standing), created),
-    recordsContent: wrapped.recordsContent,
+    standing: stands,
+    recordsContent: records.some((record) =>
+      childNodes(record)?.some((child) => !isEmptyContainer(child)),
+    ),
   };
 };
+
+/** The nodes of `nodes` that `matches`, in document order, none inside another. */
+const nodesWhere = (
+  nodes: readonly InlineNode[],
+  matches: (node: InlineNode) => boolean,
+): InlineNode[] =>
+  nodes.flatMap((node) =>
+    matches(node) ? [node] : nodesWhere(childNodes(node) ?? [], matches),
+  );
 
 /** Whether `paragraph`'s own mark is pending deletion, as a move's source too. */
 const markPendingDeletion = ({ pPrMark }: Paragraph): boolean =>
@@ -775,6 +792,15 @@ const givesProperties = (
   );
 };
 
+const unchanged = (
+  document: Document,
+): Result<DocumentEdit, DocumentOpRefusal> =>
+  Result.ok({
+    document,
+    inverse: [],
+    touched: { modified: [], inserted: [], removed: [] },
+  });
+
 export const deleteBlocks = ({
   document,
   op,
@@ -1140,6 +1166,10 @@ export const deleteBlocks = ({
       directModified.push(received.receiver.paraId ?? "");
     }
   }
+  // The paragraph that ends its container keeps its place, so deleting one
+  // with no words and none before it to join changes nothing.
+  const changesNothing = structurallyEqual(directBlocks, expected);
+  if (changesNothing && op.revision === undefined) return unchanged(document);
   directOps.push(replacement(directBlocks));
   const direct = applyOps(document, directOps);
   if (direct.isErr()) return refuse(direct.error.reason, direct.error.message);
@@ -1384,14 +1414,13 @@ export const deleteBlocks = ({
   // taken, a further one records nothing on: no reader or file would show it.
   // Where the direct deletion changes nothing either, as for an empty
   // paragraph alone in its container, recording nothing is that deletion.
-  if (
-    tracked.every((paragraph, index) => paragraph === reviewed[index]) &&
-    !structurallyEqual(directBlocks, expected)
-  )
-    return refuse(
-      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      "A tracked paragraph deletion would record nothing.",
-    );
+  if (tracked.every((paragraph, index) => paragraph === reviewed[index]))
+    return changesNothing
+      ? unchanged(document)
+      : refuse(
+          DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+          "A tracked paragraph deletion would record nothing.",
+        );
   const beforeKeys = new Set(identityKeysIn(reviewed));
   const fresh = freshenIdentities({
     before: reviewed,
