@@ -31,6 +31,12 @@
   ],
   "over generated paragraphs and edits, accepted and rejected": [
     {
+      "seed": 634857483,
+      "path": "45:7:6:6:6:6:3:3:3:3:3:3:3:3:13:3:6:3:10:4:3:3:3:4:4:6:3:4:5:4:3:3:4:3:3:4:3:3:4:5:3:4:6:5:5:5",
+      "note": "A canonical deletion spanning text outside both edges of an inline control takes the whole control. Accepting the tracked deletion gives the direct result.",
+      "date": "2026-11-22"
+    },
+    {
       "seed": -256746251,
       "path": "25:1:1:1:1:1:1:2:2:3:4:4:4:4:2:3:2:3:3:3",
       "note": "Splitting a hyperlink during review can renumber the following link; its authored attributes stay the same.",

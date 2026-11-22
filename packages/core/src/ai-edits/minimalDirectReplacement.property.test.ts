@@ -9,8 +9,8 @@
  * - the block reads exactly as the replacement says;
  * - every character the change did not touch keeps its marks and the content
  *   control it sat in;
- * - no content control, bookmark or link disappears, and a field survives
- *   unless its displayed text was what changed;
+ * - bookmarks and links survive, as do fields with unchanged text and controls
+ *   whose outer boundaries the edit keeps;
  * - the package saves and reopens with the same text and the same controls
  *   and note references.
  *
@@ -304,21 +304,15 @@ const cleanCharacters = (paragraph: PMNode): CleanCharacter[] => {
   const characters: CleanCharacter[] = [];
   const noteLabels = createNoteReferenceLabeler();
   noteLabels.numberBlock(paragraph);
-  const controls = new Map<PMNode, number>();
-  const controlOf = (parent: PMNode | null): number | null =>
-    parent === null ? null : (controls.get(parent) ?? null);
   paragraph.descendants((node, _position, parent) => {
-    if (node.type.name === "sdt") {
-      controls.set(node, controls.size);
-      return true;
-    }
+    const control = authoredControlId(parent);
     const atomText = runFormattingInlineAtomCleanText(node);
     if (atomText !== null) {
       for (const character of atomText) {
         characters.push({
           character,
           marks: node.marks,
-          control: controlOf(parent),
+          control,
         });
       }
       return false;
@@ -333,13 +327,58 @@ const cleanCharacters = (paragraph: PMNode): CleanCharacter[] => {
         characters.push({
           character,
           marks: node.marks,
-          control: controlOf(parent),
+          control,
         });
       }
     }
     return true;
   });
   return characters;
+};
+
+const authoredControlId = (node: PMNode | null): number | null => {
+  if (node?.type.name !== "sdt") return null;
+  const id = node.attrs["id"];
+  if (typeof id !== "number")
+    throw new Error("expected an authored control id");
+  return id;
+};
+
+const inlineControlIds = (paragraph: PMNode): number[] => {
+  const ids: number[] = [];
+  paragraph.descendants((node) => {
+    const id = authoredControlId(node);
+    if (id !== null) ids.push(id);
+    return true;
+  });
+  return ids;
+};
+
+type ExpectedInlineControlOptions = {
+  session: HeadlessReviewerSession;
+  paragraph: PMNode;
+  characters: readonly CleanCharacter[];
+  changes: readonly TextChange[];
+  offset: number;
+};
+
+/** A canonical deletion spanning both outer edges takes the whole control. */
+const expectedInlineControlIds = ({
+  session,
+  paragraph,
+  characters,
+  changes,
+  offset,
+}: ExpectedInlineControlOptions): number[] => {
+  const ids = inlineControlIds(paragraph);
+  if (session === "legacy") return ids;
+  return ids.filter((id) => {
+    const first = characters.findIndex(({ control }) => control === id);
+    const last = characters.findLastIndex(({ control }) => control === id);
+    return !changes.some(
+      ({ start, end }) => offset + start < first && offset + end > last + 1,
+    );
+  });
 };
 
 /** The note references of a paragraph, in order, by package id. */
@@ -688,9 +727,14 @@ describe.each(SESSIONS)(
               });
             }
 
-            expect(countNodes(after.node, "sdt")).toBe(
-              countNodes(before.node, "sdt"),
-            );
+            const directControls = expectedInlineControlIds({
+              session,
+              paragraph: before.node,
+              characters: beforeCharacters,
+              changes,
+              offset: start,
+            });
+            expect(inlineControlIds(after.node)).toEqual(directControls);
             expect(countNodes(after.node, "bookmarkBoundary")).toBe(
               countNodes(before.node, "bookmarkBoundary"),
             );
@@ -725,8 +769,11 @@ describe.each(SESSIONS)(
               )
                 .entry("word/document.xml")
                 ?.text()) ?? "";
+            expect(inlineControlIds(firstParagraph(reopened).node)).toEqual(
+              directControls,
+            );
             expect((xml.match(/<w:sdt>/gu) ?? []).length).toBe(
-              countNodes(before.node, "sdt"),
+              directControls.length,
             );
             // No reference is removed, rewritten or reordered.
             expect(noteReferenceIds(after.node)).toEqual(beforeReferences);
@@ -1146,8 +1193,8 @@ describe.each(SESSIONS)(
                 }).toEqual({ node: node.type.name, revision: false });
               }
 
-              // Accepting every revision gives the replacement, with every
-              // control, bookmark and untouched field still there.
+              // Accepting every revision gives the replacement, carrying the
+              // controls whose boundaries the edit kept.
               const accepted = firstParagraphOf(
                 resolveEverything(reviewer.state, mode, "accept").doc,
               );
@@ -1164,12 +1211,14 @@ describe.each(SESSIONS)(
               }
               // Accepted or rejected, every reference is where it was.
               expect(noteReferenceIds(accepted.node)).toEqual(beforeReferences);
-              // The change revises the text inside a control, not the control:
-              // accepting the deletion of all its text leaves it standing,
-              // emptied, as the direct replacement does.
-              expect(countNodes(accepted.node, "sdt")).toBe(
-                countNodes(before.node, "sdt"),
-              );
+              const acceptedControls = expectedInlineControlIds({
+                session,
+                paragraph: before.node,
+                characters: beforeCharacters,
+                changes,
+                offset: start,
+              });
+              expect(inlineControlIds(accepted.node)).toEqual(acceptedControls);
               expect(countNodes(accepted.node, "bookmarkBoundary")).toBe(
                 countNodes(before.node, "bookmarkBoundary"),
               );
@@ -1210,8 +1259,8 @@ describe.each(SESSIONS)(
                 );
                 acceptedPackage.acceptAll();
                 expect(
-                  countNodes(firstParagraph(acceptedPackage).node, "sdt"),
-                ).toBe(countNodes(before.node, "sdt"));
+                  inlineControlIds(firstParagraph(acceptedPackage).node),
+                ).toEqual(acceptedControls);
                 const acceptedText =
                   acceptedPackage.snapshot().blocks.at(0)?.text ?? "";
                 const rejectedPackage = await FolioDocxReviewer.fromBuffer(
@@ -1503,6 +1552,28 @@ describe.each(SESSIONS)("direct replacement examples (%s)", (session) => {
     expect(await savedFirstParagraph(await rejected.toBuffer(), session)).toBe(
       tracked.control,
     );
+  });
+
+  test("direct and accepted deletion agree when the selection crosses both control edges", async () => {
+    const paragraph =
+      itemXml({ kind: "tab" }, 0) +
+      controlOf("on ", 1) +
+      runXml("Seller ", PLAIN);
+    const expectedControls = session === "canonical" ? [] : [101];
+    for (const mode of ["direct", "tracked-changes"] as const) {
+      const { reviewer } = await replaceFirst(paragraph, {
+        session,
+        mode,
+        granularity: "word",
+        find: "\ton S",
+        replace: () => "",
+      });
+      if (mode === "tracked-changes") reviewer.acceptAll();
+      expect(reviewer.snapshot().blocks.at(0)?.text).toBe("eller ");
+      expect(inlineControlIds(firstParagraph(reviewer).node)).toEqual(
+        expectedControls,
+      );
+    }
   });
 
   test("a field survives when its text does; it becomes text when its text changes", async () => {
