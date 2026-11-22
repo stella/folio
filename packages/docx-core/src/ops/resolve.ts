@@ -610,19 +610,16 @@ const resolveFieldRuns = (
  * the other holds something or was emptied too (two emptied pieces are one
  * piece, whichever emptied first). A container that held nothing before (an
  * empty content control or hyperlink) is markup of its own and is never merged.
- * Nor is one across an edge closed to it (`side`: its edge facing the other).
  */
 type EmptyPieceOptions = {
   empty: InlineNode;
   other: InlineNode;
   emptied: Emptied;
-  side: SourceOwnerSide;
 };
 const emptyPieceOf = ({
   empty,
   other,
   emptied,
-  side,
 }: EmptyPieceOptions): boolean => {
   const emptyChildren = childNodes(empty);
   const otherChildren = childNodes(other);
@@ -633,7 +630,6 @@ const emptyPieceOf = ({
     emptyChildren.length === 0 &&
     (otherChildren.length > 0 || emptied.has(other)) &&
     emptied.has(empty) &&
-    emptied.closed?.[side].has(empty) !== true &&
     sameOwnFields(empty, other)
   );
 };
@@ -648,9 +644,14 @@ const foldedPiece = (
   right: InlineNode,
   emptied: Emptied,
 ): InlineNode | undefined => {
-  if (emptyPieceOf({ empty: right, other: left, emptied, side: "before" }))
-    return left;
-  if (emptyPieceOf({ empty: left, other: right, emptied, side: "after" }))
+  // An edge closed on either side of where they meet keeps both apart.
+  if (
+    emptied.closed?.after.has(left) === true ||
+    emptied.closed?.before.has(right) === true
+  )
+    return undefined;
+  if (emptyPieceOf({ empty: right, other: left, emptied })) return left;
+  if (emptyPieceOf({ empty: left, other: right, emptied }))
     return rebuildNode(left, childNodes(right) ?? []);
   return undefined;
 };
