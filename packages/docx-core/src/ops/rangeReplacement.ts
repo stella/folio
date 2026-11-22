@@ -17,6 +17,7 @@ import {
   spanningRecords,
   zeroWidthLeavesAt,
 } from "./leaves";
+import { itemBefore } from "./listItems";
 import { isClosingMarker, paragraphLength } from "./offsets";
 import { findLastStoryParagraph, findStoryParagraph } from "./paragraphLocator";
 import {
@@ -194,16 +195,19 @@ export type PlanTrackedReplaceOptions = PlanTrackedDeletionOptions & {
   };
 };
 
+type PlanTrackedReplacementOptions = PlanTrackedReplaceOptions & {
+  cuts?: readonly TextPosition[];
+};
+
 /**
- * Plan a tracked replacement of a same-list range: the range's tracked
- * deletion followed by the replacement fragment as tracked insertions.
- * All physical revision ids come from one pool for the complete batch.
+ * Plan the replacement with its deletion cut at the supplied source gaps.
+ * Every piece draws revision ids from the same pool.
  */
-export const planTrackedReplace = (
+export const planTrackedReplacement = (
   document: Document,
-  options: PlanTrackedReplaceOptions,
+  options: PlanTrackedReplacementOptions,
 ): Result<DocumentOp[], DocumentOpRefusal> => {
-  const { replacement, from, revision, newIds } = options;
+  const { replacement, from, revision, newIds, cuts = [] } = options;
   const refuse = (message: string) =>
     Result.err(
       new DocumentOpRefusal({
@@ -232,8 +236,19 @@ export const planTrackedReplace = (
       ? {}
       : { deletionRevision: options.deletionRevision }),
   });
-  const deleted = appendTrackedDeletion({ document, options, plan });
-  if (deleted.isErr()) return Result.err(deleted.error);
+  const edges = [from, ...cuts, options.to];
+  for (let index = edges.length - 1; index > 0; index -= 1) {
+    const start = itemBefore(edges, index);
+    const end = edges.at(index);
+    if (start === undefined || end === undefined)
+      panic("A replacement deletion has both endpoints.");
+    const deleted = appendTrackedDeletion({
+      document: plan.document(),
+      options: { ...options, from: start, to: end },
+      plan,
+    });
+    if (deleted.isErr()) return Result.err(deleted.error);
+  }
   if (
     options.sourceContainerPolicy === "separate" &&
     (replacement.tail.content.length > 0 ||
@@ -427,6 +442,13 @@ export const planTrackedReplace = (
   }
   return Result.ok(plan.ops);
 };
+
+/** Plan a same-list range deletion followed by tracked replacement insertions. */
+export const planTrackedReplace = (
+  document: Document,
+  options: PlanTrackedReplaceOptions,
+): Result<DocumentOp[], DocumentOpRefusal> =>
+  planTrackedReplacement(document, options);
 
 type CutPieceHandoffsOptions = {
   before: Document;

@@ -107,6 +107,7 @@ import {
   cutPieceHandoffs,
   pastEndedComments,
   planTrackedReplace,
+  planTrackedReplacement,
   rangeEndAfterDeletion,
 } from "./rangeReplacement";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
@@ -3667,8 +3668,15 @@ const compileInStory = (
         // The grouped stamp keeps this edit's id, so only its record's
         // metadata changes; the plan applies the deletion with it, so the
         // typed text takes a fresh id whenever the deletion makes a record.
-        const planned = planTrackedReplace(document, {
+        const controls = selectedControlText({
+          paragraph,
+          from,
+          to,
+          inside: intent.inside,
+        });
+        const planned = planTrackedReplacement(document, {
           sourceContainerPolicy: "join",
+          cuts: controls.cuts,
           from,
           to,
           revision: text === "" ? struck : mode.revision,
@@ -3691,7 +3699,7 @@ const compileInStory = (
           document,
           planned: planned.value,
           from,
-          inside: intent.inside,
+          controls: controls.ids,
           text,
         });
         if (struckInside.isErr()) return Result.err(struckInside.error);
@@ -4531,8 +4539,68 @@ type StrikeInsideControlOptions = {
   document: Document;
   planned: readonly DocumentOp[];
   from: TextPosition;
-  inside: { start?: boolean; end?: boolean } | undefined;
+  controls: ReadonlySet<number>;
   text: string;
+};
+
+type SelectedControlTextOptions = {
+  paragraph: Paragraph;
+  from: TextPosition;
+  to: TextPosition;
+  inside: { start?: boolean; end?: boolean } | undefined;
+};
+
+/** The fully selected controls whose outer boundaries the selection leaves in place. */
+const selectedControlText = ({
+  paragraph,
+  from,
+  to,
+  inside,
+}: SelectedControlTextOptions) => {
+  const ids = new Set<number>();
+  if (inside === undefined || idKey(from.blockId) !== idKey(to.blockId))
+    return { ids, cuts: [] };
+  const cuts: Gap[] = [];
+  const start = {
+    offset: from.offset,
+    zeroWidthBefore:
+      from.zeroWidthBefore ??
+      zeroWidthLeavesAt(paragraph.content, from.offset).length,
+  };
+  const end = { offset: to.offset, zeroWidthBefore: to.zeroWidthBefore ?? 0 };
+  const spans = leafSpans(paragraph.content);
+  const first = spans.find(({ after }) => compareGaps(after, start) > 0);
+  const last = spans.findLast(({ before }) => compareGaps(before, end) < 0);
+  const edgeControl = (span: (typeof spans)[number] | undefined) =>
+    span?.ancestors.findLast((node) => node.type === "inlineSdt");
+  const atStart = inside.start === true ? edgeControl(first) : undefined;
+  const atEnd = inside.end === true ? edgeControl(last) : undefined;
+  for (const control of new Set([atStart, atEnd])) {
+    if (control?.properties.id === undefined) continue;
+    const inControl = ({ ancestors }: (typeof spans)[number]) =>
+      ancestors.includes(control);
+    const controlStart = spans.find(inControl)?.before;
+    const controlEnd = spans.findLast(inControl)?.after;
+    if (
+      controlStart === undefined ||
+      controlEnd === undefined ||
+      compareGaps(start, controlStart) > 0 ||
+      compareGaps(controlEnd, end) > 0
+    )
+      continue;
+    ids.add(control.properties.id);
+    const cut = control === atStart ? controlEnd : controlStart;
+    if (
+      compareGaps(start, cut) < 0 &&
+      compareGaps(cut, end) < 0 &&
+      !cuts.some((existing) => compareGaps(existing, cut) === 0)
+    )
+      cuts.push(cut);
+  }
+  return {
+    ids,
+    cuts: cuts.toSorted(compareGaps).map((cut) => Object.assign({}, from, cut)),
+  };
 };
 
 /** What a tracked deletion may hold: no other tracked insertion or deletion. */
@@ -4545,23 +4613,21 @@ const isTrackedRunContent = (
   node.type !== "moveTo";
 
 /**
- * A tracked replacement of exactly a content control's text, typed just
- * inside both of its edges, strikes the text inside the control, which
- * stays: the deletion holds only what the control held, as the reference
- * word processor records it. The plan would wrap the control itself, which
- * accepting removes together with the new text.
+ * A tracked replacement that selects the text from inside a control's edge
+ * strikes that text inside the control. A range that takes both outer edges
+ * leaves the control inside the deletion.
  */
 const strikeInsideControl = ({
   document,
   planned,
   from,
-  inside,
+  controls,
   text,
 }: StrikeInsideControlOptions): Result<
   readonly DocumentOp[],
   DocumentOpRefusal
 > => {
-  if (inside?.start !== true || inside.end !== true) return Result.ok(planned);
+  if (controls.size === 0) return Result.ok(planned);
   // A deletion is the whole plan; a replacement's text follows it.
   const split =
     text === ""
@@ -4581,16 +4647,24 @@ const strikeInsideControl = ({
   const paragraph = paragraphAt(applied.value.document, from);
   if (paragraph?.paraId === undefined) return Result.ok(planned);
   let swapped = false;
-  const content = paragraph.content.map((node): ParagraphContent => {
+  const markControlText = (node: InlineNode): InlineNode => {
     if (
       node.type !== "deletion" ||
       !struck.has(node.info.id) ||
       node.content.length !== 1
-    )
-      return node;
+    ) {
+      const children = childNodes(node);
+      if (children === undefined) return node;
+      const next = children.map(markControlText);
+      return next.some((child, index) => child !== children.at(index))
+        ? rebuildNode(node, next)
+        : node;
+    }
     const [control] = node.content;
     if (
       control?.type !== "inlineSdt" ||
+      control.properties.id === undefined ||
+      !controls.has(control.properties.id) ||
       !control.content.every(isTrackedRunContent)
     )
       return node;
@@ -4598,19 +4672,18 @@ const strikeInsideControl = ({
     return {
       ...control,
       content: [
-        text === ""
-          ? {
-              ...node,
-              content: control.content,
-              resolutionJoins: {
-                ...(node.resolutionJoins ?? { before: 0, after: 0, remove: 0 }),
-                holdsControlText: true,
-              },
-            }
-          : { ...node, content: control.content },
+        {
+          ...node,
+          content: control.content,
+          resolutionJoins: {
+            ...(node.resolutionJoins ?? { before: 0, after: 0, remove: 0 }),
+            holdsControlText: true,
+          },
+        },
       ],
     };
-  });
+  };
+  const content = asParagraphContent(paragraph.content.map(markControlText));
   if (!swapped) return Result.ok(planned);
   return Result.ok([
     ...deletion,
