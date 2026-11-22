@@ -90,6 +90,7 @@ import {
 } from "./commentRangeIntegrity";
 import { applyReplyThreadMarkers } from "./commentReplyMarkers";
 import {
+  ensureContentTypePart,
   registerContentTypeParts,
   replaceContentTypePart,
 } from "./contentTypeRegistry";
@@ -131,6 +132,10 @@ import {
   visitParagraphRuns,
 } from "./paragraphTraversal";
 import { normalizeParaIdRangeInXmlParts } from "./paraIdRangeNormalization";
+import {
+  withoutPartRelationship,
+  withPartRelationship,
+} from "./partRelationships";
 import {
   parseRelationships,
   RELATIONSHIP_TYPES,
@@ -256,7 +261,7 @@ export class DocxDuplicateSectionCarrierError extends DocxPackageFidelityError {
 /**
  * Find the highest rId number in a relationships XML string.
  */
-export function findMaxRId(relsXml: string): number {
+function findMaxRId(relsXml: string): number {
   let maxId = 0;
   for (const match of relsXml.matchAll(/Id="rId(?<id>\d+)"/gu)) {
     // SAFETY: named group `id` always present when regex matches
@@ -515,15 +520,13 @@ async function serializeCommentsToZip(
       ? undefined
       : readRootNamespaceBindings(sourceCommentsXml),
   );
-  zip.set(sourceCommentsFile?.path ?? "word/comments.xml", commentsXml, {
-    level: compressionLevel,
-  });
+  const path = sourceCommentsFile?.path ?? "word/comments.xml";
+  zip.set(path, commentsXml, { level: compressionLevel });
 
   // Sequential, not Promise.all: comments.xml and commentsExtended.xml both
   // edit [Content_Types].xml and document.xml.rels, so concurrent
   // read-modify-write would drop one part's override/relationship.
-  await ensureCommentsContentType(zip, compressionLevel);
-  await ensureCommentsRelationship(zip, compressionLevel);
+  await registerCommentPart({ kind: "comments", path }, zip, compressionLevel);
   await syncCommentsExtendedPart(plan, zip, compressionLevel);
 }
 
@@ -562,34 +565,52 @@ async function syncCommentsExtendedPart(
       return;
     }
     zip.delete(existing.path);
+    const removed = { kind: "commentsExtended", path: existing.path } as const;
     await transformPackagingFile(
       zip,
       "[Content_Types].xml",
-      removeCommentsExtendedOverride,
+      (contentTypesXml) =>
+        replaceContentTypePart(contentTypesXml, {
+          partName: `/${removed.path}`,
+          contentType: undefined,
+        }),
       compressionLevel,
     );
     await transformPackagingFile(
       zip,
-      "word/_rels/document.xml.rels",
-      removeCommentsExtendedRelationship,
+      COMMENTS_RELS_PART,
+      (relsXml) =>
+        withoutPartRelationship(relsXml, commentPartRelationship(removed)),
       compressionLevel,
     );
     return;
   }
 
-  zip.set(existing?.path ?? COMMENTS_EXTENDED_PART, xml, {
-    level: compressionLevel,
-  });
+  const path = existing?.path ?? COMMENTS_EXTENDED_PART;
+  zip.set(path, xml, { level: compressionLevel });
+  await registerCommentPart(
+    { kind: "commentsExtended", path },
+    zip,
+    compressionLevel,
+  );
+}
+
+/** Give a comment part its content type and the document's relationship to it. */
+async function registerCommentPart(
+  part: CommentPart,
+  zip: ZipArchive,
+  compressionLevel: number,
+): Promise<void> {
   await transformPackagingFile(
     zip,
     "[Content_Types].xml",
-    addCommentsExtendedOverride,
+    (contentTypesXml) => withCommentPartContentType(contentTypesXml, part),
     compressionLevel,
   );
   await transformPackagingFile(
     zip,
-    "word/_rels/document.xml.rels",
-    addCommentsExtendedRelationship,
+    COMMENTS_RELS_PART,
+    (relsXml) => withCommentPartRelationship(relsXml, part),
     compressionLevel,
   );
 }
@@ -2173,46 +2194,57 @@ export const COMMENTS_EXTENDED_CONTENT_TYPE =
 export const COMMENTS_EXTENDED_PART = "word/commentsExtended.xml";
 export const COMMENTS_EXTENDED_PART_LOWER = "word/commentsextended.xml";
 
-// Pure [Content_Types].xml / .rels transforms for the commentsExtended part.
-// Shared by the full-repack and selective save paths so both add and remove the
-// part's override + relationship the same way (see syncCommentsExtendedPart).
+/** How a document part reaches each comment part. */
+const COMMENT_PART_PACKAGING = {
+  comments: {
+    contentType: COMMENTS_CONTENT_TYPE,
+    relationshipType: RELATIONSHIP_TYPES.comments,
+  },
+  commentsExtended: {
+    contentType: COMMENTS_EXTENDED_CONTENT_TYPE,
+    relationshipType: RELATIONSHIP_TYPES.commentsExtended,
+  },
+} as const;
 
-export function addCommentsExtendedOverride(contentTypesXml: string): string {
-  if (contentTypesXml.toLowerCase().includes("/word/commentsextended.xml")) {
-    return contentTypesXml;
-  }
-  return contentTypesXml.replace(
-    "</Types>",
-    `<Override PartName="/word/commentsExtended.xml" ContentType="${COMMENTS_EXTENDED_CONTENT_TYPE}"/></Types>`,
-  );
-}
+export type CommentPart = {
+  kind: keyof typeof COMMENT_PART_PACKAGING;
+  /** The part, as the archive names it. */
+  path: string;
+};
 
-export function removeCommentsExtendedOverride(
+export const COMMENTS_RELS_PART = "word/_rels/document.xml.rels";
+
+const commentPartRelationship = ({ kind, path }: CommentPart) => ({
+  relsPath: COMMENTS_RELS_PART,
+  type: COMMENT_PART_PACKAGING[kind].relationshipType,
+  partPath: path,
+});
+
+// Pure [Content_Types].xml / .rels transforms for a comment part. Shared by
+// the full-repack and selective save paths so both add and remove the part's
+// override and relationship the same way (see syncCommentsExtendedPart).
+
+export const withCommentPartContentType = (
   contentTypesXml: string,
-): string {
-  return contentTypesXml.replace(
-    /<Override\b[^>]*commentsExtended\.xml[^>]*\/>/giu,
-    "",
-  );
-}
+  { kind, path }: CommentPart,
+): string =>
+  ensureContentTypePart(contentTypesXml, {
+    partName: `/${path}`,
+    contentType: COMMENT_PART_PACKAGING[kind].contentType,
+  });
 
-export function addCommentsExtendedRelationship(relsXml: string): string {
-  if (relsXml.toLowerCase().includes("commentsextended.xml")) {
-    return relsXml;
-  }
-  const newRId = `rId${findMaxRId(relsXml) + 1}`;
-  return relsXml.replace(
-    "</Relationships>",
-    `<Relationship Id="${newRId}" Type="${RELATIONSHIP_TYPES.commentsExtended}" Target="commentsExtended.xml"/></Relationships>`,
-  );
-}
-
-export function removeCommentsExtendedRelationship(relsXml: string): string {
-  return relsXml.replace(
-    /<Relationship\b[^>]*commentsExtended\.xml[^>]*\/>/giu,
-    "",
-  );
-}
+/** Throws when the document's relationships part is none: the comments it needs would be unreachable. */
+export const withCommentPartRelationship = (
+  relsXml: string,
+  part: CommentPart,
+): string => {
+  const next = withPartRelationship(relsXml, commentPartRelationship(part));
+  if (next === null)
+    throw new DocxPackageFidelityError(
+      "Cannot relate comments to a document with an invalid relationships part.",
+    );
+  return next;
+};
 
 // ============================================================================
 // SETTINGS PART: ATTACHED TEMPLATE REFERENCE
@@ -2350,64 +2382,6 @@ async function dropAttachedTemplateReference(
   if (filtered.relsXml !== undefined) {
     zip.set(SETTINGS_RELS_PART, filtered.relsXml, { level: compressionLevel });
   }
-}
-
-/**
- * Ensure [Content_Types].xml contains an Override for word/comments.xml.
- * If the document already had comments, this is a no-op.
- */
-async function ensureCommentsContentType(
-  zip: ZipArchive,
-  compressionLevel: number,
-): Promise<void> {
-  const ctFile = zip.entry("[Content_Types].xml");
-  if (!ctFile) {
-    return;
-  }
-
-  let ctXml = await ctFile
-    .bytes()
-    .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
-  if (ctXml.toLowerCase().includes("/word/comments.xml")) {
-    return;
-  }
-
-  const commentsPartPath =
-    findZipEntryCaseInsensitive(zip, "word/comments.xml")?.path ??
-    "word/comments.xml";
-  // Insert before closing </Types>
-  ctXml = ctXml.replace(
-    "</Types>",
-    `<Override PartName="/${commentsPartPath}" ContentType="${COMMENTS_CONTENT_TYPE}"/></Types>`,
-  );
-  zip.set("[Content_Types].xml", ctXml, { level: compressionLevel });
-}
-
-/**
- * Ensure word/_rels/document.xml.rels contains a Relationship for comments.xml.
- * If the document already had comments, this is a no-op.
- */
-async function ensureCommentsRelationship(
-  zip: ZipArchive,
-  compressionLevel: number,
-): Promise<void> {
-  const relsPath = "word/_rels/document.xml.rels";
-  let relsXml = await readRelsOrStub(zip, relsPath);
-  if (relsXml.toLowerCase().includes("comments.xml")) {
-    return;
-  }
-
-  const commentsPartPath =
-    findZipEntryCaseInsensitive(zip, "word/comments.xml")?.path ??
-    "word/comments.xml";
-  // Generate a unique rId
-  const newRId = `rId${findMaxRId(relsXml) + 1}`;
-
-  relsXml = relsXml.replace(
-    "</Relationships>",
-    `<Relationship Id="${newRId}" Type="${RELATIONSHIP_TYPES.comments}" Target="${commentsPartPath.slice("word/".length)}"/></Relationships>`,
-  );
-  zip.set(relsPath, relsXml, { level: compressionLevel });
 }
 
 // ============================================================================

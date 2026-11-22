@@ -14,7 +14,7 @@ import {
   type XmlElement,
 } from "./xmlParser";
 
-const PACKAGE_RELATIONSHIPS_NAMESPACE_URI =
+export const PACKAGE_RELATIONSHIPS_NAMESPACE_URI =
   "http://schemas.openxmlformats.org/package/2006/relationships";
 
 /** The package relationships part's name, lowercased: OPC names are case-insensitive. */

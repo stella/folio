@@ -32,14 +32,12 @@ import { isUnsafePackagePath } from "./packageParts";
 import { visitDocxParagraphs } from "./paragraphTraversal";
 import { RELATIONSHIP_TYPES, resolveRelativePath } from "./relsParser";
 import {
-  addCommentsExtendedOverride,
-  addCommentsExtendedRelationship,
   applyUpdatesToZip,
   collectHeaderFooterUpdates,
-  COMMENTS_CONTENT_TYPE,
+  type CommentPart,
   COMMENTS_EXTENDED_PART,
   COMMENTS_EXTENDED_PART_LOWER,
-  findMaxRId,
+  COMMENTS_RELS_PART,
   hasModelDrivenPictureWatermark,
   hasUnmaterializedHeaderFooter,
   hasUnmaterializedHyperlinkBindings,
@@ -49,6 +47,8 @@ import {
   publishCanonicalImageResources,
   readRelsOrStub,
   updateCoreProperties,
+  withCommentPartContentType,
+  withCommentPartRelationship,
   withoutAttachedTemplate,
 } from "./rezip";
 import type { SaveDiagnostic, SaveDiagnosticOptions } from "./saveDiagnostics";
@@ -313,19 +313,23 @@ async function patchCommentsExtended(
     return true;
   }
 
-  updates.set(existing?.path ?? COMMENTS_EXTENDED_PART, desiredXml);
-  return ensureCommentsExtendedPackaging(zip, updates);
+  const path = existing?.path ?? COMMENTS_EXTENDED_PART;
+  updates.set(path, desiredXml);
+  return registerCommentPart(
+    { kind: "commentsExtended", path },
+    { zip, updates },
+  );
 }
 
 /**
- * Add the content-type override + relationship for commentsExtended.xml if
+ * Add the content type and the document's relationship for a comment part if
  * absent, composing over any pending `updates`. Returns `false` when a packaging
  * file needed to wire the part is missing (the caller then bails to full repack
  * rather than write a part nothing references).
  */
-async function ensureCommentsExtendedPackaging(
-  zip: ZipArchive,
-  updates: Map<string, string>,
+async function registerCommentPart(
+  part: CommentPart,
+  { zip, updates }: { zip: ZipArchive; updates: Map<string, string> },
 ): Promise<boolean> {
   const ctPath = "[Content_Types].xml";
   const ctXml =
@@ -337,17 +341,17 @@ async function ensureCommentsExtendedPackaging(
   if (ctXml === undefined) {
     return false;
   }
-  const nextCt = addCommentsExtendedOverride(ctXml);
+  const nextCt = withCommentPartContentType(ctXml, part);
   if (nextCt !== ctXml) {
     updates.set(ctPath, nextCt);
   }
 
-  const relsPath = "word/_rels/document.xml.rels";
   const relsXml =
-    updates.get(relsPath) ?? (await readRelsOrStub(zip, relsPath));
-  const nextRels = addCommentsExtendedRelationship(relsXml);
+    updates.get(COMMENTS_RELS_PART) ??
+    (await readRelsOrStub(zip, COMMENTS_RELS_PART));
+  const nextRels = withCommentPartRelationship(relsXml, part);
   if (nextRels !== relsXml) {
-    updates.set(relsPath, nextRels);
+    updates.set(COMMENTS_RELS_PART, nextRels);
   }
   return true;
 }
@@ -873,37 +877,14 @@ async function writeChangedParts({
         updates.set(commentsPartPath, commentsXml);
       }
     }
-    if (hasComments || ownsCommentsPart) {
-      // Ensure [Content_Types].xml has an Override for comments.xml
-      const ctFile = zip.entry("[Content_Types].xml");
-      if (ctFile) {
-        const ctXml = await ctFile
-          .bytes()
-          .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
-        if (!ctXml.toLowerCase().includes("/word/comments.xml")) {
-          updates.set(
-            "[Content_Types].xml",
-            ctXml.replace(
-              "</Types>",
-              `<Override PartName="/${commentsPartPath}" ContentType="${COMMENTS_CONTENT_TYPE}"/></Types>`,
-            ),
-          );
-        }
-      }
-
-      // Ensure word/_rels/document.xml.rels has a Relationship for comments.xml
-      const relsPath = "word/_rels/document.xml.rels";
-      const relsXml = await readRelsOrStub(zip, relsPath);
-      if (!relsXml.toLowerCase().includes("comments.xml")) {
-        const maxId = findMaxRId(relsXml);
-        updates.set(
-          relsPath,
-          relsXml.replace(
-            "</Relationships>",
-            `<Relationship Id="rId${maxId + 1}" Type="${RELATIONSHIP_TYPES.comments}" Target="${commentsPartPath.slice("word/".length)}"/></Relationships>`,
-          ),
-        );
-      }
+    if (
+      (hasComments || ownsCommentsPart) &&
+      !(await registerCommentPart(
+        { kind: "comments", path: commentsPartPath },
+        { zip, updates },
+      ))
+    ) {
+      return decline({ scope: "package", reason: "packageError" });
     }
 
     // Reply threading / resolved state lives in commentsExtended.xml. Rewrite it
