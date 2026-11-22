@@ -463,11 +463,6 @@ function pieceOf(
   run: Run,
   paraId: string | undefined,
 ): Piece | null {
-  // Hidden text (`w:vanish`) is suppressed in Word's normal view; drop it from
-  // the markdown so hidden clauses / drafting notes don't leak into the export.
-  if (run.formatting?.hidden) {
-    return null;
-  }
   const inner = renderRunContent(ctx, pkg, run.content, paraId);
   if (!inner) {
     return null;
@@ -483,6 +478,40 @@ function pieceOf(
     .join("\n");
   return { text, marks: new Set() };
 }
+
+/**
+ * `runs` with the ones that stand together and take the same marks as one run,
+ * its text in one item: where a document splits its text says nothing, so what
+ * is escaped does not depend on it. Hidden runs (`w:vanish`) are left out, so
+ * hidden clauses and drafting notes do not leak into the export.
+ */
+const joinedRuns = (runs: readonly Run[]): Run[] => {
+  const joined: Run[] = [];
+  for (const run of runs) {
+    if (run.formatting?.hidden) continue;
+    const last = joined.at(-1);
+    if (last === undefined || marksFor(last).join() !== marksFor(run).join()) {
+      joined.push(run);
+      continue;
+    }
+    joined[joined.length - 1] = {
+      ...last,
+      content: withTextJoined([...last.content, ...run.content]),
+    };
+  }
+  return joined;
+};
+
+const withTextJoined = (content: readonly RunContent[]): RunContent[] => {
+  const out: RunContent[] = [];
+  for (const item of content) {
+    const last = out.at(-1);
+    if (item.type === "text" && last?.type === "text")
+      out[out.length - 1] = { ...last, text: last.text + item.text };
+    else out.push(item);
+  }
+  return out;
+};
 
 type ReadCharacter = { char: string; marks: ReadonlySet<EmphasisKey> };
 
@@ -574,7 +603,9 @@ function renderRuns(
   paraId: string | undefined,
   edges: RunNeighbors = UNKNOWN_NEIGHBORS,
 ): string {
-  const pieces = runs.flatMap((run) => pieceOf(ctx, pkg, run, paraId) ?? []);
+  const pieces = joinedRuns(runs).flatMap(
+    (run) => pieceOf(ctx, pkg, run, paraId) ?? [],
+  );
   const plain = pieces.map(({ text }) => text).join("");
   if (!pieces.some(({ marks }) => marks.size > 0)) {
     return plain;
