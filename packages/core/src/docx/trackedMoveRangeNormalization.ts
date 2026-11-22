@@ -158,15 +158,17 @@ const removeUnbalancedMoveRangeMarkers = ({
         markForRemoval(marker);
         continue;
       }
-      // A part's first full range is the move's; one after it repeats it.
+      // A part's first full range is the move's; one after it repeats it. A
+      // copy a pending revision owns is neither: its revision decides it.
       const part = partOf(marker);
-      if (held.has(part)) {
+      const owned = isOwnedCopy(openStart) || isOwnedCopy(marker);
+      if (!owned && held.has(part)) {
         markForRemoval(openStart);
         markForRemoval(marker);
         droppedMarkers += 2;
         droppedMoveRanges.push({ kind: marker.kind, id: marker.id });
       }
-      held.add(part);
+      if (!owned) held.add(part);
       openStart = null;
     }
 
@@ -191,6 +193,9 @@ const removeUnbalancedMoveRangeMarkers = ({
     ...(droppedMoveRanges.length === 0 ? {} : { droppedMoveRanges }),
   };
 };
+
+const isOwnedCopy = ({ slot: { item } }: MoveRangeMarkerRef): boolean =>
+  "copyOriginAncestors" in item && item.copyOriginAncestors !== undefined;
 
 const toMoveRangeMarkerRef = (
   slot: DocxContentSlot,

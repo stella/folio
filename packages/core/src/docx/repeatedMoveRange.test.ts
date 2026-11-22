@@ -182,6 +182,50 @@ describe("a repeated move range", () => {
       expect(await saved.entry(HEADER_PART)?.text()).toBe(HEADER_XML);
     });
 
+  for (const copyFirst of [true, false])
+    test(`a copy its pending insertion owns stays, ${copyFirst ? "before" : "after"} the range it copies`, () => {
+      const owned: ParagraphContent = {
+        type: "insertion",
+        info: { id: 1, author: "B", date: "2026-01-02T00:00:00Z" },
+        content: [
+          {
+            type: "moveToRangeStart",
+            id: 7,
+            name: "move7",
+            author: "A",
+            copyOriginAncestors: [0],
+          },
+          { type: "run", content: [{ type: "text", text: "Copy." }] },
+          { type: "moveToRangeEnd", id: 7, copyOriginAncestors: [0] },
+        ],
+      };
+      const { document } = paragraphsOf([
+        copyFirst ? [owned] : range(7, "First."),
+        copyFirst ? range(7, "First.") : [owned],
+        range(7, "Repeated."),
+      ]).package;
+      expect(normalizeTrackedMoveRanges({ documentBody: document })).toEqual({
+        removedUnbalancedMoveRangeMarkers: 0,
+        droppedMoveRanges: [{ kind: "moveTo", id: 7 }],
+      });
+      expect(
+        document.content.map((block) =>
+          block.type === "paragraph"
+            ? block.content.map(({ type }) => type)
+            : [],
+        ),
+      ).toEqual([
+        copyFirst
+          ? ["insertion"]
+          : ["moveToRangeStart", "run", "moveToRangeEnd"],
+        copyFirst
+          ? ["moveToRangeStart", "run", "moveToRangeEnd"]
+          : ["insertion"],
+        ["run"],
+      ]);
+      expect(owned.content).toHaveLength(3);
+    });
+
   test("a repeated half is still an unbalanced one", () => {
     const { document } = paragraphsOf([
       range(7, "First."),
