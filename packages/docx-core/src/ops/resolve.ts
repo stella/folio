@@ -26,6 +26,7 @@ import type {
   KeptCutPiece,
   Paragraph,
   ParagraphContent,
+  ParagraphMarkChange,
   ParagraphMarkChangeKind,
   ParagraphPropertyChange,
   Run,
@@ -386,6 +387,14 @@ const joinedKeepingFirst = (
 /** Whether a mark of this kind recorded a break being added. */
 const markWasAdded = (kind: ParagraphMarkChangeKind): boolean =>
   kind === "ins" || kind === "moveTo";
+
+/**
+ * When the split whose cut a mark's `resolutionJoin` records was made: an
+ * added mark's own date, and for a deleted mark, which holds the cut of the
+ * inserted break it deletes, that split's date, not the deletion's.
+ */
+const splitDateOf = (mark: ParagraphMarkChange): string | undefined =>
+  markWasAdded(mark.kind) ? mark.info.date : mark.splitDate;
 
 type PropertyChange = RunPropertyChange | ParagraphPropertyChange;
 
@@ -6211,18 +6220,16 @@ type RevisionResolutionPlanOptions = {
   applyOps: ApplyOps;
 };
 
-/** When the split that made each break a resolution takes was made, by paragraph. */
-type SplitDates = ReadonlyMap<string, string | undefined>;
-
 /**
  * A mark holding an insertion and a later deletion of it, settled to the one
  * record resolution then decides, with the revision ids left to resolve:
  * - accepting the deletion takes the break, whatever becomes of the
  *   insertion: the mark is the deletion alone, which the resolution accepts,
  *   and the break goes as rejecting its insertion takes it, rejoining the
- *   records its split cut (`splits`: the paragraphs whose join that is, with
- *   when the split was made);
- * - accepting the insertion alone leaves the deletion pending;
+ *   records its split cut;
+ * - accepting the insertion alone leaves the deletion pending, holding the
+ *   split's cut and when the split was made, so accepting it later rejoins
+ *   the same records as accepting both at once;
  * - rejecting the insertion takes the break with its deletion: the mark is
  *   the insertion alone, which the resolution rejects;
  * - rejecting the deletion alone leaves the insertion pending.
@@ -6230,10 +6237,9 @@ type SplitDates = ReadonlyMap<string, string | undefined>;
 const settleTwoRecordMarks = (
   paragraphs: readonly ParagraphLocation[],
   op: ResolveRevisionOp,
-): { ops: DocumentOp[]; ids: number[]; splits: SplitDates } => {
+): { ops: DocumentOp[]; ids: number[] } => {
   const ids = new Set(op.revisionIds);
   const ops: DocumentOp[] = [];
-  const splits = new Map<string, string | undefined>();
   for (const { paragraph } of paragraphs) {
     const mark = paragraph.pPrMark;
     if (mark?.deletion === undefined) continue;
@@ -6242,13 +6248,18 @@ const settleTwoRecordMarks = (
     if (!ids.has(insertion) && !ids.has(deletion)) continue;
     const review = reviewFieldsOf(paragraph);
     if (op.decision === REVISION_DECISIONS.ACCEPT) {
-      const takesSplit = ids.has(deletion) && mark.resolutionJoin !== undefined;
       review.pPrMark = {
         kind: "del",
         info: mark.deletion.info,
-        ...(takesSplit ? { resolutionJoin: mark.resolutionJoin } : {}),
+        ...(mark.resolutionJoin === undefined
+          ? {}
+          : {
+              resolutionJoin: mark.resolutionJoin,
+              ...(mark.info.date === undefined
+                ? {}
+                : { splitDate: mark.info.date }),
+            }),
       };
-      if (takesSplit) splits.set(idKey(paragraph.paraId ?? ""), mark.info.date);
       ids.delete(insertion);
     } else {
       const { deletion: _deleted, ...added } = mark;
@@ -6263,7 +6274,7 @@ const settleTwoRecordMarks = (
       review,
     });
   }
-  return { ops, ids: op.revisionIds.filter((id) => ids.has(id)), splits };
+  return { ops, ids: op.revisionIds.filter((id) => ids.has(id)) };
 };
 
 /**
@@ -6458,7 +6469,6 @@ const planMarkResolution = (
       applyOps,
     },
     storyParagraphs(storyBody(marks.value.document, op.story)),
-    settled.splits,
   );
   if (rest.isErr()) return Result.err(rest.error);
   return Result.ok({
@@ -6470,7 +6480,6 @@ const planMarkResolution = (
 const planSingleRecordResolution = (
   { document, op, applyOps }: RevisionResolutionPlanOptions,
   paragraphs: readonly ParagraphLocation[],
-  splits: SplitDates = new Map(),
 ): Result<RevisionResolutionPlan, DocumentOpRefusal> => {
   if (!Object.values(REVISION_DECISIONS).includes(op.decision)) {
     return Result.err(
@@ -6855,12 +6864,10 @@ const planSingleRecordResolution = (
   for (const location of paragraphs) {
     const paragraph = location.paragraph;
     const mark = paragraph.pPrMark;
-    if (
-      mark === undefined ||
-      !markWasAdded(mark.kind) ||
-      mark.resolutionJoin === undefined
-    )
-      continue;
+    // A deleted mark holding a cut holds its inserted break's: an accepted
+    // change at its edge retires it as it retires the inserted mark's.
+    if (mark === undefined || mark.resolutionJoin === undefined) continue;
+    const splitDate = splitDateOf(mark);
     const trailing = acceptedClosedBoundary({
       nodes:
         resolvedContents.get(idKey(paragraph.paraId ?? "")) ??
@@ -6890,7 +6897,7 @@ const planSingleRecordResolution = (
             right: next.content,
             depth: mark.resolutionJoin,
             resolution,
-            splitDate: mark.info.date,
+            splitDate,
           })
         : 0;
     let depth = Math.max(
@@ -6907,7 +6914,7 @@ const planSingleRecordResolution = (
       nodes: paragraph.content,
       edge: "last",
       resolution,
-      splitDate: mark.info.date,
+      splitDate,
     });
     const removedLeading =
       next?.type === "paragraph"
@@ -6915,7 +6922,7 @@ const planSingleRecordResolution = (
             nodes: next.content,
             edge: "first",
             resolution,
-            splitDate: mark.info.date,
+            splitDate,
           })
         : undefined;
     if (removedTrailing !== undefined && removedLeading !== undefined)
@@ -6962,9 +6969,7 @@ const planSingleRecordResolution = (
         revisionId: mark.info.id,
         added,
         depth,
-        splitDate: splits.has(idKey(paraId))
-          ? splits.get(idKey(paraId))
-          : mark.info.date,
+        splitDate: splitDateOf(mark),
         holders,
       });
     }

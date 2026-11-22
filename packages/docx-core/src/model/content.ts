@@ -2518,6 +2518,13 @@ export type ParagraphMarkChange = WritableRecord & {
   /** Exact source-cut depth for rejection; absent in ordinary imported revisions. */
   resolutionJoin?: number | undefined;
   /**
+   * When the split whose cut `resolutionJoin` records was made, on a deleted
+   * mark that holds the cut of the inserted break it deletes after that
+   * insertion was accepted. Saved as folio's own ignorable review
+   * provenance; a reader that does not know it joins at the deletion's date.
+   */
+  splitDate?: string | undefined;
+  /**
    * Which paragraph rejecting this inserted mark keeps: `"first"` when the
    * paragraph after it took over the mark this one had, so this one is the
    * paragraph that was there before. Saved as folio's own ignorable review

@@ -522,6 +522,37 @@ test("the paragraph a rejected mark keeps has its own private attribute", () => 
   }
 });
 
+test("when the split a deleted mark's cut belongs to was made has its own private attribute", () => {
+  const mark = {
+    kind: "del",
+    info: { id: 2, author: "Reviewer" },
+    resolutionJoin: 2,
+    splitDate: "2026-03-04T05:00:00Z",
+  } as const;
+  const written = serializeParagraphMarkResolutionJoin(mark);
+  expect(written).toContain("folio:splitDate=");
+  expect(written).toContain("folio:resolutionJoin=");
+  const node = element(
+    `<r xmlns:folio="${FOLIO_REVIEW_HISTORY_NAMESPACE}"${written}/>`,
+  );
+  expect(parseParagraphMarkResolutionJoin(node)).toEqual({
+    resolutionJoin: 2,
+    splitDate: "2026-03-04T05:00:00Z",
+  });
+  // An unreadable value drops only the date, and says so.
+  for (const encoded of [
+    JSON.stringify({ version: 2, value: 5 }),
+    JSON.stringify({ version: 3, value: "2026-03-04T05:00:00Z" }),
+    "2026-03-04T05:00:00Z",
+  ]) {
+    const dropped = element(
+      `<r xmlns:history="${FOLIO_REVIEW_HISTORY_NAMESPACE}" history:splitDate="${escapeXmlAttribute(encoded)}"/>`,
+    );
+    expect(parseParagraphMarkResolutionJoin(dropped)).toEqual({});
+    expect(reviewProvenanceIssue("splitDate", encoded)).toBeDefined();
+  }
+});
+
 test("copy-origin ancestry uses the bounded versioned private envelope", () => {
   const encoded = serializeCopyOriginAncestors([0, 2, 4]);
   expect(encoded).toBe(JSON.stringify({ version: 2, value: [0, 2, 4] }));
