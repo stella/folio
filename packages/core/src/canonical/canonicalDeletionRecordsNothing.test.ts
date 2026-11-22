@@ -43,7 +43,7 @@ const pending = (content: Paragraph["content"]): Paragraph => ({
   pPrMark: { kind: "del", info: { id: 1, author: "Earlier" } },
 });
 
-const CASES = {
+const CASES: Record<string, readonly BlockContent[]> = {
   "the only paragraph": [empty(PARAGRAPH)],
   "the only paragraph, before a bookmark": [empty(PARAGRAPH), ...bookmarked],
   "a paragraph before another": [empty(PARAGRAPH), empty("00000002")],
@@ -61,7 +61,7 @@ const CASES = {
     empty("00000002"),
     empty("00000003"),
   ],
-} as const satisfies Record<string, readonly BlockContent[]>;
+};
 
 const read = (reviewer: FolioDocxReviewer) => ({
   ids: reviewer.getContent().map(({ id }) => id),

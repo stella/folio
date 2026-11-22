@@ -1069,7 +1069,7 @@ test.each(["body", "cell"] as const)(
   },
 );
 
-const ZERO_WIDTH_CONTENTS = {
+const ZERO_WIDTH_CONTENTS: Record<string, readonly ParagraphContent[]> = {
   nothing: [],
   "a bookmark's end": [{ type: "bookmarkEnd", id: 1 }],
   "a comment's range": [
@@ -1085,16 +1085,16 @@ const ZERO_WIDTH_CONTENTS = {
     { type: "bookmarkEnd", id: 1 },
     { type: "hyperlink", href: "https://example.org", children: [] },
   ],
-} as const satisfies Record<string, readonly ParagraphContent[]>;
+};
 
-const AFTER_DELETED = {
+const AFTER_DELETED: Record<string, readonly BlockContent[]> = {
   "nothing after it": [],
   "a bookmark after it": [
     { type: "bookmarkStart", id: 90, name: "_GoBack" },
     { type: "bookmarkEnd", id: 90 },
   ],
   "a paragraph after it": [paragraph("00000002", "After.")],
-} as const satisfies Record<string, readonly BlockContent[]>;
+};
 
 test.each(
   Object.entries(ZERO_WIDTH_CONTENTS).flatMap(([held, content]) =>
