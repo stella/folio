@@ -29,6 +29,36 @@
       "path": "105:5:5:8:3:3:3:10:11:12:12:12:13:6:10:13:10:10:10:10:18:10:10:55:10:10:10:10:10:10:10:10",
       "note": "Re-anchor a suggested split using the canonical paragraph that survives a tracked mark rejection",
       "date": "2026-11-21"
+    },
+    {
+      "seed": 2013831170,
+      "path": "131:3:4:5:5:5:17:7:13:8:5:5:5:5:5:5:5:5:5",
+      "note": "A proposed replacement of a whole half keeps to its own words once the half is joined",
+      "date": "2026-11-22"
+    },
+    {
+      "seed": -2004807804,
+      "path": "26:2:1:1:2:3:3:4:4:35:4:4:4:4:4:4:4:4:4:4",
+      "note": "The same replacement beside a tracked split",
+      "date": "2026-11-22"
+    },
+    {
+      "seed": -76032331,
+      "path": "84:3:2:4:6:6:6:7:6:6:6:6:6:6:6:6:6:6",
+      "note": "The same replacement with its half pending tracked deletion",
+      "date": "2026-11-22"
+    },
+    {
+      "seed": -720808185,
+      "path": "235:3:2:4:5:5:5:5:5:5:5:5:5:5:5:5:5:5",
+      "note": "The same replacement of a suggested half after a paragraph proposed beside it",
+      "date": "2026-11-22"
+    },
+    {
+      "seed": -347876180,
+      "path": "57:3:5:7:7:8:8:5:5:5:5:5:5:5:5:5:5:5:5",
+      "note": "A proposed deletion of a whole half keeps to its own words once the half is joined",
+      "date": "2026-11-22"
     }
   ]
 }
