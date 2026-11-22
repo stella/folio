@@ -16,8 +16,21 @@
  */
 import { Result } from "better-result";
 
-import type { Comment, Document, ParagraphContent } from "../model/document";
-import { MAX_REVISION_ID } from "../model/document";
+import type {
+  BlockContent,
+  Comment,
+  Document,
+  ParagraphContent,
+  PreservedChild,
+  PreservedMarkup,
+  Table,
+  TableRow,
+} from "../model/document";
+import { MAX_REVISION_ID, preservedChildGap } from "../model/document";
+import {
+  preservedCommentRangeMarker,
+  withPreservedCommentRangeId,
+} from "../xml/preservedCommentRangeMarkers";
 import { commentAnchorsIn } from "./comments";
 import { IDENTITY_SPACES, isParaId, packageIdentityKeys } from "./ids";
 import {
@@ -61,60 +74,282 @@ const refuse = (
 const validCommentId = (id: number): boolean =>
   Number.isInteger(id) && id >= 0 && id <= MAX_REVISION_ID;
 
-/** Each comment id's anchor kinds, in leaf order. */
-const anchorKindsIn = (
+/**
+ * A comment anchor of the slice, and which of the slice's stories it stands
+ * in: the slice's own content is 0, and each text box in it one of its own.
+ */
+type SliceAnchor = { id: number; kind: AnchorKind; story: number };
+
+/** The id an anchor goes on under, or `null` to leave it out. */
+type AnchorVisitor = (anchor: SliceAnchor) => number | null;
+
+type SliceWalk = { visit: AnchorVisitor; stories: number };
+
+type StoryWalk = { walk: SliceWalk; story: number };
+
+/** Whether a rewrite kept every record it was given. */
+const unchanged = <T>(before: readonly T[], after: readonly T[]): boolean =>
+  after.length === before.length &&
+  after.every((record, index) => record === before[index]);
+
+/**
+ * The slice with `visit` deciding each comment anchor's id, in leaf order and
+ * into the text boxes its shapes hold; records left empty go too. Reading the
+ * anchors and settling them are this one walk, so they agree on every anchor.
+ */
+const rewriteAnchors = (
+  nodes: readonly ParagraphContent[],
+  visit: AnchorVisitor,
+): ParagraphContent[] =>
+  rewriteInline(nodes, {
+    walk: { visit, stories: 0 },
+    story: 0,
+  }).filter(isParagraphContent);
+
+const rewriteInline = (
   nodes: readonly InlineNode[],
-  out = new Map<number, AnchorKind[]>(),
-): Map<number, AnchorKind[]> => {
+  at: StoryWalk,
+): InlineNode[] => {
+  const out: InlineNode[] = [];
   for (const node of nodes) {
     if (isCommentAnchor(node)) {
-      const kinds = out.get(node.id) ?? [];
-      kinds.push(node.type);
-      out.set(node.id, kinds);
+      const id = at.walk.visit({
+        id: node.id,
+        kind: node.type,
+        story: at.story,
+      });
+      if (id !== null) out.push(id === node.id ? node : { ...node, id });
       continue;
     }
-    anchorKindsIn(childNodes(node) ?? [], out);
+    if (node.type === "shape" && node.shape.textBody !== undefined) {
+      const { textBody } = node.shape;
+      at.walk.stories += 1;
+      const content = rewriteBlocks(textBody.content, {
+        walk: at.walk,
+        story: at.walk.stories,
+      });
+      out.push(
+        unchanged(textBody.content, content)
+          ? node
+          : {
+              ...node,
+              shape: { ...node.shape, textBody: { ...textBody, content } },
+            },
+      );
+      continue;
+    }
+    const children = childNodes(node);
+    if (children === undefined) {
+      out.push(node);
+      continue;
+    }
+    const next = rewriteInline(children, at);
+    if (unchanged(children, next)) {
+      out.push(node);
+      continue;
+    }
+    const rebuilt = rebuildNode(node, next);
+    // A record holding only left-out anchors holds nothing now.
+    if (!isEmptyRecord(rebuilt)) out.push(rebuilt);
   }
+  return out;
+};
+
+const rewriteBlocks = (
+  blocks: readonly BlockContent[],
+  at: StoryWalk,
+): BlockContent[] =>
+  blocks.flatMap((block): BlockContent[] => {
+    switch (block.type) {
+      case "paragraph": {
+        const content = rewriteInline(block.content, at);
+        return [
+          unchanged<InlineNode>(block.content, content)
+            ? block
+            : { ...block, content: content.filter(isParagraphContent) },
+        ];
+      }
+      case "table":
+        return [rewriteTable(block, at)];
+      case "blockSdt":
+      case "blockCustomXml": {
+        const content = rewriteBlocks(block.content, at);
+        return [
+          unchanged(block.content, content) ? block : { ...block, content },
+        ];
+      }
+      case "commentRangeStart":
+      case "commentRangeEnd": {
+        const id = at.walk.visit({
+          id: block.id,
+          kind: block.type,
+          story: at.story,
+        });
+        if (id === null) return [];
+        return [id === block.id ? block : { ...block, id }];
+      }
+      case "preservedBlock":
+      case "bookmarkStart":
+      case "bookmarkEnd":
+      case "moveFromRangeStart":
+      case "moveFromRangeEnd":
+      case "moveToRangeStart":
+      case "moveToRangeEnd":
+        return [block];
+      default: {
+        const unhandled: never = block;
+        return unhandled;
+      }
+    }
+  });
+
+type PositionedRewrite = {
+  /** Settle the boundaries standing at a gap between rows or cells. */
+  settleGap: (gap: number) => void;
+  /** The markup once every gap is settled: the same one when nothing changed. */
+  markup: () => PreservedMarkup | undefined;
+};
+
+/** Range boundaries a table or row keeps as positioned markup, gap by gap. */
+const positionedRewrite = (
+  preserved: PreservedMarkup | undefined,
+  { childCount, at }: { childCount: number; at: StoryWalk },
+): PositionedRewrite => {
+  const settled = new Map<PreservedChild, PreservedChild | null>();
+  return {
+    settleGap: (gap) => {
+      for (const child of preserved?.children ?? []) {
+        if (preservedChildGap(child, childCount) !== gap) continue;
+        const marker = preservedCommentRangeMarker(child);
+        if (marker === undefined) continue;
+        const id = at.walk.visit({
+          id: marker.id,
+          kind: marker.type,
+          story: at.story,
+        });
+        settled.set(
+          child,
+          id === null ? null : withPreservedCommentRangeId(child, id),
+        );
+      }
+    },
+    markup: () => {
+      const before = preserved?.children ?? [];
+      const children = before.flatMap((child) => {
+        const next = settled.get(child);
+        return next === null ? [] : [next ?? child];
+      });
+      if (unchanged(before, children)) return preserved;
+      if (children.length > 0) return { ...preserved, children };
+      // An empty record is never written.
+      const { children: _left, ...rest } = preserved ?? {};
+      return Reflect.ownKeys(rest).length === 0 ? undefined : rest;
+    },
+  };
+};
+
+const rewriteTable = (table: Table, at: StoryWalk): Table => {
+  const between = positionedRewrite(table.preserved, {
+    childCount: table.rows.length,
+    at,
+  });
+  const rows = table.rows.map((row, rowIndex): TableRow => {
+    between.settleGap(rowIndex);
+    const inRow = positionedRewrite(row.preserved, {
+      childCount: row.cells.length,
+      at,
+    });
+    const cells = row.cells.map((cell, cellIndex) => {
+      inRow.settleGap(cellIndex);
+      const content = rewriteBlocks(cell.content, at);
+      return unchanged(cell.content, content) ? cell : { ...cell, content };
+    });
+    inRow.settleGap(row.cells.length);
+    const markup = inRow.markup();
+    if (markup === row.preserved && unchanged(row.cells, cells)) return row;
+    const { preserved: _row, ...rest } = row;
+    return markup === undefined
+      ? { ...rest, cells }
+      : { ...rest, cells, preserved: markup };
+  });
+  between.settleGap(table.rows.length);
+  const markup = between.markup();
+  if (markup === table.preserved && unchanged(table.rows, rows)) return table;
+  const { preserved: _table, ...rest } = table;
+  return markup === undefined
+    ? { ...rest, rows }
+    : { ...rest, rows, preserved: markup };
+};
+
+/** Each comment id's anchors in the slice, in leaf order. */
+const sliceAnchorsIn = (
+  content: readonly ParagraphContent[],
+): Map<number, SliceAnchor[]> => {
+  const out = new Map<number, SliceAnchor[]>();
+  rewriteAnchors(content, (anchor) => {
+    const own = out.get(anchor.id);
+    if (own === undefined) out.set(anchor.id, [anchor]);
+    else own.push(anchor);
+    return anchor.id;
+  });
   return out;
 };
 
 type HoldsWholeOptions = {
   /** The comment's anchors in the slice, in leaf order. */
-  kinds: readonly AnchorKind[] | undefined;
+  anchors: readonly SliceAnchor[] | undefined;
   /** Whether the comment is on a point, its reference the only anchor. */
   point: boolean;
 };
 
 /** Whether a comment's anchors in the slice make its one range, or its point. */
-const holdsWhole = ({ kinds, point }: HoldsWholeOptions): boolean => {
-  if (kinds === undefined) return true;
-  const starts = kinds.filter((kind) => kind === "commentRangeStart").length;
-  const ends = kinds.filter((kind) => kind === "commentRangeEnd").length;
-  const references = kinds.filter((kind) => kind === "commentReference").length;
-  if (starts === 0 && ends === 0) return point && references === 1;
+const holdsWhole = ({ anchors, point }: HoldsWholeOptions): boolean => {
+  if (anchors === undefined) return true;
+  const of = (kind: AnchorKind) =>
+    anchors.filter((anchor) => anchor.kind === kind);
+  const [start, ...starts] = of("commentRangeStart");
+  const [end, ...ends] = of("commentRangeEnd");
+  const references = of("commentReference").length;
+  if (start === undefined && end === undefined)
+    return point && references === 1;
   return (
-    starts === 1 &&
-    ends === 1 &&
+    start !== undefined &&
+    end !== undefined &&
+    starts.length === 0 &&
+    ends.length === 0 &&
     references <= 1 &&
-    kinds.indexOf("commentRangeStart") < kinds.indexOf("commentRangeEnd")
+    start.story === end.story &&
+    anchors.indexOf(start) < anchors.indexOf(end)
   );
 };
 
 /**
  * Which of a comment's anchors in the slice go in as they are: one of each
- * kind it has none of standing, and an end after its start where there is one.
+ * kind it has none of standing, and an end after its start, in the story its
+ * start stands in, where there is one.
  */
 const keptAnchors = (
-  kinds: readonly AnchorKind[],
+  anchors: readonly SliceAnchor[],
   standing: ReadonlySet<string> | undefined,
 ): boolean[] => {
-  const first = (kind: AnchorKind, from = 0): number =>
-    standing?.has(kind) === true ? -1 : kinds.indexOf(kind, from);
+  const first = (
+    kind: AnchorKind,
+    matches: (anchor: SliceAnchor, index: number) => boolean = () => true,
+  ): number =>
+    standing?.has(kind) === true
+      ? -1
+      : anchors.findIndex(
+          (anchor, index) => anchor.kind === kind && matches(anchor, index),
+        );
   const start = first("commentRangeStart");
-  const following = first("commentRangeEnd", start + 1);
+  const following = first(
+    "commentRangeEnd",
+    ({ story }, index) =>
+      index > start && (start < 0 || story === anchors[start]?.story),
+  );
   const end = following < 0 ? first("commentRangeEnd") : following;
   const kept = new Set([start, end, first("commentReference")]);
-  return kinds.map((_, index) => kept.has(index));
+  return anchors.map((_, index) => kept.has(index));
 };
 
 /** A carried thread: its root and the replies under it, in carried order. */
@@ -160,49 +395,26 @@ const carriedThreads = (
 };
 
 type SettleAnchorsOptions = {
-  nodes: readonly InlineNode[];
+  content: readonly ParagraphContent[];
   renamed: ReadonlyMap<number, number>;
   /** Per comment id, which of its anchors stay, in leaf order; all when absent. */
   kept: ReadonlyMap<number, readonly boolean[]>;
-  /** How many of each comment's anchors came before `nodes`. */
-  passed?: Map<number, number>;
 };
 
-/** Rewrite the slice's anchors: renamed ids, left-out ones; records they empty go too. */
+/** Rewrite the slice's anchors: renamed ids, left-out ones. */
 const settleAnchors = ({
-  nodes,
+  content,
   renamed,
   kept,
-  passed = new Map(),
-}: SettleAnchorsOptions): InlineNode[] => {
-  const out: InlineNode[] = [];
-  for (const node of nodes) {
-    if (isCommentAnchor(node)) {
-      const index = passed.get(node.id) ?? 0;
-      passed.set(node.id, index + 1);
-      if (kept.get(node.id)?.[index] === false) continue;
-      const id = renamed.get(node.id);
-      out.push(id === undefined ? node : { ...node, id });
-      continue;
-    }
-    const children = childNodes(node);
-    if (children === undefined) {
-      out.push(node);
-      continue;
-    }
-    const next = settleAnchors({ nodes: children, renamed, kept, passed });
-    if (
-      next.length === children.length &&
-      next.every((child, index) => child === children[index])
-    ) {
-      out.push(node);
-      continue;
-    }
-    const rebuilt = rebuildNode(node, next);
-    // A record holding only left-out anchors holds nothing now.
-    if (!isEmptyRecord(rebuilt)) out.push(rebuilt);
-  }
-  return out;
+}: SettleAnchorsOptions): ParagraphContent[] => {
+  // How many of each comment's anchors came before.
+  const passed = new Map<number, number>();
+  return rewriteAnchors(content, ({ id }) => {
+    const index = passed.get(id) ?? 0;
+    passed.set(id, index + 1);
+    if (kept.get(id)?.[index] === false) return null;
+    return renamed.get(id) ?? id;
+  });
 };
 
 /** The ids a package already gives meaning to: comments, their anchors, revisions. */
@@ -241,11 +453,11 @@ export const repeatsCommentAnchor = (
   document: Document,
   content: readonly ParagraphContent[],
 ): boolean => {
-  const sliceKinds = anchorKindsIn(content);
-  if (sliceKinds.size === 0) return false;
+  const sliceAnchors = sliceAnchorsIn(content);
+  if (sliceAnchors.size === 0) return false;
   const standing = standingAnchorKinds(document);
-  for (const [id, kinds] of sliceKinds)
-    if (keptAnchors(kinds, standing.get(id)).includes(false)) return true;
+  for (const [id, anchors] of sliceAnchors)
+    if (keptAnchors(anchors, standing.get(id)).includes(false)) return true;
   return false;
 };
 
@@ -258,16 +470,16 @@ export const pastedComments = (
   op: InsertContentOp,
   content: readonly ParagraphContent[],
 ): Result<PastedComments, DocumentOpRefusal> => {
-  const sliceKinds = anchorKindsIn(content);
+  const sliceAnchors = sliceAnchorsIn(content);
   const carried = op.comments ?? [];
-  if (sliceKinds.size === 0 && carried.length === 0)
+  if (sliceAnchors.size === 0 && carried.length === 0)
     return Result.ok({ content: [...content], added: [] });
   const threads = carriedThreads(carried);
   if (threads.isErr()) return Result.err(threads.error);
   const standing = standingAnchorKinds(document);
-  const duplicated = (id: number): AnchorKind[] =>
-    (sliceKinds.get(id) ?? []).filter(
-      (kind) => standing.get(id)?.has(kind) === true,
+  const duplicated = (id: number): SliceAnchor[] =>
+    (sliceAnchors.get(id) ?? []).filter(
+      ({ kind }) => standing.get(id)?.has(kind) === true,
     );
   const records = new Set(
     (document.package.document.comments ?? []).map(({ id }) => id),
@@ -277,11 +489,11 @@ export const pastedComments = (
   const fresh = [...(op.newCommentIds ?? [])];
   const taken = takenCommentIds(document);
   for (const { id } of carried) taken.add(id);
-  for (const id of sliceKinds.keys()) taken.add(id);
+  for (const id of sliceAnchors.keys()) taken.add(id);
   const copied = new Set<Comment>();
   const joining = new Set<Comment>();
   for (const { root, members } of threads.value) {
-    if (!sliceKinds.has(root))
+    if (!sliceAnchors.has(root))
       return refuse(
         DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
         "A carried comment names no anchor of the slice.",
@@ -303,7 +515,7 @@ export const pastedComments = (
     if (
       members.every(({ id, anchorKind }) =>
         holdsWhole({
-          kinds: sliceKinds.get(id),
+          anchors: sliceAnchors.get(id),
           point:
             anchorKind !== "range" &&
             standing.get(id)?.has("commentRangeStart") !== true &&
@@ -331,7 +543,7 @@ export const pastedComments = (
       );
     taken.add(next);
     ids.set(comment.id, next);
-    if (sliceKinds.has(comment.id)) renamed.set(comment.id, next);
+    if (sliceAnchors.has(comment.id)) renamed.set(comment.id, next);
   }
   const suggestionId = op.revision?.suggestionId;
   for (const comment of carried) {
@@ -346,9 +558,9 @@ export const pastedComments = (
     added.push(record);
   }
   const kept = new Map<number, readonly boolean[]>();
-  for (const [id, kinds] of sliceKinds) {
+  for (const [id, anchors] of sliceAnchors) {
     if (renamed.has(id)) continue;
-    const keeps = keptAnchors(kinds, standing.get(id));
+    const keeps = keptAnchors(anchors, standing.get(id));
     if (keeps.includes(false)) kept.set(id, keeps);
   }
   for (const comment of added) {
@@ -374,8 +586,6 @@ export const pastedComments = (
   const settled =
     renamed.size === 0 && kept.size === 0
       ? [...content]
-      : settleAnchors({ nodes: content, renamed, kept }).filter(
-          isParagraphContent,
-        );
+      : settleAnchors({ content, renamed, kept });
   return Result.ok({ content: settled, added });
 };

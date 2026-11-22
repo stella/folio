@@ -1,6 +1,7 @@
 import { panic, Result } from "better-result";
 
 import type { Document } from "../../model/document";
+import { preservedCommentRangeMarker } from "../../xml/preservedCommentRangeMarkers";
 import { storyBody, storyParagraphs } from "../blocks";
 import { structurallyEqual } from "../equality";
 import { idKey } from "../ids";
@@ -128,6 +129,11 @@ const pastedCommentParts = (op: InsertContentOp): PartAccess[] => {
       typeof node.id === "number"
     )
       ids.add(node.id);
+    // A boundary between a table's rows or cells is kept as markup.
+    if ("xml" in node && typeof node.xml === "string") {
+      const marker = preservedCommentRangeMarker({ xml: node.xml });
+      if (marker !== undefined) ids.add(marker.id);
+    }
     for (const child of Object.values(node)) visit(child);
   };
   visit(op.slice.content);

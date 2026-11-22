@@ -8,6 +8,7 @@
 import { describe, expect, test } from "bun:test";
 
 import type {
+  BlockContent,
   Comment,
   Document,
   Paragraph,
@@ -16,8 +17,10 @@ import type {
 } from "../../model/document";
 import { COMMENT_PART_RELATIONSHIPS } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
-import { commentDocumentIssue } from "../comments";
+import { commentDocumentIssue, sourceCommentAnchorsIn } from "../comments";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
+import { BATCH_REJECTION_REASONS } from "../sequencing/envelope";
+import { transformByFootprint } from "../sequencing/scope";
 import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
@@ -731,6 +734,209 @@ describe("a pasted copy of a standing comment's range", () => {
       "comments.xml",
       "commentsExtended.xml",
     ]);
+  });
+
+  /** A run drawing a text box that holds `blocks`. */
+  const box = (blocks: BlockContent[]): Run => ({
+    type: "run",
+    content: [
+      {
+        type: "shape",
+        shape: {
+          type: "shape",
+          shapeType: "textBox",
+          id: "box",
+          size: { width: 914_400, height: 914_400 },
+          textBody: { content: blocks },
+        },
+      },
+    ],
+  });
+  const positioned = (marker: string, index: number) => ({
+    children: [{ index, xml: `<w:${marker} w:id="1"/>` }],
+  });
+  /** Comment 1's range in a pasted text box, written each way a box can hold it. */
+  const boxed = {
+    "in a paragraph": [
+      {
+        type: "paragraph",
+        paraId: "00000030",
+        content: [start(1), run("ab"), end(1), reference(1)],
+      },
+    ],
+    "between blocks": [
+      start(1),
+      { type: "paragraph", paraId: "00000030", content: [run("ab")] },
+      end(1),
+      { type: "paragraph", paraId: "00000031", content: [reference(1)] },
+    ],
+    "between a table's rows and cells": [
+      {
+        type: "table",
+        preserved: positioned("commentRangeEnd", 1),
+        rows: [
+          {
+            type: "tableRow",
+            preserved: positioned("commentRangeStart", 0),
+            cells: [
+              {
+                type: "tableCell",
+                content: [
+                  {
+                    type: "paragraph",
+                    paraId: "00000030",
+                    content: [run("ab")],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      { type: "paragraph", paraId: "00000031", content: [reference(1)] },
+    ],
+  } as const satisfies Record<string, readonly unknown[]>;
+  const sourceAnchors = (document: Document): Map<number, string[]> => {
+    const out = new Map<number, string[]>();
+    for (const { id, type } of sourceCommentAnchorsIn(document))
+      out.set(id, [...(out.get(id) ?? []), type].toSorted());
+    return out;
+  };
+  const WHOLE = RANGE.toSorted();
+
+  for (const [place, blocks] of Object.entries(boxed)) {
+    for (const mode of MODE_NAMES) {
+      test(`${mode}: a range ${place} of a text box takes a fresh id and a copy of the thread`, () => {
+        const before = documentOf();
+        const applied = applyDocumentOp(
+          before,
+          paste(mode, [box(structuredClone(blocks) as BlockContent[])], {
+            comments: carried,
+            newCommentIds: [5, 6],
+          }),
+        );
+        if (applied.isErr()) throw applied.error;
+        const after = applied.value.document;
+        expect(sourceAnchors(after)).toEqual(
+          new Map([
+            [1, WHOLE],
+            [5, WHOLE],
+          ]),
+        );
+        expect(commentDocumentIssue(after)).toBeUndefined();
+        expect(
+          after.package.document.comments?.map(({ id, parentId }) => [
+            id,
+            parentId,
+          ]),
+        ).toEqual([
+          [1, undefined],
+          [2, 1],
+          [5, undefined],
+          [6, 5],
+        ]);
+        const undone = applyDocumentOps(
+          after,
+          JSON.parse(JSON.stringify(applied.value.inverse)),
+        );
+        if (undone.isErr()) throw undone.error;
+        expect(undone.value.document).toEqual(before);
+      });
+
+      test(`${mode}: a range ${place} of a text box is left out without a thread`, () => {
+        const before = documentOf();
+        const applied = applyDocumentOp(
+          before,
+          paste(mode, [box(structuredClone(blocks) as BlockContent[])]),
+        );
+        if (applied.isErr()) throw applied.error;
+        const after = applied.value.document;
+        expect(sourceAnchors(after)).toEqual(new Map([[1, WHOLE]]));
+        expect(JSON.stringify(after.package.document.content)).toContain(
+          '"textBody"',
+        );
+        expect(after.package.document.comments).toEqual([root, reply]);
+        const undone = applyDocumentOps(
+          after,
+          JSON.parse(JSON.stringify(applied.value.inverse)),
+        );
+        if (undone.isErr()) throw undone.error;
+        expect(undone.value.document).toEqual(before);
+      });
+    }
+  }
+
+  test("concurrent insertions naming one comment between a text box's rows conflict", () => {
+    const [table] = boxed["between a table's rows and cells"];
+    const op = paste("direct", [
+      box([structuredClone(table) as unknown as BlockContent]),
+    ]);
+    const decided = transformByFootprint({
+      op,
+      over: structuredClone(op),
+      effect: undefined,
+      order: "before",
+    });
+    expect(decided?.isErr() && decided.error.reason).toBe(
+      BATCH_REJECTION_REASONS.PART_CONFLICT,
+    );
+  });
+
+  test("a start and an end in different text boxes are no range to copy", () => {
+    const applied = applyDocumentOp(
+      documentOf(),
+      paste(
+        "direct",
+        [
+          box([
+            {
+              type: "paragraph",
+              paraId: "00000030",
+              content: [start(1), run("x")],
+            },
+          ]),
+          box([
+            {
+              type: "paragraph",
+              paraId: "00000031",
+              content: [run("y"), end(1), reference(1)],
+            },
+          ]),
+        ],
+        { comments: carried, newCommentIds: [5, 6] },
+      ),
+    );
+    if (applied.isErr()) throw applied.error;
+    expect(sourceAnchors(applied.value.document)).toEqual(
+      new Map([[1, WHOLE]]),
+    );
+    expect(applied.value.document.package.document.comments).toEqual([
+      root,
+      reply,
+    ]);
+  });
+
+  test("a slice repeating a missing comment's range in a text box keeps the first", () => {
+    const applied = applyDocumentOp(
+      documentOf(),
+      paste("direct", [
+        start(7),
+        run("x"),
+        box([
+          {
+            type: "paragraph",
+            paraId: "00000030",
+            content: [start(7), run("y"), end(7)],
+          },
+        ]),
+        end(7),
+        reference(7),
+      ]),
+    );
+    if (applied.isErr()) throw applied.error;
+    const { document } = applied.value;
+    expect(sourceAnchors(document).get(7)).toEqual(WHOLE);
+    expect(anchorsById(document).get(7)).toEqual(RANGE);
   });
 
   test("a copy without fresh comment ids is refused", () => {

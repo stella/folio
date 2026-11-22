@@ -22,6 +22,33 @@ export type PreservedCommentRangeMarker = {
 export const preservedCommentRangeMarker = (
   child: Pick<PreservedChild, "xml">,
 ): PreservedCommentRangeMarker | undefined => {
+  const marker = capturedMarker(child);
+  return marker && { type: marker.type, id: marker.id };
+};
+
+/** A captured range boundary under another comment id; another child as it is. */
+export const withPreservedCommentRangeId = (
+  child: PreservedChild,
+  id: number,
+): PreservedChild => {
+  const marker = capturedMarker(child);
+  if (marker === undefined || marker.id === id) return child;
+  const attribute = marker.attribute.replaceAll(".", String.raw`\.`);
+  return {
+    ...child,
+    xml: child.xml.replace(
+      new RegExp(
+        String.raw`(?<before>\s${attribute}\s*=\s*)(?<quote>["'])\d+\k<quote>`,
+        "u",
+      ),
+      `$<before>$<quote>${String(id)}$<quote>`,
+    ),
+  };
+};
+
+const capturedMarker = (
+  child: Pick<PreservedChild, "xml">,
+): (PreservedCommentRangeMarker & { attribute: string }) | undefined => {
   if (!child.xml.includes("commentRange")) return undefined;
   const parsed = readXml(child.xml, {
     conformance: "ooxml",
@@ -46,7 +73,7 @@ export const preservedCommentRangeMarker = (
     )
       continue;
     const id = Number(raw);
-    if (Number.isSafeInteger(id)) return { type, id };
+    if (Number.isSafeInteger(id)) return { type, id, attribute: name };
   }
   return undefined;
 };
