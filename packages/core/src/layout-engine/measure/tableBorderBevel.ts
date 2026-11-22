@@ -1,8 +1,8 @@
 import type { CellBorderSpec } from "../types";
 
-const EMBOSS_COLOR = /^#[\da-f]{6}$/iu;
+const BEVEL_COLOR = /^#[\da-f]{6}$/iu;
 const BLACK = "#000000";
-const LARGE_EMBOSS_WIDTH_PX = 4;
+const LARGE_BEVEL_WIDTH_PX = 4;
 const MAX_CHANNEL = 255;
 const LIGHTNESS_STEPS = 240;
 const MIDDLE_TONE_DROP = 70;
@@ -10,21 +10,21 @@ const DARK_TONE_DROP = 80;
 
 export type TableBorderSide = "top" | "right" | "bottom" | "left";
 
-function embossedEdge(border: CellBorderSpec | undefined) {
-  // The OOXML bridge maps threeDEmboss to ridge. Groove and other CSS
-  // styles retain their existing paint paths.
-  if (border?.style !== "ridge") return undefined;
+function beveledEdge(border: CellBorderSpec | undefined) {
+  // The OOXML bridge maps threeDEmboss to ridge and threeDEngrave to groove.
+  if (border?.style !== "ridge" && border?.style !== "groove") return undefined;
   const width = border.width ?? 1;
   const color = border.color ?? BLACK;
-  if (!(width > 0) || !Number.isFinite(width) || !EMBOSS_COLOR.test(color))
+  if (!(width > 0) || !Number.isFinite(width) || !BEVEL_COLOR.test(color))
     return undefined;
-  return { width, shoulder: width >= LARGE_EMBOSS_WIDTH_PX ? 2 : 1, color };
+  const shoulder = width >= LARGE_BEVEL_WIDTH_PX ? 2 : 1;
+  return { width, shoulder, color, recessed: border.style === "groove" };
 }
 
 export function tableCellBorderWidth(
   border: CellBorderSpec | undefined,
 ): number {
-  const edge = embossedEdge(border);
+  const edge = beveledEdge(border);
   return edge ? edge.width + edge.shoulder * 2 : (border?.width ?? 0);
 }
 
@@ -70,16 +70,20 @@ function embossTones(color: string): readonly [Tone, Tone, Tone] {
 }
 
 export function tableCellBorderBevel(border: CellBorderSpec | undefined) {
-  const edge = embossedEdge(border);
+  const edge = beveledEdge(border);
   if (!edge) return undefined;
-  const { width, shoulder, color } = edge;
+  const { width, shoulder, color, recessed } = edge;
   const [light, middle, dark] = embossTones(color);
   return {
     widthPx: width + 2 * shoulder,
     bands: [
-      { offsetPx: 0, widthPx: shoulder, color: light },
+      { offsetPx: 0, widthPx: shoulder, color: recessed ? dark : light },
       { offsetPx: shoulder, widthPx: width, color: middle },
-      { offsetPx: shoulder + width, widthPx: shoulder, color: dark },
+      {
+        offsetPx: shoulder + width,
+        widthPx: shoulder,
+        color: recessed ? light : dark,
+      },
     ],
   };
 }
