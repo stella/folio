@@ -50,10 +50,10 @@ export const applyDocumentOpEnvelope: (document: Document_2, envelope: {
 export const applyDocumentOps: (document: Document_2, ops: readonly DocumentOp[]) => Result<AppliedDocumentOp, DocumentOpRefusal>;
 
 // @public
-export const BATCH_ANNOTATION_KINDS: {
-    readonly FORMATTING: "formatting";
-    readonly COMMENT: "comment";
-};
+export const BATCH_ANNOTATION_KINDS: Readonly<{
+    FORMATTING: "formatting";
+    COMMENT: "comment";
+}>;
 
 // @public (undocumented)
 export const BATCH_REJECTION_REASONS: {
