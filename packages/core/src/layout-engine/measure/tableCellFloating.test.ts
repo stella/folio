@@ -131,6 +131,45 @@ function laidOutCell(run: ImageRun) {
 const firstLineTop = (measure: ParagraphMeasure): number =>
   measure.lines[0]?.floatSkipBefore ?? 0;
 
+test.each(["margin", "page", "paragraph"] as const)(
+  "a cell-scoped %s anchor uses its vertical frame",
+  (relativeTo) => {
+    const block = cellTable(
+      picture({
+        wrapType: "behind",
+        layoutInCell: true,
+        position: {
+          horizontal: { relativeTo: "column", posOffset: 0 },
+          vertical: { relativeTo, posOffset: 19050 },
+        },
+      }),
+    );
+    const cell = block.rows.at(0)?.cells.at(0);
+    if (!cell) throw new Error("Expected a cell");
+    cell.blocks.unshift({
+      kind: "paragraph",
+      id: "preceding",
+      runs: [{ kind: "text", text: "A preceding line" }],
+    });
+
+    const cellMeasure = measureTableBlock(block, CELL_WIDTH)
+      .rows.at(0)
+      ?.cells.at(0);
+    const preceding = cellMeasure?.blocks.at(0);
+    if (!cellMeasure || preceding?.kind !== "paragraph") {
+      throw new Error("Expected a measured preceding paragraph");
+    }
+    const { y } =
+      getTableCellFloatingImages(
+        cell,
+        cellMeasure,
+        getTableCellContentWidth(cell, cellMeasure),
+      ).at(0) ?? {};
+    const frameY = relativeTo === "paragraph" ? preceding.totalHeight : 0;
+    expect(y).toBeCloseTo(frameY + 2);
+  },
+);
+
 describe("table cell floating picture exclusions", () => {
   test.each<[string, Partial<ImageRun>]>([
     ["square, exactly the cell width", {}],
