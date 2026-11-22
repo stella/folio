@@ -1,4 +1,7 @@
-import type { DiagonalHatchPattern, StrokeDashCycle } from "../../display-list/types";
+import type {
+  DiagonalHatchPattern,
+  StrokeDashCycle,
+} from "../../display-list/types";
 import { pointsToPixels } from "../../utils/units";
 import type { CellBorderSpec } from "../types";
 

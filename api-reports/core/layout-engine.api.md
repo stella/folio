@@ -67,7 +67,7 @@ export type CellBorderSpec = {
     width?: number;
     color?: string;
     style?: CssBorderStyle;
-    authoredStyle?: "thinThickSmallGap" | "thickThinSmallGap" | "thinThickLargeGap" | "thickThinLargeGap" | "dotDash" | "dashSmallGap" | "dotDotDash" | "dashed";
+    authoredStyle?: "thinThickSmallGap" | "thickThinSmallGap" | "thinThickLargeGap" | "thickThinLargeGap" | "dotDash" | "dashSmallGap" | "dotDotDash" | "dashed" | "dashDotStroked";
 };
 
 // @public (undocumented)
