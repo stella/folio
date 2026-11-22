@@ -76,6 +76,8 @@ const PARSE_WARNING_MESSAGES = {
     `Unnumbered style${quoted(warning.value)} whose numbering definition is missing.`,
   [PARSE_WARNING_CODES.unbalancedMoveRange]: (warning) =>
     `Removed ${plural(warning.count, "unbalanced tracked move range marker")}.`,
+  [PARSE_WARNING_CODES.droppedMoveRange]: (warning) =>
+    `Dropped a further move range${where(warning)}; a move keeps its first range.`,
   [PARSE_WARNING_CODES.headerFooterTypeOutsideEnum]: (warning) =>
     `Read header/footer type${quoted(warning.value)} as "default"${where(warning)}; ST_HdrFtr is even, default or first.`,
   [PARSE_WARNING_CODES.unrecognisedOnOffValue]: (warning) =>

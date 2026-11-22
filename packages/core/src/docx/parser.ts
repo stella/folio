@@ -164,6 +164,7 @@ import { parseStylesPackage } from "./styleParser";
 import type { StyleMap } from "./styleParser";
 import { applyThemeFontLang, parseTheme } from "./themeParser";
 import {
+  DROPPED_MOVE_RANGE_WARNING,
   normalizeTrackedMoveRanges,
   UNBALANCED_MOVE_RANGE_WARNING,
 } from "./trackedMoveRangeNormalization";
@@ -914,6 +915,16 @@ export async function parseDocxWithPreviewBudget(
         count: danglingReferences.hyperlinks,
       });
     }
+    // As above, a save writes a move range repair only into a part it rewrites
+    // anyway.
+    const replayedMoveParts = [
+      ...(headers?.values() ?? []),
+      ...(footers?.values() ?? []),
+    ].filter(
+      (part) =>
+        getHeaderFooterVerbatimXml(part)?.includes("move") === true &&
+        canReplayHeaderFooterVerbatim(part),
+    );
     const trackedMoveRangeNormalization = normalizeTrackedMoveRanges({
       documentBody,
       ...(headers !== undefined ? { headers } : {}),
@@ -921,6 +932,18 @@ export async function parseDocxWithPreviewBudget(
       ...(footnotes !== undefined ? { footnotes } : {}),
       ...(endnotes !== undefined ? { endnotes } : {}),
     });
+    for (const part of replayedMoveParts) {
+      refreshHeaderFooterVerbatimFingerprint(part);
+    }
+    for (const {
+      kind,
+      id,
+    } of trackedMoveRangeNormalization.droppedMoveRanges ?? []) {
+      parseContext.warn({
+        code: DROPPED_MOVE_RANGE_WARNING,
+        at: `${kind} range w:id ${String(id)}`,
+      });
+    }
     if (trackedMoveRangeNormalization.removedUnbalancedMoveRangeMarkers > 0) {
       parseContext.warn({
         code: UNBALANCED_MOVE_RANGE_WARNING,

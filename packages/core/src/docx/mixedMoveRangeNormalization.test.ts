@@ -258,7 +258,7 @@ describe("mixed block and inline move range normalization", () => {
     });
   });
 
-  test("drops only duplicate starts across ownership kinds and preserves balanced occurrences", () => {
+  test("drops duplicate starts across ownership kinds and every range after the first", () => {
     const sharedStart = {
       type: "moveToRangeStart",
       id: 7,
@@ -281,20 +281,13 @@ describe("mixed block and inline move range normalization", () => {
 
     expect(normalizeTrackedMoveRanges({ documentBody: withSections })).toEqual({
       removedUnbalancedMoveRangeMarkers: 1,
+      droppedMoveRanges: [{ kind: "moveTo", id: 7 }],
     });
-    expect(withSections.content).toEqual([
-      sharedStart,
-      middle,
-      sharedEnd,
-      sharedStart,
-      sharedEnd,
-    ]);
+    expect(withSections.content).toEqual([sharedStart, middle, sharedEnd]);
     expect(middle.content).toEqual([
       { type: "run", content: [{ type: "text", text: "ab" }] },
     ]);
     expect(markers(withSections).map(({ marker }) => marker)).toEqual([
-      sharedStart,
-      sharedEnd,
       sharedStart,
       sharedEnd,
     ]);
@@ -324,14 +317,14 @@ describe("mixed block and inline move range normalization", () => {
       "moveToRangeEnd",
       "moveToRangeStart",
       "moveToRangeEnd",
-      "moveToRangeStart",
-      "moveToRangeEnd",
     ]);
+    // A header's range repeats none of the body's.
     expect(
       normalizeTrackedMoveRanges({ documentBody: withSections, headers }),
     ).toEqual({
       removedUnbalancedMoveRangeMarkers: 0,
     });
+    expect(header.content).toHaveLength(2);
   });
 
   test("leaves balanced same-owner pairs and their arrays untouched", () => {
