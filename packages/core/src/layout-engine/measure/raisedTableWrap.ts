@@ -10,6 +10,7 @@ export type RaisedTableWrapInputs = ReadonlyMap<
 >;
 
 const MAX_PLACEMENT_PASSES = 4;
+const MAX_PAGE_OVERLAP_COMPARISONS = 16_384;
 const settledParagraphs = new WeakSet<ParagraphMeasure>();
 
 export const hasSettledRaisedTableWrap = (measure: ParagraphMeasure): boolean =>
@@ -26,13 +27,24 @@ const hasRaisedTableWrap = (block: FlowBlock): boolean => {
 const collectInputs = (
   layout: Layout,
   entries: ReadonlyMap<FlowBlock["id"], { block: FlowBlock; measure: Measure }>,
-): RaisedTableWrapInputs => {
+): RaisedTableWrapInputs | undefined => {
   const inputs = new Map<FlowBlock["id"], FloatingImageZone[]>();
   for (const page of layout.pages) {
     const earlierParagraphs = [];
+    let remainingComparisons = MAX_PAGE_OVERLAP_COMPARISONS;
     for (const fragment of page.fragments) {
       if (fragment.kind === "paragraph") {
-        earlierParagraphs.push(fragment);
+        const entry = entries.get(fragment.blockId);
+        if (
+          fragment.height > 0 &&
+          entry?.measure.kind === "paragraph" &&
+          !isUndecoratedParagraphMark(entry.block)
+        ) {
+          earlierParagraphs.push({
+            paragraph: fragment,
+            measure: entry.measure,
+          });
+        }
         continue;
       }
       if (fragment.kind !== "table") continue;
@@ -45,7 +57,9 @@ const collectInputs = (
       const top = fragment.y - (floating?.topFromText ?? 0);
       const bottom =
         fragment.y + fragment.height + (floating?.bottomFromText ?? 0);
-      for (const paragraph of earlierParagraphs) {
+      remainingComparisons -= earlierParagraphs.length;
+      if (remainingComparisons < 0) return undefined;
+      for (const { paragraph, measure } of earlierParagraphs) {
         const paragraphBottom = paragraph.y + paragraph.height;
         const paragraphRight = paragraph.x + paragraph.width;
         if (
@@ -56,14 +70,6 @@ const collectInputs = (
         ) {
           continue;
         }
-        const entry = entries.get(paragraph.blockId);
-        if (
-          entry?.measure.kind !== "paragraph" ||
-          isUndecoratedParagraphMark(entry.block)
-        ) {
-          continue;
-        }
-        const { measure } = entry;
         const wrapsOnLeft = left >= paragraph.x + paragraph.width / 2;
         const leftMargin = wrapsOnLeft ? 0 : right - paragraph.x;
         const rightMargin = wrapsOnLeft ? paragraphRight - left : 0;
@@ -148,12 +154,13 @@ export function settleRaisedTableWrap({
   let inputs = collect(original);
   for (
     let pass = 0;
-    pass < MAX_PLACEMENT_PASSES && inputs.size > 0;
+    pass < MAX_PLACEMENT_PASSES && inputs !== undefined && inputs.size > 0;
     pass += 1
   ) {
     const measured = measure(inputs);
     const current = { measures: measured, layout: layout(measured) };
     const nextInputs = collect(current);
+    if (nextInputs === undefined) return original;
     if (sameInputs(inputs, nextInputs)) {
       for (const [index, block] of blocks.entries()) {
         const paragraph = measured[index];
