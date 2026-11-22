@@ -161,7 +161,6 @@ export const normalizeCanonicalSource = (
     next = withTextBoxesClosed({
       document: next,
       story,
-      needsClosing: (blocks) => blocksEnding(blocks) !== "paragraph",
       closing: () => {
         const paraId = freshParaId(takenIds());
         minted.push(paraId);

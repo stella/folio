@@ -142,7 +142,7 @@ type BlocksEnding = "paragraph" | "table" | "none";
  * over like opaque markup and bookmark markers, so the block before it
  * decides.
  */
-const blocksEnding = (blocks: readonly BlockContent[]): BlocksEnding => {
+export const blocksEnding = (blocks: readonly BlockContent[]): BlocksEnding => {
   for (let index = blocks.length - 1; index >= 0; index -= 1) {
     const block = blocks[index];
     if (block?.type === "paragraph") return "paragraph";

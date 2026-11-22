@@ -17,6 +17,7 @@ import {
   locateParagraphInBlockList,
 } from "./paragraphLocator";
 import {
+  blocksEnding,
   findStoryBody,
   packageStoryOf,
   replaceStoryBody,
@@ -381,21 +382,18 @@ export const textBoxContentsIn = (
 type CloseTextBoxesOptions = {
   document: Document;
   story: OpStory;
-  /** Whether a text box's blocks need a paragraph after them to end with. */
-  needsClosing: (blocks: readonly BlockContent[]) => boolean;
   /** A new empty paragraph, with an id of its own. */
   closing: () => Paragraph;
 };
 
 /**
  * `document` with an empty paragraph after the blocks of each text box drawn
- * in `story`, nested ones included, that `needsClosing` says end without one:
- * a text box is a container, and a container ends with a paragraph.
+ * in `story`, nested ones included, that end without one: a text box is a
+ * container, and a container ends with a paragraph.
  */
 export const withTextBoxesClosed = ({
   document,
   story,
-  needsClosing,
   closing,
 }: CloseTextBoxesOptions): Document => {
   let current = document;
@@ -404,7 +402,7 @@ export const withTextBoxesClosed = ({
     const box = textBoxStoriesIn(current, story).at(index);
     if (box === undefined) return current;
     const body = storyBody(current, box);
-    if (!needsClosing(body.content)) continue;
+    if (blocksEnding(body.content) === "paragraph") continue;
     current = replaceStoryBody({
       document: current,
       story: box,
