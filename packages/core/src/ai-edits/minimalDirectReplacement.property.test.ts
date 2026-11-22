@@ -1470,6 +1470,19 @@ describe.each(SESSIONS)("direct replacement examples (%s)", (session) => {
     expect(edited).toBe(control.replace(">John</w:t>", ">John Smith</w:t>"));
   });
 
+  test("keeps the control when replacing its text and a following break", async () => {
+    const paragraph = controlOf("Seller ", 0) + itemXml({ kind: "break" }, 1);
+    const { reviewer } = await replaceFirst(paragraph, {
+      session,
+      replace: () => " and",
+    });
+    expect(reviewer.snapshot().blocks.at(0)?.text).toBe(" and");
+    const after = firstParagraph(reviewer).node;
+    expect(countNodes(after, "sdt")).toBe(1);
+    expect(after.firstChild?.type.name).toBe("sdt");
+    expect(after.firstChild?.textContent).toBe(" and");
+  });
+
   test("a field survives when its text does; it becomes text when its text changes", async () => {
     const paragraph =
       runXml("see ", PLAIN) +

@@ -7746,7 +7746,7 @@ export class CanonicalPublicOperations {
         }
       }
       for (const change of replacementChanges.toReversed()) {
-        const gap = { from: change.from, to: change.to };
+        let gap = { from: change.from, to: change.to };
         if (change.text.length > 0 && gap.from < gap.to) {
           let first: readonly Mark[] | null = null;
           let uniform = true;
@@ -7771,6 +7771,33 @@ export class CanonicalPublicOperations {
               id: operation.id,
               code: "uniformReplacementFormatting",
             });
+        }
+        // The direct diff writes new text at the first removed character.
+        // When that character is inside a control, delete the tail outside
+        // it first so the replacement can continue the original control.
+        if (!tracked && change.text !== "" && gap.from < gap.to) {
+          const sourceHolder = projection.value.doc.resolve(gap.from);
+          if (
+            sourceHolder.parent.type.name === "sdt" &&
+            gap.to > sourceHolder.after()
+          ) {
+            const tailStart = sourceHolder.after();
+            const tailFrom = projection.value.addressAt(
+              tailStart,
+              "afterMarkers",
+            );
+            const tailTo = projection.value.addressAt(gap.to, "beforeMarkers");
+            if (tailFrom.isErr() || tailTo.isErr())
+              return refusal("unsupportedBlock");
+            intents.push({
+              type: "replaceText",
+              from: tailFrom.value,
+              to: tailTo.value,
+              text: "",
+              inside: controlEdgesAt(projection.value.doc, tailStart, gap.to),
+            });
+            gap = { from: gap.from, to: sourceHolder.end() };
+          }
         }
         // A replaced range takes the editor's selection rule: its edges stay
         // inside the markers beside them, so replacing exactly the words a
