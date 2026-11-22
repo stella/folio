@@ -95,7 +95,7 @@ beforeAll(() => {
 });
 afterAll(() => releaseDom?.());
 
-for (const session of ["prosemirror", "canonical"] as const)
+for (const session of ["legacy", "canonical"] as const)
   describe(`${session}: pasted HTML`, () => {
     const paste = (text: string, html: string): PMNode => {
       const host = document.createElement("div");
