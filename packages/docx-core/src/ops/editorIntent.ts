@@ -5075,19 +5075,12 @@ const continuation = (
   // so a link ending before them is one the text takes a copy of. The
   // comment goes with the words a direct edit took, and with it the link
   // piece holding only its start (`linksEmptiedByRetirement`).
-  const passedCount =
-    caret || containers.length === 0
-      ? 0
-      : pastEndedComments(items, end.offset, end.zeroWidthBefore) -
-        end.zeroWidthBefore;
+  const passedEnd =
+    caret || containers.length === 0 ? end : pastEndedComments(items, end);
   const passed =
-    passedCount === 0
+    compareGaps(passedEnd, end) === 0
       ? undefined
-      : spans.find(
-          ({ before }) =>
-            before.offset === end.offset &&
-            before.zeroWidthBefore === end.zeroWidthBefore + passedCount - 1,
-        );
+      : spans.find(({ after }) => compareGaps(after, passedEnd) === 0);
   return {
     containers,
     openStart: continued(

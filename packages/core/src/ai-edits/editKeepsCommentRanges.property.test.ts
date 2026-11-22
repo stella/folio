@@ -321,6 +321,7 @@ describe("an edit leaves every comment and bookmark range balanced and anchored"
               mode: generated.edit.mode,
             });
 
+            expect(receipt.skipped).toEqual([]);
             expect(receipt.applied).toHaveLength(1);
             const saved = await reviewer.toBuffer();
             const zip = await ZipArchive.read(saved);
