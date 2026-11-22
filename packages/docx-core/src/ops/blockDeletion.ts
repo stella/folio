@@ -699,7 +699,8 @@ const withExhaustedCommentsRetired = ({
 
 type DirectRemovalReceiverOptions = {
   before: BlockContent | undefined;
-  following: BlockContent | undefined;
+  /** The blocks after the removed paragraphs, the one they stand before first. */
+  after: readonly BlockContent[];
   kept: readonly ParagraphContent[];
 };
 
@@ -707,22 +708,29 @@ type DirectRemovalReceiverOptions = {
  * The paragraph that takes the boundaries of paragraphs a direct deletion
  * removes before a block, with its content once it holds them: the one
  * before them, at its end, else the block's first paragraph, at its start.
+ * Past a block offering none, it is the first paragraph after it in the list,
+ * as accepting their tracked deletion leaves them
+ * ({@link planParagraphBoundaryRemoval}).
  */
 const directRemovalReceiver = ({
   before,
-  following,
+  after,
   kept,
 }: DirectRemovalReceiverOptions):
   { receiver: Paragraph; content: ParagraphContent[] } | undefined => {
   if (before?.type === "paragraph")
     return { receiver: before, content: [...before.content, ...kept] };
+  const following = after.at(0);
   if (following === undefined) return undefined;
   const carrier: Paragraph = { type: "paragraph", content: [...kept] };
   let receiver: Paragraph | undefined;
   if (following.type === "table") {
     const boundary = paragraphTableRunInBoundary(carrier, following);
     if (boundary.type === "receiver") receiver = boundary.target.receiver;
-  } else receiver = paragraphBlockRunInTarget(carrier, following)?.receiver;
+  } else
+    receiver =
+      paragraphBlockRunInTarget(carrier, following)?.receiver ??
+      after.find((block): block is Paragraph => block.type === "paragraph");
   return receiver === undefined
     ? undefined
     : { receiver, content: [...kept, ...receiver.content] };
@@ -1149,7 +1157,7 @@ export const deleteBlocks = ({
     if (kept.length > 0) {
       const received = directRemovalReceiver({
         before: list[first.index - 1],
-        following,
+        after: list.slice(followerIndex),
         kept,
       });
       if (received === undefined)

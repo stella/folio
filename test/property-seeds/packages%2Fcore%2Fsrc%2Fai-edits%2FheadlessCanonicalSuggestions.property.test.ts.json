@@ -149,6 +149,12 @@
       "path": "14:0:0:0:0:0:0:0:6:5:5:5:6:5:5:5:8:7:11:10:10:10:10:10:10:10:10:10:11:10:10:10:10:10:13:13:13:13:13:13:13:24:1:10:13:9:9:15:13:14:15:13:14:13:13:14:13:13:13:15:14:16:17:14:13:13:13:13:13:17:28:15:13:15:15:15",
       "note": "#2891: an accepted suggested removal of an empty paragraph before an opaque block takes the joining paragraph before it, keeping the later id, where the direct deletion removes it whole: the same words under other ids.",
       "date": "2026-11-20"
+    },
+    {
+      "seed": 1611009172,
+      "path": "12:0:0:0:0:0:0:0:0:4:3:4:5:5:5:5:5:5:5:5:6:6:6:6:6:6:6:6:8:11:11:11:11:11:11:11:11:11:11:11",
+      "note": "#2891: a direct removal of a commented paragraph before an unsupported block leaves the comment in the next paragraph, as the accepted suggestion does.",
+      "date": "2026-11-22"
     }
   ]
 }
