@@ -6,6 +6,7 @@
  * per-page footnote area heights for layout space reservation.
  */
 
+import { getExactTableRowBottomMargins } from "../../layout-engine/measure/tableCellGrid";
 import { layoutTextBoxContent } from "../../layout-engine/measure/textBoxParagraphLayout";
 import type {
   FlowBlock,
@@ -600,6 +601,7 @@ function measureFootnoteTable(
   }
 
   const rowSpanEnds: number[] = [];
+  const exactRowBottomMargins = getExactTableRowBottomMargins(tableBlock.rows);
   const rows: TableRowMeasure[] = tableBlock.rows.map((row, rowIndex) => {
     let columnIndex = 0;
     const cells: TableCellMeasure[] = row.cells.map((cell) => {
@@ -656,7 +658,7 @@ function measureFootnoteTable(
     const explicitHeight = row.height;
     let height = contentHeight;
     if (explicitHeight !== undefined && row.heightRule === "exact") {
-      height = explicitHeight;
+      height = explicitHeight + (exactRowBottomMargins[rowIndex] ?? 0);
     } else if (explicitHeight !== undefined) {
       height = Math.max(contentHeight, explicitHeight);
     }

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import type { TableCell, TableRow } from "../types";
+import { resolveTableCellPadding } from "../types";
 import {
   buildTableCellGrid,
   buildTableCellPlacements,
@@ -28,6 +29,19 @@ const row = (
 });
 
 describe("table cell grid", () => {
+  test.each([Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_VALUE])(
+    "uses the default when a cell margin cannot fit in the layout coordinate range",
+    (bottom) => {
+      expect(
+        resolveTableCellPadding(
+          cell(1, {
+            padding: { top: 5, right: 6, bottom, left: 8 },
+          }),
+        ),
+      ).toEqual({ top: 5, right: 6, bottom: 0, left: 8 });
+    },
+  );
+
   test("indexes omitted columns and vertically merged cells once", () => {
     const merged = cell(1, { colSpan: 2, rowSpan: 2 });
     const firstRowTail = cell(2);

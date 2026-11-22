@@ -31,6 +31,7 @@ import type {
   SectionStart,
   VerticalAlign,
 } from "../types/document";
+import { MAX_PAGE_DIMENSION_TWIPS } from "../utils/units";
 import {
   attributeRemainder,
   NO_MODELLED_ATTRIBUTES,
@@ -77,13 +78,6 @@ import type { XmlElement } from "./xmlParser";
  * generate a proportional band per column.
  */
 const MAX_SECTION_COLUMNS = 45;
-
-/**
- * Sanity cap on `w:pgSz` `@w:w`/`@w:h`, in twips (~22in). Matches the
- * existing `w:defaultTabStop` cap (`settingsParser.ts`) and bounds the
- * ruler tick generators, which are sized off the page dimensions.
- */
-const MAX_PAGE_DIMENSION_TWIPS = 31_680;
 
 // ============================================================================
 // HELPER PARSERS

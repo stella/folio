@@ -399,6 +399,51 @@ describe("footnote layout", () => {
     }, fakeMeasure);
   });
 
+  test("reserves bottom cell margins below an exact footnote table row", () => {
+    withFakeTextMeasure(() => {
+      const content = convertFootnoteToContent(
+        {
+          type: "footnote",
+          id: 13,
+          noteType: "normal",
+          content: [
+            {
+              type: "table",
+              rows: [
+                {
+                  type: "tableRow",
+                  formatting: {
+                    height: { value: 600, type: "dxa" },
+                    heightRule: "exact",
+                  },
+                  cells: [
+                    {
+                      type: "tableCell",
+                      formatting: {
+                        margins: {
+                          top: { value: 180, type: "dxa" },
+                          bottom: { value: 300, type: "dxa" },
+                        },
+                      },
+                      content: [{ type: "paragraph", content: [] }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        3,
+        400,
+      );
+
+      const table = content.measures.find(
+        (measure) => measure.kind === "table",
+      );
+      expect(table?.rows.at(0)?.height).toBe(60);
+    }, fakeMeasure);
+  });
+
   test("skips row-spanned columns while measuring footnote table rows", () => {
     withFakeTextMeasure(() => {
       const content = convertFootnoteToContent(
