@@ -1112,6 +1112,32 @@ describe("runLayoutPipeline", () => {
     expect(outcome.layout?.pages.at(0)?.fragments.at(0)?.y).toBe(MARGINS.top);
   });
 
+  test("uses negative vertical margins as fixed body insets", () => {
+    const margins = { ...MARGINS, top: -70, bottom: -80 };
+    const outcome = runLayoutPipeline(
+      makeDeps(createLayoutSession(), {
+        margins,
+        headerContent: { type: "header", hdrFtrType: "default", content: [] },
+        footerContent: { type: "footer", hdrFtrType: "default", content: [] },
+        renderHfFromContentOrPm: (hf) =>
+          hf
+            ? {
+                blocks: [],
+                measures: [],
+                height: 120,
+                bodyTopClearance: 200,
+              }
+            : undefined,
+      }),
+      makeState(),
+    );
+
+    const page = outcome.layout?.pages.at(0);
+    expect(page?.margins).toMatchObject({ top: 70, bottom: 80 });
+    expect(page?.authoredMargins).toMatchObject({ top: -70, bottom: -80 });
+    expect(page?.fragments.at(0)?.y).toBe(70);
+  });
+
   test("moves body content below a page-top header wrap band", () => {
     const state = makeState();
     const outcome = runLayoutPipeline(

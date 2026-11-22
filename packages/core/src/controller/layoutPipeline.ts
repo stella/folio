@@ -344,21 +344,33 @@ function bodyMarginsClearHeaderFooter({
   preparedHeader,
   preparedFooter,
 }: BodyMarginClearanceOptions): PageMargins {
-  const headerBottom = preparedHeader
-    ? (authoredMargins.header ?? 0) +
-      (preparedHeader.marginPushBottom ?? preparedHeader.height)
-    : authoredMargins.top;
-  const footerClearance = preparedFooter
-    ? (authoredMargins.footer ?? 0) +
-      (preparedFooter.marginPushBottom ?? preparedFooter.height)
-    : authoredMargins.bottom;
-  const top = Math.max(authoredMargins.top, headerBottom);
-  const clearedTop = Math.max(top, preparedHeader?.bodyTopClearance ?? 0);
-  const bottom = Math.max(authoredMargins.bottom, footerClearance);
-  if (clearedTop === authoredMargins.top && bottom === authoredMargins.bottom) {
+  // OOXML uses the sign to select fixed body insets that may overlap
+  // header/footer content. The distance from the page edge is its magnitude.
+  const top =
+    authoredMargins.top < 0
+      ? -authoredMargins.top
+      : Math.max(
+          authoredMargins.top,
+          preparedHeader
+            ? (authoredMargins.header ?? 0) +
+                (preparedHeader.marginPushBottom ?? preparedHeader.height)
+            : 0,
+          preparedHeader?.bodyTopClearance ?? 0,
+        );
+  const bottom =
+    authoredMargins.bottom < 0
+      ? -authoredMargins.bottom
+      : Math.max(
+          authoredMargins.bottom,
+          preparedFooter
+            ? (authoredMargins.footer ?? 0) +
+                (preparedFooter.marginPushBottom ?? preparedFooter.height)
+            : 0,
+        );
+  if (top === authoredMargins.top && bottom === authoredMargins.bottom) {
     return authoredMargins;
   }
-  return { ...authoredMargins, top: clearedTop, bottom };
+  return { ...authoredMargins, top, bottom };
 }
 
 type SectionHeaderFooterClearanceOptions = {
@@ -377,10 +389,7 @@ function bodyBlocksClearSectionHeaderFooter(
     footerContentByRId,
   }: SectionHeaderFooterClearanceOptions,
 ): FlowBlock[] {
-  if (
-    !sectionHeaderFooterRefs ||
-    (!headerContentByRId && !footerContentByRId)
-  ) {
+  if (!sectionHeaderFooterRefs) {
     return blocks;
   }
 
