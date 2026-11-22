@@ -107,6 +107,7 @@ import {
   canReplayHeaderFooterVerbatim,
   captureDocumentSourceBaseline,
   captureHeaderFooterPackageBaselines,
+  getHeaderFooterVerbatimXml,
   refreshHeaderFooterVerbatimFingerprint,
 } from "./headerFooterVerbatim";
 import { diagnoseImportedIdCollisions } from "./importedIdCollisions";
@@ -773,6 +774,16 @@ export async function parseDocxWithPreviewBudget(
       ...(footnotes !== undefined ? { footnotes } : {}),
       ...(endnotes !== undefined ? { endnotes } : {}),
     });
+    // A save writes a comment repair only into a part it rewrites anyway, so a
+    // part the repair changes replays its bytes until an edit does.
+    const replayedCommentParts = [
+      ...(headers?.values() ?? []),
+      ...(footers?.values() ?? []),
+    ].filter(
+      (part) =>
+        getHeaderFooterVerbatimXml(part)?.includes("comment") === true &&
+        canReplayHeaderFooterVerbatim(part),
+    );
     const commentReferenceNormalization = normalizeCommentReferences({
       documentBody,
       comments,
@@ -781,6 +792,9 @@ export async function parseDocxWithPreviewBudget(
       ...(footnotes !== undefined ? { footnotes } : {}),
       ...(endnotes !== undefined ? { endnotes } : {}),
     });
+    for (const part of replayedCommentParts) {
+      refreshHeaderFooterVerbatimFingerprint(part);
+    }
     if (commentReferenceNormalization.removedDanglingReferences > 0) {
       parseContext.warn({
         code: DANGLING_COMMENT_REFERENCE_WARNING,

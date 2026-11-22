@@ -222,6 +222,20 @@ export const visitInlineContentSlotsInContent = (
   visitContent(content);
 };
 
+/**
+ * Visit the blocks of each text box a visited slot holds directly: a wrapper's
+ * own slots report theirs. A text box is a story of its own, so a walk that
+ * pairs markers per story descends here rather than through the slots.
+ */
+export const visitSlotTextBoxes = (
+  { item }: InlineContentSlot,
+  visitBlocks: (blocks: BlockContent[]) => void,
+): void => {
+  visitDirectParagraphRuns(item, (run) => {
+    visitRunBlockChildren(run, visitBlocks);
+  });
+};
+
 /** What the walk does below a record it has just visited. */
 export const BLOCK_TREE_DESCENT = {
   descend: "descend",
