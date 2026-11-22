@@ -6667,10 +6667,28 @@ export class CanonicalPublicOperations {
       !gainsFollower &&
       !previousGainsFollower &&
       noDeletedRunBefore(deletedRun);
+    const joined = deletesJoinedWords
+      ? joinedBefore(doc, paragraph.start - 1)
+      : [];
+    const takesJoinedWords =
+      deletesJoinedWords && !joined.some((id) => deletedByBatch.has(id));
+    // At a final join destination, the range fallback starts after the
+    // joined words. Use the block deletion to take those words while the
+    // destination still supplies the container's last mark.
+    // The intent collects deleted marks. Move-source marks belong to
+    // their paired move and their words stay under that move's review.
+    const deletesFinalJoin =
+      after === null &&
+      takesJoinedWords &&
+      previous?.source.pPrMark?.kind === "del" &&
+      !isDeletedPPrMark(paragraph.node.attrs["pPrMark"]) &&
+      !previousGainsFollower &&
+      noDeletedRunBefore(deletedRun);
     if (
       !keepsSectionBreakBeforeBlock &&
       (next !== undefined ||
         gainsFollower ||
+        deletesFinalJoin ||
         (tracked && (after !== null || operation.moveId !== undefined)))
     ) {
       const intents: EditorIntent[] = [
@@ -6683,12 +6701,7 @@ export class CanonicalPublicOperations {
           // too, as deleting it directly after the join leaves nothing. A
           // paragraph of that join the batch deletes itself goes by its own
           // deletion.
-          ...(deletesJoinedWords &&
-          !joinedBefore(doc, paragraph.start - 1).some((id) =>
-            deletedByBatch.has(id),
-          )
-            ? { joinedWords: "deleted" as const }
-            : {}),
+          ...(takesJoinedWords ? { joinedWords: "deleted" as const } : {}),
         },
       ];
       // A move's source ending its block list after paragraphs the batch

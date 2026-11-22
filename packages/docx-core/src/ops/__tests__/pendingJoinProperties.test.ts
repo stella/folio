@@ -9,6 +9,7 @@ import {
   type EditorIntentMode,
 } from "../editorIntent";
 import { paragraphLength } from "../offsets";
+import { isBlockBoundary } from "../rangeBoundaries";
 import { paragraphPropertiesOf } from "../review";
 import { DOCUMENT_OP_TYPES, OP_STORIES, REVISION_DECISIONS } from "../types";
 
@@ -55,9 +56,11 @@ const documentOf = (specs: readonly Spec[]): Document => ({
 });
 
 const paragraphsOf = (document: Document): Paragraph[] =>
-  document.package.document.content.map((block) =>
-    block.type === "paragraph" ? block : panic("A test body is paragraphs."),
-  );
+  document.package.document.content
+    .filter((block) => !isBlockBoundary(block))
+    .map((block) =>
+      block.type === "paragraph" ? block : panic("A test body is paragraphs."),
+    );
 
 /** Every revision id a document holds. */
 const revisionIds = (document: Document): number[] => {
@@ -229,6 +232,18 @@ describe("deleting a break beside pending joins", () => {
       ).toEqual([expected]);
     },
   );
+
+  test("a tracked deletion before a pending end with a trailing bookmark keeps the words' properties", () => {
+    const document = documentOf(["w:P", "bD:Q", ":R"]);
+    const [first] = paragraphsOf(document);
+    if (first === undefined)
+      panic("The bookmark starts in the first paragraph.");
+    first.content.unshift({ type: "bookmarkStart", id: 11, name: "Clause" });
+    document.package.document.content.push({ type: "bookmarkEnd", id: 11 });
+    expect(
+      accepted(document, intentsAt(document, 0).deleteNext, MODES.tracked),
+    ).toEqual(["w:P"]);
+  });
 
   test("a last paragraph a pending mark already joins keeps its own properties, deleted either way", () => {
     const document = documentOf(["aD:P", "D:Q", "r:R"]);

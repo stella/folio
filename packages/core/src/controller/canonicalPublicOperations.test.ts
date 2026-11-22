@@ -1539,9 +1539,10 @@ describe("a paragraph after one whose mark is pending deletion", () => {
           expect(editor.session.document).toEqual(original);
         });
 
-        if (text === "")
-          test("deleting the empty second tracked records nothing", () => {
-            // No words to mark deleted, and the mark before it already is.
+        if (text === "" && kind === "moveFrom")
+          test("tracked deletion of the empty paragraph after a move source records nothing", () => {
+            // The second paragraph is empty. The move owns the preceding
+            // mark and does not add its words to the deletion's selection.
             const editor = setup(documentOf(kind, text));
             const original = editor.session.document;
             const result = editor.apply([deletion], {
@@ -1553,7 +1554,7 @@ describe("a paragraph after one whose mark is pending deletion", () => {
             expect(editor.session.document).toEqual(original);
           });
         else
-          test("deleting the second tracked: rejecting restores, accepting matches the direct deletion", () => {
+          test("deleting the second tracked: rejecting restores, accepting matches the direct deletion in review order", () => {
             const untouched = setup(documentOf(kind, text));
             const tracked = setup(documentOf(kind, text));
             expect(
@@ -1563,8 +1564,13 @@ describe("a paragraph after one whose mark is pending deletion", () => {
               resolvedWords(untouched, "reject"),
             );
             const accepted = setup(documentOf(kind, text));
-            accepted.apply([deletion], { mode: "tracked-changes" });
+            expect(
+              accepted.apply([deletion], { mode: "tracked-changes" }).applied,
+            ).toHaveLength(1);
             const direct = setup(documentOf(kind, text));
+            // Accept the pending join first so the deletion by the
+            // destination's id selects the whole joined paragraph.
+            if (kind === "del") resolvedWords(direct, "accept");
             expect(direct.apply([deletion]).applied).toHaveLength(1);
             expect(resolvedWords(accepted, "accept")).toBe(
               resolvedWords(direct, "accept"),
