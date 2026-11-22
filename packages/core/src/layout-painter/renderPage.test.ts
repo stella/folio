@@ -386,6 +386,26 @@ describe("render page fingerprint", () => {
     );
   });
 
+  test("changes when highlighted text switches to exact spacing at the same height", () => {
+    const highlighted = (lineRule: "atLeast" | "exact"): ParagraphBlock => ({
+      kind: "paragraph",
+      id: "p1",
+      attrs: { spacing: { lineRule, line: 48, lineUnit: "px" } },
+      runs: [
+        {
+          kind: "text",
+          text: "hello",
+          highlight: "#FFFF00",
+          pmStart: 1,
+          pmEnd: 6,
+        },
+      ],
+    });
+    expect(computePageFingerprint(page, lookup(highlighted("exact")))).not.toBe(
+      computePageFingerprint(page, lookup(highlighted("atLeast"))),
+    );
+  });
+
   test("changes when run text content changes without layout geometry changing", () => {
     const before: ParagraphBlock = {
       kind: "paragraph",

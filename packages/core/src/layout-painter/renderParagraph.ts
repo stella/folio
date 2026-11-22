@@ -104,6 +104,7 @@ import {
   borderStrokeToCss,
   resolveParagraphBorderHorizontalOutsets,
 } from "./borderStroke";
+import { scheduleCharacterFillBand } from "./characterFillBand";
 import { planCursiveJoiners, withCursiveJoiners } from "./cursiveJoiners";
 import {
   getAutomaticTextColorForBackground,
@@ -3453,6 +3454,21 @@ export function renderLine(
     marker.textContent = "\u200B";
     lineEl.prepend(marker);
   }
+
+  if (
+    line.characterFillBand &&
+    runsForLine.some(
+      (run) =>
+        (isTextRun(run) || isFieldRun(run)) &&
+        (run.highlight || run.shading) &&
+        !run.commentIds?.length,
+    )
+  )
+    scheduleCharacterFillBand(
+      lineEl,
+      line.characterFillBand,
+      PARAGRAPH_CLASS_NAMES.text,
+    );
 
   return lineEl;
 }

@@ -2956,6 +2956,13 @@ function collectContentFingerprint(block: FlowBlock, parts: string[]): void {
     if (block.attrs?.alignment) {
       parts.push(`p:al:${block.attrs.alignment}`);
     }
+    const spacing = block.attrs?.spacing;
+    if (spacing?.lineRule !== undefined || spacing?.line !== undefined) {
+      // Equal-height lines can paint different character fill bands.
+      parts.push(
+        `p:ls:${spacing.lineRule ?? ""}:${spacing.lineUnit ?? ""}:${spacing.line ?? ""}`,
+      );
+    }
     if (block.reviewIndicator) {
       // Switching to or from Simple Markup can change only the change bar.
       parts.push(`p:ri:${block.reviewIndicator}`);

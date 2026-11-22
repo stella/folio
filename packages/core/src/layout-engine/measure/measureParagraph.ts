@@ -7,7 +7,7 @@
 
 import { isCjkFont } from "../../utils/fontResolver";
 import { inlineImageBoundingBox } from "../../utils/rotationBoundingBox";
-import { measuredLineAdvance } from "../lineFlow";
+import { measuredLineAdvance, measuredLineBaseline } from "../lineFlow";
 import type {
   MeasuredLine,
   ParagraphBlock,
@@ -409,7 +409,9 @@ export function measureParagraph(
       : {}),
   };
 
-  const calculateLineTypography = (line: LineState): LineTypography => {
+  const calculateLineTypography = (
+    line: LineState,
+  ): LineTypography & Pick<MeasuredLine, "characterFillBand"> => {
     const paragraphFontSize = attrs?.defaultFontSize ?? DEFAULT_FONT_SIZE;
     const paragraphFontFamily = attrs?.defaultFontFamily ?? DEFAULT_FONT_FAMILY;
     let lineFontMetrics = line.maxFontMetrics;
@@ -498,13 +500,10 @@ export function measureParagraph(
       // Keep this paired with the painter's image-only flex alignment.
       const soleRun =
         line.fromRun === line.toRun ? runs[line.fromRun] : undefined;
-      if (line.maxExactImageHeightPx >= objectHeight) {
-        finalTypography.lineHeight = objectHeight;
-        finalTypography.ascent = objectHeight;
-        finalTypography.descent = 0;
-        return applyDocumentGrid(finalTypography, attrs, spacing);
-      }
-      if (soleRun && isImageRun(soleRun)) {
+      if (
+        line.maxExactImageHeightPx >= objectHeight ||
+        (soleRun && isImageRun(soleRun))
+      ) {
         finalTypography.lineHeight = objectHeight;
         finalTypography.ascent = objectHeight;
         finalTypography.descent = 0;
@@ -519,7 +518,31 @@ export function measureParagraph(
       }
     }
 
-    return applyDocumentGrid(finalTypography, attrs, spacing);
+    const placed = applyDocumentGrid(finalTypography, attrs, spacing);
+    if (spacing?.lineRule === "exact")
+      return {
+        ...placed,
+        characterFillBand: { topPx: 0, heightPx: placed.lineHeight },
+      };
+
+    // The picture and the text descent are the natural content at the
+    // baseline. Spacing and the document grid may reserve more room.
+    const pictureHeight = line.maxImageHeightPx;
+    if (
+      line.fromRun === line.toRun ||
+      pictureHeight <= 0 ||
+      pictureHeight <=
+        calculateTypographyMetrics(fontSize, undefined, metrics).lineHeight
+    )
+      return placed;
+    const baseline = measuredLineBaseline(placed);
+    const topPx = Math.max(0, baseline - pictureHeight);
+    const bottomPx = Math.min(placed.lineHeight, baseline + typography.descent);
+    if (bottomPx <= topPx) return placed;
+    return {
+      ...placed,
+      characterFillBand: { topPx, heightPx: bottomPx - topPx },
+    };
   };
 
   const getPostWrapAvailableWidth = (): number => {

@@ -6,6 +6,11 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
+import {
+  CHARACTER_FILL_BACKINGS_ATTRIBUTE,
+  scheduleCharacterFillBand,
+} from "./characterFillBand";
+import { setAuthoredBackgroundColor } from "./documentColors";
 import { reconcileRenderedContent } from "./reconcileRenderedContent";
 
 setDefaultTimeout(propertyTestTimeout(10_000));
@@ -56,6 +61,78 @@ const change = fc.constantFrom(
   "bold",
   "spans",
 ) satisfies fc.Arbitrary<"same" | "shifted" | "text" | "bold" | "spans">;
+
+test("a character fill band follows DOM advances and survives a position-only update", async () => {
+  const releaseDom = acquireHarnessDom();
+  const painted = document.createElement("div");
+  const renderLine = (position: number, text: string) => {
+    const lineElement = document.createElement("div");
+    lineElement.getBoundingClientRect = () => new DOMRect(100, 80, 200, 60);
+    const run = document.createElement("span");
+    run.className = "text-run";
+    run.dataset["pmStart"] = String(position);
+    run.textContent = text;
+    setAuthoredBackgroundColor(run.style, "#ffff00");
+    run.getClientRects = () => {
+      const rect = new DOMRect(150, 90, 30, 20);
+      return Object.assign([rect], {
+        item: (index: number) => (index === 0 ? rect : null),
+      });
+    };
+    const comment = document.createElement("span");
+    comment.className = "text-run";
+    comment.dataset["commentId"] = "1";
+    comment.textContent = "Comment";
+    setAuthoredBackgroundColor(comment.style, "#00ff00");
+    comment.style.backgroundColor = "rgba(255, 212, 0, 0.08)";
+    lineElement.append(run, comment);
+    scheduleCharacterFillBand(
+      lineElement,
+      { topPx: 5, heightPx: 50 },
+      "text-run",
+    );
+    return { line: lineElement, run, comment };
+  };
+  try {
+    const original = renderLine(1, "Marked");
+    const commentBackground = original.comment.style.backgroundColor;
+    painted.append(original.line);
+    document.body.append(painted);
+    await Promise.resolve();
+    const layer = original.line.querySelector(
+      `[${CHARACTER_FILL_BACKINGS_ATTRIBUTE}]`,
+    );
+    const backing = layer?.querySelector("span");
+    expect(layer?.getAttribute("aria-hidden")).toBe("true");
+    expect(layer?.children).toHaveLength(1);
+    expect(backing?.style.left).toBe("25%");
+    expect(backing?.style.width).toBe("15%");
+    expect(backing?.style.top).toBe("5px");
+    expect(backing?.style.height).toBe("50px");
+    expect(original.run.style.backgroundColor).toBe("");
+    expect(original.comment.style.backgroundColor).toBe(commentBackground);
+
+    const fresh = document.createElement("div");
+    fresh.append(renderLine(9, "Marked").line);
+    expect(reconcileRenderedContent(painted, fresh)).toBe(true);
+    expect(painted.firstElementChild).toBe(original.line);
+    expect(original.run.dataset["pmStart"]).toBe("9");
+    expect(layer?.firstElementChild).toBe(backing);
+
+    const changed = renderLine(9, "Changed");
+    fresh.replaceChildren(changed.line);
+    expect(reconcileRenderedContent(painted, fresh)).toBe(true);
+    expect(painted.firstElementChild).toBe(changed.line);
+    await Promise.resolve();
+    expect(
+      changed.line.querySelector(`[${CHARACTER_FILL_BACKINGS_ATTRIBUTE}]`)
+        ?.children,
+    ).toHaveLength(1);
+  } finally {
+    painted.remove();
+    releaseDom();
+  }
+});
 
 test("reconciling painted content gives the fresh rendering and keeps the lines it shows the same", () => {
   const releaseDom = acquireHarnessDom();

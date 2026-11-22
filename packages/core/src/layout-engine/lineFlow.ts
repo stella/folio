@@ -1,5 +1,16 @@
 import type { MeasuredLine } from "./types";
 
+export function measuredLineBaseline(
+  {
+    lineHeight,
+    ascent,
+    descent,
+  }: Pick<MeasuredLine, "lineHeight" | "ascent" | "descent">,
+  lineTop = 0,
+): number {
+  return lineTop + (lineHeight - (ascent + descent)) / 2 + ascent;
+}
+
 export function measuredLineAdvance(line: MeasuredLine): number {
   return line.lineHeight + (line.floatSkipBefore ?? 0);
 }
