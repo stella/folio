@@ -60,6 +60,10 @@ export const PasteCleanupExtension: (
               withoutPastedCellSections(
                 removeUnpairedMoveRangeBoundaries(
                   removeUnpairedBookmarkBoundaries(slice),
+                  {
+                    doc: view.state.doc,
+                    replaced: view.state.selection,
+                  },
                 ),
                 view,
               ),

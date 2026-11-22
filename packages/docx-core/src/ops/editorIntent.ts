@@ -92,6 +92,10 @@ import {
 import { isRangeBoundary, paragraphLength, withChildren } from "./offsets";
 import { findStoryParagraph } from "./paragraphLocator";
 import { authoredParagraphFormatting } from "./paragraphPropertySnapshot";
+import {
+  holdsMoveRange,
+  withoutRepeatedMoveRangesIn,
+} from "./pastedMoveRanges";
 import { applyFormattingPatch } from "./patch";
 import {
   joinedPropertiesSource,
@@ -2258,6 +2262,36 @@ const compileInStory = (
             opType: DOCUMENT_OP_TYPES.INSERT_CONTENT,
           }),
         );
+      // A copy of moved text is no part of the move: a move range boundary
+      // that stands once the replaced content is gone is left out. Tracked,
+      // that content stands until it is accepted.
+      let pasted = intent.paragraphs;
+      const contents = pasted.map(({ content }) => content);
+      if (holdsMoveRange(contents)) {
+        let standsIn = document;
+        if (mode.type === "editing") {
+          const cleared = compileEditorIntent(document, {
+            intent: {
+              type: "replaceText",
+              from: intent.from,
+              to: intent.to,
+              text: "",
+            },
+            mode,
+          });
+          if (cleared.isErr()) return cleared;
+          const without = applyDocumentOps(document, cleared.value.ops);
+          if (without.isErr()) return Result.err(without.error);
+          standsIn = without.value.document;
+        }
+        const settled = withoutRepeatedMoveRangesIn(standsIn, contents);
+        pasted = pasted.map((paragraph, index) => {
+          const content = settled.at(index);
+          return content === undefined || content === paragraph.content
+            ? paragraph
+            : Object.assign({}, paragraph, { content: [...content] });
+        });
+      }
       const endpoint = paragraphAt(document, intent.to);
       const destinationFormatting = splitParagraphFields(
         document,
@@ -2284,7 +2318,7 @@ const compileInStory = (
               } satisfies Paragraph,
             ]
           : []),
-        ...intent.paragraphs,
+        ...pasted,
         ...(suffixBoundary
           ? [
               {

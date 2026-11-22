@@ -52,6 +52,23 @@ import { DOCUMENT_OP_TYPES, type InsertContentOp } from "./types";
 
 type AnchorKind = "commentRangeStart" | "commentRangeEnd" | "commentReference";
 
+const MOVE_BOUNDARY_KINDS = {
+  moveFromRangeStart: true,
+  moveFromRangeEnd: true,
+  moveToRangeStart: true,
+  moveToRangeEnd: true,
+} as const;
+
+export type MoveBoundaryKind = keyof typeof MOVE_BOUNDARY_KINDS;
+
+export const isMoveBoundaryKind = (kind: string): kind is MoveBoundaryKind =>
+  Object.hasOwn(MOVE_BOUNDARY_KINDS, kind);
+
+type MoveBoundary = Extract<InlineNode, { type: MoveBoundaryKind }>;
+
+const isMoveBoundary = (node: InlineNode): node is MoveBoundary =>
+  isMoveBoundaryKind(node.type);
+
 /** The slice's content with its comment anchors settled, and the records it adds. */
 export type PastedComments = {
   content: ParagraphContent[];
@@ -83,7 +100,13 @@ type SliceAnchor = { id: number; kind: AnchorKind; story: number };
 /** The id an anchor goes on under, or `null` to leave it out. */
 type AnchorVisitor = (anchor: SliceAnchor) => number | null;
 
-type SliceWalk = { visit: AnchorVisitor; stories: number };
+/** A comment anchor or move range boundary of the slice. */
+type SliceMarker =
+  SliceAnchor | { id: number; kind: MoveBoundaryKind; story: number };
+
+type MarkerVisitor = (marker: SliceMarker) => number | null;
+
+type SliceWalk = { visit: MarkerVisitor; stories: number };
 
 type StoryWalk = { walk: SliceWalk; story: number };
 
@@ -93,18 +116,30 @@ const unchanged = <T>(before: readonly T[], after: readonly T[]): boolean =>
   after.every((record, index) => record === before[index]);
 
 /**
- * The slice with `visit` deciding each comment anchor's id, in leaf order and
- * into the text boxes its shapes hold; records left empty go too. Reading the
- * anchors and settling them are this one walk, so they agree on every anchor.
+ * The slice with `visit` deciding the id of each comment anchor and move range
+ * boundary, in leaf order and into the text boxes its shapes hold; records
+ * left empty go too. Reading the markers and settling them are this one walk,
+ * so they agree on every marker.
  */
-const rewriteAnchors = (
+export const rewriteSliceMarkers = (
   nodes: readonly ParagraphContent[],
-  visit: AnchorVisitor,
+  visit: MarkerVisitor,
 ): ParagraphContent[] =>
   rewriteInline(nodes, {
     walk: { visit, stories: 0 },
     story: 0,
   }).filter(isParagraphContent);
+
+/** {@link rewriteSliceMarkers} of the comment anchors alone. */
+const rewriteAnchors = (
+  nodes: readonly ParagraphContent[],
+  visit: AnchorVisitor,
+): ParagraphContent[] =>
+  rewriteSliceMarkers(nodes, (marker) =>
+    isMoveBoundaryKind(marker.kind)
+      ? marker.id
+      : visit({ ...marker, kind: marker.kind }),
+  );
 
 const rewriteInline = (
   nodes: readonly InlineNode[],
@@ -112,7 +147,7 @@ const rewriteInline = (
 ): InlineNode[] => {
   const out: InlineNode[] = [];
   for (const node of nodes) {
-    if (isCommentAnchor(node)) {
+    if (isCommentAnchor(node) || isMoveBoundary(node)) {
       const id = at.walk.visit({
         id: node.id,
         kind: node.type,
@@ -179,7 +214,11 @@ const rewriteBlocks = (
         ];
       }
       case "commentRangeStart":
-      case "commentRangeEnd": {
+      case "commentRangeEnd":
+      case "moveFromRangeStart":
+      case "moveFromRangeEnd":
+      case "moveToRangeStart":
+      case "moveToRangeEnd": {
         const id = at.walk.visit({
           id: block.id,
           kind: block.type,
@@ -191,10 +230,6 @@ const rewriteBlocks = (
       case "preservedBlock":
       case "bookmarkStart":
       case "bookmarkEnd":
-      case "moveFromRangeStart":
-      case "moveFromRangeEnd":
-      case "moveToRangeStart":
-      case "moveToRangeEnd":
         return [block];
       default: {
         const unhandled: never = block;

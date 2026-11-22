@@ -620,4 +620,37 @@ describe("removeUnpairedMoveRangeBoundaries", () => {
       "moveToRangeEnd:9",
     ]);
   });
+
+  test("drops a copy of a range standing where the slice goes", () => {
+    const range = [
+      boundary("moveToRangeStart", 9),
+      schema.text("moved"),
+      boundary("moveToRangeEnd", 9),
+    ];
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, range),
+      schema.node("paragraph", null, [schema.text("after")]),
+    ]);
+    const slice = new Slice(
+      Fragment.from(schema.node("paragraph", null, range)),
+      0,
+      0,
+    );
+    const [source, after] = [
+      { from: 1, to: 8 },
+      { from: 10, to: 10 },
+    ];
+    const pasted = removeUnpairedMoveRangeBoundaries(slice, {
+      doc,
+      replaced: after,
+    });
+    expect(boundaryTypes(pasted)).toEqual([]);
+    expect(pasted.content.textBetween(0, pasted.content.size)).toBe("moved");
+    // Over its own source, as a dragged slice also goes, the range is the range.
+    expect(
+      boundaryTypes(
+        removeUnpairedMoveRangeBoundaries(slice, { doc, replaced: source }),
+      ),
+    ).toEqual(["moveToRangeStart:9", "moveToRangeEnd:9"]);
+  });
 });

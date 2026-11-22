@@ -411,8 +411,39 @@ const moveRangeKey = (marker: MoveRangeMarker): string => {
 const moveRangeBoundaryType = (marker: MoveRangeMarker): "start" | "end" =>
   marker.type.endsWith("Start") ? "start" : "end";
 
-/** Remove incomplete, duplicate, or reversed tracked-move pairs at copied slice edges. */
-export function removeUnpairedMoveRangeBoundaries(slice: Slice): Slice {
+/**
+ * The move ranges standing in `doc` once `replaced` is gone: what a paste
+ * replaces, which a dragged slice's own source is too.
+ */
+const standingMoveRanges = (
+  doc: PMNode,
+  replaced: { from: number; to: number },
+): ReadonlySet<string> => {
+  const standing = new Set<string>();
+  doc.descendants((node, position) => {
+    if (
+      node.type.name !== "moveRangeBoundary" &&
+      node.type.name !== "blockMoveRangeBoundary"
+    )
+      return true;
+    const goes =
+      position >= replaced.from && position + node.nodeSize <= replaced.to;
+    const result = readMoveRangeBoundaryAttrs(node);
+    if (result.ok && !goes) standing.add(moveRangeKey(result.value));
+    return false;
+  });
+  return standing;
+};
+
+/**
+ * Remove incomplete, duplicate, or reversed tracked-move pairs at copied slice
+ * edges, and those of a range that stands where the slice goes: a copy of
+ * moved text is inserted text, no part of the move.
+ */
+export function removeUnpairedMoveRangeBoundaries(
+  slice: Slice,
+  destination?: { doc: PMNode; replaced: { from: number; to: number } },
+): Slice {
   const summaries = new Map<string, MoveRangeBoundarySummary>();
   const malformedNodes = new Set<PMNode>();
   let boundaryIndex = 0;
@@ -440,6 +471,10 @@ export function removeUnpairedMoveRangeBoundaries(slice: Slice): Slice {
     return false;
   });
 
+  const standing =
+    destination === undefined || summaries.size === 0
+      ? undefined
+      : standingMoveRanges(destination.doc, destination.replaced);
   const invalidKeys = new Set<string>();
   for (const [key, { startPositions, endPositions }] of summaries) {
     const start = startPositions.at(0);
@@ -449,7 +484,8 @@ export function removeUnpairedMoveRangeBoundaries(slice: Slice): Slice {
       endPositions.length !== 1 ||
       start === undefined ||
       end === undefined ||
-      start >= end
+      start >= end ||
+      standing?.has(key) === true
     ) {
       invalidKeys.add(key);
     }

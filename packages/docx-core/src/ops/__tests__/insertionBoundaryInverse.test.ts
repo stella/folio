@@ -136,17 +136,20 @@ test("inserted range members restore source ownership through exact and JSON inv
           validateOpsDocument(document).unwrap();
           const original = structuredClone(document);
           const edit = applyDocumentOp(document, operation).unwrap();
-          // A comment owns one range: an inserted member of a kind that
-          // stands already is left out, so one repeating only those inserts
-          // nothing.
+          // A comment and a move own one range: an inserted member of a kind
+          // that stands already is left out, so one repeating only those
+          // inserts nothing. A copy of a whole move range goes whole, beside
+          // a standing half too.
           const standing = new Set(
             source === "pair" ? ["start", "end"] : [source],
           );
+          const move = family === "moveFrom" || family === "moveTo";
           const insertsNothing =
-            family === "comment" &&
-            (inserted === "pair" ? ["start", "end"] : [inserted]).every(
-              (part) => standing.has(part),
-            );
+            (move && inserted === "pair" && source !== "empty") ||
+            ((move || family === "comment") &&
+              (inserted === "pair" ? ["start", "end"] : [inserted]).every(
+                (part) => standing.has(part),
+              ));
           expect(edit.inverse.map(({ type }) => type)).toEqual(
             insertsNothing ? [] : [DOCUMENT_OP_TYPES.REPLACE_INLINE],
           );
