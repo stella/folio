@@ -3738,6 +3738,8 @@ type ResolveBlockDeletionOptions = {
   projectionStory: OpStory;
   doc: PMNode;
   tracked: boolean;
+  /** A tracked deletion under the joined paragraph's identity. */
+  deletesJoinedWords: boolean;
   /**
    * Whether the batch inserts a paragraph beside this one, which no
    * paragraph follows: the insertion applies first, and the deletion then
@@ -6359,6 +6361,7 @@ export class CanonicalPublicOperations {
     projectionStory,
     doc,
     tracked,
+    deletesJoinedWords,
     gainsFollower,
     followsInsertedTable,
     precedesInsertedTable,
@@ -6504,7 +6507,7 @@ export class CanonicalPublicOperations {
           // too, as deleting it directly after the join leaves nothing. A
           // paragraph of that join the batch deletes itself goes by its own
           // deletion.
-          ...(tracked &&
+          ...(deletesJoinedWords &&
           !joinedBefore(doc, paragraph.start - 1).some((id) =>
             deletedByBatch.has(id),
           )
@@ -7186,6 +7189,7 @@ export class CanonicalPublicOperations {
         projectionStory: story,
         doc: state.doc,
         tracked,
+        deletesJoinedWords: tracked && !suggested,
         gainsFollower,
         followsInsertedTable,
         // The table stands right after it only when no paragraph the batch
