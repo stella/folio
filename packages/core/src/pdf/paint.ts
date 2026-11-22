@@ -60,6 +60,8 @@ const WAVY_SAMPLES_PER_PERIOD = 8;
 /** A `double` stroke is drawn as two lines, one either side of the path. */
 const DOUBLE_STROKE_LINES = 2;
 
+const MAX_HATCH_SLOTS_PER_EDGE = 8192;
+
 type PaintContext = {
   readonly stream: ContentStream;
   readonly fonts: ReadonlyMap<number, PreparedFont>;
@@ -234,7 +236,12 @@ function paintHatchedEdge(context: PaintContext, line: DisplayLine): void {
   const projection = width + height;
   const { pitchPx, lineWidthPx, slots } = hatch;
   if (!(width > 0 && height > 0 && pitchPx > 0 && lineWidthPx > 0)) return;
-  if (!Number.isFinite(projection / pitchPx) || slots.length === 0) return;
+  const slotCount = Math.ceil(projection / pitchPx);
+  if (!Number.isFinite(slotCount) || slots.length === 0) return;
+  if (slotCount > MAX_HATCH_SLOTS_PER_EDGE) {
+    paintSegment(context, stroke, { x1Px, y1Px, x2Px, y2Px });
+    return;
+  }
 
   beginPrimitive(context, context.alpha * stroke.color.a);
   const { stream } = context;
@@ -245,7 +252,7 @@ function paintHatchedEdge(context: PaintContext, line: DisplayLine): void {
   // A hatch line has x + y = offset in band-local coordinates. Centre
   // the stroke half an ink width past the corresponding gradient stop.
   const inkCenter = lineWidthPx / Math.SQRT2;
-  for (let slot = 0; slot * pitchPx < projection; slot += 1) {
+  for (let slot = 0; slot < slotCount; slot += 1) {
     if (!slots[slot % slots.length]) continue;
     const offset = slot * pitchPx + inkCenter;
     const start = Math.max(0, offset - height) - lineWidthPx;
