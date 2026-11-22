@@ -28,6 +28,7 @@ import type { OutlineStyleAttr } from "../types/documentEnumValues";
 import type { NoteStoryKey } from "../types/editor-story";
 import { isFloatingWrapType, isWrapNone } from "../types/wrap";
 import type { CssBorderStyle } from "../utils/borderCss";
+import { MAX_PAGE_DIMENSION_TWIPS, twipsToPixels } from "../utils/units";
 import type { AutomaticTextSpacingPolicy } from "./measure/measureTypes";
 
 /**
@@ -757,14 +758,30 @@ const DEFAULT_TABLE_CELL_PADDING = {
   left: 7,
 } as const satisfies TableCellPadding;
 
+const MAX_TABLE_CELL_MARGIN_PX = twipsToPixels(MAX_PAGE_DIMENSION_TWIPS);
+
+const cellMarginOrDefault = (value: number | undefined, fallback: number) =>
+  value !== undefined && Math.abs(value) <= MAX_TABLE_CELL_MARGIN_PX
+    ? value
+    : fallback;
+
 /** Resolve authored cell margins against the TableNormal defaults. */
 export const resolveTableCellPadding = (
   cell: Pick<TableCell, "padding"> | undefined,
 ): TableCellPadding => ({
-  top: cell?.padding?.top ?? DEFAULT_TABLE_CELL_PADDING.top,
-  right: cell?.padding?.right ?? DEFAULT_TABLE_CELL_PADDING.right,
-  bottom: cell?.padding?.bottom ?? DEFAULT_TABLE_CELL_PADDING.bottom,
-  left: cell?.padding?.left ?? DEFAULT_TABLE_CELL_PADDING.left,
+  top: cellMarginOrDefault(cell?.padding?.top, DEFAULT_TABLE_CELL_PADDING.top),
+  right: cellMarginOrDefault(
+    cell?.padding?.right,
+    DEFAULT_TABLE_CELL_PADDING.right,
+  ),
+  bottom: cellMarginOrDefault(
+    cell?.padding?.bottom,
+    DEFAULT_TABLE_CELL_PADDING.bottom,
+  ),
+  left: cellMarginOrDefault(
+    cell?.padding?.left,
+    DEFAULT_TABLE_CELL_PADDING.left,
+  ),
 });
 
 /**

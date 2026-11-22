@@ -21,6 +21,9 @@ const STANDARD_DPI = 96;
 /** Twips per inch (1 inch = 1440 twips) */
 export const TWIPS_PER_INCH = 1440;
 
+/** Maximum page dimension supported by the layout geometry. */
+export const MAX_PAGE_DIMENSION_TWIPS = 31_680;
+
 /** EMUs per inch (1 inch = 914400 EMUs) */
 const EMUS_PER_INCH = 914_400;
 
