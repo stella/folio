@@ -42,6 +42,7 @@ import { docxToMarkdown } from "../docx/server/docxToMarkdown";
 import { fromMarkdown } from "../markdown";
 import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
 import { readParagraphNumberingAttr } from "../prosemirror/numberingAttr";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import type { Comment, ParagraphContent } from "../types/document";
 import { applyFolioAIEditOperations } from "./apply";
 import { FolioDocxReviewer } from "./headless";
@@ -57,13 +58,24 @@ setDefaultTimeout(propertyTestTimeout(60_000));
 
 type Mode = "direct" | "tracked-changes";
 
-const markdownAfter = async (
-  source: string,
-  mode: Mode,
-  find: string,
-  replace: string,
-) => {
-  const reviewer = await openReviewer(await createDocx(fromMarkdown(source)));
+type MarkdownAfterOptions = {
+  session: HeadlessReviewerSession;
+  source: string;
+  mode: Mode;
+  find: string;
+  replace: string;
+};
+
+const markdownAfter = async ({
+  session,
+  source,
+  mode,
+  find,
+  replace,
+}: MarkdownAfterOptions) => {
+  const open = (bytes: ArrayBuffer) =>
+    FolioDocxReviewer.fromBuffer(bytes, { author: "Reviewer", session });
+  const reviewer = await open(await createDocx(fromMarkdown(source)));
   const blockId = reviewer.snapshot().blocks[0]?.id ?? "";
   const result = reviewer.applyDocumentOperations(
     {
@@ -75,10 +87,8 @@ const markdownAfter = async (
     },
     { undefinedReferences: "refuse" },
   );
-  const final =
-    mode === "direct"
-      ? await reopened(reviewer)
-      : await reopenedAccepted(reviewer);
+  const final = await open(await reviewer.toBuffer());
+  if (mode === "tracked-changes") final.acceptAll();
   const markdown = await docxToMarkdown(await final.toBuffer(), {
     annotations: "strip",
     trackedChanges: "clean",
@@ -146,22 +156,37 @@ describe("a replacement across a formatting boundary", () => {
   });
 
   test.each([
-    [
-      "a link",
-      "The [Supplier](https://example.com/party) agrees.",
-      "The [Provider performs](https://example.com/party).",
-    ],
-    ["bold", "The **Supplier** agrees.", "The **Provider performs**."],
-  ])(
-    "formats every new word whole, alike in both modes (%s, saved and reopened)",
-    async (_, source, expected) => {
+    {
+      // A range reaching past a link leaves its replacement outside it.
+      boundary: "a link",
+      session: "canonical",
+      source: "The [Supplier](https://example.com/party) agrees.",
+      expected: "The Provider performs.",
+    },
+    {
+      // The legacy engine writes it with the marks of the first word.
+      boundary: "a link",
+      session: "legacy",
+      source: "The [Supplier](https://example.com/party) agrees.",
+      expected: "The [Provider performs](https://example.com/party).",
+    },
+    ...(["canonical", "legacy"] as const).map((session) => ({
+      boundary: "bold",
+      session,
+      source: "The **Supplier** agrees.",
+      expected: "The **Provider performs**.",
+    })),
+  ] as const)(
+    "formats every new word whole, alike in both modes ($boundary, $session, saved and reopened)",
+    async ({ session, source, expected }) => {
       for (const mode of ["direct", "tracked-changes"] as const) {
-        const { result, markdown } = await markdownAfter(
+        const { result, markdown } = await markdownAfter({
+          session,
           source,
           mode,
-          "Supplier agrees",
-          "Provider performs",
-        );
+          find: "Supplier agrees",
+          replace: "Provider performs",
+        });
         expect({ mode, markdown }).toEqual({ mode, markdown: expected });
         expect(result.skipped).toEqual([]);
         // The new text took one formatting over a stretch that had two: the
