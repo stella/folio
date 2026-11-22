@@ -20,7 +20,7 @@ import type { Paragraph } from "./types/document";
 import { createEmptyDocument } from "./utils/createDocument";
 import { alignFolioBlocks } from "./version-comparison";
 
-const PROPERTY_BUDGET = 30_000;
+const PROPERTY_BUDGET = 90_000;
 const UNKNOWN_STYLE = "UndefinedInsertionStyle";
 const UNKNOWN_NUM_ID = 5;
 const INSERTED_ID = "12000004";

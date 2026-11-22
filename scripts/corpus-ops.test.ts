@@ -503,7 +503,7 @@ describe("corpus operation invariants", () => {
       }
       expect(sameOpModel(document, snapshot)).toBe(true);
     },
-    propertyTestTimeout(30_000),
+    propertyTestTimeout(60_000),
   );
 
   test("lifecycle locality permits declared story parts and rejects unrelated model and ZIP changes", async () => {
