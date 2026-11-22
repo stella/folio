@@ -14,11 +14,13 @@ import type {
   ParagraphContent,
   Run,
 } from "../../model/document";
+import { COMMENT_PART_RELATIONSHIPS } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { commentDocumentIssue } from "../comments";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import {
   DOCUMENT_OP_TYPES,
+  type DocumentOp,
   type InsertContentOp,
   OP_STORIES,
   REVISION_DECISIONS,
@@ -373,6 +375,362 @@ describe("a pasted copy of a standing comment's range", () => {
     const undone = applyDocumentOps(after, applied.value.inverse);
     if (undone.isErr()) throw undone.error;
     expect(undone.value.document).toEqual(before);
+  });
+
+  test("a slice holding only a standing range's reference leaves it out", () => {
+    const before = documentOf();
+    const applied = applyDocumentOp(
+      before,
+      paste("direct", [run("x"), reference(1)], {
+        comments: carried,
+        newCommentIds: [5, 6],
+      }),
+    );
+    if (applied.isErr()) throw applied.error;
+    const after = applied.value.document;
+    expect(textOf(after)).toBe("abcdx");
+    expect(anchorsById(after)).toEqual(new Map([[1, RANGE]]));
+    expect(after.package.document.comments).toEqual([root, reply]);
+    const undone = applyDocumentOps(after, applied.value.inverse);
+    if (undone.isErr()) throw undone.error;
+    expect(undone.value.document).toEqual(before);
+  });
+
+  test("a range's reference standing alone is not copied as a point", () => {
+    const before = documentOf();
+    before.package.document.content = [
+      {
+        type: "paragraph",
+        paraId: "00000001",
+        content: [run("ab"), reference(1), run("cd")],
+      },
+    ];
+    const applied = applyDocumentOp(
+      before,
+      paste("direct", [run("x"), reference(1)], {
+        comments: carried,
+        newCommentIds: [5, 6],
+      }),
+    );
+    if (applied.isErr()) throw applied.error;
+    const after = applied.value.document;
+    expect(anchorsById(after)).toEqual(new Map([[1, ["commentReference"]]]));
+    expect(after.package.document.comments).toEqual([root, reply]);
+  });
+
+  const TWICE = [
+    start(7),
+    run("x"),
+    end(7),
+    reference(7),
+    run("y"),
+    start(7),
+    run("z"),
+    end(7),
+    reference(7),
+  ];
+  for (const { name, comments } of [
+    { name: "uncarried", comments: undefined },
+    {
+      name: "carried",
+      comments: [
+        { ...structuredClone(root), id: 7, content: body("00000030", "New.") },
+      ],
+    },
+  ])
+    test(`${name}: a comment the document does not hold keeps its first range`, () => {
+      const before = documentOf();
+      const applied = applyDocumentOp(
+        before,
+        paste("direct", TWICE, comments === undefined ? {} : { comments }),
+      );
+      if (applied.isErr()) throw applied.error;
+      const after = applied.value.document;
+      expect(textOf(after)).toBe("abcdxyz");
+      expect(anchorsById(after)).toEqual(
+        new Map([
+          [1, RANGE],
+          [7, RANGE],
+        ]),
+      );
+      const undone = applyDocumentOps(after, applied.value.inverse);
+      if (undone.isErr()) throw undone.error;
+      expect(undone.value.document).toEqual(before);
+    });
+
+  test("a kept range end follows its start", () => {
+    const applied = applyDocumentOp(
+      documentOf(),
+      paste("direct", [end(7), run("x"), start(7), run("y"), end(7)]),
+    );
+    if (applied.isErr()) throw applied.error;
+    expect(anchorsById(applied.value.document).get(7)).toEqual([
+      "commentRangeStart",
+      "commentRangeEnd",
+    ]);
+  });
+
+  test("undoing a deletion puts back every range its slice repeats", () => {
+    const before: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              paraId: "00000001",
+              content: [
+                run("ab"),
+                start(1),
+                run("cd"),
+                end(1),
+                start(1),
+                run("ef"),
+                end(1),
+                run("gh"),
+              ],
+            },
+          ],
+          comments: [structuredClone(root)],
+        },
+      },
+    };
+    const original = structuredClone(before);
+    const deleted = applyDocumentOp(before, {
+      type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+      from: { story: OP_STORIES.MAIN, blockId: "00000001", offset: 1 },
+      to: { story: OP_STORIES.MAIN, blockId: "00000001", offset: 7 },
+    });
+    if (deleted.isErr()) throw deleted.error;
+    expect(textOf(deleted.value.document)).toBe("ah");
+    const undone = applyDocumentOps(
+      deleted.value.document,
+      JSON.parse(JSON.stringify(deleted.value.inverse)),
+    );
+    if (undone.isErr()) throw undone.error;
+    expect(undone.value.document).toEqual(original);
+  });
+
+  test("copies take the fresh ids in carried order, threads interleaved", () => {
+    const other: Comment = {
+      ...structuredClone(root),
+      id: 3,
+      content: body("00000012", "Other."),
+    };
+    const anchored = [
+      start(1),
+      run("ab"),
+      end(1),
+      reference(1),
+      start(3),
+      run("cd"),
+      end(3),
+      reference(3),
+    ];
+    const before: Document = {
+      package: {
+        document: {
+          content: [
+            { type: "paragraph", paraId: "00000001", content: anchored },
+          ],
+          comments: [root, reply, other],
+        },
+      },
+    };
+    const [carriedRoot, carriedReply] = carried;
+    if (carriedRoot === undefined || carriedReply === undefined)
+      throw new Error("The thread carries a root and a reply.");
+    const applied = applyDocumentOp(
+      before,
+      paste("direct", anchored, {
+        comments: [
+          carriedRoot,
+          { ...other, content: body("00000022", "Other.") },
+          carriedReply,
+        ],
+        newCommentIds: [5, 6, 7],
+      }),
+    );
+    if (applied.isErr()) throw applied.error;
+    const after = applied.value.document;
+    expect(
+      after.package.document.comments?.map(({ id, parentId, content }) => [
+        id,
+        parentId,
+        content[0]?.paraId,
+      ]),
+    ).toEqual([
+      [1, undefined, "00000010"],
+      [2, 1, "00000011"],
+      [3, undefined, "00000012"],
+      [5, undefined, "00000020"],
+      [6, undefined, "00000022"],
+      [7, 5, "00000021"],
+    ]);
+    expect(anchorsById(after)).toEqual(
+      new Map([
+        [1, RANGE],
+        [3, RANGE],
+        [5, RANGE],
+        [6, RANGE],
+      ]),
+    );
+    const undone = applyDocumentOps(after, applied.value.inverse);
+    if (undone.isErr()) throw undone.error;
+    expect(undone.value.document).toEqual(before);
+  });
+
+  for (const mode of MODE_NAMES)
+    test(`${mode}: a copy of a proposed comment belongs to the insertion's own suggestion`, () => {
+      const before = documentOf();
+      before.package.document.comments = [
+        { ...root, suggestionId: "source" },
+        { ...reply, suggestionId: "source" },
+      ];
+      const applied = applyDocumentOp(
+        before,
+        paste(mode, [start(1), run("ab"), end(1), reference(1)], {
+          comments: carried.map((comment) => ({
+            ...comment,
+            suggestionId: "source",
+          })),
+          newCommentIds: [5, 6],
+        }),
+      );
+      if (applied.isErr()) throw applied.error;
+      const copies =
+        applied.value.document.package.document.comments?.slice(2) ?? [];
+      const owner = mode === "suggested" ? "s1" : undefined;
+      expect(copies.map(({ suggestionId }) => suggestionId)).toEqual([
+        owner,
+        owner,
+      ]);
+      expect(copies.map((copy) => Object.hasOwn(copy, "suggestionId"))).toEqual(
+        [owner !== undefined, owner !== undefined],
+      );
+    });
+
+  test("a proposed comment joining the records belongs to the insertion's own suggestion", () => {
+    const applied = applyDocumentOp(
+      documentOf(),
+      paste("direct", [start(7), run("x"), end(7)], {
+        comments: [
+          {
+            ...structuredClone(root),
+            id: 7,
+            suggestionId: "source",
+            content: body("00000030", "New."),
+          },
+        ],
+      }),
+    );
+    if (applied.isErr()) throw applied.error;
+    const joined = applied.value.document.package.document.comments?.at(-1);
+    expect(joined?.id).toBe(7);
+    expect(joined !== undefined && Object.hasOwn(joined, "suggestionId")).toBe(
+      false,
+    );
+  });
+
+  /** The package's comment part relationship targets. */
+  const commentParts = (document: Document): string[] =>
+    [...(document.package.relationships?.values() ?? [])].flatMap(
+      ({ target }) => (target.startsWith("comments") ? [target] : []),
+    );
+  const joining: readonly Comment[] = [
+    { ...structuredClone(root), id: 7, content: body("00000030", "New.") },
+    {
+      ...structuredClone(reply),
+      id: 8,
+      parentId: 7,
+      content: body("00000031", "Yes."),
+    },
+  ];
+  const created = {
+    author: "C",
+    content: body("00000040", "Later."),
+  } satisfies Omit<Comment, "id" | "parentId">;
+
+  /**
+   * Insert the thread 7 into `before`, apply `later`, and undo the insertion
+   * alone; the document must keep every comment part its comments need.
+   */
+  const undoneBeside = (before: Document, later: DocumentOp): Document => {
+    const pasted = applyDocumentOp(
+      before,
+      paste("direct", [start(7), run("x"), end(7)], { comments: joining }),
+    );
+    if (pasted.isErr()) throw pasted.error;
+    expect(commentParts(pasted.value.document)).toEqual([
+      "comments.xml",
+      "commentsExtended.xml",
+    ]);
+    const next = applyDocumentOp(pasted.value.document, later);
+    if (next.isErr()) throw next.error;
+    const undone = applyDocumentOps(
+      next.value.document,
+      JSON.parse(JSON.stringify(pasted.value.inverse)),
+    );
+    if (undone.isErr()) throw undone.error;
+    expect(anchorsById(undone.value.document).has(7)).toBe(false);
+    return undone.value.document;
+  };
+
+  test("undoing an insertion keeps the part a comment made since needs", () => {
+    const before: Document = {
+      package: {
+        document: {
+          content: [
+            { type: "paragraph", paraId: "00000001", content: [run("abcde")] },
+            { type: "paragraph", paraId: "00000002", content: [run("fgh")] },
+          ],
+          comments: [],
+        },
+        relationships: new Map(),
+      },
+    };
+    const undone = undoneBeside(before, {
+      type: DOCUMENT_OP_TYPES.CREATE_COMMENT,
+      comment: { ...created, id: 9 },
+      anchor: {
+        kind: "point",
+        at: { story: OP_STORIES.MAIN, blockId: "00000002", offset: 1 },
+      },
+    });
+    expect(undone.package.document.comments?.map(({ id }) => id)).toEqual([9]);
+    expect(commentParts(undone)).toEqual(["comments.xml"]);
+  });
+
+  test("undoing an insertion keeps the part a reply made since needs", () => {
+    const before: Document = {
+      package: {
+        document: {
+          content: [
+            { type: "paragraph", paraId: "00000001", content: [run("abcde")] },
+            {
+              type: "paragraph",
+              paraId: "00000002",
+              content: [start(1), run("fgh"), end(1), reference(1)],
+            },
+          ],
+          comments: [structuredClone(root)],
+        },
+        relationships: new Map([
+          ["rId1", { id: "rId1", ...COMMENT_PART_RELATIONSHIPS.comments }],
+        ]),
+      },
+    };
+    const undone = undoneBeside(before, {
+      type: DOCUMENT_OP_TYPES.CREATE_COMMENT,
+      comment: { ...created, id: 9 },
+      anchor: { kind: "reply", parentId: 1 },
+    });
+    expect(undone.package.document.comments?.map(({ id }) => id)).toEqual([
+      1, 9,
+    ]);
+    expect(commentParts(undone)).toEqual([
+      "comments.xml",
+      "commentsExtended.xml",
+    ]);
   });
 
   test("a copy without fresh comment ids is refused", () => {

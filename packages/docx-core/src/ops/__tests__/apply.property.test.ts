@@ -3454,7 +3454,7 @@ describe("document operations", () => {
             const { blockId, offset } = op.at;
             const old = textOf(before, blockId);
             // A comment owns one range: an anchor of a kind its comment has
-            // standing already is left out.
+            // standing already, or repeated in the slice, is left out.
             const standing = new Set(
               commentAnchorsIn(document).flatMap(({ node }) =>
                 isCommentAnchor(node) ? [`${node.type}:${node.id}`] : [],
@@ -3462,8 +3462,12 @@ describe("document operations", () => {
             );
             const kept = (nodes: readonly InlineNode[]): InlineNode[] =>
               nodes.flatMap((node) => {
-                if (isCommentAnchor(node))
-                  return standing.has(`${node.type}:${node.id}`) ? [] : [node];
+                if (isCommentAnchor(node)) {
+                  const key = `${node.type}:${node.id}`;
+                  if (standing.has(key)) return [];
+                  standing.add(key);
+                  return [node];
+                }
                 const children = childNodes(node);
                 return children === undefined
                   ? [node]

@@ -144,6 +144,95 @@ const savedRanges = (state: EditorState, base: Document) => {
   return counts;
 };
 
+/** Select `length` characters (all of `text`) where `text` stands. */
+const select = (
+  view: HeadlessEditorView,
+  text: string,
+  length = text.length,
+) => {
+  const block = findTextblock(view.state.doc, text);
+  if (block === null) throw new Error(`no paragraph holds "${text}"`);
+  // A reference takes a position that the paragraph's text does not.
+  const offset = block.node.textContent.indexOf(text);
+  let from = block.pos + 1 + offset;
+  block.node.forEach((node, position) => {
+    if (node.isAtom && !node.isText && position < offset) from += node.nodeSize;
+  });
+  view.dispatch(
+    view.state.tr.setSelection(
+      TextSelection.create(view.state.doc, from, from + length),
+    ),
+  );
+};
+
+/** Drag `text` to the end of the document's last paragraph. */
+const dragToEnd = (
+  view: HeadlessEditorView,
+  text: string,
+  { move }: { move: boolean },
+) => {
+  select(view, text);
+  view.drag(view.state.doc.content.size - 1, { move });
+};
+
+/** "Hello", the reference of point comment 1, then " world". */
+const pointDocument = (): Document => ({
+  package: {
+    document: {
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            run("Hello"),
+            { type: "commentReference", id: 1 },
+            run(" world"),
+          ],
+        },
+      ],
+      comments: [
+        {
+          id: 1,
+          author: "Reviewer",
+          anchorKind: "point",
+          content: note("Here."),
+        },
+      ],
+    },
+  },
+});
+/** "lo", the reference and " wo" in {@link pointDocument}. */
+const POINT_RANGE = [4, 10] as const;
+
+/** Comment 1 covers `original` and a copy of it, with its thread, `copied`. */
+const expectCopied = (
+  state: EditorState,
+  base: Document,
+  { original = "Hello", copied = "Hello" } = {},
+) => {
+  const records = commentRecordsOf(state) ?? [];
+  const copy = records[2]?.id ?? Number.NaN;
+  const copiedReply = records[3]?.id ?? Number.NaN;
+  expect(new Set([1, 2, copy, copiedReply]).size).toBe(4);
+  expect(records.map(({ id, parentId }) => [id, parentId])).toEqual([
+    [1, undefined],
+    [2, 1],
+    [copy, undefined],
+    [copiedReply, copy],
+  ]);
+  expect(commentedText(state)).toEqual(
+    new Map([
+      [1, original],
+      [copy, copied],
+    ]),
+  );
+  expect(savedRanges(state, base)).toEqual(
+    new Map([
+      [1, { starts: 1, ends: 1 }],
+      [copy, { starts: 1, ends: 1 }],
+    ]),
+  );
+};
+
 describe("pasting commented text", () => {
   for (const mode of EDITOR_MODES) {
     test(`${mode}: a copy of a standing comment takes a fresh id and a copy of its thread`, () => {
@@ -202,5 +291,170 @@ describe("pasting commented text", () => {
         ]),
       );
     });
+
+    test(`${mode}: plain text pasted inside a comment joins its range`, () => {
+      const document = documentFor(1, structuredClone(thread));
+      const view = open(document, mode);
+      select(view, "lo", 0);
+      view.pasteText("XX");
+      expect(commentedText(view.state)).toEqual(new Map([[1, "HelXXlo"]]));
+      expect(commentRecordsOf(view.state)).toEqual(thread);
+      expect(savedRanges(view.state, document)).toEqual(
+        new Map([[1, { starts: 1, ends: 1 }]]),
+      );
+    });
+
+    test(`${mode}: a slice holding only a range's reference leaves it out`, () => {
+      const view = open(documentFor(1, structuredClone(thread)), mode);
+      const { doc } = view.state;
+      let at: number | undefined;
+      doc.descendants((node, pos) => {
+        if (node.type.name === "commentReference") at = pos;
+      });
+      if (at === undefined) throw new Error("no reference");
+      pasteAtEnd(view, "Hello world", doc.slice(at, at + 1));
+      expect(commentRecordsOf(view.state)).toEqual(thread);
+      expect([...commentIdsNamedIn(view.state.doc)]).toEqual([1]);
+    });
+
+    test(`${mode}: a pasted copy of a point comment leaves it out`, () => {
+      const document = pointDocument();
+      const view = open(document, mode);
+      const { doc } = view.state;
+      pasteAtEnd(view, "Hello world", doc.slice(...POINT_RANGE));
+      expect(view.state.doc.textContent).toBe("Hello worldlo wo");
+      expect(commentRecordsOf(view.state)).toEqual(
+        document.package.document.comments ?? [],
+      );
+      expect([...commentIdsNamedIn(view.state.doc)]).toEqual([1]);
+    });
+
+    test(`${mode}: a copy of a proposed comment belongs to no suggestion`, () => {
+      const proposed = thread.map((comment) => ({
+        ...comment,
+        suggestionId: "source",
+      }));
+      const view = open(documentFor(1, proposed), mode);
+      pasteAtEnd(view, "Hello world", sliceOf(view.state, "Hello"));
+      const copies = commentRecordsOf(view.state)?.slice(2) ?? [];
+      expect(copies.map(({ id }) => id)).toEqual([3, 4]);
+      expect(copies.map((copy) => Object.hasOwn(copy, "suggestionId"))).toEqual(
+        [false, false],
+      );
+      const owners = new Map<unknown, unknown>();
+      view.state.doc.descendants((node) => {
+        for (const { type, attrs } of node.marks)
+          if (type.name === "comment")
+            owners.set(attrs["commentId"], attrs["suggestionId"]);
+      });
+      expect(owners).toEqual(
+        new Map<unknown, unknown>([
+          [1, "source"],
+          [3, null],
+        ]),
+      );
+    });
   }
+});
+
+describe("dragging commented text", () => {
+  for (const mode of EDITOR_MODES) {
+    test(`${mode}: a dropped copy takes a fresh id and a copy of its thread`, () => {
+      const document = documentFor(1, structuredClone(thread));
+      const view = open(document, mode);
+      const before = view.state;
+      dragToEnd(view, "Hello", { move: false });
+      expect(view.state.doc.textContent).toBe("Hello worldHello");
+      expectCopied(view.state, document);
+      view.execute(undo);
+      expect(view.state.doc.eq(before.doc)).toBe(true);
+      expect(commentRecordsOf(view.state)).toEqual(thread);
+    });
+
+    test(`${mode}: a dropped copy without a thread leaves the comment out`, () => {
+      const view = open(documentFor(1, []), mode);
+      dragToEnd(view, "Hello", { move: false });
+      expect(commentRecordsOf(view.state)).toEqual([]);
+      expect(commentedText(view.state)).toEqual(new Map([[1, "Hello"]]));
+      expect([...commentIdsNamedIn(view.state.doc)]).toEqual([1]);
+    });
+
+    test(`${mode}: moving part of a commented text leaves one range per comment`, () => {
+      const document = documentFor(1, structuredClone(thread));
+      const view = open(document, mode);
+      const before = view.state;
+      dragToEnd(view, "Hel", { move: true });
+      expectCopied(view.state, document, {
+        original: mode === "editing" ? "lo" : "Hello",
+        copied: "Hel",
+      });
+      view.execute(undo);
+      expect(view.state.doc.eq(before.doc)).toBe(true);
+      expect(commentRecordsOf(view.state)).toEqual(thread);
+    });
+
+    test(`${mode}: an edit after a drop is no part of it`, () => {
+      const view = open(documentFor(1, structuredClone(thread)), mode);
+      dragToEnd(view, " wor", { move: true });
+      const { doc } = view.state;
+      view.dispatch(
+        view.state.tr.setSelection(
+          TextSelection.create(doc, doc.content.size - 1),
+        ),
+      );
+      view.dispatch(view.state.tr.insertText("!"));
+      expect(commentRecordsOf(view.state)).toEqual(thread);
+      expect(commentedText(view.state)).toEqual(new Map([[1, "Hello"]]));
+    });
+  }
+
+  test("a move keeps the comment on the moved text", () => {
+    const document = documentFor(1, structuredClone(thread));
+    const view = open(document, "editing");
+    const before = view.state;
+    dragToEnd(view, "Hello", { move: true });
+    expect(view.state.doc.textContent).toBe(" worldHello");
+    expect(commentRecordsOf(view.state)).toEqual(thread);
+    expect(commentedText(view.state)).toEqual(new Map([[1, "Hello"]]));
+    expect(savedRanges(view.state, document)).toEqual(
+      new Map([[1, { starts: 1, ends: 1 }]]),
+    );
+    view.execute(undo);
+    expect(view.state.doc.eq(before.doc)).toBe(true);
+    expect(commentRecordsOf(view.state)).toEqual(thread);
+  });
+
+  test("a move without a thread keeps the comment on the moved text", () => {
+    const view = open(documentFor(1, []), "editing");
+    dragToEnd(view, "Hello", { move: true });
+    expect(commentedText(view.state)).toEqual(new Map([[1, "Hello"]]));
+  });
+
+  test("a move keeps a point comment it holds", () => {
+    const document = pointDocument();
+    const view = open(document, "editing");
+    view.dispatch(
+      view.state.tr.setSelection(
+        TextSelection.create(view.state.doc, ...POINT_RANGE),
+      ),
+    );
+    view.drag(view.state.doc.content.size - 1, { move: true });
+    expect(view.state.doc.textContent).toBe("Helrldlo wo");
+    expect(commentRecordsOf(view.state)).toEqual(
+      document.package.document.comments ?? [],
+    );
+    expect([...commentIdsNamedIn(view.state.doc)]).toEqual([1]);
+  });
+
+  test("a suggested move copies the comment beside the text it removes", () => {
+    const document = documentFor(1, structuredClone(thread));
+    const view = open(document, "suggesting");
+    const before = view.state;
+    dragToEnd(view, "Hello", { move: true });
+    expect(view.state.doc.textContent).toBe("Hello worldHello");
+    expectCopied(view.state, document);
+    view.execute(undo);
+    expect(view.state.doc.eq(before.doc)).toBe(true);
+    expect(commentRecordsOf(view.state)).toEqual(thread);
+  });
 });

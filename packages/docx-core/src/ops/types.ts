@@ -424,8 +424,9 @@ export type InsertTextOp = {
  * carries that comment's thread and the slice holds the comment's range (or
  * point) whole, the thread's anchors take the ids `newCommentIds` lists and
  * the thread is copied under them; otherwise those anchors are left out. An
- * anchor completing a comment's range goes in as it is, and a carried thread
- * none of whose anchors stand joins the records unless they hold it.
+ * anchor completing a comment's range goes in as it is, a repeated one is
+ * left out, and a carried thread none of whose anchors stand joins the
+ * records unless they hold it. A thread it adds belongs to its suggestion.
  */
 export type InsertContentOp = {
   type: typeof DOCUMENT_OP_TYPES.INSERT_CONTENT;

@@ -12,7 +12,7 @@
  * typed text the same `handleTextInput` chain as in a browser.
  */
 
-import type { Node as PMNode, Slice } from "prosemirror-model";
+import { Fragment, type Node as PMNode, Slice } from "prosemirror-model";
 import {
   AllSelection,
   EditorState as PMEditorState,
@@ -26,6 +26,7 @@ import type {
   Transaction,
 } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
+import { dropPoint } from "prosemirror-transform";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { createFolioAIEditSnapshotWithStyleResolver } from "../ai-edits/snapshot";
@@ -102,6 +103,8 @@ export class HeadlessEditorView {
   readonly transactions: Transaction[] = [];
   readonly composing = false;
   readonly editable = true;
+  /** What is being dragged out of the view, as `EditorView` holds it. */
+  dragging: { slice: Slice; move: boolean } | null = null;
 
   constructor(state: EditorState) {
     this.state = state;
@@ -184,15 +187,20 @@ export class HeadlessEditorView {
     }
   }
 
-  /** Paste a slice through `transformPasted` and `handlePaste`, like a clipboard paste. */
-  paste(slice: Slice): void {
+  private transformPasted(slice: Slice, plain: boolean): Slice {
     let transformed = slice;
     for (const plugin of this.state.plugins as readonly Plugin[]) {
       const transform = plugin.props.transformPasted;
       if (transform) {
-        transformed = transform.call(plugin, transformed, this as never, false);
+        transformed = transform.call(plugin, transformed, this as never, plain);
       }
     }
+    return transformed;
+  }
+
+  /** Paste a slice through `transformPasted` and `handlePaste`, like a clipboard paste. */
+  paste(slice: Slice, { plain = false }: { plain?: boolean } = {}): void {
+    const transformed = this.transformPasted(slice, plain);
     const event = { clipboardData: null, preventDefault() {} };
     const handled = this.someProp("handlePaste", (handler) =>
       (
@@ -211,6 +219,30 @@ export class HeadlessEditorView {
           .setMeta("paste", true)
           .setMeta("uiEvent", "paste"),
       );
+    }
+  }
+
+  /** Paste plain text, which the view reads in the marks at the caret. */
+  pasteText(text: string): void {
+    const { schema, selection } = this.state;
+    const marked = schema.text(text, selection.$from.marks());
+    this.paste(new Slice(Fragment.from(marked), 0, 0), { plain: true });
+  }
+
+  /** Drag the selection and drop it at `pos`, as the view's own drop does. */
+  drag(pos: number, { move }: { move: boolean }): void {
+    const dragged = this.state.selection.content();
+    this.dragging = { slice: dragged, move };
+    try {
+      const slice = this.transformPasted(dragged, false);
+      const { tr } = this.state;
+      const at = dropPoint(this.state.doc, pos, slice) ?? pos;
+      if (move) tr.deleteSelection();
+      const target = tr.mapping.map(at);
+      tr.replaceRange(target, target, slice);
+      this.dispatch(tr.setMeta("uiEvent", "drop"));
+    } finally {
+      this.dragging = null;
     }
   }
 }

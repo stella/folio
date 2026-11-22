@@ -204,7 +204,8 @@ type EditorSession =
 /**
  * Clipboard text takes the caret's formatting, never its revision: text
  * pasted inside struck or inserted text is new input, which the session marks
- * for its own mode. Otherwise the text reads as ProseMirror's own parse.
+ * for its own mode. It carries no comment either: a range around the caret
+ * holds it. Otherwise the text reads as ProseMirror's own parse.
  */
 const parseCanonicalClipboardText = (
   text: string,
@@ -215,7 +216,10 @@ const parseCanonicalClipboardText = (
   const { schema: viewSchema } = view.state;
   const marks = $context
     .marks()
-    .filter(({ type }) => !REVISION_MARK_NAMES.has(type.name));
+    .filter(
+      ({ type }) =>
+        !REVISION_MARK_NAMES.has(type.name) && type.name !== "comment",
+    );
   const serializer = DOMSerializer.fromSchema(viewSchema);
   const owner = view.dom.ownerDocument;
   const dom = owner.createElement("div");

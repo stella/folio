@@ -169,7 +169,7 @@ import {
   transferParagraphPropertySnapshot,
 } from "./paragraphPropertySnapshot";
 import { paragraphSnapshotTransfers } from "./paragraphSnapshotTransfers";
-import { pastedComments, repeatsStandingCommentAnchor } from "./pastedComments";
+import { pastedComments, repeatsCommentAnchor } from "./pastedComments";
 import { priorValues } from "./patch";
 import {
   insertsInvertedRange,
@@ -1164,9 +1164,9 @@ const deleteRange = (document: Document, op: DeleteRangeOp): Applied => {
     (result, after) => {
       if (
         kept.length > 0 ||
-        // Put back by an insertion, an anchor its comment still has standing
-        // would be settled as a paste's copy, not restored.
-        repeatsStandingCommentAnchor(after, removed.content) ||
+        // Put back by an insertion, an anchor its comment still has standing,
+        // or has twice in the slice, would be settled, not restored.
+        repeatsCommentAnchor(after, removed.content) ||
         cutHasResolutionProvenance({
           content: paragraph.content,
           gaps: [from, to],
