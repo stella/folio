@@ -28,7 +28,13 @@
             ["Period", "12 months"]
           ]
         }
-      ]
+      ],
+      "expectedRefusals": {
+        "canonical": {
+          "code": "unsupportedBlock",
+          "message": "A tracked insertion after a paragraph no paragraph follows needs the anchor's mark free of review records."
+        }
+      }
     }
   ],
   "swarm": [

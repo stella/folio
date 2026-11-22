@@ -50,6 +50,7 @@ import {
   leasedIdCensus,
   locateParagraphThroughTextBoxes,
   type NewListInstance,
+  noteDeletionOps,
   OP_STORIES,
   type OpStory,
   orderAddressingBeforeRemoval,
@@ -3948,6 +3949,10 @@ const compilePublicIntents = ({
         intent = { ...sourceIntent, at: { ...sourceIntent.at, blockId } };
     }
     const firstRevisionId = nextRevisionId;
+    const revisionIds =
+      idLease === undefined
+        ? ids.newIds.revision.map((_, index) => firstRevisionId + index + 1)
+        : ids.newIds.revision;
     const compiled = compileEditorIntent(document, {
       intent,
       // An operation's text is body text: it never continues a note reference.
@@ -3970,15 +3975,7 @@ const compilePublicIntents = ({
                 date,
                 ...(suggestionId === undefined ? {} : { suggestionId }),
               },
-              newIds: {
-                control: ids.newIds.control,
-                revision:
-                  idLease === undefined
-                    ? ids.newIds.revision.map(
-                        (_, index) => firstRevisionId + index + 1,
-                      )
-                    : ids.newIds.revision,
-              },
+              newIds: { control: ids.newIds.control, revision: revisionIds },
             },
     });
     if (compiled.isErr()) return Result.err(compiled.error);
@@ -4006,10 +4003,40 @@ const compilePublicIntents = ({
       verifiedOperation = verified.value;
       applied = verified.value;
     }
-    document = readModel(applied.document);
-    ops.push(...compiled.value.ops);
-    revisions.push(...applied.revisions);
-    for (const id of applied.revisions)
+    // The notes whose last live reference the intent's tracked deletion
+    // took go with it, as operations of their own beside the intent's. A
+    // comparison states each note's own changes as a story of its own, as
+    // the legacy reviewer does.
+    let after = readModel(applied.document);
+    const noteDeletion =
+      mode === "direct" || noteReferenceEditsAllowed()
+        ? undefined
+        : noteDeletionOps({
+            before: document,
+            after,
+            stamp: {
+              id: idLease === undefined ? firstRevisionId : ids.revisionId,
+              author,
+              date,
+              ...(suggestionId === undefined ? {} : { suggestionId }),
+            },
+            revisionIds,
+          });
+    if (noteDeletion?.isErr() === true) return Result.err(noteDeletion.error);
+    const notes = noteDeletion?.unwrap();
+    const appliedRevisions = [...applied.revisions];
+    if (notes !== undefined && notes.ops.length > 0) {
+      const noted = applyDocumentOps(after, notes.ops);
+      if (noted.isErr()) return Result.err(noted.error);
+      // The staged operation no longer holds the whole edit.
+      verifiedOperation = undefined;
+      after = noted.value.document;
+      appliedRevisions.push(...notes.revisions);
+    }
+    document = after;
+    ops.push(...compiled.value.ops, ...(notes?.ops ?? []));
+    revisions.push(...appliedRevisions);
+    for (const id of appliedRevisions)
       nextRevisionId = Math.max(nextRevisionId, id + 1);
     if (mode === "direct") continue;
     if (sourceIntent.type === "joinParagraphs")

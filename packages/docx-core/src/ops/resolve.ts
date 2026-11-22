@@ -103,8 +103,9 @@ import {
 import { replaceNoteParts } from "./noteLifecycle";
 import {
   automaticNoteMarkRuns,
+  liveNoteReferenceKeys,
   noteReferenceKey,
-  type NoteReferenceSpan,
+  noteReferenceKind,
   noteReferenceSpans,
   referencedNoteKeys,
 } from "./noteMarks";
@@ -244,10 +245,6 @@ type NoteReferenceDecisions = {
   restored: Map<string, RestoredNoteReference>;
 };
 
-const noteReferenceKind = (
-  node: NoteReferenceSpan["node"],
-): NoteStory["kind"] => (node.type === "footnoteRef" ? "footnote" : "endnote");
-
 /** What the decision does to the notes the story refers to, in one scan. */
 const noteReferenceDecisions = ({
   paragraphs,
@@ -296,20 +293,6 @@ const noteReferenceDecisions = ({
   }
   for (const key of live) restored.delete(key);
   return { removed: [...references.values()], restored };
-};
-
-/** The notes a story refers to through a reference no deletion holds. */
-const liveNoteReferenceKeys = (
-  paragraphs: readonly ParagraphLocation[],
-): Set<string> => {
-  const live = new Set<string>();
-  for (const { paragraph } of paragraphs) {
-    for (const { node, ancestors } of noteReferenceSpans(paragraph.content)) {
-      if (!ancestors.some((ancestor) => ancestor.type === "deletion"))
-        live.add(noteReferenceKey(noteReferenceKind(node), node.id));
-    }
-  }
-  return live;
 };
 
 /**

@@ -22,6 +22,7 @@ export {
   type VersionOneKept,
   type VersionOneKeptMarkers,
 } from "./keptCut";
+export { noteDeletionOps } from "./noteDeletion";
 export { noteUsesCustomMark } from "./noteMarks";
 export {
   withParagraphCopies,
