@@ -13,7 +13,6 @@ import {
   sameBlockList,
   storyParagraphs,
 } from "./blocks";
-import { structurallyEqual } from "./equality";
 import {
   freshLeasedIds,
   ID_LEASE_KINDS,
@@ -44,12 +43,15 @@ import {
   findStoryParagraph,
   locateParagraphInBlockList,
 } from "./paragraphLocator";
+import {
+  joinedPropertiesSource,
+  paragraphPropertiesSetting,
+} from "./pendingJoins";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import {
   isAddedRevision,
   isRemovedRevisionNode,
   isTrackedWrapper,
-  paragraphPropertiesOf,
 } from "./review";
 import { isOwnRecord, type RevisionOwner } from "./revisionOwner";
 import { findStoryBody, sameStory, storyBody } from "./stories";
@@ -1048,6 +1050,11 @@ export const appendTrackedDeletion = ({
     }
   }
   if (first.index === last.index) return Result.ok(undefined);
+  const source = joinedPropertiesSource({
+    blocks: blockListAt(storyBody(direct, from.story).content, first.list),
+    first: first.index,
+    last: last.index,
+  });
   for (let index = ranges.length - 2; index >= 0; index -= 1) {
     const leading = ranges[index];
     if (leading === undefined)
@@ -1118,24 +1125,15 @@ export const appendTrackedDeletion = ({
       DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
       "The planned survivor does not exist.",
     );
-  const current = paragraphPropertiesOf(trackedSurvivor.paragraph.formatting);
-  const desired = paragraphPropertiesOf(survivor.paragraph.formatting);
-  if (structurallyEqual(current, desired)) return Result.ok(undefined);
-  const patch = Object.fromEntries([
-    ...Object.keys(current ?? {}).map((key) => [key, null]),
-    ...Object.entries(desired ?? {}),
-  ]);
-  return plan.append({
-    type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
+  const setting = paragraphPropertiesSetting({
     story: from.story,
     blockId: to.blockId,
-    patch,
-    whenEmpty:
-      survivor.paragraph.formatting === undefined
-        ? EMPTY_PROPERTY_SETS.OMIT
-        : EMPTY_PROPERTY_SETS.KEEP,
-    revision,
+    from: trackedSurvivor.paragraph.formatting,
+    to: (source ?? survivor.paragraph).formatting,
   });
+  return setting === undefined
+    ? Result.ok(undefined)
+    : plan.append({ ...setting, revision });
 };
 
 /**
