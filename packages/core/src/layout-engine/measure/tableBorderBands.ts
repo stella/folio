@@ -1,4 +1,7 @@
-import type { StrokeDashCycle } from "../../display-list/types";
+import type {
+  DiagonalHatchPattern,
+  StrokeDashCycle,
+} from "../../display-list/types";
 import { pointsToPixels } from "../../utils/units";
 import type { CellBorderSpec } from "../types";
 
@@ -56,6 +59,13 @@ export function hasCompoundTableBorderBands(
 ): style is CompoundStyle {
   return typeof style === "string" && Object.hasOwn(COMPOUND_SEGMENTS, style);
 }
+
+const HATCH_BAND_PX = 4;
+const TABLE_BORDER_HATCH = {
+  pitchPx: 0.96,
+  lineWidthPx: 0.32,
+  slots: [true, true, true, false, true, false, true, true],
+} as const satisfies DiagonalHatchPattern;
 
 export type TableBorderSide = "top" | "right" | "bottom" | "left";
 
@@ -153,9 +163,16 @@ export function tableCellBorderDash(
   }
 }
 
+/** Stroked dot-dash fills a fixed band, independent of the authored width. */
+export function tableCellBorderHatch(border: CellBorderSpec | undefined) {
+  if (border?.authoredStyle !== "dashDotStroked") return undefined;
+  return { widthPx: HATCH_BAND_PX, hatch: TABLE_BORDER_HATCH };
+}
+
 export function tableCellBorderWidth(
   border: CellBorderSpec | undefined,
 ): number {
+  if (border?.authoredStyle === "dashDotStroked") return HATCH_BAND_PX;
   const compound = compoundEdge(border);
   if (compound) return compound.widthPx;
   const edge = beveledEdge(border);

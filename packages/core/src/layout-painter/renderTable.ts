@@ -19,6 +19,7 @@ import {
   type TableBorderSide,
   tableCellBorderBands,
   tableCellBorderDash,
+  tableCellBorderHatch,
   tableCellBorderWidth,
 } from "../layout-engine/measure/tableBorderBands";
 import {
@@ -71,6 +72,7 @@ import {
   resolveTableCellPadding,
 } from "../layout-engine/types";
 import { paintsCssBorder } from "../utils/borderCss";
+import { diagonalHatchGradient } from "../utils/diagonalHatch";
 import {
   writePaintedRange,
   writePaintedTableStart,
@@ -660,6 +662,13 @@ const prependBackgroundLayer = (existing: string, layer: string): string =>
   existing ? `${layer}, ${existing}` : layer;
 
 function authoredEdgeBackground(border: CellBorderSpec, horizontal: boolean) {
+  const hatch = tableCellBorderHatch(border);
+  if (hatch) {
+    return {
+      widthPx: hatch.widthPx,
+      gradient: diagonalHatchGradient(border.color ?? "#000000", hatch.hatch),
+    };
+  }
   const dash = tableCellBorderDash(border);
   if (dash) {
     return {

@@ -17,6 +17,7 @@ import {
   type TableBorderSide,
   tableCellBorderBands,
   tableCellBorderDash,
+  tableCellBorderHatch,
 } from "../../layout-engine/measure/tableBorderBands";
 import {
   createTableCellFlowState,
@@ -119,6 +120,7 @@ function paintBorderEdge(
   }: PaintBorderEdgeOptions,
 ): number {
   const strokeBand = tableCellBorderBands(border);
+  const hatch = tableCellBorderHatch(border);
   const bands = [];
   let width: number;
   if (strokeBand) {
@@ -133,7 +135,13 @@ function paintBorderEdge(
     let stroke = strokeFor(border, context, label);
     if (!stroke) return 0;
     const dash = tableCellBorderDash(border);
-    if (dash) {
+    if (hatch) {
+      stroke = {
+        color: stroke.color,
+        thicknessPx: hatch.widthPx,
+        pattern: "solid",
+      };
+    } else if (dash) {
       stroke = {
         color: stroke.color,
         thicknessPx: dash.widthPx,
@@ -159,6 +167,7 @@ function paintBorderEdge(
       x2Px: across ? x2 : center,
       y2Px: across ? center : y2,
       stroke,
+      ...(hatch === undefined ? {} : { hatch: hatch.hatch }),
     });
   }
   return width;

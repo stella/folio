@@ -724,7 +724,8 @@ export type CellBorderSpec = {
     | "dotDash"
     | "dashSmallGap"
     | "dotDotDash"
-    | "dashed";
+    | "dashed"
+    | "dashDotStroked";
 };
 
 /**

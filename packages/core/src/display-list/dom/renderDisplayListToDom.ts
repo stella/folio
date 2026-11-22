@@ -37,6 +37,7 @@ import { panic } from "better-result";
 import { writeCommentAnchorIds } from "../../render-dom/commentAnchorAttributes";
 import { bytesToDataUrl } from "../../utils/base64";
 import { cssString } from "../../utils/cssString";
+import { diagonalHatchGradient } from "../../utils/diagonalHatch";
 import { imageLuminanceFilter } from "../../utils/imageLuminance";
 import { writePaintedRange } from "../../utils/paintedPositions";
 import { repeatingStrokeGradient } from "../../utils/repeatingStrokeGradient";
@@ -357,7 +358,11 @@ const strokeBackground = (stroke: DisplayStroke, axes: BarAxes) => {
 
 /** Strokes are centred on their path, so half the cross extent falls each side. */
 const paintLineSegment = (line: DisplayLine, context: PaintContext) => {
-  const { x1Px, y1Px, x2Px, y2Px, stroke } = line;
+  const { x1Px, y1Px, x2Px, y2Px, stroke, hatch } = line;
+  const hatchedBackground =
+    hatch === undefined
+      ? undefined
+      : diagonalHatchGradient(cssColor(stroke.color), hatch);
   const crossExtentPx = strokeCrossExtentPx(stroke);
   const halfCrossExtentPx = crossExtentPx / 2;
   const element = context.doc.createElement("div");
@@ -369,13 +374,15 @@ const paintLineSegment = (line: DisplayLine, context: PaintContext) => {
     element.style.top = px(y1Px - halfCrossExtentPx - context.originYPx);
     element.style.width = px(Math.abs(x2Px - x1Px));
     element.style.height = px(crossExtentPx);
-    element.style.background = strokeBackground(stroke, HORIZONTAL_BAR_AXES);
+    element.style.background =
+      hatchedBackground ?? strokeBackground(stroke, HORIZONTAL_BAR_AXES);
   } else if (x1Px === x2Px) {
     element.style.left = px(x1Px - halfCrossExtentPx - context.originXPx);
     element.style.top = px(Math.min(y1Px, y2Px) - context.originYPx);
     element.style.width = px(crossExtentPx);
     element.style.height = px(Math.abs(y2Px - y1Px));
-    element.style.background = strokeBackground(stroke, VERTICAL_BAR_AXES);
+    element.style.background =
+      hatchedBackground ?? strokeBackground(stroke, VERTICAL_BAR_AXES);
   } else {
     const dx = x2Px - x1Px;
     const dy = y2Px - y1Px;
@@ -385,7 +392,8 @@ const paintLineSegment = (line: DisplayLine, context: PaintContext) => {
     element.style.height = px(crossExtentPx);
     element.style.transformOrigin = "0 50%";
     element.style.transform = `rotate(${Math.atan2(dy, dx) * DEGREES_PER_RADIAN}deg)`;
-    element.style.background = strokeBackground(stroke, HORIZONTAL_BAR_AXES);
+    element.style.background =
+      hatchedBackground ?? strokeBackground(stroke, HORIZONTAL_BAR_AXES);
   }
 
   context.parent.append(element);
