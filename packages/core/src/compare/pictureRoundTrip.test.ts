@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 
 import { relationshipIdOf } from "@stll/docx-core/model";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { createDocx } from "../docx/rezip";
@@ -46,6 +47,46 @@ const docx = (content: readonly ParagraphContent[]) => {
   ];
   return createDocx(document);
 };
+
+/** The ids of a saved document's drawings, in document order. */
+const savedDrawingIds = async (docxBuffer: ArrayBuffer): Promise<string[]> => {
+  const zip = await ZipArchive.read(docxBuffer);
+  const xml = await zip.entry("word/document.xml")?.text();
+  return [...(xml ?? "").matchAll(/<wp:docPr\b[^>]*?\sid="(?<id>\d+)"/gu)].map(
+    (match) => match.groups?.["id"] ?? "",
+  );
+};
+
+// The moved picture stands twice in the redline, marked deleted where it was
+// and inserted where it goes, and a package numbers each drawing once: in the
+// model's own fields and in the markup a saved picture keeps.
+test.each(SESSIONS)(
+  "%s: a picture a comparison moves takes a drawing id of its own",
+  async (session) => {
+    const other = structuredClone(picture);
+    const base = await docx([
+      text("Alpha "),
+      picture,
+      text("Beta "),
+      other,
+      text("Gamma"),
+    ]);
+    const target = await docx([
+      text("Alpha Beta "),
+      picture,
+      text("Gamma"),
+      other,
+    ]);
+    for (const side of [base, target])
+      expect(new Set(await savedDrawingIds(side)).size).toBe(2);
+    const compared = await compareDocx(base, target, { ...OPTIONS, session });
+    if (compared.isErr()) throw compared.error;
+    expect(compared.value.verification).toEqual({ status: "verified" });
+    const ids = await savedDrawingIds(compared.value.buffer);
+    expect(ids.length).toBeGreaterThan(2);
+    expect(new Set(ids).size).toBe(ids.length);
+  },
+);
 
 // A comparison copies a moved picture into a media part of its own; the
 // resolved document holds the same picture, so comparing it with the side it

@@ -795,6 +795,54 @@ describe("buildPatchedNotePartXml", () => {
     expect(patched).toContain('<alt:r w15:collapsed="1">');
   });
 
+  // The part keeps its own root, so a prefix only the rebuilt root makes
+  // ignorable has to be listed where the spliced paragraph uses it.
+  describe("an ignorable prefix the part's root does not list", () => {
+    const HISTORY = "urn:example:history";
+    const roots = `xmlns:w="${W_URI}" xmlns:w14="${W14_URI}" xmlns:mc="${MC_URI}"`;
+    const rebuiltRoots = `${roots} xmlns:history="${HISTORY}" mc:Ignorable="w14 history"`;
+    const part = (root: string, opening: string, run: string) =>
+      `<w:footnotes ${root}><w:footnote w:id="1"><w:p w14:paraId="P1000001"${opening}>${run}</w:p></w:footnote><w:footnote w:id="2"><w:p w14:paraId="P1000002"><w:r><w:t>Other</w:t></w:r></w:p></w:footnote></w:footnotes>`;
+    const before = "<w:r><w:t>Old</w:t></w:r>";
+    const after = '<w:r history:kept="1"><w:t>New</w:t></w:r>';
+    const patch = (sourceRoot: string, opening = "") =>
+      patchedXmlOf(
+        buildPatchedNotePartXml({
+          originalXml: part(sourceRoot, "", before),
+          baselineXml: part(rebuiltRoots, "", before),
+          serializedXml: part(rebuiltRoots, opening, after),
+          replacementXml: part(rebuiltRoots, opening, after),
+          elementName: "footnote",
+          changedParaIds: new Set(["P1000001"]),
+        }),
+      );
+    const listed = (xml: string): string[] =>
+      [...xml.matchAll(/ mc:Ignorable="(?<prefixes>[^"]*)"/gu)].map(
+        (match) => match.groups?.["prefixes"] ?? "",
+      );
+
+    test("is listed on the paragraph", () => {
+      const patched = patch(`${roots} mc:Ignorable="w14"`);
+      expect(listed(patched)).toEqual(["w14", "history"]);
+      expect(patched).toContain('<w:p w14:paraId="P1000002"><w:r>');
+    });
+
+    test("joins the prefixes the paragraph lists itself", () => {
+      const patched = patch(
+        `${roots} mc:Ignorable="w14"`,
+        ' mc:Ignorable="w14"',
+      );
+      expect(listed(patched)).toEqual(["w14", "w14 history"]);
+    });
+
+    test("is left off where the part's root lists it under another prefix", () => {
+      const patched = patch(
+        `${roots} xmlns:h="${HISTORY}" mc:Ignorable="w14 h"`,
+      );
+      expect(listed(patched)).toEqual(["w14 h"]);
+    });
+  });
+
   // A comment can be anchored on a note's own text, so its range spans the
   // note's paragraphs and an edit inside the span moves a half between them.
   // Replacing only the edited paragraph writes the other half alone.
