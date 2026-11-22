@@ -175,3 +175,33 @@ test.each(["body", "cell"] as const)(
     }
   },
 );
+
+test("whole-paragraph deletion leaves the caret past a standing bookmark boundary", () => {
+  const document = documentOf([
+    {
+      ...paragraph("0000000A", ""),
+      content: [
+        { type: "bookmarkStart", id: 1, name: "Crossing" },
+        run("Alpha"),
+      ],
+    },
+    paragraph("0000000B", "Beta"),
+    { type: "bookmarkEnd", id: 1 },
+    paragraph("0000000C", "Gamma"),
+  ]);
+  const { document: deleted, selection } = compileDirect(document, {
+    type: "deleteParagraphs",
+    story: OP_STORIES.MAIN,
+    blockIds: ["0000000B"],
+  });
+  expect(selection).toStrictEqual({
+    story: OP_STORIES.MAIN,
+    blockId: "0000000C",
+    offset: 0,
+  });
+  // The deleted paragraph joins it, the boundary between them moving inline.
+  expect(caretParagraph(deleted, selection)).toEqual({
+    ...paragraph("0000000C", ""),
+    content: [{ type: "bookmarkEnd", id: 1 }, run("Gamma")],
+  });
+});

@@ -108,6 +108,7 @@ import {
   selectedParagraphRuns,
   trimAppliedNewIds,
 } from "./plan";
+import { blockFollower } from "./rangeBoundaries";
 import {
   cutPieceHandoffs,
   pastEndedComments,
@@ -2059,7 +2060,9 @@ const directDeletionCaret = (
   if (first === undefined || last === undefined)
     return { story, blockId: blockIds[0] ?? "", offset: 0 };
   const list = blockListAt(storyBody(document, story).content, last.list);
-  const following = list[last.index + 1];
+  // Range boundaries standing after them neither follow them nor keep them
+  // from ending their container.
+  const { block: following } = blockFollower(list, last.index);
   if (following?.type === "paragraph" && following.paraId !== undefined)
     return { story, blockId: following.paraId, offset: 0 };
   const preceding = list[first.index - 1];
@@ -2067,7 +2070,7 @@ const directDeletionCaret = (
     story,
     blockId: last.paragraph.paraId ?? "",
     offset:
-      last.index === list.length - 1 && preceding?.type === "paragraph"
+      following === undefined && preceding?.type === "paragraph"
         ? paragraphLength(preceding)
         : 0,
   };
