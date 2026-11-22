@@ -60,6 +60,30 @@ const PARAGRAPH_PATTERN = /<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/gu;
 const isParagraph = (blockXml: string): boolean =>
   blockXml.startsWith("<w:p>") || blockXml.startsWith("<w:p ");
 
+const isTable = (blockXml: string): boolean => blockXml.startsWith("<w:tbl>");
+
+/**
+ * Whether the paragraph at `index` is all that keeps two tables apart: the
+ * nearest paragraph or table on each side, past markers, is a table.
+ */
+const separatesTables = (children: readonly string[], index: number) => {
+  const nearest = (step: -1 | 1) => {
+    for (let at = index + step; at >= 0 && at < children.length; at += step) {
+      const block = children[at] ?? "";
+      if (isParagraph(block) || isTable(block)) return block;
+    }
+    return undefined;
+  };
+  const before = nearest(-1);
+  const after = nearest(1);
+  return (
+    before !== undefined &&
+    after !== undefined &&
+    isTable(before) &&
+    isTable(after)
+  );
+};
+
 type ParagraphTransform = (paragraphXml: string, ordinal: number) => string;
 
 /** Rewrite every paragraph in `children`, numbering them across the whole body. */
@@ -117,7 +141,7 @@ const heavy: BodyRewrite = (children) =>
 const churn: BodyRewrite = (children) => {
   const rewritten: string[] = [];
   let ordinal = 0;
-  for (const child of children) {
+  for (const [index, child] of children.entries()) {
     if (!isParagraph(child)) {
       rewritten.push(child);
       continue;
@@ -130,7 +154,9 @@ const churn: BodyRewrite = (children) => {
       );
       continue;
     }
-    if (step === 3) {
+    // A paragraph that keeps two tables apart stays: deleting it would make
+    // the tables touch, which a review can never leave behind.
+    if (step === 3 && !separatesTables(children, index)) {
       continue;
     }
     rewritten.push(step === 5 ? editWords(child, 3, " revised") : child);
