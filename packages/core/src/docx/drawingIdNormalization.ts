@@ -9,6 +9,7 @@ import {
 } from "@stll/docx-core";
 
 import type { DrawingContent, Image, Shape } from "../types/document";
+import type { DeepReadonly } from "../types/documentModel";
 import { isNewDataUrlDrawing } from "./newImage";
 import {
   type DocxParagraphSurfaces,
@@ -85,6 +86,61 @@ export const drawingXmlWithoutIdentity = (xml: string): string =>
 
 const needsGeneratedId = ({ id }: DrawingWithId): boolean =>
   id === undefined || !isValidOoxmlNumericId(id, "unsigned32");
+
+const RAW_DRAWING_ID = /<(?:[\w.-]+:)?docPr\s(?:[^>]*?\s)?id="(?<id>\d+)"/gu;
+
+/** Every drawing id the surfaces use, in the model or in preserved markup. */
+export const usedDrawingIds = (
+  surfaces: DocxParagraphSurfaces,
+): Set<number> => {
+  const used = new Set<number>();
+  const add = ({ id }: DrawingWithId) => {
+    if (id !== undefined && isValidOoxmlNumericId(id, "unsigned32"))
+      used.add(Number(id));
+  };
+  visitDocxParagraphs(surfaces, (paragraph) => {
+    visitParagraphRuns(paragraph, (run) => {
+      for (const content of run.content) {
+        if (content.type === "shape") add(content.shape);
+        if (content.type !== "drawing") continue;
+        add(content.image);
+        for (const match of content.rawXml?.matchAll(RAW_DRAWING_ID) ?? [])
+          used.add(Number(match.groups?.["id"]));
+      }
+    });
+  });
+  return used;
+};
+
+/** A drawing id `used` does not hold yet, added to it. */
+export const takeDrawingId = (used: Set<number>): string => {
+  let id = GENERATED_DRAWING_ID_START;
+  while (used.has(id)) id += 1;
+  assertValidOoxmlNumericId({
+    value: id,
+    domain: "unsigned32",
+    partPath: "drawing normalization",
+    elementName: "docPr",
+    attributeName: "id",
+  });
+  used.add(id);
+  return String(id);
+};
+
+/** The drawing numbered `id`, in the model and in its preserved markup. */
+export const withDrawingId = (
+  drawing: DeepReadonly<DrawingContent>,
+  id: string,
+): DeepReadonly<DrawingContent> => ({
+  ...drawing,
+  image: { ...drawing.image, id },
+  ...(drawing.rawXml === undefined
+    ? {}
+    : {
+        rawXml:
+          reassignRawDrawingId({ xml: drawing.rawXml, id }) ?? drawing.rawXml,
+      }),
+});
 
 export const normalizeDrawingIds = (surfaces: DocxParagraphSurfaces): void => {
   const entries: DrawingIdEntry[] = [];

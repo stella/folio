@@ -6,14 +6,17 @@
  * with proper tag depth counting (not regex) to handle nested elements.
  */
 
-import { Result } from "better-result";
+import { panic, Result } from "better-result";
 
 import { scanStreamingXmlElements } from "@stll/docx-core/xml";
 import { resolveNamespaceUri } from "@stll/docx-core/xml/namespaces";
 
 import { patchBreaksCommentRangeBalance } from "./commentRangeIntegrity";
 import { resolveParagraphIdentities } from "./paraIdAttribute";
-import { readRootNamespaceBindings } from "./serializer/partNamespaces";
+import {
+  readRootNamespaceBindings,
+  usedNamespacePrefixes,
+} from "./serializer/partNamespaces";
 import { captureVerbatimXml } from "./verbatimCapture";
 import {
   hasCanonicalWordprocessingPrefixes,
@@ -1145,6 +1148,24 @@ export const spliceXml = (
   return patchBreaksCommentRangeBalance(xml, result) ? null : result;
 };
 
+const MARKUP_COMPATIBILITY = new Set([NAMESPACES.mc]);
+
+/** The prefixes the element's `mc:Ignorable` lists, by namespace. */
+const ignorablePrefixes = (
+  element: XmlElement,
+): ReadonlyMap<string, string> => {
+  const prefixes = new Map<string, string>();
+  for (const prefix of (
+    getAttributeByNamespaceUri(element, MARKUP_COMPATIBILITY, "Ignorable") ?? ""
+  )
+    .split(/\s+/u)
+    .filter(Boolean)) {
+    const uri = resolveNamespaceUri(element.namespaceScope, prefix);
+    if (uri) prefixes.set(uri, prefix);
+  }
+  return prefixes;
+};
+
 /**
  * A paragraph splice cannot change the owning part's root declarations. Refuse
  * fragments that inherit a prefix from the serialized root when the source
@@ -1172,19 +1193,8 @@ export const spliceSupportsRootNamespaces = ({
 
   const originalBindings = readRootNamespaceBindings(originalXml);
   const serializedBindings = readRootNamespaceBindings(serializedXml);
-  const mcNamespace = new Set([NAMESPACES.mc]);
-  const ignorableUris = (root: XmlElement): ReadonlySet<string> => {
-    const uris = new Set<string>();
-    for (const prefix of (
-      getAttributeByNamespaceUri(root, mcNamespace, "Ignorable") ?? ""
-    )
-      .split(/\s+/u)
-      .filter(Boolean)) {
-      const uri = resolveNamespaceUri(root.namespaceScope, prefix);
-      if (uri) uris.add(uri);
-    }
-    return uris;
-  };
+  const ignorableUris = (element: XmlElement): ReadonlySet<string> =>
+    new Set(ignorablePrefixes(element).keys());
   // A source may already use extensions without declaring them ignorable.
   // Preserve that source contract; only newly used namespaces add a requirement.
   const originalNamespaceUses = new Set<string>();
@@ -1437,15 +1447,54 @@ const collectNoteElementSyntax = (
 const extractNoteElement = (xml: string, syntax: NoteElementSyntax): string =>
   xml.slice(syntax.offsets.start, syntax.offsets.end);
 
+/** What a fragment takes along from its own root into another part. */
+type SpliceSourceRoot = {
+  xmlnsDeclarations: Record<string, string>;
+  /** The prefixes its root makes ignorable and the part's root does not. */
+  ignorable: readonly string[];
+  /** The prefix its root binds markup compatibility to. */
+  compatibilityPrefix: string | undefined;
+};
+
+const spliceSourceRootOf = (
+  sourceXml: string,
+  targetXml: string,
+): SpliceSourceRoot => {
+  const rootOf = (xml: string): XmlElement | null => {
+    const tag = openingTagOf(xml);
+    return tag === null
+      ? null
+      : parseXmlDocument(`${tag.replace(/\/$/u, "")}/>`);
+  };
+  const source = rootOf(sourceXml);
+  const target = rootOf(targetXml);
+  const ignored: ReadonlyMap<string, string> =
+    target === null ? new Map() : ignorablePrefixes(target);
+  const xmlnsDeclarations = collectXmlnsFromOpeningTag(sourceXml);
+  const compatibility = Object.entries(xmlnsDeclarations).find(
+    ([name, uri]) => name.startsWith("xmlns:") && uri === NAMESPACES.mc,
+  );
+  return {
+    xmlnsDeclarations,
+    ignorable:
+      source === null
+        ? []
+        : [...ignorablePrefixes(source)].flatMap(([uri, prefix]) =>
+            ignored.has(uri) ? [] : [prefix],
+          ),
+    compatibilityPrefix: compatibility?.[0].slice("xmlns:".length),
+  };
+};
+
 type WordPrefixMapping = {
   source: NoteElementSyntax;
   target: NoteElementSyntax;
-  sourceXmlnsDeclarations: Record<string, string>;
+  sourceRoot: SpliceSourceRoot;
 };
 
 const rewriteWordprocessingPrefixes = (
   xml: string,
-  { source, target, sourceXmlnsDeclarations }: WordPrefixMapping,
+  { source, target, sourceRoot }: WordPrefixMapping,
 ): string => {
   let rewritten = "";
   let quote: '"' | "'" | null = null;
@@ -1491,7 +1540,10 @@ const rewriteWordprocessingPrefixes = (
     }
     rewritten += character;
   }
-  return withXmlnsDeclarations(rewritten, sourceXmlnsDeclarations);
+  return withIgnorablePrefixes(
+    withXmlnsDeclarations(rewritten, sourceRoot.xmlnsDeclarations),
+    sourceRoot,
+  );
 };
 
 const paragraphRanges = (
@@ -1668,8 +1720,7 @@ export function buildPatchedNotePartXml({
     replacementXml,
     elementName,
   );
-  const replacementXmlnsDeclarations =
-    collectXmlnsFromOpeningTag(replacementXml);
+  const replacementRoot = spliceSourceRootOf(replacementXml, originalXml);
   const paragraphSplices: XmlSplice[] = [];
   /** The same edits at note granularity, should the paragraph splices be refused. */
   const noteSplices: XmlSplice[] = [];
@@ -1771,7 +1822,7 @@ export function buildPatchedNotePartXml({
       newXml: rewriteWordprocessingPrefixes(replacementNote, {
         source: replacementSyntax,
         target: originalSyntax,
-        sourceXmlnsDeclarations: replacementXmlnsDeclarations,
+        sourceRoot: replacementRoot,
       }),
     };
     noteSplices.push(wholeNoteSplice);
@@ -1815,7 +1866,7 @@ export function buildPatchedNotePartXml({
           {
             source: replacementSyntax,
             target: originalSyntax,
-            sourceXmlnsDeclarations: replacementXmlnsDeclarations,
+            sourceRoot: replacementRoot,
           },
         ),
       });
@@ -1847,7 +1898,7 @@ export function buildPatchedNotePartXml({
     const appended = appendNotesSplice({
       originalElements,
       addedNotes,
-      sourceXmlnsDeclarations: replacementXmlnsDeclarations,
+      sourceRoot: replacementRoot,
     });
     if (!appended) {
       return { type: "refused", reason: "unroutable-paragraph" };
@@ -1872,13 +1923,13 @@ export function buildPatchedNotePartXml({
 type AppendNotesSpliceOptions = {
   originalElements: ReadonlyMap<string, readonly NoteElementSyntax[]>;
   addedNotes: readonly { note: string; syntax: NoteElementSyntax }[];
-  sourceXmlnsDeclarations: Record<string, string>;
+  sourceRoot: SpliceSourceRoot;
 };
 
 const appendNotesSplice = ({
   originalElements,
   addedNotes,
-  sourceXmlnsDeclarations,
+  sourceRoot,
 }: AppendNotesSpliceOptions): XmlSplice | null => {
   let last: { end: number; syntax: NoteElementSyntax } | null = null;
   for (const entries of originalElements.values()) {
@@ -1901,7 +1952,7 @@ const appendNotesSplice = ({
         rewriteWordprocessingPrefixes(note, {
           source: syntax,
           target,
-          sourceXmlnsDeclarations,
+          sourceRoot,
         }),
       )
       .join(""),
@@ -2121,13 +2172,10 @@ function originalCustomNumFmtFormat(numFmtElement: string): string | null {
 }
 
 /**
- * Collect the `xmlns` / `xmlns:*` declarations from an element's opening tag
- * (the substring up to its first `>`).
+ * The element's opening tag up to its `>`, past an XML declaration and
+ * comments, or null when there is none.
  */
-function collectXmlnsFromOpeningTag(
-  elementXml: string,
-): Record<string, string> {
-  const out: Record<string, string> = {};
+function openingTagOf(elementXml: string): string | null {
   let tagStart = elementXml.indexOf("<");
   while (
     tagStart !== -1 &&
@@ -2138,12 +2186,12 @@ function collectXmlnsFromOpeningTag(
     const endMarker = comment ? "-->" : "?>";
     const end = elementXml.indexOf(endMarker, tagStart);
     if (end === -1) {
-      return out;
+      return null;
     }
     tagStart = elementXml.indexOf("<", end + endMarker.length);
   }
   if (tagStart === -1) {
-    return out;
+    return null;
   }
   let tagEnd = tagStart + 1;
   let quote: '"' | "'" | null = null;
@@ -2158,7 +2206,21 @@ function collectXmlnsFromOpeningTag(
     }
     tagEnd += 1;
   }
-  const openTag = elementXml.slice(tagStart, tagEnd);
+  return elementXml.slice(tagStart, tagEnd);
+}
+
+/**
+ * Collect the `xmlns` / `xmlns:*` declarations from an element's opening tag
+ * (the substring up to its first `>`).
+ */
+function collectXmlnsFromOpeningTag(
+  elementXml: string,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  const openTag = openingTagOf(elementXml);
+  if (openTag === null) {
+    return out;
+  }
   const pattern = /\s(?<name>xmlns(?::[\w.-]+)?)="(?<uri>[^"]*)"/gu;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(openTag)) !== null) {
@@ -2197,6 +2259,52 @@ function withXmlnsDeclarations(
     fragmentXml.slice(0, nameEnd) +
     additions.join("") +
     fragmentXml.slice(nameEnd)
+  );
+}
+
+/**
+ * List on the fragment's root the ignorable prefixes it uses that the part it
+ * goes into does not make ignorable, so a reader that does not know one skips
+ * it instead of rejecting the part.
+ */
+function withIgnorablePrefixes(
+  fragmentXml: string,
+  { ignorable, compatibilityPrefix }: SpliceSourceRoot,
+): string {
+  const openTag = openingTagOf(fragmentXml);
+  if (
+    openTag === null ||
+    compatibilityPrefix === undefined ||
+    collectXmlnsFromOpeningTag(fragmentXml)[`xmlns:${compatibilityPrefix}`] !==
+      NAMESPACES.mc
+  ) {
+    return fragmentXml;
+  }
+  const own = new RegExp(
+    `\\s${escapeRegExp(compatibilityPrefix)}:Ignorable="(?<prefixes>[^"]*)"`,
+    "u",
+  ).exec(openTag);
+  const listed = (own?.groups?.["prefixes"] ?? "")
+    .split(/\s+/u)
+    .filter(Boolean);
+  const used = usedNamespacePrefixes(fragmentXml);
+  const added = ignorable.filter(
+    (prefix) => used.has(prefix) && !listed.includes(prefix),
+  );
+  if (added.length === 0) {
+    return fragmentXml;
+  }
+  const tagEnd = openTag.endsWith("/") ? openTag.length - 1 : openTag.length;
+  const start = own?.index ?? tagEnd;
+  // Only the opening tag's attribute is written, so no range loses a half.
+  return (
+    spliceXml(fragmentXml, [
+      {
+        start,
+        end: start + (own?.[0].length ?? 0),
+        newXml: ` ${compatibilityPrefix}:Ignorable="${[...listed, ...added].join(" ")}"`,
+      },
+    ]) ?? panic("An attribute splice broke a comment range.")
   );
 }
 

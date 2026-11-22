@@ -35,7 +35,12 @@ import type {
   NoteReferenceLabels,
 } from "../ai-edits/note-references";
 import type { FolioAIEditSnapshot } from "../ai-edits/types";
-import { drawingXmlWithoutIdentity } from "../docx/drawingIdNormalization";
+import {
+  drawingXmlWithoutIdentity,
+  takeDrawingId,
+  usedDrawingIds,
+  withDrawingId,
+} from "../docx/drawingIdNormalization";
 import { rebindDrawingImageRelationship } from "../docx/drawingRelationships";
 import { RELATIONSHIP_TYPES } from "../docx/relsParser";
 import type {
@@ -1536,6 +1541,8 @@ const writeActions = ({
   const changedTargetBlockIds = new Set<string>();
   let nextRevisionId = revisionStamp.idSeed;
   let refusal: string | undefined;
+  /** The drawing ids in use, read when the first picture comes in. */
+  let drawingIds: Set<number> | undefined;
   const stamp = (): RevisionStamp => ({
     id: nextRevisionId++,
     author,
@@ -1642,12 +1649,21 @@ const writeActions = ({
     )
       return undefined;
     // A drawing id from another package does not number a drawing here.
-    const { id: _drawingId, ...image } = picture.image;
-    return {
-      ...picture,
-      image: { ...image, rId: id },
-      ...(rawXml === undefined ? {} : { rawXml }),
-    };
+    drawingIds ??= usedDrawingIds({
+      documentBody: current.package.document,
+      headers: current.package.headers,
+      footers: current.package.footers,
+      footnotes: current.package.footnotes,
+      endnotes: current.package.endnotes,
+    });
+    return withDrawingId(
+      {
+        ...picture,
+        image: { ...picture.image, rId: id },
+        ...(rawXml === undefined ? {} : { rawXml }),
+      },
+      takeDrawingId(drawingIds),
+    );
   };
   const insert = (
     at: LivePoint,
