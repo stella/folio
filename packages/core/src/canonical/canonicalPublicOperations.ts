@@ -260,6 +260,7 @@ import { canonicalTrackedBatchFidelityError } from "./canonicalTrackedBatchFidel
 import { findCommentAnchorParagraph } from "./commentAnchorParagraph";
 import { controlEdgesAt } from "./controlEdges";
 import { indentationAsRead, spacingSidesAsRead } from "./paragraphPatchAsRead";
+import { replacementRunSources } from "./replacementRunSources";
 
 /**
  * The table row or column a deletion removes, as the batch read the table.
@@ -4155,6 +4156,10 @@ const compilePublicIntents = ({
         : ids.newIds.revision;
     const compiled = compileEditorIntent(document, {
       intent,
+      ...(intent.type === "replaceText" &&
+      intent.formattingSources !== undefined
+        ? { replacementFormattingDocument: source }
+        : {}),
       // An operation's text is body text: it never continues a note reference.
       typedFormatting: TYPED_TEXT_FORMATTING.BODY_TEXT,
       mode:
@@ -8046,8 +8051,46 @@ export class CanonicalPublicOperations {
           });
         }
       }
-      for (const change of replacementChanges.toReversed()) {
-        let gap = { from: change.from, to: change.to };
+      const directPlan = tracked
+        ? planReplacementChanges({
+            ...replacementSource,
+            planChanges: planTextChanges,
+          })
+        : null;
+      const directChanges =
+        directPlan === null
+          ? undefined
+          : placeChanges(
+              cutAroundRepeatedSeparators(
+                replacementSource.source,
+                directPlan,
+              ).map(
+                ({ start: localStart, end: localEnd, text: replacement }) => ({
+                  start: start + localStart,
+                  end: start + localEnd,
+                  text: replacement,
+                }),
+              ),
+            );
+      const addressedDirectChanges =
+        directChanges !== undefined && addressable(directChanges)
+          ? directChanges
+          : undefined;
+      const formattingSources =
+        addressedDirectChanges === undefined
+          ? undefined
+          : replacementRunSources({
+              paragraph: paragraph.node,
+              paragraphStart: paragraph.start,
+              offsets: clean.offsets,
+              start,
+              end,
+              direct: addressedDirectChanges,
+              tracked: replacementChanges,
+              projection: projection.value,
+            });
+      for (const change of addressedDirectChanges ?? replacementChanges) {
+        const gap = { from: change.from, to: change.to };
         if (change.text.length > 0 && gap.from < gap.to) {
           let first: readonly Mark[] | null = null;
           let uniform = true;
@@ -8073,6 +8116,12 @@ export class CanonicalPublicOperations {
               code: "uniformReplacementFormatting",
             });
         }
+      }
+      for (const [index, change] of [
+        ...replacementChanges.entries(),
+      ].reverse()) {
+        let gap = { from: change.from, to: change.to };
+        const sources = formattingSources?.[index];
         // The direct diff writes new text at the first removed character.
         // When that character is inside a control, delete the tail outside
         // it first so the replacement can continue the original control.
@@ -8146,6 +8195,7 @@ export class CanonicalPublicOperations {
           from: changeFrom.value,
           to: changeTo.value,
           text: change.text,
+          ...(sources === undefined ? {} : { formattingSources: sources }),
           ...(Object.keys(inside).length === 0 ? {} : { inside }),
           ...(intent.runPropsPatch === undefined
             ? {}
