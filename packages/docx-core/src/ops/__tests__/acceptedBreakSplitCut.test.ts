@@ -119,6 +119,17 @@ describe("an accepted inserted break whose deletion is pending", () => {
     expect(body(accepted(document, [1, 2]))).toEqual(rejoined);
     expect(body(inTurn(document, [[1], [2]]))).toEqual(rejoined);
     expect(body(inTurn(document, [[2], [1]]))).toEqual(rejoined);
+    // A file saved before the split's date was recorded holds the cut alone.
+    const [first, ...rest] = body(accepted(document, [1]));
+    if (first?.type !== "paragraph" || first.pPrMark === undefined)
+      throw new Error("The deletion keeps the paragraph's mark.");
+    const { splitDate: _dropped, ...withoutDate } = first.pPrMark;
+    const older: Document = {
+      package: {
+        document: { content: [{ ...first, pPrMark: withoutDate }, ...rest] },
+      },
+    };
+    expect(body(accepted(older, [2]))).toEqual(rejoined);
   });
 
   test("an accepted change at the cut's edge leaves the pieces apart in every order", () => {
