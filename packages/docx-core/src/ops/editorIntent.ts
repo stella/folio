@@ -3869,6 +3869,24 @@ const compileInStory = (
           from.zeroWidthBefore ??
           defaultInsertionGap(paragraph.content, from.offset).zeroWidthBefore,
       };
+      const inside = intent.inside;
+      const resumed =
+        idKey(from.blockId) === idKey(to.blockId) &&
+        (text !== "" || (inside?.start === true && inside.end === true))
+          ? continuation(paragraph.content, from, to, {
+              ...(inside === undefined ? {} : { inside }),
+            })
+          : undefined;
+      let insertion =
+        text === ""
+          ? undefined
+          : ((resumed === undefined
+              ? undefined
+              : continuedSlice(resumed, content)) ?? {
+              openStart: 0,
+              openEnd: 0,
+              content,
+            });
       if (deletes) {
         const deleted = applyDocumentOps(document, ops);
         if (deleted.isErr()) return Result.err(deleted.error);
@@ -3922,21 +3940,45 @@ const compileInStory = (
           from,
           to,
         });
+        if (text === "" && resumed !== undefined) {
+          const controlIndex = resumed.containers.findLastIndex(
+            (node) => node.type === "inlineSdt",
+          );
+          const control = resumed.containers.at(controlIndex);
+          const remaining = paragraphAt(afterDeletion, at);
+          if (
+            controlIndex >= 0 &&
+            control?.type === "inlineSdt" &&
+            remaining !== undefined
+          ) {
+            const id = control.properties.id;
+            const sameControl = (node: InlineNode) =>
+              node.type === "inlineSdt" && node.properties.id === id;
+            if (
+              !leafSpans(remaining.content).some(
+                ({ node, ancestors }) =>
+                  sameControl(node) || ancestors.some(sameControl),
+              )
+            ) {
+              // Both selection edges were inside this control. Restore its
+              // authored shell so the empty control can show its placeholder.
+              insertion = continuedSlice(
+                {
+                  containers: resumed.containers.slice(0, controlIndex + 1),
+                  openStart: Math.min(resumed.openStart, controlIndex),
+                  openEnd: Math.min(resumed.openEnd, controlIndex),
+                },
+                [],
+              );
+            }
+          }
+        }
       }
-      if (text !== "")
+      if (insertion !== undefined)
         ops.push({
           type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
           at,
-          slice: (idKey(from.blockId) === idKey(to.blockId)
-            ? continuedSlice(
-                continuation(paragraph.content, from, to, {
-                  ...(intent.inside === undefined
-                    ? {}
-                    : { inside: intent.inside }),
-                }),
-                content,
-              )
-            : undefined) ?? { openStart: 0, openEnd: 0, content },
+          slice: insertion,
           ...allocationFields,
         });
       selection = replacementCaret(at, text);

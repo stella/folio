@@ -99,7 +99,7 @@ const MODES = ["tracked-changes", "suggested"] as const;
 
 type DeleteControlTextOptions = {
   fixture: (typeof FIXTURES)[number];
-  mode: (typeof MODES)[number];
+  mode: (typeof MODES)[number] | "direct";
   session: HeadlessReviewerSession;
 };
 
@@ -145,6 +145,18 @@ describe.each([
   "deleting all of a content control's text (%s)",
   (session) => {
     for (const fixture of FIXTURES) {
+      test(`a direct text deletion leaves the ${fixture.kind} control, emptied`, async () => {
+        const { reviewer } = await deleteControlText({
+          fixture,
+          mode: "direct",
+          session,
+        });
+        const saved = await bodyOf(await reviewer.toBuffer());
+        expect(controlCount(saved)).toBe(1);
+        expect(saved).toContain('<w:docPart w:val="DefaultPlaceholder"/>');
+        expect(saved).not.toContain(fixture.find);
+      });
+
       for (const mode of MODES) {
         test(`accepting leaves the ${fixture.kind} control, emptied (${mode})`, async () => {
           const { reviewer, blockId } = await deleteControlText({

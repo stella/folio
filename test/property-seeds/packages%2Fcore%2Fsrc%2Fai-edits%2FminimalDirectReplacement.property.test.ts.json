@@ -15,6 +15,12 @@
       "path": "16:0:1:1:1:2",
       "note": "A concrete package with an absent styles part preserves unresolved references and visible direct formatting.",
       "date": "2026-10-09"
+    },
+    {
+      "seed": 1984190921,
+      "path": "2:0:1:1:1:1:2:1:12:10:10:10:11:1:1:1:1:1:2:2:2:4:3",
+      "note": "Deleting exactly the text of the sole inline control keeps the empty control.",
+      "date": "2026-11-22"
     }
   ],
   "over generated paragraphs and edits, accepted and rejected": [
