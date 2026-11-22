@@ -735,6 +735,8 @@ export type TableCell = {
   colSpan?: number;
   rowSpan?: number;
   width?: number;
+  /** The cell's directly authored w:tcW, before falling back to its grid width. */
+  preferredWidth?: { type: TableWidthType; value: number };
   verticalAlign?: "top" | "center" | "bottom";
   textDirection?: NonNullable<TableCellFormatting["textDirection"]>;
   background?: string;
