@@ -123,7 +123,7 @@ import {
   reviewFieldsOf,
 } from "./review";
 import { groupedDeletionStamp, ownInsertionSlice } from "./revisionGrouping";
-import { runsMergeable } from "./runMerge";
+import { formattingEquals, runsMergeable } from "./runMerge";
 import { identitySlots } from "./slots";
 import { findStoryBody, type StoryAddress, textBoxStoriesIn } from "./stories";
 import { tableEditParagraphDemand } from "./tableEdits";
@@ -332,6 +332,13 @@ export type EditorIntent =
       from: TextPosition;
       to: TextPosition;
       text: string;
+      /** Where each piece of the inserted text takes its authored formatting. */
+      formattingSources?: readonly {
+        /** Exclusive UTF-16 offset in `text`, with contiguous pieces. */
+        end: number;
+        at: TextPosition;
+        type: "character" | "caret";
+      }[];
       runProps?: TextFormatting;
       runPropsPatch?: RunPropsPatch;
       /**
@@ -434,6 +441,8 @@ type CompileEditorIntentOptions = {
   mode: EditorIntentMode;
   /** By default the caret's. */
   typedFormatting?: TypedTextFormatting;
+  /** Source before this operation's other replacement pieces are compiled. */
+  replacementFormattingDocument?: Document;
   /** Lowest candidate for compiler-owned pasted block IDs, including retired session IDs. */
   firstBlockId?: number;
 };
@@ -1258,6 +1267,83 @@ const intentRunFormatting = (
   return runPropsPatch === undefined
     ? authored
     : applyFormattingPatch(authored, runPropsPatch);
+};
+
+type ReplaceTextIntent = Extract<EditorIntent, { type: "replaceText" }>;
+
+/** Build one replacement's authored runs without dividing its review record. */
+const replacementContent = (
+  document: Document,
+  intent: ReplaceTextIntent,
+  typed: TypedTextFormatting,
+): Result<ParagraphContent[], DocumentOpRefusal> => {
+  const { text, formattingSources, runProps, runPropsPatch } = intent;
+  if (text === "") return Result.ok([]);
+  if (formattingSources === undefined) {
+    const formatting = intentRunFormatting(document, intent, typed);
+    return Result.ok([
+      {
+        type: "run",
+        ...(formatting === undefined ? {} : { formatting }),
+        content: typedRunContent(text),
+      },
+    ]);
+  }
+  const invalidSpans = () =>
+    Result.err(
+      new DocumentOpRefusal({
+        reason: DOCUMENT_OP_REFUSAL_REASONS.INVALID_OFFSET,
+        message: "The formatting spans do not cover the replacement text.",
+        opType: DOCUMENT_OP_TYPES.INSERT_TEXT,
+      }),
+    );
+  const runs: { formatting: TextFormatting | undefined; end: number }[] = [];
+  for (const { at, end, type } of formattingSources) {
+    const previous = runs.at(-1);
+    if (
+      !Number.isInteger(end) ||
+      end <= (previous?.end ?? 0) ||
+      end > text.length
+    )
+      return invalidSpans();
+    const paragraph = paragraphAt(document, at);
+    if (paragraph === undefined)
+      return Result.err(
+        new DocumentOpRefusal({
+          reason: DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
+          message:
+            "A source paragraph for replacement formatting does not exist.",
+          opType: DOCUMENT_OP_TYPES.INSERT_TEXT,
+        }),
+      );
+    const authored =
+      runProps ??
+      (type === "caret"
+        ? authoredFormatting(document, { from: at, to: at, typed })
+        : formattingAt(paragraph, at.offset, typed));
+    const formatting =
+      runPropsPatch === undefined
+        ? authored
+        : applyFormattingPatch(authored, runPropsPatch);
+    if (
+      previous !== undefined &&
+      formattingEquals(previous.formatting, formatting)
+    )
+      previous.end = end;
+    else runs.push({ formatting, end });
+  }
+  if (runs.at(-1)?.end !== text.length) return invalidSpans();
+  const content: ParagraphContent[] = [];
+  let start = 0;
+  for (const { formatting, end } of runs) {
+    content.push({
+      type: "run",
+      ...(formatting === undefined ? {} : { formatting }),
+      content: typedRunContent(text.slice(start, end)),
+    });
+    start = end;
+  }
+  return Result.ok(content);
 };
 
 /** The ending physical mark owns one logical paragraph's properties. */
@@ -2178,6 +2264,7 @@ const compileInStory = (
     mode,
     firstBlockId,
     typedFormatting = TYPED_TEXT_FORMATTING.CARET,
+    replacementFormattingDocument,
   }: CompileEditorIntentOptions,
 ): Result<CompiledEditorIntent, DocumentOpRefusal> => {
   if (
@@ -3631,20 +3718,17 @@ const compileInStory = (
           to = from;
         }
       }
-      const runProps = intentRunFormatting(document, intent, typedFormatting);
-      // Both modes insert the same authored run; source XML attributes belong
-      // to the existing run rather than to newly typed text.
-      const content = (
-        text === ""
-          ? []
-          : [
-              {
-                type: "run",
-                ...(runProps === undefined ? {} : { formatting: runProps }),
-                content: typedRunContent(text),
-              },
-            ]
-      ) satisfies ParagraphContent[];
+      // Source XML attributes belong to the existing runs rather than to
+      // newly typed text.
+      const replacement = replacementContent(
+        intent.formattingSources === undefined
+          ? document
+          : (replacementFormattingDocument ?? document),
+        intent,
+        typedFormatting,
+      );
+      if (replacement.isErr()) return Result.err(replacement.error);
+      const content = replacement.value;
       const insertionOnly =
         idKey(from.blockId) === idKey(to.blockId) &&
         from.offset === to.offset &&

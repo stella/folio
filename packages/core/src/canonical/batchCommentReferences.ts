@@ -78,6 +78,19 @@ export const mapIntentPositions = (
 ): EditorIntent => {
   switch (intent.type) {
     case "replaceText":
+      return {
+        ...intent,
+        from: map(intent.from),
+        to: map(intent.to),
+        ...(intent.formattingSources === undefined
+          ? {}
+          : {
+              formattingSources: intent.formattingSources.map((source) => ({
+                ...source,
+                at: map(source.at),
+              })),
+            }),
+      };
     case "formatRun":
     case "insertAtom":
     case "replaceFragment":

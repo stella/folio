@@ -173,45 +173,90 @@ describe("a replacement across a formatting boundary", () => {
     },
   );
 
-  test("keeps the formatting a word it only lengthens already had, alike in both modes", async () => {
-    // `Supp` bold, `lier` plain: appending a letter keeps both runs, and the
-    // accepted redline, which rewrites the word, allocates it the same way.
-    const buffer = await paragraphsDocx([
-      [
-        textRun("The "),
-        textRun("Supp", { bold: true }),
-        textRun("lier agrees."),
-      ],
-    ]);
-    const presentations = [];
-    for (const mode of ["direct", "tracked-changes"] as const) {
-      const reviewer = await openReviewer(buffer.slice(0));
-      const blockId = reviewer.snapshot().blocks[0]?.id ?? "";
-      reviewer.applyDocumentOperations(
-        {
-          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-          mode,
-          operations: [
-            {
-              id: "r",
-              type: "replaceInBlock",
-              blockId,
-              find: "Supplier",
-              replace: "Suppliers",
-            },
-          ],
-        },
-        { undefinedReferences: "refuse" },
-      );
-      const final =
-        mode === "direct"
-          ? await reopened(reviewer)
-          : await reopenedAccepted(reviewer);
-      presentations.push(await markdownOf(final));
-    }
-    expect(presentations[0]).toBe("The **Supp**liers agrees.");
-    expect(presentations[1]).toBe(presentations[0]);
-  });
+  test.each([
+    { session: "legacy", formatFirst: false },
+    { session: "canonical", formatFirst: false },
+    { session: "canonical", formatFirst: true },
+  ] as const)(
+    "keeps the formatting a word it only lengthens already had ($session, format first: $formatFirst)",
+    async ({ session, formatFirst }) => {
+      // `Supp` bold, `lier` plain: appending a letter keeps both runs, and the
+      // accepted redline, which rewrites the word, allocates it the same way.
+      const buffer = await paragraphsDocx([
+        [
+          textRun("The "),
+          textRun("Supp", { bold: true }),
+          textRun("lier agrees."),
+        ],
+      ]);
+      const open = (bytes: ArrayBuffer) =>
+        FolioDocxReviewer.fromBuffer(bytes, { author: "Reviewer", session });
+      let directPresentation:
+        Awaited<ReturnType<typeof reviewerPresentation>> | undefined;
+      for (const mode of ["direct", "tracked-changes"] as const) {
+        const reviewer = await open(buffer.slice(0));
+        const blockId = reviewer.snapshot().blocks[0]?.id ?? "";
+        const operations: FolioDocumentOperation[] = [
+          {
+            id: "r",
+            type: "replaceInBlock",
+            blockId,
+            find: "Supplier",
+            replace: "Suppliers",
+          },
+        ];
+        if (formatFirst) {
+          const text = "The Supplier agrees.";
+          const range = createFolioAITextRangeHandle({
+            blockId,
+            text,
+            startOffset: 0,
+            endOffset: text.length,
+          });
+          if (range === null) throw new Error("Expected the formatting range");
+          operations.unshift({
+            id: "italic",
+            type: "formatRange",
+            range,
+            formatting: { italic: true },
+          });
+        }
+        const result = reviewer.applyDocumentOperations(
+          {
+            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+            mode,
+            operations,
+          },
+          { undefinedReferences: "refuse" },
+        );
+        expect(result.applied).toHaveLength(operations.length);
+        const bytes = await reviewer.toBuffer();
+        const final = await open(bytes);
+        if (mode === "tracked-changes") {
+          expect(
+            final.getChanges().map(({ type, text }) => ({ type, text })),
+          ).toEqual(
+            expect.arrayContaining([
+              { type: "deletion", text: "Supplier" },
+              { type: "insertion", text: "Suppliers" },
+            ]),
+          );
+          const rejected = await open(bytes.slice(0));
+          expect(rejected.rejectAll().resolved).toBeGreaterThan(0);
+          expect(await markdownOf(rejected)).toBe("The **Supp**lier agrees.");
+          expect(final.acceptAll().resolved).toBeGreaterThan(0);
+        }
+        if (!formatFirst)
+          expect(await markdownOf(final)).toBe("The **Supp**liers agrees.");
+        const presentation = reviewerPresentation(
+          await open(await final.toBuffer()),
+        );
+        if (mode === "direct") directPresentation = presentation;
+        else expect(presentation).toEqual(directPresentation);
+        expect(result.normalizations ?? []).toEqual([]);
+      }
+    },
+  );
 });
 
 const markdownOf = async (
