@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import { ZipArchive } from "@stll/docx-core/zip";
 import {
   createFolioAITextRangeHandle,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -21,11 +22,15 @@ import {
   rowsOf,
 } from "../support/oracle.ts";
 
-const pendingReference = async (kind: "footnote" | "endnote") => {
+const pendingReference = async (
+  kind: "footnote" | "endnote",
+  bytes = notesDocument(),
+) => {
   // Import a pending reference deletion whose note body has no pending
   // deletion of its own. The note's independent edits are the subject of
   // these scenarios.
-  const fixture = await openFixtureBuilder(await notesDocument());
+  const source = await bytes;
+  const fixture = await openFixtureBuilder(source);
   const reference = fixture
     .getContent()
     .find(
@@ -49,7 +54,14 @@ const pendingReference = async (kind: "footnote" | "endnote") => {
   );
   assert.equal(applied.applied.length, 1, JSON.stringify(applied));
   assert.deepEqual(applied.skipped, []);
-  const reviewer = await openReviewer(new Uint8Array(await fixture.toBuffer()));
+  const original = await ZipArchive.read(source);
+  const marked = await ZipArchive.read(await fixture.toBuffer());
+  const bodyPath = "word/document.xml";
+  const body = marked.entry(bodyPath);
+  assert.ok(body);
+  // Import the body review with the authored note and comment parts intact.
+  original.set(bodyPath, await body.bytes());
+  const reviewer = await openReviewer(await original.generate({ level: 6 }));
   assert.ok(reviewer.getChanges().length > 0);
   const story = { type: kind, noteId: 1 };
   const reviewed = reviewer.readReviewedStory({
