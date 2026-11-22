@@ -692,9 +692,10 @@ describe("Folio AI edit operations", () => {
           },
         ],
       });
-      expect(result.applied.map(({ id }) => id)).toEqual(["italic"]);
+      // In input order: the italic would stack on the bold's pending change.
+      expect(result.applied.map(({ id }) => id)).toEqual(["bold"]);
       expect(result.skipped).toEqual([
-        { id: "bold", reason: "pendingRunPropertyChange" },
+        { id: "italic", reason: "pendingRunPropertyChange" },
       ]);
       expect(getTrackedChangesFromDoc(view.state.doc)).toHaveLength(1);
       return view;
@@ -703,7 +704,7 @@ describe("Folio AI edit operations", () => {
     const accepting = applyFormatting();
     acceptAllChanges()(accepting.state, accepting.dispatch);
     expect(collectMarksByText(accepting.state)).toEqual({
-      target: ["italic", "runFormattingOverride"],
+      target: ["bold", "runFormattingOverride"],
     });
 
     const rejecting = applyFormatting();
@@ -6136,7 +6137,7 @@ describe("Folio AI edit operations", () => {
     expect(liveTable.child(1).attrs["trDel"]).toBeNull();
   });
 
-  test("tracked row deletion rejects a row with a pending structural revision", () => {
+  test("tracked row deletion refuses a row with a pending structural revision as pendingTableChange", () => {
     const table = schema.node("table", null, [
       schema.node(
         "tableRow",
@@ -6175,7 +6176,13 @@ describe("Folio AI edit operations", () => {
     expect(result).toEqual({
       nextRevisionId: expect.any(Number),
       applied: [],
-      skipped: [{ id: "delete-row", reason: "unsupportedBlock" }],
+      skipped: [
+        {
+          id: "delete-row",
+          reason: "pendingTableChange",
+          message: "A row already carries a structural revision.",
+        },
+      ],
     });
     expect(view.state.doc).toEqual(state.doc);
   });

@@ -37,7 +37,11 @@ import {
 import { textsIn } from "./leaves";
 import { cloneModel } from "./modelClone";
 import { isBlockBoundary } from "./rangeBoundaries";
-import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
+import {
+  DOCUMENT_OP_REFUSAL_REASONS,
+  DocumentOpRefusal,
+  pendingParagraphMarkReason,
+} from "./refusal";
 import { stampInfo, WRAP_KINDS } from "./review";
 import { replaceStoryBody } from "./stories";
 import { locateBlockInsertion, locateTableRow } from "./tableLocation";
@@ -553,7 +557,7 @@ export const applyTableOp = (
         ) {
           return refuse({
             op,
-            reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+            reason: pendingParagraphMarkReason(anchor.paragraph.pPrMark),
             message: "The final paragraph already carries a mark revision.",
           });
         }

@@ -31,6 +31,7 @@ export type AppliedDocumentOp = {
     inverse: readonly DocumentOp[];
     touched: TouchedBlocks;
     revisions: readonly number[];
+    folded: readonly number[];
 };
 
 // @public
@@ -47,6 +48,12 @@ export const applyDocumentOpEnvelope: (document: Document_2, envelope: {
 
 // @public
 export const applyDocumentOps: (document: Document_2, ops: readonly DocumentOp[]) => Result<AppliedDocumentOp, DocumentOpRefusal>;
+
+// @public
+export const BATCH_ANNOTATION_KINDS: Readonly<{
+    FORMATTING: "formatting";
+    COMMENT: "comment";
+}>;
 
 // @public (undocumented)
 export const BATCH_REJECTION_REASONS: {
@@ -72,6 +79,9 @@ export type BatchAck = {
     rev: number;
 };
 
+// @public (undocumented)
+export type BatchAnnotationKind = (typeof BATCH_ANNOTATION_KINDS)[keyof typeof BATCH_ANNOTATION_KINDS];
+
 // @public
 export type BatchBlockAccess<Block> = {
     addresses: readonly Block[];
@@ -81,6 +91,7 @@ export type BatchBlockAccess<Block> = {
 // @public
 export type BatchOrderAddress = {
     type: "annotation";
+    kind: BatchAnnotationKind;
     position: number;
     inputIndex: number;
 } | {
@@ -187,6 +198,9 @@ export const combineEditEffects: (final: Document_2, edits: readonly DocumentEdi
 
 // @public
 export const combineEdits: (document: Document_2, edits: readonly DocumentEdit[]) => DocumentEdit;
+
+// @public
+export const combineRecordedRevisions: (steps: readonly RecordedRevisionIds[]) => RecordedRevisionIds;
 
 // @public
 export type CommentAnchor = {
@@ -430,10 +444,17 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
     readonly EMPTY_CONTENT: "emptyContent";
     readonly EMPTY_BLOCK_LIST: "emptyBlockList";
     readonly REVISION_CONFLICT: "revisionConflict";
+    readonly PENDING_TABLE_CHANGE: "pendingTableChange";
+    readonly PENDING_RUN_PROPERTY_CHANGE: "pendingRunPropertyChange";
+    readonly PENDING_PARAGRAPH_PROPERTY_CHANGE: "pendingParagraphPropertyChange";
+    readonly JOIN_INTO_PENDING_TABLE: "joinIntoPendingTable";
     readonly CONTAINER_FINAL_MARK: "containerFinalMark";
     readonly INSIDE_INLINE_CONTROL: "insideInlineControl";
     readonly UNTRACKABLE: "untrackable";
     readonly PENDING_BREAK_TAKEOVER: "pendingBreakTakeover";
+    readonly PENDING_PARAGRAPH_MARK_DELETION: "pendingParagraphMarkDeletion";
+    readonly PENDING_PARAGRAPH_MARK_INSERTION: "pendingParagraphMarkInsertion";
+    readonly PENDING_PARAGRAPH_JOIN: "pendingParagraphJoin";
     readonly PENDING_GRID_CHANGE: "pendingGridChange";
     readonly UNRECORDABLE_LINK_SUGGESTION: "unrecordableLinkSuggestion";
     readonly MISSING_BLOCK_ID: "missingBlockId";
@@ -651,6 +672,9 @@ export const editorParagraphGroups: (document: Document_2, story: OpStory) => {
     paragraphs: Paragraph[];
     text: string;
 }[];
+
+// @public
+export const editorParagraphGroupsThroughTextBoxes: (document: Document_2, story: OpStory) => ReturnType<typeof editorParagraphGroups>;
 
 // @public
 export const editorPositionAtPhysicalPosition: (document: Document_2, at: TextPosition) => TextPosition;
@@ -1233,6 +1257,9 @@ export const PROPERTY_REVIEW_POLICIES: Readonly<{
 
 // @public
 export const reconcileDocumentPartRelationships: (document: Document_2) => Document_2;
+
+// @public
+export type RecordedRevisionIds = Pick<AppliedDocumentOp, "revisions" | "folded">;
 
 // @public
 export const recordsCopyOrigin: (node: InlineNode) => boolean;

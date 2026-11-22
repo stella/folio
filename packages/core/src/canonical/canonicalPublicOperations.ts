@@ -19,9 +19,11 @@ import {
 } from "@stll/docx-core/model";
 import {
   applyDocumentOps,
+  BATCH_ANNOTATION_KINDS,
   type BatchBlockAccess,
   type BatchOrderAddress,
   type BlockInsertionPoint,
+  combineRecordedRevisions,
   compileEditorIntent,
   contentRank,
   createEditorIntentIdAllocator,
@@ -61,6 +63,7 @@ import {
   type ParagraphPropsPatch,
   paragraphsThroughTextBoxes,
   pendingSuggestionIdsIn,
+  type RecordedRevisionIds,
   revisionSpan,
   type RunPropsPatch,
   SPLIT_HALVES,
@@ -223,6 +226,7 @@ import {
   canonicalCommentBody,
   compileCanonicalComments,
 } from "./canonicalComments";
+import { compilerRefusalSkip } from "./canonicalCompilerRefusal";
 import {
   insertedCommentRange,
   plainInsertedParagraphIds,
@@ -233,6 +237,7 @@ import {
 } from "./canonicalInsertionReplayIds";
 import { addJoinedParagraphReceipts } from "./canonicalJoinedReceipts";
 import { lockViolationBetween } from "./canonicalLockGuard";
+import { keepStandingRevisionReceipts } from "./canonicalRevisionReceipts";
 import {
   CANONICAL_ADMISSION,
   type CanonicalCommit,
@@ -354,7 +359,15 @@ const canonicalBatchPlan = ({
         claim: claim({ type: "annotation", block, from, to }),
         block,
         placedAgainst: block,
-        address: { type: "annotation", position: from, inputIndex },
+        address: {
+          type: "annotation",
+          kind:
+            operation.type === "formatRange"
+              ? BATCH_ANNOTATION_KINDS.FORMATTING
+              : BATCH_ANNOTATION_KINDS.COMMENT,
+          position: from,
+          inputIndex,
+        },
         removes: null,
         insertionRun: null,
       };
@@ -3984,7 +3997,7 @@ const compilePublicIntents = ({
   verifyOperation,
 }: CompilePublicIntentsOptions) => {
   const ops: DocumentOp[] = [];
-  const revisions: number[] = [];
+  const recorded: RecordedRevisionIds[] = [];
   let verifiedOperation: VerifiedOperation | undefined;
   const absorbed: ParagraphAbsorption[] = [];
   const source = document;
@@ -4088,6 +4101,8 @@ const compilePublicIntents = ({
       verifiedOperation = verified.value;
       applied = verified.value;
     }
+    // An intent the document already satisfies is a no-op.
+    if (applied.document === document) continue;
     // The notes whose last live reference the intent's tracked deletion
     // took go with it, as operations of their own beside the intent's. A
     // comparison states each note's own changes as a story of its own, as
@@ -4120,7 +4135,7 @@ const compilePublicIntents = ({
     }
     document = after;
     ops.push(...compiled.value.ops, ...(notes?.ops ?? []));
-    revisions.push(...appliedRevisions);
+    recorded.push({ revisions: appliedRevisions, folded: applied.folded });
     for (const id of appliedRevisions)
       nextRevisionId = Math.max(nextRevisionId, id + 1);
     if (mode === "direct") continue;
@@ -4145,7 +4160,7 @@ const compilePublicIntents = ({
   return Result.ok({
     document,
     ops,
-    revisions,
+    ...combineRecordedRevisions(recorded),
     nextRevisionId,
     allocations,
     verifiedOperation,
@@ -5509,13 +5524,8 @@ export class CanonicalPublicOperations {
           ? { verifyOperation }
           : {}),
       });
-      if (compiled.isErr()) {
-        return declined({
-          reason: "unsupportedBlock",
-          message: compiled.error.message,
-          refusal: { gap: CANONICAL_GAP.publicUnsupportedInline },
-        });
-      }
+      if (compiled.isErr())
+        return declined(compilerRefusalSkip(compiled.error));
       let nextDocument = compiled.value.document;
       const operationOps = [...compiled.value.ops];
       if (
@@ -5738,7 +5748,8 @@ export class CanonicalPublicOperations {
           compiled.value.nextRevisionId,
           (commentId ?? -1) + 1,
         ),
-        revisionIds: compiled.value.revisions,
+        // A fold into a pending property change shares that change's id.
+        revisionIds: [...compiled.value.revisions, ...compiled.value.folded],
         absorbed: compiled.value.absorbed,
         commentId,
         suggestionId,
@@ -6331,6 +6342,10 @@ export class CanonicalPublicOperations {
         return result([], null, "refused");
       }
     }
+    keepStandingRevisionReceipts({
+      document: prepared.value.document,
+      applied: appliedById,
+    });
     const applied = batch.operations.flatMap(({ id }) => {
       const entry = appliedById.get(id);
       if (entry === undefined) return [];

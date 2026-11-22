@@ -1,4 +1,6 @@
 import {
+  BATCH_ANNOTATION_KINDS,
+  type BatchAnnotationKind,
   type BatchOrderAddress,
   contentRank,
   deletionRemovesBlock,
@@ -21,10 +23,10 @@ const INSERTIONS = new Set([
   "insertBeforeBlock",
   "insertTable",
 ]);
-const ANNOTATIONS = new Set([
-  "formatRange",
-  "commentOnRange",
-  "commentOnBlock",
+const ANNOTATION_KIND_OF = new Map<string, BatchAnnotationKind>([
+  ["formatRange", BATCH_ANNOTATION_KINDS.FORMATTING],
+  ["commentOnRange", BATCH_ANNOTATION_KINDS.COMMENT],
+  ["commentOnBlock", BATCH_ANNOTATION_KINDS.COMMENT],
 ]);
 const RANGED = new Set(["replaceRange", "formatRange", "commentOnRange"]);
 
@@ -426,7 +428,7 @@ export const sequentialGroups = ({
     return [target.table.tableIndex, column];
   };
   const ordered = orderBatchOperations(
-    indexed.filter(({ operation }) => !ANNOTATIONS.has(operation.type)),
+    indexed.filter(({ operation }) => !ANNOTATION_KIND_OF.has(operation.type)),
     ({ operation, index }): BatchOrderAddress => {
       if (isColumnEdit(operation)) {
         const [tablePosition, columnIndex] = columnLocation(operation);
@@ -573,10 +575,13 @@ export const sequentialGroups = ({
     removes: group.flatMap(removedBy),
   }));
   const annotations = orderBatchOperations(
-    indexed.filter(({ operation }) => ANNOTATIONS.has(operation.type)),
-    ({ operation, index }): BatchOrderAddress => {
+    indexed.flatMap(({ operation, index }) => {
+      const kind = ANNOTATION_KIND_OF.get(operation.type);
+      return kind === undefined ? [] : [{ operation, index, kind }];
+    }),
+    ({ operation, index, kind }): BatchOrderAddress => {
       const [position] = placement(operation, preRows);
-      return { type: "annotation", position, inputIndex: index };
+      return { type: "annotation", kind, position, inputIndex: index };
     },
   );
   // The batch retires a final paragraph's break once, over the finished batch,

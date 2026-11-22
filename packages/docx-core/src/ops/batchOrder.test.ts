@@ -1,10 +1,14 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  BATCH_ANNOTATION_KINDS,
+  type BatchAnnotationKind,
+  type BatchOrderAddress,
   deletionRemovesBlock,
   finalBreakCarrier,
   groupInsertionRuns,
   orderAddressingBeforeRemoval,
+  orderBatchOperations,
 } from "./batchOrder";
 
 type Operation = { id: string; gap: number | null; writesProperties?: true };
@@ -115,6 +119,43 @@ describe("orderAddressingBeforeRemoval", () => {
         { id: "edit-b", addresses: ["b"], removes: [] },
       ]),
     ).toEqual(["edit-b", "merge-a", "delete-a"]);
+  });
+});
+
+describe("orderBatchOperations", () => {
+  type Annotated = { id: string; address: BatchOrderAddress };
+  /** Annotations in input order: `[id, kind, position]` each. */
+  const order = (
+    annotations: readonly (readonly [string, BatchAnnotationKind, number])[],
+  ) =>
+    orderBatchOperations(
+      annotations.map(([id, kind, position], inputIndex): Annotated => ({
+        id,
+        address: { type: "annotation", kind, position, inputIndex },
+      })),
+      ({ address }) => address,
+    ).map(({ id }) => id);
+  const { FORMATTING, COMMENT } = BATCH_ANNOTATION_KINDS;
+
+  test("runs formatting first, in input order wherever it starts", () => {
+    expect(
+      order([
+        ["comment-a", COMMENT, 2],
+        ["bold", FORMATTING, 0],
+        ["unbold", FORMATTING, 0],
+        ["italic-later", FORMATTING, 5],
+        ["italic-inside", FORMATTING, 2],
+        ["comment-b", COMMENT, 2],
+      ]),
+    ).toEqual([
+      "bold",
+      "unbold",
+      "italic-later",
+      "italic-inside",
+      // Comments keep right to left, ties in reverse input order.
+      "comment-b",
+      "comment-a",
+    ]);
   });
 });
 

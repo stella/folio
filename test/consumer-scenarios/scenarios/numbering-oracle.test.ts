@@ -609,6 +609,32 @@ test(
               mode: "suggested",
             },
           });
+          // After a story's final paragraph the new paragraph would take over
+          // its mark, and with it the "pending" suggestion's property change.
+          // The canonical session refuses that by the pending change; the
+          // legacy engine applies it.
+          if (
+            scenarioEngine() === "canonical" &&
+            pre.liveRows.at(-1)?.id === anchor.id
+          ) {
+            assert.deepEqual(
+              result.skipped.map(({ reason, message, canonicalRefusal }) => ({
+                reason,
+                message,
+                canonicalRefusal,
+              })),
+              [
+                {
+                  reason: "pendingParagraphPropertyChange",
+                  message:
+                    "A tracked insertion after a paragraph no paragraph follows needs the anchor's properties free of a pending change.",
+                  canonicalRefusal: undefined,
+                },
+              ],
+            );
+            assert.deepEqual(rowsOf(reviewer, story), pre.liveRows);
+            continue;
+          }
           assert.equal(result.applied.length, 1);
           assert.deepEqual(result.issues, []);
           const actual = rowsOf(reviewer, story);
@@ -664,15 +690,17 @@ test(
           // rejecting either would discard both. The legacy engine folds them.
           if (scenarioEngine() === "canonical") {
             assert.deepEqual(
-              restyled.skipped.map(({ reason, message }) => ({
+              restyled.skipped.map(({ reason, message, canonicalRefusal }) => ({
                 reason,
                 message,
+                canonicalRefusal,
               })),
               [
                 {
-                  reason: "unsupportedBlock",
+                  reason: "pendingParagraphPropertyChange",
                   message:
                     "A suggestion cannot take over another pending paragraph property change.",
+                  canonicalRefusal: undefined,
                 },
               ],
             );

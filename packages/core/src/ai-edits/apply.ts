@@ -21,6 +21,8 @@ import {
   REVIEW_CARRIERS,
 } from "@stll/docx-core/model";
 import {
+  BATCH_ANNOTATION_KINDS,
+  type BatchAnnotationKind,
   type BatchBlockAccess,
   type BatchOrderAddress,
   contentRank,
@@ -588,8 +590,14 @@ export const SUGGESTED_SUPPORTED_OPERATION_TYPES: ReadonlySet<
 ]);
 
 /** Operations that only add marks: they move no position of the document. */
-const ANNOTATION_OPERATION_TYPES: ReadonlySet<FolioAIEditOperation["type"]> =
-  new Set(["formatRange", "commentOnRange", "commentOnBlock"]);
+const ANNOTATION_KIND_OF: ReadonlyMap<
+  FolioAIEditOperation["type"],
+  BatchAnnotationKind
+> = new Map([
+  ["formatRange", BATCH_ANNOTATION_KINDS.FORMATTING],
+  ["commentOnRange", BATCH_ANNOTATION_KINDS.COMMENT],
+  ["commentOnBlock", BATCH_ANNOTATION_KINDS.COMMENT],
+]);
 
 type ResolvedOperationFields = {
   operation: StagedOperation;
@@ -6019,7 +6027,9 @@ const applyFolioAIEditOperationsInternal = ({
   // Annotations — comments and formatting, which add marks and move no
   // position — go first, onto the text as it was read. An edit inside one then
   // carries it like any mark around it, rather than the annotation landing on
-  // positions the edit already moved (see `batch-claims.ts`).
+  // positions the edit already moved (see `batch-claims.ts`). Formatting runs
+  // ahead of comments and in input order, so a later write of a property
+  // replaces an earlier one, as one at a time.
   const batchAddress = (item: ResolvedOperation): BatchOrderAddress => {
     const cell = item.tableCellMerge ?? item.tableCellSplit;
     if (cell) {
@@ -6041,9 +6051,11 @@ const applyFolioAIEditOperationsInternal = ({
         inputIndex: item.originalIndex,
       };
     }
-    if (ANNOTATION_OPERATION_TYPES.has(item.operation.type)) {
+    const annotation = ANNOTATION_KIND_OF.get(item.operation.type);
+    if (annotation !== undefined) {
       return {
         type: "annotation",
+        kind: annotation,
         position: item.from,
         inputIndex: item.originalIndex,
       };
@@ -7050,6 +7062,14 @@ const applyFolioAIEditOperationsInternal = ({
           revision,
           emptiedRows,
         });
+        if (result.type === "pendingTableChange") {
+          skipped.push({
+            id: item.operation.id,
+            reason: "pendingTableChange",
+            message: result.message,
+          });
+          continue;
+        }
         if (result.type === "unsupported") {
           skipped.push({
             id: item.operation.id,
@@ -7177,6 +7197,14 @@ const applyFolioAIEditOperationsInternal = ({
         }
         const revision: TableStructureRevision | null = structuralRevision;
         const result = applyTableRowDeletion({ tr, deletion, revision });
+        if (result.type === "pendingTableChange") {
+          skipped.push({
+            id: item.operation.id,
+            reason: "pendingTableChange",
+            message: result.message,
+          });
+          continue;
+        }
         if (result.type === "unsupported") {
           skipped.push({
             id: item.operation.id,
@@ -7797,7 +7825,11 @@ const applyFolioAIEditOperationsInternal = ({
         // model refuses the pair at save), so a table holding an inserted row
         // is refused, as `deleteTableRow` refuses that row.
         if (holdsPendingInsertedRow) {
-          skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
+          skipped.push({
+            id: item.operation.id,
+            reason: "pendingTableChange",
+            message: "A row already carries a structural revision.",
+          });
           continue;
         }
         if (rowPositions.length === 0) {

@@ -269,9 +269,13 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
  * Every revision id a model value holds: each tracked record carries its
  * `info`, and a table grid revision its own `id`.
  */
-const revisionIdsIn = (value: unknown, ids = new Set<number>()) => {
+export const revisionIdsIn = (value: unknown, ids = new Set<number>()) => {
   if (Array.isArray(value)) {
     for (const item of value) revisionIdsIn(item, ids);
+    return ids;
+  }
+  if (value instanceof Map) {
+    for (const item of value.values()) revisionIdsIn(item, ids);
     return ids;
   }
   if (!isRecord(value)) return ids;

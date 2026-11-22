@@ -1,4 +1,5 @@
 import type { Document, Paragraph } from "../model/document";
+import type { RecordedRevisionIds } from "./apply";
 import { prepareTrackedParagraphInsertion } from "./blockInsertion";
 import { replaceParagraphs } from "./blocks";
 import {
@@ -49,10 +50,10 @@ const withLocalCounts = (
   };
 };
 
-type MemberEffect = DocumentEditEffects & {
-  op: InsertBlocksOp;
-  revisions: readonly number[];
-};
+type MemberEffect = DocumentEditEffects &
+  RecordedRevisionIds & {
+    op: InsertBlocksOp;
+  };
 
 type FallbackReason =
   | "compiler"
@@ -255,6 +256,7 @@ export const tryTrackedInsertionGroup = ({
       inverse: effect.inverse.map(captureDocumentOp),
       touched: effect.touched,
       revisions,
+      folded: [],
     });
     member = next(revisions);
   }

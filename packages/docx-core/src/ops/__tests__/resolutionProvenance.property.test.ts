@@ -574,11 +574,12 @@ test("generated later property rejection retains earlier cut provenance", () => 
           mode: "suggesting",
           refusals,
         });
+        const firstIds = [...first.revisions, ...first.folded];
         expect(
           resolvePendingRunFormatting(
             resolve({
               document: first.document,
-              revisionIds: first.revisions,
+              revisionIds: firstIds,
               decision: REVISION_DECISIONS.ACCEPT,
             }),
             "accept",
@@ -598,25 +599,32 @@ test("generated later property rejection retains earlier cut provenance", () => 
         const paragraph = second.document.package.document.content.at(0);
         if (paragraph?.type !== "paragraph")
           panic("The fixture must retain its paragraph.");
-        const newlyRecorded = runsIn(paragraph.content)
+        const recordedIds = [...second.revisions, ...second.folded];
+        expect(recordedIds.length).toBeGreaterThan(0);
+        expect(second.folded.every((id) => firstIds.includes(id))).toBe(true);
+        const recorded = runsIn(paragraph.content)
           .flatMap((run) => run.propertyChanges ?? [])
-          .filter((record) => second.revisions.includes(record.info.id));
-        expect(newlyRecorded.length).toBeGreaterThan(0);
+          .filter((record) => recordedIds.includes(record.info.id));
+        expect(new Set(recorded.map((record) => record.info.id))).toEqual(
+          new Set(recordedIds),
+        );
         expect(
-          newlyRecorded.every((record) => record.info.author === "Editor"),
+          recorded.every((record) => record.info.author === "Editor"),
         ).toBe(true);
         const rejectedFirst = resolve({
           document: second.document,
-          revisionIds: first.revisions,
+          revisionIds: firstIds,
           decision: REVISION_DECISIONS.REJECT,
         });
         expect(
           resolvePendingRunFormatting(
-            resolve({
-              document: rejectedFirst,
-              revisionIds: second.revisions,
-              decision: REVISION_DECISIONS.REJECT,
-            }),
+            second.revisions.length === 0
+              ? rejectedFirst
+              : resolve({
+                  document: rejectedFirst,
+                  revisionIds: second.revisions,
+                  decision: REVISION_DECISIONS.REJECT,
+                }),
             "reject",
           ),
         ).toStrictEqual(resolvePendingRunFormatting(original, "reject"));

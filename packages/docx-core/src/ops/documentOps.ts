@@ -102,8 +102,10 @@ export {
   applyDocumentOpEnvelope,
   applyDocumentOp,
   applyDocumentOps,
+  combineRecordedRevisions,
   inverseMeetingDocument,
   type AppliedDocumentOp,
+  type RecordedRevisionIds,
 } from "./apply";
 export {
   formattingEquals,
@@ -119,6 +121,7 @@ export {
   paragraphVisibleText,
   physicalOffsetAtVisibleOffset,
   editorParagraphGroups,
+  editorParagraphGroupsThroughTextBoxes,
   editorPositionAtPhysicalPosition,
   joinPropertyChangeLink,
   physicalPositionAtEditorOffset,
@@ -204,6 +207,8 @@ export {
   type LeasedIdCensus,
 } from "./idLease";
 export {
+  BATCH_ANNOTATION_KINDS,
+  type BatchAnnotationKind,
   type BatchBlockAccess,
   compareBatchOrder,
   contentRank,

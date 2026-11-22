@@ -1,19 +1,23 @@
 import { expect, test } from "bun:test";
 
-import type {
-  BlockContent,
-  Document,
-  Paragraph,
-  ParagraphMarkChange,
-  ParagraphMarkDeletion,
-  ParagraphPropertyChange,
+import {
+  type BlockContent,
+  type Document,
+  type Paragraph,
+  type ParagraphMarkChange,
+  type ParagraphMarkDeletion,
+  type ParagraphPropertyChange,
+  REVIEW_CARRIERS,
 } from "../../model/document";
 import {
   type AppliedDocumentOp,
   applyDocumentOp,
   applyDocumentOps,
 } from "../apply";
-import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
+import {
+  DOCUMENT_OP_REFUSAL_REASONS,
+  type DocumentOpRefusalReason,
+} from "../refusal";
 import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
@@ -284,6 +288,48 @@ test("a new final paragraph does not take a pending property change", () => {
     insertion(paragraph("00000002", "new")),
   );
   expect(refused.isErr() && refused.error.reason).toBe(
+    DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_PROPERTY_CHANGE,
+  );
+});
+
+/** A story whose last paragraph is `anchor`. */
+const endingWith = (anchor: Paragraph): Document => ({
+  package: {
+    document: { content: [paragraph("00000004", "before"), anchor] },
+  },
+});
+
+test.each([
+  [insertedMark, DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_INSERTION],
+  [
+    { kind: "del", info: insertedMark.info },
+    DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_DELETION,
+  ],
+  [
+    { kind: "moveFrom", info: insertedMark.info },
+    DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_DELETION,
+  ],
+  [
+    { ...insertedMark, deletion: markDeletion },
+    DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_DELETION,
+  ],
+] satisfies [ParagraphMarkChange, DocumentOpRefusalReason][])(
+  "a new final paragraph does not take a mark under review (%o), refused by what it has pending",
+  (pPrMark, reason) => {
+    const refused = applyDocumentOp(
+      endingWith({ ...ANCHOR, pPrMark }),
+      insertion(paragraph("00000002", "new")),
+    );
+    expect(refused.isErr() && refused.error.reason).toBe(reason);
+  },
+);
+
+test("a new final paragraph does not take a table's review carrier yet", () => {
+  const refused = applyDocumentOp(
+    endingWith({ ...ANCHOR, reviewCarrier: REVIEW_CARRIERS.TERMINAL_TABLE }),
+    insertion(paragraph("00000002", "new")),
+  );
+  expect(refused.isErr() && refused.error.reason).toBe(
     DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
   );
 });
@@ -317,6 +363,6 @@ test("a suggestion does not fold other properties into another's pending change"
     },
   );
   expect(refused.isErr() && refused.error.reason).toBe(
-    DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+    DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_PROPERTY_CHANGE,
   );
 });

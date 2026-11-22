@@ -315,10 +315,10 @@ describe("table row review", () => {
   });
 
   test.each([
-    ["ins", DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT],
-    ["del", DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT],
-    ["moveFrom", DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE],
-    ["moveTo", DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE],
+    ["ins", DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_INSERTION],
+    ["del", DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_DELETION],
+    ["moveFrom", DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_DELETION],
+    ["moveTo", DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_INSERTION],
   ] as const)(
     "a pre-existing cell-final %s mark refuses a tracked row operation",
     (kind, reason) => {
@@ -545,7 +545,7 @@ describe("table row review", () => {
         revision,
         newIds,
       },
-      DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
     );
   });
 
@@ -599,7 +599,7 @@ describe("table row review", () => {
     expectRefusalWithoutMutation(
       documentOf(tableOf(shared, makeRow("00000020"))),
       op,
-      DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
     );
   });
 

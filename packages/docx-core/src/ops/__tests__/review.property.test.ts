@@ -86,7 +86,10 @@ import {
   classifyRangeMultiplicity,
   rangeBoundaryDefinitions,
 } from "../rangeBoundaries";
-import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
+import {
+  DOCUMENT_OP_REFUSAL_REASONS,
+  TRACKED_REFUSAL_REASONS,
+} from "../refusal";
 import { planRevisionResolution } from "../resolve";
 import * as resolvedEdgesModule from "../resolvedEdges";
 import {
@@ -918,8 +921,7 @@ const kindOf = (op: DocumentOp): DocumentOpType => op.type;
 
 /** Why a tracked operation is refused where the direct one applies. */
 const TRACKING_REFUSALS: readonly string[] = [
-  DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-  DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+  ...TRACKED_REFUSAL_REASONS,
   DOCUMENT_OP_REFUSAL_REASONS.INSIDE_TRACKED_DELETION,
   // A tracked change is a record more, whose id a cut may need to name.
   DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,

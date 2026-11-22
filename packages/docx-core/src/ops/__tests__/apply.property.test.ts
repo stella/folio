@@ -90,6 +90,7 @@ import { isBlockBoundary } from "../rangeBoundaries";
 import {
   DOCUMENT_OP_REFUSAL_REASONS,
   type DocumentOpRefusalReason,
+  TRACKED_REFUSAL_REASONS,
 } from "../refusal";
 import { findStoryBody } from "../stories";
 import {
@@ -277,6 +278,37 @@ test("note lifecycle inverse kinds are exercised by actual direct and tracked pr
     [...exercised].filter((pair) => declaredAdditions.has(pair)).sort(),
   ).toEqual([...declaredAdditions].sort());
 });
+
+/**
+ * The ids of the run property changes `author` now holds. A fold over a whole
+ * run keeps the pending change's id, so these, not only the new ids an
+ * operation reports, are what resolving its edit names.
+ */
+const runChangeIdsBy = (value: unknown, author: string): number[] => {
+  const ids = new Set<number>();
+  const walk = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item);
+      return;
+    }
+    if (typeof node !== "object" || node === null) return;
+    if (
+      "type" in node &&
+      node.type === "runPropertyChange" &&
+      "info" in node &&
+      typeof node.info === "object" &&
+      node.info !== null &&
+      "author" in node.info &&
+      node.info.author === author &&
+      "id" in node.info &&
+      typeof node.info.id === "number"
+    )
+      ids.add(node.info.id);
+    for (const child of Object.values(node)) walk(child);
+  };
+  walk(value);
+  return [...ids];
+};
 
 const paragraphsById = (document: Document): Map<string, Paragraph> =>
   new Map(
@@ -571,11 +603,12 @@ describe("document operations", () => {
             from: intent.from,
             to: intent.to,
           });
-          expect(edit.revisions.length).toBeGreaterThan(0);
+          const earlier = runChangeIdsBy(edit.document, "New");
+          expect(earlier.length).toBeGreaterThan(0);
           const rejected = applyDocumentOp(edit.document, {
             type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
             story: OP_STORIES.MAIN,
-            revisionIds: edit.revisions,
+            revisionIds: earlier,
             decision: REVISION_DECISIONS.REJECT,
           }).unwrap();
           assertExactModel(
@@ -625,16 +658,18 @@ describe("document operations", () => {
             from: laterIntent.from,
             to: laterIntent.to,
           });
+          // A later fold keeps an earlier change's id: rejecting the earlier
+          // ids rejects both edits there, and the later ones left stand alone.
           const rejectEarlier = applyDocumentOp(later.document, {
             type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
             story: OP_STORIES.MAIN,
-            revisionIds: edit.revisions,
+            revisionIds: earlier,
             decision: REVISION_DECISIONS.REJECT,
           }).unwrap();
           const rejectLater = applyDocumentOp(rejectEarlier.document, {
             type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
             story: OP_STORIES.MAIN,
-            revisionIds: later.revisions,
+            revisionIds: runChangeIdsBy(rejectEarlier.document, "Later"),
             decision: REVISION_DECISIONS.REJECT,
           }).unwrap();
           assertExactModel(
@@ -764,7 +799,9 @@ describe("document operations", () => {
               },
             }).unwrap();
             const applied = applyDocumentOps(document, compiled.ops).unwrap();
-            expect(applied.revisions).toHaveLength(2);
+            // Each run's pending change takes the edit whole and keeps its id.
+            expect(applied.revisions).toEqual([]);
+            expect(runChangeIdsBy(applied.document, author)).toEqual([1, 2]);
             for (const paragraph of storyParagraphs(
               applied.document.package.document,
             )) {
@@ -785,7 +822,7 @@ describe("document operations", () => {
             const rejected = applyDocumentOp(applied.document, {
               type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
               story: OP_STORIES.MAIN,
-              revisionIds: applied.revisions,
+              revisionIds: [1, 2],
               decision: REVISION_DECISIONS.REJECT,
             }).unwrap();
             expect(rejected.document).toStrictEqual(baseline);
@@ -2914,8 +2951,7 @@ describe("document operations", () => {
 
   test("generated editor intents agree in direct and accepted tracked mode across structural shapes", () => {
     const expectedRefusals: readonly DocumentOpRefusalReason[] = [
-      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      ...TRACKED_REFUSAL_REASONS,
       DOCUMENT_OP_REFUSAL_REASONS.INSIDE_TRACKED_DELETION,
       DOCUMENT_OP_REFUSAL_REASONS.SECTION_BOUNDARY,
       DOCUMENT_OP_REFUSAL_REASONS.CONTAINER_FINAL_MARK,

@@ -337,9 +337,12 @@ describe("insertions on both sides of a pending join", () => {
 
 // The canonical session puts it after the final paragraph, whose mark holds
 // the pending formatting change the deletion recorded: moving that change
-// onto a new final paragraph is refused.
-const FINAL_MARK_REFUSAL =
-  "A tracked insertion after a paragraph no paragraph follows needs the anchor's mark free of review records.";
+// onto a new final paragraph is refused by that pending change.
+const FINAL_MARK_REFUSAL = {
+  reason: "pendingParagraphPropertyChange",
+  message:
+    "A tracked insertion after a paragraph no paragraph follows needs the anchor's properties free of a pending change.",
+} as const;
 
 describe("an insertion after a paragraph whose break a final deletion retires", () => {
   for (const session of SESSIONS)
@@ -368,7 +371,7 @@ describe("an insertion after a paragraph whose break a final deletion retires", 
       );
       if (session === "canonical") {
         expect(skipped).toEqual([
-          expect.objectContaining({ id: "after", message: FINAL_MARK_REFUSAL }),
+          expect.objectContaining({ id: "after", ...FINAL_MARK_REFUSAL }),
         ]);
         expect(reviewer.snapshot()).toEqual(before);
         return;
@@ -754,9 +757,12 @@ describe("a paragraph between a pending join and the table it reaches", () => {
       expect(merged.skipped).toEqual([
         expect.objectContaining({
           id: "merge",
+          reason: "pendingTableInsertion",
           message: expect.stringContaining("would run it into the table"),
         }),
       ]);
+      // A deliberate refusal names no missing capability.
+      expect(merged.skipped.at(0)).not.toHaveProperty("canonicalRefusal");
       expect(reviewer.snapshot().blocks.at(0)?.text).toBe("Alpha.");
     });
 

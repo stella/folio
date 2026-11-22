@@ -639,7 +639,7 @@ describe("tracked whole table properties", () => {
                     },
                   ],
                 };
-                reason = DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT;
+                reason = DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE;
                 break;
               case "moveFrom":
               case "moveTo":
@@ -680,7 +680,8 @@ describe("tracked whole table properties", () => {
                 };
                 reason = DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE;
                 break;
-              case "finalMark":
+              case "finalMark": {
+                const markKind = shape.seed % 2 === 0 ? "ins" : "del";
                 value = {
                   ...source,
                   rows: [
@@ -693,7 +694,7 @@ describe("tracked whole table properties", () => {
                             {
                               ...makeParagraph(0x100, shape),
                               pPrMark: {
-                                kind: shape.seed % 2 === 0 ? "ins" : "del",
+                                kind: markKind,
                                 info: foreign,
                               },
                             },
@@ -703,8 +704,12 @@ describe("tracked whole table properties", () => {
                     },
                   ],
                 };
-                reason = DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT;
+                reason =
+                  markKind === "ins"
+                    ? DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_INSERTION
+                    : DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_DELETION;
                 break;
+              }
               default: {
                 const unreachable: never = unsupported;
                 return unreachable;

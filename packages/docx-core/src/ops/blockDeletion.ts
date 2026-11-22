@@ -44,7 +44,11 @@ import {
   lastBlockPastBoundaries,
   withBoundariesOutsideDeletion,
 } from "./rangeBoundaries";
-import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
+import {
+  DOCUMENT_OP_REFUSAL_REASONS,
+  DocumentOpRefusal,
+  pendingParagraphMarkReason,
+} from "./refusal";
 import type { ApplyOps } from "./resolve";
 import {
   foldedParagraphPropertyChange,
@@ -363,7 +367,8 @@ export type TableRunInTarget = {
 
 type TableRunInBoundary =
   | { type: "receiver"; target: TableRunInTarget }
-  | { type: "blocked"; reason: "section" | "review" | "structure" };
+  | { type: "blocked"; reason: "review"; review: "insertion" | "other" }
+  | { type: "blocked"; reason: "section" | "structure" };
 
 /** The first-cell path, including why it cannot receive paragraph content. */
 export const paragraphTableRunInBoundary = (
@@ -374,24 +379,32 @@ export const paragraphTableRunInBoundary = (
     return { type: "blocked", reason: "section" };
   const tables: Table[] = [];
   let current = table;
-  let review: "clear" | "pending" = "clear";
+  let review: "clear" | "insertion" | "other" = "clear";
   for (;;) {
     const row = current.rows.at(0),
       cell = row?.cells.at(0);
     if (row === undefined || cell === undefined)
       return { type: "blocked", reason: "structure" };
     if (
-      row.structuralChange?.type === "tableRowInsertion" ||
       row.structuralChange?.type === "tableRowDeletion" ||
-      cell.structuralChange !== undefined
-    )
-      review = "pending";
+      (cell.structuralChange !== undefined &&
+        cell.structuralChange.type !== "tableCellInsertion")
+    ) {
+      review = "other";
+    } else if (
+      review === "clear" &&
+      (row.structuralChange?.type === "tableRowInsertion" ||
+        cell.structuralChange?.type === "tableCellInsertion")
+    ) {
+      review = "insertion";
+    }
     tables.push(current);
     const target = cell.content.at(0);
     if (target?.type === "paragraph") {
       if (target.sectionProperties !== undefined)
         return { type: "blocked", reason: "section" };
-      if (review === "pending") return { type: "blocked", reason: "review" };
+      if (review !== "clear")
+        return { type: "blocked", reason: "review", review };
       return { type: "receiver", target: { receiver: target, tables } };
     }
     if (target?.type !== "table")
@@ -1237,17 +1250,16 @@ export const deleteBlocks = ({
       paragraph.sectionProperties !== undefined ||
       (beforeInsertedTable && paragraph === last.paragraph)) &&
     !(finalTakeover && paragraph === last.paragraph);
-  if (
-    reviewed.some(
-      (paragraph) =>
-        paragraph.pPrMark !== undefined &&
-        !joinsNext.has(paragraph) &&
-        !keepsDeletedMark(paragraph) &&
-        !deletesAddedMark(paragraph),
-    )
-  ) {
+  const overwrittenMark = reviewed.find(
+    (paragraph) =>
+      paragraph.pPrMark !== undefined &&
+      !joinsNext.has(paragraph) &&
+      !keepsDeletedMark(paragraph) &&
+      !deletesAddedMark(paragraph),
+  )?.pPrMark;
+  if (overwrittenMark !== undefined) {
     return refuse(
-      DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      pendingParagraphMarkReason(overwrittenMark),
       "Deletion would overwrite a paragraph review record.",
     );
   }
@@ -1306,7 +1318,10 @@ export const deleteBlocks = ({
     } else if (!sameParagraphProperties(next.formatting, survivor.formatting)) {
       const conflict = paragraphPropertyFoldConflict(paragraph, op.revision);
       if (conflict !== undefined)
-        return refuse(DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT, conflict);
+        return refuse(
+          DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_PROPERTY_CHANGE,
+          conflict,
+        );
       const review = reviewFieldsOf(next);
       delete review.formatting;
       if (survivor.formatting !== undefined)

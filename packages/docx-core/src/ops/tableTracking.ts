@@ -30,7 +30,11 @@ import {
 } from "./ids";
 import { childNodes, type InlineNode } from "./leaves";
 import { paragraphLength } from "./offsets";
-import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
+import {
+  DOCUMENT_OP_REFUSAL_REASONS,
+  DocumentOpRefusal,
+  pendingParagraphMarkReason,
+} from "./refusal";
 import {
   carriesStamp,
   stampInfo,
@@ -232,7 +236,7 @@ export const trackTableRows = ({
   if (rows.some((row) => row.structuralChange !== undefined)) {
     return refused({
       op,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
       message: "A row already carries a structural revision.",
     });
   }
@@ -261,6 +265,16 @@ export const trackTableRows = ({
       }
       finals.add(final.paragraph);
     }
+  }
+  const reviewedFinalMark = [...finals].find(
+    (paragraph) => paragraph.pPrMark !== undefined,
+  )?.pPrMark;
+  if (!missingFinalParagraph && reviewedFinalMark !== undefined) {
+    return refused({
+      op,
+      reason: pendingParagraphMarkReason(reviewedFinalMark),
+      message: "A cell's final paragraph already carries a mark revision.",
+    });
   }
   if (
     missingFinalParagraph ||
@@ -291,13 +305,6 @@ export const trackTableRows = ({
       )
         ? "A suggestion cannot record a nested table that holds captured markup or review records."
         : "The rows contain an unsupported tracked structure.",
-    });
-  }
-  if ([...finals].some((paragraph) => paragraph.pPrMark !== undefined)) {
-    return refused({
-      op,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
-      message: "A cell's final paragraph already carries a mark revision.",
     });
   }
   const before = paragraphsIn(rows);

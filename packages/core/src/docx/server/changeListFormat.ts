@@ -1,4 +1,4 @@
-import { Result } from "better-result";
+import { panic, Result } from "better-result";
 
 import {
   isNumberingLevel,
@@ -16,6 +16,7 @@ import {
   type DocumentOpRefusalReason,
   documentStories,
   type EditorIntentMode,
+  editorParagraphGroupsThroughTextBoxes,
   findStoryBody,
   idKey,
   OP_STORIES,
@@ -164,6 +165,22 @@ export const changeListFormat = (
       "Every selected paragraph must belong to the source list in the specified story.",
     );
   }
+  // A paragraph whose mark is pending deletion joins the next one, a box's
+  // paragraph the next one in its box, as the compiler groups them: the mark
+  // that survives owns the joined paragraph's list properties, so this
+  // paragraph's list format cannot change separately.
+  for (const { paragraphs } of editorParagraphGroupsThroughTextBoxes(
+    document,
+    story,
+  )) {
+    for (const { paraId } of paragraphs.slice(0, -1)) {
+      if (paraId === undefined || !levels.has(idKey(paraId))) continue;
+      return refuse(
+        DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_JOIN,
+        `Resolve the pending paragraph mark deletion of ${paraId} before changing its list format.`,
+      );
+    }
+  }
   const cloned = cloneListInstanceWithFormat(
     document.package.numbering,
     { sourceNumId, level, numFmt, lvlText, start },
@@ -192,8 +209,9 @@ export const changeListFormat = (
     mode,
   });
   if (compiled.isErr()) return Result.err(compiled.error);
-  // A pending paragraph join can redirect a logical edit to another mark.
-  const rebound = new Set<string>();
+  // No member joins the next paragraph, so the compiler addresses each
+  // member's own mark once.
+  const addressed = new Set<string>();
   for (const op of compiled.value.ops) {
     if (op.type !== DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS) continue;
     const blockId = idKey(op.blockId);
@@ -202,18 +220,11 @@ export const changeListFormat = (
       reference?.kind !== "reference" ||
       reference.numId !== num.numId ||
       levels.get(blockId) !== (reference.ilvl ?? 0)
-    ) {
-      return refuse(
-        DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
-        "A pending paragraph join changes the selected list's property owner.",
-      );
-    }
-    rebound.add(blockId);
+    )
+      panic("A list format change addressed a paragraph outside its members.");
+    addressed.add(blockId);
   }
-  if (rebound.size !== levels.size)
-    return refuse(
-      DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
-      "A pending paragraph join combines selected list members.",
-    );
+  if (addressed.size !== levels.size)
+    panic("A list format change left a member unaddressed.");
   return applyDocumentOps(document, compiled.value.ops);
 };

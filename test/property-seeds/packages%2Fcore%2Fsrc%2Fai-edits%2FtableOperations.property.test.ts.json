@@ -1,6 +1,12 @@
 {
   "keep every value, agree across modes and readers, and reject cleanly": [
     {
+      "seed": 1349464030,
+      "path": "12:7:6:6:7:7:11:8:8:8:6:6:8:12:10:7:6:8:6:7:7:7:6:6:7:6:6:8:6:7:6:7:8:7:6:13:22:18:18:10:7:6:6:14:10:17:10",
+      "note": "A tracked split beside an inserted row reports the pending table review.",
+      "date": "2026-11-22"
+    },
+    {
       "seed": -1930932135,
       "note": "#1159: tracked final paragraphs and batched rows",
       "date": "2026-09-28"

@@ -290,7 +290,7 @@ describe("folio writes both halves of a row revision", () => {
       expect(result.skipped).toEqual([
         expect.objectContaining({
           id: "delete-table",
-          reason: "unsupportedBlock",
+          reason: "pendingTableChange",
         }),
       ]);
       expect(rowTexts(await tableRows(await reviewer.toBuffer()))).toEqual([

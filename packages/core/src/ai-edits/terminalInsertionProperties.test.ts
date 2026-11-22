@@ -25,7 +25,7 @@ const INSERTION_PROPERTIES = {
 // The canonical session refuses to move a pending formatting change onto a
 // new final paragraph; legacy records the insertion.
 const FINAL_MARK_REFUSAL =
-  "A tracked insertion after a paragraph no paragraph follows needs the anchor's mark free of review records.";
+  "A tracked insertion after a paragraph no paragraph follows needs the anchor's properties free of a pending change.";
 
 const shape = (reviewer: FolioDocxReviewer) =>
   reviewer.snapshot().blocks.map((block) => {
@@ -130,6 +130,7 @@ for (const engine of [
                 expect(inserted.skipped).toEqual([
                   expect.objectContaining({
                     id: "insert",
+                    reason: "pendingParagraphPropertyChange",
                     message: FINAL_MARK_REFUSAL,
                   }),
                 ]);

@@ -812,7 +812,7 @@ const columnReviews = ({
   const conflict = (message: string) =>
     refuse({
       op,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
       message,
     });
   const columns = reviewColumns(grid);
@@ -925,7 +925,7 @@ const columnEdit = ({
   )
     return refuse({
       op,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
       message: "Resolve table reviews before changing its columns.",
     });
   // The cells the column removes, now or when its suggestion is accepted,
@@ -1026,7 +1026,7 @@ const columnEdit = ({
   const earlierSpans = () =>
     new DocumentOpRefusal({
       opType: op.type,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
       message:
         "A pending change records another span than the column edit changes.",
     });
@@ -1151,7 +1151,7 @@ const columnEdit = ({
         )
           return refuse({
             op,
-            reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+            reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
             message: "The column's cells are already suggested for deletion.",
           });
         if (trackedDeletion && entry.end - entry.start > 1)
@@ -1419,7 +1419,7 @@ const mergeReviews = ({
   const conflict = (message: string) =>
     refuse({
       op,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
       message,
     });
   const rows = table.rows.slice(op.top, op.bottom);
@@ -1475,7 +1475,7 @@ const merge = ({
   )
     return refuse({
       op,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
       message: "Resolve table reviews before changing cells.",
     });
   const selection = mergeSelection({ table, grid, op });
@@ -1488,7 +1488,7 @@ const merge = ({
   const earlierGrid = () =>
     new DocumentOpRefusal({
       opType: op.type,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
       message: "A pending change records another span than the merge changes.",
     });
   if (verticalOnly) {
@@ -1673,7 +1673,7 @@ const split = ({
   if (op.revision !== undefined && hasReview(table))
     return refuse({
       op,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
       message: "Resolve table reviews before changing cells.",
     });
   const group = grid.rows.flatMap((row) =>
@@ -1700,7 +1700,7 @@ const split = ({
   )
     return refuse({
       op,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
       message:
         "Resolve the pending insertions, deletions and merges of the split cell before splitting it.",
     });
@@ -1714,7 +1714,7 @@ const split = ({
   )
     return refuse({
       op,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
       message:
         "Resolve the pending property changes of the split cell before splitting its columns.",
     });
@@ -1796,7 +1796,7 @@ const split = ({
             () =>
               new DocumentOpRefusal({
                 opType: op.type,
-                reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+                reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
                 message:
                   "A pending change records another span than the split changes.",
               }),
@@ -1933,7 +1933,7 @@ const editProperties = ({
       if ((table.propertyChanges?.length ?? 0) > 1)
         return refuse({
           op,
-          reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+          reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
           message: "Resolve the existing table property revision.",
         });
       const pending = table.propertyChanges?.at(0);
@@ -1969,7 +1969,7 @@ const editProperties = ({
       if ((row.propertyChanges?.length ?? 0) > 1)
         return refuse({
           op,
-          reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+          reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
           message: "Resolve the existing row property revision.",
         });
       const pending = row.propertyChanges?.at(0);
@@ -2008,7 +2008,7 @@ const editProperties = ({
       if ((cell.propertyChanges?.length ?? 0) > 1)
         return refuse({
           op,
-          reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+          reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
           message: "Resolve the existing cell property revision.",
         });
       const pending = cell.propertyChanges?.at(0);
@@ -2152,7 +2152,7 @@ export const applyTableEdit = (
       if (table.formatting?.gridChange !== undefined)
         return refuse({
           op,
-          reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+          reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
           message: "Resolve the existing grid revision before resizing.",
         });
       if (op.revision !== undefined && table.columnWidths === undefined)
@@ -2164,7 +2164,7 @@ export const applyTableEdit = (
       if (table.propertyChanges !== undefined)
         return refuse({
           op,
-          reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+          reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
           message:
             "Resolve the table property history before resizing its grid.",
         });

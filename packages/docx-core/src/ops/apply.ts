@@ -99,12 +99,16 @@ import { equalForStaleness, structurallyEqual } from "./equality";
 import { resolveGap, type ZeroWidthDefault } from "./gaps";
 import { freshenIdentities, rebindRetainedIdentities } from "./identity";
 import {
+  countKeys,
+  IDENTITY_SPACES,
+  identityKeysIn,
   idKey,
   isParaId,
   packageIdentityKeyIndex,
   packageParagraphIdIndex,
   packageReservedKeyIndex,
   paragraphIdsIn,
+  slotKey,
 } from "./ids";
 import {
   concatIds,
@@ -180,10 +184,12 @@ import {
   DOCUMENT_OP_REFUSAL_REASONS,
   DocumentOpRefusal,
   type DocumentOpRefusalReason,
+  pendingParagraphMarkReason,
 } from "./refusal";
 import { type ApplyOps, resolveRevision } from "./resolve";
 import {
   foldedParagraphPropertyChange,
+  foldedRevisionIds,
   isRemovedRevisionNode,
   namesMarkFormatting,
   paragraphPropertiesOf,
@@ -272,6 +278,14 @@ export type AppliedDocumentOp = {
    * folded or continued review are excluded; a direct operation reports none.
    */
   revisions: readonly number[];
+  /**
+   * Existing revision ids whose pending property changes the operation
+   * folded its edit into, in document order: the changes now carry its
+   * stamp and record the properties it set, so accepting or rejecting one
+   * of them accepts or rejects the edit too. Disjoint from `revisions`; a
+   * direct operation reports none.
+   */
+  folded: readonly number[];
 };
 
 /** What one operation did, before the revisions it recorded are read off it. */
@@ -1390,7 +1404,7 @@ const setRunProps = (document: Document, op: SetRunPropsOp): Applied => {
     if (takesOverSuggestion)
       return refuse(
         op,
-        DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+        DOCUMENT_OP_REFUSAL_REASONS.PENDING_RUN_PROPERTY_CHANGE,
         RUN_FOLD_INTO_OTHER_SUGGESTION_MESSAGE,
       );
     if (tracked === undefined) {
@@ -1406,6 +1420,25 @@ const setRunProps = (document: Document, op: SetRunPropsOp): Applied => {
       newIds: op.newIds,
     });
     if (freshened.isErr()) return Result.err(freshened.error);
+    const sourceFresh =
+      freshened.value.at(0) ??
+      panic("Freshening removed the run patch's paragraph.");
+    // A pending change the patch folds whole keeps its id, as a paragraph's
+    // does; a piece the patch cuts off another record carrying that id takes
+    // the stamp's.
+    const carriedAfterPatch = countKeys(identityKeysIn([sourceFresh]));
+    const carriedOutside = identitiesOutside(document, [paragraph]);
+    const foldedInfo = (pending: RunPropertyChange | undefined) => {
+      const info = stampInfo(revision);
+      if (pending === undefined) return info;
+      const key = slotKey({
+        space: IDENTITY_SPACES.REVISION,
+        id: pending.info.id,
+      });
+      if (carriedOutside.has(key) || carriedAfterPatch.has(key)) return info;
+      info.id = pending.info.id;
+      return info;
+    };
     const priorIdentities = new WeakMap<InlineNode, InlineNode>();
     const appendChanges = (
       source: readonly InlineNode[],
@@ -1442,7 +1475,7 @@ const setRunProps = (document: Document, op: SetRunPropsOp): Applied => {
           }
           const change: RunPropertyChange = {
             type: "runPropertyChange",
-            info: stampInfo(revision),
+            info: foldedInfo(pending),
             boundaryJoins: options.boundaryJoins,
           };
           const previousFormatting =
@@ -1479,9 +1512,6 @@ const setRunProps = (document: Document, op: SetRunPropsOp): Applied => {
           : withNestedRecords(node, next);
       });
     };
-    const sourceFresh = freshened.value.at(0);
-    if (sourceFresh === undefined)
-      panic("Freshening removed the run patch's paragraph.");
     const content = asParagraphContent(
       appendChanges(tracked.content, sourceFresh.content),
     );
@@ -1677,7 +1707,7 @@ const setParagraphProps = (
     if (conflict !== undefined)
       return refuse(
         op,
-        DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+        DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_PROPERTY_CHANGE,
         conflict,
       );
     const authored = authoredParagraphFormatting(next);
@@ -1899,7 +1929,7 @@ const trackSplit = ({
     if (conflict !== undefined)
       return refusal(
         op,
-        DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+        DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_PROPERTY_CHANGE,
         conflict,
       );
     made.propertyChanges = [
@@ -2145,7 +2175,7 @@ const trackJoin = ({
   if (mark !== undefined && !deletesAddedMark) {
     return refuse(
       op,
-      DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      pendingParagraphMarkReason(mark),
       `The mark of ${op.blockId} already carries a tracked change.`,
     );
   }
@@ -2159,17 +2189,25 @@ const trackJoin = ({
     trailingMark?.deletion !== undefined;
   const list = blockListAt(storyBody(document, op.story).content, at.list);
   const afterTrailing = list[nextAt.index + 1];
+  const boundary =
+    afterTrailing?.type === "table"
+      ? paragraphTableRunInBoundary(trailing, afterTrailing)
+      : undefined;
   if (
     trailingMarkGoes &&
-    afterTrailing?.type === "table" &&
-    !markBeforeTableResolves({
-      blocks: list,
-      boundary: paragraphTableRunInBoundary(trailing, afterTrailing),
-    })
+    boundary !== undefined &&
+    !markBeforeTableResolves({ blocks: list, boundary })
   ) {
+    let reason: DocumentOpRefusalReason =
+      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE;
+    if (boundary.type === "blocked" && boundary.reason === "review")
+      reason =
+        boundary.review === "insertion"
+          ? DOCUMENT_OP_REFUSAL_REASONS.JOIN_INTO_PENDING_TABLE
+          : DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE;
     return refuse(
       op,
-      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+      reason,
       `Joining ${op.blockId} would run it into the table after ${op.nextBlockId}.`,
     );
   }
@@ -2192,7 +2230,7 @@ const trackJoin = ({
     if (conflict !== undefined)
       return refuse(
         op,
-        DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+        DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_PROPERTY_CHANGE,
         conflict,
       );
     second = withParagraphFormatting(trailing, formatting);
@@ -3293,47 +3331,99 @@ export const stampOf = (op: DocumentOp): RevisionStamp | undefined => {
   }
 };
 
-/** Shared prefix and suffix blocks can carry only identities already present. */
+/**
+ * The blocks an edit replaced and the ones it left in their place. Shared
+ * prefix and suffix blocks can carry only identities already present.
+ */
 const changedRevisionBlocks = (
   previous: readonly BlockContent[] | undefined,
   current: BlockContent[],
-): BlockContent[] => {
-  if (previous === current) return [];
-  if (previous === undefined) return current;
-  const { start, end } = changedListBounds(previous, current);
-  return current.slice(start, end);
+): { before: BlockContent[]; after: BlockContent[] } => {
+  if (previous === current) return { before: [], after: [] };
+  if (previous === undefined) return { before: [], after: current };
+  const { start, previousEnd, end } = changedListBounds(previous, current);
+  return {
+    before: previous.slice(start, previousEnd),
+    after: current.slice(start, end),
+  };
 };
 
-/** Newly allocated revision ids; folding changes an existing record in place. */
+/** The revision ids a tracked operation's records carry. */
+export type RecordedRevisionIds = Pick<
+  AppliedDocumentOp,
+  "revisions" | "folded"
+>;
+
+const NO_RECORDED_REVISIONS: RecordedRevisionIds = Object.freeze({
+  revisions: [],
+  folded: [],
+});
+
+/**
+ * The revision ids of operations applied in turn, as one operation's: every
+ * step's new ids, and the existing ids a step folded into that no step of
+ * them allocated.
+ */
+export const combineRecordedRevisions = (
+  steps: readonly RecordedRevisionIds[],
+): RecordedRevisionIds => {
+  const revisions = steps.flatMap((step) => step.revisions);
+  const allocated = new Set(revisions);
+  const folded = new Set(
+    steps.flatMap((step) => step.folded).filter((id) => !allocated.has(id)),
+  );
+  return { revisions, folded: [...folded] };
+};
+
+/**
+ * Newly allocated revision ids, and the existing ones whose pending property
+ * changes the operation folded its edit into.
+ */
 const recordedRevisions = (
   before: Document,
   edit: DocumentEdit,
   stamp: RevisionStamp,
   boxes: readonly TextBoxStory[],
-): number[] => {
+): RecordedRevisionIds => {
   const touched = new Set(
     [...edit.touched.modified, ...edit.touched.inserted].map(idKey),
   );
   const known = packageIdentityKeyIndex(before.package);
   const tableRevisions: number[] = [];
   const paragraphRevisions: number[] = [];
+  const folded: number[] = [];
   for (const story of [...documentStories(edit.document), ...boxes]) {
     const blocks = changedRevisionBlocks(
       findStoryBody(before, story)?.content,
       storyBody(edit.document, story).content,
     );
-    if (blocks.length === 0) continue;
-    tableRevisions.push(...stampedTableRevisionIds({ blocks, stamp, known }));
-    for (const { paragraph } of storyParagraphs({ content: blocks })) {
+    if (blocks.after.length === 0) continue;
+    tableRevisions.push(
+      ...stampedTableRevisionIds({ blocks: blocks.after, stamp, known }),
+    );
+    const replaced: Paragraph[] = [];
+    for (const { paragraph } of storyParagraphs({ content: blocks.after })) {
       const { paraId } = paragraph;
-      if (paraId !== undefined && touched.has(idKey(paraId)))
-        paragraphRevisions.push(
-          ...stampedRevisionIds([paragraph], stamp, known),
-        );
+      if (paraId === undefined || !touched.has(idKey(paraId))) continue;
+      replaced.push(paragraph);
+      paragraphRevisions.push(...stampedRevisionIds([paragraph], stamp, known));
     }
+    folded.push(
+      ...foldedRevisionIds({
+        before: storyParagraphs({ content: blocks.before }).map(
+          ({ paragraph }) => paragraph,
+        ),
+        after: replaced,
+        stamp,
+        known,
+      }),
+    );
   }
   // Every physical row record is reported before paragraph records.
-  return tableRevisions.concat(paragraphRevisions);
+  return {
+    revisions: tableRevisions.concat(paragraphRevisions),
+    folded: [...new Set(folded)],
+  };
 };
 
 /** Content edits retain authored snapshots across immutable paragraph replacements. */
@@ -3410,7 +3500,7 @@ const applyDocumentOpForPurpose = ({
   }
   let current = document;
   const edits: DocumentEdit[] = [];
-  const revisions: number[] = [];
+  const recorded: RecordedRevisionIds[] = [];
   for (const route of routes) {
     const applied = applyAddressedOp({
       document: current,
@@ -3438,13 +3528,13 @@ const applyDocumentOpForPurpose = ({
         ],
       },
     });
-    revisions.push(...applied.value.revisions);
+    recorded.push(applied.value);
   }
   const combined = combineEdits(document, edits);
   return Result.ok({
     ...combined,
     inverse: combined.inverse.map(namingPackageStories),
-    revisions,
+    ...combineRecordedRevisions(recorded),
   });
 };
 
@@ -3593,10 +3683,9 @@ const applyAddressedOp = ({
   return Result.ok({
     ...edit,
     inverse: edit.inverse.map(captureDocumentOp),
-    revisions:
-      stamp === undefined
-        ? []
-        : recordedRevisions(document, edit, stamp, boxes),
+    ...(stamp === undefined
+      ? NO_RECORDED_REVISIONS
+      : recordedRevisions(document, edit, stamp, boxes)),
   });
 };
 
@@ -3670,7 +3759,7 @@ const applyDocumentOpsForPurpose = ({
 }: ApplyDocumentOpsOptions): Result<AppliedDocumentOp, DocumentOpRefusal> => {
   let current = document;
   const effects: (DocumentEditEffects & { document?: never })[] = [];
-  const revisions: number[] = [];
+  const recorded: RecordedRevisionIds[] = [];
   for (const op of ops) {
     const applied = applyDocumentOpForPurpose({
       document: current,
@@ -3680,17 +3769,15 @@ const applyDocumentOpsForPurpose = ({
     if (applied.isErr()) {
       return applied;
     }
-    const {
-      document: next,
-      inverse,
-      touched,
-      revisions: recorded,
-    } = applied.value;
+    const { document: next, inverse, touched } = applied.value;
     current = next;
     effects.push({ inverse, touched });
-    revisions.push(...recorded);
+    recorded.push(applied.value);
   }
-  return Result.ok({ ...combineEditEffects(current, effects), revisions });
+  return Result.ok({
+    ...combineEditEffects(current, effects),
+    ...combineRecordedRevisions(recorded),
+  });
 };
 
 /**

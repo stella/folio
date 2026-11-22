@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  BATCH_ANNOTATION_KINDS,
   type BatchOrderAddress,
   compareBatchOrder,
   orderBatchOperations,
@@ -284,7 +285,8 @@ test("the batch comparator defines one total order", () => {
   const addresses: BatchOrderAddress[] = [];
   for (let inputIndex = 0; inputIndex < 4; inputIndex++) {
     for (let position = 0; position < 3; position++) {
-      addresses.push({ type: "annotation", position, inputIndex });
+      for (const kind of Object.values(BATCH_ANNOTATION_KINDS))
+        addresses.push({ type: "annotation", kind, position, inputIndex });
       for (let rank = 0; rank < 3; rank++) {
         addresses.push({ type: "content", position, rank, inputIndex });
       }
@@ -333,7 +335,12 @@ test("the batch comparator preserves phases within a table and visits nested tab
     },
     { type: "cell", tablePosition: 10, bottom: 1, right: 1, inputIndex: 2 },
     { type: "content", position: 10, rank: 1, inputIndex: 1 },
-    { type: "annotation", position: 10, inputIndex: 0 },
+    {
+      type: "annotation",
+      kind: BATCH_ANNOTATION_KINDS.COMMENT,
+      position: 10,
+      inputIndex: 0,
+    },
   ];
   assert.deepEqual(
     orderBatchOperations(sameTable, (address) => address).map(

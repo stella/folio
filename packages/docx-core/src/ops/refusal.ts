@@ -1,5 +1,6 @@
 import { TaggedError, type TaggedErrorClass } from "better-result";
 
+import type { ParagraphMarkChange } from "../model/content";
 import type { DocumentOpType } from "./types";
 
 const DocumentOpRefusalBase: TaggedErrorClass<"DocumentOpRefusal"> =
@@ -77,11 +78,37 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
   /** A replacement names no paragraph to replace, or none to put in its place. */
   readonly EMPTY_BLOCK_LIST: "emptyBlockList";
   /**
-   * The operation would record a tracked change over one the target already
-   * carries (a paragraph mark, a split that would drop a paragraph's property
-   * change), or would give a tracked split a mark of its own.
+   * The operation would give a tracked split a mark or property change of
+   * its own, or would put a pasted paragraph's review over the review the
+   * destination already carries.
    */
   readonly REVISION_CONFLICT: "revisionConflict";
+  /**
+   * The operation cannot preserve an existing table, row, cell or grid
+   * review, or would overwrite one of the same kind. Resolve it before
+   * changing the table.
+   */
+  readonly PENDING_TABLE_CHANGE: "pendingTableChange";
+  /**
+   * A suggestion would fold into a run's pending property change that is not
+   * its own. A run holds one property change and a suggestion is resolved by
+   * its id: rejecting it would discard the other change with its own.
+   */
+  readonly PENDING_RUN_PROPERTY_CHANGE: "pendingRunPropertyChange";
+  /**
+   * A suggestion would fold into a paragraph's pending property change that
+   * is not its own, for the same reason as
+   * {@link DOCUMENT_OP_REFUSAL_REASONS.PENDING_RUN_PROPERTY_CHANGE}; or a
+   * tracked insertion after a container's final paragraph would take over
+   * the mark of one whose properties carry a pending change.
+   */
+  readonly PENDING_PARAGRAPH_PROPERTY_CHANGE: "pendingParagraphPropertyChange";
+  /**
+   * A tracked join would run a paragraph, through one whose own mark is
+   * already going, into the table after it while that table's first row or
+   * cell has a pending insertion and cannot receive what runs in.
+   */
+  readonly JOIN_INTO_PENDING_TABLE: "joinIntoPendingTable";
   /** The operation would put a mark on a paragraph that ends its story body or table cell. */
   readonly CONTAINER_FINAL_MARK: "containerFinalMark";
   /**
@@ -102,6 +129,28 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
    * alone gives the original back.
    */
   readonly PENDING_BREAK_TAKEOVER: "pendingBreakTakeover";
+  /**
+   * A tracked operation would record a change of a paragraph mark whose
+   * break is pending deletion (deleted, moving away, or added and then
+   * deleted), which holds one such record: joining or deleting through it,
+   * putting a table or row against it, or, after a container's final
+   * paragraph, taking it over, since the container's new final paragraph
+   * keeps no record a pending change moves to it.
+   */
+  readonly PENDING_PARAGRAPH_MARK_DELETION: "pendingParagraphMarkDeletion";
+  /**
+   * As {@link DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_DELETION},
+   * for a paragraph mark whose break is pending insertion (inserted or moved
+   * here) and not deleted since.
+   */
+  readonly PENDING_PARAGRAPH_MARK_INSERTION: "pendingParagraphMarkInsertion";
+  /**
+   * A paragraph the operation would edit separately joins the next one
+   * through a mark pending deletion (deleted or moving away): accepting that
+   * deletion gives the joined paragraph the next paragraph's properties, so
+   * the edit would land on another paragraph or merge two named ones.
+   */
+  readonly PENDING_PARAGRAPH_JOIN: "pendingParagraphJoin";
   /**
    * A tracked column insertion in a table whose columns already carry a
    * pending change. A table records one previous grid (`w:tblGridChange`), so
@@ -194,11 +243,40 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
   /** A replacement names no paragraph to replace, or none to put in its place. */
   EMPTY_BLOCK_LIST: "emptyBlockList",
   /**
-   * The operation would record a tracked change over one the target already
-   * carries (a paragraph mark, a split that would drop a paragraph's property
-   * change), or would give a tracked split a mark of its own.
+   * The operation would give a tracked split a mark or property change of
+   * its own, or would put a pasted paragraph's review over the review the
+   * destination already carries.
    */
   REVISION_CONFLICT: "revisionConflict",
+  /**
+   * The operation would change a table, row, cell or grid that already
+   * carries a pending change of the kind it would record: a row pending
+   * insertion or deletion, a table, row or cell property change, a grid
+   * change, or cells already suggested for deletion; or would change the
+   * columns or cells of a table under review. Each element holds one record
+   * of a kind: resolve the pending one first.
+   */
+  PENDING_TABLE_CHANGE: "pendingTableChange",
+  /**
+   * A suggestion would fold into a run's pending property change that is not
+   * its own. A run holds one property change and a suggestion is resolved by
+   * its id: rejecting it would discard the other change with its own.
+   */
+  PENDING_RUN_PROPERTY_CHANGE: "pendingRunPropertyChange",
+  /**
+   * A suggestion would fold into a paragraph's pending property change that
+   * is not its own, for the same reason as
+   * {@link DOCUMENT_OP_REFUSAL_REASONS.PENDING_RUN_PROPERTY_CHANGE}; or a
+   * tracked insertion after a container's final paragraph would take over
+   * the mark of one whose properties carry a pending change.
+   */
+  PENDING_PARAGRAPH_PROPERTY_CHANGE: "pendingParagraphPropertyChange",
+  /**
+   * A tracked join would run a paragraph, through one whose own mark is
+   * already going, into the table after it while that table's first row or
+   * cell is under review: the table cannot receive what runs in.
+   */
+  JOIN_INTO_PENDING_TABLE: "joinIntoPendingTable",
   /** The operation would put a mark on a paragraph that ends its story body or table cell. */
   CONTAINER_FINAL_MARK: "containerFinalMark",
   /**
@@ -222,6 +300,28 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
    */
   PENDING_BREAK_TAKEOVER: "pendingBreakTakeover",
   /**
+   * A tracked operation would record a change of a paragraph mark whose
+   * break is pending deletion (deleted, moving away, or added and then
+   * deleted), which holds one such record: joining or deleting through it,
+   * putting a table or row against it, or, after a container's final
+   * paragraph, taking it over, since the container's new final paragraph
+   * keeps no record a pending change moves to it.
+   */
+  PENDING_PARAGRAPH_MARK_DELETION: "pendingParagraphMarkDeletion",
+  /**
+   * As {@link DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_DELETION},
+   * for a paragraph mark whose break is pending insertion (inserted or moved
+   * here) and not deleted since.
+   */
+  PENDING_PARAGRAPH_MARK_INSERTION: "pendingParagraphMarkInsertion",
+  /**
+   * A paragraph the operation would edit separately joins the next one
+   * through a mark pending deletion (deleted or moving away): accepting that
+   * deletion gives the joined paragraph the next paragraph's properties, so
+   * the edit would land on another paragraph or merge two named ones.
+   */
+  PENDING_PARAGRAPH_JOIN: "pendingParagraphJoin",
+  /**
    * A suggested link change would leave a piece of a link holding only
    * bookmark or comment markers, or would copy content that names a record of
    * its own (preserved run markup, a marker inside a copied text box, or a
@@ -243,6 +343,107 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
 /** One of {@link DOCUMENT_OP_REFUSAL_REASONS}. */
 export type DocumentOpRefusalReason =
   (typeof DOCUMENT_OP_REFUSAL_REASONS)[keyof typeof DOCUMENT_OP_REFUSAL_REASONS];
+
+/** Which operations a refusal reason can refuse. */
+export const REFUSAL_SCOPES: Readonly<{
+  /** Any operation, direct or tracked. */
+  readonly ANY: "any";
+  /**
+   * Only a tracked one: a pending review record, or the tracked change
+   * itself, cannot take the edit, which applied directly may stand.
+   */
+  readonly TRACKED: "tracked";
+}> = Object.freeze({ ANY: "any", TRACKED: "tracked" } as const);
+
+/** One of {@link REFUSAL_SCOPES}. */
+export type RefusalScope = (typeof REFUSAL_SCOPES)[keyof typeof REFUSAL_SCOPES];
+
+const { ANY, TRACKED } = REFUSAL_SCOPES;
+
+/** The scope of every refusal reason. */
+export const DOCUMENT_OP_REFUSAL_SCOPES: Readonly<
+  Record<DocumentOpRefusalReason, RefusalScope>
+> = Object.freeze({
+  unsupportedSchema: ANY,
+  blockNotFound: ANY,
+  invalidOperation: ANY,
+  noChange: ANY,
+  dependentRecords: ANY,
+  invalidOffset: ANY,
+  crossBlockRange: ANY,
+  splitsSurrogatePair: ANY,
+  invalidText: ANY,
+  invalidBlockId: ANY,
+  idCollision: ANY,
+  notAdjacent: ANY,
+  sectionBoundary: ANY,
+  insideTrackedDeletion: ANY,
+  needsNewIds: ANY,
+  invalidNewId: ANY,
+  sharedId: ANY,
+  stale: ANY,
+  structureMismatch: ANY,
+  emptyContent: ANY,
+  emptyBlockList: ANY,
+  revisionConflict: TRACKED,
+  pendingTableChange: ANY,
+  pendingRunPropertyChange: TRACKED,
+  pendingParagraphPropertyChange: TRACKED,
+  joinIntoPendingTable: TRACKED,
+  containerFinalMark: ANY,
+  insideInlineControl: ANY,
+  untrackable: TRACKED,
+  pendingBreakTakeover: TRACKED,
+  pendingParagraphMarkDeletion: TRACKED,
+  pendingParagraphMarkInsertion: TRACKED,
+  pendingParagraphJoin: ANY,
+  pendingGridChange: TRACKED,
+  unrecordableLinkSuggestion: TRACKED,
+  missingBlockId: ANY,
+  duplicateBlockId: ANY,
+  duplicateRecordId: ANY,
+  sectionsOutOfStep: ANY,
+  emptyRecord: ANY,
+} as const satisfies Record<DocumentOpRefusalReason, RefusalScope>);
+
+/** The reasons only a tracked operation is refused for. */
+export const TRACKED_REFUSAL_REASONS: readonly DocumentOpRefusalReason[] =
+  Object.freeze(
+    Object.values(DOCUMENT_OP_REFUSAL_REASONS).filter(
+      (reason) => DOCUMENT_OP_REFUSAL_SCOPES[reason] === TRACKED,
+    ),
+  );
+
+/** A refusal reason naming what a paragraph mark under review has pending. */
+type PendingParagraphMarkReason =
+  | typeof DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_DELETION
+  | typeof DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_INSERTION;
+
+/**
+ * Why a tracked edit cannot record over `mark`, by what it has pending: a
+ * break that accepting every change takes (deleted, moving away, or added
+ * and then deleted) is a pending deletion; one only added is a pending
+ * insertion.
+ */
+export const pendingParagraphMarkReason = ({
+  kind,
+  deletion,
+}: ParagraphMarkChange): PendingParagraphMarkReason => {
+  switch (kind) {
+    case "del":
+    case "moveFrom":
+      return DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_DELETION;
+    case "ins":
+    case "moveTo":
+      return deletion === undefined
+        ? DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_INSERTION
+        : DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_DELETION;
+    default: {
+      const unreachable: never = kind;
+      return unreachable;
+    }
+  }
+};
 
 /** An operation the document cannot take as stated. */
 export class DocumentOpRefusal extends DocumentOpRefusalBase<{

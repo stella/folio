@@ -477,7 +477,7 @@ test("a tracked deletion removes a mark its own author's pending insertion added
   ]) {
     const refused = applyDocumentOp(documentOf(blocks), deletion(["00000001"]));
     expect(refused.isErr() && refused.error.reason).toBe(
-      DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_INSERTION,
     );
   }
 });
@@ -989,7 +989,7 @@ test("a tracked deletion of the paragraph whose mark the last paragraph's deleti
     deletion(["00000002"]),
   );
   expect(refused.isErr() && refused.error.reason).toBe(
-    DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+    DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_DELETION,
   );
   // A closing paragraph that kept its own properties leaves the earlier
   // record standing.

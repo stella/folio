@@ -1,3 +1,15 @@
+/** What an annotation adds: run formatting, or a comment's anchor. */
+export const BATCH_ANNOTATION_KINDS: Readonly<{
+  FORMATTING: "formatting";
+  COMMENT: "comment";
+}> = {
+  FORMATTING: "formatting",
+  COMMENT: "comment",
+};
+
+export type BatchAnnotationKind =
+  (typeof BATCH_ANNOTATION_KINDS)[keyof typeof BATCH_ANNOTATION_KINDS];
+
 /**
  * The execution coordinates of an operation resolved against a batch's
  * pre-state. Positions and table coordinates are ordered from right to left;
@@ -5,9 +17,18 @@
  * Annotations run before moving edits, while table-shape and column edits run
  * after ordinary content edits. Table mutations in nested tables still run
  * right to left before the phase order is applied within the same table.
+ *
+ * Formatting moves no position, and a later write of a property replaces an
+ * earlier one, so formatting annotations run first and in input order, as
+ * one at a time; comment annotations follow them.
  */
 export type BatchOrderAddress =
-  | { type: "annotation"; position: number; inputIndex: number }
+  | {
+      type: "annotation";
+      kind: BatchAnnotationKind;
+      position: number;
+      inputIndex: number;
+    }
   | { type: "content"; position: number; rank: number; inputIndex: number }
   | {
       type: "cell";
@@ -25,6 +46,11 @@ export type BatchOrderAddress =
     };
 
 const PHASE = { annotation: 0, content: 1, cell: 2, column: 3 } as const;
+
+const ANNOTATION_PHASE = {
+  [BATCH_ANNOTATION_KINDS.FORMATTING]: 0,
+  [BATCH_ANNOTATION_KINDS.COMMENT]: 1,
+} as const satisfies Record<BatchAnnotationKind, number>;
 
 type ContentRankOperation = { type: string; position?: unknown };
 
@@ -57,6 +83,14 @@ export const compareBatchOrder = (
     return right.tablePosition - left.tablePosition;
   }
   if (left.type !== right.type) return PHASE[left.type] - PHASE[right.type];
+  if (left.type === "annotation" && right.type === "annotation") {
+    const phase = ANNOTATION_PHASE[left.kind] - ANNOTATION_PHASE[right.kind];
+    if (phase !== 0) return phase;
+    if (left.kind === BATCH_ANNOTATION_KINDS.FORMATTING)
+      return (
+        left.inputIndex - right.inputIndex || right.position - left.position
+      );
+  }
   if (
     (left.type === "annotation" || left.type === "content") &&
     (right.type === "annotation" || right.type === "content")

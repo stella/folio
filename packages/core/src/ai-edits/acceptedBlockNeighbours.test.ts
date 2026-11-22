@@ -929,9 +929,12 @@ describe("a paragraph put before a block the batch restyles, past blocks accepti
 
 // The canonical session puts it after the final paragraph, whose mark holds
 // the pending formatting change the deletions recorded: moving that change
-// onto a new final paragraph is refused.
-const FINAL_MARK_REFUSAL =
-  "A tracked insertion after a paragraph no paragraph follows needs the anchor's mark free of review records.";
+// onto a new final paragraph is refused by that pending change.
+const FINAL_MARK_REFUSAL = {
+  reason: "pendingParagraphPropertyChange",
+  message:
+    "A tracked insertion after a paragraph no paragraph follows needs the anchor's properties free of a pending change.",
+} as const;
 
 describe("a paragraph put right after words whose break a pending change deletes", () => {
   // The words run, accepted, into the closing paragraph; a paragraph put
@@ -980,7 +983,7 @@ describe("a paragraph put right after words whose break a pending change deletes
         ? [
             expect.objectContaining({
               id: "insert",
-              message: FINAL_MARK_REFUSAL,
+              ...FINAL_MARK_REFUSAL,
             }),
           ]
         : [],

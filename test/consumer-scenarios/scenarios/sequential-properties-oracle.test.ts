@@ -350,7 +350,7 @@ for (const session of ["legacy", "canonical"] as const)
                   ? [
                       {
                         id: runStart,
-                        reason: "unsupportedBlock",
+                        reason: "pendingParagraphMarkDeletion",
                         message:
                           "Deletion would overwrite a paragraph review record.",
                       },

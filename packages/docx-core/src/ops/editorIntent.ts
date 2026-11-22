@@ -28,6 +28,7 @@ import {
   type AppliedDocumentOp,
   applyDocumentOp,
   applyDocumentOps,
+  combineRecordedRevisions,
 } from "./apply";
 import {
   blockListAt,
@@ -118,7 +119,7 @@ import {
 import { groupedDeletionStamp, ownInsertionSlice } from "./revisionGrouping";
 import { runsMergeable } from "./runMerge";
 import { identitySlots } from "./slots";
-import { findStoryBody } from "./stories";
+import { findStoryBody, type StoryAddress, textBoxStoriesIn } from "./stories";
 import { tableEditParagraphDemand } from "./tableEdits";
 import { tableGrid } from "./tableGrid";
 import {
@@ -964,17 +965,17 @@ const visibleOffsetAtPhysicalOffset = (
 const joinsFollowingParagraph = (paragraph: Paragraph): boolean =>
   paragraph.pPrMark?.kind === "del" || paragraph.pPrMark?.kind === "moveFrom";
 
-/** Deleted paragraph marks concatenate physical paragraphs in the editing view. */
-export const editorParagraphGroups = (
-  document: Document,
-  story: OpStory,
-): {
+type EditorParagraphGroup = {
   blockId: string;
   paragraphs: Paragraph[];
   text: string;
-}[] => {
-  const groups: { blockId: string; paragraphs: Paragraph[]; text: string }[] =
-    [];
+};
+
+const paragraphGroupsIn = (
+  document: Document,
+  story: StoryAddress,
+): EditorParagraphGroup[] => {
+  const groups: EditorParagraphGroup[] = [];
   let pending: Paragraph[] = [];
   let previous: ReturnType<typeof storyParagraphs>[number] | undefined;
   for (const location of storyParagraphs(storyBody(document, story))) {
@@ -1010,6 +1011,32 @@ export const editorParagraphGroups = (
     });
   return groups;
 };
+
+/** Deleted paragraph marks concatenate physical paragraphs in the editing view. */
+export const editorParagraphGroups = (
+  document: Document,
+  story: OpStory,
+): {
+  blockId: string;
+  paragraphs: Paragraph[];
+  text: string;
+}[] => paragraphGroupsIn(document, story);
+
+/**
+ * {@link editorParagraphGroups} of `story` and of every text box drawn in it,
+ * each box grouped within its own story: a box's paragraphs are named
+ * through the story drawing it, and a mark pending deletion in a box joins
+ * the box's next paragraph.
+ */
+export const editorParagraphGroupsThroughTextBoxes = (
+  document: Document,
+  story: OpStory,
+): ReturnType<typeof editorParagraphGroups> => [
+  ...paragraphGroupsIn(document, story),
+  ...textBoxStoriesIn(document, story).flatMap((box) =>
+    paragraphGroupsIn(document, box),
+  ),
+];
 
 /** One logical paragraph and visible offset for a physical canonical address. */
 export const editorPositionAtPhysicalPosition = (
@@ -1246,7 +1273,11 @@ const createParagraphMarkOwnerLookup = (document: Document) => {
     let owners = stories.get(key);
     if (owners === undefined) {
       owners = new Map();
-      for (const { paragraphs } of editorParagraphGroups(document, at.story)) {
+      // A position names a box's paragraph through the story drawing it.
+      for (const { paragraphs } of editorParagraphGroupsThroughTextBoxes(
+        document,
+        at.story,
+      )) {
         const owner = paragraphs.at(-1);
         if (owner === undefined)
           panic("A logical paragraph has no property owner");
@@ -3659,7 +3690,7 @@ const compileInStory = (
             ops: [...ops],
             result: {
               ...combineEdits(document, steps),
-              revisions: steps.flatMap(({ revisions }) => revisions),
+              ...combineRecordedRevisions(steps),
             },
           };
           selection = replacementCaret(at, text);
@@ -4336,7 +4367,7 @@ const compileInStory = (
         ops: [...compact],
         result: {
           ...combineEdits(document, steps),
-          revisions: steps.flatMap(({ revisions }) => revisions),
+          ...combineRecordedRevisions(steps),
         },
       };
     if (paragraphAt(current, selection) === undefined)

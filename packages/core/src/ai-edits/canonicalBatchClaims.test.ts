@@ -387,8 +387,8 @@ for (const mode of ["direct", "tracked-changes"] as const)
             ? [
                 {
                   id: "delete",
-                  reason: "unsupportedBlock",
-                  canonicalRefusal: { gap: "publicOps.unsupportedInline" },
+                  reason: "pendingTableChange",
+                  canonicalRefusal: undefined,
                 },
               ]
             : [],
@@ -583,8 +583,8 @@ test("canonical column review refusal preserves the already-pending table atomic
   ).toEqual([
     {
       id: "delete",
-      reason: "unsupportedBlock",
-      canonicalRefusal: { gap: "publicOps.unsupportedInline" },
+      reason: "pendingTableChange",
+      canonicalRefusal: undefined,
     },
   ]);
   expect(deleted.undoHandle).toBeNull();
@@ -807,7 +807,7 @@ for (const mode of ["direct", "tracked-changes"] as const)
           ? kept
           : {
               applied: ["insert"],
-              skipped: [{ id: "delete", reason: "unsupportedBlock" }],
+              skipped: [{ id: "delete", reason: "pendingTableChange" }],
               texts: [
                 "Lead paragraph.",
                 "Only",

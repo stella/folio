@@ -42,7 +42,11 @@ import {
   nonemptyBlockReplacementEffects,
   validateBlockReplacement as validateReplacement,
 } from "./paragraphPrimitive";
-import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
+import {
+  DOCUMENT_OP_REFUSAL_REASONS,
+  DocumentOpRefusal,
+  pendingParagraphMarkReason,
+} from "./refusal";
 import type { ApplyOps } from "./resolve";
 import {
   foldedParagraphPropertyChange,
@@ -186,7 +190,7 @@ const takenOverPropertyChanges = ({
     return Result.err(
       new DocumentOpRefusal({
         opType: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
-        reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+        reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_PROPERTY_CHANGE,
         message: conflict,
       }),
     );
@@ -397,6 +401,39 @@ type PreparedTrackedParagraphInsertion =
  * main story has a supported trailing section and that the source and its
  * neighbor are adjacent top-level paragraphs (or the source is last).
  */
+type FinalMarkTakeoverRefusal = {
+  reason: DocumentOpRefusal["reason"];
+  message: string;
+};
+
+/**
+ * Why a tracked insertion after a container's final paragraph cannot take
+ * over that paragraph's mark, by the record it would move: a mark under
+ * review or a pending property change, each refused by its own reason. A
+ * review carrier's role does not move to another paragraph yet.
+ */
+const finalMarkTakeoverRefusal = (
+  paragraph: Paragraph,
+): FinalMarkTakeoverRefusal => {
+  if (paragraph.reviewCarrier !== undefined)
+    return {
+      reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+      message:
+        "A tracked insertion cannot take over the mark of a paragraph that carries a table's review.",
+    };
+  if (paragraph.pPrMark !== undefined)
+    return {
+      reason: pendingParagraphMarkReason(paragraph.pPrMark),
+      message:
+        "A tracked insertion after a paragraph no paragraph follows needs the anchor's mark free of a pending change.",
+    };
+  return {
+    reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_PROPERTY_CHANGE,
+    message:
+      "A tracked insertion after a paragraph no paragraph follows needs the anchor's properties free of a pending change.",
+  };
+};
+
 export const prepareTrackedParagraphInsertion = ({
   document,
   op,
@@ -450,9 +487,7 @@ export const prepareTrackedParagraphInsertion = ({
     return Result.err(
       new DocumentOpRefusal({
         opType: op.type,
-        reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-        message:
-          "A tracked insertion after a paragraph no paragraph follows needs the anchor's mark free of review records.",
+        ...finalMarkTakeoverRefusal(source),
       }),
     );
   const canonicalBlocks = [canonicalizeInsertedParagraph(incoming)];
@@ -783,10 +818,8 @@ export const insertBlocks = ({
         (location.paragraph.pPrMark !== undefined ||
           (location.paragraph.propertyChanges?.length ?? 0) > 0)))
   ) {
-    return refuse(
-      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      "A tracked insertion after a paragraph no paragraph follows needs the anchor's mark free of review records.",
-    );
+    const { reason, message } = finalMarkTakeoverRefusal(location.paragraph);
+    return refuse(reason, message);
   }
   const replacement = paragraphReplacement({ op, before, anchor });
   const canonicalBlocks = op.blocks.map(canonicalizeInsertedParagraph);

@@ -163,7 +163,7 @@ test("a later formatting revision cannot take over a pending join's property cha
     },
   ]);
   expect(changed.isErr() && changed.error.reason).toBe(
-    DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+    DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_PROPERTY_CHANGE,
   );
 });
 

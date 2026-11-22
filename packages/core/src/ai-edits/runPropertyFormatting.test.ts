@@ -644,17 +644,17 @@ const firstRunProperties = (xml: string): string =>
   )?.[1] ?? "";
 
 /**
- * Bold, then italic, on one unformatted run in one tracked batch. Legacy
- * refuses the edit that would give the run a second pending change; the
- * canonical session folds it into the run's one change, which still starts
- * from the original properties, so accepting gives both and rejecting
- * neither.
+ * Bold, then italic, on one unformatted run in one tracked batch, applied in
+ * input order. Legacy refuses the italic, which would give the run a second
+ * pending change; the canonical session folds it into the run's one change,
+ * which still starts from the original properties, so accepting gives both
+ * and rejecting neither.
  */
 const TWO_EDITS_OF_ONE_RUN = {
   legacy: {
-    applied: ["italic"],
-    skipped: [{ id: "bold", reason: "pendingRunPropertyChange" }],
-    properties: "<w:i/>",
+    applied: ["bold"],
+    skipped: [{ id: "italic", reason: "pendingRunPropertyChange" }],
+    properties: "<w:b/>",
   },
   canonical: {
     applied: ["bold", "italic"],
@@ -1489,27 +1489,37 @@ describe("tracked run formatting", () => {
     const { reviewer, result } =
       await formatCarriersOverPendingTab("canonical");
     expect(result.skipped).toEqual([]);
+    // The tab's change keeps its id: the transaction's new ids are the
+    // other five carriers', and it reports the tab's change it now shares.
     expect(result.applied.at(0)?.revisionIds).toEqual([
-      900, 901, 902, 903, 904, 905,
+      900, 901, 902, 903, 904, 899,
     ]);
-    expect(result.nextRevisionId).toBe(906);
+    expect(result.nextRevisionId).toBe(905);
 
     const tracked = await reviewer.toBuffer();
     const trackedXml = await documentXml(tracked);
-    // The tab's pending bold folds into its one change, which keeps the
-    // properties the tab had before either edit.
+    // The tab's pending bold folds into its one change, which keeps its id
+    // and the properties the tab had before either edit.
     assertSingularRunPropertyChanges(trackedXml, 6);
-    expect(trackedXml).not.toContain('w:id="899"');
     expect(trackedXml).toContain(
-      '<w:r><w:rPr><w:b/><w:i/><w:rPrChange w:id="901" w:author="Reviewer" w:date="2026-09-09T00:00:00.000Z"><w:rPr/></w:rPrChange></w:rPr><w:tab/></w:r>',
+      '<w:r><w:rPr><w:b/><w:i/><w:rPrChange w:id="899" w:author="Reviewer" w:date="2026-09-09T00:00:00.000Z"><w:rPr/></w:rPrChange></w:rPr><w:tab/></w:r>',
     );
     const symbol = decodeOoxmlSymbolCharacter("F06F");
     if (!symbol) {
       throw new Error("expected a decodable symbol fixture");
     }
     expect((await FolioDocxReviewer.fromBuffer(tracked)).getChanges()).toEqual(
-      ["A", "\t", "\n", symbol, "1", "field"].map((text, index) =>
-        expect.objectContaining({ id: 900 + index, type: "formatting", text }),
+      (
+        [
+          ["A", 900],
+          ["\t", 899],
+          ["\n", 901],
+          [symbol, 902],
+          ["1", 903],
+          ["field", 904],
+        ] as const
+      ).map(([text, id]) =>
+        expect.objectContaining({ id, type: "formatting", text }),
       ),
     );
 
@@ -1539,87 +1549,98 @@ describe("tracked run formatting", () => {
     }
   });
 
-  test("uses the same operation in a secondary document story", async () => {
-    const story = {
-      type: "header" as const,
-      relationshipId: HEADER_RELATIONSHIP_ID,
-    };
-    const reviewer = await FolioDocxReviewer.fromBuffer(
-      await createHeaderFormattingBaseline(),
-      {
-        author: "Reviewer",
-      },
-    );
-    const snapshot = reviewer.snapshotStory(story);
-    const block = snapshot?.blocks.at(0);
-    const range = block
-      ? createFolioAITextRangeHandle({
-          blockId: block.id,
-          text: block.text,
-          startOffset: 0,
-          endOffset: "Header".length,
-        })
-      : null;
-    if (!snapshot || !range) {
-      throw new Error("expected a header formatting range");
-    }
-    expect(snapshot.blocks.at(0)?.previewRuns).toEqual([
-      {
-        text: "Header target",
-        bold: true,
-        fontFamily: "Arial",
-        fontSizePt: 20,
-      },
-    ]);
+  test.each(HEADLESS_REVIEWER_SESSIONS)(
+    "formats a header in %s",
+    async (session) => {
+      const story = {
+        type: "header" as const,
+        relationshipId: HEADER_RELATIONSHIP_ID,
+      };
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await createHeaderFormattingBaseline(),
+        {
+          author: "Reviewer",
+          session,
+        },
+      );
+      const snapshot = reviewer.snapshotStory(story);
+      const block = snapshot?.blocks.at(0);
+      const range = block
+        ? createFolioAITextRangeHandle({
+            blockId: block.id,
+            text: block.text,
+            startOffset: 0,
+            endOffset: "Header".length,
+          })
+        : null;
+      if (!snapshot || !range) {
+        throw new Error("expected a header formatting range");
+      }
+      expect(snapshot.blocks.at(0)?.previewRuns).toEqual([
+        {
+          text: "Header target",
+          bold: true,
+          fontFamily: "Arial",
+          fontSizePt: 20,
+        },
+      ]);
 
-    const result = reviewer.applyDocumentOperationsToStory({
-      undefinedReferences: "refuse",
-      story,
-      batch: {
-        version: 1,
-        mode: "tracked-changes",
-        operations: [
-          {
-            id: "format-header",
-            type: "formatRange",
-            range,
-            formatting: { italic: true },
-          },
-        ],
-      },
-      snapshot,
-    });
-    expect(result.skipped).toEqual([]);
-    expect(
-      reviewer
-        .readReviewedStory({ story, view: "final" })
-        ?.snapshot.blocks.at(0)?.previewRuns,
-    ).toEqual([
-      {
-        text: "Header",
-        bold: true,
-        italic: true,
-        fontFamily: "Arial",
-        fontSizePt: 20,
-        directFormatting: { italic: true },
-      },
-      {
-        text: " target",
-        bold: true,
-        fontFamily: "Arial",
-        fontSizePt: 20,
-      },
-    ]);
+      const result = reviewer.applyDocumentOperationsToStory({
+        undefinedReferences: "refuse",
+        story,
+        batch: {
+          version: 1,
+          mode: "tracked-changes",
+          operations: [
+            {
+              id: "format-header",
+              type: "formatRange",
+              range,
+              formatting: { italic: true },
+            },
+          ],
+        },
+        snapshot,
+      });
+      expect(result.skipped).toEqual([]);
+      expect(
+        reviewer
+          .readReviewedStory({ story, view: "final" })
+          ?.snapshot.blocks.at(0)?.previewRuns,
+      ).toEqual([
+        {
+          text: "Header",
+          bold: true,
+          italic: true,
+          fontFamily: "Arial",
+          fontSizePt: 20,
+          directFormatting: { italic: true },
+        },
+        {
+          text: " target",
+          bold: true,
+          fontFamily: "Arial",
+          fontSizePt: 20,
+        },
+      ]);
 
-    const reopened = await FolioDocxReviewer.fromBuffer(
-      await reviewer.toBuffer(),
-    );
-    expect(
-      reopened.readReviewedStory({ story, view: "current-markup" })?.changes,
-    ).toEqual([
-      expect.objectContaining({ type: "formatting", text: "Header" }),
-    ]);
-  });
+      const revisionId = result.applied.at(0)?.revisionId;
+      expect(revisionId).toBeNumber();
+      const reopened = await FolioDocxReviewer.fromBuffer(
+        await reviewer.toBuffer(),
+        { session },
+      );
+      expect(
+        reopened.readReviewedStory({ story, view: "current-markup" })?.changes,
+      ).toEqual([
+        expect.objectContaining({
+          id: revisionId,
+          type: "formatting",
+          text: "Header",
+        }),
+      ]);
+    },
+  );
 
   test("tracks target font face, size, and color through save and reopen", async () => {
     const tracked = await applyTrackedFormatting({

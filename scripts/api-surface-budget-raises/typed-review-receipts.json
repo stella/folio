@@ -1,0 +1,13 @@
+{
+  "docx-core": {
+    "reportBytes": 1167,
+    "declarationBytes": 4385,
+    "declarationLines": 85
+  },
+  "core": {
+    "reportBytes": 3882,
+    "reportLines": 93,
+    "declarationBytes": 3255,
+    "declarationLines": 75
+  }
+}
