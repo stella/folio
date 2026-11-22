@@ -1,6 +1,7 @@
 {
   "docx-core": {
-    "declarationBytes": 1300
+    "declarationBytes": 1800,
+    "declarationLines": 10
   },
   "core": {
     "declarationBytes": 7200,
