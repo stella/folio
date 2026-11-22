@@ -80,6 +80,7 @@ import { setContentControl } from "./contentControls";
 import {
   hasMultipleParagraphPropertyChanges,
   meetsContract,
+  putsSectionInTableCell,
   repeatedParagraphId,
   validateOpsDocument,
 } from "./contract";
@@ -3678,6 +3679,17 @@ const applyAddressedOp = ({
         op,
         DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
         "A paragraph cannot carry more than one property change.",
+      ),
+    );
+  }
+  if (
+    putsSectionInTableCell({ before: document, after: edit.document, boxes })
+  ) {
+    return Result.err(
+      refusal(
+        op,
+        DOCUMENT_OP_REFUSAL_REASONS.SECTION_BOUNDARY,
+        "A section cannot end inside a table cell.",
       ),
     );
   }

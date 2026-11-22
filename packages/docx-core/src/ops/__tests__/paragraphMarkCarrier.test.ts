@@ -373,7 +373,14 @@ test("rejecting a marker-only inline content control hands it to the following t
     rows: [
       {
         ...table.rows[0],
-        preservedAttributes: [{ name: "rsidTr", value: "00ABCDEF" }],
+        preservedAttributes: [
+          {
+            namespace:
+              "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+            name: "rsidTr",
+            value: "00ABCDEF",
+          },
+        ],
       },
     ],
   } as const;

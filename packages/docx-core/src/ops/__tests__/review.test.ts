@@ -1853,7 +1853,7 @@ test("a new first split half records its own review without moving the surviving
 });
 
 describe("whole-document revision rejection", () => {
-  test("preserves an unchanged section-ending follower after removing a nested note reference", () => {
+  test("preserves an unchanged follower in a cell after removing a nested note reference", () => {
     const sectionProperties = { pageWidth: 11906 };
     const first = paragraph(
       "00000001",
@@ -1887,7 +1887,7 @@ describe("whole-document revision rejection", () => {
     const inserted = paragraph("00000002", [], {
       pPrMark: { kind: "ins", info: { id: 3, author: "A" } },
     });
-    const follower = paragraph("00000003", [], { sectionProperties });
+    const follower = paragraph("00000003", []);
     const cellTable = {
       type: "table",
       columnWidths: [2400, 2400],
@@ -1895,7 +1895,14 @@ describe("whole-document revision rejection", () => {
         {
           type: "tableRow",
           cells: [{ type: "tableCell", content: [inserted, follower] }],
-          preservedAttributes: [{ name: "rsidTr", value: "00ABCDEF" }],
+          preservedAttributes: [
+            {
+              namespace:
+                "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+              name: "rsidTr",
+              value: "00ABCDEF",
+            },
+          ],
         },
       ],
     } as const;

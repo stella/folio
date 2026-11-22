@@ -322,7 +322,14 @@ describe("a canonical reviewer's pending suggestions", () => {
               rows: [
                 {
                   type: "tableRow",
-                  preservedAttributes: [{ name: "rsidTr", value: "00ABCDEF" }],
+                  preservedAttributes: [
+                    {
+                      namespace:
+                        "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+                      name: "rsidTr",
+                      value: "00ABCDEF",
+                    },
+                  ],
                   cells: [
                     {
                       type: "tableCell",

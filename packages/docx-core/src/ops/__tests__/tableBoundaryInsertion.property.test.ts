@@ -30,7 +30,6 @@ import {
   INHERIT_RUN_PROPS,
   OP_STORIES,
   REVISION_DECISIONS,
-  SECTION_BOUNDARY_POLICIES,
   toOpEnvelope,
 } from "../types";
 
@@ -480,18 +479,14 @@ for (const boundary of [
         },
       }).unwrap().document;
     if (boundary === "review-section") {
+      // No operation puts a section in a cell: the document enters with it.
+      before = structuredClone(before);
       const marked = storyParagraphs(before.package.document).find(
         ({ paragraph: item }) => item.paraId === "10000022",
       )?.paragraph;
       if (marked === undefined)
         panic("The actual row producer needs its section receiver.");
-      before = applyDocumentOp(before, {
-        type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
-        story: OP_STORIES.MAIN,
-        expected: [marked],
-        blocks: [{ ...marked, sectionProperties: { pageWidth: 11906 } }],
-        sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE,
-      }).unwrap().document;
+      marked.sectionProperties = { pageWidth: 11906 };
     }
     const original = structuredClone(before);
     const at = {

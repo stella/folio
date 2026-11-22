@@ -423,7 +423,9 @@ const blockArbitrary: fc.Arbitrary<BlockContent> = fc.oneof(
         rows: rows.map((cells) => ({
           type: "tableRow",
           cells: cells.map((content) => ({ type: "tableCell", content })),
-          preservedAttributes: [{ name: "rsidTr", value: "00ABCDEF" }],
+          preservedAttributes: [
+            { namespace: W_NAMESPACE, name: "rsidTr", value: "00ABCDEF" },
+          ],
         })),
       })),
   },
@@ -624,6 +626,32 @@ const reviewValid = (
   return visit(blocks, true);
 };
 
+const withoutSection = (block: BlockContent): BlockContent => {
+  if (block.type !== "paragraph") return block;
+  const { sectionProperties: _section, ...paragraph } = block;
+  return paragraph;
+};
+
+/**
+ * Blocks whose cell paragraphs end no section: a section ends outside every
+ * table. The drawn section still leaves its paragraph unmarked in a review.
+ */
+const withoutCellSections = (blocks: readonly BlockContent[]): BlockContent[] =>
+  blocks.map((block) =>
+    block.type === "table"
+      ? {
+          ...block,
+          rows: block.rows.map((row) => ({
+            ...row,
+            cells: row.cells.map((cell) => ({
+              ...cell,
+              content: cell.content.map(withoutSection),
+            })),
+          })),
+        }
+      : block,
+  );
+
 /** Which documents a generator draws. */
 type DocumentMode = "any" | "review";
 
@@ -645,7 +673,7 @@ const documentArbitraryIn = (mode: DocumentMode): fc.Arbitrary<Document> =>
         control: 1,
       }) as BlockContent[];
       const reviewed = mode === "review" ? reviewValid(named, choices) : named;
-      return documentFrom(reviewed, shareSections);
+      return documentFrom(withoutCellSections(reviewed), shareSections);
     });
 
 /**

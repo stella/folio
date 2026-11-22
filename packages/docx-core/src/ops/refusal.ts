@@ -44,7 +44,8 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
   /**
    * The operation would move or remove a section break (joining a paragraph
    * that ends a section, replacing paragraphs across or at one); that is a
-   * section operation.
+   * section operation. Or it would put one inside a table cell, where no
+   * section ends.
    */
   readonly SECTION_BOUNDARY: "sectionBoundary";
   /** Direct text would land inside tracked-deleted or moved-away content. */
@@ -209,7 +210,8 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
   /**
    * The operation would move or remove a section break (joining a paragraph
    * that ends a section, replacing paragraphs across or at one); that is a
-   * section operation.
+   * section operation. Or it would put one inside a table cell, where no
+   * section ends.
    */
   SECTION_BOUNDARY: "sectionBoundary",
   /** Direct text would land inside tracked-deleted or moved-away content. */

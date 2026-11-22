@@ -3,6 +3,7 @@ import { Result, TaggedError, type TaggedErrorClass } from "better-result";
 import type {
   BlockContent,
   Document,
+  Paragraph,
   TableCell,
   TableRow,
 } from "../model/document";
@@ -71,54 +72,71 @@ const holdsEmptyRecord = (nodes: readonly InlineNode[]): boolean =>
     (node) => isEmptyRecord(node) || holdsEmptyRecord(childNodes(node) ?? []),
   );
 
-// Operation documents and their block lists are immutable once validated.
-const MULTIPLE_PROPERTY_CHANGES = new WeakMap<object, boolean>();
+type BlockListCheck = (blocks: readonly BlockContent[]) => boolean;
 
-const blocksHaveMultiplePropertyChanges = (
-  blocks: readonly BlockContent[],
-): boolean => {
-  const key = listKey(blocks);
-  const cached = MULTIPLE_PROPERTY_CHANGES.get(key);
-  if (cached !== undefined) return cached;
-  const splice = sourceSplice(blocks);
-  // A previously clean list can only acquire a violation in the replacement.
-  const candidates =
-    splice !== undefined &&
-    MULTIPLE_PROPERTY_CHANGES.get(splice.previous) === false
-      ? blocks.slice(splice.start, splice.end)
-      : blocks;
-  const found = candidates.some((block) => {
-    switch (block.type) {
-      case "paragraph":
-        return (block.propertyChanges?.length ?? 0) > 1;
-      case "table":
-        return block.rows.some((row) =>
-          row.cells.some((cell) =>
-            blocksHaveMultiplePropertyChanges(cell.content),
-          ),
-        );
-      case "blockSdt":
-      case "blockCustomXml":
-        return blocksHaveMultiplePropertyChanges(block.content);
-      case "preservedBlock":
-      case "bookmarkStart":
-      case "bookmarkEnd":
-      case "commentRangeStart":
-      case "commentRangeEnd":
-      case "moveFromRangeStart":
-      case "moveFromRangeEnd":
-      case "moveToRangeStart":
-      case "moveToRangeEnd":
-        return false;
-      default: {
-        const unreachable: never = block;
-        return unreachable;
-      }
-    }
-  });
-  MULTIPLE_PROPERTY_CHANGES.set(key, found);
-  return found;
+type BlockListCheckOptions = {
+  /** Whether a paragraph directly in the list is what the check looks for. */
+  paragraph: (paragraph: Paragraph) => boolean;
+  /** How a table's cells are checked; as the list itself by default. */
+  cell?: BlockListCheck;
 };
+
+/**
+ * Whether a block list or a container in it holds what `paragraph` looks for,
+ * reusing unchanged lists: operation documents and their block lists are
+ * immutable once validated.
+ */
+const blockListCheck = ({
+  paragraph,
+  cell,
+}: BlockListCheckOptions): BlockListCheck => {
+  const checked = new WeakMap<object, boolean>();
+  const holds: BlockListCheck = (blocks) => {
+    const key = listKey(blocks);
+    const cached = checked.get(key);
+    if (cached !== undefined) return cached;
+    const splice = sourceSplice(blocks);
+    // A previously clean list can only acquire a violation in the replacement.
+    const candidates =
+      splice !== undefined && checked.get(splice.previous) === false
+        ? blocks.slice(splice.start, splice.end)
+        : blocks;
+    const found = candidates.some((block) => {
+      switch (block.type) {
+        case "paragraph":
+          return paragraph(block);
+        case "table":
+          return block.rows.some((row) =>
+            row.cells.some(({ content }) => (cell ?? holds)(content)),
+          );
+        case "blockSdt":
+        case "blockCustomXml":
+          return holds(block.content);
+        case "preservedBlock":
+        case "bookmarkStart":
+        case "bookmarkEnd":
+        case "commentRangeStart":
+        case "commentRangeEnd":
+        case "moveFromRangeStart":
+        case "moveFromRangeEnd":
+        case "moveToRangeStart":
+        case "moveToRangeEnd":
+          return false;
+        default: {
+          const unreachable: never = block;
+          return unreachable;
+        }
+      }
+    });
+    checked.set(key, found);
+    return found;
+  };
+  return holds;
+};
+
+const blocksHaveMultiplePropertyChanges = blockListCheck({
+  paragraph: ({ propertyChanges }) => (propertyChanges?.length ?? 0) > 1,
+});
 
 /** Check every editable story and nested block container, reusing unchanged lists. */
 export const hasMultipleParagraphPropertyChanges = (
@@ -128,6 +146,53 @@ export const hasMultipleParagraphPropertyChanges = (
   [...documentStories(document), ...boxes].some((story) =>
     blocksHaveMultiplePropertyChanges(storyBody(document, story).content),
   );
+
+const blocksEndSection = blockListCheck({
+  paragraph: ({ sectionProperties }) => sectionProperties !== undefined,
+});
+
+const cellsEndSection = blockListCheck({
+  paragraph: () => false,
+  cell: blocksEndSection,
+});
+
+/** Whether a paragraph anywhere in a table cell ends a section. */
+export const hasSectionInTableCell = (
+  document: Document,
+  boxes: readonly TextBoxStory[] = [],
+): boolean =>
+  [...documentStories(document), ...boxes].some((story) =>
+    cellsEndSection(storyBody(document, story).content),
+  );
+
+/** Documents made from one that entered with a section inside a table cell. */
+const ENTERED_WITH_CELL_SECTION = new WeakSet<Document>();
+
+type CellSectionOptions = {
+  before: Document;
+  after: Document;
+  boxes: readonly TextBoxStory[];
+};
+
+/**
+ * Whether an edit puts a section inside a table cell. A section ends outside
+ * every table, so no operation may; a document that entered with one keeps
+ * it, and its edits and their inverses apply.
+ */
+export const putsSectionInTableCell = ({
+  before,
+  after,
+  boxes,
+}: CellSectionOptions): boolean => {
+  if (
+    ENTERED_WITH_CELL_SECTION.has(before) ||
+    hasSectionInTableCell(before, boxes)
+  ) {
+    ENTERED_WITH_CELL_SECTION.add(after);
+    return false;
+  }
+  return hasSectionInTableCell(after, boxes);
+};
 
 /**
  * Two paragraphs of the package carrying one id. The package's paragraph
