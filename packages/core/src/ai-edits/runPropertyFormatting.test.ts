@@ -1014,7 +1014,7 @@ describe("tracked run formatting", () => {
   );
 
   test.each(HEADLESS_REVIEWER_SESSIONS)(
-    "%s: a replacement keeping a reopened formatting owner leaves its change as it was",
+    "%s: refuses to clear a background over a reopened formatting change",
     async (session) => {
       const baseline = await createFormattingBaseline({
         formatting: { highlight: "yellow" },
@@ -1093,60 +1093,19 @@ describe("tracked run formatting", () => {
 
       expect(replacementResult.status).toBe("committed");
       const afterReplacement = await reopened.toBuffer();
-      switch (session) {
-        case "legacy": {
-          // Legacy clears the background across the whole found text, which
-          // would give the formatted run a second property change, so it
-          // refuses without side effects.
-          expect(replacementResult.applied).toEqual([]);
-          expect(replacementResult.skipped).toEqual([
-            { id: "replace", reason: "pendingRunPropertyChange" },
-          ]);
-          expect(replacementResult.nextRevisionId).toBe(701);
-          expect(reopened.getComments()).toEqual([]);
-          expect(reopened.snapshot()).toEqual(snapshotBeforeReplacement);
-          expect(await documentXml(afterReplacement)).toBe(
-            await documentXml(beforeReplacement),
-          );
-          expect(await packagePart(afterReplacement, "word/comments.xml")).toBe(
-            await packagePart(beforeReplacement, "word/comments.xml"),
-          );
-          break;
-        }
-        case "canonical": {
-          // The canonical session inserts only the added words, so the kept
-          // word's run, with its one pending change, is untouched.
-          expect(replacementResult.skipped).toEqual([]);
-          expect(replacementResult.applied).toEqual([
-            {
-              id: "replace",
-              revisionId: 701,
-              revisionIds: [701],
-              commentId: 702,
-            },
-          ]);
-          expect(replacementResult.nextRevisionId).toBe(703);
-          expect(formattingOwnerRun(await documentXml(afterReplacement))).toBe(
-            ownerRun,
-          );
-          expect(reopened.getChanges()).toEqual([
-            expect.objectContaining({ id: 700, type: "formatting" }),
-            expect.objectContaining({
-              id: 701,
-              type: "insertion",
-              text: ", changed",
-            }),
-          ]);
-          expect(reopened.getComments()).toEqual([
-            expect.objectContaining({ id: 702, anchoredText: ", changed" }),
-          ]);
-          break;
-        }
-        default: {
-          const unreachable: never = session;
-          throw new Error(`Unknown session ${unreachable}`);
-        }
-      }
+      expect(replacementResult.applied).toEqual([]);
+      expect(replacementResult.skipped).toEqual([
+        { id: "replace", reason: "pendingRunPropertyChange" },
+      ]);
+      expect(replacementResult.nextRevisionId).toBe(701);
+      expect(reopened.getComments()).toEqual([]);
+      expect(reopened.snapshot()).toEqual(snapshotBeforeReplacement);
+      expect(await documentXml(afterReplacement)).toBe(
+        await documentXml(beforeReplacement),
+      );
+      expect(await packagePart(afterReplacement, "word/comments.xml")).toBe(
+        await packagePart(beforeReplacement, "word/comments.xml"),
+      );
 
       const followupBlock = reopened.snapshot().blocks.at(0);
       const followupRange = followupBlock
@@ -1203,11 +1162,7 @@ describe("tracked run formatting", () => {
       expect(acceptedXml).toContain("<w:i/>");
       expect(acceptedXml).not.toContain("<w:rPrChange ");
       expect(accepted.getChanges()).toEqual([]);
-      expect(accepted.snapshot().blocks.at(0)?.text).toBe(
-        session === "legacy"
-          ? "Formatting target"
-          : "Formatting, changed target",
-      );
+      expect(accepted.snapshot().blocks.at(0)?.text).toBe("Formatting target");
 
       const rejecting = await FolioDocxReviewer.fromBuffer(followedUp, {
         session,

@@ -224,12 +224,12 @@ import {
   markdownRunText,
 } from "./markdownInsertion";
 import {
-  applyTextChanges,
+  BACKGROUND_MARK_NAMES,
   changesFromSegments,
-  keepAtomicSpans,
+  planReplacementChanges,
   planTextChanges,
   type TextChange,
-  widenChangesToAtomicSpans,
+  touchedBackgroundStretches,
 } from "./minimal-replacement";
 import {
   assertNewListsAllocated,
@@ -245,7 +245,6 @@ import {
   type NoteReferenceLabels,
   noteReferenceOf,
   noteReferenceSpansWithin,
-  planChangesAroundNoteReferences,
   segmentsAroundNoteReferences,
 } from "./note-references";
 import {
@@ -9295,11 +9294,6 @@ type DocumentReplacementPlan = {
   replacementStyleSource: (change: TextChange) => PositionRange | null;
 };
 
-const BACKGROUND_MARK_NAMES: ReadonlySet<string> = new Set([
-  "highlight",
-  "runShading",
-]);
-
 /**
  * Formatting, as opposed to a mark naming something outside the text or
  * describing one character (see `NON_INCLUSIVE_MARK_DISPOSITION`).
@@ -9369,46 +9363,20 @@ const planDocumentReplacement = ({
   const keepsReferences =
     segmentsAroundNoteReferences(span.text, replacement, noteReferenceSpans) !==
     null;
-  const editsReferences = !keepsReferences && noteReferenceEditsAllowed();
-  const atomicSpans = cleanBlock.structuralBoundaries.flatMap((boundary) =>
-    boundary.type === "field" ||
-    (editsReferences && boundary.type === "noteReference")
-      ? [{ offset: boundary.offset - spanStart, length: boundary.length }]
-      : [],
-  );
-  const planPieces = (
-    plan: (source: string, replacement: string) => readonly TextChange[],
-  ): TextChange[] | null =>
-    editsReferences
-      ? [...plan(span.text, replacement)]
-      : planChangesAroundNoteReferences(
-          span.text,
-          replacement,
-          noteReferenceSpans,
-          plan,
-        );
-  const pieceChanges = planPieces(planChanges);
-  if (pieceChanges === null) {
-    return null;
-  }
-  const widened = widenChangesToAtomicSpans(
-    span.text,
-    pieceChanges,
-    atomicSpans,
-  );
-  const keptPieces =
-    keepFieldsOf === undefined ? null : planPieces(keepFieldsOf);
-  const changes =
-    keptPieces === null
-      ? widened
-      : keepAtomicSpans(
-          span.text,
-          replacement,
-          widened,
-          widenChangesToAtomicSpans(span.text, keptPieces, atomicSpans),
-          atomicSpans,
-        );
-  if (applyTextChanges(span.text, changes) !== replacement) {
+  const changes = planReplacementChanges({
+    source: span.text,
+    replacement,
+    noteReferences: noteReferenceSpans,
+    editsReferences: !keepsReferences && noteReferenceEditsAllowed(),
+    fields: cleanBlock.structuralBoundaries.flatMap((boundary) =>
+      boundary.type === "field"
+        ? [{ offset: boundary.offset - spanStart, length: boundary.length }]
+        : [],
+    ),
+    planChanges,
+    ...(keepFieldsOf === undefined ? {} : { keepFieldsOf }),
+  });
+  if (changes === null) {
     return null;
   }
 
@@ -10250,54 +10218,25 @@ type TouchedBackgroundOptions = {
 
 /**
  * The clean-text characters of every background stretch a change touches,
- * within the matched span.
- *
- * Text written onto a highlighted value is new text, so the marker saying
- * "fill this in" must not survive on it, and changing one digit of a
- * highlighted amount still fills the whole amount. Background elsewhere in the
- * match is left alone.
+ * within the matched span (see {@link touchedBackgroundStretches}).
  */
 const touchedBackgroundIndices = ({
   doc,
   plan: { changes, spanStart, spanEnd, unitAt },
 }: TouchedBackgroundOptions): Set<number> => {
   const hasBackground = (index: number): boolean => {
-    const unit = unitAt(index);
+    const unit = unitAt(spanStart + index);
     const node = unit === null ? null : doc.nodeAt(unit.from);
     return (
       node?.marks.some((mark) => BACKGROUND_MARK_NAMES.has(mark.type.name)) ??
       false
     );
   };
-  const touched = new Set<number>();
-  for (const change of changes) {
-    const start = spanStart + change.start;
-    const end = spanStart + change.end;
-    // A pure insertion touches the characters on either side of it.
-    const touchedFrom = start === end ? Math.max(start - 1, spanStart) : start;
-    const touchedTo = start === end ? Math.min(end + 1, spanEnd) : end;
-    for (let index = touchedFrom; index < touchedTo; index++) {
-      if (touched.has(index) || !hasBackground(index)) {
-        continue;
-      }
-      touched.add(index);
-      for (
-        let left = index - 1;
-        left >= spanStart && hasBackground(left);
-        left--
-      ) {
-        touched.add(left);
-      }
-      for (
-        let right = index + 1;
-        right < spanEnd && hasBackground(right);
-        right++
-      ) {
-        touched.add(right);
-      }
-    }
-  }
-  return touched;
+  const touched = touchedBackgroundStretches(changes, {
+    length: spanEnd - spanStart,
+    hasBackground,
+  });
+  return new Set([...touched].map((index) => spanStart + index));
 };
 
 /** The document ranges owning clean characters `indices`, merged where they meet. */

@@ -90,6 +90,14 @@ import {
   stripInlineEmphasisMarkers,
 } from "../ai-edits/inline-emphasis";
 import { compileMarkdownInsertion } from "../ai-edits/markdownInsertion";
+import {
+  BACKGROUND_MARK_NAMES,
+  changesFromSegments,
+  cutAroundRepeatedSeparators,
+  planReplacementChanges,
+  planTextChanges,
+  touchedBackgroundStretches,
+} from "../ai-edits/minimal-replacement";
 import { createBatchListMinter } from "../ai-edits/newListNumbering";
 import {
   cutsIntoNoteReference,
@@ -181,7 +189,10 @@ import {
 } from "../document-operations";
 import { paragraphFormattingWithAuthoredIndentation } from "../docx/paragraphPropertySource";
 import { canonicalOperationStagingAccess } from "../internal/canonicalOperationStaging";
-import { expectTableAttrs } from "../prosemirror/attrs";
+import {
+  expectRunPropertyChangeMarkAttrs,
+  expectTableAttrs,
+} from "../prosemirror/attrs";
 import { tableAnchor } from "../prosemirror/canonicalTableCommands";
 import { paragraphEndsItsContainer } from "../prosemirror/containerFinalParagraph";
 import {
@@ -1302,68 +1313,6 @@ type ProjectedParagraph = NonNullable<
  * paragraph to name it by, such as an empty content control.
  */
 type ListStartPlace = { blockId: string; position: number };
-
-type CleanTextChange = { start: number; end: number; text: string };
-
-type ChangesTakingWholeSpansOptions = {
-  /** Disjoint, in order, as clean-text offsets of the paragraph. */
-  changes: readonly CleanTextChange[];
-  /** The paragraph's clean text. */
-  text: string;
-  /**
-   * Spans edited only whole, as clean-text offsets: note references, field
-   * results.
-   */
-  spans: readonly { offset: number; length: number }[];
-};
-
-/**
- * Replacement changes with each one that cuts into a span widened over the
- * whole span, so the span is struck and its text written again rather than
- * cut (a note reference's marker, a field's result); changes the widening
- * makes meet become one.
- */
-const changesTakingWholeSpans = ({
-  changes,
-  text,
-  spans,
-}: ChangesTakingWholeSpansOptions): CleanTextChange[] => {
-  const extent = ({ start, end }: CleanTextChange) => {
-    let from = start;
-    let to = end;
-    for (const { offset, length } of spans) {
-      const touches =
-        from < offset + length &&
-        (to > offset || (from === to && from > offset));
-      if (!touches) continue;
-      from = Math.min(from, offset);
-      to = Math.max(to, offset + length);
-    }
-    return { from, to };
-  };
-  const regions: { from: number; to: number; members: CleanTextChange[] }[] =
-    [];
-  for (const change of changes) {
-    const { from, to } = extent(change);
-    const last = regions.at(-1);
-    if (last !== undefined && from <= last.to) {
-      last.to = Math.max(last.to, to);
-      last.members.push(change);
-      continue;
-    }
-    regions.push({ from, to, members: [change] });
-  }
-  return regions.map(({ from, to, members }) => {
-    let position = from;
-    let replacement = "";
-    for (const member of members) {
-      replacement += text.slice(position, member.start) + member.text;
-      position = member.end;
-    }
-    replacement += text.slice(position, to);
-    return { start: from, end: to, text: replacement };
-  });
-};
 
 type ResolveBlockInsertionOptions = {
   mintList: ReturnType<typeof createBatchListMinter>;
@@ -7332,6 +7281,26 @@ export class CanonicalPublicOperations {
     const references = noteReferenceSpansWithin(clean, start, end);
     if (cutsIntoNoteReference(clean, start, end))
       return refusal("protectedReference");
+    const range = resolveCleanTextRange({
+      cleanBlock: clean,
+      startOffset: start,
+      endOffset: end,
+    });
+    // The text matched above and no reference is cut, so only structure
+    // leaves the range unresolved: an edge inside a field result, which
+    // names text no run holds, or a page-break run inside it. Both engines
+    // skip it alike, with the reason alone, before reading what the
+    // replacement writes.
+    if (!range)
+      return Result.err(
+        new CanonicalPublicOperationResolutionError({
+          reason: "unsupportedBlock",
+          message:
+            "The range begins or ends inside a field result or holds a page-break run.",
+          detail: undefined,
+          gap: null,
+        }),
+      );
     // Inline emphasis or dropped formatting rebuilds the replaced runs whole,
     // the references among them included.
     const dropsFormatting =
@@ -7383,12 +7352,6 @@ export class CanonicalPublicOperations {
         "unsupportedBlock",
         "Canonical public replacements require plain text.",
       );
-    const range = resolveCleanTextRange({
-      cleanBlock: clean,
-      startOffset: start,
-      endOffset: end,
-    });
-    if (!range) return refusal("staleRange");
     const from = projection.value.addressAt(range.from);
     const to = projection.value.addressAt(range.to);
     if (from.isErr() || to.isErr()) return refusal("unsupportedBlock");
@@ -7547,98 +7510,41 @@ export class CanonicalPublicOperations {
     const normalizations: FolioAIEditNormalization[] = [];
     let deletionSpans: PreparedOperation["deletionSpans"];
     if (intent.type === "replaceText") {
-      const changes: { start: number; end: number; text: string }[] = [];
-      // Each piece of prose between kept references changes on its own, so
-      // no change reaches a reference.
-      for (const [index, piece] of segments.source.entries()) {
-        let offset = start + piece.offset;
-        let pending: { start: number; end: number; text: string } | null = null;
-        for (const segment of diff(
-          piece.text,
-          segments.replacement[index] ?? "",
-        )) {
-          switch (segment.type) {
-            case "equal":
-              if (pending) changes.push(pending);
-              pending = null;
-              offset += segment.text.length;
-              break;
-            case "del":
-              pending ??= { start: offset, end: offset, text: "" };
-              offset += segment.text.length;
-              pending.end = offset;
-              break;
-            case "ins":
-              pending ??= { start: offset, end: offset, text: "" };
-              pending.text += segment.text;
-              break;
-            default: {
-              const unreachable: never = segment.type;
-              return panic(`Unknown replacement diff ${unreachable}`);
-            }
-          }
-        }
-        if (pending) changes.push(pending);
-      }
-      if (editsReferences)
-        changes.splice(
-          0,
-          changes.length,
-          ...changesTakingWholeSpans({
-            changes,
-            text: clean.text,
-            spans: references.map(({ offset, length }) => ({
-              offset: start + offset,
-              length,
-            })),
-          }),
-        );
-      // A field result is edited whole: a change the word diff places inside
-      // one replaces the whole field with its text, so the field goes as a
-      // tracked deletion and the edited words come in as text. A change that
-      // only meets a field at its edge stays as it is.
-      const fields = clean.structuralBoundaries.filter(
-        (boundary) => boundary.type === "field",
+      // The shared plan, as the default engine writes it: the direct edit
+      // writes the smallest change, a redline cuts its changes for the reader
+      // and keeps every field the direct edit keeps. Each piece of prose
+      // between kept references changes on its own, so no change reaches a
+      // reference; one that edits references takes each it touches whole.
+      const planned = planReplacementChanges({
+        source: clean.text.slice(start, end),
+        replacement: text,
+        noteReferences: references,
+        editsReferences,
+        fields: clean.structuralBoundaries.flatMap((boundary) =>
+          boundary.type === "field"
+            ? [{ offset: boundary.offset - start, length: boundary.length }]
+            : [],
+        ),
+        planChanges: tracked
+          ? (source, target) => changesFromSegments(diff(source, target))
+          : planTextChanges,
+        ...(tracked ? { keepFieldsOf: planTextChanges } : {}),
+      });
+      // The segments above keep the references, or the replacement edits
+      // them, so a plan always exists and reproduces the replacement.
+      if (planned === null)
+        return panic("A replacement's planned changes must reproduce it.");
+      // Keep repeated tabs and breaks in place. A replacement that changes
+      // the separators passes them to the editor as inline elements.
+      const separated = cutAroundRepeatedSeparators(
+        clean.text.slice(start, end),
+        planned,
       );
-      if (fields.length > 0)
-        changes.splice(
-          0,
-          changes.length,
-          ...changesTakingWholeSpans({
-            changes,
-            text: clean.text,
-            spans: fields,
-          }),
-        );
-      // A tab the replacement repeats from the source is kept: a change that
-      // spans as many tabs as it writes changes the text between them, tab
-      // for tab. Any other tab or break is written as its element.
-      for (let index = changes.length - 1; index >= 0; index -= 1) {
-        const change = changes[index];
-        if (change === undefined || !/[\t\n]/u.test(change.text)) continue;
-        const sourceParts = clean.text
-          .slice(change.start, change.end)
-          .split("\t");
-        const replacementParts = change.text.split("\t");
-        if (
-          /\n/u.test(change.text) ||
-          sourceParts.length !== replacementParts.length
-        )
-          continue;
-        const pieces: typeof changes = [];
-        let position = change.start;
-        for (const [part, sourcePart] of sourceParts.entries()) {
-          const replacementPart = replacementParts[part] ?? "";
-          if (sourcePart !== replacementPart)
-            pieces.push({
-              start: position,
-              end: position + sourcePart.length,
-              text: replacementPart,
-            });
-          position += sourcePart.length + 1;
-        }
-        changes.splice(index, 1, ...pieces);
-      }
+      const changes = separated.map((change) => ({
+        start: start + change.start,
+        end: start + change.end,
+        text: change.text,
+      }));
       const placeChanges = (
         pieces: readonly { start: number; end: number; text: string }[],
       ) => {
@@ -7765,6 +7671,80 @@ export class CanonicalPublicOperations {
         deletionSpans = replacementChanges.filter(
           (span) => span.from < span.to,
         );
+      // The background goes from every stretch a change touches, its kept
+      // characters included, as the default engine clears it: changing one
+      // digit of a highlighted amount fills the whole amount. The kept
+      // characters are formatted first, while the source offsets still name
+      // them; the replacements write their own text without it.
+      if (intent.runPropsPatch !== undefined) {
+        const nodeAtCharacter = (index: number) => {
+          const position = clean.offsets[start + index];
+          return position === undefined
+            ? null
+            : paragraph.node.nodeAt(position - paragraph.start);
+        };
+        const local = replacementChanges.map((change) => ({
+          start: change.start - start,
+          end: change.end - start,
+          text: change.text,
+        }));
+        const keptTouched = [
+          ...touchedBackgroundStretches(local, {
+            length: end - start,
+            hasBackground: (index) =>
+              nodeAtCharacter(index)?.marks.some((mark) =>
+                BACKGROUND_MARK_NAMES.has(mark.type.name),
+              ) ?? false,
+          }),
+        ]
+          .filter((index) =>
+            local.every(
+              (change) => index < change.start || index >= change.end,
+            ),
+          )
+          .toSorted((left, right) => left - right);
+        if (
+          tracked &&
+          keptTouched.some((index) =>
+            nodeAtCharacter(index)?.marks.some(
+              (mark) =>
+                mark.type.name === "runPropertyChange" &&
+                expectRunPropertyChangeMarkAttrs(mark).changes.length > 0,
+            ),
+          )
+        )
+          return refusal("pendingRunPropertyChange");
+        const stretches: { start: number; end: number }[] = [];
+        for (const index of keptTouched) {
+          const last = stretches.at(-1);
+          if (last !== undefined && last.end === index) last.end = index + 1;
+          else stretches.push({ start: index, end: index + 1 });
+        }
+        for (const stretch of stretches) {
+          const cleared = resolveCleanTextRange({
+            cleanBlock: clean,
+            startOffset: start + stretch.start,
+            endOffset: start + stretch.end,
+          });
+          const clearedFrom =
+            cleared && projection.value.addressAt(cleared.from, "afterMarkers");
+          const clearedTo =
+            cleared && projection.value.addressAt(cleared.to, "beforeMarkers");
+          if (
+            !clearedFrom ||
+            !clearedTo ||
+            clearedFrom.isErr() ||
+            clearedTo.isErr()
+          )
+            return refusal("unsupportedBlock");
+          intents.push({
+            type: "formatRun",
+            from: clearedFrom.value,
+            to: clearedTo.value,
+            patch: intent.runPropsPatch,
+          });
+        }
+      }
       for (const change of replacementChanges.toReversed()) {
         const gap = { from: change.from, to: change.to };
         if (change.text.length > 0 && gap.from < gap.to) {
