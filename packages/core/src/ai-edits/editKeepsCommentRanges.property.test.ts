@@ -118,6 +118,9 @@ const PARA_ID_PREFIX = "2000000";
 const paraId = (index: number): string => `${PARA_ID_PREFIX}${index}`;
 const paragraphText = (index: number): string =>
   `Paragraph ${index} of the agreement.`;
+// The replacement changes the terminal punctuation too, so the source
+// paragraph has no surviving text when its whole range is replaced.
+const REPLACEMENT_TEXT = "Superseded wording throughout!";
 const linkTarget = (index: number): string =>
   `https://example.invalid/clause-${index}`;
 
@@ -220,7 +223,7 @@ const operationFor = (
         type: "replaceInBlock",
         blockId,
         find: paragraphText(blockIndex),
-        replace: "Superseded wording throughout.",
+        replace: REPLACEMENT_TEXT,
       };
     case "insertAfterBlock":
       return {
@@ -374,7 +377,7 @@ describe("an edit leaves every comment and bookmark range balanced and anchored"
                 generated.edit.kind === "replaceInBlock" &&
                 owner === generated.edit.blockIndex
               )
-                expectedText = "Superseded wording throughout.";
+                expectedText = REPLACEMENT_TEXT;
               expect(authoredText).toContain(expectedText);
               if (owner !== null) survivingParagraphs.set(owner, offsets);
             }
@@ -427,7 +430,7 @@ describe("an edit leaves every comment and bookmark range balanced and anchored"
                 generated.edit.blockIndex === generated.noteRefParagraph;
               if (offsets && replacedIt) {
                 expect(xml.slice(offsets.start, offsets.end)).toContain(
-                  "Superseded wording throughout.",
+                  REPLACEMENT_TEXT,
                 );
               }
             }

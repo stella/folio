@@ -3892,13 +3892,12 @@ const compileInStory = (
       };
       const inside = intent.inside;
       const resumed =
-        idKey(from.blockId) === idKey(to.blockId) &&
-        (text !== "" || (inside?.start === true && inside.end === true))
+        text !== "" && idKey(from.blockId) === idKey(to.blockId)
           ? continuation(paragraph.content, from, to, {
               ...(inside === undefined ? {} : { inside }),
             })
           : undefined;
-      let insertion =
+      const insertion =
         text === ""
           ? undefined
           : ((resumed === undefined
@@ -3961,36 +3960,28 @@ const compileInStory = (
           from,
           to,
         });
-        if (text === "" && resumed !== undefined) {
-          const controlIndex = resumed.containers.findLastIndex(
-            (node) => node.type === "inlineSdt",
-          );
-          const control = resumed.containers.at(controlIndex);
+        if (text === "") {
           const remaining = paragraphAt(afterDeletion, at);
-          if (
-            controlIndex >= 0 &&
-            control?.type === "inlineSdt" &&
-            remaining !== undefined
-          ) {
-            const id = control.properties.id;
-            const sameControl = (node: InlineNode) =>
-              node.type === "inlineSdt" && node.properties.id === id;
-            if (
-              !leafSpans(remaining.content).some(
-                ({ node, ancestors }) =>
-                  sameControl(node) || ancestors.some(sameControl),
-              )
-            ) {
-              // Both selection edges were inside this control. Restore its
-              // authored shell so the empty control can show its placeholder.
-              insertion = continuedSlice(
-                {
-                  containers: resumed.containers.slice(0, controlIndex + 1),
-                  openStart: Math.min(resumed.openStart, controlIndex),
-                  openEnd: Math.min(resumed.openEnd, controlIndex),
-                },
-                [],
-              );
+          if (remaining !== undefined) {
+            const { selections } = selectedControlText({
+              paragraph,
+              from,
+              to,
+              inside,
+            });
+            for (const control of selections.toReversed()) {
+              const slice = emptiedControlSlice({
+                source: paragraph,
+                remaining,
+                control,
+              });
+              if (slice !== undefined)
+                ops.push({
+                  type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
+                  at,
+                  slice,
+                  ...allocationFields,
+                });
             }
           }
         }
@@ -4563,6 +4554,12 @@ type SelectedControlTextOptions = {
   inside: { start?: boolean; end?: boolean } | undefined;
 };
 
+type SelectedControl = {
+  id: number;
+  start: TextPosition;
+  end: TextPosition;
+};
+
 /** The fully selected controls whose outer boundaries the selection leaves in place. */
 const selectedControlText = ({
   paragraph,
@@ -4571,9 +4568,10 @@ const selectedControlText = ({
   inside,
 }: SelectedControlTextOptions) => {
   const ids = new Set<number>();
+  const selections: SelectedControl[] = [];
   const ranges: { start: TextPosition; end: TextPosition }[] = [];
   if (inside === undefined || idKey(from.blockId) !== idKey(to.blockId))
-    return { ids, cuts: [], ranges };
+    return { ids, cuts: [], ranges, selections };
   const cuts: Gap[] = [];
   const start = {
     offset: from.offset,
@@ -4603,6 +4601,12 @@ const selectedControlText = ({
     )
       continue;
     ids.add(control.properties.id);
+    const selected = {
+      id: control.properties.id,
+      start: { ...from, ...controlStart },
+      end: { ...from, ...controlEnd },
+    };
+    selections.push(selected);
     const cut = control === atStart ? controlEnd : controlStart;
     if (compareGaps(start, cut) >= 0 || compareGaps(cut, end) >= 0) continue;
     // Stage this piece first only if it cannot retract any already-added
@@ -4613,10 +4617,7 @@ const selectedControlText = ({
       )
     )
       continue;
-    ranges.push({
-      start: { ...from, ...controlStart },
-      end: { ...from, ...controlEnd },
-    });
+    ranges.push(selected);
     if (!cuts.some((existing) => compareGaps(existing, cut) === 0))
       cuts.push(cut);
   }
@@ -4624,7 +4625,43 @@ const selectedControlText = ({
     ids,
     cuts: cuts.toSorted(compareGaps).map((cut) => Object.assign({}, from, cut)),
     ranges,
+    selections,
   };
+};
+
+type EmptiedControlSliceOptions = {
+  source: Paragraph;
+  remaining: Paragraph;
+  control: SelectedControl;
+};
+
+/** Restore only a control that the deletion emptied and whose edge was kept. */
+const emptiedControlSlice = ({
+  source,
+  remaining,
+  control,
+}: EmptiedControlSliceOptions) => {
+  const sameControl = (node: InlineNode) =>
+    node.type === "inlineSdt" && node.properties.id === control.id;
+  if (
+    leafSpans(remaining.content).some(
+      ({ node, ancestors }) => sameControl(node) || ancestors.some(sameControl),
+    )
+  )
+    return undefined;
+  const resumed = continuation(source.content, control.start, control.end, {
+    inside: { start: true, end: true },
+  });
+  const index = resumed.containers.findIndex(sameControl);
+  if (index < 0) return undefined;
+  return continuedSlice(
+    {
+      containers: resumed.containers.slice(0, index + 1),
+      openStart: Math.min(resumed.openStart, index),
+      openEnd: Math.min(resumed.openEnd, index),
+    },
+    [],
+  );
 };
 
 /** What a tracked deletion may hold: no other tracked insertion or deletion. */

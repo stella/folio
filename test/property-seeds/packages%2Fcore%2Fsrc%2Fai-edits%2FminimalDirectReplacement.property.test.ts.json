@@ -11,6 +11,12 @@
       "date": "2026-09-28"
     },
     {
+      "seed": -479275576,
+      "path": "1:4:3:3:3:3:3:3:5:7:1:6:7:9:9:9:9:9",
+      "note": "A direct text deletion from inside a control through an adjacent break keeps the empty control.",
+      "date": "2026-11-22"
+    },
+    {
       "seed": 11,
       "path": "16:0:1:1:1:2",
       "note": "A concrete package with an absent styles part preserves unresolved references and visible direct formatting.",
