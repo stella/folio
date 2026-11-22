@@ -66,6 +66,8 @@ export const PARSE_WARNING_CODES = {
   unnumberedStyle: "unnumbered-style",
   /** A tracked move range with no matching start or end. */
   unbalancedMoveRange: "unbalanced-move-range",
+  /** A tracked move range after the first of its id, dropped: a move holds one range. */
+  droppedMoveRange: "dropped-move-range",
   /** A `w:type` outside `ST_HdrFtr`, read as the enumeration's default. */
   headerFooterTypeOutsideEnum: "header-footer-type-outside-enum",
   /** A value outside `ST_OnOff`'s six spellings. */

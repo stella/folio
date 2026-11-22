@@ -28,8 +28,17 @@ type NormalizeTrackedMoveRangesInput = {
   endnotes?: readonly Endnote[];
 };
 
+/** The code a dropped further range is reported under. */
+export const DROPPED_MOVE_RANGE_WARNING: "dropped-move-range" =
+  PARSE_WARNING_CODES.droppedMoveRange;
+
+/** A move range after the first of its kind and id, dropped. */
+type DroppedMoveRange = { kind: "moveFrom" | "moveTo"; id: number };
+
 type NormalizeTrackedMoveRangesResult = {
   removedUnbalancedMoveRangeMarkers: number;
+  /** Full ranges after a move's first, dropped: a move holds one range. */
+  droppedMoveRanges?: DroppedMoveRange[];
 };
 
 type MoveRangeMarkerRef = {
@@ -57,18 +66,42 @@ export const normalizeTrackedMoveRanges = ({
       }
     },
   );
+  // A header, footer or note numbers its ranges apart from the body.
+  const partOf = new Map<unknown, unknown>();
+  if (rangeMarkers.length > 0)
+    for (const surfaces of [
+      ...[...(headers?.values() ?? [])].map((part) => ({
+        headers: new Map([["part", part]]),
+      })),
+      ...[...(footers?.values() ?? [])].map((part) => ({
+        footers: new Map([["part", part]]),
+      })),
+      ...(footnotes ?? []).map((note) => ({ footnotes: [note] })),
+      ...(endnotes ?? []).map((note) => ({ endnotes: [note] })),
+    ])
+      visitDocxContentSlots(
+        { documentBody: { content: [] }, ...surfaces },
+        ({ content }) => partOf.set(content, surfaces),
+      );
 
-  return removeUnbalancedMoveRangeMarkers({ rangeMarkers, documentBody });
+  return removeUnbalancedMoveRangeMarkers({
+    rangeMarkers,
+    documentBody,
+    partOf: ({ slot }) => partOf.get(slot.content) ?? documentBody,
+  });
 };
 
 type RemoveUnbalancedMoveRangeMarkersOptions = {
   rangeMarkers: readonly MoveRangeMarkerRef[];
   documentBody: DocumentBody;
+  /** The part a marker stands in: a range repeats one of its own part. */
+  partOf: (marker: MoveRangeMarkerRef) => unknown;
 };
 
 const removeUnbalancedMoveRangeMarkers = ({
   rangeMarkers,
   documentBody,
+  partOf,
 }: RemoveUnbalancedMoveRangeMarkersOptions): NormalizeTrackedMoveRangesResult => {
   const byRange = new Map<string, MoveRangeMarkerRef[]>();
   for (const marker of rangeMarkers) {
@@ -106,8 +139,11 @@ const removeUnbalancedMoveRangeMarkers = ({
     }
   };
 
+  const droppedMoveRanges: DroppedMoveRange[] = [];
+  let droppedMarkers = 0;
   for (const markers of byRange.values()) {
     let openStart: MoveRangeMarkerRef | null = null;
+    const held = new Set<unknown>();
     for (const marker of markers) {
       if (marker.side === "start") {
         if (openStart) {
@@ -122,6 +158,17 @@ const removeUnbalancedMoveRangeMarkers = ({
         markForRemoval(marker);
         continue;
       }
+      // A part's first full range is the move's; one after it repeats it. A
+      // copy a pending revision owns is neither: its revision decides it.
+      const part = partOf(marker);
+      const owned = isOwnedCopy(openStart) || isOwnedCopy(marker);
+      if (!owned && held.has(part)) {
+        markForRemoval(openStart);
+        markForRemoval(marker);
+        droppedMarkers += 2;
+        droppedMoveRanges.push({ kind: marker.kind, id: marker.id });
+      }
+      if (!owned) held.add(part);
       openStart = null;
     }
 
@@ -130,10 +177,10 @@ const removeUnbalancedMoveRangeMarkers = ({
     }
   }
 
-  let removedUnbalancedMoveRangeMarkers = removals.apply();
+  let removedMarkers = removals.apply();
   for (const [content, indexes] of blockRemovals) {
     const kept = content.filter((_, index) => !indexes.has(index));
-    removedUnbalancedMoveRangeMarkers += content.length - kept.length;
+    removedMarkers += content.length - kept.length;
     content.length = 0;
     content.push(...kept);
   }
@@ -141,8 +188,14 @@ const removeUnbalancedMoveRangeMarkers = ({
   if (blockRemovals.has(documentBody.content))
     rebuildBodySections(documentBody);
 
-  return { removedUnbalancedMoveRangeMarkers };
+  return {
+    removedUnbalancedMoveRangeMarkers: removedMarkers - droppedMarkers,
+    ...(droppedMoveRanges.length === 0 ? {} : { droppedMoveRanges }),
+  };
 };
+
+const isOwnedCopy = ({ slot: { item } }: MoveRangeMarkerRef): boolean =>
+  "copyOriginAncestors" in item && item.copyOriginAncestors !== undefined;
 
 const toMoveRangeMarkerRef = (
   slot: DocxContentSlot,

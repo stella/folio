@@ -1303,6 +1303,7 @@ export const PARSE_WARNING_CODES: {
     readonly unnumberedParagraph: "unnumbered-paragraph";
     readonly unnumberedStyle: "unnumbered-style";
     readonly unbalancedMoveRange: "unbalanced-move-range";
+    readonly droppedMoveRange: "dropped-move-range";
     readonly headerFooterTypeOutsideEnum: "header-footer-type-outside-enum";
     readonly unrecognisedOnOffValue: "unrecognised-on-off-value";
     readonly unrecognisedThemeColor: "unrecognised-theme-color";

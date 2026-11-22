@@ -1186,34 +1186,28 @@ const rejectedInAnyOrderLaw = (tally: Tally) =>
 
 describe("tracked operations and their resolution", () => {
   test("the rejection oracle follows copied whole-range ownership when only its partner stands outside", () => {
-    const original = {
+    const standing = {
+      type: "moveToRangeStart",
+      id: 18,
+      name: "move18",
+      author: "A",
+    } as const;
+    const withContent = (content: Paragraph["content"]): Document => ({
       package: {
         document: {
-          content: [
-            {
-              type: "paragraph",
-              paraId: "00000001",
-              content: [
-                {
-                  type: "moveToRangeStart",
-                  id: 18,
-                  name: "move18",
-                  author: "A",
-                },
-              ],
-            },
-          ],
+          content: [{ type: "paragraph", paraId: "00000001", content }],
         },
       },
-    } satisfies Document;
-    const op = {
-      type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
-      at: { story: OP_STORIES.MAIN, blockId: "00000001", offset: 0 },
-      slice: {
-        openStart: 0,
-        openEnd: 0,
+    });
+    const original = withContent([standing]);
+    // An insertion leaves copies of a standing range out; one written with
+    // copies its revision owns still resolves with them.
+    const tracked = withContent([
+      {
+        type: "insertion",
+        info: { id: 1, author: "C", date: "2026-03-04T05:00:00Z" },
         content: [
-          { type: "moveToRangeEnd", id: 18 },
+          { type: "moveToRangeEnd", id: 18, copyOriginAncestors: [0] },
           {
             type: "hyperlink",
             rId: "rId9",
@@ -1223,49 +1217,27 @@ describe("tracked operations and their resolution", () => {
                 type: "inlineWrapper",
                 kind: "bidi",
                 control: "embedding",
-                content: [
-                  {
-                    type: "moveToRangeStart",
-                    id: 18,
-                    name: "move18",
-                    author: "A",
-                  },
-                ],
+                content: [{ ...standing, copyOriginAncestors: [0] }],
               },
             ],
           },
         ],
+        resolutionJoins: { before: 0, after: 0, remove: 0 },
       },
-      revision: { id: 1, author: "C", date: "2026-03-04T05:00:00Z" },
-      newIds: { revision: [303648, 303649], control: [293648, 293649] },
-    } satisfies ReturnType<typeof trackedOpFor>;
-    const tracked = applyDocumentOp(original, op);
-    if (tracked.isErr()) throw tracked.error;
-    const insertion = tracked.value.document.package.document.content.at(0);
-    if (insertion?.type !== "paragraph")
-      panic("The insertion stays in its paragraph.");
-    const copied = leafSpans(insertion.content).flatMap(({ node }) =>
-      node.type === "moveToRangeStart" || node.type === "moveToRangeEnd"
-        ? [node.copyOriginAncestors]
-        : [],
-    );
-    expect(copied).toEqual([[0], [0], undefined]);
-    expect(
-      boundariesKeptByRejecting(
-        tracked.value.document,
-        new Set(tracked.value.revisions),
-      ),
-    ).toEqual([]);
+      standing,
+    ]);
+    const ids = [1];
+    expect(boundariesKeptByRejecting(tracked, new Set(ids))).toEqual([]);
     const rejected = applyDocumentOp(
-      tracked.value.document,
-      resolveOp(tracked.value.revisions, REVISION_DECISIONS.REJECT),
+      tracked,
+      resolveOp(ids, REVISION_DECISIONS.REJECT),
     );
     if (rejected.isErr()) throw rejected.error;
     expect(rejected.value.document).toStrictEqual(original);
     expectRejectedTo({
       rejected: rejected.value.document,
-      tracked: tracked.value.document,
-      ids: tracked.value.revisions,
+      tracked,
+      ids,
       expected: original,
       projection: "π",
     });

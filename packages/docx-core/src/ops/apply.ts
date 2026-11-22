@@ -177,6 +177,7 @@ import {
 } from "./paragraphPropertySnapshot";
 import { paragraphSnapshotTransfers } from "./paragraphSnapshotTransfers";
 import { pastedComments, repeatsCommentAnchor } from "./pastedComments";
+import { withoutRepeatedMoveRanges } from "./pastedMoveRanges";
 import { priorValues } from "./patch";
 import {
   insertsInvertedRange,
@@ -891,7 +892,10 @@ const insertContent = (document: Document, op: InsertContentOp): Applied => {
   if (pasted.isErr()) {
     return Result.err(pasted.error);
   }
-  slice.content = pasted.value.content;
+  // One range per move-range id: a copy of moved text is no part of the move.
+  slice.content = [
+    ...withoutRepeatedMoveRanges(document, pasted.value.content),
+  ];
   if (slice.content.length === 0) {
     return Result.ok({
       document,
@@ -1209,6 +1213,8 @@ const deleteRange = (document: Document, op: DeleteRangeOp): Applied => {
         // Put back by an insertion, an anchor its comment still has standing,
         // or has twice in the slice, would be settled, not restored.
         repeatsCommentAnchor(after, removed.content) ||
+        // So would a move range boundary.
+        withoutRepeatedMoveRanges(after, removed.content) !== removed.content ||
         cutHasResolutionProvenance({
           content: paragraph.content,
           gaps: [from, to],
