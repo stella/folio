@@ -475,15 +475,8 @@ const caseArbitrary: fc.Arbitrary<Case> = fc
       side: fc.constantFrom(...sides),
       look: fc.constantFrom<Look[]>("plain", "heading", "centered"),
     });
-    // Canonical refuses a tracked table right after the anchor when deleting
-    // the next paragraph retired the anchor's break. Test admission separately.
-    const admittedInsertion = nextRemoved
-      ? insertionArbitrary.filter(
-          ({ kind, side }) => kind !== "table" || side !== "afterAnchor",
-        )
-      : insertionArbitrary;
     return fc
-      .array(fc.array(admittedInsertion, { minLength: 1, maxLength: 5 }), {
+      .array(fc.array(insertionArbitrary, { minLength: 1, maxLength: 5 }), {
         minLength: 1,
         maxLength: 3,
       })
@@ -527,6 +520,21 @@ const caseArbitrary: fc.Arbitrary<Case> = fc
           ),
         }),
       );
+  })
+  .filter(({ nextRemoved, between, batches }) => {
+    if (!nextRemoved) return true;
+    // Sample a whole sequence before excluding a placement before its
+    // admission: an intervening Accept can clear the pending break.
+    const acceptedAt = between.findIndex(
+      (step) => step === "accept" || step === "reopenAndAccept",
+    );
+    return batches.every(
+      ({ insertions }, index) =>
+        (acceptedAt >= 0 && index > acceptedAt) ||
+        insertions.every(
+          ({ kind, side }) => kind !== "table" || side !== "afterAnchor",
+        ),
+    );
   });
 
 /**
@@ -588,6 +596,20 @@ for (const session of ["canonical", "legacy"] as const) {
       ]);
       expect(reviewer.snapshot()).toEqual(beforeTable);
       expect(reviewer.getChanges()).toEqual(pending);
+      expect(reviewer.acceptAll().resolved).toBeGreaterThan(0);
+      const accepted = reviewer
+        .snapshot()
+        .blocks.find(({ text }) => text === ANCHOR);
+      if (accepted === undefined)
+        throw new Error("Missing accepted table anchor");
+      applyBatch(reviewer, "tracked-changes", [
+        {
+          id: tableId,
+          type: "insertTable",
+          blockId: accepted.id,
+          rows: [["Cell"]],
+        },
+      ]);
     } else {
       expect(result.skipped).toEqual([]);
       expect(result.applied.map(({ id }) => id)).toEqual([tableId]);
@@ -637,6 +659,132 @@ test.each(["canonical", "legacy"] as const)(
     ]);
   },
 );
+
+test.each(["delete", "insert"] as const)(
+  "replaces a table pending deletion in one direct batch (%s first)",
+  async (first) => {
+    const sample = await open(
+      {
+        anchorIsLast: false,
+        table: "removed",
+        nextRemoved: false,
+        mode: "tracked-changes",
+        batches: [],
+        between: [],
+      },
+      "canonical",
+    );
+    const document = sample.toDocument();
+    const table = document.package.document.content.at(2);
+    const next = document.package.document.content.at(3);
+    const cell =
+      table?.type === "table"
+        ? table.rows.at(0)?.cells.at(1)?.content.at(0)
+        : undefined;
+    if (cell?.type !== "paragraph" || next?.type !== "paragraph")
+      throw new Error("Missing table replacement fixture");
+    const cellId = "12345678";
+    const nextId = "23456789";
+    cell.paraId = cellId;
+    next.paraId = nextId;
+    const pending = await FolioDocxReviewer.fromBuffer(
+      await createDocx(document),
+      {
+        session: "canonical",
+      },
+    );
+    applyBatch(pending, "tracked-changes", [
+      {
+        id: "pending-table",
+        type: "deleteTable",
+        blockId: cellId,
+      },
+    ]);
+    const editingReviewer = await reopen(pending, "canonical");
+    const operations: FolioDocumentOperation[] = [
+      {
+        id: "remove-table",
+        type: "deleteTable",
+        blockId: cellId,
+      },
+      {
+        id: "new-table",
+        type: "insertTable",
+        blockId: nextId,
+        position: "before",
+        rows: [["B0I0 term"]],
+      },
+    ];
+    applyBatch(
+      editingReviewer,
+      "direct",
+      first === "delete" ? operations : operations.toReversed(),
+    );
+    expect(
+      labelsOf(await acceptedBlocks(editingReviewer, "canonical")),
+    ).toEqual([OPENING, ANCHOR, "B0I0", NEXT]);
+  },
+);
+
+test("insertion ahead of a removed table checks the break at its actual placement", async () => {
+  const reviewer = await open(
+    {
+      anchorIsLast: false,
+      table: "removed",
+      nextRemoved: false,
+      mode: "tracked-changes",
+      batches: [],
+      between: [],
+    },
+    "canonical",
+  );
+  const table = reviewer
+    .snapshot()
+    .blocks.find(({ text }) => text === `${TABLE} one`);
+  if (table === undefined) throw new Error("Missing table cell");
+  applyBatch(reviewer, "tracked-changes", [
+    {
+      id: "delete-table",
+      type: "deleteTable",
+      blockId: table.id,
+    },
+  ]);
+  const document = reviewer.toDocument();
+  const paragraph = document.package.document.content.at(1);
+  if (paragraph?.type !== "paragraph")
+    throw new Error("Missing paragraph before table");
+  paragraph.pPrMark = {
+    kind: "del",
+    info: { id: 200, author: "Earlier", date: "2026-01-01T00:00:00Z" },
+  };
+  const pending = await FolioDocxReviewer.fromBuffer(
+    await createDocx(document),
+    {
+      session: "canonical",
+      author: "Reviewer",
+    },
+  );
+  const next = pending.snapshot().blocks.find(({ text }) => text === NEXT);
+  if (next === undefined) throw new Error("Missing paragraph after table");
+  const before = pending.toDocument();
+  const result = pending.applyOperations(
+    [
+      {
+        id: "insert-table",
+        type: "insertTable",
+        blockId: next.id,
+        position: "before",
+        rows: [["Replacement cell"]],
+      },
+    ],
+    { mode: "tracked-changes" },
+  );
+  expect(result.applied).toEqual([]);
+  expect(result.skipped.map(({ reason }) => reason)).toEqual([
+    "pendingParagraphMarkDeletion",
+  ]);
+  expect(pending.toDocument()).toEqual(before);
+});
 
 const examples: [Case][] = [
   // A paragraph after the story's last paragraph, pending; then a paragraph
