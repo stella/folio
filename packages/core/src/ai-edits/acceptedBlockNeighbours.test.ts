@@ -438,6 +438,37 @@ describe("removing what ends a pending join", () => {
       ).toEqual([...joinedLeft(session), "Closing."]);
     });
 
+  test("deleting the final join destination takes its joined words and keeps its final mark", async () => {
+    const finalId = "10000003";
+    const document = fromMarkdown("Lead.\n\nOpening.\n\nJoined.");
+    const last = document.package.document.content.at(-1);
+    if (last?.type !== "paragraph") throw new Error("Missing final paragraph");
+    last.paraId = finalId;
+    const reviewer = await reviewerOf(
+      (await ensureParaIds(await createDocx(document))).docx,
+      "canonical",
+    );
+    const opening = idOf(reviewer, "Opening.");
+    const destination = idOf(reviewer, "Joined.");
+    expect(
+      apply(reviewer, "tracked-changes", [joinInto(opening)]).skipped,
+    ).toEqual([]);
+    expect(
+      apply(reviewer, "tracked-changes", [deleteBlock(destination)]).skipped,
+    ).toEqual([]);
+
+    expect(await rejected(reviewer, "canonical")).toEqual([
+      "Lead.",
+      "Opening.",
+      "Joined.",
+    ]);
+    const reopened = await reviewerOf(await reviewer.toBuffer(), "canonical");
+    reopened.acceptAll();
+    expect(
+      reopened.snapshot().blocks.map(({ id, text }) => ({ id, text })),
+    ).toEqual([{ id: finalId, text: "Lead." }]);
+  });
+
   // The rest of a batch reads the joined paragraph where its deletion left
   // it, as after that deletion alone: a list item the join runs into.
   const beforeListItem = ["- Opening clause.", "- Joined.", "Closing."].join(
