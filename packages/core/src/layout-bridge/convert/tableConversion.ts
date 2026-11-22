@@ -253,6 +253,9 @@ function convertTableCell(
   if (attrs.width) {
     cell.width = twipsToPixels(attrs.width);
   }
+  if (attrs._authoredWidth !== undefined) {
+    cell.preferredWidth = attrs._authoredWidth;
+  }
   if (attrs.verticalAlign) {
     cell.verticalAlign = attrs.verticalAlign;
   }

@@ -26,6 +26,7 @@ import type {
 import type { DocumentFontFacts } from "../fonts/documentFontFacts";
 import type { OutlineStyleAttr } from "../types/documentEnumValues";
 import type { NoteStoryKey } from "../types/editor-story";
+import { readTableWidthKind } from "../types/tableWidthKind";
 import { isFloatingWrapType, isWrapNone } from "../types/wrap";
 import type { CssBorderStyle } from "../utils/borderCss";
 import { MAX_PAGE_DIMENSION_TWIPS, twipsToPixels } from "../utils/units";
@@ -737,6 +738,8 @@ export type TableCell = {
   colSpan?: number;
   rowSpan?: number;
   width?: number;
+  /** The cell's directly authored w:tcW, before falling back to its grid width. */
+  preferredWidth?: { type: TableWidthType; value: number };
   verticalAlign?: "top" | "center" | "bottom";
   textDirection?: NonNullable<TableCellFormatting["textDirection"]>;
   background?: string;
@@ -1872,31 +1875,8 @@ export function tableColumnsArePinned(table: TableBlock): boolean {
   if (table.layout === "fixed") {
     return true;
   }
-  return hasMeasuredTableWidth(table.widthType);
-}
-
-/**
- * Whether `w:tblW`/`w:tcW`'s `w:w` is a measurement at all.
- *
- * Under `w:type="auto"` or `"nil"` (§17.18.87) the number is meaningless:
- * `auto` asks the consumer to size the table to its content and `nil` declares
- * no width, so both ignore `w:w` entirely. Word still writes a leftover value
- * there, and reading it as twips pins a table that should autofit.
- */
-function hasMeasuredTableWidth(widthType: TableWidthType | undefined): boolean {
-  switch (widthType) {
-    case "dxa":
-    case "pct":
-      return true;
-    case "auto":
-    case "nil":
-    case undefined:
-      return false;
-    default: {
-      const exhaustive: never = widthType;
-      return exhaustive;
-    }
-  }
+  const kind = readTableWidthKind(table.widthType);
+  return kind === "twips" || kind === "percentage";
 }
 
 const TWIPS_PER_INCH = 1440;
@@ -1914,13 +1894,14 @@ export function resolveTableWidthPx(
   widthType: TableWidthType | undefined,
   containerWidth: number,
 ): number | undefined {
-  if (width === undefined || width <= 0 || !hasMeasuredTableWidth(widthType)) {
-    return undefined;
-  }
-  if (widthType === "pct") {
+  if (width === undefined || width <= 0) return undefined;
+  const kind = readTableWidthKind(widthType);
+  if (kind === "percentage") {
     return (width / PERCENT_DENOMINATOR) * containerWidth;
   }
-  return (width / TWIPS_PER_INCH) * PIXELS_PER_INCH;
+  return kind === "twips"
+    ? (width / TWIPS_PER_INCH) * PIXELS_PER_INCH
+    : undefined;
 }
 
 const tableRowOwnsNestedGrid = (row: TableRow): boolean => {

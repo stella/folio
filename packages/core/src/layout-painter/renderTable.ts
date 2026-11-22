@@ -43,6 +43,7 @@ import {
   resolveTableInlineOffset,
   resolveTableInlinePlacement,
 } from "../layout-engine/measure/tableInlinePlacement";
+import { tableCellKeepsNoWrap } from "../layout-engine/measure/tableNoWrapWidths";
 import {
   bandFromOrigin,
   isOutsideBand,
@@ -67,7 +68,6 @@ import type {
 import {
   isFloatingTextBoxBlock,
   resolveTableCellPadding,
-  tableColumnsArePinned,
 } from "../layout-engine/types";
 import { paintsCssBorder } from "../utils/borderCss";
 import {
@@ -571,7 +571,8 @@ export function renderNestedTable(
   rowYPositions.push(yPos);
 
   // Render all rows
-  const columnsPinned = tableColumnsArePinned(block);
+  const keepCellUnwrapped = (cell: TableCell) =>
+    tableCellKeepsNoWrap(block, cell);
   const cellGrid = buildTableCellGrid(block.rows, measure.columnWidths.length);
   const cellPlacements = buildTableCellPlacements({
     grid: cellGrid,
@@ -614,7 +615,7 @@ export function renderNestedTable(
       isFirstRowInFragment:
         visibleBand !== undefined && !paintedRow && y >= visibleBand.top,
       bidi: block.bidi === true,
-      columnsPinned,
+      keepCellUnwrapped,
       cellGrid,
       cellPlacements,
       cellSpacing: block.cellSpacing,
@@ -778,7 +779,7 @@ type RenderTableCellOptions = {
     drawLeft: boolean;
     isLastCol: boolean;
   };
-  columnsPinned: boolean;
+  keepUnwrapped: boolean;
   context: RenderContext;
   doc: Document;
   contentClip?: CellContentClip;
@@ -795,7 +796,7 @@ function renderTableCell({
   width,
   rowHeight,
   borderFlags,
-  columnsPinned,
+  keepUnwrapped,
   context,
   doc,
   contentClip,
@@ -879,7 +880,7 @@ function renderTableCell({
   // When the columns are pinned Word cannot honor `w:noWrap`, so measurement
   // wrapped the cell; emitting `nowrap` here would collapse those lines and
   // desync the painted height from the measured height. eigenpal #424.
-  if (cell.noWrap && !columnsPinned) {
+  if (keepUnwrapped) {
     cellEl.style.whiteSpace = "nowrap";
   }
 
@@ -1083,7 +1084,7 @@ type RenderTableRowOptions = {
   rowYPositions?: number[];
   isFirstRowInFragment?: boolean;
   bidi?: boolean;
-  columnsPinned?: boolean;
+  keepCellUnwrapped: (cell: TableCell) => boolean;
   cellGrid: TableCellGrid;
   cellPlacements: TableCellPlacements;
   cellSpacing?: number | undefined;
@@ -1107,7 +1108,7 @@ function renderTableRow({
   rowYPositions,
   isFirstRowInFragment,
   bidi = false,
-  columnsPinned = false,
+  keepCellUnwrapped,
   cellGrid,
   cellPlacements,
   cellSpacing,
@@ -1220,7 +1221,7 @@ function renderTableRow({
         drawLeft,
         isLastCol,
       },
-      columnsPinned,
+      keepUnwrapped: keepCellUnwrapped(cell),
       context,
       doc,
       ...(boxClip ? { contentClip: boxClip } : {}),
@@ -1352,7 +1353,8 @@ export function renderTableFragment(
   }
   rowYPositions.push(yPos); // Add final position for height calculation
 
-  const columnsPinned = tableColumnsArePinned(block);
+  const keepCellUnwrapped = (cell: TableCell) =>
+    tableCellKeepsNoWrap(block, cell);
   const cellGrid = buildTableCellGrid(block.rows, measure.columnWidths.length);
   const cellPlacements = buildTableCellPlacements({
     grid: cellGrid,
@@ -1396,7 +1398,7 @@ export function renderTableFragment(
         rowYPositions,
         isFirstRowInFragment: hdrIdx === 0,
         bidi: block.bidi === true,
-        columnsPinned,
+        keepCellUnwrapped,
         cellGrid,
         cellPlacements,
         cellSpacing: block.cellSpacing,
@@ -1477,7 +1479,7 @@ export function renderTableFragment(
       rowYPositions,
       isFirstRowInFragment,
       bidi: block.bidi === true,
-      columnsPinned,
+      keepCellUnwrapped,
       cellGrid,
       cellPlacements,
       cellSpacing: block.cellSpacing,

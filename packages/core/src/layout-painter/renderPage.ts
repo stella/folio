@@ -27,6 +27,7 @@ import type {
 import { DEFAULT_FONT_FAMILY } from "../layout-engine/measure/measureHelpers";
 import { MIN_WRAP_SEGMENT_WIDTH } from "../layout-engine/measure/measureParagraph";
 import { resolveTableInlineOffset } from "../layout-engine/measure/tableInlinePlacement";
+import { tableCellKeepsNoWrap } from "../layout-engine/measure/tableNoWrapWidths";
 import {
   floatingTextBoxReservesBand,
   floatingTextBoxWrapsText,
@@ -2853,7 +2854,11 @@ function computePageFingerprintInternal(
       }
     }
     if (blockLookup) {
-      const block = blockLookup.get(String(frag.blockId))?.block;
+      const entry = blockLookup.get(String(frag.blockId));
+      const block = entry?.block;
+      if (frag.kind === "table" && entry?.measure.kind === "table") {
+        fp += `,cw:${entry.measure.columnWidths.join(",")}`;
+      }
       const annotationFingerprint = block
         ? computeAnnotationFingerprint(block, options.includePmPositions)
         : "";
@@ -2978,8 +2983,11 @@ function collectContentFingerprint(block: FlowBlock, parts: string[]): void {
   }
 
   if (block.kind === "table") {
-    for (const row of block.rows) {
-      for (const cell of row.cells) {
+    for (const [rowIndex, row] of block.rows.entries()) {
+      for (const [cellIndex, cell] of row.cells.entries()) {
+        if (tableCellKeepsNoWrap(block, cell)) {
+          parts.push(`nowrap:${rowIndex}:${cellIndex}`);
+        }
         for (const child of cell.blocks) {
           collectContentFingerprint(child, parts);
         }

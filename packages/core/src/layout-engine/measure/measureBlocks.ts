@@ -21,7 +21,6 @@ import {
   floatingTextBoxWrapsText,
   resolveTableCellPadding,
   resolveTableWidthPx,
-  tableColumnsArePinned,
 } from "../types";
 import type {
   FlowBlock,
@@ -43,6 +42,7 @@ import {
   resolveFloatingTableY,
 } from "./floatingTablePosition";
 import { getHyphenationDictionaryMisses } from "./hyphenationDictionaries";
+import { getListMarkerInlineWidth } from "./listMarkerWidth";
 import {
   findClearLineY,
   measureParagraph,
@@ -68,6 +68,11 @@ import {
   getTableGridColumnCount,
 } from "./tableCellGrid";
 import { recordTableMeasure, takenTableMeasure } from "./tableMeasureMemo";
+import {
+  expandAutoWidthNoWrapColumns,
+  isAutoWidthNoWrapCell,
+  tableCellKeepsNoWrap,
+} from "./tableNoWrapWidths";
 import { layoutTextBoxContent } from "./textBoxParagraphLayout";
 
 /**
@@ -175,6 +180,44 @@ function wrapTableCellParagraphsAroundFloats(
   }
 }
 
+const measureUnwrappedTableCellContentWidth = (
+  cell: TableCell,
+  currentContentWidth: number,
+  fieldValues: ReadonlyMap<number, string> | undefined,
+): number => {
+  let contentWidth = 0;
+  for (const block of cell.blocks) {
+    const measure = measureBlock(
+      block,
+      block.kind === "paragraph" ? NO_WRAP_MEASURE_WIDTH : currentContentWidth,
+      undefined,
+      undefined,
+      fieldValues,
+    );
+    if (block.kind === "paragraph" && measure.kind === "paragraph") {
+      const indent = block.attrs?.indent;
+      const markerWidth = getListMarkerInlineWidth(block);
+      for (const [index, line] of measure.lines.entries()) {
+        const firstLineOffset =
+          index === 0
+            ? (indent?.firstLine ?? 0) - (indent?.hanging ?? 0) + markerWidth
+            : 0;
+        const start = (indent?.left ?? 0) + firstLineOffset;
+        const end = start + line.width + (indent?.right ?? 0);
+        contentWidth = Math.max(
+          contentWidth,
+          Math.max(0, end) - Math.min(0, start),
+        );
+      }
+    } else if (measure.kind === "table") {
+      contentWidth = Math.max(contentWidth, measure.totalWidth);
+    } else if (measure.kind === "image" || measure.kind === "textBox") {
+      contentWidth = Math.max(contentWidth, measure.width);
+    }
+  }
+  return contentWidth;
+};
+
 export function measureTableBlock(
   tableBlock: TableBlock,
   contentWidth: number,
@@ -212,6 +255,13 @@ export function measureTableBlock(
   }
 
   const cellGrid = buildTableCellGrid(tableBlock.rows, columnWidths.length);
+  columnWidths = expandAutoWidthNoWrapColumns({
+    table: tableBlock,
+    grid: cellGrid,
+    columnWidths,
+    unwrappedContentWidth: (cell, currentWidth) =>
+      measureUnwrappedTableCellContentWidth(cell, currentWidth, fieldValues),
+  });
   // Cell content is laid out with the effective spacing of each paragraph
   // (contextual spacing, §17.3.1.9, and automatic list spacing suppress the
   // space between neighbours). The cell height must stack the same spacing,
@@ -220,12 +270,6 @@ export function measureTableBlock(
   const cellSpacing = tableBlock.cellSpacing;
   const bordersSeparated = (cellSpacing ?? 0) > 0;
   const rowCount = tableBlock.rows.length;
-
-  // When the columns are pinned (fixed layout or a fully-consumed explicit
-  // width), Word cannot widen a column to satisfy `w:noWrap`, so overflowing
-  // content wraps. Only an auto-width table honors `w:noWrap` by keeping the
-  // cell on one line. The painter reads the same predicate for `white-space`.
-  const columnsPinned = tableColumnsArePinned(tableBlock);
 
   // Calculate cell widths based on colSpan and columnWidths,
   // skipping columns occupied by spanning cells from previous rows.
@@ -271,19 +315,22 @@ export function measureTableBlock(
         const { left: padLeft, right: padRight } =
           resolveTableCellPadding(cell);
         const cellContentWidth = Math.max(1, cellWidth - padLeft - padRight);
-        // `w:noWrap` (§17.4.30): in an auto-width table Word honors it by
-        // widening the column, so measure against an effectively unbounded
-        // width and the line breaker keeps the cell on one MeasuredLine (the
-        // painter pairs this with `white-space: nowrap`). When the columns are
-        // pinned Word cannot widen, so overflowing content wraps: measure at the
-        // real content width like an ordinary cell.
-        const keepSingleLine = cell.noWrap === true && !columnsPinned;
+        const keepSingleLine = tableCellKeepsNoWrap(tableBlock, cell);
+        const expandedAutoWidth = keepSingleLine && isAutoWidthNoWrapCell(cell);
         const measureWidth = keepSingleLine
           ? NO_WRAP_MEASURE_WIDTH
           : cellContentWidth;
         const cellMeasure: TableCellMeasure = {
-          blocks: cell.blocks.map((b) =>
-            measureBlock(b, measureWidth, undefined, undefined, fieldValues),
+          blocks: cell.blocks.map((block) =>
+            measureBlock(
+              block,
+              expandedAutoWidth && block.kind !== "paragraph"
+                ? cellContentWidth
+                : measureWidth,
+              undefined,
+              undefined,
+              fieldValues,
+            ),
           ),
           width: cellWidth,
           height: 0, // Calculated below
