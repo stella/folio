@@ -74,6 +74,7 @@ import { collectRequestedHyphenationDictionaries } from "./layout-engine/measure
 import { preloadHyphenationDictionaries } from "./layout-engine/measure/hyphenationPreload";
 import { measureBlocks } from "./layout-engine/measure/measureBlocks";
 import { getMeasureProvider } from "./layout-engine/measure/measureProvider";
+import { settleRaisedTableWrap } from "./layout-engine/measure/raisedTableWrap";
 import { columnBalancingForCompatibility } from "./layout-engine/noColumnBalanceCompatibility";
 import {
   resolveBodyTableLeadingSpacing,
@@ -633,8 +634,6 @@ export const layoutDocxHeadless = async (
         sections: sections.map(({ properties }) => properties),
         options: { ...storyOptions, measureBlocks },
       });
-      const flow = spliceEndnoteAreas(blocks, measures, endnoteAreas);
-
       const sectionHeaderFooterRefs = resolveSectionHeaderFooterRefs(document);
       const finalPageSize = getPageSize(finalSection);
       const finalMargins = getMargins(finalSection);
@@ -668,6 +667,19 @@ export const layoutDocxHeadless = async (
           ? {}
           : { noteAreas: endnoteAreas.noteAreas }),
       };
+      const settled = settleRaisedTableWrap({
+        blocks,
+        measures,
+        layout: (bodyMeasures) => {
+          const flow = spliceEndnoteAreas(blocks, bodyMeasures, endnoteAreas);
+          return layoutDocument(flow.blocks, flow.measures, layoutOptions);
+        },
+        measure: (raisedTableWrap) =>
+          measureBlocks(blocks, contentWidth, 0, undefined, undefined, {
+            raisedTableWrap,
+          }),
+      });
+      const flow = spliceEndnoteAreas(blocks, settled.measures, endnoteAreas);
       const blockLookup = buildBlockLookup(flow.blocks, flow.measures);
       for (const [blockId, noteStory] of endnoteAreas?.noteStoryByBlockId ??
         []) {
@@ -685,7 +697,7 @@ export const layoutDocxHeadless = async (
         );
       }
       return {
-        layout: layoutDocument(flow.blocks, flow.measures, layoutOptions),
+        layout: settled.layout,
         blockLookup,
         footnoteContentById,
       };

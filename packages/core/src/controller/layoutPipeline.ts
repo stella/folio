@@ -84,6 +84,10 @@ import {
   installCanvasMeasureProvider,
   resetCanvasContext,
 } from "../layout-engine/measure/measureContainer";
+import {
+  type RaisedTableWrapInputs,
+  settleRaisedTableWrap,
+} from "../layout-engine/measure/raisedTableWrap";
 import { forgetTableMeasures } from "../layout-engine/measure/tableMeasureMemo";
 import { columnBalancingForCompatibility } from "../layout-engine/noColumnBalanceCompatibility";
 import {
@@ -1027,6 +1031,39 @@ function runLayoutPipelineMeasured<THfPMs>(
       finalConfig: finalLayoutConfig,
     });
     const blockWidths = blockMeasureInputs.widths;
+    const bodyMeasureGeometry = {
+      pageWidth: blockMeasureInputs.pageWidths,
+      pageHeight: blockMeasureInputs.pageHeights,
+      marginLeft: blockMeasureInputs.marginLefts,
+      marginRight: blockMeasureInputs.marginRights,
+      marginBottom: blockMeasureInputs.marginBottoms,
+      contentLeft: blockMeasureInputs.contentLefts,
+      physicalPage: {
+        pageWidth: blockMeasureInputs.physicalPageGeometry.pageWidths,
+        pageHeight: blockMeasureInputs.physicalPageGeometry.pageHeights,
+        marginTop: blockMeasureInputs.physicalPageGeometry.marginTops,
+        marginLeft: blockMeasureInputs.physicalPageGeometry.marginLefts,
+        marginRight: blockMeasureInputs.physicalPageGeometry.marginRights,
+        marginBottom: blockMeasureInputs.physicalPageGeometry.marginBottoms,
+      },
+      columnIndex: blockMeasureInputs.columnIndices,
+      columnCount: blockMeasureInputs.columnCounts,
+      sectionAdvances: blockMeasureInputs.sectionAdvances,
+    };
+    const measureBody = (
+      inputs: {
+        fieldValues?: ReadonlyMap<number, string> | undefined;
+        raisedTableWrap?: RaisedTableWrapInputs;
+      } = {},
+    ) =>
+      measureBlocks(
+        newBlocks,
+        blockWidths,
+        blockMeasureInputs.marginTops,
+        bodyMeasureGeometry,
+        inputs.fieldValues,
+        inputs,
+      );
     const previousArtifacts = session.artifacts;
     const dirtyRange =
       options.measure === LAYOUT_MEASURE.incremental
@@ -1049,27 +1086,8 @@ function runLayoutPipelineMeasured<THfPMs>(
             measureBlock: measureSingleBlockWithoutFloatingZones,
           })
         : null;
-    let newMeasures =
-      incrementalResult?.measures ??
-      measureBlocks(newBlocks, blockWidths, blockMeasureInputs.marginTops, {
-        pageWidth: blockMeasureInputs.pageWidths,
-        pageHeight: blockMeasureInputs.pageHeights,
-        marginLeft: blockMeasureInputs.marginLefts,
-        marginRight: blockMeasureInputs.marginRights,
-        marginBottom: blockMeasureInputs.marginBottoms,
-        contentLeft: blockMeasureInputs.contentLefts,
-        physicalPage: {
-          pageWidth: blockMeasureInputs.physicalPageGeometry.pageWidths,
-          pageHeight: blockMeasureInputs.physicalPageGeometry.pageHeights,
-          marginTop: blockMeasureInputs.physicalPageGeometry.marginTops,
-          marginLeft: blockMeasureInputs.physicalPageGeometry.marginLefts,
-          marginRight: blockMeasureInputs.physicalPageGeometry.marginRights,
-          marginBottom: blockMeasureInputs.physicalPageGeometry.marginBottoms,
-        },
-        columnIndex: blockMeasureInputs.columnIndices,
-        columnCount: blockMeasureInputs.columnCounts,
-        sectionAdvances: blockMeasureInputs.sectionAdvances,
-      });
+    let forwardMeasures = incrementalResult?.measures ?? measureBody();
+    let newMeasures = forwardMeasures;
     // Match the historical post-measure suppression timing while keeping the
     // authored flow tree immutable. Layout, painting, and cached artifacts all
     // consume the same derived block identities from this point forward.
@@ -1151,7 +1169,7 @@ function runLayoutPipelineMeasured<THfPMs>(
             options: buildNoteOptions(),
           })
         : undefined;
-    const layoutWithNoteAreas = (
+    const paginateBody = (
       measures: Measure[],
       nextLayoutOpts: Parameters<typeof layoutDocument>[2],
     ): Layout => {
@@ -1163,6 +1181,28 @@ function runLayoutPipelineMeasured<THfPMs>(
         ...nextLayoutOpts,
         noteAreas: endnoteAreas.noteAreas,
       });
+    };
+    let stabilizedFieldValues: Map<number, string> | undefined;
+    const layoutWithNoteAreas = (
+      nextLayoutOpts: Parameters<typeof layoutDocument>[2],
+    ): Layout => {
+      const settled = settleRaisedTableWrap({
+        blocks: newBlocks,
+        measures: forwardMeasures,
+        layout: (measures) => paginateBody(measures, nextLayoutOpts),
+        measure: (raisedTableWrap) =>
+          measureBody({ fieldValues: stabilizedFieldValues, raisedTableWrap }),
+      });
+      if (newMeasures !== settled.measures) {
+        newMeasures = settled.measures;
+        pendingArtifacts = {
+          blocks: newBlocks,
+          blockWidths,
+          measures: newMeasures,
+        };
+        outcome.measures = newMeasures;
+      }
+      return settled.layout;
     };
 
     const withFootnoteHeights = (
@@ -1275,7 +1315,7 @@ function runLayoutPipelineMeasured<THfPMs>(
       );
 
       layoutOptsUsed = withFootnoteHeights(layoutOpts);
-      newLayout = layoutWithNoteAreas(newMeasures, layoutOptsUsed);
+      newLayout = layoutWithNoteAreas(layoutOptsUsed);
 
       // The layout engine assigned `page.footnoteIds` line-by-
       // line via `paginator.addFootnoteHeight(_, ids)`, so a fn
@@ -1292,7 +1332,7 @@ function runLayoutPipelineMeasured<THfPMs>(
       }
     } else {
       // No footnotes — single pass
-      newLayout = layoutWithNoteAreas(newMeasures, layoutOpts);
+      newLayout = layoutWithNoteAreas(layoutOpts);
     }
 
     const rebuildFootnotePageMap = (): void => {
@@ -1308,7 +1348,7 @@ function runLayoutPipelineMeasured<THfPMs>(
       nextLayoutOpts: Parameters<typeof layoutDocument>[2],
     ): void => {
       layoutOptsUsed = withFootnoteHeights(nextLayoutOpts);
-      newLayout = layoutWithNoteAreas(newMeasures, layoutOptsUsed);
+      newLayout = layoutWithNoteAreas(layoutOptsUsed);
       if (hasFootnotes) {
         rebuildFootnotePageMap();
       }
@@ -1349,32 +1389,7 @@ function runLayoutPipelineMeasured<THfPMs>(
         }
         previousFieldValues = values;
         stabilizedFieldValues = values;
-        newMeasures = measureBlocks(
-          newBlocks,
-          blockWidths,
-          blockMeasureInputs.marginTops,
-          {
-            pageWidth: blockMeasureInputs.pageWidths,
-            pageHeight: blockMeasureInputs.pageHeights,
-            marginLeft: blockMeasureInputs.marginLefts,
-            marginRight: blockMeasureInputs.marginRights,
-            marginBottom: blockMeasureInputs.marginBottoms,
-            contentLeft: blockMeasureInputs.contentLefts,
-            physicalPage: {
-              pageWidth: blockMeasureInputs.physicalPageGeometry.pageWidths,
-              pageHeight: blockMeasureInputs.physicalPageGeometry.pageHeights,
-              marginTop: blockMeasureInputs.physicalPageGeometry.marginTops,
-              marginLeft: blockMeasureInputs.physicalPageGeometry.marginLefts,
-              marginRight: blockMeasureInputs.physicalPageGeometry.marginRights,
-              marginBottom:
-                blockMeasureInputs.physicalPageGeometry.marginBottoms,
-            },
-            columnIndex: blockMeasureInputs.columnIndices,
-            columnCount: blockMeasureInputs.columnCounts,
-            sectionAdvances: blockMeasureInputs.sectionAdvances,
-          },
-          values,
-        );
+        forwardMeasures = measureBody({ fieldValues: values });
         relayoutWithCurrentMeasures(layoutOptsUsed);
         pendingArtifacts = {
           blocks: newBlocks,
@@ -1393,7 +1408,6 @@ function runLayoutPipelineMeasured<THfPMs>(
     // fixed point with a small cap. Gated on a real change, so field-free
     // documents and most edits do zero passes; skipped on the incremental
     // (typing) path to keep keystrokes cheap.
-    let stabilizedFieldValues: Map<number, string> | undefined;
     stabilizeFieldWidths();
 
     if (hasFootnotes) {
