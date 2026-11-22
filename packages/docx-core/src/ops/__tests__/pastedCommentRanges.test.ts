@@ -245,6 +245,34 @@ describe("a pasted copy of a standing comment's range", () => {
     expect(applied.value.inverse).toEqual([]);
   });
 
+  test("undoing a deletion puts back an anchor its comment has standing elsewhere", () => {
+    const before = documentOf();
+    before.package.document.content.push({
+      type: "paragraph",
+      paraId: "00000002",
+      content: [start(1), run("ef"), end(1), reference(1)],
+    });
+    const original = structuredClone(before);
+    const deleted = applyDocumentOp(before, {
+      type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+      from: {
+        story: OP_STORIES.MAIN,
+        blockId: "00000002",
+        offset: 0,
+        zeroWidthBefore: 0,
+      },
+      to: { story: OP_STORIES.MAIN, blockId: "00000002", offset: 3 },
+    });
+    if (deleted.isErr()) throw deleted.error;
+    expect(anchorsById(deleted.value.document)).toEqual(new Map([[1, RANGE]]));
+    const undone = applyDocumentOps(
+      deleted.value.document,
+      JSON.parse(JSON.stringify(deleted.value.inverse)),
+    );
+    if (undone.isErr()) throw undone.error;
+    expect(undone.value.document).toEqual(original);
+  });
+
   test("a part of a standing comment's range is left out even when carried", () => {
     const applied = applyDocumentOp(
       documentOf(),

@@ -26,6 +26,7 @@ import {
 } from "./commentRangeBoundaryAttrs";
 import { readCommentReferenceAttrs } from "./commentReferenceAttrs";
 import { COMMENT_REFERENCE_NODE_NAME } from "./commentReferenceIntegrity";
+import type { RangeMarker } from "./emptyRangeAnchor";
 import { RANGE_ANCHOR_NODE_NAME } from "./extensions/nodes/RangeAnchorExtension";
 import { forEachAnnotationIdInDoc } from "./plugins/revisionIds";
 import { readRangeAnchorAttrs } from "./rangeAnchorAttrs";
@@ -118,7 +119,7 @@ const settleFragment = (
       const read = readRangeAnchorAttrs(node);
       if (read.ok) {
         // A comment's markers here are whole pairs, so the rest stay paired.
-        const markers = read.value.markers.flatMap((marker) => {
+        const markers = read.value.markers.flatMap((marker): RangeMarker[] => {
           const comment =
             marker.type === "commentRangeStart" ||
             marker.type === "commentRangeEnd";
@@ -153,12 +154,11 @@ const settleFragment = (
 const copyOf = (comment: Comment, id: number): Comment => {
   const copy = structuredClone(comment);
   copy.id = id;
-  copy.content = copy.content.map((paragraph) => {
-    const next = { ...paragraph };
-    delete next.paraId;
-    delete next.textId;
-    return next;
-  });
+  // The clone's paragraphs are the copy's own, so they drop their ids here.
+  for (const paragraph of copy.content) {
+    delete paragraph.paraId;
+    delete paragraph.textId;
+  }
   return copy;
 };
 

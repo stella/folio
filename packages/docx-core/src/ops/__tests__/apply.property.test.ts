@@ -3407,7 +3407,7 @@ describe("document operations", () => {
   });
 
   test("operations change logical text and run properties as defined", () => {
-    fc.assert(
+    assertProperty(
       fc.property(documentArbitrary, opSeedArbitrary, (document, seed) => {
         const op = opFor(document, seed);
         const applied = applyDocumentOp(document, op);
@@ -3573,7 +3573,10 @@ describe("document operations", () => {
           }
         }
       }),
-      propertyConfig({ numRuns: NUM_RUNS }),
+      {
+        numRuns: NUM_RUNS,
+        id: "operations change logical text and run properties as defined",
+      },
     );
   });
 });

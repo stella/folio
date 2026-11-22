@@ -169,7 +169,7 @@ import {
   transferParagraphPropertySnapshot,
 } from "./paragraphPropertySnapshot";
 import { paragraphSnapshotTransfers } from "./paragraphSnapshotTransfers";
-import { pastedComments } from "./pastedComments";
+import { pastedComments, repeatsStandingCommentAnchor } from "./pastedComments";
 import { priorValues } from "./patch";
 import {
   insertsInvertedRange,
@@ -564,6 +564,7 @@ const editOne = (
   commitOptions: Omit<Commit, "before" | "after"> & { paragraph: Paragraph },
   inverseOf: (
     result: Paragraph,
+    after: Document,
   ) => Result<readonly DocumentOp[], DocumentOpRefusal>,
 ): Applied => {
   const { paragraph, at, document } = commitOptions;
@@ -586,7 +587,7 @@ const editOne = (
       touched: UNTOUCHED,
     });
   }
-  const inverse = inverseOf(result);
+  const inverse = inverseOf(result, committed.value.document);
   if (inverse.isErr()) {
     return Result.err(inverse.error);
   }
@@ -1160,9 +1161,12 @@ const deleteRange = (document: Document, op: DeleteRangeOp): Applied => {
       paragraph: withContent(paragraph, content),
       newIds: undefined,
     },
-    (result) => {
+    (result, after) => {
       if (
         kept.length > 0 ||
+        // Put back by an insertion, an anchor its comment still has standing
+        // would be settled as a paste's copy, not restored.
+        repeatsStandingCommentAnchor(after, removed.content) ||
         cutHasResolutionProvenance({
           content: paragraph.content,
           gaps: [from, to],

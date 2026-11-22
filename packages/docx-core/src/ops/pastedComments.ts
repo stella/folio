@@ -183,6 +183,35 @@ const takenCommentIds = (document: Document): Set<number> => {
   return taken;
 };
 
+/** Each comment id's anchor kinds standing in the document. */
+const standingAnchorKinds = (document: Document): Map<number, Set<string>> => {
+  const standing = new Map<number, Set<string>>();
+  for (const { node } of commentAnchorsIn(document)) {
+    if (!isCommentAnchor(node)) continue;
+    const kinds = standing.get(node.id) ?? new Set<string>();
+    kinds.add(node.type);
+    standing.set(node.id, kinds);
+  }
+  return standing;
+};
+
+/**
+ * Whether `content` holds a comment anchor whose kind its comment has
+ * standing in `document`, so that inserting it there settles the anchor
+ * instead of putting it back as it was.
+ */
+export const repeatsStandingCommentAnchor = (
+  document: Document,
+  content: readonly ParagraphContent[],
+): boolean => {
+  const sliceKinds = anchorKindsIn(content);
+  if (sliceKinds.size === 0) return false;
+  const standing = standingAnchorKinds(document);
+  for (const [id, kinds] of sliceKinds)
+    if (kinds.some((kind) => standing.get(id)?.has(kind) === true)) return true;
+  return false;
+};
+
 /**
  * Settle the comment anchors `content` (the slice of `op`) carries against
  * the document it goes into; see the module comment.
@@ -198,13 +227,7 @@ export const pastedComments = (
     return Result.ok({ content: [...content], added: [] });
   const threads = carriedThreads(carried);
   if (threads.isErr()) return Result.err(threads.error);
-  const standing = new Map<number, Set<string>>();
-  for (const { node } of commentAnchorsIn(document)) {
-    if (!isCommentAnchor(node)) continue;
-    const kinds = standing.get(node.id) ?? new Set<string>();
-    kinds.add(node.type);
-    standing.set(node.id, kinds);
-  }
+  const standing = standingAnchorKinds(document);
   const duplicated = (id: number): AnchorKind[] =>
     (sliceKinds.get(id) ?? []).filter(
       (kind) => standing.get(id)?.has(kind) === true,
