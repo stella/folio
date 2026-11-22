@@ -408,6 +408,23 @@ describe("dragging commented text", () => {
     });
   }
 
+  test("a drag given up leaves nothing for the next paste", () => {
+    const view = open(documentFor(1, structuredClone(thread)), "editing");
+    select(view, "lo", 0);
+    view.dragging = { slice: sliceOf(view.state, "Hello"), move: false };
+    for (const plugin of view.state.plugins)
+      plugin.props.transformPasted?.call(
+        plugin,
+        view.dragging.slice,
+        view as never,
+        false,
+      );
+    view.dragging = null;
+    view.pasteText("XX");
+    expect(commentRecordsOf(view.state)).toEqual(thread);
+    expect(commentedText(view.state)).toEqual(new Map([[1, "HelXXlo"]]));
+  });
+
   test("a move keeps the comment on the moved text", () => {
     const document = documentFor(1, structuredClone(thread));
     const view = open(document, "editing");

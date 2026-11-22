@@ -233,6 +233,8 @@ export function createCommentRecordsPlugin(
     key: commentRecordsOwner.createKey(),
     props: {
       transformPasted(slice, view, plain) {
+        // What was not placed after all leaves nothing for the next one.
+        pending.delete(view.state);
         // Plain text holds no comment: it takes the marks at the caret.
         if (plain) return slice;
         if (view.dragging) {
