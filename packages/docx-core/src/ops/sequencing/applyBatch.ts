@@ -167,12 +167,18 @@ export const applyBatch = (
 ): Result<AppliedBatch, DocumentOpRefusal> =>
   batchWith(applyDocumentOps, document, ops);
 
-/** {@link applyBatch} for a rebase, whose batches may take a pending edit back by its inverse. */
+/**
+ * {@link applyBatch} for a rebase, whose batches may take a pending edit back
+ * by its inverse: what the batch leaves, without an inverse of its own, since
+ * an inspection repairs none.
+ */
 export const inspectBatch = (
   document: Document,
   ops: readonly DocumentOp[],
-): Result<AppliedBatch, DocumentOpRefusal> =>
-  batchWith(inspectDocumentOps, document, ops);
+): Result<Omit<AppliedBatch, "inverse">, DocumentOpRefusal> =>
+  batchWith(inspectDocumentOps, document, ops).map(
+    ({ document: left, effects }) => ({ document: left, effects }),
+  );
 
 const batchWith = (
   applyOps: typeof applyDocumentOps,
