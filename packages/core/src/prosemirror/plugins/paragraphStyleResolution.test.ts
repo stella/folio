@@ -168,6 +168,7 @@ describe("paragraphs an edit creates resolve their style cascade", () => {
   });
 
   test("a new cell paragraph reads its cell's table-style regions as a loaded one does", () => {
+    const rowTexts = ["Header", "Second header", "First", "Second"];
     const loadedCell = (text: string) => ({
       type: "tableCell" as const,
       content: [loadedParagraph(text)],
@@ -180,8 +181,9 @@ describe("paragraphs an edit creates resolve their style cascade", () => {
               type: "table",
               formatting: { styleId: "TableGrid", look: { firstRow: true } },
               columnWidths: [2000],
-              rows: ["Header", "First", "Second"].map((text) => ({
+              rows: rowTexts.map((text, index) => ({
                 type: "tableRow" as const,
+                ...(index < 2 ? { formatting: { header: true } } : {}),
                 cells: [loadedCell(text)],
               })),
             },
@@ -196,23 +198,30 @@ describe("paragraphs an edit creates resolve their style cascade", () => {
     });
     // Replace each loaded cell paragraph with a fresh one, as a cut or a
     // structural command would.
-    let edited = loaded;
-    for (const text of ["Header", "First", "Second"]) {
+    const replaceParagraph = (
+      state: EditorState,
+      { text, replacement }: { text: string; replacement: string },
+    ) => {
       let found = -1;
-      edited.doc.descendants((node, pos) => {
+      state.doc.descendants((node, pos) => {
         if (node.type.name === "paragraph" && node.textContent === text) {
           found = pos;
         }
         return found < 0;
       });
-      const node = edited.doc.nodeAt(found)!;
-      edited = edited.apply(
-        edited.tr.replaceWith(
+      const node = found >= 0 ? state.doc.nodeAt(found) : null;
+      if (!node) throw new Error(`No paragraph "${text}"`);
+      return state.apply(
+        state.tr.replaceWith(
           found,
           found + node.nodeSize,
-          paragraph(`New ${text}`),
+          paragraph(replacement),
         ),
       );
+    };
+    let edited = loaded;
+    for (const text of rowTexts) {
+      edited = replaceParagraph(edited, { text, replacement: `New ${text}` });
     }
     const keys = [
       "spaceBefore",
@@ -220,7 +229,7 @@ describe("paragraphs an edit creates resolve their style cascade", () => {
       "lineSpacing",
       "lineSpacingRule",
     ];
-    for (const text of ["Header", "First", "Second"]) {
+    for (const text of rowTexts) {
       const reference = byText(loaded.doc, text).attrs;
       const created = byText(edited.doc, `New ${text}`).attrs;
       for (const key of keys) {
@@ -228,8 +237,22 @@ describe("paragraphs an edit creates resolve their style cascade", () => {
       }
     }
     expect(byText(edited.doc, "New Header").attrs["spaceBefore"]).toBe(120);
+    expect(byText(edited.doc, "New Second header").attrs["spaceBefore"]).toBe(
+      120,
+    );
     expect(byText(edited.doc, "New First").attrs["spaceAfter"]).toBe(0);
     expect(byText(edited.doc, "New Second").attrs["spaceAfter"]).toBe(60);
+
+    const firstRow = edited.doc.firstChild?.firstChild;
+    if (!firstRow) throw new Error("Expected the first row");
+    const shortened = edited.apply(
+      edited.tr.setNodeAttribute(1 + firstRow.nodeSize, "isHeader", false),
+    );
+    const restyled = replaceParagraph(shortened, {
+      text: "New First",
+      replacement: "Changed body",
+    });
+    expect(byText(restyled.doc, "Changed body").attrs["spaceAfter"]).toBe(60);
   });
 
   test("the resolution undoes with the edit that needed it", () => {
