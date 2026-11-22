@@ -420,9 +420,8 @@ const countNodes = (paragraph: PMNode, name: string): number => {
 
 /**
  * `marks` as a session's projection states them. The canonical session
- * rebuilds its projection from the document after every commit and numbers
- * run identities by position, so there a run identity is compared by what it
- * carries, not by its number.
+ * rebuilds its projection after every commit and numbers the run and hyperlink
+ * carriers by position. Compare their authored attributes across that renumbering.
  */
 const comparableMarks = (
   session: HeadlessReviewerSession,
@@ -430,11 +429,16 @@ const comparableMarks = (
 ): readonly Mark[] =>
   session === "legacy"
     ? marks
-    : marks.map((mark) =>
-        mark.type.name === "runIdentity"
-          ? mark.type.create({ ...mark.attrs, id: 0 })
-          : mark,
-      );
+    : marks.map((mark) => {
+        if (mark.type.name === "runIdentity")
+          return mark.type.create({ ...mark.attrs, id: 0 });
+        if (
+          mark.type.name === "hyperlink" &&
+          typeof mark.attrs["_docxHyperlinkIndex"] === "number"
+        )
+          return mark.type.create({ ...mark.attrs, _docxHyperlinkIndex: 0 });
+        return mark;
+      });
 
 /** Whether two characters carry the same marks (see `comparableMarks`). */
 const sameMarks = (
@@ -736,7 +740,7 @@ describe.each(SESSIONS)(
         );
         await assertProperty(directReplacementProperty, {
           numRuns: 60,
-          id: `over generated paragraphs and edits (${session})`,
+          id: "over generated paragraphs and edits",
         });
       },
       propertyTestTimeout(240_000),
@@ -1253,7 +1257,7 @@ describe.each(SESSIONS)(
           {
             numRuns: 60,
             examples: PINNED_TRACKED_REPLACEMENTS,
-            id: `over generated paragraphs and edits, accepted and rejected (${session})`,
+            id: "over generated paragraphs and edits, accepted and rejected",
           },
         );
       },
