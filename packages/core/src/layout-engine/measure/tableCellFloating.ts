@@ -83,7 +83,11 @@ const resolveCellScopedPosition = ({
   if (position?.vertical) {
     const vertical = position.vertical;
     if (vertical.posOffset !== undefined) {
-      y = paragraphY + emuToPixels(vertical.posOffset);
+      const originY =
+        vertical.relativeTo === "margin" || vertical.relativeTo === "page"
+          ? 0
+          : paragraphY;
+      y = originY + emuToPixels(vertical.posOffset);
     } else if (vertical.align === "top") {
       y = 0;
     }
