@@ -57,6 +57,7 @@ import {
 } from "./tableCellFlow";
 import {
   buildTableCellGrid,
+  getExactTableRowBottomMargins,
   getFirstAvailableColumn,
   getTableCellSpacingInsetsX,
   getTableCellSpacingInsetsY,
@@ -320,6 +321,7 @@ export function measureTableBlock(
     };
   });
 
+  const exactRowBottomMargins = getExactTableRowBottomMargins(tableBlock.rows);
   // Calculate cell heights, respecting explicit row height rules
   for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
     const row = rows[rowIdx]!; // SAFETY: rowIdx < rows.length
@@ -396,7 +398,8 @@ export function measureTableBlock(
       const exactBoxHeight = bordersSeparated
         ? Math.max(0, explicitHeight - (cellSpacing ?? 0))
         : explicitHeight;
-      row.height = exactBoxHeight + spacingHeight;
+      row.height =
+        exactBoxHeight + (exactRowBottomMargins[rowIdx] ?? 0) + spacingHeight;
     } else if (explicitHeight) {
       // Compatibility layouts treat both 'atLeast' and auto-with-val as a
       // content floor; cell padding and horizontal borders remain outside it.

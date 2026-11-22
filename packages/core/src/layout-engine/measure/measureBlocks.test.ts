@@ -1552,7 +1552,7 @@ describe("measureTableBlock row height", () => {
 
   test("exact height rule stays exact and ignores cell borders", () => {
     withFakeTextMeasure(() => {
-      // `hRule=exact` fixes the whole row height; borders do not extend it.
+      // Cell borders do not extend an exact row height.
       const exactHeight = 300;
       const table: TableBlock = {
         kind: "table",
@@ -1576,6 +1576,74 @@ describe("measureTableBlock row height", () => {
       };
 
       expect(measureTableBlock(table, 120).rows[0]?.height).toBe(exactHeight);
+    }, fakeMeasure);
+  });
+
+  test("adds only the largest bottom cell margin to an exact row height", () => {
+    withFakeTextMeasure(() => {
+      const authoredHeight = 40;
+      const table: TableBlock = {
+        kind: "table",
+        id: "exact-row",
+        columnWidths: [60, 60],
+        rows: [
+          {
+            id: "r0",
+            height: authoredHeight,
+            heightRule: "exact",
+            cells: [
+              {
+                id: "a",
+                blocks: [para("a", "One line")],
+                padding: { top: 22, right: 0, bottom: 8, left: 0 },
+              },
+              {
+                id: "b",
+                blocks: [para("b", "One line")],
+                padding: { top: 0, right: 0, bottom: 20, left: 0 },
+              },
+            ],
+          },
+        ],
+      };
+
+      expect(measureTableBlock(table, 120).rows.at(0)?.height).toBe(
+        authoredHeight + 20,
+      );
+      expect(
+        measureTableBlock({ ...table, cellSpacing: 2 }, 120).rows.at(0)?.height,
+      ).toBe(authoredHeight + 20 + 6);
+    }, fakeMeasure);
+  });
+
+  test("counts a merged cell's bottom margin on the exact row where it ends", () => {
+    withFakeTextMeasure(() => {
+      const exactHeight = 40;
+      const table: TableBlock = {
+        kind: "table",
+        id: "merged-exact-rows",
+        columnWidths: [60],
+        rows: [
+          {
+            id: "r0",
+            height: exactHeight,
+            heightRule: "exact",
+            cells: [
+              {
+                id: "a",
+                rowSpan: 2,
+                blocks: [para("a-p", "One line")],
+                padding: { top: 0, right: 0, bottom: 15, left: 0 },
+              },
+            ],
+          },
+          { id: "r1", height: exactHeight, heightRule: "exact", cells: [] },
+        ],
+      };
+
+      expect(
+        measureTableBlock(table, 120).rows.map((row) => row.height),
+      ).toEqual([exactHeight, exactHeight + 15]);
     }, fakeMeasure);
   });
 

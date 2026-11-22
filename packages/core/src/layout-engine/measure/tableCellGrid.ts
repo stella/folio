@@ -1,5 +1,6 @@
 import { paintsCssBorder } from "../../utils/borderCss";
 import type { TableCell, TableRow } from "../types";
+import { resolveTableCellPadding } from "../types";
 
 export type TableCellGrid = {
   occupiedColumnsByRow: ReadonlyMap<number, ReadonlySet<number>>;
@@ -82,6 +83,32 @@ export const getTableCellSpacingInsetsY = (
     top: rowIndex <= 0 ? unit * 2 : unit,
     bottom: rowIndex + Math.max(1, rowSpan) >= rowCount ? unit * 2 : unit,
   };
+};
+
+/** Bottom margins extend the exact height of the row where the cells end. */
+export const getExactTableRowBottomMargins = (
+  rows: readonly TableRow[],
+): readonly number[] => {
+  if (!rows.some((row) => row.heightRule === "exact" && !row.hidden)) {
+    return [];
+  }
+
+  const margins = rows.map(() => 0);
+  for (const [rowIndex, row] of rows.entries()) {
+    if (row.hidden) {
+      continue;
+    }
+    for (const cell of row.cells) {
+      const rowSpan = Math.max(1, Math.trunc(cell.rowSpan ?? 1));
+      const lastRow = Math.min(rows.length - 1, rowIndex + rowSpan - 1);
+      const closingRow = rows[lastRow];
+      if (closingRow?.heightRule === "exact" && !closingRow.hidden) {
+        const { bottom } = resolveTableCellPadding(cell);
+        margins[lastRow] = Math.max(margins[lastRow] ?? 0, bottom);
+      }
+    }
+  }
+  return margins;
 };
 
 export const buildTableCellGrid = (
