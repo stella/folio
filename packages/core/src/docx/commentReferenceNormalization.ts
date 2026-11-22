@@ -104,21 +104,20 @@ type CommentRangeMarkerSite =
 type PointPlacement = { paragraph: Paragraph; at: "start" | "end" };
 
 /**
- * What a range opens and closes within: the body, a header, footer, note or
- * comment, or a text box inside one.
- */
-type MarkerStory = { paragraphCount: number };
-
-/**
  * A nonempty run among the comment anchors. Paragraph ordinals count the
  * intervening breaks without adding blank paragraphs to the tape.
  */
 type TextPiece = {
   order: number;
-  story: MarkerStory;
   paragraphOrdinal: number;
   text: string;
 };
+
+/**
+ * What a range opens and closes within: the body, a header, footer, note or
+ * comment, or a text box inside one. Each holds the tape of its own runs.
+ */
+type MarkerStory = { paragraphCount: number; tape: TextPiece[] };
 
 type PreservedChildOf = NonNullable<PreservedMarkup["children"]>[number];
 
@@ -156,13 +155,12 @@ export const normalizeCommentReferences = ({
   const references: CommentReferenceRef[] = [];
   const referencedIds = new Set<number>();
   const removals = new InlineContentRemovals();
-  const tape: TextPiece[] = [];
   let removedDanglingReferences = 0;
   let order = 0;
-  let story: MarkerStory = { paragraphCount: 0 };
+  let story: MarkerStory = { paragraphCount: 0, tape: [] };
   const inOwnStory = (normalize: () => void): void => {
     const outer = story;
-    story = { paragraphCount: 0 };
+    story = { paragraphCount: 0, tape: [] };
     normalize();
     story = outer;
   };
@@ -179,7 +177,7 @@ export const normalizeCommentReferences = ({
       });
       if (item.type === "run") {
         const text = getRunText(item);
-        if (text !== "") tape.push({ order, story, paragraphOrdinal, text });
+        if (text !== "") story.tape.push({ order, paragraphOrdinal, text });
         return;
       }
       if (isCommentMarker(item) && !validCommentIds.has(item.id)) {
@@ -377,7 +375,7 @@ export const normalizeCommentReferences = ({
     droppedDuplicateReferences: duplicates.length,
     droppedRanges: repaired.droppedRanges.map(({ id, start, end }) => ({
       id,
-      text: textBetween(tape, start, end),
+      text: textBetween(start, end),
     })),
     completedReferences,
   };
@@ -474,10 +472,10 @@ const DROPPED_RANGE_TEXT_LIMIT = 200;
  * prefix is read.
  */
 const textBetween = (
-  tape: readonly TextPiece[],
   start: CommentRangeMarkerRef,
   end: CommentRangeMarkerRef,
 ): string => {
+  const { tape } = start.story;
   let low = 0;
   let high = tape.length;
   while (low < high) {
@@ -491,7 +489,6 @@ const textBetween = (
   for (let index = low; index < tape.length; index += 1) {
     const piece = tape[index];
     if (piece === undefined || piece.order > end.order) break;
-    if (piece.story !== start.story) continue;
     const breaks =
       piece.paragraphOrdinal - (previousParagraph ?? piece.paragraphOrdinal);
     text += "\n".repeat(

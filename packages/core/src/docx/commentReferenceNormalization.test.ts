@@ -444,6 +444,62 @@ describe("comment reference normalization", () => {
     ]);
   });
 
+  test("reporting dropped ranges reads only their own story's text", () => {
+    const COUNT = 100_000;
+    const comments: Comment[] = [{ id: 7, author: "Reviewer", content: [] }];
+    const run = (text: string) => ({
+      type: "run" as const,
+      content: [{ type: "text" as const, text }],
+    });
+    const repeated = <Item extends object>(make: () => Item): Item[] =>
+      Array.from({ length: COUNT }, make);
+    const documentBody: DocumentBody = {
+      comments,
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            ...repeated(() => ({ type: "commentRangeStart" as const, id: 7 })),
+            {
+              type: "run",
+              content: [
+                {
+                  type: "shape",
+                  shape: {
+                    type: "shape",
+                    shapeType: "rect",
+                    size: { width: 914400, height: 914400 },
+                    textBody: {
+                      content: [
+                        {
+                          type: "paragraph",
+                          content: repeated(() => run("boxed")),
+                        },
+                      ],
+                    },
+                  },
+                },
+              ],
+            },
+            run("body"),
+            ...repeated(() => ({ type: "commentRangeEnd" as const, id: 7 })),
+          ],
+        },
+      ],
+    };
+
+    const started = performance.now();
+    const { droppedRanges } = normalizeCommentReferences({
+      documentBody,
+      comments,
+    });
+
+    expect(droppedRanges.length).toBe(COUNT - 1);
+    expect(droppedRanges.every(({ text }) => text === "body")).toBe(true);
+    // Work on the order of ranges times boxed runs takes far longer than this.
+    expect(performance.now() - started).toBeLessThan(5000);
+  }, 120_000);
+
   test("drops a later range between blocks and reports its runs' text as written", () => {
     const comments: Comment[] = [{ id: 7, author: "Reviewer", content: [] }];
     const run = (text: string) => ({
