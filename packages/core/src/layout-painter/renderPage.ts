@@ -2988,6 +2988,15 @@ function collectContentFingerprint(block: FlowBlock, parts: string[]): void {
         if (tableCellKeepsNoWrap(block, cell)) {
           parts.push(`nowrap:${rowIndex}:${cellIndex}`);
         }
+        if (cell.borders) {
+          for (const side of ["top", "right", "bottom", "left"] as const) {
+            const edge = cell.borders[side];
+            if (edge?.authoredStyle)
+              parts.push(
+                `c:b:${rowIndex}:${cellIndex}:${side}:${edge.authoredStyle}:${edge.width ?? ""}:${edge.color ?? ""}`,
+              );
+          }
+        }
         for (const child of cell.blocks) {
           collectContentFingerprint(child, parts);
         }

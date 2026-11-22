@@ -1,12 +1,15 @@
 import type { CellBorderSpec } from "../types";
 
-const BEVEL_COLOR = /^#[\da-f]{6}$/iu;
+const TABLE_BORDER_COLOR = /^#[\da-f]{6}$/iu;
 const BLACK = "#000000";
 const LARGE_BEVEL_WIDTH_PX = 4;
 const MAX_CHANNEL = 255;
 const LIGHTNESS_STEPS = 240;
 const MIDDLE_TONE_DROP = 70;
 const DARK_TONE_DROP = 80;
+
+const THIN_COMPOUND_STROKE_PX = 1;
+const THICK_COMPOUND_STROKE_PX = 2;
 
 export type TableBorderSide = "top" | "right" | "bottom" | "left";
 
@@ -15,15 +18,46 @@ function beveledEdge(border: CellBorderSpec | undefined) {
   if (border?.style !== "ridge" && border?.style !== "groove") return undefined;
   const width = border.width ?? 1;
   const color = border.color ?? BLACK;
-  if (!(width > 0) || !Number.isFinite(width) || !BEVEL_COLOR.test(color))
+  if (
+    !(width > 0) ||
+    !Number.isFinite(width) ||
+    !TABLE_BORDER_COLOR.test(color)
+  )
     return undefined;
   const shoulder = width >= LARGE_BEVEL_WIDTH_PX ? 2 : 1;
   return { width, shoulder, color, recessed: border.style === "groove" };
 }
 
+function largeGapCompoundEdge(border: CellBorderSpec | undefined) {
+  if (!border) return undefined;
+  const style = border.authoredStyle;
+  if (style !== "thinThickLargeGap" && style !== "thickThinLargeGap")
+    return undefined;
+  const gapPx = border.width ?? 1;
+  const color = border.color ?? BLACK;
+  if (
+    !(gapPx > 0) ||
+    !Number.isFinite(gapPx) ||
+    !TABLE_BORDER_COLOR.test(color)
+  )
+    return undefined;
+
+  // These two styles swap the physical strokes. The gap takes w:sz.
+  const firstIsThick = style === "thinThickLargeGap";
+  const firstPx = firstIsThick
+    ? THICK_COMPOUND_STROKE_PX
+    : THIN_COMPOUND_STROKE_PX;
+  const lastPx = firstIsThick
+    ? THIN_COMPOUND_STROKE_PX
+    : THICK_COMPOUND_STROKE_PX;
+  return { firstPx, lastPx, gapPx, color, widthPx: firstPx + gapPx + lastPx };
+}
+
 export function tableCellBorderWidth(
   border: CellBorderSpec | undefined,
 ): number {
+  const compound = largeGapCompoundEdge(border);
+  if (compound) return compound.widthPx;
   const edge = beveledEdge(border);
   return edge ? edge.width + edge.shoulder * 2 : (border?.width ?? 0);
 }
@@ -34,14 +68,21 @@ function gray(channel: number): Tone {
   return { r: channel, g: channel, b: channel, a: 1 };
 }
 
+function rgbTone(hex: string): Tone {
+  return {
+    r: Number.parseInt(hex.slice(0, 2), 16),
+    g: Number.parseInt(hex.slice(2, 4), 16),
+    b: Number.parseInt(hex.slice(4, 6), 16),
+    a: 1,
+  };
+}
+
 function embossTones(color: string): readonly [Tone, Tone, Tone] {
   const hex = color.slice(1).toLowerCase();
   if (hex === "000000") return [gray(192), gray(96), gray(0)];
   if (hex === "ffffff") return [gray(255), gray(160), gray(128)];
 
-  const r = Number.parseInt(hex.slice(0, 2), 16);
-  const g = Number.parseInt(hex.slice(2, 4), 16);
-  const b = Number.parseInt(hex.slice(4, 6), 16);
+  const { r, g, b } = rgbTone(hex);
   const low = Math.min(r, g, b);
   const high = Math.max(r, g, b);
   const chroma = high - low;
@@ -69,7 +110,19 @@ function embossTones(color: string): readonly [Tone, Tone, Tone] {
   ];
 }
 
-export function tableCellBorderBevel(border: CellBorderSpec | undefined) {
+export function tableCellBorderBands(border: CellBorderSpec | undefined) {
+  const compound = largeGapCompoundEdge(border);
+  if (compound) {
+    const { firstPx, gapPx, lastPx, widthPx } = compound;
+    const color = rgbTone(compound.color.slice(1));
+    return {
+      widthPx,
+      bands: [
+        { offsetPx: 0, widthPx: firstPx, color },
+        { offsetPx: firstPx + gapPx, widthPx: lastPx, color },
+      ],
+    };
+  }
   const edge = beveledEdge(border);
   if (!edge) return undefined;
   const { width, shoulder, color, recessed } = edge;

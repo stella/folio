@@ -36,7 +36,10 @@ import { normalizeShapeTextAnchor } from "../../types/documentEnumValues";
 import type { DeepReadonly } from "../../types/documentModel";
 import { convertAltChunkPlaceholder } from "./altChunkPlaceholder";
 import { fixedTableColumnWidths } from "./fixedTableColumnWidths";
-import { convertBorderSpecToLayout } from "./flowBorders";
+import {
+  convertBorderSpecToLayout,
+  convertCellBorderSpecToLayout,
+} from "./flowBorders";
 import type { ConvertibleBorder } from "./flowBorders";
 import { nextBlockId, twipsToPixels } from "./flowConversionShared";
 import type { FlowConversionOptions } from "./flowConversionShared";
@@ -78,7 +81,7 @@ function extractCellBorders(
   for (const side of sides) {
     const border = borders[side];
     const converted = border
-      ? convertBorderSpecToLayout(border, theme)
+      ? convertCellBorderSpecToLayout(border, theme)
       : undefined;
     if (!converted) {
       result[side] = { width: 0, style: "none" };
