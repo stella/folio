@@ -1325,6 +1325,38 @@ type BlockerFate = "pending" | "accepted" | "removed";
 type DeferredRemovalSettlement = {
   fateOf: (blocker: number) => BlockerFate;
   deferredOnlyRemovals?: Resolution["deferredOnlyRemovals"];
+  /** What the resolution recorded about each marker, kept on its copies. */
+  known?: WeakMap<InlineNode, string>;
+};
+
+/**
+ * The kept markers beside the blockers of a seam their acceptance retires,
+ * left where they stand: those naming both sides as their cut's piece named
+ * the seam, and name none once it goes. `out` is changed in place; whether
+ * it changed.
+ */
+const consumeSeamNames = (
+  out: InlineNode[],
+  { blockers }: DeferredRemovalGroup,
+  known: WeakMap<InlineNode, string>,
+): boolean => {
+  let changed = false;
+  for (const [index, node] of out.entries()) {
+    if (!isTrackedWrapper(node) || !blockers.includes(node.info.id)) continue;
+    for (const step of [-1, 1])
+      for (let at = index + step; at >= 0; at += step) {
+        const marker = out[at];
+        if (
+          marker === undefined ||
+          !standsInKeptCut(marker) ||
+          keptCutPiece(marker) !== "both"
+        )
+          break;
+        out[at] = withKeptCutPieceConsumed(marker, known);
+        changed = true;
+      }
+  }
+  return changed;
 };
 
 /**
@@ -1337,7 +1369,7 @@ const settleDeferredRemovals = (
   nodes: readonly InlineNode[],
   options: DeferredRemovalSettlement,
 ): readonly InlineNode[] => {
-  const { fateOf, deferredOnlyRemovals } = options;
+  const { fateOf, deferredOnlyRemovals, known = new WeakMap() } = options;
   let changed = false;
   const out: InlineNode[] = [];
   /** Seams whose every blocker is accepted, by key: see placeAcceptedSeamKept. */
@@ -1439,7 +1471,10 @@ const settleDeferredRemovals = (
     out.push(next);
   }
   for (const group of acceptedKept.values())
-    changed = placeAcceptedSeamKept({ out, group, fateOf }) || changed;
+    changed =
+      placeAcceptedSeamKept({ out, group, fateOf }) ||
+      consumeSeamNames(out, group, known) ||
+      changed;
   // Later placements stand later in the list, so earlier indices still hold.
   for (const { index, group } of removedPieces.toReversed())
     changed =
@@ -1679,6 +1714,7 @@ const prepareDeferredRemovals = (
 ): readonly InlineNode[] =>
   settleDeferredRemovals(nodes, {
     deferredOnlyRemovals: resolution.deferredOnlyRemovals,
+    known: resolution.relocated.nodes,
     fateOf(id) {
       if (!resolution.ids.has(id)) return "pending";
       return resolution.decision === REVISION_DECISIONS.ACCEPT
@@ -2652,6 +2688,13 @@ const resolveList = ({
       after.resolutionJoins?.remove ?? 0,
     );
     if (depth > 0) return { depth };
+    // A seam one of them still waits on takes what they keep instead.
+    if (
+      [before, node, after].some(
+        (change) => change.resolutionJoins?.deferredRemove !== undefined,
+      )
+    )
+      return undefined;
     const outer = {
       before: before.resolutionJoins?.before ?? 0,
       after: after.resolutionJoins?.after ?? 0,
@@ -4410,14 +4453,30 @@ const resolveList = ({
       floated.add(index);
       count += 1;
     }
+    let end = at;
+    for (;;) {
+      const date = keptFromAt(end);
+      if (date === undefined || date <= keptFrom || floated.has(end)) break;
+      floated.add(end);
+      end += 1;
+    }
     if (
-      count !== entry.count &&
-      alikeDepth(pieceAt(at - count - 1, "end"), pieceAt(at, "start")) > 0
-    )
-      floating.set(at, { ...entry, count });
-    else
+      (count !== entry.count || end !== at) &&
+      alikeDepth(pieceAt(at - count - 1, "end"), pieceAt(end, "start")) > 0
+    ) {
+      floating.delete(at);
+      floating.set(end, { ...entry, count: count + end - at });
+      const depth = exactSeams.get(at);
+      if (end !== at && depth !== undefined) {
+        exactSeams.delete(at);
+        recordExactSeam(end, depth);
+        if (removalSeams.has(at)) removalSeams.add(end);
+      }
+    } else {
       for (let index = at - count; index < at - entry.count; index += 1)
         floated.delete(index);
+      for (let index = at; index < end; index += 1) floated.delete(index);
+    }
   }
   /**
    * Hand the join at a seam to the pending insertion at `holderAt` holding the
@@ -4489,15 +4548,24 @@ const resolveList = ({
         from: recorded,
         step: 1,
         limit: deferred.count,
+      });
+      // Or just before them, kept as of an earlier revision.
+      const before = keptRun({
+        at: (index) => (floated.has(index) ? undefined : out[index]?.node),
+        from: recorded - entry.count - 1,
+        step: -1,
+        limit: deferred.count - after.boundaries,
       }).records;
-      if (after === 0) continue;
+      if (after.records === 0 && before === 0) continue;
+      const end = recorded + after.records;
       floating.delete(recorded);
       exactSeams.delete(recorded);
-      exactSeams.set(
-        recorded + after,
-        Math.max(exactSeams.get(recorded + after) ?? 0, depth),
-      );
-      floating.set(recorded + after, { ...entry, count: entry.count + after });
+      recordExactSeam(end, depth);
+      if (removalSeams.has(recorded)) removalSeams.add(end);
+      floating.set(end, {
+        ...entry,
+        count: entry.count + after.records + before,
+      });
       continue;
     }
     const leftPiece = out[recorded - 1]?.node;

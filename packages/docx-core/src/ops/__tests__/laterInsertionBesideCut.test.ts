@@ -263,6 +263,22 @@ test("an accepted deletion of one piece leaves the cut with the other piece", ()
   );
 });
 
+test("markers kept from a later insertion just after a cut's stand in the cut with them", () => {
+  const later: ParagraphContent = { type: "bookmarkStart", id: 2, name: "_B" };
+  const document = documentOf({
+    content: [
+      link([text("a")]),
+      insertion(1, "1", [BOOKMARK_END], { before: 0, after: 0, remove: 1 }),
+      insertion(2, "2", [later], { before: 0, after: 0, remove: 0 }),
+      link([text("b")]),
+    ],
+  });
+  const atOnce = contentOf(rejected(document, [1, 2]));
+  expect(atOnce).toEqual([link([text("a"), BOOKMARK_END, later, text("b")])]);
+  expect(contentOf(rejected(rejected(document, [1]), [2]))).toEqual(atOnce);
+  expect(contentOf(rejected(rejected(document, [2]), [1]))).toEqual(atOnce);
+});
+
 test("a marker kept from outside the record a later insertion was made in stays beside it", () => {
   const document = documentOf({
     content: [
