@@ -1300,6 +1300,7 @@ export const PARAGRAPH_MARK_CHANGE_RESERVED = {
   info: NO_RESERVED_VALUE,
   resolutionJoin: NO_RESERVED_VALUE,
   survivor: NO_RESERVED_VALUE,
+  splitDate: NO_RESERVED_VALUE,
   deletion: NO_RESERVED_VALUE,
 } satisfies Record<RecordField<ParagraphMarkChange>, ReservedValueDisposition>;
 
