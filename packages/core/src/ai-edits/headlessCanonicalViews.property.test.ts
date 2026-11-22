@@ -399,7 +399,10 @@ for (const kind of ["ins", "del"] as const)
     { type: "bookmarkStart", id: 90, name: "_GoBack" },
     { type: "bookmarkEnd", id: 90 },
   ] as const)
-    test(`a native ${boundary.type} boundary independently explains the ${kind} view refusal`, async () => {
+    // Only the boundary follows the paragraph: nothing follows it, and
+    // removing it would leave the boundary ending the body, so resolving its
+    // mark keeps it, and every view reads.
+    test(`a ${kind} mark before a trailing native ${boundary.type} boundary resolves and keeps its paragraph`, async () => {
       const buffer = await ingested(
         await createDocx({
           package: {
@@ -428,16 +431,14 @@ for (const kind of ["ins", "del"] as const)
           decision,
         },
       ]);
-      expect(native.isErr()).toBe(true);
-      if (native.isOk())
-        return panic("Expected the native range-boundary refusal");
-      expect(native.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE);
-      expect(native.error.opType).toBe(DOCUMENT_OP_TYPES.RESOLVE_REVISION);
-      expect(native.error.message).toBe(
-        "A range boundary stands between 00000001 and the next block.",
-      );
-      await expect(viewLaws(buffer)).rejects.toThrow(native.error.message);
-      await viewLaws(buffer, "known-input-boundaries");
+      if (native.isErr()) throw native.error;
+      const blocks = native.value.document.package.document.content;
+      expect(blocks.map(({ type }) => type)).toEqual([
+        "paragraph",
+        boundary.type,
+      ]);
+      expect(blocks.at(0)).not.toHaveProperty("pPrMark");
+      await viewLaws(buffer);
       expect(reviewer.toDocument()).toEqual(before);
 
       const read = spyOn(FolioDocxReviewer.prototype, "readReviewedStory");
@@ -446,12 +447,10 @@ for (const kind of ["ins", "del"] as const)
           throw new CanonicalSessionError({
             reason: "refused",
             ground: { gap: CANONICAL_GAP.dispatch },
-            message: "Unexpected refusal on a known-boundary input",
+            message: "Unexpected refusal on a supported input",
           });
         });
-        await expect(
-          viewLaws(buffer, "known-input-boundaries"),
-        ).rejects.toThrow();
+        await expect(viewLaws(buffer)).rejects.toThrow();
       } finally {
         read.mockRestore();
       }
