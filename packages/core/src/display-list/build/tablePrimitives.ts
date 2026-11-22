@@ -14,6 +14,10 @@
  */
 
 import {
+  type TableBorderSide,
+  tableCellBorderBevel,
+} from "../../layout-engine/measure/tableBorderBevel";
+import {
   createTableCellFlowState,
   placeTableCellBlock,
 } from "../../layout-engine/measure/tableCellFlow";
@@ -95,6 +99,61 @@ const strokeFor = (
   return stroke;
 };
 
+type PaintBorderEdgeOptions = {
+  border: CellBorderSpec | undefined;
+  side: TableBorderSide;
+  box: CellBox;
+  context: BuildContext;
+  label?: string;
+};
+
+function paintBorderEdge(
+  primitives: DisplayPrimitive[],
+  {
+    border,
+    side,
+    box,
+    context,
+    label = `table cell ${side} border`,
+  }: PaintBorderEdgeOptions,
+): number {
+  const bevel = tableCellBorderBevel(border);
+  const bands = [];
+  let width: number;
+  if (bevel) {
+    width = bevel.widthPx;
+    for (const { offsetPx, widthPx, color } of bevel.bands) {
+      bands.push({
+        offsetPx,
+        stroke: { color, pattern: "solid" as const, thicknessPx: widthPx },
+      });
+    }
+  } else {
+    const stroke = strokeFor(border, context, label);
+    if (!stroke) return 0;
+    width = stroke.thicknessPx;
+    bands.push({ offsetPx: 0, stroke });
+  }
+  const across = side === "top" || side === "bottom";
+  const x2 = box.xPx + box.widthPx;
+  const y2 = box.yPx + box.heightPx;
+  const start = across ? box.yPx : box.xPx;
+  const end = across ? y2 : x2;
+  const origin = side === "bottom" || side === "right" ? end - width : start;
+  for (const { offsetPx, stroke } of bands) {
+    const center = origin + offsetPx + stroke.thicknessPx / 2;
+    primitives.push({
+      kind: "line",
+      x1Px: across ? box.xPx : center,
+      y1Px: across ? center : box.yPx,
+      x2Px: across ? x2 : center,
+      y2Px: across ? center : y2,
+      stroke,
+    });
+  }
+  return width;
+}
+
 type PaintCellOptions = {
   readonly composer: PageComposer;
   readonly cell: TableCell;
@@ -149,68 +208,32 @@ const paintCell = ({
   }
 
   const borders = cell.borders;
-  const strokes = {
-    top: sides.top
-      ? strokeFor(borders?.top, context, "table cell top border")
-      : undefined,
-    bottom: sides.bottom
-      ? strokeFor(borders?.bottom, context, "table cell bottom border")
-      : undefined,
-    left: sides.left
-      ? strokeFor(borders?.left, context, "table cell left border")
-      : undefined,
-    right: strokeFor(borders?.right, context, "table cell right border"),
-  };
-
-  // `box-sizing: border-box` puts each edge inside the cell box; a display-list
-  // stroke is centred on its path, so each edge sits half a thickness inside.
   const widths: BorderWidths = {
-    top: strokes.top?.thicknessPx ?? 0,
-    right: strokes.right?.thicknessPx ?? 0,
-    bottom: strokes.bottom?.thicknessPx ?? 0,
-    left: strokes.left?.thicknessPx ?? 0,
+    top: paintBorderEdge(primitives, {
+      side: "top",
+      border: sides.top ? borders?.top : undefined,
+      box,
+      context,
+    }),
+    bottom: paintBorderEdge(primitives, {
+      side: "bottom",
+      border: sides.bottom ? borders?.bottom : undefined,
+      box,
+      context,
+    }),
+    left: paintBorderEdge(primitives, {
+      side: "left",
+      border: sides.left ? borders?.left : undefined,
+      box,
+      context,
+    }),
+    right: paintBorderEdge(primitives, {
+      side: "right",
+      border: borders?.right,
+      box,
+      context,
+    }),
   };
-
-  if (strokes.top) {
-    primitives.push({
-      kind: "line",
-      x1Px: box.xPx,
-      y1Px: box.yPx + widths.top / 2,
-      x2Px: box.xPx + box.widthPx,
-      y2Px: box.yPx + widths.top / 2,
-      stroke: strokes.top,
-    });
-  }
-  if (strokes.bottom) {
-    primitives.push({
-      kind: "line",
-      x1Px: box.xPx,
-      y1Px: box.yPx + box.heightPx - widths.bottom / 2,
-      x2Px: box.xPx + box.widthPx,
-      y2Px: box.yPx + box.heightPx - widths.bottom / 2,
-      stroke: strokes.bottom,
-    });
-  }
-  if (strokes.left) {
-    primitives.push({
-      kind: "line",
-      x1Px: box.xPx + widths.left / 2,
-      y1Px: box.yPx,
-      x2Px: box.xPx + widths.left / 2,
-      y2Px: box.yPx + box.heightPx,
-      stroke: strokes.left,
-    });
-  }
-  if (strokes.right) {
-    primitives.push({
-      kind: "line",
-      x1Px: box.xPx + box.widthPx - widths.right / 2,
-      y1Px: box.yPx,
-      x2Px: box.xPx + box.widthPx - widths.right / 2,
-      y2Px: box.yPx + box.heightPx,
-      stroke: strokes.right,
-    });
-  }
 
   const padding = resolveTableCellPadding(cell);
   const contentXPx = box.xPx + widths.left + padding.left;
@@ -704,16 +727,17 @@ const paintFragmentBottomBorders = ({
     block,
     measure,
   })) {
-    const stroke = strokeFor(border, context, "table fragment bottom border");
-    if (!stroke) continue;
-    const yPx = fragment.y + fragment.height - stroke.thicknessPx / 2;
-    primitives.push({
-      kind: "line",
-      x1Px: fragment.x + left,
-      y1Px: yPx,
-      x2Px: fragment.x + left + width,
-      y2Px: yPx,
-      stroke,
+    paintBorderEdge(primitives, {
+      border,
+      side: "bottom",
+      label: "table fragment bottom border",
+      box: {
+        xPx: fragment.x + left,
+        yPx: fragment.y,
+        widthPx: width,
+        heightPx: fragment.height,
+      },
+      context,
     });
   }
   composer.push(primitives);

@@ -1,6 +1,7 @@
 import { paintsCssBorder } from "../../utils/borderCss";
 import type { TableCell, TableRow } from "../types";
 import { resolveTableCellPadding } from "../types";
+import { tableCellBorderWidth } from "./tableBorderBevel";
 
 export type TableCellGrid = {
   occupiedColumnsByRow: ReadonlyMap<number, ReadonlySet<number>>;
@@ -257,7 +258,8 @@ export const getTableCellVerticalBorderHeight = (
   if (separated) {
     // Spaced cells share no edge: each paints both of its own.
     return (
-      (cell?.borders?.top?.width ?? 0) + (cell?.borders?.bottom?.width ?? 0)
+      tableCellBorderWidth(cell?.borders?.top) +
+      tableCellBorderWidth(cell?.borders?.bottom)
     );
   }
   const sourceColumn = cell ? getSourceCellColumn(grid, cell) : undefined;
@@ -269,8 +271,10 @@ export const getTableCellVerticalBorderHeight = (
   const aboveOwnsEdge =
     aboveBottom !== undefined && paintsCssBorder(aboveBottom.style);
   const top =
-    rowIndex === 0 || !aboveOwnsEdge ? (cell?.borders?.top?.width ?? 0) : 0;
-  const bottom = cell?.borders?.bottom?.width ?? 0;
+    rowIndex === 0 || !aboveOwnsEdge
+      ? tableCellBorderWidth(cell?.borders?.top)
+      : 0;
+  const bottom = tableCellBorderWidth(cell?.borders?.bottom);
   return top + bottom;
 };
 
