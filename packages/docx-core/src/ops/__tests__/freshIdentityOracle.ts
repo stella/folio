@@ -1,14 +1,44 @@
 import { deepStrictEqual } from "node:assert/strict";
 
 import type { Document } from "../../model/document";
+import { applyDocumentOps } from "../apply";
 import { IDENTITY_SPACES, packageIdentityKeys, slotKey } from "../ids";
-import type { NewIds } from "../types";
+import type { DocumentOp, NewIds } from "../types";
+
+/** The identities each operation of a plan brings in, in the plan's order. */
+export type MintedByOperation = readonly ReadonlySet<string>[];
+
+/** {@link MintedByOperation} of `ops`, applied to `document` one at a time. */
+export const mintedByOperation = (
+  document: Document,
+  ops: readonly DocumentOp[],
+): MintedByOperation => {
+  const minted: ReadonlySet<string>[] = [];
+  let current = document;
+  for (const op of ops) {
+    const held = new Set(packageIdentityKeys(current.package));
+    const next = applyDocumentOps(current, [op]).unwrap().document;
+    minted.push(
+      new Set(
+        packageIdentityKeys(next.package).filter((key) => !held.has(key)),
+      ),
+    );
+    current = next;
+  }
+  return minted;
+};
 
 type FreshIdentityOracleOptions = {
   actual: Document;
   expected: Document;
   original: Document;
   allocated: NewIds;
+  /**
+   * The operations that made each side, where more than one did: an operation
+   * takes its ids in document order, and a later one of the plan takes the
+   * next ids wherever it stands.
+   */
+  minted?: { actual: MintedByOperation; expected: MintedByOperation };
 };
 
 /** One document-wide bijection; original identities and every other field stay exact. */
@@ -17,6 +47,7 @@ export const assertFreshIdentityEquivalent = ({
   expected,
   original,
   allocated,
+  minted,
 }: FreshIdentityOracleOptions): void => {
   const source = new Set(packageIdentityKeys(original.package));
   const allocation = new Map<string, number>();
@@ -36,7 +67,12 @@ export const assertFreshIdentityEquivalent = ({
       allocation.set(key, index);
     }
   }
-  const canonical = (document: Document): unknown => {
+  const canonical = (
+    document: Document,
+    byOperation: MintedByOperation = [],
+  ): unknown => {
+    const operationOf = (key: string): number =>
+      byOperation.findIndex((keys) => keys.has(key));
     const fresh = new Map<string, string>();
     const previous = new Map<string, number>();
     for (const key of packageIdentityKeys(document.package)) {
@@ -55,12 +91,13 @@ export const assertFreshIdentityEquivalent = ({
         "Every fresh identity must be unique in the document.",
       );
       const space = key.split(":").at(0) ?? "";
+      const owner = `${space}:${operationOf(key)}`;
       deepStrictEqual(
-        rank > (previous.get(space) ?? -1),
+        rank > (previous.get(owner) ?? -1),
         true,
         "Fresh identities follow allocation order in the document.",
       );
-      previous.set(space, rank);
+      previous.set(owner, rank);
       fresh.set(key, `fresh:${space}:${fresh.size}`);
     }
     const walk = (value: unknown, heldBy?: string): unknown => {
@@ -91,5 +128,8 @@ export const assertFreshIdentityEquivalent = ({
     };
     return walk(document);
   };
-  deepStrictEqual(canonical(actual), canonical(expected));
+  deepStrictEqual(
+    canonical(actual, minted?.actual),
+    canonical(expected, minted?.expected),
+  );
 };
