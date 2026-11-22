@@ -27,10 +27,12 @@ import {
   type RevisionDecision,
 } from "../types";
 
-// A tracked paragraph put after a paragraph that stands before a table whose
-// first row is pending takes over that paragraph's mark, and the review
-// records on the mark go with it, as a tracked split's second half takes
-// them. A break pending deletion or moving away is not taken over.
+// A tracked paragraph put after a paragraph that stands before a block
+// content control takes over that paragraph's mark, and the review records on
+// the mark go with it, as a tracked split's second half takes them. Before a
+// table whose first row is pending it holds its own inserted mark and leaves
+// the paragraph before it as it was. A break pending deletion or moving away
+// is not taken over.
 
 const OTHER = { author: "Other", date: "2026-01-01T00:00:00Z" };
 const stamp = { id: 100, author: "Reviewer", date: "2026-02-03T04:05:06Z" };
@@ -53,8 +55,8 @@ const paragraph = (paraId: string, text: string): Paragraph => ({
   content: text === "" ? [] : [run(text)],
 });
 
-// A pending first row: the anchor's mark cannot run into the table, so the
-// new paragraph takes it over.
+// A pending first row: the anchor's mark cannot run into the table, and the
+// new paragraph's own mark goes without crossing it.
 const table: BlockContent = {
   type: "table",
   rows: [
@@ -84,6 +86,18 @@ const table: BlockContent = {
     },
   ],
 };
+
+const control: BlockContent = {
+  type: "blockSdt",
+  properties: { sdtType: "richText" },
+  content: [paragraph("00000010", "controlled")],
+};
+
+/** The block after the anchor, and whose mark a new paragraph there holds. */
+const FOLLOWERS = [
+  { name: "a table", follower: table, takesOver: false, records: TABLE },
+  { name: "a control", follower: control, takesOver: true, records: [] },
+] as const;
 
 const propertyChange: ParagraphPropertyChange = {
   type: "paragraphPropertyChange",
@@ -148,9 +162,12 @@ const ANCHORS: readonly AnchorCase[] = [
   },
 ];
 
-const documentOf = (anchor: Paragraph): Document => ({
+const documentOf = (
+  anchor: Paragraph,
+  follower: BlockContent = table,
+): Document => ({
   package: {
-    document: { content: [anchor, table, paragraph("00000004", "after")] },
+    document: { content: [anchor, follower, paragraph("00000004", "after")] },
   },
 });
 
@@ -202,22 +219,42 @@ const withoutParagraphIds = (document: Document): unknown =>
 
 const DECISIONS = Object.values(REVISION_DECISIONS);
 
-for (const { name, anchor, pending, taker } of ANCHORS)
-  for (const formatting of ["the anchor's", "other"] as const)
-    test(`a tracked paragraph after one before a table with ${name}, with ${formatting} properties, takes its mark's records`, () => {
-      const document = documentOf(anchor);
-      const inserted = {
-        ...paragraph("00000002", "new"),
-        formatting:
-          formatting === "other"
-            ? { alignment: "end" as const }
-            : ANCHOR.formatting,
-      } satisfies Paragraph;
-      const op = insertion(inserted);
-      const tracked = apply(document, op);
-      const [first, second] = tracked.document.package.document.content;
-      if (first?.type !== "paragraph" || second?.type !== "paragraph")
-        throw new Error("The anchor and the new paragraph stand first.");
+const FORMATTINGS = ["the anchor's", "other"] as const;
+
+test.each(
+  FOLLOWERS.flatMap((place) =>
+    // An anchor inserted whole stays or goes by its own words too, which is
+    // not about the mark a new paragraph takes over.
+    ANCHORS.filter(
+      ({ pending }) => !place.takesOver || !pending.includes(PENDING_TEXT),
+    ).flatMap((source) =>
+      FORMATTINGS.map((formatting) => ({
+        name: `before ${place.name}, after one with ${source.name}, with ${formatting} properties,`,
+        place,
+        source,
+        formatting,
+      })),
+    ),
+  ),
+)(
+  "a tracked paragraph $name reviews on its own",
+  ({ place, source, formatting }) => {
+    const { follower, takesOver, records } = place;
+    const { anchor, pending, taker } = source;
+    const document = documentOf(anchor, follower);
+    const inserted = {
+      ...paragraph("00000002", "new"),
+      formatting:
+        formatting === "other"
+          ? { alignment: "end" as const }
+          : ANCHOR.formatting,
+    } satisfies Paragraph;
+    const op = insertion(inserted);
+    const tracked = apply(document, op);
+    const [first, second] = tracked.document.package.document.content;
+    if (first?.type !== "paragraph" || second?.type !== "paragraph")
+      throw new Error("The anchor and the new paragraph stand first.");
+    if (takesOver) {
       // The anchor's mark is the new one; the new paragraph has its former
       // mark and the records it held.
       expect(first.pPrMark).toEqual({
@@ -238,40 +275,51 @@ for (const { name, anchor, pending, taker } of ANCHORS)
             previousFormatting,
           ]),
         ).toEqual([[PENDING_CHANGE, { alignment: "start" }]]);
-      expect(undo(tracked)).toEqual(document);
-      const own = tracked.revisions.filter((id) => !pending.includes(id));
-      // Rejecting the insertion alone gives the anchor back with its
-      // records, unless other properties folded into its pending change.
-      if (formatting !== "other" || anchor.propertyChanges === undefined)
-        expect(
-          resolve(tracked.document, own, REVISION_DECISIONS.REJECT),
-        ).toEqual(document);
-      const direct = apply(document, { ...op, revision: undefined }).document;
-      const theirs = [...pending, ...TABLE];
-      const addedBreak = taker !== undefined;
-      for (const decision of DECISIONS) {
-        const accepting = decision === REVISION_DECISIONS.ACCEPT;
-        const expected = resolve(
-          accepting ? direct : document,
-          theirs,
-          decision,
-        );
-        const same = (resolved: Document) =>
-          accepting || !addedBreak
-            ? expect(resolved).toEqual(expected)
-            : expect(withoutParagraphIds(resolved)).toEqual(
-                withoutParagraphIds(expected),
-              );
-        // All at once, the anchor's records first, or the insertion first.
-        same(resolve(tracked.document, [...own, ...theirs], decision));
-        same(
-          resolve(resolve(tracked.document, theirs, decision), own, decision),
-        );
-        same(
-          resolve(resolve(tracked.document, own, decision), theirs, decision),
-        );
-      }
-    });
+    } else {
+      expect(first).toEqual(anchor);
+      expect(second).toEqual({
+        ...inserted,
+        content: [
+          {
+            type: "insertion",
+            info: { ...stamp, id: expect.any(Number) },
+            content: [run("new")],
+          },
+        ],
+        pPrMark: { kind: "ins", info: { ...stamp, id: expect.any(Number) } },
+      });
+    }
+    expect(undo(tracked)).toEqual(document);
+    const own = tracked.revisions.filter((id) => !pending.includes(id));
+    // Rejecting the insertion alone gives the anchor back with its records,
+    // unless other properties folded into the pending change it took over.
+    const folded =
+      takesOver &&
+      formatting === "other" &&
+      anchor.propertyChanges !== undefined;
+    if (!folded)
+      expect(resolve(tracked.document, own, REVISION_DECISIONS.REJECT)).toEqual(
+        document,
+      );
+    const direct = apply(document, { ...op, revision: undefined }).document;
+    const theirs = [...pending, ...records];
+    const addedBreak = taker !== undefined;
+    for (const decision of DECISIONS) {
+      const accepting = decision === REVISION_DECISIONS.ACCEPT;
+      const expected = resolve(accepting ? direct : document, theirs, decision);
+      const same = (resolved: Document) =>
+        accepting || !addedBreak
+          ? expect(resolved).toEqual(expected)
+          : expect(withoutParagraphIds(resolved)).toEqual(
+              withoutParagraphIds(expected),
+            );
+      // All at once, the anchor's records first, or the insertion first.
+      same(resolve(tracked.document, [...own, ...theirs], decision));
+      same(resolve(resolve(tracked.document, theirs, decision), own, decision));
+      same(resolve(resolve(tracked.document, own, decision), theirs, decision));
+    }
+  },
+);
 
 test("a new final paragraph does not take a pending property change", () => {
   const refused = applyDocumentOp(
@@ -353,7 +401,7 @@ test.each([
 
 test("a suggestion does not fold other properties into another's pending change", () => {
   const refused = applyDocumentOp(
-    documentOf({ ...ANCHOR, propertyChanges: [propertyChange] }),
+    documentOf({ ...ANCHOR, propertyChanges: [propertyChange] }, control),
     {
       ...insertion({
         ...paragraph("00000002", "new"),

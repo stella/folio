@@ -163,7 +163,7 @@ const markPendingDeletion = ({ pPrMark }: Paragraph): boolean =>
   pPrMark?.kind === "del" || pPrMark?.kind === "moveFrom";
 
 /** Whether accepting every change takes `paragraph`'s own mark. */
-const markGoes = (paragraph: Paragraph): boolean =>
+export const markGoes = (paragraph: Paragraph): boolean =>
   markPendingDeletion(paragraph) || paragraph.pPrMark?.deletion !== undefined;
 
 /** How many anchors of each comment stand anywhere in `value`. */

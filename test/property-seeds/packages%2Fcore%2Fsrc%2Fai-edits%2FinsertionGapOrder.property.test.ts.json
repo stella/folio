@@ -17,6 +17,12 @@
       "path": "101:5:1:4:4:5:5:5:9:10:11:12:12:14:15:1",
       "note": "#2621: same map composition as -1168726935.",
       "date": "2026-11-19"
+    },
+    {
+      "seed": -1662575574,
+      "path": "1:2:1:1:1:1:3:3:3:4:4:0",
+      "note": "A heading suggested before the next paragraph, ahead of a removed table, and a plain paragraph suggested there after it: each holds its own inserted mark.",
+      "date": "2026-11-22"
     }
   ]
 }
