@@ -86,7 +86,10 @@ import {
 } from "../layout-engine/measure/measureContainer";
 import { forgetTableMeasures } from "../layout-engine/measure/tableMeasureMemo";
 import { columnBalancingForCompatibility } from "../layout-engine/noColumnBalanceCompatibility";
-import { resolveEffectiveParagraphSpacingTree } from "../layout-engine/paragraphSpacing";
+import {
+  resolveBodyTableLeadingSpacing,
+  resolveEffectiveParagraphSpacingTree,
+} from "../layout-engine/paragraphSpacing";
 import { tableHeaderGroupStartForCompatibility } from "../layout-engine/tableHeaderCompatibility";
 import { resolveTableIndentCompatibility } from "../layout-engine/tableIndentCompatibility";
 import type {
@@ -788,6 +791,7 @@ function runLayoutPipelineMeasured<THfPMs>(
         : {}),
       ...(endnoteTexts ? { endnoteTexts } : {}),
     });
+    newBlocks = resolveBodyTableLeadingSpacing(newBlocks);
     outcome.blocks = newBlocks;
 
     // Step 2.75: Prepare header/footer content for rendering. Headers and

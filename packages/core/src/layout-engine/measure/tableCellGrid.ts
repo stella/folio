@@ -1,5 +1,5 @@
 import { paintsCssBorder } from "../../utils/borderCss";
-import type { TableCell, TableRow } from "../types";
+import type { TableBlock, TableCell, TableRow } from "../types";
 import { resolveTableCellPadding } from "../types";
 import { tableCellBorderWidth } from "./tableBorderBevel";
 
@@ -110,6 +110,18 @@ export const getExactTableRowBottomMargins = (
     }
   }
   return margins;
+};
+
+// Bound the inferred grid when the package has no declared column widths.
+const MAX_INFERRED_TABLE_COLUMNS = 63;
+
+export const getTableGridColumnCount = (table: TableBlock): number => {
+  const declared = table.columnWidths?.length ?? 0;
+  if (declared > 0) return declared;
+  const firstRow = table.rows.at(0);
+  const inferred =
+    firstRow?.cells.reduce((sum, cell) => sum + (cell.colSpan ?? 1), 0) ?? 0;
+  return Math.min(inferred, MAX_INFERRED_TABLE_COLUMNS);
 };
 
 export const buildTableCellGrid = (

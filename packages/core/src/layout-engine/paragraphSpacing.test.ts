@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
+import { withFakeTextMeasure } from "./measure/__tests__/fakeTextMeasure";
+import { measureBlocks } from "./measure/measureBlocks";
 import {
   collapseParagraphSpacing,
+  resolveBodyTableLeadingSpacing,
   resolveEffectiveParagraphSpacing,
   resolveEffectiveParagraphSpacingTree,
 } from "./paragraphSpacing";
@@ -117,6 +120,148 @@ describe("resolveEffectiveParagraphSpacingTree", () => {
       { before: 0, after: 18 },
       { before: 18, after: 18 },
     ]);
+  });
+
+  test.each([
+    ["Cell", 0, 0],
+    ["Other", 8, 6],
+  ] as const)(
+    "resolves contextual spacing at the edge of the adjacent %s cell",
+    (rightStyle, leftAfter, rightBefore) => {
+      const left = paragraph("left", {
+        styleId: "Cell",
+        contextualSpacing: true,
+        spacing: { after: 8 },
+      });
+      const right = paragraph("right", {
+        styleId: rightStyle,
+        contextualSpacing: true,
+        spacing: { before: 6 },
+      });
+      const table: TableBlock = {
+        kind: "table",
+        id: "table",
+        rows: [
+          {
+            id: "row",
+            cells: [
+              { id: "left-cell", blocks: [left] },
+              { id: "right-cell", blocks: [right] },
+            ],
+          },
+        ],
+      };
+
+      const resolved = resolveEffectiveParagraphSpacingTree([table]).at(0);
+      if (resolved?.kind !== "table") {
+        throw new Error("Expected table block");
+      }
+
+      expect(
+        resolved.rows.at(0)?.cells.map((cell) => {
+          const block = cell.blocks.at(0);
+          return block?.kind === "paragraph" ? block.attrs?.spacing : undefined;
+        }),
+      ).toEqual([{ after: leftAfter }, { before: rightBefore }]);
+      expect(left.attrs?.spacing).toEqual({ after: 8 });
+      expect(right.attrs?.spacing).toEqual({ before: 6 });
+      expect(resolveEffectiveParagraphSpacingTree([resolved]).at(0)).toBe(
+        resolved,
+      );
+    },
+  );
+
+  test("keeps spacing between cells separated by a vertical merge", () => {
+    const left = paragraph("left", {
+      styleId: "Cell",
+      contextualSpacing: true,
+      spacing: { after: 8 },
+    });
+    const right = paragraph("right", {
+      styleId: "Cell",
+      contextualSpacing: true,
+      spacing: { before: 6 },
+    });
+    const table: TableBlock = {
+      kind: "table",
+      id: "table",
+      columnWidths: [60, 60, 60],
+      rows: [
+        {
+          id: "first-row",
+          cells: [
+            { id: "first-left", blocks: [] },
+            { id: "merged", rowSpan: 2, blocks: [] },
+            { id: "first-right", blocks: [] },
+          ],
+        },
+        {
+          id: "second-row",
+          cells: [
+            { id: "left-cell", blocks: [left] },
+            { id: "right-cell", blocks: [right] },
+          ],
+        },
+      ],
+    };
+
+    const resolved = resolveEffectiveParagraphSpacingTree([table]).at(0);
+
+    expect(resolved).toBe(table);
+    expect(left.attrs?.spacing?.after).toBe(8);
+    expect(right.attrs?.spacing?.before).toBe(6);
+  });
+
+  test("resolves a table's leading contextual spacing against the current lead style", () => {
+    withFakeTextMeasure(() => {
+      const first = paragraph("first", {
+        styleId: "A",
+        contextualSpacing: true,
+        spacing: { before: 6 },
+      });
+      const table: TableBlock = {
+        kind: "table",
+        id: "table",
+        rows: [{ id: "row", cells: [{ id: "cell", blocks: [first] }] }],
+      };
+
+      const layoutWithLeadStyle = (styleId: string) => {
+        const lead = paragraph("lead", {
+          styleId,
+          contextualSpacing: true,
+          spacing: { after: 7 },
+        });
+        const blocks = resolveBodyTableLeadingSpacing([lead, table]);
+        const [resolvedLead, resolvedTable] = blocks;
+        if (
+          resolvedLead?.kind !== "paragraph" ||
+          resolvedTable?.kind !== "table"
+        ) {
+          throw new Error("Expected lead paragraph and table");
+        }
+        const cellStart = resolvedTable.rows.at(0)?.cells.at(0)?.blocks.at(0);
+        const measure = measureBlocks(blocks, 220).at(1);
+        if (cellStart?.kind !== "paragraph" || measure?.kind !== "table") {
+          throw new Error("Expected a measured table with a cell paragraph");
+        }
+        expect(resolvedLead.attrs?.spacing?.after).toBe(7);
+        return {
+          before: cellStart.attrs?.spacing?.before,
+          height: measure.totalHeight,
+        };
+      };
+
+      const firstMatch = layoutWithLeadStyle("A");
+      const different = layoutWithLeadStyle("B");
+      const secondMatch = layoutWithLeadStyle("A");
+
+      expect([firstMatch.before, different.before, secondMatch.before]).toEqual(
+        [0, 6, 0],
+      );
+      expect(different.height - firstMatch.height).toBeCloseTo(6);
+      expect(secondMatch.height).toBe(firstMatch.height);
+      expect(first.attrs?.spacing?.before).toBe(6);
+    });
   });
 
   test("resolves nested table and text-box stories with structural sharing", () => {
