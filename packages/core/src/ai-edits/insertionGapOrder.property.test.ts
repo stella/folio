@@ -46,6 +46,7 @@ import {
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import { FolioDocxReviewer } from "./headless";
 
 type Mode = "direct" | "tracked-changes" | "suggested";
@@ -222,7 +223,10 @@ const anchorOf = (held: HeldBlockIds<Side>, side: Side) => {
   return { blockId, after: side !== "beforeNext" && side !== "beforeAnchor" };
 };
 
-const open = async (setup: Case): Promise<FolioDocxReviewer> => {
+const open = async (
+  setup: Case,
+  session?: HeadlessReviewerSession,
+): Promise<FolioDocxReviewer> => {
   const texts = [
     `## ${OPENING}`,
     ANCHOR,
@@ -236,22 +240,28 @@ const open = async (setup: Case): Promise<FolioDocxReviewer> => {
   const bytes = (
     await ensureParaIds(await createDocx(fromMarkdown(texts.join("\n\n"))))
   ).docx;
-  return FolioDocxReviewer.fromBuffer(bytes, { author: "Reviewer" });
+  return FolioDocxReviewer.fromBuffer(bytes, {
+    author: "Reviewer",
+    ...(session === undefined ? {} : { session }),
+  });
 };
 
 const reopen = async (
   reviewer: FolioDocxReviewer,
+  session?: HeadlessReviewerSession,
 ): Promise<FolioDocxReviewer> =>
   FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
     author: "Reviewer",
+    ...(session === undefined ? {} : { session }),
   });
 
 /** The blocks a reader lists once every change is accepted and saved. */
 const acceptedBlocks = async (
   reviewer: FolioDocxReviewer,
+  session?: HeadlessReviewerSession,
 ): Promise<Block[]> => {
   reviewer.acceptAll();
-  return (await reopen(reviewer))
+  return (await reopen(reviewer, session))
     .snapshot()
     .blocks.filter((block) => block.text.length > 0)
     .map((block) => ({
@@ -292,8 +302,12 @@ const applyBatch = (
  * Replay `setup` in `mode`: the blocks accepting leaves, and the blocks the
  * requested order says.
  */
-const replay = async (setup: Case, mode: Mode) => {
-  let reviewer = await open(setup);
+const replay = async (
+  setup: Case,
+  mode: Mode,
+  session?: HeadlessReviewerSession,
+) => {
+  let reviewer = await open(setup, session);
   // What each side puts blocks beside, by its words: accepting can join the
   // anchor into the paragraph after it, which keeps that one's id, so the ids
   // are read again after every resolution (a block pending deletion reads no
@@ -373,7 +387,7 @@ const replay = async (setup: Case, mode: Mode) => {
     );
     const step = setup.between[index] ?? "nothing";
     if (step === "reopen" || step === "reopenAndAccept") {
-      reviewer = await reopen(reviewer);
+      reviewer = await reopen(reviewer, session);
     }
     if (step === "accept" || step === "reopenAndAccept") {
       reviewer.acceptAll();
@@ -381,7 +395,7 @@ const replay = async (setup: Case, mode: Mode) => {
     held = heldBlockIds(reviewer, words, held);
   }
   const deleted = setup.batches.some((batch) => batch.deletesAnchor);
-  const accepted = await acceptedBlocks(reviewer);
+  const accepted = await acceptedBlocks(reviewer, session);
   return {
     accepted,
     looks: looksOf(accepted, looks),
@@ -456,18 +470,16 @@ const caseArbitrary: fc.Arbitrary<Case> = fc
       ...(besideTable ? (["afterTable"] as const) : []),
       ...(anchorIsLast || nextRemoved ? [] : (["beforeNext"] as const)),
     ];
+    const insertionArbitrary = fc.record({
+      kind: kindsIn(mode),
+      side: fc.constantFrom(...sides),
+      look: fc.constantFrom<Look[]>("plain", "heading", "centered"),
+    });
     return fc
-      .array(
-        fc.array(
-          fc.record({
-            kind: kindsIn(mode),
-            side: fc.constantFrom(...sides),
-            look: fc.constantFrom<Look[]>("plain", "heading", "centered"),
-          }),
-          { minLength: 1, maxLength: 5 },
-        ),
-        { minLength: 1, maxLength: 3 },
-      )
+      .array(fc.array(insertionArbitrary, { minLength: 1, maxLength: 5 }), {
+        minLength: 1,
+        maxLength: 3,
+      })
       .chain((batches) =>
         fc.record({
           anchorIsLast: fc.constant(anchorIsLast),
@@ -508,6 +520,21 @@ const caseArbitrary: fc.Arbitrary<Case> = fc
           ),
         }),
       );
+  })
+  .filter(({ nextRemoved, between, batches }) => {
+    if (!nextRemoved) return true;
+    // Sample a whole sequence before excluding a placement before its
+    // admission: an intervening Accept can clear the pending break.
+    const acceptedAt = between.findIndex(
+      (step) => step === "accept" || step === "reopenAndAccept",
+    );
+    return batches.every(
+      ({ insertions }, index) =>
+        (acceptedAt >= 0 && index > acceptedAt) ||
+        insertions.every(
+          ({ kind, side }) => kind !== "table" || side !== "afterAnchor",
+        ),
+    );
   });
 
 /**
@@ -520,6 +547,244 @@ const readsApart = (placed: readonly Placed[]): boolean =>
 
 const label = (placed: readonly Placed[]): string[] =>
   placed.map((entry) => entry.label);
+
+for (const session of ["canonical", "legacy"] as const) {
+  test(`tracked insertion of a table after a paragraph whose break is pending deletion (${session})`, async () => {
+    const reviewer = await open(
+      {
+        anchorIsLast: false,
+        table: "none",
+        nextRemoved: true,
+        mode: "tracked-changes",
+        batches: [],
+        between: [],
+      },
+      session,
+    );
+    const next = reviewer.snapshot().blocks.find(({ text }) => text === NEXT);
+    if (next === undefined) throw new Error("Missing final paragraph.");
+    applyBatch(reviewer, "tracked-changes", [
+      { id: "delete-next", type: "deleteBlock", blockId: next.id },
+    ]);
+
+    const beforeTable = reviewer.snapshot();
+    const anchor = beforeTable.blocks.find(({ text }) => text === ANCHOR);
+    if (anchor === undefined) throw new Error("Missing table anchor.");
+    const pending = reviewer.getChanges();
+    const tableId = "insert-B0I0";
+    const result = reviewer.applyOperations(
+      [
+        {
+          id: tableId,
+          type: "insertTable",
+          blockId: anchor.id,
+          rows: [["Cell"]],
+        },
+      ],
+      { mode: "tracked-changes" },
+    );
+
+    if (session === "canonical") {
+      expect(result.applied).toEqual([]);
+      expect(result.skipped).toEqual([
+        {
+          id: tableId,
+          reason: "pendingParagraphMarkDeletion",
+          message:
+            "Accepting the pending deletion of this paragraph's break would run its words into the inserted table. Resolve that change first, or insert the table elsewhere.",
+        },
+      ]);
+      expect(reviewer.snapshot()).toEqual(beforeTable);
+      expect(reviewer.getChanges()).toEqual(pending);
+      expect(reviewer.acceptAll().resolved).toBeGreaterThan(0);
+      const accepted = reviewer
+        .snapshot()
+        .blocks.find(({ text }) => text === ANCHOR);
+      if (accepted === undefined)
+        throw new Error("Missing accepted table anchor");
+      applyBatch(reviewer, "tracked-changes", [
+        {
+          id: tableId,
+          type: "insertTable",
+          blockId: accepted.id,
+          rows: [["Cell"]],
+        },
+      ]);
+    } else {
+      expect(result.skipped).toEqual([]);
+      expect(result.applied.map(({ id }) => id)).toEqual([tableId]);
+    }
+  });
+}
+
+test.each(["canonical", "legacy"] as const)(
+  "inserts before the next paragraph ahead of a removed table (%s)",
+  async (session) => {
+    const reviewed = await replay(
+      {
+        anchorIsLast: false,
+        table: "removed",
+        nextRemoved: false,
+        mode: "tracked-changes",
+        batches: [
+          {
+            insertions: [{ kind: "table", side: "beforeNext", look: "plain" }],
+            deletesAnchor: false,
+          },
+          {
+            insertions: [
+              { kind: "paragraph", side: "beforeNext", look: "plain" },
+            ],
+            deletesAnchor: false,
+          },
+          {
+            insertions: [
+              { kind: "paragraph", side: "afterTable", look: "plain" },
+            ],
+            deletesAnchor: false,
+          },
+        ],
+        between: ["nothing", "nothing", "nothing"],
+      },
+      "tracked-changes",
+      session,
+    );
+    expect(labelsOf(reviewed.accepted)).toEqual([
+      OPENING,
+      ANCHOR,
+      "B0I0",
+      "B1I0",
+      "B2I0",
+      NEXT,
+    ]);
+  },
+);
+
+test.each(["delete", "insert"] as const)(
+  "replaces a table pending deletion in one direct batch (%s first)",
+  async (first) => {
+    const sample = await open(
+      {
+        anchorIsLast: false,
+        table: "removed",
+        nextRemoved: false,
+        mode: "tracked-changes",
+        batches: [],
+        between: [],
+      },
+      "canonical",
+    );
+    const document = sample.toDocument();
+    const table = document.package.document.content.at(2);
+    const next = document.package.document.content.at(3);
+    const cell =
+      table?.type === "table"
+        ? table.rows.at(0)?.cells.at(1)?.content.at(0)
+        : undefined;
+    if (cell?.type !== "paragraph" || next?.type !== "paragraph")
+      throw new Error("Missing table replacement fixture");
+    const cellId = "12345678";
+    const nextId = "23456789";
+    cell.paraId = cellId;
+    next.paraId = nextId;
+    const pending = await FolioDocxReviewer.fromBuffer(
+      await createDocx(document),
+      {
+        session: "canonical",
+      },
+    );
+    applyBatch(pending, "tracked-changes", [
+      {
+        id: "pending-table",
+        type: "deleteTable",
+        blockId: cellId,
+      },
+    ]);
+    const editingReviewer = await reopen(pending, "canonical");
+    const operations: FolioDocumentOperation[] = [
+      {
+        id: "remove-table",
+        type: "deleteTable",
+        blockId: cellId,
+      },
+      {
+        id: "new-table",
+        type: "insertTable",
+        blockId: nextId,
+        position: "before",
+        rows: [["B0I0 term"]],
+      },
+    ];
+    applyBatch(
+      editingReviewer,
+      "direct",
+      first === "delete" ? operations : operations.toReversed(),
+    );
+    expect(
+      labelsOf(await acceptedBlocks(editingReviewer, "canonical")),
+    ).toEqual([OPENING, ANCHOR, "B0I0", NEXT]);
+  },
+);
+
+test("insertion ahead of a removed table checks the break at its actual placement", async () => {
+  const reviewer = await open(
+    {
+      anchorIsLast: false,
+      table: "removed",
+      nextRemoved: false,
+      mode: "tracked-changes",
+      batches: [],
+      between: [],
+    },
+    "canonical",
+  );
+  const table = reviewer
+    .snapshot()
+    .blocks.find(({ text }) => text === `${TABLE} one`);
+  if (table === undefined) throw new Error("Missing table cell");
+  applyBatch(reviewer, "tracked-changes", [
+    {
+      id: "delete-table",
+      type: "deleteTable",
+      blockId: table.id,
+    },
+  ]);
+  const document = reviewer.toDocument();
+  const paragraph = document.package.document.content.at(1);
+  if (paragraph?.type !== "paragraph")
+    throw new Error("Missing paragraph before table");
+  paragraph.pPrMark = {
+    kind: "del",
+    info: { id: 200, author: "Earlier", date: "2026-01-01T00:00:00Z" },
+  };
+  const pending = await FolioDocxReviewer.fromBuffer(
+    await createDocx(document),
+    {
+      session: "canonical",
+      author: "Reviewer",
+    },
+  );
+  const next = pending.snapshot().blocks.find(({ text }) => text === NEXT);
+  if (next === undefined) throw new Error("Missing paragraph after table");
+  const before = pending.toDocument();
+  const result = pending.applyOperations(
+    [
+      {
+        id: "insert-table",
+        type: "insertTable",
+        blockId: next.id,
+        position: "before",
+        rows: [["Replacement cell"]],
+      },
+    ],
+    { mode: "tracked-changes" },
+  );
+  expect(result.applied).toEqual([]);
+  expect(result.skipped.map(({ reason }) => reason)).toEqual([
+    "pendingParagraphMarkDeletion",
+  ]);
+  expect(pending.toDocument()).toEqual(before);
+});
 
 const examples: [Case][] = [
   // A paragraph after the story's last paragraph, pending; then a paragraph

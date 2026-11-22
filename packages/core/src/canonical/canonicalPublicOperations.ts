@@ -285,9 +285,9 @@ type CanonicalBatchPlan = {
   removes: TableLineRemoval | null;
   block: number;
   /**
-   * The paragraph its edit is placed against as it runs: `block`, or the
-   * paragraph an insertion lands beside instead (after a table, the
-   * paragraph after it).
+   * The paragraph the edit is addressed through as it runs: `block`, or
+   * the one where the insertion lands. A table placement uses a paragraph
+   * from the table, so it runs before any removal of that paragraph.
    */
   placedAgainst: number;
   insertionRun: number | null;
@@ -353,6 +353,12 @@ const canonicalBatchPlan = ({
     panic("A resolved table operation lost its source row", {
       id: operation.id,
     });
+  const insertionAnchor = (anchorId: string) => {
+    const anchor = projection.paragraph(anchorId);
+    if (anchor === undefined)
+      return panic("An insertion lost its placement paragraph");
+    return anchor.start - 1;
+  };
   const cell = () =>
     findEnclosingTableCell(doc, block) ??
     panic("A resolved cell operation lost its source cell", {
@@ -429,26 +435,32 @@ const canonicalBatchPlan = ({
       const placement = intents.find(
         (intent) => intent.type === "insertParagraphs",
       )?.at;
-      const placed =
-        placement?.type === "before" || placement?.type === "after"
-          ? projection.paragraph(placement.blockId)
-          : paragraph;
-      if (placed === undefined)
-        return panic("A resolved insertion lost its placement paragraph", {
-          id: operation.id,
-        });
       return {
         ...plan,
-        placedAgainst: placed.start - 1,
+        placedAgainst:
+          placement?.type === "before" ||
+          placement?.type === "after" ||
+          placement?.type === "beforeTable" ||
+          placement?.type === "afterTable"
+            ? insertionAnchor(placement.blockId)
+            : block,
         insertionRun: hasComment || emptyPageBreak ? null : from,
       };
     }
     case "insertTable":
-    case "insertSignatureTable":
-      return content({
+    case "insertSignatureTable": {
+      const plan = content({
         type: "insertion",
         at: gapAt(operation.position ?? "after"),
       });
+      const insertion = intents.find(
+        (intent) => intent.type === "tableBlock",
+      )?.operation;
+      return insertion?.type === DOCUMENT_OP_TYPES.INSERT_TABLE &&
+        insertion.anchor === "table"
+        ? { ...plan, placedAgainst: insertionAnchor(insertion.blockId) }
+        : plan;
+    }
     case "deleteTable": {
       const target = row();
       return content({
@@ -915,7 +927,7 @@ const orderCanonicalBatch = <T extends PlannedOperation>({
     // An edit of a paragraph's properties addresses its mark too.
     if (claim.type === "paragraphProperties")
       return { addresses: [plan.block, markOf(plan.block)], removes: [] };
-    // An insertion needs the paragraph it is placed against, as well as the
+    // An insertion needs the block it is placed against, as well as the
     // one it names, still standing when it runs.
     if (claim.type !== "deleteBlock")
       return {
@@ -1425,6 +1437,19 @@ const blockInsertionPlace = (
           at: { type: "after", blockId: end.blockId },
           position: paragraph.start,
         };
+      // Without a preceding paragraph, the pending-deleted table itself
+      // supplies the address at the start of the gap.
+      if (first?.type.name === "table") {
+        const blockId = tableBlockAddress(projection, {
+          table: first,
+          tableStart: gap + 1,
+        });
+        if (blockId !== undefined)
+          return {
+            at: { type: "beforeTable", blockId },
+            position: paragraph.start,
+          };
+      }
       const start =
         first?.type.name === "paragraph"
           ? projection.paragraphStartingAt(gap)
@@ -2987,6 +3012,27 @@ const resolveTableInsertion = ({
       to: position,
     });
   };
+  const besideTable = (blockId: string, position: number) =>
+    Result.ok({
+      type: "plain" as const,
+      operation,
+      intents: [
+        {
+          type: "tableBlock",
+          operation: {
+            type: DOCUMENT_OP_TYPES.INSERT_TABLE,
+            story,
+            blockId,
+            table,
+            anchor: "table",
+            side,
+          },
+        } satisfies EditorIntent,
+      ],
+      normalizations: [],
+      from: position,
+      to: position,
+    });
   if (listStart !== undefined)
     return Result.ok({
       type: "plain" as const,
@@ -3007,21 +3053,31 @@ const resolveTableInsertion = ({
       from: listStart.position,
       to: listStart.position,
     });
+  const stopsPendingJoin = (paragraphPos: number) =>
+    joinStopsAtTableAfter({
+      insertedBlock: "table",
+      joinBeforeTable: "runsIntoFirstCell",
+      doc: projection.doc,
+      paragraphPos,
+      noteReferences,
+    });
+  const pendingJoinRefusal = () =>
+    refusal(
+      PENDING_JOIN_INSERTION_REFUSAL.reason,
+      PENDING_JOIN_INSERTION_REFUSAL.message,
+    );
+  const followsDeletedBreak = (previous: PMNode | null) =>
+    previous?.type.name === "paragraph" &&
+    isDeletedPPrMark(previous.attrs["pPrMark"]) &&
+    !paragraphGoes(previous, "accept");
+  const pendingBreakRefusal = () =>
+    refusal(
+      PENDING_BREAK_TABLE_REFUSAL.reason,
+      PENDING_BREAK_TABLE_REFUSAL.message,
+    );
   const outer = findOutermostTableBoundary(projection.doc, paragraph.start - 1);
   if (outer !== null) {
-    if (
-      joinStopsAtTableAfter({
-        insertedBlock: "table",
-        joinBeforeTable: "runsIntoFirstCell",
-        doc: projection.doc,
-        paragraphPos: outer[side],
-        noteReferences,
-      })
-    )
-      return refusal(
-        PENDING_JOIN_INSERTION_REFUSAL.reason,
-        PENDING_JOIN_INSERTION_REFUSAL.message,
-      );
+    if (stopsPendingJoin(outer[side])) return pendingJoinRefusal();
     // Beside the outermost table, touching it, as the default engine puts
     // it: addressed by a paragraph of that table's own.
     const outerTable = projection.doc.nodeAt(outer.before);
@@ -3033,25 +3089,7 @@ const resolveTableInsertion = ({
             tableStart: outer.before + 1,
           });
     if (blockId === undefined) return refusal("unsupportedBlock");
-    const intent: EditorIntent = {
-      type: "tableBlock",
-      operation: {
-        type: DOCUMENT_OP_TYPES.INSERT_TABLE,
-        story,
-        blockId,
-        table,
-        side,
-        anchor: "table",
-      },
-    };
-    return Result.ok({
-      type: "plain" as const,
-      operation,
-      intents: [intent],
-      normalizations: [],
-      from: outer[side],
-      to: outer[side],
-    });
+    return besideTable(blockId, outer[side]);
   }
   const { place } = besidePendingJoin({
     side,
@@ -3065,31 +3103,30 @@ const resolveTableInsertion = ({
   );
   const gap =
     side === "after" ? place.start - 1 + place.node.nodeSize : place.start - 1;
-  if (
-    joinStopsAtTableAfter({
-      insertedBlock: "table",
-      joinBeforeTable: "runsIntoFirstCell",
-      doc: projection.doc,
-      paragraphPos: gap,
-      noteReferences,
-    })
-  )
-    return refusal(
-      PENDING_JOIN_INSERTION_REFUSAL.reason,
-      PENDING_JOIN_INSERTION_REFUSAL.message,
-    );
+  if (stopsPendingJoin(gap)) return pendingJoinRefusal();
   // Right after a paragraph whose break is pending deletion, accepting that
   // deletion would run the paragraph's words into the table's first cell;
   // one that goes whole leaves nothing to run in.
-  if (
-    side === "after" &&
-    isDeletedPPrMark(place.node.attrs["pPrMark"]) &&
-    !paragraphGoes(place.node, "accept")
-  )
-    return refusal(
-      PENDING_BREAK_TABLE_REFUSAL.reason,
-      PENDING_BREAK_TABLE_REFUSAL.message,
-    );
+  if (side === "after" && followsDeletedBreak(place.node))
+    return pendingBreakRefusal();
+  // A pending-deleted table is at the start of this accepted gap. Use its
+  // before edge so a later insertion explicitly after it can stay there.
+  if (side === "before") {
+    const start = insertionGap(projection.doc, gap, side);
+    const pending = start < gap ? projection.doc.nodeAt(start) : null;
+    if (pending?.type.name === "table") {
+      const address = tableBlockAddress(projection, {
+        table: pending,
+        tableStart: start + 1,
+      });
+      if (address !== undefined) {
+        if (stopsPendingJoin(start)) return pendingJoinRefusal();
+        if (followsDeletedBreak(projection.doc.resolve(start).nodeBefore))
+          return pendingBreakRefusal();
+        return besideTable(address, start);
+      }
+    }
+  }
   // After a container's last paragraph the container still ends with one.
   return inserted({
     place,
