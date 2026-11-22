@@ -16,7 +16,7 @@ const paragraph = (paraId: string, text: string): Paragraph => ({
   content: [{ type: "run", content: [{ type: "text", text }] }],
 });
 
-const FOLLOWERS = {
+const FOLLOWERS: Record<string, BlockContent> = {
   "a content control": {
     type: "blockSdt",
     properties: { sdtType: "richText", id: 4 },
@@ -34,7 +34,7 @@ const FOLLOWERS = {
       },
     ],
   },
-} as const satisfies Record<string, BlockContent>;
+};
 
 const open = (buffer: ArrayBuffer) =>
   FolioDocxReviewer.fromBuffer(buffer.slice(0), {

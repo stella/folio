@@ -75,7 +75,7 @@ const DELETED = {
 
 /** The sections a body's breaks divide it into, as a reader of it states them. */
 const withSections = (content: BlockContent[]): Document => {
-  const sections: { content: BlockContent[]; properties: object }[] = [];
+  const sections: NonNullable<Document["package"]["document"]["sections"]> = [];
   let open: BlockContent[] = [];
   for (const block of content) {
     open.push(block);
