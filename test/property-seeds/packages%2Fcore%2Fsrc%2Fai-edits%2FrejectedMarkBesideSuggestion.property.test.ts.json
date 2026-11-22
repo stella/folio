@@ -23,6 +23,12 @@
       "path": "274:2:1:5:6:6:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7",
       "note": "#2498: rejecting every change left an extra empty paragraph",
       "date": "2026-11-11"
+    },
+    {
+      "seed": 49985186,
+      "path": "105:5:5:8:3:3:3:10:11:12:12:12:13:6:10:13:10:10:10:10:18:10:10:55:10:10:10:10:10:10:10:10",
+      "note": "Re-anchor a suggested split using the canonical paragraph that survives a tracked mark rejection",
+      "date": "2026-11-21"
     }
   ]
 }
