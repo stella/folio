@@ -28,6 +28,7 @@ import {
   sourceDocumentOf,
 } from "./snapshot";
 import type {
+  FolioAIComment,
   FolioAIEditAppliedOperation,
   FolioAIEditApplyResult,
   FolioAIEditOperation,
@@ -403,6 +404,9 @@ type RangeProposalOptions = {
   from: number;
   to: number;
   replace: string;
+  /** The id of the operation it becomes. */
+  id: string;
+  comment: FolioAIComment | undefined;
 };
 
 /** `record` as the text replacement of `from` to `to` in a saved block. */
@@ -413,20 +417,20 @@ const rangeProposal = ({
   from,
   to,
   replace,
+  id,
+  comment,
 }: RangeProposalOptions): StoredSuggestion | null => {
   const { operation } = record;
   const common = {
-    id: operation.id,
-    ...(operation.suggestionId === undefined
+    id,
+    ...(operation.suggestionId === undefined && id === record.suggestionId
       ? {}
-      : { suggestionId: operation.suggestionId }),
+      : { suggestionId: record.suggestionId }),
     ...(operation.severity === undefined
       ? {}
       : { severity: operation.severity }),
     ...(operation.area === undefined ? {} : { area: operation.area }),
-    ...(operation.type === "replaceBlock" && operation.comment !== undefined
-      ? { comment: operation.comment }
-      : {}),
+    ...(comment === undefined ? {} : { comment }),
   };
   const anchor = {
     blockId,
@@ -473,32 +477,50 @@ const rangeProposal = ({
 };
 
 type CurrentTextOptions = {
-  record: StoredSuggestion;
-  /** The record's story as it is, every proposal shown. */
+  /** Every record of one suggestion in one story. */
+  records: readonly StoredSuggestion[];
+  /** The records' story as it is, every proposal shown. */
   state: EditorState;
   /** The same story as a save writes it, every proposal rejected. */
   saved: FolioAIEditSnapshot;
 };
 
-/** The text of a whole block a record proposes, when its operation does. */
-const proposesBlockText = ({ type }: FolioAIEditOperation): boolean =>
-  type === "replaceBlock" || type === "deleteBlock";
+/** Whether an operation proposes other text for text that stands. */
+const proposesText = ({ type }: FolioAIEditOperation): boolean =>
+  type === "replaceBlock" ||
+  type === "deleteBlock" ||
+  type === "replaceInBlock" ||
+  type === "replaceRange";
+
+const proposedComment = (
+  operation: FolioAIEditOperation,
+): FolioAIComment | undefined =>
+  operation.type === "replaceBlock" ||
+  operation.type === "replaceInBlock" ||
+  operation.type === "replaceRange"
+    ? operation.comment
+    : undefined;
 
 /**
- * A proposal over a block's text, whose block is gone, as the range of saved
- * text its own records cover: the block's words stand in a longer paragraph
- * now, and the proposal still changes only them.
+ * A suggestion over text, whose block is gone, as the ranges of saved text
+ * its own marks cover, one in each saved paragraph: the block's words stand
+ * in longer paragraphs now, and the suggestion still changes only them.
  *
- * `null` when the record proposes something else, or when its records are no
- * one range of a saved paragraph's text.
+ * `null` when the suggestion proposes something else too, or when its marks
+ * are no ranges of text a save holds.
  */
-const currentTextRecord = ({
-  record,
+const currentTextRecords = ({
+  records,
   state,
   saved,
-}: CurrentTextOptions): StoredSuggestion | null => {
-  const { operation, suggestionId } = record;
-  if (!proposesBlockText(operation)) return null;
+}: CurrentTextOptions): StoredSuggestion[] | null => {
+  const [record] = records;
+  if (
+    record === undefined ||
+    !records.every(({ operation }) => proposesText(operation))
+  )
+    return null;
+  const { suggestionId } = record;
   const rejected = rejectEverySuggestionMapped(state);
   /** What a saved package holds of the node at `from` to `to`. */
   const savedNode = (from: number, to: number) => {
@@ -515,13 +537,15 @@ const currentTextRecord = ({
   }[] = [];
   state.doc.descendants((node, from) => {
     if (!node.isInline) return true;
-    const owned = new Set(node.marks.flatMap((mark) => {
-      const { name } = mark.type;
-      return (name === "insertion" || name === "deletion") &&
-        expectTrackedChangeMarkAttrs(mark).suggestionId === suggestionId
-        ? [name]
-        : [];
-    }));
+    const owned = new Set(
+      node.marks.flatMap((mark) => {
+        const { name } = mark.type;
+        return (name === "insertion" || name === "deletion") &&
+          expectTrackedChangeMarkAttrs(mark).suggestionId === suggestionId
+          ? [name]
+          : [];
+      }),
+    );
     let owner: (typeof pieces)[number]["owner"] = null;
     if (owned.has("deletion")) owner = "deletion";
     else if (owned.has("insertion")) owner = "insertion";
@@ -533,57 +557,95 @@ const currentTextRecord = ({
     });
     return false;
   });
-  const first = pieces.findIndex(({ owner }) => owner !== null);
-  const last = pieces.findLastIndex(({ owner }) => owner !== null);
-  const start = pieces[first];
-  const end = pieces[last];
-  if (start === undefined || end === undefined) return null;
-  const $start = rejected.state.doc.resolve(
-    rejected.mapping.map(start.from, 1),
-  );
-  const $end = rejected.state.doc.resolve(rejected.mapping.map(end.to, -1));
-  if (!$start.sameParent($end) || $start.parent.type.name !== "paragraph")
-    return null;
-  // The saved package may name the paragraph otherwise; both read alike.
+  /** Where a piece starts once every proposal is rejected. */
+  const savedStart = ({ from, owner }: (typeof pieces)[number]) =>
+    rejected.mapping.map(from, owner === "insertion" ? -1 : 1);
+  /** The first and last of the suggestion's pieces in each saved paragraph. */
+  const spans = new Map<number, { first: number; last: number }>();
+  for (const [index, piece] of pieces.entries()) {
+    if (piece.owner === null) continue;
+    const $at = rejected.state.doc.resolve(savedStart(piece));
+    if ($at.parent.type.name !== "paragraph") return null;
+    const span = spans.get($at.before());
+    if (span === undefined)
+      spans.set($at.before(), { first: index, last: index });
+    else span.last = index;
+  }
+  // The saved package may name the paragraphs otherwise; both read alike.
   const settled = createFolioAIEditSnapshotWithStyleResolver(
     rejected.state.doc,
     getDocumentStyleResolver(rejected.state),
   );
-  const index = settled.blocks.findIndex(
-    ({ id }) => settled.anchors[id]?.from === $start.before(),
-  );
-  const block = saved.blocks[index];
-  const anchor = block === undefined ? undefined : saved.anchors[block.id];
-  const clean = buildCleanBlockText($start.parent, $start.before(), {
-    fieldResults: "text",
-  });
-  if (block === undefined || anchor === undefined || anchor.text !== clean.text)
-    return null;
-  const offsetAt = (position: number) => {
-    const offset = clean.offsets.findIndex((at) => at >= position);
-    return offset < 0 ? clean.text.length : offset;
+  const ids = records.map(({ operation }) => operation.id);
+  const nextId = (position: number): string => {
+    const known = ids[position];
+    if (known !== undefined) return known;
+    let suffix = position + 1;
+    while (ids.includes(`${record.operation.id}-${String(suffix)}`))
+      suffix += 1;
+    const id = `${record.operation.id}-${String(suffix)}`;
+    ids.push(id);
+    return id;
   };
-  const from = offsetAt($start.pos);
-  const to = offsetAt($end.pos);
-  if (to < from) return null;
-  let replace = "";
-  for (const piece of pieces.slice(first, last + 1)) {
-    if (piece.owner === "insertion") replace += piece.text;
-    if (piece.owner !== null) continue;
-    const kept = savedNode(piece.from, piece.to);
-    if (kept === null || isOmittedFromCleanView(kept)) continue;
-    // Only text can be written back by a text proposal.
-    if (!kept.isText || noteReferenceOf(kept) !== null) return null;
-    replace += piece.text;
+  const current: StoredSuggestion[] = [];
+  for (const [paragraphStart, { first, last }] of spans) {
+    const paragraph = rejected.state.doc.nodeAt(paragraphStart);
+    const start = pieces[first];
+    const end = pieces[last];
+    const index = settled.blocks.findIndex(
+      ({ id }) => settled.anchors[id]?.from === paragraphStart,
+    );
+    const block = saved.blocks[index];
+    const anchor = block === undefined ? undefined : saved.anchors[block.id];
+    if (
+      paragraph === null ||
+      start === undefined ||
+      end === undefined ||
+      block === undefined ||
+      anchor === undefined
+    )
+      return null;
+    const clean = buildCleanBlockText(paragraph, paragraphStart, {
+      fieldResults: "text",
+    });
+    if (anchor.text !== clean.text) return null;
+    const offsetAt = (position: number) => {
+      const offset = clean.offsets.findIndex((at) => at >= position);
+      return offset < 0 ? clean.text.length : offset;
+    };
+    const from = offsetAt(savedStart(start));
+    const to = Math.max(from, offsetAt(rejected.mapping.map(end.to, -1)));
+    let replace = "";
+    for (const piece of pieces.slice(first, last + 1)) {
+      if (piece.owner === "insertion") replace += piece.text;
+      if (piece.owner !== null) continue;
+      const kept = savedNode(piece.from, piece.to);
+      if (kept === null || isOmittedFromCleanView(kept)) continue;
+      // Only text can be written back by a text proposal.
+      if (!kept.isText || noteReferenceOf(kept) !== null) return null;
+      replace += piece.text;
+    }
+    // Every word it changes here is one another pending change takes.
+    if (from === to && replace === "") continue;
+    const position = current.length;
+    const source = records[position] ?? record;
+    const proposal = rangeProposal({
+      record: source,
+      blockId: block.id,
+      saved: anchor,
+      from,
+      to,
+      replace,
+      id: nextId(position),
+      comment:
+        position < records.length
+          ? proposedComment(source.operation)
+          : undefined,
+    });
+    if (proposal === null) return null;
+    current.push(proposal);
   }
-  return rangeProposal({
-    record,
-    blockId: block.id,
-    saved: anchor,
-    from,
-    to,
-    replace,
-  });
+  return current.length === 0 ? null : current;
 };
 
 type PlacedRecordOptions = {
@@ -845,9 +907,13 @@ export class FolioPendingSuggestionRegistry {
       string,
       { state: EditorState; live: FolioAIEditSnapshot } | null
     >();
-    for (const [key, record] of this.records) {
+    for (const [key, record] of Array.from(this.records)) {
       const { suggestionId, story, anchor } = record;
-      if (!activeSuggestionIds.has(suggestionId) || anchor.paraId === null)
+      if (
+        this.records.get(key) !== record ||
+        !activeSuggestionIds.has(suggestionId) ||
+        anchor.paraId === null
+      )
         continue;
       const storyKey = canonicalJson(story);
       let view = views.get(storyKey);
@@ -864,13 +930,29 @@ export class FolioPendingSuggestionRegistry {
       }
       if (view === null || view.live.anchors[anchor.paraId] !== undefined)
         continue;
-      const saved = savedSource?.(story) ?? null;
+      const saved =
+        record.splitRevisionId !== undefined || proposesText(record.operation)
+          ? (savedSource?.(story) ?? null)
+          : null;
       if (saved !== null) {
-        const current =
-          currentSplitRecord({ record, live: view.live, saved }) ??
-          currentTextRecord({ record, state: view.state, saved });
-        if (current !== null) {
-          this.records.set(key, current);
+        const split = currentSplitRecord({ record, live: view.live, saved });
+        if (split !== null) {
+          this.records.set(key, split);
+          continue;
+        }
+        const entries = [...this.records].filter(
+          ([, other]) =>
+            other.suggestionId === suggestionId &&
+            canonicalJson(other.story) === storyKey,
+        );
+        const texts = currentTextRecords({
+          records: entries.map(([, other]) => other),
+          state: view.state,
+          saved,
+        });
+        if (texts !== null) {
+          for (const [other] of entries) this.records.delete(other);
+          for (const text of texts) this.records.set(recordKey(text), text);
           continue;
         }
       }
