@@ -135,16 +135,24 @@ test(
       const bytes = await createDocx(documentOf(shapes));
       for (const index of shapes.keys()) {
         for (const mode of ["tracked-changes", "suggested"] as const) {
-          const reviewed = await accepted({ bytes, index, mode });
-          // What an earlier deletion already took whole records nothing.
-          if (reviewed === undefined) continue;
-          compared += 1;
           // A tracked deletion takes the joined paragraph under its
           // destination's id, as deleting it directly after the join does.
           const joinsFirst =
             mode === "tracked-changes" &&
             shapes[index - 1]?.pending === true &&
             shapes[index]?.pending === false;
+          const reviewed = await accepted({ bytes, index, mode });
+          if (reviewed === undefined) {
+            if (joinsFirst && index === shapes.length - 1)
+              misses.push({
+                shapes,
+                index,
+                mode,
+                reason: "no deletion applied",
+              });
+            continue;
+          }
+          compared += 1;
           const direct = await accepted({
             bytes,
             index,

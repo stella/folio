@@ -6568,6 +6568,8 @@ export class CanonicalPublicOperations {
     // At a final join destination, the range fallback starts after the
     // joined words. Use the block deletion to take those words while the
     // destination still supplies the container's last mark.
+    // The intent collects deleted marks. Move-source marks belong to
+    // their paired move and their words stay under that move's review.
     const deletesFinalJoin =
       after === null &&
       takesJoinedWords &&

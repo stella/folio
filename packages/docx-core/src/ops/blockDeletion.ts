@@ -1198,7 +1198,7 @@ export const deleteBlocks = ({
   let endFormatting = survivor.formatting;
   let reviewed = affected;
   if (retiredIndex !== undefined && retired?.type === "paragraph") {
-    const ending = list.at(-1);
+    const ending = lastBlockPastBoundaries(list);
     if (
       ending?.type === "paragraph" &&
       givesProperties(list, retiredIndex) &&
