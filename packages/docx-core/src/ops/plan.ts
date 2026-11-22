@@ -31,7 +31,6 @@ import {
 import {
   compareGaps,
   type Gap,
-  type InlineNode,
   isCommentAnchor,
   isEmptyContainer,
   isParagraphContent,
@@ -426,13 +425,11 @@ type Segment = {
   to: Gap;
 };
 
-/** Consecutive leaves of a range that one record of its deletion would hold. */
+/** Consecutive leaves of a range deleted alike, with no deleted content between. */
 type DeletionPiece = {
   plan: "direct" | "tracked" | "untouched";
   from: Gap;
   to: Gap;
-  /** The insertion or move the leaves stand in, where their records stand too. */
-  added: InlineNode | undefined;
   /** Whether it stands against the piece before it, with no boundary between. */
   continues: boolean;
   records: boolean;
@@ -477,11 +474,11 @@ export const replacementDeletionSegments = ({
   const keepsLoneEmptyContainers =
     mode.type === "editing" && mode.keepsLoneEmptyContainers === true;
   // An empty container marks nothing tracked: a record of nothing else would
-  // be one no file or reader shows. Deleted content and the edges of
-  // insertions part the records of a deletion, so a piece between them that
-  // holds only empty containers is left out. A suggestion leaves it out inside
-  // the author's own insertion too, so that a direct edit, which knows no
-  // author, can keep it the same way wherever it stands.
+  // be one no file or reader shows. Deleted content parts the records of a
+  // deletion, so a piece beside it that holds only empty containers is left
+  // out, in both modes alike. A suggestion leaves one out inside the author's
+  // own insertion too, so that a direct edit, which knows no author, can keep
+  // it the same way there.
   const pieces: DeletionPiece[] = [];
   let continues = false;
   for (const span of spans) {
@@ -505,21 +502,17 @@ export const replacementDeletionSegments = ({
         (mode.type === "suggesting" || keepsLoneEmptyContainers) &&
         isEmptyContainer(span.node)
       );
-    const added = span.ancestors.findLast(
-      (ancestor) => isTrackedWrapper(ancestor) && isAddedRevision(ancestor),
-    );
     const open = continues ? pieces.at(-1) : undefined;
     if (
       open !== undefined &&
       open.plan === plan &&
-      open.added === added &&
       compareGaps(open.to, start) === 0
     ) {
       open.to = end;
       open.records ||= records;
       continue;
     }
-    pieces.push({ plan, from: start, to: end, added, continues, records });
+    pieces.push({ plan, from: start, to: end, continues, records });
     continues = true;
   }
   const out: (Segment & { records: boolean })[] = [];

@@ -200,8 +200,8 @@ describe.each(Object.entries(EMPTY_CONTAINERS))(
       },
     );
 
-    // Deleted content and the edge of an insertion part the records a deletion
-    // is written in, so a container past one shares no record with the text.
+    // Deleted content parts the records a deletion is written in, so a
+    // container past it shares no record with the text.
     test.each([
       [
         "past a pending deletion",
@@ -226,24 +226,17 @@ describe.each(Object.entries(EMPTY_CONTAINERS))(
         ],
       ],
       [
-        "past another author's insertion",
+        "past another author's insertion and a pending deletion",
         (): ParagraphContent[] => [
-          { type: "run", content: [{ type: "text", text: "a" }] },
           {
             type: "insertion",
-            info: { id: 7, author: "Other", date: STAMP.date },
+            info: { id: 8, author: "Other", date: STAMP.date },
             content: [{ type: "run", content: [{ type: "text", text: "i" }] }],
           },
-        ],
-      ],
-      [
-        "past the suggesting author's own insertion",
-        (): ParagraphContent[] => [
-          { type: "run", content: [{ type: "text", text: "a" }] },
           {
-            type: "insertion",
-            info: { id: 7, author: STAMP.author, date: STAMP.date },
-            content: [{ type: "run", content: [{ type: "text", text: "i" }] }],
+            type: "deletion",
+            info: { id: 7, author: "Third", date: STAMP.date },
+            content: [{ type: "run", content: [{ type: "text", text: "d" }] }],
           },
         ],
       ],
