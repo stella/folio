@@ -6286,19 +6286,26 @@ const joinOps = (
   // from the first joins the paragraphs before this one, whose marks this
   // resolution resolves too, into it first, so their content counts.
   const joining: Paragraph[] = [];
+  let joinStart = location.index;
   for (
     let index = location.index - 1;
     follows === "block" || endsControl;
     index -= 1
   ) {
     const before = blocks[index];
+    // Range boundaries between two paragraphs keep them adjacent.
+    if (before !== undefined && isBlockBoundary(before)) continue;
     if (
       before?.type !== "paragraph" ||
       !joinsBefore.has(idKey(before.paraId ?? ""))
     )
       break;
     joining.unshift(before);
+    joinStart = index;
   }
+  const standsAfterBlock = blocks
+    .slice(0, joinStart)
+    .some((block) => !isBlockBoundary(block));
   const chained: Paragraph =
     joining.length === 0
       ? paragraph
@@ -6316,7 +6323,8 @@ const joinOps = (
           // its own final paragraph: this resolution leaves that end as it was.
           // So does a rejected added mark before a block, range boundaries
           // standing after that paragraph included, where a paragraph stays
-          // to anchor the removal.
+          // to anchor the removal: one this resolution joins into it goes
+          // with it.
           (follows === "table" && blockListEndsInParagraph(blocks)) ||
           (follows === "block" &&
             added &&
@@ -6324,7 +6332,10 @@ const joinOps = (
               blocks.filter((block) => !isBlockBoundary(block)),
             ) &&
             blocks.some(
-              (block) => block.type === "paragraph" && block !== paragraph,
+              (block) =>
+                block.type === "paragraph" &&
+                block !== paragraph &&
+                !joining.includes(block),
             )) ||
           lastBlockPastBoundaries(blocks)?.type === "paragraph"
         : // Removing the final paragraph leaves the block before it last: in
@@ -6335,7 +6346,7 @@ const joinOps = (
           // leaves the control ending in whatever stands before them and the
           // container's end where it was, so a rejected added mark takes its
           // emptied paragraph whatever stands before it.
-          (endsControl && location.index - joining.length > 0),
+          (endsControl && standsAfterBlock),
     followingTableCanReceiveRunIn: tableTarget !== undefined,
     holdsContentOnceAccepted: paragraphHoldsContentOnceAccepted(chained),
     followingBlockCanReceiveRunIn: blockTarget !== undefined,
@@ -6553,7 +6564,7 @@ const joinOps = (
     added &&
     op.decision === REVISION_DECISIONS.REJECT &&
     endsControl &&
-    location.index - joining.length > 0;
+    standsAfterBlock;
   const held = leavesHolder ? holdingParagraph(paragraph.content) : undefined;
   if (held !== undefined)
     markOps.push({
