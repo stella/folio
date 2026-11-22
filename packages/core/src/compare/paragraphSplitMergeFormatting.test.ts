@@ -563,3 +563,97 @@ describe("paragraph split and merge formatting", () => {
     ]);
   });
 });
+
+const LIST_LEVEL_INDENT = 720;
+
+type ListItem = { paraId: string; text: string; ilvl: number };
+
+const listDocumentWith = async (
+  items: readonly ListItem[],
+): Promise<ArrayBuffer> => {
+  const document = createEmptyDocument();
+  document.package.numbering = {
+    abstractNums: [
+      {
+        abstractNumId: 1,
+        levels: [0, 1, 2].map((ilvl) => ({
+          ilvl,
+          numFmt: "decimal",
+          lvlText: `%${String(ilvl + 1)}.`,
+          pPr: {
+            indentLeft: LIST_LEVEL_INDENT * (ilvl + 1),
+            indentFirstLine: -360,
+            hangingIndent: true,
+          },
+        })),
+      },
+    ],
+    nums: [{ numId: 1, abstractNumId: 1 }],
+  };
+  document.package.document.content = items.map(({ paraId, text, ilvl }) => ({
+    type: "paragraph",
+    paraId,
+    textId: paraId,
+    formatting: { numPr: { kind: "reference", numId: 1, ilvl } },
+    content: [{ type: "run", content: [{ type: "text", text }] }],
+  }));
+  return await createDocx(document);
+};
+
+const listProjection = (reviewer: FolioDocxReviewer) =>
+  reviewer.snapshot().blocks.map((block) => {
+    const { text, statedNumbering, directIndentation } =
+      expectParagraphBlock(block);
+    return { text, statedNumbering, directIndentation };
+  });
+
+const listItemProjection = ({ text, ilvl }: Omit<ListItem, "paraId">) => ({
+  text,
+  statedNumbering: { kind: "reference", numId: 1, ilvl },
+  directIndentation: undefined,
+});
+
+describe("merging list items of different levels", () => {
+  const base = [
+    { paraId: "55555555", text: "Alpha.", ilvl: 1 },
+    { paraId: "66666666", text: "Beta.", ilvl: 2 },
+  ] as const;
+  const merged = [{ paraId: "55555555", text: "Alpha. Beta.", ilvl: 1 }];
+
+  // The joined item takes the first item's level; its indentation stays the
+  // numbering level's, never a direct indentation the target does not state.
+  test.each(SESSIONS)(
+    "%s: the joined item inherits its level's indentation",
+    async (session) => {
+      const result = await compareDocx(
+        await listDocumentWith(base),
+        await listDocumentWith(merged),
+        { ...OPTIONS, session },
+      );
+      if (result.isErr()) {
+        throw result.error;
+      }
+      expect(result.value.verification).toEqual({ status: "verified" });
+      expect(await mainDocumentXml(result.value.buffer)).not.toContain(
+        "<w:ind",
+      );
+
+      const accepting = await FolioDocxReviewer.fromBuffer(
+        result.value.buffer,
+        { session },
+      );
+      accepting.acceptAll();
+      expect(listProjection(accepting)).toEqual(merged.map(listItemProjection));
+      expect(await mainDocumentXml(await accepting.toBuffer())).not.toContain(
+        "<w:ind",
+      );
+
+      const rejecting = await FolioDocxReviewer.fromBuffer(
+        result.value.buffer,
+        { session },
+      );
+      rejecting.rejectAll();
+      expect(listProjection(rejecting)).toEqual(base.map(listItemProjection));
+    },
+  );
+});

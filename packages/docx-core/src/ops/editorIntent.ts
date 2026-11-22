@@ -93,6 +93,7 @@ import {
   withChildren,
 } from "./offsets";
 import { findStoryParagraph } from "./paragraphLocator";
+import { authoredParagraphFormatting } from "./paragraphPropertySnapshot";
 import { applyFormattingPatch } from "./patch";
 import {
   appendTrackedDeletion,
@@ -1659,8 +1660,12 @@ const joinParagraphPropertyAlignment = ({
   const survivorId = survivor?.paraId;
   if (!survivor || survivorId === undefined)
     panic("An applied join must keep the paragraph it names as kept.");
-  const desired = paragraphPropertiesOf(source?.formatting);
-  const existing = paragraphPropertiesOf(survivor.formatting);
+  // Stated properties, as the join gives them: what a list level or style
+  // supplies the survivor inherits again from its own numbering.
+  const desired = paragraphPropertiesOf(
+    source === undefined ? undefined : authoredParagraphFormatting(source),
+  );
+  const existing = paragraphPropertiesOf(authoredParagraphFormatting(survivor));
   if (structurallyEqual(existing, desired)) return undefined;
   return {
     type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,

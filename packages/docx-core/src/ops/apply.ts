@@ -1747,12 +1747,24 @@ const splitFieldsOf = (paragraph: Paragraph): SplitParagraphFields => {
  * properties with the second's mark run properties, since the mark that stays
  * is the second's. A first paragraph that holds no content brings nothing:
  * the second keeps its own.
+ *
+ * The first's properties are the ones it states, not its effective ones: an
+ * indentation its list level or style supplies is the joined paragraph's to
+ * inherit again from its own numbering, never a value it now states. A join
+ * undoing a split instead joins the halves as they are, since the review
+ * fields it restores next expect what the split left.
  */
-const joinedFormatting = (first: Paragraph, second: Paragraph) =>
+const joinedFormatting = (
+  first: Paragraph,
+  second: Paragraph,
+  undoesSplit: boolean,
+) =>
   paragraphLength(first) === 0
     ? second.formatting
     : withMarkFormatting(
-        paragraphPropertiesOf(first.formatting),
+        paragraphPropertiesOf(
+          undoesSplit ? first.formatting : authoredParagraphFormatting(first),
+        ),
         second.formatting,
       );
 
@@ -1760,9 +1772,10 @@ const joinedFormatting = (first: Paragraph, second: Paragraph) =>
 const joinedReview = (
   first: Paragraph,
   second: Paragraph,
+  undoesSplit: boolean,
 ): ParagraphReviewFields => {
   const review: ParagraphReviewFields = {};
-  const formatting = joinedFormatting(first, second);
+  const formatting = joinedFormatting(first, second, undoesSplit);
   if (formatting !== undefined) review.formatting = formatting;
   if (second.propertyChanges !== undefined)
     review.propertyChanges = second.propertyChanges;
@@ -2036,7 +2049,7 @@ const splitBlock = (document: Document, op: SplitBlockOp): Applied => {
       ...reviewSetting(
         op.at.story,
         kept.paraId ?? keptId,
-        joinedReview(placedFirst, placedSecond),
+        joinedReview(placedFirst, placedSecond, true),
         reviewFieldsOf(paragraph),
       ),
       ...contentInverse,
@@ -2141,8 +2154,11 @@ const trackJoin = ({
   let second = trailing;
   // Primitive direct and tracked joins share physical paragraph semantics.
   // The editor intent compiler applies accepted-view group formatting.
-  const formatting = joinedFormatting(leading, trailing);
-  if (!sameParagraphProperties(formatting, trailing.formatting)) {
+  const formatting = joinedFormatting(leading, trailing, false);
+  if (
+    formatting !== trailing.formatting &&
+    !sameParagraphProperties(formatting, authoredParagraphFormatting(trailing))
+  ) {
     const conflict = paragraphPropertyFoldConflict(trailing, stamp);
     if (conflict !== undefined)
       return refuse(
@@ -2418,7 +2434,7 @@ const joinBlocks = (
   // break and pending property changes.
   const joined = withReviewFields(
     { ...survivor, content: merged.value.content },
-    joinedReview(leading, trailing),
+    joinedReview(leading, trailing, op.expectedSurvivor !== undefined),
   );
   delete joined.sectionProperties;
   if (trailing.sectionProperties !== undefined) {
