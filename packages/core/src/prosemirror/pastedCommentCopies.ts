@@ -3,13 +3,16 @@
  *
  * A slice copied from the document repeats the anchors of the comments it
  * covers: their marks, references and range boundaries. Pasted as they are,
- * a comment would own two ranges. So a pasted anchor of a comment the
- * document already names is a copy: when the session holds that comment's
- * thread and the slice holds some of its range, the slice's anchors take a
- * fresh comment id and the paste copies the thread under it, as a paste
- * copies a comment; otherwise those anchors are left out. Anchors of a
- * comment the document does not name (a cut pasted back, a paste from
- * elsewhere) go in as they are.
+ * a comment would own two ranges. So the anchors of a comment the document
+ * already names go in under a fresh id. Once they are placed, they keep it
+ * when the session holds that comment's thread and the slice holds some of
+ * its range: the paste copies the thread under it, as a paste copies a
+ * comment. Otherwise they are left out. Where the paste replaced the source
+ * itself, the pasted anchors are the comment's only ones and take its id
+ * back. Anchors of a comment the document does not name (a cut pasted back, a
+ * paste from elsewhere) go in as they are. Content a paste repeats, into each
+ * of several table cells say, is a copy again wherever it stands after the
+ * first.
  *
  * A drag may move its source, and whether the source still stands is known
  * once the drop is done: what was dropped is settled where it stands, so a
@@ -36,14 +39,22 @@ import { readCommentReferenceAttrs } from "./commentReferenceAttrs";
 import { COMMENT_REFERENCE_NODE_NAME } from "./commentReferenceIntegrity";
 import type { RangeMarker } from "./emptyRangeAnchor";
 import { RANGE_ANCHOR_NODE_NAME } from "./extensions/nodes/RangeAnchorExtension";
+import {
+  mapPlacedRanges,
+  type PastedRepeat,
+  type PlacedRange,
+} from "./pastePlacement";
 import { forEachAnnotationIdInDoc } from "./plugins/revisionIds";
 import { readRangeAnchorAttrs } from "./rangeAnchorAttrs";
 
-/** What a paste does with the comment anchors its slice carries. */
-export type PastedCommentSettlement = {
-  slice: Slice;
-  /** Copied threads the paste adds to the records, roots before replies. */
+/** The comments a paste carries, for settling them where they are placed. */
+export type PastedComments = {
+  /** The comment each fresh id the slice's anchors took stands for. */
+  sources: ReadonlyMap<number, number>;
+  /** Threads the fresh ids copy, roots before replies. */
   copies: readonly Comment[];
+  /** The comments the slice names once settled. */
+  named: ReadonlySet<number>;
 };
 
 const commentMarkId = (mark: Mark): number | undefined => {
@@ -117,21 +128,24 @@ const sliceComments = (
 type AnchorChanges = {
   renamed: ReadonlyMap<number, number>;
   dropped: ReadonlySet<number>;
+  /** The records whose marks take their own suggestion under their id. */
+  owned?: readonly Comment[] | null;
 };
 
 /** A comment mark's replacement; `null` leaves it out. */
 const settledMark = (
   mark: Mark,
-  { renamed, dropped }: AnchorChanges,
+  { renamed, dropped, owned }: AnchorChanges,
 ): Mark | null => {
   const id = commentMarkId(mark);
   if (id === undefined) return mark;
   if (dropped.has(id)) return null;
   const commentId = renamed.get(id);
-  return commentId === undefined
-    ? mark
-    : // What proposed the comment does not propose its copy.
-      mark.type.create({ ...mark.attrs, commentId, suggestionId: null });
+  if (commentId === undefined) return mark;
+  // What proposed the comment does not propose its copy.
+  const suggestionId =
+    owned?.find((comment) => comment.id === commentId)?.suggestionId ?? null;
+  return mark.type.create({ ...mark.attrs, commentId, suggestionId });
 };
 
 /** The attributes of a node naming comments; `null` leaves the node out. */
@@ -265,6 +279,8 @@ const copyThreads = ({
   /** The comments without a thread to copy. */
   dropped: Set<number>;
   copies: Comment[];
+  /** The highest id in use, the copies' included. */
+  highest: number;
 } => {
   // Fresh ids sit above every id the records, the document and the slice
   // give meaning to, as the session's allocator seeds itself.
@@ -298,40 +314,54 @@ const copyThreads = ({
     }
     renamed.set(id, ids.get(id) ?? id);
   }
-  return { renamed, dropped, copies };
+  return { renamed, dropped, copies, highest: next };
 };
 
 /**
  * Settle the comment anchors a pasted `slice` carries against the session
- * it goes into; see the module comment.
+ * it goes into; see the module comment. What it carries is settled where it
+ * is placed, by {@link settlePlacedComments}; `null` when it names none.
  */
 export const settlePastedComments = (
   slice: Slice,
   { doc, records, named }: PasteTarget,
-): PastedCommentSettlement => {
+): { slice: Slice; comments: PastedComments | null } => {
   const pasted = sliceComments(slice.content);
+  if (pasted.named.size === 0) return { slice, comments: null };
   const repeated = [...pasted.named].filter((id) => named.has(id));
-  if (repeated.length === 0) return { slice, copies: [] };
-  const { renamed, dropped, copies } = copyThreads({
+  const { renamed, copies, highest } = copyThreads({
     ids: repeated.filter((id) => pasted.ranged.has(id)),
     records,
     doc,
     taken: pasted.named,
   });
-  // A reference without its range would be a range covering nothing.
-  for (const id of repeated) if (!pasted.ranged.has(id)) dropped.add(id);
+  const dropped = new Set<number>();
+  let next = highest;
+  for (const id of repeated) {
+    if (renamed.has(id)) continue;
+    if (next < MAX_REVISION_ID) renamed.set(id, ++next);
+    else dropped.add(id);
+  }
   return {
-    slice: new Slice(
-      settleFragment(slice.content, { renamed, dropped }),
-      slice.openStart,
-      slice.openEnd,
-    ),
-    copies,
+    slice:
+      repeated.length === 0
+        ? slice
+        : new Slice(
+            settleFragment(slice.content, { renamed, dropped }),
+            slice.openStart,
+            slice.openEnd,
+          ),
+    comments: {
+      sources: new Map([...renamed].map(([source, id]) => [id, source])),
+      copies,
+      named: new Set(
+        [...pasted.named].flatMap((id) =>
+          dropped.has(id) ? [] : [renamed.get(id) ?? id],
+        ),
+      ),
+    },
   };
 };
-
-/** Positions in a document, end exclusive. */
-export type DroppedRange = { from: number; to: number };
 
 /** The comment anchors on one side of a drop. */
 type AnchoredComments = { ranged: Set<number>; referenced: Set<number> };
@@ -343,7 +373,7 @@ type DroppedAnchors = {
 
 const droppedAnchors = (
   doc: PMNode,
-  ranges: readonly DroppedRange[],
+  ranges: readonly PlacedRange[],
 ): DroppedAnchors => {
   const anchors: DroppedAnchors = {
     dropped: { ranged: new Set(), referenced: new Set() },
@@ -373,10 +403,49 @@ const droppedAnchors = (
   return anchors;
 };
 
+/** Rename and drop the comment anchors standing in `ranges`; returns where. */
+const settleAnchors = (
+  transaction: Transaction,
+  ranges: readonly PlacedRange[],
+  changes: AnchorChanges,
+): PlacedRange[] => {
+  const { doc } = transaction;
+  const settled: PlacedRange[] = [];
+  const removed: PlacedRange[] = [];
+  for (const { from, to } of ranges)
+    doc.nodesBetween(from, to, (node, pos) => {
+      const start = Math.max(from, pos);
+      const end = Math.min(to, pos + node.nodeSize);
+      for (const mark of node.marks) {
+        const next = settledMark(mark, changes);
+        if (next === mark) continue;
+        transaction.removeMark(start, end, mark);
+        if (next === null) continue;
+        transaction.addMark(start, end, next);
+        settled.push({ from: start, to: end });
+      }
+      const attrs = node.isText ? node.attrs : settledAttrs(node, changes);
+      if (attrs === null) removed.push({ from: pos, to: pos + node.nodeSize });
+      else
+        for (const [name, value] of Object.entries(attrs)) {
+          if (value === node.attrs[name]) continue;
+          transaction.setNodeAttribute(pos, name, value);
+          settled.push({ from: pos, to: pos + node.nodeSize });
+        }
+      return true;
+    });
+  // Marks and attributes move nothing: the removals go last, last first.
+  const moved = transaction.mapping.maps.length;
+  for (const { from, to } of removed.toReversed()) transaction.delete(from, to);
+  return mapPlacedRanges(settled, transaction.mapping.maps.slice(moved));
+};
+
 type DroppedCommentsOptions = {
   /** Where the dropped content stands in the transaction's document. */
-  ranges: readonly DroppedRange[];
+  ranges: readonly PlacedRange[];
   records: readonly Comment[] | null;
+  /** The comments to settle; all of them when absent. */
+  only?: ReadonlySet<number> | undefined;
 };
 
 /**
@@ -386,13 +455,16 @@ type DroppedCommentsOptions = {
  */
 export const settleDroppedComments = (
   transaction: Transaction,
-  { ranges, records }: DroppedCommentsOptions,
+  { ranges, records, only }: DroppedCommentsOptions,
 ): readonly Comment[] | null => {
   const { doc } = transaction;
   const { dropped: inside, elsewhere } = droppedAnchors(doc, ranges);
-  const copied = [...inside.ranged].filter((id) => elsewhere.ranged.has(id));
+  const settles = (id: number): boolean => only?.has(id) ?? true;
+  const copied = [...inside.ranged].filter(
+    (id) => elsewhere.ranged.has(id) && settles(id),
+  );
   const repeated = [...inside.referenced].filter(
-    (id) => !copied.includes(id) && elsewhere.referenced.has(id),
+    (id) => !copied.includes(id) && elsewhere.referenced.has(id) && settles(id),
   );
   if (copied.length === 0 && repeated.length === 0) return null;
   const { renamed, dropped, copies } = copyThreads({
@@ -402,27 +474,72 @@ export const settleDroppedComments = (
     taken: [],
   });
   for (const id of repeated) dropped.add(id);
-  const changes: AnchorChanges = { renamed, dropped };
-  const removed: DroppedRange[] = [];
-  for (const { from, to } of ranges)
-    doc.nodesBetween(from, to, (node, pos) => {
-      for (const mark of node.marks) {
-        const next = settledMark(mark, changes);
-        if (next === mark) continue;
-        const start = Math.max(from, pos);
-        const end = Math.min(to, pos + node.nodeSize);
-        transaction.removeMark(start, end, mark);
-        if (next !== null) transaction.addMark(start, end, next);
-      }
-      const attrs = node.isText ? node.attrs : settledAttrs(node, changes);
-      if (attrs === null) removed.push({ from: pos, to: pos + node.nodeSize });
-      else
-        for (const [name, value] of Object.entries(attrs))
-          if (value !== node.attrs[name])
-            transaction.setNodeAttribute(pos, name, value);
-      return true;
-    });
-  // Marks and attributes move nothing: the removals go last, last first.
-  for (const { from, to } of removed.toReversed()) transaction.delete(from, to);
+  settleAnchors(transaction, ranges, { renamed, dropped });
   return copies;
+};
+
+type PlacedCommentsOptions = {
+  comments: PastedComments;
+  records: readonly Comment[];
+  /** Where the content was placed again, after its first place. */
+  repeats: readonly PastedRepeat[];
+};
+
+export type PlacedComments = {
+  /** The copied threads to add to the records. */
+  copies: readonly Comment[];
+  /** The comments whose source the paste replaced, and where they stand. */
+  kept: { ids: ReadonlySet<number>; ranges: readonly PlacedRange[] };
+};
+
+/**
+ * Settle the anchors of a paste where `transaction`'s document holds them: a
+ * fresh id keeps its copied thread, gives way to the source's id where the
+ * source no longer stands, and is left out otherwise; and each repeat takes a
+ * copy of its own.
+ */
+export const settlePlacedComments = (
+  transaction: Transaction,
+  { comments, records, repeats }: PlacedCommentsOptions,
+): PlacedComments => {
+  const { doc } = transaction;
+  const { elsewhere: standing } = droppedAnchors(doc, []);
+  const renamed = new Map<number, number>();
+  const dropped = new Set<number>();
+  const copied = new Set<number>();
+  for (const [id, source] of comments.sources) {
+    const stands = standing.ranged.has(id)
+      ? standing.ranged.has(source)
+      : standing.referenced.has(source);
+    if (!stands) renamed.set(id, source);
+    else if (
+      standing.ranged.has(id) &&
+      comments.copies.some((copy) => copy.id === id)
+    )
+      copied.add(id);
+    else dropped.add(id);
+  }
+  const kept = settleAnchors(transaction, [{ from: 0, to: doc.content.size }], {
+    renamed,
+    dropped,
+    owned: records,
+  });
+  const copies = [...copied].flatMap((id) => threadOf(comments.copies, id));
+  const only = new Set([...comments.named].map((id) => renamed.get(id) ?? id));
+  const settled = transaction.mapping.maps.length;
+  for (const repeat of repeats) {
+    const added = settleDroppedComments(transaction, {
+      ranges: mapPlacedRanges(repeat, transaction.mapping.maps),
+      records: [...records, ...copies],
+      only,
+    });
+    if (added !== null) copies.push(...added);
+  }
+  return {
+    copies,
+    kept: {
+      ids: new Set(renamed.values()),
+      ranges: mapPlacedRanges(kept, transaction.mapping.maps.slice(settled)),
+    },
+  };
 };

@@ -43,6 +43,7 @@ import {
 import type { TableCell } from "../types/document";
 import { maxOf } from "../utils/extremes";
 import { expectTableAttrs, mergeTableAttrs } from "./attrs";
+import { type PlacedRange, setPastedRepeats } from "./pastePlacement";
 
 /** A rectangular block of cells, one fragment of cells per row. */
 export type PastedCells = {
@@ -571,7 +572,12 @@ const replaceCellContentDirectly = (
   tr.replace(from, to, slice);
 };
 
-type CellTarget = { pos: number; slice: Slice };
+type CellTarget = {
+  pos: number;
+  slice: Slice;
+  /** How many places in the fill take the same content before this one. */
+  repeat?: number;
+};
 
 type VerticalPasteTarget = CellTarget & { merge: "anchor" | "continuation" };
 
@@ -728,6 +734,10 @@ const fillTargets = (
   slice: Slice,
 ): CellTarget[] => {
   const targets: CellTarget[] = [];
+  // Each repeat of the block is a place of its own, and so is each further
+  // cell that takes a merged pasted cell again within one.
+  const uses = new Map<string, Map<PMNode, number>>();
+  const places = new Map<string, number>();
   for (const pos of map.cellsInRect(rect)) {
     const cellRect = map.findCell(pos);
     const row = Math.max(cellRect.top, rect.top) - rect.top;
@@ -737,9 +747,21 @@ const fillTargets = (
     if ((cells && !pasted) || !cell || isOmittedGridSlot(cell)) {
       continue;
     }
+    let repeat = targets.length;
+    if (cells && pasted) {
+      const block = `${Math.floor(row / cells.height)}:${Math.floor(column / cells.width)}`;
+      const used = uses.get(block) ?? new Map<PMNode, number>();
+      uses.set(block, used);
+      const use = used.get(pasted) ?? 0;
+      used.set(pasted, use + 1);
+      const place = `${block}:${use}`;
+      repeat = places.get(place) ?? places.size;
+      places.set(place, repeat);
+    }
     targets.push({
       pos: tableStart + pos,
       slice: pasted ? new Slice(pasted.content, 0, 0) : slice,
+      repeat,
     });
   }
   return targets;
@@ -750,10 +772,23 @@ const replaceTargets = (
   targets: readonly CellTarget[],
   replaceCellContent: CellContentReplacer,
 ): void => {
+  const replaced = tr.mapping.maps.length;
   // Last cell first, so the earlier positions stay valid.
   for (const { pos, slice } of targets.toSorted((a, b) => b.pos - a.pos)) {
     replaceCellContent(tr, pos, slice);
   }
+  const mapping = tr.mapping.slice(replaced);
+  const repeats: PlacedRange[][] = [];
+  for (const { pos, repeat = 0 } of targets) {
+    if (repeat === 0) continue;
+    const from = mapping.map(pos);
+    const cell = tr.doc.nodeAt(from);
+    if (!cell) {
+      throw new RangeError("The pasted-into table cell is gone");
+    }
+    (repeats[repeat - 1] ??= []).push({ from, to: from + cell.nodeSize });
+  }
+  setPastedRepeats(tr, repeats);
 };
 
 const selectBlock = (tr: Transaction, tableStart: number, rect: Rect): void => {

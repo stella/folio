@@ -6,9 +6,14 @@
  * editing and in suggesting, and saves one range per comment.
  */
 import { describe, expect, test } from "bun:test";
-import { undo } from "prosemirror-history";
-import type { Slice } from "prosemirror-model";
-import { type EditorState, TextSelection } from "prosemirror-state";
+import { redo, undo } from "prosemirror-history";
+import { Fragment, Slice } from "prosemirror-model";
+import {
+  type EditorState,
+  NodeSelection,
+  TextSelection,
+} from "prosemirror-state";
+import { CellSelection } from "prosemirror-tables";
 
 import {
   createHarnessState,
@@ -18,7 +23,7 @@ import {
   HeadlessEditorView,
 } from "../__tests__/editorHarness";
 import type { Comment, ParagraphContent } from "../types/content";
-import type { Document } from "../types/document";
+import type { Document, TableCell } from "../types/document";
 import {
   commentIdsNamedIn,
   commentRecordsOf,
@@ -138,7 +143,8 @@ const savedRanges = (state: EditorState, base: Document) => {
       counts.set(id, entry);
       return;
     }
-    for (const key of ["content", "children"]) visit(Reflect.get(value, key));
+    for (const key of ["content", "children", "rows", "cells"])
+      visit(Reflect.get(value, key));
   };
   visit(saved.package.document.content);
   return counts;
@@ -355,6 +361,325 @@ describe("pasting commented text", () => {
       );
     });
   }
+});
+
+/** {@link documentFor}, then a 2×2 table reading "a" to "d". */
+const tableDocument = (comments: Comment[]): Document => {
+  const document = documentFor(1, comments);
+  const cell = (text: string): TableCell => ({
+    type: "tableCell",
+    content: [{ type: "paragraph", content: [run(text)] }],
+  });
+  document.package.document.content.push(
+    {
+      type: "table",
+      columnWidths: [1000, 1000],
+      rows: [
+        { type: "tableRow", cells: [cell("a"), cell("b")] },
+        { type: "tableRow", cells: [cell("c"), cell("d")] },
+      ],
+    },
+    { type: "paragraph", content: [run("After")] },
+  );
+  return document;
+};
+
+/** The positions of the table's cells. */
+const cellPositions = (state: EditorState): number[] => {
+  const positions: number[] = [];
+  state.doc.descendants((node, pos) => {
+    if (node.type.name === "tableCell") positions.push(pos);
+  });
+  return positions;
+};
+
+/** Select the table's cells from the `first` to the `last`. */
+const selectCells = (view: HeadlessEditorView, first: number, last: number) => {
+  const cells = cellPositions(view.state);
+  view.dispatch(
+    view.state.tr.setSelection(
+      CellSelection.create(
+        view.state.doc,
+        cells[first] ?? Number.NaN,
+        cells[last] ?? Number.NaN,
+      ),
+    ),
+  );
+};
+
+/** The saved comment ids with other than one range start and one end. */
+const brokenRanges = (state: EditorState, base: Document) =>
+  [...savedRanges(state, base)].filter(
+    ([, { starts, ends }]) => starts !== 1 || ends !== 1,
+  );
+
+/** The ids of the records' threads, each of a comment and its reply. */
+const threadRoots = (records: readonly Comment[]): number[] => {
+  const roots = records.flatMap(({ id, parentId }) =>
+    parentId === undefined ? [id] : [],
+  );
+  expect(records.map(({ parentId }) => parentId)).toEqual(
+    roots.flatMap((id) => [undefined, id]),
+  );
+  expect(new Set(records.map(({ id }) => id)).size).toBe(records.length);
+  return roots;
+};
+
+describe("pasting commented text into several cells", () => {
+  for (const mode of EDITOR_MODES) {
+    test(`${mode}: each cell's copy takes its own id and copy of the thread`, () => {
+      const document = tableDocument(structuredClone(thread));
+      const view = open(document, mode);
+      const before = view.state;
+      const slice = sliceOf(view.state, "Hello");
+      selectCells(view, 0, 3);
+      view.paste(slice);
+      const after = view.state;
+      const records = commentRecordsOf(after) ?? [];
+      const roots = threadRoots(records);
+      expect(roots).toHaveLength(5);
+      expect(commentedText(after)).toEqual(
+        new Map(roots.map((id) => [id, "Hello"])),
+      );
+      expect(savedRanges(after, document).size).toBe(5);
+      expect(brokenRanges(after, document)).toEqual([]);
+      view.execute(undo);
+      expect(view.state.doc.eq(before.doc)).toBe(true);
+      expect(commentRecordsOf(view.state)).toEqual(thread);
+      view.execute(redo);
+      expect(view.state.doc.eq(after.doc)).toBe(true);
+      expect(commentRecordsOf(view.state)).toEqual(records);
+    });
+
+    test(`${mode}: a comment the document does not name stands once`, () => {
+      const source = open(documentFor(7, []), mode);
+      const slice = sliceOf(source.state, "Hello");
+      const document = tableDocument([
+        ...structuredClone(thread),
+        {
+          id: 7,
+          author: "Reviewer",
+          anchorKind: "range",
+          content: note("Cut"),
+        },
+      ]);
+      const view = open(document, mode);
+      selectCells(view, 0, 1);
+      view.paste(slice);
+      const records = commentRecordsOf(view.state) ?? [];
+      const copy = records[3]?.id ?? Number.NaN;
+      expect(records.map(({ id }) => id)).toEqual([1, 2, 7, copy]);
+      expect(commentedText(view.state)).toEqual(
+        new Map([
+          [1, "Hello"],
+          [7, "Hello"],
+          [copy, "Hello"],
+        ]),
+      );
+      expect(brokenRanges(view.state, document)).toEqual([]);
+    });
+
+    test(`${mode}: cells repeated to fill a selection take a copy each`, () => {
+      const document = tableDocument(structuredClone(thread));
+      const view = open(document, mode);
+      // A block of one row: the comment runs from its first cell into its second.
+      const { schema } = view.state;
+      const commented = schema.marks["comment"]?.create({ commentId: 1 });
+      const cell = (text: string) =>
+        schema.node("tableCell", null, [
+          schema.node("paragraph", null, [
+            schema.text(text, commented ? [commented] : []),
+          ]),
+        ]);
+      const block = schema.node("table", { columnWidths: [1000, 1000] }, [
+        schema.node("tableRow", null, [cell("x"), cell("y")]),
+      ]);
+      const before = view.state;
+      selectCells(view, 0, 3);
+      view.paste(new Slice(Fragment.from(block), 0, 0));
+      const roots = threadRoots(commentRecordsOf(view.state) ?? []);
+      expect(roots).toHaveLength(3);
+      expect(commentedText(view.state)).toEqual(
+        new Map(roots.map((id) => [id, id === 1 ? "Hello" : "xy"])),
+      );
+      expect(brokenRanges(view.state, document)).toEqual([]);
+      view.execute(undo);
+      expect(view.state.doc.eq(before.doc)).toBe(true);
+      expect(commentRecordsOf(view.state)).toEqual(thread);
+    });
+
+    test(`${mode}: without a thread, the copies after the first leave the comment out`, () => {
+      const source = open(documentFor(7, []), mode);
+      const slice = sliceOf(source.state, "Hello");
+      const view = open(tableDocument(structuredClone(thread)), mode);
+      selectCells(view, 0, 3);
+      view.paste(slice);
+      expect(commentRecordsOf(view.state)).toEqual(thread);
+      expect(commentedText(view.state)).toEqual(
+        new Map([
+          [1, "Hello"],
+          [7, "Hello"],
+        ]),
+      );
+    });
+  }
+});
+
+describe("pasting commented text over its source", () => {
+  test("editing: the comment stays on the pasted text", () => {
+    const proposed = thread.map((comment) => ({
+      ...comment,
+      suggestionId: "source",
+    }));
+    const document = documentFor(1, structuredClone(proposed));
+    const view = open(document, "editing");
+    const before = view.state;
+    const slice = sliceOf(view.state, "Hello");
+    select(view, "Hello");
+    view.paste(slice);
+    const after = view.state;
+    expect(after.doc.textContent).toBe("Hello world");
+    expect(commentRecordsOf(after)).toEqual(proposed);
+    expect(commentedText(after)).toEqual(new Map([[1, "Hello"]]));
+    expect(brokenRanges(after, document)).toEqual([]);
+    const owners = new Set<unknown>();
+    after.doc.descendants((node) => {
+      for (const { type, attrs } of node.marks)
+        if (type.name === "comment") owners.add(attrs["suggestionId"]);
+    });
+    expect([...owners]).toEqual(["source"]);
+    view.execute(undo);
+    expect(view.state.doc.eq(before.doc)).toBe(true);
+    expect(commentRecordsOf(view.state)).toEqual(proposed);
+    view.execute(redo);
+    expect(view.state.doc.eq(after.doc)).toBe(true);
+    // The same clipboard pastes the comment again, as a copy.
+    pasteAtEnd(view, "Hello world", slice);
+    expect(commentedText(view.state)).toEqual(
+      new Map([
+        [1, "Hello"],
+        [3, "Hello"],
+      ]),
+    );
+    expect(commentRecordsOf(view.state)?.map(({ id }) => id)).toEqual([
+      1, 2, 3, 4,
+    ]);
+  });
+
+  test("suggesting: the pasted text takes a copy beside the struck source", () => {
+    const document = documentFor(1, structuredClone(thread));
+    const view = open(document, "suggesting");
+    const before = view.state;
+    const slice = sliceOf(view.state, "Hello");
+    select(view, "Hello");
+    view.paste(slice);
+    expectCopied(view.state, document);
+    view.execute(undo);
+    expect(view.state.doc.eq(before.doc)).toBe(true);
+    expect(commentRecordsOf(view.state)).toEqual(thread);
+  });
+
+  test("suggesting: pasting part of it over part of it leaves one range per comment", () => {
+    const document = documentFor(1, structuredClone(thread));
+    const view = open(document, "suggesting");
+    const slice = sliceOf(view.state, "Hel");
+    select(view, "Hello", 3);
+    view.paste(slice);
+    const records = commentRecordsOf(view.state) ?? [];
+    expect(records.map(({ id }) => id)).toEqual([1, 2, 3, 4]);
+    expect(commentedText(view.state)).toEqual(
+      new Map([
+        [1, "Hello"],
+        [3, "Hel"],
+      ]),
+    );
+    expect(brokenRanges(view.state, document)).toEqual([]);
+  });
+
+  test("suggesting: the pasted text takes a copy where the replaced node stays struck", () => {
+    const document = documentFor(1, structuredClone(thread));
+    const [paragraph] = document.package.document.content;
+    if (paragraph?.type !== "paragraph") throw new Error("no paragraph");
+    paragraph.content[1] = { type: "run", content: [{ type: "tab" }] };
+    const view = open(document, "suggesting");
+    const before = view.state;
+    let tab = Number.NaN;
+    view.state.doc.descendants((node, pos) => {
+      if (node.type.name === "tab") tab = pos;
+    });
+    const selection = NodeSelection.create(view.state.doc, tab);
+    const slice = selection.content();
+    view.dispatch(view.state.tr.setSelection(selection));
+    view.paste(slice);
+    const roots = threadRoots(commentRecordsOf(view.state) ?? []);
+    expect(roots).toHaveLength(2);
+    expect([...commentIdsNamedIn(view.state.doc)].toSorted()).toEqual(
+      roots.toSorted(),
+    );
+    expect(brokenRanges(view.state, document)).toEqual([]);
+    view.execute(undo);
+    expect(view.state.doc.eq(before.doc)).toBe(true);
+    expect(commentRecordsOf(view.state)).toEqual(thread);
+  });
+
+  test("editing: a comment without a thread stays on the pasted text", () => {
+    const document = documentFor(1, []);
+    const view = open(document, "editing");
+    const slice = sliceOf(view.state, "Hello");
+    select(view, "Hello");
+    view.paste(slice);
+    expect(commentedText(view.state)).toEqual(new Map([[1, "Hello"]]));
+    expect(commentRecordsOf(view.state)).toEqual([]);
+  });
+
+  test("editing: a point comment stays on the pasted text", () => {
+    const document = pointDocument();
+    const view = open(document, "editing");
+    const before = view.state;
+    view.dispatch(
+      view.state.tr.setSelection(
+        TextSelection.create(view.state.doc, ...POINT_RANGE),
+      ),
+    );
+    view.paste(view.state.doc.slice(...POINT_RANGE));
+    expect(view.state.doc.textContent).toBe("Hello world");
+    expect(view.state.doc.eq(before.doc)).toBe(true);
+    expect([...commentIdsNamedIn(view.state.doc)]).toEqual([1]);
+    expect(commentRecordsOf(view.state)).toEqual(
+      document.package.document.comments ?? [],
+    );
+  });
+
+  test("editing: into its own cell among several, one copy keeps the comment", () => {
+    const document = tableDocument([]);
+    const [commented] = documentFor(1, []).package.document.content;
+    const table = document.package.document.content[1];
+    if (commented?.type !== "paragraph" || table?.type !== "table")
+      throw new Error("unexpected document");
+    const [first] = table.rows[0]?.cells ?? [];
+    if (first === undefined) throw new Error("no cell");
+    first.content = [commented];
+    document.package.document.content.shift();
+    document.package.document.comments = structuredClone(thread);
+    const view = open(document, "editing");
+    const before = view.state;
+    const slice = sliceOf(view.state, "Hello");
+    selectCells(view, 0, 1);
+    view.paste(slice);
+    expect(commentRecordsOf(view.state)?.map(({ id }) => id)).toEqual([
+      1, 2, 3, 4,
+    ]);
+    expect(commentedText(view.state)).toEqual(
+      new Map([
+        [1, "Hello"],
+        [3, "Hello"],
+      ]),
+    );
+    expect(brokenRanges(view.state, document)).toEqual([]);
+    view.execute(undo);
+    expect(view.state.doc.eq(before.doc)).toBe(true);
+    expect(commentRecordsOf(view.state)).toEqual(thread);
+  });
 });
 
 describe("dragging commented text", () => {
