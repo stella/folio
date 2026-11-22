@@ -375,7 +375,9 @@ describe("comment reference normalization", () => {
         { type: "commentRangeEnd", id: 7 },
         { type: "commentRangeStart", id: 7 },
         { type: "paragraph", content: [run("  Total ")] },
+        { type: "paragraph", content: [] },
         { type: "paragraph", content: [run(" ")] },
+        { type: "paragraph", content: [] },
         { type: "commentRangeEnd", id: 7 },
         {
           type: "paragraph",
@@ -386,11 +388,13 @@ describe("comment reference normalization", () => {
 
     const result = normalizeCommentReferences({ documentBody, comments });
 
-    expect(result.droppedRanges).toEqual([{ id: 7, text: "  Total \n " }]);
+    expect(result.droppedRanges).toEqual([{ id: 7, text: "  Total \n\n " }]);
     expect(documentBody.content.map(({ type }) => type)).toEqual([
       "commentRangeStart",
       "paragraph",
       "commentRangeEnd",
+      "paragraph",
+      "paragraph",
       "paragraph",
       "paragraph",
       "paragraph",

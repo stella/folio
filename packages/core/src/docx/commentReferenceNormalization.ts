@@ -99,12 +99,12 @@ type CommentRangeMarkerSite =
 type PointPlacement = { paragraph: Paragraph; at: "start" | "end" };
 
 /**
- * A run's text in document order, placed among the comment anchors, or the
- * line break that joins two paragraphs.
+ * A nonempty run among the comment anchors. Paragraph ordinals count the
+ * intervening breaks without adding blank paragraphs to the tape.
  */
 type TextPiece = {
   order: number;
-  kind: "run" | "paragraphBreak";
+  paragraphOrdinal: number;
   text: string;
 };
 
@@ -146,17 +146,17 @@ export const normalizeCommentReferences = ({
   const tape: TextPiece[] = [];
   let removedDanglingReferences = 0;
   let order = 0;
+  let paragraphCount = 0;
 
   // Reading, repairing and removing run as three passes because a removal
   // shifts every later index in its array: the indices collected here stay
   // valid until `removals.apply()` below.
   const normalizeParagraph = (paragraph: Paragraph): void => {
-    if (tape.length > 0)
-      tape.push({ order, kind: "paragraphBreak", text: "\n" });
+    const paragraphOrdinal = paragraphCount++;
     visitInlineContentSlots(paragraph, ({ content, index, item }) => {
       if (item.type === "run") {
         const text = getRunText(item);
-        if (text !== "") tape.push({ order, kind: "run", text });
+        if (text !== "") tape.push({ order, paragraphOrdinal, text });
         return;
       }
       if (isCommentMarker(item) && !validCommentIds.has(item.id)) {
@@ -462,20 +462,18 @@ const textBetween = (
     else low = middle + 1;
   }
   let text = "";
-  let breaks = 0;
+  let previousParagraph: number | undefined;
   for (let index = low; index < tape.length; index += 1) {
     const piece = tape[index];
     if (piece === undefined || piece.order > end) break;
-    if (piece.kind === "paragraphBreak") {
-      if (text !== "") breaks += 1;
-      continue;
-    }
+    const breaks =
+      piece.paragraphOrdinal - (previousParagraph ?? piece.paragraphOrdinal);
     text += "\n".repeat(
       Math.min(breaks, DROPPED_RANGE_TEXT_LIMIT - text.length),
     );
     text += piece.text;
     if (text.length >= DROPPED_RANGE_TEXT_LIMIT) break;
-    breaks = 0;
+    previousParagraph = piece.paragraphOrdinal;
   }
   return sliceText({ text, units: "codeUnits", end: DROPPED_RANGE_TEXT_LIMIT });
 };
