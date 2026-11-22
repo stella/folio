@@ -217,7 +217,9 @@ const checkChangedPart = async ({
   const xml = await entry
     .bytes()
     .then((partBytes) => decodeText(partBytes, { ignoreBOM: true }));
-  if (wellFormedXmlIssue(xml) !== null) {
+  if (
+    wellFormedXmlIssue(xml, { namespaces: "require-bound-prefixes" }) !== null
+  ) {
     return `${part} is not well-formed XML.`;
   }
   if (part.endsWith(".rels")) {
@@ -256,10 +258,10 @@ const checkChangedPart = async ({
 
 /**
  * Check what a save wrote before it replaces anything: the package opens,
- * every changed XML part is well formed, every relationship id a changed
- * part references resolves, every internal target a changed `.rels` part
- * names exists, the package still has the main document part folio reads,
- * and it parses as a document again.
+ * every changed XML part is well formed with bound namespace prefixes, every
+ * relationship id a changed part references resolves, every internal target
+ * a changed `.rels` part names exists, the package still has the main
+ * document part folio reads, and it parses as a document again.
  */
 export const checkPackageIntegrity = async (
   bytes: Uint8Array<ArrayBuffer>,

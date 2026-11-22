@@ -74,6 +74,22 @@ describe("checkPackageIntegrity", () => {
     expect((await checkPackageIntegrity(bytes, changed)).isOk()).toBe(true);
   });
 
+  test.each(["<x:p/>", '<w:p x:id="1"/>'])(
+    "reports an integrity failure for unbound namespace prefixes in %s",
+    async (body) => {
+      const base = await buildDocx(CONTRACT_PARAGRAPHS);
+      const bytes = await rewrite(base, (zip) => {
+        zip.set("word/document.xml", documentXml(body));
+      });
+      const result = await checkPackageIntegrity(bytes, changed);
+      expect(result.isErr() && result.error).toMatchObject({
+        code: "integrity_failed",
+        message:
+          "The saved package failed validation: word/document.xml is not well-formed XML.",
+      });
+    },
+  );
+
   test("refuses malformed XML, dangling references, and missing targets", async () => {
     const base = await buildDocx(CONTRACT_PARAGRAPHS);
     const malformed = await rewrite(base, (zip) => {

@@ -105,6 +105,10 @@ describe("checkPackageIntegrity", () => {
         "C0 character reference": NOT_WELL_FORMED,
         "surrogate character reference": NOT_WELL_FORMED,
         "out-of-range character reference": NOT_WELL_FORMED,
+        "unbound element prefix":
+          "Requires namespace bindings in changed parts",
+        "unbound attribute prefix":
+          "Requires namespace bindings in changed parts",
       },
     });
   });
