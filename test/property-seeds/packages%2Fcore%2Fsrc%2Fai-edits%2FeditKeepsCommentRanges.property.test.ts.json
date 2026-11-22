@@ -35,6 +35,12 @@
       "path": "28:2:2:2:2:6:6:6:6:5:5:5:5:5:5:5:5:5:6:6:3",
       "note": "Passing a reference between endings uses a physical gap that remains valid when both threads survive.",
       "date": "2026-11-22"
+    },
+    {
+      "seed": -1794727206,
+      "path": "30:1:1:3:3:3:3:3:7:7:7:7:7:7:9",
+      "note": "A thread whose entire text was replaced goes where a comment from an earlier paragraph ends first in the same paragraph.",
+      "date": "2026-11-22"
     }
   ]
 }
