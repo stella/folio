@@ -1,6 +1,12 @@
 {
   "generated suggestions save, restage, reject and accept as the laws say": [
     {
+      "seed": -1095049717,
+      "path": "4:0:0:0:0:0:0:0:0:2:1:1:1:1:1:2:1:1:3:3:3:3:3:3:3:3:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:14:5:5:5:5:5:18:7:8:7:7:7:8:9:7:8:12:7:7:8:8:9:8:8:7:7:7:7:7:7:7:0:2:4:4:4",
+      "note": "A paragraph suggested before a table, in a body that ends with a block content control, rejects back to the original, as the tracked insertion does.",
+      "date": "2026-11-22"
+    },
+    {
       "seed": 498741639,
       "path": "6:0:0:0:0:0:1:0:0:0:0:2:3:3:3:3:4:3:3:3:3:3:4:4:4:4:4:4:4:4:7:4:29:5:4:4:4:4:4:4:4",
       "note": "Rejecting an added mark before a bookmark and a block content control resolves as with nothing between, so the tracked suggestion beside it applies.",
