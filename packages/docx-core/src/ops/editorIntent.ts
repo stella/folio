@@ -332,9 +332,9 @@ export type EditorIntent =
       from: TextPosition;
       to: TextPosition;
       text: string;
-      /** Sources for contiguous spans of replacement text. */
+      /** Where each piece of the inserted text takes its authored formatting. */
       formattingSources?: readonly {
-        /** Exclusive UTF-16 end. */
+        /** Exclusive UTF-16 offset in `text`, with contiguous pieces. */
         end: number;
         at: TextPosition;
         type: "character" | "caret";
@@ -441,7 +441,7 @@ type CompileEditorIntentOptions = {
   mode: EditorIntentMode;
   /** By default the caret's. */
   typedFormatting?: TypedTextFormatting;
-  /** Formatting source before the replacement. */
+  /** Source before this operation's other replacement pieces are compiled. */
   replacementFormattingDocument?: Document;
   /** Lowest candidate for compiler-owned pasted block IDs, including retired session IDs. */
   firstBlockId?: number;
