@@ -473,6 +473,7 @@ export type LayoutOptions = {
     sectionVerticalAlignments?: readonly (VerticalAlign | undefined)[];
     columns?: ColumnLayout;
     columnBalancing?: "balanced" | "natural";
+    tableHeaderGroupStart?: "keep-together" | "allow-breaks";
     pageGap?: number;
     defaultLineHeight?: number;
     headerContentHeights?: HeaderFooterContentHeights;

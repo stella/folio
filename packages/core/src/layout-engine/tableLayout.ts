@@ -27,6 +27,7 @@ import {
 } from "./tableRowBreak";
 import type {
   FlowBlock,
+  LayoutOptions,
   TableBlock,
   TableCell,
   TableFragment,
@@ -149,15 +150,22 @@ const tableRowHasTrackedChanges = (
     cell.blocks.some(flowBlockHasTrackedChanges),
   ) ?? false;
 
-/**
- * Layout a table block onto pages.
- */
-export function layoutTable(
-  block: TableBlock,
-  measure: TableMeasure,
-  paginator: ReturnType<typeof createPaginator>,
-  footnoteHeightById?: Map<number, number>,
-): void {
+type LayoutTableOptions = {
+  block: TableBlock;
+  measure: TableMeasure;
+  paginator: ReturnType<typeof createPaginator>;
+  footnoteHeightById: LayoutOptions["footnoteHeightById"];
+  headerGroupStart: LayoutOptions["tableHeaderGroupStart"];
+};
+
+/** Layout a table block onto pages. */
+export function layoutTable({
+  block,
+  measure,
+  paginator,
+  footnoteHeightById,
+  headerGroupStart,
+}: LayoutTableOptions): void {
   const rows = measure.rows;
   if (rows.length === 0) {
     return;
@@ -169,6 +177,49 @@ export function layoutTable(
   // Detect header rows (consecutive rows at start with isHeader: true)
   const headerRowCount = countHeaderRows(block);
   const headerRowsHeight = getHeaderRowsHeight(measure, headerRowCount);
+
+  const opening = paginator.getCurrentState();
+  if (
+    headerGroupStart === "keep-together" &&
+    headerRowCount > 0 &&
+    opening.cursorY > opening.topMargin &&
+    !block.rows
+      .slice(0, headerRowCount)
+      .some((row) => row.breakBefore === "page")
+  ) {
+    const firstBodyRow = rows[headerRowCount];
+    const canOpenWithBodyRow =
+      firstBodyRow !== undefined &&
+      block.rows[headerRowCount]?.breakBefore !== "page" &&
+      headerRowsHeight + firstBodyRow.height <=
+        opening.rawContentBottom - opening.topMargin;
+    const openingRowCount = headerRowCount + (canOpenWithBodyRow ? 1 : 0);
+    const groupHeight =
+      headerRowsHeight + (canOpenWithBodyRow ? firstBodyRow.height : 0);
+    const seenNotes = new Set(opening.page.footnoteIds);
+    let noteHeight = 0;
+    for (const ids of rowFootnoteIds.slice(0, openingRowCount)) {
+      for (const id of ids) {
+        if (seenNotes.has(id)) {
+          continue;
+        }
+        seenNotes.add(id);
+        noteHeight += footnoteHeightById?.get(id) ?? 0;
+      }
+    }
+    if (noteHeight > 0 && opening.footnoteDemandHeight === 0) {
+      noteHeight += FOOTNOTE_SEPARATOR_HEIGHT;
+    }
+    const available =
+      paginator.getAvailableHeight() -
+      Math.max(measure.bandSkipBefore ?? 0, opening.trailingSpacing);
+    const reserveGrowth = projectedFootnoteReserveGrowth(opening, noteHeight);
+    if (groupHeight + reserveGrowth > available) {
+      // Advance once. A group taller than a full region then breaks between
+      // its rows using the ordinary row flow.
+      paginator.forceColumnBreak();
+    }
+  }
 
   let currentRowIndex = 0;
 
@@ -198,6 +249,11 @@ export function layoutTable(
   const getCurrentRowCapacity = (state = paginator.getCurrentState()): number =>
     state.rawContentBottom - state.topMargin;
 
+  const canRepeatHeaders = (rowIndex: number, state: PageState): boolean =>
+    headerRowCount > 0 &&
+    rowIndex >= headerRowCount &&
+    headerRowsHeight < getCurrentRowCapacity(state);
+
   const hasAdjacentPriorTableRows = (
     rowIndex: number,
     state = paginator.getCurrentState(),
@@ -216,8 +272,7 @@ export function layoutTable(
     consumed: number,
     state = paginator.getCurrentState(),
   ): boolean =>
-    headerRowCount > 0 &&
-    rowIndex >= headerRowCount &&
+    canRepeatHeaders(rowIndex, state) &&
     !(consumed === 0 && hasAdjacentPriorTableRows(rowIndex, state));
 
   // True when nothing of this column precedes the row except, possibly, this
@@ -264,8 +319,9 @@ export function layoutTable(
     ) {
       return false;
     }
-    const freshHeaderOverhead =
-      headerRowCount > 0 && rowIndex >= headerRowCount ? headerRowsHeight : 0;
+    const freshHeaderOverhead = canRepeatHeaders(rowIndex, state)
+      ? headerRowsHeight
+      : 0;
     const requiredHeight = row.height + freshHeaderOverhead;
     const oversized = requiredHeight > getCurrentRowCapacity(state);
     if (sourceRow.cantSplit) {

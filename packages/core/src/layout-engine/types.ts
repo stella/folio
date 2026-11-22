@@ -1587,6 +1587,8 @@ export type LayoutOptions = {
   columns?: ColumnLayout;
   /** Column balancing policy after applying document compatibility settings. */
   columnBalancing?: "balanced" | "natural";
+  /** Admission policy for a leading group of table header rows. */
+  tableHeaderGroupStart?: "keep-together" | "allow-breaks";
   /** Gap between rendered pages (for UI). */
   pageGap?: number;
   /** Default line height multiplier. */

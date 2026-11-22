@@ -401,12 +401,13 @@ function layoutDocumentPass(
             paginator.getContentWidth(),
           );
         } else {
-          layoutTable(
+          layoutTable({
             block,
-            measure as TableMeasure,
+            measure: measure as TableMeasure,
             paginator,
             footnoteHeightById,
-          );
+            headerGroupStart: options.tableHeaderGroupStart,
+          });
         }
         break;
 
