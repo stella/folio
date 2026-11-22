@@ -2427,20 +2427,31 @@ const resolveList = ({
     )
       return 0;
     if (before === undefined || after === undefined) return depth;
-    const levels = cutReach({
-      before: edgeChain(before, "end"),
-      after: edgeChain(after, "start"),
-      depth,
-      spanning: trackedWithin(node.content),
-      resolution,
-    }).levels;
+    const reach = (left: InlineNode, right: InlineNode): number =>
+      cutReach({
+        before: edgeChain(left, "end"),
+        after: edgeChain(right, "start"),
+        depth,
+        spanning: trackedWithin(node.content),
+        resolution,
+      }).levels;
+    const levels = reach(before, after);
     // Where the pieces it cut go with it, the records left beyond them meet
-    // only as far as they are alike: no level of the cut is left to join past
-    // that, as removing the pieces first leaves the change between them.
+    // only as far as they are alike, and no deeper than the pieces beside it
+    // leave once they go: no level of the cut is left to join past that, as
+    // removing the pieces first leaves the change between them, and a
+    // pending change beyond them is no piece of the record they were.
     const piecesGo = beforeIndex < index - 1 || afterIndex > index + 1;
-    return piecesGo && !isTrackedWrapper(before) && !isTrackedWrapper(after)
-      ? Math.min(levels, alikeDepth(before, after))
-      : levels;
+    if (!piecesGo) return levels;
+    const nearBefore = index > 0 ? pending.at(index - 1) : undefined;
+    const nearAfter = pending.at(index + 1);
+    const besideLevels =
+      nearBefore === undefined || nearAfter === undefined
+        ? levels
+        : reach(nearBefore, nearAfter);
+    return !isTrackedWrapper(before) && !isTrackedWrapper(after)
+      ? Math.min(levels, besideLevels, alikeDepth(before, after))
+      : Math.min(levels, besideLevels);
   };
   /**
    * The cut a pending insertion recorded, once this resolution is done (see
@@ -4757,14 +4768,18 @@ const resolveList = ({
           (node.resolutionJoins?.remove ?? 0) > 0
         );
       });
-      // Pending changes beyond them are such pieces when they are alike down
-      // to the seam's depth: the removed content was made inside that
-      // pending change, and rejecting the insertions between them joins it.
+      // Pending insertions beyond them are such pieces when they are alike
+      // down to the seam's depth: the removed content was made inside that
+      // insertion, and rejecting the insertions between them joins it. A
+      // pending deletion's pieces hold no content made inside them: they wait
+      // only as holders of a piece alike across the seam (above).
       const pendingPieces =
         beyondLeft !== undefined &&
         beyondRight !== undefined &&
         isTrackedWrapper(beyondLeft) &&
         isTrackedWrapper(beyondRight) &&
+        isAddedRevision(beyondLeft) &&
+        isAddedRevision(beyondRight) &&
         !resolution.ids.has(beyondLeft.info.id) &&
         !resolution.ids.has(beyondRight.info.id) &&
         alikeDepth(beyondLeft, beyondRight) >= exactDepth;
