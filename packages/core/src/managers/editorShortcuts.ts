@@ -11,10 +11,12 @@
  * the listener lifecycle and the host-callback dispatch.
  */
 
-import type { EditorState, Transaction } from "prosemirror-state";
+import type { EditorView } from "prosemirror-view";
 
-import { deleteTable, getTableContext } from "../prosemirror/commands/table";
+import { getTableContext } from "../prosemirror/commands/table";
+import { executeEditorCommand } from "../prosemirror/executeEditorCommand";
 import type { HistoryShortcutOwner } from "../prosemirror/extensions/core/HistoryExtension";
+import { singletonManager } from "../prosemirror/schema";
 
 export const DEFAULT_KEYBOARD_SHORTCUT_SCOPE = "editor";
 
@@ -177,10 +179,8 @@ export function isKeydownInShortcutScope(
  * table, delete the table and return `true`. Returns `false` for any other
  * selection so the caller can fall back to a layout-overlay table selection.
  */
-export function deleteSelectedTable(
-  state: EditorState,
-  dispatch: (tr: Transaction) => void,
-): boolean {
+export function deleteSelectedTable(view: EditorView): boolean {
+  const { state } = view;
   const sel = state.selection as {
     $anchorCell?: unknown;
     forEachCell?: unknown;
@@ -209,7 +209,10 @@ export function deleteSelectedTable(
   });
 
   if (totalCells > 0 && selectedCells >= totalCells) {
-    deleteTable(state, dispatch);
+    executeEditorCommand(
+      view,
+      singletonManager.requireCommand("deleteTable")(),
+    );
     return true;
   }
 

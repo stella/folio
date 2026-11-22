@@ -18,6 +18,7 @@ import {
   editHyperlinkAtCursor,
   removeHyperlinkAtCursor,
 } from "@stll/folio-core/prosemirror/commands/hyperlink";
+import { executeEditorCommand } from "@stll/folio-core/prosemirror/executeEditorCommand";
 import {
   anchorTargetAttrs,
   sanitizeExternalUrl,
@@ -45,10 +46,6 @@ export type HyperlinkSubmitData = {
 export function useHyperlinkManagement(opts: UseHyperlinkManagementOptions) {
   const hyperlinkPopupData = ref<HyperlinkPopupData | null>(null);
 
-  function runCommand(view: EditorView, command: Command): void {
-    command(view.state, (tr) => view.dispatch(tr), view);
-  }
-
   function handleHyperlinkSubmit(data: HyperlinkSubmitData) {
     const view = opts.editorView.value;
     if (!view) return;
@@ -60,7 +57,7 @@ export function useHyperlinkManagement(opts: UseHyperlinkManagementOptions) {
     if (empty && data.displayText) {
       const factory = cmds["insertHyperlink"];
       if (factory) {
-        runCommand(
+        executeEditorCommand(
           view,
           factory(data.displayText, href, data.tooltip || undefined),
         );
@@ -68,7 +65,7 @@ export function useHyperlinkManagement(opts: UseHyperlinkManagementOptions) {
     } else {
       const factory = cmds["setHyperlink"];
       if (factory) {
-        runCommand(view, factory(href, data.tooltip || undefined));
+        executeEditorCommand(view, factory(href, data.tooltip || undefined));
       }
     }
     view.focus();
@@ -79,7 +76,7 @@ export function useHyperlinkManagement(opts: UseHyperlinkManagementOptions) {
     if (!view) return;
     const factory = opts.getCommands()["removeHyperlink"];
     if (factory) {
-      runCommand(view, factory());
+      executeEditorCommand(view, factory());
     }
     view.focus();
   }

@@ -1171,7 +1171,7 @@ const {
 const tableResize = useTableResize({
   runCommand: (view, command) => {
     if (view === editorView.value) editor.executeCommand(command);
-    else command(view.state, (tr) => view.dispatch(tr), view);
+    else executeEditorCommand(view, command);
   },
 });
 

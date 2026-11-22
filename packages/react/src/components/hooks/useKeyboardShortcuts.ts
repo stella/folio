@@ -94,7 +94,7 @@ export function useKeyboardShortcuts({
 
     const handleDeleteSelectedTable = (e: KeyboardEvent) => {
       const view = pagedEditorRef.current?.getView();
-      if (view && deleteSelectedTable(view.state, view.dispatch)) {
+      if (view && deleteSelectedTable(view)) {
         e.preventDefault();
         return;
       }

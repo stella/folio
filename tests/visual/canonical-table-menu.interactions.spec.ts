@@ -143,6 +143,25 @@ const ACTIONS = [
   { item: "Delete column", on: "AAA", table: [["BBB"], ["DDD"]] },
 ] as const;
 
+/** The button a pointer at the first row's or column's edge shows. */
+const EDGE_INSERTIONS = [
+  {
+    edge: "left",
+    table: [
+      ["AAA", "BBB"],
+      ["", ""],
+      ["CCC", "DDD"],
+    ],
+  },
+  {
+    edge: "top",
+    table: [
+      ["AAA", "", "BBB"],
+      ["CCC", "", "DDD"],
+    ],
+  },
+] as const;
+
 for (const adapter of adapters) {
   test.describe(`the table menu on the canonical engine in ${adapter.name}`, () => {
     for (const { item, on, table } of ACTIONS) {
@@ -156,6 +175,36 @@ for (const adapter of adapters) {
         await choose(page, on, item);
         expect(await savedTables(page)).toEqual([table]);
         expect(refusals).toEqual([]);
+      });
+    }
+
+    for (const { edge, table } of EDGE_INSERTIONS) {
+      test(`the insert button at the ${edge} edge changes the table`, async ({
+        page,
+      }) => {
+        await open(page, adapter.port);
+        const box = await page.locator(".layout-table").first().boundingBox();
+        const first = await page
+          .locator(".layout-table-cell")
+          .filter({ hasText: "AAA" })
+          .first()
+          .boundingBox();
+        if (!box || !first) throw new Error("no painted table");
+        await page.mouse.move(
+          edge === "left" ? box.x + 2 : first.x + first.width / 2,
+          edge === "left" ? first.y + first.height / 2 : box.y + 2,
+          { steps: 4 },
+        );
+        const name = edge === "left" ? "row" : "column";
+        const button = page
+          .locator(
+            `button[title^="Insert ${name}"], button[aria-label="Insert ${name}"]`,
+          )
+          .first();
+        await button.waitFor({ state: "visible", timeout: 5000 });
+        await button.dispatchEvent("mousedown");
+        await page.waitForTimeout(250);
+        expect(await savedTables(page)).toEqual([table]);
       });
     }
 

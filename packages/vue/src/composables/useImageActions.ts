@@ -25,6 +25,7 @@ import {
   captureInlinePositionEmu,
   toolbarValueToLayoutTarget,
 } from "@stll/folio-core/layout-painter/imageLayout";
+import { executeEditorCommand } from "@stll/folio-core/prosemirror/executeEditorCommand";
 
 import type { ImageSelectionInfo } from "../components/imageSelectionTypes";
 
@@ -86,10 +87,6 @@ export function useImageActions(
     };
   });
 
-  function runCommand(view: EditorView, command: Command): void {
-    command(view.state, (tr) => view.dispatch(tr), view);
-  }
-
   // Toolbar wrap dropdown → core PM command. Translates the legacy
   // toolbar vocabulary via `toolbarValueToLayoutTarget` so this path
   // shares `setImageWrapType` with the right-click menu.
@@ -112,7 +109,7 @@ export function useImageActions(
         : undefined;
     const factory = opts.getCommands()["setImageWrapType"];
     if (!factory) return;
-    runCommand(view, factory(sel.pmPos, target, optsArg));
+    executeEditorCommand(view, factory(sel.pmPos, target, optsArg));
     view.focus();
   }
 
