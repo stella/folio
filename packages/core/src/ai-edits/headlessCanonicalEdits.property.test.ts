@@ -8,7 +8,9 @@
  * - rejecting every change after the operation in tracked mode gives what
  *   rejecting every change gives without it;
  * - accepting every change after the operation in tracked mode gives the
- *   words of the operation applied directly, with every change accepted;
+ *   words of the operation applied directly, with every change accepted; a
+ *   tracked deletion of the paragraph a pending join makes, those of deleting
+ *   it once the join is accepted;
  * - undoing the operation gives back every read and the document exactly.
  *
  * A package the session cannot hold, or an operation either mode refuses,
@@ -40,7 +42,7 @@ import {
 } from "../document-operations";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { createDocx } from "../docx/rezip";
-import type { Document } from "../types/document";
+import type { BlockContent, Document, Paragraph } from "../types/document";
 import { FolioDocxReviewer } from "./headless";
 
 const FIXTURES_DIR = path.join(
@@ -184,6 +186,52 @@ const resolvedText = (
   }
 };
 
+/** Whether a paragraph's mark is pending deletion or a move away. */
+const joinsNext = ({ pPrMark }: Paragraph): boolean =>
+  pPrMark?.kind === "del" || pPrMark?.kind === "moveFrom";
+
+/**
+ * Whether the paragraph `blockId` ends a pending join, its own mark staying.
+ * The joined paragraph carries its id, so a tracked deletion of it takes the
+ * words the join runs into it too, as deleting it directly after the join
+ * does. At the end of its container only a deleted mark before it joins into
+ * it: a move's words stay under the move's review. One ending a section
+ * before a block that is no paragraph loses its own words only.
+ */
+const endsPendingJoin = (
+  content: readonly BlockContent[],
+  blockId: string,
+): boolean =>
+  content.some((block, index) => {
+    switch (block.type) {
+      case "paragraph": {
+        const before = content[index - 1];
+        const after = content[index + 1];
+        return (
+          block.paraId === blockId &&
+          !joinsNext(block) &&
+          block.pPrMark?.deletion === undefined &&
+          before?.type === "paragraph" &&
+          joinsNext(before) &&
+          (after === undefined
+            ? before.pPrMark?.kind === "del"
+            : after.type === "paragraph" ||
+              block.sectionProperties === undefined ||
+              before.sectionProperties !== undefined)
+        );
+      }
+      case "table":
+        return block.rows.some(({ cells }) =>
+          cells.some((cell) => endsPendingJoin(cell.content, blockId)),
+        );
+      case "blockSdt":
+      case "blockCustomXml":
+        return endsPendingJoin(block.content, blockId);
+      default:
+        return false;
+    }
+  });
+
 const editLaws = async (
   buffer: ArrayBuffer,
   draw: OperationDraw,
@@ -251,6 +299,14 @@ const editLaws = async (
   if (applyOrRefuse(accepted, operation, "tracked-changes", refusals) === null)
     return "refusedOperation";
   const direct = await open(buffer);
+  const takesJoin =
+    operation.type === "deleteBlock" &&
+    endsPendingJoin(
+      direct.toDocument().package.document.content,
+      operation.blockId,
+    );
+  if (takesJoin && resolvedText(direct, "accept", refusals) === null)
+    return "resolutionRefused";
   if (applyOrRefuse(direct, operation, "direct", refusals) === null)
     return "refusedOperation";
   const acceptedText = resolvedText(accepted, "accept", refusals);
