@@ -202,10 +202,29 @@ const withDistinctRevisionIds = (document: Document): Document => {
 type ClosingParagraphs = ReadonlyMap<string, OpStory>;
 
 /**
+ * `blocks` with the terminal-table review carrier they end with as the
+ * paragraph it has become, where its own mark is an insertion: words were put
+ * there, and rejecting them takes the paragraph. Otherwise `undefined`.
+ */
+const withInsertedCarrierPlain = (
+  blocks: readonly BlockContent[],
+): BlockContent[] | undefined => {
+  const last = blocks.at(-1);
+  if (
+    last?.type !== "paragraph" ||
+    last.reviewCarrier !== REVIEW_CARRIERS.TERMINAL_TABLE ||
+    last.pPrMark?.kind !== "ins"
+  )
+    return undefined;
+  const { reviewCarrier: _carrier, ...plain } = last;
+  return [...blocks.slice(0, -1), plain];
+};
+
+/**
  * `document` with the paragraph a story ends with given to every story in
  * `stories` that lacks it, as a session reads such a story: resolution keeps
- * a container's final paragraph, so a story that ends in a table resolves
- * with one there.
+ * a container's final paragraph, so a story that ends in a table, or in a
+ * carrier that has become an inserted paragraph, resolves with one there.
  */
 const withClosingParagraphs = (
   document: Document,
@@ -217,7 +236,9 @@ const withClosingParagraphs = (
   let current = document;
   for (const story of stories) {
     const body = findStoryBody(current, story);
-    if (body === undefined || !storyLacksClosingParagraph(current, story))
+    if (body === undefined) continue;
+    const carried = withInsertedCarrierPlain(body.content);
+    if (carried === undefined && !storyLacksClosingParagraph(current, story))
       continue;
     taken ??= new Set(packageParagraphIds(document.package));
     let paraId = next.toString(16).toUpperCase();
@@ -231,7 +252,7 @@ const withClosingParagraphs = (
       document: current,
       story,
       body: withBodyContent(body, [
-        ...body.content,
+        ...(carried ?? body.content),
         { type: "paragraph", paraId, content: [] },
       ]),
     });

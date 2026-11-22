@@ -193,6 +193,36 @@ for (const decision of ["accept", "reject"] as const)
     expect(JSON.stringify(view.document)).not.toContain("reviewCarrier");
   });
 
+for (const decision of ["accept", "reject"] as const)
+  test(`a carrier that has become an inserted paragraph resolves as one (${decision})`, () => {
+    const added = table("00000005", false);
+    const view = resolvedDocumentView(
+      bodyOf([
+        text("00000001", "Kept"),
+        {
+          ...added,
+          rows: added.rows.map((row) =>
+            Object.assign(row, {
+              structuralChange: { type: "tableRowInsertion" as const, info },
+            }),
+          ),
+        },
+        {
+          ...structuredClone(inserted),
+          reviewCarrier: REVIEW_CARRIERS.TERMINAL_TABLE,
+        },
+      ]),
+      decision,
+    );
+    expect(view.unresolved).toEqual([]);
+    expect(shape(view)).toEqual(
+      decision === "accept"
+        ? ["00000001:1", "table", "00000002:Added"]
+        : ["00000001:1"],
+    );
+    expect(JSON.stringify(view.document)).not.toContain("reviewCarrier");
+  });
+
 test("a refused story keeps the blocks it was read with, shared revision ids included", () => {
   // One paragraph object two stories hold keeps one id in both, which the
   // resolution refuses.
