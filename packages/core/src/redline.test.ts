@@ -1413,14 +1413,19 @@ for (const session of SESSIONS)
         await accepting.toBuffer(),
         { session },
       );
+      // The canonical projection includes the paragraph that closes a
+      // text box ending in a table. The text redline flattens that shape too.
+      const closesTextBox =
+        session === "canonical" && innerContent === "tableCell";
       expect(accepted.snapshot().blocks.map(({ text }) => text)).toEqual([
         "Unchanged anchor",
         "Parent text inserted",
         "Inner text inserted",
+        ...(closesTextBox ? [""] : []),
       ]);
       const inserted = accepted
         .snapshot()
-        .blocks.filter(({ text }) => text !== "Unchanged anchor")
+        .blocks.slice(1, 3)
         .map((block) => expectParagraphBlock(block));
       expect(inserted).toHaveLength(2);
       const importedStyleIds = new Set(inserted.map(({ styleId }) => styleId));
@@ -1442,7 +1447,12 @@ for (const session of SESSIONS)
       // Insertions currently carry text and paragraph properties, not container structure.
       expect(
         accepted.toDocument().package.document.content.map(({ type }) => type),
-      ).toEqual(["paragraph", "paragraph", "paragraph"]);
+      ).toEqual([
+        "paragraph",
+        "paragraph",
+        "paragraph",
+        ...(closesTextBox ? ["paragraph"] : []),
+      ]);
       const rejecting = await FolioDocxReviewer.fromBuffer(result.buffer, {
         session,
       });

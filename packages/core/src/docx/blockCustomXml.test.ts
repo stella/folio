@@ -107,27 +107,30 @@ describe("block-level custom XML", () => {
     }
   });
 
-  test("a custom XML wrapper inside a table cell keeps its paragraph readable", async () => {
-    const body =
-      `<w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="2000"/></w:tblGrid>` +
-      `<w:tr><w:tc><w:tcPr/>${wrap(paragraph("Cell clause.", "11111111"))}</w:tc></w:tr></w:tbl>`;
-    const bytes = await makeDocx(body);
-    const parsed = await parseDocx(bytes, { preloadFonts: false });
-    const block = parsed.package.document.content.at(0);
-    expect(block?.type).toBe("table");
-    if (block?.type !== "table") {
-      return;
-    }
-    expect(block.rows.at(0)?.cells.at(0)?.content.at(0)?.type).toBe(
-      "blockCustomXml",
-    );
-    expect(
-      (await FolioDocxReviewer.fromBuffer(bytes))
-        .getContent()
-        .map(({ text }) => text),
-    ).toEqual(["Cell clause."]);
-    expect(await docxToMarkdown(bytes)).toContain("Cell clause.");
-  });
+  test.each(["legacy", "canonical"] as const)(
+    "%s keeps a custom XML wrapper inside a table cell readable",
+    async (session) => {
+      const body =
+        `<w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="2000"/></w:tblGrid>` +
+        `<w:tr><w:tc><w:tcPr/>${wrap(paragraph("Cell clause.", "11111111"))}</w:tc></w:tr></w:tbl>`;
+      const bytes = await makeDocx(body);
+      const parsed = await parseDocx(bytes, { preloadFonts: false });
+      const block = parsed.package.document.content.at(0);
+      expect(block?.type).toBe("table");
+      if (block?.type !== "table") {
+        return;
+      }
+      expect(block.rows.at(0)?.cells.at(0)?.content.at(0)?.type).toBe(
+        "blockCustomXml",
+      );
+      expect(
+        (await FolioDocxReviewer.fromBuffer(bytes, { session }))
+          .getContent()
+          .map(({ text }) => text),
+      ).toEqual(["Cell clause.", ...(session === "canonical" ? [""] : [])]);
+      expect(await docxToMarkdown(bytes)).toContain("Cell clause.");
+    },
+  );
 
   test("comparison sees a change confined to a wrapper", async () => {
     const base = await makeDocx(
@@ -188,35 +191,43 @@ describe("block-level custom XML", () => {
     expect(xml).toContain('<w:attr w:name="role" w:val="operative"/>');
   });
 
-  test("save and editor round trip keep wrapper metadata and nested text", async () => {
-    const body = wrap(
-      paragraph("First clause.", "11111111") +
-        wrap(paragraph("Nested clause.", "22222222")) +
-        table("Table clause."),
-    );
-    const parsed = await parseDocx(await makeDocx(body), {
-      preloadFonts: false,
-    });
-    for (const document of [
-      parsed,
-      fromProseDoc(toProseDoc(parsed), parsed, {
-        stylesheetSource: { type: "package" },
-      }),
-    ]) {
-      const saved = await repackDocx(document, { updateModifiedDate: false });
-      const xml = await documentXml(saved);
-      expect(xml.match(/<w:customXml\b/gu)).toHaveLength(2);
-      expect(xml).toContain('w:element="clause"');
-      expect(xml).toContain('w:uri="urn:folio:test"');
-      expect(xml).toContain('<w:attr w:name="role" w:val="operative"/>');
-      expect(xml).toContain("First clause.");
-      expect(xml).toContain("Nested clause.");
-      expect(xml).toContain("Table clause.");
-      expect(
-        (await FolioDocxReviewer.fromBuffer(saved))
-          .getContent()
-          .map(({ text }) => text),
-      ).toEqual(["First clause.", "Nested clause.", "Table clause."]);
-    }
-  });
+  test.each(["legacy", "canonical"] as const)(
+    "%s keeps wrapper metadata and nested text on an editor round trip",
+    async (session) => {
+      const body = wrap(
+        paragraph("First clause.", "11111111") +
+          wrap(paragraph("Nested clause.", "22222222")) +
+          table("Table clause."),
+      );
+      const parsed = await parseDocx(await makeDocx(body), {
+        preloadFonts: false,
+      });
+      for (const document of [
+        parsed,
+        fromProseDoc(toProseDoc(parsed), parsed, {
+          stylesheetSource: { type: "package" },
+        }),
+      ]) {
+        const saved = await repackDocx(document, { updateModifiedDate: false });
+        const xml = await documentXml(saved);
+        expect(xml.match(/<w:customXml\b/gu)).toHaveLength(2);
+        expect(xml).toContain('w:element="clause"');
+        expect(xml).toContain('w:uri="urn:folio:test"');
+        expect(xml).toContain('<w:attr w:name="role" w:val="operative"/>');
+        expect(xml).toContain("First clause.");
+        expect(xml).toContain("Nested clause.");
+        expect(xml).toContain("Table clause.");
+        expect(
+          (await FolioDocxReviewer.fromBuffer(saved, { session }))
+            .getContent()
+            .map(({ text }) => text),
+        ).toEqual([
+          "First clause.",
+          "Nested clause.",
+          "Table clause.",
+          ...(session === "canonical" ? [""] : []),
+        ]);
+      }
+    },
+  );
 });

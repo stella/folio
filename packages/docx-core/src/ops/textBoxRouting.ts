@@ -9,7 +9,7 @@
  * What an applied operation hands back (its inverse) names the package story
  * again, so it is routed the same way when it runs.
  */
-import type { BlockContent, Document } from "../model/document";
+import type { BlockContent, Document, Paragraph } from "../model/document";
 import { type ParagraphLocation, storyParagraphs } from "./blocks";
 import { IDENTITY_SPACES, identityKeysIn, idKey, slotKey } from "./ids";
 import {
@@ -19,6 +19,7 @@ import {
 import {
   findStoryBody,
   packageStoryOf,
+  replaceStoryBody,
   sameStory,
   type StoryAddress,
   storyBody,
@@ -376,6 +377,41 @@ export const textBoxContentsIn = (
     : textBoxStoriesIn(document, story).map(
         (box) => storyBody(document, box).content,
       );
+
+type CloseTextBoxesOptions = {
+  document: Document;
+  story: OpStory;
+  /** Whether a text box's blocks need a paragraph after them to end with. */
+  needsClosing: (blocks: readonly BlockContent[]) => boolean;
+  /** A new empty paragraph, with an id of its own. */
+  closing: () => Paragraph;
+};
+
+/**
+ * `document` with an empty paragraph after the blocks of each text box drawn
+ * in `story`, nested ones included, that `needsClosing` says end without one:
+ * a text box is a container, and a container ends with a paragraph.
+ */
+export const withTextBoxesClosed = ({
+  document,
+  story,
+  needsClosing,
+  closing,
+}: CloseTextBoxesOptions): Document => {
+  let current = document;
+  // A box is found again after each change: closing one rebuilds its host.
+  for (let index = 0; ; index += 1) {
+    const box = textBoxStoriesIn(current, story).at(index);
+    if (box === undefined) return current;
+    const body = storyBody(current, box);
+    if (!needsClosing(body.content)) continue;
+    current = replaceStoryBody({
+      document: current,
+      story: box,
+      body: { ...body, content: [...body.content, closing()] },
+    });
+  }
+};
 
 /** A story's own paragraphs, then those of each text box drawn in it. */
 export const paragraphsThroughTextBoxes = (

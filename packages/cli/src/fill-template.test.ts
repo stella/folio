@@ -9,7 +9,10 @@ import {
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { FolioDocxReviewer } from "@stll/folio-core/server";
+import {
+  FolioDocxReviewer,
+  type FolioDocxReviewerOptions,
+} from "@stll/folio-core/server";
 
 import { DISK_SYNC_TEST_TIMEOUT_MS } from "../../../test/disk-sync-timeout";
 import { makeTempDir } from "./__tests__/fixtures";
@@ -97,7 +100,10 @@ const MARKDOWN = [
   "The claimant asks for costs.",
 ].join("\n");
 
-const fill = async (args: Record<string, unknown>) => {
+const fill = async (
+  args: Record<string, unknown>,
+  session?: FolioDocxReviewerOptions["session"],
+) => {
   const outcome = (
     await runPackageRewrite("fillTemplate", await buildPackage(TEMPLATE), args)
   ).unwrap();
@@ -106,7 +112,10 @@ const fill = async (args: Record<string, unknown>) => {
   return {
     report: outcome.report,
     bytes,
-    reviewer: await FolioDocxReviewer.fromBuffer(bytes.slice().buffer),
+    reviewer: await FolioDocxReviewer.fromBuffer(
+      bytes.slice().buffer,
+      session === undefined ? {} : { session },
+    ),
   };
 };
 
@@ -186,36 +195,43 @@ describe("fill_template", () => {
     expect(texts.get("word/footer-rIdFooter.xml")).toContain("Footer stays");
   });
 
-  test("takes a block list and keeps the front matter through keepUntil", async () => {
-    const { report, reviewer } = await fill({
-      blocks: [
-        { type: "heading", level: 2, text: "Grounds" },
+  test.each(["legacy", "canonical"] as const)(
+    "%s reads a block list that keeps the front matter through keepUntil",
+    async (session) => {
+      const { report, reviewer } = await fill(
         {
-          type: "numberedParagraph",
-          runs: ["The ", { text: "first", bold: true }, " ground."],
+          blocks: [
+            { type: "heading", level: 2, text: "Grounds" },
+            {
+              type: "numberedParagraph",
+              runs: ["The ", { text: "first", bold: true }, " ground."],
+            },
+            { type: "paragraph", text: "Plain.", style: "Quote" },
+            { type: "table", rows: [["a", "b"]] },
+          ],
+          styles: STYLES,
+          keepUntil: "10000003",
         },
-        { type: "paragraph", text: "Plain.", style: "Quote" },
-        { type: "table", rows: [["a", "b"]] },
-      ],
-      styles: STYLES,
-      keepUntil: "10000003",
-    });
-    expect(report).toMatchObject({
-      kept: { front: 3, tail: 0 },
-      removed: 3,
-      inserted: 4,
-    });
-    expect(paragraphs(reviewer).map(({ text }) => text)).toEqual([
-      "IN THE MATTER OF {{party}}",
-      "Counsel: Old Firm",
-      "Old heading",
-      "Grounds",
-      "The first ground.",
-      "Plain.",
-      "a",
-      "b",
-    ]);
-  });
+        session,
+      );
+      expect(report).toMatchObject({
+        kept: { front: 3, tail: 0 },
+        removed: 3,
+        inserted: 4,
+      });
+      expect(paragraphs(reviewer).map(({ text }) => text)).toEqual([
+        "IN THE MATTER OF {{party}}",
+        "Counsel: Old Firm",
+        "Old heading",
+        "Grounds",
+        "The first ground.",
+        "Plain.",
+        "a",
+        "b",
+        ...(session === "canonical" ? [""] : []),
+      ]);
+    },
+  );
 
   test("refuses content it cannot place", async () => {
     const template = await buildPackage(TEMPLATE);
