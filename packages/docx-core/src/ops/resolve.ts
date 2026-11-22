@@ -4564,6 +4564,7 @@ const resolveList = ({
       const keptJoinHandsOver =
         keptJoinSeams.has(recorded) && standingKept === 0;
       if (keptJoinHandsOver || removalSeams.has(recorded)) {
+        const seamDepth = exactDepth;
         const keptFrom = keptFromIn(seam - standingKept, seam);
         const facingJoinAt = (index: number, side: "before" | "after") => {
           const node = out[index]?.node;
@@ -4598,7 +4599,7 @@ const resolveList = ({
           const { node, takesKept } = handJoin(
             occurrence.node,
             side,
-            exactDepth,
+            seamDepth,
           );
           let tookKept = false;
           if (

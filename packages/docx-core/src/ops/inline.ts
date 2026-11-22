@@ -252,7 +252,7 @@ export const insertSliceAfterDeletion = ({
     const closed = slice.openStart - outer;
     // The slice's first records at the closed levels continue the
     // deletion's last ones.
-    let held = deletion.content.at(-1);
+    let held = edgeAt(deletion.content, 0, "last");
     let continuing = edgeAt(slice.content, outer, "first");
     for (let level = 0; level < closed; level += 1) {
       if (
