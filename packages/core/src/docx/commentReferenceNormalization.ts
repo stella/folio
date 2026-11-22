@@ -1,3 +1,5 @@
+import { panic } from "better-result";
+
 import {
   PARSE_WARNING_CODES,
   type PreservedMarkup,
@@ -19,7 +21,10 @@ import { sliceText } from "../utils/sliceText";
 import { completeCommentReferences } from "./commentReferenceCompletion";
 import { rebuildBodySections } from "./documentParser";
 import { InlineContentRemovals } from "./inlineContentRemovals";
-import { visitInlineContentSlots } from "./paragraphTraversal";
+import {
+  visitInlineContentSlots,
+  visitSlotTextBoxes,
+} from "./paragraphTraversal";
 import { getRunText } from "./runParser";
 
 /** The codes this normalisation is reported under, owned here, not at the caller. */
@@ -99,11 +104,18 @@ type CommentRangeMarkerSite =
 type PointPlacement = { paragraph: Paragraph; at: "start" | "end" };
 
 /**
+ * What a range opens and closes within: the body, a header, footer, note or
+ * comment, or a text box inside one.
+ */
+type MarkerStory = { paragraphCount: number };
+
+/**
  * A nonempty run among the comment anchors. Paragraph ordinals count the
  * intervening breaks without adding blank paragraphs to the tape.
  */
 type TextPiece = {
   order: number;
+  story: MarkerStory;
   paragraphOrdinal: number;
   text: string;
 };
@@ -112,6 +124,7 @@ type PreservedChildOf = NonNullable<PreservedMarkup["children"]>[number];
 
 type CommentRangeMarkerRef = {
   site: CommentRangeMarkerSite;
+  story: MarkerStory;
   id: number;
   type: "commentRangeStart" | "commentRangeEnd";
   /** Its place among every comment anchor, in document order. */
@@ -146,17 +159,27 @@ export const normalizeCommentReferences = ({
   const tape: TextPiece[] = [];
   let removedDanglingReferences = 0;
   let order = 0;
-  let paragraphCount = 0;
+  let story: MarkerStory = { paragraphCount: 0 };
+  const inOwnStory = (normalize: () => void): void => {
+    const outer = story;
+    story = { paragraphCount: 0 };
+    normalize();
+    story = outer;
+  };
 
   // Reading, repairing and removing run as three passes because a removal
   // shifts every later index in its array: the indices collected here stay
   // valid until `removals.apply()` below.
   const normalizeParagraph = (paragraph: Paragraph): void => {
-    const paragraphOrdinal = paragraphCount++;
-    visitInlineContentSlots(paragraph, ({ content, index, item }) => {
+    const paragraphOrdinal = story.paragraphCount++;
+    visitInlineContentSlots(paragraph, (slot) => {
+      const { content, index, item } = slot;
+      visitSlotTextBoxes(slot, (blocks) => {
+        inOwnStory(() => normalizeBlocks(blocks));
+      });
       if (item.type === "run") {
         const text = getRunText(item);
-        if (text !== "") tape.push({ order, paragraphOrdinal, text });
+        if (text !== "") tape.push({ order, story, paragraphOrdinal, text });
         return;
       }
       if (isCommentMarker(item) && !validCommentIds.has(item.id)) {
@@ -171,6 +194,7 @@ export const normalizeCommentReferences = ({
       if (isCommentRangeMarker(item)) {
         rangeMarkers.push({
           site: { type: COMMENT_RANGE_MARKER_SITES.inline, content, index },
+          story,
           id: item.id,
           type: item.type,
           order: order++,
@@ -199,6 +223,7 @@ export const normalizeCommentReferences = ({
               child,
               nearest,
             },
+            story,
             id,
             type,
             order: order++,
@@ -255,6 +280,7 @@ export const normalizeCommentReferences = ({
         if (validCommentIds.has(block.id)) {
           rangeMarkers.push({
             site: { type: COMMENT_RANGE_MARKER_SITES.block, blocks, index },
+            story,
             id: block.id,
             type: block.type,
             order: order++,
@@ -304,23 +330,21 @@ export const normalizeCommentReferences = ({
     }
   };
 
-  normalizeBlocks(documentBody.content);
-  for (const header of headers?.values() ?? []) {
-    normalizeBlocks(header.content);
-  }
-  for (const footer of footers?.values() ?? []) {
-    normalizeBlocks(footer.content);
-  }
-  for (const footnote of footnotes ?? []) {
-    normalizeBlocks(footnote.content);
-  }
-  for (const endnote of endnotes ?? []) {
-    normalizeBlocks(endnote.content);
+  for (const { content } of [
+    documentBody,
+    ...(headers?.values() ?? []),
+    ...(footers?.values() ?? []),
+    ...(footnotes ?? []),
+    ...(endnotes ?? []),
+  ]) {
+    inOwnStory(() => normalizeBlocks(content));
   }
   for (const comment of comments) {
-    for (const paragraph of comment.content) {
-      normalizeParagraph(paragraph);
-    }
+    inOwnStory(() => {
+      for (const paragraph of comment.content) {
+        normalizeParagraph(paragraph);
+      }
+    });
   }
 
   const repaired = repairUnpairedCommentRanges(rangeMarkers, referencedIds);
@@ -445,19 +469,20 @@ const paragraphAtEdge = (
 const DROPPED_RANGE_TEXT_LIMIT = 200;
 
 /**
- * Read the runs as written, joining paragraphs with line breaks between them.
- * Binary search locates the first piece, and only the bounded prefix is read.
+ * Read the story's runs as written, joining paragraphs with line breaks
+ * between them. Binary search locates the first piece, and only the bounded
+ * prefix is read.
  */
 const textBetween = (
   tape: readonly TextPiece[],
-  start: number,
-  end: number,
+  start: CommentRangeMarkerRef,
+  end: CommentRangeMarkerRef,
 ): string => {
   let low = 0;
   let high = tape.length;
   while (low < high) {
     const middle = (low + high) >>> 1;
-    if ((tape[middle]?.order ?? Number.POSITIVE_INFINITY) > start)
+    if ((tape[middle]?.order ?? Number.POSITIVE_INFINITY) > start.order)
       high = middle;
     else low = middle + 1;
   }
@@ -465,7 +490,8 @@ const textBetween = (
   let previousParagraph: number | undefined;
   for (let index = low; index < tape.length; index += 1) {
     const piece = tape[index];
-    if (piece === undefined || piece.order > end) break;
+    if (piece === undefined || piece.order > end.order) break;
+    if (piece.story !== start.story) continue;
     const breaks =
       piece.paragraphOrdinal - (previousParagraph ?? piece.paragraphOrdinal);
     text += "\n".repeat(
@@ -552,8 +578,12 @@ type RepairUnpairedCommentRangesResult = {
   reanchored: number;
   /** Point references to insert where a boundary no paragraph holds was. */
   placed: { id: number; placement: PointPlacement }[];
-  /** Full ranges after a comment's first, by the orders of their boundaries. */
-  droppedRanges: { id: number; start: number; end: number }[];
+  /** Full ranges after a comment's first. */
+  droppedRanges: {
+    id: number;
+    start: CommentRangeMarkerRef;
+    end: CommentRangeMarkerRef;
+  }[];
   /** Boundaries with no partner, dropped. */
   droppedBoundaries: number;
   /** Inline boundaries to remove once every marker has been read. */
@@ -602,7 +632,7 @@ const repairUnpairedCommentRanges = (
     const { ranges, lone } = pairedRanges(markers);
     const [range, ...later] = ranges;
     for (const [start, end] of later) {
-      result.droppedRanges.push({ id, start: start.order, end: end.order });
+      result.droppedRanges.push({ id, start, end });
       removeMarker(start.site, result);
       removeMarker(end.site, result);
     }
@@ -666,37 +696,78 @@ const pointFor = ({
 };
 
 type PairedRangesResult = {
-  /** Each full range: a start whose next boundary is its end, in document order. */
+  /** Each full range, in the document order of their starts. */
   ranges: [CommentRangeMarkerRef, CommentRangeMarkerRef][];
   /** The boundaries no unambiguous pairing claims. */
   lone: CommentRangeMarkerRef[];
 };
 
-/**
- * Pair a comment's boundaries only where the pairing is unambiguous: a start
- * whose very next boundary is an end. A start before another start, or an end
- * after another end, is lone, so a lone start before a full range never joins
- * that range's end and widens what the comment covers.
- */
+/** Pair a comment's boundaries, story by story: no range leaves its story. */
 const pairedRanges = (
   markers: readonly CommentRangeMarkerRef[],
 ): PairedRangesResult => {
   const result: PairedRangesResult = { ranges: [], lone: [] };
+  const byStory = new Map<MarkerStory, CommentRangeMarkerRef[]>();
+  for (const marker of markers) {
+    const own = byStory.get(marker.story);
+    if (own === undefined) byStory.set(marker.story, [marker]);
+    else own.push(marker);
+  }
+  for (const own of byStory.values()) pairStoryRanges(own, result);
+  result.ranges.sort(([first], [second]) => first.order - second.order);
+  result.lone.sort((first, second) => first.order - second.order);
+  return result;
+};
+
+/**
+ * Pair a comment's boundaries within one story only where they all pair. The
+ * ranges a stretch of as many ends as starts nests or overlaps share an id,
+ * so nothing tells which end closes which: the first start opens the first
+ * range and the first end closes it, as no anchor before it repeats, and so
+ * on in turn. Elsewhere only a start whose very next boundary is an end pairs,
+ * so a lone start before a full range never joins that range's end and widens
+ * what the comment covers.
+ */
+const pairStoryRanges = (
+  markers: readonly CommentRangeMarkerRef[],
+  { ranges, lone }: PairedRangesResult,
+): void => {
+  const closes = balancedCloses(markers);
   for (let index = 0; index < markers.length; index += 1) {
-    // SAFETY: index < markers.length.
-    const marker = markers[index]!;
-    const next = markers.at(index + 1);
-    if (
-      marker.type === "commentRangeStart" &&
-      next?.type === "commentRangeEnd"
-    ) {
-      result.ranges.push([marker, next]);
-      index += 1;
+    const close = closes.get(index);
+    if (close === undefined) {
+      // SAFETY: index < markers.length.
+      lone.push(markers[index]!);
       continue;
     }
-    result.lone.push(marker);
+    const stretch = markers.slice(index, close + 1);
+    const ends = stretch.filter(({ type }) => type === "commentRangeEnd");
+    let ordinal = 0;
+    for (const marker of stretch) {
+      if (marker.type === "commentRangeEnd") continue;
+      const end = ends[ordinal++];
+      if (end === undefined) panic("A balanced stretch lacks an end.");
+      ranges.push([marker, end]);
+    }
+    index = close;
   }
-  return result;
+};
+
+/** Where each start that opens a balanced stretch has its closing end. */
+const balancedCloses = (
+  markers: readonly CommentRangeMarkerRef[],
+): Map<number, number> => {
+  const closes = new Map<number, number>();
+  const open: number[] = [];
+  for (const [index, { type }] of markers.entries()) {
+    if (type === "commentRangeStart") {
+      open.push(index);
+      continue;
+    }
+    const start = open.pop();
+    if (start !== undefined) closes.set(start, index);
+  }
+  return closes;
 };
 
 /**

@@ -361,6 +361,89 @@ describe("comment reference normalization", () => {
     ]);
   });
 
+  test("boundaries in different stories are no range", () => {
+    const comments: Comment[] = [{ id: 7, author: "Reviewer", content: [] }];
+    const documentBody: DocumentBody = {
+      comments,
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            { type: "commentRangeStart", id: 7 },
+            { type: "run", content: [{ type: "text", text: "Body" }] },
+            { type: "commentReference", id: 7 },
+          ],
+        },
+      ],
+    };
+    const headers = new Map<string, HeaderFooter>([
+      [
+        "rIdHeader",
+        {
+          type: "header",
+          hdrFtrType: "default",
+          content: [
+            {
+              type: "paragraph",
+              content: [{ type: "commentRangeEnd", id: 7 }],
+            },
+          ],
+        },
+      ],
+    ]);
+
+    const result = normalizeCommentReferences({
+      documentBody,
+      comments,
+      headers,
+    });
+
+    expect(result.droppedUnpairedBoundaries).toBe(2);
+    expect(documentBody.content).toEqual([
+      {
+        type: "paragraph",
+        content: [
+          { type: "run", content: [{ type: "text", text: "Body" }] },
+          { type: "commentReference", id: 7 },
+        ],
+      },
+    ]);
+    expect(headers.get("rIdHeader")?.content).toEqual([
+      { type: "paragraph", content: [] },
+    ]);
+  });
+
+  test("a lone start before overlapping ranges stays out of them", () => {
+    const comments: Comment[] = [{ id: 7, author: "Reviewer", content: [] }];
+    const run = (text: string) => ({
+      type: "run" as const,
+      content: [{ type: "text" as const, text }],
+    });
+    const start = { type: "commentRangeStart" as const, id: 7 };
+    const end = { type: "commentRangeEnd" as const, id: 7 };
+    const reference = { type: "commentReference" as const, id: 7 };
+    const documentBody: DocumentBody = {
+      comments,
+      content: [
+        { type: "paragraph", content: [start, run("a")] },
+        { type: "paragraph", content: [start, run("b")] },
+        { type: "paragraph", content: [start, run("c"), end, reference] },
+        { type: "paragraph", content: [run("d"), end] },
+      ],
+    };
+
+    const result = normalizeCommentReferences({ documentBody, comments });
+
+    expect(result.droppedUnpairedBoundaries).toBe(1);
+    expect(result.droppedRanges).toEqual([{ id: 7, text: "c\nd" }]);
+    expect(documentBody.content).toEqual([
+      { type: "paragraph", content: [run("a")] },
+      { type: "paragraph", content: [start, run("b")] },
+      { type: "paragraph", content: [run("c"), end, reference] },
+      { type: "paragraph", content: [run("d")] },
+    ]);
+  });
+
   test("drops a later range between blocks and reports its runs' text as written", () => {
     const comments: Comment[] = [{ id: 7, author: "Reviewer", content: [] }];
     const run = (text: string) => ({
