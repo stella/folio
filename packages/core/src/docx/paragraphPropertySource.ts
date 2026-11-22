@@ -729,6 +729,35 @@ const sameFacts = (left: Paragraph, right: Paragraph): boolean => {
   return a.length === b.length && a.every((fact, index) => fact === b[index]);
 };
 
+type CarryFactsOptions = {
+  target: Paragraph;
+  source: Paragraph;
+  indentation: "derive" | "restore";
+  /** Copy the facts of `source` a paragraph takes. */
+  copy: (paragraph: Paragraph) => void;
+};
+
+/** `target` with what `copy` gives it, on a new paragraph where a reader kept it. */
+const withCarriedFacts = ({
+  target,
+  source,
+  indentation,
+  copy,
+}: CarryFactsOptions): Paragraph => {
+  const carry = (paragraph: Paragraph): void => {
+    copy(paragraph);
+    if (indentation === "restore")
+      restoreParagraphIndentationProjection({ target: paragraph, source });
+  };
+  if (!sealedFacts.has(target)) {
+    carry(target);
+    return target;
+  }
+  const reopened = reopenParagraph(target);
+  carry(reopened);
+  return sameFacts(reopened, target) ? target : reopened;
+};
+
 type CarryParagraphPropertySourceOptions = {
   target: Paragraph;
   source: Paragraph;
@@ -747,20 +776,35 @@ export const carryParagraphPropertySource = ({
   target,
   source,
   indentation = "derive",
-}: CarryParagraphPropertySourceOptions): Paragraph => {
-  const carry = (paragraph: Paragraph): void => {
-    copyParagraphPropertySource(paragraph, source);
-    if (indentation === "restore")
-      restoreParagraphIndentationProjection({ target: paragraph, source });
-  };
-  if (!sealedFacts.has(target)) {
-    carry(target);
-    return target;
-  }
-  const copy = reopenParagraph(target);
-  carry(copy);
-  return sameFacts(copy, target) ? target : copy;
-};
+}: CarryParagraphPropertySourceOptions): Paragraph =>
+  withCarriedFacts({
+    target,
+    source,
+    indentation,
+    copy: (paragraph) => copyParagraphPropertySource(paragraph, source),
+  });
+
+/**
+ * {@link carryParagraphPropertySource} for a paragraph derived from `source`,
+ * as a split's new half: it reads its properties from the same source, and
+ * takes neither the durable token nor the transfer identity that name
+ * `source` alone.
+ */
+export const deriveParagraphPropertySource = ({
+  target,
+  source,
+  indentation = "derive",
+}: CarryParagraphPropertySourceOptions): Paragraph =>
+  withCarriedFacts({
+    target,
+    source,
+    indentation,
+    copy: (paragraph) => {
+      if (!paragraphSourceRecordKinds.has(paragraph))
+        paragraphSourceRecordKinds.set(paragraph, "capture-only");
+      copyParagraphPropertyCapture(paragraph, source);
+    },
+  });
 
 /** Bind parsed body paragraphs to one exact source package. */
 export const assignDocumentParagraphPropertySourceContract = (

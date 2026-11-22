@@ -11,6 +11,12 @@
       "path": "0:0:0:0:0:0:1:1:1:1:2:1:1:1:1:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
       "note": "Replay tracked editor and resolution invariants from the current CI failure.",
       "date": "2026-10-03"
+    },
+    {
+      "seed": 1221951566,
+      "path": "8:4:3:5:4:12:10:12:17:15:15:15:15:15:15:26:27:27:27:27:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37",
+      "note": "A split redone at the end of a rebuilt paragraph leaves the paragraph its source token alone.",
+      "date": "2026-11-22"
     }
   ],
   "numbered autoformat keeps its start at level zero through every nested level": [
