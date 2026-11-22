@@ -69,7 +69,7 @@ import {
   paragraphIdsIn,
 } from "../ids";
 import { gapAfterInserted } from "../inline";
-import { settleKeptCuts } from "../keptCut";
+import { settledParagraphKeptCuts } from "../keptCut";
 import * as keptJoinsModule from "../keptJoins";
 import {
   childNodes,
@@ -592,8 +592,7 @@ const expectSettled = (document: Document): void => {
     visit(paragraph.content);
   for (const group of groups)
     expect(group.blockers.filter((id) => !pending.has(id))).toEqual([]);
-  for (const { paragraph } of storyParagraphs(document.package.document))
-    expect(settleKeptCuts(paragraph.content)).toEqual(paragraph.content);
+  expect(settledParagraphKeptCuts(document.package.document)).toEqual([]);
 };
 
 /**
@@ -1722,7 +1721,7 @@ describe("tracked operations and their resolution", () => {
     const original = { ...keptJoinsModule };
     mock.module("../keptJoins", () => ({
       ...original,
-      handJoin: (node: Parameters<typeof original.handJoin>[0]) => ({
+      handJoin: ({ node }: Parameters<typeof original.handJoin>[0]) => ({
         node,
         takesKept: false,
       }),
@@ -1779,10 +1778,9 @@ describe("tracked operations and their resolution", () => {
     const original = { ...keptJoinsModule };
     mock.module("../keptJoins", () => ({
       ...original,
-      handJoin: (
-        ...[node, side, depth]: Parameters<typeof original.handJoin>
-      ) => {
-        const handed = original.handJoin(node, side, depth);
+      handJoin: (options: Parameters<typeof original.handJoin>[0]) => {
+        const { node, side, depth } = options;
+        const handed = original.handJoin(options);
         return isTrackedWrapper(node) &&
           (node.resolutionJoins?.[side] ?? 0) >= depth
           ? { node: handed.node, takesKept: false }
