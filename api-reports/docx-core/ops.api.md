@@ -606,6 +606,11 @@ export type EditorIntent = HyperlinkEditorIntent | GenerateTOCIntent | {
     from: TextPosition;
     to: TextPosition;
     text: string;
+    formattingSources?: readonly {
+        end: number;
+        at: TextPosition;
+        type: "character" | "caret";
+    }[];
     runProps?: TextFormatting;
     runPropsPatch?: RunPropsPatch;
     inside?: {
