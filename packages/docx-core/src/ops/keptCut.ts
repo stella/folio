@@ -192,7 +192,7 @@ export const withoutKeptCuts = (node: InlineNode): InlineNode =>
  * {@link withoutKeptCuts}, keeping what the resolution recorded about each
  * marker on its cleared copy.
  */
-export const withoutKeptCutsRecorded = (
+const withoutKeptCutsRecorded = (
   node: InlineNode,
   known: WeakMap<InlineNode, string>,
 ): InlineNode =>
@@ -416,7 +416,7 @@ const withKeptCutPiecesFacing = (
  * one at that edge of the records it holds, whose resolution can still let
  * the pieces across from it meet.
  */
-export const pendingAtEdge = (
+const pendingAtEdge = (
   node: InlineNode | undefined,
   edge: "start" | "end",
 ): boolean => {

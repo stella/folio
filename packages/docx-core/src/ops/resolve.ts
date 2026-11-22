@@ -80,7 +80,6 @@ import {
   keptCutFrom,
   keptCutPiece,
   type KeptRunSides,
-  pendingAtEdge,
   settledParagraphKeptCuts,
   settleKeptCuts,
   standsInKeptCut,
@@ -89,7 +88,6 @@ import {
   withKeptCutPieceRecorded,
   withKeptCutsRecorded,
   withoutKeptCuts,
-  withoutKeptCutsRecorded,
 } from "./keptCut";
 import { handJoin, seamHandsOver, withJoinRetired } from "./keptJoins";
 import {
@@ -1400,6 +1398,14 @@ const settleDeferredRemovals = (
     );
     return (joinedAcross.get(id) ?? 0) >= depth;
   };
+  /** Whether an accepted blocker, keeping the pieces apart, retires `group`. */
+  const retires = (
+    group: DeferredRemovalGroup,
+    fates: readonly BlockerFate[],
+  ): boolean =>
+    group.blockers.some(
+      (id, at) => fates[at] === "accepted" && !joinsAcross(id, group.depth),
+    );
   for (const node of nodes) {
     let next = node;
     if (
@@ -1422,7 +1428,8 @@ const settleDeferredRemovals = (
           }
           if (
             group.edge === undefined &&
-            fates.every((fate) => fate === "accepted")
+            (fates.every((fate) => fate === "accepted") ||
+              retires(group, fates))
           )
             acceptedKept.set(deferredGroupKey(group), group);
           if (
@@ -1432,10 +1439,7 @@ const settleDeferredRemovals = (
             removedPieces.push({ index: out.length, group });
           if (
             fates.every((fate) => fate === "accepted") ||
-            group.blockers.some(
-              (id, at) =>
-                fates[at] === "accepted" && !joinsAcross(id, group.depth),
-            )
+            retires(group, fates)
           )
             continue;
           const remaining = group.blockers.filter(
@@ -3135,6 +3139,7 @@ const resolveList = ({
   const takeKeptBeside = (
     index: number,
     before: number,
+    takesSeam: boolean,
   ): { from: string; count: number } | undefined => {
     const dates: string[] = [];
     let count = 0;
@@ -3149,7 +3154,7 @@ const resolveList = ({
         const node = at(position);
         if (node === undefined || !standsInKeptCut(node)) return;
         const named = keptCutPiece(node);
-        if (named !== piece && named !== "both") return;
+        if (named !== piece && (named !== "both" || !takesSeam)) return;
         const date = keptCutFrom(node);
         if (date !== undefined) dates.push(date);
         count += keptBoundaryCount([node]);
@@ -3602,9 +3607,9 @@ const resolveList = ({
           // The kept markers beside it naming its side (or both) as their
           // cut's piece stood at a seam it took: they are kept there, and
           // its removal consumes the name.
-          const taken =
-            removalCut > 0 ? takeKeptBeside(index, keptStart) : undefined;
-          if (taken !== undefined) exactKept.set(out.length, taken);
+          const beside = takeKeptBeside(index, keptStart, removalCut > 0);
+          if (removalCut > 0 && beside !== undefined)
+            exactKept.set(out.length, beside);
         }
         continue;
       }
@@ -4712,35 +4717,12 @@ const resolveList = ({
       const afterOccurrence = out[seam];
       const before = beforeOccurrence?.node;
       const after = afterOccurrence?.node;
+      // Placed inside a piece, they keep their cuts until the list settles:
+      // a pending change, or a paragraph mark, can still meet them there.
       const standing = out
         .slice(seam - kept.count, seam)
         .map(({ node }) => node);
       const keptFrom = keptFromIn(seam - kept.count, seam);
-      /**
-       * The boundaries as placed at `piece`'s `edge`. Inside it, they still
-       * record their cut while a pending change meets them there, inside the
-       * piece or across from it: resolving that change can still let the
-       * records around them meet.
-       */
-      const placedAt = (
-        piece: InlineNode,
-        edge: "start" | "end",
-      ): InlineNode[] => {
-        const inside = childNodes(piece);
-        const waiting =
-          pendingAtEdge(
-            edge === "start" ? inside?.at(0) : inside?.at(-1),
-            edge,
-          ) ||
-          (edge === "start"
-            ? pendingAtEdge(before, "end")
-            : pendingAtEdge(after, "start"));
-        return waiting
-          ? standing
-          : standing.map((node) =>
-              withoutKeptCutsRecorded(node, resolution.relocated.nodes),
-            );
-      };
       // The depth counts the containers the removed content cut, read on
       // the records either side as the list held them: a container this
       // resolution resolves away is a level no more, and a tracked change on
@@ -4851,24 +4833,14 @@ const resolveList = ({
       const intoAfter =
         !takes("after") || after === undefined || afterDepth === undefined
           ? undefined
-          : withBoundariesAtEdge(
-              after,
-              placedAt(after, "start"),
-              afterDepth,
-              "start",
-            );
+          : withBoundariesAtEdge(after, standing, afterDepth, "start");
       const intoBefore =
         !takes("before") ||
         intoAfter !== undefined ||
         before === undefined ||
         beforeDepth === undefined
           ? undefined
-          : withBoundariesAtEdge(
-              before,
-              placedAt(before, "end"),
-              beforeDepth,
-              "end",
-            );
+          : withBoundariesAtEdge(before, standing, beforeDepth, "end");
       if (intoAfter !== undefined && after !== undefined) {
         carryResolutionState(resolution, after, intoAfter);
         out.splice(
