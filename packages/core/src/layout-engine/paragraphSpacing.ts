@@ -71,6 +71,11 @@ export const resolveEffectiveParagraphSpacing = (
   };
 };
 
+type CellEdgeNeighbors = {
+  previous: FlowBlock | undefined;
+  next: FlowBlock | undefined;
+};
+
 /**
  * Derive sequence-level spacing suppression with structural sharing.
  *
@@ -80,10 +85,11 @@ export const resolveEffectiveParagraphSpacing = (
  */
 export const resolveEffectiveParagraphSpacingTree = (
   blocks: FlowBlock[],
+  cellEdges?: CellEdgeNeighbors,
 ): FlowBlock[] => {
   let changed = false;
   const resolved = blocks.map((block, index) => {
-    const next = resolveBlockSpacing(blocks, index);
+    const next = resolveBlockSpacing({ blocks, index, cellEdges });
     if (next !== block) {
       changed = true;
     }
@@ -97,13 +103,17 @@ export const paragraphsShareStyle = (
   current: ParagraphBlock,
 ): boolean => previous.attrs?.styleId === current.attrs?.styleId;
 
-const resolveBlockSpacing = (
-  blocks: readonly FlowBlock[],
-  index: number,
-): FlowBlock => {
+type SequenceSpacingContext = {
+  blocks: readonly FlowBlock[];
+  index: number;
+  cellEdges?: CellEdgeNeighbors | undefined;
+};
+
+const resolveBlockSpacing = (context: SequenceSpacingContext): FlowBlock => {
+  const { blocks, index } = context;
   const block = blocks[index]!; // SAFETY: called from blocks.map with the same index.
   if (block.kind === "paragraph") {
-    return resolveParagraphSequenceSpacing(blocks, index, block);
+    return resolveParagraphSequenceSpacing(block, context);
   }
   if (block.kind === "table") {
     return resolveTableSpacing(block);
@@ -115,9 +125,8 @@ const resolveBlockSpacing = (
 };
 
 const resolveParagraphSequenceSpacing = (
-  blocks: readonly FlowBlock[],
-  index: number,
   block: ParagraphBlock,
+  { blocks, index, cellEdges }: SequenceSpacingContext,
 ): ParagraphBlock => {
   const spacing = block.attrs?.spacing;
   if (!spacing) {
@@ -126,18 +135,23 @@ const resolveParagraphSequenceSpacing = (
 
   const previous = blocks[index - 1];
   const next = blocks[index + 1];
+  // Contextual spacing crosses a cell edge. Numbering still compares only
+  // paragraphs in this cell so the list keeps its outer margins.
+  const contextualPrevious = index === 0 ? cellEdges?.previous : previous;
+  const contextualNext = index === blocks.length - 1 ? cellEdges?.next : next;
   const suppressBefore =
-    previous?.kind === "paragraph" &&
-    ((block.attrs?.contextualSpacing === true &&
-      paragraphsShareStyle(previous, block)) ||
-      (block.attrs?.automaticSpacing?.before === true &&
-        continuesNumberedSequence(previous, block)));
+    (contextualPrevious?.kind === "paragraph" &&
+      block.attrs?.contextualSpacing === true &&
+      paragraphsShareStyle(contextualPrevious, block)) ||
+    (block.attrs?.automaticSpacing?.before === true &&
+      continuesNumberedSequence(previous, block));
   const suppressAfter =
-    next?.kind === "paragraph" &&
-    ((block.attrs?.contextualSpacing === true &&
-      paragraphsShareStyle(block, next)) ||
-      (block.attrs?.automaticSpacing?.after === true &&
-        continuesNumberedSequence(block, next)));
+    (contextualNext?.kind === "paragraph" &&
+      block.attrs?.contextualSpacing === true &&
+      paragraphsShareStyle(block, contextualNext)) ||
+    (next !== undefined &&
+      block.attrs?.automaticSpacing?.after === true &&
+      continuesNumberedSequence(block, next));
 
   const beforeChanged = suppressBefore && spacing.before !== 0;
   const afterChanged = suppressAfter && spacing.after !== 0;
@@ -168,7 +182,7 @@ const resolveTextBoxContentSpacing = (
     const next =
       block.kind === "table"
         ? resolveTableSpacing(block)
-        : resolveParagraphSequenceSpacing(blocks, index, block);
+        : resolveParagraphSequenceSpacing(block, { blocks, index });
     if (next !== block) {
       changed = true;
     }
@@ -182,8 +196,11 @@ export const resolveTableSpacing = (block: TableBlock): TableBlock => {
   let changed = false;
   const rows = block.rows.map((row) => {
     let rowChanged = false;
-    const cells = row.cells.map((cell) => {
-      const blocks = resolveEffectiveParagraphSpacingTree(cell.blocks);
+    const cells = row.cells.map((cell, index) => {
+      const blocks = resolveEffectiveParagraphSpacingTree(cell.blocks, {
+        previous: row.cells[index - 1]?.blocks.at(-1),
+        next: row.cells[index + 1]?.blocks.at(0),
+      });
       if (blocks === cell.blocks) {
         return cell;
       }

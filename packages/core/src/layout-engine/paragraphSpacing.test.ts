@@ -119,6 +119,55 @@ describe("resolveEffectiveParagraphSpacingTree", () => {
     ]);
   });
 
+  test.each([
+    ["Cell", 0, 0],
+    ["Other", 8, 6],
+  ] as const)(
+    "resolves contextual spacing at the edge of the adjacent %s cell",
+    (rightStyle, leftAfter, rightBefore) => {
+      const left = paragraph("left", {
+        styleId: "Cell",
+        contextualSpacing: true,
+        spacing: { after: 8 },
+      });
+      const right = paragraph("right", {
+        styleId: rightStyle,
+        contextualSpacing: true,
+        spacing: { before: 6 },
+      });
+      const table: TableBlock = {
+        kind: "table",
+        id: "table",
+        rows: [
+          {
+            id: "row",
+            cells: [
+              { id: "left-cell", blocks: [left] },
+              { id: "right-cell", blocks: [right] },
+            ],
+          },
+        ],
+      };
+
+      const resolved = resolveEffectiveParagraphSpacingTree([table]).at(0);
+      if (resolved?.kind !== "table") {
+        throw new Error("Expected table block");
+      }
+
+      expect(
+        resolved.rows.at(0)?.cells.map((cell) => {
+          const block = cell.blocks.at(0);
+          return block?.kind === "paragraph" ? block.attrs?.spacing : undefined;
+        }),
+      ).toEqual([{ after: leftAfter }, { before: rightBefore }]);
+      expect(left.attrs?.spacing).toEqual({ after: 8 });
+      expect(right.attrs?.spacing).toEqual({ before: 6 });
+      expect(resolveEffectiveParagraphSpacingTree([resolved]).at(0)).toBe(
+        resolved,
+      );
+    },
+  );
+
   test("resolves nested table and text-box stories with structural sharing", () => {
     const tableFirst = paragraph("table-first", {
       styleId: "Cell",
