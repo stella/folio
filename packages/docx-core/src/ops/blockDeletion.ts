@@ -912,7 +912,7 @@ export const deleteBlocks = ({
   const trackedBeforeBlock =
     op.revision !== undefined &&
     isOpaqueFollower(following) &&
-    blockListEndsInParagraph(list);
+    list.at(-1)?.type === "paragraph";
   // Directly, the breaks their marks carry go first, on their own, as
   // accepting their tracked deletion takes them; the paragraphs then go as
   // any others do.

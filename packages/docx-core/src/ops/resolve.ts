@@ -5481,7 +5481,10 @@ const joinOps = (
     markWasAdded: added,
     containerStillEndsWithParagraph:
       follows !== "nothing"
-        ? blockListEndsInParagraph(blocks)
+        ? // Before a table, a control ending the container ends it with
+          // its own final paragraph: this resolution leaves that end as it was.
+          (follows === "table" && blockListEndsInParagraph(blocks)) ||
+          blocks.at(-1)?.type === "paragraph"
         : // Removing the final paragraph leaves the block before it last: in
           // a cell, that paragraph's mark becomes the cell's terminator.
           (containerFinal &&
