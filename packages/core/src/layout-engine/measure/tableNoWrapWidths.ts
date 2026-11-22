@@ -1,3 +1,4 @@
+import { readTableWidthKind } from "../../types/tableWidthKind";
 import {
   resolveTableCellPadding,
   resolveTableWidthPx,
@@ -12,7 +13,8 @@ import {
 } from "./tableCellGrid";
 
 export const isAutoWidthNoWrapCell = (cell: TableCell): boolean =>
-  cell.noWrap === true && cell.preferredWidth?.type === "auto";
+  cell.noWrap === true &&
+  readTableWidthKind(cell.preferredWidth?.type) === "automatic";
 
 /** An authored dxa noWrap holds the width and lets the text wrap. */
 export const tableCellKeepsNoWrap = (
@@ -21,7 +23,7 @@ export const tableCellKeepsNoWrap = (
 ): boolean =>
   cell.noWrap === true &&
   table.layout !== "fixed" &&
-  cell.preferredWidth?.type !== "dxa" &&
+  readTableWidthKind(cell.preferredWidth?.type) !== "twips" &&
   (isAutoWidthNoWrapCell(cell) || !tableColumnsArePinned(table));
 
 type CellWidthConstraint = {
@@ -81,7 +83,9 @@ export const expandAutoWidthNoWrapColumns = ({
       const autoNoWrap = isAutoWidthNoWrapCell(cell);
       const statedWidth = cell.preferredWidth;
       const pinnedWidth =
-        cell.noWrap && statedWidth?.type === "dxa"
+        cell.noWrap &&
+        statedWidth &&
+        readTableWidthKind(statedWidth.type) === "twips"
           ? resolveTableWidthPx(statedWidth.value, statedWidth.type, 0)
           : undefined;
       if (pinnedWidth !== undefined && end === start + 1) {
