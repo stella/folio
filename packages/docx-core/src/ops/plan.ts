@@ -47,6 +47,7 @@ import {
   joinedPropertiesSource,
   paragraphPropertiesSetting,
 } from "./pendingJoins";
+import { blockFollower, isBlockBoundary } from "./rangeBoundaries";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import {
   isAddedRevision,
@@ -846,13 +847,15 @@ export const selectedParagraphRuns = (
     if (sameBlockList(left.list, right.list)) {
       if (left.index > right.index) return reversedRange();
       const list = blockListAt(body.content, left.list);
+      // Range boundaries standing between blocks separate no paragraphs.
       const run: ParagraphLocation[] = [];
       for (let index = left.index; index <= right.index; index += 1) {
         const paragraph = list[index];
+        if (paragraph !== undefined && isBlockBoundary(paragraph)) continue;
         if (paragraph?.type !== "paragraph") break;
         run.push({ list: left.list, index, paragraph });
+        if (index === right.index) return Result.ok([run]);
       }
-      if (run.length === right.index - left.index + 1) return Result.ok([run]);
     }
   }
   const locations = storyParagraphs(body);
@@ -872,7 +875,8 @@ export const selectedParagraphRuns = (
       current &&
       previous &&
       sameBlockList(previous.list, location.list) &&
-      location.index === previous.index + 1
+      blockFollower(blockListAt(body.content, location.list), previous.index)
+        .index === location.index
     )
       current.push(location);
     else runs.push([location]);
@@ -963,6 +967,7 @@ export const appendTrackedDeletion = ({
   const ranges = [];
   for (let index = first.index; index <= last.index; index += 1) {
     const paragraph = list[index];
+    if (paragraph !== undefined && isBlockBoundary(paragraph)) continue;
     if (paragraph?.type !== "paragraph")
       return refuse(
         DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
@@ -1074,7 +1079,10 @@ export const appendTrackedDeletion = ({
       );
     const mark = currentLeading.paragraph.pPrMark;
     if (mark?.kind === "del" || mark?.kind === "moveFrom") continue;
-    const next = currentLeading.blocks.at(currentLeading.index + 1);
+    const { block: next } = blockFollower(
+      currentLeading.blocks,
+      currentLeading.index,
+    );
     if (next?.type !== "paragraph")
       return refuse(
         DOCUMENT_OP_REFUSAL_REASONS.NOT_ADJACENT,
@@ -1099,7 +1107,10 @@ export const appendTrackedDeletion = ({
         DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
         "A simulated join lost its leading paragraph.",
       );
-    const directNext = directLeading.blocks.at(directLeading.index + 1);
+    const { block: directNext } = blockFollower(
+      directLeading.blocks,
+      directLeading.index,
+    );
     if (directNext?.type !== "paragraph")
       return refuse(
         DOCUMENT_OP_REFUSAL_REASONS.NOT_ADJACENT,
