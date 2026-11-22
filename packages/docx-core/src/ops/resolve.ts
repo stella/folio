@@ -5286,6 +5286,10 @@ const joinOps = (
     if (standing.length > 0 && follower?.type === "paragraph")
       return { ...follower, content: [...standing, ...follower.content] };
     if (standingBeforeBlock.length > 0) return follower;
+    // Only boundaries follow to the container's end: nothing follows the
+    // paragraph, and removing it would leave a boundary last, so it stays.
+    if (follower === undefined && followerIndex > location.index + 1)
+      return undefined;
     return blocks[location.index + 1];
   };
   const next = nextBlock();

@@ -173,3 +173,36 @@ describe("rejecting an added mark before boundaries and a block content control"
     ]);
   });
 });
+
+// Only a boundary follows the last paragraph: nothing follows it, and
+// removing it would leave the boundary ending the body, so it stays.
+test("rejecting the added mark of the last paragraph before a trailing boundary keeps the paragraph", () => {
+  const document: Document = {
+    package: {
+      document: {
+        content: [
+          paragraph("00000001", "One"),
+          paragraph("00000002", "", { kind: "ins", id: 9 }),
+          { type: "bookmarkStart", id: "5", name: "Clause" },
+        ],
+      },
+    },
+  };
+  const applied = applyDocumentOp(document, {
+    type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+    story: OP_STORIES.MAIN,
+    revisionIds: [9],
+    decision: REVISION_DECISIONS.REJECT,
+  });
+  if (applied.isErr()) throw applied.error;
+  const undo = applyDocumentOps(applied.value.document, applied.value.inverse);
+  if (undo.isErr()) throw undo.error;
+  expect(undo.value.document).toStrictEqual(document);
+  const blocks = applied.value.document.package.document.content;
+  expect(outline(blocks)).toStrictEqual([
+    ["00000001", "One"],
+    ["00000002"],
+    "bookmarkStart",
+  ]);
+  expect(blocks.at(1)).not.toHaveProperty("pPrMark");
+});
