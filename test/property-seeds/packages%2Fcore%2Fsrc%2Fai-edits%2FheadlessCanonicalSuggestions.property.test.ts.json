@@ -1,6 +1,18 @@
 {
   "generated suggestions save, restage, reject and accept as the laws say": [
     {
+      "seed": 498741639,
+      "path": "6:0:0:0:0:0:1:0:0:0:0:2:3:3:3:3:4:3:3:3:3:3:4:4:4:4:4:4:4:4:7:4:29:5:4:4:4:4:4:4:4",
+      "note": "Rejecting an added mark before a bookmark and a block content control resolves as with nothing between, so the tracked suggestion beside it applies.",
+      "date": "2026-11-22"
+    },
+    {
+      "seed": 1154322991,
+      "path": "18:0:1:0:0:0:3:2:2:2:2:2:2:2:2:2:4:4:4:4:4:5:4:4:4:4:6:6:6:6:6:7:6:6:6:6:7:1:4:5:4:6:5:4:5:4:6:4:5:4:4:4:4:5:8:4:5:4:4:4:4:4:4:4",
+      "note": "Rejecting the added mark of the last paragraph before a trailing bookmark keeps the paragraph, so the tracked suggestion beside it applies.",
+      "date": "2026-11-22"
+    },
+    {
       "seed": 2048066208,
       "path": "107:0:0:0:0:0:0:0:2:2:2:2:2:2:2:3:2:2:2:2:3:2:2:4:2:4:2:4:3:3:3:3:4:2:2:3:4:3:11:8:15:3:3:3:3:3:3:3:3:3:3",
       "note": "#2889: a suggested removal of a paragraph holding only an empty wrapper, whose mark a pending deletion already took, records nothing and is refused.",
