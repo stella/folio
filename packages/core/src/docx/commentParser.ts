@@ -28,6 +28,7 @@ import type {
   Theme,
 } from "../types/document";
 import type { DeepReadonly } from "../types/documentModel";
+import { markMisplacedAutomaticNoteMarks } from "./automaticNoteMarkImport";
 import { commentThreadParaId } from "./commentThreadKey";
 import {
   CAPTURE,
@@ -394,6 +395,7 @@ export function parseComments(
 
     const extendedInfo = paraId ? extendedByParaId.get(paraId) : undefined;
     const done = extendedInfo?.done;
+    markMisplacedAutomaticNoteMarks({ root: child, context });
 
     // Parse comment content. `Comment.content` is a paragraph list, so every
     // other body child a `CT_Comment` may hold — a table, an equation, a

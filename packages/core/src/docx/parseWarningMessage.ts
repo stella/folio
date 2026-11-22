@@ -50,6 +50,8 @@ const PARSE_WARNING_MESSAGES = {
     `Dropped ${plural(warning.count, "comment")} with no readable w:id.`,
   [PARSE_WARNING_CODES.duplicateNoteId]: (warning) =>
     `Dropped ${plural(warning.count, "note")} repeating a w:id another note already defines.`,
+  [PARSE_WARNING_CODES.misplacedNoteMark]: (warning) =>
+    `Preserved ${plural(warning.count, "automatic note mark")} outside its matching note story in ${warning.location.part}.`,
   [PARSE_WARNING_CODES.danglingCommentReference]: (warning) =>
     `Removed ${plural(warning.count, "dangling comment reference marker")} whose comments.xml entries are missing.`,
   [PARSE_WARNING_CODES.unbalancedCommentRange]: (warning) =>

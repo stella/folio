@@ -48,6 +48,7 @@ import {
   attributeRemainder,
   NO_MODELLED_ATTRIBUTES,
 } from "./attributeRemainder";
+import { isMisplacedAutomaticNoteMark } from "./automaticNoteMarkImport";
 import { parseChartPreview } from "./chartPreview";
 import {
   CAPTURE,
@@ -1155,7 +1156,10 @@ function parseRunContents(
 
       case "footnoteRef":
       case "endnoteRef":
-        if (WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(child) ?? "")) {
+        if (
+          WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(child) ?? "") &&
+          !isMisplacedAutomaticNoteMark(child)
+        ) {
           contents.push({
             type: "noteMarker",
             kind: localName === "footnoteRef" ? "footnote" : "endnote",

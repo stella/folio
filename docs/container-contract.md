@@ -59,6 +59,11 @@ which nothing opens it. A fixture that does not itself validate is reported as
 **unrepresentable** and not run, because a law that fails on the generator's own
 invalid markup proves nothing.
 
+When the context affects parsing, the contract records the disposition of the
+generated fixture. The body fixtures for `w:footnoteRef` and `w:endnoteRef`
+preserve the original markup. Within the matching note story, the parser
+models the automatic marker.
+
 Then four laws run, reported separately because they fail for different reasons
 and are fixed in different places:
 

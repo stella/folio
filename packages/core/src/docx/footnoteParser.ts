@@ -29,6 +29,7 @@ import type {
   Theme,
 } from "../types/document";
 import type { DeepReadonly } from "../types/documentModel";
+import { markMisplacedAutomaticNoteMarks } from "./automaticNoteMarkImport";
 import type { UnnamedParagraphIds } from "./ensureParaIds";
 import type { NumberingMap } from "./numberingParser";
 import { markUnnamedParagraphIds } from "./packageUnnamedParagraphIds";
@@ -321,6 +322,7 @@ export function parseFootnotes(
   const footnoteElements = findChildren(rootElement, "w", "footnote");
 
   for (const fnEl of footnoteElements) {
+    markMisplacedAutomaticNoteMarks({ root: fnEl, note: "footnote", context });
     const footnote = parseFootnote(
       fnEl,
       styles,
@@ -467,6 +469,7 @@ export function parseEndnotes(
   const endnoteElements = findChildren(rootElement, "w", "endnote");
 
   for (const enEl of endnoteElements) {
+    markMisplacedAutomaticNoteMarks({ root: enEl, note: "endnote", context });
     const endnote = parseEndnote(
       enEl,
       styles,

@@ -1289,6 +1289,7 @@ export const PARSE_WARNING_CODES: {
     readonly duplicateImportedId: "duplicate-imported-id";
     readonly missingCommentId: "missing-comment-id";
     readonly duplicateNoteId: "duplicate-note-id";
+    readonly misplacedNoteMark: "misplaced-note-mark";
     readonly danglingCommentReference: "dangling-comment-reference";
     readonly unbalancedCommentRange: "unbalanced-comment-range";
     readonly unpairedCommentRangeBoundary: "unpaired-comment-range-boundary";
