@@ -695,8 +695,6 @@ describe("a paragraph between a pending join and the table it reaches", () => {
     ]);
   });
 
-  // A suggestion stands beside the paragraph it names, but waits wherever a
-  // tracked insertion would.
   for (const mode of ["direct", "tracked-changes", "suggested"] as const)
     test(`right after the words, is refused: accepting runs them into the table (${mode}, canonical)`, async () => {
       const { reviewer, alpha } = await beforeTable(
