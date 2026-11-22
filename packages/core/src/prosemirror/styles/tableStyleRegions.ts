@@ -24,37 +24,37 @@ export type TableStyleRegion =
   | "swCell"
   | "seCell";
 
+type TableStyleHeaderOptions = {
+  look: ResolvedTableLook;
+  totalRows: number;
+  repeats: (rowIndex: number) => boolean;
+};
+
 /**
- * The horizontal band a row takes by position: every row but a styled first
- * or last row alternates, starting with band 1.
+ * The first-row style covers row zero and any consecutive repeating rows
+ * that follow it. This region does not control which rows repeat on pages.
  */
-export const tableRowBand = (
-  look: ResolvedTableLook,
-  rowIndex: number,
-  totalRows: number,
-): "band1Horz" | "band2Horz" | undefined => {
-  if (look.noHBand) {
-    return undefined;
-  }
-  const styledFirstRow = rowIndex === 0 && look.firstRow;
-  const styledLastRow = rowIndex === totalRows - 1 && look.lastRow;
-  if (styledFirstRow || styledLastRow) {
-    return undefined;
-  }
-  const dataRowIndex = look.firstRow && rowIndex > 0 ? rowIndex - 1 : rowIndex;
-  return dataRowIndex % 2 === 0 ? "band1Horz" : "band2Horz";
+export const tableStyleHeaderRows = ({
+  look,
+  totalRows,
+  repeats,
+}: TableStyleHeaderOptions): number => {
+  if (!look.firstRow || totalRows === 0) return 0;
+  let headerRows = 1;
+  while (headerRows < totalRows && repeats(headerRows)) headerRows += 1;
+  return headerRows;
 };
 
 export type TableCellPlacement = {
   look: ResolvedTableLook;
   rowIndex: number;
   totalRows: number;
+  /** Number of leading rows in the first-row style region. */
+  headerRows: number;
   /** The first grid column the cell covers. */
   column: number;
   colspan: number;
   totalColumns: number;
-  /** The band `tableRowBand` gives the cell's row. */
-  rowBand: "band1Horz" | "band2Horz" | undefined;
   rowConditionalFormat?: ConditionalFormatStyle | undefined;
   cellConditionalFormat?: ConditionalFormatStyle | undefined;
 };
@@ -68,15 +68,16 @@ export const tableCellStyleRegions = ({
   look,
   rowIndex,
   totalRows,
+  headerRows,
   column,
   colspan,
   totalColumns,
-  rowBand,
   rowConditionalFormat: rowCnf,
   cellConditionalFormat: cellCnf,
 }: TableCellPlacement): TableStyleRegion[] => {
-  const rowIsFirstRow = rowCnf?.firstRow ?? rowIndex === 0;
-  const rowIsLastRow = rowCnf?.lastRow ?? rowIndex === totalRows - 1;
+  const lastRow = rowIndex === totalRows - 1;
+  const rowIsFirstRow = rowCnf?.firstRow ?? rowIndex < headerRows;
+  const rowIsLastRow = rowCnf?.lastRow ?? lastRow;
   const isFirstRow = cellCnf?.firstRow ?? rowIsFirstRow;
   const isLastRow = cellCnf?.lastRow ?? rowIsLastRow;
   const isFirstCol = cellCnf?.firstColumn ?? column === 0;
@@ -99,7 +100,11 @@ export const tableCellStyleRegions = ({
     verticalBand = "band2Vert";
   }
 
-  let horizontalBand: TableStyleRegion | undefined = rowBand;
+  let horizontalBand: TableStyleRegion | undefined;
+  if (!look.noHBand && rowIndex >= headerRows && !(look.lastRow && lastRow)) {
+    horizontalBand =
+      (rowIndex - headerRows) % 2 === 0 ? "band1Horz" : "band2Horz";
+  }
   if (rowCnf?.oddHBand) {
     horizontalBand = "band1Horz";
   } else if (rowCnf?.evenHBand) {

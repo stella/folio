@@ -217,7 +217,7 @@ import { listIndentationProvenancePatch } from "../styles/resolvedStyleAttrs";
 import { cascadeStyleTextFormatting } from "../styles/styleToggleCascade";
 import {
   tableCellStyleRegions,
-  tableRowBand,
+  tableStyleHeaderRows,
 } from "../styles/tableStyleRegions";
 import {
   canCarryTrackedRunMark,
@@ -2928,6 +2928,11 @@ function convertTable(
   setCS("seCell", "seCell");
 
   const totalRows = table.rows.length;
+  const headerRows = tableStyleHeaderRows({
+    look,
+    totalRows,
+    repeats: (index) => table.rows[index]?.formatting?.header === true,
+  });
   const gridColumnCount = columnWidths?.length ?? 0;
   const totalColumns =
     gridColumnCount > 0 ? gridColumnCount : countTableColumns(table.rows);
@@ -2955,7 +2960,7 @@ function convertTable(
       columnWidths,
       totalWidth,
       conditionalStyles,
-      tableRowBand(look, rowIndex, totalRows),
+      headerRows,
       look,
       resolvedTableBorders, // Pass resolved table borders (own or from style)
       rowIndex,
@@ -3060,7 +3065,7 @@ function convertTableRow(
     swCell?: TableConditionalStyle;
     seCell?: TableConditionalStyle;
   },
-  rowBand?: "band1Horz" | "band2Horz",
+  headerRows = 0,
   tableLook?: ResolvedTableLook,
   tableBorders?: DeepReadonly<TableBorders>,
   rowIndex?: number,
@@ -3243,10 +3248,10 @@ function convertTableRow(
       look: tableLook ?? resolveTableLook(undefined),
       rowIndex: rowIndex ?? 0,
       totalRows: totalRows ?? 1,
+      headerRows,
       column: colIndex - colspan,
       colspan,
       totalColumns: totalCols,
-      rowBand,
       rowConditionalFormat: rowCnf,
       cellConditionalFormat: cell.formatting?.conditionalFormat,
     })) {

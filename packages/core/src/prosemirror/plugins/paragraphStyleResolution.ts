@@ -46,7 +46,7 @@ import { listAttrsFromResolvedStyle } from "../styles/resolvedStyleAttrs";
 import type { TableCellParagraphSpacingOverlay } from "../styles/styleResolver";
 import {
   tableCellStyleRegions,
-  tableRowBand,
+  tableStyleHeaderRows,
   type TableStyleRegion,
 } from "../styles/tableStyleRegions";
 
@@ -284,6 +284,9 @@ const cascadePatch = (
   return Object.keys(patch).length > 0 ? patch : null;
 };
 
+// PM replaces the table node when a row's repeat flag or the table look changes.
+const headerRowsByTable = new WeakMap<PMNode, number>();
+
 /** The table-style regions for the cell at `depth` of `$pos`, as the load path picks them. */
 const cellStyleRegions = (
   $pos: ResolvedPos,
@@ -295,14 +298,24 @@ const cellStyleRegions = (
   const cellPos = $pos.before(depth) - $pos.start(depth - 2);
   const rect = map.findCell(cellPos);
   const look = resolveTableLook(expectTableAttrs(table).look ?? undefined);
+  let headerRows = headerRowsByTable.get(table);
+  if (headerRows === undefined) {
+    headerRows = tableStyleHeaderRows({
+      look,
+      totalRows: table.childCount,
+      repeats: (index) =>
+        expectTableRowAttrs(table.child(index)).isHeader === true,
+    });
+    headerRowsByTable.set(table, headerRows);
+  }
   return tableCellStyleRegions({
     look,
     rowIndex: rect.top,
     totalRows: map.height,
+    headerRows,
     column: rect.left,
     colspan: rect.right - rect.left,
     totalColumns: map.width,
-    rowBand: tableRowBand(look, rect.top, map.height),
     rowConditionalFormat:
       expectTableRowAttrs(row)._originalFormatting?.conditionalFormat,
     cellConditionalFormat: expectTableCellAttrs($pos.node(depth))

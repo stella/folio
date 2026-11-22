@@ -1326,6 +1326,79 @@ describe("toProseDoc", () => {
     ).toBe("365F91");
   });
 
+  test("the first-row table style covers all leading header rows before body bands", () => {
+    const rows = [
+      "First heading",
+      "Second heading",
+      "First body",
+      "Second body",
+    ];
+    const document: Document = {
+      package: {
+        styles: {
+          styles: [
+            {
+              styleId: "HeadingBands",
+              type: "table",
+              tblStylePr: [
+                { type: "firstRow", rPr: { color: { rgb: "224488" } } },
+                { type: "band1Horz", rPr: { color: { rgb: "446622" } } },
+                { type: "band2Horz", rPr: { color: { rgb: "882244" } } },
+              ],
+            },
+          ],
+        },
+        document: {
+          content: [
+            {
+              type: "table",
+              formatting: {
+                styleId: "HeadingBands",
+                look: {
+                  firstRow: true,
+                  lastRow: false,
+                  firstColumn: false,
+                  lastColumn: false,
+                  noHBand: false,
+                  noVBand: true,
+                },
+              },
+              rows: rows.map((text, index) => ({
+                type: "tableRow",
+                formatting: { header: index < 2 },
+                cells: [
+                  {
+                    type: "tableCell",
+                    content: [
+                      {
+                        type: "paragraph",
+                        content: [
+                          { type: "run", content: [{ type: "text", text }] },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              })),
+            },
+          ],
+        },
+      },
+    };
+
+    const table = toProseDoc(document, {
+      styles: document.package.styles,
+    }).firstChild;
+    const rowColors: unknown[] = [];
+    table?.forEach((row) => {
+      const run = row.firstChild?.firstChild?.firstChild;
+      rowColors.push(
+        run?.marks.find((mark) => mark.type.name === "textColor")?.attrs.rgb,
+      );
+    });
+    expect(rowColors).toEqual(["224488", "224488", "446622", "882244"]);
+  });
+
   test("table style fonts replace doc defaults while retaining paragraph-style slots", () => {
     const document: Document = {
       package: {
