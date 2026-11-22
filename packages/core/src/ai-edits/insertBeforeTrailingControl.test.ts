@@ -30,28 +30,37 @@ const table: BlockContent = {
     },
   ],
 };
+const control: BlockContent = {
+  type: "blockSdt",
+  properties: { sdtType: "richText", id: 5 },
+  content: [inner],
+};
 const endings = {
-  blockSdt: {
-    type: "blockSdt",
-    properties: { sdtType: "richText", id: 5 },
-    content: [inner],
-  },
-  blockCustomXml: {
-    type: "blockCustomXml",
-    openingXml: '<w:customXml w:element="standing">',
-    closingXml: "</w:customXml>",
-    content: [inner],
-  },
-} satisfies Record<string, BlockContent>;
+  blockSdt: [control],
+  blockCustomXml: [
+    {
+      type: "blockCustomXml",
+      openingXml: '<w:customXml w:element="standing">',
+      closingXml: "</w:customXml>",
+      content: [inner],
+    },
+  ],
+  "blockSdt, a paragraph and a bookmark": [
+    control,
+    { type: "paragraph", paraId: "10000005", content: [] },
+    { type: "bookmarkStart", id: 90, name: "_GoBack" },
+    { type: "bookmarkEnd", id: 90 },
+  ],
+} satisfies Record<string, BlockContent[]>;
 const anchors = {
   table: { blockId: "10000002", content: [before, table] },
   paragraph: { blockId: "10000001", content: [before] },
 } satisfies Record<string, { blockId: string; content: BlockContent[] }>;
 
-const cases = Object.entries(endings).flatMap(([ending, control]) =>
+const cases = Object.entries(endings).flatMap(([ending, blocks]) =>
   Object.entries(anchors).map(
     ([anchor, { blockId, content }]) =>
-      [anchor, ending, blockId, [...content, control]] as const,
+      [anchor, ending, blockId, content.concat(blocks)] as const,
   ),
 );
 

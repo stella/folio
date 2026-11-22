@@ -5605,14 +5605,18 @@ const joinOps = (
       follows !== "nothing"
         ? // Before a table, a control ending the container ends it with
           // its own final paragraph: this resolution leaves that end as it was.
-          // So does a rejected added mark before that control, or before
-          // another block, where a paragraph stays to anchor the removal.
-          (blockListEndsInParagraph(blocks) &&
-            (follows === "table" ||
-              (added &&
-                blocks.some(
-                  (block) => block.type === "paragraph" && block !== paragraph,
-                )))) ||
+          // So does a rejected added mark before a block, range boundaries
+          // standing after that paragraph included, where a paragraph stays
+          // to anchor the removal.
+          (follows === "table" && blockListEndsInParagraph(blocks)) ||
+          (follows === "block" &&
+            added &&
+            blockListEndsInParagraph(
+              blocks.filter((block) => !isBlockBoundary(block)),
+            ) &&
+            blocks.some(
+              (block) => block.type === "paragraph" && block !== paragraph,
+            )) ||
           lastBlockPastBoundaries(blocks)?.type === "paragraph"
         : // Removing the final paragraph leaves the block before it last: in
           // a cell, that paragraph's mark becomes the cell's terminator.
