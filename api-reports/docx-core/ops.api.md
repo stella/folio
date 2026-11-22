@@ -444,7 +444,7 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
 }>;
 
 // @public
-export const DOCUMENT_OP_SCHEMA_VERSION = 17;
+export const DOCUMENT_OP_SCHEMA_VERSION = 18;
 
 // @public
 export const DOCUMENT_OP_TYPES: Readonly<{
@@ -843,6 +843,8 @@ export type InsertContentOp = {
     seamPolicy?: typeof INSERTION_SEAM_POLICIES.MERGE_PLAIN_RUNS;
     newIds?: NewIds;
     revision?: RevisionStamp;
+    comments?: readonly Comment_2[];
+    newCommentIds?: readonly number[];
 };
 
 // @public

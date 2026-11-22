@@ -7,6 +7,7 @@ import { idKey } from "../ids";
 import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
+  type InsertContentOp,
   OP_STORIES,
   type OpStory,
   type TouchedBlocks,
@@ -101,6 +102,44 @@ const sections = (changes: boolean): PartAccess[] =>
 
 const comment = (id: number): string => String(id);
 
+const COMMENT_ANCHOR_TYPES = new Set([
+  "commentRangeStart",
+  "commentRangeEnd",
+  "commentReference",
+]);
+
+/** The comments an insertion's anchors and carried threads name. */
+const pastedCommentParts = (op: InsertContentOp): PartAccess[] => {
+  const ids = new Set<number>([
+    ...(op.comments ?? []).map(({ id }) => id),
+    ...(op.newCommentIds ?? []),
+  ]);
+  const visit = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      for (const child of node) visit(child);
+      return;
+    }
+    if (typeof node !== "object" || node === null) return;
+    if (
+      "type" in node &&
+      typeof node.type === "string" &&
+      COMMENT_ANCHOR_TYPES.has(node.type) &&
+      "id" in node &&
+      typeof node.id === "number"
+    )
+      ids.add(node.id);
+    for (const child of Object.values(node)) visit(child);
+  };
+  visit(op.slice.content);
+  if (ids.size === 0) return [];
+  return [
+    ...((op.comments?.length ?? 0) > 0
+      ? [write(EXCLUSIVE_PARTS.RELATIONSHIPS)]
+      : []),
+    ...[...ids].map((id) => write(EXCLUSIVE_PARTS.COMMENTS, comment(id))),
+  ];
+};
+
 /**
  * Content put back as an undo puts back the tracked changes in it, so a
  * concurrent decision of one of them would resolve a change in one order
@@ -169,9 +208,13 @@ const footprintOf = (op: DocumentOp): OpFootprint => {
       );
     // Inline content moves offsets like text; a slice that merges with the
     // records at its point depends on them and is block-scoped.
+    // Its comment anchors are settled against the comments' standing ones.
     case DOCUMENT_OP_TYPES.INSERT_CONTENT: {
       const blocks = [op.at.blockId];
-      return isInlineInsertion(op) ? positional(blocks) : scoped(blocks);
+      const parts = pastedCommentParts(op);
+      return isInlineInsertion(op)
+        ? positional(blocks, parts)
+        : scoped(blocks, parts);
     }
     // Cutting or merging inline records moves no offset.
     case DOCUMENT_OP_TYPES.SPLIT_INLINE:

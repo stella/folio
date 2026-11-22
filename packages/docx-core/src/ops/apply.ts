@@ -30,7 +30,7 @@ import {
   storyBody,
   storyParagraphs,
 } from "./blocks";
-import { applyCommentOp } from "./comments";
+import { applyCommentOp, withAddedCommentRecords } from "./comments";
 import { setContentControl } from "./contentControls";
 /**
  * Apply a document operation and record its exact inverse.
@@ -169,6 +169,7 @@ import {
   transferParagraphPropertySnapshot,
 } from "./paragraphPropertySnapshot";
 import { paragraphSnapshotTransfers } from "./paragraphSnapshotTransfers";
+import { pastedComments } from "./pastedComments";
 import { priorValues } from "./patch";
 import {
   insertsInvertedRange,
@@ -855,6 +856,20 @@ const insertContent = (document: Document, op: InsertContentOp): Applied => {
     return Result.err(located.error);
   }
   const { location, gap } = located.value;
+  // One range per comment id: anchors a comment already has standing are
+  // copied under a fresh id or left out.
+  const pasted = pastedComments(document, op, slice.content);
+  if (pasted.isErr()) {
+    return Result.err(pasted.error);
+  }
+  slice.content = pasted.value.content;
+  if (slice.content.length === 0) {
+    return Result.ok({
+      document,
+      inverse: [],
+      touched: { modified: [], inserted: [], removed: [] },
+    });
+  }
   const incomingBoundaryKeys = new Set(
     rangeBoundariesIn(slice.content)
       .map(copyOriginBoundaryKey)
@@ -899,7 +914,7 @@ const insertContent = (document: Document, op: InsertContentOp): Applied => {
       "The insertion would create a range whose end precedes its start.",
     );
   }
-  return inserted({
+  const edit = inserted({
     document,
     op,
     story: op.at.story,
@@ -910,6 +925,16 @@ const insertContent = (document: Document, op: InsertContentOp): Applied => {
     newIds: op.newIds,
     revision: op.revision,
     copiedBoundaries,
+  });
+  if (edit.isErr() || pasted.value.added.length === 0) return edit;
+  const recorded = withAddedCommentRecords(
+    edit.value.document,
+    pasted.value.added,
+  );
+  return Result.ok({
+    ...edit.value,
+    document: recorded.document,
+    inverse: [...edit.value.inverse, recorded.inverse],
   });
 };
 

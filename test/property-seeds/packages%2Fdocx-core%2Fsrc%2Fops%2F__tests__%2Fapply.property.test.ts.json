@@ -476,5 +476,13 @@
       "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
       "date": "2026-10-03"
     }
+  ],
+  "operations change logical text and run properties as defined": [
+    {
+      "seed": 1340228780,
+      "path": "876:0:0:0:0:0:0:4:5:5:5:12:18:19:21:22:22:22:22:27:26:26:26:26:28:8:1:2:2:2:2:2:2:2:2:2:2:2:2:2:4:3:28:28:28:28:28:28:28:28:29:35:47:48:52:47:50:47:47:47:47:48:47:49:52:47:48:48:48:48:48:48:48:49:49:49:49:49:49:49:49:49:49:49:49:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:21:21:21:21:21:21",
+      "note": "Inserting a comment reference that already stands leaves it out: a comment owns one point.",
+      "date": "2026-11-22"
+    }
   ]
 }

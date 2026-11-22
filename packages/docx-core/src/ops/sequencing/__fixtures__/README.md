@@ -1,7 +1,16 @@
 # Sequencing wire fixtures
 
-`batches-v17.json` and `ops/__tests__/__fixtures__/ops-v17.json` pin the
-current semantic operation schema. Version 17 adds the `containerStart`
+`batches-v18.json` and `ops/__tests__/__fixtures__/ops-v18.json` pin the
+current semantic operation schema. Version 18 adds `comments` and
+`newCommentIds` to `insertContent`: a comment owns one range, so a pasted
+anchor of a kind its comment already has standing takes a fresh comment id
+and a copy of the thread the insertion carries, or is left out without one.
+Its envelopes are otherwise those of version 17.
+
+Version 17 and older envelopes receive `unsupportedSchema`.
+
+`batches-v17.json` and `ops/__tests__/__fixtures__/ops-v17.json` pin
+version 17. Version 17 adds the `containerStart`
 insertion point: paragraphs or a table before the first block of the block
 list holding a named paragraph, where that block holds no paragraph to name
 it by (an empty content control). It records a block-scoped effect, like a

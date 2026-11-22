@@ -38,6 +38,7 @@ import {
   blockId,
   boolean,
   boundedJson,
+  carriedComment,
   comment,
   documentSettings,
   type Fields,
@@ -613,6 +614,8 @@ const operationFields = {
     newIds,
     revision,
     seamPolicy: optional(literal(INSERTION_SEAM_POLICIES.MERGE_PLAIN_RUNS)),
+    comments: optional(array(carriedComment)),
+    newCommentIds: optional(array(natural)),
   } satisfies OperationFields<"insertContent">,
   splitInline: {
     type: literal("splitInline"),

@@ -1122,6 +1122,43 @@ export const reconcileDocumentPartRelationships = (
   document: Document,
 ): Document => reconcilePartRelationships(document, "document");
 
+/**
+ * `document` with comment records added, each before the first comment with
+ * a greater id as a creation places it, and the restoration taking them out
+ * again. The records' anchors are the caller's: the restoration applies once
+ * they are gone.
+ */
+export const withAddedCommentRecords = (
+  document: Document,
+  records: readonly Comment[],
+): { document: Document; inverse: RestoreCommentStateOp } => {
+  const ids = new Set(records.map(({ id }) => id));
+  let comments = [...(document.package.document.comments ?? [])];
+  for (const record of records) {
+    const following = comments.findIndex(({ id }) => id > record.id);
+    comments =
+      following < 0
+        ? [...comments, record]
+        : comments.toSpliced(following, 0, record);
+  }
+  const after = reconcilePartRelationships(
+    withComments(document, comments),
+    "comments",
+  );
+  const prior = capture(document, ids, []);
+  const next = capture(after, ids, []);
+  return {
+    document: after,
+    inverse: {
+      type: DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE,
+      ids: [...ids],
+      scaffoldIds: scaffoldDelta(prior, next),
+      expected: cloneModel(next),
+      state: cloneModel(prior),
+    },
+  };
+};
+
 /** Replies restore with their exhausted root, never as unrelated orphan threads. */
 const restoresExhaustedThreads = (
   document: Document,

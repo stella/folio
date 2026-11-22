@@ -49,6 +49,7 @@ import {
   applyDocumentOps,
 } from "../apply";
 import { sameBlockList, storyBody, storyParagraphs } from "../blocks";
+import { commentAnchorsIn } from "../comments";
 import { contractViolation, normalizeForOps } from "../contract";
 import {
   allocateEditorIntentIds,
@@ -65,9 +66,13 @@ import {
 } from "../ids";
 import { sameRunFormatting } from "../inline";
 import {
+  childNodes,
   compareGaps,
+  type InlineNode,
   isCommentAnchor,
+  isParagraphContent,
   leafSpans,
+  rebuildNode,
   zeroWidthLeavesAt,
 } from "../leaves";
 import { removedNoteStories } from "../noteMarks";
@@ -3448,9 +3453,25 @@ describe("document operations", () => {
           case DOCUMENT_OP_TYPES.INSERT_CONTENT: {
             const { blockId, offset } = op.at;
             const old = textOf(before, blockId);
+            // A comment owns one range: an anchor of a kind its comment has
+            // standing already is left out.
+            const standing = new Set(
+              commentAnchorsIn(document).flatMap(({ node }) =>
+                isCommentAnchor(node) ? [`${node.type}:${node.id}`] : [],
+              ),
+            );
+            const kept = (nodes: readonly InlineNode[]): InlineNode[] =>
+              nodes.flatMap((node) => {
+                if (isCommentAnchor(node))
+                  return standing.has(`${node.type}:${node.id}`) ? [] : [node];
+                const children = childNodes(node);
+                return children === undefined
+                  ? [node]
+                  : [rebuildNode(node, kept(children))];
+              });
             const added = paragraphLogicalText({
               type: "paragraph",
-              content: [...op.slice.content],
+              content: kept(op.slice.content).filter(isParagraphContent),
             });
             expect(textOf(after, blockId)).toBe(
               old.slice(0, offset) + added + old.slice(offset),

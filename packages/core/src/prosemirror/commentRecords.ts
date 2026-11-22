@@ -37,6 +37,7 @@ import {
 import { readCommentReferenceAttrs } from "./commentReferenceAttrs";
 import { COMMENT_REFERENCE_NODE_NAME } from "./commentReferenceIntegrity";
 import { RANGE_ANCHOR_NODE_NAME } from "./extensions/nodes/RangeAnchorExtension";
+import { settlePastedComments } from "./pastedCommentCopies";
 import { createPluginKeyOwner } from "./pluginKeyOwner";
 import { SUGGESTION_BYPASS_META } from "./plugins/suggestionMode";
 import { readRangeAnchorAttrs } from "./rangeAnchorAttrs";
@@ -141,8 +142,50 @@ const listeners = new WeakMap<EditorView, Set<CommentRecordsListener>>();
 export function createCommentRecordsPlugin(
   initial: CommentRecords,
 ): Plugin<CommentRecordsPluginState> {
+  // A comment owns one range: a pasted slice's copies of standing comments
+  // wait here, by the state they were settled against, for the paste to add
+  // their threads to the records in its own undo step.
+  const pastedCopies = new WeakMap<EditorState, readonly Comment[]>();
   return new Plugin<CommentRecordsPluginState>({
     key: commentRecordsOwner.createKey(),
+    props: {
+      transformPasted(slice, view) {
+        const settled = settlePastedComments(slice, {
+          doc: view.state.doc,
+          records: commentRecordsOf(view.state),
+          named: commentIdsNamedIn(view.state.doc),
+        });
+        if (settled.copies.length > 0)
+          pastedCopies.set(view.state, settled.copies);
+        return settled.slice;
+      },
+    },
+    appendTransaction: (transactions, oldState, newState) => {
+      const copies = pastedCopies.get(oldState);
+      if (copies === undefined) return null;
+      pastedCopies.delete(oldState);
+      if (!transactions.some((tr) => tr.getMeta("paste") === true)) return null;
+      const records = commentRecordsOf(newState);
+      if (records === null) return null;
+      const known = new Set(records.map(({ id }) => id));
+      const named = commentIdsNamedIn(newState.doc);
+      const roots = new Set(
+        copies.filter(({ id }) => named.has(id)).map(({ id }) => id),
+      );
+      const added = copies.filter(({ id }) => {
+        if (known.has(id)) return false;
+        let current = copies.find((comment) => comment.id === id);
+        while (current?.parentId !== undefined) {
+          const parent: number = current.parentId;
+          current = copies.find((comment) => comment.id === parent);
+        }
+        return current !== undefined && roots.has(current.id);
+      });
+      if (added.length === 0) return null;
+      const transaction = newState.tr;
+      stepCommentRecords(newState, transaction, [...records, ...added]);
+      return transaction;
+    },
     state: {
       init: () => ({ records: initial, origin: "sync" }),
       apply: (transaction, value) => {

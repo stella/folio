@@ -799,3 +799,12 @@ export const newComment: Validator = object({
   ),
   content: array(paragraph),
 });
+
+/**
+ * A comment a paste carries: a whole record of its thread, every paragraph
+ * with its own identity.
+ */
+export const carriedComment: Validator = object({
+  ...commentFields,
+  content: array(paragraph),
+});
