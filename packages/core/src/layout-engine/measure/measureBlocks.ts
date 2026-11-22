@@ -38,7 +38,10 @@ import type {
   TextBoxMeasure,
 } from "../types";
 import { getCachedParagraphMeasure, setCachedParagraphMeasure } from "./cache";
-import { resolveFloatingTablePageX } from "./floatingTablePosition";
+import {
+  resolveFloatingTablePageX,
+  resolveFloatingTableY,
+} from "./floatingTablePosition";
 import { getHyphenationDictionaryMisses } from "./hyphenationDictionaries";
 import {
   findClearLineY,
@@ -501,16 +504,15 @@ type FloatingZoneWithAnchor = {
   isMarginRelative?: boolean;
 } & FloatingImageZone;
 
-type FloatingTableVerticalPosition =
-  | { type: "anchorRelative"; topOffset: number; bottomOffset: number }
-  | { type: "pageRelative"; pageTop: number; pageBottom: number };
-
 type FloatingTablePageRectTemplateWithAnchor = {
   anchorBlockIndex: number;
   /** Horizontal exclusion bounds in physical-page coordinates. */
   pageLeft: number;
   pageRight: number;
-  vertical: FloatingTableVerticalPosition;
+  vertical: ReturnType<typeof resolveFloatingTableY>;
+  tableHeight: number;
+  distTop: number;
+  distBottom: number;
 };
 
 type FloatingTablePageRect = {
@@ -533,65 +535,6 @@ function perBlockNumberValue(
     return value[blockIndex] ?? fallback;
   }
   return value;
-}
-
-type ResolveFloatingTableVerticalPositionOptions = {
-  floating: NonNullable<TableBlock["floating"]>;
-  tableHeight: number;
-  pageHeight: number;
-  marginTop: number;
-  marginBottom: number;
-  distTop: number;
-  distBottom: number;
-};
-
-function resolveFloatingTableVerticalPosition({
-  floating,
-  tableHeight,
-  pageHeight,
-  marginTop,
-  marginBottom,
-  distTop,
-  distBottom,
-}: ResolveFloatingTableVerticalPositionOptions): FloatingTableVerticalPosition {
-  let offset: number | undefined = floating.tblpY;
-  if (offset === undefined) {
-    const contentHeight = Math.max(0, pageHeight - marginTop - marginBottom);
-    switch (floating.tblpYSpec) {
-      case "top":
-        offset = 0;
-        break;
-      case "center":
-        offset = (contentHeight - tableHeight) / 2;
-        break;
-      case "bottom":
-        offset = contentHeight - tableHeight;
-        break;
-      case "inside":
-      case "outside":
-      case "inline":
-      case undefined:
-        break;
-      default:
-        floating.tblpYSpec satisfies never;
-    }
-  }
-
-  if (offset === undefined || floating.vertAnchor === "text") {
-    const anchorOffset = offset ?? 0;
-    return {
-      type: "anchorRelative",
-      topOffset: anchorOffset - distTop,
-      bottomOffset: anchorOffset + tableHeight + distBottom,
-    };
-  }
-
-  const frameTop = floating.vertAnchor === "page" ? 0 : marginTop;
-  return {
-    type: "pageRelative",
-    pageTop: frameTop + offset - distTop,
-    pageBottom: frameTop + offset + tableHeight + distBottom,
-  };
 }
 
 type TextBoxWrapSideOptions = {
@@ -935,15 +878,16 @@ function extractFloatingZones(
     tablePageRects.push({
       pageLeft: pageX - distLeft,
       pageRight: pageX + tableWidth + distRight,
-      vertical: resolveFloatingTableVerticalPosition({
-        floating,
+      vertical: resolveFloatingTableY({
+        anchor: floating,
         tableHeight,
         pageHeight: blockPageHeight,
         marginTop: blockContentTop,
         marginBottom: blockMarginBottom,
-        distTop,
-        distBottom,
       }),
+      tableHeight,
+      distTop,
+      distBottom,
       anchorBlockIndex: blockIndex,
     });
   }
@@ -1205,25 +1149,16 @@ function activateFloatingTablePageRect(
   template: FloatingTablePageRectTemplateWithAnchor,
   anchorPageY: number,
 ): FloatingTablePageRect {
-  switch (template.vertical.type) {
-    case "anchorRelative":
-      return {
-        pageLeft: template.pageLeft,
-        pageRight: template.pageRight,
-        pageTop: anchorPageY + template.vertical.topOffset,
-        pageBottom: anchorPageY + template.vertical.bottomOffset,
-      };
-    case "pageRelative":
-      return {
-        pageLeft: template.pageLeft,
-        pageRight: template.pageRight,
-        pageTop: template.vertical.pageTop,
-        pageBottom: template.vertical.pageBottom,
-      };
-    default:
-      template.vertical satisfies never;
-      return template.vertical;
-  }
+  const tableTop =
+    template.vertical?.frame === "page"
+      ? template.vertical.top
+      : anchorPageY + (template.vertical?.top ?? 0);
+  return {
+    pageLeft: template.pageLeft,
+    pageRight: template.pageRight,
+    pageTop: tableTop - template.distTop,
+    pageBottom: tableTop + template.tableHeight + template.distBottom,
+  };
 }
 
 /**

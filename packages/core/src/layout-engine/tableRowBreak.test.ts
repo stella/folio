@@ -14,6 +14,7 @@ import {
 } from "../../../../test/property-testing";
 import { layoutDocument } from "./index";
 import { clearAllCaches } from "./measure";
+import { measureBlocks } from "./measure/measureBlocks";
 import {
   installCanvasMeasureProvider,
   resetCanvasContext,
@@ -31,6 +32,7 @@ import type {
   LayoutOptions,
   Measure,
   MeasuredLine,
+  ParagraphBlock,
   ParagraphMeasure,
   TableBlock,
   TableFragment,
@@ -1314,6 +1316,53 @@ describe("floating table placement", () => {
       );
 
     expect(fragment?.x).toBe(180);
+  });
+
+  test("wraps and places a text-anchored table at its alignment instead of its offset", () => {
+    const { block: table } = tallTable(1);
+    table.columnWidths = [60];
+    table.floating = {
+      horzAnchor: "text",
+      vertAnchor: "text",
+      tblpY: 90,
+      tblpYSpec: "bottom",
+    };
+    const lead: ParagraphBlock = {
+      kind: "paragraph",
+      id: "lead",
+      runs: [{ kind: "text", text: "Lead" }],
+    };
+    const anchor: ParagraphBlock = {
+      kind: "paragraph",
+      id: "anchor",
+      runs: [{ kind: "text", text: "Anchor" }],
+    };
+    const blocks = [lead, table, anchor];
+    const measures = measureBlocks(blocks, 220, OPTIONS.margins.top, {
+      pageWidth: OPTIONS.pageSize.w,
+      pageHeight: OPTIONS.pageSize.h,
+      marginLeft: OPTIONS.margins.left,
+      marginRight: OPTIONS.margins.right,
+      marginBottom: OPTIONS.margins.bottom,
+    });
+    const measuredAnchor = measures.at(2);
+    const layout = layoutDocument(blocks, measures, OPTIONS);
+    const fragments = layout.pages.at(0)?.fragments;
+    const leadingFragment = fragments?.find(
+      ({ blockId }) => blockId === lead.id,
+    );
+    const tableFragment = fragments?.find(({ kind }) => kind === "table");
+    if (!leadingFragment || measuredAnchor?.kind !== "paragraph") {
+      throw new Error("Expected the lead and anchor paragraphs");
+    }
+
+    expect({
+      tableTop: tableFragment?.y,
+      anchorIndent: measuredAnchor.lines.at(0)?.leftOffset,
+    }).toEqual({
+      tableTop: leadingFragment.y + leadingFragment.height,
+      anchorIndent: 72,
+    });
   });
 
   test("allows a numeric margin-relative offset to enter the page margin", () => {

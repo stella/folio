@@ -8,7 +8,10 @@ import {
   projectedFootnoteReserveGrowth,
   RENDERED_BREAK_REFLOW_TOLERANCE_LINES,
 } from "./layoutFlowShared";
-import { resolveFloatingTablePageX } from "./measure/floatingTablePosition";
+import {
+  resolveFloatingTablePageX,
+  resolveFloatingTableY,
+} from "./measure/floatingTablePosition";
 import { resolveTableInlineOffset } from "./measure/tableInlinePlacement";
 import { createPaginator, FOOTNOTE_SEPARATOR_HEIGHT } from "./paginator";
 import type { PageState } from "./paginator";
@@ -772,20 +775,6 @@ export function layoutFloatingTable(
   const tableWidth = measure.totalWidth;
   const tableHeight = measure.totalHeight;
 
-  const contentHeight = page.size.h - margins.top - margins.bottom;
-
-  // Default anchor base (content area)
-  let baseY = margins.top;
-
-  if (floating?.vertAnchor === "page") {
-    baseY = 0;
-  } else if (floating?.vertAnchor === "text") {
-    // A text-relative table position is offset from the current text
-    // anchor, not from the page's body margin. Using the margin here lifts
-    // later floating tables to the top of the page and overlays earlier text.
-    baseY = state.cursorY;
-  }
-
   // Determine X position
   let x = paginator.getColumnX(state.columnIndex);
   if (floating) {
@@ -801,29 +790,16 @@ export function layoutFloatingTable(
     });
   }
 
-  // Determine Y position
-  let y = state.cursorY;
-  let usedExplicitY = false;
-  if (floating?.tblpY !== undefined) {
-    y = baseY + floating.tblpY;
-    usedExplicitY = true;
-  } else if (floating?.tblpYSpec) {
-    usedExplicitY = true;
-    const spec = floating.tblpYSpec;
-    if (spec === "top") {
-      y = baseY;
-    } else if (spec === "bottom") {
-      y = baseY + contentHeight - tableHeight;
-    } else if (spec === "center") {
-      y = baseY + (contentHeight - tableHeight) / 2;
-    }
-  }
-
-  // If not explicitly positioned, ensure it fits on the current page
-  if (!usedExplicitY) {
-    const fitState = paginator.ensureFits(tableHeight);
-    y = fitState.cursorY;
-  }
+  const vertical = resolveFloatingTableY({
+    anchor: floating,
+    tableHeight,
+    pageHeight: page.size.h,
+    marginTop: margins.top,
+    marginBottom: margins.bottom,
+  });
+  const y = vertical
+    ? vertical.top + (vertical.frame === "anchor" ? state.cursorY : 0)
+    : paginator.ensureFits(tableHeight).cursorY;
 
   const fragment: TableFragment = {
     kind: "table",
