@@ -3974,24 +3974,35 @@ export function rejectAllSuggestions(): Command {
  * is left holding a break of its own; the rejection runs again until no
  * suggestion is left, so the story never keeps a rejected break.
  */
-export const rejectEverySuggestion = (state: EditorState): EditorState => {
+export const rejectEverySuggestion = (state: EditorState): EditorState =>
+  rejectEverySuggestionMapped(state).state;
+
+/** {@link rejectEverySuggestion}, with where each position of `state` ends. */
+export const rejectEverySuggestionMapped = (
+  state: EditorState,
+): { state: EditorState; mapping: Mapping } => {
+  const mapping = new Mapping();
   const count = collectSuggestions(state).size;
-  if (count === 0) return state;
   let settled = state;
+  if (count === 0) return { state: settled, mapping };
   // Every round that changes the story resolves at least one suggestion.
   for (let rounds = count; rounds >= 0; rounds -= 1) {
     const next = rejectSuggestionsOnce(settled);
-    if (next === null) return settled;
-    settled = next;
+    if (next === null) break;
+    mapping.appendMapping(next.mapping);
+    settled = next.state;
   }
-  return settled;
+  return { state: settled, mapping };
 };
 
 /** One `rejectAllSuggestions` over `state`; `null` when nothing was left to reject. */
-const rejectSuggestionsOnce = (state: EditorState): EditorState | null => {
-  let settled = state;
+const rejectSuggestionsOnce = (
+  state: EditorState,
+): { state: EditorState; mapping: Mapping } | null => {
+  const settled = { state, mapping: new Mapping() };
   const rejected = rejectAllSuggestions()(state, (transaction) => {
-    settled = state.apply(transaction);
+    settled.state = state.apply(transaction);
+    settled.mapping = transaction.mapping;
   });
   return rejected ? settled : null;
 };

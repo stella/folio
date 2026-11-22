@@ -171,7 +171,8 @@ const DELETION_MARK = "deletion";
 const INSERTION_MARK = "insertion";
 const COMMENT_MARK = "comment";
 const HIDDEN_MARK = "hidden";
-const isOmittedFromCleanView = (node: PMNode): boolean =>
+/** Whether the clean view leaves out an inline node. */
+export const isOmittedFromCleanView = (node: PMNode): boolean =>
   node.marks.some(
     (mark) =>
       mark.type.name === DELETION_MARK || mark.type.name === HIDDEN_MARK,
