@@ -63,6 +63,7 @@ import {
   selectParagraph as selectParagraphImpl,
   selectWord as selectWordImpl,
 } from "../utils/domQueries";
+import { itemBefore } from "../utils/listItems";
 import { viewportPosition } from "../utils/viewportPosition";
 import { useDragAutoScroll } from "./useDragAutoScroll";
 
@@ -541,9 +542,11 @@ export function usePagesPointer(
           CANONICAL_GAP.authorityRouting,
         )
       ) {
-        const sectionIndex = opts.layout.value?.pages.at(
-          pageNumber - 1,
-        )?.sectionIndex;
+        const layoutPages = opts.layout.value?.pages;
+        const sectionIndex =
+          layoutPages === undefined
+            ? undefined
+            : itemBefore(layoutPages, pageNumber)?.sectionIndex;
         const operation = createCanonicalHeaderFooterOperation({
           document: doc,
           position,

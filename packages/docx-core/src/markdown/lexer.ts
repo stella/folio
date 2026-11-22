@@ -12,6 +12,8 @@ import {
   type Tokens,
 } from "marked";
 
+import { itemBefore } from "../ops/listItems";
+
 /** A `@directive [argument]` line of a legal draft, tokenized as its own block. */
 export type LegalDirectiveToken = {
   type: "legalDirective";
@@ -117,7 +119,8 @@ const separateDirectiveLines = (
   }
   return {
     text: output.join("\n"),
-    originalLineOf: (line) => line - (insertedBefore.at(line - 1) ?? inserted),
+    originalLineOf: (line) =>
+      line - (itemBefore(insertedBefore, line) ?? inserted),
   };
 };
 

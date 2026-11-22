@@ -23,6 +23,7 @@ import type {
   TableRow,
 } from "../types/content";
 import type { Document } from "../types/document";
+import { itemBefore } from "./listItems";
 import { decodeOoxmlSymbolCharacter } from "./ooxmlSymbol";
 
 export type ReplaceEligibility =
@@ -480,7 +481,7 @@ export const findInParagraph = (
         projection.offsets.at(start) ?? start,
       ),
       startOffset: projection.offsets.at(start) ?? start,
-      endOffset: (projection.offsets.at(end - 1) ?? end - 1) + 1,
+      endOffset: (itemBefore(projection.offsets, end) ?? end - 1) + 1,
       text: projection.text.slice(start, end),
     }));
 };
@@ -525,7 +526,7 @@ const replacementForProjection = ({
   for (let offset = start + 1; offset < end; offset++) {
     if (
       (projection.offsets.at(offset) ?? offset) !==
-      (projection.offsets.at(offset - 1) ?? offset - 1) + 1
+      (itemBefore(projection.offsets, offset) ?? offset - 1) + 1
     )
       return { status: "blocked", reason: "hidden-content" };
   }

@@ -50,6 +50,7 @@ import {
   rebuildNode,
   sameOwnFields,
 } from "./leaves";
+import { itemBefore } from "./listItems";
 import { isHyperlinkChild } from "./offsets";
 import { isTrackedWrapper } from "./review";
 
@@ -711,7 +712,7 @@ export const withSeamBoundariesInside = ({
   while (rightStart < right.length && isStandingBoundary(right[rightStart]))
     rightStart += 1;
   const boundaries = [...left.slice(leftEnd), ...right.slice(0, rightStart)];
-  const before = left.at(leftEnd - 1);
+  const before = itemBefore(left, leftEnd);
   const after = right.at(rightStart);
   if (
     boundaries.length === 0 ||

@@ -100,6 +100,7 @@ import {
   sameOwnFields,
   withFieldResult,
 } from "./leaves";
+import { itemBefore } from "./listItems";
 import { replaceNoteParts } from "./noteLifecycle";
 import {
   automaticNoteMarkRuns,
@@ -1444,21 +1445,21 @@ const placeAcceptedSeamKept = ({
   ].find(
     ({ index, records }) =>
       records > 0 &&
-      (blocker(out.at(index - 1)) || blocker(out.at(index + records))),
+      (blocker(itemBefore(out, index)) || blocker(out.at(index + records))),
   );
   if (placed === undefined) return false;
   const { index: start, records } = placed;
   // The cut's piece across the blockers must stand once they are resolved:
   // with nothing left of it, the cut has one side and they stand beside it,
   // as resolving its emptying first leaves them.
-  const far = start < first ? out.at(last + 1) : out.at(first - 1);
+  const far = start < first ? out.at(last + 1) : itemBefore(out, first);
   if (far === undefined || emptiedBy(far, fateOf)) return false;
   // The accepted blocker beside them stays between the pieces. Rejecting the
   // revision after accepting it puts them into the piece only when the
   // blocker's record facing them is alike the piece, or when the blocker's
   // own join there reaches deeper than the cut, so that it continues the
   // record the cut split; otherwise they stand beside it.
-  const blockerBefore = blocker(out.at(start - 1));
+  const blockerBefore = blocker(itemBefore(out, start));
   const beside = out.at(blockerBefore ? start - 1 : start + records);
   const piece = out.at(blockerBefore ? start + records : start - 1);
   const edgeRecord =
@@ -1496,7 +1497,7 @@ const placeAcceptedSeamKept = ({
       (node.info.date ?? "") > keptFrom
     );
   const after = out.at(start + records);
-  const before = start > 0 ? out.at(start - 1) : undefined;
+  const before = itemBefore(out, start);
   const intoAfter = takes(after)
     ? withBoundariesAtEdge(after, boundaries, group.depth, "start")
     : undefined;
@@ -2295,7 +2296,7 @@ const resolveList = ({
     node: TrackedWrapper,
     index: number,
   ): number | undefined => {
-    const before = index > 0 ? pending.at(index - 1) : undefined;
+    const before = itemBefore(pending, index);
     const after = pending.at(index + 1);
     if (
       before === undefined ||
@@ -2398,7 +2399,7 @@ const resolveList = ({
       pending[index + 1] = placed;
       out.splice(out.length - inside, inside);
     } else {
-      const previous = out.at(first - 1);
+      const previous = itemBefore(out, first);
       if (previous === undefined || !standsInside(previous.node)) return;
       const placed = withBoundariesAtEdge(
         previous.node,
@@ -2790,7 +2791,7 @@ const resolveList = ({
           const before =
             index === 0
               ? undefined
-              : (sourceOwners.at(index - 1) ??
+              : (itemBefore(sourceOwners, index) ??
                 panic("A preceding source occurrence has an owner."));
           const after = sourceOwners.at(index + 1);
           removedOwner.state = {
@@ -2818,7 +2819,7 @@ const resolveList = ({
           // New content joined to nothing either side is no piece of a
           // record: removing it, the records either side meet across its
           // place, so a seam beyond it reaches them as deep as it goes.
-          const before = index === 0 ? undefined : sourceOwners.at(index - 1);
+          const before = itemBefore(sourceOwners, index);
           const after = sourceOwners.at(index + 1);
           const through = (owner: SourceOwner | undefined) =>
             owner === undefined
@@ -2986,7 +2987,7 @@ const resolveList = ({
             depth: Math.max(own, enclosingCut ?? 0),
             before:
               index > 0 && !closedOn("before")
-                ? sourceOwners.at(index - 1)
+                ? itemBefore(sourceOwners, index)
                 : undefined,
             after: closedOn("after") ? undefined : sourceOwners.at(index + 1),
             spanning: trackedWithin(node.content),
@@ -3070,7 +3071,7 @@ const resolveList = ({
           floating.set(far === "after" ? out.length : out.length - inside, {
             count: beyond,
             depth: node.resolutionJoins?.remove ?? 0,
-            before: index > 0 ? sourceOwners.at(index - 1) : undefined,
+            before: itemBefore(sourceOwners, index),
             after: sourceOwners.at(index + 1),
             spanning: trackedWithin(node.content),
             piece: far,
@@ -3135,7 +3136,7 @@ const resolveList = ({
         floating.set(out.length, {
           count: content.length,
           depth: held,
-          before: index > 0 ? sourceOwners.at(index - 1) : undefined,
+          before: itemBefore(sourceOwners, index),
           after: sourceOwners.at(index + 1),
           spanning: [],
         });
@@ -3428,7 +3429,7 @@ const resolveList = ({
   for (const [index, { node, owner }] of out.entries()) {
     if (!isAddedRevision(node) || node.resolutionJoins === undefined) continue;
     if (node.resolutionJoins.remove === 0) continue;
-    const left = out.at(index - 1)?.node;
+    const left = itemBefore(out, index)?.node;
     const right = out.at(index + 1)?.node;
     const depths = [
       index > 0 && left !== undefined
@@ -3563,7 +3564,7 @@ const resolveList = ({
     changed = true;
   };
   for (const seam of plainSeams) {
-    const left = out.at(seam - 1)?.node;
+    const left = itemBefore(out, seam)?.node;
     const right = out.at(seam)?.node;
     if (
       seam > 0 &&
@@ -5484,7 +5485,7 @@ const joinOps = (
         : // Removing the final paragraph leaves the block before it last: in
           // a cell, that paragraph's mark becomes the cell's terminator.
           (containerFinal &&
-            blocks.at(location.index - 1)?.type === "paragraph") ||
+            itemBefore(blocks, location.index)?.type === "paragraph") ||
           // Ending a control, with the paragraphs joining it: removing them
           // leaves the control ending in whatever stands before them and the
           // container's end where it was, so a rejected added mark takes its

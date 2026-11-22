@@ -1,6 +1,7 @@
 import { panic } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
 
+import { itemBefore } from "../utils/listItems";
 import { indexedPositionMap } from "./indexedPositionMap";
 import type { resolveWholeStory } from "./wholeStoryRevisionResolution";
 
@@ -116,7 +117,7 @@ export const finalRevisionParagraphRanges = (result: Resolution): Range[] => {
         high = middle;
       }
     }
-    let table = low === 0 ? null : (tables.at(low - 1) ?? null);
+    let table = itemBefore(tables, low) ?? null;
     while (table && range.to > table.position + table.sourceNodeSize) {
       table = table.parent;
     }

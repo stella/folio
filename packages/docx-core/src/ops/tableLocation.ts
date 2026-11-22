@@ -14,6 +14,7 @@ import {
   storyParagraphs,
 } from "./blocks";
 import { idKey } from "./ids";
+import { itemBefore } from "./listItems";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import type {
   DeleteRowOp,
@@ -178,7 +179,7 @@ export const blockInsertionPointAt = ({
     const blockId = tableRowAnchor(following.rows);
     if (blockId !== undefined) return { type: "beforeTable", blockId };
   }
-  const previous = index > 0 ? blocks.at(index - 1) : undefined;
+  const previous = itemBefore(blocks, index);
   if (previous?.type === "paragraph" && previous.paraId !== undefined)
     return { type: "after", blockId: previous.paraId };
   if (previous?.type === "table") {

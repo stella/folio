@@ -73,6 +73,7 @@ import { resolveFontFamily } from "../utils/fontResolver";
 import { DOCX_BOLD_FONT_WEIGHT } from "../utils/fontWeights";
 import { underlineDecorationCss } from "../utils/formatToStyle";
 import { getHorizontalScaleFactor } from "../utils/horizontalScale";
+import { itemBefore } from "../utils/listItems";
 import { writePaintedRange } from "../utils/paintedPositions";
 import { getParagraphFrame } from "../utils/paragraphFrame";
 import {
@@ -2099,7 +2100,7 @@ export const startsAfterSoftWrap = (
     return false;
   }
 
-  const previousRun = block.runs.at(line.fromRun - 1);
+  const previousRun = itemBefore(block.runs, line.fromRun);
   return previousRun !== undefined && !isLineBreakRun(previousRun);
 };
 

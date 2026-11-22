@@ -39,6 +39,7 @@ import type {
   ParagraphContent,
   RunContent,
 } from "../types/document";
+import { itemBefore } from "../utils/listItems";
 
 type SourceKind = ParagraphContent["type"] | RunContent["type"];
 type SourcePolicy = "container" | "leaf" | "text" | "rawField";
@@ -864,7 +865,7 @@ export const projectCanonicalInline = ({
         );
       const next = spans.at(index);
       const gap = next?.before ??
-        spans.at(index - 1)?.after ?? { offset: 0, zeroWidthBefore: 0 };
+        itemBefore(spans, index)?.after ?? { offset: 0, zeroWidthBefore: 0 };
       addGap(cell.from, gap);
       addGap(cell.to, gap);
       continue;
