@@ -691,18 +691,14 @@ describe("single-mutation probes", () => {
         "table-column-insert",
         "table-column-insert",
       ]);
-      // The canonical session closes its body with a paragraph after the
-      // final table, which the comparison writes.
-      const closing =
-        session === "canonical" ? [{ text: "", table: null }] : [];
-      expect(await projectView(result.value.buffer, "final")).toEqual([
-        ...(await projectView(target, "final")),
-        ...closing,
-      ]);
-      expect(await projectView(result.value.buffer, "original")).toEqual([
-        ...(await projectView(base, "final")),
-        ...closing,
-      ]);
+      // The canonical session closes every body it opens with a paragraph
+      // after the final table, the two sides' as the comparison's.
+      expect(await projectView(result.value.buffer, "final", session)).toEqual(
+        await projectView(target, "final", session),
+      );
+      expect(
+        await projectView(result.value.buffer, "original", session),
+      ).toEqual(await projectView(base, "final", session));
     },
   );
 

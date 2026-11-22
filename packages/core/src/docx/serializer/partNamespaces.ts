@@ -360,6 +360,10 @@ export const readRootNamespaceBindings = (
   partXml: string,
 ): ReadonlyMap<string, string> => scanXmlNames(partXml, true).declared;
 
+/** The prefixes the element and attribute names of `xml` carry. */
+export const usedNamespacePrefixes = (xml: string): ReadonlySet<string> =>
+  scanXmlNames(xml, false).used;
+
 /** The part a rebuild replaces: where it lives, and what its root element bound. */
 export type SourcePart = {
   path: string;
