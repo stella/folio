@@ -65,6 +65,7 @@ import {
   getTableCellSpacingInsetsX,
   getTableCellSpacingInsetsY,
   getTableCellVerticalBorderHeight,
+  getTableGridColumnCount,
 } from "./tableCellGrid";
 import { recordTableMeasure, takenTableMeasure } from "./tableMeasureMemo";
 import { layoutTextBoxContent } from "./textBoxParagraphLayout";
@@ -76,15 +77,6 @@ import { layoutTextBoxContent } from "./textBoxParagraphLayout";
  * floating-point precision concerns when summed downstream.
  */
 const NO_WRAP_MEASURE_WIDTH = 1_000_000;
-
-/**
- * Sanity cap on the table column count derived from summed cell colSpans
- * when a table has no `tblGrid`/explicit column widths. Mirrors the
- * `MAX_TABLE_COLUMNS` clamp applied to `w:gridSpan` at parse time
- * (`docx/tableParser.ts`); enforced again here since a hostile colSpan sum
- * would otherwise size the fallback column array and cell grid unbounded.
- */
-const MAX_TABLE_COLUMNS = 63;
 
 export type MeasureBlocksOptions = {
   /** Header/footer tabs may be authored in the page margin, beyond body width. */
@@ -197,15 +189,7 @@ export function measureTableBlock(
   );
 
   if (columnWidths.length === 0 && tableBlock.rows.length > 0) {
-    // Determine total columns from first row's colSpans
-    const colCount = Math.min(
-      tableBlock.rows[0]!.cells.reduce(
-        // SAFETY: rows.length > 0
-        (sum, cell) => sum + (cell.colSpan ?? 1),
-        0,
-      ),
-      MAX_TABLE_COLUMNS,
-    );
+    const colCount = getTableGridColumnCount(tableBlock);
     const totalWidth = explicitWidthPx ?? contentWidth;
     const equalWidth = totalWidth / Math.max(1, colCount);
     columnWidths = Array.from({ length: colCount }, () => equalWidth);
@@ -232,7 +216,7 @@ export function measureTableBlock(
   // (contextual spacing, §17.3.1.9, and automatic list spacing suppress the
   // space between neighbours). The cell height must stack the same spacing,
   // or suppressed space still grows the row below the painted content.
-  const spacingRows = resolveTableSpacing(tableBlock).rows;
+  const spacingRows = resolveTableSpacing(tableBlock, { grid: cellGrid }).rows;
   const cellSpacing = tableBlock.cellSpacing;
   const bordersSeparated = (cellSpacing ?? 0) > 0;
   const rowCount = tableBlock.rows.length;

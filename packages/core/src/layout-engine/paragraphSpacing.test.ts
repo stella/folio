@@ -171,6 +171,47 @@ describe("resolveEffectiveParagraphSpacingTree", () => {
     },
   );
 
+  test("keeps spacing between cells separated by a vertical merge", () => {
+    const left = paragraph("left", {
+      styleId: "Cell",
+      contextualSpacing: true,
+      spacing: { after: 8 },
+    });
+    const right = paragraph("right", {
+      styleId: "Cell",
+      contextualSpacing: true,
+      spacing: { before: 6 },
+    });
+    const table: TableBlock = {
+      kind: "table",
+      id: "table",
+      columnWidths: [60, 60, 60],
+      rows: [
+        {
+          id: "first-row",
+          cells: [
+            { id: "first-left", blocks: [] },
+            { id: "merged", rowSpan: 2, blocks: [] },
+            { id: "first-right", blocks: [] },
+          ],
+        },
+        {
+          id: "second-row",
+          cells: [
+            { id: "left-cell", blocks: [left] },
+            { id: "right-cell", blocks: [right] },
+          ],
+        },
+      ],
+    };
+
+    const resolved = resolveEffectiveParagraphSpacingTree([table]).at(0);
+
+    expect(resolved).toBe(table);
+    expect(left.attrs?.spacing?.after).toBe(8);
+    expect(right.attrs?.spacing?.before).toBe(6);
+  });
+
   test("resolves a table's leading contextual spacing against the current lead style", () => {
     withFakeTextMeasure(() => {
       const first = paragraph("first", {

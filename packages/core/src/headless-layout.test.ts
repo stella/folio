@@ -197,6 +197,74 @@ describe("layoutDocxHeadless", () => {
     );
   });
 
+  test("paints adjacent cell text on the measured baseline with contextual spacing", async () => {
+    installFixedWidthProvider();
+    const document = createEmptyDocument();
+    document.package.document.content = [
+      {
+        type: "table",
+        columnWidths: [1_200, 1_200],
+        rows: [
+          {
+            type: "tableRow",
+            cells: [
+              {
+                type: "tableCell",
+                content: [
+                  {
+                    type: "paragraph",
+                    content: [
+                      {
+                        type: "run",
+                        content: [{ type: "text", text: "Left" }],
+                      },
+                    ],
+                  },
+                ],
+              },
+              {
+                type: "tableCell",
+                content: [
+                  {
+                    type: "paragraph",
+                    formatting: { contextualSpacing: true, spaceBefore: 90 },
+                    content: [
+                      {
+                        type: "run",
+                        content: [{ type: "text", text: "Right" }],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ];
+    const result = await layoutDocxHeadless(await createDocx(document));
+    if (result.isErr()) {
+      throw result.error;
+    }
+    const { layout, blockLookup, documentFeatures, furniture, embeddedFonts } =
+      result.value;
+    const display = buildDisplayList({
+      layout,
+      blockLookup,
+      documentFeatures,
+      embeddedFonts,
+      ...furniture,
+    });
+    const glyphs = display.pages
+      .at(0)
+      ?.primitives.filter((primitive) => primitive.kind === "glyphRun");
+    const left = glyphs?.find((glyph) => glyph.text === "Left");
+    const right = glyphs?.find((glyph) => glyph.text === "Right");
+
+    expect(left).toBeDefined();
+    expect(right?.baselineYPx).toBe(left?.baselineYPx);
+  });
+
   test("honors final-section vertical alignment after DOCX serialization", async () => {
     installFixedWidthProvider();
     const document = createEmptyDocument({ initialText: "Centered" });

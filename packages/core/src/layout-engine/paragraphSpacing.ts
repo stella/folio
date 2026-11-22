@@ -1,3 +1,10 @@
+import {
+  buildTableCellGrid,
+  getSourceCellAt,
+  getSourceCellColumn,
+  getTableGridColumnCount,
+  type TableCellGrid,
+} from "./measure/tableCellGrid";
 import { noteTableOrigin } from "./measure/tableMeasureMemo";
 import { continuesNumberedSequence } from "./paragraphSequence";
 import type {
@@ -132,7 +139,7 @@ export const resolveBodyTableLeadingSpacing = (
     if (cached !== undefined) {
       return cached;
     }
-    const table = resolveTableSpacing(block, lead);
+    const table = resolveTableSpacing(block, { bodyLead: lead });
     tablesWithoutLeadingSpace.set(block, table);
     return table;
   });
@@ -227,21 +234,44 @@ const resolveTextBoxContentSpacing = (
   return changed ? resolved : blocks;
 };
 
+type ResolveTableSpacingOptions = {
+  bodyLead?: ParagraphBlock;
+  grid?: TableCellGrid;
+};
+
 /** Derive the effective paragraph spacing of every cell story in a table. */
 export const resolveTableSpacing = (
   block: TableBlock,
-  bodyLead?: ParagraphBlock,
+  { bodyLead, grid: measuredGrid }: ResolveTableSpacingOptions = {},
 ): TableBlock => {
+  const grid =
+    measuredGrid ??
+    buildTableCellGrid(block.rows, getTableGridColumnCount(block));
   let changed = false;
   const rows = block.rows.map((row, rowIndex) => {
     let rowChanged = false;
     const cells = row.cells.map((cell, index) => {
+      const column = getSourceCellColumn(grid, cell);
+      const previous = row.cells[index - 1];
+      const next = row.cells[index + 1];
+      const previousCell =
+        column !== undefined &&
+        previous &&
+        getSourceCellAt(grid, rowIndex, column - 1) === previous
+          ? previous
+          : undefined;
+      const nextColumn = next && getSourceCellColumn(grid, next);
+      const nextCell =
+        nextColumn !== undefined &&
+        getSourceCellAt(grid, rowIndex, nextColumn - 1) === cell
+          ? next
+          : undefined;
       const blocks = resolveEffectiveParagraphSpacingTree(cell.blocks, {
         previous:
           rowIndex === 0 && index === 0
             ? bodyLead
-            : row.cells[index - 1]?.blocks.at(-1),
-        next: row.cells[index + 1]?.blocks.at(0),
+            : previousCell?.blocks.at(-1),
+        next: nextCell?.blocks.at(0),
       });
       if (blocks === cell.blocks) {
         return cell;
