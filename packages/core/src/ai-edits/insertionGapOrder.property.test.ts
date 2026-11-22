@@ -46,6 +46,7 @@ import {
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import { FolioDocxReviewer } from "./headless";
 
 type Mode = "direct" | "tracked-changes" | "suggested";
@@ -222,7 +223,10 @@ const anchorOf = (held: HeldBlockIds<Side>, side: Side) => {
   return { blockId, after: side !== "beforeNext" && side !== "beforeAnchor" };
 };
 
-const open = async (setup: Case): Promise<FolioDocxReviewer> => {
+const open = async (
+  setup: Case,
+  session?: HeadlessReviewerSession,
+): Promise<FolioDocxReviewer> => {
   const texts = [
     `## ${OPENING}`,
     ANCHOR,
@@ -236,7 +240,10 @@ const open = async (setup: Case): Promise<FolioDocxReviewer> => {
   const bytes = (
     await ensureParaIds(await createDocx(fromMarkdown(texts.join("\n\n"))))
   ).docx;
-  return FolioDocxReviewer.fromBuffer(bytes, { author: "Reviewer" });
+  return FolioDocxReviewer.fromBuffer(bytes, {
+    author: "Reviewer",
+    ...(session === undefined ? {} : { session }),
+  });
 };
 
 const reopen = async (
@@ -456,18 +463,23 @@ const caseArbitrary: fc.Arbitrary<Case> = fc
       ...(besideTable ? (["afterTable"] as const) : []),
       ...(anchorIsLast || nextRemoved ? [] : (["beforeNext"] as const)),
     ];
+    const insertionArbitrary = fc.record({
+      kind: kindsIn(mode),
+      side: fc.constantFrom(...sides),
+      look: fc.constantFrom<Look[]>("plain", "heading", "centered"),
+    });
+    // Canonical refuses a tracked table right after the anchor when deleting
+    // the next paragraph retired the anchor's break. Test admission separately.
+    const admittedInsertion = nextRemoved
+      ? insertionArbitrary.filter(
+          ({ kind, side }) => kind !== "table" || side !== "afterAnchor",
+        )
+      : insertionArbitrary;
     return fc
-      .array(
-        fc.array(
-          fc.record({
-            kind: kindsIn(mode),
-            side: fc.constantFrom(...sides),
-            look: fc.constantFrom<Look[]>("plain", "heading", "centered"),
-          }),
-          { minLength: 1, maxLength: 5 },
-        ),
-        { minLength: 1, maxLength: 3 },
-      )
+      .array(fc.array(admittedInsertion, { minLength: 1, maxLength: 5 }), {
+        minLength: 1,
+        maxLength: 3,
+      })
       .chain((batches) =>
         fc.record({
           anchorIsLast: fc.constant(anchorIsLast),
@@ -520,6 +532,61 @@ const readsApart = (placed: readonly Placed[]): boolean =>
 
 const label = (placed: readonly Placed[]): string[] =>
   placed.map((entry) => entry.label);
+
+for (const session of ["canonical", "legacy"] as const) {
+  test(`tracked insertion of a table after a paragraph whose break is pending deletion (${session})`, async () => {
+    const reviewer = await open(
+      {
+        anchorIsLast: false,
+        table: "none",
+        nextRemoved: true,
+        mode: "tracked-changes",
+        batches: [],
+        between: [],
+      },
+      session,
+    );
+    const next = reviewer.snapshot().blocks.find(({ text }) => text === NEXT);
+    if (next === undefined) throw new Error("Missing final paragraph.");
+    applyBatch(reviewer, "tracked-changes", [
+      { id: "delete-next", type: "deleteBlock", blockId: next.id },
+    ]);
+
+    const beforeTable = reviewer.snapshot();
+    const anchor = beforeTable.blocks.find(({ text }) => text === ANCHOR);
+    if (anchor === undefined) throw new Error("Missing table anchor.");
+    const pending = reviewer.getChanges();
+    const tableId = "insert-B0I0";
+    const result = reviewer.applyOperations(
+      [
+        {
+          id: tableId,
+          type: "insertTable",
+          blockId: anchor.id,
+          rows: [["Cell"]],
+        },
+      ],
+      { mode: "tracked-changes" },
+    );
+
+    if (session === "canonical") {
+      expect(result.applied).toEqual([]);
+      expect(result.skipped).toEqual([
+        {
+          id: tableId,
+          reason: "pendingParagraphMarkDeletion",
+          message:
+            "Accepting the pending deletion of this paragraph's break would run its words into the inserted table. Resolve that change first, or insert the table elsewhere.",
+        },
+      ]);
+      expect(reviewer.snapshot()).toEqual(beforeTable);
+      expect(reviewer.getChanges()).toEqual(pending);
+    } else {
+      expect(result.skipped).toEqual([]);
+      expect(result.applied.map(({ id }) => id)).toEqual([tableId]);
+    }
+  });
+}
 
 const examples: [Case][] = [
   // A paragraph after the story's last paragraph, pending; then a paragraph
