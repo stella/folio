@@ -248,17 +248,20 @@ const open = async (
 
 const reopen = async (
   reviewer: FolioDocxReviewer,
+  session?: HeadlessReviewerSession,
 ): Promise<FolioDocxReviewer> =>
   FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
     author: "Reviewer",
+    ...(session === undefined ? {} : { session }),
   });
 
 /** The blocks a reader lists once every change is accepted and saved. */
 const acceptedBlocks = async (
   reviewer: FolioDocxReviewer,
+  session?: HeadlessReviewerSession,
 ): Promise<Block[]> => {
   reviewer.acceptAll();
-  return (await reopen(reviewer))
+  return (await reopen(reviewer, session))
     .snapshot()
     .blocks.filter((block) => block.text.length > 0)
     .map((block) => ({
@@ -299,8 +302,12 @@ const applyBatch = (
  * Replay `setup` in `mode`: the blocks accepting leaves, and the blocks the
  * requested order says.
  */
-const replay = async (setup: Case, mode: Mode) => {
-  let reviewer = await open(setup);
+const replay = async (
+  setup: Case,
+  mode: Mode,
+  session?: HeadlessReviewerSession,
+) => {
+  let reviewer = await open(setup, session);
   // What each side puts blocks beside, by its words: accepting can join the
   // anchor into the paragraph after it, which keeps that one's id, so the ids
   // are read again after every resolution (a block pending deletion reads no
@@ -380,7 +387,7 @@ const replay = async (setup: Case, mode: Mode) => {
     );
     const step = setup.between[index] ?? "nothing";
     if (step === "reopen" || step === "reopenAndAccept") {
-      reviewer = await reopen(reviewer);
+      reviewer = await reopen(reviewer, session);
     }
     if (step === "accept" || step === "reopenAndAccept") {
       reviewer.acceptAll();
@@ -388,7 +395,7 @@ const replay = async (setup: Case, mode: Mode) => {
     held = heldBlockIds(reviewer, words, held);
   }
   const deleted = setup.batches.some((batch) => batch.deletesAnchor);
-  const accepted = await acceptedBlocks(reviewer);
+  const accepted = await acceptedBlocks(reviewer, session);
   return {
     accepted,
     looks: looksOf(accepted, looks),
@@ -587,6 +594,49 @@ for (const session of ["canonical", "legacy"] as const) {
     }
   });
 }
+
+test.each(["canonical", "legacy"] as const)(
+  "inserts before the next paragraph ahead of a removed table (%s)",
+  async (session) => {
+    const reviewed = await replay(
+      {
+        anchorIsLast: false,
+        table: "removed",
+        nextRemoved: false,
+        mode: "tracked-changes",
+        batches: [
+          {
+            insertions: [{ kind: "table", side: "beforeNext", look: "plain" }],
+            deletesAnchor: false,
+          },
+          {
+            insertions: [
+              { kind: "paragraph", side: "beforeNext", look: "plain" },
+            ],
+            deletesAnchor: false,
+          },
+          {
+            insertions: [
+              { kind: "paragraph", side: "afterTable", look: "plain" },
+            ],
+            deletesAnchor: false,
+          },
+        ],
+        between: ["nothing", "nothing", "nothing"],
+      },
+      "tracked-changes",
+      session,
+    );
+    expect(labelsOf(reviewed.accepted)).toEqual([
+      OPENING,
+      ANCHOR,
+      "B0I0",
+      "B1I0",
+      "B2I0",
+      NEXT,
+    ]);
+  },
+);
 
 const examples: [Case][] = [
   // A paragraph after the story's last paragraph, pending; then a paragraph

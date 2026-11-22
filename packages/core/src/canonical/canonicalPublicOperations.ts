@@ -1425,6 +1425,19 @@ const blockInsertionPlace = (
           at: { type: "after", blockId: end.blockId },
           position: paragraph.start,
         };
+      // Without a preceding paragraph, the pending-deleted table itself
+      // supplies the address at the start of the gap.
+      if (first?.type.name === "table") {
+        const blockId = tableBlockAddress(projection, {
+          table: first,
+          tableStart: gap + 1,
+        });
+        if (blockId !== undefined)
+          return {
+            at: { type: "beforeTable", blockId },
+            position: paragraph.start,
+          };
+      }
       const start =
         first?.type.name === "paragraph"
           ? projection.paragraphStartingAt(gap)
@@ -2987,6 +3000,27 @@ const resolveTableInsertion = ({
       to: position,
     });
   };
+  const besideTable = (blockId: string, position: number) =>
+    Result.ok({
+      type: "plain" as const,
+      operation,
+      intents: [
+        {
+          type: "tableBlock",
+          operation: {
+            type: DOCUMENT_OP_TYPES.INSERT_TABLE,
+            story,
+            blockId,
+            table,
+            anchor: "table",
+            side,
+          },
+        } satisfies EditorIntent,
+      ],
+      normalizations: [],
+      from: position,
+      to: position,
+    });
   if (listStart !== undefined)
     return Result.ok({
       type: "plain" as const,
@@ -3033,25 +3067,7 @@ const resolveTableInsertion = ({
             tableStart: outer.before + 1,
           });
     if (blockId === undefined) return refusal("unsupportedBlock");
-    const intent: EditorIntent = {
-      type: "tableBlock",
-      operation: {
-        type: DOCUMENT_OP_TYPES.INSERT_TABLE,
-        story,
-        blockId,
-        table,
-        side,
-        anchor: "table",
-      },
-    };
-    return Result.ok({
-      type: "plain" as const,
-      operation,
-      intents: [intent],
-      normalizations: [],
-      from: outer[side],
-      to: outer[side],
-    });
+    return besideTable(blockId, outer[side]);
   }
   const { place } = besidePendingJoin({
     side,
@@ -3090,6 +3106,19 @@ const resolveTableInsertion = ({
       PENDING_BREAK_TABLE_REFUSAL.reason,
       PENDING_BREAK_TABLE_REFUSAL.message,
     );
+  // A pending-deleted table is at the start of this accepted gap. Use its
+  // before edge so a later insertion explicitly after it can stay there.
+  if (side === "before") {
+    const start = insertionGap(projection.doc, gap, side);
+    const pending = start < gap ? projection.doc.nodeAt(start) : null;
+    if (pending?.type.name === "table") {
+      const address = tableBlockAddress(projection, {
+        table: pending,
+        tableStart: start + 1,
+      });
+      if (address !== undefined) return besideTable(address, start);
+    }
+  }
   // After a container's last paragraph the container still ends with one.
   return inserted({
     place,
