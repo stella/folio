@@ -87,7 +87,6 @@ import {
   withKeptCutPieceConsumed,
   withKeptCutPieceRecorded,
   withKeptCutsRecorded,
-  withoutKeptCuts,
 } from "./keptCut";
 import { handJoin, seamHandsOver, withJoinRetired } from "./keptJoins";
 import {
@@ -1476,13 +1475,14 @@ const settleDeferredRemovals = (
   }
   for (const group of acceptedKept.values())
     changed =
-      placeAcceptedSeamKept({ out, group, fateOf }) ||
+      placeAcceptedSeamKept({ out, group, fateOf, known }) ||
       consumeSeamNames(out, group, known) ||
       changed;
   // Later placements stand later in the list, so earlier indices still hold.
   for (const { index, group } of removedPieces.toReversed())
     changed =
-      placeKeptBesideRemovedPiece({ out, index, group, fateOf }) || changed;
+      placeKeptBesideRemovedPiece({ out, index, group, fateOf, known }) ||
+      changed;
   return changed ? out : nodes;
 };
 
@@ -1499,11 +1499,13 @@ const placeKeptBesideRemovedPiece = ({
   index,
   group,
   fateOf,
+  known,
 }: {
   out: InlineNode[];
   index: number;
   group: DeferredRemovalGroup;
   fateOf: DeferredRemovalSettlement["fateOf"];
+  known: WeakMap<InlineNode, string>;
 }): boolean => {
   const holder = out[index];
   if (
@@ -1544,7 +1546,7 @@ const placeKeptBesideRemovedPiece = ({
     return false;
   const placed = withBoundariesAtEdge(
     piece,
-    standing.map((node) => withoutKeptCuts(node)),
+    standing.map((node) => withKeptCutPieceConsumed(node, known)),
     group.depth,
     atEnd ? "start" : "end",
   );
@@ -1593,10 +1595,12 @@ const placeAcceptedSeamKept = ({
   out,
   group,
   fateOf,
+  known,
 }: {
   out: InlineNode[];
   group: DeferredRemovalGroup;
   fateOf: DeferredRemovalSettlement["fateOf"];
+  known: WeakMap<InlineNode, string>;
 }): boolean => {
   const blocker = (node: InlineNode | undefined): boolean =>
     node !== undefined &&
@@ -1681,7 +1685,9 @@ const placeAcceptedSeamKept = ({
     .flatMap((node) => keptCutFrom(node) ?? [])
     .toSorted()
     .at(0);
-  const boundaries = standing.map((node) => withoutKeptCuts(node));
+  const boundaries = standing.map((node) =>
+    withKeptCutPieceConsumed(node, known),
+  );
   // A piece still held in a pending removal, or content made after the
   // revision they were kept from, is no piece that takes them.
   const takes = (node: InlineNode | undefined): node is InlineNode =>
@@ -1998,6 +2004,17 @@ const sourceOwnerDepthAt = ({
     current = route.owner;
   }
   return undefined;
+};
+
+/** The record `node` holds at `edge`, past tracked changes. */
+const recordAt = (
+  node: InlineNode | undefined,
+  edge: "start" | "end",
+): InlineNode | undefined => {
+  let record = node;
+  while (record !== undefined && isTrackedWrapper(record))
+    record = edge === "start" ? record.content.at(0) : record.content.at(-1);
+  return record;
 };
 
 /** Two tracked changes of one kind, author and date: pieces of one change. */
@@ -2746,8 +2763,11 @@ const resolveList = ({
         node.resolutionJoins.plainSides?.includes(side) === true ||
         !alike(side, across, side === "before" ? last : first) ||
         (goes === "deleted" &&
-          beyond !== undefined &&
-          (isTrackedWrapper(beyond) || alike(side, across, beyond)))
+          alike(
+            side,
+            across,
+            recordAt(beyond, side === "before" ? "end" : "start"),
+          ))
       )
         return undefined;
       const marked = Object.assign({}, node, {
@@ -2893,17 +2913,6 @@ const resolveList = ({
      */
     inEdgeRecords: Record<"first" | "last", number>;
   }): void => {
-    /** The record a list's edge record holds at `edge`, past tracked changes. */
-    const recordAt = (
-      node: InlineNode | undefined,
-      edge: "start" | "end",
-    ): InlineNode | undefined => {
-      let record = node;
-      while (record !== undefined && isTrackedWrapper(record))
-        record =
-          edge === "start" ? record.content.at(0) : record.content.at(-1);
-      return record;
-    };
     const previousAt = out.length - standing - 1;
     const facing = (
       node: InlineNode | undefined,
@@ -4352,21 +4361,28 @@ const resolveList = ({
       (node.type === "deletion" || node.type === "moveFrom") &&
       !resolution.ids.has(node.info.id) &&
       node.resolutionJoins !== undefined;
+    // One holder waits with its own piece; two wait when they are one change's.
+    const holdsLeft = pendingHolder(leftHolder);
+    const holdsRight = pendingHolder(rightHolder);
     if (
-      !pendingHolder(leftHolder) ||
-      !pendingHolder(rightHolder) ||
-      !sameOwnFields(leftHolder, rightHolder)
+      (!holdsLeft && !holdsRight) ||
+      (holdsLeft && holdsRight && !sameOwnFields(leftHolder, rightHolder))
     )
       return [left, right];
-    const leftPiece = leftHolder.content.at(-1);
-    const rightPiece = rightHolder.content.at(0);
+    const leftPiece = holdsLeft ? leftHolder.content.at(-1) : leftHolder;
+    const rightPiece = holdsRight ? rightHolder.content.at(0) : rightHolder;
     if (
       leftPiece === undefined ||
       rightPiece === undefined ||
+      isTrackedWrapper(leftPiece) ||
+      isTrackedWrapper(rightPiece) ||
       !sameOwnFields(leftPiece, rightPiece)
     )
       return [left, right];
-    const blockers = [leftHolder.info.id, rightHolder.info.id];
+    const blockers = [
+      ...(holdsLeft ? [leftHolder.info.id] : []),
+      ...(holdsRight ? [rightHolder.info.id] : []),
+    ];
     const withGroup = (
       holder: Extract<InlineNode, { type: "deletion" | "moveFrom" }>,
       edge: "start" | "end",
@@ -4385,16 +4401,20 @@ const resolveList = ({
       return next;
     };
     return [
-      rebuildNode(left, [
-        ...leftChildren.slice(0, leftEnd),
-        withGroup(leftHolder, "end"),
-        ...leftChildren.slice(leftEnd + 1),
-      ]),
-      rebuildNode(right, [
-        ...rightChildren.slice(0, rightStart),
-        withGroup(rightHolder, "start"),
-        ...rightChildren.slice(rightStart + 1),
-      ]),
+      holdsLeft
+        ? rebuildNode(left, [
+            ...leftChildren.slice(0, leftEnd),
+            withGroup(leftHolder, "end"),
+            ...leftChildren.slice(leftEnd + 1),
+          ])
+        : left,
+      holdsRight
+        ? rebuildNode(right, [
+            ...rightChildren.slice(0, rightStart),
+            withGroup(rightHolder, "start"),
+            ...rightChildren.slice(rightStart + 1),
+          ])
+        : right,
     ];
   };
   // A recorded seam a pending deletion or move source stands at, holding

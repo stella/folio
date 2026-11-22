@@ -124,8 +124,8 @@ export const holdsKeptCut = (nodes: readonly InlineNode[]): boolean =>
       holdsKeptCut(childNodes(node) ?? []),
   );
 
-/** `node` without a kept cut: placed inside a piece, it waits for nothing. */
-export const withoutKeptCut = (node: InlineNode): InlineNode => {
+/** `node` without a kept cut: it waits for nothing. */
+const withoutKeptCut = (node: InlineNode): InlineNode => {
   if (!carriesKeptCut(node) || node.keptCut === undefined) return node;
   const placed = { ...node };
   delete placed.keptCut;
@@ -184,13 +184,9 @@ export const withKeptCutsRecorded = (
     keepingRecord((marker) => withKeptCut(marker, cut), known),
   );
 
-/** `node` with no kept cut on the markers it stands for. */
-export const withoutKeptCuts = (node: InlineNode): InlineNode =>
-  changeStandingMarkers(node, withoutKeptCut);
-
 /**
- * {@link withoutKeptCuts}, keeping what the resolution recorded about each
- * marker on its cleared copy.
+ * `node` with no kept cut on the markers it stands for, keeping what the
+ * resolution recorded about each marker on its cleared copy.
  */
 const withoutKeptCutsRecorded = (
   node: InlineNode,
