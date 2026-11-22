@@ -1136,6 +1136,8 @@ export type MeasuredLine = {
   descent: number;
   /** Total line height in pixels. */
   lineHeight: number;
+  /** Line-relative band shared by character highlight and shading, in pixels. */
+  characterFillBand?: { topPx: number; heightPx: number };
   /** Paint adjustment admitted by measurement for this line. */
   justificationPaint?: { type: "space-contraction"; contractionPx: number };
   /** Left offset from floating images (pixels from content left edge). */

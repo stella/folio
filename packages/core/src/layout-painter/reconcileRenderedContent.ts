@@ -8,6 +8,10 @@
 
 import { releaseDisplayPageResources } from "../display-list/pageResourceOwnership";
 import { PAINTED_POSITION_ATTRIBUTES } from "../utils/paintedPositions";
+import {
+  CHARACTER_FILL_BACKINGS_ATTRIBUTE,
+  CHARACTER_FILL_BAND_ATTRIBUTE,
+} from "./characterFillBand";
 
 /**
  * The attributes that say where a painted node stands in the editor document.
@@ -48,6 +52,8 @@ const showsTheSame = (painted: Node, fresh: Node): boolean => {
     !sameAttributes(paintedElement, freshElement, POSITION_ATTRIBUTES)
   )
     return false;
+  // Backings are populated from the DOM geometry only after attachment.
+  if (freshElement.hasAttribute(CHARACTER_FILL_BACKINGS_ATTRIBUTE)) return true;
   const paintedChildren = painted.childNodes;
   const freshChildren = fresh.childNodes;
   if (paintedChildren.length !== freshChildren.length) return false;
@@ -95,6 +101,8 @@ const sameShell = (painted: Node, fresh: Node): boolean => {
   const paintedElement = painted as Element;
   const freshElement = fresh as Element;
   return (
+    // If a run changes, replace the marked line and measure all its backings.
+    !freshElement.hasAttribute(CHARACTER_FILL_BAND_ATTRIBUTE) &&
     paintedElement.namespaceURI === freshElement.namespaceURI &&
     paintedElement.localName === freshElement.localName &&
     painted.childNodes.length === fresh.childNodes.length &&

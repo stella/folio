@@ -538,6 +538,7 @@ type EmitGlyphRunOptions = {
   readonly baselineYPx: number;
   readonly lineTopYPx: number;
   readonly lineHeightPx: number;
+  readonly characterFillBand?: MeasuredLine["characterFillBand"];
   readonly isRtl: boolean;
   /**
    * Absent for glyphs the model does not contain: a list marker, a substituted
@@ -641,6 +642,7 @@ const emitGlyphRun = ({
   baselineYPx,
   lineTopYPx,
   lineHeightPx,
+  characterFillBand,
   isRtl,
   pmRange,
   decorationRange,
@@ -689,16 +691,23 @@ const emitGlyphRun = ({
   } else if (background && glyphs.widthPx > 0) {
     const fill = parseDisplayColor(background);
     if (fill) {
-      // A CSS inline box is the font box, not the ink extent, so a highlight
-      // covers the whole em band rather than just where glyphs happen to reach.
-      const metrics = getFontMetrics(style);
+      let yPx: number;
+      let heightPx: number;
+      if (characterFillBand) {
+        yPx = lineTopYPx + characterFillBand.topPx;
+        heightPx = characterFillBand.heightPx;
+      } else {
+        const metrics = getFontMetrics(style);
+        yPx = runBaselineYPx - metrics.fontBoxAscent;
+        heightPx = metrics.fontBoxAscent + metrics.fontBoxDescent;
+      }
       sink.backgrounds.push({
         kind: "rect",
         rect: {
           xPx: paintXPx,
-          yPx: runBaselineYPx - metrics.fontBoxAscent,
+          yPx,
           widthPx: glyphs.widthPx,
-          heightPx: metrics.fontBoxAscent + metrics.fontBoxDescent,
+          heightPx,
         },
         fill,
       });
@@ -1206,6 +1215,7 @@ const paintLine = ({
           baselineYPx: geometry.baselineYPx,
           lineTopYPx: geometry.lineTopYPx,
           lineHeightPx: line.lineHeight,
+          characterFillBand: line.characterFillBand,
           isRtl,
           ...(pmRange === undefined ? {} : { pmRange }),
           ...(collapsedEdge === undefined ? {} : { collapsedEdge }),
@@ -1258,6 +1268,7 @@ const paintLine = ({
             baselineYPx: geometry.baselineYPx,
             lineTopYPx: geometry.lineTopYPx,
             lineHeightPx: line.lineHeight,
+            characterFillBand: line.characterFillBand,
             isRtl,
           });
           layoutXPx += glyphs.widthPx;
@@ -1284,6 +1295,7 @@ const paintLine = ({
           baselineYPx: geometry.baselineYPx,
           lineTopYPx: geometry.lineTopYPx,
           lineHeightPx: line.lineHeight,
+          characterFillBand: line.characterFillBand,
           isRtl,
         });
         context.unsupported.report(

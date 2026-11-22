@@ -665,6 +665,113 @@ describe("buildDisplayList: paint order", () => {
     }, fakeMeasure);
   });
 
+  const tallInlinePicture = {
+    kind: "image",
+    src: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+    width: 32,
+    height: 48,
+  } as const;
+  const singleSpacing = {
+    line: 1,
+    lineUnit: "multiplier",
+    lineRule: "auto",
+  } as const;
+  const sharedFillBandCases = [
+    {
+      name: "an exact-height line",
+      spacing: { line: 48, lineUnit: "px", lineRule: "exact" },
+      gap: { kind: "text", text: "gap" },
+      gridPitchPx: undefined,
+    },
+    {
+      name: "a single-spaced line with a tall inline picture",
+      spacing: singleSpacing,
+      gap: tallInlinePicture,
+      gridPitchPx: undefined,
+    },
+    {
+      name: "a tall inline picture on a line grid",
+      spacing: singleSpacing,
+      gap: tallInlinePicture,
+      gridPitchPx: 60,
+    },
+  ] as const;
+
+  for (const { name, spacing, gap, gridPitchPx } of sharedFillBandCases) {
+    test(`character fills share a band under the marked runs on ${name}`, () => {
+      withFakeTextMeasure(() => {
+        const block: ParagraphBlock = {
+          kind: "paragraph",
+          id: "character-fill-band",
+          attrs: { spacing },
+          runs: [
+            { kind: "text", text: "Left", fontSize: 8, highlight: "#FFFF00" },
+            gap,
+            { kind: "text", text: "Right", fontSize: 16, shading: "#00FF00" },
+          ],
+        };
+        const naturalMeasure = measureBlocks([block], CONTENT_WIDTH).at(0);
+        const naturalLine =
+          naturalMeasure?.kind === "paragraph"
+            ? naturalMeasure.lines.at(0)
+            : undefined;
+        if (!naturalLine) {
+          throw new Error("Expected a measured paragraph line");
+        }
+        const placedBlock =
+          gridPitchPx === undefined
+            ? block
+            : {
+                ...block,
+                attrs: { spacing, documentGridLinePitch: gridPitchPx },
+              };
+        const page = buildFrom([placedBlock]).pages.at(0);
+        const line = page
+          ? flattenRegions(page.regions).find(({ kind }) => kind === "line")
+          : undefined;
+        if (!page || !line) {
+          throw new Error("Expected a painted paragraph line");
+        }
+
+        const leftWidthPx = "Left".length * CHAR_WIDTH_PX;
+        const rightWidthPx = "Right".length * CHAR_WIDTH_PX;
+        const gapWidthPx =
+          gap.kind === "image" ? gap.width : gap.text.length * CHAR_WIDTH_PX;
+        const rightXPx = line.rect.xPx + leftWidthPx + gapWidthPx;
+        expect(naturalLine.lineHeight).toBeGreaterThanOrEqual(48);
+        const leadingPx = line.rect.heightPx - naturalLine.lineHeight;
+        if (gridPitchPx !== undefined) expect(leadingPx).toBeGreaterThan(0);
+        const topPx = line.rect.yPx + leadingPx / 2;
+
+        const fills = page.primitives
+          .slice(line.from, line.to)
+          .filter((primitive) => primitive.kind === "rect");
+        expect(fills).toEqual([
+          {
+            kind: "rect",
+            fill: { r: 255, g: 255, b: 0, a: 1 },
+            rect: {
+              xPx: line.rect.xPx,
+              yPx: topPx,
+              widthPx: leftWidthPx,
+              heightPx: naturalLine.lineHeight,
+            },
+          },
+          {
+            kind: "rect",
+            fill: { r: 0, g: 255, b: 0, a: 1 },
+            rect: {
+              xPx: rightXPx,
+              yPx: topPx,
+              widthPx: rightWidthPx,
+              heightPx: naturalLine.lineHeight,
+            },
+          },
+        ]);
+      }, fakeMeasure);
+    });
+  }
+
   test("a table cell emits background, then borders, then its inner text", () => {
     withFakeTextMeasure(() => {
       const table: TableBlock = {

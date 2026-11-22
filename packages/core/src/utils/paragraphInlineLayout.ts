@@ -1,5 +1,6 @@
 import { panic } from "better-result";
 
+import { measuredLineBaseline } from "../layout-engine/lineFlow";
 import { getListMarkerInlineWidth } from "../layout-engine/measure/listMarkerWidth";
 import type {
   ImageRun,
@@ -343,10 +344,7 @@ export const resolveParagraphLineGeometry = ({
       break;
   }
 
-  const baselineYPx =
-    lineTopYPx +
-    (line.lineHeight - (line.ascent + line.descent)) / 2 +
-    line.ascent;
+  const baselineYPx = measuredLineBaseline(line, lineTopYPx);
 
   return {
     alignment: resolvedAlignment,
