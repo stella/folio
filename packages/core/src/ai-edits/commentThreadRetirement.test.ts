@@ -74,7 +74,7 @@ for (const session of SESSIONS) {
           type: "replaceInBlock",
           blockId: block.id,
           find: block.text,
-          replace: "Revised.",
+          replace: "REVISED!",
         },
       ],
       { undefinedReferences: "refuse", mode: "tracked-changes" },
@@ -165,7 +165,7 @@ for (const session of SESSIONS) {
           type: "replaceInBlock",
           blockId: block.id,
           find: block.text,
-          replace: "Revised.",
+          replace: "REVISED!",
         },
       ],
       {

@@ -205,6 +205,7 @@ import { forEachAnnotationIdInDoc } from "../prosemirror/plugins/revisionIds";
 import {
   preservesReplacementCommentAlignment,
   splitAtKeptCommentBoundaries,
+  surveyAcceptedReplacedAnnotations,
 } from "../prosemirror/replacedAnnotations";
 import { createStyleResolver } from "../prosemirror/styles/styleResolver";
 import {
@@ -7844,6 +7845,23 @@ export class CanonicalPublicOperations {
         ) {
           const edge = projection.value.doc.resolve(gap.from);
           if (range.from < edge.start() || range.to > edge.end()) inside = {};
+        }
+        if (
+          gap.from === gap.to &&
+          (change.start === start || change.start === end) &&
+          surveyAcceptedReplacedAnnotations(
+            state.doc,
+            range.from,
+            range.to,
+          ).carried.some((mark) => mark.type.name === "hyperlink")
+        ) {
+          // A minimal change at the edge of an exact link match still edits
+          // that link. A match spanning linked and unlinked text has no
+          // shared hyperlink to continue at its edge.
+          inside = {
+            ...inside,
+            ...(change.start === start ? { start: true } : { end: true }),
+          };
         }
         intents.push({
           type: "replaceText",

@@ -166,11 +166,13 @@ describe.each(SESSIONS)(
             `<w:commentRangeStart w:id="${id}"/>`,
           );
         }
-        expect(xml).toContain("Wholly different wording.");
+        const reopened = await FolioDocxReviewer.fromBuffer(buffer, {
+          session,
+        });
+        expect(reopened.snapshot().blocks.at(0)?.text).toBe(
+          "Wholly different wording.",
+        );
         if (mode === "tracked-changes") {
-          const reopened = await FolioDocxReviewer.fromBuffer(buffer, {
-            session,
-          });
           reopened.rejectAll();
           const rejectedXml = await documentXml(await reopened.toBuffer());
           expect(rejectedXml).toContain(FIRST_PARAGRAPH_TEXT);

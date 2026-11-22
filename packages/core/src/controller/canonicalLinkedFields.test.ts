@@ -92,14 +92,8 @@ const savedLinks = async (bytes: ArrayBuffer | Uint8Array) =>
       /<w:hyperlink\b[^>]*>.*?<\/w:hyperlink>/gsu,
     ),
   ].map(([link]) => link.replaceAll(/<w:rPr>.*?<\/w:rPr>/gu, ""));
-/** The saved link holding the page number. */
-const fieldLink = async (bytes: ArrayBuffer | Uint8Array) =>
-  (await savedLinks(bytes)).find((link) => link.includes("PAGEREF"));
-/**
- * The link after the caret, as typing in the entry leaves it: the typed text
- * lands between two links, and the second keeps the tab and the page number.
- */
-const TAIL_LINK = `<w:hyperlink w:anchor="_Toc1" w:history="1">${text("mary")}${run("<w:tab/>")}${PAGE_REF}</w:hyperlink>`;
+/** The original link after typing inside its text. */
+const EDITED_LINK = LINK.replace(text("Summary"), text("SumXmary"));
 
 describe("a field inside a hyperlink in the canonical session", () => {
   test("opens, and typing in the entry keeps the page number field inside its link", async () => {
@@ -113,7 +107,7 @@ describe("a field inside a hyperlink in the canonical session", () => {
         .prepareReplace(state, { from: caret, to: caret, text: "X" })
         .unwrap(),
     );
-    expect(await fieldLink(await savedBytes(current))).toBe(TAIL_LINK);
+    expect(await savedLinks(await savedBytes(current))).toEqual([EDITED_LINK]);
   });
 
   test("a suggestion in the entry keeps the page number field inside its link, and rejects to the source link", async () => {
@@ -133,10 +127,9 @@ describe("a field inside a hyperlink in the canonical session", () => {
       if (resolution === "accept") reviewer.acceptAll();
       else reviewer.rejectAll();
       const resolved = await reviewer.toBuffer();
-      // Rejecting rejoins the link the suggestion cut, field and all.
-      expect(await fieldLink(resolved)).toBe(
-        resolution === "accept" ? TAIL_LINK : LINK,
-      );
+      expect(await savedLinks(resolved)).toEqual([
+        resolution === "accept" ? EDITED_LINK : LINK,
+      ]);
     }
   });
 
