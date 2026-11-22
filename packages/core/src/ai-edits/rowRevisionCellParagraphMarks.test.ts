@@ -4,7 +4,7 @@
  * belong to the row's entry in the change list, and accepting or rejecting
  * the row resolves them with it, on either engine.
  */
-import { expect, test } from "bun:test";
+import { afterAll, beforeEach, expect, setSystemTime, test } from "bun:test";
 
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -18,11 +18,24 @@ const ENGINES = ["legacy", "canonical"] as const;
 
 type Engine = (typeof ENGINES)[number];
 
+// Two edits of one author in one moment read as one change: each edit here
+// has a moment of its own.
+let edits = 0;
+const nextMoment = () => {
+  edits += 1;
+  setSystemTime(new Date(Date.UTC(2026, 0, 1, 12, edits)));
+};
+beforeEach(() => {
+  edits = 0;
+});
+afterAll(() => setSystemTime());
+
 const apply = (
   reviewer: FolioDocxReviewer,
   mode: "direct" | "tracked-changes",
   operation: FolioDocumentOperation,
-) =>
+) => {
+  nextMoment();
   expect(
     reviewer.applyDocumentOperations(
       {
@@ -33,6 +46,7 @@ const apply = (
       { undefinedReferences: "refuse" },
     ).skipped,
   ).toEqual([]);
+};
 
 const blockId = (reviewer: FolioDocxReviewer, text: string): string => {
   const block = reviewer.snapshot().blocks.find((each) => each.text === text);
