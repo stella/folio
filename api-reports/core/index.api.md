@@ -1524,6 +1524,12 @@ export type FolioContentTextSegment = {
     revisedEnd: number;
 };
 
+// @public
+export type FolioDerivedFields = {
+    owns: (instruction: string) => boolean;
+    displayTexts: (instructions: readonly string[]) => readonly string[];
+};
+
 // @public (undocumented)
 export type FolioDocumentOperation = FolioAIEditOperation;
 
@@ -1700,6 +1706,13 @@ export type FolioDocxCompatibilityHost = "browser" | "server" | "unknown";
 
 // @public (undocumented)
 export type FolioDocxCompatibilityProfile = import__stll_docx_core_model.DocxConformanceClass;
+
+// @public
+export type FolioFieldInsertion = {
+    instruction: string;
+    displayText: string;
+    locked?: boolean;
+};
 
 // @public
 export type FolioRevisionStamp = {
