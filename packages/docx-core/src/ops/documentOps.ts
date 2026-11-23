@@ -29,7 +29,11 @@ export {
   withParagraphRenderings,
 } from "./paragraphCopies";
 export { captureStoryParts, sectionPropertiesAt } from "./storyLifecycle";
-export { documentStories, replaceStoryBody } from "./stories";
+export {
+  documentStories,
+  replaceStoryBody,
+  storyLacksClosingParagraph,
+} from "./stories";
 export {
   locateParagraphThroughTextBoxes,
   paragraphsThroughTextBoxes,
@@ -227,6 +231,10 @@ export {
   type PlanTrackedDeletionOptions,
   revisionIdDemand,
 } from "./plan";
+export {
+  resolvedDocumentView,
+  type ResolvedDocumentView,
+} from "./resolvedView";
 export {
   DOCUMENT_OP_REFUSAL_REASONS,
   DocumentOpRefusal,

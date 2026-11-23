@@ -133,6 +133,70 @@ export const documentStories = (document: Document): OpStory[] => {
   return out;
 };
 
+/** The block a container ends with, as far as a story's closing paragraph goes. */
+type BlocksEnding = "paragraph" | "table" | "none";
+
+/**
+ * What `blocks` end with: their last paragraph or table, content controls and
+ * custom XML read through. A control or wrapper that holds neither is passed
+ * over like opaque markup and bookmark markers, so the block before it
+ * decides.
+ */
+export const blocksEnding = (blocks: readonly BlockContent[]): BlocksEnding => {
+  for (let index = blocks.length - 1; index >= 0; index -= 1) {
+    const block = blocks[index];
+    if (block?.type === "paragraph") return "paragraph";
+    if (block?.type === "table") return "table";
+    if (block?.type === "blockSdt" || block?.type === "blockCustomXml") {
+      const ending = blocksEnding(block.content);
+      if (ending !== "none") return ending;
+    }
+  }
+  return "none";
+};
+
+/** A separator or continuation note: the application's own, not a story a caret goes in. */
+const isSeparatorNote = (document: Document, story: OpStory): boolean => {
+  if (story === OP_STORIES.MAIN) return false;
+  switch (story.kind) {
+    case "header":
+    case "footer":
+      return false;
+    case "footnote":
+    case "endnote": {
+      const notes =
+        story.kind === "footnote"
+          ? document.package.footnotes
+          : document.package.endnotes;
+      const note = notes?.find(({ id }) => id === story.id);
+      return note?.noteType !== undefined && note.noteType !== "normal";
+    }
+    default: {
+      const unreachable: never = story;
+      return unreachable;
+    }
+  }
+};
+
+/**
+ * Whether `story` lacks the paragraph a story ends with: the one a caret goes
+ * in and a reader shows after a final table. The body, headers, footers and
+ * notes end with one (a table cell already reads the paragraph it implies);
+ * a story that ends in a table or holds no paragraph gains an empty one. A
+ * separator note is left as read.
+ */
+export const storyLacksClosingParagraph = (
+  document: Document,
+  story: OpStory,
+): boolean => {
+  const body = findStoryBody(document, story);
+  return (
+    body !== undefined &&
+    blocksEnding(body.content) !== "paragraph" &&
+    !isSeparatorNote(document, story)
+  );
+};
+
 type ReplaceStoryBodyOptions = {
   document: Document;
   story: StoryAddress;

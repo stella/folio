@@ -22,9 +22,15 @@
  * live outside `document.content`, which is the only block stream walked here.
  */
 
+import {
+  OP_STORIES,
+  type OpStory,
+  resolvedDocumentView,
+} from "@stll/docx-core/ops";
+
 import { withoutExhaustedComments } from "../docx/commentRangeIntegrity";
 import type { Document } from "../types/document";
-import { newContext } from "./internals";
+import { newContext, pushWarning } from "./internals";
 import { renderBlocks } from "./renderBlock";
 import { appendTrailers } from "./trailers";
 import type { MarkdownOptions, MarkdownResult } from "./types";
@@ -60,12 +66,39 @@ export function toMarkdownResult(
   return renderDocument(doc, opts);
 }
 
+/** A story as a warning names it. */
+const storyName = (story: OpStory): string => {
+  if (story === OP_STORIES.MAIN) return "the body";
+  switch (story.kind) {
+    case "header":
+    case "footer":
+      return `${story.kind} ${story.rId}`;
+    case "footnote":
+    case "endnote":
+      return `${story.kind} ${story.id}`;
+    default: {
+      const unreachable: never = story;
+      return unreachable;
+    }
+  }
+};
+
 function renderDocument(
   doc: Document,
   opts: MarkdownOptions = {},
 ): MarkdownResult {
   doc = withoutExhaustedComments(doc);
   const ctx = newContext(opts, doc.package.styles, doc.package.numbering);
+  // Clean Markdown is the accepted view, resolved as Accept All resolves it.
+  if (ctx.opts.trackedChanges === "clean") {
+    const view = resolvedDocumentView(doc, "accept");
+    for (const story of view.unresolved)
+      pushWarning(
+        ctx,
+        `The tracked structural changes of ${storyName(story)} could not be resolved.`,
+      );
+    doc = view.document;
+  }
   const body = renderBlocks(ctx, doc.package, doc.package.document.content);
   const markdown = appendTrailers(ctx, doc, body);
   if (doc.warnings) {

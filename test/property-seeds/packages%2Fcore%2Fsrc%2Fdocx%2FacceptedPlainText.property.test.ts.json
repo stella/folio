@@ -1,0 +1,10 @@
+{
+  "all plain readers resolve generated paragraph and table deletions before projecting text": [
+    {
+      "seed": 2118300139,
+      "path": "1:1:1",
+      "note": "One mark object shared by several paragraphs is numbered apart in each place.",
+      "date": "2026-11-20"
+    }
+  ]
+}

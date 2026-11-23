@@ -27,6 +27,7 @@ import {
   packageResourcesOpOf,
   pendingSuggestionIdsIn,
   reconcileDocumentPartRelationships,
+  resolvedDocumentView,
   resolveSectionChange,
   resolveSectionChanges,
   sectionResolutionPatch,
@@ -644,6 +645,16 @@ const FolioDocumentStoryNotFoundErrorBase: TaggedErrorClass<"FolioDocumentStoryN
 export class FolioDocumentStoryNotFoundError extends FolioDocumentStoryNotFoundErrorBase<{
   message: string;
   story: FolioEditableDocumentStoryHandle;
+}> {}
+
+const FolioResolvedViewRefusedErrorBase: TaggedErrorClass<"FolioResolvedViewRefusedError"> =
+  TaggedError("FolioResolvedViewRefusedError");
+
+/** A resolved view whose revision resolution refused in some stories. */
+class FolioResolvedViewRefusedError extends FolioResolvedViewRefusedErrorBase<{
+  message: string;
+  view: FolioResolvedReviewedView;
+  stories: readonly OpStory[];
 }> {}
 
 const FOLIO_RESOLVED_STORY_SERIALIZATION_MISMATCHES = Object.freeze({
@@ -2212,6 +2223,28 @@ export class FolioDocxReviewer {
       preloadFonts: false,
       password: options.password,
     });
+    return FolioDocxReviewer.legacyOver(baseDocument, {
+      originalBuffer: baseDocument.originalBuffer ?? buffer,
+      author: options.author ?? "AI",
+    });
+  }
+
+  /**
+   * A legacy reviewer over a parsed or resolved document. A resolved one names
+   * the ids its source read as positional, which its model now spells as ids.
+   */
+  private static legacyOver(
+    baseDocument: Document,
+    {
+      originalBuffer,
+      author,
+      positionalParaIds,
+    }: {
+      originalBuffer: ArrayBuffer;
+      author: string;
+      positionalParaIds?: ReadonlySet<string>;
+    },
+  ): FolioDocxReviewer {
     // The change tracker feeds selective save, and the paraId allocator hands
     // inserted paragraphs stable ids. Editor history and collaboration are
     // intentionally absent: reviewer undo stores complete state snapshots,
@@ -2240,10 +2273,11 @@ export class FolioDocxReviewer {
     );
     return new FolioDocxReviewer({
       baseDocument,
-      originalBuffer: baseDocument.originalBuffer ?? buffer,
+      originalBuffer,
       state,
-      author: options.author ?? "AI",
+      author,
       engine: { type: "legacy" },
+      ...(positionalParaIds === undefined ? {} : { positionalParaIds }),
     });
   }
 
@@ -3161,16 +3195,13 @@ export class FolioDocxReviewer {
         receivedView: view,
       });
     }
-    // A resolved view is read from a second session resolved that way.
-    if (this.engine.type === "canonical" && view !== "current-markup")
-      return this.resolvedSessionReader(
-        this.engine.session,
-        view,
-      ).snapshotReviewedStoryInternal({ story, view: "current-markup" });
+    if (view !== "current-markup")
+      return this.resolvedReader(view).snapshotReviewedStoryInternal({
+        story,
+        view: "current-markup",
+      });
     const sourceState = this.getEditableStoryState(story);
-    return sourceState
-      ? this.snapshotOf(resolveReviewedState(sourceState, view))
-      : null;
+    return sourceState ? this.snapshotOf(sourceState) : null;
   }
 
   private projectComparisonStoriesInternal(
@@ -3232,15 +3263,13 @@ export class FolioDocxReviewer {
         receivedView: view,
       });
     }
-    if (this.engine.type === "canonical" && view !== "current-markup")
-      return this.resolvedSessionReader(this.engine.session, view).storyTables({
+    if (view !== "current-markup")
+      return this.resolvedReader(view).storyTables({
         story,
         view: "current-markup",
       });
     const sourceState = this.getEditableStoryState(story);
-    return sourceState
-      ? folioStoryTables(resolveReviewedState(sourceState, view).doc)
-      : [];
+    return sourceState ? folioStoryTables(sourceState.doc) : [];
   }
 
   /**
@@ -5048,21 +5077,47 @@ export class FolioDocxReviewer {
 
   /** Resolve ordinary revisions on a detached in-memory document. */
   toResolvedDocument(decision: "accept" | "reject"): Document {
+    return this.resolvedCopy(
+      decision === "accept" ? "final" : "original",
+    ).toDocument();
+  }
+
+  /**
+   * A detached reviewer holding the document with every change resolved to
+   * `view`, which every resolved-view reader reads. Both engines resolve
+   * through docx-core's revision resolution: a second session resolved that
+   * way, or a legacy reviewer over the model that resolution returns.
+   */
+  private resolvedCopy(view: FolioResolvedReviewedView): FolioDocxReviewer {
     if (this.engine.type === "canonical")
-      return this.resolvedSessionCopy(
-        this.engine.session,
-        decision === "accept" ? "final" : "original",
-      ).toDocument();
-    const copy = new FolioDocxReviewer({
-      baseDocument: this.toDocument(),
+      return this.resolvedSessionCopy(this.engine.session, view);
+    const resolved = resolvedDocumentView(
+      this.toDocument(),
+      view === "final" ? "accept" : "reject",
+    );
+    if (resolved.unresolved.length > 0)
+      throw new FolioResolvedViewRefusedError({
+        message: `The ${view} view cannot be read: the changes of ${resolved.unresolved.length} stories do not resolve.`,
+        view,
+        stories: resolved.unresolved,
+      });
+    // List rendering follows the resolved numbering, as a session renders it
+    // after every commit.
+    const rendered = normalizeListModelRendering(resolved.document, {
+      inverse: "omit",
+    }).document;
+    return FolioDocxReviewer.legacyOver(rendered, {
       originalBuffer: this.originalBuffer,
-      state: this.state,
       author: this.author,
-      engine: { type: "legacy" },
+      positionalParaIds: this.storyPositionalParaIds(),
     });
-    if (decision === "accept") copy.acceptAll();
-    else copy.rejectAll();
-    return copy.toDocument();
+  }
+
+  /** The {@link resolvedCopy} a reader takes one story of. */
+  private resolvedReader(view: FolioResolvedReviewedView): FolioDocxReviewer {
+    return this.engine.type === "canonical"
+      ? this.resolvedSessionReader(this.engine.session, view)
+      : this.resolvedCopy(view);
   }
 
   /**
@@ -5080,6 +5135,28 @@ export class FolioDocxReviewer {
     const reviewer = this.resolvedSessionCopy(session, view);
     this.resolvedSessionReaders.set(view, new WeakRef({ document, reviewer }));
     return reviewer;
+  }
+
+  /**
+   * The paragraph ids this reviewer's stories read as positional: ids it
+   * minted where the package named none, which `toDocument` writes as ids.
+   */
+  private storyPositionalParaIds(): Set<string> {
+    const ids = new Set(this.positionalParaIds);
+    const states = [
+      this.state,
+      ...[...this.secondaryStoryStates.values()].map(({ state }) => state),
+    ];
+    for (const { doc } of states)
+      doc.descendants((node) => {
+        const paraId: unknown = node.attrs["paraId"];
+        if (
+          node.attrs["idStability"] === "positional" &&
+          typeof paraId === "string"
+        )
+          ids.add(paraId);
+      });
+    return ids;
   }
 
   /**

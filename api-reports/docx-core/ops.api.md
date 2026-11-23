@@ -1318,6 +1318,15 @@ export type ReplaceInlineOp = {
 export const replaceStoryBody: (input: ReplaceStoryBodyOptions) => Document_2;
 
 // @public
+export type ResolvedDocumentView = {
+    document: Document_2;
+    unresolved: readonly OpStory[];
+};
+
+// @public
+export const resolvedDocumentView: (document: Document_2, decision: RevisionDecision) => ResolvedDocumentView;
+
+// @public
 export type ResolveRevisionOp = {
     type: typeof DOCUMENT_OP_TYPES.RESOLVE_REVISION;
     story: OpStory;
@@ -1632,6 +1641,9 @@ export type SplitParagraphFields = Omit<Paragraph, "type" | "paraId" | "content"
 
 // @public (undocumented)
 export const storyBody: (document: Document_2, story: OpStory) => DocumentBody;
+
+// @public
+export const storyLacksClosingParagraph: (document: Document_2, story: OpStory) => boolean;
 
 // @public
 export const storyParagraphs: (body: DocumentBody) => ParagraphLocation[];

@@ -210,6 +210,16 @@ describe("markdown emphasis boundaries (properties)", () => {
     );
   });
 
+  test("text split between runs of one formatting renders as one run", () => {
+    const marks = { bold: true, italic: false, strike: true };
+    const split = documentOf([
+      { text: "a", ...marks },
+      { text: "_a", ...marks },
+    ]);
+    const whole = documentOf([{ text: "a_a", ...marks }]);
+    expect(toMarkdown(split, CLEAN)).toBe(toMarkdown(whole, CLEAN));
+  });
+
   test("content that writes nothing leaves the markdown around it unchanged", () => {
     const silent: readonly ParagraphContent[] = [
       { type: "bookmarkStart", id: 1, name: "mark" },
