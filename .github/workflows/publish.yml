@@ -164,7 +164,7 @@ jobs:
       contents: write # Create immutable package tags and GitHub releases.
       id-token: write # npm trusted publishing; build scripts ran without this permission.
     # The repository owner publishes this versioned shared contract.
-    uses: stella/.github/.github/workflows/npm-independent-release.yml@2664e46f02aea7164ba71bcdd485a686166993a4 # exact-version npm visibility wait
+    uses: stella/.github/.github/workflows/npm-independent-release.yml@c8ec2fc8e2f44673b32ea7b8d8d8992c1cc2aeda # exact-version npm visibility wait
     with:
       artifact-pattern: npm-tarball-*
       artifact-run-id: ${{ inputs.artifact-run-id }}
