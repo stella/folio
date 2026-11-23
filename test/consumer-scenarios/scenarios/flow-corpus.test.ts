@@ -36,6 +36,14 @@ import { consumerScenarioReplay } from "../support/replay-inputs.ts";
 
 const FLOWS_DIR = fileURLToPath(new URL("../flows/", import.meta.url));
 
+const requested = process.env["FOLIO_SCENARIO_FLOW"];
+
+// This file replays the checked-in corpus on the legacy engine, which hosts can
+// still select; the canonical-flows files replay it on the default, canonical
+// one. A requested flow runs on the engine its replay line names.
+if (requested === undefined || requested === "")
+  process.env["FOLIO_SCENARIO_ENGINE"] = "legacy";
+
 type FlowSource = { type: "requested" } | { type: "checked-in"; file: string };
 type ReplayOptions = { flow: FlowFile; repro: string; source: FlowSource };
 
@@ -110,8 +118,6 @@ test("flow files retain explicit tool coverage and reject misplaced options", ()
       TypeError,
     );
 });
-
-const requested = process.env["FOLIO_SCENARIO_FLOW"];
 
 if (requested !== undefined && requested !== "") {
   const flow = parseFlowFile(JSON.parse(requested));

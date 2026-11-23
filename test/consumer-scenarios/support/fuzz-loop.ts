@@ -70,10 +70,17 @@ export const seedReplay = (
   });
 };
 
-/** The one line that replays a flow file through scenarios/flow-corpus.test.ts. */
+/**
+ * The one line that replays a flow file through scenarios/flow-corpus.test.ts,
+ * on the engine this run opened reviewers on.
+ */
 export const flowReplay = (flow: FlowFile): string =>
   consumerScenarioReplay({
-    inputs: { ...relationInputs(), flow: compactFlow(flow) },
+    inputs: {
+      ...relationInputs(),
+      engine: scenarioEngine(),
+      flow: compactFlow(flow),
+    },
     flags: ["--only '^replay FOLIO_SCENARIO_FLOW'"],
     files: ["flow-corpus.test.ts"],
   });

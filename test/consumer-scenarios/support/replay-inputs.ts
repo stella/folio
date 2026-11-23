@@ -17,6 +17,7 @@ export const CONSUMER_SCENARIO_REPLAY_INPUTS = [
   },
   { flag: "--swarm", env: "FOLIO_SCENARIO_SWARM", kind: "value" },
   { flag: "--flow", env: "FOLIO_SCENARIO_FLOW", kind: "value" },
+  { flag: "--engine", env: "FOLIO_SCENARIO_ENGINE", kind: "value" },
   {
     flag: "--public-corpus-dir",
     env: "FOLIO_SCENARIO_PUBLIC_CORPUS_DIR",
