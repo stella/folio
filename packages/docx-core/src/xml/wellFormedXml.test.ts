@@ -6,6 +6,29 @@ import { FOLIO_XML_RESOURCE_LIMITS } from "./xmlResourceLimits";
 const DECLARATION = '<?xml version="1.0" encoding="UTF-8"?>';
 
 describe("wellFormedXmlIssue", () => {
+  test("checks in-scope namespace prefixes when requested", () => {
+    const options = { namespaces: "require-bound-prefixes" } as const;
+    expect(
+      wellFormedXmlIssue(
+        '<root xmlns:p="urn:outer"><p:child xmlns:q="urn:inner" q:item="1" xml:space="preserve"/><p:next/></root>',
+        options,
+      ),
+    ).toBeNull();
+    expect(
+      wellFormedXmlIssue('<p:root xmlns:p="urn:root" p:attr="1"/>', options),
+    ).toBeNull();
+    expect(wellFormedXmlIssue("<root><p:child/></root>")).toBeNull();
+    expect(wellFormedXmlIssue("<root><p:child/></root>", options)).toBe(
+      "an unbound namespace prefix p",
+    );
+    expect(
+      wellFormedXmlIssue(
+        '<root xmlns="urn:default"><child xmlns:p="urn:local"/><next p:item="1"/></root>',
+        options,
+      ),
+    ).toBe("an unbound namespace prefix p");
+  });
+
   test("admits only XML whitespace beside the root", () => {
     expect(wellFormedXmlIssue(`${DECLARATION}\n<a/>\r\n\t `)).toBeNull();
     expect(wellFormedXmlIssue(`\ufeff${DECLARATION}<a/>`)).toBeNull();

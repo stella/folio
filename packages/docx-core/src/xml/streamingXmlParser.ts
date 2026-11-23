@@ -30,6 +30,7 @@ import {
   attachXmlNamespaceContext,
   EMPTY_NAMESPACE_SCOPE,
   OOXML_NS,
+  resolveNamespaceUri,
 } from "./xmlNamespaceContext";
 import { FOLIO_XML_RESOURCE_LIMITS } from "./xmlResourceLimits";
 
@@ -190,9 +191,10 @@ type StreamingXmlOptions = {
       retainAttribute?: (options: AttributeNameOptions) => boolean;
     }
   | {
-      /** Only the verdict: no tree, no namespace resolution, no visitors. */
+      /** Only the verdict: no tree or visitors. */
       mode: "verdict";
       visitOpenTag?: undefined;
+      namespaces?: "require-bound-prefixes";
     }
 );
 
@@ -243,6 +245,32 @@ const readRulesFor = (policy: ReadPolicy): ReadRules => ({
 // Built on first use: the reference decoders are declared further down.
 let defaultRules: ReadRules | undefined;
 
+const unboundPrefixOf = (
+  name: string,
+  scope: XmlNamespaceScope,
+): string | undefined => {
+  const colon = name.indexOf(":");
+  if (colon <= 0) return undefined;
+  const prefix = name.slice(0, colon);
+  return resolveNamespaceUri(scope, prefix) ? undefined : prefix;
+};
+
+const firstUnboundPrefix = (
+  { name, namespaceUri, attributes }: XmlElement,
+  scope: XmlNamespaceScope,
+): string | undefined => {
+  if (!namespaceUri && name !== undefined) {
+    const colon = name.indexOf(":");
+    if (colon > 0) return name.slice(0, colon);
+  }
+  for (const attributeName of Object.keys(attributes ?? {})) {
+    if (attributeName.startsWith("xmlns:")) continue;
+    const prefix = unboundPrefixOf(attributeName, scope);
+    if (prefix !== undefined) return prefix;
+  }
+  return undefined;
+};
+
 const parseStreamingXmlInternal = (
   options: StreamingXmlOptions,
 ): InternalParseXmlResult => {
@@ -258,6 +286,9 @@ const parseStreamingXmlInternal = (
           references: options.references ?? "decode",
         });
   const wellFormed = rules.conformance === "well-formed";
+  const requireBoundPrefixes =
+    options.mode === "verdict" &&
+    options.namespaces === "require-bound-prefixes";
   const retainInstructions = options.instructions === "retain";
   if (wellFormed && hasIllegalXmlCharacters(xml)) {
     return reject("a character XML does not allow");
@@ -431,7 +462,7 @@ const parseStreamingXmlInternal = (
     }
     const parent = stack.at(-1)?.element;
     const scope = parent?.namespaceScope ?? inheritedNamespaceScope;
-    if (options.mode === "verdict") {
+    if (options.mode === "verdict" && !requireBoundPrefixes) {
       // Nothing reads the element; only its nesting is tracked below.
     } else if (
       options.mode === "attributes" &&
@@ -440,7 +471,13 @@ const parseStreamingXmlInternal = (
     ) {
       parsedTag.element.namespaceScope = scope;
     } else {
-      attachXmlNamespaceContext(parsedTag.element, scope);
+      const elementScope = attachXmlNamespaceContext(parsedTag.element, scope);
+      if (requireBoundPrefixes) {
+        const prefix = firstUnboundPrefix(parsedTag.element, elementScope);
+        if (prefix !== undefined) {
+          return reject(`an unbound namespace prefix ${prefix}`);
+        }
+      }
     }
     options.visitElement?.({
       element: parsedTag.element,
@@ -576,6 +613,8 @@ export const malformedXmlReferenceError = (
 
 /**
  * The reason `xml` is not well-formed XML, or `null` when it is.
+ * `require-bound-prefixes` also checks the in-scope bindings of element and
+ * attribute names.
  *
  * Stricter than XML 1.0 in one respect: an element or attribute named like a
  * built-in object property (`__proto__`, `constructor`, `toString`, ...) is
@@ -583,12 +622,16 @@ export const malformedXmlReferenceError = (
  * plain objects by name and refuses it too; a part this accepts is one they
  * can read.
  */
-export const wellFormedXmlIssue = (xml: string): string | null => {
+export const wellFormedXmlIssue = (
+  xml: string,
+  options?: { namespaces: "require-bound-prefixes" },
+): string | null => {
   const parsed = parseStreamingXmlInternal({
     xml,
     mode: "verdict",
     conformance: "well-formed",
     references: "raw",
+    ...options,
   });
   return parsed.status === "parsed" ? null : parsed.reason;
 };

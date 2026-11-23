@@ -60,7 +60,9 @@ export const scanStreamingXmlNumericIdAttributes: (xml: string, visitOpenTag: Op
 };
 
 // @public
-export const wellFormedXmlIssue: (xml: string) => string | null;
+export const wellFormedXmlIssue: (xml: string, options?: {
+    namespaces: "require-bound-prefixes";
+}) => string | null;
 
 // @public
 export type XmlConformance = "ooxml" | "well-formed" | "tolerant";
