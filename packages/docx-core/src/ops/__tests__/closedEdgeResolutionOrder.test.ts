@@ -728,6 +728,81 @@ const splitShapes: Record<string, SplitShape> = {
     groups: [reject(1), accept(2)],
     left: [link([text("a")]), link([text("w")])],
   },
+  "an accepted deletion takes a split's piece inside an accepted insertion": {
+    first: [
+      link([text("p")]),
+      insertion(
+        3,
+        0,
+        [link([text("w")]), deletion(2, 2, [link([text("a")])])],
+        {
+          before: 3,
+          after: 3,
+          remove: 3,
+        },
+      ),
+    ],
+    depth: 4,
+    second: [
+      insertion(4, 0, [link([text("b")])], { before: 3, after: 3, remove: 3 }),
+      link([text("q")]),
+    ],
+    groups: [reject(1), accept(2), accept(3, 4)],
+    left: [link([text("pw")]), link([text("bq")])],
+  },
+  "an accepted deletion takes the piece after, inside an accepted insertion": {
+    first: [
+      link([text("p")]),
+      insertion(3, 0, [link([text("a")])], { before: 3, after: 3, remove: 3 }),
+    ],
+    depth: 4,
+    second: [
+      insertion(
+        4,
+        0,
+        [deletion(2, 2, [link([text("b")])]), link([text("w")])],
+        {
+          before: 3,
+          after: 3,
+          remove: 3,
+        },
+      ),
+      link([text("q")]),
+    ],
+    groups: [reject(1), accept(2), accept(3, 4)],
+    left: [link([text("pa")]), link([text("wq")])],
+  },
+  "rejected insertions take a split's pieces inside a rejected deletion": {
+    first: [
+      link([text("p")]),
+      deletion(
+        3,
+        0,
+        [link([text("w")]), insertion(2, 0, [link([text("a")])])],
+        {
+          before: 3,
+          after: 3,
+          remove: 3,
+        },
+      ),
+    ],
+    depth: 4,
+    second: [
+      deletion(
+        4,
+        0,
+        [insertion(5, 0, [link([text("b")])]), link([text("v")])],
+        {
+          before: 3,
+          after: 3,
+          remove: 3,
+        },
+      ),
+      link([text("q")]),
+    ],
+    groups: [reject(1), reject(2, 5), reject(3, 4)],
+    left: [link([text("pw")]), link([text("vq")])],
+  },
   "a chain of insertions at the edge of a split's piece is part of it": {
     first: [link([text("a")])],
     depth: 3,

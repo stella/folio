@@ -8243,18 +8243,18 @@ const planSingleRecordResolution = (
     const { leadingCut, chainCut } = cutsFollowing(list, location.index + 1);
     // A level of the cut held by pieces of one tracked change this
     // resolution unwraps is a level no more: their content meets uncut.
-    const unwrapped =
+    const unwrappedWithin = (levels: number): number =>
       next?.type === "paragraph"
         ? unwrappedCutLevels({
             left: paragraph.content,
             right: next.content,
-            depth: mark.resolutionJoin,
+            depth: levels,
             resolution,
             splitDate,
           })
         : 0;
     let depth = Math.max(
-      mark.resolutionJoin - unwrapped,
+      mark.resolutionJoin - unwrappedWithin(mark.resolutionJoin),
       resolvedCutEdges.get(idKey(paragraph.paraId ?? ""))?.last ?? 0,
       leadingCut,
     );
@@ -8279,23 +8279,30 @@ const planSingleRecordResolution = (
           })
         : undefined;
     if (removedTrailing !== undefined && removedLeading !== undefined)
-      depth = Math.min(depth, removedTrailing, removedLeading);
+      depth = Math.min(
+        depth,
+        removedTrailing - unwrappedWithin(removedTrailing),
+        removedLeading - unwrappedWithin(removedLeading),
+      );
     // A piece an accepted removal takes whole leaves the cut to no record.
-    depth = Math.min(
-      depth,
+    // The levels above it are counted as the cut's are: those this resolution
+    // unwraps are levels no more.
+    for (const taken of [
       removedPieceBoundary({
         nodes: paragraph.content,
         edge: "last",
         resolution,
-      }) ?? depth,
-      (next?.type === "paragraph"
+      }),
+      next?.type === "paragraph"
         ? removedPieceBoundary({
             nodes: next.content,
             edge: "first",
             resolution,
           })
-        : undefined) ?? depth,
-    );
+        : undefined,
+    ])
+      if (taken !== undefined)
+        depth = Math.min(depth, taken - unwrappedWithin(taken));
     // The pieces the chain carries the cut to stand beyond the emptied
     // paragraph, so its removed edge does not end that cut.
     if (chainCut > depth) depth = Math.min(chainCut, trailing ?? chainCut);
