@@ -66,7 +66,11 @@ const JOURNAL = "folio.canonical.journal";
 const ANSWERS = "folio.canonical.answers";
 const ROOM = "folio.canonical.room";
 const SNAPSHOT_KEY = "snapshot";
-const AWARENESS_FIELD = "folioCanonical";
+/**
+ * The awareness field a peer's presence travels in. A host that vouches for
+ * its participants' identities overwrites the `user` each state names here.
+ */
+export const CANONICAL_YJS_AWARENESS_FIELD = "folioCanonical";
 
 const CanonicalYjsRoomErrorBase: TaggedErrorClass<"CanonicalYjsRoomError"> =
   TaggedError("CanonicalYjsRoomError");
@@ -613,11 +617,16 @@ export const openCanonicalYjsRoom = ({
       ? undefined
       : {
           publish: (state) => {
-            if (!closed) awareness.setLocalStateField(AWARENESS_FIELD, state);
+            if (!closed)
+              awareness.setLocalStateField(
+                CANONICAL_YJS_AWARENESS_FIELD,
+                state,
+              );
           },
           subscribe: (listener) => {
             const stateOf = (id: number): unknown =>
-              awareness.getStates().get(id)?.[AWARENESS_FIELD] ?? null;
+              awareness.getStates().get(id)?.[CANONICAL_YJS_AWARENESS_FIELD] ??
+              null;
             const onChange = ({
               added,
               updated,
@@ -726,7 +735,7 @@ export const openCanonicalYjsRoom = ({
       if (closed) return;
       const wasConnected = connected();
       if (awareness !== undefined)
-        awareness.setLocalStateField(AWARENESS_FIELD, null);
+        awareness.setLocalStateField(CANONICAL_YJS_AWARENESS_FIELD, null);
       closed = true;
       journal.unobserve(watchJournal);
       answers.unobserve(watchAnswers);
