@@ -43,6 +43,7 @@ import type { Comment } from "../types/content";
 import type { Document, SectionProperties } from "../types/document";
 import { readModel, type ReadonlyDocument } from "../types/documentModel";
 import type { FolioDocxSerializationPath } from "../types/docxSerialization";
+import type { FolioFieldInsertion } from "../types/fields";
 import {
   type AnonymizationHighlightsView,
   NO_ANONYMIZATION_HIGHLIGHTS,
@@ -233,6 +234,11 @@ export type HiddenEditorApi = {
    * Where the host's anonymization terms occur in every story the editor
    * shows, read from the current text; nothing before the editor exists.
    */
+  /**
+   * Insert a field in place of the selection: one undo step, a tracked
+   * insertion when suggesting. False when nothing was inserted.
+   */
+  insertField: (field: FolioFieldInsertion) => boolean;
   getAnonymizationHighlights: () => AnonymizationHighlightsView;
   /** The inline autocomplete suggestion. */
   autocomplete: HiddenEditorAutocomplete;
@@ -252,6 +258,7 @@ export type HiddenEditorApiDeps = {
     position: TextPosition,
   ) => number | null | undefined;
   getAnonymizationHighlights?: () => AnonymizationHighlightsView;
+  insertField?: (field: FolioFieldInsertion) => boolean;
   autocomplete?: HiddenEditorAutocomplete;
   captureCanonicalSave?: HiddenEditorApi["captureCanonicalSave"];
   isCanonicalSaveCurrent?: HiddenEditorApi["isCanonicalSaveCurrent"];
@@ -385,6 +392,8 @@ export const createHiddenEditorApi = (
 
     getAnonymizationHighlights: () =>
       deps.getAnonymizationHighlights?.() ?? NO_ANONYMIZATION_HIGHLIGHTS,
+
+    insertField: (field) => deps.insertField?.(field) ?? false,
 
     autocomplete: deps.autocomplete ?? NO_AUTOCOMPLETE,
 

@@ -68,6 +68,11 @@ import {
   createCanonicalSession,
   publishCanonicalProjection,
 } from "../canonical/canonicalSession";
+import {
+  derivedFieldOps,
+  fieldInsertionParagraph,
+} from "../canonical/derivedFields";
+import { parseFieldType } from "../docx/fieldParser";
 import { parseDocx } from "../docx/parser";
 import {
   type EditingFontContext,
@@ -86,6 +91,7 @@ import {
   getCanonicalCommandIntents,
   getCanonicalHistoryDirection,
 } from "../prosemirror/canonicalCommands";
+import { canonicalSelectionRange } from "../prosemirror/canonicalSelectionRange";
 import { registerClipboardIntentHandler } from "../prosemirror/clipboardIntent";
 import { pasteWithoutFormatting } from "../prosemirror/commands/pastePlainText";
 import {
@@ -123,6 +129,7 @@ import {
   createDocumentStylesPlugin,
 } from "../prosemirror/plugins/documentStyles";
 import { schema } from "../prosemirror/schema";
+import type { FieldAttrs } from "../prosemirror/schema/nodes";
 import { createTextInputPlugin } from "../prosemirror/textInput";
 import {
   applyAttrSchemaMigrations,
@@ -145,6 +152,7 @@ import {
   readModel,
   type ReadonlyDocument,
 } from "../types/documentModel";
+import type { FolioDerivedFields, FolioFieldInsertion } from "../types/fields";
 import type { RemoteSelection } from "../types/remote-selection";
 import {
   type AnonymizationStorySource,
@@ -624,6 +632,8 @@ export type HiddenEditorManagerDeps = {
   getExperimentalSession?: () => EditorSession | undefined;
   /** The terms the host wants highlighted; none when unset. */
   getAnonymizationTerms?: () => readonly FolioAnonymizationTerm[];
+  /** The fields whose display text the host derives; none when unset. */
+  getDerivedFields?: () => FolioDerivedFields | undefined;
   /**
    * Who answers the undo and redo keys in a canonical session; the editor's
    * when unset. With `"host"`, the keys change nothing in any story's view and
@@ -967,7 +977,105 @@ export const createHiddenEditorManager = (
     });
     deps.onSelectionChange(staged.state);
     deps.onCanonicalHistory?.(commit.history);
+    // An undo or redo restores fields as they stood with that document.
+    if (commit.history === "opened" || commit.history === "joined")
+      deriveFields();
     return true;
+  };
+  let derivingFields = false;
+  /** Bring the host's derived fields in line with the edit just published. */
+  const deriveFields = (): void => {
+    const derived = deps.getDerivedFields?.();
+    if (
+      derived === undefined ||
+      derivingFields ||
+      !view ||
+      editorSession.type !== "canonical"
+    )
+      return;
+    const { session } = editorSession;
+    const prepared = session.prepareDerivedUpdate(
+      view.state,
+      derivedFieldOps(readModel(session.document), derived),
+    );
+    if (prepared.isErr()) {
+      if (prepared.error.reason !== "noChange")
+        refuse(prepared.error.message, prepared.error.ground);
+      return;
+    }
+    derivingFields = true;
+    publishCommit(prepared.value);
+    derivingFields = false;
+  };
+  /** Insert a field in place of the selection, in either session. */
+  const insertField = (field: FolioFieldInsertion): boolean => {
+    if (!view || isDestroying || deps.getReadOnly()) return false;
+    const { state } = view;
+    switch (editorSession.type) {
+      case "canonical": {
+        const { session } = editorSession;
+        if (state.selection instanceof CellSelection) {
+          refuse("A field goes in at a text selection, not over cells.");
+          return false;
+        }
+        const range = canonicalSelectionRange(state);
+        const from = session.projection.addressAt(range.from);
+        if (from.isErr()) {
+          refuse(from.error.message, from.error.ground);
+          return false;
+        }
+        const to = session.projection.addressAt(range.to);
+        if (to.isErr()) {
+          refuse(to.error.message, to.error.ground);
+          return false;
+        }
+        const prepared = session.prepareIntents(state, {
+          intents: [
+            {
+              type: "replaceFragment",
+              from: from.value,
+              to: to.value,
+              paragraphs: [fieldInsertionParagraph(field)],
+              openStart: 1,
+              openEnd: 1,
+            },
+          ],
+          semantic: "paste",
+        });
+        if (prepared.isErr()) {
+          refuse(prepared.error.message, prepared.error.ground);
+          return false;
+        }
+        return publishCommit(prepared.value);
+      }
+      case "prosemirror": {
+        const fieldType = state.schema.nodes["field"];
+        if (fieldType === undefined) return false;
+        view.dispatch(
+          state.tr
+            .replaceSelectionWith(
+              fieldType.create({
+                fieldType: parseFieldType(field.instruction),
+                instruction: field.instruction,
+                displayText: field.displayText,
+                fieldKind: "simple",
+                ...(field.locked === undefined
+                  ? {}
+                  : { fldLock: field.locked }),
+              } satisfies FieldAttrs),
+              false,
+            )
+            .scrollIntoView(),
+        );
+        return true;
+      }
+      case "refused":
+        return false;
+      default: {
+        editorSession satisfies never;
+        return panic("Unhandled editor session");
+      }
+    }
   };
   /**
    * Show a peer's edit the room sequenced: the same publication as a local
@@ -2327,6 +2435,7 @@ export const createHiddenEditorManager = (
         ? editorSession.session.document
         : null,
     autocomplete: autocompleteApi,
+    insertField,
     getAnonymizationHighlights: () =>
       anonymization.read(
         deps.getAnonymizationTerms?.() ?? NO_ANONYMIZATION_TERMS,

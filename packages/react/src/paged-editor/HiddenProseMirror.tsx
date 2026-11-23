@@ -65,6 +65,7 @@ import type {
   DeepReadonly,
   ReadonlyDocument,
 } from "@stll/folio-core/types/documentModel";
+import type { FolioDerivedFields } from "@stll/folio-core/types/fields";
 // Import ProseMirror CSS
 import "prosemirror-view/style/prosemirror.css";
 
@@ -122,6 +123,8 @@ export type HiddenProseMirrorProps = {
   onCanonicalCompositionLayout?: () => void;
   /** The embedded-font families the painter resolves runs with. */
   getEmbeddedFontFamilyMap?: () => ReadonlyMap<string, string> | undefined;
+  /** Fields whose display text the host derives. */
+  derivedFields?: FolioDerivedFields | undefined;
   /** Callback when selection changes */
   onSelectionChange?: (state: EditorState) => void;
   /** External ProseMirror plugins */
@@ -239,6 +242,7 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
     onSelectionChange,
     externalPlugins = EMPTY_EXTERNAL_PLUGINS,
     anonymizationTerms,
+    derivedFields,
     collaboration,
     canonicalRoom,
     extensionManager,
@@ -289,6 +293,7 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
   const extensionManagerRef = useRef(extensionManager);
   const externalPluginsRef = useRef(externalPlugins);
   const anonymizationTermsRef = useRef(anonymizationTerms);
+  const derivedFieldsRef = useRef(derivedFields);
   const getPrecomputedInitialStateRef = useRef(getPrecomputedInitialState);
   const collaborationRef = useRef(collaboration);
   const canonicalRoomRef = useRef(canonicalRoom);
@@ -329,6 +334,7 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
     extensionManagerRef.current = extensionManager;
     externalPluginsRef.current = externalPlugins;
     anonymizationTermsRef.current = anonymizationTerms;
+    derivedFieldsRef.current = derivedFields;
     getPrecomputedInitialStateRef.current = getPrecomputedInitialState;
     onTransactionRef.current = onTransaction;
     onCanonicalCompositionLayoutRef.current = onCanonicalCompositionLayout;
@@ -360,6 +366,7 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
         getExternalPlugins: () => externalPluginsRef.current,
         getAnonymizationTerms: () =>
           anonymizationTermsRef.current ?? NO_ANONYMIZATION_TERMS,
+        getDerivedFields: () => derivedFieldsRef.current,
         getCollaboration: () => collaborationRef.current,
         getCollaborationModules: () => collaborationModulesRef.current,
         getCanonicalRoom: () => canonicalRoomRef.current,

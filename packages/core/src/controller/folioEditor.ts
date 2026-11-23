@@ -196,6 +196,7 @@ export const createFolioEditor = (deps: FolioEditorDeps): FolioEditor => {
     getAnonymizationHighlights: () =>
       deps.getEditorApi()?.getAnonymizationHighlights() ??
       NO_ANONYMIZATION_HIGHLIGHTS,
+    insertField: (field) => deps.getEditorApi()?.insertField(field) ?? false,
 
     // The editor API is read on every call: it can be replaced.
     autocomplete: delegateAutocomplete(
