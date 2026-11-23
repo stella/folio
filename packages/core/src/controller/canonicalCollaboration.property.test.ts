@@ -8,6 +8,7 @@ import {
   propertyConfig,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
+import { canonicalSnapshotId } from "../canonical/canonicalRoomBase";
 import {
   type CanonicalCommit,
   type CanonicalSessionError,
@@ -37,7 +38,6 @@ import {
 } from "./canonicalCollaboration";
 import {
   type CanonicalMemoryConnection,
-  canonicalSnapshotId,
   createCanonicalMemoryRoom,
 } from "./canonicalRoomTransport";
 

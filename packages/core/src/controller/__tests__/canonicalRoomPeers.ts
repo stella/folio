@@ -292,6 +292,13 @@ export const createRoomPeers = async (coverage: RoomCoverage) => {
     for (const peer of peers) {
       expect(peer.events.filter(({ type }) => type === "stopped")).toEqual([]);
       expect(peer.collaboration.pending).toHaveLength(0);
+      // The host is told when every local edit is in the journal.
+      const pending = peer.events.flatMap((event) =>
+        event.type === "pending" ? [event.batches] : [],
+      );
+      expect(pending.at(-1) ?? 0).toBe(0);
+      if (peer.local.size > 0)
+        expect(pending.some((count) => count > 0)).toBe(true);
       expect(peer.collaboration.headRev).toBe(journal.length);
       expect(documentText(peer.session.document)).toBe(finalText);
       expect(
