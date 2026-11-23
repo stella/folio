@@ -1,12 +1,12 @@
 import type { Result } from "better-result";
 import { EditorState } from "prosemirror-state";
 
+import type { CanonicalRoomBase } from "../canonical/canonicalRoomBase";
 import type {
   CanonicalCommit,
   CanonicalSession,
   CanonicalSessionError,
 } from "../canonical/canonicalSession";
-import type { Document } from "../types/document";
 import { readModel } from "../types/documentModel";
 import type { RemoteSelection } from "../types/remote-selection";
 import {
@@ -24,14 +24,6 @@ import type { CanonicalRoomTransport } from "./canonicalRoomTransport";
  * the room granted the session its id lease, and takes none again once the
  * session stopped following the room.
  */
-
-/** What a canonical room is seeded with: revision 0. */
-export type CanonicalRoomBase = {
-  /** The document the canonical session reads from the room's DOCX. */
-  document: Document;
-  /** `canonicalSnapshotId` of that DOCX. */
-  snapshot: string;
-};
 
 /** A transport to one room, which the editor closes when it leaves. */
 export type CanonicalRoomConnection = CanonicalRoomTransport & {

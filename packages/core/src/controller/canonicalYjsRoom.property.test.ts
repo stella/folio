@@ -40,6 +40,7 @@ import {
   type CanonicalYjsRoom,
   type CanonicalYjsRoomError,
   openCanonicalYjsRoom,
+  readCanonicalYjsJournal,
   serveCanonicalYjsRoom,
 } from "./canonicalYjsRoom";
 
@@ -450,11 +451,23 @@ const run = async (
   );
   for (const peer of all)
     expect(documentText(peer.session.document)).not.toContain(FORGED);
+  // A server saving the room restores its document from the stored update
+  // and reads the authority's journal back, forged entries left out.
+  const stored = new Y.Doc();
+  Y.applyUpdate(stored, Y.encodeStateAsUpdate(provider.server));
+  const journal = readCanonicalYjsJournal({
+    doc: stored,
+    snapshot: room.snapshot,
+  }).unwrap();
+  expect(journal).toEqual([...authority.journal]);
+  expect(
+    readCanonicalYjsJournal({ doc: stored, snapshot: "other" }).isErr(),
+  ).toBe(true);
   await room.expectConverged({
     peers: all,
     peersCount,
     document: authority.document,
-    journal: authority.journal,
+    journal,
     contiguous: () => true,
   });
   for (const slot of slots) slot.room.close();

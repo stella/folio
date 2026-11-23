@@ -2,6 +2,7 @@ import { panic } from "better-result";
 import { expect, test } from "bun:test";
 import type { EditorState } from "prosemirror-state";
 
+import { canonicalSnapshotId } from "../canonical/canonicalRoomBase";
 import {
   type CanonicalSession,
   createCanonicalSession,
@@ -27,7 +28,6 @@ import {
 } from "./canonicalRoomEditor";
 import {
   type CanonicalMemoryRoom,
-  canonicalSnapshotId,
   createCanonicalMemoryRoom,
 } from "./canonicalRoomTransport";
 import { toWireJson } from "./canonicalRoomWire";

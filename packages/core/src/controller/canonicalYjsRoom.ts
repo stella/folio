@@ -66,7 +66,11 @@ const JOURNAL = "folio.canonical.journal";
 const ANSWERS = "folio.canonical.answers";
 const ROOM = "folio.canonical.room";
 const SNAPSHOT_KEY = "snapshot";
-const AWARENESS_FIELD = "folioCanonical";
+/**
+ * The awareness field a peer's presence travels in. A host that vouches for
+ * its participants' identities overwrites the `user` each state names here.
+ */
+export const CANONICAL_YJS_AWARENESS_FIELD = "folioCanonical";
 
 const CanonicalYjsRoomErrorBase: TaggedErrorClass<"CanonicalYjsRoomError"> =
   TaggedError("CanonicalYjsRoomError");
@@ -172,6 +176,56 @@ export type CanonicalYjsAuthority = {
   readonly journal: readonly SequencedBatch[];
   /** Stop answering; the document keeps what was written. */
   stop(): void;
+};
+
+export type ReadCanonicalYjsJournalOptions = {
+  /** A copy of the room's Yjs document, such as one a stored update restores. */
+  doc: Y.Doc;
+  /** `canonicalSnapshotId` of the DOCX the journal is replayed over. */
+  snapshot: string;
+  /** The Yjs client id the room's authority writes under. */
+  authority?: number;
+};
+
+/**
+ * The batches a room's authority sequenced, in revision order: what a server
+ * replays over the room's base DOCX (`FolioDocxReviewer.applyRoomJournal`) to
+ * save the room. Entries another client wrote are not the authority's and
+ * are left out, as every peer leaves them out.
+ */
+export const readCanonicalYjsJournal = ({
+  doc,
+  snapshot,
+  authority = CANONICAL_YJS_AUTHORITY,
+}: ReadCanonicalYjsJournalOptions): Result<
+  SequencedBatch[],
+  CanonicalYjsRoomError
+> => {
+  const { journal, room } = roomTypes(doc);
+  const seeded = room.get(SNAPSHOT_KEY);
+  if (seeded !== undefined && seeded !== snapshot)
+    return Result.err(
+      yjsRoomError(
+        "snapshotMismatch",
+        "The room was seeded from another document.",
+      ),
+    );
+  const batches: SequencedBatch[] = [];
+  for (const item of itemsOf(journal)) {
+    if (item.id.client !== authority) continue;
+    for (const value of valuesOf(item)) {
+      const record = decodeRoomRecord(value);
+      if (record === undefined)
+        return Result.err(
+          yjsRoomError(
+            "invalidJournalEntry",
+            "An authority journal entry is malformed.",
+          ),
+        );
+      if (record.type === "sequenced") batches.push(record.batch);
+    }
+  }
+  return Result.ok(batches);
 };
 
 /**
@@ -563,11 +617,16 @@ export const openCanonicalYjsRoom = ({
       ? undefined
       : {
           publish: (state) => {
-            if (!closed) awareness.setLocalStateField(AWARENESS_FIELD, state);
+            if (!closed)
+              awareness.setLocalStateField(
+                CANONICAL_YJS_AWARENESS_FIELD,
+                state,
+              );
           },
           subscribe: (listener) => {
             const stateOf = (id: number): unknown =>
-              awareness.getStates().get(id)?.[AWARENESS_FIELD] ?? null;
+              awareness.getStates().get(id)?.[CANONICAL_YJS_AWARENESS_FIELD] ??
+              null;
             const onChange = ({
               added,
               updated,
@@ -676,7 +735,7 @@ export const openCanonicalYjsRoom = ({
       if (closed) return;
       const wasConnected = connected();
       if (awareness !== undefined)
-        awareness.setLocalStateField(AWARENESS_FIELD, null);
+        awareness.setLocalStateField(CANONICAL_YJS_AWARENESS_FIELD, null);
       closed = true;
       journal.unobserve(watchJournal);
       answers.unobserve(watchAnswers);

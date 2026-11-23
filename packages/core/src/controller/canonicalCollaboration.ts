@@ -72,7 +72,10 @@ export type CanonicalCollaborationEditor = {
  * merge, taken back from the document. `synced`: the session caught up with
  * the revision the room had when it joined. `leaseRefused`: no more ids of a
  * kind; edits minting them are refused until the room is compacted.
- * `stopped`: the session no longer follows the room.
+ * `pending`: how many local batches the room has not sequenced yet, each
+ * time that changes; at 0 every local edit is in the journal, so a host may
+ * take a durable cut of the room. `stopped`: the session no longer follows
+ * the room.
  */
 export type CanonicalCollaborationEvent =
   | {
@@ -82,6 +85,7 @@ export type CanonicalCollaborationEvent =
       ops: readonly DocumentOp[];
     }
   | { type: "synced"; rev: number }
+  | { type: "pending"; batches: number }
   | { type: "leaseRefused"; refusal: IdLeaseRefusal }
   | { type: "stopped"; error: CanonicalCollaborationError };
 
@@ -264,6 +268,14 @@ export const connectCanonicalRoom = async (
     stop(collaborationError("diverged", message, cause));
   };
 
+  let reportedPending = 0;
+  const reportPending = (): void => {
+    const batches = client.pending.length;
+    if (stopped || batches === reportedPending) return;
+    reportedPending = batches;
+    onEvent({ type: "pending", batches });
+  };
+
   const reportRefusals = (): void => {
     const notices = client.notices;
     for (const notice of notices.slice(reported))
@@ -366,6 +378,7 @@ export const connectCanonicalRoom = async (
       onEvent({ type: "synced", rev: client.headRev });
     }
     pump();
+    reportPending();
     presence?.publish();
   };
 
@@ -406,6 +419,7 @@ export const connectCanonicalRoom = async (
     renew();
     // Called inside the host's publish: only submit, never touch the editor.
     pump();
+    reportPending();
   };
 
   const subscribe = (): void => {
