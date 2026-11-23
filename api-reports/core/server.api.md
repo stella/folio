@@ -19,6 +19,7 @@ import { ParagraphNumberingOverride } from '@stll/docx-core/model';
 import { PropertyRevisionKind } from '@stll/docx-core/model';
 import { Result } from 'better-result';
 import { Run } from '@stll/docx-core/model';
+import { SequencedBatch } from '@stll/docx-core/ops';
 import { ShadingProperties } from '@stll/docx-core/model';
 import { Table } from '@stll/docx-core/model';
 import { TaggedErrorClass } from 'better-result';
@@ -1344,6 +1345,7 @@ export class FolioDocxReviewer {
     applyDocumentOperations(batch: FolioDocumentOperationBatchInput, options: FolioApplyDocumentOperationsOptions): FolioDocumentOperationResult;
     applyDocumentOperationsToStory(input: FolioApplyDocumentOperationsToStoryOptions): FolioDocumentOperationResult;
     applyOperations(operations: FolioAIEditOperation[], options: FolioApplyOperationsOptions): FolioAIEditApplyResult;
+    applyRoomJournal(journal: readonly SequencedBatch[]): void;
     readonly author: string;
     deleteComments(selector: {
         ids: readonly number[];
@@ -1366,6 +1368,7 @@ export class FolioDocxReviewer {
     listStories(): FolioDocumentStory[];
     loadPendingSuggestions(records: readonly unknown[]): FolioPendingSuggestionLoadResult[];
     matchStoryTableGeometry(input: FolioMatchStoryTableGeometryOptions): number;
+    static openRoomBase(buffer: ArrayBuffer): Promise<CanonicalRoomBase>;
     readNumberingDefinitions(): FolioNumberingLevel[];
     readNumberingDefinitions(story: FolioEditableDocumentStoryHandle): FolioNumberingLevel[] | null;
     readReviewedStory(options?: FolioReadReviewedStoryOptions): FolioReviewedStory | null;
@@ -1640,6 +1643,14 @@ export type FolioRevisionStamp = {
     date: string;
     idSeed: number;
 };
+
+// @public
+export class FolioRoomJournalError extends FolioRoomJournalErrorBase<{
+    message: string;
+    reason: "legacyEngine" | "revisionGap";
+    expectedRevision: number;
+    receivedRevision: number | undefined;
+}> {}
 
 // @public
 export type FolioStoryDiff = {
