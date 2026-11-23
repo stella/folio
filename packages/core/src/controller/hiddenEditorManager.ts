@@ -952,9 +952,20 @@ export const createHiddenEditorManager = (
       ],
     });
   };
+  /** Publish an edit, then bring the host's derived fields in line with it. */
   const publishCommit = (
     commit: CanonicalCommit,
     reportRefusal: typeof refuse = refuse,
+  ): boolean => {
+    if (!publishCanonical(commit, reportRefusal)) return false;
+    // An undo or redo restores fields as they stood with that document.
+    if (commit.history === "opened" || commit.history === "joined")
+      deriveFields();
+    return true;
+  };
+  const publishCanonical = (
+    commit: CanonicalCommit,
+    reportRefusal: typeof refuse,
   ): boolean => {
     if (!view || deps.getReadOnly() || editorSession.type !== "canonical")
       return false;
@@ -977,21 +988,24 @@ export const createHiddenEditorManager = (
     });
     deps.onSelectionChange(staged.state);
     deps.onCanonicalHistory?.(commit.history);
-    // An undo or redo restores fields as they stood with that document.
-    if (commit.history === "opened" || commit.history === "joined")
-      deriveFields();
     return true;
   };
-  let derivingFields = false;
-  /** Bring the host's derived fields in line with the edit just published. */
+  /** An edit published during a pass asks for another once that pass returns. */
+  let derivation: "idle" | "running" | "requested" = "idle";
   const deriveFields = (): void => {
+    if (derivation !== "idle") {
+      derivation = "requested";
+      return;
+    }
+    do {
+      derivation = "running";
+      deriveFieldsOnce();
+    } while (derivation === "requested");
+    derivation = "idle";
+  };
+  const deriveFieldsOnce = (): void => {
     const derived = deps.getDerivedFields?.();
-    if (
-      derived === undefined ||
-      derivingFields ||
-      !view ||
-      editorSession.type !== "canonical"
-    )
+    if (derived === undefined || !view || editorSession.type !== "canonical")
       return;
     const { session } = editorSession;
     const prepared = session.prepareDerivedUpdate(
@@ -1003,9 +1017,7 @@ export const createHiddenEditorManager = (
         refuse(prepared.error.message, prepared.error.ground);
       return;
     }
-    derivingFields = true;
-    publishCommit(prepared.value);
-    derivingFields = false;
+    publishCanonical(prepared.value, refuse);
   };
   /** Insert a field in place of the selection, in either session. */
   const insertField = (field: FolioFieldInsertion): boolean => {
@@ -1029,6 +1041,7 @@ export const createHiddenEditorManager = (
           refuse(to.error.message, to.error.ground);
           return false;
         }
+        syncCanonicalMode();
         const prepared = session.prepareIntents(state, {
           intents: [
             {
@@ -1052,7 +1065,8 @@ export const createHiddenEditorManager = (
         const fieldType = state.schema.nodes["field"];
         if (fieldType === undefined) return false;
         view.dispatch(
-          state.tr
+          // Its own undo step, apart from the typing before it.
+          closeHistory(state.tr)
             .replaceSelectionWith(
               fieldType.create({
                 fieldType: parseFieldType(field.instruction),

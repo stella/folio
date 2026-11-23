@@ -1,9 +1,23 @@
 import { panic } from "better-result";
-import { Plugin, PluginKey } from "prosemirror-state";
+import { isHistoryTransaction } from "prosemirror-history";
+import { Plugin, PluginKey, Transaction } from "prosemirror-state";
 
 import type { FolioDerivedFields } from "../../types/fields";
 
 const REMOVAL_MARKS = new Set(["deletion", "moveFrom"]);
+/** The y-prosemirror binding's meta key; its peer derived the texts it syncs. */
+const Y_SYNC_META = "y-sync$";
+
+/**
+ * A local edit, not an undo or redo (which restores fields as they stood) or
+ * a room update, judged by the transaction that started the dispatch.
+ */
+const derivesFields = (transaction: Transaction): boolean => {
+  if (!transaction.docChanged) return false;
+  const appendedTo: unknown = transaction.getMeta("appendedTransaction");
+  const root = appendedTo instanceof Transaction ? appendedTo : transaction;
+  return !isHistoryTransaction(root) && root.getMeta(Y_SYNC_META) === undefined;
+};
 
 /**
  * The default session's derived fields: after each transaction that changes
@@ -18,10 +32,7 @@ export const createDerivedFieldsPlugin = (
     key: new PluginKey("folioDerivedFields"),
     appendTransaction(transactions, _previous, state) {
       const derived = getDerivedFields();
-      if (
-        derived === undefined ||
-        !transactions.some((transaction) => transaction.docChanged)
-      )
+      if (derived === undefined || !transactions.some(derivesFields))
         return null;
       const owned: { position: number; displayText: string }[] = [];
       const instructions: string[] = [];

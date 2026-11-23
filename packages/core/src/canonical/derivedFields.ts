@@ -30,16 +30,23 @@ const isField = <Item extends ParagraphContent>(
 const isRemoval = (item: ParagraphContent): boolean =>
   item.type === "deletion" || item.type === "moveFrom";
 
-const runsText = (runs: readonly ParagraphContent[]): string =>
-  runs
-    .map((item) =>
-      item.type === "run"
-        ? item.content
-            .map((content) => (content.type === "text" ? content.text : ""))
-            .join("")
-        : "",
-    )
-    .join("");
+/** The text `content` shows, through hyperlinks and other wrappers. */
+const runsText = (content: readonly ParagraphContent[]): string =>
+  content.map(itemText).join("");
+
+const itemText = (item: ParagraphContent): string => {
+  if (item.type === "run")
+    return item.content
+      .map((child) => (child.type === "text" ? child.text : ""))
+      .join("");
+  if (isRemoval(item)) return "";
+  const texts: string[] = [];
+  withInlineContentRewritten(item, (children) => {
+    texts.push(runsText(children));
+    return children;
+  });
+  return texts.join("");
+};
 
 /** What a field shows: its cached result. */
 const displayTextOf = (field: Field): string =>

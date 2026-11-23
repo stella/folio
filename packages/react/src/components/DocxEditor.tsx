@@ -4797,7 +4797,8 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
           pagedEditorRef.current?.getEditor()?.getAnonymizationHighlights()
             .matches ?? NO_ANONYMIZATION_HIGHLIGHTS.matches,
         insertField: (field) =>
-          pagedEditorRef.current?.getEditor()?.insertField(field) ?? false,
+          getActiveEditorStory().type === "body" &&
+          (pagedEditorRef.current?.getEditor()?.insertField(field) ?? false),
         getBlockRect: (blockId) =>
           pagedEditorRef.current?.getBlockRect(blockId) ?? null,
         getBlockRects: (blockIds) =>

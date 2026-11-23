@@ -755,8 +755,9 @@ export type DocxEditorRef = {
   /** Every occurrence of the `anonymizationTerms`, as text positions. */
   getAnonymizationMatches: () => readonly FolioAnonymizationMatch[];
   /**
-   * Insert a field in place of the selection: one undo step, a tracked
-   * insertion when suggesting. False when nothing was inserted.
+   * Insert a field in place of the body selection: one undo step, a tracked
+   * insertion when suggesting. False when nothing was inserted, as while a
+   * header, footer or note is being edited.
    */
   insertField: (field: FolioFieldInsertion) => boolean;
   /** Painted geometry for one block, relative to this editor's scroll root. */
