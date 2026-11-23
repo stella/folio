@@ -3,8 +3,6 @@ import { Plugin, PluginKey } from "prosemirror-state";
 
 import type { FolioDerivedFields } from "../../types/fields";
 
-const derivedFieldsKey = new PluginKey("folioDerivedFields");
-
 const REMOVAL_MARKS = new Set(["deletion", "moveFrom"]);
 
 /**
@@ -16,7 +14,8 @@ export const createDerivedFieldsPlugin = (
   getDerivedFields: () => FolioDerivedFields | undefined,
 ): Plugin =>
   new Plugin({
-    key: derivedFieldsKey,
+    // One key per editor, so two editors keep separate plugins.
+    key: new PluginKey("folioDerivedFields"),
     appendTransaction(transactions, _previous, state) {
       const derived = getDerivedFields();
       if (
