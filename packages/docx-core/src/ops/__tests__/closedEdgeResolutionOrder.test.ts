@@ -31,6 +31,12 @@ const text = (value: string): ParagraphContent => ({
   content: [{ type: "text", text: value }],
 });
 
+const bold = (value: string): ParagraphContent => ({
+  type: "run",
+  formatting: { bold: true },
+  content: [{ type: "text", text: value }],
+});
+
 const tab: ParagraphContent = { type: "run", content: [{ type: "tab" }] };
 
 const link = (content: ParagraphContent[]): ParagraphContent => ({
@@ -333,6 +339,262 @@ const shapes: Record<string, Shape> = {
   },
 };
 
+const clause = (id: number, content: ParagraphContent[]): ParagraphContent => ({
+  type: "inlineSdt",
+  properties: { sdtType: "richText", id, tag: "clause" },
+  content,
+});
+
+/** Seams and cuts that go on through pieces and insertions standing at them. */
+const cutShapes: Record<string, Shape> = {
+  "a cut past a removed change's pieces is read whole beside an edge insertion":
+    {
+      content: [
+        clause(1, [
+          insertion(2, 2, [link([text("x")])], {
+            before: 0,
+            after: 3,
+            remove: 0,
+          }),
+          link([text("aa")]),
+          insertion(1, 1, [link([text("y")])], {
+            before: 3,
+            after: 3,
+            remove: 3,
+          }),
+        ]),
+        insertion(3, 3, [end(2)], { before: 0, after: 0, remove: 5 }),
+        clause(2, [
+          insertion(4, 1, [link([text("z")])], {
+            before: 3,
+            after: 3,
+            remove: 3,
+          }),
+          link([tab]),
+        ]),
+      ],
+      groups: [reject(1, 4), reject(2), reject(3)],
+      left: [clause(1, [link([text("aa"), end(2), tab])])],
+    },
+  "a cut past a removed change's pieces is read whole": {
+    content: [
+      clause(1, [
+        link([text("aa")]),
+        insertion(1, 1, [link([text("y")])], {
+          before: 3,
+          after: 3,
+          remove: 3,
+        }),
+      ]),
+      insertion(3, 3, [end(2)], { before: 0, after: 0, remove: 5 }),
+      clause(2, [
+        insertion(4, 1, [link([text("z")])], {
+          before: 3,
+          after: 3,
+          remove: 3,
+        }),
+        link([tab]),
+      ]),
+    ],
+    groups: [reject(1, 4), reject(3)],
+    left: [clause(1, [link([text("aa"), end(2), tab])])],
+  },
+  "a chain of insertions at a piece's edge is part of the piece": {
+    content: [
+      clause(1, [link([tab])]),
+      insertion(1, 1, [end(1)], { before: 0, after: 0, remove: 4 }),
+      clause(2, [
+        insertion(3, 3, [link([text("x")])], {
+          before: 0,
+          after: 4,
+          remove: 0,
+        }),
+        insertion(2, 2, [link([text("y")])], {
+          before: 0,
+          after: 3,
+          remove: 0,
+        }),
+        link([text("a")]),
+      ]),
+    ],
+    groups: [reject(1), accept(2), accept(3)],
+    left: [clause(1, [link([tab, end(1), text("xya")])])],
+  },
+  "the insertion nearest the seam of a chain goes": {
+    content: [
+      clause(1, [link([tab])]),
+      insertion(1, 1, [end(1)], { before: 0, after: 0, remove: 4 }),
+      clause(2, [
+        insertion(3, 3, [link([text("x")])], {
+          before: 0,
+          after: 4,
+          remove: 0,
+        }),
+        insertion(2, 2, [link([text("y")])], {
+          before: 0,
+          after: 3,
+          remove: 0,
+        }),
+        link([text("a")]),
+      ]),
+    ],
+    groups: [reject(1), accept(2), reject(3)],
+    left: [clause(1, [link([tab, end(1), text("ya")])])],
+  },
+  "the insertion a chain was made at goes": {
+    content: [
+      clause(1, [link([tab])]),
+      insertion(1, 1, [end(1)], { before: 0, after: 0, remove: 4 }),
+      clause(2, [
+        insertion(3, 3, [link([text("x")])], {
+          before: 0,
+          after: 4,
+          remove: 0,
+        }),
+        insertion(2, 2, [link([text("y")])], {
+          before: 0,
+          after: 3,
+          remove: 0,
+        }),
+        link([text("a")]),
+      ]),
+    ],
+    groups: [reject(1), reject(2), accept(3)],
+    left: [clause(1, [link([tab, end(1), text("xa")])])],
+  },
+  "an insertion joined by its record alone, with markers kept in the record": {
+    content: [
+      link([text("a")]),
+      insertion(1, 1, [link([end(1)])], { before: 0, after: 0, remove: 2 }),
+      insertion(2, 2, [link([bold("x")])], { before: 0, after: 1, remove: 0 }),
+      link([text("b")]),
+    ],
+    groups: [reject(1), accept(2)],
+    left: [link([text("a"), end(1), bold("x"), text("b")])],
+  },
+  "a chain of insertions at the end of the piece before is part of it": {
+    content: [
+      clause(1, [
+        link([text("a")]),
+        insertion(2, 2, [link([text("y")])], {
+          before: 3,
+          after: 0,
+          remove: 0,
+        }),
+        insertion(3, 3, [link([text("x")])], {
+          before: 4,
+          after: 0,
+          remove: 0,
+        }),
+      ]),
+      insertion(1, 1, [end(1)], { before: 0, after: 0, remove: 4 }),
+      clause(2, [link([tab])]),
+    ],
+    groups: [reject(1), accept(2), accept(3)],
+    left: [clause(1, [link([text("ayx"), end(1), tab])])],
+  },
+  "an insertion joined to a piece's record alone takes that much of the seam": {
+    content: [
+      clause(1, [link([text("a")])]),
+      insertion(1, 1, [end(1)], { before: 0, after: 0, remove: 4 }),
+      clause(2, [
+        insertion(2, 2, [link([bold("x")])], {
+          before: 0,
+          after: 1,
+          remove: 0,
+        }),
+        link([text("b")]),
+      ]),
+    ],
+    groups: [reject(1), accept(2)],
+    left: [clause(1, [link([text("a"), end(1), bold("x"), text("b")])])],
+  },
+  "boundaries kept from both pieces of rejected new content": {
+    content: [
+      embedded([text("w")]),
+      insertion(1, 1, [link([text("b"), start(1)])], {
+        before: 0,
+        after: 0,
+        remove: 1,
+      }),
+      insertion(2, 2, [link([text("x")])], { before: 2, after: 2, remove: 2 }),
+      insertion(3, 1, [link([text("a"), end(1)])], {
+        before: 0,
+        after: 0,
+        remove: 1,
+      }),
+      embedded([text("v")]),
+    ],
+    groups: [reject(1, 3), accept(2)],
+    left: [
+      embedded([text("w")]),
+      link([start(1), text("x"), end(1)]),
+      embedded([text("v")]),
+    ],
+  },
+  "boundaries kept on both sides of content made inside a deeper cut": {
+    content: [
+      clause(1, [link([text("w")])]),
+      insertion(1, 1, [link([text("b"), start(1)])], {
+        before: 0,
+        after: 0,
+        remove: 3,
+      }),
+      insertion(2, 2, [link([bold("x")])], { before: 2, after: 2, remove: 4 }),
+      insertion(3, 1, [link([text("a")]), end(1)], {
+        before: 0,
+        after: 0,
+        remove: 3,
+      }),
+      clause(2, [link([text("v")])]),
+    ],
+    groups: [reject(1, 3), accept(2)],
+    left: [
+      clause(1, [link([text("w")])]),
+      link([start(1), bold("x")]),
+      clause(2, [link([end(1), text("v")])]),
+    ],
+  },
+  "boundaries kept from a piece, and beyond the other, of rejected content": {
+    content: [
+      clause(1, [text("w")]),
+      insertion(1, 1, [link([text("b"), start(1)])], {
+        before: 0,
+        after: 0,
+        remove: 1,
+      }),
+      insertion(2, 2, [link([text("x")])], { before: 2, after: 2, remove: 2 }),
+      insertion(3, 1, [link([text("a")]), end(1)], {
+        before: 0,
+        after: 0,
+        remove: 1,
+      }),
+      clause(2, [tab]),
+    ],
+    groups: [reject(1, 3), accept(2)],
+    left: [
+      clause(1, [text("w")]),
+      link([start(1), text("x")]),
+      clause(2, [end(1), tab]),
+    ],
+  },
+  "boundaries kept from a piece of rejected new content": {
+    content: [
+      embedded([text("w")]),
+      insertion(1, 1, [link([start(1)])], { before: 0, after: 0, remove: 1 }),
+      insertion(2, 2, [link([text("x")])], { before: 2, after: 4, remove: 2 }),
+      insertion(3, 1, [link([text("a")])], { before: 0, after: 0, remove: 1 }),
+      embedded([text("v")]),
+    ],
+    groups: [reject(1, 3), accept(2)],
+    left: [
+      embedded([text("w")]),
+      link([start(1), text("x")]),
+      embedded([text("v")]),
+    ],
+  },
+};
+
 const tailParagraph = paragraph("0000000F", []);
 
 const contexts: Record<
@@ -452,6 +714,116 @@ const splitShapes: Record<string, SplitShape> = {
       ]),
     ],
   },
+  "an accepted deletion takes a split's piece, and the cut with it": {
+    first: [link([text("w")]), deletion(2, 2, [link([text("a")])])],
+    depth: 2,
+    second: [link([text("b")])],
+    groups: [reject(1), accept(2)],
+    left: [link([text("w")]), link([text("b")])],
+  },
+  "an accepted deletion takes the piece after a split, and the cut with it": {
+    first: [link([text("a")])],
+    depth: 2,
+    second: [deletion(2, 2, [link([text("b")])]), link([text("w")])],
+    groups: [reject(1), accept(2)],
+    left: [link([text("a")]), link([text("w")])],
+  },
+  "an accepted deletion takes a split's piece inside an accepted insertion": {
+    first: [
+      link([text("p")]),
+      insertion(
+        3,
+        0,
+        [link([text("w")]), deletion(2, 2, [link([text("a")])])],
+        {
+          before: 3,
+          after: 3,
+          remove: 3,
+        },
+      ),
+    ],
+    depth: 4,
+    second: [
+      insertion(4, 0, [link([text("b")])], { before: 3, after: 3, remove: 3 }),
+      link([text("q")]),
+    ],
+    groups: [reject(1), accept(2), accept(3, 4)],
+    left: [link([text("pw")]), link([text("bq")])],
+  },
+  "an accepted deletion takes the piece after, inside an accepted insertion": {
+    first: [
+      link([text("p")]),
+      insertion(3, 0, [link([text("a")])], { before: 3, after: 3, remove: 3 }),
+    ],
+    depth: 4,
+    second: [
+      insertion(
+        4,
+        0,
+        [deletion(2, 2, [link([text("b")])]), link([text("w")])],
+        {
+          before: 3,
+          after: 3,
+          remove: 3,
+        },
+      ),
+      link([text("q")]),
+    ],
+    groups: [reject(1), accept(2), accept(3, 4)],
+    left: [link([text("pa")]), link([text("wq")])],
+  },
+  "rejected insertions take a split's pieces inside a rejected deletion": {
+    first: [
+      link([text("p")]),
+      deletion(
+        3,
+        0,
+        [link([text("w")]), insertion(2, 0, [link([text("a")])])],
+        {
+          before: 3,
+          after: 3,
+          remove: 3,
+        },
+      ),
+    ],
+    depth: 4,
+    second: [
+      deletion(
+        4,
+        0,
+        [insertion(5, 0, [link([text("b")])]), link([text("v")])],
+        {
+          before: 3,
+          after: 3,
+          remove: 3,
+        },
+      ),
+      link([text("q")]),
+    ],
+    groups: [reject(1), reject(2, 5), reject(3, 4)],
+    left: [link([text("pw")]), link([text("vq")])],
+  },
+  "a chain of insertions at the edge of a split's piece is part of it": {
+    first: [link([text("a")])],
+    depth: 3,
+    second: [
+      insertion(3, 3, [link([text("x")])], { before: 0, after: 4, remove: 0 }),
+      insertion(2, 2, [link([text("y")])], { before: 0, after: 3, remove: 0 }),
+      link([text("b")]),
+    ],
+    groups: [reject(1), accept(2), accept(3)],
+    left: [link([text("axyb")])],
+  },
+  "an insertion joined to a split's piece by its record alone": {
+    first: [link([text("a")])],
+    depth: 2,
+    second: [
+      insertion(2, 2, [link([bold("x")])], { before: 0, after: 1, remove: 0 }),
+      link([text("b")]),
+    ],
+    groups: [reject(1), accept(2)],
+    left: [link([text("a"), bold("x"), text("b")])],
+  },
   "markers kept at a split's seam wait with the insertion beside them": {
     first: [control(1, "a"), insertion(4, 3, [end(2)])],
     depth: 3,
@@ -553,7 +925,7 @@ for (const [name, shape] of Object.entries(splitShapes))
       });
   });
 
-for (const [name, shape] of Object.entries(shapes))
+for (const [name, shape] of Object.entries({ ...shapes, ...cutShapes }))
   describe(name, () => {
     for (const [where, context] of Object.entries(contexts))
       test(where, () => {
