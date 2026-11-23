@@ -145,10 +145,12 @@ export type CanonicalDocx = {
  * How an editor parses a package it opens in a canonical session: no
  * template-variable scan, fonts loaded after the first render.
  */
-export const CANONICAL_DOCX_PARSE_OPTIONS = {
+export const CANONICAL_DOCX_PARSE_OPTIONS: Readonly<
+  Pick<ParseOptions, "detectVariables" | "preloadFonts">
+> = {
   detectVariables: false,
   preloadFonts: false,
-} as const;
+};
 
 /**
  * Read a package for a canonical session: normalize it
