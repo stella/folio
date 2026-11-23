@@ -1066,23 +1066,20 @@ export const createHiddenEditorManager = (
       case "prosemirror": {
         const fieldType = state.schema.nodes["field"];
         if (fieldType === undefined) return false;
-        view.dispatch(
-          // Its own undo step, apart from the typing before it.
-          closeHistory(state.tr)
-            .replaceSelectionWith(
-              fieldType.create({
-                fieldType: parseFieldType(field.instruction),
-                instruction: field.instruction,
-                displayText: field.displayText,
-                fieldKind: "simple",
-                ...(field.locked === undefined
-                  ? {}
-                  : { fldLock: field.locked }),
-              } satisfies FieldAttrs),
-              false,
-            )
-            .scrollIntoView(),
-        );
+        const insertion = state.tr
+          .replaceSelectionWith(
+            fieldType.create({
+              fieldType: parseFieldType(field.instruction),
+              instruction: field.instruction,
+              displayText: field.displayText,
+              fieldKind: "simple",
+              ...(field.locked === undefined ? {} : { fldLock: field.locked }),
+            } satisfies FieldAttrs),
+            false,
+          )
+          .scrollIntoView();
+        // Its own undo step, apart from the typing before it.
+        view.dispatch(closeHistory(insertion));
         return true;
       }
       case "refused":
