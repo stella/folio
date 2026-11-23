@@ -992,6 +992,8 @@ export const createHiddenEditorManager = (
   };
   /** An edit published during a pass asks for another once that pass returns. */
   let derivation: "idle" | "running" | "requested" = "idle";
+  // Read after a pass, which can set it through a nested publication.
+  const derivationRequested = (): boolean => derivation === "requested";
   const deriveFields = (): void => {
     if (derivation !== "idle") {
       derivation = "requested";
@@ -1000,7 +1002,7 @@ export const createHiddenEditorManager = (
     do {
       derivation = "running";
       deriveFieldsOnce();
-    } while (derivation === "requested");
+    } while (derivationRequested());
     derivation = "idle";
   };
   const deriveFieldsOnce = (): void => {
