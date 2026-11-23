@@ -651,13 +651,17 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       collaboration,
       plugins,
       featureFlags,
-      experimentalSession,
+      experimentalSession: experimentalSessionProp,
       onSelectiveSaveTripwire,
     }: DocxEditorProps,
     ref,
   ) {
     // A canonical room joins the canonical session; a Yjs fragment binds the
-    // legacy session's editor state.
+    // legacy session's editor state, so it selects that session unless the
+    // host names one.
+    const experimentalSession =
+      experimentalSessionProp ??
+      (collaboration?.yXmlFragment === undefined ? undefined : "legacy");
     const canonicalRoom =
       collaboration !== undefined && isCanonicalRoomCollaboration(collaboration)
         ? collaboration

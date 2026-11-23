@@ -405,7 +405,8 @@ export type UseDocxEditorOptions = {
   readOnly?: MaybeRefOrGetter<boolean>;
   /**
    * The editing engine. Unset, the editor runs the canonical session, which
-   * refuses an edit it cannot make yet with a notice. `"legacy"` selects the
+   * refuses an edit it cannot make yet with a notice, or the legacy session
+   * when `collaboration` is a Yjs fragment. `"legacy"` selects the
    * ProseMirror-owned engine.
    */
   experimentalSession?: MaybeRefOrGetter<EditorSession | undefined>;
@@ -615,7 +616,7 @@ export function useDocxEditor(
     noteEditorContainer,
     pagesContainer,
     readOnly = false,
-    experimentalSession,
+    experimentalSession: experimentalSessionOption,
     pageGap = DEFAULT_PAGE_GAP,
     pageRenderer,
     markupView = "all-markup",
@@ -646,6 +647,11 @@ export function useDocxEditor(
     featureFlags,
     onSelectiveSaveTripwire,
   } = options;
+  // A Yjs fragment binds the legacy session's editor state, so it selects that
+  // session unless the host names one.
+  const experimentalSession = () =>
+    toValue(experimentalSessionOption) ??
+    (toValue(collaboration)?.yXmlFragment === undefined ? undefined : "legacy");
   const headerFooterHost = hiddenHeaderFooterContainer ?? hiddenContainer;
   const getSuggestionAuthor = () =>
     toValue(author) ?? DEFAULT_SUGGESTION_AUTHOR;

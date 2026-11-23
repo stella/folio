@@ -137,7 +137,8 @@ export type DocxEditorProps = {
   document?: Document | null;
   /**
    * The editing engine. Unset, the editor runs the canonical session, which
-   * refuses unsupported edits with a notice. `"legacy"` selects the
+   * refuses unsupported edits with a notice, or the legacy session when
+   * `collaboration` is a Yjs fragment. `"legacy"` selects the
    * ProseMirror-owned engine.
    * A host plugin's transaction or a direct dispatch that changes the
    * document is refused too, its refusal naming the transaction's meta keys:

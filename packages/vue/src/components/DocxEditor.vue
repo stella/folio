@@ -704,6 +704,11 @@ const emit = defineEmits<{
 // injected primitives via `useFolioUI`, so `components.ColorPicker` etc. take
 // effect. Provided once at setup; the prop is not expected to change identity.
 provideFolioUI(props.components);
+// A Yjs fragment binds the legacy session's editor state, so it selects that
+// session unless the host names one.
+const experimentalSession = () =>
+  props.experimentalSession ??
+  (props.collaboration?.yXmlFragment === undefined ? undefined : "legacy");
 // Inherit the host's reactive light/dark/system setting. With no provider the
 // composable preserves the editor's existing light default. Teleported chrome
 // receives the same resolved mode through the portal-class provider.
@@ -711,10 +716,7 @@ const isDark = useColorMode();
 provideDocxPortalClass(isDark);
 
 const canonicalAuthoritySession = computed(() =>
-  usesCanonicalSession(
-    props.experimentalSession,
-    CANONICAL_GAP.authorityRouting,
-  ),
+  usesCanonicalSession(experimentalSession(), CANONICAL_GAP.authorityRouting),
 );
 
 /** Hand the host a document it owns; its three listeners share it. */
@@ -745,10 +747,7 @@ function reportEditorError(error: Error): void {
 
 function refuseCanonicalModelEdit(gap: CanonicalGap, message: string): boolean {
   if (
-    !usesCanonicalSession(
-      props.experimentalSession,
-      CANONICAL_GAP.authorityRouting,
-    )
+    !usesCanonicalSession(experimentalSession(), CANONICAL_GAP.authorityRouting)
   )
     return false;
   const error = new CanonicalSessionRefusalError({
@@ -987,7 +986,7 @@ const {
   noteEditorContainer: notePmRef,
   pagesContainer: pagesRef,
   readOnly,
-  experimentalSession: () => props.experimentalSession,
+  experimentalSession,
   editorMode,
   author: () => props.author,
   password: () => props.password,
@@ -1199,7 +1198,7 @@ const {
   hyperlinkPopupData,
   readOnly,
   showHeaderFooterEditing: computed(() => props.showHeaderFooterEditing),
-  getExperimentalSession: () => props.experimentalSession,
+  getExperimentalSession: experimentalSession,
   applyCanonicalOperations: (operations) =>
     editor.applyCanonicalOperations(operations),
   zoom,
@@ -2058,10 +2057,7 @@ const { exposed } = useDocxEditorRefApi({
     commentManagement.appendComments(nextComments);
   },
   getComments: () =>
-    usesCanonicalSession(
-      props.experimentalSession,
-      CANONICAL_GAP.authorityRouting,
-    )
+    usesCanonicalSession(experimentalSession(), CANONICAL_GAP.authorityRouting)
       ? commentManagement.comments.value.map((comment) =>
           structuredClone(comment),
         )
@@ -2082,7 +2078,7 @@ const { exposed } = useDocxEditorRefApi({
     });
   },
   getActiveView: () => activeEditorView.value,
-  getExperimentalSession: () => props.experimentalSession,
+  getExperimentalSession: experimentalSession,
   getActiveCanonicalStory: () => {
     const note = activeNoteStory.value;
     if (note) return { kind: note.kind, id: note.noteId };
