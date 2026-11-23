@@ -21,7 +21,9 @@ import type { FolioDerivedFields, FolioFieldInsertion } from "../types/fields";
 
 type Field = SimpleField | ComplexField;
 
-const isField = (item: ParagraphContent): item is Field =>
+const isField = <Item extends ParagraphContent>(
+  item: Item,
+): item is Item & Field =>
   item.type === "simpleField" || item.type === "complexField";
 
 /** Records whose content the final document leaves out. */
@@ -59,7 +61,7 @@ const resultRun = (field: Field, text: string): Run => {
   };
 };
 
-const withDisplayText = (field: Field, text: string): Field =>
+const withDisplayText = <F extends Field>(field: F, text: string): F =>
   field.type === "simpleField"
     ? { ...field, content: [resultRun(field, text)] }
     : { ...field, fieldResult: [resultRun(field, text)] };
@@ -68,12 +70,15 @@ const withDisplayText = (field: Field, text: string): Field =>
  * Visit the owned fields of `content` in document order, with whether a
  * removal holds them; `replace` may return a field to put in its place.
  */
-const mapOwnedFields = (
-  content: ParagraphContent[],
+/** Returns the field to keep in place of `field`, of its own kind. */
+type FieldReplacer = <F extends Field>(field: F, removed: boolean) => F;
+
+const mapOwnedFields = <Item extends ParagraphContent>(
+  content: Item[],
   owns: (instruction: string) => boolean,
-  replace: (field: Field, removed: boolean) => Field,
+  replace: FieldReplacer,
   removed = false,
-): ParagraphContent[] => {
+): Item[] => {
   let changed = false;
   const mapped = content.map((item) => {
     if (isField(item) && owns(item.instruction)) {
@@ -105,10 +110,14 @@ export const derivedFieldOps = (
   );
   const instructions: string[] = [];
   for (const paragraph of paragraphs)
-    mapOwnedFields(paragraph.content, owns, (field, removed) => {
-      if (!removed) instructions.push(field.instruction);
-      return field;
-    });
+    mapOwnedFields(
+      paragraph.content,
+      owns,
+      <F extends Field>(field: F, removed: boolean): F => {
+        if (!removed) instructions.push(field.instruction);
+        return field;
+      },
+    );
   if (instructions.length === 0) return [];
   const texts = displayTexts(instructions);
   if (texts.length !== instructions.length)
@@ -117,7 +126,7 @@ export const derivedFieldOps = (
     );
   // The texts in field order, taken one per field outside a removal.
   const pending = texts.values();
-  const assign = (field: Field, removed: boolean): Field => {
+  const assign = <F extends Field>(field: F, removed: boolean): F => {
     if (removed) return field;
     const text = pending.next();
     if (text.done === true) return panic("A derived field text is missing.");
