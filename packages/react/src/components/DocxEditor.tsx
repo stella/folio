@@ -651,13 +651,17 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       collaboration,
       plugins,
       featureFlags,
-      experimentalSession,
+      experimentalSession: experimentalSessionProp,
       onSelectiveSaveTripwire,
     }: DocxEditorProps,
     ref,
   ) {
     // A canonical room joins the canonical session; a Yjs fragment binds the
-    // legacy session's editor state.
+    // legacy session's editor state, so it selects that session unless the
+    // host names one.
+    const experimentalSession =
+      experimentalSessionProp ??
+      (collaboration?.yXmlFragment === undefined ? undefined : "legacy");
     const canonicalRoom =
       collaboration !== undefined && isCanonicalRoomCollaboration(collaboration)
         ? collaboration
@@ -1427,12 +1431,12 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       history,
       pushDocument,
       getCanonicalApi,
-      ...(!usesCanonicalSession(
+      experimentalSession: usesCanonicalSession(
         experimentalSession,
         CANONICAL_GAP.authorityRouting,
       )
-        ? {}
-        : { experimentalSession }),
+        ? "canonical"
+        : "legacy",
       // Hook reads live HF PM state at close time (the in-place sync
       // that previously kept package.headers/footers current per
       // keystroke was removed to fix the undo-corruption bug; the
@@ -1667,12 +1671,12 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       documentBuffer: documentBuffer ?? null,
       initialDocument: initialDocument ?? null,
       password,
-      ...(!usesCanonicalSession(
+      experimentalSession: usesCanonicalSession(
         experimentalSession,
         CANONICAL_GAP.authorityRouting,
       )
-        ? {}
-        : { experimentalSession }),
+        ? "canonical"
+        : "legacy",
       history,
       onError,
       onCompatibilityChange,
@@ -1804,7 +1808,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
      * and hand the host one copy of it it owns. A document built outside the
      * paged editor's notification arrives as `built` and is the model; the
      * host gets its copy now or, for a change still in progress, once the
-     * change settles. In the default session the model holds this hook's
+     * change settles. In the legacy session the model holds this hook's
      * comment list, and the host's document a copy of it.
      */
     const applyDocumentChange = useCallback(
@@ -1813,7 +1817,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
           experimentalSession,
           CANONICAL_GAP.authorityRouting,
         );
-        // The session keeps its own comments; the default session's are the
+        // The session keeps its own comments; the legacy session's are the
         // list this hook holds.
         const held = (model: ReadonlyDocument): ReadonlyDocument =>
           canonical
@@ -6317,12 +6321,14 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                               ? { marginGuideColor }
                               : {})}
                             readOnly={readOnly}
-                            {...(!usesCanonicalSession(
-                              experimentalSession,
-                              CANONICAL_GAP.authorityRouting,
-                            )
-                              ? {}
-                              : { experimentalSession })}
+                            experimentalSession={
+                              usesCanonicalSession(
+                                experimentalSession,
+                                CANONICAL_GAP.authorityRouting,
+                              )
+                                ? "canonical"
+                                : "legacy"
+                            }
                             onDocumentChange={applyDocumentChange}
                             extensionManager={extensionManager}
                             suggestionModeActive={editingMode === "suggesting"}

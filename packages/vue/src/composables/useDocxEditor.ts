@@ -175,6 +175,7 @@ import {
   CANONICAL_GAP,
   type CanonicalGap,
   canonicalRefusalMessage,
+  type EditorSession,
   usesCanonicalSession,
 } from "@stll/folio-core/types/canonicalCapabilities";
 import type { Comment, Footnote } from "@stll/folio-core/types/content";
@@ -402,8 +403,13 @@ export type UseDocxEditorOptions = {
   pagesContainer: Ref<HTMLElement | null>;
   /** Whether the editor is read-only. Reactive. */
   readOnly?: MaybeRefOrGetter<boolean>;
-  /** Experimental plain-text canonical session; unsupported edits are refused. */
-  experimentalSession?: MaybeRefOrGetter<"canonical" | undefined>;
+  /**
+   * The editing engine. Unset, the editor runs the canonical session, which
+   * refuses an edit it cannot make yet with a notice, or the legacy session
+   * when `collaboration` is a Yjs fragment. `"legacy"` selects the
+   * ProseMirror-owned engine.
+   */
+  experimentalSession?: MaybeRefOrGetter<EditorSession | undefined>;
   /** Gap between pages in pixels. */
   pageGap?: number;
   /** Whether to paint each page's effective body-content boundary. Reactive. */
@@ -610,7 +616,7 @@ export function useDocxEditor(
     noteEditorContainer,
     pagesContainer,
     readOnly = false,
-    experimentalSession,
+    experimentalSession: experimentalSessionOption,
     pageGap = DEFAULT_PAGE_GAP,
     pageRenderer,
     markupView = "all-markup",
@@ -641,6 +647,11 @@ export function useDocxEditor(
     featureFlags,
     onSelectiveSaveTripwire,
   } = options;
+  // A Yjs fragment binds the legacy session's editor state, so it selects that
+  // session unless the host names one.
+  const experimentalSession = () =>
+    toValue(experimentalSessionOption) ??
+    (toValue(collaboration)?.yXmlFragment === undefined ? undefined : "legacy");
   const headerFooterHost = hiddenHeaderFooterContainer ?? hiddenContainer;
   const getSuggestionAuthor = () =>
     toValue(author) ?? DEFAULT_SUGGESTION_AUTHOR;
