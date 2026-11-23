@@ -2307,6 +2307,8 @@ type CutReach = {
   /** Records each side's edge goes through to the deepest level that stays. */
   before: number;
   after: number;
+  /** Set where it ends at pieces of one change the resolution removes. */
+  gone?: true;
 };
 
 /**
@@ -2460,6 +2462,7 @@ const cutReach = ({
     const outcome = pass("before", near);
     pass("after", far);
     if (outcome === "gone") {
+      reach.gone = true;
       reach.levels = staying;
       break;
     }
@@ -5278,10 +5281,9 @@ const resolveList = ({
           return start === 0 ? chain : chain.slice(start);
         };
         const reach = (
-          near: InlineNode | undefined,
+          near: InlineNode,
           opposite: InlineNode | undefined,
-        ): number => {
-          if (near === undefined) return depth;
+        ): CutReach => {
           // A standing boundary is a source leaf, not a container the cut
           // split.
           const far =
@@ -5301,12 +5303,13 @@ const resolveList = ({
             depth,
             spanning: far === undefined ? [] : kept.spanning,
             resolution,
-          })[side];
+          });
         };
-        const held = reach(occurrence?.source, across?.source);
-        return kept.through === true
-          ? Math.max(held, reach(occurrence?.node, across?.node))
-          : held;
+        if (occurrence?.source === undefined) return depth;
+        const held = reach(occurrence.source, across?.source);
+        return kept.through === true && held.gone === true
+          ? Math.max(held[side], reach(occurrence.node, across?.node)[side])
+          : held[side];
       };
       const beforeDepth = ownerDepth({
         occurrence: beforeOccurrence,
