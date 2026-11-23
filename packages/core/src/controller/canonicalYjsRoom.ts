@@ -174,6 +174,56 @@ export type CanonicalYjsAuthority = {
   stop(): void;
 };
 
+export type ReadCanonicalYjsJournalOptions = {
+  /** A copy of the room's Yjs document, such as one a stored update restores. */
+  doc: Y.Doc;
+  /** `canonicalSnapshotId` of the DOCX the journal is replayed over. */
+  snapshot: string;
+  /** The Yjs client id the room's authority writes under. */
+  authority?: number;
+};
+
+/**
+ * The batches a room's authority sequenced, in revision order: what a server
+ * replays over the room's base DOCX (`FolioDocxReviewer.applyRoomJournal`) to
+ * save the room. Entries another client wrote are not the authority's and
+ * are left out, as every peer leaves them out.
+ */
+export const readCanonicalYjsJournal = ({
+  doc,
+  snapshot,
+  authority = CANONICAL_YJS_AUTHORITY,
+}: ReadCanonicalYjsJournalOptions): Result<
+  SequencedBatch[],
+  CanonicalYjsRoomError
+> => {
+  const { journal, room } = roomTypes(doc);
+  const seeded = room.get(SNAPSHOT_KEY);
+  if (seeded !== undefined && seeded !== snapshot)
+    return Result.err(
+      yjsRoomError(
+        "snapshotMismatch",
+        "The room was seeded from another document.",
+      ),
+    );
+  const batches: SequencedBatch[] = [];
+  for (const item of itemsOf(journal)) {
+    if (item.id.client !== authority) continue;
+    for (const value of valuesOf(item)) {
+      const record = decodeRoomRecord(value);
+      if (record === undefined)
+        return Result.err(
+          yjsRoomError(
+            "invalidJournalEntry",
+            "An authority journal entry is malformed.",
+          ),
+        );
+      if (record.type === "sequenced") batches.push(record.batch);
+    }
+  }
+  return Result.ok(batches);
+};
+
 /**
  * Run a room's authority on the host server's copy of its Yjs document. It
  * rebuilds the sequencer from the journal's authority entries, then takes
