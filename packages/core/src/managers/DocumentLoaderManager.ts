@@ -1,4 +1,5 @@
 import {
+  CANONICAL_DOCX_PARSE_OPTIONS,
   holdsUniqueSeedIds,
   openCanonicalDocx,
   prepareCanonicalDocumentInput,
@@ -182,8 +183,7 @@ export class DocumentLoaderManager {
       let doc: Document;
       try {
         const parseOptions = {
-          detectVariables: false,
-          preloadFonts: false,
+          ...CANONICAL_DOCX_PARSE_OPTIONS,
           password: options.password,
         };
         if (this.opensCanonicalSession()) {

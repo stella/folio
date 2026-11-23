@@ -64,16 +64,6 @@ export type CanonicalRoomTransport = {
   readonly presence?: CanonicalPresenceChannel;
 };
 
-/** A room's base snapshot identity: the SHA-256 of the DOCX bytes, in hex. */
-export const canonicalSnapshotId = async (
-  docx: ArrayBuffer | Uint8Array,
-): Promise<string> => {
-  const digest = await crypto.subtle.digest("SHA-256", new Uint8Array(docx));
-  return [...new Uint8Array(digest)]
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-};
-
 export type CanonicalMemoryConnection = CanonicalRoomTransport & {
   /** Lose the connection: undelivered batches and unanswered submissions are dropped. */
   disconnect(): void;

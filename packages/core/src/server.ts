@@ -115,6 +115,7 @@ export {
   FOLIO_REVIEWED_VIEWS,
   FolioDocxReviewer,
   FolioDocumentStoryNotFoundError,
+  FolioRoomJournalError,
   UnsupportedFolioReviewedViewError,
   applyFolioAIEditsToBuffer,
   isFolioResolvedReviewedView,

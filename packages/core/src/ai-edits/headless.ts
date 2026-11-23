@@ -30,6 +30,7 @@ import {
   resolveSectionChange,
   resolveSectionChanges,
   sectionResolutionPatch,
+  type SequencedBatch,
   type StoryParts,
   withoutPendingSuggestions,
 } from "@stll/docx-core/ops";
@@ -43,6 +44,11 @@ import {
 import { createCanonicalSectionPropertiesOperation } from "../canonical/canonicalOperations";
 import { CanonicalPublicOperations } from "../canonical/canonicalPublicOperations";
 import { canonicalRevisionLocks } from "../canonical/canonicalRevisionLocks";
+import {
+  type CanonicalRoomBase,
+  openCanonicalDocxSession,
+  openCanonicalRoomBase,
+} from "../canonical/canonicalRoomBase";
 import {
   type CanonicalCommit,
   type CanonicalSession,
@@ -84,7 +90,6 @@ import {
   CanonicalSaveRepackRefusedError,
   serializeCanonicalSave,
 } from "../docx/canonicalSave";
-import { openCanonicalDocx } from "../docx/canonicalSessionInput";
 import { removeCommentMarkers } from "../docx/commentAnchorIndex";
 import { applyReplyThreadMarkers } from "../docx/commentReplyMarkers";
 /**
@@ -616,6 +621,21 @@ const UnsupportedFolioReviewedViewErrorBase: TaggedErrorClass<"UnsupportedFolioR
 export class UnsupportedFolioReviewedViewError extends UnsupportedFolioReviewedViewErrorBase<{
   message: string;
   receivedView: unknown;
+}> {}
+
+const FolioRoomJournalErrorBase: TaggedErrorClass<"FolioRoomJournalError"> =
+  TaggedError("FolioRoomJournalError");
+
+/**
+ * Why a reviewer could not replay a room's journal. `legacyEngine`: only a
+ * canonical reviewer follows a room. `revisionGap`: a batch is not the one
+ * after the last the reviewer applied.
+ */
+export class FolioRoomJournalError extends FolioRoomJournalErrorBase<{
+  message: string;
+  reason: "legacyEngine" | "revisionGap";
+  expectedRevision: number;
+  receivedRevision: number | undefined;
 }> {}
 
 const FolioDocumentStoryNotFoundErrorBase: TaggedErrorClass<"FolioDocumentStoryNotFoundError"> =
@@ -1695,6 +1715,8 @@ export class FolioDocxReviewer {
    * types its inputs `readonly Comment[]`).
    */
   private readonly resolvedOverrides = new Map<number, boolean>();
+  /** The last room revision {@link applyRoomJournal} applied. */
+  private roomRevision = 0;
   /** The resolved copies {@link resolvedSessionReader} last read, by view. */
   private readonly resolvedSessionReaders = new Map<
     FolioResolvedReviewedView,
@@ -2166,6 +2188,17 @@ export class FolioDocxReviewer {
     return remapped;
   }
 
+  /**
+   * A canonical room's revision 0, which its authority is seeded with: the
+   * document an editor's canonical session reads from `buffer`, and the
+   * DOCX's snapshot identity.
+   */
+  static async openRoomBase(buffer: ArrayBuffer): Promise<CanonicalRoomBase> {
+    const base = await openCanonicalRoomBase(buffer);
+    if (base.isErr()) throw base.error;
+    return base.value;
+  }
+
   /** Parse a `.docx` buffer into a reviewer. */
   // canonical-gap: publicOps.headlessSession
   static async fromBuffer(
@@ -2228,15 +2261,9 @@ export class FolioDocxReviewer {
     buffer: ArrayBuffer,
     options: FolioDocxReviewerOptions,
   ): Promise<FolioDocxReviewer> {
-    const opened = await openCanonicalDocx(buffer, {
-      detectVariables: false,
-      preloadFonts: false,
-    });
+    const opened = await openCanonicalDocxSession(buffer, options.password);
     if (opened.isErr()) throw opened.error;
-    const { document: parsed, mintedParaIds } = opened.value;
-    const created = createCanonicalSession(parsed, parsed.package.styles);
-    if (created.isErr()) throw created.error;
-    const session = created.value;
+    const { document: parsed, mintedParaIds, session } = opened.value;
     return new FolioDocxReviewer({
       // The model at load; the readers follow the session from here on.
       baseDocument: readModel(session.document),
@@ -2505,6 +2532,33 @@ export class FolioDocxReviewer {
         after: { ...before, package: { ...before.package, ...resources } },
       }),
     ]);
+  }
+
+  /**
+   * Apply a canonical room's sequenced batches in revision order, as each
+   * peer applies them. A reviewer opened on the room's base DOCX and given
+   * its journal holds the room's document, which `toBuffer` saves.
+   */
+  applyRoomJournal(journal: readonly SequencedBatch[]): void {
+    if (this.engine.type !== "canonical")
+      throw new FolioRoomJournalError({
+        message: "Only a canonical reviewer replays a room journal.",
+        reason: "legacyEngine",
+        expectedRevision: this.roomRevision + 1,
+        receivedRevision: journal.at(0)?.revision,
+      });
+    for (const batch of journal) {
+      const expectedRevision = this.roomRevision + 1;
+      if (batch.revision !== expectedRevision)
+        throw new FolioRoomJournalError({
+          message: `The room journal skips from revision ${this.roomRevision} to ${batch.revision}.`,
+          reason: "revisionGap",
+          expectedRevision,
+          receivedRevision: batch.revision,
+        });
+      this.commitOpsOnSession(batch.ops);
+      this.roomRevision = batch.revision;
+    }
   }
 
   private commitOpsOnSession(ops: readonly DocumentOp[]): boolean {

@@ -142,6 +142,15 @@ export type CanonicalDocx = {
 };
 
 /**
+ * How an editor parses a package it opens in a canonical session: no
+ * template-variable scan, fonts loaded after the first render.
+ */
+export const CANONICAL_DOCX_PARSE_OPTIONS = {
+  detectVariables: false,
+  preloadFonts: false,
+} as const;
+
+/**
  * Read a package for a canonical session: normalize it
  * ({@link prepareCanonicalDocxSource}) and parse the result. A save of the
  * document writes each part the session leaves as read with the package's

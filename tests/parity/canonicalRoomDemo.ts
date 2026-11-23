@@ -1,3 +1,4 @@
+import { canonicalSnapshotId } from "@stll/folio-core/canonical/canonicalRoomBase";
 import { openCanonicalIndexedDbJournal } from "@stll/folio-core/controller/canonicalIndexedDbJournal";
 import {
   type CanonicalPresenceState,
@@ -8,7 +9,6 @@ import type {
   CanonicalRoomCollaboration,
   CanonicalRoomConnection,
 } from "@stll/folio-core/controller/canonicalRoomEditor";
-import { canonicalSnapshotId } from "@stll/folio-core/controller/canonicalRoomTransport";
 import {
   type CanonicalTabRoom,
   openCanonicalTabRoom,

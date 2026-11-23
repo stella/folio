@@ -12,6 +12,10 @@ import { expect } from "bun:test";
 import type { SequencedBatch } from "@stll/docx-core/ops";
 
 import {
+  FolioDocxReviewer,
+  FolioRoomJournalError,
+} from "../../ai-edits/headless";
+import {
   type CanonicalCommit,
   type CanonicalSessionError,
   createCanonicalSession,
@@ -28,7 +32,6 @@ import type {
   CanonicalRoomSubmission,
   CanonicalRoomTransport,
 } from "../canonicalRoomTransport";
-import { canonicalSnapshotId } from "../canonicalRoomTransport";
 import {
   type BatchMeta,
   caretOf,
@@ -116,8 +119,11 @@ export const createRoomPeers = async (coverage: RoomCoverage) => {
   const bytes = await peerSeed();
   const parse = () =>
     parseDocx(bytes, { preloadFonts: false, detectVariables: false });
-  const snapshot = await canonicalSnapshotId(bytes);
-  const base = createCanonicalSession(await parse()).unwrap().document;
+  // The room's revision 0 as its server opens it; each peer opens the DOCX
+  // as an editor does.
+  const { document: base, snapshot } = await FolioDocxReviewer.openRoomBase(
+    bytes.slice().buffer,
+  );
   const batches = new Map<string, BatchMeta>();
   const acked = new Map<string, number>();
   const typed = new Map<number, number>();
@@ -293,6 +299,30 @@ export const createRoomPeers = async (coverage: RoomCoverage) => {
       ).toEqual(finalIds);
     }
     await expectIdenticalSaves(peers.map(({ session }) => session));
+    // A server holds the room as its base DOCX and journal: a headless
+    // reviewer replaying the journal over that DOCX holds the authority's
+    // document, and so does the file it saves.
+    const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice().buffer, {
+      session: "canonical",
+    });
+    reviewer.applyRoomJournal(journal);
+    // Replaying the journal again would apply each batch twice.
+    if (journal.length > 0)
+      expect(() => reviewer.applyRoomJournal(journal)).toThrow(
+        FolioRoomJournalError,
+      );
+    const saved = await FolioDocxReviewer.fromBuffer(
+      await reviewer.toBuffer(),
+      {
+        session: "canonical",
+      },
+    );
+    for (const replayed of [reviewer.toDocument(), saved.toDocument()]) {
+      expect(documentText(replayed)).toBe(finalText);
+      expect(paragraphs(replayed).map(({ paraId }) => paraId)).toEqual(
+        finalIds,
+      );
+    }
     expectSequencedKeystrokes({
       finalText,
       journal,
