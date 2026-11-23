@@ -29,6 +29,7 @@ export type ConsumerArgs = {
   collisionRuns: string | null;
   swarm: string | null;
   flow: string | null;
+  engine: string | null;
   publicCorpusDir: string | null;
   relations: string | null;
   relationsDepth: string | null;
@@ -69,6 +70,7 @@ export const parseConsumerArgs = (
     collisionRuns: null,
     swarm: null,
     flow: null,
+    engine: null,
     publicCorpusDir: null,
     relations: null,
     relationsDepth: null,

@@ -469,6 +469,7 @@ const flowEnvironment = async (): Promise<Record<string, string>> => {
     FOLIO_SCENARIO_FUZZ_RUNS: scenarioInputs.runs,
     FOLIO_SCENARIO_COLLISION_RUNS: scenarioInputs.collisionRuns,
     FOLIO_SCENARIO_SWARM: scenarioInputs.swarm,
+    FOLIO_SCENARIO_ENGINE: scenarioInputs.engine,
     FOLIO_SCENARIO_PUBLIC_CORPUS_DIR: scenarioInputs.publicCorpusDir,
     FOLIO_SCENARIO_RELATIONS: scenarioInputs.relations,
     FOLIO_SCENARIO_RELATIONS_DEPTH: scenarioInputs.relationsDepth,
